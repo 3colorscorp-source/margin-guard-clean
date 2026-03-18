@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Invoice</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    :root{
+      --bg:#f6f7f9;
+      --card:#ffffff;
+      --text:#111827;
+      --muted:#6b7280;
+      --line:#e5e7eb;
+      --green:#0f8a5f;
+      --green-dark:#0b6b49;
+      --soft:#f9fafb;
+      --danger-bg:#fee2e2;
+      --danger:#b91c1c;
+    }
+
+    *{
+      box-sizing:border-box;
+    }
+
+    body{
+      margin:0;
+      font-family:Arial, Helvetica, sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      padding:32px 16px;
+    }
+
+    .wrap{
+      max-width:980px;
+      margin:0 auto;
+    }
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:16px;
+      overflow:hidden;
+      box-shadow:0 8px 24px rgba(0,0,0,0.06);
+    }
+
+    .topbar{
+      padding:24px 28px;
+      border-bottom:1px solid var(--line);
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:20px;
+      flex-wrap:wrap;
+      background:#fff;
+    }
+
+    .brand-block h1{
+      margin:0 0 6px 0;
+      font-size:28px;
+      font-weight:700;
+      letter-spacing:-0.02em;
+    }
+
+    .brand-block .sub{
+      color:var(--muted);
+      font-size:14px;
+    }
+
+    .status-pill{
+      padding:10px 14px;
+      border-radius:999px;
+      font-size:13px;
+      font-weight:700;
+      border:1px solid #d1fae5;
+      background:#ecfdf5;
+      color:#065f46;
+      text-transform:uppercase;
+      white-space:nowrap;
+    }
+
+    .content{
+      padding:28px;
+    }
+
+    .hero{
+      display:grid;
+      grid-template-columns:1.2fr .8fr;
+      gap:24px;
+      margin-bottom:28px;
+    }
+
+    .panel{
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:20px;
+      background:var(--soft);
+    }
+
+    .eyebrow{
+      color:var(--muted);
+      font-size:12px;
+      font-weight:700;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      margin-bottom:10px;
+    }
+
+    .invoice-no{
+      font-size:34px;
+      font-weight:800;
+      margin:0 0 12px 0;
+      line-height:1.1;
+    }
+
+    .big-amount{
+      font-size:40px;
+      font-weight:800;
+      margin:0;
+      color:#111827;
+    }
+
+    .small-note{
+      color:var(--muted);
+      font-size:14px;
+      margin-top:8px;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:24px;
+      margin-bottom:28px;
+    }
+
+    .info-list{
+      display:grid;
+      gap:12px;
+    }
+
+    .info-row{
+      display:grid;
+      grid-template-columns:160px 1fr;
+      gap:12px;
+      align-items:start;
+      padding-bottom:10px;
+      border-bottom:1px dashed var(--line);
+    }
+
+    .info-row:last-child{
+      border-bottom:none;
+      padding-bottom:0;
+    }
+
+    .label{
+      color:var(--muted);
+      font-size:14px;
+      font-weight:700;
+    }
+
+    .value{
+      font-size:15px;
+      font-weight:600;
+      word-break:break-word;
+    }
+
+    .summary{
+      border:1px solid var(--line);
+      border-radius:14px;
+      overflow:hidden;
+      margin-bottom:28px;
+    }
+
+    .summary-head{
+      padding:16px 20px;
+      background:#f9fafb;
+      border-bottom:1px solid var(--line);
+      font-weight:800;
+      font-size:15px;
+    }
+
+    .summary-body{
+      padding:18px 20px;
+      display:grid;
+      gap:12px;
+      background:#fff;
+    }
+
+    .sum-row{
+      display:flex;
+      justify-content:space-between;
+      gap:16px;
+      font-size:15px;
+    }
+
+    .sum-row strong{
+      font-size:16px;
+    }
+
+    .sum-row.total{
+      padding-top:12px;
+      margin-top:4px;
+      border-top:1px solid var(--line);
+      font-size:24px;
+      font-weight:800;
+    }
+
+    .actions{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-bottom:18px;
+    }
+
+    .btn{
+      appearance:none;
+      border:none;
+      border-radius:12px;
+      padding:14px 18px;
+      font-size:15px;
+      font-weight:700;
+      cursor:pointer;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-width:180px;
+    }
+
+    .btn-primary{
+      background:var(--green);
+      color:#fff;
+    }
+
+    .btn-primary:hover{
+      background:var(--green-dark);
+    }
+
+    .btn-secondary{
+      background:#fff;
+      color:#111827;
+      border:1px solid var(--line);
+    }
+
+    .notes{
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:18px 20px;
+      background:#fff;
+    }
+
+    .notes-title{
+      font-size:15px;
+      font-weight:800;
+      margin-bottom:8px;
+    }
+
+    .notes-text{
+      color:#374151;
+      font-size:14px;
+      line-height:1.6;
+      white-space:pre-wrap;
+    }
+
+    .error{
+      color:var(--danger);
+      background:var(--danger-bg);
+      padding:14px 16px;
+      border-radius:12px;
+      margin:0 0 18px 0;
+      font-weight:700;
+      white-space:pre-wrap;
+    }
+
+    .debug{
+      margin-top:20px;
+      background:#0b0b0b;
+      color:#39ff14;
+      padding:16px;
+      border-radius:12px;
+      font-family:Consolas, monospace;
+      white-space:pre-wrap;
+      font-size:12px;
+      display:none;
+    }
+
+    @media (max-width: 800px){
+      .hero,
+      .grid{
+        grid-template-columns:1fr;
+      }
+
+      .info-row{
+        grid-template-columns:1fr;
+        gap:4px;
+      }
+
+      .invoice-no{
+        font-size:28px;
+      }
+
+      .big-amount{
+        font-size:32px;
+      }
+
+      .content,
+      .topbar{
+        padding:20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div id="invoice">Loading...</div>
+      <div id="debug" class="debug"></div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://yaagobzgozzozibublmj.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlhYWdvYnpnb3p6b3ppYnVibG1qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1NjE3MjgsImV4cCI6MjA4NzEzNzcyOH0.Ogt7cEt3jRiEGtA8-dXXSZyRJtJfZqVfPAErz6cM7aU";
+
+    // Cambia este nombre si quieres otro nombre de negocio visible en la factura
+    const BUSINESS_NAME = "Three Colors Corp";
+    const BUSINESS_SUBTITLE = "Invoice";
+    const SHOW_DEBUG = false;
+
+    const invoiceBox = document.getElementById("invoice");
+    const debugBox = document.getElementById("debug");
+
+    if (SHOW_DEBUG) {
+      debugBox.style.display = "block";
+    }
+
+    function log(text) {
+      if (!SHOW_DEBUG) return;
+      console.log(text);
+      debugBox.textContent += text + "\n";
+    }
+
+    function showError(message) {
+      invoiceBox.innerHTML = `
+        <div class="topbar">
+          <div class="brand-block">
+            <h1>${BUSINESS_NAME}</h1>
+            <div class="sub">${BUSINESS_SUBTITLE}</div>
+          </div>
+        </div>
+        <div class="content">
+          <div class="error">${message}</div>
+        </div>
+      `;
+    }
+
+    function money(value, currency = "USD") {
+      const num = Number(value || 0);
+      try {
+        return new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: currency || "USD"
+        }).format(num);
+      } catch {
+        return `$${num.toFixed(2)}`;
+      }
+    }
+
+    function safe(value, fallback = "") {
+      return value ?? fallback;
+    }
+
+    function normalizeStatus(status) {
+      const s = String(status || "").toUpperCase();
+      if (!s) return "OPEN";
+      return s;
+    }
+
+    function buildPayButton(data) {
+      if (data.payment_link) {
+        return `
+          <a class="btn btn-primary" href="${data.payment_link}" target="_blank" rel="noopener noreferrer">
+            Pay Now
+          </a>
+        `;
+      }
+
+      return `
+        <button class="btn btn-secondary" type="button" onclick="alert('Payment link not available yet.')">
+          Payment Link Pending
+        </button>
+      `;
+    }
+
+    async function loadInvoice() {
+      try {
+        log("1) script started");
+
+        if (!window.supabase || typeof window.supabase.createClient !== "function") {
+          showError("Supabase library did not load correctly.");
+          log("FAIL: window.supabase.createClient not available");
+          return;
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        const invoiceId = params.get("id");
+        const publicToken = params.get("token");
+
+        log("2) invoiceId: " + invoiceId);
+        log("3) publicToken: " + publicToken);
+        log("4) href: " + window.location.href);
+
+        if (!invoiceId && !publicToken) {
+          showError("Missing invoice id or token in URL.");
+          return;
+        }
+
+        const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        log("5) supabase client created");
+
+        let query = client.from("invoices").select("*");
+
+        if (publicToken) {
+          query = query.eq("public_token", publicToken);
+          log("6) query by token");
+        } else {
+          query = query.eq("id", invoiceId);
+          log("6) query by id");
+        }
+
+        const { data, error } = await query.maybeSingle();
+
+        log("7) query finished");
+        log("data: " + JSON.stringify(data));
+        log("error: " + JSON.stringify(error));
+
+        if (error) {
+          showError(error.message);
+          return;
+        }
+
+        if (!data) {
+          showError(publicToken ? "No invoice found for token." : "No invoice found for id.");
+          return;
+        }
+
+        const status = normalizeStatus(data.status);
+        const currency = safe(data.currency, "USD");
+        const amount = money(data.amount, currency);
+        const paidAmount = money(data.paid_amount, currency);
+        const balanceDue = money(data.balance_due, currency);
+        const issueDate = safe(data.issue_date, "—");
+        const dueDate = safe(data.due_date, "—");
+        const notes = safe(data.notes, "");
+
+        invoiceBox.innerHTML = `
+          <div class="topbar">
+            <div class="brand-block">
+              <h1>${BUSINESS_NAME}</h1>
+              <div class="sub">${BUSINESS_SUBTITLE}</div>
+            </div>
+            <div class="status-pill">${status}</div>
+          </div>
+
+          <div class="content">
+            <div class="hero">
+              <div class="panel">
+                <div class="eyebrow">Invoice</div>
+                <div class="invoice-no">${safe(data.invoice_no, "Invoice")}</div>
+                <div class="small-note">
+                  Issued by ${BUSINESS_NAME}
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="eyebrow">Balance Due</div>
+                <p class="big-amount">${balanceDue}</p>
+                <div class="small-note">Due date: ${dueDate}</div>
+              </div>
+            </div>
+
+            <div class="grid">
+              <div class="panel">
+                <div class="eyebrow">Customer</div>
+                <div class="info-list">
+                  <div class="info-row">
+                    <div class="label">Name</div>
+                    <div class="value">${safe(data.customer_name, "—")}</div>
+                  </div>
+                  <div class="info-row">
+                    <div class="label">Email</div>
+                    <div class="value">${safe(data.customer_email, "—")}</div>
+                  </div>
+                  <div class="info-row">
+                    <div class="label">Project</div>
+                    <div class="value">${safe(data.project_name, "—")}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="eyebrow">Details</div>
+                <div class="info-list">
+                  <div class="info-row">
+                    <div class="label">Invoice ID</div>
+                    <div class="value">${safe(data.id, "—")}</div>
+                  </div>
+                  <div class="info-row">
+                    <div class="label">Quote ID</div>
+                    <div class="value">${safe(data.quote_id, "—")}</div>
+                  </div>
+                  <div class="info-row">
+                    <div class="label">Issue Date</div>
+                    <div class="value">${issueDate}</div>
+                  </div>
+                  <div class="info-row">
+                    <div class="label">Due Date</div>
+                    <div class="value">${dueDate}</div>
+                  </div>
+                  <div class="info-row">
+                    <div class="label">Type</div>
+                    <div class="value">${safe(data.type, "—")}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="summary">
+              <div class="summary-head">Summary</div>
+              <div class="summary-body">
+                <div class="sum-row">
+                  <span>Total Amount</span>
+                  <strong>${amount}</strong>
+                </div>
+                <div class="sum-row">
+                  <span>Paid Amount</span>
+                  <strong>${paidAmount}</strong>
+                </div>
+                <div class="sum-row total">
+                  <span>Balance Due</span>
+                  <span>${balanceDue}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="actions">
+              ${buildPayButton(data)}
+              <button class="btn btn-secondary" type="button" onclick="window.print()">Print</button>
+            </div>
+
+            ${notes ? `
+              <div class="notes">
+                <div class="notes-title">Notes</div>
+                <div class="notes-text">${notes}</div>
+              </div>
+            ` : ""}
+          </div>
+        `;
+      } catch (err) {
+        showError("Fatal error: " + (err.message || err));
+        log("FATAL: " + (err.message || err));
+      }
+    }
+
+    loadInvoice();
+  </script>
+</body>
+</html>
+<style>
+  @page {
+    size: Letter portrait;
+    margin: 0.4in;
+  }
+
+  @media print {
+    html, body {
+      width: 8.5in;
+      height: 11in;
+      background: #fff !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      color: #000 !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    body {
+      font-size: 11px !important;
+    }
+
+    .wrap {
+      max-width: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    .card {
+      box-shadow: none !important;
+      border: 1px solid #d1d5db !important;
+      border-radius: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+    }
+
+    .topbar {
+      padding: 12px 14px !important;
+    }
+
+    .content {
+      padding: 12px 14px !important;
+    }
+
+    .brand-block h1 {
+      font-size: 20px !important;
+      margin: 0 0 2px 0 !important;
+    }
+
+    .brand-block .sub,
+    .small-note,
+    .label,
+    .value,
+    .sum-row,
+    .notes-text {
+      font-size: 10px !important;
+      line-height: 1.25 !important;
+    }
+
+    .status-pill {
+      font-size: 10px !important;
+      padding: 6px 10px !important;
+    }
+
+    .hero,
+    .grid {
+      gap: 10px !important;
+      margin-bottom: 12px !important;
+    }
+
+    .panel,
+    .summary,
+    .notes {
+      border-radius: 8px !important;
+    }
+
+    .panel {
+      padding: 12px !important;
+    }
+
+    .invoice-no {
+      font-size: 22px !important;
+      margin: 0 0 6px 0 !important;
+    }
+
+    .big-amount {
+      font-size: 24px !important;
+      margin: 0 !important;
+    }
+
+    .info-list {
+      gap: 8px !important;
+    }
+
+    .info-row {
+      gap: 8px !important;
+      padding-bottom: 6px !important;
+    }
+
+    .summary-head {
+      padding: 10px 12px !important;
+      font-size: 12px !important;
+    }
+
+    .summary-body {
+      padding: 10px 12px !important;
+      gap: 8px !important;
+    }
+
+    .sum-row.total {
+      font-size: 16px !important;
+      padding-top: 8px !important;
+      margin-top: 2px !important;
+    }
+
+    .actions,
+    .debug {
+      display: none !important;
+    }
+
+    .notes-title {
+      font-size: 12px !important;
+      margin-bottom: 4px !important;
+    }
+
+    * {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+  }
+</style>

@@ -1,0 +1,58 @@
+﻿<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Sales Admin</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-requires-auth="true">
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"><b>MG</b></div>
+        <div>
+          <h1>Margin Guard</h1>
+          <p id="planStatus">Validando suscripcion...</p>
+        </div>
+      </div>
+      <div class="actions">
+        <a class="btn" href="dashboard.html">Dashboard</a>
+        <a class="btn" href="owner.html">Dueno</a>
+        <a class="btn" href="sales.html">Vendedor</a>
+        <a class="btn" href="supervisor.html">Supervisor</a>
+        <a class="btn active" href="sales-admin.html">Sales Admin</a>
+        <button class="btn" id="btnManagePlan">Gestionar plan</button>
+        <button class="btn danger" id="btnLogout">Cerrar sesion</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="account-pill" id="accountEmail">Cuenta activa</div>
+    <div class="card">
+      <div class="card-inner">
+        <h2>Cola de aprobaciones de descuentos</h2>
+        <div class="sub">Aprobar o rechazar solicitudes de vendedores.</div>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Proyecto</th>
+              <th>Precio</th>
+              <th>Descuento</th>
+              <th>Semaforo</th>
+              <th>Estado</th>
+              <th>Accion</th>
+            </tr>
+          </thead>
+          <tbody id="adminQueueBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/auth.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

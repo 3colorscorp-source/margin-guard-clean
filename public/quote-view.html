@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Project Quote</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    body{
+      font-family: Arial;
+      background:#f5f5f5;
+      padding:40px;
+    }
+    .card{
+      background:white;
+      padding:30px;
+      border-radius:10px;
+      max-width:700px;
+      margin:auto;
+    }
+    h1{margin-top:0}
+    .btn{
+      background:#1e88e5;
+      color:white;
+      padding:12px 20px;
+      border:none;
+      border-radius:6px;
+      cursor:pointer;
+      margin-top:20px;
+      display:inline-block;
+      text-decoration:none;
+    }
+    .btn:hover{ background:#1565c0; }
+    .btn[disabled]{ opacity:.6; cursor:not-allowed; }
+    .total{ font-size:24px; font-weight:bold; }
+    .muted{ color:#666; }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <h1>Project Quote</h1>
+
+    <div id="content">Loading...</div>
+
+    <button id="approveBtn" class="btn" onclick="approveQuote()">
+      Accept Quote + Pay Deposit
+    </button>
+
+    <button class="btn" onclick="createInvoice()">Create Invoice</button>
+
+    <a id="payBtn" target="_blank" rel="noopener" class="btn" style="display:none;">
+      Pay Deposit
+    </a>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://yaagobzgozzozibublmj.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_UTuO6wlERHBzoSnkySHATw_s6T46upe";
+
+    const SDK = window.supabase || window.supabaseJs || window.Supabase;
+    if (!SDK || !SDK.createClient) {
+      document.getElementById("content").innerHTML =
+        "Supabase SDK failed to load. Refresh the page.";
+      throw new Error("Supabase SDK not found on window.");
+    }
+
+    let sb = window.__MG_SUPABASE__;
+    if (!sb) {
+      sb = SDK.createClient(SUPABASE_URL, SUPABASE_KEY);
+      window.__MG_SUPABASE__ = sb;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id");
+    const token = params.get("t");
+
+    const contentEl = document.getElementById("content");
+    const approveBtn = document.getElementById("approveBtn");
+    const payBtn = document.getElementById("payBtn");
+
+    function setApproveEnabled(enabled, label) {
+      approveBtn.disabled = !enabled;
+      if (label) approveBtn.textContent = label;
+    }
+
+    function safeText(v) {
+      return (v === null || v === undefined) ? "" : String(v);
+    }
+
+    function money(v) {
+      const n = Number(v ?? 0);
+      return n.toLocaleString("en-US", {
+        style: "currency",
+        currency: "USD"
+      });
+    }
+
+    async function loadQuote() {
+      contentEl.innerHTML = "Loading...";
+      setApproveEnabled(false, "Accept Quote + Pay Deposit");
+      payBtn.style.display = "none";
+      payBtn.removeAttribute("href");
+      payBtn.style.pointerEvents = "auto";
+      payBtn.style.opacity = "1";
+
+      try {
+        if (!id || !token) {
+          contentEl.innerHTML = "Missing link parameters (id / t).";
+          return;
+        }
+
+        const { data, error } = await sb.rpc("get_public_quote", {
+          p_id: id,
+          p_token: token
+        });
+
+        if (error || !data) {
+          contentEl.innerHTML = `Quote not found.<br><span class="muted">${safeText(error?.message)}</span>`;
+          return;
+        }
+
+        const q = data;
+
+        const total = Number(q.total ?? q.estimated_amount ?? 0);
+        const dep = Number(q.deposit_required ?? 0);
+        const depText = money(dep);
+
+        contentEl.innerHTML = `
+          <b>Client:</b> ${safeText(q.client_name)}<br><br>
+          <b>Project:</b> ${safeText(q.project_name)}<br><br>
+          <b>Total:</b>
+          <div class="total">${money(total)}</div>
+          <br>
+          <b>Deposit Required:</b> ${depText}
+          <br><br>
+          ${safeText(q.notes)}
+        `;
+
+        const viewedRes = await sb.rpc("mark_quote_viewed", {
+          p_id: id,
+          p_token: token
+        });
+        if (viewedRes.error) console.warn("mark_quote_viewed error:", viewedRes.error);
+
+        const status = (q.status || "").toLowerCase();
+        const accepted = status === "accepted" || !!q.accepted_at;
+        const depositPaid = !!q.deposit_paid || Number(q.deposit_paid_amount ?? 0) > 0;
+        const link = safeText(q.payment_link);
+
+        if (accepted) {
+          setApproveEnabled(false, "Quote Accepted ✅");
+
+          if (depositPaid) {
+            payBtn.style.display = "inline-block";
+            payBtn.textContent = "Deposit Paid ✅";
+            payBtn.removeAttribute("href");
+            payBtn.style.pointerEvents = "none";
+            payBtn.style.opacity = "0.7";
+          } else {
+            if (link) {
+              payBtn.href = link;
+              payBtn.textContent = dep ? `Pay Deposit (${depText})` : "Pay Deposit";
+              payBtn.style.display = "inline-block";
+              payBtn.style.pointerEvents = "auto";
+              payBtn.style.opacity = "1";
+            } else {
+              payBtn.style.display = "none";
+            }
+          }
+        } else {
+          setApproveEnabled(true, "Accept Quote + Pay Deposit");
+          payBtn.style.display = "none";
+        }
+
+      } catch (e) {
+        console.error(e);
+        contentEl.innerHTML = "Error loading quote. Open console for details.";
+      }
+    }
+
+    async function approveQuote() {
+      try {
+        if (!id || !token) {
+          alert("Missing link parameters (id / t).");
+          return;
+        }
+
+        setApproveEnabled(false, "Accepting quote...");
+
+        // Paso 1 — aprobar la cotización
+        const { data, error } = await sb.rpc("approve_public_quote", {
+          p_id: id,
+          p_token: token
+        });
+
+        if (error || !data) {
+          console.warn("approve_public_quote error:", error);
+          alert("Could not approve this quote.");
+          setApproveEnabled(true, "Accept Quote + Pay Deposit");
+          return;
+        }
+
+        // Paso 2 — leer quote actualizada
+        const { data: q2, error: q2Error } = await sb.rpc("get_public_quote", {
+          p_id: id,
+          p_token: token
+        });
+
+        if (q2Error || !q2) {
+          console.warn("get_public_quote after approve error:", q2Error);
+          alert("Quote approved, but could not reload payment info.");
+          await loadQuote();
+          return;
+        }
+
+        const dep = Number(q2.deposit_required ?? 0);
+
+        // Paso 3 — crear payment link si no existe
+        if (!q2.payment_link && dep > 0) {
+          setApproveEnabled(false, "Creating deposit link...");
+
+          const SMART_SERVICE_URL =
+            "https://yaagobzgozzozibublmj.supabase.co/functions/v1/smart-service";
+
+          const r = await fetch(SMART_SERVICE_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              quote_id: id,
+              deposit_amount: dep
+            })
+          });
+
+          const result = await r.json().catch(() => ({}));
+
+          if (!r.ok) {
+            console.warn("smart-service error:", result);
+          }
+        }
+
+        // Paso 4 — recargar quote para leer payment_link final
+        await loadQuote();
+
+        // Paso 5 — si ya hay link, abrir Square automáticamente
+        const { data: q3, error: q3Error } = await sb.rpc("get_public_quote", {
+          p_id: id,
+          p_token: token
+        });
+
+        if (!q3Error && q3?.payment_link) {
+          window.open(q3.payment_link, "_blank", "noopener");
+        }
+
+      } catch (e) {
+        console.error(e);
+        alert("Error approving quote.");
+        setApproveEnabled(true, "Accept Quote + Pay Deposit");
+      }
+    }
+
+    async function createInvoice() {
+      const { data, error } = await sb.rpc(
+        "create_invoice_from_quote",
+        { p_quote_id: id }
+      );
+
+      if (error) {
+        alert("Error creating invoice");
+        console.log(error);
+        return;
+      }
+
+      window.location.href = "/invoice.html?id=" + data;
+    }
+
+    loadQuote();
+  </script>
+</body>
+</html>

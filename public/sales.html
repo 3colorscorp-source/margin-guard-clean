@@ -1,0 +1,92 @@
+﻿<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Vendedor</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-requires-auth="true">
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"><b>MG</b></div>
+        <div>
+          <h1>Margin Guard</h1>
+          <p id="planStatus">Validando suscripcion...</p>
+        </div>
+      </div>
+      <div class="actions">
+        <a class="btn" href="dashboard.html">Dashboard</a>
+        <a class="btn" href="owner.html">Dueno</a>
+        <a class="btn active" href="sales.html">Vendedor</a>
+        <a class="btn" href="supervisor.html">Supervisor</a>
+        <a class="btn" href="sales-admin.html">Sales Admin</a>
+        <button class="btn" id="btnManagePlan">Gestionar plan</button>
+        <button class="btn danger" id="btnLogout">Cerrar sesion</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="account-pill" id="accountEmail">Cuenta activa</div>
+    <div class="grid">
+      <div class="card">
+        <div class="card-inner">
+          <h2>Cotizacion guiada para vendedor</h2>
+          <div class="sub">No muestra costos confidenciales. Solo precio permitido y comision.</div>
+          <div class="form">
+            <div class="field">
+              <label>Proyecto</label>
+              <input id="salesProjectName" maxlength="60" />
+              <div class="hint"><span id="salesProjectNameCount">0</span>/60</div>
+            </div>
+            <div class="field">
+              <label>Cliente</label>
+              <input id="salesClientName" maxlength="60" />
+              <div class="hint"><span id="salesClientNameCount">0</span>/60</div>
+            </div>
+            <div class="field"><label>Horas estimadas</label><input id="salesHours" type="number" step="0.25" /></div>
+            <div class="field"><label>Dias estimados</label><input id="salesDays" type="number" step="0.25" /></div>
+            <div class="field"><label>Precio propuesto al cliente</label><input id="salesPrice" type="number" step="0.01" /></div>
+            <div class="field">
+              <label>Semaforo actual</label>
+              <div class="badge red" id="salesTraffic">Bloqueado</div>
+            </div>
+          </div>
+          <div class="sep"></div>
+          <div class="field">
+            <label>Notas de negociacion</label>
+            <textarea id="salesNotes" rows="4" maxlength="600" placeholder="Notas internas del vendedor"></textarea>
+            <div class="hint"><span id="salesNotesCount">0</span>/600</div>
+          </div>
+          <div class="notice" id="salesRule">Precio por debajo del minimo permitido.</div>
+          <div style="margin-top:10px;">
+            <label class="sub" for="salesProgress" style="display:block; margin-bottom:6px;">Contador de precio correcto</label>
+            <progress id="salesProgress" max="100" value="0" class="sales-progress"></progress>
+          </div>
+          <div class="notice" id="approvalHint" style="margin-top:10px;">Precio rojo: requiere aprobacion obligatoria.</div>
+          <div class="actions" style="justify-content:flex-start; margin-top:10px;">
+            <button class="btn primary" type="button" id="btnSubmitApproval">Enviar a Sales Admin</button>
+          </div>
+          <div class="notice" id="approvalStatus" style="display:none; margin-top:10px;"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-inner">
+          <h2>Resultado en vivo</h2>
+          <div class="kpi" id="salesKpis"></div>
+          <div class="sep"></div>
+          <h2 style="margin-top:0;">Mensajes automaticos de negociacion</h2>
+          <ul class="msg-list" id="negotiationList"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/auth.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
+

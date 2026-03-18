@@ -1,0 +1,58 @@
+﻿<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Activando acceso</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-public="true">
+  <main class="container narrow">
+    <div class="card">
+      <div class="card-inner center">
+        <h1>Estamos activando tu cuenta</h1>
+        <p class="sub" id="successMsg">Validando checkout con Stripe...</p>
+        <div id="successState" class="notice">Un momento por favor.</div>
+        <a class="btn" href="index.html">Volver al inicio</a>
+      </div>
+    </div>
+  </main>
+
+<script>
+(async () => {
+  const params = new URLSearchParams(window.location.search);
+  const sessionId = params.get("session_id");
+  const state = document.getElementById("successState");
+  const msg = document.getElementById("successMsg");
+
+  if (!sessionId) {
+    state.className = "notice err";
+    state.textContent = "Falta session_id. Intenta desde el enlace de Stripe.";
+    return;
+  }
+
+  try {
+    const res = await fetch("/.netlify/functions/finalize-checkout", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId })
+    });
+    const data = await res.json();
+
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || "No se pudo activar acceso");
+    }
+
+    state.className = "notice ok";
+    state.textContent = "Suscripcion activa. Redirigiendo al dashboard...";
+    msg.textContent = data.email ? `Bienvenido, ${data.email}` : "Bienvenido";
+    setTimeout(() => { window.location.href = "/dashboard.html"; }, 1000);
+  } catch (err) {
+    state.className = "notice err";
+    state.textContent = err.message || "Error activando acceso";
+  }
+})();
+</script>
+</body>
+</html>

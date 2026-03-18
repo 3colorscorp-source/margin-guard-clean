@@ -1,0 +1,60 @@
+﻿<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Suscripcion anual</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-public="true">
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"><b>MG</b></div>
+        <div>
+          <h1>Margin Guard</h1>
+          <p>Control de margen para contratistas y equipos de obra</p>
+        </div>
+      </div>
+      <div class="actions">
+        <a class="btn" href="dashboard.html">Entrar</a>
+        <button class="btn" id="btnOpenPortal" type="button">Ya soy cliente</button>
+      </div>
+    </div>
+  </div>
+
+  <main class="container landing">
+    <section class="hero card">
+      <div class="card-inner hero-inner">
+        <div>
+          <div class="badge green">Disponible en netlify.app</div>
+          <h2>Vende con margen real, no con suposiciones.</h2>
+          <p class="sub hero-copy">Margin Guard calcula costos laborales, impuestos, overhead, margen objetivo y precio recomendado en tiempo real. Incluye exportacion PDF y envio de cotizacion.</p>
+          <ul class="hero-list">
+            <li>Plan anual para uso comercial.</li>
+            <li>Checkout seguro con Stripe.</li>
+            <li>Acceso web inmediato al completar pago.</li>
+          </ul>
+        </div>
+
+        <form id="checkoutForm" class="card pricing-card" novalidate>
+          <div class="card-inner">
+            <h3>Plan Annual</h3>
+            <p class="price">Suscripcion anual</p>
+            <p class="sub">El precio y cobro final se muestran en Stripe Checkout.</p>
+            <div class="field">
+              <label>Email de acceso</label>
+              <input id="email" type="email" maxlength="120" placeholder="tu@empresa.com" required />
+            </div>
+            <button id="btnCheckout" class="btn primary btn-block" type="submit">Suscribirme anual</button>
+            <div id="checkoutStatus" class="notice" style="display:none;"></div>
+            <p class="small-note">Al continuar aceptas terminos comerciales y renovacion anual.</p>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/billing.js"></script>
+</body>
+</html>
