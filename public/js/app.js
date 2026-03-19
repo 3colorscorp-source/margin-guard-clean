@@ -1,4 +1,4 @@
-﻿
+
 (() => {
   const LS_SETTINGS = "mg_settings_v2";
   const LS_OWNER = "mg_owner_v2";
@@ -305,8 +305,21 @@
         if (index < 0 || !key) return;
         state.workers[index][key] = key === "hours" ? Number(el.value || 0) : el.value;
         if (key === "type") state.workers[index].rate = "";
+        saveOwner(state, calcOwner(state, settings));
         renderOwner();
       });
+      if (el.tagName === "SELECT") {
+        el.addEventListener("change", () => {
+          const tr = el.closest("tr");
+          const index = Number(tr?.dataset.index ?? -1);
+          const key = el.dataset.key;
+          if (index < 0 || !key) return;
+          state.workers[index][key] = el.value;
+          if (key === "type") state.workers[index].rate = "";
+          saveOwner(state, calcOwner(state, settings));
+          renderOwner();
+        });
+      }
     });
 
     body.querySelectorAll("button[data-action]").forEach((button) => {
@@ -316,6 +329,7 @@
         if (index < 0) return;
         if (button.dataset.action === "delete") state.workers.splice(index, 1);
         if (button.dataset.action === "copy") state.workers.splice(index + 1, 0, { ...state.workers[index] });
+        saveOwner(state, calcOwner(state, settings));
         renderOwner();
       });
     });
@@ -368,9 +382,10 @@
           const settingsCopy = loadSettings();
           settingsCopy.bizName = val("bizNameOwner") || DEFAULTS.bizName;
           saveSettings(settingsCopy);
+          renderOwner();
         } else {
           state[id] = val(id);
-          saveOwner(state, metrics);
+          saveOwner(state, calcOwner(state, settings));
         }
       };
     });
@@ -380,12 +395,17 @@
       if (el) {
         el.oninput = () => {
           state[id] = num(id, 0);
+          saveOwner(state, calcOwner(state, settings));
           renderOwner();
         };
       }
     });
 
-    if ($("btnAddWorker")) $("btnAddWorker").onclick = () => { state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: "installer", hours: 0, rate: "" }); renderOwner(); };
+    if ($("btnAddWorker")) $("btnAddWorker").onclick = () => {
+      state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: "installer", hours: 0, rate: "" });
+      saveOwner(state, calcOwner(state, settings));
+      renderOwner();
+    };
     if ($("btnClear")) $("btnClear").onclick = () => { if (!confirm("Clear this quote?")) return; writeStore(LS_OWNER, DEFAULT_OWNER); renderOwner(); };
     if ($("btnExportPdf")) $("btnExportPdf").onclick = () => exportOwnerPdf(state, settings, metrics);
     if ($("btnSendQuote")) $("btnSendQuote").onclick = () => openSendModal(state, settings, metrics);
