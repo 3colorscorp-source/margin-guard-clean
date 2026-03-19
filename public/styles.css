@@ -1,4 +1,4 @@
-﻿:root{
+:root{
   --bg:#070b14;
   --panel:#0c1426;
   --panel2:#0a1020;
@@ -277,6 +277,7 @@ small{ color:var(--muted); }
   align-items:flex-start;
   margin-bottom:14px;
 }
+.section-head h2{ margin:0 0 6px; }
 .dashboard-strip{
   display:grid;
   grid-template-columns:repeat(3, 1fr);
