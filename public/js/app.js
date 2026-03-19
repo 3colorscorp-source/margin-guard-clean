@@ -12,13 +12,18 @@
     currency: "$",
     baseInstaller: 75,
     baseHelper: 45,
+    overheadMonthly: 0,
+    stdHours: 160,
+    pricingMode: "hour",
+    hoursPerDay: 8,
     wcPct: 10.0,
     ficaPct: 7.65,
     futaPct: 0.6,
     casuiPct: 3.4,
     profitPct: 30,
     reservePct: 5,
-    salesCommissionPct: 10
+    salesCommissionPct: 10,
+    supervisorBonusPct: 1
   };
 
   const DEFAULT_OWNER = {
@@ -27,7 +32,6 @@
     location: "",
     overheadMonthly: 0,
     stdHours: 0,
-    profitPct: 30,
     reservePct: 5,
     workers: [
       { name: "Installer 1", type: "installer", hours: 40, rate: "" },
@@ -120,11 +124,9 @@
   function saveSettings(settings) { writeStore(LS_SETTINGS, settings); }
   function loadOwner() {
     const saved = readStore(LS_OWNER, {});
-    const settings = loadSettings();
     return {
       ...DEFAULT_OWNER,
       ...saved,
-      profitPct: saved.profitPct ?? settings.profitPct,
       reservePct: DEFAULTS.reservePct,
       workers: Array.isArray(saved.workers) && saved.workers.length ? saved.workers : DEFAULT_OWNER.workers
     };
@@ -171,14 +173,31 @@
     const labor = laborByWorker.reduce((sum, row) => sum + row.cost, 0);
     const taxes = labor * ((Number(settings.wcPct || 0) + Number(settings.ficaPct || 0) + Number(settings.futaPct || 0) + Number(settings.casuiPct || 0)) / 100);
     const totalHours = state.workers.reduce((sum, worker) => sum + Number(worker.hours || 0), 0);
-    const overheadPerHour = Number(state.stdHours || 0) > 0 ? Number(state.overheadMonthly || 0) / Number(state.stdHours || 0) : 0;
+    const overheadPerHour = Number(settings.stdHours || 0) > 0 ? Number(settings.overheadMonthly || 0) / Number(settings.stdHours || 0) : 0;
     const overhead = overheadPerHour * totalHours;
     const beforeProfit = labor + taxes + overhead;
-    const profit = beforeProfit * (Number(state.profitPct || 0) / 100);
+    const profit = beforeProfit * (Number(settings.profitPct || 0) / 100);
     const reserve = beforeProfit * (DEFAULTS.reservePct / 100);
     const recommended = beforeProfit + profit + reserve;
     const minimum = beforeProfit * (1 + 0.15 + DEFAULTS.reservePct / 100);
-    return { laborByWorker, labor, taxes, overhead, beforeProfit, profit, reserve, minimum, recommended };
+    const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
+    const quotedUnits = settings.pricingMode === "day" ? (totalHours / hoursPerDay) : totalHours;
+    const pricePerUnit = quotedUnits > 0 ? recommended / quotedUnits : 0;
+    return {
+      laborByWorker,
+      labor,
+      taxes,
+      overhead,
+      beforeProfit,
+      profit,
+      reserve,
+      minimum,
+      recommended,
+      totalHours,
+      quotedUnits,
+      pricePerUnit,
+      pricingModeLabel: settings.pricingMode === "day" ? "dia" : "hora"
+    };
   }
 
   function renderDashboard() {
@@ -263,12 +282,13 @@
     return [
       ["Direct Labor", money(metrics.labor, settings.currency), `${state.workers.length} workers modeled`],
       ["Employer Burden", money(metrics.taxes, settings.currency), `WC ${settings.wcPct}% | FICA ${settings.ficaPct}% | FUTA ${settings.futaPct}% | CASUI ${settings.casuiPct}%`],
-      ["Overhead Allocation", money(metrics.overhead, settings.currency), Number(state.stdHours || 0) > 0 ? `${money(Number(state.overheadMonthly || 0) / Number(state.stdHours || 0), settings.currency)}/hour` : "Set standard hours to activate"],
+      ["Overhead Allocation", money(metrics.overhead, settings.currency), Number(settings.stdHours || 0) > 0 ? `${money(Number(settings.overheadMonthly || 0) / Number(settings.stdHours || 0), settings.currency)}/hour` : "Set standard hours to activate"],
       ["Cost Before Profit", money(metrics.beforeProfit, settings.currency), "Direct cost plus indirect burden"],
-      ["Target Profit", money(metrics.profit, settings.currency), `${Number(state.profitPct || 0).toFixed(1)}% owner rule`],
+      ["Target Profit", money(metrics.profit, settings.currency), `${Number(settings.profitPct || 0).toFixed(1)}% owner rule`],
       ["Fixed Reserve", money(metrics.reserve, settings.currency), `${DEFAULTS.reservePct}% non-negotiable`],
       ["Minimum Floor", money(metrics.minimum, settings.currency), "Below this, the business bleeds cash"],
-      ["Recommended Price", money(metrics.recommended, settings.currency), "This is the number the system wants sold"]
+      ["Recommended Price", money(metrics.recommended, settings.currency), "This is the number the system wants sold"],
+      [`Recommended per ${metrics.pricingModeLabel}`, money(metrics.pricePerUnit, settings.currency), `${metrics.quotedUnits.toFixed(2)} ${metrics.pricingModeLabel === "dia" ? "dias" : "horas"} cotizables`]
     ];
   }
 
@@ -347,9 +367,13 @@
     setVal("clientName", state.clientName);
     setVal("location", state.location);
     setVal("bizNameOwner", settings.bizName);
-    setNum("overheadMonthly", state.overheadMonthly);
-    setNum("stdHours", state.stdHours);
-    setNum("profitPct", state.profitPct);
+    setVal("pricingMode", settings.pricingMode);
+    setNum("hoursPerDay", settings.hoursPerDay);
+    setNum("overheadMonthly", settings.overheadMonthly);
+    setNum("stdHours", settings.stdHours);
+    setNum("salesCommissionPct", settings.salesCommissionPct);
+    setNum("supervisorBonusPct", settings.supervisorBonusPct);
+    setNum("profitPct", settings.profitPct);
     setNum("reservePct", DEFAULTS.reservePct);
     count("projectName", "projectNameCount");
     count("clientName", "clientNameCount");
@@ -390,16 +414,25 @@
       };
     });
 
-    ["overheadMonthly", "stdHours", "profitPct"].forEach((id) => {
-      const el = $(id);
-      if (el) {
-        el.oninput = () => {
-          state[id] = num(id, 0);
-          saveOwner(state, calcOwner(state, settings));
-          renderOwner();
-        };
-      }
-    });
+    if ($("btnSaveBusinessSettings")) {
+      $("btnSaveBusinessSettings").onclick = () => {
+        const settingsCopy = loadSettings();
+        settingsCopy.pricingMode = val("pricingMode") || DEFAULTS.pricingMode;
+        settingsCopy.hoursPerDay = Math.max(num("hoursPerDay", DEFAULTS.hoursPerDay), 0.25);
+        settingsCopy.overheadMonthly = num("overheadMonthly", 0);
+        settingsCopy.stdHours = num("stdHours", DEFAULTS.stdHours);
+        settingsCopy.salesCommissionPct = num("salesCommissionPct", DEFAULTS.salesCommissionPct);
+        settingsCopy.supervisorBonusPct = num("supervisorBonusPct", DEFAULTS.supervisorBonusPct);
+        settingsCopy.profitPct = num("profitPct", DEFAULTS.profitPct);
+        saveSettings(settingsCopy);
+        if ($("businessSettingsStatus")) {
+          $("businessSettingsStatus").style.display = "block";
+          $("businessSettingsStatus").className = "notice ok";
+          $("businessSettingsStatus").textContent = "Business settings guardados.";
+        }
+        renderOwner();
+      };
+    }
 
     if ($("btnAddWorker")) $("btnAddWorker").onclick = () => {
       state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: "installer", hours: 0, rate: "" });
@@ -547,8 +580,13 @@ ${val("salesInitials") || "MG"}`;
     const refresh = () => {
       state.projectName = val("salesProjectName");
       state.clientName = val("salesClientName");
-      state.estimatedHours = num("salesHours", 0);
-      state.estimatedDays = num("salesDays", 0);
+      if (settings.pricingMode === "day") {
+        state.estimatedDays = num("salesDays", 0);
+        state.estimatedHours = state.estimatedDays * Number(settings.hoursPerDay || DEFAULTS.hoursPerDay);
+      } else {
+        state.estimatedHours = num("salesHours", 0);
+        state.estimatedDays = Number(settings.hoursPerDay || DEFAULTS.hoursPerDay) > 0 ? state.estimatedHours / Number(settings.hoursPerDay || DEFAULTS.hoursPerDay) : 0;
+      }
       state.offeredPrice = num("salesPrice", 0);
       state.notes = val("salesNotes");
       saveSales(state);
@@ -608,6 +646,11 @@ ${val("salesInitials") || "MG"}`;
         `).join("");
       }
     };
+
+    if ($("salesHoursLabel")) $("salesHoursLabel").textContent = settings.pricingMode === "day" ? "Horas convertidas del modo dia" : "Horas estimadas";
+    if ($("salesDaysLabel")) $("salesDaysLabel").textContent = settings.pricingMode === "day" ? "Dias estimados" : "Dias convertidos";
+    if ($("salesHours")) $("salesHours").disabled = settings.pricingMode === "day";
+    if ($("salesDays")) $("salesDays").disabled = settings.pricingMode !== "day";
 
     ["salesProjectName", "salesClientName", "salesHours", "salesDays", "salesPrice", "salesNotes"].forEach((id) => {
       const el = $(id);
@@ -670,8 +713,10 @@ ${val("salesInitials") || "MG"}`;
         if (projected > due) delayPenalty = clamp((projected - due) / (1000 * 60 * 60 * 24 * 30), 0, 1);
       }
       const budgetPenalty = totalBudget > 0 ? clamp(overBudget / totalBudget, 0, 1) : 0;
-      const bonusPct = clamp(1 * (1 - delayPenalty) * (1 - budgetPenalty), 0, 1);
-      const tone = overBudget <= 0 && bonusPct >= 0.85 ? "green" : (overBudget <= totalBudget * 0.1 ? "amber" : "red");
+      const baseBonusPct = Number(settings.supervisorBonusPct || DEFAULTS.supervisorBonusPct);
+      const bonusPct = clamp(baseBonusPct * (1 - delayPenalty) * (1 - budgetPenalty), 0, baseBonusPct);
+      const bonusHealth = baseBonusPct > 0 ? bonusPct / baseBonusPct : 0;
+      const tone = overBudget <= 0 && bonusHealth >= 0.85 ? "green" : (overBudget <= totalBudget * 0.1 ? "amber" : "red");
 
       if ($("supStatus")) {
         $("supStatus").className = `badge ${tone}`;
@@ -682,7 +727,7 @@ ${val("salesInitials") || "MG"}`;
         ["Material budget", money(state.materialBudget, settings.currency), "Material allocation"],
         ["Actual spend", money(totalSpent, settings.currency), "Real labor + material spent"],
         ["Budget drift", money(overBudget, settings.currency), overBudget > 0 ? "Project is over budget" : "Still inside budget"],
-        ["Supervisor bonus", `${bonusPct.toFixed(2)}%`, "Base 1% reduced by delay and overrun"]
+        ["Supervisor bonus", `${bonusPct.toFixed(2)}%`, `Base ${baseBonusPct.toFixed(2)}% reduced by delay and overrun`]
       ].map(([label, value, meta]) => `
         <div class="kpi-box">
           <div class="label">${escapeHtml(label)}</div>
