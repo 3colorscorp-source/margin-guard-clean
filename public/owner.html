@@ -1,4 +1,36 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Dueno</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+</head>
+<body data-role="owner" data-requires-auth="true">
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"><b>MG</b></div>
+        <div>
+          <h1>Margin Guard</h1>
+          <p id="planStatus">Validando suscripcion...</p>
+        </div>
+      </div>
 
+      <div class="topbar-actions">
+        <a class="btn" href="/dashboard">Dashboard</a>
+        <a class="btn active" href="/owner">Dueno</a>
+        <a class="btn" href="/sales">Vendedor</a>
+        <a class="btn" href="/supervisor">Supervisor</a>
+        <a class="btn" href="/sales-admin">Sales Admin</a>
+        <button class="btn" id="btnManagePlan">Gestionar plan</button>
+        <button class="btn" id="btnSendQuote">Enviar cotizacion</button>
+        <button class="btn" id="btnExportPdf">Exportar PDF</button>
+        <button class="btn danger" id="btnLogout">Cerrar sesion</button>
+      </div>
+    </div>
+  </div>
 
   <div class="container">
     <div class="account-pill" id="accountEmail">Cuenta activa</div>
@@ -22,8 +54,6 @@
       <div>
         <div class="card">
           <div class="card-inner">
-            <h2>Proyecto</h2>
-            <div class="sub">Edita campos y mira el impacto en tiempo real.</div>
             <div class="section-head">
               <div>
                 <h2>Project Quote</h2>
@@ -34,11 +64,55 @@
 
             <div class="form">
               <div class="field">
+                <label>Nombre del proyecto</label>
+                <input id="projectName" maxlength="60" placeholder="Ej: Bathroom remodel - Millbrae" />
+                <div class="hint"><span id="projectNameCount">0</span>/60</div>
+              </div>
+              <div class="field">
+                <label>Cliente / GC</label>
+                <input id="clientName" maxlength="60" placeholder="Ej: Angus / GC / Homeowner" />
+                <div class="hint"><span id="clientNameCount">0</span>/60</div>
+              </div>
+              <div class="field">
+                <label>Ubicacion</label>
+                <input id="location" maxlength="50" placeholder="Ej: San Francisco, CA" />
+                <div class="hint"><span id="locationCount">0</span>/50</div>
+              </div>
+              <div class="field">
+                <label>Nombre del negocio (en PDF)</label>
+                <input id="bizNameOwner" maxlength="60" placeholder="Three Colors Corp" />
+                <div class="hint"><span id="bizNameOwnerCount">0</span>/60</div>
+              </div>
+            </div>
 
             <div class="sep"></div>
 
-            <h2 style="margin-top:0;">Business Settings</h2>
-            <div class="sub">Estos ajustes pertenecen al negocio. Se quedan guardados hasta que el dueno decida cambiarlos.</div>
+            <h2 style="margin-top:0;">Mano de obra</h2>
+            <div class="sub">Si Costo/Hora esta vacio, usa el costo base segun Tipo.</div>
+
+            <div class="inline-actions">
+              <button class="btn primary" id="btnAddWorker">+ Agregar trabajador</button>
+              <button class="btn danger" id="btnClear">Limpiar</button>
+            </div>
+
+            <div style="margin-top:12px;">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width:30%;">Trabajador</th>
+                    <th style="width:14%;">Tipo</th>
+                    <th style="width:14%;">Horas</th>
+                    <th style="width:18%;">Costo/Hora</th>
+                    <th style="width:18%;">Costo Labor</th>
+                    <th style="width:6%;"></th>
+                  </tr>
+                </thead>
+                <tbody id="workersBody"></tbody>
+              </table>
+            </div>
+
+            <div class="sep"></div>
+
             <div class="section-head">
               <div>
                 <h2 style="margin-top:0;">Business Settings</h2>
@@ -49,3 +123,96 @@
             <div class="form">
               <div class="field">
                 <label>Modo de cotizacion</label>
+                <select id="pricingMode">
+                  <option value="hour">Cobrar por hora</option>
+                  <option value="day">Cobrar por dia</option>
+                </select>
+              </div>
+              <div class="field"><label>Horas por dia laboral</label><input id="hoursPerDay" type="number" step="0.25" placeholder="8" /></div>
+              <div class="field"><label>Gastos operativos mensuales ($)</label><input id="overheadMonthly" type="number" step="0.01" placeholder="0" /></div>
+              <div class="field"><label>Horas estandar por trabajador / mes</label><input id="stdHours" type="number" step="1" placeholder="0" /></div>
+              <div class="field"><label>Comision de vendedor (%)</label><input id="salesCommissionPct" type="number" step="0.01" placeholder="10" /></div>
+              <div class="field"><label>Bonus base supervisor (%)</label><input id="supervisorBonusPct" type="number" step="0.01" placeholder="1" /></div>
+              <div class="field"><label>Ganancia objetivo (%)</label><input id="profitPct" type="number" step="0.01" placeholder="30" /></div>
+              <div class="field"><label>Reserva / Ahorro (%) (fija)</label><input id="reservePct" type="number" step="0.01" placeholder="5" readonly /></div>
+            </div>
+            <div class="inline-actions" style="margin-top:12px;">
+              <button class="btn primary" id="btnSaveBusinessSettings" type="button">Guardar business settings</button>
+            </div>
+            <div class="notice" id="businessSettingsStatus" style="display:none; margin-top:10px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="card-inner">
+            <h2>Balance sheet del proyecto</h2>
+            <div class="sub">El numero de <b>Precio recomendado</b> siempre se muestra.</div>
+            <div class="kpi" id="ownerKpis"></div>
+            <div class="sep"></div>
+            <div class="badge green" id="statusBadge">Listo</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="sendModal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Enviar cotizacion</div>
+          <div class="modal-subtitle">Usa Netlify Functions + Zapier para envio al cliente.</div>
+        </div>
+        <button class="icon-btn" id="btnSendClose">X</button>
+      </div>
+      <div class="modal-body">
+        <div class="form">
+          <div class="field">
+            <label>Email del cliente</label>
+            <input id="toEmail" type="email" maxlength="80" placeholder="cliente@correo.com" />
+            <div class="hint"><span id="toEmailCount">0</span>/80</div>
+          </div>
+          <div class="field">
+            <label>Nombre del cliente (opcional)</label>
+            <input id="toName" maxlength="60" placeholder="Nombre" />
+            <div class="hint"><span id="toNameCount">0</span>/60</div>
+          </div>
+          <div class="field">
+            <label>Iniciales del vendedor / Sales Rep Initials</label>
+            <input id="salesInitials" maxlength="6" placeholder="LM" />
+            <div class="hint"><span id="salesInitialsCount">0</span>/6</div>
+          </div>
+          <div class="field"><label>Deposito requerido (fijo)</label><input id="deposit" type="number" step="0.01" placeholder="1000" /></div>
+          <div class="field">
+            <label>Asunto</label>
+            <input id="subject" maxlength="90" />
+            <div class="hint"><span id="subjectCount">0</span>/90</div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Scope / Notas</label>
+          <textarea id="scope" rows="5" maxlength="1200" placeholder="Descripcion del trabajo, alcance, exclusiones, etc."></textarea>
+          <div class="hint"><span id="scopeCount">0</span>/1200</div>
+        </div>
+        <div class="field">
+          <label>Mensaje</label>
+          <textarea id="message" rows="6" maxlength="1200"></textarea>
+          <div class="hint"><span id="messageCount">0</span>/1200</div>
+        </div>
+        <div class="notice" id="sendStatus" style="display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="btnSendCancel">Cancelar</button>
+        <button class="btn primary" id="btnSendNow">Enviar</button>
+      </div>
+    </div>
+  </div>
+
+<script src="/js/auth.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
+
+
