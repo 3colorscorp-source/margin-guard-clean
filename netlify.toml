@@ -1,18 +1,31 @@
-[build]
-  publish = "public"
-  functions = "netlify/functions"
-
-[build.environment]
-  NODE_VERSION = "20"
-
-[[redirects]]
-  from = "/app"
   to = "/dashboard.html"
   status = 301
+
+[[redirects]]
+  from = "/dashboard"
+  to = "/dashboard.html"
+  status = 200
+
+[[redirects]]
+  from = "/owner"
+  to = "/owner.html"
+  status = 200
+
+[[redirects]]
+  from = "/sales"
+  to = "/sales.html"
+  status = 200
+
+[[redirects]]
+  from = "/supervisor"
+  to = "/supervisor.html"
+  status = 200
+
+[[redirects]]
+  from = "/sales-admin"
+  to = "/sales-admin.html"
+  status = 200
 
 [[headers]]
   for = "/*"
   [headers.values]
-    X-Frame-Options = "DENY"
-    X-Content-Type-Options = "nosniff"
-    Referrer-Policy = "strict-origin-when-cross-origin"
