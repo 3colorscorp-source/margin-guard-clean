@@ -21,6 +21,7 @@
       <div class="topbar-actions">
         <a class="btn" href="/dashboard">Dashboard</a>
         <a class="btn active" href="/owner">Dueno</a>
+        <a class="btn" href="/business-settings">Business Settings</a>
         <a class="btn" href="/sales">Vendedor</a>
         <a class="btn" href="/supervisor">Supervisor</a>
         <a class="btn" href="/sales-admin">Sales Admin</a>
@@ -38,14 +39,14 @@
       <div class="card-inner">
         <div class="owner-hero-inner">
           <div>
-            <span class="eyebrow">Owner Command</span>
-            <h2 class="hero-title">Separa las reglas del negocio de cada cotizacion.</h2>
-            <div class="sub" style="margin:0;">Business Settings definen como opera Margin Guard. Project Quote define solo el trabajo actual que vas a vender.</div>
+            <span class="eyebrow">Owner Quote Builder</span>
+            <h2 class="hero-title">Cotiza el proyecto actual sin mover las reglas del negocio.</h2>
+            <div class="sub" style="margin:0;">Dueno ahora se enfoca solo en la cotizacion viva. Las reglas permanentes del negocio ya viven en Business Settings.</div>
           </div>
           <div class="hero-score">
-            <div class="hero-score-label">Owner Rule</div>
-            <div class="hero-score-value">2 Zones</div>
-            <div class="hero-score-meta">Business Settings permanentes + Quote actual del proyecto.</div>
+            <div class="hero-score-label">Focus</div>
+            <div class="hero-score-value">Quote</div>
+            <div class="hero-score-meta">Proyecto actual, mano de obra, precio recomendado, PDF y envio al cliente.</div>
           </div>
         </div>
       </div>
@@ -57,7 +58,7 @@
             <div class="section-head">
               <div>
                 <h2>Project Quote</h2>
-                <div class="sub">Estos datos cambian por proyecto. No deben alterar la configuracion permanente del negocio.</div>
+                <div class="sub">Estos datos cambian por proyecto. No alteran la configuracion permanente del negocio.</div>
               </div>
               <div class="badge amber">Quote actual</div>
             </div>
@@ -87,8 +88,23 @@
 
             <div class="sep"></div>
 
+            <div class="section-head">
+              <div>
+                <h2 style="margin-top:0;">Business Rules</h2>
+                <div class="sub">Los costos indirectos, comisiones y modo de cobro ya vienen desde Business Settings.</div>
+              </div>
+              <a class="btn" href="/business-settings">Abrir Business Settings</a>
+            </div>
+
+            <div class="dashboard-note">
+              <div class="dashboard-note-title">Business Settings separados</div>
+              <div class="dashboard-note-copy">Desde ahora, Dueno se usa para vender y calcular el proyecto actual. Si quieres cambiar modo de cotizacion, overhead, horas estandar, comision o bonus, hazlo en Business Settings.</div>
+            </div>
+
+            <div class="sep"></div>
+
             <h2 style="margin-top:0;">Mano de obra</h2>
-            <div class="sub">Si Costo/Hora esta vacio, usa el costo base segun Tipo.</div>
+            <div class="sub">Si Costo/Hora esta vacio, usa el costo base definido en Business Settings segun Tipo.</div>
 
             <div class="inline-actions">
               <button class="btn primary" id="btnAddWorker">+ Agregar trabajador</button>
@@ -110,36 +126,6 @@
                 <tbody id="workersBody"></tbody>
               </table>
             </div>
-
-            <div class="sep"></div>
-
-            <div class="section-head">
-              <div>
-                <h2 style="margin-top:0;">Business Settings</h2>
-                <div class="sub">Estos ajustes pertenecen al negocio. Se quedan guardados hasta que el dueno decida cambiarlos.</div>
-              </div>
-              <div class="badge green">Reglas del negocio</div>
-            </div>
-            <div class="form">
-              <div class="field">
-                <label>Modo de cotizacion</label>
-                <select id="pricingMode">
-                  <option value="hour">Cobrar por hora</option>
-                  <option value="day">Cobrar por dia</option>
-                </select>
-              </div>
-              <div class="field"><label>Horas por dia laboral</label><input id="hoursPerDay" type="number" step="0.25" placeholder="8" /></div>
-              <div class="field"><label>Gastos operativos mensuales ($)</label><input id="overheadMonthly" type="number" step="0.01" placeholder="0" /></div>
-              <div class="field"><label>Horas estandar por trabajador / mes</label><input id="stdHours" type="number" step="1" placeholder="0" /></div>
-              <div class="field"><label>Comision de vendedor (%)</label><input id="salesCommissionPct" type="number" step="0.01" placeholder="10" /></div>
-              <div class="field"><label>Bonus base supervisor (%)</label><input id="supervisorBonusPct" type="number" step="0.01" placeholder="1" /></div>
-              <div class="field"><label>Ganancia objetivo (%)</label><input id="profitPct" type="number" step="0.01" placeholder="30" /></div>
-              <div class="field"><label>Reserva / Ahorro (%) (fija)</label><input id="reservePct" type="number" step="0.01" placeholder="5" readonly /></div>
-            </div>
-            <div class="inline-actions" style="margin-top:12px;">
-              <button class="btn primary" id="btnSaveBusinessSettings" type="button">Guardar business settings</button>
-            </div>
-            <div class="notice" id="businessSettingsStatus" style="display:none; margin-top:10px;"></div>
           </div>
         </div>
       </div>
@@ -214,5 +200,3 @@
 <script src="/js/app.js"></script>
 </body>
 </html>
-
-
