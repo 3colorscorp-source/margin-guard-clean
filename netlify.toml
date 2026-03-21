@@ -26,6 +26,11 @@
   status = 200
 
 [[redirects]]
+  from = "/business-settings"
+  to = "/business-settings.html"
+  status = 200
+
+[[redirects]]
   from = "/sales"
   to = "/sales.html"
   status = 200
