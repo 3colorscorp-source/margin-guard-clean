@@ -165,8 +165,7 @@
     const laborByWorker = state.workers.map((worker) => {
       const hours = Number(worker.hours || 0);
       const baseRate = worker.type === "helper" ? Number(settings.baseHelper || 0) : Number(settings.baseInstaller || 0);
-      const rate = worker.rate === "" || worker.rate == null ? baseRate : Number(worker.rate || 0);
-      return { hours, rate, cost: hours * rate };
+      return { hours, rate: baseRate, cost: hours * baseRate };
     });
 
     const labor = laborByWorker.reduce((sum, row) => sum + row.cost, 0);
@@ -283,6 +282,8 @@
 
     const settings = loadSettings();
     setVal("bizNameOwner", settings.bizName);
+    setNum("baseInstaller", settings.baseInstaller);
+    setNum("baseHelper", settings.baseHelper);
     setVal("pricingMode", settings.pricingMode);
     setNum("hoursPerDay", settings.hoursPerDay);
     setNum("overheadMonthly", settings.overheadMonthly);
@@ -302,6 +303,8 @@
     $("btnSaveBusinessSettings").onclick = () => {
       const settingsCopy = loadSettings();
       settingsCopy.bizName = val("bizNameOwner") || DEFAULTS.bizName;
+      settingsCopy.baseInstaller = num("baseInstaller", DEFAULTS.baseInstaller);
+      settingsCopy.baseHelper = num("baseHelper", DEFAULTS.baseHelper);
       settingsCopy.pricingMode = val("pricingMode") || DEFAULTS.pricingMode;
       settingsCopy.hoursPerDay = Math.max(num("hoursPerDay", DEFAULTS.hoursPerDay), 0.25);
       settingsCopy.overheadMonthly = num("overheadMonthly", 0);
@@ -336,6 +339,11 @@
     const body = $("workersBody");
     if (!body) return;
 
+    const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
+    const unitsLabel = settings.pricingMode === "day" ? "Dias" : "Horas";
+    if ($("workerUnitsHead")) $("workerUnitsHead").textContent = unitsLabel;
+    if ($("workerRateHead")) $("workerRateHead").textContent = "Costo base";
+
     body.innerHTML = state.workers.map((worker, index) => `
       <tr data-index="${index}">
         <td><input data-key="name" maxlength="40" value="${escapeHtml(worker.name || "")}" /></td>
@@ -345,8 +353,8 @@
             <option value="helper" ${worker.type === "helper" ? "selected" : ""}>Helper</option>
           </select>
         </td>
-        <td><input data-key="hours" type="number" step="0.25" value="${worker.hours ?? 0}" /></td>
-        <td><input data-key="rate" type="number" step="0.01" value="${worker.rate ?? ""}" placeholder="${worker.type === "helper" ? settings.baseHelper : settings.baseInstaller}" /></td>
+        <td><input data-key="hours" type="number" step="0.25" value="${settings.pricingMode === "day" ? ((Number(worker.hours || 0) / hoursPerDay) || 0) : (worker.hours ?? 0)}" /></td>
+        <td><input data-key="rate" type="number" step="0.01" value="${worker.type === "helper" ? settings.baseHelper : settings.baseInstaller}" readonly /></td>
         <td data-cell="labor">${money(metrics.laborByWorker[index]?.cost || 0, settings.currency)}</td>
         <td>
           <div class="row-actions">
@@ -358,27 +366,27 @@
     `).join("");
 
     body.querySelectorAll("input,select").forEach((el) => {
-      el.addEventListener("input", () => {
+      const commit = () => {
         const tr = el.closest("tr");
         const index = Number(tr?.dataset.index ?? -1);
         const key = el.dataset.key;
         if (index < 0 || !key) return;
-        state.workers[index][key] = key === "hours" ? Number(el.value || 0) : el.value;
+        if (key === "hours") {
+          const rawUnits = Number(el.value || 0);
+          state.workers[index][key] = settings.pricingMode === "day" ? rawUnits * hoursPerDay : rawUnits;
+        } else {
+          state.workers[index][key] = el.value;
+        }
         if (key === "type") state.workers[index].rate = "";
         saveOwner(state, calcOwner(state, settings));
         renderOwner();
-      });
-      if (el.tagName === "SELECT") {
-        el.addEventListener("change", () => {
-          const tr = el.closest("tr");
-          const index = Number(tr?.dataset.index ?? -1);
-          const key = el.dataset.key;
-          if (index < 0 || !key) return;
-          state.workers[index][key] = el.value;
-          if (key === "type") state.workers[index].rate = "";
-          saveOwner(state, calcOwner(state, settings));
-          renderOwner();
-        });
+      };
+
+      if (el.dataset.key === "name" || el.dataset.key === "hours") {
+        el.addEventListener("change", commit);
+        el.addEventListener("blur", commit);
+      } else if (el.tagName === "SELECT") {
+        el.addEventListener("change", commit);
       }
     });
 
