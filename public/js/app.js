@@ -85,7 +85,9 @@
     return `${currency || "$"}${(Number.isFinite(n) ? n : 0).toFixed(2)}`;
   }
 
-  function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
 
   function escapeHtml(value) {
     return String(value || "").replace(/[&<>"']/g, (m) => ({
@@ -119,8 +121,14 @@
     return "red";
   }
 
-  function loadSettings() { return { ...DEFAULTS, ...readStore(LS_SETTINGS, {}) }; }
-  function saveSettings(settings) { writeStore(LS_SETTINGS, settings); }
+  function loadSettings() {
+    return { ...DEFAULTS, ...readStore(LS_SETTINGS, {}) };
+  }
+
+  function saveSettings(settings) {
+    writeStore(LS_SETTINGS, settings);
+  }
+
   function loadOwner() {
     const saved = readStore(LS_OWNER, {});
     return {
@@ -130,9 +138,19 @@
       workers: Array.isArray(saved.workers) && saved.workers.length ? saved.workers : DEFAULT_OWNER.workers
     };
   }
-  function saveOwner(state, metrics) { writeStore(LS_OWNER, { ...state, reservePct: DEFAULTS.reservePct, metrics }); }
-  function loadDashboard() { return { ...DEFAULT_DASHBOARD, ...readStore(LS_DASHBOARD, {}) }; }
-  function saveDashboard(state) { writeStore(LS_DASHBOARD, state); }
+
+  function saveOwner(state, metrics) {
+    writeStore(LS_OWNER, { ...state, reservePct: DEFAULTS.reservePct, metrics });
+  }
+
+  function loadDashboard() {
+    return { ...DEFAULT_DASHBOARD, ...readStore(LS_DASHBOARD, {}) };
+  }
+
+  function saveDashboard(state) {
+    writeStore(LS_DASHBOARD, state);
+  }
+
   function loadSales() {
     const saved = readStore(LS_SALES, {});
     const owner = loadOwner();
@@ -144,11 +162,17 @@
       offeredPrice: saved.offeredPrice || owner.metrics?.recommended || 0
     };
   }
-  function saveSales(state) { writeStore(LS_SALES, state); }
+
+  function saveSales(state) {
+    writeStore(LS_SALES, state);
+  }
+
   function loadSupervisor() {
     const saved = readStore(LS_SUPERVISOR, {});
     const owner = loadOwner();
-    const plannedHours = Array.isArray(owner.workers) ? owner.workers.reduce((sum, worker) => sum + Number(worker.hours || 0), 0) : 0;
+    const plannedHours = Array.isArray(owner.workers)
+      ? owner.workers.reduce((sum, worker) => sum + Number(worker.hours || 0), 0)
+      : 0;
     return {
       ...DEFAULT_SUPERVISOR,
       ...saved,
@@ -157,21 +181,42 @@
       laborBudget: saved.laborBudget || owner.metrics?.labor || 0
     };
   }
-  function saveSupervisor(state) { writeStore(LS_SUPERVISOR, state); }
-  function loadApprovals() { const saved = readStore(LS_APPROVALS, []); return Array.isArray(saved) ? saved : []; }
-  function saveApprovals(rows) { writeStore(LS_APPROVALS, rows); }
+
+  function saveSupervisor(state) {
+    writeStore(LS_SUPERVISOR, state);
+  }
+
+  function loadApprovals() {
+    const saved = readStore(LS_APPROVALS, []);
+    return Array.isArray(saved) ? saved : [];
+  }
+
+  function saveApprovals(rows) {
+    writeStore(LS_APPROVALS, rows);
+  }
 
   function calcOwner(state, settings) {
     const laborByWorker = state.workers.map((worker) => {
       const hours = Number(worker.hours || 0);
-      const baseRate = worker.type === "helper" ? Number(settings.baseHelper || 0) : Number(settings.baseInstaller || 0);
+      const baseRate = worker.type === "helper"
+        ? Number(settings.baseHelper || 0)
+        : Number(settings.baseInstaller || 0);
       return { hours, rate: baseRate, cost: hours * baseRate };
     });
 
     const labor = laborByWorker.reduce((sum, row) => sum + row.cost, 0);
-    const taxes = labor * ((Number(settings.wcPct || 0) + Number(settings.ficaPct || 0) + Number(settings.futaPct || 0) + Number(settings.casuiPct || 0)) / 100);
+    const taxes = labor * (
+      (
+        Number(settings.wcPct || 0) +
+        Number(settings.ficaPct || 0) +
+        Number(settings.futaPct || 0) +
+        Number(settings.casuiPct || 0)
+      ) / 100
+    );
     const totalHours = state.workers.reduce((sum, worker) => sum + Number(worker.hours || 0), 0);
-    const overheadPerHour = Number(settings.stdHours || 0) > 0 ? Number(settings.overheadMonthly || 0) / Number(settings.stdHours || 0) : 0;
+    const overheadPerHour = Number(settings.stdHours || 0) > 0
+      ? Number(settings.overheadMonthly || 0) / Number(settings.stdHours || 0)
+      : 0;
     const overhead = overheadPerHour * totalHours;
     const beforeProfit = labor + taxes + overhead;
     const profit = beforeProfit * (Number(settings.profitPct || 0) / 100);
@@ -181,6 +226,7 @@
     const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
     const quotedUnits = settings.pricingMode === "day" ? (totalHours / hoursPerDay) : totalHours;
     const pricePerUnit = quotedUnits > 0 ? recommended / quotedUnits : 0;
+
     return {
       laborByWorker,
       labor,
@@ -221,20 +267,33 @@
       const runwayMonths = state.operatingMonthly > 0 ? totalCash / state.operatingMonthly : 0;
       const savingsTarget = state.operatingMonthly * 12;
       const savingsPct = savingsTarget > 0 ? clamp((state.savingsBalance / savingsTarget) * 100, 0, 999) : 0;
-      const healthScore = clamp((runwayMonths * 7) + (Math.min(savingsPct, 100) * 0.35) + (state.expensesBalance >= state.operatingMonthly ? 20 : 0), 0, 100);
+      const healthScore = clamp(
+        (runwayMonths * 7) + (Math.min(savingsPct, 100) * 0.35) + (state.expensesBalance >= state.operatingMonthly ? 20 : 0),
+        0,
+        100
+      );
       const healthTone = healthClass(healthScore, 55, 80);
 
       if ($("overallHealth")) {
         $("overallHealth").textContent = `${healthScore.toFixed(0)}%`;
-        $("overallHealth").style.color = healthTone === "green" ? "#86efac" : (healthTone === "amber" ? "#fcd34d" : "#fca5a5");
+        $("overallHealth").style.color = healthTone === "green"
+          ? "#86efac"
+          : (healthTone === "amber" ? "#fcd34d" : "#fca5a5");
       }
+
       if ($("overallHealthMeta")) {
-        $("overallHealthMeta").textContent = healthTone === "green" ? "Cash discipline is protecting the business." : (healthTone === "amber" ? "The business is stable but under pressure." : "High risk. Real cash is not protecting operations.");
+        $("overallHealthMeta").textContent = healthTone === "green"
+          ? "Cash discipline is protecting the business."
+          : (healthTone === "amber"
+            ? "The business is stable but under pressure."
+            : "High risk. Real cash is not protecting operations.");
       }
+
       if ($("syncBadge")) {
         $("syncBadge").className = `badge ${healthTone}`;
         $("syncBadge").textContent = "Manual sync";
       }
+
       if ($("executiveStrip")) {
         $("executiveStrip").innerHTML = [
           ["Cash On Hand", money(totalCash, settings.currency), "Across 4 protected accounts"],
@@ -272,8 +331,20 @@
       if (el) el.oninput = refresh;
     });
 
-    if ($("btnSaveDashboard")) $("btnSaveDashboard").onclick = () => { refresh(); alert("Owner finance monitor saved."); };
-    if ($("btnResetDashboard")) $("btnResetDashboard").onclick = () => { saveDashboard({ ...DEFAULT_DASHBOARD }); renderDashboard(); };
+    if ($("btnSaveDashboard")) {
+      $("btnSaveDashboard").onclick = () => {
+        refresh();
+        alert("Owner finance monitor saved.");
+      };
+    }
+
+    if ($("btnResetDashboard")) {
+      $("btnResetDashboard").onclick = () => {
+        saveDashboard({ ...DEFAULT_DASHBOARD });
+        renderDashboard();
+      };
+    }
+
     refresh();
   }
 
@@ -313,6 +384,7 @@
       settingsCopy.supervisorBonusPct = num("supervisorBonusPct", DEFAULTS.supervisorBonusPct);
       settingsCopy.profitPct = num("profitPct", DEFAULTS.profitPct);
       saveSettings(settingsCopy);
+
       if (status) {
         status.style.display = "block";
         status.className = "notice ok";
@@ -321,12 +393,27 @@
     };
   }
 
+  function buildOwnerKpis(state, settings, metrics) {
+    return [
+      ["Direct Labor", money(metrics.labor, settings.currency), `${state.workers.length} workers modeled`],
+      ["Employer Burden", money(metrics.taxes, settings.currency), `WC ${settings.wcPct}% | FICA ${settings.ficaPct}% | FUTA ${settings.futaPct}% | CASUI ${settings.casuiPct}%`],
+      ["Overhead Allocation", money(metrics.overhead, settings.currency), Number(settings.stdHours || 0) > 0 ? `${money(Number(settings.overheadMonthly || 0) / Number(settings.stdHours || 0), settings.currency)}/hour` : "Set standard hours to activate"],
+      ["Cost Before Profit", money(metrics.beforeProfit, settings.currency), "Direct cost plus indirect burden"],
+      ["Target Profit", money(metrics.profit, settings.currency), `${Number(settings.profitPct || 0).toFixed(1)}% owner rule`],
+      ["Fixed Reserve", money(metrics.reserve, settings.currency), `${DEFAULTS.reservePct}% non-negotiable`],
+      ["Minimum Floor", money(metrics.minimum, settings.currency), "Below this, the business bleeds cash"],
+      ["Recommended Price", money(metrics.recommended, settings.currency), "This is the number the system wants sold"],
+      [`Recommended per ${metrics.pricingModeLabel}`, money(metrics.pricePerUnit, settings.currency), `${metrics.quotedUnits.toFixed(2)} ${metrics.pricingModeLabel === "dia" ? "dias" : "horas"} cotizables`]
+    ];
+  }
+
   function renderWorkers(state, settings, metrics) {
     const body = $("workersBody");
     if (!body) return;
 
     const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
     const unitsLabel = settings.pricingMode === "day" ? "Dias" : "Horas";
+
     if ($("workerUnitsHead")) $("workerUnitsHead").textContent = unitsLabel;
     if ($("workerRateHead")) $("workerRateHead").textContent = "Costo base";
 
@@ -357,12 +444,16 @@
         const index = Number(tr?.dataset.index ?? -1);
         const key = el.dataset.key;
         if (index < 0 || !key) return;
+
         if (key === "hours") {
           const rawUnits = Number(el.value || 0);
-          state.workers[index][key] = settings.pricingMode === "day" ? rawUnits * hoursPerDay : rawUnits;
+          state.workers[index][key] = settings.pricingMode === "day"
+            ? rawUnits * hoursPerDay
+            : rawUnits;
         } else {
           state.workers[index][key] = el.value;
         }
+
         if (key === "type") state.workers[index].rate = "";
         saveOwner(state, calcOwner(state, settings));
         renderOwner();
@@ -381,8 +472,10 @@
         const tr = button.closest("tr");
         const index = Number(tr?.dataset.index ?? -1);
         if (index < 0) return;
+
         if (button.dataset.action === "delete") state.workers.splice(index, 1);
         if (button.dataset.action === "copy") state.workers.splice(index + 1, 0, { ...state.workers[index] });
+
         saveOwner(state, calcOwner(state, settings));
         renderOwner();
       });
@@ -460,8 +553,10 @@
     [["projectName", "projectNameCount"], ["clientName", "clientNameCount"], ["location", "locationCount"], ["bizNameOwner", "bizNameOwnerCount"]].forEach(([id, counter]) => {
       const el = $(id);
       if (!el) return;
+
       el.oninput = () => {
         count(id, counter);
+
         if (id === "bizNameOwner") {
           const settingsCopy = loadSettings();
           settingsCopy.bizName = val("bizNameOwner") || DEFAULTS.bizName;
@@ -474,18 +569,36 @@
       };
     });
 
-    if ($("btnAddWorker")) $("btnAddWorker").onclick = () => {
-      state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: "installer", hours: 0, rate: "" });
-      saveOwner(state, calcOwner(state, settings));
-      renderOwner();
-    };
-    if ($("btnClear")) $("btnClear").onclick = () => { if (!confirm("Clear this quote?")) return; writeStore(LS_OWNER, DEFAULT_OWNER); renderOwner(); };
+    if ($("btnAddWorker")) {
+      $("btnAddWorker").onclick = () => {
+        state.workers.push({
+          name: `Worker ${state.workers.length + 1}`,
+          type: "installer",
+          hours: 0,
+          rate: ""
+        });
+        saveOwner(state, calcOwner(state, settings));
+        renderOwner();
+      };
+    }
+
+    if ($("btnClear")) {
+      $("btnClear").onclick = () => {
+        if (!confirm("Clear this quote?")) return;
+        writeStore(LS_OWNER, DEFAULT_OWNER);
+        renderOwner();
+      };
+    }
+
     if ($("btnExportPdf")) $("btnExportPdf").onclick = () => exportOwnerPdf(state, settings, metrics);
     if ($("btnSendQuote")) $("btnSendQuote").onclick = () => openSendModal(state, settings, metrics);
     if ($("btnSendClose")) $("btnSendClose").onclick = closeSendModal;
     if ($("btnSendCancel")) $("btnSendCancel").onclick = closeSendModal;
     if ($("btnSendNow")) $("btnSendNow").onclick = () => sendQuote(state, settings, metrics);
-    ["toEmail", "toName", "subject", "scope", "message", "salesInitials"].forEach((id) => { if ($(id)) $(id).oninput = updateSendCounts; });
+
+    ["toEmail", "toName", "subject", "scope", "message", "salesInitials"].forEach((id) => {
+      if ($(id)) $(id).oninput = updateSendCounts;
+    });
   }
 
   async function exportOwnerPdf(state, settings, metrics) {
@@ -494,45 +607,63 @@
 
     const doc = new jsPDF({ unit: "pt", format: "letter" });
     let y = 48;
+
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
     doc.text(settings.bizName || DEFAULTS.bizName, 40, y);
     y += 22;
+
     doc.setFont("helvetica", "normal");
     doc.setFontSize(12);
     doc.text("Project Pricing Report", 40, y);
     y += 24;
-    [`Project: ${state.projectName || "-"}`, `Client: ${state.clientName || "-"}`, `Location: ${state.location || "-"}`, `Recommended: ${money(metrics.recommended, settings.currency)}`].forEach((line) => { doc.text(line, 40, y); y += 16; });
+
+    [
+      `Project: ${state.projectName || "-"}`,
+      `Client: ${state.clientName || "-"}`,
+      `Location: ${state.location || "-"}`,
+      `Recommended: ${money(metrics.recommended, settings.currency)}`
+    ].forEach((line) => {
+      doc.text(line, 40, y);
+      y += 16;
+    });
+
     y += 10;
     doc.setFont("helvetica", "bold");
     doc.text("Financial Breakdown", 40, y);
     y += 18;
+
     doc.setFont("helvetica", "normal");
-    [
-      ["Direct Labor", money(metrics.labor, settings.currency)],
-      ["Employer Burden", money(metrics.taxes, settings.currency)],
-      ["Overhead", money(metrics.overhead, settings.currency)],
-      ["Cost Before Profit", money(metrics.beforeProfit, settings.currency)],
-      ["Target Profit", money(metrics.profit, settings.currency)],
-      ["Reserve", money(metrics.reserve, settings.currency)],
-      ["Minimum Floor", money(metrics.minimum, settings.currency)],
-      ["Recommended Price", money(metrics.recommended, settings.currency)]
-    ].forEach(([label, value]) => { doc.text(`${label}: ${value}`, 40, y); y += 15; });
+    buildOwnerKpis(state, settings, metrics).forEach(([label, value]) => {
+      doc.text(`${label}: ${value}`, 40, y);
+      y += 15;
+    });
+
     const blob = doc.output("blob");
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = `margin-guard-${(state.projectName || "project").replace(/\s+/g, "-")}.pdf`;
     a.click();
+
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function openSendModal(state, settings, metrics) {
     const modal = $("sendModal");
     if (!modal) return;
+
     modal.setAttribute("aria-hidden", "false");
-    if ($("subject") && !$("subject").value) $("subject").value = `Project Quote - ${state.projectName || "Project"} - ${money(metrics.recommended, settings.currency)}`;
-    if ($("deposit")) { $("deposit").value = "1000.00"; $("deposit").setAttribute("readonly", "readonly"); }
+
+    if ($("subject") && !$("subject").value) {
+      $("subject").value = `Project Quote - ${state.projectName || "Project"} - ${money(metrics.recommended, settings.currency)}`;
+    }
+
+    if ($("deposit")) {
+      $("deposit").value = "1000.00";
+      $("deposit").setAttribute("readonly", "readonly");
+    }
+
     if ($("message") && !$("message").value) {
       $("message").value =
 `Hello${state.clientName ? ` ${state.clientName}` : ""},
@@ -547,12 +678,17 @@ We can confirm schedule and next steps once deposit is received.
 Regards,
 ${val("salesInitials") || "MG"}`;
     }
+
     updateSendCounts();
   }
 
   function closeSendModal() {
     if ($("sendModal")) $("sendModal").setAttribute("aria-hidden", "true");
-    if ($("sendStatus")) { $("sendStatus").style.display = "none"; $("sendStatus").className = "notice"; $("sendStatus").textContent = ""; }
+    if ($("sendStatus")) {
+      $("sendStatus").style.display = "none";
+      $("sendStatus").className = "notice";
+      $("sendStatus").textContent = "";
+    }
   }
 
   function updateSendCounts() {
@@ -566,6 +702,7 @@ ${val("salesInitials") || "MG"}`;
 
   async function sendQuote(state, settings, metrics) {
     const status = $("sendStatus");
+
     const setStatus = (message, tone) => {
       if (!status) return;
       status.style.display = "block";
@@ -575,10 +712,12 @@ ${val("salesInitials") || "MG"}`;
 
     const toEmail = val("toEmail").trim();
     const initials = val("salesInitials").trim();
+
     if (!toEmail) return setStatus("Customer email is required.", "err");
     if (!initials) return setStatus("Sales initials are required.", "err");
 
     setStatus("Sending quote...", "");
+
     try {
       const response = await fetch("/.netlify/functions/send-quote-zapier", {
         method: "POST",
@@ -600,7 +739,9 @@ ${val("salesInitials") || "MG"}`;
           recommendedTotal: metrics.recommended
         })
       });
+
       if (!response.ok) throw new Error("Unable to send quote.");
+
       setStatus("Quote sent successfully.", "ok");
       setTimeout(closeSendModal, 900);
     } catch (_err) {
@@ -630,52 +771,93 @@ ${val("salesInitials") || "MG"}`;
     const refresh = () => {
       state.projectName = val("salesProjectName");
       state.clientName = val("salesClientName");
+
       if (settings.pricingMode === "day") {
         state.estimatedDays = num("salesDays", 0);
         state.estimatedHours = state.estimatedDays * Number(settings.hoursPerDay || DEFAULTS.hoursPerDay);
       } else {
         state.estimatedHours = num("salesHours", 0);
-        state.estimatedDays = Number(settings.hoursPerDay || DEFAULTS.hoursPerDay) > 0 ? state.estimatedHours / Number(settings.hoursPerDay || DEFAULTS.hoursPerDay) : 0;
+        state.estimatedDays = Number(settings.hoursPerDay || DEFAULTS.hoursPerDay) > 0
+          ? state.estimatedHours / Number(settings.hoursPerDay || DEFAULTS.hoursPerDay)
+          : 0;
       }
+
       state.offeredPrice = num("salesPrice", 0);
       state.notes = val("salesNotes");
       saveSales(state);
 
       const offered = state.offeredPrice;
-      const discountPct = recommended > 0 ? clamp(((recommended - offered) / recommended) * 100, 0, 100) : 0;
+      const discountPct = recommended > 0
+        ? clamp(((recommended - offered) / recommended) * 100, 0, 100)
+        : 0;
+
       let tone = "red";
       let commissionPct = 0;
       let confidence = 10;
-      let message = "Price is below the operating floor. Approval required.";
+      let message = "El precio esta por debajo del piso permitido. Requiere aprobacion obligatoria.";
+      let heroState = "Rojo";
+      let heroMeta = "No se puede cerrar asi. Hay que subir precio o pedir aprobacion.";
+      let action = "Pedir aprobacion";
+      let actionMeta = "Este precio no se debe vender sin autorizacion.";
 
       if (offered >= recommended) {
         tone = "green";
         commissionPct = settings.salesCommissionPct;
         confidence = 100;
-        message = "Price is healthy. Sell it with confidence.";
+        message = "Precio sano. Se puede vender con confianza.";
+        heroState = "Verde";
+        heroMeta = "El precio protege margen, operacion y comision.";
+        action = "Cerrar venta";
+        actionMeta = "No necesita aprobacion. Puedes avanzar.";
       } else if (offered >= minimum) {
         tone = "amber";
         const factor = clamp((offered - minimum) / Math.max(1, recommended - minimum), 0, 1);
         commissionPct = settings.salesCommissionPct * (0.45 + factor * 0.55);
         confidence = 45 + factor * 55;
-        message = "Allowed, but every discount cuts your payout.";
+        message = "Precio negociable, pero cada descuento reduce tu comision.";
+        heroState = "Amarillo";
+        heroMeta = "Se puede trabajar, pero conviene defender el precio.";
+        action = "Negociar";
+        actionMeta = "Intenta acercarte al recomendado antes de cerrar.";
       }
 
       if ($("salesTraffic")) {
         $("salesTraffic").className = `badge ${tone}`;
-        $("salesTraffic").textContent = tone === "green" ? "Approved" : (tone === "amber" ? "Negotiate carefully" : "Blocked");
+        $("salesTraffic").textContent = tone === "green"
+          ? "Aprobado"
+          : (tone === "amber" ? "Negociar con cuidado" : "Bloqueado");
       }
+
       if ($("salesRule")) $("salesRule").textContent = message;
-      if ($("approvalHint")) $("approvalHint").textContent = tone === "red" ? "Red price: owner approval is required." : (tone === "amber" ? "Yellow price: approval is recommended." : "Green price: no approval needed.");
+      if ($("approvalHint")) {
+        $("approvalHint").textContent = tone === "red"
+          ? "Precio rojo: aprobacion obligatoria del dueno o Sales Admin."
+          : (tone === "amber"
+            ? "Precio amarillo: se puede vender, pero conviene defender margen."
+            : "Precio verde: no necesita aprobacion.");
+      }
+
       if ($("salesProgress")) $("salesProgress").value = confidence;
+      if ($("salesHeroState")) $("salesHeroState").textContent = heroState;
+      if ($("salesHeroMeta")) $("salesHeroMeta").textContent = heroMeta;
+      if ($("salesPrimaryPrice")) $("salesPrimaryPrice").textContent = money(offered, settings.currency);
+      if ($("salesPrimaryMeta")) {
+        $("salesPrimaryMeta").textContent = offered > 0
+          ? `${discountPct.toFixed(2)}% de descuento vs recomendado`
+          : "Ingresa un precio para evaluar la oportunidad.";
+      }
+      if ($("salesPrimaryCommission")) $("salesPrimaryCommission").textContent = `${commissionPct.toFixed(2)}%`;
+      if ($("salesPrimaryCommissionMeta")) $("salesPrimaryCommissionMeta").textContent = `${money(offered * (commissionPct / 100), settings.currency)} estimado`;
+      if ($("salesApprovalAction")) $("salesApprovalAction").textContent = action;
+      if ($("salesApprovalActionMeta")) $("salesApprovalActionMeta").textContent = actionMeta;
 
       const commissionAmount = offered * (commissionPct / 100);
       $("salesKpis").innerHTML = [
-        ["Minimum allowed", money(minimum, settings.currency), "Do not sell under this floor"],
-        ["Recommended target", money(recommended, settings.currency), "System target for healthy margin"],
-        ["Offered to customer", money(offered, settings.currency), "Current sales number"],
-        ["Discount pressure", `${discountPct.toFixed(2)}%`, "Measured against recommended price"],
-        ["Estimated commission", `${commissionPct.toFixed(2)}% · ${money(commissionAmount, settings.currency)}`, "Your payout at this price"]
+        ["Piso minimo", money(minimum, settings.currency), "No vender por debajo de este numero"],
+        ["Objetivo recomendado", money(recommended, settings.currency), "Numero ideal para vender con margen sano"],
+        ["Precio al cliente", money(offered, settings.currency), "Numero actual de la negociacion"],
+        ["Descuento aplicado", `${discountPct.toFixed(2)}%`, "Comparado contra el recomendado"],
+        ["Comision estimada", `${commissionPct.toFixed(2)}% · ${money(commissionAmount, settings.currency)}`, "Pago estimado del vendedor"]
       ].map(([label, value, meta]) => `
         <div class="kpi-box">
           <div class="label">${escapeHtml(label)}</div>
@@ -685,10 +867,19 @@ ${val("salesInitials") || "MG"}`;
       `).join("");
 
       const scripts = tone === "green"
-        ? ["This price protects quality, schedule and warranty.", "If we approve today, we can secure labor and schedule immediately."]
+        ? [
+            "Este precio protege calidad, calendario y garantia.",
+            "Si aprobamos hoy, podemos asegurar mano de obra y agenda de instalacion."
+          ]
         : tone === "amber"
-          ? ["We can keep that number if we tighten scope or phase the work.", "I would rather protect results than create change-order pain later."]
-          : ["This number is not approved. We need to adjust scope or schedule.", "To go lower than this, owner approval is required."];
+          ? [
+              "Podemos sostener ese numero si ajustamos alcance o dividimos el trabajo por fases.",
+              "Prefiero proteger el resultado final antes que crear problemas con cambios y extras despues."
+            ]
+          : [
+              "Ese numero no esta aprobado. Hay que ajustar alcance, calendario o precio.",
+              "Para vender abajo de esto se necesita autorizacion del dueno o Sales Admin."
+            ];
 
       if ($("negotiationList")) {
         $("negotiationList").innerHTML = scripts.map((line, index) => `
@@ -697,10 +888,32 @@ ${val("salesInitials") || "MG"}`;
       }
     };
 
-    if ($("salesHoursLabel")) $("salesHoursLabel").textContent = settings.pricingMode === "day" ? "Horas convertidas del modo dia" : "Horas estimadas";
-    if ($("salesDaysLabel")) $("salesDaysLabel").textContent = settings.pricingMode === "day" ? "Dias estimados" : "Dias convertidos";
+    if ($("salesHoursLabel")) {
+      $("salesHoursLabel").textContent = settings.pricingMode === "day"
+        ? "Horas calculadas automaticamente"
+        : "Horas estimadas";
+    }
+
+    if ($("salesDaysLabel")) {
+      $("salesDaysLabel").textContent = settings.pricingMode === "day"
+        ? "Dias estimados"
+        : "Dias calculados automaticamente";
+    }
+
     if ($("salesHours")) $("salesHours").disabled = settings.pricingMode === "day";
     if ($("salesDays")) $("salesDays").disabled = settings.pricingMode !== "day";
+
+    if ($("salesModeHint")) {
+      $("salesModeHint").textContent = settings.pricingMode === "day"
+        ? `La empresa cotiza por dia laboral. Cada dia usa ${Number(settings.hoursPerDay || DEFAULTS.hoursPerDay).toFixed(2)} horas.`
+        : "La empresa cotiza por hora. Los dias se calculan automaticamente.";
+    }
+
+    if ($("salesEntryHint")) {
+      $("salesEntryHint").textContent = settings.pricingMode === "day"
+        ? "Ingresa los dias estimados. El sistema convierte esos dias a horas internas para evaluar el precio."
+        : "Ingresa las horas estimadas. El sistema calcula los dias equivalentes de forma automatica.";
+    }
 
     ["salesProjectName", "salesClientName", "salesHours", "salesDays", "salesPrice", "salesNotes"].forEach((id) => {
       const el = $(id);
@@ -717,12 +930,23 @@ ${val("salesInitials") || "MG"}`;
     if ($("btnSubmitApproval")) {
       $("btnSubmitApproval").onclick = () => {
         const rows = loadApprovals();
-        rows.unshift({ id: `APR-${Date.now()}`, createdAt: new Date().toISOString(), projectName: state.projectName || "Project", clientName: state.clientName || "", offeredPrice: state.offeredPrice, recommended, minimum, note: state.notes || "", status: "pending" });
+        rows.unshift({
+          id: `APR-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          projectName: state.projectName || "Project",
+          clientName: state.clientName || "",
+          offeredPrice: state.offeredPrice,
+          recommended,
+          minimum,
+          note: state.notes || "",
+          status: "pending"
+        });
         saveApprovals(rows);
+
         if ($("approvalStatus")) {
           $("approvalStatus").style.display = "block";
           $("approvalStatus").className = "notice ok";
-          $("approvalStatus").textContent = "Approval request sent to Sales Admin.";
+          $("approvalStatus").textContent = "Solicitud enviada a Sales Admin.";
         }
       };
     }
@@ -756,22 +980,31 @@ ${val("salesInitials") || "MG"}`;
       const totalSpent = laborSpent + materialSpent;
       const totalBudget = Number(state.laborBudget || 0) + Number(state.materialBudget || 0);
       const overBudget = Math.max(0, totalSpent - totalBudget);
+
       let delayPenalty = 0;
       if (state.dueDate && state.projectedEndDate) {
         const due = new Date(state.dueDate).getTime();
         const projected = new Date(state.projectedEndDate).getTime();
-        if (projected > due) delayPenalty = clamp((projected - due) / (1000 * 60 * 60 * 24 * 30), 0, 1);
+        if (projected > due) {
+          delayPenalty = clamp((projected - due) / (1000 * 60 * 60 * 24 * 30), 0, 1);
+        }
       }
+
       const budgetPenalty = totalBudget > 0 ? clamp(overBudget / totalBudget, 0, 1) : 0;
       const baseBonusPct = Number(settings.supervisorBonusPct || DEFAULTS.supervisorBonusPct);
       const bonusPct = clamp(baseBonusPct * (1 - delayPenalty) * (1 - budgetPenalty), 0, baseBonusPct);
       const bonusHealth = baseBonusPct > 0 ? bonusPct / baseBonusPct : 0;
-      const tone = overBudget <= 0 && bonusHealth >= 0.85 ? "green" : (overBudget <= totalBudget * 0.1 ? "amber" : "red");
+      const tone = overBudget <= 0 && bonusHealth >= 0.85
+        ? "green"
+        : (overBudget <= totalBudget * 0.1 ? "amber" : "red");
 
       if ($("supStatus")) {
         $("supStatus").className = `badge ${tone}`;
-        $("supStatus").textContent = tone === "green" ? "Controlled" : (tone === "amber" ? "Watch budget" : "At risk");
+        $("supStatus").textContent = tone === "green"
+          ? "Controlled"
+          : (tone === "amber" ? "Watch budget" : "At risk");
       }
+
       $("supervisorKpis").innerHTML = [
         ["Labor budget", money(state.laborBudget, settings.currency), "Labor only"],
         ["Material budget", money(state.materialBudget, settings.currency), "Material allocation"],
@@ -796,6 +1029,7 @@ ${val("salesInitials") || "MG"}`;
             <td><button class="btn danger" data-delete-entry="${index}">Delete</button></td>
           </tr>
         `).join("");
+
         $("supEntriesBody").querySelectorAll("button[data-delete-entry]").forEach((button) => {
           button.onclick = () => {
             state.entries.splice(Number(button.dataset.deleteEntry || -1), 1);
@@ -813,8 +1047,15 @@ ${val("salesInitials") || "MG"}`;
 
     if ($("btnAddSupEntry")) {
       $("btnAddSupEntry").onclick = () => {
-        const entry = { date: val("supEntryDate"), labor: num("supEntryLabor", 0), material: num("supEntryMaterial", 0), note: val("supEntryNote").trim() };
+        const entry = {
+          date: val("supEntryDate"),
+          labor: num("supEntryLabor", 0),
+          material: num("supEntryMaterial", 0),
+          note: val("supEntryNote").trim()
+        };
+
         if (!entry.date) return alert("Entry date is required.");
+
         state.entries.unshift(entry);
         setVal("supEntryDate", "");
         setNum("supEntryLabor", 0);
@@ -829,13 +1070,19 @@ ${val("salesInitials") || "MG"}`;
 
   function renderSalesAdmin() {
     if (!$("adminQueueBody")) return;
+
     const settings = loadSettings();
     const rows = loadApprovals();
 
     const refresh = () => {
       $("adminQueueBody").innerHTML = rows.map((row, index) => {
-        const tone = row.offeredPrice >= row.recommended ? "green" : (row.offeredPrice >= row.minimum ? "amber" : "red");
-        const discount = row.recommended > 0 ? (((row.recommended - row.offeredPrice) / row.recommended) * 100) : 0;
+        const tone = row.offeredPrice >= row.recommended
+          ? "green"
+          : (row.offeredPrice >= row.minimum ? "amber" : "red");
+        const discount = row.recommended > 0
+          ? (((row.recommended - row.offeredPrice) / row.recommended) * 100)
+          : 0;
+
         return `
           <tr>
             <td>${escapeHtml(row.id)}</td>
@@ -853,11 +1100,21 @@ ${val("salesInitials") || "MG"}`;
           </tr>
         `;
       }).join("");
+
       $("adminQueueBody").querySelectorAll("button[data-admin-approve]").forEach((button) => {
-        button.onclick = () => { rows[Number(button.dataset.adminApprove || -1)].status = "approved"; saveApprovals(rows); refresh(); };
+        button.onclick = () => {
+          rows[Number(button.dataset.adminApprove || -1)].status = "approved";
+          saveApprovals(rows);
+          refresh();
+        };
       });
+
       $("adminQueueBody").querySelectorAll("button[data-admin-reject]").forEach((button) => {
-        button.onclick = () => { rows[Number(button.dataset.adminReject || -1)].status = "rejected"; saveApprovals(rows); refresh(); };
+        button.onclick = () => {
+          rows[Number(button.dataset.adminReject || -1)].status = "rejected";
+          saveApprovals(rows);
+          refresh();
+        };
       });
     };
 
