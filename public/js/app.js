@@ -159,7 +159,7 @@
       ...saved,
       projectName: saved.projectName || owner.projectName || "",
       clientName: saved.clientName || owner.clientName || "",
-      offeredPrice: saved.offeredPrice || owner.metrics?.recommended || 0
+      offeredPrice: saved.offeredPrice ?? 0
     };
   }
 
@@ -201,7 +201,8 @@
       const baseRate = worker.type === "helper"
         ? Number(settings.baseHelper || 0)
         : Number(settings.baseInstaller || 0);
-      return { hours, rate: baseRate, cost: hours * baseRate };
+      const rate = worker.rate === "" || worker.rate == null ? baseRate : Number(worker.rate || 0);
+      return { hours, rate, cost: hours * rate };
     });
 
     const labor = laborByWorker.reduce((sum, row) => sum + row.cost, 0);
@@ -447,9 +448,7 @@
 
         if (key === "hours") {
           const rawUnits = Number(el.value || 0);
-          state.workers[index][key] = settings.pricingMode === "day"
-            ? rawUnits * hoursPerDay
-            : rawUnits;
+          state.workers[index][key] = settings.pricingMode === "day" ? rawUnits * hoursPerDay : rawUnits;
         } else {
           state.workers[index][key] = el.value;
         }
@@ -755,8 +754,9 @@ ${val("salesInitials") || "MG"}`;
     const settings = loadSettings();
     const owner = loadOwner();
     const state = loadSales();
-    const minimum = Number(owner.metrics?.minimum || 0);
-    const recommended = Number(owner.metrics?.recommended || 0);
+    const ownerQuotedUnits = Number(owner.metrics?.quotedUnits || 0);
+    const recommendedPerUnit = ownerQuotedUnits > 0 ? Number(owner.metrics?.pricePerUnit || 0) : 0;
+    const minimumPerUnit = ownerQuotedUnits > 0 ? (Number(owner.metrics?.minimum || 0) / ownerQuotedUnits) : 0;
 
     setVal("salesProjectName", state.projectName);
     setVal("salesClientName", state.clientName);
@@ -786,10 +786,11 @@ ${val("salesInitials") || "MG"}`;
       state.notes = val("salesNotes");
       saveSales(state);
 
+      const activeUnits = settings.pricingMode === "day" ? state.estimatedDays : state.estimatedHours;
+      const recommended = activeUnits > 0 ? recommendedPerUnit * activeUnits : 0;
+      const minimum = activeUnits > 0 ? minimumPerUnit * activeUnits : 0;
       const offered = state.offeredPrice;
-      const discountPct = recommended > 0
-        ? clamp(((recommended - offered) / recommended) * 100, 0, 100)
-        : 0;
+      const discountPct = recommended > 0 ? clamp(((recommended - offered) / recommended) * 100, 0, 100) : 0;
 
       let tone = "red";
       let commissionPct = 0;
@@ -800,7 +801,29 @@ ${val("salesInitials") || "MG"}`;
       let action = "Pedir aprobacion";
       let actionMeta = "Este precio no se debe vender sin autorizacion.";
 
-      if (offered >= recommended) {
+      if (recommended <= 0) {
+        message = activeUnits > 0
+          ? "Todavia no existe una base valida desde Dueno para calcular el precio recomendado."
+          : "Ingresa horas o dias para calcular el objetivo recomendado.";
+        heroState = "Base";
+        heroMeta = activeUnits > 0
+          ? "Abre Dueno y guarda una cotizacion base con precio por unidad."
+          : "Esperando unidades para calcular.";
+        action = "Completar datos";
+        actionMeta = activeUnits > 0
+          ? "Se necesita una referencia valida desde Dueno."
+          : "Primero captura horas o dias.";
+        tone = "amber";
+        confidence = 0;
+      } else if (offered <= 0) {
+        tone = "amber";
+        confidence = 0;
+        message = "Ya existe un recomendado. Ahora captura el precio que le vas a presentar al cliente.";
+        heroState = "Listo";
+        heroMeta = "El recomendado ya fue calculado con las unidades capturadas.";
+        action = "Proponer precio";
+        actionMeta = "Ingresa el numero que vas a presentar.";
+      } else if (offered >= recommended) {
         tone = "green";
         commissionPct = settings.salesCommissionPct;
         confidence = 100;
@@ -840,12 +863,14 @@ ${val("salesInitials") || "MG"}`;
       if ($("salesProgress")) $("salesProgress").value = confidence;
       if ($("salesHeroState")) $("salesHeroState").textContent = heroState;
       if ($("salesHeroMeta")) $("salesHeroMeta").textContent = heroMeta;
-      if ($("salesPrimaryPrice")) $("salesPrimaryPrice").textContent = money(offered, settings.currency);
+      if ($("salesPrimaryPrice")) $("salesPrimaryPrice").textContent = money(recommended, settings.currency);
+
       if ($("salesPrimaryMeta")) {
-        $("salesPrimaryMeta").textContent = offered > 0
-          ? `${discountPct.toFixed(2)}% de descuento vs recomendado`
-          : "Ingresa un precio para evaluar la oportunidad.";
+        $("salesPrimaryMeta").textContent = activeUnits > 0
+          ? `${activeUnits.toFixed(2)} ${settings.pricingMode === "day" ? "dias" : "horas"} · ${money(recommendedPerUnit, settings.currency)} por ${settings.pricingMode === "day" ? "dia" : "hora"}`
+          : "Ingresa horas o dias para calcular el recomendado.";
       }
+
       if ($("salesPrimaryCommission")) $("salesPrimaryCommission").textContent = `${commissionPct.toFixed(2)}%`;
       if ($("salesPrimaryCommissionMeta")) $("salesPrimaryCommissionMeta").textContent = `${money(offered * (commissionPct / 100), settings.currency)} estimado`;
       if ($("salesApprovalAction")) $("salesApprovalAction").textContent = action;
@@ -929,7 +954,11 @@ ${val("salesInitials") || "MG"}`;
 
     if ($("btnSubmitApproval")) {
       $("btnSubmitApproval").onclick = () => {
+        const activeUnits = settings.pricingMode === "day" ? state.estimatedDays : state.estimatedHours;
+        const recommended = activeUnits > 0 ? recommendedPerUnit * activeUnits : 0;
+        const minimum = activeUnits > 0 ? minimumPerUnit * activeUnits : 0;
         const rows = loadApprovals();
+
         rows.unshift({
           id: `APR-${Date.now()}`,
           createdAt: new Date().toISOString(),
@@ -941,6 +970,7 @@ ${val("salesInitials") || "MG"}`;
           note: state.notes || "",
           status: "pending"
         });
+
         saveApprovals(rows);
 
         if ($("approvalStatus")) {
