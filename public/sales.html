@@ -38,12 +38,12 @@
           <div>
             <span class="eyebrow">Sales Console</span>
             <h2 class="hero-title">Vende con claridad sin ver los costos internos del negocio.</h2>
-            <div class="sub" style="margin:0;">Esta pantalla le dice al vendedor si el precio está sano, negociable o bloqueado, y cuánto gana aproximadamente en comisión.</div>
+            <div class="sub" style="margin:0;">Esta pantalla le dice al vendedor si el precio esta sano, negociable o bloqueado, y cuanto gana aproximadamente en comision.</div>
           </div>
           <div class="hero-score">
             <div class="hero-score-label">Estado actual</div>
-            <div class="hero-score-value" id="salesHeroState">Red</div>
-            <div class="hero-score-meta" id="salesHeroMeta">Esperando precio para evaluar.</div>
+            <div class="hero-score-value" id="salesHeroState">Base</div>
+            <div class="hero-score-meta" id="salesHeroMeta">Ingresa horas o dias para calcular el recomendado.</div>
           </div>
         </div>
       </div>
@@ -58,7 +58,7 @@
                 <h2>Cotizacion guiada para vendedor</h2>
                 <div class="sub">No muestra costos confidenciales. Solo precio permitido, estado y comision estimada.</div>
               </div>
-              <div class="badge amber" id="salesTraffic">Bloqueado</div>
+              <div class="badge amber" id="salesTraffic">Esperando</div>
             </div>
 
             <div class="form">
@@ -74,15 +74,15 @@
               </div>
               <div class="field">
                 <label id="salesHoursLabel">Horas estimadas</label>
-                <input id="salesHours" type="number" step="0.25" placeholder="0" />
+                <input id="salesHours" type="number" step="0.25" min="0" placeholder="0" />
               </div>
               <div class="field">
                 <label id="salesDaysLabel">Dias estimados</label>
-                <input id="salesDays" type="number" step="0.25" placeholder="0" />
+                <input id="salesDays" type="number" step="0.25" min="0" placeholder="0" />
               </div>
               <div class="field">
                 <label>Precio propuesto al cliente</label>
-                <input id="salesPrice" type="number" step="0.01" placeholder="0.00" />
+                <input id="salesPrice" type="number" step="0.01" min="0" placeholder="0.00" />
               </div>
               <div class="field">
                 <label>Modo actual</label>
@@ -105,14 +105,14 @@
               <div class="hint"><span id="salesNotesCount">0</span>/600</div>
             </div>
 
-            <div class="notice" id="salesRule">Precio por debajo del minimo permitido.</div>
+            <div class="notice" id="salesRule">Ingresa horas o dias para calcular el recomendado.</div>
 
             <div style="margin-top:10px;">
               <label class="sub" for="salesProgress" style="display:block; margin-bottom:6px;">Confianza del precio</label>
               <progress id="salesProgress" max="100" value="0" class="sales-progress"></progress>
             </div>
 
-            <div class="notice" id="approvalHint" style="margin-top:10px;">Precio rojo: requiere aprobacion obligatoria.</div>
+            <div class="notice" id="approvalHint" style="margin-top:10px;">Aun no hay precio capturado.</div>
 
             <div class="inline-actions" style="margin-top:12px;">
               <button class="btn primary" type="button" id="btnSubmitApproval">Enviar a Sales Admin</button>
@@ -128,19 +128,19 @@
             <h2>Resultado en vivo</h2>
             <div class="owner-kpi-shell">
               <div class="owner-quote-hero">
-                <div class="owner-quote-kicker">Precio ofrecido</div>
+                <div class="owner-quote-kicker">Precio recomendado</div>
                 <div class="owner-quote-price" id="salesPrimaryPrice">$0.00</div>
-                <div class="owner-quote-meta" id="salesPrimaryMeta">Ingresa un precio para evaluar la oportunidad.</div>
+                <div class="owner-quote-meta" id="salesPrimaryMeta">Ingresa horas o dias para calcular el recomendado.</div>
                 <div class="owner-quote-strip">
                   <div class="owner-mini-card">
                     <div class="title">Comision estimada</div>
                     <div class="big" id="salesPrimaryCommission">0.00%</div>
-                    <div class="small" id="salesPrimaryCommissionMeta">$0.00 payout</div>
+                    <div class="small" id="salesPrimaryCommissionMeta">$0.00 estimado</div>
                   </div>
                   <div class="owner-mini-card">
                     <div class="title">Accion</div>
-                    <div class="big" id="salesApprovalAction">Esperar</div>
-                    <div class="small" id="salesApprovalActionMeta">Aun no hay precio propuesto.</div>
+                    <div class="big" id="salesApprovalAction">Completar datos</div>
+                    <div class="small" id="salesApprovalActionMeta">Primero captura horas o dias.</div>
                   </div>
                 </div>
               </div>
