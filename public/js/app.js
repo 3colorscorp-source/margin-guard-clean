@@ -1,4 +1,3 @@
-
 (() => {
   const LS_SETTINGS = "mg_settings_v2";
   const LS_OWNER = "mg_owner_v2";
@@ -278,6 +277,47 @@
     if ($("btnResetDashboard")) $("btnResetDashboard").onclick = () => { saveDashboard({ ...DEFAULT_DASHBOARD }); renderDashboard(); };
     refresh();
   }
+
+  function renderBusinessSettings() {
+    if (!$("btnSaveBusinessSettings")) return;
+
+    const settings = loadSettings();
+    setVal("bizNameOwner", settings.bizName);
+    setVal("pricingMode", settings.pricingMode);
+    setNum("hoursPerDay", settings.hoursPerDay);
+    setNum("overheadMonthly", settings.overheadMonthly);
+    setNum("stdHours", settings.stdHours);
+    setNum("salesCommissionPct", settings.salesCommissionPct);
+    setNum("supervisorBonusPct", settings.supervisorBonusPct);
+    setNum("profitPct", settings.profitPct);
+    setNum("reservePct", DEFAULTS.reservePct);
+    count("bizNameOwner", "bizNameOwnerCount");
+
+    const status = $("businessSettingsStatus");
+
+    if ($("bizNameOwner")) {
+      $("bizNameOwner").oninput = () => count("bizNameOwner", "bizNameOwnerCount");
+    }
+
+    $("btnSaveBusinessSettings").onclick = () => {
+      const settingsCopy = loadSettings();
+      settingsCopy.bizName = val("bizNameOwner") || DEFAULTS.bizName;
+      settingsCopy.pricingMode = val("pricingMode") || DEFAULTS.pricingMode;
+      settingsCopy.hoursPerDay = Math.max(num("hoursPerDay", DEFAULTS.hoursPerDay), 0.25);
+      settingsCopy.overheadMonthly = num("overheadMonthly", 0);
+      settingsCopy.stdHours = num("stdHours", DEFAULTS.stdHours);
+      settingsCopy.salesCommissionPct = num("salesCommissionPct", DEFAULTS.salesCommissionPct);
+      settingsCopy.supervisorBonusPct = num("supervisorBonusPct", DEFAULTS.supervisorBonusPct);
+      settingsCopy.profitPct = num("profitPct", DEFAULTS.profitPct);
+      saveSettings(settingsCopy);
+      if (status) {
+        status.style.display = "block";
+        status.className = "notice ok";
+        status.textContent = "Business settings guardados.";
+      }
+    };
+  }
+
   function buildOwnerKpis(state, settings, metrics) {
     return [
       ["Direct Labor", money(metrics.labor, settings.currency), `${state.workers.length} workers modeled`],
@@ -367,14 +407,6 @@
     setVal("clientName", state.clientName);
     setVal("location", state.location);
     setVal("bizNameOwner", settings.bizName);
-    setVal("pricingMode", settings.pricingMode);
-    setNum("hoursPerDay", settings.hoursPerDay);
-    setNum("overheadMonthly", settings.overheadMonthly);
-    setNum("stdHours", settings.stdHours);
-    setNum("salesCommissionPct", settings.salesCommissionPct);
-    setNum("supervisorBonusPct", settings.supervisorBonusPct);
-    setNum("profitPct", settings.profitPct);
-    setNum("reservePct", DEFAULTS.reservePct);
     count("projectName", "projectNameCount");
     count("clientName", "clientNameCount");
     count("location", "locationCount");
@@ -413,26 +445,6 @@
         }
       };
     });
-
-    if ($("btnSaveBusinessSettings")) {
-      $("btnSaveBusinessSettings").onclick = () => {
-        const settingsCopy = loadSettings();
-        settingsCopy.pricingMode = val("pricingMode") || DEFAULTS.pricingMode;
-        settingsCopy.hoursPerDay = Math.max(num("hoursPerDay", DEFAULTS.hoursPerDay), 0.25);
-        settingsCopy.overheadMonthly = num("overheadMonthly", 0);
-        settingsCopy.stdHours = num("stdHours", DEFAULTS.stdHours);
-        settingsCopy.salesCommissionPct = num("salesCommissionPct", DEFAULTS.salesCommissionPct);
-        settingsCopy.supervisorBonusPct = num("supervisorBonusPct", DEFAULTS.supervisorBonusPct);
-        settingsCopy.profitPct = num("profitPct", DEFAULTS.profitPct);
-        saveSettings(settingsCopy);
-        if ($("businessSettingsStatus")) {
-          $("businessSettingsStatus").style.display = "block";
-          $("businessSettingsStatus").className = "notice ok";
-          $("businessSettingsStatus").textContent = "Business settings guardados.";
-        }
-        renderOwner();
-      };
-    }
 
     if ($("btnAddWorker")) $("btnAddWorker").onclick = () => {
       state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: "installer", hours: 0, rate: "" });
@@ -558,6 +570,7 @@ ${val("salesInitials") || "MG"}`;
       setStatus("Quote delivery failed. Check Functions and Zapier env vars.", "err");
     }
   }
+
   function renderSales() {
     if (!$("salesKpis")) return;
 
@@ -817,6 +830,7 @@ ${val("salesInitials") || "MG"}`;
   function render() {
     saveSettings(loadSettings());
     renderDashboard();
+    renderBusinessSettings();
     renderOwner();
     renderSales();
     renderSupervisor();
