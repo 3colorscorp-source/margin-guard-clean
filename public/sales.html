@@ -1,18 +1,4 @@
-﻿<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Margin Guard | Vendedor</title>
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body data-requires-auth="true">
-  <div class="topbar">
-    <div class="topbar-inner">
-      <div class="brand">
-        <div class="logo" aria-hidden="true"><b>MG</b></div>
-        <div>
-          <h1>Margin Guard</h1>
+
           <p id="planStatus">Validando suscripcion...</p>
         </div>
       </div>
@@ -22,14 +8,37 @@
         <a class="btn active" href="sales.html">Vendedor</a>
         <a class="btn" href="supervisor.html">Supervisor</a>
         <a class="btn" href="sales-admin.html">Sales Admin</a>
+      <div class="topbar-actions">
+        <a class="btn" href="/dashboard">Dashboard</a>
+        <a class="btn" href="/owner">Dueno</a>
+        <a class="btn" href="/business-settings">Business Settings</a>
+        <a class="btn active" href="/sales">Vendedor</a>
+        <a class="btn" href="/supervisor">Supervisor</a>
+        <a class="btn" href="/sales-admin">Sales Admin</a>
         <button class="btn" id="btnManagePlan">Gestionar plan</button>
         <button class="btn danger" id="btnLogout">Cerrar sesion</button>
       </div>
-    </div>
-  </div>
 
   <div class="container">
     <div class="account-pill" id="accountEmail">Cuenta activa</div>
+
+    <section class="card owner-hero">
+      <div class="card-inner">
+        <div class="owner-hero-inner">
+          <div>
+            <span class="eyebrow">Sales Console</span>
+            <h2 class="hero-title">Vende con claridad sin ver los costos internos del negocio.</h2>
+            <div class="sub" style="margin:0;">Esta pantalla le dice al vendedor si el precio está sano, negociable o bloqueado, y cuánto gana aproximadamente en comisión.</div>
+          </div>
+          <div class="hero-score">
+            <div class="hero-score-label">Estado actual</div>
+            <div class="hero-score-value" id="salesHeroState">Red</div>
+            <div class="hero-score-meta" id="salesHeroMeta">Esperando precio para evaluar.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <div class="grid">
       <div class="card">
         <div class="card-inner">
@@ -40,18 +49,68 @@
               <label>Proyecto</label>
               <input id="salesProjectName" maxlength="60" />
               <div class="hint"><span id="salesProjectNameCount">0</span>/60</div>
+      <div>
+        <div class="card">
+          <div class="card-inner">
+            <div class="section-head">
+              <div>
+                <h2>Cotizacion guiada para vendedor</h2>
+                <div class="sub">No muestra costos confidenciales. Solo precio permitido, estado y comision estimada.</div>
+              </div>
+              <div class="badge amber" id="salesTraffic">Bloqueado</div>
             </div>
             <div class="field">
               <label>Cliente</label>
               <input id="salesClientName" maxlength="60" />
               <div class="hint"><span id="salesClientNameCount">0</span>/60</div>
+
+            <div class="form">
+              <div class="field">
+                <label>Proyecto</label>
+                <input id="salesProjectName" maxlength="60" placeholder="Ej: Bathroom remodel - Millbrae" />
+                <div class="hint"><span id="salesProjectNameCount">0</span>/60</div>
+              </div>
+              <div class="field">
+                <label>Cliente</label>
+                <input id="salesClientName" maxlength="60" placeholder="Ej: Angus / Homeowner" />
+                <div class="hint"><span id="salesClientNameCount">0</span>/60</div>
+              </div>
+              <div class="field">
+                <label id="salesHoursLabel">Horas estimadas</label>
+                <input id="salesHours" type="number" step="0.25" placeholder="0" />
+              </div>
+              <div class="field">
+                <label id="salesDaysLabel">Dias estimados</label>
+                <input id="salesDays" type="number" step="0.25" placeholder="0" />
+              </div>
+              <div class="field">
+                <label>Precio propuesto al cliente</label>
+                <input id="salesPrice" type="number" step="0.01" placeholder="0.00" />
+              </div>
+              <div class="field">
+                <label>Modo actual</label>
+                <div class="notice" id="salesModeHint">La empresa cotiza por hora.</div>
+              </div>
             </div>
-            <div class="field"><label>Horas estimadas</label><input id="salesHours" type="number" step="0.25" /></div>
-            <div class="field"><label>Dias estimados</label><input id="salesDays" type="number" step="0.25" /></div>
+            <div class="field"><label id="salesHoursLabel">Horas estimadas</label><input id="salesHours" type="number" step="0.25" /></div>
+            <div class="field"><label id="salesDaysLabel">Dias estimados</label><input id="salesDays" type="number" step="0.25" /></div>
             <div class="field"><label>Precio propuesto al cliente</label><input id="salesPrice" type="number" step="0.01" /></div>
+
+            <div class="sep"></div>
+
+            <div class="dashboard-note">
+              <div class="dashboard-note-title">Regla de entrada</div>
+              <div class="dashboard-note-copy" id="salesEntryHint">Ingresa horas o dias segun el modo configurado por el dueno. El sistema te dira si el precio es verde, amarillo o rojo.</div>
+            </div>
+
+            <div class="sep"></div>
+
             <div class="field">
               <label>Semaforo actual</label>
               <div class="badge red" id="salesTraffic">Bloqueado</div>
+              <label>Notas de negociacion</label>
+              <textarea id="salesNotes" rows="4" maxlength="600" placeholder="Objeciones del cliente, alcance, descuentos solicitados, cierre, etc."></textarea>
+              <div class="hint"><span id="salesNotesCount">0</span>/600</div>
             </div>
           </div>
           <div class="sep"></div>
@@ -68,6 +127,20 @@
           <div class="notice" id="approvalHint" style="margin-top:10px;">Precio rojo: requiere aprobacion obligatoria.</div>
           <div class="actions" style="justify-content:flex-start; margin-top:10px;">
             <button class="btn primary" type="button" id="btnSubmitApproval">Enviar a Sales Admin</button>
+
+            <div class="notice" id="salesRule">Precio por debajo del minimo permitido.</div>
+
+            <div style="margin-top:10px;">
+              <label class="sub" for="salesProgress" style="display:block; margin-bottom:6px;">Confianza del precio</label>
+              <progress id="salesProgress" max="100" value="0" class="sales-progress"></progress>
+            </div>
+
+            <div class="notice" id="approvalHint" style="margin-top:10px;">Precio rojo: requiere aprobacion obligatoria.</div>
+
+            <div class="inline-actions" style="margin-top:12px;">
+              <button class="btn primary" type="button" id="btnSubmitApproval">Enviar a Sales Admin</button>
+            </div>
+            <div class="notice" id="approvalStatus" style="display:none; margin-top:10px;"></div>
           </div>
           <div class="notice" id="approvalStatus" style="display:none; margin-top:10px;"></div>
         </div>
@@ -80,13 +153,46 @@
           <div class="sep"></div>
           <h2 style="margin-top:0;">Mensajes automaticos de negociacion</h2>
           <ul class="msg-list" id="negotiationList"></ul>
+      <div>
+        <div class="card owner-side-card">
+          <div class="card-inner">
+            <h2>Resultado en vivo</h2>
+            <div class="owner-kpi-shell">
+              <div class="owner-quote-hero">
+                <div class="owner-quote-kicker">Precio ofrecido</div>
+                <div class="owner-quote-price" id="salesPrimaryPrice">$0.00</div>
+                <div class="owner-quote-meta" id="salesPrimaryMeta">Ingresa un precio para evaluar la oportunidad.</div>
+                <div class="owner-quote-strip">
+                  <div class="owner-mini-card">
+                    <div class="title">Comision estimada</div>
+                    <div class="big" id="salesPrimaryCommission">0.00%</div>
+                    <div class="small" id="salesPrimaryCommissionMeta">$0.00 payout</div>
+                  </div>
+                  <div class="owner-mini-card">
+                    <div class="title">Accion</div>
+                    <div class="big" id="salesApprovalAction">Esperar</div>
+                    <div class="small" id="salesApprovalActionMeta">Aun no hay precio propuesto.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sep"></div>
+
+            <div class="kpi" id="salesKpis"></div>
+
+            <div class="sep"></div>
+
+            <h2 style="margin-top:0;">Mensajes automaticos de negociacion</h2>
+            <ul class="msg-list" id="negotiationList"></ul>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-
-  <script src="js/auth.js"></script>
-  <script src="js/app.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/app.js"></script>
 </body>
 </html>
 
+
+</html>
