@@ -509,3 +509,31 @@ small{ color:var(--muted); }
   align-items:center;
   justify-content:center;
 }
+
+.sales-kpi-grid{
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  align-items:stretch;
+}
+
+.sales-kpi-grid .kpi-box{
+  min-height:132px;
+}
+
+.sales-kpi-grid .value{
+  font-size:18px;
+}
+
+.sales-msg-grid{
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+}
+
+.sales-msg-grid li{
+  min-height:74px;
+}
+
+@media (max-width: 980px){
+  .sales-kpi-grid,
+  .sales-msg-grid{
+    grid-template-columns:1fr;
+  }
+}
