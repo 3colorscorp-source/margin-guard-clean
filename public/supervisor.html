@@ -1,10 +1,10 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Margin Guard | Supervisor</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body data-requires-auth="true">
   <div class="topbar">
@@ -16,12 +16,13 @@
           <p id="planStatus">Validando suscripcion...</p>
         </div>
       </div>
-      <div class="actions">
-        <a class="btn" href="dashboard.html">Dashboard</a>
-        <a class="btn" href="owner.html">Dueno</a>
-        <a class="btn" href="sales.html">Vendedor</a>
-        <a class="btn active" href="supervisor.html">Supervisor</a>
-        <a class="btn" href="sales-admin.html">Sales Admin</a>
+      <div class="topbar-actions">
+        <a class="btn" href="/dashboard">Dashboard</a>
+        <a class="btn" href="/owner">Dueno</a>
+        <a class="btn" href="/business-settings">Business Settings</a>
+        <a class="btn" href="/sales">Vendedor</a>
+        <a class="btn active" href="/supervisor">Supervisor</a>
+        <a class="btn" href="/sales-admin">Sales Admin</a>
         <button class="btn" id="btnManagePlan">Gestionar plan</button>
         <button class="btn danger" id="btnLogout">Cerrar sesion</button>
       </div>
@@ -30,64 +31,219 @@
 
   <div class="container">
     <div class="account-pill" id="accountEmail">Cuenta activa</div>
-    <div class="grid">
-      <div class="card">
-        <div class="card-inner">
-          <h2>Control de proyecto (supervisor)</h2>
-          <div class="sub">Solo presupuesto operativo: labor y materiales.</div>
-          <div class="form">
-            <div class="field"><label>Proyecto</label><input id="supProjectName" maxlength="60" /></div>
-            <div class="field"><label>Horas planeadas</label><input id="supPlannedHours" type="number" step="0.25" /></div>
-            <div class="field"><label>Presupuesto de labor</label><input id="supLaborBudget" type="number" step="0.01" /></div>
-            <div class="field"><label>Presupuesto de materiales</label><input id="supMaterialBudget" type="number" step="0.01" /></div>
-            <div class="field"><label>Fecha comprometida</label><input id="supDueDate" type="date" /></div>
-            <div class="field"><label>Fecha proyectada final</label><input id="supProjectedDate" type="date" /></div>
-          </div>
-          <div class="sep"></div>
-          <div class="badge green" id="supStatus">Controlado</div>
-        </div>
-      </div>
 
-      <div class="card">
-        <div class="card-inner">
-          <h2>KPI supervisor</h2>
-          <div class="kpi" id="supervisorKpis"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:14px;">
+    <section class="card owner-hero">
       <div class="card-inner">
-        <h2>Registro diario / semanal de gastos</h2>
-        <div class="form">
-          <div class="field"><label>Fecha</label><input id="supEntryDate" type="date" /></div>
-          <div class="field"><label>Labor ejecutada</label><input id="supEntryLabor" type="number" step="0.01" /></div>
-          <div class="field"><label>Material comprado</label><input id="supEntryMaterial" type="number" step="0.01" /></div>
-          <div class="field"><label>Nota</label><input id="supEntryNote" maxlength="100" placeholder="Semana 3: ajuste de tuberia" /></div>
+        <div class="owner-hero-inner">
+          <div>
+            <span class="eyebrow">Project Control</span>
+            <h2 class="hero-title">Supervisa presupuesto, fechas y gastos reales del proyecto.</h2>
+            <div class="sub" style="margin:0;">Esta pantalla ayuda al supervisor a saber si la obra sigue en control, si ya se está desviando o si necesita corregir hoy.</div>
+          </div>
+          <div class="hero-score">
+            <div class="hero-score-label">Estado actual</div>
+            <div class="hero-score-value" id="supHeroState">Base</div>
+            <div class="hero-score-meta" id="supHeroMeta">Captura presupuesto, fechas y avances para activar el tablero.</div>
+          </div>
         </div>
-        <div class="actions" style="justify-content:flex-start; margin-top:10px;">
-          <button class="btn primary" id="btnAddSupEntry">Agregar registro</button>
+      </div>
+    </section>
+
+    <div class="grid">
+      <div>
+        <div class="card">
+          <div class="card-inner">
+            <div class="section-head">
+              <div>
+                <h2>Planeacion del proyecto</h2>
+                <div class="sub">Define presupuesto, horas y fechas comprometidas.</div>
+              </div>
+              <div class="badge amber" id="supStatus">Esperando</div>
+            </div>
+
+            <div class="form">
+              <div class="field">
+                <label>Proyecto</label>
+                <input id="supProjectName" maxlength="60" placeholder="Ej: Bathroom remodel - Millbrae" />
+              </div>
+              <div class="field">
+                <label>Horas planeadas</label>
+                <input id="supPlannedHours" type="number" step="0.25" min="0" placeholder="0" />
+              </div>
+              <div class="field">
+                <label>Presupuesto de labor</label>
+                <input id="supLaborBudget" type="number" step="0.01" min="0" placeholder="0.00" />
+              </div>
+              <div class="field">
+                <label>Presupuesto de materiales</label>
+                <input id="supMaterialBudget" type="number" step="0.01" min="0" placeholder="0.00" />
+              </div>
+              <div class="field">
+                <label>Fecha comprometida</label>
+                <input id="supDueDate" type="date" />
+              </div>
+              <div class="field">
+                <label>Fecha proyectada final</label>
+                <input id="supProjectedDate" type="date" />
+              </div>
+            </div>
+
+            <div class="sep"></div>
+
+            <div class="dashboard-note">
+              <div class="dashboard-note-title">Lectura operativa</div>
+              <div class="dashboard-note-copy" id="supExecutiveNote">Aqui veras rapidamente si el proyecto sigue en presupuesto, si ya consume gastos extra o si se esta atrasando.</div>
+            </div>
+          </div>
         </div>
-        <div style="margin-top:12px;">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Nota</th>
-                <th>Labor</th>
-                <th>Material</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="supEntriesBody"></tbody>
-          </table>
+
+        <div class="card" style="margin-top:14px;">
+          <div class="card-inner">
+            <div class="section-head">
+              <div>
+                <h2>Registro operativo</h2>
+                <div class="sub">Captura labor y material real del dia o de la semana.</div>
+              </div>
+            </div>
+
+            <div class="form">
+              <div class="field">
+                <label>Fecha</label>
+                <input id="supEntryDate" type="date" />
+              </div>
+              <div class="field">
+                <label>Labor ejecutada</label>
+                <input id="supEntryLabor" type="number" step="0.01" min="0" placeholder="0.00" />
+              </div>
+              <div class="field">
+                <label>Material comprado</label>
+                <input id="supEntryMaterial" type="number" step="0.01" min="0" placeholder="0.00" />
+              </div>
+              <div class="field">
+                <label>Nota</label>
+                <input id="supEntryNote" maxlength="100" placeholder="Semana 3: ajuste de tuberia" />
+              </div>
+            </div>
+
+            <div class="inline-actions" style="margin-top:10px;">
+              <button class="btn primary" id="btnAddSupEntry">Agregar avance</button>
+            </div>
+
+            <div style="margin-top:12px;">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Nota</th>
+                    <th>Labor</th>
+                    <th>Material</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="supEntriesBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:14px;">
+          <div class="card-inner">
+            <div class="section-head">
+              <div>
+                <h2>Gastos extra / imprevistos</h2>
+                <div class="sub">Registra compras o costos no contemplados originalmente en el presupuesto.</div>
+              </div>
+            </div>
+
+            <div class="form">
+              <div class="field">
+                <label>Fecha</label>
+                <input id="supExtraDate" type="date" />
+              </div>
+              <div class="field">
+                <label>Categoria</label>
+                <select id="supExtraCategory">
+                  <option value="consumibles">Consumibles</option>
+                  <option value="herramienta-menor">Herramienta menor</option>
+                  <option value="gasolina">Gasolina</option>
+                  <option value="compra-no-presupuestada">Compra no presupuestada</option>
+                  <option value="renta">Renta</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Concepto</label>
+                <input id="supExtraItem" maxlength="80" placeholder="Ej: tornillos, cinta, escoba, gasolina" />
+              </div>
+              <div class="field">
+                <label>Monto</label>
+                <input id="supExtraAmount" type="number" step="0.01" min="0" placeholder="0.00" />
+              </div>
+              <div class="field" style="grid-column:1 / -1;">
+                <label>Nota</label>
+                <input id="supExtraNote" maxlength="120" placeholder="Ej: compra urgente no incluida en presupuesto inicial" />
+              </div>
+            </div>
+
+            <div class="inline-actions" style="margin-top:10px;">
+              <button class="btn primary" id="btnAddSupExtra">Agregar gasto extra</button>
+            </div>
+
+            <div style="margin-top:12px;">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Categoria</th>
+                    <th>Concepto</th>
+                    <th>Monto</th>
+                    <th>Nota</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="supExtrasBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card owner-side-card">
+          <div class="card-inner">
+            <h2>Tablero del supervisor</h2>
+            <div class="sub">Lectura rapida de presupuesto, fechas, gastos extra y riesgo actual.</div>
+
+            <div class="owner-kpi-shell">
+              <div class="owner-quote-hero">
+                <div class="owner-quote-kicker">Resumen ejecutivo</div>
+                <div class="owner-quote-price" id="supPrimaryBalance">$0.00</div>
+                <div class="owner-quote-meta" id="supPrimaryMeta">Captura datos del proyecto para activar el resumen.</div>
+                <div class="owner-quote-strip">
+                  <div class="owner-mini-card">
+                    <div class="title">Dias de diferencia</div>
+                    <div class="big" id="supPrimaryDays">0</div>
+                    <div class="small" id="supPrimaryDaysMeta">Sin fechas comparables todavia</div>
+                  </div>
+                  <div class="owner-mini-card">
+                    <div class="title">Bonus estimado</div>
+                    <div class="big" id="supPrimaryBonus">0.00%</div>
+                    <div class="small" id="supPrimaryBonusMeta">Esperando presupuesto real</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sep"></div>
+
+            <div class="kpi" id="supervisorKpis"></div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
-  <script src="js/auth.js"></script>
-  <script src="js/app.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/app.js"></script>
 </body>
 </html>
-
