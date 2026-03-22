@@ -366,6 +366,9 @@ small{ color:var(--muted); }
   font-size:42px;
   font-weight:900;
   line-height:1;
+  color:#4ade80;
+  text-shadow: 0 0 18px rgba(34,197,94,.28), 0 0 36px rgba(34,197,94,.16);
+  letter-spacing:-.02em;
 }
 .owner-quote-meta{
   margin-top:8px;
@@ -434,6 +437,47 @@ small{ color:var(--muted); }
 .sales-progress::-webkit-progress-value{
   background:linear-gradient(90deg, #ef4444 0%, #f59e0b 55%, #22c55e 100%);
   border-radius:999px;
+}
+.sales-stage-range{
+  width:100%;
+  appearance:none;
+  height:12px;
+  border-radius:999px;
+  background:linear-gradient(90deg, rgba(239,68,68,.95) 0%, rgba(245,158,11,.95) 50%, rgba(34,197,94,.95) 100%);
+  outline:none;
+}
+.sales-stage-range::-webkit-slider-thumb{
+  appearance:none;
+  width:22px;
+  height:22px;
+  border-radius:999px;
+  border:2px solid rgba(255,255,255,.9);
+  background:#0b1220;
+  box-shadow:0 0 0 4px rgba(255,255,255,.08);
+  cursor:pointer;
+}
+.sales-stage-range::-moz-range-thumb{
+  width:22px;
+  height:22px;
+  border-radius:999px;
+  border:2px solid rgba(255,255,255,.9);
+  background:#0b1220;
+  box-shadow:0 0 0 4px rgba(255,255,255,.08);
+  cursor:pointer;
+}
+.sales-stage-labels{
+  margin-top:8px;
+  display:grid;
+  grid-template-columns:repeat(3, 1fr);
+  gap:8px;
+  font-size:12px;
+  color:var(--muted);
+}
+.sales-stage-labels span:nth-child(2){
+  text-align:center;
+}
+.sales-stage-labels span:nth-child(3){
+  text-align:right;
 }
 .msg-list{
   list-style:none;
