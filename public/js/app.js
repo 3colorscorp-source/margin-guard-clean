@@ -1,4 +1,4 @@
- (() => {
+(() => {
   const LS_SETTINGS = "mg_settings_v2";
   const LS_OWNER = "mg_owner_v2";
   const LS_DASHBOARD = "mg_dashboard_v2";
@@ -49,12 +49,11 @@
   const DEFAULT_SALES = {
     projectName: "",
     clientName: "",
-    estimatedHours: 0,
-    estimatedDays: 0,
-    installers: 1,
-    helpers: 0,
     offeredPrice: 0,
-    notes: ""
+    notes: "",
+    workers: [
+      { name: "Worker 1", type: "installer", days: 5, rate: "" }
+    ]
   };
 
   const DEFAULT_SUPERVISOR = {
@@ -123,8 +122,13 @@
     return "red";
   }
 
-  function loadSettings() { return { ...DEFAULTS, ...readStore(LS_SETTINGS, {}) }; }
-  function saveSettings(settings) { writeStore(LS_SETTINGS, settings); }
+  function loadSettings() {
+    return { ...DEFAULTS, ...readStore(LS_SETTINGS, {}) };
+  }
+
+  function saveSettings(settings) {
+    writeStore(LS_SETTINGS, settings);
+  }
 
   function loadOwner() {
     const saved = readStore(LS_OWNER, {});
@@ -140,8 +144,13 @@
     writeStore(LS_OWNER, { ...state, reservePct: DEFAULTS.reservePct, metrics });
   }
 
-  function loadDashboard() { return { ...DEFAULT_DASHBOARD, ...readStore(LS_DASHBOARD, {}) }; }
-  function saveDashboard(state) { writeStore(LS_DASHBOARD, state); }
+  function loadDashboard() {
+    return { ...DEFAULT_DASHBOARD, ...readStore(LS_DASHBOARD, {}) };
+  }
+
+  function saveDashboard(state) {
+    writeStore(LS_DASHBOARD, state);
+  }
 
   function loadSales() {
     const saved = readStore(LS_SALES, {});
@@ -151,13 +160,14 @@
       ...saved,
       projectName: saved.projectName || owner.projectName || "",
       clientName: saved.clientName || owner.clientName || "",
-      installers: Number.isFinite(Number(saved.installers)) ? Number(saved.installers) : DEFAULT_SALES.installers,
-      helpers: Number.isFinite(Number(saved.helpers)) ? Number(saved.helpers) : DEFAULT_SALES.helpers,
+      workers: Array.isArray(saved.workers) && saved.workers.length ? saved.workers : DEFAULT_SALES.workers,
       offeredPrice: saved.offeredPrice ?? 0
     };
   }
 
-  function saveSales(state) { writeStore(LS_SALES, state); }
+  function saveSales(state) {
+    writeStore(LS_SALES, state);
+  }
 
   function loadSupervisor() {
     const saved = readStore(LS_SUPERVISOR, {});
@@ -174,14 +184,18 @@
     };
   }
 
-  function saveSupervisor(state) { writeStore(LS_SUPERVISOR, state); }
+  function saveSupervisor(state) {
+    writeStore(LS_SUPERVISOR, state);
+  }
 
   function loadApprovals() {
     const saved = readStore(LS_APPROVALS, []);
     return Array.isArray(saved) ? saved : [];
   }
 
-  function saveApprovals(rows) { writeStore(LS_APPROVALS, rows); }
+  function saveApprovals(rows) {
+    writeStore(LS_APPROVALS, rows);
+  }
 
   function calcOwner(state, settings) {
     const laborByWorker = state.workers.map((worker) => {
@@ -269,6 +283,7 @@
           ? "#86efac"
           : (healthTone === "amber" ? "#fcd34d" : "#fca5a5");
       }
+
       if ($("overallHealthMeta")) {
         $("overallHealthMeta").textContent = healthTone === "green"
           ? "Cash discipline is protecting the business."
@@ -276,10 +291,12 @@
             ? "The business is stable but under pressure."
             : "High risk. Real cash is not protecting operations.");
       }
+
       if ($("syncBadge")) {
         $("syncBadge").className = `badge ${healthTone}`;
         $("syncBadge").textContent = "Manual sync";
       }
+
       if ($("executiveStrip")) {
         $("executiveStrip").innerHTML = [
           ["Cash On Hand", money(totalCash, settings.currency), "Across 4 protected accounts"],
@@ -323,6 +340,7 @@
         alert("Owner finance monitor saved.");
       };
     }
+
     if ($("btnResetDashboard")) {
       $("btnResetDashboard").onclick = () => {
         saveDashboard({ ...DEFAULT_DASHBOARD });
@@ -732,12 +750,7 @@ ${val("salesInitials") || "MG"}`;
     }
   }
 
-  function renderSales() {
-    if (!$("salesKpis")) return;
-
-    const settings = loadSettings();
-    const state = loadSales();
-    const stageRange = $("salesStageRange");
+  function calcSales(state, settings) {
     const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
     const taxPct = (
       Number(settings.wcPct || 0) +
@@ -749,52 +762,141 @@ ${val("salesInitials") || "MG"}`;
       ? Number(settings.overheadMonthly || 0) / Number(settings.stdHours || 0)
       : 0;
 
+    const laborByWorker = (Array.isArray(state.workers) ? state.workers : []).map((worker) => {
+      const days = Math.max(0, Number(worker.days || 0));
+      const baseRate = worker.type === "helper"
+        ? Number(settings.baseHelper || 0)
+        : Number(settings.baseInstaller || 0);
+      const rate = worker.rate === "" || worker.rate == null ? baseRate : Number(worker.rate || 0);
+      const hours = days * hoursPerDay;
+      const cost = hours * rate;
+      return { days, rate, hours, cost };
+    });
+
+    const labor = laborByWorker.reduce((sum, row) => sum + row.cost, 0);
+    const totalHours = laborByWorker.reduce((sum, row) => sum + row.hours, 0);
+    const totalWorkerDays = laborByWorker.reduce((sum, row) => sum + row.days, 0);
+    const taxes = labor * taxPct;
+    const overhead = totalHours * overheadPerHour;
+    const beforeProfit = labor + taxes + overhead;
+    const reserve = beforeProfit * (DEFAULTS.reservePct / 100);
+    const recommendedProfit = beforeProfit * (Number(settings.profitPct || 0) / 100);
+    const minimumProfit = beforeProfit * 0.15;
+    const recommended = beforeProfit + recommendedProfit + reserve;
+    const minimum = beforeProfit + minimumProfit + reserve;
+    const negotiation = recommended > minimum ? minimum + ((recommended - minimum) * 0.5) : minimum;
+
+    return {
+      hoursPerDay,
+      laborByWorker,
+      labor,
+      totalHours,
+      totalWorkerDays,
+      taxes,
+      overhead,
+      beforeProfit,
+      reserve,
+      recommendedProfit,
+      minimumProfit,
+      recommended,
+      minimum,
+      negotiation
+    };
+  }
+
+  function renderSalesWorkers(state, settings, metrics) {
+    const body = $("salesWorkersBody");
+    if (!body) return;
+
+    body.innerHTML = state.workers.map((worker, index) => `
+      <tr data-index="${index}">
+        <td><input data-key="name" maxlength="40" value="${escapeHtml(worker.name || "")}" /></td>
+        <td>
+          <select data-key="type">
+            <option value="installer" ${worker.type === "installer" ? "selected" : ""}>Installer</option>
+            <option value="helper" ${worker.type === "helper" ? "selected" : ""}>Helper</option>
+          </select>
+        </td>
+        <td><input data-key="days" type="number" min="0" step="0.25" value="${Number(worker.days || 0)}" /></td>
+        <td><input data-key="rate" type="number" min="0" step="0.01" value="${worker.rate === "" || worker.rate == null ? (worker.type === "helper" ? Number(settings.baseHelper || 0) : Number(settings.baseInstaller || 0)) : Number(worker.rate || 0)}" /></td>
+        <td data-cell="labor">${money(metrics.laborByWorker[index]?.cost || 0, settings.currency)}</td>
+        <td>
+          <div class="row-actions">
+            <button class="btn ghost" data-action="copy">Copy</button>
+            <button class="btn danger" data-action="delete">Delete</button>
+          </div>
+        </td>
+      </tr>
+    `).join("");
+
+    body.querySelectorAll("input,select").forEach((el) => {
+      const commit = () => {
+        const tr = el.closest("tr");
+        const index = Number(tr?.dataset.index ?? -1);
+        const key = el.dataset.key;
+        if (index < 0 || !key) return;
+
+        if (key === "days" || key === "rate") {
+          state.workers[index][key] = el.value === "" ? "" : Number(el.value || 0);
+        } else {
+          state.workers[index][key] = el.value;
+        }
+
+        if (key === "type" && (state.workers[index].rate === "" || state.workers[index].rate == null)) {
+          state.workers[index].rate = "";
+        }
+
+        saveSales(state);
+        renderSales();
+      };
+
+      el.addEventListener("change", commit);
+      if (el.tagName === "INPUT") el.addEventListener("blur", commit);
+    });
+
+    body.querySelectorAll("button[data-action]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const tr = button.closest("tr");
+        const index = Number(tr?.dataset.index ?? -1);
+        if (index < 0) return;
+
+        if (button.dataset.action === "delete") state.workers.splice(index, 1);
+        if (button.dataset.action === "copy") state.workers.splice(index + 1, 0, { ...state.workers[index] });
+        if (!state.workers.length) state.workers.push({ name: "Worker 1", type: "installer", days: 0, rate: "" });
+
+        saveSales(state);
+        renderSales();
+      });
+    });
+  }
+
+  function renderSales() {
+    if (!$("salesKpis")) return;
+
+    const settings = loadSettings();
+    const state = loadSales();
+    const stageRange = $("salesStageRange");
+    const metrics = calcSales(state, settings);
+
     setVal("salesProjectName", state.projectName);
     setVal("salesClientName", state.clientName);
-    setNum("salesHours", state.estimatedHours);
-    setNum("salesDays", state.estimatedDays);
-    setNum("salesInstallers", state.installers);
-    setNum("salesHelpers", state.helpers);
     setNum("salesPrice", state.offeredPrice);
     setVal("salesNotes", state.notes);
     count("salesProjectName", "salesProjectNameCount");
     count("salesClientName", "salesClientNameCount");
     count("salesNotes", "salesNotesCount");
 
+    renderSalesWorkers(state, settings, metrics);
+
     const refresh = () => {
       state.projectName = val("salesProjectName");
       state.clientName = val("salesClientName");
-      state.installers = Math.max(0, Math.floor(num("salesInstallers", DEFAULT_SALES.installers)));
-      state.helpers = Math.max(0, Math.floor(num("salesHelpers", DEFAULT_SALES.helpers)));
-      const totalWorkers = state.installers + state.helpers;
-
-      if (settings.pricingMode === "day") {
-        state.estimatedDays = num("salesDays", 0);
-        state.estimatedHours = state.estimatedDays * hoursPerDay * totalWorkers;
-      } else {
-        state.estimatedHours = num("salesHours", 0);
-        state.estimatedDays = totalWorkers > 0 ? state.estimatedHours / (hoursPerDay * totalWorkers) : 0;
-      }
-
-      const installerHours = totalWorkers > 0 ? (state.estimatedHours * state.installers) / totalWorkers : 0;
-      const helperHours = totalWorkers > 0 ? (state.estimatedHours * state.helpers) / totalWorkers : 0;
-      const labor = (installerHours * Number(settings.baseInstaller || 0)) + (helperHours * Number(settings.baseHelper || 0));
-      const taxes = labor * taxPct;
-      const overhead = state.estimatedHours * overheadPerHour;
-      const beforeProfit = labor + taxes + overhead;
-      const reserve = beforeProfit * (DEFAULTS.reservePct / 100);
-      const recommendedProfit = beforeProfit * (Number(settings.profitPct || 0) / 100);
-      const minimumProfit = beforeProfit * 0.15;
-      const recommended = beforeProfit + recommendedProfit + reserve;
-      const minimum = beforeProfit + minimumProfit + reserve;
-      const negotiation = recommended > minimum ? minimum + ((recommended - minimum) * 0.5) : minimum;
+      const nextMetrics = calcSales(state, settings);
+      const recommended = nextMetrics.recommended;
+      const minimum = nextMetrics.minimum;
+      const negotiation = nextMetrics.negotiation;
       const priceInput = $("salesPrice");
       const priceTouched = priceInput?.dataset.touched === "true";
-
-      if ($("salesHours")) setNum("salesHours", state.estimatedHours);
-      if ($("salesDays")) setNum("salesDays", state.estimatedDays);
-      if ($("salesInstallers")) setNum("salesInstallers", state.installers);
-      if ($("salesHelpers")) setNum("salesHelpers", state.helpers);
 
       if (priceInput && (!priceTouched || Number(priceInput.value || 0) === 0)) {
         const stageValue = Number(stageRange?.value || 2);
@@ -817,24 +919,24 @@ ${val("salesInitials") || "MG"}`;
       let action = "Pedir aprobacion";
       let actionMeta = "Este precio no se debe vender sin autorizacion.";
 
-      if (totalWorkers <= 0) {
-        message = "Agrega al menos un trabajador a la cuadrilla para calcular la cotizacion.";
+      if (!state.workers.length) {
+        message = "Agrega al menos un trabajador para calcular la cotizacion.";
         heroState = "Base";
-        heroMeta = "Define installers o helpers para convertir dias en horas-hombre.";
-        action = "Definir cuadrilla";
-        actionMeta = "Sin cuadrilla no se puede calcular el precio.";
+        heroMeta = "Define mano de obra por trabajador, con dias individuales.";
+        action = "Agregar trabajador";
+        actionMeta = "Sin mano de obra no se puede calcular el precio.";
         tone = "amber";
         confidence = 0;
       } else if (recommended <= 0) {
-        message = state.estimatedHours > 0
+        message = nextMetrics.totalHours > 0
           ? "Todavia no hay suficiente informacion para calcular el precio recomendado."
-          : "Ingresa horas o dias para calcular el objetivo recomendado.";
+          : "Ingresa dias por trabajador para calcular el objetivo recomendado.";
         heroState = "Base";
-        heroMeta = state.estimatedHours > 0
-          ? "Revisa la cuadrilla y las unidades del proyecto."
-          : "Esperando unidades para calcular.";
+        heroMeta = nextMetrics.totalHours > 0
+          ? "Revisa los dias o costos base de los trabajadores."
+          : "Esperando mano de obra para calcular.";
         action = "Completar datos";
-        actionMeta = "Primero captura horas o dias.";
+        actionMeta = "Primero captura dias por trabajador.";
         tone = "amber";
         confidence = 0;
       } else if (offered <= 0) {
@@ -885,9 +987,9 @@ ${val("salesInitials") || "MG"}`;
       if ($("salesHeroMeta")) $("salesHeroMeta").textContent = heroMeta;
       if ($("salesPrimaryPrice")) $("salesPrimaryPrice").textContent = money(recommended, settings.currency);
       if ($("salesPrimaryMeta")) {
-        $("salesPrimaryMeta").textContent = totalWorkers > 0 && state.estimatedHours > 0
-          ? `${state.estimatedDays.toFixed(2)} dias · ${state.estimatedHours.toFixed(2)} horas-hombre · ${state.installers} installers · ${state.helpers} helpers`
-          : "Ingresa crew y unidades para calcular el recomendado.";
+        $("salesPrimaryMeta").textContent = state.workers.length && nextMetrics.totalHours > 0
+          ? `${nextMetrics.totalWorkerDays.toFixed(2)} worker-days · ${nextMetrics.totalHours.toFixed(2)} horas-hombre · ${state.workers.length} trabajadores`
+          : "Ingresa mano de obra para calcular el recomendado.";
       }
       if ($("salesPrimaryCommission")) $("salesPrimaryCommission").textContent = `${commissionPct.toFixed(2)}%`;
       if ($("salesPrimaryCommissionMeta")) $("salesPrimaryCommissionMeta").textContent = `${money(offered * (commissionPct / 100), settings.currency)} estimado`;
@@ -897,15 +999,16 @@ ${val("salesInitials") || "MG"}`;
       if ($("salesStageNegotiation")) $("salesStageNegotiation").textContent = `Negociacion ${money(negotiation, settings.currency)}`;
       if ($("salesStageRecommended")) $("salesStageRecommended").textContent = `Recomendado ${money(recommended, settings.currency)}`;
       if ($("salesCrewHint")) {
-        $("salesCrewHint").textContent = totalWorkers > 0
-          ? `${state.installers} installers + ${state.helpers} helpers = ${totalWorkers} trabajadores · ${state.estimatedHours.toFixed(2)} horas-hombre`
-          : "Define installers y helpers para calcular horas-hombre y precio recomendado.";
+        $("salesCrewHint").textContent = state.workers.length
+          ? `${state.workers.length} trabajadores · ${nextMetrics.totalWorkerDays.toFixed(2)} worker-days · ${nextMetrics.totalHours.toFixed(2)} horas-hombre`
+          : "Define mano de obra por trabajador para calcular horas-hombre y precio recomendado.";
       }
 
       const commissionAmount = offered * (commissionPct / 100);
       $("salesKpis").innerHTML = [
-        ["Cuadrilla", `${state.installers} installers / ${state.helpers} helpers`, "Composicion de trabajo para este proyecto"],
-        ["Horas-hombre", state.estimatedHours.toFixed(2), "Carga total de mano de obra estimada"],
+        ["Trabajadores", `${state.workers.length}`, "Mano de obra modelada para este proyecto"],
+        ["Worker-days", nextMetrics.totalWorkerDays.toFixed(2), "Suma de dias por trabajador"],
+        ["Horas-hombre", nextMetrics.totalHours.toFixed(2), "Carga total de mano de obra estimada"],
         ["Piso minimo", money(minimum, settings.currency), "No vender por debajo de este numero"],
         ["Precio negociacion", money(negotiation, settings.currency), "Punto medio para negociar sin caer al piso"],
         ["Objetivo recomendado", money(recommended, settings.currency), "Numero ideal para vender con margen sano"],
@@ -942,22 +1045,14 @@ ${val("salesInitials") || "MG"}`;
       }
     };
 
-    if ($("salesHoursLabel")) $("salesHoursLabel").textContent = settings.pricingMode === "day" ? "Horas-hombre calculadas automaticamente" : "Horas-hombre estimadas";
-    if ($("salesDaysLabel")) $("salesDaysLabel").textContent = settings.pricingMode === "day" ? "Dias estimados" : "Dias calculados automaticamente";
-    if ($("salesHours")) $("salesHours").disabled = settings.pricingMode === "day";
-    if ($("salesDays")) $("salesDays").disabled = settings.pricingMode !== "day";
     if ($("salesModeHint")) {
-      $("salesModeHint").textContent = settings.pricingMode === "day"
-        ? `La empresa cotiza por crew-dia. Cada trabajador aporta ${hoursPerDay.toFixed(2)} horas por dia.`
-        : "La empresa cotiza por horas-hombre. Los dias se calculan automaticamente segun la cuadrilla.";
+      $("salesModeHint").textContent = `Cada trabajador usa ${metrics.hoursPerDay.toFixed(2)} horas por dia. Si el costo base queda vacio, usa Business Settings segun el tipo.`;
     }
     if ($("salesEntryHint")) {
-      $("salesEntryHint").textContent = settings.pricingMode === "day"
-        ? "Ingresa dias, installers y helpers. El sistema calcula horas-hombre, recomendado, negociacion y minimo."
-        : "Ingresa horas-hombre totales y cuadrilla. El sistema calcula los dias equivalentes y el precio sugerido.";
+      $("salesEntryHint").textContent = "Captura los dias de cada trabajador por individual. El sistema calcula horas-hombre, recomendado, negociacion y minimo.";
     }
 
-    ["salesProjectName", "salesClientName", "salesHours", "salesDays", "salesInstallers", "salesHelpers", "salesPrice", "salesNotes"].forEach((id) => {
+    ["salesProjectName", "salesClientName", "salesPrice", "salesNotes"].forEach((id) => {
       const el = $(id);
       if (el) {
         el.oninput = () => {
@@ -972,24 +1067,10 @@ ${val("salesInitials") || "MG"}`;
 
     if (stageRange) {
       stageRange.oninput = () => {
-        const installers = Math.max(0, Math.floor(num("salesInstallers", DEFAULT_SALES.installers)));
-        const helpers = Math.max(0, Math.floor(num("salesHelpers", DEFAULT_SALES.helpers)));
-        const totalWorkers = installers + helpers;
-        const estimatedDays = settings.pricingMode === "day"
-          ? num("salesDays", 0)
-          : (totalWorkers > 0 ? num("salesHours", 0) / (hoursPerDay * totalWorkers) : 0);
-        const estimatedHours = settings.pricingMode === "day"
-          ? estimatedDays * hoursPerDay * totalWorkers
-          : num("salesHours", 0);
-        const installerHours = totalWorkers > 0 ? (estimatedHours * installers) / totalWorkers : 0;
-        const helperHours = totalWorkers > 0 ? (estimatedHours * helpers) / totalWorkers : 0;
-        const labor = (installerHours * Number(settings.baseInstaller || 0)) + (helperHours * Number(settings.baseHelper || 0));
-        const taxes = labor * taxPct;
-        const overhead = estimatedHours * overheadPerHour;
-        const beforeProfit = labor + taxes + overhead;
-        const minimum = beforeProfit + (beforeProfit * 0.15) + (beforeProfit * (DEFAULTS.reservePct / 100));
-        const recommended = beforeProfit + (beforeProfit * (Number(settings.profitPct || 0) / 100)) + (beforeProfit * (DEFAULTS.reservePct / 100));
-        const negotiation = recommended > minimum ? minimum + ((recommended - minimum) * 0.5) : minimum;
+        const nextMetrics = calcSales(state, settings);
+        const minimum = nextMetrics.minimum;
+        const recommended = nextMetrics.recommended;
+        const negotiation = nextMetrics.negotiation;
         const stageValue = Number(stageRange.value || 2);
         const stagePrice = stageValue === 2 ? recommended : (stageValue === 1 ? negotiation : minimum);
 
@@ -1004,15 +1085,7 @@ ${val("salesInitials") || "MG"}`;
 
     if ($("btnSubmitApproval")) {
       $("btnSubmitApproval").onclick = () => {
-        const totalWorkers = state.installers + state.helpers;
-        const installerHours = totalWorkers > 0 ? (state.estimatedHours * state.installers) / totalWorkers : 0;
-        const helperHours = totalWorkers > 0 ? (state.estimatedHours * state.helpers) / totalWorkers : 0;
-        const labor = (installerHours * Number(settings.baseInstaller || 0)) + (helperHours * Number(settings.baseHelper || 0));
-        const taxes = labor * taxPct;
-        const overhead = state.estimatedHours * overheadPerHour;
-        const beforeProfit = labor + taxes + overhead;
-        const minimum = beforeProfit + (beforeProfit * 0.15) + (beforeProfit * (DEFAULTS.reservePct / 100));
-        const recommended = beforeProfit + (beforeProfit * (Number(settings.profitPct || 0) / 100)) + (beforeProfit * (DEFAULTS.reservePct / 100));
+        const nextMetrics = calcSales(state, settings);
         const rows = loadApprovals();
 
         rows.unshift({
@@ -1021,8 +1094,8 @@ ${val("salesInitials") || "MG"}`;
           projectName: state.projectName || "Project",
           clientName: state.clientName || "",
           offeredPrice: state.offeredPrice,
-          recommended,
-          minimum,
+          recommended: nextMetrics.recommended,
+          minimum: nextMetrics.minimum,
           note: state.notes || "",
           status: "pending"
         });
@@ -1034,6 +1107,29 @@ ${val("salesInitials") || "MG"}`;
           $("approvalStatus").className = "notice ok";
           $("approvalStatus").textContent = "Solicitud enviada a Sales Admin.";
         }
+      };
+    }
+
+    if ($("btnAddSalesWorker")) {
+      $("btnAddSalesWorker").onclick = () => {
+        state.workers.push({
+          name: `Worker ${state.workers.length + 1}`,
+          type: "installer",
+          days: 0,
+          rate: ""
+        });
+        saveSales(state);
+        renderSales();
+      };
+    }
+
+    if ($("btnClearSalesWorkers")) {
+      $("btnClearSalesWorkers").onclick = () => {
+        if (!confirm("Limpiar mano de obra de vendedor?")) return;
+        state.workers = [{ name: "Worker 1", type: "installer", days: 0, rate: "" }];
+        if ($("salesPrice")) $("salesPrice").dataset.touched = "false";
+        saveSales(state);
+        renderSales();
       };
     }
 
