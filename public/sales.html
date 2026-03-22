@@ -43,7 +43,7 @@
           <div class="hero-score">
             <div class="hero-score-label">Estado actual</div>
             <div class="hero-score-value" id="salesHeroState">Base</div>
-            <div class="hero-score-meta" id="salesHeroMeta">Ingresa dias, horas o cuadrilla para calcular.</div>
+            <div class="hero-score-meta" id="salesHeroMeta">Define la mano de obra para calcular el precio.</div>
           </div>
         </div>
       </div>
@@ -73,43 +73,55 @@
                 <div class="hint"><span id="salesClientNameCount">0</span>/60</div>
               </div>
               <div class="field">
-                <label id="salesHoursLabel">Horas-hombre estimadas</label>
-                <input id="salesHours" type="number" step="0.25" min="0" placeholder="0" />
-              </div>
-              <div class="field">
-                <label id="salesDaysLabel">Dias estimados</label>
-                <input id="salesDays" type="number" step="0.25" min="0" placeholder="0" />
-              </div>
-              <div class="field">
-                <label>Installers</label>
-                <input id="salesInstallers" type="number" step="1" min="0" placeholder="1" />
-              </div>
-              <div class="field">
-                <label>Helpers</label>
-                <input id="salesHelpers" type="number" step="1" min="0" placeholder="0" />
-              </div>
-              <div class="field">
                 <label>Precio propuesto al cliente</label>
                 <input id="salesPrice" type="number" step="0.01" min="0" placeholder="0.00" />
               </div>
               <div class="field">
                 <label>Modo actual</label>
-                <div class="notice" id="salesModeHint">La empresa cotiza por crew-dia.</div>
+                <div class="notice" id="salesModeHint">Cada trabajador usa 8.00 horas por dia. Si el costo base queda vacio, usa Business Settings segun el tipo.</div>
               </div>
             </div>
 
             <div class="sep"></div>
 
             <div class="dashboard-note">
-              <div class="dashboard-note-title">Cuadrilla calculada</div>
-              <div class="dashboard-note-copy" id="salesCrewHint">Define dias, installers y helpers para calcular horas-hombre y precio recomendado.</div>
+              <div class="dashboard-note-title">Mano de obra calculada</div>
+              <div class="dashboard-note-copy" id="salesCrewHint">Define los dias de cada trabajador para calcular horas-hombre y precio recomendado.</div>
             </div>
 
             <div class="sep"></div>
 
+            <div class="section-head">
+              <div>
+                <h2>Mano de obra</h2>
+                <div class="sub">Si costo/hora esta vacio, usa el costo base definido en Business Settings segun el tipo.</div>
+              </div>
+            </div>
+
+            <div class="inline-actions" style="margin-bottom:12px;">
+              <button class="btn primary" type="button" id="btnAddSalesWorker">Agregar trabajador</button>
+              <button class="btn danger" type="button" id="btnClearSalesWorkers">Limpiar</button>
+            </div>
+
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Trabajador</th>
+                  <th>Tipo</th>
+                  <th>Dias</th>
+                  <th>Costo base</th>
+                  <th>Costo Labor</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="salesWorkersBody"></tbody>
+            </table>
+
+            <div class="sep"></div>
+
             <div class="dashboard-note">
-              <div class="dashboard-note-title">Regla de entrada</div>
-              <div class="dashboard-note-copy" id="salesEntryHint">Ingresa dias, installers y helpers. El sistema calcula horas-hombre, recomendado, negociacion y minimo.</div>
+              <div class="dashboard-note-title">Control de precio</div>
+              <div class="dashboard-note-copy" id="salesEntryHint">Captura los dias por trabajador. El sistema calcula recomendado, negociacion y minimo automaticamente.</div>
             </div>
 
             <div class="sep"></div>
@@ -120,7 +132,7 @@
               <div class="hint"><span id="salesNotesCount">0</span>/600</div>
             </div>
 
-            <div class="notice" id="salesRule">Ingresa datos del proyecto para calcular el precio.</div>
+            <div class="notice" id="salesRule">Ingresa la mano de obra para calcular el precio.</div>
 
             <div style="margin-top:10px;">
               <label class="sub" for="salesStageRange" style="display:block; margin-bottom:6px;">Control de precio</label>
@@ -150,7 +162,7 @@
               <div class="owner-quote-hero">
                 <div class="owner-quote-kicker">Precio recomendado</div>
                 <div class="owner-quote-price" id="salesPrimaryPrice">$0.00</div>
-                <div class="owner-quote-meta" id="salesPrimaryMeta">Ingresa datos para calcular el recomendado.</div>
+                <div class="owner-quote-meta" id="salesPrimaryMeta">Ingresa mano de obra para calcular el recomendado.</div>
                 <div class="owner-quote-strip">
                   <div class="owner-mini-card">
                     <div class="title">Comision estimada</div>
@@ -160,7 +172,7 @@
                   <div class="owner-mini-card">
                     <div class="title">Accion</div>
                     <div class="big" id="salesApprovalAction">Completar datos</div>
-                    <div class="small" id="salesApprovalActionMeta">Primero define crew y unidades.</div>
+                    <div class="small" id="salesApprovalActionMeta">Primero define la mano de obra.</div>
                   </div>
                 </div>
               </div>
