@@ -24,6 +24,7 @@
         <a class="btn" href="/supervisor">Supervisor</a>
         <a class="btn" href="/sales-admin">Sales Admin</a>
         <button class="btn" id="btnManagePlan">Gestionar plan</button>
+        <button class="btn" id="btnSendQuote">Enviar cotizacion</button>
         <button class="btn danger" id="btnLogout">Cerrar sesion</button>
       </div>
     </div>
@@ -188,6 +189,61 @@
             <ul class="msg-list" id="negotiationList"></ul>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="sendModal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Enviar cotizacion</div>
+          <div class="modal-subtitle">Usa Netlify Functions + Zapier para envio al cliente.</div>
+        </div>
+        <button class="icon-btn" id="btnSendClose">X</button>
+      </div>
+      <div class="modal-body">
+        <div class="form">
+          <div class="field">
+            <label>Email del cliente</label>
+            <input id="toEmail" type="email" maxlength="80" placeholder="cliente@correo.com" />
+            <div class="hint"><span id="toEmailCount">0</span>/80</div>
+          </div>
+          <div class="field">
+            <label>Nombre del cliente (opcional)</label>
+            <input id="toName" maxlength="60" placeholder="Nombre" />
+            <div class="hint"><span id="toNameCount">0</span>/60</div>
+          </div>
+          <div class="field">
+            <label>Iniciales del vendedor / Sales Rep Initials</label>
+            <input id="salesInitials" maxlength="6" placeholder="LM" />
+            <div class="hint"><span id="salesInitialsCount">0</span>/6</div>
+          </div>
+          <div class="field">
+            <label>Deposito requerido (fijo)</label>
+            <input id="deposit" type="number" step="0.01" placeholder="1000" />
+          </div>
+          <div class="field">
+            <label>Asunto</label>
+            <input id="subject" maxlength="90" />
+            <div class="hint"><span id="subjectCount">0</span>/90</div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Scope / Notas</label>
+          <textarea id="scope" rows="5" maxlength="1200" placeholder="Descripcion del trabajo, alcance, exclusiones, etc."></textarea>
+          <div class="hint"><span id="scopeCount">0</span>/1200</div>
+        </div>
+        <div class="field">
+          <label>Mensaje</label>
+          <textarea id="message" rows="6" maxlength="1200"></textarea>
+          <div class="hint"><span id="messageCount">0</span>/1200</div>
+        </div>
+        <div class="notice" id="sendStatus" style="display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="btnSendCancel">Cancelar</button>
+        <button class="btn primary" id="btnSendNow">Enviar</button>
       </div>
     </div>
   </div>
