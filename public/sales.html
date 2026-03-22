@@ -43,7 +43,7 @@
           <div class="hero-score">
             <div class="hero-score-label">Estado actual</div>
             <div class="hero-score-value" id="salesHeroState">Base</div>
-            <div class="hero-score-meta" id="salesHeroMeta">Ingresa horas o dias para calcular el recomendado.</div>
+            <div class="hero-score-meta" id="salesHeroMeta">Ingresa dias, horas o cuadrilla para calcular.</div>
           </div>
         </div>
       </div>
@@ -73,7 +73,7 @@
                 <div class="hint"><span id="salesClientNameCount">0</span>/60</div>
               </div>
               <div class="field">
-                <label id="salesHoursLabel">Horas estimadas</label>
+                <label id="salesHoursLabel">Horas-hombre estimadas</label>
                 <input id="salesHours" type="number" step="0.25" min="0" placeholder="0" />
               </div>
               <div class="field">
@@ -81,20 +81,35 @@
                 <input id="salesDays" type="number" step="0.25" min="0" placeholder="0" />
               </div>
               <div class="field">
+                <label>Installers</label>
+                <input id="salesInstallers" type="number" step="1" min="0" placeholder="1" />
+              </div>
+              <div class="field">
+                <label>Helpers</label>
+                <input id="salesHelpers" type="number" step="1" min="0" placeholder="0" />
+              </div>
+              <div class="field">
                 <label>Precio propuesto al cliente</label>
                 <input id="salesPrice" type="number" step="0.01" min="0" placeholder="0.00" />
               </div>
               <div class="field">
                 <label>Modo actual</label>
-                <div class="notice" id="salesModeHint">La empresa cotiza por hora.</div>
+                <div class="notice" id="salesModeHint">La empresa cotiza por crew-dia.</div>
               </div>
             </div>
 
             <div class="sep"></div>
 
             <div class="dashboard-note">
+              <div class="dashboard-note-title">Cuadrilla calculada</div>
+              <div class="dashboard-note-copy" id="salesCrewHint">Define dias, installers y helpers para calcular horas-hombre y precio recomendado.</div>
+            </div>
+
+            <div class="sep"></div>
+
+            <div class="dashboard-note">
               <div class="dashboard-note-title">Regla de entrada</div>
-              <div class="dashboard-note-copy" id="salesEntryHint">Ingresa horas o dias segun el modo configurado por el dueno. El sistema te dira si el precio es verde, amarillo o rojo.</div>
+              <div class="dashboard-note-copy" id="salesEntryHint">Ingresa dias, installers y helpers. El sistema calcula horas-hombre, recomendado, negociacion y minimo.</div>
             </div>
 
             <div class="sep"></div>
@@ -105,11 +120,16 @@
               <div class="hint"><span id="salesNotesCount">0</span>/600</div>
             </div>
 
-            <div class="notice" id="salesRule">Ingresa horas o dias para calcular el recomendado.</div>
+            <div class="notice" id="salesRule">Ingresa datos del proyecto para calcular el precio.</div>
 
             <div style="margin-top:10px;">
-              <label class="sub" for="salesProgress" style="display:block; margin-bottom:6px;">Confianza del precio</label>
-              <progress id="salesProgress" max="100" value="0" class="sales-progress"></progress>
+              <label class="sub" for="salesStageRange" style="display:block; margin-bottom:6px;">Control de precio</label>
+              <input id="salesStageRange" type="range" min="0" max="2" step="1" value="2" class="sales-stage-range" />
+              <div class="sales-stage-labels">
+                <span id="salesStageMin">Minimo</span>
+                <span id="salesStageNegotiation">Negociacion</span>
+                <span id="salesStageRecommended">Recomendado</span>
+              </div>
             </div>
 
             <div class="notice" id="approvalHint" style="margin-top:10px;">Aun no hay precio capturado.</div>
@@ -130,7 +150,7 @@
               <div class="owner-quote-hero">
                 <div class="owner-quote-kicker">Precio recomendado</div>
                 <div class="owner-quote-price" id="salesPrimaryPrice">$0.00</div>
-                <div class="owner-quote-meta" id="salesPrimaryMeta">Ingresa horas o dias para calcular el recomendado.</div>
+                <div class="owner-quote-meta" id="salesPrimaryMeta">Ingresa datos para calcular el recomendado.</div>
                 <div class="owner-quote-strip">
                   <div class="owner-mini-card">
                     <div class="title">Comision estimada</div>
@@ -140,7 +160,7 @@
                   <div class="owner-mini-card">
                     <div class="title">Accion</div>
                     <div class="big" id="salesApprovalAction">Completar datos</div>
-                    <div class="small" id="salesApprovalActionMeta">Primero captura horas o dias.</div>
+                    <div class="small" id="salesApprovalActionMeta">Primero define crew y unidades.</div>
                   </div>
                 </div>
               </div>
