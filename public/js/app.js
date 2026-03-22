@@ -95,7 +95,7 @@
       "&": "&amp;",
       "<": "&lt;",
       ">": "&gt;",
-      '"': "&quot;",
+      "\"": "&quot;",
       "'": "&#39;"
     }[m]));
   }
@@ -557,7 +557,6 @@
 
       el.oninput = () => {
         count(id, counter);
-
         if (id === "bizNameOwner") {
           const settingsCopy = loadSettings();
           settingsCopy.bizName = val("bizNameOwner") || DEFAULTS.bizName;
@@ -596,7 +595,6 @@
     if ($("btnSendClose")) $("btnSendClose").onclick = closeSendModal;
     if ($("btnSendCancel")) $("btnSendCancel").onclick = closeSendModal;
     if ($("btnSendNow")) $("btnSendNow").onclick = () => sendQuote(state, settings, metrics);
-
     ["toEmail", "toName", "subject", "scope", "message", "salesInitials"].forEach((id) => {
       if ($(id)) $(id).oninput = updateSendCounts;
     });
@@ -608,45 +606,33 @@
 
     const doc = new jsPDF({ unit: "pt", format: "letter" });
     let y = 48;
-
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
     doc.text(settings.bizName || DEFAULTS.bizName, 40, y);
     y += 22;
-
     doc.setFont("helvetica", "normal");
     doc.setFontSize(12);
     doc.text("Project Pricing Report", 40, y);
     y += 24;
-
-    [
-      `Project: ${state.projectName || "-"}`,
-      `Client: ${state.clientName || "-"}`,
-      `Location: ${state.location || "-"}`,
-      `Recommended: ${money(metrics.recommended, settings.currency)}`
-    ].forEach((line) => {
+    [`Project: ${state.projectName || "-"}`, `Client: ${state.clientName || "-"}`, `Location: ${state.location || "-"}`, `Recommended: ${money(metrics.recommended, settings.currency)}`].forEach((line) => {
       doc.text(line, 40, y);
       y += 16;
     });
-
     y += 10;
     doc.setFont("helvetica", "bold");
     doc.text("Financial Breakdown", 40, y);
     y += 18;
-
     doc.setFont("helvetica", "normal");
     buildOwnerKpis(state, settings, metrics).forEach(([label, value]) => {
       doc.text(`${label}: ${value}`, 40, y);
       y += 15;
     });
-
     const blob = doc.output("blob");
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = `margin-guard-${(state.projectName || "project").replace(/\s+/g, "-")}.pdf`;
     a.click();
-
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
@@ -944,7 +930,7 @@ ${val("salesInitials") || "MG"}`;
         confidence = 0;
         message = "Ya existe un recomendado. Ahora captura el precio que le vas a presentar al cliente.";
         heroState = "Listo";
-        heroMeta = "El recomendado ya fue calculado con las unidades capturadas.";
+        heroMeta = "El recomendado ya fue calculado con la mano de obra capturada.";
         action = "Proponer precio";
         actionMeta = "Ingresa el numero que vas a presentar.";
       } else if (offered >= recommended) {
@@ -974,6 +960,7 @@ ${val("salesInitials") || "MG"}`;
           ? "Aprobado"
           : (tone === "amber" ? "Negociar con cuidado" : "Bloqueado");
       }
+
       if ($("salesRule")) $("salesRule").textContent = message;
       if ($("approvalHint")) {
         $("approvalHint").textContent = tone === "red"
@@ -982,15 +969,17 @@ ${val("salesInitials") || "MG"}`;
             ? "Precio amarillo: se puede vender, pero conviene defender margen."
             : "Precio verde: no necesita aprobacion.");
       }
-      if ($("salesProgress")) $("salesProgress").value = confidence;
+
       if ($("salesHeroState")) $("salesHeroState").textContent = heroState;
       if ($("salesHeroMeta")) $("salesHeroMeta").textContent = heroMeta;
       if ($("salesPrimaryPrice")) $("salesPrimaryPrice").textContent = money(recommended, settings.currency);
+
       if ($("salesPrimaryMeta")) {
         $("salesPrimaryMeta").textContent = state.workers.length && nextMetrics.totalHours > 0
           ? `${nextMetrics.totalWorkerDays.toFixed(2)} worker-days · ${nextMetrics.totalHours.toFixed(2)} horas-hombre · ${state.workers.length} trabajadores`
           : "Ingresa mano de obra para calcular el recomendado.";
       }
+
       if ($("salesPrimaryCommission")) $("salesPrimaryCommission").textContent = `${commissionPct.toFixed(2)}%`;
       if ($("salesPrimaryCommissionMeta")) $("salesPrimaryCommissionMeta").textContent = `${money(offered * (commissionPct / 100), settings.currency)} estimado`;
       if ($("salesApprovalAction")) $("salesApprovalAction").textContent = action;
@@ -998,6 +987,7 @@ ${val("salesInitials") || "MG"}`;
       if ($("salesStageMin")) $("salesStageMin").textContent = `Minimo ${money(minimum, settings.currency)}`;
       if ($("salesStageNegotiation")) $("salesStageNegotiation").textContent = `Negociacion ${money(negotiation, settings.currency)}`;
       if ($("salesStageRecommended")) $("salesStageRecommended").textContent = `Recomendado ${money(recommended, settings.currency)}`;
+
       if ($("salesCrewHint")) {
         $("salesCrewHint").textContent = state.workers.length
           ? `${state.workers.length} trabajadores · ${nextMetrics.totalWorkerDays.toFixed(2)} worker-days · ${nextMetrics.totalHours.toFixed(2)} horas-hombre`
@@ -1109,6 +1099,27 @@ ${val("salesInitials") || "MG"}`;
         }
       };
     }
+
+    if ($("btnSendQuote")) {
+      $("btnSendQuote").onclick = () => {
+        const nextMetrics = calcSales(state, settings);
+        if ($("scope") && !$("scope").value) $("scope").value = state.notes || "";
+        openSendModal(state, settings, nextMetrics);
+      };
+    }
+
+    if ($("btnSendClose")) $("btnSendClose").onclick = closeSendModal;
+    if ($("btnSendCancel")) $("btnSendCancel").onclick = closeSendModal;
+    if ($("btnSendNow")) {
+      $("btnSendNow").onclick = () => {
+        const nextMetrics = calcSales(state, settings);
+        sendQuote(state, settings, nextMetrics);
+      };
+    }
+
+    ["toEmail", "toName", "subject", "scope", "message", "salesInitials"].forEach((id) => {
+      if ($(id)) $(id).oninput = updateSendCounts;
+    });
 
     if ($("btnAddSalesWorker")) {
       $("btnAddSalesWorker").onclick = () => {
