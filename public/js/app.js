@@ -170,7 +170,6 @@
 
   function loadSettings() { return { ...DEFAULTS, ...readStore(LS_SETTINGS, {}) }; }
   function saveSettings(settings) { writeStore(LS_SETTINGS, settings); }
-
   function loadOwner() {
     const saved = readStore(LS_OWNER, {});
     return {
@@ -180,14 +179,9 @@
       workers: Array.isArray(saved.workers) && saved.workers.length ? saved.workers : DEFAULT_OWNER.workers
     };
   }
-
-  function saveOwner(state, metrics) {
-    writeStore(LS_OWNER, { ...state, reservePct: DEFAULTS.reservePct, metrics });
-  }
-
+  function saveOwner(state, metrics) { writeStore(LS_OWNER, { ...state, reservePct: DEFAULTS.reservePct, metrics }); }
   function loadDashboard() { return { ...DEFAULT_DASHBOARD, ...readStore(LS_DASHBOARD, {}) }; }
   function saveDashboard(state) { writeStore(LS_DASHBOARD, state); }
-
   function loadSales() {
     const saved = readStore(LS_SALES, {});
     const owner = loadOwner();
@@ -200,9 +194,7 @@
       offeredPrice: saved.offeredPrice ?? 0
     };
   }
-
   function saveSales(state) { writeStore(LS_SALES, state); }
-
   function loadSupervisor() {
     const saved = readStore(LS_SUPERVISOR, {});
     const owner = loadOwner();
@@ -243,16 +235,13 @@
       extras
     };
   }
-
   function saveSupervisor(state) { writeStore(LS_SUPERVISOR, state); }
   function loadApprovals() { const saved = readStore(LS_APPROVALS, []); return Array.isArray(saved) ? saved : []; }
   function saveApprovals(rows) { writeStore(LS_APPROVALS, rows); }
-
   function loadActiveProject() {
     const saved = readStore(LS_ACTIVE_PROJECT, null);
     return saved && typeof saved === "object" ? saved : null;
   }
-
   function saveActiveProject(project) { writeStore(LS_ACTIVE_PROJECT, project); }
   function clearActiveProject() { removeStore(LS_ACTIVE_PROJECT); }
 
@@ -307,7 +296,8 @@
       projectedEndDate: "",
       locked: false,
       entries: [],
-      extras: []
+      extras: [],
+      changeOrders: []
     };
   }
 
@@ -326,7 +316,8 @@
       laborBudget: finiteNumber(saved.laborBudget, base.laborBudget),
       dueDate: normalizeDateInput(saved.dueDate || base.dueDate),
       entries: Array.isArray(saved.entries) ? saved.entries : [],
-      extras: Array.isArray(saved.extras) ? saved.extras : []
+      extras: Array.isArray(saved.extras) ? saved.extras : [],
+      changeOrders: Array.isArray(saved.changeOrders) ? saved.changeOrders : []
     };
   }
 
@@ -360,6 +351,68 @@
         rate: worker.rate === "" || worker.rate == null ? "" : Number(worker.rate || 0)
       })) : [],
       notes: state.notes || ""
+    };
+  }
+
+  function calcChangeOrder(project, report, settings, input) {
+    const addedDays = Math.max(finiteNumber(input?.addedDays, 0), 0);
+    const hoursPerDay = Math.max(Number(project?.hoursPerDay || settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
+    const workers = Array.isArray(project?.workers) ? project.workers : [];
+
+    const crewDailyLabor = workers.length
+      ? workers.reduce((sum, worker) => {
+          const fallbackRate = worker.type === "helper"
+            ? Number(settings.baseHelper || 0)
+            : Number(settings.baseInstaller || 0);
+          const rate = worker.rate === "" || worker.rate == null
+            ? fallbackRate
+            : Number(worker.rate || 0);
+          return sum + (rate * hoursPerDay);
+        }, 0)
+      : 0;
+
+    const laborPerDay = crewDailyLabor > 0
+      ? crewDailyLabor
+      : (finiteNumber(project?.laborBudget, finiteNumber(report?.laborBudget, 0)) / Math.max(finiteNumber(project?.estimatedDays, finiteNumber(report?.estimatedDays, 1)), 1));
+
+    const crewSize = workers.length || Math.max(Math.round(laborPerDay / Math.max(Number(settings.baseInstaller || 1), 1)), 1);
+    const labor = laborPerDay * addedDays;
+    const totalHours = crewSize * hoursPerDay * addedDays;
+    const taxPct = (
+      Number(settings.wcPct || 0) +
+      Number(settings.ficaPct || 0) +
+      Number(settings.futaPct || 0) +
+      Number(settings.casuiPct || 0)
+    ) / 100;
+    const taxes = labor * taxPct;
+    const overheadPerHour = Number(settings.stdHours || 0) > 0
+      ? Number(settings.overheadMonthly || 0) / Number(settings.stdHours || 0)
+      : 0;
+    const overhead = totalHours * overheadPerHour;
+    const beforeProfit = labor + taxes + overhead;
+    const reserve = beforeProfit * (DEFAULTS.reservePct / 100);
+    const recommendedProfit = beforeProfit * (Number(settings.profitPct || 0) / 100);
+    const minimumProfit = beforeProfit * 0.15;
+    const recommended = beforeProfit + recommendedProfit + reserve;
+    const minimum = beforeProfit + minimumProfit + reserve;
+    const negotiation = recommended > minimum ? minimum + ((recommended - minimum) * 0.5) : minimum;
+
+    return {
+      addedDays,
+      hoursPerDay,
+      crewSize,
+      laborPerDay,
+      labor,
+      totalHours,
+      taxes,
+      overhead,
+      beforeProfit,
+      reserve,
+      recommendedProfit,
+      minimumProfit,
+      recommended,
+      minimum,
+      negotiation
     };
   }
 
@@ -1041,7 +1094,6 @@ ${val("salesInitials") || "MG"}`;
       }
       if ($("salesRule")) $("salesRule").textContent = message;
       if ($("approvalHint")) $("approvalHint").textContent = tone === "red" ? "Precio rojo: aprobacion obligatoria del dueno o Sales Admin." : (tone === "amber" ? "Precio amarillo: se puede vender, pero conviene defender margen." : "Precio verde: no necesita aprobacion.");
-      if ($("salesProgress")) $("salesProgress").value = confidence;
       if ($("salesHeroState")) $("salesHeroState").textContent = heroState;
       if ($("salesHeroMeta")) $("salesHeroMeta").textContent = heroMeta;
       if ($("salesPrimaryPrice")) $("salesPrimaryPrice").textContent = money(recommended, settings.currency);
@@ -1261,6 +1313,7 @@ ${val("salesInitials") || "MG"}`;
     const projects = loadProjects();
     const selectedProjectId = loadSupervisorSelectedProjectId();
     const selectedProject = projects.find((project) => project.id === selectedProjectId) || projects[0] || null;
+    const changeRange = $("coStageRange");
 
     if (picker) {
       picker.innerHTML = projects.length
@@ -1271,11 +1324,30 @@ ${val("salesInitials") || "MG"}`;
       picker.value = selectedProject?.id || "";
       picker.onchange = () => {
         saveSupervisorSelectedProjectId(picker.value);
+        if ($("coPrice")) $("coPrice").dataset.touched = "false";
         renderSupervisor();
       };
     }
 
     if (selectedProject) saveSupervisorSelectedProjectId(selectedProject.id);
+
+    const paintChangeOrderEmpty = () => {
+      if ($("coTraffic")) {
+        $("coTraffic").className = "badge amber";
+        $("coTraffic").textContent = "Sin proyecto";
+      }
+      if ($("coRule")) $("coRule").textContent = "Selecciona o firma un proyecto para cotizar change orders.";
+      if ($("coPrimaryPrice")) $("coPrimaryPrice").textContent = money(0, settings.currency);
+      if ($("coPrimaryMeta")) $("coPrimaryMeta").textContent = "Sin proyecto activo para cotizar extras.";
+      if ($("coSuggestedDays")) $("coSuggestedDays").textContent = "0.00 dias";
+      if ($("coSuggestedDaysMeta")) $("coSuggestedDaysMeta").textContent = "Dias adicionales del trabajo extra";
+      if ($("coSuggestedPrice")) $("coSuggestedPrice").textContent = money(0, settings.currency);
+      if ($("coSuggestedPriceMeta")) $("coSuggestedPriceMeta").textContent = "Precio propuesto al cliente";
+      if ($("coStageMin")) $("coStageMin").textContent = `Minimo ${money(0, settings.currency)}`;
+      if ($("coStageNegotiation")) $("coStageNegotiation").textContent = `Negociacion ${money(0, settings.currency)}`;
+      if ($("coStageRecommended")) $("coStageRecommended").textContent = `Recomendado ${money(0, settings.currency)}`;
+      if ($("coListBody")) $("coListBody").innerHTML = "";
+    };
 
     const refresh = () => {
       const currentProject = (loadProjects().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
@@ -1314,6 +1386,7 @@ ${val("salesInitials") || "MG"}`;
         if ($("supEntriesBody")) $("supEntriesBody").innerHTML = "";
         if ($("supExtrasBody")) $("supExtrasBody").innerHTML = "";
         setVal("supProjectedDate", "");
+        paintChangeOrderEmpty();
         return;
       }
 
@@ -1324,6 +1397,7 @@ ${val("salesInitials") || "MG"}`;
       state.laborBudget = finiteNumber(currentProject.laborBudget, state.laborBudget);
       state.dueDate = normalizeDateInput(currentProject.dueDate || state.dueDate);
       state.projectedEndDate = normalizeDateInput(val("supProjectedDate") || state.projectedEndDate);
+      state.changeOrders = Array.isArray(state.changeOrders) ? state.changeOrders : [];
       saveSupervisorReport(currentProject.id, state);
       setVal("supProjectedDate", state.projectedEndDate);
 
@@ -1402,6 +1476,102 @@ ${val("salesInitials") || "MG"}`;
         </div>
       `).join("");
 
+      const changeMetrics = calcChangeOrder(currentProject, state, settings, {
+        addedDays: num("coDays", 0)
+      });
+      const changePriceInput = $("coPrice");
+      const changePriceTouched = changePriceInput?.dataset.touched === "true";
+      if (changePriceInput && (!changePriceTouched || Number(changePriceInput.value || 0) === 0)) {
+        const stageValue = Number(changeRange?.value || 2);
+        const stagePrice = stageValue === 2 ? changeMetrics.recommended : (stageValue === 1 ? changeMetrics.negotiation : changeMetrics.minimum);
+        setNum("coPrice", stagePrice);
+      }
+      const changeOffered = num("coPrice", 0);
+      let changeTone = "red";
+      let changeMessage = "Precio abajo del minimo. Debe corregirse antes de enviarlo al cliente.";
+      if (changeMetrics.addedDays <= 0) {
+        changeTone = "amber";
+        changeMessage = "Captura los dias adicionales para cotizar el change order.";
+      } else if (changeOffered >= changeMetrics.recommended) {
+        changeTone = "green";
+        changeMessage = "Change order sano. Puedes cotizarlo con confianza.";
+      } else if (changeOffered >= changeMetrics.minimum) {
+        changeTone = "amber";
+        changeMessage = "Precio negociable. Conviene defenderlo antes de mandarlo.";
+      }
+
+      if ($("coTraffic")) {
+        $("coTraffic").className = `badge ${changeTone}`;
+        $("coTraffic").textContent = changeTone === "green" ? "Listo" : (changeTone === "amber" ? "Negociable" : "Ajustar");
+      }
+      if ($("coRule")) $("coRule").textContent = changeMessage;
+      if ($("coPrimaryPrice")) $("coPrimaryPrice").textContent = money(changeMetrics.recommended, settings.currency);
+      if ($("coPrimaryMeta")) {
+        $("coPrimaryMeta").textContent = changeMetrics.addedDays > 0
+          ? `${changeMetrics.addedDays.toFixed(2)} dias extra · ${changeMetrics.totalHours.toFixed(2)} horas de equipo · base diaria ${money(changeMetrics.laborPerDay, settings.currency)}`
+          : "Ingresa los dias adicionales del trabajo extra para cotizarlo.";
+      }
+      if ($("coSuggestedDays")) $("coSuggestedDays").textContent = `${changeMetrics.addedDays.toFixed(2)} dias`;
+      if ($("coSuggestedDaysMeta")) $("coSuggestedDaysMeta").textContent = "Tiempo estimado del trabajo agregado";
+      if ($("coSuggestedPrice")) $("coSuggestedPrice").textContent = money(changeOffered, settings.currency);
+      if ($("coSuggestedPriceMeta")) $("coSuggestedPriceMeta").textContent = "Precio actual a presentar al cliente";
+      if ($("coStageMin")) $("coStageMin").textContent = `Minimo ${money(changeMetrics.minimum, settings.currency)}`;
+      if ($("coStageNegotiation")) $("coStageNegotiation").textContent = `Negociacion ${money(changeMetrics.negotiation, settings.currency)}`;
+      if ($("coStageRecommended")) $("coStageRecommended").textContent = `Recomendado ${money(changeMetrics.recommended, settings.currency)}`;
+
+      if ($("coListBody")) {
+        $("coListBody").innerHTML = state.changeOrders.map((row, index) => `
+          <tr>
+            <td>${escapeHtml(row.title || "-")}</td>
+            <td>${Number(row.addedDays || 0).toFixed(2)}</td>
+            <td>${money(row.recommended || 0, settings.currency)}</td>
+            <td>${money(row.offeredPrice || 0, settings.currency)}</td>
+            <td><span class="badge ${row.applied ? "green" : "amber"}">${row.applied ? "applied" : "draft"}</span></td>
+            <td>
+              <div class="row-actions">
+                <button class="btn primary" data-apply-change="${index}">${row.applied ? "Applied" : "Apply"}</button>
+                <button class="btn danger" data-delete-change="${index}">Delete</button>
+              </div>
+            </td>
+          </tr>
+        `).join("");
+
+        $("coListBody").querySelectorAll("button[data-delete-change]").forEach((button) => {
+          button.onclick = () => {
+            state.changeOrders.splice(Number(button.dataset.deleteChange || -1), 1);
+            saveSupervisorReport(currentProject.id, state);
+            refresh();
+          };
+        });
+
+        $("coListBody").querySelectorAll("button[data-apply-change]").forEach((button) => {
+          button.onclick = () => {
+            const index = Number(button.dataset.applyChange || -1);
+            if (index < 0 || !state.changeOrders[index] || state.changeOrders[index].applied) return;
+            const row = state.changeOrders[index];
+            const allProjects = loadProjects();
+            const projectIndex = allProjects.findIndex((item) => item.id === currentProject.id);
+            if (projectIndex < 0) return;
+            allProjects[projectIndex] = {
+              ...allProjects[projectIndex],
+              estimatedDays: finiteNumber(allProjects[projectIndex].estimatedDays, 0) + finiteNumber(row.addedDays, 0),
+              laborBudget: finiteNumber(allProjects[projectIndex].laborBudget, 0) + finiteNumber(row.laborBudgetAdded, 0)
+            };
+            saveProjects(allProjects);
+            saveActiveProject(allProjects[projectIndex]);
+            state.estimatedDays = finiteNumber(allProjects[projectIndex].estimatedDays, state.estimatedDays);
+            state.laborBudget = finiteNumber(allProjects[projectIndex].laborBudget, state.laborBudget);
+            state.changeOrders[index] = {
+              ...row,
+              applied: true,
+              appliedAt: new Date().toISOString()
+            };
+            saveSupervisorReport(currentProject.id, state);
+            refresh();
+          };
+        });
+      }
+
       if ($("supEntriesBody")) {
         $("supEntriesBody").innerHTML = state.entries.map((row, index) => `
           <tr>
@@ -1442,6 +1612,32 @@ ${val("salesInitials") || "MG"}`;
     };
 
     if ($("supProjectedDate")) $("supProjectedDate").oninput = refresh;
+
+    ["coTitle", "coDays", "coNotes", "coPrice"].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.oninput = () => {
+        if (id === "coPrice") el.dataset.touched = "true";
+        refresh();
+      };
+    });
+
+    if (changeRange) {
+      changeRange.oninput = () => {
+        const currentProject = (loadProjects().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
+        const state = currentProject ? loadSupervisorReport(currentProject) : null;
+        const changeMetrics = calcChangeOrder(currentProject, state, settings, {
+          addedDays: num("coDays", 0)
+        });
+        const stageValue = Number(changeRange.value || 2);
+        const stagePrice = stageValue === 2 ? changeMetrics.recommended : (stageValue === 1 ? changeMetrics.negotiation : changeMetrics.minimum);
+        if ($("coPrice")) {
+          $("coPrice").dataset.touched = "false";
+          setNum("coPrice", stagePrice);
+        }
+        refresh();
+      };
+    }
 
     if ($("btnAddSupEntry")) {
       $("btnAddSupEntry").onclick = () => {
@@ -1486,6 +1682,46 @@ ${val("salesInitials") || "MG"}`;
         setVal("supExtraItem", "");
         setNum("supExtraAmount", 0);
         setVal("supExtraNote", "");
+        saveSupervisorReport(currentProject.id, state);
+        refresh();
+      };
+    }
+
+    if ($("btnAddChangeOrder")) {
+      $("btnAddChangeOrder").onclick = () => {
+        const currentProject = (loadProjects().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
+        if (!currentProject) return alert("No signed projects yet.");
+        const state = loadSupervisorReport(currentProject);
+        const title = val("coTitle").trim();
+        const addedDays = num("coDays", 0);
+        const notes = val("coNotes").trim();
+        if (!title) return alert("Change order title is required.");
+        if (addedDays <= 0) return alert("Add the extra days required for the work.");
+        const metrics = calcChangeOrder(currentProject, state, settings, { addedDays });
+        const offeredPrice = num("coPrice", metrics.recommended);
+        state.changeOrders = Array.isArray(state.changeOrders) ? state.changeOrders : [];
+        state.changeOrders.unshift({
+          id: `CO-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          title,
+          addedDays,
+          notes,
+          offeredPrice,
+          recommended: metrics.recommended,
+          minimum: metrics.minimum,
+          negotiation: metrics.negotiation,
+          laborBudgetAdded: metrics.labor,
+          hoursAdded: metrics.totalHours,
+          applied: false
+        });
+        setVal("coTitle", "");
+        setNum("coDays", 0);
+        setVal("coNotes", "");
+        if ($("coPrice")) {
+          $("coPrice").dataset.touched = "false";
+          setNum("coPrice", 0);
+        }
+        if (changeRange) changeRange.value = "2";
         saveSupervisorReport(currentProject.id, state);
         refresh();
       };
