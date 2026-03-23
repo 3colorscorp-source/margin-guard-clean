@@ -36,14 +36,14 @@
       <div class="card-inner">
         <div class="owner-hero-inner">
           <div>
-            <span class="eyebrow">Project Control</span>
-            <h2 class="hero-title">Supervisa presupuesto, fechas y gastos reales del proyecto.</h2>
-            <div class="sub" style="margin:0;">Esta pantalla ayuda al supervisor a saber si la obra sigue en control, si ya se esta desviando o si necesita corregir hoy.</div>
+            <span class="eyebrow">Field Control</span>
+            <h2 class="hero-title">Reporta avance real y deja que el sistema te diga si vas bien o si debes apurarte.</h2>
+            <div class="sub" style="margin:0;">El supervisor solo reporta horas, dias y gastos imprevistos. La meta del proyecto ya viene definida.</div>
           </div>
           <div class="hero-score">
-            <div class="hero-score-label">Estado actual</div>
+            <div class="hero-score-label">Semaforo</div>
             <div class="hero-score-value" id="supHeroState">Base</div>
-            <div class="hero-score-meta" id="supHeroMeta">Captura presupuesto, fechas y avances para activar el tablero.</div>
+            <div class="hero-score-meta" id="supHeroMeta">Esperando avance real para evaluar el proyecto.</div>
           </div>
         </div>
       </div>
@@ -55,44 +55,47 @@
           <div class="card-inner">
             <div class="section-head">
               <div>
-                <h2>Planeacion del proyecto</h2>
-                <div class="sub">Define presupuesto, horas y fechas comprometidas.</div>
+                <h2>Datos del proyecto</h2>
+                <div class="sub">Estos datos llegan definidos para el proyecto firmado.</div>
               </div>
               <div class="badge amber" id="supStatus">Esperando</div>
             </div>
 
+            <div class="supervisor-summary-grid">
+              <div class="supervisor-summary-card">
+                <div class="title">Proyecto</div>
+                <div class="big" id="supProjectLabel">Sin proyecto</div>
+                <div class="small">Asignado al supervisor</div>
+              </div>
+              <div class="supervisor-summary-card">
+                <div class="title">Fecha comprometida</div>
+                <div class="big" id="supDueDateLabel">Sin fecha</div>
+                <div class="small">Definida por ventas o dueno</div>
+              </div>
+              <div class="supervisor-summary-card">
+                <div class="title">Dias estimados</div>
+                <div class="big" id="supEstimatedDaysLabel">0</div>
+                <div class="small">Meta planeada del proyecto</div>
+              </div>
+              <div class="supervisor-summary-card">
+                <div class="title">Presupuesto labor</div>
+                <div class="big" id="supLaborBudgetLabel">$0.00</div>
+                <div class="small">Control para horas reportadas</div>
+              </div>
+            </div>
+
+            <div class="sep"></div>
+
             <div class="form">
-              <div class="field">
-                <label>Proyecto</label>
-                <input id="supProjectName" maxlength="60" placeholder="Ej: Bathroom remodel - Millbrae" />
-              </div>
-              <div class="field">
-                <label>Horas planeadas</label>
-                <input id="supPlannedHours" type="number" step="0.25" min="0" placeholder="0" />
-              </div>
-              <div class="field">
-                <label>Presupuesto de labor</label>
-                <input id="supLaborBudget" type="number" step="0.01" min="0" placeholder="0.00" />
-              </div>
-              <div class="field">
-                <label>Presupuesto de materiales</label>
-                <input id="supMaterialBudget" type="number" step="0.01" min="0" placeholder="0.00" />
-              </div>
-              <div class="field">
-                <label>Fecha comprometida</label>
-                <input id="supDueDate" type="date" />
-              </div>
               <div class="field">
                 <label>Fecha proyectada final</label>
                 <input id="supProjectedDate" type="date" />
               </div>
             </div>
 
-            <div class="sep"></div>
-
             <div class="dashboard-note">
               <div class="dashboard-note-title">Lectura operativa</div>
-              <div class="dashboard-note-copy" id="supExecutiveNote">Aqui veras rapidamente si el proyecto sigue en presupuesto, si ya consume gastos extra o si se esta atrasando.</div>
+              <div class="dashboard-note-copy" id="supExecutiveNote">Cuando reportes horas, dias y gastos extra, aqui veras si el proyecto sigue sano o si debes acelerar.</div>
             </div>
           </div>
         </div>
@@ -101,8 +104,8 @@
           <div class="card-inner">
             <div class="section-head">
               <div>
-                <h2>Registro operativo</h2>
-                <div class="sub">Captura labor y material real del dia o de la semana.</div>
+                <h2>Reporte de avance</h2>
+                <div class="sub">El supervisor solo reporta lo que realmente se hizo en campo.</div>
               </div>
             </div>
 
@@ -112,16 +115,16 @@
                 <input id="supEntryDate" type="date" />
               </div>
               <div class="field">
-                <label>Labor ejecutada</label>
-                <input id="supEntryLabor" type="number" step="0.01" min="0" placeholder="0.00" />
+                <label>Horas trabajadas</label>
+                <input id="supEntryHours" type="number" step="0.25" min="0" placeholder="0.00" />
               </div>
               <div class="field">
-                <label>Material comprado</label>
-                <input id="supEntryMaterial" type="number" step="0.01" min="0" placeholder="0.00" />
+                <label>Dias trabajados</label>
+                <input id="supEntryDays" type="number" step="0.25" min="0" placeholder="0.00" />
               </div>
               <div class="field">
                 <label>Nota</label>
-                <input id="supEntryNote" maxlength="100" placeholder="Semana 3: ajuste de tuberia" />
+                <input id="supEntryNote" maxlength="100" placeholder="Ej: rough plumbing / tile prep / finish" />
               </div>
             </div>
 
@@ -135,8 +138,8 @@
                   <tr>
                     <th>Fecha</th>
                     <th>Nota</th>
-                    <th>Labor</th>
-                    <th>Material</th>
+                    <th>Horas</th>
+                    <th>Dias</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -150,8 +153,8 @@
           <div class="card-inner">
             <div class="section-head">
               <div>
-                <h2>Gastos extra / imprevistos</h2>
-                <div class="sub">Registra compras o costos no contemplados originalmente en el presupuesto.</div>
+                <h2>Gasto imprevisto</h2>
+                <div class="sub">Usalo para gasolina, tornillos, cinta, escoba, aspiradora o cualquier gasto no planeado.</div>
               </div>
             </div>
 
@@ -161,32 +164,21 @@
                 <input id="supExtraDate" type="date" />
               </div>
               <div class="field">
-                <label>Categoria</label>
-                <select id="supExtraCategory">
-                  <option value="consumibles">Consumibles</option>
-                  <option value="herramienta-menor">Herramienta menor</option>
-                  <option value="gasolina">Gasolina</option>
-                  <option value="compra-no-presupuestada">Compra no presupuestada</option>
-                  <option value="renta">Renta</option>
-                  <option value="otro">Otro</option>
-                </select>
-              </div>
-              <div class="field">
                 <label>Concepto</label>
-                <input id="supExtraItem" maxlength="80" placeholder="Ej: tornillos, cinta, escoba, gasolina" />
+                <input id="supExtraItem" maxlength="80" placeholder="Ej: gasolina, tornillos, cinta" />
               </div>
               <div class="field">
                 <label>Monto</label>
                 <input id="supExtraAmount" type="number" step="0.01" min="0" placeholder="0.00" />
               </div>
-              <div class="field" style="grid-column:1 / -1;">
+              <div class="field">
                 <label>Nota</label>
-                <input id="supExtraNote" maxlength="120" placeholder="Ej: compra urgente no incluida en presupuesto inicial" />
+                <input id="supExtraNote" maxlength="120" placeholder="Opcional" />
               </div>
             </div>
 
             <div class="inline-actions" style="margin-top:10px;">
-              <button class="btn primary" id="btnAddSupExtra">Agregar gasto extra</button>
+              <button class="btn primary" id="btnAddSupExtra">Agregar gasto imprevisto</button>
             </div>
 
             <div class="supervisor-table-wrap" style="margin-top:12px;">
@@ -194,7 +186,6 @@
                 <thead>
                   <tr>
                     <th>Fecha</th>
-                    <th>Categoria</th>
                     <th>Concepto</th>
                     <th>Monto</th>
                     <th>Nota</th>
@@ -212,23 +203,23 @@
         <div class="card owner-side-card">
           <div class="card-inner">
             <h2>Tablero del supervisor</h2>
-            <div class="sub">Lectura rapida de presupuesto, fechas, gastos extra y riesgo actual.</div>
+            <div class="sub">Semaforo simple para saber si vas bien o si necesitas apresurarte.</div>
 
             <div class="owner-kpi-shell">
               <div class="owner-quote-hero">
                 <div class="owner-quote-kicker">Resumen ejecutivo</div>
                 <div class="owner-quote-price" id="supPrimaryBalance">$0.00</div>
-                <div class="owner-quote-meta" id="supPrimaryMeta">Captura datos del proyecto para activar el resumen.</div>
+                <div class="owner-quote-meta" id="supPrimaryMeta">Presupuesto de mano de obra restante.</div>
                 <div class="owner-quote-strip">
                   <div class="owner-mini-card">
-                    <div class="title">Dias de diferencia</div>
+                    <div class="title">Dias restantes</div>
                     <div class="big" id="supPrimaryDays">0</div>
-                    <div class="small" id="supPrimaryDaysMeta">Sin fechas comparables todavia</div>
+                    <div class="small" id="supPrimaryDaysMeta">Segun dias estimados del proyecto</div>
                   </div>
                   <div class="owner-mini-card">
-                    <div class="title">Bonus estimado</div>
-                    <div class="big" id="supPrimaryBonus">0.00%</div>
-                    <div class="small" id="supPrimaryBonusMeta">Esperando presupuesto real</div>
+                    <div class="title">Gasto imprevisto</div>
+                    <div class="big" id="supPrimaryExtras">$0.00</div>
+                    <div class="small" id="supPrimaryExtrasMeta">Acumulado en este proyecto</div>
                   </div>
                 </div>
               </div>
