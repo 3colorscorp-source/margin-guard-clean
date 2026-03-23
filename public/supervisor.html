@@ -38,7 +38,7 @@
           <div>
             <span class="eyebrow">Field Control</span>
             <h2 class="hero-title">Reporta avance real y deja que el sistema te diga si vas bien o si debes apurarte.</h2>
-            <div class="sub" style="margin:0;">Supervisor solo trabaja sobre proyectos firmados desde Vendedor. Aqui reporta horas, dias, gastos imprevistos y change orders.</div>
+            <div class="sub" style="margin:0;">Supervisor solo trabaja sobre proyectos firmados desde Vendedor. Aqui reporta horas, dias y gastos imprevistos.</div>
           </div>
           <div class="hero-score">
             <div class="hero-score-label">Semaforo</div>
@@ -167,7 +167,7 @@
             <div class="section-head">
               <div>
                 <h2>Change Order</h2>
-                <div class="sub">El supervisor solo captura el trabajo extra y los dias adicionales. El sistema calcula la cotizacion estilo vendedor.</div>
+                <div class="sub">El supervisor define el trabajo extra, arma la cuadrilla y el sistema calcula la cotizacion estilo vendedor.</div>
               </div>
               <div class="badge amber" id="coTraffic">Sin proyecto</div>
             </div>
@@ -178,10 +178,6 @@
                 <input id="coTitle" maxlength="80" placeholder="Ej: niche extra, rework wall, move vanity drain" />
               </div>
               <div class="field">
-                <label>Dias adicionales</label>
-                <input id="coDays" type="number" step="0.25" min="0" placeholder="0.00" />
-              </div>
-              <div class="field">
                 <label>Precio propuesto al cliente</label>
                 <input id="coPrice" type="number" step="0.01" min="0" placeholder="0.00" />
               </div>
@@ -189,18 +185,50 @@
                 <label>Notas</label>
                 <input id="coNotes" maxlength="140" placeholder="Descripcion corta del extra" />
               </div>
+              <div class="field">
+                <label>Regla</label>
+                <div class="notice">Captura dias por trabajador. El sistema suma worker-days y cotiza el extra.</div>
+              </div>
             </div>
+
+            <div class="sep"></div>
+
+            <div class="section-head">
+              <div>
+                <h2>Mano de obra del extra</h2>
+                <div class="sub">Aqui si puedes definir si el trabajo extra requiere 1, 2, 4 o mas trabajadores.</div>
+              </div>
+            </div>
+
+            <div class="inline-actions" style="margin-bottom:12px;">
+              <button class="btn primary" type="button" id="btnAddCoWorker">Agregar trabajador</button>
+              <button class="btn danger" type="button" id="btnClearCoWorkers">Limpiar</button>
+            </div>
+
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Trabajador</th>
+                  <th>Tipo</th>
+                  <th>Dias</th>
+                  <th>Costo base</th>
+                  <th>Costo Labor</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="coWorkersBody"></tbody>
+            </table>
 
             <div class="owner-kpi-shell" style="margin-top:12px;">
               <div class="owner-quote-hero">
                 <div class="owner-quote-kicker">Cotizacion sugerida</div>
                 <div class="owner-quote-price" id="coPrimaryPrice">$0.00</div>
-                <div class="owner-quote-meta" id="coPrimaryMeta">Ingresa los dias del trabajo extra para cotizarlo.</div>
+                <div class="owner-quote-meta" id="coPrimaryMeta">Ingresa dias por trabajador para cotizar el trabajo extra.</div>
                 <div class="owner-quote-strip">
                   <div class="owner-mini-card">
-                    <div class="title">Dias extra</div>
+                    <div class="title">Worker-days</div>
                     <div class="big" id="coSuggestedDays">0.00 dias</div>
-                    <div class="small" id="coSuggestedDaysMeta">Tiempo estimado del cambio</div>
+                    <div class="small" id="coSuggestedDaysMeta">Tiempo total del cambio</div>
                   </div>
                   <div class="owner-mini-card">
                     <div class="title">Precio actual</div>
