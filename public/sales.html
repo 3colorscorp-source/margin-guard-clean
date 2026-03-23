@@ -39,12 +39,12 @@
           <div>
             <span class="eyebrow">Sales Console</span>
             <h2 class="hero-title">Vende con claridad sin ver los costos internos del negocio.</h2>
-            <div class="sub" style="margin:0;">Esta pantalla le dice al vendedor si el precio esta sano, negociable o bloqueado, y cuanto gana aproximadamente en comision.</div>
+            <div class="sub" style="margin:0;">Esta pantalla le dice al vendedor si el precio está sano, negociable o bloqueado, y cuánto gana aproximadamente en comisión.</div>
           </div>
           <div class="hero-score">
             <div class="hero-score-label">Estado actual</div>
-            <div class="hero-score-value" id="salesHeroState">Base</div>
-            <div class="hero-score-meta" id="salesHeroMeta">Define la mano de obra para calcular el precio.</div>
+            <div class="hero-score-value" id="salesHeroState">Red</div>
+            <div class="hero-score-meta" id="salesHeroMeta">Esperando precio para evaluar.</div>
           </div>
         </div>
       </div>
@@ -59,7 +59,7 @@
                 <h2>Cotizacion guiada para vendedor</h2>
                 <div class="sub">No muestra costos confidenciales. Solo precio permitido, estado y comision estimada.</div>
               </div>
-              <div class="badge amber" id="salesTraffic">Esperando</div>
+              <div class="badge amber" id="salesTraffic">Bloqueado</div>
             </div>
 
             <div class="form">
@@ -74,12 +74,16 @@
                 <div class="hint"><span id="salesClientNameCount">0</span>/60</div>
               </div>
               <div class="field">
+                <label>Fecha comprometida</label>
+                <input id="salesDueDate" type="date" />
+              </div>
+              <div class="field">
                 <label>Precio propuesto al cliente</label>
-                <input id="salesPrice" type="number" step="0.01" min="0" placeholder="0.00" />
+                <input id="salesPrice" type="number" step="0.01" placeholder="0.00" />
               </div>
               <div class="field">
                 <label>Modo actual</label>
-                <div class="notice" id="salesModeHint">Cada trabajador usa 8.00 horas por dia. Si el costo base queda vacio, usa Business Settings segun el tipo.</div>
+                <div class="notice" id="salesModeHint">La empresa cotiza por hora.</div>
               </div>
             </div>
 
@@ -133,7 +137,7 @@
               <div class="hint"><span id="salesNotesCount">0</span>/600</div>
             </div>
 
-            <div class="notice" id="salesRule">Ingresa la mano de obra para calcular el precio.</div>
+            <div class="notice" id="salesRule">Precio por debajo del minimo permitido.</div>
 
             <div style="margin-top:10px;">
               <label class="sub" for="salesStageRange" style="display:block; margin-bottom:6px;">Control de precio</label>
@@ -145,11 +149,13 @@
               </div>
             </div>
 
-            <div class="notice" id="approvalHint" style="margin-top:10px;">Aun no hay precio capturado.</div>
+            <div class="notice" id="approvalHint" style="margin-top:10px;">Precio rojo: requiere aprobacion obligatoria.</div>
 
             <div class="inline-actions" style="margin-top:12px;">
+              <button class="btn primary" type="button" id="btnMarkSold">Marcar como firmado</button>
               <button class="btn primary" type="button" id="btnSubmitApproval">Enviar a Sales Admin</button>
             </div>
+            <div class="notice" id="salesSignedStatus" style="display:none; margin-top:10px;"></div>
             <div class="notice" id="approvalStatus" style="display:none; margin-top:10px;"></div>
           </div>
         </div>
@@ -182,6 +188,16 @@
             <div class="sep"></div>
 
             <div class="kpi sales-kpi-grid" id="salesKpis"></div>
+
+            <div class="sep"></div>
+
+            <h2 style="margin-top:0;">Proyecto activo para Supervisor</h2>
+            <div class="owner-mini-card" style="margin-bottom:12px;">
+              <div class="title">Proyecto firmado</div>
+              <div class="big" id="salesSignedProject">Sin proyecto firmado</div>
+              <div class="small" id="salesSignedMeta">Firma una cotizacion para mandarla a Supervisor.</div>
+            </div>
+            <div class="badge amber" id="salesSignedBadge">Pendiente de firma</div>
 
             <div class="sep"></div>
 
