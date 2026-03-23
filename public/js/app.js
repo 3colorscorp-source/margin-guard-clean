@@ -29,6 +29,7 @@
     projectName: "",
     clientName: "",
     location: "",
+    dueDate: "",
     overheadMonthly: 0,
     stdHours: 0,
     reservePct: 5,
@@ -49,6 +50,7 @@
   const DEFAULT_SALES = {
     projectName: "",
     clientName: "",
+    dueDate: "",
     offeredPrice: 0,
     notes: "",
     workers: [
@@ -62,6 +64,7 @@
     laborBudget: 0,
     dueDate: "",
     projectedEndDate: "",
+    locked: false,
     entries: [],
     extras: []
   };
@@ -120,6 +123,42 @@
     return "red";
   }
 
+  function nonEmptyString(...values) {
+    for (const value of values) {
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    return "";
+  }
+
+  function finiteNumber(value, fallback = 0) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  function normalizeDateInput(value) {
+    const text = nonEmptyString(value);
+    if (!text) return "";
+    const direct = /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+    if (direct) return direct;
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) return "";
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  function inferSupervisorDueDate(saved, sales, owner) {
+    return normalizeDateInput(nonEmptyString(
+      saved?.dueDate,
+      sales?.dueDate,
+      sales?.targetDate,
+      sales?.committedDate,
+      sales?.projectDueDate,
+      owner?.dueDate,
+      owner?.targetDate,
+      owner?.committedDate,
+      owner?.projectDueDate
+    ));
+  }
+
   function loadSettings() { return { ...DEFAULTS, ...readStore(LS_SETTINGS, {}) }; }
   function saveSettings(settings) { writeStore(LS_SETTINGS, settings); }
   function loadOwner() {
@@ -153,16 +192,30 @@
     const sales = loadSales();
     const settings = loadSettings();
     const salesMetrics = calcSales(sales, settings);
-    const estimatedDays = salesMetrics.totalWorkerDays || 0;
+    const inferredEstimatedDays = finiteNumber(salesMetrics.totalWorkerDays, 0);
+    const inferredLaborBudget = finiteNumber(owner.metrics?.labor, 0);
+    const savedEntries = Array.isArray(saved.entries) ? saved.entries : [];
+    const savedExtras = Array.isArray(saved.extras) ? saved.extras : [];
+    const locked = Boolean(saved.locked) || savedEntries.length > 0 || savedExtras.length > 0;
 
     return {
       ...DEFAULT_SUPERVISOR,
       ...saved,
-      projectName: saved.projectName || sales.projectName || owner.projectName || "",
-      estimatedDays: saved.estimatedDays || estimatedDays,
-      laborBudget: saved.laborBudget || owner.metrics?.labor || 0,
-      entries: Array.isArray(saved.entries) ? saved.entries : [],
-      extras: Array.isArray(saved.extras) ? saved.extras : []
+      projectName: locked
+        ? nonEmptyString(saved.projectName, sales.projectName, owner.projectName)
+        : nonEmptyString(sales.projectName, owner.projectName, saved.projectName),
+      estimatedDays: locked
+        ? finiteNumber(saved.estimatedDays, inferredEstimatedDays)
+        : inferredEstimatedDays,
+      laborBudget: locked
+        ? finiteNumber(saved.laborBudget, inferredLaborBudget)
+        : inferredLaborBudget,
+      dueDate: locked
+        ? inferSupervisorDueDate(saved, {}, {})
+        : inferSupervisorDueDate(saved, sales, owner),
+      locked,
+      entries: savedEntries,
+      extras: savedExtras
     };
   }
   function saveSupervisor(state) { writeStore(LS_SUPERVISOR, state); }
@@ -1011,7 +1064,8 @@ ${val("salesInitials") || "MG"}`;
         ? Number(owner.metrics?.labor || 0) / ownerHours
         : Number(settings.baseInstaller || 0);
       const laborSpent = reportedHours * blendedRate;
-      const laborRemaining = Number(state.laborBudget || 0) - laborSpent;
+      const totalSpent = laborSpent + extraSpent;
+      const laborRemaining = Number(state.laborBudget || 0) - totalSpent;
       const daysRemaining = Number(state.estimatedDays || 0) - reportedDays;
 
       let dayDelta = 0;
@@ -1049,11 +1103,11 @@ ${val("salesInitials") || "MG"}`;
       if ($("supLaborBudgetLabel")) $("supLaborBudgetLabel").textContent = money(state.laborBudget, settings.currency);
 
       if ($("supExecutiveNote")) {
-        $("supExecutiveNote").textContent = `Has reportado ${reportedDays.toFixed(2)} dias y ${reportedHours.toFixed(2)} horas. Te quedan ${daysRemaining.toFixed(2)} dias estimados y ${money(laborRemaining, settings.currency)} de presupuesto de mano de obra.`;
+        $("supExecutiveNote").textContent = `Has reportado ${reportedDays.toFixed(2)} dias y ${reportedHours.toFixed(2)} horas. Te quedan ${daysRemaining.toFixed(2)} dias estimados y ${money(laborRemaining, settings.currency)} de presupuesto restante despues de horas y gastos imprevistos.`;
       }
 
       if ($("supPrimaryBalance")) $("supPrimaryBalance").textContent = money(laborRemaining, settings.currency);
-      if ($("supPrimaryMeta")) $("supPrimaryMeta").textContent = "Presupuesto de mano de obra restante";
+      if ($("supPrimaryMeta")) $("supPrimaryMeta").textContent = "Presupuesto restante despues de horas y extras";
       if ($("supPrimaryDays")) $("supPrimaryDays").textContent = daysRemaining.toFixed(2);
       if ($("supPrimaryDaysMeta")) $("supPrimaryDaysMeta").textContent = "Dias estimados que faltan por reportar";
       if ($("supPrimaryExtras")) $("supPrimaryExtras").textContent = money(extraSpent, settings.currency);
@@ -1063,7 +1117,7 @@ ${val("salesInitials") || "MG"}`;
         ["Dias reportados", reportedDays.toFixed(2), "Avance real capturado por el supervisor"],
         ["Dias restantes", daysRemaining.toFixed(2), "Dias estimados pendientes para terminar"],
         ["Horas reportadas", reportedHours.toFixed(2), "Horas reales capturadas en campo"],
-        ["Presupuesto restante", money(laborRemaining, settings.currency), "Presupuesto de mano de obra disponible"],
+        ["Presupuesto restante", money(laborRemaining, settings.currency), "Presupuesto disponible despues de horas y extras"],
         ["Gasto imprevisto", money(extraSpent, settings.currency), "Compras y costos no contemplados"],
         ["Dias de atraso", `${dayDelta}`, !state.dueDate || !state.projectedEndDate ? "Sin comparacion de fechas todavia" : (dayDelta <= 0 ? "No hay atraso proyectado" : "Diferencia contra fecha comprometida")]
       ].map(([label, value, meta]) => `
@@ -1123,6 +1177,7 @@ ${val("salesInitials") || "MG"}`;
         const entry = { date: val("supEntryDate"), hours: num("supEntryHours", 0), days: num("supEntryDays", 0), note: val("supEntryNote").trim() };
         if (!entry.date) return alert("Entry date is required.");
         if (entry.hours <= 0 && entry.days <= 0) return alert("Report hours or days worked.");
+        state.locked = true;
         state.entries.unshift(entry);
         setVal("supEntryDate", "");
         setNum("supEntryHours", 0);
@@ -1143,6 +1198,7 @@ ${val("salesInitials") || "MG"}`;
         };
         if (!extra.date) return alert("Extra expense date is required.");
         if (!extra.item) return alert("Extra expense concept is required.");
+        state.locked = true;
         state.extras.unshift(extra);
         setVal("supExtraDate", "");
         setVal("supExtraItem", "");
