@@ -40,7 +40,7 @@
           <div>
             <span class="eyebrow">Sales Console</span>
             <h2 class="hero-title">Vende con claridad sin ver los costos internos del negocio.</h2>
-            <div class="sub" style="margin:0;">Esta pantalla le dice al vendedor si el precio esta sano, negociable o bloqueado, y cuanto gana aproximadamente en comision.</div>
+            <div class="sub" style="margin:0;">Esta pantalla le dice al vendedor si el precio está sano, negociable o bloqueado, y cuánto gana aproximadamente en comisión.</div>
           </div>
           <div class="hero-score">
             <div class="hero-score-label">Estado actual</div>
@@ -195,8 +195,9 @@
               <thead>
                 <tr>
                   <th>Trabajo extra</th>
-                  <th>Cliente</th>
+                  <th>Precio cliente</th>
                   <th>Estado</th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody id="salesChangeOrderBody"></tbody>
@@ -225,6 +226,15 @@
               <div class="field">
                 <label>Invoice No.</label>
                 <input id="salesInvoiceNo" maxlength="30" placeholder="INV-1001" />
+              </div>
+              <div class="field">
+                <label>Invoice status</label>
+                <select id="salesInvoiceStatus">
+                  <option value="draft">draft</option>
+                  <option value="sent">sent</option>
+                  <option value="partial">partial</option>
+                  <option value="paid">paid</option>
+                </select>
               </div>
               <div class="field">
                 <label>Fecha de invoice</label>
