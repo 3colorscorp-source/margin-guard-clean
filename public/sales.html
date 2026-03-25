@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Margin Guard | Vendedor</title>
   <link rel="stylesheet" href="/styles.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
 <body data-requires-auth="true">
   <div class="topbar">
@@ -157,6 +158,124 @@
             </div>
             <div class="notice" id="salesSignedStatus" style="display:none; margin-top:10px;"></div>
             <div class="notice" id="approvalStatus" style="display:none; margin-top:10px;"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:14px;">
+          <div class="card-inner">
+            <div class="section-head">
+              <div>
+                <h2>Portafolio comercial</h2>
+                <div class="sub">Aqui controlas proyectos firmados, change orders y estado comercial.</div>
+              </div>
+              <div class="badge amber" id="salesProjectStatus">draft</div>
+            </div>
+
+            <div class="form">
+              <div class="field">
+                <label>Proyecto seleccionado</label>
+                <select id="salesProjectPicker"></select>
+              </div>
+              <div class="field">
+                <label>Proyectos en cartera</label>
+                <div class="notice"><strong id="salesProjectPortfolioCount">0</strong> proyectos activos o historicos</div>
+              </div>
+            </div>
+
+            <div class="inline-actions" style="margin-top:10px;">
+              <button class="btn primary" type="button" id="btnSalesProjectComplete">Cerrar proyecto</button>
+            </div>
+
+            <div class="sep"></div>
+
+            <h2 style="margin-top:0;">Change Orders del proyecto</h2>
+            <div class="sub">Ventas puede mover el estado comercial sin tocar la captura de campo.</div>
+
+            <table class="table" style="margin-top:12px;">
+              <thead>
+                <tr>
+                  <th>Trabajo extra</th>
+                  <th>Cliente</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="salesChangeOrderBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:14px;">
+          <div class="card-inner">
+            <div class="section-head">
+              <div>
+                <h2>Invoice</h2>
+                <div class="sub">Factura del proyecto seleccionado, incluyendo change orders aprobados o enviados.</div>
+              </div>
+            </div>
+
+            <div class="form">
+              <div class="field">
+                <label>Proyecto</label>
+                <div class="notice" id="salesInvoiceProject">Sin proyecto</div>
+              </div>
+              <div class="field">
+                <label>Cliente</label>
+                <div class="notice" id="salesInvoiceClient">Sin cliente</div>
+              </div>
+              <div class="field">
+                <label>Invoice No.</label>
+                <input id="salesInvoiceNo" maxlength="30" placeholder="INV-1001" />
+              </div>
+              <div class="field">
+                <label>Fecha de invoice</label>
+                <input id="salesInvoiceDate" type="date" />
+              </div>
+              <div class="field">
+                <label>Base contract</label>
+                <input id="salesInvoiceBase" type="number" step="0.01" placeholder="0.00" />
+              </div>
+              <div class="field">
+                <label>Tax %</label>
+                <input id="salesInvoiceTax" type="number" step="0.01" placeholder="0.00" />
+              </div>
+              <div class="field">
+                <label>Deposit applied</label>
+                <input id="salesInvoiceDeposit" type="number" step="0.01" placeholder="0.00" />
+              </div>
+              <div class="field">
+                <label>Payments received</label>
+                <input id="salesInvoiceReceived" type="number" step="0.01" placeholder="0.00" />
+              </div>
+            </div>
+
+            <div class="supervisor-summary-grid" style="margin-top:12px;">
+              <div class="supervisor-summary-card">
+                <div class="title">Subtotal</div>
+                <div class="big" id="salesInvoiceSubtotal">$0.00</div>
+                <div class="small">Contrato + change orders</div>
+              </div>
+              <div class="supervisor-summary-card">
+                <div class="title">Change Orders</div>
+                <div class="big" id="salesInvoiceChangeOrders">$0.00</div>
+                <div class="small">Extras incluidos</div>
+              </div>
+              <div class="supervisor-summary-card">
+                <div class="title">Tax</div>
+                <div class="big" id="salesInvoiceTaxAmount">$0.00</div>
+                <div class="small">Impuesto calculado</div>
+              </div>
+              <div class="supervisor-summary-card">
+                <div class="title">Balance</div>
+                <div class="big" id="salesInvoiceBalance">$0.00</div>
+                <div class="small">Saldo pendiente</div>
+              </div>
+            </div>
+
+            <div class="inline-actions" style="margin-top:12px;">
+              <button class="btn primary" type="button" id="btnSalesInvoicePdf">Exportar Invoice PDF</button>
+            </div>
+
+            <div class="notice" style="margin-top:10px;">Total invoice: <strong id="salesInvoiceTotal">$0.00</strong></div>
           </div>
         </div>
       </div>
