@@ -387,6 +387,53 @@
     return ["draft", "sent", "approved", "signed"].includes(value) ? value : "draft";
   }
 
+  function normalizeInvoiceStatus(value) {
+    return ["draft", "sent", "partial", "paid"].includes(value) ? value : "draft";
+  }
+
+  function buildDefaultInvoiceState(project) {
+    return {
+      invoiceNo: "",
+      invoiceDate: "",
+      baseAmount: finiteNumber(project?.salePrice, 0),
+      depositApplied: 0,
+      receivedApplied: 0,
+      status: "draft"
+    };
+  }
+
+  function getProjectInvoiceState(project) {
+    const base = buildDefaultInvoiceState(project);
+    const saved = project?.invoice && typeof project.invoice === "object" ? project.invoice : {};
+    return {
+      ...base,
+      ...saved,
+      baseAmount: finiteNumber(saved.baseAmount, base.baseAmount),
+      depositApplied: finiteNumber(saved.depositApplied, 0),
+      receivedApplied: finiteNumber(saved.receivedApplied, 0),
+      status: normalizeInvoiceStatus(saved.status)
+    };
+  }
+
+  function saveProjectInvoiceState(projectId, invoice) {
+    return updateProjectById(projectId, (project) => ({
+      ...project,
+      invoice: {
+        ...buildDefaultInvoiceState(project),
+        ...(invoice || {}),
+        status: normalizeInvoiceStatus(invoice?.status)
+      }
+    }));
+  }
+
+  function inferInvoiceStatus(total, depositApplied, receivedApplied, currentStatus) {
+    const safeTotal = Math.max(finiteNumber(total, 0), 0);
+    const paidAmount = Math.max(finiteNumber(depositApplied, 0), 0) + Math.max(finiteNumber(receivedApplied, 0), 0);
+    if (safeTotal > 0 && paidAmount >= safeTotal) return "paid";
+    if (paidAmount > 0) return "partial";
+    return normalizeInvoiceStatus(currentStatus);
+  }
+
   function calcInvoice(project, report, input) {
     const baseAmount = Math.max(finiteNumber(input?.baseAmount, project?.salePrice || 0), 0);
     const changeOrders = Array.isArray(report?.changeOrders)
@@ -408,6 +455,91 @@
       receivedApplied,
       balance
     };
+  }
+
+  function exportChangeOrderPdf(project, changeOrder, settings) {
+    const jsPDF = window.jspdf?.jsPDF;
+    if (!jsPDF) return alert("jsPDF is not available.");
+    if (!project || !changeOrder) return alert("Select a change order first.");
+
+    const doc = new jsPDF({ unit: "pt", format: "letter" });
+    let y = 46;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text(settings.bizName || DEFAULTS.bizName, 40, y);
+    y += 22;
+    doc.setFontSize(13);
+    doc.text("Change Order", 40, y);
+    y += 22;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    [
+      `Project: ${project.projectName || "-"}`,
+      `Client: ${project.clientName || "-"}`,
+      `Change Order: ${changeOrder.title || "-"}`,
+      `Created: ${normalizeDateInput(changeOrder.createdAt) || new Date().toISOString().slice(0, 10)}`,
+      `Status: ${normalizeCommercialStatus(changeOrder.commercialStatus || (changeOrder.applied ? "approved" : "draft"))}`
+    ].forEach((line) => {
+      doc.text(line, 40, y);
+      y += 15;
+    });
+
+    y += 8;
+    doc.setFont("helvetica", "bold");
+    doc.text("Scope", 40, y);
+    y += 18;
+    doc.setFont("helvetica", "normal");
+    doc.text(changeOrder.notes || changeOrder.title || "-", 40, y, { maxWidth: 520 });
+    y += 32;
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Crew Breakdown", 40, y);
+    y += 18;
+    doc.setFont("helvetica", "normal");
+    (Array.isArray(changeOrder.workers) ? changeOrder.workers : []).forEach((worker) => {
+      const rate = worker.rate === "" || worker.rate == null
+        ? (worker.type === "helper" ? Number(settings.baseHelper || 0) : Number(settings.baseInstaller || 0))
+        : Number(worker.rate || 0);
+      doc.text(`- ${worker.name || "Worker"} | ${worker.type || "installer"} | ${Number(worker.days || 0).toFixed(2)} dias | ${money(rate, settings.currency)}/hr`, 40, y);
+      y += 14;
+    });
+
+    y += 8;
+    doc.setFont("helvetica", "bold");
+    doc.text("Pricing", 40, y);
+    y += 18;
+    doc.setFont("helvetica", "normal");
+    [
+      `Worker-days: ${Number(changeOrder.addedDays || 0).toFixed(2)}`,
+      `Recommended: ${money(changeOrder.recommended || 0, settings.currency)}`,
+      `Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
+    ].forEach((line) => {
+      doc.text(line, 40, y);
+      y += 15;
+    });
+
+    const blob = doc.output("blob");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `change-order-${(project.projectName || "project").replace(/\s+/g, "-")}-${(changeOrder.title || "extra").replace(/\s+/g, "-")}.pdf`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function sendChangeOrder(project, changeOrder, settings) {
+    if (!project || !changeOrder) return alert("Select a change order first.");
+    const subject = encodeURIComponent(`Change Order - ${project.projectName || "Project"} - ${changeOrder.title || "Extra work"}`);
+    const body = encodeURIComponent(
+`Project: ${project.projectName || "-"}
+Client: ${project.clientName || "-"}
+Change Order: ${changeOrder.title || "-"}
+Scope: ${changeOrder.notes || "-"}
+Worker-days: ${Number(changeOrder.addedDays || 0).toFixed(2)}
+Recommended: ${money(changeOrder.recommended || 0, settings.currency)}
+Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
+    );
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
   }
 
   function exportInvoicePdf(kind, project, report, settings, input) {
@@ -917,22 +1049,37 @@
     if ($("btnSendNow")) $("btnSendNow").onclick = () => sendQuote(state, settings, metrics);
     ["toEmail", "toName", "subject", "scope", "message", "salesInitials"].forEach((id) => { if ($(id)) $(id).oninput = updateSendCounts; });
 
+    const ownerInvoiceState = getProjectInvoiceState(ownerProject);
+
     if ($("ownerInvoiceProject")) {
       $("ownerInvoiceProject").textContent = ownerProject?.projectName || state.projectName || "Sin proyecto";
     }
     if ($("ownerInvoiceClient")) {
       $("ownerInvoiceClient").textContent = ownerProject?.clientName || state.clientName || "Sin cliente";
     }
-    if ($("ownerInvoiceBase")) {
-      const baseAmount = ownerProject?.salePrice || metrics.recommended || 0;
-      setNum("ownerInvoiceBase", baseAmount);
-    }
+    if ($("ownerInvoiceNo")) setVal("ownerInvoiceNo", ownerInvoiceState.invoiceNo || "");
+    if ($("ownerInvoiceDate")) setVal("ownerInvoiceDate", ownerInvoiceState.invoiceDate || "");
+    if ($("ownerInvoiceBase")) setNum("ownerInvoiceBase", ownerInvoiceState.baseAmount);
+    if ($("ownerInvoiceDeposit")) setNum("ownerInvoiceDeposit", ownerInvoiceState.depositApplied);
+    if ($("ownerInvoiceReceived")) setNum("ownerInvoiceReceived", ownerInvoiceState.receivedApplied);
+    if ($("ownerInvoiceStatus")) setVal("ownerInvoiceStatus", ownerInvoiceState.status);
 
     const refreshOwnerInvoice = () => {
-      const baseAmount = num("ownerInvoiceBase", ownerProject?.salePrice || metrics.recommended || 0);
+      const baseAmount = num("ownerInvoiceBase", ownerInvoiceState.baseAmount);
       const depositApplied = num("ownerInvoiceDeposit", 0);
       const receivedApplied = num("ownerInvoiceReceived", 0);
       const invoiceMetrics = calcInvoice(ownerProject, ownerReport, { baseAmount, depositApplied, receivedApplied });
+      const nextInvoiceState = {
+        invoiceNo: val("ownerInvoiceNo"),
+        invoiceDate: val("ownerInvoiceDate"),
+        baseAmount,
+        depositApplied,
+        receivedApplied,
+        status: inferInvoiceStatus(invoiceMetrics.total, depositApplied, receivedApplied, val("ownerInvoiceStatus"))
+      };
+
+      if (ownerProject?.id) saveProjectInvoiceState(ownerProject.id, nextInvoiceState);
+      if ($("ownerInvoiceStatus")) setVal("ownerInvoiceStatus", nextInvoiceState.status);
 
       if ($("ownerInvoiceSubtotal")) $("ownerInvoiceSubtotal").textContent = money(invoiceMetrics.subtotal, settings.currency);
       if ($("ownerInvoiceChangeOrders")) $("ownerInvoiceChangeOrders").textContent = money(invoiceMetrics.changeOrderAmount, settings.currency);
@@ -952,9 +1099,11 @@
       }
     };
 
-    ["ownerInvoiceBase", "ownerInvoiceDeposit", "ownerInvoiceReceived"].forEach((id) => {
+    ["ownerInvoiceNo", "ownerInvoiceDate", "ownerInvoiceBase", "ownerInvoiceDeposit", "ownerInvoiceReceived", "ownerInvoiceStatus"].forEach((id) => {
       const el = $(id);
-      if (el) el.oninput = refreshOwnerInvoice;
+      if (!el) return;
+      el.oninput = refreshOwnerInvoice;
+      if (el.tagName === "SELECT") el.onchange = refreshOwnerInvoice;
     });
 
     if ($("btnOwnerInvoicePdf")) {
@@ -1198,7 +1347,8 @@ ${val("salesInitials") || "MG"}`;
         if (!state.workers.length) state.workers.push({ name: "Worker 1", type: "installer", days: 0, rate: "" });
 
         saveSales(state);
-        renderSales();
+   
+     renderSales();
       });
     });
   }
@@ -1416,9 +1566,15 @@ ${val("salesInitials") || "MG"}`;
                       `).join("")}
                     </select>
                   </td>
+                  <td>
+                    <div class="row-actions">
+                      <button class="btn ghost" data-co-pdf="${index}">PDF</button>
+                      <button class="btn primary" data-co-send="${index}">Send</button>
+                    </div>
+                  </td>
                 </tr>
               `).join("")
-            : `<tr><td colspan="3">No change orders yet.</td></tr>`;
+            : `<tr><td colspan="4">No change orders yet.</td></tr>`;
 
           $("salesChangeOrderBody").querySelectorAll("select[data-co-status]").forEach((el) => {
             el.onchange = () => {
@@ -1430,18 +1586,64 @@ ${val("salesInitials") || "MG"}`;
               renderSales();
             };
           });
+
+          $("salesChangeOrderBody").querySelectorAll("button[data-co-pdf]").forEach((button) => {
+            button.onclick = () => {
+              const index = Number(button.dataset.coPdf || -1);
+              const row = selectedReport.changeOrders?.[index];
+              if (!row) return;
+              exportChangeOrderPdf(selectedProject, row, settings);
+            };
+          });
+
+          $("salesChangeOrderBody").querySelectorAll("button[data-co-send]").forEach((button) => {
+            button.onclick = () => {
+              const index = Number(button.dataset.coSend || -1);
+              const report = loadSupervisorReport(selectedProject);
+              const row = report.changeOrders?.[index];
+              if (!row) return;
+              report.changeOrders[index] = {
+                ...row,
+                commercialStatus: "sent",
+                sentAt: new Date().toISOString()
+              };
+              saveSupervisorReport(selectedProject.id, report);
+              sendChangeOrder(selectedProject, report.changeOrders[index], settings);
+              renderSales();
+            };
+          });
         }
 
+        const salesInvoiceState = getProjectInvoiceState(selectedProject);
         if ($("salesInvoiceProject")) $("salesInvoiceProject").textContent = selectedProject.projectName || "Sin proyecto";
         if ($("salesInvoiceClient")) $("salesInvoiceClient").textContent = selectedProject.clientName || "Sin cliente";
-        if ($("salesInvoiceBase")) setNum("salesInvoiceBase", selectedProject.salePrice || 0);
+        if ($("salesInvoiceNo")) setVal("salesInvoiceNo", salesInvoiceState.invoiceNo || "");
+        if ($("salesInvoiceDate")) setVal("salesInvoiceDate", salesInvoiceState.invoiceDate || "");
+        if ($("salesInvoiceBase")) setNum("salesInvoiceBase", salesInvoiceState.baseAmount);
+        if ($("salesInvoiceDeposit")) setNum("salesInvoiceDeposit", salesInvoiceState.depositApplied);
+        if ($("salesInvoiceReceived")) setNum("salesInvoiceReceived", salesInvoiceState.receivedApplied);
+        if ($("salesInvoiceStatus")) setVal("salesInvoiceStatus", salesInvoiceState.status);
 
         const refreshSalesInvoice = () => {
+          const baseAmount = num("salesInvoiceBase", salesInvoiceState.baseAmount);
+          const depositApplied = num("salesInvoiceDeposit", 0);
+          const receivedApplied = num("salesInvoiceReceived", 0);
           const invoiceMetrics = calcInvoice(selectedProject, selectedReport, {
-            baseAmount: num("salesInvoiceBase", selectedProject.salePrice || 0),
-            depositApplied: num("salesInvoiceDeposit", 0),
-            receivedApplied: num("salesInvoiceReceived", 0)
+            baseAmount,
+            depositApplied,
+            receivedApplied
           });
+          const nextInvoiceState = {
+            invoiceNo: val("salesInvoiceNo"),
+            invoiceDate: val("salesInvoiceDate"),
+            baseAmount,
+            depositApplied,
+            receivedApplied,
+            status: inferInvoiceStatus(invoiceMetrics.total, depositApplied, receivedApplied, val("salesInvoiceStatus"))
+          };
+
+          saveProjectInvoiceState(selectedProject.id, nextInvoiceState);
+          if ($("salesInvoiceStatus")) setVal("salesInvoiceStatus", nextInvoiceState.status);
 
           if ($("salesInvoiceSubtotal")) $("salesInvoiceSubtotal").textContent = money(invoiceMetrics.subtotal, settings.currency);
           if ($("salesInvoiceChangeOrders")) $("salesInvoiceChangeOrders").textContent = money(invoiceMetrics.changeOrderAmount, settings.currency);
@@ -1449,9 +1651,11 @@ ${val("salesInitials") || "MG"}`;
           if ($("salesInvoiceBalance")) $("salesInvoiceBalance").textContent = money(invoiceMetrics.balance, settings.currency);
         };
 
-        ["salesInvoiceBase", "salesInvoiceDeposit", "salesInvoiceReceived"].forEach((id) => {
+        ["salesInvoiceNo", "salesInvoiceDate", "salesInvoiceBase", "salesInvoiceDeposit", "salesInvoiceReceived", "salesInvoiceStatus"].forEach((id) => {
           const el = $(id);
-          if (el) el.oninput = refreshSalesInvoice;
+          if (!el) return;
+          el.oninput = refreshSalesInvoice;
+          if (el.tagName === "SELECT") el.onchange = refreshSalesInvoice;
         });
 
         if ($("btnSalesInvoicePdf")) {
@@ -1924,12 +2128,22 @@ ${val("salesInitials") || "MG"}`;
             <td><span class="badge ${row.applied ? "green" : "amber"}">${row.applied ? "applied" : "draft"}</span></td>
             <td>
               <div class="row-actions">
+                <button class="btn ghost" data-pdf-change="${index}">PDF</button>
                 <button class="btn primary" data-apply-change="${index}">${row.applied ? "Applied" : "Apply"}</button>
                 <button class="btn danger" data-delete-change="${index}">Delete</button>
               </div>
             </td>
           </tr>
         `).join("");
+
+        $("coListBody").querySelectorAll("button[data-pdf-change]").forEach((button) => {
+          button.onclick = () => {
+            const index = Number(button.dataset.pdfChange || -1);
+            const row = state.changeOrders[index];
+            if (!row) return;
+            exportChangeOrderPdf(currentProject, row, settings);
+          };
+        });
 
         $("coListBody").querySelectorAll("button[data-delete-change]").forEach((button) => {
           button.onclick = () => {
@@ -2258,6 +2472,7 @@ ${val("salesInitials") || "MG"}`;
 
   document.addEventListener("DOMContentLoaded", render);
 })();
+
 
 
 
