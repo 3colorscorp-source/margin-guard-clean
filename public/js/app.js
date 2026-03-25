@@ -394,19 +394,15 @@
       : [];
     const changeOrderAmount = changeOrders.reduce((sum, row) => sum + finiteNumber(row.offeredPrice, 0), 0);
     const subtotal = baseAmount + changeOrderAmount;
-    const taxPct = Math.max(finiteNumber(input?.taxPct, 0), 0);
-    const taxAmount = subtotal * (taxPct / 100);
     const depositApplied = Math.max(finiteNumber(input?.depositApplied, 0), 0);
     const receivedApplied = Math.max(finiteNumber(input?.receivedApplied, 0), 0);
-    const total = subtotal + taxAmount;
+    const total = subtotal;
     const balance = total - depositApplied - receivedApplied;
 
     return {
       changeOrders,
       changeOrderAmount,
       subtotal,
-      taxPct,
-      taxAmount,
       total,
       depositApplied,
       receivedApplied,
@@ -451,7 +447,6 @@
       `Base contract: ${money(input?.baseAmount ?? project.salePrice ?? 0, settings.currency)}`,
       `Approved change orders: ${money(metrics.changeOrderAmount, settings.currency)}`,
       `Subtotal: ${money(metrics.subtotal, settings.currency)}`,
-      `Tax (${metrics.taxPct.toFixed(2)}%): ${money(metrics.taxAmount, settings.currency)}`,
       `Total: ${money(metrics.total, settings.currency)}`,
       `Deposit applied: ${money(metrics.depositApplied, settings.currency)}`,
       `Payments received: ${money(metrics.receivedApplied, settings.currency)}`,
@@ -935,14 +930,12 @@
 
     const refreshOwnerInvoice = () => {
       const baseAmount = num("ownerInvoiceBase", ownerProject?.salePrice || metrics.recommended || 0);
-      const taxPct = num("ownerInvoiceTax", 0);
       const depositApplied = num("ownerInvoiceDeposit", 0);
       const receivedApplied = num("ownerInvoiceReceived", 0);
-      const invoiceMetrics = calcInvoice(ownerProject, ownerReport, { baseAmount, taxPct, depositApplied, receivedApplied });
+      const invoiceMetrics = calcInvoice(ownerProject, ownerReport, { baseAmount, depositApplied, receivedApplied });
 
       if ($("ownerInvoiceSubtotal")) $("ownerInvoiceSubtotal").textContent = money(invoiceMetrics.subtotal, settings.currency);
       if ($("ownerInvoiceChangeOrders")) $("ownerInvoiceChangeOrders").textContent = money(invoiceMetrics.changeOrderAmount, settings.currency);
-      if ($("ownerInvoiceTaxAmount")) $("ownerInvoiceTaxAmount").textContent = money(invoiceMetrics.taxAmount, settings.currency);
       if ($("ownerInvoiceTotal")) $("ownerInvoiceTotal").textContent = money(invoiceMetrics.total, settings.currency);
       if ($("ownerInvoiceBalance")) $("ownerInvoiceBalance").textContent = money(invoiceMetrics.balance, settings.currency);
 
@@ -959,7 +952,7 @@
       }
     };
 
-    ["ownerInvoiceBase", "ownerInvoiceTax", "ownerInvoiceDeposit", "ownerInvoiceReceived"].forEach((id) => {
+    ["ownerInvoiceBase", "ownerInvoiceDeposit", "ownerInvoiceReceived"].forEach((id) => {
       const el = $(id);
       if (el) el.oninput = refreshOwnerInvoice;
     });
@@ -970,7 +963,6 @@
           invoiceNo: val("ownerInvoiceNo"),
           invoiceDate: val("ownerInvoiceDate"),
           baseAmount: num("ownerInvoiceBase", ownerProject?.salePrice || metrics.recommended || 0),
-          taxPct: num("ownerInvoiceTax", 0),
           depositApplied: num("ownerInvoiceDeposit", 0),
           receivedApplied: num("ownerInvoiceReceived", 0)
         });
@@ -1339,7 +1331,7 @@ ${val("salesInitials") || "MG"}`;
       if ($("salesPrimaryPrice")) $("salesPrimaryPrice").textContent = money(recommended, settings.currency);
       if ($("salesPrimaryMeta")) {
         $("salesPrimaryMeta").textContent = state.workers.length && nextMetrics.totalHours > 0
-          ? `${nextMetrics.totalWorkerDays.toFixed(2)} worker-days   ${nextMetrics.totalHours.toFixed(2)} horas-hombre   ${state.workers.length} trabajadores`
+          ? `${nextMetrics.totalWorkerDays.toFixed(2)} worker-days � ${nextMetrics.totalHours.toFixed(2)} horas-hombre � ${state.workers.length} trabajadores`
           : "Ingresa mano de obra para calcular el recomendado.";
       }
       if ($("salesPrimaryCommission")) $("salesPrimaryCommission").textContent = `${commissionPct.toFixed(2)}%`;
@@ -1351,7 +1343,7 @@ ${val("salesInitials") || "MG"}`;
       if ($("salesStageRecommended")) $("salesStageRecommended").textContent = `Recomendado ${money(recommended, settings.currency)}`;
       if ($("salesCrewHint")) {
         $("salesCrewHint").textContent = state.workers.length
-          ? `${state.workers.length} trabajadores   ${nextMetrics.totalWorkerDays.toFixed(2)} worker-days   ${nextMetrics.totalHours.toFixed(2)} horas-hombre`
+          ? `${state.workers.length} trabajadores � ${nextMetrics.totalWorkerDays.toFixed(2)} worker-days � ${nextMetrics.totalHours.toFixed(2)} horas-hombre`
           : "Define mano de obra por trabajador para calcular horas-hombre y precio recomendado.";
       }
 
@@ -1360,7 +1352,7 @@ ${val("salesInitials") || "MG"}`;
       }
       if ($("salesSignedMeta")) {
         if (activeProject) {
-          $("salesSignedMeta").textContent = `Proyecto activo   ${activeProject.dueDate || "Sin fecha"}   ${money(activeProject.laborBudget, settings.currency)} labor   ${Number(activeProject.estimatedDays || 0).toFixed(2)} dias`;
+          $("salesSignedMeta").textContent = `Proyecto activo � ${activeProject.dueDate || "Sin fecha"} � ${money(activeProject.laborBudget, settings.currency)} labor � ${Number(activeProject.estimatedDays || 0).toFixed(2)} dias`;
         } else {
           $("salesSignedMeta").textContent = "Firma una cotizacion para mandarla a Supervisor.";
         }
@@ -1387,7 +1379,7 @@ ${val("salesInitials") || "MG"}`;
         ["Objetivo recomendado", money(recommended, settings.currency), "Numero ideal para vender con margen sano"],
         ["Precio al cliente", money(offered, settings.currency), "Numero actual de la negociacion"],
         ["Descuento aplicado", `${discountPct.toFixed(2)}%`, "Comparado contra el recomendado"],
-        ["Comision estimada", `${commissionPct.toFixed(2)}%   ${money(commissionAmount, settings.currency)}`, "Pago estimado del vendedor"]
+        ["Comision estimada", `${commissionPct.toFixed(2)}% � ${money(commissionAmount, settings.currency)}`, "Pago estimado del vendedor"]
       ].map(([label, value, meta]) => `
         <div class="kpi-box">
           <div class="label">${escapeHtml(label)}</div>
@@ -1447,19 +1439,17 @@ ${val("salesInitials") || "MG"}`;
         const refreshSalesInvoice = () => {
           const invoiceMetrics = calcInvoice(selectedProject, selectedReport, {
             baseAmount: num("salesInvoiceBase", selectedProject.salePrice || 0),
-            taxPct: num("salesInvoiceTax", 0),
             depositApplied: num("salesInvoiceDeposit", 0),
             receivedApplied: num("salesInvoiceReceived", 0)
           });
 
           if ($("salesInvoiceSubtotal")) $("salesInvoiceSubtotal").textContent = money(invoiceMetrics.subtotal, settings.currency);
           if ($("salesInvoiceChangeOrders")) $("salesInvoiceChangeOrders").textContent = money(invoiceMetrics.changeOrderAmount, settings.currency);
-          if ($("salesInvoiceTaxAmount")) $("salesInvoiceTaxAmount").textContent = money(invoiceMetrics.taxAmount, settings.currency);
           if ($("salesInvoiceTotal")) $("salesInvoiceTotal").textContent = money(invoiceMetrics.total, settings.currency);
           if ($("salesInvoiceBalance")) $("salesInvoiceBalance").textContent = money(invoiceMetrics.balance, settings.currency);
         };
 
-        ["salesInvoiceBase", "salesInvoiceTax", "salesInvoiceDeposit", "salesInvoiceReceived"].forEach((id) => {
+        ["salesInvoiceBase", "salesInvoiceDeposit", "salesInvoiceReceived"].forEach((id) => {
           const el = $(id);
           if (el) el.oninput = refreshSalesInvoice;
         });
@@ -1470,7 +1460,6 @@ ${val("salesInitials") || "MG"}`;
               invoiceNo: val("salesInvoiceNo"),
               invoiceDate: val("salesInvoiceDate"),
               baseAmount: num("salesInvoiceBase", selectedProject.salePrice || 0),
-              taxPct: num("salesInvoiceTax", 0),
               depositApplied: num("salesInvoiceDeposit", 0),
               receivedApplied: num("salesInvoiceReceived", 0)
             });
@@ -1646,7 +1635,7 @@ ${val("salesInitials") || "MG"}`;
     if (picker) {
       picker.innerHTML = projects.length
         ? projects.map((project) => `
-            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")}   ${escapeHtml(project.clientName || "Sin cliente")}</option>
+            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} � ${escapeHtml(project.clientName || "Sin cliente")}</option>
           `).join("")
         : `<option value="">Sin proyectos firmados</option>`;
       picker.value = selectedProject?.id || "";
@@ -1914,7 +1903,7 @@ ${val("salesInitials") || "MG"}`;
       if ($("coPrimaryPrice")) $("coPrimaryPrice").textContent = money(changeMetrics.recommended, settings.currency);
       if ($("coPrimaryMeta")) {
         $("coPrimaryMeta").textContent = changeMetrics.totalWorkerDays > 0
-          ? `${changeMetrics.totalWorkerDays.toFixed(2)} worker-days   ${changeMetrics.totalHours.toFixed(2)} horas de equipo   ${changeMetrics.crewSize} trabajadores`
+          ? `${changeMetrics.totalWorkerDays.toFixed(2)} worker-days � ${changeMetrics.totalHours.toFixed(2)} horas de equipo � ${changeMetrics.crewSize} trabajadores`
           : "Ingresa dias por trabajador para cotizar el trabajo extra.";
       }
       if ($("coSuggestedDays")) $("coSuggestedDays").textContent = `${changeMetrics.totalWorkerDays.toFixed(2)} dias`;
