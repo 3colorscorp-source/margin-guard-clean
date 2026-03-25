@@ -359,6 +359,129 @@
     saveSupervisorReports(reports);
   }
 
+  function getProjectById(projectId) {
+    return loadProjects().find((project) => project.id === projectId) || null;
+  }
+
+  function getSelectedProject() {
+    const projects = loadProjects();
+    const selectedId = loadSupervisorSelectedProjectId();
+    return projects.find((project) => project.id === selectedId) || projects[0] || null;
+  }
+
+  function updateProjectById(projectId, updater) {
+    const projects = loadProjects();
+    const index = projects.findIndex((project) => project.id === projectId);
+    if (index < 0) return null;
+    const current = projects[index];
+    const nextProject = typeof updater === "function"
+      ? updater({ ...current })
+      : { ...current, ...updater };
+    projects[index] = nextProject;
+    saveProjects(projects);
+    if (loadSupervisorSelectedProjectId() === projectId) saveActiveProject(nextProject);
+    return nextProject;
+  }
+
+  function normalizeCommercialStatus(value) {
+    return ["draft", "sent", "approved", "signed"].includes(value) ? value : "draft";
+  }
+
+  function calcInvoice(project, report, input) {
+    const baseAmount = Math.max(finiteNumber(input?.baseAmount, project?.salePrice || 0), 0);
+    const changeOrders = Array.isArray(report?.changeOrders)
+      ? report.changeOrders.filter((row) => normalizeCommercialStatus(row.commercialStatus || (row.applied ? "approved" : "draft")) !== "draft")
+      : [];
+    const changeOrderAmount = changeOrders.reduce((sum, row) => sum + finiteNumber(row.offeredPrice, 0), 0);
+    const subtotal = baseAmount + changeOrderAmount;
+    const taxPct = Math.max(finiteNumber(input?.taxPct, 0), 0);
+    const taxAmount = subtotal * (taxPct / 100);
+    const depositApplied = Math.max(finiteNumber(input?.depositApplied, 0), 0);
+    const receivedApplied = Math.max(finiteNumber(input?.receivedApplied, 0), 0);
+    const total = subtotal + taxAmount;
+    const balance = total - depositApplied - receivedApplied;
+
+    return {
+      changeOrders,
+      changeOrderAmount,
+      subtotal,
+      taxPct,
+      taxAmount,
+      total,
+      depositApplied,
+      receivedApplied,
+      balance
+    };
+  }
+
+  function exportInvoicePdf(kind, project, report, settings, input) {
+    const jsPDF = window.jspdf?.jsPDF;
+    if (!jsPDF) return alert("jsPDF is not available.");
+    if (!project) return alert("Select a project first.");
+
+    const metrics = calcInvoice(project, report, input);
+    const doc = new jsPDF({ unit: "pt", format: "letter" });
+    let y = 46;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text(settings.bizName || DEFAULTS.bizName, 40, y);
+    y += 22;
+    doc.setFontSize(13);
+    doc.text(`Invoice - ${kind}`, 40, y);
+    y += 20;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    [
+      `Project: ${project.projectName || "-"}`,
+      `Client: ${project.clientName || "-"}`,
+      `Due date: ${project.dueDate || "-"}`,
+      `Invoice date: ${normalizeDateInput(input?.invoiceDate) || new Date().toISOString().slice(0, 10)}`,
+      `Invoice no: ${nonEmptyString(input?.invoiceNo, `INV-${Date.now()}`)}`
+    ].forEach((line) => {
+      doc.text(line, 40, y);
+      y += 15;
+    });
+
+    y += 8;
+    doc.setFont("helvetica", "bold");
+    doc.text("Billing Summary", 40, y);
+    y += 18;
+    doc.setFont("helvetica", "normal");
+    [
+      `Base contract: ${money(input?.baseAmount ?? project.salePrice ?? 0, settings.currency)}`,
+      `Approved change orders: ${money(metrics.changeOrderAmount, settings.currency)}`,
+      `Subtotal: ${money(metrics.subtotal, settings.currency)}`,
+      `Tax (${metrics.taxPct.toFixed(2)}%): ${money(metrics.taxAmount, settings.currency)}`,
+      `Total: ${money(metrics.total, settings.currency)}`,
+      `Deposit applied: ${money(metrics.depositApplied, settings.currency)}`,
+      `Payments received: ${money(metrics.receivedApplied, settings.currency)}`,
+      `Balance due: ${money(metrics.balance, settings.currency)}`
+    ].forEach((line) => {
+      doc.text(line, 40, y);
+      y += 15;
+    });
+
+    if (metrics.changeOrders.length) {
+      y += 10;
+      doc.setFont("helvetica", "bold");
+      doc.text("Included Change Orders", 40, y);
+      y += 18;
+      doc.setFont("helvetica", "normal");
+      metrics.changeOrders.forEach((row) => {
+        doc.text(`- ${row.title || "Change order"}: ${money(row.offeredPrice || 0, settings.currency)}`, 40, y);
+        y += 14;
+      });
+    }
+
+    const blob = doc.output("blob");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${kind.toLowerCase()}-${(project.projectName || "project").replace(/\s+/g, "-")}.pdf`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   function buildSignedProjectFromSales(state, settings, metrics) {
     const dueDate = normalizeDateInput(state.dueDate);
     return {
@@ -712,6 +835,14 @@
 
     renderWorkers(state, settings, metrics);
 
+    const ownerProject = getSelectedProject() || {
+      projectName: state.projectName,
+      clientName: state.clientName,
+      dueDate: "",
+      salePrice: metrics.recommended
+    };
+    const ownerReport = ownerProject?.id ? loadSupervisorReport(ownerProject) : buildDefaultSupervisorReport(null);
+
     const pricingModeCopy = settings.pricingMode === "day" ? "per dia laboral" : "por hora";
     const primaryCards = [
       ["Recommended", money(metrics.recommended, settings.currency), `${money(metrics.pricePerUnit, settings.currency)} ${pricingModeCopy}`],
@@ -790,6 +921,63 @@
     if ($("btnSendCancel")) $("btnSendCancel").onclick = closeSendModal;
     if ($("btnSendNow")) $("btnSendNow").onclick = () => sendQuote(state, settings, metrics);
     ["toEmail", "toName", "subject", "scope", "message", "salesInitials"].forEach((id) => { if ($(id)) $(id).oninput = updateSendCounts; });
+
+    if ($("ownerInvoiceProject")) {
+      $("ownerInvoiceProject").textContent = ownerProject?.projectName || state.projectName || "Sin proyecto";
+    }
+    if ($("ownerInvoiceClient")) {
+      $("ownerInvoiceClient").textContent = ownerProject?.clientName || state.clientName || "Sin cliente";
+    }
+    if ($("ownerInvoiceBase")) {
+      const baseAmount = ownerProject?.salePrice || metrics.recommended || 0;
+      setNum("ownerInvoiceBase", baseAmount);
+    }
+
+    const refreshOwnerInvoice = () => {
+      const baseAmount = num("ownerInvoiceBase", ownerProject?.salePrice || metrics.recommended || 0);
+      const taxPct = num("ownerInvoiceTax", 0);
+      const depositApplied = num("ownerInvoiceDeposit", 0);
+      const receivedApplied = num("ownerInvoiceReceived", 0);
+      const invoiceMetrics = calcInvoice(ownerProject, ownerReport, { baseAmount, taxPct, depositApplied, receivedApplied });
+
+      if ($("ownerInvoiceSubtotal")) $("ownerInvoiceSubtotal").textContent = money(invoiceMetrics.subtotal, settings.currency);
+      if ($("ownerInvoiceChangeOrders")) $("ownerInvoiceChangeOrders").textContent = money(invoiceMetrics.changeOrderAmount, settings.currency);
+      if ($("ownerInvoiceTaxAmount")) $("ownerInvoiceTaxAmount").textContent = money(invoiceMetrics.taxAmount, settings.currency);
+      if ($("ownerInvoiceTotal")) $("ownerInvoiceTotal").textContent = money(invoiceMetrics.total, settings.currency);
+      if ($("ownerInvoiceBalance")) $("ownerInvoiceBalance").textContent = money(invoiceMetrics.balance, settings.currency);
+
+      if ($("ownerInvoiceCoBody")) {
+        $("ownerInvoiceCoBody").innerHTML = invoiceMetrics.changeOrders.length
+          ? invoiceMetrics.changeOrders.map((row) => `
+              <tr>
+                <td>${escapeHtml(row.title || "Change order")}</td>
+                <td>${escapeHtml(normalizeCommercialStatus(row.commercialStatus || (row.applied ? "approved" : "draft")))}</td>
+                <td>${money(row.offeredPrice || 0, settings.currency)}</td>
+              </tr>
+            `).join("")
+          : `<tr><td colspan="3">No approved change orders yet.</td></tr>`;
+      }
+    };
+
+    ["ownerInvoiceBase", "ownerInvoiceTax", "ownerInvoiceDeposit", "ownerInvoiceReceived"].forEach((id) => {
+      const el = $(id);
+      if (el) el.oninput = refreshOwnerInvoice;
+    });
+
+    if ($("btnOwnerInvoicePdf")) {
+      $("btnOwnerInvoicePdf").onclick = () => {
+        exportInvoicePdf("owner", ownerProject, ownerReport, settings, {
+          invoiceNo: val("ownerInvoiceNo"),
+          invoiceDate: val("ownerInvoiceDate"),
+          baseAmount: num("ownerInvoiceBase", ownerProject?.salePrice || metrics.recommended || 0),
+          taxPct: num("ownerInvoiceTax", 0),
+          depositApplied: num("ownerInvoiceDeposit", 0),
+          receivedApplied: num("ownerInvoiceReceived", 0)
+        });
+      };
+    }
+
+    refreshOwnerInvoice();
   }
 
   async function exportOwnerPdf(state, settings, metrics) {
@@ -1029,8 +1217,23 @@ ${val("salesInitials") || "MG"}`;
     const settings = loadSettings();
     const state = loadSales();
     const activeProject = loadActiveProject();
+    const salesProjectPicker = $("salesProjectPicker");
     const stageRange = $("salesStageRange");
     const metrics = calcSales(state, settings);
+    const salesProjects = loadProjects();
+    const selectedProjectId = loadSupervisorSelectedProjectId();
+    const selectedProject = salesProjects.find((project) => project.id === selectedProjectId) || salesProjects[0] || null;
+
+    if (salesProjectPicker) {
+      salesProjectPicker.innerHTML = salesProjects.length
+        ? salesProjects.map((project) => `<option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} - ${escapeHtml(project.clientName || "Sin cliente")}</option>`).join("")
+        : `<option value="">Sin proyectos firmados</option>`;
+      salesProjectPicker.value = selectedProject?.id || "";
+      salesProjectPicker.onchange = () => {
+        saveSupervisorSelectedProjectId(salesProjectPicker.value);
+        renderSales();
+      };
+    }
 
     setVal("salesProjectName", state.projectName);
     setVal("salesClientName", state.clientName);
@@ -1136,7 +1339,7 @@ ${val("salesInitials") || "MG"}`;
       if ($("salesPrimaryPrice")) $("salesPrimaryPrice").textContent = money(recommended, settings.currency);
       if ($("salesPrimaryMeta")) {
         $("salesPrimaryMeta").textContent = state.workers.length && nextMetrics.totalHours > 0
-          ? `${nextMetrics.totalWorkerDays.toFixed(2)} worker-days � ${nextMetrics.totalHours.toFixed(2)} horas-hombre � ${state.workers.length} trabajadores`
+          ? `${nextMetrics.totalWorkerDays.toFixed(2)} worker-days   ${nextMetrics.totalHours.toFixed(2)} horas-hombre   ${state.workers.length} trabajadores`
           : "Ingresa mano de obra para calcular el recomendado.";
       }
       if ($("salesPrimaryCommission")) $("salesPrimaryCommission").textContent = `${commissionPct.toFixed(2)}%`;
@@ -1148,7 +1351,7 @@ ${val("salesInitials") || "MG"}`;
       if ($("salesStageRecommended")) $("salesStageRecommended").textContent = `Recomendado ${money(recommended, settings.currency)}`;
       if ($("salesCrewHint")) {
         $("salesCrewHint").textContent = state.workers.length
-          ? `${state.workers.length} trabajadores � ${nextMetrics.totalWorkerDays.toFixed(2)} worker-days � ${nextMetrics.totalHours.toFixed(2)} horas-hombre`
+          ? `${state.workers.length} trabajadores   ${nextMetrics.totalWorkerDays.toFixed(2)} worker-days   ${nextMetrics.totalHours.toFixed(2)} horas-hombre`
           : "Define mano de obra por trabajador para calcular horas-hombre y precio recomendado.";
       }
 
@@ -1157,7 +1360,7 @@ ${val("salesInitials") || "MG"}`;
       }
       if ($("salesSignedMeta")) {
         if (activeProject) {
-          $("salesSignedMeta").textContent = `Proyecto activo � ${activeProject.dueDate || "Sin fecha"} � ${money(activeProject.laborBudget, settings.currency)} labor � ${Number(activeProject.estimatedDays || 0).toFixed(2)} dias`;
+          $("salesSignedMeta").textContent = `Proyecto activo   ${activeProject.dueDate || "Sin fecha"}   ${money(activeProject.laborBudget, settings.currency)} labor   ${Number(activeProject.estimatedDays || 0).toFixed(2)} dias`;
         } else {
           $("salesSignedMeta").textContent = "Firma una cotizacion para mandarla a Supervisor.";
         }
@@ -1165,6 +1368,13 @@ ${val("salesInitials") || "MG"}`;
       if ($("salesSignedBadge")) {
         $("salesSignedBadge").className = `badge ${activeProject ? "green" : "amber"}`;
         $("salesSignedBadge").textContent = activeProject ? "Proyecto activo" : "Pendiente de firma";
+      }
+
+      if ($("salesProjectPortfolioCount")) {
+        $("salesProjectPortfolioCount").textContent = String(salesProjects.length);
+      }
+      if ($("salesProjectStatus")) {
+        $("salesProjectStatus").textContent = selectedProject?.status || "draft";
       }
 
       const commissionAmount = offered * (commissionPct / 100);
@@ -1177,7 +1387,7 @@ ${val("salesInitials") || "MG"}`;
         ["Objetivo recomendado", money(recommended, settings.currency), "Numero ideal para vender con margen sano"],
         ["Precio al cliente", money(offered, settings.currency), "Numero actual de la negociacion"],
         ["Descuento aplicado", `${discountPct.toFixed(2)}%`, "Comparado contra el recomendado"],
-        ["Comision estimada", `${commissionPct.toFixed(2)}% � ${money(commissionAmount, settings.currency)}`, "Pago estimado del vendedor"]
+        ["Comision estimada", `${commissionPct.toFixed(2)}%   ${money(commissionAmount, settings.currency)}`, "Pago estimado del vendedor"]
       ].map(([label, value, meta]) => `
         <div class="kpi-box">
           <div class="label">${escapeHtml(label)}</div>
@@ -1196,6 +1406,87 @@ ${val("salesInitials") || "MG"}`;
         $("negotiationList").innerHTML = scripts.map((line, index) => `
           <li><span class="msg-idx">${index + 1}</span>${escapeHtml(line)}</li>
         `).join("");
+      }
+
+      if (selectedProject) {
+        const selectedReport = loadSupervisorReport(selectedProject);
+
+        if ($("salesChangeOrderBody")) {
+          $("salesChangeOrderBody").innerHTML = selectedReport.changeOrders?.length
+            ? selectedReport.changeOrders.map((row, index) => `
+                <tr>
+                  <td>${escapeHtml(row.title || "Change order")}</td>
+                  <td>${money(row.offeredPrice || 0, settings.currency)}</td>
+                  <td>
+                    <select data-co-status="${index}">
+                      ${["draft", "sent", "approved", "signed"].map((statusValue) => `
+                        <option value="${statusValue}" ${normalizeCommercialStatus(row.commercialStatus || (row.applied ? "approved" : "draft")) === statusValue ? "selected" : ""}>${statusValue}</option>
+                      `).join("")}
+                    </select>
+                  </td>
+                </tr>
+              `).join("")
+            : `<tr><td colspan="3">No change orders yet.</td></tr>`;
+
+          $("salesChangeOrderBody").querySelectorAll("select[data-co-status]").forEach((el) => {
+            el.onchange = () => {
+              const report = loadSupervisorReport(selectedProject);
+              const index = Number(el.dataset.coStatus || -1);
+              if (index < 0 || !report.changeOrders[index]) return;
+              report.changeOrders[index].commercialStatus = normalizeCommercialStatus(el.value);
+              saveSupervisorReport(selectedProject.id, report);
+              renderSales();
+            };
+          });
+        }
+
+        if ($("salesInvoiceProject")) $("salesInvoiceProject").textContent = selectedProject.projectName || "Sin proyecto";
+        if ($("salesInvoiceClient")) $("salesInvoiceClient").textContent = selectedProject.clientName || "Sin cliente";
+        if ($("salesInvoiceBase")) setNum("salesInvoiceBase", selectedProject.salePrice || 0);
+
+        const refreshSalesInvoice = () => {
+          const invoiceMetrics = calcInvoice(selectedProject, selectedReport, {
+            baseAmount: num("salesInvoiceBase", selectedProject.salePrice || 0),
+            taxPct: num("salesInvoiceTax", 0),
+            depositApplied: num("salesInvoiceDeposit", 0),
+            receivedApplied: num("salesInvoiceReceived", 0)
+          });
+
+          if ($("salesInvoiceSubtotal")) $("salesInvoiceSubtotal").textContent = money(invoiceMetrics.subtotal, settings.currency);
+          if ($("salesInvoiceChangeOrders")) $("salesInvoiceChangeOrders").textContent = money(invoiceMetrics.changeOrderAmount, settings.currency);
+          if ($("salesInvoiceTaxAmount")) $("salesInvoiceTaxAmount").textContent = money(invoiceMetrics.taxAmount, settings.currency);
+          if ($("salesInvoiceTotal")) $("salesInvoiceTotal").textContent = money(invoiceMetrics.total, settings.currency);
+          if ($("salesInvoiceBalance")) $("salesInvoiceBalance").textContent = money(invoiceMetrics.balance, settings.currency);
+        };
+
+        ["salesInvoiceBase", "salesInvoiceTax", "salesInvoiceDeposit", "salesInvoiceReceived"].forEach((id) => {
+          const el = $(id);
+          if (el) el.oninput = refreshSalesInvoice;
+        });
+
+        if ($("btnSalesInvoicePdf")) {
+          $("btnSalesInvoicePdf").onclick = () => {
+            exportInvoicePdf("sales", selectedProject, selectedReport, settings, {
+              invoiceNo: val("salesInvoiceNo"),
+              invoiceDate: val("salesInvoiceDate"),
+              baseAmount: num("salesInvoiceBase", selectedProject.salePrice || 0),
+              taxPct: num("salesInvoiceTax", 0),
+              depositApplied: num("salesInvoiceDeposit", 0),
+              receivedApplied: num("salesInvoiceReceived", 0)
+            });
+          };
+        }
+
+        if ($("btnSalesProjectComplete")) {
+          $("btnSalesProjectComplete").onclick = () => {
+            updateProjectById(selectedProject.id, { status: "completed", completedAt: new Date().toISOString() });
+            renderSales();
+          };
+        }
+
+        refreshSalesInvoice();
+      } else {
+        if ($("salesChangeOrderBody")) $("salesChangeOrderBody").innerHTML = `<tr><td colspan="3">No projects signed yet.</td></tr>`;
       }
     };
 
@@ -1355,7 +1646,7 @@ ${val("salesInitials") || "MG"}`;
     if (picker) {
       picker.innerHTML = projects.length
         ? projects.map((project) => `
-            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} � ${escapeHtml(project.clientName || "Sin cliente")}</option>
+            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")}   ${escapeHtml(project.clientName || "Sin cliente")}</option>
           `).join("")
         : `<option value="">Sin proyectos firmados</option>`;
       picker.value = selectedProject?.id || "";
@@ -1623,7 +1914,7 @@ ${val("salesInitials") || "MG"}`;
       if ($("coPrimaryPrice")) $("coPrimaryPrice").textContent = money(changeMetrics.recommended, settings.currency);
       if ($("coPrimaryMeta")) {
         $("coPrimaryMeta").textContent = changeMetrics.totalWorkerDays > 0
-          ? `${changeMetrics.totalWorkerDays.toFixed(2)} worker-days � ${changeMetrics.totalHours.toFixed(2)} horas de equipo � ${changeMetrics.crewSize} trabajadores`
+          ? `${changeMetrics.totalWorkerDays.toFixed(2)} worker-days   ${changeMetrics.totalHours.toFixed(2)} horas de equipo   ${changeMetrics.crewSize} trabajadores`
           : "Ingresa dias por trabajador para cotizar el trabajo extra.";
       }
       if ($("coSuggestedDays")) $("coSuggestedDays").textContent = `${changeMetrics.totalWorkerDays.toFixed(2)} dias`;
