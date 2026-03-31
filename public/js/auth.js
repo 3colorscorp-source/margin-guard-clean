@@ -63,6 +63,11 @@
       const renewText = data.renewsAt ? new Date(data.renewsAt).toLocaleDateString() : "";
       plan.textContent = renewText ? `Plan anual activo · Renueva ${renewText}` : "Plan anual activo";
     }
+
+    const tenantLabel = document.getElementById("tenantName");
+    if (tenantLabel && data.tenantName) {
+      tenantLabel.textContent = data.tenantName;
+    }
   }
 
   async function enforceAuth() {
@@ -73,6 +78,15 @@
     if (!data.active) {
       window.location.href = "/index.html?login=1";
       return;
+    }
+
+    if (window.MarginGuardTenant?.bootstrapTenant) {
+      try {
+        const { data: tenantData } = await window.MarginGuardTenant.bootstrapTenant();
+        if (tenantData?.tenant?.name) data.tenantName = tenantData.tenant.name;
+      } catch (_err) {
+        // No interrumpir acceso mientras migramos a multitenant.
+      }
     }
 
     paintAccount(data);

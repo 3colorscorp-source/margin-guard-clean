@@ -1,4 +1,4 @@
-
+﻿
 (() => {
   const LS_SETTINGS = "mg_settings_v2";
   const LS_OWNER = "mg_owner_v2";
@@ -10,9 +10,28 @@
   const LS_PROJECTS = "mg_projects_v1";
   const LS_SUPERVISOR_REPORTS = "mg_supervisor_reports_v1";
   const LS_SUPERVISOR_SELECTED = "mg_supervisor_selected_project_v1";
+  const LS_HUB_VIEW = "mg_hub_view_v1";
+  const LS_HUB_TEMPLATES = "mg_hub_templates_v1";
+  const TENANT_SNAPSHOT_VERSION = 1;
+  const TENANT_STORAGE_KEYS = [
+    LS_SETTINGS,
+    LS_OWNER,
+    LS_DASHBOARD,
+    LS_SALES,
+    LS_SUPERVISOR,
+    LS_APPROVALS,
+    LS_ACTIVE_PROJECT,
+    LS_PROJECTS,
+    LS_SUPERVISOR_REPORTS,
+    LS_SUPERVISOR_SELECTED,
+    LS_HUB_VIEW,
+    LS_HUB_TEMPLATES
+  ];
 
   const DEFAULTS = {
     bizName: "Three Colors Corp",
+    publicLogoUrl: "",
+    publicAccentColor: "#0f8a5f",
     currency: "$",
     baseInstaller: 75,
     baseHelper: 45,
@@ -75,6 +94,52 @@
     extras: []
   };
 
+  const tenantSyncState = {
+    initialized: false,
+    loading: false,
+    saving: false,
+    pending: false,
+    timer: null,
+    lastSerialized: ""
+  };
+
+  const DEFAULT_HUB_TEMPLATES = {
+    invoice_send: {
+      subject: "Invoice {{invoice_no}} - {{project}}",
+      body:
+`Hello {{customer}},
+
+Your invoice is ready.
+
+Project: {{project}}
+Invoice No: {{invoice_no}}
+Invoice Date: {{invoice_date}}
+Due Date: {{due_date}}
+Total: {{total}}
+Balance Due: {{balance}}
+
+Please reply if you need a copy or payment instructions.
+
+Thank you.`
+    },
+    payment_request: {
+      subject: "Payment Reminder - {{invoice_no}} - {{project}}",
+      body:
+`Hello {{customer}},
+
+This is a friendly reminder for your open balance.
+
+Project: {{project}}
+Invoice No: {{invoice_no}}
+Due Date: {{due_date}}
+Balance Due: {{balance}}
+
+Please let us know once payment has been sent.
+
+Thank you.`
+    }
+  };
+
   const $ = (id) => document.getElementById(id);
 
   function parseJSON(raw, fallback) {
@@ -88,10 +153,12 @@
 
   function writeStore(key, value) {
     localStorage.setItem(key, JSON.stringify(value));
+    scheduleTenantSnapshotSync();
   }
 
   function removeStore(key) {
     localStorage.removeItem(key);
+    scheduleTenantSnapshotSync();
   }
 
   function money(value, currency) {
@@ -284,7 +351,144 @@
   }
 
   function saveSupervisorSelectedProjectId(projectId) {
-    if (projectId) localStorage.setItem(LS_SUPERVISOR_SELECTED, projectId);
+    if (projectId) {
+      localStorage.setItem(LS_SUPERVISOR_SELECTED, projectId);
+      scheduleTenantSnapshotSync();
+    }
+  }
+
+  function getTenantSnapshotPayload() {
+    const storage = {};
+    TENANT_STORAGE_KEYS.forEach((key) => {
+      const raw = localStorage.getItem(key);
+      if (raw != null) storage[key] = parseJSON(raw, raw);
+    });
+    return {
+      version: TENANT_SNAPSHOT_VERSION,
+      storage
+    };
+  }
+
+  function applyTenantSnapshotPayload(payload) {
+    const storage = payload?.storage && typeof payload.storage === "object" ? payload.storage : {};
+    tenantSyncState.loading = true;
+    try {
+      TENANT_STORAGE_KEYS.forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(storage, key)) {
+          localStorage.setItem(key, JSON.stringify(storage[key]));
+        } else {
+          localStorage.removeItem(key);
+        }
+      });
+    } finally {
+      tenantSyncState.loading = false;
+    }
+  }
+
+  function hasMeaningfulLocalState() {
+    return TENANT_STORAGE_KEYS.some((key) => {
+      const raw = localStorage.getItem(key);
+      if (raw == null || raw === "") return false;
+      if (raw === "[]" || raw === "{}" || raw === "\"\"") return false;
+      return true;
+    });
+  }
+
+  async function persistTenantSnapshotNow() {
+    if (!tenantSyncState.initialized || tenantSyncState.loading || tenantSyncState.saving || !window.MarginGuardTenant?.saveTenantSnapshot) return;
+    const payload = getTenantSnapshotPayload();
+    const serialized = JSON.stringify(payload);
+    if (serialized === tenantSyncState.lastSerialized) return;
+
+    tenantSyncState.saving = true;
+    try {
+      const { response, data } = await window.MarginGuardTenant.saveTenantSnapshot(payload);
+      if (!response?.ok) throw new Error(data?.error || "Unable to save tenant snapshot");
+      tenantSyncState.lastSerialized = serialized;
+    } catch (_err) {
+      // Mantener localStorage funcional incluso si el backend aun no esta listo.
+    } finally {
+      tenantSyncState.saving = false;
+      if (tenantSyncState.pending) {
+        tenantSyncState.pending = false;
+        scheduleTenantSnapshotSync();
+      }
+    }
+  }
+
+  function scheduleTenantSnapshotSync() {
+    if (!tenantSyncState.initialized || tenantSyncState.loading) return;
+    if (tenantSyncState.saving) {
+      tenantSyncState.pending = true;
+      return;
+    }
+    if (tenantSyncState.timer) window.clearTimeout(tenantSyncState.timer);
+    tenantSyncState.timer = window.setTimeout(() => {
+      tenantSyncState.timer = null;
+      persistTenantSnapshotNow();
+    }, 400);
+  }
+
+  async function initTenantSnapshotBridge() {
+    if (!window.MarginGuardTenant?.bootstrapTenant || !window.MarginGuardTenant?.loadTenantSnapshot) {
+      tenantSyncState.initialized = true;
+      return;
+    }
+
+    try {
+      await window.MarginGuardTenant.bootstrapTenant();
+      const { response, data } = await window.MarginGuardTenant.loadTenantSnapshot();
+      const snapshotPayload = data?.snapshot?.payload;
+
+      if (response?.ok && snapshotPayload && typeof snapshotPayload === "object") {
+        applyTenantSnapshotPayload(snapshotPayload);
+        tenantSyncState.lastSerialized = JSON.stringify(getTenantSnapshotPayload());
+      } else if (hasMeaningfulLocalState()) {
+        tenantSyncState.initialized = true;
+        await persistTenantSnapshotNow();
+        return;
+      }
+    } catch (_err) {
+      // Mientras terminamos la migracion, la app sigue funcionando localmente.
+    }
+
+    tenantSyncState.initialized = true;
+  }
+
+  function loadHubViewState() {
+    return {
+      tab: "all",
+      sortKey: "dateRaw",
+      sortDir: "desc",
+      search: "",
+      status: "all",
+      dateFrom: "",
+      customer: "",
+      location: "",
+      ...readStore(LS_HUB_VIEW, {})
+    };
+  }
+
+  function saveHubViewState(state) {
+    writeStore(LS_HUB_VIEW, state);
+  }
+
+  function loadHubTemplates() {
+    const saved = readStore(LS_HUB_TEMPLATES, {});
+    return {
+      invoice_send: {
+        ...DEFAULT_HUB_TEMPLATES.invoice_send,
+        ...(saved.invoice_send || {})
+      },
+      payment_request: {
+        ...DEFAULT_HUB_TEMPLATES.payment_request,
+        ...(saved.payment_request || {})
+      }
+    };
+  }
+
+  function saveHubTemplates(templates) {
+    writeStore(LS_HUB_TEMPLATES, templates);
   }
 
   function buildDefaultChangeOrderWorkers(project) {
@@ -395,10 +599,18 @@
     return {
       invoiceNo: "",
       invoiceDate: "",
+      dueDate: normalizeDateInput(project?.dueDate),
+      promisedDate: "",
       baseAmount: finiteNumber(project?.salePrice, 0),
       depositApplied: 0,
       receivedApplied: 0,
-      status: "draft"
+      status: "draft",
+      collectionStage: "new",
+      payments: [],
+      activity: [],
+      publicToken: "",
+      publicUrl: "",
+      paymentLink: ""
     };
   }
 
@@ -409,9 +621,17 @@
       ...base,
       ...saved,
       baseAmount: finiteNumber(saved.baseAmount, base.baseAmount),
+      dueDate: normalizeDateInput(saved.dueDate || base.dueDate),
+      promisedDate: normalizeDateInput(saved.promisedDate),
       depositApplied: finiteNumber(saved.depositApplied, 0),
       receivedApplied: finiteNumber(saved.receivedApplied, 0),
-      status: normalizeInvoiceStatus(saved.status)
+      status: normalizeInvoiceStatus(saved.status),
+      collectionStage: ["new", "contacted", "promised", "escalated", "resolved"].includes(saved.collectionStage) ? saved.collectionStage : "new",
+      payments: Array.isArray(saved.payments) ? saved.payments : [],
+      activity: Array.isArray(saved.activity) ? saved.activity : [],
+      publicToken: nonEmptyString(saved.publicToken),
+      publicUrl: nonEmptyString(saved.publicUrl),
+      paymentLink: nonEmptyString(saved.paymentLink)
     };
   }
 
@@ -421,9 +641,143 @@
       invoice: {
         ...buildDefaultInvoiceState(project),
         ...(invoice || {}),
-        status: normalizeInvoiceStatus(invoice?.status)
+        dueDate: normalizeDateInput(invoice?.dueDate || project?.dueDate),
+        promisedDate: normalizeDateInput(invoice?.promisedDate),
+        status: normalizeInvoiceStatus(invoice?.status),
+        collectionStage: ["new", "contacted", "promised", "escalated", "resolved"].includes(invoice?.collectionStage) ? invoice.collectionStage : "new",
+        payments: Array.isArray(invoice?.payments) ? invoice.payments : [],
+        activity: Array.isArray(invoice?.activity) ? invoice.activity : [],
+        publicToken: nonEmptyString(invoice?.publicToken),
+        publicUrl: nonEmptyString(invoice?.publicUrl),
+        paymentLink: nonEmptyString(invoice?.paymentLink)
       }
     }));
+  }
+
+  function appendInvoiceActivity(invoice, message, dateValue, type = "note") {
+    const next = Array.isArray(invoice?.activity) ? invoice.activity.slice() : [];
+    next.unshift({
+      message,
+      at: dateValue || new Date().toISOString(),
+      type
+    });
+    return next.slice(0, 40);
+  }
+
+  function setNotice(targetId, message, tone) {
+    const node = $(targetId);
+    if (!node) return;
+    if (!message) {
+      node.style.display = "none";
+      node.className = "notice";
+      node.textContent = "";
+      return;
+    }
+    node.style.display = "block";
+    node.className = `notice ${tone || ""}`.trim();
+    node.textContent = message;
+  }
+
+  function setHubFeedback(message, tone) {
+    setNotice("hubFeedback", message, tone);
+  }
+
+  function normalizeInvoiceFormValue(field, rawValue) {
+    if (field.type === "number") {
+      const value = Number(rawValue);
+      return Number.isFinite(value) ? value : 0;
+    }
+    if (field.type === "date") return normalizeDateInput(rawValue);
+    return String(rawValue || "").trim();
+  }
+
+  let hubFormState = null;
+
+  function closeHubFormModal() {
+    hubFormState = null;
+    if ($("hubFormModal")) $("hubFormModal").setAttribute("aria-hidden", "true");
+    if ($("hubFormFields")) $("hubFormFields").innerHTML = "";
+    setNotice("hubFormFeedback", "", "");
+  }
+
+  function openHubFormModal(config) {
+    hubFormState = config;
+    if ($("hubFormTitle")) $("hubFormTitle").textContent = config.title || "Actualizar";
+    if ($("hubFormSubtitle")) $("hubFormSubtitle").textContent = config.subtitle || "Completa los datos para continuar.";
+    if ($("hubFormSubmit")) $("hubFormSubmit").textContent = config.submitLabel || "Guardar";
+    if ($("hubFormFields")) {
+      $("hubFormFields").className = "hub-form-grid";
+      $("hubFormFields").innerHTML = (Array.isArray(config.fields) ? config.fields : []).map((field) => {
+        if (field.type === "textarea") {
+          return `
+            <div class="field">
+              <label>${escapeHtml(field.label || "")}</label>
+              <textarea id="${escapeHtml(field.id)}" rows="${field.rows || 4}" placeholder="${escapeHtml(field.placeholder || "")}">${escapeHtml(field.value || "")}</textarea>
+            </div>
+          `;
+        }
+        if (field.type === "select") {
+          return `
+            <div class="field">
+              <label>${escapeHtml(field.label || "")}</label>
+              <select id="${escapeHtml(field.id)}">
+                ${(Array.isArray(field.options) ? field.options : []).map((option) => `
+                  <option value="${escapeHtml(option.value)}" ${String(option.value) === String(field.value ?? "") ? "selected" : ""}>${escapeHtml(option.label)}</option>
+                `).join("")}
+              </select>
+            </div>
+          `;
+        }
+        return `
+          <div class="field">
+            <label>${escapeHtml(field.label || "")}</label>
+            <input id="${escapeHtml(field.id)}" type="${escapeHtml(field.type || "text")}" step="${field.step || ""}" placeholder="${escapeHtml(field.placeholder || "")}" value="${escapeHtml(field.value ?? "")}" />
+            ${field.hint ? `<div class="hint" style="justify-content:flex-start;">${escapeHtml(field.hint)}</div>` : ""}
+          </div>
+        `;
+      }).join("");
+    }
+    setNotice("hubFormFeedback", "", "");
+    if ($("hubFormModal")) $("hubFormModal").setAttribute("aria-hidden", "false");
+  }
+
+  function canTransitionInvoiceStatus(currentStatus, nextStatus) {
+    const current = normalizeInvoiceStatus(currentStatus);
+    const next = normalizeInvoiceStatus(nextStatus);
+    const transitions = {
+      draft: ["draft", "sent", "partial", "paid"],
+      sent: ["sent", "partial", "paid"],
+      partial: ["partial", "paid"],
+      paid: ["paid"]
+    };
+    return (transitions[current] || []).includes(next);
+  }
+
+  function getHubRowActionState(row) {
+    const hasInvoice = Boolean(row?.invoiceNo);
+    const hasAmount = finiteNumber(row?.amount, 0) > 0;
+    const hasBalance = finiteNumber(row?.balance, 0) > 0;
+    const hasClient = Boolean(nonEmptyString(row?.customer));
+    const status = normalizeInvoiceStatus(row?.invoiceStatus || row?.status);
+    return {
+      canConvert: !hasInvoice && hasAmount,
+      canMarkSent: hasInvoice && canTransitionInvoiceStatus(status, "sent"),
+      canSendInvoice: hasInvoice && hasClient && hasAmount,
+      canTakePayment: hasInvoice && hasBalance,
+      canMarkPaid: hasInvoice && hasBalance,
+      canRequestPayment: hasInvoice && hasBalance && ["sent", "partial"].includes(status),
+      canPublishLink: hasInvoice && hasClient && hasAmount,
+      canOpenPublic: Boolean(row?.project?.invoice?.publicUrl || row?.project?.invoice?.publicToken),
+      canSetPaymentLink: hasInvoice,
+      canExportPdf: hasInvoice && hasAmount
+    };
+  }
+
+  function guardHubAction(row, capability, blockedMessage) {
+    const state = getHubRowActionState(row);
+    if (state[capability]) return true;
+    setHubFeedback(blockedMessage, "warn");
+    return false;
   }
 
   function inferInvoiceStatus(total, depositApplied, receivedApplied, currentStatus) {
@@ -611,6 +965,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
   function buildSignedProjectFromSales(state, settings, metrics) {
     const dueDate = normalizeDateInput(state.dueDate);
+    const owner = loadOwner();
     return {
       id: `PRJ-${Date.now()}`,
       status: "active",
@@ -618,6 +973,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       signedAt: new Date().toISOString(),
       projectName: state.projectName || "Project",
       clientName: state.clientName || "",
+      clientEmail: "",
+      clientPhone: "",
+      location: nonEmptyString(owner.location),
       dueDate,
       estimatedDays: Number(metrics.totalWorkerDays || 0),
       laborBudget: Number(metrics.labor || 0),
@@ -808,12 +1166,271 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           <div class="meta">${escapeHtml(meta)}</div>
         </div>
       `).join("");
+
+      if ($("dashboardRevenueStrip") || $("dashboardRevenueNote") || $("dashboardCommandStrip") || $("dashboardCommandQueue") || $("dashboardOwnerTasks") || $("dashboardClientScorecard") || $("dashboardDailyDigest") || $("dashboardProfitabilityRanking") || $("dashboardCashForecast") || $("dashboardWeeklyReview") || $("dashboardRiskSegments")) {
+        const hubRows = buildPortfolioRows(settings);
+        const openBalance = hubRows.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
+        const collectionsCount = hubRows.filter((row) => ["sent", "partial", "overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0).length;
+        const paidTotal = hubRows.filter((row) => row.status === "paid").reduce((sum, row) => sum + finiteNumber(row.amount, 0), 0);
+        const topPriority = hubRows.slice().sort((left, right) => right.priorityScore - left.priorityScore)[0];
+        const focusRows = hubRows
+          .filter((row) => row.priorityScore > 0)
+          .slice()
+          .sort((left, right) => right.priorityScore - left.priorityScore)
+          .slice(0, 5);
+        const ownerTasks = buildOwnerTasks(hubRows, settings);
+        const autoReminderRows = buildAutoReminderRows(hubRows);
+        const clientScores = buildClientCollectionsScore(hubRows, settings);
+        const profitability = buildProfitabilityRanking(hubRows, settings);
+        const cashForecast = buildCashInForecast(hubRows, settings);
+        const weeklyReview = buildWeeklyReview(hubRows, settings);
+        const riskSegments = buildRiskSegments(hubRows, settings);
+        const autoStageCandidates = hubRows.filter((row) =>
+          (row.status === "paid" && row.collectionStage !== "resolved") ||
+          ((row.promisedDateRaw && row.promisedDateRaw < new Date().toISOString().slice(0, 10)) && row.collectionStage !== "escalated") ||
+          (["overdue", "expired"].includes(row.status) && row.collectionStage !== "escalated") ||
+          (["sent", "partial"].includes(row.status) && finiteNumber(row.balance, 0) > 0 && row.collectionStage === "new")
+        );
+        if ($("dashboardRevenueStrip")) {
+          $("dashboardRevenueStrip").innerHTML = [
+            ["Open Balance", money(openBalance, settings.currency), "Saldo vivo del hub"],
+            ["Collections Queue", String(collectionsCount), "Rows con saldo para trabajar"],
+            ["Paid Total", money(paidTotal, settings.currency), "Facturas liquidadas"],
+            ["Top Priority", topPriority ? `${topPriority.title}` : "No priority", topPriority ? `Score ${topPriority.priorityScore}` : "Sin cartera activa"]
+          ].map(([title, big, small]) => `
+            <div class="strip-card">
+              <div class="title">${escapeHtml(title)}</div>
+              <div class="big">${escapeHtml(big)}</div>
+              <div class="small">${escapeHtml(small)}</div>
+            </div>
+          `).join("");
+        }
+        if ($("dashboardRevenueNote")) {
+          $("dashboardRevenueNote").textContent = topPriority
+            ? `Prioridad de hoy: ${topPriority.title} con saldo ${money(topPriority.balance, settings.currency)} y accion sugerida ${topPriority.nextAction}.`
+            : "Todavia no hay cartera activa en el hub para mostrar prioridades.";
+        }
+        if ($("dashboardCommandStrip")) {
+          const brokenPromises = hubRows.filter((row) => row.promisedDateRaw && row.promisedDateRaw < new Date().toISOString().slice(0, 10) && finiteNumber(row.balance, 0) > 0 && row.status !== "paid").length;
+          const readyToBill = hubRows.filter((row) => row.rowType === "estimate" && finiteNumber(row.amount, 0) > 0 && row.projectStatus !== "completed").length;
+          const highPressure = hubRows.filter((row) => row.priorityScore >= 80).length;
+          $("dashboardCommandStrip").innerHTML = [
+            ["Broken Promises", String(brokenPromises), "Clientes que incumplieron fecha prometida"],
+            ["Ready To Bill", String(readyToBill), "Estimates listos para convertir"],
+            ["High Pressure", String(highPressure), "Rows con prioridad 80+"],
+            ["Auto Queue", String(autoReminderRows.length), "Reminders que ya conviene preparar hoy"],
+            ["Auto Stage", String(autoStageCandidates.length), "Rows donde conviene normalizar stage"]
+          ].map(([title, big, small]) => `
+            <div class="strip-card">
+              <div class="title">${escapeHtml(title)}</div>
+              <div class="big">${escapeHtml(big)}</div>
+              <div class="small">${escapeHtml(small)}</div>
+            </div>
+          `).join("");
+        }
+        if ($("dashboardCommandQueue")) {
+          $("dashboardCommandQueue").innerHTML = focusRows.length
+            ? focusRows.map((row, index) => `
+                <li>
+                  <span class="msg-idx">${index + 1}</span>
+                  <div>
+                    <strong>${escapeHtml(row.title)}</strong>
+                    <span class="hub-inline-meta">${escapeHtml(row.customer)} · ${escapeHtml(row.nextAction)} · Score ${escapeHtml(String(row.priorityScore))}</span>
+                    <span class="hub-inline-meta">Balance ${escapeHtml(money(row.balance, settings.currency))} · Due ${escapeHtml(row.dueDate || "No due date")} · Stage ${escapeHtml(row.collectionStage || "new")}</span>
+                  </div>
+                </li>
+                `).join("")
+            : `<li><span class="msg-idx">0</span><div><strong>Sin cola operativa</strong><span class="hub-inline-meta">Todavia no hay proyectos con prioridad para el owner.</span></div></li>`;
+        }
+        if ($("dashboardOwnerTasks")) {
+          $("dashboardOwnerTasks").innerHTML = ownerTasks.length
+            ? ownerTasks.map((task, index) => `
+                <li>
+                  <span class="msg-idx">${index + 1}</span>
+                  <div>
+                    <strong>${escapeHtml(task.title)}</strong>
+                    <span class="hub-inline-meta">${escapeHtml(task.action)}</span>
+                    <span class="hub-inline-meta">${escapeHtml(task.body)}</span>
+                  </div>
+                </li>
+              `).join("")
+            : `<li><span class="msg-idx">0</span><div><strong>Sin tareas urgentes</strong><span class="hub-inline-meta">La cartera no esta pidiendo accion inmediata hoy.</span></div></li>`;
+        }
+        if ($("dashboardClientScorecard")) {
+          $("dashboardClientScorecard").innerHTML = clientScores.length
+            ? clientScores.map((item, index) => `
+                <li data-dashboard-customer="${escapeHtml(item.customer)}">
+                  <span class="msg-idx">${index + 1}</span>
+                  <div>
+                    <strong>${escapeHtml(item.customer)}</strong>
+                    <span class="hub-inline-meta">Score ${escapeHtml(String(item.score))} · Open ${escapeHtml(item.openBalanceLabel)} · Overdue ${escapeHtml(item.overdueBalanceLabel)}</span>
+                    <span class="hub-inline-meta">${escapeHtml(String(item.projectCount))} projects · ${escapeHtml(String(item.brokenPromises))} broken promises · Paid ${escapeHtml(item.paidTotalLabel)}</span>
+                  </div>
+                </li>
+              `).join("")
+            : `<li><span class="msg-idx">0</span><div><strong>Client mix healthy</strong><span class="hub-inline-meta">No hay concentracion de riesgo relevante por cliente.</span></div></li>`;
+          $("dashboardClientScorecard").querySelectorAll("[data-dashboard-customer]").forEach((item) => {
+            item.onclick = () => {
+              const currentView = loadHubViewState();
+              saveHubViewState({ ...currentView, tab: "collections", customer: item.dataset.dashboardCustomer || "" });
+              window.location.href = "/estimates-invoices";
+            };
+          });
+        }
+        if ($("dashboardDailyDigest")) {
+          $("dashboardDailyDigest").textContent = buildDailyDigest(hubRows, settings);
+        }
+        if ($("dashboardCashForecast")) {
+          $("dashboardCashForecast").innerHTML = cashForecast.map(([title, big, small]) => `
+            <div class="strip-card">
+              <div class="title">${escapeHtml(title)}</div>
+              <div class="big">${escapeHtml(big)}</div>
+              <div class="small">${escapeHtml(small)}</div>
+            </div>
+          `).join("");
+        }
+        if ($("dashboardRiskSegments")) {
+          $("dashboardRiskSegments").innerHTML = riskSegments.map(([title, count, balance]) => `
+            <div class="strip-card">
+              <div class="title">${escapeHtml(title)}</div>
+              <div class="big">${escapeHtml(count)}</div>
+              <div class="small">${escapeHtml(balance)}</div>
+            </div>
+          `).join("");
+        }
+        if ($("dashboardProfitabilityRanking")) {
+          $("dashboardProfitabilityRanking").innerHTML = profitability.length
+            ? profitability.map((item, index) => `
+                <li data-dashboard-project="${escapeHtml(item.title)}">
+                  <span class="msg-idx">${index + 1}</span>
+                  <div>
+                    <strong>${escapeHtml(item.title)}</strong>
+                    <span class="hub-inline-meta">${escapeHtml(item.customer)} · Margin ${escapeHtml(item.marginLabel)} · Sold ${escapeHtml(item.soldLabel)}</span>
+                    <span class="hub-inline-meta">${escapeHtml(item.healthLabel)}</span>
+                  </div>
+                </li>
+              `).join("")
+            : `<li><span class="msg-idx">0</span><div><strong>No margin ranking yet</strong><span class="hub-inline-meta">Todavia no hay proyectos suficientes para comparar rentabilidad.</span></div></li>`;
+          $("dashboardProfitabilityRanking").querySelectorAll("[data-dashboard-project]").forEach((item) => {
+            item.onclick = () => {
+              const currentView = loadHubViewState();
+              saveHubViewState({ ...currentView, tab: "closeout", search: item.dataset.dashboardProject || "" });
+              window.location.href = "/estimates-invoices";
+            };
+          });
+        }
+        if ($("dashboardWeeklyReview")) {
+          $("dashboardWeeklyReview").innerHTML = weeklyReview.map((line, index) => `
+            <li>
+              <span class="msg-idx">${index + 1}</span>
+              <div>
+                <strong>Review</strong>
+                <span class="hub-inline-meta">${escapeHtml(line)}</span>
+              </div>
+            </li>
+          `).join("");
+        }
+        if ($("dashboardOwnerAlerts")) {
+          const alerts = [];
+          const brokenPromiseRows = hubRows
+            .filter((row) => row.promisedDateRaw && row.promisedDateRaw < new Date().toISOString().slice(0, 10) && finiteNumber(row.balance, 0) > 0 && row.status !== "paid")
+            .sort((left, right) => right.balance - left.balance)
+            .slice(0, 2);
+          brokenPromiseRows.forEach((row) => {
+            alerts.push({
+              tone: "red",
+              title: row.title,
+              body: `${row.customer} rompio promesa de pago del ${row.promisedDate}. Saldo abierto ${money(row.balance, settings.currency)}.`
+            });
+          });
+          const overdueRows = hubRows.filter((row) => ["overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0)
+            .sort((left, right) => right.balance - left.balance)
+            .slice(0, 2);
+          overdueRows.forEach((row) => {
+            alerts.push({
+              tone: "red",
+              title: row.title,
+              body: `${row.customer} tiene ${money(row.balance, settings.currency)} vencidos. Accion sugerida: ${row.nextAction}.`
+            });
+          });
+          const draftRows = hubRows.filter((row) => row.status === "draft" && finiteNumber(row.amount, 0) > 0)
+            .slice(0, 1);
+          draftRows.forEach((row) => {
+            alerts.push({
+              tone: "amber",
+              title: row.title,
+              body: `Hay un estimate listo para mover a invoice por ${money(row.amount, settings.currency)}.`
+            });
+          });
+          const partialRows = hubRows.filter((row) => row.status === "partial")
+            .sort((left, right) => right.balance - left.balance)
+            .slice(0, 2);
+          partialRows.forEach((row) => {
+            alerts.push({
+              tone: "amber",
+              title: row.title,
+              body: `${row.customer} va parcial. Quedan ${money(row.balance, settings.currency)} por cobrar.`
+            });
+          });
+          $("dashboardOwnerAlerts").innerHTML = alerts.length
+            ? alerts.map((alert, index) => `
+                <li>
+                  <span class="msg-idx">${index + 1}</span>
+                  <div>
+                    <strong>${escapeHtml(alert.title)}</strong>
+                    <span class="hub-inline-meta">${escapeHtml(alert.body)}</span>
+                  </div>
+                </li>
+              `).join("")
+            : `<li><span class="msg-idx">0</span><div><strong>Todo bajo control</strong><span class="hub-inline-meta">No hay alertas urgentes en la cartera actual.</span></div></li>`;
+        }
+      }
     };
 
     ["expensesBalance", "profitBalance", "savingsBalance", "taxBalance", "operatingMonthly"].forEach((id) => {
       const el = $(id);
       if (el) el.oninput = refresh;
     });
+
+    const openHubPreset = (preset, tab = "all") => {
+      const currentView = loadHubViewState();
+      saveHubViewState({
+        ...currentView,
+        tab,
+        preset
+      });
+      window.location.href = "/estimates-invoices";
+    };
+
+    if ($("btnDashboardOpenBalance")) {
+      $("btnDashboardOpenBalance").onclick = () => openHubPreset("open", "all");
+    }
+    if ($("btnDashboardBrokenPromises")) {
+      $("btnDashboardBrokenPromises").onclick = () => openHubPreset("promises", "collections");
+    }
+    if ($("btnDashboardReadyToBill")) {
+      $("btnDashboardReadyToBill").onclick = () => openHubPreset("ready", "estimates");
+    }
+    if ($("btnDashboardCampaignOverdue")) {
+      $("btnDashboardCampaignOverdue").onclick = () => {
+        const currentView = loadHubViewState();
+        saveHubViewState({ ...currentView, tab: "collections", preset: "action", status: "overdue" });
+        window.location.href = "/estimates-invoices";
+      };
+    }
+    if ($("btnDashboardCampaignPromises")) {
+      $("btnDashboardCampaignPromises").onclick = () => openHubPreset("promises", "collections");
+    }
+    if ($("btnDashboardCampaignRisk")) {
+      $("btnDashboardCampaignRisk").onclick = () => {
+        const currentView = loadHubViewState();
+        saveHubViewState({ ...currentView, tab: "all", preset: "action", status: "all" });
+        window.location.href = "/estimates-invoices";
+      };
+    }
+    if ($("dashboardCampaignNote")) {
+      $("dashboardCampaignNote").textContent = "Overdue Push abre vencidos. Broken Promises abre promesas rotas. High Risk te manda a la vista de mayor presion operativa.";
+    }
 
     if ($("btnSaveDashboard")) $("btnSaveDashboard").onclick = () => { refresh(); alert("Owner finance monitor saved."); };
     if ($("btnResetDashboard")) $("btnResetDashboard").onclick = () => { saveDashboard({ ...DEFAULT_DASHBOARD }); renderDashboard(); };
@@ -825,6 +1442,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
     const settings = loadSettings();
     setVal("bizNameOwner", settings.bizName);
+    setVal("publicLogoUrl", settings.publicLogoUrl || "");
+    setVal("publicAccentColor", settings.publicAccentColor || DEFAULTS.publicAccentColor);
     setNum("baseInstaller", settings.baseInstaller);
     setNum("baseHelper", settings.baseHelper);
     setVal("pricingMode", settings.pricingMode);
@@ -846,6 +1465,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     $("btnSaveBusinessSettings").onclick = () => {
       const settingsCopy = loadSettings();
       settingsCopy.bizName = val("bizNameOwner") || DEFAULTS.bizName;
+      settingsCopy.publicLogoUrl = val("publicLogoUrl").trim();
+      settingsCopy.publicAccentColor = val("publicAccentColor") || DEFAULTS.publicAccentColor;
       settingsCopy.baseInstaller = num("baseInstaller", DEFAULTS.baseInstaller);
       settingsCopy.baseHelper = num("baseHelper", DEFAULTS.baseHelper);
       settingsCopy.pricingMode = val("pricingMode") || DEFAULTS.pricingMode;
@@ -989,7 +1610,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         <div class="owner-quote-hero">
           <div class="owner-quote-kicker">Precio recomendado</div>
           <div class="owner-quote-price">${escapeHtml(money(metrics.recommended, settings.currency))}</div>
-          <div class="owner-quote-meta">${escapeHtml(money(metrics.pricePerUnit, settings.currency))} ${escapeHtml(pricingModeCopy)} � ${escapeHtml(metrics.quotedUnits.toFixed(2))} ${escapeHtml(metrics.pricingModeLabel === "dia" ? "dias" : "horas")} cotizables</div>
+          <div class="owner-quote-meta">${escapeHtml(money(metrics.pricePerUnit, settings.currency))} ${escapeHtml(pricingModeCopy)} ï¿½ ${escapeHtml(metrics.quotedUnits.toFixed(2))} ${escapeHtml(metrics.pricingModeLabel === "dia" ? "dias" : "horas")} cotizables</div>
           <div class="owner-quote-strip">
             ${primaryCards.map(([title, big, small]) => `
               <div class="owner-mini-card">
@@ -1347,8 +1968,7 @@ ${val("salesInitials") || "MG"}`;
         if (!state.workers.length) state.workers.push({ name: "Worker 1", type: "installer", days: 0, rate: "" });
 
         saveSales(state);
-   
-     renderSales();
+        renderSales();
       });
     });
   }
@@ -1481,7 +2101,7 @@ ${val("salesInitials") || "MG"}`;
       if ($("salesPrimaryPrice")) $("salesPrimaryPrice").textContent = money(recommended, settings.currency);
       if ($("salesPrimaryMeta")) {
         $("salesPrimaryMeta").textContent = state.workers.length && nextMetrics.totalHours > 0
-          ? `${nextMetrics.totalWorkerDays.toFixed(2)} worker-days � ${nextMetrics.totalHours.toFixed(2)} horas-hombre � ${state.workers.length} trabajadores`
+          ? `${nextMetrics.totalWorkerDays.toFixed(2)} worker-days ï¿½ ${nextMetrics.totalHours.toFixed(2)} horas-hombre ï¿½ ${state.workers.length} trabajadores`
           : "Ingresa mano de obra para calcular el recomendado.";
       }
       if ($("salesPrimaryCommission")) $("salesPrimaryCommission").textContent = `${commissionPct.toFixed(2)}%`;
@@ -1493,7 +2113,7 @@ ${val("salesInitials") || "MG"}`;
       if ($("salesStageRecommended")) $("salesStageRecommended").textContent = `Recomendado ${money(recommended, settings.currency)}`;
       if ($("salesCrewHint")) {
         $("salesCrewHint").textContent = state.workers.length
-          ? `${state.workers.length} trabajadores � ${nextMetrics.totalWorkerDays.toFixed(2)} worker-days � ${nextMetrics.totalHours.toFixed(2)} horas-hombre`
+          ? `${state.workers.length} trabajadores ï¿½ ${nextMetrics.totalWorkerDays.toFixed(2)} worker-days ï¿½ ${nextMetrics.totalHours.toFixed(2)} horas-hombre`
           : "Define mano de obra por trabajador para calcular horas-hombre y precio recomendado.";
       }
 
@@ -1502,7 +2122,7 @@ ${val("salesInitials") || "MG"}`;
       }
       if ($("salesSignedMeta")) {
         if (activeProject) {
-          $("salesSignedMeta").textContent = `Proyecto activo � ${activeProject.dueDate || "Sin fecha"} � ${money(activeProject.laborBudget, settings.currency)} labor � ${Number(activeProject.estimatedDays || 0).toFixed(2)} dias`;
+          $("salesSignedMeta").textContent = `Proyecto activo ï¿½ ${activeProject.dueDate || "Sin fecha"} ï¿½ ${money(activeProject.laborBudget, settings.currency)} labor ï¿½ ${Number(activeProject.estimatedDays || 0).toFixed(2)} dias`;
         } else {
           $("salesSignedMeta").textContent = "Firma una cotizacion para mandarla a Supervisor.";
         }
@@ -1529,7 +2149,7 @@ ${val("salesInitials") || "MG"}`;
         ["Objetivo recomendado", money(recommended, settings.currency), "Numero ideal para vender con margen sano"],
         ["Precio al cliente", money(offered, settings.currency), "Numero actual de la negociacion"],
         ["Descuento aplicado", `${discountPct.toFixed(2)}%`, "Comparado contra el recomendado"],
-        ["Comision estimada", `${commissionPct.toFixed(2)}% � ${money(commissionAmount, settings.currency)}`, "Pago estimado del vendedor"]
+        ["Comision estimada", `${commissionPct.toFixed(2)}% ï¿½ ${money(commissionAmount, settings.currency)}`, "Pago estimado del vendedor"]
       ].map(([label, value, meta]) => `
         <div class="kpi-box">
           <div class="label">${escapeHtml(label)}</div>
@@ -1839,7 +2459,7 @@ ${val("salesInitials") || "MG"}`;
     if (picker) {
       picker.innerHTML = projects.length
         ? projects.map((project) => `
-            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} � ${escapeHtml(project.clientName || "Sin cliente")}</option>
+            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} · ${escapeHtml(project.clientName || "Sin cliente")}</option>
           `).join("")
         : `<option value="">Sin proyectos firmados</option>`;
       picker.value = selectedProject?.id || "";
@@ -2107,7 +2727,7 @@ ${val("salesInitials") || "MG"}`;
       if ($("coPrimaryPrice")) $("coPrimaryPrice").textContent = money(changeMetrics.recommended, settings.currency);
       if ($("coPrimaryMeta")) {
         $("coPrimaryMeta").textContent = changeMetrics.totalWorkerDays > 0
-          ? `${changeMetrics.totalWorkerDays.toFixed(2)} worker-days � ${changeMetrics.totalHours.toFixed(2)} horas de equipo � ${changeMetrics.crewSize} trabajadores`
+          ? `${changeMetrics.totalWorkerDays.toFixed(2)} worker-days · ${changeMetrics.totalHours.toFixed(2)} horas de equipo · ${changeMetrics.crewSize} trabajadores`
           : "Ingresa dias por trabajador para cotizar el trabajo extra.";
       }
       if ($("coSuggestedDays")) $("coSuggestedDays").textContent = `${changeMetrics.totalWorkerDays.toFixed(2)} dias`;
@@ -2392,6 +3012,2664 @@ ${val("salesInitials") || "MG"}`;
 
     refresh();
   }
+
+  function formatDisplayDate(value) {
+    const normalized = normalizeDateInput(value);
+    if (!normalized) return "No date";
+    const [year, month, day] = normalized.split("-");
+    return `${month}/${day}/${year}`;
+  }
+
+  function buildPortfolioRows(settings) {
+    const today = new Date().toISOString().slice(0, 10);
+
+    return loadProjects().map((project) => {
+      const report = loadSupervisorReport(project);
+      const invoice = getProjectInvoiceState(project);
+      const invoiceMetrics = calcInvoice(project, report, invoice);
+      const hasInvoice = invoiceMetrics.total > 0 || invoice.invoiceNo || invoice.invoiceDate;
+      const effectiveDueDate = invoice.dueDate || project.dueDate || "";
+      let rawStatus = hasInvoice
+        ? normalizeInvoiceStatus(invoice.status)
+        : (project.status === "completed" ? "completed" : "draft");
+      if (hasInvoice && rawStatus !== "paid" && effectiveDueDate && normalizeDateInput(effectiveDueDate) && normalizeDateInput(effectiveDueDate) < today) {
+        rawStatus = "overdue";
+      }
+      if (!hasInvoice && effectiveDueDate && normalizeDateInput(effectiveDueDate) && normalizeDateInput(effectiveDueDate) < today) {
+        rawStatus = "expired";
+      }
+      const changeOrderCount = Array.isArray(report.changeOrders) ? report.changeOrders.length : 0;
+      const approvedChangeOrderCount = invoiceMetrics.changeOrders.length;
+      const amount = invoiceMetrics.total > 0 ? invoiceMetrics.total : Math.max(finiteNumber(project.salePrice, 0), 0);
+      const balance = invoiceMetrics.total > 0 ? invoiceMetrics.balance : amount;
+      const primaryDate = invoice.invoiceDate || project.signedAt || project.dueDate;
+      const rowType = hasInvoice ? "invoice" : "estimate";
+      const paymentType = (invoice.depositApplied > 0 || invoice.receivedApplied > 0 || rawStatus === "partial" || rawStatus === "paid") ? "payment" : "";
+      const extrasSpent = Array.isArray(report.extras) ? report.extras.reduce((sum, item) => sum + finiteNumber(item.amount, 0), 0) : 0;
+      const finalCost = finiteNumber(project.laborBudget, 0) + extrasSpent;
+      const soldAmount = Math.max(finiteNumber(project.salePrice, 0), 0) + invoiceMetrics.changeOrderAmount;
+      const cashCollected = finiteNumber(invoice.depositApplied, 0) + finiteNumber(invoice.receivedApplied, 0);
+      const estimatedMargin = soldAmount - finalCost;
+      const priority = getHubPriority({
+        invoiceNo: nonEmptyString(invoice.invoiceNo, "No invoice"),
+        amount,
+        balance,
+        status: rawStatus,
+        dueDateRaw: normalizeDateInput(effectiveDueDate)
+      });
+      const projectHealth = getProjectHealth({
+        project,
+        report,
+        soldAmount,
+        estimatedMargin,
+        daysPastDue: priority.daysPastDue,
+        balance,
+        extraSpent: extrasSpent,
+        dueDateRaw: normalizeDateInput(effectiveDueDate),
+        projectStatus: project.status || "active"
+      });
+
+      return {
+        id: project.id,
+        projectId: project.id,
+        date: formatDisplayDate(primaryDate),
+        dateRaw: normalizeDateInput(primaryDate),
+        dueDate: formatDisplayDate(effectiveDueDate),
+        dueDateRaw: normalizeDateInput(effectiveDueDate),
+        promisedDate: formatDisplayDate(invoice.promisedDate),
+        promisedDateRaw: normalizeDateInput(invoice.promisedDate),
+        customer: project.clientName || "Sin cliente",
+        title: project.projectName || "Project",
+        status: rawStatus,
+        invoiceStatus: normalizeInvoiceStatus(invoice.status),
+        amount,
+        balance,
+        invoiceNo: nonEmptyString(invoice.invoiceNo, "No invoice"),
+        baseAmount: invoice.baseAmount,
+        depositApplied: invoice.depositApplied,
+        receivedApplied: invoice.receivedApplied,
+        collectionStage: invoice.collectionStage || "new",
+        projectStatus: project.status || "active",
+        rowType,
+        paymentType,
+        extraSpent: extrasSpent,
+        finalCost,
+        soldAmount,
+        cashCollected,
+        estimatedMargin,
+        priorityScore: priority.score,
+        priorityTone: priority.tone,
+        nextAction: priority.nextAction,
+        daysPastDue: priority.daysPastDue,
+        projectHealthScore: projectHealth.score,
+        projectHealthTone: projectHealth.tone,
+        projectHealthLabel: projectHealth.label,
+        changeOrderCount,
+        approvedChangeOrderCount,
+        location: nonEmptyString(project.location, project.address, project.clientName, ""),
+        customerEmail: nonEmptyString(project.clientEmail),
+        customerPhone: nonEmptyString(project.clientPhone),
+        report,
+        project,
+        searchText: [
+          project.id,
+          project.projectName,
+          project.clientName,
+          project.clientEmail,
+          project.clientPhone,
+          project.location,
+          invoice.invoiceNo,
+          rawStatus
+        ].join(" ").toLowerCase()
+      };
+    });
+  }
+
+  function compareHubValues(left, right, sortKey) {
+    const numericKeys = new Set(["amount", "balance"]);
+    if (numericKeys.has(sortKey)) {
+      return finiteNumber(left, 0) - finiteNumber(right, 0);
+    }
+    const leftValue = String(left || "").toLowerCase();
+    const rightValue = String(right || "").toLowerCase();
+    if (leftValue < rightValue) return -1;
+    if (leftValue > rightValue) return 1;
+    return 0;
+  }
+
+  function duplicateHubProject(projectId) {
+    const sourceProject = getProjectById(projectId);
+    if (!sourceProject) return null;
+    const sourceReport = loadSupervisorReport(sourceProject);
+    const duplicateId = `PRJ-${Date.now()}`;
+    const duplicateProject = {
+      ...sourceProject,
+      id: duplicateId,
+      status: "active",
+      source: `${sourceProject.source || "hub"}-duplicate`,
+      signedAt: new Date().toISOString(),
+      completedAt: "",
+      invoice: undefined,
+      projectName: `${sourceProject.projectName || "Project"} Copy`,
+      notes: sourceProject.notes || ""
+    };
+    upsertProject(duplicateProject);
+    saveSupervisorSelectedProjectId(duplicateId);
+    saveSupervisorReport(duplicateId, {
+      ...buildDefaultSupervisorReport(duplicateProject),
+      entries: [],
+      extras: [],
+      changeOrders: [],
+      changeOrderDraft: buildDefaultChangeOrderDraft(duplicateProject),
+      estimatedDays: finiteNumber(sourceReport?.estimatedDays, duplicateProject.estimatedDays),
+      laborBudget: finiteNumber(sourceReport?.laborBudget, duplicateProject.laborBudget),
+      dueDate: normalizeDateInput(sourceReport?.dueDate || duplicateProject.dueDate)
+    });
+    return duplicateProject;
+  }
+
+  function duplicateHubInvoiceProject(projectId) {
+    const sourceProject = getProjectById(projectId);
+    if (!sourceProject) return null;
+    const sourceReport = loadSupervisorReport(sourceProject);
+    const sourceInvoice = getProjectInvoiceState(sourceProject);
+    const duplicateId = `PRJ-${Date.now()}`;
+    const duplicateProject = {
+      ...sourceProject,
+      id: duplicateId,
+      status: "active",
+      source: `${sourceProject.source || "hub"}-invoice-duplicate`,
+      signedAt: new Date().toISOString(),
+      completedAt: "",
+      projectName: `${sourceProject.projectName || "Project"} Invoice Copy`,
+      invoice: {
+        ...sourceInvoice,
+        invoiceNo: `INV-${Date.now()}`,
+        invoiceDate: new Date().toISOString().slice(0, 10),
+        dueDate: sourceInvoice.dueDate || sourceProject.dueDate || "",
+        promisedDate: "",
+        depositApplied: 0,
+        receivedApplied: 0,
+        status: "draft",
+        collectionStage: "new",
+        payments: [],
+        activity: appendInvoiceActivity({
+          ...sourceInvoice,
+          activity: []
+        }, "Invoice duplicated into a new project shell.", undefined, "invoice"),
+        publicToken: "",
+        publicUrl: "",
+        paymentLink: ""
+      }
+    };
+    upsertProject(duplicateProject);
+    saveSupervisorSelectedProjectId(duplicateId);
+    saveSupervisorReport(duplicateId, {
+      ...buildDefaultSupervisorReport(duplicateProject),
+      entries: [],
+      extras: [],
+      changeOrders: Array.isArray(sourceReport.changeOrders) ? sourceReport.changeOrders.map((row) => ({
+        ...row,
+        applied: false,
+        appliedAt: ""
+      })) : [],
+      changeOrderDraft: buildDefaultChangeOrderDraft(duplicateProject),
+      estimatedDays: finiteNumber(sourceReport?.estimatedDays, duplicateProject.estimatedDays),
+      laborBudget: finiteNumber(sourceReport?.laborBudget, duplicateProject.laborBudget),
+      dueDate: normalizeDateInput(sourceReport?.dueDate || duplicateProject.dueDate)
+    });
+    return duplicateProject;
+  }
+
+  function buildHubCommunication(templateKey, row, settings) {
+    const templates = loadHubTemplates();
+    const template = templates[templateKey];
+    if (!template) return { subject: "", body: "" };
+    const invoice = getProjectInvoiceState(row.project);
+    const metrics = calcInvoice(row.project, row.report, invoice);
+    const tokens = {
+      customer: row.customer || "",
+      project: row.title || "",
+      invoice_no: invoice.invoiceNo || "No invoice",
+      invoice_date: invoice.invoiceDate || "-",
+      due_date: invoice.dueDate || row.project?.dueDate || "-",
+      total: money(metrics.total, settings.currency),
+      balance: money(metrics.balance, settings.currency),
+      status: row.status || "",
+      location: row.location || ""
+    };
+    const compile = (text) => String(text || "").replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (_match, key) => tokens[key] ?? "");
+    return {
+      subject: compile(template.subject),
+      body: compile(template.body)
+    };
+  }
+
+  function setHubCollectionStage(projectId, stage) {
+    const project = getProjectById(projectId);
+    if (!project) return;
+    const report = loadSupervisorReport(project);
+    const invoice = buildHubInvoiceState(project, report, { collectionStage: stage });
+    invoice.activity = appendInvoiceActivity(invoice, `Collections stage updated to ${stage}.`, undefined, "collections");
+    saveProjectInvoiceState(projectId, invoice);
+  }
+
+  function setHubPromise(projectId, promisedDate) {
+    const project = getProjectById(projectId);
+    if (!project) return;
+    const report = loadSupervisorReport(project);
+    const invoice = buildHubInvoiceState(project, report, {
+      collectionStage: "promised",
+      promisedDate
+    });
+    invoice.activity = appendInvoiceActivity(invoice, `Promise date updated to ${normalizeDateInput(promisedDate) || "none"}.`, undefined, "collections");
+    saveProjectInvoiceState(projectId, invoice);
+  }
+
+  function getDaysPastDue(dateValue) {
+    const normalized = normalizeDateInput(dateValue);
+    if (!normalized) return 0;
+    const due = new Date(normalized);
+    due.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.max(Math.floor((today - due) / (1000 * 60 * 60 * 24)), 0);
+  }
+
+  function getHubPriority(row) {
+    const balance = Math.max(finiteNumber(row?.balance, 0), 0);
+    const daysPastDue = getDaysPastDue(row?.dueDateRaw || row?.project?.dueDate);
+    const hasInvoice = Boolean(row?.invoiceNo && row.invoiceNo !== "No invoice");
+    let score = 0;
+    if (hasInvoice) score += 20;
+    if (["sent", "partial", "overdue", "expired"].includes(row?.status)) score += 20;
+    if (row?.status === "partial") score += 12;
+    if (row?.status === "overdue") score += 18;
+    if (row?.status === "expired") score += 24;
+    if (balance >= 10000) score += 22;
+    else if (balance >= 5000) score += 16;
+    else if (balance >= 1000) score += 10;
+    score += Math.min(daysPastDue, 60);
+
+    let tone = "green";
+    let nextAction = "Healthy";
+    if (!hasInvoice && finiteNumber(row?.amount, 0) > 0) {
+      tone = "amber";
+      nextAction = "Convert to invoice";
+      score += 15;
+    } else if (row?.status === "draft") {
+      tone = "amber";
+      nextAction = "Send invoice";
+      score += 10;
+    } else if (["sent", "partial", "overdue", "expired"].includes(row?.status) && balance > 0) {
+      tone = daysPastDue > 30 || row?.status === "expired" ? "red" : "amber";
+      nextAction = daysPastDue > 0 ? "Request payment" : "Follow up";
+    }
+    if (row?.status === "paid") {
+      score = 0;
+      tone = "green";
+      nextAction = "Paid";
+    }
+    return { score, tone, nextAction, daysPastDue };
+  }
+
+  function getProjectHealth(row) {
+    const soldAmount = Math.max(finiteNumber(row?.soldAmount, 0), 0);
+    const balance = Math.max(finiteNumber(row?.balance, 0), 0);
+    const extrasSpent = Math.max(finiteNumber(row?.extraSpent, 0), 0);
+    const laborBudget = Math.max(finiteNumber(row?.project?.laborBudget || row?.report?.laborBudget, 0), 0);
+    const estimatedMargin = finiteNumber(row?.estimatedMargin, 0);
+    const daysPastDue = Math.max(finiteNumber(row?.daysPastDue, 0), 0);
+    const projectedEndDate = normalizeDateInput(row?.report?.projectedEndDate);
+    const dueDate = normalizeDateInput(row?.dueDateRaw || row?.project?.dueDate);
+    let score = 100;
+    if (soldAmount > 0 && estimatedMargin < soldAmount * 0.12) score -= 18;
+    if (soldAmount > 0 && estimatedMargin < 0) score -= 24;
+    if (laborBudget > 0 && extrasSpent > laborBudget * 0.08) score -= 12;
+    if (balance > 0) score -= 8;
+    if (daysPastDue > 0) score -= Math.min(22, daysPastDue);
+    if (projectedEndDate && dueDate && projectedEndDate > dueDate) score -= 14;
+    if (row?.projectStatus === "completed" && balance <= 0) score += 8;
+    score = clamp(score, 0, 100);
+
+    let tone = "green";
+    let label = "Healthy";
+    if (score < 80) {
+      tone = "amber";
+      label = "Watch";
+    }
+    if (score < 55) {
+      tone = "red";
+      label = "At Risk";
+    }
+    return { score, tone, label };
+  }
+
+  function buildClientCollectionsScore(rows, settings) {
+    const grouped = rows.reduce((acc, row) => {
+      const key = nonEmptyString(row.customer, "Sin cliente");
+      if (!acc[key]) {
+        acc[key] = {
+          customer: key,
+          openBalance: 0,
+          overdueBalance: 0,
+          projectCount: 0,
+          brokenPromises: 0,
+          paidTotal: 0
+        };
+      }
+      acc[key].projectCount += 1;
+      acc[key].openBalance += Math.max(finiteNumber(row.balance, 0), 0);
+      if (["overdue", "expired"].includes(row.status)) {
+        acc[key].overdueBalance += Math.max(finiteNumber(row.balance, 0), 0);
+      }
+      if (row.promisedDateRaw && row.promisedDateRaw < new Date().toISOString().slice(0, 10) && finiteNumber(row.balance, 0) > 0) {
+        acc[key].brokenPromises += 1;
+      }
+      if (row.status === "paid") {
+        acc[key].paidTotal += Math.max(finiteNumber(row.amount, 0), 0);
+      }
+      return acc;
+    }, {});
+
+    return Object.values(grouped)
+      .map((item) => ({
+        ...item,
+        score: clamp(
+          (item.openBalance > 0 ? 30 : 0) +
+          (item.overdueBalance > 0 ? 30 : 0) +
+          (item.brokenPromises * 18) +
+          Math.min(item.projectCount * 4, 16),
+          0,
+          100
+        ),
+        openBalanceLabel: money(item.openBalance, settings.currency),
+        overdueBalanceLabel: money(item.overdueBalance, settings.currency),
+        paidTotalLabel: money(item.paidTotal, settings.currency)
+      }))
+      .sort((left, right) => right.score - left.score || right.openBalance - left.openBalance)
+      .slice(0, 6);
+  }
+
+  function buildProfitabilityRanking(rows, settings) {
+    return rows
+      .filter((row) => finiteNumber(row.soldAmount, 0) > 0)
+      .map((row) => ({
+        title: row.title,
+        customer: row.customer,
+        margin: finiteNumber(row.estimatedMargin, 0),
+        marginLabel: money(row.estimatedMargin, settings.currency),
+        soldLabel: money(row.soldAmount, settings.currency),
+        healthLabel: `${row.projectHealthScore}% ${row.projectHealthLabel}`,
+        tone: row.projectHealthTone || "green"
+      }))
+      .sort((left, right) => right.margin - left.margin)
+      .slice(0, 6);
+  }
+
+  function buildCollectionsPlaybook(rows, settings) {
+    const groups = {
+      bill_now: rows.filter((row) => row.rowType === "estimate" && finiteNumber(row.amount, 0) > 0 && row.projectStatus !== "completed"),
+      send_now: rows.filter((row) => row.status === "draft" && Boolean(row.invoiceNo) && finiteNumber(row.amount, 0) > 0),
+      follow_up: rows.filter((row) => ["sent", "partial"].includes(row.status) && finiteNumber(row.balance, 0) > 0),
+      escalate_now: rows.filter((row) => ["overdue", "expired"].includes(row.status) || (row.promisedDateRaw && row.promisedDateRaw < new Date().toISOString().slice(0, 10) && finiteNumber(row.balance, 0) > 0)),
+      close_out: rows.filter((row) => row.projectStatus === "completed" && finiteNumber(row.balance, 0) <= 0)
+    };
+    return [
+      ["Bill Now", String(groups.bill_now.length), "Estimates listos para invoice", "ready", "estimates"],
+      ["Send Now", String(groups.send_now.length), "Invoices en draft listas para envio", "", "invoices"],
+      ["Follow Up", String(groups.follow_up.length), "Sent y partial con saldo", "action", "collections"],
+      ["Escalate", String(groups.escalate_now.length), "Overdue o promesas rotas", "promises", "collections"],
+      ["Close Out", String(groups.close_out.length), "Proyectos cobrados y terminados", "", "closeout"]
+    ];
+  }
+
+  function buildDailyDigest(rows, settings) {
+    const openBalance = rows.reduce((sum, row) => sum + Math.max(finiteNumber(row.balance, 0), 0), 0);
+    const topPriority = rows.slice().sort((left, right) => right.priorityScore - left.priorityScore)[0];
+    const brokenPromises = rows.filter((row) => row.promisedDateRaw && row.promisedDateRaw < new Date().toISOString().slice(0, 10) && finiteNumber(row.balance, 0) > 0);
+    const readyToBill = rows.filter((row) => row.rowType === "estimate" && finiteNumber(row.amount, 0) > 0 && row.projectStatus !== "completed");
+    const weakHealth = rows.filter((row) => row.projectHealthScore < 55);
+    if (!rows.length) return "Todavia no hay cartera suficiente para generar digest.";
+    return topPriority
+      ? `Hoy hay ${money(openBalance, settings.currency)} abiertos. Prioridad principal: ${topPriority.title} con accion ${topPriority.nextAction}. ${brokenPromises.length} promesas rotas, ${readyToBill.length} estimates listos para invoice y ${weakHealth.length} proyectos en salud roja.`
+      : `La cartera existe pero no muestra una prioridad dominante hoy.`;
+  }
+
+  function buildCashInForecast(rows, settings) {
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const endOfWeek = new Date();
+    endOfWeek.setDate(endOfWeek.getDate() + (7 - endOfWeek.getDay()));
+    const endOfWeekIso = endOfWeek.toISOString().slice(0, 10);
+    const next7Iso = new Date(Date.now() + (7 * 24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
+    const next14Iso = new Date(Date.now() + (14 * 24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
+    const thisWeek = rows.filter((row) => {
+      const due = row.dueDateRaw || "";
+      return due && due >= todayIso && due <= endOfWeekIso && finiteNumber(row.balance, 0) > 0;
+    }).reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
+    const next7 = rows.filter((row) => {
+      const due = row.dueDateRaw || "";
+      return due && due > endOfWeekIso && due <= next7Iso && finiteNumber(row.balance, 0) > 0;
+    }).reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
+    const next14 = rows.filter((row) => {
+      const due = row.dueDateRaw || "";
+      return due && due > next7Iso && due <= next14Iso && finiteNumber(row.balance, 0) > 0;
+    }).reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
+    const promised = rows.filter((row) => row.promisedDateRaw && row.promisedDateRaw >= todayIso && finiteNumber(row.balance, 0) > 0)
+      .reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
+    const partial = rows.filter((row) => row.status === "partial" && finiteNumber(row.balance, 0) > 0)
+      .reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
+    const overdue = rows.filter((row) => ["overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0)
+      .reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
+    return [
+      ["This Week", money(thisWeek, settings.currency), "Cobro por due date en la semana"],
+      ["Next 7", money(next7, settings.currency), "Ventana posterior inmediata"],
+      ["Next 14", money(next14, settings.currency), "Pipeline de cash-in cercano"],
+      ["Promised", money(promised, settings.currency), "Clientes con promesa vigente"],
+      ["Partial Balance", money(partial, settings.currency), "Saldo vivo ya encaminado"],
+      ["At Risk", money(overdue, settings.currency), "Dinero atrasado que exige presion"]
+    ];
+  }
+
+  function buildRiskSegments(rows, settings) {
+    const groups = {
+      healthy: rows.filter((row) => finiteNumber(row.projectHealthScore, 0) >= 80),
+      watch: rows.filter((row) => finiteNumber(row.projectHealthScore, 0) >= 55 && finiteNumber(row.projectHealthScore, 0) < 80),
+      risk: rows.filter((row) => finiteNumber(row.projectHealthScore, 0) < 55)
+    };
+    return [
+      ["Healthy", String(groups.healthy.length), money(groups.healthy.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0), settings.currency)],
+      ["Watch", String(groups.watch.length), money(groups.watch.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0), settings.currency)],
+      ["At Risk", String(groups.risk.length), money(groups.risk.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0), settings.currency)]
+    ];
+  }
+
+  function buildCampaignSegments(rows, settings) {
+    const segments = {
+      overdue: rows.filter((row) => ["overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0),
+      promises: rows.filter((row) => row.promisedDateRaw && row.promisedDateRaw < new Date().toISOString().slice(0, 10) && finiteNumber(row.balance, 0) > 0),
+      partials: rows.filter((row) => row.status === "partial" && finiteNumber(row.balance, 0) > 0),
+      ready: rows.filter((row) => row.rowType === "estimate" && finiteNumber(row.amount, 0) > 0 && row.projectStatus !== "completed"),
+      high_risk: rows.filter((row) => finiteNumber(row.projectHealthScore, 0) < 55 || finiteNumber(row.priorityScore, 0) >= 80)
+    };
+    return [
+      ["overdue", "Overdue Push", segments.overdue.length, money(segments.overdue.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0), settings.currency)],
+      ["promises", "Broken Promises", segments.promises.length, money(segments.promises.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0), settings.currency)],
+      ["partials", "Partials", segments.partials.length, money(segments.partials.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0), settings.currency)],
+      ["ready", "Ready To Bill", segments.ready.length, money(segments.ready.reduce((sum, row) => sum + finiteNumber(row.amount, 0), 0), settings.currency)],
+      ["high_risk", "High Risk", segments.high_risk.length, money(segments.high_risk.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0), settings.currency)]
+    ];
+  }
+
+  function buildWeeklyReview(rows, settings) {
+    const paid = rows.filter((row) => row.status === "paid").length;
+    const partial = rows.filter((row) => row.status === "partial").length;
+    const overdue = rows.filter((row) => ["overdue", "expired"].includes(row.status)).length;
+    const ready = rows.filter((row) => row.rowType === "estimate" && finiteNumber(row.amount, 0) > 0 && row.projectStatus !== "completed").length;
+    const avgHealth = rows.length
+      ? rows.reduce((sum, row) => sum + finiteNumber(row.projectHealthScore, 0), 0) / rows.length
+      : 0;
+    return [
+      `Esta semana hay ${paid} proyectos pagados, ${partial} parciales y ${overdue} cuentas vencidas.`,
+      `${ready} estimates siguen listos para convertirse a invoice.`,
+      `La salud promedio del portafolio esta en ${avgHealth.toFixed(0)}%.`,
+      `La prioridad del review es bajar overdue, cerrar promesas rotas y proteger margen en proyectos debiles.`
+    ];
+  }
+
+  function getHubSuggestedPlaybook(row) {
+    if (row.status === "draft") return "Convertir a invoice y mandar hoy mismo.";
+    if (row.status === "sent" && !row.promisedDateRaw) return "Contactar cliente y buscar promesa de pago concreta.";
+    if (row.collectionStage === "promised" && row.promisedDateRaw) {
+      return row.promisedDateRaw < new Date().toISOString().slice(0, 10)
+        ? "Promesa rota: escalar y documentar siguiente compromiso."
+        : `Esperar promesa al ${row.promisedDate}.`;
+    }
+    if (["overdue", "expired"].includes(row.status)) return "Escalar seguimiento y definir siguiente accion hoy.";
+    if (row.status === "partial") return "Cobrar saldo restante y confirmar fecha final.";
+    if (row.status === "paid") return "Cerrar seguimiento comercial y dejar historial limpio.";
+    return "Mantener seguimiento y documentar siguiente paso.";
+  }
+
+  function exportPortfolioCsv(rows, settings) {
+    const headers = ["Date", "Customer", "Project ID", "Title", "Status", "Amount", "Balance", "Invoice No", "Change Orders"];
+    const lines = rows.map((row) => [
+      row.date,
+      row.customer,
+      row.projectId,
+      row.title,
+      row.status,
+      money(row.amount, settings.currency),
+      money(row.balance, settings.currency),
+      row.invoiceNo,
+      String(row.approvedChangeOrderCount)
+    ]);
+    const csv = [headers, ...lines]
+      .map((cols) => cols.map((value) => `"${String(value || "").replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "margin-guard-estimates-invoices.csv";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function exportCollectionsCsv(rows, settings) {
+    const collectionRows = rows.filter((row) => ["partial", "overdue", "expired", "sent"].includes(row.status) && finiteNumber(row.balance, 0) > 0);
+    const headers = ["Customer", "Project", "Invoice No", "Status", "Balance", "Due Date"];
+    const lines = collectionRows.map((row) => [
+      row.customer,
+      row.title,
+      row.invoiceNo,
+      row.status,
+      money(row.balance, settings.currency),
+      row.project?.dueDate || ""
+    ]);
+    const csv = [headers, ...lines]
+      .map((cols) => cols.map((value) => `"${String(value || "").replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "margin-guard-collections.csv";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function exportHubExecutivePdf(rows, settings) {
+    const jsPDF = window.jspdf?.jsPDF;
+    if (!jsPDF) return alert("jsPDF is not available.");
+    const totalAmount = rows.reduce((sum, row) => sum + finiteNumber(row.amount, 0), 0);
+    const totalBalance = rows.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
+    const totalCollected = rows.reduce((sum, row) => sum + finiteNumber(row.cashCollected, 0), 0);
+    const closeoutRows = rows.filter((row) => row.projectStatus === "completed");
+    const totalMargin = closeoutRows.reduce((sum, row) => sum + finiteNumber(row.estimatedMargin, 0), 0);
+    const doc = new jsPDF({ unit: "pt", format: "letter" });
+    let y = 46;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text(settings.bizName || DEFAULTS.bizName, 40, y);
+    y += 22;
+    doc.setFontSize(13);
+    doc.text("Owner Executive Report", 40, y);
+    y += 20;
+    doc.setFont("helvetica", "normal");
+    [
+      `Portfolio rows: ${rows.length}`,
+      `Total sold/invoiced: ${money(totalAmount, settings.currency)}`,
+      `Open balance: ${money(totalBalance, settings.currency)}`,
+      `Collected cash: ${money(totalCollected, settings.currency)}`,
+      `Completed projects: ${closeoutRows.length}`,
+      `Estimated margin on closeout: ${money(totalMargin, settings.currency)}`
+    ].forEach((line) => {
+      doc.text(line, 40, y);
+      y += 15;
+    });
+
+    const blob = doc.output("blob");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "owner-executive-report.pdf";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function buildHubInvoiceState(project, report, overrides = {}) {
+    const current = getProjectInvoiceState(project);
+    const baseAmount = finiteNumber(overrides.baseAmount, current.baseAmount || project?.salePrice || 0);
+    const depositApplied = finiteNumber(overrides.depositApplied, current.depositApplied);
+    const receivedApplied = finiteNumber(overrides.receivedApplied, current.receivedApplied);
+    const promisedDate = normalizeDateInput(overrides.promisedDate || current.promisedDate);
+    const invoiceDate = normalizeDateInput(overrides.invoiceDate || current.invoiceDate) || new Date().toISOString().slice(0, 10);
+    const dueDate = normalizeDateInput(overrides.dueDate || current.dueDate || project?.dueDate);
+    const metrics = calcInvoice(project, report, {
+      baseAmount,
+      depositApplied,
+      receivedApplied
+    });
+    const status = normalizeInvoiceStatus(
+      overrides.status || inferInvoiceStatus(metrics.total || baseAmount, depositApplied, receivedApplied, current.status)
+    );
+    let collectionStage = ["new", "contacted", "promised", "escalated", "resolved"].includes(overrides.collectionStage)
+      ? overrides.collectionStage
+      : current.collectionStage;
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const openBalance = Math.max(finiteNumber(metrics.balance, 0), 0);
+    if (status === "paid") collectionStage = "resolved";
+    else if (promisedDate && promisedDate < todayIso && openBalance > 0) collectionStage = "escalated";
+    else if (status === "partial" && (!collectionStage || collectionStage === "new")) collectionStage = "contacted";
+    else if (!collectionStage) collectionStage = "new";
+    return {
+      invoiceNo: nonEmptyString(overrides.invoiceNo, current.invoiceNo, `INV-${Date.now()}`),
+      invoiceDate,
+      dueDate,
+      promisedDate,
+      baseAmount,
+      depositApplied,
+      receivedApplied,
+      status,
+      collectionStage,
+      payments: Array.isArray(overrides.payments) ? overrides.payments : current.payments,
+      activity: Array.isArray(overrides.activity) ? overrides.activity : current.activity,
+      publicToken: nonEmptyString(overrides.publicToken, current.publicToken),
+      publicUrl: nonEmptyString(overrides.publicUrl, current.publicUrl),
+      paymentLink: nonEmptyString(overrides.paymentLink, current.paymentLink)
+    };
+  }
+
+  async function publishHubPublicInvoice(projectId) {
+    const project = getProjectById(projectId);
+    if (!project) throw new Error("Project not found.");
+    const report = loadSupervisorReport(project);
+    const invoice = getProjectInvoiceState(project);
+    const metrics = calcInvoice(project, report, invoice);
+    const settings = loadSettings();
+    const payload = {
+      public_token: invoice.publicToken || "",
+      invoice_no: nonEmptyString(invoice.invoiceNo, `INV-${Date.now()}`),
+      customer_name: project.clientName || "",
+      customer_email: project.clientEmail || "",
+      project_name: project.projectName || "",
+      amount: metrics.total,
+      paid_amount: Math.max(finiteNumber(invoice.depositApplied, 0) + finiteNumber(invoice.receivedApplied, 0), 0),
+      balance_due: metrics.balance,
+      issue_date: invoice.invoiceDate || new Date().toISOString().slice(0, 10),
+      due_date: invoice.dueDate || project.dueDate || "",
+      type: "service",
+      notes: project.notes || "",
+      payment_link: invoice.paymentLink || "",
+      business_name: settings.bizName || DEFAULTS.bizName,
+      logo_url: settings.publicLogoUrl || "",
+      accent_color: settings.publicAccentColor || DEFAULTS.publicAccentColor,
+      currency: settings.currency === "$" ? "USD" : settings.currency,
+      status: String(invoice.status || "draft").toUpperCase()
+    };
+
+    const response = await fetch("/.netlify/functions/publish-public-invoice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || "Unable to publish public invoice.");
+    }
+
+    const nextInvoice = buildHubInvoiceState(project, report, {
+      publicToken: data.public_token || payload.public_token,
+      publicUrl: data.public_url || `/invoice-public.html?token=${data.public_token || payload.public_token}`
+    });
+    nextInvoice.activity = appendInvoiceActivity(nextInvoice, "Public invoice link published.", undefined, "public");
+    saveProjectInvoiceState(projectId, nextInvoice);
+    return nextInvoice.publicUrl;
+  }
+
+  function setHubPaymentLink(projectId, paymentLink) {
+    const project = getProjectById(projectId);
+    if (!project) return;
+    const report = loadSupervisorReport(project);
+    const invoice = buildHubInvoiceState(project, report, {
+      paymentLink: nonEmptyString(paymentLink)
+    });
+    invoice.activity = appendInvoiceActivity(invoice, "Payment link updated.", undefined, "link");
+    saveProjectInvoiceState(projectId, invoice);
+  }
+
+  function convertEstimateToInvoice(projectId) {
+    const project = getProjectById(projectId);
+    if (!project) return;
+    const report = loadSupervisorReport(project);
+    const metrics = calcInvoice(project, report, getProjectInvoiceState(project));
+    if (!(metrics.total > 0)) return;
+    const invoice = buildHubInvoiceState(project, report, { status: "draft" });
+    invoice.activity = appendInvoiceActivity(invoice, "Estimate converted to invoice.", undefined, "invoice");
+    saveProjectInvoiceState(projectId, invoice);
+  }
+
+  function markHubInvoiceSent(projectId) {
+    const project = getProjectById(projectId);
+    if (!project) return;
+    const report = loadSupervisorReport(project);
+    const current = getProjectInvoiceState(project);
+    if (!canTransitionInvoiceStatus(current.status, "sent")) return;
+    const invoice = buildHubInvoiceState(project, report, { status: "sent" });
+    invoice.activity = appendInvoiceActivity(invoice, "Invoice marked as sent.", undefined, "invoice");
+    saveProjectInvoiceState(projectId, invoice);
+  }
+
+  function setHubInvoiceWorkflowState(projectId, nextStatus, extra = {}) {
+    const project = getProjectById(projectId);
+    if (!project) return { ok: false, reason: "Project not found." };
+    const report = loadSupervisorReport(project);
+    const current = getProjectInvoiceState(project);
+    const actionState = getHubRowActionState(buildPortfolioRows(loadSettings()).find((row) => row.projectId === projectId) || { project, report, status: current.status, invoiceNo: current.invoiceNo });
+
+    if (nextStatus === "sent" && !actionState.canMarkSent) {
+      return { ok: false, reason: "Invoice must exist before moving to sent." };
+    }
+    if (nextStatus === "paid" && !actionState.canMarkPaid) {
+      return { ok: false, reason: "Mark Paid only applies to invoices with open balance." };
+    }
+    if (nextStatus === "partial" && !(finiteNumber(current.receivedApplied, 0) > 0 && finiteNumber(calcInvoice(project, report, current).balance, 0) > 0)) {
+      return { ok: false, reason: "Partial requires a real payment and open balance." };
+    }
+    if (nextStatus === "draft" && !current.invoiceNo) {
+      return { ok: false, reason: "Draft only applies to an existing invoice workflow." };
+    }
+
+    const invoice = buildHubInvoiceState(project, report, {
+      ...extra,
+      status: nextStatus
+    });
+    invoice.activity = appendInvoiceActivity(
+      invoice,
+      extra.activityMessage || `Workflow moved to ${nextStatus}.`,
+      undefined,
+      extra.activityType || "invoice"
+    );
+    saveProjectInvoiceState(projectId, invoice);
+    return { ok: true };
+  }
+
+  function getHubDropOutcome(row, targetKey) {
+    if (!row) return { ok: false, reason: "Card not found." };
+    const status = normalizeInvoiceStatus(row.invoiceStatus || row.status);
+    const hasInvoice = Boolean(row.invoiceNo);
+    const hasBalance = finiteNumber(row.balance, 0) > 0;
+    const hasPayments = finiteNumber((row.depositApplied || 0) + (row.receivedApplied || 0), 0) > 0;
+
+    if (targetKey === "draft") {
+      if (!hasInvoice) return { ok: false, reason: "Only invoices can move back to draft." };
+      if (status === "paid") return { ok: false, reason: "Paid invoices should not move back to draft." };
+      return { ok: true, kind: "workflow", nextStatus: "draft", tone: "warn", message: "Tarjeta movida a draft" };
+    }
+    if (targetKey === "sent") {
+      if (!hasInvoice) return { ok: false, reason: "Create the invoice first." };
+      if (status === "paid") return { ok: false, reason: "Paid invoices cannot move to sent." };
+      return { ok: true, kind: "workflow", nextStatus: "sent", tone: "ok", message: "Tarjeta movida a sent" };
+    }
+    if (targetKey === "partial") {
+      if (!hasInvoice) return { ok: false, reason: "Partial requires a real invoice." };
+      if (!hasPayments || !hasBalance) return { ok: false, reason: "Partial requires payment already applied with remaining balance." };
+      return { ok: true, kind: "workflow", nextStatus: "partial", tone: "ok", message: "Tarjeta movida a partial" };
+    }
+    if (targetKey === "paid") {
+      if (!hasInvoice) return { ok: false, reason: "Only invoices can move to paid." };
+      if (!hasBalance) return { ok: true, kind: "paid", tone: "ok", message: "Invoice ya estaba liquidado" };
+      return { ok: true, kind: "paid", tone: "ok", message: "Invoice liquidado desde pipeline" };
+    }
+    if (targetKey === "attention") {
+      if (!hasInvoice) return { ok: false, reason: "Attention applies to invoiced work only." };
+      if (!hasBalance) return { ok: false, reason: "No open balance to escalate." };
+      return { ok: true, kind: "escalate", tone: "warn", message: "Cuenta escalada a attention" };
+    }
+    return { ok: false, reason: "Target column not supported." };
+  }
+
+  function buildOwnerTasks(rows, settings) {
+    const tasks = [];
+    rows.forEach((row) => {
+      if (row.promisedDateRaw && row.promisedDateRaw < new Date().toISOString().slice(0, 10) && finiteNumber(row.balance, 0) > 0 && row.status !== "paid") {
+        tasks.push({
+          priority: 100,
+          title: row.title,
+          action: "Call client now",
+          body: `${row.customer} rompio promesa. Saldo ${money(row.balance, settings.currency)} y stage ${row.collectionStage || "new"}.`
+        });
+      } else if (["overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0) {
+        tasks.push({
+          priority: 90,
+          title: row.title,
+          action: "Send reminder",
+          body: `${row.customer} tiene vencido ${money(row.balance, settings.currency)}. Conviene reminder hoy.`
+        });
+      } else if (row.rowType === "estimate" && finiteNumber(row.amount, 0) > 0 && row.projectStatus !== "completed") {
+        tasks.push({
+          priority: 70,
+          title: row.title,
+          action: "Convert to invoice",
+          body: `Estimate listo por ${money(row.amount, settings.currency)}. Conviene empujarlo a invoice.`
+        });
+      } else if (row.status === "partial" && finiteNumber(row.balance, 0) > 0) {
+        tasks.push({
+          priority: 60,
+          title: row.title,
+          action: "Follow up partial",
+          body: `${row.customer} sigue parcial. Faltan ${money(row.balance, settings.currency)} por cobrar.`
+        });
+      }
+    });
+    return tasks.sort((left, right) => right.priority - left.priority).slice(0, 6);
+  }
+
+  function buildAutoReminderRows(rows) {
+    const todayIso = new Date().toISOString().slice(0, 10);
+    return rows.filter((row) => {
+      if (!(finiteNumber(row.balance, 0) > 0)) return false;
+      if (!["sent", "partial", "overdue", "expired"].includes(row.status)) return false;
+      const invoice = getProjectInvoiceState(row.project);
+      const activity = Array.isArray(invoice.activity) ? invoice.activity : [];
+      const alreadyQueuedToday = activity.some((item) =>
+        (item.type || "") === "collections" &&
+        normalizeDateInput(item.at) === todayIso &&
+        String(item.message || "").includes("Auto reminder queued")
+      );
+      return !alreadyQueuedToday;
+    }).sort((left, right) => right.priorityScore - left.priorityScore);
+  }
+
+  function queueHubAutoReminders(rows) {
+    let queued = 0;
+    buildAutoReminderRows(rows).slice(0, 10).forEach((row) => {
+      const project = getProjectById(row.projectId);
+      if (!project) return;
+      const report = loadSupervisorReport(project);
+      const invoice = buildHubInvoiceState(project, report, {
+        collectionStage: row.promisedDateRaw && row.promisedDateRaw < new Date().toISOString().slice(0, 10)
+          ? "escalated"
+          : getProjectInvoiceState(project).collectionStage || "contacted"
+      });
+      invoice.activity = appendInvoiceActivity(
+        invoice,
+        `Auto reminder queued for ${project.clientName || "client"}.`,
+        undefined,
+        "collections"
+      );
+      saveProjectInvoiceState(row.projectId, invoice);
+      queued += 1;
+    });
+    return queued;
+  }
+
+  function runHubStageAutomation(rows) {
+    const todayIso = new Date().toISOString().slice(0, 10);
+    let updated = 0;
+    rows.forEach((row) => {
+      const project = getProjectById(row.projectId);
+      if (!project) return;
+      const report = loadSupervisorReport(project);
+      const current = getProjectInvoiceState(project);
+      const openBalance = Math.max(finiteNumber(row.balance, 0), 0);
+      let nextStage = current.collectionStage || "new";
+      let reason = "";
+
+      if (row.status === "paid" || openBalance <= 0) {
+        nextStage = "resolved";
+        reason = "Invoice resolved by automation.";
+      } else if (row.promisedDateRaw && row.promisedDateRaw < todayIso) {
+        nextStage = "escalated";
+        reason = "Broken promise escalated by automation.";
+      } else if (["overdue", "expired"].includes(row.status)) {
+        nextStage = "escalated";
+        reason = "Overdue invoice escalated by automation.";
+      } else if (row.status === "partial") {
+        nextStage = "contacted";
+        reason = "Partial invoice moved to contacted by automation.";
+      } else if (row.status === "sent" && openBalance > 0) {
+        nextStage = "contacted";
+        reason = "Sent invoice moved to contacted by automation.";
+      }
+
+      if (nextStage !== (current.collectionStage || "new")) {
+        const invoice = buildHubInvoiceState(project, report, { collectionStage: nextStage });
+        invoice.activity = appendInvoiceActivity(invoice, reason, undefined, "collections");
+        saveProjectInvoiceState(row.projectId, invoice);
+        updated += 1;
+      }
+    });
+    return updated;
+  }
+
+  function queueCampaignSegment(rows, segmentKey) {
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const segmentRows = {
+      overdue: rows.filter((row) => ["overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0),
+      promises: rows.filter((row) => row.promisedDateRaw && row.promisedDateRaw < todayIso && finiteNumber(row.balance, 0) > 0),
+      partials: rows.filter((row) => row.status === "partial" && finiteNumber(row.balance, 0) > 0),
+      ready: rows.filter((row) => row.rowType === "estimate" && finiteNumber(row.amount, 0) > 0 && row.projectStatus !== "completed"),
+      high_risk: rows.filter((row) => finiteNumber(row.projectHealthScore, 0) < 55 || finiteNumber(row.priorityScore, 0) >= 80)
+    }[segmentKey] || [];
+    let queued = 0;
+    segmentRows.slice(0, 25).forEach((row) => {
+      const project = getProjectById(row.projectId);
+      if (!project) return;
+      const report = loadSupervisorReport(project);
+      const invoice = buildHubInvoiceState(project, report, {
+        collectionStage: ["overdue", "expired"].includes(row.status) || (row.promisedDateRaw && row.promisedDateRaw < todayIso)
+          ? "escalated"
+          : getProjectInvoiceState(project).collectionStage || "contacted"
+      });
+      invoice.activity = appendInvoiceActivity(
+        invoice,
+        `Campaign queued: ${segmentKey}.`,
+        undefined,
+        "collections"
+      );
+      saveProjectInvoiceState(row.projectId, invoice);
+      queued += 1;
+    });
+    return queued;
+  }
+
+  function recordHubPayment(projectId, payment) {
+    const project = getProjectById(projectId);
+    if (!project) return;
+    const report = loadSupervisorReport(project);
+    const current = getProjectInvoiceState(project);
+    const nextPayment = {
+      amount: Math.max(finiteNumber(payment?.amount, 0), 0),
+      method: nonEmptyString(payment?.method, "manual"),
+      note: nonEmptyString(payment?.note),
+      date: normalizeDateInput(payment?.date) || new Date().toISOString().slice(0, 10)
+    };
+    const nextReceived = Math.max(finiteNumber(current.receivedApplied, 0) + nextPayment.amount, 0);
+    const payments = [nextPayment, ...(Array.isArray(current.payments) ? current.payments : [])].slice(0, 50);
+    const invoice = buildHubInvoiceState(project, report, {
+      receivedApplied: nextReceived,
+      payments
+    });
+    invoice.activity = appendInvoiceActivity(
+      invoice,
+      `Payment received: ${money(nextPayment.amount, loadSettings().currency)} via ${nextPayment.method}${nextPayment.note ? ` (${nextPayment.note})` : ""}.`,
+      nextPayment.date,
+      "payment"
+    );
+    saveProjectInvoiceState(projectId, invoice);
+  }
+
+  function markHubInvoicePaid(projectId) {
+    const project = getProjectById(projectId);
+    if (!project) return;
+    const report = loadSupervisorReport(project);
+    const current = getProjectInvoiceState(project);
+    if (!canTransitionInvoiceStatus(current.status, "paid")) return;
+    const metrics = calcInvoice(project, report, current);
+    const remaining = Math.max(metrics.total - finiteNumber(current.depositApplied, 0), 0);
+    const invoice = buildHubInvoiceState(project, report, {
+      receivedApplied: remaining,
+      status: "paid"
+    });
+    invoice.activity = appendInvoiceActivity(invoice, "Invoice marked as paid.", undefined, "payment");
+    saveProjectInvoiceState(projectId, invoice);
+  }
+
+  function sendHubInvoice(projectId) {
+    const project = getProjectById(projectId);
+    if (!project) return;
+    const report = loadSupervisorReport(project);
+    const invoice = buildHubInvoiceState(project, report, { status: "sent" });
+    const metrics = calcInvoice(project, report, invoice);
+    invoice.activity = appendInvoiceActivity(invoice, "Invoice email prepared for client.", undefined, "email");
+    saveProjectInvoiceState(projectId, invoice);
+    const message = buildHubCommunication("invoice_send", buildPortfolioRows(loadSettings()).find((row) => row.projectId === projectId) || {
+      customer: project.clientName || "-",
+      title: project.projectName || "-",
+      project,
+      report
+    }, loadSettings());
+    const subject = encodeURIComponent(message.subject);
+    const body = encodeURIComponent(message.body);
+    window.location.href = `mailto:${encodeURIComponent(project.clientEmail || "")}?subject=${subject}&body=${body}`;
+  }
+
+  function requestHubPayment(projectId) {
+    const project = getProjectById(projectId);
+    if (!project) return;
+    const report = loadSupervisorReport(project);
+    const invoice = getProjectInvoiceState(project);
+    const metrics = calcInvoice(project, report, invoice);
+    const nextInvoice = buildHubInvoiceState(project, report, { status: invoice.status || "sent" });
+    nextInvoice.activity = appendInvoiceActivity(nextInvoice, "Payment request email prepared for client.", undefined, "collections");
+    saveProjectInvoiceState(projectId, nextInvoice);
+    const message = buildHubCommunication("payment_request", buildPortfolioRows(loadSettings()).find((row) => row.projectId === projectId) || {
+      customer: project.clientName || "-",
+      title: project.projectName || "-",
+      project,
+      report
+    }, loadSettings());
+    const subject = encodeURIComponent(message.subject);
+    const body = encodeURIComponent(message.body);
+    window.location.href = `mailto:${encodeURIComponent(project.clientEmail || "")}?subject=${subject}&body=${body}`;
+  }
+
+  function logHubFollowUp(projectId, note) {
+    const project = getProjectById(projectId);
+    if (!project) return;
+    const report = loadSupervisorReport(project);
+    const invoice = getProjectInvoiceState(project);
+    const nextInvoice = buildHubInvoiceState(project, report, {});
+    nextInvoice.activity = appendInvoiceActivity(nextInvoice, `Follow-up logged${note ? `: ${note}` : "."}`, undefined, "followup");
+    saveProjectInvoiceState(projectId, nextInvoice);
+  }
+
+  function updateHubPayments(projectId, transform, activityMessage) {
+    const project = getProjectById(projectId);
+    if (!project) return;
+    const report = loadSupervisorReport(project);
+    const current = getProjectInvoiceState(project);
+    const currentPayments = Array.isArray(current.payments) ? current.payments : [];
+    const payments = transform(currentPayments.map((payment) => ({ ...payment })));
+    const receivedApplied = payments.reduce((sum, payment) => sum + Math.max(finiteNumber(payment.amount, 0), 0), 0);
+    const invoice = buildHubInvoiceState(project, report, {
+      receivedApplied,
+      payments
+    });
+    invoice.activity = appendInvoiceActivity(invoice, activityMessage, undefined, "payment");
+    saveProjectInvoiceState(projectId, invoice);
+  }
+
+  function editHubPayment(projectId, index, updates) {
+    updateHubPayments(projectId, (payments) => {
+      if (!payments[index]) return payments;
+      payments[index] = {
+        ...payments[index],
+        amount: Math.max(finiteNumber(updates.amount, payments[index].amount), 0),
+        method: nonEmptyString(updates.method, payments[index].method, "manual"),
+        note: nonEmptyString(updates.note, payments[index].note),
+        date: normalizeDateInput(updates.date) || payments[index].date || new Date().toISOString().slice(0, 10)
+      };
+      return payments;
+    }, "Payment edited.");
+  }
+
+  function deleteHubPayment(projectId, index) {
+    updateHubPayments(projectId, (payments) => payments.filter((_, paymentIndex) => paymentIndex !== index), "Payment deleted.");
+  }
+
+  function exportCustomerStatementPdf(row, settings) {
+    const jsPDF = window.jspdf?.jsPDF;
+    if (!jsPDF || !row) return alert("Statement is not available.");
+    const invoice = getProjectInvoiceState(row.project);
+    const metrics = calcInvoice(row.project, row.report, invoice);
+    const payments = Array.isArray(invoice.payments) ? invoice.payments : [];
+    const doc = new jsPDF({ unit: "pt", format: "letter" });
+    let y = 46;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text(settings.bizName || DEFAULTS.bizName, 40, y);
+    y += 22;
+    doc.setFontSize(13);
+    doc.text("Customer Statement", 40, y);
+    y += 20;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    [
+      `Customer: ${row.customer || "-"}`,
+      `Project: ${row.title || "-"}`,
+      `Invoice No: ${invoice.invoiceNo || "No invoice"}`,
+      `Statement date: ${new Date().toISOString().slice(0, 10)}`,
+      `Open balance: ${money(metrics.balance, settings.currency)}`
+    ].forEach((line) => {
+      doc.text(line, 40, y);
+      y += 15;
+    });
+
+    y += 10;
+    doc.setFont("helvetica", "bold");
+    doc.text("Payment History", 40, y);
+    y += 18;
+    doc.setFont("helvetica", "normal");
+    if (payments.length) {
+      payments.forEach((payment) => {
+        doc.text(`${payment.date || "-"} | ${payment.method || "manual"} | ${payment.note || "-"} | ${money(payment.amount || 0, settings.currency)}`, 40, y);
+        y += 14;
+      });
+    } else {
+      doc.text("No payments recorded yet.", 40, y);
+      y += 14;
+    }
+
+    y += 12;
+    doc.setFont("helvetica", "bold");
+    doc.text("Summary", 40, y);
+    y += 18;
+    doc.setFont("helvetica", "normal");
+    [
+      `Total invoice: ${money(metrics.total, settings.currency)}`,
+      `Deposit applied: ${money(metrics.depositApplied, settings.currency)}`,
+      `Payments received: ${money(metrics.receivedApplied, settings.currency)}`,
+      `Balance due: ${money(metrics.balance, settings.currency)}`
+    ].forEach((line) => {
+      doc.text(line, 40, y);
+      y += 15;
+    });
+
+    const blob = doc.output("blob");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `statement-${(row.title || "project").replace(/\s+/g, "-")}.pdf`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function exportCloseoutPdf(row, settings) {
+    const jsPDF = window.jspdf?.jsPDF;
+    if (!jsPDF || !row) return alert("Closeout PDF is not available.");
+    const doc = new jsPDF({ unit: "pt", format: "letter" });
+    let y = 46;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text(settings.bizName || DEFAULTS.bizName, 40, y);
+    y += 22;
+    doc.setFontSize(13);
+    doc.text("Project Closeout Report", 40, y);
+    y += 20;
+    doc.setFont("helvetica", "normal");
+    [
+      `Project: ${row.title || "-"}`,
+      `Customer: ${row.customer || "-"}`,
+      `Sold: ${money(row.soldAmount || 0, settings.currency)}`,
+      `Collected: ${money(row.cashCollected || 0, settings.currency)}`,
+      `Final Cost Estimate: ${money(row.finalCost || 0, settings.currency)}`,
+      `Estimated Margin: ${money(row.estimatedMargin || 0, settings.currency)}`,
+      `Change Orders: ${row.changeOrderCount}`,
+      `Approved Change Orders: ${row.approvedChangeOrderCount}`
+    ].forEach((line) => {
+      doc.text(line, 40, y);
+      y += 15;
+    });
+
+    const blob = doc.output("blob");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `closeout-${(row.title || "project").replace(/\s+/g, "-")}.pdf`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function renderHubDrawerDetails(row, settings, handlers) {
+    if (!row) return;
+    const invoice = getProjectInvoiceState(row.project);
+    if ($("hubDrawer")) $("hubDrawer").setAttribute("aria-hidden", "false");
+    if ($("hubDrawerTitle")) $("hubDrawerTitle").textContent = row.title;
+    if ($("hubDrawerSubtitle")) {
+      $("hubDrawerSubtitle").textContent = `${row.customer}   ${row.projectId}   ${row.status}   ${money(row.amount, settings.currency)}`;
+    }
+    if ($("hubDrawerStats")) {
+      $("hubDrawerStats").innerHTML = [
+        ["Location", row.location || "No location", "Ubicacion asociada al proyecto"],
+        ["Customer", row.customerEmail || "No email", row.customerPhone || "No phone"],
+        ["Invoice", row.invoiceNo || "No invoice", "Folio o referencia actual"],
+        ["Collections", row.collectionStage || "new", "Etapa actual de seguimiento"],
+        ["Balance", money(row.balance, settings.currency), "Saldo pendiente del proyecto"],
+        ["Due Date", row.dueDate || "No due date", row.daysPastDue > 0 ? `${row.daysPastDue} dias past due` : "Fecha comprometida del cobro"],
+        ["Promise", row.promisedDate || "No promise", row.promisedDateRaw ? "Promesa de pago registrada" : "Sin promesa activa"],
+        ["Priority", `${row.priorityScore}`, `Next: ${row.nextAction}`],
+        ["Health", `${row.projectHealthScore}%`, row.projectHealthLabel],
+        ["Payments", money((row.depositApplied || 0) + (row.receivedApplied || 0), settings.currency), "Depositos y cobros aplicados"]
+      ].map(([title, big, small]) => `
+        <div class="supervisor-summary-card">
+          <div class="title">${escapeHtml(title)}</div>
+          <div class="big">${escapeHtml(big)}</div>
+          <div class="small">${escapeHtml(small)}</div>
+        </div>
+      `).join("");
+    }
+    if ($("hubDrawerNote")) {
+      $("hubDrawerNote").textContent = `Proyecto ${row.title}. Estado ${row.status}. Proxima accion sugerida: ${row.nextAction}. Playbook: ${getHubSuggestedPlaybook(row)} Change orders totales: ${row.changeOrderCount}. Change orders incluidos en invoice: ${row.approvedChangeOrderCount}.`;
+    }
+    if (typeof handlers.applyHubActionButtonState === "function") {
+      handlers.applyHubActionButtonState(row);
+    }
+
+    if ($("hubDrawerCoBody")) {
+      const changeOrders = Array.isArray(row.report?.changeOrders) ? row.report.changeOrders : [];
+      $("hubDrawerCoBody").innerHTML = changeOrders.length
+        ? changeOrders.map((item) => `
+            <tr>
+              <td>${escapeHtml(item.title || "Change order")}</td>
+              <td>${escapeHtml(normalizeCommercialStatus(item.commercialStatus || (item.applied ? "approved" : "draft")))}</td>
+              <td>${money(item.offeredPrice || 0, settings.currency)}</td>
+            </tr>
+          `).join("")
+        : `<tr><td colspan="3">No change orders yet.</td></tr>`;
+    }
+
+    if ($("hubDrawerPaymentsBody")) {
+      $("hubDrawerPaymentsBody").innerHTML = invoice.payments.length
+        ? invoice.payments.map((payment, index) => `
+            <tr>
+              <td>${escapeHtml(formatDisplayDate(payment.date))}</td>
+              <td>${escapeHtml(payment.method || "manual")}</td>
+              <td>${escapeHtml(payment.note || "-")}</td>
+              <td>${money(payment.amount || 0, settings.currency)}</td>
+              <td>
+                <div class="row-actions">
+                  <button class="btn ghost" data-edit-payment="${index}">Edit</button>
+                  <button class="btn danger" data-delete-payment="${index}">Delete</button>
+                </div>
+              </td>
+            </tr>
+          `).join("")
+        : `<tr><td colspan="5">No payments recorded yet.</td></tr>`;
+
+      $("hubDrawerPaymentsBody").querySelectorAll("button[data-edit-payment]").forEach((button) => {
+        button.onclick = () => {
+          const index = Number(button.dataset.editPayment || -1);
+          const payment = invoice.payments[index];
+          if (!payment || typeof handlers.onEditPayment !== "function") return;
+          handlers.onEditPayment(index, payment);
+        };
+      });
+
+      $("hubDrawerPaymentsBody").querySelectorAll("button[data-delete-payment]").forEach((button) => {
+        button.onclick = () => {
+          const index = Number(button.dataset.deletePayment || -1);
+          if (index < 0 || typeof handlers.onDeletePayment !== "function") return;
+          handlers.onDeletePayment(index);
+        };
+      });
+    }
+
+    if ($("hubDrawerPaymentTotals")) {
+      const totalsByMethod = invoice.payments.reduce((acc, payment) => {
+        const key = nonEmptyString(payment.method, "manual");
+        acc[key] = (acc[key] || 0) + Math.max(finiteNumber(payment.amount, 0), 0);
+        return acc;
+      }, {});
+      const methodEntries = Object.entries(totalsByMethod);
+      $("hubDrawerPaymentTotals").innerHTML = methodEntries.length
+        ? methodEntries.map(([method, amount]) => `
+            <div class="supervisor-summary-card">
+              <div class="title">Method</div>
+              <div class="big">${escapeHtml(method)}</div>
+              <div class="small">${escapeHtml(money(amount, settings.currency))}</div>
+            </div>
+          `).join("")
+        : `
+            <div class="supervisor-summary-card">
+              <div class="title">Methods</div>
+              <div class="big">No payments</div>
+              <div class="small">Aun no hay cobros registrados</div>
+            </div>
+          `;
+    }
+
+    const renderActivityRows = (items, emptyMessage) => items.length
+      ? items.map((item) => `
+          <tr>
+            <td><span class="hub-activity-type ${escapeHtml(item.type || "note")}">${escapeHtml(item.type || "note")}</span> ${escapeHtml(item.message || "-")}</td>
+            <td>${escapeHtml(formatDisplayDate(item.at))}</td>
+          </tr>
+        `).join("")
+      : `<tr><td colspan="2">${escapeHtml(emptyMessage)}</td></tr>`;
+
+    if ($("hubDrawerActivityBody")) {
+      $("hubDrawerActivityBody").innerHTML = renderActivityRows(invoice.activity, "No activity recorded yet.");
+    }
+    if ($("hubDrawerCollectionsBody")) {
+      const collectionEvents = invoice.activity.filter((item) => ["followup", "collections"].includes(item.type || "note"));
+      $("hubDrawerCollectionsBody").innerHTML = renderActivityRows(collectionEvents, "No collections history yet.");
+    }
+  }
+
+  function renderHubFocusQueueList(filteredRows, settings, onOpenRow) {
+    if (!$("hubFocusQueue")) return;
+    const focusRows = filteredRows
+      .filter((row) => row.priorityScore > 0)
+      .slice()
+      .sort((left, right) => right.priorityScore - left.priorityScore)
+      .slice(0, 5);
+    $("hubFocusQueue").innerHTML = focusRows.length
+      ? focusRows.map((row, index) => `
+          <li data-project-id="${escapeHtml(row.projectId)}">
+            <span class="msg-idx">${index + 1}</span>
+            <div>
+              <strong>${escapeHtml(row.title)}</strong>
+              <span class="hub-inline-meta">${escapeHtml(row.customer)} · Score ${escapeHtml(String(row.priorityScore))} · ${escapeHtml(row.nextAction)}</span>
+              <span class="hub-health ${escapeHtml(row.projectHealthTone || "green")}">Health ${escapeHtml(String(row.projectHealthScore))}% · ${escapeHtml(row.projectHealthLabel)}</span>
+              <span class="hub-inline-meta">Balance ${escapeHtml(money(row.balance, settings.currency))} · Due ${escapeHtml(row.dueDate || "No due date")}</span>
+            </div>
+          </li>
+        `).join("")
+      : `<li><span class="msg-idx">0</span><div><strong>Sin urgencias</strong><span class="hub-inline-meta">No hay cuentas con prioridad alta en este filtro.</span></div></li>`;
+    $("hubFocusQueue").querySelectorAll("li[data-project-id]").forEach((item) => {
+      item.onclick = () => {
+        const row = filteredRows.find((entry) => entry.projectId === (item.dataset.projectId || ""));
+        if (!row || typeof onOpenRow !== "function") return;
+        onOpenRow(row);
+      };
+    });
+  }
+
+  function renderHubTableSection(config) {
+    const {
+      filteredRows,
+      selectedProjectIds,
+      settings,
+      activeTab,
+      refreshBulkBar,
+      onOpenRow,
+      onConvert,
+      onSent,
+      onPay,
+      onReminder,
+      onSales,
+      onOwner,
+      onPdf
+    } = config;
+    if (!$("hubTableBody")) return;
+    $("hubTableBody").closest(".supervisor-table-wrap").style.display = activeTab === "pipeline" ? "none" : "block";
+    $("hubTableBody").innerHTML = filteredRows.length
+      ? filteredRows.map((row) => {
+          const actionState = getHubRowActionState(row);
+          return `
+          <tr>
+            <td><input type="checkbox" data-hub-select="${escapeHtml(row.projectId)}" ${selectedProjectIds.has(row.projectId) ? "checked" : ""} /></td>
+            <td>${escapeHtml(row.date)}</td>
+            <td>${escapeHtml(row.customer)}</td>
+            <td>${escapeHtml(row.projectId)}</td>
+            <td>${escapeHtml(row.location || "No location")}</td>
+            <td>
+              <strong>${escapeHtml(row.title)}</strong>
+              <div class="meta">${escapeHtml(row.invoiceNo)}</div>
+              <span class="hub-inline-meta">Priority ${escapeHtml(String(row.priorityScore))} · ${escapeHtml(row.nextAction)}</span>
+              <span class="hub-health ${escapeHtml(row.projectHealthTone || "green")}">Health ${escapeHtml(String(row.projectHealthScore))}% · ${escapeHtml(row.projectHealthLabel)}</span>
+            </td>
+            <td><span class="hub-status ${escapeHtml(row.status)}">${escapeHtml(row.status)}</span></td>
+            <td>${money(row.amount, settings.currency)}</td>
+            <td>${money(row.balance, settings.currency)}</td>
+            <td>
+              <div class="row-actions wrap">
+                <button class="btn ghost" data-hub-view="${escapeHtml(row.projectId)}">View</button>
+                <button class="btn ghost ${actionState.canConvert ? "" : "hub-action-disabled"}" ${actionState.canConvert ? "" : "disabled"} title="${actionState.canConvert ? "" : "Create invoice first"}" data-hub-convert="${escapeHtml(row.projectId)}">Convert</button>
+                <button class="btn ghost ${actionState.canMarkSent ? "" : "hub-action-disabled"}" ${actionState.canMarkSent ? "" : "disabled"} title="${actionState.canMarkSent ? "" : "Invoice required"}" data-hub-sent="${escapeHtml(row.projectId)}">Sent</button>
+                <button class="btn ghost ${actionState.canRequestPayment ? "" : "hub-action-disabled"}" ${actionState.canRequestPayment ? "" : "disabled"} title="${actionState.canRequestPayment ? "" : "Invoice with open balance required"}" data-hub-reminder="${escapeHtml(row.projectId)}">Reminder</button>
+                <button class="btn ghost ${actionState.canTakePayment ? "" : "hub-action-disabled"}" ${actionState.canTakePayment ? "" : "disabled"} title="${actionState.canTakePayment ? "" : "Invoice with balance required"}" data-hub-pay="${escapeHtml(row.projectId)}">Pay</button>
+                <button class="btn ghost" data-hub-sales="${escapeHtml(row.projectId)}">Sales</button>
+                <button class="btn ghost" data-hub-owner="${escapeHtml(row.projectId)}">Owner</button>
+                <button class="btn primary ${actionState.canExportPdf ? "" : "hub-action-disabled"}" ${actionState.canExportPdf ? "" : "disabled"} title="${actionState.canExportPdf ? "" : "Invoice required"}" data-hub-pdf="${escapeHtml(row.projectId)}">PDF</button>
+              </div>
+            </td>
+          </tr>
+        `;
+        }).join("")
+      : `<tr><td colspan="10">No rows match the current filters.</td></tr>`;
+
+    $("hubTableBody").querySelectorAll("input[data-hub-select]").forEach((checkbox) => {
+      checkbox.onchange = () => {
+        const projectId = checkbox.dataset.hubSelect || "";
+        if (!projectId) return;
+        if (checkbox.checked) selectedProjectIds.add(projectId);
+        else selectedProjectIds.delete(projectId);
+        refreshBulkBar();
+      };
+    });
+
+    const bindButton = (selector, callback) => {
+      $("hubTableBody").querySelectorAll(selector).forEach((button) => {
+        button.onclick = () => {
+          const projectId = Object.values(button.dataset)[0] || "";
+          const row = filteredRows.find((item) => item.projectId === projectId);
+          if (!row || typeof callback !== "function") return;
+          callback(row, projectId);
+        };
+      });
+    };
+
+    bindButton("button[data-hub-view]", (row) => onOpenRow(row));
+    bindButton("button[data-hub-convert]", (row) => onConvert(row));
+    bindButton("button[data-hub-sent]", (row) => onSent(row));
+    bindButton("button[data-hub-pay]", (row, projectId) => onPay(row, projectId));
+    bindButton("button[data-hub-reminder]", (row) => onReminder(row));
+    bindButton("button[data-hub-sales]", (row) => onSales(row));
+    bindButton("button[data-hub-owner]", (row) => onOwner(row));
+    bindButton("button[data-hub-pdf]", (row, projectId) => onPdf(row, projectId));
+    refreshBulkBar();
+  }
+
+  function renderHubPipelineSection(config) {
+    const { filteredRows, activeTab, settings, onOpenRow, onSent, onRequest, onContacted, onPromise, onEscalate, onDropColumn } = config;
+    if (!$("hubPipelineBoard")) return;
+    const columns = [
+      { key: "draft", label: "Draft" },
+      { key: "sent", label: "Sent" },
+      { key: "partial", label: "Partial" },
+      { key: "paid", label: "Paid" },
+      { key: "attention", label: "Overdue / Expired" }
+    ];
+    const groups = {
+      draft: filteredRows.filter((row) => row.status === "draft"),
+      sent: filteredRows.filter((row) => row.status === "sent"),
+      partial: filteredRows.filter((row) => row.status === "partial"),
+      paid: filteredRows.filter((row) => row.status === "paid"),
+      attention: filteredRows.filter((row) => ["overdue", "expired"].includes(row.status))
+    };
+    $("hubPipelineBoard").style.display = activeTab === "pipeline" ? "block" : "none";
+    $("hubPipelineBoard").innerHTML = activeTab === "pipeline"
+      ? `
+          <div class="hub-pipeline">
+            ${columns.map((column) => `
+              <div class="hub-pipeline-column" data-pipeline-column="${escapeHtml(column.key)}">
+                <div class="section-head" style="margin-bottom:10px;">
+                  <div>
+                    <h2 style="margin:0;">${escapeHtml(column.label)}</h2>
+                    <div class="sub">${groups[column.key].length} rows</div>
+                  </div>
+                </div>
+                <div class="hub-pipeline-stack">
+                  ${groups[column.key].length ? groups[column.key].map((row) => `
+                    <div class="hub-pipeline-card" draggable="true" data-hub-pipeline="${escapeHtml(row.projectId)}">
+                      <strong>${escapeHtml(row.title)}</strong>
+                      <span class="hub-inline-meta">${escapeHtml(row.customer)}</span>
+                      <span class="hub-inline-meta">${escapeHtml(money(row.amount, settings.currency))} · Balance ${escapeHtml(money(row.balance, settings.currency))}</span>
+                      <span class="hub-inline-meta">Priority ${escapeHtml(String(row.priorityScore))} · ${escapeHtml(row.nextAction)}</span>
+                      <span class="hub-health ${escapeHtml(row.projectHealthTone || "green")}">Health ${escapeHtml(String(row.projectHealthScore))}% · ${escapeHtml(row.projectHealthLabel)}</span>
+                      <div class="hub-pipeline-actions">
+                        <button class="btn ghost" type="button" data-hub-pipeline-view="${escapeHtml(row.projectId)}">View</button>
+                        ${getHubRowActionState(row).canMarkSent ? `<button class="btn ghost" type="button" data-hub-pipeline-sent="${escapeHtml(row.projectId)}">Sent</button>` : ""}
+                        ${getHubRowActionState(row).canRequestPayment ? `<button class="btn ghost" type="button" data-hub-pipeline-request="${escapeHtml(row.projectId)}">Request</button>` : ""}
+                        ${row.status !== "paid" ? `<button class="btn ghost" type="button" data-hub-pipeline-contacted="${escapeHtml(row.projectId)}">Contacted</button>` : ""}
+                        ${row.status !== "paid" ? `<button class="btn ghost" type="button" data-hub-pipeline-promise="${escapeHtml(row.projectId)}">Promised</button>` : ""}
+                        ${["sent", "partial", "overdue", "expired"].includes(row.status) ? `<button class="btn ghost" type="button" data-hub-pipeline-escalate="${escapeHtml(row.projectId)}">Escalate</button>` : ""}
+                      </div>
+                    </div>
+                  `).join("") : `<div class="notice">No rows</div>`}
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `
+      : "";
+
+    $("hubPipelineBoard").querySelectorAll("[data-hub-pipeline]").forEach((card) => {
+      card.ondragstart = (event) => {
+        event.dataTransfer?.setData("text/plain", card.dataset.hubPipeline || "");
+        card.classList.add("dragging");
+      };
+      card.ondragend = () => {
+        card.classList.remove("dragging");
+      };
+      card.onclick = () => {
+        const row = filteredRows.find((entry) => entry.projectId === (card.dataset.hubPipeline || ""));
+        if (!row || typeof onOpenRow !== "function") return;
+        onOpenRow(row);
+      };
+    });
+
+    $("hubPipelineBoard").querySelectorAll(".hub-pipeline-column").forEach((column) => {
+      column.ondragover = (event) => {
+        event.preventDefault();
+        column.classList.add("drag-over");
+      };
+      column.ondragleave = () => {
+        column.classList.remove("drag-over");
+      };
+      column.ondrop = (event) => {
+        event.preventDefault();
+        column.classList.remove("drag-over");
+        const projectId = event.dataTransfer?.getData("text/plain") || "";
+        const row = filteredRows.find((entry) => entry.projectId === projectId);
+        const targetKey = column.dataset.pipelineColumn || "";
+        if (!row || !targetKey || typeof onDropColumn !== "function") return;
+        onDropColumn(row, targetKey);
+      };
+    });
+
+    const bindPipelineButton = (selector, callback) => {
+      $("hubPipelineBoard").querySelectorAll(selector).forEach((button) => {
+        button.onclick = (event) => {
+          event.stopPropagation();
+          const projectId = Object.values(button.dataset)[0] || "";
+          const row = filteredRows.find((entry) => entry.projectId === projectId);
+          if (!row || typeof callback !== "function") return;
+          callback(row);
+        };
+      });
+    };
+
+    bindPipelineButton("[data-hub-pipeline-view]", onOpenRow);
+    bindPipelineButton("[data-hub-pipeline-sent]", onSent);
+    bindPipelineButton("[data-hub-pipeline-request]", onRequest);
+    bindPipelineButton("[data-hub-pipeline-contacted]", onContacted);
+    bindPipelineButton("[data-hub-pipeline-promise]", onPromise);
+    bindPipelineButton("[data-hub-pipeline-escalate]", onEscalate);
+  }
+
+  function openHubClientDetail(customerName, rows, settings) {
+    const filtered = rows.filter((row) => nonEmptyString(row.customer, "Sin cliente") === customerName);
+    const totalOpen = filtered.reduce((sum, row) => sum + Math.max(finiteNumber(row.balance, 0), 0), 0);
+    const totalSold = filtered.reduce((sum, row) => sum + Math.max(finiteNumber(row.soldAmount, 0), 0), 0);
+    const brokenPromises = filtered.filter((row) => row.promisedDateRaw && row.promisedDateRaw < new Date().toISOString().slice(0, 10) && finiteNumber(row.balance, 0) > 0).length;
+    const avgHealth = filtered.length
+      ? filtered.reduce((sum, row) => sum + finiteNumber(row.projectHealthScore, 0), 0) / filtered.length
+      : 0;
+
+    if ($("hubClientModal")) $("hubClientModal").setAttribute("aria-hidden", "false");
+    if ($("hubClientTitle")) $("hubClientTitle").textContent = customerName || "Client detail";
+    if ($("hubClientSubtitle")) $("hubClientSubtitle").textContent = `${filtered.length} proyectos · Open ${money(totalOpen, settings.currency)}`;
+    if ($("hubClientStats")) {
+      $("hubClientStats").innerHTML = [
+        ["Open Balance", money(totalOpen, settings.currency), "Saldo vivo de este cliente"],
+        ["Sold", money(totalSold, settings.currency), "Venta total asociada"],
+        ["Broken Promises", String(brokenPromises), "Promesas incumplidas"],
+        ["Avg Health", `${avgHealth.toFixed(0)}%`, "Salud promedio del portafolio"]
+      ].map(([title, big, small]) => `
+        <div class="supervisor-summary-card">
+          <div class="title">${escapeHtml(title)}</div>
+          <div class="big">${escapeHtml(big)}</div>
+          <div class="small">${escapeHtml(small)}</div>
+        </div>
+      `).join("");
+    }
+      if ($("hubClientProjectsBody")) {
+        $("hubClientProjectsBody").innerHTML = filtered.length
+        ? filtered.map((row) => `
+            <tr>
+              <td>${escapeHtml(row.title)}</td>
+              <td><span class="hub-status ${escapeHtml(row.status)}">${escapeHtml(row.status)}</span></td>
+              <td>${money(row.balance, settings.currency)}</td>
+              <td>${escapeHtml(String(row.projectHealthScore))}% ${escapeHtml(row.projectHealthLabel)}</td>
+            </tr>
+          `).join("")
+        : `<tr><td colspan="4">No projects for this client.</td></tr>`;
+      }
+    if ($("btnHubClientRequestAll")) {
+      $("btnHubClientRequestAll").onclick = () => {
+        let sent = 0;
+        filtered.forEach((row) => {
+          if (getHubRowActionState(row).canRequestPayment) {
+            requestHubPayment(row.projectId);
+            sent += 1;
+          }
+        });
+        closeHubClientDetail();
+        setHubFeedback(
+          sent ? `${sent} reminders preparados para ${customerName}.` : `No habia reminders validos para ${customerName}.`,
+          sent ? "ok" : "warn"
+        );
+      };
+    }
+    if ($("btnHubClientOpenCollections")) {
+      $("btnHubClientOpenCollections").onclick = () => {
+        const current = loadHubViewState();
+        saveHubViewState({ ...current, tab: "collections", customer: customerName });
+        window.location.reload();
+      };
+    }
+    if ($("btnHubClientOpenHub")) {
+      $("btnHubClientOpenHub").onclick = () => {
+        const current = loadHubViewState();
+        saveHubViewState({ ...current, tab: "all", customer: customerName });
+        window.location.reload();
+      };
+    }
+  }
+
+  function closeHubClientDetail() {
+    if ($("hubClientModal")) $("hubClientModal").setAttribute("aria-hidden", "true");
+  }
+
+  function renderEstimatesHub() {
+    if (!$("hubTableBody")) return;
+
+    const settings = loadSettings();
+    const hubViewState = loadHubViewState();
+    let filteredRows = [];
+    let activeTab = hubViewState.tab || "all";
+    let activePreset = hubViewState.preset || "";
+    let selectedRow = null;
+    let sortKey = hubViewState.sortKey || "dateRaw";
+    let sortDir = hubViewState.sortDir || "desc";
+    const selectedProjectIds = new Set();
+
+    const persistHubView = () => {
+      saveHubViewState({
+        tab: activeTab,
+        preset: activePreset,
+        sortKey,
+        sortDir,
+        search: val("hubSearch"),
+        status: val("hubStatusFilter"),
+        dateFrom: val("hubDateFrom"),
+        customer: val("hubCustomerFilter"),
+        location: val("hubLocationFilter")
+      });
+    };
+
+    const applyHubSortButtons = () => {
+      document.querySelectorAll("[data-hub-sort]").forEach((node) => {
+        const isActive = node.dataset.hubSort === sortKey;
+        const label = node.textContent.replace(/\s+[▲▼]$/, "");
+        node.textContent = isActive ? `${label} ${sortDir === "asc" ? "▲" : "▼"}` : label;
+        node.classList.toggle("active", isActive);
+      });
+    };
+
+    const applyHubActionButtonState = (row) => {
+      const actionState = getHubRowActionState(row);
+      const buttonRules = [
+        ["btnHubDrawerCustomer", true, ""],
+        ["btnHubDrawerDuplicate", true, ""],
+        ["btnHubDrawerDuplicateInvoice", actionState.canExportPdf, "Necesitas un invoice real antes de duplicarlo."],
+        ["btnHubDrawerSetup", true, ""],
+        ["btnHubDrawerConvert", actionState.canConvert, "Convierte primero el estimate a invoice cuando ya exista monto vendible."],
+        ["btnHubDrawerSendInvoice", actionState.canSendInvoice, "Necesitas invoice, cliente y monto antes de preparar el envio."],
+        ["btnHubDrawerRequestPayment", actionState.canRequestPayment, "Request Payment solo aplica a invoices enviadas o parciales con saldo pendiente."],
+        ["btnHubDrawerSent", actionState.canMarkSent, "Primero crea el invoice; despues ya lo puedes marcar como sent."],
+        ["btnHubDrawerPayment", actionState.canTakePayment, "Take Payment solo aplica cuando el invoice ya existe y aun tiene saldo."],
+        ["btnHubDrawerPaid", actionState.canMarkPaid, "Mark Paid solo aplica cuando existe invoice con saldo pendiente."],
+        ["btnHubDrawerStatement", actionState.canExportPdf, "El statement necesita un invoice real para generarse."],
+        ["btnHubDrawerPublish", actionState.canPublishLink, "Publish Link requiere invoice, cliente y monto valido."],
+        ["btnHubDrawerPaymentLink", actionState.canSetPaymentLink, "Primero crea el invoice para guardar un payment link."],
+        ["btnHubDrawerOpenPublic", actionState.canOpenPublic, "Aun no existe link publico para este invoice."],
+        ["btnHubDrawerPdf", actionState.canExportPdf, "El PDF del invoice requiere un invoice valido con monto."]
+      ];
+      buttonRules.forEach(([id, allowed, title]) => {
+        const node = $(id);
+        if (!node) return;
+        node.disabled = !allowed;
+        node.classList.toggle("hub-action-disabled", !allowed);
+        node.title = allowed ? "" : title;
+      });
+    };
+
+    const refreshBulkBar = () => {
+      const selectedRows = filteredRows.filter((row) => selectedProjectIds.has(row.projectId));
+      const total = selectedRows.reduce((sum, row) => sum + finiteNumber(row.amount, 0), 0);
+      if ($("hubBulkBar")) $("hubBulkBar").style.display = selectedRows.length ? "block" : "none";
+      if ($("hubBulkCount")) $("hubBulkCount").textContent = String(selectedRows.length);
+      if ($("hubBulkAmount")) $("hubBulkAmount").textContent = money(total, settings.currency);
+      if ($("hubSelectAll")) {
+        $("hubSelectAll").checked = Boolean(filteredRows.length) && selectedRows.length === filteredRows.length;
+      }
+    };
+
+    const showHubActionForm = (config) => {
+      openHubFormModal({
+        ...config,
+        onSubmit: config.onSubmit
+      });
+    };
+
+    const refreshSelectedRow = () => {
+      if (!selectedRow) return;
+      const next = buildPortfolioRows(settings).find((row) => row.projectId === selectedRow.projectId);
+      if (!next) return;
+      openHubDrawer(next);
+    };
+
+    const openHubDrawer = (row) => {
+      selectedRow = row;
+      renderHubDrawerDetails(row, settings, {
+        applyHubActionButtonState,
+        onEditPayment: (index, payment) => {
+          if (!selectedRow) return;
+          openPaymentForm(selectedRow, payment, ({ amount, method, note, date }) => {
+            editHubPayment(selectedRow.projectId, index, { amount, method, note, date });
+          });
+          hubFormState.successMessage = `Pago actualizado para ${selectedRow.title}.`;
+        },
+        onDeletePayment: (index) => {
+          if (!selectedRow || index < 0) return;
+          deleteHubPayment(selectedRow.projectId, index);
+          refresh();
+          refreshSelectedRow();
+          setHubFeedback(`Pago eliminado de ${selectedRow.title}.`, "ok");
+        }
+      });
+    };
+
+    const closeHubDrawer = () => {
+      if ($("hubDrawer")) $("hubDrawer").setAttribute("aria-hidden", "true");
+    };
+
+    const openPaymentForm = (row, existingPayment, onSubmit) => {
+      showHubActionForm({
+        title: existingPayment ? "Editar pago" : "Registrar pago",
+        subtitle: `${row.title} · ${row.customer}`,
+        submitLabel: existingPayment ? "Guardar cambios" : "Guardar pago",
+        fields: [
+          { id: "hubFormAmount", label: "Amount", type: "number", step: "0.01", value: existingPayment?.amount ?? "", placeholder: "0.00" },
+          {
+            id: "hubFormMethod",
+            label: "Method",
+            type: "select",
+            value: existingPayment?.method || "check",
+            options: ["check", "cash", "zelle", "wire", "card", "manual"].map((value) => ({ value, label: value }))
+          },
+          { id: "hubFormDate", label: "Date", type: "date", value: existingPayment?.date || new Date().toISOString().slice(0, 10) },
+          { id: "hubFormNote", label: "Note", type: "textarea", value: existingPayment?.note || "", placeholder: "Referencia, memo o detalle del pago", rows: 4 }
+        ],
+        onSubmit: () => {
+          const amount = Number(val("hubFormAmount"));
+          const method = val("hubFormMethod");
+          const date = val("hubFormDate");
+          const note = val("hubFormNote");
+          if (!Number.isFinite(amount) || amount <= 0) {
+            setNotice("hubFormFeedback", "Ingresa un monto valido mayor a cero.", "err");
+            return false;
+          }
+          if (!normalizeDateInput(date)) {
+            setNotice("hubFormFeedback", "La fecha del pago es obligatoria.", "err");
+            return false;
+          }
+          onSubmit({ amount, method, date, note });
+          return true;
+        }
+      });
+    };
+
+    const openFollowUpForm = (row) => {
+      const invoice = getProjectInvoiceState(row.project);
+      showHubActionForm({
+        title: "Registrar follow-up",
+        subtitle: `${row.title} · ${row.customer}`,
+        submitLabel: "Guardar seguimiento",
+        fields: [
+          {
+            id: "hubFormFollowUpStage",
+            label: "Collections Stage",
+            type: "select",
+            value: invoice.collectionStage || "new",
+            options: ["new", "contacted", "promised", "escalated", "resolved"].map((value) => ({ value, label: value }))
+          },
+          { id: "hubFormFollowUpPromiseDate", label: "Promised Payment Date", type: "date", value: invoice.promisedDate || "" },
+          { id: "hubFormFollowUpNote", label: "Note", type: "textarea", value: "", placeholder: "Llamada, correo, promesa de pago o siguiente paso", rows: 5 }
+        ],
+        onSubmit: () => {
+          const note = val("hubFormFollowUpNote");
+          const stage = val("hubFormFollowUpStage") || "new";
+          const promisedDate = val("hubFormFollowUpPromiseDate");
+          if (!note.trim()) {
+            setNotice("hubFormFeedback", "Escribe una nota corta del seguimiento.", "err");
+            return false;
+          }
+          if (promisedDate && !normalizeDateInput(promisedDate)) {
+            setNotice("hubFormFeedback", "Promised payment date no tiene formato valido.", "err");
+            return false;
+          }
+          const project = getProjectById(row.projectId);
+          if (!project) return false;
+          const report = loadSupervisorReport(project);
+          const nextInvoice = buildHubInvoiceState(project, report, {
+            collectionStage: stage,
+            promisedDate: stage === "promised" ? promisedDate : ""
+          });
+          nextInvoice.activity = appendInvoiceActivity(
+            nextInvoice,
+            `Follow-up logged: ${note}${stage === "promised" && promisedDate ? ` (promise ${normalizeDateInput(promisedDate)})` : ""}`,
+            undefined,
+            "followup"
+          );
+          saveProjectInvoiceState(row.projectId, nextInvoice);
+          return true;
+        }
+      });
+    };
+
+    const openPaymentLinkForm = (row) => {
+      const invoice = getProjectInvoiceState(row.project);
+      showHubActionForm({
+        title: "Guardar payment link",
+        subtitle: `${row.title} · ${row.invoiceNo || "No invoice"}`,
+        submitLabel: "Guardar link",
+        fields: [
+          { id: "hubFormPaymentLink", label: "Payment link URL", type: "text", value: invoice.paymentLink || "", placeholder: "https://..." }
+        ],
+        onSubmit: () => {
+          const paymentLink = val("hubFormPaymentLink");
+          if (paymentLink && !/^https?:\/\//i.test(paymentLink)) {
+            setNotice("hubFormFeedback", "El link debe empezar con http:// o https://", "err");
+            return false;
+          }
+          setHubPaymentLink(row.projectId, paymentLink);
+          return true;
+        }
+      });
+    };
+
+    const openCustomerSetupForm = (row) => {
+      showHubActionForm({
+        title: "Customer setup",
+        subtitle: `${row.title} · ${row.customer}`,
+        submitLabel: "Guardar cliente",
+        fields: [
+          { id: "hubFormCustomerName", label: "Customer Name", type: "text", value: row.project?.clientName || "", placeholder: "Nombre del cliente" },
+          { id: "hubFormCustomerEmail", label: "Customer Email", type: "text", value: row.project?.clientEmail || "", placeholder: "cliente@correo.com" },
+          { id: "hubFormCustomerPhone", label: "Customer Phone", type: "text", value: row.project?.clientPhone || "", placeholder: "(555) 000-0000" },
+          { id: "hubFormCustomerLocation", label: "Location", type: "text", value: row.project?.location || "", placeholder: "Ciudad, direccion o job site" }
+        ],
+        onSubmit: () => {
+          const clientName = val("hubFormCustomerName");
+          const clientEmail = val("hubFormCustomerEmail");
+          const clientPhone = val("hubFormCustomerPhone");
+          const location = val("hubFormCustomerLocation");
+          if (!clientName.trim()) {
+            setNotice("hubFormFeedback", "Customer name es obligatorio.", "err");
+            return false;
+          }
+          if (clientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) {
+            setNotice("hubFormFeedback", "Customer email no tiene formato valido.", "err");
+            return false;
+          }
+          updateProjectById(row.projectId, {
+            clientName: clientName.trim(),
+            clientEmail: clientEmail.trim(),
+            clientPhone: clientPhone.trim(),
+            location: location.trim()
+          });
+          return true;
+        }
+      });
+    };
+
+    const openInvoiceSetupForm = (row) => {
+      const invoice = getProjectInvoiceState(row.project);
+      showHubActionForm({
+        title: "Configurar invoice",
+        subtitle: `${row.title} · ${row.customer}`,
+        submitLabel: "Guardar invoice",
+        fields: [
+          { id: "hubFormInvoiceNo", label: "Invoice No", type: "text", value: invoice.invoiceNo || "", placeholder: "INV-1001" },
+          { id: "hubFormInvoiceDate", label: "Invoice Date", type: "date", value: invoice.invoiceDate || new Date().toISOString().slice(0, 10) },
+          { id: "hubFormInvoiceDueDate", label: "Due Date", type: "date", value: invoice.dueDate || row.project?.dueDate || "" },
+          { id: "hubFormInvoicePromiseDate", label: "Promised Payment Date", type: "date", value: invoice.promisedDate || "" },
+          { id: "hubFormInvoiceBase", label: "Base Amount", type: "number", step: "0.01", value: invoice.baseAmount || row.project?.salePrice || 0, placeholder: "0.00" },
+          {
+            id: "hubFormCollectionStage",
+            label: "Collections Stage",
+            type: "select",
+            value: invoice.collectionStage || "new",
+            options: ["new", "contacted", "promised", "escalated", "resolved"].map((value) => ({ value, label: value }))
+          }
+        ],
+        onSubmit: () => {
+          const invoiceNo = val("hubFormInvoiceNo");
+          const invoiceDate = val("hubFormInvoiceDate");
+          const dueDate = val("hubFormInvoiceDueDate");
+          const promisedDate = val("hubFormInvoicePromiseDate");
+          const baseAmount = Number(val("hubFormInvoiceBase"));
+          const collectionStage = val("hubFormCollectionStage") || "new";
+          if (!normalizeDateInput(invoiceDate)) {
+            setNotice("hubFormFeedback", "Invoice date es obligatoria.", "err");
+            return false;
+          }
+          if (dueDate && !normalizeDateInput(dueDate)) {
+            setNotice("hubFormFeedback", "Due date no tiene formato valido.", "err");
+            return false;
+          }
+          if (promisedDate && !normalizeDateInput(promisedDate)) {
+            setNotice("hubFormFeedback", "Promised payment date no tiene formato valido.", "err");
+            return false;
+          }
+          if (!Number.isFinite(baseAmount) || baseAmount < 0) {
+            setNotice("hubFormFeedback", "Base amount debe ser un numero valido.", "err");
+            return false;
+          }
+          const nextInvoice = buildHubInvoiceState(row.project, row.report, {
+            invoiceNo,
+            invoiceDate,
+            dueDate,
+            promisedDate: collectionStage === "promised" ? promisedDate : "",
+            baseAmount,
+            collectionStage
+          });
+          nextInvoice.activity = appendInvoiceActivity(nextInvoice, "Invoice setup updated.", undefined, "invoice");
+          saveProjectInvoiceState(row.projectId, nextInvoice);
+          return true;
+        }
+      });
+    };
+
+    const openTemplateEditorForm = () => {
+      const templates = loadHubTemplates();
+      showHubActionForm({
+        title: "Communication templates",
+        subtitle: "Edita subject y body para invoice y cobranza. Usa tokens como {{customer}}, {{project}}, {{invoice_no}}, {{balance}}.",
+        submitLabel: "Guardar templates",
+        fields: [
+          {
+            id: "hubFormTemplateKey",
+            label: "Template",
+            type: "select",
+            value: "invoice_send",
+            options: [
+              { value: "invoice_send", label: "invoice_send" },
+              { value: "payment_request", label: "payment_request" }
+            ]
+          },
+          { id: "hubFormTemplateSubject", label: "Subject", type: "textarea", rows: 3, value: templates.invoice_send.subject || "" },
+          { id: "hubFormTemplateBody", label: "Body", type: "textarea", rows: 10, value: templates.invoice_send.body || "" }
+        ],
+        onSubmit: () => {
+          const templateKey = val("hubFormTemplateKey");
+          const subject = val("hubFormTemplateSubject");
+          const body = val("hubFormTemplateBody");
+          if (!subject.trim() || !body.trim()) {
+            setNotice("hubFormFeedback", "Subject y body son obligatorios.", "err");
+            return false;
+          }
+          const nextTemplates = loadHubTemplates();
+          nextTemplates[templateKey] = { subject, body };
+          saveHubTemplates(nextTemplates);
+          return true;
+        }
+      });
+
+      const templateSelect = $("hubFormTemplateKey");
+      const syncTemplateFields = () => {
+        const currentTemplates = loadHubTemplates();
+        const templateKey = val("hubFormTemplateKey") || "invoice_send";
+        const current = currentTemplates[templateKey] || DEFAULT_HUB_TEMPLATES[templateKey];
+        setVal("hubFormTemplateSubject", current?.subject || "");
+        setVal("hubFormTemplateBody", current?.body || "");
+      };
+      if (templateSelect) templateSelect.onchange = syncTemplateFields;
+    };
+
+    const refresh = () => {
+      const allRows = buildPortfolioRows(settings);
+      const search = val("hubSearch").trim().toLowerCase();
+      const statusFilter = val("hubStatusFilter") || "all";
+      const dateFrom = normalizeDateInput(val("hubDateFrom"));
+      const customerFilter = val("hubCustomerFilter").trim().toLowerCase();
+      const locationFilter = val("hubLocationFilter").trim().toLowerCase();
+      const todayIso = new Date().toISOString().slice(0, 10);
+
+      filteredRows = allRows.filter((row) => {
+        if (activeTab === "estimates" && row.rowType !== "estimate") return false;
+        if (activeTab === "invoices" && row.rowType !== "invoice") return false;
+        if (activeTab === "payments" && row.paymentType !== "payment") return false;
+        if (activeTab === "pipeline" && !["draft", "sent", "partial", "paid", "overdue", "expired"].includes(row.status)) return false;
+        if (activeTab === "collections" && !(["partial", "overdue", "expired", "sent"].includes(row.status) && finiteNumber(row.balance, 0) > 0)) return false;
+        if (activeTab === "closeout" && row.projectStatus !== "completed") return false;
+        if (search && !row.searchText.includes(search)) return false;
+        if (statusFilter !== "all" && row.status !== statusFilter) return false;
+        if (dateFrom && row.dateRaw && row.dateRaw < dateFrom) return false;
+        if (customerFilter && !row.customer.toLowerCase().includes(customerFilter)) return false;
+        if (locationFilter && !row.location.toLowerCase().includes(locationFilter)) return false;
+        if (activePreset === "open" && !(finiteNumber(row.balance, 0) > 0)) return false;
+        if (activePreset === "action" && !(row.priorityScore >= 60 || ["overdue", "expired", "partial"].includes(row.status))) return false;
+        if (activePreset === "promises" && !(row.promisedDateRaw && row.promisedDateRaw < todayIso && finiteNumber(row.balance, 0) > 0 && row.status !== "paid")) return false;
+        if (activePreset === "ready" && !(row.rowType === "estimate" && row.amount > 0 && row.projectStatus !== "completed")) return false;
+        return true;
+      });
+
+      filteredRows = filteredRows.slice().sort((left, right) => {
+        const comparison = compareHubValues(left?.[sortKey], right?.[sortKey], sortKey);
+        return sortDir === "asc" ? comparison : -comparison;
+      });
+      applyHubSortButtons();
+      persistHubView();
+
+      const totalAmount = filteredRows.reduce((sum, row) => sum + finiteNumber(row.amount, 0), 0);
+      const totalBalance = filteredRows.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
+      const pendingAmount = filteredRows
+        .filter((row) => ["draft", "sent", "completed", "expired", "overdue"].includes(row.status))
+        .reduce((sum, row) => sum + finiteNumber(row.amount, 0), 0);
+      const partialAmount = filteredRows
+        .filter((row) => row.status === "partial")
+        .reduce((sum, row) => sum + finiteNumber(row.amount, 0), 0);
+      const paidAmount = filteredRows
+        .filter((row) => row.status === "paid")
+        .reduce((sum, row) => sum + finiteNumber(row.amount, 0), 0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const ageBuckets = filteredRows.reduce((acc, row) => {
+        if (!(finiteNumber(row.balance, 0) > 0)) return acc;
+        if (!row.project?.dueDate) {
+          acc.current += finiteNumber(row.balance, 0);
+          return acc;
+        }
+        const dueDate = new Date(normalizeDateInput(row.project.dueDate));
+        dueDate.setHours(0, 0, 0, 0);
+        const daysPastDue = Math.floor((today - dueDate) / (1000 * 60 * 60 * 24));
+        if (daysPastDue <= 0) acc.current += finiteNumber(row.balance, 0);
+        else if (daysPastDue <= 30) acc.age30 += finiteNumber(row.balance, 0);
+        else if (daysPastDue <= 60) acc.age60 += finiteNumber(row.balance, 0);
+        else acc.age61 += finiteNumber(row.balance, 0);
+        return acc;
+      }, { current: 0, age30: 0, age60: 0, age61: 0 });
+      const collectionsRows = filteredRows.filter((row) => ["partial", "overdue", "expired", "sent"].includes(row.status) && finiteNumber(row.balance, 0) > 0);
+      const closeoutRows = filteredRows.filter((row) => row.projectStatus === "completed");
+      const averagePastDue = collectionsRows.length
+        ? collectionsRows.reduce((sum, row) => {
+            const due = normalizeDateInput(row.project?.dueDate);
+            if (!due) return sum;
+            const days = Math.max(Math.floor((today - new Date(due)) / (1000 * 60 * 60 * 24)), 0);
+            return sum + days;
+          }, 0) / collectionsRows.length
+        : 0;
+
+      if ($("hubHeroTotal")) $("hubHeroTotal").textContent = money(totalAmount, settings.currency);
+      if ($("hubHeroMeta")) {
+        $("hubHeroMeta").textContent = filteredRows.length
+          ? (activeTab === "collections"
+            ? `${collectionsRows.length} rows en cobranza con atraso promedio de ${averagePastDue.toFixed(1)} dias.`
+            : activeTab === "closeout"
+              ? `${closeoutRows.length} proyectos terminados con ${money(closeoutRows.reduce((sum, row) => sum + row.estimatedMargin, 0), settings.currency)} de margen estimado.`
+              : `${filteredRows.length} rows activas con ${money(totalBalance, settings.currency)} por cobrar.`)
+          : "Todavia no hay estimates o invoices en cartera.";
+      }
+      if ($("hubPortfolioBadge")) $("hubPortfolioBadge").textContent = `${filteredRows.length} rows`;
+      if ($("hubTableBadge")) $("hubTableBadge").textContent = activeTab === "all" ? (statusFilter === "all" ? "All estimates" : statusFilter) : activeTab;
+      if ($("hubInvoicedTotal")) $("hubInvoicedTotal").textContent = money(totalAmount, settings.currency);
+      if ($("hubPendingTotal")) $("hubPendingTotal").textContent = money(pendingAmount, settings.currency);
+      if ($("hubPartialTotal")) $("hubPartialTotal").textContent = money(partialAmount, settings.currency);
+      if ($("hubPaidTotal")) $("hubPaidTotal").textContent = money(paidAmount, settings.currency);
+      if ($("hubPendingMeta")) $("hubPendingMeta").textContent = `${filteredRows.filter((row) => ["draft", "sent", "completed", "expired", "overdue"].includes(row.status)).length} projects`;
+      if ($("hubPartialMeta")) $("hubPartialMeta").textContent = `${filteredRows.filter((row) => row.status === "partial").length} projects`;
+      if ($("hubPaidMeta")) $("hubPaidMeta").textContent = `${filteredRows.filter((row) => row.status === "paid").length} projects`;
+      if ($("hubInvoicedMeta")) $("hubInvoicedMeta").textContent = `${filteredRows.length} rows en pantalla`;
+      if ($("hubPendingLabel")) $("hubPendingLabel").textContent = `Pending ${money(pendingAmount, settings.currency)}`;
+      if ($("hubPartialLabel")) $("hubPartialLabel").textContent = `Partial ${money(partialAmount, settings.currency)}`;
+      if ($("hubPaidLabel")) $("hubPaidLabel").textContent = `Paid ${money(paidAmount, settings.currency)}`;
+      if ($("hubAgeCurrent")) $("hubAgeCurrent").textContent = money(ageBuckets.current, settings.currency);
+      if ($("hubAge30")) $("hubAge30").textContent = money(ageBuckets.age30, settings.currency);
+      if ($("hubAge60")) $("hubAge60").textContent = money(ageBuckets.age60, settings.currency);
+      if ($("hubAge61")) $("hubAge61").textContent = money(ageBuckets.age61, settings.currency);
+
+      const progressBase = totalAmount > 0 ? totalAmount : 1;
+      if ($("hubProgressPending")) $("hubProgressPending").style.width = `${(pendingAmount / progressBase) * 100}%`;
+      if ($("hubProgressPartial")) $("hubProgressPartial").style.width = `${(partialAmount / progressBase) * 100}%`;
+      if ($("hubProgressPaid")) $("hubProgressPaid").style.width = `${(paidAmount / progressBase) * 100}%`;
+
+      if ($("hubKpis")) {
+        const totalChangeOrders = filteredRows.reduce((sum, row) => sum + row.changeOrderCount, 0);
+        const approvedChangeOrders = filteredRows.reduce((sum, row) => sum + row.approvedChangeOrderCount, 0);
+        const overdueLikeCount = filteredRows.filter((row) => ["draft", "sent", "partial", "overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0).length;
+        const kpis = activeTab === "collections"
+          ? [
+              ["Collections Queue", String(collectionsRows.length), "Rows que necesitan cobro o seguimiento"],
+              ["Collections Balance", money(collectionsRows.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0), settings.currency), "Saldo total en cobranza"],
+              ["Avg Days Past Due", averagePastDue.toFixed(1), "Promedio de atraso actual"],
+              ["Critical 61+", money(ageBuckets.age61, settings.currency), "Cobro urgente"]
+            ]
+          : activeTab === "pipeline"
+            ? [
+                ["Draft", String(filteredRows.filter((row) => row.status === "draft").length), "Estimados listos para trabajar"],
+                ["Sent", String(filteredRows.filter((row) => row.status === "sent").length), "Esperando respuesta o pago"],
+                ["Partial", String(filteredRows.filter((row) => row.status === "partial").length), "Cobros en progreso"],
+                ["Overdue+", String(filteredRows.filter((row) => ["overdue", "expired"].includes(row.status)).length), "Cuentas que ya necesitan accion"]
+              ]
+          : activeTab === "closeout"
+            ? [
+                ["Completed Projects", String(closeoutRows.length), "Proyectos marcados como terminados"],
+                ["Sold", money(closeoutRows.reduce((sum, row) => sum + row.soldAmount, 0), settings.currency), "Contrato base mas change orders aprobados"],
+                ["Collected", money(closeoutRows.reduce((sum, row) => sum + row.cashCollected, 0), settings.currency), "Depositos y pagos reales"],
+                ["Estimated Margin", money(closeoutRows.reduce((sum, row) => sum + row.estimatedMargin, 0), settings.currency), "Venta menos labor budget y extras"]
+              ]
+          : [
+              ["Projects", String(filteredRows.length), "Estimate o invoice por proyecto"],
+              ["Open Balance", money(totalBalance, settings.currency), "Saldo pendiente de toda la cartera"],
+              ["Change Orders", String(totalChangeOrders), `${approvedChangeOrders} incluidos en invoice`],
+              ["Follow-up", String(overdueLikeCount), "Rows que conviene trabajar hoy"]
+            ];
+        $("hubKpis").innerHTML = kpis.map(([label, value, meta]) => `
+          <div class="kpi-box">
+            <div class="label">${escapeHtml(label)}</div>
+            <div class="value">${escapeHtml(value)}</div>
+            <div class="meta">${escapeHtml(meta)}</div>
+          </div>
+        `).join("");
+      }
+
+      const topBalance = filteredRows.slice().sort((a, b) => b.balance - a.balance)[0];
+      if ($("hubActionNote")) {
+        $("hubActionNote").textContent = topBalance
+          ? (activeTab === "collections"
+            ? `Cobranza prioritaria: ${topBalance.title} con saldo ${money(topBalance.balance, settings.currency)}. Usa Request Payment y Log Follow-up.`
+            : activeTab === "pipeline"
+              ? `Pipeline activo: mueve drafts a sent, trabaja parciales y baja overdue antes de crecer cartera nueva.`
+            : activeTab === "closeout"
+              ? `Closeout destacado: ${topBalance.title}. Vendido ${money(topBalance.soldAmount, settings.currency)} vs cobrado ${money(topBalance.cashCollected, settings.currency)}.`
+              : activePreset === "promises"
+                ? `Promesa rota prioritaria: ${topBalance.title}. Conviene llamar, confirmar pago y decidir si escalas hoy.`
+                : activePreset === "ready"
+                  ? `Ready to bill: ${topBalance.title}. Ya trae monto para convertirse y empujar a invoice.`
+                  : `Mayor oportunidad actual: ${topBalance.title} con saldo ${money(topBalance.balance, settings.currency)} y estado ${topBalance.status}.`)
+          : "Firma proyectos en Vendedor, conviertelos en invoice y luego sigue pagos aqui.";
+      }
+
+      renderHubFocusQueueList(filteredRows, settings, openHubDrawer);
+      if ($("hubClientScorecard")) {
+        const clientScores = buildClientCollectionsScore(filteredRows, settings);
+        $("hubClientScorecard").innerHTML = clientScores.length
+          ? clientScores.map((item, index) => `
+              <li data-hub-customer="${escapeHtml(item.customer)}">
+                <span class="msg-idx">${index + 1}</span>
+                <div>
+                  <strong>${escapeHtml(item.customer)}</strong>
+                  <span class="hub-inline-meta">Score ${escapeHtml(String(item.score))} · Open ${escapeHtml(item.openBalanceLabel)} · Overdue ${escapeHtml(item.overdueBalanceLabel)}</span>
+                  <span class="hub-inline-meta">${escapeHtml(String(item.projectCount))} projects · ${escapeHtml(String(item.brokenPromises))} broken promises · Paid ${escapeHtml(item.paidTotalLabel)}</span>
+                </div>
+              </li>
+            `).join("")
+          : `<li><span class="msg-idx">0</span><div><strong>No client pressure</strong><span class="hub-inline-meta">No hay clientes con saldo o riesgo en este filtro.</span></div></li>`;
+        $("hubClientScorecard").querySelectorAll("li[data-hub-customer]").forEach((item) => {
+          item.onclick = () => openHubClientDetail(item.dataset.hubCustomer || "", filteredRows, settings);
+        });
+      }
+      if ($("hubPlaybookBoard")) {
+        $("hubPlaybookBoard").innerHTML = buildCollectionsPlaybook(filteredRows, settings).map(([title, big, small, preset, tab]) => `
+          <div class="strip-card" data-hub-playbook="${escapeHtml(title)}" data-hub-playbook-preset="${escapeHtml(preset || "")}" data-hub-playbook-tab="${escapeHtml(tab || "all")}">
+            <div class="title">${escapeHtml(title)}</div>
+            <div class="big">${escapeHtml(big)}</div>
+            <div class="small">${escapeHtml(small)}</div>
+          </div>
+        `).join("");
+        $("hubPlaybookBoard").querySelectorAll("[data-hub-playbook]").forEach((item) => {
+          item.onclick = () => {
+            activePreset = item.dataset.hubPlaybookPreset || "";
+            activeTab = item.dataset.hubPlaybookTab || "all";
+            if ($("hubTabFilter")) {
+              $("hubTabFilter").querySelectorAll("button[data-hub-tab]").forEach((node) => {
+                node.classList.toggle("active", (node.dataset.hubTab || "all") === activeTab);
+              });
+            }
+            if ($("hubQuickViews")) {
+              $("hubQuickViews").querySelectorAll("button[data-hub-preset]").forEach((node) => {
+                node.classList.toggle("active", (node.dataset.hubPreset || "") === activePreset);
+              });
+            }
+            refresh();
+          };
+        });
+      }
+
+      const campaignSegments = buildCampaignSegments(filteredRows, settings);
+
+      renderHubTableSection({
+        filteredRows,
+        selectedProjectIds,
+        settings,
+        activeTab,
+        refreshBulkBar,
+        onOpenRow: openHubDrawer,
+        onConvert: (row) => {
+          if (!guardHubAction(row, "canConvert", "Este proyecto ya tiene invoice o aun no tiene monto listo para convertir.")) return;
+          convertEstimateToInvoice(row.projectId);
+          refresh();
+          setHubFeedback(`Invoice creado para ${row.title}.`, "ok");
+        },
+        onSent: (row) => {
+          if (!guardHubAction(row, "canMarkSent", "Primero crea el invoice antes de marcarlo como enviado.")) return;
+          markHubInvoiceSent(row.projectId);
+          refresh();
+          setHubFeedback(`Invoice marcado como sent para ${row.title}.`, "ok");
+        },
+        onPay: (row, projectId) => {
+          if (!guardHubAction(row, "canTakePayment", "Take Payment solo aplica cuando ya existe invoice con saldo pendiente.")) return;
+          openPaymentForm(row, null, ({ amount, method, note, date }) => {
+            recordHubPayment(projectId, { amount, method, note, date });
+          });
+          hubFormState.successMessage = `Pago registrado para ${row.title}.`;
+        },
+        onReminder: (row) => {
+          if (!guardHubAction(row, "canRequestPayment", "Solo puedes pedir pago cuando hay invoice enviado o parcial con saldo.")) return;
+          requestHubPayment(row.projectId);
+          refresh();
+          setHubFeedback(`Recordatorio de pago preparado para ${row.customer}.`, "ok");
+        },
+        onSales: (row) => {
+          saveSupervisorSelectedProjectId(row.projectId);
+          window.location.href = "/sales";
+        },
+        onOwner: (row) => {
+          saveSupervisorSelectedProjectId(row.projectId);
+          window.location.href = "/owner";
+        },
+        onPdf: (row) => {
+          if (!guardHubAction(row, "canExportPdf", "El PDF del invoice requiere un invoice valido.")) return;
+          exportInvoicePdf("hub", row.project, row.report, settings, getProjectInvoiceState(row.project));
+        }
+      });
+
+      renderHubPipelineSection({
+        filteredRows,
+        activeTab,
+        settings,
+        onOpenRow: openHubDrawer,
+        onSent: (row) => {
+          markHubInvoiceSent(row.projectId);
+          refresh();
+          setHubFeedback(`Invoice marcado como sent para ${row.title}.`, "ok");
+        },
+        onRequest: (row) => {
+          requestHubPayment(row.projectId);
+          refresh();
+          setHubFeedback(`Recordatorio de pago preparado para ${row.customer}.`, "ok");
+        },
+        onContacted: (row) => {
+          setHubCollectionStage(row.projectId, "contacted");
+          refresh();
+          setHubFeedback(`Collections stage actualizado a contacted para ${row.title}.`, "ok");
+        },
+        onPromise: (row) => {
+          openHubFormModal({
+            title: "Promised payment",
+            subtitle: `${row.title} · ${row.customer}`,
+            submitLabel: "Guardar promesa",
+            fields: [
+              { id: "hubFormQuickPromiseDate", label: "Promised Payment Date", type: "date", value: row.promisedDateRaw || "" }
+            ],
+            onSubmit: () => {
+              const promisedDate = val("hubFormQuickPromiseDate");
+              if (!normalizeDateInput(promisedDate)) {
+                setNotice("hubFormFeedback", "Promised payment date es obligatoria.", "err");
+                return false;
+              }
+              setHubPromise(row.projectId, promisedDate);
+              return true;
+            },
+            successMessage: `Promesa registrada para ${row.title}.`
+          });
+        },
+        onEscalate: (row) => {
+          setHubCollectionStage(row.projectId, "escalated");
+          refresh();
+          setHubFeedback(`Collections stage actualizado a escalated para ${row.title}.`, "warn");
+        },
+        onDropColumn: (row, targetKey) => {
+          const outcome = getHubDropOutcome(row, targetKey);
+          if (!outcome.ok) {
+            setHubFeedback(outcome.reason || "No fue posible mover la tarjeta.", "warn");
+            return;
+          }
+          if (outcome.kind === "workflow") {
+            const result = setHubInvoiceWorkflowState(row.projectId, outcome.nextStatus, {
+              activityMessage: `Workflow moved to ${outcome.nextStatus} from pipeline.`
+            });
+            if (!result.ok) {
+              setHubFeedback(result.reason || "No fue posible mover la tarjeta.", "warn");
+              return;
+            }
+          } else if (outcome.kind === "paid") {
+            markHubInvoicePaid(row.projectId);
+          } else if (outcome.kind === "escalate") {
+            setHubCollectionStage(row.projectId, "escalated");
+          }
+          refresh();
+          refreshSelectedRow();
+          setHubFeedback(`${outcome.message} para ${row.title}.`, outcome.tone || "ok");
+        }
+      });
+    };
+
+    ["hubSearch", "hubStatusFilter", "hubDateFrom", "hubCustomerFilter", "hubLocationFilter"].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.oninput = refresh;
+      if (el.tagName === "SELECT") el.onchange = refresh;
+    });
+
+    setVal("hubSearch", hubViewState.search || "");
+    setVal("hubStatusFilter", hubViewState.status || "all");
+    setVal("hubDateFrom", hubViewState.dateFrom || "");
+    setVal("hubCustomerFilter", hubViewState.customer || "");
+    setVal("hubLocationFilter", hubViewState.location || "");
+
+    if ($("hubTabFilter")) {
+      $("hubTabFilter").querySelectorAll("button[data-hub-tab]").forEach((button) => {
+        button.classList.toggle("active", (button.dataset.hubTab || "all") === activeTab);
+        button.onclick = () => {
+          activeTab = button.dataset.hubTab || "all";
+          $("hubTabFilter").querySelectorAll("button[data-hub-tab]").forEach((node) => {
+            node.classList.toggle("active", node === button);
+          });
+          refresh();
+        };
+      });
+    }
+
+    if ($("hubQuickViews")) {
+      $("hubQuickViews").querySelectorAll("button[data-hub-preset]").forEach((button) => {
+        button.classList.toggle("active", (button.dataset.hubPreset || "") === activePreset);
+        button.onclick = () => {
+          activePreset = button.dataset.hubPreset || "";
+          $("hubQuickViews").querySelectorAll("button[data-hub-preset]").forEach((node) => {
+            node.classList.toggle("active", node === button);
+          });
+          refresh();
+        };
+      });
+    }
+
+    document.querySelectorAll("[data-hub-sort]").forEach((button) => {
+      button.onclick = () => {
+        const nextKey = button.dataset.hubSort || "dateRaw";
+        if (sortKey === nextKey) {
+          sortDir = sortDir === "asc" ? "desc" : "asc";
+        } else {
+          sortKey = nextKey;
+          sortDir = nextKey === "amount" || nextKey === "balance" || nextKey === "dateRaw" ? "desc" : "asc";
+        }
+        refresh();
+      };
+    });
+
+    if ($("hubSelectAll")) {
+      $("hubSelectAll").onchange = () => {
+        if ($("hubSelectAll").checked) {
+          filteredRows.forEach((row) => selectedProjectIds.add(row.projectId));
+        } else {
+          filteredRows.forEach((row) => selectedProjectIds.delete(row.projectId));
+        }
+        refresh();
+      };
+    }
+
+    if ($("btnHubExport")) {
+      $("btnHubExport").onclick = () => exportPortfolioCsv(filteredRows, settings);
+    }
+    if ($("btnHubCollectionsExport")) {
+      $("btnHubCollectionsExport").onclick = () => exportCollectionsCsv(filteredRows, settings);
+    }
+    if ($("btnHubExecutivePdf")) {
+      $("btnHubExecutivePdf").onclick = () => exportHubExecutivePdf(filteredRows, settings);
+    }
+    if ($("btnHubAutoQueue")) {
+      $("btnHubAutoQueue").onclick = () => {
+        const queued = queueHubAutoReminders(filteredRows);
+        refresh();
+        setHubFeedback(
+          queued ? `${queued} reminders quedaron en auto queue para seguimiento.` : "No habia reminders nuevos para preparar hoy.",
+          queued ? "ok" : "warn"
+        );
+      };
+    }
+    if ($("btnHubAutoStage")) {
+      $("btnHubAutoStage").onclick = () => {
+        const updated = runHubStageAutomation(filteredRows);
+        refresh();
+        setHubFeedback(
+          updated ? `${updated} rows quedaron normalizadas por Auto Stage.` : "No habia rows que necesitaran ajuste automatico de stage.",
+          updated ? "ok" : "warn"
+        );
+      };
+    }
+    if ($("btnHubCampaigns")) {
+      $("btnHubCampaigns").onclick = () => {
+        const segments = buildCampaignSegments(filteredRows, settings);
+        openHubFormModal({
+          title: "Collections campaigns",
+          subtitle: "Selecciona un segmento para preparar seguimiento masivo dentro del hub.",
+          submitLabel: "Queue Campaign",
+          fields: [
+            {
+              id: "hubFormCampaignSegment",
+              label: "Segment",
+              type: "select",
+              value: segments[0]?.[0] || "overdue",
+              options: segments.map(([value, label, count, amount]) => ({
+                value,
+                label: `${label} · ${count} rows · ${amount}`
+              }))
+            }
+          ],
+          onSubmit: () => {
+            const segmentKey = val("hubFormCampaignSegment");
+            const queued = queueCampaignSegment(filteredRows, segmentKey);
+            if (!queued) {
+              setNotice("hubFormFeedback", "No habia rows validas para ese segmento.", "warn");
+              return false;
+            }
+            hubFormState.successMessage = `${queued} rows quedaron en campaign queue (${segmentKey}).`;
+            return true;
+          }
+        });
+      };
+    }
+    if ($("btnHubTemplates")) {
+      $("btnHubTemplates").onclick = () => {
+        openTemplateEditorForm();
+        hubFormState.successMessage = "Templates de comunicacion guardados.";
+      };
+    }
+    if ($("btnHubBulkClear")) {
+      $("btnHubBulkClear").onclick = () => {
+        selectedProjectIds.clear();
+        refresh();
+        setHubFeedback("Seleccion multiple limpiada.", "ok");
+      };
+    }
+    if ($("btnHubBulkExport")) {
+      $("btnHubBulkExport").onclick = () => {
+        const selectedRows = filteredRows.filter((row) => selectedProjectIds.has(row.projectId));
+        exportPortfolioCsv(selectedRows, settings);
+      };
+    }
+    if ($("btnHubBulkSent")) {
+      $("btnHubBulkSent").onclick = () => {
+        const selectedRows = filteredRows.filter((row) => selectedProjectIds.has(row.projectId));
+        let updated = 0;
+        selectedRows.forEach((row) => {
+          if (getHubRowActionState(row).canMarkSent) {
+            markHubInvoiceSent(row.projectId);
+            updated += 1;
+          }
+        });
+        refresh();
+        setHubFeedback(updated ? `${updated} invoices marcadas como sent.` : "No habia invoices validas para marcar como sent.", updated ? "ok" : "warn");
+      };
+    }
+    if ($("btnHubBulkRequest")) {
+      $("btnHubBulkRequest").onclick = () => {
+        const selectedRows = filteredRows.filter((row) => selectedProjectIds.has(row.projectId));
+        let prepared = 0;
+        selectedRows.forEach((row) => {
+          if (getHubRowActionState(row).canRequestPayment) {
+            const project = getProjectById(row.projectId);
+            if (!project) return;
+            const report = loadSupervisorReport(project);
+            const invoice = getProjectInvoiceState(project);
+            const nextInvoice = buildHubInvoiceState(project, report, { status: invoice.status || "sent" });
+            nextInvoice.activity = appendInvoiceActivity(nextInvoice, "Bulk payment reminder prepared.");
+            saveProjectInvoiceState(row.projectId, nextInvoice);
+            prepared += 1;
+          }
+        });
+        refresh();
+        setHubFeedback(prepared ? `${prepared} reminders listas para seguimiento manual.` : "No habia invoices con saldo para reminder.", prepared ? "ok" : "warn");
+      };
+    }
+
+    if ($("btnHubDrawerClose")) $("btnHubDrawerClose").onclick = closeHubDrawer;
+    if ($("btnHubClientClose")) $("btnHubClientClose").onclick = closeHubClientDetail;
+    if ($("btnHubFormClose")) $("btnHubFormClose").onclick = closeHubFormModal;
+    if ($("btnHubFormCancel")) $("btnHubFormCancel").onclick = closeHubFormModal;
+    if ($("btnHubFormSubmit")) {
+      $("btnHubFormSubmit").onclick = () => {
+        if (!hubFormState?.onSubmit) {
+          closeHubFormModal();
+          return;
+        }
+        const successMessage = hubFormState.successMessage || "Cambios guardados.";
+        const result = hubFormState.onSubmit();
+        if (result === false) return;
+        closeHubFormModal();
+        refresh();
+        refreshSelectedRow();
+        setHubFeedback(successMessage, "ok");
+      };
+    }
+    if ($("btnHubDrawerCustomer")) {
+      $("btnHubDrawerCustomer").onclick = () => {
+        if (!selectedRow) return;
+        openCustomerSetupForm(selectedRow);
+        hubFormState.successMessage = `Cliente actualizado para ${selectedRow.title}.`;
+      };
+    }
+    if ($("btnHubDrawerDuplicate")) {
+      $("btnHubDrawerDuplicate").onclick = () => {
+        if (!selectedRow) return;
+        const duplicate = duplicateHubProject(selectedRow.projectId);
+        refresh();
+        if (duplicate) {
+          const nextRow = buildPortfolioRows(settings).find((row) => row.projectId === duplicate.id);
+          if (nextRow) openHubDrawer(nextRow);
+          setHubFeedback(`Estimate duplicado como ${duplicate.projectName}.`, "ok");
+        } else {
+          setHubFeedback("No fue posible duplicar el estimate.", "err");
+        }
+      };
+    }
+    if ($("btnHubDrawerDuplicateInvoice")) {
+      $("btnHubDrawerDuplicateInvoice").onclick = () => {
+        if (!selectedRow) return;
+        if (!guardHubAction(selectedRow, "canExportPdf", "Necesitas un invoice real antes de duplicarlo.")) return;
+        const duplicate = duplicateHubInvoiceProject(selectedRow.projectId);
+        refresh();
+        if (duplicate) {
+          const nextRow = buildPortfolioRows(settings).find((row) => row.projectId === duplicate.id);
+          if (nextRow) openHubDrawer(nextRow);
+          setHubFeedback(`Invoice duplicado como ${duplicate.projectName}.`, "ok");
+        } else {
+          setHubFeedback("No fue posible duplicar el invoice.", "err");
+        }
+      };
+    }
+    if ($("btnHubDrawerSetup")) {
+      $("btnHubDrawerSetup").onclick = () => {
+        if (!selectedRow) return;
+        openInvoiceSetupForm(selectedRow);
+        hubFormState.successMessage = `Invoice setup actualizado para ${selectedRow.title}.`;
+      };
+    }
+    if ($("btnHubDrawerConvert")) {
+      $("btnHubDrawerConvert").onclick = () => {
+        if (!selectedRow) return;
+        if (!guardHubAction(selectedRow, "canConvert", "Este proyecto ya tiene invoice o aun no tiene un monto listo para convertir.")) return;
+        convertEstimateToInvoice(selectedRow.projectId);
+        refresh();
+        refreshSelectedRow();
+        setHubFeedback(`Invoice creado para ${selectedRow.title}.`, "ok");
+      };
+    }
+    if ($("btnHubDrawerSent")) {
+      $("btnHubDrawerSent").onclick = () => {
+        if (!selectedRow) return;
+        if (!guardHubAction(selectedRow, "canMarkSent", "Primero crea el invoice antes de marcarlo como enviado.")) return;
+        markHubInvoiceSent(selectedRow.projectId);
+        refresh();
+        refreshSelectedRow();
+        setHubFeedback(`Invoice marcado como sent para ${selectedRow.title}.`, "ok");
+      };
+    }
+    if ($("btnHubDrawerSendInvoice")) {
+      $("btnHubDrawerSendInvoice").onclick = () => {
+        if (!selectedRow) return;
+        if (!guardHubAction(selectedRow, "canSendInvoice", "Necesitas invoice, cliente y monto antes de enviar.")) return;
+        sendHubInvoice(selectedRow.projectId);
+        refresh();
+        refreshSelectedRow();
+        setHubFeedback(`Correo de invoice preparado para ${selectedRow.customer}.`, "ok");
+      };
+    }
+    if ($("btnHubDrawerRequestPayment")) {
+      $("btnHubDrawerRequestPayment").onclick = () => {
+        if (!selectedRow) return;
+        if (!guardHubAction(selectedRow, "canRequestPayment", "Solo puedes pedir pago cuando hay invoice enviado o parcial con saldo.")) return;
+        requestHubPayment(selectedRow.projectId);
+        refresh();
+        refreshSelectedRow();
+        setHubFeedback(`Recordatorio de pago preparado para ${selectedRow.customer}.`, "ok");
+      };
+    }
+    if ($("btnHubDrawerFollowUp")) {
+      $("btnHubDrawerFollowUp").onclick = () => {
+        if (!selectedRow) return;
+        openFollowUpForm(selectedRow);
+        hubFormState.successMessage = `Follow-up guardado para ${selectedRow.title}.`;
+      };
+    }
+    if ($("btnHubDrawerPayment")) {
+      $("btnHubDrawerPayment").onclick = () => {
+        if (!selectedRow) return;
+        if (!guardHubAction(selectedRow, "canTakePayment", "Take Payment solo aplica cuando ya existe invoice con saldo pendiente.")) return;
+        openPaymentForm(selectedRow, null, ({ amount, method, note, date }) => {
+          recordHubPayment(selectedRow.projectId, { amount, method, note, date });
+        });
+        hubFormState.successMessage = `Pago registrado para ${selectedRow.title}.`;
+      };
+    }
+    if ($("btnHubDrawerPaid")) {
+      $("btnHubDrawerPaid").onclick = () => {
+        if (!selectedRow) return;
+        if (!guardHubAction(selectedRow, "canMarkPaid", "Mark Paid solo aplica cuando existe invoice con saldo pendiente.")) return;
+        markHubInvoicePaid(selectedRow.projectId);
+        refresh();
+        refreshSelectedRow();
+        setHubFeedback(`Invoice liquidado para ${selectedRow.title}.`, "ok");
+      };
+    }
+    if ($("btnHubDrawerSales")) {
+      $("btnHubDrawerSales").onclick = () => {
+        if (!selectedRow) return;
+        saveSupervisorSelectedProjectId(selectedRow.projectId);
+        window.location.href = "/sales";
+      };
+    }
+    if ($("btnHubDrawerOwner")) {
+      $("btnHubDrawerOwner").onclick = () => {
+        if (!selectedRow) return;
+        saveSupervisorSelectedProjectId(selectedRow.projectId);
+        window.location.href = "/owner";
+      };
+    }
+    if ($("btnHubDrawerPdf")) {
+      $("btnHubDrawerPdf").onclick = () => {
+        if (!selectedRow) return;
+        exportInvoicePdf("hub", selectedRow.project, selectedRow.report, settings, getProjectInvoiceState(selectedRow.project));
+      };
+    }
+    if ($("btnHubDrawerStatement")) {
+      $("btnHubDrawerStatement").onclick = () => {
+        if (!selectedRow) return;
+        exportCustomerStatementPdf(selectedRow, settings);
+      };
+    }
+    if ($("btnHubDrawerCloseout")) {
+      $("btnHubDrawerCloseout").onclick = () => {
+        if (!selectedRow) return;
+        exportCloseoutPdf(selectedRow, settings);
+      };
+    }
+    if ($("btnHubDrawerPublish")) {
+      $("btnHubDrawerPublish").onclick = async () => {
+        if (!selectedRow) return;
+        if (!guardHubAction(selectedRow, "canPublishLink", "Publish Link requiere invoice, cliente y monto valido.")) return;
+        try {
+          const publicUrl = await publishHubPublicInvoice(selectedRow.projectId);
+          refresh();
+          refreshSelectedRow();
+          setHubFeedback(`Public invoice link listo: ${publicUrl}`, "ok");
+        } catch (err) {
+          setHubFeedback(err.message || "Unable to publish public invoice.", "err");
+        }
+      };
+    }
+    if ($("btnHubDrawerPaymentLink")) {
+      $("btnHubDrawerPaymentLink").onclick = () => {
+        if (!selectedRow) return;
+        if (!guardHubAction(selectedRow, "canSetPaymentLink", "Primero crea el invoice para guardar un payment link.")) return;
+        openPaymentLinkForm(selectedRow);
+        hubFormState.successMessage = `Payment link actualizado para ${selectedRow.title}.`;
+      };
+    }
+    if ($("btnHubDrawerOpenPublic")) {
+      $("btnHubDrawerOpenPublic").onclick = () => {
+        if (!selectedRow) return;
+        const invoice = getProjectInvoiceState(selectedRow.project);
+        const publicUrl = invoice.publicUrl || (invoice.publicToken ? `/invoice-public.html?token=${invoice.publicToken}` : "");
+        if (!publicUrl) {
+          setHubFeedback("Primero publica el invoice para generar el link publico.", "warn");
+          return;
+        }
+        window.open(publicUrl, "_blank", "noopener");
+      };
+    }
+
+    refresh();
+  }
+
   function renderSalesAdmin() {
     if (!$("adminQueueBody")) return;
     const settings = loadSettings();
@@ -2463,6 +5741,7 @@ ${val("salesInitials") || "MG"}`;
   function render() {
     saveSettings(loadSettings());
     renderDashboard();
+    renderEstimatesHub();
     renderBusinessSettings();
     renderOwner();
     renderSales();
@@ -2470,9 +5749,11 @@ ${val("salesInitials") || "MG"}`;
     renderSalesAdmin();
   }
 
-  document.addEventListener("DOMContentLoaded", render);
+  document.addEventListener("DOMContentLoaded", async () => {
+    await initTenantSnapshotBridge();
+    render();
+  });
 })();
-
 
 
 

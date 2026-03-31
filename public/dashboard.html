@@ -1,10 +1,10 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Margin Guard | Dashboard</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body data-role="dashboard" data-requires-auth="true">
   <div class="topbar">
@@ -19,6 +19,7 @@
 
       <div class="actions">
         <a class="btn active" href="dashboard.html">Dashboard</a>
+        <a class="btn" href="/estimates-invoices">Invoices Hub</a>
         <a class="btn" href="owner.html">Dueno</a>
         <a class="btn" href="sales.html">Vendedor</a>
         <a class="btn" href="supervisor.html">Supervisor</a>
@@ -106,10 +107,176 @@
         </div>
       </section>
     </div>
+
+    <section class="card" style="margin-top:14px;">
+      <div class="card-inner">
+        <div class="section-head">
+          <div>
+            <h2>Revenue Control</h2>
+            <div class="sub">Resumen ejecutivo del Invoices Hub para el dueno.</div>
+          </div>
+          <a class="btn" href="/estimates-invoices">Open Hub</a>
+        </div>
+        <div class="dashboard-strip" id="dashboardRevenueStrip"></div>
+        <div class="dashboard-note">
+          <div class="dashboard-note-title">Owner action</div>
+          <div class="dashboard-note-copy" id="dashboardRevenueNote">Esperando cartera operativa para mostrar cobranza y pipeline.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:14px;">
+      <div class="card-inner">
+        <div class="section-head">
+          <div>
+            <h2>Owner Alerts</h2>
+            <div class="sub">Alertas cortas para decidir hoy sin recorrer toda la cartera.</div>
+          </div>
+          <a class="btn" href="/estimates-invoices">Resolve in Hub</a>
+        </div>
+        <ul class="msg-list" id="dashboardOwnerAlerts"></ul>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:14px;">
+      <div class="card-inner">
+        <div class="section-head">
+          <div>
+            <h2>Command Center</h2>
+            <div class="sub">Las 5 jugadas mas importantes del dia para owner y collections.</div>
+          </div>
+          <a class="btn" href="/estimates-invoices">Work Queue</a>
+        </div>
+        <div class="dashboard-strip" id="dashboardCommandStrip"></div>
+        <div class="inline-actions" style="margin-top:12px;">
+          <button class="btn" id="btnDashboardOpenBalance">Open Balance</button>
+          <button class="btn" id="btnDashboardBrokenPromises">Broken Promises</button>
+          <button class="btn" id="btnDashboardReadyToBill">Ready To Bill</button>
+        </div>
+        <ul class="msg-list" id="dashboardCommandQueue"></ul>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:14px;">
+      <div class="card-inner">
+        <div class="section-head">
+          <div>
+            <h2>Owner Task List</h2>
+            <div class="sub">Tareas sugeridas automaticamente desde cartera, cobranza y promesas.</div>
+          </div>
+          <a class="btn" href="/estimates-invoices">Open Priority Views</a>
+        </div>
+        <ul class="msg-list" id="dashboardOwnerTasks"></ul>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:14px;">
+      <div class="card-inner">
+        <div class="section-head">
+          <div>
+            <h2>Collections Scorecard</h2>
+            <div class="sub">Clientes que concentran mas saldo, atraso y presion de cobranza.</div>
+          </div>
+          <a class="btn" href="/estimates-invoices">Open Collections</a>
+        </div>
+        <ul class="msg-list" id="dashboardClientScorecard"></ul>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:14px;">
+      <div class="card-inner">
+        <div class="section-head">
+          <div>
+            <h2>Daily Digest</h2>
+            <div class="sub">Lectura corta del dia para saber donde poner energia primero.</div>
+          </div>
+          <a class="btn" href="/estimates-invoices">Open Daily View</a>
+        </div>
+        <div class="dashboard-note">
+          <div class="dashboard-note-title">Today</div>
+          <div class="dashboard-note-copy" id="dashboardDailyDigest">Esperando cartera para generar digest.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:14px;">
+      <div class="card-inner">
+        <div class="section-head">
+          <div>
+            <h2>Profitability Ranking</h2>
+            <div class="sub">Proyectos con mejor y peor margen estimado para no perder visibilidad.</div>
+          </div>
+          <a class="btn" href="/estimates-invoices">Open Closeout</a>
+        </div>
+        <ul class="msg-list" id="dashboardProfitabilityRanking"></ul>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:14px;">
+      <div class="card-inner">
+        <div class="section-head">
+          <div>
+            <h2>Cash-In Forecast</h2>
+            <div class="sub">Lo que probablemente puede entrar pronto si se ejecuta bien la cobranza.</div>
+          </div>
+          <a class="btn" href="/estimates-invoices">Open Forecast</a>
+        </div>
+        <div class="dashboard-strip" id="dashboardCashForecast"></div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:14px;">
+      <div class="card-inner">
+        <div class="section-head">
+          <div>
+            <h2>Risk Segmentation</h2>
+            <div class="sub">Distribucion del portafolio entre saludable, watch y at risk.</div>
+          </div>
+          <a class="btn" href="/estimates-invoices">Open Risk View</a>
+        </div>
+        <div class="dashboard-strip" id="dashboardRiskSegments"></div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:14px;">
+      <div class="card-inner">
+        <div class="section-head">
+          <div>
+            <h2>Weekly Review</h2>
+            <div class="sub">Resumen de owner para revisar conversion, cobranza y salud de portafolio.</div>
+          </div>
+          <a class="btn" href="/estimates-invoices">Open Review</a>
+        </div>
+        <ul class="msg-list" id="dashboardWeeklyReview"></ul>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:14px;">
+      <div class="card-inner">
+        <div class="section-head">
+          <div>
+            <h2>Campaign Center</h2>
+            <div class="sub">Atajos del owner para empujar cobranza por segmento.</div>
+          </div>
+          <a class="btn" href="/estimates-invoices">Open Campaigns</a>
+        </div>
+        <div class="inline-actions">
+          <button class="btn" id="btnDashboardCampaignOverdue">Overdue Push</button>
+          <button class="btn" id="btnDashboardCampaignPromises">Broken Promises</button>
+          <button class="btn" id="btnDashboardCampaignRisk">High Risk</button>
+        </div>
+        <div class="dashboard-note" style="margin-top:12px;">
+          <div class="dashboard-note-title">Campaign action</div>
+          <div class="dashboard-note-copy" id="dashboardCampaignNote">Selecciona un segmento para abrir el hub ya enfocado en esa campaña.</div>
+        </div>
+      </div>
+    </section>
   </div>
 
-  <script src="js/auth.js"></script>
-  <script src="js/app.js"></script>
+  <script src="/js/tenant.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/app.js"></script>
 </body>
 </html>
+
 
