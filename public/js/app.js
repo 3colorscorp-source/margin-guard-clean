@@ -1,4 +1,4 @@
-ï»¿
+
 (() => {
   const LS_SETTINGS = "mg_settings_v2";
   const LS_OWNER = "mg_owner_v2";
@@ -253,11 +253,13 @@ Thank you.`
   function loadSales() {
     const saved = readStore(LS_SALES, {});
     const owner = loadOwner();
+    const hasProjectName = Object.prototype.hasOwnProperty.call(saved, "projectName");
+    const hasClientName = Object.prototype.hasOwnProperty.call(saved, "clientName");
     return {
       ...DEFAULT_SALES,
       ...saved,
-      projectName: saved.projectName || owner.projectName || "",
-      clientName: saved.clientName || owner.clientName || "",
+      projectName: hasProjectName ? String(saved.projectName ?? "") : (owner.projectName || ""),
+      clientName: hasClientName ? String(saved.clientName ?? "") : (owner.clientName || ""),
       workers: Array.isArray(saved.workers) && saved.workers.length ? saved.workers : DEFAULT_SALES.workers,
       offeredPrice: saved.offeredPrice ?? 0
     };
@@ -1235,8 +1237,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
                   <span class="msg-idx">${index + 1}</span>
                   <div>
                     <strong>${escapeHtml(row.title)}</strong>
-                    <span class="hub-inline-meta">${escapeHtml(row.customer)} Â· ${escapeHtml(row.nextAction)} Â· Score ${escapeHtml(String(row.priorityScore))}</span>
-                    <span class="hub-inline-meta">Balance ${escapeHtml(money(row.balance, settings.currency))} Â· Due ${escapeHtml(row.dueDate || "No due date")} Â· Stage ${escapeHtml(row.collectionStage || "new")}</span>
+                    <span class="hub-inline-meta">${escapeHtml(row.customer)} · ${escapeHtml(row.nextAction)} · Score ${escapeHtml(String(row.priorityScore))}</span>
+                    <span class="hub-inline-meta">Balance ${escapeHtml(money(row.balance, settings.currency))} · Due ${escapeHtml(row.dueDate || "No due date")} · Stage ${escapeHtml(row.collectionStage || "new")}</span>
                   </div>
                 </li>
                 `).join("")
@@ -1263,8 +1265,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
                   <span class="msg-idx">${index + 1}</span>
                   <div>
                     <strong>${escapeHtml(item.customer)}</strong>
-                    <span class="hub-inline-meta">Score ${escapeHtml(String(item.score))} Â· Open ${escapeHtml(item.openBalanceLabel)} Â· Overdue ${escapeHtml(item.overdueBalanceLabel)}</span>
-                    <span class="hub-inline-meta">${escapeHtml(String(item.projectCount))} projects Â· ${escapeHtml(String(item.brokenPromises))} broken promises Â· Paid ${escapeHtml(item.paidTotalLabel)}</span>
+                    <span class="hub-inline-meta">Score ${escapeHtml(String(item.score))} · Open ${escapeHtml(item.openBalanceLabel)} · Overdue ${escapeHtml(item.overdueBalanceLabel)}</span>
+                    <span class="hub-inline-meta">${escapeHtml(String(item.projectCount))} projects · ${escapeHtml(String(item.brokenPromises))} broken promises · Paid ${escapeHtml(item.paidTotalLabel)}</span>
                   </div>
                 </li>
               `).join("")
@@ -1305,7 +1307,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
                   <span class="msg-idx">${index + 1}</span>
                   <div>
                     <strong>${escapeHtml(item.title)}</strong>
-                    <span class="hub-inline-meta">${escapeHtml(item.customer)} Â· Margin ${escapeHtml(item.marginLabel)} Â· Sold ${escapeHtml(item.soldLabel)}</span>
+                    <span class="hub-inline-meta">${escapeHtml(item.customer)} · Margin ${escapeHtml(item.marginLabel)} · Sold ${escapeHtml(item.soldLabel)}</span>
                     <span class="hub-inline-meta">${escapeHtml(item.healthLabel)}</span>
                   </div>
                 </li>
@@ -1610,7 +1612,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         <div class="owner-quote-hero">
           <div class="owner-quote-kicker">Precio recomendado</div>
           <div class="owner-quote-price">${escapeHtml(money(metrics.recommended, settings.currency))}</div>
-          <div class="owner-quote-meta">${escapeHtml(money(metrics.pricePerUnit, settings.currency))} ${escapeHtml(pricingModeCopy)} Ã¯Â¿Â½ ${escapeHtml(metrics.quotedUnits.toFixed(2))} ${escapeHtml(metrics.pricingModeLabel === "dia" ? "dias" : "horas")} cotizables</div>
+          <div class="owner-quote-meta">${escapeHtml(money(metrics.pricePerUnit, settings.currency))} ${escapeHtml(pricingModeCopy)} ï¿½ ${escapeHtml(metrics.quotedUnits.toFixed(2))} ${escapeHtml(metrics.pricingModeLabel === "dia" ? "dias" : "horas")} cotizables</div>
           <div class="owner-quote-strip">
             ${primaryCards.map(([title, big, small]) => `
               <div class="owner-mini-card">
@@ -2101,7 +2103,7 @@ ${val("salesInitials") || "MG"}`;
       if ($("salesPrimaryPrice")) $("salesPrimaryPrice").textContent = money(recommended, settings.currency);
       if ($("salesPrimaryMeta")) {
         $("salesPrimaryMeta").textContent = state.workers.length && nextMetrics.totalHours > 0
-          ? `${nextMetrics.totalWorkerDays.toFixed(2)} worker-days Ã¯Â¿Â½ ${nextMetrics.totalHours.toFixed(2)} horas-hombre Ã¯Â¿Â½ ${state.workers.length} trabajadores`
+          ? `${nextMetrics.totalWorkerDays.toFixed(2)} worker-days ï¿½ ${nextMetrics.totalHours.toFixed(2)} horas-hombre ï¿½ ${state.workers.length} trabajadores`
           : "Ingresa mano de obra para calcular el recomendado.";
       }
       if ($("salesPrimaryCommission")) $("salesPrimaryCommission").textContent = `${commissionPct.toFixed(2)}%`;
@@ -2113,7 +2115,7 @@ ${val("salesInitials") || "MG"}`;
       if ($("salesStageRecommended")) $("salesStageRecommended").textContent = `Recomendado ${money(recommended, settings.currency)}`;
       if ($("salesCrewHint")) {
         $("salesCrewHint").textContent = state.workers.length
-          ? `${state.workers.length} trabajadores Ã¯Â¿Â½ ${nextMetrics.totalWorkerDays.toFixed(2)} worker-days Ã¯Â¿Â½ ${nextMetrics.totalHours.toFixed(2)} horas-hombre`
+          ? `${state.workers.length} trabajadores ï¿½ ${nextMetrics.totalWorkerDays.toFixed(2)} worker-days ï¿½ ${nextMetrics.totalHours.toFixed(2)} horas-hombre`
           : "Define mano de obra por trabajador para calcular horas-hombre y precio recomendado.";
       }
 
@@ -2122,7 +2124,7 @@ ${val("salesInitials") || "MG"}`;
       }
       if ($("salesSignedMeta")) {
         if (activeProject) {
-          $("salesSignedMeta").textContent = `Proyecto activo Ã¯Â¿Â½ ${activeProject.dueDate || "Sin fecha"} Ã¯Â¿Â½ ${money(activeProject.laborBudget, settings.currency)} labor Ã¯Â¿Â½ ${Number(activeProject.estimatedDays || 0).toFixed(2)} dias`;
+          $("salesSignedMeta").textContent = `Proyecto activo ï¿½ ${activeProject.dueDate || "Sin fecha"} ï¿½ ${money(activeProject.laborBudget, settings.currency)} labor ï¿½ ${Number(activeProject.estimatedDays || 0).toFixed(2)} dias`;
         } else {
           $("salesSignedMeta").textContent = "Firma una cotizacion para mandarla a Supervisor.";
         }
@@ -2149,7 +2151,7 @@ ${val("salesInitials") || "MG"}`;
         ["Objetivo recomendado", money(recommended, settings.currency), "Numero ideal para vender con margen sano"],
         ["Precio al cliente", money(offered, settings.currency), "Numero actual de la negociacion"],
         ["Descuento aplicado", `${discountPct.toFixed(2)}%`, "Comparado contra el recomendado"],
-        ["Comision estimada", `${commissionPct.toFixed(2)}% Ã¯Â¿Â½ ${money(commissionAmount, settings.currency)}`, "Pago estimado del vendedor"]
+        ["Comision estimada", `${commissionPct.toFixed(2)}% ï¿½ ${money(commissionAmount, settings.currency)}`, "Pago estimado del vendedor"]
       ].map(([label, value, meta]) => `
         <div class="kpi-box">
           <div class="label">${escapeHtml(label)}</div>
@@ -2335,6 +2337,33 @@ ${val("salesInitials") || "MG"}`;
       };
     }
 
+    if ($("btnNewSalesQuote")) {
+      $("btnNewSalesQuote").onclick = () => {
+        if (!confirm("Crear una nueva cotizacion? Esto limpiara el borrador actual de ventas.")) return;
+        saveSales({
+          ...DEFAULT_SALES,
+          projectName: "",
+          clientName: "",
+          dueDate: "",
+          offeredPrice: 0,
+          notes: "",
+          workers: DEFAULT_SALES.workers.map((worker) => ({ ...worker }))
+        });
+        if ($("salesPrice")) $("salesPrice").dataset.touched = "false";
+        if (stageRange) stageRange.value = "2";
+        if ($("approvalStatus")) {
+          $("approvalStatus").style.display = "block";
+          $("approvalStatus").className = "notice ok";
+          $("approvalStatus").textContent = "Nuevo borrador listo para una cotizacion nueva.";
+        }
+        if ($("salesSignedStatus")) {
+          $("salesSignedStatus").style.display = "none";
+          $("salesSignedStatus").textContent = "";
+        }
+        renderSales();
+      };
+    }
+
     if ($("btnSubmitApproval")) {
       $("btnSubmitApproval").onclick = () => {
         const nextMetrics = calcSales(state, settings);
@@ -2459,7 +2488,7 @@ ${val("salesInitials") || "MG"}`;
     if (picker) {
       picker.innerHTML = projects.length
         ? projects.map((project) => `
-            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} Â· ${escapeHtml(project.clientName || "Sin cliente")}</option>
+            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} · ${escapeHtml(project.clientName || "Sin cliente")}</option>
           `).join("")
         : `<option value="">Sin proyectos firmados</option>`;
       picker.value = selectedProject?.id || "";
@@ -2727,7 +2756,7 @@ ${val("salesInitials") || "MG"}`;
       if ($("coPrimaryPrice")) $("coPrimaryPrice").textContent = money(changeMetrics.recommended, settings.currency);
       if ($("coPrimaryMeta")) {
         $("coPrimaryMeta").textContent = changeMetrics.totalWorkerDays > 0
-          ? `${changeMetrics.totalWorkerDays.toFixed(2)} worker-days Â· ${changeMetrics.totalHours.toFixed(2)} horas de equipo Â· ${changeMetrics.crewSize} trabajadores`
+          ? `${changeMetrics.totalWorkerDays.toFixed(2)} worker-days · ${changeMetrics.totalHours.toFixed(2)} horas de equipo · ${changeMetrics.crewSize} trabajadores`
           : "Ingresa dias por trabajador para cotizar el trabajo extra.";
       }
       if ($("coSuggestedDays")) $("coSuggestedDays").textContent = `${changeMetrics.totalWorkerDays.toFixed(2)} dias`;
@@ -4322,9 +4351,9 @@ ${val("salesInitials") || "MG"}`;
             <span class="msg-idx">${index + 1}</span>
             <div>
               <strong>${escapeHtml(row.title)}</strong>
-              <span class="hub-inline-meta">${escapeHtml(row.customer)} Â· Score ${escapeHtml(String(row.priorityScore))} Â· ${escapeHtml(row.nextAction)}</span>
-              <span class="hub-health ${escapeHtml(row.projectHealthTone || "green")}">Health ${escapeHtml(String(row.projectHealthScore))}% Â· ${escapeHtml(row.projectHealthLabel)}</span>
-              <span class="hub-inline-meta">Balance ${escapeHtml(money(row.balance, settings.currency))} Â· Due ${escapeHtml(row.dueDate || "No due date")}</span>
+              <span class="hub-inline-meta">${escapeHtml(row.customer)} · Score ${escapeHtml(String(row.priorityScore))} · ${escapeHtml(row.nextAction)}</span>
+              <span class="hub-health ${escapeHtml(row.projectHealthTone || "green")}">Health ${escapeHtml(String(row.projectHealthScore))}% · ${escapeHtml(row.projectHealthLabel)}</span>
+              <span class="hub-inline-meta">Balance ${escapeHtml(money(row.balance, settings.currency))} · Due ${escapeHtml(row.dueDate || "No due date")}</span>
             </div>
           </li>
         `).join("")
@@ -4369,8 +4398,8 @@ ${val("salesInitials") || "MG"}`;
             <td>
               <strong>${escapeHtml(row.title)}</strong>
               <div class="meta">${escapeHtml(row.invoiceNo)}</div>
-              <span class="hub-inline-meta">Priority ${escapeHtml(String(row.priorityScore))} Â· ${escapeHtml(row.nextAction)}</span>
-              <span class="hub-health ${escapeHtml(row.projectHealthTone || "green")}">Health ${escapeHtml(String(row.projectHealthScore))}% Â· ${escapeHtml(row.projectHealthLabel)}</span>
+              <span class="hub-inline-meta">Priority ${escapeHtml(String(row.priorityScore))} · ${escapeHtml(row.nextAction)}</span>
+              <span class="hub-health ${escapeHtml(row.projectHealthTone || "green")}">Health ${escapeHtml(String(row.projectHealthScore))}% · ${escapeHtml(row.projectHealthLabel)}</span>
             </td>
             <td><span class="hub-status ${escapeHtml(row.status)}">${escapeHtml(row.status)}</span></td>
             <td>${money(row.amount, settings.currency)}</td>
@@ -4458,9 +4487,9 @@ ${val("salesInitials") || "MG"}`;
                     <div class="hub-pipeline-card" draggable="true" data-hub-pipeline="${escapeHtml(row.projectId)}">
                       <strong>${escapeHtml(row.title)}</strong>
                       <span class="hub-inline-meta">${escapeHtml(row.customer)}</span>
-                      <span class="hub-inline-meta">${escapeHtml(money(row.amount, settings.currency))} Â· Balance ${escapeHtml(money(row.balance, settings.currency))}</span>
-                      <span class="hub-inline-meta">Priority ${escapeHtml(String(row.priorityScore))} Â· ${escapeHtml(row.nextAction)}</span>
-                      <span class="hub-health ${escapeHtml(row.projectHealthTone || "green")}">Health ${escapeHtml(String(row.projectHealthScore))}% Â· ${escapeHtml(row.projectHealthLabel)}</span>
+                      <span class="hub-inline-meta">${escapeHtml(money(row.amount, settings.currency))} · Balance ${escapeHtml(money(row.balance, settings.currency))}</span>
+                      <span class="hub-inline-meta">Priority ${escapeHtml(String(row.priorityScore))} · ${escapeHtml(row.nextAction)}</span>
+                      <span class="hub-health ${escapeHtml(row.projectHealthTone || "green")}">Health ${escapeHtml(String(row.projectHealthScore))}% · ${escapeHtml(row.projectHealthLabel)}</span>
                       <div class="hub-pipeline-actions">
                         <button class="btn ghost" type="button" data-hub-pipeline-view="${escapeHtml(row.projectId)}">View</button>
                         ${getHubRowActionState(row).canMarkSent ? `<button class="btn ghost" type="button" data-hub-pipeline-sent="${escapeHtml(row.projectId)}">Sent</button>` : ""}
@@ -4543,7 +4572,7 @@ ${val("salesInitials") || "MG"}`;
 
     if ($("hubClientModal")) $("hubClientModal").setAttribute("aria-hidden", "false");
     if ($("hubClientTitle")) $("hubClientTitle").textContent = customerName || "Client detail";
-    if ($("hubClientSubtitle")) $("hubClientSubtitle").textContent = `${filtered.length} proyectos Â· Open ${money(totalOpen, settings.currency)}`;
+    if ($("hubClientSubtitle")) $("hubClientSubtitle").textContent = `${filtered.length} proyectos · Open ${money(totalOpen, settings.currency)}`;
     if ($("hubClientStats")) {
       $("hubClientStats").innerHTML = [
         ["Open Balance", money(totalOpen, settings.currency), "Saldo vivo de este cliente"],
@@ -4636,8 +4665,8 @@ ${val("salesInitials") || "MG"}`;
     const applyHubSortButtons = () => {
       document.querySelectorAll("[data-hub-sort]").forEach((node) => {
         const isActive = node.dataset.hubSort === sortKey;
-        const label = node.textContent.replace(/\s+[â–²â–¼]$/, "");
-        node.textContent = isActive ? `${label} ${sortDir === "asc" ? "â–²" : "â–¼"}` : label;
+        const label = node.textContent.replace(/\s+[??]$/, "");
+        node.textContent = isActive ? `${label} ${sortDir === "asc" ? "?" : "?"}` : label;
         node.classList.toggle("active", isActive);
       });
     };
@@ -4723,7 +4752,7 @@ ${val("salesInitials") || "MG"}`;
     const openPaymentForm = (row, existingPayment, onSubmit) => {
       showHubActionForm({
         title: existingPayment ? "Editar pago" : "Registrar pago",
-        subtitle: `${row.title} Â· ${row.customer}`,
+        subtitle: `${row.title} · ${row.customer}`,
         submitLabel: existingPayment ? "Guardar cambios" : "Guardar pago",
         fields: [
           { id: "hubFormAmount", label: "Amount", type: "number", step: "0.01", value: existingPayment?.amount ?? "", placeholder: "0.00" },
@@ -4760,7 +4789,7 @@ ${val("salesInitials") || "MG"}`;
       const invoice = getProjectInvoiceState(row.project);
       showHubActionForm({
         title: "Registrar follow-up",
-        subtitle: `${row.title} Â· ${row.customer}`,
+        subtitle: `${row.title} · ${row.customer}`,
         submitLabel: "Guardar seguimiento",
         fields: [
           {
@@ -4808,7 +4837,7 @@ ${val("salesInitials") || "MG"}`;
       const invoice = getProjectInvoiceState(row.project);
       showHubActionForm({
         title: "Guardar payment link",
-        subtitle: `${row.title} Â· ${row.invoiceNo || "No invoice"}`,
+        subtitle: `${row.title} · ${row.invoiceNo || "No invoice"}`,
         submitLabel: "Guardar link",
         fields: [
           { id: "hubFormPaymentLink", label: "Payment link URL", type: "text", value: invoice.paymentLink || "", placeholder: "https://..." }
@@ -4828,7 +4857,7 @@ ${val("salesInitials") || "MG"}`;
     const openCustomerSetupForm = (row) => {
       showHubActionForm({
         title: "Customer setup",
-        subtitle: `${row.title} Â· ${row.customer}`,
+        subtitle: `${row.title} · ${row.customer}`,
         submitLabel: "Guardar cliente",
         fields: [
           { id: "hubFormCustomerName", label: "Customer Name", type: "text", value: row.project?.clientName || "", placeholder: "Nombre del cliente" },
@@ -4864,7 +4893,7 @@ ${val("salesInitials") || "MG"}`;
       const invoice = getProjectInvoiceState(row.project);
       showHubActionForm({
         title: "Configurar invoice",
-        subtitle: `${row.title} Â· ${row.customer}`,
+        subtitle: `${row.title} · ${row.customer}`,
         submitLabel: "Guardar invoice",
         fields: [
           { id: "hubFormInvoiceNo", label: "Invoice No", type: "text", value: invoice.invoiceNo || "", placeholder: "INV-1001" },
@@ -5137,8 +5166,8 @@ ${val("salesInitials") || "MG"}`;
                 <span class="msg-idx">${index + 1}</span>
                 <div>
                   <strong>${escapeHtml(item.customer)}</strong>
-                  <span class="hub-inline-meta">Score ${escapeHtml(String(item.score))} Â· Open ${escapeHtml(item.openBalanceLabel)} Â· Overdue ${escapeHtml(item.overdueBalanceLabel)}</span>
-                  <span class="hub-inline-meta">${escapeHtml(String(item.projectCount))} projects Â· ${escapeHtml(String(item.brokenPromises))} broken promises Â· Paid ${escapeHtml(item.paidTotalLabel)}</span>
+                  <span class="hub-inline-meta">Score ${escapeHtml(String(item.score))} · Open ${escapeHtml(item.openBalanceLabel)} · Overdue ${escapeHtml(item.overdueBalanceLabel)}</span>
+                  <span class="hub-inline-meta">${escapeHtml(String(item.projectCount))} projects · ${escapeHtml(String(item.brokenPromises))} broken promises · Paid ${escapeHtml(item.paidTotalLabel)}</span>
                 </div>
               </li>
             `).join("")
@@ -5245,7 +5274,7 @@ ${val("salesInitials") || "MG"}`;
         onPromise: (row) => {
           openHubFormModal({
             title: "Promised payment",
-            subtitle: `${row.title} Â· ${row.customer}`,
+            subtitle: `${row.title} · ${row.customer}`,
             submitLabel: "Guardar promesa",
             fields: [
               { id: "hubFormQuickPromiseDate", label: "Promised Payment Date", type: "date", value: row.promisedDateRaw || "" }
@@ -5400,7 +5429,7 @@ ${val("salesInitials") || "MG"}`;
               value: segments[0]?.[0] || "overdue",
               options: segments.map(([value, label, count, amount]) => ({
                 value,
-                label: `${label} Â· ${count} rows Â· ${amount}`
+                label: `${label} · ${count} rows · ${amount}`
               }))
             }
           ],
@@ -5754,6 +5783,8 @@ ${val("salesInitials") || "MG"}`;
     render();
   });
 })();
+
+
 
 
 
