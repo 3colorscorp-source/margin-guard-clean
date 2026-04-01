@@ -691,25 +691,105 @@
             event.preventDefault();
             event.stopImmediatePropagation();
           }
+
+          const sendStatus = document.getElementById('sendStatus');
+          const sendButton = document.getElementById('btnSendNow');
           const state = loadSalesState();
-          state.clientName = document.getElementById('toName')?.value || state.clientName || '';
-          state.customerEmail = document.getElementById('toEmail')?.value || state.customerEmail || '';
+          const settings = loadSettings();
+          const metrics = calculateStandaloneSalesMetrics(state, settings);
+
+          const toEmail = (document.getElementById('toEmail')?.value || '').trim();
+          const toName = (document.getElementById('toName')?.value || '').trim();
+          const salesRepInitials = (document.getElementById('salesInitials')?.value || '').trim().toUpperCase();
+          const subject = (document.getElementById('subject')?.value || '').trim();
+          const scope = (document.getElementById('scope')?.value || '').trim();
+          const message = (document.getElementById('message')?.value || '').trim();
+          const deposit = Number((document.getElementById('deposit')?.value || '1000').trim() || 1000);
+
+          state.clientName = toName || state.clientName || '';
+          state.customerEmail = toEmail || state.customerEmail || '';
           state.customerPhone = document.getElementById('salesCustomerPhone')?.value || state.customerPhone || '';
           state.location = document.getElementById('salesLocation')?.value || state.location || '';
           saveSalesState(state);
-          const settings = loadSettings();
-          const metrics = calculateStandaloneSalesMetrics(state, settings);
-          if (typeof window.sendQuote === 'function') {
-            return window.sendQuote(state, settings, metrics);
+
+          if (!toEmail || !salesRepInitials) {
+            if (sendStatus) {
+              sendStatus.style.display = 'block';
+              sendStatus.className = 'notice error';
+              sendStatus.textContent = 'Add customer email and sales rep initials before sending the estimate.';
+            }
+            try { window.alert('Add customer email and sales rep initials before sending the estimate.'); } catch (_error) {}
+            return false;
           }
-          const sendStatus = document.getElementById('sendStatus');
-          if (sendStatus) {
-            sendStatus.style.display = 'block';
-            sendStatus.className = 'notice error';
-            sendStatus.textContent = 'Send handler is not available right now.';
+
+          try {
+            if (sendButton) {
+              sendButton.disabled = true;
+              sendButton.textContent = 'Enviando...';
+            }
+            if (sendStatus) {
+              sendStatus.style.display = 'block';
+              sendStatus.className = 'notice';
+              sendStatus.textContent = 'Sending estimate...';
+            }
+
+            const response = await fetch('/.netlify/functions/send-quote-zapier', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                salesRepInitials,
+                messageLanguage: 'bilingual',
+                toEmail,
+                toName,
+                subject,
+                messageText: message,
+                scopeOfWork: scope,
+                depositRequired: Number.isFinite(deposit) ? deposit : 1000,
+                projectName: state.projectName || '',
+                clientName: toName || state.clientName || '',
+                location: state.location || '',
+                businessName: settings.bizName || 'Margin Guard',
+                currency: 'USD',
+                recommendedTotal: Number(metrics.recommended || metrics.offered || 0),
+                estimateNumber: state.estimateNumber || 'EST-1001',
+                issueDate: state.issueDate || '',
+                expirationDate: state.expirationDate || ''
+              })
+            });
+
+            const raw = await response.text();
+            let data = {};
+            try { data = raw ? JSON.parse(raw) : {}; } catch (_error) {}
+            if (!response.ok) {
+              throw new Error(data.error || raw || 'Unable to send estimate.');
+            }
+
+            state.estimateStatus = 'sent';
+            state.sentAt = new Date().toISOString();
+            saveSalesState(state);
+
+            if (sendStatus) {
+              sendStatus.style.display = 'block';
+              sendStatus.className = 'notice success';
+              sendStatus.textContent = 'Estimate sent successfully.';
+            }
+            try { window.alert('Estimate sent successfully.'); } catch (_error) {}
+            setTimeout(() => closeSellerSendModal(), 900);
+            return true;
+          } catch (error) {
+            if (sendStatus) {
+              sendStatus.style.display = 'block';
+              sendStatus.className = 'notice error';
+              sendStatus.textContent = error.message || 'Unable to send estimate.';
+            }
+            try { window.alert(error.message || 'Unable to send estimate.'); } catch (_error) {}
+            return false;
+          } finally {
+            if (sendButton) {
+              sendButton.disabled = false;
+              sendButton.textContent = 'Enviar';
+            }
           }
-          try { window.alert('Send handler is not available right now.'); } catch (_error) {}
-          return false;
         }
 
         [topSend, inlineSend].forEach((button) => {
@@ -756,6 +836,7 @@
   </script>
 </body>
 </html>
+
 
 
 
