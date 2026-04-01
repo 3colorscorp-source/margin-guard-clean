@@ -119,8 +119,8 @@
             </div>
 
             <div class="inline-actions" style="margin-top:12px; margin-bottom:12px;">
-              <button class="btn primary" type="button" id="btnAddSalesWorker" onclick="window.__mgAddSalesWorker && window.__mgAddSalesWorker()">Agregar trabajador</button>
-              <button class="btn danger" type="button" id="btnClearSalesWorkers" onclick="window.__mgClearSalesWorkers && window.__mgClearSalesWorkers()">Limpiar labor</button>
+              <button class="btn primary" type="button" id="btnAddSalesWorker" onclick="if (window.__mgAddSalesWorker) { try { window.__mgAddSalesWorker(); return false; } catch (_error) {} } try { const key = 'mg_sales_v2'; const raw = localStorage.getItem(key); const state = raw ? JSON.parse(raw) : {}; const defaults = [{ name: 'Worker 1', type: 'installer', days: 5, rate: '' }]; state.workers = Array.isArray(state.workers) && state.workers.length ? state.workers : defaults; state.workers.push({ name: 'Worker ' + (state.workers.length + 1), type: 'installer', days: 0, rate: '' }); localStorage.setItem(key, JSON.stringify(state)); if (window.renderSales) { try { window.renderSales(); return false; } catch (_error) {} } location.reload(); } catch (_error) { location.reload(); } return false;">Agregar trabajador</button>
+              <button class="btn danger" type="button" id="btnClearSalesWorkers" onclick="if (window.__mgClearSalesWorkers) { try { window.__mgClearSalesWorkers(); return false; } catch (_error) {} } try { const key = 'mg_sales_v2'; const raw = localStorage.getItem(key); const state = raw ? JSON.parse(raw) : {}; state.workers = [{ name: 'Worker 1', type: 'installer', days: 5, rate: '' }]; localStorage.setItem(key, JSON.stringify(state)); if (window.renderSales) { try { window.renderSales(); return false; } catch (_error) {} } location.reload(); } catch (_error) { location.reload(); } return false;">Limpiar labor</button>
             </div>
 
             <table class="table">
@@ -296,5 +296,6 @@
   <script src="/js/app.js"></script>
 </body>
 </html>
+
 
 
