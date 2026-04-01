@@ -689,7 +689,7 @@
           state.messageToClient = messageToClient;
           saveSalesState(state);
 
-          const defaultSubject = 'Estimate ' + estimateNumber + ' | ' + projectName + ' | ' + totalFormatted;
+          const defaultSubject = 'Estimate ' + estimateNumber + ' | ' + projectName;
           const defaultScope = (messageToClient || '-').trim();
           const defaultMessage = [
             'Hi ' + (clientName || 'there') + ',',
@@ -946,6 +946,7 @@
   </script>
 </body>
 </html>
+
 
 
 
