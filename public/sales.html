@@ -650,7 +650,6 @@
             event.preventDefault();
             event.stopImmediatePropagation();
           }
-          fillSendModal();
           modal.setAttribute('aria-hidden', 'false');
           if (typeof window.openSendModal === 'function') {
             const state = loadSalesState();
@@ -658,6 +657,7 @@
             const metrics = calculateStandaloneSalesMetrics(state, settings);
             try { window.openSendModal(state, settings, metrics); } catch (_error) {}
           }
+          fillSendModal();
         }
 
         function closeSellerSendModal(event) {
@@ -700,8 +700,16 @@
           const settings = loadSettings();
           const metrics = calculateStandaloneSalesMetrics(state, settings);
           if (typeof window.sendQuote === 'function') {
-            await window.sendQuote(state, settings, metrics);
+            return window.sendQuote(state, settings, metrics);
           }
+          const sendStatus = document.getElementById('sendStatus');
+          if (sendStatus) {
+            sendStatus.style.display = 'block';
+            sendStatus.className = 'notice error';
+            sendStatus.textContent = 'Send handler is not available right now.';
+          }
+          try { window.alert('Send handler is not available right now.'); } catch (_error) {}
+          return false;
         }
 
         [topSend, inlineSend].forEach((button) => {
@@ -748,6 +756,7 @@
   </script>
 </body>
 </html>
+
 
 
 
