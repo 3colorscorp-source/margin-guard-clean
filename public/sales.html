@@ -584,6 +584,7 @@
         const closeX = document.getElementById('btnSendClose');
         const cancelBtn = document.getElementById('btnSendCancel');
         const sendNow = document.getElementById('btnSendNow');
+        const previewBtn = document.getElementById('btnSendPreview');
         if (!modal) return;
 
         function fillSendModal() {
@@ -624,7 +625,7 @@
           if (subject && !subject.value) subject.value = estimateNumber + ' • ' + projectName + ' • ' + money(metrics.offered, settings.currency);
           if (scope && !scope.value) scope.value = defaultScope;
           if (message && !message.value) message.value = defaultMessage;
-          if (deposit && !deposit.value) deposit.value = offered;
+          if (deposit) deposit.value = '1000';
         }
 
         function openSellerSendModal(event) {
@@ -651,6 +652,21 @@
           if (typeof window.closeSendModal === 'function') {
             try { window.closeSendModal(); } catch (_error) {}
           }
+        }
+
+        function runSellerPreview(event) {
+          if (event) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+          fillSendModal();
+          const toName = document.getElementById('toName')?.value || 'Customer';
+          const toEmail = document.getElementById('toEmail')?.value || 'client@example.com';
+          const subject = document.getElementById('subject')?.value || 'Estimate';
+          const scope = document.getElementById('scope')?.value || '';
+          const message = document.getElementById('message')?.value || '';
+          const deposit = document.getElementById('deposit')?.value || '1000';
+          window.alert('Preview\n\nTo: ' + toName + ' <' + toEmail + '>\nSubject: ' + subject + '\nDeposit required to schedule: $' + deposit + '\n\nVisible scope:\n' + scope + '\n\nMessage:\n' + message);
         }
 
         function runSellerSend(event) {
@@ -682,6 +698,13 @@
           clean.addEventListener('click', closeSellerSendModal, true);
         });
 
+        if (previewBtn) {
+          const cleanPreviewBtn = previewBtn.cloneNode(true);
+          cleanPreviewBtn.removeAttribute('onclick');
+          previewBtn.parentNode.replaceChild(cleanPreviewBtn, previewBtn);
+          cleanPreviewBtn.addEventListener('click', runSellerPreview, true);
+        }
+
         if (sendNow) {
           const cleanSendNow = sendNow.cloneNode(true);
           cleanSendNow.removeAttribute('onclick');
@@ -703,6 +726,7 @@
   </script>
 </body>
 </html>
+
 
 
 
