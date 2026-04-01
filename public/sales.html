@@ -298,7 +298,7 @@
     (function () {
       const SALES_KEY = 'mg_sales_v2';
       const SETTINGS_KEY = 'mg_settings_v2';
-      const DEFAULT_WORKERS = [{ name: 'Worker 1', type: 'installer', days: 5, rate: '' }];
+      const DEFAULT_WORKERS = [{ name: 'Worker 1', type: 'installer', days: 0, rate: '' }];
 
       function readJson(key, fallback) {
         try {
@@ -321,6 +321,16 @@
         localStorage.setItem(SALES_KEY, JSON.stringify(state));
       }
 
+      function refreshSellerFromStandalone() {
+        if (typeof window.renderSales === 'function') {
+          try {
+            window.renderSales();
+            return;
+          } catch (_error) {}
+        }
+        renderSellerWorkersStandalone();
+      }
+
       function loadSettings() {
         return readJson(SETTINGS_KEY, { baseInstaller: 0, baseHelper: 0, currency: 'USD' });
       }
@@ -331,6 +341,14 @@
         } catch (_error) {
           return '$' + Number(amount || 0).toFixed(2);
         }
+      }
+
+      function escapeHtml(value) {
+        return String(value || '')
+          .replace(/&/g, '&amp;')
+          .replace(/"/g, '&quot;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
       }
 
       function laborCost(worker, settings) {
@@ -355,7 +373,7 @@
           const rateValue = worker.rate === '' || worker.rate == null ? fallbackRate : Number(worker.rate || 0);
           return `
             <tr data-index="${index}">
-              <td><input data-key="name" maxlength="40" value="${String(worker.name || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}" /></td>
+              <td><input data-key="name" maxlength="40" value="${escapeHtml(worker.name)}" /></td>
               <td>
                 <select data-key="type">
                   <option value="installer" ${worker.type === 'installer' ? 'selected' : ''}>Installer</option>
@@ -404,7 +422,7 @@
           const state = loadSalesState();
           state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: 'installer', days: 0, rate: '' });
           saveSalesState(state);
-          renderSellerWorkersStandalone();
+          refreshSellerFromStandalone();
         }, true);
 
         clearButton.addEventListener('click', function (event) {
@@ -413,7 +431,7 @@
           const state = loadSalesState();
           state.workers = DEFAULT_WORKERS.map((worker) => ({ ...worker }));
           saveSalesState(state);
-          renderSellerWorkersStandalone();
+          refreshSellerFromStandalone();
         }, true);
 
         body.addEventListener('change', function (event) {
@@ -429,7 +447,7 @@
             ? (field.value === '' ? '' : Number(field.value || 0))
             : field.value;
           saveSalesState(state);
-          renderSellerWorkersStandalone();
+          refreshSellerFromStandalone();
         });
 
         body.addEventListener('click', function (event) {
@@ -451,10 +469,10 @@
             state.workers = DEFAULT_WORKERS.map((worker) => ({ ...worker }));
           }
           saveSalesState(state);
-          renderSellerWorkersStandalone();
+          refreshSellerFromStandalone();
         });
 
-        renderSellerWorkersStandalone();
+        refreshSellerFromStandalone();
       }
 
       if (document.readyState === 'loading') {
@@ -466,6 +484,4 @@
   </script>
 </body>
 </html>
-
-
 

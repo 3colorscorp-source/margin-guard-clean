@@ -2494,8 +2494,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   document.getElementById("btnSendQuoteEmail")?.addEventListener('click', () => sendQuote(state, settings, calculateSalesMetrics(state, settings)));
 }
 
-
-  
+window.renderSales = renderSales;
 
 function renderSupervisor() {
     if (!$("supervisorKpis")) return;
@@ -5805,6 +5804,9 @@ function renderSupervisor() {
     render();
   });
 })();
+
+
+
 
 
 
