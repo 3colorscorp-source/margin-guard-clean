@@ -325,10 +325,10 @@
         if (typeof window.renderSales === 'function') {
           try {
             window.renderSales();
-            return;
           } catch (_error) {}
         }
         renderSellerWorkersStandalone();
+        renderStandaloneSellerPanel();
       }
 
       function loadSettings() {
@@ -586,6 +586,7 @@
   </script>
 </body>
 </html>
+
 
 
 
