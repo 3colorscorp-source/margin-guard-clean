@@ -596,7 +596,7 @@
           const expirationDate = state.expirationDate || '';
           const projectName = state.projectName || 'Project';
           const clientName = state.clientName || '';
-          const offered = Number(metrics.offered || 0).toFixed(2);
+          const offered = Number(metrics.recommended || 0).toFixed(2);
           const defaultScope = [
             'Estimate: ' + estimateNumber,
             clientName ? 'Customer: ' + clientName : '',
@@ -622,9 +622,9 @@
           const deposit = document.getElementById('deposit');
           if (toEmail && !toEmail.value) toEmail.value = state.customerEmail || '';
           if (toName && !toName.value) toName.value = clientName;
-          if (subject && !subject.value) subject.value = estimateNumber + ' • ' + projectName + ' • ' + money(metrics.offered, settings.currency);
-          if (scope && !scope.value) scope.value = defaultScope;
-          if (message && !message.value) message.value = defaultMessage;
+          if (subject) subject.value = estimateNumber + ' • ' + projectName + ' • ' + money(metrics.recommended, settings.currency);
+          if (scope) scope.value = defaultScope;
+          if (message) message.value = defaultMessage;
           if (deposit) deposit.value = '1000';
         }
 
@@ -726,6 +726,7 @@
   </script>
 </body>
 </html>
+
 
 
 
