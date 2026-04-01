@@ -62,8 +62,8 @@
     stdHours: 0,
     reservePct: 5,
     workers: [
-      { name: "Installer 1", type: "installer", hours: 40, rate: "" },
-      { name: "Helper 1", type: "helper", hours: 10, rate: "" }
+      { name: "Pro 1", type: "installer", hours: 40, rate: "" },
+      { name: "Assistant 1", type: "helper", hours: 10, rate: "" }
     ]
   };
 
@@ -1619,8 +1619,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         <td><input data-key="name" maxlength="40" value="${escapeHtml(worker.name || "")}" /></td>
         <td>
           <select data-key="type">
-            <option value="installer" ${worker.type === "installer" ? "selected" : ""}>Installer</option>
-            <option value="helper" ${worker.type === "helper" ? "selected" : ""}>Helper</option>
+            <option value="installer" ${worker.type === "installer" ? "selected" : ""}>Pro</option>
+            <option value="helper" ${worker.type === "helper" ? "selected" : ""}>Assistant</option>
           </select>
         </td>
         <td><input data-key="hours" type="number" step="0.25" value="${settings.pricingMode === "day" ? ((Number(worker.hours || 0) / hoursPerDay) || 0) : (worker.hours ?? 0)}" /></td>
@@ -2087,8 +2087,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         <td><input data-key="name" maxlength="40" value="${escapeHtml(worker.name || "")}" /></td>
         <td>
           <select data-key="type">
-            <option value="installer" ${worker.type === "installer" ? "selected" : ""}>Installer</option>
-            <option value="helper" ${worker.type === "helper" ? "selected" : ""}>Helper</option>
+            <option value="installer" ${worker.type === "installer" ? "selected" : ""}>Pro</option>
+            <option value="helper" ${worker.type === "helper" ? "selected" : ""}>Assistant</option>
           </select>
         </td>
         <td><input data-key="days" type="number" min="0" step="0.25" value="${Number(worker.days || 0)}" /></td>
@@ -2491,11 +2491,18 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     button.addEventListener('click', () => exportChangeOrderPdf(button.getAttribute('data-sales-co-pdf')));
   });
 
-  document.getElementById("btnCloseSend")?.addEventListener('click', closeSendModal);
-  document.getElementById("btnSendQuoteEmail")?.addEventListener('click', () => sendQuote(state, settings, calculateSalesMetrics(state, settings)));
+  document.getElementById("btnSendClose")?.addEventListener('click', closeSendModal);
+  document.getElementById("btnSendCancel")?.addEventListener('click', closeSendModal);
+  document.getElementById("btnSendNow")?.addEventListener('click', () => {
+    const freshState = loadSales();
+    const freshSettings = loadSettings();
+    sendQuote(freshState, freshSettings, calculateSalesMetrics(freshState, freshSettings));
+  });
 }
 
 window.renderSales = renderSales;
+window.openSendModal = openSendModal;
+window.closeSendModal = closeSendModal;
 
 function renderSupervisor() {
     if (!$("supervisorKpis")) return;
@@ -2531,8 +2538,8 @@ function renderSupervisor() {
           <td><input data-key="name" maxlength="40" value="${escapeHtml(worker.name || "")}" /></td>
           <td>
             <select data-key="type">
-              <option value="installer" ${worker.type === "installer" ? "selected" : ""}>Installer</option>
-              <option value="helper" ${worker.type === "helper" ? "selected" : ""}>Helper</option>
+              <option value="installer" ${worker.type === "installer" ? "selected" : ""}>Pro</option>
+              <option value="helper" ${worker.type === "helper" ? "selected" : ""}>Assistant</option>
             </select>
           </td>
           <td><input data-key="days" type="number" min="0" step="0.25" value="${Number(worker.days || 0)}" /></td>
@@ -5805,6 +5812,9 @@ function renderSupervisor() {
     render();
   });
 })();
+
+
+
 
 
 

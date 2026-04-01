@@ -471,8 +471,8 @@
               <td><input data-key="name" maxlength="40" value="${escapeHtml(worker.name)}" /></td>
               <td>
                 <select data-key="type">
-                  <option value="installer" ${worker.type === 'installer' ? 'selected' : ''}>Installer</option>
-                  <option value="helper" ${worker.type === 'helper' ? 'selected' : ''}>Helper</option>
+                  <option value="installer" ${worker.type === 'installer' ? 'selected' : ''}>Pro</option>
+                  <option value="helper" ${worker.type === 'helper' ? 'selected' : ''}>Assistant</option>
                 </select>
               </td>
               <td><input data-key="days" type="number" min="0" step="0.25" value="${Number(worker.days || 0)}" /></td>
@@ -586,6 +586,7 @@
   </script>
 </body>
 </html>
+
 
 
 
