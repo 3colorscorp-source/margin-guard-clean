@@ -686,7 +686,7 @@
           window.alert('Preview\n\nTo: ' + toName + ' <' + toEmail + '>\nSubject: ' + subject + '\nDeposit required to schedule: $' + deposit + '\n\nVisible scope:\n' + scope + '\n\nMessage:\n' + message);
         }
 
-        function runSellerSend(event) {
+        async function runSellerSend(event) {
           if (event) {
             event.preventDefault();
             event.stopImmediatePropagation();
@@ -694,11 +694,13 @@
           const state = loadSalesState();
           state.clientName = document.getElementById('toName')?.value || state.clientName || '';
           state.customerEmail = document.getElementById('toEmail')?.value || state.customerEmail || '';
+          state.customerPhone = document.getElementById('salesCustomerPhone')?.value || state.customerPhone || '';
+          state.location = document.getElementById('salesLocation')?.value || state.location || '';
           saveSalesState(state);
           const settings = loadSettings();
           const metrics = calculateStandaloneSalesMetrics(state, settings);
           if (typeof window.sendQuote === 'function') {
-            window.sendQuote(state, settings, metrics);
+            await window.sendQuote(state, settings, metrics);
           }
         }
 
@@ -746,6 +748,7 @@
   </script>
 </body>
 </html>
+
 
 
 
