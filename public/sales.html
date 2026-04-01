@@ -94,7 +94,7 @@
                 <div class="hint"><span id="salesClientNameCount">0</span>/60</div>
               </div>
               <div class="field">
-                <label>Email del cliente</label>
+                <label>Email del cliente (desde el estimate)</label>
                 <input id="salesCustomerEmail" type="email" maxlength="80" placeholder="cliente@correo.com" />
               </div>
               <div class="field">
@@ -248,13 +248,13 @@
       <div class="modal-body">
         <div class="form">
           <div class="field">
-            <label>Email del cliente</label>
-            <input id="toEmail" type="email" maxlength="80" placeholder="cliente@correo.com" />
+            <label>Email del cliente (desde el estimate)</label>
+            <input id="toEmail" type="email" maxlength="80" placeholder="cliente@correo.com" readonly />
             <div class="hint"><span id="toEmailCount">0</span>/80</div>
           </div>
           <div class="field">
-            <label>Nombre del cliente</label>
-            <input id="toName" maxlength="60" placeholder="Nombre" />
+            <label>Nombre del cliente (desde el estimate)</label>
+            <input id="toName" maxlength="60" placeholder="Nombre" readonly />
             <div class="hint"><span id="toNameCount">0</span>/60</div>
           </div>
           <div class="field">
@@ -263,23 +263,23 @@
             <div class="hint"><span id="salesInitialsCount">0</span>/6</div>
           </div>
           <div class="field">
-            <label>Deposito requerido</label>
-            <input id="deposit" type="number" step="0.01" placeholder="1000" />
+            <label>Deposito requerido para agendar</label>
+            <input id="deposit" type="number" step="0.01" placeholder="1000" readonly />
           </div>
           <div class="field">
-            <label>Asunto</label>
-            <input id="subject" maxlength="90" />
+            <label>Asunto del envio</label>
+            <input id="subject" maxlength="90" readonly />
             <div class="hint"><span id="subjectCount">0</span>/90</div>
           </div>
         </div>
         <div class="field">
-          <label>Scope / mensaje visible</label>
-          <textarea id="scope" rows="5" maxlength="1200" placeholder="Descripcion para el cliente, alcance, exclusiones, etc."></textarea>
+          <label>Preview del estimate visible al cliente</label>
+          <textarea id="scope" rows="5" maxlength="1200" placeholder="Descripcion para el cliente, alcance, exclusiones, etc." readonly></textarea>
           <div class="hint"><span id="scopeCount">0</span>/1200</div>
         </div>
         <div class="field">
-          <label>Mensaje</label>
-          <textarea id="message" rows="6" maxlength="1200"></textarea>
+          <label>Preview del mensaje</label>
+          <textarea id="message" rows="6" maxlength="1200" readonly></textarea>
           <div class="hint"><span id="messageCount">0</span>/1200</div>
         </div>
         <div class="notice" id="sendStatus" style="display:none;"></div>
@@ -726,6 +726,7 @@
   </script>
 </body>
 </html>
+
 
 
 
