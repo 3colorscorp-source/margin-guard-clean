@@ -2078,6 +2078,31 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   const workersBody = document.getElementById("salesWorkersBody");
   const projectPicker = document.getElementById("salesProjectPicker");
 
+  const bindNativeDatePicker = (input) => {
+    if (!input || input.dataset.pickerBound === "true") return;
+    input.dataset.pickerBound = "true";
+    const openPicker = () => {
+      if (typeof input.showPicker === "function") {
+        try {
+          input.showPicker();
+        } catch (error) {
+          // Some browsers block showPicker outside a trusted interaction.
+        }
+      }
+    };
+    input.addEventListener("click", openPicker);
+    input.addEventListener("focus", openPicker);
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        openPicker();
+      }
+    });
+  };
+
+  bindNativeDatePicker(issueDateInput);
+  bindNativeDatePicker(expirationDateInput);
+  bindNativeDatePicker(dueDateInput);
+
   if (estimateNumberInput) estimateNumberInput.value = state.estimateNumber;
   if (issueDateInput) issueDateInput.value = state.issueDate;
   if (expirationDateInput) expirationDateInput.value = state.expirationDate;
@@ -2096,7 +2121,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     stageRange.value = String(normalizedStage);
   }
 
-  if (workersBody) renderSalesWorkers(workersBody, state.workers);
+  if (workersBody) renderSalesWorkers(state, settings, metrics);
 
   if (projectPicker) {
     projectPicker.innerHTML = `<option value="">Portfolio estimate link</option>${signedProjects.map((project) => `<option value="${escapeHtml(project.projectId)}">${escapeHtml(project.projectId)} | ${escapeHtml(project.clientName)} | ${escapeHtml(project.status)}</option>`).join("")}`;
@@ -2224,6 +2249,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
   document.getElementById("btnAddSalesWorker")?.addEventListener('click', () => {
     state.workers.push(createWorker());
+    saveSales(state);
+    renderSales();
+  });
+
+  document.getElementById("btnClearSalesWorkers")?.addEventListener('click', () => {
+    state.workers = cloneWorkers(DEFAULT_SALES.workers);
     saveSales(state);
     renderSales();
   });
@@ -5649,6 +5680,8 @@ function renderSupervisor() {
     render();
   });
 })();
+
+
 
 
 
