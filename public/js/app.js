@@ -288,6 +288,60 @@ Thank you.`
     };
   }
   function saveSales(state) { writeStore(LS_SALES, state); }
+  function addSellerWorkerFallback() {
+    const state = loadSales();
+    state.workers = Array.isArray(state.workers) && state.workers.length
+      ? state.workers
+      : cloneWorkers(DEFAULT_SALES.workers);
+    state.workers.push({
+      name: `Worker ${state.workers.length + 1}`,
+      type: "installer",
+      days: 0,
+      rate: ""
+    });
+    saveSales(state);
+    if (typeof renderSales === "function") {
+      try {
+        renderSales();
+        return;
+      } catch (_error) {}
+    }
+    window.location.reload();
+  }
+
+  function clearSellerWorkersFallback() {
+    const state = loadSales();
+    state.workers = cloneWorkers(DEFAULT_SALES.workers);
+    saveSales(state);
+    if (typeof renderSales === "function") {
+      try {
+        renderSales();
+        return;
+      } catch (_error) {}
+    }
+    window.location.reload();
+  }
+
+  window.__mgAddSalesWorker = addSellerWorkerFallback;
+  window.__mgClearSalesWorkers = clearSellerWorkersFallback;
+
+  if (!window.__mgSellerWorkerDelegationBound) {
+    window.__mgSellerWorkerDelegationBound = true;
+    document.addEventListener("click", (event) => {
+      const addButton = event.target.closest("#btnAddSalesWorker");
+      if (addButton) {
+        event.preventDefault();
+        addSellerWorkerFallback();
+        return;
+      }
+
+      const clearButton = event.target.closest("#btnClearSalesWorkers");
+      if (clearButton) {
+        event.preventDefault();
+        clearSellerWorkersFallback();
+      }
+    });
+  }
   function loadSupervisor() {
     const saved = readStore(LS_SUPERVISOR, {});
     const owner = loadOwner();
@@ -5697,6 +5751,7 @@ function renderSupervisor() {
     render();
   });
 })();
+
 
 
 
