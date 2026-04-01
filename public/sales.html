@@ -690,17 +690,7 @@
           saveSalesState(state);
 
           const defaultSubject = 'Estimate ' + estimateNumber + ' | ' + projectName + ' | ' + totalFormatted;
-          const defaultScope = [
-            'Estimate total: ' + totalFormatted,
-            'Deposit required to schedule: ' + depositFormatted,
-            '',
-            'Estimate details:',
-            '- Estimate No.: ' + estimateNumber,
-            '- Project: ' + projectName,
-            '- Issue date: ' + (issueDateLong || '-'),
-            '- Expiration date: ' + (expirationDateLong || '-'),
-            '- Job site: ' + (location || '-')
-          ].join('\n');
+          const defaultScope = (messageToClient || '-').trim();
           const defaultMessage = [
             'Hi ' + (clientName || 'there') + ',',
             '',
@@ -861,7 +851,7 @@
                 toName,
                 subject,
                 messageText: message,
-                scopeOfWork: scope,
+                scopeOfWork: payload.scopeSummary || scope,
                 depositRequired: 1000,
                 projectName: payload.projectName || state.projectName || '',
                 clientName: toName || payload.clientName || state.clientName || '',
@@ -956,6 +946,7 @@
   </script>
 </body>
 </html>
+
 
 
 
