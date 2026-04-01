@@ -2503,6 +2503,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 window.renderSales = renderSales;
 window.openSendModal = openSendModal;
 window.closeSendModal = closeSendModal;
+window.sendQuote = sendQuote;
 
 function renderSupervisor() {
     if (!$("supervisorKpis")) return;
@@ -5812,6 +5813,7 @@ function renderSupervisor() {
     render();
   });
 })();
+
 
 
 
