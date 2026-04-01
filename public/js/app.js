@@ -2056,7 +2056,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const minimum = finiteNumber(base.minimum, 0);
     const negotiation = finiteNumber(base.negotiation, 0);
     const rawOffered = nonEmptyString(state?.price, state?.offeredPrice);
-    const offered = rawOffered === "" ? recommended : finiteNumber(rawOffered, recommended);
+    const manualOfferedActive = Boolean(state?._manualPriceTouched) && rawOffered !== "";
+    const offered = manualOfferedActive ? finiteNumber(rawOffered, recommended) : recommended;
     const commissionRate = finiteNumber(settings?.salesCommissionPct, DEFAULTS.salesCommissionPct);
     const commissionDisplay = round2(Math.max(offered, 0) * (commissionRate / 100));
     const stage = offered >= recommended ? 2 : offered >= negotiation ? 1 : 0;
@@ -2248,8 +2249,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   setText("salesTraffic", toneLabel);
   setText("salesHeroState", tone === "green" ? "Green" : tone === "amber" ? "Amber" : "Red");
   setText("salesHeroMeta", heroMeta);
-  setText("salesPrimaryPrice", formatMoney(offered));
-  setText("salesPrimaryMeta", `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers`);
+  setText("salesPrimaryPrice", formatMoney(metrics.recommended));
+  setText("salesPrimaryMeta", `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${formatMoney(offered)}`);
   setText("salesPrimaryCommission", metrics.commissionRate.toFixed(2) + "%");
   setText("salesPrimaryCommissionMeta", `${formatMoney(metrics.commissionDisplay)} estimated commission`);
   setText("salesApprovalAction", currentApproval ? "Pending Approval" : metrics.needsApproval ? "Request Approval" : "Ready to Send");
@@ -5804,6 +5805,10 @@ function renderSupervisor() {
     render();
   });
 })();
+
+
+
+
 
 
 
