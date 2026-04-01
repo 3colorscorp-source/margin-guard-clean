@@ -434,8 +434,7 @@
           refreshSellerFromStandalone();
         }, true);
 
-        body.addEventListener('change', function (event) {
-          const field = event.target;
+        function applyWorkerFieldChange(field) {
           if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement)) return;
           const row = field.closest('tr');
           const index = Number(row?.dataset.index ?? -1);
@@ -448,6 +447,14 @@
             : field.value;
           saveSalesState(state);
           refreshSellerFromStandalone();
+        }
+
+        body.addEventListener('input', function (event) {
+          applyWorkerFieldChange(event.target);
+        });
+
+        body.addEventListener('change', function (event) {
+          applyWorkerFieldChange(event.target);
         });
 
         body.addEventListener('click', function (event) {
@@ -484,4 +491,5 @@
   </script>
 </body>
 </html>
+
 
