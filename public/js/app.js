@@ -2247,17 +2247,27 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     });
   }
 
-  document.getElementById("btnAddSalesWorker")?.addEventListener('click', () => {
+  const addSalesWorker = () => {
+    if (!Array.isArray(state.workers)) state.workers = cloneWorkers(DEFAULT_SALES.workers);
     state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: "installer", days: 0, rate: "" });
     saveSales(state);
     renderSales();
-  });
+  };
 
-  document.getElementById("btnClearSalesWorkers")?.addEventListener('click', () => {
+  const clearSalesWorkers = () => {
     state.workers = cloneWorkers(DEFAULT_SALES.workers);
     saveSales(state);
     renderSales();
-  });
+  };
+
+  window.__mgAddSalesWorker = addSalesWorker;
+  window.__mgClearSalesWorkers = clearSalesWorkers;
+
+  const addSalesWorkerButton = document.getElementById("btnAddSalesWorker");
+  if (addSalesWorkerButton) addSalesWorkerButton.onclick = addSalesWorker;
+
+  const clearSalesWorkersButton = document.getElementById("btnClearSalesWorkers");
+  if (clearSalesWorkersButton) clearSalesWorkersButton.onclick = clearSalesWorkers;
 
   projectPicker?.addEventListener('change', () => {
     const selected = projectIndex.get(projectPicker.value);
