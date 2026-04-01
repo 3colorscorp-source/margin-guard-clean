@@ -1,4 +1,4 @@
-
+﻿
 (() => {
   const LS_SETTINGS = "mg_settings_v2";
   const LS_OWNER = "mg_owner_v2";
@@ -76,11 +76,20 @@
   };
 
   const DEFAULT_SALES = {
+    estimateNumber: "",
+    estimateStatus: "draft",
+    issueDate: "",
+    expirationDate: "",
     projectName: "",
     clientName: "",
+    customerEmail: "",
+    customerPhone: "",
+    location: "",
     dueDate: "",
     offeredPrice: 0,
+    messageToClient: "",
     notes: "",
+    sentAt: "",
     workers: [
       { name: "Worker 1", type: "installer", days: 5, rate: "" }
     ]
@@ -259,12 +268,22 @@ Thank you.`
     const owner = loadOwner();
     const hasProjectName = Object.prototype.hasOwnProperty.call(saved, "projectName");
     const hasClientName = Object.prototype.hasOwnProperty.call(saved, "clientName");
+    const hasLocation = Object.prototype.hasOwnProperty.call(saved, "location");
+    const issueDate = normalizeDateInput(saved.issueDate) || todayInputValue();
     return {
       ...DEFAULT_SALES,
       ...saved,
+      estimateNumber: nonEmptyString(saved.estimateNumber) || buildEstimateNumber(),
+      estimateStatus: nonEmptyString(saved.estimateStatus) || "draft",
+      issueDate,
+      expirationDate: normalizeDateInput(saved.expirationDate) || addDaysToInputValue(issueDate, 7),
       projectName: hasProjectName ? String(saved.projectName ?? "") : (owner.projectName || ""),
       clientName: hasClientName ? String(saved.clientName ?? "") : (owner.clientName || ""),
-      workers: Array.isArray(saved.workers) && saved.workers.length ? saved.workers : DEFAULT_SALES.workers,
+      customerEmail: String(saved.customerEmail ?? ""),
+      customerPhone: String(saved.customerPhone ?? ""),
+      location: hasLocation ? String(saved.location ?? "") : (owner.location || ""),
+      messageToClient: String(saved.messageToClient ?? ""),
+      workers: Array.isArray(saved.workers) && saved.workers.length ? saved.workers : DEFAULT_SALES.workers.map((worker) => ({ ...worker })),
       offeredPrice: saved.offeredPrice ?? 0
     };
   }
@@ -970,34 +989,33 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   }
 
   function buildSignedProjectFromSales(state, settings, metrics) {
-    const dueDate = normalizeDateInput(state.dueDate);
-    const owner = loadOwner();
-    return {
-      id: `PRJ-${Date.now()}`,
-      status: "active",
-      source: "sales",
-      signedAt: new Date().toISOString(),
-      projectName: state.projectName || "Project",
-      clientName: state.clientName || "",
-      clientEmail: "",
-      clientPhone: "",
-      location: nonEmptyString(owner.location),
-      dueDate,
-      estimatedDays: Number(metrics.totalWorkerDays || 0),
-      laborBudget: Number(metrics.labor || 0),
-      salePrice: Number(state.offeredPrice || 0),
-      recommendedPrice: Number(metrics.recommended || 0),
-      minimumPrice: Number(metrics.minimum || 0),
-      hoursPerDay: Number(settings.hoursPerDay || DEFAULTS.hoursPerDay),
-      workers: Array.isArray(state.workers) ? state.workers.map((worker) => ({
-        name: worker.name || "",
-        type: worker.type || "installer",
-        days: Number(worker.days || 0),
-        rate: worker.rate === "" || worker.rate == null ? "" : Number(worker.rate || 0)
-      })) : [],
-      notes: state.notes || ""
-    };
-  }
+  const owner = loadOwner();
+  const nowIso = new Date().toISOString();
+  const dueDate = normalizeDateInput(state.dueDate || state.expirationDate || todayInputValue());
+  return {
+    id: `${Date.now()}`,
+    projectId: nonEmptyString(state.projectName),
+    clientName: nonEmptyString(state.clientName),
+    clientEmail: nonEmptyString(state.customerEmail),
+    clientPhone: nonEmptyString(state.customerPhone),
+    location: nonEmptyString(state.location, owner.location),
+    dueDate,
+    workers: cloneWorkers(state.workers),
+    extras: [],
+    status: "signed",
+    approvedBySales: metrics.approved,
+    pricingStage: metrics.stage,
+    recommendedPrice: round2(metrics.recommended),
+    negotiationPrice: round2(metrics.negotiation),
+    minimumPrice: round2(metrics.minimum),
+    priceOffered: round2(metrics.offered),
+    finalPrice: round2(metrics.offered),
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    notes: state.notes || "",
+    commissionEstimate: metrics.commissionDisplay
+  };
+}
 
   function calcChangeOrder(project, report, settings, input) {
     const workers = Array.isArray(input?.workers) && input.workers.length
@@ -1241,8 +1259,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
                   <span class="msg-idx">${index + 1}</span>
                   <div>
                     <strong>${escapeHtml(row.title)}</strong>
-                    <span class="hub-inline-meta">${escapeHtml(row.customer)} � ${escapeHtml(row.nextAction)} � Score ${escapeHtml(String(row.priorityScore))}</span>
-                    <span class="hub-inline-meta">Balance ${escapeHtml(money(row.balance, settings.currency))} � Due ${escapeHtml(row.dueDate || "No due date")} � Stage ${escapeHtml(row.collectionStage || "new")}</span>
+                    <span class="hub-inline-meta">${escapeHtml(row.customer)} Â· ${escapeHtml(row.nextAction)} Â· Score ${escapeHtml(String(row.priorityScore))}</span>
+                    <span class="hub-inline-meta">Balance ${escapeHtml(money(row.balance, settings.currency))} Â· Due ${escapeHtml(row.dueDate || "No due date")} Â· Stage ${escapeHtml(row.collectionStage || "new")}</span>
                   </div>
                 </li>
                 `).join("")
@@ -1269,8 +1287,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
                   <span class="msg-idx">${index + 1}</span>
                   <div>
                     <strong>${escapeHtml(item.customer)}</strong>
-                    <span class="hub-inline-meta">Score ${escapeHtml(String(item.score))} � Open ${escapeHtml(item.openBalanceLabel)} � Overdue ${escapeHtml(item.overdueBalanceLabel)}</span>
-                    <span class="hub-inline-meta">${escapeHtml(String(item.projectCount))} projects � ${escapeHtml(String(item.brokenPromises))} broken promises � Paid ${escapeHtml(item.paidTotalLabel)}</span>
+                    <span class="hub-inline-meta">Score ${escapeHtml(String(item.score))} Â· Open ${escapeHtml(item.openBalanceLabel)} Â· Overdue ${escapeHtml(item.overdueBalanceLabel)}</span>
+                    <span class="hub-inline-meta">${escapeHtml(String(item.projectCount))} projects Â· ${escapeHtml(String(item.brokenPromises))} broken promises Â· Paid ${escapeHtml(item.paidTotalLabel)}</span>
                   </div>
                 </li>
               `).join("")
@@ -1311,7 +1329,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
                   <span class="msg-idx">${index + 1}</span>
                   <div>
                     <strong>${escapeHtml(item.title)}</strong>
-                    <span class="hub-inline-meta">${escapeHtml(item.customer)} � Margin ${escapeHtml(item.marginLabel)} � Sold ${escapeHtml(item.soldLabel)}</span>
+                    <span class="hub-inline-meta">${escapeHtml(item.customer)} Â· Margin ${escapeHtml(item.marginLabel)} Â· Sold ${escapeHtml(item.soldLabel)}</span>
                     <span class="hub-inline-meta">${escapeHtml(item.healthLabel)}</span>
                   </div>
                 </li>
@@ -1616,7 +1634,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         <div class="owner-quote-hero">
           <div class="owner-quote-kicker">Precio recomendado</div>
           <div class="owner-quote-price">${escapeHtml(money(metrics.recommended, settings.currency))}</div>
-          <div class="owner-quote-meta">${escapeHtml(money(metrics.pricePerUnit, settings.currency))} ${escapeHtml(pricingModeCopy)} � ${escapeHtml(metrics.quotedUnits.toFixed(2))} ${escapeHtml(metrics.pricingModeLabel === "dia" ? "dias" : "horas")} cotizables</div>
+          <div class="owner-quote-meta">${escapeHtml(money(metrics.pricePerUnit, settings.currency))} ${escapeHtml(pricingModeCopy)} Ã¯Â¿Â½ ${escapeHtml(metrics.quotedUnits.toFixed(2))} ${escapeHtml(metrics.pricingModeLabel === "dia" ? "dias" : "horas")} cotizables</div>
           <div class="owner-quote-strip">
             ${primaryCards.map(([title, big, small]) => `
               <div class="owner-mini-card">
@@ -1779,27 +1797,42 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   }
 
   function openSendModal(state, settings, metrics) {
-    const modal = $("sendModal");
-    if (!modal) return;
-    modal.setAttribute("aria-hidden", "false");
-    if ($("subject") && !$("subject").value) $("subject").value = `Project Quote - ${state.projectName || "Project"} - ${money(metrics.recommended, settings.currency)}`;
-    if ($("deposit")) { $("deposit").value = "1000.00"; $("deposit").setAttribute("readonly", "readonly"); }
-    if ($("message") && !$("message").value) {
-      $("message").value =
-`Hello${state.clientName ? ` ${state.clientName}` : ""},
-
-Thank you for the opportunity to quote your project.
-
-Recommended project total: ${money(metrics.recommended, settings.currency)}
-Required deposit to start: ${money(1000, settings.currency)}
-
-We can confirm schedule and next steps once deposit is received.
-
-Regards,
-${val("salesInitials") || "MG"}`;
-    }
-    updateSendCounts();
-  }
+  const modal = document.getElementById("sendModal");
+  if (!modal) return;
+  const estimateNumber = nonEmptyString(state.estimateNumber, buildEstimateNumber());
+  const issueDate = normalizeDateInput(state.issueDate || todayInputValue());
+  const expirationDate = normalizeDateInput(state.expirationDate || addDaysToInputValue(issueDate, 7));
+  state.estimateNumber = estimateNumber;
+  state.issueDate = issueDate;
+  state.expirationDate = expirationDate;
+  const subject = `Estimate ${estimateNumber} - ${nonEmptyString(state.projectName, "Project")}`;
+  const scopeText = nonEmptyString(state.messageToClient, state.notes, "Please review the estimate details below.");
+  const defaultMessage = [
+    `Hello ${nonEmptyString(state.clientName, "there")},`,
+    "",
+    `Estimate ${estimateNumber} for ${nonEmptyString(state.projectName, "your project")}.`,
+    `Issued: ${issueDate}. Expires: ${expirationDate}.`,
+    `Total estimate: ${formatMoney(metrics.offered || metrics.recommended || 0)}.`,
+    "",
+    "Please review the scope of work and let us know if you would like to move forward."
+  ].join("\n");
+  const toEmail = document.getElementById("toEmail");
+  const toName = document.getElementById("toName");
+  const subjectInput = document.getElementById("subject");
+  const scopeInput = document.getElementById("scope");
+  const messageInput = document.getElementById("message");
+  const depositInput = document.getElementById("deposit");
+  const sendStatus = document.getElementById("sendStatus");
+  if (toEmail) toEmail.value = nonEmptyString(state.customerEmail);
+  if (toName) toName.value = nonEmptyString(state.clientName);
+  if (subjectInput) subjectInput.value = subject;
+  if (scopeInput) scopeInput.value = scopeText;
+  if (messageInput) messageInput.value = defaultMessage;
+  if (depositInput && !depositInput.value) depositInput.value = "1000";
+  if (sendStatus) sendStatus.textContent = "";
+  modal.style.display = "flex";
+  updateSendCounts();
+}
 
   function closeSendModal() {
     if ($("sendModal")) $("sendModal").setAttribute("aria-hidden", "true");
@@ -1816,48 +1849,64 @@ ${val("salesInitials") || "MG"}`;
   }
 
   async function sendQuote(state, settings, metrics) {
-    const status = $("sendStatus");
-    const setStatus = (message, tone) => {
-      if (!status) return;
-      status.style.display = "block";
-      status.className = `notice ${tone || ""}`.trim();
-      status.textContent = message;
-    };
-
-    const toEmail = val("toEmail").trim();
-    const initials = val("salesInitials").trim();
-    if (!toEmail) return setStatus("Customer email is required.", "err");
-    if (!initials) return setStatus("Sales initials are required.", "err");
-
-    setStatus("Sending quote...", "");
-    try {
-      const response = await fetch("/.netlify/functions/send-quote-zapier", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          salesRepInitials: initials,
-          messageLanguage: "bilingual",
-          toEmail,
-          toName: val("toName").trim(),
-          subject: val("subject").trim() || "Project Quote",
-          messageText: val("message").trim(),
-          scopeOfWork: val("scope").trim(),
-          depositRequired: 1000,
-          projectName: state.projectName || "",
-          clientName: state.clientName || "",
-          location: state.location || "",
-          businessName: settings.bizName || DEFAULTS.bizName,
-          currency: settings.currency || "$",
-          recommendedTotal: metrics.recommended
-        })
-      });
-      if (!response.ok) throw new Error("Unable to send quote.");
-      setStatus("Quote sent successfully.", "ok");
-      setTimeout(closeSendModal, 900);
-    } catch (_err) {
-      setStatus("Quote delivery failed. Check Functions and Zapier env vars.", "err");
-    }
+  const sendStatus = document.getElementById("sendStatus");
+  const toEmail = nonEmptyString(document.getElementById("toEmail")?.value);
+  const toName = nonEmptyString(document.getElementById("toName")?.value, state.clientName);
+  const subject = nonEmptyString(document.getElementById("subject")?.value);
+  const scopeOfWork = nonEmptyString(document.getElementById("scope")?.value, state.messageToClient, state.notes);
+  const messageText = nonEmptyString(document.getElementById("message")?.value);
+  const depositRequired = parseNumber(document.getElementById("deposit")?.value);
+  const salesRepInitials = nonEmptyString(document.getElementById("salesInitials")?.value).toUpperCase();
+  if (!toEmail || !salesRepInitials) {
+    if (sendStatus) sendStatus.textContent = "Add customer email and sales rep initials before sending the estimate.";
+    return;
   }
+  const estimateNumber = nonEmptyString(state.estimateNumber, buildEstimateNumber());
+  const issueDate = normalizeDateInput(state.issueDate || todayInputValue());
+  const expirationDate = normalizeDateInput(state.expirationDate || addDaysToInputValue(issueDate, 7));
+  try {
+    if (sendStatus) sendStatus.textContent = "Sending estimate...";
+    const response = await fetch("/.netlify/functions/send-quote-zapier", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        salesRepInitials,
+        messageLanguage: "bilingual",
+        toEmail,
+        toName,
+        subject,
+        messageText,
+        scopeOfWork,
+        depositRequired: round2(depositRequired),
+        projectName: nonEmptyString(state.projectName),
+        clientName: nonEmptyString(state.clientName),
+        location: nonEmptyString(state.location),
+        businessName: nonEmptyString(settings.bizName, "Margin Guard"),
+        currency: "USD",
+        recommendedTotal: round2(metrics.offered || metrics.recommended || 0),
+        estimateNumber,
+        issueDate,
+        expirationDate
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Unable to send estimate.");
+    state.customerEmail = toEmail;
+    state.clientName = toName;
+    state.estimateNumber = estimateNumber;
+    state.issueDate = issueDate;
+    state.expirationDate = expirationDate;
+    state.messageToClient = scopeOfWork;
+    state.estimateStatus = "sent";
+    state.sentAt = new Date().toISOString();
+    saveSales(state);
+    if (sendStatus) sendStatus.textContent = "Estimate sent successfully.";
+    setTimeout(closeSendModal, 500);
+    renderSales();
+  } catch (error) {
+    if (sendStatus) sendStatus.textContent = error.message || "Unable to send estimate.";
+  }
+}
 
   function calcSales(state, settings) {
     const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
@@ -1980,512 +2029,319 @@ ${val("salesInitials") || "MG"}`;
   }
 
   function renderSales() {
-    if (!$("salesKpis")) return;
+  const state = loadSales();
+  const settings = loadSettings();
+  const metrics = calculateSalesMetrics(state, settings);
+  const approvals = loadApprovals();
+  const approvedItems = approvals.filter((item) => item.status === "approved");
+  const currentApproval = approvedItems[approvedItems.length - 1];
+  const signedProjects = loadSignedProjects();
+  const projectIndex = new Map(signedProjects.map((project) => [project.projectId, project]));
 
-    const settings = loadSettings();
-    const state = loadSales();
-    const activeProject = loadActiveProject();
-    const salesProjectPicker = $("salesProjectPicker");
-    const stageRange = $("salesStageRange");
-    const metrics = calcSales(state, settings);
-    const salesProjects = loadProjects();
-    const selectedProjectId = loadSupervisorSelectedProjectId();
-    const selectedProject = salesProjects.find((project) => project.id === selectedProjectId) || salesProjects[0] || null;
+  if (!state.estimateNumber) state.estimateNumber = buildEstimateNumber();
+  if (!state.issueDate) state.issueDate = todayInputValue();
+  if (!state.expirationDate) state.expirationDate = addDaysToInputValue(state.issueDate, 7);
+  if (!state.estimateStatus) state.estimateStatus = "draft";
 
-    if (salesProjectPicker) {
-      salesProjectPicker.innerHTML = salesProjects.length
-        ? salesProjects.map((project) => `<option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} - ${escapeHtml(project.clientName || "Sin cliente")}</option>`).join("")
-        : `<option value="">Sin proyectos firmados</option>`;
-      salesProjectPicker.value = selectedProject?.id || "";
-      salesProjectPicker.onchange = () => {
-        saveSupervisorSelectedProjectId(salesProjectPicker.value);
-        renderSales();
-      };
-    }
+  const estimateStatusMap = {
+    draft: "Draft",
+    pricing_ready: "Pricing Ready",
+    approval_requested: "Approval Requested",
+    sent: "Sent",
+    signed: "Signed"
+  };
 
-    setVal("salesProjectName", state.projectName);
-    setVal("salesClientName", state.clientName);
-    setVal("salesDueDate", state.dueDate);
-    setNum("salesPrice", state.offeredPrice);
-    setVal("salesNotes", state.notes);
-    count("salesProjectName", "salesProjectNameCount");
-    count("salesClientName", "salesClientNameCount");
-    count("salesNotes", "salesNotesCount");
+  const estimateStatusLabel = estimateStatusMap[state.estimateStatus] || toTitleCase(String(state.estimateStatus || "draft").replace(/_/g, " "));
+  const offered = metrics.offered || metrics.recommended || 0;
+  const isReady = metrics.workerDays > 0 && metrics.recommended > 0;
+  const tone = !isReady ? "amber" : offered >= metrics.recommended ? "green" : offered >= metrics.minimum ? "amber" : "red";
+  const toneLabel = tone === "green" ? "Healthy" : tone === "amber" ? "Needs Review" : "At Risk";
+  const heroMeta = [
+    `Estimate ${state.estimateNumber}`,
+    `Issue ${state.issueDate}`,
+    `Expires ${state.expirationDate}`
+  ].join(" | ");
 
-    renderSalesWorkers(state, settings, metrics);
+  const projectNameInput = document.getElementById("salesProjectName");
+  const clientNameInput = document.getElementById("salesClientName");
+  const customerEmailInput = document.getElementById("salesCustomerEmail");
+  const customerPhoneInput = document.getElementById("salesCustomerPhone");
+  const locationInput = document.getElementById("salesLocation");
+  const issueDateInput = document.getElementById("salesIssueDate");
+  const expirationDateInput = document.getElementById("salesExpirationDate");
+  const dueDateInput = document.getElementById("salesDueDate");
+  const estimateNumberInput = document.getElementById("salesEstimateNumber");
+  const priceInput = document.getElementById("salesPrice");
+  const messageToClientInput = document.getElementById("salesMessageToClient");
+  const notesInput = document.getElementById("salesNotes");
+  const stageRange = document.getElementById("salesStageRange");
+  const workersBody = document.getElementById("salesWorkersBody");
+  const projectPicker = document.getElementById("salesProjectPicker");
 
-    const refresh = () => {
-      state.projectName = val("salesProjectName");
-      state.clientName = val("salesClientName");
-      state.dueDate = normalizeDateInput(val("salesDueDate"));
-      const nextMetrics = calcSales(state, settings);
-      const recommended = nextMetrics.recommended;
-      const minimum = nextMetrics.minimum;
-      const negotiation = nextMetrics.negotiation;
-      const priceInput = $("salesPrice");
-      const priceTouched = priceInput?.dataset.touched === "true";
+  if (estimateNumberInput) estimateNumberInput.value = state.estimateNumber;
+  if (issueDateInput) issueDateInput.value = state.issueDate;
+  if (expirationDateInput) expirationDateInput.value = state.expirationDate;
+  if (projectNameInput) projectNameInput.value = state.projectName || "";
+  if (clientNameInput) clientNameInput.value = state.clientName || "";
+  if (customerEmailInput) customerEmailInput.value = state.customerEmail || "";
+  if (customerPhoneInput) customerPhoneInput.value = state.customerPhone || "";
+  if (locationInput) locationInput.value = state.location || "";
+  if (dueDateInput) dueDateInput.value = state.dueDate || "";
+  if (priceInput) priceInput.value = state.price || "";
+  if (messageToClientInput) messageToClientInput.value = state.messageToClient || "";
+  if (notesInput) notesInput.value = state.notes || "";
 
-      if (priceInput && (!priceTouched || Number(priceInput.value || 0) === 0)) {
-        const stageValue = Number(stageRange?.value || 2);
-        const stagePrice = stageValue === 2 ? recommended : (stageValue === 1 ? negotiation : minimum);
-        setNum("salesPrice", stagePrice);
-      }
-
-      state.offeredPrice = num("salesPrice", 0);
-      state.notes = val("salesNotes");
-      saveSales(state);
-
-      const offered = state.offeredPrice;
-      const discountPct = recommended > 0 ? clamp(((recommended - offered) / recommended) * 100, 0, 100) : 0;
-      let tone = "red";
-      let commissionPct = 0;
-      let confidence = 10;
-      let message = "El precio esta por debajo del piso permitido. Requiere aprobacion obligatoria.";
-      let heroState = "Rojo";
-      let heroMeta = "No se puede cerrar asi. Hay que subir precio o pedir aprobacion.";
-      let action = "Pedir aprobacion";
-      let actionMeta = "Este precio no se debe vender sin autorizacion.";
-
-      if (!state.workers.length) {
-        message = "Agrega al menos un trabajador para calcular la cotizacion.";
-        heroState = "Base";
-        heroMeta = "Define mano de obra por trabajador, con dias individuales.";
-        action = "Agregar trabajador";
-        actionMeta = "Sin mano de obra no se puede calcular el precio.";
-        tone = "amber";
-        confidence = 0;
-      } else if (recommended <= 0) {
-        message = nextMetrics.totalHours > 0
-          ? "Todavia no hay suficiente informacion para calcular el precio recomendado."
-          : "Ingresa dias por trabajador para calcular el objetivo recomendado.";
-        heroState = "Base";
-        heroMeta = nextMetrics.totalHours > 0
-          ? "Revisa los dias o costos base de los trabajadores."
-          : "Esperando mano de obra para calcular.";
-        action = "Completar datos";
-        actionMeta = "Primero captura dias por trabajador.";
-        tone = "amber";
-        confidence = 0;
-      } else if (offered <= 0) {
-        tone = "amber";
-        confidence = 0;
-        message = "Ya existe un recomendado. Ahora captura el precio que le vas a presentar al cliente.";
-        heroState = "Listo";
-        heroMeta = "El recomendado ya fue calculado con las unidades capturadas.";
-        action = "Proponer precio";
-        actionMeta = "Ingresa el numero que vas a presentar.";
-      } else if (offered >= recommended) {
-        tone = "green";
-        commissionPct = settings.salesCommissionPct;
-        confidence = 100;
-        message = "Precio sano. Se puede vender con confianza.";
-        heroState = "Verde";
-        heroMeta = "El precio protege margen, operacion y comision.";
-        action = "Cerrar venta";
-        actionMeta = "No necesita aprobacion. Puedes avanzar.";
-      } else if (offered >= minimum) {
-        tone = "amber";
-        const factor = clamp((offered - minimum) / Math.max(1, recommended - minimum), 0, 1);
-        commissionPct = settings.salesCommissionPct * (0.45 + factor * 0.55);
-        confidence = 45 + factor * 55;
-        message = "Precio negociable, pero cada descuento reduce tu comision.";
-        heroState = "Amarillo";
-        heroMeta = "Se puede trabajar, pero conviene defender el precio.";
-        action = "Negociar";
-        actionMeta = "Intenta acercarte al recomendado antes de cerrar.";
-      }
-
-      if ($("salesTraffic")) {
-        $("salesTraffic").className = `badge ${tone}`;
-        $("salesTraffic").textContent = tone === "green" ? "Aprobado" : (tone === "amber" ? "Negociar con cuidado" : "Bloqueado");
-      }
-      if ($("salesRule")) $("salesRule").textContent = message;
-      if ($("approvalHint")) $("approvalHint").textContent = tone === "red" ? "Precio rojo: aprobacion obligatoria del dueno o Sales Admin." : (tone === "amber" ? "Precio amarillo: se puede vender, pero conviene defender margen." : "Precio verde: no necesita aprobacion.");
-      if ($("salesProgress")) $("salesProgress").value = confidence;
-      if ($("salesHeroState")) $("salesHeroState").textContent = heroState;
-      if ($("salesHeroMeta")) $("salesHeroMeta").textContent = heroMeta;
-      if ($("salesPrimaryPrice")) $("salesPrimaryPrice").textContent = money(recommended, settings.currency);
-      if ($("salesPrimaryMeta")) {
-        $("salesPrimaryMeta").textContent = state.workers.length && nextMetrics.totalHours > 0
-          ? `${nextMetrics.totalWorkerDays.toFixed(2)} worker-days � ${nextMetrics.totalHours.toFixed(2)} horas-hombre � ${state.workers.length} trabajadores`
-          : "Ingresa mano de obra para calcular el recomendado.";
-      }
-      if ($("salesPrimaryCommission")) $("salesPrimaryCommission").textContent = `${commissionPct.toFixed(2)}%`;
-      if ($("salesPrimaryCommissionMeta")) $("salesPrimaryCommissionMeta").textContent = `${money(offered * (commissionPct / 100), settings.currency)} estimado`;
-      if ($("salesApprovalAction")) $("salesApprovalAction").textContent = action;
-      if ($("salesApprovalActionMeta")) $("salesApprovalActionMeta").textContent = actionMeta;
-      if ($("salesStageMin")) $("salesStageMin").textContent = `Minimo ${money(minimum, settings.currency)}`;
-      if ($("salesStageNegotiation")) $("salesStageNegotiation").textContent = `Negociacion ${money(negotiation, settings.currency)}`;
-      if ($("salesStageRecommended")) $("salesStageRecommended").textContent = `Recomendado ${money(recommended, settings.currency)}`;
-      if ($("salesCrewHint")) {
-        $("salesCrewHint").textContent = state.workers.length
-          ? `${state.workers.length} trabajadores � ${nextMetrics.totalWorkerDays.toFixed(2)} worker-days � ${nextMetrics.totalHours.toFixed(2)} horas-hombre`
-          : "Define mano de obra por trabajador para calcular horas-hombre y precio recomendado.";
-      }
-
-      if ($("salesSignedProject")) {
-        $("salesSignedProject").textContent = activeProject?.projectName || "Sin proyecto firmado";
-      }
-      if ($("salesSignedMeta")) {
-        if (activeProject) {
-          $("salesSignedMeta").textContent = `Proyecto activo � ${activeProject.dueDate || "Sin fecha"} � ${money(activeProject.laborBudget, settings.currency)} labor � ${Number(activeProject.estimatedDays || 0).toFixed(2)} dias`;
-        } else {
-          $("salesSignedMeta").textContent = "Firma una cotizacion para mandarla a Supervisor.";
-        }
-      }
-      if ($("salesSignedBadge")) {
-        $("salesSignedBadge").className = `badge ${activeProject ? "green" : "amber"}`;
-        $("salesSignedBadge").textContent = activeProject ? "Proyecto activo" : "Pendiente de firma";
-      }
-
-      if ($("salesProjectPortfolioCount")) {
-        $("salesProjectPortfolioCount").textContent = String(salesProjects.length);
-      }
-      if ($("salesProjectStatus")) {
-        $("salesProjectStatus").textContent = selectedProject?.status || "draft";
-      }
-
-      const commissionAmount = offered * (commissionPct / 100);
-      $("salesKpis").innerHTML = [
-        ["Trabajadores", `${state.workers.length}`, "Mano de obra modelada para este proyecto"],
-        ["Worker-days", nextMetrics.totalWorkerDays.toFixed(2), "Suma de dias por trabajador"],
-        ["Horas-hombre", nextMetrics.totalHours.toFixed(2), "Carga total de mano de obra estimada"],
-        ["Piso minimo", money(minimum, settings.currency), "No vender por debajo de este numero"],
-        ["Precio negociacion", money(negotiation, settings.currency), "Punto medio para negociar sin caer al piso"],
-        ["Objetivo recomendado", money(recommended, settings.currency), "Numero ideal para vender con margen sano"],
-        ["Precio al cliente", money(offered, settings.currency), "Numero actual de la negociacion"],
-        ["Descuento aplicado", `${discountPct.toFixed(2)}%`, "Comparado contra el recomendado"],
-        ["Comision estimada", `${commissionPct.toFixed(2)}% � ${money(commissionAmount, settings.currency)}`, "Pago estimado del vendedor"]
-      ].map(([label, value, meta]) => `
-        <div class="kpi-box">
-          <div class="label">${escapeHtml(label)}</div>
-          <div class="value">${escapeHtml(value)}</div>
-          <div class="meta">${escapeHtml(meta)}</div>
-        </div>
-      `).join("");
-
-      const scripts = tone === "green"
-        ? ["Este precio protege calidad, calendario y garantia.", "Si aprobamos hoy, podemos asegurar mano de obra y agenda de instalacion."]
-        : tone === "amber"
-          ? ["Podemos sostener ese numero si ajustamos alcance o dividimos el trabajo por fases.", "Prefiero proteger el resultado final antes que crear problemas con cambios y extras despues."]
-          : ["Ese numero no esta aprobado. Hay que ajustar alcance, calendario o precio.", "Para vender abajo de esto se necesita autorizacion del dueno o Sales Admin."];
-
-      if ($("negotiationList")) {
-        $("negotiationList").innerHTML = scripts.map((line, index) => `
-          <li><span class="msg-idx">${index + 1}</span>${escapeHtml(line)}</li>
-        `).join("");
-      }
-
-      if (selectedProject) {
-        const selectedReport = loadSupervisorReport(selectedProject);
-
-        if ($("salesChangeOrderBody")) {
-          $("salesChangeOrderBody").innerHTML = selectedReport.changeOrders?.length
-            ? selectedReport.changeOrders.map((row, index) => `
-                <tr>
-                  <td>${escapeHtml(row.title || "Change order")}</td>
-                  <td>${money(row.offeredPrice || 0, settings.currency)}</td>
-                  <td>
-                    <select data-co-status="${index}">
-                      ${["draft", "sent", "approved", "signed"].map((statusValue) => `
-                        <option value="${statusValue}" ${normalizeCommercialStatus(row.commercialStatus || (row.applied ? "approved" : "draft")) === statusValue ? "selected" : ""}>${statusValue}</option>
-                      `).join("")}
-                    </select>
-                  </td>
-                  <td>
-                    <div class="row-actions">
-                      <button class="btn ghost" data-co-pdf="${index}">PDF</button>
-                      <button class="btn primary" data-co-send="${index}">Send</button>
-                    </div>
-                  </td>
-                </tr>
-              `).join("")
-            : `<tr><td colspan="4">No change orders yet.</td></tr>`;
-
-          $("salesChangeOrderBody").querySelectorAll("select[data-co-status]").forEach((el) => {
-            el.onchange = () => {
-              const report = loadSupervisorReport(selectedProject);
-              const index = Number(el.dataset.coStatus || -1);
-              if (index < 0 || !report.changeOrders[index]) return;
-              report.changeOrders[index].commercialStatus = normalizeCommercialStatus(el.value);
-              saveSupervisorReport(selectedProject.id, report);
-              renderSales();
-            };
-          });
-
-          $("salesChangeOrderBody").querySelectorAll("button[data-co-pdf]").forEach((button) => {
-            button.onclick = () => {
-              const index = Number(button.dataset.coPdf || -1);
-              const row = selectedReport.changeOrders?.[index];
-              if (!row) return;
-              exportChangeOrderPdf(selectedProject, row, settings);
-            };
-          });
-
-          $("salesChangeOrderBody").querySelectorAll("button[data-co-send]").forEach((button) => {
-            button.onclick = () => {
-              const index = Number(button.dataset.coSend || -1);
-              const report = loadSupervisorReport(selectedProject);
-              const row = report.changeOrders?.[index];
-              if (!row) return;
-              report.changeOrders[index] = {
-                ...row,
-                commercialStatus: "sent",
-                sentAt: new Date().toISOString()
-              };
-              saveSupervisorReport(selectedProject.id, report);
-              sendChangeOrder(selectedProject, report.changeOrders[index], settings);
-              renderSales();
-            };
-          });
-        }
-
-        const salesInvoiceState = getProjectInvoiceState(selectedProject);
-        if ($("salesInvoiceProject")) $("salesInvoiceProject").textContent = selectedProject.projectName || "Sin proyecto";
-        if ($("salesInvoiceClient")) $("salesInvoiceClient").textContent = selectedProject.clientName || "Sin cliente";
-        if ($("salesInvoiceNo")) setVal("salesInvoiceNo", salesInvoiceState.invoiceNo || "");
-        if ($("salesInvoiceDate")) setVal("salesInvoiceDate", salesInvoiceState.invoiceDate || "");
-        if ($("salesInvoiceBase")) setNum("salesInvoiceBase", salesInvoiceState.baseAmount);
-        if ($("salesInvoiceDeposit")) setNum("salesInvoiceDeposit", salesInvoiceState.depositApplied);
-        if ($("salesInvoiceReceived")) setNum("salesInvoiceReceived", salesInvoiceState.receivedApplied);
-        if ($("salesInvoiceStatus")) setVal("salesInvoiceStatus", salesInvoiceState.status);
-
-        const refreshSalesInvoice = () => {
-          const baseAmount = num("salesInvoiceBase", salesInvoiceState.baseAmount);
-          const depositApplied = num("salesInvoiceDeposit", 0);
-          const receivedApplied = num("salesInvoiceReceived", 0);
-          const invoiceMetrics = calcInvoice(selectedProject, selectedReport, {
-            baseAmount,
-            depositApplied,
-            receivedApplied
-          });
-          const nextInvoiceState = {
-            invoiceNo: val("salesInvoiceNo"),
-            invoiceDate: val("salesInvoiceDate"),
-            baseAmount,
-            depositApplied,
-            receivedApplied,
-            status: inferInvoiceStatus(invoiceMetrics.total, depositApplied, receivedApplied, val("salesInvoiceStatus"))
-          };
-
-          saveProjectInvoiceState(selectedProject.id, nextInvoiceState);
-          if ($("salesInvoiceStatus")) setVal("salesInvoiceStatus", nextInvoiceState.status);
-
-          if ($("salesInvoiceSubtotal")) $("salesInvoiceSubtotal").textContent = money(invoiceMetrics.subtotal, settings.currency);
-          if ($("salesInvoiceChangeOrders")) $("salesInvoiceChangeOrders").textContent = money(invoiceMetrics.changeOrderAmount, settings.currency);
-          if ($("salesInvoiceTotal")) $("salesInvoiceTotal").textContent = money(invoiceMetrics.total, settings.currency);
-          if ($("salesInvoiceBalance")) $("salesInvoiceBalance").textContent = money(invoiceMetrics.balance, settings.currency);
-        };
-
-        ["salesInvoiceNo", "salesInvoiceDate", "salesInvoiceBase", "salesInvoiceDeposit", "salesInvoiceReceived", "salesInvoiceStatus"].forEach((id) => {
-          const el = $(id);
-          if (!el) return;
-          el.oninput = refreshSalesInvoice;
-          if (el.tagName === "SELECT") el.onchange = refreshSalesInvoice;
-        });
-
-        if ($("btnSalesInvoicePdf")) {
-          $("btnSalesInvoicePdf").onclick = () => {
-            exportInvoicePdf("sales", selectedProject, selectedReport, settings, {
-              invoiceNo: val("salesInvoiceNo"),
-              invoiceDate: val("salesInvoiceDate"),
-              baseAmount: num("salesInvoiceBase", selectedProject.salePrice || 0),
-              depositApplied: num("salesInvoiceDeposit", 0),
-              receivedApplied: num("salesInvoiceReceived", 0)
-            });
-          };
-        }
-
-        if ($("btnSalesProjectComplete")) {
-          $("btnSalesProjectComplete").onclick = () => {
-            updateProjectById(selectedProject.id, { status: "completed", completedAt: new Date().toISOString() });
-            renderSales();
-          };
-        }
-
-        refreshSalesInvoice();
-      } else {
-        if ($("salesChangeOrderBody")) $("salesChangeOrderBody").innerHTML = `<tr><td colspan="3">No projects signed yet.</td></tr>`;
-      }
-    };
-
-    if ($("salesModeHint")) $("salesModeHint").textContent = `Cada trabajador usa ${metrics.hoursPerDay.toFixed(2)} horas por dia. Si el costo base queda vacio, usa Business Settings segun el tipo.`;
-    if ($("salesEntryHint")) $("salesEntryHint").textContent = "Captura los dias de cada trabajador por individual. El sistema calcula horas-hombre, recomendado, negociacion y minimo.";
-
-    ["salesProjectName", "salesClientName", "salesDueDate", "salesPrice", "salesNotes"].forEach((id) => {
-      const el = $(id);
-      if (el) {
-        el.oninput = () => {
-          if (id === "salesPrice") el.dataset.touched = "true";
-          if (id === "salesProjectName") count("salesProjectName", "salesProjectNameCount");
-          if (id === "salesClientName") count("salesClientName", "salesClientNameCount");
-          if (id === "salesNotes") count("salesNotes", "salesNotesCount");
-          refresh();
-        };
-      }
-    });
-
-    if (stageRange) {
-      stageRange.oninput = () => {
-        const nextMetrics = calcSales(state, settings);
-        const minimum = nextMetrics.minimum;
-        const recommended = nextMetrics.recommended;
-        const negotiation = nextMetrics.negotiation;
-        const stageValue = Number(stageRange.value || 2);
-        const stagePrice = stageValue === 2 ? recommended : (stageValue === 1 ? negotiation : minimum);
-        if ($("salesPrice")) {
-          $("salesPrice").dataset.touched = "false";
-          setNum("salesPrice", stagePrice);
-        }
-        refresh();
-      };
-    }
-
-    if ($("btnNewSalesQuote")) {
-      $("btnNewSalesQuote").onclick = () => {
-        if (!confirm("Crear una nueva cotizacion? Esto limpiara el borrador actual de ventas.")) return;
-        saveSales({
-          ...DEFAULT_SALES,
-          projectName: "",
-          clientName: "",
-          dueDate: "",
-          offeredPrice: 0,
-          notes: "",
-          workers: DEFAULT_SALES.workers.map((worker) => ({ ...worker }))
-        });
-        if ($("salesPrice")) $("salesPrice").dataset.touched = "false";
-        if (stageRange) stageRange.value = "2";
-        if ($("approvalStatus")) {
-          $("approvalStatus").style.display = "block";
-          $("approvalStatus").className = "notice ok";
-          $("approvalStatus").textContent = "Nuevo borrador listo para una cotizacion nueva.";
-        }
-        if ($("salesSignedStatus")) {
-          $("salesSignedStatus").style.display = "none";
-          $("salesSignedStatus").textContent = "";
-        }
-        renderSales();
-      };
-    }
-
-    if ($("btnSubmitApproval")) {
-      $("btnSubmitApproval").onclick = () => {
-        const nextMetrics = calcSales(state, settings);
-        const rows = loadApprovals();
-        rows.unshift({
-          id: `APR-${Date.now()}`,
-          createdAt: new Date().toISOString(),
-          projectName: state.projectName || "Project",
-          clientName: state.clientName || "",
-          dueDate: normalizeDateInput(state.dueDate),
-          offeredPrice: state.offeredPrice,
-          recommended: nextMetrics.recommended,
-          minimum: nextMetrics.minimum,
-          estimatedDays: nextMetrics.totalWorkerDays,
-          laborBudget: nextMetrics.labor,
-          hoursPerDay: nextMetrics.hoursPerDay,
-          workers: Array.isArray(state.workers) ? state.workers.map((worker) => ({
-            name: worker.name || "",
-            type: worker.type || "installer",
-            days: Number(worker.days || 0),
-            rate: worker.rate === "" || worker.rate == null ? "" : Number(worker.rate || 0)
-          })) : [],
-          note: state.notes || "",
-          status: "pending"
-        });
-        saveApprovals(rows);
-        if ($("approvalStatus")) {
-          $("approvalStatus").style.display = "block";
-          $("approvalStatus").className = "notice ok";
-          $("approvalStatus").textContent = "Solicitud enviada a Sales Admin.";
-        }
-      };
-    }
-
-    if ($("btnMarkSold")) {
-      $("btnMarkSold").onclick = () => {
-        const nextMetrics = calcSales(state, settings);
-        state.projectName = val("salesProjectName");
-        state.clientName = val("salesClientName");
-        state.dueDate = normalizeDateInput(val("salesDueDate"));
-        state.offeredPrice = num("salesPrice", 0);
-        state.notes = val("salesNotes");
-        saveSales(state);
-
-        if (!state.projectName.trim()) return alert("Project name is required.");
-        if (!state.clientName.trim()) return alert("Client name is required.");
-        if (!state.dueDate) return alert("Committed date is required.");
-        if (!state.workers.length || nextMetrics.totalWorkerDays <= 0) return alert("Add worker-days before signing the project.");
-
-        const project = buildSignedProjectFromSales(state, settings, nextMetrics);
-        upsertProject(project);
-        saveSupervisorSelectedProjectId(project.id);
-        saveSupervisorReport(project.id, buildDefaultSupervisorReport(project));
-
-        if ($("salesSignedStatus")) {
-          $("salesSignedStatus").style.display = "block";
-          $("salesSignedStatus").className = "notice ok";
-          $("salesSignedStatus").textContent = `Proyecto firmado y agregado a Supervisor: ${project.projectName}.`;
-        }
-
-        renderSales();
-      };
-    }
-
-    const openSalesSendModal = () => {
-      const nextMetrics = calcSales(state, settings);
-      if ($("scope") && !$("scope").value) $("scope").value = state.notes || "";
-      openSendModal(state, settings, nextMetrics);
-    };
-
-    if ($("btnSendQuote")) {
-      $("btnSendQuote").onclick = openSalesSendModal;
-    }
-
-    if ($("btnSendQuoteInline")) {
-      $("btnSendQuoteInline").onclick = openSalesSendModal;
-    }
-
-    if ($("btnSendClose")) $("btnSendClose").onclick = closeSendModal;
-    if ($("btnSendCancel")) $("btnSendCancel").onclick = closeSendModal;
-    if ($("btnSendNow")) {
-      $("btnSendNow").onclick = () => {
-        const nextMetrics = calcSales(state, settings);
-        sendQuote(state, settings, nextMetrics);
-      };
-    }
-
-    ["toEmail", "toName", "subject", "scope", "message", "salesInitials"].forEach((id) => {
-      if ($(id)) $(id).oninput = updateSendCounts;
-    });
-
-    if ($("btnAddSalesWorker")) {
-      $("btnAddSalesWorker").onclick = () => {
-        state.workers.push({
-          name: `Worker ${state.workers.length + 1}`,
-          type: "installer",
-          days: 0,
-          rate: ""
-        });
-        saveSales(state);
-        renderSales();
-      };
-    }
-
-    if ($("btnClearSalesWorkers")) {
-      $("btnClearSalesWorkers").onclick = () => {
-        if (!confirm("Limpiar mano de obra de vendedor?")) return;
-        state.workers = [{ name: "Worker 1", type: "installer", days: 0, rate: "" }];
-        if ($("salesPrice")) $("salesPrice").dataset.touched = "false";
-        saveSales(state);
-        renderSales();
-      };
-    }
-
-    refresh();
+  if (stageRange) {
+    const normalizedStage = metrics.stage >= 2 ? 2 : metrics.stage <= 0 ? 0 : 1;
+    stageRange.value = String(normalizedStage);
   }
 
-  function renderSupervisor() {
+  if (workersBody) renderSalesWorkers(workersBody, state.workers);
+
+  if (projectPicker) {
+    projectPicker.innerHTML = `<option value="">Portfolio estimate link</option>${signedProjects.map((project) => `<option value="${escapeHtml(project.projectId)}">${escapeHtml(project.projectId)} | ${escapeHtml(project.clientName)} | ${escapeHtml(project.status)}</option>`).join("")}`;
+    projectPicker.value = signedProjects.some((project) => project.projectId === state.projectName) ? state.projectName : "";
+  }
+
+  setText("salesEstimateStatus", estimateStatusLabel);
+  setText("salesEstimateSummary", `Customer ${nonEmptyString(state.clientName, "Pending")} | ${toneLabel} | Total ${formatMoney(offered)}`);
+  setText("salesTraffic", toneLabel);
+  setText("salesHeroState", tone === "green" ? "Green" : tone === "amber" ? "Amber" : "Red");
+  setText("salesHeroMeta", heroMeta);
+  setText("salesPrimaryPrice", formatMoney(offered));
+  setText("salesPrimaryMeta", `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers`);
+  setText("salesPrimaryCommission", metrics.commissionRate.toFixed(2) + "%");
+  setText("salesPrimaryCommissionMeta", `${formatMoney(metrics.commissionDisplay)} estimated commission`);
+  setText("salesApprovalAction", currentApproval ? "Pending Approval" : metrics.needsApproval ? "Request Approval" : "Ready to Send");
+  setText("salesApprovalActionMeta", metrics.needsApproval ? "Pricing is below recommendation or approval is required." : "Estimate can move forward without extra approval.");
+  setText("salesStageMin", formatMoney(metrics.minimum));
+  setText("salesStageNegotiation", formatMoney(metrics.negotiation));
+  setText("salesStageRecommended", formatMoney(metrics.recommended));
+  setText("salesCrewHint", `${metrics.workersCount} workers configured for ${metrics.workerHours.toFixed(2)} labor hours.`);
+  setText("approvalHint", currentApproval ? `Latest approval for ${currentApproval.projectId} | ${formatMoney(currentApproval.price)}` : "No active approval request.");
+  setText("salesRule", metrics.needsApproval ? "Estimate requires approval before signing below recommendation." : "Estimate is inside a healthy selling range.");
+
+  const kpiBlocks = [
+    { label: "Subtotal", value: formatMoney(offered) },
+    { label: "Recommended", value: formatMoney(metrics.recommended) },
+    { label: "Minimum", value: formatMoney(metrics.minimum) },
+    { label: "Commission", value: formatMoney(metrics.commissionDisplay) }
+  ];
+  const salesKpis = document.getElementById("salesKpis");
+  if (salesKpis) {
+    salesKpis.innerHTML = kpiBlocks.map((item) => `<article class="compact-stat"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></article>`).join("");
+  }
+
+  const negotiationList = document.getElementById("negotiationList");
+  if (negotiationList) {
+    const guidance = [
+      `Estimate status: ${estimateStatusLabel}.`,
+      `Offer range: ${formatMoney(metrics.minimum)} to ${formatMoney(metrics.recommended)}.`,
+      metrics.needsApproval ? "Approval is recommended before signing this estimate." : "Estimate can be sent directly to the customer."
+    ];
+    negotiationList.innerHTML = guidance.map((line) => `<li>${escapeHtml(line)}</li>`).join("");
+  }
+
+  const portfolioCount = document.getElementById("salesProjectPortfolioCount");
+  if (portfolioCount) portfolioCount.textContent = `${signedProjects.length} active records`;
+
+  const projectLink = projectIndex.get(state.projectName);
+  setText("salesProjectProgress", projectLink ? `${toTitleCase(projectLink.status)} | ${formatMoney(projectLink.finalPrice || projectLink.priceOffered || 0)}` : "No linked signed project yet.");
+
+  const changeOrderBody = document.getElementById("salesChangeOrderBody");
+  if (changeOrderBody) {
+    const orders = projectLink?.changeOrders || [];
+    changeOrderBody.innerHTML = orders.length
+      ? orders.map((order) => `<tr><td>${escapeHtml(order.title || order.id || "Change order")}</td><td>${escapeHtml(toTitleCase(order.status || "draft"))}</td><td>${escapeHtml(formatMoney(order.price || 0))}</td><td><button class="secondary-button" data-sales-co-pdf="${escapeHtml(order.id || "")}">PDF</button></td></tr>`).join("")
+      : '<tr><td colspan="4" class="empty-row">No change orders linked yet.</td></tr>';
+  }
+
+  const invoiceSummary = projectLink?.invoice || {};
+  setText("salesInvoiceNo", invoiceSummary.invoiceNo || "Not assigned");
+  setText("salesInvoiceStatus", toTitleCase(invoiceSummary.status || "draft"));
+  setText("salesInvoiceDue", invoiceSummary.dueDate || "Not scheduled");
+  setText("salesInvoicePaid", formatMoney(invoiceSummary.paid || 0));
+  setText("salesInvoiceBalance", formatMoney(invoiceSummary.balanceDue || 0));
+
+  function persistSalesDraft(nextStatus) {
+    state.estimateNumber = nonEmptyString(estimateNumberInput?.value, buildEstimateNumber());
+    state.issueDate = normalizeDateInput(issueDateInput?.value || todayInputValue());
+    state.expirationDate = normalizeDateInput(expirationDateInput?.value || addDaysToInputValue(state.issueDate, 7));
+    state.projectName = nonEmptyString(projectNameInput?.value);
+    state.clientName = nonEmptyString(clientNameInput?.value);
+    state.customerEmail = nonEmptyString(customerEmailInput?.value);
+    state.customerPhone = nonEmptyString(customerPhoneInput?.value);
+    state.location = nonEmptyString(locationInput?.value);
+    state.dueDate = normalizeDateInput(dueDateInput?.value || state.expirationDate);
+    state.price = priceInput?.value || "";
+    state.messageToClient = nonEmptyString(messageToClientInput?.value);
+    state.notes = nonEmptyString(notesInput?.value);
+    if (nextStatus) state.estimateStatus = nextStatus;
+    saveSales(state);
+  }
+
+  [projectNameInput, clientNameInput, customerEmailInput, customerPhoneInput, locationInput, issueDateInput, expirationDateInput, dueDateInput, estimateNumberInput, messageToClientInput, notesInput].forEach((input) => {
+    if (!input) return;
+    input.oninput = () => persistSalesDraft();
+    input.onchange = () => persistSalesDraft();
+  });
+
+  if (priceInput) {
+    priceInput.oninput = () => {
+      state.price = priceInput.value;
+      state._manualPriceTouched = true;
+      state.estimateStatus = metrics.recommended > 0 ? "pricing_ready" : state.estimateStatus;
+      saveSales(state);
+      renderSales();
+    };
+  }
+
+  if (stageRange) {
+    stageRange.oninput = () => {
+      const stage = Number(stageRange.value || 2);
+      const nextPrice = stage <= 0 ? metrics.minimum : stage === 1 ? metrics.negotiation : metrics.recommended;
+      state.price = nextPrice ? String(round2(nextPrice)) : "";
+      state._manualPriceTouched = true;
+      state.estimateStatus = nextPrice ? "pricing_ready" : state.estimateStatus;
+      saveSales(state);
+      renderSales();
+    };
+  }
+
+  if (workersBody) {
+    workersBody.querySelectorAll('input, select').forEach((control) => {
+      control.addEventListener('input', () => {
+        state.estimateStatus = metrics.workerDays > 0 ? "pricing_ready" : state.estimateStatus;
+        saveSales(state);
+      });
+      control.addEventListener('change', () => {
+        state.estimateStatus = metrics.workerDays > 0 ? "pricing_ready" : state.estimateStatus;
+        saveSales(state);
+        renderSales();
+      });
+    });
+  }
+
+  document.getElementById("btnAddSalesWorker")?.addEventListener('click', () => {
+    state.workers.push(createWorker());
+    saveSales(state);
+    renderSales();
+  });
+
+  projectPicker?.addEventListener('change', () => {
+    const selected = projectIndex.get(projectPicker.value);
+    if (!selected) return;
+    state.projectName = selected.projectId;
+    state.clientName = selected.clientName || state.clientName;
+    state.customerEmail = selected.clientEmail || state.customerEmail;
+    state.customerPhone = selected.clientPhone || state.customerPhone;
+    state.location = selected.location || state.location;
+    state.price = String(round2(selected.finalPrice || selected.priceOffered || 0));
+    state.dueDate = normalizeDateInput(selected.dueDate || state.dueDate || todayInputValue());
+    state.estimateStatus = "pricing_ready";
+    saveSales(state);
+    renderSales();
+  });
+
+  document.getElementById("btnNewSalesQuote")?.addEventListener('click', () => {
+    if (!window.confirm('Start a new estimate draft? Current sales values will reset.')) return;
+    const fresh = structuredClone(DEFAULT_SALES);
+    fresh.estimateNumber = buildEstimateNumber();
+    fresh.issueDate = todayInputValue();
+    fresh.expirationDate = addDaysToInputValue(fresh.issueDate, 7);
+    fresh.estimateStatus = "draft";
+    fresh.price = "";
+    fresh.notes = "";
+    fresh.messageToClient = "";
+    fresh.customerEmail = "";
+    fresh.customerPhone = "";
+    fresh.location = "";
+    fresh.projectName = "";
+    fresh.clientName = "";
+    saveSales(fresh);
+    renderSales();
+  });
+
+  document.getElementById("btnSendQuote")?.addEventListener('click', () => {
+    persistSalesDraft('sent');
+    openSendModal(state, settings, calculateSalesMetrics(state, settings));
+  });
+  document.getElementById("btnSendQuoteInline")?.addEventListener('click', () => {
+    persistSalesDraft('sent');
+    openSendModal(state, settings, calculateSalesMetrics(state, settings));
+  });
+
+  document.getElementById("btnSubmitApproval")?.addEventListener('click', () => {
+    persistSalesDraft('approval_requested');
+    const currentMetrics = calculateSalesMetrics(state, settings);
+    const payload = {
+      id: Date.now(),
+      status: 'requested',
+      requestedAt: new Date().toISOString(),
+      projectId: nonEmptyString(state.projectName, 'Estimate'),
+      clientName: nonEmptyString(state.clientName),
+      customerEmail: nonEmptyString(state.customerEmail),
+      location: nonEmptyString(state.location),
+      price: round2(currentMetrics.offered),
+      recommended: round2(currentMetrics.recommended),
+      minimum: round2(currentMetrics.minimum),
+      estimateNumber: state.estimateNumber,
+      expirationDate: state.expirationDate
+    };
+    const queue = loadApprovals();
+    queue.push(payload);
+    saveApprovals(queue);
+    renderSales();
+  });
+
+  document.getElementById("btnMarkSold")?.addEventListener('click', () => {
+    persistSalesDraft('signed');
+    const currentMetrics = calculateSalesMetrics(state, settings);
+    if (!state.projectName || !state.clientName || !state.dueDate || currentMetrics.workerDays <= 0) {
+      window.alert('Complete project, customer, due date, and labor details before signing the estimate.');
+      return;
+    }
+    const project = buildSignedProjectFromSales(state, settings, currentMetrics);
+    saveActiveProject(project);
+    upsertSignedProject(project);
+    setLatestReport(ensureSupervisorReport(project));
+    renderSales();
+  });
+
+  document.getElementById("btnSalesProjectComplete")?.addEventListener('click', () => {
+    const activeProject = loadActiveProject();
+    if (!activeProject?.projectId) return;
+    activeProject.status = 'completed';
+    activeProject.updatedAt = new Date().toISOString();
+    saveActiveProject(activeProject);
+    upsertSignedProject(activeProject);
+    renderSales();
+  });
+
+  document.getElementById("btnSalesInvoiceOpen")?.addEventListener('click', () => {
+    window.location.href = '/estimates-invoices';
+  });
+
+  document.getElementById("btnSalesInvoiceSend")?.addEventListener('click', () => {
+    openSendModal(state, settings, calculateSalesMetrics(state, settings));
+  });
+
+  document.getElementById("btnSalesInvoicePdf")?.addEventListener('click', () => {
+    window.print();
+  });
+
+  document.querySelectorAll('[data-sales-co-pdf]').forEach((button) => {
+    button.addEventListener('click', () => exportChangeOrderPdf(button.getAttribute('data-sales-co-pdf')));
+  });
+
+  document.getElementById("btnCloseSend")?.addEventListener('click', closeSendModal);
+  document.getElementById("btnSendQuoteEmail")?.addEventListener('click', () => sendQuote(state, settings, calculateSalesMetrics(state, settings)));
+}
+
+
+  
+
+function renderSupervisor() {
     if (!$("supervisorKpis")) return;
 
     const settings = loadSettings();
@@ -2498,7 +2354,7 @@ ${val("salesInitials") || "MG"}`;
     if (picker) {
       picker.innerHTML = projects.length
         ? projects.map((project) => `
-            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} � ${escapeHtml(project.clientName || "Sin cliente")}</option>
+            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${escapeHtml(project.clientName || "Sin cliente")}</option>
           `).join("")
         : `<option value="">Sin proyectos firmados</option>`;
       picker.value = selectedProject?.id || "";
@@ -2766,7 +2622,7 @@ ${val("salesInitials") || "MG"}`;
       if ($("coPrimaryPrice")) $("coPrimaryPrice").textContent = money(changeMetrics.recommended, settings.currency);
       if ($("coPrimaryMeta")) {
         $("coPrimaryMeta").textContent = changeMetrics.totalWorkerDays > 0
-          ? `${changeMetrics.totalWorkerDays.toFixed(2)} worker-days � ${changeMetrics.totalHours.toFixed(2)} horas de equipo � ${changeMetrics.crewSize} trabajadores`
+          ? `${changeMetrics.totalWorkerDays.toFixed(2)} worker-days ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${changeMetrics.totalHours.toFixed(2)} horas de equipo ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${changeMetrics.crewSize} trabajadores`
           : "Ingresa dias por trabajador para cotizar el trabajo extra.";
       }
       if ($("coSuggestedDays")) $("coSuggestedDays").textContent = `${changeMetrics.totalWorkerDays.toFixed(2)} dias`;
@@ -4361,9 +4217,9 @@ ${val("salesInitials") || "MG"}`;
             <span class="msg-idx">${index + 1}</span>
             <div>
               <strong>${escapeHtml(row.title)}</strong>
-              <span class="hub-inline-meta">${escapeHtml(row.customer)} � Score ${escapeHtml(String(row.priorityScore))} � ${escapeHtml(row.nextAction)}</span>
-              <span class="hub-health ${escapeHtml(row.projectHealthTone || "green")}">Health ${escapeHtml(String(row.projectHealthScore))}% � ${escapeHtml(row.projectHealthLabel)}</span>
-              <span class="hub-inline-meta">Balance ${escapeHtml(money(row.balance, settings.currency))} � Due ${escapeHtml(row.dueDate || "No due date")}</span>
+              <span class="hub-inline-meta">${escapeHtml(row.customer)} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Score ${escapeHtml(String(row.priorityScore))} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${escapeHtml(row.nextAction)}</span>
+              <span class="hub-health ${escapeHtml(row.projectHealthTone || "green")}">Health ${escapeHtml(String(row.projectHealthScore))}% ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${escapeHtml(row.projectHealthLabel)}</span>
+              <span class="hub-inline-meta">Balance ${escapeHtml(money(row.balance, settings.currency))} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Due ${escapeHtml(row.dueDate || "No due date")}</span>
             </div>
           </li>
         `).join("")
@@ -4408,8 +4264,8 @@ ${val("salesInitials") || "MG"}`;
             <td>
               <strong>${escapeHtml(row.title)}</strong>
               <div class="meta">${escapeHtml(row.invoiceNo)}</div>
-              <span class="hub-inline-meta">Priority ${escapeHtml(String(row.priorityScore))} � ${escapeHtml(row.nextAction)}</span>
-              <span class="hub-health ${escapeHtml(row.projectHealthTone || "green")}">Health ${escapeHtml(String(row.projectHealthScore))}% � ${escapeHtml(row.projectHealthLabel)}</span>
+              <span class="hub-inline-meta">Priority ${escapeHtml(String(row.priorityScore))} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${escapeHtml(row.nextAction)}</span>
+              <span class="hub-health ${escapeHtml(row.projectHealthTone || "green")}">Health ${escapeHtml(String(row.projectHealthScore))}% ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${escapeHtml(row.projectHealthLabel)}</span>
             </td>
             <td><span class="hub-status ${escapeHtml(row.status)}">${escapeHtml(row.status)}</span></td>
             <td>${money(row.amount, settings.currency)}</td>
@@ -4497,9 +4353,9 @@ ${val("salesInitials") || "MG"}`;
                     <div class="hub-pipeline-card" draggable="true" data-hub-pipeline="${escapeHtml(row.projectId)}">
                       <strong>${escapeHtml(row.title)}</strong>
                       <span class="hub-inline-meta">${escapeHtml(row.customer)}</span>
-                      <span class="hub-inline-meta">${escapeHtml(money(row.amount, settings.currency))} � Balance ${escapeHtml(money(row.balance, settings.currency))}</span>
-                      <span class="hub-inline-meta">Priority ${escapeHtml(String(row.priorityScore))} � ${escapeHtml(row.nextAction)}</span>
-                      <span class="hub-health ${escapeHtml(row.projectHealthTone || "green")}">Health ${escapeHtml(String(row.projectHealthScore))}% � ${escapeHtml(row.projectHealthLabel)}</span>
+                      <span class="hub-inline-meta">${escapeHtml(money(row.amount, settings.currency))} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Balance ${escapeHtml(money(row.balance, settings.currency))}</span>
+                      <span class="hub-inline-meta">Priority ${escapeHtml(String(row.priorityScore))} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${escapeHtml(row.nextAction)}</span>
+                      <span class="hub-health ${escapeHtml(row.projectHealthTone || "green")}">Health ${escapeHtml(String(row.projectHealthScore))}% ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${escapeHtml(row.projectHealthLabel)}</span>
                       <div class="hub-pipeline-actions">
                         <button class="btn ghost" type="button" data-hub-pipeline-view="${escapeHtml(row.projectId)}">View</button>
                         ${getHubRowActionState(row).canMarkSent ? `<button class="btn ghost" type="button" data-hub-pipeline-sent="${escapeHtml(row.projectId)}">Sent</button>` : ""}
@@ -4582,7 +4438,7 @@ ${val("salesInitials") || "MG"}`;
 
     if ($("hubClientModal")) $("hubClientModal").setAttribute("aria-hidden", "false");
     if ($("hubClientTitle")) $("hubClientTitle").textContent = customerName || "Client detail";
-    if ($("hubClientSubtitle")) $("hubClientSubtitle").textContent = `${filtered.length} proyectos � Open ${money(totalOpen, settings.currency)}`;
+    if ($("hubClientSubtitle")) $("hubClientSubtitle").textContent = `${filtered.length} proyectos ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Open ${money(totalOpen, settings.currency)}`;
     if ($("hubClientStats")) {
       $("hubClientStats").innerHTML = [
         ["Open Balance", money(totalOpen, settings.currency), "Saldo vivo de este cliente"],
@@ -4762,7 +4618,7 @@ ${val("salesInitials") || "MG"}`;
     const openPaymentForm = (row, existingPayment, onSubmit) => {
       showHubActionForm({
         title: existingPayment ? "Editar pago" : "Registrar pago",
-        subtitle: `${row.title} � ${row.customer}`,
+        subtitle: `${row.title} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${row.customer}`,
         submitLabel: existingPayment ? "Guardar cambios" : "Guardar pago",
         fields: [
           { id: "hubFormAmount", label: "Amount", type: "number", step: "0.01", value: existingPayment?.amount ?? "", placeholder: "0.00" },
@@ -4799,7 +4655,7 @@ ${val("salesInitials") || "MG"}`;
       const invoice = getProjectInvoiceState(row.project);
       showHubActionForm({
         title: "Registrar follow-up",
-        subtitle: `${row.title} � ${row.customer}`,
+        subtitle: `${row.title} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${row.customer}`,
         submitLabel: "Guardar seguimiento",
         fields: [
           {
@@ -4847,7 +4703,7 @@ ${val("salesInitials") || "MG"}`;
       const invoice = getProjectInvoiceState(row.project);
       showHubActionForm({
         title: "Guardar payment link",
-        subtitle: `${row.title} � ${row.invoiceNo || "No invoice"}`,
+        subtitle: `${row.title} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${row.invoiceNo || "No invoice"}`,
         submitLabel: "Guardar link",
         fields: [
           { id: "hubFormPaymentLink", label: "Payment link URL", type: "text", value: invoice.paymentLink || "", placeholder: "https://..." }
@@ -4867,7 +4723,7 @@ ${val("salesInitials") || "MG"}`;
     const openCustomerSetupForm = (row) => {
       showHubActionForm({
         title: "Customer setup",
-        subtitle: `${row.title} � ${row.customer}`,
+        subtitle: `${row.title} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${row.customer}`,
         submitLabel: "Guardar cliente",
         fields: [
           { id: "hubFormCustomerName", label: "Customer Name", type: "text", value: row.project?.clientName || "", placeholder: "Nombre del cliente" },
@@ -4903,7 +4759,7 @@ ${val("salesInitials") || "MG"}`;
       const invoice = getProjectInvoiceState(row.project);
       showHubActionForm({
         title: "Configurar invoice",
-        subtitle: `${row.title} � ${row.customer}`,
+        subtitle: `${row.title} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${row.customer}`,
         submitLabel: "Guardar invoice",
         fields: [
           { id: "hubFormInvoiceNo", label: "Invoice No", type: "text", value: invoice.invoiceNo || "", placeholder: "INV-1001" },
@@ -5176,8 +5032,8 @@ ${val("salesInitials") || "MG"}`;
                 <span class="msg-idx">${index + 1}</span>
                 <div>
                   <strong>${escapeHtml(item.customer)}</strong>
-                  <span class="hub-inline-meta">Score ${escapeHtml(String(item.score))} � Open ${escapeHtml(item.openBalanceLabel)} � Overdue ${escapeHtml(item.overdueBalanceLabel)}</span>
-                  <span class="hub-inline-meta">${escapeHtml(String(item.projectCount))} projects � ${escapeHtml(String(item.brokenPromises))} broken promises � Paid ${escapeHtml(item.paidTotalLabel)}</span>
+                  <span class="hub-inline-meta">Score ${escapeHtml(String(item.score))} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Open ${escapeHtml(item.openBalanceLabel)} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Overdue ${escapeHtml(item.overdueBalanceLabel)}</span>
+                  <span class="hub-inline-meta">${escapeHtml(String(item.projectCount))} projects ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${escapeHtml(String(item.brokenPromises))} broken promises ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Paid ${escapeHtml(item.paidTotalLabel)}</span>
                 </div>
               </li>
             `).join("")
@@ -5284,7 +5140,7 @@ ${val("salesInitials") || "MG"}`;
         onPromise: (row) => {
           openHubFormModal({
             title: "Promised payment",
-            subtitle: `${row.title} � ${row.customer}`,
+            subtitle: `${row.title} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${row.customer}`,
             submitLabel: "Guardar promesa",
             fields: [
               { id: "hubFormQuickPromiseDate", label: "Promised Payment Date", type: "date", value: row.promisedDateRaw || "" }
@@ -5439,7 +5295,7 @@ ${val("salesInitials") || "MG"}`;
               value: segments[0]?.[0] || "overdue",
               options: segments.map(([value, label, count, amount]) => ({
                 value,
-                label: `${label} � ${count} rows � ${amount}`
+                label: `${label} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${count} rows ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${amount}`
               }))
             }
           ],
@@ -5793,6 +5649,10 @@ ${val("salesInitials") || "MG"}`;
     render();
   });
 })();
+
+
+
+
 
 
 

@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
@@ -26,8 +26,7 @@
         <a class="btn" href="/supervisor">Supervisor</a>
         <a class="btn" href="/sales-admin">Sales Admin</a>
         <button class="btn" id="btnManagePlan">Gestionar plan</button>
-        <a class="btn" href="/create-estimate">Crear estimate formal</a>
-        <button class="btn" id="btnSendQuote">Enviar quote actual</button>
+        <button class="btn" id="btnSendQuote">Enviar estimate</button>
         <button class="btn danger" id="btnLogout">Cerrar sesion</button>
       </div>
     </div>
@@ -40,14 +39,14 @@
       <div class="card-inner">
         <div class="owner-hero-inner">
           <div>
-            <span class="eyebrow">Sales Console</span>
-            <h2 class="hero-title">Vende con claridad sin ver los costos internos del negocio.</h2>
-            <div class="sub" style="margin:0;">Esta pantalla le dice al vendedor si el precio está sano, negociable o bloqueado, y cuánto gana aproximadamente en comisión.</div>
+            <span class="eyebrow">Estimate Workspace</span>
+            <h2 class="hero-title">Construye, negocia y envia el estimate desde Vendedor.</h2>
+            <div class="sub" style="margin:0;">Esta pantalla concentra header, cliente, lineas de labor, mensaje para cliente y acciones comerciales sin brincar a otra vista.</div>
           </div>
           <div class="hero-score">
             <div class="hero-score-label">Estado actual</div>
-            <div class="hero-score-value" id="salesHeroState">Red</div>
-            <div class="hero-score-meta" id="salesHeroMeta">Esperando precio para evaluar.</div>
+            <div class="hero-score-value" id="salesHeroState">Base</div>
+            <div class="hero-score-meta" id="salesHeroMeta">Completa el estimate para empezar a negociar.</div>
           </div>
         </div>
       </div>
@@ -59,56 +58,69 @@
           <div class="card-inner">
             <div class="section-head">
               <div>
-                <h2>Crear o editar cotizacion</h2>
-                <div class="sub">Aqui armamos la quote comercial. El borrador se guarda mientras editas y luego puedes enviarlo, pedir aprobacion o firmarlo.</div>
+                <h2>Estimate comercial</h2>
+                <div class="sub">Paso 1: crea o actualiza el estimate. Paso 2: envia o pide aprobacion. Paso 3: cuando cierre, firma el proyecto.</div>
               </div>
-              <div class="badge amber" id="salesTraffic">Bloqueado</div>
+              <div class="badge amber" id="salesEstimateStatus">draft</div>
             </div>
+
+            <div class="notice" id="salesEstimateSummary">Completa el header, cliente y mano de obra para dejar listo el estimate.</div>
 
             <div class="form">
               <div class="field">
-                <label>Proyecto</label>
-                <input id="salesProjectName" maxlength="60" placeholder="Ej: Bathroom remodel - Millbrae" />
-                <div class="hint"><span id="salesProjectNameCount">0</span>/60</div>
+                <label>Estimate No.</label>
+                <input id="salesEstimateNumber" maxlength="30" placeholder="EST-1001" />
               </div>
               <div class="field">
-                <label>Cliente</label>
-                <input id="salesClientName" maxlength="60" placeholder="Ej: Angus / Homeowner" />
-                <div class="hint"><span id="salesClientNameCount">0</span>/60</div>
+                <label>Issue date</label>
+                <input id="salesIssueDate" type="date" />
+              </div>
+              <div class="field">
+                <label>Expiration date</label>
+                <input id="salesExpirationDate" type="date" />
               </div>
               <div class="field">
                 <label>Fecha comprometida</label>
                 <input id="salesDueDate" type="date" />
               </div>
               <div class="field">
-                <label>Precio propuesto al cliente</label>
-                <input id="salesPrice" type="number" step="0.01" placeholder="0.00" />
+                <label>Proyecto / Job name</label>
+                <input id="salesProjectName" maxlength="60" placeholder="Ej: Master bath remodel" />
+                <div class="hint"><span id="salesProjectNameCount">0</span>/60</div>
               </div>
               <div class="field">
-                <label>Modo actual</label>
-                <div class="notice" id="salesModeHint">La empresa cotiza por hora.</div>
+                <label>Cliente</label>
+                <input id="salesClientName" maxlength="60" placeholder="Ej: Maria y Librado" />
+                <div class="hint"><span id="salesClientNameCount">0</span>/60</div>
+              </div>
+              <div class="field">
+                <label>Email del cliente</label>
+                <input id="salesCustomerEmail" type="email" maxlength="80" placeholder="cliente@correo.com" />
+              </div>
+              <div class="field">
+                <label>Telefono del cliente</label>
+                <input id="salesCustomerPhone" maxlength="30" placeholder="(650) 555-0101" />
+              </div>
+              <div class="field">
+                <label>Job site address</label>
+                <input id="salesLocation" maxlength="90" placeholder="Direccion del trabajo" />
+              </div>
+              <div class="field">
+                <label>Precio propuesto al cliente</label>
+                <input id="salesPrice" type="number" step="0.01" placeholder="0.00" />
               </div>
             </div>
 
             <div class="sep"></div>
 
             <div class="dashboard-note">
-              <div class="dashboard-note-title">Mano de obra calculada</div>
-              <div class="dashboard-note-copy" id="salesCrewHint">Define los dias de cada trabajador para calcular horas-hombre y precio recomendado.</div>
+              <div class="dashboard-note-title">Labor builder</div>
+              <div class="dashboard-note-copy" id="salesCrewHint">Define dias por trabajador para calcular horas-hombre, recomendado, negociacion y piso minimo.</div>
             </div>
 
-            <div class="sep"></div>
-
-            <div class="section-head">
-              <div>
-                <h2>Mano de obra</h2>
-                <div class="sub">Si costo/hora esta vacio, usa el costo base definido en Business Settings segun el tipo.</div>
-              </div>
-            </div>
-
-            <div class="inline-actions" style="margin-bottom:12px;">
+            <div class="inline-actions" style="margin-top:12px; margin-bottom:12px;">
               <button class="btn primary" type="button" id="btnAddSalesWorker">Agregar trabajador</button>
-              <button class="btn danger" type="button" id="btnClearSalesWorkers">Limpiar</button>
+              <button class="btn danger" type="button" id="btnClearSalesWorkers">Limpiar labor</button>
             </div>
 
             <table class="table">
@@ -118,7 +130,7 @@
                   <th>Tipo</th>
                   <th>Dias</th>
                   <th>Costo base</th>
-                  <th>Costo Labor</th>
+                  <th>Labor</th>
                   <th>Acciones</th>
                 </tr>
               </thead>
@@ -129,21 +141,11 @@
 
             <div class="dashboard-note">
               <div class="dashboard-note-title">Control de precio</div>
-              <div class="dashboard-note-copy" id="salesEntryHint">Captura los dias por trabajador. El sistema calcula recomendado, negociacion y minimo automaticamente.</div>
+              <div class="dashboard-note-copy" id="salesEntryHint">El slider mueve el estimate entre minimo, negociacion y recomendado. Si editas el precio manualmente, el sistema respeta tu numero.</div>
             </div>
-
-            <div class="sep"></div>
-
-            <div class="field">
-              <label>Notas de negociacion</label>
-              <textarea id="salesNotes" rows="4" maxlength="600" placeholder="Objeciones del cliente, alcance, descuentos solicitados, cierre, etc."></textarea>
-              <div class="hint"><span id="salesNotesCount">0</span>/600</div>
-            </div>
-
-            <div class="notice" id="salesRule">Precio por debajo del minimo permitido.</div>
 
             <div style="margin-top:10px;">
-              <label class="sub" for="salesStageRange" style="display:block; margin-bottom:6px;">Control de precio</label>
+              <label class="sub" for="salesStageRange" style="display:block; margin-bottom:6px;">Posicion del estimate</label>
               <input id="salesStageRange" type="range" min="0" max="2" step="1" value="2" class="sales-stage-range" />
               <div class="sales-stage-labels">
                 <span id="salesStageMin">Minimo</span>
@@ -152,13 +154,25 @@
               </div>
             </div>
 
+            <div class="notice" id="salesRule" style="margin-top:10px;">Precio por debajo del minimo permitido.</div>
             <div class="notice" id="approvalHint" style="margin-top:10px;">Precio rojo: requiere aprobacion obligatoria.</div>
 
-            <div class="notice" style="margin-top:12px;">Paso 1: arma la quote. Paso 2: envia al cliente o pide aprobacion. Paso 3: cuando cierre, firma el proyecto.</div>
+            <div class="sep"></div>
+
+            <div class="field">
+              <label>Mensaje para cliente</label>
+              <textarea id="salesMessageToClient" rows="4" maxlength="600" placeholder="Mensaje visible para el cliente en el estimate o correo."></textarea>
+              <div class="hint"><span id="salesMessageToClientCount">0</span>/600</div>
+            </div>
+            <div class="field">
+              <label>Notas internas</label>
+              <textarea id="salesNotes" rows="4" maxlength="600" placeholder="Notas de negociacion, exclusiones, observaciones internas."></textarea>
+              <div class="hint"><span id="salesNotesCount">0</span>/600</div>
+            </div>
 
             <div class="inline-actions" style="margin-top:12px;">
               <button class="btn" type="button" id="btnNewSalesQuote">Nueva quote</button>
-              <button class="btn" type="button" id="btnSendQuoteInline">Enviar quote</button>
+              <button class="btn" type="button" id="btnSendQuoteInline">Enviar estimate</button>
               <button class="btn" type="button" id="btnSubmitApproval">Pedir aprobacion</button>
               <button class="btn primary" type="button" id="btnMarkSold">Firmar proyecto</button>
             </div>
@@ -167,130 +181,20 @@
           </div>
         </div>
 
-        <div class="card" style="margin-top:14px;">
-          <div class="card-inner">
-            <div class="section-head">
-              <div>
-                <h2>Portafolio comercial</h2>
-                <div class="sub">Aqui controlas proyectos firmados, change orders y estado comercial.</div>
-              </div>
-              <div class="badge amber" id="salesProjectStatus">draft</div>
-            </div>
-
-            <div class="form">
-              <div class="field">
-                <label>Proyecto seleccionado</label>
-                <select id="salesProjectPicker"></select>
-              </div>
-              <div class="field">
-                <label>Proyectos en cartera</label>
-                <div class="notice"><strong id="salesProjectPortfolioCount">0</strong> proyectos activos o historicos</div>
-              </div>
-            </div>
-
-            <div class="inline-actions" style="margin-top:10px;">
-              <button class="btn primary" type="button" id="btnSalesProjectComplete">Cerrar proyecto</button>
-            </div>
-
-            <div class="sep"></div>
-
-            <h2 style="margin-top:0;">Change Orders del proyecto</h2>
-            <div class="sub">Ventas puede mover el estado comercial sin tocar la captura de campo.</div>
-
-            <table class="table" style="margin-top:12px;">
-              <thead>
-                <tr>
-                  <th>Trabajo extra</th>
-                  <th>Precio cliente</th>
-                  <th>Estado</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody id="salesChangeOrderBody"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="card" style="margin-top:14px;">
-          <div class="card-inner">
-            <div class="section-head">
-              <div>
-                <h2>Invoice</h2>
-                <div class="sub">Factura del proyecto seleccionado, incluyendo change orders aprobados o enviados.</div>
-              </div>
-            </div>
-
-            <div class="form">
-              <div class="field">
-                <label>Proyecto</label>
-                <div class="notice" id="salesInvoiceProject">Sin proyecto</div>
-              </div>
-              <div class="field">
-                <label>Cliente</label>
-                <div class="notice" id="salesInvoiceClient">Sin cliente</div>
-              </div>
-              <div class="field">
-                <label>Invoice No.</label>
-                <input id="salesInvoiceNo" maxlength="30" placeholder="INV-1001" />
-              </div>
-              <div class="field">
-                <label>Invoice status</label>
-                <select id="salesInvoiceStatus">
-                  <option value="draft">draft</option>
-                  <option value="sent">sent</option>
-                  <option value="partial">partial</option>
-                  <option value="paid">paid</option>
-                </select>
-              </div>
-              <div class="field">
-                <label>Fecha de invoice</label>
-                <input id="salesInvoiceDate" type="date" />
-              </div>
-              <div class="field">
-                <label>Base contract</label>
-                <input id="salesInvoiceBase" type="number" step="0.01" placeholder="0.00" />
-              </div>
-              <div class="field">
-                <label>Deposit applied</label>
-                <input id="salesInvoiceDeposit" type="number" step="0.01" placeholder="0.00" />
-              </div>
-              <div class="field">
-                <label>Payments received</label>
-                <input id="salesInvoiceReceived" type="number" step="0.01" placeholder="0.00" />
-              </div>
-            </div>
-
-            <div class="supervisor-summary-grid" style="margin-top:12px;">
-              <div class="supervisor-summary-card">
-                <div class="title">Subtotal</div>
-                <div class="big" id="salesInvoiceSubtotal">$0.00</div>
-                <div class="small">Contrato + change orders</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Change Orders</div>
-                <div class="big" id="salesInvoiceChangeOrders">$0.00</div>
-                <div class="small">Extras incluidos</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Balance</div>
-                <div class="big" id="salesInvoiceBalance">$0.00</div>
-                <div class="small">Saldo pendiente</div>
-              </div>
-            </div>
-
-            <div class="inline-actions" style="margin-top:12px;">
-              <button class="btn primary" type="button" id="btnSalesInvoicePdf">Exportar Invoice PDF</button>
-            </div>
-
-            <div class="notice" style="margin-top:10px;">Total invoice: <strong id="salesInvoiceTotal">$0.00</strong></div>
-          </div>
-        </div>
       </div>
 
       <div>
         <div class="card owner-side-card">
           <div class="card-inner">
-            <h2>Resultado en vivo</h2>
+            <div class="section-head">
+              <div>
+                <h2>Resultado en vivo</h2>
+                <div class="sub">Lectura comercial para defender el estimate con claridad.</div>
+              </div>
+              <div class="badge amber" id="salesTraffic">Base</div>
+            </div>
+            <progress id="salesProgress" max="100" value="0" style="width:100%; margin-bottom:12px;"></progress>
+
             <div class="owner-kpi-shell">
               <div class="owner-quote-hero">
                 <div class="owner-quote-kicker">Precio recomendado</div>
@@ -312,22 +216,19 @@
             </div>
 
             <div class="sep"></div>
-
             <div class="kpi sales-kpi-grid" id="salesKpis"></div>
 
             <div class="sep"></div>
-
             <h2 style="margin-top:0;">Proyecto activo para Supervisor</h2>
             <div class="owner-mini-card" style="margin-bottom:12px;">
               <div class="title">Proyecto firmado</div>
               <div class="big" id="salesSignedProject">Sin proyecto firmado</div>
-              <div class="small" id="salesSignedMeta">Firma una cotizacion para mandarla a Supervisor.</div>
+              <div class="small" id="salesSignedMeta">Firma un estimate para mandarlo a Supervisor.</div>
             </div>
             <div class="badge amber" id="salesSignedBadge">Pendiente de firma</div>
 
             <div class="sep"></div>
-
-            <h2 style="margin-top:0;">Mensajes automaticos de negociacion</h2>
+            <h2 style="margin-top:0;">Mensajes de negociacion</h2>
             <ul class="msg-list sales-msg-grid" id="negotiationList"></ul>
           </div>
         </div>
@@ -339,8 +240,8 @@
     <div class="modal-card">
       <div class="modal-header">
         <div>
-          <div class="modal-title">Enviar quote actual</div>
-          <div class="modal-subtitle">Usa Netlify Functions + Zapier para envio al cliente.</div>
+          <div class="modal-title">Enviar estimate</div>
+          <div class="modal-subtitle">Usa Netlify Functions + Zapier para enviar la propuesta actual al cliente.</div>
         </div>
         <button class="icon-btn" id="btnSendClose">X</button>
       </div>
@@ -352,17 +253,17 @@
             <div class="hint"><span id="toEmailCount">0</span>/80</div>
           </div>
           <div class="field">
-            <label>Nombre del cliente (opcional)</label>
+            <label>Nombre del cliente</label>
             <input id="toName" maxlength="60" placeholder="Nombre" />
             <div class="hint"><span id="toNameCount">0</span>/60</div>
           </div>
           <div class="field">
-            <label>Iniciales del vendedor / Sales Rep Initials</label>
+            <label>Iniciales del vendedor</label>
             <input id="salesInitials" maxlength="6" placeholder="LM" />
             <div class="hint"><span id="salesInitialsCount">0</span>/6</div>
           </div>
           <div class="field">
-            <label>Deposito requerido (fijo)</label>
+            <label>Deposito requerido</label>
             <input id="deposit" type="number" step="0.01" placeholder="1000" />
           </div>
           <div class="field">
@@ -372,8 +273,8 @@
           </div>
         </div>
         <div class="field">
-          <label>Scope / Notas</label>
-          <textarea id="scope" rows="5" maxlength="1200" placeholder="Descripcion del trabajo, alcance, exclusiones, etc."></textarea>
+          <label>Scope / mensaje visible</label>
+          <textarea id="scope" rows="5" maxlength="1200" placeholder="Descripcion para el cliente, alcance, exclusiones, etc."></textarea>
           <div class="hint"><span id="scopeCount">0</span>/1200</div>
         </div>
         <div class="field">
@@ -395,10 +296,3 @@
   <script src="/js/app.js"></script>
 </body>
 </html>
-
-
-
-
-
-
-
