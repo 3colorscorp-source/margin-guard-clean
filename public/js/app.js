@@ -10,6 +10,8 @@
   const LS_PROJECTS = "mg_projects_v1";
   const LS_SUPERVISOR_REPORTS = "mg_supervisor_reports_v1";
   const LS_SUPERVISOR_SELECTED = "mg_supervisor_selected_project_v1";
+  const LS_ESTIMATES = "mg_estimates_v1";
+  const LS_ESTIMATE_DRAFT = "mg_estimate_draft_v1";
   const LS_HUB_VIEW = "mg_hub_view_v1";
   const LS_HUB_TEMPLATES = "mg_hub_templates_v1";
   const TENANT_SNAPSHOT_VERSION = 1;
@@ -24,6 +26,8 @@
     LS_PROJECTS,
     LS_SUPERVISOR_REPORTS,
     LS_SUPERVISOR_SELECTED,
+    LS_ESTIMATES,
+    LS_ESTIMATE_DRAFT,
     LS_HUB_VIEW,
     LS_HUB_TEMPLATES
   ];
@@ -2428,12 +2432,18 @@ ${val("salesInitials") || "MG"}`;
       };
     }
 
+    const openSalesSendModal = () => {
+      const nextMetrics = calcSales(state, settings);
+      if ($("scope") && !$("scope").value) $("scope").value = state.notes || "";
+      openSendModal(state, settings, nextMetrics);
+    };
+
     if ($("btnSendQuote")) {
-      $("btnSendQuote").onclick = () => {
-        const nextMetrics = calcSales(state, settings);
-        if ($("scope") && !$("scope").value) $("scope").value = state.notes || "";
-        openSendModal(state, settings, nextMetrics);
-      };
+      $("btnSendQuote").onclick = openSalesSendModal;
+    }
+
+    if ($("btnSendQuoteInline")) {
+      $("btnSendQuoteInline").onclick = openSalesSendModal;
     }
 
     if ($("btnSendClose")) $("btnSendClose").onclick = closeSendModal;
@@ -5783,6 +5793,9 @@ ${val("salesInitials") || "MG"}`;
     render();
   });
 })();
+
+
+
 
 
 

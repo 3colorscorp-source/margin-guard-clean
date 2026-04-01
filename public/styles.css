@@ -1,4 +1,4 @@
-﻿:root{
+:root{
   --bg:#070b14;
   --panel:#0c1426;
   --panel2:#0a1020;
@@ -905,4 +905,30 @@ small{ color:var(--muted); }
   .hub-kpi-grid{
     grid-template-columns:1fr;
   }
+}
+
+.estimate-block-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+}
+@media (max-width: 920px){
+  .estimate-block-grid{ grid-template-columns:1fr; }
+}
+.estimate-subcard{
+  background:rgba(9,15,28,.72);
+  border:1px solid rgba(255,255,255,.08);
+}
+.estimate-form-tight{ grid-template-columns:1fr 1fr; }
+@media (max-width: 720px){
+  .estimate-form-tight{ grid-template-columns:1fr; }
+}
+.estimate-table th,
+.estimate-table td,
+.estimate-recent-table th,
+.estimate-recent-table td{
+  vertical-align:top;
+}
+.estimate-summary-box .summary-body{
+  background:rgba(9,15,28,.72);
 }

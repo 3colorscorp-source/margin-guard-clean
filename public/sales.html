@@ -26,7 +26,8 @@
         <a class="btn" href="/supervisor">Supervisor</a>
         <a class="btn" href="/sales-admin">Sales Admin</a>
         <button class="btn" id="btnManagePlan">Gestionar plan</button>
-        <button class="btn" id="btnSendQuote">Enviar cotizacion</button>
+        <a class="btn" href="/create-estimate">Crear estimate formal</a>
+        <button class="btn" id="btnSendQuote">Enviar quote actual</button>
         <button class="btn danger" id="btnLogout">Cerrar sesion</button>
       </div>
     </div>
@@ -58,8 +59,8 @@
           <div class="card-inner">
             <div class="section-head">
               <div>
-                <h2>Cotizacion guiada para vendedor</h2>
-                <div class="sub">No muestra costos confidenciales. Solo precio permitido, estado y comision estimada.</div>
+                <h2>Crear o editar cotizacion</h2>
+                <div class="sub">Aqui armamos la quote comercial. El borrador se guarda mientras editas y luego puedes enviarlo, pedir aprobacion o firmarlo.</div>
               </div>
               <div class="badge amber" id="salesTraffic">Bloqueado</div>
             </div>
@@ -153,10 +154,13 @@
 
             <div class="notice" id="approvalHint" style="margin-top:10px;">Precio rojo: requiere aprobacion obligatoria.</div>
 
+            <div class="notice" style="margin-top:12px;">Paso 1: arma la quote. Paso 2: envia al cliente o pide aprobacion. Paso 3: cuando cierre, firma el proyecto.</div>
+
             <div class="inline-actions" style="margin-top:12px;">
-              <button class="btn" type="button" id="btnNewSalesQuote">Nueva cotizacion</button>
-              <button class="btn primary" type="button" id="btnMarkSold">Marcar como firmado</button>
-              <button class="btn primary" type="button" id="btnSubmitApproval">Enviar a Sales Admin</button>
+              <button class="btn" type="button" id="btnNewSalesQuote">Nueva quote</button>
+              <button class="btn" type="button" id="btnSendQuoteInline">Enviar quote</button>
+              <button class="btn" type="button" id="btnSubmitApproval">Pedir aprobacion</button>
+              <button class="btn primary" type="button" id="btnMarkSold">Firmar proyecto</button>
             </div>
             <div class="notice" id="salesSignedStatus" style="display:none; margin-top:10px;"></div>
             <div class="notice" id="approvalStatus" style="display:none; margin-top:10px;"></div>
@@ -335,7 +339,7 @@
     <div class="modal-card">
       <div class="modal-header">
         <div>
-          <div class="modal-title">Enviar cotizacion</div>
+          <div class="modal-title">Enviar quote actual</div>
           <div class="modal-subtitle">Usa Netlify Functions + Zapier para envio al cliente.</div>
         </div>
         <button class="icon-btn" id="btnSendClose">X</button>
@@ -391,5 +395,10 @@
   <script src="/js/app.js"></script>
 </body>
 </html>
+
+
+
+
+
 
 

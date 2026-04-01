@@ -1,4 +1,4 @@
-[build]
+﻿[build]
   publish = "public"
   functions = "netlify/functions"
 
@@ -23,6 +23,16 @@
 [[redirects]]
   from = "/estimates-invoices"
   to = "/estimates-invoices.html"
+  status = 200
+
+[[redirects]]
+  from = "/create-estimate"
+  to = "/create-estimate.html"
+  status = 200
+
+[[redirects]]
+  from = "/estimate-public"
+  to = "/estimate-public.html"
   status = 200
 
 [[redirects]]

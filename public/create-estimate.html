@@ -1,0 +1,281 @@
+﻿<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Create New Estimate</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body data-requires-auth="true">
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"><b>MG</b></div>
+        <div>
+          <h1>Margin Guard</h1>
+          <p id="planStatus">Validando suscripcion...</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <a class="btn" href="/dashboard">Dashboard</a>
+        <a class="btn" href="/estimates-invoices">Invoices Hub</a>
+        <a class="btn" href="/owner">Dueno</a>
+        <a class="btn" href="/sales">Vendedor</a>
+        <a class="btn" href="/supervisor">Supervisor</a>
+        <a class="btn" href="/sales-admin">Sales Admin</a>
+        <button class="btn" id="btnManagePlan">Gestionar plan</button>
+        <button class="btn danger" id="btnLogout">Cerrar sesion</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="account-pill" id="accountEmail">Cuenta activa</div>
+
+    <section class="card owner-hero">
+      <div class="card-inner">
+        <div class="owner-hero-inner">
+          <div>
+            <span class="eyebrow">Create New Estimate</span>
+            <h2 class="hero-title">Crea el estimate formal antes de convertirlo a invoice.</h2>
+            <div class="sub" style="margin:0;">Este modulo replica la logica principal de Square: customer, line items, totals, details, draft, envio y conversion posterior a invoice.</div>
+          </div>
+          <div class="hero-score">
+            <div class="hero-score-label">Estimate actual</div>
+            <div class="hero-score-value" id="estimateHeroStatus">Draft</div>
+            <div class="hero-score-meta" id="estimateHeroMeta">Todavia no se ha enviado al cliente.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="owner-grid">
+      <section class="card">
+        <div class="card-inner">
+          <div class="section-head">
+            <div>
+              <h2>Estimate builder</h2>
+              <div class="sub">Arma el estimate completo con customer, partidas, terminos y acciones.</div>
+            </div>
+            <div class="badge amber" id="estimateStatusBadge">draft</div>
+          </div>
+
+          <div class="notice" id="estimateFeedback" style="display:none; margin-bottom:12px;"></div>
+
+          <div class="estimate-block-grid">
+            <div class="card estimate-subcard">
+              <div class="card-inner">
+                <h3>1. Customer</h3>
+                <div class="sub">Busca o crea el cliente para este estimate.</div>
+                <div class="form estimate-form-tight">
+                  <div class="field">
+                    <label>Nombre del cliente</label>
+                    <input id="estimateCustomerName" maxlength="90" placeholder="Ej: Maria Librado" />
+                  </div>
+                  <div class="field">
+                    <label>Email</label>
+                    <input id="estimateCustomerEmail" type="email" maxlength="120" placeholder="cliente@email.com" />
+                  </div>
+                  <div class="field">
+                    <label>Telefono</label>
+                    <input id="estimateCustomerPhone" maxlength="30" placeholder="(650) 555-0101" />
+                  </div>
+                  <div class="field">
+                    <label>Job site address</label>
+                    <input id="estimateCustomerAddress" maxlength="160" placeholder="Direccion del proyecto" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card estimate-subcard">
+              <div class="card-inner">
+                <h3>2. Estimate header</h3>
+                <div class="sub">Datos visibles del estimate y del trabajo.</div>
+                <div class="form estimate-form-tight">
+                  <div class="field">
+                    <label>Titulo</label>
+                    <input id="estimateTitle" maxlength="100" placeholder="Bathroom Remodel Estimate" />
+                  </div>
+                  <div class="field">
+                    <label>Estimate number</label>
+                    <input id="estimateNumber" maxlength="40" placeholder="EST-1001" />
+                  </div>
+                  <div class="field">
+                    <label>Issue date</label>
+                    <input id="estimateIssueDate" type="date" />
+                  </div>
+                  <div class="field">
+                    <label>Expiration date</label>
+                    <input id="estimateExpirationDate" type="date" />
+                  </div>
+                  <div class="field">
+                    <label>Project / Job name</label>
+                    <input id="estimateProjectName" maxlength="120" placeholder="Santi y Maricio Bath" />
+                  </div>
+                  <div class="field">
+                    <label>Currency</label>
+                    <select id="estimateCurrency">
+                      <option value="$">USD</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card estimate-subcard" style="margin-top:14px;">
+            <div class="card-inner">
+              <div class="section-head">
+                <div>
+                  <h3>3. Line items</h3>
+                  <div class="sub">Services, materials o custom lines con descuentos y tax por linea.</div>
+                </div>
+                <div class="inline-actions">
+                  <button class="btn" type="button" id="btnEstimateAddService">Agregar service</button>
+                  <button class="btn" type="button" id="btnEstimateAddMaterial">Agregar material</button>
+                  <button class="btn" type="button" id="btnEstimateAddCustom">Agregar custom</button>
+                </div>
+              </div>
+              <div class="supervisor-table-wrap">
+                <table class="table estimate-table">
+                  <thead>
+                    <tr>
+                      <th>Type</th>
+                      <th>Name</th>
+                      <th>Description</th>
+                      <th>Qty</th>
+                      <th>Unit</th>
+                      <th>Unit price</th>
+                      <th>Discount</th>
+                      <th>Tax %</th>
+                      <th>Taxable</th>
+                      <th>Total</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="estimateItemsBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="estimate-block-grid" style="margin-top:14px;">
+            <div class="card estimate-subcard">
+              <div class="card-inner">
+                <h3>4. Estimate details</h3>
+                <div class="sub">Mensaje, terminos, notas internas y toggles de automatizacion.</div>
+                <div class="form estimate-form-tight">
+                  <div class="field" style="grid-column:1 / -1;">
+                    <label>Message to client</label>
+                    <textarea id="estimateMessage" rows="4" maxlength="900" placeholder="Gracias por la oportunidad. Este estimate cubre el alcance descrito abajo."></textarea>
+                  </div>
+                  <div class="field" style="grid-column:1 / -1;">
+                    <label>Terms</label>
+                    <textarea id="estimateTerms" rows="4" maxlength="900" placeholder="Valido por 15 dias. Material sujeto a disponibilidad."></textarea>
+                  </div>
+                  <div class="field" style="grid-column:1 / -1;">
+                    <label>Internal notes</label>
+                    <textarea id="estimateInternalNotes" rows="3" maxlength="900" placeholder="Notas internas para vendedor, owner o admin."></textarea>
+                  </div>
+                  <div class="field">
+                    <label>Sales rep initials</label>
+                    <input id="estimateSalesRep" maxlength="12" placeholder="LM" />
+                  </div>
+                  <div class="field">
+                    <label>Deposit required</label>
+                    <input id="estimateDepositRequired" type="number" step="0.01" placeholder="0.00" />
+                  </div>
+                  <div class="field">
+                    <label>Estimated start date</label>
+                    <input id="estimateStartDate" type="date" />
+                  </div>
+                  <div class="field">
+                    <label>Estimated duration</label>
+                    <input id="estimateDuration" maxlength="40" placeholder="5 working days" />
+                  </div>
+                  <div class="field" style="grid-column:1 / -1;">
+                    <label>Contract attachment URL</label>
+                    <input id="estimateContractUrl" maxlength="260" placeholder="https://... contrato.pdf" />
+                  </div>
+                </div>
+                <div class="inline-actions" style="margin-top:12px;">
+                  <label class="btn ghost"><input id="estimateAutoCreateProject" type="checkbox" style="margin-right:8px;">Auto create project</label>
+                  <label class="btn ghost"><input id="estimateAutoConvertInvoice" type="checkbox" style="margin-right:8px;">Auto convert to invoice</label>
+                  <label class="btn ghost"><input id="estimateRequireSignature" type="checkbox" style="margin-right:8px;">Require acceptance</label>
+                </div>
+              </div>
+            </div>
+
+            <div class="card estimate-subcard">
+              <div class="card-inner">
+                <h3>5. Totals</h3>
+                <div class="sub">Calculo en vivo del estimate.</div>
+                <div class="summary estimate-summary-box">
+                  <div class="summary-body">
+                    <div class="sum-row"><span>Subtotal</span><strong id="estimateSubtotal">$0.00</strong></div>
+                    <div class="sum-row"><span>Discount total</span><strong id="estimateDiscountTotal">$0.00</strong></div>
+                    <div class="sum-row"><span>Tax total</span><strong id="estimateTaxTotal">$0.00</strong></div>
+                    <div class="sum-row"><span>Deposit required</span><strong id="estimateDepositSummary">$0.00</strong></div>
+                    <div class="sum-row total"><span>Total estimate</span><strong id="estimateTotal">$0.00</strong></div>
+                  </div>
+                </div>
+
+                <div class="dashboard-note" style="margin-top:12px;">
+                  <div class="dashboard-note-title">Public review</div>
+                  <div class="dashboard-note-copy" id="estimatePublicLinkMeta">Guarda o envia el estimate para generar un link publico reusable.</div>
+                </div>
+
+                <div class="inline-actions" style="margin-top:12px;">
+                  <button class="btn" type="button" id="btnEstimatePreview">Preview</button>
+                  <button class="btn" type="button" id="btnEstimateOpenPublic">Open public</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card estimate-subcard" style="margin-top:14px;">
+            <div class="card-inner">
+              <h3>6. Actions</h3>
+              <div class="sub">Draft, duplicate, preview, send y reset del builder.</div>
+              <div class="inline-actions">
+                <button class="btn" type="button" id="btnEstimateSaveDraft">Save draft</button>
+                <button class="btn" type="button" id="btnEstimateDuplicate">Duplicate</button>
+                <button class="btn" type="button" id="btnEstimatePreviewInline">Preview</button>
+                <button class="btn primary" type="button" id="btnEstimateSend">Send</button>
+                <button class="btn danger" type="button" id="btnEstimateCancel">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card owner-side-card">
+        <div class="card-inner">
+          <h2>Recent estimates</h2>
+          <div class="sub">Drafts y estimates enviados para volver a abrirlos o duplicarlos.</div>
+          <div class="supervisor-table-wrap">
+            <table class="table estimate-recent-table">
+              <thead>
+                <tr>
+                  <th>Number</th>
+                  <th>Customer</th>
+                  <th>Status</th>
+                  <th>Total</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="estimateRecentBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script defer src="/js/tenant.js"></script>
+  <script defer src="/js/auth.js"></script>
+  <script defer src="/js/app.js"></script>
+  <script defer src="/js/estimate-builder.js"></script>
+</body>
+</html>

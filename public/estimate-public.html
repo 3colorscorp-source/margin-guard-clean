@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Public Estimate</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="container narrow">
+    <section class="card" style="margin-top:24px;">
+      <div class="card-inner">
+        <div class="section-head">
+          <div>
+            <h2 id="publicEstimateTitle">Estimate preview</h2>
+            <div class="sub" id="publicEstimateMeta">Comparte este link para revisar y aprobar.</div>
+          </div>
+          <div class="badge amber" id="publicEstimateStatus">draft</div>
+        </div>
+
+        <div class="grid" style="margin-top:14px;">
+          <div class="card estimate-subcard">
+            <div class="card-inner">
+              <div class="eyebrow">Customer</div>
+              <div id="publicEstimateCustomer"></div>
+            </div>
+          </div>
+          <div class="card estimate-subcard">
+            <div class="card-inner">
+              <div class="eyebrow">Totals</div>
+              <div class="sum-row"><span>Total</span><strong id="publicEstimateTotal">$0.00</strong></div>
+              <div class="sum-row"><span>Deposit</span><strong id="publicEstimateDeposit">$0.00</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="summary" style="margin-top:16px;">
+          <div class="summary-head">Line items</div>
+          <div class="summary-body" id="publicEstimateItems"></div>
+        </div>
+
+        <div class="grid" style="margin-top:16px;">
+          <div class="card estimate-subcard">
+            <div class="card-inner">
+              <div class="eyebrow">Message</div>
+              <div id="publicEstimateMessage"></div>
+            </div>
+          </div>
+          <div class="card estimate-subcard">
+            <div class="card-inner">
+              <div class="eyebrow">Terms</div>
+              <div id="publicEstimateTerms"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="inline-actions" style="margin-top:16px;">
+          <button class="btn primary" type="button" id="btnPublicEstimateApprove">Approve estimate</button>
+          <button class="btn danger" type="button" id="btnPublicEstimateDecline">Decline</button>
+        </div>
+        <div class="notice" id="publicEstimateFeedback" style="display:none; margin-top:12px;"></div>
+      </div>
+    </section>
+  </div>
+  <script defer src="/js/estimate-builder.js"></script>
+</body>
+</html>
