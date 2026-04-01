@@ -932,3 +932,12 @@ small{ color:var(--muted); }
 .estimate-summary-box .summary-body{
   background:rgba(9,15,28,.72);
 }
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.35);
+  cursor: pointer;
+}
+
+input[type="date"] {
+  color-scheme: dark;
+}
