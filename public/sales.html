@@ -246,16 +246,18 @@
         <button class="icon-btn" id="btnSendClose">X</button>
       </div>
       <div class="modal-body">
+        <div class="dashboard-note" style="margin-bottom:14px;">
+          <div class="dashboard-note-title">Preview final del estimate</div>
+          <div class="dashboard-note-copy">Todo aqui se llena desde la cotizacion. Solo revisa y confirma el envio final.</div>
+        </div>
         <div class="form">
           <div class="field">
-            <label>Email del cliente (desde el estimate)</label>
-            <input id="toEmail" type="email" maxlength="80" placeholder="cliente@correo.com" />
-            <div class="hint"><span id="toEmailCount">0</span>/80</div>
+            <label>Email del cliente</label>
+            <input id="toEmail" type="email" maxlength="80" placeholder="cliente@correo.com" readonly />
           </div>
           <div class="field">
-            <label>Nombre del cliente (desde el estimate)</label>
-            <input id="toName" maxlength="60" placeholder="Nombre" />
-            <div class="hint"><span id="toNameCount">0</span>/60</div>
+            <label>Nombre del cliente</label>
+            <input id="toName" maxlength="60" placeholder="Nombre" readonly />
           </div>
           <div class="field">
             <label>Iniciales del vendedor</label>
@@ -264,29 +266,26 @@
           </div>
           <div class="field">
             <label>Deposito requerido para agendar</label>
-            <input id="deposit" type="number" step="0.01" placeholder="1000" />
+            <input id="deposit" type="text" value="$1,000.00" readonly />
           </div>
           <div class="field">
             <label>Asunto del envio</label>
-            <input id="subject" maxlength="90" />
-            <div class="hint"><span id="subjectCount">0</span>/90</div>
+            <input id="subject" maxlength="90" readonly />
           </div>
         </div>
         <div class="field">
-          <label>Preview del estimate visible al cliente</label>
-          <textarea id="scope" rows="5" maxlength="1200" placeholder="Descripcion para el cliente, alcance, exclusiones, etc."></textarea>
-          <div class="hint"><span id="scopeCount">0</span>/1200</div>
+          <label>Resumen del estimate visible al cliente</label>
+          <textarea id="scope" rows="6" maxlength="1200" readonly></textarea>
         </div>
         <div class="field">
-          <label>Preview del mensaje</label>
-          <textarea id="message" rows="6" maxlength="1200"></textarea>
-          <div class="hint"><span id="messageCount">0</span>/1200</div>
+          <label>Correo final al cliente</label>
+          <textarea id="message" rows="12" maxlength="1200" readonly></textarea>
         </div>
         <div class="notice" id="sendStatus" style="display:none;"></div>
       </div>
       <div class="modal-footer">
         <button class="btn" id="btnSendCancel">Cancelar</button>
-        <button class="btn primary" id="btnSendNow">Enviar</button>
+        <button class="btn primary" id="btnSendNow">Confirmar y enviar estimate</button>
       </div>
     </div>
   </div>
@@ -587,6 +586,80 @@
         const previewBtn = document.getElementById('btnSendPreview');
         if (!modal) return;
 
+        function formatUsd(amount) {
+          return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount || 0));
+        }
+
+        function formatLongDate(value) {
+          if (!value) return '';
+          const parts = String(value).split('-');
+          if (parts.length !== 3) return value;
+          const date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+          if (Number.isNaN(date.getTime())) return value;
+          return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        }
+
+        function buildEstimatePdfPayload(data) {
+          const jspdf = window.jspdf;
+          if (!jspdf?.jsPDF) return null;
+          const doc = new jspdf.jsPDF({ unit: 'pt', format: 'letter' });
+          let y = 56;
+          const lineGap = 18;
+          const pageWidth = doc.internal.pageSize.getWidth();
+          const left = 48;
+          const right = pageWidth - 48;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(20);
+          doc.text(data.businessName || 'Three Colors Corp', left, y);
+          y += 18;
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(11);
+          doc.text('Estimate', left, y);
+          doc.text(data.estimateNumber, right, y, { align: 'right' });
+          y += 28;
+          doc.setDrawColor(210, 214, 220);
+          doc.line(left, y, right, y);
+          y += 22;
+          doc.setFont('helvetica', 'bold');
+          doc.text('Client', left, y);
+          doc.text('Project', 300, y);
+          y += 16;
+          doc.setFont('helvetica', 'normal');
+          doc.text(data.clientName || '-', left, y);
+          doc.text(data.projectName || '-', 300, y);
+          y += 16;
+          doc.text(data.customerEmail || '-', left, y);
+          doc.text('Issue: ' + (data.issueDateLong || '-'), 300, y);
+          y += 16;
+          doc.text(data.customerPhone || '-', left, y);
+          doc.text('Expiration: ' + (data.expirationDateLong || '-'), 300, y);
+          y += 16;
+          doc.text(data.location || '-', left, y, { maxWidth: 220 });
+          doc.text('Estimate total: ' + data.totalFormatted, 300, y);
+          y += 16;
+          doc.text('Deposit required to schedule: ' + data.depositFormatted, 300, y);
+          y += 28;
+          doc.setFont('helvetica', 'bold');
+          doc.text('Scope summary', left, y);
+          y += 16;
+          doc.setFont('helvetica', 'normal');
+          const scopeLines = doc.splitTextToSize(data.scopeSummary || '-', right - left);
+          doc.text(scopeLines, left, y);
+          y += (scopeLines.length * 14) + 20;
+          doc.setFont('helvetica', 'bold');
+          doc.text('Email preview', left, y);
+          y += 16;
+          doc.setFont('helvetica', 'normal');
+          const messageLines = doc.splitTextToSize(data.messageText || '-', right - left);
+          doc.text(messageLines, left, y);
+          const base64 = doc.output('datauristring').split(',')[1];
+          return {
+            fileName: 'Estimate-' + data.estimateNumber + '.pdf',
+            mimeType: 'application/pdf',
+            contentBase64: base64
+          };
+        }
+
         function fillSendModal() {
           const state = loadSalesState();
           const settings = loadSettings();
@@ -598,7 +671,12 @@
           const clientName = document.getElementById('salesClientName')?.value || state.clientName || '';
           const customerEmail = document.getElementById('salesCustomerEmail')?.value || state.customerEmail || '';
           const customerPhone = document.getElementById('salesCustomerPhone')?.value || state.customerPhone || '';
+          const location = document.getElementById('salesLocation')?.value || state.location || '';
           const messageToClient = document.getElementById('salesMessageToClient')?.value || state.messageToClient || '';
+          const totalFormatted = formatUsd(metrics.recommended);
+          const depositFormatted = formatUsd(1000);
+          const issueDateLong = formatLongDate(issueDate);
+          const expirationDateLong = formatLongDate(expirationDate);
 
           state.estimateNumber = estimateNumber;
           state.issueDate = issueDate;
@@ -607,25 +685,62 @@
           state.clientName = clientName;
           state.customerEmail = customerEmail;
           state.customerPhone = customerPhone;
+          state.location = location;
           state.messageToClient = messageToClient;
           saveSalesState(state);
 
+          const defaultSubject = 'Estimate ' + estimateNumber + ' | ' + projectName + ' | ' + totalFormatted;
           const defaultScope = [
-            'Estimate: ' + estimateNumber,
-            clientName ? 'Customer: ' + clientName : '',
-            'Project: ' + projectName,
-            issueDate ? 'Issue date: ' + issueDate : '',
-            expirationDate ? 'Expiration date: ' + expirationDate : '',
-            messageToClient || ''
-          ].filter(Boolean).join('\n');
+            'Estimate total: ' + totalFormatted,
+            'Deposit required to schedule: ' + depositFormatted,
+            '',
+            'Estimate details:',
+            '- Estimate No.: ' + estimateNumber,
+            '- Project: ' + projectName,
+            '- Issue date: ' + (issueDateLong || '-'),
+            '- Expiration date: ' + (expirationDateLong || '-'),
+            '- Job site: ' + (location || '-')
+          ].join('\n');
           const defaultMessage = [
             'Hi ' + (clientName || 'there') + ',',
             '',
             'Attached is your estimate for ' + projectName + '.',
-            'Current estimate total: ' + money(metrics.recommended, settings.currency) + '.',
             '',
-            'Please review and let us know if you would like to move forward.'
+            'Estimate total: ' + totalFormatted,
+            'Deposit required to schedule: ' + depositFormatted,
+            '',
+            'Estimate details:',
+            '- Estimate No.: ' + estimateNumber,
+            '- Project: ' + projectName,
+            '- Issue date: ' + (issueDateLong || '-'),
+            '- Expiration date: ' + (expirationDateLong || '-'),
+            '- Job site: ' + (location || '-'),
+            '',
+            'Scope summary:',
+            messageToClient || '-',
+            '',
+            'Please review the estimate and let us know if you would like to move forward.',
+            '',
+            'Thank you,',
+            settings.bizName || 'Three Colors Corp'
           ].join('\n');
+          const payload = {
+            businessName: settings.bizName || 'Three Colors Corp',
+            estimateNumber,
+            projectName,
+            clientName,
+            customerEmail,
+            customerPhone,
+            location,
+            issueDate,
+            expirationDate,
+            issueDateLong,
+            expirationDateLong,
+            totalFormatted,
+            depositFormatted,
+            scopeSummary: messageToClient || '-',
+            messageText: defaultMessage
+          };
           const subject = document.getElementById('subject');
           const toEmail = document.getElementById('toEmail');
           const toName = document.getElementById('toName');
@@ -635,13 +750,16 @@
           const sendStatus = document.getElementById('sendStatus');
           if (toEmail) toEmail.value = customerEmail;
           if (toName) toName.value = clientName;
-          if (subject) subject.value = estimateNumber + ' • ' + projectName + ' • ' + money(metrics.recommended, settings.currency);
+          if (subject) subject.value = defaultSubject;
           if (scope) scope.value = defaultScope;
           if (message) message.value = defaultMessage;
-          if (deposit) deposit.value = '1000';
+          if (deposit) deposit.value = depositFormatted;
+          modal.dataset.pdf = JSON.stringify(buildEstimatePdfPayload(payload) || {});
+          modal.dataset.payload = JSON.stringify(payload);
           if (sendStatus) {
             sendStatus.style.display = 'none';
             sendStatus.textContent = '';
+            sendStatus.className = 'notice';
           }
         }
 
@@ -697,6 +815,8 @@
           const state = loadSalesState();
           const settings = loadSettings();
           const metrics = calculateStandaloneSalesMetrics(state, settings);
+          const payload = JSON.parse(modal.dataset.payload || '{}');
+          const pdf = JSON.parse(modal.dataset.pdf || '{}');
 
           const toEmail = (document.getElementById('toEmail')?.value || '').trim();
           const toName = (document.getElementById('toName')?.value || '').trim();
@@ -704,7 +824,6 @@
           const subject = (document.getElementById('subject')?.value || '').trim();
           const scope = (document.getElementById('scope')?.value || '').trim();
           const message = (document.getElementById('message')?.value || '').trim();
-          const deposit = Number((document.getElementById('deposit')?.value || '1000').trim() || 1000);
 
           state.clientName = toName || state.clientName || '';
           state.customerEmail = toEmail || state.customerEmail || '';
@@ -712,13 +831,12 @@
           state.location = document.getElementById('salesLocation')?.value || state.location || '';
           saveSalesState(state);
 
-          if (!toEmail || !salesRepInitials) {
+          if (!toEmail || !toName || !salesRepInitials) {
             if (sendStatus) {
               sendStatus.style.display = 'block';
               sendStatus.className = 'notice error';
-              sendStatus.textContent = 'Add customer email and sales rep initials before sending the estimate.';
+              sendStatus.textContent = 'Add customer name, email, and sales rep initials before sending the estimate.';
             }
-            try { window.alert('Add customer email and sales rep initials before sending the estimate.'); } catch (_error) {}
             return false;
           }
 
@@ -730,7 +848,7 @@
             if (sendStatus) {
               sendStatus.style.display = 'block';
               sendStatus.className = 'notice';
-              sendStatus.textContent = 'Sending estimate...';
+              sendStatus.textContent = 'Sending estimate and PDF...';
             }
 
             const response = await fetch('/.netlify/functions/send-quote-zapier', {
@@ -744,16 +862,20 @@
                 subject,
                 messageText: message,
                 scopeOfWork: scope,
-                depositRequired: Number.isFinite(deposit) ? deposit : 1000,
-                projectName: state.projectName || '',
-                clientName: toName || state.clientName || '',
-                location: state.location || '',
-                businessName: settings.bizName || 'Margin Guard',
+                depositRequired: 1000,
+                projectName: payload.projectName || state.projectName || '',
+                clientName: toName || payload.clientName || state.clientName || '',
+                location: payload.location || state.location || '',
+                businessName: settings.bizName || 'Three Colors Corp',
                 currency: 'USD',
                 recommendedTotal: Number(metrics.recommended || metrics.offered || 0),
-                estimateNumber: state.estimateNumber || 'EST-1001',
-                issueDate: state.issueDate || '',
-                expirationDate: state.expirationDate || ''
+                estimateNumber: payload.estimateNumber || state.estimateNumber || 'EST-1001',
+                issueDate: payload.issueDate || state.issueDate || '',
+                expirationDate: payload.expirationDate || state.expirationDate || '',
+                customerPhone: payload.customerPhone || state.customerPhone || '',
+                pdfFileName: pdf.fileName || '',
+                pdfMimeType: pdf.mimeType || 'application/pdf',
+                pdfBase64: pdf.contentBase64 || ''
               })
             });
 
@@ -771,10 +893,9 @@
             if (sendStatus) {
               sendStatus.style.display = 'block';
               sendStatus.className = 'notice success';
-              sendStatus.textContent = 'Estimate sent successfully.';
+              sendStatus.textContent = 'Estimate sent successfully with PDF attached.';
             }
-            try { window.alert('Estimate sent successfully.'); } catch (_error) {}
-            setTimeout(() => closeSellerSendModal(), 900);
+            setTimeout(() => closeSellerSendModal(), 1200);
             return true;
           } catch (error) {
             if (sendStatus) {
@@ -782,12 +903,11 @@
               sendStatus.className = 'notice error';
               sendStatus.textContent = error.message || 'Unable to send estimate.';
             }
-            try { window.alert(error.message || 'Unable to send estimate.'); } catch (_error) {}
             return false;
           } finally {
             if (sendButton) {
               sendButton.disabled = false;
-              sendButton.textContent = 'Enviar';
+              sendButton.textContent = 'Confirmar y enviar estimate';
             }
           }
         }
@@ -836,6 +956,8 @@
   </script>
 </body>
 </html>
+
+
 
 
 
