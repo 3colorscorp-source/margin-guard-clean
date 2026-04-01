@@ -707,6 +707,13 @@ Thank you.`
     setNotice("hubFeedback", message, tone);
   }
 
+  function setText(targetId, value) {
+    const node = $(targetId);
+    if (!node) return;
+    node.textContent = value == null ? "" : String(value);
+  }
+
+
   function normalizeInvoiceFormValue(field, rawValue) {
     if (field.type === "number") {
       const value = Number(rawValue);
