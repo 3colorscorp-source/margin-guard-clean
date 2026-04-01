@@ -591,20 +591,32 @@
           const state = loadSalesState();
           const settings = loadSettings();
           const metrics = calculateStandaloneSalesMetrics(state, settings);
-          const estimateNumber = state.estimateNumber || 'EST-1001';
-          const issueDate = state.issueDate || '';
-          const expirationDate = state.expirationDate || '';
-          const projectName = state.projectName || 'Project';
-          const clientName = state.clientName || '';
-          const offered = Number(metrics.recommended || 0).toFixed(2);
+          const estimateNumber = document.getElementById('salesEstimateNumber')?.value || state.estimateNumber || 'EST-1001';
+          const issueDate = document.getElementById('salesIssueDate')?.value || state.issueDate || '';
+          const expirationDate = document.getElementById('salesExpirationDate')?.value || state.expirationDate || '';
+          const projectName = document.getElementById('salesProjectName')?.value || state.projectName || 'Project';
+          const clientName = document.getElementById('salesClientName')?.value || state.clientName || '';
+          const customerEmail = document.getElementById('salesCustomerEmail')?.value || state.customerEmail || '';
+          const customerPhone = document.getElementById('salesCustomerPhone')?.value || state.customerPhone || '';
+          const messageToClient = document.getElementById('salesMessageToClient')?.value || state.messageToClient || '';
+
+          state.estimateNumber = estimateNumber;
+          state.issueDate = issueDate;
+          state.expirationDate = expirationDate;
+          state.projectName = projectName;
+          state.clientName = clientName;
+          state.customerEmail = customerEmail;
+          state.customerPhone = customerPhone;
+          state.messageToClient = messageToClient;
+          saveSalesState(state);
+
           const defaultScope = [
             'Estimate: ' + estimateNumber,
             clientName ? 'Customer: ' + clientName : '',
             'Project: ' + projectName,
             issueDate ? 'Issue date: ' + issueDate : '',
             expirationDate ? 'Expiration date: ' + expirationDate : '',
-            'Recommended price: ' + money(metrics.recommended, settings.currency),
-            state.messageToClient || ''
+            messageToClient || ''
           ].filter(Boolean).join('\n');
           const defaultMessage = [
             'Hi ' + (clientName || 'there') + ',',
@@ -726,6 +738,7 @@
   </script>
 </body>
 </html>
+
 
 
 
