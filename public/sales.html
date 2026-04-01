@@ -249,12 +249,12 @@
         <div class="form">
           <div class="field">
             <label>Email del cliente (desde el estimate)</label>
-            <input id="toEmail" type="email" maxlength="80" placeholder="cliente@correo.com" readonly />
+            <input id="toEmail" type="email" maxlength="80" placeholder="cliente@correo.com" />
             <div class="hint"><span id="toEmailCount">0</span>/80</div>
           </div>
           <div class="field">
             <label>Nombre del cliente (desde el estimate)</label>
-            <input id="toName" maxlength="60" placeholder="Nombre" readonly />
+            <input id="toName" maxlength="60" placeholder="Nombre" />
             <div class="hint"><span id="toNameCount">0</span>/60</div>
           </div>
           <div class="field">
@@ -264,22 +264,22 @@
           </div>
           <div class="field">
             <label>Deposito requerido para agendar</label>
-            <input id="deposit" type="number" step="0.01" placeholder="1000" readonly />
+            <input id="deposit" type="number" step="0.01" placeholder="1000" />
           </div>
           <div class="field">
             <label>Asunto del envio</label>
-            <input id="subject" maxlength="90" readonly />
+            <input id="subject" maxlength="90" />
             <div class="hint"><span id="subjectCount">0</span>/90</div>
           </div>
         </div>
         <div class="field">
           <label>Preview del estimate visible al cliente</label>
-          <textarea id="scope" rows="5" maxlength="1200" placeholder="Descripcion para el cliente, alcance, exclusiones, etc." readonly></textarea>
+          <textarea id="scope" rows="5" maxlength="1200" placeholder="Descripcion para el cliente, alcance, exclusiones, etc."></textarea>
           <div class="hint"><span id="scopeCount">0</span>/1200</div>
         </div>
         <div class="field">
           <label>Preview del mensaje</label>
-          <textarea id="message" rows="6" maxlength="1200" readonly></textarea>
+          <textarea id="message" rows="6" maxlength="1200"></textarea>
           <div class="hint"><span id="messageCount">0</span>/1200</div>
         </div>
         <div class="notice" id="sendStatus" style="display:none;"></div>
@@ -610,7 +610,7 @@
             'Hi ' + (clientName || 'there') + ',',
             '',
             'Attached is your estimate for ' + projectName + '.',
-            'Current estimate total: ' + money(metrics.offered, settings.currency) + '.',
+            'Current estimate total: ' + money(metrics.recommended, settings.currency) + '.',
             '',
             'Please review and let us know if you would like to move forward.'
           ].join('\n');
@@ -620,8 +620,8 @@
           const scope = document.getElementById('scope');
           const message = document.getElementById('message');
           const deposit = document.getElementById('deposit');
-          if (toEmail && !toEmail.value) toEmail.value = state.customerEmail || '';
-          if (toName && !toName.value) toName.value = clientName;
+          if (toEmail) toEmail.value = customerEmail;
+          if (toName) toName.value = clientName;
           if (subject) subject.value = estimateNumber + ' • ' + projectName + ' • ' + money(metrics.recommended, settings.currency);
           if (scope) scope.value = defaultScope;
           if (message) message.value = defaultMessage;
@@ -726,6 +726,7 @@
   </script>
 </body>
 </html>
+
 
 
 
