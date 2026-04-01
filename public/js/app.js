@@ -1913,7 +1913,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   if (scopeInput) scopeInput.value = scopeText;
   if (messageInput) messageInput.value = defaultMessage;
   if (depositInput && !depositInput.value) depositInput.value = "1000";
-  if (sendStatus) sendStatus.textContent = "";
+  if (sendStatus) { sendStatus.style.display = "none"; sendStatus.textContent = ""; }
   modal.style.display = "flex";
   updateSendCounts();
 }
@@ -1942,14 +1942,14 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   const depositRequired = parseNumber(document.getElementById("deposit")?.value);
   const salesRepInitials = nonEmptyString(document.getElementById("salesInitials")?.value).toUpperCase();
   if (!toEmail || !salesRepInitials) {
-    if (sendStatus) sendStatus.textContent = "Add customer email and sales rep initials before sending the estimate.";
+    if (sendStatus) { sendStatus.style.display = "block"; sendStatus.textContent = "Add customer email and sales rep initials before sending the estimate."; }
     return;
   }
   const estimateNumber = nonEmptyString(state.estimateNumber, buildEstimateNumber());
   const issueDate = normalizeDateInput(state.issueDate || todayInputValue());
   const expirationDate = normalizeDateInput(state.expirationDate || addDaysToInputValue(issueDate, 7));
   try {
-    if (sendStatus) sendStatus.textContent = "Sending estimate...";
+    if (sendStatus) { sendStatus.style.display = "block"; sendStatus.textContent = "Sending estimate..."; }
     const response = await fetch("/.netlify/functions/send-quote-zapier", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1984,11 +1984,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     state.estimateStatus = "sent";
     state.sentAt = new Date().toISOString();
     saveSales(state);
-    if (sendStatus) sendStatus.textContent = "Estimate sent successfully.";
+    if (sendStatus) { sendStatus.style.display = "block"; sendStatus.textContent = "Estimate sent successfully."; }
     setTimeout(closeSendModal, 500);
     renderSales();
   } catch (error) {
-    if (sendStatus) sendStatus.textContent = error.message || "Unable to send estimate.";
+    if (sendStatus) { sendStatus.style.display = "block"; sendStatus.textContent = error.message || "Unable to send estimate."; }
   }
 }
 
@@ -5813,6 +5813,7 @@ function renderSupervisor() {
     render();
   });
 })();
+
 
 
 

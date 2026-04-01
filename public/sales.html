@@ -632,12 +632,17 @@
           const scope = document.getElementById('scope');
           const message = document.getElementById('message');
           const deposit = document.getElementById('deposit');
+          const sendStatus = document.getElementById('sendStatus');
           if (toEmail) toEmail.value = customerEmail;
           if (toName) toName.value = clientName;
           if (subject) subject.value = estimateNumber + ' • ' + projectName + ' • ' + money(metrics.recommended, settings.currency);
           if (scope) scope.value = defaultScope;
           if (message) message.value = defaultMessage;
           if (deposit) deposit.value = '1000';
+          if (sendStatus) {
+            sendStatus.style.display = 'none';
+            sendStatus.textContent = '';
+          }
         }
 
         function openSellerSendModal(event) {
@@ -687,6 +692,9 @@
             event.stopImmediatePropagation();
           }
           const state = loadSalesState();
+          state.clientName = document.getElementById('toName')?.value || state.clientName || '';
+          state.customerEmail = document.getElementById('toEmail')?.value || state.customerEmail || '';
+          saveSalesState(state);
           const settings = loadSettings();
           const metrics = calculateStandaloneSalesMetrics(state, settings);
           if (typeof window.sendQuote === 'function') {
@@ -738,6 +746,7 @@
   </script>
 </body>
 </html>
+
 
 
 
