@@ -288,8 +288,28 @@ Thank you.`
     };
   }
   function saveSales(state) { writeStore(LS_SALES, state); }
+  function syncSellerWorkersUi(state, settings) {
+    if (typeof renderSalesWorkers !== "function") return false;
+    try {
+      const metrics = typeof calculateSalesMetrics === "function"
+        ? calculateSalesMetrics(state, settings)
+        : calcSales(state, settings);
+      renderSalesWorkers(state, settings, metrics);
+      const hint = document.getElementById("salesCrewHint");
+      if (hint) {
+        const workerHours = Number(metrics.workerHours ?? metrics.totalHours ?? 0);
+        const workersCount = Number(metrics.workersCount ?? (Array.isArray(state.workers) ? state.workers.length : 0));
+        hint.textContent = `${workersCount} workers configured for ${workerHours.toFixed(2)} labor hours.`;
+      }
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
   function addSellerWorkerFallback() {
     const state = loadSales();
+    const settings = loadSettings();
     state.workers = Array.isArray(state.workers) && state.workers.length
       ? state.workers
       : cloneWorkers(DEFAULT_SALES.workers);
@@ -300,6 +320,7 @@ Thank you.`
       rate: ""
     });
     saveSales(state);
+    if (syncSellerWorkersUi(state, settings)) return;
     if (typeof renderSales === "function") {
       try {
         renderSales();
@@ -311,8 +332,10 @@ Thank you.`
 
   function clearSellerWorkersFallback() {
     const state = loadSales();
+    const settings = loadSettings();
     state.workers = cloneWorkers(DEFAULT_SALES.workers);
     saveSales(state);
+    if (syncSellerWorkersUi(state, settings)) return;
     if (typeof renderSales === "function") {
       try {
         renderSales();
