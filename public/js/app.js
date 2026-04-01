@@ -2023,6 +2023,37 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     };
   }
 
+  function calculateSalesMetrics(state, settings) {
+    const base = calcSales(state, settings);
+    const workers = Array.isArray(state?.workers) ? state.workers : [];
+    const workersCount = workers.length;
+    const workerDays = finiteNumber(base.totalWorkerDays, 0);
+    const workerHours = finiteNumber(base.totalHours, 0);
+    const recommended = finiteNumber(base.recommended, 0);
+    const minimum = finiteNumber(base.minimum, 0);
+    const negotiation = finiteNumber(base.negotiation, 0);
+    const rawOffered = nonEmptyString(state?.price, state?.offeredPrice);
+    const offered = rawOffered === "" ? recommended : finiteNumber(rawOffered, recommended);
+    const commissionRate = finiteNumber(settings?.salesCommissionPct, DEFAULTS.salesCommissionPct);
+    const commissionDisplay = round2(Math.max(offered, 0) * (commissionRate / 100));
+    const stage = offered >= recommended ? 2 : offered >= negotiation ? 1 : 0;
+    const needsApproval = offered < negotiation;
+    const approved = !needsApproval || state?.estimateStatus === "signed" || state?.estimateStatus === "approved";
+
+    return {
+      ...base,
+      workersCount,
+      workerDays,
+      workerHours,
+      offered,
+      stage,
+      needsApproval,
+      approved,
+      commissionRate,
+      commissionDisplay
+    };
+  }
+
   function renderSalesWorkers(state, settings, metrics) {
     const body = $("salesWorkersBody");
     if (!body) return;
@@ -5751,6 +5782,7 @@ function renderSupervisor() {
     render();
   });
 })();
+
 
 
 
