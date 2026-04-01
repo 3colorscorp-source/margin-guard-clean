@@ -577,15 +577,133 @@
         refreshSellerFromStandalone();
       }
 
+      function bindStandaloneSellerSend() {
+        const topSend = document.getElementById('btnSendQuote');
+        const inlineSend = document.getElementById('btnSendQuoteInline');
+        const modal = document.getElementById('sendModal');
+        const closeX = document.getElementById('btnSendClose');
+        const cancelBtn = document.getElementById('btnSendCancel');
+        const sendNow = document.getElementById('btnSendNow');
+        if (!modal) return;
+
+        function fillSendModal() {
+          const state = loadSalesState();
+          const settings = loadSettings();
+          const metrics = calculateStandaloneSalesMetrics(state, settings);
+          const estimateNumber = state.estimateNumber || 'EST-1001';
+          const issueDate = state.issueDate || '';
+          const expirationDate = state.expirationDate || '';
+          const projectName = state.projectName || 'Project';
+          const clientName = state.clientName || '';
+          const offered = Number(metrics.offered || 0).toFixed(2);
+          const defaultScope = [
+            'Estimate: ' + estimateNumber,
+            clientName ? 'Customer: ' + clientName : '',
+            'Project: ' + projectName,
+            issueDate ? 'Issue date: ' + issueDate : '',
+            expirationDate ? 'Expiration date: ' + expirationDate : '',
+            'Recommended price: ' + money(metrics.recommended, settings.currency),
+            state.messageToClient || ''
+          ].filter(Boolean).join('\n');
+          const defaultMessage = [
+            'Hi ' + (clientName || 'there') + ',',
+            '',
+            'Attached is your estimate for ' + projectName + '.',
+            'Current estimate total: ' + money(metrics.offered, settings.currency) + '.',
+            '',
+            'Please review and let us know if you would like to move forward.'
+          ].join('\n');
+          const subject = document.getElementById('subject');
+          const toEmail = document.getElementById('toEmail');
+          const toName = document.getElementById('toName');
+          const scope = document.getElementById('scope');
+          const message = document.getElementById('message');
+          const deposit = document.getElementById('deposit');
+          if (toEmail && !toEmail.value) toEmail.value = state.customerEmail || '';
+          if (toName && !toName.value) toName.value = clientName;
+          if (subject && !subject.value) subject.value = estimateNumber + ' • ' + projectName + ' • ' + money(metrics.offered, settings.currency);
+          if (scope && !scope.value) scope.value = defaultScope;
+          if (message && !message.value) message.value = defaultMessage;
+          if (deposit && !deposit.value) deposit.value = offered;
+        }
+
+        function openSellerSendModal(event) {
+          if (event) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+          fillSendModal();
+          modal.setAttribute('aria-hidden', 'false');
+          if (typeof window.openSendModal === 'function') {
+            const state = loadSalesState();
+            const settings = loadSettings();
+            const metrics = calculateStandaloneSalesMetrics(state, settings);
+            try { window.openSendModal(state, settings, metrics); } catch (_error) {}
+          }
+        }
+
+        function closeSellerSendModal(event) {
+          if (event) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+          modal.setAttribute('aria-hidden', 'true');
+          if (typeof window.closeSendModal === 'function') {
+            try { window.closeSendModal(); } catch (_error) {}
+          }
+        }
+
+        function runSellerSend(event) {
+          if (event) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+          const state = loadSalesState();
+          const settings = loadSettings();
+          const metrics = calculateStandaloneSalesMetrics(state, settings);
+          if (typeof window.sendQuote === 'function') {
+            window.sendQuote(state, settings, metrics);
+          }
+        }
+
+        [topSend, inlineSend].forEach((button) => {
+          if (!button) return;
+          const clean = button.cloneNode(true);
+          clean.removeAttribute('onclick');
+          button.parentNode.replaceChild(clean, button);
+          clean.addEventListener('click', openSellerSendModal, true);
+        });
+
+        [closeX, cancelBtn].forEach((button) => {
+          if (!button) return;
+          const clean = button.cloneNode(true);
+          clean.removeAttribute('onclick');
+          button.parentNode.replaceChild(clean, button);
+          clean.addEventListener('click', closeSellerSendModal, true);
+        });
+
+        if (sendNow) {
+          const cleanSendNow = sendNow.cloneNode(true);
+          cleanSendNow.removeAttribute('onclick');
+          sendNow.parentNode.replaceChild(cleanSendNow, sendNow);
+          cleanSendNow.addEventListener('click', runSellerSend, true);
+        }
+      }
+
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', bindStandaloneSellerWorkers);
+        document.addEventListener('DOMContentLoaded', () => {
+          bindStandaloneSellerWorkers();
+          bindStandaloneSellerSend();
+        });
       } else {
         bindStandaloneSellerWorkers();
+        bindStandaloneSellerSend();
       }
     })();
   </script>
 </body>
 </html>
+
 
 
 
