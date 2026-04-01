@@ -294,8 +294,165 @@
   <script src="/js/tenant.js"></script>
   <script src="/js/auth.js"></script>
   <script src="/js/app.js"></script>
+  <script>
+    (function () {
+      const SALES_KEY = 'mg_sales_v2';
+      const SETTINGS_KEY = 'mg_settings_v2';
+      const DEFAULT_WORKERS = [{ name: 'Worker 1', type: 'installer', days: 5, rate: '' }];
+
+      function readJson(key, fallback) {
+        try {
+          const raw = localStorage.getItem(key);
+          return raw ? { ...fallback, ...JSON.parse(raw) } : { ...fallback };
+        } catch (_error) {
+          return { ...fallback };
+        }
+      }
+
+      function loadSalesState() {
+        const state = readJson(SALES_KEY, {});
+        state.workers = Array.isArray(state.workers) && state.workers.length
+          ? state.workers
+          : DEFAULT_WORKERS.map((worker) => ({ ...worker }));
+        return state;
+      }
+
+      function saveSalesState(state) {
+        localStorage.setItem(SALES_KEY, JSON.stringify(state));
+      }
+
+      function loadSettings() {
+        return readJson(SETTINGS_KEY, { baseInstaller: 0, baseHelper: 0, currency: 'USD' });
+      }
+
+      function money(amount, currency) {
+        try {
+          return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(Number(amount || 0));
+        } catch (_error) {
+          return ' + Number(amount || 0).toFixed(2);
+        }
+      }
+
+      function laborCost(worker, settings) {
+        const days = Number(worker.days || 0);
+        const fallbackRate = worker.type === 'helper'
+          ? Number(settings.baseHelper || 0)
+          : Number(settings.baseInstaller || 0);
+        const rate = worker.rate === '' || worker.rate == null ? fallbackRate : Number(worker.rate || 0);
+        return days * 8 * rate;
+      }
+
+      function renderSellerWorkersStandalone() {
+        const body = document.getElementById('salesWorkersBody');
+        if (!body) return;
+        const state = loadSalesState();
+        const settings = loadSettings();
+
+        body.innerHTML = state.workers.map((worker, index) => {
+          const fallbackRate = worker.type === 'helper'
+            ? Number(settings.baseHelper || 0)
+            : Number(settings.baseInstaller || 0);
+          const rateValue = worker.rate === '' || worker.rate == null ? fallbackRate : Number(worker.rate || 0);
+          return `
+            <tr data-index="${index}">
+              <td><input data-key="name" maxlength="40" value="${String(worker.name || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}" /></td>
+              <td>
+                <select data-key="type">
+                  <option value="installer" ${worker.type === 'installer' ? 'selected' : ''}>Installer</option>
+                  <option value="helper" ${worker.type === 'helper' ? 'selected' : ''}>Helper</option>
+                </select>
+              </td>
+              <td><input data-key="days" type="number" min="0" step="0.25" value="${Number(worker.days || 0)}" /></td>
+              <td><input data-key="rate" type="number" min="0" step="0.01" value="${rateValue}" /></td>
+              <td data-cell="labor">${money(laborCost(worker, settings), settings.currency)}</td>
+              <td>
+                <div class="row-actions">
+                  <button class="btn ghost" type="button" data-action="copy">Copy</button>
+                  <button class="btn danger" type="button" data-action="delete">Delete</button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        const hint = document.getElementById('salesCrewHint');
+        if (hint) {
+          const workerHours = state.workers.reduce((sum, worker) => sum + (Number(worker.days || 0) * 8), 0);
+          hint.textContent = `${state.workers.length} workers configured for ${workerHours.toFixed(2)} labor hours.`;
+        }
+      }
+
+      function bindStandaloneSellerWorkers() {
+        const addButton = document.getElementById('btnAddSalesWorker');
+        const clearButton = document.getElementById('btnClearSalesWorkers');
+        const body = document.getElementById('salesWorkersBody');
+        if (!addButton || !clearButton || !body) return;
+
+        addButton.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          const state = loadSalesState();
+          state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: 'installer', days: 0, rate: '' });
+          saveSalesState(state);
+          renderSellerWorkersStandalone();
+        }, true);
+
+        clearButton.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          const state = loadSalesState();
+          state.workers = DEFAULT_WORKERS.map((worker) => ({ ...worker }));
+          saveSalesState(state);
+          renderSellerWorkersStandalone();
+        }, true);
+
+        body.addEventListener('change', function (event) {
+          const field = event.target;
+          if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement)) return;
+          const row = field.closest('tr');
+          const index = Number(row?.dataset.index ?? -1);
+          const key = field.dataset.key;
+          if (index < 0 || !key) return;
+          const state = loadSalesState();
+          if (!Array.isArray(state.workers) || !state.workers[index]) return;
+          state.workers[index][key] = (key === 'days' || key === 'rate')
+            ? (field.value === '' ? '' : Number(field.value || 0))
+            : field.value;
+          saveSalesState(state);
+          renderSellerWorkersStandalone();
+        });
+
+        body.addEventListener('click', function (event) {
+          const actionButton = event.target.closest('button[data-action]');
+          if (!actionButton) return;
+          event.preventDefault();
+          const row = actionButton.closest('tr');
+          const index = Number(row?.dataset.index ?? -1);
+          if (index < 0) return;
+          const state = loadSalesState();
+          if (!Array.isArray(state.workers)) state.workers = DEFAULT_WORKERS.map((worker) => ({ ...worker }));
+          if (actionButton.dataset.action === 'copy') {
+            state.workers.splice(index + 1, 0, { ...state.workers[index] });
+          }
+          if (actionButton.dataset.action === 'delete') {
+            state.workers.splice(index, 1);
+          }
+          if (!state.workers.length) {
+            state.workers = DEFAULT_WORKERS.map((worker) => ({ ...worker }));
+          }
+          saveSalesState(state);
+          renderSellerWorkersStandalone();
+        });
+
+        renderSellerWorkersStandalone();
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bindStandaloneSellerWorkers);
+      } else {
+        bindStandaloneSellerWorkers();
+      }
+    })();
+  </script>
 </body>
 </html>
-
-
-
