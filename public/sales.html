@@ -329,7 +329,7 @@
         try {
           return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(Number(amount || 0));
         } catch (_error) {
-          return ' + Number(amount || 0).toFixed(2);
+          return '$' + Number(amount || 0).toFixed(2);
         }
       }
 
@@ -466,5 +466,6 @@
   </script>
 </body>
 </html>
+
 
 
