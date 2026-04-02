@@ -30,6 +30,15 @@ async function ensureBucket(bucketName) {
   if (response.ok || response.status === 409) return;
 
   const text = await response.text();
+  const alreadyExists =
+    response.status === 409 ||
+    text.includes('"statusCode":"409"') ||
+    text.includes('"statusCode":409') ||
+    text.includes('Duplicate') ||
+    text.includes('The resource already exists');
+
+  if (alreadyExists) return;
+
   throw new Error(`Unable to ensure PDF bucket: ${text}`);
 }
 
