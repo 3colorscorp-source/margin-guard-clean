@@ -663,6 +663,19 @@
           doc.setFont('helvetica', 'normal');
           const messageLines = doc.splitTextToSize(data.messageText || '-', right - left);
           doc.text(messageLines, left, y);
+          y += (messageLines.length * 14) + 18;
+
+          if (data.publicQuoteUrl) {
+            doc.setFont('helvetica', 'bold');
+            doc.text('Review, Accept & Pay Deposit', left, y);
+            y += 16;
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(30, 136, 229);
+            const linkLines = doc.splitTextToSize(data.publicQuoteUrl, right - left);
+            doc.text(linkLines, left, y);
+            doc.setTextColor(0, 0, 0);
+          }
+
           const base64 = doc.output('datauristring').split(',')[1];
           return {
             fileName: 'Estimate-' + data.estimateNumber + '.pdf',
@@ -720,7 +733,8 @@
             'Scope summary:',
             messageToClient || '-',
             '',
-            'Please review the estimate and let us know if you would like to move forward.',
+            'To review, accept the quote, and pay the deposit online, use the approval link below:',
+            '[PUBLIC_QUOTE_URL]',
             '',
             'Thank you,',
             settings.bizName || 'Three Colors Corp'
@@ -849,6 +863,46 @@
             if (sendStatus) {
               sendStatus.style.display = 'block';
               sendStatus.className = 'notice';
+              sendStatus.textContent = 'Creating public quote link...';
+            }
+
+            const publishResponse = await fetch('/.netlify/functions/publish-public-quote', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                project_name: payload.projectName || state.projectName || '',
+                client_name: toName || payload.clientName || state.clientName || '',
+                client_email: toEmail || payload.customerEmail || state.customerEmail || '',
+                total: Number(metrics.recommended || metrics.offered || 0),
+                deposit_required: 1000,
+                notes: message,
+                currency: 'USD',
+                status: 'READY_TO_SEND'
+              })
+            });
+
+            const publishRaw = await publishResponse.text();
+            let publishData = {};
+            try { publishData = publishRaw ? JSON.parse(publishRaw) : {}; } catch (_error) {}
+
+            if (!publishResponse.ok || !publishData?.quote_id || !publishData?.public_token || !publishData?.public_url) {
+              throw new Error(publishData.error || publishRaw || 'Unable to create public quote link.');
+            }
+
+            const publicQuoteUrl = publishData.public_url;
+            const messageWithLink = (message || '').replace('[PUBLIC_QUOTE_URL]', publicQuoteUrl);
+
+            const pdfPayloadWithLink = {
+              ...payload,
+              messageText: messageWithLink,
+              publicQuoteUrl
+            };
+
+            const rebuiltPdf = buildEstimatePdfPayload(pdfPayloadWithLink) || pdf;
+
+            if (sendStatus) {
+              sendStatus.style.display = 'block';
+              sendStatus.className = 'notice';
               sendStatus.textContent = 'Sending estimate and PDF...';
             }
 
@@ -861,7 +915,7 @@
                 toEmail,
                 toName,
                 subject,
-                messageText: message,
+                messageText: messageWithLink,
                 scopeOfWork: payload.scopeSummary || scope,
                 depositRequired: 1000,
                 projectName: payload.projectName || state.projectName || '',
@@ -874,9 +928,12 @@
                 issueDate: payload.issueDate || state.issueDate || '',
                 expirationDate: payload.expirationDate || state.expirationDate || '',
                 customerPhone: payload.customerPhone || state.customerPhone || '',
-                pdfFileName: pdf.fileName || '',
-                pdfMimeType: pdf.mimeType || 'application/pdf',
-                pdfBase64: pdf.contentBase64 || ''
+                publicQuoteUrl,
+                quoteId: publishData.quote_id,
+                publicToken: publishData.public_token,
+                pdfFileName: rebuiltPdf.fileName || '',
+                pdfMimeType: rebuiltPdf.mimeType || 'application/pdf',
+                pdfBase64: rebuiltPdf.contentBase64 || ''
               })
             });
 
@@ -889,12 +946,15 @@
 
             state.estimateStatus = 'sent';
             state.sentAt = new Date().toISOString();
+            state.publicQuoteUrl = publicQuoteUrl;
+            state.quoteId = publishData.quote_id;
+            state.publicToken = publishData.public_token;
             saveSalesState(state);
 
             if (sendStatus) {
               sendStatus.style.display = 'block';
               sendStatus.className = 'notice success';
-              sendStatus.textContent = 'Estimate sent successfully with PDF attached.';
+              sendStatus.textContent = 'Estimate sent successfully with approval link and PDF attached.';
             }
             setTimeout(() => closeSellerSendModal(), 1200);
             return true;
