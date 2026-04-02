@@ -45,7 +45,7 @@
     <div id="content">Loading...</div>
 
     <button id="approveBtn" class="btn" onclick="approveQuote()">
-      Accept Quote + Pay Deposit
+      Accept & Continue to Deposit
     </button>
 
     <button class="btn" onclick="createInvoice()">Create Invoice</button>
@@ -99,7 +99,7 @@
 
     async function loadQuote() {
       contentEl.innerHTML = "Loading...";
-      setApproveEnabled(false, "Accept Quote + Pay Deposit");
+      setApproveEnabled(false, "Accept & Continue to Deposit");
       payBtn.style.display = "none";
       payBtn.removeAttribute("href");
       payBtn.style.pointerEvents = "auto";
@@ -170,7 +170,7 @@
             }
           }
         } else {
-          setApproveEnabled(true, "Accept Quote + Pay Deposit");
+          setApproveEnabled(true, "Accept & Continue to Deposit");
           payBtn.style.display = "none";
         }
 
@@ -187,7 +187,7 @@
           return;
         }
 
-        setApproveEnabled(false, "Accepting quote...");
+        setApproveEnabled(false, "Accepting quote and preparing deposit checkout...");
 
         // Paso 1 — aprobar la cotización
         const { data, error } = await sb.rpc("approve_public_quote", {
@@ -197,8 +197,8 @@
 
         if (error || !data) {
           console.warn("approve_public_quote error:", error);
-          alert("Could not approve this quote.");
-          setApproveEnabled(true, "Accept Quote + Pay Deposit");
+          alert("We could not accept this quote right now. Please try again or contact us.");
+          setApproveEnabled(true, "Accept & Continue to Deposit");
           return;
         }
 
@@ -210,7 +210,7 @@
 
         if (q2Error || !q2) {
           console.warn("get_public_quote after approve error:", q2Error);
-          alert("Quote approved, but could not reload payment info.");
+          alert("Your quote was accepted, but we could not reload the deposit checkout yet.");
           await loadQuote();
           return;
         }
@@ -219,7 +219,7 @@
 
         // Paso 3 — crear payment link si no existe
         if (!q2.payment_link && dep > 0) {
-          setApproveEnabled(false, "Creating deposit link...");
+          setApproveEnabled(false, "Preparing your deposit checkout...");
 
           const SMART_SERVICE_URL =
             "https://yaagobzgozzozibublmj.supabase.co/functions/v1/smart-service";
@@ -255,7 +255,7 @@
 
       } catch (e) {
         console.error(e);
-        alert("Error approving quote.");
+        alert("There was an error while accepting your quote. Please try again.");
         setApproveEnabled(true, "Accept Quote + Pay Deposit");
       }
     }
