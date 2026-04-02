@@ -599,6 +599,17 @@
           return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
         }
 
+
+        function formatGreetingName(value) {
+          const raw = String(value || '').trim();
+          if (!raw) return 'there';
+          return raw
+            .split(/\s+/)
+            .filter(Boolean)
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+            .join(' ');
+        }
+
         function buildEstimatePdfPayload(data) {
           const jspdf = window.jspdf;
           if (!jspdf?.jsPDF) return null;
@@ -692,7 +703,7 @@
           const defaultSubject = 'Estimate ' + estimateNumber + ' | ' + projectName;
           const defaultScope = (messageToClient || '-').trim();
           const defaultMessage = [
-            'Hi ' + (clientName || 'there') + ',',
+            'Hi ' + formatGreetingName(clientName) + ',',
             '',
             'Attached is your estimate for ' + projectName + '.',
             '',
@@ -946,6 +957,7 @@
   </script>
 </body>
 </html>
+
 
 
 
