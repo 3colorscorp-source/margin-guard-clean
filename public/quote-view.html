@@ -207,7 +207,16 @@
     .scope-text{
       margin:0;
       font-size:16px;
-      white-space:pre-wrap;
+      white-space:normal;
+    }
+
+    .scope-list{
+      margin:0;
+      padding-left:20px;
+    }
+
+    .scope-list li{
+      margin-bottom:8px;
     }
 
     .terms-list{
@@ -428,7 +437,7 @@
     <section class="card">
       <h3 class="section-title">Scope of Work</h3>
       <div class="scope-box">
-        <p id="scopeText" class="scope-text empty">No scope summary provided.</p>
+        <div id="scopeText" class="scope-text empty">No scope summary provided.</div>
       </div>
     </section>
 
@@ -555,6 +564,34 @@
       }
     }
 
+    function renderScope(rawScope) {
+      const notes = safeText(rawScope).trim();
+
+      if (!notes) {
+        scopeText.textContent = "No scope summary provided.";
+        scopeText.classList.add("empty");
+        return;
+      }
+
+      const lines = notes
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean);
+
+      if (!lines.length) {
+        scopeText.textContent = "No scope summary provided.";
+        scopeText.classList.add("empty");
+        return;
+      }
+
+      scopeText.classList.remove("empty");
+      scopeText.innerHTML = `
+        <ul class="scope-list">
+          ${lines.map(line => `<li>${line.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`).join("")}
+        </ul>
+      `;
+    }
+
     async function loadQuote() {
       setApproveEnabled(false, "Loading quote...");
       payBtn.style.display = "none";
@@ -609,14 +646,7 @@
         detailExpirationDate.textContent = formatDate(q.expiration_date);
         detailJobSite.textContent = safeText(q.job_site || q.location || "—");
 
-        const notes = safeText(q.notes).trim();
-        if (notes) {
-          scopeText.textContent = notes;
-          scopeText.classList.remove("empty");
-        } else {
-          scopeText.textContent = "No scope summary provided.";
-          scopeText.classList.add("empty");
-        }
+        renderScope(q.notes);
 
         setStatus(q.status, accepted, depositPaid);
 
@@ -627,7 +657,7 @@
         if (viewedRes.error) console.warn("mark_quote_viewed error:", viewedRes.error);
 
         if (accepted) {
-          setApproveEnabled(false, depositPaid ? "Project Approved" : "Project Approved");
+          setApproveEnabled(false, "Project Approved");
           setMessage(
             depositPaid
               ? "Your deposit has already been received."
