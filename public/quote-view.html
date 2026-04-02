@@ -1,58 +1,469 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Project Quote</title>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
+    :root{
+      --bg:#f4f5f7;
+      --card:#ffffff;
+      --text:#111827;
+      --muted:#6b7280;
+      --line:#e5e7eb;
+      --primary:#1e88e5;
+      --primary-dark:#1565c0;
+      --success:#198754;
+      --success-bg:#eaf7ef;
+      --warning-bg:#fff8e6;
+      --shadow:0 12px 30px rgba(15, 23, 42, 0.08);
+      --radius:18px;
+    }
+
+    *{box-sizing:border-box}
+
     body{
-      font-family: Arial;
-      background:#f5f5f5;
-      padding:40px;
+      margin:0;
+      font-family:Arial, Helvetica, sans-serif;
+      background:linear-gradient(180deg,#f7f7f8 0%, #f1f3f5 100%);
+      color:var(--text);
+      padding:32px 18px 80px;
     }
+
+    .page{
+      max-width:960px;
+      margin:0 auto;
+    }
+
     .card{
-      background:white;
-      padding:30px;
-      border-radius:10px;
+      background:var(--card);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:28px;
+      margin-bottom:20px;
+    }
+
+    .topbar{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:16px;
+      margin-bottom:18px;
+    }
+
+    .brand{
+      font-size:14px;
+      font-weight:700;
+      letter-spacing:.08em;
+      color:var(--muted);
+      text-transform:uppercase;
+      margin-bottom:10px;
+    }
+
+    h1{
+      margin:0;
+      font-size:44px;
+      line-height:1.05;
+    }
+
+    .subtitle{
+      margin:10px 0 0;
+      color:var(--muted);
+      font-size:17px;
+      line-height:1.45;
       max-width:700px;
-      margin:auto;
     }
-    h1{margin-top:0}
+
+    .status-pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      border-radius:999px;
+      padding:10px 14px;
+      font-size:14px;
+      font-weight:700;
+      background:var(--warning-bg);
+      color:#7a5d00;
+      white-space:nowrap;
+    }
+
+    .status-pill.success{
+      background:var(--success-bg);
+      color:var(--success);
+    }
+
+    .hero{
+      display:grid;
+      grid-template-columns:1.25fr .75fr;
+      gap:18px;
+      align-items:stretch;
+    }
+
+    .hero-title{
+      font-size:34px;
+      font-weight:800;
+      margin:0 0 10px;
+    }
+
+    .hero-client{
+      font-size:18px;
+      color:var(--muted);
+      margin:0;
+    }
+
+    .hero-note{
+      margin-top:18px;
+      padding:16px 18px;
+      border-radius:14px;
+      background:#f8fafc;
+      border:1px solid var(--line);
+      color:#334155;
+      line-height:1.5;
+      font-size:15px;
+    }
+
+    .summary-grid{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:16px;
+      margin-top:22px;
+    }
+
+    .summary-card{
+      background:#fafafa;
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:18px;
+    }
+
+    .summary-label{
+      font-size:13px;
+      color:var(--muted);
+      margin-bottom:8px;
+      text-transform:uppercase;
+      letter-spacing:.04em;
+      font-weight:700;
+    }
+
+    .summary-value{
+      font-size:30px;
+      font-weight:800;
+      line-height:1.1;
+    }
+
+    .summary-sub{
+      margin-top:6px;
+      color:var(--muted);
+      font-size:14px;
+    }
+
+    .section-title{
+      margin:0 0 18px;
+      font-size:22px;
+      font-weight:800;
+    }
+
+    .details-grid{
+      display:grid;
+      grid-template-columns:repeat(2,1fr);
+      gap:18px 24px;
+    }
+
+    .detail{
+      border-bottom:1px solid var(--line);
+      padding-bottom:12px;
+    }
+
+    .detail-label{
+      display:block;
+      color:var(--muted);
+      font-size:13px;
+      text-transform:uppercase;
+      letter-spacing:.05em;
+      margin-bottom:6px;
+      font-weight:700;
+    }
+
+    .detail-value{
+      font-size:18px;
+      font-weight:700;
+      line-height:1.35;
+      word-break:break-word;
+    }
+
+    .scope-box,
+    .terms-box{
+      background:#fafafa;
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:20px;
+      line-height:1.6;
+      color:#1f2937;
+    }
+
+    .scope-text{
+      margin:0;
+      font-size:16px;
+      white-space:pre-wrap;
+    }
+
+    .terms-list{
+      margin:0;
+      padding-left:18px;
+    }
+
+    .terms-list li{
+      margin-bottom:8px;
+      color:#374151;
+    }
+
+    .cta-card{
+      position:sticky;
+      bottom:18px;
+      z-index:10;
+      background:rgba(255,255,255,.96);
+      backdrop-filter:blur(8px);
+      border:1px solid var(--line);
+      box-shadow:var(--shadow);
+    }
+
+    .cta-wrap{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:20px;
+      flex-wrap:wrap;
+    }
+
+    .cta-copy h3{
+      margin:0 0 8px;
+      font-size:24px;
+    }
+
+    .cta-copy p{
+      margin:0;
+      color:var(--muted);
+      line-height:1.5;
+      max-width:620px;
+    }
+
+    .actions{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+
     .btn{
-      background:#1e88e5;
-      color:white;
-      padding:12px 20px;
       border:none;
-      border-radius:6px;
+      border-radius:12px;
+      padding:15px 22px;
+      font-size:16px;
+      font-weight:800;
       cursor:pointer;
-      margin-top:20px;
-      display:inline-block;
       text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      transition:.2s ease;
+      min-height:52px;
     }
-    .btn:hover{ background:#1565c0; }
-    .btn[disabled]{ opacity:.6; cursor:not-allowed; }
-    .total{ font-size:24px; font-weight:bold; }
-    .muted{ color:#666; }
+
+    .btn-primary{
+      background:var(--primary);
+      color:#fff;
+      min-width:290px;
+    }
+
+    .btn-primary:hover{
+      background:var(--primary-dark);
+    }
+
+    .btn-secondary{
+      background:#eef2f7;
+      color:#1f2937;
+      border:1px solid #dbe3ec;
+    }
+
+    .btn-secondary:hover{
+      background:#e6edf5;
+    }
+
+    .btn[disabled]{
+      opacity:.65;
+      cursor:not-allowed;
+    }
+
+    .message{
+      margin-top:14px;
+      font-size:15px;
+      color:var(--muted);
+      line-height:1.5;
+    }
+
+    .message.error{
+      color:#b42318;
+    }
+
+    .message.success{
+      color:var(--success);
+    }
+
+    .empty{
+      color:var(--muted);
+      font-style:italic;
+    }
+
+    @media (max-width: 860px){
+      .hero,
+      .summary-grid,
+      .details-grid{
+        grid-template-columns:1fr;
+      }
+
+      h1{font-size:36px}
+      .hero-title{font-size:30px}
+      .summary-value{font-size:28px}
+      .cta-wrap{align-items:flex-start}
+      .btn-primary{min-width:100%}
+    }
+
+    @media (max-width: 520px){
+      body{padding:18px 12px 90px}
+      .card{padding:20px}
+      h1{font-size:30px}
+      .hero-title{font-size:26px}
+      .detail-value{font-size:16px}
+      .cta-copy h3{font-size:21px}
+    }
   </style>
 </head>
 
 <body>
-  <div class="card">
-    <h1>Project Quote</h1>
+  <div class="page">
+    <section class="card">
+      <div class="topbar">
+        <div>
+          <div class="brand">Three Colors Corp</div>
+          <h1>Project Quote</h1>
+          <p class="subtitle">
+            Please review your quote below. When you're ready, approve your project
+            and continue to the deposit to reserve your schedule.
+          </p>
+        </div>
+        <div id="statusPill" class="status-pill">Pending Review</div>
+      </div>
 
-    <div id="content">Loading...</div>
+      <div class="hero">
+        <div>
+          <h2 id="projectTitle" class="hero-title">Loading project...</h2>
+          <p id="clientSubtitle" class="hero-client">Prepared for your review</p>
 
-    <button id="approveBtn" class="btn" onclick="approveQuote()">
-      Accept & Continue to Deposit
-    </button>
+          <div class="hero-note">
+            To reserve your project and move forward, please approve your quote and
+            continue to your deposit checkout.
+          </div>
+        </div>
 
-    <button class="btn" onclick="createInvoice()">Create Invoice</button>
+        <div class="summary-grid" style="grid-template-columns:1fr;">
+          <div class="summary-card">
+            <div class="summary-label">Project Total</div>
+            <div id="totalValue" class="summary-value">$0.00</div>
+            <div class="summary-sub">Quoted project amount</div>
+          </div>
 
-    <a id="payBtn" target="_blank" rel="noopener" class="btn" style="display:none;">
-      Pay Deposit
-    </a>
+          <div class="summary-card">
+            <div class="summary-label">Deposit Required</div>
+            <div id="depositValue" class="summary-value">$0.00</div>
+            <div class="summary-sub">Required to reserve your schedule</div>
+          </div>
+
+          <div class="summary-card">
+            <div class="summary-label">Quote Status</div>
+            <div id="statusValue" class="summary-value" style="font-size:24px;">Pending</div>
+            <div id="validUntilValue" class="summary-sub">Reviewing quote details...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3 class="section-title">Project Details</h3>
+      <div class="details-grid">
+        <div class="detail">
+          <span class="detail-label">Client</span>
+          <div id="detailClient" class="detail-value">—</div>
+        </div>
+
+        <div class="detail">
+          <span class="detail-label">Project</span>
+          <div id="detailProject" class="detail-value">—</div>
+        </div>
+
+        <div class="detail">
+          <span class="detail-label">Estimate Number</span>
+          <div id="detailEstimateNo" class="detail-value">—</div>
+        </div>
+
+        <div class="detail">
+          <span class="detail-label">Issue Date</span>
+          <div id="detailIssueDate" class="detail-value">—</div>
+        </div>
+
+        <div class="detail">
+          <span class="detail-label">Expiration Date</span>
+          <div id="detailExpirationDate" class="detail-value">—</div>
+        </div>
+
+        <div class="detail">
+          <span class="detail-label">Job Site</span>
+          <div id="detailJobSite" class="detail-value">—</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3 class="section-title">Scope of Work</h3>
+      <div class="scope-box">
+        <p id="scopeText" class="scope-text empty">No scope summary provided.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3 class="section-title">Important Terms</h3>
+      <div class="terms-box">
+        <ul class="terms-list">
+          <li>Deposit is required to reserve your project schedule.</li>
+          <li>Your approved quote confirms the scope of work listed above.</li>
+          <li>Any scope changes after approval may require a written change order.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="card cta-card">
+      <div class="cta-wrap">
+        <div class="cta-copy">
+          <h3>Ready to move forward?</h3>
+          <p>
+            Approve your project and continue securely to the scheduling deposit.
+          </p>
+          <div id="statusMessage" class="message"></div>
+        </div>
+
+        <div class="actions">
+          <button id="approveBtn" class="btn btn-primary" onclick="approveQuote()">
+            Approve Project & Pay Deposit
+          </button>
+
+          <a id="payBtn" target="_blank" rel="noopener" class="btn btn-secondary" style="display:none;">
+            Pay Deposit
+          </a>
+        </div>
+      </div>
+    </section>
   </div>
 
   <script>
@@ -61,8 +472,7 @@
 
     const SDK = window.supabase || window.supabaseJs || window.Supabase;
     if (!SDK || !SDK.createClient) {
-      document.getElementById("content").innerHTML =
-        "Supabase SDK failed to load. Refresh the page.";
+      document.body.innerHTML = "<div class='page'><section class='card'><p>Supabase SDK failed to load. Refresh the page.</p></section></div>";
       throw new Error("Supabase SDK not found on window.");
     }
 
@@ -76,14 +486,25 @@
     const id = params.get("id");
     const token = params.get("t");
 
-    const contentEl = document.getElementById("content");
     const approveBtn = document.getElementById("approveBtn");
     const payBtn = document.getElementById("payBtn");
+    const statusPill = document.getElementById("statusPill");
+    const statusValue = document.getElementById("statusValue");
+    const statusMessage = document.getElementById("statusMessage");
 
-    function setApproveEnabled(enabled, label) {
-      approveBtn.disabled = !enabled;
-      if (label) approveBtn.textContent = label;
-    }
+    const projectTitle = document.getElementById("projectTitle");
+    const clientSubtitle = document.getElementById("clientSubtitle");
+    const totalValue = document.getElementById("totalValue");
+    const depositValue = document.getElementById("depositValue");
+    const validUntilValue = document.getElementById("validUntilValue");
+
+    const detailClient = document.getElementById("detailClient");
+    const detailProject = document.getElementById("detailProject");
+    const detailEstimateNo = document.getElementById("detailEstimateNo");
+    const detailIssueDate = document.getElementById("detailIssueDate");
+    const detailExpirationDate = document.getElementById("detailExpirationDate");
+    const detailJobSite = document.getElementById("detailJobSite");
+    const scopeText = document.getElementById("scopeText");
 
     function safeText(v) {
       return (v === null || v === undefined) ? "" : String(v);
@@ -97,46 +518,107 @@
       });
     }
 
+    function formatDate(v) {
+      if (!v) return "—";
+      const d = new Date(v);
+      if (Number.isNaN(d.getTime())) return safeText(v);
+      return d.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric"
+      });
+    }
+
+    function setApproveEnabled(enabled, label) {
+      approveBtn.disabled = !enabled;
+      if (label) approveBtn.textContent = label;
+    }
+
+    function setMessage(text, tone = "") {
+      statusMessage.className = tone ? `message ${tone}` : "message";
+      statusMessage.textContent = text || "";
+    }
+
+    function setStatus(status, accepted, depositPaid) {
+      const normalized = safeText(status || "Pending Review");
+      statusValue.textContent = normalized;
+
+      if (depositPaid) {
+        statusPill.textContent = "Deposit Paid";
+        statusPill.className = "status-pill success";
+      } else if (accepted) {
+        statusPill.textContent = "Approved";
+        statusPill.className = "status-pill success";
+      } else {
+        statusPill.textContent = "Pending Review";
+        statusPill.className = "status-pill";
+      }
+    }
+
     async function loadQuote() {
-      contentEl.innerHTML = "Loading...";
-      setApproveEnabled(false, "Accept & Continue to Deposit");
+      setApproveEnabled(false, "Loading quote...");
       payBtn.style.display = "none";
       payBtn.removeAttribute("href");
       payBtn.style.pointerEvents = "auto";
       payBtn.style.opacity = "1";
+      setMessage("");
+
+      if (!id || !token) {
+        projectTitle.textContent = "Missing link information";
+        clientSubtitle.textContent = "The approval link is incomplete.";
+        setMessage("Missing link parameters (id / t).", "error");
+        return;
+      }
 
       try {
-        if (!id || !token) {
-          contentEl.innerHTML = "Missing link parameters (id / t).";
-          return;
-        }
-
         const { data, error } = await sb.rpc("get_public_quote", {
           p_id: id,
           p_token: token
         });
 
         if (error || !data) {
-          contentEl.innerHTML = `Quote not found.<br><span class="muted">${safeText(error?.message)}</span>`;
+          projectTitle.textContent = "Quote not found";
+          clientSubtitle.textContent = "We could not load this quote.";
+          setMessage(error?.message || "Quote not found.", "error");
           return;
         }
 
         const q = data;
-
         const total = Number(q.total ?? q.estimated_amount ?? 0);
         const dep = Number(q.deposit_required ?? 0);
         const depText = money(dep);
 
-        contentEl.innerHTML = `
-          <b>Client:</b> ${safeText(q.client_name)}<br><br>
-          <b>Project:</b> ${safeText(q.project_name)}<br><br>
-          <b>Total:</b>
-          <div class="total">${money(total)}</div>
-          <br>
-          <b>Deposit Required:</b> ${depText}
-          <br><br>
-          ${safeText(q.notes)}
-        `;
+        const status = (q.status || "").toLowerCase();
+        const accepted = status === "accepted" || !!q.accepted_at;
+        const depositPaid = !!q.deposit_paid || Number(q.deposit_paid_amount ?? 0) > 0;
+        const link = safeText(q.payment_link);
+
+        projectTitle.textContent = safeText(q.project_name) || "Project Quote";
+        clientSubtitle.textContent = `Prepared for ${safeText(q.client_name) || "Client"}`;
+
+        totalValue.textContent = money(total);
+        depositValue.textContent = depText;
+        validUntilValue.textContent = q.expiration_date
+          ? `Valid until ${formatDate(q.expiration_date)}`
+          : "Review and approval available now";
+
+        detailClient.textContent = safeText(q.client_name) || "—";
+        detailProject.textContent = safeText(q.project_name) || "—";
+        detailEstimateNo.textContent = safeText(q.estimate_number || q.id || "—");
+        detailIssueDate.textContent = formatDate(q.issue_date || q.created_at);
+        detailExpirationDate.textContent = formatDate(q.expiration_date);
+        detailJobSite.textContent = safeText(q.job_site || q.location || "—");
+
+        const notes = safeText(q.notes).trim();
+        if (notes) {
+          scopeText.textContent = notes;
+          scopeText.classList.remove("empty");
+        } else {
+          scopeText.textContent = "No scope summary provided.";
+          scopeText.classList.add("empty");
+        }
+
+        setStatus(q.status, accepted, depositPaid);
 
         const viewedRes = await sb.rpc("mark_quote_viewed", {
           p_id: id,
@@ -144,52 +626,54 @@
         });
         if (viewedRes.error) console.warn("mark_quote_viewed error:", viewedRes.error);
 
-        const status = (q.status || "").toLowerCase();
-        const accepted = status === "accepted" || !!q.accepted_at;
-        const depositPaid = !!q.deposit_paid || Number(q.deposit_paid_amount ?? 0) > 0;
-        const link = safeText(q.payment_link);
-
         if (accepted) {
-          setApproveEnabled(false, "Quote Accepted ✅");
+          setApproveEnabled(false, depositPaid ? "Project Approved" : "Project Approved");
+          setMessage(
+            depositPaid
+              ? "Your deposit has already been received."
+              : "Your project has been approved. Continue below if your deposit payment is still pending.",
+            depositPaid ? "success" : ""
+          );
 
           if (depositPaid) {
-            payBtn.style.display = "inline-block";
-            payBtn.textContent = "Deposit Paid ✅";
+            payBtn.style.display = "inline-flex";
+            payBtn.textContent = "Deposit Paid";
             payBtn.removeAttribute("href");
             payBtn.style.pointerEvents = "none";
             payBtn.style.opacity = "0.7";
+          } else if (link) {
+            payBtn.href = link;
+            payBtn.textContent = dep ? `Pay Deposit (${depText})` : "Pay Deposit";
+            payBtn.style.display = "inline-flex";
+            payBtn.style.pointerEvents = "auto";
+            payBtn.style.opacity = "1";
           } else {
-            if (link) {
-              payBtn.href = link;
-              payBtn.textContent = dep ? `Pay Deposit (${depText})` : "Pay Deposit";
-              payBtn.style.display = "inline-block";
-              payBtn.style.pointerEvents = "auto";
-              payBtn.style.opacity = "1";
-            } else {
-              payBtn.style.display = "none";
-            }
+            payBtn.style.display = "none";
           }
         } else {
-          setApproveEnabled(true, "Accept & Continue to Deposit");
+          setApproveEnabled(true, "Approve Project & Pay Deposit");
           payBtn.style.display = "none";
+          setMessage("Approve your project to continue to the deposit checkout.");
         }
 
       } catch (e) {
         console.error(e);
-        contentEl.innerHTML = "Error loading quote. Open console for details.";
+        projectTitle.textContent = "Unable to load quote";
+        clientSubtitle.textContent = "Please try again.";
+        setMessage("Error loading quote. Please refresh the page.", "error");
       }
     }
 
     async function approveQuote() {
       try {
         if (!id || !token) {
-          alert("Missing link parameters (id / t).");
+          setMessage("Missing link parameters (id / t).", "error");
           return;
         }
 
-        setApproveEnabled(false, "Accepting quote and preparing deposit checkout...");
+        setApproveEnabled(false, "Approving your project...");
+        setMessage("Approving your project and preparing your deposit checkout...");
 
-        // Paso 1 — aprobar la cotización
         const { data, error } = await sb.rpc("approve_public_quote", {
           p_id: id,
           p_token: token
@@ -197,12 +681,11 @@
 
         if (error || !data) {
           console.warn("approve_public_quote error:", error);
-          alert("We could not accept this quote right now. Please try again or contact us.");
-          setApproveEnabled(true, "Accept & Continue to Deposit");
+          setMessage("We couldn't complete your approval right now. Please try again or contact us.", "error");
+          setApproveEnabled(true, "Approve Project & Pay Deposit");
           return;
         }
 
-        // Paso 2 — leer quote actualizada
         const { data: q2, error: q2Error } = await sb.rpc("get_public_quote", {
           p_id: id,
           p_token: token
@@ -210,16 +693,16 @@
 
         if (q2Error || !q2) {
           console.warn("get_public_quote after approve error:", q2Error);
-          alert("Your quote was accepted, but we could not reload the deposit checkout yet.");
+          setMessage("Your project was approved, but we could not reload the deposit checkout yet.", "error");
           await loadQuote();
           return;
         }
 
         const dep = Number(q2.deposit_required ?? 0);
 
-        // Paso 3 — crear payment link si no existe
         if (!q2.payment_link && dep > 0) {
-          setApproveEnabled(false, "Preparing your deposit checkout...");
+          setApproveEnabled(false, "Preparing deposit checkout...");
+          setMessage("Preparing your secure deposit checkout...");
 
           const SMART_SERVICE_URL =
             "https://yaagobzgozzozibublmj.supabase.co/functions/v1/smart-service";
@@ -240,39 +723,30 @@
           }
         }
 
-        // Paso 4 — recargar quote para leer payment_link final
         await loadQuote();
 
-        // Paso 5 — si ya hay link, abrir Square automáticamente
         const { data: q3, error: q3Error } = await sb.rpc("get_public_quote", {
           p_id: id,
           p_token: token
         });
 
         if (!q3Error && q3?.payment_link) {
+          setApproveEnabled(false, "Redirecting to checkout...");
+          setMessage("Redirecting you to your secure deposit checkout...", "success");
           window.open(q3.payment_link, "_blank", "noopener");
+          return;
         }
+
+        setMessage(
+          "Your project was approved, but your deposit checkout is not ready yet. Please contact us to complete scheduling.",
+          "error"
+        );
 
       } catch (e) {
         console.error(e);
-        alert("There was an error while accepting your quote. Please try again.");
-        setApproveEnabled(true, "Accept Quote + Pay Deposit");
+        setMessage("There was an error while approving your project. Please try again.", "error");
+        setApproveEnabled(true, "Approve Project & Pay Deposit");
       }
-    }
-
-    async function createInvoice() {
-      const { data, error } = await sb.rpc(
-        "create_invoice_from_quote",
-        { p_quote_id: id }
-      );
-
-      if (error) {
-        alert("Error creating invoice");
-        console.log(error);
-        return;
-      }
-
-      window.location.href = "/invoice.html?id=" + data;
     }
 
     loadQuote();
