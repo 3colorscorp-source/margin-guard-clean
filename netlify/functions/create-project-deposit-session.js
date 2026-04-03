@@ -1,3 +1,4 @@
+
 const fetch = globalThis.fetch;
 if (!fetch) {
   throw new Error("Global fetch is not available in this runtime.");
