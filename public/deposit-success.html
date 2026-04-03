@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Confirming Deposit</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body data-public="true">
+  <main class="container narrow">
+    <div class="card" style="margin-top:24px;">
+      <div class="card-inner center">
+        <h1>Confirming your deposit</h1>
+        <p class="sub" id="depositSuccessMsg">We’re validating your Stripe payment...</p>
+        <div id="depositSuccessState" class="notice">One moment, please.</div>
+        <a class="btn" id="depositBackBtn" href="/estimate-public.html">Return to estimate</a>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get("session_id");
+      const state = document.getElementById("depositSuccessState");
+      const msg = document.getElementById("depositSuccessMsg");
+      const backBtn = document.getElementById("depositBackBtn");
+
+      if (!sessionId) {
+        state.className = "notice err";
+        state.textContent = "Missing session_id. Please return to the estimate.";
+        return;
+      }
+
+      try {
+        const res = await fetch("/.netlify/functions/finalize-project-deposit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || "Unable to confirm deposit");
+        }
+
+        if (data.public_token) {
+          localStorage.setItem(`mg_deposit_paid_${data.public_token}`, "true");
+        }
+
+        state.className = "notice ok";
+        state.textContent = "Deposit paid successfully. Redirecting back to your estimate...";
+        msg.textContent = "Your project deposit has been confirmed.";
+
+        if (backBtn && data.redirect_url) {
+          backBtn.href = data.redirect_url;
+        }
+
+        setTimeout(() => {
+          if (data.redirect_url) {
+            window.location.href = data.redirect_url;
+          }
+        }, 1200);
+      } catch (err) {
+        state.className = "notice err";
+        state.textContent = err.message || "Unable to confirm deposit";
+      }
+    })();
+  </script>
+</body>
+</html>

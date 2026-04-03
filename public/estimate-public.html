@@ -6,7 +6,8 @@
   <title>Public Estimate</title>
   <link rel="stylesheet" href="/styles.css" />
   <style>
-    .approved-panel {
+    .approved-panel,
+    .paid-panel {
       display: none;
       margin-top: 16px;
       border: 1px solid rgba(255,255,255,.08);
@@ -16,15 +17,18 @@
       overflow: hidden;
     }
 
-    .approved-panel.show {
+    .approved-panel.show,
+    .paid-panel.show {
       display: block;
     }
 
-    .approved-panel-inner {
+    .approved-panel-inner,
+    .paid-panel-inner {
       padding: 22px 20px;
     }
 
-    .approved-kicker {
+    .approved-kicker,
+    .paid-kicker {
       font-size: 12px;
       letter-spacing: .12em;
       text-transform: uppercase;
@@ -32,35 +36,41 @@
       margin-bottom: 10px;
     }
 
-    .approved-title {
+    .approved-title,
+    .paid-title {
       margin: 0 0 10px;
       font-size: 18px;
       line-height: 1.25;
       font-weight: 800;
     }
 
-    .approved-copy {
+    .approved-copy,
+    .paid-copy {
       margin: 0 0 14px;
       opacity: .92;
       line-height: 1.55;
     }
 
-    .approved-next-step {
+    .approved-next-step,
+    .paid-next-step {
       margin: 0 0 16px;
       font-weight: 700;
     }
 
-    .approved-actions {
+    .approved-actions,
+    .paid-actions {
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
     }
 
-    .approved-actions .btn {
+    .approved-actions .btn,
+    .paid-actions .btn {
       min-width: 220px;
     }
 
-    .approved-check {
+    .approved-check,
+    .paid-check {
       font-size: 18px;
       margin-right: 8px;
     }
@@ -171,6 +181,28 @@
             </div>
           </div>
         </section>
+
+        <section class="paid-panel" id="paidProjectPanel" aria-live="polite">
+          <div class="paid-panel-inner">
+            <div class="paid-kicker">Deposit Paid</div>
+            <h3 class="paid-title"><span class="paid-check">🔒</span>Project secured. Your deposit has been received.</h3>
+            <p class="paid-copy">
+              Your project deposit is confirmed and your estimate is now secured for the next step.
+            </p>
+            <p class="paid-next-step">Next Step: Our team can now move forward with scheduling and project coordination.</p>
+
+            <div class="paid-actions">
+              <a class="btn primary" href="/">Return to Home</a>
+            </div>
+
+            <div class="deposit-secure">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2l7 4v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-4z"></path>
+              </svg>
+              Payment confirmed
+            </div>
+          </div>
+        </section>
       </div>
     </section>
   </div>
@@ -178,43 +210,155 @@
   <script defer src="/js/estimate-builder.js"></script>
   <script>
     (function () {
-      const STRIPE_LINK = "https://buy.stripe.com/14AaEY9Rl8x6boG7LX2Fa01";
-
       function $(id) {
         return document.getElementById(id);
+      }
+
+      function getTokenFromUrl() {
+        return new URLSearchParams(window.location.search).get("token") || "";
+      }
+
+      function getDepositPaidFlag(token) {
+        const params = new URLSearchParams(window.location.search);
+        return params.get("deposit") === "paid" || localStorage.getItem(`mg_deposit_paid_${token}`) === "true";
       }
 
       function getStatusValue() {
         return ($("publicEstimateStatus")?.textContent || "").trim().toLowerCase();
       }
 
-      function showApprovedPanel(isApproved) {
-        const panel = $("approvedProjectPanel");
-        const actions = $("publicEstimateActions");
-        if (!panel) return;
+      function parseMoneyText(text) {
+        const clean = String(text || "").replace(/[^0-9.]/g, "");
+        const num = Number(clean);
+        return Number.isFinite(num) ? num : 0;
+      }
 
-        if (isApproved) {
-          panel.classList.add("show");
+      function getEstimateTitle() {
+        return ($("publicEstimateTitle")?.textContent || "").trim() || "Project";
+      }
+
+      function getCustomerBlockText() {
+        return ($("publicEstimateCustomer")?.innerText || "").trim();
+      }
+
+      function getCustomerName() {
+        const lines = getCustomerBlockText().split("\n").map((line) => line.trim()).filter(Boolean);
+        return lines[0] || "Customer";
+      }
+
+      function getCustomerEmail() {
+        const lines = getCustomerBlockText().split("\n").map((line) => line.trim()).filter(Boolean);
+        return lines[1] || "";
+      }
+
+      function showUiState({ approved, paid }) {
+        const actions = $("publicEstimateActions");
+        const approvedPanel = $("approvedProjectPanel");
+        const paidPanel = $("paidProjectPanel");
+
+        if (paid) {
           if (actions) actions.style.display = "none";
-        } else {
-          panel.classList.remove("show");
-          if (actions) actions.style.display = "";
+          if (approvedPanel) approvedPanel.classList.remove("show");
+          if (paidPanel) paidPanel.classList.add("show");
+          return;
+        }
+
+        if (approved) {
+          if (actions) actions.style.display = "none";
+          if (approvedPanel) approvedPanel.classList.add("show");
+          if (paidPanel) paidPanel.classList.remove("show");
+          return;
+        }
+
+        if (actions) actions.style.display = "";
+        if (approvedPanel) approvedPanel.classList.remove("show");
+        if (paidPanel) paidPanel.classList.remove("show");
+      }
+
+      function syncPanels() {
+        const token = getTokenFromUrl();
+        const status = getStatusValue();
+        const approved = status === "accepted" || status === "approved";
+        const paid = token ? getDepositPaidFlag(token) : false;
+        showUiState({ approved, paid });
+
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("checkout") === "cancelled") {
+          const feedback = $("publicEstimateFeedback");
+          if (feedback) {
+            feedback.style.display = "block";
+            feedback.className = "notice warn";
+            feedback.textContent = "Deposit checkout was cancelled. You can continue whenever you are ready.";
+          }
+        }
+
+        if (paid) {
+          const feedback = $("publicEstimateFeedback");
+          if (feedback) {
+            feedback.style.display = "block";
+            feedback.className = "notice ok";
+            feedback.textContent = "Deposit paid successfully. Your project is now secured.";
+          }
         }
       }
 
-      function syncApprovedUI() {
-        const status = getStatusValue();
-        const isApproved = status === "accepted" || status === "approved";
-        showApprovedPanel(isApproved);
+      async function startDepositCheckout() {
+        const token = getTokenFromUrl();
+        if (!token) {
+          throw new Error("Missing public token");
+        }
+
+        const btn = $("payDepositBtn");
+        const feedback = $("publicEstimateFeedback");
+
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "Opening secure checkout...";
+        }
+
+        if (feedback) {
+          feedback.style.display = "block";
+          feedback.className = "notice";
+          feedback.textContent = "Creating secure deposit checkout...";
+        }
+
+        try {
+          const res = await fetch("/.netlify/functions/create-project-deposit-session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              public_token: token,
+              project_name: getEstimateTitle(),
+              customer_name: getCustomerName(),
+              customer_email: getCustomerEmail(),
+              deposit_required: parseMoneyText($("publicEstimateDeposit")?.textContent || "0")
+            })
+          });
+
+          const data = await res.json();
+
+          if (!res.ok || !data.ok || !data.url) {
+            throw new Error(data.error || "Unable to create deposit checkout");
+          }
+
+          window.location.href = data.url;
+        } catch (err) {
+          if (feedback) {
+            feedback.style.display = "block";
+            feedback.className = "notice err";
+            feedback.textContent = err.message || "Unable to start deposit checkout";
+          }
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Pay Project Deposit";
+          }
+        }
       }
 
       function bindDepositButton() {
         const btn = $("payDepositBtn");
         if (!btn) return;
-
-        btn.addEventListener("click", function () {
-          window.open(STRIPE_LINK, "_blank", "noopener,noreferrer");
-        });
+        btn.addEventListener("click", startDepositCheckout);
       }
 
       function bindStatusRefresh() {
@@ -223,19 +367,19 @@
 
         if (approveBtn) {
           approveBtn.addEventListener("click", function () {
-            setTimeout(syncApprovedUI, 120);
+            setTimeout(syncPanels, 180);
           });
         }
 
         if (declineBtn) {
           declineBtn.addEventListener("click", function () {
-            setTimeout(syncApprovedUI, 120);
+            setTimeout(syncPanels, 180);
           });
         }
 
         const statusBadge = $("publicEstimateStatus");
         if (statusBadge && "MutationObserver" in window) {
-          const observer = new MutationObserver(syncApprovedUI);
+          const observer = new MutationObserver(syncPanels);
           observer.observe(statusBadge, {
             childList: true,
             subtree: true,
@@ -247,7 +391,7 @@
       function init() {
         bindDepositButton();
         bindStatusRefresh();
-        setTimeout(syncApprovedUI, 200);
+        setTimeout(syncPanels, 250);
       }
 
       if (document.readyState === "loading") {
