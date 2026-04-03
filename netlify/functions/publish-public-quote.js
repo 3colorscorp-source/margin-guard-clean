@@ -89,9 +89,9 @@ exports.handler = async (event) => {
       process.env.SITE_URL ||
       "";
 
-    const publicUrl = `${siteUrl}/quote-view.html?id=${encodeURIComponent(
-      quoteId
-    )}&t=${encodeURIComponent(publicToken)}`;
+    const publicUrl = `${siteUrl}/estimate-public.html?token=${encodeURIComponent(
+      publicToken
+    )}`;
 
     return json(200, {
       ok: true,
