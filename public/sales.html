@@ -241,7 +241,7 @@
       <div class="modal-header">
         <div>
           <div class="modal-title">Enviar estimate</div>
-          <div class="modal-subtitle">Usa Netlify Functions + Zapier para enviar la propuesta actual al cliente.</div>
+          <div class="modal-subtitle">Usa Netlify Functions para publicar la propuesta actual y enviar el estimate final al cliente.</div>
         </div>
         <button class="icon-btn" id="btnSendClose">X</button>
       </div>
@@ -354,7 +354,9 @@
         } catch (_error) {
           return '$' + Number(amount || 0).toFixed(2);
         }
-      }      function round2(value) {
+      }
+
+      function round2(value) {
         return Math.round(Number(value || 0) * 100) / 100;
       }
 
@@ -599,7 +601,6 @@
           return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
         }
 
-
         function formatGreetingName(value) {
           const raw = String(value || '').trim();
           if (!raw) return 'there';
@@ -615,10 +616,10 @@
           if (!jspdf?.jsPDF) return null;
           const doc = new jspdf.jsPDF({ unit: 'pt', format: 'letter' });
           let y = 56;
-          const lineGap = 18;
           const pageWidth = doc.internal.pageSize.getWidth();
           const left = 48;
           const right = pageWidth - 48;
+
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(20);
           doc.text(data.businessName || 'Three Colors Corp', left, y);
@@ -697,7 +698,7 @@
           const customerPhone = document.getElementById('salesCustomerPhone')?.value || state.customerPhone || '';
           const location = document.getElementById('salesLocation')?.value || state.location || '';
           const messageToClient = document.getElementById('salesMessageToClient')?.value || state.messageToClient || '';
-          const totalFormatted = formatUsd(metrics.recommended);
+          const totalFormatted = formatUsd(metrics.offered || metrics.recommended);
           const depositFormatted = formatUsd(1000);
           const issueDateLong = formatLongDate(issueDate);
           const expirationDateLong = formatLongDate(expirationDate);
@@ -739,6 +740,7 @@
             'Thank you,',
             settings.bizName || 'Three Colors Corp'
           ].join('\n');
+
           const payload = {
             businessName: settings.bizName || 'Three Colors Corp',
             estimateNumber,
@@ -752,10 +754,13 @@
             issueDateLong,
             expirationDateLong,
             totalFormatted,
+            totalAmount: Number(metrics.offered || metrics.recommended || 0),
             depositFormatted,
+            depositRequired: 1000,
             scopeSummary: messageToClient || '-',
             messageText: defaultMessage
           };
+
           const subject = document.getElementById('subject');
           const toEmail = document.getElementById('toEmail');
           const toName = document.getElementById('toName');
@@ -763,14 +768,17 @@
           const message = document.getElementById('message');
           const deposit = document.getElementById('deposit');
           const sendStatus = document.getElementById('sendStatus');
+
           if (toEmail) toEmail.value = customerEmail;
           if (toName) toName.value = clientName;
           if (subject) subject.value = defaultSubject;
           if (scope) scope.value = defaultScope;
           if (message) message.value = defaultMessage;
           if (deposit) deposit.value = depositFormatted;
+
           modal.dataset.pdf = JSON.stringify(buildEstimatePdfPayload(payload) || {});
           modal.dataset.payload = JSON.stringify(payload);
+
           if (sendStatus) {
             sendStatus.style.display = 'none';
             sendStatus.textContent = '';
@@ -839,11 +847,15 @@
           const subject = (document.getElementById('subject')?.value || '').trim();
           const scope = (document.getElementById('scope')?.value || '').trim();
           const message = (document.getElementById('message')?.value || '').trim();
+          const customerPhone = (document.getElementById('salesCustomerPhone')?.value || state.customerPhone || payload.customerPhone || '').trim();
+          const projectAddress = (document.getElementById('salesLocation')?.value || state.location || payload.location || '').trim();
+          const estimateTotal = Number(payload.totalAmount || metrics.offered || metrics.recommended || 0);
+          const depositRequired = Number(payload.depositRequired || 1000);
 
           state.clientName = toName || state.clientName || '';
           state.customerEmail = toEmail || state.customerEmail || '';
-          state.customerPhone = document.getElementById('salesCustomerPhone')?.value || state.customerPhone || '';
-          state.location = document.getElementById('salesLocation')?.value || state.location || '';
+          state.customerPhone = customerPhone;
+          state.location = projectAddress;
           saveSalesState(state);
 
           if (!toEmail || !toName || !salesRepInitials) {
@@ -871,11 +883,21 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 project_name: payload.projectName || state.projectName || '',
+                title: payload.projectName || state.projectName || '',
                 client_name: toName || payload.clientName || state.clientName || '',
                 client_email: toEmail || payload.customerEmail || state.customerEmail || '',
-                total: Number(metrics.recommended || metrics.offered || 0),
-                deposit_required: 1000,
+                client_phone: customerPhone,
+                customer_phone: customerPhone,
+                phone: customerPhone,
+                project_address: projectAddress,
+                customer_address: projectAddress,
+                job_site: projectAddress,
+                address: projectAddress,
+                total: estimateTotal,
+                recommended_total: estimateTotal,
+                deposit_required: depositRequired,
                 notes: message,
+                public_message: payload.scopeSummary || scope || '',
                 currency: 'USD',
                 status: 'READY_TO_SEND'
               })
@@ -894,6 +916,8 @@
 
             const pdfPayloadWithLink = {
               ...payload,
+              customerPhone,
+              location: projectAddress,
               messageText: messageWithLink,
               publicQuoteUrl
             };
@@ -917,17 +941,17 @@
                 subject,
                 messageText: messageWithLink,
                 scopeOfWork: payload.scopeSummary || scope,
-                depositRequired: 1000,
+                depositRequired,
                 projectName: payload.projectName || state.projectName || '',
                 clientName: toName || payload.clientName || state.clientName || '',
-                location: payload.location || state.location || '',
+                location: projectAddress,
                 businessName: settings.bizName || 'Three Colors Corp',
                 currency: 'USD',
-                recommendedTotal: Number(metrics.recommended || metrics.offered || 0),
+                recommendedTotal: estimateTotal,
                 estimateNumber: payload.estimateNumber || state.estimateNumber || 'EST-1001',
                 issueDate: payload.issueDate || state.issueDate || '',
                 expirationDate: payload.expirationDate || state.expirationDate || '',
-                customerPhone: payload.customerPhone || state.customerPhone || '',
+                customerPhone,
                 publicQuoteUrl,
                 quoteId: publishData.quote_id,
                 publicToken: publishData.public_token,
@@ -1017,24 +1041,3 @@
   </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
