@@ -129,8 +129,8 @@
           </div>
         </div>
 
-        <div class="summary" style="margin-top:16px;">
-          <div class="summary-head">Line items</div>
+        <div class="summary" id="publicEstimateItemsSection" style="margin-top:16px; display:none;">
+          <div class="summary-head">Project Scope</div>
           <div class="summary-body" id="publicEstimateItems"></div>
         </div>
 
@@ -306,6 +306,39 @@
         }
       }
 
+      function syncItemsSection() {
+        const itemsSection = $("publicEstimateItemsSection");
+        const itemsBody = $("publicEstimateItems");
+        if (!itemsSection || !itemsBody) return;
+
+        const rawText = (itemsBody.textContent || "").trim().toLowerCase();
+        const isEmptyMessage =
+          rawText === "" ||
+          rawText === "no hay line items todavía." ||
+          rawText === "no line items available yet." ||
+          rawText === "no line items available yet";
+
+        if (isEmptyMessage) {
+          itemsBody.innerHTML = "";
+          itemsSection.style.display = "none";
+          return;
+        }
+
+        itemsSection.style.display = "";
+      }
+
+      function bindItemsRefresh() {
+        const itemsBody = $("publicEstimateItems");
+        if (!itemsBody || !("MutationObserver" in window)) return;
+
+        const observer = new MutationObserver(syncItemsSection);
+        observer.observe(itemsBody, {
+          childList: true,
+          subtree: true,
+          characterData: true
+        });
+      }
+
       async function startDepositCheckout() {
         const token = getTokenFromUrl();
         if (!token) {
@@ -395,7 +428,9 @@
       function init() {
         bindDepositButton();
         bindStatusRefresh();
+        bindItemsRefresh();
         setTimeout(syncPanels, 250);
+        setTimeout(syncItemsSection, 300);
       }
 
       if (document.readyState === "loading") {
