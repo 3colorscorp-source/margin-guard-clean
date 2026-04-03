@@ -23,10 +23,13 @@
     }
 
     *{box-sizing:border-box}
-    html,body{margin:0;padding:0;background:
-      radial-gradient(circle at top left, rgba(16,185,129,.18), transparent 28%),
-      radial-gradient(circle at top right, rgba(59,130,246,.12), transparent 24%),
-      linear-gradient(180deg,#010814 0%,#020617 100%);
+    html,body{
+      margin:0;
+      padding:0;
+      background:
+        radial-gradient(circle at top left, rgba(16,185,129,.18), transparent 28%),
+        radial-gradient(circle at top right, rgba(59,130,246,.12), transparent 24%),
+        linear-gradient(180deg,#010814 0%,#020617 100%);
       color:var(--text);
       font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
       min-height:100%;
@@ -264,10 +267,17 @@
     .btn:disabled{opacity:.65; cursor:not-allowed; transform:none}
 
     .btn-primary{
-      color:#f0fdf4;
-      background:linear-gradient(90deg, rgba(16,185,129,.34), rgba(34,197,94,.18));
-      border:1px solid rgba(34,197,94,.42);
-      box-shadow:0 10px 26px rgba(16,185,129,.18);
+      color:#ffffff;
+      background:linear-gradient(90deg, #0f766e, #10b981);
+      border:1px solid rgba(16,185,129,.55);
+      box-shadow:0 16px 34px rgba(16,185,129,.28);
+      font-size:19px;
+      letter-spacing:.01em;
+    }
+
+    .btn-primary:hover{
+      transform:translateY(-2px) scale(1.01);
+      box-shadow:0 20px 40px rgba(16,185,129,.34);
     }
 
     .btn-secondary{
@@ -298,13 +308,6 @@
     }
 
     .hidden{display:none !important;}
-
-    .legacy-approved,
-    .legacy-payment,
-    .old-approved-panel,
-    .old-payment-panel{
-      display:none !important;
-    }
 
     @media (max-width: 920px){
       .grid{grid-template-columns:1fr}
@@ -397,7 +400,6 @@
 
     <div id="feedback" class="notice hidden"></div>
 
-    <!-- SINGLE SMART STATE PANEL -->
     <section id="smartStatePanel" class="state-panel">
       <div class="state-badge" id="stateBadge">Approved</div>
       <h2 id="stateTitle">Project approved. Your next step is ready.</h2>
@@ -504,10 +506,22 @@
 
       function renderItems(items) {
         els.lineItems.innerHTML = "";
+
         if (!Array.isArray(items) || !items.length) {
-          els.emptyItems.style.display = "block";
+          els.emptyItems.style.display = "none";
+
+          const fallback = document.createElement("div");
+          fallback.className = "item";
+          fallback.innerHTML = `
+            <div class="item-title">${estimateData?.project_name || estimateData?.projectName || "Approved Project Scope"}</div>
+            <div class="item-sub">
+              Your approved project scope is ready to move into the next phase.
+            </div>
+          `;
+          els.lineItems.appendChild(fallback);
           return;
         }
+
         els.emptyItems.style.display = "none";
 
         items.forEach((item) => {
@@ -548,28 +562,27 @@
           els.heroTitle.textContent = "Your project is officially secured.";
           els.heroSubtitle.textContent =
             "You’ve completed the next step successfully. Our team can now continue moving your project forward.";
-
           return;
         }
 
         if (approved) {
           els.smartStatePanel.classList.remove("secured");
           els.stateBadge.textContent = "Approved";
-          els.stateTitle.textContent = "Project approved. Your next step is ready.";
+          els.stateTitle.textContent = "Your project is approved and ready to move forward.";
           els.stateText.textContent =
-            "Your project has been approved and is now ready to move into scheduling and preparation.";
+            "You’ve already completed the approval step. The next move secures your project start and keeps everything progressing smoothly.";
           els.stateHighlight.textContent =
-            "Next Step: Secure your project start and keep your momentum moving forward.";
+            "Next Step: Activate your project start with your initial project investment.";
           els.primaryActionBtn.classList.remove("hidden");
-          els.primaryActionBtn.textContent = "Secure Project Start";
+          els.primaryActionBtn.textContent = "Move My Project Forward";
           els.secondaryActionBtn.classList.add("hidden");
-          els.microCopy.textContent = "🔒 Smart project investment applied toward final invoice";
+          els.microCopy.textContent = "✔ Applied toward your final invoice";
           els.stateSubtle.textContent =
-            "This step secures your scheduling position and confirms your project is moving into the next phase.";
+            "This is not an extra cost — it is a smart project investment that secures your scheduling position and moves your project into preparation.";
 
-          els.heroTitle.textContent = "Your project is moving forward.";
+          els.heroTitle.textContent = "Your project is approved and ready to begin.";
           els.heroSubtitle.textContent =
-            "You’ve already completed the approval step. Your next move secures your place in scheduling and preparation.";
+            "You’ve already taken the first step. Your next move secures scheduling and keeps your project progressing with confidence.";
           return;
         }
 
@@ -630,7 +643,7 @@
         } catch (err) {
           showNotice(err.message || "Unable to start secure checkout", "error");
           els.primaryActionBtn.disabled = false;
-          els.primaryActionBtn.textContent = "Secure Project Start";
+          els.primaryActionBtn.textContent = "Move My Project Forward";
         }
       }
 
@@ -676,7 +689,12 @@
           els.projectAddress.textContent =
             estimate.project_address ||
             estimate.address ||
-            "—";
+            estimate.job_address ||
+            estimate.service_address ||
+            estimate.projectAddress ||
+            estimate.jobAddress ||
+            estimate.serviceAddress ||
+            "Not provided";
 
           els.projectTotal.textContent = money(
             estimate.total ||
@@ -711,7 +729,7 @@
 
           syncStatePanel(estimate);
 
-          els.primaryActionBtn.addEventListener("click", createDepositSession);
+          els.primaryActionBtn.onclick = createDepositSession;
         } catch (err) {
           showNotice(err.message || "Unable to load estimate", "error");
         }
