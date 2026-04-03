@@ -39,14 +39,18 @@ exports.handler = async (event) => {
 
     const nowIso = new Date().toISOString();
 
+    // 👇 SOLO actualizamos columnas seguras
     const patch = {
       status,
       updated_at: nowIso
     };
 
+    // 👇 Solo agrega accepted_at si existe ese flujo en tu sistema
     if (status === "accepted") {
       patch.accepted_at = nowIso;
     }
+
+    // ⚠️ NO usar declined_at porque tu tabla ya mostró que no existe
 
     const response = await fetch(
       `${supabaseUrl}/rest/v1/quotes?public_token=eq.${encodeURIComponent(token)}`,
@@ -63,8 +67,11 @@ exports.handler = async (event) => {
     );
 
     const text = await response.text();
+
     if (!response.ok) {
-      return json(502, { error: text || "Failed to update estimate status" });
+      return json(502, {
+        error: text || "Failed to update estimate status"
+      });
     }
 
     let rows = [];
