@@ -24,6 +24,48 @@ function pickFirst(...values) {
   return "";
 }
 
+function parseBody(raw) {
+  try {
+    return JSON.parse(raw || "{}");
+  } catch {
+    return {};
+  }
+}
+
+async function insertQuote({ supabaseUrl, serviceRoleKey, payload }) {
+  const response = await fetch(`${supabaseUrl}/rest/v1/quotes`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      Prefer: "return=representation"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const text = await response.text();
+
+  let rows = [];
+  try {
+    rows = JSON.parse(text);
+  } catch {
+    rows = [];
+  }
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    text,
+    rows
+  };
+}
+
+function buildPublicUrl(siteUrl, publicToken) {
+  const cleanSite = String(siteUrl || "").replace(/\/+$/, "");
+  return `${cleanSite}/estimate-public.html?token=${encodeURIComponent(publicToken)}`;
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -38,7 +80,7 @@ exports.handler = async (event) => {
       return json(500, { error: "Missing env SUPABASE_SERVICE_ROLE_KEY" });
     }
 
-    const body = JSON.parse(event.body || "{}");
+    const body = parseBody(event.body);
 
     const total =
       Number(body.total ?? body.recommended_total ?? body.recommendedTotal ?? 0) || 0;
@@ -46,7 +88,7 @@ exports.handler = async (event) => {
     const depositRequired =
       Number(body.deposit_required ?? body.depositRequired ?? 1000) || 0;
 
-    const publicToken = body.public_token || makeToken("qt");
+    const publicToken = pickFirst(body.public_token, body.publicToken) || makeToken("qt");
 
     const projectName = pickFirst(
       body.project_name,
@@ -54,6 +96,8 @@ exports.handler = async (event) => {
       body.project,
       body.job_name,
       body.jobName,
+      body.project_title,
+      body.projectTitle,
       "Project"
     );
 
@@ -61,6 +105,8 @@ exports.handler = async (event) => {
       body.title,
       body.estimate_title,
       body.estimateTitle,
+      body.quote_title,
+      body.quoteTitle,
       projectName,
       "Project"
     );
@@ -71,7 +117,10 @@ exports.handler = async (event) => {
       body.customer_name,
       body.customerName,
       body.owner_name,
-      body.ownerName
+      body.ownerName,
+      body.name,
+      body.full_name,
+      body.fullName
     );
 
     const clientEmail = pickFirst(
@@ -91,21 +140,32 @@ exports.handler = async (event) => {
       body.phoneNumber,
       body.phone,
       body.customer_mobile,
-      body.customerMobile
+      body.customerMobile,
+      body.mobile,
+      body.mobile_phone,
+      body.mobilePhone,
+      body.tel,
+      body.telephone
     );
 
-    const jobSite = pickFirst(
-      body.job_site,
-      body.jobSite,
+    const projectAddress = pickFirst(
       body.project_address,
       body.projectAddress,
+      body.job_site,
+      body.jobSite,
       body.customer_address,
       body.customerAddress,
       body.job_address,
       body.jobAddress,
       body.address,
       body.site_address,
-      body.siteAddress
+      body.siteAddress,
+      body.project_location,
+      body.projectLocation,
+      body.job_location,
+      body.jobLocation,
+      body.service_address,
+      body.serviceAddress
     );
 
     const notes = pickFirst(
@@ -122,48 +182,76 @@ exports.handler = async (event) => {
       body.defaultTerms
     );
 
-    const payload = {
+    const status = pickFirst(body.status, "READY_TO_SEND");
+    const currency = pickFirst(body.currency, "USD");
+    const paymentLink = pickFirst(body.payment_link, body.paymentLink);
+
+    const basePayload = {
       project_name: projectName,
       title,
       client_name: clientName,
       client_email: clientEmail,
-      client_phone: clientPhone,
-      job_site: jobSite,
-      status: body.status || "READY_TO_SEND",
-      currency: body.currency || "USD",
+      status,
+      currency,
       total,
       deposit_required: depositRequired,
       notes,
       terms,
-      payment_link: body.payment_link || body.paymentLink || "",
+      payment_link: paymentLink,
       public_token: publicToken
     };
 
-    const response = await fetch(`${supabaseUrl}/rest/v1/quotes`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-        Prefer: "return=representation"
+    const payloadVariants = [
+      {
+        ...basePayload,
+        client_phone: clientPhone,
+        project_address: projectAddress,
+        job_site: projectAddress
       },
-      body: JSON.stringify(payload)
-    });
+      {
+        ...basePayload,
+        client_phone: clientPhone,
+        job_site: projectAddress
+      },
+      {
+        ...basePayload,
+        client_phone: clientPhone,
+        project_address: projectAddress
+      },
+      {
+        ...basePayload,
+        job_site: projectAddress
+      },
+      {
+        ...basePayload
+      }
+    ];
 
-    const text = await response.text();
+    let insertResult = null;
+    let lastErrorText = "";
 
-    if (!response.ok) {
-      return json(502, { error: text || "Supabase write failed" });
+    for (const payload of payloadVariants) {
+      const result = await insertQuote({
+        supabaseUrl,
+        serviceRoleKey,
+        payload
+      });
+
+      if (result.ok) {
+        insertResult = { ...result, payloadUsed: payload };
+        break;
+      }
+
+      lastErrorText = result.text || `Supabase write failed with status ${result.status}`;
     }
 
-    let rows = [];
-    try {
-      rows = JSON.parse(text);
-    } catch {
-      rows = [];
+    if (!insertResult) {
+      return json(502, {
+        error: lastErrorText || "Supabase write failed"
+      });
     }
 
-    const row = Array.isArray(rows) ? rows[0] : null;
+    const row = Array.isArray(insertResult.rows) ? insertResult.rows[0] : null;
     const quoteId = row?.id || null;
 
     if (!quoteId) {
@@ -178,15 +266,20 @@ exports.handler = async (event) => {
       process.env.SITE_URL ||
       "";
 
-    const publicUrl = `${siteUrl}/estimate-public.html?token=${encodeURIComponent(
-      publicToken
-    )}`;
+    const publicUrl = buildPublicUrl(siteUrl, publicToken);
 
     return json(200, {
       ok: true,
       quote_id: quoteId,
       public_token: publicToken,
       public_url: publicUrl,
+      normalized_customer: {
+        client_name: clientName,
+        client_email: clientEmail,
+        client_phone: clientPhone,
+        project_address: projectAddress
+      },
+      payload_used: insertResult.payloadUsed,
       row
     });
   } catch (err) {
