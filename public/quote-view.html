@@ -4,253 +4,774 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Estimate Proposal</title>
-
   <style>
-    body {
-      margin:0;
-      font-family: Arial;
-      background:#f4f6f8;
+    * { box-sizing: border-box; }
+
+    :root {
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --text: #111827;
+      --muted: #64748b;
+      --line: #e5e7eb;
+      --soft: #f8fafc;
+      --dark: #0f172a;
+      --dark2: #1e293b;
+      --primary: #2563eb;
+      --primary2: #1d4ed8;
+      --shadow: 0 18px 50px rgba(0,0,0,0.08);
     }
 
-    .card {
-      max-width:900px;
-      margin:40px auto;
-      background:white;
-      border-radius:20px;
-      overflow:hidden;
-      box-shadow:0 20px 50px rgba(0,0,0,0.08);
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .page {
+      width: 100%;
+      padding: 32px 16px 60px;
+    }
+
+    .shell {
+      max-width: 880px;
+      margin: 0 auto;
+      background: var(--card);
+      border-radius: 24px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
     }
 
     .hero {
-      background:#0f172a;
-      color:white;
-      padding:40px;
+      background: linear-gradient(135deg, var(--dark), var(--dark2));
+      color: #fff;
+      padding: 42px 42px 34px;
+    }
+
+    .brand {
+      font-size: 13px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      opacity: 0.9;
+      margin-bottom: 10px;
     }
 
     .hero h1 {
-      margin:0;
-      font-size:34px;
+      margin: 0;
+      font-size: 38px;
+      line-height: 1.08;
+      font-weight: 800;
+      letter-spacing: -0.6px;
+    }
+
+    .hero p {
+      margin: 16px 0 0;
+      font-size: 16px;
+      line-height: 1.8;
+      color: rgba(255,255,255,0.88);
+      max-width: 660px;
     }
 
     .section {
-      padding:30px 40px;
-      border-top:1px solid #eee;
+      padding: 34px 42px;
+      border-top: 1px solid #eef2f7;
     }
 
-    .title {
-      font-size:12px;
-      color:#64748b;
-      margin-bottom:10px;
-      text-transform:uppercase;
+    .section-title {
+      font-size: 12px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 16px;
+      font-weight: 700;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .info-card {
+      background: var(--soft);
+      border: 1px solid #e2e8f0;
+      border-radius: 18px;
+      padding: 18px;
+    }
+
+    .label {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+      font-weight: 700;
     }
 
     .value {
-      font-size:18px;
-      font-weight:bold;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--dark);
+      line-height: 1.5;
+      word-break: break-word;
     }
 
-    .grid {
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:12px;
+    .money-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 16px;
+      align-items: stretch;
     }
 
-    .box {
-      background:#f8fafc;
-      padding:18px;
-      border-radius:12px;
-      border:1px solid #e2e8f0;
+    .total-card {
+      background: var(--dark);
+      color: #fff;
+      border-radius: 22px;
+      padding: 28px;
     }
 
-    .money {
-      display:grid;
-      grid-template-columns:2fr 1fr;
-      gap:14px;
+    .total-card .small,
+    .deposit-card .small {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1.4px;
+      margin-bottom: 10px;
+      font-weight: 700;
     }
 
-    .total {
-      background:#0f172a;
-      color:white;
-      padding:24px;
-      border-radius:14px;
+    .total-card .small {
+      color: rgba(255,255,255,0.8);
     }
 
-    .deposit {
-      background:#f8fafc;
-      padding:24px;
-      border-radius:14px;
+    .deposit-card .small {
+      color: var(--muted);
     }
 
-    .big {
-      font-size:38px;
-      font-weight:bold;
+    .total-card .amount {
+      font-size: 44px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -1px;
+      margin-bottom: 12px;
     }
 
-    .scope {
-      background:#fcfcfd;
-      padding:20px;
-      border-radius:12px;
-      border:1px solid #e5e7eb;
-      white-space:pre-line;
+    .deposit-card {
+      background: var(--soft);
+      border: 1px solid #e2e8f0;
+      border-radius: 22px;
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
     }
 
-    .btn {
-      display:inline-block;
-      margin-top:20px;
-      padding:16px 28px;
-      background:#2563eb;
-      color:white;
-      border-radius:999px;
-      font-weight:bold;
-      text-decoration:none;
-      border:none;
-      cursor:pointer;
+    .deposit-card .amount {
+      font-size: 36px;
+      font-weight: 800;
+      color: var(--dark);
+      line-height: 1;
+      margin-bottom: 10px;
     }
 
-    .center {
-      text-align:center;
+    .note {
+      font-size: 15px;
+      line-height: 1.8;
+    }
+
+    .total-card .note {
+      color: rgba(255,255,255,0.85);
+    }
+
+    .deposit-card .note {
+      color: #475569;
+    }
+
+    .scope-box {
+      background: #fcfcfd;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 26px;
+      font-size: 16px;
+      line-height: 1.95;
+      color: #1f2937;
+      white-space: pre-line;
+      min-height: 110px;
+    }
+
+    .cta-wrap {
+      text-align: center;
+      padding: 4px 0 4px;
+    }
+
+    .cta-button {
+      display: inline-block;
+      background: linear-gradient(135deg, var(--primary), var(--primary2));
+      color: #fff !important;
+      text-decoration: none;
+      font-size: 17px;
+      font-weight: 800;
+      padding: 18px 32px;
+      border-radius: 999px;
+      box-shadow: 0 12px 30px rgba(37, 99, 235, 0.28);
+      letter-spacing: 0.2px;
+      border: none;
+      cursor: pointer;
+      transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+    }
+
+    .cta-button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 14px 32px rgba(37, 99, 235, 0.34);
+    }
+
+    .cta-button:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .cta-subtext {
+      margin-top: 14px;
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    .status-bar {
+      margin-top: 18px;
+      padding: 14px 18px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.7;
+      display: none;
+    }
+
+    .status-success {
+      background: #ecfdf3;
+      border: 1px solid #bbf7d0;
+      color: #166534;
+      display: block;
+    }
+
+    .status-error {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+      display: block;
+    }
+
+    .footer {
+      padding: 28px 42px 38px;
+      border-top: 1px solid #eef2f7;
+      background: #fbfcfd;
+    }
+
+    .footer p {
+      margin: 6px 0;
+      font-size: 14px;
+      line-height: 1.8;
+      color: #475569;
+    }
+
+    .footer strong {
+      color: var(--dark);
+    }
+
+    .loading,
+    .error-screen {
+      max-width: 760px;
+      margin: 80px auto;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      padding: 34px 28px;
+      text-align: center;
+    }
+
+    .loading h2,
+    .error-screen h2 {
+      margin: 0 0 10px;
+      font-size: 28px;
+      color: var(--dark);
+    }
+
+    .loading p,
+    .error-screen p {
+      margin: 0;
+      color: #475569;
+      line-height: 1.8;
+      font-size: 15px;
+      white-space: pre-line;
+    }
+
+    @media (max-width: 760px) {
+      .hero,
+      .section,
+      .footer {
+        padding-left: 24px !important;
+        padding-right: 24px !important;
+      }
+
+      .hero h1 {
+        font-size: 30px;
+      }
+
+      .grid-2,
+      .money-grid {
+        grid-template-columns: 1fr !important;
+      }
+
+      .total-card .amount {
+        font-size: 38px;
+      }
+
+      .deposit-card .amount {
+        font-size: 32px;
+      }
     }
   </style>
 </head>
-
 <body>
-
-<div id="app">Loading...</div>
-
-<script src="config.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<script>
-(async function(){
-
-  function getVar(...names){
-    for(let n of names){
-      if(window[n]) return window[n];
-    }
-    return null;
-  }
-
-  // 🔥 FIX REAL AQUÍ
-  const SUPABASE_URL =
-    getVar("SUPABASE_URL","VITE_SUPABASE_URL") ||
-    window.APP_CONFIG?.SUPABASE_URL;
-
-  const SUPABASE_KEY =
-    getVar("SUPABASE_ANON_KEY","VITE_SUPABASE_ANON_KEY") ||
-    window.APP_CONFIG?.SUPABASE_ANON_KEY;
-
-  if(!SUPABASE_URL || !SUPABASE_KEY){
-    document.getElementById("app").innerHTML = `
-      <div style="text-align:center;margin-top:100px;">
-        <h2>Config error</h2>
-        <p>Supabase keys not detected (config.js mismatch)</p>
-      </div>
-    `;
-    return;
-  }
-
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-  const params = new URLSearchParams(window.location.search);
-  const id = params.get("id");
-  const token = params.get("t");
-
-  if(!id || !token){
-    document.getElementById("app").innerHTML = "Invalid link";
-    return;
-  }
-
-  const { data } = await supabase
-    .from("quotes")
-    .select("*")
-    .eq("id", id)
-    .eq("public_token", token)
-    .single();
-
-  if(!data){
-    document.getElementById("app").innerHTML = "Quote not found";
-    return;
-  }
-
-  const q = data;
-
-  const format = n =>
-    new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
-
-  const scope =
-    q.scope_summary ||
-    q.scope_of_work ||
-    "";
-
-  document.getElementById("app").innerHTML = `
-    <div class="card">
-
-      <div class="hero">
-        <h1>${q.project_name || "Project"}</h1>
-        <p>Hi ${q.client_name || "Client"}</p>
-      </div>
-
-      <div class="section">
-        <div class="title">Project Info</div>
-
-        <div class="grid">
-          <div class="box">
-            <div class="title">Estimate</div>
-            <div class="value">${q.estimate_no || q.id}</div>
-          </div>
-
-          <div class="box">
-            <div class="title">Job Site</div>
-            <div class="value">${q.job_site || ""}</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="title">Investment</div>
-
-        <div class="money">
-          <div class="total">
-            <div>Total</div>
-            <div class="big">${format(q.total)}</div>
-          </div>
-
-          <div class="deposit">
-            <div>Deposit</div>
-            <div class="big">${format(q.deposit_required)}</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="title">Scope of Work</div>
-        <div class="scope">${scope || "Scope to be confirmed"}</div>
-      </div>
-
-      <div class="section center">
-        <button class="btn" id="approveBtn">
-          Approve Project & Pay Deposit
-        </button>
-      </div>
-
+  <div id="app">
+    <div class="loading">
+      <h2>Loading Proposal...</h2>
+      <p>Please wait while we prepare your project estimate.</p>
     </div>
-  `;
+  </div>
 
-  document.getElementById("approveBtn").onclick = async ()=>{
-    await supabase
-      .from("quotes")
-      .update({status:"ACCEPTED"})
-      .eq("id", id);
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-    if(q.payment_link){
-      window.location.href = q.payment_link;
-    } else {
-      alert("Approved. Contact contractor for payment.");
-    }
-  };
+  <script>
+    (async function () {
+      function qs(name) {
+        return new URLSearchParams(window.location.search).get(name);
+      }
 
-})();
-</script>
+      function escapeHtml(str = '') {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
 
+      function formatMoney(value) {
+        return new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD'
+        }).format(Number(value || 0));
+      }
+
+      function formatDate(value) {
+        if (!value) return 'N/A';
+        const d = new Date(value);
+        if (isNaN(d.getTime())) return String(value);
+        return d.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
+      }
+
+      function showError(title, message) {
+        document.getElementById('app').innerHTML = `
+          <div class="error-screen">
+            <h2>${escapeHtml(title)}</h2>
+            <p>${escapeHtml(message)}</p>
+          </div>
+        `;
+      }
+
+      function firstNonEmpty(values) {
+        for (const v of values) {
+          if (typeof v === 'string' && v.trim()) return v.trim();
+        }
+        return '';
+      }
+
+      function deepRead(obj, path) {
+        try {
+          return path.split('.').reduce((acc, key) => acc && acc[key], obj);
+        } catch (e) {
+          return undefined;
+        }
+      }
+
+      function extractFromWindow() {
+        const url = firstNonEmpty([
+          window.SUPABASE_URL,
+          window.VITE_SUPABASE_URL,
+          deepRead(window, 'APP_CONFIG.SUPABASE_URL'),
+          deepRead(window, 'APP_CONFIG.VITE_SUPABASE_URL'),
+          deepRead(window, 'CONFIG.SUPABASE_URL'),
+          deepRead(window, 'CONFIG.VITE_SUPABASE_URL')
+        ]);
+
+        const key = firstNonEmpty([
+          window.SUPABASE_ANON_KEY,
+          window.VITE_SUPABASE_ANON_KEY,
+          deepRead(window, 'APP_CONFIG.SUPABASE_ANON_KEY'),
+          deepRead(window, 'APP_CONFIG.VITE_SUPABASE_ANON_KEY'),
+          deepRead(window, 'CONFIG.SUPABASE_ANON_KEY'),
+          deepRead(window, 'CONFIG.VITE_SUPABASE_ANON_KEY')
+        ]);
+
+        return { url, key };
+      }
+
+      function extractByRegex(text) {
+        const patterns = {
+          url: [
+            /SUPABASE_URL\s*[:=]\s*['"]([^'"]+)['"]/,
+            /VITE_SUPABASE_URL\s*[:=]\s*['"]([^'"]+)['"]/,
+            /url\s*:\s*['"]([^'"]*supabase\.co[^'"]*)['"]/i
+          ],
+          key: [
+            /SUPABASE_ANON_KEY\s*[:=]\s*['"]([^'"]+)['"]/,
+            /VITE_SUPABASE_ANON_KEY\s*[:=]\s*['"]([^'"]+)['"]/,
+            /anon[_-]?key\s*:\s*['"]([^'"]+)['"]/i
+          ]
+        };
+
+        let url = '';
+        let key = '';
+
+        for (const rx of patterns.url) {
+          const m = text.match(rx);
+          if (m && m[1]) {
+            url = m[1].trim();
+            break;
+          }
+        }
+
+        for (const rx of patterns.key) {
+          const m = text.match(rx);
+          if (m && m[1]) {
+            key = m[1].trim();
+            break;
+          }
+        }
+
+        return { url, key };
+      }
+
+      async function resolveSupabaseConfig() {
+        let fromWindow = extractFromWindow();
+        if (fromWindow.url && fromWindow.key) {
+          return fromWindow;
+        }
+
+        try {
+          const res = await fetch('config.js', { cache: 'no-store' });
+          if (res.ok) {
+            const text = await res.text();
+            const fromFile = extractByRegex(text);
+            if (fromFile.url && fromFile.key) {
+              return fromFile;
+            }
+          }
+        } catch (e) {}
+
+        return { url: '', key: '' };
+      }
+
+      const config = await resolveSupabaseConfig();
+      const SUPABASE_URL = config.url;
+      const SUPABASE_KEY = config.key;
+
+      if (!SUPABASE_URL || !SUPABASE_KEY) {
+        showError(
+          'Config Error',
+          'Could not read Supabase keys from your existing config.js.\nThis means the frontend could not detect the format of that file.'
+        );
+        return;
+      }
+
+      const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+      const id = qs('id');
+      const token = qs('t') || qs('token');
+
+      if (!id || !token) {
+        showError(
+          'Invalid Link',
+          'This quote link is incomplete. Please use the original quote link sent to the client.'
+        );
+        return;
+      }
+
+      let quote = null;
+
+      try {
+        const { data, error } = await supabase.rpc('get_public_quote', {
+          p_id: id,
+          p_token: token
+        });
+
+        if (!error && data) {
+          quote = Array.isArray(data) ? data[0] : data;
+        }
+      } catch (e) {}
+
+      if (!quote) {
+        try {
+          const { data, error } = await supabase
+            .from('quotes')
+            .select('*')
+            .eq('id', id)
+            .eq('public_token', token)
+            .maybeSingle();
+
+          if (!error && data) {
+            quote = data;
+          }
+        } catch (e) {}
+      }
+
+      if (!quote) {
+        showError(
+          'Proposal Not Found',
+          'We could not load this proposal. The link may be invalid or the quote is not publicly available.'
+        );
+        return;
+      }
+
+      try {
+        await supabase.rpc('mark_quote_viewed', {
+          p_id: id,
+          p_token: token
+        });
+      } catch (e) {}
+
+      const projectName =
+        quote.project_name ||
+        quote.project ||
+        'Estimate Proposal';
+
+      const clientName =
+        quote.client_name ||
+        quote.customer_name ||
+        'Client';
+
+      const total =
+        quote.total ??
+        quote.final_price ??
+        quote.amount ??
+        0;
+
+      const depositRequired =
+        quote.deposit_required ??
+        quote.deposit_amount ??
+        0;
+
+      const estimateNumber =
+        quote.estimate_no ||
+        quote.quote_number ||
+        quote.estimate_number ||
+        quote.id ||
+        'N/A';
+
+      const issueDate =
+        quote.issue_date ||
+        quote.created_at ||
+        '';
+
+      const expirationDate =
+        quote.expiration_date ||
+        quote.expires_at ||
+        '';
+
+      const jobSite =
+        quote.job_site ||
+        quote.address ||
+        quote.project_address ||
+        'N/A';
+
+      const scopeSummary =
+        quote.scope_summary ||
+        quote.scope_of_work ||
+        '';
+
+      const paymentLink =
+        quote.payment_link ||
+        quote.deposit_payment_link ||
+        '';
+
+      const safeProjectName = escapeHtml(projectName);
+      const safeClientName = escapeHtml(clientName);
+      const safeEstimateNumber = escapeHtml(String(estimateNumber));
+      const safeIssueDate = escapeHtml(formatDate(issueDate));
+      const safeExpirationDate = escapeHtml(formatDate(expirationDate));
+      const safeJobSite = escapeHtml(jobSite);
+      const safeScopeSummary = scopeSummary
+        ? escapeHtml(scopeSummary)
+        : 'Scope of work to be confirmed.';
+
+      const formattedTotal = formatMoney(total);
+      const formattedDeposit = formatMoney(depositRequired);
+
+      document.getElementById('app').innerHTML = `
+        <div class="page">
+          <div class="shell">
+
+            <div class="hero">
+              <div class="brand">THREE COLORS CORP</div>
+              <h1>${safeProjectName}</h1>
+              <p>
+                Hi ${safeClientName},<br><br>
+                Please review your estimate below. Once approved, you can move forward with your deposit to reserve scheduling.
+              </p>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Project Information</div>
+              <div class="grid-2">
+                <div class="info-card">
+                  <div class="label">Estimate No.</div>
+                  <div class="value">${safeEstimateNumber}</div>
+                </div>
+                <div class="info-card">
+                  <div class="label">Project</div>
+                  <div class="value">${safeProjectName}</div>
+                </div>
+                <div class="info-card">
+                  <div class="label">Issue Date</div>
+                  <div class="value">${safeIssueDate}</div>
+                </div>
+                <div class="info-card">
+                  <div class="label">Expiration Date</div>
+                  <div class="value">${safeExpirationDate}</div>
+                </div>
+                <div class="info-card" style="grid-column:1 / -1;">
+                  <div class="label">Job Site</div>
+                  <div class="value">${safeJobSite}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Investment</div>
+              <div class="money-grid">
+                <div class="total-card">
+                  <div class="small">Estimate Total</div>
+                  <div class="amount">${formattedTotal}</div>
+                  <div class="note">
+                    This is the total proposed amount for the work described in this estimate.
+                  </div>
+                </div>
+
+                <div class="deposit-card">
+                  <div class="small">Deposit Required</div>
+                  <div class="amount">${formattedDeposit}</div>
+                  <div class="note">
+                    Required to reserve your project and begin scheduling.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Scope of Work</div>
+              <div class="scope-box">${safeScopeSummary}</div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Approval</div>
+              <div class="cta-wrap">
+                <button id="approvePayBtn" class="cta-button">Approve Project & Pay Deposit</button>
+                <div class="cta-subtext">
+                  Click below to approve this proposal and continue to the deposit payment step.
+                </div>
+                <div id="statusBox" class="status-bar"></div>
+              </div>
+            </div>
+
+            <div class="footer">
+              <p><strong>Three Colors Corp</strong></p>
+              <p>Professional Tile & Remodel Installation</p>
+              <p>📧 3colorscorp@gmail.com</p>
+              <p>📱 (408) 903-7976</p>
+            </div>
+
+          </div>
+        </div>
+      `;
+
+      const btn = document.getElementById('approvePayBtn');
+      const statusBox = document.getElementById('statusBox');
+
+      function setStatus(type, text) {
+        statusBox.className = 'status-bar ' + (type === 'success' ? 'status-success' : 'status-error');
+        statusBox.textContent = text;
+      }
+
+      btn.addEventListener('click', async function () {
+        btn.disabled = true;
+        btn.textContent = 'Processing...';
+
+        try {
+          let approved = false;
+
+          try {
+            const { error } = await supabase.rpc('approve_public_quote', {
+              p_id: id,
+              p_token: token
+            });
+            if (!error) approved = true;
+          } catch (e) {}
+
+          if (!approved) {
+            try {
+              const payload = {
+                status: 'ACCEPTED',
+                approved_at: new Date().toISOString()
+              };
+
+              const { error } = await supabase
+                .from('quotes')
+                .update(payload)
+                .eq('id', id)
+                .eq('public_token', token);
+
+              if (!error) approved = true;
+            } catch (e) {}
+          }
+
+          if (!approved) {
+            throw new Error('Approval failed');
+          }
+
+          if (paymentLink) {
+            setStatus('success', 'Project approved. Redirecting to deposit payment...');
+            setTimeout(() => {
+              window.location.href = paymentLink;
+            }, 700);
+            return;
+          }
+
+          setStatus(
+            'success',
+            'Project approved successfully. Deposit payment link is not available yet. Please contact us to complete scheduling.'
+          );
+          btn.textContent = 'Project Approved';
+        } catch (err) {
+          setStatus(
+            'error',
+            'We could not complete the approval right now. Please try again or contact us.'
+          );
+          btn.disabled = false;
+          btn.textContent = 'Approve Project & Pay Deposit';
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
