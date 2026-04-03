@@ -33,6 +33,7 @@ exports.handler = async (event) => {
 
     const total =
       Number(body.total ?? body.recommended_total ?? body.recommendedTotal ?? 0) || 0;
+
     const depositRequired =
       Number(body.deposit_required ?? body.depositRequired ?? 1000) || 0;
 
@@ -40,13 +41,26 @@ exports.handler = async (event) => {
 
     const payload = {
       project_name: body.project_name || body.projectName || "Project",
+      title: body.title || body.project_name || body.projectName || "Project",
       client_name: body.client_name || body.clientName || "",
       client_email: body.client_email || body.customerEmail || "",
+      client_phone:
+        body.client_phone ||
+        body.customerPhone ||
+        body.phone ||
+        "",
+      job_site:
+        body.job_site ||
+        body.project_address ||
+        body.projectAddress ||
+        body.customer_address ||
+        "",
       status: body.status || "READY_TO_SEND",
       currency: body.currency || "USD",
-      total: total,
+      total,
       deposit_required: depositRequired,
       notes: body.notes || body.messageText || "",
+      terms: body.terms || "",
       payment_link: body.payment_link || "",
       public_token: publicToken
     };
@@ -63,6 +77,7 @@ exports.handler = async (event) => {
     });
 
     const text = await response.text();
+
     if (!response.ok) {
       return json(502, { error: text || "Supabase write failed" });
     }
