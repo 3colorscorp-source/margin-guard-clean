@@ -15,6 +15,15 @@ function makeToken(prefix = "qt") {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function pickFirst(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      return String(value).trim();
+    }
+  }
+  return "";
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -39,29 +48,94 @@ exports.handler = async (event) => {
 
     const publicToken = body.public_token || makeToken("qt");
 
+    const projectName = pickFirst(
+      body.project_name,
+      body.projectName,
+      body.project,
+      body.job_name,
+      body.jobName,
+      "Project"
+    );
+
+    const title = pickFirst(
+      body.title,
+      body.estimate_title,
+      body.estimateTitle,
+      projectName,
+      "Project"
+    );
+
+    const clientName = pickFirst(
+      body.client_name,
+      body.clientName,
+      body.customer_name,
+      body.customerName,
+      body.owner_name,
+      body.ownerName
+    );
+
+    const clientEmail = pickFirst(
+      body.client_email,
+      body.clientEmail,
+      body.customer_email,
+      body.customerEmail,
+      body.email
+    );
+
+    const clientPhone = pickFirst(
+      body.client_phone,
+      body.clientPhone,
+      body.customer_phone,
+      body.customerPhone,
+      body.phone_number,
+      body.phoneNumber,
+      body.phone,
+      body.customer_mobile,
+      body.customerMobile
+    );
+
+    const jobSite = pickFirst(
+      body.job_site,
+      body.jobSite,
+      body.project_address,
+      body.projectAddress,
+      body.customer_address,
+      body.customerAddress,
+      body.job_address,
+      body.jobAddress,
+      body.address,
+      body.site_address,
+      body.siteAddress
+    );
+
+    const notes = pickFirst(
+      body.notes,
+      body.messageText,
+      body.message,
+      body.public_message,
+      body.publicMessage
+    );
+
+    const terms = pickFirst(
+      body.terms,
+      body.default_terms,
+      body.defaultTerms
+    );
+
     const payload = {
-      project_name: body.project_name || body.projectName || "Project",
-      title: body.title || body.project_name || body.projectName || "Project",
-      client_name: body.client_name || body.clientName || "",
-      client_email: body.client_email || body.customerEmail || "",
-      client_phone:
-        body.client_phone ||
-        body.customerPhone ||
-        body.phone ||
-        "",
-      job_site:
-        body.job_site ||
-        body.project_address ||
-        body.projectAddress ||
-        body.customer_address ||
-        "",
+      project_name: projectName,
+      title,
+      client_name: clientName,
+      client_email: clientEmail,
+      client_phone: clientPhone,
+      job_site: jobSite,
       status: body.status || "READY_TO_SEND",
       currency: body.currency || "USD",
       total,
       deposit_required: depositRequired,
-      notes: body.notes || body.messageText || "",
-      terms: body.terms || "",
-      payment_link: body.payment_link || "",
+      notes,
+      terms,
+      payment_link: body.payment_link || body.paymentLink || "",
       public_token: publicToken
     };
 
