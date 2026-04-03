@@ -1,785 +1,407 @@
+function escapeHtml(str = '') {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatMoney(value) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD'
+  }).format(Number(value || 0));
+}
+
+function buildScopeSummaryHtml(scopeText) {
+  const clean = String(scopeText || '').trim();
+
+  if (!clean) {
+    return `
+      <p style="margin:0;font-size:16px;line-height:1.9;color:#1f2937;">
+        Scope of work to be confirmed.
+      </p>
+    `;
+  }
+
+  return `
+    <p style="margin:0;font-size:16px;line-height:1.9;color:#1f2937;white-space:pre-line;">
+      ${escapeHtml(clean)}
+    </p>
+  `;
+}
+
+/* =========================
+   MAP YOUR QUOTE DATA HERE
+========================= */
+
+const projectName = quote.project_name || '';
+const clientName = quote.client_name || '';
+const total = quote.total || 0;
+const depositRequired = quote.deposit_required || 0;
+const quoteUrl = publicUrl || '';
+const estimateNumber = quote.estimate_no || quote.quote_number || quote.id || '';
+const issueDate = quote.issue_date || '';
+const expirationDate = quote.expiration_date || '';
+const jobSite = quote.job_site || quote.address || '';
+
+/* IMPORTANT:
+   Scope of Work = ONLY what seller wrote */
+const scopeSummary =
+  quote.scope_summary ||
+  quote.scope_of_work ||
+  '';
+
+const formattedTotal = formatMoney(total);
+const formattedDeposit = formatMoney(depositRequired);
+const scopeSummaryHtml = buildScopeSummaryHtml(scopeSummary);
+
+/* =========================
+   PREMIUM PROPOSAL TEMPLATE
+========================= */
+
+const proposalHtml = `
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Project Quote</title>
-
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
+  <title>Estimate Proposal</title>
   <style>
-    :root{
-      --bg:#f4f5f7;
-      --card:#ffffff;
-      --text:#111827;
-      --muted:#6b7280;
-      --line:#e5e7eb;
-      --primary:#1e88e5;
-      --primary-dark:#1565c0;
-      --success:#198754;
-      --success-bg:#eaf7ef;
-      --warning-bg:#fff8e6;
-      --shadow:0 12px 30px rgba(15, 23, 42, 0.08);
-      --radius:18px;
+    * {
+      box-sizing: border-box;
     }
 
-    *{box-sizing:border-box}
-
-    body{
-      margin:0;
-      font-family:Arial, Helvetica, sans-serif;
-      background:linear-gradient(180deg,#f7f7f8 0%, #f1f3f5 100%);
-      color:var(--text);
-      padding:32px 18px 80px;
+    body {
+      margin: 0;
+      padding: 0;
+      background: #f4f6f8;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #111827;
     }
 
-    .page{
-      max-width:960px;
-      margin:0 auto;
+    .wrapper {
+      width: 100%;
+      padding: 30px 16px;
+      background: #f4f6f8;
     }
 
-    .card{
-      background:var(--card);
-      border-radius:var(--radius);
-      box-shadow:var(--shadow);
-      padding:28px;
-      margin-bottom:20px;
+    .container {
+      max-width: 820px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 22px;
+      overflow: hidden;
+      box-shadow: 0 18px 50px rgba(0,0,0,0.08);
+      border: 1px solid #e5e7eb;
     }
 
-    .topbar{
-      display:flex;
-      justify-content:space-between;
-      align-items:flex-start;
-      gap:16px;
-      margin-bottom:18px;
+    .hero {
+      background: linear-gradient(135deg, #0f172a, #1e293b);
+      color: #ffffff;
+      padding: 42px 42px 34px;
     }
 
-    .brand{
-      font-size:14px;
-      font-weight:700;
-      letter-spacing:.08em;
-      color:var(--muted);
-      text-transform:uppercase;
-      margin-bottom:10px;
+    .brand {
+      font-size: 13px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      opacity: 0.85;
+      margin-bottom: 10px;
     }
 
-    h1{
-      margin:0;
-      font-size:44px;
-      line-height:1.05;
+    .hero h1 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.1;
+      font-weight: 800;
+      letter-spacing: -0.5px;
     }
 
-    .subtitle{
-      margin:10px 0 0;
-      color:var(--muted);
-      font-size:17px;
-      line-height:1.45;
-      max-width:700px;
+    .hero p {
+      margin: 14px 0 0;
+      font-size: 16px;
+      line-height: 1.75;
+      color: rgba(255,255,255,0.88);
+      max-width: 640px;
     }
 
-    .status-pill{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      border-radius:999px;
-      padding:10px 14px;
-      font-size:14px;
-      font-weight:700;
-      background:var(--warning-bg);
-      color:#7a5d00;
-      white-space:nowrap;
+    .section {
+      padding: 34px 42px;
+      border-top: 1px solid #eef2f7;
     }
 
-    .status-pill.success{
-      background:var(--success-bg);
-      color:var(--success);
+    .section-title {
+      font-size: 12px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: #64748b;
+      margin-bottom: 16px;
+      font-weight: 700;
     }
 
-    .hero{
-      display:grid;
-      grid-template-columns:1.25fr .75fr;
-      gap:18px;
-      align-items:stretch;
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
     }
 
-    .hero-title{
-      font-size:34px;
-      font-weight:800;
-      margin:0 0 10px;
+    .info-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 18px;
+      padding: 18px;
     }
 
-    .hero-client{
-      font-size:18px;
-      color:var(--muted);
-      margin:0;
+    .label {
+      font-size: 12px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+      font-weight: 700;
     }
 
-    .hero-note{
-      margin-top:18px;
-      padding:16px 18px;
-      border-radius:14px;
-      background:#f8fafc;
-      border:1px solid var(--line);
-      color:#334155;
-      line-height:1.5;
-      font-size:15px;
+    .value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0f172a;
+      line-height: 1.5;
     }
 
-    .summary-grid{
-      display:grid;
-      grid-template-columns:repeat(3,1fr);
-      gap:16px;
-      margin-top:22px;
+    .financial-box {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 16px;
+      align-items: stretch;
     }
 
-    .summary-card{
-      background:#fafafa;
-      border:1px solid var(--line);
-      border-radius:16px;
-      padding:18px;
+    .total-card {
+      background: #0f172a;
+      color: #ffffff;
+      border-radius: 22px;
+      padding: 28px;
     }
 
-    .summary-label{
-      font-size:13px;
-      color:var(--muted);
-      margin-bottom:8px;
-      text-transform:uppercase;
-      letter-spacing:.04em;
-      font-weight:700;
+    .total-card .small {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      opacity: 0.8;
+      margin-bottom: 10px;
     }
 
-    .summary-value{
-      font-size:30px;
-      font-weight:800;
-      line-height:1.1;
+    .total-card .amount {
+      font-size: 42px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -1px;
+      margin-bottom: 12px;
     }
 
-    .summary-sub{
-      margin-top:6px;
-      color:var(--muted);
-      font-size:14px;
+    .total-card .note {
+      font-size: 15px;
+      line-height: 1.75;
+      color: rgba(255,255,255,0.85);
     }
 
-    .section-title{
-      margin:0 0 18px;
-      font-size:22px;
-      font-weight:800;
+    .deposit-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 22px;
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
     }
 
-    .details-grid{
-      display:grid;
-      grid-template-columns:repeat(2,1fr);
-      gap:18px 24px;
+    .deposit-card .small {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1.4px;
+      color: #64748b;
+      margin-bottom: 10px;
+      font-weight: 700;
     }
 
-    .detail{
-      border-bottom:1px solid var(--line);
-      padding-bottom:12px;
+    .deposit-card .amount {
+      font-size: 34px;
+      font-weight: 800;
+      color: #0f172a;
+      line-height: 1;
+      margin-bottom: 10px;
     }
 
-    .detail-label{
-      display:block;
-      color:var(--muted);
-      font-size:13px;
-      text-transform:uppercase;
-      letter-spacing:.05em;
-      margin-bottom:6px;
-      font-weight:700;
+    .deposit-card .note {
+      font-size: 15px;
+      line-height: 1.75;
+      color: #475569;
     }
 
-    .detail-value{
-      font-size:18px;
-      font-weight:700;
-      line-height:1.35;
-      word-break:break-word;
+    .scope-box {
+      background: #fcfcfd;
+      border: 1px solid #e5e7eb;
+      border-radius: 20px;
+      padding: 26px;
     }
 
-    .scope-box,
-    .terms-box{
-      background:#fafafa;
-      border:1px solid var(--line);
-      border-radius:16px;
-      padding:20px;
-      line-height:1.6;
-      color:#1f2937;
+    .cta-wrap {
+      text-align: center;
+      padding: 8px 0 4px;
     }
 
-    .scope-text{
-      margin:0;
-      font-size:16px;
-      white-space:normal;
+    .cta-button {
+      display: inline-block;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: #ffffff !important;
+      text-decoration: none;
+      font-size: 16px;
+      font-weight: 800;
+      padding: 18px 30px;
+      border-radius: 999px;
+      box-shadow: 0 12px 30px rgba(37, 99, 235, 0.28);
+      letter-spacing: 0.2px;
     }
 
-    .scope-list{
-      margin:0;
-      padding-left:20px;
+    .cta-subtext {
+      margin-top: 14px;
+      font-size: 14px;
+      color: #64748b;
+      line-height: 1.75;
     }
 
-    .scope-list li{
-      margin-bottom:8px;
+    .footer {
+      padding: 28px 42px 38px;
+      border-top: 1px solid #eef2f7;
+      background: #fbfcfd;
     }
 
-    .terms-list{
-      margin:0;
-      padding-left:18px;
+    .footer p {
+      margin: 6px 0;
+      font-size: 14px;
+      line-height: 1.8;
+      color: #475569;
     }
 
-    .terms-list li{
-      margin-bottom:8px;
-      color:#374151;
+    .footer strong {
+      color: #0f172a;
     }
 
-    .cta-card{
-      position:sticky;
-      bottom:18px;
-      z-index:10;
-      background:rgba(255,255,255,.96);
-      backdrop-filter:blur(8px);
-      border:1px solid var(--line);
-      box-shadow:var(--shadow);
-    }
-
-    .cta-wrap{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:20px;
-      flex-wrap:wrap;
-    }
-
-    .cta-copy h3{
-      margin:0 0 8px;
-      font-size:24px;
-    }
-
-    .cta-copy p{
-      margin:0;
-      color:var(--muted);
-      line-height:1.5;
-      max-width:620px;
-    }
-
-    .actions{
-      display:flex;
-      gap:12px;
-      flex-wrap:wrap;
-      align-items:center;
-    }
-
-    .btn{
-      border:none;
-      border-radius:12px;
-      padding:15px 22px;
-      font-size:16px;
-      font-weight:800;
-      cursor:pointer;
-      text-decoration:none;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      transition:.2s ease;
-      min-height:52px;
-    }
-
-    .btn-primary{
-      background:var(--primary);
-      color:#fff;
-      min-width:290px;
-    }
-
-    .btn-primary:hover{
-      background:var(--primary-dark);
-    }
-
-    .btn-secondary{
-      background:#eef2f7;
-      color:#1f2937;
-      border:1px solid #dbe3ec;
-    }
-
-    .btn-secondary:hover{
-      background:#e6edf5;
-    }
-
-    .btn[disabled]{
-      opacity:.65;
-      cursor:not-allowed;
-    }
-
-    .message{
-      margin-top:14px;
-      font-size:15px;
-      color:var(--muted);
-      line-height:1.5;
-    }
-
-    .message.error{
-      color:#b42318;
-    }
-
-    .message.success{
-      color:var(--success);
-    }
-
-    .empty{
-      color:var(--muted);
-      font-style:italic;
-    }
-
-    @media (max-width: 860px){
+    @media only screen and (max-width: 680px) {
       .hero,
-      .summary-grid,
-      .details-grid{
-        grid-template-columns:1fr;
+      .section,
+      .footer {
+        padding-left: 24px !important;
+        padding-right: 24px !important;
       }
 
-      h1{font-size:36px}
-      .hero-title{font-size:30px}
-      .summary-value{font-size:28px}
-      .cta-wrap{align-items:flex-start}
-      .btn-primary{min-width:100%}
-    }
+      .info-grid,
+      .financial-box {
+        grid-template-columns: 1fr !important;
+      }
 
-    @media (max-width: 520px){
-      body{padding:18px 12px 90px}
-      .card{padding:20px}
-      h1{font-size:30px}
-      .hero-title{font-size:26px}
-      .detail-value{font-size:16px}
-      .cta-copy h3{font-size:21px}
+      .hero h1 {
+        font-size: 28px;
+      }
+
+      .total-card .amount {
+        font-size: 36px;
+      }
+
+      .deposit-card .amount {
+        font-size: 30px;
+      }
     }
   </style>
 </head>
-
 <body>
-  <div class="page">
-    <section class="card">
-      <div class="topbar">
-        <div>
-          <div class="brand">Three Colors Corp</div>
-          <h1>Project Quote</h1>
-          <p class="subtitle">
-            Please review your quote below. When you're ready, approve your project
-            and continue to the deposit to reserve your schedule.
-          </p>
-        </div>
-        <div id="statusPill" class="status-pill">Pending Review</div>
-      </div>
+  <div class="wrapper">
+    <div class="container">
 
       <div class="hero">
-        <div>
-          <h2 id="projectTitle" class="hero-title">Loading project...</h2>
-          <p id="clientSubtitle" class="hero-client">Prepared for your review</p>
+        <div class="brand">Three Colors Corp</div>
+        <h1>${escapeHtml(projectName || 'Estimate Proposal')}</h1>
+        <p>
+          Hi ${escapeHtml(clientName || 'there')},<br><br>
+          Attached is your estimate for <strong>${escapeHtml(projectName || 'your project')}</strong>.
+          Please review the project summary, total investment, and required deposit below.
+        </p>
+      </div>
 
-          <div class="hero-note">
-            To reserve your project and move forward, please approve your quote and
-            continue to your deposit checkout.
+      <div class="section">
+        <div class="section-title">Estimate Details</div>
+        <div class="info-grid">
+          <div class="info-card">
+            <div class="label">Estimate No.</div>
+            <div class="value">${escapeHtml(estimateNumber || 'N/A')}</div>
+          </div>
+          <div class="info-card">
+            <div class="label">Project</div>
+            <div class="value">${escapeHtml(projectName || 'Project')}</div>
+          </div>
+          <div class="info-card">
+            <div class="label">Issue Date</div>
+            <div class="value">${escapeHtml(issueDate || 'N/A')}</div>
+          </div>
+          <div class="info-card">
+            <div class="label">Expiration Date</div>
+            <div class="value">${escapeHtml(expirationDate || 'N/A')}</div>
+          </div>
+          <div class="info-card" style="grid-column: 1 / -1;">
+            <div class="label">Job Site</div>
+            <div class="value">${escapeHtml(jobSite || 'N/A')}</div>
           </div>
         </div>
+      </div>
 
-        <div class="summary-grid" style="grid-template-columns:1fr;">
-          <div class="summary-card">
-            <div class="summary-label">Project Total</div>
-            <div id="totalValue" class="summary-value">$0.00</div>
-            <div class="summary-sub">Quoted project amount</div>
+      <div class="section">
+        <div class="section-title">Investment Summary</div>
+        <div class="financial-box">
+          <div class="total-card">
+            <div class="small">Estimate Total</div>
+            <div class="amount">${formattedTotal}</div>
+            <div class="note">
+              This is the total proposed amount for the project described in this estimate.
+            </div>
           </div>
 
-          <div class="summary-card">
-            <div class="summary-label">Deposit Required</div>
-            <div id="depositValue" class="summary-value">$0.00</div>
-            <div class="summary-sub">Required to reserve your schedule</div>
-          </div>
-
-          <div class="summary-card">
-            <div class="summary-label">Quote Status</div>
-            <div id="statusValue" class="summary-value" style="font-size:24px;">Pending</div>
-            <div id="validUntilValue" class="summary-sub">Reviewing quote details...</div>
+          <div class="deposit-card">
+            <div class="small">Deposit Required</div>
+            <div class="amount">${formattedDeposit}</div>
+            <div class="note">
+              Required to reserve your project and begin scheduling.
+            </div>
           </div>
         </div>
       </div>
-    </section>
 
-    <section class="card">
-      <h3 class="section-title">Project Details</h3>
-      <div class="details-grid">
-        <div class="detail">
-          <span class="detail-label">Client</span>
-          <div id="detailClient" class="detail-value">—</div>
-        </div>
-
-        <div class="detail">
-          <span class="detail-label">Project</span>
-          <div id="detailProject" class="detail-value">—</div>
-        </div>
-
-        <div class="detail">
-          <span class="detail-label">Estimate Number</span>
-          <div id="detailEstimateNo" class="detail-value">—</div>
-        </div>
-
-        <div class="detail">
-          <span class="detail-label">Issue Date</span>
-          <div id="detailIssueDate" class="detail-value">—</div>
-        </div>
-
-        <div class="detail">
-          <span class="detail-label">Expiration Date</span>
-          <div id="detailExpirationDate" class="detail-value">—</div>
-        </div>
-
-        <div class="detail">
-          <span class="detail-label">Job Site</span>
-          <div id="detailJobSite" class="detail-value">—</div>
+      <div class="section">
+        <div class="section-title">Scope of Work</div>
+        <div class="scope-box">
+          ${scopeSummaryHtml}
         </div>
       </div>
-    </section>
 
-    <section class="card">
-      <h3 class="section-title">Scope of Work</h3>
-      <div class="scope-box">
-        <div id="scopeText" class="scope-text empty">No scope summary provided.</div>
-      </div>
-    </section>
-
-    <section class="card">
-      <h3 class="section-title">Important Terms</h3>
-      <div class="terms-box">
-        <ul class="terms-list">
-          <li>Deposit is required to reserve your project schedule.</li>
-          <li>Your approved quote confirms the scope of work listed above.</li>
-          <li>Any scope changes after approval may require a written change order.</li>
-        </ul>
-      </div>
-    </section>
-
-    <section class="card cta-card">
-      <div class="cta-wrap">
-        <div class="cta-copy">
-          <h3>Ready to move forward?</h3>
-          <p>
-            Approve your project and continue securely to the scheduling deposit.
-          </p>
-          <div id="statusMessage" class="message"></div>
-        </div>
-
-        <div class="actions">
-          <button id="approveBtn" class="btn btn-primary" onclick="approveQuote()">
-            Approve Project & Pay Deposit
-          </button>
-
-          <a id="payBtn" target="_blank" rel="noopener" class="btn btn-secondary" style="display:none;">
-            Pay Deposit
-          </a>
+      <div class="section">
+        <div class="section-title">Approval</div>
+        <div class="cta-wrap">
+          <a href="${quoteUrl}" class="cta-button">Approve Project & Pay Deposit</a>
+          <div class="cta-subtext">
+            To review, accept the quote, and pay the deposit online, click the button above.
+          </div>
         </div>
       </div>
-    </section>
+
+      <div class="footer">
+        <p><strong>Thank you,</strong></p>
+        <p><strong>Three Colors Corp</strong></p>
+        <p>Professional Tile & Remodel Installation</p>
+        <p>📧 3colorscorp@gmail.com</p>
+        <p>📱 (408) 903-7976</p>
+      </div>
+
+    </div>
   </div>
-
-  <script>
-    const SUPABASE_URL = "https://yaagobzgozzozibublmj.supabase.co";
-    const SUPABASE_KEY = "sb_publishable_UTuO6wlERHBzoSnkySHATw_s6T46upe";
-
-    const SDK = window.supabase || window.supabaseJs || window.Supabase;
-    if (!SDK || !SDK.createClient) {
-      document.body.innerHTML = "<div class='page'><section class='card'><p>Supabase SDK failed to load. Refresh the page.</p></section></div>";
-      throw new Error("Supabase SDK not found on window.");
-    }
-
-    let sb = window.__MG_SUPABASE__;
-    if (!sb) {
-      sb = SDK.createClient(SUPABASE_URL, SUPABASE_KEY);
-      window.__MG_SUPABASE__ = sb;
-    }
-
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get("id");
-    const token = params.get("t");
-
-    const approveBtn = document.getElementById("approveBtn");
-    const payBtn = document.getElementById("payBtn");
-    const statusPill = document.getElementById("statusPill");
-    const statusValue = document.getElementById("statusValue");
-    const statusMessage = document.getElementById("statusMessage");
-
-    const projectTitle = document.getElementById("projectTitle");
-    const clientSubtitle = document.getElementById("clientSubtitle");
-    const totalValue = document.getElementById("totalValue");
-    const depositValue = document.getElementById("depositValue");
-    const validUntilValue = document.getElementById("validUntilValue");
-
-    const detailClient = document.getElementById("detailClient");
-    const detailProject = document.getElementById("detailProject");
-    const detailEstimateNo = document.getElementById("detailEstimateNo");
-    const detailIssueDate = document.getElementById("detailIssueDate");
-    const detailExpirationDate = document.getElementById("detailExpirationDate");
-    const detailJobSite = document.getElementById("detailJobSite");
-    const scopeText = document.getElementById("scopeText");
-
-    function safeText(v) {
-      return (v === null || v === undefined) ? "" : String(v);
-    }
-
-    function money(v) {
-      const n = Number(v ?? 0);
-      return n.toLocaleString("en-US", {
-        style: "currency",
-        currency: "USD"
-      });
-    }
-
-    function formatDate(v) {
-      if (!v) return "—";
-      const d = new Date(v);
-      if (Number.isNaN(d.getTime())) return safeText(v);
-      return d.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric"
-      });
-    }
-
-    function setApproveEnabled(enabled, label) {
-      approveBtn.disabled = !enabled;
-      if (label) approveBtn.textContent = label;
-    }
-
-    function setMessage(text, tone = "") {
-      statusMessage.className = tone ? `message ${tone}` : "message";
-      statusMessage.textContent = text || "";
-    }
-
-    function setStatus(status, accepted, depositPaid) {
-      const normalized = safeText(status || "Pending Review");
-      statusValue.textContent = normalized;
-
-      if (depositPaid) {
-        statusPill.textContent = "Deposit Paid";
-        statusPill.className = "status-pill success";
-      } else if (accepted) {
-        statusPill.textContent = "Approved";
-        statusPill.className = "status-pill success";
-      } else {
-        statusPill.textContent = "Pending Review";
-        statusPill.className = "status-pill";
-      }
-    }
-
-    function renderScope(rawScope) {
-      const notes = safeText(rawScope).trim();
-
-      if (!notes) {
-        scopeText.textContent = "No scope summary provided.";
-        scopeText.classList.add("empty");
-        return;
-      }
-
-      const lines = notes
-        .split(/\r?\n/)
-        .map(line => line.trim())
-        .filter(Boolean);
-
-      if (!lines.length) {
-        scopeText.textContent = "No scope summary provided.";
-        scopeText.classList.add("empty");
-        return;
-      }
-
-      scopeText.classList.remove("empty");
-      scopeText.innerHTML = `
-        <ul class="scope-list">
-          ${lines.map(line => `<li>${line.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`).join("")}
-        </ul>
-      `;
-    }
-
-    async function loadQuote() {
-      setApproveEnabled(false, "Loading quote...");
-      payBtn.style.display = "none";
-      payBtn.removeAttribute("href");
-      payBtn.style.pointerEvents = "auto";
-      payBtn.style.opacity = "1";
-      setMessage("");
-
-      if (!id || !token) {
-        projectTitle.textContent = "Missing link information";
-        clientSubtitle.textContent = "The approval link is incomplete.";
-        setMessage("Missing link parameters (id / t).", "error");
-        return;
-      }
-
-      try {
-        const { data, error } = await sb.rpc("get_public_quote", {
-          p_id: id,
-          p_token: token
-        });
-
-        if (error || !data) {
-          projectTitle.textContent = "Quote not found";
-          clientSubtitle.textContent = "We could not load this quote.";
-          setMessage(error?.message || "Quote not found.", "error");
-          return;
-        }
-
-        const q = data;
-        const total = Number(q.total ?? q.estimated_amount ?? 0);
-        const dep = Number(q.deposit_required ?? 0);
-        const depText = money(dep);
-
-        const status = (q.status || "").toLowerCase();
-        const accepted = status === "accepted" || !!q.accepted_at;
-        const depositPaid = !!q.deposit_paid || Number(q.deposit_paid_amount ?? 0) > 0;
-        const link = safeText(q.payment_link);
-
-        projectTitle.textContent = safeText(q.project_name) || "Project Quote";
-        clientSubtitle.textContent = `Prepared for ${safeText(q.client_name) || "Client"}`;
-
-        totalValue.textContent = money(total);
-        depositValue.textContent = depText;
-        validUntilValue.textContent = q.expiration_date
-          ? `Valid until ${formatDate(q.expiration_date)}`
-          : "Review and approval available now";
-
-        detailClient.textContent = safeText(q.client_name) || "—";
-        detailProject.textContent = safeText(q.project_name) || "—";
-        detailEstimateNo.textContent = safeText(q.estimate_number || q.id || "—");
-        detailIssueDate.textContent = formatDate(q.issue_date || q.created_at);
-        detailExpirationDate.textContent = formatDate(q.expiration_date);
-        detailJobSite.textContent = safeText(q.job_site || q.location || "—");
-
-        renderScope(q.notes);
-
-        setStatus(q.status, accepted, depositPaid);
-
-        const viewedRes = await sb.rpc("mark_quote_viewed", {
-          p_id: id,
-          p_token: token
-        });
-        if (viewedRes.error) console.warn("mark_quote_viewed error:", viewedRes.error);
-
-        if (accepted) {
-          setApproveEnabled(false, "Project Approved");
-          setMessage(
-            depositPaid
-              ? "Your deposit has already been received."
-              : "Your project has been approved. Continue below if your deposit payment is still pending.",
-            depositPaid ? "success" : ""
-          );
-
-          if (depositPaid) {
-            payBtn.style.display = "inline-flex";
-            payBtn.textContent = "Deposit Paid";
-            payBtn.removeAttribute("href");
-            payBtn.style.pointerEvents = "none";
-            payBtn.style.opacity = "0.7";
-          } else if (link) {
-            payBtn.href = link;
-            payBtn.textContent = dep ? `Pay Deposit (${depText})` : "Pay Deposit";
-            payBtn.style.display = "inline-flex";
-            payBtn.style.pointerEvents = "auto";
-            payBtn.style.opacity = "1";
-          } else {
-            payBtn.style.display = "none";
-          }
-        } else {
-          setApproveEnabled(true, "Approve Project & Pay Deposit");
-          payBtn.style.display = "none";
-          setMessage("Approve your project to continue to the deposit checkout.");
-        }
-
-      } catch (e) {
-        console.error(e);
-        projectTitle.textContent = "Unable to load quote";
-        clientSubtitle.textContent = "Please try again.";
-        setMessage("Error loading quote. Please refresh the page.", "error");
-      }
-    }
-
-    async function approveQuote() {
-      try {
-        if (!id || !token) {
-          setMessage("Missing link parameters (id / t).", "error");
-          return;
-        }
-
-        setApproveEnabled(false, "Approving your project...");
-        setMessage("Approving your project and preparing your deposit checkout...");
-
-        const { data, error } = await sb.rpc("approve_public_quote", {
-          p_id: id,
-          p_token: token
-        });
-
-        if (error || !data) {
-          console.warn("approve_public_quote error:", error);
-          setMessage("We couldn't complete your approval right now. Please try again or contact us.", "error");
-          setApproveEnabled(true, "Approve Project & Pay Deposit");
-          return;
-        }
-
-        const { data: q2, error: q2Error } = await sb.rpc("get_public_quote", {
-          p_id: id,
-          p_token: token
-        });
-
-        if (q2Error || !q2) {
-          console.warn("get_public_quote after approve error:", q2Error);
-          setMessage("Your project was approved, but we could not reload the deposit checkout yet.", "error");
-          await loadQuote();
-          return;
-        }
-
-        const dep = Number(q2.deposit_required ?? 0);
-
-        if (!q2.payment_link && dep > 0) {
-          setApproveEnabled(false, "Preparing deposit checkout...");
-          setMessage("Preparing your secure deposit checkout...");
-
-          const SMART_SERVICE_URL =
-            "https://yaagobzgozzozibublmj.supabase.co/functions/v1/smart-service";
-
-          const r = await fetch(SMART_SERVICE_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              quote_id: id,
-              deposit_amount: dep
-            })
-          });
-
-          const result = await r.json().catch(() => ({}));
-
-          if (!r.ok) {
-            console.warn("smart-service error:", result);
-          }
-        }
-
-        await loadQuote();
-
-        const { data: q3, error: q3Error } = await sb.rpc("get_public_quote", {
-          p_id: id,
-          p_token: token
-        });
-
-        if (!q3Error && q3?.payment_link) {
-          setApproveEnabled(false, "Redirecting to checkout...");
-          setMessage("Redirecting you to your secure deposit checkout...", "success");
-          window.open(q3.payment_link, "_blank", "noopener");
-          return;
-        }
-
-        setMessage(
-          "Your project was approved, but your deposit checkout is not ready yet. Please contact us to complete scheduling.",
-          "error"
-        );
-
-      } catch (e) {
-        console.error(e);
-        setMessage("There was an error while approving your project. Please try again.", "error");
-        setApproveEnabled(true, "Approve Project & Pay Deposit");
-      }
-    }
-
-    loadQuote();
-  </script>
 </body>
 </html>
+`;
