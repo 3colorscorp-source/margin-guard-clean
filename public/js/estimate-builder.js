@@ -130,6 +130,47 @@
     `;
   }
 
+  function renderAcceptedBlock() {
+    let block = $("publicEstimateAcceptedBlock");
+    if (block) return;
+
+    const feedback = $("publicEstimateFeedback");
+    if (!feedback || !feedback.parentNode) return;
+
+    block = document.createElement("div");
+    block.id = "publicEstimateAcceptedBlock";
+    block.className = "card";
+    block.style.marginTop = "18px";
+    block.innerHTML = `
+      <div class="card-inner">
+        <div style="font-size:14px;letter-spacing:.08em;text-transform:uppercase;opacity:.82;margin-bottom:8px;">
+          Approved
+        </div>
+        <div style="font-size:24px;font-weight:700;line-height:1.2;margin-bottom:8px;">
+          ✅ Project approved. Let’s get to work.
+        </div>
+        <div style="opacity:.9;margin-bottom:14px;">
+          We’ve received your approval and your project can now move to the next step.
+        </div>
+        <div style="font-weight:600;margin-bottom:14px;">
+          Next Step: Move forward with your project investment.
+        </div>
+        <button id="btnBeginProjectInvestment" class="btn btn-primary" type="button">
+          Begin Project Investment
+        </button>
+      </div>
+    `;
+
+    feedback.parentNode.insertBefore(block, feedback.nextSibling);
+
+    const nextBtn = $("btnBeginProjectInvestment");
+    if (nextBtn) {
+      nextBtn.onclick = () => {
+        showFeedback("Project investment step ready for the next integration.", "success");
+      };
+    }
+  }
+
   function renderEstimatePublic(estimate) {
     const next = estimate || {};
     const token = getQueryParam("token") || "";
@@ -192,8 +233,8 @@
     }
 
     if ($("publicEstimateMessage")) {
-      $("publicEstimateMessage").textContent =
-        cleanPublicMessage(next.notes || next.message || "");
+      const cleaned = cleanPublicMessage(next.notes || next.message || "");
+      $("publicEstimateMessage").textContent = cleaned || "Your project is ready.";
     }
 
     if ($("publicEstimateTerms")) {
@@ -207,15 +248,21 @@
 
     if (currentStatus === "accepted") {
       hideDecisionButtons();
+      renderAcceptedBlock();
       showFeedback("Estimate aprobado correctamente.", "success");
+      return;
     }
 
     if (currentStatus === "declined") {
       hideDecisionButtons();
       showFeedback("Estimate rechazado correctamente.", "warning");
+      return;
     }
 
     if (approveBtn) {
+      approveBtn.style.display = "";
+      approveBtn.disabled = false;
+
       approveBtn.onclick = async () => {
         try {
           setButtonsDisabled(true);
@@ -226,6 +273,7 @@
           }
 
           hideDecisionButtons();
+          renderAcceptedBlock();
           showFeedback("Estimate aprobado correctamente.", "success");
         } catch (err) {
           setButtonsDisabled(false);
@@ -235,6 +283,9 @@
     }
 
     if (declineBtn) {
+      declineBtn.style.display = "";
+      declineBtn.disabled = false;
+
       declineBtn.onclick = async () => {
         try {
           setButtonsDisabled(true);
