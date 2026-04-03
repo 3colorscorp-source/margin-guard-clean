@@ -17,6 +17,10 @@
     }
   }
 
+  function safe(v) {
+    return String(v || "").trim();
+  }
+
   function showFeedback(message, type = "info") {
     const box = $("publicEstimateFeedback");
     if (!box) return;
@@ -61,13 +65,6 @@
 
     if (approveBtn) approveBtn.style.display = "none";
     if (declineBtn) declineBtn.style.display = "none";
-  }
-
-  function cleanPublicMessage(message = "") {
-    return String(message || "")
-      .replace(/\[PUBLIC_QUOTE_URL\]/gi, "")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
   }
 
   async function updateEstimateStatus(token, status) {
@@ -171,34 +168,140 @@
     }
   }
 
-  function renderEstimatePublic(estimate) {
-    const next = estimate || {};
-    const token = getQueryParam("token") || "";
+  function renderBusinessHeader(next) {
+    const titleEl = $("publicEstimateTitle");
+    const metaEl = $("publicEstimateMeta");
 
-    if ($("publicEstimateTitle")) {
-      $("publicEstimateTitle").textContent =
-        next.title || next.project_name || "Public Estimate";
+    const businessName =
+      safe(next.business_name) ||
+      safe(next.company_name) ||
+      "Your Business";
+
+    const businessAddress =
+      safe(next.business_address) ||
+      safe(next.company_address) ||
+      "";
+
+    const businessEmail =
+      safe(next.business_email) ||
+      safe(next.company_email) ||
+      "";
+
+    const businessPhone =
+      safe(next.business_phone) ||
+      safe(next.company_phone) ||
+      "";
+
+    if (titleEl) {
+      titleEl.innerHTML = `
+        <div style="font-size:30px;font-weight:800;line-height:1.15;margin-bottom:6px;">
+          ${businessName}
+        </div>
+        <div style="font-size:18px;font-weight:700;line-height:1.25;">
+          ${safe(next.title || next.project_name || "Public Estimate")}
+        </div>
+      `;
     }
 
-    if ($("publicEstimateMeta")) {
-      $("publicEstimateMeta").textContent =
-        `• Expira ${next.expiration_date || "sin fecha"}`;
+    if (metaEl) {
+      const lines = [];
+
+      if (businessAddress) lines.push(businessAddress);
+
+      const contactLine = [businessEmail, businessPhone].filter(Boolean).join(" • ");
+      if (contactLine) lines.push(contactLine);
+
+      lines.push(`• Expira ${next.expiration_date || "sin fecha"}`);
+
+      metaEl.innerHTML = lines.map((x) => `<div>${x}</div>`).join("");
+    }
+  }
+
+  function renderCustomer(next) {
+    const name =
+      safe(next.client_name) ||
+      safe(next.customer_name) ||
+      "Cliente";
+
+    const email =
+      safe(next.client_email) ||
+      safe(next.customer_email) ||
+      "";
+
+    const phone =
+      safe(next.client_phone) ||
+      safe(next.customer_phone) ||
+      "";
+
+    const projectAddress =
+      safe(next.job_site) ||
+      safe(next.project_address) ||
+      safe(next.customer_address) ||
+      "";
+
+    const wrap = $("publicEstimateCustomer");
+    if (!wrap) return;
+
+    wrap.innerHTML = `
+      <div style="display:grid;gap:10px;">
+        <div>
+          <div style="font-size:13px;opacity:.72;text-transform:uppercase;letter-spacing:.06em;">Customer Name</div>
+          <div style="font-size:20px;font-weight:700;">${name}</div>
+        </div>
+
+        <div>
+          <div style="font-size:13px;opacity:.72;text-transform:uppercase;letter-spacing:.06em;">Email</div>
+          <div style="font-size:16px;">${email || "-"}</div>
+        </div>
+
+        <div>
+          <div style="font-size:13px;opacity:.72;text-transform:uppercase;letter-spacing:.06em;">Phone</div>
+          <div style="font-size:16px;">${phone || "-"}</div>
+        </div>
+
+        <div>
+          <div style="font-size:13px;opacity:.72;text-transform:uppercase;letter-spacing:.06em;">Project Address</div>
+          <div style="font-size:16px;">${projectAddress || "-"}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderMessage(next) {
+    const wrap = $("publicEstimateMessage");
+    if (!wrap) return;
+
+    wrap.innerHTML = `
+      <div style="font-size:22px;font-weight:700;line-height:1.2;">
+        Your project is ready.
+      </div>
+    `;
+  }
+
+  function renderTerms(next) {
+    const wrap = $("publicEstimateTerms");
+    if (!wrap) return;
+
+    const customTerms = safe(next.terms);
+
+    if (customTerms) {
+      wrap.textContent = customTerms;
+      return;
     }
 
-    if ($("publicEstimateStatus")) {
-      $("publicEstimateStatus").textContent = next.status || "READY_TO_SEND";
-    }
+    wrap.innerHTML = `
+      <div style="display:grid;gap:12px;line-height:1.6;">
+        <div>
+          The required deposit will be applied toward your final invoice.
+        </div>
+        <div>
+          Deposits are non-refundable in the event of project cancellation by the client.
+        </div>
+      </div>
+    `;
+  }
 
-    if ($("publicEstimateCustomerName")) {
-      $("publicEstimateCustomerName").textContent =
-        next.client_name || "Cliente";
-    }
-
-    if ($("publicEstimateCustomerEmail")) {
-      $("publicEstimateCustomerEmail").textContent =
-        next.client_email || "";
-    }
-
+  function renderTotals(next) {
     if ($("publicEstimateTotal")) {
       $("publicEstimateTotal").textContent =
         money(next.total, next.currency);
@@ -208,43 +311,52 @@
       $("publicEstimateDeposit").textContent =
         money(next.deposit_required, next.currency);
     }
+  }
 
+  function renderItems(next) {
     const itemsWrap = $("publicEstimateItems");
-    if (itemsWrap) {
-      const items = Array.isArray(next.items) ? next.items : [];
+    if (!itemsWrap) return;
 
-      if (!items.length) {
-        itemsWrap.innerHTML = `<div class="muted">No hay line items todavía.</div>`;
-      } else {
-        itemsWrap.innerHTML = items
-          .map((line) => {
-            return `
-              <div class="line-item" style="display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
-                <div>
-                  <div style="font-weight:600;">${line.name || line.title || "Item"}</div>
-                  <div class="muted">${line.description || line.item_type || ""} x ${line.qty || 1}</div>
-                </div>
-                <div style="font-weight:700;">${money(line.line_total || line.amount || 0, next.currency)}</div>
-              </div>
-            `;
-          })
-          .join("");
-      }
+    const items = Array.isArray(next.items) ? next.items : [];
+
+    if (!items.length) {
+      itemsWrap.innerHTML = `<div class="muted">No hay line items todavía.</div>`;
+      return;
     }
 
-    if ($("publicEstimateMessage")) {
-      const cleaned = cleanPublicMessage(next.notes || next.message || "");
-      $("publicEstimateMessage").textContent = cleaned || "Your project is ready.";
-    }
+    itemsWrap.innerHTML = items
+      .map((line) => {
+        return `
+          <div class="line-item" style="display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+            <div>
+              <div style="font-weight:600;">${safe(line.name || line.title || "Item")}</div>
+              <div class="muted">${safe(line.description || line.item_type || "")} x ${line.qty || 1}</div>
+            </div>
+            <div style="font-weight:700;">${money(line.line_total || line.amount || 0, next.currency)}</div>
+          </div>
+        `;
+      })
+      .join("");
+  }
 
-    if ($("publicEstimateTerms")) {
-      $("publicEstimateTerms").textContent =
-        next.terms || "Sin terminos específicos.";
+  function renderEstimatePublic(estimate) {
+    const next = estimate || {};
+    const token = getQueryParam("token") || "";
+    const currentStatus = String(next.status || "").toLowerCase();
+
+    renderBusinessHeader(next);
+    renderCustomer(next);
+    renderTotals(next);
+    renderItems(next);
+    renderMessage(next);
+    renderTerms(next);
+
+    if ($("publicEstimateStatus")) {
+      $("publicEstimateStatus").textContent = next.status || "READY_TO_SEND";
     }
 
     const approveBtn = $("btnPublicEstimateApprove");
     const declineBtn = $("btnPublicEstimateDecline");
-    const currentStatus = String(next.status || "").toLowerCase();
 
     if (currentStatus === "accepted") {
       hideDecisionButtons();
