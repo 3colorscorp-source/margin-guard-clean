@@ -1,72 +1,57 @@
-function escapeHtml(str = '') {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function formatMoney(value) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD'
-  }).format(Number(value || 0));
-}
-
-function buildScopeSummaryHtml(scopeText) {
-  const clean = String(scopeText || '').trim();
-
-  if (!clean) {
-    return `
-      <p style="margin:0;font-size:16px;line-height:1.9;color:#1f2937;">
-        Scope of work to be confirmed.
-      </p>
-    `;
+export function buildProposalHtml(quote = {}, publicUrl = '') {
+  function escapeHtml(str = '') {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
+  function formatMoney(value) {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(Number(value || 0));
+  }
+
+  const projectName = quote.project_name || quote.project || 'Estimate Proposal';
+  const clientName = quote.client_name || quote.customer_name || 'Client';
+  const total = quote.total || quote.final_price || quote.amount || 0;
+  const depositRequired = quote.deposit_required || quote.deposit_amount || 0;
+  const quoteUrl = publicUrl || quote.public_url || '#';
+  const estimateNumber = quote.estimate_no || quote.quote_number || quote.estimate_number || quote.id || 'N/A';
+  const issueDate = quote.issue_date || quote.created_at || 'N/A';
+  const expirationDate = quote.expiration_date || quote.expires_at || 'N/A';
+  const jobSite = quote.job_site || quote.address || quote.project_address || 'N/A';
+
+  // IMPORTANT:
+  // Scope of Work = ONLY what seller wrote
+  const scopeSummary =
+    quote.scope_summary ||
+    quote.scope_of_work ||
+    '';
+
+  const formattedTotal = formatMoney(total);
+  const formattedDeposit = formatMoney(depositRequired);
+
+  const safeProjectName = escapeHtml(projectName);
+  const safeClientName = escapeHtml(clientName);
+  const safeEstimateNumber = escapeHtml(estimateNumber);
+  const safeIssueDate = escapeHtml(issueDate);
+  const safeExpirationDate = escapeHtml(expirationDate);
+  const safeJobSite = escapeHtml(jobSite);
+  const safeScopeSummary = scopeSummary
+    ? escapeHtml(scopeSummary)
+    : 'Scope of work to be confirmed.';
+
   return `
-    <p style="margin:0;font-size:16px;line-height:1.9;color:#1f2937;white-space:pre-line;">
-      ${escapeHtml(clean)}
-    </p>
-  `;
-}
-
-/* =========================
-   MAP YOUR QUOTE DATA HERE
-========================= */
-
-const projectName = quote.project_name || '';
-const clientName = quote.client_name || '';
-const total = quote.total || 0;
-const depositRequired = quote.deposit_required || 0;
-const quoteUrl = publicUrl || '';
-const estimateNumber = quote.estimate_no || quote.quote_number || quote.id || '';
-const issueDate = quote.issue_date || '';
-const expirationDate = quote.expiration_date || '';
-const jobSite = quote.job_site || quote.address || '';
-
-/* IMPORTANT:
-   Scope of Work = ONLY what seller wrote */
-const scopeSummary =
-  quote.scope_summary ||
-  quote.scope_of_work ||
-  '';
-
-const formattedTotal = formatMoney(total);
-const formattedDeposit = formatMoney(depositRequired);
-const scopeSummaryHtml = buildScopeSummaryHtml(scopeSummary);
-
-/* =========================
-   PREMIUM PROPOSAL TEMPLATE
-========================= */
-
-const proposalHtml = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8" />
   <title>Estimate Proposal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     * {
       box-sizing: border-box;
@@ -78,6 +63,8 @@ const proposalHtml = `
       background: #f4f6f8;
       font-family: Arial, Helvetica, sans-serif;
       color: #111827;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
     .wrapper {
@@ -243,6 +230,10 @@ const proposalHtml = `
       border: 1px solid #e5e7eb;
       border-radius: 20px;
       padding: 26px;
+      font-size: 16px;
+      line-height: 1.9;
+      color: #1f2937;
+      white-space: pre-line;
     }
 
     .cta-wrap {
@@ -319,11 +310,11 @@ const proposalHtml = `
     <div class="container">
 
       <div class="hero">
-        <div class="brand">Three Colors Corp</div>
-        <h1>${escapeHtml(projectName || 'Estimate Proposal')}</h1>
+        <div class="brand">THREE COLORS CORP</div>
+        <h1>${safeProjectName}</h1>
         <p>
-          Hi ${escapeHtml(clientName || 'there')},<br><br>
-          Attached is your estimate for <strong>${escapeHtml(projectName || 'your project')}</strong>.
+          Hi ${safeClientName},<br><br>
+          Attached is your estimate for <strong>${safeProjectName}</strong>.
           Please review the project summary, total investment, and required deposit below.
         </p>
       </div>
@@ -333,23 +324,23 @@ const proposalHtml = `
         <div class="info-grid">
           <div class="info-card">
             <div class="label">Estimate No.</div>
-            <div class="value">${escapeHtml(estimateNumber || 'N/A')}</div>
+            <div class="value">${safeEstimateNumber}</div>
           </div>
           <div class="info-card">
             <div class="label">Project</div>
-            <div class="value">${escapeHtml(projectName || 'Project')}</div>
+            <div class="value">${safeProjectName}</div>
           </div>
           <div class="info-card">
             <div class="label">Issue Date</div>
-            <div class="value">${escapeHtml(issueDate || 'N/A')}</div>
+            <div class="value">${safeIssueDate}</div>
           </div>
           <div class="info-card">
             <div class="label">Expiration Date</div>
-            <div class="value">${escapeHtml(expirationDate || 'N/A')}</div>
+            <div class="value">${safeExpirationDate}</div>
           </div>
           <div class="info-card" style="grid-column: 1 / -1;">
             <div class="label">Job Site</div>
-            <div class="value">${escapeHtml(jobSite || 'N/A')}</div>
+            <div class="value">${safeJobSite}</div>
           </div>
         </div>
       </div>
@@ -377,9 +368,7 @@ const proposalHtml = `
 
       <div class="section">
         <div class="section-title">Scope of Work</div>
-        <div class="scope-box">
-          ${scopeSummaryHtml}
-        </div>
+        <div class="scope-box">${safeScopeSummary}</div>
       </div>
 
       <div class="section">
@@ -404,4 +393,5 @@ const proposalHtml = `
   </div>
 </body>
 </html>
-`;
+  `;
+}
