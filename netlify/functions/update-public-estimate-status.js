@@ -44,8 +44,9 @@ exports.handler = async (event) => {
       updated_at: nowIso
     };
 
-    if (status === "accepted") patch.accepted_at = nowIso;
-    if (status === "declined") patch.declined_at = nowIso;
+    if (status === "accepted") {
+      patch.accepted_at = nowIso;
+    }
 
     const response = await fetch(
       `${supabaseUrl}/rest/v1/quotes?public_token=eq.${encodeURIComponent(token)}`,
