@@ -423,14 +423,76 @@
     }
 
     if ($("btnPublicEstimateApprove")) {
-      $("btnPublicEstimateApprove").onclick = () => {
-        setNotice("publicEstimateFeedback", "Approve listo para conectar al siguiente paso.", "ok");
+      $("btnPublicEstimateApprove").onclick = async () => {
+        try {
+          setNotice("publicEstimateFeedback", "Procesando aprobacion...", "warn");
+
+          const response = await fetch("/.netlify/functions/update-public-estimate-status", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              token: tokenValue,
+              status: "accepted"
+            })
+          });
+
+          const payload = await response.json();
+
+          if (!response.ok || !payload.ok) {
+            setNotice("publicEstimateFeedback", payload.error || "No se pudo aprobar el estimate.", "err");
+            return;
+          }
+
+          if ($("publicEstimateStatus")) {
+            $("publicEstimateStatus").textContent = "accepted";
+          }
+
+          $("btnPublicEstimateApprove").disabled = true;
+          if ($("btnPublicEstimateDecline")) $("btnPublicEstimateDecline").disabled = true;
+
+          setNotice("publicEstimateFeedback", "Estimate aprobado correctamente.", "ok");
+        } catch (err) {
+          setNotice("publicEstimateFeedback", "Error al aprobar el estimate.", "err");
+        }
       };
     }
 
     if ($("btnPublicEstimateDecline")) {
-      $("btnPublicEstimateDecline").onclick = () => {
-        setNotice("publicEstimateFeedback", "Decline listo para conectar al siguiente paso.", "warn");
+      $("btnPublicEstimateDecline").onclick = async () => {
+        try {
+          setNotice("publicEstimateFeedback", "Procesando rechazo...", "warn");
+
+          const response = await fetch("/.netlify/functions/update-public-estimate-status", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              token: tokenValue,
+              status: "declined"
+            })
+          });
+
+          const payload = await response.json();
+
+          if (!response.ok || !payload.ok) {
+            setNotice("publicEstimateFeedback", payload.error || "No se pudo rechazar el estimate.", "err");
+            return;
+          }
+
+          if ($("publicEstimateStatus")) {
+            $("publicEstimateStatus").textContent = "declined";
+          }
+
+          if ($("btnPublicEstimateApprove")) $("btnPublicEstimateApprove").disabled = true;
+          $("btnPublicEstimateDecline").disabled = true;
+
+          setNotice("publicEstimateFeedback", "Estimate rechazado correctamente.", "warn");
+        } catch (err) {
+          setNotice("publicEstimateFeedback", "Error al rechazar el estimate.", "err");
+        }
       };
     }
   }
