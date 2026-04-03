@@ -1,760 +1,408 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Project Estimate</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Public Estimate</title>
+  <link rel="stylesheet" href="/styles.css" />
   <style>
-    :root{
-      --text:#f8fafc;
-      --muted:#cbd5e1;
-      --shadow:0 12px 40px rgba(0,0,0,.35);
-      --radius:22px;
+    .approved-panel,
+    .paid-panel {
+      display: none;
+      margin-top: 16px;
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(28,38,72,.62) 0%, rgba(11,18,38,.88) 100%);
+      box-shadow: 0 12px 40px rgba(0,0,0,.24);
+      overflow: hidden;
     }
 
-    *{box-sizing:border-box}
-    html,body{
-      margin:0;
-      padding:0;
-      background:
-        radial-gradient(circle at top left, rgba(16,185,129,.18), transparent 28%),
-        radial-gradient(circle at top right, rgba(59,130,246,.12), transparent 24%),
-        linear-gradient(180deg,#010814 0%,#020617 100%);
-      color:var(--text);
-      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-      min-height:100%;
+    .approved-panel.show,
+    .paid-panel.show {
+      display: block;
     }
 
-    .container{
-      max-width:1100px;
-      margin:0 auto;
-      padding:28px 18px 80px;
+    .approved-panel-inner,
+    .paid-panel-inner {
+      padding: 22px 20px;
     }
 
-    .hero{
-      margin:10px 0 24px;
-      padding:28px;
-      border-radius:28px;
-      background:linear-gradient(135deg, rgba(6,18,36,.94), rgba(10,22,48,.88));
-      border:1px solid rgba(56,189,248,.12);
-      box-shadow:var(--shadow);
+    .approved-kicker,
+    .paid-kicker {
+      font-size: 12px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      opacity: .78;
+      margin-bottom: 10px;
     }
 
-    .eyebrow{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      padding:8px 12px;
-      border-radius:999px;
-      border:1px solid rgba(148,163,184,.18);
-      background:rgba(255,255,255,.04);
-      color:#cbd5e1;
-      font-size:12px;
-      font-weight:700;
-      letter-spacing:.08em;
-      text-transform:uppercase;
-      margin-bottom:16px;
+    .approved-title,
+    .paid-title {
+      margin: 0 0 10px;
+      font-size: 18px;
+      line-height: 1.25;
+      font-weight: 800;
     }
 
-    .hero h1{
-      margin:0 0 10px;
-      font-size:clamp(30px,4vw,52px);
-      line-height:1.03;
-      letter-spacing:-.03em;
+    .approved-copy,
+    .paid-copy {
+      margin: 0 0 14px;
+      opacity: .92;
+      line-height: 1.55;
     }
 
-    .hero p{
-      margin:0;
-      max-width:780px;
-      color:var(--muted);
-      font-size:18px;
-      line-height:1.65;
+    .approved-next-step,
+    .paid-next-step {
+      margin: 0 0 16px;
+      font-weight: 700;
     }
 
-    .grid{
-      display:grid;
-      grid-template-columns:1.1fr .9fr;
-      gap:18px;
-      margin-top:18px;
+    .approved-actions,
+    .paid-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
     }
 
-    .card{
-      background:linear-gradient(180deg, rgba(8,18,38,.92), rgba(8,18,38,.84));
-      border:1px solid rgba(56,189,248,.1);
-      border-radius:var(--radius);
-      box-shadow:var(--shadow);
-      overflow:hidden;
+    .approved-actions .btn,
+    .paid-actions .btn {
+      min-width: 220px;
     }
 
-    .card-inner{
-      padding:22px 20px;
+    .approved-check,
+    .paid-check {
+      font-size: 18px;
+      margin-right: 8px;
     }
 
-    .card h3{
-      margin:0 0 12px;
-      font-size:18px;
-      letter-spacing:-.02em;
+    .deposit-note {
+      margin-top: 10px;
+      font-size: 12px;
+      opacity: .75;
     }
 
-    .meta{
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:14px 22px;
+    .deposit-secure {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 12px;
+      opacity: .85;
+      padding: 8px 12px;
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 999px;
+      background: rgba(255,255,255,.04);
     }
 
-    .meta .label{
-      font-size:12px;
-      text-transform:uppercase;
-      letter-spacing:.08em;
-      color:#94a3b8;
-      margin-bottom:6px;
-    }
-
-    .meta .value{
-      font-size:18px;
-      font-weight:700;
-      color:#f8fafc;
-      word-break:break-word;
-    }
-
-    .totals .line{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      padding:12px 0;
-      border-bottom:1px solid rgba(255,255,255,.06);
-      color:#e2e8f0;
-      font-size:18px;
-    }
-
-    .totals .line:last-child{border-bottom:none}
-
-    .totals .line strong{
-      font-size:28px;
-      letter-spacing:-.03em;
-    }
-
-    .items{
-      display:grid;
-      gap:12px;
-      margin-top:12px;
-    }
-
-    .item{
-      padding:16px 18px;
-      border-radius:18px;
-      background:rgba(255,255,255,.03);
-      border:1px solid rgba(255,255,255,.06);
-    }
-
-    .item-title{
-      font-weight:800;
-      font-size:17px;
-      margin-bottom:6px;
-    }
-
-    .item-sub{
-      color:var(--muted);
-      line-height:1.6;
-      font-size:14px;
-    }
-
-    .notice{
-      margin-top:16px;
-      padding:16px 18px;
-      border-radius:16px;
-      border:1px solid rgba(16,185,129,.34);
-      background:linear-gradient(90deg, rgba(16,185,129,.18), rgba(16,185,129,.04));
-      color:#ecfdf5;
-      font-size:18px;
-      line-height:1.5;
-    }
-
-    .notice.error{
-      border-color:rgba(239,68,68,.35);
-      background:linear-gradient(90deg, rgba(239,68,68,.18), rgba(239,68,68,.04));
-      color:#fee2e2;
-    }
-
-    .state-panel{
-      margin-top:18px;
-      padding:22px 20px;
-      border-radius:26px;
-      background:linear-gradient(135deg, rgba(15,23,42,.92), rgba(17,24,39,.82));
-      border:1px solid rgba(255,255,255,.07);
-      box-shadow:var(--shadow);
-    }
-
-    .state-panel.secured{
-      background:linear-gradient(135deg, rgba(10,20,45,.98), rgba(13,23,58,.92));
-      border:1px solid rgba(34,197,94,.18);
-    }
-
-    .state-badge{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      padding:8px 12px;
-      border-radius:999px;
-      font-size:12px;
-      font-weight:800;
-      letter-spacing:.08em;
-      text-transform:uppercase;
-      color:#dbeafe;
-      border:1px solid rgba(148,163,184,.18);
-      background:rgba(255,255,255,.03);
-      margin-bottom:16px;
-    }
-
-    .state-panel h2{
-      margin:0 0 12px;
-      font-size:clamp(28px,3vw,40px);
-      line-height:1.08;
-      letter-spacing:-.03em;
-    }
-
-    .state-panel p{
-      margin:0 0 16px;
-      color:var(--muted);
-      font-size:20px;
-      line-height:1.7;
-      max-width:860px;
-    }
-
-    .state-highlight{
-      font-size:22px;
-      font-weight:800;
-      line-height:1.6;
-      color:#ffffff;
-      margin:18px 0 20px;
-    }
-
-    .btn-row{
-      display:flex;
-      flex-wrap:wrap;
-      gap:12px;
-      margin-top:12px;
-    }
-
-    .btn{
-      appearance:none;
-      border:none;
-      outline:none;
-      cursor:pointer;
-      text-decoration:none;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      gap:10px;
-      padding:16px 24px;
-      border-radius:18px;
-      font-weight:800;
-      font-size:18px;
-      transition:.18s ease;
-      min-height:58px;
-    }
-
-    .btn:hover{transform:translateY(-1px)}
-    .btn:disabled{opacity:.65; cursor:not-allowed; transform:none}
-
-    .btn-primary{
-      color:#ffffff;
-      background:linear-gradient(90deg, #0f766e, #10b981);
-      border:1px solid rgba(16,185,129,.55);
-      box-shadow:0 16px 34px rgba(16,185,129,.28);
-      font-size:19px;
-      letter-spacing:.01em;
-    }
-
-    .btn-primary:hover{
-      transform:translateY(-2px) scale(1.01);
-      box-shadow:0 20px 40px rgba(16,185,129,.34);
-    }
-
-    .btn-secondary{
-      color:#e2e8f0;
-      background:rgba(255,255,255,.03);
-      border:1px solid rgba(255,255,255,.09);
-    }
-
-    .micro{
-      display:inline-flex;
-      align-items:center;
-      gap:10px;
-      padding:12px 16px;
-      border-radius:999px;
-      background:rgba(255,255,255,.03);
-      border:1px solid rgba(255,255,255,.08);
-      color:#cbd5e1;
-      font-size:14px;
-      margin-top:12px;
-    }
-
-    .subtle{
-      color:#cbd5e1;
-      font-size:16px;
-      line-height:1.8;
-      margin-top:14px;
-      max-width:850px;
-    }
-
-    .hidden{display:none !important;}
-
-    @media (max-width: 920px){
-      .grid{grid-template-columns:1fr}
-      .hero p,.state-panel p{font-size:17px}
-      .state-highlight{font-size:20px}
-      .btn{width:100%}
-      .btn-row{flex-direction:column}
-      .meta{grid-template-columns:1fr}
+    .deposit-secure svg {
+      width: 14px;
+      height: 14px;
+      opacity: .9;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-
-    <section class="hero">
-      <div class="eyebrow">Three Colors Corp</div>
-      <h1 id="heroTitle">Your project is moving forward.</h1>
-      <p id="heroSubtitle">
-        Review your approved estimate and complete the next project step with confidence.
-      </p>
-    </section>
-
-    <div class="grid">
-      <section class="card">
-        <div class="card-inner">
-          <h3>Project Details</h3>
-          <div class="meta">
-            <div>
-              <div class="label">Customer Name</div>
-              <div class="value" id="customerName">—</div>
-            </div>
-            <div>
-              <div class="label">Email</div>
-              <div class="value" id="customerEmail">—</div>
-            </div>
-            <div>
-              <div class="label">Phone</div>
-              <div class="value" id="customerPhone">—</div>
-            </div>
-            <div>
-              <div class="label">Project Address</div>
-              <div class="value" id="projectAddress">—</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card-inner totals">
-          <h3>Project Totals</h3>
-          <div class="line">
-            <span>Approved Project Total</span>
-            <strong id="projectTotal">$0.00</strong>
-          </div>
-          <div class="line">
-            <span>Initial Project Investment</span>
-            <strong id="projectDeposit">$0.00</strong>
-          </div>
-        </div>
-      </section>
-    </div>
-
-    <section class="card" style="margin-top:18px;">
+  <div class="container narrow">
+    <section class="card" style="margin-top:24px;">
       <div class="card-inner">
-        <h3>Project Scope</h3>
-        <div class="items" id="lineItems"></div>
-        <div class="subtle" id="emptyItems" style="display:none;">No project scope available yet.</div>
-      </div>
-    </section>
+        <div class="section-head">
+          <div>
+            <h2 id="publicEstimateTitle">Estimate preview</h2>
+            <div class="sub" id="publicEstimateMeta">Comparte este link para revisar y aprobar.</div>
+          </div>
+          <div class="badge amber" id="publicEstimateStatus">draft</div>
+        </div>
 
-    <div class="grid">
-      <section class="card" style="margin-top:18px;">
-        <div class="card-inner">
-          <h3>Project Message</h3>
-          <div class="subtle" id="projectMessage">
-            Your project is ready to move into the next step.
+        <div class="grid" style="margin-top:14px;">
+          <div class="card estimate-subcard">
+            <div class="card-inner">
+              <div class="eyebrow">Customer</div>
+              <div id="publicEstimateCustomer"></div>
+            </div>
+          </div>
+          <div class="card estimate-subcard">
+            <div class="card-inner">
+              <div class="eyebrow">Totals</div>
+              <div class="sum-row"><span>Total</span><strong id="publicEstimateTotal">$0.00</strong></div>
+              <div class="sum-row"><span>Deposit</span><strong id="publicEstimateDeposit">$0.00</strong></div>
+            </div>
           </div>
         </div>
-      </section>
 
-      <section class="card" style="margin-top:18px;">
-        <div class="card-inner">
-          <h3>Project Terms</h3>
-          <div class="subtle" id="projectTerms">
-            Your initial project investment is applied toward your final project total.
+        <div class="summary" style="margin-top:16px;">
+          <div class="summary-head">Line items</div>
+          <div class="summary-body" id="publicEstimateItems"></div>
+        </div>
+
+        <div class="grid" style="margin-top:16px;">
+          <div class="card estimate-subcard">
+            <div class="card-inner">
+              <div class="eyebrow">Message</div>
+              <div id="publicEstimateMessage"></div>
+            </div>
+          </div>
+          <div class="card estimate-subcard">
+            <div class="card-inner">
+              <div class="eyebrow">Terms</div>
+              <div id="publicEstimateTerms"></div>
+            </div>
           </div>
         </div>
-      </section>
-    </div>
 
-    <div id="feedback" class="notice hidden"></div>
+        <div class="inline-actions" style="margin-top:16px;" id="publicEstimateActions">
+          <button class="btn primary" type="button" id="btnPublicEstimateApprove">Approve estimate</button>
+          <button class="btn danger" type="button" id="btnPublicEstimateDecline">Decline</button>
+        </div>
 
-    <section id="smartStatePanel" class="state-panel">
-      <div class="state-badge" id="stateBadge">Approved</div>
-      <h2 id="stateTitle">Project approved. Your next step is ready.</h2>
-      <p id="stateText">
-        Your project has been approved and is now ready to move into scheduling and preparation.
-      </p>
-      <div class="state-highlight" id="stateHighlight">
-        Next Step: Secure your project start and keep your momentum moving forward.
-      </div>
+        <div class="notice" id="publicEstimateFeedback" style="display:none; margin-top:12px;"></div>
 
-      <div class="btn-row">
-        <button class="btn btn-primary" id="primaryActionBtn">Secure Project Start</button>
-        <a class="btn btn-secondary hidden" id="secondaryActionBtn" href="/">Return Home</a>
-      </div>
+        <section class="approved-panel" id="approvedProjectPanel" aria-live="polite">
+          <div class="approved-panel-inner">
+            <div class="approved-kicker">Approved</div>
+            <h3 class="approved-title"><span class="approved-check">✅</span>Project approved. Let’s get to work.</h3>
+            <p class="approved-copy">
+              We’ve received your approval and your project can now move to the next step.
+            </p>
+            <p class="approved-next-step">Next Step: Secure your project start with the required deposit.</p>
 
-      <div class="micro" id="microCopy">
-        🔒 Smart project investment applied toward final invoice
-      </div>
+            <div class="approved-actions">
+              <button class="btn primary" type="button" id="payDepositBtn">Pay Project Deposit</button>
+            </div>
 
-      <div class="subtle" id="stateSubtle">
-        This step secures your scheduling position and confirms your project is moving into the next phase.
+            <div class="deposit-secure">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2l7 4v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-4z"></path>
+              </svg>
+              Secure payment powered by Stripe
+            </div>
+
+            <div class="deposit-note">
+              Required deposit to reserve your project start date. Applied toward final invoice.
+            </div>
+          </div>
+        </section>
+
+        <section class="paid-panel" id="paidProjectPanel" aria-live="polite">
+          <div class="paid-panel-inner">
+            <div class="paid-kicker">Deposit Paid</div>
+            <h3 class="paid-title"><span class="paid-check">🔒</span>Project secured. Your deposit has been received.</h3>
+            <p class="paid-copy">
+              Your project deposit is confirmed and your estimate is now secured for the next step.
+            </p>
+            <p class="paid-next-step">Next Step: Our team can now move forward with scheduling and project coordination.</p>
+
+            <div class="paid-actions">
+              <a class="btn primary" href="/">Return to Home</a>
+            </div>
+
+            <div class="deposit-secure">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2l7 4v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-4z"></path>
+              </svg>
+              Payment confirmed
+            </div>
+          </div>
+        </section>
       </div>
     </section>
   </div>
 
+  <script defer src="/js/estimate-builder.js"></script>
   <script>
     (function () {
-      const $ = (id) => document.getElementById(id);
-
-      const els = {
-        customerName: $("customerName"),
-        customerEmail: $("customerEmail"),
-        customerPhone: $("customerPhone"),
-        projectAddress: $("projectAddress"),
-        projectTotal: $("projectTotal"),
-        projectDeposit: $("projectDeposit"),
-        lineItems: $("lineItems"),
-        emptyItems: $("emptyItems"),
-        projectMessage: $("projectMessage"),
-        projectTerms: $("projectTerms"),
-        feedback: $("feedback"),
-
-        heroTitle: $("heroTitle"),
-        heroSubtitle: $("heroSubtitle"),
-
-        smartStatePanel: $("smartStatePanel"),
-        stateBadge: $("stateBadge"),
-        stateTitle: $("stateTitle"),
-        stateText: $("stateText"),
-        stateHighlight: $("stateHighlight"),
-        primaryActionBtn: $("primaryActionBtn"),
-        secondaryActionBtn: $("secondaryActionBtn"),
-        microCopy: $("microCopy"),
-        stateSubtle: $("stateSubtle")
-      };
-
-      const params = new URLSearchParams(window.location.search);
-      const publicToken = params.get("token") || "";
-      const depositPaid = params.get("deposit") === "paid";
-      const checkoutCancelled = params.get("checkout") === "cancelled";
-
-      let estimateData = null;
-
-      function money(value) {
-        const num = Number(value || 0);
-        return new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD"
-        }).format(num);
+      function $(id) {
+        return document.getElementById(id);
       }
 
-      function cleanText(value, fallback = "—") {
-        const text = String(value || "").trim();
-        return text ? text : fallback;
+      function getTokenFromUrl() {
+        return new URLSearchParams(window.location.search).get("token") || "";
       }
 
-      function looksLikeAddress(value) {
-        const text = String(value || "").trim();
-        if (!text) return false;
-        if (text === "—" || text.toLowerCase() === "not provided") return false;
-        return /\d/.test(text) || text.length >= 10;
+      function getDepositPaidFlag(token) {
+        const params = new URLSearchParams(window.location.search);
+        return params.get("deposit") === "paid" || localStorage.getItem(`mg_deposit_paid_${token}`) === "true";
       }
 
-      function showNotice(text, type = "ok") {
-        if (!els.feedback) return;
-        els.feedback.textContent = text;
-        els.feedback.classList.remove("hidden", "error");
-        if (type === "error") els.feedback.classList.add("error");
+      function getStatusValue() {
+        return ($("publicEstimateStatus")?.textContent || "").trim().toLowerCase();
       }
 
-      function hideNotice() {
-        if (!els.feedback) return;
-        els.feedback.classList.add("hidden");
-        els.feedback.classList.remove("error");
-        els.feedback.textContent = "";
+      function parseMoneyText(text) {
+        const clean = String(text || "").replace(/[^0-9.]/g, "");
+        const num = Number(clean);
+        return Number.isFinite(num) ? num : 0;
       }
 
-      function isDepositPaid(data) {
-        if (depositPaid) return true;
-        const amt = Number(
-          data?.deposit_paid_amount ??
-          data?.depositPaidAmount ??
-          0
-        );
-        return amt > 0;
+      function getEstimateTitle() {
+        return ($("publicEstimateTitle")?.textContent || "").trim() || "Project";
       }
 
-      function isApproved(data) {
-        const status = String(
-          data?.status ||
-          data?.estimate_status ||
-          ""
-        ).toUpperCase();
-        return ["APPROVED", "ACCEPTED", "READY_TO_START"].includes(status);
+      function getCustomerEmailFromDom() {
+        const customerBlock = $("publicEstimateCustomer");
+        const text = customerBlock?.innerText || "";
+        const match = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+        return match ? match[0].trim() : "";
       }
 
-      function renderItems(items) {
-        els.lineItems.innerHTML = "";
-
-        if (!Array.isArray(items) || !items.length) {
-          els.emptyItems.style.display = "none";
-
-          const fallback = document.createElement("div");
-          fallback.className = "item";
-          fallback.innerHTML = `
-            <div class="item-title">${cleanText(estimateData?.project_name || estimateData?.projectName, "Approved Project Scope")}</div>
-            <div class="item-sub">
-              Approved project scope prepared to move into scheduling and project coordination.
-            </div>
-          `;
-          els.lineItems.appendChild(fallback);
-          return;
+      function getCustomerNameFromDom() {
+        const customerBlock = $("publicEstimateCustomer");
+        const text = (customerBlock?.innerText || "").split("\n").map(s => s.trim()).filter(Boolean);
+        for (const line of text) {
+          if (!line.includes("@") && !/^\d[\d\s\-().]+$/.test(line)) {
+            return line;
+          }
         }
-
-        els.emptyItems.style.display = "none";
-
-        items.forEach((item) => {
-          const div = document.createElement("div");
-          div.className = "item";
-          div.innerHTML = `
-            <div class="item-title">${cleanText(item.title || item.name, "Project Item")}</div>
-            <div class="item-sub">
-              ${cleanText(item.description, "")}
-              ${item.total != null || item.amount != null || item.unit_price != null ? `<br />${money(item.total ?? item.amount ?? item.unit_price ?? 0)}` : ""}
-            </div>
-          `;
-          els.lineItems.appendChild(div);
-        });
+        return "Customer";
       }
 
-      function syncStatePanel(data) {
-        const approved = isApproved(data);
-        const paid = isDepositPaid(data);
+      function showUiState({ approved, paid }) {
+        const actions = $("publicEstimateActions");
+        const approvedPanel = $("approvedProjectPanel");
+        const paidPanel = $("paidProjectPanel");
 
         if (paid) {
-          els.smartStatePanel.classList.add("secured");
-          els.stateBadge.textContent = "Project Secured";
-          els.stateTitle.textContent = "Project secured. You’re moving forward.";
-          els.stateText.textContent =
-            "Your next project step has been completed successfully. Your project is now secured for scheduling and preparation.";
-          els.stateHighlight.textContent =
-            "Next Step: Our team can now move forward with scheduling, coordination, and project preparation.";
-          els.primaryActionBtn.classList.add("hidden");
-          els.secondaryActionBtn.classList.remove("hidden");
-          els.secondaryActionBtn.textContent = "Return Home";
-          els.secondaryActionBtn.href = "/";
-          els.microCopy.textContent = "✔ Project investment confirmed";
-          els.stateSubtle.textContent =
-            "Your initial project investment has been successfully applied and your estimate is now secured for the next phase.";
-
-          els.heroTitle.textContent = "Your project is officially secured.";
-          els.heroSubtitle.textContent =
-            "You’ve completed the next step successfully. Our team can now continue moving your project forward.";
+          if (actions) actions.style.display = "none";
+          if (approvedPanel) approvedPanel.classList.remove("show");
+          if (paidPanel) paidPanel.classList.add("show");
           return;
         }
 
         if (approved) {
-          els.smartStatePanel.classList.remove("secured");
-          els.stateBadge.textContent = "Approved";
-          els.stateTitle.textContent = "Your project is approved and ready to begin.";
-          els.stateText.textContent =
-            "You’ve already completed the approval step. The next move secures your project start and keeps everything progressing smoothly.";
-          els.stateHighlight.textContent =
-            "Next Step: Activate your project start with your initial project investment.";
-          els.primaryActionBtn.classList.remove("hidden");
-          els.primaryActionBtn.textContent = "Move My Project Forward";
-          els.secondaryActionBtn.classList.add("hidden");
-          els.microCopy.textContent = "✔ Applied toward your final invoice";
-          els.stateSubtle.textContent =
-            "This is not an extra cost — it is a smart project investment that secures your scheduling position and moves your project into preparation.";
-
-          els.heroTitle.textContent = "Your project is approved and ready to begin.";
-          els.heroSubtitle.textContent =
-            "You’ve already taken the first step. Your next move secures scheduling and keeps your project progressing with confidence.";
+          if (actions) actions.style.display = "none";
+          if (approvedPanel) approvedPanel.classList.add("show");
+          if (paidPanel) paidPanel.classList.remove("show");
           return;
         }
 
-        els.smartStatePanel.classList.remove("secured");
-        els.stateBadge.textContent = "Project";
-        els.stateTitle.textContent = "Your next project step is ready.";
-        els.stateText.textContent =
-          "Review your estimate details and follow the guided next step when your project is ready to move forward.";
-        els.stateHighlight.textContent =
-          "You’ll unlock the next project milestone after approval.";
-        els.primaryActionBtn.classList.add("hidden");
-        els.secondaryActionBtn.classList.add("hidden");
-        els.microCopy.textContent = "Guided progress built for a smoother project experience";
-        els.stateSubtle.textContent =
-          "Each step in your project is designed to move you forward with clarity and confidence.";
+        if (actions) actions.style.display = "";
+        if (approvedPanel) approvedPanel.classList.remove("show");
+        if (paidPanel) paidPanel.classList.remove("show");
       }
 
-      async function createDepositSession() {
+      function syncPanels() {
+        const token = getTokenFromUrl();
+        const status = getStatusValue();
+        const approved = status === "accepted" || status === "approved";
+        const paid = token ? getDepositPaidFlag(token) : false;
+        showUiState({ approved, paid });
+
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("checkout") === "cancelled") {
+          const feedback = $("publicEstimateFeedback");
+          if (feedback) {
+            feedback.style.display = "block";
+            feedback.className = "notice warn";
+            feedback.textContent = "Deposit checkout was cancelled. You can continue whenever you are ready.";
+          }
+        }
+
+        if (paid) {
+          const feedback = $("publicEstimateFeedback");
+          if (feedback) {
+            feedback.style.display = "block";
+            feedback.className = "notice ok";
+            feedback.textContent = "Deposit paid successfully. Your project is now secured.";
+          }
+        }
+      }
+
+      async function startDepositCheckout() {
+        const token = getTokenFromUrl();
+        if (!token) {
+          throw new Error("Missing public token");
+        }
+
+        const btn = $("payDepositBtn");
+        const feedback = $("publicEstimateFeedback");
+
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "Opening secure checkout...";
+        }
+
+        if (feedback) {
+          feedback.style.display = "block";
+          feedback.className = "notice";
+          feedback.textContent = "Creating secure deposit checkout...";
+        }
+
         try {
-          els.primaryActionBtn.disabled = true;
-          els.primaryActionBtn.textContent = "Preparing secure checkout...";
-
-          const payload = {
-            public_token: publicToken,
-            project_name:
-              estimateData?.project_name ||
-              estimateData?.projectName ||
-              "Project",
-            customer_name:
-              estimateData?.customer_name ||
-              estimateData?.client_name ||
-              estimateData?.clientName ||
-              "Customer",
-            client_email:
-              estimateData?.client_email ||
-              estimateData?.customer_email ||
-              estimateData?.email ||
-              "",
-            deposit_required:
-              estimateData?.deposit_required ||
-              estimateData?.depositRequired ||
-              1000
-          };
-
           const res = await fetch("/.netlify/functions/create-project-deposit-session", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({
+              public_token: token,
+              project_name: getEstimateTitle(),
+              customer_name: getCustomerNameFromDom(),
+              client_email: getCustomerEmailFromDom(),
+              deposit_required: parseMoneyText($("publicEstimateDeposit")?.textContent || "0")
+            })
           });
 
-          const data = await res.json().catch(() => ({}));
+          const data = await res.json();
 
-          if (!res.ok || !data?.url) {
-            throw new Error(data?.error || "Unable to start secure checkout");
+          if (!res.ok || !data.ok || !data.url) {
+            throw new Error(data.error || "Unable to create deposit checkout");
           }
 
           window.location.href = data.url;
         } catch (err) {
-          showNotice(err.message || "Unable to start secure checkout", "error");
-          els.primaryActionBtn.disabled = false;
-          els.primaryActionBtn.textContent = "Move My Project Forward";
+          if (feedback) {
+            feedback.style.display = "block";
+            feedback.className = "notice err";
+            feedback.textContent = err.message || "Unable to start deposit checkout";
+          }
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Pay Project Deposit";
+          }
         }
       }
 
-      async function loadEstimate() {
-        try {
-          if (!publicToken) {
-            showNotice("Missing estimate token.", "error");
-            return;
-          }
+      function bindDepositButton() {
+        const btn = $("payDepositBtn");
+        if (!btn) return;
+        btn.addEventListener("click", startDepositCheckout);
+      }
 
-          const res = await fetch(`/.netlify/functions/get-public-estimate?token=${encodeURIComponent(publicToken)}`);
-          const data = await res.json().catch(() => ({}));
+      function bindStatusRefresh() {
+        const approveBtn = $("btnPublicEstimateApprove");
+        const declineBtn = $("btnPublicEstimateDecline");
 
-          if (!res.ok || !data?.ok) {
-            throw new Error(data?.error || "Unable to load estimate");
-          }
+        if (approveBtn) {
+          approveBtn.addEventListener("click", function () {
+            setTimeout(syncPanels, 180);
+          });
+        }
 
-          const estimate =
-            data.estimate ||
-            data.data ||
-            data;
+        if (declineBtn) {
+          declineBtn.addEventListener("click", function () {
+            setTimeout(syncPanels, 180);
+          });
+        }
 
-          estimateData = estimate;
-
-          els.customerName.textContent = cleanText(
-            estimate.customer_name ||
-            estimate.client_name ||
-            estimate.clientName
-          );
-
-          els.customerEmail.textContent = cleanText(
-            estimate.client_email ||
-            estimate.customer_email ||
-            estimate.email
-          );
-
-          els.customerPhone.textContent = cleanText(
-            estimate.phone ||
-            estimate.client_phone ||
-            estimate.customer_phone
-          );
-
-          const resolvedAddress =
-            estimate.project_address ||
-            estimate.address ||
-            estimate.job_address ||
-            estimate.service_address ||
-            estimate.projectAddress ||
-            estimate.jobAddress ||
-            estimate.serviceAddress ||
-            estimate.job_site ||
-            estimate.jobSite ||
-            estimate.site_address ||
-            estimate.siteAddress ||
-            estimate.customer_address ||
-            estimate.customerAddress ||
-            "";
-
-          els.projectAddress.textContent = looksLikeAddress(resolvedAddress)
-            ? resolvedAddress
-            : "Address will be confirmed before scheduling";
-
-          els.projectTotal.textContent = money(
-            estimate.total ||
-            estimate.final_price ||
-            estimate.project_total ||
-            0
-          );
-
-          els.projectDeposit.textContent = money(
-            estimate.deposit_required ||
-            estimate.depositRequired ||
-            1000
-          );
-
-          els.projectMessage.textContent =
-            cleanText(
-              estimate.message ||
-              estimate.notes ||
-              estimate.public_message,
-              "Your project has been approved and is now ready to move into scheduling and preparation."
-            );
-
-          els.projectTerms.textContent =
-            cleanText(
-              estimate.terms,
-              "Your initial project investment is credited toward your final project total and secures your scheduling position."
-            );
-
-          renderItems(estimate.items || estimate.line_items || []);
-
-          if (depositPaid) {
-            showNotice("Project step completed successfully. Your project is now secured.");
-          } else if (checkoutCancelled) {
-            showNotice("Your secure checkout was canceled. You can continue whenever you're ready.", "error");
-          } else {
-            hideNotice();
-          }
-
-          syncStatePanel(estimate);
-
-          els.primaryActionBtn.onclick = createDepositSession;
-        } catch (err) {
-          showNotice(err.message || "Unable to load estimate", "error");
+        const statusBadge = $("publicEstimateStatus");
+        if (statusBadge && "MutationObserver" in window) {
+          const observer = new MutationObserver(syncPanels);
+          observer.observe(statusBadge, {
+            childList: true,
+            subtree: true,
+            characterData: true
+          });
         }
       }
 
-      document.addEventListener("DOMContentLoaded", loadEstimate);
+      function init() {
+        bindDepositButton();
+        bindStatusRefresh();
+        setTimeout(syncPanels, 250);
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", init);
+      } else {
+        init();
+      }
     })();
   </script>
 </body>
