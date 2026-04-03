@@ -314,65 +314,123 @@
     return calculateEstimate(next);
   }
 
-  function renderEstimatePublic() {
+  async function renderEstimatePublic() {
     if (!window.location.pathname.includes("estimate-public")) return;
+
     const tokenValue = new URLSearchParams(window.location.search).get("token") || "";
-    const estimate = loadEstimates().find((item) => item.public_token === tokenValue) || null;
-    if (!estimate) {
-      document.body.innerHTML = '<div class="container narrow"><section class="card" style="margin-top:24px;"><div class="card-inner"><h2>Estimate no encontrado</h2><div class="sub">El token publico no existe en este navegador o en este tenant.</div></div></section></div>';
+
+    if (!tokenValue) {
+      document.body.innerHTML = `
+        <div class="container narrow">
+          <section class="card" style="margin-top:24px;">
+            <div class="card-inner">
+              <h2>Estimate no encontrado</h2>
+              <div class="sub">Falta el token publico en la URL.</div>
+            </div>
+          </section>
+        </div>
+      `;
       return;
     }
-    const next = stampViewed(estimate);
-    if ($("publicEstimateTitle")) $("publicEstimateTitle").textContent = next.title || next.project_name || next.estimate_number;
-    if ($("publicEstimateMeta")) $("publicEstimateMeta").textContent = `${next.estimate_number} • Expira ${next.expiration_date || "sin fecha"}`;
-    if ($("publicEstimateStatus")) $("publicEstimateStatus").textContent = next.status;
+
+    let next = null;
+
+    try {
+      const response = await fetch(`/.netlify/functions/get-public-estimate?token=${encodeURIComponent(tokenValue)}`);
+      const payload = await response.json();
+
+      if (!response.ok || !payload || !payload.estimate) {
+        document.body.innerHTML = `
+          <div class="container narrow">
+            <section class="card" style="margin-top:24px;">
+              <div class="card-inner">
+                <h2>Estimate no encontrado</h2>
+                <div class="sub">No se encontro un estimate real para este token.</div>
+              </div>
+            </section>
+          </div>
+        `;
+        return;
+      }
+
+      next = payload.estimate;
+    } catch (err) {
+      document.body.innerHTML = `
+        <div class="container narrow">
+          <section class="card" style="margin-top:24px;">
+            <div class="card-inner">
+              <h2>Error cargando estimate</h2>
+              <div class="sub">No fue posible consultar el estimate publico.</div>
+            </div>
+          </section>
+        </div>
+      `;
+      return;
+    }
+
+    if ($("publicEstimateTitle")) {
+      $("publicEstimateTitle").textContent =
+        next.title || next.project_name || next.estimate_number || "Estimate";
+    }
+
+    if ($("publicEstimateMeta")) {
+      $("publicEstimateMeta").textContent =
+        `${next.estimate_number || ""} • Expira ${next.expiration_date || "sin fecha"}`;
+    }
+
+    if ($("publicEstimateStatus")) {
+      $("publicEstimateStatus").textContent = next.status || "READY_TO_SEND";
+    }
+
     if ($("publicEstimateCustomer")) {
       $("publicEstimateCustomer").innerHTML = `
-        <strong>${escapeHtml(next.customer_name || "Sin cliente")}</strong><br>
-        <small>${escapeHtml(next.customer_email || "")}</small><br>
+        <strong>${escapeHtml(next.client_name || next.customer_name || "Sin cliente")}</strong><br>
+        <small>${escapeHtml(next.client_email || next.customer_email || "")}</small><br>
         <small>${escapeHtml(next.customer_phone || "")}</small><br>
-        <small>${escapeHtml(next.customer_address || "")}</small>`;
+        <small>${escapeHtml(next.customer_address || "")}</small>
+      `;
     }
-    if ($("publicEstimateTotal")) $("publicEstimateTotal").textContent = money(next.total, next.currency);
-    if ($("publicEstimateDeposit")) $("publicEstimateDeposit").textContent = money(next.deposit_required, next.currency);
+
+    if ($("publicEstimateTotal")) {
+      $("publicEstimateTotal").textContent = money(next.total || 0, next.currency || currencySymbol);
+    }
+
+    if ($("publicEstimateDeposit")) {
+      $("publicEstimateDeposit").textContent = money(next.deposit_required || 0, next.currency || currencySymbol);
+    }
+
     if ($("publicEstimateItems")) {
-      $("publicEstimateItems").innerHTML = next.items.map((line) => `
-        <div class="sum-row"><span>${escapeHtml(line.name || line.item_type)} x ${line.qty}</span><strong>${money(line.line_total, next.currency)}</strong></div>
-        <div class="small-note">${escapeHtml(line.description || "")}</div>
-      `).join("") || '<div class="small-note">No hay line items todavia.</div>';
+      const items = Array.isArray(next.items) ? next.items : [];
+      $("publicEstimateItems").innerHTML = items.length
+        ? items.map((line) => `
+            <div class="sum-row">
+              <span>${escapeHtml(line.name || line.title || line.item_type || "item")} x ${Number(line.qty || 1)}</span>
+              <strong>${money(line.line_total || line.unit_price || 0, next.currency || currencySymbol)}</strong>
+            </div>
+            <div class="small-note">${escapeHtml(line.description || "")}</div>
+          `).join("")
+        : '<div class="small-note">No hay line items todavia.</div>';
     }
-    if ($("publicEstimateMessage")) $("publicEstimateMessage").textContent = next.message_to_client || "Sin mensaje al cliente.";
-    if ($("publicEstimateTerms")) $("publicEstimateTerms").textContent = next.terms || "Sin terminos especificos.";
+
+    if ($("publicEstimateMessage")) {
+      $("publicEstimateMessage").textContent =
+        next.notes || next.message_to_client || "Sin mensaje al cliente.";
+    }
+
+    if ($("publicEstimateTerms")) {
+      $("publicEstimateTerms").textContent =
+        next.terms || "Sin terminos especificos.";
+    }
+
     if ($("btnPublicEstimateApprove")) {
       $("btnPublicEstimateApprove").onclick = () => {
-        const estimates = loadEstimates();
-        const index = estimates.findIndex((item) => item.id === next.id);
-        if (index < 0) return;
-        estimates[index] = {
-          ...estimates[index],
-          status: "accepted",
-          accepted_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        saveEstimates(estimates);
-        if ($("publicEstimateStatus")) $("publicEstimateStatus").textContent = "accepted";
-        setNotice("publicEstimateFeedback", "Estimate approved. Ya puede convertirse a invoice.", "ok");
+        setNotice("publicEstimateFeedback", "Approve listo para conectar al siguiente paso.", "ok");
       };
     }
+
     if ($("btnPublicEstimateDecline")) {
       $("btnPublicEstimateDecline").onclick = () => {
-        const estimates = loadEstimates();
-        const index = estimates.findIndex((item) => item.id === next.id);
-        if (index < 0) return;
-        estimates[index] = {
-          ...estimates[index],
-          status: "declined",
-          declined_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        saveEstimates(estimates);
-        if ($("publicEstimateStatus")) $("publicEstimateStatus").textContent = "declined";
-        setNotice("publicEstimateFeedback", "Estimate declined.", "warn");
+        setNotice("publicEstimateFeedback", "Decline listo para conectar al siguiente paso.", "warn");
       };
     }
   }
