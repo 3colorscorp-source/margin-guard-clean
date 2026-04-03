@@ -7,17 +7,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root{
-      --bg:#020617;
-      --card:#071226;
-      --card2:#0b1730;
-      --line:rgba(76,110,245,.14);
       --text:#f8fafc;
       --muted:#cbd5e1;
-      --soft:#94a3b8;
-      --green:#22c55e;
-      --green2:#10b981;
-      --blue:#38bdf8;
-      --gold:#f59e0b;
       --shadow:0 12px 40px rgba(0,0,0,.35);
       --radius:22px;
     }
@@ -138,6 +129,7 @@
     }
 
     .totals .line:last-child{border-bottom:none}
+
     .totals .line strong{
       font-size:28px;
       letter-spacing:-.03em;
@@ -359,11 +351,11 @@
         <div class="card-inner totals">
           <h3>Project Totals</h3>
           <div class="line">
-            <span>Project Total</span>
+            <span>Approved Project Total</span>
             <strong id="projectTotal">$0.00</strong>
           </div>
           <div class="line">
-            <span>Project Start Investment</span>
+            <span>Initial Project Investment</span>
             <strong id="projectDeposit">$0.00</strong>
           </div>
         </div>
@@ -372,9 +364,9 @@
 
     <section class="card" style="margin-top:18px;">
       <div class="card-inner">
-        <h3>Line Items</h3>
+        <h3>Project Scope</h3>
         <div class="items" id="lineItems"></div>
-        <div class="subtle" id="emptyItems" style="display:none;">No line items available yet.</div>
+        <div class="subtle" id="emptyItems" style="display:none;">No project scope available yet.</div>
       </div>
     </section>
 
@@ -392,7 +384,7 @@
         <div class="card-inner">
           <h3>Project Terms</h3>
           <div class="subtle" id="projectTerms">
-            Your project start investment is applied toward your final invoice.
+            Your initial project investment is applied toward your final project total.
           </div>
         </div>
       </section>
@@ -471,6 +463,18 @@
         }).format(num);
       }
 
+      function cleanText(value, fallback = "—") {
+        const text = String(value || "").trim();
+        return text ? text : fallback;
+      }
+
+      function looksLikeAddress(value) {
+        const text = String(value || "").trim();
+        if (!text) return false;
+        if (text === "—" || text.toLowerCase() === "not provided") return false;
+        return /\d/.test(text) || text.length >= 10;
+      }
+
       function showNotice(text, type = "ok") {
         if (!els.feedback) return;
         els.feedback.textContent = text;
@@ -513,9 +517,9 @@
           const fallback = document.createElement("div");
           fallback.className = "item";
           fallback.innerHTML = `
-            <div class="item-title">${estimateData?.project_name || estimateData?.projectName || "Approved Project Scope"}</div>
+            <div class="item-title">${cleanText(estimateData?.project_name || estimateData?.projectName, "Approved Project Scope")}</div>
             <div class="item-sub">
-              Your approved project scope is ready to move into the next phase.
+              Approved project scope prepared to move into scheduling and project coordination.
             </div>
           `;
           els.lineItems.appendChild(fallback);
@@ -528,11 +532,10 @@
           const div = document.createElement("div");
           div.className = "item";
           div.innerHTML = `
-            <div class="item-title">${item.title || item.name || "Project Item"}</div>
+            <div class="item-title">${cleanText(item.title || item.name, "Project Item")}</div>
             <div class="item-sub">
-              ${item.description || ""}
-              <br />
-              ${money(item.total ?? item.amount ?? item.unit_price ?? 0)}
+              ${cleanText(item.description, "")}
+              ${item.total != null || item.amount != null || item.unit_price != null ? `<br />${money(item.total ?? item.amount ?? item.unit_price ?? 0)}` : ""}
             </div>
           `;
           els.lineItems.appendChild(div);
@@ -557,7 +560,7 @@
           els.secondaryActionBtn.href = "/";
           els.microCopy.textContent = "✔ Project investment confirmed";
           els.stateSubtle.textContent =
-            "Your project start investment has been successfully applied and your estimate is now secured for the next phase.";
+            "Your initial project investment has been successfully applied and your estimate is now secured for the next phase.";
 
           els.heroTitle.textContent = "Your project is officially secured.";
           els.heroSubtitle.textContent =
@@ -568,7 +571,7 @@
         if (approved) {
           els.smartStatePanel.classList.remove("secured");
           els.stateBadge.textContent = "Approved";
-          els.stateTitle.textContent = "Your project is approved and ready to move forward.";
+          els.stateTitle.textContent = "Your project is approved and ready to begin.";
           els.stateText.textContent =
             "You’ve already completed the approval step. The next move secures your project start and keeps everything progressing smoothly.";
           els.stateHighlight.textContent =
@@ -588,7 +591,7 @@
 
         els.smartStatePanel.classList.remove("secured");
         els.stateBadge.textContent = "Project";
-        els.stateTitle.textContent = "Your estimate is ready for review.";
+        els.stateTitle.textContent = "Your next project step is ready.";
         els.stateText.textContent =
           "Review your estimate details and follow the guided next step when your project is ready to move forward.";
         els.stateHighlight.textContent =
@@ -668,25 +671,25 @@
 
           estimateData = estimate;
 
-          els.customerName.textContent =
+          els.customerName.textContent = cleanText(
             estimate.customer_name ||
             estimate.client_name ||
-            estimate.clientName ||
-            "—";
+            estimate.clientName
+          );
 
-          els.customerEmail.textContent =
+          els.customerEmail.textContent = cleanText(
             estimate.client_email ||
             estimate.customer_email ||
-            estimate.email ||
-            "—";
+            estimate.email
+          );
 
-          els.customerPhone.textContent =
+          els.customerPhone.textContent = cleanText(
             estimate.phone ||
             estimate.client_phone ||
-            estimate.customer_phone ||
-            "—";
+            estimate.customer_phone
+          );
 
-          els.projectAddress.textContent =
+          const resolvedAddress =
             estimate.project_address ||
             estimate.address ||
             estimate.job_address ||
@@ -694,7 +697,17 @@
             estimate.projectAddress ||
             estimate.jobAddress ||
             estimate.serviceAddress ||
-            "Not provided";
+            estimate.job_site ||
+            estimate.jobSite ||
+            estimate.site_address ||
+            estimate.siteAddress ||
+            estimate.customer_address ||
+            estimate.customerAddress ||
+            "";
+
+          els.projectAddress.textContent = looksLikeAddress(resolvedAddress)
+            ? resolvedAddress
+            : "Address will be confirmed before scheduling";
 
           els.projectTotal.textContent = money(
             estimate.total ||
@@ -710,12 +723,18 @@
           );
 
           els.projectMessage.textContent =
-            estimate.message ||
-            "Your project is ready to move into the next step.";
+            cleanText(
+              estimate.message ||
+              estimate.notes ||
+              estimate.public_message,
+              "Your project has been approved and is now ready to move into scheduling and preparation."
+            );
 
           els.projectTerms.textContent =
-            estimate.terms ||
-            "Your project start investment is applied toward your final invoice.";
+            cleanText(
+              estimate.terms,
+              "Your initial project investment is credited toward your final project total and secures your scheduling position."
+            );
 
           renderItems(estimate.items || estimate.line_items || []);
 
