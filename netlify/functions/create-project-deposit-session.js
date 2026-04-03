@@ -34,6 +34,11 @@ function toUsdCents(value, fallback = 100000) {
   return Math.round(num * 100);
 }
 
+function isValidEmail(value) {
+  const email = String(value || "").trim();
+  return email.includes("@") && email.includes(".");
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -47,15 +52,46 @@ exports.handler = async (event) => {
 
     const body = parseBody(event.body);
 
-    const publicToken = pickFirst(body.public_token, body.publicToken, body.token);
+    const publicToken = pickFirst(
+      body.public_token,
+      body.publicToken,
+      body.token
+    );
+
     if (!publicToken) {
       return json(400, { error: "Missing public_token" });
     }
 
-    const customerEmail = pickFirst(body.customer_email, body.client_email, body.email);
-    const customerName = pickFirst(body.customer_name, body.client_name, body.name, "Customer");
-    const projectName = pickFirst(body.project_name, body.title, "Project");
-    const depositCents = toUsdCents(body.deposit_required ?? body.depositRequired ?? body.amount, 100000);
+    const projectName = pickFirst(
+      body.project_name,
+      body.projectName,
+      body.title,
+      "Project"
+    );
+
+    const customerName = pickFirst(
+      body.customer_name,
+      body.customerName,
+      body.client_name,
+      body.clientName,
+      body.name,
+      "Customer"
+    );
+
+    const rawEmail = pickFirst(
+      body.client_email,
+      body.clientEmail,
+      body.customer_email,
+      body.customerEmail,
+      body.email
+    );
+
+    const customerEmail = isValidEmail(rawEmail) ? String(rawEmail).trim() : "";
+
+    const depositCents = toUsdCents(
+      body.deposit_required ?? body.depositRequired ?? body.amount,
+      100000
+    );
 
     const siteUrl = (
       process.env.URL ||
@@ -79,6 +115,7 @@ exports.handler = async (event) => {
     form.set("customer_creation", "always");
     form.set("phone_number_collection[enabled]", "false");
     form.set("allow_promotion_codes", "false");
+
     form.set("line_items[0][quantity]", "1");
     form.set("line_items[0][price_data][currency]", "usd");
     form.set("line_items[0][price_data][unit_amount]", String(depositCents));
@@ -87,14 +124,16 @@ exports.handler = async (event) => {
       "line_items[0][price_data][product_data][description]",
       "Required deposit to reserve your project start date. Applied toward final invoice."
     );
+
+    form.set("client_reference_id", publicToken);
     form.set("metadata[purpose]", "project_deposit");
     form.set("metadata[public_token]", publicToken);
     form.set("metadata[project_name]", projectName);
     form.set("metadata[customer_name]", customerName);
-    form.set("client_reference_id", publicToken);
 
     if (customerEmail) {
       form.set("customer_email", customerEmail);
+      form.set("metadata[customer_email]", customerEmail);
     }
 
     const stripeRes = await fetch("https://api.stripe.com/v1/checkout/sessions", {
