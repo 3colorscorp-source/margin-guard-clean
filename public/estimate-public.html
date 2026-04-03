@@ -57,7 +57,7 @@
     }
 
     .approved-actions .btn {
-      min-width: 180px;
+      min-width: 220px;
     }
 
     .approved-check {
@@ -69,6 +69,25 @@
       margin-top: 10px;
       font-size: 12px;
       opacity: .75;
+    }
+
+    .deposit-secure {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 12px;
+      opacity: .85;
+      padding: 8px 12px;
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 999px;
+      background: rgba(255,255,255,.04);
+    }
+
+    .deposit-secure svg {
+      width: 14px;
+      height: 14px;
+      opacity: .9;
     }
   </style>
 </head>
@@ -134,14 +153,21 @@
             <p class="approved-copy">
               We’ve received your approval and your project can now move to the next step.
             </p>
-            <p class="approved-next-step">Next Step: Move forward with your project investment.</p>
+            <p class="approved-next-step">Next Step: Secure your project start with the required deposit.</p>
 
             <div class="approved-actions">
-              <button class="btn primary" type="button" id="payDepositBtn">Begin Project Investment</button>
+              <button class="btn primary" type="button" id="payDepositBtn">Pay Project Deposit</button>
+            </div>
+
+            <div class="deposit-secure">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2l7 4v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-4z"></path>
+              </svg>
+              Secure payment powered by Stripe
             </div>
 
             <div class="deposit-note">
-              Secure payment powered by Stripe.
+              Required deposit to reserve your project start date. Applied toward final invoice.
             </div>
           </div>
         </section>
@@ -152,7 +178,7 @@
   <script defer src="/js/estimate-builder.js"></script>
   <script>
     (function () {
-      const STRIPE_LINK = "https://buy.stripe.com/bJeaEY7Jd5kU78q2rD2Fa00";
+      const STRIPE_LINK = "https://buy.stripe.com/14AaEY9Rl8x6boG7LX2Fa01";
 
       function $(id) {
         return document.getElementById(id);
@@ -197,13 +223,13 @@
 
         if (approveBtn) {
           approveBtn.addEventListener("click", function () {
-            setTimeout(syncApprovedUI, 80);
+            setTimeout(syncApprovedUI, 120);
           });
         }
 
         if (declineBtn) {
           declineBtn.addEventListener("click", function () {
-            setTimeout(syncApprovedUI, 80);
+            setTimeout(syncApprovedUI, 120);
           });
         }
 
@@ -221,7 +247,7 @@
       function init() {
         bindDepositButton();
         bindStatusRefresh();
-        setTimeout(syncApprovedUI, 120);
+        setTimeout(syncApprovedUI, 200);
       }
 
       if (document.readyState === "loading") {
