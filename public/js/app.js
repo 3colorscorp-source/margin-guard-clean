@@ -1,4 +1,6 @@
-﻿
+﻿function round2(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
 (() => {
   const LS_SETTINGS = "mg_settings_v2";
   const LS_OWNER = "mg_owner_v2";
