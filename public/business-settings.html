@@ -294,16 +294,59 @@
       DEFAULT_BRANDING.businessName
     );
 
+    const businessCity = safeTrim(row?.business_city || '');
+    const businessState = safeTrim(row?.business_state || '');
+    const businessRegionLabel = safeTrim(row?.business_region_label || '');
+    const computedLocation =
+      [businessCity, businessState].filter(Boolean).join(', ') ||
+      businessRegionLabel ||
+      '';
+
     return {
       businessName,
-      businessEmail: safeTrim(row?.business_email || row?.email || row?.support_email || row?.contact_email || ''),
-      businessPhone: safeTrim(row?.business_phone || row?.phone || row?.contact_phone || row?.phone_number || row?.whatsapp || ''),
-      businessAddress: safeTrim(row?.business_address || row?.address || row?.address_line_1 || row?.street_address || row?.office_address || ''),
+      businessEmail: safeTrim(
+        row?.business_email ||
+        row?.email_signature_email ||
+        row?.email ||
+        row?.support_email ||
+        row?.contact_email ||
+        ''
+      ),
+      businessPhone: safeTrim(
+        row?.business_phone ||
+        row?.email_signature_phone ||
+        row?.phone ||
+        row?.contact_phone ||
+        row?.phone_number ||
+        row?.whatsapp ||
+        ''
+      ),
+      businessAddress: computedLocation,
       logoUrl: safeTrim(row?.logo_url || row?.public_logo_url || row?.brand_logo_url || ''),
-      accentHex: safeTrim(row?.accent_color || row?.brand_color || row?.primary_color || DEFAULT_BRANDING.accentHex),
-      serviceLine: safeTrim(row?.service_line || row?.service_category || row?.industry_line || DEFAULT_BRANDING.serviceLine),
-      marketLine: safeTrim(row?.market_line || row?.location_line || row?.city_state || ''),
-      signatureLine: safeTrim(row?.signature_line || row?.signature_tagline || row?.email_signature || row?.tagline || DEFAULT_BRANDING.signatureLine),
+      accentHex: safeTrim(
+        row?.brand_primary_color ||
+        row?.accent_color ||
+        row?.brand_color ||
+        row?.primary_color ||
+        DEFAULT_BRANDING.accentHex
+      ),
+      serviceLine: safeTrim(
+        row?.service_line ||
+        row?.estimate_subtitle ||
+        row?.service_category ||
+        row?.industry_line ||
+        DEFAULT_BRANDING.serviceLine
+      ),
+      marketLine: businessRegionLabel,
+      signatureLine: safeTrim(
+        row?.footer_line ||
+        row?.email_signature_name ||
+        row?.signature_line ||
+        row?.signature_tagline ||
+        row?.email_signature ||
+        row?.tagline ||
+        DEFAULT_BRANDING.signatureLine
+      ),
       initials: buildInitials(businessName)
     };
   }
@@ -435,9 +478,7 @@
       }
 
       const brandingAttempts = [];
-      if (businessId) brandingAttempts.push(() => client.from('business_branding').select('*').eq('business_id', businessId).limit(1).maybeSingle());
       if (userId) brandingAttempts.push(() => client.from('business_branding').select('*').eq('user_id', userId).limit(1).maybeSingle());
-      brandingAttempts.push(() => client.from('business_branding').select('*').eq('is_default', true).limit(1).maybeSingle());
       brandingAttempts.push(() => client.from('business_branding').select('*').limit(1).maybeSingle());
 
       let remoteBranding = null;
@@ -500,29 +541,36 @@
         updated_at: new Date().toISOString()
       };
 
+      const rawLocation = safeTrim(branding.businessAddress || branding.marketLine || '');
+      const locationParts = rawLocation.split(',').map((value) => value.trim()).filter(Boolean);
+      const inferredCity = locationParts[0] || '';
+      const inferredState = locationParts[1] || '';
+
       const brandingPayload = {
         user_id: userId || undefined,
-        business_id: businessId || undefined,
-        business_name: branding.businessName,
-        company_name: branding.businessName,
-        business_email: branding.businessEmail,
-        email: branding.businessEmail,
-        business_phone: branding.businessPhone,
-        phone: branding.businessPhone,
-        business_address: branding.businessAddress,
-        address: branding.businessAddress,
-        logo_url: branding.logoUrl,
-        public_logo_url: branding.logoUrl,
-        accent_color: branding.accentHex,
-        service_line: branding.serviceLine,
-        market_line: branding.marketLine,
-        signature_line: branding.signatureLine,
-        updated_at: new Date().toISOString(),
-        is_default: true
+        business_name: branding.businessName || '',
+        business_email: branding.businessEmail || '',
+        business_phone: branding.businessPhone || '',
+        logo_url: branding.logoUrl || '',
+        estimate_title: branding.businessName || 'Project Estimate',
+        estimate_subtitle: branding.serviceLine || 'Professional Service Estimate',
+        service_line: branding.serviceLine || '',
+        footer_line: branding.signatureLine || '',
+        brand_primary_color: branding.accentHex || DEFAULT_BRANDING.accentHex,
+        brand_secondary_color: '#0b1220',
+        business_city: inferredCity,
+        business_state: inferredState,
+        business_region_label: rawLocation,
+        pdf_show_logo: false,
+        pdf_show_footer: true,
+        email_signature_name: branding.signatureLine || branding.businessName || '',
+        email_signature_phone: branding.businessPhone || '',
+        email_signature_email: branding.businessEmail || '',
+        updated_at: new Date().toISOString()
       };
 
-      const ownerConflict = businessId ? 'business_id' : (userId ? 'user_id' : undefined);
-      const brandingConflict = businessId ? 'business_id' : (userId ? 'user_id' : undefined);
+      const ownerConflict = userId ? 'user_id' : undefined;
+      const brandingConflict = userId ? 'user_id' : undefined;
 
       const ownerQuery = client.from('owner_settings').upsert(ownerPayload, ownerConflict ? { onConflict: ownerConflict } : undefined);
       const brandingQuery = client.from('business_branding').upsert(brandingPayload, brandingConflict ? { onConflict: brandingConflict } : undefined);
