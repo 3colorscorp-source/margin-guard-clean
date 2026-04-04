@@ -485,7 +485,7 @@
 
     const client = getSupabaseClient();
     if (!client?.from) {
-      setStatus('Guardado localmente. Supabase no esta disponible en esta sesion.', '');
+      setStatus('Guardado localmente. Supabase no esta disponible en esta sesion.', 'error');
       return;
     }
 
@@ -531,9 +531,9 @@
         footer_line: branding.signatureLine || '',
         brand_primary_color: branding.accentHex || DEFAULT_BRANDING.accentHex,
         brand_secondary_color: '#0b1220',
-        business_city: location.city,
-        business_state: location.state,
-        business_region_label: location.region,
+        business_city: location.city || null,
+        business_state: location.state || null,
+        business_region_label: location.region || null,
         pdf_show_logo: false,
         pdf_show_footer: true,
         email_signature_name: branding.businessName || '',
@@ -542,19 +542,38 @@
         updated_at: new Date().toISOString()
       };
 
-      const ownerQuery = client.from('owner_settings').upsert(ownerPayload, { onConflict: 'user_id' });
-      const brandingQuery = client.from('business_branding').upsert(brandingPayload, { onConflict: 'user_id' });
+      console.log('OWNER PAYLOAD =>', ownerPayload);
+      console.log('BRANDING PAYLOAD =>', brandingPayload);
 
-      const [ownerResult, brandingResult] = await Promise.all([ownerQuery, brandingQuery]);
+      const ownerResult = await client
+        .from('owner_settings')
+        .upsert(ownerPayload, { onConflict: 'user_id' });
 
       if (ownerResult?.error) throw ownerResult.error;
-      if (brandingResult?.error) throw brandingResult.error;
+
+      const brandingUpdate = await client
+        .from('business_branding')
+        .update(brandingPayload)
+        .eq('user_id', userId)
+        .select();
+
+      if (brandingUpdate?.error) throw brandingUpdate.error;
+
+      if (!brandingUpdate?.data || brandingUpdate.data.length === 0) {
+        const brandingInsert = await client
+          .from('business_branding')
+          .insert([brandingPayload])
+          .select();
+
+        if (brandingInsert?.error) throw brandingInsert.error;
+      }
 
       const finalBranding = normalizeBrandingRow(brandingPayload, settings);
       saveJson(BRANDING_CACHE_KEY, finalBranding);
       fillForm(settings, finalBranding);
       setStatus('Business settings y branding guardados correctamente en Supabase.', 'success');
     } catch (error) {
+      console.error('SAVE BUSINESS SETTINGS ERROR =>', error);
       setStatus('Guardado localmente, pero Supabase devolvio error: ' + (error?.message || 'unknown error'), 'error');
     }
   }
