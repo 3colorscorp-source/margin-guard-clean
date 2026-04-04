@@ -364,6 +364,231 @@
         node.textContent = value == null ? '' : String(value);
       }
 
+      const BRANDING_CACHE_KEY = 'mg_business_branding_v1';
+      let brandingPromise = null;
+
+      function safeTrim(value) {
+        return String(value == null ? '' : value).trim();
+      }
+
+      function pickFirstValue(source, keys, fallback) {
+        if (!source || typeof source !== 'object') return fallback;
+        for (const key of keys) {
+          const value = source[key];
+          if (value !== undefined && value !== null && String(value).trim() !== '') {
+            return value;
+          }
+        }
+        return fallback;
+      }
+
+      function buildBrandInitials(name) {
+        const clean = safeTrim(name);
+        if (!clean) return 'MG';
+        const words = clean.split(/\s+/).filter(Boolean).slice(0, 2);
+        const initials = words.map((word) => word.charAt(0).toUpperCase()).join('');
+        return initials || clean.slice(0, 2).toUpperCase();
+      }
+
+      function normalizeBrandingRow(row, settings) {
+        const fallbackBusinessName =
+          safeTrim(settings?.bizName) ||
+          safeTrim(settings?.businessName) ||
+          safeTrim(settings?.companyName) ||
+          'Margin Guard Business';
+
+        const businessName = safeTrim(pickFirstValue(row, [
+          'business_name',
+          'company_name',
+          'brand_name',
+          'display_name',
+          'name',
+          'legal_name'
+        ], fallbackBusinessName));
+
+        const businessEmail = safeTrim(pickFirstValue(row, [
+          'email',
+          'business_email',
+          'support_email',
+          'contact_email',
+          'reply_to_email'
+        ], ''));
+
+        const businessPhone = safeTrim(pickFirstValue(row, [
+          'phone',
+          'business_phone',
+          'contact_phone',
+          'phone_number',
+          'mobile_phone',
+          'whatsapp_phone',
+          'whatsapp'
+        ], ''));
+
+        const accentHex = safeTrim(pickFirstValue(row, [
+          'accent_color',
+          'brand_color',
+          'primary_color',
+          'primary_hex'
+        ], '#8f8a5f'));
+
+        const signatureLine = safeTrim(pickFirstValue(row, [
+          'signature_line',
+          'signature_tagline',
+          'email_signature',
+          'tagline',
+          'headline'
+        ], 'Professional Estimate Delivery'));
+
+        const serviceLine = safeTrim(pickFirstValue(row, [
+          'service_line',
+          'service_category',
+          'industry_line',
+          'brand_footer'
+        ], 'Professional Service Estimate'));
+
+        const marketLine = safeTrim(pickFirstValue(row, [
+          'market_line',
+          'location_line',
+          'city_state',
+          'region_line'
+        ], ''));
+
+        return {
+          businessName,
+          businessEmail,
+          businessPhone,
+          accentHex,
+          signatureLine,
+          serviceLine,
+          marketLine,
+          initials: buildBrandInitials(businessName)
+        };
+      }
+
+      function hexToRgbTuple(value, fallback) {
+        const clean = safeTrim(value).replace('#', '');
+        if (!/^[0-9a-fA-F]{6}$/.test(clean)) return fallback;
+        return [
+          parseInt(clean.slice(0, 2), 16),
+          parseInt(clean.slice(2, 4), 16),
+          parseInt(clean.slice(4, 6), 16)
+        ];
+      }
+
+      function cacheBranding(branding) {
+        try {
+          localStorage.setItem(BRANDING_CACHE_KEY, JSON.stringify(branding || {}));
+        } catch (_error) {}
+      }
+
+      function readCachedBranding(settings) {
+        try {
+          const raw = localStorage.getItem(BRANDING_CACHE_KEY);
+          if (!raw) return normalizeBrandingRow({}, settings);
+          return normalizeBrandingRow(JSON.parse(raw), settings);
+        } catch (_error) {
+          return normalizeBrandingRow({}, settings);
+        }
+      }
+
+      function getSupabaseClient() {
+        return window.supabase || window.sb || window.supabaseClient || null;
+      }
+
+      function getCurrentTenantId() {
+        const state = loadSalesState();
+        return (
+          state.businessId ||
+          state.business_id ||
+          window.currentBusinessId ||
+          window.businessId ||
+          window.__businessId ||
+          null
+        );
+      }
+
+      async function fetchBrandingFromSupabase(settings) {
+        const client = getSupabaseClient();
+        if (!client?.auth || !client.from) return null;
+
+        let userId = null;
+        try {
+          const authResult = await client.auth.getUser();
+          userId = authResult?.data?.user?.id || null;
+        } catch (_error) {}
+
+        const tenantId = getCurrentTenantId();
+        const attempts = [];
+
+        if (tenantId) {
+          attempts.push(() => client.from('business_branding').select('*').eq('business_id', tenantId).limit(1).maybeSingle());
+          attempts.push(() => client.from('business_branding').select('*').eq('tenant_id', tenantId).limit(1).maybeSingle());
+        }
+
+        if (userId) {
+          attempts.push(() => client.from('business_branding').select('*').eq('user_id', userId).limit(1).maybeSingle());
+          attempts.push(() => client.from('business_branding').select('*').eq('owner_user_id', userId).limit(1).maybeSingle());
+          attempts.push(() => client.from('business_branding').select('*').eq('created_by', userId).limit(1).maybeSingle());
+        }
+
+        attempts.push(() => client.from('business_branding').select('*').eq('is_default', true).limit(1).maybeSingle());
+        attempts.push(() => client.from('business_branding').select('*').limit(1).maybeSingle());
+
+        for (const run of attempts) {
+          try {
+            const result = await run();
+            if (result?.data) return normalizeBrandingRow(result.data, settings);
+          } catch (_error) {}
+        }
+
+        return null;
+      }
+
+      async function getBranding(forceRefresh) {
+        const settings = loadSettings();
+
+        if (!forceRefresh && brandingPromise) {
+          return brandingPromise;
+        }
+
+        brandingPromise = (async () => {
+          const cached = readCachedBranding(settings);
+
+          if (!forceRefresh && cached?.businessName) {
+            const remote = await fetchBrandingFromSupabase(settings);
+            const finalBranding = remote || cached;
+            cacheBranding(finalBranding);
+            return finalBranding;
+          }
+
+          const remote = await fetchBrandingFromSupabase(settings);
+          const finalBranding = remote || cached || normalizeBrandingRow({}, settings);
+          cacheBranding(finalBranding);
+          return finalBranding;
+        })();
+
+        return brandingPromise;
+      }
+
+      async function applyBrandingToSalesPage() {
+        const branding = await getBranding();
+
+        const titleNode = document.querySelector('.topbar .brand h1');
+        const logoNode = document.querySelector('.topbar .brand .logo b');
+        const pageTitle = safeTrim(branding.businessName) || 'Margin Guard Business';
+
+        if (titleNode) titleNode.textContent = pageTitle;
+        if (logoNode) logoNode.textContent = branding.initials || 'MG';
+        document.title = pageTitle + ' | Vendedor';
+
+        if (branding.accentHex) {
+          document.documentElement.style.setProperty('--tenant-accent', branding.accentHex);
+        }
+
+        return branding;
+      }
+
+
       function calculateStandaloneSalesMetrics(state, settings) {
         const hoursPerDay = Math.max(Number(settings.hoursPerDay || 8), 0.25);
         const taxPct = (
@@ -627,7 +852,7 @@
     const right = pageWidth - 48;
     const contentWidth = right - left;
     const bottom = pageHeight - 56;
-    const accent = [143, 138, 95];
+    const accent = Array.isArray(data.accentRgb) ? data.accentRgb : hexToRgbTuple(data.accentHex, [143, 138, 95]);
     const textDark = [17, 24, 39];
     const textMuted = [75, 85, 99];
     const lineSoft = [229, 231, 235];
@@ -694,8 +919,12 @@
     }
 
     const estimateNumber = String(data.estimateNumber || 'EST-1001').trim();
-    const businessName = String(data.businessName || 'Three Colors Corp').trim();
+    const businessName = String(data.businessName || 'Margin Guard Business').trim();
     const projectName = String(data.projectName || 'Project').trim();
+    const businessPhone = String(data.businessPhone || '').trim();
+    const businessEmail = String(data.businessEmail || '').trim();
+    const serviceLine = String(data.serviceLine || 'Professional Service Estimate').trim();
+    const marketLine = String(data.marketLine || '').trim();
     const clientName = String(data.clientName || 'Client').trim();
     const projectAddress = String(data.location || '-').trim() || '-';
     const issueDateLong = String(data.issueDateLong || formatLongDate(data.issueDate) || '-').trim();
@@ -713,7 +942,7 @@
     doc.setFontSize(11);
     doc.setTextColor(...textMuted);
     y += 18;
-    doc.text('Professional Tile Installation Proposal', left, y);
+    doc.text(serviceLine || 'Professional Service Estimate', left, y);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(13);
@@ -723,8 +952,8 @@
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.setTextColor(...textMuted);
-    doc.text('(408) 903-7976', right, 72, { align: 'right' });
-    doc.text('3colorscorp@gmail.com', right, 86, { align: 'right' });
+    if (businessPhone) doc.text(businessPhone, right, 72, { align: 'right' });
+    if (businessEmail) doc.text(businessEmail, right, businessPhone ? 86 : 72, { align: 'right' });
 
     y = 108;
     doc.setDrawColor(...lineSoft);
@@ -824,8 +1053,10 @@
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.setTextColor(...textMuted);
-    doc.text((businessName || 'Three Colors Corp') + '  •  Tile Installation & Project Execution', left, y);
-    doc.text('Bay Area, California', right, y, { align: 'right' });
+    doc.text((businessName || 'Margin Guard Business') + '  •  ' + (serviceLine || 'Professional Service Estimate'), left, y);
+    if (marketLine) {
+      doc.text(marketLine, right, y, { align: 'right' });
+    }
     doc.setTextColor(...textDark);
 
     const base64 = doc.output('datauristring').split(',')[1];
@@ -836,9 +1067,10 @@
     };
   }
 
-  function fillSendModal() {
+  async function fillSendModal() {
     const state = loadSalesState();
     const settings = loadSettings();
+    const branding = await getBranding();
     const metrics = calculateStandaloneSalesMetrics(state, settings);
     const estimateNumber = document.getElementById('salesEstimateNumber')?.value || state.estimateNumber || 'EST-1001';
     const issueDate = document.getElementById('salesIssueDate')?.value || state.issueDate || '';
@@ -881,13 +1113,20 @@
       'Once approved, you’ll be able to complete your project start investment online.',
       '',
       'Thank you,',
-      settings.bizName || 'Three Colors Corp',
-      '(408) 903-7976',
-      '3colorscorp@gmail.com'
-    ].join('\n');
+      branding.businessName,
+      branding.businessPhone,
+      branding.businessEmail
+    ].filter((line, index) => line || index < 13).join('\n');
 
     const payload = {
-      businessName: settings.bizName || 'Three Colors Corp',
+      businessName: branding.businessName,
+      businessPhone: branding.businessPhone,
+      businessEmail: branding.businessEmail,
+      accentHex: branding.accentHex,
+      accentRgb: hexToRgbTuple(branding.accentHex, [143, 138, 95]),
+      serviceLine: branding.serviceLine,
+      marketLine: branding.marketLine,
+      signatureLine: branding.signatureLine,
       estimateNumber,
       projectName,
       clientName,
@@ -931,7 +1170,7 @@
     }
   }
 
-  function openSellerSendModal(event) {
+  async function openSellerSendModal(event) {
     if (event) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -948,7 +1187,7 @@
       } catch (_error) {}
     }
 
-    fillSendModal();
+    await fillSendModal();
   }
 
   function closeSellerSendModal(event) {
@@ -966,13 +1205,13 @@
     }
   }
 
-  function runSellerPreview(event) {
+  async function runSellerPreview(event) {
     if (event) {
       event.preventDefault();
       event.stopImmediatePropagation();
     }
 
-    fillSendModal();
+    await fillSendModal();
 
     const toName = document.getElementById('toName')?.value || 'Customer';
     const toEmail = document.getElementById('toEmail')?.value || 'client@example.com';
@@ -995,7 +1234,7 @@
       event.stopImmediatePropagation();
     }
 
-    fillSendModal();
+    await fillSendModal();
 
     const sendStatus = document.getElementById('sendStatus');
     const sendButton = document.getElementById('btnSendNow');
@@ -1112,7 +1351,14 @@
           projectName: payload.projectName || state.projectName || '',
           clientName: toName || payload.clientName || state.clientName || '',
           location: projectAddress,
-          businessName: settings.bizName || 'Three Colors Corp',
+          businessName: branding.businessName,
+      businessPhone: branding.businessPhone,
+      businessEmail: branding.businessEmail,
+      accentHex: branding.accentHex,
+      accentRgb: hexToRgbTuple(branding.accentHex, [143, 138, 95]),
+      serviceLine: branding.serviceLine,
+      marketLine: branding.marketLine,
+      signatureLine: branding.signatureLine,
           currency: 'USD',
           recommendedTotal: estimateTotal,
           estimateNumber: payload.estimateNumber || state.estimateNumber || 'EST-1001',
@@ -1203,10 +1449,12 @@
         document.addEventListener('DOMContentLoaded', () => {
           bindStandaloneSellerWorkers();
           bindStandaloneSellerSend();
+          applyBrandingToSalesPage();
         });
       } else {
         bindStandaloneSellerWorkers();
         bindStandaloneSellerSend();
+        applyBrandingToSalesPage();
       }
     })();
   </script>
