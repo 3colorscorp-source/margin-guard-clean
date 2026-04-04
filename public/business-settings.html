@@ -228,6 +228,23 @@
     return initials || 'MG';
   }
 
+  function buildLocationLine(city, state, region) {
+    const regionLine = safeTrim(region);
+    if (regionLine) return regionLine;
+    return [safeTrim(city), safeTrim(state)].filter(Boolean).join(', ');
+  }
+
+  function splitLocationLine(value) {
+    const raw = safeTrim(value);
+    if (!raw) return { region: '', city: '', state: '' };
+    const parts = raw.split(',').map((v) => v.trim()).filter(Boolean);
+    return {
+      region: raw,
+      city: parts[0] || '',
+      state: parts[1] || ''
+    };
+  }
+
   function readJson(key, fallback) {
     try {
       const raw = localStorage.getItem(key);
@@ -268,10 +285,6 @@
     return window.supabase || window.sb || window.supabaseClient || null;
   }
 
-  function getCurrentBusinessId() {
-    return window.currentBusinessId || window.businessId || window.__businessId || null;
-  }
-
   async function getCurrentUserId() {
     const client = getSupabaseClient();
     if (!client?.auth?.getUser) return null;
@@ -286,67 +299,44 @@
   function normalizeBrandingRow(row, settings) {
     const businessName = safeTrim(
       row?.business_name ||
-      row?.company_name ||
-      row?.brand_name ||
-      row?.display_name ||
-      row?.name ||
       settings?.bizName ||
       DEFAULT_BRANDING.businessName
     );
 
-    const businessCity = safeTrim(row?.business_city || '');
-    const businessState = safeTrim(row?.business_state || '');
-    const businessRegionLabel = safeTrim(row?.business_region_label || '');
-    const computedLocation =
-      [businessCity, businessState].filter(Boolean).join(', ') ||
-      businessRegionLabel ||
-      '';
+    const businessEmail = safeTrim(
+      row?.business_email ||
+      row?.email_signature_email ||
+      ''
+    );
+
+    const businessPhone = safeTrim(
+      row?.business_phone ||
+      row?.email_signature_phone ||
+      ''
+    );
+
+    const businessAddress = buildLocationLine(
+      row?.business_city,
+      row?.business_state,
+      row?.business_region_label
+    );
+
+    const signatureLine = safeTrim(
+      row?.footer_line ||
+      row?.email_signature_name ||
+      DEFAULT_BRANDING.signatureLine
+    );
 
     return {
       businessName,
-      businessEmail: safeTrim(
-        row?.business_email ||
-        row?.email_signature_email ||
-        row?.email ||
-        row?.support_email ||
-        row?.contact_email ||
-        ''
-      ),
-      businessPhone: safeTrim(
-        row?.business_phone ||
-        row?.email_signature_phone ||
-        row?.phone ||
-        row?.contact_phone ||
-        row?.phone_number ||
-        row?.whatsapp ||
-        ''
-      ),
-      businessAddress: computedLocation,
-      logoUrl: safeTrim(row?.logo_url || row?.public_logo_url || row?.brand_logo_url || ''),
-      accentHex: safeTrim(
-        row?.brand_primary_color ||
-        row?.accent_color ||
-        row?.brand_color ||
-        row?.primary_color ||
-        DEFAULT_BRANDING.accentHex
-      ),
-      serviceLine: safeTrim(
-        row?.service_line ||
-        row?.estimate_subtitle ||
-        row?.service_category ||
-        row?.industry_line ||
-        DEFAULT_BRANDING.serviceLine
-      ),
-      marketLine: businessRegionLabel,
-      signatureLine: safeTrim(
-        row?.footer_line ||
-        row?.email_signature_name ||
-        row?.signature_line ||
-        row?.signature_tagline ||
-        row?.email_signature ||
-        row?.tagline ||
-        DEFAULT_BRANDING.signatureLine
-      ),
+      businessEmail,
+      businessPhone,
+      businessAddress,
+      logoUrl: safeTrim(row?.logo_url || ''),
+      accentHex: safeTrim(row?.brand_primary_color || DEFAULT_BRANDING.accentHex),
+      serviceLine: safeTrim(row?.service_line || row?.estimate_subtitle || DEFAULT_BRANDING.serviceLine),
+      marketLine: safeTrim(row?.business_region_label || ''),
+      signatureLine,
       initials: buildInitials(businessName)
     };
   }
@@ -440,61 +430,48 @@
 
     try {
       const userId = await getCurrentUserId();
-      const businessId = getCurrentBusinessId();
+      if (!userId) return;
 
-      const settingsAttempts = [];
-      if (businessId) settingsAttempts.push(() => client.from('owner_settings').select('*').eq('business_id', businessId).limit(1).maybeSingle());
-      if (userId) settingsAttempts.push(() => client.from('owner_settings').select('*').eq('user_id', userId).limit(1).maybeSingle());
-      settingsAttempts.push(() => client.from('owner_settings').select('*').limit(1).maybeSingle());
+      const [ownerResult, brandingResult] = await Promise.all([
+        client.from('owner_settings').select('*').eq('user_id', userId).limit(1).maybeSingle(),
+        client.from('business_branding').select('*').eq('user_id', userId).limit(1).maybeSingle()
+      ]);
 
-      let remoteSettings = null;
-      for (const run of settingsAttempts) {
-        try {
-          const result = await run();
-          if (result?.data) {
-            remoteSettings = {
-              ...settings,
-              bizName: safeTrim(result.data.business_name || result.data.company_name || settings.bizName || ''),
-              baseInstaller: Number(result.data.base_installer_rate ?? settings.baseInstaller),
-              baseHelper: Number(result.data.base_helper_rate ?? settings.baseHelper),
-              pricingMode: safeTrim(result.data.pricing_mode || settings.pricingMode || 'hour'),
-              hoursPerDay: Number(result.data.hours_per_day ?? settings.hoursPerDay),
-              overheadMonthly: Number(result.data.overhead_monthly ?? settings.overheadMonthly),
-              stdHours: Number(result.data.billable_hours_month ?? result.data.std_hours ?? settings.stdHours),
-              wcPct: Number(result.data.workers_comp_pct ?? settings.wcPct),
-              ficaPct: Number(result.data.fica_pct ?? settings.ficaPct),
-              futaPct: Number(result.data.futa_pct ?? settings.futaPct),
-              casuiPct: Number(result.data.ca_sui_pct ?? settings.casuiPct),
-              profitPct: Number(result.data.profit_target_pct ?? result.data.profit_pct ?? settings.profitPct),
-              salesCommissionPct: Number(result.data.sales_commission_pct ?? settings.salesCommissionPct),
-              supervisorBonusPct: Number(result.data.supervisor_bonus_pct ?? settings.supervisorBonusPct),
-              reservePct: Number(result.data.reserve_pct ?? settings.reservePct),
-              currency: safeTrim(result.data.currency || settings.currency || 'USD') || 'USD'
-            };
-            saveJson(SETTINGS_KEY, remoteSettings);
-            break;
-          }
-        } catch (_error) {}
+      if (ownerResult?.data) {
+        const ownerData = ownerResult.data;
+        const remoteSettings = {
+          bizName: safeTrim(ownerData.business_name || settings.bizName || ''),
+          baseInstaller: Number(ownerData.base_installer_rate ?? settings.baseInstaller),
+          baseHelper: Number(ownerData.base_helper_rate ?? settings.baseHelper),
+          pricingMode: safeTrim(ownerData.pricing_mode || settings.pricingMode || 'hour'),
+          hoursPerDay: Number(ownerData.hours_per_day ?? settings.hoursPerDay),
+          overheadMonthly: Number(ownerData.overhead_monthly ?? settings.overheadMonthly),
+          stdHours: Number(ownerData.std_hours ?? ownerData.billable_hours_month ?? settings.stdHours),
+          wcPct: Number(ownerData.workers_comp_pct ?? settings.wcPct),
+          ficaPct: Number(ownerData.fica_pct ?? settings.ficaPct),
+          futaPct: Number(ownerData.futa_pct ?? settings.futaPct),
+          casuiPct: Number(ownerData.ca_sui_pct ?? settings.casuiPct),
+          profitPct: Number(ownerData.profit_target_pct ?? ownerData.profit_pct ?? settings.profitPct),
+          salesCommissionPct: Number(ownerData.sales_commission_pct ?? settings.salesCommissionPct),
+          supervisorBonusPct: Number(ownerData.supervisor_bonus_pct ?? settings.supervisorBonusPct),
+          reservePct: Number(ownerData.reserve_pct ?? settings.reservePct),
+          currency: safeTrim(ownerData.currency || settings.currency || 'USD')
+        };
+        saveJson(SETTINGS_KEY, remoteSettings);
+        Object.assign(settings, remoteSettings);
       }
 
-      const brandingAttempts = [];
-      if (userId) brandingAttempts.push(() => client.from('business_branding').select('*').eq('user_id', userId).limit(1).maybeSingle());
-      brandingAttempts.push(() => client.from('business_branding').select('*').limit(1).maybeSingle());
-
-      let remoteBranding = null;
-      for (const run of brandingAttempts) {
-        try {
-          const result = await run();
-          if (result?.data) {
-            remoteBranding = normalizeBrandingRow(result.data, remoteSettings || settings);
-            saveJson(BRANDING_CACHE_KEY, remoteBranding);
-            break;
-          }
-        } catch (_error) {}
+      if (brandingResult?.data) {
+        const remoteBranding = normalizeBrandingRow(brandingResult.data, settings);
+        saveJson(BRANDING_CACHE_KEY, remoteBranding);
+        fillForm(settings, remoteBranding);
+        setStatus('Business settings recargados desde Supabase.', 'success');
+      } else {
+        fillForm(settings, cachedBranding);
       }
-
-      fillForm(remoteSettings || settings, remoteBranding || cachedBranding);
-    } catch (_error) {}
+    } catch (error) {
+      setStatus('No se pudo cargar el branding remoto: ' + (error?.message || 'unknown error'), 'error');
+    }
   }
 
   async function saveBusinessSettings() {
@@ -504,7 +481,7 @@
     saveJson(SETTINGS_KEY, settings);
     saveJson(BRANDING_CACHE_KEY, branding);
     fillForm(settings, branding);
-    setStatus('Guardando business settings del tenant...', '');
+    setStatus('Guardando business settings del tenant.', '');
 
     const client = getSupabaseClient();
     if (!client?.from) {
@@ -514,11 +491,10 @@
 
     try {
       const userId = await getCurrentUserId();
-      const businessId = getCurrentBusinessId();
+      if (!userId) throw new Error('No authenticated user found.');
 
       const ownerPayload = {
-        user_id: userId || undefined,
-        business_id: businessId || undefined,
+        user_id: userId,
         business_name: branding.businessName,
         company_name: branding.businessName,
         base_installer_rate: settings.baseInstaller,
@@ -541,13 +517,10 @@
         updated_at: new Date().toISOString()
       };
 
-      const rawLocation = safeTrim(branding.businessAddress || branding.marketLine || '');
-      const locationParts = rawLocation.split(',').map((value) => value.trim()).filter(Boolean);
-      const inferredCity = locationParts[0] || '';
-      const inferredState = locationParts[1] || '';
+      const location = splitLocationLine(branding.businessAddress || branding.marketLine || '');
 
       const brandingPayload = {
-        user_id: userId || undefined,
+        user_id: userId,
         business_name: branding.businessName || '',
         business_email: branding.businessEmail || '',
         business_phone: branding.businessPhone || '',
@@ -558,29 +531,29 @@
         footer_line: branding.signatureLine || '',
         brand_primary_color: branding.accentHex || DEFAULT_BRANDING.accentHex,
         brand_secondary_color: '#0b1220',
-        business_city: inferredCity,
-        business_state: inferredState,
-        business_region_label: rawLocation,
+        business_city: location.city,
+        business_state: location.state,
+        business_region_label: location.region,
         pdf_show_logo: false,
         pdf_show_footer: true,
-        email_signature_name: branding.signatureLine || branding.businessName || '',
+        email_signature_name: branding.businessName || '',
         email_signature_phone: branding.businessPhone || '',
         email_signature_email: branding.businessEmail || '',
         updated_at: new Date().toISOString()
       };
 
-      const ownerConflict = userId ? 'user_id' : undefined;
-      const brandingConflict = userId ? 'user_id' : undefined;
-
-      const ownerQuery = client.from('owner_settings').upsert(ownerPayload, ownerConflict ? { onConflict: ownerConflict } : undefined);
-      const brandingQuery = client.from('business_branding').upsert(brandingPayload, brandingConflict ? { onConflict: brandingConflict } : undefined);
+      const ownerQuery = client.from('owner_settings').upsert(ownerPayload, { onConflict: 'user_id' });
+      const brandingQuery = client.from('business_branding').upsert(brandingPayload, { onConflict: 'user_id' });
 
       const [ownerResult, brandingResult] = await Promise.all([ownerQuery, brandingQuery]);
 
       if (ownerResult?.error) throw ownerResult.error;
       if (brandingResult?.error) throw brandingResult.error;
 
-      setStatus('Business settings y branding guardados en modo multitenant.', 'success');
+      const finalBranding = normalizeBrandingRow(brandingPayload, settings);
+      saveJson(BRANDING_CACHE_KEY, finalBranding);
+      fillForm(settings, finalBranding);
+      setStatus('Business settings y branding guardados correctamente en Supabase.', 'success');
     } catch (error) {
       setStatus('Guardado localmente, pero Supabase devolvio error: ' + (error?.message || 'unknown error'), 'error');
     }
