@@ -889,7 +889,7 @@
         safeLines.slice(1).forEach((line) => {
           const lineParts = doc.splitTextToSize(line, 190);
           doc.text(lineParts, right, headerY, { align: 'right' });
-          headerY += Math.max(14, (Array.isArray(lineParts) ? lineParts.length : 1) * 12);
+          headerY += Math.max(14, lineParts.length * 12);
         });
       }
     }
@@ -1142,16 +1142,17 @@ async function fillSendModal() {
       'Once approved, you’ll be able to complete your project start investment online.',
       '',
       'Thank you,',
-      branding.businessName || settings.bizName || 'Margin Guard Business',
-      branding.businessPhone || '',
-      branding.businessEmail || ''
+      branding.businessName || settings.bizName || settings.businessName || settings.companyName || 'Margin Guard Business',
+      branding.businessAddress || settings.businessAddress || settings.address || settings.companyAddress || '',
+      branding.businessPhone || settings.businessPhone || settings.phone || '',
+      branding.businessEmail || settings.businessEmail || settings.email || ''
     ].filter((line, index) => line || index < 13).join('\n');
 
     const payload = {
-      businessName: branding.businessName || settings.bizName || 'Margin Guard Business',
-      businessPhone: branding.businessPhone || '',
-      businessEmail: branding.businessEmail || '',
-      businessAddress: branding.businessAddress || '',
+      businessName: branding.businessName || settings.bizName || settings.businessName || settings.companyName || 'Margin Guard Business',
+      businessPhone: branding.businessPhone || settings.businessPhone || settings.phone || '',
+      businessEmail: branding.businessEmail || settings.businessEmail || settings.email || '',
+      businessAddress: branding.businessAddress || settings.businessAddress || settings.address || settings.companyAddress || '',
       accentHex: branding.accentHex || '#8f8a5f',
       accentRgb: hexToRgbTuple(branding.accentHex || '#8f8a5f', [143, 138, 95]),
       serviceLine: branding.serviceLine || 'Professional Service Estimate',
@@ -1360,10 +1361,10 @@ async function openSellerSendModal(event) {
         clientEmail: toEmail || payload.customerEmail || state.customerEmail || '',
         clientPhone: customerPhone,
         location: projectAddress,
-        businessName: branding.businessName || payload.businessName || '',
-        businessPhone: branding.businessPhone || payload.businessPhone || '',
-        businessEmail: branding.businessEmail || payload.businessEmail || '',
-        businessAddress: branding.businessAddress || payload.businessAddress || '',
+        businessName: branding.businessName || payload.businessName || settings.bizName || settings.businessName || settings.companyName || 'Margin Guard Business',
+        businessPhone: branding.businessPhone || payload.businessPhone || settings.businessPhone || settings.phone || '',
+        businessEmail: branding.businessEmail || payload.businessEmail || settings.businessEmail || settings.email || '',
+        businessAddress: branding.businessAddress || payload.businessAddress || settings.businessAddress || settings.address || settings.companyAddress || '',
         marketLine: branding.marketLine || payload.marketLine || '',
         messageText: messageWithLink,
         publicQuoteUrl
@@ -1392,10 +1393,10 @@ async function openSellerSendModal(event) {
           projectName: payload.projectName || state.projectName || '',
           clientName: toName || payload.clientName || state.clientName || '',
           location: projectAddress,
-          businessName: branding.businessName || payload.businessName || settings.bizName || 'Margin Guard Business',
-          businessPhone: branding.businessPhone || payload.businessPhone || '',
-          businessEmail: branding.businessEmail || payload.businessEmail || '',
-          businessAddress: branding.businessAddress || payload.businessAddress || '',
+          businessName: branding.businessName || payload.businessName || settings.bizName || settings.businessName || settings.companyName || 'Margin Guard Business',
+          businessPhone: branding.businessPhone || payload.businessPhone || settings.businessPhone || settings.phone || '',
+          businessEmail: branding.businessEmail || payload.businessEmail || settings.businessEmail || settings.email || '',
+          businessAddress: branding.businessAddress || payload.businessAddress || settings.businessAddress || settings.address || settings.companyAddress || '',
           accentHex: branding.accentHex || payload.accentHex || '#8f8a5f',
           accentRgb: hexToRgbTuple(branding.accentHex || payload.accentHex || '#8f8a5f', [143, 138, 95]),
           serviceLine: branding.serviceLine || payload.serviceLine || 'Professional Service Estimate',
