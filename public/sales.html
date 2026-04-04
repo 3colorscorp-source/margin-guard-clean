@@ -453,10 +453,21 @@
           'region_line'
         ], ''));
 
+        const businessAddress = safeTrim(pickFirstValue(row, [
+          'business_address',
+          'address',
+          'address_line_1',
+          'street_address',
+          'mailing_address',
+          'full_address',
+          'office_address'
+        ], ''));
+
         return {
           businessName,
           businessEmail,
           businessPhone,
+          businessAddress,
           accentHex,
           signatureLine,
           serviceLine,
@@ -918,14 +929,36 @@
       ];
     }
 
+    function drawHeaderRight(lines) {
+      let lineY = 56;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(...textDark);
+      if (lines[0]) {
+        doc.text(lines[0], right, lineY, { align: 'right' });
+        lineY += 16;
+      }
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...textMuted);
+      lines.slice(1).filter(Boolean).forEach((line) => {
+        doc.text(line, right, lineY, { align: 'right' });
+        lineY += 14;
+      });
+    }
+
     const estimateNumber = String(data.estimateNumber || 'EST-1001').trim();
     const businessName = String(data.businessName || 'Margin Guard Business').trim();
     const projectName = String(data.projectName || 'Project').trim();
     const businessPhone = String(data.businessPhone || '').trim();
     const businessEmail = String(data.businessEmail || '').trim();
+    const businessAddress = String(data.businessAddress || data.marketLine || '').trim();
     const serviceLine = String(data.serviceLine || 'Professional Service Estimate').trim();
     const marketLine = String(data.marketLine || '').trim();
     const clientName = String(data.clientName || 'Client').trim();
+    const clientEmail = String(data.customerEmail || data.clientEmail || '').trim();
+    const clientPhone = String(data.customerPhone || data.clientPhone || '').trim();
     const projectAddress = String(data.location || '-').trim() || '-';
     const issueDateLong = String(data.issueDateLong || formatLongDate(data.issueDate) || '-').trim();
     const expirationDateLong = String(data.expirationDateLong || formatLongDate(data.expirationDate) || '-').trim();
@@ -944,18 +977,15 @@
     y += 18;
     doc.text(serviceLine || 'Professional Service Estimate', left, y);
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
-    doc.setTextColor(...textDark);
-    doc.text(businessName, right, 56, { align: 'right' });
+    const businessHeaderLines = [
+      businessName,
+      businessPhone,
+      businessEmail,
+      businessAddress || marketLine
+    ].filter(Boolean);
+    drawHeaderRight(businessHeaderLines);
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(...textMuted);
-    if (businessPhone) doc.text(businessPhone, right, 72, { align: 'right' });
-    if (businessEmail) doc.text(businessEmail, right, businessPhone ? 86 : 72, { align: 'right' });
-
-    y = 108;
+    y = 118;
     doc.setDrawColor(...lineSoft);
     doc.line(left, y, right, y);
     y += 24;
@@ -972,102 +1002,92 @@
 
     drawSectionTitle('Client & Project Details');
     const detailTop = y;
+    const detailColWidth = (contentWidth / 2) - 12;
 
     y = detailTop;
-    drawKeyValue('Client', clientName, left, (contentWidth / 2) - 12);
+    drawKeyValue('Client', clientName, left, detailColWidth);
+    drawKeyValue('Client Email', clientEmail, left, detailColWidth);
+    drawKeyValue('Client Phone', clientPhone, left, detailColWidth);
 
     y = detailTop;
-    drawKeyValue('Project', projectName, left + (contentWidth / 2) + 12, (contentWidth / 2) - 12);
+    drawKeyValue('Project', projectName, left + (contentWidth / 2) + 12, detailColWidth);
+    drawKeyValue('Project Address', projectAddress, left + (contentWidth / 2) + 12, detailColWidth);
 
-    y = Math.max(y, detailTop + 44);
-    drawKeyValue('Project Address', projectAddress, left, contentWidth);
+    y = Math.max(y, detailTop + 86);
+    drawSectionTitle('Business Details');
+    const bizTop = y;
+
+    y = bizTop;
+    drawKeyValue('Business', businessName, left, detailColWidth);
+    drawKeyValue('Business Email', businessEmail, left, detailColWidth);
+    drawKeyValue('Business Phone', businessPhone, left, detailColWidth);
+
+    y = bizTop;
+    drawKeyValue('Business Address', businessAddress || marketLine, left + (contentWidth / 2) + 12, detailColWidth);
+    if (marketLine && marketLine !== businessAddress) {
+      drawKeyValue('Market', marketLine, left + (contentWidth / 2) + 12, detailColWidth);
+    }
 
     y += 8;
     drawSectionTitle('Project Investment');
 
     const investmentTop = y;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(20);
-    doc.setTextColor(...textDark);
-    doc.text(totalFormatted, left, investmentTop);
+    y = investmentTop;
+    drawKeyValue('Total Investment', totalFormatted, left, (contentWidth / 2) - 12);
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(...textMuted);
-    doc.text('Total Investment', left, investmentTop + 16);
+    y = investmentTop;
+    drawKeyValue('Project Start Investment', depositFormatted, left + (contentWidth / 2) + 12, (contentWidth / 2) - 12);
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(20);
-    doc.setTextColor(...textDark);
-    doc.text(depositFormatted, left + 240, investmentTop);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(...textMuted);
-    doc.text('Project Start Investment', left + 240, investmentTop + 16);
-
-    y = investmentTop + 38;
+    y += 8;
     drawSectionTitle('Scope of Work');
-
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(11);
     doc.setTextColor(...textDark);
     scopeItems.forEach((item) => {
-      ensureSpace(22);
-      const bulletLines = doc.splitTextToSize('• ' + item, contentWidth - 10);
-      doc.text(bulletLines, left, y);
-      y += (bulletLines.length * 14) + 6;
+      ensureSpace(18);
+      doc.text('• ' + item, left, y);
+      y += 18;
     });
 
     y += 8;
     drawSectionTitle('Estimate Details');
-
     const detailsTop = y;
-    y = detailsTop;
-    drawKeyValue('Estimate No.', estimateNumber, left, (contentWidth / 3) - 12);
 
     y = detailsTop;
-    drawKeyValue('Prepared On', issueDateLong, left + (contentWidth / 3) + 12, (contentWidth / 3) - 12);
+    drawKeyValue('Estimate No.', estimateNumber, left, (contentWidth / 3) - 10);
 
     y = detailsTop;
-    drawKeyValue('Valid Through', expirationDateLong, left + ((contentWidth / 3) * 2) + 24, (contentWidth / 3) - 24);
+    drawKeyValue('Prepared On', issueDateLong, left + (contentWidth / 3) + 10, (contentWidth / 3) - 10);
 
-    y = Math.max(y, detailsTop + 44);
-    drawSectionTitle('Next Step');
+    y = detailsTop;
+    drawKeyValue('Valid Through', expirationDateLong, left + ((contentWidth / 3) * 2) + 20, (contentWidth / 3) - 20);
 
+    y = Math.max(y, detailsTop + 52);
+    ensureSpace(60);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(11);
+    doc.setFontSize(9);
     doc.setTextColor(...textMuted);
-    const nextStepLines = doc.splitTextToSize(
-      'When you are ready to move forward, your estimate can be approved online to reserve your project and complete the project start investment.',
-      contentWidth
-    );
-    doc.text(nextStepLines, left, y);
-    y += (nextStepLines.length * 14) + 20;
-
-    ensureSpace(34);
-    doc.setDrawColor(...lineSoft);
-    doc.line(left, y, right, y);
-    y += 18;
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(...textMuted);
-    doc.text((businessName || 'Margin Guard Business') + '  •  ' + (serviceLine || 'Professional Service Estimate'), left, y);
-    if (marketLine) {
-      doc.text(marketLine, right, y, { align: 'right' });
+    const footerText = [businessName, businessPhone, businessEmail, businessAddress || marketLine].filter(Boolean).join('  •  ');
+    if (footerText) {
+      doc.text(footerText, left, bottom + 10);
     }
-    doc.setTextColor(...textDark);
 
-    const base64 = doc.output('datauristring').split(',')[1];
+    const arrayBuffer = doc.output('arraybuffer');
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    }
+
     return {
-      fileName: 'Estimate-' + estimateNumber + '.pdf',
+      fileName: `${estimateNumber.replace(/[^a-z0-9_-]+/gi, '_') || 'estimate'}.pdf`,
       mimeType: 'application/pdf',
-      contentBase64: base64
+      contentBase64: btoa(binary)
     };
   }
 
-  async function fillSendModal() {
+  function fillSendModal() {
     const state = loadSalesState();
     const settings = loadSettings();
     const branding = await getBranding();
@@ -1122,6 +1142,7 @@
       businessName: branding.businessName,
       businessPhone: branding.businessPhone,
       businessEmail: branding.businessEmail,
+      businessAddress: branding.businessAddress,
       accentHex: branding.accentHex,
       accentRgb: hexToRgbTuple(branding.accentHex, [143, 138, 95]),
       serviceLine: branding.serviceLine,
@@ -1240,10 +1261,10 @@
     const sendButton = document.getElementById('btnSendNow');
     const state = loadSalesState();
     const settings = loadSettings();
-    const branding = await getBranding();
     const metrics = calculateStandaloneSalesMetrics(state, settings);
     const payload = JSON.parse(modal.dataset.payload || '{}');
     const pdf = JSON.parse(modal.dataset.pdf || '{}');
+    const branding = await getBranding();
 
     const toEmail = (document.getElementById('toEmail')?.value || '').trim();
     const toName = (document.getElementById('toName')?.value || '').trim();
@@ -1323,8 +1344,16 @@
 
       const pdfPayloadWithLink = {
         ...payload,
+        customerEmail: toEmail || payload.customerEmail || state.customerEmail || '',
         customerPhone,
+        clientEmail: toEmail || payload.customerEmail || state.customerEmail || '',
+        clientPhone: customerPhone,
         location: projectAddress,
+        businessName: branding.businessName || payload.businessName || '',
+        businessPhone: branding.businessPhone || payload.businessPhone || '',
+        businessEmail: branding.businessEmail || payload.businessEmail || '',
+        businessAddress: branding.businessAddress || payload.businessAddress || '',
+        marketLine: branding.marketLine || payload.marketLine || '',
         messageText: messageWithLink,
         publicQuoteUrl
       };
@@ -1352,9 +1381,10 @@
           projectName: payload.projectName || state.projectName || '',
           clientName: toName || payload.clientName || state.clientName || '',
           location: projectAddress,
-          businessName: branding.businessName || payload.businessName || 'Margin Guard Business',
+          businessName: branding.businessName || payload.businessName || '',
           businessPhone: branding.businessPhone || payload.businessPhone || '',
           businessEmail: branding.businessEmail || payload.businessEmail || '',
+          businessAddress: branding.businessAddress || payload.businessAddress || '',
           accentHex: branding.accentHex || payload.accentHex || '#8f8a5f',
           accentRgb: hexToRgbTuple(branding.accentHex || payload.accentHex || '#8f8a5f', [143, 138, 95]),
           serviceLine: branding.serviceLine || payload.serviceLine || 'Professional Service Estimate',
