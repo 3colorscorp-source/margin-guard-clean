@@ -733,7 +733,7 @@
       function bindStandaloneSellerWorkers() {
         let addButton = document.getElementById('btnAddSalesWorker');
         let clearButton = document.getElementById('btnClearSalesWorkers');
-        const body = document.getElementById('salesWorkersBody');
+        let body = document.getElementById('salesWorkersBody');
         if (!addButton || !clearButton || !body) return;
 
         const cleanAddButton = addButton.cloneNode(true);
@@ -746,23 +746,37 @@
         clearButton.parentNode.replaceChild(cleanClearButton, clearButton);
         clearButton = cleanClearButton;
 
+        const cleanBody = body.cloneNode(false);
+        body.parentNode.replaceChild(cleanBody, body);
+        body = cleanBody;
+
         addButton.addEventListener('click', function (event) {
           event.preventDefault();
-          event.stopImmediatePropagation();
           const state = loadSalesState();
-          state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: 'installer', days: 0, rate: '' });
+          if (!Array.isArray(state.workers)) {
+            state.workers = DEFAULT_WORKERS.map((worker) => ({ ...worker }));
+          }
+          state.workers.push({
+            name: `Worker ${state.workers.length + 1}`,
+            type: 'installer',
+            days: 0,
+            rate: ''
+          });
           saveSalesState(state);
-          refreshSellerFromStandalone();
-        }, true);
+          renderSellerWorkersStandalone();
+          renderStandaloneSellerPanel();
+          bindStandaloneSellerWorkers();
+        });
 
         clearButton.addEventListener('click', function (event) {
           event.preventDefault();
-          event.stopImmediatePropagation();
           const state = loadSalesState();
           state.workers = DEFAULT_WORKERS.map((worker) => ({ ...worker }));
           saveSalesState(state);
-          refreshSellerFromStandalone();
-        }, true);
+          renderSellerWorkersStandalone();
+          renderStandaloneSellerPanel();
+          bindStandaloneSellerWorkers();
+        });
 
         function applyWorkerFieldChange(field) {
           if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement)) return;
@@ -776,7 +790,9 @@
             ? (field.value === '' ? '' : Number(field.value || 0))
             : field.value;
           saveSalesState(state);
-          refreshSellerFromStandalone();
+          renderSellerWorkersStandalone();
+          renderStandaloneSellerPanel();
+          bindStandaloneSellerWorkers();
         }
 
         body.addEventListener('input', function (event) {
@@ -795,8 +811,10 @@
           const index = Number(row?.dataset.index ?? -1);
           if (index < 0) return;
           const state = loadSalesState();
-          if (!Array.isArray(state.workers)) state.workers = DEFAULT_WORKERS.map((worker) => ({ ...worker }));
-          if (actionButton.dataset.action === 'copy') {
+          if (!Array.isArray(state.workers)) {
+            state.workers = DEFAULT_WORKERS.map((worker) => ({ ...worker }));
+          }
+          if (actionButton.dataset.action === 'copy' && state.workers[index]) {
             state.workers.splice(index + 1, 0, { ...state.workers[index] });
           }
           if (actionButton.dataset.action === 'delete') {
@@ -806,10 +824,13 @@
             state.workers = DEFAULT_WORKERS.map((worker) => ({ ...worker }));
           }
           saveSalesState(state);
-          refreshSellerFromStandalone();
+          renderSellerWorkersStandalone();
+          renderStandaloneSellerPanel();
+          bindStandaloneSellerWorkers();
         });
 
-        refreshSellerFromStandalone();
+        renderSellerWorkersStandalone();
+        renderStandaloneSellerPanel();
       }
 
       function bindStandaloneSellerSend() {
@@ -1087,7 +1108,7 @@
     };
   }
 
-  function fillSendModal() {
+  async function fillSendModal() {
     const state = loadSalesState();
     const settings = loadSettings();
     const branding = await getBranding();
