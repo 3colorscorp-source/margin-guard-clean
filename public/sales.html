@@ -1,119 +1,624 @@
-﻿const publishResponse = await fetch('/.netlify/functions/publish-public-quote', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    project_name: payload.projectName || state.projectName || '',
-    title: payload.projectName || state.projectName || '',
-    client_name: toName || payload.clientName || state.clientName || '',
-    client_email: toEmail || payload.customerEmail || state.customerEmail || '',
-    client_phone: customerPhone,
-    customer_phone: customerPhone,
-    phone: customerPhone,
-    project_address: projectAddress,
-    customer_address: projectAddress,
-    job_site: projectAddress,
-    address: projectAddress,
-    total: estimateTotal,
-    recommended_total: estimateTotal,
-    deposit_required: depositRequired,
-    notes: message,
-    public_message: payload.scopeSummary || scope || '',
-    currency: 'USD',
-    status: 'READY_TO_SEND'
-  })
-});
+﻿<script>
+function bindStandaloneSellerSend() {
+  const topSend = document.getElementById('btnSendQuote');
+  const inlineSend = document.getElementById('btnSendQuoteInline');
+  const modal = document.getElementById('sendModal');
+  const closeX = document.getElementById('btnSendClose');
+  const cancelBtn = document.getElementById('btnSendCancel');
+  const sendNow = document.getElementById('btnSendNow');
+  const previewBtn = document.getElementById('btnSendPreview');
+  if (!modal) return;
 
-const publishRaw = await publishResponse.text();
-let publishData = {};
-try { publishData = publishRaw ? JSON.parse(publishRaw) : {}; } catch (_error) {}
+  function formatUsd(amount) {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(Number(amount || 0));
+  }
 
-if (!publishResponse.ok || !publishData?.quote_id || !publishData?.public_token || !publishData?.public_url) {
-  throw new Error(publishData.error || publishRaw || 'Unable to create public quote link.');
+  function formatLongDate(value) {
+    if (!value) return '';
+    const parts = String(value).split('-');
+    if (parts.length !== 3) return value;
+    const date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  }
+
+  function formatGreetingName(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return 'there';
+    return raw
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(' ');
+  }
+
+  function buildEstimatePdfPayload(data) {
+    const jspdf = window.jspdf;
+    if (!jspdf?.jsPDF) return null;
+
+    const doc = new jspdf.jsPDF({ unit: 'pt', format: 'letter' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const left = 48;
+    const right = pageWidth - 48;
+    const contentWidth = right - left;
+    const bottom = pageHeight - 56;
+    const accent = [143, 138, 95];
+    const textDark = [17, 24, 39];
+    const textMuted = [75, 85, 99];
+    const lineSoft = [229, 231, 235];
+    let y = 56;
+
+    function ensureSpace(heightNeeded) {
+      if (y + heightNeeded <= bottom) return;
+      doc.addPage();
+      y = 56;
+    }
+
+    function drawSectionTitle(title) {
+      ensureSpace(28);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...accent);
+      doc.text(String(title || ''), left, y);
+      y += 8;
+      doc.setDrawColor(...lineSoft);
+      doc.line(left, y, right, y);
+      y += 18;
+      doc.setTextColor(...textDark);
+    }
+
+    function drawKeyValue(label, value, x, maxWidth) {
+      const safeValue = String(value || '-').trim() || '-';
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(...textMuted);
+      doc.text(String(label || ''), x, y);
+      y += 13;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(...textDark);
+      const lines = doc.splitTextToSize(safeValue, maxWidth);
+      doc.text(lines, x, y);
+      y += Math.max(18, lines.length * 13 + 4);
+    }
+
+    function cleanScopeItems(value) {
+      const raw = String(value || '')
+        .replace(/\r/g, '\n')
+        .split('\n')
+        .map((line) => line.replace(/^[\-•\s]+/, '').trim())
+        .filter(Boolean)
+        .filter((line) => !/^\d+$/.test(line))
+        .filter((line) => /[a-zA-Z]{3,}/.test(line));
+
+      const unique = [];
+      raw.forEach((line) => {
+        const normalized = line.toLowerCase();
+        if (!unique.some((item) => item.toLowerCase() === normalized)) {
+          unique.push(line.charAt(0).toUpperCase() + line.slice(1));
+        }
+      });
+
+      if (unique.length) return unique.slice(0, 8);
+
+      return [
+        'Professional tile installation for the agreed project areas.',
+        'Surface preparation and finish work as required.',
+        'Final detailing for a clean project presentation.'
+      ];
+    }
+
+    const estimateNumber = String(data.estimateNumber || 'EST-1001').trim();
+    const businessName = String(data.businessName || 'Three Colors Corp').trim();
+    const projectName = String(data.projectName || 'Project').trim();
+    const clientName = String(data.clientName || 'Client').trim();
+    const projectAddress = String(data.location || '-').trim() || '-';
+    const issueDateLong = String(data.issueDateLong || formatLongDate(data.issueDate) || '-').trim();
+    const expirationDateLong = String(data.expirationDateLong || formatLongDate(data.expirationDate) || '-').trim();
+    const totalFormatted = String(data.totalFormatted || formatUsd(data.totalAmount || 0)).trim();
+    const depositFormatted = String(data.depositFormatted || formatUsd(data.depositRequired || 1000)).trim();
+    const scopeItems = cleanScopeItems(data.scopeSummary || '');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(24);
+    doc.setTextColor(...textDark);
+    doc.text('Project Estimate', left, y);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.setTextColor(...textMuted);
+    y += 18;
+    doc.text('Professional Tile Installation Proposal', left, y);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(...textDark);
+    doc.text(businessName, right, 56, { align: 'right' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(...textMuted);
+    doc.text('(408) 903-7976', right, 72, { align: 'right' });
+    doc.text('3colorscorp@gmail.com', right, 86, { align: 'right' });
+
+    y = 108;
+    doc.setDrawColor(...lineSoft);
+    doc.line(left, y, right, y);
+    y += 24;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.setTextColor(...textMuted);
+    const introLines = doc.splitTextToSize(
+      'Thank you for the opportunity to be considered for your project. This estimate has been prepared for your review.',
+      contentWidth
+    );
+    doc.text(introLines, left, y);
+    y += (introLines.length * 14) + 18;
+
+    drawSectionTitle('Client & Project Details');
+    const detailTop = y;
+
+    y = detailTop;
+    drawKeyValue('Client', clientName, left, (contentWidth / 2) - 12);
+
+    y = detailTop;
+    drawKeyValue('Project', projectName, left + (contentWidth / 2) + 12, (contentWidth / 2) - 12);
+
+    y = Math.max(y, detailTop + 44);
+    drawKeyValue('Project Address', projectAddress, left, contentWidth);
+
+    y += 8;
+    drawSectionTitle('Project Investment');
+
+    const investmentTop = y;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.setTextColor(...textDark);
+    doc.text(totalFormatted, left, investmentTop);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(...textMuted);
+    doc.text('Total Investment', left, investmentTop + 16);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.setTextColor(...textDark);
+    doc.text(depositFormatted, left + 240, investmentTop);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(...textMuted);
+    doc.text('Project Start Investment', left + 240, investmentTop + 16);
+
+    y = investmentTop + 38;
+    drawSectionTitle('Scope of Work');
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.setTextColor(...textDark);
+    scopeItems.forEach((item) => {
+      ensureSpace(22);
+      const bulletLines = doc.splitTextToSize('• ' + item, contentWidth - 10);
+      doc.text(bulletLines, left, y);
+      y += (bulletLines.length * 14) + 6;
+    });
+
+    y += 8;
+    drawSectionTitle('Estimate Details');
+
+    const detailsTop = y;
+    y = detailsTop;
+    drawKeyValue('Estimate No.', estimateNumber, left, (contentWidth / 3) - 12);
+
+    y = detailsTop;
+    drawKeyValue('Prepared On', issueDateLong, left + (contentWidth / 3) + 12, (contentWidth / 3) - 12);
+
+    y = detailsTop;
+    drawKeyValue('Valid Through', expirationDateLong, left + ((contentWidth / 3) * 2) + 24, (contentWidth / 3) - 24);
+
+    y = Math.max(y, detailsTop + 44);
+    drawSectionTitle('Next Step');
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.setTextColor(...textMuted);
+    const nextStepLines = doc.splitTextToSize(
+      'When you are ready to move forward, your estimate can be approved online to reserve your project and complete the project start investment.',
+      contentWidth
+    );
+    doc.text(nextStepLines, left, y);
+    y += (nextStepLines.length * 14) + 20;
+
+    ensureSpace(34);
+    doc.setDrawColor(...lineSoft);
+    doc.line(left, y, right, y);
+    y += 18;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(...textMuted);
+    doc.text((businessName || 'Three Colors Corp') + '  •  Tile Installation & Project Execution', left, y);
+    doc.text('Bay Area, California', right, y, { align: 'right' });
+    doc.setTextColor(...textDark);
+
+    const base64 = doc.output('datauristring').split(',')[1];
+    return {
+      fileName: 'Estimate-' + estimateNumber + '.pdf',
+      mimeType: 'application/pdf',
+      contentBase64: base64
+    };
+  }
+
+  function fillSendModal() {
+    const state = loadSalesState();
+    const settings = loadSettings();
+    const metrics = calculateStandaloneSalesMetrics(state, settings);
+    const estimateNumber = document.getElementById('salesEstimateNumber')?.value || state.estimateNumber || 'EST-1001';
+    const issueDate = document.getElementById('salesIssueDate')?.value || state.issueDate || '';
+    const expirationDate = document.getElementById('salesExpirationDate')?.value || state.expirationDate || '';
+    const projectName = document.getElementById('salesProjectName')?.value || state.projectName || 'Project';
+    const clientName = document.getElementById('salesClientName')?.value || state.clientName || '';
+    const customerEmail = document.getElementById('salesCustomerEmail')?.value || state.customerEmail || '';
+    const customerPhone = document.getElementById('salesCustomerPhone')?.value || state.customerPhone || '';
+    const location = document.getElementById('salesLocation')?.value || state.location || '';
+    const messageToClient = document.getElementById('salesMessageToClient')?.value || state.messageToClient || '';
+    const totalFormatted = formatUsd(metrics.offered || metrics.recommended);
+    const depositFormatted = formatUsd(1000);
+    const issueDateLong = formatLongDate(issueDate);
+    const expirationDateLong = formatLongDate(expirationDate);
+
+    state.estimateNumber = estimateNumber;
+    state.issueDate = issueDate;
+    state.expirationDate = expirationDate;
+    state.projectName = projectName;
+    state.clientName = clientName;
+    state.customerEmail = customerEmail;
+    state.customerPhone = customerPhone;
+    state.location = location;
+    state.messageToClient = messageToClient;
+    saveSalesState(state);
+
+    const defaultSubject = 'Estimate ' + estimateNumber + ' | ' + projectName;
+    const defaultScope = (messageToClient || '-').trim();
+    const defaultMessage = [
+      'Hi ' + formatGreetingName(clientName) + ',',
+      '',
+      'Thank you for the opportunity to work with you.',
+      '',
+      'Your project estimate is attached and ready for review.',
+      '',
+      "When you're ready to move forward, please review and approve your estimate using the link below:",
+      '',
+      '[PUBLIC_QUOTE_URL]',
+      '',
+      'Once approved, you’ll be able to complete your project start investment online.',
+      '',
+      'Thank you,',
+      settings.bizName || 'Three Colors Corp',
+      '(408) 903-7976',
+      '3colorscorp@gmail.com'
+    ].join('\n');
+
+    const payload = {
+      businessName: settings.bizName || 'Three Colors Corp',
+      estimateNumber,
+      projectName,
+      clientName,
+      customerEmail,
+      customerPhone,
+      location,
+      issueDate,
+      expirationDate,
+      issueDateLong,
+      expirationDateLong,
+      totalFormatted,
+      totalAmount: Number(metrics.offered || metrics.recommended || 0),
+      depositFormatted,
+      depositRequired: 1000,
+      scopeSummary: messageToClient || '-',
+      messageText: defaultMessage
+    };
+
+    const subject = document.getElementById('subject');
+    const toEmail = document.getElementById('toEmail');
+    const toName = document.getElementById('toName');
+    const scope = document.getElementById('scope');
+    const message = document.getElementById('message');
+    const deposit = document.getElementById('deposit');
+    const sendStatus = document.getElementById('sendStatus');
+
+    if (toEmail) toEmail.value = customerEmail;
+    if (toName) toName.value = clientName;
+    if (subject) subject.value = defaultSubject;
+    if (scope) scope.value = defaultScope;
+    if (message) message.value = defaultMessage;
+    if (deposit) deposit.value = depositFormatted;
+
+    modal.dataset.pdf = JSON.stringify(buildEstimatePdfPayload(payload) || {});
+    modal.dataset.payload = JSON.stringify(payload);
+
+    if (sendStatus) {
+      sendStatus.style.display = 'none';
+      sendStatus.textContent = '';
+      sendStatus.className = 'notice';
+    }
+  }
+
+  function openSellerSendModal(event) {
+    if (event) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+
+    modal.setAttribute('aria-hidden', 'false');
+
+    if (typeof window.openSendModal === 'function') {
+      const state = loadSalesState();
+      const settings = loadSettings();
+      const metrics = calculateStandaloneSalesMetrics(state, settings);
+      try {
+        window.openSendModal(state, settings, metrics);
+      } catch (_error) {}
+    }
+
+    fillSendModal();
+  }
+
+  function closeSellerSendModal(event) {
+    if (event) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+
+    modal.setAttribute('aria-hidden', 'true');
+
+    if (typeof window.closeSendModal === 'function') {
+      try {
+        window.closeSendModal();
+      } catch (_error) {}
+    }
+  }
+
+  function runSellerPreview(event) {
+    if (event) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+
+    fillSendModal();
+
+    const toName = document.getElementById('toName')?.value || 'Customer';
+    const toEmail = document.getElementById('toEmail')?.value || 'client@example.com';
+    const subject = document.getElementById('subject')?.value || 'Estimate';
+    const scope = document.getElementById('scope')?.value || '';
+    const message = document.getElementById('message')?.value || '';
+    const deposit = document.getElementById('deposit')?.value || '1000';
+
+    window.alert(
+      'Preview\n\nTo: ' + toName + ' <' + toEmail + '>\nSubject: ' + subject +
+      '\nProject start investment: $' + deposit +
+      '\n\nVisible scope:\n' + scope +
+      '\n\nMessage:\n' + message
+    );
+  }
+
+  async function runSellerSend(event) {
+    if (event) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+
+    fillSendModal();
+
+    const sendStatus = document.getElementById('sendStatus');
+    const sendButton = document.getElementById('btnSendNow');
+    const state = loadSalesState();
+    const settings = loadSettings();
+    const metrics = calculateStandaloneSalesMetrics(state, settings);
+    const payload = JSON.parse(modal.dataset.payload || '{}');
+    const pdf = JSON.parse(modal.dataset.pdf || '{}');
+
+    const toEmail = (document.getElementById('toEmail')?.value || '').trim();
+    const toName = (document.getElementById('toName')?.value || '').trim();
+    const salesRepInitials = (document.getElementById('salesInitials')?.value || '').trim().toUpperCase();
+    const subject = (document.getElementById('subject')?.value || '').trim();
+    const scope = (document.getElementById('scope')?.value || '').trim();
+    const message = (document.getElementById('message')?.value || '').trim();
+    const customerPhone = (document.getElementById('salesCustomerPhone')?.value || state.customerPhone || payload.customerPhone || '').trim();
+    const projectAddress = (document.getElementById('salesLocation')?.value || state.location || payload.location || '').trim();
+    const estimateTotal = Number(payload.totalAmount || metrics.offered || metrics.recommended || 0);
+    const depositRequired = Number(payload.depositRequired || 1000);
+
+    state.clientName = toName || state.clientName || '';
+    state.customerEmail = toEmail || state.customerEmail || '';
+    state.customerPhone = customerPhone;
+    state.location = projectAddress;
+    saveSalesState(state);
+
+    if (!toEmail || !toName || !salesRepInitials) {
+      if (sendStatus) {
+        sendStatus.style.display = 'block';
+        sendStatus.className = 'notice error';
+        sendStatus.textContent = 'Add customer name, email, and sales rep initials before sending the estimate.';
+      }
+      return false;
+    }
+
+    try {
+      if (sendButton) {
+        sendButton.disabled = true;
+        sendButton.textContent = 'Enviando...';
+      }
+
+      if (sendStatus) {
+        sendStatus.style.display = 'block';
+        sendStatus.className = 'notice';
+        sendStatus.textContent = 'Creating public quote link...';
+      }
+
+      const publishResponse = await fetch('/.netlify/functions/publish-public-quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_name: payload.projectName || state.projectName || '',
+          title: payload.projectName || state.projectName || '',
+          client_name: toName || payload.clientName || state.clientName || '',
+          client_email: toEmail || payload.customerEmail || state.customerEmail || '',
+          client_phone: customerPhone,
+          customer_phone: customerPhone,
+          phone: customerPhone,
+          project_address: projectAddress,
+          customer_address: projectAddress,
+          job_site: projectAddress,
+          address: projectAddress,
+          total: estimateTotal,
+          recommended_total: estimateTotal,
+          deposit_required: depositRequired,
+          notes: message,
+          public_message: payload.scopeSummary || scope || '',
+          currency: 'USD',
+          status: 'READY_TO_SEND'
+        })
+      });
+
+      const publishRaw = await publishResponse.text();
+      let publishData = {};
+      try {
+        publishData = publishRaw ? JSON.parse(publishRaw) : {};
+      } catch (_error) {}
+
+      if (!publishResponse.ok || !publishData?.quote_id || !publishData?.public_token || !publishData?.public_url) {
+        throw new Error(publishData.error || publishRaw || 'Unable to create public quote link.');
+      }
+
+      const publicQuoteUrl = publishData.public_url;
+      const messageWithLink = (message || '').replace('[PUBLIC_QUOTE_URL]', publicQuoteUrl);
+
+      const pdfPayloadWithLink = {
+        ...payload,
+        customerPhone,
+        location: projectAddress,
+        messageText: messageWithLink,
+        publicQuoteUrl
+      };
+
+      const rebuiltPdf = buildEstimatePdfPayload(pdfPayloadWithLink) || pdf;
+
+      if (sendStatus) {
+        sendStatus.style.display = 'block';
+        sendStatus.className = 'notice';
+        sendStatus.textContent = 'Sending estimate and PDF...';
+      }
+
+      const response = await fetch('/.netlify/functions/send-quote-zapier', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          salesRepInitials,
+          messageLanguage: 'bilingual',
+          toEmail,
+          toName,
+          subject,
+          messageText: messageWithLink,
+          scopeOfWork: payload.scopeSummary || scope,
+          depositRequired,
+          projectName: payload.projectName || state.projectName || '',
+          clientName: toName || payload.clientName || state.clientName || '',
+          location: projectAddress,
+          businessName: settings.bizName || 'Three Colors Corp',
+          currency: 'USD',
+          recommendedTotal: estimateTotal,
+          estimateNumber: payload.estimateNumber || state.estimateNumber || 'EST-1001',
+          issueDate: payload.issueDate || state.issueDate || '',
+          expirationDate: payload.expirationDate || state.expirationDate || '',
+          customerPhone,
+          publicQuoteUrl,
+          quoteId: publishData.quote_id,
+          publicToken: publishData.public_token,
+          pdfFileName: rebuiltPdf.fileName || '',
+          pdfMimeType: rebuiltPdf.mimeType || 'application/pdf',
+          pdfBase64: rebuiltPdf.contentBase64 || ''
+        })
+      });
+
+      const raw = await response.text();
+      let data = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch (_error) {}
+
+      if (!response.ok) {
+        throw new Error(data.error || raw || 'Unable to send estimate.');
+      }
+
+      state.estimateStatus = 'sent';
+      state.sentAt = new Date().toISOString();
+      state.publicQuoteUrl = publicQuoteUrl;
+      state.quoteId = publishData.quote_id;
+      state.publicToken = publishData.public_token;
+      saveSalesState(state);
+
+      if (sendStatus) {
+        sendStatus.style.display = 'block';
+        sendStatus.className = 'notice success';
+        sendStatus.textContent = 'Estimate sent successfully with approval link and PDF attached.';
+      }
+
+      setTimeout(() => closeSellerSendModal(), 1200);
+      return true;
+    } catch (error) {
+      if (sendStatus) {
+        sendStatus.style.display = 'block';
+        sendStatus.className = 'notice error';
+        sendStatus.textContent = error.message || 'Unable to send estimate.';
+      }
+      return false;
+    } finally {
+      if (sendButton) {
+        sendButton.disabled = false;
+        sendButton.textContent = 'Confirmar y enviar estimate';
+      }
+    }
+  }
+
+  [topSend, inlineSend].forEach((button) => {
+    if (!button) return;
+    const clean = button.cloneNode(true);
+    clean.removeAttribute('onclick');
+    button.parentNode.replaceChild(clean, button);
+    clean.addEventListener('click', openSellerSendModal, true);
+  });
+
+  [closeX, cancelBtn].forEach((button) => {
+    if (!button) return;
+    const clean = button.cloneNode(true);
+    clean.removeAttribute('onclick');
+    button.parentNode.replaceChild(clean, button);
+    clean.addEventListener('click', closeSellerSendModal, true);
+  });
+
+  if (previewBtn) {
+    const cleanPreviewBtn = previewBtn.cloneNode(true);
+    cleanPreviewBtn.removeAttribute('onclick');
+    previewBtn.parentNode.replaceChild(cleanPreviewBtn, previewBtn);
+    cleanPreviewBtn.addEventListener('click', runSellerPreview, true);
+  }
+
+  if (sendNow) {
+    const cleanSendNow = sendNow.cloneNode(true);
+    cleanSendNow.removeAttribute('onclick');
+    sendNow.parentNode.replaceChild(cleanSendNow, sendNow);
+    cleanSendNow.addEventListener('click', runSellerSend, true);
+  }
 }
-
-const publicQuoteUrl = publishData.public_url;
-const messageWithLink = (message || '').replace('[PUBLIC_QUOTE_URL]', publicQuoteUrl);
-
-const pdfPayloadWithLink = {
-  ...payload,
-  customerPhone,
-  location: projectAddress,
-  messageText: messageWithLink,
-  publicQuoteUrl
-};
-
-const rebuiltPdf = buildEstimatePdfPayload(pdfPayloadWithLink) || pdf;
-
-if (sendStatus) {
-  sendStatus.style.display = 'block';
-  sendStatus.className = 'notice';
-  sendStatus.textContent = 'Sending estimate and PDF...';
-}
-
-const response = await fetch('/.netlify/functions/send-quote-zapier', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    salesRepInitials,
-    messageLanguage: 'bilingual',
-    toEmail,
-    toName,
-    subject,
-    messageText: messageWithLink,
-    scopeOfWork: payload.scopeSummary || scope,
-    depositRequired,
-    projectName: payload.projectName || state.projectName || '',
-    clientName: toName || payload.clientName || state.clientName || '',
-    location: projectAddress,
-    businessName: settings.bizName || 'Three Colors Corp',
-    currency: 'USD',
-    recommendedTotal: estimateTotal,
-    estimateNumber: payload.estimateNumber || state.estimateNumber || 'EST-1001',
-    issueDate: payload.issueDate || state.issueDate || '',
-    expirationDate: payload.expirationDate || state.expirationDate || '',
-    customerPhone,
-    publicQuoteUrl,
-    quoteId: publishData.quote_id,
-    publicToken: publishData.public_token,
-    pdfFileName: rebuiltPdf.fileName || '',
-    pdfMimeType: rebuiltPdf.mimeType || 'application/pdf',
-    pdfBase64: rebuiltPdf.contentBase64 || ''
-  })
-});
-
-const raw = await response.text();
-let data = {};
-try { data = raw ? JSON.parse(raw) : {}; } catch (_error) {}
-
-if (!response.ok) {
-  throw new Error(data.error || raw || 'Unable to send estimate.');
-}
-
-state.estimateStatus = 'sent';
-state.sentAt = new Date().toISOString();
-state.publicQuoteUrl = publicQuoteUrl;
-state.quoteId = publishData.quote_id;
-state.publicToken = publishData.public_token;
-saveSalesState(state);
-
-if (sendStatus) {
-  sendStatus.style.display = 'block';
-  sendStatus.className = 'notice success';
-  sendStatus.textContent = 'Estimate sent successfully with approval link and PDF attached.';
-}
-
-setTimeout(() => closeSellerSendModal(), 1200);
-return true;
-} catch (error) {
-if (sendStatus) {
-  sendStatus.style.display = 'block';
-  sendStatus.className = 'notice error';
-  sendStatus.textContent = error.message || 'Unable to send estimate.';
-}
-return false;
-} finally {
-if (sendButton) {
-  sendButton.disabled = false;
-  sendButton.textContent = 'Confirmar y enviar estimate';
-}
-}
+</script>
