@@ -1240,6 +1240,7 @@
     const sendButton = document.getElementById('btnSendNow');
     const state = loadSalesState();
     const settings = loadSettings();
+    const branding = await getBranding();
     const metrics = calculateStandaloneSalesMetrics(state, settings);
     const payload = JSON.parse(modal.dataset.payload || '{}');
     const pdf = JSON.parse(modal.dataset.pdf || '{}');
@@ -1351,14 +1352,14 @@
           projectName: payload.projectName || state.projectName || '',
           clientName: toName || payload.clientName || state.clientName || '',
           location: projectAddress,
-          businessName: branding.businessName,
-      businessPhone: branding.businessPhone,
-      businessEmail: branding.businessEmail,
-      accentHex: branding.accentHex,
-      accentRgb: hexToRgbTuple(branding.accentHex, [143, 138, 95]),
-      serviceLine: branding.serviceLine,
-      marketLine: branding.marketLine,
-      signatureLine: branding.signatureLine,
+          businessName: branding.businessName || payload.businessName || 'Margin Guard Business',
+          businessPhone: branding.businessPhone || payload.businessPhone || '',
+          businessEmail: branding.businessEmail || payload.businessEmail || '',
+          accentHex: branding.accentHex || payload.accentHex || '#8f8a5f',
+          accentRgb: hexToRgbTuple(branding.accentHex || payload.accentHex || '#8f8a5f', [143, 138, 95]),
+          serviceLine: branding.serviceLine || payload.serviceLine || 'Professional Service Estimate',
+          marketLine: branding.marketLine || payload.marketLine || '',
+          signatureLine: branding.signatureLine || payload.signatureLine || '',
           currency: 'USD',
           recommendedTotal: estimateTotal,
           estimateNumber: payload.estimateNumber || state.estimateNumber || 'EST-1001',
