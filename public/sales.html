@@ -1,5 +1,582 @@
-﻿<script>
-function bindStandaloneSellerSend() {
+﻿<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Vendedor</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+</head>
+<body data-requires-auth="true">
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"><b>MG</b></div>
+        <div>
+          <h1>Margin Guard</h1>
+          <p id="planStatus">Validando suscripcion...</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <a class="btn" href="/dashboard">Dashboard</a>
+        <a class="btn" href="/estimates-invoices">Invoices Hub</a>
+        <a class="btn" href="/owner">Dueno</a>
+        <a class="btn" href="/business-settings">Business Settings</a>
+        <a class="btn active" href="/sales">Vendedor</a>
+        <a class="btn" href="/supervisor">Supervisor</a>
+        <a class="btn" href="/sales-admin">Sales Admin</a>
+        <button class="btn" id="btnManagePlan">Gestionar plan</button>
+        <button class="btn" id="btnSendQuote">Enviar estimate</button>
+        <button class="btn danger" id="btnLogout">Cerrar sesion</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="account-pill" id="accountEmail">Cuenta activa</div>
+
+    <section class="card owner-hero">
+      <div class="card-inner">
+        <div class="owner-hero-inner">
+          <div>
+            <span class="eyebrow">Estimate Workspace</span>
+            <h2 class="hero-title">Construye, negocia y envia el estimate desde Vendedor.</h2>
+            <div class="sub" style="margin:0;">Esta pantalla concentra header, cliente, lineas de labor, mensaje para cliente y acciones comerciales sin brincar a otra vista.</div>
+          </div>
+          <div class="hero-score">
+            <div class="hero-score-label">Estado actual</div>
+            <div class="hero-score-value" id="salesHeroState">Base</div>
+            <div class="hero-score-meta" id="salesHeroMeta">Completa el estimate para empezar a negociar.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="grid">
+      <div>
+        <div class="card">
+          <div class="card-inner">
+            <div class="section-head">
+              <div>
+                <h2>Estimate comercial</h2>
+                <div class="sub">Paso 1: crea o actualiza el estimate. Paso 2: envia o pide aprobacion. Paso 3: cuando cierre, firma el proyecto.</div>
+              </div>
+              <div class="badge amber" id="salesEstimateStatus">draft</div>
+            </div>
+
+            <div class="notice" id="salesEstimateSummary">Completa el header, cliente y mano de obra para dejar listo el estimate.</div>
+
+            <div class="form">
+              <div class="field">
+                <label>Estimate No.</label>
+                <input id="salesEstimateNumber" maxlength="30" placeholder="EST-1001" />
+              </div>
+              <div class="field">
+                <label>Issue date</label>
+                <input id="salesIssueDate" type="date" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()" />
+              </div>
+              <div class="field">
+                <label>Expiration date</label>
+                <input id="salesExpirationDate" type="date" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()" />
+              </div>
+              <div class="field">
+                <label>Fecha comprometida</label>
+                <input id="salesDueDate" type="date" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()" />
+              </div>
+              <div class="field">
+                <label>Proyecto / Job name</label>
+                <input id="salesProjectName" maxlength="60" placeholder="Ej: Master bath remodel" />
+                <div class="hint"><span id="salesProjectNameCount">0</span>/60</div>
+              </div>
+              <div class="field">
+                <label>Cliente</label>
+                <input id="salesClientName" maxlength="60" placeholder="Ej: Maria y Librado" />
+                <div class="hint"><span id="salesClientNameCount">0</span>/60</div>
+              </div>
+              <div class="field">
+                <label>Email del cliente (desde el estimate)</label>
+                <input id="salesCustomerEmail" type="email" maxlength="80" placeholder="cliente@correo.com" />
+              </div>
+              <div class="field">
+                <label>Telefono del cliente</label>
+                <input id="salesCustomerPhone" maxlength="30" placeholder="(650) 555-0101" />
+              </div>
+              <div class="field">
+                <label>Job site address</label>
+                <input id="salesLocation" maxlength="90" placeholder="Direccion del trabajo" />
+              </div>
+              <div class="field">
+                <label>Precio propuesto al cliente</label>
+                <input id="salesPrice" type="number" step="0.01" placeholder="0.00" />
+              </div>
+            </div>
+
+            <div class="sep"></div>
+
+            <div class="dashboard-note">
+              <div class="dashboard-note-title">Labor builder</div>
+              <div class="dashboard-note-copy" id="salesCrewHint">Define dias por trabajador para calcular horas-hombre, recomendado, negociacion y piso minimo.</div>
+            </div>
+
+            <div class="inline-actions" style="margin-top:12px; margin-bottom:12px;">
+              <button class="btn primary" type="button" id="btnAddSalesWorker">Agregar trabajador</button>
+              <button class="btn danger" type="button" id="btnClearSalesWorkers">Limpiar labor</button>
+            </div>
+
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Trabajador</th>
+                  <th>Tipo</th>
+                  <th>Dias</th>
+                  <th>Costo base</th>
+                  <th>Labor</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="salesWorkersBody"></tbody>
+            </table>
+
+            <div class="sep"></div>
+
+            <div class="dashboard-note">
+              <div class="dashboard-note-title">Control de precio</div>
+              <div class="dashboard-note-copy" id="salesEntryHint">El slider mueve el estimate entre minimo, negociacion y recomendado. Si editas el precio manualmente, el sistema respeta tu numero.</div>
+            </div>
+
+            <div style="margin-top:10px;">
+              <label class="sub" for="salesStageRange" style="display:block; margin-bottom:6px;">Posicion del estimate</label>
+              <input id="salesStageRange" type="range" min="0" max="2" step="1" value="2" class="sales-stage-range" />
+              <div class="sales-stage-labels">
+                <span id="salesStageMin">Minimo</span>
+                <span id="salesStageNegotiation">Negociacion</span>
+                <span id="salesStageRecommended">Recomendado</span>
+              </div>
+            </div>
+
+            <div class="notice" id="salesRule" style="margin-top:10px;">Precio por debajo del minimo permitido.</div>
+            <div class="notice" id="approvalHint" style="margin-top:10px;">Precio rojo: requiere aprobacion obligatoria.</div>
+
+            <div class="sep"></div>
+
+            <div class="field">
+              <label>Mensaje para cliente</label>
+              <textarea id="salesMessageToClient" rows="4" maxlength="600" placeholder="Mensaje visible para el cliente en el estimate o correo."></textarea>
+              <div class="hint"><span id="salesMessageToClientCount">0</span>/600</div>
+            </div>
+            <div class="field">
+              <label>Notas internas</label>
+              <textarea id="salesNotes" rows="4" maxlength="600" placeholder="Notas de negociacion, exclusiones, observaciones internas."></textarea>
+              <div class="hint"><span id="salesNotesCount">0</span>/600</div>
+            </div>
+
+            <div class="inline-actions" style="margin-top:12px;">
+              <button class="btn" type="button" id="btnNewSalesQuote">Nueva quote</button>
+              <button class="btn" type="button" id="btnSendQuoteInline">Enviar estimate</button>
+              <button class="btn" type="button" id="btnSubmitApproval">Pedir aprobacion</button>
+              <button class="btn primary" type="button" id="btnMarkSold">Firmar proyecto</button>
+            </div>
+            <div class="notice" id="salesSignedStatus" style="display:none; margin-top:10px;"></div>
+            <div class="notice" id="approvalStatus" style="display:none; margin-top:10px;"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div>
+        <div class="card owner-side-card">
+          <div class="card-inner">
+            <div class="section-head">
+              <div>
+                <h2>Resultado en vivo</h2>
+                <div class="sub">Lectura comercial para defender el estimate con claridad.</div>
+              </div>
+              <div class="badge amber" id="salesTraffic">Base</div>
+            </div>
+            <progress id="salesProgress" max="100" value="0" style="width:100%; margin-bottom:12px;"></progress>
+
+            <div class="owner-kpi-shell">
+              <div class="owner-quote-hero">
+                <div class="owner-quote-kicker">Precio recomendado</div>
+                <div class="owner-quote-price" id="salesPrimaryPrice">$0.00</div>
+                <div class="owner-quote-meta" id="salesPrimaryMeta">Ingresa mano de obra para calcular el recomendado.</div>
+                <div class="owner-quote-strip">
+                  <div class="owner-mini-card">
+                    <div class="title">Comision estimada</div>
+                    <div class="big" id="salesPrimaryCommission">0.00%</div>
+                    <div class="small" id="salesPrimaryCommissionMeta">$0.00 estimado</div>
+                  </div>
+                  <div class="owner-mini-card">
+                    <div class="title">Accion</div>
+                    <div class="big" id="salesApprovalAction">Completar datos</div>
+                    <div class="small" id="salesApprovalActionMeta">Primero define la mano de obra.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sep"></div>
+            <div class="kpi sales-kpi-grid" id="salesKpis"></div>
+
+            <div class="sep"></div>
+            <h2 style="margin-top:0;">Proyecto activo para Supervisor</h2>
+            <div class="owner-mini-card" style="margin-bottom:12px;">
+              <div class="title">Proyecto firmado</div>
+              <div class="big" id="salesSignedProject">Sin proyecto firmado</div>
+              <div class="small" id="salesSignedMeta">Firma un estimate para mandarlo a Supervisor.</div>
+            </div>
+            <div class="badge amber" id="salesSignedBadge">Pendiente de firma</div>
+
+            <div class="sep"></div>
+            <h2 style="margin-top:0;">Mensajes de negociacion</h2>
+            <ul class="msg-list sales-msg-grid" id="negotiationList"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="sendModal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Enviar estimate</div>
+          <div class="modal-subtitle">Usa Netlify Functions + Zapier para enviar la propuesta actual al cliente.</div>
+        </div>
+        <button class="icon-btn" id="btnSendClose">X</button>
+      </div>
+      <div class="modal-body">
+        <div class="dashboard-note" style="margin-bottom:14px;">
+          <div class="dashboard-note-title">Preview final del estimate</div>
+          <div class="dashboard-note-copy">Todo aqui se llena desde la cotizacion. Solo revisa y confirma el envio final.</div>
+        </div>
+        <div class="form">
+          <div class="field">
+            <label>Email del cliente</label>
+            <input id="toEmail" type="email" maxlength="80" placeholder="cliente@correo.com" readonly />
+          </div>
+          <div class="field">
+            <label>Nombre del cliente</label>
+            <input id="toName" maxlength="60" placeholder="Nombre" readonly />
+          </div>
+          <div class="field">
+            <label>Iniciales del vendedor</label>
+            <input id="salesInitials" maxlength="6" placeholder="LM" />
+            <div class="hint"><span id="salesInitialsCount">0</span>/6</div>
+          </div>
+          <div class="field">
+            <label>Deposito requerido para agendar</label>
+            <input id="deposit" type="text" value="$1,000.00" readonly />
+          </div>
+          <div class="field">
+            <label>Asunto del envio</label>
+            <input id="subject" maxlength="90" readonly />
+          </div>
+        </div>
+        <div class="field">
+          <label>Resumen del estimate visible al cliente</label>
+          <textarea id="scope" rows="6" maxlength="1200" readonly></textarea>
+        </div>
+        <div class="field">
+          <label>Correo final al cliente</label>
+          <textarea id="message" rows="12" maxlength="1200" readonly></textarea>
+        </div>
+        <div class="notice" id="sendStatus" style="display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="btnSendCancel">Cancelar</button>
+        <button class="btn primary" id="btnSendNow">Confirmar y enviar estimate</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/tenant.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+    (function () {
+      const SALES_KEY = 'mg_sales_v2';
+      const SETTINGS_KEY = 'mg_settings_v2';
+      const DEFAULT_WORKERS = [{ name: 'Worker 1', type: 'installer', days: 0, rate: '' }];
+
+      function readJson(key, fallback) {
+        try {
+          const raw = localStorage.getItem(key);
+          return raw ? { ...fallback, ...JSON.parse(raw) } : { ...fallback };
+        } catch (_error) {
+          return { ...fallback };
+        }
+      }
+
+      function loadSalesState() {
+        const state = readJson(SALES_KEY, {});
+        state.workers = Array.isArray(state.workers) && state.workers.length
+          ? state.workers
+          : DEFAULT_WORKERS.map((worker) => ({ ...worker }));
+        return state;
+      }
+
+      function saveSalesState(state) {
+        localStorage.setItem(SALES_KEY, JSON.stringify(state));
+      }
+
+      function refreshSellerFromStandalone() {
+        if (typeof window.renderSales === 'function') {
+          try {
+            window.renderSales();
+          } catch (_error) {}
+        }
+        renderSellerWorkersStandalone();
+        renderStandaloneSellerPanel();
+      }
+
+      function loadSettings() {
+        return readJson(SETTINGS_KEY, {
+          baseInstaller: 75,
+          baseHelper: 45,
+          currency: 'USD',
+          hoursPerDay: 8,
+          wcPct: 10,
+          ficaPct: 7.65,
+          futaPct: 0.6,
+          casuiPct: 3.4,
+          overheadMonthly: 0,
+          stdHours: 160,
+          profitPct: 30,
+          reservePct: 5,
+          salesCommissionPct: 10
+        });
+      }
+
+      function money(amount, currency) {
+        try {
+          return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(Number(amount || 0));
+        } catch (_error) {
+          return '$' + Number(amount || 0).toFixed(2);
+        }
+      }      function round2(value) {
+        return Math.round(Number(value || 0) * 100) / 100;
+      }
+
+      function setText(targetId, value) {
+        const node = document.getElementById(targetId);
+        if (!node) return;
+        node.textContent = value == null ? '' : String(value);
+      }
+
+      function calculateStandaloneSalesMetrics(state, settings) {
+        const hoursPerDay = Math.max(Number(settings.hoursPerDay || 8), 0.25);
+        const taxPct = (
+          Number(settings.wcPct || 0) +
+          Number(settings.ficaPct || 0) +
+          Number(settings.futaPct || 0) +
+          Number(settings.casuiPct || 0)
+        ) / 100;
+        const overheadPerHour = Number(settings.stdHours || 0) > 0
+          ? Number(settings.overheadMonthly || 0) / Number(settings.stdHours || 0)
+          : 0;
+        const laborByWorker = state.workers.map((worker) => {
+          const days = Math.max(0, Number(worker.days || 0));
+          const fallbackRate = worker.type === 'helper'
+            ? Number(settings.baseHelper || 0)
+            : Number(settings.baseInstaller || 0);
+          const rate = worker.rate === '' || worker.rate == null ? fallbackRate : Number(worker.rate || 0);
+          const hours = days * hoursPerDay;
+          const cost = hours * rate;
+          return { days, rate, hours, cost };
+        });
+        const labor = laborByWorker.reduce((sum, row) => sum + row.cost, 0);
+        const totalHours = laborByWorker.reduce((sum, row) => sum + row.hours, 0);
+        const totalWorkerDays = laborByWorker.reduce((sum, row) => sum + row.days, 0);
+        const taxes = labor * taxPct;
+        const overhead = totalHours * overheadPerHour;
+        const beforeProfit = labor + taxes + overhead;
+        const reserve = beforeProfit * (Number(settings.reservePct || 5) / 100);
+        const recommendedProfit = beforeProfit * (Number(settings.profitPct || 0) / 100);
+        const minimumProfit = beforeProfit * 0.15;
+        const recommended = beforeProfit + recommendedProfit + reserve;
+        const minimum = beforeProfit + minimumProfit + reserve;
+        const negotiation = recommended > minimum ? minimum + ((recommended - minimum) * 0.5) : minimum;
+        const rawOffered = state.price == null ? '' : String(state.price);
+        const manualOfferedActive = Boolean(state._manualPriceTouched) && rawOffered !== '';
+        const offered = manualOfferedActive ? Number(rawOffered || 0) : recommended;
+        const commissionRate = Number(settings.salesCommissionPct || 10);
+        const commissionDisplay = round2(Math.max(offered, 0) * (commissionRate / 100));
+        const needsApproval = offered < negotiation;
+        return {
+          workerHours: totalHours,
+          workerDays: totalWorkerDays,
+          workersCount: state.workers.length,
+          recommended,
+          minimum,
+          negotiation,
+          offered,
+          commissionRate,
+          commissionDisplay,
+          needsApproval
+        };
+      }
+
+      function renderStandaloneSellerPanel() {
+        const state = loadSalesState();
+        const settings = loadSettings();
+        const metrics = calculateStandaloneSalesMetrics(state, settings);
+        setText('salesPrimaryPrice', money(metrics.recommended, settings.currency));
+        setText('salesPrimaryMeta', `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${money(metrics.offered, settings.currency)}`);
+        setText('salesPrimaryCommission', `${metrics.commissionRate.toFixed(2)}%`);
+        setText('salesPrimaryCommissionMeta', `${money(metrics.commissionDisplay, settings.currency)} estimado`);
+        setText('salesApprovalAction', metrics.needsApproval ? 'Request Approval' : (metrics.workerDays > 0 ? 'Ready to Send' : 'Completar datos'));
+        setText('salesApprovalActionMeta', metrics.workerDays <= 0 ? 'Primero define la mano de obra.' : (metrics.needsApproval ? 'Pricing is below recommendation or approval is required.' : 'Estimate can move forward without extra approval.'));
+        setText('salesStageMin', money(metrics.minimum, settings.currency));
+        setText('salesStageNegotiation', money(metrics.negotiation, settings.currency));
+        setText('salesStageRecommended', money(metrics.recommended, settings.currency));
+        const slider = document.getElementById('salesStageRange');
+        if (slider) {
+          const stage = metrics.offered >= metrics.recommended ? 2 : (metrics.offered >= metrics.negotiation ? 1 : 0);
+          slider.value = String(stage);
+        }
+      }
+
+      function escapeHtml(value) {
+        return String(value || '')
+          .replace(/&/g, '&amp;')
+          .replace(/"/g, '&quot;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      }
+
+      function laborCost(worker, settings) {
+        const days = Number(worker.days || 0);
+        const fallbackRate = worker.type === 'helper'
+          ? Number(settings.baseHelper || 0)
+          : Number(settings.baseInstaller || 0);
+        const rate = worker.rate === '' || worker.rate == null ? fallbackRate : Number(worker.rate || 0);
+        return days * 8 * rate;
+      }
+
+      function renderSellerWorkersStandalone() {
+        const body = document.getElementById('salesWorkersBody');
+        if (!body) return;
+        const state = loadSalesState();
+        const settings = loadSettings();
+
+        body.innerHTML = state.workers.map((worker, index) => {
+          const fallbackRate = worker.type === 'helper'
+            ? Number(settings.baseHelper || 0)
+            : Number(settings.baseInstaller || 0);
+          const rateValue = worker.rate === '' || worker.rate == null ? fallbackRate : Number(worker.rate || 0);
+          return `
+            <tr data-index="${index}">
+              <td><input data-key="name" maxlength="40" value="${escapeHtml(worker.name)}" /></td>
+              <td>
+                <select data-key="type">
+                  <option value="installer" ${worker.type === 'installer' ? 'selected' : ''}>Pro</option>
+                  <option value="helper" ${worker.type === 'helper' ? 'selected' : ''}>Assistant</option>
+                </select>
+              </td>
+              <td><input data-key="days" type="number" min="0" step="0.25" value="${Number(worker.days || 0)}" /></td>
+              <td><input data-key="rate" type="number" min="0" step="0.01" value="${rateValue}" /></td>
+              <td data-cell="labor">${money(laborCost(worker, settings), settings.currency)}</td>
+              <td>
+                <div class="row-actions">
+                  <button class="btn ghost" type="button" data-action="copy">Copy</button>
+                  <button class="btn danger" type="button" data-action="delete">Delete</button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        const hint = document.getElementById('salesCrewHint');
+        if (hint) {
+          const workerHours = state.workers.reduce((sum, worker) => sum + (Number(worker.days || 0) * 8), 0);
+          hint.textContent = `${state.workers.length} workers configured for ${workerHours.toFixed(2)} labor hours.`;
+        }
+      }
+
+      function bindStandaloneSellerWorkers() {
+        let addButton = document.getElementById('btnAddSalesWorker');
+        let clearButton = document.getElementById('btnClearSalesWorkers');
+        const body = document.getElementById('salesWorkersBody');
+        if (!addButton || !clearButton || !body) return;
+
+        const cleanAddButton = addButton.cloneNode(true);
+        cleanAddButton.removeAttribute('onclick');
+        addButton.parentNode.replaceChild(cleanAddButton, addButton);
+        addButton = cleanAddButton;
+
+        const cleanClearButton = clearButton.cloneNode(true);
+        cleanClearButton.removeAttribute('onclick');
+        clearButton.parentNode.replaceChild(cleanClearButton, clearButton);
+        clearButton = cleanClearButton;
+
+        addButton.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          const state = loadSalesState();
+          state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: 'installer', days: 0, rate: '' });
+          saveSalesState(state);
+          refreshSellerFromStandalone();
+        }, true);
+
+        clearButton.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          const state = loadSalesState();
+          state.workers = DEFAULT_WORKERS.map((worker) => ({ ...worker }));
+          saveSalesState(state);
+          refreshSellerFromStandalone();
+        }, true);
+
+        function applyWorkerFieldChange(field) {
+          if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement)) return;
+          const row = field.closest('tr');
+          const index = Number(row?.dataset.index ?? -1);
+          const key = field.dataset.key;
+          if (index < 0 || !key) return;
+          const state = loadSalesState();
+          if (!Array.isArray(state.workers) || !state.workers[index]) return;
+          state.workers[index][key] = (key === 'days' || key === 'rate')
+            ? (field.value === '' ? '' : Number(field.value || 0))
+            : field.value;
+          saveSalesState(state);
+          refreshSellerFromStandalone();
+        }
+
+        body.addEventListener('input', function (event) {
+          applyWorkerFieldChange(event.target);
+        });
+
+        body.addEventListener('change', function (event) {
+          applyWorkerFieldChange(event.target);
+        });
+
+        body.addEventListener('click', function (event) {
+          const actionButton = event.target.closest('button[data-action]');
+          if (!actionButton) return;
+          event.preventDefault();
+          const row = actionButton.closest('tr');
+          const index = Number(row?.dataset.index ?? -1);
+          if (index < 0) return;
+          const state = loadSalesState();
+          if (!Array.isArray(state.workers)) state.workers = DEFAULT_WORKERS.map((worker) => ({ ...worker }));
+          if (actionButton.dataset.action === 'copy') {
+            state.workers.splice(index + 1, 0, { ...state.workers[index] });
+          }
+          if (actionButton.dataset.action === 'delete') {
+            state.workers.splice(index, 1);
+          }
+          if (!state.workers.length) {
+            state.workers = DEFAULT_WORKERS.map((worker) => ({ ...worker }));
+          }
+          saveSalesState(state);
+          refreshSellerFromStandalone();
+        });
+
+        refreshSellerFromStandalone();
+      }
+
+      function bindStandaloneSellerSend() {
   const topSend = document.getElementById('btnSendQuote');
   const inlineSend = document.getElementById('btnSendQuoteInline');
   const modal = document.getElementById('sendModal');
@@ -621,4 +1198,38 @@ function bindStandaloneSellerSend() {
     cleanSendNow.addEventListener('click', runSellerSend, true);
   }
 }
-</script>
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+          bindStandaloneSellerWorkers();
+          bindStandaloneSellerSend();
+        });
+      } else {
+        bindStandaloneSellerWorkers();
+        bindStandaloneSellerSend();
+      }
+    })();
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
