@@ -1014,21 +1014,6 @@
     drawKeyValue('Project Address', projectAddress, left + (contentWidth / 2) + 12, detailColWidth);
 
     y = Math.max(y, detailTop + 86);
-    drawSectionTitle('Business Details');
-    const bizTop = y;
-
-    y = bizTop;
-    drawKeyValue('Business', businessName, left, detailColWidth);
-    drawKeyValue('Business Email', businessEmail, left, detailColWidth);
-    drawKeyValue('Business Phone', businessPhone, left, detailColWidth);
-
-    y = bizTop;
-    drawKeyValue('Business Address', businessAddress || marketLine || '-', left + (contentWidth / 2) + 12, detailColWidth);
-    if (marketLine && marketLine !== businessAddress) {
-      drawKeyValue('Market', marketLine, left + (contentWidth / 2) + 12, detailColWidth);
-    }
-
-    y = Math.max(y, bizTop + 86);
     drawSectionTitle('Project Investment');
 
     const investmentTop = y;
