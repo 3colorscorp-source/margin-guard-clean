@@ -615,67 +615,190 @@
           const jspdf = window.jspdf;
           if (!jspdf?.jsPDF) return null;
           const doc = new jspdf.jsPDF({ unit: 'pt', format: 'letter' });
-          let y = 56;
           const pageWidth = doc.internal.pageSize.getWidth();
+          const pageHeight = doc.internal.pageSize.getHeight();
           const left = 48;
           const right = pageWidth - 48;
+          const contentWidth = right - left;
+          const bottom = pageHeight - 56;
+          const accent = [143, 138, 95];
+          const textDark = [17, 24, 39];
+          const textMuted = [75, 85, 99];
+          const lineSoft = [229, 231, 235];
+          let y = 56;
+
+          function ensureSpace(heightNeeded) {
+            if (y + heightNeeded <= bottom) return;
+            doc.addPage();
+            y = 56;
+          }
+
+          function drawSectionTitle(title) {
+            ensureSpace(28);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(12);
+            doc.setTextColor(...accent);
+            doc.text(String(title || ''), left, y);
+            y += 8;
+            doc.setDrawColor(...lineSoft);
+            doc.line(left, y, right, y);
+            y += 18;
+            doc.setTextColor(...textDark);
+          }
+
+          function drawKeyValue(label, value, x, maxWidth) {
+            const safeValue = String(value || '-').trim() || '-';
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor(...textMuted);
+            doc.text(String(label || ''), x, y);
+            y += 13;
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(11);
+            doc.setTextColor(...textDark);
+            const lines = doc.splitTextToSize(safeValue, maxWidth);
+            doc.text(lines, x, y);
+            y += Math.max(18, lines.length * 13 + 4);
+          }
+
+          function cleanScopeItems(value) {
+            const raw = String(value || '')
+              .replace(/
+/g, '\n')
+              .split('\n')
+              .map((line) => line.replace(/^[\-•\s]+/, '').trim())
+              .filter(Boolean)
+              .filter((line) => !/^\d+$/.test(line))
+              .filter((line) => /[a-zA-Z]{3,}/.test(line));
+            const unique = [];
+            raw.forEach((line) => {
+              const normalized = line.toLowerCase();
+              if (!unique.some((item) => item.toLowerCase() === normalized)) {
+                unique.push(line.charAt(0).toUpperCase() + line.slice(1));
+              }
+            });
+            if (unique.length) return unique.slice(0, 8);
+            return ['Scope to be completed as outlined in your approved estimate.'];
+          }
+
+          function drawParagraph(text, opts = {}) {
+            const fontSize = opts.fontSize || 11;
+            const color = opts.color || textMuted;
+            const width = opts.width || contentWidth;
+            const indent = opts.indent || 0;
+            doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+            doc.setFontSize(fontSize);
+            doc.setTextColor(...color);
+            const lines = doc.splitTextToSize(String(text || ''), width);
+            ensureSpace(lines.length * (fontSize + 3) + 6);
+            doc.text(lines, left + indent, y);
+            y += lines.length * (fontSize + 3) + 6;
+            doc.setTextColor(...textDark);
+          }
+
+          function drawBulletList(items) {
+            items.forEach((item) => {
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(11);
+              doc.setTextColor(...textDark);
+              const bulletWidth = contentWidth - 16;
+              const lines = doc.splitTextToSize(String(item || ''), bulletWidth);
+              ensureSpace(lines.length * 14 + 6);
+              doc.text('•', left, y);
+              doc.text(lines, left + 14, y);
+              y += lines.length * 14 + 4;
+            });
+            y += 6;
+          }
+
+          doc.setTextColor(...textDark);
+          doc.setDrawColor(...lineSoft);
+          doc.setFillColor(248, 248, 247);
 
           doc.setFont('helvetica', 'bold');
-          doc.setFontSize(20);
-          doc.text(data.businessName || 'Three Colors Corp', left, y);
+          doc.setFontSize(22);
+          doc.text('Project Estimate', left, y);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(10);
+          doc.setTextColor(...accent);
+          doc.text('Professional Tile Installation Proposal', left, y + 16);
+
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(11);
+          doc.setTextColor(...textDark);
+          doc.text(data.businessName || 'Three Colors Corp', right, y, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(10);
+          doc.setTextColor(...textMuted);
+          doc.text(String(data.customerPhone || '(408) 903-7976'), right, y + 14, { align: 'right' });
+          doc.text('3colorscorp@gmail.com', right, y + 28, { align: 'right' });
+
+          y += 42;
+          doc.setDrawColor(...accent);
+          doc.line(left, y, right, y);
+          y += 24;
+
+          drawParagraph('Thank you for the opportunity to be considered for your project. This estimate has been prepared for your review and approval.', { fontSize: 11, color: textMuted });
+          y += 4;
+
+          drawSectionTitle('Client & Project Details');
+          const startY = y;
+          const midX = left + 250;
+          const originalY = y;
+          drawKeyValue('Client', data.clientName || '-', left, 210);
+          const leftEnd = y;
+          y = originalY;
+          drawKeyValue('Project', data.projectName || '-', midX, 240);
+          drawKeyValue('Project Address', data.location || '-', midX, 240);
+          const rightEnd = y;
+          y = Math.max(leftEnd, rightEnd) + 6;
+
+          drawSectionTitle('Project Investment');
+          ensureSpace(86);
+          doc.setFillColor(249, 250, 251);
+          doc.roundedRect(left, y, contentWidth, 62, 10, 10, 'F');
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.setTextColor(...textMuted);
+          doc.text('Total Investment', left + 18, y + 20);
+          doc.text('Project Start Investment', left + 260, y + 20);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(18);
+          doc.setTextColor(...textDark);
+          doc.text(String(data.totalFormatted || '-'), left + 18, y + 44);
+          doc.text(String(data.depositFormatted || '-'), left + 260, y + 44);
+          y += 82;
+
+          drawSectionTitle('Scope of Work');
+          drawBulletList(cleanScopeItems(data.scopeSummary));
+
+          drawSectionTitle('Estimate Details');
+          const detailStartY = y;
+          const originalDetailY = y;
+          drawKeyValue('Estimate No.', data.estimateNumber || '-', left, 180);
+          const detailLeftEnd = y;
+          y = originalDetailY;
+          drawKeyValue('Prepared On', data.issueDateLong || '-', left + 180, 150);
+          const detailMidEnd = y;
+          y = originalDetailY;
+          drawKeyValue('Valid Through', data.expirationDateLong || '-', left + 340, 140);
+          const detailRightEnd = y;
+          y = Math.max(detailLeftEnd, detailMidEnd, detailRightEnd) + 6;
+
+          drawSectionTitle('Next Step');
+          drawParagraph('When you're ready to move forward, your estimate can be approved online to reserve your project and complete the project start investment.', { fontSize: 11, color: textMuted });
+          drawParagraph('Thank you for considering Three Colors Corp for your project.', { fontSize: 11, color: textMuted });
+
+          ensureSpace(34);
+          doc.setDrawColor(...lineSoft);
+          doc.line(left, y, right, y);
           y += 18;
           doc.setFont('helvetica', 'normal');
-          doc.setFontSize(11);
-          doc.text('Estimate', left, y);
-          doc.text(data.estimateNumber, right, y, { align: 'right' });
-          y += 28;
-          doc.setDrawColor(210, 214, 220);
-          doc.line(left, y, right, y);
-          y += 22;
-          doc.setFont('helvetica', 'bold');
-          doc.text('Client', left, y);
-          doc.text('Project', 300, y);
-          y += 16;
-          doc.setFont('helvetica', 'normal');
-          doc.text(data.clientName || '-', left, y);
-          doc.text(data.projectName || '-', 300, y);
-          y += 16;
-          doc.text(data.customerEmail || '-', left, y);
-          doc.text('Issue: ' + (data.issueDateLong || '-'), 300, y);
-          y += 16;
-          doc.text(data.customerPhone || '-', left, y);
-          doc.text('Expiration: ' + (data.expirationDateLong || '-'), 300, y);
-          y += 16;
-          doc.text(data.location || '-', left, y, { maxWidth: 220 });
-          doc.text('Estimate total: ' + data.totalFormatted, 300, y);
-          y += 16;
-          doc.text('Deposit required to schedule: ' + data.depositFormatted, 300, y);
-          y += 28;
-          doc.setFont('helvetica', 'bold');
-          doc.text('Scope summary', left, y);
-          y += 16;
-          doc.setFont('helvetica', 'normal');
-          const scopeLines = doc.splitTextToSize(data.scopeSummary || '-', right - left);
-          doc.text(scopeLines, left, y);
-          y += (scopeLines.length * 14) + 20;
-          doc.setFont('helvetica', 'bold');
-          doc.text('Email preview', left, y);
-          y += 16;
-          doc.setFont('helvetica', 'normal');
-          const messageLines = doc.splitTextToSize(data.messageText || '-', right - left);
-          doc.text(messageLines, left, y);
-          y += (messageLines.length * 14) + 18;
-
-          if (data.publicQuoteUrl) {
-            doc.setFont('helvetica', 'bold');
-            doc.text('Review, Accept & Pay Deposit', left, y);
-            y += 16;
-            doc.setFont('helvetica', 'normal');
-            doc.setTextColor(30, 136, 229);
-            const linkLines = doc.splitTextToSize(data.publicQuoteUrl, right - left);
-            doc.text(linkLines, left, y);
-            doc.setTextColor(0, 0, 0);
-          }
+          doc.setFontSize(10);
+          doc.setTextColor(...textMuted);
+          doc.text((data.businessName || 'Three Colors Corp') + '  •  Tile Installation & Project Execution', left, y);
+          doc.text('Bay Area, California', right, y, { align: 'right' });
+          doc.setTextColor(...textDark);
 
           const base64 = doc.output('datauristring').split(',')[1];
           return {
@@ -719,26 +842,20 @@
           const defaultMessage = [
             'Hi ' + formatGreetingName(clientName) + ',',
             '',
-            'Attached is your estimate for ' + projectName + '.',
+            'Thank you for the opportunity to work with you.',
             '',
-            'Estimate total: ' + totalFormatted,
-            'Deposit required to schedule: ' + depositFormatted,
+            'Your project estimate is attached and ready for review.',
             '',
-            'Estimate details:',
-            '- Estimate No.: ' + estimateNumber,
-            '- Project: ' + projectName,
-            '- Issue date: ' + (issueDateLong || '-'),
-            '- Expiration date: ' + (expirationDateLong || '-'),
-            '- Job site: ' + (location || '-'),
+            "When you're ready to move forward, please review and approve your estimate using the link below:",
             '',
-            'Scope summary:',
-            messageToClient || '-',
-            '',
-            'To review, accept the quote, and pay the deposit online, use the approval link below:',
             '[PUBLIC_QUOTE_URL]',
             '',
+            'Once approved, you’ll be able to complete your project start investment online.',
+            '',
             'Thank you,',
-            settings.bizName || 'Three Colors Corp'
+            'Three Colors Corp',
+            '(408) 903-7976',
+            '3colorscorp@gmail.com'
           ].join('\n');
 
           const payload = {
@@ -824,7 +941,7 @@
           const scope = document.getElementById('scope')?.value || '';
           const message = document.getElementById('message')?.value || '';
           const deposit = document.getElementById('deposit')?.value || '1000';
-          window.alert('Preview\n\nTo: ' + toName + ' <' + toEmail + '>\nSubject: ' + subject + '\nDeposit required to schedule: $' + deposit + '\n\nVisible scope:\n' + scope + '\n\nMessage:\n' + message);
+          window.alert('Preview\n\nTo: ' + toName + ' <' + toEmail + '>\nSubject: ' + subject + '\nProject start investment: $' + deposit + '\n\nVisible scope:\n' + scope + '\n\nMessage:\n' + message);
         }
 
         async function runSellerSend(event) {
