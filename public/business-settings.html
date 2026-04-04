@@ -10,9 +10,9 @@
   <div class="topbar">
     <div class="topbar-inner">
       <div class="brand">
-        <div class="logo" aria-hidden="true"><b>MG</b></div>
+        <div class="logo" aria-hidden="true"><b id="tenantLogoMark">MG</b></div>
         <div>
-          <h1>Margin Guard</h1>
+          <h1 id="tenantBrandTitle">Margin Guard</h1>
           <p id="planStatus">Validando suscripcion...</p>
         </div>
       </div>
@@ -39,13 +39,13 @@
         <div class="owner-hero-inner">
           <div>
             <span class="eyebrow">Business Settings</span>
-            <h2 class="hero-title">Configura una vez las reglas del negocio.</h2>
-            <div class="sub" style="margin:0;">Esta pantalla guarda la logica permanente del negocio: como cotizas, cuanto cargas por operacion y como compensas a tu equipo.</div>
+            <h2 class="hero-title">Configura reglas y branding del negocio en modo multitenant.</h2>
+            <div class="sub" style="margin:0;">Esta pantalla guarda la logica permanente del negocio y tambien el branding publico que debe reflejarse en Sales, PDF, email, firma y quote view para cada tenant.</div>
           </div>
           <div class="hero-score">
-            <div class="hero-score-label">Business Rule</div>
-            <div class="hero-score-value">Locked</div>
-            <div class="hero-score-meta">Estos valores se quedan hasta que el dueno decida editarlos otra vez.</div>
+            <div class="hero-score-label">Tenant Mode</div>
+            <div class="hero-score-value" id="tenantModeBadge">Multitenant</div>
+            <div class="hero-score-meta">Cada negocio guarda su propio branding y sus propias reglas sin romper la logica del sistema.</div>
           </div>
         </div>
       </div>
@@ -58,19 +58,54 @@
             <div class="section-head">
               <div>
                 <h2>Business Settings</h2>
-                <div class="sub">Solo reglas permanentes del negocio. Aqui no se cotiza ningun proyecto.</div>
+                <div class="sub">Reglas permanentes del negocio y branding publico del tenant.</div>
               </div>
-              <div class="badge green">Permanent rules</div>
+              <div class="badge green">Multitenant ready</div>
+            </div>
+
+            <div class="dashboard-note" style="margin-bottom:14px;">
+              <div class="dashboard-note-title">Tenant branding</div>
+              <div class="dashboard-note-copy">Lo que guardes aqui debe verse en sales, estimate PDF, email, firma y public quote view del negocio actual.</div>
             </div>
 
             <div class="form">
               <div class="field">
                 <label>Nombre del negocio</label>
-                <input id="bizNameOwner" maxlength="60" placeholder="Three Colors Corp" />
+                <input id="bizNameOwner" maxlength="60" placeholder="Margin Guard Business" />
                 <div class="hint"><span id="bizNameOwnerCount">0</span>/60</div>
               </div>
-              <div class="field"><label>Public logo URL</label><input id="publicLogoUrl" maxlength="240" placeholder="https://..." /></div>
-              <div class="field"><label>Public accent color</label><input id="publicAccentColor" type="color" value="#0f8a5f" /></div>
+              <div class="field">
+                <label>Business email</label>
+                <input id="businessEmail" type="email" maxlength="120" placeholder="sales@business.com" />
+              </div>
+              <div class="field">
+                <label>Business phone</label>
+                <input id="businessPhone" maxlength="30" placeholder="(650) 555-0101" />
+              </div>
+              <div class="field">
+                <label>Business address</label>
+                <input id="businessAddress" maxlength="160" placeholder="123 Main St, City, State ZIP" />
+              </div>
+              <div class="field">
+                <label>Public logo URL</label>
+                <input id="publicLogoUrl" maxlength="240" placeholder="https://..." />
+              </div>
+              <div class="field">
+                <label>Public accent color</label>
+                <input id="publicAccentColor" type="color" value="#0f8a5f" />
+              </div>
+              <div class="field">
+                <label>Service line</label>
+                <input id="serviceLine" maxlength="90" placeholder="Professional Service Estimate" />
+              </div>
+              <div class="field">
+                <label>Market line</label>
+                <input id="marketLine" maxlength="90" placeholder="Bay Area, CA" />
+              </div>
+              <div class="field">
+                <label>Signature line</label>
+                <input id="signatureLine" maxlength="120" placeholder="Professional Estimate Delivery" />
+              </div>
               <div class="field"><label>Costo base Pro ($/h)</label><input id="baseInstaller" type="number" step="0.01" placeholder="75" /></div>
               <div class="field"><label>Costo base Assistant ($/h)</label><input id="baseHelper" type="number" step="0.01" placeholder="45" /></div>
               <div class="field">
@@ -83,6 +118,10 @@
               <div class="field"><label>Horas por dia laboral</label><input id="hoursPerDay" type="number" step="0.25" placeholder="8" /></div>
               <div class="field"><label>Gastos operativos mensuales ($)</label><input id="overheadMonthly" type="number" step="0.01" placeholder="0" /></div>
               <div class="field"><label>Horas estandar por trabajador / mes</label><input id="stdHours" type="number" step="1" placeholder="160" /></div>
+              <div class="field"><label>Workers Comp (%)</label><input id="wcPct" type="number" step="0.01" placeholder="10" /></div>
+              <div class="field"><label>FICA (%)</label><input id="ficaPct" type="number" step="0.01" placeholder="7.65" /></div>
+              <div class="field"><label>FUTA (%)</label><input id="futaPct" type="number" step="0.01" placeholder="0.6" /></div>
+              <div class="field"><label>CA SUI (%)</label><input id="casuiPct" type="number" step="0.01" placeholder="3.4" /></div>
               <div class="field"><label>Ganancia objetivo (%)</label><input id="profitPct" type="number" step="0.01" placeholder="30" /></div>
               <div class="field"><label>Comision de vendedor (%)</label><input id="salesCommissionPct" type="number" step="0.01" placeholder="10" /></div>
               <div class="field"><label>Bonus base supervisor (%)</label><input id="supervisorBonusPct" type="number" step="0.01" placeholder="1" /></div>
@@ -91,6 +130,7 @@
 
             <div class="inline-actions" style="margin-top:12px;">
               <button class="btn primary" id="btnSaveBusinessSettings" type="button">Guardar business settings</button>
+              <button class="btn" id="btnReloadBusinessSettings" type="button">Recargar</button>
             </div>
             <div class="notice" id="businessSettingsStatus" style="display:none; margin-top:10px;"></div>
           </div>
@@ -100,30 +140,38 @@
       <div>
         <div class="card">
           <div class="card-inner">
-            <h2>Como usar esta pantalla</h2>
-            <div class="sub">Piensala como la sala de maquinas del negocio.</div>
+            <h2>Preview del tenant</h2>
+            <div class="sub">Esto debe reflejarse en el sistema actual del negocio.</div>
             <div class="kpi">
               <div class="kpi-box">
-                <div class="label">Pricing mode</div>
-                <div class="value">Hora o dia</div>
-                <div class="meta">Esto controla como cotiza el modulo de Vendedor y como se interpreta el precio por unidad.</div>
+                <div class="label">Business</div>
+                <div class="value" id="previewBusinessName">Margin Guard Business</div>
+                <div class="meta" id="previewBusinessMeta">Sin email ni telefono.</div>
               </div>
               <div class="kpi-box">
-                <div class="label">Operating load</div>
-                <div class="value">Overhead + Std Hours</div>
-                <div class="meta">Estos dos campos convierten tus gastos operativos mensuales en costo indirecto por hora.</div>
+                <div class="label">Branding</div>
+                <div class="value" id="previewAccentHex">#0f8a5f</div>
+                <div class="meta" id="previewSignatureLine">Professional Estimate Delivery</div>
               </div>
               <div class="kpi-box">
-                <div class="label">Compensation rules</div>
-                <div class="value">Sales + Supervisor</div>
-                <div class="meta">Aqui defines la comision del vendedor y el bonus base del supervisor para todo el negocio.</div>
+                <div class="label">Sales / PDF / Email</div>
+                <div class="value">Tenant payload</div>
+                <div class="meta">Business name, phone, email, address, accent, service line y firma deben viajar dinamicamente.</div>
               </div>
               <div class="kpi-box">
                 <div class="label">Next step</div>
-                <div class="value"><a href="/owner">Ir a Dueno</a></div>
-                <div class="meta">Cuando termines aqui, vuelves a Dueno para cotizar el proyecto actual.</div>
+                <div class="value"><a href="/sales">Ir a Vendedor</a></div>
+                <div class="meta">Despues de guardar, valida el PDF, el email y el quote publico del tenant.</div>
               </div>
             </div>
+
+            <div class="sep"></div>
+            <h2 style="margin-top:0;">Como guarda</h2>
+            <ul class="msg-list sales-msg-grid">
+              <li>Owner settings siguen guardando reglas de pricing por tenant.</li>
+              <li>Business branding guarda identidad publica del negocio actual.</li>
+              <li>No cambia calculos, recommended price, deposit flow ni send flow.</li>
+            </ul>
           </div>
         </div>
       </div>
@@ -133,6 +181,403 @@
 <script src="/js/tenant.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/app.js"></script>
+<script>
+(function () {
+  const SETTINGS_KEY = 'mg_settings_v2';
+  const BRANDING_CACHE_KEY = 'mg_business_branding_v1';
+
+  const DEFAULT_SETTINGS = {
+    bizName: '',
+    baseInstaller: 75,
+    baseHelper: 45,
+    pricingMode: 'hour',
+    hoursPerDay: 8,
+    overheadMonthly: 0,
+    stdHours: 160,
+    wcPct: 10,
+    ficaPct: 7.65,
+    futaPct: 0.6,
+    casuiPct: 3.4,
+    profitPct: 30,
+    salesCommissionPct: 10,
+    supervisorBonusPct: 1,
+    reservePct: 5,
+    currency: 'USD'
+  };
+
+  const DEFAULT_BRANDING = {
+    businessName: 'Margin Guard Business',
+    businessEmail: '',
+    businessPhone: '',
+    businessAddress: '',
+    logoUrl: '',
+    accentHex: '#0f8a5f',
+    serviceLine: 'Professional Service Estimate',
+    marketLine: '',
+    signatureLine: 'Professional Estimate Delivery',
+    initials: 'MG'
+  };
+
+  function safeTrim(value) {
+    return String(value == null ? '' : value).trim();
+  }
+
+  function buildInitials(name) {
+    const words = safeTrim(name).split(/\s+/).filter(Boolean).slice(0, 2);
+    const initials = words.map((word) => word.charAt(0).toUpperCase()).join('');
+    return initials || 'MG';
+  }
+
+  function readJson(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? { ...fallback, ...JSON.parse(raw) } : { ...fallback };
+    } catch (_error) {
+      return { ...fallback };
+    }
+  }
+
+  function saveJson(key, value) {
+    localStorage.setItem(key, JSON.stringify(value || {}));
+  }
+
+  function setStatus(message, kind) {
+    const node = document.getElementById('businessSettingsStatus');
+    if (!node) return;
+    node.style.display = 'block';
+    node.className = 'notice' + (kind ? ' ' + kind : '');
+    node.textContent = message || '';
+  }
+
+  function setInputValue(id, value) {
+    const node = document.getElementById(id);
+    if (node) node.value = value == null ? '' : String(value);
+  }
+
+  function setCounter(id, value, max) {
+    const node = document.getElementById(id);
+    if (node) node.textContent = String(Math.min(String(value || '').length, max || 0));
+  }
+
+  function setText(id, value) {
+    const node = document.getElementById(id);
+    if (node) node.textContent = value == null ? '' : String(value);
+  }
+
+  function getSupabaseClient() {
+    return window.supabase || window.sb || window.supabaseClient || null;
+  }
+
+  function getCurrentBusinessId() {
+    return window.currentBusinessId || window.businessId || window.__businessId || null;
+  }
+
+  async function getCurrentUserId() {
+    const client = getSupabaseClient();
+    if (!client?.auth?.getUser) return null;
+    try {
+      const result = await client.auth.getUser();
+      return result?.data?.user?.id || null;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function normalizeBrandingRow(row, settings) {
+    const businessName = safeTrim(
+      row?.business_name ||
+      row?.company_name ||
+      row?.brand_name ||
+      row?.display_name ||
+      row?.name ||
+      settings?.bizName ||
+      DEFAULT_BRANDING.businessName
+    );
+
+    return {
+      businessName,
+      businessEmail: safeTrim(row?.business_email || row?.email || row?.support_email || row?.contact_email || ''),
+      businessPhone: safeTrim(row?.business_phone || row?.phone || row?.contact_phone || row?.phone_number || row?.whatsapp || ''),
+      businessAddress: safeTrim(row?.business_address || row?.address || row?.address_line_1 || row?.street_address || row?.office_address || ''),
+      logoUrl: safeTrim(row?.logo_url || row?.public_logo_url || row?.brand_logo_url || ''),
+      accentHex: safeTrim(row?.accent_color || row?.brand_color || row?.primary_color || DEFAULT_BRANDING.accentHex),
+      serviceLine: safeTrim(row?.service_line || row?.service_category || row?.industry_line || DEFAULT_BRANDING.serviceLine),
+      marketLine: safeTrim(row?.market_line || row?.location_line || row?.city_state || ''),
+      signatureLine: safeTrim(row?.signature_line || row?.signature_tagline || row?.email_signature || row?.tagline || DEFAULT_BRANDING.signatureLine),
+      initials: buildInitials(businessName)
+    };
+  }
+
+  function currentFormSettings() {
+    return {
+      bizName: safeTrim(document.getElementById('bizNameOwner')?.value || ''),
+      baseInstaller: Number(document.getElementById('baseInstaller')?.value || 0),
+      baseHelper: Number(document.getElementById('baseHelper')?.value || 0),
+      pricingMode: safeTrim(document.getElementById('pricingMode')?.value || 'hour'),
+      hoursPerDay: Number(document.getElementById('hoursPerDay')?.value || 0),
+      overheadMonthly: Number(document.getElementById('overheadMonthly')?.value || 0),
+      stdHours: Number(document.getElementById('stdHours')?.value || 0),
+      wcPct: Number(document.getElementById('wcPct')?.value || 0),
+      ficaPct: Number(document.getElementById('ficaPct')?.value || 0),
+      futaPct: Number(document.getElementById('futaPct')?.value || 0),
+      casuiPct: Number(document.getElementById('casuiPct')?.value || 0),
+      profitPct: Number(document.getElementById('profitPct')?.value || 0),
+      salesCommissionPct: Number(document.getElementById('salesCommissionPct')?.value || 0),
+      supervisorBonusPct: Number(document.getElementById('supervisorBonusPct')?.value || 0),
+      reservePct: Number(document.getElementById('reservePct')?.value || DEFAULT_SETTINGS.reservePct),
+      currency: 'USD'
+    };
+  }
+
+  function currentFormBranding(settings) {
+    const businessName = safeTrim(document.getElementById('bizNameOwner')?.value || settings?.bizName || DEFAULT_BRANDING.businessName);
+    return {
+      businessName,
+      businessEmail: safeTrim(document.getElementById('businessEmail')?.value || ''),
+      businessPhone: safeTrim(document.getElementById('businessPhone')?.value || ''),
+      businessAddress: safeTrim(document.getElementById('businessAddress')?.value || ''),
+      logoUrl: safeTrim(document.getElementById('publicLogoUrl')?.value || ''),
+      accentHex: safeTrim(document.getElementById('publicAccentColor')?.value || DEFAULT_BRANDING.accentHex),
+      serviceLine: safeTrim(document.getElementById('serviceLine')?.value || DEFAULT_BRANDING.serviceLine),
+      marketLine: safeTrim(document.getElementById('marketLine')?.value || ''),
+      signatureLine: safeTrim(document.getElementById('signatureLine')?.value || DEFAULT_BRANDING.signatureLine),
+      initials: buildInitials(businessName)
+    };
+  }
+
+  function renderBrandPreview(branding) {
+    const previewMeta = [branding.businessPhone, branding.businessEmail, branding.businessAddress].filter(Boolean).join(' | ') || 'Sin email ni telefono.';
+    setText('previewBusinessName', branding.businessName || DEFAULT_BRANDING.businessName);
+    setText('previewBusinessMeta', previewMeta);
+    setText('previewAccentHex', branding.accentHex || DEFAULT_BRANDING.accentHex);
+    setText('previewSignatureLine', branding.signatureLine || DEFAULT_BRANDING.signatureLine);
+    setText('tenantBrandTitle', branding.businessName || DEFAULT_BRANDING.businessName);
+    setText('tenantLogoMark', branding.initials || 'MG');
+    document.title = (branding.businessName || DEFAULT_BRANDING.businessName) + ' | Business Settings';
+    if (branding.accentHex) {
+      document.documentElement.style.setProperty('--tenant-accent', branding.accentHex);
+    }
+  }
+
+  function fillForm(settings, branding) {
+    setInputValue('bizNameOwner', branding.businessName || settings.bizName || '');
+    setInputValue('businessEmail', branding.businessEmail || '');
+    setInputValue('businessPhone', branding.businessPhone || '');
+    setInputValue('businessAddress', branding.businessAddress || '');
+    setInputValue('publicLogoUrl', branding.logoUrl || '');
+    setInputValue('publicAccentColor', branding.accentHex || DEFAULT_BRANDING.accentHex);
+    setInputValue('serviceLine', branding.serviceLine || DEFAULT_BRANDING.serviceLine);
+    setInputValue('marketLine', branding.marketLine || '');
+    setInputValue('signatureLine', branding.signatureLine || DEFAULT_BRANDING.signatureLine);
+    setInputValue('baseInstaller', settings.baseInstaller);
+    setInputValue('baseHelper', settings.baseHelper);
+    setInputValue('pricingMode', settings.pricingMode);
+    setInputValue('hoursPerDay', settings.hoursPerDay);
+    setInputValue('overheadMonthly', settings.overheadMonthly);
+    setInputValue('stdHours', settings.stdHours);
+    setInputValue('wcPct', settings.wcPct);
+    setInputValue('ficaPct', settings.ficaPct);
+    setInputValue('futaPct', settings.futaPct);
+    setInputValue('casuiPct', settings.casuiPct);
+    setInputValue('profitPct', settings.profitPct);
+    setInputValue('salesCommissionPct', settings.salesCommissionPct);
+    setInputValue('supervisorBonusPct', settings.supervisorBonusPct);
+    setInputValue('reservePct', settings.reservePct);
+    setCounter('bizNameOwnerCount', branding.businessName || settings.bizName || '', 60);
+    renderBrandPreview(branding);
+  }
+
+  async function loadBusinessSettings() {
+    const settings = readJson(SETTINGS_KEY, DEFAULT_SETTINGS);
+    const cachedBranding = normalizeBrandingRow(readJson(BRANDING_CACHE_KEY, DEFAULT_BRANDING), settings);
+    fillForm(settings, cachedBranding);
+
+    const client = getSupabaseClient();
+    if (!client?.from) return;
+
+    try {
+      const userId = await getCurrentUserId();
+      const businessId = getCurrentBusinessId();
+
+      const settingsAttempts = [];
+      if (businessId) settingsAttempts.push(() => client.from('owner_settings').select('*').eq('business_id', businessId).limit(1).maybeSingle());
+      if (userId) settingsAttempts.push(() => client.from('owner_settings').select('*').eq('user_id', userId).limit(1).maybeSingle());
+      settingsAttempts.push(() => client.from('owner_settings').select('*').limit(1).maybeSingle());
+
+      let remoteSettings = null;
+      for (const run of settingsAttempts) {
+        try {
+          const result = await run();
+          if (result?.data) {
+            remoteSettings = {
+              ...settings,
+              bizName: safeTrim(result.data.business_name || result.data.company_name || settings.bizName || ''),
+              baseInstaller: Number(result.data.base_installer_rate ?? settings.baseInstaller),
+              baseHelper: Number(result.data.base_helper_rate ?? settings.baseHelper),
+              pricingMode: safeTrim(result.data.pricing_mode || settings.pricingMode || 'hour'),
+              hoursPerDay: Number(result.data.hours_per_day ?? settings.hoursPerDay),
+              overheadMonthly: Number(result.data.overhead_monthly ?? settings.overheadMonthly),
+              stdHours: Number(result.data.billable_hours_month ?? result.data.std_hours ?? settings.stdHours),
+              wcPct: Number(result.data.workers_comp_pct ?? settings.wcPct),
+              ficaPct: Number(result.data.fica_pct ?? settings.ficaPct),
+              futaPct: Number(result.data.futa_pct ?? settings.futaPct),
+              casuiPct: Number(result.data.ca_sui_pct ?? settings.casuiPct),
+              profitPct: Number(result.data.profit_target_pct ?? result.data.profit_pct ?? settings.profitPct),
+              salesCommissionPct: Number(result.data.sales_commission_pct ?? settings.salesCommissionPct),
+              supervisorBonusPct: Number(result.data.supervisor_bonus_pct ?? settings.supervisorBonusPct),
+              reservePct: Number(result.data.reserve_pct ?? settings.reservePct),
+              currency: safeTrim(result.data.currency || settings.currency || 'USD') || 'USD'
+            };
+            saveJson(SETTINGS_KEY, remoteSettings);
+            break;
+          }
+        } catch (_error) {}
+      }
+
+      const brandingAttempts = [];
+      if (businessId) brandingAttempts.push(() => client.from('business_branding').select('*').eq('business_id', businessId).limit(1).maybeSingle());
+      if (userId) brandingAttempts.push(() => client.from('business_branding').select('*').eq('user_id', userId).limit(1).maybeSingle());
+      brandingAttempts.push(() => client.from('business_branding').select('*').eq('is_default', true).limit(1).maybeSingle());
+      brandingAttempts.push(() => client.from('business_branding').select('*').limit(1).maybeSingle());
+
+      let remoteBranding = null;
+      for (const run of brandingAttempts) {
+        try {
+          const result = await run();
+          if (result?.data) {
+            remoteBranding = normalizeBrandingRow(result.data, remoteSettings || settings);
+            saveJson(BRANDING_CACHE_KEY, remoteBranding);
+            break;
+          }
+        } catch (_error) {}
+      }
+
+      fillForm(remoteSettings || settings, remoteBranding || cachedBranding);
+    } catch (_error) {}
+  }
+
+  async function saveBusinessSettings() {
+    const settings = currentFormSettings();
+    const branding = currentFormBranding(settings);
+
+    saveJson(SETTINGS_KEY, settings);
+    saveJson(BRANDING_CACHE_KEY, branding);
+    fillForm(settings, branding);
+    setStatus('Guardando business settings del tenant...', '');
+
+    const client = getSupabaseClient();
+    if (!client?.from) {
+      setStatus('Guardado localmente. Supabase no esta disponible en esta sesion.', '');
+      return;
+    }
+
+    try {
+      const userId = await getCurrentUserId();
+      const businessId = getCurrentBusinessId();
+
+      const ownerPayload = {
+        user_id: userId || undefined,
+        business_id: businessId || undefined,
+        business_name: branding.businessName,
+        company_name: branding.businessName,
+        base_installer_rate: settings.baseInstaller,
+        base_helper_rate: settings.baseHelper,
+        pricing_mode: settings.pricingMode,
+        hours_per_day: settings.hoursPerDay,
+        overhead_monthly: settings.overheadMonthly,
+        std_hours: settings.stdHours,
+        billable_hours_month: settings.stdHours,
+        workers_comp_pct: settings.wcPct,
+        fica_pct: settings.ficaPct,
+        futa_pct: settings.futaPct,
+        ca_sui_pct: settings.casuiPct,
+        profit_target_pct: settings.profitPct,
+        profit_pct: settings.profitPct,
+        sales_commission_pct: settings.salesCommissionPct,
+        supervisor_bonus_pct: settings.supervisorBonusPct,
+        reserve_pct: settings.reservePct,
+        currency: settings.currency,
+        updated_at: new Date().toISOString()
+      };
+
+      const brandingPayload = {
+        user_id: userId || undefined,
+        business_id: businessId || undefined,
+        business_name: branding.businessName,
+        company_name: branding.businessName,
+        business_email: branding.businessEmail,
+        email: branding.businessEmail,
+        business_phone: branding.businessPhone,
+        phone: branding.businessPhone,
+        business_address: branding.businessAddress,
+        address: branding.businessAddress,
+        logo_url: branding.logoUrl,
+        public_logo_url: branding.logoUrl,
+        accent_color: branding.accentHex,
+        service_line: branding.serviceLine,
+        market_line: branding.marketLine,
+        signature_line: branding.signatureLine,
+        updated_at: new Date().toISOString(),
+        is_default: true
+      };
+
+      const ownerConflict = businessId ? 'business_id' : (userId ? 'user_id' : undefined);
+      const brandingConflict = businessId ? 'business_id' : (userId ? 'user_id' : undefined);
+
+      const ownerQuery = client.from('owner_settings').upsert(ownerPayload, ownerConflict ? { onConflict: ownerConflict } : undefined);
+      const brandingQuery = client.from('business_branding').upsert(brandingPayload, brandingConflict ? { onConflict: brandingConflict } : undefined);
+
+      const [ownerResult, brandingResult] = await Promise.all([ownerQuery, brandingQuery]);
+
+      if (ownerResult?.error) throw ownerResult.error;
+      if (brandingResult?.error) throw brandingResult.error;
+
+      setStatus('Business settings y branding guardados en modo multitenant.', 'success');
+    } catch (error) {
+      setStatus('Guardado localmente, pero Supabase devolvio error: ' + (error?.message || 'unknown error'), 'error');
+    }
+  }
+
+  function bindLivePreview() {
+    const watchedIds = [
+      'bizNameOwner', 'businessEmail', 'businessPhone', 'businessAddress', 'publicLogoUrl',
+      'publicAccentColor', 'serviceLine', 'marketLine', 'signatureLine', 'baseInstaller',
+      'baseHelper', 'pricingMode', 'hoursPerDay', 'overheadMonthly', 'stdHours', 'wcPct',
+      'ficaPct', 'futaPct', 'casuiPct', 'profitPct', 'salesCommissionPct', 'supervisorBonusPct'
+    ];
+
+    watchedIds.forEach(function (id) {
+      const node = document.getElementById(id);
+      if (!node) return;
+      node.addEventListener('input', function () {
+        const settings = currentFormSettings();
+        const branding = currentFormBranding(settings);
+        setCounter('bizNameOwnerCount', branding.businessName || '', 60);
+        renderBrandPreview(branding);
+      });
+      node.addEventListener('change', function () {
+        const settings = currentFormSettings();
+        const branding = currentFormBranding(settings);
+        setCounter('bizNameOwnerCount', branding.businessName || '', 60);
+        renderBrandPreview(branding);
+      });
+    });
+  }
+
+  document.getElementById('btnSaveBusinessSettings')?.addEventListener('click', function (event) {
+    event.preventDefault();
+    saveBusinessSettings();
+  });
+
+  document.getElementById('btnReloadBusinessSettings')?.addEventListener('click', function (event) {
+    event.preventDefault();
+    loadBusinessSettings();
+    setStatus('Business settings recargados.', '');
+  });
+
+  bindLivePreview();
+  loadBusinessSettings();
+})();
+</script>
 </body>
 </html>
-
