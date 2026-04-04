@@ -889,7 +889,7 @@
         safeLines.slice(1).forEach((line) => {
           const lineParts = doc.splitTextToSize(line, 190);
           doc.text(lineParts, right, headerY, { align: 'right' });
-          headerY += Math.max(14, lineParts.length * 12);
+          headerY += Math.max(14, (Array.isArray(lineParts) ? lineParts.length : 1) * 12);
         });
       }
     }
@@ -979,9 +979,9 @@
 
     const businessHeaderLines = [
       businessName,
+      businessAddress || marketLine,
       businessPhone,
-      businessEmail,
-      businessAddress || marketLine
+      businessEmail
     ].filter(Boolean);
     drawHeaderRight(businessHeaderLines);
 
