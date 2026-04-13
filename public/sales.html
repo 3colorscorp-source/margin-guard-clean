@@ -2102,7 +2102,14 @@ async function openSellerSendModal(event) {
         depositFormatted: formatUsd(rowDeposit)
       };
 
-      const rebuiltPdf = (await buildEstimatePdfPayload(pdfPayloadWithLink)) || pdf;
+      const rebuiltPdf = await buildEstimatePdfPayload(pdfPayloadWithLink);
+
+if (!rebuiltPdf || !rebuiltPdf.contentBase64) {
+  console.error('PDF rebuild failed — tenant data not applied');
+  throw new Error('PDF generation failed after publish');
+}
+
+modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
 
       if (sendStatus) {
         sendStatus.style.display = 'block';
