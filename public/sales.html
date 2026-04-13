@@ -1063,109 +1063,91 @@
   const buttonFill = [37, 99, 235];
   const buttonFillGreen = [22, 163, 74];
 
-  const businessName = String(
-    data.businessName ||
-    data.business_name ||
-    data.company_name ||
-    data.companyName ||
-    data.tenantName ||
-    data.tenant_name ||
-    data.businessDisplayName ||
-    (data.branding && (
-      data.branding.businessName ||
-      data.branding.business_name ||
-      data.branding.company_name
-    )) ||
-    (data.settings && (
-      data.settings.businessName ||
-      data.settings.business_name ||
-      data.settings.company_name
-    )) ||
-    'Business Name'
-  ).trim();
+  /** Tenant / business identity only — never use generic data.email, data.phone, or data.address (client fields). */
+  function pickTenantString(...candidates) {
+    for (let i = 0; i < candidates.length; i += 1) {
+      const v = candidates[i];
+      if (v !== undefined && v !== null && String(v).trim() !== '') {
+        return String(v).trim();
+      }
+    }
+    return '';
+  }
 
-  const preparedBy = String(
-    data.preparedBy ||
-    data.prepared_by ||
-    data.owner_name ||
-    data.email_signature_name ||
-    data.user_name ||
-    data.business_owner ||
-    (data.branding && (
-      data.branding.preparedBy ||
-      data.branding.prepared_by ||
-      data.branding.owner_name ||
-      data.branding.email_signature_name
-    )) ||
-    (data.settings && (
-      data.settings.preparedBy ||
-      data.settings.prepared_by ||
-      data.settings.owner_name ||
-      data.settings.email_signature_name
-    )) ||
-    ''
-  ).trim();
+  const branding =
+    data.branding && typeof data.branding === 'object' ? data.branding : null;
+  const settings =
+    data.settings && typeof data.settings === 'object' ? data.settings : null;
 
-  const businessPhone = String(
-    data.businessPhone ||
-    data.business_phone ||
-    data.phone ||
-    data.company_phone ||
-    (data.branding && (
-      data.branding.businessPhone ||
-      data.branding.business_phone ||
-      data.branding.phone
-    )) ||
-    (data.settings && (
-      data.settings.businessPhone ||
-      data.settings.business_phone ||
-      data.settings.phone
-    )) ||
-    ''
-  ).trim();
+  const businessName = pickTenantString(
+    data.businessName,
+    data.business_name,
+    data.company_name,
+    data.companyName,
+    branding?.businessName,
+    branding?.business_name,
+    branding?.company_name,
+    branding?.bizName,
+    branding?.brand_name,
+    branding?.legal_name,
+    settings?.bizName,
+    settings?.businessName,
+    settings?.companyName
+  );
 
-  const businessEmail = String(
-    data.businessEmail ||
-    data.business_email ||
-    data.email ||
-    data.company_email ||
-    (data.branding && (
-      data.branding.businessEmail ||
-      data.branding.business_email ||
-      data.branding.email
-    )) ||
-    (data.settings && (
-      data.settings.businessEmail ||
-      data.settings.business_email ||
-      data.settings.email
-    )) ||
-    ''
-  ).trim();
+  const preparedBy = pickTenantString(
+    data.preparedBy,
+    data.prepared_by,
+    branding?.email_signature_name,
+    branding?.preparedBy,
+    branding?.prepared_by,
+    settings?.email_signature_name,
+    settings?.preparedBy,
+    settings?.prepared_by
+  );
 
-  const businessServiceArea = String(
-    data.businessServiceArea ||
-    data.business_service_area ||
-    data.businessAddress ||
-    data.business_address ||
-    data.address ||
-    data.service_area ||
-    data.company_address ||
-    (data.branding && (
-      data.branding.businessServiceArea ||
-      data.branding.business_service_area ||
-      data.branding.businessAddress ||
-      data.branding.business_address ||
-      data.branding.address
-    )) ||
-    (data.settings && (
-      data.settings.businessServiceArea ||
-      data.settings.business_service_area ||
-      data.settings.businessAddress ||
-      data.settings.business_address ||
-      data.settings.address
-    )) ||
-    ''
-  ).trim();
+  const businessPhone = pickTenantString(
+    data.businessPhone,
+    data.business_phone,
+    branding?.businessPhone,
+    branding?.business_phone,
+    branding?.phone,
+    branding?.contact_phone,
+    settings?.businessPhone,
+    settings?.business_phone,
+    settings?.phone
+  );
+
+  const businessEmail = pickTenantString(
+    data.businessEmail,
+    data.business_email,
+    branding?.businessEmail,
+    branding?.business_email,
+    branding?.email,
+    branding?.support_email,
+    branding?.contact_email,
+    branding?.reply_to_email,
+    settings?.businessEmail,
+    settings?.business_email,
+    settings?.email
+  );
+
+  const businessServiceArea = pickTenantString(
+    data.businessServiceArea,
+    data.business_service_area,
+    data.businessAddress,
+    data.business_address,
+    data.company_address,
+    branding?.businessAddress,
+    branding?.business_address,
+    branding?.address,
+    branding?.mailing_address,
+    branding?.office_address,
+    settings?.businessAddress,
+    settings?.business_address,
+    settings?.address,
+    settings?.companyAddress
+  );
 
   const clientName = String(
     data.clientName ||
@@ -1668,11 +1650,134 @@
   };
 }
 
+  function pickFirstNonEmpty(...candidates) {
+    for (let i = 0; i < candidates.length; i += 1) {
+      const v = candidates[i];
+      if (v !== undefined && v !== null && String(v).trim() !== '') {
+        return String(v).trim();
+      }
+    }
+    return '';
+  }
+
+  /**
+   * Maps Business Settings / tenant branding + mg_settings into stable PDF/send fields.
+   * Priority: branding > settings > base (existing payload).
+   */
+  function buildEstimateTenantPayload(branding, settings, base) {
+    const b = branding && typeof branding === 'object' ? branding : {};
+    const s = settings && typeof settings === 'object' ? settings : {};
+    const e = base && typeof base === 'object' ? base : {};
+
+    const businessName = pickFirstNonEmpty(
+      b.businessName,
+      b.business_name,
+      b.company_name,
+      b.bizName,
+      b.brand_name,
+      s.bizName,
+      s.businessName,
+      s.companyName,
+      e.businessName
+    );
+
+    const businessPhone = pickFirstNonEmpty(
+      b.businessPhone,
+      b.business_phone,
+      b.contact_phone,
+      s.businessPhone,
+      s.phone,
+      e.businessPhone
+    );
+
+    const businessEmail = pickFirstNonEmpty(
+      b.businessEmail,
+      b.business_email,
+      b.support_email,
+      b.contact_email,
+      b.reply_to_email,
+      s.businessEmail,
+      s.email,
+      e.businessEmail
+    );
+
+    const businessAddress = pickFirstNonEmpty(
+      b.businessAddress,
+      b.business_address,
+      b.mailing_address,
+      b.office_address,
+      s.businessAddress,
+      s.address,
+      s.companyAddress,
+      e.businessAddress
+    );
+
+    const businessServiceArea = pickFirstNonEmpty(
+      e.businessServiceArea,
+      b.businessServiceArea,
+      b.business_service_area,
+      businessAddress,
+      e.businessAddress
+    );
+
+    const preparedBy = pickFirstNonEmpty(
+      e.preparedBy,
+      b.email_signature_name,
+      b.preparedBy,
+      b.prepared_by,
+      s.email_signature_name,
+      s.preparedBy,
+      s.prepared_by
+    );
+
+    const serviceLine = pickFirstNonEmpty(
+      b.serviceLine,
+      b.service_line,
+      s.serviceLine,
+      s.service_line,
+      e.serviceLine
+    );
+
+    const signatureLine = pickFirstNonEmpty(
+      b.signatureLine,
+      b.signature_line,
+      s.signatureLine,
+      s.signature_line,
+      e.signatureLine
+    );
+
+    const accentHex =
+      pickFirstNonEmpty(
+        b.accentHex,
+        b.accent_color,
+        b.brand_color,
+        s.publicAccentColor,
+        s.accentHex,
+        e.accentHex
+      ) || '#8f8a5f';
+
+    const accentRgb = hexToRgbTuple(accentHex, [143, 138, 95]);
+
+    return {
+      businessName,
+      businessPhone,
+      businessEmail,
+      businessAddress,
+      businessServiceArea,
+      preparedBy,
+      serviceLine: serviceLine || 'Professional Service Estimate',
+      signatureLine: signatureLine || 'Professional Estimate Delivery',
+      accentHex,
+      accentRgb
+    };
+  }
+
 async function fillSendModal() {
     const state = loadSalesState();
     const settings = loadSettings();
     const metrics = calculateStandaloneSalesMetrics(state, settings);
-    const branding = await getBranding();
+    const branding = await getBranding(true);
+    const tenantPdf = buildEstimateTenantPayload(branding, settings, {});
     const estimateNumber = document.getElementById('salesEstimateNumber')?.value || state.estimateNumber || 'EST-1001';
     const issueDate = document.getElementById('salesIssueDate')?.value || state.issueDate || '';
     const expirationDate = document.getElementById('salesExpirationDate')?.value || state.expirationDate || '';
@@ -1719,23 +1824,18 @@ async function fillSendModal() {
       'Once approved, you’ll be able to complete your project start investment online.',
       '',
       'Thank you,',
-      branding.businessName || settings.bizName || settings.businessName || settings.companyName || '\u2014',
-      branding.businessAddress || settings.businessAddress || settings.address || settings.companyAddress || '',
-      branding.businessPhone || settings.businessPhone || settings.phone || '',
-      branding.businessEmail || settings.businessEmail || settings.email || ''
+      tenantPdf.businessName || '\u2014',
+      tenantPdf.businessAddress || '',
+      tenantPdf.businessPhone || '',
+      tenantPdf.businessEmail || ''
     ].filter((line, index) => line || index < 13).join('\n');
 
     const payload = {
-      businessName: branding.businessName || settings.bizName || settings.businessName || settings.companyName || '',
-      businessPhone: branding.businessPhone || settings.businessPhone || settings.phone || '',
-      businessEmail: branding.businessEmail || settings.businessEmail || settings.email || '',
-      businessAddress: branding.businessAddress || settings.businessAddress || settings.address || settings.companyAddress || '',
-      logoUrl: branding.logoUrl || settings.publicLogoUrl || '',
-      accentHex: branding.accentHex || '#8f8a5f',
-      accentRgb: hexToRgbTuple(branding.accentHex || '#8f8a5f', [143, 138, 95]),
-      serviceLine: branding.serviceLine || 'Professional Service Estimate',
-      marketLine: branding.marketLine || '',
-      signatureLine: branding.signatureLine || 'Professional Estimate Delivery',
+      ...tenantPdf,
+      branding,
+      settings,
+      logoUrl: pickFirstNonEmpty(branding.logoUrl, branding.logo_url, settings.publicLogoUrl),
+      marketLine: branding.marketLine || settings.marketLine || '',
       estimateNumber,
       projectName,
       clientName,
@@ -1856,7 +1956,7 @@ async function openSellerSendModal(event) {
     const metrics = calculateStandaloneSalesMetrics(state, settings);
     const payload = JSON.parse(modal.dataset.payload || '{}');
     const pdf = JSON.parse(modal.dataset.pdf || '{}');
-    const branding = await getBranding();
+    const branding = await getBranding(true);
 
     const toEmail = (document.getElementById('toEmail')?.value || '').trim();
     const toName = (document.getElementById('toName')?.value || '').trim();
@@ -1959,33 +2059,40 @@ async function openSellerSendModal(event) {
       const rowDeposit =
         Number(savedRow?.deposit_required ?? payload.depositRequired ?? depositRequired) || 0;
 
+      const savedTenantOverlay = {};
+      if (savedName) {
+        savedTenantOverlay.businessName = savedName;
+        savedTenantOverlay.business_name = savedName;
+      }
+      if (savedPhone) {
+        savedTenantOverlay.businessPhone = savedPhone;
+        savedTenantOverlay.business_phone = savedPhone;
+      }
+      if (savedEmail) {
+        savedTenantOverlay.businessEmail = savedEmail;
+        savedTenantOverlay.business_email = savedEmail;
+      }
+      if (savedAddr) {
+        savedTenantOverlay.businessAddress = savedAddr;
+        savedTenantOverlay.business_address = savedAddr;
+      }
+
+      const tenantForRebuild = buildEstimateTenantPayload(
+        { ...branding, ...savedTenantOverlay },
+        settings,
+        payload
+      );
+
       const pdfPayloadWithLink = {
         ...payload,
+        ...tenantForRebuild,
+        branding,
+        settings,
         customerEmail: toEmail || payload.customerEmail || state.customerEmail || '',
         customerPhone,
         clientEmail: toEmail || payload.customerEmail || state.customerEmail || '',
         clientPhone: customerPhone,
         location: projectAddress,
-        businessName:
-          savedName ||
-          branding.businessName ||
-          payload.businessName ||
-          settings.bizName ||
-          settings.businessName ||
-          settings.companyName ||
-          '',
-        businessPhone:
-          savedPhone || branding.businessPhone || payload.businessPhone || settings.businessPhone || settings.phone || '',
-        businessEmail:
-          savedEmail || branding.businessEmail || payload.businessEmail || settings.businessEmail || settings.email || '',
-        businessAddress:
-          savedAddr ||
-          branding.businessAddress ||
-          payload.businessAddress ||
-          settings.businessAddress ||
-          settings.address ||
-          settings.companyAddress ||
-          '',
         marketLine: branding.marketLine || payload.marketLine || '',
         messageText: messageWithLink,
         publicQuoteUrl,
