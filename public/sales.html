@@ -1043,416 +1043,563 @@
   }
 
   async function buildEstimatePdfPayload(data) {
-    const jspdf = window.jspdf;
-    if (!jspdf?.jsPDF) return null;
+  const jspdf = window.jspdf;
+  if (!jspdf?.jsPDF) return null;
 
-    const doc = new jspdf.jsPDF({ unit: 'pt', format: 'letter' });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const left = 40;
-    const right = pageWidth - 40;
-    const contentWidth = right - left;
-    const bottom = pageHeight - 48;
-    const accent = Array.isArray(data.accentRgb) && data.accentRgb.length === 3 ? data.accentRgb : [143, 138, 95];
-    const accentSoft = accent.map((c) => Math.min(255, Math.round(Number(c) * 0.22 + 198)));
-    const textDark = [17, 24, 39];
-    const textMuted = [75, 85, 99];
-    const lineSoft = [229, 231, 235];
-    const panelFill = [248, 249, 251];
-    let y = 48;
+  const doc = new jspdf.jsPDF({ unit: 'pt', format: 'letter' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
 
-    function ensureSpace(heightNeeded) {
-      if (y + heightNeeded <= bottom) return;
-      doc.addPage();
-      y = 48;
+  const left = 40;
+  const right = pageWidth - 40;
+  const contentWidth = right - left;
+  const top = 50;
+  const bottom = 48;
+
+  const textDark = [0, 0, 0];
+  const textMuted = [55, 65, 81];
+  const lineSoft = [156, 163, 175];
+  const panelFill = [255, 255, 255];
+  const buttonFill = [37, 99, 235];
+  const buttonFillGreen = [22, 163, 74];
+
+  const businessName = String(
+    data.businessName ||
+    data.business_name ||
+    data.company_name ||
+    data.companyName ||
+    'BUSINESS NAME'
+  ).trim();
+
+  const preparedBy = String(
+    data.preparedBy ||
+    data.prepared_by ||
+    data.owner_name ||
+    data.email_signature_name ||
+    data.user_name ||
+    ''
+  ).trim();
+
+  const businessPhone = String(
+    data.businessPhone ||
+    data.business_phone ||
+    ''
+  ).trim();
+
+  const businessEmail = String(
+    data.businessEmail ||
+    data.business_email ||
+    ''
+  ).trim();
+
+  const businessServiceArea = String(
+    data.businessServiceArea ||
+    data.business_service_area ||
+    data.businessAddress ||
+    data.business_address ||
+    data.service_area ||
+    ''
+  ).trim();
+
+  const clientName = String(
+    data.clientName ||
+    data.client_name ||
+    data.customer_name ||
+    ''
+  ).trim();
+
+  const projectName = String(
+    data.projectName ||
+    data.project_name ||
+    ''
+  ).trim();
+
+  const projectAddress = String(
+    data.projectAddress ||
+    data.project_address ||
+    data.location ||
+    ''
+  ).trim();
+
+  const clientPhone = String(
+    data.clientPhone ||
+    data.client_phone ||
+    data.customerPhone ||
+    ''
+  ).trim();
+
+  const clientEmail = String(
+    data.clientEmail ||
+    data.client_email ||
+    data.customerEmail ||
+    data.customer_email ||
+    ''
+  ).trim();
+
+  const estimateNo = String(
+    data.estimateNumber ||
+    data.estimate_no ||
+    data.quoteNumber ||
+    data.quote_number ||
+    data.id ||
+    ''
+  ).trim();
+
+  const preparedOn = String(
+    data.preparedOn ||
+    data.prepared_on ||
+    data.sentOn ||
+    data.sent_on ||
+    data.created_at_formatted ||
+    ''
+  ).trim();
+
+  const validThrough = String(
+    data.validThrough ||
+    data.valid_through ||
+    data.expires_on ||
+    data.expiresOn ||
+    ''
+  ).trim();
+
+  const totalAmtNum = Number(
+    data.totalAmount ??
+    data.total_amount ??
+    data.total ??
+    0
+  );
+
+  const depositAmtNum = Number(
+    data.depositRequired ??
+    data.deposit_required ??
+    data.deposit ??
+    0
+  );
+
+  const balanceAmtNum = Math.max(0, totalAmtNum - depositAmtNum);
+
+  const money = (n) => {
+    try {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD'
+      }).format(Number(n || 0));
+    } catch (_e) {
+      return `$${Number(n || 0).toFixed(2)}`;
+    }
+  };
+
+  const fullAmount = String(data.totalFormatted || money(totalAmtNum)).trim();
+  const depositAmount = String(data.depositFormatted || money(depositAmtNum)).trim();
+  const balanceAfterDeposit = money(balanceAmtNum);
+
+  const scopeItems = (() => {
+    const raw =
+      data.scopeItems ||
+      data.scope_of_work ||
+      data.scopeOfWork ||
+      data.scopeSummary ||
+      data.scope_summary ||
+      data.messageText ||
+      data.message_to_client ||
+      '';
+
+    if (Array.isArray(raw)) {
+      return raw.map(v => String(v || '').trim()).filter(Boolean);
     }
 
-    function drawSectionTitle(title) {
-      ensureSpace(26);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.setTextColor(...accent);
-      doc.text(String(title || '').toUpperCase(), left, y);
-      y += 5;
-      doc.setDrawColor(...accentSoft);
-      doc.setLineWidth(0.75);
-      doc.line(left, y, right, y);
-      doc.setLineWidth(0.35);
-      y += 16;
-      doc.setTextColor(...textDark);
-    }
+    return String(raw || '')
+      .split(/\r?\n+/)
+      .map(v => v.replace(/^[\-\u2022\s]+/, '').trim())
+      .filter(Boolean);
+  })();
 
-    function drawFieldColumn(label, value, x, maxWidth) {
-      const safeValue = String(value || '-').trim() || '-';
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(...textMuted);
-      doc.text(String(label || '').toUpperCase(), x, y);
-      y += 11;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10.5);
-      doc.setTextColor(...textDark);
-      const lines = doc.splitTextToSize(safeValue, maxWidth);
-      doc.text(lines, x, y);
-      y += Math.max(16, lines.length * 12 + 2);
-    }
+  const approvePayUrl = String(
+    data.payment_link ||
+    data.paymentLink ||
+    data.publicQuoteUrl ||
+    data.public_quote_url ||
+    ''
+  ).trim();
 
-    function scopeParagraphsFromInput(value) {
-      const raw = String(value || '').replace(/\r/g, '\n').trim();
-      if (!raw) {
-        return [
-          'Professional installation and finish for the agreed project areas.',
-          'Surface preparation and detailing as required for a quality result.',
-          'Final walkthrough and cleanup for project handoff.'
-        ];
-      }
-      const chunks = raw.split(/\n{2,}/).map((c) => c.trim()).filter(Boolean);
-      if (chunks.length) return chunks;
-      return raw.split('\n').map((l) => l.replace(/^[\-•\s]+/, '').trim()).filter(Boolean);
-    }
+  const publicQuoteUrl = String(
+    data.publicQuoteUrl ||
+    data.public_quote_url ||
+    ''
+  ).trim();
 
-    function drawScopeBlocks(docRef, paragraphs, x0, x1, cw, bottomLimit, startY) {
-      let yy = startY;
-      const lineH = 12.8;
-      const paraGap = 12;
-      const barW = 3.5;
-      const textInset = 12;
-      const textW = cw - barW - textInset - 4;
-      const padTop = 10;
-      docRef.setFont('helvetica', 'normal');
-      docRef.setFontSize(10.5);
-      docRef.setTextColor(...textDark);
+  const exclusionsInitialsUrl = String(
+    data.exclusionsInitialsUrl ||
+    data.exclusions_initials_url ||
+    (publicQuoteUrl ? `${publicQuoteUrl}${publicQuoteUrl.includes('#') ? '' : '#'}exclusions` : '')
+  ).trim();
 
-      paragraphs.forEach((para, idx) => {
-        const lines = docRef.splitTextToSize(para, textW);
-        const innerH = lines.length * lineH;
-        const barH = innerH + padTop + 6;
-        let guard = 0;
-        while (yy + barH > bottomLimit && guard < 6) {
-          docRef.addPage();
-          yy = 48;
-          guard += 1;
-        }
-        docRef.setFillColor(...accentSoft);
-        docRef.rect(x0, yy, barW, barH, 'F');
-        docRef.setDrawColor(...lineSoft);
-        docRef.setFillColor(...panelFill);
-        docRef.rect(x0 + barW, yy, cw - barW, barH, 'FD');
-        docRef.text(lines, x0 + barW + textInset, yy + padTop + 9);
-        yy += barH + (idx < paragraphs.length - 1 ? paraGap : 0);
-      });
-      return yy;
-    }
+  const addonRequestUrl = String(
+    data.addonRequestUrl ||
+    data.add_on_request_url ||
+    (publicQuoteUrl ? `${publicQuoteUrl}${publicQuoteUrl.includes('#') ? '' : '#'}add-on-request` : '')
+  ).trim();
 
-    const estimateNumber = String(data.estimateNumber || 'EST-1001').trim();
-    const businessName = String(data.businessName || '').trim();
-    const businessPhone = String(data.businessPhone || '').trim();
-    const businessEmail = String(data.businessEmail || '').trim();
-    const businessAddress = String(data.businessAddress || '').trim();
-    const serviceLine = String(data.serviceLine || 'Professional Service Estimate').trim();
-    const marketLine = String(data.marketLine || '').trim();
-    const projectName = String(data.projectName || 'Project').trim();
-    const clientName = String(data.clientName || 'Client').trim();
-    const clientEmail = String(data.customerEmail || data.clientEmail || '').trim();
-    const clientPhone = String(data.customerPhone || data.clientPhone || '').trim();
-    const projectAddress = String(data.location || '-').trim() || '-';
-    const issueDateLong = String(data.issueDateLong || formatLongDate(data.issueDate) || '-').trim();
-    const expirationDateLong = String(data.expirationDateLong || formatLongDate(data.expirationDate) || '-').trim();
-    const totalFormatted = String(data.totalFormatted || formatUsd(data.totalAmount || 0)).trim();
-    const depositFormatted = String(data.depositFormatted || formatUsd(data.depositRequired || 1000)).trim();
-    const scopeParagraphs = scopeParagraphsFromInput(
-      data.scopeSummary || data.scopeOfWork || data.messageToClient || data.messageText || ''
-    );
+  let y = top;
 
-    const logoUrl = String(data.logoUrl || '').trim();
-    const headerTop = 50;
-    const logoBox = 54;
-    const headerRightRail = 108;
-    let textColLeft = left + 6;
-    let headerBottom = headerTop;
+  function ensureSpace(heightNeeded) {
+    if (y + heightNeeded <= pageHeight - bottom) return;
+    doc.addPage();
+    y = top;
+  }
 
-    doc.setFillColor(...accent);
-    doc.rect(0, 0, pageWidth, 4, 'F');
-
-    let logoLoaded = null;
-    if (logoUrl) {
-      logoLoaded = await fetchLogoDataUrlForEstimatePdf(logoUrl);
-      if (logoLoaded?.dataUrl) {
-        textColLeft = left + 10 + logoBox + 14;
-      }
-    }
-
-    const headerTextW = Math.max(80, right - textColLeft - headerRightRail);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(17);
-    const nameLines = doc.splitTextToSize(businessName || '\u2014', headerTextW);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    const svcLines = doc.splitTextToSize(
-      serviceLine || 'Professional Service Estimate',
-      headerTextW
-    );
-    let tyCalc = headerTop + 2 + 8 + nameLines.length * 14 + (svcLines.length ? 4 + svcLines.length * 11 : 0);
-    doc.setFontSize(9);
-    [businessAddress, businessPhone, businessEmail]
-      .map((x) => String(x || '').trim())
-      .filter(Boolean)
-      .forEach((line) => {
-        const parts = doc.splitTextToSize(line, right - textColLeft - 14);
-        tyCalc += parts.length * 10.5 + 2;
-      });
-    headerBottom = Math.max(headerTop + logoBox + 18, tyCalc + 4);
-    const headerPanelH = Math.max(92, headerBottom - 36 + 10);
-
-    doc.setFillColor(...panelFill);
-    doc.setDrawColor(...lineSoft);
-    doc.rect(left, 36, contentWidth, headerPanelH, 'FD');
-
-    if (logoLoaded?.dataUrl) {
-      const m = String(logoLoaded.mime || '').toLowerCase();
-      const fmt = m.includes('png') ? 'PNG' : m.includes('webp') ? 'WEBP' : 'JPEG';
-      try {
-        doc.addImage(logoLoaded.dataUrl, fmt, left + 10, headerTop - 4, logoBox, logoBox);
-      } catch (_e) {}
-    }
-
-    let ty = headerTop + 2;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(17);
+  function drawSectionTitle(title) {
+    ensureSpace(28);
     doc.setTextColor(...textDark);
-    doc.text(nameLines, textColLeft, ty + 8);
-    ty += 8 + nameLines.length * 14;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(...accent);
-    doc.text(svcLines, textColLeft, ty);
-    ty += svcLines.length ? svcLines.length * 11 + 4 : 0;
-    doc.setFontSize(9);
-    doc.setTextColor(...textMuted);
-    [businessAddress, businessPhone, businessEmail]
-      .map((x) => String(x || '').trim())
-      .filter(Boolean)
-      .forEach((line) => {
-        const parts = doc.splitTextToSize(line, right - textColLeft - 14);
-        doc.text(parts, textColLeft, ty);
-        ty += parts.length * 10.5 + 2;
-      });
-    headerBottom = Math.max(headerTop + logoBox + 18, ty + 4);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(...textMuted);
-    let railY = headerTop + 10;
-    if (marketLine) {
-      const mLines = doc.splitTextToSize(marketLine, headerRightRail - 8);
-      mLines.forEach((ln) => {
-        doc.text(ln, right - 10, railY, { align: 'right' });
-        railY += 9;
-      });
-      railY += 4;
-    }
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(...textMuted);
-    doc.text('ESTIMATE', right - 10, railY, { align: 'right' });
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
-    doc.setTextColor(...accent);
-    doc.text(estimateNumber, right - 10, railY + 14, { align: 'right' });
-
-    y = headerBottom + 8;
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(20);
-    doc.setTextColor(...textDark);
-    doc.text('Project Estimate', left, y);
-    y += 18;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(...textMuted);
-    const introOne = doc.splitTextToSize(
-      'Thank you for the opportunity to be considered for your project. This estimate is prepared for your review.',
-      contentWidth
-    );
-    doc.text(introOne, left, y);
-    y += introOne.length * 12 + 14;
-
-    drawSectionTitle('Client & project');
-    const detailTop = y;
-    const colGap = 14;
-    const halfW = (contentWidth - colGap) / 2;
-    const colL = left;
-    const colR = left + halfW + colGap;
-    const panelH = 156;
-
-    doc.setFillColor(...panelFill);
+    doc.text(String(title || '').toUpperCase(), left, y);
+    y += 6;
     doc.setDrawColor(...lineSoft);
-    doc.rect(colL, detailTop - 6, halfW, panelH, 'FD');
-    doc.rect(colR, detailTop - 6, halfW, panelH, 'FD');
-
-    y = detailTop + 8;
-    drawFieldColumn('Client', clientName, colL + 10, halfW - 20);
-    let colLeftY = y;
-
-    y = detailTop + 8;
-    drawFieldColumn('Project', projectName, colR + 10, halfW - 20);
-    let colRightY = y;
-
-    y = colLeftY;
-    drawFieldColumn('Client email', clientEmail, colL + 10, halfW - 20);
-    colLeftY = y;
-
-    y = colRightY;
-    drawFieldColumn('Project address', projectAddress, colR + 10, halfW - 20);
-    colRightY = y;
-
-    y = colLeftY;
-    drawFieldColumn('Client phone', clientPhone, colL + 10, halfW - 20);
-    colLeftY = y;
-
-    y = Math.max(colLeftY, colRightY, detailTop + panelH);
-
-    drawSectionTitle('Project Investment');
-    const invTop = y;
-    const totalAmtNum = Number(data.totalAmount);
-    const depAmtNum = Number(data.depositRequired);
-    const balanceAfterFormatted = formatUsd(
-      Number.isFinite(totalAmtNum) && Number.isFinite(depAmtNum)
-        ? round2(Math.max(0, totalAmtNum - depAmtNum))
-        : 0
-    );
-    const valueSizePrimary =
-      totalFormatted.length > 16 || depositFormatted.length > 16 ? 18 : 23;
-    const valueSizeBalance = Math.max(16, valueSizePrimary - 2);
-    const invPanelH = 126;
-    const invLx = left + 10;
-    const invRx = right - 10;
-    ensureSpace(invPanelH + 28);
-
-    doc.setFillColor(...panelFill);
-    doc.setDrawColor(...lineSoft);
-    doc.rect(left, invTop - 4, contentWidth, invPanelH, 'FD');
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(...textMuted);
-    doc.text('FULL AMOUNT', invLx, invTop + 11);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(valueSizePrimary);
-    doc.setTextColor(...textDark);
-    doc.text(totalFormatted, invRx, invTop + 30, { align: 'right' });
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(...textMuted);
-    doc.text('DEPOSIT', invLx, invTop + 44);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(valueSizePrimary);
-    doc.setTextColor(...textDark);
-    doc.text(depositFormatted, invRx, invTop + 63, { align: 'right' });
-
-    doc.setDrawColor(...lineSoft);
-    doc.setLineWidth(0.35);
-    doc.line(invLx, invTop + 74, invRx, invTop + 74);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(...textMuted);
-    doc.text('BALANCE AFTER DEPOSIT', invLx, invTop + 86);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(valueSizeBalance);
-    doc.setTextColor(30, 41, 59);
-    doc.text(balanceAfterFormatted, invRx, invTop + 106, { align: 'right' });
-    doc.setTextColor(...textDark);
-
-    y = invTop - 4 + invPanelH + 14;
-
-    drawSectionTitle('Scope of work');
-    y = drawScopeBlocks(doc, scopeParagraphs, left, right, contentWidth, bottom, y);
-
-    y += 8;
-    drawSectionTitle('Estimate details');
-
-    const detailsTop = y;
-    const colW = (contentWidth - 16) / 3;
-    const c1 = left;
-    const c2 = left + colW + 8;
-    const c3 = left + (colW + 8) * 2;
-    let y1 = detailsTop;
-    let y2 = detailsTop;
-    let y3 = detailsTop;
-
-    y = y1;
-    drawFieldColumn('Estimate no.', estimateNumber, c1, colW - 4);
-    y1 = y;
-
-    y = y2;
-    drawFieldColumn('Prepared on', issueDateLong, c2, colW - 4);
-    y2 = y;
-
-    y = y3;
-    drawFieldColumn('Valid through', expirationDateLong, c3, colW - 4);
-    y3 = y;
-
-    y = Math.max(y1, y2, y3) + 4;
-
-    drawSectionTitle('Next step');
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(...textMuted);
-    const nextStepLines = doc.splitTextToSize(
-      'When you are ready to move forward, approve this estimate online to reserve your project and complete the project start investment.',
-      contentWidth
-    );
-    doc.text(nextStepLines, left, y);
-    y += nextStepLines.length * 12 + 16;
-
-    const approvalHref = String(
-      data.payment_link || data.paymentLink || data.publicQuoteUrl || data.public_quote_url || ''
-    ).trim();
-    if (approvalHref) {
-      ensureSpace(36);
-      const btnLabel = 'APPROVE PROJECT & PAY DEPOSIT';
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      const textW = doc.getTextWidth(btnLabel);
-      const btnPadX = 16;
-      const btnH = 22;
-      const btnW = Math.min(contentWidth - 8, textW + btnPadX * 2);
-      const btnX = left + (contentWidth - btnW) / 2;
-      const btnTop = y;
-      doc.setFillColor(28, 28, 28);
-      doc.rect(btnX, btnTop, btnW, btnH, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.text(btnLabel, btnX + btnW / 2, btnTop + 14, { align: 'center' });
-      try {
-        doc.link(btnX, btnTop, btnW, btnH, { url: approvalHref });
-      } catch (_e) {}
-      y = btnTop + btnH + 14;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-      doc.setTextColor(...textMuted);
-    }
-
-    ensureSpace(30);
-    doc.setDrawColor(...lineSoft);
+    doc.setLineWidth(0.75);
     doc.line(left, y, right, y);
-    y += 14;
+    y += 18;
+  }
 
+  function drawWrapped(text, x, width, opts = {}) {
+    const font = opts.font || 'helvetica';
+    const style = opts.style || 'normal';
+    const size = opts.size || 10.5;
+    const leading = opts.leading || 14;
+    const color = opts.color || textDark;
+
+    doc.setFont(font, style);
+    doc.setFontSize(size);
+    doc.setTextColor(...color);
+
+    const lines = doc.splitTextToSize(String(text || ''), width);
+    ensureSpace(lines.length * leading + 4);
+    doc.text(lines, x, y);
+    y += lines.length * leading;
+    return lines.length;
+  }
+
+  function drawBullets(items, x, width) {
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(...textMuted);
-    doc.text((businessName || '\u2014') + '  ·  ' + (serviceLine || 'Professional Service Estimate'), left, y);
-    doc.text(marketLine || 'Estimate workspace', right, y, { align: 'right' });
+    doc.setFontSize(10.5);
     doc.setTextColor(...textDark);
 
-    const base64 = doc.output('datauristring').split(',')[1];
-    return {
-      fileName: 'Estimate-' + estimateNumber + '.pdf',
-      mimeType: 'application/pdf',
-      contentBase64: base64
-    };
+    items.forEach((item) => {
+      const lines = doc.splitTextToSize(`- ${String(item || '').trim()}`, width);
+      ensureSpace(lines.length * 14 + 4);
+      doc.text(lines, x, y);
+      y += lines.length * 14 + 2;
+    });
   }
+
+  function drawCtaButton(x, topY, w, h, label, url, fillColor) {
+    doc.setFillColor(...fillColor);
+    doc.rect(x, topY, w, h, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text(label, x + w / 2, topY + 15, { align: 'center' });
+    if (url) {
+      try {
+        doc.link(x, topY, w, h, { url });
+      } catch (_e) {}
+    }
+  }
+
+  // =========================
+  // PAGE 1 — QUOTE / PROPOSAL
+  // =========================
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.setTextColor(...textDark);
+  doc.text(businessName || 'BUSINESS NAME', left, y);
+
+  const subY = y + 24;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(12);
+  doc.setTextColor(...textMuted);
+  doc.text('Professional Tile Installation Proposal', left, subY);
+
+  let bizY = subY + 18;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  doc.setTextColor(...textDark);
+
+  [
+    preparedBy ? `Prepared by: ${preparedBy}` : '',
+    businessPhone ? `Phone: ${businessPhone}` : '',
+    businessEmail ? `Email: ${businessEmail}` : '',
+    businessServiceArea ? `Address / Service Area: ${businessServiceArea}` : ''
+  ].filter(Boolean).forEach((line) => {
+    doc.text(line, left, bizY);
+    bizY += 14;
+  });
+
+  const rightX = pageWidth * 0.58;
+  let rightY = y + 6;
+
+  [
+    clientName ? `Client: ${clientName}` : '',
+    projectName ? `Project: ${projectName}` : '',
+    projectAddress ? `Project Address: ${projectAddress}` : '',
+    clientPhone ? `Client Phone: ${clientPhone}` : '',
+    clientEmail ? `Client Email: ${clientEmail}` : ''
+  ].filter(Boolean).forEach((line) => {
+    doc.text(line, rightX, rightY);
+    rightY += 14;
+  });
+
+  rightY += 6;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('QUOTE DETAILS', rightX, rightY);
+  rightY += 14;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  [
+    estimateNo ? `Estimate No: ${estimateNo}` : '',
+    preparedOn ? `Prepared On: ${preparedOn}` : '',
+    validThrough ? `Valid Through: ${validThrough}` : ''
+  ].filter(Boolean).forEach((line) => {
+    doc.text(line, rightX, rightY);
+    rightY += 14;
+  });
+
+  const headerBottom = Math.max(bizY, rightY) + 8;
+  doc.setDrawColor(...lineSoft);
+  doc.setLineWidth(0.8);
+  doc.line(left, headerBottom, right, headerBottom);
+
+  y = headerBottom + 24;
+
+  drawSectionTitle('Scope of Work');
+  drawBullets(scopeItems.length ? scopeItems : ['Scope details will appear here.'], left, contentWidth);
+
+  y += 8;
+  drawSectionTitle('Project Investment');
+
+  const invTop = y;
+  const invH = 110;
+  const invLx = left + 12;
+  const invRx = right - 12;
+
+  ensureSpace(invH + 24);
+
+  doc.setFillColor(...panelFill);
+  doc.setDrawColor(...lineSoft);
+  doc.rect(left, invTop, contentWidth, invH, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...textMuted);
+  doc.text('FULL AMOUNT', invLx, invTop + 14);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(12);
+  doc.setTextColor(...textDark);
+  doc.text(fullAmount, invRx, invTop + 30, { align: 'right' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...textMuted);
+  doc.text('DEPOSIT', invLx, invTop + 44);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(12);
+  doc.setTextColor(...textDark);
+  doc.text(depositAmount, invRx, invTop + 60, { align: 'right' });
+
+  doc.setDrawColor(...lineSoft);
+  doc.line(invLx, invTop + 70, invRx, invTop + 70);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...textMuted);
+  doc.text('BALANCE AFTER DEPOSIT', invLx, invTop + 84);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(12);
+  doc.setTextColor(...textDark);
+  doc.text(balanceAfterDeposit, invRx, invTop + 100, { align: 'right' });
+
+  y = invTop + invH + 10;
+
+  drawSectionTitle('Next Step');
+  drawWrapped(
+    'To secure your project schedule, approve this proposal and complete the initial deposit.',
+    left,
+    contentWidth
+  );
+  y += 14;
+
+  if (approvePayUrl) {
+    const btnLabel = 'APPROVE PROJECT & PAY DEPOSIT';
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    const textW = doc.getTextWidth(btnLabel);
+    const btnW = textW + 36;
+    const btnH = 24;
+    const btnX = left + (contentWidth - btnW) / 2;
+    const btnY = y;
+
+    drawCtaButton(btnX, btnY, btnW, btnH, btnLabel, approvePayUrl, buttonFill);
+  }
+
+  // =========================
+  // PAGE 2 — EXCLUSIONS
+  // =========================
+  doc.addPage();
+  y = 60;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(...textDark);
+  doc.text('SCOPE CLARIFICATIONS & EXCLUSIONS', pageWidth / 2, y, { align: 'center' });
+  y += 28;
+
+  y += drawWrapped(
+    'This proposal includes only the work specifically described in the written Scope of Work. Any labor, materials, repairs, corrections, finishes, demolition, preparation, hauling, waterproofing, framing, plumbing, electrical, or additional work not explicitly written in this proposal is not included unless added by written change order.',
+    left,
+    contentWidth
+  ) * 0;
+  y += 14;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...textDark);
+  doc.text('EXCLUSIONS', left, y);
+  y += 18;
+
+  drawBullets([
+    'Any work not specifically written in the Scope of Work',
+    'Hidden conditions behind walls, floors, or existing finishes',
+    'Repairs to framing, plumbing, electrical, or structural issues unless written',
+    'Additional prep discovered after demolition unless written',
+    'Material upgrades, design changes, or layout changes unless written',
+    'Haul-away, patching, painting, texture, or finish work unless written',
+    'Waterproofing, membranes, trims, niches, specialty cuts, or custom details unless written',
+    'Permit fees, inspections, engineering, or third-party costs unless written',
+    'Any assumption by client or contractor not supported in writing'
+  ], left, contentWidth);
+
+  y += 8;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...textDark);
+  doc.text('ACKNOWLEDGMENT', left, y);
+  y += 18;
+
+  drawWrapped(
+    'Client acknowledges that only the written scope is included. No additional work should be assumed unless it is clearly written in this proposal or added by signed change order.',
+    left,
+    contentWidth
+  );
+  y += 22;
+
+  const boxX = left;
+  const boxY = y;
+  const boxW = contentWidth;
+  const boxH = 98;
+
+  doc.setDrawColor(...textDark);
+  doc.setLineWidth(1);
+  doc.rect(boxX, boxY, boxW, boxH);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...textDark);
+  doc.text('CLIENT ACKNOWLEDGMENT REQUIRED', pageWidth / 2, boxY + 20, { align: 'center' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  const calloutLines = doc.splitTextToSize(
+    'To confirm understanding of scope exclusions and non-included work, review and initial digitally using the secure link below.',
+    boxW - 36
+  );
+  doc.text(calloutLines, boxX + 18, boxY + 40);
+
+  if (exclusionsInitialsUrl) {
+    const btn2Label = 'REVIEW EXCLUSIONS & INITIAL DIGITALLY';
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    const textW2 = doc.getTextWidth(btn2Label);
+    const btn2W = textW2 + 40;
+    const btn2H = 24;
+    const btn2X = left + (contentWidth - btn2W) / 2;
+    const btn2Y = boxY + 64;
+
+    drawCtaButton(btn2X, btn2Y, btn2W, btn2H, btn2Label, exclusionsInitialsUrl, buttonFill);
+  }
+
+  // =========================
+  // PAGE 3 — ADDITIONAL WORK
+  // =========================
+  doc.addPage();
+  y = 60;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(...textDark);
+  doc.text('REQUEST ADDITIONAL WORK', pageWidth / 2, y, { align: 'center' });
+  y += 28;
+
+  drawWrapped(
+    'If you would like to add work to your current project, please submit your request using the secure link below. All requests will be reviewed by the project supervisor or business owner before any work is approved.',
+    left,
+    contentWidth
+  );
+  y += 16;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...textDark);
+  doc.text('HOW IT WORKS', left, y);
+  y += 18;
+
+  drawBullets([
+    'Submit your request with a clear description of the additional work',
+    'Our team will review feasibility and scope',
+    'You will receive a separate quote or add-on proposal',
+    'No additional work will begin without written approval'
+  ], left, contentWidth);
+
+  y += 8;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...textDark);
+  doc.text('IMPORTANT', left, y);
+  y += 18;
+
+  drawWrapped(
+    'All additional work must be approved through a separate written quote. Verbal requests or assumptions will not be considered part of the original agreement.',
+    left,
+    contentWidth
+  );
+  y += 24;
+
+  if (addonRequestUrl) {
+    const btn3Label = 'SUBMIT ADDITIONAL WORK REQUEST';
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    const textW3 = doc.getTextWidth(btn3Label);
+    const btn3W = textW3 + 42;
+    const btn3H = 26;
+    const btn3X = left + (contentWidth - btn3W) / 2;
+    const btn3Y = y;
+
+    drawCtaButton(btn3X, btn3Y, btn3W, btn3H, btn3Label, addonRequestUrl, buttonFillGreen);
+  }
+
+  const base64 = doc.output('datauristring').split(',')[1];
+  return {
+    fileName: `Estimate-${estimateNo || 'Quote'}.pdf`,
+    mimeType: 'application/pdf',
+    contentBase64: base64
+  };
+}
 
 async function fillSendModal() {
     const state = loadSalesState();
