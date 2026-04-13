@@ -55,7 +55,7 @@ exports.handler = async (event) => {
       return json(400, { error: "Invalid token" });
     }
 
-    const path = `quotes?public_token=eq.${encodeURIComponent(trimmed)}&select=${QUOTE_SELECT}&limit=2`;
+    const path = `quotes?public_token=eq.${encodeURIComponent(trimmed)}&tenant_id=not.is.null&select=${QUOTE_SELECT}&limit=2`;
 
     let rows;
     try {
@@ -91,13 +91,22 @@ exports.handler = async (event) => {
   }
 };
 
+const QUOTE_NUMERIC_KEYS = new Set(["total", "deposit_required"]);
+
 function pickPublicEstimateFields(row) {
   const keys = QUOTE_SELECT.split(",");
   const out = {};
   for (const k of keys) {
-    if (Object.prototype.hasOwnProperty.call(row, k)) {
-      out[k] = row[k];
+    if (!Object.prototype.hasOwnProperty.call(row, k)) {
+      continue;
     }
+    const v = row[k];
+    if (QUOTE_NUMERIC_KEYS.has(k)) {
+      const n = Number(v);
+      out[k] = Number.isFinite(n) ? n : 0;
+      continue;
+    }
+    out[k] = v === null || v === undefined ? "" : String(v);
   }
   return out;
 }

@@ -1312,35 +1312,60 @@
 
     y = Math.max(colLeftY, colRightY, detailTop + panelH);
 
-    drawSectionTitle('Project investment');
+    drawSectionTitle('Project Investment');
     const invTop = y;
-    const invGap = 12;
-    const invW = (contentWidth - invGap) / 2;
-    const invH = 58;
-    ensureSpace(invH + 28);
+    const totalAmtNum = Number(data.totalAmount);
+    const depAmtNum = Number(data.depositRequired);
+    const balanceAfterFormatted = formatUsd(
+      Number.isFinite(totalAmtNum) && Number.isFinite(depAmtNum)
+        ? round2(Math.max(0, totalAmtNum - depAmtNum))
+        : 0
+    );
+    const valueSizePrimary =
+      totalFormatted.length > 16 || depositFormatted.length > 16 ? 18 : 23;
+    const valueSizeBalance = Math.max(16, valueSizePrimary - 2);
+    const invPanelH = 126;
+    const invLx = left + 10;
+    const invRx = right - 10;
+    ensureSpace(invPanelH + 28);
 
     doc.setFillColor(...panelFill);
     doc.setDrawColor(...lineSoft);
-    doc.rect(left, invTop - 4, invW, invH, 'FD');
-    doc.rect(left + invW + invGap, invTop - 4, invW, invH, 'FD');
+    doc.rect(left, invTop - 4, contentWidth, invPanelH, 'FD');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(...textMuted);
-    doc.text('TOTAL INVESTMENT', left + 10, invTop + 12);
-    doc.text('PROJECT START INVESTMENT', left + invW + invGap + 10, invTop + 12);
-
-    const amtMaxW = invW - 22;
+    doc.text('FULL AMOUNT', invLx, invTop + 11);
     doc.setFont('helvetica', 'bold');
+    doc.setFontSize(valueSizePrimary);
     doc.setTextColor(...textDark);
-    doc.setFontSize(totalFormatted.length > 16 || depositFormatted.length > 16 ? 18 : 23);
-    doc.text(totalFormatted, left + invW - 10, invTop + 42, { align: 'right', maxWidth: amtMaxW });
-    doc.text(depositFormatted, left + invW + invGap + invW - 10, invTop + 42, {
-      align: 'right',
-      maxWidth: amtMaxW
-    });
+    doc.text(totalFormatted, invRx, invTop + 30, { align: 'right' });
 
-    y = invTop + invH + 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...textMuted);
+    doc.text('DEPOSIT', invLx, invTop + 44);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(valueSizePrimary);
+    doc.setTextColor(...textDark);
+    doc.text(depositFormatted, invRx, invTop + 63, { align: 'right' });
+
+    doc.setDrawColor(...lineSoft);
+    doc.setLineWidth(0.35);
+    doc.line(invLx, invTop + 74, invRx, invTop + 74);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...textMuted);
+    doc.text('BALANCE AFTER DEPOSIT', invLx, invTop + 86);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(valueSizeBalance);
+    doc.setTextColor(30, 41, 59);
+    doc.text(balanceAfterFormatted, invRx, invTop + 106, { align: 'right' });
+    doc.setTextColor(...textDark);
+
+    y = invTop - 4 + invPanelH + 14;
 
     drawSectionTitle('Scope of work');
     y = drawScopeBlocks(doc, scopeParagraphs, left, right, contentWidth, bottom, y);

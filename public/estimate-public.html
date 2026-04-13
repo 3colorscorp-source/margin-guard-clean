@@ -99,6 +99,28 @@
       height: 14px;
       opacity: .9;
     }
+
+    .paid-whats-next {
+      margin-top: 4px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(255,255,255,.1);
+    }
+
+    .paid-whats-next .eyebrow {
+      margin-bottom: 12px;
+    }
+
+    .paid-next-list {
+      margin: 0;
+      padding-left: 1.15em;
+      opacity: .92;
+      line-height: 1.55;
+      font-size: 14px;
+    }
+
+    .paid-next-list li + li {
+      margin-top: 8px;
+    }
   </style>
 </head>
 <body>
@@ -122,9 +144,10 @@
           </div>
           <div class="card estimate-subcard">
             <div class="card-inner">
-              <div class="eyebrow">Totals</div>
-              <div class="sum-row"><span>Total</span><strong id="publicEstimateTotal">$0.00</strong></div>
+              <div class="eyebrow">Investment</div>
+              <div class="sum-row"><span>Full Amount</span><strong id="publicEstimateTotal">$0.00</strong></div>
               <div class="sum-row"><span>Deposit</span><strong id="publicEstimateDeposit">$0.00</strong></div>
+              <div class="sum-row"><span>Balance After Deposit</span><strong id="publicEstimateBalanceAfter">$0.00</strong></div>
             </div>
           </div>
         </div>
@@ -159,14 +182,18 @@
         <section class="approved-panel" id="approvedProjectPanel" aria-live="polite">
           <div class="approved-panel-inner">
             <div class="approved-kicker">Approved</div>
-            <h3 class="approved-title"><span class="approved-check">✅</span>Project approved. Let’s get to work.</h3>
+            <h3 class="approved-title"><span class="approved-check">✅</span>Project approved. Secure your schedule.</h3>
             <p class="approved-copy">
-              We’ve received your approval and your project can now move to the next step.
+              Your approval has been received. Complete the deposit to reserve your project start date.
             </p>
-            <p class="approved-next-step">Next Step: Secure your project start with the required deposit.</p>
+            <p class="approved-next-step">Secure your project start with the required deposit.</p>
 
             <div class="approved-actions">
               <button class="btn primary" type="button" id="payDepositBtn">Pay Project Deposit</button>
+            </div>
+
+            <div class="deposit-note">
+              Your deposit reserves your project start date and is applied toward the final invoice.
             </div>
 
             <div class="deposit-secure">
@@ -175,23 +202,26 @@
               </svg>
               Secure payment powered by Stripe
             </div>
-
-            <div class="deposit-note">
-              Required deposit to reserve your project start date. Applied toward final invoice.
-            </div>
           </div>
         </section>
 
         <section class="paid-panel" id="paidProjectPanel" aria-live="polite">
           <div class="paid-panel-inner">
-            <div class="paid-kicker">Deposit Paid</div>
-            <h3 class="paid-title"><span class="paid-check">🔒</span>Project secured. Your deposit has been received.</h3>
+            <h3 class="paid-title"><span class="paid-check">🔒</span>Project secured. Deposit received.</h3>
             <p class="paid-copy">
-              Your project deposit is confirmed and your estimate is now secured for the next step.
+              Your deposit has been confirmed and your project is now reserved for the next step.
             </p>
-            <p class="paid-next-step">Next Step: Our team can now move forward with scheduling and project coordination.</p>
 
-            <div class="paid-actions">
+            <div class="paid-whats-next">
+              <div class="eyebrow">What happens next?</div>
+              <ul class="paid-next-list">
+                <li>We will contact you within 24 hours</li>
+                <li>Scheduling will begin</li>
+                <li>Materials coordination (if applicable)</li>
+              </ul>
+            </div>
+
+            <div class="paid-actions" style="margin-top:18px;">
               <a class="btn primary" href="/">Return to Home</a>
             </div>
 

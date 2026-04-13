@@ -3904,6 +3904,31 @@ function renderSupervisor() {
     const invoice = getProjectInvoiceState(project);
     const metrics = calcInvoice(project, report, invoice);
     const settings = loadSettings();
+
+    let quoteIdFromSales = "";
+    let publicQuoteTokenFromSales = "";
+    try {
+      const salesRaw = localStorage.getItem("mg_sales_v2");
+      if (salesRaw) {
+        const sales = JSON.parse(salesRaw);
+        quoteIdFromSales = nonEmptyString(sales?.quoteId);
+        const pqUrl = nonEmptyString(sales?.publicQuoteUrl);
+        if (pqUrl) {
+          const m = pqUrl.match(/[?&]token=([^&]+)/);
+          if (m && m[1]) {
+            try {
+              publicQuoteTokenFromSales = decodeURIComponent(m[1]);
+            } catch (_e) {
+              publicQuoteTokenFromSales = m[1];
+            }
+          }
+        }
+      }
+    } catch (_e) {
+      quoteIdFromSales = "";
+      publicQuoteTokenFromSales = "";
+    }
+
     const payload = {
       public_token: invoice.publicToken || "",
       invoice_no: nonEmptyString(invoice.invoiceNo, `INV-${Date.now()}`),
@@ -3924,6 +3949,16 @@ function renderSupervisor() {
       currency: settings.currency === "$" ? "USD" : settings.currency,
       status: String(invoice.status || "draft").toUpperCase()
     };
+    const hasQuoteLink = Boolean(quoteIdFromSales || publicQuoteTokenFromSales);
+    if (quoteIdFromSales) {
+      payload.quote_id = quoteIdFromSales;
+    }
+    if (publicQuoteTokenFromSales) {
+      payload.public_quote_token = publicQuoteTokenFromSales;
+    }
+    if (!hasQuoteLink) {
+      payload.standalone_invoice = true;
+    }
 
     const response = await fetch("/.netlify/functions/publish-public-invoice", {
       method: "POST",

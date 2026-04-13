@@ -151,17 +151,20 @@
           Approved
         </div>
         <div style="font-size:24px;font-weight:700;line-height:1.2;margin-bottom:8px;">
-          ✅ Project approved. Let’s get to work.
+          ✅ Project approved. Secure your schedule.
         </div>
-        <div style="opacity:.9;margin-bottom:14px;">
-          We’ve received your approval and your project can now move to the next step.
+        <div style="opacity:.9;margin-bottom:12px;">
+          Your approval has been received. Complete the deposit to reserve your project start date.
         </div>
         <div style="font-weight:600;margin-bottom:14px;">
-          Next Step: Move forward with your project investment.
+          Secure your project start with the required deposit.
         </div>
         <button id="btnBeginProjectInvestment" class="btn btn-primary" type="button">
           Begin Project Investment
         </button>
+        <div style="font-size:12px;opacity:.75;margin-top:12px;line-height:1.5;">
+          Your deposit reserves your project start date and is applied toward the final invoice.
+        </div>
       </div>
     `;
 
@@ -315,14 +318,23 @@
   }
 
   function renderTotals(next) {
+    const cur = next.currency;
+    const totalNum = Number(next.total);
+    const depNum = Number(next.deposit_required);
+    const t = Number.isFinite(totalNum) ? totalNum : 0;
+    const d = Number.isFinite(depNum) ? depNum : 0;
+    const balanceAfter = Math.max(0, t - d);
+
     if ($("publicEstimateTotal")) {
-      $("publicEstimateTotal").textContent =
-        money(next.total, next.currency);
+      $("publicEstimateTotal").textContent = money(next.total, cur);
     }
 
     if ($("publicEstimateDeposit")) {
-      $("publicEstimateDeposit").textContent =
-        money(next.deposit_required, next.currency);
+      $("publicEstimateDeposit").textContent = money(next.deposit_required, cur);
+    }
+
+    if ($("publicEstimateBalanceAfter")) {
+      $("publicEstimateBalanceAfter").textContent = money(balanceAfter, cur);
     }
   }
 

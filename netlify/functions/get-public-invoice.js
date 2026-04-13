@@ -29,13 +29,22 @@ const INVOICE_SELECT = [
   "notes"
 ].join(",");
 
+const INVOICE_NUMERIC_KEYS = new Set(["amount", "paid_amount", "balance_due"]);
+
 function pickPublicInvoiceFields(row) {
   const keys = INVOICE_SELECT.split(",");
   const out = {};
   for (const k of keys) {
-    if (Object.prototype.hasOwnProperty.call(row, k)) {
-      out[k] = row[k];
+    if (!Object.prototype.hasOwnProperty.call(row, k)) {
+      continue;
     }
+    const v = row[k];
+    if (INVOICE_NUMERIC_KEYS.has(k)) {
+      const n = Number(v);
+      out[k] = Number.isFinite(n) ? n : 0;
+      continue;
+    }
+    out[k] = v === null || v === undefined ? "" : String(v);
   }
   return out;
 }
@@ -61,7 +70,7 @@ exports.handler = async (event) => {
       return json(400, { error: "Invalid token" });
     }
 
-    const path = `invoices?public_token=eq.${encodeURIComponent(trimmed)}&select=${INVOICE_SELECT}&limit=2`;
+    const path = `invoices?public_token=eq.${encodeURIComponent(trimmed)}&tenant_id=not.is.null&select=${INVOICE_SELECT}&limit=2`;
 
     let rows;
     try {

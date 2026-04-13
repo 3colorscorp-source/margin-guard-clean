@@ -1,5 +1,7 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
+const { loadTenantDisplayForTenantId } = require("./_lib/tenant-display");
+const { makePublicToken } = require("./_lib/public-token");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -12,10 +14,6 @@ function json(statusCode, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   };
-}
-
-function makeToken(prefix = "qt") {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function pickFirst(...values) {
@@ -85,7 +83,10 @@ exports.handler = async (event) => {
     );
     const tenant = Array.isArray(tenantRows) ? tenantRows[0] : null;
     if (!tenant?.id) {
-      return json(404, { error: "Tenant not found. Run bootstrap first." });
+      return json(422, {
+        error:
+          "Cannot publish quote: missing tenant_id for this account. Run bootstrap-tenant before publishing."
+      });
     }
 
     const supabaseUrl =
@@ -98,13 +99,42 @@ exports.handler = async (event) => {
 
     const body = parseBody(event.body);
 
+    const clientTenantId = body.tenant_id ?? body.tenantId;
+    if (
+      clientTenantId != null &&
+      clientTenantId !== "" &&
+      String(clientTenantId) !== String(tenant.id)
+    ) {
+      return json(403, { error: "tenant_id does not match the signed-in account." });
+    }
+
+    const tenantDisplay = await loadTenantDisplayForTenantId(tenant.id);
+
+    let publicToken = pickFirst(body.public_token, body.publicToken);
+    if (publicToken) {
+      let existing = [];
+      try {
+        existing = await supabaseRequest(
+          `quotes?public_token=eq.${encodeURIComponent(publicToken)}&select=id`
+        );
+      } catch (_e) {
+        existing = [];
+      }
+      if (Array.isArray(existing) && existing.length > 0) {
+        return json(409, {
+          error:
+            "This public_token is already in use. Omit public_token to generate a new secure token."
+        });
+      }
+    } else {
+      publicToken = makePublicToken("qt");
+    }
+
     const total =
       Number(body.total ?? body.recommended_total ?? body.recommendedTotal ?? 0) || 0;
 
     const depositRequired =
       Number(body.deposit_required ?? body.depositRequired ?? 1000) || 0;
-
-    const publicToken = pickFirst(body.public_token, body.publicToken) || makeToken("qt");
 
     const projectName = pickFirst(
       body.project_name,
@@ -206,23 +236,31 @@ exports.handler = async (event) => {
       body.business_name,
       body.businessName,
       body.company_name,
-      body.companyName
+      body.companyName,
+      tenantDisplay.business_name
     );
-    const businessEmail = pickFirst(body.business_email, body.businessEmail);
+    const businessEmail = pickFirst(
+      body.business_email,
+      body.businessEmail,
+      tenantDisplay.business_email
+    );
     const businessPhone = pickFirst(
       body.business_phone,
       body.businessPhone,
       body.company_phone,
-      body.companyPhone
+      body.companyPhone,
+      tenantDisplay.business_phone
     );
     const businessAddress = pickFirst(
       body.business_address,
       body.businessAddress,
       body.company_address,
-      body.companyAddress
+      body.companyAddress,
+      tenantDisplay.business_address
     );
 
     const basePayload = {
+      tenant_id: tenant.id,
       project_name: projectName,
       title,
       client_name: clientName,
@@ -235,11 +273,11 @@ exports.handler = async (event) => {
       terms,
       payment_link: paymentLink,
       public_token: publicToken,
-      business_name: businessName,
-      company_name: businessName,
-      business_email: businessEmail,
-      business_phone: businessPhone,
-      business_address: businessAddress
+      business_name: businessName || "",
+      company_name: businessName || "",
+      business_email: businessEmail || "",
+      business_phone: businessPhone || "",
+      business_address: businessAddress || ""
     };
 
     const payloadVariants = [
@@ -298,6 +336,13 @@ exports.handler = async (event) => {
     if (!quoteId) {
       return json(500, {
         error: "Quote was created but no quote id was returned by Supabase."
+      });
+    }
+
+    if (String(row?.tenant_id || "") !== String(tenant.id)) {
+      return json(500, {
+        error:
+          "Quote was stored without valid tenant scope (tenant_id mismatch). Refusing to return a public URL."
       });
     }
 

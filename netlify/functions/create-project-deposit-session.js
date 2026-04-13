@@ -76,7 +76,20 @@ exports.handler = async (event) => {
     );
     const quote = Array.isArray(quoteRows) ? quoteRows[0] : null;
     if (!quote) {
-      return json(404, { error: "Quote not found" });
+      return json(404, { error: "Quote not found for this public link." });
+    }
+
+    if (!quote.id) {
+      return json(400, {
+        error: "Quote record is missing an id; cannot create a deposit checkout session."
+      });
+    }
+
+    if (!quote.tenant_id) {
+      return json(400, {
+        error:
+          "Quote is missing tenant scope; republish the estimate from your account."
+      });
     }
 
     const session = readSessionFromEvent(event);
@@ -88,14 +101,26 @@ exports.handler = async (event) => {
       if (!sessionTenant?.id) {
         return json(404, { error: "Tenant not found. Run bootstrap first." });
       }
-      if (quote.tenant_id && quote.tenant_id !== sessionTenant.id) {
+      if (String(quote.tenant_id) !== String(sessionTenant.id)) {
         return json(403, { error: "Forbidden" });
       }
     }
 
+    const dollarsRaw = quote.deposit_required;
+    const dollars = Number(dollarsRaw);
+    if (!Number.isFinite(dollars) || dollars <= 0) {
+      return json(400, {
+        error:
+          "Deposit must be greater than zero on the estimate before starting checkout."
+      });
+    }
+
     const depositCents = depositRequiredToUsdCents(quote.deposit_required);
     if (depositCents == null) {
-      return json(400, { error: "Invalid or missing deposit on quote" });
+      return json(400, {
+        error:
+          "Deposit amount is below the minimum allowed for card checkout ($0.50). Increase deposit_required on the quote."
+      });
     }
 
     const projectName = pickFirst(
@@ -163,6 +188,7 @@ exports.handler = async (event) => {
     form.set("client_reference_id", publicToken);
     form.set("metadata[purpose]", "project_deposit");
     form.set("metadata[quote_id]", String(quote.id || ""));
+    form.set("metadata[tenant_id]", String(quote.tenant_id || ""));
     form.set("metadata[public_token]", publicToken);
     form.set("metadata[project_name]", projectName);
     form.set("metadata[customer_name]", customerName);
