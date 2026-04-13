@@ -52,10 +52,29 @@ exports.handler = async (event) => {
       return json(401, { error: "Unauthorized" });
     }
 
-    const tenants = await supabaseRequest(`tenants?stripe_customer_id=eq.${encodeURIComponent(session.c)}&select=id`);
-    const tenant = Array.isArray(tenants) ? tenants[0] : null;
+    let tenants = await supabaseRequest(
+      `tenants?stripe_customer_id=eq.${encodeURIComponent(session.c)}&select=id,owner_email,stripe_customer_id`
+    );
+    let tenant = Array.isArray(tenants) ? tenants[0] : null;
+
+    if (!tenant?.id && session.e) {
+      const byEmail = await supabaseRequest(
+        `tenants?owner_email=eq.${encodeURIComponent(String(session.e).trim().toLowerCase())}&select=id,owner_email,stripe_customer_id`
+      );
+      tenant = Array.isArray(byEmail) ? byEmail[0] : null;
+
+      if (tenant?.id && session.c && tenant.stripe_customer_id !== session.c) {
+        await supabaseRequest(`tenants?id=eq.${encodeURIComponent(tenant.id)}`, {
+          method: "PATCH",
+          body: {
+            stripe_customer_id: session.c
+          }
+        });
+      }
+    }
+
     if (!tenant?.id) {
-      return json(404, { error: "Tenant not found. Run bootstrap first." });
+      return json(404, { error: "Tenant not found. Run bootstrap first. Revisa la sesion (Stripe) e intenta de nuevo." });
     }
 
     let body = {};
