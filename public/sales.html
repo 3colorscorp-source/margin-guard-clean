@@ -1382,6 +1382,33 @@
     doc.text(nextStepLines, left, y);
     y += nextStepLines.length * 12 + 16;
 
+    const approvalHref = String(
+      data.payment_link || data.paymentLink || data.publicQuoteUrl || data.public_quote_url || ''
+    ).trim();
+    if (approvalHref) {
+      ensureSpace(36);
+      const btnLabel = 'APPROVE PROJECT & PAY DEPOSIT';
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      const textW = doc.getTextWidth(btnLabel);
+      const btnPadX = 16;
+      const btnH = 22;
+      const btnW = Math.min(contentWidth - 8, textW + btnPadX * 2);
+      const btnX = left + (contentWidth - btnW) / 2;
+      const btnTop = y;
+      doc.setFillColor(28, 28, 28);
+      doc.rect(btnX, btnTop, btnW, btnH, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.text(btnLabel, btnX + btnW / 2, btnTop + 14, { align: 'center' });
+      try {
+        doc.link(btnX, btnTop, btnW, btnH, { url: approvalHref });
+      } catch (_e) {}
+      y = btnTop + btnH + 14;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...textMuted);
+    }
+
     ensureSpace(30);
     doc.setDrawColor(...lineSoft);
     doc.line(left, y, right, y);
@@ -1487,7 +1514,8 @@ async function fillSendModal() {
       depositFormatted,
       depositRequired,
       scopeSummary: messageToClient || '-',
-      messageText: defaultMessage
+      messageText: defaultMessage,
+      publicQuoteUrl: String(state.publicQuoteUrl || '').trim()
     };
 
     const subject = document.getElementById('subject');
