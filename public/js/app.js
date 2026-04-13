@@ -664,6 +664,39 @@ Thank you.`
     } catch (_e) {}
   }
 
+  async function ensureTenant() {
+    try {
+      await fetch("/.netlify/functions/bootstrap-tenant", {
+        method: "POST",
+        credentials: "include"
+      });
+    } catch (e) {
+      console.warn("Bootstrap failed silently", e);
+    }
+  }
+
+  function waitForAuthReadyIfNeeded() {
+    if (document.body?.dataset?.requiresAuth !== "true") {
+      return Promise.resolve();
+    }
+    if (document.body.classList.contains("auth-ready")) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const done = () => resolve();
+      const id = setInterval(() => {
+        if (document.body.classList.contains("auth-ready")) {
+          clearInterval(id);
+          done();
+        }
+      }, 50);
+      setTimeout(() => {
+        clearInterval(id);
+        done();
+      }, 5000);
+    });
+  }
+
   function loadHubViewState() {
     return {
       tab: "all",
@@ -5954,6 +5987,8 @@ function renderSupervisor() {
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
+    await waitForAuthReadyIfNeeded();
+    void ensureTenant();
     await initTenantSnapshotBridge();
     render();
   });
