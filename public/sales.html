@@ -1079,21 +1079,31 @@
   const settings =
     data.settings && typeof data.settings === 'object' ? data.settings : null;
 
-  const businessName = pickTenantString(
-    data.businessName,
-    data.business_name,
-    data.company_name,
-    data.companyName,
-    branding?.businessName,
-    branding?.business_name,
-    branding?.company_name,
-    branding?.bizName,
-    branding?.brand_name,
-    branding?.legal_name,
-    settings?.bizName,
-    settings?.businessName,
-    settings?.companyName
-  );
+  const businessName = String(
+    data.businessName ||
+      data.business_name ||
+      data.bizName ||
+      data.biz_name ||
+      data.company_name ||
+      data.companyName ||
+      (data.branding &&
+        (data.branding.businessName ||
+          data.branding.business_name ||
+          data.branding.bizName ||
+          data.branding.biz_name ||
+          data.branding.company_name ||
+          data.branding.companyName)) ||
+      (data.settings &&
+        (data.settings.businessName ||
+          data.settings.business_name ||
+          data.settings.bizName ||
+          data.settings.biz_name ||
+          data.settings.company_name ||
+          data.settings.companyName)) ||
+      data.tenantName ||
+      data.tenant_name ||
+      'Business Name'
+  ).trim();
 
   const preparedBy = pickTenantString(
     data.preparedBy,
@@ -1109,26 +1119,38 @@
   const businessPhone = pickTenantString(
     data.businessPhone,
     data.business_phone,
+    data.bizPhone,
+    data.biz_phone,
     branding?.businessPhone,
     branding?.business_phone,
+    branding?.bizPhone,
+    branding?.biz_phone,
     branding?.phone,
     branding?.contact_phone,
     settings?.businessPhone,
     settings?.business_phone,
+    settings?.bizPhone,
+    settings?.biz_phone,
     settings?.phone
   );
 
   const businessEmail = pickTenantString(
     data.businessEmail,
     data.business_email,
+    data.bizEmail,
+    data.biz_email,
     branding?.businessEmail,
     branding?.business_email,
+    branding?.bizEmail,
+    branding?.biz_email,
     branding?.email,
     branding?.support_email,
     branding?.contact_email,
     branding?.reply_to_email,
     settings?.businessEmail,
     settings?.business_email,
+    settings?.bizEmail,
+    settings?.biz_email,
     settings?.email
   );
 
@@ -1137,14 +1159,20 @@
     data.business_service_area,
     data.businessAddress,
     data.business_address,
+    data.bizAddress,
+    data.biz_address,
     data.company_address,
     branding?.businessAddress,
     branding?.business_address,
+    branding?.bizAddress,
+    branding?.biz_address,
     branding?.address,
     branding?.mailing_address,
     branding?.office_address,
     settings?.businessAddress,
     settings?.business_address,
+    settings?.bizAddress,
+    settings?.biz_address,
     settings?.address,
     settings?.companyAddress
   );
@@ -1353,6 +1381,15 @@
       } catch (_e) {}
     }
   }
+
+  console.log('PDF tenant debug', {
+    businessName,
+    branding: data.branding,
+    settings: data.settings,
+    directBusinessName: data.businessName,
+    directBizName: data.bizName,
+    tenantName: data.tenantName
+  });
 
   // =========================
   // PAGE 1 — QUOTE / PROPOSAL
@@ -1672,50 +1709,80 @@
     const businessName = pickFirstNonEmpty(
       b.businessName,
       b.business_name,
-      b.company_name,
       b.bizName,
-      b.brand_name,
-      s.bizName,
+      b.biz_name,
+      b.companyName,
+      b.company_name,
       s.businessName,
+      s.business_name,
+      s.bizName,
+      s.biz_name,
       s.companyName,
-      e.businessName
+      s.company_name,
+      e.businessName,
+      e.business_name,
+      e.companyName,
+      e.company_name,
+      ''
     );
 
     const businessPhone = pickFirstNonEmpty(
       b.businessPhone,
       b.business_phone,
+      b.bizPhone,
+      b.biz_phone,
       b.contact_phone,
       s.businessPhone,
+      s.business_phone,
+      s.bizPhone,
+      s.biz_phone,
       s.phone,
-      e.businessPhone
+      e.businessPhone,
+      e.business_phone
     );
 
     const businessEmail = pickFirstNonEmpty(
       b.businessEmail,
       b.business_email,
+      b.bizEmail,
+      b.biz_email,
       b.support_email,
       b.contact_email,
       b.reply_to_email,
       s.businessEmail,
+      s.business_email,
+      s.bizEmail,
+      s.biz_email,
       s.email,
-      e.businessEmail
+      e.businessEmail,
+      e.business_email
     );
 
     const businessAddress = pickFirstNonEmpty(
       b.businessAddress,
       b.business_address,
+      b.bizAddress,
+      b.biz_address,
       b.mailing_address,
       b.office_address,
       s.businessAddress,
+      s.business_address,
+      s.bizAddress,
+      s.biz_address,
       s.address,
       s.companyAddress,
-      e.businessAddress
+      e.businessAddress,
+      e.business_address
     );
 
     const businessServiceArea = pickFirstNonEmpty(
       e.businessServiceArea,
       b.businessServiceArea,
       b.business_service_area,
+      b.bizAddress,
+      b.biz_address,
+      s.bizAddress,
+      s.biz_address,
       businessAddress,
       e.businessAddress
     );
