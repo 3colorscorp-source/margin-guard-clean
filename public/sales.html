@@ -1068,7 +1068,20 @@
     data.business_name ||
     data.company_name ||
     data.companyName ||
-    'BUSINESS NAME'
+    data.tenantName ||
+    data.tenant_name ||
+    data.businessDisplayName ||
+    (data.branding && (
+      data.branding.businessName ||
+      data.branding.business_name ||
+      data.branding.company_name
+    )) ||
+    (data.settings && (
+      data.settings.businessName ||
+      data.settings.business_name ||
+      data.settings.company_name
+    )) ||
+    'Business Name'
   ).trim();
 
   const preparedBy = String(
@@ -1077,18 +1090,55 @@
     data.owner_name ||
     data.email_signature_name ||
     data.user_name ||
+    data.business_owner ||
+    (data.branding && (
+      data.branding.preparedBy ||
+      data.branding.prepared_by ||
+      data.branding.owner_name ||
+      data.branding.email_signature_name
+    )) ||
+    (data.settings && (
+      data.settings.preparedBy ||
+      data.settings.prepared_by ||
+      data.settings.owner_name ||
+      data.settings.email_signature_name
+    )) ||
     ''
   ).trim();
 
   const businessPhone = String(
     data.businessPhone ||
     data.business_phone ||
+    data.phone ||
+    data.company_phone ||
+    (data.branding && (
+      data.branding.businessPhone ||
+      data.branding.business_phone ||
+      data.branding.phone
+    )) ||
+    (data.settings && (
+      data.settings.businessPhone ||
+      data.settings.business_phone ||
+      data.settings.phone
+    )) ||
     ''
   ).trim();
 
   const businessEmail = String(
     data.businessEmail ||
     data.business_email ||
+    data.email ||
+    data.company_email ||
+    (data.branding && (
+      data.branding.businessEmail ||
+      data.branding.business_email ||
+      data.branding.email
+    )) ||
+    (data.settings && (
+      data.settings.businessEmail ||
+      data.settings.business_email ||
+      data.settings.email
+    )) ||
     ''
   ).trim();
 
@@ -1097,7 +1147,23 @@
     data.business_service_area ||
     data.businessAddress ||
     data.business_address ||
+    data.address ||
     data.service_area ||
+    data.company_address ||
+    (data.branding && (
+      data.branding.businessServiceArea ||
+      data.branding.business_service_area ||
+      data.branding.businessAddress ||
+      data.branding.business_address ||
+      data.branding.address
+    )) ||
+    (data.settings && (
+      data.settings.businessServiceArea ||
+      data.settings.business_service_area ||
+      data.settings.businessAddress ||
+      data.settings.business_address ||
+      data.settings.address
+    )) ||
     ''
   ).trim();
 
@@ -1312,7 +1378,7 @@
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(20);
   doc.setTextColor(...textDark);
-  doc.text(businessName || 'BUSINESS NAME', left, y);
+  doc.text(businessName, left, y);
 
   const subY = y + 24;
   doc.setFont('helvetica', 'normal');
@@ -1320,17 +1386,19 @@
   doc.setTextColor(...textMuted);
   doc.text('Professional Tile Installation Proposal', left, subY);
 
+  const bizLines = [
+    preparedBy ? `Prepared by: ${preparedBy}` : '',
+    businessPhone ? `Phone: ${businessPhone}` : '',
+    businessEmail ? `Email: ${businessEmail}` : '',
+    businessServiceArea ? `Address / Service Area: ${businessServiceArea}` : ''
+  ].filter(Boolean);
+
   let bizY = subY + 18;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9.5);
   doc.setTextColor(...textDark);
 
-  [
-    preparedBy ? `Prepared by: ${preparedBy}` : '',
-    businessPhone ? `Phone: ${businessPhone}` : '',
-    businessEmail ? `Email: ${businessEmail}` : '',
-    businessServiceArea ? `Address / Service Area: ${businessServiceArea}` : ''
-  ].filter(Boolean).forEach((line) => {
+  bizLines.forEach((line) => {
     doc.text(line, left, bizY);
     bizY += 14;
   });
@@ -1458,11 +1526,10 @@
   doc.text('SCOPE CLARIFICATIONS & EXCLUSIONS', pageWidth / 2, y, { align: 'center' });
   y += 28;
 
-  y += drawWrapped(
-    'This proposal includes only the work specifically described in the written Scope of Work. Any labor, materials, repairs, corrections, finishes, demolition, preparation, hauling, waterproofing, framing, plumbing, electrical, or additional work not explicitly written in this proposal is not included unless added by written change order.',
-    left,
-    contentWidth
-  ) * 0;
+  const exclusionsIntro =
+    'This proposal includes only the work specifically described in the written Scope of Work. Any labor, materials, repairs, corrections, finishes, demolition, preparation, hauling, waterproofing, framing, plumbing, electrical, or additional work not explicitly written in this proposal is not included unless added by written change order.';
+
+  drawWrapped(exclusionsIntro, left, contentWidth);
   y += 14;
 
   doc.setFont('helvetica', 'bold');
