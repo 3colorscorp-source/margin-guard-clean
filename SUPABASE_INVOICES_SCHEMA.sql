@@ -46,12 +46,9 @@ execute function public.set_updated_at();
 
 alter table public.invoices enable row level security;
 
+-- No anon/authenticated policies: public invoice view uses Netlify get-public-invoice.js (service_role).
+
 drop policy if exists "public read invoice by token" on public.invoices;
-create policy "public read invoice by token"
-on public.invoices
-for select
-to anon, authenticated
-using (public_token is not null);
 
 drop policy if exists "service role full access invoices" on public.invoices;
 create policy "service role full access invoices"

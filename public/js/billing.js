@@ -78,7 +78,10 @@
       }
       window.location.href = data.url;
     } catch (err) {
-      error(err.message || "Error abriendo portal");
+      const msg = err.message || "Error abriendo portal";
+      error(msg);
+      const st = $("checkoutStatus");
+      if (st) st.scrollIntoView({ behavior: "smooth", block: "nearest" });
       if (btn) {
         btn.disabled = false;
         btn.textContent = "Ya soy cliente";

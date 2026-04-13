@@ -1,7 +1,5 @@
-const fetch = globalThis.fetch;
-if (!fetch) {
-  throw new Error("Global fetch is not available in this runtime.");
-}
+const { readSessionFromEvent } = require("./_lib/session");
+const { supabaseRequest } = require("./_lib/supabase-admin");
 
 function json(statusCode, body) {
   return {
@@ -17,16 +15,39 @@ exports.handler = async (event) => {
       return json(405, { error: "Method Not Allowed" });
     }
 
-    const supabaseUrl = process.env.SUPABASE_URL || "https://yaagobzgozzozibublmj.supabase.co";
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!serviceRoleKey) {
-      return json(500, { error: "Missing env SUPABASE_SERVICE_ROLE_KEY" });
+    const session = readSessionFromEvent(event);
+    if (!session?.e || !session?.c) {
+      return json(401, { error: "Unauthorized" });
     }
 
-    const body = JSON.parse(event.body || "{}");
+    const tenantRows = await supabaseRequest(
+      `tenants?stripe_customer_id=eq.${encodeURIComponent(session.c)}&select=id`
+    );
+    const tenant = Array.isArray(tenantRows) ? tenantRows[0] : null;
+    if (!tenant?.id) {
+      return json(404, { error: "Tenant not found. Run bootstrap first." });
+    }
+
+    let body = {};
+    try {
+      body = JSON.parse(event.body || "{}");
+    } catch (_err) {
+      return json(400, { error: "Invalid JSON" });
+    }
+
+    const clientTenantId = body.tenant_id ?? body.tenantId;
+    if (
+      clientTenantId != null &&
+      clientTenantId !== "" &&
+      String(clientTenantId) !== String(tenant.id)
+    ) {
+      return json(403, { error: "Forbidden" });
+    }
+
     const publicToken = body.public_token || `inv_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
     const payload = {
+      tenant_id: tenant.id,
       public_token: publicToken,
       invoice_no: body.invoice_no || `INV-${Date.now()}`,
       customer_name: body.customer_name || "",
@@ -47,31 +68,36 @@ exports.handler = async (event) => {
       status: body.status || "OPEN"
     };
 
-    const response = await fetch(`${supabaseUrl}/rest/v1/invoices`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-        Prefer: "resolution=merge-duplicates,return=representation"
-      },
-      body: JSON.stringify(payload)
-    });
-
-    const text = await response.text();
-    if (!response.ok) {
-      return json(502, { error: text || "Supabase write failed" });
+    let inserted;
+    try {
+      inserted = await supabaseRequest("invoices", {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+        body: payload
+      });
+    } catch (err) {
+      return json(502, { error: err.message || "Supabase write failed" });
     }
 
-    const siteUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || "";
-    const baseUrl = siteUrl || "";
-    const publicUrl = `${baseUrl}/invoice-public.html?token=${publicToken}`;
+    const siteUrl = (
+      process.env.URL ||
+      process.env.DEPLOY_PRIME_URL ||
+      process.env.SITE_URL ||
+      ""
+    ).replace(/\/+$/, "");
+
+    const publicUrl = siteUrl
+      ? `${siteUrl}/invoice-public.html?token=${encodeURIComponent(publicToken)}`
+      : `/invoice-public.html?token=${encodeURIComponent(publicToken)}`;
+
+    const row = Array.isArray(inserted) ? inserted[0] : inserted;
 
     return json(200, {
       ok: true,
+      tenant_id: tenant.id,
       public_token: publicToken,
       public_url: publicUrl,
-      raw: text
+      row: row || null
     });
   } catch (err) {
     return json(500, { error: err.message || "Server error" });

@@ -38,10 +38,29 @@
     return tenantApi("/load-tenant-snapshot", { method: "GET" });
   }
 
+  let tenantBrandingPromise = null;
+
+  async function getTenantBranding(options = {}) {
+    const force = Boolean(options.force);
+    if (force) {
+      tenantBrandingPromise = null;
+    }
+    if (!tenantBrandingPromise) {
+      tenantBrandingPromise = tenantApi("/get-tenant-branding", { method: "GET" });
+    }
+    return tenantBrandingPromise;
+  }
+
+  function clearTenantBrandingCache() {
+    tenantBrandingPromise = null;
+  }
+
   window.MarginGuardTenant = {
     bootstrapTenant,
     loadTenantContext,
     saveTenantSnapshot,
-    loadTenantSnapshot
+    loadTenantSnapshot,
+    getTenantBranding,
+    clearTenantBrandingCache
   };
 })();

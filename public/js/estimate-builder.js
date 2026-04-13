@@ -86,9 +86,14 @@
   }
 
   async function loadEstimatePublic() {
+    if (!$("publicEstimateFeedback")) {
+      return;
+    }
+
     const token = getQueryParam("token");
 
     if (!token) {
+      document.title = "Estimate";
       renderEstimateNotFound("Falta token en la URL.");
       return;
     }
@@ -101,6 +106,7 @@
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok || !data?.ok || !data?.estimate) {
+        document.title = "Estimate";
         renderEstimateNotFound(
           data?.error || "El token publico no existe en este navegador o en este tenant."
         );
@@ -109,6 +115,7 @@
 
       renderEstimatePublic(data.estimate);
     } catch (err) {
+      document.title = "Estimate";
       renderEstimateNotFound(err.message || "No se pudo cargar el estimate.");
     }
   }
@@ -175,7 +182,8 @@
     const businessName =
       safe(next.business_name) ||
       safe(next.company_name) ||
-      "Your Business";
+      safe(next.businessName) ||
+      "\u2014";
 
     const businessAddress =
       safe(next.business_address) ||
@@ -211,7 +219,12 @@
       const contactLine = [businessEmail, businessPhone].filter(Boolean).join(" • ");
       if (contactLine) lines.push(contactLine);
 
-      lines.push(`• Expira ${next.expiration_date || "sin fecha"}`);
+      const expLabel =
+        safe(next.expiration_date) ||
+        safe(next.expirationDate) ||
+        safe(next.valid_through) ||
+        "sin fecha";
+      lines.push(`• Expira ${expLabel}`);
 
       metaEl.innerHTML = lines.map((x) => `<div>${x}</div>`).join("");
     }
@@ -343,6 +356,14 @@
     const next = estimate || {};
     const token = getQueryParam("token") || "";
     const currentStatus = String(next.status || "").toLowerCase();
+
+    const bn =
+      safe(next.business_name) ||
+      safe(next.company_name) ||
+      safe(next.businessName) ||
+      "";
+    const proj = safe(next.title || next.project_name) || "Estimate";
+    document.title = bn ? `${bn} — ${proj}` : proj;
 
     renderBusinessHeader(next);
     renderCustomer(next);

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Invoice</title>
+  <title>Margin Guard | Invoice</title>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -324,9 +324,8 @@
     const SUPABASE_URL = "https://yaagobzgozzozibublmj.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlhYWdvYnpnb3p6b3ppYnVibG1qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1NjE3MjgsImV4cCI6MjA4NzEzNzcyOH0.Ogt7cEt3jRiEGtA8-dXXSZyRJtJfZqVfPAErz6cM7aU";
 
-    // Cambia este nombre si quieres otro nombre de negocio visible en la factura
-    const BUSINESS_NAME = "Three Colors Corp";
-    const BUSINESS_SUBTITLE = "Invoice";
+    const TENANT_NAME_FALLBACK = "Invoice";
+    const BUSINESS_SUBTITLE = "Service invoice";
     const SHOW_DEBUG = false;
 
     const invoiceBox = document.getElementById("invoice");
@@ -346,7 +345,7 @@
       invoiceBox.innerHTML = `
         <div class="topbar">
           <div class="brand-block">
-            <h1>${BUSINESS_NAME}</h1>
+            <h1>${TENANT_NAME_FALLBACK}</h1>
             <div class="sub">${BUSINESS_SUBTITLE}</div>
           </div>
         </div>
@@ -454,11 +453,12 @@
         const issueDate = safe(data.issue_date, "—");
         const dueDate = safe(data.due_date, "—");
         const notes = safe(data.notes, "");
+        const brandName = String(data.business_name || "").trim() || TENANT_NAME_FALLBACK;
 
         invoiceBox.innerHTML = `
           <div class="topbar">
             <div class="brand-block">
-              <h1>${BUSINESS_NAME}</h1>
+              <h1>${brandName}</h1>
               <div class="sub">${BUSINESS_SUBTITLE}</div>
             </div>
             <div class="status-pill">${status}</div>
@@ -470,7 +470,7 @@
                 <div class="eyebrow">Invoice</div>
                 <div class="invoice-no">${safe(data.invoice_no, "Invoice")}</div>
                 <div class="small-note">
-                  Issued by ${BUSINESS_NAME}
+                  Issued by ${brandName}
                 </div>
               </div>
 

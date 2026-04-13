@@ -12,7 +12,7 @@
       <div class="brand">
         <div class="logo" aria-hidden="true"><b id="tenantLogoMark">MG</b></div>
         <div>
-          <h1 id="tenantBrandTitle">Margin Guard</h1>
+          <h1>Margin Guard</h1>
           <p id="planStatus">Validando suscripcion...</p>
         </div>
       </div>
@@ -71,7 +71,7 @@
             <div class="form">
               <div class="field">
                 <label>Nombre del negocio</label>
-                <input id="bizNameOwner" maxlength="60" placeholder="Margin Guard Business" />
+                <input id="bizNameOwner" maxlength="60" placeholder="Nombre comercial del negocio" />
                 <div class="hint"><span id="bizNameOwnerCount">0</span>/60</div>
               </div>
               <div class="field">
@@ -145,7 +145,7 @@
             <div class="kpi">
               <div class="kpi-box">
                 <div class="label">Business</div>
-                <div class="value" id="previewBusinessName">Margin Guard Business</div>
+                <div class="value" id="previewBusinessName">—</div>
                 <div class="meta" id="previewBusinessMeta">Sin email ni telefono.</div>
               </div>
               <div class="kpi-box">
@@ -178,6 +178,8 @@
     </div>
   </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/js/mg-supabase-init.js"></script>
 <script src="/js/tenant.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/app.js"></script>
@@ -206,7 +208,7 @@
   };
 
   const DEFAULT_BRANDING = {
-    businessName: 'Margin Guard Business',
+    businessName: '',
     businessEmail: '',
     businessPhone: '',
     businessAddress: '',
@@ -215,7 +217,7 @@
     serviceLine: 'Professional Service Estimate',
     marketLine: '',
     signatureLine: 'Professional Estimate Delivery',
-    initials: 'MG'
+    initials: ''
   };
 
   function safeTrim(value) {
@@ -225,24 +227,13 @@
   function buildInitials(name) {
     const words = safeTrim(name).split(/\s+/).filter(Boolean).slice(0, 2);
     const initials = words.map((word) => word.charAt(0).toUpperCase()).join('');
-    return initials || 'MG';
+    return initials || '';
   }
 
   function buildLocationLine(city, state, region) {
     const regionLine = safeTrim(region);
     if (regionLine) return regionLine;
     return [safeTrim(city), safeTrim(state)].filter(Boolean).join(', ');
-  }
-
-  function splitLocationLine(value) {
-    const raw = safeTrim(value);
-    if (!raw) return { region: '', city: '', state: '' };
-    const parts = raw.split(',').map((v) => v.trim()).filter(Boolean);
-    return {
-      region: raw,
-      city: parts[0] || '',
-      state: parts[1] || ''
-    };
   }
 
   function readJson(key, fallback) {
@@ -281,23 +272,10 @@
     if (node) node.textContent = value == null ? '' : String(value);
   }
 
-  function getSupabaseClient() {
-    return window.supabase || window.sb || window.supabaseClient || null;
-  }
-
-  async function getCurrentUserId() {
-    const client = getSupabaseClient();
-    if (!client?.auth?.getUser) return null;
-    try {
-      const result = await client.auth.getUser();
-      return result?.data?.user?.id || null;
-    } catch (_error) {
-      return null;
-    }
-  }
-
   function normalizeBrandingRow(row, settings) {
     const businessName = safeTrim(
+      row?.businessName ||
+      row?.bizName ||
       row?.business_name ||
       settings?.bizName ||
       DEFAULT_BRANDING.businessName
@@ -305,24 +283,32 @@
 
     const businessEmail = safeTrim(
       row?.business_email ||
+      row?.businessEmail ||
       row?.email_signature_email ||
       ''
     );
 
     const businessPhone = safeTrim(
       row?.business_phone ||
+      row?.businessPhone ||
       row?.email_signature_phone ||
       ''
     );
 
-    const businessAddress = buildLocationLine(
+    const fromParts = buildLocationLine(
       row?.business_city,
       row?.business_state,
       row?.business_region_label
     );
+    const businessAddress = safeTrim(
+      row?.business_address ||
+      row?.businessAddress ||
+      fromParts
+    );
 
     const signatureLine = safeTrim(
       row?.footer_line ||
+      row?.signatureLine ||
       row?.email_signature_name ||
       DEFAULT_BRANDING.signatureLine
     );
@@ -332,10 +318,10 @@
       businessEmail,
       businessPhone,
       businessAddress,
-      logoUrl: safeTrim(row?.logo_url || ''),
-      accentHex: safeTrim(row?.brand_primary_color || DEFAULT_BRANDING.accentHex),
-      serviceLine: safeTrim(row?.service_line || row?.estimate_subtitle || DEFAULT_BRANDING.serviceLine),
-      marketLine: safeTrim(row?.business_region_label || ''),
+      logoUrl: safeTrim(row?.logo_url || row?.logoUrl || ''),
+      accentHex: safeTrim(row?.brand_primary_color || row?.accentHex || DEFAULT_BRANDING.accentHex),
+      serviceLine: safeTrim(row?.service_line || row?.serviceLine || row?.estimate_subtitle || DEFAULT_BRANDING.serviceLine),
+      marketLine: safeTrim(row?.marketLine || row?.business_region_label || ''),
       signatureLine,
       initials: buildInitials(businessName)
     };
@@ -380,13 +366,12 @@
 
   function renderBrandPreview(branding) {
     const previewMeta = [branding.businessPhone, branding.businessEmail, branding.businessAddress].filter(Boolean).join(' | ') || 'Sin email ni telefono.';
-    setText('previewBusinessName', branding.businessName || DEFAULT_BRANDING.businessName);
+    setText('previewBusinessName', safeTrim(branding.businessName) || '—');
     setText('previewBusinessMeta', previewMeta);
     setText('previewAccentHex', branding.accentHex || DEFAULT_BRANDING.accentHex);
     setText('previewSignatureLine', branding.signatureLine || DEFAULT_BRANDING.signatureLine);
-    setText('tenantBrandTitle', branding.businessName || DEFAULT_BRANDING.businessName);
-    setText('tenantLogoMark', branding.initials || 'MG');
-    document.title = (branding.businessName || DEFAULT_BRANDING.businessName) + ' | Business Settings';
+    setText('tenantLogoMark', 'MG');
+    document.title = 'Margin Guard | Business Settings';
     if (branding.accentHex) {
       document.documentElement.style.setProperty('--tenant-accent', branding.accentHex);
     }
@@ -422,56 +407,32 @@
 
   async function loadBusinessSettings() {
     const settings = readJson(SETTINGS_KEY, DEFAULT_SETTINGS);
-    const cachedBranding = normalizeBrandingRow(readJson(BRANDING_CACHE_KEY, DEFAULT_BRANDING), settings);
-    fillForm(settings, cachedBranding);
+    const rawCache = readJson(BRANDING_CACHE_KEY, DEFAULT_BRANDING);
+    let mergedBranding = normalizeBrandingRow(rawCache, settings);
 
-    const client = getSupabaseClient();
-    if (!client?.from) return;
-
-    try {
-      const userId = await getCurrentUserId();
-      if (!userId) return;
-
-      const [ownerResult, brandingResult] = await Promise.all([
-        client.from('owner_settings').select('*').eq('user_id', userId).limit(1).maybeSingle(),
-        client.from('business_branding').select('*').eq('user_id', userId).limit(1).maybeSingle()
-      ]);
-
-      if (ownerResult?.data) {
-        const ownerData = ownerResult.data;
-        const remoteSettings = {
-          bizName: safeTrim(ownerData.business_name || settings.bizName || ''),
-          baseInstaller: Number(ownerData.base_installer_rate ?? settings.baseInstaller),
-          baseHelper: Number(ownerData.base_helper_rate ?? settings.baseHelper),
-          pricingMode: safeTrim(ownerData.pricing_mode || settings.pricingMode || 'hour'),
-          hoursPerDay: Number(ownerData.hours_per_day ?? settings.hoursPerDay),
-          overheadMonthly: Number(ownerData.overhead_monthly ?? settings.overheadMonthly),
-          stdHours: Number(ownerData.std_hours ?? ownerData.billable_hours_month ?? settings.stdHours),
-          wcPct: Number(ownerData.workers_comp_pct ?? settings.wcPct),
-          ficaPct: Number(ownerData.fica_pct ?? settings.ficaPct),
-          futaPct: Number(ownerData.futa_pct ?? settings.futaPct),
-          casuiPct: Number(ownerData.ca_sui_pct ?? settings.casuiPct),
-          profitPct: Number(ownerData.profit_target_pct ?? ownerData.profit_pct ?? settings.profitPct),
-          salesCommissionPct: Number(ownerData.sales_commission_pct ?? settings.salesCommissionPct),
-          supervisorBonusPct: Number(ownerData.supervisor_bonus_pct ?? settings.supervisorBonusPct),
-          reservePct: Number(ownerData.reserve_pct ?? settings.reservePct),
-          currency: safeTrim(ownerData.currency || settings.currency || 'USD')
-        };
-        saveJson(SETTINGS_KEY, remoteSettings);
-        Object.assign(settings, remoteSettings);
-      }
-
-      if (brandingResult?.data) {
-        const remoteBranding = normalizeBrandingRow(brandingResult.data, settings);
-        saveJson(BRANDING_CACHE_KEY, remoteBranding);
-        fillForm(settings, remoteBranding);
-        setStatus('Business settings recargados desde Supabase.', 'success');
-      } else {
-        fillForm(settings, cachedBranding);
-      }
-    } catch (error) {
-      setStatus('No se pudo cargar el branding remoto: ' + (error?.message || 'unknown error'), 'error');
+    if (typeof window.MarginGuardTenant?.getTenantBranding === 'function') {
+      try {
+        window.MarginGuardTenant.clearTenantBrandingCache?.();
+        const { response, data } = await window.MarginGuardTenant.getTenantBranding({ force: true });
+        if (response?.ok && data?.ok && data.branding) {
+          const b = data.branding;
+          mergedBranding = normalizeBrandingRow(
+            {
+              ...rawCache,
+              business_name: b.business_name || rawCache.business_name || rawCache.businessName,
+              business_email: b.business_email || rawCache.business_email,
+              business_phone: b.business_phone || rawCache.business_phone,
+              business_address: b.business_address || rawCache.business_address || rawCache.businessAddress,
+              logo_url: b.logo_url || rawCache.logo_url || rawCache.logoUrl
+            },
+            settings
+          );
+          saveJson(BRANDING_CACHE_KEY, mergedBranding);
+        }
+      } catch (_err) {}
     }
+
+    fillForm(settings, mergedBranding);
   }
 
   async function saveBusinessSettings() {
@@ -481,100 +442,54 @@
     saveJson(SETTINGS_KEY, settings);
     saveJson(BRANDING_CACHE_KEY, branding);
     fillForm(settings, branding);
-    setStatus('Guardando business settings del tenant.', '');
+    setStatus('Guardando en el servidor (snapshot y tenant branding)...', '');
 
-    const client = getSupabaseClient();
-    if (!client?.from) {
-      setStatus('Guardado localmente. Supabase no esta disponible en esta sesion.', 'error');
+    if (!window.MarginGuardTenant?.saveTenantSnapshot) {
+      setStatus(
+        'Error: no se puede guardar en el servidor. Falta el cliente tenant (MarginGuardTenant.saveTenantSnapshot).',
+        'error'
+      );
+      return;
+    }
+
+    const buildPayload =
+      typeof window.__mgBuildTenantSnapshotPayload === 'function'
+        ? window.__mgBuildTenantSnapshotPayload
+        : null;
+    if (!buildPayload) {
+      setStatus(
+        'Error: la app no expuso el payload del tenant. Recarga la pagina (app.js debe cargar antes).',
+        'error'
+      );
       return;
     }
 
     try {
-      const userId = await getCurrentUserId();
-      if (!userId) throw new Error('No authenticated user found.');
-
-      const ownerPayload = {
-        user_id: userId,
-        business_name: branding.businessName,
-        company_name: branding.businessName,
-        base_installer_rate: settings.baseInstaller,
-        base_helper_rate: settings.baseHelper,
-        pricing_mode: settings.pricingMode,
-        hours_per_day: settings.hoursPerDay,
-        overhead_monthly: settings.overheadMonthly,
-        std_hours: settings.stdHours,
-        billable_hours_month: settings.stdHours,
-        workers_comp_pct: settings.wcPct,
-        fica_pct: settings.ficaPct,
-        futa_pct: settings.futaPct,
-        ca_sui_pct: settings.casuiPct,
-        profit_target_pct: settings.profitPct,
-        profit_pct: settings.profitPct,
-        sales_commission_pct: settings.salesCommissionPct,
-        supervisor_bonus_pct: settings.supervisorBonusPct,
-        reserve_pct: settings.reservePct,
-        currency: settings.currency,
-        updated_at: new Date().toISOString()
-      };
-
-      const location = splitLocationLine(branding.businessAddress || branding.marketLine || '');
-
-      const brandingPayload = {
-        user_id: userId,
-        business_name: branding.businessName || '',
-        business_email: branding.businessEmail || '',
-        business_phone: branding.businessPhone || '',
-        logo_url: branding.logoUrl || '',
-        estimate_title: branding.businessName || 'Project Estimate',
-        estimate_subtitle: branding.serviceLine || 'Professional Service Estimate',
-        service_line: branding.serviceLine || '',
-        footer_line: branding.signatureLine || '',
-        brand_primary_color: branding.accentHex || DEFAULT_BRANDING.accentHex,
-        brand_secondary_color: '#0b1220',
-        business_city: location.city || null,
-        business_state: location.state || null,
-        business_region_label: location.region || null,
-        pdf_show_logo: false,
-        pdf_show_footer: true,
-        email_signature_name: branding.businessName || '',
-        email_signature_phone: branding.businessPhone || '',
-        email_signature_email: branding.businessEmail || '',
-        updated_at: new Date().toISOString()
-      };
-
-      console.log('OWNER PAYLOAD =>', ownerPayload);
-      console.log('BRANDING PAYLOAD =>', brandingPayload);
-
-      const ownerResult = await client
-        .from('owner_settings')
-        .upsert(ownerPayload, { onConflict: 'user_id' });
-
-      if (ownerResult?.error) throw ownerResult.error;
-
-      const brandingUpdate = await client
-        .from('business_branding')
-        .update(brandingPayload)
-        .eq('user_id', userId)
-        .select();
-
-      if (brandingUpdate?.error) throw brandingUpdate.error;
-
-      if (!brandingUpdate?.data || brandingUpdate.data.length === 0) {
-        const brandingInsert = await client
-          .from('business_branding')
-          .insert([brandingPayload])
-          .select();
-
-        if (brandingInsert?.error) throw brandingInsert.error;
+      const payload = buildPayload();
+      if (!payload || typeof payload !== 'object') {
+        throw new Error('Payload de snapshot invalido.');
       }
 
-      const finalBranding = normalizeBrandingRow(brandingPayload, settings);
+      const { response, data } = await window.MarginGuardTenant.saveTenantSnapshot(payload);
+      if (!response?.ok) {
+        const msg = data?.error || response.statusText || 'Error del servidor';
+        throw new Error(msg);
+      }
+
+      if (typeof window.MarginGuardTenant.clearTenantBrandingCache === 'function') {
+        window.MarginGuardTenant.clearTenantBrandingCache();
+      }
+
+      const finalBranding = normalizeBrandingRow(branding, settings);
       saveJson(BRANDING_CACHE_KEY, finalBranding);
       fillForm(settings, finalBranding);
-      setStatus('Business settings y branding guardados correctamente en Supabase.', 'success');
+      setStatus('Guardado en el servidor: snapshot y tenant_branding actualizados.', 'success');
     } catch (error) {
       console.error('SAVE BUSINESS SETTINGS ERROR =>', error);
-      setStatus('Guardado localmente, pero Supabase devolvio error: ' + (error?.message || 'unknown error'), 'error');
+      setStatus(
+        'No se guardo en el servidor: ' + (error?.message || 'error desconocido') + '. Revisa la sesion (Stripe) e intenta de nuevo.',
+        'error'
+      );
     }
   }
 

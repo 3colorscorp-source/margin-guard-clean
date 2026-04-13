@@ -8,32 +8,38 @@ function json(statusCode, body) {
   };
 }
 
-/** Columns fetched from quotes — public_token is the ONLY lookup key; no id, no tenant join. */
-const QUOTE_SELECT = [
+/** Columns required by public/invoice-public.html only — no ids or tenant fields. */
+const INVOICE_SELECT = [
   "business_name",
-  "company_name",
-  "business_email",
-  "business_phone",
-  "business_address",
-  "title",
-  "project_name",
-  "client_name",
-  "client_email",
-  "client_phone",
-  "project_address",
-  "job_site",
-  "total",
+  "status",
   "currency",
-  "deposit_required",
-  "notes",
-  "terms",
-  "status"
+  "amount",
+  "paid_amount",
+  "balance_due",
+  "accent_color",
+  "logo_url",
+  "payment_link",
+  "invoice_no",
+  "due_date",
+  "customer_name",
+  "customer_email",
+  "project_name",
+  "issue_date",
+  "type",
+  "notes"
 ].join(",");
 
-/**
- * Public estimate API: isolated to one quote row matched by public_token only.
- * Response is a whitelisted subset — no ids, no tenant_id, no joins.
- */
+function pickPublicInvoiceFields(row) {
+  const keys = INVOICE_SELECT.split(",");
+  const out = {};
+  for (const k of keys) {
+    if (Object.prototype.hasOwnProperty.call(row, k)) {
+      out[k] = row[k];
+    }
+  }
+  return out;
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "GET") {
@@ -55,13 +61,13 @@ exports.handler = async (event) => {
       return json(400, { error: "Invalid token" });
     }
 
-    const path = `quotes?public_token=eq.${encodeURIComponent(trimmed)}&select=${QUOTE_SELECT}&limit=2`;
+    const path = `invoices?public_token=eq.${encodeURIComponent(trimmed)}&select=${INVOICE_SELECT}&limit=2`;
 
     let rows;
     try {
       rows = await supabaseRequest(path, { method: "GET" });
     } catch (err) {
-      return json(502, { error: err.message || "Failed to read quote" });
+      return json(502, { error: err.message || "Failed to read invoice" });
     }
 
     if (!Array.isArray(rows)) {
@@ -69,35 +75,20 @@ exports.handler = async (event) => {
     }
 
     if (rows.length === 0) {
-      return json(404, { error: "Estimate not found" });
+      return json(404, { error: "Invoice not found" });
     }
 
     if (rows.length > 1) {
-      return json(500, { error: "Invalid quote reference" });
+      return json(500, { error: "Invalid invoice reference" });
     }
 
-    const row = rows[0];
-    const estimate = pickPublicEstimateFields(row);
+    const invoice = pickPublicInvoiceFields(rows[0]);
 
     return json(200, {
       ok: true,
-      estimate: {
-        ...estimate,
-        items: []
-      }
+      invoice
     });
   } catch (err) {
     return json(500, { error: err.message || "Server error" });
   }
 };
-
-function pickPublicEstimateFields(row) {
-  const keys = QUOTE_SELECT.split(",");
-  const out = {};
-  for (const k of keys) {
-    if (Object.prototype.hasOwnProperty.call(row, k)) {
-      out[k] = row[k];
-    }
-  }
-  return out;
-}

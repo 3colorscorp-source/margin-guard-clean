@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Public Invoice</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <title>Invoice</title>
   <style>
     :root{
       --bg:#f3f4f6;
@@ -282,6 +281,13 @@
       white-space:pre-wrap;
     }
 
+    .powered-by{
+      margin-top:20px;
+      font-size:12px;
+      opacity:0.65;
+      text-align:center;
+    }
+
     @media (max-width: 800px){
       .hero,
       .grid{
@@ -316,192 +322,273 @@
   </div>
 
   <script>
-    const SUPABASE_URL = "https://yaagobzgozzozibublmj.supabase.co";
-    const SUPABASE_KEY = "sb_publishable_UTuO6wlERHBzoSnkySHATw_s6T46upe";
-    const BUSINESS_NAME = "Three Colors Corp";
-    const BUSINESS_SUBTITLE = "Service Invoice";
-    const invoiceBox = document.getElementById("invoice");
+(function () {
+  const TENANT_NAME_FALLBACK = "Invoice";
+  const BUSINESS_SUBTITLE = "Service invoice";
+  const invoiceBox = document.getElementById("invoice");
 
-    function money(value, currency = "USD") {
-      const num = Number(value || 0);
-      try {
-        return new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: currency || "USD"
-        }).format(num);
-      } catch {
-        return `$${num.toFixed(2)}`;
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function safeHttpUrl(url) {
+    const u = String(url || "").trim();
+    return /^https?:\/\//i.test(u) ? u : "";
+  }
+
+  function safeAccentColor(hex) {
+    const h = String(hex || "").trim();
+    return /^#[0-9a-fA-F]{3,8}$/.test(h) ? h : "#0f8a5f";
+  }
+
+  function money(value, currency) {
+    const cur = currency && String(currency).trim() ? String(currency).trim() : "USD";
+    const num = Number(value);
+    const n = Number.isFinite(num) ? num : 0;
+    try {
+      return new Intl.NumberFormat("en-US", { style: "currency", currency: cur }).format(n);
+    } catch {
+      return `$${n.toFixed(2)}`;
+    }
+  }
+
+  function displayText(value, fallback) {
+    const f = fallback === undefined ? "—" : fallback;
+    if (value == null || value === "") return escapeHtml(f);
+    return escapeHtml(String(value));
+  }
+
+  function statusClass(status) {
+    const s = String(status || "").toLowerCase();
+    if (s === "paid") return "paid";
+    if (s === "partial" || s === "sent") return "partial";
+    if (s === "overdue" || s === "expired") return "overdue";
+    return "open";
+  }
+
+  function setDocumentTitle(brandName) {
+    const t = String(brandName || "").trim();
+    document.title = t ? `${t} — Invoice` : "Invoice";
+  }
+
+  function showError(message) {
+    const msg = escapeHtml(message || "Something went wrong.");
+    document.title = "Invoice";
+    invoiceBox.innerHTML =
+      '<div class="topbar">' +
+        '<div class="brand">' +
+          "<h1>" + escapeHtml(TENANT_NAME_FALLBACK) + "</h1>" +
+          '<div class="sub">' + escapeHtml(BUSINESS_SUBTITLE) + "</div>" +
+        "</div>" +
+      "</div>" +
+      '<div class="content">' +
+        '<div class="error">' + msg + "</div>" +
+      "</div>" +
+      '<p class="powered-by" style="margin:20px 28px 24px;">Powered by Margin Guard</p>';
+  }
+
+  function sanitizeInvoice(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const o = { ...raw };
+    delete o.tenant_id;
+    return o;
+  }
+
+  async function loadInvoice() {
+    try {
+      const token = new URLSearchParams(window.location.search).get("token");
+      if (!token || !String(token).trim()) {
+        showError("Missing invoice token.");
+        return;
       }
-    }
 
-    function safe(value, fallback = "—") {
-      return value == null || value === "" ? fallback : value;
-    }
+      const res = await fetch(
+        "/.netlify/functions/get-public-invoice?token=" + encodeURIComponent(String(token).trim())
+      );
 
-    function statusClass(status) {
-      const s = String(status || "").toLowerCase();
-      if (s === "paid") return "paid";
-      if (s === "partial" || s === "sent") return "partial";
-      if (s === "overdue" || s === "expired") return "overdue";
-      return "open";
-    }
-
-    function showError(message) {
-      invoiceBox.innerHTML = `
-        <div class="topbar">
-          <div class="brand">
-            <h1>${BUSINESS_NAME}</h1>
-            <div class="sub">${BUSINESS_SUBTITLE}</div>
-          </div>
-        </div>
-        <div class="content">
-          <div class="error">${message}</div>
-        </div>
-      `;
-    }
-
-    async function loadInvoice() {
+      let payload = {};
       try {
-        if (!window.supabase || typeof window.supabase.createClient !== "function") {
-          showError("Supabase library did not load correctly.");
-          return;
-        }
-
-        const token = new URLSearchParams(window.location.search).get("token");
-        if (!token) {
-          showError("Missing invoice token.");
-          return;
-        }
-
-        const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        const { data, error } = await client
-          .from("invoices")
-          .select("*")
-          .eq("public_token", token)
-          .single();
-
-        if (error || !data) {
-          showError("Invoice not found.");
-          return;
-        }
-
-        const status = safe(data.status, "OPEN");
-        const currency = safe(data.currency, "USD");
-        const amount = money(data.amount, currency);
-        const paidAmount = money(data.paid_amount, currency);
-        const balanceDue = money(data.balance_due, currency);
-        const brandName = safe(data.business_name, BUSINESS_NAME);
-        const accent = safe(data.accent_color, "#0f8a5f");
-        const logoUrl = data.logo_url || "";
-        const payButton = data.payment_link
-          ? `<a class="btn btn-primary" href="${data.payment_link}" target="_blank" rel="noopener noreferrer">Pay Now</a>`
-          : `<button class="btn btn-secondary" type="button" onclick="alert('Payment link not available yet.')">Payment Link Pending</button>`;
-
-        document.documentElement.style.setProperty("--accent", accent);
-        document.documentElement.style.setProperty("--accent-dark", accent);
-
-        invoiceBox.innerHTML = `
-          <div class="topbar">
-            <div class="brand">
-              ${logoUrl ? `<img src="${logoUrl}" alt="Logo" style="max-height:44px; max-width:180px; display:block; margin-bottom:10px;" />` : ""}
-              <h1>${brandName}</h1>
-              <div class="sub">${BUSINESS_SUBTITLE}</div>
-            </div>
-            <div class="status-pill ${statusClass(status)}">${status}</div>
-          </div>
-
-          <div class="content">
-            <div class="hero">
-              <div class="panel">
-                <div class="eyebrow">Invoice</div>
-                <div class="invoice-no">${safe(data.invoice_no, "Invoice")}</div>
-                <div class="small-note">Issued by ${brandName}</div>
-              </div>
-
-              <div class="panel">
-                <div class="eyebrow">Balance Due</div>
-                <p class="big-amount">${balanceDue}</p>
-                <div class="small-note">Due date: ${safe(data.due_date)}</div>
-              </div>
-            </div>
-
-            <div class="grid">
-              <div class="panel">
-                <div class="eyebrow">Customer</div>
-                <div class="info-list">
-                  <div class="info-row">
-                    <div class="label">Name</div>
-                    <div class="value">${safe(data.customer_name)}</div>
-                  </div>
-                  <div class="info-row">
-                    <div class="label">Email</div>
-                    <div class="value">${safe(data.customer_email)}</div>
-                  </div>
-                  <div class="info-row">
-                    <div class="label">Project</div>
-                    <div class="value">${safe(data.project_name)}</div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="panel">
-                <div class="eyebrow">Details</div>
-                <div class="info-list">
-                  <div class="info-row">
-                    <div class="label">Issue Date</div>
-                    <div class="value">${safe(data.issue_date)}</div>
-                  </div>
-                  <div class="info-row">
-                    <div class="label">Due Date</div>
-                    <div class="value">${safe(data.due_date)}</div>
-                  </div>
-                  <div class="info-row">
-                    <div class="label">Type</div>
-                    <div class="value">${safe(data.type, "service")}</div>
-                  </div>
-                  <div class="info-row">
-                    <div class="label">Public Token</div>
-                    <div class="value">${safe(data.public_token)}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="summary">
-              <div class="summary-head">Summary</div>
-              <div class="summary-body">
-                <div class="sum-row">
-                  <span>Total Amount</span>
-                  <strong>${amount}</strong>
-                </div>
-                <div class="sum-row">
-                  <span>Paid Amount</span>
-                  <strong>${paidAmount}</strong>
-                </div>
-                <div class="sum-row total">
-                  <span>Balance Due</span>
-                  <span>${balanceDue}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="actions">
-              ${payButton}
-              <button class="btn btn-secondary" type="button" onclick="window.print()">Print</button>
-            </div>
-
-            <div class="notes">
-              <div class="notes-title">Notes</div>
-              <div class="notes-text">${safe(data.notes, "No notes added.")}</div>
-            </div>
-          </div>
-        `;
-      } catch (err) {
-        showError(err.message || "Unexpected error loading invoice.");
+        payload = await res.json();
+      } catch (_err) {
+        payload = {};
       }
-    }
 
-    loadInvoice();
+      if (!res.ok || !payload || payload.ok !== true || !payload.invoice) {
+        const errMsg =
+          (payload && typeof payload.error === "string" && payload.error.trim()) ||
+          "Invoice not found.";
+        showError(errMsg);
+        return;
+      }
+
+      const data = sanitizeInvoice(payload.invoice);
+      if (!data) {
+        showError("Invoice not found.");
+        return;
+      }
+
+      const businessNameRaw = String(data.business_name || "").trim();
+      const brandName = businessNameRaw || TENANT_NAME_FALLBACK;
+      const brandNameEsc = escapeHtml(brandName);
+
+      const status = String(data.status != null && data.status !== "" ? data.status : "OPEN");
+      const statusEsc = escapeHtml(status);
+      const currency = String(data.currency != null && String(data.currency).trim() ? data.currency : "USD");
+
+      const amount = money(data.amount, currency);
+      const paidAmount = money(data.paid_amount, currency);
+      const balanceDue = money(data.balance_due, currency);
+
+      const accent = safeAccentColor(data.accent_color);
+      const logoUrl = safeHttpUrl(data.logo_url);
+      const payHref = safeHttpUrl(data.payment_link);
+
+      const payButton = payHref
+        ? '<a class="btn btn-primary" href="' +
+          escapeHtml(payHref) +
+          '" target="_blank" rel="noopener noreferrer">Pay Now</a>'
+        : '<button class="btn btn-secondary" type="button">Payment link not available yet.</button>';
+
+      document.documentElement.style.setProperty("--accent", accent);
+      document.documentElement.style.setProperty("--accent-dark", accent);
+
+      setDocumentTitle(businessNameRaw || "");
+
+      const logoBlock = logoUrl
+        ? '<img src="' +
+          escapeHtml(logoUrl) +
+          '" alt="" style="max-height:44px;max-width:180px;display:block;margin-bottom:10px;" />'
+        : "";
+
+      invoiceBox.innerHTML =
+        '<div class="topbar">' +
+          '<div class="brand">' +
+            logoBlock +
+            "<h1>" + brandNameEsc + "</h1>" +
+            '<div class="sub">' + escapeHtml(BUSINESS_SUBTITLE) + "</div>" +
+          "</div>" +
+          '<div class="status-pill ' +
+          escapeHtml(statusClass(status)) +
+          '">' +
+          statusEsc +
+          "</div>" +
+        "</div>" +
+        '<div class="content">' +
+          '<div class="hero">' +
+            '<div class="panel">' +
+              '<div class="eyebrow">Invoice</div>' +
+              '<div class="invoice-no">' +
+              displayText(data.invoice_no, "Invoice") +
+              "</div>" +
+              '<div class="small-note">Issued by ' +
+              brandNameEsc +
+              "</div>" +
+            "</div>" +
+            '<div class="panel">' +
+              '<div class="eyebrow">Balance Due</div>' +
+              '<p class="big-amount">' +
+              balanceDue +
+              "</p>" +
+              '<div class="small-note">Due date: ' +
+              displayText(data.due_date) +
+              "</div>" +
+            "</div>" +
+          "</div>" +
+          '<div class="grid">' +
+            '<div class="panel">' +
+              '<div class="eyebrow">Customer</div>' +
+              '<div class="info-list">' +
+                '<div class="info-row">' +
+                  '<div class="label">Name</div>' +
+                  '<div class="value">' +
+                  displayText(data.customer_name) +
+                  "</div>" +
+                "</div>" +
+                '<div class="info-row">' +
+                  '<div class="label">Email</div>' +
+                  '<div class="value">' +
+                  displayText(data.customer_email) +
+                  "</div>" +
+                "</div>" +
+                '<div class="info-row">' +
+                  '<div class="label">Project</div>' +
+                  '<div class="value">' +
+                  displayText(data.project_name) +
+                  "</div>" +
+                "</div>" +
+              "</div>" +
+            "</div>" +
+            '<div class="panel">' +
+              '<div class="eyebrow">Details</div>' +
+              '<div class="info-list">' +
+                '<div class="info-row">' +
+                  '<div class="label">Issue Date</div>' +
+                  '<div class="value">' +
+                  displayText(data.issue_date) +
+                  "</div>" +
+                "</div>" +
+                '<div class="info-row">' +
+                  '<div class="label">Due Date</div>' +
+                  '<div class="value">' +
+                  displayText(data.due_date) +
+                  "</div>" +
+                "</div>" +
+                '<div class="info-row">' +
+                  '<div class="label">Type</div>' +
+                  '<div class="value">' +
+                  displayText(data.type, "service") +
+                  "</div>" +
+                "</div>" +
+              "</div>" +
+            "</div>" +
+          "</div>" +
+          '<div class="summary">' +
+            '<div class="summary-head">Summary</div>' +
+            '<div class="summary-body">' +
+              '<div class="sum-row">' +
+                "<span>Total Amount</span>" +
+                "<strong>" +
+                amount +
+                "</strong>" +
+              "</div>" +
+              '<div class="sum-row">' +
+                "<span>Paid Amount</span>" +
+                "<strong>" +
+                paidAmount +
+                "</strong>" +
+              "</div>" +
+              '<div class="sum-row total">' +
+                "<span>Balance Due</span>" +
+                "<span>" +
+                balanceDue +
+                "</span>" +
+              "</div>" +
+            "</div>" +
+          "</div>" +
+          '<div class="actions">' +
+          payButton +
+          '<button class="btn btn-secondary" type="button" onclick="window.print()">Print</button>' +
+          "</div>" +
+          '<div class="notes">' +
+          '<div class="notes-title">Notes</div>' +
+          '<div class="notes-text">' +
+          displayText(data.notes, "No notes added.") +
+          "</div>" +
+          "</div>" +
+          '<p class="powered-by">Powered by Margin Guard</p>' +
+        "</div>";
+    } catch (err) {
+      showError(err && err.message ? err.message : "Unexpected error loading invoice.");
+    }
+  }
+
+  loadInvoice();
+})();
   </script>
 </body>
 </html>

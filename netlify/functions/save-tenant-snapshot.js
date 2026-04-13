@@ -9,6 +9,38 @@ function json(statusCode, payload) {
   };
 }
 
+function extractBrandingFromSnapshotPayload(payload) {
+  const storage = payload?.storage && typeof payload.storage === "object" ? payload.storage : {};
+  const settings =
+    storage["mg_settings_v2"] && typeof storage["mg_settings_v2"] === "object" ? storage["mg_settings_v2"] : {};
+  const brand =
+    storage["mg_business_branding_v1"] && typeof storage["mg_business_branding_v1"] === "object"
+      ? storage["mg_business_branding_v1"]
+      : {};
+  return {
+    business_name: String(brand.businessName || settings.bizName || "").trim(),
+    logo_url: String(brand.logoUrl || settings.publicLogoUrl || "").trim(),
+    business_email: String(brand.businessEmail || settings.businessEmail || "").trim(),
+    business_phone: String(brand.businessPhone || settings.businessPhone || "").trim(),
+    business_address: String(brand.businessAddress || settings.businessAddress || "").trim()
+  };
+}
+
+async function upsertTenantBranding(tenantId, row) {
+  await supabaseRequest("tenant_branding", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates" },
+    body: {
+      tenant_id: tenantId,
+      business_name: row.business_name || "",
+      logo_url: row.logo_url || "",
+      business_email: row.business_email || "",
+      business_phone: row.business_phone || "",
+      business_address: row.business_address || ""
+    }
+  });
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -47,9 +79,19 @@ exports.handler = async (event) => {
       }
     });
 
+    let brandingWarning = null;
+    try {
+      const brandingRow = extractBrandingFromSnapshotPayload(payload);
+      await upsertTenantBranding(tenant.id, brandingRow);
+    } catch (err) {
+      brandingWarning = err?.message || "tenant_branding upsert failed";
+    }
+
     return json(200, {
       ok: true,
-      snapshot: Array.isArray(inserted) ? inserted[0] : inserted
+      snapshot: Array.isArray(inserted) ? inserted[0] : inserted,
+      brandingOk: !brandingWarning,
+      ...(brandingWarning ? { brandingWarning } : {})
     });
   } catch (err) {
     return json(500, { error: err.message || "Unable to save snapshot" });

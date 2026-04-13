@@ -45,7 +45,12 @@ async function stripeRequest(path, options = {}) {
 }
 
 function getSiteUrl() {
-  return process.env.URL || process.env.DEPLOY_PRIME_URL || "http://localhost:8888";
+  const raw =
+    process.env.SITE_URL ||
+    process.env.URL ||
+    process.env.DEPLOY_PRIME_URL ||
+    "http://localhost:8888";
+  return String(raw).replace(/\/+$/, "");
 }
 
 module.exports = {

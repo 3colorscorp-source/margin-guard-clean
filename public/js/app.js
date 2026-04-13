@@ -16,6 +16,8 @@
   const LS_ESTIMATE_DRAFT = "mg_estimate_draft_v1";
   const LS_HUB_VIEW = "mg_hub_view_v1";
   const LS_HUB_TEMPLATES = "mg_hub_templates_v1";
+  const LS_BRANDING = "mg_business_branding_v1";
+  const LS_ESTIMATE_BUILDER_DRAFT = "mg_estimate_builder_draft_v1";
   const TENANT_SNAPSHOT_VERSION = 1;
   const TENANT_STORAGE_KEYS = [
     LS_SETTINGS,
@@ -31,11 +33,13 @@
     LS_ESTIMATES,
     LS_ESTIMATE_DRAFT,
     LS_HUB_VIEW,
-    LS_HUB_TEMPLATES
+    LS_HUB_TEMPLATES,
+    LS_BRANDING,
+    LS_ESTIMATE_BUILDER_DRAFT
   ];
 
   const DEFAULTS = {
-    bizName: "Three Colors Corp",
+    bizName: "",
     publicLogoUrl: "",
     publicAccentColor: "#0f8a5f",
     currency: "$",
@@ -115,7 +119,8 @@
     saving: false,
     pending: false,
     timer: null,
-    lastSerialized: ""
+    lastSerialized: "",
+    lastSyncError: ""
   };
 
   const DEFAULT_HUB_TEMPLATES = {
@@ -509,8 +514,13 @@ Thank you.`
       const { response, data } = await window.MarginGuardTenant.saveTenantSnapshot(payload);
       if (!response?.ok) throw new Error(data?.error || "Unable to save tenant snapshot");
       tenantSyncState.lastSerialized = serialized;
-    } catch (_err) {
-      // Mantener localStorage funcional incluso si el backend aun no esta listo.
+      tenantSyncState.lastSyncError = "";
+      if (typeof window !== "undefined") window.__mgLastTenantSnapshotSyncError = "";
+    } catch (err) {
+      const msg = err && err.message ? String(err.message) : String(err || "Unknown error");
+      console.error("[Margin Guard] Tenant snapshot sync failed:", msg);
+      tenantSyncState.lastSyncError = msg;
+      if (typeof window !== "undefined") window.__mgLastTenantSnapshotSyncError = msg;
     } finally {
       tenantSyncState.saving = false;
       if (tenantSyncState.pending) {
@@ -531,6 +541,95 @@ Thank you.`
       tenantSyncState.timer = null;
       persistTenantSnapshotNow();
     }, 400);
+  }
+
+  window.__mgScheduleTenantSnapshotSync = scheduleTenantSnapshotSync;
+  window.__mgBuildTenantSnapshotPayload = getTenantSnapshotPayload;
+
+  async function imageUrlToPdfDataUrl(url) {
+    if (!url || typeof url !== "string") return null;
+    try {
+      const res = await fetch(url, { mode: "cors" });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      const mime = blob.type || "";
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve({ dataUrl: reader.result, mime });
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function pdfImageFormatFromMime(mime) {
+    const m = String(mime || "").toLowerCase();
+    if (m.includes("png")) return "PNG";
+    if (m.includes("jpeg") || m.includes("jpg")) return "JPEG";
+    if (m.includes("webp")) return "WEBP";
+    return "PNG";
+  }
+
+  async function drawPdfTenantLetterhead(doc, settings, yStart = 46) {
+    let branding = null;
+    if (window.MarginGuardTenant?.getTenantBranding) {
+      try {
+        const { response, data } = await window.MarginGuardTenant.getTenantBranding({ force: true });
+        if (response?.ok && data?.ok && data.branding) {
+          branding = data.branding;
+        }
+      } catch (_err) {
+        branding = null;
+      }
+    }
+
+    const bizName = String(branding?.business_name || settings.bizName || DEFAULTS.bizName).trim();
+    const email = String(branding?.business_email || "").trim();
+    const phone = String(branding?.business_phone || "").trim();
+    const address = String(branding?.business_address || "").trim();
+    const logoUrl = String(branding?.logo_url || settings.publicLogoUrl || "").trim();
+
+    const left = 40;
+    const logoBox = 56;
+    let y = yStart;
+    let textX = left;
+
+    if (logoUrl) {
+      const loaded = await imageUrlToPdfDataUrl(logoUrl);
+      if (loaded?.dataUrl) {
+        const fmt = pdfImageFormatFromMime(loaded.mime);
+        try {
+          doc.addImage(loaded.dataUrl, fmt, left, y, logoBox, logoBox);
+          textX = left + logoBox + 14;
+        } catch (_err) {
+          textX = left;
+        }
+      }
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(17, 24, 39);
+    doc.text(bizName, textX, y + 12);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(75, 85, 99);
+    let lineY = y + 28;
+    const pushLines = (txt) => {
+      if (!txt) return;
+      const lines = doc.splitTextToSize(txt, 340);
+      doc.text(lines, textX, lineY);
+      lineY += lines.length * 12 + 4;
+    };
+    pushLines(address);
+    if (phone) pushLines(phone);
+    if (email) pushLines(email);
+
+    const bottom = Math.max(y + logoBox + 12, lineY + 6);
+    return bottom;
   }
 
   async function initTenantSnapshotBridge() {
@@ -557,6 +656,12 @@ Thank you.`
     }
 
     tenantSyncState.initialized = true;
+
+    try {
+      if (window.MarginGuardTenant?.getTenantBranding) {
+        await window.MarginGuardTenant.getTenantBranding();
+      }
+    } catch (_e) {}
   }
 
   function loadHubViewState() {
@@ -939,7 +1044,7 @@ Thank you.`
     doc.setFont("helvetica", "normal");
     doc.setFontSize(11);
     [
-      `Project: ${project.projectName || "-"}`,
+      `Project: ${project.projectId || project.projectName || "-"}`,
       `Client: ${project.clientName || "-"}`,
       `Change Order: ${changeOrder.title || "-"}`,
       `Created: ${normalizeDateInput(changeOrder.createdAt) || new Date().toISOString().slice(0, 10)}`,
@@ -987,7 +1092,7 @@ Thank you.`
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `change-order-${(project.projectName || "project").replace(/\s+/g, "-")}-${(changeOrder.title || "extra").replace(/\s+/g, "-")}.pdf`;
+    a.download = `change-order-${(project.projectId || project.projectName || "project").replace(/\s+/g, "-")}-${(changeOrder.title || "extra").replace(/\s+/g, "-")}.pdf`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
@@ -1007,18 +1112,15 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   }
 
-  function exportInvoicePdf(kind, project, report, settings, input) {
+  async function exportInvoicePdf(kind, project, report, settings, input) {
     const jsPDF = window.jspdf?.jsPDF;
     if (!jsPDF) return alert("jsPDF is not available.");
     if (!project) return alert("Select a project first.");
 
     const metrics = calcInvoice(project, report, input);
     const doc = new jsPDF({ unit: "pt", format: "letter" });
-    let y = 46;
+    let y = await drawPdfTenantLetterhead(doc, settings, 46);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.text(settings.bizName || DEFAULTS.bizName, 40, y);
-    y += 22;
     doc.setFontSize(13);
     doc.text(`Invoice - ${kind}`, 40, y);
     y += 20;
@@ -1549,50 +1651,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
   function renderBusinessSettings() {
     if (!$("btnSaveBusinessSettings")) return;
-
-    const settings = loadSettings();
-    setVal("bizNameOwner", settings.bizName);
-    setVal("publicLogoUrl", settings.publicLogoUrl || "");
-    setVal("publicAccentColor", settings.publicAccentColor || DEFAULTS.publicAccentColor);
-    setNum("baseInstaller", settings.baseInstaller);
-    setNum("baseHelper", settings.baseHelper);
-    setVal("pricingMode", settings.pricingMode);
-    setNum("hoursPerDay", settings.hoursPerDay);
-    setNum("overheadMonthly", settings.overheadMonthly);
-    setNum("stdHours", settings.stdHours);
-    setNum("salesCommissionPct", settings.salesCommissionPct);
-    setNum("supervisorBonusPct", settings.supervisorBonusPct);
-    setNum("profitPct", settings.profitPct);
-    setNum("reservePct", DEFAULTS.reservePct);
-    count("bizNameOwner", "bizNameOwnerCount");
-
-    const status = $("businessSettingsStatus");
-
-    if ($("bizNameOwner")) {
-      $("bizNameOwner").oninput = () => count("bizNameOwner", "bizNameOwnerCount");
-    }
-
-    $("btnSaveBusinessSettings").onclick = () => {
-      const settingsCopy = loadSettings();
-      settingsCopy.bizName = val("bizNameOwner") || DEFAULTS.bizName;
-      settingsCopy.publicLogoUrl = val("publicLogoUrl").trim();
-      settingsCopy.publicAccentColor = val("publicAccentColor") || DEFAULTS.publicAccentColor;
-      settingsCopy.baseInstaller = num("baseInstaller", DEFAULTS.baseInstaller);
-      settingsCopy.baseHelper = num("baseHelper", DEFAULTS.baseHelper);
-      settingsCopy.pricingMode = val("pricingMode") || DEFAULTS.pricingMode;
-      settingsCopy.hoursPerDay = Math.max(num("hoursPerDay", DEFAULTS.hoursPerDay), 0.25);
-      settingsCopy.overheadMonthly = num("overheadMonthly", 0);
-      settingsCopy.stdHours = num("stdHours", DEFAULTS.stdHours);
-      settingsCopy.salesCommissionPct = num("salesCommissionPct", DEFAULTS.salesCommissionPct);
-      settingsCopy.supervisorBonusPct = num("supervisorBonusPct", DEFAULTS.supervisorBonusPct);
-      settingsCopy.profitPct = num("profitPct", DEFAULTS.profitPct);
-      saveSettings(settingsCopy);
-      if (status) {
-        status.style.display = "block";
-        status.className = "notice ok";
-        status.textContent = "Business settings guardados.";
-      }
-    };
+    // business-settings.html define su propio Guardar/Recargar (branding + Supabase). No pisar handlers.
+    if ($("btnReloadBusinessSettings")) return;
   }
   function buildOwnerKpis(state, settings, metrics) {
     return [
@@ -1773,7 +1833,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       renderOwner();
     };
     if ($("btnClear")) $("btnClear").onclick = () => { if (!confirm("Clear this quote?")) return; writeStore(LS_OWNER, DEFAULT_OWNER); renderOwner(); };
-    if ($("btnExportPdf")) $("btnExportPdf").onclick = () => exportOwnerPdf(state, settings, metrics);
+    if ($("btnExportPdf")) $("btnExportPdf").onclick = () => void exportOwnerPdf(state, settings, metrics);
     if ($("btnSendQuote")) $("btnSendQuote").onclick = () => openSendModal(state, settings, metrics);
     if ($("btnSendClose")) $("btnSendClose").onclick = closeSendModal;
     if ($("btnSendCancel")) $("btnSendCancel").onclick = closeSendModal;
@@ -1839,7 +1899,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
     if ($("btnOwnerInvoicePdf")) {
       $("btnOwnerInvoicePdf").onclick = () => {
-        exportInvoicePdf("owner", ownerProject, ownerReport, settings, {
+        void exportInvoicePdf("owner", ownerProject, ownerReport, settings, {
           invoiceNo: val("ownerInvoiceNo"),
           invoiceDate: val("ownerInvoiceDate"),
           baseAmount: num("ownerInvoiceBase", ownerProject?.salePrice || metrics.recommended || 0),
@@ -1857,11 +1917,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if (!jsPDF) return alert("jsPDF is not available.");
 
     const doc = new jsPDF({ unit: "pt", format: "letter" });
-    let y = 48;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.text(settings.bizName || DEFAULTS.bizName, 40, y);
-    y += 22;
+    let y = await drawPdfTenantLetterhead(doc, settings, 48);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(12);
     doc.text("Project Pricing Report", 40, y);
@@ -1916,12 +1972,17 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   if (messageInput) messageInput.value = defaultMessage;
   if (depositInput && !depositInput.value) depositInput.value = "1000";
   if (sendStatus) { sendStatus.style.display = "none"; sendStatus.textContent = ""; }
-  modal.style.display = "flex";
+  modal.style.removeProperty("display");
+  modal.setAttribute("aria-hidden", "false");
   updateSendCounts();
 }
 
   function closeSendModal() {
-    if ($("sendModal")) $("sendModal").setAttribute("aria-hidden", "true");
+    const modal = $("sendModal");
+    if (modal) {
+      modal.setAttribute("aria-hidden", "true");
+      modal.style.removeProperty("display");
+    }
     if ($("sendStatus")) { $("sendStatus").style.display = "none"; $("sendStatus").className = "notice"; $("sendStatus").textContent = ""; }
   }
 
@@ -1934,7 +1995,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     count("salesInitials", "salesInitialsCount");
   }
 
-  async function sendQuote(state, settings, metrics) {
+  async function sendQuote(state, settings, metrics, options = {}) {
+  const skipPersistSales = Boolean(options.skipPersistSales);
   const sendStatus = document.getElementById("sendStatus");
   const toEmail = nonEmptyString(document.getElementById("toEmail")?.value);
   const toName = nonEmptyString(document.getElementById("toName")?.value, state.clientName);
@@ -1967,7 +2029,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         projectName: nonEmptyString(state.projectName),
         clientName: nonEmptyString(state.clientName),
         location: nonEmptyString(state.location),
-        businessName: nonEmptyString(settings.bizName, "Margin Guard"),
+        businessName: nonEmptyString(settings.bizName),
         currency: "USD",
         recommendedTotal: round2(metrics.offered || metrics.recommended || 0),
         estimateNumber,
@@ -1977,18 +2039,21 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Unable to send estimate.");
-    state.customerEmail = toEmail;
-    state.clientName = toName;
-    state.estimateNumber = estimateNumber;
-    state.issueDate = issueDate;
-    state.expirationDate = expirationDate;
-    state.messageToClient = scopeOfWork;
-    state.estimateStatus = "sent";
-    state.sentAt = new Date().toISOString();
-    saveSales(state);
+    if (!skipPersistSales) {
+      state.customerEmail = toEmail;
+      state.clientName = toName;
+      state.estimateNumber = estimateNumber;
+      state.issueDate = issueDate;
+      state.expirationDate = expirationDate;
+      state.messageToClient = scopeOfWork;
+      state.estimateStatus = "sent";
+      state.sentAt = new Date().toISOString();
+      saveSales(state);
+    }
     if (sendStatus) { sendStatus.style.display = "block"; sendStatus.textContent = "Estimate sent successfully."; }
     setTimeout(closeSendModal, 500);
     renderSales();
+    if ($("ownerKpis")) renderOwner();
   } catch (error) {
     if (sendStatus) { sendStatus.style.display = "block"; sendStatus.textContent = error.message || "Unable to send estimate."; }
   }
@@ -2387,119 +2452,196 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   const clearSalesWorkersButton = document.getElementById("btnClearSalesWorkers");
   if (clearSalesWorkersButton) clearSalesWorkersButton.onclick = clearSalesWorkers;
 
-  projectPicker?.addEventListener('change', () => {
-    const selected = projectIndex.get(projectPicker.value);
-    if (!selected) return;
-    state.projectName = selected.projectId;
-    state.clientName = selected.clientName || state.clientName;
-    state.customerEmail = selected.clientEmail || state.customerEmail;
-    state.customerPhone = selected.clientPhone || state.customerPhone;
-    state.location = selected.location || state.location;
-    state.price = String(round2(selected.finalPrice || selected.priceOffered || 0));
-    state.dueDate = normalizeDateInput(selected.dueDate || state.dueDate || todayInputValue());
-    state.estimateStatus = "pricing_ready";
-    saveSales(state);
-    renderSales();
-  });
-
-  document.getElementById("btnNewSalesQuote")?.addEventListener('click', () => {
-    if (!window.confirm('Start a new estimate draft? Current sales values will reset.')) return;
-    const fresh = structuredClone(DEFAULT_SALES);
-    fresh.estimateNumber = buildEstimateNumber();
-    fresh.issueDate = todayInputValue();
-    fresh.expirationDate = addDaysToInputValue(fresh.issueDate, 7);
-    fresh.estimateStatus = "draft";
-    fresh.price = "";
-    fresh.notes = "";
-    fresh.messageToClient = "";
-    fresh.customerEmail = "";
-    fresh.customerPhone = "";
-    fresh.location = "";
-    fresh.projectName = "";
-    fresh.clientName = "";
-    saveSales(fresh);
-    renderSales();
-  });
-
-  document.getElementById("btnSendQuote")?.addEventListener('click', () => {
-    persistSalesDraft('sent');
-    openSendModal(state, settings, calculateSalesMetrics(state, settings));
-  });
-  document.getElementById("btnSendQuoteInline")?.addEventListener('click', () => {
-    persistSalesDraft('sent');
-    openSendModal(state, settings, calculateSalesMetrics(state, settings));
-  });
-
-  document.getElementById("btnSubmitApproval")?.addEventListener('click', () => {
-    persistSalesDraft('approval_requested');
-    const currentMetrics = calculateSalesMetrics(state, settings);
-    const payload = {
-      id: Date.now(),
-      status: 'requested',
-      requestedAt: new Date().toISOString(),
-      projectId: nonEmptyString(state.projectName, 'Estimate'),
-      clientName: nonEmptyString(state.clientName),
-      customerEmail: nonEmptyString(state.customerEmail),
-      location: nonEmptyString(state.location),
-      price: round2(currentMetrics.offered),
-      recommended: round2(currentMetrics.recommended),
-      minimum: round2(currentMetrics.minimum),
-      estimateNumber: state.estimateNumber,
-      expirationDate: state.expirationDate
+  if (projectPicker) {
+    projectPicker.onchange = () => {
+      const selected = projectIndex.get(projectPicker.value);
+      if (!selected) return;
+      state.projectName = selected.projectId;
+      state.clientName = selected.clientName || state.clientName;
+      state.customerEmail = selected.clientEmail || state.customerEmail;
+      state.customerPhone = selected.clientPhone || state.customerPhone;
+      state.location = selected.location || state.location;
+      state.price = String(round2(selected.finalPrice || selected.priceOffered || 0));
+      state.dueDate = normalizeDateInput(selected.dueDate || state.dueDate || todayInputValue());
+      state.estimateStatus = "pricing_ready";
+      saveSales(state);
+      renderSales();
     };
-    const queue = loadApprovals();
-    queue.push(payload);
-    saveApprovals(queue);
-    renderSales();
-  });
+  }
 
-  document.getElementById("btnMarkSold")?.addEventListener('click', () => {
-    persistSalesDraft('signed');
-    const currentMetrics = calculateSalesMetrics(state, settings);
-    if (!state.projectName || !state.clientName || !state.dueDate || currentMetrics.workerDays <= 0) {
-      window.alert('Complete project, customer, due date, and labor details before signing the estimate.');
-      return;
+  const changeOrderBodyEl = document.getElementById("salesChangeOrderBody");
+  if (changeOrderBodyEl && !changeOrderBodyEl.dataset.mgCoPdfDelegate) {
+    changeOrderBodyEl.dataset.mgCoPdfDelegate = "1";
+    changeOrderBodyEl.addEventListener("click", (event) => {
+      const target = event.target.closest("[data-sales-co-pdf]");
+      if (!target) return;
+      const orderId = target.getAttribute("data-sales-co-pdf");
+      const salesState = loadSales();
+      const pmap = new Map(loadSignedProjects().map((p) => [p.projectId, p]));
+      const project = pmap.get(salesState.projectName);
+      const freshSettings = loadSettings();
+      const orders = project?.changeOrders || [];
+      const co = orders.find(
+        (row) => String(row?.id ?? "") === String(orderId || "") || String(row?.title ?? "") === String(orderId || "")
+      );
+      if (!project) {
+        window.alert("Selecciona un proyecto firmado en el selector Portfolio.");
+        return;
+      }
+      if (!co) {
+        window.alert("Change order no encontrado.");
+        return;
+      }
+      const normalizedCo =
+        co.offeredPrice == null && co.price != null ? { ...co, offeredPrice: co.price } : co;
+      exportChangeOrderPdf(project, normalizedCo, freshSettings);
+    });
+  }
+
+  const btnSendCloseEl = document.getElementById("btnSendClose");
+  if (btnSendCloseEl) btnSendCloseEl.onclick = () => closeSendModal();
+  const btnSendCancelEl = document.getElementById("btnSendCancel");
+  if (btnSendCancelEl) btnSendCancelEl.onclick = () => closeSendModal();
+  const btnSendNowEl = document.getElementById("btnSendNow");
+  if (btnSendNowEl) {
+    btnSendNowEl.onclick = () => {
+      const freshSettings = loadSettings();
+      if ($("ownerKpis")) {
+        const ownerState = loadOwner();
+        const hoursPerDay = Math.max(Number(freshSettings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
+        const syntheticSales = {
+          ...DEFAULT_SALES,
+          projectName: ownerState.projectName,
+          clientName: ownerState.clientName,
+          location: ownerState.location,
+          customerEmail: "",
+          estimateNumber: buildEstimateNumber(),
+          issueDate: todayInputValue(),
+          expirationDate: addDaysToInputValue(todayInputValue(), 7),
+          messageToClient: ownerState.notes || "",
+          workers: (ownerState.workers || []).map((w) => ({
+            name: w.name,
+            type: w.type === "helper" ? "helper" : "installer",
+            days: Number(w.hours || 0) / hoursPerDay,
+            rate: w.rate === "" || w.rate == null ? "" : w.rate
+          })),
+          price: String(round2(calcOwner(ownerState, freshSettings).recommended))
+        };
+        const metrics = calculateSalesMetrics(syntheticSales, freshSettings);
+        void sendQuote(syntheticSales, freshSettings, metrics, { skipPersistSales: true });
+        return;
+      }
+      const freshState = loadSales();
+      void sendQuote(freshState, freshSettings, calculateSalesMetrics(freshState, freshSettings));
+    };
+  }
+
+  if (projectNameInput) {
+    const btnNew = document.getElementById("btnNewSalesQuote");
+    if (btnNew) {
+      btnNew.onclick = () => {
+        if (!window.confirm("Start a new estimate draft? Current sales values will reset.")) return;
+        const fresh = structuredClone(DEFAULT_SALES);
+        fresh.estimateNumber = buildEstimateNumber();
+        fresh.issueDate = todayInputValue();
+        fresh.expirationDate = addDaysToInputValue(fresh.issueDate, 7);
+        fresh.estimateStatus = "draft";
+        fresh.price = "";
+        fresh.notes = "";
+        fresh.messageToClient = "";
+        fresh.customerEmail = "";
+        fresh.customerPhone = "";
+        fresh.location = "";
+        fresh.projectName = "";
+        fresh.clientName = "";
+        saveSales(fresh);
+        renderSales();
+      };
     }
-    const project = buildSignedProjectFromSales(state, settings, currentMetrics);
-    saveActiveProject(project);
-    upsertSignedProject(project);
-    setLatestReport(ensureSupervisorReport(project));
-    renderSales();
-  });
 
-  document.getElementById("btnSalesProjectComplete")?.addEventListener('click', () => {
-    const activeProject = loadActiveProject();
-    if (!activeProject?.projectId) return;
-    activeProject.status = 'completed';
-    activeProject.updatedAt = new Date().toISOString();
-    saveActiveProject(activeProject);
-    upsertSignedProject(activeProject);
-    renderSales();
-  });
+    const btnSendQuoteInline = document.getElementById("btnSendQuoteInline");
+    if (btnSendQuoteInline) {
+      btnSendQuoteInline.onclick = () => {
+        persistSalesDraft("sent");
+        openSendModal(state, settings, calculateSalesMetrics(state, settings));
+      };
+    }
 
-  document.getElementById("btnSalesInvoiceOpen")?.addEventListener('click', () => {
-    window.location.href = '/estimates-invoices';
-  });
+    const btnSendQuoteTop = document.getElementById("btnSendQuote");
+    if (btnSendQuoteTop) {
+      btnSendQuoteTop.onclick = () => {
+        persistSalesDraft("sent");
+        openSendModal(state, settings, calculateSalesMetrics(state, settings));
+      };
+    }
 
-  document.getElementById("btnSalesInvoiceSend")?.addEventListener('click', () => {
-    openSendModal(state, settings, calculateSalesMetrics(state, settings));
-  });
+    const btnSubmit = document.getElementById("btnSubmitApproval");
+    if (btnSubmit) {
+      btnSubmit.onclick = () => {
+        persistSalesDraft("approval_requested");
+        const currentMetrics = calculateSalesMetrics(state, settings);
+        const payload = {
+          id: Date.now(),
+          status: "requested",
+          requestedAt: new Date().toISOString(),
+          projectId: nonEmptyString(state.projectName, "Estimate"),
+          clientName: nonEmptyString(state.clientName),
+          customerEmail: nonEmptyString(state.customerEmail),
+          location: nonEmptyString(state.location),
+          price: round2(currentMetrics.offered),
+          recommended: round2(currentMetrics.recommended),
+          minimum: round2(currentMetrics.minimum),
+          estimateNumber: state.estimateNumber,
+          expirationDate: state.expirationDate
+        };
+        const queue = loadApprovals();
+        queue.push(payload);
+        saveApprovals(queue);
+        renderSales();
+      };
+    }
 
-  document.getElementById("btnSalesInvoicePdf")?.addEventListener('click', () => {
-    window.print();
-  });
+    const btnMarkSold = document.getElementById("btnMarkSold");
+    if (btnMarkSold) {
+      btnMarkSold.onclick = () => {
+        persistSalesDraft("signed");
+        const currentMetrics = calculateSalesMetrics(state, settings);
+        if (!state.projectName || !state.clientName || !state.dueDate || currentMetrics.workerDays <= 0) {
+          window.alert("Complete project, customer, due date, and labor details before signing the estimate.");
+          return;
+        }
+        const project = buildSignedProjectFromSales(state, settings, currentMetrics);
+        saveActiveProject(project);
+        upsertSignedProject(project);
+        setLatestReport(ensureSupervisorReport(project));
+        renderSales();
+      };
+    }
 
-  document.querySelectorAll('[data-sales-co-pdf]').forEach((button) => {
-    button.addEventListener('click', () => exportChangeOrderPdf(button.getAttribute('data-sales-co-pdf')));
-  });
+    const btnProjComplete = document.getElementById("btnSalesProjectComplete");
+    if (btnProjComplete) {
+      btnProjComplete.onclick = () => {
+        const activeProject = loadActiveProject();
+        if (!activeProject?.projectId) return;
+        activeProject.status = "completed";
+        activeProject.updatedAt = new Date().toISOString();
+        saveActiveProject(activeProject);
+        upsertSignedProject(activeProject);
+        renderSales();
+      };
+    }
 
-  document.getElementById("btnSendClose")?.addEventListener('click', closeSendModal);
-  document.getElementById("btnSendCancel")?.addEventListener('click', closeSendModal);
-  document.getElementById("btnSendNow")?.addEventListener('click', () => {
-    const freshState = loadSales();
-    const freshSettings = loadSettings();
-    sendQuote(freshState, freshSettings, calculateSalesMetrics(freshState, freshSettings));
-  });
+    const btnInvOpen = document.getElementById("btnSalesInvoiceOpen");
+    if (btnInvOpen) btnInvOpen.onclick = () => { window.location.href = "/estimates-invoices"; };
+
+    const btnInvSend = document.getElementById("btnSalesInvoiceSend");
+    if (btnInvSend) {
+      btnInvSend.onclick = () => openSendModal(state, settings, calculateSalesMetrics(state, settings));
+    }
+
+    const btnInvPdf = document.getElementById("btnSalesInvoicePdf");
+    if (btnInvPdf) btnInvPdf.onclick = () => window.print();
+  }
 }
 
 window.renderSales = renderSales;
@@ -3752,6 +3894,7 @@ function renderSupervisor() {
 
     const response = await fetch("/.netlify/functions/publish-public-invoice", {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
@@ -5279,7 +5422,7 @@ function renderSupervisor() {
         },
         onPdf: (row) => {
           if (!guardHubAction(row, "canExportPdf", "El PDF del invoice requiere un invoice valido.")) return;
-          exportInvoicePdf("hub", row.project, row.report, settings, getProjectInvoiceState(row.project));
+          void exportInvoicePdf("hub", row.project, row.report, settings, getProjectInvoiceState(row.project));
         }
       });
 
@@ -5678,7 +5821,7 @@ function renderSupervisor() {
     if ($("btnHubDrawerPdf")) {
       $("btnHubDrawerPdf").onclick = () => {
         if (!selectedRow) return;
-        exportInvoicePdf("hub", selectedRow.project, selectedRow.report, settings, getProjectInvoiceState(selectedRow.project));
+        void exportInvoicePdf("hub", selectedRow.project, selectedRow.report, settings, getProjectInvoiceState(selectedRow.project));
       };
     }
     if ($("btnHubDrawerStatement")) {

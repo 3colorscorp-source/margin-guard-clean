@@ -1,3 +1,5 @@
+const { readSessionFromEvent } = require("./_lib/session");
+const { supabaseRequest } = require("./_lib/supabase-admin");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -29,15 +31,21 @@ function parseBody(raw) {
   }
 }
 
-function toUsdCents(value, fallback = 100000) {
-  const num = Number(value);
-  if (!Number.isFinite(num) || num <= 0) return fallback;
-  return Math.round(num * 100);
-}
-
 function isValidEmail(value) {
   const email = String(value || "").trim();
   return email.includes("@") && email.includes(".");
+}
+
+function depositRequiredToUsdCents(raw) {
+  const dollars = Number(raw);
+  if (!Number.isFinite(dollars) || dollars <= 0) {
+    return null;
+  }
+  const cents = Math.round(dollars * 100);
+  if (cents < 50) {
+    return null;
+  }
+  return cents;
 }
 
 exports.handler = async (event) => {
@@ -63,7 +71,36 @@ exports.handler = async (event) => {
       return json(400, { error: "Missing public_token" });
     }
 
+    const quoteRows = await supabaseRequest(
+      `quotes?public_token=eq.${encodeURIComponent(publicToken)}&select=id,deposit_required,tenant_id,project_name,title,client_name,client_email`
+    );
+    const quote = Array.isArray(quoteRows) ? quoteRows[0] : null;
+    if (!quote) {
+      return json(404, { error: "Quote not found" });
+    }
+
+    const session = readSessionFromEvent(event);
+    if (session?.e && session?.c) {
+      const tenantRows = await supabaseRequest(
+        `tenants?stripe_customer_id=eq.${encodeURIComponent(session.c)}&select=id`
+      );
+      const sessionTenant = Array.isArray(tenantRows) ? tenantRows[0] : null;
+      if (!sessionTenant?.id) {
+        return json(404, { error: "Tenant not found. Run bootstrap first." });
+      }
+      if (quote.tenant_id && quote.tenant_id !== sessionTenant.id) {
+        return json(403, { error: "Forbidden" });
+      }
+    }
+
+    const depositCents = depositRequiredToUsdCents(quote.deposit_required);
+    if (depositCents == null) {
+      return json(400, { error: "Invalid or missing deposit on quote" });
+    }
+
     const projectName = pickFirst(
+      quote.project_name,
+      quote.title,
       body.project_name,
       body.projectName,
       body.title,
@@ -71,6 +108,7 @@ exports.handler = async (event) => {
     );
 
     const customerName = pickFirst(
+      quote.client_name,
       body.customer_name,
       body.customerName,
       body.client_name,
@@ -80,6 +118,7 @@ exports.handler = async (event) => {
     );
 
     const rawEmail = pickFirst(
+      quote.client_email,
       body.client_email,
       body.clientEmail,
       body.customer_email,
@@ -88,11 +127,6 @@ exports.handler = async (event) => {
     );
 
     const customerEmail = isValidEmail(rawEmail) ? String(rawEmail).trim() : "";
-
-    const depositCents = toUsdCents(
-      body.deposit_required ?? body.depositRequired ?? body.amount,
-      100000
-    );
 
     const siteUrl = (
       process.env.URL ||
@@ -128,6 +162,7 @@ exports.handler = async (event) => {
 
     form.set("client_reference_id", publicToken);
     form.set("metadata[purpose]", "project_deposit");
+    form.set("metadata[quote_id]", String(quote.id || ""));
     form.set("metadata[public_token]", publicToken);
     form.set("metadata[project_name]", projectName);
     form.set("metadata[customer_name]", customerName);

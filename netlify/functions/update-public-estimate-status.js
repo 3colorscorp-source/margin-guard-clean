@@ -25,13 +25,29 @@ exports.handler = async (event) => {
       return json(500, { error: "Missing env SUPABASE_SERVICE_ROLE_KEY" });
     }
 
-    const body = JSON.parse(event.body || "{}");
-    const token = body.token || "";
-    const status = String(body.status || "").trim().toLowerCase();
+    let body = {};
+    try {
+      body = JSON.parse(event.body || "{}");
+    } catch (_err) {
+      return json(400, { error: "Invalid JSON" });
+    }
 
-    if (!token) {
+    const rawToken = body.token;
+    if (rawToken === undefined || rawToken === null) {
       return json(400, { error: "Missing token" });
     }
+    const trimmed = String(rawToken).trim();
+    if (trimmed === "") {
+      return json(400, { error: "Missing token" });
+    }
+    if (trimmed.length < 10 || trimmed.length > 256) {
+      return json(400, { error: "Invalid token" });
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
+      return json(400, { error: "Invalid token" });
+    }
+
+    const status = String(body.status || "").trim().toLowerCase();
 
     if (!["accepted", "declined"].includes(status)) {
       return json(400, { error: "Invalid status" });
@@ -39,21 +55,17 @@ exports.handler = async (event) => {
 
     const nowIso = new Date().toISOString();
 
-    // 👇 SOLO actualizamos columnas seguras
     const patch = {
       status,
       updated_at: nowIso
     };
 
-    // 👇 Solo agrega accepted_at si existe ese flujo en tu sistema
     if (status === "accepted") {
       patch.accepted_at = nowIso;
     }
 
-    // ⚠️ NO usar declined_at porque tu tabla ya mostró que no existe
-
     const response = await fetch(
-      `${supabaseUrl}/rest/v1/quotes?public_token=eq.${encodeURIComponent(token)}`,
+      `${supabaseUrl}/rest/v1/quotes?public_token=eq.${encodeURIComponent(trimmed)}`,
       {
         method: "PATCH",
         headers: {

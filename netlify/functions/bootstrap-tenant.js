@@ -25,7 +25,9 @@ exports.handler = async (event) => {
 
     if (!tenant) {
       const ownerEmail = String(session.e || "").trim().toLowerCase();
-      const guessedName = ownerEmail.split("@")[1]?.split(".")[0]?.replace(/[-_]/g, " ") || "Margin Guard Tenant";
+      const domainKey = ownerEmail.split("@")[1]?.split(".")[0]?.replace(/[-_]/g, " ").trim() || "";
+      const localKey = ownerEmail.split("@")[0]?.replace(/[._+-]/g, " ").trim() || "";
+      const guessedName = (domainKey || localKey || "business").replace(/\s+/g, " ");
       const createdRows = await supabaseRequest("tenants", {
         method: "POST",
         headers: { Prefer: "resolution=merge-duplicates,return=representation" },

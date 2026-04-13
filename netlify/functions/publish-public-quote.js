@@ -1,3 +1,6 @@
+const { readSessionFromEvent } = require("./_lib/session");
+const { supabaseRequest } = require("./_lib/supabase-admin");
+
 const fetch = globalThis.fetch;
 if (!fetch) {
   throw new Error("Global fetch is not available in this runtime.");
@@ -70,6 +73,19 @@ exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
       return json(405, { error: "Method Not Allowed" });
+    }
+
+    const session = readSessionFromEvent(event);
+    if (!session?.e || !session?.c) {
+      return json(401, { error: "Unauthorized" });
+    }
+
+    const tenantRows = await supabaseRequest(
+      `tenants?stripe_customer_id=eq.${encodeURIComponent(session.c)}&select=id`
+    );
+    const tenant = Array.isArray(tenantRows) ? tenantRows[0] : null;
+    if (!tenant?.id) {
+      return json(404, { error: "Tenant not found. Run bootstrap first." });
     }
 
     const supabaseUrl =
@@ -186,6 +202,26 @@ exports.handler = async (event) => {
     const currency = pickFirst(body.currency, "USD");
     const paymentLink = pickFirst(body.payment_link, body.paymentLink);
 
+    const businessName = pickFirst(
+      body.business_name,
+      body.businessName,
+      body.company_name,
+      body.companyName
+    );
+    const businessEmail = pickFirst(body.business_email, body.businessEmail);
+    const businessPhone = pickFirst(
+      body.business_phone,
+      body.businessPhone,
+      body.company_phone,
+      body.companyPhone
+    );
+    const businessAddress = pickFirst(
+      body.business_address,
+      body.businessAddress,
+      body.company_address,
+      body.companyAddress
+    );
+
     const basePayload = {
       project_name: projectName,
       title,
@@ -198,7 +234,12 @@ exports.handler = async (event) => {
       notes,
       terms,
       payment_link: paymentLink,
-      public_token: publicToken
+      public_token: publicToken,
+      business_name: businessName,
+      company_name: businessName,
+      business_email: businessEmail,
+      business_phone: businessPhone,
+      business_address: businessAddress
     };
 
     const payloadVariants = [
