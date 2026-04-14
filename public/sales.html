@@ -1212,6 +1212,23 @@
     settings?.companyAddress
   );
 
+  const businessAddress = pickTenantString(
+    data.businessAddress,
+    data.business_address,
+    data.bizAddress,
+    data.biz_address,
+    branding?.businessAddress,
+    branding?.business_address,
+    branding?.bizAddress,
+    branding?.biz_address,
+    settings?.businessAddress,
+    settings?.business_address,
+    settings?.bizAddress,
+    settings?.biz_address,
+    settings?.address,
+    settings?.companyAddress
+  );
+
   const clientName = String(
     data.clientName ||
     data.client_name ||
@@ -1444,7 +1461,9 @@
     preparedBy ? `Prepared by: ${preparedBy}` : '',
     businessPhone ? `Phone: ${businessPhone}` : '',
     businessEmail ? `Email: ${businessEmail}` : '',
-    businessServiceArea ? `Address / Service Area: ${businessServiceArea}` : ''
+    (businessServiceArea || businessAddress)
+      ? `Address / Service Area: ${businessServiceArea || businessAddress}`
+      : ''
   ].filter(Boolean);
 
   let bizY = subY + 18;
