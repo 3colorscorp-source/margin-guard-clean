@@ -89,6 +89,27 @@ async function uploadPdfToSupabase({ base64, fileName, estimateNumber }) {
   return `${url}/storage/v1/object/public/${bucketName}/${filePath}`;
 }
 
+/**
+ * publicQuoteUrl || `${siteUrl}/estimate-public.html?token=${publicToken}` — never returns empty.
+ */
+function resolvePublicQuoteUrl(body, siteUrl) {
+  const publicToken = pickFirst(body.publicToken, body.public_token);
+  const publicQuoteUrl = pickFirst(body.publicQuoteUrl, body.public_quote_url);
+  const built =
+    siteUrl && publicToken
+      ? `${siteUrl}/estimate-public.html?token=${encodeURIComponent(publicToken)}`
+      : "";
+
+  let out = publicQuoteUrl || built || "";
+  if (!String(out).trim() && siteUrl) {
+    out = `${siteUrl}/estimate-public.html${publicToken ? `?token=${encodeURIComponent(publicToken)}` : ""}`;
+  }
+  if (!String(out).trim()) {
+    out = "https://estimate-public.invalid/estimate-public.html";
+  }
+  return String(out).trim();
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -121,46 +142,27 @@ exports.handler = async (event) => {
       body.pdfUploadError = pdfUploadError;
     }
 
-    const siteBase = pickFirst(
+    const siteUrl = pickFirst(
       process.env.URL,
       process.env.DEPLOY_PRIME_URL,
       process.env.SITE_URL
     ).replace(/\/+$/, "");
 
-    const publicToken = pickFirst(body.publicToken, body.public_token);
-
-    let publicQuoteUrl = "";
-    if (siteBase && publicToken) {
-      publicQuoteUrl = `${siteBase}/estimate-public.html?token=${encodeURIComponent(publicToken)}`;
-    }
-    if (!publicQuoteUrl) {
-      publicQuoteUrl = pickFirst(body.publicQuoteUrl, body.public_quote_url);
-    }
-
-    const toName = pickFirst(body.toName, body.to_name);
-    const clientEmail = pickFirst(body.toEmail, body.client_email, body.clientEmail);
+    const toName = pickFirst(body.toName, body.client_name, body.clientName, body.to_name);
+    const toEmail = pickFirst(body.toEmail, body.client_email, body.clientEmail);
     const projectName = pickFirst(body.projectName, body.project_name);
-    const subject = pickFirst(body.subject);
+    const subject = pickFirst(body.subject) || "";
+    const publicToken = pickFirst(body.publicToken, body.public_token) || "";
 
-    const zapierPayload = {
-      to_name: toName,
-      client_email: clientEmail,
-      project_name: projectName,
+    const public_quote_url = resolvePublicQuoteUrl(body, siteUrl);
+
+    const payload = {
+      to_name: toName || "",
+      client_email: toEmail || "",
+      project_name: projectName || "",
       subject,
       public_token: publicToken,
-      public_quote_url: publicQuoteUrl,
-      messageText: body.messageText != null ? String(body.messageText) : "",
-      scopeOfWork: pickFirst(body.scopeOfWork, body.scope_of_work),
-      depositRequired: body.depositRequired,
-      salesRepInitials: body.salesRepInitials || "",
-      pdfUrl: pdfUrl || "",
-      pdfUploadError: pdfUploadError || "",
-      businessName: pickFirst(body.businessName, body.business_name),
-      businessEmail: pickFirst(body.businessEmail, body.business_email),
-      businessPhone: pickFirst(body.businessPhone, body.business_phone),
-      businessAddress: pickFirst(body.businessAddress, body.business_address),
-      quoteId: body.quoteId || "",
-      estimateNumber: body.estimateNumber || ""
+      public_quote_url
     };
 
     const webhook = pickFirst(
@@ -170,10 +172,11 @@ exports.handler = async (event) => {
 
     let zapierDelivery = "skipped";
     try {
+      console.log("[ZAPIER PAYLOAD]", payload);
       const resp = await fetch(webhook, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(zapierPayload)
+        body: JSON.stringify(payload)
       });
       if (resp.ok) {
         zapierDelivery = "ok";
@@ -193,7 +196,7 @@ exports.handler = async (event) => {
         ok: true,
         pdfUrl: pdfUrl || null,
         pdfUploadError: pdfUploadError || null,
-        public_quote_url: publicQuoteUrl,
+        public_quote_url,
         zapier: zapierDelivery
       })
     };
