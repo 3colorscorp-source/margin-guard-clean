@@ -193,10 +193,17 @@
   }
 
   const FIXED_EXCLUSIONS_FALLBACK = [
-    "Only the work specifically written in this estimate is included.",
-    "Any additional work, hidden conditions, repairs, upgrades, changes,",
-    "or requests outside the written scope require separate written approval",
-    "and may affect pricing and schedule."
+    "Only the work specifically described in this written estimate is included in the project scope.",
+    "",
+    "Any additional work, hidden or unforeseen conditions (including but not limited to substrate deficiencies, structural issues, plumbing, electrical, or site conditions), repairs, upgrades, modifications, or client-requested changes that are not explicitly listed in this estimate are excluded.",
+    "",
+    "Verbal discussions, assumptions, or informal requests do not constitute approval or inclusion in the scope of work unless documented and approved in writing.",
+    "",
+    "All changes, additions, or deviations from the original scope require a separate written agreement (change order), including updated pricing and timeline adjustments.",
+    "",
+    "No additional or extra work will be performed without prior written authorization from the client.",
+    "",
+    "Such changes may result in adjustments to the total project cost and completion schedule."
   ].join("\n");
 
   /**
