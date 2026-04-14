@@ -36,6 +36,14 @@ const QUOTE_FETCH_KEYS = [...QUOTE_PUBLIC_KEYS, "tenant_id"];
 
 const QUOTE_SELECT = QUOTE_FETCH_KEYS.join(",");
 
+/** Treat generic placeholder stored on quotes so real tenant names can win in pickFirst. */
+function skipHeaderPlaceholderName(value) {
+  const t = String(value ?? "").trim();
+  if (!t) return "";
+  if (/^business$/i.test(t)) return "";
+  return t;
+}
+
 /**
  * Public estimate API: isolated to one quote row matched by public_token only.
  * Response is a whitelisted subset — no ids, no tenant_id in JSON.
@@ -108,8 +116,8 @@ exports.handler = async (event) => {
 
     const resolvedBusinessName =
       pickFirst(
-        estimate.business_name,
-        estimate.company_name,
+        skipHeaderPlaceholderName(estimate.business_name),
+        skipHeaderPlaceholderName(estimate.company_name),
         td ? td.branding_business_name : "",
         td ? td.business_name : ""
       ) || "Business";

@@ -5,6 +5,16 @@
     return new URLSearchParams(window.location.search).get(name);
   }
 
+  /** TEMPORARY: remove after confirming public estimate header / tenant name. */
+  function isEstimateDebugMode() {
+    return getQueryParam("debug") === "1";
+  }
+
+  function logEstimateDebug(stage, payload) {
+    if (!isEstimateDebugMode()) return;
+    console.log(`[mg-estimate-debug] ${stage}`, payload);
+  }
+
   function money(value, currency = "USD") {
     const amount = Number(value || 0);
     try {
@@ -19,6 +29,14 @@
 
   function safe(v) {
     return String(v || "").trim();
+  }
+
+  /** Skip quote-row placeholder so tenant_branding_* can be used (matches get-public-estimate). */
+  function skipHeaderPlaceholderName(value) {
+    const t = String(value ?? "").trim();
+    if (!t) return "";
+    if (/^business$/i.test(t)) return "";
+    return t;
   }
 
   function escapeHtml(v) {
@@ -90,8 +108,8 @@
       business_email: safe(est.business_email),
       client_email: safe(est.client_email)
     };
-    const businessName = safe(est.business_name);
-    const companyName = safe(est.company_name);
+    const businessName = skipHeaderPlaceholderName(safe(est.business_name));
+    const companyName = skipHeaderPlaceholderName(safe(est.company_name));
     const tenantBrandingBusiness = safe(est.tenant_branding_business_name);
     const tenantBrandingCompany = safe(est.tenant_branding_company_name);
     const candidates = [
@@ -200,7 +218,7 @@
   }
 
   async function loadEstimatePublic() {
-    if (!$("publicEstimateFeedback")) {
+    if (!$("publicEstimateTitle")) {
       return;
     }
 
@@ -225,6 +243,16 @@
           data?.error || "El token publico no existe en este navegador o en este tenant."
         );
         return;
+      }
+
+      if (isEstimateDebugMode() && data.estimate) {
+        const e = data.estimate;
+        logEstimateDebug("after fetch", {
+          "estimate.business_name": safe(e.business_name),
+          "estimate.company_name": safe(e.company_name),
+          "estimate.tenant_branding_business_name": safe(e.tenant_branding_business_name),
+          "estimate.tenant_branding_company_name": safe(e.tenant_branding_company_name)
+        });
       }
 
       renderEstimatePublic(data.estimate);
@@ -296,8 +324,21 @@
     const titleEl = $("publicEstimateTitle");
     const metaEl = $("publicEstimateMeta");
 
-    const displayName = resolvePublicBusinessDisplayName(next);
-    const initials = buildInitialsFromBusinessName(displayName);
+    const resolvedDisplayName = resolvePublicBusinessDisplayName(next);
+    const finalHeaderText = resolvedDisplayName;
+
+    if (isEstimateDebugMode()) {
+      logEstimateDebug("after resolvePublicBusinessDisplayName", {
+        "estimate.business_name": safe(next.business_name),
+        "estimate.company_name": safe(next.company_name),
+        "estimate.tenant_branding_business_name": safe(next.tenant_branding_business_name),
+        "estimate.tenant_branding_company_name": safe(next.tenant_branding_company_name),
+        resolvedDisplayName,
+        finalHeaderText
+      });
+    }
+
+    const initials = buildInitialsFromBusinessName(resolvedDisplayName);
     const logoUrl = safeHttpUrl(next.logo_url);
 
     const businessAddress =
@@ -321,13 +362,24 @@
       ? `<img src="${escapeHtml(logoUrl)}" alt="" style="width:56px;height:56px;object-fit:contain;border-radius:10px;background:rgba(255,255,255,.06);flex-shrink:0;" />`
       : `<div style="width:56px;height:56px;border-radius:12px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;letter-spacing:.04em;flex-shrink:0;">${escapeHtml(initials)}</div>`;
 
+    if (titleEl && isEstimateDebugMode()) {
+      logEstimateDebug("before #publicEstimateTitle write", {
+        "estimate.business_name": safe(next.business_name),
+        "estimate.company_name": safe(next.company_name),
+        "estimate.tenant_branding_business_name": safe(next.tenant_branding_business_name),
+        "estimate.tenant_branding_company_name": safe(next.tenant_branding_company_name),
+        resolvedDisplayName,
+        finalHeaderText
+      });
+    }
+
     if (titleEl) {
       titleEl.innerHTML = `
         <div style="display:flex;align-items:flex-start;gap:14px;">
           ${logoOrInitials}
           <div style="flex:1;min-width:0;">
             <div style="font-size:30px;font-weight:800;line-height:1.15;margin-bottom:6px;">
-              ${escapeHtml(displayName)}
+              ${escapeHtml(resolvedDisplayName)}
             </div>
             <div style="font-size:18px;font-weight:700;line-height:1.25;">
               ${escapeHtml(projectLine)}
@@ -335,6 +387,35 @@
           </div>
         </div>
       `;
+    }
+
+    if (isEstimateDebugMode()) {
+      const panel = $("mgPublicEstimateDebug");
+      if (panel) {
+        panel.hidden = false;
+        panel.style.display = "block";
+        panel.textContent = [
+          "— Public estimate header debug (?debug=1) —",
+          "",
+          "Resolved business_name (API field):",
+          `  ${safe(next.business_name)}`,
+          "",
+          "estimate.company_name:",
+          `  ${safe(next.company_name)}`,
+          "",
+          "tenant_branding_business_name:",
+          `  ${safe(next.tenant_branding_business_name)}`,
+          "",
+          "tenant_branding_company_name:",
+          `  ${safe(next.tenant_branding_company_name)}`,
+          "",
+          "resolvedDisplayName (resolver output):",
+          `  ${resolvedDisplayName}`,
+          "",
+          "final header text (written to #publicEstimateTitle):",
+          `  ${finalHeaderText}`
+        ].join("\n");
+      }
     }
 
     if (metaEl) {
