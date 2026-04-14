@@ -1105,6 +1105,41 @@
       'Business Name'
   ).trim();
 
+  const blockedGenericBusinessNames = new Set([
+    'gmail',
+    'yahoo',
+    'outlook',
+    'hotmail',
+    'icloud',
+    'mail'
+  ]);
+
+  let safeBusinessName = String(businessName || '').trim();
+
+  if (blockedGenericBusinessNames.has(safeBusinessName.toLowerCase())) {
+    const fallbackBusinessName = String(
+      (data.settings &&
+        (data.settings.bizName ||
+          data.settings.biz_name ||
+          data.settings.businessName ||
+          data.settings.business_name ||
+          data.settings.companyName ||
+          data.settings.company_name)) ||
+        (data.branding &&
+          (data.branding.bizName ||
+            data.branding.biz_name ||
+            data.branding.businessName ||
+            data.branding.business_name ||
+            data.branding.companyName ||
+            data.branding.company_name)) ||
+        'Business Name'
+    ).trim();
+
+    if (fallbackBusinessName) {
+      safeBusinessName = fallbackBusinessName;
+    }
+  }
+
   const preparedBy = pickTenantString(
     data.preparedBy,
     data.prepared_by,
@@ -1382,13 +1417,13 @@
     }
   }
 
-  console.log('PDF tenant debug', {
+  console.log('PDF final header businessName', {
     businessName,
-    branding: data.branding,
-    settings: data.settings,
+    safeBusinessName,
     directBusinessName: data.businessName,
     directBizName: data.bizName,
-    tenantName: data.tenantName
+    directCompanyName: data.companyName,
+    directTenantName: data.tenantName
   });
 
   // =========================
@@ -1397,7 +1432,7 @@
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(20);
   doc.setTextColor(...textDark);
-  doc.text(businessName, left, y);
+  doc.text(safeBusinessName || 'Business Name', left, y);
 
   const subY = y + 24;
   doc.setFont('helvetica', 'normal');
@@ -1939,6 +1974,13 @@ async function fillSendModal() {
     if (message) message.value = defaultMessage;
     if (deposit) deposit.value = depositFormatted;
 
+    console.log('PDF payload before first build', {
+      payloadBusinessName: payload.businessName,
+      payloadBizName: payload.bizName,
+      payloadCompanyName: payload.companyName,
+      payloadTenantName: payload.tenantName
+    });
+
     const pdfDoc = await buildEstimatePdfPayload(payload);
     modal.dataset.pdf = JSON.stringify(pdfDoc || {});
     modal.dataset.payload = JSON.stringify(payload);
@@ -2168,6 +2210,13 @@ async function openSellerSendModal(event) {
         depositRequired: rowDeposit,
         depositFormatted: formatUsd(rowDeposit)
       };
+
+      console.log('PDF payload before rebuild', {
+        pdfPayloadBusinessName: pdfPayloadWithLink.businessName,
+        pdfPayloadBizName: pdfPayloadWithLink.bizName,
+        pdfPayloadCompanyName: pdfPayloadWithLink.companyName,
+        pdfPayloadTenantName: pdfPayloadWithLink.tenantName
+      });
 
       const rebuiltPdf = await buildEstimatePdfPayload(pdfPayloadWithLink);
 
