@@ -1507,9 +1507,10 @@
   if (businessEmail) {
     bizLines.push(`Email: ${businessEmail}`);
   }
-  const addrDisplay = businessServiceArea || businessAddress;
-  if (addrDisplay) {
-    bizLines.push(`Address / Service Area: ${addrDisplay}`);
+  const locationLine = businessServiceArea || businessAddress;
+
+  if (locationLine) {
+    bizLines.push(`Address: ${locationLine}`);
   }
 
   let bizY = subY + 18;
