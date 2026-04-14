@@ -391,13 +391,16 @@
       }
 
       function normalizeBrandingRow(row, settings) {
+        const r = row && typeof row === 'object' ? row : {};
+        const st = settings && typeof settings === 'object' ? settings : {};
+
         const fallbackBusinessName =
-          safeTrim(settings?.bizName) ||
-          safeTrim(settings?.businessName) ||
-          safeTrim(settings?.companyName) ||
+          safeTrim(st.bizName) ||
+          safeTrim(st.businessName) ||
+          safeTrim(st.companyName) ||
           '';
 
-        const businessName = safeTrim(pickFirstValue(row, [
+        const businessName = safeTrim(pickFirstValue(r, [
           'businessName',
           'bizName',
           'business_name',
@@ -408,17 +411,19 @@
           'legal_name'
         ], fallbackBusinessName));
 
-        const businessEmail = safeTrim(pickFirstValue(row, [
-          'email',
+        const businessEmail = safeTrim(pickFirstValue(r, [
+          'businessEmail',
           'business_email',
+          'email',
           'support_email',
           'contact_email',
           'reply_to_email'
         ], ''));
 
-        const businessPhone = safeTrim(pickFirstValue(row, [
-          'phone',
+        const businessPhone = safeTrim(pickFirstValue(r, [
+          'businessPhone',
           'business_phone',
+          'phone',
           'contact_phone',
           'phone_number',
           'mobile_phone',
@@ -426,36 +431,8 @@
           'whatsapp'
         ], ''));
 
-        const accentHex = safeTrim(pickFirstValue(row, [
-          'accent_color',
-          'brand_color',
-          'primary_color',
-          'primary_hex'
-        ], '#8f8a5f'));
-
-        const signatureLine = safeTrim(pickFirstValue(row, [
-          'signature_line',
-          'signature_tagline',
-          'email_signature',
-          'tagline',
-          'headline'
-        ], 'Professional Estimate Delivery'));
-
-        const serviceLine = safeTrim(pickFirstValue(row, [
-          'service_line',
-          'service_category',
-          'industry_line',
-          'brand_footer'
-        ], 'Professional Service Estimate'));
-
-        const marketLine = safeTrim(pickFirstValue(row, [
-          'market_line',
-          'location_line',
-          'city_state',
-          'region_line'
-        ], ''));
-
-        const businessAddress = safeTrim(pickFirstValue(row, [
+        const businessAddress = safeTrim(pickFirstValue(r, [
+          'businessAddress',
           'business_address',
           'address',
           'address_line_1',
@@ -465,39 +442,77 @@
           'office_address'
         ], ''));
 
-        const logoUrl = safeTrim(pickFirstValue(row, [
-          'logo_url',
+        const businessServiceArea = safeTrim(pickFirstValue(r, [
+          'businessServiceArea',
+          'business_service_area',
+          'service_area',
+          'service_region',
+          'coverage_area'
+        ], ''));
+
+        const preparedBy = safeTrim(pickFirstValue(r, [
+          'preparedBy',
+          'prepared_by',
+          'email_signature_name',
+          'signature_name',
+          'owner_name'
+        ], ''));
+
+        const logoUrl = safeTrim(pickFirstValue(r, [
           'logoUrl',
+          'logo_url',
           'public_logo_url',
           'publicLogoUrl',
           'image_url',
           'logo'
         ], ''));
-        const preparedBy = safeTrim(pickFirstValue(row, [
-  'prepared_by',
-  'preparedBy',
-  'email_signature_name',
-  'signature_name',
-  'owner_name'
-], ''));
 
-const businessServiceArea = safeTrim(pickFirstValue(row, [
-  'business_service_area',
-  'service_area',
-  'coverage_area',
-  'service_region'
-], ''));
+        const accentHex = safeTrim(pickFirstValue(r, [
+          'accentHex',
+          'accent_color',
+          'brand_color',
+          'primary_color',
+          'primary_hex'
+        ], '#8f8a5f'));
+
+        const signatureLine = safeTrim(pickFirstValue(r, [
+          'signatureLine',
+          'signature_line',
+          'signature_tagline',
+          'email_signature',
+          'tagline',
+          'headline'
+        ], 'Professional Estimate Delivery'));
+
+        const serviceLine = safeTrim(pickFirstValue(r, [
+          'serviceLine',
+          'service_line',
+          'service_category',
+          'industry_line',
+          'brand_footer'
+        ], 'Professional Service Estimate'));
+
+        const marketLine = safeTrim(pickFirstValue(r, [
+          'marketLine',
+          'market_line',
+          'location_line',
+          'city_state',
+          'region_line'
+        ], ''));
+
         return {
           businessName,
           businessEmail,
           businessPhone,
           businessAddress,
+          preparedBy,
+          businessServiceArea,
+          logoUrl,
           accentHex,
           signatureLine,
           serviceLine,
           marketLine,
-          initials: buildBrandInitials(businessName),
-          logoUrl
+          initials: buildBrandInitials(businessName)
         };
       }
 
@@ -549,13 +564,19 @@ const businessServiceArea = safeTrim(pickFirstValue(row, [
           const { response, data } = await window.MarginGuardTenant.getTenantBranding();
           if (!response?.ok || !data?.ok || !data.branding) return null;
           const b = data.branding;
+          const raw = b && typeof b === 'object' ? b : {};
           return normalizeBrandingRow(
             {
-              business_name: b.business_name,
-              logo_url: b.logo_url,
-              business_email: b.business_email,
-              business_phone: b.business_phone,
-              business_address: b.business_address
+              ...raw,
+              business_name: raw.business_name,
+              logo_url: raw.logo_url,
+              business_email: raw.business_email,
+              business_phone: raw.business_phone,
+              business_address: raw.business_address,
+              prepared_by: raw.prepared_by,
+              preparedBy: raw.preparedBy,
+              email_signature_name: raw.email_signature_name,
+              business_service_area: raw.business_service_area
             },
             settings
           );
@@ -624,7 +645,13 @@ const businessServiceArea = safeTrim(pickFirstValue(row, [
               businessEmail: apiRow.businessEmail || merged.businessEmail,
               businessPhone: apiRow.businessPhone || merged.businessPhone,
               businessAddress: apiRow.businessAddress || merged.businessAddress,
-              logoUrl: apiRow.logoUrl || merged.logoUrl || ''
+              preparedBy: apiRow.preparedBy || merged.preparedBy,
+              businessServiceArea: apiRow.businessServiceArea || merged.businessServiceArea,
+              logoUrl: apiRow.logoUrl || merged.logoUrl || '',
+              accentHex: apiRow.accentHex || merged.accentHex,
+              signatureLine: apiRow.signatureLine || merged.signatureLine,
+              serviceLine: apiRow.serviceLine || merged.serviceLine,
+              marketLine: apiRow.marketLine || merged.marketLine
             };
           }
           cacheBranding(merged);
@@ -1470,14 +1497,20 @@ const businessServiceArea = safeTrim(pickFirstValue(row, [
   doc.setTextColor(...textMuted);
   doc.text('Professional Tile Installation Proposal', left, subY);
 
-  const bizLines = [
-    preparedBy ? `Prepared by: ${preparedBy}` : '',
-    businessPhone ? `Phone: ${businessPhone}` : '',
-    businessEmail ? `Email: ${businessEmail}` : '',
-    (businessServiceArea || businessAddress)
-      ? `Address / Service Area: ${businessServiceArea || businessAddress}`
-      : ''
-  ].filter(Boolean);
+  const bizLines = [];
+  if (preparedBy) {
+    bizLines.push(`Prepared by: ${preparedBy}`);
+  }
+  if (businessPhone) {
+    bizLines.push(`Phone: ${businessPhone}`);
+  }
+  if (businessEmail) {
+    bizLines.push(`Email: ${businessEmail}`);
+  }
+  const addrDisplay = businessServiceArea || businessAddress;
+  if (addrDisplay) {
+    bizLines.push(`Address / Service Area: ${addrDisplay}`);
+  }
 
   let bizY = subY + 18;
   doc.setFont('helvetica', 'normal');
@@ -1765,8 +1798,7 @@ const businessServiceArea = safeTrim(pickFirstValue(row, [
   }
 
   /**
-   * Maps Business Settings / tenant branding + mg_settings into stable PDF/send fields.
-   * Priority: branding > settings > base (existing payload).
+   * Tenant PDF/send fields. Priority: branding → settings → base.
    */
   function buildEstimateTenantPayload(branding, settings, base) {
     const b = branding && typeof branding === 'object' ? branding : {};
@@ -1788,6 +1820,7 @@ const businessServiceArea = safeTrim(pickFirstValue(row, [
       s.company_name,
       e.businessName,
       e.business_name,
+      e.bizName,
       e.companyName,
       e.company_name,
       ''
@@ -1798,6 +1831,7 @@ const businessServiceArea = safeTrim(pickFirstValue(row, [
       b.business_phone,
       b.bizPhone,
       b.biz_phone,
+      b.phone,
       b.contact_phone,
       s.businessPhone,
       s.business_phone,
@@ -1813,6 +1847,7 @@ const businessServiceArea = safeTrim(pickFirstValue(row, [
       b.business_email,
       b.bizEmail,
       b.biz_email,
+      b.email,
       b.support_email,
       b.contact_email,
       b.reply_to_email,
@@ -1843,25 +1878,27 @@ const businessServiceArea = safeTrim(pickFirstValue(row, [
     );
 
     const businessServiceArea = pickFirstNonEmpty(
-      e.businessServiceArea,
       b.businessServiceArea,
       b.business_service_area,
-      b.bizAddress,
-      b.biz_address,
-      s.bizAddress,
-      s.biz_address,
+      b.service_area,
+      s.businessServiceArea,
+      s.business_service_area,
+      s.service_area,
+      e.businessServiceArea,
       businessAddress,
       e.businessAddress
     );
 
     const preparedBy = pickFirstNonEmpty(
-      e.preparedBy,
-      b.email_signature_name,
       b.preparedBy,
       b.prepared_by,
-      s.email_signature_name,
+      b.email_signature_name,
       s.preparedBy,
-      s.prepared_by
+      s.prepared_by,
+      s.email_signature_name,
+      e.preparedBy,
+      e.prepared_by,
+      e.email_signature_name
     );
 
     const serviceLine = pickFirstNonEmpty(
@@ -1884,7 +1921,6 @@ const businessServiceArea = safeTrim(pickFirstValue(row, [
       pickFirstNonEmpty(
         b.accentHex,
         b.accent_color,
-        b.brand_color,
         s.publicAccentColor,
         s.accentHex,
         e.accentHex
