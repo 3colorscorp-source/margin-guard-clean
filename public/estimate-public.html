@@ -121,6 +121,24 @@
     .paid-next-list li + li {
       margin-top: 8px;
     }
+
+    .public-flow-nav a {
+      color: rgba(255, 255, 255, 0.92);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    .public-flow-nav a:hover {
+      opacity: 1;
+    }
+    .flow-step-panel {
+      margin-top: 8px;
+    }
+    .flow-step-panel .exclusions-copy {
+      line-height: 1.55;
+      font-size: 14px;
+      opacity: 0.92;
+      white-space: pre-wrap;
+    }
   </style>
 </head>
 <body>
@@ -135,6 +153,16 @@
           <div class="badge amber" id="publicEstimateStatus">draft</div>
         </div>
 
+        <nav id="publicFlowNav" class="public-flow-nav" style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center;font-size:13px;">
+          <span style="opacity:.75;">Workflow</span>
+          <a id="flowNav1" href="#">1 · Estimate</a>
+          <span style="opacity:.35;">|</span>
+          <a id="flowNav2" href="#">2 · Exclusions</a>
+          <span style="opacity:.35;">|</span>
+          <a id="flowNav3" href="#">3 · Change orders</a>
+        </nav>
+
+        <div id="publicFlowStep1" class="flow-step-panel">
         <div class="grid" style="margin-top:14px;">
           <div class="card estimate-subcard">
             <div class="card-inner">
@@ -233,6 +261,37 @@
             </div>
           </div>
         </section>
+        </div>
+
+        <div id="publicFlowStep2" class="flow-step-panel" style="display:none;">
+          <div class="eyebrow">Step 2 — Exclusions acknowledgment</div>
+          <p class="sub" style="margin-top:8px;">Review the exclusions and terms below, then enter your initials to confirm you understand what is <em>not</em> included in the written scope.</p>
+          <div id="publicExclusionsText" class="exclusions-copy" style="margin-top:14px;padding:14px;border-radius:12px;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.08);min-height:48px;"></div>
+          <div class="field" style="margin-top:16px;">
+            <label for="publicExclusionsInitials">Your initials</label>
+            <input id="publicExclusionsInitials" type="text" maxlength="10" autocomplete="name" placeholder="e.g. JD" style="max-width:200px;" />
+          </div>
+          <div class="inline-actions" style="margin-top:14px;">
+            <button class="btn primary" type="button" id="btnExclusionsSubmit">Submit initials</button>
+          </div>
+          <div class="notice" id="publicExclusionsFeedback" style="display:none;margin-top:12px;"></div>
+          <div class="notice ok" id="publicExclusionsDone" style="display:none;margin-top:12px;"></div>
+        </div>
+
+        <div id="publicFlowStep3" class="flow-step-panel" style="display:none;">
+          <div class="eyebrow">Step 3 — Additional work &amp; change orders</div>
+          <p class="sub" style="margin-top:8px;">Please confirm you understand how additional work is handled on this project.</p>
+          <ul class="paid-next-list" style="margin-top:12px;">
+            <li>Additional work requires a separate written quote or change order.</li>
+            <li>Verbal requests are not part of the original agreement until approved in writing.</li>
+            <li>No extra work begins without your approval of scope and pricing.</li>
+          </ul>
+          <div class="inline-actions" style="margin-top:16px;">
+            <button class="btn primary" type="button" id="btnChangeOrderAck">I understand</button>
+          </div>
+          <div class="notice" id="publicChangeOrderFeedback" style="display:none;margin-top:12px;"></div>
+          <div class="notice ok" id="publicChangeOrderDone" style="display:none;margin-top:12px;"></div>
+        </div>
 
         <p style="margin-top:20px;font-size:12px;opacity:0.65;text-align:center;">Powered by Margin Guard</p>
 

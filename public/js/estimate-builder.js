@@ -157,6 +157,211 @@
     return "";
   }
 
+  function getPublicFlowStep() {
+    const raw = getQueryParam("step");
+    const n = parseInt(raw || "1", 10);
+    if (!Number.isFinite(n)) return 1;
+    return Math.min(3, Math.max(1, n));
+  }
+
+  function setPublicFlowNavHref(token) {
+    const t = encodeURIComponent(token || "");
+    const base = `${window.location.pathname}?token=${t}`;
+    const n1 = $("flowNav1");
+    const n2 = $("flowNav2");
+    const n3 = $("flowNav3");
+    if (n1) n1.href = `${base}&step=1`;
+    if (n2) n2.href = `${base}&step=2`;
+    if (n3) n3.href = `${base}&step=3`;
+  }
+
+  function applyPublicFlowStep(step) {
+    const s1 = $("publicFlowStep1");
+    const s2 = $("publicFlowStep2");
+    const s3 = $("publicFlowStep3");
+    const metaEl = $("publicEstimateMeta");
+    if (s1) s1.style.display = step === 1 ? "" : "none";
+    if (s2) s2.style.display = step === 2 ? "" : "none";
+    if (s3) s3.style.display = step === 3 ? "" : "none";
+    if (metaEl && step !== 1) {
+      const labels = {
+        2: "Step 2 of 3 — exclusions acknowledgment.",
+        3: "Step 3 of 3 — additional work & change orders."
+      };
+      metaEl.textContent = labels[step] || "";
+    }
+  }
+
+  function buildExclusionsDisplayText(next) {
+    const notes = safe(next.notes);
+    const terms = safe(next.terms);
+    const parts = [];
+    if (notes) {
+      parts.push(`Project notes\n\n${notes}`);
+    }
+    if (terms) {
+      parts.push(`Terms & conditions\n\n${terms}`);
+    }
+    if (!parts.length) {
+      return (
+        "Your written estimate defines what is included in the scope. " +
+        "Work or materials not listed in the estimate are excluded unless added through a written change order."
+      );
+    }
+    return parts.join("\n\n—\n\n");
+  }
+
+  function formatPublicAckTime(iso) {
+    const s = safe(iso);
+    if (!s) return "";
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return s;
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short"
+      }).format(d);
+    } catch {
+      return s;
+    }
+  }
+
+  function showFlowPanelNotice(elId, message, type = "info") {
+    const box = $(elId);
+    if (!box) return;
+    if (!message) {
+      box.style.display = "none";
+      box.textContent = "";
+      return;
+    }
+    box.style.display = "block";
+    box.textContent = message;
+    box.style.border = "1px solid rgba(255,255,255,.12)";
+    box.style.background = "rgba(255,255,255,.04)";
+    box.style.color = "#fff";
+    if (type === "success") {
+      box.style.border = "1px solid rgba(16,185,129,.55)";
+      box.style.background = "rgba(16,185,129,.10)";
+      box.style.color = "#eafff7";
+    }
+    if (type === "error") {
+      box.style.border = "1px solid rgba(239,68,68,.55)";
+      box.style.background = "rgba(239,68,68,.10)";
+      box.style.color = "#ffecec";
+    }
+  }
+
+  async function patchPublicQuoteAck(token, payload) {
+    const response = await fetch("/.netlify/functions/patch-public-quote-ack", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, ...payload })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.ok) {
+      throw new Error(data?.error || "Could not save acknowledgment.");
+    }
+    return data;
+  }
+
+  function setupPublicWorkflow(next) {
+    const token = getQueryParam("token") || "";
+    if (!$("publicFlowStep1") || !token) {
+      return;
+    }
+
+    setPublicFlowNavHref(token);
+    const step = getPublicFlowStep();
+    applyPublicFlowStep(step);
+
+    const exText = $("publicExclusionsText");
+    if (exText) {
+      exText.textContent = buildExclusionsDisplayText(next);
+    }
+
+    const exAckAt = safe(next.exclusions_acknowledged_at);
+    const coAckAt = safe(next.change_order_acknowledged_at);
+    const initialsSaved = safe(next.exclusions_initials);
+
+    const exInput = $("publicExclusionsInitials");
+    const exBtn = $("btnExclusionsSubmit");
+    const exDone = $("publicExclusionsDone");
+    const coBtn = $("btnChangeOrderAck");
+    const coDone = $("publicChangeOrderDone");
+
+    if (exAckAt && exDone) {
+      exDone.style.display = "block";
+      const when = formatPublicAckTime(exAckAt);
+      exDone.textContent = `Recorded: ${initialsSaved || "—"}${when ? ` · ${when}` : ""}`;
+    } else if (exDone) {
+      exDone.style.display = "none";
+    }
+
+    if (exInput) {
+      exInput.disabled = !!exAckAt;
+      if (exAckAt && initialsSaved) {
+        exInput.value = initialsSaved;
+      } else if (!exAckAt) {
+        exInput.value = "";
+      }
+    }
+    if (exBtn) {
+      exBtn.disabled = !!exAckAt;
+      exBtn.onclick = async () => {
+        showFlowPanelNotice("publicExclusionsFeedback", "", "info");
+        const raw = safe(exInput?.value).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
+        if (!raw) {
+          showFlowPanelNotice(
+            "publicExclusionsFeedback",
+            "Enter your initials (letters or numbers).",
+            "error"
+          );
+          return;
+        }
+        exBtn.disabled = true;
+        try {
+          await patchPublicQuoteAck(token, {
+            action: "exclusions_ack",
+            exclusions_initials: raw
+          });
+          showFlowPanelNotice("publicExclusionsFeedback", "", "info");
+          await loadEstimatePublic();
+        } catch (err) {
+          exBtn.disabled = false;
+          showFlowPanelNotice("publicExclusionsFeedback", err.message || "Save failed.", "error");
+        }
+      };
+    }
+
+    if (coAckAt && coDone) {
+      coDone.style.display = "block";
+      const when = formatPublicAckTime(coAckAt);
+      coDone.textContent = when ? `Acknowledged · ${when}` : "Acknowledged.";
+    } else if (coDone) {
+      coDone.style.display = "none";
+    }
+
+    if (coBtn) {
+      coBtn.disabled = !!coAckAt;
+      coBtn.onclick = async () => {
+        showFlowPanelNotice("publicChangeOrderFeedback", "", "info");
+        coBtn.disabled = true;
+        try {
+          await patchPublicQuoteAck(token, { action: "change_order_ack" });
+          showFlowPanelNotice("publicChangeOrderFeedback", "", "info");
+          await loadEstimatePublic();
+        } catch (err) {
+          coBtn.disabled = false;
+          showFlowPanelNotice(
+            "publicChangeOrderFeedback",
+            err.message || "Save failed.",
+            "error"
+          );
+        }
+      };
+    }
+  }
+
   function showFeedback(message, type = "info") {
     const box = $("publicEstimateFeedback");
     if (!box) return;
@@ -618,6 +823,8 @@
     if ($("publicEstimateStatus")) {
       $("publicEstimateStatus").textContent = next.status || "READY_TO_SEND";
     }
+
+    setupPublicWorkflow(next);
 
     const approveBtn = $("btnPublicEstimateApprove");
     const declineBtn = $("btnPublicEstimateDecline");

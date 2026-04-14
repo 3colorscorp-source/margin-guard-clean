@@ -28,7 +28,10 @@ const QUOTE_PUBLIC_KEYS = [
   "deposit_required",
   "notes",
   "terms",
-  "status"
+  "status",
+  "exclusions_initials",
+  "exclusions_acknowledged_at",
+  "change_order_acknowledged_at"
 ];
 
 /** Include tenant_id only for server-side branding lookup; never exposed in JSON. */

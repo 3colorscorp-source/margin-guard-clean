@@ -1440,16 +1440,33 @@
     ''
   ).trim();
 
+  function appendStepToPublicQuoteUrl(url, stepNum) {
+    const u = String(url || '').trim();
+    if (!u) return '';
+    const sn = String(stepNum);
+    try {
+      const base = /^https?:\/\//i.test(u) ? u : new URL(u, window.location.origin).href;
+      const parsed = new URL(base);
+      parsed.searchParams.set('step', sn);
+      if (/^https?:\/\//i.test(u)) return parsed.href;
+      return parsed.pathname + parsed.search + parsed.hash;
+    } catch (_e) {
+      const noHash = u.replace(/#.*$/, '');
+      const sep = noHash.includes('?') ? '&' : '?';
+      return `${noHash}${sep}step=${encodeURIComponent(sn)}`;
+    }
+  }
+
   const exclusionsInitialsUrl = String(
     data.exclusionsInitialsUrl ||
     data.exclusions_initials_url ||
-    (publicQuoteUrl ? `${publicQuoteUrl}${publicQuoteUrl.includes('#') ? '' : '#'}exclusions` : '')
+    (publicQuoteUrl ? appendStepToPublicQuoteUrl(publicQuoteUrl, 2) : '')
   ).trim();
 
   const addonRequestUrl = String(
     data.addonRequestUrl ||
     data.add_on_request_url ||
-    (publicQuoteUrl ? `${publicQuoteUrl}${publicQuoteUrl.includes('#') ? '' : '#'}add-on-request` : '')
+    (publicQuoteUrl ? appendStepToPublicQuoteUrl(publicQuoteUrl, 3) : '')
   ).trim();
 
   let y = top;
