@@ -2357,55 +2357,64 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         sendStatus.textContent = 'Sending estimate and PDF...';
       }
 
+      const clientName = toName || payload.clientName || state.clientName || '';
+      const clientEmail = toEmail || payload.customerEmail || state.customerEmail || '';
+      const projectName = payload.projectName || state.projectName || '';
+      const publicToken = publishData.public_token;
+
+      const zapierPayload = {
+        toName: clientName,
+        toEmail: clientEmail,
+        projectName,
+        subject,
+        publicToken,
+        publicQuoteUrl,
+        salesRepInitials,
+        messageLanguage: 'bilingual',
+        messageText: messageWithLink,
+        scopeOfWork: payload.scopeSummary || scope,
+        depositRequired,
+        clientName: clientName,
+        location: projectAddress,
+        businessName:
+          (!isInvalidPublishBusinessNameCandidate(savedName) ? savedName : '') ||
+          resolvePublishBusinessName(branding, payload, settings) ||
+          '',
+        businessPhone:
+          savedPhone || branding.businessPhone || payload.businessPhone || settings.businessPhone || settings.phone || '',
+        businessEmail:
+          savedEmail || branding.businessEmail || payload.businessEmail || settings.businessEmail || settings.email || '',
+        businessAddress:
+          savedAddr ||
+          branding.businessAddress ||
+          payload.businessAddress ||
+          settings.businessAddress ||
+          settings.address ||
+          settings.companyAddress ||
+          '',
+        accentHex: branding.accentHex || payload.accentHex || '#8f8a5f',
+        accentRgb: hexToRgbTuple(branding.accentHex || payload.accentHex || '#8f8a5f', [143, 138, 95]),
+        serviceLine: branding.serviceLine || payload.serviceLine || 'Professional Service Estimate',
+        marketLine: branding.marketLine || payload.marketLine || '',
+        signatureLine: branding.signatureLine || payload.signatureLine || 'Professional Estimate Delivery',
+        currency: 'USD',
+        recommendedTotal: estimateTotal,
+        estimateNumber: payload.estimateNumber || state.estimateNumber || 'EST-1001',
+        issueDate: payload.issueDate || state.issueDate || '',
+        expirationDate: payload.expirationDate || state.expirationDate || '',
+        customerPhone,
+        quoteId: publishData.quote_id,
+        pdfFileName: rebuiltPdf.fileName || '',
+        pdfMimeType: rebuiltPdf.mimeType || 'application/pdf',
+        pdfBase64: rebuiltPdf.contentBase64 || ''
+      };
+
+      console.log("ZAPIER BODY", zapierPayload);
+
       const response = await fetch('/.netlify/functions/send-quote-zapier', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          salesRepInitials,
-          messageLanguage: 'bilingual',
-          toEmail,
-          toName,
-          subject,
-          messageText: messageWithLink,
-          scopeOfWork: payload.scopeSummary || scope,
-          depositRequired,
-          projectName: payload.projectName || state.projectName || '',
-          clientName: toName || payload.clientName || state.clientName || '',
-          location: projectAddress,
-          businessName:
-            (!isInvalidPublishBusinessNameCandidate(savedName) ? savedName : '') ||
-            resolvePublishBusinessName(branding, payload, settings) ||
-            '',
-          businessPhone:
-            savedPhone || branding.businessPhone || payload.businessPhone || settings.businessPhone || settings.phone || '',
-          businessEmail:
-            savedEmail || branding.businessEmail || payload.businessEmail || settings.businessEmail || settings.email || '',
-          businessAddress:
-            savedAddr ||
-            branding.businessAddress ||
-            payload.businessAddress ||
-            settings.businessAddress ||
-            settings.address ||
-            settings.companyAddress ||
-            '',
-          accentHex: branding.accentHex || payload.accentHex || '#8f8a5f',
-          accentRgb: hexToRgbTuple(branding.accentHex || payload.accentHex || '#8f8a5f', [143, 138, 95]),
-          serviceLine: branding.serviceLine || payload.serviceLine || 'Professional Service Estimate',
-          marketLine: branding.marketLine || payload.marketLine || '',
-          signatureLine: branding.signatureLine || payload.signatureLine || 'Professional Estimate Delivery',
-          currency: 'USD',
-          recommendedTotal: estimateTotal,
-          estimateNumber: payload.estimateNumber || state.estimateNumber || 'EST-1001',
-          issueDate: payload.issueDate || state.issueDate || '',
-          expirationDate: payload.expirationDate || state.expirationDate || '',
-          customerPhone,
-          publicQuoteUrl,
-          quoteId: publishData.quote_id,
-          publicToken: publishData.public_token,
-          pdfFileName: rebuiltPdf.fileName || '',
-          pdfMimeType: rebuiltPdf.mimeType || 'application/pdf',
-          pdfBase64: rebuiltPdf.contentBase64 || ''
-        })
+        body: JSON.stringify(zapierPayload)
       });
 
       const raw = await response.text();
