@@ -62,21 +62,9 @@
     return /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/i.test(String(s).trim());
   }
 
-  function emailLocalPart(email) {
-    const t = String(email || "").trim();
-    const at = t.indexOf("@");
-    return at > 0 ? t.slice(0, at).toLowerCase() : "";
-  }
-
-  function emailDomain(email) {
-    const t = String(email || "").trim();
-    const at = t.indexOf("@");
-    return at > 0 ? t.slice(at + 1).toLowerCase() : "";
-  }
-
   /**
-   * Rejects values that must never be used as the public business title (emails, domains, mailbox brands, etc.).
-   * Title must come only from allowed name fields; contact lines hold email/phone.
+   * Rejects unsafe title values only: email-shaped strings, mailbox brands, pure domains,
+   * or a candidate that is exactly a contact email. Does not reject normal company names.
    */
   function isInvalidBusinessDisplayName(candidate, ctx) {
     const raw = String(candidate || "").trim();
@@ -89,14 +77,6 @@
     if (ceFull && lower === ceFull) return true;
     if (MAILBOX_BRAND_TOKENS.has(lower)) return true;
     if (looksLikeDomainOnly(raw)) return true;
-    const beDom = emailDomain(ctx?.business_email);
-    const ceDom = emailDomain(ctx?.client_email);
-    if (beDom && lower === beDom) return true;
-    if (ceDom && lower === ceDom) return true;
-    const be = emailLocalPart(ctx?.business_email);
-    const ce = emailLocalPart(ctx?.client_email);
-    if (be && lower === be) return true;
-    if (ce && lower === ce) return true;
     return false;
   }
 
@@ -110,16 +90,24 @@
       business_email: safe(est.business_email),
       client_email: safe(est.client_email)
     };
+    const businessName = safe(est.business_name);
+    const companyName = safe(est.company_name);
+    const tenantBrandingBusiness = safe(est.tenant_branding_business_name);
+    const tenantBrandingCompany = safe(est.tenant_branding_company_name);
     const candidates = [
-      safe(est.business_name),
-      safe(est.company_name),
-      safe(est.tenant_branding_business_name),
-      safe(est.tenant_branding_company_name)
+      businessName,
+      companyName,
+      tenantBrandingBusiness,
+      tenantBrandingCompany
     ];
+    let resolved = "Business";
     for (const c of candidates) {
-      if (!isInvalidBusinessDisplayName(c, ctx)) return c;
+      if (!isInvalidBusinessDisplayName(c, ctx)) {
+        resolved = c;
+        break;
+      }
     }
-    return "Business";
+    return resolved;
   }
 
   function buildInitialsFromBusinessName(name) {

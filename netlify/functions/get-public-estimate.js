@@ -1,5 +1,5 @@
 const { supabaseRequest } = require("./_lib/supabase-admin");
-const { loadTenantDisplayForTenantId } = require("./_lib/tenant-display");
+const { loadTenantDisplayForTenantId, pickFirst } = require("./_lib/tenant-display");
 
 function json(statusCode, body) {
   return {
@@ -86,27 +86,39 @@ exports.handler = async (event) => {
     const row = rows[0];
     const estimate = pickPublicEstimateFields(row);
 
+    let td = null;
     let tenantBrandingBusinessName = "";
     let tenantBrandingCompanyName = "";
     let tenantLogoUrl = "";
     const tenantId = row.tenant_id;
+
     if (tenantId) {
       try {
-        const td = await loadTenantDisplayForTenantId(tenantId);
-        tenantBrandingBusinessName = String(td.branding_business_name || "").trim();
-        tenantBrandingCompanyName = String(td.branding_company_name || "").trim();
+        td = await loadTenantDisplayForTenantId(tenantId);
+        tenantBrandingBusinessName = pickFirst(td.branding_business_name, td.business_name);
+        tenantBrandingCompanyName = pickFirst(td.branding_company_name);
         tenantLogoUrl = String(td.logo_url || "").trim();
       } catch (_e) {
+        td = null;
         tenantBrandingBusinessName = "";
         tenantBrandingCompanyName = "";
         tenantLogoUrl = "";
       }
     }
 
+    const resolvedBusinessName =
+      pickFirst(
+        estimate.business_name,
+        estimate.company_name,
+        td ? td.branding_business_name : "",
+        td ? td.business_name : ""
+      ) || "Business";
+
     return json(200, {
       ok: true,
       estimate: {
         ...estimate,
+        business_name: resolvedBusinessName,
         tenant_branding_business_name: tenantBrandingBusinessName,
         tenant_branding_company_name: tenantBrandingCompanyName,
         logo_url: tenantLogoUrl,
