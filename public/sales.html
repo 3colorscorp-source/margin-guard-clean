@@ -473,7 +473,20 @@
           'image_url',
           'logo'
         ], ''));
+        const preparedBy = safeTrim(pickFirstValue(row, [
+  'prepared_by',
+  'preparedBy',
+  'email_signature_name',
+  'signature_name',
+  'owner_name'
+], ''));
 
+const businessServiceArea = safeTrim(pickFirstValue(row, [
+  'business_service_area',
+  'service_area',
+  'coverage_area',
+  'service_region'
+], ''));
         return {
           businessName,
           businessEmail,
