@@ -1,6 +1,19 @@
 ﻿const fetch = globalThis.fetch;
 if (!fetch) {
-  throw new Error("Global fetch is not available in this runtime. Set Netlify's Node version to 18+.");
+  throw new Error("Global fetch is not available. Set Netlify's Node version to 18+.");
+}
+
+/** Default Catch Hook for estimate CTA / send flow (override with ZAPIER_ESTIMATE_CTA_WEBHOOK_URL or ZAPIER_WEBHOOK_URL). */
+const DEFAULT_ZAPIER_CTA_WEBHOOK =
+  "https://hooks.zapier.com/hooks/catch/22122619/upmpvew/";
+
+function pickFirst(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      return String(value).trim();
+    }
+  }
+  return "";
 }
 
 function getSupabaseConfig() {
@@ -13,9 +26,9 @@ function getSupabaseConfig() {
 async function ensureBucket(bucketName) {
   const { url, key } = getSupabaseConfig();
   const response = await fetch(`${url}/storage/v1/bucket`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       apikey: key,
       Authorization: `Bearer ${key}`
     },
@@ -23,7 +36,7 @@ async function ensureBucket(bucketName) {
       id: bucketName,
       name: bucketName,
       public: true,
-      allowed_mime_types: ['application/pdf']
+      allowed_mime_types: ["application/pdf"]
     })
   });
 
@@ -34,8 +47,8 @@ async function ensureBucket(bucketName) {
     response.status === 409 ||
     text.includes('"statusCode":"409"') ||
     text.includes('"statusCode":409') ||
-    text.includes('Duplicate') ||
-    text.includes('The resource already exists');
+    text.includes("Duplicate") ||
+    text.includes("The resource already exists");
 
   if (alreadyExists) return;
 
@@ -45,24 +58,25 @@ async function ensureBucket(bucketName) {
 async function uploadPdfToSupabase({ base64, fileName, estimateNumber }) {
   if (!base64 || !fileName) return null;
   const { url, key } = getSupabaseConfig();
-  const bucketName = 'estimate-pdfs';
+  const bucketName = "estimate-pdfs";
   await ensureBucket(bucketName);
 
-  const safeName = String(fileName || `Estimate-${estimateNumber || Date.now()}.pdf`)
-    .replace(/[^A-Za-z0-9._-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '') || `Estimate-${Date.now()}.pdf`;
+  const safeName =
+    String(fileName || `Estimate-${estimateNumber || Date.now()}.pdf`)
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "") || `Estimate-${Date.now()}.pdf`;
   const filePath = `${new Date().toISOString().slice(0, 10)}/${Date.now()}-${safeName}`;
-  const objectPath = filePath.split('/').map((part) => encodeURIComponent(part)).join('/');
-  const bytes = Buffer.from(base64, 'base64');
+  const objectPath = filePath.split("/").map((part) => encodeURIComponent(part)).join("/");
+  const bytes = Buffer.from(base64, "base64");
 
   const uploadResponse = await fetch(`${url}/storage/v1/object/${bucketName}/${objectPath}`, {
-    method: 'POST',
+    method: "POST",
     headers: {
       apikey: key,
       Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/pdf',
-      'x-upsert': 'true'
+      "Content-Type": "application/pdf",
+      "x-upsert": "true"
     },
     body: bytes
   });
@@ -77,40 +91,113 @@ async function uploadPdfToSupabase({ base64, fileName, estimateNumber }) {
 
 exports.handler = async (event) => {
   try {
-    if (event.httpMethod !== 'POST') {
-      return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) };
-    }
-    const webhook = process.env.ZAPIER_WEBHOOK_URL;
-    if (!webhook) {
-      return { statusCode: 500, body: JSON.stringify({ error: 'Missing env ZAPIER_WEBHOOK_URL' }) };
+    if (event.httpMethod !== "POST") {
+      return { statusCode: 405, body: JSON.stringify({ error: "Method not allowed" }) };
     }
 
-    const body = JSON.parse(event.body || '{}');
-    body.depositRequired = 1000;
-    if (typeof body.salesRepInitials === 'string') body.salesRepInitials = body.salesRepInitials.trim().slice(0, 6);
-
+    let body = {};
     try {
-      const pdfUrl = await uploadPdfToSupabase({
+      body = JSON.parse(event.body || "{}");
+    } catch (_e) {
+      body = {};
+    }
+
+    body.depositRequired = Number(body.depositRequired) || 1000;
+    if (typeof body.salesRepInitials === "string") {
+      body.salesRepInitials = body.salesRepInitials.trim().slice(0, 6);
+    }
+
+    let pdfUrl = null;
+    let pdfUploadError = null;
+    try {
+      pdfUrl = await uploadPdfToSupabase({
         base64: body.pdfBase64,
         fileName: body.pdfFileName,
         estimateNumber: body.estimateNumber
       });
       if (pdfUrl) body.pdfUrl = pdfUrl;
     } catch (pdfError) {
-      body.pdfUploadError = pdfError.message;
+      pdfUploadError = pdfError.message;
+      body.pdfUploadError = pdfUploadError;
     }
 
-    const resp = await fetch(webhook, {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify(body)
-    });
-    if(!resp.ok){
-      const t = await resp.text();
-      return { statusCode: 502, body: JSON.stringify({ error: 'Zapier error: ' + t }) };
+    const siteBase = pickFirst(
+      process.env.URL,
+      process.env.DEPLOY_PRIME_URL,
+      process.env.SITE_URL
+    ).replace(/\/+$/, "");
+
+    const publicToken = pickFirst(body.publicToken, body.public_token);
+
+    let publicQuoteUrl = "";
+    if (siteBase && publicToken) {
+      publicQuoteUrl = `${siteBase}/estimate-public.html?token=${encodeURIComponent(publicToken)}`;
     }
-    return { statusCode: 200, body: JSON.stringify({ ok:true, pdfUrl: body.pdfUrl || null, pdfUploadError: body.pdfUploadError || null }) };
-  } catch(err) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'Server error: ' + err.message }) };
+    if (!publicQuoteUrl) {
+      publicQuoteUrl = pickFirst(body.publicQuoteUrl, body.public_quote_url);
+    }
+
+    const toName = pickFirst(body.toName, body.to_name);
+    const clientEmail = pickFirst(body.toEmail, body.client_email, body.clientEmail);
+    const projectName = pickFirst(body.projectName, body.project_name);
+    const subject = pickFirst(body.subject);
+
+    const zapierPayload = {
+      to_name: toName,
+      client_email: clientEmail,
+      project_name: projectName,
+      subject,
+      public_token: publicToken,
+      public_quote_url: publicQuoteUrl,
+      messageText: body.messageText != null ? String(body.messageText) : "",
+      scopeOfWork: pickFirst(body.scopeOfWork, body.scope_of_work),
+      depositRequired: body.depositRequired,
+      salesRepInitials: body.salesRepInitials || "",
+      pdfUrl: pdfUrl || "",
+      pdfUploadError: pdfUploadError || "",
+      businessName: pickFirst(body.businessName, body.business_name),
+      businessEmail: pickFirst(body.businessEmail, body.business_email),
+      businessPhone: pickFirst(body.businessPhone, body.business_phone),
+      businessAddress: pickFirst(body.businessAddress, body.business_address),
+      quoteId: body.quoteId || "",
+      estimateNumber: body.estimateNumber || ""
+    };
+
+    const webhook = pickFirst(
+      process.env.ZAPIER_ESTIMATE_CTA_WEBHOOK_URL,
+      process.env.ZAPIER_WEBHOOK_URL
+    ) || DEFAULT_ZAPIER_CTA_WEBHOOK;
+
+    let zapierDelivery = "skipped";
+    try {
+      const resp = await fetch(webhook, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(zapierPayload)
+      });
+      if (resp.ok) {
+        zapierDelivery = "ok";
+      } else {
+        const t = await resp.text();
+        zapierDelivery = `error_http_${resp.status}`;
+        console.error("[send-quote-zapier] Zapier webhook non-OK:", resp.status, t?.slice(0, 500));
+      }
+    } catch (err) {
+      zapierDelivery = "error_network";
+      console.error("[send-quote-zapier] Zapier webhook failed (non-blocking):", err?.message || err);
+    }
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        ok: true,
+        pdfUrl: pdfUrl || null,
+        pdfUploadError: pdfUploadError || null,
+        public_quote_url: publicQuoteUrl,
+        zapier: zapierDelivery
+      })
+    };
+  } catch (err) {
+    return { statusCode: 500, body: JSON.stringify({ error: "Server error: " + err.message }) };
   }
 };
