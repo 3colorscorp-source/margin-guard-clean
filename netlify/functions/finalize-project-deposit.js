@@ -5,6 +5,8 @@ if (!fetch) {
 
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { assertPublicDepositAllowed } = require("./_lib/quote-deposit-gate");
+const { loadTenantDisplayForTenantId } = require("./_lib/tenant-display");
+const { runDepositPostAutomation } = require("./_lib/deposit-post-automation");
 
 function json(statusCode, body) {
   return {
@@ -127,7 +129,7 @@ exports.handler = async (event) => {
     let quoteRows;
     try {
       quoteRows = await supabaseRequest(
-        `quotes?public_token=eq.${encodeURIComponent(publicToken)}&tenant_id=not.is.null&select=id,tenant_id,accepted_at,exclusions_initials,exclusions_acknowledged_at,change_order_acknowledged_at&limit=2`
+        `quotes?public_token=eq.${encodeURIComponent(publicToken)}&tenant_id=not.is.null&select=id,tenant_id,accepted_at,exclusions_initials,exclusions_acknowledged_at,change_order_acknowledged_at,client_name,client_email,project_name,title,currency,business_name,company_name&limit=2`
       );
     } catch (err) {
       return json(502, { error: err.message || "Failed to read quote" });
@@ -210,6 +212,38 @@ exports.handler = async (event) => {
       process.env.SITE_URL ||
       ""
     ).replace(/\/+$/, "");
+
+    let tenant = { id: String(quoteTenantId) };
+    try {
+      const td = await loadTenantDisplayForTenantId(quoteTenantId);
+      tenant = { id: String(quoteTenantId), ...td };
+    } catch (tenantErr) {
+      console.error(
+        "[finalize-project-deposit] tenant branding load",
+        tenantErr?.message || tenantErr
+      );
+    }
+
+    const payment = {
+      amount: paidAmount,
+      currency: String(quoteRow.currency || session.currency || "usd"),
+      paidAt,
+      stripeCheckoutSessionId: session.id,
+      publicToken
+    };
+
+    try {
+      await runDepositPostAutomation({
+        quote: quoteRow,
+        tenant,
+        payment
+      });
+    } catch (autoErr) {
+      console.error(
+        "[finalize-project-deposit] runDepositPostAutomation",
+        autoErr?.message || autoErr
+      );
+    }
 
     return json(200, {
       ok: true,
