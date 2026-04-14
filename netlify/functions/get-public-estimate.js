@@ -44,6 +44,20 @@ function skipHeaderPlaceholderName(value) {
   return t;
 }
 
+/** Normalize tenant branding logo for public clients (absolute http(s), never scheme-relative). */
+function normalizePublicLogoUrl(value) {
+  let s = String(value ?? "").trim();
+  if (!s) return "";
+  if (s.startsWith("//")) s = `https:${s}`;
+  try {
+    const u = new URL(s);
+    if (u.protocol === "http:" || u.protocol === "https:") return u.href;
+  } catch (_e) {
+    /* ignore */
+  }
+  return "";
+}
+
 /**
  * Public estimate API: isolated to one quote row matched by public_token only.
  * Response is a whitelisted subset — no ids, no tenant_id in JSON.
@@ -105,7 +119,7 @@ exports.handler = async (event) => {
         td = await loadTenantDisplayForTenantId(tenantId);
         tenantBrandingBusinessName = pickFirst(td.branding_business_name, td.business_name);
         tenantBrandingCompanyName = pickFirst(td.branding_company_name);
-        tenantLogoUrl = String(td.logo_url || "").trim();
+        tenantLogoUrl = normalizePublicLogoUrl(td.logo_url);
       } catch (_e) {
         td = null;
         tenantBrandingBusinessName = "";

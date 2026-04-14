@@ -52,7 +52,12 @@ async function loadTenantDisplayForTenantId(tenantId) {
     business_email: pickFirst(branding?.business_email),
     business_phone: pickFirst(branding?.business_phone),
     business_address: pickFirst(branding?.business_address),
-    logo_url: pickFirst(branding?.logo_url),
+    logo_url: pickFirst(
+      branding?.logo_url,
+      branding?.logoUrl,
+      branding?.public_logo_url,
+      branding?.publicLogoUrl
+    ),
     fallback_name: fallbackName,
     /** Raw tenant_branding only (no tenants.name merge) — for public quote header resolution. */
     branding_business_name: pickFirst(branding?.business_name),

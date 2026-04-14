@@ -141,16 +141,20 @@
       .toUpperCase();
   }
 
+  /**
+   * Public header image URLs (Supabase Storage, CDN). Accepts absolute http(s) and scheme-relative //...
+   */
   function safeHttpUrl(url) {
-    const s = String(url || "").trim();
+    let s = String(url ?? "").trim();
     if (!s) return "";
+    if (s.startsWith("//")) s = `https:${s}`;
     try {
-      const u = new URL(s, window.location.origin);
-      if (u.protocol !== "http:" && u.protocol !== "https:") return "";
-      return u.href;
+      const u = new URL(s);
+      if (u.protocol === "http:" || u.protocol === "https:") return u.href;
     } catch (_e) {
-      return "";
+      if (/^https?:\/\//i.test(s)) return s;
     }
+    return "";
   }
 
   function showFeedback(message, type = "info") {
@@ -251,7 +255,8 @@
           "estimate.business_name": safe(e.business_name),
           "estimate.company_name": safe(e.company_name),
           "estimate.tenant_branding_business_name": safe(e.tenant_branding_business_name),
-          "estimate.tenant_branding_company_name": safe(e.tenant_branding_company_name)
+          "estimate.tenant_branding_company_name": safe(e.tenant_branding_company_name),
+          "estimate.logo_url": safe(e.logo_url)
         });
       }
 
@@ -327,21 +332,31 @@
     const resolvedDisplayName = resolvePublicBusinessDisplayName(next);
     const finalHeaderText = resolvedDisplayName;
 
+    const rawLogo = safe(
+      next.logo_url ||
+        next.logoUrl ||
+        next.public_logo_url ||
+        next.publicLogoUrl ||
+        ""
+    );
+    const logoUrlResolved = safeHttpUrl(rawLogo);
+    const headerBrandMode = logoUrlResolved ? "image" : "initials";
+
     if (isEstimateDebugMode()) {
       logEstimateDebug("after resolvePublicBusinessDisplayName", {
         "estimate.business_name": safe(next.business_name),
         "estimate.company_name": safe(next.company_name),
         "estimate.tenant_branding_business_name": safe(next.tenant_branding_business_name),
         "estimate.tenant_branding_company_name": safe(next.tenant_branding_company_name),
+        "estimate.logo_url (API raw)": rawLogo,
+        logoUrlResolved,
+        headerBrandMode,
         resolvedDisplayName,
         finalHeaderText
       });
     }
 
     const initials = buildInitialsFromBusinessName(resolvedDisplayName);
-    const rawLogo =
-      safe(next.logo_url || next.logoUrl || next.public_logo_url || "");
-    const logoUrl = safeHttpUrl(rawLogo);
 
     const badgePx = "44px";
     const badgeRadius = "14px";
@@ -366,16 +381,15 @@
 
     const projectLine = safe(next.title || next.project_name || "Public Estimate");
 
-    const logoOrInitials = logoUrl
-      ? `<img src="${escapeHtml(logoUrl)}" alt="" width="44" height="44" decoding="async" style="${badgeCommon}object-fit:contain;background:rgba(255,255,255,.06);" />`
+    const logoOrInitials = logoUrlResolved
+      ? `<img src="${escapeHtml(logoUrlResolved)}" alt="" width="44" height="44" decoding="async" style="${badgeCommon}object-fit:contain;background:rgba(255,255,255,.06);" />`
       : `<div style="${badgeCommon}${initialsBg}display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;letter-spacing:.04em;color:rgba(255,255,255,.95);">${escapeHtml(initials)}</div>`;
 
     if (titleEl && isEstimateDebugMode()) {
       logEstimateDebug("before #publicEstimateTitle write", {
-        "estimate.business_name": safe(next.business_name),
-        "estimate.company_name": safe(next.company_name),
-        "estimate.tenant_branding_business_name": safe(next.tenant_branding_business_name),
-        "estimate.tenant_branding_company_name": safe(next.tenant_branding_company_name),
+        "estimate.logo_url (API raw)": rawLogo,
+        logoUrlResolved,
+        headerBrandMode,
         resolvedDisplayName,
         finalHeaderText
       });
@@ -404,6 +418,15 @@
         panel.style.display = "block";
         panel.textContent = [
           "— Public estimate header debug (?debug=1) —",
+          "",
+          "estimate.logo_url (API raw):",
+          `  ${rawLogo || "(empty)"}`,
+          "",
+          "Resolved logo URL (safeHttpUrl, used in <img src>):",
+          `  ${logoUrlResolved || "(empty — initials mode)"}`,
+          "",
+          "Header brand mode:",
+          `  ${headerBrandMode}`,
           "",
           "Resolved business_name (API field):",
           `  ${safe(next.business_name)}`,
