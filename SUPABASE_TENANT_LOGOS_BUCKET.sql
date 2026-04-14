@@ -1,0 +1,4 @@
+-- Optional reference: the Netlify function upload-tenant-logo.js creates bucket "tenant-logos"
+-- via the Storage API (public, image MIME types) using the service role.
+-- If auto-create is blocked in your project, create a public bucket "tenant-logos" in the
+-- Supabase Dashboard (Storage) and allow image uploads for authenticated/service workflows.

@@ -339,7 +339,15 @@
     }
 
     const initials = buildInitialsFromBusinessName(resolvedDisplayName);
-    const logoUrl = safeHttpUrl(next.logo_url);
+    const rawLogo =
+      safe(next.logo_url || next.logoUrl || next.public_logo_url || "");
+    const logoUrl = safeHttpUrl(rawLogo);
+
+    const badgePx = "44px";
+    const badgeRadius = "14px";
+    const badgeCommon = `width:${badgePx};height:${badgePx};min-width:${badgePx};min-height:${badgePx};flex-shrink:0;border-radius:${badgeRadius};box-sizing:border-box;`;
+    const initialsBg =
+      "background:linear-gradient(155deg,rgba(255,255,255,.16) 0%,rgba(255,255,255,.05) 45%,rgba(12,18,36,.55) 100%);";
 
     const businessAddress =
       safe(next.business_address) ||
@@ -359,8 +367,8 @@
     const projectLine = safe(next.title || next.project_name || "Public Estimate");
 
     const logoOrInitials = logoUrl
-      ? `<img src="${escapeHtml(logoUrl)}" alt="" style="width:56px;height:56px;object-fit:contain;border-radius:10px;background:rgba(255,255,255,.06);flex-shrink:0;" />`
-      : `<div style="width:56px;height:56px;border-radius:12px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;letter-spacing:.04em;flex-shrink:0;">${escapeHtml(initials)}</div>`;
+      ? `<img src="${escapeHtml(logoUrl)}" alt="" width="44" height="44" decoding="async" style="${badgeCommon}object-fit:contain;background:rgba(255,255,255,.06);" />`
+      : `<div style="${badgeCommon}${initialsBg}display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;letter-spacing:.04em;color:rgba(255,255,255,.95);">${escapeHtml(initials)}</div>`;
 
     if (titleEl && isEstimateDebugMode()) {
       logEstimateDebug("before #publicEstimateTitle write", {

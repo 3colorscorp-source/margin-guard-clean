@@ -88,7 +88,16 @@
               </div>
               <div class="field">
                 <label>Public logo URL</label>
-                <input id="publicLogoUrl" maxlength="240" placeholder="https://..." />
+                <input id="publicLogoUrl" maxlength="500" placeholder="https://..." />
+                <div class="hint">Puedes pegar una URL o subir una imagen abajo (solo este tenant).</div>
+              </div>
+              <div class="field">
+                <label>Subir logo</label>
+                <input type="file" id="businessLogoUpload" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/svg+xml" />
+                <div class="hint">PNG, JPG, WebP, GIF o SVG. Max ~2.5 MB. Se sube a tu carpeta en Storage; <strong>no</strong> se guarda en quotes ni estimates.</div>
+                <div style="margin-top:10px;">
+                  <img id="businessLogoPreview" alt="" style="display:none;max-height:88px;max-width:240px;width:auto;height:auto;object-fit:contain;border-radius:14px;background:rgba(0,0,0,.18);padding:10px;box-sizing:border-box;" />
+                </div>
               </div>
               <div class="field">
                 <label>Public accent color</label>
@@ -272,6 +281,38 @@
     if (node) node.textContent = value == null ? '' : String(value);
   }
 
+  function syncBusinessLogoPreview(url) {
+    const img = document.getElementById('businessLogoPreview');
+    if (!img) return;
+    const u = safeTrim(url);
+    if (u) {
+      img.src = u;
+      img.style.display = 'block';
+      img.removeAttribute('width');
+      img.removeAttribute('height');
+    } else {
+      img.removeAttribute('src');
+      img.style.display = 'none';
+    }
+  }
+
+  function fileToBase64Payload(file) {
+    return new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onload = function () {
+        const dataUrl = String(reader.result || '');
+        const i = dataUrl.indexOf(',');
+        resolve(i >= 0 ? dataUrl.slice(i + 1) : '');
+      };
+      reader.onerror = function () {
+        reject(new Error('No se pudo leer el archivo.'));
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  const LOGO_UPLOAD_MAX_BYTES = Math.floor(2.5 * 1024 * 1024);
+
   function normalizeBrandingRow(row, settings) {
     const businessName = safeTrim(
       row?.businessName ||
@@ -371,6 +412,7 @@
     setText('previewAccentHex', branding.accentHex || DEFAULT_BRANDING.accentHex);
     setText('previewSignatureLine', branding.signatureLine || DEFAULT_BRANDING.signatureLine);
     setText('tenantLogoMark', 'MG');
+    syncBusinessLogoPreview(branding.logoUrl || '');
     document.title = 'Margin Guard | Business Settings';
     if (branding.accentHex) {
       document.documentElement.style.setProperty('--tenant-accent', branding.accentHex);
@@ -533,6 +575,69 @@
     event.preventDefault();
     loadBusinessSettings();
     setStatus('Business settings recargados.', '');
+  });
+
+  document.getElementById('businessLogoUpload')?.addEventListener('change', async function (event) {
+    const input = event.target;
+    const file = input && input.files && input.files[0];
+    if (!file) return;
+
+    if (file.size > LOGO_UPLOAD_MAX_BYTES) {
+      setStatus('El archivo es demasiado grande (max ~2.5 MB).', 'error');
+      input.value = '';
+      return;
+    }
+
+    let mime = String(file.type || '').trim().toLowerCase();
+    if (mime === 'image/jpg') mime = 'image/jpeg';
+    const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml'];
+    if (!allowed.includes(mime)) {
+      setStatus('Tipo de imagen no permitido. Usa PNG, JPG, WebP, GIF o SVG.', 'error');
+      input.value = '';
+      return;
+    }
+
+    setStatus('Subiendo logo...', '');
+    try {
+      const fileBase64 = await fileToBase64Payload(file);
+      if (!fileBase64) {
+        throw new Error('Archivo vacio o ilegible.');
+      }
+
+      const res = await fetch('/.netlify/functions/upload-tenant-logo', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_base64: fileBase64,
+          mime_type: mime
+        })
+      });
+      const data = await res.json().catch(function () {
+        return {};
+      });
+      if (!res.ok || !data || !data.ok || !data.logo_url) {
+        throw new Error(data.error || res.statusText || 'Error al subir');
+      }
+
+      setInputValue('publicLogoUrl', data.logo_url);
+      syncBusinessLogoPreview(data.logo_url);
+
+      const settings = currentFormSettings();
+      const branding = currentFormBranding(settings);
+      setCounter('bizNameOwnerCount', branding.businessName || '', 60);
+      renderBrandPreview(branding);
+
+      setStatus(
+        'Logo subido. Pulsa "Guardar business settings" para guardarlo en tenant_branding (logo_url).',
+        'success'
+      );
+    } catch (err) {
+      console.error('LOGO UPLOAD =>', err);
+      setStatus(err && err.message ? String(err.message) : 'Error al subir el logo.', 'error');
+    } finally {
+      input.value = '';
+    }
   });
 
   bindLivePreview();
