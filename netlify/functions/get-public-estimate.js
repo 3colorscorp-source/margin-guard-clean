@@ -29,6 +29,7 @@ const QUOTE_PUBLIC_KEYS = [
   "notes",
   "terms",
   "status",
+  "accepted_at",
   "exclusions_initials",
   "exclusions_acknowledged_at",
   "change_order_acknowledged_at"

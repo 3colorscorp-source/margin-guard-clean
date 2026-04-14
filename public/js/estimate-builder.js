@@ -264,6 +264,20 @@
     return data;
   }
 
+  function updatePublicWorkflowBadges(next) {
+    const b1 = $("flowStepBadge1");
+    const b2 = $("flowStepBadge2");
+    const b3 = $("flowStepBadge3");
+    const step1 = safe(next.accepted_at) !== "";
+    const step2 =
+      safe(next.exclusions_initials) !== "" &&
+      safe(next.exclusions_acknowledged_at) !== "";
+    const step3 = safe(next.change_order_acknowledged_at) !== "";
+    if (b1) b1.textContent = step1 ? "✔" : "";
+    if (b2) b2.textContent = step2 ? "✔" : "";
+    if (b3) b3.textContent = step3 ? "✔" : "";
+  }
+
   function setupPublicWorkflow(next) {
     const token = getQueryParam("token") || "";
     if (!$("publicFlowStep1") || !token) {
@@ -360,6 +374,8 @@
         }
       };
     }
+
+    updatePublicWorkflowBadges(next);
   }
 
   function showFeedback(message, type = "info") {
@@ -826,6 +842,11 @@
 
     setupPublicWorkflow(next);
 
+    window.__mgPublicEstimateLast = next;
+    if (typeof window.__mgOnPublicEstimateRefresh === "function") {
+      window.__mgOnPublicEstimateRefresh();
+    }
+
     const approveBtn = $("btnPublicEstimateApprove");
     const declineBtn = $("btnPublicEstimateDecline");
 
@@ -849,15 +870,8 @@
       approveBtn.onclick = async () => {
         try {
           setButtonsDisabled(true);
-          const result = await updateEstimateStatus(token, "accepted");
-
-          if ($("publicEstimateStatus")) {
-            $("publicEstimateStatus").textContent = result.status || "accepted";
-          }
-
-          hideDecisionButtons();
-          renderAcceptedBlock();
-          showFeedback("Estimate aprobado correctamente.", "success");
+          await updateEstimateStatus(token, "accepted");
+          await loadEstimatePublic();
         } catch (err) {
           setButtonsDisabled(false);
           showFeedback(err.message || "No se pudo aprobar el estimate.", "error");

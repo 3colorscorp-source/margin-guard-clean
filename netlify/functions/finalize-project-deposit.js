@@ -3,6 +3,9 @@ if (!fetch) {
   throw new Error("Global fetch is not available in this runtime.");
 }
 
+const { supabaseRequest } = require("./_lib/supabase-admin");
+const { assertPublicDepositAllowed } = require("./_lib/quote-deposit-gate");
+
 function json(statusCode, body) {
   return {
     statusCode,
@@ -19,9 +22,12 @@ function parseBody(raw) {
   }
 }
 
-async function patchQuote({ supabaseUrl, serviceRoleKey, publicToken, payload }) {
+async function patchQuote({ supabaseUrl, serviceRoleKey, publicToken, tenantId, payload }) {
+  const tenantPart = tenantId
+    ? `&tenant_id=eq.${encodeURIComponent(String(tenantId))}`
+    : "";
   const response = await fetch(
-    `${supabaseUrl}/rest/v1/quotes?public_token=eq.${encodeURIComponent(publicToken)}`,
+    `${supabaseUrl}/rest/v1/quotes?public_token=eq.${encodeURIComponent(publicToken)}${tenantPart}`,
     {
       method: "PATCH",
       headers: {
@@ -116,6 +122,43 @@ exports.handler = async (event) => {
       return json(400, { error: "Stripe session missing public_token metadata" });
     }
 
+    const tenantIdFromSession = String(session?.metadata?.tenant_id || "").trim();
+
+    let quoteRows;
+    try {
+      quoteRows = await supabaseRequest(
+        `quotes?public_token=eq.${encodeURIComponent(publicToken)}&tenant_id=not.is.null&select=id,tenant_id,accepted_at,exclusions_initials,exclusions_acknowledged_at,change_order_acknowledged_at&limit=2`
+      );
+    } catch (err) {
+      return json(502, { error: err.message || "Failed to read quote" });
+    }
+
+    if (!Array.isArray(quoteRows) || quoteRows.length === 0) {
+      return json(404, { error: "Quote not found for this payment." });
+    }
+    if (quoteRows.length > 1) {
+      return json(500, { error: "Invalid quote reference" });
+    }
+
+    const quoteRow = quoteRows[0];
+    if (!quoteRow?.tenant_id) {
+      return json(404, { error: "Quote not found for this payment." });
+    }
+
+    if (
+      tenantIdFromSession &&
+      String(quoteRow.tenant_id) !== tenantIdFromSession
+    ) {
+      return json(403, { error: "Payment session does not match this quote." });
+    }
+
+    const gate = assertPublicDepositAllowed(quoteRow);
+    if (!gate.ok) {
+      return json(403, { error: gate.error });
+    }
+
+    const quoteTenantId = quoteRow.tenant_id;
+
     const paidAt = new Date().toISOString();
     const paidAmount = Number(session.amount_total || 0) / 100;
 
@@ -143,6 +186,7 @@ exports.handler = async (event) => {
         supabaseUrl,
         serviceRoleKey,
         publicToken,
+        tenantId: quoteTenantId,
         payload
       });
 

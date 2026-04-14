@@ -1,5 +1,6 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
+const { assertPublicDepositAllowed } = require("./_lib/quote-deposit-gate");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -72,7 +73,7 @@ exports.handler = async (event) => {
     }
 
     const quoteRows = await supabaseRequest(
-      `quotes?public_token=eq.${encodeURIComponent(publicToken)}&select=id,deposit_required,tenant_id,project_name,title,client_name,client_email`
+      `quotes?public_token=eq.${encodeURIComponent(publicToken)}&tenant_id=not.is.null&select=id,deposit_required,tenant_id,project_name,title,client_name,client_email,accepted_at,exclusions_initials,exclusions_acknowledged_at,change_order_acknowledged_at`
     );
     const quote = Array.isArray(quoteRows) ? quoteRows[0] : null;
     if (!quote) {
@@ -90,6 +91,11 @@ exports.handler = async (event) => {
         error:
           "Quote is missing tenant scope; republish the estimate from your account."
       });
+    }
+
+    const gate = assertPublicDepositAllowed(quote);
+    if (!gate.ok) {
+      return json(403, { error: gate.error });
     }
 
     const session = readSessionFromEvent(event);

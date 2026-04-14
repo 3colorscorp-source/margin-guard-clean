@@ -139,6 +139,17 @@
       opacity: 0.92;
       white-space: pre-wrap;
     }
+
+    .flow-step-mark {
+      display: inline-block;
+      margin-left: 4px;
+      color: rgba(52, 211, 153, 0.95);
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .public-flow-nav a + .flow-step-mark {
+      margin-left: 2px;
+    }
   </style>
 </head>
 <body>
@@ -155,11 +166,17 @@
 
         <nav id="publicFlowNav" class="public-flow-nav" style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center;font-size:13px;">
           <span style="opacity:.75;">Workflow</span>
-          <a id="flowNav1" href="#">1 · Estimate</a>
+          <span style="display:inline-flex;align-items:center;gap:2px;">
+            <a id="flowNav1" href="#">1 · Estimate</a><span id="flowStepBadge1" class="flow-step-mark"></span>
+          </span>
           <span style="opacity:.35;">|</span>
-          <a id="flowNav2" href="#">2 · Exclusions</a>
+          <span style="display:inline-flex;align-items:center;gap:2px;">
+            <a id="flowNav2" href="#">2 · Exclusions</a><span id="flowStepBadge2" class="flow-step-mark"></span>
+          </span>
           <span style="opacity:.35;">|</span>
-          <a id="flowNav3" href="#">3 · Change orders</a>
+          <span style="display:inline-flex;align-items:center;gap:2px;">
+            <a id="flowNav3" href="#">3 · Change orders</a><span id="flowStepBadge3" class="flow-step-mark"></span>
+          </span>
         </nav>
 
         <div id="publicFlowStep1" class="flow-step-panel">
@@ -215,6 +232,14 @@
               Your approval has been received. Complete the deposit to reserve your project start date.
             </p>
             <p class="approved-next-step">Secure your project start with the required deposit.</p>
+
+            <div
+              id="publicDepositGateNotice"
+              class="notice"
+              style="display:none;margin-top:12px;text-align:left;"
+            >
+              Complete all steps to proceed with project approval and payment.
+            </div>
 
             <div class="approved-actions">
               <button class="btn primary" type="button" id="payDepositBtn">Pay Project Deposit</button>
@@ -312,6 +337,10 @@
         return document.getElementById(id);
       }
 
+      window.__mgOnPublicEstimateRefresh = function () {
+        syncPanels();
+      };
+
       function getTokenFromUrl() {
         return new URLSearchParams(window.location.search).get("token") || "";
       }
@@ -353,15 +382,36 @@
         return "Customer";
       }
 
-      function showUiState({ approved, paid }) {
+      function depositWorkflowComplete(e) {
+        if (!e) return false;
+        const okAccepted = e.accepted_at && String(e.accepted_at).trim() !== "";
+        const initials =
+          e.exclusions_initials && String(e.exclusions_initials).trim() !== "";
+        const okEx =
+          e.exclusions_acknowledged_at &&
+          String(e.exclusions_acknowledged_at).trim() !== "";
+        const okCo =
+          e.change_order_acknowledged_at &&
+          String(e.change_order_acknowledged_at).trim() !== "";
+        return !!(okAccepted && initials && okEx && okCo);
+      }
+
+      function showUiState({ approved, paid, workflowComplete }) {
         const actions = $("publicEstimateActions");
         const approvedPanel = $("approvedProjectPanel");
         const paidPanel = $("paidProjectPanel");
+        const gateNotice = $("publicDepositGateNotice");
+        const payBtn = $("payDepositBtn");
 
         if (paid) {
           if (actions) actions.style.display = "none";
           if (approvedPanel) approvedPanel.classList.remove("show");
           if (paidPanel) paidPanel.classList.add("show");
+          if (gateNotice) gateNotice.style.display = "none";
+          if (payBtn) {
+            payBtn.disabled = true;
+            payBtn.style.display = "none";
+          }
           return;
         }
 
@@ -369,12 +419,31 @@
           if (actions) actions.style.display = "none";
           if (approvedPanel) approvedPanel.classList.add("show");
           if (paidPanel) paidPanel.classList.remove("show");
+
+          const canPay = workflowComplete === true;
+          if (gateNotice) {
+            gateNotice.style.display = canPay ? "none" : "block";
+            gateNotice.textContent =
+              "Complete all steps to proceed with project approval and payment.";
+          }
+          if (payBtn) {
+            payBtn.style.display = "";
+            payBtn.disabled = !canPay;
+            payBtn.style.opacity = canPay ? "" : "0.45";
+            payBtn.style.cursor = canPay ? "" : "not-allowed";
+          }
           return;
         }
 
         if (actions) actions.style.display = "";
         if (approvedPanel) approvedPanel.classList.remove("show");
         if (paidPanel) paidPanel.classList.remove("show");
+        if (gateNotice) gateNotice.style.display = "none";
+        if (payBtn) {
+          payBtn.style.opacity = "";
+          payBtn.style.cursor = "";
+          payBtn.disabled = false;
+        }
       }
 
       function syncPanels() {
@@ -382,7 +451,9 @@
         const status = getStatusValue();
         const approved = status === "accepted" || status === "approved";
         const paid = token ? getDepositPaidFlag(token) : false;
-        showUiState({ approved, paid });
+        const est = window.__mgPublicEstimateLast;
+        const workflowComplete = depositWorkflowComplete(est);
+        showUiState({ approved, paid, workflowComplete });
 
         const params = new URLSearchParams(window.location.search);
         if (params.get("checkout") === "cancelled") {
@@ -441,6 +512,12 @@
         const token = getTokenFromUrl();
         if (!token) {
           throw new Error("Missing public token");
+        }
+
+        if (!depositWorkflowComplete(window.__mgPublicEstimateLast)) {
+          throw new Error(
+            "Complete all steps to proceed with project approval and payment."
+          );
         }
 
         const btn = $("payDepositBtn");
