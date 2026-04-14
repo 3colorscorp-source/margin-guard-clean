@@ -1,5 +1,6 @@
 ﻿const { buildSessionPayload, createSessionCookie } = require("./_lib/session");
 const { stripeRequest } = require("./_lib/stripe");
+const { resolveAuthUserIdByEmail } = require("./_lib/auth-resolve-user-id");
 
 function json(statusCode, payload, extraHeaders) {
   return {
@@ -50,10 +51,20 @@ exports.handler = async (event) => {
       return json(402, { error: `Subscription not active (${subscriptionStatus || "unknown"})` });
     }
 
+    const checkoutEmail =
+      checkout.customer_details?.email || checkout.customer_email || "";
+    let authUserId = null;
+    try {
+      authUserId = await resolveAuthUserIdByEmail(checkoutEmail);
+    } catch (_err) {
+      authUserId = null;
+    }
+
     const payload = buildSessionPayload({
       customerId: checkout.customer,
       subscriptionId,
-      email: checkout.customer_details?.email || checkout.customer_email || "",
+      email: checkoutEmail,
+      userId: authUserId,
     });
 
     const cookie = createSessionCookie(payload);

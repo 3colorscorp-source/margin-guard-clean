@@ -95,15 +95,19 @@ function readSessionFromEvent(event) {
   return verify(token);
 }
 
-function buildSessionPayload({ customerId, subscriptionId, email }) {
+function buildSessionPayload({ customerId, subscriptionId, email, userId }) {
   const now = Math.floor(Date.now() / 1000);
-  return {
+  const payload = {
     c: customerId,
     s: subscriptionId,
     e: email || "",
     iat: now,
     exp: now + SESSION_TTL_SECONDS,
   };
+  if (userId) {
+    payload.u = String(userId);
+  }
+  return payload;
 }
 
 function createSessionCookie(payload) {

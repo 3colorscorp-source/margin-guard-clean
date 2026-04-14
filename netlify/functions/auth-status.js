@@ -1,6 +1,7 @@
 ﻿const { clearSessionCookie, readSessionFromEvent } = require("./_lib/session");
 const { stripeRequest } = require("./_lib/stripe");
 const { supabaseRequest } = require("./_lib/supabase-admin");
+const { resolveAuthUserIdByEmail } = require("./_lib/auth-resolve-user-id");
 
 function json(statusCode, payload, extraHeaders) {
   return {
@@ -18,16 +19,15 @@ function subscriptionIsActive(status) {
 }
 
 /**
- * Load admin flag from public.users (service role). Email matches signed session email.
+ * public.users.id matches auth.users.id — lookup admin by primary key.
  */
-async function loadUserFlagsByEmail(email) {
-  const normalized = String(email || "").trim().toLowerCase();
-  if (!normalized) {
+async function loadPublicUserAdminFlags(sessionUserId) {
+  if (!sessionUserId) {
     return { userId: null, is_admin: false };
   }
   try {
     const rows = await supabaseRequest(
-      `users?email=eq.${encodeURIComponent(normalized)}&select=id,is_admin`
+      `users?id=eq.${encodeURIComponent(sessionUserId)}&select=id,is_admin`
     );
     const row = Array.isArray(rows) && rows.length ? rows[0] : null;
     return {
@@ -35,7 +35,7 @@ async function loadUserFlagsByEmail(email) {
       is_admin: Boolean(row?.is_admin),
     };
   } catch (err) {
-    console.warn("[auth-status] public.users lookup failed:", err?.message || err);
+    console.warn("[auth-status] public.users lookup by id failed:", err?.message || err);
     return { userId: null, is_admin: false };
   }
 }
@@ -57,9 +57,25 @@ exports.handler = async (event) => {
     }
 
     const email = String(session.e || "").trim().toLowerCase();
-    const flags = await loadUserFlagsByEmail(email);
+
+    let sessionUserId = session.u ? String(session.u).trim() : "";
+    if (!sessionUserId && email) {
+      try {
+        sessionUserId = (await resolveAuthUserIdByEmail(email)) || "";
+      } catch (_err) {
+        sessionUserId = "";
+      }
+    }
+
+    const flags = await loadPublicUserAdminFlags(sessionUserId || null);
     userId = flags.userId;
     is_admin = flags.is_admin;
+
+    console.log("ADMIN LOOKUP", {
+      sessionUserId: sessionUserId || null,
+      is_admin,
+      allowAccess: is_admin,
+    });
 
     if (is_admin) {
       console.log("ACCESS CHECK", {
