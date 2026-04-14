@@ -89,18 +89,16 @@ async function uploadPdfToSupabase({ base64, fileName, estimateNumber }) {
   return `${url}/storage/v1/object/public/${bucketName}/${filePath}`;
 }
 
-/**
- * publicQuoteUrl || `${siteUrl}/estimate-public.html?token=${publicToken}` — never returns empty.
- */
-function resolvePublicQuoteUrl(body, siteUrl) {
-  const publicToken = pickFirst(body.publicToken, body.public_token);
-  const publicQuoteUrl = pickFirst(body.publicQuoteUrl, body.public_quote_url);
+/** Fills public_quote_url when client omitted it (Netlify URL + token). */
+function resolvePublicQuoteUrl(data, siteUrl) {
+  const publicToken = pickFirst(data.publicToken, data.public_token);
+  const fromClient = pickFirst(data.publicQuoteUrl, data.public_quote_url);
   const built =
     siteUrl && publicToken
       ? `${siteUrl}/estimate-public.html?token=${encodeURIComponent(publicToken)}`
       : "";
 
-  let out = publicQuoteUrl || built || "";
+  let out = fromClient || built || "";
   if (!String(out).trim() && siteUrl) {
     out = `${siteUrl}/estimate-public.html${publicToken ? `?token=${encodeURIComponent(publicToken)}` : ""}`;
   }
@@ -116,30 +114,35 @@ exports.handler = async (event) => {
       return { statusCode: 405, body: JSON.stringify({ error: "Method not allowed" }) };
     }
 
-    let body = {};
+    let data = {};
     try {
-      body = JSON.parse(event.body || "{}");
+      data =
+        typeof event.body === "string"
+          ? JSON.parse(event.body || "{}")
+          : event.body && typeof event.body === "object"
+            ? event.body
+            : {};
     } catch (_e) {
-      body = {};
+      data = {};
     }
 
-    body.depositRequired = Number(body.depositRequired) || 1000;
-    if (typeof body.salesRepInitials === "string") {
-      body.salesRepInitials = body.salesRepInitials.trim().slice(0, 6);
+    data.depositRequired = Number(data.depositRequired) || 1000;
+    if (typeof data.salesRepInitials === "string") {
+      data.salesRepInitials = data.salesRepInitials.trim().slice(0, 6);
     }
 
     let pdfUrl = null;
     let pdfUploadError = null;
     try {
       pdfUrl = await uploadPdfToSupabase({
-        base64: body.pdfBase64,
-        fileName: body.pdfFileName,
-        estimateNumber: body.estimateNumber
+        base64: data.pdfBase64,
+        fileName: data.pdfFileName,
+        estimateNumber: data.estimateNumber
       });
-      if (pdfUrl) body.pdfUrl = pdfUrl;
+      if (pdfUrl) data.pdfUrl = pdfUrl;
     } catch (pdfError) {
       pdfUploadError = pdfError.message;
-      body.pdfUploadError = pdfUploadError;
+      data.pdfUploadError = pdfUploadError;
     }
 
     const siteUrl = pickFirst(
@@ -148,35 +151,34 @@ exports.handler = async (event) => {
       process.env.SITE_URL
     ).replace(/\/+$/, "");
 
-    const toName = pickFirst(body.toName, body.client_name, body.clientName, body.to_name);
-    const toEmail = pickFirst(body.toEmail, body.client_email, body.clientEmail);
-    const projectName = pickFirst(body.projectName, body.project_name);
-    const subject = pickFirst(body.subject) || "";
-    const publicToken = pickFirst(body.publicToken, body.public_token) || "";
-
-    const public_quote_url = resolvePublicQuoteUrl(body, siteUrl);
-
-    const payload = {
-      to_name: toName || "",
-      client_email: toEmail || "",
-      project_name: projectName || "",
-      subject,
-      public_token: publicToken,
-      public_quote_url
+    const zapierBody = {
+      to_name: data.toName || data.clientName || "",
+      client_email: data.toEmail || data.client_email || "",
+      project_name: data.projectName || data.project_name || "",
+      subject: data.subject || "",
+      public_quote_url: data.publicQuoteUrl || data.public_quote_url || "",
+      pdf_url: data.pdfUrl || ""
     };
 
-    const webhook = pickFirst(
+    if (!String(zapierBody.public_quote_url || "").trim()) {
+      zapierBody.public_quote_url = resolvePublicQuoteUrl(data, siteUrl);
+    }
+
+    console.log("ZAPIER FINAL BODY", zapierBody);
+
+    const webhookUrl = pickFirst(
       process.env.ZAPIER_ESTIMATE_CTA_WEBHOOK_URL,
       process.env.ZAPIER_WEBHOOK_URL
     ) || DEFAULT_ZAPIER_CTA_WEBHOOK;
 
+    console.log("ZAPIER WEBHOOK URL", webhookUrl);
+
     let zapierDelivery = "skipped";
     try {
-      console.log("[ZAPIER PAYLOAD]", payload);
-      const resp = await fetch(webhook, {
+      const resp = await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(zapierBody)
       });
       if (resp.ok) {
         zapierDelivery = "ok";
@@ -196,7 +198,7 @@ exports.handler = async (event) => {
         ok: true,
         pdfUrl: pdfUrl || null,
         pdfUploadError: pdfUploadError || null,
-        public_quote_url,
+        public_quote_url: zapierBody.public_quote_url,
         zapier: zapierDelivery
       })
     };
