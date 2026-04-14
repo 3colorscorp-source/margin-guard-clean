@@ -1,6 +1,7 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { assertPublicDepositAllowed } = require("./_lib/quote-deposit-gate");
+const { logStripeSecretDiagnostics } = require("./_lib/stripe-env-log");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -59,6 +60,14 @@ exports.handler = async (event) => {
     if (!stripeSecretKey) {
       return json(500, { error: "Missing env STRIPE_SECRET_KEY" });
     }
+
+    logStripeSecretDiagnostics(stripeSecretKey, "create-project-deposit-session");
+    // Project Deposit: always create a new Checkout Session via Stripe API. We do not read or
+    // reuse any stored deposit checkout URL from the quote (no stale test/live link reuse).
+    console.log(
+      "[create-project-deposit-session] REUSING_STORED_DEPOSIT_CHECKOUT_URL",
+      false
+    );
 
     const body = parseBody(event.body);
 

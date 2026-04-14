@@ -60,8 +60,12 @@
 
     const plan = document.getElementById("planStatus");
     if (plan) {
-      const renewText = data.renewsAt ? new Date(data.renewsAt).toLocaleDateString() : "";
-      plan.textContent = renewText ? `Plan anual activo · Renueva ${renewText}` : "Plan anual activo";
+      if (data.is_admin) {
+        plan.textContent = "Acceso admin (sin suscripción requerida)";
+      } else {
+        const renewText = data.renewsAt ? new Date(data.renewsAt).toLocaleDateString() : "";
+        plan.textContent = renewText ? `Plan anual activo · Renueva ${renewText}` : "Plan anual activo";
+      }
     }
 
     const tenantLabel = document.getElementById("tenantName");
@@ -75,6 +79,12 @@
     if (!requiresAuth) return;
 
     const { data } = await api("/auth-status", { method: "GET" });
+    console.log("ACCESS CHECK", {
+      userId: data.userId ?? null,
+      subscription_status: data.subscription_status ?? null,
+      is_admin: !!data.is_admin,
+      allowAccess: !!data.active,
+    });
     if (!data.active) {
       window.location.href = "/index.html?login=1";
       return;

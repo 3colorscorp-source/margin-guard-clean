@@ -7,6 +7,7 @@ const { supabaseRequest } = require("./_lib/supabase-admin");
 const { assertPublicDepositAllowed } = require("./_lib/quote-deposit-gate");
 const { loadTenantDisplayForTenantId } = require("./_lib/tenant-display");
 const { runDepositPostAutomation } = require("./_lib/deposit-post-automation");
+const { logStripeSecretDiagnostics } = require("./_lib/stripe-env-log");
 
 function json(statusCode, body) {
   return {
@@ -72,6 +73,8 @@ exports.handler = async (event) => {
     if (!stripeSecretKey) {
       return json(500, { error: "Missing env STRIPE_SECRET_KEY" });
     }
+
+    logStripeSecretDiagnostics(stripeSecretKey, "finalize-project-deposit");
 
     if (!serviceRoleKey) {
       return json(500, { error: "Missing env SUPABASE_SERVICE_ROLE_KEY" });
