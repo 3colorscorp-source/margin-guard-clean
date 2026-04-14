@@ -118,6 +118,8 @@ exports.handler = async (event) => {
     let tenantLogoUrl = "";
     const tenantId = row.tenant_id;
 
+    let deposit_payment_available = false;
+
     if (tenantId) {
       try {
         td = await loadTenantDisplayForTenantId(tenantId);
@@ -129,6 +131,16 @@ exports.handler = async (event) => {
         tenantBrandingBusinessName = "";
         tenantBrandingCompanyName = "";
         tenantLogoUrl = "";
+      }
+
+      try {
+        const trows = await supabaseRequest(
+          `tenants?id=eq.${encodeURIComponent(String(tenantId))}&select=stripe_account_id,stripe_charges_enabled`
+        );
+        const tr = Array.isArray(trows) && trows[0] ? trows[0] : null;
+        deposit_payment_available = Boolean(tr?.stripe_account_id && tr?.stripe_charges_enabled);
+      } catch (_e2) {
+        deposit_payment_available = false;
       }
     }
 
@@ -148,6 +160,7 @@ exports.handler = async (event) => {
         tenant_branding_business_name: tenantBrandingBusinessName,
         tenant_branding_company_name: tenantBrandingCompanyName,
         logo_url: tenantLogoUrl,
+        deposit_payment_available,
         items: []
       }
     });

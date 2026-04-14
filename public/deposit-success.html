@@ -22,6 +22,7 @@
     (async () => {
       const params = new URLSearchParams(window.location.search);
       const sessionId = params.get("session_id");
+      const publicToken = params.get("token") || params.get("public_token") || "";
       const state = document.getElementById("depositSuccessState");
       const msg = document.getElementById("depositSuccessMsg");
       const backBtn = document.getElementById("depositBackBtn");
@@ -36,7 +37,7 @@
         const res = await fetch("/.netlify/functions/finalize-project-deposit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId })
+          body: JSON.stringify({ sessionId, public_token: publicToken })
         });
 
         const data = await res.json();

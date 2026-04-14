@@ -86,15 +86,42 @@ exports.handler = async (event) => {
       return json(400, { error: "Missing sessionId" });
     }
 
-    const stripeRes = await fetch(
-      `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${stripeSecretKey}`
+    const bodyPublicToken = String(body.public_token || body.publicToken || "").trim();
+
+    let connectAccountId = "";
+    if (bodyPublicToken) {
+      try {
+        const qrows = await supabaseRequest(
+          `quotes?public_token=eq.${encodeURIComponent(bodyPublicToken)}&select=tenant_id&limit=1`
+        );
+        const tid = Array.isArray(qrows) && qrows[0] ? qrows[0].tenant_id : null;
+        if (tid) {
+          const trows = await supabaseRequest(
+            `tenants?id=eq.${encodeURIComponent(String(tid))}&select=stripe_account_id`
+          );
+          connectAccountId = String(
+            Array.isArray(trows) && trows[0] ? trows[0].stripe_account_id || "" : ""
+          ).trim();
         }
+      } catch (_e) {
+        connectAccountId = "";
       }
-    );
+    }
+
+    const sessionUrl = `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`;
+    const baseHeaders = { Authorization: `Bearer ${stripeSecretKey}` };
+
+    let stripeRes = await fetch(sessionUrl, {
+      method: "GET",
+      headers: connectAccountId ? { ...baseHeaders, "Stripe-Account": connectAccountId } : baseHeaders,
+    });
+
+    if (!stripeRes.ok && connectAccountId) {
+      stripeRes = await fetch(sessionUrl, {
+        method: "GET",
+        headers: baseHeaders,
+      });
+    }
 
     const stripeText = await stripeRes.text();
     let session = {};
@@ -106,7 +133,7 @@ exports.handler = async (event) => {
 
     if (!stripeRes.ok) {
       return json(502, {
-        error: session?.error?.message || stripeText || "Unable to retrieve Stripe session"
+        error: session?.error?.message || stripeText || "Unable to retrieve Stripe session",
       });
     }
 

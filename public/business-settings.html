@@ -144,6 +144,31 @@
             <div class="notice" id="businessSettingsStatus" style="display:none; margin-top:10px;"></div>
           </div>
         </div>
+
+        <div class="card" style="margin-top:16px;">
+          <div class="card-inner">
+            <div class="section-head">
+              <div>
+                <h2>Payments</h2>
+                <div class="sub">Project deposits use <strong>your</strong> Stripe account (Connect). This is separate from the Margin Guard annual subscription.</div>
+              </div>
+              <div class="badge" id="depositStripeBadge">—</div>
+            </div>
+            <p class="sub" style="margin:0 0 10px 0;">
+              Status: <strong id="depositStripeStatusText">Loading…</strong>
+            </p>
+            <ul class="msg-list sales-msg-grid" style="margin-bottom:12px;">
+              <li id="depositStripeLineAccount">Stripe account: —</li>
+              <li id="depositStripeLineCharges">Charges: —</li>
+              <li id="depositStripeLineDetails">Details submitted: —</li>
+            </ul>
+            <div class="inline-actions" style="flex-wrap:wrap;">
+              <button class="btn primary" type="button" id="btnStripeDepositConnect">Connect Stripe for deposits</button>
+              <button class="btn" type="button" id="btnStripeDepositRefresh">Refresh status</button>
+            </div>
+            <div class="notice" id="depositStripeNotice" style="display:none;margin-top:10px;"></div>
+          </div>
+        </div>
       </div>
 
       <div>
@@ -640,8 +665,119 @@
     }
   });
 
+  function setDepositStripeNotice(message, kind) {
+    const node = document.getElementById('depositStripeNotice');
+    if (!node) return;
+    if (!message) {
+      node.style.display = 'none';
+      node.textContent = '';
+      return;
+    }
+    node.style.display = 'block';
+    node.className = 'notice' + (kind ? ' ' + kind : '');
+    node.textContent = message;
+  }
+
+  function paintDepositStripeStatus(data) {
+    const badge = document.getElementById('depositStripeBadge');
+    const statusText = document.getElementById('depositStripeStatusText');
+    const lineAcct = document.getElementById('depositStripeLineAccount');
+    const lineCharges = document.getElementById('depositStripeLineCharges');
+    const lineDetails = document.getElementById('depositStripeLineDetails');
+    if (!data || !data.ok) {
+      if (statusText) statusText.textContent = 'Unable to load';
+      if (badge) {
+        badge.textContent = '—';
+        badge.className = 'badge';
+      }
+      return;
+    }
+    const connected = data.connected === true;
+    if (statusText) {
+      statusText.textContent = connected ? 'Connected — clients can pay deposits on public quotes.' : 'Not connected';
+    }
+    if (badge) {
+      badge.textContent = connected ? 'Connected' : 'Not connected';
+      badge.className = 'badge ' + (connected ? 'green' : '');
+    }
+    const acct = data.stripe_account_id ? String(data.stripe_account_id) : '';
+    if (lineAcct) {
+      lineAcct.textContent = acct
+        ? 'Stripe account: ' + acct.slice(0, 10) + '…'
+        : 'Stripe account: (none yet — use Connect)';
+    }
+    if (lineCharges) {
+      lineCharges.textContent = 'Charges enabled: ' + (data.stripe_charges_enabled ? 'yes' : 'no');
+    }
+    if (lineDetails) {
+      lineDetails.textContent = 'Details submitted: ' + (data.stripe_details_submitted ? 'yes' : 'no');
+    }
+  }
+
+  async function loadDepositStripeStatus(syncFromStripe) {
+    try {
+      const q = syncFromStripe ? '?refresh=1' : '';
+      const res = await fetch('/.netlify/functions/stripe-deposit-connect-sync' + q, {
+        credentials: 'include'
+      });
+      const data = await res.json().catch(function () {
+        return {};
+      });
+      if (!res.ok) {
+        throw new Error(data.error || res.statusText || 'Error');
+      }
+      paintDepositStripeStatus(data);
+      setDepositStripeNotice('', '');
+    } catch (err) {
+      paintDepositStripeStatus({ ok: false });
+      setDepositStripeNotice(err && err.message ? String(err.message) : 'Could not load Stripe deposit status.', 'error');
+    }
+  }
+
+  document.getElementById('btnStripeDepositConnect')?.addEventListener('click', async function () {
+    const btn = document.getElementById('btnStripeDepositConnect');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Opening Stripe…';
+    }
+    setDepositStripeNotice('', '');
+    try {
+      const res = await fetch('/.netlify/functions/stripe-deposit-connect-start', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      const data = await res.json().catch(function () {
+        return {};
+      });
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || 'Could not start Stripe Connect');
+      }
+      window.location.href = data.url;
+    } catch (err) {
+      setDepositStripeNotice(err && err.message ? String(err.message) : 'Connect failed.', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Connect Stripe for deposits';
+      }
+    }
+  });
+
+  document.getElementById('btnStripeDepositRefresh')?.addEventListener('click', function () {
+    loadDepositStripeStatus(true);
+  });
+
   bindLivePreview();
   loadBusinessSettings();
+
+  const _params = new URLSearchParams(window.location.search);
+  if (_params.get('stripe_deposit') === 'return' || _params.get('stripe_deposit') === 'refresh') {
+    history.replaceState({}, '', '/business-settings');
+    loadDepositStripeStatus(true);
+  } else {
+    loadDepositStripeStatus(false);
+  }
 })();
 </script>
 </body>

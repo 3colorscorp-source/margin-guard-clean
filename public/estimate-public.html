@@ -245,6 +245,15 @@
               Complete all steps to proceed with project approval and payment.
             </div>
 
+            <div
+              id="publicDepositStripeUnavailable"
+              class="notice warn"
+              style="display:none;margin-top:12px;text-align:left;"
+            >
+              Online deposit payment is not available yet. Your contractor must connect Stripe for
+              project deposits in Business Settings. Please contact them to arrange payment.
+            </div>
+
             <div class="approved-actions">
               <button class="btn primary" type="button" id="payDepositBtn">Pay Project Deposit</button>
             </div>
@@ -463,18 +472,22 @@
         return !!(okAccepted && initials && okEx && okCo);
       }
 
-      function showUiState({ approved, paid, workflowComplete }) {
+      function showUiState({ approved, paid, workflowComplete, depositPaymentAvailable }) {
         const actions = $("publicEstimateActions");
         const approvedPanel = $("approvedProjectPanel");
         const paidPanel = $("paidProjectPanel");
         const gateNotice = $("publicDepositGateNotice");
+        const stripeUnavail = $("publicDepositStripeUnavailable");
         const payBtn = $("payDepositBtn");
+
+        const stripeReady = depositPaymentAvailable === true;
 
         if (paid) {
           if (actions) actions.style.display = "none";
           if (approvedPanel) approvedPanel.classList.remove("show");
           if (paidPanel) paidPanel.classList.add("show");
           if (gateNotice) gateNotice.style.display = "none";
+          if (stripeUnavail) stripeUnavail.style.display = "none";
           if (payBtn) {
             payBtn.disabled = true;
             payBtn.style.display = "none";
@@ -487,14 +500,19 @@
           if (approvedPanel) approvedPanel.classList.add("show");
           if (paidPanel) paidPanel.classList.remove("show");
 
-          const canPay = workflowComplete === true;
+          const stepsDone = workflowComplete === true;
+          const canPay = stepsDone && stripeReady;
+
           if (gateNotice) {
-            gateNotice.style.display = canPay ? "none" : "block";
+            gateNotice.style.display = stepsDone ? "none" : "block";
             gateNotice.textContent =
               "Complete all steps to proceed with project approval and payment.";
           }
+          if (stripeUnavail) {
+            stripeUnavail.style.display = stepsDone && !stripeReady ? "block" : "none";
+          }
           if (payBtn) {
-            payBtn.style.display = "";
+            payBtn.style.display = canPay ? "" : "none";
             payBtn.disabled = !canPay;
             payBtn.style.opacity = canPay ? "" : "0.45";
             payBtn.style.cursor = canPay ? "" : "not-allowed";
@@ -506,7 +524,9 @@
         if (approvedPanel) approvedPanel.classList.remove("show");
         if (paidPanel) paidPanel.classList.remove("show");
         if (gateNotice) gateNotice.style.display = "none";
+        if (stripeUnavail) stripeUnavail.style.display = "none";
         if (payBtn) {
+          payBtn.style.display = "";
           payBtn.style.opacity = "";
           payBtn.style.cursor = "";
           payBtn.disabled = false;
@@ -520,7 +540,8 @@
         const paid = token ? getDepositPaidFlag(token) : false;
         const est = window.__mgPublicEstimateLast;
         const workflowComplete = depositWorkflowComplete(est);
-        showUiState({ approved, paid, workflowComplete });
+        const depositPaymentAvailable = est && est.deposit_payment_available === true;
+        showUiState({ approved, paid, workflowComplete, depositPaymentAvailable });
 
         const params = new URLSearchParams(window.location.search);
         if (params.get("checkout") === "cancelled") {

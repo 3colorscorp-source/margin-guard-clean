@@ -102,6 +102,19 @@ exports.handler = async (event) => {
       });
     }
 
+    const tenantRows = await supabaseRequest(
+      `tenants?id=eq.${encodeURIComponent(String(quote.tenant_id))}&select=stripe_account_id,stripe_charges_enabled`
+    );
+    const tenantRow = Array.isArray(tenantRows) ? tenantRows[0] : null;
+    const connectAccountId = String(tenantRow?.stripe_account_id || "").trim();
+    const chargesOk = Boolean(tenantRow?.stripe_charges_enabled);
+    if (!connectAccountId || !chargesOk) {
+      return json(403, {
+        error:
+          "Deposit checkout is not available for this business yet. The contractor must connect Stripe for deposits in Business Settings."
+      });
+    }
+
     const gate = assertPublicDepositAllowed(quote);
     if (!gate.ok) {
       return json(403, { error: gate.error });
@@ -179,7 +192,7 @@ exports.handler = async (event) => {
       return json(500, { error: "Missing site URL environment" });
     }
 
-    const successUrl = `${siteUrl}/deposit-success.html?session_id={CHECKOUT_SESSION_ID}`;
+    const successUrl = `${siteUrl}/deposit-success.html?session_id={CHECKOUT_SESSION_ID}&token=${encodeURIComponent(publicToken)}`;
     const cancelUrl = `${siteUrl}/estimate-public.html?token=${encodeURIComponent(publicToken)}&checkout=cancelled`;
 
     const form = new URLSearchParams();
@@ -217,6 +230,7 @@ exports.handler = async (event) => {
       method: "POST",
       headers: {
         Authorization: `Bearer ${stripeSecretKey}`,
+        "Stripe-Account": connectAccountId,
         "Content-Type": "application/x-www-form-urlencoded"
       },
       body: form.toString()
