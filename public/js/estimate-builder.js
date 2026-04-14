@@ -161,7 +161,7 @@
     const raw = getQueryParam("step");
     const n = parseInt(raw || "1", 10);
     if (!Number.isFinite(n)) return 1;
-    return Math.min(3, Math.max(1, n));
+    return Math.min(4, Math.max(1, n));
   }
 
   function setPublicFlowNavHref(token) {
@@ -170,23 +170,28 @@
     const n1 = $("flowNav1");
     const n2 = $("flowNav2");
     const n3 = $("flowNav3");
+    const n4 = $("flowNav4");
     if (n1) n1.href = `${base}&step=1`;
     if (n2) n2.href = `${base}&step=2`;
     if (n3) n3.href = `${base}&step=3`;
+    if (n4) n4.href = `${base}&step=4`;
   }
 
   function applyPublicFlowStep(step) {
     const s1 = $("publicFlowStep1");
     const s2 = $("publicFlowStep2");
     const s3 = $("publicFlowStep3");
+    const s4 = $("publicFlowStep4");
     const metaEl = $("publicEstimateMeta");
     if (s1) s1.style.display = step === 1 ? "" : "none";
     if (s2) s2.style.display = step === 2 ? "" : "none";
     if (s3) s3.style.display = step === 3 ? "" : "none";
+    if (s4) s4.style.display = step === 4 ? "" : "none";
     if (metaEl && step !== 1) {
       const labels = {
-        2: "Step 2 of 3 — exclusions acknowledgment.",
-        3: "Step 3 of 3 — additional work & change orders."
+        2: "Step 2 of 4 — exclusions acknowledgment.",
+        3: "Step 3 of 4 — additional work & change orders.",
+        4: "Step 4 of 4 — request additional work."
       };
       metaEl.textContent = labels[step] || "";
     }
@@ -358,18 +363,120 @@
     return data;
   }
 
+  function changeRequestSubmittedStorageKey(tok) {
+    return `mg_crq_submitted_${tok || ""}`;
+  }
+
   function updatePublicWorkflowBadges(next) {
     const b1 = $("flowStepBadge1");
     const b2 = $("flowStepBadge2");
     const b3 = $("flowStepBadge3");
+    const b4 = $("flowStepBadge4");
     const step1 = safe(next.accepted_at) !== "";
     const step2 =
       safe(next.exclusions_initials) !== "" &&
       safe(next.exclusions_acknowledged_at) !== "";
     const step3 = safe(next.change_order_acknowledged_at) !== "";
+    const tok = getQueryParam("token") || "";
+    const step4 =
+      tok && sessionStorage.getItem(changeRequestSubmittedStorageKey(tok)) === "1";
     if (b1) b1.textContent = step1 ? "✔" : "";
     if (b2) b2.textContent = step2 ? "✔" : "";
     if (b3) b3.textContent = step3 ? "✔" : "";
+    if (b4) b4.textContent = step4 ? "✔" : "";
+  }
+
+  function setupPublicChangeRequestStep(token, estimateSnapshot) {
+    const formWrap = $("publicChangeRequestFormWrap");
+    const titleEl = $("publicChangeRequestTitle");
+    const descEl = $("publicChangeRequestDescription");
+    const areaEl = $("publicChangeRequestArea");
+    const timingEl = $("publicChangeRequestTiming");
+    const btn = $("btnSubmitChangeRequest");
+    const ok = $("publicChangeRequestSuccess");
+    const submitted =
+      token && sessionStorage.getItem(changeRequestSubmittedStorageKey(token)) === "1";
+
+    if (formWrap) {
+      formWrap.style.display = submitted ? "none" : "";
+    }
+    if (ok) {
+      ok.style.display = submitted ? "block" : "none";
+    }
+    [titleEl, descEl, areaEl, timingEl].forEach((el) => {
+      if (el) el.disabled = !!submitted;
+    });
+    if (btn) {
+      btn.disabled = !!submitted;
+      btn.textContent = "Submit change order request";
+    }
+
+    if (!btn || !token || submitted) {
+      return;
+    }
+
+    btn.onclick = async () => {
+      showFlowPanelNotice("publicChangeRequestFeedback", "", "info");
+      const request_title = safe(titleEl?.value);
+      const request_description = safe(descEl?.value);
+      const request_area = safe(areaEl?.value);
+      const preferred_timing = safe(timingEl?.value);
+
+      if (request_title.length < 3) {
+        showFlowPanelNotice(
+          "publicChangeRequestFeedback",
+          "Enter a short title (at least 3 characters).",
+          "error"
+        );
+        return;
+      }
+      if (request_description.length < 10) {
+        showFlowPanelNotice(
+          "publicChangeRequestFeedback",
+          "Describe the work in more detail (at least 10 characters).",
+          "error"
+        );
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = "Submitting…";
+
+      try {
+        const response = await fetch("/.netlify/functions/submit-public-quote-change-request", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            token,
+            request_title,
+            request_description,
+            request_area,
+            preferred_timing
+          })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data?.ok) {
+          throw new Error(data?.error || "Could not submit request.");
+        }
+        sessionStorage.setItem(changeRequestSubmittedStorageKey(token), "1");
+        if (formWrap) formWrap.style.display = "none";
+        if (ok) ok.style.display = "block";
+        showFlowPanelNotice("publicChangeRequestFeedback", "", "info");
+        [titleEl, descEl, areaEl, timingEl].forEach((el) => {
+          if (el) el.disabled = true;
+        });
+        btn.textContent = "Request submitted";
+        updatePublicWorkflowBadges(estimateSnapshot || {});
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Submit change order request";
+        showFlowPanelNotice(
+          "publicChangeRequestFeedback",
+          err.message || "Submit failed.",
+          "error"
+        );
+      }
+    };
   }
 
   function setupPublicWorkflow(next) {
@@ -469,6 +576,8 @@
         }
       };
     }
+
+    setupPublicChangeRequestStep(token, next);
 
     updatePublicWorkflowBadges(next);
   }

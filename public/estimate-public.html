@@ -177,6 +177,10 @@
           <span style="display:inline-flex;align-items:center;gap:2px;">
             <a id="flowNav3" href="#">3 · Change orders</a><span id="flowStepBadge3" class="flow-step-mark"></span>
           </span>
+          <span style="opacity:.35;">|</span>
+          <span style="display:inline-flex;align-items:center;gap:2px;">
+            <a id="flowNav4" href="#">4 · Request work</a><span id="flowStepBadge4" class="flow-step-mark"></span>
+          </span>
         </nav>
 
         <div id="publicFlowStep1" class="flow-step-panel">
@@ -317,6 +321,68 @@
           </div>
           <div class="notice" id="publicChangeOrderFeedback" style="display:none;margin-top:12px;"></div>
           <div class="notice ok" id="publicChangeOrderDone" style="display:none;margin-top:12px;"></div>
+        </div>
+
+        <div id="publicFlowStep4" class="flow-step-panel" style="display:none;">
+          <div class="eyebrow">Step 4 — Request Additional Work</div>
+          <p class="sub" style="margin-top:10px;line-height:1.55;">
+            Use this form to describe extra work you would like reviewed. Your contractor will evaluate the request,
+            confirm feasibility, and provide pricing and timing before any additional work begins.
+          </p>
+
+          <div id="publicChangeRequestFormWrap">
+            <div class="field" style="margin-top:16px;">
+              <label for="publicChangeRequestTitle">Request title</label>
+              <input
+                id="publicChangeRequestTitle"
+                type="text"
+                maxlength="300"
+                autocomplete="off"
+                placeholder="Short summary (e.g., add outlet in kitchen)"
+              />
+            </div>
+            <div class="field" style="margin-top:12px;">
+              <label for="publicChangeRequestDescription">Description</label>
+              <textarea
+                id="publicChangeRequestDescription"
+                rows="6"
+                maxlength="12000"
+                placeholder="Describe what you want added or changed, location, and any details that help scope the work."
+                style="width:100%;min-height:120px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.2);color:inherit;font:inherit;resize:vertical;box-sizing:border-box;"
+              ></textarea>
+            </div>
+            <div class="field" style="margin-top:12px;">
+              <label for="publicChangeRequestArea">Area / location</label>
+              <input
+                id="publicChangeRequestArea"
+                type="text"
+                maxlength="500"
+                autocomplete="off"
+                placeholder="e.g., Master bath, north wall, garage"
+              />
+            </div>
+            <div class="field" style="margin-top:12px;">
+              <label for="publicChangeRequestTiming">Preferred timing</label>
+              <input
+                id="publicChangeRequestTiming"
+                type="text"
+                maxlength="500"
+                autocomplete="off"
+                placeholder="e.g., During paint phase, before cabinets, flexible"
+              />
+            </div>
+            <div class="inline-actions" style="margin-top:16px;">
+              <button class="btn primary" type="button" id="btnSubmitChangeRequest">
+                Submit change order request
+              </button>
+            </div>
+          </div>
+
+          <div class="notice" id="publicChangeRequestFeedback" style="display:none;margin-top:14px;"></div>
+          <div class="notice ok" id="publicChangeRequestSuccess" style="display:none;margin-top:14px;">
+            Your request was submitted. The contractor will follow up with next steps and any pricing or schedule
+            impacts.
+          </div>
         </div>
 
         <p style="margin-top:20px;font-size:12px;opacity:0.65;text-align:center;">Powered by Margin Guard</p>
