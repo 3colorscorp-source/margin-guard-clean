@@ -192,23 +192,110 @@
     }
   }
 
+  const FIXED_EXCLUSIONS_FALLBACK = [
+    "Only the work specifically written in this estimate is included.",
+    "Any additional work, hidden conditions, repairs, upgrades, changes,",
+    "or requests outside the written scope require separate written approval",
+    "and may affect pricing and schedule."
+  ].join("\n");
+
+  /**
+   * Step 2 body must never use quote `notes` (outbound email / message copy from publish).
+   * Source order: optional explicit exclusions field on estimate → sanitized `terms` → fixed fallback.
+   */
+  function sanitizeExclusionsStep2Content(raw) {
+    let t = String(raw ?? "").replace(/\r\n/g, "\n");
+    t = t
+      .replace(/\[PUBLIC_QUOTE_URL\]/gi, "")
+      .replace(/\[public_quote_url\]/gi, "")
+      .replace(/\[PUBLIC QUOTE URL\]/gi, "");
+
+    const lines = t.split("\n");
+    const kept = [];
+    for (const line of lines) {
+      const s = line.trim();
+      if (!s) {
+        kept.push("");
+        continue;
+      }
+      if (/^\[PUBLIC_QUOTE_URL\]/i.test(s)) continue;
+      if (/^hi\s+/i.test(s)) continue;
+      if (/thank you for the opportunity/i.test(s)) continue;
+      if (/your project estimate is attached/i.test(s)) continue;
+      if (/\bwhen you're ready\b/i.test(s)) continue;
+      if (/^thank you,?\s*$/i.test(s)) continue;
+      if (/^thanks,?\s*$/i.test(s)) continue;
+      if (/^(best|regards|sincerely|warm regards|kind regards|cheers),?\s*$/i.test(s)) continue;
+      if (
+        /^(gmail|yahoo|yahoo mail|outlook|hotmail|icloud|aol|protonmail|zoho|fastmail)$/i.test(s)
+      ) {
+        continue;
+      }
+      if (/sent from my (iphone|ipad|android)/i.test(s)) continue;
+      if (/^-+original message-+/i.test(s)) continue;
+      if (/^unsubscribe/i.test(s)) continue;
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) continue;
+      kept.push(line);
+    }
+
+    let out = kept.join("\n");
+    out = out.replace(/\n{3,}/g, "\n\n").trim();
+    return out;
+  }
+
+  function exclusionsStep2BodyLooksLikeEmailScrap(text) {
+    const t = String(text || "").trim();
+    if (t.length < 28) return true;
+    if (/\[PUBLIC_QUOTE_URL\]/i.test(t)) return true;
+    if (/^\s*hi\s+[A-Za-z]/.test(t)) return true;
+    const ats = t.match(/@/g);
+    if (ats && ats.length >= 2) return true;
+    if (/view (this )?estimate (at|on|here)/i.test(t)) return true;
+    if (/attached (as|below|for your review)/i.test(t)) return true;
+    if (/click (here|below|the link)/i.test(t)) return true;
+    return false;
+  }
+
   function buildExclusionsDisplayText(next) {
-    const notes = safe(next.notes);
-    const terms = safe(next.terms);
-    const parts = [];
-    if (notes) {
-      parts.push(`Project notes\n\n${notes}`);
+    const explicit =
+      safe(next.exclusions_text) ||
+      safe(next.exclusionsText) ||
+      safe(next.exclusions_acknowledgment_text) ||
+      safe(next.exclusionsAcknowledgmentText);
+
+    const termsOnly = safe(next.terms);
+
+    let source = "";
+    if (explicit) {
+      const exSan = sanitizeExclusionsStep2Content(explicit);
+      if (exSan && !exclusionsStep2BodyLooksLikeEmailScrap(exSan)) {
+        source = exSan;
+      }
     }
-    if (terms) {
-      parts.push(`Terms & conditions\n\n${terms}`);
+    if (!source && termsOnly) {
+      const tSan = sanitizeExclusionsStep2Content(termsOnly);
+      if (tSan && !exclusionsStep2BodyLooksLikeEmailScrap(tSan)) {
+        source = tSan;
+      }
     }
-    if (!parts.length) {
-      return (
-        "Your written estimate defines what is included in the scope. " +
-        "Work or materials not listed in the estimate are excluded unless added through a written change order."
-      );
+
+    if (!source) {
+      return FIXED_EXCLUSIONS_FALLBACK;
     }
-    return parts.join("\n\n—\n\n");
+    return source;
+  }
+
+  function renderPublicExclusionsStep2Attribution(next) {
+    const el = $("publicExclusionsBusinessLabel");
+    if (!el) return;
+    const name = resolvePublicBusinessDisplayName(next);
+    if (!name || name === "Business") {
+      el.textContent = "";
+      el.style.display = "none";
+      return;
+    }
+    el.textContent = `Provided by ${name}`;
+    el.style.display = "block";
   }
 
   function formatPublicAckTime(iso) {
@@ -292,6 +379,7 @@
     if (exText) {
       exText.textContent = buildExclusionsDisplayText(next);
     }
+    renderPublicExclusionsStep2Attribution(next);
 
     const exAckAt = safe(next.exclusions_acknowledged_at);
     const coAckAt = safe(next.change_order_acknowledged_at);
