@@ -14,6 +14,62 @@ function logAutomation(stage, err) {
   console.error(`[deposit-post-automation:${stage}]`, msg || err);
 }
 
+function logInfo(...args) {
+  console.log("[deposit-post-automation]", ...args);
+}
+
+function logWarn(...args) {
+  console.warn("[deposit-post-automation]", ...args);
+}
+
+function maskEmailForLog(email) {
+  const s = String(email || "").trim();
+  if (!s.includes("@")) return "(no-email)";
+  const [local, dom] = s.split("@");
+  if (!dom) return "(invalid)";
+  const maskLocal = !local ? "*" : local.length <= 2 ? "**" : `${local[0]}***`;
+  return `${maskLocal}@${dom}`;
+}
+
+function getResendApiKey() {
+  return String(process.env.RESEND_API_KEY || "").trim();
+}
+
+/** Resolved From address (verified domain in Resend). */
+function getResendFromAddress() {
+  return pickFirst(
+    process.env.RESEND_FROM_EMAIL,
+    process.env.DEPOSIT_EMAIL_FROM,
+    process.env.RESEND_FROM
+  );
+}
+
+/**
+ * One-line observability: whether Netlify env is set up for Resend (does not log secrets).
+ */
+function logResendEnvironmentSummary() {
+  const keyPresent = Boolean(getResendApiKey());
+  const fromAddr = getResendFromAddress();
+  const fromPresent = Boolean(fromAddr);
+
+  logInfo("Resend config check:", {
+    RESEND_API_KEY: keyPresent ? "present" : "MISSING",
+    RESEND_FROM_EMAIL:
+      pickFirst(process.env.RESEND_FROM_EMAIL) || "(not set)",
+    DEPOSIT_EMAIL_FROM:
+      pickFirst(process.env.DEPOSIT_EMAIL_FROM) || "(not set)",
+    RESEND_FROM: pickFirst(process.env.RESEND_FROM) || "(not set)",
+    resolvedFrom: fromPresent ? fromAddr : "MISSING — set RESEND_FROM_EMAIL (or DEPOSIT_EMAIL_FROM / RESEND_FROM)"
+  });
+
+  if (!keyPresent || !fromPresent) {
+    logWarn(
+      "Resend is not fully configured; direct emails will not send until RESEND_API_KEY and a verified RESEND_FROM_EMAIL (or fallback) are set.",
+      "Fallbacks: use DEPOSIT_CLIENT_CONFIRM_WEBHOOK_URL and/or DEPOSIT_INTERNAL_WEBHOOK_URL for Zapier/Make, or configure Resend in Netlify environment variables."
+    );
+  }
+}
+
 function pickFirst(...values) {
   for (const value of values) {
     if (value !== undefined && value !== null && String(value).trim() !== "") {
@@ -52,16 +108,32 @@ async function postJsonWebhook(url, payload, label) {
 }
 
 async function tryResendEmail({ to, subject, html, replyTo, label }) {
-  const key = process.env.RESEND_API_KEY;
-  const from =
-    pickFirst(
-      process.env.RESEND_FROM_EMAIL,
-      process.env.DEPOSIT_EMAIL_FROM,
-      process.env.RESEND_FROM
-    ) || "";
-  if (!key || !from || !to) {
+  const key = getResendApiKey();
+  const from = getResendFromAddress();
+
+  if (!to) {
+    logWarn(`email [${label}] skipped: no recipient address`);
     return;
   }
+  if (!key) {
+    logWarn(
+      `email [${label}] skipped: RESEND_API_KEY is not set — cannot send to ${maskEmailForLog(to)}`
+    );
+    return;
+  }
+  if (!from) {
+    logWarn(
+      `email [${label}] skipped: no From address — set RESEND_FROM_EMAIL (or DEPOSIT_EMAIL_FROM / RESEND_FROM) in Netlify env`
+    );
+    return;
+  }
+
+  logInfo(`email [${label}] send attempt start`, {
+    to: maskEmailForLog(to),
+    subject: String(subject || "").slice(0, 80),
+    from
+  });
+
   try {
     const body = {
       from,
@@ -81,11 +153,30 @@ async function tryResendEmail({ to, subject, html, replyTo, label }) {
       },
       body: JSON.stringify(body)
     });
-    if (!r.ok) {
-      const t = await r.text();
-      logAutomation(`resend-${label}`, new Error(t));
+
+    const rawText = await r.text();
+    let parsed = null;
+    try {
+      parsed = rawText ? JSON.parse(rawText) : null;
+    } catch {
+      parsed = null;
     }
+
+    if (!r.ok) {
+      logWarn(`email [${label}] send failure`, {
+        status: r.status,
+        body: rawText?.slice(0, 500) || ""
+      });
+      logAutomation(`resend-${label}`, new Error(rawText || String(r.status)));
+      return;
+    }
+
+    logInfo(`email [${label}] send success`, {
+      id: parsed?.id || null,
+      to: maskEmailForLog(to)
+    });
   } catch (err) {
+    logWarn(`email [${label}] send failure (network/exception)`, err?.message || err);
     logAutomation(`resend-${label}`, err);
   }
 }
@@ -138,6 +229,8 @@ async function runDepositPostAutomation(params) {
       logAutomation("missing-args", new Error("quote, tenant, and payment are required"));
       return;
     }
+
+    logResendEnvironmentSummary();
 
     const quoteId = quote.id;
     const tenantId = tenant.id;
@@ -192,6 +285,9 @@ async function runDepositPostAutomation(params) {
 
     const clientHook = process.env.DEPOSIT_CLIENT_CONFIRM_WEBHOOK_URL;
     if (clientHook) {
+      logInfo(
+        "client confirmation: using DEPOSIT_CLIENT_CONFIRM_WEBHOOK_URL (Resend not used for this channel when webhook is set)"
+      );
       await postJsonWebhook(
         clientHook,
         { ...baseWebhookPayload, channel: "client_confirmation" },
@@ -210,10 +306,17 @@ async function runDepositPostAutomation(params) {
         replyTo: tenantNotifyEmail,
         label: "client"
       });
+    } else {
+      logInfo(
+        "client confirmation: skipped (no client email on quote and no DEPOSIT_CLIENT_CONFIRM_WEBHOOK_URL)"
+      );
     }
 
     const internalHook = process.env.DEPOSIT_INTERNAL_WEBHOOK_URL;
     if (internalHook) {
+      logInfo(
+        "internal notification: using DEPOSIT_INTERNAL_WEBHOOK_URL (Resend not used for this channel when webhook is set)"
+      );
       await postJsonWebhook(
         internalHook,
         { ...baseWebhookPayload, channel: "internal_notification" },
@@ -234,6 +337,10 @@ async function runDepositPostAutomation(params) {
         html,
         label: "internal"
       });
+    } else {
+      logInfo(
+        "internal notification: skipped (no tenant/business notify email and no DEPOSIT_INTERNAL_WEBHOOK_URL)"
+      );
     }
 
     const supabaseUrl = process.env.SUPABASE_URL || "";
