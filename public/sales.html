@@ -382,6 +382,50 @@
         return fallback;
       }
 
+      /** Reject values that must not be stored as tenant business_name on public quotes. */
+      const INVALID_PUBLISH_BUSINESS_TOKENS = new Set([
+        'gmail', 'googlemail', 'yahoo', 'ymail', 'outlook', 'hotmail', 'live', 'msn',
+        'icloud', 'aol', 'protonmail', 'proton', 'zoho', 'fastmail', 'gmx', 'yandex', 'hey'
+      ]);
+
+      function looksLikePublishEmail(value) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+      }
+
+      function isInvalidPublishBusinessNameCandidate(value) {
+        const t = safeTrim(value);
+        if (!t) return true;
+        if (/^business$/i.test(t)) return true;
+        if (t.includes('@') || looksLikePublishEmail(t)) return true;
+        if (INVALID_PUBLISH_BUSINESS_TOKENS.has(t.toLowerCase())) return true;
+        return false;
+      }
+
+      /**
+       * First valid tenant business label for publish-public-quote (camelCase + snake_case).
+       * Empty string is allowed — Netlify uses loadTenantDisplayForTenantId when body names are empty.
+       */
+      function resolvePublishBusinessName(branding, payload, settings) {
+        const b = branding && typeof branding === 'object' ? branding : {};
+        const p = payload && typeof payload === 'object' ? payload : {};
+        const s = settings && typeof settings === 'object' ? settings : {};
+        const candidates = [
+          b.businessName,
+          b.business_name,
+          p.businessName,
+          p.business_name,
+          s.bizName,
+          s.businessName,
+          s.business_name,
+          s.companyName,
+          s.company_name
+        ];
+        for (const c of candidates) {
+          if (!isInvalidPublishBusinessNameCandidate(c)) return safeTrim(c);
+        }
+        return '';
+      }
+
       function buildBrandInitials(name) {
         const clean = safeTrim(name);
         if (!clean) return 'MG';
@@ -2174,13 +2218,7 @@ async function openSellerSendModal(event) {
         sendStatus.textContent = 'Creating public quote link...';
       }
 
-      const bn =
-        branding.businessName ||
-        payload.businessName ||
-        settings.bizName ||
-        settings.businessName ||
-        settings.companyName ||
-        '';
+      const bn = resolvePublishBusinessName(branding, payload, settings);
       const publishResponse = await fetch('/.netlify/functions/publish-public-quote', {
         method: 'POST',
         credentials: 'include',
@@ -2318,12 +2356,8 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           clientName: toName || payload.clientName || state.clientName || '',
           location: projectAddress,
           businessName:
-            savedName ||
-            branding.businessName ||
-            payload.businessName ||
-            settings.bizName ||
-            settings.businessName ||
-            settings.companyName ||
+            (!isInvalidPublishBusinessNameCandidate(savedName) ? savedName : '') ||
+            resolvePublishBusinessName(branding, payload, settings) ||
             '',
           businessPhone:
             savedPhone || branding.businessPhone || payload.businessPhone || settings.businessPhone || settings.phone || '',
