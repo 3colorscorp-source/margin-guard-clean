@@ -21,6 +21,132 @@
     return String(v || "").trim();
   }
 
+  function escapeHtml(v) {
+    return String(v || "").replace(/[&<>"']/g, (m) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[m])
+    );
+  }
+
+  /** Known mailbox hosts / brands — never use as public business title when stored wrongly on the quote row. */
+  const MAILBOX_BRAND_TOKENS = new Set([
+    "gmail",
+    "googlemail",
+    "yahoo",
+    "ymail",
+    "outlook",
+    "hotmail",
+    "live",
+    "msn",
+    "icloud",
+    "aol",
+    "protonmail",
+    "proton",
+    "zoho",
+    "fastmail",
+    "gmx",
+    "yandex",
+    "hey"
+  ]);
+
+  function looksLikeEmailAddress(s) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s).trim());
+  }
+
+  function looksLikeDomainOnly(s) {
+    return /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/i.test(String(s).trim());
+  }
+
+  function emailLocalPart(email) {
+    const t = String(email || "").trim();
+    const at = t.indexOf("@");
+    return at > 0 ? t.slice(0, at).toLowerCase() : "";
+  }
+
+  function emailDomain(email) {
+    const t = String(email || "").trim();
+    const at = t.indexOf("@");
+    return at > 0 ? t.slice(at + 1).toLowerCase() : "";
+  }
+
+  /**
+   * Rejects values that must never be used as the public business title (emails, domains, mailbox brands, etc.).
+   * Title must come only from allowed name fields; contact lines hold email/phone.
+   */
+  function isInvalidBusinessDisplayName(candidate, ctx) {
+    const raw = String(candidate || "").trim();
+    if (!raw) return true;
+    if (raw.includes("@") || looksLikeEmailAddress(raw)) return true;
+    const lower = raw.toLowerCase();
+    const beFull = String(ctx?.business_email || "").trim().toLowerCase();
+    const ceFull = String(ctx?.client_email || "").trim().toLowerCase();
+    if (beFull && lower === beFull) return true;
+    if (ceFull && lower === ceFull) return true;
+    if (MAILBOX_BRAND_TOKENS.has(lower)) return true;
+    if (looksLikeDomainOnly(raw)) return true;
+    const beDom = emailDomain(ctx?.business_email);
+    const ceDom = emailDomain(ctx?.client_email);
+    if (beDom && lower === beDom) return true;
+    if (ceDom && lower === ceDom) return true;
+    const be = emailLocalPart(ctx?.business_email);
+    const ce = emailLocalPart(ctx?.client_email);
+    if (be && lower === be) return true;
+    if (ce && lower === ce) return true;
+    return false;
+  }
+
+  /**
+   * Multi-tenant public header: quote owner fields first, then tenant branding for that quote's tenant only.
+   * Order: quote business_name → quote company_name → tenant branding business_name → tenant branding company_name → "Business".
+   * Does not use business_email, client email, domains, or generic contact-derived text as the title.
+   */
+  function resolvePublicBusinessDisplayName(est) {
+    const ctx = {
+      business_email: safe(est.business_email),
+      client_email: safe(est.client_email)
+    };
+    const candidates = [
+      safe(est.business_name),
+      safe(est.company_name),
+      safe(est.tenant_branding_business_name),
+      safe(est.tenant_branding_company_name)
+    ];
+    for (const c of candidates) {
+      if (!isInvalidBusinessDisplayName(c, ctx)) return c;
+    }
+    return "Business";
+  }
+
+  function buildInitialsFromBusinessName(name) {
+    const words = String(name || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!words.length) return "B";
+    return words
+      .map((w) => w.charAt(0))
+      .join("")
+      .slice(0, 3)
+      .toUpperCase();
+  }
+
+  function safeHttpUrl(url) {
+    const s = String(url || "").trim();
+    if (!s) return "";
+    try {
+      const u = new URL(s, window.location.origin);
+      if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+      return u.href;
+    } catch (_e) {
+      return "";
+    }
+  }
+
   function showFeedback(message, type = "info") {
     const box = $("publicEstimateFeedback");
     if (!box) return;
@@ -182,11 +308,9 @@
     const titleEl = $("publicEstimateTitle");
     const metaEl = $("publicEstimateMeta");
 
-    const businessName =
-      safe(next.business_name) ||
-      safe(next.company_name) ||
-      safe(next.businessName) ||
-      "\u2014";
+    const displayName = resolvePublicBusinessDisplayName(next);
+    const initials = buildInitialsFromBusinessName(displayName);
+    const logoUrl = safeHttpUrl(next.logo_url);
 
     const businessAddress =
       safe(next.business_address) ||
@@ -203,13 +327,24 @@
       safe(next.company_phone) ||
       "";
 
+    const projectLine = safe(next.title || next.project_name || "Public Estimate");
+
+    const logoOrInitials = logoUrl
+      ? `<img src="${escapeHtml(logoUrl)}" alt="" style="width:56px;height:56px;object-fit:contain;border-radius:10px;background:rgba(255,255,255,.06);flex-shrink:0;" />`
+      : `<div style="width:56px;height:56px;border-radius:12px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;letter-spacing:.04em;flex-shrink:0;">${escapeHtml(initials)}</div>`;
+
     if (titleEl) {
       titleEl.innerHTML = `
-        <div style="font-size:30px;font-weight:800;line-height:1.15;margin-bottom:6px;">
-          ${businessName}
-        </div>
-        <div style="font-size:18px;font-weight:700;line-height:1.25;">
-          ${safe(next.title || next.project_name || "Public Estimate")}
+        <div style="display:flex;align-items:flex-start;gap:14px;">
+          ${logoOrInitials}
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:30px;font-weight:800;line-height:1.15;margin-bottom:6px;">
+              ${escapeHtml(displayName)}
+            </div>
+            <div style="font-size:18px;font-weight:700;line-height:1.25;">
+              ${escapeHtml(projectLine)}
+            </div>
+          </div>
         </div>
       `;
     }
@@ -217,17 +352,17 @@
     if (metaEl) {
       const lines = [];
 
-      if (businessAddress) lines.push(businessAddress);
+      if (businessAddress) lines.push(escapeHtml(businessAddress));
 
       const contactLine = [businessEmail, businessPhone].filter(Boolean).join(" • ");
-      if (contactLine) lines.push(contactLine);
+      if (contactLine) lines.push(escapeHtml(contactLine));
 
       const expLabel =
         safe(next.expiration_date) ||
         safe(next.expirationDate) ||
         safe(next.valid_through) ||
         "sin fecha";
-      lines.push(`• Expira ${expLabel}`);
+      lines.push(`• Expira ${escapeHtml(expLabel)}`);
 
       metaEl.innerHTML = lines.map((x) => `<div>${x}</div>`).join("");
     }
@@ -369,13 +504,9 @@
     const token = getQueryParam("token") || "";
     const currentStatus = String(next.status || "").toLowerCase();
 
-    const bn =
-      safe(next.business_name) ||
-      safe(next.company_name) ||
-      safe(next.businessName) ||
-      "";
+    const bn = resolvePublicBusinessDisplayName(next);
     const proj = safe(next.title || next.project_name) || "Estimate";
-    document.title = bn ? `${bn} — ${proj}` : proj;
+    document.title = `${bn} — ${proj}`;
 
     renderBusinessHeader(next);
     renderCustomer(next);

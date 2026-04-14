@@ -20,7 +20,9 @@ async function loadTenantDisplayForTenantId(tenantId) {
       business_phone: "",
       business_address: "",
       logo_url: "",
-      fallback_name: ""
+      fallback_name: "",
+      branding_business_name: "",
+      branding_company_name: ""
     };
   }
 
@@ -51,7 +53,10 @@ async function loadTenantDisplayForTenantId(tenantId) {
     business_phone: pickFirst(branding?.business_phone),
     business_address: pickFirst(branding?.business_address),
     logo_url: pickFirst(branding?.logo_url),
-    fallback_name: fallbackName
+    fallback_name: fallbackName,
+    /** Raw tenant_branding only (no tenants.name merge) — for public quote header resolution. */
+    branding_business_name: pickFirst(branding?.business_name),
+    branding_company_name: pickFirst(branding?.company_name)
   };
 }
 

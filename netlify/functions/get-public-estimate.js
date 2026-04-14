@@ -1,4 +1,5 @@
 const { supabaseRequest } = require("./_lib/supabase-admin");
+const { loadTenantDisplayForTenantId } = require("./_lib/tenant-display");
 
 function json(statusCode, body) {
   return {
@@ -8,8 +9,8 @@ function json(statusCode, body) {
   };
 }
 
-/** Columns fetched from quotes — public_token is the ONLY lookup key; no id, no tenant join. */
-const QUOTE_SELECT = [
+/** Public columns returned to the browser (no ids). */
+const QUOTE_PUBLIC_KEYS = [
   "business_name",
   "company_name",
   "business_email",
@@ -28,11 +29,17 @@ const QUOTE_SELECT = [
   "notes",
   "terms",
   "status"
-].join(",");
+];
+
+/** Include tenant_id only for server-side branding lookup; never exposed in JSON. */
+const QUOTE_FETCH_KEYS = [...QUOTE_PUBLIC_KEYS, "tenant_id"];
+
+const QUOTE_SELECT = QUOTE_FETCH_KEYS.join(",");
 
 /**
  * Public estimate API: isolated to one quote row matched by public_token only.
- * Response is a whitelisted subset — no ids, no tenant_id, no joins.
+ * Response is a whitelisted subset — no ids, no tenant_id in JSON.
+ * Tenant branding (name + logo) is resolved server-side from tenant_id for header display only.
  */
 exports.handler = async (event) => {
   try {
@@ -79,10 +86,30 @@ exports.handler = async (event) => {
     const row = rows[0];
     const estimate = pickPublicEstimateFields(row);
 
+    let tenantBrandingBusinessName = "";
+    let tenantBrandingCompanyName = "";
+    let tenantLogoUrl = "";
+    const tenantId = row.tenant_id;
+    if (tenantId) {
+      try {
+        const td = await loadTenantDisplayForTenantId(tenantId);
+        tenantBrandingBusinessName = String(td.branding_business_name || "").trim();
+        tenantBrandingCompanyName = String(td.branding_company_name || "").trim();
+        tenantLogoUrl = String(td.logo_url || "").trim();
+      } catch (_e) {
+        tenantBrandingBusinessName = "";
+        tenantBrandingCompanyName = "";
+        tenantLogoUrl = "";
+      }
+    }
+
     return json(200, {
       ok: true,
       estimate: {
         ...estimate,
+        tenant_branding_business_name: tenantBrandingBusinessName,
+        tenant_branding_company_name: tenantBrandingCompanyName,
+        logo_url: tenantLogoUrl,
         items: []
       }
     });
@@ -94,7 +121,7 @@ exports.handler = async (event) => {
 const QUOTE_NUMERIC_KEYS = new Set(["total", "deposit_required"]);
 
 function pickPublicEstimateFields(row) {
-  const keys = QUOTE_SELECT.split(",");
+  const keys = QUOTE_PUBLIC_KEYS;
   const out = {};
   for (const k of keys) {
     if (!Object.prototype.hasOwnProperty.call(row, k)) {
