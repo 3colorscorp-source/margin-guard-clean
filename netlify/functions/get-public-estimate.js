@@ -119,6 +119,7 @@ exports.handler = async (event) => {
     const tenantId = row.tenant_id;
 
     let deposit_payment_available = false;
+    let ownerSettings = null;
 
     if (tenantId) {
       try {
@@ -134,14 +135,15 @@ exports.handler = async (event) => {
       }
 
       try {
-        const trows = await supabaseRequest(
-          `tenants?id=eq.${encodeURIComponent(String(tenantId))}&select=stripe_account_id,stripe_charges_enabled`
+        const osRows = await supabaseRequest(
+          `owner_settings?tenant_id=eq.${encodeURIComponent(String(tenantId))}&select=deposit_payment_link&limit=1`
         );
-        const tr = Array.isArray(trows) && trows[0] ? trows[0] : null;
-        deposit_payment_available = Boolean(tr?.stripe_account_id && tr?.stripe_charges_enabled);
-      } catch (_e2) {
-        deposit_payment_available = false;
+        ownerSettings = Array.isArray(osRows) && osRows[0] ? osRows[0] : null;
+      } catch (_e3) {
+        ownerSettings = null;
       }
+
+      deposit_payment_available = !!ownerSettings?.deposit_payment_link;
     }
 
     const resolvedBusinessName =
@@ -161,7 +163,7 @@ exports.handler = async (event) => {
         tenant_branding_company_name: tenantBrandingCompanyName,
         logo_url: tenantLogoUrl,
         deposit_payment_available,
-        deposit_payment_link: "https://buy.stripe.com/cNiaEY5B57t23We9U52Fa02",
+        deposit_payment_link: ownerSettings?.deposit_payment_link || null,
         items: []
       }
     });
