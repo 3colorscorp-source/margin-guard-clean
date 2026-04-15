@@ -64,6 +64,7 @@ exports.handler = async (event) => {
       }
       accForm.set("metadata[tenant_id]", String(tenant.id));
       accForm.set("capabilities[card_payments][requested]", "true");
+      accForm.set("capabilities[transfers][requested]", "true");
 
       const accRes = await fetch("https://api.stripe.com/v1/accounts", {
         method: "POST",
