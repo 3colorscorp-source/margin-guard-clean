@@ -154,6 +154,18 @@
               </div>
               <div class="badge" id="depositStripeBadge">—</div>
             </div>
+            <div class="field" style="margin-top:4px;">
+              <label for="depositPaymentLink">Deposit Payment Link</label>
+              <input
+                id="depositPaymentLink"
+                type="url"
+                maxlength="2000"
+                placeholder="https://buy.stripe.com/..."
+                autocomplete="off"
+              />
+              <div class="hint">Paste your Stripe Payment Link for project deposits.</div>
+            </div>
+
             <p class="sub" style="margin:0 0 10px 0;">
               Status: <strong id="depositStripeStatusText">Loading…</strong>
             </p>
@@ -500,9 +512,45 @@
     }
 
     fillForm(settings, mergedBranding);
+    await loadOwnerDepositPaymentLink();
+  }
+
+  function isValidDepositPaymentLink(value) {
+    const v = safeTrim(value || '');
+    if (!v) return true;
+    return v.toLowerCase().startsWith('https://buy.stripe.com/');
+  }
+
+  async function loadOwnerDepositPaymentLink() {
+    try {
+      const res = await fetch('/.netlify/functions/owner-settings-deposit-link', {
+        credentials: 'include'
+      });
+      const data = await res.json().catch(function () {
+        return {};
+      });
+      if (res.ok && data && data.ok) {
+        const raw = data.deposit_payment_link;
+        const s = raw != null && String(raw).trim() !== '' ? String(raw).trim() : '';
+        setInputValue('depositPaymentLink', s);
+      } else {
+        setInputValue('depositPaymentLink', '');
+      }
+    } catch (_err) {
+      setInputValue('depositPaymentLink', '');
+    }
   }
 
   async function saveBusinessSettings() {
+    const depositRaw = safeTrim(document.getElementById('depositPaymentLink')?.value || '');
+    if (!isValidDepositPaymentLink(depositRaw)) {
+      setStatus(
+        'Deposit Payment Link must be empty or start with https://buy.stripe.com/',
+        'error'
+      );
+      return;
+    }
+
     const settings = currentFormSettings();
     const branding = currentFormBranding(settings);
 
@@ -555,7 +603,28 @@
       const finalBranding = normalizeBrandingRow(branding, settings);
       saveJson(BRANDING_CACHE_KEY, finalBranding);
       fillForm(settings, finalBranding);
-      setStatus('Guardado en el servidor: snapshot y tenant_branding actualizados.', 'success');
+
+      const linkRes = await fetch('/.netlify/functions/owner-settings-deposit-link', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deposit_payment_link: depositRaw ? depositRaw : null
+        })
+      });
+      const linkData = await linkRes.json().catch(function () {
+        return {};
+      });
+      if (!linkRes.ok) {
+        throw new Error(
+          linkData.error || 'Could not save deposit payment link (owner_settings). Check session and try again.'
+        );
+      }
+
+      setStatus(
+        'Guardado en el servidor: snapshot, tenant branding y enlace de deposito (Stripe Payment Link).',
+        'success'
+      );
     } catch (error) {
       console.error('SAVE BUSINESS SETTINGS ERROR =>', error);
       setStatus(
