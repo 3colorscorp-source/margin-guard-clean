@@ -170,28 +170,28 @@
     const n1 = $("flowNav1");
     const n2 = $("flowNav2");
     const n3 = $("flowNav3");
-    const n4 = $("flowNav4");
+    const nOpt = $("flowNavOptionalWork");
     if (n1) n1.href = `${base}&step=1`;
     if (n2) n2.href = `${base}&step=2`;
     if (n3) n3.href = `${base}&step=3`;
-    if (n4) n4.href = `${base}&step=4`;
+    if (nOpt) nOpt.href = `${base}&step=4`;
   }
 
   function applyPublicFlowStep(step) {
     const s1 = $("publicFlowStep1");
     const s2 = $("publicFlowStep2");
     const s3 = $("publicFlowStep3");
-    const s4 = $("publicFlowStep4");
+    const optWrap = $("publicFlowOptionalWrap");
     const metaEl = $("publicEstimateMeta");
     if (s1) s1.style.display = step === 1 ? "" : "none";
     if (s2) s2.style.display = step === 2 ? "" : "none";
     if (s3) s3.style.display = step === 3 ? "" : "none";
-    if (s4) s4.style.display = step === 4 ? "" : "none";
+    if (optWrap) optWrap.style.display = step === 4 ? "" : "none";
     if (metaEl && step !== 1) {
       const labels = {
-        2: "Step 2 of 4 — exclusions acknowledgment.",
-        3: "Step 3 of 4 — additional work & change orders.",
-        4: "Step 4 of 4 — request additional work."
+        2: "Step 2 of 3 — exclusions acknowledgment.",
+        3: "Step 3 of 3 — additional work & change orders.",
+        4: "Optional — request additional work."
       };
       metaEl.textContent = labels[step] || "";
     }

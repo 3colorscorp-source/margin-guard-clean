@@ -178,9 +178,14 @@
             <a id="flowNav3" href="#">3 · Change orders</a><span id="flowStepBadge3" class="flow-step-mark"></span>
           </span>
           <span style="opacity:.35;">|</span>
-          <span style="display:inline-flex;align-items:center;gap:2px;">
-            <a id="flowNav4" href="#">4 · Request work</a><span id="flowStepBadge4" class="flow-step-mark"></span>
-          </span>
+          <button
+            type="button"
+            class="btn primary"
+            id="workflowPayDepositBtn"
+            style="display:none;font-size:13px;padding:8px 16px;border-radius:999px;line-height:1.2;"
+          >
+            Pay Deposit
+          </button>
         </nav>
 
         <div id="publicFlowStep1" class="flow-step-panel">
@@ -255,7 +260,9 @@
             </div>
 
             <div class="approved-actions">
-              <button class="btn primary" type="button" id="payDepositBtn">Pay Project Deposit</button>
+              <button class="btn primary" type="button" id="payDepositBtn" style="display:none;" aria-hidden="true">
+                Pay Project Deposit
+              </button>
             </div>
 
             <div class="deposit-note">
@@ -330,11 +337,26 @@
           </div>
           <div class="notice" id="publicChangeOrderFeedback" style="display:none;margin-top:12px;"></div>
           <div class="notice ok" id="publicChangeOrderDone" style="display:none;margin-top:12px;"></div>
+          <p class="sub" style="margin-top:14px;font-size:12px;opacity:.78;">
+            <a id="flowNavOptionalWork" href="#" style="color:inherit;text-decoration:underline;">Optional: Request additional work</a>
+          </p>
         </div>
 
-        <div id="publicFlowStep4" class="flow-step-panel" style="display:none;">
-          <div class="eyebrow">Step 4 — Request Additional Work</div>
-          <p class="sub" style="margin-top:10px;line-height:1.55;">
+        <div
+          id="publicFlowOptionalWrap"
+          style="display:none;margin-top:18px;padding:16px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.14);"
+        >
+          <div class="eyebrow" style="opacity:.72;">Optional</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;margin-bottom:8px;">
+            <span style="font-size:15px;font-weight:700;">Request Additional Work</span>
+            <span id="flowStepBadge4" class="flow-step-mark"></span>
+          </div>
+          <p class="sub" style="margin:0 0 12px;line-height:1.45;opacity:.88;">
+            Not required for deposit. Use this form if you want extra work reviewed later.
+          </p>
+
+        <div id="publicFlowStep4" class="flow-step-panel">
+          <p class="sub" style="margin-top:0;line-height:1.55;">
             Use this form to describe extra work you would like reviewed. Your contractor will evaluate the request,
             confirm feasibility, and provide pricing and timing before any additional work begins.
           </p>
@@ -392,6 +414,7 @@
             Your request was submitted. The contractor will follow up with next steps and any pricing or schedule
             impacts.
           </div>
+        </div>
         </div>
 
         <p style="margin-top:20px;font-size:12px;opacity:0.65;text-align:center;">Powered by Margin Guard</p>
@@ -502,6 +525,7 @@
         const gateNotice = $("publicDepositGateNotice");
         const stripeUnavail = $("publicDepositStripeUnavailable");
         const payBtn = $("payDepositBtn");
+        const workflowPayBtn = $("workflowPayDepositBtn");
 
         const stripeReady = depositPaymentAvailable === true;
         const linkReady = hasDepositPaymentLink === true;
@@ -515,6 +539,11 @@
           if (payBtn) {
             payBtn.disabled = true;
             payBtn.style.display = "none";
+          }
+          if (workflowPayBtn) {
+            workflowPayBtn.disabled = true;
+            workflowPayBtn.style.display = "none";
+            workflowPayBtn.setAttribute("aria-hidden", "true");
           }
           return;
         }
@@ -537,10 +566,18 @@
               stepsDone && !stripeReady && !linkReady ? "block" : "none";
           }
           if (payBtn) {
-            payBtn.style.display = canPay ? "" : "none";
+            payBtn.style.display = "none";
             payBtn.disabled = !canPay;
             payBtn.style.opacity = canPay ? "" : "0.45";
             payBtn.style.cursor = canPay ? "" : "not-allowed";
+          }
+          if (workflowPayBtn) {
+            workflowPayBtn.style.display = canPay ? "" : "none";
+            workflowPayBtn.disabled = !canPay;
+            workflowPayBtn.style.opacity = canPay ? "" : "0.45";
+            workflowPayBtn.style.cursor = canPay ? "" : "not-allowed";
+            if (canPay) workflowPayBtn.removeAttribute("aria-hidden");
+            else workflowPayBtn.setAttribute("aria-hidden", "true");
           }
           return;
         }
@@ -555,6 +592,13 @@
           payBtn.style.opacity = "";
           payBtn.style.cursor = "";
           payBtn.disabled = false;
+        }
+        if (workflowPayBtn) {
+          workflowPayBtn.style.display = "none";
+          workflowPayBtn.disabled = true;
+          workflowPayBtn.style.opacity = "";
+          workflowPayBtn.style.cursor = "";
+          workflowPayBtn.setAttribute("aria-hidden", "true");
         }
       }
 
@@ -648,11 +692,16 @@
         }
 
         const btn = $("payDepositBtn");
+        const workflowBtn = $("workflowPayDepositBtn");
         const feedback = $("publicEstimateFeedback");
 
         if (btn) {
           btn.disabled = true;
           btn.textContent = "Opening secure checkout...";
+        }
+        if (workflowBtn) {
+          workflowBtn.disabled = true;
+          workflowBtn.textContent = "Opening secure checkout...";
         }
 
         if (feedback) {
@@ -691,6 +740,10 @@
             btn.disabled = false;
             btn.textContent = "Pay Project Deposit";
           }
+          if (workflowBtn) {
+            workflowBtn.disabled = false;
+            workflowBtn.textContent = "Pay Deposit";
+          }
         }
       }
 
@@ -698,6 +751,12 @@
         const btn = $("payDepositBtn");
         if (!btn) return;
         btn.addEventListener("click", startDepositCheckout);
+        const workflowBtn = $("workflowPayDepositBtn");
+        if (workflowBtn) {
+          workflowBtn.addEventListener("click", function () {
+            btn.click();
+          });
+        }
       }
 
       function bindStatusRefresh() {
