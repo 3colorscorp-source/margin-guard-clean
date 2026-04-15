@@ -458,6 +458,23 @@
         return "Customer";
       }
 
+      /** Use payment link from the loaded quote/estimate when present (no extra fetches). */
+      function getDepositPaymentLinkFromQuote(est) {
+        const raw =
+          est?.deposit_payment_link ??
+          est?.depositPaymentLink ??
+          "";
+        const s = String(raw || "").trim();
+        if (!s) return "";
+        try {
+          const u = new URL(s, window.location.origin);
+          if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+          return u.href;
+        } catch (_e) {
+          return "";
+        }
+      }
+
       function depositWorkflowComplete(e) {
         if (!e) return false;
         const okAccepted = e.accepted_at && String(e.accepted_at).trim() !== "";
@@ -472,7 +489,13 @@
         return !!(okAccepted && initials && okEx && okCo);
       }
 
-      function showUiState({ approved, paid, workflowComplete, depositPaymentAvailable }) {
+      function showUiState({
+        approved,
+        paid,
+        workflowComplete,
+        depositPaymentAvailable,
+        hasDepositPaymentLink
+      }) {
         const actions = $("publicEstimateActions");
         const approvedPanel = $("approvedProjectPanel");
         const paidPanel = $("paidProjectPanel");
@@ -481,6 +504,7 @@
         const payBtn = $("payDepositBtn");
 
         const stripeReady = depositPaymentAvailable === true;
+        const linkReady = hasDepositPaymentLink === true;
 
         if (paid) {
           if (actions) actions.style.display = "none";
@@ -501,7 +525,7 @@
           if (paidPanel) paidPanel.classList.remove("show");
 
           const stepsDone = workflowComplete === true;
-          const canPay = stepsDone && stripeReady;
+          const canPay = stepsDone && (stripeReady || linkReady);
 
           if (gateNotice) {
             gateNotice.style.display = stepsDone ? "none" : "block";
@@ -509,7 +533,8 @@
               "Complete all steps to proceed with project approval and payment.";
           }
           if (stripeUnavail) {
-            stripeUnavail.style.display = stepsDone && !stripeReady ? "block" : "none";
+            stripeUnavail.style.display =
+              stepsDone && !stripeReady && !linkReady ? "block" : "none";
           }
           if (payBtn) {
             payBtn.style.display = canPay ? "" : "none";
@@ -541,7 +566,14 @@
         const est = window.__mgPublicEstimateLast;
         const workflowComplete = depositWorkflowComplete(est);
         const depositPaymentAvailable = est && est.deposit_payment_available === true;
-        showUiState({ approved, paid, workflowComplete, depositPaymentAvailable });
+        const hasDepositPaymentLink = !!getDepositPaymentLinkFromQuote(est);
+        showUiState({
+          approved,
+          paid,
+          workflowComplete,
+          depositPaymentAvailable,
+          hasDepositPaymentLink
+        });
 
         const params = new URLSearchParams(window.location.search);
         if (params.get("checkout") === "cancelled") {
@@ -606,6 +638,13 @@
           throw new Error(
             "Complete all steps to proceed with project approval and payment."
           );
+        }
+
+        const quote = window.__mgPublicEstimateLast;
+        const paymentLink = getDepositPaymentLinkFromQuote(quote);
+        if (paymentLink) {
+          window.location.href = paymentLink;
+          return;
         }
 
         const btn = $("payDepositBtn");
