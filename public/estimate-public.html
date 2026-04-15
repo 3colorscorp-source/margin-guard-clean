@@ -150,6 +150,28 @@
     .public-flow-nav a + .flow-step-mark {
       margin-left: 2px;
     }
+
+    /* Secondary action: optional change-request link (step 3) — high contrast, same behavior */
+    #flowNavOptionalWork {
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 1.45;
+      color: rgb(110, 231, 183);
+      text-decoration: underline;
+      text-decoration-thickness: 2px;
+      text-underline-offset: 4px;
+      cursor: pointer;
+      opacity: 1;
+    }
+    #flowNavOptionalWork:hover {
+      color: rgb(167, 243, 208);
+      text-decoration-thickness: 2px;
+    }
+    #flowNavOptionalWork:focus-visible {
+      outline: 2px solid rgba(52, 211, 153, 0.9);
+      outline-offset: 3px;
+      border-radius: 4px;
+    }
   </style>
 </head>
 <body>
@@ -337,8 +359,8 @@
           </div>
           <div class="notice" id="publicChangeOrderFeedback" style="display:none;margin-top:12px;"></div>
           <div class="notice ok" id="publicChangeOrderDone" style="display:none;margin-top:12px;"></div>
-          <p class="sub" style="margin-top:14px;font-size:12px;opacity:.78;">
-            <a id="flowNavOptionalWork" href="#" style="color:inherit;text-decoration:underline;">Optional: Request additional work</a>
+          <p style="margin-top:14px;margin-bottom:0;">
+            <a id="flowNavOptionalWork" href="#">Optional: Request additional work</a>
           </p>
         </div>
 
