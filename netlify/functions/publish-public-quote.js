@@ -1,6 +1,7 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { loadTenantDisplayForTenantId } = require("./_lib/tenant-display");
+const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { makePublicToken } = require("./_lib/public-token");
 
 const fetch = globalThis.fetch;
@@ -78,14 +79,11 @@ exports.handler = async (event) => {
       return json(401, { error: "Unauthorized" });
     }
 
-    const tenantRows = await supabaseRequest(
-      `tenants?stripe_customer_id=eq.${encodeURIComponent(session.c)}&select=id`
-    );
-    const tenant = Array.isArray(tenantRows) ? tenantRows[0] : null;
+    const tenant = await resolveTenantFromSession(session);
     if (!tenant?.id) {
       return json(422, {
         error:
-          "Cannot publish quote: missing tenant_id for this account. Run bootstrap-tenant before publishing."
+          "Cannot publish quote: missing tenant for this account. Run bootstrap-tenant before publishing."
       });
     }
 
