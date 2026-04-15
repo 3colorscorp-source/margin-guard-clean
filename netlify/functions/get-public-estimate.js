@@ -161,6 +161,7 @@ exports.handler = async (event) => {
         tenant_branding_company_name: tenantBrandingCompanyName,
         logo_url: tenantLogoUrl,
         deposit_payment_available,
+        deposit_payment_link: "https://buy.stripe.com/cNiaEY5B57t23We9U52Fa02",
         items: []
       }
     });
