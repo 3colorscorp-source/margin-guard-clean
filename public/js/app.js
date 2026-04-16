@@ -488,6 +488,33 @@ Thank you.`
     return next;
   }
 
+  /** Portfolio / signed-project rows for Sales UI (renderSales). Optional legacy key; otherwise derived from LS_PROJECTS. */
+  function loadSignedProjects() {
+    try {
+      const legacy = readStore("mg_signed_projects", null);
+      if (Array.isArray(legacy)) {
+        return legacy
+          .filter((row) => row && typeof row === "object")
+          .map((row) => ({
+            ...row,
+            projectId: nonEmptyString(row.projectId, row.id, row.projectName, "")
+          }));
+      }
+    } catch (_e) {}
+    const projects = loadProjects();
+    if (!Array.isArray(projects)) return [];
+    return projects
+      .filter((p) => {
+        if (!p || typeof p !== "object") return false;
+        const st = String(p.status || "").trim().toLowerCase();
+        return st === "signed" || st === "completed";
+      })
+      .map((p) => ({
+        ...p,
+        projectId: nonEmptyString(p.projectId, p.id, p.projectName, "")
+      }));
+  }
+
   function loadSupervisorReports() {
     const saved = readStore(LS_SUPERVISOR_REPORTS, {});
     return saved && typeof saved === "object" ? saved : {};
