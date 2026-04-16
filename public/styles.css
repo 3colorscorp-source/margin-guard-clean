@@ -883,12 +883,6 @@ body[data-role="owner"] .owner-input-quote-notes{
   resize:vertical;
   line-height:1.45;
 }
-body[data-role="owner"] .owner-input-issue-date,
-body[data-role="owner"] .owner-input-expiration-date,
-body[data-role="owner"] .owner-input-committed-date{
-  color-scheme:dark;
-  min-height:52px;
-}
 
 /* /owner — Notas (mini encabezado + textarea premium) */
 body[data-role="owner"] .owner-notes{
@@ -1230,7 +1224,18 @@ body[data-role="owner"] table.owner-labor-table td select{
   background:rgba(6,10,20,.58);
   font-size:13px;
   font-weight:600;
+  color:rgba(232,238,252,.96);
+  caret-color:rgba(232,238,252,.96);
+  color-scheme:dark;
   transition:border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+body[data-role="owner"] table.owner-labor-table td input::placeholder{
+  color:rgba(232,238,252,.42);
+  font-weight:500;
+}
+body[data-role="owner"] table.owner-labor-table td select option{
+  color:rgba(232,238,252,.96);
+  background:#0c1424;
 }
 body[data-role="owner"] table.owner-labor-table td input:focus,
 body[data-role="owner"] table.owner-labor-table td select:focus{
@@ -2191,4 +2196,32 @@ input[type="date"]::-webkit-datetime-edit-month-field,
 input[type="date"]::-webkit-datetime-edit-day-field,
 input[type="date"]::-webkit-datetime-edit-year-field {
   color: #f5f7fb;
+}
+
+/* /owner — fechas: calendario nativo visible (anula icono SVG + indicator opacity:0 global) */
+body[data-role="owner"] .owner-date-group input[type="date"]{
+  appearance:auto;
+  -webkit-appearance:auto;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.05), rgba(6,10,20,.72));
+  padding:14px 16px;
+  color-scheme:dark;
+}
+body[data-role="owner"] .owner-input-issue-date::-webkit-calendar-picker-indicator,
+body[data-role="owner"] .owner-input-expiration-date::-webkit-calendar-picker-indicator,
+body[data-role="owner"] .owner-input-committed-date::-webkit-calendar-picker-indicator{
+  opacity:1;
+  position:static;
+  margin-left:6px;
+  cursor:pointer;
+  width:1.2rem;
+  height:1.2rem;
+  padding:0;
+  filter:invert(1) brightness(0.85);
+}
+body[data-role="owner"] .owner-input-issue-date::-moz-calendar-picker-indicator,
+body[data-role="owner"] .owner-input-expiration-date::-moz-calendar-picker-indicator,
+body[data-role="owner"] .owner-input-committed-date::-moz-calendar-picker-indicator{
+  opacity:1;
+  cursor:pointer;
 }
