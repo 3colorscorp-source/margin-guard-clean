@@ -267,6 +267,9 @@ Thank you.`
   function formatMoney(amount) {
     return money(finiteNumber(amount, 0), loadSettings().currency);
   }
+  function buildEstimateNumber() {
+    return "EST-" + String(Date.now());
+  }
   function loadOwner() {
     const saved = readStore(LS_OWNER, {});
     const merged = {
