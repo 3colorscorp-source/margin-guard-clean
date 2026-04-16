@@ -270,6 +270,16 @@ Thank you.`
   function buildEstimateNumber() {
     return "EST-" + String(Date.now());
   }
+  function parseNumber(value) {
+    return finiteNumber(value, 0);
+  }
+  function todayInputValue() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
   function loadOwner() {
     const saved = readStore(LS_OWNER, {});
     const merged = {
