@@ -733,6 +733,57 @@ Thank you.`
     } catch (_e) {}
   }
 
+  let ownerBrandingHydrateDone = false;
+
+  /**
+   * Owner only: merge get-tenant-branding into mg_business_branding_v1 where local keys are empty.
+   * Does not overwrite non-empty local values (v1 rule).
+   */
+  async function hydrateOwnerBrandingCacheFromServer() {
+    if (!$("ownerKpis")) return;
+    if (ownerBrandingHydrateDone) return;
+    if (!window.MarginGuardTenant?.getTenantBranding) {
+      ownerBrandingHydrateDone = true;
+      return;
+    }
+    try {
+      const { response, data } = await window.MarginGuardTenant.getTenantBranding({ force: true });
+      if (!response?.ok || !data?.ok || !data.branding || typeof data.branding !== "object") {
+        ownerBrandingHydrateDone = true;
+        return;
+      }
+      const b = data.branding;
+      const local = readStore(LS_BRANDING, {});
+      const out = { ...local };
+      const isEmpty = (v) => v === undefined || v === null || String(v).trim() === "";
+      const pairs = [
+        ["businessName", b.business_name],
+        ["businessEmail", b.business_email],
+        ["businessPhone", b.business_phone],
+        ["businessAddress", b.business_address],
+        ["businessServiceArea", b.business_service_area],
+        ["logoUrl", b.logo_url],
+        ["marketLine", b.market_line],
+        ["accentHex", b.accent_hex],
+        ["serviceLine", b.service_line],
+        ["signatureLine", b.signature_line]
+      ];
+      let changed = false;
+      for (const [localKey, serverVal] of pairs) {
+        if (isEmpty(out[localKey]) && !isEmpty(serverVal)) {
+          out[localKey] = String(serverVal).trim();
+          changed = true;
+        }
+      }
+      if (changed) {
+        writeStore(LS_BRANDING, out);
+      }
+      ownerBrandingHydrateDone = true;
+    } catch (_err) {
+      ownerBrandingHydrateDone = true;
+    }
+  }
+
   async function ensureTenant() {
     try {
       await fetch("/.netlify/functions/bootstrap-tenant", {
@@ -6847,6 +6898,7 @@ function renderSupervisor() {
     await waitForAuthReadyIfNeeded();
     void ensureTenant();
     await initTenantSnapshotBridge();
+    await hydrateOwnerBrandingCacheFromServer();
     render();
   });
 })();

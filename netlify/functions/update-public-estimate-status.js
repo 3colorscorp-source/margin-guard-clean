@@ -65,7 +65,7 @@ exports.handler = async (event) => {
     }
 
     const response = await fetch(
-      `${supabaseUrl}/rest/v1/quotes?public_token=eq.${encodeURIComponent(trimmed)}`,
+      `${supabaseUrl}/rest/v1/quotes?public_token=eq.${encodeURIComponent(trimmed)}&tenant_id=not.is.null`,
       {
         method: "PATCH",
         headers: {

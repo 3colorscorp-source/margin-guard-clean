@@ -1,0 +1,3 @@
+{
+  "auth-status.js": "Solo consulta public.users por id (is_admin); no hay tablas multi-tenant por tenant_id."
+}

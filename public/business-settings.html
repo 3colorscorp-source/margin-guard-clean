@@ -63,9 +63,26 @@
               <div class="badge green">Multitenant ready</div>
             </div>
 
+            <div id="businessSettingsLoadingNote" class="dashboard-note" style="margin-bottom:14px;" role="status" aria-live="polite">
+              <div class="dashboard-note-title">Cargando branding</div>
+              <div class="dashboard-note-copy">Obteniendo datos del servidor. El formulario aparecera cuando termine la carga (sin parpadeos desde datos viejos).</div>
+            </div>
+
+            <div id="businessSettingsContentBlock" hidden>
             <div class="dashboard-note" style="margin-bottom:14px;">
               <div class="dashboard-note-title">Tenant branding</div>
               <div class="dashboard-note-copy">Lo que guardes aqui debe verse en sales, estimate PDF, email, firma y public quote view del negocio actual.</div>
+            </div>
+
+            <div
+              id="businessSettingsUnsavedBanner"
+              class="notice warn"
+              role="status"
+              aria-live="polite"
+              hidden
+              style="margin-bottom:14px;"
+            >
+              <strong>Cambios sin guardar.</strong> Tus ediciones solo estan en esta pestana; pulsa <strong>Guardar business settings</strong> para enviarlas al servidor.
             </div>
 
             <div class="form">
@@ -140,6 +157,7 @@
             <div class="inline-actions" style="margin-top:12px;">
               <button class="btn primary" id="btnSaveBusinessSettings" type="button">Guardar business settings</button>
               <button class="btn" id="btnReloadBusinessSettings" type="button">Recargar</button>
+            </div>
             </div>
             <div class="notice" id="businessSettingsStatus" style="display:none; margin-top:10px;"></div>
           </div>
@@ -233,6 +251,26 @@
 (function () {
   const SETTINGS_KEY = 'mg_settings_v2';
   const BRANDING_CACHE_KEY = 'mg_business_branding_v1';
+
+  let businessSettingsFormDirty = false;
+
+  function syncBusinessSettingsUnsavedBanner() {
+    const banner = document.getElementById('businessSettingsUnsavedBanner');
+    if (!banner) return;
+    banner.hidden = !businessSettingsFormDirty;
+  }
+
+  function markBusinessSettingsDirty() {
+    businessSettingsFormDirty = true;
+    syncBusinessSettingsUnsavedBanner();
+  }
+
+  function setBusinessSettingsReady(ready) {
+    const loading = document.getElementById('businessSettingsLoadingNote');
+    const block = document.getElementById('businessSettingsContentBlock');
+    if (loading) loading.hidden = !!ready;
+    if (block) block.hidden = !ready;
+  }
 
   const DEFAULT_SETTINGS = {
     bizName: '',
@@ -485,6 +523,8 @@
   }
 
   async function loadBusinessSettings() {
+    setBusinessSettingsReady(false);
+
     const settings = readJson(SETTINGS_KEY, DEFAULT_SETTINGS);
     const rawCache = readJson(BRANDING_CACHE_KEY, DEFAULT_BRANDING);
     let mergedBranding = normalizeBrandingRow(rawCache, settings);
@@ -498,11 +538,11 @@
           mergedBranding = normalizeBrandingRow(
             {
               ...rawCache,
-              business_name: b.business_name || rawCache.business_name || rawCache.businessName,
-              business_email: b.business_email || rawCache.business_email,
-              business_phone: b.business_phone || rawCache.business_phone,
-              business_address: b.business_address || rawCache.business_address || rawCache.businessAddress,
-              logo_url: b.logo_url || rawCache.logo_url || rawCache.logoUrl
+              business_name: b.business_name,
+              business_email: b.business_email,
+              business_phone: b.business_phone,
+              business_address: b.business_address,
+              logo_url: b.logo_url
             },
             settings
           );
@@ -512,6 +552,9 @@
     }
 
     fillForm(settings, mergedBranding);
+    businessSettingsFormDirty = false;
+    syncBusinessSettingsUnsavedBanner();
+    setBusinessSettingsReady(true);
     await loadOwnerDepositPaymentLink();
   }
 
@@ -625,6 +668,8 @@
         'Guardado en el servidor: snapshot, tenant branding y enlace de deposito (Stripe Payment Link).',
         'success'
       );
+      businessSettingsFormDirty = false;
+      syncBusinessSettingsUnsavedBanner();
     } catch (error) {
       console.error('SAVE BUSINESS SETTINGS ERROR =>', error);
       setStatus(
@@ -646,12 +691,14 @@
       const node = document.getElementById(id);
       if (!node) return;
       node.addEventListener('input', function () {
+        markBusinessSettingsDirty();
         const settings = currentFormSettings();
         const branding = currentFormBranding(settings);
         setCounter('bizNameOwnerCount', branding.businessName || '', 60);
         renderBrandPreview(branding);
       });
       node.addEventListener('change', function () {
+        markBusinessSettingsDirty();
         const settings = currentFormSettings();
         const branding = currentFormBranding(settings);
         setCounter('bizNameOwnerCount', branding.businessName || '', 60);
@@ -667,8 +714,22 @@
 
   document.getElementById('btnReloadBusinessSettings')?.addEventListener('click', function (event) {
     event.preventDefault();
+    if (
+      businessSettingsFormDirty &&
+      !window.confirm(
+        'Tienes cambios sin guardar en Business Settings. Recargar descartara esos cambios y tomara datos del servidor. Continuar?'
+      )
+    ) {
+      return;
+    }
     loadBusinessSettings();
     setStatus('Business settings recargados.', '');
+  });
+
+  window.addEventListener('beforeunload', function (event) {
+    if (!businessSettingsFormDirty) return;
+    event.preventDefault();
+    event.returnValue = '';
   });
 
   document.getElementById('businessLogoUpload')?.addEventListener('change', async function (event) {
@@ -716,6 +777,7 @@
 
       setInputValue('publicLogoUrl', data.logo_url);
       syncBusinessLogoPreview(data.logo_url);
+      markBusinessSettingsDirty();
 
       const settings = currentFormSettings();
       const branding = currentFormBranding(settings);
