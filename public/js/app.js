@@ -1928,6 +1928,14 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         saveOwner(state, calcOwner(state, settings));
       };
       el.onchange = el.oninput;
+      el.onpointerdown = () => {
+        if (typeof el.showPicker !== "function") return;
+        try {
+          el.showPicker();
+        } catch (_err) {
+          /* noop: unsupported or not user-activatable */
+        }
+      };
     });
 
     if ($("btnAddWorker")) $("btnAddWorker").onclick = () => {
