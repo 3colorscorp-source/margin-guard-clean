@@ -2198,30 +2198,28 @@ input[type="date"]::-webkit-datetime-edit-year-field {
   color: #f5f7fb;
 }
 
-/* /owner — fechas: calendario nativo visible (anula icono SVG + indicator opacity:0 global) */
-body[data-role="owner"] .owner-date-group input[type="date"]{
+/* /owner — fechas: icono calendario nativo (anula SVG fake + opacity:0 global en ::-webkit-calendar-picker-indicator) */
+body[data-role="owner"] input[type="date"]{
+  color-scheme:dark;
   appearance:auto;
   -webkit-appearance:auto;
+  background-image:none;
   background:
     linear-gradient(180deg, rgba(255,255,255,.05), rgba(6,10,20,.72));
   padding:14px 16px;
-  color-scheme:dark;
 }
-body[data-role="owner"] .owner-input-issue-date::-webkit-calendar-picker-indicator,
-body[data-role="owner"] .owner-input-expiration-date::-webkit-calendar-picker-indicator,
-body[data-role="owner"] .owner-input-committed-date::-webkit-calendar-picker-indicator{
+body[data-role="owner"] input[type="date"]::-webkit-calendar-picker-indicator{
   opacity:1;
+  cursor:pointer;
+  filter:invert(1);
   position:static;
   margin-left:6px;
-  cursor:pointer;
-  width:1.2rem;
-  height:1.2rem;
+  width:auto;
+  height:auto;
   padding:0;
-  filter:invert(1) brightness(0.85);
+  background:transparent;
 }
-body[data-role="owner"] .owner-input-issue-date::-moz-calendar-picker-indicator,
-body[data-role="owner"] .owner-input-expiration-date::-moz-calendar-picker-indicator,
-body[data-role="owner"] .owner-input-committed-date::-moz-calendar-picker-indicator{
+body[data-role="owner"] input[type="date"]::-moz-calendar-picker-indicator{
   opacity:1;
   cursor:pointer;
 }
