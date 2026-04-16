@@ -2485,7 +2485,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     };
 
     const rebuilt = await H.buildEstimatePdfPayload(pdfPayloadWithLink);
-    return rebuilt && rebuilt.contentBase64 ? rebuilt : null;
+    const b64 = rebuilt && typeof rebuilt.contentBase64 === "string" ? rebuilt.contentBase64 : "";
+    if (!rebuilt || !b64) {
+      return null;
+    }
+    return rebuilt;
   }
 
   function syncOwnerSendModalIntoSalesDraft() {
@@ -2614,33 +2618,56 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       const publicQuoteUrl = publishData.public_url;
       const messageWithLink = (message || "").replace(/\[PUBLIC_QUOTE_URL\]/g, publicQuoteUrl);
 
-      let rebuiltPdf = null;
-      const H = window.__MG_ESTIMATE_SEND_HELPERS__;
-      if (H && typeof H.buildEstimatePdfPayload === "function") {
-        if (sendStatus) {
-          sendStatus.textContent = "Generando PDF...";
-        }
-        try {
-          rebuiltPdf = await ownerRebuildEstimatePdfAfterPublish({
-            H,
-            branding,
-            freshSettings,
-            state,
-            sm,
-            toEmail,
-            customerPhone,
-            projectAddress,
-            scope,
-            messageWithLink,
-            publicQuoteUrl,
-            publishData,
-            estimateTotal,
-            depositRequired
-          });
-        } catch (pdfErr) {
-          console.warn("[Margin Guard] Owner estimate PDF:", pdfErr);
-        }
+      if (sendStatus) {
+        sendStatus.textContent = "Generando PDF...";
       }
+
+      const H = window.__MG_ESTIMATE_SEND_HELPERS__;
+      const jspdfOk = Boolean(typeof window !== "undefined" && window.jspdf?.jsPDF);
+      if (!H || typeof H.buildEstimatePdfPayload !== "function" || typeof H.buildEstimateTenantPayload !== "function") {
+        throw new Error(
+          "PDF: no cargaron los helpers (window.__MG_ESTIMATE_SEND_HELPERS__). Confirma que /js/estimate-send-helpers.js exista en el deploy y se cargue antes de app.js."
+        );
+      }
+      if (!jspdfOk) {
+        throw new Error(
+          "PDF: jsPDF no está disponible (window.jspdf.jsPDF). El script de jsPDF debe ir antes de estimate-send-helpers.js en owner.html."
+        );
+      }
+
+      let rebuiltPdf;
+      try {
+        rebuiltPdf = await ownerRebuildEstimatePdfAfterPublish({
+          H,
+          branding,
+          freshSettings,
+          state,
+          sm,
+          toEmail,
+          customerPhone,
+          projectAddress,
+          scope,
+          messageWithLink,
+          publicQuoteUrl,
+          publishData,
+          estimateTotal,
+          depositRequired
+        });
+      } catch (pdfErr) {
+        throw pdfErr instanceof Error ? pdfErr : new Error(String(pdfErr));
+      }
+
+      const pdfB64 = rebuiltPdf?.contentBase64 ? String(rebuiltPdf.contentBase64).trim() : "";
+      if (!pdfB64) {
+        throw new Error(
+          "PDF: buildEstimatePdfPayload no devolvió contentBase64. Revisa consola por errores de jsPDF y que el payload de Owner tenga datos mínimos."
+        );
+      }
+
+      const pdfFileNameFinal = nonEmptyString(
+        rebuiltPdf?.fileName,
+        `Estimate-${nonEmptyString(state.estimateNumber, "Quote")}.pdf`
+      );
 
       const clientName = toName || state.clientName || "";
       const zapierPayload = {
@@ -2669,8 +2696,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         customerPhone,
         recommendedTotal: round2(estimateTotal),
         currency: "USD",
-        pdfBase64: rebuiltPdf?.contentBase64 || "",
-        pdfFileName: rebuiltPdf?.fileName || "",
+        pdfBase64: pdfB64,
+        pdfFileName: pdfFileNameFinal,
         pdfMimeType: rebuiltPdf?.mimeType || "application/pdf"
       };
 
@@ -2686,6 +2713,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       } catch (_e) {}
       if (!zapRes.ok) {
         throw new Error(zapData.error || zapRaw || "Unable to send estimate.");
+      }
+      if (zapData.pdfUploadError) {
+        throw new Error(`PDF: la subida en send-quote-zapier falló (${zapData.pdfUploadError}).`);
+      }
+      if (!zapData.pdfUrl) {
+        throw new Error("PDF: send-quote-zapier no devolvió pdfUrl; Zapier solo recibe pdf_url. Sin URL no hay adjunto.");
       }
 
       state = loadSales();
