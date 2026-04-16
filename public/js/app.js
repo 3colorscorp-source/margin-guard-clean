@@ -62,6 +62,12 @@
   const DEFAULT_OWNER = {
     projectName: "",
     clientName: "",
+    clientEmail: "",
+    clientPhone: "",
+    issueDate: "",
+    expirationDate: "",
+    committedDate: "",
+    quoteNotes: "",
     location: "",
     dueDate: "",
     overheadMonthly: 0,
@@ -268,6 +274,12 @@ Thank you.`
     };
     merged.projectName = String(merged.projectName ?? "");
     merged.clientName = String(merged.clientName ?? "");
+    merged.clientEmail = String(merged.clientEmail ?? "");
+    merged.clientPhone = String(merged.clientPhone ?? "");
+    merged.issueDate = normalizeDateInput(merged.issueDate);
+    merged.expirationDate = normalizeDateInput(merged.expirationDate);
+    merged.committedDate = normalizeDateInput(merged.committedDate);
+    merged.quoteNotes = String(merged.quoteNotes ?? "");
     merged.location = String(merged.location ?? "");
     return merged;
   }
@@ -1791,6 +1803,26 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     } else {
       setVal("clientName", state.clientName);
     }
+    const clientEmailEl = $("clientEmail");
+    if (clientEmailEl && document.activeElement === clientEmailEl) {
+      state.clientEmail = val("clientEmail");
+    } else {
+      setVal("clientEmail", state.clientEmail);
+    }
+    const clientPhoneEl = $("clientPhone");
+    if (clientPhoneEl && document.activeElement === clientPhoneEl) {
+      state.clientPhone = val("clientPhone");
+    } else {
+      setVal("clientPhone", state.clientPhone);
+    }
+    ["issueDate", "expirationDate", "committedDate"].forEach((id) => {
+      const el = $(id);
+      if (el && document.activeElement === el) {
+        state[id] = normalizeDateInput(val(id));
+      } else {
+        setVal(id, state[id] || "");
+      }
+    });
     const locationEl = $("location");
     if (locationEl && document.activeElement === locationEl) {
       state.location = val("location");
@@ -1801,10 +1833,19 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if (!bizNameOwnerEl || document.activeElement !== bizNameOwnerEl) {
       setVal("bizNameOwner", settings.bizName);
     }
+    const quoteNotesEl = $("quoteNotes");
+    if (quoteNotesEl && document.activeElement === quoteNotesEl) {
+      state.quoteNotes = val("quoteNotes");
+    } else {
+      setVal("quoteNotes", state.quoteNotes);
+    }
     count("projectName", "projectNameCount");
     count("clientName", "clientNameCount");
+    count("clientEmail", "clientEmailCount");
+    count("clientPhone", "clientPhoneCount");
     count("location", "locationCount");
     count("bizNameOwner", "bizNameOwnerCount");
+    count("quoteNotes", "quoteNotesCount");
 
     renderWorkers(state, settings, metrics);
 
@@ -1835,7 +1876,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         <div class="owner-quote-hero">
           <div class="owner-quote-kicker">Precio recomendado</div>
           <div class="owner-quote-price">${escapeHtml(money(metrics.recommended, settings.currency))}</div>
-          <div class="owner-quote-meta">${escapeHtml(money(metrics.pricePerUnit, settings.currency))} ${escapeHtml(pricingModeCopy)} Ã¯Â¿Â½ ${escapeHtml(metrics.quotedUnits.toFixed(2))} ${escapeHtml(metrics.pricingModeLabel === "dia" ? "dias" : "horas")} cotizables</div>
+          <div class="owner-quote-meta">${escapeHtml(money(metrics.pricePerUnit, settings.currency))} ${escapeHtml(pricingModeCopy)} · ${escapeHtml(metrics.quotedUnits.toFixed(2))} ${escapeHtml(metrics.pricingModeLabel === "dia" ? "dias" : "horas")} cotizables</div>
           <div class="owner-quote-strip">
             ${primaryCards.map(([title, big, small]) => `
               <div class="owner-mini-card">
@@ -1863,7 +1904,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       $("statusBadge").textContent = metrics.recommended > 0 ? "Pricing live" : "Add labor data";
     }
 
-    [["projectName", "projectNameCount"], ["clientName", "clientNameCount"], ["location", "locationCount"], ["bizNameOwner", "bizNameOwnerCount"]].forEach(([id, counter]) => {
+    [["projectName", "projectNameCount"], ["clientName", "clientNameCount"], ["clientEmail", "clientEmailCount"], ["clientPhone", "clientPhoneCount"], ["location", "locationCount"], ["quoteNotes", "quoteNotesCount"], ["bizNameOwner", "bizNameOwnerCount"]].forEach(([id, counter]) => {
       const el = $(id);
       if (!el) return;
       el.oninput = () => {
@@ -1878,6 +1919,15 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           saveOwner(state, calcOwner(state, settings));
         }
       };
+    });
+    ["issueDate", "expirationDate", "committedDate"].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.oninput = () => {
+        state[id] = normalizeDateInput(val(id));
+        saveOwner(state, calcOwner(state, settings));
+      };
+      el.onchange = el.oninput;
     });
 
     if ($("btnAddWorker")) $("btnAddWorker").onclick = () => {
@@ -1995,6 +2045,35 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         saveOwner(state, calcOwner(state, settings));
       }
     }
+    if ($("clientEmail")) {
+      const next = val("clientEmail");
+      if (next !== state.clientEmail) {
+        state.clientEmail = next;
+        saveOwner(state, calcOwner(state, settings));
+      }
+    }
+    if ($("clientPhone")) {
+      const next = val("clientPhone");
+      if (next !== state.clientPhone) {
+        state.clientPhone = next;
+        saveOwner(state, calcOwner(state, settings));
+      }
+    }
+    ["issueDate", "expirationDate", "committedDate"].forEach((id) => {
+      if (!$(id)) return;
+      const next = normalizeDateInput(val(id));
+      if (next !== state[id]) {
+        state[id] = next;
+        saveOwner(state, calcOwner(state, settings));
+      }
+    });
+    if ($("quoteNotes")) {
+      const next = val("quoteNotes");
+      if (next !== state.quoteNotes) {
+        state.quoteNotes = next;
+        saveOwner(state, calcOwner(state, settings));
+      }
+    }
     if ($("bizNameOwner")) {
       const s = loadSettings();
       const nextBiz = val("bizNameOwner") || DEFAULTS.bizName;
@@ -2059,9 +2138,38 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       saveSettings(s);
     }
   }
+  if ($("clientEmail")) {
+    const next = val("clientEmail");
+    if (next !== state.clientEmail) {
+      state.clientEmail = next;
+      saveOwner(state, calcOwner(state, settings));
+    }
+  }
+  if ($("clientPhone")) {
+    const next = val("clientPhone");
+    if (next !== state.clientPhone) {
+      state.clientPhone = next;
+      saveOwner(state, calcOwner(state, settings));
+    }
+  }
+  ["issueDate", "expirationDate", "committedDate"].forEach((id) => {
+    if (!$(id)) return;
+    const next = normalizeDateInput(val(id));
+    if (next !== state[id]) {
+      state[id] = next;
+      saveOwner(state, calcOwner(state, settings));
+    }
+  });
+  if ($("quoteNotes")) {
+    const next = val("quoteNotes");
+    if (next !== state.quoteNotes) {
+      state.quoteNotes = next;
+      saveOwner(state, calcOwner(state, settings));
+    }
+  }
   const estimateNumber = nonEmptyString(state.estimateNumber, buildEstimateNumber());
-  const issueDate = normalizeDateInput(state.issueDate || todayInputValue());
-  const expirationDate = normalizeDateInput(state.expirationDate || addDaysToInputValue(issueDate, 7));
+  const issueDate = normalizeDateInput(nonEmptyString(state.issueDate) || todayInputValue());
+  const expirationDate = normalizeDateInput(nonEmptyString(state.expirationDate) || addDaysToInputValue(issueDate, 7));
   state.estimateNumber = estimateNumber;
   state.issueDate = issueDate;
   state.expirationDate = expirationDate;
@@ -2083,7 +2191,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   const messageInput = document.getElementById("message");
   const depositInput = document.getElementById("deposit");
   const sendStatus = document.getElementById("sendStatus");
-  if (toEmail) toEmail.value = nonEmptyString(state.customerEmail);
+  if (toEmail) toEmail.value = nonEmptyString(state.clientEmail, state.customerEmail);
   if (toName) toName.value = nonEmptyString(state.clientName);
   if (subjectInput) subjectInput.value = subject;
   if (scopeInput) scopeInput.value = scopeText;
@@ -2116,33 +2224,64 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   async function sendQuote(state, settings, metrics, options = {}) {
   const skipPersistSales = Boolean(options.skipPersistSales);
   const sendStatus = document.getElementById("sendStatus");
-  if ($("projectName")) {
-    const next = val("projectName");
-    if (next !== state.projectName) {
-      state.projectName = next;
-      saveOwner(state, calcOwner(state, settings));
+  if (!skipPersistSales) {
+    if ($("projectName")) {
+      const next = val("projectName");
+      if (next !== state.projectName) {
+        state.projectName = next;
+        saveOwner(state, calcOwner(state, settings));
+      }
     }
-  }
-  if ($("clientName")) {
-    const next = val("clientName");
-    if (next !== state.clientName) {
-      state.clientName = next;
-      saveOwner(state, calcOwner(state, settings));
+    if ($("clientName")) {
+      const next = val("clientName");
+      if (next !== state.clientName) {
+        state.clientName = next;
+        saveOwner(state, calcOwner(state, settings));
+      }
     }
-  }
-  if ($("location")) {
-    const next = val("location");
-    if (next !== state.location) {
-      state.location = next;
-      saveOwner(state, calcOwner(state, settings));
+    if ($("location")) {
+      const next = val("location");
+      if (next !== state.location) {
+        state.location = next;
+        saveOwner(state, calcOwner(state, settings));
+      }
     }
-  }
-  if ($("bizNameOwner")) {
-    const s = loadSettings();
-    const nextBiz = val("bizNameOwner") || DEFAULTS.bizName;
-    if (nextBiz !== String(s.bizName ?? DEFAULTS.bizName)) {
-      s.bizName = nextBiz;
-      saveSettings(s);
+    if ($("bizNameOwner")) {
+      const s = loadSettings();
+      const nextBiz = val("bizNameOwner") || DEFAULTS.bizName;
+      if (nextBiz !== String(s.bizName ?? DEFAULTS.bizName)) {
+        s.bizName = nextBiz;
+        saveSettings(s);
+      }
+    }
+    if ($("clientEmail")) {
+      const next = val("clientEmail");
+      if (next !== state.clientEmail) {
+        state.clientEmail = next;
+        saveOwner(state, calcOwner(state, settings));
+      }
+    }
+    if ($("clientPhone")) {
+      const next = val("clientPhone");
+      if (next !== state.clientPhone) {
+        state.clientPhone = next;
+        saveOwner(state, calcOwner(state, settings));
+      }
+    }
+    ["issueDate", "expirationDate", "committedDate"].forEach((id) => {
+      if (!$(id)) return;
+      const next = normalizeDateInput(val(id));
+      if (next !== state[id]) {
+        state[id] = next;
+        saveOwner(state, calcOwner(state, settings));
+      }
+    });
+    if ($("quoteNotes")) {
+      const next = val("quoteNotes");
+      if (next !== state.quoteNotes) {
+        state.quoteNotes = next;
+        saveOwner(state, calcOwner(state, settings));
+      }
     }
   }
   const settingsSend = loadSettings();
@@ -2158,8 +2297,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     return;
   }
   const estimateNumber = nonEmptyString(state.estimateNumber, buildEstimateNumber());
-  const issueDate = normalizeDateInput(state.issueDate || todayInputValue());
-  const expirationDate = normalizeDateInput(state.expirationDate || addDaysToInputValue(issueDate, 7));
+  const issueDate = normalizeDateInput(nonEmptyString(state.issueDate) || todayInputValue());
+  const expirationDate = normalizeDateInput(nonEmptyString(state.expirationDate) || addDaysToInputValue(issueDate, 7));
   try {
     if (sendStatus) { sendStatus.style.display = "block"; sendStatus.textContent = "Sending estimate..."; }
     const response = await fetch("/.netlify/functions/send-quote-zapier", {
@@ -2187,7 +2326,18 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Unable to send estimate.");
-    if (!skipPersistSales) {
+    if ($("ownerKpis")) {
+      const ownerState = loadOwner();
+      ownerState.clientEmail = toEmail;
+      ownerState.clientName = nonEmptyString(toName, ownerState.clientName);
+      ownerState.estimateNumber = estimateNumber;
+      ownerState.issueDate = issueDate;
+      ownerState.expirationDate = expirationDate;
+      ownerState.messageToClient = scopeOfWork;
+      ownerState.estimateStatus = "sent";
+      ownerState.sentAt = new Date().toISOString();
+      saveOwner(ownerState, calcOwner(ownerState, settingsSend));
+    } else if (!skipPersistSales) {
       state.customerEmail = toEmail;
       state.clientName = toName;
       state.estimateNumber = estimateNumber;
@@ -2662,11 +2812,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           projectName: ownerState.projectName,
           clientName: ownerState.clientName,
           location: ownerState.location,
-          customerEmail: "",
+          customerEmail: ownerState.clientEmail || "",
           estimateNumber: buildEstimateNumber(),
-          issueDate: todayInputValue(),
-          expirationDate: addDaysToInputValue(todayInputValue(), 7),
-          messageToClient: ownerState.notes || "",
+          issueDate: normalizeDateInput(ownerState.issueDate) || todayInputValue(),
+          expirationDate: normalizeDateInput(ownerState.expirationDate) || addDaysToInputValue(normalizeDateInput(ownerState.issueDate) || todayInputValue(), 7),
+          messageToClient: nonEmptyString(ownerState.messageToClient, ownerState.quoteNotes) || "",
           workers: (ownerState.workers || []).map((w) => ({
             name: w.name,
             type: w.type === "helper" ? "helper" : "installer",
@@ -2716,7 +2866,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     }
 
     const btnSendQuoteTop = document.getElementById("btnSendQuote");
-    if (btnSendQuoteTop) {
+    if (btnSendQuoteTop && document.getElementById("salesProjectName")) {
       btnSendQuoteTop.onclick = () => {
         persistSalesDraft("sent");
         openSendModal(state, settings, calculateSalesMetrics(state, settings));

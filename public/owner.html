@@ -27,10 +27,6 @@
         <a class="btn" href="/supervisor">Supervisor</a>
         <a class="btn" href="/sales-admin">Sales Admin</a>
         <button class="btn" id="btnManagePlan">Gestionar plan</button>
-        <div class="owner-topbar-quote" role="group" aria-label="Acciones de cotizacion">
-          <button class="btn primary owner-topbar-quote__btn owner-topbar-quote__btn--send" id="btnSendQuote">Enviar cotizacion</button>
-          <button class="btn owner-topbar-quote__btn owner-topbar-quote__btn--pdf" id="btnExportPdf">Exportar PDF</button>
-        </div>
         <button class="btn danger" id="btnLogout">Cerrar sesion</button>
       </div>
     </div>
@@ -85,6 +81,36 @@
                   <span class="owner-char-pill" title="Caracteres usados"><span id="clientNameCount">0</span><span class="owner-char-pill__max">/60</span></span>
                 </div>
               </div>
+              <div class="field owner-field-client-email">
+                <label for="clientEmail" class="owner-field-client-email__label">Email del cliente</label>
+                <input class="owner-input-client-email" id="clientEmail" type="email" maxlength="80" placeholder="cliente@correo.com" autocomplete="email" />
+                <div class="hint owner-field-client-email__foot">
+                  <span class="owner-field-client-email__tip">Se usa como destino sugerido al abrir Enviar cotización.</span>
+                  <span class="owner-char-pill" title="Caracteres usados"><span id="clientEmailCount">0</span><span class="owner-char-pill__max">/80</span></span>
+                </div>
+              </div>
+              <div class="field owner-field-client-phone">
+                <label for="clientPhone" class="owner-field-client-phone__label">Teléfono</label>
+                <input class="owner-input-client-phone" id="clientPhone" type="tel" maxlength="40" placeholder="Ej: +1 415 555 0100" autocomplete="tel" />
+                <div class="hint owner-field-client-phone__foot">
+                  <span class="owner-field-client-phone__tip">Contacto directo del cliente o GC.</span>
+                  <span class="owner-char-pill" title="Caracteres usados"><span id="clientPhoneCount">0</span><span class="owner-char-pill__max">/40</span></span>
+                </div>
+              </div>
+              <div class="owner-date-group" role="group" aria-label="Fechas del quote">
+                <div class="field owner-field-issue-date">
+                  <label for="issueDate" class="owner-field-issue-date__label">Fecha de emisión</label>
+                  <input class="owner-input-issue-date" id="issueDate" type="date" />
+                </div>
+                <div class="field owner-field-expiration-date">
+                  <label for="expirationDate" class="owner-field-expiration-date__label">Vencimiento</label>
+                  <input class="owner-input-expiration-date" id="expirationDate" type="date" />
+                </div>
+                <div class="field owner-field-committed-date">
+                  <label for="committedDate" class="owner-field-committed-date__label">Fecha compromiso</label>
+                  <input class="owner-input-committed-date" id="committedDate" type="date" />
+                </div>
+              </div>
               <div class="field owner-field-location">
                 <label for="location" class="owner-field-location__label">Ubicación</label>
                 <input class="owner-input-location" id="location" maxlength="50" placeholder="Ej: San Francisco, CA" />
@@ -105,19 +131,19 @@
 
             <div class="sep"></div>
 
-            <section class="owner-biz-rules" aria-labelledby="ownerBizRulesHeading">
-              <div class="owner-biz-rules__head">
-                <div class="owner-biz-rules__intro">
-                  <span class="eyebrow owner-biz-rules__eyebrow">Referencia</span>
-                  <h2 id="ownerBizRulesHeading" class="owner-biz-rules__title">Business Rules</h2>
-                  <p class="sub owner-biz-rules__lead">Overhead, comisiones y modo de cobro se configuran en Business Settings. Aquí solo tienes contexto para cotizar con el mismo criterio: <strong class="owner-biz-rules__strong">no se editan reglas permanentes en Owner.</strong></p>
-                </div>
-                <a class="btn primary owner-biz-rules__cta" href="/business-settings">Abrir Business Settings</a>
+            <section class="owner-notes" aria-labelledby="ownerNotesHeading">
+              <div class="owner-notes__head">
+                <span class="eyebrow owner-notes__eyebrow">Contexto</span>
+                <h2 id="ownerNotesHeading" class="owner-notes__title">Notas</h2>
+                <p class="sub owner-notes__lead">Notas internas del quote; no sustituyen el envío formal al cliente.</p>
               </div>
-
-              <div class="dashboard-note owner-biz-rules__note">
-                <div class="dashboard-note-title owner-biz-rules__note-title">Configuración permanente = Business Settings</div>
-                <div class="dashboard-note-copy owner-biz-rules__note-copy">Owner sirve para vender y calcular el <strong class="owner-biz-rules__strong">proyecto actual</strong>. Si necesitas cambiar modo de cotización, overhead, horas estándar, comisión o bonus, hazlo allí y vuelve aquí: esta pantalla no duplica ni guarda esos ajustes.</div>
+              <div class="field owner-field-quote-notes">
+                <label for="quoteNotes" class="owner-field-quote-notes__label">Notas del proyecto</label>
+                <textarea class="owner-input-quote-notes" id="quoteNotes" rows="5" maxlength="2000" placeholder="Condiciones, supuestos, riesgos o recordatorios para tu equipo."></textarea>
+                <div class="hint owner-field-quote-notes__foot">
+                  <span class="owner-field-quote-notes__tip">Texto libre para el contexto del trabajo actual.</span>
+                  <span class="owner-char-pill" title="Caracteres usados"><span id="quoteNotesCount">0</span><span class="owner-char-pill__max">/2000</span></span>
+                </div>
               </div>
             </section>
 
@@ -159,6 +185,11 @@
               </table>
               </div>
             </section>
+
+            <div class="owner-quote-cta" role="group" aria-label="Enviar o exportar cotizacion">
+              <button type="button" class="btn primary owner-quote-cta__btn owner-quote-cta__btn--send" id="btnSendQuote">Enviar cotizacion</button>
+              <button type="button" class="btn owner-quote-cta__btn owner-quote-cta__btn--pdf" id="btnExportPdf">Exportar PDF</button>
+            </div>
           </div>
         </div>
 
@@ -170,6 +201,22 @@
             <a class="btn primary owner-invoices-hub-cta__btn" href="/estimates-invoices">Abrir Invoices Hub</a>
           </div>
         </div>
+
+        <section class="owner-biz-rules" aria-labelledby="ownerBizRulesHeading">
+          <div class="owner-biz-rules__head">
+            <div class="owner-biz-rules__intro">
+              <span class="eyebrow owner-biz-rules__eyebrow">Referencia</span>
+              <h2 id="ownerBizRulesHeading" class="owner-biz-rules__title">Business Rules</h2>
+              <p class="sub owner-biz-rules__lead">Overhead, comisiones y modo de cobro se configuran en Business Settings. Aquí solo tienes contexto para cotizar con el mismo criterio: <strong class="owner-biz-rules__strong">no se editan reglas permanentes en Owner.</strong></p>
+            </div>
+            <a class="btn primary owner-biz-rules__cta" href="/business-settings">Abrir Business Settings</a>
+          </div>
+
+          <div class="dashboard-note owner-biz-rules__note">
+            <div class="dashboard-note-title owner-biz-rules__note-title">Configuración permanente = Business Settings</div>
+            <div class="dashboard-note-copy owner-biz-rules__note-copy">Owner sirve para vender y calcular el <strong class="owner-biz-rules__strong">proyecto actual</strong>. Si necesitas cambiar modo de cotización, overhead, horas estándar, comisión o bonus, hazlo allí y vuelve aquí: esta pantalla no duplica ni guarda esos ajustes.</div>
+          </div>
+        </section>
       </div>
 
       <div>

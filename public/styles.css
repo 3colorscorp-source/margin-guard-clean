@@ -702,70 +702,37 @@ body[data-role="owner"] .topbar{
   box-shadow:0 14px 44px rgba(0,0,0,.32);
 }
 
-/* /owner — acciones de cotización en topbar (workspace quote, no navegación) */
-body[data-role="owner"] .owner-topbar-quote{
-  display:inline-flex;
-  flex-wrap:wrap;
-  align-items:center;
-  gap:8px;
-  margin-left:4px;
-  padding:5px 6px 5px 14px;
-  border-left:1px solid rgba(255,255,255,.14);
-  border-radius:16px;
-  background:
-    linear-gradient(145deg, rgba(34,197,94,.06), rgba(59,130,246,.04) 55%, rgba(255,255,255,.02));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
-}
-body[data-role="owner"] .owner-topbar-quote__btn{
-  white-space:nowrap;
-}
-body[data-role="owner"] .owner-topbar-quote__btn--send.btn.primary{
-  box-shadow:0 8px 26px rgba(34,197,94,.12);
-}
-body[data-role="owner"] .owner-topbar-quote__btn--send.btn.primary:hover{
-  box-shadow:0 10px 30px rgba(34,197,94,.16);
-}
-body[data-role="owner"] .owner-topbar-quote__btn--pdf{
-  border-color:rgba(59,130,246,.34);
-  background:
-    linear-gradient(180deg, rgba(59,130,246,.12), rgba(6,10,20,.42));
-  color:rgba(232,238,252,.95);
-  font-weight:680;
-  letter-spacing:.01em;
-  box-shadow:0 6px 22px rgba(0,0,0,.18);
-}
-body[data-role="owner"] .owner-topbar-quote__btn--pdf:hover{
-  border-color:rgba(59,130,246,.48);
-  background:
-    linear-gradient(180deg, rgba(59,130,246,.18), rgba(6,10,20,.52));
-  box-shadow:0 8px 28px rgba(59,130,246,.12);
-}
-@media (max-width:1080px){
-  body[data-role="owner"] .owner-topbar-quote{
-    margin-left:0;
-    margin-top:4px;
-    padding-left:12px;
-    border-left:0;
-    border-top:1px solid rgba(255,255,255,.12);
-    padding-top:10px;
-    width:100%;
-    justify-content:flex-start;
-    border-radius:14px;
-  }
-}
-
 /* /owner — Project Quote: campos con tratamiento destacado (estilos compartidos entre rondas) */
 body[data-role="owner"] .form .owner-field-project-name,
 body[data-role="owner"] .form .owner-field-client-gc,
+body[data-role="owner"] .form .owner-field-client-email,
+body[data-role="owner"] .form .owner-field-client-phone,
 body[data-role="owner"] .form .owner-field-location,
-body[data-role="owner"] .form .owner-field-biz-pdf{
+body[data-role="owner"] .form .owner-field-biz-pdf,
+body[data-role="owner"] .form .owner-field-quote-notes,
+body[data-role="owner"] .owner-date-group{
   grid-column:1 / -1;
   margin-bottom:2px;
 }
+body[data-role="owner"] .owner-date-group{
+  display:grid;
+  gap:12px;
+}
+@media (min-width:741px){
+  body[data-role="owner"] .owner-date-group{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+  }
+}
 body[data-role="owner"] .owner-field-project-name__label,
 body[data-role="owner"] .owner-field-client-gc__label,
+body[data-role="owner"] .owner-field-client-email__label,
+body[data-role="owner"] .owner-field-client-phone__label,
+body[data-role="owner"] .owner-field-issue-date__label,
+body[data-role="owner"] .owner-field-expiration-date__label,
+body[data-role="owner"] .owner-field-committed-date__label,
 body[data-role="owner"] .owner-field-location__label,
-body[data-role="owner"] .owner-field-biz-pdf__label{
+body[data-role="owner"] .owner-field-biz-pdf__label,
+body[data-role="owner"] .owner-field-quote-notes__label{
   display:block;
   font-size:13px;
   font-weight:750;
@@ -775,8 +742,14 @@ body[data-role="owner"] .owner-field-biz-pdf__label{
 }
 body[data-role="owner"] .owner-input-project-name,
 body[data-role="owner"] .owner-input-client-gc,
+body[data-role="owner"] .owner-input-client-email,
+body[data-role="owner"] .owner-input-client-phone,
+body[data-role="owner"] .owner-input-issue-date,
+body[data-role="owner"] .owner-input-expiration-date,
+body[data-role="owner"] .owner-input-committed-date,
 body[data-role="owner"] .owner-input-location,
-body[data-role="owner"] .owner-input-biz-pdf{
+body[data-role="owner"] .owner-input-biz-pdf,
+body[data-role="owner"] .owner-input-quote-notes{
   min-height:52px;
   padding:14px 16px;
   font-size:16px;
@@ -791,28 +764,46 @@ body[data-role="owner"] .owner-input-biz-pdf{
 }
 body[data-role="owner"] .owner-input-project-name::placeholder,
 body[data-role="owner"] .owner-input-client-gc::placeholder,
+body[data-role="owner"] .owner-input-client-email::placeholder,
+body[data-role="owner"] .owner-input-client-phone::placeholder,
 body[data-role="owner"] .owner-input-location::placeholder,
-body[data-role="owner"] .owner-input-biz-pdf::placeholder{
+body[data-role="owner"] .owner-input-biz-pdf::placeholder,
+body[data-role="owner"] .owner-input-quote-notes::placeholder{
   color:rgba(232,238,252,.42);
   font-weight:500;
 }
 body[data-role="owner"] .owner-input-project-name:hover,
 body[data-role="owner"] .owner-input-client-gc:hover,
+body[data-role="owner"] .owner-input-client-email:hover,
+body[data-role="owner"] .owner-input-client-phone:hover,
+body[data-role="owner"] .owner-input-issue-date:hover,
+body[data-role="owner"] .owner-input-expiration-date:hover,
+body[data-role="owner"] .owner-input-committed-date:hover,
 body[data-role="owner"] .owner-input-location:hover,
-body[data-role="owner"] .owner-input-biz-pdf:hover{
+body[data-role="owner"] .owner-input-biz-pdf:hover,
+body[data-role="owner"] .owner-input-quote-notes:hover{
   border-color:rgba(255,255,255,.2);
 }
 body[data-role="owner"] .owner-input-project-name:focus,
 body[data-role="owner"] .owner-input-client-gc:focus,
+body[data-role="owner"] .owner-input-client-email:focus,
+body[data-role="owner"] .owner-input-client-phone:focus,
+body[data-role="owner"] .owner-input-issue-date:focus,
+body[data-role="owner"] .owner-input-expiration-date:focus,
+body[data-role="owner"] .owner-input-committed-date:focus,
 body[data-role="owner"] .owner-input-location:focus,
-body[data-role="owner"] .owner-input-biz-pdf:focus{
+body[data-role="owner"] .owner-input-biz-pdf:focus,
+body[data-role="owner"] .owner-input-quote-notes:focus{
   border-color:rgba(34,197,94,.45);
   box-shadow:0 0 0 4px rgba(34,197,94,.12), 0 14px 44px rgba(0,0,0,.28);
 }
 body[data-role="owner"] .owner-input-project-name:placeholder-shown,
 body[data-role="owner"] .owner-input-client-gc:placeholder-shown,
+body[data-role="owner"] .owner-input-client-email:placeholder-shown,
+body[data-role="owner"] .owner-input-client-phone:placeholder-shown,
 body[data-role="owner"] .owner-input-location:placeholder-shown,
-body[data-role="owner"] .owner-input-biz-pdf:placeholder-shown{
+body[data-role="owner"] .owner-input-biz-pdf:placeholder-shown,
+body[data-role="owner"] .owner-input-quote-notes:placeholder-shown{
   border-color:rgba(255,255,255,.1);
   background:
     linear-gradient(180deg, rgba(255,255,255,.03), rgba(6,10,20,.55));
@@ -820,16 +811,22 @@ body[data-role="owner"] .owner-input-biz-pdf:placeholder-shown{
 }
 body[data-role="owner"] .owner-field-project-name:has(.owner-input-project-name:not(:placeholder-shown)) .owner-input-project-name,
 body[data-role="owner"] .owner-field-client-gc:has(.owner-input-client-gc:not(:placeholder-shown)) .owner-input-client-gc,
+body[data-role="owner"] .owner-field-client-email:has(.owner-input-client-email:not(:placeholder-shown)) .owner-input-client-email,
+body[data-role="owner"] .owner-field-client-phone:has(.owner-input-client-phone:not(:placeholder-shown)) .owner-input-client-phone,
 body[data-role="owner"] .owner-field-location:has(.owner-input-location:not(:placeholder-shown)) .owner-input-location,
-body[data-role="owner"] .owner-field-biz-pdf:has(.owner-input-biz-pdf:not(:placeholder-shown)) .owner-input-biz-pdf{
+body[data-role="owner"] .owner-field-biz-pdf:has(.owner-input-biz-pdf:not(:placeholder-shown)) .owner-input-biz-pdf,
+body[data-role="owner"] .owner-field-quote-notes:has(.owner-input-quote-notes:not(:placeholder-shown)) .owner-input-quote-notes{
   border-color:rgba(34,197,94,.22);
   background:
     linear-gradient(180deg, rgba(34,197,94,.07), rgba(6,10,20,.78));
 }
 body[data-role="owner"] .owner-field-project-name__foot,
 body[data-role="owner"] .owner-field-client-gc__foot,
+body[data-role="owner"] .owner-field-client-email__foot,
+body[data-role="owner"] .owner-field-client-phone__foot,
 body[data-role="owner"] .owner-field-location__foot,
-body[data-role="owner"] .owner-field-biz-pdf__foot{
+body[data-role="owner"] .owner-field-biz-pdf__foot,
+body[data-role="owner"] .owner-field-quote-notes__foot{
   display:flex;
   align-items:flex-start;
   justify-content:space-between;
@@ -841,8 +838,11 @@ body[data-role="owner"] .owner-field-biz-pdf__foot{
 }
 body[data-role="owner"] .owner-field-project-name__tip,
 body[data-role="owner"] .owner-field-client-gc__tip,
+body[data-role="owner"] .owner-field-client-email__tip,
+body[data-role="owner"] .owner-field-client-phone__tip,
 body[data-role="owner"] .owner-field-location__tip,
-body[data-role="owner"] .owner-field-biz-pdf__tip{
+body[data-role="owner"] .owner-field-biz-pdf__tip,
+body[data-role="owner"] .owner-field-quote-notes__tip{
   flex:1;
   min-width:12ch;
   line-height:1.45;
@@ -878,10 +878,77 @@ body[data-role="owner"] .owner-char-pill__max{
   opacity:.55;
   font-weight:600;
 }
+body[data-role="owner"] .owner-input-quote-notes{
+  min-height:120px;
+  resize:vertical;
+  line-height:1.45;
+}
+body[data-role="owner"] .owner-input-issue-date,
+body[data-role="owner"] .owner-input-expiration-date,
+body[data-role="owner"] .owner-input-committed-date{
+  color-scheme:dark;
+  min-height:52px;
+}
+
+/* /owner — Notas (mini encabezado + textarea premium) */
+body[data-role="owner"] .owner-notes{
+  margin:4px 0 2px;
+}
+body[data-role="owner"] .owner-notes__head{
+  margin-bottom:14px;
+}
+body[data-role="owner"] .owner-notes__eyebrow{
+  border-color:rgba(168,85,247,.22);
+  background:rgba(168,85,247,.08);
+  color:rgba(233,213,255,.92);
+  letter-spacing:.1em;
+}
+body[data-role="owner"] .owner-notes__title{
+  margin:0 0 8px;
+  font-size:22px;
+  line-height:1.12;
+  font-weight:850;
+  letter-spacing:-.02em;
+}
+body[data-role="owner"] .owner-notes__lead{
+  margin:0;
+  font-size:13px;
+  line-height:1.55;
+  color:rgba(232,238,252,.78);
+}
+
+/* /owner — CTA enviar / PDF (una instancia; mismo patrón que acciones labor) */
+body[data-role="owner"] .owner-quote-cta{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:12px;
+  margin-top:22px;
+  padding:16px 18px;
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,.1);
+  background:
+    linear-gradient(145deg, rgba(34,197,94,.07), rgba(59,130,246,.05) 50%, rgba(255,255,255,.02));
+  box-shadow:0 12px 40px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.06);
+}
+body[data-role="owner"] .owner-quote-cta__btn--send.btn.primary{
+  box-shadow:0 8px 26px rgba(34,197,94,.14);
+}
+body[data-role="owner"] .owner-quote-cta__btn--pdf{
+  border-color:rgba(59,130,246,.34);
+  background:
+    linear-gradient(180deg, rgba(59,130,246,.14), rgba(6,10,20,.45));
+  color:rgba(232,238,252,.95);
+  font-weight:680;
+  letter-spacing:.01em;
+}
 
 /* /owner — bloque Business Rules (referencia; edición en Business Settings) */
 body[data-role="owner"] .owner-biz-rules{
-  margin:2px 0 4px;
+  margin:18px 0 4px;
+}
+body[data-role="owner"] .owner-invoices-hub-cta + .owner-biz-rules{
+  margin-top:20px;
 }
 body[data-role="owner"] .owner-biz-rules__head{
   display:flex;
