@@ -2368,6 +2368,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   }
 
   async function resolveOwnerPublishBranding(settings) {
+    const cached = readStore(LS_BRANDING, {});
     let raw = {};
     if (window.MarginGuardTenant?.getTenantBranding) {
       try {
@@ -2378,15 +2379,66 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       } catch (_e) {}
     }
     return {
-      businessName: ownerEstimatePickFirstNonEmpty(raw.business_name, raw.businessName, settings.bizName),
-      businessEmail: ownerEstimatePickFirstNonEmpty(raw.business_email, settings.email),
-      businessPhone: ownerEstimatePickFirstNonEmpty(raw.business_phone, settings.phone),
-      businessAddress: ownerEstimatePickFirstNonEmpty(raw.business_address, settings.address, settings.companyAddress),
-      logoUrl: ownerEstimatePickFirstNonEmpty(raw.logo_url, raw.logoUrl, settings.publicLogoUrl),
-      marketLine: ownerEstimatePickFirstNonEmpty(raw.market_line, raw.marketLine, settings.marketLine),
-      accentHex: ownerEstimatePickFirstNonEmpty(raw.accent_hex, raw.accentHex, settings.publicAccentColor, "#8f8a5f"),
-      serviceLine: ownerEstimatePickFirstNonEmpty(raw.service_line, "Professional Service Estimate"),
-      signatureLine: ownerEstimatePickFirstNonEmpty(raw.signature_line, "Professional Estimate Delivery")
+      businessName: ownerEstimatePickFirstNonEmpty(
+        raw.business_name,
+        raw.businessName,
+        cached.businessName,
+        settings.bizName
+      ),
+      businessEmail: ownerEstimatePickFirstNonEmpty(
+        raw.business_email,
+        cached.businessEmail,
+        settings.businessEmail,
+        settings.email
+      ),
+      businessPhone: ownerEstimatePickFirstNonEmpty(
+        raw.business_phone,
+        cached.businessPhone,
+        settings.businessPhone,
+        settings.phone
+      ),
+      businessAddress: ownerEstimatePickFirstNonEmpty(
+        raw.business_address,
+        cached.businessAddress,
+        settings.businessAddress,
+        settings.address,
+        settings.companyAddress
+      ),
+      businessServiceArea: ownerEstimatePickFirstNonEmpty(
+        raw.business_service_area,
+        raw.businessServiceArea,
+        cached.businessServiceArea,
+        settings.businessServiceArea
+      ),
+      logoUrl: ownerEstimatePickFirstNonEmpty(
+        raw.logo_url,
+        raw.logoUrl,
+        cached.logoUrl,
+        settings.publicLogoUrl
+      ),
+      marketLine: ownerEstimatePickFirstNonEmpty(
+        raw.market_line,
+        raw.marketLine,
+        cached.marketLine,
+        settings.marketLine
+      ),
+      accentHex: ownerEstimatePickFirstNonEmpty(
+        raw.accent_hex,
+        raw.accentHex,
+        cached.accentHex,
+        settings.publicAccentColor,
+        "#8f8a5f"
+      ),
+      serviceLine: ownerEstimatePickFirstNonEmpty(
+        raw.service_line,
+        cached.serviceLine,
+        "Professional Service Estimate"
+      ),
+      signatureLine: ownerEstimatePickFirstNonEmpty(
+        raw.signature_line,
+        cached.signatureLine,
+        "Professional Estimate Delivery"
+      )
     };
   }
 
