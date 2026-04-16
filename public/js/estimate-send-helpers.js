@@ -81,6 +81,16 @@
   const settings =
     data.settings && typeof data.settings === 'object' ? data.settings : null;
 
+  const proposalSubtitle = pickTenantString(
+    data.serviceLine,
+    data.service_line,
+    branding?.serviceLine,
+    branding?.service_line,
+    settings?.serviceLine,
+    settings?.service_line,
+    'Professional Service Estimate'
+  );
+
   const businessName = String(
     data.businessName ||
       data.business_name ||
@@ -477,7 +487,7 @@
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(12);
   doc.setTextColor(...textMuted);
-  doc.text('Professional Tile Installation Proposal', left, subY);
+  doc.text(proposalSubtitle || 'Professional Service Estimate', left, subY);
 
   const bizLines = [];
   if (preparedBy) {
