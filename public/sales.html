@@ -694,7 +694,8 @@
               logoUrl: apiRow.logoUrl || merged.logoUrl || '',
               accentHex: apiRow.accentHex || merged.accentHex,
               signatureLine: apiRow.signatureLine || merged.signatureLine,
-              serviceLine: apiRow.serviceLine || merged.serviceLine,
+              // API does not return service_line; apiRow.serviceLine is only normalizeBrandingRow default — prefer local cache.
+              serviceLine: merged.serviceLine || apiRow.serviceLine,
               marketLine: apiRow.marketLine || merged.marketLine
             };
           }
