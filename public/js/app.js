@@ -2381,8 +2381,111 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       businessName: ownerEstimatePickFirstNonEmpty(raw.business_name, raw.businessName, settings.bizName),
       businessEmail: ownerEstimatePickFirstNonEmpty(raw.business_email, settings.email),
       businessPhone: ownerEstimatePickFirstNonEmpty(raw.business_phone, settings.phone),
-      businessAddress: ownerEstimatePickFirstNonEmpty(raw.business_address, settings.address, settings.companyAddress)
+      businessAddress: ownerEstimatePickFirstNonEmpty(raw.business_address, settings.address, settings.companyAddress),
+      logoUrl: ownerEstimatePickFirstNonEmpty(raw.logo_url, raw.logoUrl, settings.publicLogoUrl),
+      marketLine: ownerEstimatePickFirstNonEmpty(raw.market_line, raw.marketLine, settings.marketLine),
+      accentHex: ownerEstimatePickFirstNonEmpty(raw.accent_hex, raw.accentHex, settings.publicAccentColor, "#8f8a5f"),
+      serviceLine: ownerEstimatePickFirstNonEmpty(raw.service_line, "Professional Service Estimate"),
+      signatureLine: ownerEstimatePickFirstNonEmpty(raw.signature_line, "Professional Estimate Delivery")
     };
+  }
+
+  async function ownerRebuildEstimatePdfAfterPublish({
+    H,
+    branding,
+    freshSettings,
+    state,
+    sm,
+    toEmail,
+    customerPhone,
+    projectAddress,
+    scope,
+    messageWithLink,
+    publicQuoteUrl,
+    publishData,
+    estimateTotal,
+    depositRequired
+  }) {
+    if (!H || typeof H.buildEstimatePdfPayload !== "function" || typeof H.buildEstimateTenantPayload !== "function") {
+      return null;
+    }
+    const estimateNumber = nonEmptyString(state.estimateNumber, buildEstimateNumber());
+    const issueDate = normalizeDateInput(nonEmptyString(state.issueDate) || todayInputValue());
+    const expirationDate = normalizeDateInput(nonEmptyString(state.expirationDate) || addDaysToInputValue(issueDate, 7));
+    const savedRow = publishData.row && typeof publishData.row === "object" ? publishData.row : null;
+    const savedName = savedRow ? String(savedRow.business_name || savedRow.company_name || "").trim() : "";
+    const savedEmail = savedRow ? String(savedRow.business_email || "").trim() : "";
+    const savedPhone = savedRow ? String(savedRow.business_phone || "").trim() : "";
+    const savedAddr = savedRow ? String(savedRow.business_address || "").trim() : "";
+    const rowTotal = Number(savedRow?.total ?? sm.offered ?? sm.recommended ?? estimateTotal) || 0;
+    const rowDeposit = Number(savedRow?.deposit_required ?? depositRequired) || 0;
+
+    const savedTenantOverlay = {};
+    if (savedName) {
+      savedTenantOverlay.businessName = savedName;
+      savedTenantOverlay.business_name = savedName;
+    }
+    if (savedPhone) {
+      savedTenantOverlay.businessPhone = savedPhone;
+      savedTenantOverlay.business_phone = savedPhone;
+    }
+    if (savedEmail) {
+      savedTenantOverlay.businessEmail = savedEmail;
+      savedTenantOverlay.business_email = savedEmail;
+    }
+    if (savedAddr) {
+      savedTenantOverlay.businessAddress = savedAddr;
+      savedTenantOverlay.business_address = savedAddr;
+    }
+
+    const tenantPdf = H.buildEstimateTenantPayload(branding, freshSettings, {});
+    const basePayload = {
+      ...tenantPdf,
+      branding,
+      settings: freshSettings,
+      logoUrl: ownerEstimatePickFirstNonEmpty(branding.logoUrl, freshSettings.publicLogoUrl),
+      marketLine: branding.marketLine || freshSettings.marketLine || "",
+      estimateNumber,
+      projectName: nonEmptyString(state.projectName),
+      clientName: nonEmptyString(state.clientName),
+      customerEmail: nonEmptyString(state.customerEmail),
+      customerPhone: nonEmptyString(state.customerPhone),
+      clientEmail: nonEmptyString(state.customerEmail),
+      clientPhone: nonEmptyString(state.customerPhone),
+      location: nonEmptyString(state.location),
+      issueDate,
+      expirationDate,
+      totalFormatted: H.formatUsd(rowTotal),
+      totalAmount: rowTotal,
+      depositFormatted: H.formatUsd(rowDeposit),
+      depositRequired: rowDeposit,
+      scopeSummary: nonEmptyString(scope, state.messageToClient, "-"),
+      messageText: messageWithLink,
+      publicQuoteUrl
+    };
+
+    const tenantForRebuild = H.buildEstimateTenantPayload({ ...branding, ...savedTenantOverlay }, freshSettings, basePayload);
+    const pdfPayloadWithLink = {
+      ...basePayload,
+      ...tenantForRebuild,
+      branding,
+      settings: freshSettings,
+      customerEmail: toEmail || state.customerEmail || "",
+      customerPhone,
+      clientEmail: toEmail || state.customerEmail || "",
+      clientPhone: customerPhone,
+      location: projectAddress,
+      marketLine: branding.marketLine || basePayload.marketLine || "",
+      messageText: messageWithLink,
+      publicQuoteUrl,
+      totalAmount: rowTotal,
+      totalFormatted: H.formatUsd(rowTotal),
+      depositRequired: rowDeposit,
+      depositFormatted: H.formatUsd(rowDeposit)
+    };
+
+    const rebuilt = await H.buildEstimatePdfPayload(pdfPayloadWithLink);
+    return rebuilt && rebuilt.contentBase64 ? rebuilt : null;
   }
 
   function syncOwnerSendModalIntoSalesDraft() {
@@ -2511,6 +2614,34 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       const publicQuoteUrl = publishData.public_url;
       const messageWithLink = (message || "").replace(/\[PUBLIC_QUOTE_URL\]/g, publicQuoteUrl);
 
+      let rebuiltPdf = null;
+      const H = window.__MG_ESTIMATE_SEND_HELPERS__;
+      if (H && typeof H.buildEstimatePdfPayload === "function") {
+        if (sendStatus) {
+          sendStatus.textContent = "Generando PDF...";
+        }
+        try {
+          rebuiltPdf = await ownerRebuildEstimatePdfAfterPublish({
+            H,
+            branding,
+            freshSettings,
+            state,
+            sm,
+            toEmail,
+            customerPhone,
+            projectAddress,
+            scope,
+            messageWithLink,
+            publicQuoteUrl,
+            publishData,
+            estimateTotal,
+            depositRequired
+          });
+        } catch (pdfErr) {
+          console.warn("[Margin Guard] Owner estimate PDF:", pdfErr);
+        }
+      }
+
       const clientName = toName || state.clientName || "";
       const zapierPayload = {
         toName: clientName,
@@ -2538,8 +2669,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         customerPhone,
         recommendedTotal: round2(estimateTotal),
         currency: "USD",
-        pdfBase64: "",
-        pdfFileName: ""
+        pdfBase64: rebuiltPdf?.contentBase64 || "",
+        pdfFileName: rebuiltPdf?.fileName || "",
+        pdfMimeType: rebuiltPdf?.mimeType || "application/pdf"
       };
 
       const zapRes = await fetch("/.netlify/functions/send-quote-zapier", {
