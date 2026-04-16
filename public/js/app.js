@@ -260,12 +260,16 @@ Thank you.`
   function saveSettings(settings) { writeStore(LS_SETTINGS, settings); }
   function loadOwner() {
     const saved = readStore(LS_OWNER, {});
-    return {
+    const merged = {
       ...DEFAULT_OWNER,
       ...saved,
       reservePct: DEFAULTS.reservePct,
       workers: Array.isArray(saved.workers) && saved.workers.length ? saved.workers : DEFAULT_OWNER.workers
     };
+    merged.projectName = String(merged.projectName ?? "");
+    merged.clientName = String(merged.clientName ?? "");
+    merged.location = String(merged.location ?? "");
+    return merged;
   }
   function saveOwner(state, metrics) { writeStore(LS_OWNER, { ...state, reservePct: DEFAULTS.reservePct, metrics }); }
   function loadDashboard() { return { ...DEFAULT_DASHBOARD, ...readStore(LS_DASHBOARD, {}) }; }
@@ -1775,10 +1779,28 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     state.reservePct = DEFAULTS.reservePct;
     const metrics = calcOwner(state, settings);
 
-    setVal("projectName", state.projectName);
-    setVal("clientName", state.clientName);
-    setVal("location", state.location);
-    setVal("bizNameOwner", settings.bizName);
+    const projectNameEl = $("projectName");
+    if (projectNameEl && document.activeElement === projectNameEl) {
+      state.projectName = val("projectName");
+    } else {
+      setVal("projectName", state.projectName);
+    }
+    const clientNameEl = $("clientName");
+    if (clientNameEl && document.activeElement === clientNameEl) {
+      state.clientName = val("clientName");
+    } else {
+      setVal("clientName", state.clientName);
+    }
+    const locationEl = $("location");
+    if (locationEl && document.activeElement === locationEl) {
+      state.location = val("location");
+    } else {
+      setVal("location", state.location);
+    }
+    const bizNameOwnerEl = $("bizNameOwner");
+    if (!bizNameOwnerEl || document.activeElement !== bizNameOwnerEl) {
+      setVal("bizNameOwner", settings.bizName);
+    }
     count("projectName", "projectNameCount");
     count("clientName", "clientNameCount");
     count("location", "locationCount");
@@ -1841,8 +1863,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       $("statusBadge").textContent = metrics.recommended > 0 ? "Pricing live" : "Add labor data";
     }
 
-    saveOwner(state, metrics);
-
     [["projectName", "projectNameCount"], ["clientName", "clientNameCount"], ["location", "locationCount"], ["bizNameOwner", "bizNameOwnerCount"]].forEach(([id, counter]) => {
       const el = $(id);
       if (!el) return;
@@ -1872,6 +1892,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if ($("btnSendCancel")) $("btnSendCancel").onclick = closeSendModal;
     if ($("btnSendNow")) $("btnSendNow").onclick = () => sendQuote(state, settings, metrics);
     ["toEmail", "toName", "subject", "scope", "message", "salesInitials"].forEach((id) => { if ($(id)) $(id).oninput = updateSendCounts; });
+
+    try {
+      saveOwner(state, metrics);
+    } catch (e) {
+      console.warn("saveOwner failed, UI still usable", e);
+    }
 
     const ownerInvoiceState = getProjectInvoiceState(ownerProject);
 
@@ -1948,20 +1974,50 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   async function exportOwnerPdf(state, settings, metrics) {
     const jsPDF = window.jspdf?.jsPDF;
     if (!jsPDF) return alert("jsPDF is not available.");
+    if ($("projectName")) {
+      const next = val("projectName");
+      if (next !== state.projectName) {
+        state.projectName = next;
+        saveOwner(state, calcOwner(state, settings));
+      }
+    }
+    if ($("clientName")) {
+      const next = val("clientName");
+      if (next !== state.clientName) {
+        state.clientName = next;
+        saveOwner(state, calcOwner(state, settings));
+      }
+    }
+    if ($("location")) {
+      const next = val("location");
+      if (next !== state.location) {
+        state.location = next;
+        saveOwner(state, calcOwner(state, settings));
+      }
+    }
+    if ($("bizNameOwner")) {
+      const s = loadSettings();
+      const nextBiz = val("bizNameOwner") || DEFAULTS.bizName;
+      if (nextBiz !== String(s.bizName ?? DEFAULTS.bizName)) {
+        s.bizName = nextBiz;
+        saveSettings(s);
+      }
+    }
+    const settingsPdf = loadSettings();
 
     const doc = new jsPDF({ unit: "pt", format: "letter" });
-    let y = await drawPdfTenantLetterhead(doc, settings, 48);
+    let y = await drawPdfTenantLetterhead(doc, settingsPdf, 48);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(12);
     doc.text("Project Pricing Report", 40, y);
     y += 24;
-    [`Project: ${state.projectName || "-"}`, `Client: ${state.clientName || "-"}`, `Location: ${state.location || "-"}`, `Recommended: ${money(metrics.recommended, settings.currency)}`].forEach((line) => { doc.text(line, 40, y); y += 16; });
+    [`Project: ${state.projectName || "-"}`, `Client: ${state.clientName || "-"}`, `Location: ${state.location || "-"}`, `Recommended: ${money(metrics.recommended, settingsPdf.currency)}`].forEach((line) => { doc.text(line, 40, y); y += 16; });
     y += 10;
     doc.setFont("helvetica", "bold");
     doc.text("Financial Breakdown", 40, y);
     y += 18;
     doc.setFont("helvetica", "normal");
-    buildOwnerKpis(state, settings, metrics).forEach(([label, value]) => { doc.text(`${label}: ${value}`, 40, y); y += 15; });
+    buildOwnerKpis(state, settingsPdf, metrics).forEach(([label, value]) => { doc.text(`${label}: ${value}`, 40, y); y += 15; });
     const blob = doc.output("blob");
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1974,6 +2030,35 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   function openSendModal(state, settings, metrics) {
   const modal = document.getElementById("sendModal");
   if (!modal) return;
+  if ($("projectName")) {
+    const next = val("projectName");
+    if (next !== state.projectName) {
+      state.projectName = next;
+      saveOwner(state, calcOwner(state, settings));
+    }
+  }
+  if ($("clientName")) {
+    const next = val("clientName");
+    if (next !== state.clientName) {
+      state.clientName = next;
+      saveOwner(state, calcOwner(state, settings));
+    }
+  }
+  if ($("location")) {
+    const next = val("location");
+    if (next !== state.location) {
+      state.location = next;
+      saveOwner(state, calcOwner(state, settings));
+    }
+  }
+  if ($("bizNameOwner")) {
+    const s = loadSettings();
+    const nextBiz = val("bizNameOwner") || DEFAULTS.bizName;
+    if (nextBiz !== String(s.bizName ?? DEFAULTS.bizName)) {
+      s.bizName = nextBiz;
+      saveSettings(s);
+    }
+  }
   const estimateNumber = nonEmptyString(state.estimateNumber, buildEstimateNumber());
   const issueDate = normalizeDateInput(state.issueDate || todayInputValue());
   const expirationDate = normalizeDateInput(state.expirationDate || addDaysToInputValue(issueDate, 7));
@@ -2031,6 +2116,36 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   async function sendQuote(state, settings, metrics, options = {}) {
   const skipPersistSales = Boolean(options.skipPersistSales);
   const sendStatus = document.getElementById("sendStatus");
+  if ($("projectName")) {
+    const next = val("projectName");
+    if (next !== state.projectName) {
+      state.projectName = next;
+      saveOwner(state, calcOwner(state, settings));
+    }
+  }
+  if ($("clientName")) {
+    const next = val("clientName");
+    if (next !== state.clientName) {
+      state.clientName = next;
+      saveOwner(state, calcOwner(state, settings));
+    }
+  }
+  if ($("location")) {
+    const next = val("location");
+    if (next !== state.location) {
+      state.location = next;
+      saveOwner(state, calcOwner(state, settings));
+    }
+  }
+  if ($("bizNameOwner")) {
+    const s = loadSettings();
+    const nextBiz = val("bizNameOwner") || DEFAULTS.bizName;
+    if (nextBiz !== String(s.bizName ?? DEFAULTS.bizName)) {
+      s.bizName = nextBiz;
+      saveSettings(s);
+    }
+  }
+  const settingsSend = loadSettings();
   const toEmail = nonEmptyString(document.getElementById("toEmail")?.value);
   const toName = nonEmptyString(document.getElementById("toName")?.value, state.clientName);
   const subject = nonEmptyString(document.getElementById("subject")?.value);
@@ -2062,7 +2177,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         projectName: nonEmptyString(state.projectName),
         clientName: nonEmptyString(state.clientName),
         location: nonEmptyString(state.location),
-        businessName: nonEmptyString(settings.bizName),
+        businessName: nonEmptyString(settingsSend.bizName),
         currency: "USD",
         recommendedTotal: round2(metrics.offered || metrics.recommended || 0),
         estimateNumber,

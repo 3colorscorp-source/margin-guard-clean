@@ -27,31 +27,35 @@
         <a class="btn" href="/supervisor">Supervisor</a>
         <a class="btn" href="/sales-admin">Sales Admin</a>
         <button class="btn" id="btnManagePlan">Gestionar plan</button>
-        <button class="btn" id="btnSendQuote">Enviar cotizacion</button>
-        <button class="btn" id="btnExportPdf">Exportar PDF</button>
+        <div class="owner-topbar-quote" role="group" aria-label="Acciones de cotizacion">
+          <button class="btn primary owner-topbar-quote__btn owner-topbar-quote__btn--send" id="btnSendQuote">Enviar cotizacion</button>
+          <button class="btn owner-topbar-quote__btn owner-topbar-quote__btn--pdf" id="btnExportPdf">Exportar PDF</button>
+        </div>
         <button class="btn danger" id="btnLogout">Cerrar sesion</button>
       </div>
     </div>
   </div>
 
   <div class="container">
-    <div class="account-pill" id="accountEmail">Cuenta activa</div>
-    <section class="card owner-hero">
-      <div class="card-inner">
-        <div class="owner-hero-inner">
-          <div>
-            <span class="eyebrow">Owner Quote Builder</span>
-            <h2 class="hero-title">Cotiza el proyecto actual sin mover las reglas del negocio.</h2>
-            <div class="sub" style="margin:0;">Dueno ahora se enfoca solo en la cotizacion viva. Las reglas permanentes del negocio ya viven en Business Settings.</div>
-          </div>
-          <div class="hero-score">
-            <div class="hero-score-label">Focus</div>
-            <div class="hero-score-value">Quote</div>
-            <div class="hero-score-meta">Proyecto actual, mano de obra, precio recomendado, PDF y envio al cliente.</div>
+    <div class="owner-upper">
+      <div class="account-pill" id="accountEmail">Cuenta activa</div>
+      <section class="card owner-hero">
+        <div class="card-inner">
+          <div class="owner-hero-inner">
+            <div class="owner-hero-copy">
+              <span class="eyebrow">Quote Workspace</span>
+              <h2 class="hero-title">Cotiza el proyecto actual sin mover las reglas del negocio.</h2>
+              <p class="sub owner-hero-lead">Dueno se enfoca en la cotizacion viva. Las reglas permanentes del negocio viven en Business Settings.</p>
+            </div>
+            <div class="hero-score">
+              <div class="hero-score-label">Estado actual</div>
+              <div class="hero-score-value">Quote</div>
+              <div class="hero-score-meta">Proyecto, mano de obra, precio recomendado, PDF y envio al cliente.</div>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
     <div class="grid">
       <div>
         <div class="card">
@@ -65,220 +69,225 @@
             </div>
 
             <div class="form">
-              <div class="field">
-                <label>Nombre del proyecto</label>
-                <input id="projectName" maxlength="60" placeholder="Ej: Bathroom remodel - Millbrae" />
-                <div class="hint"><span id="projectNameCount">0</span>/60</div>
+              <div class="field owner-field-project-name">
+                <label for="projectName" class="owner-field-project-name__label">Nombre del proyecto</label>
+                <input class="owner-input-project-name" id="projectName" maxlength="60" placeholder="Ej: Bathroom remodel - Millbrae" />
+                <div class="hint owner-field-project-name__foot">
+                  <span class="owner-field-project-name__tip">Aparece en el PDF y en el seguimiento del trabajo.</span>
+                  <span class="owner-char-pill" title="Caracteres usados"><span id="projectNameCount">0</span><span class="owner-char-pill__max">/60</span></span>
+                </div>
               </div>
-              <div class="field">
-                <label>Cliente / GC</label>
-                <input id="clientName" maxlength="60" placeholder="Ej: Angus / GC / Homeowner" />
-                <div class="hint"><span id="clientNameCount">0</span>/60</div>
+              <div class="field owner-field-client-gc">
+                <label for="clientName" class="owner-field-client-gc__label">Cliente / GC</label>
+                <input class="owner-input-client-gc" id="clientName" maxlength="60" placeholder="Ej: Angus / GC / Homeowner" />
+                <div class="hint owner-field-client-gc__foot">
+                  <span class="owner-field-client-gc__tip">Quien firma o coordina en obra (homeowner, GC o contacto principal).</span>
+                  <span class="owner-char-pill" title="Caracteres usados"><span id="clientNameCount">0</span><span class="owner-char-pill__max">/60</span></span>
+                </div>
               </div>
-              <div class="field">
-                <label>Ubicacion</label>
-                <input id="location" maxlength="50" placeholder="Ej: San Francisco, CA" />
-                <div class="hint"><span id="locationCount">0</span>/50</div>
+              <div class="field owner-field-location">
+                <label for="location" class="owner-field-location__label">Ubicación</label>
+                <input class="owner-input-location" id="location" maxlength="50" placeholder="Ej: San Francisco, CA" />
+                <div class="hint owner-field-location__foot">
+                  <span class="owner-field-location__tip">Ciudad, zona o dirección del job site (útil en PDF y comunicación).</span>
+                  <span class="owner-char-pill" title="Caracteres usados"><span id="locationCount">0</span><span class="owner-char-pill__max">/50</span></span>
+                </div>
               </div>
-              <div class="field">
-                <label>Nombre del negocio (en PDF)</label>
-                <input id="bizNameOwner" maxlength="60" placeholder="Nombre comercial del negocio" />
-                <div class="hint"><span id="bizNameOwnerCount">0</span>/60</div>
+              <div class="field owner-field-biz-pdf">
+                <label for="bizNameOwner" class="owner-field-biz-pdf__label">Nombre del negocio (en PDF)</label>
+                <input class="owner-input-biz-pdf" id="bizNameOwner" maxlength="60" placeholder="Nombre comercial del negocio" />
+                <div class="hint owner-field-biz-pdf__foot">
+                  <span class="owner-field-biz-pdf__tip"><span class="owner-field-biz-pdf__tip-kick">PDF</span><span class="owner-field-biz-pdf__tip-sep"> — </span>Este texto es el que muestra Margin Guard como tu marca en encabezados y bloques de identidad de los PDF que ve el cliente (cotización, etc.). Pon aquí el nombre comercial o legal con el que quieres presentarte.</span>
+                  <span class="owner-char-pill" title="Caracteres usados"><span id="bizNameOwnerCount">0</span><span class="owner-char-pill__max">/60</span></span>
+                </div>
               </div>
             </div>
 
             <div class="sep"></div>
 
-            <div class="section-head">
-              <div>
-                <h2 style="margin-top:0;">Business Rules</h2>
-                <div class="sub">Los costos indirectos, comisiones y modo de cobro ya vienen desde Business Settings.</div>
+            <section class="owner-biz-rules" aria-labelledby="ownerBizRulesHeading">
+              <div class="owner-biz-rules__head">
+                <div class="owner-biz-rules__intro">
+                  <span class="eyebrow owner-biz-rules__eyebrow">Referencia</span>
+                  <h2 id="ownerBizRulesHeading" class="owner-biz-rules__title">Business Rules</h2>
+                  <p class="sub owner-biz-rules__lead">Overhead, comisiones y modo de cobro se configuran en Business Settings. Aquí solo tienes contexto para cotizar con el mismo criterio: <strong class="owner-biz-rules__strong">no se editan reglas permanentes en Owner.</strong></p>
+                </div>
+                <a class="btn primary owner-biz-rules__cta" href="/business-settings">Abrir Business Settings</a>
               </div>
-              <a class="btn" href="/business-settings">Abrir Business Settings</a>
-            </div>
 
-            <div class="dashboard-note">
-              <div class="dashboard-note-title">Business Settings separados</div>
-              <div class="dashboard-note-copy">Desde ahora, Dueno se usa para vender y calcular el proyecto actual. Si quieres cambiar modo de cotizacion, overhead, horas estandar, comision o bonus, hazlo en Business Settings.</div>
-            </div>
+              <div class="dashboard-note owner-biz-rules__note">
+                <div class="dashboard-note-title owner-biz-rules__note-title">Configuración permanente = Business Settings</div>
+                <div class="dashboard-note-copy owner-biz-rules__note-copy">Owner sirve para vender y calcular el <strong class="owner-biz-rules__strong">proyecto actual</strong>. Si necesitas cambiar modo de cotización, overhead, horas estándar, comisión o bonus, hazlo allí y vuelve aquí: esta pantalla no duplica ni guarda esos ajustes.</div>
+              </div>
+            </section>
 
             <div class="sep"></div>
 
-            <h2 style="margin-top:0;">Mano de obra</h2>
-            <div class="sub">Si Costo/Hora esta vacio, usa el costo base definido en Business Settings segun Tipo.</div>
+            <section class="owner-labor" aria-labelledby="ownerLaborHeading">
+              <header class="owner-labor__head">
+                <div class="owner-labor__intro">
+                  <span class="eyebrow owner-labor__eyebrow">Labor</span>
+                  <h2 id="ownerLaborHeading" class="owner-labor__title">Mano de obra</h2>
+                  <p class="sub owner-labor__lead">Si dejas Costo/Hora vacío, se aplica el costo base definido en Business Settings según el Tipo de cada trabajador.</p>
+                </div>
+                <div class="inline-actions owner-labor__actions">
+                  <button class="btn primary" id="btnAddWorker">+ Agregar trabajador</button>
+                  <button class="btn danger" id="btnClear">Limpiar</button>
+                </div>
+              </header>
 
-            <div class="inline-actions">
-              <button class="btn primary" id="btnAddWorker">+ Agregar trabajador</button>
-              <button class="btn danger" id="btnClear">Limpiar</button>
-            </div>
+              <div class="owner-labor-guide" role="note">
+                <div class="owner-labor-guide__head">
+                  <span class="owner-labor-guide__kicker">Guía rápida</span>
+                </div>
+                <p class="owner-labor-guide__text">Esta tabla modela la <strong class="owner-labor-guide__em">mano de obra del proyecto actual</strong>: agrega una fila por trabajador y completa tipo y unidades (horas o días, según tu configuración). El costo base viene de Business Settings por tipo; aquí solo ajustas lo necesario para cotizar. El labor calculado por fila alimenta el precio recomendado en <strong class="owner-labor-guide__em">Quote Snapshot</strong>. Usa los controles del encabezado de esta sección para añadir o vaciar filas; en cada fila, copia o elimina según necesites.</p>
+              </div>
 
-            <div style="margin-top:12px;">
-              <table class="table">
+              <div class="owner-labor-table-wrap">
+              <table class="table owner-labor-table">
                 <thead>
                   <tr>
-                    <th style="width:30%;">Trabajador</th>
-                    <th style="width:14%;">Tipo</th>
-                    <th style="width:14%;" id="workerUnitsHead">Horas</th>
-                    <th style="width:18%;" id="workerRateHead">Costo/Hora</th>
-                    <th style="width:18%;">Costo Labor</th>
-                    <th style="width:6%;"></th>
+                    <th class="owner-labor-th owner-labor-th--worker" scope="col" title="Nombre en la cuadrilla">Trabajador</th>
+                    <th class="owner-labor-th owner-labor-th--type" scope="col" title="Pro o Assistant (define costo base)">Tipo</th>
+                    <th class="owner-labor-th owner-labor-th--units" scope="col" id="workerUnitsHead" title="Horas o días según el modo de cotización">Horas</th>
+                    <th class="owner-labor-th owner-labor-th--rate" scope="col" id="workerRateHead" title="Costo base por unidad (Business Settings)">Costo base</th>
+                    <th class="owner-labor-th owner-labor-th--labor" scope="col" title="Importe de labor para esta fila">Costo labor</th>
+                    <th class="owner-labor-th owner-labor-th--actions" scope="col" title="Copiar o eliminar fila">Acciones</th>
                   </tr>
                 </thead>
                 <tbody id="workersBody"></tbody>
               </table>
-            </div>
+              </div>
+            </section>
           </div>
         </div>
 
-        <div class="card" style="margin-top:14px;">
-          <div class="card-inner">
-            <div class="section-head">
-              <div>
-                <h2>Invoice</h2>
-                <div class="sub">Owner puede facturar el proyecto seleccionado incluyendo change orders aprobados o enviados.</div>
-              </div>
-            </div>
-
-            <div class="form">
-              <div class="field">
-                <label>Proyecto</label>
-                <div class="notice" id="ownerInvoiceProject">Sin proyecto</div>
-              </div>
-              <div class="field">
-                <label>Cliente</label>
-                <div class="notice" id="ownerInvoiceClient">Sin cliente</div>
-              </div>
-              <div class="field">
-                <label>Invoice No.</label>
-                <input id="ownerInvoiceNo" maxlength="30" placeholder="INV-1001" />
-              </div>
-              <div class="field">
-                <label>Invoice status</label>
-                <select id="ownerInvoiceStatus">
-                  <option value="draft">draft</option>
-                  <option value="sent">sent</option>
-                  <option value="partial">partial</option>
-                  <option value="paid">paid</option>
-                </select>
-              </div>
-              <div class="field">
-                <label>Fecha de invoice</label>
-                <input id="ownerInvoiceDate" type="date" />
-              </div>
-              <div class="field">
-                <label>Base contract</label>
-                <input id="ownerInvoiceBase" type="number" step="0.01" placeholder="0.00" />
-              </div>
-              <div class="field">
-                <label>Deposit applied</label>
-                <input id="ownerInvoiceDeposit" type="number" step="0.01" placeholder="0.00" />
-              </div>
-              <div class="field">
-                <label>Payments received</label>
-                <input id="ownerInvoiceReceived" type="number" step="0.01" placeholder="0.00" />
-              </div>
-            </div>
-
-            <div class="supervisor-summary-grid" style="margin-top:12px;">
-              <div class="supervisor-summary-card">
-                <div class="title">Subtotal</div>
-                <div class="big" id="ownerInvoiceSubtotal">$0.00</div>
-                <div class="small">Contrato + change orders</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Change Orders</div>
-                <div class="big" id="ownerInvoiceChangeOrders">$0.00</div>
-                <div class="small">Extras incluidos</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Balance</div>
-                <div class="big" id="ownerInvoiceBalance">$0.00</div>
-                <div class="small">Saldo pendiente</div>
-              </div>
-            </div>
-
-            <table class="table" style="margin-top:12px;">
-              <thead>
-                <tr>
-                  <th>Change Order</th>
-                  <th>Estado</th>
-                  <th>Monto</th>
-                </tr>
-              </thead>
-              <tbody id="ownerInvoiceCoBody"></tbody>
-            </table>
-
-            <div class="inline-actions" style="margin-top:12px;">
-              <button class="btn primary" id="btnOwnerInvoicePdf">Exportar Invoice PDF</button>
-            </div>
-
-            <div class="notice" style="margin-top:10px;">Total invoice: <strong id="ownerInvoiceTotal">$0.00</strong></div>
+        <div class="card owner-invoices-hub-cta">
+          <div class="card-inner owner-invoices-hub-cta__inner">
+            <span class="eyebrow owner-invoices-hub-cta__eyebrow">Facturación</span>
+            <h2 class="owner-invoices-hub-cta__title">Invoices en Invoices Hub</h2>
+            <p class="owner-invoices-hub-cta__copy">Las facturas, cobros y documentos de invoice viven en <strong class="owner-invoices-hub-cta__strong">Invoices Hub</strong>. Esta pantalla se enfoca en cotización, precios recomendados y mano de obra del proyecto actual.</p>
+            <a class="btn primary owner-invoices-hub-cta__btn" href="/estimates-invoices">Abrir Invoices Hub</a>
           </div>
         </div>
       </div>
 
       <div>
-        <div class="card owner-side-card">
-          <div class="card-inner">
-            <h2>Quote Snapshot</h2>
-            <div class="sub">El precio recomendado debe verse sin bajar toda la pantalla.</div>
-            <div class="kpi" id="ownerKpis"></div>
-            <div class="sep"></div>
-            <div class="badge green" id="statusBadge">Listo</div>
+        <div class="card owner-side-card owner-quote-snapshot">
+          <div class="card-inner owner-quote-snapshot__inner">
+            <header class="owner-quote-snapshot__head">
+              <span class="eyebrow owner-quote-snapshot__eyebrow">Quote actual</span>
+              <h2 class="owner-quote-snapshot__title">Quote Snapshot</h2>
+              <p class="sub owner-quote-snapshot__lead">Números del proyecto que estás armando a la izquierda: recomendado, pisos y cargas, siempre visibles mientras ajustas mano de obra y datos del quote.</p>
+            </header>
+            <div class="owner-quote-snapshot__surface">
+              <div class="kpi owner-quote-snapshot__kpis" id="ownerKpis"></div>
+            </div>
+            <div class="owner-quote-snapshot__footer">
+              <div class="sep owner-quote-snapshot__sep"></div>
+              <div class="owner-quote-snapshot__status">
+                <span class="owner-quote-snapshot__status-label">Estado del cálculo</span>
+                <div class="badge green" id="statusBadge">Listo</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="modal" id="sendModal" aria-hidden="true">
-    <div class="modal-card">
-      <div class="modal-header">
-        <div>
-          <div class="modal-title">Enviar cotizacion</div>
-          <div class="modal-subtitle">Usa Netlify Functions + Zapier para envio al cliente.</div>
+  <div class="modal owner-send-modal" id="sendModal" aria-hidden="true">
+    <div class="modal-card owner-send-modal__card">
+      <div class="modal-header owner-send-modal__header">
+        <div class="owner-send-modal__header-main">
+          <span class="eyebrow owner-send-modal__eyebrow">Envío</span>
+          <div class="modal-title owner-send-modal__title">Enviar cotización</div>
+          <div class="modal-subtitle owner-send-modal__subtitle">Integración Netlify Functions + Zapier para el envío al cliente.</div>
         </div>
-        <button class="icon-btn" id="btnSendClose">X</button>
+        <button type="button" class="icon-btn owner-send-modal__close" id="btnSendClose" aria-label="Cerrar">×</button>
       </div>
-      <div class="modal-body">
-        <div class="form">
-          <div class="field">
-            <label>Email del cliente</label>
-            <input id="toEmail" type="email" maxlength="80" placeholder="cliente@correo.com" />
-            <div class="hint"><span id="toEmailCount">0</span>/80</div>
+      <div class="modal-body owner-send-modal__body">
+        <section class="owner-send-modal__section" aria-label="Destinatario">
+          <div class="owner-send-modal__section-head">
+            <span class="owner-send-modal__section-kicker">Destinatario</span>
           </div>
-          <div class="field">
-            <label>Nombre del cliente (opcional)</label>
-            <input id="toName" maxlength="60" placeholder="Nombre" />
-            <div class="hint"><span id="toNameCount">0</span>/60</div>
+          <div class="form owner-send-modal__grid owner-send-modal__grid--dest">
+            <div class="field owner-send-modal__field owner-send-modal__field--email">
+              <label for="toEmail" class="owner-send-modal__field-label">Email del cliente <span class="owner-send-modal__label-pill">Principal</span></label>
+              <input class="owner-send-modal__input owner-send-modal__input--dest" id="toEmail" type="email" maxlength="80" placeholder="cliente@correo.com" />
+              <div class="hint owner-send-modal__field-foot">
+                <span class="owner-send-modal__field-tip">Destino del envío: aquí llega la cotización al cliente.</span>
+                <span class="owner-char-pill" title="Caracteres usados"><span id="toEmailCount">0</span><span class="owner-char-pill__max">/80</span></span>
+              </div>
+            </div>
+            <div class="field owner-send-modal__field owner-send-modal__field--name">
+              <label for="toName" class="owner-send-modal__field-label owner-send-modal__field-label--muted">Nombre del cliente (opcional)</label>
+              <input class="owner-send-modal__input owner-send-modal__input--dest" id="toName" maxlength="60" placeholder="Nombre" />
+              <div class="hint owner-send-modal__field-foot">
+                <span class="owner-send-modal__field-tip">Opcional; úsalo para personalizar el saludo en el correo.</span>
+                <span class="owner-char-pill" title="Caracteres usados"><span id="toNameCount">0</span><span class="owner-char-pill__max">/60</span></span>
+              </div>
+            </div>
           </div>
-          <div class="field">
-            <label>Iniciales del vendedor / Sales Rep Initials</label>
-            <input id="salesInitials" maxlength="6" placeholder="LM" />
-            <div class="hint"><span id="salesInitialsCount">0</span>/6</div>
+        </section>
+        <section class="owner-send-modal__section" aria-label="Asunto y depósito">
+          <div class="owner-send-modal__section-head">
+            <span class="owner-send-modal__section-kicker">Asunto y depósito</span>
           </div>
-          <div class="field"><label>Deposito requerido (fijo)</label><input id="deposit" type="number" step="0.01" placeholder="1000" /></div>
-          <div class="field">
-            <label>Asunto</label>
-            <input id="subject" maxlength="90" />
-            <div class="hint"><span id="subjectCount">0</span>/90</div>
+          <div class="form owner-send-modal__grid owner-send-modal__grid--meta">
+            <div class="field owner-send-modal__field owner-send-modal__field--initials">
+              <label for="salesInitials" class="owner-send-modal__field-label owner-send-modal__field-label--muted">Iniciales (vendedor)</label>
+              <input class="owner-send-modal__input owner-send-modal__input--dest owner-send-modal__input--initials" id="salesInitials" maxlength="6" placeholder="LM" />
+              <div class="hint owner-send-modal__field-foot">
+                <span class="owner-send-modal__field-tip">Compacto; se usan en la pieza de envío cuando aplica.</span>
+                <span class="owner-char-pill" title="Caracteres usados"><span id="salesInitialsCount">0</span><span class="owner-char-pill__max">/6</span></span>
+              </div>
+            </div>
+            <div class="field owner-send-modal__field owner-send-modal__field--deposit">
+              <label for="deposit" class="owner-send-modal__field-label">Depósito requerido (fijo) <span class="owner-send-modal__label-pill owner-send-modal__label-pill--money">Monto</span></label>
+              <input class="owner-send-modal__input owner-send-modal__input--dest" id="deposit" type="number" step="0.01" placeholder="1000" />
+              <div class="hint owner-send-modal__field-foot owner-send-modal__field-foot--solo">
+                <span class="owner-send-modal__field-tip">Cifra fija del depósito asociado a este envío (revisa antes de enviar).</span>
+              </div>
+            </div>
+            <div class="field owner-send-modal__field owner-send-modal__field--subject">
+              <label for="subject" class="owner-send-modal__field-label">Asunto del correo <span class="owner-send-modal__label-pill">Línea principal</span></label>
+              <input class="owner-send-modal__input owner-send-modal__input--dest" id="subject" maxlength="90" placeholder="Ej: Estimate / Cotización – proyecto" />
+              <div class="hint owner-send-modal__field-foot">
+                <span class="owner-send-modal__field-tip">Primera línea que ve el cliente en su bandeja; debe resumir el trato.</span>
+                <span class="owner-char-pill" title="Caracteres usados"><span id="subjectCount">0</span><span class="owner-char-pill__max">/90</span></span>
+              </div>
+            </div>
           </div>
-        </div>
-        <div class="field">
-          <label>Scope / Notas</label>
-          <textarea id="scope" rows="5" maxlength="1200" placeholder="Descripcion del trabajo, alcance, exclusiones, etc."></textarea>
-          <div class="hint"><span id="scopeCount">0</span>/1200</div>
-        </div>
-        <div class="field">
-          <label>Mensaje</label>
-          <textarea id="message" rows="6" maxlength="1200"></textarea>
-          <div class="hint"><span id="messageCount">0</span>/1200</div>
-        </div>
-        <div class="notice" id="sendStatus" style="display:none;"></div>
+        </section>
+        <section class="owner-send-modal__section owner-send-modal__section--wide owner-send-modal__section--compose" aria-label="Contenido del correo">
+          <div class="owner-send-modal__section-head">
+            <span class="owner-send-modal__section-kicker">Contenido del correo</span>
+          </div>
+          <div class="owner-send-modal__content-stack">
+            <div class="field owner-send-modal__field owner-send-modal__field--scope">
+              <label for="scope" class="owner-send-modal__field-label">Scope / Notas <span class="owner-send-modal__label-pill owner-send-modal__label-pill--soft">Contexto</span></label>
+              <textarea class="owner-send-modal__textarea" id="scope" rows="5" maxlength="1200" placeholder="Descripción del trabajo, alcance, exclusiones, etc."></textarea>
+              <div class="hint owner-send-modal__field-foot">
+                <span class="owner-send-modal__field-tip">Define alcance y límites; va en el cuerpo del envío según tu plantilla.</span>
+                <span class="owner-char-pill" title="Caracteres usados"><span id="scopeCount">0</span><span class="owner-char-pill__max">/1200</span></span>
+              </div>
+            </div>
+            <div class="field owner-send-modal__field owner-send-modal__field--message">
+              <label for="message" class="owner-send-modal__field-label">Mensaje al cliente <span class="owner-send-modal__label-pill">Cuerpo principal</span></label>
+              <textarea class="owner-send-modal__textarea" id="message" rows="6" maxlength="1200" placeholder="Saludo, propuesta comercial y siguiente paso para el cliente."></textarea>
+              <div class="hint owner-send-modal__field-foot">
+                <span class="owner-send-modal__field-tip">Texto principal del correo; revisa tono y datos antes de enviar.</span>
+                <span class="owner-char-pill" title="Caracteres usados"><span id="messageCount">0</span><span class="owner-char-pill__max">/1200</span></span>
+              </div>
+            </div>
+          </div>
+          <div class="notice owner-send-modal__status" id="sendStatus" style="display:none;"></div>
+        </section>
       </div>
-      <div class="modal-footer">
-        <button class="btn" id="btnSendCancel">Cancelar</button>
-        <button class="btn primary" id="btnSendNow">Enviar</button>
+      <div class="modal-footer owner-send-modal__footer">
+        <button type="button" class="btn ghost owner-send-modal__btn-cancel" id="btnSendCancel">Cancelar</button>
+        <button type="button" class="btn primary owner-send-modal__btn-send" id="btnSendNow">Enviar</button>
       </div>
     </div>
   </div>
