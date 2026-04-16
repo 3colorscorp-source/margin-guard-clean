@@ -280,6 +280,16 @@ Thank you.`
     const day = String(d.getDate()).padStart(2, "0");
     return `${y}-${m}-${day}`;
   }
+  function addDaysToInputValue(dateStr, days) {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return "";
+    d.setDate(d.getDate() + Number(days || 0));
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
   function loadOwner() {
     const saved = readStore(LS_OWNER, {});
     const merged = {
@@ -2318,23 +2328,34 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     return "";
   }
 
-  function ownerEstimateFormatLongDate(value) {
-    if (!value) return "";
-    const parts = String(value).split("-");
-    if (parts.length !== 3) return value;
-    const date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  function ownerResolvePublishBusinessName(branding, settings) {
+    const name = ownerEstimatePickFirstNonEmpty(
+      branding.businessName,
+      branding.business_name,
+      settings.bizName
+    );
+    if (!name || /^business$/i.test(name) || name.includes("@")) {
+      return ownerEstimatePickFirstNonEmpty(settings.bizName, "Business");
+    }
+    return name;
   }
 
-  function ownerEstimateFormatGreetingName(value) {
-    const raw = String(value || "").trim();
-    if (!raw) return "there";
-    return raw
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-      .join(" ");
+  async function resolveOwnerPublishBranding(settings) {
+    let raw = {};
+    if (window.MarginGuardTenant?.getTenantBranding) {
+      try {
+        const { response, data } = await window.MarginGuardTenant.getTenantBranding({ force: true });
+        if (response?.ok && data?.ok && data.branding && typeof data.branding === "object") {
+          raw = data.branding;
+        }
+      } catch (_e) {}
+    }
+    return {
+      businessName: ownerEstimatePickFirstNonEmpty(raw.business_name, raw.businessName, settings.bizName),
+      businessEmail: ownerEstimatePickFirstNonEmpty(raw.business_email, settings.email),
+      businessPhone: ownerEstimatePickFirstNonEmpty(raw.business_phone, settings.phone),
+      businessAddress: ownerEstimatePickFirstNonEmpty(raw.business_address, settings.address, settings.companyAddress)
+    };
   }
 
   function syncOwnerSendModalIntoSalesDraft() {
@@ -2350,109 +2371,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     saveSales(s);
   }
 
-  async function resolveOwnerSendBranding(settings, H) {
-    let raw = {};
-    if (window.MarginGuardTenant?.getTenantBranding) {
-      try {
-        const { response, data } = await window.MarginGuardTenant.getTenantBranding({ force: true });
-        if (response?.ok && data?.ok && data.branding && typeof data.branding === "object") {
-          raw = data.branding;
-        }
-      } catch (_e) {}
-    }
-    const base = H.buildEstimateTenantPayload(raw, settings, {});
-    const logoUrl = ownerEstimatePickFirstNonEmpty(raw.logo_url, raw.logoUrl, settings.publicLogoUrl);
-    const marketLine = ownerEstimatePickFirstNonEmpty(raw.market_line, raw.marketLine, settings.marketLine, base.marketLine);
-    return {
-      businessName: base.businessName,
-      businessEmail: base.businessEmail,
-      businessPhone: base.businessPhone,
-      businessAddress: base.businessAddress,
-      preparedBy: base.preparedBy,
-      businessServiceArea: base.businessServiceArea,
-      serviceLine: base.serviceLine,
-      signatureLine: base.signatureLine,
-      marketLine,
-      accentHex: base.accentHex || "#8f8a5f",
-      logoUrl,
-      initials: base.initials
-    };
-  }
-
-  function buildOwnerPublicQuoteSendPayload(H, branding, settings, state, metrics) {
-    const estimateNumber = nonEmptyString(state.estimateNumber, buildEstimateNumber());
-    const issueDate = normalizeDateInput(nonEmptyString(state.issueDate) || todayInputValue());
-    const expirationDate = normalizeDateInput(nonEmptyString(state.expirationDate) || addDaysToInputValue(issueDate, 7));
-    const projectName = nonEmptyString(state.projectName);
-    const clientName = nonEmptyString(state.clientName);
-    const customerEmail = nonEmptyString(state.customerEmail);
-    const customerPhone = nonEmptyString(state.customerPhone);
-    const location = nonEmptyString(state.location);
-    const messageToClient = nonEmptyString(state.messageToClient);
-    const totalFormatted = H.formatUsd(metrics.offered || metrics.recommended);
-    let depositRequired = Number(state.depositRequired);
-    if (!Number.isFinite(depositRequired) || depositRequired <= 0) {
-      depositRequired = 1000;
-    }
-    const depositFormatted = H.formatUsd(depositRequired);
-    const issueDateLong = ownerEstimateFormatLongDate(issueDate);
-    const expirationDateLong = ownerEstimateFormatLongDate(expirationDate);
-
-    const tenantPdf = H.buildEstimateTenantPayload(branding, settings, {});
-    const defaultSubject = `Estimate ${estimateNumber} | ${projectName}`;
-    const defaultScope = (messageToClient || "-").trim();
-    const fallbackMessage = [
-      `Hi ${ownerEstimateFormatGreetingName(clientName)},`,
-      "",
-      "Thank you for the opportunity to work with you.",
-      "",
-      "Your project estimate is attached and ready for review.",
-      "",
-      "When you're ready to move forward, please review and approve your estimate using the link below:",
-      "",
-      "[PUBLIC_QUOTE_URL]",
-      "",
-      "Once approved, you'll be able to complete your project start investment online.",
-      "",
-      "Thank you,",
-      tenantPdf.businessName || "\u2014",
-      tenantPdf.businessAddress || "",
-      tenantPdf.businessPhone || "",
-      tenantPdf.businessEmail || ""
-    ]
-      .filter((line, index) => line || index < 13)
-      .join("\n");
-
-    const payload = {
-      ...tenantPdf,
-      branding,
-      settings,
-      logoUrl: ownerEstimatePickFirstNonEmpty(branding.logoUrl, branding.logo_url, settings.publicLogoUrl),
-      marketLine: branding.marketLine || settings.marketLine || "",
-      estimateNumber,
-      projectName,
-      clientName,
-      customerEmail,
-      customerPhone,
-      clientEmail: customerEmail,
-      clientPhone: customerPhone,
-      location,
-      issueDate,
-      expirationDate,
-      issueDateLong,
-      expirationDateLong,
-      totalFormatted,
-      totalAmount: Number(metrics.offered || metrics.recommended || 0),
-      depositFormatted,
-      depositRequired,
-      scopeSummary: messageToClient || "-",
-      messageText: fallbackMessage,
-      publicQuoteUrl: String(state.publicQuoteUrl || "").trim()
-    };
-
-    return { payload, fallbackMessage, defaultSubject, defaultScope };
-  }
-
   async function runOwnerSellerPublicSend() {
     const freshSettings = loadSettings();
     const ownerState = loadOwner();
@@ -2463,23 +2381,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
     const sendStatus = document.getElementById("sendStatus");
     const sendButton = document.getElementById("btnSendNow");
-    const H = window.__MG_ESTIMATE_SEND_HELPERS__;
-    const runPipeline = window.MarginGuardEstimatePublicSend?.runPublicQuoteSendPipeline;
-
-    if (
-      !H ||
-      typeof runPipeline !== "function" ||
-      typeof H.buildEstimatePdfPayload !== "function" ||
-      typeof H.buildEstimateTenantPayload !== "function"
-    ) {
-      if (sendStatus) {
-        sendStatus.style.display = "block";
-        sendStatus.className = "notice error";
-        sendStatus.textContent =
-          "Faltan scripts de envío (estimate-send-helpers / estimate-public-send). Recarga la página.";
-      }
-      return;
-    }
 
     let state = loadSales();
     const sm = calculateSalesMetrics(state, freshSettings);
@@ -2510,6 +2411,16 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       return;
     }
 
+    const fallbackMessage = [
+      `Hello ${nonEmptyString(toName, "there")},`,
+      "",
+      "Please review and approve your estimate using the link below:",
+      "",
+      "[PUBLIC_QUOTE_URL]",
+      ""
+    ].join("\n");
+    const message = messageFromModal || fallbackMessage;
+
     try {
       if (sendButton) {
         sendButton.disabled = true;
@@ -2521,39 +2432,107 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         sendStatus.textContent = "Creando enlace público...";
       }
 
-      const branding = await resolveOwnerSendBranding(freshSettings, H);
-      const { payload, fallbackMessage } = buildOwnerPublicQuoteSendPayload(H, branding, freshSettings, state, sm);
-      const message = messageFromModal || fallbackMessage;
-
-      const estimateTotal = Number(payload.totalAmount || sm.offered || sm.recommended || 0);
+      const branding = await resolveOwnerPublishBranding(freshSettings);
+      const bn = ownerResolvePublishBusinessName(branding, freshSettings);
+      const estimateTotal = Number(sm.offered || sm.recommended || 0);
       const depositRequired = Number(
-        parseNumber(document.getElementById("deposit")?.value) || payload.depositRequired || 1000
+        parseNumber(document.getElementById("deposit")?.value) || state.depositRequired || 1000
       );
 
-      const result = await runPipeline({
-        payload,
-        message,
-        sendData: {
-          state,
-          settings: freshSettings,
-          branding,
-          toEmail,
-          toName,
-          salesRepInitials,
-          subject,
-          scope,
-          customerPhone,
-          projectAddress,
-          estimateTotal,
-          depositRequired
-        }
+      const publishResponse = await fetch("/.netlify/functions/publish-public-quote", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_name: state.projectName || "",
+          title: state.projectName || "",
+          client_name: toName || state.clientName || "",
+          client_email: toEmail || state.customerEmail || "",
+          client_phone: customerPhone,
+          customer_phone: customerPhone,
+          phone: customerPhone,
+          project_address: projectAddress,
+          customer_address: projectAddress,
+          job_site: projectAddress,
+          address: projectAddress,
+          total: estimateTotal,
+          recommended_total: estimateTotal,
+          deposit_required: depositRequired,
+          notes: message,
+          public_message: scope || "",
+          currency: "USD",
+          status: "READY_TO_SEND",
+          business_name: bn,
+          company_name: bn,
+          business_email: branding.businessEmail || freshSettings.businessEmail || freshSettings.email || "",
+          business_phone: branding.businessPhone || freshSettings.businessPhone || freshSettings.phone || "",
+          business_address:
+            branding.businessAddress || freshSettings.businessAddress || freshSettings.address || freshSettings.companyAddress || ""
+        })
       });
 
-      const publishData = result.publishData;
+      const publishRaw = await publishResponse.text();
+      let publishData = {};
+      try {
+        publishData = publishRaw ? JSON.parse(publishRaw) : {};
+      } catch (_e) {}
+
+      if (!publishResponse.ok || !publishData?.quote_id || !publishData?.public_token || !publishData?.public_url) {
+        throw new Error(publishData.error || publishRaw || "Unable to create public quote link.");
+      }
+
+      const publicQuoteUrl = publishData.public_url;
+      const messageWithLink = (message || "").replace(/\[PUBLIC_QUOTE_URL\]/g, publicQuoteUrl);
+
+      const clientName = toName || state.clientName || "";
+      const zapierPayload = {
+        toName: clientName,
+        toEmail,
+        projectName: state.projectName || "",
+        subject: subject || `Estimate ${state.estimateNumber || ""}`,
+        publicToken: publishData.public_token,
+        publicQuoteUrl,
+        public_quote_url: publicQuoteUrl,
+        salesRepInitials,
+        messageLanguage: "bilingual",
+        messageText: messageWithLink,
+        scopeOfWork: scope,
+        depositRequired: round2(depositRequired),
+        clientName,
+        location: projectAddress,
+        businessName: bn,
+        businessPhone: branding.businessPhone || freshSettings.phone || "",
+        businessEmail: branding.businessEmail || freshSettings.email || "",
+        businessAddress: branding.businessAddress || freshSettings.address || freshSettings.companyAddress || "",
+        quoteId: publishData.quote_id,
+        estimateNumber: state.estimateNumber || "",
+        issueDate: state.issueDate || "",
+        expirationDate: state.expirationDate || "",
+        customerPhone,
+        recommendedTotal: round2(estimateTotal),
+        currency: "USD",
+        pdfBase64: "",
+        pdfFileName: ""
+      };
+
+      const zapRes = await fetch("/.netlify/functions/send-quote-zapier", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(zapierPayload)
+      });
+      const zapRaw = await zapRes.text();
+      let zapData = {};
+      try {
+        zapData = zapRaw ? JSON.parse(zapRaw) : {};
+      } catch (_e) {}
+      if (!zapRes.ok) {
+        throw new Error(zapData.error || zapRaw || "Unable to send estimate.");
+      }
+
       state = loadSales();
-      state.publicQuoteUrl = result.publicQuoteUrl;
-      if (publishData?.quote_id) state.quoteId = publishData.quote_id;
-      if (publishData?.public_token) state.publicToken = publishData.public_token;
+      state.publicQuoteUrl = publicQuoteUrl;
+      state.quoteId = publishData.quote_id;
+      state.publicToken = publishData.public_token;
       saveSales(state);
 
       if (sendStatus) {
