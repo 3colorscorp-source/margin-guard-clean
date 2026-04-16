@@ -2223,3 +2223,19 @@ body[data-role="owner"] input[type="date"]::-moz-calendar-picker-indicator{
   opacity:1;
   cursor:pointer;
 }
+
+/* /owner — fechas: override final (icono nativo vs reglas globales) */
+body[data-role="owner"] input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 1 !important;
+  position: static !important;
+  appearance: auto !important;
+  background: none !important;
+  filter: invert(1) !important;
+  cursor: pointer;
+}
+
+body[data-role="owner"] input[type="date"] {
+  background-image: none !important;
+  color-scheme: dark;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(6, 10, 20, 0.72)) !important;
+}
