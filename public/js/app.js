@@ -264,6 +264,9 @@ Thank you.`
 
   function loadSettings() { return { ...DEFAULTS, ...readStore(LS_SETTINGS, {}) }; }
   function saveSettings(settings) { writeStore(LS_SETTINGS, settings); }
+  function formatMoney(amount) {
+    return money(finiteNumber(amount, 0), loadSettings().currency);
+  }
   function loadOwner() {
     const saved = readStore(LS_OWNER, {});
     const merged = {
@@ -2814,27 +2817,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       const freshSettings = loadSettings();
       if ($("ownerKpis")) {
         const ownerState = loadOwner();
-        const hoursPerDay = Math.max(Number(freshSettings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
-        const syntheticSales = {
-          ...DEFAULT_SALES,
-          projectName: ownerState.projectName,
-          clientName: ownerState.clientName,
-          location: ownerState.location,
-          customerEmail: ownerState.clientEmail || "",
-          estimateNumber: buildEstimateNumber(),
-          issueDate: normalizeDateInput(ownerState.issueDate) || todayInputValue(),
-          expirationDate: normalizeDateInput(ownerState.expirationDate) || addDaysToInputValue(normalizeDateInput(ownerState.issueDate) || todayInputValue(), 7),
-          messageToClient: nonEmptyString(ownerState.messageToClient, ownerState.quoteNotes) || "",
-          workers: (ownerState.workers || []).map((w) => ({
-            name: w.name,
-            type: w.type === "helper" ? "helper" : "installer",
-            days: Number(w.hours || 0) / hoursPerDay,
-            rate: w.rate === "" || w.rate == null ? "" : w.rate
-          })),
-          price: String(round2(calcOwner(ownerState, freshSettings).recommended))
-        };
-        const metrics = calculateSalesMetrics(syntheticSales, freshSettings);
-        void sendQuote(syntheticSales, freshSettings, metrics, { skipPersistSales: true });
+        const metrics = calcOwner(ownerState, freshSettings);
+        void sendQuote(ownerState, freshSettings, metrics);
         return;
       }
       const freshState = loadSales();
