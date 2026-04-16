@@ -2286,7 +2286,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   state.issueDate = issueDate;
   state.expirationDate = expirationDate;
   const subject = `Estimate ${estimateNumber} - ${nonEmptyString(state.projectName, "Project")}`;
-  const scopeText = nonEmptyString(state.messageToClient, state.notes, "Please review the estimate details below.");
+  const scopeText = nonEmptyString(
+    state.quoteNotes,
+    state.messageToClient,
+    state.notes,
+    "Please review the estimate details below."
+  );
   const defaultMessage = [
     `Hello ${nonEmptyString(state.clientName, "there")},`,
     "",
@@ -2542,6 +2547,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     }
 
     const tenantPdf = H.buildEstimateTenantPayload(branding, freshSettings, {});
+    const ownerForPdf = loadOwner();
+    const projectNotes = nonEmptyString(ownerForPdf.quoteNotes);
     const basePayload = {
       ...tenantPdf,
       branding,
@@ -2562,7 +2569,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       totalAmount: rowTotal,
       depositFormatted: H.formatUsd(rowDeposit),
       depositRequired: rowDeposit,
-      scopeSummary: nonEmptyString(scope, state.messageToClient, "-"),
+      projectNotes,
+      quoteNotes: projectNotes,
+      scopeSummary: nonEmptyString(projectNotes, scope, state.messageToClient, "-"),
       messageText: messageWithLink,
       publicQuoteUrl
     };
@@ -2626,7 +2635,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const toName = nonEmptyString(document.getElementById("toName")?.value, state.clientName);
     const salesRepInitials = nonEmptyString(document.getElementById("salesInitials")?.value).toUpperCase();
     const subject = nonEmptyString(document.getElementById("subject")?.value);
-    const scope = nonEmptyString(document.getElementById("scope")?.value, state.messageToClient);
+    const scope = nonEmptyString(
+      ownerState.quoteNotes,
+      document.getElementById("scope")?.value,
+      state.messageToClient
+    );
     const messageFromModal = nonEmptyString(document.getElementById("message")?.value);
     const customerPhone = nonEmptyString(
       document.getElementById("clientPhone")?.value,

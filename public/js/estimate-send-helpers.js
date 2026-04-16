@@ -330,6 +330,9 @@
       data.scopeOfWork ||
       data.scopeSummary ||
       data.scope_summary ||
+      data.projectNotes ||
+      data.quoteNotes ||
+      data.notes ||
       data.messageText ||
       data.message_to_client ||
       '';
