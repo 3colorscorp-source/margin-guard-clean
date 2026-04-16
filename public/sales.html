@@ -2457,6 +2457,8 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
     }
   }
 
+  window.runMarginGuardSellerSend = runSellerSend;
+
   [topSend, inlineSend].forEach((button) => {
     if (!button) return;
     const clean = button.cloneNode(true);

@@ -2202,7 +2202,14 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   const defaultMessage = [
     `Hello ${nonEmptyString(state.clientName, "there")},`,
     "",
-    `Estimate ${estimateNumber} for ${nonEmptyString(state.projectName, "your project")}.`,
+    "Thank you for the opportunity to work with you.",
+    "",
+    "Your project estimate is attached and ready for review.",
+    "",
+    "When you're ready to move forward, please review and approve your estimate using the link below:",
+    "",
+    "[PUBLIC_QUOTE_URL]",
+    "",
     `Issued: ${issueDate}. Expires: ${expirationDate}.`,
     `Total estimate: ${formatMoney(metrics.offered || metrics.recommended || 0)}.`,
     "",
@@ -2245,7 +2252,341 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     count("salesInitials", "salesInitialsCount");
   }
 
+  function syncOwnerDraftToSalesStateForPublicSend(ownerState, settings, metrics) {
+    const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
+    const salesWorkers = (Array.isArray(ownerState.workers) ? ownerState.workers : []).map((w) => {
+      const hours = Number(w.hours || 0);
+      const daysForSales = hours / hoursPerDay;
+      return {
+        name: String(w.name || "Worker"),
+        type: w.type === "helper" ? "helper" : "installer",
+        days: Number.isFinite(daysForSales) ? daysForSales : 0,
+        rate: w.rate === "" || w.rate == null ? "" : Number(w.rate)
+      };
+    });
+    const existing = loadSales();
+    const issueDate = normalizeDateInput(nonEmptyString(ownerState.issueDate) || todayInputValue());
+    const expirationDate = normalizeDateInput(nonEmptyString(ownerState.expirationDate) || addDaysToInputValue(issueDate, 7));
+    const estimateNo = nonEmptyString(ownerState.estimateNumber) || buildEstimateNumber();
+    const messageToClient = nonEmptyString(ownerState.messageToClient, ownerState.quoteNotes, existing.messageToClient);
+    saveSales({
+      ...existing,
+      estimateNumber: estimateNo,
+      issueDate,
+      expirationDate,
+      projectName: nonEmptyString(ownerState.projectName),
+      clientName: nonEmptyString(ownerState.clientName),
+      customerEmail: nonEmptyString(ownerState.clientEmail),
+      customerPhone: nonEmptyString(ownerState.clientPhone),
+      location: nonEmptyString(ownerState.location),
+      messageToClient,
+      workers: salesWorkers.length ? salesWorkers : existing.workers,
+      depositRequired: parseNumber(document.getElementById("deposit")?.value) || 1000,
+      price: "",
+      _manualPriceTouched: false,
+      offeredPrice: round2(metrics.recommended || 0)
+    });
+  }
+
+  function persistOwnerAfterPublicSend(settings) {
+    if (!$("ownerKpis")) return;
+    const sales = loadSales();
+    const toEmail = nonEmptyString(document.getElementById("toEmail")?.value);
+    const toName = nonEmptyString(document.getElementById("toName")?.value);
+    const ownerState = loadOwner();
+    if (toEmail) ownerState.clientEmail = toEmail;
+    if (toName) ownerState.clientName = toName;
+    if (nonEmptyString(sales.estimateNumber)) ownerState.estimateNumber = sales.estimateNumber;
+    ownerState.issueDate = normalizeDateInput(nonEmptyString(sales.issueDate) || ownerState.issueDate);
+    ownerState.expirationDate = normalizeDateInput(nonEmptyString(sales.expirationDate) || ownerState.expirationDate);
+    ownerState.messageToClient = nonEmptyString(sales.messageToClient, ownerState.messageToClient);
+    if (sales.publicQuoteUrl) ownerState.publicQuoteUrl = sales.publicQuoteUrl;
+    if (sales.quoteId) ownerState.quoteId = sales.quoteId;
+    if (sales.publicToken) ownerState.publicToken = sales.publicToken;
+    ownerState.estimateStatus = "sent";
+    ownerState.sentAt = new Date().toISOString();
+    saveOwner(ownerState, calcOwner(ownerState, settings));
+  }
+
+  function ownerEstimatePickFirstNonEmpty(...candidates) {
+    for (let i = 0; i < candidates.length; i += 1) {
+      const v = candidates[i];
+      if (v !== undefined && v !== null && String(v).trim() !== "") {
+        return String(v).trim();
+      }
+    }
+    return "";
+  }
+
+  function ownerEstimateFormatLongDate(value) {
+    if (!value) return "";
+    const parts = String(value).split("-");
+    if (parts.length !== 3) return value;
+    const date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  }
+
+  function ownerEstimateFormatGreetingName(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "there";
+    return raw
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(" ");
+  }
+
+  function syncOwnerSendModalIntoSalesDraft() {
+    const s = loadSales();
+    const te = document.getElementById("toEmail")?.value?.trim();
+    const tn = document.getElementById("toName")?.value?.trim();
+    const sc = document.getElementById("scope")?.value?.trim();
+    const dep = parseNumber(document.getElementById("deposit")?.value);
+    if (te) s.customerEmail = te;
+    if (tn) s.clientName = tn;
+    if (sc) s.messageToClient = sc;
+    if (dep) s.depositRequired = dep;
+    saveSales(s);
+  }
+
+  async function resolveOwnerSendBranding(settings, H) {
+    let raw = {};
+    if (window.MarginGuardTenant?.getTenantBranding) {
+      try {
+        const { response, data } = await window.MarginGuardTenant.getTenantBranding({ force: true });
+        if (response?.ok && data?.ok && data.branding && typeof data.branding === "object") {
+          raw = data.branding;
+        }
+      } catch (_e) {}
+    }
+    const base = H.buildEstimateTenantPayload(raw, settings, {});
+    const logoUrl = ownerEstimatePickFirstNonEmpty(raw.logo_url, raw.logoUrl, settings.publicLogoUrl);
+    const marketLine = ownerEstimatePickFirstNonEmpty(raw.market_line, raw.marketLine, settings.marketLine, base.marketLine);
+    return {
+      businessName: base.businessName,
+      businessEmail: base.businessEmail,
+      businessPhone: base.businessPhone,
+      businessAddress: base.businessAddress,
+      preparedBy: base.preparedBy,
+      businessServiceArea: base.businessServiceArea,
+      serviceLine: base.serviceLine,
+      signatureLine: base.signatureLine,
+      marketLine,
+      accentHex: base.accentHex || "#8f8a5f",
+      logoUrl,
+      initials: base.initials
+    };
+  }
+
+  function buildOwnerPublicQuoteSendPayload(H, branding, settings, state, metrics) {
+    const estimateNumber = nonEmptyString(state.estimateNumber, buildEstimateNumber());
+    const issueDate = normalizeDateInput(nonEmptyString(state.issueDate) || todayInputValue());
+    const expirationDate = normalizeDateInput(nonEmptyString(state.expirationDate) || addDaysToInputValue(issueDate, 7));
+    const projectName = nonEmptyString(state.projectName);
+    const clientName = nonEmptyString(state.clientName);
+    const customerEmail = nonEmptyString(state.customerEmail);
+    const customerPhone = nonEmptyString(state.customerPhone);
+    const location = nonEmptyString(state.location);
+    const messageToClient = nonEmptyString(state.messageToClient);
+    const totalFormatted = H.formatUsd(metrics.offered || metrics.recommended);
+    let depositRequired = Number(state.depositRequired);
+    if (!Number.isFinite(depositRequired) || depositRequired <= 0) {
+      depositRequired = 1000;
+    }
+    const depositFormatted = H.formatUsd(depositRequired);
+    const issueDateLong = ownerEstimateFormatLongDate(issueDate);
+    const expirationDateLong = ownerEstimateFormatLongDate(expirationDate);
+
+    const tenantPdf = H.buildEstimateTenantPayload(branding, settings, {});
+    const defaultSubject = `Estimate ${estimateNumber} | ${projectName}`;
+    const defaultScope = (messageToClient || "-").trim();
+    const fallbackMessage = [
+      `Hi ${ownerEstimateFormatGreetingName(clientName)},`,
+      "",
+      "Thank you for the opportunity to work with you.",
+      "",
+      "Your project estimate is attached and ready for review.",
+      "",
+      "When you're ready to move forward, please review and approve your estimate using the link below:",
+      "",
+      "[PUBLIC_QUOTE_URL]",
+      "",
+      "Once approved, you'll be able to complete your project start investment online.",
+      "",
+      "Thank you,",
+      tenantPdf.businessName || "\u2014",
+      tenantPdf.businessAddress || "",
+      tenantPdf.businessPhone || "",
+      tenantPdf.businessEmail || ""
+    ]
+      .filter((line, index) => line || index < 13)
+      .join("\n");
+
+    const payload = {
+      ...tenantPdf,
+      branding,
+      settings,
+      logoUrl: ownerEstimatePickFirstNonEmpty(branding.logoUrl, branding.logo_url, settings.publicLogoUrl),
+      marketLine: branding.marketLine || settings.marketLine || "",
+      estimateNumber,
+      projectName,
+      clientName,
+      customerEmail,
+      customerPhone,
+      clientEmail: customerEmail,
+      clientPhone: customerPhone,
+      location,
+      issueDate,
+      expirationDate,
+      issueDateLong,
+      expirationDateLong,
+      totalFormatted,
+      totalAmount: Number(metrics.offered || metrics.recommended || 0),
+      depositFormatted,
+      depositRequired,
+      scopeSummary: messageToClient || "-",
+      messageText: fallbackMessage,
+      publicQuoteUrl: String(state.publicQuoteUrl || "").trim()
+    };
+
+    return { payload, fallbackMessage, defaultSubject, defaultScope };
+  }
+
+  async function runOwnerSellerPublicSend() {
+    const freshSettings = loadSettings();
+    const ownerState = loadOwner();
+    ownerState.reservePct = DEFAULTS.reservePct;
+    const metrics = calcOwner(ownerState, freshSettings);
+    syncOwnerDraftToSalesStateForPublicSend(ownerState, freshSettings, metrics);
+    syncOwnerSendModalIntoSalesDraft();
+
+    const sendStatus = document.getElementById("sendStatus");
+    const sendButton = document.getElementById("btnSendNow");
+    const H = window.__MG_ESTIMATE_SEND_HELPERS__;
+    const runPipeline = window.MarginGuardEstimatePublicSend?.runPublicQuoteSendPipeline;
+
+    if (
+      !H ||
+      typeof runPipeline !== "function" ||
+      typeof H.buildEstimatePdfPayload !== "function" ||
+      typeof H.buildEstimateTenantPayload !== "function"
+    ) {
+      if (sendStatus) {
+        sendStatus.style.display = "block";
+        sendStatus.className = "notice error";
+        sendStatus.textContent =
+          "Faltan scripts de envío (estimate-send-helpers / estimate-public-send). Recarga la página.";
+      }
+      return;
+    }
+
+    let state = loadSales();
+    const sm = calculateSalesMetrics(state, freshSettings);
+
+    const toEmail = nonEmptyString(document.getElementById("toEmail")?.value);
+    const toName = nonEmptyString(document.getElementById("toName")?.value, state.clientName);
+    const salesRepInitials = nonEmptyString(document.getElementById("salesInitials")?.value).toUpperCase();
+    const subject = nonEmptyString(document.getElementById("subject")?.value);
+    const scope = nonEmptyString(document.getElementById("scope")?.value, state.messageToClient);
+    const messageFromModal = nonEmptyString(document.getElementById("message")?.value);
+    const customerPhone = nonEmptyString(
+      document.getElementById("clientPhone")?.value,
+      ownerState.clientPhone,
+      state.customerPhone
+    );
+    const projectAddress = nonEmptyString(
+      document.getElementById("location")?.value,
+      ownerState.location,
+      state.location
+    );
+
+    if (!toEmail || !salesRepInitials) {
+      if (sendStatus) {
+        sendStatus.style.display = "block";
+        sendStatus.className = "notice error";
+        sendStatus.textContent = "Agrega email del cliente e iniciales del vendedor antes de enviar.";
+      }
+      return;
+    }
+
+    try {
+      if (sendButton) {
+        sendButton.disabled = true;
+        sendButton.textContent = "Enviando...";
+      }
+      if (sendStatus) {
+        sendStatus.style.display = "block";
+        sendStatus.className = "notice";
+        sendStatus.textContent = "Creando enlace público...";
+      }
+
+      const branding = await resolveOwnerSendBranding(freshSettings, H);
+      const { payload, fallbackMessage } = buildOwnerPublicQuoteSendPayload(H, branding, freshSettings, state, sm);
+      const message = messageFromModal || fallbackMessage;
+
+      const estimateTotal = Number(payload.totalAmount || sm.offered || sm.recommended || 0);
+      const depositRequired = Number(
+        parseNumber(document.getElementById("deposit")?.value) || payload.depositRequired || 1000
+      );
+
+      const result = await runPipeline({
+        payload,
+        message,
+        sendData: {
+          state,
+          settings: freshSettings,
+          branding,
+          toEmail,
+          toName,
+          salesRepInitials,
+          subject,
+          scope,
+          customerPhone,
+          projectAddress,
+          estimateTotal,
+          depositRequired
+        }
+      });
+
+      const publishData = result.publishData;
+      state = loadSales();
+      state.publicQuoteUrl = result.publicQuoteUrl;
+      if (publishData?.quote_id) state.quoteId = publishData.quote_id;
+      if (publishData?.public_token) state.publicToken = publishData.public_token;
+      saveSales(state);
+
+      if (sendStatus) {
+        sendStatus.style.display = "block";
+        sendStatus.className = "notice";
+        sendStatus.textContent = "Cotización enviada correctamente.";
+      }
+
+      persistOwnerAfterPublicSend(freshSettings);
+      renderOwner();
+      try {
+        renderSales();
+      } catch (_e) {}
+      setTimeout(closeSendModal, 500);
+    } catch (err) {
+      if (sendStatus) {
+        sendStatus.style.display = "block";
+        sendStatus.className = "notice error";
+        sendStatus.textContent = err?.message || String(err);
+      }
+    } finally {
+      if (sendButton) {
+        sendButton.disabled = false;
+        sendButton.textContent = "Enviar";
+      }
+    }
+  }
+
   async function sendQuote(state, settings, metrics, options = {}) {
+  if ($("ownerKpis")) {
+    await runOwnerSellerPublicSend();
+    return;
+  }
   const skipPersistSales = Boolean(options.skipPersistSales);
   const sendStatus = document.getElementById("sendStatus");
   if (!skipPersistSales) {
@@ -2350,18 +2691,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Unable to send estimate.");
-    if ($("ownerKpis")) {
-      const ownerState = loadOwner();
-      ownerState.clientEmail = toEmail;
-      ownerState.clientName = nonEmptyString(toName, ownerState.clientName);
-      ownerState.estimateNumber = estimateNumber;
-      ownerState.issueDate = issueDate;
-      ownerState.expirationDate = expirationDate;
-      ownerState.messageToClient = scopeOfWork;
-      ownerState.estimateStatus = "sent";
-      ownerState.sentAt = new Date().toISOString();
-      saveOwner(ownerState, calcOwner(ownerState, settingsSend));
-    } else if (!skipPersistSales) {
+    if (!skipPersistSales) {
       state.customerEmail = toEmail;
       state.clientName = toName;
       state.estimateNumber = estimateNumber;
@@ -2375,7 +2705,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if (sendStatus) { sendStatus.style.display = "block"; sendStatus.textContent = "Estimate sent successfully."; }
     setTimeout(closeSendModal, 500);
     renderSales();
-    if ($("ownerKpis")) renderOwner();
   } catch (error) {
     if (sendStatus) { sendStatus.style.display = "block"; sendStatus.textContent = error.message || "Unable to send estimate."; }
   }
