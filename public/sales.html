@@ -776,6 +776,38 @@
         };
       }
 
+      let _securePricingShadowTimer = null;
+      function requestSecurePricingShadow(state) {
+        if (_securePricingShadowTimer) {
+          clearTimeout(_securePricingShadowTimer);
+        }
+        _securePricingShadowTimer = setTimeout(function () {
+          _securePricingShadowTimer = null;
+          const payload = {
+            workers: state.workers,
+            price: state.price,
+            _manualPriceTouched: state._manualPriceTouched
+          };
+          fetch('/.netlify/functions/calc-secure-pricing', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          })
+            .then(function (res) {
+              return res.json().then(function (data) {
+                return { status: res.status, body: data };
+              });
+            })
+            .then(function (response) {
+              console.log('SECURE PRICING RESPONSE', response);
+            })
+            .catch(function (err) {
+              console.warn('SECURE PRICING shadow request failed', err);
+            });
+        }, 350);
+      }
+
       function renderStandaloneSellerPanel() {
         const state = loadSalesState();
         const settings = loadSettings();
@@ -794,6 +826,7 @@
           const stage = metrics.offered >= metrics.recommended ? 2 : (metrics.offered >= metrics.negotiation ? 1 : 0);
           slider.value = String(stage);
         }
+        requestSecurePricingShadow(state);
       }
 
       function escapeHtml(value) {
