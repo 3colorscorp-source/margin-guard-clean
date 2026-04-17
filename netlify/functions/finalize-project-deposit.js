@@ -3,7 +3,7 @@ if (!fetch) {
   throw new Error("Global fetch is not available in this runtime.");
 }
 
-const { supabaseRequest } = require("./_lib/supabase-admin");
+const { supabaseRequest, getSupabaseConfig } = require("./_lib/supabase-admin");
 const { assertPublicDepositAllowed } = require("./_lib/quote-deposit-gate");
 const { loadTenantDisplayForTenantId } = require("./_lib/tenant-display");
 const { runDepositPostAutomation } = require("./_lib/deposit-post-automation");
@@ -66,9 +66,6 @@ exports.handler = async (event) => {
     }
 
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-    const supabaseUrl =
-      process.env.SUPABASE_URL || "https://yaagobzgozzozibublmj.supabase.co";
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!stripeSecretKey) {
       return json(500, { error: "Missing env STRIPE_SECRET_KEY" });
@@ -76,8 +73,12 @@ exports.handler = async (event) => {
 
     logStripeSecretDiagnostics(stripeSecretKey, "finalize-project-deposit");
 
-    if (!serviceRoleKey) {
-      return json(500, { error: "Missing env SUPABASE_SERVICE_ROLE_KEY" });
+    let supabaseUrl;
+    let serviceRoleKey;
+    try {
+      ({ url: supabaseUrl, key: serviceRoleKey } = getSupabaseConfig());
+    } catch (_e) {
+      return json(500, { error: "Missing server configuration" });
     }
 
     const body = parseBody(event.body);

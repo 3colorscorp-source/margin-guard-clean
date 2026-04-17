@@ -3,6 +3,8 @@ if (!fetch) {
   throw new Error("Global fetch is not available.");
 }
 
+const { getSupabaseConfig } = require("./_lib/supabase-admin");
+
 function json(statusCode, body) {
   return {
     statusCode,
@@ -23,10 +25,12 @@ exports.handler = async (event) => {
       return json(405, { error: "Method not allowed" });
     }
 
-    const supabaseUrl = process.env.SUPABASE_URL || "https://yaagobzgozzozibublmj.supabase.co";
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!serviceRoleKey) {
-      return json(500, { error: "Missing env SUPABASE_SERVICE_ROLE_KEY" });
+    let supabaseUrl;
+    let serviceRoleKey;
+    try {
+      ({ url: supabaseUrl, key: serviceRoleKey } = getSupabaseConfig());
+    } catch (_e) {
+      return json(500, { error: "Missing server configuration" });
     }
 
     let body = {};

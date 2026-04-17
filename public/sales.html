@@ -354,7 +354,9 @@
         } catch (_error) {
           return '$' + Number(amount || 0).toFixed(2);
         }
-      }      function round2(value) {
+      }
+
+      function round2(value) {
         return Math.round(Number(value || 0) * 100) / 100;
       }
 
@@ -776,13 +778,91 @@
         };
       }
 
+      let _securePricingCache = { fingerprint: null, pricing: null };
       let _securePricingShadowTimer = null;
-      function requestSecurePricingShadow(state) {
+
+      function pricingFingerprint(state) {
+        return JSON.stringify({
+          w: state.workers,
+          p: state.price === undefined ? null : state.price,
+          m: Boolean(state._manualPriceTouched)
+        });
+      }
+
+      function negotiationFromBounds(recommended, minimum) {
+        const r = Number(recommended);
+        const m = Number(minimum);
+        if (!Number.isFinite(r) || !Number.isFinite(m)) return m;
+        return r > m ? m + (r - m) * 0.5 : m;
+      }
+
+      function depositFromStateOrHeuristic(state, local) {
+        let d = Number(state.depositRequired);
+        if (Number.isFinite(d) && d > 0) return d;
+        return Math.max(1000, round2(Math.max(Number(local.offered) || 0, 0) * 0.1));
+      }
+
+      /**
+       * Prefer server totals from calc-secure-pricing when cache matches inputs;
+       * otherwise same numbers as calculateStandaloneSalesMetrics (local snapshot settings).
+       */
+      function buildSalesUIMetrics(state, settings) {
+        const local = calculateStandaloneSalesMetrics(state, settings);
+        const fp = pricingFingerprint(state);
+        if (_securePricingCache.fingerprint === fp && _securePricingCache.pricing) {
+          const p = _securePricingCache.pricing;
+          const recommended = Number(p.recommended_price);
+          const minimum = Number(p.minimum_price);
+          const offered = Number(p.total);
+          const negotiation = negotiationFromBounds(recommended, minimum);
+          const commissionRate = local.commissionRate;
+          const commissionDisplay = round2(Math.max(offered, 0) * (commissionRate / 100));
+          const needsApproval = offered < negotiation;
+          let depositRequired = Number(p.deposit_required);
+          if (!Number.isFinite(depositRequired) || depositRequired <= 0) {
+            depositRequired = depositFromStateOrHeuristic(state, local);
+          }
+          return {
+            ...local,
+            recommended,
+            minimum,
+            negotiation,
+            offered,
+            commissionDisplay,
+            needsApproval,
+            depositRequired,
+            pricingSource: 'server'
+          };
+        }
+        return {
+          ...local,
+          pricingSource: 'local',
+          depositRequired: depositFromStateOrHeuristic(state, local)
+        };
+      }
+
+      function loadApprovalsStandalone() {
+        try {
+          const raw = localStorage.getItem('mg_approvals_v2');
+          if (!raw) return [];
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (_e) {
+          return [];
+        }
+      }
+
+      function requestSecurePricing(state) {
+        const fp = pricingFingerprint(state);
+        if (_securePricingCache.fingerprint === fp && _securePricingCache.pricing) {
+          return;
+        }
         if (_securePricingShadowTimer) {
           clearTimeout(_securePricingShadowTimer);
         }
         _securePricingShadowTimer = setTimeout(function () {
           _securePricingShadowTimer = null;
+          const fpAtSend = pricingFingerprint(state);
           const payload = {
             workers: state.workers,
             price: state.price,
@@ -800,10 +880,32 @@
               });
             })
             .then(function (response) {
-              console.log('SECURE PRICING RESPONSE', response);
+              const stateNow = loadSalesState();
+              if (pricingFingerprint(stateNow) !== fpAtSend) return;
+              if (response.status === 200 && response.body && response.body.ok && response.body.pricing) {
+                _securePricingCache = { fingerprint: fpAtSend, pricing: response.body.pricing };
+                const dr = Number(response.body.pricing.deposit_required);
+                if (Number.isFinite(dr) && dr > 0) {
+                  const st = loadSalesState();
+                  st.depositRequired = dr;
+                  saveSalesState(st);
+                }
+                renderStandaloneSellerPanel();
+                return;
+              }
+              if (_securePricingCache.fingerprint === fpAtSend) {
+                _securePricingCache = { fingerprint: null, pricing: null };
+              }
+              renderStandaloneSellerPanel();
             })
             .catch(function (err) {
-              console.warn('SECURE PRICING shadow request failed', err);
+              const stateNow = loadSalesState();
+              if (pricingFingerprint(stateNow) !== fpAtSend) return;
+              if (_securePricingCache.fingerprint === fpAtSend) {
+                _securePricingCache = { fingerprint: null, pricing: null };
+              }
+              console.warn('SECURE PRICING request failed', err);
+              renderStandaloneSellerPanel();
             });
         }, 350);
       }
@@ -811,22 +913,76 @@
       function renderStandaloneSellerPanel() {
         const state = loadSalesState();
         const settings = loadSettings();
-        const metrics = calculateStandaloneSalesMetrics(state, settings);
+        const metrics = buildSalesUIMetrics(state, settings);
+
+        const offered = metrics.offered || metrics.recommended || 0;
+        const isReady = metrics.workerDays > 0 && metrics.recommended > 0;
+        const tone = !isReady ? 'amber' : offered >= metrics.recommended ? 'green' : offered >= metrics.minimum ? 'amber' : 'red';
+        const toneLabel = tone === 'green' ? 'Healthy' : tone === 'amber' ? 'Needs Review' : 'At Risk';
+        const customerLabel = (state.clientName && String(state.clientName).trim()) ? String(state.clientName).trim() : 'Pending';
+        setText('salesEstimateSummary', `Customer ${customerLabel} | ${toneLabel} | Total ${money(offered, settings.currency)}`);
+        setText('salesTraffic', toneLabel);
+        setText('salesHeroState', tone === 'green' ? 'Green' : tone === 'amber' ? 'Amber' : 'Red');
+        setText('salesHeroMeta', [
+          `Estimate ${state.estimateNumber || ''}`,
+          `Issue ${state.issueDate || ''}`,
+          `Expires ${state.expirationDate || ''}`
+        ].join(' | '));
+
         setText('salesPrimaryPrice', money(metrics.recommended, settings.currency));
         setText('salesPrimaryMeta', `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${money(metrics.offered, settings.currency)}`);
         setText('salesPrimaryCommission', `${metrics.commissionRate.toFixed(2)}%`);
         setText('salesPrimaryCommissionMeta', `${money(metrics.commissionDisplay, settings.currency)} estimado`);
-        setText('salesApprovalAction', metrics.needsApproval ? 'Request Approval' : (metrics.workerDays > 0 ? 'Ready to Send' : 'Completar datos'));
-        setText('salesApprovalActionMeta', metrics.workerDays <= 0 ? 'Primero define la mano de obra.' : (metrics.needsApproval ? 'Pricing is below recommendation or approval is required.' : 'Estimate can move forward without extra approval.'));
+        const approvals = loadApprovalsStandalone();
+        const approvedItems = approvals.filter(function (item) { return item.status === 'approved'; });
+        const currentApproval = approvedItems[approvedItems.length - 1];
+        setText('salesApprovalAction', currentApproval ? 'Pending Approval' : metrics.needsApproval ? 'Request Approval' : (metrics.workerDays > 0 ? 'Ready to Send' : 'Completar datos'));
+        setText('salesApprovalActionMeta', currentApproval
+          ? ('Latest approval for ' + String(currentApproval.projectId || '') + ' | ' + money(currentApproval.price, settings.currency))
+          : metrics.workerDays <= 0 ? 'Primero define la mano de obra.' : (metrics.needsApproval ? 'Pricing is below recommendation or approval is required.' : 'Estimate can move forward without extra approval.'));
+        setText('approvalHint', currentApproval ? `Latest approval for ${currentApproval.projectId} | ${money(currentApproval.price, settings.currency)}` : 'No active approval request.');
         setText('salesStageMin', money(metrics.minimum, settings.currency));
         setText('salesStageNegotiation', money(metrics.negotiation, settings.currency));
         setText('salesStageRecommended', money(metrics.recommended, settings.currency));
+        const estimateStatusMap = {
+          draft: 'Draft',
+          pricing_ready: 'Pricing Ready',
+          approval_requested: 'Approval Requested',
+          sent: 'Sent',
+          signed: 'Signed'
+        };
+        const estimateStatusLabel = estimateStatusMap[state.estimateStatus] || String(state.estimateStatus || 'draft').replace(/_/g, ' ');
+        setText('salesRule', metrics.needsApproval ? 'Estimate requires approval before signing below recommendation.' : 'Estimate is inside a healthy selling range.');
+        const salesKpis = document.getElementById('salesKpis');
+        if (salesKpis) {
+          const kpiBlocks = [
+            { label: 'Subtotal', value: money(offered, settings.currency) },
+            { label: 'Recommended', value: money(metrics.recommended, settings.currency) },
+            { label: 'Minimum', value: money(metrics.minimum, settings.currency) },
+            { label: 'Deposit', value: money(metrics.depositRequired, settings.currency) },
+            { label: 'Commission', value: money(metrics.commissionDisplay, settings.currency) }
+          ];
+          salesKpis.innerHTML = kpiBlocks.map(function (item) {
+            return '<article class="compact-stat"><span>' + escapeHtml(item.label) + '</span><strong>' + escapeHtml(item.value) + '</strong></article>';
+          }).join('');
+        }
+        const negotiationList = document.getElementById('negotiationList');
+        if (negotiationList) {
+          const guidance = [
+            'Estimate status: ' + estimateStatusLabel + '.',
+            'Offer range: ' + money(metrics.minimum, settings.currency) + ' to ' + money(metrics.recommended, settings.currency) + '.',
+            metrics.needsApproval ? 'Approval is recommended before signing this estimate.' : 'Estimate can be sent directly to the customer.'
+          ];
+          negotiationList.innerHTML = guidance.map(function (line) {
+            return '<li>' + escapeHtml(line) + '</li>';
+          }).join('');
+        }
         const slider = document.getElementById('salesStageRange');
         if (slider) {
           const stage = metrics.offered >= metrics.recommended ? 2 : (metrics.offered >= metrics.negotiation ? 1 : 0);
           slider.value = String(stage);
         }
-        requestSecurePricingShadow(state);
+        requestSecurePricing(state);
       }
 
       function escapeHtml(value) {
@@ -1055,7 +1211,7 @@
             event.stopImmediatePropagation();
             const state = loadSalesState();
             const settings = loadSettings();
-            const metrics = calculateStandaloneSalesMetrics(state, settings);
+            const metrics = buildSalesUIMetrics(state, settings);
             state.approvalRequestedAt = new Date().toISOString();
             state.estimateStatus = metrics.needsApproval ? 'approval_requested' : 'ready_to_send';
             saveSalesState(state);
@@ -2051,7 +2207,7 @@
 async function fillSendModal() {
     const state = loadSalesState();
     const settings = loadSettings();
-    const metrics = calculateStandaloneSalesMetrics(state, settings);
+    const metrics = buildSalesUIMetrics(state, settings);
     const branding = await getBranding(true);
     const tenantPdf = buildEstimateTenantPayload(branding, settings, {});
     const estimateNumber = document.getElementById('salesEstimateNumber')?.value || state.estimateNumber || 'EST-1001';
@@ -2064,7 +2220,10 @@ async function fillSendModal() {
     const location = document.getElementById('salesLocation')?.value || state.location || '';
     const messageToClient = document.getElementById('salesMessageToClient')?.value || state.messageToClient || '';
     const totalFormatted = formatUsd(metrics.offered || metrics.recommended);
-    let depositRequired = Number(state.depositRequired);
+    let depositRequired = Number(metrics.depositRequired);
+    if (!Number.isFinite(depositRequired) || depositRequired <= 0) {
+      depositRequired = Number(state.depositRequired);
+    }
     if (!Number.isFinite(depositRequired) || depositRequired <= 0) {
       depositRequired = 1000;
     }
@@ -2177,7 +2336,7 @@ async function openSellerSendModal(event) {
     if (typeof window.openSendModal === 'function') {
       const state = loadSalesState();
       const settings = loadSettings();
-      const metrics = calculateStandaloneSalesMetrics(state, settings);
+      const metrics = buildSalesUIMetrics(state, settings);
       try {
         window.openSendModal(state, settings, metrics);
       } catch (_error) {}
@@ -2236,7 +2395,7 @@ async function openSellerSendModal(event) {
     const sendButton = document.getElementById('btnSendNow');
     const state = loadSalesState();
     const settings = loadSettings();
-    const metrics = calculateStandaloneSalesMetrics(state, settings);
+    const metrics = buildSalesUIMetrics(state, settings);
     const payload = JSON.parse(modal.dataset.payload || '{}');
     const pdf = JSON.parse(modal.dataset.pdf || '{}');
     const branding = await getBranding(true);
@@ -2296,6 +2455,10 @@ async function openSellerSendModal(event) {
           customer_address: projectAddress,
           job_site: projectAddress,
           address: projectAddress,
+          workers: Array.isArray(state.workers) ? state.workers : [],
+          price: state.price,
+          _manualPriceTouched: state._manualPriceTouched,
+          offeredPrice: state.offeredPrice,
           total: estimateTotal,
           recommended_total: estimateTotal,
           deposit_required: depositRequired,

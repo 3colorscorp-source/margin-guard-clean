@@ -5,12 +5,8 @@ if (!fetch) {
 
 const { readSessionFromEvent } = require("./_lib/session");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
-const { supabaseRequest } = require("./_lib/supabase-admin");
+const { supabaseRequest, getSupabaseConfig } = require("./_lib/supabase-admin");
 const { makeReqId, logOps, truncatePublicToken } = require("./_lib/ops-log");
-
-/** Default Catch Hook for estimate CTA / send flow (override with ZAPIER_ESTIMATE_CTA_WEBHOOK_URL or ZAPIER_WEBHOOK_URL). */
-const DEFAULT_ZAPIER_CTA_WEBHOOK =
-  "https://hooks.zapier.com/hooks/catch/22122619/upmpvew/";
 
 function pickFirst(...values) {
   for (const value of values) {
@@ -19,13 +15,6 @@ function pickFirst(...values) {
     }
   }
   return "";
-}
-
-function getSupabaseConfig() {
-  const url = process.env.SUPABASE_URL || "https://yaagobzgozzozibublmj.supabase.co";
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!key) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
-  return { url, key };
 }
 
 async function ensureBucket(bucketName) {
@@ -322,60 +311,74 @@ exports.handler = async (event) => {
     const webhookUrl = pickFirst(
       process.env.ZAPIER_ESTIMATE_CTA_WEBHOOK_URL,
       process.env.ZAPIER_WEBHOOK_URL
-    ) || DEFAULT_ZAPIER_CTA_WEBHOOK;
-
-    const zapierSource = pickFirst(process.env.ZAPIER_ESTIMATE_CTA_WEBHOOK_URL, process.env.ZAPIER_WEBHOOK_URL)
-      ? "env"
-      : "default";
+    );
 
     let zapierDelivery = "skipped";
-    try {
-      const resp = await fetch(webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(zapierBody)
-      });
-      if (resp.ok) {
-        zapierDelivery = "ok";
-        logOps({
-          req_id,
-          fn: OPS_FN,
-          event: "zapier_dispatch",
-          level: "info",
-          outcome: "ok",
-          tenant_id: tenant.id,
-          quote_id: quoteId,
-          public_token: publicTokenLog,
-          detail: `webhook_post_ok;source=${zapierSource}`
-        });
-      } else {
-        await resp.text();
-        zapierDelivery = `error_http_${resp.status}`;
-        logOps({
-          req_id,
-          fn: OPS_FN,
-          event: "zapier_dispatch",
-          level: "warn",
-          outcome: "fail",
-          tenant_id: tenant.id,
-          quote_id: quoteId,
-          public_token: publicTokenLog,
-          detail: `http_${resp.status};source=${zapierSource}`
-        });
-      }
-    } catch (err) {
-      zapierDelivery = "error_network";
+    if (!webhookUrl) {
+      console.log(
+        "[send-quote-zapier] Zapier webhook not configured (set ZAPIER_ESTIMATE_CTA_WEBHOOK_URL or ZAPIER_WEBHOOK_URL); skipping outbound POST"
+      );
       logOps({
         req_id,
         fn: OPS_FN,
         event: "zapier_dispatch",
-        level: "error",
-        outcome: "fail",
+        level: "info",
+        outcome: "skipped",
         tenant_id: tenant.id,
         quote_id: quoteId,
         public_token: publicTokenLog,
-        detail: `network;source=${zapierSource};${err?.message || "fetch_failed"}`
+        detail: "no_webhook_url_configured; outbound skipped"
       });
+      zapierDelivery = "skipped_no_webhook_url";
+    } else {
+      try {
+        const resp = await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(zapierBody)
+        });
+        if (resp.ok) {
+          zapierDelivery = "ok";
+          logOps({
+            req_id,
+            fn: OPS_FN,
+            event: "zapier_dispatch",
+            level: "info",
+            outcome: "ok",
+            tenant_id: tenant.id,
+            quote_id: quoteId,
+            public_token: publicTokenLog,
+            detail: "webhook_post_ok;source=env"
+          });
+        } else {
+          await resp.text();
+          zapierDelivery = `error_http_${resp.status}`;
+          logOps({
+            req_id,
+            fn: OPS_FN,
+            event: "zapier_dispatch",
+            level: "warn",
+            outcome: "fail",
+            tenant_id: tenant.id,
+            quote_id: quoteId,
+            public_token: publicTokenLog,
+            detail: `http_${resp.status};source=env`
+          });
+        }
+      } catch (err) {
+        zapierDelivery = "error_network";
+        logOps({
+          req_id,
+          fn: OPS_FN,
+          event: "zapier_dispatch",
+          level: "error",
+          outcome: "fail",
+          tenant_id: tenant.id,
+          quote_id: quoteId,
+          public_token: publicTokenLog,
+          detail: `network;source=env;${err?.message || "fetch_failed"}`
+        });
+      }
     }
 
     logOps({

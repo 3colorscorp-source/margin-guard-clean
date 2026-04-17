@@ -1,5 +1,5 @@
 const { readSessionFromEvent } = require("./_lib/session");
-const { supabaseRequest } = require("./_lib/supabase-admin");
+const { supabaseRequest, getSupabaseConfig } = require("./_lib/supabase-admin");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -24,13 +24,6 @@ function json(statusCode, payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   };
-}
-
-function getSupabaseConfig() {
-  const url = process.env.SUPABASE_URL || "https://yaagobzgozzozibublmj.supabase.co";
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!key) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
-  return { url, key };
 }
 
 async function ensureLogoBucket() {

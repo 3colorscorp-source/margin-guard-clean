@@ -1,0 +1,142 @@
+warning: in the working copy of 'netlify/functions/calc-secure-pricing.js', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/netlify/functions/calc-secure-pricing.js b/netlify/functions/calc-secure-pricing.js[m
+[1mindex 6d58f85..78ffa63 100644[m
+[1m--- a/netlify/functions/calc-secure-pricing.js[m
+[1m+++ b/netlify/functions/calc-secure-pricing.js[m
+[36m@@ -1,6 +1,6 @@[m
+ const { readSessionFromEvent } = require("./_lib/session");[m
+ const { supabaseRequest } = require("./_lib/supabase-admin");[m
+[31m-const { calculateSecurePricing } = require("./_lib/pricing-engine");[m
+[32m+[m[32mconst { calculateQuotePublishFinancials } = require("./_lib/pricing-engine");[m
+ [m
+ function json(statusCode, payload) {[m
+   return {[m
+[36m@@ -52,6 +52,47 @@[m [masync function loadTenantSettingsFromLatestSnapshot(tenantId) {[m
+   return extractSettingsFromSnapshotPayload(row?.payload);[m
+ }[m
+ [m
+[32m+[m[32m/** Same as publish-public-quote.js */[m
+[32m+[m[32mfunction parsePublishPricingInput(body) {[m
+[32m+[m[32m  const workersRaw = body.workers ?? body.sales_workers ?? body.salesWorkers;[m
+[32m+[m[32m  const workers = Array.isArray(workersRaw) ? workersRaw : null;[m
+[32m+[m[32m  const price =[m
+[32m+[m[32m    body.price !== undefined[m
+[32m+[m[32m      ? body.price[m
+[32m+[m[32m      : body.offeredPrice !== undefined[m
+[32m+[m[32m        ? body.offeredPrice[m
+[32m+[m[32m        : body.offered_price;[m
+[32m+[m[32m  const _manualPriceTouched = Boolean([m
+[32m+[m[32m    body._manualPriceTouched ?? body.manual_price_touched ?? body.manualPriceTouched[m
+[32m+[m[32m  );[m
+[32m+[m[32m  return { workers, price, _manualPriceTouched };[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/** Same as publish-public-quote.js */[m
+[32m+[m[32mfunction validateWorkersForPricing(workers) {[m
+[32m+[m[32m  if (!Array.isArray(workers) || workers.length === 0) {[m
+[32m+[m[32m    return { ok: false, error: "workers must be a non-empty array with labor lines." };[m
+[32m+[m[32m  }[m
+[32m+[m[32m  let sumDays = 0;[m
+[32m+[m[32m  for (const w of workers) {[m
+[32m+[m[32m    sumDays += Math.max(0, Number(w?.days || 0));[m
+[32m+[m[32m  }[m
+[32m+[m[32m  if (!Number.isFinite(sumDays) || sumDays <= 0) {[m
+[32m+[m[32m    return {[m
+[32m+[m[32m      ok: false,[m
+[32m+[m[32m      error: "workers must include at least one line with days greater than zero."[m
+[32m+[m[32m    };[m
+[32m+[m[32m  }[m
+[32m+[m[32m  return { ok: true };[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/** Same as publish-public-quote.js */[m
+[32m+[m[32mfunction isManualOfferActive(pricingIn) {[m
+[32m+[m[32m  const raw =[m
+[32m+[m[32m    pricingIn.price === null || pricingIn.price === undefined ? "" : String(pricingIn.price);[m
+[32m+[m[32m  return Boolean(pricingIn._manualPriceTouched) && String(raw).trim() !== "";[m
+[32m+[m[32m}[m
+[32m+[m
+ exports.handler = async (event) => {[m
+   try {[m
+     if (event.httpMethod !== "POST") {[m
+[36m@@ -68,8 +109,6 @@[m [mexports.handler = async (event) => {[m
+       return json(404, { error: "Tenant not found. Run bootstrap first." });[m
+     }[m
+ [m
+[31m-    const tenantSettings = await loadTenantSettingsFromLatestSnapshot(tenant.id);[m
+[31m-[m
+     let body = {};[m
+     try {[m
+       body = JSON.parse(event.body || "{}");[m
+[36m@@ -77,18 +116,64 @@[m [mexports.handler = async (event) => {[m
+       return json(400, { error: "Invalid JSON" });[m
+     }[m
+ [m
+[31m-    const input = {[m
+[31m-      workers: body.workers,[m
+[31m-      price: body.price,[m
+[31m-      _manualPriceTouched: body._manualPriceTouched[m
+[31m-    };[m
+[32m+[m[32m    const pricingIn = parsePublishPricingInput(body);[m
+[32m+[m[32m    const wCheck = validateWorkersForPricing(pricingIn.workers);[m
+[32m+[m[32m    if (!wCheck.ok) {[m
+[32m+[m[32m      return json(400, { error: wCheck.error });[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    const tenantSettings = await loadTenantSettingsFromLatestSnapshot(tenant.id);[m
+[32m+[m
+[32m+[m[32m    let financials;[m
+[32m+[m[32m    try {[m
+[32m+[m[32m      financials = calculateQuotePublishFinancials([m
+[32m+[m[32m        {[m
+[32m+[m[32m          workers: pricingIn.workers,[m
+[32m+[m[32m          price: pricingIn.price,[m
+[32m+[m[32m          _manualPriceTouched: pricingIn._manualPriceTouched[m
+[32m+[m[32m        },[m
+[32m+[m[32m        tenantSettings[m
+[32m+[m[32m      );[m
+[32m+[m[32m    } catch (err) {[m
+[32m+[m[32m      return json(400, {[m
+[32m+[m[32m        error: err?.message || "Unable to compute quote pricing from inputs."[m
+[32m+[m[32m      });[m
+[32m+[m[32m    }[m
+ [m
+[31m-    const result = calculateSecurePricing(input, tenantSettings);[m
+[32m+[m[32m    const minPrice = financials.minimum_price;[m
+[32m+[m[32m    if (isManualOfferActive(pricingIn)) {[m
+[32m+[m[32m      const rawManual = String(pricingIn.price ?? "").trim();[m
+[32m+[m[32m      const manualRequested = Number(rawManual);[m
+[32m+[m[32m      if (!Number.isFinite(manualRequested)) {[m
+[32m+[m[32m        return json(400, {[m
+[32m+[m[32m          error: "Manual offered price must be a valid number."[m
+[32m+[m[32m        });[m
+[32m+[m[32m      }[m
+[32m+[m[32m      if (manualRequested + 1e-9 < Number(minPrice)) {[m
+[32m+[m[32m        return json(400, {[m
+[32m+[m[32m          error: `Manual offered price cannot be below the minimum allowed (${Number(minPrice).toFixed(2)}).`[m
+[32m+[m[32m        });[m
+[32m+[m[32m      }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    if ([m
+[32m+[m[32m      !Number.isFinite(financials.total) ||[m
+[32m+[m[32m      financials.total <= 0 ||[m
+[32m+[m[32m      !Number.isFinite(financials.deposit_required) ||[m
+[32m+[m[32m      financials.deposit_required <= 0[m
+[32m+[m[32m    ) {[m
+[32m+[m[32m      return json(400, { error: "Computed total or deposit is invalid." });[m
+[32m+[m[32m    }[m
+ [m
+     return json(200, {[m
+       ok: true,[m
+       tenant_id: tenant.id,[m
+[31m-      pricing: result[m
+[32m+[m[32m      pricing: {[m
+[32m+[m[32m        total: financials.total,[m
+[32m+[m[32m        deposit_required: financials.deposit_required,[m
+[32m+[m[32m        recommended_price: financials.recommended_price,[m
+[32m+[m[32m        minimum_price: financials.minimum_price[m
+[32m+[m[32m      }[m
+     });[m
+   } catch (err) {[m
+     return json(500, { error: err.message || "Unable to calculate secure pricing" });[m

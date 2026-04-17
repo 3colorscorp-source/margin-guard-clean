@@ -321,8 +321,19 @@
   </div>
 
   <script>
-    const SUPABASE_URL = "https://yaagobzgozzozibublmj.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlhYWdvYnpnb3p6b3ppYnVibG1qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1NjE3MjgsImV4cCI6MjA4NzEzNzcyOH0.Ogt7cEt3jRiEGtA8-dXXSZyRJtJfZqVfPAErz6cM7aU";
+    function readMeta(name) {
+      const m = document.querySelector('meta[name="' + name + '"]');
+      const c = m && m.getAttribute("content");
+      return c && String(c).trim() ? String(c).trim() : "";
+    }
+    const SUPABASE_URL =
+      (typeof window.__MG_SUPABASE_URL === "string" && window.__MG_SUPABASE_URL.trim()
+        ? window.__MG_SUPABASE_URL.trim()
+        : "") || readMeta("mg-supabase-url");
+    const SUPABASE_KEY =
+      (typeof window.__MG_SUPABASE_ANON_KEY === "string" && window.__MG_SUPABASE_ANON_KEY.trim()
+        ? window.__MG_SUPABASE_ANON_KEY.trim()
+        : "") || readMeta("mg-supabase-anon-key");
 
     const TENANT_NAME_FALLBACK = "Invoice";
     const BUSINESS_SUBTITLE = "Service invoice";
@@ -400,6 +411,11 @@
         if (!window.supabase || typeof window.supabase.createClient !== "function") {
           showError("Supabase library did not load correctly.");
           log("FAIL: window.supabase.createClient not available");
+          return;
+        }
+
+        if (!SUPABASE_URL || !SUPABASE_KEY) {
+          showError("Application configuration is incomplete. Missing Supabase settings.");
           return;
         }
 

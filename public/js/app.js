@@ -2705,6 +2705,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           customer_address: projectAddress,
           job_site: projectAddress,
           address: projectAddress,
+          workers: Array.isArray(state.workers) ? state.workers : [],
+          price: state.price,
+          _manualPriceTouched: state._manualPriceTouched,
+          offeredPrice: state.offeredPrice,
           total: estimateTotal,
           recommended_total: estimateTotal,
           deposit_required: depositRequired,
@@ -3499,7 +3503,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       btnSubmit.onclick = () => {
         persistSalesDraft("approval_requested");
         const currentMetrics = calculateSalesMetrics(state, settings);
-        const payload = {
+        const legacyPayload = {
           id: Date.now(),
           status: "requested",
           requestedAt: new Date().toISOString(),
@@ -3513,10 +3517,47 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           estimateNumber: state.estimateNumber,
           expirationDate: state.expirationDate
         };
-        const queue = loadApprovals();
-        queue.push(payload);
-        saveApprovals(queue);
-        renderSales();
+        const pushLegacyQueue = () => {
+          const queue = loadApprovals();
+          queue.push(legacyPayload);
+          saveApprovals(queue);
+          renderSales();
+        };
+        const serverCreateBody = {
+          project_name: nonEmptyString(state.projectName, "Estimate"),
+          client_name: nonEmptyString(state.clientName),
+          client_email: nonEmptyString(state.customerEmail),
+          offered_price: round2(currentMetrics.offered),
+          recommended_price: round2(currentMetrics.recommended),
+          minimum_price: round2(currentMetrics.minimum),
+          workers: Array.isArray(state.workers) ? state.workers : []
+        };
+        fetch("/.netlify/functions/create-sales-approval", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(serverCreateBody)
+        })
+          .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+          .then(({ ok, data }) => {
+            if (ok && data && data.ok === true && data.approval_id) {
+              return fetch("/.netlify/functions/get-sales-approvals", {
+                method: "GET",
+                credentials: "include"
+              })
+                .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
+                .then(({ ok: okList, data: listData }) => {
+                  if (okList && listData && listData.ok === true && Array.isArray(listData.approvals)) {
+                    saveApprovals(mapServerApprovalsToAdminRows(listData.approvals));
+                  }
+                  renderSales();
+                });
+            }
+            pushLegacyQueue();
+          })
+          .catch(() => {
+            pushLegacyQueue();
+          });
       };
     }
 
@@ -6828,10 +6869,58 @@ function renderSupervisor() {
     refresh();
   }
 
+  /*
+   * STEP 4D — Approvals: server (get-sales-approvals) is the source of truth for Sales Admin.
+   * localStorage (mg_approvals_v2) is a mirror/cache after successful server reads/updates, and
+   * last-resort fallback when the server cannot be reached.
+   *
+   * Legacy rows: id is a non-UUID (e.g. Date.now() from older flows). They exist only in
+   * localStorage and are shown only when GET get-sales-approvals fails — never merged onto a
+   * successful server response (avoids stale duplicates over server rows).
+   */
+  const SALES_APPROVAL_UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  function isServerBackedApprovalRow(row) {
+    return row && SALES_APPROVAL_UUID_RE.test(String(row.id));
+  }
+
+  /** Map Supabase sales_approval rows to the shape renderSalesAdmin / activateApprovedProject expect. */
+  function mapServerApprovalsToAdminRows(serverList) {
+    const list = Array.isArray(serverList) ? serverList : [];
+    return list.map((a) => {
+      let workers = a.workers;
+      if (typeof workers === "string") {
+        try {
+          workers = JSON.parse(workers);
+        } catch (_err) {
+          workers = [];
+        }
+      }
+      if (!Array.isArray(workers)) workers = [];
+      const projectName = String(a.project_name || "").trim() || "Project";
+      return {
+        id: a.id,
+        projectName,
+        projectId: projectName,
+        clientName: String(a.client_name || "").trim(),
+        customerEmail: String(a.client_email || "").trim(),
+        location: "",
+        offeredPrice: finiteNumber(a.offered_price, 0),
+        recommended: finiteNumber(a.recommended_price, 0),
+        minimum: finiteNumber(a.minimum_price, 0),
+        workers,
+        status: a.status || "requested",
+        requestedAt: a.created_at || "",
+        price: finiteNumber(a.offered_price, 0)
+      };
+    });
+  }
+
   function renderSalesAdmin() {
     if (!$("adminQueueBody")) return;
     const settings = loadSettings();
-    const rows = loadApprovals();
+    let rows = [];
 
     const activateApprovedProject = (row) => {
       const project = {
@@ -6882,18 +6971,100 @@ function renderSupervisor() {
         button.onclick = () => {
           const index = Number(button.dataset.adminApprove || -1);
           if (index < 0 || !rows[index]) return;
-          rows[index].status = "approved";
-          activateApprovedProject(rows[index]);
-          saveApprovals(rows);
-          refresh();
+          const row = rows[index];
+
+          const applyLocalApprove = () => {
+            rows[index].status = "approved";
+            activateApprovedProject(rows[index]);
+            saveApprovals(rows);
+            refresh();
+          };
+
+          if (!isServerBackedApprovalRow(row)) {
+            applyLocalApprove();
+            return;
+          }
+
+          fetch("/.netlify/functions/update-sales-approval", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ approval_id: row.id, status: "approved" })
+          })
+            .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+            .then(({ ok, data }) => {
+              if (ok && data && data.ok === true && data.approval) {
+                rows[index] = mapServerApprovalsToAdminRows([data.approval])[0];
+                activateApprovedProject(rows[index]);
+                saveApprovals(rows);
+                refresh();
+                return;
+              }
+              applyLocalApprove();
+            })
+            .catch(() => {
+              applyLocalApprove();
+            });
         };
       });
       $("adminQueueBody").querySelectorAll("button[data-admin-reject]").forEach((button) => {
-        button.onclick = () => { rows[Number(button.dataset.adminReject || -1)].status = "rejected"; saveApprovals(rows); refresh(); };
+        button.onclick = () => {
+          const index = Number(button.dataset.adminReject || -1);
+          if (index < 0 || !rows[index]) return;
+          const row = rows[index];
+
+          const applyLocalReject = () => {
+            rows[index].status = "rejected";
+            saveApprovals(rows);
+            refresh();
+          };
+
+          if (!isServerBackedApprovalRow(row)) {
+            applyLocalReject();
+            return;
+          }
+
+          fetch("/.netlify/functions/update-sales-approval", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ approval_id: row.id, status: "rejected" })
+          })
+            .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+            .then(({ ok, data }) => {
+              if (ok && data && data.ok === true && data.approval) {
+                rows[index] = mapServerApprovalsToAdminRows([data.approval])[0];
+                saveApprovals(rows);
+                refresh();
+                return;
+              }
+              applyLocalReject();
+            })
+            .catch(() => {
+              applyLocalReject();
+            });
+        };
       });
     };
 
     refresh();
+
+    fetch("/.netlify/functions/get-sales-approvals", { method: "GET", credentials: "include" })
+      .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (ok && data && data.ok === true && Array.isArray(data.approvals)) {
+          rows = mapServerApprovalsToAdminRows(data.approvals);
+          saveApprovals(rows);
+          refresh();
+          return;
+        }
+        rows = loadApprovals();
+        refresh();
+      })
+      .catch(() => {
+        rows = loadApprovals();
+        refresh();
+      });
   }
 
   function render() {

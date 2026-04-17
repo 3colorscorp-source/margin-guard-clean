@@ -2239,3 +2239,13 @@ body[data-role="owner"] input[type="date"] {
   color-scheme: dark;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(6, 10, 20, 0.72)) !important;
 }
+
+/* Business Settings — campos obligatorios inválidos */
+.form .field.field--error label {
+  color: var(--red);
+}
+.form .field.field--error input,
+.form .field.field--error select {
+  border-color: var(--red) !important;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.35);
+}

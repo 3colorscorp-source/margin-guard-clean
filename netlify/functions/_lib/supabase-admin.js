@@ -3,8 +3,16 @@ if (!fetch) {
   throw new Error("Global fetch is not available in this runtime.");
 }
 
+/**
+ * Service-role Supabase access. Requires explicit env (no project URL fallback).
+ */
 function getSupabaseConfig() {
-  const url = process.env.SUPABASE_URL || "https://yaagobzgozzozibublmj.supabase.co";
+  const url = String(process.env.SUPABASE_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (!url) {
+    throw new Error("Missing SUPABASE_URL");
+  }
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!key) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
   return { url, key };
@@ -49,5 +57,6 @@ function toSlug(value) {
 
 module.exports = {
   supabaseRequest,
+  getSupabaseConfig,
   toSlug
 };

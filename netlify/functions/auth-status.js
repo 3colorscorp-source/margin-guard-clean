@@ -18,6 +18,12 @@ function subscriptionIsActive(status) {
   return ["active", "trialing", "past_due"].includes(status);
 }
 
+/** Set MG_DEBUG_AUTH=1 in Netlify env to log access-check diagnostics (off by default). */
+const AUTH_DEBUG = process.env.MG_DEBUG_AUTH === "1";
+function debugAuth(...args) {
+  if (AUTH_DEBUG) console.log(...args);
+}
+
 /**
  * public.users.id matches auth.users.id — lookup admin by primary key.
  */
@@ -35,7 +41,9 @@ async function loadPublicUserAdminFlags(sessionUserId) {
       is_admin: Boolean(row?.is_admin),
     };
   } catch (err) {
-    console.warn("[auth-status] public.users lookup by id failed:", err?.message || err);
+    if (AUTH_DEBUG) {
+      console.warn("[auth-status] public.users lookup by id failed:", err?.message || err);
+    }
     return { userId: null, is_admin: false };
   }
 }
@@ -47,7 +55,7 @@ exports.handler = async (event) => {
   try {
     const session = readSessionFromEvent(event);
     if (!session) {
-      console.log("ACCESS CHECK", {
+      debugAuth("ACCESS CHECK", {
         userId: null,
         subscription_status: null,
         is_admin: false,
@@ -71,14 +79,14 @@ exports.handler = async (event) => {
     userId = flags.userId;
     is_admin = flags.is_admin;
 
-    console.log("ADMIN LOOKUP", {
+    debugAuth("ADMIN LOOKUP", {
       sessionUserId: sessionUserId || null,
       is_admin,
       allowAccess: is_admin,
     });
 
     if (is_admin) {
-      console.log("ACCESS CHECK", {
+      debugAuth("ACCESS CHECK", {
         userId,
         subscription_status: null,
         is_admin: true,
@@ -96,7 +104,7 @@ exports.handler = async (event) => {
     }
 
     if (!session.s || !session.c) {
-      console.log("ACCESS CHECK", {
+      debugAuth("ACCESS CHECK", {
         userId,
         subscription_status: null,
         is_admin: false,
@@ -112,7 +120,7 @@ exports.handler = async (event) => {
     const subscription_status = subscription?.status ?? null;
     const allowAccess = subscriptionIsActive(subscription.status);
 
-    console.log("ACCESS CHECK", {
+    debugAuth("ACCESS CHECK", {
       userId,
       subscription_status,
       is_admin: false,
@@ -147,7 +155,7 @@ exports.handler = async (event) => {
         : null,
     });
   } catch (err) {
-    console.log("ACCESS CHECK", {
+    debugAuth("ACCESS CHECK", {
       userId,
       subscription_status: null,
       is_admin,

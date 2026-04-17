@@ -1,18 +1,35 @@
 /**
  * Browser Supabase client for pages that need direct table access (optional).
- * URL/key can be overridden before this script runs:
+ * Set before this script (recommended: Netlify inject or meta tags — no hardcoded project keys):
  *   window.__MG_SUPABASE_URL
  *   window.__MG_SUPABASE_ANON_KEY
+ * Fallback when globals are unset: <meta name="mg-supabase-url" content="..."> and
+ * <meta name="mg-supabase-anon-key" content="..."> (empty content is ignored).
  */
 (function () {
-  const URL =
+  let URL =
     typeof window.__MG_SUPABASE_URL === "string" && window.__MG_SUPABASE_URL.trim()
       ? window.__MG_SUPABASE_URL.trim()
-      : "https://yaagobzgozzozibublmj.supabase.co";
-  const ANON =
+      : "";
+  let ANON =
     typeof window.__MG_SUPABASE_ANON_KEY === "string" && window.__MG_SUPABASE_ANON_KEY.trim()
       ? window.__MG_SUPABASE_ANON_KEY.trim()
-      : "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlhYWdvYnpnb3p6b3ppYnVibG1qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1NjE3MjgsImV4cCI6MjA4NzEzNzcyOH0.Ogt7cEt3jRiEGtA8-dXXSZyRJtJfZqVfPAErz6cM7aU";
+      : "";
+
+  if (!URL) {
+    const m = document.querySelector('meta[name="mg-supabase-url"]');
+    const c = m && m.getAttribute("content");
+    if (c && String(c).trim()) URL = String(c).trim();
+  }
+  if (!ANON) {
+    const m = document.querySelector('meta[name="mg-supabase-anon-key"]');
+    const c = m && m.getAttribute("content");
+    if (c && String(c).trim()) ANON = String(c).trim();
+  }
+
+  if (!URL || !ANON) {
+    return;
+  }
 
   if (typeof window.supabase === "undefined" || typeof window.supabase.createClient !== "function") {
     return;

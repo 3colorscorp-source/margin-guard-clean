@@ -1,12 +1,113 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 
+/** Reject abusive snapshot POST sizes (untrusted browser input). */
+const MAX_SNAPSHOT_BODY_CHARS = 2_500_000;
+
 function json(statusCode, payload) {
   return {
     statusCode,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   };
+}
+
+function isPlainObject(v) {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+/**
+ * Validates tenant snapshot from browser before insert.
+ * @returns {{ ok: true } | { ok: false, reason: string }}
+ */
+function validateTenantSnapshotPayload(payload) {
+  if (!isPlainObject(payload)) {
+    return { ok: false, reason: "payload must be an object" };
+  }
+
+  if (!("storage" in payload) || !isPlainObject(payload.storage)) {
+    return { ok: false, reason: "payload.storage must be an object" };
+  }
+
+  const storage = payload.storage;
+  const mg = storage["mg_settings_v2"];
+
+  if (!isPlainObject(mg)) {
+    return { ok: false, reason: "payload.storage.mg_settings_v2 must be present and be an object" };
+  }
+
+  const num = (key) => {
+    const v = mg[key];
+    if (v === "" || v === undefined || v === null) return NaN;
+    return Number(v);
+  };
+
+  const bi = num("baseInstaller");
+  const bh = num("baseHelper");
+  if (!Number.isFinite(bi) || bi <= 0) {
+    return { ok: false, reason: "mg_settings_v2.baseInstaller must be a finite number greater than 0" };
+  }
+  if (!Number.isFinite(bh) || bh <= 0) {
+    return { ok: false, reason: "mg_settings_v2.baseHelper must be a finite number greater than 0" };
+  }
+
+  const pm = String(mg.pricingMode ?? "").trim();
+  if (pm !== "hour" && pm !== "day") {
+    return { ok: false, reason: "mg_settings_v2.pricingMode must be hour or day" };
+  }
+
+  const hpd = num("hoursPerDay");
+  const std = num("stdHours");
+  if (!Number.isFinite(hpd) || hpd <= 0) {
+    return { ok: false, reason: "mg_settings_v2.hoursPerDay must be a finite number greater than 0" };
+  }
+  if (!Number.isFinite(std) || std <= 0) {
+    return { ok: false, reason: "mg_settings_v2.stdHours must be a finite number greater than 0" };
+  }
+
+  const om = num("overheadMonthly");
+  if (!Number.isFinite(om) || om < 0) {
+    return { ok: false, reason: "mg_settings_v2.overheadMonthly must be a finite number >= 0" };
+  }
+
+  const wc = num("wcPct");
+  const fi = num("ficaPct");
+  if (!Number.isFinite(wc) || wc <= 0) {
+    return { ok: false, reason: "mg_settings_v2.wcPct must be a finite number greater than 0" };
+  }
+  if (!Number.isFinite(fi) || fi <= 0) {
+    return { ok: false, reason: "mg_settings_v2.ficaPct must be a finite number greater than 0" };
+  }
+
+  const fu = num("futaPct");
+  const ca = num("casuiPct");
+  if (!Number.isFinite(fu) || fu < 0) {
+    return { ok: false, reason: "mg_settings_v2.futaPct must be a finite number >= 0" };
+  }
+  if (!Number.isFinite(ca) || ca < 0) {
+    return { ok: false, reason: "mg_settings_v2.casuiPct must be a finite number >= 0" };
+  }
+
+  const pr = num("profitPct");
+  if (!Number.isFinite(pr) || pr <= 0) {
+    return { ok: false, reason: "mg_settings_v2.profitPct must be a finite number greater than 0" };
+  }
+
+  const sc = num("salesCommissionPct");
+  const su = num("supervisorBonusPct");
+  if (!Number.isFinite(sc) || sc < 0) {
+    return { ok: false, reason: "mg_settings_v2.salesCommissionPct must be a finite number >= 0" };
+  }
+  if (!Number.isFinite(su) || su < 0) {
+    return { ok: false, reason: "mg_settings_v2.supervisorBonusPct must be a finite number >= 0" };
+  }
+
+  const re = num("reservePct");
+  if (!Number.isFinite(re) || re < 5) {
+    return { ok: false, reason: "mg_settings_v2.reservePct must be a finite number >= 5" };
+  }
+
+  return { ok: true };
 }
 
 function extractBrandingFromSnapshotPayload(payload) {
@@ -77,14 +178,32 @@ exports.handler = async (event) => {
       return json(404, { error: "Tenant not found. Run bootstrap first. Revisa la sesion (Stripe) e intenta de nuevo." });
     }
 
+    const rawBody = event.body || "";
+    if (rawBody.length > MAX_SNAPSHOT_BODY_CHARS) {
+      console.log("[save-tenant-snapshot] invalid snapshot: body too large", {
+        tenant_id: tenant.id,
+        reason: "request body exceeds maximum size"
+      });
+      return json(400, { error: "Snapshot request body is too large" });
+    }
+
     let body = {};
     try {
-      body = JSON.parse(event.body || "{}");
+      body = JSON.parse(rawBody || "{}");
     } catch (_err) {
       return json(400, { error: "Invalid JSON" });
     }
 
-    const payload = body.payload && typeof body.payload === "object" ? body.payload : {};
+    const payload = body.payload;
+    const snapshotCheck = validateTenantSnapshotPayload(payload);
+    if (!snapshotCheck.ok) {
+      console.log("[save-tenant-snapshot] invalid snapshot payload", {
+        tenant_id: tenant.id,
+        reason: snapshotCheck.reason
+      });
+      return json(400, { error: snapshotCheck.reason || "Invalid snapshot payload" });
+    }
+
     const snapshotVersion = Number(body.snapshot_version || 1);
 
     const inserted = await supabaseRequest("tenant_snapshots", {

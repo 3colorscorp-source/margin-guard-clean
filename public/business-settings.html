@@ -85,6 +85,17 @@
               <strong>Cambios sin guardar.</strong> Tus ediciones solo estan en esta pestana; pulsa <strong>Guardar business settings</strong> para enviarlas al servidor.
             </div>
 
+            <div
+              id="businessSettingsValidationBanner"
+              class="notice err"
+              role="alert"
+              aria-live="assertive"
+              hidden
+              style="margin-bottom:14px;"
+            >
+              Complete los campos obligatorios para guardar Business Settings y calcular precios correctamente.
+            </div>
+
             <div class="form">
               <div class="field">
                 <label>Nombre del negocio</label>
@@ -443,6 +454,106 @@
     };
   }
 
+  /** IDs de inputs (stdHours = horas por trabajador / mes). */
+  const CRITICAL_BUSINESS_SETTING_FIELD_IDS = [
+    'baseInstaller',
+    'baseHelper',
+    'pricingMode',
+    'hoursPerDay',
+    'stdHours',
+    'overheadMonthly',
+    'wcPct',
+    'ficaPct',
+    'futaPct',
+    'casuiPct',
+    'profitPct',
+    'salesCommissionPct',
+    'supervisorBonusPct',
+    'reservePct'
+  ];
+
+  function getBusinessFieldWrap(id) {
+    const el = document.getElementById(id);
+    return el && typeof el.closest === 'function' ? el.closest('.field') : null;
+  }
+
+  function clearBusinessSettingsCriticalFieldErrors() {
+    CRITICAL_BUSINESS_SETTING_FIELD_IDS.forEach(function (id) {
+      const wrap = getBusinessFieldWrap(id);
+      if (wrap) wrap.classList.remove('field--error');
+    });
+    const banner = document.getElementById('businessSettingsValidationBanner');
+    if (banner) banner.hidden = true;
+  }
+
+  function validateBusinessSettingsCriticalFields() {
+    const invalid = [];
+
+    function addInvalid(id) {
+      if (invalid.indexOf(id) === -1) invalid.push(id);
+    }
+
+    function n(id) {
+      const s = rawTrim(id);
+      if (s === '') return NaN;
+      return Number(s);
+    }
+
+    const bi = n('baseInstaller');
+    if (!Number.isFinite(bi) || bi <= 0) addInvalid('baseInstaller');
+
+    const bh = n('baseHelper');
+    if (!Number.isFinite(bh) || bh <= 0) addInvalid('baseHelper');
+
+    const pm = document.getElementById('pricingMode');
+    const pmVal = pm ? String(pm.value || '').trim() : '';
+    if (pmVal !== 'hour' && pmVal !== 'day') addInvalid('pricingMode');
+
+    const hpd = n('hoursPerDay');
+    if (!Number.isFinite(hpd) || hpd <= 0) addInvalid('hoursPerDay');
+
+    const std = n('stdHours');
+    if (!Number.isFinite(std) || std <= 0) addInvalid('stdHours');
+
+    const om = n('overheadMonthly');
+    if (!Number.isFinite(om) || om < 0) addInvalid('overheadMonthly');
+
+    const wc = n('wcPct');
+    if (!Number.isFinite(wc) || wc <= 0) addInvalid('wcPct');
+
+    const fi = n('ficaPct');
+    if (!Number.isFinite(fi) || fi <= 0) addInvalid('ficaPct');
+
+    const fu = n('futaPct');
+    if (!Number.isFinite(fu) || fu < 0) addInvalid('futaPct');
+
+    const ca = n('casuiPct');
+    if (!Number.isFinite(ca) || ca < 0) addInvalid('casuiPct');
+
+    const pr = n('profitPct');
+    if (!Number.isFinite(pr) || pr <= 0) addInvalid('profitPct');
+
+    const sc = n('salesCommissionPct');
+    if (!Number.isFinite(sc) || sc < 0) addInvalid('salesCommissionPct');
+
+    const su = n('supervisorBonusPct');
+    if (!Number.isFinite(su) || su < 0) addInvalid('supervisorBonusPct');
+
+    const re = n('reservePct');
+    if (!Number.isFinite(re) || re < 5) addInvalid('reservePct');
+
+    return { ok: invalid.length === 0, invalidFieldIds: invalid };
+  }
+
+  function applyBusinessSettingsCriticalFieldErrors(ids) {
+    ids.forEach(function (id) {
+      const wrap = getBusinessFieldWrap(id);
+      if (wrap) wrap.classList.add('field--error');
+    });
+    const banner = document.getElementById('businessSettingsValidationBanner');
+    if (banner) banner.hidden = false;
+  }
+
   function currentFormSettings() {
     return {
       bizName: safeTrim(document.getElementById('bizNameOwner')?.value || ''),
@@ -552,6 +663,7 @@
     }
 
     fillForm(settings, mergedBranding);
+    clearBusinessSettingsCriticalFieldErrors();
     businessSettingsFormDirty = false;
     syncBusinessSettingsUnsavedBanner();
     setBusinessSettingsReady(true);
@@ -585,6 +697,18 @@
   }
 
   async function saveBusinessSettings() {
+    clearBusinessSettingsCriticalFieldErrors();
+    const criticalCheck = validateBusinessSettingsCriticalFields();
+    if (!criticalCheck.ok) {
+      applyBusinessSettingsCriticalFieldErrors(criticalCheck.invalidFieldIds);
+      const statusNode = document.getElementById('businessSettingsStatus');
+      if (statusNode) {
+        statusNode.style.display = 'none';
+        statusNode.textContent = '';
+      }
+      return;
+    }
+
     const depositRaw = safeTrim(document.getElementById('depositPaymentLink')?.value || '');
     if (!isValidDepositPaymentLink(depositRaw)) {
       setStatus(
@@ -668,6 +792,7 @@
         'Guardado en el servidor: snapshot, tenant branding y enlace de deposito (Stripe Payment Link).',
         'success'
       );
+      clearBusinessSettingsCriticalFieldErrors();
       businessSettingsFormDirty = false;
       syncBusinessSettingsUnsavedBanner();
     } catch (error) {
@@ -684,13 +809,16 @@
       'bizNameOwner', 'businessEmail', 'businessPhone', 'businessAddress', 'publicLogoUrl',
       'publicAccentColor', 'serviceLine', 'marketLine', 'signatureLine', 'baseInstaller',
       'baseHelper', 'pricingMode', 'hoursPerDay', 'overheadMonthly', 'stdHours', 'wcPct',
-      'ficaPct', 'futaPct', 'casuiPct', 'profitPct', 'salesCommissionPct', 'supervisorBonusPct'
+      'ficaPct', 'futaPct', 'casuiPct', 'profitPct', 'salesCommissionPct', 'supervisorBonusPct',
+      'reservePct'
     ];
 
     watchedIds.forEach(function (id) {
       const node = document.getElementById(id);
       if (!node) return;
       node.addEventListener('input', function () {
+        const wrap = getBusinessFieldWrap(id);
+        if (wrap) wrap.classList.remove('field--error');
         markBusinessSettingsDirty();
         const settings = currentFormSettings();
         const branding = currentFormBranding(settings);
@@ -698,6 +826,8 @@
         renderBrandPreview(branding);
       });
       node.addEventListener('change', function () {
+        const wrap = getBusinessFieldWrap(id);
+        if (wrap) wrap.classList.remove('field--error');
         markBusinessSettingsDirty();
         const settings = currentFormSettings();
         const branding = currentFormBranding(settings);

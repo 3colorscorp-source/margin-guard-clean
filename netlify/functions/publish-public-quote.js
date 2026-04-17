@@ -1,8 +1,9 @@
 const { readSessionFromEvent } = require("./_lib/session");
-const { supabaseRequest } = require("./_lib/supabase-admin");
+const { supabaseRequest, getSupabaseConfig } = require("./_lib/supabase-admin");
 const { loadTenantDisplayForTenantId } = require("./_lib/tenant-display");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { makePublicToken } = require("./_lib/public-token");
+const { calculateQuotePublishFinancials } = require("./_lib/pricing-engine");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -32,6 +33,67 @@ function parseBody(raw) {
   } catch {
     return {};
   }
+}
+
+function extractSettingsFromSnapshotPayload(payload) {
+  if (!payload || typeof payload !== "object") return {};
+  const storage =
+    payload.storage && typeof payload.storage === "object" ? payload.storage : {};
+  const mg =
+    storage["mg_settings_v2"] && typeof storage["mg_settings_v2"] === "object"
+      ? storage["mg_settings_v2"]
+      : {};
+  return mg;
+}
+
+async function loadTenantSettingsFromLatestSnapshot(tenantId) {
+  const rows = await supabaseRequest(
+    `tenant_snapshots?tenant_id=eq.${tenantId}&select=payload&order=created_at.desc&limit=1`
+  );
+  const row = Array.isArray(rows) ? rows[0] : null;
+  return extractSettingsFromSnapshotPayload(row?.payload);
+}
+
+/**
+ * Pricing inputs for server-side totals (same shapes as Sales / Owner sync).
+ */
+function parsePublishPricingInput(body) {
+  const workersRaw = body.workers ?? body.sales_workers ?? body.salesWorkers;
+  const workers = Array.isArray(workersRaw) ? workersRaw : null;
+  const price =
+    body.price !== undefined
+      ? body.price
+      : body.offeredPrice !== undefined
+        ? body.offeredPrice
+        : body.offered_price;
+  const _manualPriceTouched = Boolean(
+    body._manualPriceTouched ?? body.manual_price_touched ?? body.manualPriceTouched
+  );
+  return { workers, price, _manualPriceTouched };
+}
+
+function validateWorkersForPricing(workers) {
+  if (!Array.isArray(workers) || workers.length === 0) {
+    return { ok: false, error: "workers must be a non-empty array with labor lines." };
+  }
+  let sumDays = 0;
+  for (const w of workers) {
+    sumDays += Math.max(0, Number(w?.days || 0));
+  }
+  if (!Number.isFinite(sumDays) || sumDays <= 0) {
+    return {
+      ok: false,
+      error: "workers must include at least one line with days greater than zero."
+    };
+  }
+  return { ok: true };
+}
+
+/** Same notion as pricing-engine: manual only applies when flag is set and price string is non-empty. */
+function isManualOfferActive(pricingIn) {
+  const raw =
+    pricingIn.price === null || pricingIn.price === undefined ? "" : String(pricingIn.price);
+  return Boolean(pricingIn._manualPriceTouched) && String(raw).trim() !== "";
 }
 
 async function insertQuote({ supabaseUrl, serviceRoleKey, payload }) {
@@ -87,12 +149,12 @@ exports.handler = async (event) => {
       });
     }
 
-    const supabaseUrl =
-      process.env.SUPABASE_URL || "https://yaagobzgozzozibublmj.supabase.co";
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!serviceRoleKey) {
-      return json(500, { error: "Missing env SUPABASE_SERVICE_ROLE_KEY" });
+    let supabaseUrl;
+    let serviceRoleKey;
+    try {
+      ({ url: supabaseUrl, key: serviceRoleKey } = getSupabaseConfig());
+    } catch (_e) {
+      return json(500, { error: "Missing server configuration" });
     }
 
     const body = parseBody(event.body);
@@ -105,6 +167,88 @@ exports.handler = async (event) => {
     ) {
       return json(403, { error: "tenant_id does not match the signed-in account." });
     }
+
+    const pricingIn = parsePublishPricingInput(body);
+    const wCheck = validateWorkersForPricing(pricingIn.workers);
+    if (!wCheck.ok) {
+      return json(400, { error: wCheck.error });
+    }
+
+    const tenantSettings = await loadTenantSettingsFromLatestSnapshot(tenant.id);
+    let financials;
+    try {
+      financials = calculateQuotePublishFinancials(
+        {
+          workers: pricingIn.workers,
+          price: pricingIn.price,
+          _manualPriceTouched: pricingIn._manualPriceTouched
+        },
+        tenantSettings
+      );
+    } catch (err) {
+      return json(400, {
+        error: err?.message || "Unable to compute quote pricing from inputs."
+      });
+    }
+
+    const minPrice = financials.minimum_price;
+    if (isManualOfferActive(pricingIn)) {
+      const rawManual = String(pricingIn.price ?? "").trim();
+      const manualRequested = Number(rawManual);
+      if (!Number.isFinite(manualRequested)) {
+        console.log("[publish-public-quote] manual price rejected (invalid number)", {
+          tenant_id: tenant.id,
+          manual_requested_raw: rawManual,
+          minimum_price: minPrice,
+          accepted: false
+        });
+        return json(400, {
+          error: "Manual offered price must be a valid number."
+        });
+      }
+      if (manualRequested + 1e-9 < Number(minPrice)) {
+        console.log("[publish-public-quote] manual price rejected below minimum_price", {
+          tenant_id: tenant.id,
+          manual_requested: manualRequested,
+          minimum_price: minPrice,
+          accepted: false
+        });
+        return json(400, {
+          error: `Manual offered price cannot be below the minimum allowed (${Number(minPrice).toFixed(2)}).`
+        });
+      }
+      console.log("[publish-public-quote] manual price accepted vs minimum_price", {
+        tenant_id: tenant.id,
+        manual_requested: manualRequested,
+        minimum_price: minPrice,
+        accepted: true
+      });
+    }
+
+    if (
+      !Number.isFinite(financials.total) ||
+      financials.total <= 0 ||
+      !Number.isFinite(financials.deposit_required) ||
+      financials.deposit_required <= 0
+    ) {
+      return json(400, { error: "Computed total or deposit is invalid." });
+    }
+
+    const clientTotalReported =
+      Number(body.total ?? body.recommended_total ?? body.recommendedTotal ?? NaN) || 0;
+    if (
+      Number.isFinite(clientTotalReported) &&
+      Math.abs(clientTotalReported - financials.total) > 0.009
+    ) {
+      console.log("[publish-public-quote] frontend total differs from server total", {
+        tenant_id: tenant.id,
+        client_total: clientTotalReported,
+        server_total: financials.total
+      });
+    }
+
+    const total = financials.total;
+    const depositRequired = financials.deposit_required;
 
     const tenantDisplay = await loadTenantDisplayForTenantId(tenant.id);
 
@@ -127,12 +271,6 @@ exports.handler = async (event) => {
     } else {
       publicToken = makePublicToken("qt");
     }
-
-    const total =
-      Number(body.total ?? body.recommended_total ?? body.recommendedTotal ?? 0) || 0;
-
-    const depositRequired =
-      Number(body.deposit_required ?? body.depositRequired ?? 1000) || 0;
 
     const projectName = pickFirst(
       body.project_name,
