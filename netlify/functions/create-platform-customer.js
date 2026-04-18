@@ -3,6 +3,7 @@
  */
 
 const { stripeRequest } = require("./_lib/stripe");
+const { supabaseRequest } = require("./_lib/supabase-admin");
 
 function json(statusCode, body) {
   return {
@@ -31,7 +32,22 @@ exports.handler = async (event) => {
 
     console.log("Created customer:", customer.id);
 
-    return json(200, { ok: true, customer_id: customer.id });
+    const updated = await supabaseRequest(
+      `tenants?owner_email=eq.${encodeURIComponent(EMAIL)}`,
+      {
+        method: "PATCH",
+        body: { stripe_customer_id: customer.id },
+      }
+    );
+
+    const rows = Array.isArray(updated) ? updated : updated ? [updated] : [];
+    const tenant_updated = rows.length > 0;
+
+    return json(200, {
+      ok: true,
+      customer_id: customer.id,
+      tenant_updated,
+    });
   } catch (err) {
     return json(500, { ok: false, error: err.message || "Unexpected error" });
   }
