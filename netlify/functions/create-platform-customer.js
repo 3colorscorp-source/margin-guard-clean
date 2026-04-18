@@ -40,13 +40,24 @@ exports.handler = async (event) => {
       }
     );
 
-    const rows = Array.isArray(updated) ? updated : updated ? [updated] : [];
-    const tenant_updated = rows.length > 0;
+    const patchRows = Array.isArray(updated) ? updated : updated ? [updated] : [];
+    const tenant_updated = patchRows.length > 0;
+
+    const fetched = await supabaseRequest(
+      `tenants?owner_email=eq.${encodeURIComponent(EMAIL)}&select=owner_email,stripe_customer_id`
+    );
+    const getRows = Array.isArray(fetched) ? fetched : fetched ? [fetched] : [];
+    const row = getRows[0];
+    const tenant_row = {
+      owner_email: row?.owner_email ?? "",
+      stripe_customer_id: row?.stripe_customer_id ?? "",
+    };
 
     return json(200, {
       ok: true,
       customer_id: customer.id,
       tenant_updated,
+      tenant_row,
     });
   } catch (err) {
     return json(500, { ok: false, error: err.message || "Unexpected error" });
