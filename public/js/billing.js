@@ -89,11 +89,55 @@
     }
   }
 
+  async function restoreOwnerSession(event) {
+    event.preventDefault();
+    const email = String($("restoreEmail")?.value || "").trim();
+    const statusEl = $("restoreSessionStatus");
+    const btn = $("btnRestoreSession");
+    if (!email || !email.includes("@")) {
+      if (statusEl) {
+        statusEl.textContent = "Ingresa el correo del dueno del negocio.";
+        statusEl.className = "notice err";
+        statusEl.style.display = "block";
+      }
+      return;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Entrando...";
+    }
+    if (statusEl) {
+      statusEl.textContent = "Verificando suscripcion...";
+      statusEl.className = "notice";
+      statusEl.style.display = "block";
+    }
+    try {
+      const { res, data } = await post("/restore-owner-session", { email });
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "No se pudo restaurar la sesion");
+      }
+      window.location.href = "/dashboard.html";
+    } catch (err) {
+      if (statusEl) {
+        statusEl.textContent = err.message || "Error al entrar";
+        statusEl.className = "notice err";
+        statusEl.style.display = "block";
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Entrar con mi correo";
+      }
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     const form = $("checkoutForm");
     if (form) form.addEventListener("submit", startCheckout);
 
     const portalBtn = $("btnOpenPortal");
     if (portalBtn) portalBtn.addEventListener("click", openPortal);
+
+    const restoreForm = $("restoreSessionForm");
+    if (restoreForm) restoreForm.addEventListener("submit", restoreOwnerSession);
   });
 })();

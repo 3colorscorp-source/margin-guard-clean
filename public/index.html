@@ -51,6 +51,19 @@
             <p class="small-note">Al continuar aceptas terminos comerciales y renovacion anual.</p>
           </div>
         </form>
+
+        <div class="card-inner" style="margin-top:16px;border-top:1px solid rgba(255,255,255,0.08);padding-top:16px;">
+          <h3 style="margin-top:0;">Ya tienes cuenta</h3>
+          <p class="sub" style="margin-bottom:10px;">Si ya pagaste el plan anual, entra con el correo del dueno (el mismo de tu cuenta Margin Guard).</p>
+          <form id="restoreSessionForm" class="form" novalidate>
+            <div class="field">
+              <label for="restoreEmail">Email del dueno</label>
+              <input id="restoreEmail" type="email" maxlength="120" required autocomplete="email" placeholder="tu@empresa.com" />
+            </div>
+            <button id="btnRestoreSession" class="btn btn-block" type="submit">Entrar con mi correo</button>
+            <div id="restoreSessionStatus" class="notice" style="display:none;margin-top:10px;"></div>
+          </form>
+        </div>
       </div>
     </section>
   </main>
