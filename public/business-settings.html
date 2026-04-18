@@ -210,6 +210,46 @@
             <div class="notice" id="depositStripeNotice" style="display:none;margin-top:10px;"></div>
           </div>
         </div>
+
+        <div class="card" style="margin-top:16px;">
+          <div class="card-inner">
+            <div class="section-head">
+              <div>
+                <h2>Bank connection (Financial Connections)</h2>
+                <div class="sub">Conecta cuentas bancarias para el monitor de caja (solo tu tenant). Mapea cada cuenta enlazada a Operating, Savings, Profit o Tax Reserve; luego sincroniza saldos agregados.</div>
+              </div>
+            </div>
+            <div data-mg-bank-panel>
+              <div class="inline-actions" style="flex-wrap:wrap;gap:8px;">
+                <button type="button" class="btn primary" data-mg-action="connect-bank">Connect bank</button>
+                <button type="button" class="btn" data-mg-action="sync-summary">Sync bank data</button>
+                <button type="button" class="btn" data-mg-action="save-mapping">Save bucket mapping</button>
+              </div>
+              <p class="sub" data-mg-bank-status style="margin-top:10px;min-height:1.2em;"></p>
+              <div class="sub" data-mg-bank-summary style="margin-top:8px;">—</div>
+              <div class="sep" style="margin:14px 0;"></div>
+              <div class="sub" style="margin-bottom:8px;">Map linked accounts to buckets.</div>
+              <div class="form">
+                <div class="field">
+                  <label>Operating / Expenses</label>
+                  <select data-mg-map-bucket="operating"></select>
+                </div>
+                <div class="field">
+                  <label>Savings</label>
+                  <select data-mg-map-bucket="savings"></select>
+                </div>
+                <div class="field">
+                  <label>Profit</label>
+                  <select data-mg-map-bucket="profit"></select>
+                </div>
+                <div class="field">
+                  <label>Tax Reserve</label>
+                  <select data-mg-map-bucket="tax_reserve"></select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div>
@@ -258,6 +298,7 @@
 <script src="/js/tenant.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/app.js"></script>
+<script src="/js/bank-connection.js"></script>
 <script>
 (function () {
   const SETTINGS_KEY = 'mg_settings_v2';
