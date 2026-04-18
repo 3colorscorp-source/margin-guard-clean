@@ -1,6 +1,7 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
+const { getStripeKeyForPlatform } = require("./_lib/stripe");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -19,14 +20,6 @@ function json(statusCode, payload) {
   };
 }
 
-function getStripeSecretKey() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) {
-    throw new Error("Missing STRIPE_SECRET_KEY");
-  }
-  return key;
-}
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -34,7 +27,7 @@ function sleep(ms) {
 async function stripeGet(path) {
   const response = await fetch(`${STRIPE_API}${path}`, {
     method: "GET",
-    headers: { Authorization: `Bearer ${getStripeSecretKey()}` },
+    headers: { Authorization: `Bearer ${getStripeKeyForPlatform()}` },
   });
   const text = await response.text();
   let data;
@@ -62,7 +55,7 @@ async function stripeRefreshBalanceOnly(fcaId) {
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${getStripeSecretKey()}`,
+        Authorization: `Bearer ${getStripeKeyForPlatform()}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: form.toString(),

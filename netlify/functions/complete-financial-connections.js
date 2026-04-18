@@ -1,6 +1,7 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
+const { getStripeKeyForPlatform } = require("./_lib/stripe");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -25,14 +26,6 @@ function parseBody(raw) {
   }
 }
 
-function getStripeSecretKey() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) {
-    throw new Error("Missing STRIPE_SECRET_KEY");
-  }
-  return key;
-}
-
 async function retrieveFinancialConnectionsSession(sessionId) {
   const url = `${STRIPE_API}/financial_connections/sessions/${encodeURIComponent(
     sessionId
@@ -41,7 +34,7 @@ async function retrieveFinancialConnectionsSession(sessionId) {
   const response = await fetch(url, {
     method: "GET",
     headers: {
-      Authorization: `Bearer ${getStripeSecretKey()}`,
+      Authorization: `Bearer ${getStripeKeyForPlatform()}`,
     },
   });
 

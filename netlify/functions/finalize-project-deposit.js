@@ -8,6 +8,7 @@ const { assertPublicDepositAllowed } = require("./_lib/quote-deposit-gate");
 const { loadTenantDisplayForTenantId } = require("./_lib/tenant-display");
 const { runDepositPostAutomation } = require("./_lib/deposit-post-automation");
 const { logStripeSecretDiagnostics } = require("./_lib/stripe-env-log");
+const { getStripeKey } = require("./_lib/stripe");
 
 function json(statusCode, body) {
   return {
@@ -65,10 +66,11 @@ exports.handler = async (event) => {
       return json(405, { error: "Method Not Allowed" });
     }
 
-    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-
-    if (!stripeSecretKey) {
-      return json(500, { error: "Missing env STRIPE_SECRET_KEY" });
+    let stripeSecretKey;
+    try {
+      stripeSecretKey = getStripeKey();
+    } catch (_e) {
+      return json(500, { error: "Missing env STRIPE_SECRET_KEY or STRIPE_PLATFORM_SECRET_KEY" });
     }
 
     logStripeSecretDiagnostics(stripeSecretKey, "finalize-project-deposit");

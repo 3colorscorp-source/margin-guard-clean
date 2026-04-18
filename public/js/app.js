@@ -204,6 +204,12 @@ Thank you.`
     }[m]));
   }
 
+  function toTitleCase(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
   function count(id, targetId) {
     const input = $(id);
     const target = $(targetId);

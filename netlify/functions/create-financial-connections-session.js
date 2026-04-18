@@ -1,6 +1,10 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
+const {
+  fetchStripePlatformAccountMeta,
+  getStripeKeyForPlatform,
+} = require("./_lib/stripe");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -17,16 +21,9 @@ function json(statusCode, payload) {
   };
 }
 
-function getStripeSecretKey() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) {
-    throw new Error("Missing STRIPE_SECRET_KEY");
-  }
-  return key;
-}
-
 /**
- * Stripe Financial Connections Session — balances only (read permission on linked accounts).
+ * Financial Connections runs on the **platform** account (no Stripe-Account header).
+ * `account_holder[customer]` must be a platform Customer id for this secret key.
  */
 async function createFinancialConnectionsSession(stripeCustomerId) {
   const form = new URLSearchParams();
@@ -37,7 +34,7 @@ async function createFinancialConnectionsSession(stripeCustomerId) {
   const response = await fetch(`${STRIPE_API}/financial_connections/sessions`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${getStripeSecretKey()}`,
+      Authorization: `Bearer ${getStripeKeyForPlatform()}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: form.toString(),
@@ -85,6 +82,22 @@ exports.handler = async (event) => {
     if (String(customerId) !== String(session.c)) {
       return json(403, { error: "Session does not match tenant billing profile" });
     }
+
+    // TEMP: remove after production FC / Stripe key alignment is confirmed
+    let platformMeta = { id: null, livemode: null };
+    try {
+      platformMeta = await fetchStripePlatformAccountMeta();
+    } catch (e) {
+      console.error("[fc-debug] GET /v1/account failed:", e?.message || e);
+    }
+    console.log(
+      "[fc-debug] stripe_platform_account_id=",
+      platformMeta.id,
+      "livemode=",
+      platformMeta.livemode,
+      "customer_id_requested=",
+      customerId
+    );
 
     const fcSession = await createFinancialConnectionsSession(customerId);
 
