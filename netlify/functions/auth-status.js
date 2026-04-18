@@ -48,6 +48,43 @@ async function loadPublicUserAdminFlags(sessionUserId) {
   }
 }
 
+/**
+ * When Stripe subscription id in the cookie is stale/missing or Stripe disagrees with DB,
+ * still allow dashboard access if the tenant row says active for this customer + owner email.
+ */
+async function dbTenantAllowsAccess(stripeCustomerId, ownerEmailNorm) {
+  const cid = String(stripeCustomerId || "").trim();
+  const em = String(ownerEmailNorm || "").trim().toLowerCase();
+  if (!cid || !em) {
+    return { ok: false, name: null };
+  }
+  try {
+    const rows = await supabaseRequest(
+      `tenants?stripe_customer_id=eq.${encodeURIComponent(
+        cid
+      )}&select=plan_status,owner_email,name`
+    );
+    const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+    if (!row) {
+      return { ok: false, name: null };
+    }
+    const rowEmail = String(row.owner_email || "").trim().toLowerCase();
+    if (rowEmail !== em) {
+      return { ok: false, name: null };
+    }
+    const ps = String(row.plan_status || "").trim().toLowerCase();
+    if (ps !== "active") {
+      return { ok: false, name: null };
+    }
+    return { ok: true, name: row.name ? String(row.name) : null };
+  } catch (err) {
+    if (AUTH_DEBUG) {
+      console.warn("[auth-status] tenants lookup failed:", err?.message || err);
+    }
+    return { ok: false, name: null };
+  }
+}
+
 exports.handler = async (event) => {
   let userId = null;
   let is_admin = false;
@@ -103,7 +140,7 @@ exports.handler = async (event) => {
       });
     }
 
-    if (!session.s || !session.c) {
+    if (!session.c || !email) {
       debugAuth("ACCESS CHECK", {
         userId,
         subscription_status: null,
@@ -113,47 +150,89 @@ exports.handler = async (event) => {
       return json(200, { active: false, userId, is_admin: false });
     }
 
-    const subscription = await stripeRequest(`/subscriptions/${encodeURIComponent(session.s)}`, {
-      method: "GET",
-    });
+    let subscription = null;
+    let subscription_status = null;
+    let stripeAccess = false;
 
-    const subscription_status = subscription?.status ?? null;
-    const allowAccess = subscriptionIsActive(subscription.status);
+    if (session.s) {
+      try {
+        subscription = await stripeRequest(
+          `/subscriptions/${encodeURIComponent(session.s)}`,
+          { method: "GET" }
+        );
+        subscription_status = subscription?.status ?? null;
+        stripeAccess = subscriptionIsActive(subscription?.status);
+      } catch (stripeErr) {
+        debugAuth("STRIPE SUBSCRIPTION LOOKUP FAILED", {
+          subscriptionId: session.s,
+          message: stripeErr?.message || String(stripeErr),
+        });
+      }
+    }
+
+    if (stripeAccess && subscription) {
+      debugAuth("ACCESS CHECK", {
+        userId,
+        subscription_status,
+        is_admin: false,
+        allowAccess: true,
+      });
+      return json(200, {
+        active: true,
+        email: session.e || "",
+        is_admin: false,
+        userId,
+        subscription_status,
+        plan: subscription.items?.data?.[0]?.price?.nickname || "Annual",
+        renewsAt: subscription.current_period_end
+          ? new Date(subscription.current_period_end * 1000).toISOString()
+          : null,
+      });
+    }
+
+    const dbAccess = await dbTenantAllowsAccess(session.c, email);
+    if (dbAccess.ok) {
+      debugAuth("ACCESS CHECK", {
+        userId,
+        subscription_status,
+        is_admin: false,
+        allowAccess: true,
+        source: "tenant_plan_status",
+      });
+      return json(200, {
+        active: true,
+        email: session.e || "",
+        is_admin: false,
+        userId,
+        subscription_status,
+        plan: "Annual",
+        renewsAt: subscription?.current_period_end
+          ? new Date(subscription.current_period_end * 1000).toISOString()
+          : null,
+        tenantName: dbAccess.name || undefined,
+      });
+    }
 
     debugAuth("ACCESS CHECK", {
       userId,
       subscription_status,
       is_admin: false,
-      allowAccess,
+      allowAccess: false,
     });
 
-    if (!allowAccess) {
-      return json(
-        200,
-        {
-          active: false,
-          reason: "subscription_inactive",
-          userId,
-          is_admin: false,
-          subscription_status,
-        },
-        {
-          "Set-Cookie": clearSessionCookie(),
-        }
-      );
-    }
-
-    return json(200, {
-      active: true,
-      email: session.e || "",
-      is_admin: false,
-      userId,
-      subscription_status,
-      plan: subscription.items?.data?.[0]?.price?.nickname || "Annual",
-      renewsAt: subscription.current_period_end
-        ? new Date(subscription.current_period_end * 1000).toISOString()
-        : null,
-    });
+    return json(
+      200,
+      {
+        active: false,
+        reason: stripeAccess === false && session.s ? "subscription_inactive" : "not_entitled",
+        userId,
+        is_admin: false,
+        subscription_status,
+      },
+      {
+        "Set-Cookie": clearSessionCookie(),
+      }
+    );
   } catch (err) {
     debugAuth("ACCESS CHECK", {
       userId,
