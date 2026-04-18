@@ -50,7 +50,8 @@ async function loadPublicUserAdminFlags(sessionUserId) {
 
 /**
  * When Stripe subscription id in the cookie is stale/missing or Stripe disagrees with DB,
- * still allow dashboard access if the tenant row says active for this customer + owner email.
+ * allow access if public.tenants shows an active plan for this customer + owner email.
+ * Lookup by stripe_customer_id first; if no row (encoding/ drift), fallback owner_email and verify customer id.
  */
 async function dbTenantAllowsAccess(stripeCustomerId, ownerEmailNorm) {
   const cid = String(stripeCustomerId || "").trim();
@@ -59,12 +60,23 @@ async function dbTenantAllowsAccess(stripeCustomerId, ownerEmailNorm) {
     return { ok: false, name: null };
   }
   try {
-    const rows = await supabaseRequest(
+    let rows = await supabaseRequest(
       `tenants?stripe_customer_id=eq.${encodeURIComponent(
         cid
-      )}&select=plan_status,owner_email,name`
+      )}&select=plan_status,owner_email,name,stripe_customer_id`
     );
-    const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+    let row = Array.isArray(rows) && rows.length ? rows[0] : null;
+
+    if (!row) {
+      rows = await supabaseRequest(
+        `tenants?owner_email=eq.${encodeURIComponent(em)}&select=plan_status,owner_email,name,stripe_customer_id`
+      );
+      row = Array.isArray(rows) && rows.length ? rows[0] : null;
+      if (row && String(row.stripe_customer_id || "").trim() !== cid) {
+        return { ok: false, name: null };
+      }
+    }
+
     if (!row) {
       return { ok: false, name: null };
     }
@@ -98,7 +110,7 @@ exports.handler = async (event) => {
         is_admin: false,
         allowAccess: false,
       });
-      return json(200, { active: false });
+      return json(200, { active: false, reason: "no_session" });
     }
 
     const email = String(session.e || "").trim().toLowerCase();
@@ -147,7 +159,12 @@ exports.handler = async (event) => {
         is_admin: false,
         allowAccess: false,
       });
-      return json(200, { active: false, userId, is_admin: false });
+      return json(200, {
+        active: false,
+        reason: "session_missing_customer_or_email",
+        userId,
+        is_admin: false,
+      });
     }
 
     let subscription = null;
