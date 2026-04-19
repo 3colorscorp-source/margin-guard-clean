@@ -3673,25 +3673,52 @@ function renderSupervisor() {
     if (picker) {
       picker.innerHTML = projects.length
         ? projects.map((project) => `
-            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${escapeHtml(project.clientName || "Sin cliente")}</option>
+            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} · ${escapeHtml(project.clientName || "Sin cliente")}</option>
           `).join("")
         : `<option value="">Sin proyectos firmados</option>`;
       picker.value = selectedProject?.id || "";
-      picker.onchange = async () => {
+      picker.onchange = () => {
         saveSupervisorSelectedProjectId(picker.value);
-        if (picker.value) {
-          try {
-            await fetch("/.netlify/functions/assign-supervisor-project", {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ project_id: picker.value }),
-            });
-          } catch (_e) {
-            /* non-fatal */
-          }
+        const fb = $("supAssignFeedback");
+        if (fb) fb.textContent = "";
+        renderSupervisor();
+      };
+    }
+
+    const btnSupAssign = $("supAssignToMeBtn");
+    const supAssignFb = $("supAssignFeedback");
+    if (btnSupAssign) {
+      const pid = String(picker?.value || "").trim();
+      btnSupAssign.disabled = !pid;
+      btnSupAssign.onclick = async () => {
+        const projectId = String(picker?.value || "").trim();
+        if (!projectId) {
+          if (supAssignFb) supAssignFb.textContent = "Select a project first.";
+          return;
         }
-        await refreshSupervisorProjectsFromApi();
+        if (supAssignFb) supAssignFb.textContent = "";
+        btnSupAssign.disabled = true;
+        try {
+          const res = await fetch("/.netlify/functions/assign-supervisor-project", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ project_id: projectId }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data && data.ok === true) {
+            if (supAssignFb) supAssignFb.textContent = "Assigned. List updated.";
+            await refreshSupervisorProjectsFromApi();
+          } else {
+            const msg = (data && (data.error || data.message)) || `Assignment failed (${res.status}).`;
+            if (supAssignFb) supAssignFb.textContent = msg;
+          }
+        } catch (_e) {
+          if (supAssignFb) supAssignFb.textContent = "Network error. Try again.";
+        } finally {
+          const cur = String($("supProjectPicker")?.value || "").trim();
+          if (btnSupAssign) btnSupAssign.disabled = !cur;
+        }
       };
     }
 
