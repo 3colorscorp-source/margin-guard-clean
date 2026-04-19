@@ -197,6 +197,7 @@
           if (!response.ok || !data.client_secret) {
             throw new Error(data.error || "Could not start Financial Connections session");
           }
+          const createdSessionId = String(data.financial_connections_session_id || "").trim();
           const collect = stripe.collectFinancialConnectionsAccounts;
           if (typeof collect !== "function") {
             throw new Error("Financial Connections is not available in this Stripe.js build.");
@@ -206,7 +207,13 @@
             throw new Error(result.error.message || "Bank connection cancelled or failed");
           }
           const fcSession = result.session;
-          const sessionId = fcSession && fcSession.id ? String(fcSession.id) : "";
+          let sessionIdFromStripe = "";
+          if (typeof fcSession === "string") {
+            sessionIdFromStripe = fcSession.trim();
+          } else if (fcSession && typeof fcSession.id === "string") {
+            sessionIdFromStripe = String(fcSession.id).trim();
+          }
+          const sessionId = sessionIdFromStripe || createdSessionId;
           if (!sessionId) {
             throw new Error("Missing Financial Connections session after link");
           }
