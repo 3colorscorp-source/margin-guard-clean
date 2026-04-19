@@ -61,10 +61,6 @@ exports.handler = async (event) => {
       }
     }
 
-    const upsertPath = `tenant_financial_account_mapping?on_conflict=${encodeURIComponent(
-      "tenant_id,bucket"
-    )}`;
-
     for (const m of mappings) {
       const bucket = m?.bucket;
       if (!BUCKETS.has(bucket)) {
@@ -79,9 +75,7 @@ exports.handler = async (event) => {
 
       if (!accountId) {
         await supabaseRequest(
-          `tenant_financial_account_mapping?tenant_id=eq.${tid}&bucket=eq.${encodeURIComponent(
-            bucket
-          )}`,
+          `tenant_financial_account_mapping?tenant_id=eq.${tid}&bucket=eq.${encodeURIComponent(bucket)}`,
           { method: "DELETE" }
         );
         continue;
@@ -90,9 +84,7 @@ exports.handler = async (event) => {
       await assertAccountOwned(accountId);
 
       await supabaseRequest(
-        `tenant_financial_account_mapping?tenant_id=eq.${tid}&tenant_bank_account_id=eq.${encodeURIComponent(
-          accountId
-        )}`,
+        `tenant_financial_account_mapping?tenant_id=eq.${tid}&tenant_bank_account_id=eq.${encodeURIComponent(accountId)}`,
         { method: "DELETE" }
       );
 
@@ -101,11 +93,8 @@ exports.handler = async (event) => {
         { method: "DELETE" }
       );
 
-      await supabaseRequest(upsertPath, {
+      await supabaseRequest(`tenant_financial_account_mapping`, {
         method: "POST",
-        headers: {
-          Prefer: "return=representation,resolution=merge-duplicates",
-        },
         body: {
           tenant_id: tenant.id,
           tenant_bank_account_id: accountId,
