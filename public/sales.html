@@ -768,6 +768,7 @@
           workerHours: totalHours,
           workerDays: totalWorkerDays,
           workersCount: state.workers.length,
+          laborCost: labor,
           recommended,
           minimum,
           negotiation,
@@ -1239,6 +1240,32 @@
             state.signedProjectName = state.projectName || document.getElementById('salesProjectName')?.value || 'Project';
             state.signedClientName = state.clientName || document.getElementById('salesClientName')?.value || 'Client';
             saveSalesState(state);
+            if (state.quoteId && String(state.quoteId).trim()) {
+              const settings = loadSettings();
+              const metrics = buildSalesUIMetrics(state, settings);
+              const laborMetrics = calculateStandaloneSalesMetrics(state, settings);
+              void fetch('/.netlify/functions/upsert-tenant-project', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  quote_id: String(state.quoteId).trim(),
+                  project_name: state.projectName || document.getElementById('salesProjectName')?.value || '',
+                  client_name: state.clientName || document.getElementById('salesClientName')?.value || '',
+                  client_email: state.customerEmail || document.getElementById('salesCustomerEmail')?.value || '',
+                  status: 'signed',
+                  signed_at: state.soldAt,
+                  deposit_paid: false,
+                  estimated_days: metrics.workerDays,
+                  labor_budget: Number(laborMetrics.laborCost) || 0,
+                  sale_price: metrics.offered,
+                  recommended_price: metrics.recommended,
+                  minimum_price: metrics.minimum,
+                  due_date: state.dueDate || '',
+                  notes: state.notes || state.messageToClient || ''
+                })
+              }).catch(function () { /* non-fatal */ });
+            }
             if (signedStatus) {
               signedStatus.style.display = 'block';
               signedStatus.className = 'notice success';

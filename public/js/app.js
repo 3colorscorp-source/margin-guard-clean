@@ -486,6 +486,32 @@ Thank you.`
     writeStore(LS_PROJECTS, Array.isArray(projects) ? projects : []);
   }
 
+  /** Server-backed signed projects for Supervisor UI (replaces LS_PROJECTS for that surface). */
+  let supervisorProjectsCache = null;
+
+  async function fetchSupervisorProjects() {
+    const res = await fetch("/.netlify/functions/get-supervisor-projects", { credentials: "include" });
+    return await res.json();
+  }
+
+  async function refreshSupervisorProjectsFromApi() {
+    try {
+      const data = await fetchSupervisorProjects();
+      if (data && data.ok === true && Array.isArray(data.projects)) {
+        supervisorProjectsCache = data.projects;
+      } else {
+        supervisorProjectsCache = [];
+      }
+    } catch (_err) {
+      supervisorProjectsCache = [];
+    }
+    renderSupervisor();
+  }
+
+  function getSupervisorProjectsForUi() {
+    return Array.isArray(supervisorProjectsCache) ? supervisorProjectsCache : [];
+  }
+
   function upsertProject(project) {
     const projects = loadProjects();
     const next = [project, ...projects.filter((item) => item.id !== project.id)];
@@ -932,16 +958,35 @@ Thank you.`
   }
 
   function getProjectById(projectId) {
-    return loadProjects().find((project) => project.id === projectId) || null;
+    return (
+      getSupervisorProjectsForUi().find((project) => project.id === projectId) ||
+      loadProjects().find((project) => project.id === projectId) ||
+      null
+    );
   }
 
   function getSelectedProject() {
-    const projects = loadProjects();
     const selectedId = loadSupervisorSelectedProjectId();
+    const sup = getSupervisorProjectsForUi();
+    const fromSup = sup.find((project) => project.id === selectedId);
+    if (fromSup) return fromSup;
+    const projects = loadProjects();
     return projects.find((project) => project.id === selectedId) || projects[0] || null;
   }
 
   function updateProjectById(projectId, updater) {
+    const sup = getSupervisorProjectsForUi();
+    const sidx = sup.findIndex((project) => project.id === projectId);
+    if (sidx >= 0) {
+      const current = sup[sidx];
+      const nextProject =
+        typeof updater === "function" ? updater({ ...current }) : { ...current, ...updater };
+      const nextList = [...sup];
+      nextList[sidx] = nextProject;
+      supervisorProjectsCache = nextList;
+      if (loadSupervisorSelectedProjectId() === projectId) saveActiveProject(nextProject);
+      return nextProject;
+    }
     const projects = loadProjects();
     const index = projects.findIndex((project) => project.id === projectId);
     if (index < 0) return null;
@@ -3620,7 +3665,7 @@ function renderSupervisor() {
 
     const settings = loadSettings();
     const picker = $("supProjectPicker");
-    const projects = loadProjects();
+    const projects = getSupervisorProjectsForUi();
     const selectedProjectId = loadSupervisorSelectedProjectId();
     const selectedProject = projects.find((project) => project.id === selectedProjectId) || projects[0] || null;
     const changeRange = $("coStageRange");
@@ -3632,9 +3677,21 @@ function renderSupervisor() {
           `).join("")
         : `<option value="">Sin proyectos firmados</option>`;
       picker.value = selectedProject?.id || "";
-      picker.onchange = () => {
+      picker.onchange = async () => {
         saveSupervisorSelectedProjectId(picker.value);
-        renderSupervisor();
+        if (picker.value) {
+          try {
+            await fetch("/.netlify/functions/assign-supervisor-project", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ project_id: picker.value }),
+            });
+          } catch (_e) {
+            /* non-fatal */
+          }
+        }
+        await refreshSupervisorProjectsFromApi();
       };
     }
 
@@ -3722,7 +3779,7 @@ function renderSupervisor() {
     };
 
     const refresh = () => {
-      const currentProject = (loadProjects().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
+      const currentProject = (getSupervisorProjectsForUi().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
 
       if (!currentProject) {
         if ($("supStatus")) {
@@ -3947,18 +4004,14 @@ function renderSupervisor() {
             const index = Number(button.dataset.applyChange || -1);
             if (index < 0 || !state.changeOrders[index] || state.changeOrders[index].applied) return;
             const row = state.changeOrders[index];
-            const allProjects = loadProjects();
-            const projectIndex = allProjects.findIndex((item) => item.id === currentProject.id);
-            if (projectIndex < 0) return;
-            allProjects[projectIndex] = {
-              ...allProjects[projectIndex],
-              estimatedDays: finiteNumber(allProjects[projectIndex].estimatedDays, 0) + finiteNumber(row.addedDays, 0),
-              laborBudget: finiteNumber(allProjects[projectIndex].laborBudget, 0) + finiteNumber(row.laborBudgetAdded, 0)
-            };
-            saveProjects(allProjects);
-            saveActiveProject(allProjects[projectIndex]);
-            state.estimatedDays = finiteNumber(allProjects[projectIndex].estimatedDays, state.estimatedDays);
-            state.laborBudget = finiteNumber(allProjects[projectIndex].laborBudget, state.laborBudget);
+            const updated = updateProjectById(currentProject.id, (proj) => ({
+              ...proj,
+              estimatedDays: finiteNumber(proj.estimatedDays, 0) + finiteNumber(row.addedDays, 0),
+              laborBudget: finiteNumber(proj.laborBudget, 0) + finiteNumber(row.laborBudgetAdded, 0)
+            }));
+            if (!updated) return;
+            state.estimatedDays = finiteNumber(updated.estimatedDays, state.estimatedDays);
+            state.laborBudget = finiteNumber(updated.laborBudget, state.laborBudget);
             state.changeOrders[index] = {
               ...row,
               applied: true,
@@ -4015,7 +4068,7 @@ function renderSupervisor() {
       const el = $(id);
       if (!el) return;
       el.oninput = () => {
-        const currentProject = (loadProjects().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
+        const currentProject = (getSupervisorProjectsForUi().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
         if (!currentProject) return;
         const state = loadSupervisorReport(currentProject);
         state.changeOrderDraft = {
@@ -4035,7 +4088,7 @@ function renderSupervisor() {
 
     if (changeRange) {
       changeRange.oninput = () => {
-        const currentProject = (loadProjects().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
+        const currentProject = (getSupervisorProjectsForUi().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
         const state = currentProject ? loadSupervisorReport(currentProject) : null;
         if (!currentProject || !state) return;
         const changeMetrics = calcChangeOrder(currentProject, state, settings, {
@@ -4055,7 +4108,7 @@ function renderSupervisor() {
 
     if ($("btnAddCoWorker")) {
       $("btnAddCoWorker").onclick = () => {
-        const currentProject = (loadProjects().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
+        const currentProject = (getSupervisorProjectsForUi().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
         if (!currentProject) return alert("No signed projects yet.");
         const state = loadSupervisorReport(currentProject);
         state.changeOrderDraft = {
@@ -4076,7 +4129,7 @@ function renderSupervisor() {
 
     if ($("btnClearCoWorkers")) {
       $("btnClearCoWorkers").onclick = () => {
-        const currentProject = (loadProjects().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
+        const currentProject = (getSupervisorProjectsForUi().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
         if (!currentProject) return alert("No signed projects yet.");
         const state = loadSupervisorReport(currentProject);
         state.changeOrderDraft = buildDefaultChangeOrderDraft(currentProject);
@@ -4089,7 +4142,7 @@ function renderSupervisor() {
 
     if ($("btnAddSupEntry")) {
       $("btnAddSupEntry").onclick = () => {
-        const currentProject = (loadProjects().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
+        const currentProject = (getSupervisorProjectsForUi().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
         if (!currentProject) return alert("No signed projects yet.");
         const state = loadSupervisorReport(currentProject);
         const entry = {
@@ -4113,7 +4166,7 @@ function renderSupervisor() {
 
     if ($("btnAddSupExtra")) {
       $("btnAddSupExtra").onclick = () => {
-        const currentProject = (loadProjects().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
+        const currentProject = (getSupervisorProjectsForUi().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
         if (!currentProject) return alert("No signed projects yet.");
         const state = loadSupervisorReport(currentProject);
         const extra = {
@@ -4137,7 +4190,7 @@ function renderSupervisor() {
 
     if ($("btnAddChangeOrder")) {
       $("btnAddChangeOrder").onclick = () => {
-        const currentProject = (loadProjects().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
+        const currentProject = (getSupervisorProjectsForUi().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
         if (!currentProject) return alert("No signed projects yet.");
         const state = loadSupervisorReport(currentProject);
         state.changeOrderDraft = {
@@ -7090,6 +7143,9 @@ function renderSupervisor() {
     await initTenantSnapshotBridge();
     await hydrateOwnerBrandingCacheFromServer();
     render();
+    if ($("supervisorKpis")) {
+      void refreshSupervisorProjectsFromApi();
+    }
   });
 })();
 
