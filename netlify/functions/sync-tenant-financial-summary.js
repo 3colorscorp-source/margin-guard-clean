@@ -1,4 +1,4 @@
-const { readSessionFromEvent } = require("./_lib/session");
+const { buildRefreshedSessionCookie, readSessionFromEvent } = require("./_lib/session");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { getStripeKeyForPlatform } = require("./_lib/stripe");
@@ -12,10 +12,10 @@ const STRIPE_API = "https://api.stripe.com/v1";
 
 const BUCKET_KEYS = ["operating", "savings", "profit", "tax_reserve"];
 
-function json(statusCode, payload) {
+function json(statusCode, payload, extraHeaders = {}) {
   return {
     statusCode,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...extraHeaders },
     body: JSON.stringify(payload),
   };
 }
@@ -41,6 +41,39 @@ async function stripeGet(path) {
     throw new Error(msg);
   }
   return data;
+}
+
+/**
+ * Stripe documents balance on the Account object; some API versions expose /balance or /balances.
+ */
+async function tryGetAccountBalanceSubresource(fcaId) {
+  const headers = { Authorization: `Bearer ${getStripeKeyForPlatform()}` };
+  for (const suffix of ["/balances", "/balance"]) {
+    const response = await fetch(
+      `${STRIPE_API}/financial_connections/accounts/${encodeURIComponent(fcaId)}${suffix}`,
+      { method: "GET", headers }
+    );
+    if (!response.ok) {
+      continue;
+    }
+    const text = await response.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (_e) {
+      data = {};
+    }
+    if (data?.error) {
+      continue;
+    }
+    if (data?.object === "financial_connections.account" && data.balance) {
+      return data;
+    }
+    if (data && typeof data === "object" && (data.cash || data.current || data.type)) {
+      return { balance: data };
+    }
+  }
+  return null;
 }
 
 /**
@@ -85,10 +118,9 @@ function accountHolderCustomerId(account) {
 }
 
 /**
- * Uses only balance.* numeric fields. Amounts are in the smallest currency unit (e.g. cents for USD).
+ * Amounts from balance hash: smallest currency unit (e.g. cents for USD).
  */
-function usdAvailableMajorUnits(account) {
-  const bal = account?.balance;
+function usdMinorFromBalance(bal) {
   if (!bal || typeof bal !== "object") {
     return null;
   }
@@ -101,6 +133,17 @@ function usdAvailableMajorUnits(account) {
       minor = Number(v);
     }
   }
+
+  if (minor == null && bal.type === "credit" && bal.credit?.used) {
+    const used = bal.credit.used;
+    if (typeof used === "object") {
+      const v = used.usd ?? used.USD;
+      if (v != null && Number.isFinite(Number(v))) {
+        minor = Math.abs(Number(v));
+      }
+    }
+  }
+
   if (minor == null && bal.current && typeof bal.current === "object") {
     const v = bal.current.usd ?? bal.current.USD;
     if (v != null && Number.isFinite(Number(v))) {
@@ -108,20 +151,36 @@ function usdAvailableMajorUnits(account) {
     }
   }
 
+  return minor;
+}
+
+/**
+ * Uses balance on Financial Connections Account (or embedded balance object). Values in major units.
+ */
+function usdAvailableMajorUnits(accountOrWrapper) {
+  const bal = accountOrWrapper?.balance;
+  const minor = usdMinorFromBalance(bal);
   if (minor == null) {
     return null;
   }
-
   return minor / 100;
 }
 
 async function readUsdBalanceForAccount(fcaId, expectedCustomerId) {
   await stripeRefreshBalanceOnly(fcaId);
 
-  const maxAttempts = 10;
+  const maxAttempts = 12;
   for (let i = 0; i < maxAttempts; i += 1) {
     if (i > 0) {
-      await sleep(500 + i * 150);
+      await sleep(400 + i * 200);
+    }
+
+    const subRes = await tryGetAccountBalanceSubresource(fcaId);
+    if (subRes) {
+      const usdSub = usdAvailableMajorUnits(subRes);
+      if (usdSub != null) {
+        return usdSub;
+      }
     }
 
     const account = await stripeGet(
@@ -148,6 +207,7 @@ async function readUsdBalanceForAccount(fcaId, expectedCustomerId) {
 }
 
 exports.handler = async (event) => {
+  let cookieHeaders = {};
   try {
     if (event.httpMethod !== "POST") {
       return json(405, { error: "Method not allowed" });
@@ -163,9 +223,14 @@ exports.handler = async (event) => {
       return json(404, { error: "Tenant not found" });
     }
 
+    const refreshedCookie = buildRefreshedSessionCookie(session, tenant);
+    if (refreshedCookie) {
+      cookieHeaders = { "Set-Cookie": refreshedCookie };
+    }
+
     const customerId = String(tenant.stripe_customer_id || "").trim();
-    if (!customerId || String(customerId) !== String(session.c)) {
-      return json(403, { error: "Session does not match tenant billing profile" });
+    if (!customerId) {
+      return json(403, { error: "Tenant has no Stripe customer" }, cookieHeaders);
     }
 
     const tid = encodeURIComponent(tenant.id);
@@ -270,18 +335,22 @@ exports.handler = async (event) => {
       });
     }
 
-    return json(200, {
-      ok: true,
-      period_start: periodDate,
-      period_end: periodDate,
-      currency,
-      operating_balance,
-      savings_balance,
-      profit_balance,
-      tax_reserve_balance,
-      cash_on_hand,
-    });
+    return json(
+      200,
+      {
+        ok: true,
+        period_start: periodDate,
+        period_end: periodDate,
+        currency,
+        operating_balance,
+        savings_balance,
+        profit_balance,
+        tax_reserve_balance,
+        cash_on_hand,
+      },
+      cookieHeaders
+    );
   } catch (err) {
-    return json(500, { error: err.message || "Unexpected error" });
+    return json(500, { error: err.message || "Unexpected error" }, cookieHeaders);
   }
 };
