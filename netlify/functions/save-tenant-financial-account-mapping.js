@@ -96,6 +96,11 @@ exports.handler = async (event) => {
         { method: "DELETE" }
       );
 
+      await supabaseRequest(
+        `tenant_financial_account_mapping?tenant_id=eq.${tid}&bucket=eq.${encodeURIComponent(bucket)}`,
+        { method: "DELETE" }
+      );
+
       await supabaseRequest(upsertPath, {
         method: "POST",
         headers: {
