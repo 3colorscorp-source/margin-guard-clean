@@ -2,22 +2,34 @@ const { readSessionFromEvent } = require("./_lib/session");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 
-const BUCKETS = new Set(["operating", "savings", "profit", "tax_reserve"]);
+const ALLOWED_BUCKETS = new Set([
+  "operating",
+  "reserve",
+  "payroll",
+  "tax",
+  "profit",
+]);
 
-function json(statusCode, body) {
+function json(statusCode, payload) {
   return {
     statusCode,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   };
 }
 
-function parseBody(raw) {
-  try {
-    return JSON.parse(raw || "{}");
-  } catch {
-    return {};
-  }
+function sanitizeMapping(row, tenantId) {
+  const bucket = String(row?.bucket || "").trim().toLowerCase();
+  const accountId = String(row?.tenant_bank_account_id || "").trim();
+
+  if (!bucket || !ALLOWED_BUCKETS.has(bucket)) return null;
+  if (!accountId) return null;
+
+  return {
+    tenant_id: tenantId,
+    bucket,
+    tenant_bank_account_id: accountId,
+  };
 }
 
 exports.handler = async (event) => {
@@ -27,84 +39,56 @@ exports.handler = async (event) => {
     }
 
     const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
-      return json(401, { error: "Unauthorized" });
-    }
+    if (!session?.e) return json(401, { error: "Unauthorized" });
 
     const tenant = await resolveTenantFromSession(session);
-    if (!tenant?.id) {
-      return json(404, { error: "Tenant not found" });
+    if (!tenant?.id) return json(404, { error: "Tenant not found" });
+
+    let body;
+    try {
+      body = JSON.parse(event.body || "{}");
+    } catch {
+      return json(400, { error: "Invalid JSON" });
     }
 
-    const customerId = String(tenant.stripe_customer_id || "").trim();
-    if (!customerId || String(customerId) !== String(session.c)) {
-      return json(403, { error: "Session does not match tenant billing profile" });
+    const incoming = Array.isArray(body?.mappings)
+      ? body.mappings
+      : Array.isArray(body)
+        ? body
+        : body?.bucket
+          ? [body]
+          : [];
+
+    const sanitized = incoming
+      .map((r) => sanitizeMapping(r, tenant.id))
+      .filter(Boolean);
+
+    const byBucket = new Map();
+    for (const r of sanitized) byBucket.set(r.bucket, r);
+
+    const payload = Array.from(byBucket.values());
+
+    if (!payload.length) {
+      return json(400, { error: "No valid mappings" });
     }
 
-    const body = parseBody(event.body);
-    const mappings = body.mappings;
-    if (!Array.isArray(mappings)) {
-      return json(400, { error: "mappings array required" });
-    }
-
-    const tid = encodeURIComponent(tenant.id);
-
-    async function assertAccountOwned(accountUuid) {
-      const rows = await supabaseRequest(
-        `tenant_bank_accounts?id=eq.${encodeURIComponent(
-          accountUuid
-        )}&tenant_id=eq.${tid}&status=eq.active&select=id`
-      );
-      const row = Array.isArray(rows) ? rows[0] : null;
-      if (!row?.id) {
-        throw new Error("Invalid or inactive bank account for this tenant");
-      }
-    }
-
-    for (const m of mappings) {
-      const bucket = m?.bucket;
-      if (!BUCKETS.has(bucket)) {
-        return json(400, { error: "Invalid bucket" });
-      }
-
-      const rawId = m?.tenant_bank_account_id;
-      const accountId =
-        rawId === null || rawId === undefined || rawId === ""
-          ? ""
-          : String(rawId).trim();
-
-      if (!accountId) {
-        await supabaseRequest(
-          `tenant_financial_account_mapping?tenant_id=eq.${tid}&bucket=eq.${encodeURIComponent(bucket)}`,
-          { method: "DELETE" }
-        );
-        continue;
-      }
-
-      await assertAccountOwned(accountId);
-
-      await supabaseRequest(
-        `tenant_financial_account_mapping?tenant_id=eq.${tid}&tenant_bank_account_id=eq.${encodeURIComponent(accountId)}`,
-        { method: "DELETE" }
-      );
-
-      await supabaseRequest(
-        `tenant_financial_account_mapping?tenant_id=eq.${tid}&bucket=eq.${encodeURIComponent(bucket)}`,
-        { method: "DELETE" }
-      );
-
-      await supabaseRequest(`tenant_financial_account_mapping`, {
+    const rows = await supabaseRequest(
+      "tenant_financial_account_mapping?on_conflict=tenant_id,bucket",
+      {
         method: "POST",
-        body: {
-          tenant_id: tenant.id,
-          tenant_bank_account_id: accountId,
-          bucket,
+        body: payload,
+        headers: {
+          Prefer: "resolution=merge-duplicates,return=representation",
         },
-      });
-    }
+      }
+    );
 
-    return json(200, { ok: true });
+    return json(200, {
+      ok: true,
+      saved: Array.isArray(rows) ? rows.length : 0,
+      rows,
+    });
   } catch (err) {
-    return json(500, { error: err.message || "Unexpected error" });
+    return json(500, { error: err.message || "save_mapping_failed" });
   }
 };
