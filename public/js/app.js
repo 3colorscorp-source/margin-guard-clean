@@ -618,6 +618,21 @@ Thank you.`
     return { displayNotes, workers, laborBudgetAdded, hoursAdded, minimum, negotiation };
   }
 
+  function isUuidLikeChangeOrderId(value) {
+    const s = String(value || "").trim();
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+  }
+
+  /** DB-backed change order rows carry a UUID; local-only rows use ids like CO-173... */
+  function getServerChangeOrderApplyId(row) {
+    if (!row || typeof row !== "object") return "";
+    if (row.changeOrderServerId && isUuidLikeChangeOrderId(row.changeOrderServerId)) {
+      return String(row.changeOrderServerId).trim();
+    }
+    if (row.id && isUuidLikeChangeOrderId(row.id)) return String(row.id).trim();
+    return "";
+  }
+
   function mapTenantProjectChangeOrderRowToRow(row) {
     if (!row) return null;
     const parsed = parseChangeOrderNotesFromApi(row.notes);
@@ -4151,8 +4166,21 @@ function renderSupervisor() {
       if ($("supLaborBudgetLabel")) $("supLaborBudgetLabel").textContent = money(state.laborBudget, settings.currency);
       if ($("supPortfolioCount")) $("supPortfolioCount").textContent = String(projects.length);
 
+      const listedForCoTotals = isServerListedSupervisorProject(currentProject.id);
+      const coAppliedServer = listedForCoTotals ? Number(currentProject.appliedChangeOrderTotal) || 0 : null;
+      const projRevServer =
+        listedForCoTotals && currentProject.projectedRevenueTotal != null && !Number.isNaN(Number(currentProject.projectedRevenueTotal))
+          ? Number(currentProject.projectedRevenueTotal)
+          : listedForCoTotals
+            ? (Number(currentProject.salePrice) || 0) + (coAppliedServer || 0)
+            : null;
+
       if ($("supExecutiveNote")) {
-        $("supExecutiveNote").textContent = `Proyecto seleccionado: ${state.projectName}. Has reportado ${reportedDays.toFixed(2)} dias y ${reportedHours.toFixed(2)} horas. Te quedan ${daysRemaining.toFixed(2)} dias estimados y ${money(laborRemaining, settings.currency)} de presupuesto restante.`;
+        const revPart =
+          listedForCoTotals && projRevServer != null
+            ? ` Ingresos proyectados (servidor): ${money(projRevServer, settings.currency)}.`
+            : "";
+        $("supExecutiveNote").textContent = `Proyecto seleccionado: ${state.projectName}. Has reportado ${reportedDays.toFixed(2)} dias y ${reportedHours.toFixed(2)} horas. Te quedan ${daysRemaining.toFixed(2)} dias estimados y ${money(laborRemaining, settings.currency)} de presupuesto restante.${revPart}`;
       }
 
       if ($("supPrimaryBalance")) $("supPrimaryBalance").textContent = money(laborRemaining, settings.currency);
@@ -4162,7 +4190,7 @@ function renderSupervisor() {
       if ($("supPrimaryExtras")) $("supPrimaryExtras").textContent = money(extraSpent, settings.currency);
       if ($("supPrimaryExtrasMeta")) $("supPrimaryExtrasMeta").textContent = "Acumulado de gasto imprevisto";
 
-      $("supervisorKpis").innerHTML = [
+      const kpiRows = [
         ["Proyectos activos", `${projects.length}`, "El supervisor puede alternar entre varios trabajos"],
         ["Dias reportados", reportedDays.toFixed(2), "Avance real del proyecto seleccionado"],
         ["Dias restantes", daysRemaining.toFixed(2), "Dias estimados pendientes para terminar"],
@@ -4170,7 +4198,20 @@ function renderSupervisor() {
         ["Presupuesto restante", money(laborRemaining, settings.currency), "Presupuesto disponible despues de horas y extras"],
         ["Gasto imprevisto", money(extraSpent, settings.currency), "Compras y costos no contemplados"],
         ["Dias de atraso", `${dayDelta}`, !state.dueDate || !state.projectedEndDate ? "Sin comparacion de fechas todavia" : (dayDelta <= 0 ? "No hay atraso proyectado" : "Diferencia contra fecha comprometida")]
-      ].map(([label, value, meta]) => `
+      ];
+      if (listedForCoTotals && coAppliedServer != null && projRevServer != null) {
+        kpiRows.splice(1, 0, [
+          "Ingresos proyectados",
+          money(projRevServer, settings.currency),
+          "Precio de venta base mas change orders aplicados (tenant_projects)",
+        ]);
+        kpiRows.splice(2, 0, [
+          "CO aplicados (total)",
+          money(coAppliedServer, settings.currency),
+          "Suma de precios cliente de change orders ya aplicados",
+        ]);
+      }
+      $("supervisorKpis").innerHTML = kpiRows.map(([label, value, meta]) => `
         <div class="kpi-box">
           <div class="label">${escapeHtml(label)}</div>
           <div class="value">${escapeHtml(value)}</div>
@@ -4272,13 +4313,42 @@ function renderSupervisor() {
         });
 
         $("coListBody").querySelectorAll("button[data-apply-change]").forEach((button) => {
-          button.onclick = () => {
+          button.onclick = async () => {
             const index = Number(button.dataset.applyChange || -1);
             if (index < 0 || !state.changeOrders[index] || state.changeOrders[index].applied) return;
             const row = state.changeOrders[index];
-            if (row.changeOrderServerId) {
-              window.alert("Apply for server-saved change orders is not synced to the database yet.");
-              return;
+            const coApplyId = getServerChangeOrderApplyId(row);
+            if (coApplyId && isServerListedSupervisorProject(currentProject.id)) {
+              try {
+                const res = await fetch("/.netlify/functions/apply-project-change-order", {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ change_order_id: coApplyId }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (data && data.alreadyApplied === true) {
+                  window.alert(data.error || "Change order already applied.");
+                  return;
+                }
+                if (!res.ok || !data || data.ok !== true) {
+                  window.alert((data && (data.error || data.message)) || `Apply failed (${res.status}).`);
+                  return;
+                }
+                const pid = currentProject.id;
+                delete supervisorProjectChangeOrdersCache[pid];
+                await refreshSupervisorProjectsFromApi();
+                const freshCo = await fetchProjectChangeOrders(pid);
+                supervisorProjectChangeOrdersCache[pid] =
+                  freshCo && freshCo.ok === true && Array.isArray(freshCo.changeOrders)
+                    ? { ok: true, changeOrders: freshCo.changeOrders }
+                    : { ok: false, changeOrders: [] };
+                renderSupervisor();
+                return;
+              } catch (_e) {
+                window.alert("Network error. Could not apply change order.");
+                return;
+              }
             }
             const updated = updateProjectById(currentProject.id, (proj) => ({
               ...proj,

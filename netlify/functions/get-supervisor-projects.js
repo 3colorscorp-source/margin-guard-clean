@@ -35,6 +35,11 @@ function mapRowToProject(row) {
     minimumPrice: Number(row.minimum_price) || 0,
     dueDate: due,
     notes: row.notes ?? "",
+    appliedChangeOrderTotal: Number(row.applied_change_order_total) || 0,
+    projectedRevenueTotal:
+      row.projected_revenue_total == null || row.projected_revenue_total === ""
+        ? null
+        : Number(row.projected_revenue_total),
   };
 }
 
