@@ -61,6 +61,10 @@ exports.handler = async (event) => {
       }
     }
 
+    const upsertPath = `tenant_financial_account_mapping?on_conflict=${encodeURIComponent(
+      "tenant_id,bucket"
+    )}`;
+
     for (const m of mappings) {
       const bucket = m?.bucket;
       if (!BUCKETS.has(bucket)) {
@@ -92,20 +96,15 @@ exports.handler = async (event) => {
         { method: "DELETE" }
       );
 
-      await supabaseRequest(
-        `tenant_financial_account_mapping?tenant_id=eq.${tid}&bucket=eq.${encodeURIComponent(
-          bucket
-        )}`,
-        { method: "DELETE" }
-      );
-
-      await supabaseRequest("tenant_financial_account_mapping", {
+      await supabaseRequest(upsertPath, {
         method: "POST",
+        headers: {
+          Prefer: "return=representation,resolution=merge-duplicates",
+        },
         body: {
           tenant_id: tenant.id,
           tenant_bank_account_id: accountId,
           bucket,
-          updated_at: new Date().toISOString(),
         },
       });
     }
