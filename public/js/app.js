@@ -527,6 +527,49 @@ Thank you.`
     });
   }
 
+  /** projectId -> { ok: boolean, expenses: array } for tenant_project_expenses (Supervisor unexpected costs). */
+  const supervisorProjectExpensesCache = Object.create(null);
+  const supervisorProjectExpensesFetchInFlight = new Set();
+
+  async function fetchProjectExpenses(projectId) {
+    const id = String(projectId || "").trim();
+    if (!id) return { ok: false, expenses: [] };
+    const res = await fetch(
+      `/.netlify/functions/get-project-expenses?project_id=${encodeURIComponent(id)}`,
+      { credentials: "include" }
+    );
+    return await res.json().catch(() => ({ ok: false, expenses: [] }));
+  }
+
+  function packSupervisorExpenseNote(item, note) {
+    const i = String(item || "").trim();
+    const n = String(note || "").trim();
+    if (n) return `${i}\n${n}`;
+    return i;
+  }
+
+  function mapTenantProjectExpenseRowToExtra(row) {
+    if (!row) return null;
+    const d = row.expense_date == null ? "" : String(row.expense_date).slice(0, 10);
+    const raw = row.note == null ? "" : String(row.note);
+    const nl = raw.indexOf("\n");
+    const item = nl >= 0 ? raw.slice(0, nl).trim() : raw.trim();
+    const note = nl >= 0 ? raw.slice(nl + 1).trim() : "";
+    return {
+      expenseId: row.id,
+      date: d,
+      item,
+      amount: Number(row.amount) || 0,
+      note,
+    };
+  }
+
+  function clearSupervisorProjectExpensesCache() {
+    Object.keys(supervisorProjectExpensesCache).forEach((k) => {
+      delete supervisorProjectExpensesCache[k];
+    });
+  }
+
   async function fetchSupervisorProjects() {
     const res = await fetch("/.netlify/functions/get-supervisor-projects", { credentials: "include" });
     return await res.json();
@@ -544,6 +587,7 @@ Thank you.`
       supervisorProjectsCache = [];
     }
     clearSupervisorProjectReportsCache();
+    clearSupervisorProjectExpensesCache();
     renderSupervisor();
   }
 
@@ -968,17 +1012,25 @@ Thank you.`
     const saved = reports[project.id];
     const base = buildDefaultSupervisorReport(project);
     const cached = supervisorProjectReportsCache[project.id];
-    const useApiEntries =
-      cached && cached.ok === true && isServerListedSupervisorProject(project.id);
+    const cachedExp = supervisorProjectExpensesCache[project.id];
+    const listed = isServerListedSupervisorProject(project.id);
+    const useApiEntries = cached && cached.ok === true && listed;
     const apiEntries = useApiEntries
       ? (Array.isArray(cached.reports) ? cached.reports : [])
           .map(mapTenantProjectReportRowToEntry)
+          .filter(Boolean)
+      : null;
+    const useApiExtras = cachedExp && cachedExp.ok === true && listed;
+    const apiExtras = useApiExtras
+      ? (Array.isArray(cachedExp.expenses) ? cachedExp.expenses : [])
+          .map(mapTenantProjectExpenseRowToExtra)
           .filter(Boolean)
       : null;
     if (!saved || typeof saved !== "object") {
       return {
         ...base,
         entries: apiEntries != null ? apiEntries : base.entries,
+        extras: apiExtras != null ? apiExtras : base.extras,
       };
     }
     return {
@@ -990,7 +1042,7 @@ Thank you.`
       laborBudget: finiteNumber(saved.laborBudget, base.laborBudget),
       dueDate: normalizeDateInput(saved.dueDate || base.dueDate),
       entries: apiEntries != null ? apiEntries : (Array.isArray(saved.entries) ? saved.entries : []),
-      extras: Array.isArray(saved.extras) ? saved.extras : [],
+      extras: apiExtras != null ? apiExtras : (Array.isArray(saved.extras) ? saved.extras : []),
       changeOrders: Array.isArray(saved.changeOrders) ? saved.changeOrders : [],
       changeOrderDraft: {
         ...base.changeOrderDraft,
@@ -3914,6 +3966,20 @@ function renderSupervisor() {
             }
           });
         }
+        if (!supervisorProjectExpensesCache[pid] && !supervisorProjectExpensesFetchInFlight.has(pid)) {
+          supervisorProjectExpensesFetchInFlight.add(pid);
+          void fetchProjectExpenses(pid).then((data) => {
+            supervisorProjectExpensesFetchInFlight.delete(pid);
+            if (data && data.ok === true && Array.isArray(data.expenses)) {
+              supervisorProjectExpensesCache[pid] = { ok: true, expenses: data.expenses };
+            } else {
+              supervisorProjectExpensesCache[pid] = { ok: false, expenses: [] };
+            }
+            if ($("supervisorKpis") && loadSupervisorSelectedProjectId() === pid) {
+              renderSupervisor();
+            }
+          });
+        }
       }
 
       const state = loadSupervisorReport(currentProject);
@@ -4157,7 +4223,13 @@ function renderSupervisor() {
         `).join("");
         $("supExtrasBody").querySelectorAll("button[data-delete-extra]").forEach((button) => {
           button.onclick = () => {
-            state.extras.splice(Number(button.dataset.deleteExtra || -1), 1);
+            const idx = Number(button.dataset.deleteExtra || -1);
+            const row = state.extras[idx];
+            if (row && row.expenseId) {
+              window.alert("This row is saved on the server; delete from database is not wired here yet.");
+              return;
+            }
+            state.extras.splice(idx, 1);
             saveSupervisorReport(currentProject.id, state);
             refresh();
           };
@@ -4310,7 +4382,7 @@ function renderSupervisor() {
     }
 
     if ($("btnAddSupExtra")) {
-      $("btnAddSupExtra").onclick = () => {
+      $("btnAddSupExtra").onclick = async () => {
         const currentProject = (getSupervisorProjectsForUi().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
         if (!currentProject) return alert("No signed projects yet.");
         const state = loadSupervisorReport(currentProject);
@@ -4322,6 +4394,48 @@ function renderSupervisor() {
         };
         if (!extra.date) return alert("Extra expense date is required.");
         if (!extra.item) return alert("Extra expense concept is required.");
+        if (extra.amount <= 0) return alert("Enter an amount greater than zero.");
+
+        if (isServerListedSupervisorProject(currentProject.id)) {
+          try {
+            const res = await fetch("/.netlify/functions/save-project-expense", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                project_id: currentProject.id,
+                expense_date: extra.date,
+                amount: extra.amount,
+                note: packSupervisorExpenseNote(extra.item, extra.note)
+              })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data || data.ok !== true) {
+              const msg = (data && (data.error || data.message)) || `Save failed (${res.status}).`;
+              window.alert(msg);
+              return;
+            }
+            delete supervisorProjectExpensesCache[currentProject.id];
+            const fresh = await fetchProjectExpenses(currentProject.id);
+            supervisorProjectExpensesCache[currentProject.id] =
+              fresh && fresh.ok === true && Array.isArray(fresh.expenses)
+                ? { ok: true, expenses: fresh.expenses }
+                : { ok: false, expenses: [] };
+            state.locked = true;
+            const merged = loadSupervisorReport(currentProject);
+            saveSupervisorReport(currentProject.id, merged);
+            setVal("supExtraDate", "");
+            setVal("supExtraItem", "");
+            setNum("supExtraAmount", 0);
+            setVal("supExtraNote", "");
+            refresh();
+            return;
+          } catch (_e) {
+            window.alert("Network error. Could not save expense.");
+            return;
+          }
+        }
+
         state.locked = true;
         state.extras.unshift(extra);
         setVal("supExtraDate", "");
