@@ -570,6 +570,84 @@ Thank you.`
     });
   }
 
+  /** projectId -> { ok: boolean, changeOrders: array } for tenant_project_change_orders. */
+  const supervisorProjectChangeOrdersCache = Object.create(null);
+  const supervisorProjectChangeOrdersFetchInFlight = new Set();
+
+  async function fetchProjectChangeOrders(projectId) {
+    const id = String(projectId || "").trim();
+    if (!id) return { ok: false, changeOrders: [] };
+    const res = await fetch(
+      `/.netlify/functions/get-project-change-orders?project_id=${encodeURIComponent(id)}`,
+      { credentials: "include" }
+    );
+    return await res.json().catch(() => ({ ok: false, changeOrders: [] }));
+  }
+
+  function packChangeOrderNotesForApi(userNotes, metrics, workers) {
+    return JSON.stringify({
+      v: 1,
+      userNotes: userNotes || "",
+      workers: Array.isArray(workers) ? workers.map((w) => ({ ...w })) : [],
+      laborBudgetAdded: finiteNumber(metrics.labor, 0),
+      hoursAdded: finiteNumber(metrics.totalHours, 0),
+      minimum: finiteNumber(metrics.minimum, 0),
+      negotiation: finiteNumber(metrics.negotiation, 0),
+    });
+  }
+
+  function parseChangeOrderNotesFromApi(raw) {
+    const s = raw == null ? "" : String(raw);
+    let displayNotes = s;
+    let workers = [];
+    let laborBudgetAdded = 0;
+    let hoursAdded = 0;
+    let minimum = 0;
+    let negotiation = 0;
+    try {
+      const p = JSON.parse(s);
+      if (p && typeof p === "object" && p.v === 1) {
+        displayNotes = p.userNotes != null ? String(p.userNotes) : "";
+        workers = Array.isArray(p.workers) ? p.workers : [];
+        laborBudgetAdded = finiteNumber(p.laborBudgetAdded, 0);
+        hoursAdded = finiteNumber(p.hoursAdded, 0);
+        minimum = finiteNumber(p.minimum, 0);
+        negotiation = finiteNumber(p.negotiation, 0);
+      }
+    } catch (_e) {}
+    return { displayNotes, workers, laborBudgetAdded, hoursAdded, minimum, negotiation };
+  }
+
+  function mapTenantProjectChangeOrderRowToRow(row) {
+    if (!row) return null;
+    const parsed = parseChangeOrderNotesFromApi(row.notes);
+    const recommended = Number(row.recommended_price) || 0;
+    const min = parsed.minimum > 0 ? parsed.minimum : recommended;
+    const neg = parsed.negotiation > 0 ? parsed.negotiation : recommended;
+    return {
+      changeOrderServerId: row.id,
+      id: row.id,
+      createdAt: row.created_at || new Date().toISOString(),
+      title: row.title || "",
+      notes: parsed.displayNotes,
+      addedDays: Number(row.worker_days) || 0,
+      offeredPrice: Number(row.client_price) || 0,
+      recommended,
+      minimum: min,
+      negotiation: neg,
+      laborBudgetAdded: parsed.laborBudgetAdded,
+      hoursAdded: parsed.hoursAdded,
+      workers: parsed.workers,
+      applied: String(row.status || "").toLowerCase() === "applied",
+    };
+  }
+
+  function clearSupervisorProjectChangeOrdersCache() {
+    Object.keys(supervisorProjectChangeOrdersCache).forEach((k) => {
+      delete supervisorProjectChangeOrdersCache[k];
+    });
+  }
+
   async function fetchSupervisorProjects() {
     const res = await fetch("/.netlify/functions/get-supervisor-projects", { credentials: "include" });
     return await res.json();
@@ -588,6 +666,7 @@ Thank you.`
     }
     clearSupervisorProjectReportsCache();
     clearSupervisorProjectExpensesCache();
+    clearSupervisorProjectChangeOrdersCache();
     renderSupervisor();
   }
 
@@ -1013,6 +1092,7 @@ Thank you.`
     const base = buildDefaultSupervisorReport(project);
     const cached = supervisorProjectReportsCache[project.id];
     const cachedExp = supervisorProjectExpensesCache[project.id];
+    const cachedCo = supervisorProjectChangeOrdersCache[project.id];
     const listed = isServerListedSupervisorProject(project.id);
     const useApiEntries = cached && cached.ok === true && listed;
     const apiEntries = useApiEntries
@@ -1026,11 +1106,19 @@ Thank you.`
           .map(mapTenantProjectExpenseRowToExtra)
           .filter(Boolean)
       : null;
+    const useApiChangeOrders = cachedCo && cachedCo.ok === true && listed;
+    const apiChangeOrders = useApiChangeOrders
+      ? (Array.isArray(cachedCo.changeOrders) ? cachedCo.changeOrders : [])
+          .map(mapTenantProjectChangeOrderRowToRow)
+          .filter(Boolean)
+      : null;
     if (!saved || typeof saved !== "object") {
       return {
         ...base,
         entries: apiEntries != null ? apiEntries : base.entries,
         extras: apiExtras != null ? apiExtras : base.extras,
+        changeOrders: apiChangeOrders != null ? apiChangeOrders : base.changeOrders,
+        changeOrderDraft: { ...base.changeOrderDraft },
       };
     }
     return {
@@ -1043,7 +1131,8 @@ Thank you.`
       dueDate: normalizeDateInput(saved.dueDate || base.dueDate),
       entries: apiEntries != null ? apiEntries : (Array.isArray(saved.entries) ? saved.entries : []),
       extras: apiExtras != null ? apiExtras : (Array.isArray(saved.extras) ? saved.extras : []),
-      changeOrders: Array.isArray(saved.changeOrders) ? saved.changeOrders : [],
+      changeOrders:
+        apiChangeOrders != null ? apiChangeOrders : (Array.isArray(saved.changeOrders) ? saved.changeOrders : []),
       changeOrderDraft: {
         ...base.changeOrderDraft,
         ...(saved.changeOrderDraft && typeof saved.changeOrderDraft === "object" ? saved.changeOrderDraft : {}),
@@ -3980,6 +4069,20 @@ function renderSupervisor() {
             }
           });
         }
+        if (!supervisorProjectChangeOrdersCache[pid] && !supervisorProjectChangeOrdersFetchInFlight.has(pid)) {
+          supervisorProjectChangeOrdersFetchInFlight.add(pid);
+          void fetchProjectChangeOrders(pid).then((data) => {
+            supervisorProjectChangeOrdersFetchInFlight.delete(pid);
+            if (data && data.ok === true && Array.isArray(data.changeOrders)) {
+              supervisorProjectChangeOrdersCache[pid] = { ok: true, changeOrders: data.changeOrders };
+            } else {
+              supervisorProjectChangeOrdersCache[pid] = { ok: false, changeOrders: [] };
+            }
+            if ($("supervisorKpis") && loadSupervisorSelectedProjectId() === pid) {
+              renderSupervisor();
+            }
+          });
+        }
       }
 
       const state = loadSupervisorReport(currentProject);
@@ -4156,7 +4259,13 @@ function renderSupervisor() {
 
         $("coListBody").querySelectorAll("button[data-delete-change]").forEach((button) => {
           button.onclick = () => {
-            state.changeOrders.splice(Number(button.dataset.deleteChange || -1), 1);
+            const idx = Number(button.dataset.deleteChange || -1);
+            const row = state.changeOrders[idx];
+            if (row && row.changeOrderServerId) {
+              window.alert("This change order is saved on the server; delete is not wired here yet.");
+              return;
+            }
+            state.changeOrders.splice(idx, 1);
             saveSupervisorReport(currentProject.id, state);
             refresh();
           };
@@ -4167,6 +4276,10 @@ function renderSupervisor() {
             const index = Number(button.dataset.applyChange || -1);
             if (index < 0 || !state.changeOrders[index] || state.changeOrders[index].applied) return;
             const row = state.changeOrders[index];
+            if (row.changeOrderServerId) {
+              window.alert("Apply for server-saved change orders is not synced to the database yet.");
+              return;
+            }
             const updated = updateProjectById(currentProject.id, (proj) => ({
               ...proj,
               estimatedDays: finiteNumber(proj.estimatedDays, 0) + finiteNumber(row.addedDays, 0),
@@ -4448,7 +4561,7 @@ function renderSupervisor() {
     }
 
     if ($("btnAddChangeOrder")) {
-      $("btnAddChangeOrder").onclick = () => {
+      $("btnAddChangeOrder").onclick = async () => {
         const currentProject = (getSupervisorProjectsForUi().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
         if (!currentProject) return alert("No signed projects yet.");
         const state = loadSupervisorReport(currentProject);
@@ -4467,6 +4580,52 @@ function renderSupervisor() {
         if (!title) return alert("Change order title is required.");
         if (metrics.totalWorkerDays <= 0) return alert("Capture worker-days for the extra work.");
         const offeredPrice = num("coPrice", metrics.recommended);
+
+        if (isServerListedSupervisorProject(currentProject.id)) {
+          try {
+            const res = await fetch("/.netlify/functions/save-project-change-order", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                project_id: currentProject.id,
+                title,
+                notes: packChangeOrderNotesForApi(notes, metrics, state.changeOrderDraft.workers),
+                worker_days: metrics.totalWorkerDays,
+                recommended_price: metrics.recommended,
+                client_price: offeredPrice,
+                status: "draft",
+              }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data || data.ok !== true) {
+              const msg = (data && (data.error || data.message)) || `Save failed (${res.status}).`;
+              window.alert(msg);
+              return;
+            }
+            delete supervisorProjectChangeOrdersCache[currentProject.id];
+            const fresh = await fetchProjectChangeOrders(currentProject.id);
+            supervisorProjectChangeOrdersCache[currentProject.id] =
+              fresh && fresh.ok === true && Array.isArray(fresh.changeOrders)
+                ? { ok: true, changeOrders: fresh.changeOrders }
+                : { ok: false, changeOrders: [] };
+            const merged = loadSupervisorReport(currentProject);
+            merged.locked = true;
+            merged.changeOrderDraft = buildDefaultChangeOrderDraft(currentProject);
+            saveSupervisorReport(currentProject.id, merged);
+            if ($("coPrice")) $("coPrice").dataset.touched = "false";
+            if (changeRange) changeRange.value = "2";
+            setVal("coTitle", "");
+            setVal("coNotes", "");
+            setNum("coPrice", 0);
+            renderSupervisor();
+            return;
+          } catch (_e) {
+            window.alert("Network error. Could not save change order.");
+            return;
+          }
+        }
+
         state.changeOrders = Array.isArray(state.changeOrders) ? state.changeOrders : [];
         state.changeOrders.unshift({
           id: `CO-${Date.now()}`,
