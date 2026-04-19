@@ -40,6 +40,10 @@ function mapRowToProject(row) {
       row.projected_revenue_total == null || row.projected_revenue_total === ""
         ? null
         : Number(row.projected_revenue_total),
+    laborConsumedTotal: Number(row.labor_consumed_total) || 0,
+    unexpectedExpenseTotal: Number(row.unexpected_expense_total) || 0,
+    realProfitTotal: Number(row.real_profit_total) || 0,
+    realMarginPct: Number(row.real_margin_pct) || 0,
   };
 }
 

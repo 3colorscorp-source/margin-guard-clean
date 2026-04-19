@@ -509,6 +509,22 @@ Thank you.`
     return getSupervisorProjectsForUi().some((p) => p.id === pid);
   }
 
+  async function recalcProjectProfitIfListed(projectId) {
+    const pid = String(projectId || "").trim();
+    if (!pid || !isServerListedSupervisorProject(pid)) return;
+    try {
+      const res = await fetch("/.netlify/functions/recalc-project-profit", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: pid }),
+      });
+      await res.json().catch(() => ({}));
+    } catch (_e) {
+      /* non-fatal */
+    }
+  }
+
   function mapTenantProjectReportRowToEntry(row) {
     if (!row) return null;
     const d = row.entry_date == null ? "" : String(row.entry_date).slice(0, 10);
@@ -666,6 +682,18 @@ Thank you.`
   async function fetchSupervisorProjects() {
     const res = await fetch("/.netlify/functions/get-supervisor-projects", { credentials: "include" });
     return await res.json();
+  }
+
+  /** Updates in-memory project list only (does not clear report/expense/CO caches). */
+  async function pullSupervisorProjectsFromApi() {
+    try {
+      const data = await fetchSupervisorProjects();
+      if (data && data.ok === true && Array.isArray(data.projects)) {
+        supervisorProjectsCache = data.projects;
+      }
+    } catch (_e) {
+      /* non-fatal */
+    }
   }
 
   async function refreshSupervisorProjectsFromApi() {
@@ -4210,6 +4238,12 @@ function renderSupervisor() {
           money(coAppliedServer, settings.currency),
           "Suma de precios cliente de change orders ya aplicados",
         ]);
+        kpiRows.push(
+          ["Labor consumido", money(Number(currentProject.laborConsumedTotal) || 0, settings.currency), "Servidor: horas reportadas x (labor_budget / (estimated_days x 8))"],
+          ["Gasto total real", money(Number(currentProject.unexpectedExpenseTotal) || 0, settings.currency), "Servidor: suma de gastos imprevistos"],
+          ["Profit real", money(Number(currentProject.realProfitTotal) || 0, settings.currency), "Servidor: ingresos proyectados menos labor y gastos"],
+          ["Margen real", `${((Number(currentProject.realMarginPct) || 0) * 100).toFixed(1)}%`, "Servidor: profit / ingresos proyectados"]
+        );
       }
       $("supervisorKpis").innerHTML = kpiRows.map(([label, value, meta]) => `
         <div class="kpi-box">
@@ -4364,6 +4398,7 @@ function renderSupervisor() {
                   return;
                 }
                 const pid = currentProject.id;
+                await recalcProjectProfitIfListed(pid);
                 delete supervisorProjectChangeOrdersCache[pid];
                 await refreshSupervisorProjectsFromApi();
                 const freshCo = await fetchProjectChangeOrders(pid);
@@ -4573,6 +4608,8 @@ function renderSupervisor() {
             setNum("supEntryHours", 0);
             setNum("supEntryDays", 0);
             setVal("supEntryNote", "");
+            await recalcProjectProfitIfListed(currentProject.id);
+            await pullSupervisorProjectsFromApi();
             refresh();
             return;
           } catch (_e) {
@@ -4639,6 +4676,8 @@ function renderSupervisor() {
             setVal("supExtraItem", "");
             setNum("supExtraAmount", 0);
             setVal("supExtraNote", "");
+            await recalcProjectProfitIfListed(currentProject.id);
+            await pullSupervisorProjectsFromApi();
             refresh();
             return;
           } catch (_e) {
