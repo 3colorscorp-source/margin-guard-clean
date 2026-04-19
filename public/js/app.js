@@ -489,6 +489,9 @@ Thank you.`
   /** Server-backed signed projects for Supervisor UI (replaces LS_PROJECTS for that surface). */
   let supervisorProjectsCache = null;
 
+  /** Last project id painted in Supervisor `refresh()`; used to clear caches and DOM bleed on switch. */
+  let supervisorLastRefreshedProjectId = null;
+
   /** projectId -> { ok: boolean, reports: array } for tenant_project_reports (Supervisor daily entries). */
   const supervisorProjectReportsCache = Object.create(null);
   const supervisorProjectReportsFetchInFlight = new Set();
@@ -1128,6 +1131,44 @@ Thank you.`
     };
   }
 
+  function clearSupervisorSwitchDomBleed() {
+    setVal("supProjectedDate", "");
+    setVal("supEntryDate", "");
+    setNum("supEntryHours", 0);
+    setNum("supEntryDays", 0);
+    setVal("supEntryNote", "");
+    setVal("supExtraDate", "");
+    setVal("supExtraItem", "");
+    setNum("supExtraAmount", 0);
+    setVal("supExtraNote", "");
+  }
+
+  /** Clears local-only rows so another project cannot leak through LS merge; keeps projected end + lock. */
+  function wipeSupervisorLocalScratchOnProjectSwitch(project) {
+    if (!project?.id) return;
+    const pid = project.id;
+    const reports = loadSupervisorReports();
+    const saved = reports[pid];
+    const blank = buildDefaultSupervisorReport(project);
+    saveSupervisorReport(pid, {
+      ...blank,
+      ...(saved && typeof saved === "object"
+        ? {
+            projectedEndDate: normalizeDateInput(saved.projectedEndDate || ""),
+            locked: Boolean(saved.locked),
+          }
+        : {}),
+      projectId: pid,
+      projectName: project.projectName || blank.projectName,
+      estimatedDays: 0,
+      laborBudget: 0,
+      entries: [],
+      extras: [],
+      changeOrders: [],
+      changeOrderDraft: buildDefaultChangeOrderDraft(project),
+    });
+  }
+
   function loadSupervisorReport(project) {
     if (!project?.id) return buildDefaultSupervisorReport(null);
     const reports = loadSupervisorReports();
@@ -1137,30 +1178,85 @@ Thank you.`
     const cachedExp = supervisorProjectExpensesCache[project.id];
     const cachedCo = supervisorProjectChangeOrdersCache[project.id];
     const listed = isServerListedSupervisorProject(project.id);
-    const useApiEntries = cached && cached.ok === true && listed;
-    const apiEntries = useApiEntries
-      ? (Array.isArray(cached.reports) ? cached.reports : [])
-          .map(mapTenantProjectReportRowToEntry)
-          .filter(Boolean)
-      : null;
-    const useApiExtras = cachedExp && cachedExp.ok === true && listed;
-    const apiExtras = useApiExtras
-      ? (Array.isArray(cachedExp.expenses) ? cachedExp.expenses : [])
-          .map(mapTenantProjectExpenseRowToExtra)
-          .filter(Boolean)
-      : null;
-    const useApiChangeOrders = cachedCo && cachedCo.ok === true && listed;
-    const apiChangeOrders = useApiChangeOrders
-      ? (Array.isArray(cachedCo.changeOrders) ? cachedCo.changeOrders : [])
-          .map(mapTenantProjectChangeOrderRowToRow)
-          .filter(Boolean)
-      : null;
+
+    let entries;
+    let extras;
+    let changeOrders;
+    if (listed) {
+      entries =
+        cached && cached.ok === true
+          ? (Array.isArray(cached.reports) ? cached.reports : [])
+              .map(mapTenantProjectReportRowToEntry)
+              .filter(Boolean)
+          : [];
+      extras =
+        cachedExp && cachedExp.ok === true
+          ? (Array.isArray(cachedExp.expenses) ? cachedExp.expenses : [])
+              .map(mapTenantProjectExpenseRowToExtra)
+              .filter(Boolean)
+          : [];
+      changeOrders =
+        cachedCo && cachedCo.ok === true
+          ? (Array.isArray(cachedCo.changeOrders) ? cachedCo.changeOrders : [])
+              .map(mapTenantProjectChangeOrderRowToRow)
+              .filter(Boolean)
+          : [];
+    } else {
+      const apiEntries =
+        cached && cached.ok === true
+          ? (Array.isArray(cached.reports) ? cached.reports : [])
+              .map(mapTenantProjectReportRowToEntry)
+              .filter(Boolean)
+          : null;
+      const apiExtras =
+        cachedExp && cachedExp.ok === true
+          ? (Array.isArray(cachedExp.expenses) ? cachedExp.expenses : [])
+              .map(mapTenantProjectExpenseRowToExtra)
+              .filter(Boolean)
+          : null;
+      const apiChangeOrders =
+        cachedCo && cachedCo.ok === true
+          ? (Array.isArray(cachedCo.changeOrders) ? cachedCo.changeOrders : [])
+              .map(mapTenantProjectChangeOrderRowToRow)
+              .filter(Boolean)
+          : null;
+      if (!saved || typeof saved !== "object") {
+        return {
+          ...base,
+          entries: apiEntries != null ? apiEntries : base.entries,
+          extras: apiExtras != null ? apiExtras : base.extras,
+          changeOrders: apiChangeOrders != null ? apiChangeOrders : base.changeOrders,
+          changeOrderDraft: { ...base.changeOrderDraft },
+        };
+      }
+      return {
+        ...base,
+        ...saved,
+        projectId: project.id,
+        projectName: project.projectName || base.projectName,
+        estimatedDays: finiteNumber(saved.estimatedDays, base.estimatedDays),
+        laborBudget: finiteNumber(saved.laborBudget, base.laborBudget),
+        dueDate: normalizeDateInput(saved.dueDate || base.dueDate),
+        entries: apiEntries != null ? apiEntries : (Array.isArray(saved.entries) ? saved.entries : []),
+        extras: apiExtras != null ? apiExtras : (Array.isArray(saved.extras) ? saved.extras : []),
+        changeOrders:
+          apiChangeOrders != null ? apiChangeOrders : (Array.isArray(saved.changeOrders) ? saved.changeOrders : []),
+        changeOrderDraft: {
+          ...base.changeOrderDraft,
+          ...(saved.changeOrderDraft && typeof saved.changeOrderDraft === "object" ? saved.changeOrderDraft : {}),
+          workers: Array.isArray(saved.changeOrderDraft?.workers) && saved.changeOrderDraft.workers.length
+            ? saved.changeOrderDraft.workers
+            : base.changeOrderDraft.workers,
+        },
+      };
+    }
+
     if (!saved || typeof saved !== "object") {
       return {
         ...base,
-        entries: apiEntries != null ? apiEntries : base.entries,
-        extras: apiExtras != null ? apiExtras : base.extras,
-        changeOrders: apiChangeOrders != null ? apiChangeOrders : base.changeOrders,
+        entries,
+        extras,
+        changeOrders,
         changeOrderDraft: { ...base.changeOrderDraft },
       };
     }
@@ -1172,17 +1268,16 @@ Thank you.`
       estimatedDays: finiteNumber(saved.estimatedDays, base.estimatedDays),
       laborBudget: finiteNumber(saved.laborBudget, base.laborBudget),
       dueDate: normalizeDateInput(saved.dueDate || base.dueDate),
-      entries: apiEntries != null ? apiEntries : (Array.isArray(saved.entries) ? saved.entries : []),
-      extras: apiExtras != null ? apiExtras : (Array.isArray(saved.extras) ? saved.extras : []),
-      changeOrders:
-        apiChangeOrders != null ? apiChangeOrders : (Array.isArray(saved.changeOrders) ? saved.changeOrders : []),
+      entries,
+      extras,
+      changeOrders,
       changeOrderDraft: {
         ...base.changeOrderDraft,
         ...(saved.changeOrderDraft && typeof saved.changeOrderDraft === "object" ? saved.changeOrderDraft : {}),
         workers: Array.isArray(saved.changeOrderDraft?.workers) && saved.changeOrderDraft.workers.length
           ? saved.changeOrderDraft.workers
-          : base.changeOrderDraft.workers
-      }
+          : base.changeOrderDraft.workers,
+      },
     };
   }
 
@@ -3914,10 +4009,61 @@ function renderSupervisor() {
         : `<option value="">Sin proyectos firmados</option>`;
       picker.value = selectedProject?.id || "";
       picker.onchange = () => {
-        saveSupervisorSelectedProjectId(picker.value);
+        const prevId = String(loadSupervisorSelectedProjectId() || "").trim();
+        const nextId = String(picker.value || "").trim();
+        saveSupervisorSelectedProjectId(nextId);
         const fb = $("supAssignFeedback");
         if (fb) fb.textContent = "";
-        renderSupervisor();
+        if (prevId && prevId !== nextId) {
+          delete supervisorProjectReportsCache[prevId];
+          delete supervisorProjectExpensesCache[prevId];
+          delete supervisorProjectChangeOrdersCache[prevId];
+          supervisorProjectReportsFetchInFlight.delete(prevId);
+          supervisorProjectExpensesFetchInFlight.delete(prevId);
+          supervisorProjectChangeOrdersFetchInFlight.delete(prevId);
+        }
+        if (prevId !== nextId && nextId) {
+          delete supervisorProjectReportsCache[nextId];
+          delete supervisorProjectExpensesCache[nextId];
+          delete supervisorProjectChangeOrdersCache[nextId];
+        }
+        if (nextId && isServerListedSupervisorProject(nextId)) {
+          supervisorProjectReportsFetchInFlight.add(nextId);
+          supervisorProjectExpensesFetchInFlight.add(nextId);
+          supervisorProjectChangeOrdersFetchInFlight.add(nextId);
+          renderSupervisor();
+          void (async () => {
+            try {
+              if (String(loadSupervisorSelectedProjectId() || "").trim() !== nextId) return;
+              const [r, e, c] = await Promise.all([
+                fetchProjectReports(nextId),
+                fetchProjectExpenses(nextId),
+                fetchProjectChangeOrders(nextId),
+              ]);
+              if (String(loadSupervisorSelectedProjectId() || "").trim() !== nextId) return;
+              supervisorProjectReportsCache[nextId] =
+                r && r.ok === true && Array.isArray(r.reports)
+                  ? { ok: true, reports: r.reports }
+                  : { ok: false, reports: [] };
+              supervisorProjectExpensesCache[nextId] =
+                e && e.ok === true && Array.isArray(e.expenses)
+                  ? { ok: true, expenses: e.expenses }
+                  : { ok: false, expenses: [] };
+              supervisorProjectChangeOrdersCache[nextId] =
+                c && c.ok === true && Array.isArray(c.changeOrders)
+                  ? { ok: true, changeOrders: c.changeOrders }
+                  : { ok: false, changeOrders: [] };
+            } finally {
+              supervisorProjectReportsFetchInFlight.delete(nextId);
+              supervisorProjectExpensesFetchInFlight.delete(nextId);
+              supervisorProjectChangeOrdersFetchInFlight.delete(nextId);
+            }
+            if (String(loadSupervisorSelectedProjectId() || "").trim() !== nextId) return;
+            renderSupervisor();
+          })();
+        } else {
+          renderSupervisor();
+        }
       };
     }
 
@@ -4045,6 +4191,7 @@ function renderSupervisor() {
       const currentProject = (getSupervisorProjectsForUi().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
 
       if (!currentProject) {
+        supervisorLastRefreshedProjectId = null;
         if ($("supStatus")) {
           $("supStatus").className = "badge amber";
           $("supStatus").textContent = "Sin proyectos";
@@ -4083,6 +4230,20 @@ function renderSupervisor() {
       }
 
       const pid = currentProject.id;
+      const switchedProject =
+        supervisorLastRefreshedProjectId != null && supervisorLastRefreshedProjectId !== pid;
+      if (switchedProject) {
+        const oldPid = supervisorLastRefreshedProjectId;
+        delete supervisorProjectReportsCache[oldPid];
+        delete supervisorProjectExpensesCache[oldPid];
+        delete supervisorProjectChangeOrdersCache[oldPid];
+        supervisorProjectReportsFetchInFlight.delete(oldPid);
+        supervisorProjectExpensesFetchInFlight.delete(oldPid);
+        supervisorProjectChangeOrdersFetchInFlight.delete(oldPid);
+        clearSupervisorSwitchDomBleed();
+        wipeSupervisorLocalScratchOnProjectSwitch(currentProject);
+      }
+
       if (isServerListedSupervisorProject(pid)) {
         if (!supervisorProjectReportsCache[pid] && !supervisorProjectReportsFetchInFlight.has(pid)) {
           supervisorProjectReportsFetchInFlight.add(pid);
@@ -4134,7 +4295,9 @@ function renderSupervisor() {
       state.estimatedDays = finiteNumber(currentProject.estimatedDays, state.estimatedDays);
       state.laborBudget = finiteNumber(currentProject.laborBudget, state.laborBudget);
       state.dueDate = normalizeDateInput(currentProject.dueDate || state.dueDate);
-      state.projectedEndDate = normalizeDateInput(val("supProjectedDate") || state.projectedEndDate);
+      state.projectedEndDate = normalizeDateInput(
+        switchedProject ? state.projectedEndDate : (val("supProjectedDate") || state.projectedEndDate)
+      );
       state.changeOrders = Array.isArray(state.changeOrders) ? state.changeOrders : [];
       state.changeOrderDraft = {
         ...buildDefaultChangeOrderDraft(currentProject),
@@ -4481,6 +4644,8 @@ function renderSupervisor() {
           };
         });
       }
+
+      supervisorLastRefreshedProjectId = pid;
     };
 
     if ($("supProjectedDate")) $("supProjectedDate").oninput = refresh;
