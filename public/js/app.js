@@ -489,6 +489,44 @@ Thank you.`
   /** Server-backed signed projects for Supervisor UI (replaces LS_PROJECTS for that surface). */
   let supervisorProjectsCache = null;
 
+  /** projectId -> { ok: boolean, reports: array } for tenant_project_reports (Supervisor daily entries). */
+  const supervisorProjectReportsCache = Object.create(null);
+  const supervisorProjectReportsFetchInFlight = new Set();
+
+  async function fetchProjectReports(projectId) {
+    const id = String(projectId || "").trim();
+    if (!id) return { ok: false, reports: [] };
+    const res = await fetch(
+      `/.netlify/functions/get-project-reports?project_id=${encodeURIComponent(id)}`,
+      { credentials: "include" }
+    );
+    return await res.json().catch(() => ({ ok: false, reports: [] }));
+  }
+
+  function isServerListedSupervisorProject(projectId) {
+    const pid = String(projectId || "").trim();
+    if (!pid) return false;
+    return getSupervisorProjectsForUi().some((p) => p.id === pid);
+  }
+
+  function mapTenantProjectReportRowToEntry(row) {
+    if (!row) return null;
+    const d = row.entry_date == null ? "" : String(row.entry_date).slice(0, 10);
+    return {
+      reportId: row.id,
+      date: d,
+      hours: Number(row.hours) || 0,
+      days: Number(row.days) || 0,
+      note: row.note == null ? "" : String(row.note),
+    };
+  }
+
+  function clearSupervisorProjectReportsCache() {
+    Object.keys(supervisorProjectReportsCache).forEach((k) => {
+      delete supervisorProjectReportsCache[k];
+    });
+  }
+
   async function fetchSupervisorProjects() {
     const res = await fetch("/.netlify/functions/get-supervisor-projects", { credentials: "include" });
     return await res.json();
@@ -505,6 +543,7 @@ Thank you.`
     } catch (_err) {
       supervisorProjectsCache = [];
     }
+    clearSupervisorProjectReportsCache();
     renderSupervisor();
   }
 
@@ -928,7 +967,20 @@ Thank you.`
     const reports = loadSupervisorReports();
     const saved = reports[project.id];
     const base = buildDefaultSupervisorReport(project);
-    if (!saved || typeof saved !== "object") return base;
+    const cached = supervisorProjectReportsCache[project.id];
+    const useApiEntries =
+      cached && cached.ok === true && isServerListedSupervisorProject(project.id);
+    const apiEntries = useApiEntries
+      ? (Array.isArray(cached.reports) ? cached.reports : [])
+          .map(mapTenantProjectReportRowToEntry)
+          .filter(Boolean)
+      : null;
+    if (!saved || typeof saved !== "object") {
+      return {
+        ...base,
+        entries: apiEntries != null ? apiEntries : base.entries,
+      };
+    }
     return {
       ...base,
       ...saved,
@@ -937,7 +989,7 @@ Thank you.`
       estimatedDays: finiteNumber(saved.estimatedDays, base.estimatedDays),
       laborBudget: finiteNumber(saved.laborBudget, base.laborBudget),
       dueDate: normalizeDateInput(saved.dueDate || base.dueDate),
-      entries: Array.isArray(saved.entries) ? saved.entries : [],
+      entries: apiEntries != null ? apiEntries : (Array.isArray(saved.entries) ? saved.entries : []),
       extras: Array.isArray(saved.extras) ? saved.extras : [],
       changeOrders: Array.isArray(saved.changeOrders) ? saved.changeOrders : [],
       changeOrderDraft: {
@@ -3846,6 +3898,24 @@ function renderSupervisor() {
         return;
       }
 
+      const pid = currentProject.id;
+      if (isServerListedSupervisorProject(pid)) {
+        if (!supervisorProjectReportsCache[pid] && !supervisorProjectReportsFetchInFlight.has(pid)) {
+          supervisorProjectReportsFetchInFlight.add(pid);
+          void fetchProjectReports(pid).then((data) => {
+            supervisorProjectReportsFetchInFlight.delete(pid);
+            if (data && data.ok === true && Array.isArray(data.reports)) {
+              supervisorProjectReportsCache[pid] = { ok: true, reports: data.reports };
+            } else {
+              supervisorProjectReportsCache[pid] = { ok: false, reports: [] };
+            }
+            if ($("supervisorKpis") && loadSupervisorSelectedProjectId() === pid) {
+              renderSupervisor();
+            }
+          });
+        }
+      }
+
       const state = loadSupervisorReport(currentProject);
       state.projectId = currentProject.id;
       state.projectName = currentProject.projectName || state.projectName;
@@ -4062,7 +4132,13 @@ function renderSupervisor() {
         `).join("");
         $("supEntriesBody").querySelectorAll("button[data-delete-entry]").forEach((button) => {
           button.onclick = () => {
-            state.entries.splice(Number(button.dataset.deleteEntry || -1), 1);
+            const idx = Number(button.dataset.deleteEntry || -1);
+            const row = state.entries[idx];
+            if (row && row.reportId) {
+              window.alert("This row is saved on the server; delete from database is not wired here yet.");
+              return;
+            }
+            state.entries.splice(idx, 1);
             saveSupervisorReport(currentProject.id, state);
             refresh();
           };
@@ -4168,7 +4244,7 @@ function renderSupervisor() {
     }
 
     if ($("btnAddSupEntry")) {
-      $("btnAddSupEntry").onclick = () => {
+      $("btnAddSupEntry").onclick = async () => {
         const currentProject = (getSupervisorProjectsForUi().find((project) => project.id === loadSupervisorSelectedProjectId())) || selectedProject;
         if (!currentProject) return alert("No signed projects yet.");
         const state = loadSupervisorReport(currentProject);
@@ -4180,6 +4256,48 @@ function renderSupervisor() {
         };
         if (!entry.date) return alert("Entry date is required.");
         if (entry.hours <= 0 && entry.days <= 0) return alert("Report hours or days worked.");
+
+        if (isServerListedSupervisorProject(currentProject.id)) {
+          try {
+            const res = await fetch("/.netlify/functions/save-project-report", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                project_id: currentProject.id,
+                entry_date: entry.date,
+                hours: entry.hours,
+                days: entry.days,
+                note: entry.note
+              })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data || data.ok !== true) {
+              const msg = (data && (data.error || data.message)) || `Save failed (${res.status}).`;
+              window.alert(msg);
+              return;
+            }
+            delete supervisorProjectReportsCache[currentProject.id];
+            const fresh = await fetchProjectReports(currentProject.id);
+            supervisorProjectReportsCache[currentProject.id] =
+              fresh && fresh.ok === true && Array.isArray(fresh.reports)
+                ? { ok: true, reports: fresh.reports }
+                : { ok: false, reports: [] };
+            state.locked = true;
+            const merged = loadSupervisorReport(currentProject);
+            saveSupervisorReport(currentProject.id, merged);
+            setVal("supEntryDate", "");
+            setNum("supEntryHours", 0);
+            setNum("supEntryDays", 0);
+            setVal("supEntryNote", "");
+            refresh();
+            return;
+          } catch (_e) {
+            window.alert("Network error. Could not save report.");
+            return;
+          }
+        }
+
         state.locked = true;
         state.entries.unshift(entry);
         setVal("supEntryDate", "");

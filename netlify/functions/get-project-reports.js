@@ -1,0 +1,69 @@
+const { readSessionFromEvent } = require("./_lib/session");
+const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { supabaseRequest } = require("./_lib/supabase-admin");
+
+function json(statusCode, payload) {
+  return {
+    statusCode,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  };
+}
+
+function mapRow(row) {
+  if (!row || typeof row !== "object") return null;
+  return {
+    id: row.id,
+    tenant_id: row.tenant_id,
+    project_id: row.project_id,
+    entry_date: row.entry_date == null ? null : String(row.entry_date).slice(0, 10),
+    hours: Number(row.hours) || 0,
+    days: Number(row.days) || 0,
+    note: row.note == null ? "" : String(row.note),
+    created_by: row.created_by ?? null,
+    created_at: row.created_at ?? null,
+    updated_at: row.updated_at ?? null,
+  };
+}
+
+exports.handler = async (event) => {
+  try {
+    if (event.httpMethod !== "GET") {
+      return json(405, { error: "Method not allowed" });
+    }
+
+    const session = readSessionFromEvent(event);
+    if (!session?.e || !session?.c) {
+      return json(401, { error: "Unauthorized" });
+    }
+
+    const tenant = await resolveTenantFromSession(session);
+    if (!tenant?.id) {
+      return json(404, { error: "Tenant not found" });
+    }
+
+    const qs = event.queryStringParameters || {};
+    const projectId = String(qs.project_id || "").trim();
+    if (!projectId) {
+      return json(400, { error: "project_id is required" });
+    }
+
+    const tid = encodeURIComponent(tenant.id);
+    const projRows = await supabaseRequest(
+      `tenant_projects?id=eq.${encodeURIComponent(projectId)}&tenant_id=eq.${tid}&select=id`
+    );
+    const proj = Array.isArray(projRows) ? projRows[0] : null;
+    if (!proj?.id) {
+      return json(403, { error: "Project not found for this tenant" });
+    }
+
+    const rows = await supabaseRequest(
+      `tenant_project_reports?tenant_id=eq.${tid}&project_id=eq.${encodeURIComponent(projectId)}&select=*&order=entry_date.desc,created_at.desc`
+    );
+    const list = Array.isArray(rows) ? rows.map(mapRow).filter(Boolean) : [];
+
+    return json(200, { ok: true, reports: list });
+  } catch (err) {
+    return json(500, { error: err.message || "Unexpected error" });
+  }
+};
