@@ -4299,12 +4299,40 @@ function renderSupervisor() {
         });
 
         $("coListBody").querySelectorAll("button[data-delete-change]").forEach((button) => {
-          button.onclick = () => {
+          button.onclick = async () => {
             const idx = Number(button.dataset.deleteChange || -1);
             const row = state.changeOrders[idx];
-            if (row && row.changeOrderServerId) {
-              window.alert("This change order is saved on the server; delete is not wired here yet.");
-              return;
+            const coDelId = getServerChangeOrderApplyId(row);
+            if (coDelId && isServerListedSupervisorProject(currentProject.id)) {
+              try {
+                const res = await fetch("/.netlify/functions/delete-project-change-order", {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ change_order_id: coDelId }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!data.ok) {
+                  window.alert(data.error || `Delete failed (${res.status}).`);
+                  return;
+                }
+                if (!data.deleted) {
+                  window.alert(data.error || "Change order was not deleted.");
+                  return;
+                }
+                const pid = currentProject.id;
+                delete supervisorProjectChangeOrdersCache[pid];
+                const freshCo = await fetchProjectChangeOrders(pid);
+                supervisorProjectChangeOrdersCache[pid] =
+                  freshCo && freshCo.ok === true && Array.isArray(freshCo.changeOrders)
+                    ? { ok: true, changeOrders: freshCo.changeOrders }
+                    : { ok: false, changeOrders: [] };
+                renderSupervisor();
+                return;
+              } catch (_e) {
+                window.alert("Network error. Could not delete change order.");
+                return;
+              }
             }
             state.changeOrders.splice(idx, 1);
             saveSupervisorReport(currentProject.id, state);
