@@ -1,4 +1,4 @@
-const { readSessionFromEvent } = require("./_lib/session");
+const { buildRefreshedSessionCookie, readSessionFromEvent } = require("./_lib/session");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const {
@@ -13,10 +13,10 @@ if (!fetch) {
 
 const STRIPE_API = "https://api.stripe.com/v1";
 
-function json(statusCode, payload) {
+function json(statusCode, payload, extraHeaders = {}) {
   return {
     statusCode,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...extraHeaders },
     body: JSON.stringify(payload),
   };
 }
@@ -57,6 +57,7 @@ async function createFinancialConnectionsSession(stripeCustomerId) {
 }
 
 exports.handler = async (event) => {
+  let cookieHeaders = {};
   try {
     if (event.httpMethod !== "POST") {
       return json(405, { error: "Method not allowed" });
@@ -72,15 +73,20 @@ exports.handler = async (event) => {
       return json(404, { error: "Tenant not found" });
     }
 
-    const customerId = String(tenant.stripe_customer_id || "").trim();
-    if (!customerId) {
-      return json(400, {
-        error: "Missing Stripe customer for tenant. Complete billing setup first.",
-      });
+    const refreshedCookie = buildRefreshedSessionCookie(session, tenant);
+    if (refreshedCookie) {
+      cookieHeaders = { "Set-Cookie": refreshedCookie };
     }
 
-    if (String(customerId) !== String(session.c)) {
-      return json(403, { error: "Session does not match tenant billing profile" });
+    const customerId = String(tenant.stripe_customer_id || "").trim();
+    if (!customerId) {
+      return json(
+        400,
+        {
+          error: "Missing Stripe customer for tenant. Complete billing setup first.",
+        },
+        cookieHeaders
+      );
     }
 
     // TEMP: remove after production FC / Stripe key alignment is confirmed
@@ -104,7 +110,7 @@ exports.handler = async (event) => {
     const clientSecret = fcSession?.client_secret;
     const stripeFcSessionId = fcSession?.id;
     if (!clientSecret || !stripeFcSessionId) {
-      return json(502, { error: "Invalid response from Stripe" });
+      return json(502, { error: "Invalid response from Stripe" }, cookieHeaders);
     }
 
     const inserted = await supabaseRequest("tenant_bank_connections", {
@@ -122,16 +128,20 @@ exports.handler = async (event) => {
     const row = Array.isArray(inserted) ? inserted[0] : inserted;
     const connectionId = row?.id;
     if (!connectionId) {
-      return json(500, { error: "Failed to record bank connection" });
+      return json(500, { error: "Failed to record bank connection" }, cookieHeaders);
     }
 
-    return json(200, {
-      ok: true,
-      client_secret: clientSecret,
-      connection_id: connectionId,
-      financial_connections_session_id: stripeFcSessionId,
-    });
+    return json(
+      200,
+      {
+        ok: true,
+        client_secret: clientSecret,
+        connection_id: connectionId,
+        financial_connections_session_id: stripeFcSessionId,
+      },
+      cookieHeaders
+    );
   } catch (err) {
-    return json(500, { error: err.message || "Unexpected error" });
+    return json(500, { error: err.message || "Unexpected error" }, cookieHeaders);
   }
 };

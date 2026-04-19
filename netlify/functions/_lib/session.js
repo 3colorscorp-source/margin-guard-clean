@@ -115,13 +115,38 @@ function createSessionCookie(payload) {
   return `${COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}`;
 }
 
+function signSessionCookie(payload) {
+  return createSessionCookie(payload);
+}
+
+/**
+ * If the session cookie's Stripe customer id is stale vs DB, return a new Set-Cookie value.
+ */
+function buildRefreshedSessionCookie(session, tenant) {
+  if (!session || !tenant) return null;
+  const dbId =
+    tenant.stripe_customer_id != null ? String(tenant.stripe_customer_id).trim() : "";
+  if (!dbId) return null;
+  const sessionC = session.c != null ? String(session.c).trim() : "";
+  if (sessionC === dbId) return null;
+  const payload = buildSessionPayload({
+    customerId: dbId,
+    subscriptionId: session.s,
+    email: session.e,
+    userId: session.u,
+  });
+  return signSessionCookie(payload);
+}
+
 function clearSessionCookie() {
   return `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 }
 
 module.exports = {
+  buildRefreshedSessionCookie,
   buildSessionPayload,
   clearSessionCookie,
   createSessionCookie,
   readSessionFromEvent,
+  signSessionCookie,
 };

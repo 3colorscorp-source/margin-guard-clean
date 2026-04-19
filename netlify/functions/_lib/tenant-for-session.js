@@ -22,18 +22,6 @@ async function resolveTenantFromSession(session) {
       `tenants?owner_email=eq.${encodeURIComponent(email)}&select=${TENANT_SELECT_FIELDS}`
     );
     tenant = Array.isArray(rows) ? rows[0] : null;
-
-    if (tenant?.id && session.c && tenant.stripe_customer_id !== session.c) {
-      try {
-        await supabaseRequest(`tenants?id=eq.${encodeURIComponent(tenant.id)}`, {
-          method: "PATCH",
-          body: { stripe_customer_id: session.c },
-        });
-        tenant.stripe_customer_id = session.c;
-      } catch (_err) {
-        /* ignore */
-      }
-    }
   }
 
   return tenant;
