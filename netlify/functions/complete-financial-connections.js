@@ -115,6 +115,50 @@ function normalizeSessionAccounts(fcSession) {
   return [];
 }
 
+function fcaIdFromEntry(entry) {
+  if (typeof entry === "string") {
+    const s = entry.trim();
+    return s.startsWith("fca_") ? s : "";
+  }
+  if (entry && typeof entry === "object" && typeof entry.id === "string") {
+    const s = String(entry.id).trim();
+    return s.startsWith("fca_") ? s : "";
+  }
+  return "";
+}
+
+/**
+ * Session expand often returns a subset; list-by-session is authoritative. Merge by fca id.
+ */
+function mergeAccountLists(sessionAccounts, listedAccounts) {
+  const map = new Map();
+  for (const entry of sessionAccounts) {
+    const id = fcaIdFromEntry(entry);
+    if (id) {
+      map.set(id, entry);
+    }
+  }
+  for (const entry of listedAccounts) {
+    const id = fcaIdFromEntry(entry);
+    if (!id) {
+      continue;
+    }
+    const prev = map.get(id);
+    if (!prev) {
+      map.set(id, entry);
+      continue;
+    }
+    const prevMeta =
+      prev && typeof prev === "object" && (prev.institution_name || prev.last4);
+    const nextMeta =
+      entry && typeof entry === "object" && (entry.institution_name || entry.last4);
+    if (nextMeta && !prevMeta) {
+      map.set(id, entry);
+    }
+  }
+  return Array.from(map.values());
+}
+
 exports.handler = async (event) => {
   let cookieHeaders = {};
   try {
@@ -172,10 +216,9 @@ exports.handler = async (event) => {
 
     const connectionId = connection.id;
 
-    let accountList = normalizeSessionAccounts(fcSession);
-    if (!accountList.length) {
-      accountList = await listAccountsForSession(fcSessionId);
-    }
+    const fromSession = normalizeSessionAccounts(fcSession);
+    const fromList = await listAccountsForSession(fcSessionId);
+    const accountList = mergeAccountLists(fromSession, fromList);
 
     const linked = [];
     for (const raw of accountList) {
@@ -224,6 +267,8 @@ exports.handler = async (event) => {
           body: {
             tenant_bank_connection_id: connectionId,
             status: "active",
+            stripe_fc_account_id: fcaId,
+            provider_account_id: fcaId,
             institution_name: meta.institution_name,
             account_last4: meta.account_last4,
             account_category: meta.account_category,
@@ -241,6 +286,7 @@ exports.handler = async (event) => {
           tenant_id: tenant.id,
           tenant_bank_connection_id: connectionId,
           stripe_fc_account_id: fcaId,
+          provider_account_id: fcaId,
           status: "active",
           institution_name: meta.institution_name,
           account_last4: meta.account_last4,
