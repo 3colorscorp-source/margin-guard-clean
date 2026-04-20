@@ -1174,6 +1174,13 @@ Thank you.`
     });
   }
 
+  /** API rows include project_id; drop anything not for this project (prevents cache/UI mismatch). */
+  function filterTenantRowsForProject(rows, pkey) {
+    const k = supervisorProjectKey(pkey);
+    if (!k || !Array.isArray(rows)) return [];
+    return rows.filter((row) => row && supervisorProjectKey(row.project_id) === k);
+  }
+
   function loadSupervisorReport(project) {
     if (!project?.id) return buildDefaultSupervisorReport(null);
     const pkey = supervisorProjectKey(project.id);
@@ -1191,38 +1198,38 @@ Thank you.`
     if (listed) {
       entries =
         cached && cached.ok === true
-          ? (Array.isArray(cached.reports) ? cached.reports : [])
+          ? filterTenantRowsForProject(Array.isArray(cached.reports) ? cached.reports : [], pkey)
               .map(mapTenantProjectReportRowToEntry)
               .filter(Boolean)
           : [];
       extras =
         cachedExp && cachedExp.ok === true
-          ? (Array.isArray(cachedExp.expenses) ? cachedExp.expenses : [])
+          ? filterTenantRowsForProject(Array.isArray(cachedExp.expenses) ? cachedExp.expenses : [], pkey)
               .map(mapTenantProjectExpenseRowToExtra)
               .filter(Boolean)
           : [];
       changeOrders =
         cachedCo && cachedCo.ok === true
-          ? (Array.isArray(cachedCo.changeOrders) ? cachedCo.changeOrders : [])
+          ? filterTenantRowsForProject(Array.isArray(cachedCo.changeOrders) ? cachedCo.changeOrders : [], pkey)
               .map(mapTenantProjectChangeOrderRowToRow)
               .filter(Boolean)
           : [];
     } else {
       const apiEntries =
         cached && cached.ok === true
-          ? (Array.isArray(cached.reports) ? cached.reports : [])
+          ? filterTenantRowsForProject(Array.isArray(cached.reports) ? cached.reports : [], pkey)
               .map(mapTenantProjectReportRowToEntry)
               .filter(Boolean)
           : null;
       const apiExtras =
         cachedExp && cachedExp.ok === true
-          ? (Array.isArray(cachedExp.expenses) ? cachedExp.expenses : [])
+          ? filterTenantRowsForProject(Array.isArray(cachedExp.expenses) ? cachedExp.expenses : [], pkey)
               .map(mapTenantProjectExpenseRowToExtra)
               .filter(Boolean)
           : null;
       const apiChangeOrders =
         cachedCo && cachedCo.ok === true
-          ? (Array.isArray(cachedCo.changeOrders) ? cachedCo.changeOrders : [])
+          ? filterTenantRowsForProject(Array.isArray(cachedCo.changeOrders) ? cachedCo.changeOrders : [], pkey)
               .map(mapTenantProjectChangeOrderRowToRow)
               .filter(Boolean)
           : null;
@@ -4204,9 +4211,9 @@ function renderSupervisor() {
     };
 
     const refresh = () => {
-      const pickerVal = supervisorProjectKey($("supProjectPicker")?.value);
       const lsSel = supervisorProjectKey(loadSupervisorSelectedProjectId());
-      const wantId = pickerVal || lsSel;
+      const pickerVal = supervisorProjectKey($("supProjectPicker")?.value);
+      const wantId = lsSel || pickerVal;
       const uiList = getSupervisorProjectsForUi();
       let currentProject = null;
       if (wantId) {
