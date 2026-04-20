@@ -851,6 +851,15 @@ Thank you.`
     }
   }
 
+  function clearSupervisorSelectedProjectId() {
+    try {
+      localStorage.removeItem(LS_SUPERVISOR_SELECTED);
+    } catch (_e) {
+      /* ignore */
+    }
+    scheduleTenantSnapshotSync();
+  }
+
   function getTenantSnapshotPayload() {
     const storage = {};
     TENANT_STORAGE_KEYS.forEach((key) => {
@@ -1458,6 +1467,21 @@ Thank you.`
       return outMerged;
     }
 
+    if (typeof console !== "undefined" && console.log) {
+      const se = saved && Array.isArray(saved.entries) ? saved.entries.length : 0;
+      const sx = saved && Array.isArray(saved.extras) ? saved.extras.length : 0;
+      const sco = saved && Array.isArray(saved.changeOrders) ? saved.changeOrders.length : 0;
+      console.log("[MG LISTED ROW SOURCE]", {
+        projectId: project.id,
+        listed: true,
+        entriesLength: entries.length,
+        extrasLength: extras.length,
+        changeOrdersLength: changeOrders.length,
+        savedArraysPresent: { entries: se, extras: sx, changeOrders: sco },
+        savedRowArraysIgnoredForListed: true,
+      });
+    }
+
     if (!saved || typeof saved !== "object") {
       const outListed = {
         ...base,
@@ -1488,14 +1512,16 @@ Thank you.`
       }
       return outListed;
     }
+    /** Listed projects: row arrays come only from server caches above — never merge saved.entries/extras/changeOrders. */
     const outListedSaved = {
       ...base,
-      ...saved,
       projectId: pkey,
       projectName: project.projectName || base.projectName,
       estimatedDays: finiteNumber(saved.estimatedDays, base.estimatedDays),
       laborBudget: finiteNumber(saved.laborBudget, base.laborBudget),
       dueDate: normalizeDateInput(saved.dueDate || base.dueDate),
+      projectedEndDate: normalizeDateInput(saved.projectedEndDate || base.projectedEndDate),
+      locked: saved.locked != null ? !!saved.locked : base.locked,
       entries,
       extras,
       changeOrders,
@@ -1534,9 +1560,15 @@ Thank you.`
     if (!pid) return;
     const src = report && typeof report === "object" ? report : {};
     const next = { ...src, projectId: pid };
-    next.entries = filterSupervisorStateRowsByPid(Array.isArray(src.entries) ? src.entries : [], pid);
-    next.extras = filterSupervisorStateRowsByPid(Array.isArray(src.extras) ? src.extras : [], pid);
-    next.changeOrders = filterSupervisorStateRowsByPid(Array.isArray(src.changeOrders) ? src.changeOrders : [], pid);
+    if (isServerListedSupervisorProject(pid)) {
+      delete next.entries;
+      delete next.extras;
+      delete next.changeOrders;
+    } else {
+      next.entries = filterSupervisorStateRowsByPid(Array.isArray(src.entries) ? src.entries : [], pid);
+      next.extras = filterSupervisorStateRowsByPid(Array.isArray(src.extras) ? src.extras : [], pid);
+      next.changeOrders = filterSupervisorStateRowsByPid(Array.isArray(src.changeOrders) ? src.changeOrders : [], pid);
+    }
     const reports = loadSupervisorReports();
     reports[pid] = next;
     saveSupervisorReports(reports);
@@ -4363,8 +4395,11 @@ function renderSupervisor() {
       };
     }
 
-    if (selectedProjectId && !projects.find((p) => supervisorProjectKey(p.id) === selectedProjectId) && projects[0]) {
-      saveSupervisorSelectedProjectId(supervisorProjectKey(projects[0].id));
+    if (selectedProjectId && !projects.find((p) => supervisorProjectKey(p.id) === selectedProjectId)) {
+      clearSupervisorSelectedProjectId();
+      if (projects[0]) {
+        saveSupervisorSelectedProjectId(supervisorProjectKey(projects[0].id));
+      }
     }
 
     const renderChangeOrderWorkers = (currentProject, state, metrics) => {
@@ -4464,15 +4499,23 @@ function renderSupervisor() {
       const uiList = getSupervisorProjectsForUi();
       let currentProject = null;
       if (wantId) {
-        currentProject =
-          uiList.find((project) => supervisorProjectKey(project.id) === wantId) ||
-          loadProjects().find((project) => supervisorProjectKey(project.id) === wantId) ||
-          null;
-        if (!currentProject && typeof console !== "undefined" && console.warn) {
-          console.warn("[MG Supervisor] Project not found for id:", wantId);
-        }
-        if (
-          currentProject &&
+        currentProject = uiList.find((project) => supervisorProjectKey(project.id) === wantId) || null;
+        if (!currentProject) {
+          if (typeof console !== "undefined" && console.warn) {
+            console.warn("[MG Supervisor] Project not found for id:", wantId);
+          }
+          clearSupervisorSelectedProjectId();
+          if (uiList.length) {
+            const first = uiList[0];
+            const firstId = supervisorProjectKey(first.id);
+            saveSupervisorSelectedProjectId(firstId);
+            if (picker) picker.value = first.id;
+            currentProject = first;
+          } else {
+            if (picker) picker.value = "";
+            currentProject = null;
+          }
+        } else if (
           supervisorProjectKey(currentProject.id) !== wantId &&
           typeof console !== "undefined" &&
           console.error
@@ -4481,7 +4524,16 @@ function renderSupervisor() {
             wantId,
             currentProjectId: currentProject.id,
           });
-          currentProject = null;
+          clearSupervisorSelectedProjectId();
+          if (uiList.length) {
+            const first = uiList[0];
+            saveSupervisorSelectedProjectId(supervisorProjectKey(first.id));
+            if (picker) picker.value = first.id;
+            currentProject = first;
+          } else {
+            if (picker) picker.value = "";
+            currentProject = null;
+          }
         }
       } else {
         currentProject = selectedProject;
