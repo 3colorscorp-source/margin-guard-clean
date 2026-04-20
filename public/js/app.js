@@ -254,6 +254,18 @@ Thank you.`
     return parsed.toISOString().slice(0, 10);
   }
 
+  function formatDateUS(isoDateStr) {
+    if (!isoDateStr) return "";
+    const d = new Date(isoDateStr + "T00:00:00");
+    if (isNaN(d.getTime())) return isoDateStr;
+
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const yyyy = d.getFullYear();
+
+    return `${mm}/${dd}/${yyyy}`;
+  }
+
   function inferSupervisorDueDate(saved, sales, owner) {
     return normalizeDateInput(nonEmptyString(
       saved?.dueDate,
@@ -365,7 +377,7 @@ Thank you.`
     if (!disp) return;
     const unavailable = (opts && opts.unavailableText) || "Projected finish date unavailable";
     if (isoDate) {
-      disp.textContent = isoDate;
+      disp.textContent = formatDateUS(isoDate) || isoDate;
       if (meta) {
         meta.textContent =
           "Read-only. Based on commitment date, max budgeted days in the labor plan, plus 2 business-day buffer (Mon–Fri only).";
@@ -4889,7 +4901,9 @@ function renderSupervisor() {
       if ($("supHeroState")) $("supHeroState").textContent = stateLabel;
       if ($("supHeroMeta")) $("supHeroMeta").textContent = stateMeta;
       if ($("supProjectLabel")) $("supProjectLabel").textContent = state.projectName || "Sin proyecto";
-      if ($("supDueDateLabel")) $("supDueDateLabel").textContent = state.dueDate || "Sin fecha";
+      if ($("supDueDateLabel")) {
+        $("supDueDateLabel").textContent = state.dueDate ? formatDateUS(state.dueDate) || state.dueDate : "Sin fecha";
+      }
       if ($("supEstimatedDaysLabel")) $("supEstimatedDaysLabel").textContent = Number(state.estimatedDays || 0).toFixed(2);
       if ($("supLaborBudgetLabel")) $("supLaborBudgetLabel").textContent = money(state.laborBudget, settings.currency);
       if ($("supPortfolioCount")) $("supPortfolioCount").textContent = String(projects.length);
@@ -5190,15 +5204,19 @@ function renderSupervisor() {
       }
 
       if ($("supEntriesBody")) {
-        $("supEntriesBody").innerHTML = state.entries.map((row, index) => `
+        $("supEntriesBody").innerHTML = state.entries.map((row, index) => {
+          const dateIso = normalizeDateInput(row.date);
+          const dateLabel = dateIso ? formatDateUS(dateIso) || dateIso : row.date || "-";
+          return `
           <tr>
-            <td>${escapeHtml(row.date || "-")}</td>
+            <td>${escapeHtml(dateLabel)}</td>
             <td>${escapeHtml(row.note || "-")}</td>
             <td>${Number(row.hours || 0).toFixed(2)}</td>
             <td>${Number(row.days || 0).toFixed(2)}</td>
             <td><button class="btn danger" data-delete-entry="${index}">Delete</button></td>
           </tr>
-        `).join("");
+        `;
+        }).join("");
         $("supEntriesBody").querySelectorAll("button[data-delete-entry]").forEach((button) => {
           button.onclick = () => {
             const idx = Number(button.dataset.deleteEntry || -1);
@@ -5215,15 +5233,19 @@ function renderSupervisor() {
       }
 
       if ($("supExtrasBody")) {
-        $("supExtrasBody").innerHTML = state.extras.map((row, index) => `
+        $("supExtrasBody").innerHTML = state.extras.map((row, index) => {
+          const dateIso = normalizeDateInput(row.date);
+          const dateLabel = dateIso ? formatDateUS(dateIso) || dateIso : row.date || "-";
+          return `
           <tr>
-            <td>${escapeHtml(row.date || "-")}</td>
+            <td>${escapeHtml(dateLabel)}</td>
             <td>${escapeHtml(row.item || "-")}</td>
             <td>${money(row.amount || 0, settings.currency)}</td>
             <td>${escapeHtml(row.note || "-")}</td>
             <td><button class="btn danger" data-delete-extra="${index}">Delete</button></td>
           </tr>
-        `).join("");
+        `;
+        }).join("");
         $("supExtrasBody").querySelectorAll("button[data-delete-extra]").forEach((button) => {
           button.onclick = () => {
             const idx = Number(button.dataset.deleteExtra || -1);
