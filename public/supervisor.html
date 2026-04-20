@@ -184,27 +184,25 @@
             <div class="section-head">
               <div>
                 <h2>Change Order</h2>
-                <div class="sub">El supervisor define el trabajo extra, arma la cuadrilla y el sistema calcula la cotizacion estilo vendedor.</div>
+                <div class="sub">Operational view: crew budgeted days, Pro vs Assistant totals, and schedule impact (max of the two). No pricing is shown here.</div>
               </div>
               <div class="badge amber" id="coTraffic">Sin proyecto</div>
             </div>
 
+            <input type="hidden" id="coPrice" value="0" />
+
             <div class="form">
               <div class="field">
-                <label>Trabajo agregado</label>
+                <label>Description (title)</label>
                 <input id="coTitle" maxlength="80" placeholder="Ej: niche extra, rework wall, move vanity drain" />
               </div>
               <div class="field">
-                <label>Precio propuesto al cliente</label>
-                <input id="coPrice" type="number" step="0.01" min="0" placeholder="0.00" />
+                <label>Notes</label>
+                <input id="coNotes" maxlength="140" placeholder="Short description of the extra" />
               </div>
               <div class="field">
-                <label>Notas</label>
-                <input id="coNotes" maxlength="140" placeholder="Descripcion corta del extra" />
-              </div>
-              <div class="field">
-                <label>Regla</label>
-                <div class="notice">Captura dias por trabajador. El sistema suma worker-days y cotiza el extra.</div>
+                <label>Guidance</label>
+                <div class="notice">Enter budgeted days per crew line. Schedule impact uses the longer of total Pro days vs total Assistant days (not the sum of both roles).</div>
               </div>
             </div>
 
@@ -212,25 +210,23 @@
 
             <div class="section-head">
               <div>
-                <h2>Mano de obra del extra</h2>
-                <div class="sub">Aqui si puedes definir si el trabajo extra requiere 1, 2, 4 o mas trabajadores.</div>
+                <h2>Extra crew (budgeted days)</h2>
+                <div class="sub">Add crew lines with role and days. Rates are not shown on this screen.</div>
               </div>
             </div>
 
             <div class="inline-actions" style="margin-bottom:12px;">
-              <button class="btn primary" type="button" id="btnAddCoWorker">Agregar trabajador</button>
-              <button class="btn danger" type="button" id="btnClearCoWorkers">Limpiar</button>
+              <button class="btn primary" type="button" id="btnAddCoWorker">Add crew line</button>
+              <button class="btn danger" type="button" id="btnClearCoWorkers">Clear</button>
             </div>
 
             <table class="table">
               <thead>
                 <tr>
-                  <th>Trabajador</th>
-                  <th>Tipo</th>
-                  <th>Dias</th>
-                  <th>Costo base</th>
-                  <th>Costo Labor</th>
-                  <th>Acciones</th>
+                  <th>Worker</th>
+                  <th>Role</th>
+                  <th>Budgeted days</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody id="coWorkersBody"></tbody>
@@ -238,31 +234,22 @@
 
             <div class="owner-kpi-shell" style="margin-top:12px;">
               <div class="owner-quote-hero">
-                <div class="owner-quote-kicker">Cotizacion sugerida</div>
-                <div class="owner-quote-price" id="coPrimaryPrice">$0.00</div>
-                <div class="owner-quote-meta" id="coPrimaryMeta">Ingresa dias por trabajador para cotizar el trabajo extra.</div>
+                <div class="owner-quote-kicker">Draft — time impact</div>
+                <div class="owner-quote-meta" id="coPrimaryMeta">Add crew lines and budgeted days for the extra work.</div>
                 <div class="owner-quote-strip">
                   <div class="owner-mini-card">
-                    <div class="title">Worker-days</div>
-                    <div class="big" id="coSuggestedDays">0.00 dias</div>
-                    <div class="small" id="coSuggestedDaysMeta">Tiempo total del cambio</div>
+                    <div class="title">Pro days</div>
+                    <div class="big" id="coDraftProDays">0 days</div>
                   </div>
                   <div class="owner-mini-card">
-                    <div class="title">Precio actual</div>
-                    <div class="big" id="coSuggestedPrice">$0.00</div>
-                    <div class="small" id="coSuggestedPriceMeta">Numero a presentar al cliente</div>
+                    <div class="title">Assistant days</div>
+                    <div class="big" id="coDraftAsstDays">0 days</div>
+                  </div>
+                  <div class="owner-mini-card">
+                    <div class="title">Impact on project</div>
+                    <div class="big" id="coDraftImpactDays">+0 days</div>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            <div style="margin-top:10px;">
-              <label class="sub" for="coStageRange" style="display:block; margin-bottom:6px;">Control de precio</label>
-              <input id="coStageRange" type="range" min="0" max="2" step="1" value="2" class="sales-stage-range" />
-              <div class="sales-stage-labels">
-                <span id="coStageMin">Minimo</span>
-                <span id="coStageNegotiation">Negociacion</span>
-                <span id="coStageRecommended">Recomendado</span>
               </div>
             </div>
 
@@ -272,14 +259,16 @@
               <button class="btn primary" id="btnAddChangeOrder">Guardar change order</button>
             </div>
 
+            <div id="coTimeImpactListSummary" class="notice" style="margin-top:12px;display:none;" aria-live="polite"></div>
+
             <div class="supervisor-table-wrap" style="margin-top:12px;">
               <table class="table">
                 <thead>
                   <tr>
-                    <th>Trabajo extra</th>
-                    <th>Dias</th>
-                    <th>Recomendado</th>
-                    <th>Cliente</th>
+                    <th>Description</th>
+                    <th>Pro days added</th>
+                    <th>Assistant days added</th>
+                    <th>Impact on project</th>
                     <th>Estado</th>
                     <th></th>
                   </tr>

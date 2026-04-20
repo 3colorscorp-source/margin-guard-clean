@@ -305,6 +305,32 @@ Thank you.`
     return roleKey === "assistant" ? `Assistant ${seq}` : `Pro ${seq}`;
   }
 
+  function supervisorChangeOrderTimeImpactFromWorkers(workers) {
+    if (!Array.isArray(workers) || !workers.length) {
+      return { proDaysAdded: 0, assistantDaysAdded: 0, impactDays: 0 };
+    }
+    let proDaysAdded = 0;
+    let assistantDaysAdded = 0;
+    for (const w of workers) {
+      const days = finiteNumber(w?.days, 0);
+      if (supervisorLaborRoleKey(w?.type) === "assistant") assistantDaysAdded += days;
+      else proDaysAdded += days;
+    }
+    const impactDays = Math.max(proDaysAdded, assistantDaysAdded);
+    return { proDaysAdded, assistantDaysAdded, impactDays };
+  }
+
+  function supervisorChangeOrderRowTimeImpact(row) {
+    const workers = Array.isArray(row?.workers) ? row.workers : [];
+    return supervisorChangeOrderTimeImpactFromWorkers(workers);
+  }
+
+  function supervisorFormatCoDaysLabel(value) {
+    const n = finiteNumber(value, 0);
+    if (n === 0) return "0 days";
+    return `${n.toFixed(2)} days`;
+  }
+
   function supervisorLaborPlanDisplayRows(workers) {
     if (!Array.isArray(workers) || !workers.length) return [];
     let proI = 0;
@@ -4536,8 +4562,6 @@ function renderSupervisor() {
             </select>
           </td>
           <td><input data-key="days" type="number" min="0" step="0.25" value="${Number(worker.days || 0)}" /></td>
-          <td><input data-key="rate" type="number" min="0" step="0.01" value="${worker.rate === "" || worker.rate == null ? (worker.type === "helper" ? Number(settings.baseHelper || 0) : Number(settings.baseInstaller || 0)) : Number(worker.rate || 0)}" /></td>
-          <td>${money(metrics.laborByWorker[index]?.cost || 0, settings.currency)}</td>
           <td>
             <div class="row-actions">
               <button class="btn ghost" data-action="copy">Copy</button>
@@ -4590,15 +4614,14 @@ function renderSupervisor() {
         $("coTraffic").textContent = "Sin proyecto";
       }
       if ($("coRule")) $("coRule").textContent = "Selecciona o firma un proyecto para cotizar change orders.";
-      if ($("coPrimaryPrice")) $("coPrimaryPrice").textContent = money(0, settings.currency);
       if ($("coPrimaryMeta")) $("coPrimaryMeta").textContent = "Sin proyecto activo para cotizar extras.";
-      if ($("coSuggestedDays")) $("coSuggestedDays").textContent = "0.00 dias";
-      if ($("coSuggestedDaysMeta")) $("coSuggestedDaysMeta").textContent = "Dias adicionales del trabajo extra";
-      if ($("coSuggestedPrice")) $("coSuggestedPrice").textContent = money(0, settings.currency);
-      if ($("coSuggestedPriceMeta")) $("coSuggestedPriceMeta").textContent = "Precio propuesto al cliente";
-      if ($("coStageMin")) $("coStageMin").textContent = `Minimo ${money(0, settings.currency)}`;
-      if ($("coStageNegotiation")) $("coStageNegotiation").textContent = `Negociacion ${money(0, settings.currency)}`;
-      if ($("coStageRecommended")) $("coStageRecommended").textContent = `Recomendado ${money(0, settings.currency)}`;
+      if ($("coDraftProDays")) $("coDraftProDays").textContent = "0 days";
+      if ($("coDraftAsstDays")) $("coDraftAsstDays").textContent = "0 days";
+      if ($("coDraftImpactDays")) $("coDraftImpactDays").textContent = "+0 days";
+      if ($("coTimeImpactListSummary")) {
+        $("coTimeImpactListSummary").textContent = "";
+        $("coTimeImpactListSummary").style.display = "none";
+      }
       if ($("coListBody")) $("coListBody").innerHTML = "";
       if ($("coWorkersBody")) $("coWorkersBody").innerHTML = "";
     };
@@ -5004,55 +5027,42 @@ function renderSupervisor() {
 
       setVal("coTitle", state.changeOrderDraft.title || "");
       setVal("coNotes", state.changeOrderDraft.notes || "");
-      if ($("coPrice") && $("coPrice").dataset.touched !== "true") {
-        setNum("coPrice", state.changeOrderDraft.offeredPrice || 0);
-      }
 
       const changeMetrics = calcChangeOrder(currentProject, state, settings, {
         workers: state.changeOrderDraft.workers
       });
       renderChangeOrderWorkers(currentProject, state, changeMetrics);
-      const changePriceInput = $("coPrice");
-      const changePriceTouched = changePriceInput?.dataset.touched === "true";
-      if (changePriceInput && (!changePriceTouched || Number(changePriceInput.value || 0) === 0)) {
-        const stageValue = Number(changeRange?.value || 2);
-        const stagePrice = stageValue === 2 ? changeMetrics.recommended : (stageValue === 1 ? changeMetrics.negotiation : changeMetrics.minimum);
+      const stageValue = Number(changeRange?.value || 2);
+      const stagePrice = stageValue === 2 ? changeMetrics.recommended : (stageValue === 1 ? changeMetrics.negotiation : changeMetrics.minimum);
+      if ($("coPrice")) {
         setNum("coPrice", stagePrice);
         state.changeOrderDraft.offeredPrice = stagePrice;
         saveSupervisorReport(currentProject.id, state);
       }
-      const changeOffered = num("coPrice", 0);
-      let changeTone = "red";
-      let changeMessage = "Precio abajo del minimo. Debe corregirse antes de enviarlo al cliente.";
-      if (changeMetrics.totalWorkerDays <= 0) {
-        changeTone = "amber";
-        changeMessage = "Captura dias por trabajador para cotizar el change order.";
-      } else if (changeOffered >= changeMetrics.recommended) {
+      const draftImpact = supervisorChangeOrderTimeImpactFromWorkers(state.changeOrderDraft.workers);
+      let changeTone = "amber";
+      let changeMessage = "Captura dias por trabajador (Pro / Assistant) para definir el impacto en tiempo.";
+      if (draftImpact.impactDays > 0) {
         changeTone = "green";
-        changeMessage = "Change order sano. Puedes cotizarlo con confianza.";
-      } else if (changeOffered >= changeMetrics.minimum) {
-        changeTone = "amber";
-        changeMessage = "Precio negociable. Conviene defenderlo antes de mandarlo.";
+        changeMessage = "Impacto de tiempo definido. Puedes guardar el change order cuando la descripcion este lista.";
       }
 
       if ($("coTraffic")) {
         $("coTraffic").className = `badge ${changeTone}`;
-        $("coTraffic").textContent = changeTone === "green" ? "Listo" : (changeTone === "amber" ? "Negociable" : "Ajustar");
+        $("coTraffic").textContent = changeTone === "green" ? "Listo" : "Definir tiempo";
       }
       if ($("coRule")) $("coRule").textContent = changeMessage;
-      if ($("coPrimaryPrice")) $("coPrimaryPrice").textContent = money(changeMetrics.recommended, settings.currency);
       if ($("coPrimaryMeta")) {
         $("coPrimaryMeta").textContent = changeMetrics.totalWorkerDays > 0
-          ? `${changeMetrics.totalWorkerDays.toFixed(2)} worker-days · ${changeMetrics.totalHours.toFixed(2)} horas de equipo · ${changeMetrics.workers.length} trabajadores`
-          : "Captura dias por trabajador para cotizar el change order.";
+          ? `${changeMetrics.workers.length} crew line(s) · ${changeMetrics.totalHours.toFixed(2)} budgeted crew hours.`
+          : "Add crew lines and budgeted days for the extra work.";
       }
-      if ($("coSuggestedDays")) $("coSuggestedDays").textContent = `${changeMetrics.totalWorkerDays.toFixed(2)} dias`;
-      if ($("coSuggestedDaysMeta")) $("coSuggestedDaysMeta").textContent = "Tiempo total del trabajo agregado";
-      if ($("coSuggestedPrice")) $("coSuggestedPrice").textContent = money(changeOffered, settings.currency);
-      if ($("coSuggestedPriceMeta")) $("coSuggestedPriceMeta").textContent = "Precio actual a presentar al cliente";
-      if ($("coStageMin")) $("coStageMin").textContent = `Minimo ${money(changeMetrics.minimum, settings.currency)}`;
-      if ($("coStageNegotiation")) $("coStageNegotiation").textContent = `Negociacion ${money(changeMetrics.negotiation, settings.currency)}`;
-      if ($("coStageRecommended")) $("coStageRecommended").textContent = `Recomendado ${money(changeMetrics.recommended, settings.currency)}`;
+      if ($("coDraftProDays")) $("coDraftProDays").textContent = supervisorFormatCoDaysLabel(draftImpact.proDaysAdded);
+      if ($("coDraftAsstDays")) $("coDraftAsstDays").textContent = supervisorFormatCoDaysLabel(draftImpact.assistantDaysAdded);
+      if ($("coDraftImpactDays")) {
+        const imp = draftImpact.impactDays;
+        $("coDraftImpactDays").textContent = imp === 0 ? "+0 days" : `+${imp.toFixed(2)} days`;
+      }
 
       state.entries = filterSupervisorStateRowsByPid(
         Array.isArray(state.entries) ? state.entries : [],
@@ -5076,13 +5086,33 @@ function renderSupervisor() {
         });
       }
 
+      const coSummaryEl = $("coTimeImpactListSummary");
+      if (coSummaryEl) {
+        const list = state.changeOrders;
+        let totalAddedDays = 0;
+        for (let i = 0; i < list.length; i += 1) {
+          totalAddedDays += supervisorChangeOrderRowTimeImpact(list[i]).impactDays;
+        }
+        coSummaryEl.style.display = "block";
+        coSummaryEl.textContent =
+          `${list.length} change order(s) · Total added to project timeline: +${totalAddedDays.toFixed(2)} days`;
+      }
+
       if ($("coListBody")) {
-        $("coListBody").innerHTML = state.changeOrders.map((row, index) => `
+        $("coListBody").innerHTML = state.changeOrders.map((row, index) => {
+          const ti = supervisorChangeOrderRowTimeImpact(row);
+          const titleEsc = escapeHtml(row.title || "-");
+          const notesRaw = String(row.notes || "").trim();
+          const descCell = notesRaw
+            ? `${titleEsc}<div class="small" style="margin-top:4px;opacity:.88;">${escapeHtml(notesRaw)}</div>`
+            : titleEsc;
+          const impactLabel = ti.impactDays === 0 ? "+0 days" : `+${ti.impactDays.toFixed(2)} days`;
+          return `
           <tr>
-            <td>${escapeHtml(row.title || "-")}</td>
-            <td>${Number(row.addedDays || 0).toFixed(2)}</td>
-            <td>${money(row.recommended || 0, settings.currency)}</td>
-            <td>${money(row.offeredPrice || 0, settings.currency)}</td>
+            <td>${descCell}</td>
+            <td>${escapeHtml(supervisorFormatCoDaysLabel(ti.proDaysAdded))}</td>
+            <td>${escapeHtml(supervisorFormatCoDaysLabel(ti.assistantDaysAdded))}</td>
+            <td>${escapeHtml(impactLabel)}</td>
             <td><span class="badge ${row.applied ? "green" : "amber"}">${row.applied ? "applied" : "draft"}</span></td>
             <td>
               <div class="row-actions">
@@ -5092,7 +5122,8 @@ function renderSupervisor() {
               </div>
             </td>
           </tr>
-        `).join("");
+        `;
+        }).join("");
 
         $("coListBody").querySelectorAll("button[data-pdf-change]").forEach((button) => {
           button.onclick = () => {
@@ -5264,7 +5295,7 @@ function renderSupervisor() {
       supervisorLastRefreshedProjectId = pid;
     };
 
-    ["coTitle", "coNotes", "coPrice"].forEach((id) => {
+    ["coTitle", "coNotes"].forEach((id) => {
       const el = $(id);
       if (!el) return;
       el.oninput = () => {
@@ -5277,12 +5308,7 @@ function renderSupervisor() {
           ...buildDefaultChangeOrderDraft(currentProject),
           ...(state.changeOrderDraft || {})
         };
-        if (id === "coPrice") {
-          el.dataset.touched = "true";
-          state.changeOrderDraft.offeredPrice = num("coPrice", 0);
-        } else {
-          state.changeOrderDraft[id === "coTitle" ? "title" : "notes"] = val(id);
-        }
+        state.changeOrderDraft[id === "coTitle" ? "title" : "notes"] = val(id);
         saveSupervisorReport(currentProject.id, state);
         refresh();
       };
