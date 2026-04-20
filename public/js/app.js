@@ -655,7 +655,9 @@ Thank you.`
       if (!r || typeof r !== "object") continue;
       const rid = r.project_id;
       if (rid == null || rid === "") {
-        out.push(r);
+        if (typeof console !== "undefined" && console.warn) {
+          console.warn("[MG Supervisor] Dropping API row without project_id", { resource: resourceLabel });
+        }
         continue;
       }
       if (supervisorProjectKey(rid) !== want) {
@@ -4884,15 +4886,6 @@ function renderSupervisor() {
       }
       lastSupervisorProjectId = pid;
       state.projectId = pid;
-      if (switchedProject && typeof console !== "undefined" && console.info) {
-        console.info("[MG Supervisor] project switch", {
-          wantId,
-          currentProjectId: pid,
-          stateProjectId: supervisorProjectKey(state.projectId),
-          extrasCount: state.extras.length,
-          changeOrdersCount: state.changeOrders.length,
-        });
-      }
       state.projectName = currentProject.projectName || state.projectName;
       state.estimatedDays = finiteNumber(currentProject.estimatedDays, state.estimatedDays);
       state.laborBudget = finiteNumber(currentProject.laborBudget, state.laborBudget);
@@ -4923,6 +4916,16 @@ function renderSupervisor() {
         });
       }
       supervisorIsolateProjectRowArrays(state, pid);
+      if (switchedProject && typeof console !== "undefined" && console.info) {
+        console.info("[MG Supervisor isolation]", {
+          selectedProjectId: loadSupervisorSelectedProjectId(),
+          currentProjectId: currentProject.id,
+          normalizedProjectId: pid,
+          entriesCount: state.entries.length,
+          extrasCount: state.extras.length,
+          changeOrdersCount: state.changeOrders.length,
+        });
+      }
       saveSupervisorReport(pid, state);
       setSupervisorProjectedFinishDom(state.projectedEndDate, {
         unavailableText: !state.dueDate
