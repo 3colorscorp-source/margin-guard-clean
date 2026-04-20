@@ -499,6 +499,35 @@ Thank you.`
   const supervisorProjectReportsCache = Object.create(null);
   const supervisorProjectReportsFetchInFlight = new Set();
 
+  /** Drop API rows whose project_id does not match the requested project (trace cross-tenant/project leaks). */
+  function filterFetchedTenantRowsForProjectId(rows, projectId, resourceLabel) {
+    const want = supervisorProjectKey(projectId);
+    if (!want || !Array.isArray(rows)) return [];
+    const out = [];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r || typeof r !== "object") continue;
+      const rid = r.project_id;
+      if (rid == null || rid === "") {
+        out.push(r);
+        continue;
+      }
+      if (supervisorProjectKey(rid) !== want) {
+        if (typeof console !== "undefined" && console.error) {
+          console.error("[MG ERROR] Cross-project data detected", {
+            resource: resourceLabel,
+            projectIdRequested: want,
+            rowProjectId: rid,
+            row: r,
+          });
+        }
+        continue;
+      }
+      out.push(r);
+    }
+    return out;
+  }
+
   async function fetchProjectReports(projectId) {
     const id = String(projectId || "").trim();
     if (!id) return { ok: false, reports: [] };
@@ -506,7 +535,19 @@ Thank you.`
       `/.netlify/functions/get-project-reports?project_id=${encodeURIComponent(id)}`,
       { credentials: "include" }
     );
-    return await res.json().catch(() => ({ ok: false, reports: [] }));
+    const data = await res.json().catch(() => null);
+    if (!data || typeof data !== "object") return { ok: false, reports: [] };
+    const raw = Array.isArray(data.reports) ? data.reports : [];
+    if (typeof console !== "undefined" && console.log) {
+      console.log("[MG FETCH]", {
+        resource: "reports",
+        projectIdRequested: id,
+        rowsReturned: raw.length,
+        sampleRowProjectId: raw[0]?.project_id,
+      });
+    }
+    const reports = filterFetchedTenantRowsForProjectId(raw, id, "reports");
+    return { ...data, reports };
   }
 
   /** Canonical id for Supervisor LS + API caches (avoids string vs number equality misses). */
@@ -566,7 +607,19 @@ Thank you.`
       `/.netlify/functions/get-project-expenses?project_id=${encodeURIComponent(id)}`,
       { credentials: "include" }
     );
-    return await res.json().catch(() => ({ ok: false, expenses: [] }));
+    const data = await res.json().catch(() => null);
+    if (!data || typeof data !== "object") return { ok: false, expenses: [] };
+    const raw = Array.isArray(data.expenses) ? data.expenses : [];
+    if (typeof console !== "undefined" && console.log) {
+      console.log("[MG FETCH]", {
+        resource: "expenses",
+        projectIdRequested: id,
+        rowsReturned: raw.length,
+        sampleRowProjectId: raw[0]?.project_id,
+      });
+    }
+    const expenses = filterFetchedTenantRowsForProjectId(raw, id, "expenses");
+    return { ...data, expenses };
   }
 
   function packSupervisorExpenseNote(item, note) {
@@ -610,7 +663,19 @@ Thank you.`
       `/.netlify/functions/get-project-change-orders?project_id=${encodeURIComponent(id)}`,
       { credentials: "include" }
     );
-    return await res.json().catch(() => ({ ok: false, changeOrders: [] }));
+    const data = await res.json().catch(() => null);
+    if (!data || typeof data !== "object") return { ok: false, changeOrders: [] };
+    const raw = Array.isArray(data.changeOrders) ? data.changeOrders : [];
+    if (typeof console !== "undefined" && console.log) {
+      console.log("[MG FETCH]", {
+        resource: "changeOrders",
+        projectIdRequested: id,
+        rowsReturned: raw.length,
+        sampleRowProjectId: raw[0]?.project_id,
+      });
+    }
+    const changeOrders = filterFetchedTenantRowsForProjectId(raw, id, "changeOrders");
+    return { ...data, changeOrders };
   }
 
   function packChangeOrderNotesForApi(userNotes, metrics, workers) {
@@ -1211,6 +1276,32 @@ Thank you.`
     const cached = supervisorProjectReportsCache[pkey];
     const cachedExp = supervisorProjectExpensesCache[pkey];
     const cachedCo = supervisorProjectChangeOrdersCache[pkey];
+    if (typeof console !== "undefined" && console.log) {
+      if (cached && cached.ok === true && Array.isArray(cached.reports) && cached.reports.length) {
+        console.log("[MG CACHE HIT]", {
+          kind: "reports",
+          pid: pkey,
+          cachedLength: cached.reports.length,
+          firstRowProjectId: cached.reports[0]?.project_id,
+        });
+      }
+      if (cachedExp && cachedExp.ok === true && Array.isArray(cachedExp.expenses) && cachedExp.expenses.length) {
+        console.log("[MG CACHE HIT]", {
+          kind: "expenses",
+          pid: pkey,
+          cachedLength: cachedExp.expenses.length,
+          firstRowProjectId: cachedExp.expenses[0]?.project_id,
+        });
+      }
+      if (cachedCo && cachedCo.ok === true && Array.isArray(cachedCo.changeOrders) && cachedCo.changeOrders.length) {
+        console.log("[MG CACHE HIT]", {
+          kind: "changeOrders",
+          pid: pkey,
+          cachedLength: cachedCo.changeOrders.length,
+          firstRowProjectId: cachedCo.changeOrders[0]?.project_id,
+        });
+      }
+    }
     const listed = isServerListedSupervisorProject(pkey);
     const hadRepKey = Object.prototype.hasOwnProperty.call(supervisorProjectReportsCache, pkey);
     const hadExpKey = Object.prototype.hasOwnProperty.call(supervisorProjectExpensesCache, pkey);
