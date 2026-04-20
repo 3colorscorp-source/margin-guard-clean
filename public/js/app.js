@@ -268,6 +268,114 @@ Thank you.`
     ));
   }
 
+  const SUPERVISOR_LABOR_PLAN_HOURS_PER_DAY = 8;
+  const SUPERVISOR_PROJECTED_FINISH_BUSINESS_BUFFER = 2;
+
+  function supervisorLaborRoleKey(type) {
+    const t = String(type || "").trim().toLowerCase();
+    if (t === "helper" || t === "assistant") return "assistant";
+    return "pro";
+  }
+
+  function supervisorLaborRoleLabel(type) {
+    return supervisorLaborRoleKey(type) === "assistant" ? "Assistant" : "Pro";
+  }
+
+  function supervisorLaborWorkerNameIsPlaceholder(name) {
+    const n = String(name || "").trim();
+    if (!n) return true;
+    return /^(worker\s*\d+|pro\s*\d+|assistant\s*\d+|helper\s*\d+|installer\s*\d+)$/i.test(n);
+  }
+
+  function supervisorLaborPlanDisplayWorkerName(rawName, roleKey, indexWithinRole) {
+    if (!supervisorLaborWorkerNameIsPlaceholder(rawName)) return String(rawName).trim();
+    const seq = indexWithinRole + 1;
+    return roleKey === "assistant" ? `Assistant ${seq}` : `Pro ${seq}`;
+  }
+
+  function supervisorLaborPlanDisplayRows(workers) {
+    if (!Array.isArray(workers) || !workers.length) return [];
+    let proI = 0;
+    let asstI = 0;
+    return workers.map((w) => {
+      const roleKey = supervisorLaborRoleKey(w.type);
+      const idxWithinRole = roleKey === "assistant" ? asstI++ : proI++;
+      const displayName = supervisorLaborPlanDisplayWorkerName(w?.name, roleKey, idxWithinRole);
+      const days = finiteNumber(w?.days, 0);
+      return {
+        displayName,
+        roleLabel: supervisorLaborRoleLabel(w.type),
+        days,
+        hours: days * SUPERVISOR_LABOR_PLAN_HOURS_PER_DAY,
+      };
+    });
+  }
+
+  function supervisorMaxPlanWorkerDays(workers) {
+    if (!Array.isArray(workers) || !workers.length) return 0;
+    let mx = 0;
+    for (const w of workers) mx = Math.max(mx, finiteNumber(w?.days, 0));
+    return mx;
+  }
+
+  function supervisorFormatYmdFromDate(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  /** If `ymd` falls on Sat/Sun, move forward to the next Monday–Friday (local calendar). */
+  function supervisorSnapCommitmentToBusinessDay(ymd) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd || ""))) return null;
+    const [y, mo, d] = ymd.split("-").map(Number);
+    const cur = new Date(y, mo - 1, d);
+    if (Number.isNaN(cur.getTime())) return null;
+    for (let guard = 0; guard < 14; guard += 1) {
+      const dow = cur.getDay();
+      if (dow !== 0 && dow !== 6) return cur;
+      cur.setDate(cur.getDate() + 1);
+    }
+    return cur;
+  }
+
+  /**
+   * Projected finish: walk forward on Mon–Fri only, counting the snapped commitment day as
+   * business-day 1, until `ceil(maxWorkerDays) + 2` business days have been included.
+   */
+  function supervisorProjectedFinishFromCommitment(commitmentYmd, maxWorkerDays) {
+    const span =
+      Math.max(0, Math.ceil(finiteNumber(maxWorkerDays, 0))) + SUPERVISOR_PROJECTED_FINISH_BUSINESS_BUFFER;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(commitmentYmd || "")) || span <= 0) return "";
+    let cur = supervisorSnapCommitmentToBusinessDay(commitmentYmd);
+    if (!cur) return "";
+    let counted = 0;
+    for (let guard = 0; guard < 4000; guard += 1) {
+      const dow = cur.getDay();
+      if (dow !== 0 && dow !== 6) counted += 1;
+      if (counted >= span) return supervisorFormatYmdFromDate(cur);
+      cur.setDate(cur.getDate() + 1);
+    }
+    return "";
+  }
+
+  function setSupervisorProjectedFinishDom(isoDate, opts) {
+    const disp = $("supProjectedFinishDisplay");
+    const meta = $("supProjectedFinishMeta");
+    if (!disp) return;
+    const unavailable = (opts && opts.unavailableText) || "Projected finish date unavailable";
+    if (isoDate) {
+      disp.textContent = isoDate;
+      if (meta) {
+        meta.textContent =
+          "Read-only. Based on commitment date, max budgeted days in the labor plan, plus 2 business-day buffer (Mon–Fri only).";
+      }
+    } else {
+      disp.textContent = unavailable;
+      if (meta) meta.textContent = "";
+    }
+  }
+
   function loadSettings() { return { ...DEFAULTS, ...readStore(LS_SETTINGS, {}) }; }
   function saveSettings(settings) { writeStore(LS_SETTINGS, settings); }
   function formatMoney(amount) {
@@ -1217,7 +1325,7 @@ Thank you.`
   }
 
   function clearSupervisorSwitchDomBleed() {
-    setVal("supProjectedDate", "");
+    setSupervisorProjectedFinishDom("", { unavailableText: "Projected finish date unavailable" });
     setVal("supEntryDate", "");
     setNum("supEntryHours", 0);
     setNum("supEntryDays", 0);
@@ -4588,7 +4696,7 @@ function renderSupervisor() {
           $("supLaborPlanBody").innerHTML =
             '<p class="small" style="margin:0;">Labor plan not available for this project</p>';
         }
-        setVal("supProjectedDate", "");
+        setSupervisorProjectedFinishDom("", { unavailableText: "Projected finish date unavailable" });
         paintChangeOrderEmpty();
         return;
       }
@@ -4704,9 +4812,13 @@ function renderSupervisor() {
       state.estimatedDays = finiteNumber(currentProject.estimatedDays, state.estimatedDays);
       state.laborBudget = finiteNumber(currentProject.laborBudget, state.laborBudget);
       state.dueDate = normalizeDateInput(currentProject.dueDate || state.dueDate);
-      state.projectedEndDate = normalizeDateInput(
-        switchedProject ? state.projectedEndDate : (val("supProjectedDate") || state.projectedEndDate)
-      );
+      const planWorkersForProjection = Array.isArray(currentProject.workers) ? currentProject.workers : [];
+      const maxPlanWorkerDays = supervisorMaxPlanWorkerDays(planWorkersForProjection);
+      const autoProjected =
+        state.dueDate && planWorkersForProjection.length
+          ? supervisorProjectedFinishFromCommitment(state.dueDate, maxPlanWorkerDays)
+          : "";
+      state.projectedEndDate = normalizeDateInput(autoProjected);
       state.changeOrders = Array.isArray(state.changeOrders) ? state.changeOrders : [];
       state.changeOrderDraft = {
         ...buildDefaultChangeOrderDraft(currentProject),
@@ -4726,7 +4838,13 @@ function renderSupervisor() {
         });
       }
       saveSupervisorReport(pid, state);
-      setVal("supProjectedDate", state.projectedEndDate);
+      setSupervisorProjectedFinishDom(state.projectedEndDate, {
+        unavailableText: !state.dueDate
+          ? "Projected finish date unavailable (no commitment date)"
+          : !planWorkersForProjection.length
+            ? "Projected finish date unavailable (no labor plan)"
+            : "Projected finish date unavailable",
+      });
 
       const reportedHours = state.entries.reduce((sum, row) => sum + Number(row.hours || 0), 0);
       const reportedDays = state.entries.reduce((sum, row) => sum + Number(row.days || 0), 0);
@@ -4778,30 +4896,34 @@ function renderSupervisor() {
 
       const supLaborPlanBody = $("supLaborPlanBody");
       if (supLaborPlanBody) {
-        const LABOR_PLAN_HOURS_PER_DAY = 8;
         const planWorkers = Array.isArray(currentProject.workers) ? currentProject.workers : [];
         if (!planWorkers.length) {
           supLaborPlanBody.innerHTML =
             '<p class="small" style="margin:0;">Labor plan not available for this project</p>';
         } else {
+          const displayRows = supervisorLaborPlanDisplayRows(planWorkers);
+          const maxDays = supervisorMaxPlanWorkerDays(planWorkers);
           supLaborPlanBody.innerHTML = `
-            <table class="table" style="margin-top:4px;">
+            <table class="table" style="margin-top:4px;width:100%;">
               <thead>
-                <tr><th>Worker</th><th>Type</th><th>Days</th><th>Hours</th></tr>
+                <tr><th>Worker</th><th>Role</th><th>Budgeted days</th><th>Budgeted hours</th></tr>
               </thead>
-              <tbody>${planWorkers
-                .map((w) => {
-                  const days = Number(w?.days) || 0;
-                  const hours = days * LABOR_PLAN_HOURS_PER_DAY;
+              <tbody>${displayRows
+                .map((row) => {
                   return `<tr>
-                    <td>${escapeHtml(w?.name || "-")}</td>
-                    <td>${escapeHtml(w?.type || "-")}</td>
-                    <td>${days.toFixed(2)}</td>
-                    <td>${hours.toFixed(2)}</td>
+                    <td>${escapeHtml(row.displayName)}</td>
+                    <td>${escapeHtml(row.roleLabel)}</td>
+                    <td>${finiteNumber(row.days, 0).toFixed(2)}</td>
+                    <td>${finiteNumber(row.hours, 0).toFixed(2)}</td>
                   </tr>`;
                 })
                 .join("")}</tbody>
-            </table>`;
+            </table>
+            <p class="small" style="margin:10px 0 0;color:var(--muted,#666);line-height:1.45;">
+              Total project duration follows the <strong>longest</strong> worker schedule (${escapeHtml(
+                String(maxDays.toFixed(2))
+              )} budgeted days here), not the sum of all workers.
+            </p>`;
         }
       }
 
@@ -5119,8 +5241,6 @@ function renderSupervisor() {
 
       supervisorLastRefreshedProjectId = pid;
     };
-
-    if ($("supProjectedDate")) $("supProjectedDate").oninput = refresh;
 
     ["coTitle", "coNotes", "coPrice"].forEach((id) => {
       const el = $(id);

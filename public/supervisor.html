@@ -106,8 +106,10 @@
             <div class="sep"></div>
 
             <div class="field">
-              <label>Labor Plan</label>
-              <div class="small" style="margin-bottom:6px;">Budgeted labor from the signed quote (read-only).</div>
+              <label>Labor plan</label>
+              <div class="small" style="margin-bottom:8px;line-height:1.45;">
+                Budgeted crew from the signed quote (read-only). Shows worker, role, budgeted days and hours only.
+              </div>
               <div id="supLaborPlanBody"></div>
             </div>
 
@@ -116,7 +118,8 @@
             <div class="form">
               <div class="field">
                 <label>Fecha proyectada final</label>
-                <input id="supProjectedDate" type="date" />
+                <div class="big" id="supProjectedFinishDisplay" style="min-height:1.25em;">—</div>
+                <p class="small" id="supProjectedFinishMeta" style="margin:6px 0 0;line-height:1.45;color:var(--muted,#666);"></p>
               </div>
             </div>
 
