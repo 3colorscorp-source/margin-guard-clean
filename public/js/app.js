@@ -1407,16 +1407,59 @@ Thank you.`
     return rows.filter((row) => row && supervisorProjectKey(row.project_id) === k);
   }
 
-  /** UI rows from server carry serverProjectId; drop mismatches before render/save. */
+  function supervisorRowHasProjectScope(r) {
+    if (!r || typeof r !== "object") return false;
+    const sidRaw = r.serverProjectId != null && r.serverProjectId !== "" ? r.serverProjectId : r.project_id;
+    return sidRaw != null && sidRaw !== "";
+  }
+
+  /**
+   * Legacy local rows may lack project id; they are scoped to the report they are stored under.
+   * Stamp serverProjectId so every row is attributable to exactly one project.
+   */
+  function attachSupervisorProjectIdToRows(rows, pid) {
+    const k = supervisorProjectKey(pid);
+    if (!k || !Array.isArray(rows)) return [];
+    return rows.map((r) => {
+      if (!r || typeof r !== "object") return r;
+      if (supervisorRowHasProjectScope(r)) return { ...r };
+      return { ...r, serverProjectId: k };
+    });
+  }
+
+  /** UI rows must carry a project id; unscoped rows are dropped (no longer "match all projects"). */
   function filterSupervisorStateRowsByPid(rows, pid) {
     const k = supervisorProjectKey(pid);
     if (!k || !Array.isArray(rows)) return [];
     return rows.filter((r) => {
       if (!r || typeof r !== "object") return false;
       const sidRaw = r.serverProjectId != null && r.serverProjectId !== "" ? r.serverProjectId : r.project_id;
-      if (sidRaw == null || sidRaw === "") return true;
+      if (sidRaw == null || sidRaw === "") return false;
       return supervisorProjectKey(sidRaw) === k;
     });
+  }
+
+  function finalizeSupervisorRowArraysInReport(report, pkey) {
+    if (!report || typeof report !== "object") return report;
+    const k = supervisorProjectKey(pkey);
+    if (!k) return report;
+    report.entries = filterSupervisorStateRowsByPid(
+      attachSupervisorProjectIdToRows(Array.isArray(report.entries) ? report.entries : [], k),
+      k
+    );
+    report.extras = filterSupervisorStateRowsByPid(
+      attachSupervisorProjectIdToRows(Array.isArray(report.extras) ? report.extras : [], k),
+      k
+    );
+    report.changeOrders = filterSupervisorStateRowsByPid(
+      attachSupervisorProjectIdToRows(Array.isArray(report.changeOrders) ? report.changeOrders : [], k),
+      k
+    );
+    return report;
+  }
+
+  function supervisorIsolateProjectRowArrays(state, pid) {
+    return finalizeSupervisorRowArraysInReport(state, pid);
   }
 
   function loadSupervisorReport(project) {
@@ -1546,7 +1589,7 @@ Thank you.`
             },
           });
         }
-        return out;
+        return finalizeSupervisorRowArraysInReport(out, pkey);
       }
       const repServerBackedNonListed = hadRepKey || (cached && cached.ok === true);
       const expServerBackedNonListed = hadExpKey || (cachedExp && cachedExp.ok === true);
@@ -1566,7 +1609,10 @@ Thank you.`
               ? []
               : repServerBackedNonListed
                 ? []
-                : filterSupervisorStateRowsByPid(Array.isArray(saved.entries) ? saved.entries : [], pkey),
+                : filterSupervisorStateRowsByPid(
+                    attachSupervisorProjectIdToRows(Array.isArray(saved.entries) ? saved.entries : [], pkey),
+                    pkey
+                  ),
         extras:
           apiExtras != null
             ? apiExtras
@@ -1574,7 +1620,10 @@ Thank you.`
               ? []
               : expServerBackedNonListed
                 ? []
-                : filterSupervisorStateRowsByPid(Array.isArray(saved.extras) ? saved.extras : [], pkey),
+                : filterSupervisorStateRowsByPid(
+                    attachSupervisorProjectIdToRows(Array.isArray(saved.extras) ? saved.extras : [], pkey),
+                    pkey
+                  ),
         changeOrders:
           apiChangeOrders != null
             ? apiChangeOrders
@@ -1582,7 +1631,10 @@ Thank you.`
               ? []
               : coServerBackedNonListed
                 ? []
-                : filterSupervisorStateRowsByPid(Array.isArray(saved.changeOrders) ? saved.changeOrders : [], pkey),
+                : filterSupervisorStateRowsByPid(
+                    attachSupervisorProjectIdToRows(Array.isArray(saved.changeOrders) ? saved.changeOrders : [], pkey),
+                    pkey
+                  ),
         changeOrderDraft: {
           ...base.changeOrderDraft,
           ...(saved.changeOrderDraft && typeof saved.changeOrderDraft === "object" ? saved.changeOrderDraft : {}),
@@ -1610,7 +1662,7 @@ Thank you.`
           },
         });
       }
-      return outMerged;
+      return finalizeSupervisorRowArraysInReport(outMerged, pkey);
     }
 
     if (typeof console !== "undefined" && console.log) {
@@ -1656,7 +1708,7 @@ Thank you.`
           },
         });
       }
-      return outListed;
+      return finalizeSupervisorRowArraysInReport(outListed, pkey);
     }
     /** Listed projects: row arrays come only from server caches above — never merge saved.entries/extras/changeOrders. */
     const outListedSaved = {
@@ -1698,7 +1750,7 @@ Thank you.`
         },
       });
     }
-    return outListedSaved;
+    return finalizeSupervisorRowArraysInReport(outListedSaved, pkey);
   }
 
   function saveSupervisorReport(projectId, report) {
@@ -1711,9 +1763,18 @@ Thank you.`
       delete next.extras;
       delete next.changeOrders;
     } else {
-      next.entries = filterSupervisorStateRowsByPid(Array.isArray(src.entries) ? src.entries : [], pid);
-      next.extras = filterSupervisorStateRowsByPid(Array.isArray(src.extras) ? src.extras : [], pid);
-      next.changeOrders = filterSupervisorStateRowsByPid(Array.isArray(src.changeOrders) ? src.changeOrders : [], pid);
+      next.entries = filterSupervisorStateRowsByPid(
+        attachSupervisorProjectIdToRows(Array.isArray(src.entries) ? src.entries : [], pid),
+        pid
+      );
+      next.extras = filterSupervisorStateRowsByPid(
+        attachSupervisorProjectIdToRows(Array.isArray(src.extras) ? src.extras : [], pid),
+        pid
+      );
+      next.changeOrders = filterSupervisorStateRowsByPid(
+        attachSupervisorProjectIdToRows(Array.isArray(src.changeOrders) ? src.changeOrders : [], pid),
+        pid
+      );
     }
     const reports = loadSupervisorReports();
     reports[pid] = next;
@@ -4822,18 +4883,6 @@ function renderSupervisor() {
         state.projectId = pid;
       }
       lastSupervisorProjectId = pid;
-      state.entries = filterSupervisorStateRowsByPid(
-        Array.isArray(state.entries) ? state.entries.map((row) => ({ ...row })) : [],
-        pid
-      );
-      state.extras = filterSupervisorStateRowsByPid(
-        Array.isArray(state.extras) ? state.extras.map((row) => ({ ...row })) : [],
-        pid
-      );
-      state.changeOrders = filterSupervisorStateRowsByPid(
-        Array.isArray(state.changeOrders) ? state.changeOrders.map((row) => ({ ...row })) : [],
-        pid
-      );
       state.projectId = pid;
       if (switchedProject && typeof console !== "undefined" && console.info) {
         console.info("[MG Supervisor] project switch", {
@@ -4873,6 +4922,7 @@ function renderSupervisor() {
           changeOrdersCount: state.changeOrders.length,
         });
       }
+      supervisorIsolateProjectRowArrays(state, pid);
       saveSupervisorReport(pid, state);
       setSupervisorProjectedFinishDom(state.projectedEndDate, {
         unavailableText: !state.dueDate
@@ -4881,19 +4931,6 @@ function renderSupervisor() {
             ? "Projected finish date unavailable (no labor plan)"
             : "Projected finish date unavailable",
       });
-
-      state.entries = filterSupervisorStateRowsByPid(
-        Array.isArray(state.entries) ? state.entries : [],
-        pid
-      );
-      state.extras = filterSupervisorStateRowsByPid(
-        Array.isArray(state.extras) ? state.extras : [],
-        pid
-      );
-      state.changeOrders = filterSupervisorStateRowsByPid(
-        Array.isArray(state.changeOrders) ? state.changeOrders : [],
-        pid
-      );
 
       const reportedHours = state.entries.reduce((sum, row) => sum + Number(row.hours || 0), 0);
       const reportedDays = state.entries.reduce((sum, row) => sum + Number(row.days || 0), 0);
@@ -5376,11 +5413,13 @@ function renderSupervisor() {
         )) || selectedProject;
         if (!currentProject) return alert("No signed projects yet.");
         const state = loadSupervisorReport(currentProject);
+        const rowPid = supervisorProjectKey(currentProject.id);
         const entry = {
           date: val("supEntryDate"),
           hours: num("supEntryHours", 0),
           days: num("supEntryDays", 0),
-          note: val("supEntryNote").trim()
+          note: val("supEntryNote").trim(),
+          serverProjectId: rowPid
         };
         if (!entry.date) return alert("Entry date is required.");
         if (entry.hours <= 0 && entry.days <= 0) return alert("Report hours or days worked.");
@@ -5446,11 +5485,13 @@ function renderSupervisor() {
         )) || selectedProject;
         if (!currentProject) return alert("No signed projects yet.");
         const state = loadSupervisorReport(currentProject);
+        const rowPid = supervisorProjectKey(currentProject.id);
         const extra = {
           date: val("supExtraDate"),
           item: val("supExtraItem").trim(),
           amount: num("supExtraAmount", 0),
-          note: val("supExtraNote").trim()
+          note: val("supExtraNote").trim(),
+          serverProjectId: rowPid
         };
         if (!extra.date) return alert("Extra expense date is required.");
         if (!extra.item) return alert("Extra expense concept is required.");
@@ -5578,6 +5619,7 @@ function renderSupervisor() {
         }
 
         state.changeOrders = Array.isArray(state.changeOrders) ? state.changeOrders : [];
+        const coRowPid = supervisorProjectKey(currentProject.id);
         state.changeOrders.unshift({
           id: `CO-${Date.now()}`,
           createdAt: new Date().toISOString(),
@@ -5591,7 +5633,8 @@ function renderSupervisor() {
           laborBudgetAdded: metrics.labor,
           hoursAdded: metrics.totalHours,
           workers: state.changeOrderDraft.workers.map((worker) => ({ ...worker })),
-          applied: false
+          applied: false,
+          serverProjectId: coRowPid
         });
         state.changeOrderDraft = buildDefaultChangeOrderDraft(currentProject);
         if ($("coPrice")) $("coPrice").dataset.touched = "false";
