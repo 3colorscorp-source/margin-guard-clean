@@ -1262,7 +1262,8 @@
                   recommended_price: metrics.recommended,
                   minimum_price: metrics.minimum,
                   due_date: state.dueDate || '',
-                  notes: state.notes || state.messageToClient || ''
+                  notes: state.notes || state.messageToClient || '',
+                  workers: state.workers
                 })
               }).catch(function () { /* non-fatal */ });
             }

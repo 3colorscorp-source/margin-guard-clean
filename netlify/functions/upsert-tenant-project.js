@@ -60,6 +60,24 @@ function normDate(d) {
   return null;
 }
 
+/** Persist Sales signing labor lines: [{ name, type, days }]. */
+function normalizeQuotedLaborPlan(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  const maxRows = 50;
+  for (let i = 0; i < raw.length && out.length < maxRows; i++) {
+    const w = raw[i];
+    if (!w || typeof w !== "object") continue;
+    const t = str(w.type, 32).toLowerCase();
+    out.push({
+      name: str(w.name, 200),
+      type: t === "helper" ? "helper" : "installer",
+      days: num(w.days, 0),
+    });
+  }
+  return out;
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -93,6 +111,7 @@ exports.handler = async (event) => {
 
     const nowIso = new Date().toISOString();
     const signedAt = str(body.signed_at, 64) || nowIso;
+    const quotedLaborPlan = normalizeQuotedLaborPlan(body.workers);
     const row = {
       tenant_id: tenant.id,
       quote_id: quoteId,
@@ -109,6 +128,7 @@ exports.handler = async (event) => {
       minimum_price: num(body.minimum_price, 0),
       due_date: normDate(body.due_date),
       notes: str(body.notes, 8000),
+      quoted_labor_plan: quotedLaborPlan,
       updated_at: nowIso,
     };
 

@@ -4584,6 +4584,10 @@ function renderSupervisor() {
         `).join("");
         if ($("supEntriesBody")) $("supEntriesBody").innerHTML = "";
         if ($("supExtrasBody")) $("supExtrasBody").innerHTML = "";
+        if ($("supLaborPlanBody")) {
+          $("supLaborPlanBody").innerHTML =
+            '<p class="small" style="margin:0;">Labor plan not available for this project</p>';
+        }
         setVal("supProjectedDate", "");
         paintChangeOrderEmpty();
         return;
@@ -4771,6 +4775,35 @@ function renderSupervisor() {
       if ($("supEstimatedDaysLabel")) $("supEstimatedDaysLabel").textContent = Number(state.estimatedDays || 0).toFixed(2);
       if ($("supLaborBudgetLabel")) $("supLaborBudgetLabel").textContent = money(state.laborBudget, settings.currency);
       if ($("supPortfolioCount")) $("supPortfolioCount").textContent = String(projects.length);
+
+      const supLaborPlanBody = $("supLaborPlanBody");
+      if (supLaborPlanBody) {
+        const LABOR_PLAN_HOURS_PER_DAY = 8;
+        const planWorkers = Array.isArray(currentProject.workers) ? currentProject.workers : [];
+        if (!planWorkers.length) {
+          supLaborPlanBody.innerHTML =
+            '<p class="small" style="margin:0;">Labor plan not available for this project</p>';
+        } else {
+          supLaborPlanBody.innerHTML = `
+            <table class="table" style="margin-top:4px;">
+              <thead>
+                <tr><th>Worker</th><th>Type</th><th>Days</th><th>Hours</th></tr>
+              </thead>
+              <tbody>${planWorkers
+                .map((w) => {
+                  const days = Number(w?.days) || 0;
+                  const hours = days * LABOR_PLAN_HOURS_PER_DAY;
+                  return `<tr>
+                    <td>${escapeHtml(w?.name || "-")}</td>
+                    <td>${escapeHtml(w?.type || "-")}</td>
+                    <td>${days.toFixed(2)}</td>
+                    <td>${hours.toFixed(2)}</td>
+                  </tr>`;
+                })
+                .join("")}</tbody>
+            </table>`;
+        }
+      }
 
       const projectForServerKpi =
         getSupervisorProjectsForUi().find((p) => supervisorProjectKey(p.id) === pid) || currentProject;
