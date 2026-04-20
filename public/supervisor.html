@@ -97,9 +97,9 @@
                 <div class="small">Meta planeada del proyecto</div>
               </div>
               <div class="supervisor-summary-card">
-                <div class="title">Presupuesto labor</div>
-                <div class="big" id="supLaborBudgetLabel">$0.00</div>
-                <div class="small">Control para horas reportadas</div>
+                <div class="title">Gastos imprevistos (registros)</div>
+                <div class="big" id="supSummaryRegisteredExtras">0</div>
+                <div class="small">Cuantas entradas en gasto imprevisto (sin importes)</div>
               </div>
             </div>
 
@@ -337,9 +337,9 @@
 
             <div class="owner-kpi-shell">
               <div class="owner-quote-hero">
-                <div class="owner-quote-kicker">Resumen ejecutivo</div>
-                <div class="owner-quote-price" id="supPrimaryBalance">$0.00</div>
-                <div class="owner-quote-meta" id="supPrimaryMeta">Presupuesto de mano de obra restante.</div>
+                <div class="owner-quote-kicker">Resumen operativo</div>
+                <div class="owner-quote-price" id="supPrimaryOpProgress">—</div>
+                <div class="owner-quote-meta" id="supPrimaryOpMeta">Avance del proyecto (dias reportados vs estimados).</div>
                 <div class="owner-quote-strip">
                   <div class="owner-mini-card">
                     <div class="title">Dias restantes</div>
@@ -347,9 +347,19 @@
                     <div class="small" id="supPrimaryDaysMeta">Segun dias estimados del proyecto</div>
                   </div>
                   <div class="owner-mini-card">
-                    <div class="title">Gasto imprevisto</div>
-                    <div class="big" id="supPrimaryExtras">$0.00</div>
-                    <div class="small" id="supPrimaryExtrasMeta">Acumulado en este proyecto</div>
+                    <div class="title">CO aplicados</div>
+                    <div class="big" id="supPrimaryCoApplied">0</div>
+                    <div class="small" id="supPrimaryCoAppliedMeta">Change orders en estado applied</div>
+                  </div>
+                  <div class="owner-mini-card">
+                    <div class="title">Dias agregados (CO)</div>
+                    <div class="big" id="supPrimaryCoImpact">0</div>
+                    <div class="small" id="supPrimaryCoImpactMeta">Impacto acumulado de CO aplicados</div>
+                  </div>
+                  <div class="owner-mini-card">
+                    <div class="title">Gastos imprevistos</div>
+                    <div class="big" id="supPrimaryExtrasCount">0</div>
+                    <div class="small" id="supPrimaryExtrasMeta">Registros capturados</div>
                   </div>
                 </div>
               </div>

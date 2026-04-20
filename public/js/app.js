@@ -4704,19 +4704,20 @@ function renderSupervisor() {
         if ($("supProjectLabel")) $("supProjectLabel").textContent = "Sin proyecto";
         if ($("supDueDateLabel")) $("supDueDateLabel").textContent = "Sin fecha";
         if ($("supEstimatedDaysLabel")) $("supEstimatedDaysLabel").textContent = "0.00";
-        if ($("supLaborBudgetLabel")) $("supLaborBudgetLabel").textContent = money(0, settings.currency);
+        if ($("supSummaryRegisteredExtras")) $("supSummaryRegisteredExtras").textContent = "0";
         if ($("supExecutiveNote")) $("supExecutiveNote").textContent = "Todavia no hay proyectos firmados para este supervisor.";
-        if ($("supPrimaryBalance")) $("supPrimaryBalance").textContent = money(0, settings.currency);
-        if ($("supPrimaryMeta")) $("supPrimaryMeta").textContent = "Esperando proyecto firmado";
+        if ($("supPrimaryOpProgress")) $("supPrimaryOpProgress").textContent = "—";
+        if ($("supPrimaryOpMeta")) $("supPrimaryOpMeta").textContent = "Esperando proyecto firmado";
         if ($("supPrimaryDays")) $("supPrimaryDays").textContent = "0.00";
         if ($("supPrimaryDaysMeta")) $("supPrimaryDaysMeta").textContent = "Sin meta activa";
-        if ($("supPrimaryExtras")) $("supPrimaryExtras").textContent = money(0, settings.currency);
-        if ($("supPrimaryExtrasMeta")) $("supPrimaryExtrasMeta").textContent = "Sin proyecto activo";
+        if ($("supPrimaryCoApplied")) $("supPrimaryCoApplied").textContent = "0";
+        if ($("supPrimaryCoImpact")) $("supPrimaryCoImpact").textContent = "0.00";
+        if ($("supPrimaryExtrasCount")) $("supPrimaryExtrasCount").textContent = "0";
+        if ($("supPrimaryExtrasMeta")) $("supPrimaryExtrasMeta").textContent = "Registros capturados";
         if ($("supPortfolioCount")) $("supPortfolioCount").textContent = "0";
         $("supervisorKpis").innerHTML = [
           ["Proyectos firmados", "0", "Firma o aprueba proyectos para empezar a reportar"],
           ["Dias estimados", "0.00", "Esperando proyecto firmado"],
-          ["Presupuesto labor", money(0, settings.currency), "Sin presupuesto asignado"],
           ["Fecha comprometida", "Sin fecha", "La fecha entra desde el proyecto firmado"]
         ].map(([label, value, meta]) => `
           <div class="kpi-box">
@@ -4881,18 +4882,32 @@ function renderSupervisor() {
             : "Projected finish date unavailable",
       });
 
+      state.entries = filterSupervisorStateRowsByPid(
+        Array.isArray(state.entries) ? state.entries : [],
+        pid
+      );
+      state.extras = filterSupervisorStateRowsByPid(
+        Array.isArray(state.extras) ? state.extras : [],
+        pid
+      );
+      state.changeOrders = filterSupervisorStateRowsByPid(
+        Array.isArray(state.changeOrders) ? state.changeOrders : [],
+        pid
+      );
+
       const reportedHours = state.entries.reduce((sum, row) => sum + Number(row.hours || 0), 0);
       const reportedDays = state.entries.reduce((sum, row) => sum + Number(row.days || 0), 0);
-      const extraSpent = state.extras.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-      const owner = loadOwner();
-      const ownerHours = Number(owner.metrics?.totalHours || 0);
-      const blendedRate = ownerHours > 0
-        ? Number(owner.metrics?.labor || 0) / ownerHours
-        : Number(settings.baseInstaller || 0);
-      const laborSpent = reportedHours * blendedRate;
-      const totalSpent = laborSpent + extraSpent;
-      const laborRemaining = Number(state.laborBudget || 0) - totalSpent;
       const daysRemaining = Number(state.estimatedDays || 0) - reportedDays;
+      const estForProgress = Number(state.estimatedDays || 0);
+      const progressPct =
+        estForProgress > 0 ? Math.min(100, (reportedDays / estForProgress) * 100) : null;
+      const coAppliedCount = state.changeOrders.filter((r) => r && r.applied).length;
+      let coImpactAppliedTotal = 0;
+      for (let ci = 0; ci < state.changeOrders.length; ci += 1) {
+        const c = state.changeOrders[ci];
+        if (c && c.applied) coImpactAppliedTotal += supervisorChangeOrderRowTimeImpact(c).impactDays;
+      }
+      const extrasRegCount = state.extras.length;
 
       let dayDelta = 0;
       if (state.dueDate && state.projectedEndDate) {
@@ -4905,16 +4920,16 @@ function renderSupervisor() {
       let stateLabel = "Verde";
       let stateMeta = "Vas bien. El proyecto sigue dentro del ritmo esperado.";
 
-      if (daysRemaining <= 1 || laborRemaining <= Number(state.laborBudget || 0) * 0.2 || dayDelta > 0 || extraSpent > Number(state.laborBudget || 0) * 0.05) {
+      if (daysRemaining <= 1 || dayDelta > 0) {
         tone = "amber";
         stateLabel = "Amarillo";
-        stateMeta = "Necesitas atencion. Conviene apurarte o cuidar el presupuesto.";
+        stateMeta = "Necesitas atencion. Ajusta ritmo o plazos; revisa atraso vs fecha comprometida.";
       }
 
-      if (daysRemaining < 0 || laborRemaining < 0 || dayDelta > 2) {
+      if (daysRemaining < 0 || dayDelta > 2) {
         tone = "red";
         stateLabel = "Rojo";
-        stateMeta = "Necesitas apurarte. El proyecto ya se esta saliendo del plan.";
+        stateMeta = "Necesitas apurarte. El avance o la fecha proyectada se salen del plan operativo.";
       }
 
       if ($("supStatus")) {
@@ -4928,7 +4943,7 @@ function renderSupervisor() {
         $("supDueDateLabel").textContent = state.dueDate ? formatDateUS(state.dueDate) || state.dueDate : "Sin fecha";
       }
       if ($("supEstimatedDaysLabel")) $("supEstimatedDaysLabel").textContent = Number(state.estimatedDays || 0).toFixed(2);
-      if ($("supLaborBudgetLabel")) $("supLaborBudgetLabel").textContent = money(state.laborBudget, settings.currency);
+      if ($("supSummaryRegisteredExtras")) $("supSummaryRegisteredExtras").textContent = String(extrasRegCount);
       if ($("supPortfolioCount")) $("supPortfolioCount").textContent = String(projects.length);
 
       const supLaborPlanBody = $("supLaborPlanBody");
@@ -4964,58 +4979,50 @@ function renderSupervisor() {
         }
       }
 
-      const projectForServerKpi =
-        getSupervisorProjectsForUi().find((p) => supervisorProjectKey(p.id) === pid) || currentProject;
-      const listedForCoTotals = isServerListedSupervisorProject(projectForServerKpi.id);
-      const coAppliedServer = listedForCoTotals ? Number(projectForServerKpi.appliedChangeOrderTotal) || 0 : null;
-      const projRevServer =
-        listedForCoTotals && projectForServerKpi.projectedRevenueTotal != null && !Number.isNaN(Number(projectForServerKpi.projectedRevenueTotal))
-          ? Number(projectForServerKpi.projectedRevenueTotal)
-          : listedForCoTotals
-            ? (Number(projectForServerKpi.salePrice) || 0) + (coAppliedServer || 0)
-            : null;
-
       if ($("supExecutiveNote")) {
-        const revPart =
-          listedForCoTotals && projRevServer != null
-            ? ` Ingresos proyectados (servidor): ${money(projRevServer, settings.currency)}.`
-            : "";
-        $("supExecutiveNote").textContent = `Proyecto seleccionado: ${state.projectName}. Has reportado ${reportedDays.toFixed(2)} dias y ${reportedHours.toFixed(2)} horas. Te quedan ${daysRemaining.toFixed(2)} dias estimados y ${money(laborRemaining, settings.currency)} de presupuesto restante.${revPart}`;
+        const fin = !state.dueDate || !state.projectedEndDate
+          ? "Compara primero la fecha comprometida y la proyectada."
+          : dayDelta <= 0
+            ? "Fecha proyectada alineada o adelantada respecto a la comprometida."
+            : `Atraso operativo: +${dayDelta} dia(s) de calendario vs el compromiso.`;
+        $("supExecutiveNote").textContent = `Proyecto: ${state.projectName}. Reportado: ${reportedDays.toFixed(2)} dias y ${reportedHours.toFixed(2)} horas. Quedan ${daysRemaining.toFixed(2)} dias estimados. ${fin}`;
       }
 
-      if ($("supPrimaryBalance")) $("supPrimaryBalance").textContent = money(laborRemaining, settings.currency);
-      if ($("supPrimaryMeta")) $("supPrimaryMeta").textContent = "Presupuesto restante despues de horas y extras";
+      if ($("supPrimaryOpProgress")) {
+        $("supPrimaryOpProgress").textContent =
+          progressPct == null ? "—" : `${progressPct.toFixed(0)}%`;
+      }
+      if ($("supPrimaryOpMeta")) {
+        $("supPrimaryOpMeta").textContent =
+          estForProgress > 0
+            ? `Dias reportados / estimados: ${reportedDays.toFixed(2)} / ${estForProgress.toFixed(2)}`
+            : "Sin dias estimados en el proyecto: no se calcula porcentaje de avance.";
+      }
       if ($("supPrimaryDays")) $("supPrimaryDays").textContent = daysRemaining.toFixed(2);
       if ($("supPrimaryDaysMeta")) $("supPrimaryDaysMeta").textContent = "Dias estimados que faltan por reportar";
-      if ($("supPrimaryExtras")) $("supPrimaryExtras").textContent = money(extraSpent, settings.currency);
-      if ($("supPrimaryExtrasMeta")) $("supPrimaryExtrasMeta").textContent = "Acumulado de gasto imprevisto";
+      if ($("supPrimaryCoApplied")) $("supPrimaryCoApplied").textContent = String(coAppliedCount);
+      if ($("supPrimaryCoAppliedMeta")) $("supPrimaryCoAppliedMeta").textContent = "Change orders en applied";
+      if ($("supPrimaryCoImpact")) $("supPrimaryCoImpact").textContent = coImpactAppliedTotal.toFixed(2);
+      if ($("supPrimaryCoImpactMeta")) $("supPrimaryCoImpactMeta").textContent = "Suma de impacto (dias) de CO aplicados";
+      if ($("supPrimaryExtrasCount")) $("supPrimaryExtrasCount").textContent = String(extrasRegCount);
+      if ($("supPrimaryExtrasMeta")) $("supPrimaryExtrasMeta").textContent = "Entradas de gasto imprevisto (conteo)";
 
       const kpiRows = [
         ["Proyectos activos", `${projects.length}`, "El supervisor puede alternar entre varios trabajos"],
         ["Dias reportados", reportedDays.toFixed(2), "Avance real del proyecto seleccionado"],
         ["Dias restantes", daysRemaining.toFixed(2), "Dias estimados pendientes para terminar"],
         ["Horas reportadas", reportedHours.toFixed(2), "Horas reales capturadas en campo"],
-        ["Presupuesto restante", money(laborRemaining, settings.currency), "Presupuesto disponible despues de horas y extras"],
-        ["Gasto imprevisto", money(extraSpent, settings.currency), "Compras y costos no contemplados"],
-        ["Dias de atraso", `${dayDelta}`, !state.dueDate || !state.projectedEndDate ? "Sin comparacion de fechas todavia" : (dayDelta <= 0 ? "No hay atraso proyectado" : "Diferencia contra fecha comprometida")]
+        ["Dias de atraso", `${dayDelta}`, !state.dueDate || !state.projectedEndDate ? "Sin comparacion de fechas todavia" : (dayDelta <= 0 ? "No hay atraso proyectado" : "Diferencia contra fecha comprometida")],
+        ["Change orders aplicados", `${coAppliedCount}`, "CO en estado applied en este proyecto"],
+        ["Dias agregados (CO aplicados)", coImpactAppliedTotal.toFixed(2), "Suma de impacto en calendario segun Pro/Assistant del CO"],
+        ["Gastos imprevistos (registros)", `${extrasRegCount}`, "Filas de gasto imprevisto (sin importes, solo conteo)"]
       ];
-      if (listedForCoTotals && coAppliedServer != null && projRevServer != null) {
+      if (estForProgress > 0) {
         kpiRows.splice(1, 0, [
-          "Ingresos proyectados",
-          money(projRevServer, settings.currency),
-          "Precio de venta base mas change orders aplicados (tenant_projects)",
+          "Avance del proyecto (aprox.)",
+          `${Math.min(100, (reportedDays / estForProgress) * 100).toFixed(0)}%`,
+          "Dias reportados / dias estimados del proyecto (mismo limite 100% si te pasas)",
         ]);
-        kpiRows.splice(2, 0, [
-          "CO aplicados (total)",
-          money(coAppliedServer, settings.currency),
-          "Suma de precios cliente de change orders ya aplicados",
-        ]);
-        kpiRows.push(
-          ["Labor consumido", money(Number(projectForServerKpi.laborConsumedTotal) || 0, settings.currency), "Servidor: horas reportadas x (labor_budget / (estimated_days x 8))"],
-          ["Gasto total real", money(Number(projectForServerKpi.unexpectedExpenseTotal) || 0, settings.currency), "Servidor: suma de gastos imprevistos"],
-          ["Profit real", money(Number(projectForServerKpi.realProfitTotal) || 0, settings.currency), "Servidor: ingresos proyectados menos labor y gastos"],
-          ["Margen real", `${((Number(projectForServerKpi.realMarginPct) || 0) * 100).toFixed(1)}%`, "Servidor: profit / ingresos proyectados"]
-        );
       }
       $("supervisorKpis").innerHTML = kpiRows.map(([label, value, meta]) => `
         <div class="kpi-box">
@@ -5064,18 +5071,6 @@ function renderSupervisor() {
         $("coDraftImpactDays").textContent = imp === 0 ? "+0 days" : `+${imp.toFixed(2)} days`;
       }
 
-      state.entries = filterSupervisorStateRowsByPid(
-        Array.isArray(state.entries) ? state.entries : [],
-        pid
-      );
-      state.extras = filterSupervisorStateRowsByPid(
-        Array.isArray(state.extras) ? state.extras : [],
-        pid
-      );
-      state.changeOrders = filterSupervisorStateRowsByPid(
-        Array.isArray(state.changeOrders) ? state.changeOrders : [],
-        pid
-      );
       if (typeof console !== "undefined" && console.info) {
         console.info("[MG Supervisor trace]", "refresh render tables", {
           currentProjectId: pid,
