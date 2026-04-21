@@ -32,6 +32,43 @@ function finiteOrZero(n) {
   return Number.isFinite(x) ? x : 0;
 }
 
+function round2(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.round(x * 100) / 100;
+}
+
+/** Display money for email / Zapier (USD-style). */
+function formatMoneyUsd(amount) {
+  const r = round2(amount);
+  return `$${r.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * Dollar profit implied by treating margin% as share of final price (same basis as Zapier email).
+ * profit_loss = expected at target margin minus profit at real margin.
+ */
+function computeApprovalProfitDisplay(finalPrice, targetMarginPct, realMarginPct) {
+  const price = Number(finalPrice) || 0;
+  const targetPct = Number(targetMarginPct);
+  const realPct = realMarginPct != null && Number.isFinite(Number(realMarginPct)) ? Number(realMarginPct) : 0;
+  const expected_profit = round2(price * (Number.isFinite(targetPct) ? targetPct / 100 : 0));
+  const current_profit = round2(price * (realPct / 100));
+  const profit_loss = round2(expected_profit - current_profit);
+  const owner_financial_html = `<p><strong>Final Price:</strong> ${formatMoneyUsd(price)}</p>
+<p><strong>Expected Profit:</strong> ${formatMoneyUsd(expected_profit)}</p>
+<p><strong>Current Profit:</strong> ${formatMoneyUsd(current_profit)}</p>
+<p style="margin:16px 0 12px;font-size:18px;font-weight:800;color:#b00020;line-height:1.35;">You are losing: ${formatMoneyUsd(profit_loss)}</p>`;
+  const profit_loss_line = `You are losing: ${formatMoneyUsd(profit_loss)}`;
+  return {
+    expected_profit,
+    current_profit,
+    profit_loss,
+    owner_financial_html,
+    profit_loss_line
+  };
+}
+
 /** PostgREST may return one row as an object or as a one-element array. */
 function firstRowFromSupabase(data) {
   if (Array.isArray(data)) {
@@ -412,11 +449,20 @@ exports.handler = async (event) => {
 
         const seller_name = requested_by_email || "";
 
+        const profitDisplay = computeApprovalProfitDisplay(
+          normalized.row.offered_price,
+          gate.profitPct,
+          real_margin_pct
+        );
+
         if (tokenStored) {
           yellowResponse.token = token;
           yellowResponse.project_name = normalized.row.project_name || "";
           yellowResponse.seller_name = seller_name;
           yellowResponse.real_margin_pct = real_margin_pct;
+          yellowResponse.expected_profit = profitDisplay.expected_profit;
+          yellowResponse.current_profit = profitDisplay.current_profit;
+          yellowResponse.profit_loss = profitDisplay.profit_loss;
         }
 
         const hookUrl = zapierWebhookUrl();
@@ -431,6 +477,11 @@ exports.handler = async (event) => {
             target_margin_pct: gate.profitPct,
             minimum_margin_pct: gate.minimumMarginPct,
             final_price: normalized.row.offered_price,
+            expected_profit: profitDisplay.expected_profit,
+            current_profit: profitDisplay.current_profit,
+            profit_loss: profitDisplay.profit_loss,
+            owner_financial_html: profitDisplay.owner_financial_html,
+            profit_loss_line: profitDisplay.profit_loss_line,
             tenant_id: String(tenant.id),
             approve_url: approveUrl || undefined,
             decline_url: declineUrl || undefined
