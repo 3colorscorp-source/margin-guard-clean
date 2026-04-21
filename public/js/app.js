@@ -4499,7 +4499,6 @@ function renderSupervisor() {
     const selectedProjectId = supervisorProjectKey(loadSupervisorSelectedProjectId());
     const selectedProject =
       projects.find((project) => supervisorProjectKey(project.id) === selectedProjectId) || projects[0] || null;
-    const changeRange = $("coStageRange");
 
     if (picker) {
       picker.innerHTML = projects.length
@@ -4530,15 +4529,13 @@ function renderSupervisor() {
         if (nextId && isServerListedSupervisorProject(nextId)) {
           supervisorProjectReportsFetchInFlight.add(nextId);
           supervisorProjectExpensesFetchInFlight.add(nextId);
-          supervisorProjectChangeOrdersFetchInFlight.add(nextId);
           renderSupervisor();
           void (async () => {
             try {
               if (supervisorProjectKey(loadSupervisorSelectedProjectId()) !== nextId) return;
-              const [r, e, c] = await Promise.all([
+              const [r, e] = await Promise.all([
                 fetchProjectReports(nextId),
                 fetchProjectExpenses(nextId),
-                fetchProjectChangeOrders(nextId),
               ]);
               if (supervisorProjectKey(loadSupervisorSelectedProjectId()) !== nextId) return;
               supervisorProjectReportsCache[nextId] =
@@ -4549,14 +4546,9 @@ function renderSupervisor() {
                 e && e.ok === true && Array.isArray(e.expenses)
                   ? { ok: true, expenses: e.expenses }
                   : { ok: false, expenses: [] };
-              supervisorProjectChangeOrdersCache[nextId] =
-                c && c.ok === true && Array.isArray(c.changeOrders)
-                  ? { ok: true, changeOrders: c.changeOrders }
-                  : { ok: false, changeOrders: [] };
             } finally {
               supervisorProjectReportsFetchInFlight.delete(nextId);
               supervisorProjectExpensesFetchInFlight.delete(nextId);
-              supervisorProjectChangeOrdersFetchInFlight.delete(nextId);
             }
             if (supervisorProjectKey(loadSupervisorSelectedProjectId()) !== nextId) return;
             renderSupervisor();
@@ -4610,84 +4602,6 @@ function renderSupervisor() {
         saveSupervisorSelectedProjectId(supervisorProjectKey(projects[0].id));
       }
     }
-
-    const renderChangeOrderWorkers = (currentProject, state, metrics) => {
-      const body = $("coWorkersBody");
-      if (!body) return;
-      const draft = state.changeOrderDraft;
-      body.innerHTML = draft.workers.map((worker, index) => `
-        <tr data-index="${index}">
-          <td><input data-key="name" maxlength="40" value="${escapeHtml(worker.name || "")}" /></td>
-          <td>
-            <select data-key="type">
-              <option value="installer" ${worker.type === "installer" ? "selected" : ""}>Pro</option>
-              <option value="helper" ${worker.type === "helper" ? "selected" : ""}>Assistant</option>
-            </select>
-          </td>
-          <td><input data-key="days" type="number" min="0" step="0.25" value="${Number(worker.days || 0)}" /></td>
-          <td>
-            <div class="row-actions">
-              <button class="btn ghost" data-action="copy">Copy</button>
-              <button class="btn danger" data-action="delete">Delete</button>
-            </div>
-          </td>
-        </tr>
-      `).join("");
-
-      body.querySelectorAll("input,select").forEach((el) => {
-        const commit = () => {
-          const tr = el.closest("tr");
-          const index = Number(tr?.dataset.index ?? -1);
-          const key = el.dataset.key;
-          if (index < 0 || !key) return;
-          if (key === "days" || key === "rate") {
-            state.changeOrderDraft.workers[index][key] = el.value === "" ? "" : Number(el.value || 0);
-          } else {
-            state.changeOrderDraft.workers[index][key] = el.value;
-          }
-          if (key === "type" && (state.changeOrderDraft.workers[index].rate === "" || state.changeOrderDraft.workers[index].rate == null)) {
-            state.changeOrderDraft.workers[index].rate = "";
-          }
-          saveSupervisorReport(currentProject.id, state);
-          renderSupervisor();
-        };
-        el.addEventListener("change", commit);
-        if (el.tagName === "INPUT") el.addEventListener("blur", commit);
-      });
-
-      body.querySelectorAll("button[data-action]").forEach((button) => {
-        button.addEventListener("click", () => {
-          const tr = button.closest("tr");
-          const index = Number(tr?.dataset.index ?? -1);
-          if (index < 0) return;
-          if (button.dataset.action === "delete") state.changeOrderDraft.workers.splice(index, 1);
-          if (button.dataset.action === "copy") state.changeOrderDraft.workers.splice(index + 1, 0, { ...state.changeOrderDraft.workers[index] });
-          if (!state.changeOrderDraft.workers.length) {
-            state.changeOrderDraft.workers = buildDefaultChangeOrderWorkers(currentProject);
-          }
-          saveSupervisorReport(currentProject.id, state);
-          renderSupervisor();
-        });
-      });
-    };
-
-    const paintChangeOrderEmpty = () => {
-      if ($("coTraffic")) {
-        $("coTraffic").className = "badge amber";
-        $("coTraffic").textContent = "Sin proyecto";
-      }
-      if ($("coRule")) $("coRule").textContent = "Selecciona o firma un proyecto para cotizar change orders.";
-      if ($("coPrimaryMeta")) $("coPrimaryMeta").textContent = "Sin proyecto activo para cotizar extras.";
-      if ($("coDraftProDays")) $("coDraftProDays").textContent = "0 days";
-      if ($("coDraftAsstDays")) $("coDraftAsstDays").textContent = "0 days";
-      if ($("coDraftImpactDays")) $("coDraftImpactDays").textContent = "+0 days";
-      if ($("coTimeImpactListSummary")) {
-        $("coTimeImpactListSummary").textContent = "";
-        $("coTimeImpactListSummary").style.display = "none";
-      }
-      if ($("coListBody")) $("coListBody").innerHTML = "";
-      if ($("coWorkersBody")) $("coWorkersBody").innerHTML = "";
-    };
 
     const refresh = () => {
       const lsSel = supervisorProjectKey(loadSupervisorSelectedProjectId());
@@ -4797,7 +4711,6 @@ function renderSupervisor() {
             '<p class="small" style="margin:0;">Labor plan not available for this project</p>';
         }
         setSupervisorProjectedFinishDom("", { unavailableText: "Projected finish date unavailable" });
-        paintChangeOrderEmpty();
         return;
       }
 
@@ -4839,20 +4752,6 @@ function renderSupervisor() {
               supervisorProjectExpensesCache[pid] = { ok: true, expenses: data.expenses };
             } else {
               supervisorProjectExpensesCache[pid] = { ok: false, expenses: [] };
-            }
-            if ($("supervisorKpis") && supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
-              renderSupervisor();
-            }
-          });
-        }
-        if (!supervisorProjectChangeOrdersCache[pid] && !supervisorProjectChangeOrdersFetchInFlight.has(pid)) {
-          supervisorProjectChangeOrdersFetchInFlight.add(pid);
-          void fetchProjectChangeOrders(pid).then((data) => {
-            supervisorProjectChangeOrdersFetchInFlight.delete(pid);
-            if (data && data.ok === true && Array.isArray(data.changeOrders)) {
-              supervisorProjectChangeOrdersCache[pid] = { ok: true, changeOrders: data.changeOrders };
-            } else {
-              supervisorProjectChangeOrdersCache[pid] = { ok: false, changeOrders: [] };
             }
             if ($("supervisorKpis") && supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
               renderSupervisor();
@@ -5114,45 +5013,6 @@ function renderSupervisor() {
         </div>
       `).join("");
 
-      setVal("coTitle", state.changeOrderDraft.title || "");
-      setVal("coNotes", state.changeOrderDraft.notes || "");
-
-      const changeMetrics = calcChangeOrder(currentProject, state, settings, {
-        workers: state.changeOrderDraft.workers
-      });
-      renderChangeOrderWorkers(currentProject, state, changeMetrics);
-      const stageValue = Number(changeRange?.value || 2);
-      const stagePrice = stageValue === 2 ? changeMetrics.recommended : (stageValue === 1 ? changeMetrics.negotiation : changeMetrics.minimum);
-      if ($("coPrice")) {
-        setNum("coPrice", stagePrice);
-        state.changeOrderDraft.offeredPrice = stagePrice;
-        saveSupervisorReport(currentProject.id, state);
-      }
-      const draftImpact = supervisorChangeOrderTimeImpactFromWorkers(state.changeOrderDraft.workers);
-      let changeTone = "amber";
-      let changeMessage = "Captura dias por trabajador (Pro / Assistant) para definir el impacto en tiempo.";
-      if (draftImpact.impactDays > 0) {
-        changeTone = "green";
-        changeMessage = "Impacto de tiempo definido. Puedes guardar el change order cuando la descripcion este lista.";
-      }
-
-      if ($("coTraffic")) {
-        $("coTraffic").className = `badge ${changeTone}`;
-        $("coTraffic").textContent = changeTone === "green" ? "Listo" : "Definir tiempo";
-      }
-      if ($("coRule")) $("coRule").textContent = changeMessage;
-      if ($("coPrimaryMeta")) {
-        $("coPrimaryMeta").textContent = changeMetrics.totalWorkerDays > 0
-          ? `${changeMetrics.workers.length} crew line(s) · ${changeMetrics.totalHours.toFixed(2)} budgeted crew hours.`
-          : "Add crew lines and budgeted days for the extra work.";
-      }
-      if ($("coDraftProDays")) $("coDraftProDays").textContent = supervisorFormatCoDaysLabel(draftImpact.proDaysAdded);
-      if ($("coDraftAsstDays")) $("coDraftAsstDays").textContent = supervisorFormatCoDaysLabel(draftImpact.assistantDaysAdded);
-      if ($("coDraftImpactDays")) {
-        const imp = draftImpact.impactDays;
-        $("coDraftImpactDays").textContent = imp === 0 ? "+0 days" : `+${imp.toFixed(2)} days`;
-      }
-
       if (typeof console !== "undefined" && console.info) {
         console.info("[MG Supervisor trace]", "refresh render tables", {
           currentProjectId: pid,
@@ -5160,154 +5020,6 @@ function renderSupervisor() {
           entriesCount: state.entries.length,
           extrasCount: state.extras.length,
           changeOrdersCount: state.changeOrders.length,
-        });
-      }
-
-      const coSummaryEl = $("coTimeImpactListSummary");
-      if (coSummaryEl) {
-        const list = state.changeOrders;
-        let totalAddedDays = 0;
-        for (let i = 0; i < list.length; i += 1) {
-          totalAddedDays += supervisorChangeOrderRowTimeImpact(list[i]).impactDays;
-        }
-        coSummaryEl.style.display = "block";
-        coSummaryEl.textContent =
-          `${list.length} change order(s) · Total added to project timeline: +${totalAddedDays.toFixed(2)} days`;
-      }
-
-      if ($("coListBody")) {
-        $("coListBody").innerHTML = state.changeOrders.map((row, index) => {
-          const ti = supervisorChangeOrderRowTimeImpact(row);
-          const titleEsc = escapeHtml(row.title || "-");
-          const notesRaw = String(row.notes || "").trim();
-          const descCell = notesRaw
-            ? `${titleEsc}<div class="small" style="margin-top:4px;opacity:.88;">${escapeHtml(notesRaw)}</div>`
-            : titleEsc;
-          const impactLabel = ti.impactDays === 0 ? "+0 days" : `+${ti.impactDays.toFixed(2)} days`;
-          return `
-          <tr>
-            <td>${descCell}</td>
-            <td>${escapeHtml(supervisorFormatCoDaysLabel(ti.proDaysAdded))}</td>
-            <td>${escapeHtml(supervisorFormatCoDaysLabel(ti.assistantDaysAdded))}</td>
-            <td>${escapeHtml(impactLabel)}</td>
-            <td><span class="badge ${row.applied ? "green" : "amber"}">${row.applied ? "applied" : "draft"}</span></td>
-            <td>
-              <div class="row-actions">
-                <button class="btn ghost" data-pdf-change="${index}">PDF</button>
-                <button class="btn primary" data-apply-change="${index}">${row.applied ? "Applied" : "Apply"}</button>
-                <button class="btn danger" data-delete-change="${index}">Delete</button>
-              </div>
-            </td>
-          </tr>
-        `;
-        }).join("");
-
-        $("coListBody").querySelectorAll("button[data-pdf-change]").forEach((button) => {
-          button.onclick = () => {
-            const index = Number(button.dataset.pdfChange || -1);
-            const row = state.changeOrders[index];
-            if (!row) return;
-            exportChangeOrderPdf(currentProject, row, settings);
-          };
-        });
-
-        $("coListBody").querySelectorAll("button[data-delete-change]").forEach((button) => {
-          button.onclick = async () => {
-            const idx = Number(button.dataset.deleteChange || -1);
-            const row = state.changeOrders[idx];
-            const coDelId = getServerChangeOrderApplyId(row);
-            if (coDelId && isServerListedSupervisorProject(currentProject.id)) {
-              try {
-                const res = await fetch("/.netlify/functions/delete-project-change-order", {
-                  method: "POST",
-                  credentials: "include",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ change_order_id: coDelId }),
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!data.ok) {
-                  window.alert(data.error || `Delete failed (${res.status}).`);
-                  return;
-                }
-                if (!data.deleted) {
-                  window.alert(data.error || "Change order was not deleted.");
-                  return;
-                }
-                const pid = supervisorProjectKey(currentProject.id);
-                delete supervisorProjectChangeOrdersCache[pid];
-                const freshCo = await fetchProjectChangeOrders(pid);
-                supervisorProjectChangeOrdersCache[pid] =
-                  freshCo && freshCo.ok === true && Array.isArray(freshCo.changeOrders)
-                    ? { ok: true, changeOrders: freshCo.changeOrders }
-                    : { ok: false, changeOrders: [] };
-                renderSupervisor();
-                return;
-              } catch (_e) {
-                window.alert("Network error. Could not delete change order.");
-                return;
-              }
-            }
-            state.changeOrders.splice(idx, 1);
-            saveSupervisorReport(currentProject.id, state);
-            refresh();
-          };
-        });
-
-        $("coListBody").querySelectorAll("button[data-apply-change]").forEach((button) => {
-          button.onclick = async () => {
-            const index = Number(button.dataset.applyChange || -1);
-            if (index < 0 || !state.changeOrders[index] || state.changeOrders[index].applied) return;
-            const row = state.changeOrders[index];
-            const coApplyId = getServerChangeOrderApplyId(row);
-            if (coApplyId && isServerListedSupervisorProject(currentProject.id)) {
-              try {
-                const res = await fetch("/.netlify/functions/apply-project-change-order", {
-                  method: "POST",
-                  credentials: "include",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ change_order_id: coApplyId }),
-                });
-                const data = await res.json().catch(() => ({}));
-                if (data && data.alreadyApplied === true) {
-                  window.alert(data.error || "Change order already applied.");
-                  return;
-                }
-                if (!res.ok || !data || data.ok !== true) {
-                  window.alert((data && (data.error || data.message)) || `Apply failed (${res.status}).`);
-                  return;
-                }
-                const pid = supervisorProjectKey(currentProject.id);
-                await recalcProjectProfitIfListed(pid);
-                delete supervisorProjectChangeOrdersCache[pid];
-                await refreshSupervisorProjectsFromApi();
-                const freshCo = await fetchProjectChangeOrders(pid);
-                supervisorProjectChangeOrdersCache[pid] =
-                  freshCo && freshCo.ok === true && Array.isArray(freshCo.changeOrders)
-                    ? { ok: true, changeOrders: freshCo.changeOrders }
-                    : { ok: false, changeOrders: [] };
-                renderSupervisor();
-                return;
-              } catch (_e) {
-                window.alert("Network error. Could not apply change order.");
-                return;
-              }
-            }
-            const updated = updateProjectById(currentProject.id, (proj) => ({
-              ...proj,
-              estimatedDays: finiteNumber(proj.estimatedDays, 0) + finiteNumber(row.addedDays, 0),
-              laborBudget: finiteNumber(proj.laborBudget, 0) + finiteNumber(row.laborBudgetAdded, 0)
-            }));
-            if (!updated) return;
-            state.estimatedDays = finiteNumber(updated.estimatedDays, state.estimatedDays);
-            state.laborBudget = finiteNumber(updated.laborBudget, state.laborBudget);
-            state.changeOrders[index] = {
-              ...row,
-              applied: true,
-              appliedAt: new Date().toISOString()
-            };
-            saveSupervisorReport(currentProject.id, state);
-            refresh();
-          };
         });
       }
 
@@ -5371,85 +5083,6 @@ function renderSupervisor() {
 
       supervisorLastRefreshedProjectId = pid;
     };
-
-    ["coTitle", "coNotes"].forEach((id) => {
-      const el = $(id);
-      if (!el) return;
-      el.oninput = () => {
-        const currentProject = (getSupervisorProjectsForUi().find(
-          (project) => supervisorProjectKey(project.id) === supervisorProjectKey(loadSupervisorSelectedProjectId())
-        )) || selectedProject;
-        if (!currentProject) return;
-        const state = loadSupervisorReport(currentProject);
-        state.changeOrderDraft = {
-          ...buildDefaultChangeOrderDraft(currentProject),
-          ...(state.changeOrderDraft || {})
-        };
-        state.changeOrderDraft[id === "coTitle" ? "title" : "notes"] = val(id);
-        saveSupervisorReport(currentProject.id, state);
-        refresh();
-      };
-    });
-
-    if (changeRange) {
-      changeRange.oninput = () => {
-        const currentProject = (getSupervisorProjectsForUi().find(
-          (project) => supervisorProjectKey(project.id) === supervisorProjectKey(loadSupervisorSelectedProjectId())
-        )) || selectedProject;
-        const state = currentProject ? loadSupervisorReport(currentProject) : null;
-        if (!currentProject || !state) return;
-        const changeMetrics = calcChangeOrder(currentProject, state, settings, {
-          workers: state.changeOrderDraft?.workers
-        });
-        const stageValue = Number(changeRange.value || 2);
-        const stagePrice = stageValue === 2 ? changeMetrics.recommended : (stageValue === 1 ? changeMetrics.negotiation : changeMetrics.minimum);
-        if ($("coPrice")) {
-          $("coPrice").dataset.touched = "false";
-          setNum("coPrice", stagePrice);
-        }
-        state.changeOrderDraft.offeredPrice = stagePrice;
-        saveSupervisorReport(currentProject.id, state);
-        refresh();
-      };
-    }
-
-    if ($("btnAddCoWorker")) {
-      $("btnAddCoWorker").onclick = () => {
-        const currentProject = (getSupervisorProjectsForUi().find(
-          (project) => supervisorProjectKey(project.id) === supervisorProjectKey(loadSupervisorSelectedProjectId())
-        )) || selectedProject;
-        if (!currentProject) return alert("No signed projects yet.");
-        const state = loadSupervisorReport(currentProject);
-        state.changeOrderDraft = {
-          ...buildDefaultChangeOrderDraft(currentProject),
-          ...(state.changeOrderDraft || {})
-        };
-        state.changeOrderDraft.workers = Array.isArray(state.changeOrderDraft.workers) ? state.changeOrderDraft.workers : buildDefaultChangeOrderWorkers(currentProject);
-        state.changeOrderDraft.workers.push({
-          name: `Worker ${state.changeOrderDraft.workers.length + 1}`,
-          type: "installer",
-          days: 0,
-          rate: ""
-        });
-        saveSupervisorReport(currentProject.id, state);
-        renderSupervisor();
-      };
-    }
-
-    if ($("btnClearCoWorkers")) {
-      $("btnClearCoWorkers").onclick = () => {
-        const currentProject = (getSupervisorProjectsForUi().find(
-          (project) => supervisorProjectKey(project.id) === supervisorProjectKey(loadSupervisorSelectedProjectId())
-        )) || selectedProject;
-        if (!currentProject) return alert("No signed projects yet.");
-        const state = loadSupervisorReport(currentProject);
-        state.changeOrderDraft = buildDefaultChangeOrderDraft(currentProject);
-        if ($("coPrice")) $("coPrice").dataset.touched = "false";
-        if (changeRange) changeRange.value = "2";
-        saveSupervisorReport(currentProject.id, state);
-        renderSupervisor();
-      };
-    }
 
     if ($("btnAddSupEntry")) {
       $("btnAddSupEntry").onclick = async () => {
@@ -5592,100 +5225,6 @@ function renderSupervisor() {
         setVal("supExtraNote", "");
         saveSupervisorReport(currentProject.id, state);
         refresh();
-      };
-    }
-
-    if ($("btnAddChangeOrder")) {
-      $("btnAddChangeOrder").onclick = async () => {
-        const currentProject = (getSupervisorProjectsForUi().find(
-          (project) => supervisorProjectKey(project.id) === supervisorProjectKey(loadSupervisorSelectedProjectId())
-        )) || selectedProject;
-        if (!currentProject) return alert("No signed projects yet.");
-        const state = loadSupervisorReport(currentProject);
-        state.changeOrderDraft = {
-          ...buildDefaultChangeOrderDraft(currentProject),
-          ...(state.changeOrderDraft || {}),
-          workers: Array.isArray(state.changeOrderDraft?.workers) && state.changeOrderDraft.workers.length
-            ? state.changeOrderDraft.workers
-            : buildDefaultChangeOrderWorkers(currentProject)
-        };
-        const title = val("coTitle").trim();
-        const notes = val("coNotes").trim();
-        const metrics = calcChangeOrder(currentProject, state, settings, {
-          workers: state.changeOrderDraft.workers
-        });
-        if (!title) return alert("Change order title is required.");
-        if (metrics.totalWorkerDays <= 0) return alert("Capture worker-days for the extra work.");
-        const offeredPrice = num("coPrice", metrics.recommended);
-
-        if (isServerListedSupervisorProject(currentProject.id)) {
-          try {
-            const res = await fetch("/.netlify/functions/save-project-change-order", {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                project_id: currentProject.id,
-                title,
-                notes: packChangeOrderNotesForApi(notes, metrics, state.changeOrderDraft.workers),
-                worker_days: metrics.totalWorkerDays,
-                recommended_price: metrics.recommended,
-                client_price: offeredPrice,
-                status: "draft",
-              }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data || data.ok !== true) {
-              const msg = (data && (data.error || data.message)) || `Save failed (${res.status}).`;
-              window.alert(msg);
-              return;
-            }
-            delete supervisorProjectChangeOrdersCache[supervisorProjectKey(currentProject.id)];
-            const fresh = await fetchProjectChangeOrders(currentProject.id);
-            supervisorProjectChangeOrdersCache[supervisorProjectKey(currentProject.id)] =
-              fresh && fresh.ok === true && Array.isArray(fresh.changeOrders)
-                ? { ok: true, changeOrders: fresh.changeOrders }
-                : { ok: false, changeOrders: [] };
-            const merged = loadSupervisorReport(currentProject);
-            merged.locked = true;
-            merged.changeOrderDraft = buildDefaultChangeOrderDraft(currentProject);
-            saveSupervisorReport(currentProject.id, merged);
-            if ($("coPrice")) $("coPrice").dataset.touched = "false";
-            if (changeRange) changeRange.value = "2";
-            setVal("coTitle", "");
-            setVal("coNotes", "");
-            setNum("coPrice", 0);
-            renderSupervisor();
-            return;
-          } catch (_e) {
-            window.alert("Network error. Could not save change order.");
-            return;
-          }
-        }
-
-        state.changeOrders = Array.isArray(state.changeOrders) ? state.changeOrders : [];
-        const coRowPid = supervisorProjectKey(currentProject.id);
-        state.changeOrders.unshift({
-          id: `CO-${Date.now()}`,
-          createdAt: new Date().toISOString(),
-          title,
-          addedDays: metrics.totalWorkerDays,
-          notes,
-          offeredPrice,
-          recommended: metrics.recommended,
-          minimum: metrics.minimum,
-          negotiation: metrics.negotiation,
-          laborBudgetAdded: metrics.labor,
-          hoursAdded: metrics.totalHours,
-          workers: state.changeOrderDraft.workers.map((worker) => ({ ...worker })),
-          applied: false,
-          serverProjectId: coRowPid
-        });
-        state.changeOrderDraft = buildDefaultChangeOrderDraft(currentProject);
-        if ($("coPrice")) $("coPrice").dataset.touched = "false";
-        if (changeRange) changeRange.value = "2";
-        saveSupervisorReport(currentProject.id, state);
-        renderSupervisor();
       };
     }
 
