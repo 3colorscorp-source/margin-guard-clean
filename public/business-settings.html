@@ -535,7 +535,8 @@
     }
 
     function n(id) {
-      const s = rawTrim(id);
+      const el = document.getElementById(id);
+      const s = String(el?.value ?? '').trim();
       if (s === '') return NaN;
       return Number(s);
     }
