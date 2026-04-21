@@ -331,6 +331,24 @@ Thank you.`
     return `${n.toFixed(2)} days`;
   }
 
+  /**
+   * Tenant-level rate comes from Business Settings `supervisorBonusPct` (percent points, e.g. 5 = 5%).
+   * bonus_base = labor_budget * (pct / 100). Timeline for delay/penalty: `effectiveDays` (labor plan max worker days when plan exists, else project estimated_days).
+   */
+  function computeSupervisorExecutionBonus({ laborBudget, effectiveDays, daysSpent, supervisorBonusPctPoints }) {
+    const lb = finiteNumber(laborBudget, 0);
+    const timeline = finiteNumber(effectiveDays, 0);
+    const spent = finiteNumber(daysSpent, 0);
+    const pctPoints = finiteNumber(supervisorBonusPctPoints, 0);
+    const rate = pctPoints / 100;
+    const bonusBase = lb * rate;
+    const delayDays = Math.max(0, spent - timeline);
+    const penaltyPerDay = timeline > 0 ? bonusBase / timeline : 0;
+    const bonusActual = Math.max(0, bonusBase - delayDays * penaltyPerDay);
+    const pctOfPotential = bonusBase > 0 ? Math.round((bonusActual / bonusBase) * 100) : 0;
+    return { bonusBase, bonusActual, delayDays, penaltyPerDay, pctOfPotential, pctPoints };
+  }
+
   function supervisorLaborPlanDisplayRows(workers) {
     if (!Array.isArray(workers) || !workers.length) return [];
     let proI = 0;
@@ -4692,6 +4710,7 @@ function renderSupervisor() {
         if ($("supPrimaryExtrasCount")) $("supPrimaryExtrasCount").textContent = "0";
         if ($("supPrimaryExtrasMeta")) $("supPrimaryExtrasMeta").textContent = "Registros capturados";
         if ($("supDashboardPlanDeviation")) $("supDashboardPlanDeviation").textContent = "";
+        if ($("supDashboardBonus")) $("supDashboardBonus").textContent = "";
         if ($("supPortfolioCount")) $("supPortfolioCount").textContent = "0";
         $("supervisorKpis").innerHTML = [
           ["Proyectos firmados", "0", "Firma o aprueba proyectos para empezar a reportar"],
@@ -4970,6 +4989,39 @@ function renderSupervisor() {
       if ($("supPrimaryExtrasMeta")) $("supPrimaryExtrasMeta").textContent = "Solo conteo de registros";
       if ($("supDashboardPlanDeviation")) $("supDashboardPlanDeviation").textContent = planDeviationLine;
 
+      const projectLaborBudget = finiteNumber(currentProject.laborBudget, 0);
+      const planWorkersForBonus = Array.isArray(currentProject.workers) ? currentProject.workers : [];
+      const bonusUsesLaborPlanTimeline = planWorkersForBonus.length > 0;
+      const effectiveDaysForBonus = bonusUsesLaborPlanTimeline
+        ? supervisorMaxPlanWorkerDays(planWorkersForBonus)
+        : finiteNumber(currentProject.estimatedDays, 0);
+      const bonusTimelineNote = bonusUsesLaborPlanTimeline
+        ? "Bonus timeline based on labor plan duration."
+        : "Bonus timeline based on estimated project days.";
+      const tenantSupervisorBonusPct = finiteNumber(settings.supervisorBonusPct, DEFAULTS.supervisorBonusPct);
+      const bonusCalc = computeSupervisorExecutionBonus({
+        laborBudget: projectLaborBudget,
+        effectiveDays: effectiveDaysForBonus,
+        daysSpent,
+        supervisorBonusPctPoints: tenantSupervisorBonusPct,
+      });
+      if ($("supDashboardBonus")) {
+        if (projectLaborBudget <= 0) {
+          $("supDashboardBonus").textContent =
+            "Bonus: sin presupuesto de mano de obra en el proyecto no se calcula.";
+        } else {
+          const bonusActualStr = money(round2(bonusCalc.bonusActual), settings.currency);
+          const bonusBaseStr = money(round2(bonusCalc.bonusBase), settings.currency);
+          const penaltyDayStr = money(round2(bonusCalc.penaltyPerDay), settings.currency);
+          $("supDashboardBonus").textContent =
+            `Bonus: ${bonusActualStr} (${bonusCalc.pctOfPotential}%). ` +
+            `Potencial (base): ${bonusBaseStr}. ` +
+            `Tasa (Business Settings): ${bonusCalc.pctPoints}% sobre mano de obra. ` +
+            `Demora: ${bonusCalc.delayDays.toFixed(2)} dia(s); multa/dia: ${penaltyDayStr}. ` +
+            `${bonusTimelineNote}`;
+        }
+      }
+
       let planDeviationLabel = "—";
       if (estimatedBudgetDays <= 0) {
         planDeviationLabel = "Sin meta de dias";
@@ -5003,6 +5055,24 @@ function renderSupervisor() {
       }
       kpiRows.push(
         ["Desviacion del plan", planDeviationLabel, planDeviationLine],
+      );
+      if (projectLaborBudget > 0) {
+        kpiRows.push(
+          [
+            "Bonus potencial (base)",
+            money(round2(bonusCalc.bonusBase), settings.currency),
+            `labor_budget x ${bonusCalc.pctPoints}% (solo Business Settings / tenant)`,
+          ],
+          [
+            "Bonus actual",
+            `${money(round2(bonusCalc.bonusActual), settings.currency)} (${bonusCalc.pctOfPotential}%)`,
+            bonusUsesLaborPlanTimeline
+              ? `Linea de tiempo bonus: max(dias/trabajador) del plan (${finiteNumber(effectiveDaysForBonus, 0).toFixed(2)} d). multa/dia = potencial / esos dias.`
+              : `Linea de tiempo bonus: dias estimados del proyecto (${finiteNumber(effectiveDaysForBonus, 0).toFixed(2)} d). multa/dia = potencial / esos dias.`,
+          ],
+        );
+      }
+      kpiRows.push(
         ["Gastos imprevistos (registros)", `${extrasRegCount}`, "Filas de gasto imprevisto (sin importes, solo conteo)"]
       );
       $("supervisorKpis").innerHTML = kpiRows.map(([label, value, meta]) => `
