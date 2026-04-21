@@ -704,6 +704,12 @@
     setInputValue('futaPct', settings.futaPct);
     setInputValue('casuiPct', settings.casuiPct);
     setInputValue('profitPct', settings.profitPct);
+    setInputValue(
+      'minimumMarginPct',
+      settings.minimumMarginPct != null && settings.minimumMarginPct !== ''
+        ? settings.minimumMarginPct
+        : DEFAULT_SETTINGS.minimumMarginPct
+    );
     setInputValue('salesCommissionPct', settings.salesCommissionPct);
     setInputValue('supervisorBonusPct', settings.supervisorBonusPct);
     setInputValue('reservePct', settings.reservePct);
