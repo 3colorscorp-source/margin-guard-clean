@@ -107,6 +107,7 @@ exports.handler = async (event) => {
     }
 
     const created_at = new Date().toISOString();
+    const requested_by_email = String(session?.e || "").trim();
     const insertPayload = {
       tenant_id: tenant.id,
       project_name: normalized.row.project_name,
@@ -117,7 +118,8 @@ exports.handler = async (event) => {
       minimum_price: normalized.row.minimum_price,
       workers: normalized.row.workers,
       status: "requested",
-      created_at
+      created_at,
+      requested_by_email
     };
 
     let rows;

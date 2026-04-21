@@ -155,6 +155,7 @@
             </div>
 
             <div class="notice" id="salesRule" style="margin-top:10px;">Precio por debajo del minimo permitido.</div>
+            <div class="notice" id="salesMarginDecisionLine" style="margin-top:8px;display:none;"></div>
             <div class="notice" id="approvalHint" style="margin-top:10px;">Precio rojo: requiere aprobacion obligatoria.</div>
 
             <div class="sep"></div>
@@ -343,6 +344,7 @@
           overheadMonthly: 0,
           stdHours: 160,
           profitPct: 30,
+          minimumMarginPct: 15,
           reservePct: 5,
           salesCommissionPct: 10
         });
@@ -769,6 +771,8 @@
           workerDays: totalWorkerDays,
           workersCount: state.workers.length,
           laborCost: labor,
+          beforeProfit,
+          reserve,
           recommended,
           minimum,
           negotiation,
@@ -776,6 +780,36 @@
           commissionRate,
           commissionDisplay,
           needsApproval
+        };
+      }
+
+      function applyMarginGateToSalesMetrics(out, settings) {
+        const fn = typeof window.__mgComputeSalesMarginDecisionFromEconomics === 'function'
+          ? window.__mgComputeSalesMarginDecisionFromEconomics
+          : null;
+        const bp = Number(out.beforeProfit || 0);
+        const res = Number(out.reserve || 0);
+        if (!fn) {
+          return {
+            ...out,
+            marginBlocked: false,
+            marginLevel: 'green',
+            marginMessage: '(Carga app.js para reglas de margen automaticas.)',
+            realMarginPct: null,
+            targetMarginPct: Number(settings.profitPct || 30),
+            floorMarginPct: Number(settings.minimumMarginPct != null ? settings.minimumMarginPct : 15)
+          };
+        }
+        const g = fn(out.offered, bp, res, settings);
+        return {
+          ...out,
+          needsApproval: g.level === 'yellow',
+          marginBlocked: g.level === 'red',
+          marginLevel: g.level,
+          marginMessage: g.message,
+          realMarginPct: g.realMarginPct,
+          targetMarginPct: g.profitPct,
+          floorMarginPct: g.minimumMarginPct
         };
       }
 
@@ -823,7 +857,7 @@
           if (!Number.isFinite(depositRequired) || depositRequired <= 0) {
             depositRequired = depositFromStateOrHeuristic(state, local);
           }
-          return {
+          return applyMarginGateToSalesMetrics({
             ...local,
             recommended,
             minimum,
@@ -833,13 +867,13 @@
             needsApproval,
             depositRequired,
             pricingSource: 'server'
-          };
+          }, settings);
         }
-        return {
+        return applyMarginGateToSalesMetrics({
           ...local,
           pricingSource: 'local',
           depositRequired: depositFromStateOrHeuristic(state, local)
-        };
+        }, settings);
       }
 
       function loadApprovalsStandalone() {
@@ -954,6 +988,17 @@
         };
         const estimateStatusLabel = estimateStatusMap[state.estimateStatus] || String(state.estimateStatus || 'draft').replace(/_/g, ' ');
         setText('salesRule', metrics.needsApproval ? 'Estimate requires approval before signing below recommendation.' : 'Estimate is inside a healthy selling range.');
+        const mline = document.getElementById('salesMarginDecisionLine');
+        if (mline) {
+          mline.style.display = 'block';
+          mline.className =
+            metrics.marginLevel === 'green'
+              ? 'notice success'
+              : metrics.marginLevel === 'yellow'
+                ? 'notice amber'
+                : 'notice err';
+          mline.textContent = metrics.marginMessage || '';
+        }
         const salesKpis = document.getElementById('salesKpis');
         if (salesKpis) {
           const kpiBlocks = [
@@ -1213,17 +1258,58 @@
             const state = loadSalesState();
             const settings = loadSettings();
             const metrics = buildSalesUIMetrics(state, settings);
-            state.approvalRequestedAt = new Date().toISOString();
-            state.estimateStatus = metrics.needsApproval ? 'approval_requested' : 'ready_to_send';
-            saveSalesState(state);
-            if (approvalStatus) {
-              approvalStatus.style.display = 'block';
-              approvalStatus.className = metrics.needsApproval ? 'notice amber' : 'notice success';
-              approvalStatus.textContent = metrics.needsApproval
-                ? 'Approval request created. This estimate is below negotiation and now needs owner review.'
-                : 'Approval check completed. This estimate can move forward without extra approval.';
+            if (metrics.marginBlocked) {
+              window.alert('Price too low');
+              return;
             }
-            renderStandaloneSellerPanel();
+            if (!metrics.needsApproval) {
+              window.alert('No Sales Admin approval is required for this margin.');
+              return;
+            }
+            const currentMetrics = metrics;
+            const serverCreateBody = {
+              project_name: String(state.projectName || document.getElementById('salesProjectName')?.value || 'Estimate').trim(),
+              client_name: String(state.clientName || document.getElementById('salesClientName')?.value || '').trim(),
+              client_email: String(state.customerEmail || document.getElementById('salesCustomerEmail')?.value || '').trim(),
+              offered_price: round2(currentMetrics.offered),
+              recommended_price: round2(currentMetrics.recommended),
+              minimum_price: round2(currentMetrics.minimum),
+              workers: Array.isArray(state.workers) ? state.workers : []
+            };
+            fetch('/.netlify/functions/create-sales-approval', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(serverCreateBody)
+            })
+              .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+              .then(function () {
+                return typeof window.__mgSyncApprovalsFromServerToLocal === 'function'
+                  ? window.__mgSyncApprovalsFromServerToLocal()
+                  : Promise.resolve(null);
+              })
+              .then(function () {
+                state.approvalRequestedAt = new Date().toISOString();
+                state.estimateStatus = 'approval_requested';
+                saveSalesState(state);
+                if (approvalStatus) {
+                  approvalStatus.style.display = 'block';
+                  approvalStatus.className = 'notice amber';
+                  approvalStatus.textContent = 'Solicitud enviada a Sales Admin (margen en revision).';
+                }
+                renderStandaloneSellerPanel();
+              })
+              .catch(function () {
+                state.approvalRequestedAt = new Date().toISOString();
+                state.estimateStatus = 'approval_requested';
+                saveSalesState(state);
+                if (approvalStatus) {
+                  approvalStatus.style.display = 'block';
+                  approvalStatus.className = 'notice amber';
+                  approvalStatus.textContent = 'Solicitud registrada localmente (revisa conexion al servidor).';
+                }
+                renderStandaloneSellerPanel();
+              });
           }, true);
         }
 
@@ -1235,6 +1321,24 @@
             event.preventDefault();
             event.stopImmediatePropagation();
             const state = loadSalesState();
+            const settings = loadSettings();
+            const metrics = buildSalesUIMetrics(state, settings);
+            if (metrics.marginBlocked) {
+              window.alert('Price too low');
+              return;
+            }
+            const approvalsFn = typeof window.__mgSalesHasApprovedMatchingOffer === 'function'
+              ? window.__mgSalesHasApprovedMatchingOffer
+              : null;
+            const approvals = loadApprovalsStandalone();
+            if (
+              metrics.needsApproval &&
+              approvalsFn &&
+              !approvalsFn(approvals, state.projectName, metrics.offered)
+            ) {
+              window.alert('Este precio requiere aprobacion de Sales Admin antes de firmar.');
+              return;
+            }
             state.soldAt = new Date().toISOString();
             state.estimateStatus = 'sold';
             state.signedProjectName = state.projectName || document.getElementById('salesProjectName')?.value || 'Project';
@@ -2359,6 +2463,14 @@ async function openSellerSendModal(event) {
       event.stopImmediatePropagation();
     }
 
+    const preState = loadSalesState();
+    const preSettings = loadSettings();
+    const preMetrics = buildSalesUIMetrics(preState, preSettings);
+    if (preMetrics.marginBlocked) {
+      window.alert('Price too low');
+      return;
+    }
+
     modal.setAttribute('aria-hidden', 'false');
 
     if (typeof window.openSendModal === 'function') {
@@ -2424,6 +2536,14 @@ async function openSellerSendModal(event) {
     const state = loadSalesState();
     const settings = loadSettings();
     const metrics = buildSalesUIMetrics(state, settings);
+    if (metrics.marginBlocked) {
+      if (sendStatus) {
+        sendStatus.style.display = 'block';
+        sendStatus.className = 'notice error';
+        sendStatus.textContent = 'Price too low';
+      }
+      return false;
+    }
     const payload = JSON.parse(modal.dataset.payload || '{}');
     const pdf = JSON.parse(modal.dataset.pdf || '{}');
     const branding = await getBranding(true);

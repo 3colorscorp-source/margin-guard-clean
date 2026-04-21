@@ -1106,6 +1106,8 @@ Thank you.`
 
   window.__mgScheduleTenantSnapshotSync = scheduleTenantSnapshotSync;
   window.__mgBuildTenantSnapshotPayload = getTenantSnapshotPayload;
+  window.__mgComputeSalesMarginDecisionFromEconomics = computeSalesMarginDecisionFromEconomics;
+  window.__mgSalesHasApprovedMatchingOffer = salesHasApprovedMatchingOffer;
 
   async function imageUrlToPdfDataUrl(url) {
     if (!url || typeof url !== "string") return null;
@@ -3121,6 +3123,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   function openSendModal(state, settings, metrics) {
   const modal = document.getElementById("sendModal");
   if (!modal) return;
+  if (metrics?.marginBlocked) {
+    window.alert("Price too low");
+    return;
+  }
   if ($("projectName")) {
     const next = val("projectName");
     if (next !== state.projectName) {
@@ -3778,6 +3784,16 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     await runOwnerSellerPublicSend();
     return;
   }
+  if (metrics?.marginBlocked) {
+    window.alert("Price too low");
+    const sendStatusBlock = document.getElementById("sendStatus");
+    if (sendStatusBlock) {
+      sendStatusBlock.style.display = "block";
+      sendStatusBlock.className = "notice error";
+      sendStatusBlock.textContent = "Price too low";
+    }
+    return;
+  }
   const skipPersistSales = Boolean(options.skipPersistSales);
   const sendStatus = document.getElementById("sendStatus");
   if (!skipPersistSales) {
@@ -3901,6 +3917,72 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   }
 }
 
+  /**
+   * real_margin_pct = ((price - internalCost) / price) * 100
+   * internalCost = loaded cost before target profit: beforeProfit + reserve (same basis as recommended build).
+   */
+  function computeSalesMarginDecisionFromEconomics(offeredPrice, beforeProfit, reserve, settings) {
+    const targetPct = finiteNumber(settings?.profitPct, DEFAULTS.profitPct);
+    const minPct = finiteNumber(
+      settings?.minimumMarginPct != null ? settings.minimumMarginPct : DEFAULTS.minimumMarginPct,
+      DEFAULTS.minimumMarginPct
+    );
+    const price = finiteNumber(offeredPrice, 0);
+    const bp = finiteNumber(beforeProfit, 0);
+    const res = finiteNumber(reserve, 0);
+    const internalCost = bp + res;
+    if (!(price > 0) || !Number.isFinite(internalCost)) {
+      return {
+        realMarginPct: null,
+        decision: "blocked",
+        level: "red",
+        profitPct: targetPct,
+        minimumMarginPct: minPct,
+        internalCost,
+        message: "❌ Not allowed — price too low",
+      };
+    }
+    const realMarginPct = ((price - internalCost) / price) * 100;
+    let decision = "approved";
+    let level = "green";
+    let message = "✔ Approved automatically";
+    if (realMarginPct >= targetPct) {
+      decision = "approved";
+      level = "green";
+      message = "✔ Approved automatically";
+    } else if (realMarginPct >= minPct) {
+      decision = "review";
+      level = "yellow";
+      message = "⚠ Requires approval";
+    } else {
+      decision = "blocked";
+      level = "red";
+      message = "❌ Not allowed — price too low";
+    }
+    return {
+      realMarginPct,
+      decision,
+      level,
+      profitPct: targetPct,
+      minimumMarginPct: minPct,
+      internalCost,
+      message,
+    };
+  }
+
+  function salesHasApprovedMatchingOffer(approvals, projectKey, offeredPrice) {
+    const pk = String(projectKey || "").trim();
+    const po = finiteNumber(offeredPrice, 0);
+    const list = Array.isArray(approvals) ? approvals : [];
+    return list.some((item) => {
+      if (!item || String(item.status || "").toLowerCase() !== "approved") return false;
+      const ip = String(item.projectId || item.projectName || "").trim();
+      if (pk && ip && ip !== pk) return false;
+      const p = finiteNumber(item.price ?? item.offeredPrice, 0);
+      return Math.abs(p - po) <= 0.015;
+    });
+  }
+
   function calcSales(state, settings) {
     const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
     const taxPct = (
@@ -3970,8 +4052,15 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const commissionRate = finiteNumber(settings?.salesCommissionPct, DEFAULTS.salesCommissionPct);
     const commissionDisplay = round2(Math.max(offered, 0) * (commissionRate / 100));
     const stage = offered >= recommended ? 2 : offered >= negotiation ? 1 : 0;
-    const needsApproval = offered < negotiation;
-    const approved = !needsApproval || state?.estimateStatus === "signed" || state?.estimateStatus === "approved";
+    const marginGate = computeSalesMarginDecisionFromEconomics(offered, base.beforeProfit, base.reserve, settings);
+    const needsApproval = marginGate.level === "yellow";
+    const marginBlocked = marginGate.level === "red";
+    const approved =
+      !marginBlocked &&
+      (!needsApproval ||
+        salesHasApprovedMatchingOffer(loadApprovals(), state?.projectName, offered) ||
+        state?.estimateStatus === "signed" ||
+        state?.estimateStatus === "approved");
 
     return {
       ...base,
@@ -3981,6 +4070,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       offered,
       stage,
       needsApproval,
+      marginBlocked,
+      marginLevel: marginGate.level,
+      marginDecision: marginGate.decision,
+      marginMessage: marginGate.message,
+      realMarginPct: marginGate.realMarginPct,
+      targetMarginPct: marginGate.profitPct,
+      floorMarginPct: marginGate.minimumMarginPct,
       approved,
       commissionRate,
       commissionDisplay
@@ -4170,6 +4266,17 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   setText("salesCrewHint", `${metrics.workersCount} workers configured for ${metrics.workerHours.toFixed(2)} labor hours.`);
   setText("approvalHint", currentApproval ? `Latest approval for ${currentApproval.projectId} | ${formatMoney(currentApproval.price)}` : "No active approval request.");
   setText("salesRule", metrics.needsApproval ? "Estimate requires approval before signing below recommendation." : "Estimate is inside a healthy selling range.");
+  const marginLine = $("salesMarginDecisionLine");
+  if (marginLine) {
+    marginLine.style.display = "block";
+    marginLine.className =
+      metrics.marginLevel === "green"
+        ? "notice success"
+        : metrics.marginLevel === "yellow"
+          ? "notice amber"
+          : "notice err";
+    marginLine.textContent = metrics.marginMessage || "";
+  }
 
   const kpiBlocks = [
     { label: "Subtotal", value: formatMoney(offered) },
@@ -4403,6 +4510,14 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       btnSubmit.onclick = () => {
         persistSalesDraft("approval_requested");
         const currentMetrics = calculateSalesMetrics(state, settings);
+        if (currentMetrics.marginBlocked) {
+          window.alert("Price too low");
+          return;
+        }
+        if (!currentMetrics.needsApproval) {
+          window.alert("No Sales Admin approval is required for this margin.");
+          return;
+        }
         const legacyPayload = {
           id: Date.now(),
           status: "requested",
@@ -4466,6 +4581,18 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       btnMarkSold.onclick = () => {
         persistSalesDraft("signed");
         const currentMetrics = calculateSalesMetrics(state, settings);
+        const approvalsList = loadApprovals();
+        if (currentMetrics.marginBlocked) {
+          window.alert("Price too low");
+          return;
+        }
+        if (
+          currentMetrics.needsApproval &&
+          !salesHasApprovedMatchingOffer(approvalsList, state.projectName, currentMetrics.offered)
+        ) {
+          window.alert("Este precio requiere aprobacion de Sales Admin antes de firmar.");
+          return;
+        }
         if (!state.projectName || !state.clientName || !state.dueDate || currentMetrics.workerDays <= 0) {
           window.alert("Complete project, customer, due date, and labor details before signing the estimate.");
           return;
@@ -8031,6 +8158,7 @@ function renderSupervisor() {
         projectId: projectName,
         clientName: String(a.client_name || "").trim(),
         customerEmail: String(a.client_email || "").trim(),
+        sellerEmail: String(a.requested_by_email || "").trim(),
         location: "",
         offeredPrice: finiteNumber(a.offered_price, 0),
         recommended: finiteNumber(a.recommended_price, 0),
@@ -8040,6 +8168,32 @@ function renderSupervisor() {
         requestedAt: a.created_at || "",
         price: finiteNumber(a.offered_price, 0)
       };
+    });
+  }
+
+  function syncApprovalsFromServerToLocal() {
+    return fetch("/.netlify/functions/get-sales-approvals", { method: "GET", credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.ok === true && Array.isArray(data.approvals)) {
+          const mapped = mapServerApprovalsToAdminRows(data.approvals);
+          saveApprovals(mapped);
+          return mapped;
+        }
+        return null;
+      });
+  }
+
+  window.__mgSyncApprovalsFromServerToLocal = syncApprovalsFromServerToLocal;
+
+  function filterSalesAdminYellowMarginQueue(list) {
+    const s = loadSettings();
+    const arr = Array.isArray(list) ? list : [];
+    return arr.filter((row) => {
+      if (String(row?.status || "").toLowerCase() !== "requested") return false;
+      const base = calcSales({ workers: Array.isArray(row.workers) ? row.workers : [], price: "" }, s);
+      const gate = computeSalesMarginDecisionFromEconomics(row.offeredPrice, base.beforeProfit, base.reserve, s);
+      return gate.level === "yellow";
     });
   }
 
@@ -8074,15 +8228,19 @@ function renderSupervisor() {
 
     const refresh = () => {
       $("adminQueueBody").innerHTML = rows.map((row, index) => {
-        const tone = row.offeredPrice >= row.recommended ? "green" : (row.offeredPrice >= row.minimum ? "amber" : "red");
-        const discount = row.recommended > 0 ? (((row.recommended - row.offeredPrice) / row.recommended) * 100) : 0;
+        const base = calcSales({ workers: Array.isArray(row.workers) ? row.workers : [], price: "" }, settings);
+        const mg = computeSalesMarginDecisionFromEconomics(row.offeredPrice, base.beforeProfit, base.reserve, settings);
+        const realPct = mg.realMarginPct != null && Number.isFinite(mg.realMarginPct) ? `${mg.realMarginPct.toFixed(1)}%` : "—";
         return `
           <tr>
-            <td>${escapeHtml(row.id)}</td>
+            <td>${escapeHtml(String(row.id || "").slice(0, 8))}…</td>
             <td>${escapeHtml(row.projectName)}</td>
+            <td>${escapeHtml(row.sellerEmail || "—")}</td>
             <td>${money(row.offeredPrice, settings.currency)}</td>
-            <td>${discount.toFixed(2)}%</td>
-            <td><span class="badge ${tone}">${tone}</span></td>
+            <td>${escapeHtml(realPct)}</td>
+            <td>${escapeHtml(String(mg.profitPct))}%</td>
+            <td>${escapeHtml(String(mg.minimumMarginPct))}%</td>
+            <td><span class="badge amber">review</span></td>
             <td><span class="badge ${row.status === "approved" ? "green" : (row.status === "rejected" ? "red" : "amber")}">${escapeHtml(row.status)}</span></td>
             <td>
               <div class="row-actions">
@@ -8179,16 +8337,17 @@ function renderSupervisor() {
       .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
         if (ok && data && data.ok === true && Array.isArray(data.approvals)) {
-          rows = mapServerApprovalsToAdminRows(data.approvals);
-          saveApprovals(rows);
+          const mapped = mapServerApprovalsToAdminRows(data.approvals);
+          saveApprovals(mapped);
+          rows = filterSalesAdminYellowMarginQueue(mapped);
           refresh();
           return;
         }
-        rows = loadApprovals();
+        rows = filterSalesAdminYellowMarginQueue(loadApprovals());
         refresh();
       })
       .catch(() => {
-        rows = loadApprovals();
+        rows = filterSalesAdminYellowMarginQueue(loadApprovals());
         refresh();
       });
   }
