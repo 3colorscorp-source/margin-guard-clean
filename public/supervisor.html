@@ -333,35 +333,36 @@
         <div class="card owner-side-card">
           <div class="card-inner">
             <h2>Tablero del supervisor</h2>
-            <div class="sub">Semaforo simple para saber si vas bien o si necesitas apresurarte.</div>
+            <div class="sub">Solo ejecucion: dias presupuestados vs gastados, avance y desviacion operativa.</div>
 
             <div class="owner-kpi-shell">
               <div class="owner-quote-hero">
-                <div class="owner-quote-kicker">Resumen operativo</div>
+                <div class="owner-quote-kicker">Avance de obra (dias)</div>
                 <div class="owner-quote-price" id="supPrimaryOpProgress">—</div>
-                <div class="owner-quote-meta" id="supPrimaryOpMeta">Avance del proyecto (dias reportados vs estimados).</div>
+                <div class="owner-quote-meta" id="supPrimaryOpMeta">dias_gastados / dias_presupuestados cuando aplica.</div>
                 <div class="owner-quote-strip">
+                  <div class="owner-mini-card">
+                    <div class="title">Dias presupuestados</div>
+                    <div class="big" id="supPrimaryBudgetedDays">0</div>
+                    <div class="small" id="supPrimaryBudgetedMeta">Meta estimated_days del proyecto</div>
+                  </div>
+                  <div class="owner-mini-card">
+                    <div class="title">Dias gastados</div>
+                    <div class="big" id="supPrimaryDaysSpent">0</div>
+                    <div class="small" id="supPrimaryDaysSpentMeta">Suma de dias en reportes de avance</div>
+                  </div>
                   <div class="owner-mini-card">
                     <div class="title">Dias restantes</div>
                     <div class="big" id="supPrimaryDays">0</div>
-                    <div class="small" id="supPrimaryDaysMeta">Segun dias estimados del proyecto</div>
-                  </div>
-                  <div class="owner-mini-card">
-                    <div class="title">CO aplicados</div>
-                    <div class="big" id="supPrimaryCoApplied">0</div>
-                    <div class="small" id="supPrimaryCoAppliedMeta">Change orders en estado applied</div>
-                  </div>
-                  <div class="owner-mini-card">
-                    <div class="title">Dias agregados (CO)</div>
-                    <div class="big" id="supPrimaryCoImpact">0</div>
-                    <div class="small" id="supPrimaryCoImpactMeta">Impacto acumulado de CO aplicados</div>
+                    <div class="small" id="supPrimaryDaysMeta">max(0, presupuestados - gastados) para lectura rapida</div>
                   </div>
                   <div class="owner-mini-card">
                     <div class="title">Gastos imprevistos</div>
                     <div class="big" id="supPrimaryExtrasCount">0</div>
-                    <div class="small" id="supPrimaryExtrasMeta">Registros capturados</div>
+                    <div class="small" id="supPrimaryExtrasMeta">Solo conteo de registros</div>
                   </div>
                 </div>
+                <div class="notice" id="supDashboardPlanDeviation" style="margin-top:12px;line-height:1.45;"></div>
               </div>
             </div>
 

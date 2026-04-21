@@ -4771,12 +4771,13 @@ function renderSupervisor() {
         if ($("supExecutiveNote")) $("supExecutiveNote").textContent = "Todavia no hay proyectos firmados para este supervisor.";
         if ($("supPrimaryOpProgress")) $("supPrimaryOpProgress").textContent = "—";
         if ($("supPrimaryOpMeta")) $("supPrimaryOpMeta").textContent = "Esperando proyecto firmado";
+        if ($("supPrimaryBudgetedDays")) $("supPrimaryBudgetedDays").textContent = "0.00";
+        if ($("supPrimaryDaysSpent")) $("supPrimaryDaysSpent").textContent = "0.00";
         if ($("supPrimaryDays")) $("supPrimaryDays").textContent = "0.00";
         if ($("supPrimaryDaysMeta")) $("supPrimaryDaysMeta").textContent = "Sin meta activa";
-        if ($("supPrimaryCoApplied")) $("supPrimaryCoApplied").textContent = "0";
-        if ($("supPrimaryCoImpact")) $("supPrimaryCoImpact").textContent = "0.00";
         if ($("supPrimaryExtrasCount")) $("supPrimaryExtrasCount").textContent = "0";
         if ($("supPrimaryExtrasMeta")) $("supPrimaryExtrasMeta").textContent = "Registros capturados";
+        if ($("supDashboardPlanDeviation")) $("supDashboardPlanDeviation").textContent = "";
         if ($("supPortfolioCount")) $("supPortfolioCount").textContent = "0";
         $("supervisorKpis").innerHTML = [
           ["Proyectos firmados", "0", "Firma o aprueba proyectos para empezar a reportar"],
@@ -4936,17 +4937,12 @@ function renderSupervisor() {
       });
 
       const reportedHours = state.entries.reduce((sum, row) => sum + Number(row.hours || 0), 0);
-      const reportedDays = state.entries.reduce((sum, row) => sum + Number(row.days || 0), 0);
-      const daysRemaining = Number(state.estimatedDays || 0) - reportedDays;
-      const estForProgress = Number(state.estimatedDays || 0);
+      const daysSpent = state.entries.reduce((sum, row) => sum + Number(row.days || 0), 0);
+      const estimatedBudgetDays = finiteNumber(state.estimatedDays, 0);
+      const daysRemainingRaw = estimatedBudgetDays - daysSpent;
+      const daysRemainingDisplay = Math.max(0, daysRemainingRaw);
       const progressPct =
-        estForProgress > 0 ? Math.min(100, (reportedDays / estForProgress) * 100) : null;
-      const coAppliedCount = state.changeOrders.filter((r) => r && r.applied).length;
-      let coImpactAppliedTotal = 0;
-      for (let ci = 0; ci < state.changeOrders.length; ci += 1) {
-        const c = state.changeOrders[ci];
-        if (c && c.applied) coImpactAppliedTotal += supervisorChangeOrderRowTimeImpact(c).impactDays;
-      }
+        estimatedBudgetDays > 0 ? (daysSpent / estimatedBudgetDays) * 100 : null;
       const extrasRegCount = state.extras.length;
 
       let dayDelta = 0;
@@ -4956,17 +4952,41 @@ function renderSupervisor() {
         dayDelta = Math.round((projected - due) / (1000 * 60 * 60 * 24));
       }
 
+      const laborDeltaVsBudget = daysSpent - estimatedBudgetDays;
+      let planDeviationLine = "";
+      if (estimatedBudgetDays <= 0) {
+        planDeviationLine =
+          "Sin dias presupuestados no se puede medir desviacion de labor. Revisa fecha comprometida vs proyectada abajo si aplica.";
+      } else if (laborDeltaVsBudget > 0) {
+        planDeviationLine = `Labor: vas ${laborDeltaVsBudget.toFixed(2)} dia(s) sobre el presupuesto de dias.`;
+      } else if (laborDeltaVsBudget < 0) {
+        planDeviationLine = `Labor: vas ${Math.abs(laborDeltaVsBudget).toFixed(2)} dia(s) por debajo del presupuesto de dias.`;
+      } else {
+        planDeviationLine = "Labor: alineado con el presupuesto de dias.";
+      }
+      if (state.dueDate && state.projectedEndDate) {
+        if (dayDelta > 0) {
+          planDeviationLine += ` Entrega proyectada: ${dayDelta} dia(s) despues de la fecha comprometida.`;
+        } else if (dayDelta < 0) {
+          planDeviationLine += ` Entrega proyectada: ${Math.abs(dayDelta)} dia(s) antes de la fecha comprometida.`;
+        } else {
+          planDeviationLine += " Entrega proyectada: alineada con la fecha comprometida.";
+        }
+      } else {
+        planDeviationLine += " Sin ambas fechas (comprometida y proyectada) no se compara el calendario.";
+      }
+
       let tone = "green";
       let stateLabel = "Verde";
       let stateMeta = "Vas bien. El proyecto sigue dentro del ritmo esperado.";
 
-      if (daysRemaining <= 1 || dayDelta > 0) {
+      if (daysRemainingDisplay <= 1 || dayDelta > 0 || laborDeltaVsBudget > 0) {
         tone = "amber";
         stateLabel = "Amarillo";
         stateMeta = "Necesitas atencion. Ajusta ritmo o plazos; revisa atraso vs fecha comprometida.";
       }
 
-      if (daysRemaining < 0 || dayDelta > 2) {
+      if (daysRemainingRaw < 0 || dayDelta > 2) {
         tone = "red";
         stateLabel = "Rojo";
         stateMeta = "Necesitas apurarte. El avance o la fecha proyectada se salen del plan operativo.";
@@ -5025,7 +5045,7 @@ function renderSupervisor() {
           : dayDelta <= 0
             ? "Fecha proyectada alineada o adelantada respecto a la comprometida."
             : `Atraso operativo: +${dayDelta} dia(s) de calendario vs el compromiso.`;
-        $("supExecutiveNote").textContent = `Proyecto: ${state.projectName}. Reportado: ${reportedDays.toFixed(2)} dias y ${reportedHours.toFixed(2)} horas. Quedan ${daysRemaining.toFixed(2)} dias estimados. ${fin}`;
+        $("supExecutiveNote").textContent = `Proyecto: ${state.projectName}. Reportado: ${daysSpent.toFixed(2)} dias y ${reportedHours.toFixed(2)} horas. Quedan ${daysRemainingRaw.toFixed(2)} dias estimados. ${fin}`;
       }
 
       if ($("supPrimaryOpProgress")) {
@@ -5034,36 +5054,58 @@ function renderSupervisor() {
       }
       if ($("supPrimaryOpMeta")) {
         $("supPrimaryOpMeta").textContent =
-          estForProgress > 0
-            ? `Dias reportados / estimados: ${reportedDays.toFixed(2)} / ${estForProgress.toFixed(2)}`
-            : "Sin dias estimados en el proyecto: no se calcula porcentaje de avance.";
+          estimatedBudgetDays > 0
+            ? `dias_gastados / dias_presupuestados: ${daysSpent.toFixed(2)} / ${estimatedBudgetDays.toFixed(2)}`
+            : "Sin dias presupuestados: no se muestra porcentaje de avance.";
       }
-      if ($("supPrimaryDays")) $("supPrimaryDays").textContent = daysRemaining.toFixed(2);
-      if ($("supPrimaryDaysMeta")) $("supPrimaryDaysMeta").textContent = "Dias estimados que faltan por reportar";
-      if ($("supPrimaryCoApplied")) $("supPrimaryCoApplied").textContent = String(coAppliedCount);
-      if ($("supPrimaryCoAppliedMeta")) $("supPrimaryCoAppliedMeta").textContent = "Change orders en applied";
-      if ($("supPrimaryCoImpact")) $("supPrimaryCoImpact").textContent = coImpactAppliedTotal.toFixed(2);
-      if ($("supPrimaryCoImpactMeta")) $("supPrimaryCoImpactMeta").textContent = "Suma de impacto (dias) de CO aplicados";
+      if ($("supPrimaryBudgetedDays")) $("supPrimaryBudgetedDays").textContent = estimatedBudgetDays.toFixed(2);
+      if ($("supPrimaryDaysSpent")) $("supPrimaryDaysSpent").textContent = daysSpent.toFixed(2);
+      if ($("supPrimaryDays")) $("supPrimaryDays").textContent = daysRemainingDisplay.toFixed(2);
+      if ($("supPrimaryDaysMeta")) {
+        $("supPrimaryDaysMeta").textContent =
+          daysRemainingRaw < 0
+            ? `Sin piso: quedarian ${daysRemainingRaw.toFixed(2)} (ya pasaste el presupuesto de dias).`
+            : "Lectura con piso en 0 para rapidez (max(0, presupuestados - gastados)).";
+      }
       if ($("supPrimaryExtrasCount")) $("supPrimaryExtrasCount").textContent = String(extrasRegCount);
-      if ($("supPrimaryExtrasMeta")) $("supPrimaryExtrasMeta").textContent = "Entradas de gasto imprevisto (conteo)";
+      if ($("supPrimaryExtrasMeta")) $("supPrimaryExtrasMeta").textContent = "Solo conteo de registros";
+      if ($("supDashboardPlanDeviation")) $("supDashboardPlanDeviation").textContent = planDeviationLine;
+
+      let planDeviationLabel = "—";
+      if (estimatedBudgetDays <= 0) {
+        planDeviationLabel = "Sin meta de dias";
+      } else if (laborDeltaVsBudget > 0 && dayDelta > 0) {
+        planDeviationLabel = "Atrasado (labor y entrega)";
+      } else if (laborDeltaVsBudget > 0) {
+        planDeviationLabel = "Atrasado (labor)";
+      } else if (dayDelta > 0) {
+        planDeviationLabel = "Atrasado (entrega)";
+      } else if (laborDeltaVsBudget < 0 && dayDelta < 0) {
+        planDeviationLabel = "Adelantado (labor y entrega)";
+      } else if (laborDeltaVsBudget < 0 || dayDelta < 0) {
+        planDeviationLabel = "Adelantado (parcial)";
+      } else {
+        planDeviationLabel = "En tiempo";
+      }
 
       const kpiRows = [
         ["Proyectos activos", `${projects.length}`, "El supervisor puede alternar entre varios trabajos"],
-        ["Dias reportados", reportedDays.toFixed(2), "Avance real del proyecto seleccionado"],
-        ["Dias restantes", daysRemaining.toFixed(2), "Dias estimados pendientes para terminar"],
+        ["Dias presupuestados", estimatedBudgetDays.toFixed(2), "estimated_days del proyecto seleccionado"],
+        ["Dias gastados", daysSpent.toFixed(2), "Suma de dias en reportes de avance (work reports)"],
+        ["Dias restantes (lectura)", daysRemainingDisplay.toFixed(2), `max(0, presupuestados - gastados). Sin piso: ${daysRemainingRaw.toFixed(2)}`],
         ["Horas reportadas", reportedHours.toFixed(2), "Horas reales capturadas en campo"],
-        ["Dias de atraso", `${dayDelta}`, !state.dueDate || !state.projectedEndDate ? "Sin comparacion de fechas todavia" : (dayDelta <= 0 ? "No hay atraso proyectado" : "Diferencia contra fecha comprometida")],
-        ["Change orders aplicados", `${coAppliedCount}`, "CO en estado applied en este proyecto"],
-        ["Dias agregados (CO aplicados)", coImpactAppliedTotal.toFixed(2), "Suma de impacto en calendario segun Pro/Assistant del CO"],
-        ["Gastos imprevistos (registros)", `${extrasRegCount}`, "Filas de gasto imprevisto (sin importes, solo conteo)"]
       ];
-      if (estForProgress > 0) {
-        kpiRows.splice(1, 0, [
-          "Avance del proyecto (aprox.)",
-          `${Math.min(100, (reportedDays / estForProgress) * 100).toFixed(0)}%`,
-          "Dias reportados / dias estimados del proyecto (mismo limite 100% si te pasas)",
+      if (estimatedBudgetDays > 0) {
+        kpiRows.push([
+          "Avance del proyecto",
+          `${progressPct.toFixed(0)}%`,
+          "dias_gastados / dias_presupuestados (puede superar 100% si te pasas en labor)",
         ]);
       }
+      kpiRows.push(
+        ["Desviacion del plan", planDeviationLabel, planDeviationLine],
+        ["Gastos imprevistos (registros)", `${extrasRegCount}`, "Filas de gasto imprevisto (sin importes, solo conteo)"]
+      );
       $("supervisorKpis").innerHTML = kpiRows.map(([label, value, meta]) => `
         <div class="kpi-box">
           <div class="label">${escapeHtml(label)}</div>
