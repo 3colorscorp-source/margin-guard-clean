@@ -1276,19 +1276,37 @@
               minimum_price: round2(currentMetrics.minimum),
               workers: Array.isArray(state.workers) ? state.workers : []
             };
+            console.info('[Margin Guard] create-sales-approval request', serverCreateBody);
             fetch('/.netlify/functions/create-sales-approval', {
               method: 'POST',
               credentials: 'include',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(serverCreateBody)
             })
-              .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
-              .then(function () {
-                return typeof window.__mgSyncApprovalsFromServerToLocal === 'function'
-                  ? window.__mgSyncApprovalsFromServerToLocal()
-                  : Promise.resolve(null);
+              .then(function (res) {
+                return res.json().then(function (data) {
+                  return { ok: res.ok, status: res.status, data: data };
+                });
               })
-              .then(function () {
+              .then(function (ref) {
+                if (ref.data && ref.data.ok === true && ref.data.approval_id) {
+                  return (typeof window.__mgSyncApprovalsFromServerToLocal === 'function'
+                    ? window.__mgSyncApprovalsFromServerToLocal()
+                    : Promise.resolve(null)
+                  ).then(function () {
+                    return { success: true };
+                  });
+                }
+                var stage = ref.data && ref.data.stage ? (' [' + ref.data.stage + ']') : '';
+                var msg = (ref.data && (ref.data.error || ref.data.message)) || ('HTTP ' + ref.status);
+                console.error('[Margin Guard] create-sales-approval failed', ref);
+                window.alert(
+                  'No se pudo enviar la solicitud al servidor: ' + msg + stage + '. Revisa Network / logs.'
+                );
+                return { success: false };
+              })
+              .then(function (outcome) {
+                if (!outcome || !outcome.success) return;
                 state.approvalRequestedAt = new Date().toISOString();
                 state.estimateStatus = 'approval_requested';
                 saveSalesState(state);
@@ -1299,16 +1317,9 @@
                 }
                 renderStandaloneSellerPanel();
               })
-              .catch(function () {
-                state.approvalRequestedAt = new Date().toISOString();
-                state.estimateStatus = 'approval_requested';
-                saveSalesState(state);
-                if (approvalStatus) {
-                  approvalStatus.style.display = 'block';
-                  approvalStatus.className = 'notice amber';
-                  approvalStatus.textContent = 'Solicitud registrada localmente (revisa conexion al servidor).';
-                }
-                renderStandaloneSellerPanel();
+              .catch(function (err) {
+                console.error('[Margin Guard] create-sales-approval network error', err);
+                window.alert('No se pudo conectar al servidor. Intenta de nuevo.');
               });
           }, true);
         }

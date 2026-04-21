@@ -4518,26 +4518,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           window.alert("No Sales Admin approval is required for this margin.");
           return;
         }
-        const legacyPayload = {
-          id: Date.now(),
-          status: "requested",
-          requestedAt: new Date().toISOString(),
-          projectId: nonEmptyString(state.projectName, "Estimate"),
-          clientName: nonEmptyString(state.clientName),
-          customerEmail: nonEmptyString(state.customerEmail),
-          location: nonEmptyString(state.location),
-          price: round2(currentMetrics.offered),
-          recommended: round2(currentMetrics.recommended),
-          minimum: round2(currentMetrics.minimum),
-          estimateNumber: state.estimateNumber,
-          expirationDate: state.expirationDate
-        };
-        const pushLegacyQueue = () => {
-          const queue = loadApprovals();
-          queue.push(legacyPayload);
-          saveApprovals(queue);
-          renderSales();
-        };
         const serverCreateBody = {
           project_name: nonEmptyString(state.projectName, "Estimate"),
           client_name: nonEmptyString(state.clientName),
@@ -4547,15 +4527,17 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           minimum_price: round2(currentMetrics.minimum),
           workers: Array.isArray(state.workers) ? state.workers : []
         };
+        console.info("[Margin Guard] create-sales-approval request", serverCreateBody);
         fetch("/.netlify/functions/create-sales-approval", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(serverCreateBody)
         })
-          .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
-          .then(({ ok, data }) => {
-            if (ok && data && data.ok === true && data.approval_id) {
+          .then((res) => res.json().then((data) => ({ ok: res.ok, status: res.status, data })))
+          .then(({ ok, status, data }) => {
+            // create-sales-approval may return HTTP 200 with ok:false for debug — use data.ok, not res.ok only.
+            if (data && data.ok === true && data.approval_id) {
               return fetch("/.netlify/functions/get-sales-approvals", {
                 method: "GET",
                 credentials: "include"
@@ -4568,10 +4550,18 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
                   renderSales();
                 });
             }
-            pushLegacyQueue();
+            const stage = data?.stage ? ` [stage: ${data.stage}]` : "";
+            const msg = (data && (data.error || data.message)) || `HTTP ${status}`;
+            console.error("[Margin Guard] create-sales-approval failed", { ok, status, data });
+            window.alert(
+              `Could not submit approval to the server (${msg})${stage}. Your discount is still in the review band, but the owner was not notified. Check the response in Network tab or Netlify logs.`
+            );
           })
-          .catch(() => {
-            pushLegacyQueue();
+          .catch((err) => {
+            console.error("[Margin Guard] create-sales-approval network error", err);
+            window.alert(
+              "Could not reach the server to submit approval. Check your connection and try again."
+            );
           });
       };
     }

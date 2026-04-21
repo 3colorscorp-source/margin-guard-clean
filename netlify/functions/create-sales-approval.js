@@ -5,11 +5,15 @@ const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { marginLevelForSalesApproval } = require("./_lib/pricing-engine");
 
-function json(statusCode, body) {
+const MAX_RAW_BODY_LOG = 8000;
+const MAX_INSERT_LOG = 12000;
+
+/** DEBUG: always HTTP 200 + JSON so the browser never loses error bodies (remove after fixing 502s). */
+function ok200(bodyObj) {
   return {
-    statusCode,
+    statusCode: 200,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
+    body: JSON.stringify(bodyObj)
   };
 }
 
@@ -26,6 +30,17 @@ function pickFirst(obj, keys) {
 function finiteOrZero(n) {
   const x = Number(n);
   return Number.isFinite(x) ? x : 0;
+}
+
+/** PostgREST may return one row as an object or as a one-element array. */
+function firstRowFromSupabase(data) {
+  if (Array.isArray(data)) {
+    return data.length ? data[0] : null;
+  }
+  if (data && typeof data === "object" && data.id != null) {
+    return data;
+  }
+  return null;
 }
 
 /**
@@ -144,45 +159,142 @@ async function postZapierSalesApprovalWebhook(url, payload) {
     });
     if (!r.ok) {
       const t = await r.text();
-      console.warn("[create-sales-approval] Zapier webhook non-OK", r.status, t?.slice(0, 300));
-      return { ok: false, reason: "http_error", status: r.status };
+      console.warn("[create-sales-approval] Zapier webhook non-OK", r.status, t?.slice(0, 500));
+      return { ok: false, reason: "http_error", status: r.status, bodyPreview: t?.slice(0, 300) };
     }
     return { ok: true };
   } catch (err) {
-    console.warn("[create-sales-approval] Zapier webhook failed", err?.message || err);
-    return { ok: false, reason: "fetch_error" };
+    console.warn("[create-sales-approval] Zapier fetch error", err?.message || err);
+    return { ok: false, reason: "fetch_error", fetchMessage: err?.message };
   }
 }
 
 exports.handler = async (event) => {
   try {
+    console.log("[create-sales-approval] handler entered", {
+      method: event.httpMethod,
+      isBase64Encoded: Boolean(event.isBase64Encoded)
+    });
+
     if (event.httpMethod !== "POST") {
-      return json(405, { error: "Method Not Allowed" });
+      return ok200({ ok: false, stage: "method", error: "Method Not Allowed" });
     }
+
+    let rawBody = "";
+    try {
+      rawBody =
+        event.isBase64Encoded && event.body
+          ? Buffer.from(event.body, "base64").toString("utf8")
+          : String(event.body || "");
+    } catch (decodeErr) {
+      console.error("CREATE SALES APPROVAL ERROR (raw body):", decodeErr);
+      return ok200({
+        ok: false,
+        stage: "raw_body_decode",
+        error: decodeErr?.message || String(decodeErr),
+        stack: decodeErr?.stack || null
+      });
+    }
+
+    console.log("[create-sales-approval] request body (raw)", {
+      byteLength: Buffer.byteLength(rawBody, "utf8"),
+      body: rawBody.slice(0, MAX_RAW_BODY_LOG)
+    });
+
+    let body = {};
+    try {
+      body = JSON.parse(rawBody || "{}");
+    } catch (parseErr) {
+      console.error("CREATE SALES APPROVAL ERROR (JSON parse):", parseErr);
+      return ok200({
+        ok: false,
+        stage: "parse_json",
+        error: parseErr?.message || String(parseErr),
+        stack: parseErr?.stack || null
+      });
+    }
+
+    console.log("[create-sales-approval] parsed body summary", {
+      keys: Object.keys(body || {}),
+      project_name: body?.project_name ?? body?.projectName,
+      offered_price: body?.offered_price ?? body?.offeredPrice ?? body?.price,
+      workersLen: Array.isArray(body?.workers) ? body.workers.length : null
+    });
 
     const session = readSessionFromEvent(event);
     if (!session?.e || !session?.c) {
-      return json(401, { error: "Unauthorized" });
+      console.warn("[create-sales-approval] unauthorized: missing session e/c");
+      return ok200({ ok: false, stage: "session", error: "Unauthorized" });
     }
 
-    const tenant = await resolveTenantFromSession(session);
+    let tenant;
+    try {
+      tenant = await resolveTenantFromSession(session);
+    } catch (tenantErr) {
+      console.error("CREATE SALES APPROVAL ERROR (tenant):", tenantErr);
+      return ok200({
+        ok: false,
+        stage: "tenant_resolve",
+        error: tenantErr?.message || String(tenantErr),
+        stack: tenantErr?.stack || null,
+        supabaseRawPreview: tenantErr?.supabaseRaw?.slice?.(0, 800)
+      });
+    }
     if (!tenant?.id) {
-      return json(422, {
+      console.warn("[create-sales-approval] no tenant for session");
+      return ok200({
+        ok: false,
+        stage: "tenant_missing",
         error:
           "Cannot create approval: missing tenant for this account. Run bootstrap-tenant before continuing."
       });
     }
-
-    let body = {};
-    try {
-      body = JSON.parse(event.body || "{}");
-    } catch (_err) {
-      return json(400, { error: "Invalid JSON" });
-    }
+    console.log("[create-sales-approval] tenant resolved", { tenant_id: tenant.id });
 
     const normalized = normalizeApprovalPayload(body);
     if (!normalized.ok) {
-      return json(400, { error: normalized.error });
+      console.warn("[create-sales-approval] normalize failed", normalized.error);
+      return ok200({ ok: false, stage: "normalize", error: normalized.error });
+    }
+
+    const quoteIds = {
+      project_name: normalized.row.project_name,
+      estimate_number: pickFirst(body, ["estimate_number", "estimateNumber", "estimate_no"]),
+      quote_id: pickFirst(body, ["quote_id", "quoteId", "public_quote_id"]),
+      client_name: normalized.row.client_name
+    };
+    console.log("[create-sales-approval] quote/project ids", quoteIds);
+
+    let tenantSettings = {};
+    let gate;
+    try {
+      try {
+        tenantSettings = await loadTenantSettingsFromLatestSnapshot(tenant.id);
+      } catch (snapErr) {
+        console.warn("[create-sales-approval] snapshot load failed (continuing with {})", snapErr?.message);
+      }
+      const marginResult = marginLevelForSalesApproval(
+        {
+          workers: normalized.row.workers,
+          offered_price: normalized.row.offered_price
+        },
+        tenantSettings
+      );
+      gate = marginResult.gate;
+      console.log("[create-sales-approval] metrics / gate", {
+        level: gate.level,
+        realMarginPct: gate.realMarginPct,
+        profitPct: gate.profitPct,
+        minimumMarginPct: gate.minimumMarginPct
+      });
+    } catch (gateErr) {
+      console.error("CREATE SALES APPROVAL ERROR (margin gate):", gateErr);
+      return ok200({
+        ok: false,
+        stage: "margin_gate",
+        error: gateErr?.message || String(gateErr),
+        stack: gateErr?.stack || null
+      });
     }
 
     const created_at = new Date().toISOString();
@@ -197,9 +309,16 @@ exports.handler = async (event) => {
       minimum_price: normalized.row.minimum_price,
       workers: normalized.row.workers,
       status: "requested",
-      created_at,
-      requested_by_email
+      created_at
     };
+
+    let insertPayloadLog;
+    try {
+      insertPayloadLog = JSON.stringify(insertPayload);
+    } catch (_e) {
+      insertPayloadLog = "(insertPayload not JSON-serializable)";
+    }
+    console.log("[create-sales-approval] insert payload", insertPayloadLog.slice(0, MAX_INSERT_LOG));
 
     let rows;
     try {
@@ -207,32 +326,60 @@ exports.handler = async (event) => {
         method: "POST",
         body: insertPayload
       });
-    } catch (err) {
-      return json(502, {
-        error: err?.message || "Failed to create sales approval"
+    } catch (insertErr) {
+      console.error("CREATE SALES APPROVAL ERROR (Supabase insert):", insertErr);
+      return ok200({
+        ok: false,
+        stage: "supabase_insert",
+        error: insertErr?.message || String(insertErr),
+        stack: insertErr?.stack || null,
+        supabaseStatus: insertErr?.status,
+        supabaseRawPreview: insertErr?.supabaseRaw?.slice?.(0, 1200)
       });
     }
 
-    const row = Array.isArray(rows) ? rows[0] : null;
+    let rowsLog;
+    try {
+      rowsLog = JSON.stringify(rows);
+    } catch (_e) {
+      rowsLog = String(rows);
+    }
+    console.log("[create-sales-approval] Supabase insert response", rowsLog.slice(0, MAX_INSERT_LOG));
+
+    const row = firstRowFromSupabase(rows);
     const approval_id = row?.id ?? null;
     if (!approval_id) {
-      return json(502, { error: "Approval was not persisted (no id returned)." });
+      const preview =
+        typeof rows === "string" ? rows.slice(0, 500) : JSON.stringify(rows)?.slice(0, 800);
+      console.error("[create-sales-approval] no approval id after insert", preview);
+      return ok200({
+        ok: false,
+        stage: "insert_no_id",
+        error: "Approval was not persisted (no id returned).",
+        responsePreview: preview
+      });
+    }
+    console.log("[create-sales-approval] insert success", { approval_id });
+
+    if (requested_by_email) {
+      try {
+        await supabaseRequest(`sales_approvals?id=eq.${encodeURIComponent(String(approval_id))}`, {
+          method: "PATCH",
+          body: { requested_by_email }
+        });
+        console.log("[create-sales-approval] PATCH requested_by_email OK");
+      } catch (patchMetaErr) {
+        console.warn(
+          "[create-sales-approval] PATCH requested_by_email skipped",
+          patchMetaErr?.message || patchMetaErr
+        );
+      }
     }
 
     /** @type {{ token?: string; project_name?: string; seller_name?: string; real_margin_pct?: number|null; zapier_webhook_ok?: boolean }} */
     const yellowResponse = {};
-    let zapierWebhookResult = null;
 
     try {
-      const tenantSettings = await loadTenantSettingsFromLatestSnapshot(tenant.id);
-      const { gate } = marginLevelForSalesApproval(
-        {
-          workers: normalized.row.workers,
-          offered_price: normalized.row.offered_price
-        },
-        tenantSettings
-      );
-
       if (gate.level === "yellow") {
         const token = randomUrlToken();
         const email_action_token_hash = hashTokenPlain(token);
@@ -244,8 +391,9 @@ exports.handler = async (event) => {
             body: { email_action_token_hash }
           });
           tokenStored = true;
+          console.log("[create-sales-approval] token hash PATCH OK");
         } catch (patchErr) {
-          console.error("[create-sales-approval] token PATCH failed", patchErr?.message || patchErr);
+          console.error("CREATE SALES APPROVAL ERROR (token PATCH, non-fatal):", patchErr);
         }
 
         const base = approvalActionBaseUrl(event);
@@ -287,22 +435,33 @@ exports.handler = async (event) => {
             approve_url: approveUrl || undefined,
             decline_url: declineUrl || undefined
           };
-          zapierWebhookResult = await postZapierSalesApprovalWebhook(hookUrl, zapierPayload);
+          const zapierWebhookResult = await postZapierSalesApprovalWebhook(hookUrl, zapierPayload);
           yellowResponse.zapier_webhook_ok = Boolean(zapierWebhookResult?.ok);
+          console.log("[create-sales-approval] Zapier webhook result", zapierWebhookResult);
         } else if (tokenStored && !hookUrl) {
           yellowResponse.zapier_webhook_ok = false;
         }
       }
     } catch (flowErr) {
-      console.error("[create-sales-approval] yellow / Zapier flow", flowErr?.message || flowErr);
+      console.error("CREATE SALES APPROVAL ERROR (yellow / Zapier flow, non-fatal):", flowErr);
     }
 
-    return json(200, {
+    return ok200({
       ok: true,
       approval_id,
       ...yellowResponse
     });
   } catch (err) {
-    return json(500, { error: err.message || "Server error" });
+    console.error("CREATE SALES APPROVAL ERROR:", err);
+
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ok: false,
+        error: err?.message || "unknown error",
+        stack: err?.stack || null
+      })
+    };
   }
 };
