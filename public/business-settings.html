@@ -159,7 +159,8 @@
               <div class="field"><label>FICA (%)</label><input id="ficaPct" type="number" step="0.01" placeholder="7.65" /></div>
               <div class="field"><label>FUTA (%)</label><input id="futaPct" type="number" step="0.01" placeholder="0.6" /></div>
               <div class="field"><label>CA SUI (%)</label><input id="casuiPct" type="number" step="0.01" placeholder="3.4" /></div>
-              <div class="field"><label>Ganancia objetivo (%)</label><input id="profitPct" type="number" step="0.01" placeholder="30" /></div>
+              <div class="field"><label>Ganancia objetivo — target margin (%)</label><input id="profitPct" type="number" step="0.01" placeholder="30" /></div>
+              <div class="field"><label>Margen minimo aceptable — minimum margin (%)</label><input id="minimumMarginPct" type="number" step="0.01" placeholder="15" /></div>
               <div class="field"><label>Comision de vendedor (%)</label><input id="salesCommissionPct" type="number" step="0.01" placeholder="10" /></div>
               <div class="field"><label>Bonus base supervisor (%)</label><input id="supervisorBonusPct" type="number" step="0.01" placeholder="1" /></div>
               <div class="field"><label>Reserva / Ahorro (%) (fija)</label><input id="reservePct" type="number" step="0.01" placeholder="5" readonly /></div>
@@ -337,6 +338,7 @@
     futaPct: 0.6,
     casuiPct: 3.4,
     profitPct: 30,
+    minimumMarginPct: 15,
     salesCommissionPct: 10,
     supervisorBonusPct: 1,
     reservePct: 5,
@@ -508,6 +510,7 @@
     'futaPct',
     'casuiPct',
     'profitPct',
+    'minimumMarginPct',
     'salesCommissionPct',
     'supervisorBonusPct',
     'reservePct'
@@ -524,7 +527,11 @@
       if (wrap) wrap.classList.remove('field--error');
     });
     const banner = document.getElementById('businessSettingsValidationBanner');
-    if (banner) banner.hidden = true;
+    if (banner) {
+      banner.hidden = true;
+      banner.textContent =
+        'Complete los campos obligatorios para guardar Business Settings y calcular precios correctamente.';
+    }
   }
 
   function validateBusinessSettingsCriticalFields() {
@@ -573,7 +580,15 @@
     if (!Number.isFinite(ca) || ca < 0) addInvalid('casuiPct');
 
     const pr = n('profitPct');
-    if (!Number.isFinite(pr) || pr <= 0) addInvalid('profitPct');
+    if (!Number.isFinite(pr) || pr < 0) addInvalid('profitPct');
+
+    const mm = n('minimumMarginPct');
+    if (!Number.isFinite(mm) || mm < 0) addInvalid('minimumMarginPct');
+
+    if (Number.isFinite(pr) && Number.isFinite(mm) && mm > pr) {
+      addInvalid('minimumMarginPct');
+      addInvalid('profitPct');
+    }
 
     const sc = n('salesCommissionPct');
     if (!Number.isFinite(sc) || sc < 0) addInvalid('salesCommissionPct');
@@ -584,16 +599,36 @@
     const re = n('reservePct');
     if (!Number.isFinite(re) || re < 5) addInvalid('reservePct');
 
-    return { ok: invalid.length === 0, invalidFieldIds: invalid };
+    const messages = [];
+    if (!Number.isFinite(pr) || pr < 0) {
+      messages.push('Target margin % (Ganancia objetivo) must be >= 0.');
+    }
+    if (!Number.isFinite(mm) || mm < 0) {
+      messages.push('Minimum margin % must be >= 0.');
+    }
+    if (Number.isFinite(pr) && Number.isFinite(mm) && mm > pr) {
+      messages.push('Minimum margin % must be less than or equal to target margin %.');
+    }
+
+    return {
+      ok: invalid.length === 0,
+      invalidFieldIds: invalid,
+      message: messages.length ? messages.join(' ') : ''
+    };
   }
 
-  function applyBusinessSettingsCriticalFieldErrors(ids) {
+  function applyBusinessSettingsCriticalFieldErrors(ids, message) {
     ids.forEach(function (id) {
       const wrap = getBusinessFieldWrap(id);
       if (wrap) wrap.classList.add('field--error');
     });
     const banner = document.getElementById('businessSettingsValidationBanner');
-    if (banner) banner.hidden = false;
+    if (banner) {
+      banner.hidden = false;
+      banner.textContent =
+        message ||
+        'Complete los campos obligatorios para guardar Business Settings y calcular precios correctamente.';
+    }
   }
 
   function currentFormSettings() {
@@ -610,6 +645,7 @@
       futaPct: Number(document.getElementById('futaPct')?.value || 0),
       casuiPct: Number(document.getElementById('casuiPct')?.value || 0),
       profitPct: Number(document.getElementById('profitPct')?.value || 0),
+      minimumMarginPct: Number(document.getElementById('minimumMarginPct')?.value || 0),
       salesCommissionPct: Number(document.getElementById('salesCommissionPct')?.value || 0),
       supervisorBonusPct: Number(document.getElementById('supervisorBonusPct')?.value || 0),
       reservePct: Number(document.getElementById('reservePct')?.value || DEFAULT_SETTINGS.reservePct),
@@ -742,7 +778,7 @@
     clearBusinessSettingsCriticalFieldErrors();
     const criticalCheck = validateBusinessSettingsCriticalFields();
     if (!criticalCheck.ok) {
-      applyBusinessSettingsCriticalFieldErrors(criticalCheck.invalidFieldIds);
+      applyBusinessSettingsCriticalFieldErrors(criticalCheck.invalidFieldIds, criticalCheck.message);
       const statusNode = document.getElementById('businessSettingsStatus');
       if (statusNode) {
         statusNode.style.display = 'none';
@@ -851,7 +887,7 @@
       'bizNameOwner', 'businessEmail', 'businessPhone', 'businessAddress', 'publicLogoUrl',
       'publicAccentColor', 'serviceLine', 'marketLine', 'signatureLine', 'baseInstaller',
       'baseHelper', 'pricingMode', 'hoursPerDay', 'overheadMonthly', 'stdHours', 'wcPct',
-      'ficaPct', 'futaPct', 'casuiPct', 'profitPct', 'salesCommissionPct', 'supervisorBonusPct',
+      'ficaPct', 'futaPct', 'casuiPct', 'profitPct', 'minimumMarginPct', 'salesCommissionPct', 'supervisorBonusPct',
       'reservePct'
     ];
 

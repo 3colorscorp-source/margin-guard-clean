@@ -54,6 +54,7 @@
     futaPct: 0.6,
     casuiPct: 3.4,
     profitPct: 30,
+    minimumMarginPct: 15,
     reservePct: 5,
     salesCommissionPct: 10,
     supervisorBonusPct: 1

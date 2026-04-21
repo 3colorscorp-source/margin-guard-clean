@@ -89,8 +89,20 @@ function validateTenantSnapshotPayload(payload) {
   }
 
   const pr = num("profitPct");
-  if (!Number.isFinite(pr) || pr <= 0) {
-    return { ok: false, reason: "mg_settings_v2.profitPct must be a finite number greater than 0" };
+  if (!Number.isFinite(pr) || pr < 0) {
+    return { ok: false, reason: "mg_settings_v2.profitPct must be a finite number >= 0" };
+  }
+
+  let mm = num("minimumMarginPct");
+  if (!Number.isFinite(mm)) mm = 0;
+  if (mm < 0) {
+    return { ok: false, reason: "mg_settings_v2.minimumMarginPct must be a finite number >= 0" };
+  }
+  if (mm > pr) {
+    return {
+      ok: false,
+      reason: "mg_settings_v2.minimumMarginPct must be less than or equal to mg_settings_v2.profitPct (target margin)"
+    };
   }
 
   const sc = num("salesCommissionPct");
