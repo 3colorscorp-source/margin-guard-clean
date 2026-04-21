@@ -1,6 +1,9 @@
+const crypto = require("crypto");
+const fetch = globalThis.fetch;
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { marginLevelForSalesApproval } = require("./_lib/pricing-engine");
 
 function json(statusCode, body) {
   return {
@@ -75,6 +78,82 @@ function normalizeApprovalPayload(body) {
   };
 }
 
+async function loadTenantSettingsFromLatestSnapshot(tenantId) {
+  const rows = await supabaseRequest(
+    `tenant_snapshots?tenant_id=eq.${encodeURIComponent(String(tenantId))}&select=payload&order=created_at.desc&limit=1`
+  );
+  const row = Array.isArray(rows) ? rows[0] : null;
+  const payload = row?.payload;
+  const storage =
+    payload?.storage && typeof payload.storage === "object" ? payload.storage : {};
+  const mg = storage["mg_settings_v2"];
+  return mg && typeof mg === "object" ? mg : {};
+}
+
+function approvalActionBaseUrl(event) {
+  const explicit = String(process.env.PUBLIC_SITE_URL || process.env.URL || process.env.DEPLOY_PRIME_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (explicit) return explicit;
+  const host = String(
+    event.headers["x-forwarded-host"] ||
+      event.headers["X-Forwarded-Host"] ||
+      event.headers.host ||
+      ""
+  )
+    .split(",")[0]
+    .trim();
+  const proto = String(
+    event.headers["x-forwarded-proto"] || event.headers["X-Forwarded-Proto"] || "https"
+  )
+    .split(",")[0]
+    .trim() || "https";
+  if (!host) return "";
+  return `${proto}://${host}`.replace(/\/+$/, "");
+}
+
+function hashTokenPlain(plain) {
+  return crypto.createHash("sha256").update(String(plain), "utf8").digest("hex");
+}
+
+function randomUrlToken() {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+function zapierWebhookUrl() {
+  return String(
+    process.env.SALES_APPROVAL_ZAPIER_WEBHOOK_URL ||
+      process.env.ZAPIER_SALES_APPROVAL_WEBHOOK_URL ||
+      ""
+  ).trim();
+}
+
+/**
+ * POST JSON to Zapier Catch Hook (or compatible). Does not throw.
+ */
+async function postZapierSalesApprovalWebhook(url, payload) {
+  const u = String(url || "").trim();
+  if (!u.startsWith("https://") && !u.startsWith("http://")) {
+    return { ok: false, reason: "invalid_webhook_url" };
+  }
+  try {
+    const r = await fetch(u, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      console.warn("[create-sales-approval] Zapier webhook non-OK", r.status, t?.slice(0, 300));
+      return { ok: false, reason: "http_error", status: r.status };
+    }
+    return { ok: true };
+  } catch (err) {
+    console.warn("[create-sales-approval] Zapier webhook failed", err?.message || err);
+    return { ok: false, reason: "fetch_error" };
+  }
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -140,7 +219,89 @@ exports.handler = async (event) => {
       return json(502, { error: "Approval was not persisted (no id returned)." });
     }
 
-    return json(200, { ok: true, approval_id });
+    /** @type {{ token?: string; project_name?: string; seller_name?: string; real_margin_pct?: number|null; zapier_webhook_ok?: boolean }} */
+    const yellowResponse = {};
+    let zapierWebhookResult = null;
+
+    try {
+      const tenantSettings = await loadTenantSettingsFromLatestSnapshot(tenant.id);
+      const { gate } = marginLevelForSalesApproval(
+        {
+          workers: normalized.row.workers,
+          offered_price: normalized.row.offered_price
+        },
+        tenantSettings
+      );
+
+      if (gate.level === "yellow") {
+        const token = randomUrlToken();
+        const email_action_token_hash = hashTokenPlain(token);
+
+        let tokenStored = false;
+        try {
+          await supabaseRequest(`sales_approvals?id=eq.${encodeURIComponent(String(approval_id))}`, {
+            method: "PATCH",
+            body: { email_action_token_hash }
+          });
+          tokenStored = true;
+        } catch (patchErr) {
+          console.error("[create-sales-approval] token PATCH failed", patchErr?.message || patchErr);
+        }
+
+        const base = approvalActionBaseUrl(event);
+        const fnPath = "/.netlify/functions/sales-approval-email-action";
+        const approveUrl = tokenStored && base
+          ? `${base}${fnPath}?id=${encodeURIComponent(String(approval_id))}&action=approve&t=${encodeURIComponent(token)}`
+          : "";
+        const declineUrl = tokenStored && base
+          ? `${base}${fnPath}?id=${encodeURIComponent(String(approval_id))}&action=decline&t=${encodeURIComponent(token)}`
+          : "";
+
+        const real_margin_pct =
+          gate.realMarginPct != null && Number.isFinite(gate.realMarginPct)
+            ? Math.round(gate.realMarginPct * 1000) / 1000
+            : null;
+
+        const seller_name = requested_by_email || "";
+
+        if (tokenStored) {
+          yellowResponse.token = token;
+          yellowResponse.project_name = normalized.row.project_name || "";
+          yellowResponse.seller_name = seller_name;
+          yellowResponse.real_margin_pct = real_margin_pct;
+        }
+
+        const hookUrl = zapierWebhookUrl();
+        if (tokenStored && hookUrl) {
+          const zapierPayload = {
+            approval_id: String(approval_id),
+            token,
+            project_name: normalized.row.project_name || "",
+            seller_name,
+            seller_email: seller_name,
+            real_margin_pct,
+            target_margin_pct: gate.profitPct,
+            minimum_margin_pct: gate.minimumMarginPct,
+            final_price: normalized.row.offered_price,
+            tenant_id: String(tenant.id),
+            approve_url: approveUrl || undefined,
+            decline_url: declineUrl || undefined
+          };
+          zapierWebhookResult = await postZapierSalesApprovalWebhook(hookUrl, zapierPayload);
+          yellowResponse.zapier_webhook_ok = Boolean(zapierWebhookResult?.ok);
+        } else if (tokenStored && !hookUrl) {
+          yellowResponse.zapier_webhook_ok = false;
+        }
+      }
+    } catch (flowErr) {
+      console.error("[create-sales-approval] yellow / Zapier flow", flowErr?.message || flowErr);
+    }
+
+    return json(200, {
+      ok: true,
+      approval_id,
+      ...yellowResponse
+    });
   } catch (err) {
     return json(500, { error: err.message || "Server error" });
   }

@@ -129,11 +129,82 @@ function calculateQuotePublishFinancials(input, tenantSettings) {
     deposit_required,
     labor: round2(labor),
     totalHours: round2(totalHours),
-    totalWorkerDays: round2(totalWorkerDays)
+    totalWorkerDays: round2(totalWorkerDays),
+    before_profit: round2(beforeProfit),
+    reserve: round2(reserve)
   };
+}
+
+function finiteNumber(n, fallback = 0) {
+  const x = Number(n);
+  return Number.isFinite(x) ? x : fallback;
+}
+
+/**
+ * Mirrors public/js/app.js computeSalesMarginDecisionFromEconomics (yellow = manual review band).
+ */
+function computeSalesMarginDecisionFromEconomics(offeredPrice, beforeProfit, reserve, settings) {
+  const s = settings && typeof settings === "object" ? settings : {};
+  const targetPct = finiteNumber(s.profitPct, 30);
+  const minPct = finiteNumber(s.minimumMarginPct != null ? s.minimumMarginPct : 15, 15);
+  const price = finiteNumber(offeredPrice, 0);
+  const bp = finiteNumber(beforeProfit, 0);
+  const res = finiteNumber(reserve, 0);
+  const internalCost = bp + res;
+  if (!(price > 0) || !Number.isFinite(internalCost)) {
+    return {
+      realMarginPct: null,
+      level: "red",
+      profitPct: targetPct,
+      minimumMarginPct: minPct,
+      internalCost
+    };
+  }
+  const realMarginPct = ((price - internalCost) / price) * 100;
+  let level = "green";
+  if (realMarginPct >= targetPct) {
+    level = "green";
+  } else if (realMarginPct >= minPct) {
+    level = "yellow";
+  } else {
+    level = "red";
+  }
+  return {
+    realMarginPct,
+    level,
+    profitPct: targetPct,
+    minimumMarginPct: minPct,
+    internalCost
+  };
+}
+
+/**
+ * @param {{ workers: unknown[]; offered_price: number }} rowLike
+ * @param {object} tenantSettings
+ */
+function marginLevelForSalesApproval(rowLike, tenantSettings) {
+  const workers = Array.isArray(rowLike?.workers) ? rowLike.workers : [];
+  const offered = finiteNumber(rowLike?.offered_price, 0);
+  const financials = calculateQuotePublishFinancials(
+    {
+      workers,
+      price: offered,
+      _manualPriceTouched: true
+    },
+    tenantSettings
+  );
+  const gate = computeSalesMarginDecisionFromEconomics(
+    offered,
+    financials.before_profit,
+    financials.reserve,
+    tenantSettings
+  );
+  return { gate, financials };
 }
 
 module.exports = {
   calculateSecurePricing,
-  calculateQuotePublishFinancials
+  calculateQuotePublishFinancials,
+  computeSalesMarginDecisionFromEconomics,
+  marginLevelForSalesApproval
 };
