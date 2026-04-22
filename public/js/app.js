@@ -2471,6 +2471,86 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     };
   }
 
+  function buildOwnerDailyBriefPlain(rows, derived) {
+    const { runwayMonths, savingsPct, savingsTarget, operatingMonthly } = derived;
+    const parts = [];
+    if (operatingMonthly > 0 && runwayMonths >= 3) {
+      parts.push(`<p><strong>Caja:</strong> Con el gasto mensual que guardaste, el negocio muestra un runway aproximado de ${runwayMonths.toFixed(1)} meses; se siente estable por ahora.</p>`);
+    } else if (operatingMonthly > 0) {
+      parts.push(`<p><strong>Caja:</strong> El runway aproximado es ${runwayMonths.toFixed(1)} meses; conviene vigilar cobranza y gasto.</p>`);
+    } else {
+      parts.push("<p><strong>Caja:</strong> Sin gasto operativo mensual en el monitor no podemos medir runway; completalo para ver si la caja se siente estable o apretada.</p>");
+    }
+    if (savingsTarget > 0) {
+      if (savingsPct >= 50) {
+        parts.push(`<p><strong>Ahorros:</strong> Vas al ${savingsPct.toFixed(0)}% de tu meta de reserva de 12 meses; el colchon se ve saludable.</p>`);
+      } else {
+        parts.push(`<p><strong>Ahorros:</strong> Llevas ${savingsPct.toFixed(0)}% de tu meta de 12 meses; el colchon todavia se siente debil.</p>`);
+      }
+    } else {
+      parts.push("<p><strong>Ahorros:</strong> Activa la meta de 12 meses guardando tu gasto mensual en el monitor.</p>");
+    }
+    const top = rows.length
+      ? rows.slice().sort((left, right) => right.priorityScore - left.priorityScore)[0]
+      : null;
+    if (top && top.priorityScore > 0) {
+      parts.push(`<p><strong>Prioridad hoy:</strong> ${escapeHtml(top.title)} — ${escapeHtml(String(top.nextAction || "revisa el hub"))}.</p>`);
+    } else {
+      parts.push("<p><strong>Prioridad hoy:</strong> No hay un proyecto dominante en la cartera; abre el hub si quieres revisar detalle.</p>");
+    }
+    const broken = rows.filter((row) => row.promisedDateRaw && row.promisedDateRaw < new Date().toISOString().slice(0, 10) && finiteNumber(row.balance, 0) > 0 && row.status !== "paid").length;
+    const overdue = rows.filter((row) => ["overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0).length;
+    if (broken + overdue > 0) {
+      parts.push(`<p><strong>Riesgo operativo:</strong> Hay ${broken} promesa(s) rota(s) y ${overdue} factura(s) vencida(s) con saldo en la cartera.</p>`);
+    } else {
+      parts.push("<p><strong>Riesgo operativo:</strong> No se ven promesas rotas ni facturas vencidas con saldo en la cartera actual.</p>");
+    }
+    return parts.join("");
+  }
+
+  function fillOwnerActionLayer(rows, settings, derived) {
+    if ($("oalMoneyMovesGrid")) {
+      const autoRemCount = buildAutoReminderRows(rows).length;
+      const readyInvoicesCount = rows.filter((row) => row.rowType === "estimate" && finiteNumber(row.amount, 0) > 0 && row.projectStatus !== "completed").length;
+      const highPressureCount = rows.filter((row) => finiteNumber(row.priorityScore, 0) >= 80).length;
+      const card = (cls, title, count, meta, emptyHint, hubKind) => {
+        const has = count > 0;
+        const actions = `<div class="oal-mm-actions"><button type="button" class="btn ${has ? "primary" : ""}" data-oal-hub="${escapeHtml(hubKind)}">${has ? "Open in Hub" : "Open Hub"}</button></div>`;
+        return `
+          <article class="oal-mm-card oal-mm-card--${cls}">
+            <h3 class="oal-mm-title">${escapeHtml(title)}</h3>
+            <div class="oal-mm-value">${has ? escapeHtml(String(count)) : "0"}</div>
+            <p class="oal-mm-meta">${escapeHtml(meta)}</p>
+            ${has ? "" : `<div class="oal-mm-empty">${escapeHtml(emptyHint)}</div>`}
+            ${actions}
+          </article>`;
+      };
+      $("oalMoneyMovesGrid").innerHTML = [
+        card("collections", "Collections to push today", autoRemCount, "Candidatos donde conviene preparar recordatorios de cobranza hoy.", "No hay cola automatica sugerida para hoy.", "collections-auto"),
+        card("invoices", "Invoices ready to send", readyInvoicesCount, "Estimates listos para mover a invoice.", "No hay estimates listos para facturar aun.", "ready-estimates"),
+        card("deals", "High-pressure deals to close", highPressureCount, "Filas con prioridad 80+ entre cobranza y cierre.", "No hay acuerdos en banda de maxima presion.", "high-pressure")
+      ].join("");
+    }
+    if ($("oalOwnerActionQueue")) {
+      const ownerTasks = buildOwnerTasks(rows, settings);
+      $("oalOwnerActionQueue").innerHTML = ownerTasks.length
+        ? ownerTasks.map((task, index) => `
+            <li>
+              <span class="msg-idx">${index + 1}</span>
+              <div>
+                <strong>${escapeHtml(task.title)}</strong>
+                <span class="hub-inline-meta">${escapeHtml(task.action)}</span>
+                <span class="hub-inline-meta">${escapeHtml(task.body)}</span>
+              </div>
+            </li>
+          `).join("")
+        : "<li><span class=\"msg-idx\">–</span><div><strong>No urgent owner actions right now.</strong><span class=\"hub-inline-meta\">Cuando haya cobranza o proyectos pendientes, apareceran aqui.</span></div></li>";
+    }
+    if ($("oalOwnerDailyBrief")) {
+      $("oalOwnerDailyBrief").innerHTML = buildOwnerDailyBriefPlain(rows, derived);
+    }
+  }
+
   function renderDashboard() {
     if (!$("dashKpis")) return;
 
@@ -2574,8 +2654,16 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         </div>
       `).join("");
 
-      if ($("dashboardRevenueStrip") || $("dashboardRevenueNote") || $("dashboardCommandStrip") || $("dashboardCommandQueue") || $("dashboardOwnerTasks") || $("dashboardClientScorecard") || $("dashboardDailyDigest") || $("dashboardProfitabilityRanking") || $("dashboardCashForecast") || $("dashboardWeeklyReview") || $("dashboardRiskSegments") || $("dashboardOwnerAlerts") || $("fccCfCashIn") || $("fccPerfTbody")) {
+      const dashboardHubNeeded =
+        $("dashboardRevenueStrip") || $("dashboardRevenueNote") || $("dashboardCommandStrip") || $("dashboardCommandQueue") ||
+        $("dashboardOwnerTasks") || $("dashboardClientScorecard") || $("dashboardDailyDigest") || $("dashboardProfitabilityRanking") ||
+        $("dashboardCashForecast") || $("dashboardWeeklyReview") || $("dashboardRiskSegments") || $("dashboardOwnerAlerts") ||
+        $("fccCfCashIn") || $("fccPerfTbody") || $("oalMoneyMovesGrid") || $("oalOwnerActionQueue") || $("oalOwnerDailyBrief");
+
+      let hubRowsSnapshot = null;
+      if (dashboardHubNeeded) {
         const hubRows = buildPortfolioRows(settings);
+        hubRowsSnapshot = hubRows;
         const openBalance = hubRows.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
         const collectionsCount = hubRows.filter((row) => ["sent", "partial", "overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0).length;
         const paidTotal = hubRows.filter((row) => row.status === "paid").reduce((sum, row) => sum + finiteNumber(row.amount, 0), 0);
@@ -2818,6 +2906,19 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             : `<li><span class="msg-idx">0</span><div><strong>Todo bajo control</strong><span class="hub-inline-meta">No hay alertas urgentes en la cartera actual.</span></div></li>`;
         }
       }
+
+      if ($("oalMoneyMovesGrid") || $("oalOwnerActionQueue") || $("oalOwnerDailyBrief")) {
+        const rows = hubRowsSnapshot || buildPortfolioRows(settings);
+        fillOwnerActionLayer(rows, settings, {
+          totalCash,
+          runwayMonths,
+          savingsPct,
+          savingsTarget,
+          operatingMonthly: state.operatingMonthly,
+          expensesBalance: state.expensesBalance,
+          savingsBalance: state.savingsBalance
+        });
+      }
     };
 
     ["expensesBalance", "profitBalance", "savingsBalance", "taxBalance", "operatingMonthly"].forEach((id) => {
@@ -2834,6 +2935,33 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       });
       window.location.href = "/estimates-invoices";
     };
+
+    if ($("oalOwnerLayer") && !$("oalOwnerLayer").dataset.oalHubBound) {
+      $("oalOwnerLayer").dataset.oalHubBound = "1";
+      $("oalOwnerLayer").addEventListener("click", (ev) => {
+        const btn = ev.target.closest("[data-oal-hub]");
+        if (!btn) return;
+        ev.preventDefault();
+        const kind = btn.getAttribute("data-oal-hub") || "";
+        if (kind === "collections-auto") {
+          openHubPreset("open", "collections");
+        } else if (kind === "ready-estimates") {
+          openHubPreset("ready", "estimates");
+        } else if (kind === "high-pressure") {
+          const currentView = loadHubViewState();
+          saveHubViewState({ ...currentView, tab: "all", preset: "action", status: "all" });
+          window.location.href = "/estimates-invoices";
+        }
+      });
+    }
+
+    if ($("oalBtnOpenPipeline")) {
+      $("oalBtnOpenPipeline").onclick = () => {
+        const currentView = loadHubViewState();
+        saveHubViewState({ ...currentView, tab: "pipeline" });
+        window.location.href = "/estimates-invoices";
+      };
+    }
 
     if ($("btnDashboardOpenBalance")) {
       $("btnDashboardOpenBalance").onclick = () => openHubPreset("open", "all");
