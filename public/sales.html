@@ -2518,6 +2518,10 @@ async function openSellerSendModal(event) {
     if (!Number.isFinite(rowDeposit) || rowDeposit <= 0) {
       rowDeposit = Number.isFinite(fromFinD) && fromFinD > 0 ? fromFinD : Number(payload.depositRequired ?? depositRequired) || 0;
     }
+    const rowBalance =
+      Number(savedRow?.balance_after_deposit) ||
+      Number(publishData?.financials?.balance_after_deposit) ||
+      Math.max(0, Number(rowTotal) - Number(rowDeposit));
     const usedRowFirst =
       Number.isFinite(fromRowT) &&
       fromRowT > 0 &&
@@ -2525,7 +2529,7 @@ async function openSellerSendModal(event) {
       fromRowD > 0;
     const payloadTotal = Number(payload.totalAmount ?? estimateTotal) || 0;
     const payloadDeposit = Number(payload.depositRequired ?? depositRequired) || 0;
-    return { rowTotal, rowDeposit, fromRowBal, fromFinBal, usedRowFirst, payloadTotal, payloadDeposit };
+    return { rowTotal, rowDeposit, rowBalance, usedRowFirst, payloadTotal, payloadDeposit };
   }
 
 async function runSellerSend(event) {
