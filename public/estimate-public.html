@@ -830,8 +830,7 @@
     (function () {
       "use strict";
 
-      var ZAPIER_PUBLIC_VIEW_HOOK =
-        "https://hooks.zapier.com/hooks/catch/22122619/uj0nqfu/";
+      var TRACK_VIEW_ENDPOINT = "/.netlify/functions/track-estimate-view";
       var prevRefresh =
         typeof window.__mgOnPublicEstimateRefresh === "function"
           ? window.__mgOnPublicEstimateRefresh
@@ -869,7 +868,7 @@
           additional_recipients: pickStr(est.additional_recipients)
         };
 
-        fetch(ZAPIER_PUBLIC_VIEW_HOOK, {
+        fetch(TRACK_VIEW_ENDPOINT, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
