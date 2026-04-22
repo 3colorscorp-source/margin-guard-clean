@@ -141,6 +141,35 @@
       .toUpperCase();
   }
 
+  /** Human-readable badge; never show raw API tokens like "accepted" as stray UI. */
+  function formatPublicEstimateStatusLabel(raw) {
+    const s = String(raw || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "_");
+    const map = {
+      accepted: "Approved",
+      approved: "Approved",
+      declined: "Declined",
+      ready_to_send: "Ready to send",
+      draft: "Draft"
+    };
+    if (map[s]) return map[s];
+    if (!s) return "Draft";
+    return s
+      .split("_")
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  }
+
+  function removeLegacyInjectedAcceptedBlock() {
+    const legacy = $("publicEstimateAcceptedBlock");
+    if (legacy && legacy.parentNode) {
+      legacy.parentNode.removeChild(legacy);
+    }
+  }
+
   /**
    * Public header image URLs (Supabase Storage, CDN). Accepts absolute http(s) and scheme-relative //...
    */
@@ -707,50 +736,6 @@
     `;
   }
 
-  function renderAcceptedBlock() {
-    let block = $("publicEstimateAcceptedBlock");
-    if (block) return;
-
-    const feedback = $("publicEstimateFeedback");
-    if (!feedback || !feedback.parentNode) return;
-
-    block = document.createElement("div");
-    block.id = "publicEstimateAcceptedBlock";
-    block.className = "card";
-    block.style.marginTop = "18px";
-    block.innerHTML = `
-      <div class="card-inner">
-        <div style="font-size:14px;letter-spacing:.08em;text-transform:uppercase;opacity:.82;margin-bottom:8px;">
-          Approved
-        </div>
-        <div style="font-size:24px;font-weight:700;line-height:1.2;margin-bottom:8px;">
-          ✅ Project approved. Secure your schedule.
-        </div>
-        <div style="opacity:.9;margin-bottom:12px;">
-          Your approval has been received. Complete the deposit to reserve your project start date.
-        </div>
-        <div style="font-weight:600;margin-bottom:14px;">
-          Secure your project start with the required deposit.
-        </div>
-        <button id="btnBeginProjectInvestment" class="btn btn-primary" type="button">
-          Begin Project Investment
-        </button>
-        <div style="font-size:12px;opacity:.75;margin-top:12px;line-height:1.5;">
-          Your deposit reserves your project start date and is applied toward the final invoice.
-        </div>
-      </div>
-    `;
-
-    feedback.parentNode.insertBefore(block, feedback.nextSibling);
-
-    const nextBtn = $("btnBeginProjectInvestment");
-    if (nextBtn) {
-      nextBtn.onclick = () => {
-        showFeedback("Project investment step ready for the next integration.", "success");
-      };
-    }
-  }
-
   function renderBusinessHeader(next) {
     const titleEl = $("publicEstimateTitle");
     const metaEl = $("publicEstimateMeta");
@@ -826,10 +811,10 @@
         <div style="display:flex;align-items:flex-start;gap:14px;">
           ${logoOrInitials}
           <div style="flex:1;min-width:0;">
-            <div style="font-size:30px;font-weight:800;line-height:1.15;margin-bottom:6px;">
+            <div style="font-size:30px;font-weight:800;line-height:1.15;margin-bottom:6px;overflow-wrap:break-word;word-break:normal;">
               ${escapeHtml(resolvedDisplayName)}
             </div>
-            <div style="font-size:18px;font-weight:700;line-height:1.25;">
+            <div style="font-size:18px;font-weight:700;line-height:1.25;overflow-wrap:break-word;word-break:normal;">
               ${escapeHtml(projectLine)}
             </div>
           </div>
@@ -959,6 +944,26 @@
     const wrap = $("publicEstimateTerms");
     if (!wrap) return;
 
+    const st = String(next.status || "").toLowerCase();
+    const card = wrap.closest(".estimate-subcard");
+    if (st === "accepted" || st === "approved") {
+      const customTerms = safe(next.terms);
+      if (customTerms) {
+        if (card) card.style.display = "";
+        wrap.textContent = customTerms;
+        return;
+      }
+      if (card) card.style.display = "";
+      wrap.innerHTML = `
+        <div style="line-height:1.55;opacity:.9;">
+          Deposits are non-refundable if you cancel the project. Deposit amount and payment options are shown in the
+          <strong>Investment</strong> summary and the approval section below — no duplicate instructions here.
+        </div>
+      `;
+      return;
+    }
+    if (card) card.style.display = "";
+
     const customTerms = safe(next.terms);
 
     if (customTerms) {
@@ -1030,6 +1035,8 @@
     const token = getQueryParam("token") || "";
     const currentStatus = String(next.status || "").toLowerCase();
 
+    removeLegacyInjectedAcceptedBlock();
+
     const bn = resolvePublicBusinessDisplayName(next);
     const proj = safe(next.title || next.project_name) || "Estimate";
     document.title = `${bn} — ${proj}`;
@@ -1042,7 +1049,13 @@
     renderTerms(next);
 
     if ($("publicEstimateStatus")) {
-      $("publicEstimateStatus").textContent = next.status || "READY_TO_SEND";
+      const rawStatus =
+        next.status !== undefined && next.status !== null && String(next.status).trim() !== ""
+          ? String(next.status).trim()
+          : "READY_TO_SEND";
+      const badge = $("publicEstimateStatus");
+      badge.dataset.rawStatus = rawStatus.toLowerCase();
+      badge.textContent = formatPublicEstimateStatusLabel(rawStatus);
     }
 
     setupPublicWorkflow(next);
@@ -1055,10 +1068,14 @@
     const approveBtn = $("btnPublicEstimateApprove");
     const declineBtn = $("btnPublicEstimateDecline");
 
-    if (currentStatus === "accepted") {
+    if (currentStatus === "accepted" || currentStatus === "approved") {
       hideDecisionButtons();
-      renderAcceptedBlock();
-      showFeedback("Estimate aprobado correctamente.", "success");
+      const fb = $("publicEstimateFeedback");
+      if (fb) {
+        fb.style.display = "none";
+        fb.textContent = "";
+        fb.className = "notice";
+      }
       return;
     }
 
@@ -1093,8 +1110,11 @@
           setButtonsDisabled(true);
           const result = await updateEstimateStatus(token, "declined");
 
-          if ($("publicEstimateStatus")) {
-            $("publicEstimateStatus").textContent = result.status || "declined";
+          const badge = $("publicEstimateStatus");
+          if (badge) {
+            const raw = (result && result.status) || "declined";
+            badge.dataset.rawStatus = String(raw).trim().toLowerCase();
+            badge.textContent = formatPublicEstimateStatusLabel(raw);
           }
 
           hideDecisionButtons();

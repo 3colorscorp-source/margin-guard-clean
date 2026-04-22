@@ -262,7 +262,6 @@
             <p class="approved-copy">
               Your approval has been received. Complete the deposit to reserve your project start date.
             </p>
-            <p class="approved-next-step">Secure your project start with the required deposit.</p>
 
             <div
               id="publicDepositGateNotice"
@@ -472,7 +471,11 @@
       }
 
       function getStatusValue() {
-        return ($("publicEstimateStatus")?.textContent || "").trim().toLowerCase();
+        const el = $("publicEstimateStatus");
+        if (el && el.dataset && el.dataset.rawStatus) {
+          return String(el.dataset.rawStatus).trim().toLowerCase();
+        }
+        return (el?.textContent || "").trim().toLowerCase();
       }
 
       function parseMoneyText(text) {
