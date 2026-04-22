@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Project Control Center™</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .pcc-hero { margin-bottom: 1.25rem; }
+    .pcc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 1.25rem; }
+    .pcc-stat { background: var(--card-bg, #fff); border: 1px solid var(--border, #e8e8e8); border-radius: 10px; padding: 14px 16px; }
+    .pcc-stat .label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted, #666); margin-bottom: 6px; }
+    .pcc-stat .value { font-size: 1.55rem; font-weight: 700; line-height: 1.1; }
+    .pcc-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
+    .pcc-filters .hint { font-size: 0.85rem; color: var(--muted, #666); margin-left: auto; }
+    .pcc-filter-btn.active { box-shadow: inset 0 0 0 2px var(--accent, #0f8a5f); }
+    .pcc-table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border, #e8e8e8); }
+    .pcc-row { cursor: pointer; transition: background 0.12s ease; }
+    .pcc-row:hover { background: rgba(15, 138, 95, 0.06); }
+    .pcc-row.selected { background: rgba(15, 138, 95, 0.1); }
+    .pcc-detail { margin-top: 1.5rem; display: none; }
+    .pcc-detail.open { display: block; }
+    .pcc-detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    .pcc-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 16px; margin: 12px 0; }
+    .pcc-kv div { padding: 8px 0; border-bottom: 1px solid var(--border, #eee); }
+    .pcc-kv .k { font-size: 0.8rem; color: var(--muted, #666); }
+    .pcc-kv .v { font-weight: 600; margin-top: 2px; }
+    .pcc-deviation { font-size: 1.05rem; line-height: 1.45; padding: 12px 14px; border-radius: 8px; background: #f8faf9; border: 1px solid #e0ebe6; margin: 12px 0; }
+  </style>
+</head>
+<body data-requires-auth="true">
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"><b>MG</b></div>
+        <div>
+          <h1>Margin Guard</h1>
+          <p id="planStatus">Validando suscripcion...</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <a class="btn" href="/dashboard">Dashboard</a>
+        <a class="btn" href="/estimates-invoices">Invoices Hub</a>
+        <a class="btn" href="/owner">Dueno</a>
+        <a class="btn" href="/business-settings">Business Settings</a>
+        <a class="btn" href="/sales">Vendedor</a>
+        <a class="btn" href="/supervisor">Supervisor</a>
+        <a class="btn" href="/sales-admin">Sales Admin</a>
+        <a class="btn active" href="/project-control">Project Control</a>
+        <button class="btn" id="btnManagePlan">Gestionar plan</button>
+        <button class="btn danger" id="btnLogout">Cerrar sesion</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="account-pill" id="accountEmail">Cuenta activa</div>
+
+    <section class="card pcc-hero">
+      <div class="card-inner">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">Owner / Admin</span>
+            <h2 class="hero-title">Project Control Center™</h2>
+            <p class="sub" style="margin:0;">One place to see every active job: on track, at risk, or delayed — using the same field reports and dates as Supervisor.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="pcc-stats" id="pccSummary">
+      <div class="pcc-stat"><div class="label">Active projects</div><div class="value" id="pccNActive">—</div></div>
+      <div class="pcc-stat"><div class="label">On track</div><div class="value" id="pccNGreen">—</div></div>
+      <div class="pcc-stat"><div class="label">At risk</div><div class="value" id="pccNYellow">—</div></div>
+      <div class="pcc-stat"><div class="label">Delayed</div><div class="value" id="pccNRed">—</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-inner">
+        <div class="pcc-filters">
+          <button type="button" class="btn pcc-filter-btn active" data-filter="all">All</button>
+          <button type="button" class="btn pcc-filter-btn" data-filter="green">Green</button>
+          <button type="button" class="btn pcc-filter-btn" data-filter="yellow">Yellow</button>
+          <button type="button" class="btn pcc-filter-btn" data-filter="red">Red</button>
+          <span class="hint">Click a row for detail &amp; report history.</span>
+        </div>
+        <div class="notice" id="pccLoadError" style="display:none;"></div>
+        <div class="pcc-table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Client</th>
+                <th>Due date</th>
+                <th>Budgeted days</th>
+                <th>Days spent</th>
+                <th>Days remaining</th>
+                <th>Progress %</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="pccTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card pcc-detail" id="pccDetail">
+      <div class="card-inner">
+        <div class="pcc-detail-head">
+          <div>
+            <h3 id="pccDetailTitle" style="margin:0 0 4px;">Project</h3>
+            <div class="sub" id="pccDetailClient"></div>
+          </div>
+          <button type="button" class="btn ghost" id="pccCloseDetail">Close detail</button>
+        </div>
+        <div class="pcc-kv" id="pccDetailKv"></div>
+        <div class="pcc-deviation" id="pccDetailDeviation"></div>
+        <h4 style="margin:16px 0 8px;">Work report history</h4>
+        <div class="pcc-table-wrap">
+          <table class="table">
+            <thead>
+              <tr><th>Date</th><th>Days</th><th>Hours</th><th>Note</th></tr>
+            </thead>
+            <tbody id="pccDetailReports"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/tenant.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+    (function () {
+      function esc(s) {
+        return String(s ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+      function fmtDate(ymd) {
+        if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(String(ymd))) return '—';
+        var d = new Date(ymd + 'T12:00:00');
+        return isNaN(d.getTime()) ? String(ymd) : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+      }
+      function pct(v) {
+        if (v == null || !isFinite(Number(v))) return '—';
+        return Math.round(Number(v)) + '%';
+      }
+
+      var allRows = [];
+      var activeFilter = 'all';
+      var selectedId = '';
+
+      function badgeClass(tone) {
+        if (tone === 'green') return 'green';
+        if (tone === 'yellow') return 'amber';
+        return 'red';
+      }
+
+      function renderSummary() {
+        var n = allRows.length;
+        var g = 0, y = 0, r = 0;
+        for (var i = 0; i < n; i++) {
+          var t = allRows[i].metrics.tone;
+          if (t === 'green') g++;
+          else if (t === 'yellow') y++;
+          else r++;
+        }
+        document.getElementById('pccNActive').textContent = String(n);
+        document.getElementById('pccNGreen').textContent = String(g);
+        document.getElementById('pccNYellow').textContent = String(y);
+        document.getElementById('pccNRed').textContent = String(r);
+      }
+
+      function renderTable() {
+        var body = document.getElementById('pccTableBody');
+        if (!body) return;
+        var filtered = allRows.filter(function (row) {
+          if (activeFilter === 'all') return true;
+          return row.metrics.tone === activeFilter;
+        });
+        body.innerHTML = filtered.map(function (row) {
+          var p = row.project;
+          var m = row.metrics;
+          var sel = selectedId === String(p.id) ? ' selected' : '';
+          var tone = m.tone === 'green' ? 'green' : (m.tone === 'yellow' ? 'amber' : 'red');
+          return (
+            '<tr class="pcc-row' + sel + '" data-id="' + esc(p.id) + '">' +
+            '<td><strong>' + esc(p.projectName || '—') + '</strong></td>' +
+            '<td>' + esc(p.clientName || '—') + '</td>' +
+            '<td>' + esc(fmtDate(m.dueDate)) + '</td>' +
+            '<td>' + (m.estimatedDays > 0 ? m.estimatedDays.toFixed(2) : '—') + '</td>' +
+            '<td>' + m.daysSpent.toFixed(2) + '</td>' +
+            '<td>' + m.daysRemaining.toFixed(2) + '</td>' +
+            '<td>' + pct(m.progressPct) + '</td>' +
+            '<td><span class="badge ' + tone + '">' + esc(m.statusLabel) + '</span></td>' +
+            '<td><button type="button" class="btn primary pcc-view" data-id="' + esc(p.id) + '">View detail</button></td>' +
+            '</tr>'
+          );
+        }).join('');
+
+        body.querySelectorAll('.pcc-row').forEach(function (tr) {
+          tr.addEventListener('click', function (e) {
+            if (e.target.closest('.pcc-view')) return;
+            openDetail(String(tr.getAttribute('data-id') || ''));
+          });
+        });
+        body.querySelectorAll('.pcc-view').forEach(function (btn) {
+          btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            openDetail(String(btn.getAttribute('data-id') || ''));
+          });
+        });
+      }
+
+      function openDetail(id) {
+        var row = allRows.find(function (r) { return String(r.project.id) === String(id); });
+        if (!row) return;
+        selectedId = String(id);
+        renderTable();
+        var m = row.metrics;
+        var p = row.project;
+        document.getElementById('pccDetailTitle').textContent = p.projectName || 'Project';
+        document.getElementById('pccDetailClient').textContent = p.clientName ? ('Client: ' + p.clientName) : '';
+        var kv = document.getElementById('pccDetailKv');
+        kv.innerHTML = [
+          ['Due date', fmtDate(m.dueDate)],
+          ['Projected finish', m.projectedEndDate ? fmtDate(m.projectedEndDate) : '—'],
+          ['Budgeted days', m.estimatedDays > 0 ? m.estimatedDays.toFixed(2) : '—'],
+          ['Days spent', m.daysSpent.toFixed(2)],
+          ['Days remaining', m.daysRemaining.toFixed(2)],
+          ['Hours reported', m.reportedHours.toFixed(2)],
+          ['Unexpected expenses (count)', String(m.unexpectedExpensesCount)],
+          ['Progress', pct(m.progressPct)],
+          ['Plan deviation', m.planDeviationLabel],
+          ['Status', m.statusLabel]
+        ].map(function (pair) {
+          return '<div><div class="k">' + esc(pair[0]) + '</div><div class="v">' + esc(pair[1]) + '</div></div>';
+        }).join('');
+        document.getElementById('pccDetailDeviation').textContent = m.planDeviationDetail;
+        var reps = (row.reports || []).slice().sort(function (a, b) {
+          return String(b.entry_date || '').localeCompare(String(a.entry_date || ''));
+        });
+        document.getElementById('pccDetailReports').innerHTML = reps.length
+          ? reps.map(function (r) {
+            return '<tr><td>' + esc(fmtDate(r.entry_date)) + '</td><td>' + esc(Number(r.days || 0).toFixed(2)) + '</td><td>' +
+              esc(Number(r.hours || 0).toFixed(2)) + '</td><td>' + esc(r.note || '') + '</td></tr>';
+          }).join('')
+          : '<tr><td colspan="4" class="sub">No work reports yet.</td></tr>';
+        document.getElementById('pccDetail').classList.add('open');
+        document.getElementById('pccDetail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      function bindFilters() {
+        document.querySelectorAll('.pcc-filter-btn').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            activeFilter = String(btn.getAttribute('data-filter') || 'all');
+            document.querySelectorAll('.pcc-filter-btn').forEach(function (b) {
+              b.classList.toggle('active', b.getAttribute('data-filter') === activeFilter);
+            });
+            renderTable();
+          });
+        });
+      }
+
+      document.getElementById('pccCloseDetail').addEventListener('click', function () {
+        selectedId = '';
+        document.getElementById('pccDetail').classList.remove('open');
+        renderTable();
+      });
+
+      async function load() {
+        var errEl = document.getElementById('pccLoadError');
+        var compute = typeof window.__mgComputeProjectControlMetrics === 'function'
+          ? window.__mgComputeProjectControlMetrics
+          : null;
+        if (!compute) {
+          if (errEl) {
+            errEl.style.display = 'block';
+            errEl.className = 'notice err';
+            errEl.textContent = 'Metrics engine not loaded. Ensure app.js is available.';
+          }
+          return;
+        }
+        var pr = await fetch('/.netlify/functions/get-supervisor-projects', { credentials: 'include' });
+        var pj = await pr.json().catch(function () { return {}; });
+        if (!pr.ok || !pj || pj.ok !== true || !Array.isArray(pj.projects)) {
+          if (errEl) {
+            errEl.style.display = 'block';
+            errEl.className = 'notice err';
+            errEl.textContent = (pj && pj.error) ? String(pj.error) : 'Could not load projects.';
+          }
+          return;
+        }
+        if (errEl) errEl.style.display = 'none';
+
+        var projects = pj.projects;
+        allRows = await Promise.all(projects.map(async function (p) {
+          var rid = encodeURIComponent(String(p.id));
+          var repRes = await fetch('/.netlify/functions/get-project-reports?project_id=' + rid, { credentials: 'include' }).then(function (r) { return r.json(); }).catch(function () { return {}; });
+          var expRes = await fetch('/.netlify/functions/get-project-expenses?project_id=' + rid, { credentials: 'include' }).then(function (r) { return r.json(); }).catch(function () { return {}; });
+          var reports = repRes && repRes.ok === true && Array.isArray(repRes.reports) ? repRes.reports : [];
+          var expenses = expRes && expRes.ok === true && Array.isArray(expRes.expenses) ? expRes.expenses : [];
+          var metrics = compute(p, reports, expenses);
+          return { project: p, reports: reports, expenses: expenses, metrics: metrics };
+        }));
+
+        renderSummary();
+        renderTable();
+      }
+
+      function whenAuthReady(cb) {
+        if (document.body.classList.contains('auth-ready')) {
+          cb();
+          return;
+        }
+        var n = 0;
+        var t = setInterval(function () {
+          n += 1;
+          if (document.body.classList.contains('auth-ready')) {
+            clearInterval(t);
+            cb();
+          } else if (n > 200) {
+            clearInterval(t);
+            cb();
+          }
+        }, 50);
+      }
+
+      document.addEventListener('DOMContentLoaded', function () {
+        bindFilters();
+        whenAuthReady(function () { void load(); });
+      });
+    })();
+  </script>
+</body>
+</html>

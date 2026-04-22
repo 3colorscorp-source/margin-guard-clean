@@ -433,6 +433,111 @@ Thank you.`
     }
   }
 
+  /**
+   * Project Control Center™ — metrics aligned with Supervisor dashboard logic.
+   * @param project Tenant project row (estimatedDays, dueDate, workers, …)
+   * @param reports Work report rows { days, hours, entry_date, note }
+   * @param expensesList Unexpected expense rows (count only)
+   */
+  function computeProjectControlMetrics(project, reports, expensesList) {
+    const entries = Array.isArray(reports) ? reports : [];
+    const extrasList = Array.isArray(expensesList) ? expensesList : [];
+    const estimatedDays = finiteNumber(project?.estimatedDays, 0);
+    const reportedHours = entries.reduce((sum, row) => sum + finiteNumber(row?.hours, 0), 0);
+    const daysSpent = entries.reduce((sum, row) => sum + finiteNumber(row?.days, 0), 0);
+    const daysRemainingRaw = estimatedDays - daysSpent;
+    const daysRemainingDisplay = Math.max(0, daysRemainingRaw);
+    const daysRemaining = daysRemainingDisplay;
+    const progressPct = estimatedDays > 0 ? (daysSpent / estimatedDays) * 100 : null;
+    const unexpectedExpensesCount = extrasList.length;
+
+    const workers = Array.isArray(project?.workers) ? project.workers : [];
+    const maxPlanWorkerDays = supervisorMaxPlanWorkerDays(workers);
+    const dueDate = normalizeDateInput(project?.dueDate || "");
+    const projectedEndDate =
+      dueDate && workers.length
+        ? normalizeDateInput(supervisorProjectedFinishFromCommitment(dueDate, maxPlanWorkerDays))
+        : "";
+
+    let dayDelta = 0;
+    if (dueDate && projectedEndDate) {
+      dayDelta = Math.round(
+        (new Date(projectedEndDate).getTime() - new Date(dueDate).getTime()) / (1000 * 60 * 60 * 24)
+      );
+    }
+
+    const laborDeltaVsBudget = daysSpent - estimatedDays;
+    let planDeviationLabel = "—";
+    if (estimatedDays <= 0) {
+      planDeviationLabel = "No budgeted days";
+    } else if (laborDeltaVsBudget > 0 && dayDelta > 0) {
+      planDeviationLabel = "Behind (labor & delivery)";
+    } else if (laborDeltaVsBudget > 0) {
+      planDeviationLabel = "Behind (labor)";
+    } else if (dayDelta > 0) {
+      planDeviationLabel = "Behind (delivery)";
+    } else if (laborDeltaVsBudget < 0 && dayDelta < 0) {
+      planDeviationLabel = "Ahead (labor & delivery)";
+    } else if (laborDeltaVsBudget < 0 || dayDelta < 0) {
+      planDeviationLabel = "Ahead (partial)";
+    } else {
+      planDeviationLabel = "On time";
+    }
+
+    let planDeviationDetail = "";
+    if (estimatedDays <= 0) {
+      planDeviationDetail =
+        "No budgeted-day baseline. Compare commitment vs projected finish when both dates exist.";
+    } else if (laborDeltaVsBudget > 0) {
+      planDeviationDetail = `Labor: ${laborDeltaVsBudget.toFixed(2)} day(s) over budgeted days.`;
+    } else if (laborDeltaVsBudget < 0) {
+      planDeviationDetail = `Labor: ${Math.abs(laborDeltaVsBudget).toFixed(2)} day(s) under budgeted days.`;
+    } else {
+      planDeviationDetail = "Labor: aligned with budgeted days.";
+    }
+    if (dueDate && projectedEndDate) {
+      if (dayDelta > 0) {
+        planDeviationDetail += ` Projected finish ${dayDelta} calendar day(s) after commitment.`;
+      } else if (dayDelta < 0) {
+        planDeviationDetail += ` Projected finish ${Math.abs(dayDelta)} calendar day(s) before commitment.`;
+      } else {
+        planDeviationDetail += " Projected finish aligned with commitment.";
+      }
+    } else {
+      planDeviationDetail += " Add commitment date and labor plan for finish projection.";
+    }
+
+    let tone = "green";
+    if (daysRemainingDisplay <= 1 || dayDelta > 0 || laborDeltaVsBudget > 0) {
+      tone = "yellow";
+    }
+    if (daysRemainingRaw < 0 || dayDelta > 2) {
+      tone = "red";
+    }
+
+    const statusLabel = tone === "green" ? "On track" : tone === "yellow" ? "At risk" : "Delayed";
+
+    return {
+      daysSpent,
+      daysRemaining,
+      daysRemainingRaw,
+      progressPct,
+      reportedHours,
+      unexpectedExpensesCount,
+      dueDate,
+      projectedEndDate,
+      estimatedDays,
+      planDeviationLabel,
+      planDeviationDetail,
+      dayDelta,
+      laborDeltaVsBudget,
+      tone,
+      statusLabel
+    };
+  }
+
+  window.__mgComputeProjectControlMetrics = computeProjectControlMetrics;
+
   function loadSettings() { return { ...DEFAULTS, ...readStore(LS_SETTINGS, {}) }; }
   function saveSettings(settings) { writeStore(LS_SETTINGS, settings); }
   function formatMoney(amount) {
