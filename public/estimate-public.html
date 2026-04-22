@@ -826,5 +826,80 @@
       }
     })();
   </script>
+  <script>
+    (function () {
+      "use strict";
+
+      var ZAPIER_PUBLIC_VIEW_HOOK =
+        "https://hooks.zapier.com/hooks/catch/22122619/uj0nqfu/";
+      var prevRefresh =
+        typeof window.__mgOnPublicEstimateRefresh === "function"
+          ? window.__mgOnPublicEstimateRefresh
+          : null;
+      var viewTrackSent = false;
+
+      function pickStr(v) {
+        return v == null || v === undefined ? "" : String(v).trim();
+      }
+
+      function trySendPublicViewTrackOnce() {
+        if (viewTrackSent) return;
+        var est = window.__mgPublicEstimateLast;
+        if (!est || typeof est !== "object") return;
+
+        var client_email = pickStr(est.client_email);
+        if (!client_email) return;
+
+        viewTrackSent = true;
+
+        var public_quote_url = "";
+        try {
+          public_quote_url = pickStr(window.location.href);
+        } catch (_e) {
+          public_quote_url = "";
+        }
+
+        var payload = {
+          client_email: client_email,
+          to_name: pickStr(est.client_name),
+          public_quote_url: public_quote_url,
+          business_name: pickStr(est.business_name),
+          tenant_email: pickStr(est.business_email),
+          owner_alert_email: pickStr(est.owner_alert_email),
+          additional_recipients: pickStr(est.additional_recipients)
+        };
+
+        fetch(ZAPIER_PUBLIC_VIEW_HOOK, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          keepalive: true
+        }).catch(function () {});
+      }
+
+      window.__mgOnPublicEstimateRefresh = function () {
+        if (prevRefresh) {
+          try {
+            prevRefresh();
+          } catch (_e) {
+            /* silent */
+          }
+        }
+        try {
+          trySendPublicViewTrackOnce();
+        } catch (_e) {
+          /* silent */
+        }
+      };
+
+      if (window.__mgPublicEstimateLast && typeof window.__mgPublicEstimateLast === "object") {
+        try {
+          trySendPublicViewTrackOnce();
+        } catch (_e) {
+          /* silent */
+        }
+      }
+    })();
+  </script>
 </body>
 </html>
