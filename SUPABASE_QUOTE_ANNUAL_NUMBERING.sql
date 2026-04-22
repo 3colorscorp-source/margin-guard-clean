@@ -17,7 +17,10 @@ CREATE INDEX IF NOT EXISTS quote_annual_counters_year_idx
 
 -- ---------------------------------------------------------------------------
 -- Allocate next sequence for tenant + current UTC year; returns jsonb.
+-- PostgREST RPC: POST /rest/v1/rpc/allocate_next_quote_number  body: {"p_tenant_id":"<uuid>"}
 -- ---------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.allocate_next_quote_number (uuid);
+
 CREATE OR REPLACE FUNCTION public.allocate_next_quote_number (p_tenant_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -50,6 +53,9 @@ $$;
 
 REVOKE ALL ON FUNCTION public.allocate_next_quote_number (uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.allocate_next_quote_number (uuid) TO service_role;
+
+-- Refresh PostgREST schema cache so the RPC appears immediately (safe if listener is absent).
+NOTIFY pgrst, 'reload schema';
 
 -- ---------------------------------------------------------------------------
 -- quotes columns (persisted display number)

@@ -35,9 +35,15 @@ function round2(n) {
  * Atomic per-tenant annual quote number (UTC year). Requires RPC + migration.
  */
 async function allocateNextQuoteNumberForTenant(tenantId) {
+  const tid = tenantId == null ? "" : String(tenantId).trim();
+  if (!tid) {
+    throw new Error("allocate_next_quote_number: missing tenant_id (cannot call RPC with empty body)");
+  }
+  // PostgREST matches RPC overloads from JSON keys; JSON.stringify omits undefined values,
+  // which would send {} and produce a misleading "function not in schema cache" 404.
   const data = await supabaseRequest("rpc/allocate_next_quote_number", {
     method: "POST",
-    body: { p_tenant_id: tenantId }
+    body: { p_tenant_id: tid }
   });
   let obj = data;
   if (Array.isArray(data) && data.length && typeof data[0] === "object") {
