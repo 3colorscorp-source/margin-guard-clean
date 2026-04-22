@@ -661,7 +661,8 @@
 
     try {
       const response = await fetch(
-        `/.netlify/functions/get-public-estimate?token=${encodeURIComponent(token)}`
+        `/.netlify/functions/get-public-estimate?token=${encodeURIComponent(token)}`,
+        { cache: "no-store" }
       );
 
       const data = await response.json().catch(() => ({}));

@@ -27,6 +27,10 @@ function pickFirst(...values) {
   return "";
 }
 
+function round2(n) {
+  return Math.round(Number(n) * 100) / 100;
+}
+
 function parseBody(raw) {
   try {
     return JSON.parse(raw || "{}");
@@ -236,19 +240,84 @@ exports.handler = async (event) => {
 
     const clientTotalReported =
       Number(body.total ?? body.recommended_total ?? body.recommendedTotal ?? NaN) || 0;
-    if (
+    const clientDepositReported = Number(
+      body.deposit_required ?? body.depositRequired ?? body.deposit ?? NaN
+    );
+
+    const minPriceN = Number(minPrice);
+    const serverTotal = Number(financials.total);
+    const serverDeposit = Number(financials.deposit_required);
+
+    let total = serverTotal;
+    let depositRequired = serverDeposit;
+    let persistedAmountsSource = "server_snapshot";
+
+    const requestedTotalOk =
       Number.isFinite(clientTotalReported) &&
-      Math.abs(clientTotalReported - financials.total) > 0.009
+      clientTotalReported > 0 &&
+      clientTotalReported + 1e-6 >= minPriceN;
+
+    if (
+      requestedTotalOk &&
+      Number.isFinite(serverTotal) &&
+      Math.abs(clientTotalReported - serverTotal) > 0.009
     ) {
-      console.log("[publish-public-quote] frontend total differs from server total", {
+      total = round2(clientTotalReported);
+      persistedAmountsSource = "client_session_minimum_floor";
+      const depFloor = round2(Math.max(1000, total * 0.1));
+      if (
+        Number.isFinite(clientDepositReported) &&
+        clientDepositReported > 0 &&
+        clientDepositReported <= total + 1e-6
+      ) {
+        depositRequired = round2(Math.min(total, Math.max(depFloor, clientDepositReported)));
+      } else {
+        depositRequired = depFloor;
+      }
+      console.log("[publish-public-quote] persisting seller-reported totals (UI vs snapshot mismatch)", {
+        tenant_id: tenant.id,
+        server_total: serverTotal,
+        client_total: clientTotalReported,
+        minimum_price: minPriceN,
+        server_deposit: serverDeposit,
+        client_deposit: clientDepositReported,
+        persisted_total: total,
+        persisted_deposit: depositRequired
+      });
+    } else if (
+      Number.isFinite(clientTotalReported) &&
+      clientTotalReported > 0 &&
+      clientTotalReported + 1e-6 < minPriceN &&
+      Math.abs(clientTotalReported - serverTotal) > 0.009
+    ) {
+      console.log("[publish-public-quote] client total rejected below server minimum_price", {
+        tenant_id: tenant.id,
+        client_total: clientTotalReported,
+        server_total: serverTotal,
+        minimum_price: minPriceN
+      });
+      return json(400, {
+        error: `Published total must be at least the account minimum (${minPriceN.toFixed(2)}). Refresh the seller page and try again.`
+      });
+    } else if (
+      Number.isFinite(clientTotalReported) &&
+      Math.abs(clientTotalReported - serverTotal) > 0.009
+    ) {
+      console.log("[publish-public-quote] frontend total differs from server total (using server)", {
         tenant_id: tenant.id,
         client_total: clientTotalReported,
         server_total: financials.total
       });
     }
 
-    const total = financials.total;
-    const depositRequired = financials.deposit_required;
+    if (
+      !Number.isFinite(total) ||
+      total <= 0 ||
+      !Number.isFinite(depositRequired) ||
+      depositRequired <= 0
+    ) {
+      return json(400, { error: "Computed total or deposit is invalid." });
+    }
 
     const tenantDisplay = await loadTenantDisplayForTenantId(tenant.id);
 
@@ -490,11 +559,23 @@ exports.handler = async (event) => {
 
     const publicUrl = buildPublicUrl(siteUrl, publicToken);
 
+    console.log("[publish-public-quote] published row", {
+      tenant_id: tenant.id,
+      quote_id: quoteId,
+      public_token: publicToken,
+      project_name: projectName,
+      total,
+      deposit_required: depositRequired,
+      publish_amounts_source: persistedAmountsSource,
+      server_total_before_align: serverTotal
+    });
+
     return json(200, {
       ok: true,
       quote_id: quoteId,
       public_token: publicToken,
       public_url: publicUrl,
+      publish_amounts_source: persistedAmountsSource,
       normalized_customer: {
         client_name: clientName,
         client_email: clientEmail,

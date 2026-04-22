@@ -1191,20 +1191,33 @@
               customerPhone: '',
               location: '',
               price: '',
+              offeredPrice: '',
               messageToClient: '',
               notes: '',
               estimateStatus: 'draft',
               approvalRequestedAt: '',
               approvedAt: '',
               soldAt: '',
+              sentAt: '',
               signedProjectName: '',
               signedClientName: '',
               publicQuoteUrl: '',
               quoteId: '',
               publicToken: '',
+              depositRequired: '',
               _manualPriceTouched: false,
               workers: DEFAULT_WORKERS.map((worker) => ({ ...worker }))
             };
+            _securePricingCache = { fingerprint: null, pricing: null };
+            if (_securePricingShadowTimer) {
+              clearTimeout(_securePricingShadowTimer);
+              _securePricingShadowTimer = null;
+            }
+            const sendModalEl = document.getElementById('sendModal');
+            if (sendModalEl && sendModalEl.dataset) {
+              delete sendModalEl.dataset.payload;
+              delete sendModalEl.dataset.pdf;
+            }
             saveSalesState(fresh);
 
             const fields = {
@@ -2563,6 +2576,17 @@ async function openSellerSendModal(event) {
       if (!publishResponse.ok || !publishData?.quote_id || !publishData?.public_token || !publishData?.public_url) {
         throw new Error(publishData.error || publishRaw || 'Unable to create public quote link.');
       }
+
+      console.info('[seller-publish] publish-public-quote response', {
+        quote_id: publishData.quote_id,
+        public_token: publishData.public_token,
+        publish_amounts_source: publishData.publish_amounts_source,
+        row_total: publishData.row && publishData.row.total,
+        row_deposit_required: publishData.row && publishData.row.deposit_required,
+        session_total_sent: estimateTotal,
+        session_deposit_sent: depositRequired,
+        project_name: payload.projectName || state.projectName
+      });
 
       const publicQuoteUrl = publishData.public_url;
       const messageWithLink = (message || '').replace('[PUBLIC_QUOTE_URL]', publicQuoteUrl);
