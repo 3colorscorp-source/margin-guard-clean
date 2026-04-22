@@ -1,3 +1,5 @@
+// DEPRECATED: Sales approval flow removed from Seller UI (Owner Action Layer replaces request path).
+// Function remains for historical data / manual testing; no active frontend calls.
 const crypto = require("crypto");
 const fetch = globalThis.fetch;
 const { readSessionFromEvent } = require("./_lib/session");

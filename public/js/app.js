@@ -1212,7 +1212,6 @@ Thank you.`
   window.__mgScheduleTenantSnapshotSync = scheduleTenantSnapshotSync;
   window.__mgBuildTenantSnapshotPayload = getTenantSnapshotPayload;
   window.__mgComputeSalesMarginDecisionFromEconomics = computeSalesMarginDecisionFromEconomics;
-  window.__mgSalesHasApprovedMatchingOffer = salesHasApprovedMatchingOffer;
 
   async function imageUrlToPdfDataUrl(url) {
     if (!url || typeof url !== "string") return null;
@@ -4247,7 +4246,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     } else if (realMarginPct >= minPct) {
       decision = "review";
       level = "yellow";
-      message = "⚠ Requires approval";
+      message = "⚠ Below target margin — proceed responsibly";
     } else {
       decision = "blocked";
       level = "red";
@@ -4262,19 +4261,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       internalCost,
       message,
     };
-  }
-
-  function salesHasApprovedMatchingOffer(approvals, projectKey, offeredPrice) {
-    const pk = String(projectKey || "").trim();
-    const po = finiteNumber(offeredPrice, 0);
-    const list = Array.isArray(approvals) ? approvals : [];
-    return list.some((item) => {
-      if (!item || String(item.status || "").toLowerCase() !== "approved") return false;
-      const ip = String(item.projectId || item.projectName || "").trim();
-      if (pk && ip && ip !== pk) return false;
-      const p = finiteNumber(item.price ?? item.offeredPrice, 0);
-      return Math.abs(p - po) <= 0.015;
-    });
   }
 
   function calcSales(state, settings) {
@@ -4349,12 +4335,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const marginGate = computeSalesMarginDecisionFromEconomics(offered, base.beforeProfit, base.reserve, settings);
     const needsApproval = marginGate.level === "yellow";
     const marginBlocked = marginGate.level === "red";
-    const approved =
-      !marginBlocked &&
-      (!needsApproval ||
-        salesHasApprovedMatchingOffer(loadApprovals(), state?.projectName, offered) ||
-        state?.estimateStatus === "signed" ||
-        state?.estimateStatus === "approved");
+    const approved = !marginBlocked;
 
     return {
       ...base,
@@ -4447,9 +4428,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   const state = loadSales();
   const settings = loadSettings();
   const metrics = calculateSalesMetrics(state, settings);
-  const approvals = loadApprovals();
-  const approvedItems = approvals.filter((item) => item.status === "approved");
-  const currentApproval = approvedItems[approvedItems.length - 1];
   const signedProjects = loadSignedProjects();
   const projectIndex = new Map(signedProjects.map((project) => [project.projectId, project]));
 
@@ -4461,7 +4439,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   const estimateStatusMap = {
     draft: "Draft",
     pricing_ready: "Pricing Ready",
-    approval_requested: "Approval Requested",
+    approval_requested: "Below recommendation",
     sent: "Sent",
     signed: "Signed"
   };
@@ -4552,14 +4530,26 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   setText("salesPrimaryMeta", `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${formatMoney(offered)}`);
   setText("salesPrimaryCommission", metrics.commissionRate.toFixed(2) + "%");
   setText("salesPrimaryCommissionMeta", `${formatMoney(metrics.commissionDisplay)} estimated commission`);
-  setText("salesApprovalAction", currentApproval ? "Pending Approval" : metrics.needsApproval ? "Request Approval" : "Ready to Send");
-  setText("salesApprovalActionMeta", metrics.needsApproval ? "Pricing is below recommendation or approval is required." : "Estimate can move forward without extra approval.");
+  setText("salesFlowHeadline", metrics.workerDays <= 0 ? "Complete labor" : metrics.needsApproval ? "Below recommendation" : "Ready to send");
+  setText(
+    "salesFlowCaption",
+    metrics.workerDays <= 0
+      ? "Add worker days so Margin Guard can price the job."
+      : metrics.needsApproval
+        ? "If the price is below the recommendation, you can still proceed — do it responsibly and confirm margin with your owner."
+        : "Pricing is in a healthy range for this estimate."
+  );
   setText("salesStageMin", formatMoney(metrics.minimum));
   setText("salesStageNegotiation", formatMoney(metrics.negotiation));
   setText("salesStageRecommended", formatMoney(metrics.recommended));
   setText("salesCrewHint", `${metrics.workersCount} workers configured for ${metrics.workerHours.toFixed(2)} labor hours.`);
-  setText("approvalHint", currentApproval ? `Latest approval for ${currentApproval.projectId} | ${formatMoney(currentApproval.price)}` : "No active approval request.");
-  setText("salesRule", metrics.needsApproval ? "Estimate requires approval before signing below recommendation." : "Estimate is inside a healthy selling range.");
+  setText(
+    "salesPricingGuidance",
+    metrics.needsApproval
+      ? "Precio bajo la recomendacion: puedes seguir, pero hazlo con criterio y alinea expectativas con el dueno."
+      : "Precio alineado con el rango recomendado o superior."
+  );
+  setText("salesRule", metrics.needsApproval ? "Margen bajo el objetivo: no hay bloqueo, solo responsabilidad comercial." : "Estimate is inside a healthy selling range.");
   const marginLine = $("salesMarginDecisionLine");
   if (marginLine) {
     marginLine.style.display = "block";
@@ -4588,7 +4578,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const guidance = [
       `Estimate status: ${estimateStatusLabel}.`,
       `Offer range: ${formatMoney(metrics.minimum)} to ${formatMoney(metrics.recommended)}.`,
-      metrics.needsApproval ? "Approval is recommended before signing this estimate." : "Estimate can be sent directly to the customer."
+      metrics.needsApproval
+        ? "If price is below recommendation, proceed responsibly and confirm with your owner before signing."
+        : "Estimate can be sent directly to the customer."
     ];
     negotiationList.innerHTML = guidance.map((line) => `<li>${escapeHtml(line)}</li>`).join("");
   }
@@ -4799,82 +4791,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       };
     }
 
-    const btnSubmit = document.getElementById("btnSubmitApproval");
-    if (btnSubmit) {
-      btnSubmit.onclick = () => {
-        persistSalesDraft("approval_requested");
-        const currentMetrics = calculateSalesMetrics(state, settings);
-        if (currentMetrics.marginBlocked) {
-          window.alert("Price too low");
-          return;
-        }
-        if (!currentMetrics.needsApproval) {
-          window.alert("No Sales Admin approval is required for this margin.");
-          return;
-        }
-        const serverCreateBody = {
-          project_name: nonEmptyString(state.projectName, "Estimate"),
-          client_name: nonEmptyString(state.clientName),
-          client_email: nonEmptyString(state.customerEmail),
-          offered_price: round2(currentMetrics.offered),
-          recommended_price: round2(currentMetrics.recommended),
-          minimum_price: round2(currentMetrics.minimum),
-          workers: Array.isArray(state.workers) ? state.workers : []
-        };
-        console.info("[Margin Guard] create-sales-approval request", serverCreateBody);
-        fetch("/.netlify/functions/create-sales-approval", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(serverCreateBody)
-        })
-          .then((res) => res.json().then((data) => ({ ok: res.ok, status: res.status, data })))
-          .then(({ ok, status, data }) => {
-            // create-sales-approval may return HTTP 200 with ok:false for debug — use data.ok, not res.ok only.
-            if (data && data.ok === true && data.approval_id) {
-              return fetch("/.netlify/functions/get-sales-approvals", {
-                method: "GET",
-                credentials: "include"
-              })
-                .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
-                .then(({ ok: okList, data: listData }) => {
-                  if (okList && listData && listData.ok === true && Array.isArray(listData.approvals)) {
-                    saveApprovals(mapServerApprovalsToAdminRows(listData.approvals));
-                  }
-                  renderSales();
-                });
-            }
-            const stage = data?.stage ? ` [stage: ${data.stage}]` : "";
-            const msg = (data && (data.error || data.message)) || `HTTP ${status}`;
-            console.error("[Margin Guard] create-sales-approval failed", { ok, status, data });
-            window.alert(
-              `Could not submit approval to the server (${msg})${stage}. Your discount is still in the review band, but the owner was not notified. Check the response in Network tab or Netlify logs.`
-            );
-          })
-          .catch((err) => {
-            console.error("[Margin Guard] create-sales-approval network error", err);
-            window.alert(
-              "Could not reach the server to submit approval. Check your connection and try again."
-            );
-          });
-      };
-    }
-
     const btnMarkSold = document.getElementById("btnMarkSold");
     if (btnMarkSold) {
       btnMarkSold.onclick = () => {
         persistSalesDraft("signed");
         const currentMetrics = calculateSalesMetrics(state, settings);
-        const approvalsList = loadApprovals();
         if (currentMetrics.marginBlocked) {
           window.alert("Price too low");
-          return;
-        }
-        if (
-          currentMetrics.needsApproval &&
-          !salesHasApprovedMatchingOffer(approvalsList, state.projectName, currentMetrics.offered)
-        ) {
-          window.alert("Este precio requiere aprobacion de Sales Admin antes de firmar.");
           return;
         }
         if (!state.projectName || !state.clientName || !state.dueDate || currentMetrics.workerDays <= 0) {

@@ -1,3 +1,4 @@
+// DEPRECATED: Sales approval flow removed from Seller UI. Kept for legacy email links only.
 const crypto = require("crypto");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { escapeHtml } = require("./_lib/resend-email");

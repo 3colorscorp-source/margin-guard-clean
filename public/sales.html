@@ -60,7 +60,7 @@
             <div class="section-head">
               <div>
                 <h2>Estimate comercial</h2>
-                <div class="sub">Paso 1: crea o actualiza el estimate. Paso 2: envia o pide aprobacion. Paso 3: cuando cierre, firma el proyecto.</div>
+                <div class="sub">Paso 1: crea o actualiza el estimate. Paso 2: envia al cliente. Paso 3: cuando cierre, firma el proyecto.</div>
               </div>
               <div class="badge amber" id="salesEstimateStatus">draft</div>
             </div>
@@ -157,7 +157,7 @@
 
             <div class="notice" id="salesRule" style="margin-top:10px;">Precio por debajo del minimo permitido.</div>
             <div class="notice" id="salesMarginDecisionLine" style="margin-top:8px;display:none;"></div>
-            <div class="notice" id="approvalHint" style="margin-top:10px;">Precio rojo: requiere aprobacion obligatoria.</div>
+            <div class="notice" id="salesPricingGuidance" style="margin-top:10px;">Si el precio queda bajo la recomendacion, avanza con responsabilidad y alinea al dueno.</div>
 
             <div class="sep"></div>
 
@@ -175,11 +175,9 @@
             <div class="inline-actions" style="margin-top:12px;">
               <button class="btn" type="button" id="btnNewSalesQuote">Nueva quote</button>
               <button class="btn" type="button" id="btnSendQuoteInline">Enviar estimate</button>
-              <button class="btn" type="button" id="btnSubmitApproval">Pedir aprobacion</button>
               <button class="btn primary" type="button" id="btnMarkSold">Firmar proyecto</button>
             </div>
             <div class="notice" id="salesSignedStatus" style="display:none; margin-top:10px;"></div>
-            <div class="notice" id="approvalStatus" style="display:none; margin-top:10px;"></div>
           </div>
         </div>
 
@@ -209,9 +207,9 @@
                     <div class="small" id="salesPrimaryCommissionMeta">$0.00 estimado</div>
                   </div>
                   <div class="owner-mini-card">
-                    <div class="title">Accion</div>
-                    <div class="big" id="salesApprovalAction">Completar datos</div>
-                    <div class="small" id="salesApprovalActionMeta">Primero define la mano de obra.</div>
+                    <div class="title">Siguiente paso</div>
+                    <div class="big" id="salesFlowHeadline">Completar datos</div>
+                    <div class="small" id="salesFlowCaption">Primero define la mano de obra.</div>
                   </div>
                 </div>
               </div>
@@ -877,17 +875,6 @@
         }, settings);
       }
 
-      function loadApprovalsStandalone() {
-        try {
-          const raw = localStorage.getItem('mg_approvals_v2');
-          if (!raw) return [];
-          const parsed = JSON.parse(raw);
-          return Array.isArray(parsed) ? parsed : [];
-        } catch (_e) {
-          return [];
-        }
-      }
-
       function requestSecurePricing(state) {
         const fp = pricingFingerprint(state);
         if (_securePricingCache.fingerprint === fp && _securePricingCache.pricing) {
@@ -969,26 +956,33 @@
         setText('salesPrimaryMeta', `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${money(metrics.offered, settings.currency)}`);
         setText('salesPrimaryCommission', `${metrics.commissionRate.toFixed(2)}%`);
         setText('salesPrimaryCommissionMeta', `${money(metrics.commissionDisplay, settings.currency)} estimado`);
-        const approvals = loadApprovalsStandalone();
-        const approvedItems = approvals.filter(function (item) { return item.status === 'approved'; });
-        const currentApproval = approvedItems[approvedItems.length - 1];
-        setText('salesApprovalAction', currentApproval ? 'Pending Approval' : metrics.needsApproval ? 'Request Approval' : (metrics.workerDays > 0 ? 'Ready to Send' : 'Completar datos'));
-        setText('salesApprovalActionMeta', currentApproval
-          ? ('Latest approval for ' + String(currentApproval.projectId || '') + ' | ' + money(currentApproval.price, settings.currency))
-          : metrics.workerDays <= 0 ? 'Primero define la mano de obra.' : (metrics.needsApproval ? 'Pricing is below recommendation or approval is required.' : 'Estimate can move forward without extra approval.'));
-        setText('approvalHint', currentApproval ? `Latest approval for ${currentApproval.projectId} | ${money(currentApproval.price, settings.currency)}` : 'No active approval request.');
+        setText('salesFlowHeadline', metrics.workerDays <= 0 ? 'Completar datos' : metrics.needsApproval ? 'Bajo recomendado' : 'Listo para enviar');
+        setText(
+          'salesFlowCaption',
+          metrics.workerDays <= 0
+            ? 'Primero define la mano de obra.'
+            : metrics.needsApproval
+              ? 'Si el precio queda bajo la recomendacion, puedes seguir: hazlo con criterio y alinea al dueno.'
+              : 'El precio esta en un rango saludable para este estimate.'
+        );
+        setText(
+          'salesPricingGuidance',
+          metrics.needsApproval
+            ? 'Precio bajo la recomendacion: no hay bloqueo; avanza con responsabilidad comercial.'
+            : 'Precio alineado con el rango recomendado o superior.'
+        );
         setText('salesStageMin', money(metrics.minimum, settings.currency));
         setText('salesStageNegotiation', money(metrics.negotiation, settings.currency));
         setText('salesStageRecommended', money(metrics.recommended, settings.currency));
         const estimateStatusMap = {
           draft: 'Draft',
           pricing_ready: 'Pricing Ready',
-          approval_requested: 'Approval Requested',
+          approval_requested: 'Bajo recomendado',
           sent: 'Sent',
           signed: 'Signed'
         };
         const estimateStatusLabel = estimateStatusMap[state.estimateStatus] || String(state.estimateStatus || 'draft').replace(/_/g, ' ');
-        setText('salesRule', metrics.needsApproval ? 'Estimate requires approval before signing below recommendation.' : 'Estimate is inside a healthy selling range.');
+        setText('salesRule', metrics.needsApproval ? 'Margen bajo el objetivo: no hay bloqueo, solo responsabilidad comercial.' : 'Estimate is inside a healthy selling range.');
         const mline = document.getElementById('salesMarginDecisionLine');
         if (mline) {
           mline.style.display = 'block';
@@ -1018,7 +1012,7 @@
           const guidance = [
             'Estimate status: ' + estimateStatusLabel + '.',
             'Offer range: ' + money(metrics.minimum, settings.currency) + ' to ' + money(metrics.recommended, settings.currency) + '.',
-            metrics.needsApproval ? 'Approval is recommended before signing this estimate.' : 'Estimate can be sent directly to the customer.'
+            metrics.needsApproval ? 'Si el precio esta bajo la recomendacion, avanza con responsabilidad y confirma con el dueno antes de firmar.' : 'Estimate can be sent directly to the customer.'
           ];
           negotiationList.innerHTML = guidance.map(function (line) {
             return '<li>' + escapeHtml(line) + '</li>';
@@ -1174,10 +1168,8 @@
 
       function bindStandaloneSellerActions() {
         const newQuoteBtn = document.getElementById('btnNewSalesQuote');
-        const submitApprovalBtn = document.getElementById('btnSubmitApproval');
         const markSoldBtn = document.getElementById('btnMarkSold');
         const signedStatus = document.getElementById('salesSignedStatus');
-        const approvalStatus = document.getElementById('approvalStatus');
 
         if (newQuoteBtn) {
           const cleanNewQuoteBtn = newQuoteBtn.cloneNode(true);
@@ -1233,11 +1225,6 @@
               const node = document.getElementById(id);
               if (node) node.value = value;
             });
-            if (approvalStatus) {
-              approvalStatus.style.display = 'none';
-              approvalStatus.className = 'notice';
-              approvalStatus.textContent = '';
-            }
             if (signedStatus) {
               signedStatus.style.display = 'none';
               signedStatus.className = 'notice';
@@ -1246,82 +1233,6 @@
             renderSellerWorkersStandalone();
             renderStandaloneSellerPanel();
             bindStandaloneSellerWorkers();
-          }, true);
-        }
-
-        if (submitApprovalBtn) {
-          const cleanSubmitApprovalBtn = submitApprovalBtn.cloneNode(true);
-          cleanSubmitApprovalBtn.removeAttribute('onclick');
-          submitApprovalBtn.parentNode.replaceChild(cleanSubmitApprovalBtn, submitApprovalBtn);
-          cleanSubmitApprovalBtn.addEventListener('click', function (event) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            const state = loadSalesState();
-            const settings = loadSettings();
-            const metrics = buildSalesUIMetrics(state, settings);
-            if (metrics.marginBlocked) {
-              window.alert('Price too low');
-              return;
-            }
-            if (!metrics.needsApproval) {
-              window.alert('No Sales Admin approval is required for this margin.');
-              return;
-            }
-            const currentMetrics = metrics;
-            const serverCreateBody = {
-              project_name: String(state.projectName || document.getElementById('salesProjectName')?.value || 'Estimate').trim(),
-              client_name: String(state.clientName || document.getElementById('salesClientName')?.value || '').trim(),
-              client_email: String(state.customerEmail || document.getElementById('salesCustomerEmail')?.value || '').trim(),
-              offered_price: round2(currentMetrics.offered),
-              recommended_price: round2(currentMetrics.recommended),
-              minimum_price: round2(currentMetrics.minimum),
-              workers: Array.isArray(state.workers) ? state.workers : []
-            };
-            console.info('[Margin Guard] create-sales-approval request', serverCreateBody);
-            fetch('/.netlify/functions/create-sales-approval', {
-              method: 'POST',
-              credentials: 'include',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(serverCreateBody)
-            })
-              .then(function (res) {
-                return res.json().then(function (data) {
-                  return { ok: res.ok, status: res.status, data: data };
-                });
-              })
-              .then(function (ref) {
-                if (ref.data && ref.data.ok === true && ref.data.approval_id) {
-                  return (typeof window.__mgSyncApprovalsFromServerToLocal === 'function'
-                    ? window.__mgSyncApprovalsFromServerToLocal()
-                    : Promise.resolve(null)
-                  ).then(function () {
-                    return { success: true };
-                  });
-                }
-                var stage = ref.data && ref.data.stage ? (' [' + ref.data.stage + ']') : '';
-                var msg = (ref.data && (ref.data.error || ref.data.message)) || ('HTTP ' + ref.status);
-                console.error('[Margin Guard] create-sales-approval failed', ref);
-                window.alert(
-                  'No se pudo enviar la solicitud al servidor: ' + msg + stage + '. Revisa Network / logs.'
-                );
-                return { success: false };
-              })
-              .then(function (outcome) {
-                if (!outcome || !outcome.success) return;
-                state.approvalRequestedAt = new Date().toISOString();
-                state.estimateStatus = 'approval_requested';
-                saveSalesState(state);
-                if (approvalStatus) {
-                  approvalStatus.style.display = 'block';
-                  approvalStatus.className = 'notice amber';
-                  approvalStatus.textContent = 'Solicitud enviada a Sales Admin (margen en revision).';
-                }
-                renderStandaloneSellerPanel();
-              })
-              .catch(function (err) {
-                console.error('[Margin Guard] create-sales-approval network error', err);
-                window.alert('No se pudo conectar al servidor. Intenta de nuevo.');
-              });
           }, true);
         }
 
@@ -1337,18 +1248,6 @@
             const metrics = buildSalesUIMetrics(state, settings);
             if (metrics.marginBlocked) {
               window.alert('Price too low');
-              return;
-            }
-            const approvalsFn = typeof window.__mgSalesHasApprovedMatchingOffer === 'function'
-              ? window.__mgSalesHasApprovedMatchingOffer
-              : null;
-            const approvals = loadApprovalsStandalone();
-            if (
-              metrics.needsApproval &&
-              approvalsFn &&
-              !approvalsFn(approvals, state.projectName, metrics.offered)
-            ) {
-              window.alert('Este precio requiere aprobacion de Sales Admin antes de firmar.');
               return;
             }
             state.soldAt = new Date().toISOString();
@@ -2350,6 +2249,14 @@
 
 async function fillSendModal() {
     const state = loadSalesState();
+    const priceEl = document.getElementById('salesPrice');
+    if (priceEl) {
+      const pv = String(priceEl.value ?? '').trim();
+      if (pv !== '') {
+        state.price = pv;
+        state._manualPriceTouched = true;
+      }
+    }
     const settings = loadSettings();
     const metrics = buildSalesUIMetrics(state, settings);
     const branding = await getBranding(true);
@@ -2461,6 +2368,19 @@ async function fillSendModal() {
     const pdfDoc = await buildEstimatePdfPayload(payload);
     modal.dataset.pdf = JSON.stringify(pdfDoc || {});
     modal.dataset.payload = JSON.stringify(payload);
+
+    console.info('[seller-pdf] fillSendModal snapshot (source for PDF)', {
+      projectName: payload.projectName,
+      clientName: payload.clientName,
+      estimateNumber: payload.estimateNumber,
+      totalAmount: payload.totalAmount,
+      totalFormatted: payload.totalFormatted,
+      depositRequired: payload.depositRequired,
+      depositFormatted: payload.depositFormatted,
+      balanceAfterDeposit: Math.max(0, Number(payload.totalAmount || 0) - Number(payload.depositRequired || 0)),
+      recommendedFromMetrics: metrics.recommended,
+      offeredFromMetrics: metrics.offered
+    });
 
     if (sendStatus) {
       sendStatus.style.display = 'none';
@@ -2655,9 +2575,43 @@ async function openSellerSendModal(event) {
       const savedEmail = savedRow ? String(savedRow.business_email || '').trim() : '';
       const savedPhone = savedRow ? String(savedRow.business_phone || '').trim() : '';
       const savedAddr = savedRow ? String(savedRow.business_address || '').trim() : '';
-      const rowTotal = Number(savedRow?.total ?? payload.totalAmount ?? estimateTotal) || 0;
+      // PDF must match the current Seller session / modal (fillSendModal), not Supabase row totals.
+      // Server `row.total` uses tenant snapshot pricing and can diverge from local UI or stale tests.
+      const sessionPdfTotal = Number(payload.totalAmount ?? estimateTotal);
+      const sessionPdfDeposit = Number(payload.depositRequired ?? depositRequired);
+      const rowTotal =
+        (Number.isFinite(sessionPdfTotal) && sessionPdfTotal > 0
+          ? sessionPdfTotal
+          : Number(metrics.offered || metrics.recommended || 0)) || 0;
       const rowDeposit =
-        Number(savedRow?.deposit_required ?? payload.depositRequired ?? depositRequired) || 0;
+        (Number.isFinite(sessionPdfDeposit) && sessionPdfDeposit > 0
+          ? sessionPdfDeposit
+          : Number(metrics.depositRequired || depositRequired || 0)) || 0;
+      const publishedTotal = Number(savedRow?.total);
+      const publishedDeposit = Number(savedRow?.deposit_required);
+      if (
+        (Number.isFinite(publishedTotal) && publishedTotal > 0 && Math.abs(publishedTotal - rowTotal) > 0.02) ||
+        (Number.isFinite(publishedDeposit) && publishedDeposit > 0 && Math.abs(publishedDeposit - rowDeposit) > 0.02)
+      ) {
+        console.warn('[seller-pdf] publish row totals differ from session — using session totals for PDF only', {
+          quote_id: publishData.quote_id,
+          publishedTotal,
+          publishedDeposit,
+          pdfSessionTotal: rowTotal,
+          pdfSessionDeposit: rowDeposit
+        });
+      }
+
+      console.info('[seller-pdf] send path amounts (PDF uses session column)', {
+        projectName: payload.projectName || state.projectName,
+        client: toName || payload.clientName || state.clientName,
+        estimateNumber: payload.estimateNumber || state.estimateNumber,
+        fullAmount: rowTotal,
+        deposit: rowDeposit,
+        balanceAfterDeposit: Math.max(0, rowTotal - rowDeposit),
+        recommended: metrics.recommended,
+        offered: metrics.offered
+      });
 
       const savedTenantOverlay = {};
       if (savedName) {
@@ -2740,7 +2694,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         messageLanguage: 'bilingual',
         messageText: messageWithLink,
         scopeOfWork: payload.scopeSummary || scope,
-        depositRequired,
+        depositRequired: rowDeposit,
         clientName: clientName,
         location: projectAddress,
         businessName:
@@ -2765,7 +2719,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         marketLine: branding.marketLine || payload.marketLine || '',
         signatureLine: branding.signatureLine || payload.signatureLine || 'Professional Estimate Delivery',
         currency: 'USD',
-        recommendedTotal: estimateTotal,
+        recommendedTotal: rowTotal,
         estimateNumber: payload.estimateNumber || state.estimateNumber || 'EST-1001',
         issueDate: payload.issueDate || state.issueDate || '',
         expirationDate: payload.expirationDate || state.expirationDate || '',
@@ -2804,7 +2758,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
       if (sendStatus) {
         sendStatus.style.display = 'block';
         sendStatus.className = 'notice success';
-        sendStatus.textContent = 'Estimate sent successfully with approval link and PDF attached.';
+        sendStatus.textContent = 'Estimate sent successfully with PDF attached.';
       }
 
       setTimeout(() => closeSellerSendModal(), 1200);
