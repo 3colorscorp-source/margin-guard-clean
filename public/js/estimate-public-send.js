@@ -271,6 +271,7 @@
       issueDate: payload.issueDate || state.issueDate || "",
       expirationDate: payload.expirationDate || state.expirationDate || "",
       customerPhone,
+      additional_recipients: String(state.additional_recipients || ""),
       quoteId: publishData.quote_id,
       pdfFileName: rebuiltPdf.fileName || "",
       pdfMimeType: rebuiltPdf.mimeType || "application/pdf",

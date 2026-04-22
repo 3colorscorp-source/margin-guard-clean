@@ -301,7 +301,11 @@ exports.handler = async (event) => {
       project_name: data.projectName || data.project_name || "",
       subject: data.subject || "",
       public_quote_url: data.publicQuoteUrl || data.public_quote_url || "",
-      pdf_url: data.pdfUrl || ""
+      pdf_url: data.pdfUrl || "",
+      additional_recipients:
+        data.additional_recipients !== undefined && data.additional_recipients !== null
+          ? String(data.additional_recipients)
+          : ""
     };
 
     if (!String(zapierBody.public_quote_url || "").trim()) {

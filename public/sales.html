@@ -99,6 +99,17 @@
                 <input id="salesCustomerEmail" type="email" maxlength="80" placeholder="cliente@correo.com" />
               </div>
               <div class="field">
+                <label>Send copy to (optional)</label>
+                <input
+                  id="salesAdditionalRecipients"
+                  name="additional_recipients"
+                  type="text"
+                  maxlength="500"
+                  placeholder="example: spouse@email.com, architect@email.com"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="field">
                 <label>Telefono del cliente</label>
                 <input id="salesCustomerPhone" maxlength="30" placeholder="(650) 555-0101" />
               </div>
@@ -1180,6 +1191,7 @@
           projectName: '',
           clientName: '',
           customerEmail: '',
+          additional_recipients: '',
           customerPhone: '',
           location: '',
           price: '',
@@ -1220,6 +1232,7 @@
           salesProjectName: '',
           salesClientName: '',
           salesCustomerEmail: '',
+          salesAdditionalRecipients: '',
           salesCustomerPhone: '',
           salesLocation: '',
           salesPrice: '',
@@ -2288,6 +2301,8 @@ async function fillSendModal() {
     const projectName = document.getElementById('salesProjectName')?.value || state.projectName || 'Project';
     const clientName = document.getElementById('salesClientName')?.value || state.clientName || '';
     const customerEmail = document.getElementById('salesCustomerEmail')?.value || state.customerEmail || '';
+    const additionalRecipients =
+      document.getElementById('salesAdditionalRecipients')?.value || state.additional_recipients || '';
     const customerPhone = document.getElementById('salesCustomerPhone')?.value || state.customerPhone || '';
     const location = document.getElementById('salesLocation')?.value || state.location || '';
     const messageToClient = document.getElementById('salesMessageToClient')?.value || state.messageToClient || '';
@@ -2348,6 +2363,7 @@ async function fillSendModal() {
       projectName,
       clientName,
       customerEmail,
+      additional_recipients: additionalRecipients,
       customerPhone,
       clientEmail: customerEmail,
       clientPhone: customerPhone,
@@ -2579,6 +2595,9 @@ async function runSellerSend(event) {
 
     state.clientName = toName || state.clientName || '';
     state.customerEmail = toEmail || state.customerEmail || '';
+    state.additional_recipients = String(
+      document.getElementById('salesAdditionalRecipients')?.value ?? state.additional_recipients ?? ''
+    );
     state.customerPhone = customerPhone;
     state.location = projectAddress;
     saveSalesState(state);
@@ -2840,6 +2859,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         issueDate: payload.issueDate || state.issueDate || '',
         expirationDate: payload.expirationDate || state.expirationDate || '',
         customerPhone,
+        additional_recipients: String(stateFresh.additional_recipients || payload.additional_recipients || ''),
         quoteId: publishData.quote_id,
         pdfFileName: rebuiltPdf.fileName || '',
         pdfMimeType: rebuiltPdf.mimeType || 'application/pdf',

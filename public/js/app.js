@@ -96,6 +96,7 @@
     projectName: "",
     clientName: "",
     customerEmail: "",
+    additional_recipients: "",
     customerPhone: "",
     location: "",
     dueDate: "",
@@ -608,6 +609,7 @@ Thank you.`
       projectName: hasProjectName ? String(saved.projectName ?? "") : (owner.projectName || ""),
       clientName: hasClientName ? String(saved.clientName ?? "") : (owner.clientName || ""),
       customerEmail: String(saved.customerEmail ?? ""),
+      additional_recipients: String(saved.additional_recipients ?? ""),
       customerPhone: String(saved.customerPhone ?? ""),
       location: hasLocation ? String(saved.location ?? "") : (owner.location || ""),
       messageToClient: String(saved.messageToClient ?? ""),
@@ -627,6 +629,7 @@ Thank you.`
     fresh.notes = "";
     fresh.messageToClient = "";
     fresh.customerEmail = "";
+    fresh.additional_recipients = "";
     fresh.customerPhone = "";
     fresh.location = "";
     fresh.projectName = "";
@@ -4121,6 +4124,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         customerPhone,
         recommendedTotal: round2(zapPdfTotal),
         currency: "USD",
+        additional_recipients: String(state.additional_recipients || ""),
         pdfBase64: pdfB64,
         pdfFileName: pdfFileNameFinal,
         pdfMimeType: rebuiltPdf?.mimeType || "application/pdf"
@@ -4564,6 +4568,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   const projectNameInput = document.getElementById("salesProjectName");
   const clientNameInput = document.getElementById("salesClientName");
   const customerEmailInput = document.getElementById("salesCustomerEmail");
+  const additionalRecipientsInput = document.getElementById("salesAdditionalRecipients");
   const customerPhoneInput = document.getElementById("salesCustomerPhone");
   const locationInput = document.getElementById("salesLocation");
   const issueDateInput = document.getElementById("salesIssueDate");
@@ -4608,6 +4613,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   if (projectNameInput) projectNameInput.value = state.projectName || "";
   if (clientNameInput) clientNameInput.value = state.clientName || "";
   if (customerEmailInput) customerEmailInput.value = state.customerEmail || "";
+  if (additionalRecipientsInput) additionalRecipientsInput.value = state.additional_recipients || "";
   if (customerPhoneInput) customerPhoneInput.value = state.customerPhone || "";
   if (locationInput) locationInput.value = state.location || "";
   if (dueDateInput) dueDateInput.value = state.dueDate || "";
@@ -4729,7 +4735,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     saveSales(state);
   }
 
-  [projectNameInput, clientNameInput, customerEmailInput, customerPhoneInput, locationInput, issueDateInput, expirationDateInput, dueDateInput, estimateNumberInput, messageToClientInput, notesInput].forEach((input) => {
+  [projectNameInput, clientNameInput, customerEmailInput, additionalRecipientsInput, customerPhoneInput, locationInput, issueDateInput, expirationDateInput, dueDateInput, estimateNumberInput, messageToClientInput, notesInput].forEach((input) => {
     if (!input) return;
     input.oninput = () => persistSalesDraft();
     input.onchange = () => persistSalesDraft();
