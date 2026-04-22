@@ -187,6 +187,10 @@
 
     const tenantForRebuild = H.buildEstimateTenantPayload({ ...branding, ...savedTenantOverlay }, settings, payload);
 
+    const quoteNumberDisplay = String(
+      publishData.quote_number_display || (savedRow && savedRow.quote_number_display) || ""
+    ).trim();
+
     const pdfPayloadWithLink = {
       ...payload,
       ...tenantForRebuild,
@@ -203,7 +207,8 @@
       totalAmount: rowTotal,
       totalFormatted: H.formatUsd(rowTotal),
       depositRequired: rowDeposit,
-      depositFormatted: H.formatUsd(rowDeposit)
+      depositFormatted: H.formatUsd(rowDeposit),
+      estimateNumber: quoteNumberDisplay || payload.estimateNumber || state.estimateNumber || ""
     };
 
     console.log("PDF payload before rebuild", {
@@ -262,7 +267,7 @@
       signatureLine: branding.signatureLine || payload.signatureLine || "Professional Estimate Delivery",
       currency: "USD",
       recommendedTotal: rowTotal,
-      estimateNumber: payload.estimateNumber || state.estimateNumber || "EST-1001",
+      estimateNumber: quoteNumberDisplay || payload.estimateNumber || state.estimateNumber || "",
       issueDate: payload.issueDate || state.issueDate || "",
       expirationDate: payload.expirationDate || state.expirationDate || "",
       customerPhone,

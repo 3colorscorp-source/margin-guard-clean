@@ -69,8 +69,8 @@
 
             <div class="form">
               <div class="field">
-                <label>Estimate No.</label>
-                <input id="salesEstimateNumber" maxlength="30" placeholder="EST-1001" />
+                <label>Quote number</label>
+                <input id="salesEstimateNumber" maxlength="30" readonly placeholder="Quote number will be assigned when sent" title="Assigned automatically when you send" />
               </div>
               <div class="field">
                 <label>Issue date</label>
@@ -947,7 +947,9 @@
         setText('salesTraffic', toneLabel);
         setText('salesHeroState', tone === 'green' ? 'Green' : tone === 'amber' ? 'Amber' : 'Red');
         setText('salesHeroMeta', [
-          `Estimate ${state.estimateNumber || ''}`,
+          state.estimateNumber && String(state.estimateNumber).trim()
+            ? `Estimate ${String(state.estimateNumber).trim()}`
+            : 'Estimate (number assigned when sent)',
           `Issue ${state.issueDate || ''}`,
           `Expires ${state.expirationDate || ''}`
         ].join(' | '));
@@ -1166,6 +1168,78 @@
       }
 
 
+      function performStandaloneNewQuoteReset() {
+        const state = loadSalesState();
+        const signedStatus = document.getElementById('salesSignedStatus');
+        const fresh = {
+          ...state,
+          estimateNumber: '',
+          issueDate: '',
+          expirationDate: '',
+          dueDate: '',
+          projectName: '',
+          clientName: '',
+          customerEmail: '',
+          customerPhone: '',
+          location: '',
+          price: '',
+          offeredPrice: '',
+          messageToClient: '',
+          notes: '',
+          estimateStatus: 'draft',
+          approvalRequestedAt: '',
+          approvedAt: '',
+          soldAt: '',
+          sentAt: '',
+          signedProjectName: '',
+          signedClientName: '',
+          publicQuoteUrl: '',
+          quoteId: '',
+          publicToken: '',
+          depositRequired: '',
+          _manualPriceTouched: false,
+          workers: DEFAULT_WORKERS.map((worker) => ({ ...worker }))
+        };
+        _securePricingCache = { fingerprint: null, pricing: null };
+        if (_securePricingShadowTimer) {
+          clearTimeout(_securePricingShadowTimer);
+          _securePricingShadowTimer = null;
+        }
+        const sendModalEl = document.getElementById('sendModal');
+        if (sendModalEl && sendModalEl.dataset) {
+          delete sendModalEl.dataset.payload;
+          delete sendModalEl.dataset.pdf;
+        }
+        saveSalesState(fresh);
+
+        const fields = {
+          salesEstimateNumber: '',
+          salesIssueDate: '',
+          salesExpirationDate: '',
+          salesDueDate: '',
+          salesProjectName: '',
+          salesClientName: '',
+          salesCustomerEmail: '',
+          salesCustomerPhone: '',
+          salesLocation: '',
+          salesPrice: '',
+          salesMessageToClient: '',
+          salesNotes: ''
+        };
+        Object.entries(fields).forEach(([id, value]) => {
+          const node = document.getElementById(id);
+          if (node) node.value = value;
+        });
+        if (signedStatus) {
+          signedStatus.style.display = 'none';
+          signedStatus.className = 'notice';
+          signedStatus.textContent = '';
+        }
+        renderSellerWorkersStandalone();
+        renderStandaloneSellerPanel();
+        bindStandaloneSellerWorkers();
+      }
+
       function bindStandaloneSellerActions() {
         const newQuoteBtn = document.getElementById('btnNewSalesQuote');
         const markSoldBtn = document.getElementById('btnMarkSold');
@@ -1178,74 +1252,7 @@
           cleanNewQuoteBtn.addEventListener('click', function (event) {
             event.preventDefault();
             event.stopImmediatePropagation();
-            const state = loadSalesState();
-            const fresh = {
-              ...state,
-              estimateNumber: '',
-              issueDate: '',
-              expirationDate: '',
-              dueDate: '',
-              projectName: '',
-              clientName: '',
-              customerEmail: '',
-              customerPhone: '',
-              location: '',
-              price: '',
-              offeredPrice: '',
-              messageToClient: '',
-              notes: '',
-              estimateStatus: 'draft',
-              approvalRequestedAt: '',
-              approvedAt: '',
-              soldAt: '',
-              sentAt: '',
-              signedProjectName: '',
-              signedClientName: '',
-              publicQuoteUrl: '',
-              quoteId: '',
-              publicToken: '',
-              depositRequired: '',
-              _manualPriceTouched: false,
-              workers: DEFAULT_WORKERS.map((worker) => ({ ...worker }))
-            };
-            _securePricingCache = { fingerprint: null, pricing: null };
-            if (_securePricingShadowTimer) {
-              clearTimeout(_securePricingShadowTimer);
-              _securePricingShadowTimer = null;
-            }
-            const sendModalEl = document.getElementById('sendModal');
-            if (sendModalEl && sendModalEl.dataset) {
-              delete sendModalEl.dataset.payload;
-              delete sendModalEl.dataset.pdf;
-            }
-            saveSalesState(fresh);
-
-            const fields = {
-              salesEstimateNumber: '',
-              salesIssueDate: '',
-              salesExpirationDate: '',
-              salesDueDate: '',
-              salesProjectName: '',
-              salesClientName: '',
-              salesCustomerEmail: '',
-              salesCustomerPhone: '',
-              salesLocation: '',
-              salesPrice: '',
-              salesMessageToClient: '',
-              salesNotes: ''
-            };
-            Object.entries(fields).forEach(([id, value]) => {
-              const node = document.getElementById(id);
-              if (node) node.value = value;
-            });
-            if (signedStatus) {
-              signedStatus.style.display = 'none';
-              signedStatus.className = 'notice';
-              signedStatus.textContent = '';
-            }
-            renderSellerWorkersStandalone();
-            renderStandaloneSellerPanel();
-            bindStandaloneSellerWorkers();
+            performStandaloneNewQuoteReset();
           }, true);
         }
 
@@ -2274,7 +2281,8 @@ async function fillSendModal() {
     const metrics = buildSalesUIMetrics(state, settings);
     const branding = await getBranding(true);
     const tenantPdf = buildEstimateTenantPayload(branding, settings, {});
-    const estimateNumber = document.getElementById('salesEstimateNumber')?.value || state.estimateNumber || 'EST-1001';
+    const estimateNumber =
+      String(document.getElementById('salesEstimateNumber')?.value || state.estimateNumber || '').trim();
     const issueDate = document.getElementById('salesIssueDate')?.value || state.issueDate || '';
     const expirationDate = document.getElementById('salesExpirationDate')?.value || state.expirationDate || '';
     const projectName = document.getElementById('salesProjectName')?.value || state.projectName || 'Project';
@@ -2307,7 +2315,8 @@ async function fillSendModal() {
     state.depositRequired = depositRequired;
     saveSalesState(state);
 
-    const defaultSubject = 'Estimate ' + estimateNumber + ' | ' + projectName;
+    const defaultSubject =
+      (estimateNumber ? 'Estimate ' + estimateNumber + ' | ' : 'Estimate | ') + projectName;
     const defaultScope = (messageToClient || '-').trim();
     const defaultMessage = [
       'Hi ' + formatGreetingName(clientName) + ',',
@@ -2738,6 +2747,11 @@ async function runSellerSend(event) {
         payload
       );
 
+      const quoteNumberDisplay =
+        publishData.quote_number_display ||
+        (savedRow && savedRow.quote_number_display) ||
+        '';
+
       const pdfPayloadWithLink = {
         ...payload,
         ...tenantForRebuild,
@@ -2754,7 +2768,8 @@ async function runSellerSend(event) {
         totalAmount: rowTotal,
         totalFormatted: formatUsd(rowTotal),
         depositRequired: rowDeposit,
-        depositFormatted: formatUsd(rowDeposit)
+        depositFormatted: formatUsd(rowDeposit),
+        estimateNumber: quoteNumberDisplay || payload.estimateNumber || ''
       };
 
       console.log('PDF payload before rebuild', {
@@ -2821,7 +2836,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         signatureLine: branding.signatureLine || payload.signatureLine || 'Professional Estimate Delivery',
         currency: 'USD',
         recommendedTotal: rowTotal,
-        estimateNumber: payload.estimateNumber || state.estimateNumber || 'EST-1001',
+        estimateNumber: quoteNumberDisplay || payload.estimateNumber || state.estimateNumber || '',
         issueDate: payload.issueDate || state.issueDate || '',
         expirationDate: payload.expirationDate || state.expirationDate || '',
         customerPhone,
@@ -2849,20 +2864,16 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         throw new Error(data.error || raw || 'Unable to send estimate.');
       }
 
-      state.estimateStatus = 'sent';
-      state.sentAt = new Date().toISOString();
-      state.publicQuoteUrl = publicQuoteUrl;
-      state.quoteId = publishData.quote_id;
-      state.publicToken = publishData.public_token;
-      saveSalesState(state);
-
       if (sendStatus) {
         sendStatus.style.display = 'block';
         sendStatus.className = 'notice success';
         sendStatus.textContent = 'Estimate sent successfully with PDF attached.';
       }
 
-      setTimeout(() => closeSellerSendModal(), 1200);
+      setTimeout(function () {
+        performStandaloneNewQuoteReset();
+        closeSellerSendModal();
+      }, 1200);
       return true;
     } catch (error) {
       if (sendStatus) {

@@ -31,6 +31,31 @@ function round2(n) {
   return Math.round(Number(n) * 100) / 100;
 }
 
+/**
+ * Atomic per-tenant annual quote number (UTC year). Requires RPC + migration.
+ */
+async function allocateNextQuoteNumberForTenant(tenantId) {
+  const data = await supabaseRequest("rpc/allocate_next_quote_number", {
+    method: "POST",
+    body: { p_tenant_id: tenantId }
+  });
+  let obj = data;
+  if (Array.isArray(data) && data.length && typeof data[0] === "object") {
+    const row = data[0];
+    obj = row.allocate_next_quote_number != null ? row.allocate_next_quote_number : row;
+  }
+  if (!obj || typeof obj !== "object") {
+    throw new Error("Invalid response from allocate_next_quote_number");
+  }
+  const quote_year = Number(obj.quote_year);
+  const quote_sequence = Number(obj.quote_sequence);
+  const quote_number_display = String(obj.quote_number_display || "").trim();
+  if (!Number.isFinite(quote_year) || !Number.isFinite(quote_sequence) || !quote_number_display) {
+    throw new Error("allocate_next_quote_number returned incomplete data");
+  }
+  return { quote_year, quote_sequence, quote_number_display };
+}
+
 function parseBody(raw) {
   try {
     return JSON.parse(raw || "{}");
@@ -506,6 +531,27 @@ exports.handler = async (event) => {
       tenantDisplay.business_address
     );
 
+    let quoteNumberAlloc;
+    try {
+      quoteNumberAlloc = await allocateNextQuoteNumberForTenant(tenant.id);
+    } catch (allocErr) {
+      console.error("[publish-public-quote] quote number allocation failed", {
+        tenant_id: tenant.id,
+        message: allocErr?.message
+      });
+      return json(503, {
+        error:
+          allocErr?.message ||
+          "Quote numbering is unavailable. Apply database migration SUPABASE_QUOTE_ANNUAL_NUMBERING.sql and grant RPC to service_role."
+      });
+    }
+
+    const quoteNumberFields = {
+      quote_year: quoteNumberAlloc.quote_year,
+      quote_sequence: quoteNumberAlloc.quote_sequence,
+      quote_number_display: quoteNumberAlloc.quote_number_display
+    };
+
     const amountAudit = {
       publish_amounts_source: canonical.publish_amounts_source,
       publish_amounts_reason: canonical.publish_amounts_reason,
@@ -532,6 +578,7 @@ exports.handler = async (event) => {
         business_email: businessEmail || "",
         business_phone: businessPhone || "",
         business_address: businessAddress || "",
+        ...quoteNumberFields,
         ...(withAudit ? amountAudit : {})
       };
     }
@@ -629,6 +676,9 @@ exports.handler = async (event) => {
       quote_id: quoteId,
       public_token: publicToken,
       public_url: publicUrl,
+      quote_year: quoteNumberAlloc.quote_year,
+      quote_sequence: quoteNumberAlloc.quote_sequence,
+      quote_number_display: quoteNumberAlloc.quote_number_display,
       publish_amounts_source: canonical.publish_amounts_source,
       publish_amounts_reason: canonical.publish_amounts_reason,
       financials: financialsOut,

@@ -594,11 +594,14 @@ Thank you.`
     const hasProjectName = Object.prototype.hasOwnProperty.call(saved, "projectName");
     const hasClientName = Object.prototype.hasOwnProperty.call(saved, "clientName");
     const hasLocation = Object.prototype.hasOwnProperty.call(saved, "location");
+    const hasEstimateNumber = Object.prototype.hasOwnProperty.call(saved, "estimateNumber");
     const issueDate = normalizeDateInput(saved.issueDate) || todayInputValue();
     return {
       ...DEFAULT_SALES,
       ...saved,
-      estimateNumber: nonEmptyString(saved.estimateNumber) || buildEstimateNumber(),
+      estimateNumber: hasEstimateNumber
+        ? String(saved.estimateNumber ?? "")
+        : nonEmptyString(saved.estimateNumber) || buildEstimateNumber(),
       estimateStatus: nonEmptyString(saved.estimateStatus) || "draft",
       issueDate,
       expirationDate: normalizeDateInput(saved.expirationDate) || addDaysToInputValue(issueDate, 7),
@@ -613,6 +616,23 @@ Thank you.`
     };
   }
   function saveSales(state) { writeStore(LS_SALES, state); }
+
+  /** Hub sales draft only: same shape as New Quote, no fake client-side quote numbers. */
+  function resetSalesDraftToNewQuote() {
+    const fresh = structuredClone(DEFAULT_SALES);
+    fresh.issueDate = todayInputValue();
+    fresh.expirationDate = addDaysToInputValue(fresh.issueDate, 7);
+    fresh.estimateStatus = "draft";
+    fresh.price = "";
+    fresh.notes = "";
+    fresh.messageToClient = "";
+    fresh.customerEmail = "";
+    fresh.customerPhone = "";
+    fresh.location = "";
+    fresh.projectName = "";
+    fresh.clientName = "";
+    saveSales(fresh);
+  }
   function syncSellerWorkersUi(state, settings) {
     if (typeof renderSalesWorkers !== "function") return false;
     try {
@@ -3478,13 +3498,15 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       saveOwner(state, calcOwner(state, settings));
     }
   }
-  const estimateNumber = nonEmptyString(state.estimateNumber, buildEstimateNumber());
+  const estimateNumber = String(state.estimateNumber ?? "").trim();
   const issueDate = normalizeDateInput(nonEmptyString(state.issueDate) || todayInputValue());
   const expirationDate = normalizeDateInput(nonEmptyString(state.expirationDate) || addDaysToInputValue(issueDate, 7));
   state.estimateNumber = estimateNumber;
   state.issueDate = issueDate;
   state.expirationDate = expirationDate;
-  const subject = `Estimate ${estimateNumber} - ${nonEmptyString(state.projectName, "Project")}`;
+  const subject = estimateNumber
+    ? `Estimate ${estimateNumber} - ${nonEmptyString(state.projectName, "Project")}`
+    : `Estimate - ${nonEmptyString(state.projectName, "Project")}`;
   const scopeText = nonEmptyString(
     state.quoteNotes,
     state.messageToClient,
@@ -3580,7 +3602,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     });
   }
 
-  function persistOwnerAfterPublicSend(settings) {
+  function persistOwnerAfterPublicSend(settings, sentQuote = null) {
     if (!$("ownerKpis")) return;
     const sales = loadSales();
     const toEmail = nonEmptyString(document.getElementById("toEmail")?.value);
@@ -3588,13 +3610,21 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const ownerState = loadOwner();
     if (toEmail) ownerState.clientEmail = toEmail;
     if (toName) ownerState.clientName = toName;
-    if (nonEmptyString(sales.estimateNumber)) ownerState.estimateNumber = sales.estimateNumber;
+    const backendNo = sentQuote && String(sentQuote.quote_number_display || "").trim();
+    if (backendNo) ownerState.estimateNumber = backendNo;
+    else if (nonEmptyString(sales.estimateNumber)) ownerState.estimateNumber = sales.estimateNumber;
     ownerState.issueDate = normalizeDateInput(nonEmptyString(sales.issueDate) || ownerState.issueDate);
     ownerState.expirationDate = normalizeDateInput(nonEmptyString(sales.expirationDate) || ownerState.expirationDate);
     ownerState.messageToClient = nonEmptyString(sales.messageToClient, ownerState.messageToClient);
-    if (sales.publicQuoteUrl) ownerState.publicQuoteUrl = sales.publicQuoteUrl;
-    if (sales.quoteId) ownerState.quoteId = sales.quoteId;
-    if (sales.publicToken) ownerState.publicToken = sales.publicToken;
+    const pubUrl = sentQuote && String(sentQuote.publicQuoteUrl || "").trim();
+    if (pubUrl) ownerState.publicQuoteUrl = pubUrl;
+    else if (sales.publicQuoteUrl) ownerState.publicQuoteUrl = sales.publicQuoteUrl;
+    const qid = sentQuote && sentQuote.quoteId;
+    if (qid) ownerState.quoteId = qid;
+    else if (sales.quoteId) ownerState.quoteId = sales.quoteId;
+    const pTok = sentQuote && sentQuote.publicToken;
+    if (pTok) ownerState.publicToken = pTok;
+    else if (sales.publicToken) ownerState.publicToken = sales.publicToken;
     ownerState.estimateStatus = "sent";
     ownerState.sentAt = new Date().toISOString();
     saveOwner(ownerState, calcOwner(ownerState, settings));
@@ -3716,10 +3746,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if (!H || typeof H.buildEstimatePdfPayload !== "function" || typeof H.buildEstimateTenantPayload !== "function") {
       return null;
     }
-    const estimateNumber = nonEmptyString(state.estimateNumber, buildEstimateNumber());
+    const savedRow = publishData.row && typeof publishData.row === "object" ? publishData.row : null;
+    const estimateNumber = String(
+      publishData.quote_number_display || (savedRow && savedRow.quote_number_display) || state.estimateNumber || ""
+    ).trim();
     const issueDate = normalizeDateInput(nonEmptyString(state.issueDate) || todayInputValue());
     const expirationDate = normalizeDateInput(nonEmptyString(state.expirationDate) || addDaysToInputValue(issueDate, 7));
-    const savedRow = publishData.row && typeof publishData.row === "object" ? publishData.row : null;
     const savedName = savedRow ? String(savedRow.business_name || savedRow.company_name || "").trim() : "";
     const savedEmail = savedRow ? String(savedRow.business_email || "").trim() : "";
     const savedPhone = savedRow ? String(savedRow.business_phone || "").trim() : "";
@@ -4048,9 +4080,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         );
       }
 
+      const quoteNumberDisplay = String(
+        publishData.quote_number_display || rowPub.quote_number_display || ""
+      ).trim();
+
       const pdfFileNameFinal = nonEmptyString(
         rebuiltPdf?.fileName,
-        `Estimate-${nonEmptyString(state.estimateNumber, "Quote")}.pdf`
+        `Estimate-${nonEmptyString(quoteNumberDisplay, "Quote")}.pdf`
       );
 
       const zapPdfTotal = Number(rowPub?.total ?? finPub.total ?? estimateTotal);
@@ -4061,7 +4097,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         toName: clientName,
         toEmail,
         projectName: state.projectName || "",
-        subject: subject || `Estimate ${state.estimateNumber || ""}`,
+        subject:
+          subject ||
+          (quoteNumberDisplay ? `Estimate ${quoteNumberDisplay}` : "Estimate"),
         publicToken: publishData.public_token,
         publicQuoteUrl,
         public_quote_url: publicQuoteUrl,
@@ -4077,7 +4115,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         businessEmail: branding.businessEmail || freshSettings.email || "",
         businessAddress: branding.businessAddress || freshSettings.address || freshSettings.companyAddress || "",
         quoteId: publishData.quote_id,
-        estimateNumber: state.estimateNumber || "",
+        estimateNumber: quoteNumberDisplay,
         issueDate: state.issueDate || "",
         expirationDate: state.expirationDate || "",
         customerPhone,
@@ -4108,11 +4146,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         throw new Error("PDF: send-quote-zapier no devolvió pdfUrl; Zapier solo recibe pdf_url. Sin URL no hay adjunto.");
       }
 
-      state = loadSales();
-      state.publicQuoteUrl = publicQuoteUrl;
-      state.quoteId = publishData.quote_id;
-      state.publicToken = publishData.public_token;
-      saveSales(state);
+      persistOwnerAfterPublicSend(freshSettings, {
+        quote_number_display: quoteNumberDisplay,
+        publicQuoteUrl,
+        quoteId: publishData.quote_id,
+        publicToken: publishData.public_token
+      });
+      resetSalesDraftToNewQuote();
 
       if (sendStatus) {
         sendStatus.style.display = "block";
@@ -4120,7 +4160,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         sendStatus.textContent = "Cotización enviada correctamente.";
       }
 
-      persistOwnerAfterPublicSend(freshSettings);
       renderOwner();
       try {
         renderSales();
@@ -4499,7 +4538,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   const signedProjects = loadSignedProjects();
   const projectIndex = new Map(signedProjects.map((project) => [project.projectId, project]));
 
-  if (!state.estimateNumber) state.estimateNumber = buildEstimateNumber();
   if (!state.issueDate) state.issueDate = todayInputValue();
   if (!state.expirationDate) state.expirationDate = addDaysToInputValue(state.issueDate, 7);
   if (!state.estimateStatus) state.estimateStatus = "draft";
@@ -4675,7 +4713,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   setText("salesInvoiceBalance", formatMoney(invoiceSummary.balanceDue || 0));
 
   function persistSalesDraft(nextStatus) {
-    state.estimateNumber = nonEmptyString(estimateNumberInput?.value, buildEstimateNumber());
+    state.estimateNumber = String(estimateNumberInput?.value ?? "").trim();
     state.issueDate = normalizeDateInput(issueDateInput?.value || todayInputValue());
     state.expirationDate = normalizeDateInput(expirationDateInput?.value || addDaysToInputValue(state.issueDate, 7));
     state.projectName = nonEmptyString(projectNameInput?.value);
@@ -4826,7 +4864,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       btnNew.onclick = () => {
         if (!window.confirm("Start a new estimate draft? Current sales values will reset.")) return;
         const fresh = structuredClone(DEFAULT_SALES);
-        fresh.estimateNumber = buildEstimateNumber();
         fresh.issueDate = todayInputValue();
         fresh.expirationDate = addDaysToInputValue(fresh.issueDate, 7);
         fresh.estimateStatus = "draft";
