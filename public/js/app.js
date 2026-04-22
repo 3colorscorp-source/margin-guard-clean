@@ -3724,8 +3724,37 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const savedEmail = savedRow ? String(savedRow.business_email || "").trim() : "";
     const savedPhone = savedRow ? String(savedRow.business_phone || "").trim() : "";
     const savedAddr = savedRow ? String(savedRow.business_address || "").trim() : "";
-    const rowTotal = Number(savedRow?.total ?? sm.offered ?? sm.recommended ?? estimateTotal) || 0;
-    const rowDeposit = Number(savedRow?.deposit_required ?? depositRequired) || 0;
+    const fin = publishData.financials && typeof publishData.financials === "object" ? publishData.financials : {};
+    const fromRowT = savedRow != null ? Number(savedRow.total) : NaN;
+    const fromRowD = savedRow != null ? Number(savedRow.deposit_required) : NaN;
+    const fromRowBal = savedRow != null ? Number(savedRow.balance_after_deposit) : NaN;
+    const fromFinT = Number(fin.total);
+    const fromFinD = Number(fin.deposit_required);
+    let rowTotal = Number.isFinite(fromRowT) && fromRowT > 0 ? fromRowT : NaN;
+    let rowDeposit = Number.isFinite(fromRowD) && fromRowD > 0 ? fromRowD : NaN;
+    if (!Number.isFinite(rowTotal) || rowTotal <= 0) {
+      rowTotal = Number.isFinite(fromFinT) && fromFinT > 0 ? fromFinT : Number(sm.offered ?? sm.recommended ?? estimateTotal) || 0;
+    }
+    if (!Number.isFinite(rowDeposit) || rowDeposit <= 0) {
+      rowDeposit = Number.isFinite(fromFinD) && fromFinD > 0 ? fromFinD : Number(depositRequired) || 0;
+    }
+    const fallbackUsed = !(
+      Number.isFinite(fromRowT) &&
+      fromRowT > 0 &&
+      Number.isFinite(fromRowD) &&
+      fromRowD > 0
+    );
+    console.info("[MG Owner PDF Financials]", {
+      quote_id: publishData.quote_id,
+      public_token: publishData.public_token,
+      rowTotal,
+      rowDeposit,
+      row_balance_after_deposit: Number.isFinite(fromRowBal) ? fromRowBal : null,
+      fin_balance_after_deposit: Number.isFinite(Number(fin.balance_after_deposit))
+        ? Number(fin.balance_after_deposit)
+        : null,
+      fallbackUsed
+    });
 
     const savedTenantOverlay = {};
     if (savedName) {
@@ -3828,7 +3857,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const sendButton = document.getElementById("btnSendNow");
 
     let state = loadSales();
-    const sm = calculateSalesMetrics(state, freshSettings);
 
     const toEmail = nonEmptyString(document.getElementById("toEmail")?.value);
     const toName = nonEmptyString(document.getElementById("toName")?.value, state.clientName);
@@ -3883,7 +3911,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
       const branding = await resolveOwnerPublishBranding(freshSettings);
       const bn = ownerResolvePublishBusinessName(branding, freshSettings);
-      const estimateTotal = Number(sm.offered || sm.recommended || 0);
+      syncOwnerSendModalIntoSalesDraft();
+      state = loadSales();
+      const smPublish = calculateSalesMetrics(state, freshSettings);
+      const estimateTotal = Number(smPublish.offered || smPublish.recommended || 0);
       const depositRequired = Number(
         parseNumber(document.getElementById("deposit")?.value) || state.depositRequired || 1000
       );
@@ -3934,6 +3965,40 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         throw new Error(publishData.error || publishRaw || "Unable to create public quote link.");
       }
 
+      const finPub = publishData.financials && typeof publishData.financials === "object" ? publishData.financials : {};
+      const rowPub = publishData.row && typeof publishData.row === "object" ? publishData.row : {};
+      const persistedOwnerT = Number(finPub.total != null ? finPub.total : rowPub.total);
+      if (
+        Number.isFinite(persistedOwnerT) &&
+        persistedOwnerT > 0 &&
+        Math.abs(persistedOwnerT - estimateTotal) > 0.009
+      ) {
+        console.error("[MG Publish vs session TOTAL MISMATCH — aborting owner PDF/email]", {
+          estimateTotal,
+          persistedOwnerT
+        });
+        if (sendStatus) {
+          sendStatus.style.display = "block";
+          sendStatus.className = "notice error";
+          sendStatus.textContent =
+            "Published total does not match this estimate. Refresh the page and try again.";
+        }
+        throw new Error("Published total does not match the send modal.");
+      }
+      const persistedOwnerD = Number(
+        finPub.deposit_required != null ? finPub.deposit_required : rowPub.deposit_required
+      );
+      if (
+        Number.isFinite(persistedOwnerD) &&
+        Number.isFinite(depositRequired) &&
+        Math.abs(persistedOwnerD - depositRequired) > 0.009
+      ) {
+        console.warn("[MG Publish vs session] owner deposit differs from modal (row is source of truth)", {
+          depositRequired,
+          persistedOwnerD
+        });
+      }
+
       const publicQuoteUrl = publishData.public_url;
       const messageWithLink = (message || "").replace(/\[PUBLIC_QUOTE_URL\]/g, publicQuoteUrl);
 
@@ -3961,7 +4026,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           branding,
           freshSettings,
           state,
-          sm,
+          sm: smPublish,
           toEmail,
           customerPhone,
           projectAddress,
@@ -3988,6 +4053,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         `Estimate-${nonEmptyString(state.estimateNumber, "Quote")}.pdf`
       );
 
+      const zapPdfTotal = Number(rowPub?.total ?? finPub.total ?? estimateTotal);
+      const zapPdfDep = Number(rowPub?.deposit_required ?? finPub.deposit_required ?? depositRequired);
+
       const clientName = toName || state.clientName || "";
       const zapierPayload = {
         toName: clientName,
@@ -4001,7 +4069,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         messageLanguage: "bilingual",
         messageText: messageWithLink,
         scopeOfWork: scope,
-        depositRequired: round2(depositRequired),
+        depositRequired: round2(zapPdfDep),
         clientName,
         location: projectAddress,
         businessName: bn,
@@ -4013,7 +4081,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         issueDate: state.issueDate || "",
         expirationDate: state.expirationDate || "",
         customerPhone,
-        recommendedTotal: round2(estimateTotal),
+        recommendedTotal: round2(zapPdfTotal),
         currency: "USD",
         pdfBase64: pdfB64,
         pdfFileName: pdfFileNameFinal,

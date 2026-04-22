@@ -108,6 +108,32 @@
       throw new Error(publishData.error || publishRaw || "Unable to create public quote link.");
     }
 
+    const finPub = publishData.financials && typeof publishData.financials === "object" ? publishData.financials : {};
+    const rowPub = publishData.row && typeof publishData.row === "object" ? publishData.row : {};
+    const persistedT = Number(finPub.total != null ? finPub.total : rowPub.total);
+    if (
+      Number.isFinite(persistedT) &&
+      persistedT > 0 &&
+      Math.abs(persistedT - Number(estimateTotal)) > 0.009
+    ) {
+      console.error("[MG Publish vs session TOTAL MISMATCH — aborting shared PDF/email pipeline]", {
+        estimateTotal: Number(estimateTotal),
+        persistedT
+      });
+      throw new Error("Published total does not match the send modal.");
+    }
+    const persistedD = Number(finPub.deposit_required != null ? finPub.deposit_required : rowPub.deposit_required);
+    if (
+      Number.isFinite(persistedD) &&
+      Number.isFinite(depositRequired) &&
+      Math.abs(persistedD - Number(depositRequired)) > 0.009
+    ) {
+      console.warn("[MG Publish vs session] deposit differs (persisted row is source of truth for PDF)", {
+        depositRequired: Number(depositRequired),
+        persistedD
+      });
+    }
+
     const publicQuoteUrl = publishData.public_url;
     const messageWithLink = (message || "").replace("[PUBLIC_QUOTE_URL]", publicQuoteUrl);
 
@@ -116,8 +142,30 @@
     const savedEmail = savedRow ? String(savedRow.business_email || "").trim() : "";
     const savedPhone = savedRow ? String(savedRow.business_phone || "").trim() : "";
     const savedAddr = savedRow ? String(savedRow.business_address || "").trim() : "";
-    const rowTotal = Number(savedRow?.total ?? payload.totalAmount ?? estimateTotal) || 0;
-    const rowDeposit = Number(savedRow?.deposit_required ?? payload.depositRequired ?? depositRequired) || 0;
+    const fromRowT = savedRow != null ? Number(savedRow.total) : NaN;
+    const fromRowD = savedRow != null ? Number(savedRow.deposit_required) : NaN;
+    const fromFinT = Number(finPub.total);
+    const fromFinD = Number(finPub.deposit_required);
+    let rowTotal = Number.isFinite(fromRowT) && fromRowT > 0 ? fromRowT : NaN;
+    let rowDeposit = Number.isFinite(fromRowD) && fromRowD > 0 ? fromRowD : NaN;
+    if (!Number.isFinite(rowTotal) || rowTotal <= 0) {
+      rowTotal = Number.isFinite(fromFinT) && fromFinT > 0 ? fromFinT : Number(payload.totalAmount ?? estimateTotal) || 0;
+    }
+    if (!Number.isFinite(rowDeposit) || rowDeposit <= 0) {
+      rowDeposit =
+        Number.isFinite(fromFinD) && fromFinD > 0 ? fromFinD : Number(payload.depositRequired ?? depositRequired) || 0;
+    }
+    const usedRowFirst =
+      Number.isFinite(fromRowT) && fromRowT > 0 && Number.isFinite(fromRowD) && fromRowD > 0;
+    console.info("[MG Seller PDF Financials]", {
+      quote_id: publishData.quote_id,
+      public_token: publishData.public_token,
+      rowTotal,
+      rowDeposit,
+      payloadTotal: Number(payload.totalAmount ?? estimateTotal) || 0,
+      payloadDeposit: Number(payload.depositRequired ?? depositRequired) || 0,
+      usedRowFirst
+    });
 
     const savedTenantOverlay = {};
     if (savedName) {
@@ -213,7 +261,7 @@
       marketLine: branding.marketLine || payload.marketLine || "",
       signatureLine: branding.signatureLine || payload.signatureLine || "Professional Estimate Delivery",
       currency: "USD",
-      recommendedTotal: estimateTotal,
+      recommendedTotal: rowTotal,
       estimateNumber: payload.estimateNumber || state.estimateNumber || "EST-1001",
       issueDate: payload.issueDate || state.issueDate || "",
       expirationDate: payload.expirationDate || state.expirationDate || "",

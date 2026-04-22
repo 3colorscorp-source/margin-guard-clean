@@ -2468,7 +2468,67 @@ async function openSellerSendModal(event) {
     );
   }
 
-  async function runSellerSend(event) {
+    function assertPublishTotalMatchesSession(publishData, sessionTotal, sendStatus) {
+    const fin = publishData && publishData.financials && typeof publishData.financials === 'object' ? publishData.financials : {};
+    const row = publishData && publishData.row && typeof publishData.row === 'object' ? publishData.row : {};
+    const persistedT = Number(fin.total != null ? fin.total : row.total);
+    if (!Number.isFinite(persistedT) || persistedT <= 0) {
+      console.warn('[MG Publish vs session] missing persisted total on publish response', publishData);
+      return;
+    }
+    if (Math.abs(persistedT - Number(sessionTotal)) > 0.009) {
+      console.error('[MG Publish vs session TOTAL MISMATCH — aborting PDF/email]', {
+        sessionTotal: Number(sessionTotal),
+        persistedT
+      });
+      if (sendStatus) {
+        sendStatus.style.display = 'block';
+        sendStatus.className = 'notice error';
+        sendStatus.textContent = 'Published total does not match this estimate. Refresh the page and try again.';
+      }
+      throw new Error('Published total does not match the send modal.');
+    }
+  }
+
+  function warnPublishDepositVsSession(publishData, sessionDeposit) {
+    const fin = publishData && publishData.financials && typeof publishData.financials === 'object' ? publishData.financials : {};
+    const row = publishData && publishData.row && typeof publishData.row === 'object' ? publishData.row : {};
+    const persistedD = Number(fin.deposit_required != null ? fin.deposit_required : row.deposit_required);
+    if (!Number.isFinite(persistedD) || persistedD <= 0) return;
+    if (Math.abs(persistedD - Number(sessionDeposit)) > 0.009) {
+      console.warn('[MG Publish vs session] deposit differs from modal (persisted row is source of truth for PDF)', {
+        sessionDeposit: Number(sessionDeposit),
+        persistedD
+      });
+    }
+  }
+
+  function readStandalonePdfMoneyFromPublish(publishData, payload, estimateTotal, depositRequired) {
+    const fin = publishData && publishData.financials && typeof publishData.financials === 'object' ? publishData.financials : {};
+    const savedRow = publishData && publishData.row && typeof publishData.row === 'object' ? publishData.row : null;
+    const fromRowT = savedRow != null ? Number(savedRow.total) : NaN;
+    const fromRowD = savedRow != null ? Number(savedRow.deposit_required) : NaN;
+    const fromFinT = Number(fin.total);
+    const fromFinD = Number(fin.deposit_required);
+    let rowTotal = Number.isFinite(fromRowT) && fromRowT > 0 ? fromRowT : NaN;
+    let rowDeposit = Number.isFinite(fromRowD) && fromRowD > 0 ? fromRowD : NaN;
+    if (!Number.isFinite(rowTotal) || rowTotal <= 0) {
+      rowTotal = Number.isFinite(fromFinT) && fromFinT > 0 ? fromFinT : Number(payload.totalAmount ?? estimateTotal) || 0;
+    }
+    if (!Number.isFinite(rowDeposit) || rowDeposit <= 0) {
+      rowDeposit = Number.isFinite(fromFinD) && fromFinD > 0 ? fromFinD : Number(payload.depositRequired ?? depositRequired) || 0;
+    }
+    const usedRowFirst =
+      Number.isFinite(fromRowT) &&
+      fromRowT > 0 &&
+      Number.isFinite(fromRowD) &&
+      fromRowD > 0;
+    const payloadTotal = Number(payload.totalAmount ?? estimateTotal) || 0;
+    const payloadDeposit = Number(payload.depositRequired ?? depositRequired) || 0;
+    return { rowTotal, rowDeposit, fromRowBal, fromFinBal, usedRowFirst, payloadTotal, payloadDeposit };
+  }
+
+async function runSellerSend(event) {
     if (event) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -2489,7 +2549,7 @@ async function openSellerSendModal(event) {
       }
       return false;
     }
-    const payload = JSON.parse(modal.dataset.payload || '{}');
+    let payload = JSON.parse(modal.dataset.payload || '{}');
     const pdf = JSON.parse(modal.dataset.pdf || '{}');
     const branding = await getBranding(true);
 
@@ -2501,8 +2561,8 @@ async function openSellerSendModal(event) {
     const message = (document.getElementById('message')?.value || '').trim();
     const customerPhone = (document.getElementById('salesCustomerPhone')?.value || state.customerPhone || payload.customerPhone || '').trim();
     const projectAddress = (document.getElementById('salesLocation')?.value || state.location || payload.location || '').trim();
-    const estimateTotal = Number(payload.totalAmount || metrics.offered || metrics.recommended || 0);
-    const depositRequired = Number(payload.depositRequired || 1000);
+    let estimateTotal = Number(payload.totalAmount || metrics.offered || metrics.recommended || 0);
+    let depositRequired = Number(payload.depositRequired || 1000);
 
     state.clientName = toName || state.clientName || '';
     state.customerEmail = toEmail || state.customerEmail || '';
@@ -2531,16 +2591,23 @@ async function openSellerSendModal(event) {
         sendStatus.textContent = 'Creating public quote link...';
       }
 
+      await fillSendModal();
+      payload = JSON.parse(modal.dataset.payload || '{}');
+      const stateFresh = loadSalesState();
+      const metricsFresh = buildSalesUIMetrics(stateFresh, settings);
+      estimateTotal = Number(payload.totalAmount || metricsFresh.offered || metricsFresh.recommended || 0);
+      depositRequired = Number(payload.depositRequired || 1000);
+
       const bn = resolvePublishBusinessName(branding, payload, settings);
       const publishResponse = await fetch('/.netlify/functions/publish-public-quote', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          project_name: payload.projectName || state.projectName || '',
-          title: payload.projectName || state.projectName || '',
-          client_name: toName || payload.clientName || state.clientName || '',
-          client_email: toEmail || payload.customerEmail || state.customerEmail || '',
+          project_name: payload.projectName || stateFresh.projectName || '',
+          title: payload.projectName || stateFresh.projectName || '',
+          client_name: toName || payload.clientName || stateFresh.clientName || '',
+          client_email: toEmail || payload.customerEmail || stateFresh.customerEmail || '',
           client_phone: customerPhone,
           customer_phone: customerPhone,
           phone: customerPhone,
@@ -2548,10 +2615,10 @@ async function openSellerSendModal(event) {
           customer_address: projectAddress,
           job_site: projectAddress,
           address: projectAddress,
-          workers: Array.isArray(state.workers) ? state.workers : [],
-          price: state.price,
-          _manualPriceTouched: state._manualPriceTouched,
-          offeredPrice: state.offeredPrice,
+          workers: Array.isArray(stateFresh.workers) ? stateFresh.workers : [],
+          price: stateFresh.price,
+          _manualPriceTouched: stateFresh._manualPriceTouched,
+          offeredPrice: stateFresh.offeredPrice,
           total: estimateTotal,
           recommended_total: estimateTotal,
           deposit_required: depositRequired,
@@ -2581,12 +2648,16 @@ async function openSellerSendModal(event) {
         quote_id: publishData.quote_id,
         public_token: publishData.public_token,
         publish_amounts_source: publishData.publish_amounts_source,
+        publish_amounts_reason: publishData.publish_amounts_reason,
         row_total: publishData.row && publishData.row.total,
         row_deposit_required: publishData.row && publishData.row.deposit_required,
         session_total_sent: estimateTotal,
         session_deposit_sent: depositRequired,
         project_name: payload.projectName || state.projectName
       });
+
+      assertPublishTotalMatchesSession(publishData, estimateTotal, sendStatus);
+      warnPublishDepositVsSession(publishData, depositRequired);
 
       const publicQuoteUrl = publishData.public_url;
       const messageWithLink = (message || '').replace('[PUBLIC_QUOTE_URL]', publicQuoteUrl);
@@ -2599,34 +2670,36 @@ async function openSellerSendModal(event) {
       const savedEmail = savedRow ? String(savedRow.business_email || '').trim() : '';
       const savedPhone = savedRow ? String(savedRow.business_phone || '').trim() : '';
       const savedAddr = savedRow ? String(savedRow.business_address || '').trim() : '';
-      // PDF must match the current Seller session / modal (fillSendModal), not Supabase row totals.
-      // Server `row.total` uses tenant snapshot pricing and can diverge from local UI or stale tests.
-      const sessionPdfTotal = Number(payload.totalAmount ?? estimateTotal);
-      const sessionPdfDeposit = Number(payload.depositRequired ?? depositRequired);
-      const rowTotal =
-        (Number.isFinite(sessionPdfTotal) && sessionPdfTotal > 0
-          ? sessionPdfTotal
-          : Number(metrics.offered || metrics.recommended || 0)) || 0;
-      const rowDeposit =
-        (Number.isFinite(sessionPdfDeposit) && sessionPdfDeposit > 0
-          ? sessionPdfDeposit
-          : Number(metrics.depositRequired || depositRequired || 0)) || 0;
+
+      const pdfMoney = readStandalonePdfMoneyFromPublish(publishData, payload, estimateTotal, depositRequired);
+      let rowTotal = pdfMoney.rowTotal;
+      let rowDeposit = pdfMoney.rowDeposit;
       const publishedTotal = Number(savedRow?.total);
       const publishedDeposit = Number(savedRow?.deposit_required);
       if (
         (Number.isFinite(publishedTotal) && publishedTotal > 0 && Math.abs(publishedTotal - rowTotal) > 0.02) ||
         (Number.isFinite(publishedDeposit) && publishedDeposit > 0 && Math.abs(publishedDeposit - rowDeposit) > 0.02)
       ) {
-        console.warn('[seller-pdf] publish row totals differ from session — using session totals for PDF only', {
+        console.warn('[seller-pdf] publish row vs resolved PDF money differ (using row-first resolution)', {
           quote_id: publishData.quote_id,
           publishedTotal,
           publishedDeposit,
-          pdfSessionTotal: rowTotal,
-          pdfSessionDeposit: rowDeposit
+          rowTotal,
+          rowDeposit
         });
       }
 
-      console.info('[seller-pdf] send path amounts (PDF uses session column)', {
+      console.info('[MG Seller PDF Financials]', {
+        quote_id: publishData.quote_id,
+        public_token: publishData.public_token,
+        rowTotal,
+        rowDeposit,
+        payloadTotal: pdfMoney.payloadTotal,
+        payloadDeposit: pdfMoney.payloadDeposit,
+        usedRowFirst: pdfMoney.usedRowFirst
+      });
+
+      console.info('[seller-pdf] send path amounts (PDF uses persisted quote money)', {
         projectName: payload.projectName || state.projectName,
         client: toName || payload.clientName || state.clientName,
         estimateNumber: payload.estimateNumber || state.estimateNumber,

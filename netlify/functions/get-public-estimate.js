@@ -35,8 +35,8 @@ const QUOTE_PUBLIC_KEYS = [
   "change_order_acknowledged_at"
 ];
 
-/** Include tenant_id only for server-side branding lookup; never exposed in JSON. */
-const QUOTE_FETCH_KEYS = [...QUOTE_PUBLIC_KEYS, "tenant_id"];
+/** Include tenant_id for server-side branding; id for audit logs only (stripped from public JSON). */
+const QUOTE_FETCH_KEYS = [...QUOTE_PUBLIC_KEYS, "tenant_id", "id"];
 
 const QUOTE_SELECT = QUOTE_FETCH_KEYS.join(",");
 
@@ -111,6 +111,13 @@ exports.handler = async (event) => {
 
     const row = rows[0];
     const estimate = pickPublicEstimateFields(row);
+
+    console.log("[MG Public Estimate Financials]", {
+      quoteId: row.id,
+      publicToken: trimmed,
+      total: row.total,
+      deposit_required: row.deposit_required
+    });
 
     let td = null;
     let tenantBrandingBusinessName = "";

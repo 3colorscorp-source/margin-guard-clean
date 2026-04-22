@@ -134,6 +134,71 @@ function buildPublicUrl(siteUrl, publicToken) {
   return `${cleanSite}/estimate-public.html?token=${encodeURIComponent(publicToken)}`;
 }
 
+/**
+ * Single resolver for persisted commercial amounts on publish.
+ * @param {object} args
+ * @param {number} args.clientTotalReported - NaN when absent
+ * @param {number} args.clientDepositReported - NaN when absent
+ * @param {{ total: number, deposit_required: number, minimum_price: number }} args.serverFinancials
+ * @param {number} args.minimumPrice
+ * @returns {object}
+ */
+function resolveCanonicalPublishAmounts({
+  clientTotalReported,
+  clientDepositReported,
+  serverFinancials,
+  minimumPrice
+}) {
+  const minPriceN = Number(minimumPrice);
+  const serverTotal = Number(serverFinancials.total);
+  const serverDeposit = Number(serverFinancials.deposit_required);
+
+  const clientT = Number(clientTotalReported);
+  const clientD = Number(clientDepositReported);
+
+  const differsFromServer =
+    Number.isFinite(clientT) && clientT > 0 && Math.abs(clientT - serverTotal) > 0.009;
+
+  if (Number.isFinite(clientT) && clientT > 0 && clientT + 1e-6 < minPriceN && differsFromServer) {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: `Published total must be at least the account minimum (${minPriceN.toFixed(2)}). Refresh the seller page and try again.`
+    };
+  }
+
+  let total = round2(serverTotal);
+  let depositRequired = round2(serverDeposit);
+  let publish_amounts_source = "server_snapshot";
+  let publish_amounts_reason = "default_server_financials";
+
+  if (Number.isFinite(clientT) && clientT > 0 && clientT + 1e-6 >= minPriceN) {
+    total = round2(clientT);
+    publish_amounts_source = "client_session_minimum_floor";
+    publish_amounts_reason = "client_total_meets_minimum_floor";
+    const depFloor = round2(Math.max(1000, total * 0.1));
+    if (Number.isFinite(clientD) && clientD > 0 && clientD <= total + 1e-6) {
+      depositRequired = round2(Math.min(total, Math.max(depFloor, clientD)));
+    } else {
+      depositRequired = depFloor;
+      publish_amounts_reason = "client_total_meets_minimum_floor_deposit_derived";
+    }
+  }
+
+  const balance_after_deposit = round2(Math.max(0, total - depositRequired));
+
+  return {
+    ok: true,
+    total,
+    deposit_required: depositRequired,
+    balance_after_deposit,
+    final_price: total,
+    minimum_price: minPriceN,
+    publish_amounts_source,
+    publish_amounts_reason
+  };
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -238,77 +303,54 @@ exports.handler = async (event) => {
       return json(400, { error: "Computed total or deposit is invalid." });
     }
 
+    const rawClientTotal =
+      body.total !== undefined && body.total !== null
+        ? body.total
+        : body.recommended_total !== undefined && body.recommended_total !== null
+          ? body.recommended_total
+          : body.recommendedTotal;
     const clientTotalReported =
-      Number(body.total ?? body.recommended_total ?? body.recommendedTotal ?? NaN) || 0;
-    const clientDepositReported = Number(
-      body.deposit_required ?? body.depositRequired ?? body.deposit ?? NaN
-    );
+      rawClientTotal === undefined || rawClientTotal === null || rawClientTotal === ""
+        ? NaN
+        : Number(rawClientTotal);
 
-    const minPriceN = Number(minPrice);
-    const serverTotal = Number(financials.total);
-    const serverDeposit = Number(financials.deposit_required);
+    const rawClientDep =
+      body.deposit_required !== undefined && body.deposit_required !== null
+        ? body.deposit_required
+        : body.depositRequired !== undefined && body.depositRequired !== null
+          ? body.depositRequired
+          : body.deposit;
+    const clientDepositReported =
+      rawClientDep === undefined || rawClientDep === null || rawClientDep === "" ? NaN : Number(rawClientDep);
 
-    let total = serverTotal;
-    let depositRequired = serverDeposit;
-    let persistedAmountsSource = "server_snapshot";
+    const canonical = resolveCanonicalPublishAmounts({
+      clientTotalReported,
+      clientDepositReported,
+      serverFinancials: {
+        total: financials.total,
+        deposit_required: financials.deposit_required,
+        minimum_price: financials.minimum_price
+      },
+      minimumPrice: financials.minimum_price
+    });
 
-    const requestedTotalOk =
-      Number.isFinite(clientTotalReported) &&
-      clientTotalReported > 0 &&
-      clientTotalReported + 1e-6 >= minPriceN;
-
-    if (
-      requestedTotalOk &&
-      Number.isFinite(serverTotal) &&
-      Math.abs(clientTotalReported - serverTotal) > 0.009
-    ) {
-      total = round2(clientTotalReported);
-      persistedAmountsSource = "client_session_minimum_floor";
-      const depFloor = round2(Math.max(1000, total * 0.1));
-      if (
-        Number.isFinite(clientDepositReported) &&
-        clientDepositReported > 0 &&
-        clientDepositReported <= total + 1e-6
-      ) {
-        depositRequired = round2(Math.min(total, Math.max(depFloor, clientDepositReported)));
-      } else {
-        depositRequired = depFloor;
-      }
-      console.log("[publish-public-quote] persisting seller-reported totals (UI vs snapshot mismatch)", {
-        tenant_id: tenant.id,
-        server_total: serverTotal,
-        client_total: clientTotalReported,
-        minimum_price: minPriceN,
-        server_deposit: serverDeposit,
-        client_deposit: clientDepositReported,
-        persisted_total: total,
-        persisted_deposit: depositRequired
-      });
-    } else if (
-      Number.isFinite(clientTotalReported) &&
-      clientTotalReported > 0 &&
-      clientTotalReported + 1e-6 < minPriceN &&
-      Math.abs(clientTotalReported - serverTotal) > 0.009
-    ) {
-      console.log("[publish-public-quote] client total rejected below server minimum_price", {
-        tenant_id: tenant.id,
-        client_total: clientTotalReported,
-        server_total: serverTotal,
-        minimum_price: minPriceN
-      });
-      return json(400, {
-        error: `Published total must be at least the account minimum (${minPriceN.toFixed(2)}). Refresh the seller page and try again.`
-      });
-    } else if (
-      Number.isFinite(clientTotalReported) &&
-      Math.abs(clientTotalReported - serverTotal) > 0.009
-    ) {
-      console.log("[publish-public-quote] frontend total differs from server total (using server)", {
-        tenant_id: tenant.id,
-        client_total: clientTotalReported,
-        server_total: financials.total
-      });
+    if (!canonical.ok) {
+      return json(canonical.statusCode, { error: canonical.error });
     }
+
+    const total = canonical.total;
+    const depositRequired = canonical.deposit_required;
+
+    console.log("[MG Publish Financials]", {
+      clientTotalReported,
+      clientDepositReported,
+      serverTotal: Number(financials.total),
+      serverDeposit: Number(financials.deposit_required),
+      chosenTotal: total,
+      chosenDeposit: depositRequired,
+      publish_amounts_source: canonical.publish_amounts_source,
+      publish_amounts_reason: canonical.publish_amounts_reason
+    });
 
     if (
       !Number.isFinite(total) ||
@@ -464,69 +506,84 @@ exports.handler = async (event) => {
       tenantDisplay.business_address
     );
 
-    const basePayload = {
-      tenant_id: tenant.id,
-      project_name: projectName,
-      title,
-      client_name: clientName,
-      client_email: clientEmail,
-      status,
-      currency,
-      total,
-      deposit_required: depositRequired,
-      notes,
-      terms,
-      payment_link: paymentLink,
-      public_token: publicToken,
-      business_name: businessName || "",
-      company_name: businessName || "",
-      business_email: businessEmail || "",
-      business_phone: businessPhone || "",
-      business_address: businessAddress || ""
+    const amountAudit = {
+      publish_amounts_source: canonical.publish_amounts_source,
+      publish_amounts_reason: canonical.publish_amounts_reason,
+      balance_after_deposit: canonical.balance_after_deposit
     };
 
-    const payloadVariants = [
-      {
-        ...basePayload,
-        client_phone: clientPhone,
-        project_address: projectAddress,
-        job_site: projectAddress
-      },
-      {
-        ...basePayload,
-        client_phone: clientPhone,
-        job_site: projectAddress
-      },
-      {
-        ...basePayload,
-        client_phone: clientPhone,
-        project_address: projectAddress
-      },
-      {
-        ...basePayload,
-        job_site: projectAddress
-      },
-      {
-        ...basePayload
-      }
-    ];
+    function buildBasePayload(withAudit) {
+      return {
+        tenant_id: tenant.id,
+        project_name: projectName,
+        title,
+        client_name: clientName,
+        client_email: clientEmail,
+        status,
+        currency,
+        total,
+        deposit_required: depositRequired,
+        notes,
+        terms,
+        payment_link: paymentLink,
+        public_token: publicToken,
+        business_name: businessName || "",
+        company_name: businessName || "",
+        business_email: businessEmail || "",
+        business_phone: businessPhone || "",
+        business_address: businessAddress || "",
+        ...(withAudit ? amountAudit : {})
+      };
+    }
+
+    function expandPayloadVariants(base) {
+      return [
+        {
+          ...base,
+          client_phone: clientPhone,
+          project_address: projectAddress,
+          job_site: projectAddress
+        },
+        {
+          ...base,
+          client_phone: clientPhone,
+          job_site: projectAddress
+        },
+        {
+          ...base,
+          client_phone: clientPhone,
+          project_address: projectAddress
+        },
+        {
+          ...base,
+          job_site: projectAddress
+        },
+        { ...base }
+      ];
+    }
 
     let insertResult = null;
     let lastErrorText = "";
 
-    for (const payload of payloadVariants) {
-      const result = await insertQuote({
-        supabaseUrl,
-        serviceRoleKey,
-        payload
-      });
-
-      if (result.ok) {
-        insertResult = { ...result, payloadUsed: payload };
-        break;
+    async function tryInsertAll(withAudit) {
+      const bases = expandPayloadVariants(buildBasePayload(withAudit));
+      for (const payload of bases) {
+        const result = await insertQuote({
+          supabaseUrl,
+          serviceRoleKey,
+          payload
+        });
+        if (result.ok) {
+          return { ...result, payloadUsed: payload };
+        }
+        lastErrorText = result.text || `Supabase write failed with status ${result.status}`;
       }
+      return null;
+    }
 
-      lastErrorText = result.text || `Supabase write failed with status ${result.status}`;
+    insertResult = await tryInsertAll(true);
+    if (!insertResult) {
+      insertResult = await tryInsertAll(false);
     }
 
     if (!insertResult) {
@@ -559,23 +616,22 @@ exports.handler = async (event) => {
 
     const publicUrl = buildPublicUrl(siteUrl, publicToken);
 
-    console.log("[publish-public-quote] published row", {
-      tenant_id: tenant.id,
-      quote_id: quoteId,
-      public_token: publicToken,
-      project_name: projectName,
-      total,
-      deposit_required: depositRequired,
-      publish_amounts_source: persistedAmountsSource,
-      server_total_before_align: serverTotal
-    });
+    const financialsOut = {
+      total: canonical.total,
+      deposit_required: canonical.deposit_required,
+      balance_after_deposit: canonical.balance_after_deposit,
+      final_price: canonical.final_price,
+      minimum_price: canonical.minimum_price
+    };
 
     return json(200, {
       ok: true,
       quote_id: quoteId,
       public_token: publicToken,
       public_url: publicUrl,
-      publish_amounts_source: persistedAmountsSource,
+      publish_amounts_source: canonical.publish_amounts_source,
+      publish_amounts_reason: canonical.publish_amounts_reason,
+      financials: financialsOut,
       normalized_customer: {
         client_name: clientName,
         client_email: clientEmail,
