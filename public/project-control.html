@@ -7,10 +7,111 @@
   <link rel="stylesheet" href="/styles.css" />
   <style>
     .pcc-hero { margin-bottom: 1.25rem; }
-    .pcc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 1.25rem; }
-    .pcc-stat { background: var(--card-bg, #fff); border: 1px solid var(--border, #e8e8e8); border-radius: 10px; padding: 14px 16px; }
-    .pcc-stat .label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted, #666); margin-bottom: 6px; }
-    .pcc-stat .value { font-size: 1.55rem; font-weight: 700; line-height: 1.1; }
+
+    /* KPI row — light premium cards on dark shell (#pccSummary only) */
+    .pcc-stats--kpi {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin-bottom: 1.5rem;
+    }
+    @media (min-width: 900px) {
+      .pcc-stats--kpi {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+    }
+
+    .pcc-kpi {
+      position: relative;
+      display: flex;
+      align-items: flex-start;
+      gap: 18px;
+      padding: 22px 24px;
+      border-radius: 22px;
+      background: linear-gradient(165deg, #fafbfc 0%, #f0f2f6 100%);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow:
+        0 14px 36px rgba(0, 0, 0, 0.32),
+        0 0 0 1px rgba(13, 20, 34, 0.06),
+        inset 0 1px 0 rgba(255, 255, 255, 0.85);
+      overflow: hidden;
+    }
+    .pcc-kpi::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 3px;
+      border-radius: 22px 22px 0 0;
+      opacity: 0.95;
+    }
+    .pcc-kpi--active::before { background: linear-gradient(90deg, #0f8a5f, #12a06e); box-shadow: 0 0 24px rgba(15, 138, 95, 0.35); }
+    .pcc-kpi--ontrack::before { background: linear-gradient(90deg, #0d8a55, #1eb87a); box-shadow: 0 0 24px rgba(14, 160, 100, 0.32); }
+    .pcc-kpi--risk::before { background: linear-gradient(90deg, #d97706, #f59e0b); box-shadow: 0 0 24px rgba(217, 119, 6, 0.28); }
+    .pcc-kpi--delayed::before { background: linear-gradient(90deg, #c83232, #e85d5d); box-shadow: 0 0 24px rgba(200, 50, 50, 0.28); }
+
+    .pcc-kpi__icon {
+      flex: 0 0 auto;
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pcc-kpi__icon svg {
+      width: 26px;
+      height: 26px;
+    }
+    .pcc-kpi--active .pcc-kpi__icon {
+      background: rgba(15, 138, 95, 0.14);
+      color: #0a5c40;
+    }
+    .pcc-kpi--ontrack .pcc-kpi__icon {
+      background: rgba(14, 160, 100, 0.16);
+      color: #065f3a;
+    }
+    .pcc-kpi--risk .pcc-kpi__icon {
+      background: rgba(217, 119, 6, 0.16);
+      color: #92400e;
+    }
+    .pcc-kpi--delayed .pcc-kpi__icon {
+      background: rgba(200, 50, 50, 0.14);
+      color: #991b1b;
+    }
+
+    .pcc-kpi__text {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding-top: 2px;
+    }
+    .pcc-kpi__label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #5c6578;
+      line-height: 1.2;
+    }
+    .pcc-kpi__value {
+      font-size: clamp(1.75rem, 3vw, 2.15rem);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      color: #0d1422;
+    }
+    .pcc-kpi__hint {
+      margin: 6px 0 0;
+      font-size: 0.8125rem;
+      line-height: 1.4;
+      color: #6b7280;
+      font-weight: 500;
+    }
+
     .pcc-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
     .pcc-filters .hint { font-size: 0.85rem; color: var(--muted, #666); margin-left: auto; }
     .pcc-filter-btn.active { box-shadow: inset 0 0 0 2px var(--accent, #0f8a5f); }
@@ -68,11 +169,61 @@
       </div>
     </section>
 
-    <div class="pcc-stats" id="pccSummary">
-      <div class="pcc-stat"><div class="label">Active projects</div><div class="value" id="pccNActive">—</div></div>
-      <div class="pcc-stat"><div class="label">On track</div><div class="value" id="pccNGreen">—</div></div>
-      <div class="pcc-stat"><div class="label">At risk</div><div class="value" id="pccNYellow">—</div></div>
-      <div class="pcc-stat"><div class="label">Delayed</div><div class="value" id="pccNRed">—</div></div>
+    <div class="pcc-stats pcc-stats--kpi" id="pccSummary">
+      <article class="pcc-kpi pcc-kpi--active" aria-labelledby="pccNActiveLabel">
+        <div class="pcc-kpi__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="7" width="18" height="13" rx="2" />
+            <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            <path d="M3 12h18" />
+          </svg>
+        </div>
+        <div class="pcc-kpi__text">
+          <div class="pcc-kpi__label" id="pccNActiveLabel">Active projects</div>
+          <div class="pcc-kpi__value" id="pccNActive">—</div>
+          <p class="pcc-kpi__hint">All active / in progress projects</p>
+        </div>
+      </article>
+      <article class="pcc-kpi pcc-kpi--ontrack" aria-labelledby="pccNGreenLabel">
+        <div class="pcc-kpi__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M8.5 12.5l2.2 2.2 4.8-5" />
+          </svg>
+        </div>
+        <div class="pcc-kpi__text">
+          <div class="pcc-kpi__label" id="pccNGreenLabel">On track</div>
+          <div class="pcc-kpi__value" id="pccNGreen">—</div>
+          <p class="pcc-kpi__hint">Within plan vs budget &amp; dates</p>
+        </div>
+      </article>
+      <article class="pcc-kpi pcc-kpi--risk" aria-labelledby="pccNYellowLabel">
+        <div class="pcc-kpi__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3L2 20h20L12 3z" />
+            <path d="M12 9v4.5" />
+            <path d="M12 17h.01" stroke-width="2.25" />
+          </svg>
+        </div>
+        <div class="pcc-kpi__text">
+          <div class="pcc-kpi__label" id="pccNYellowLabel">At risk</div>
+          <div class="pcc-kpi__value" id="pccNYellow">—</div>
+          <p class="pcc-kpi__hint">Needs attention soon</p>
+        </div>
+      </article>
+      <article class="pcc-kpi pcc-kpi--delayed" aria-labelledby="pccNRedLabel">
+        <div class="pcc-kpi__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v6l3 2" />
+          </svg>
+        </div>
+        <div class="pcc-kpi__text">
+          <div class="pcc-kpi__label" id="pccNRedLabel">Delayed</div>
+          <div class="pcc-kpi__value" id="pccNRed">—</div>
+          <p class="pcc-kpi__hint">Behind schedule or labor budget</p>
+        </div>
+      </article>
     </div>
 
     <div class="card">
