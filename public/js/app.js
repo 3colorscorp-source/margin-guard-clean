@@ -241,6 +241,15 @@ Thank you.`
     return "";
   }
 
+  /** Minimal To-address for quote email / Zapier (not full RFC). */
+  function isClientEmailValidForQuoteSend(raw) {
+    const s = String(raw == null ? "" : raw).trim();
+    if (!s) return false;
+    const at = s.indexOf("@");
+    if (at < 1) return false;
+    return s.indexOf(".", at + 1) > at;
+  }
+
   function finiteNumber(value, fallback = 0) {
     const n = Number(value);
     return Number.isFinite(n) ? n : fallback;
@@ -3893,7 +3902,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
     let state = loadSales();
 
-    const toEmail = nonEmptyString(document.getElementById("toEmail")?.value);
+    const toEmail = String(document.getElementById("toEmail")?.value ?? "").trim();
     const toName = nonEmptyString(document.getElementById("toName")?.value, state.clientName);
     const salesRepInitials = nonEmptyString(document.getElementById("salesInitials")?.value).toUpperCase();
     const subject = nonEmptyString(document.getElementById("subject")?.value);
@@ -3914,11 +3923,19 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       state.location
     );
 
-    if (!toEmail || !salesRepInitials) {
+    if (!salesRepInitials) {
       if (sendStatus) {
         sendStatus.style.display = "block";
         sendStatus.className = "notice error";
         sendStatus.textContent = "Agrega email del cliente e iniciales del vendedor antes de enviar.";
+      }
+      return;
+    }
+    if (!isClientEmailValidForQuoteSend(toEmail)) {
+      if (sendStatus) {
+        sendStatus.style.display = "block";
+        sendStatus.className = "notice error";
+        sendStatus.textContent = "Client email is required before sending the quote.";
       }
       return;
     }
@@ -4099,6 +4116,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       const zapierPayload = {
         toName: clientName,
         toEmail,
+        client_email: toEmail,
         projectName: state.projectName || "",
         subject:
           subject ||
@@ -4129,6 +4147,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         pdfFileName: pdfFileNameFinal,
         pdfMimeType: rebuiltPdf?.mimeType || "application/pdf"
       };
+
+      console.info("[MG Quote Email Recipients]", {
+        client_email: zapierPayload.toEmail,
+        additional_recipients: String(zapierPayload.additional_recipients || "")
+      });
 
       const zapRes = await fetch("/.netlify/functions/send-quote-zapier", {
         method: "POST",
@@ -4261,15 +4284,27 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     }
   }
   const settingsSend = loadSettings();
-  const toEmail = nonEmptyString(document.getElementById("toEmail")?.value);
+  const toEmail = String(document.getElementById("toEmail")?.value ?? "").trim();
   const toName = nonEmptyString(document.getElementById("toName")?.value, state.clientName);
   const subject = nonEmptyString(document.getElementById("subject")?.value);
   const scopeOfWork = nonEmptyString(document.getElementById("scope")?.value, state.messageToClient, state.notes);
   const messageText = nonEmptyString(document.getElementById("message")?.value);
   const depositRequired = parseNumber(document.getElementById("deposit")?.value);
   const salesRepInitials = nonEmptyString(document.getElementById("salesInitials")?.value).toUpperCase();
-  if (!toEmail || !salesRepInitials) {
-    if (sendStatus) { sendStatus.style.display = "block"; sendStatus.textContent = "Add customer email and sales rep initials before sending the estimate."; }
+  if (!salesRepInitials) {
+    if (sendStatus) {
+      sendStatus.style.display = "block";
+      sendStatus.className = "notice error";
+      sendStatus.textContent = "Add customer email and sales rep initials before sending the estimate.";
+    }
+    return;
+  }
+  if (!isClientEmailValidForQuoteSend(toEmail)) {
+    if (sendStatus) {
+      sendStatus.style.display = "block";
+      sendStatus.className = "notice error";
+      sendStatus.textContent = "Client email is required before sending the quote.";
+    }
     return;
   }
   const estimateNumber = nonEmptyString(state.estimateNumber, buildEstimateNumber());
@@ -4277,6 +4312,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   const expirationDate = normalizeDateInput(nonEmptyString(state.expirationDate) || addDaysToInputValue(issueDate, 7));
   try {
     if (sendStatus) { sendStatus.style.display = "block"; sendStatus.textContent = "Sending estimate..."; }
+    const additionalRecipientsLegacy = String(state.additional_recipients || "");
+    console.info("[MG Quote Email Recipients]", {
+      client_email: toEmail,
+      additional_recipients: additionalRecipientsLegacy
+    });
     const response = await fetch("/.netlify/functions/send-quote-zapier", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -4284,6 +4324,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         salesRepInitials,
         messageLanguage: "bilingual",
         toEmail,
+        client_email: toEmail,
         toName,
         subject,
         messageText,
@@ -4297,7 +4338,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         recommendedTotal: round2(metrics.offered || metrics.recommended || 0),
         estimateNumber,
         issueDate,
-        expirationDate
+        expirationDate,
+        additional_recipients: additionalRecipientsLegacy
       })
     });
     const data = await response.json().catch(() => ({}));

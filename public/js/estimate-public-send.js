@@ -7,6 +7,14 @@
 
   let registeredHelpers = null;
 
+  function isClientEmailValidForQuoteSend(raw) {
+    const s = String(raw == null ? "" : raw).trim();
+    if (!s) return false;
+    const at = s.indexOf("@");
+    if (at < 1) return false;
+    return s.indexOf(".", at + 1) > at;
+  }
+
   function getHelpers(override) {
     const h = override || registeredHelpers || window.__MG_ESTIMATE_SEND_HELPERS__;
     if (
@@ -62,6 +70,13 @@
 
     const H = getHelpers(helpersOverride);
 
+    const resolvedClientEmail = String(
+      toEmail || payload.customerEmail || state.customerEmail || ""
+    ).trim();
+    if (!isClientEmailValidForQuoteSend(resolvedClientEmail)) {
+      throw new Error("Client email is required before sending the quote.");
+    }
+
     const bn = H.resolvePublishBusinessName(branding, payload, settings);
     const publishResponse = await fetch("/.netlify/functions/publish-public-quote", {
       method: "POST",
@@ -71,7 +86,7 @@
         project_name: payload.projectName || state.projectName || "",
         title: payload.projectName || state.projectName || "",
         client_name: toName || payload.clientName || state.clientName || "",
-        client_email: toEmail || payload.customerEmail || state.customerEmail || "",
+        client_email: resolvedClientEmail,
         client_phone: customerPhone,
         customer_phone: customerPhone,
         phone: customerPhone,
@@ -196,9 +211,9 @@
       ...tenantForRebuild,
       branding,
       settings,
-      customerEmail: toEmail || payload.customerEmail || state.customerEmail || "",
+      customerEmail: resolvedClientEmail,
       customerPhone,
-      clientEmail: toEmail || payload.customerEmail || state.customerEmail || "",
+      clientEmail: resolvedClientEmail,
       clientPhone: customerPhone,
       location: projectAddress,
       marketLine: branding.marketLine || payload.marketLine || "",
@@ -230,9 +245,16 @@
     const projectName = payload.projectName || state.projectName || "";
     const publicToken = publishData.public_token;
 
+    const additionalRecipientsSend = String(state.additional_recipients || "").trim();
+    console.info("[MG Quote Email Recipients]", {
+      client_email: clientEmail,
+      additional_recipients: additionalRecipientsSend
+    });
+
     const zapierPayload = {
       toName: clientName,
       toEmail: clientEmail,
+      client_email: clientEmail,
       projectName,
       subject,
       publicToken,
@@ -271,7 +293,7 @@
       issueDate: payload.issueDate || state.issueDate || "",
       expirationDate: payload.expirationDate || state.expirationDate || "",
       customerPhone,
-      additional_recipients: String(state.additional_recipients || ""),
+      additional_recipients: additionalRecipientsSend,
       quoteId: publishData.quote_id,
       pdfFileName: rebuiltPdf.fileName || "",
       pdfMimeType: rebuiltPdf.mimeType || "application/pdf",

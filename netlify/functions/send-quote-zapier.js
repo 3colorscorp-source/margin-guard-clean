@@ -177,6 +177,29 @@ exports.handler = async (event) => {
       });
     }
 
+    const client_email = String(pickFirst(data.toEmail, data.client_email, data.to_email) || "").trim();
+    const additional_recipients = String(
+      data.additional_recipients !== undefined && data.additional_recipients !== null ? data.additional_recipients : ""
+    ).trim();
+
+    if (!client_email) {
+      logOps({
+        req_id,
+        fn: OPS_FN,
+        event: "client_email_required",
+        level: "warn",
+        outcome: "fail",
+        tenant_id: tenant.id,
+        http_status: 400,
+        detail: "client_email is required for quote email send"
+      });
+      return {
+        statusCode: 400,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "client_email is required for quote email send" })
+      };
+    }
+
     const publicToken = pickFirst(data.publicToken, data.public_token);
     const publicTokenLog = truncatePublicToken(publicToken);
     let quoteId = null;
@@ -279,14 +302,16 @@ exports.handler = async (event) => {
 
     let tenantSlug = "";
     let businessName = "";
+    let tenantEmail = "";
     try {
       const metaRows = await supabaseRequest(
-        `tenants?id=eq.${encodeURIComponent(String(tenant.id))}&select=slug,name&limit=1`
+        `tenants?id=eq.${encodeURIComponent(String(tenant.id))}&select=slug,name,owner_email&limit=1`
       );
       const tr = Array.isArray(metaRows) && metaRows[0] ? metaRows[0] : null;
       if (tr) {
         tenantSlug = String(tr.slug ?? "").trim();
         businessName = String(tr.name ?? "").trim();
+        tenantEmail = String(tr.owner_email ?? "").trim();
       }
     } catch (_e) {
       /* optional tenant metadata for Zapier */
@@ -297,15 +322,12 @@ exports.handler = async (event) => {
       tenant_slug: tenantSlug,
       business_name: businessName,
       to_name: data.toName || data.clientName || "",
-      client_email: data.toEmail || data.client_email || "",
+      client_email,
       project_name: data.projectName || data.project_name || "",
       subject: data.subject || "",
       public_quote_url: data.publicQuoteUrl || data.public_quote_url || "",
       pdf_url: data.pdfUrl || "",
-      additional_recipients:
-        data.additional_recipients !== undefined && data.additional_recipients !== null
-          ? String(data.additional_recipients)
-          : ""
+      additional_recipients
     };
 
     if (!String(zapierBody.public_quote_url || "").trim()) {
@@ -336,6 +358,12 @@ exports.handler = async (event) => {
       zapierDelivery = "skipped_no_webhook_url";
     } else {
       try {
+        console.info("[MG Zapier Email Payload]", {
+          client_email,
+          additional_recipients,
+          tenant_business_name: businessName,
+          tenant_email: tenantEmail
+        });
         const resp = await fetch(webhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

@@ -2557,6 +2557,15 @@ async function openSellerSendModal(event) {
     return { rowTotal, rowDeposit, rowBalance, usedRowFirst, payloadTotal, payloadDeposit };
   }
 
+  /** Minimal To-address check for Zapier/Gmail (not full RFC). */
+  function isClientEmailValidForQuoteSend(raw) {
+    const s = String(raw == null ? '' : raw).trim();
+    if (!s) return false;
+    const at = s.indexOf('@');
+    if (at < 1) return false;
+    return s.indexOf('.', at + 1) > at;
+  }
+
 async function runSellerSend(event) {
     if (event) {
       event.preventDefault();
@@ -2602,11 +2611,19 @@ async function runSellerSend(event) {
     state.location = projectAddress;
     saveSalesState(state);
 
-    if (!toEmail || !toName || !salesRepInitials) {
+    if (!toName || !salesRepInitials) {
       if (sendStatus) {
         sendStatus.style.display = 'block';
         sendStatus.className = 'notice error';
         sendStatus.textContent = 'Add customer name, email, and sales rep initials before sending the estimate.';
+      }
+      return false;
+    }
+    if (!isClientEmailValidForQuoteSend(toEmail)) {
+      if (sendStatus) {
+        sendStatus.style.display = 'block';
+        sendStatus.className = 'notice error';
+        sendStatus.textContent = 'Client email is required before sending the quote.';
       }
       return false;
     }
@@ -2630,6 +2647,16 @@ async function runSellerSend(event) {
       estimateTotal = Number(payload.totalAmount || metricsFresh.offered || metricsFresh.recommended || 0);
       depositRequired = Number(payload.depositRequired || 1000);
 
+      const toEmailSend = (document.getElementById('toEmail')?.value || '').trim();
+      if (!isClientEmailValidForQuoteSend(toEmailSend)) {
+        if (sendStatus) {
+          sendStatus.style.display = 'block';
+          sendStatus.className = 'notice error';
+          sendStatus.textContent = 'Client email is required before sending the quote.';
+        }
+        return false;
+      }
+
       const bn = resolvePublishBusinessName(branding, payload, settings);
       const publishResponse = await fetch('/.netlify/functions/publish-public-quote', {
         method: 'POST',
@@ -2639,7 +2666,7 @@ async function runSellerSend(event) {
           project_name: payload.projectName || stateFresh.projectName || '',
           title: payload.projectName || stateFresh.projectName || '',
           client_name: toName || payload.clientName || stateFresh.clientName || '',
-          client_email: toEmail || payload.customerEmail || stateFresh.customerEmail || '',
+          client_email: toEmailSend || payload.customerEmail || stateFresh.customerEmail || '',
           client_phone: customerPhone,
           customer_phone: customerPhone,
           phone: customerPhone,
@@ -2814,13 +2841,14 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
       }
 
       const clientName = toName || payload.clientName || state.clientName || '';
-      const clientEmail = toEmail || payload.customerEmail || state.customerEmail || '';
+      const clientEmail = toEmailSend || payload.customerEmail || state.customerEmail || '';
       const projectName = payload.projectName || state.projectName || '';
       const publicToken = publishData.public_token;
 
       const zapierPayload = {
         toName: clientName,
         toEmail: clientEmail,
+        client_email: clientEmail,
         projectName,
         subject,
         publicToken,
@@ -2866,6 +2894,10 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         pdfBase64: rebuiltPdf.contentBase64 || ''
       };
 
+      console.info('[MG Quote Email Recipients]', {
+        client_email: zapierPayload.toEmail,
+        additional_recipients: String(zapierPayload.additional_recipients || '')
+      });
       console.log("ZAPIER BODY", zapierPayload);
 
       const response = await fetch('/.netlify/functions/send-quote-zapier', {
