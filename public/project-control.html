@@ -6,7 +6,111 @@
   <title>Margin Guard | Project Control Center™</title>
   <link rel="stylesheet" href="/styles.css" />
   <style>
-    .pcc-hero { margin-bottom: 1.25rem; }
+    .pcc-hero {
+      margin-bottom: 1.25rem;
+    }
+    .pcc-hero-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1.5rem 2rem;
+      flex-wrap: wrap;
+    }
+    .pcc-hero-head .section-head {
+      flex: 1 1 280px;
+      min-width: 0;
+    }
+
+    .pcc-hero-visual {
+      width: 220px;
+      height: 140px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      opacity: 0.92;
+    }
+
+    .pcc-radar {
+      position: relative;
+      width: 140px;
+      height: 140px;
+    }
+
+    .pcc-radar-ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 1px solid rgba(80, 255, 180, 0.15);
+      box-shadow: 0 0 25px rgba(80, 255, 180, 0.08);
+      pointer-events: none;
+      animation: pccRadarPulse 3s infinite ease-in-out;
+    }
+
+    .pcc-radar-ring:nth-child(2) {
+      inset: 10px;
+      animation-delay: 0.5s;
+    }
+
+    .pcc-radar-ring:nth-child(3) {
+      inset: 20px;
+      animation-delay: 1s;
+    }
+
+    .pcc-radar-line {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 8px;
+      height: 52px;
+      width: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    .pcc-radar-line polyline {
+      fill: none;
+      stroke: #4df2a1;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 0 6px rgba(77, 242, 161, 0.55));
+      animation: pccDrawLine 2.8s ease-out forwards;
+    }
+
+    @keyframes pccRadarPulse {
+      0%,
+      100% {
+        opacity: 0.28;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.55;
+        transform: scale(1.04);
+      }
+    }
+
+    @keyframes pccDrawLine {
+      from {
+        stroke-dasharray: 320;
+        stroke-dashoffset: 320;
+      }
+      to {
+        stroke-dashoffset: 0;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pcc-radar-ring,
+      .pcc-radar-line polyline {
+        animation: none !important;
+      }
+      .pcc-radar-line polyline {
+        stroke-dasharray: none;
+        stroke-dashoffset: 0;
+      }
+    }
 
     /* KPI row — light premium cards on dark shell (#pccSummary only) */
     .pcc-stats--kpi {
@@ -159,11 +263,24 @@
 
     <section class="card pcc-hero">
       <div class="card-inner">
-        <div class="section-head">
-          <div>
-            <span class="eyebrow">Owner / Admin</span>
-            <h2 class="hero-title">Project Control Center™</h2>
-            <p class="sub" style="margin:0;">One place to see every active job: on track, at risk, or delayed — using the same field reports and dates as Supervisor.</p>
+        <div class="pcc-hero-head">
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">Owner / Admin</span>
+              <h2 class="hero-title">Project Control Center™</h2>
+              <p class="sub" style="margin:0;">One place to see every active job: on track, at risk, or delayed — using the same field reports and dates as Supervisor.</p>
+            </div>
+          </div>
+          <div class="pcc-hero-visual" aria-hidden="true">
+            <div class="pcc-radar">
+              <div class="pcc-radar-ring"></div>
+              <div class="pcc-radar-ring"></div>
+              <div class="pcc-radar-ring"></div>
+
+              <svg class="pcc-radar-line" viewBox="0 0 200 100" preserveAspectRatio="xMidYMax meet">
+                <polyline points="0,80 40,60 80,70 120,40 160,50 200,20" />
+              </svg>
+            </div>
           </div>
         </div>
       </div>
