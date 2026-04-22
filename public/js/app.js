@@ -2514,7 +2514,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           ["Critical Runway", `${runwayMonths.toFixed(1)} months`, "Owner target: 12.0 months"],
           ["Tax Protection", money(state.taxBalance, settings.currency), "Reserved for obligations"]
         ].map(([title, big, small]) => `
-          <div class="strip-card">
+          <div class="strip-card fcc-strip-card">
             <div class="title">${escapeHtml(title)}</div>
             <div class="big">${escapeHtml(big)}</div>
             <div class="small">${escapeHtml(small)}</div>
@@ -2522,28 +2522,89 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         `).join("");
       }
 
-      const cards = [
-        ["Operating / Expenses", money(state.expensesBalance, settings.currency), "Immediate working capital", healthClass(state.expensesBalance, state.operatingMonthly * 0.5, state.operatingMonthly)],
-        ["Profit", money(state.profitBalance, settings.currency), "Protected owner profit", healthClass(state.profitBalance, state.operatingMonthly * 0.1, state.operatingMonthly * 0.35)],
-        ["Savings", money(state.savingsBalance, settings.currency), `12-month target: ${money(savingsTarget, settings.currency)}`, healthClass(state.savingsBalance, state.operatingMonthly * 6, savingsTarget)],
-        ["Tax Reserve", money(state.taxBalance, settings.currency), "Reserved tax liability", healthClass(state.taxBalance, state.operatingMonthly * 0.5, state.operatingMonthly)],
-        ["Total Cash", money(totalCash, settings.currency), "Real bank cash, not paper profit", healthClass(totalCash, state.operatingMonthly * 3, state.operatingMonthly * 12)],
-        ["Savings Progress", `${savingsPct.toFixed(1)}%`, "Progress to 12-month safety target", healthClass(savingsPct, 50, 100)]
+      if ($("fccDateRange")) {
+        try {
+          const now = new Date();
+          const label = now.toLocaleString("es", { month: "long", year: "numeric" });
+          $("fccDateRange").textContent = `Vista: ${label} · hasta hoy`;
+        } catch (_e) {
+          $("fccDateRange").textContent = "Vista del mes · hasta hoy";
+        }
+      }
+
+      if ($("fccCfNetLiquidity")) $("fccCfNetLiquidity").textContent = money(totalCash, settings.currency);
+      if ($("fccCfNetCash")) $("fccCfNetCash").textContent = money(totalCash, settings.currency);
+      if ($("fccCfCashOut")) $("fccCfCashOut").textContent = money(state.operatingMonthly, settings.currency);
+      if ($("fccCfCashIn")) {
+        $("fccCfCashIn").textContent = "—";
+        if ($("fccCfCashInHint")) $("fccCfCashInHint").textContent = "Se completa al cargar cartera en el hub.";
+      }
+
+      const pb = Number(state.profitBalance) || 0;
+      const eb = Number(state.expensesBalance) || 0;
+      const splitSum = pb + eb;
+      const profitDeg = splitSum > 0 ? (pb / splitSum) * 360 : 180;
+      if ($("fccDonutRoot")) $("fccDonutRoot").style.setProperty("--fcc-profit-deg", `${profitDeg}deg`);
+      if ($("fccDonutCenterLabel")) $("fccDonutCenterLabel").textContent = money(pb, settings.currency);
+      if ($("fccProfitLegend")) {
+        $("fccProfitLegend").innerHTML = `
+          <li><span class="sw violet" aria-hidden="true"></span><span>Profit bucket</span><span>${escapeHtml(money(pb, settings.currency))}</span></li>
+          <li><span class="sw green" aria-hidden="true"></span><span>Operating / expenses</span><span>${escapeHtml(money(eb, settings.currency))}</span></li>
+        `;
+      }
+
+      const kpis = [
+        { label: "Operating / Expenses", value: money(state.expensesBalance, settings.currency), meta: "Immediate working capital", tone: healthClass(state.expensesBalance, state.operatingMonthly * 0.5, state.operatingMonthly), accent: "expense", icon: "OP" },
+        { label: "Profit", value: money(state.profitBalance, settings.currency), meta: "Protected owner profit", tone: healthClass(state.profitBalance, state.operatingMonthly * 0.1, state.operatingMonthly * 0.35), accent: "profit", icon: "PR" },
+        { label: "Savings", value: money(state.savingsBalance, settings.currency), meta: `12-month target: ${money(savingsTarget, settings.currency)}`, tone: healthClass(state.savingsBalance, state.operatingMonthly * 6, savingsTarget), accent: "savings", icon: "SV" },
+        { label: "Tax Reserve", value: money(state.taxBalance, settings.currency), meta: "Reserved tax liability", tone: healthClass(state.taxBalance, state.operatingMonthly * 0.5, state.operatingMonthly), accent: "tax", icon: "TX" },
+        { label: "Total Cash", value: money(totalCash, settings.currency), meta: "Real bank cash, not paper profit", tone: healthClass(totalCash, state.operatingMonthly * 3, state.operatingMonthly * 12), accent: "total", icon: "$$" },
+        { label: "Savings Progress", value: `${savingsPct.toFixed(1)}%`, meta: "Progress to 12-month safety target", tone: healthClass(savingsPct, 50, 100), accent: "progress", icon: "%" }
       ];
 
-      $("dashKpis").innerHTML = cards.map(([label, value, meta, tone]) => `
-        <div class="kpi-box finance-box">
-          <div class="label">${escapeHtml(label)} <span class="badge ${tone}">${tone === "green" ? "Healthy" : (tone === "amber" ? "Watch" : "Risk")}</span></div>
+      $("dashKpis").innerHTML = kpis.map(({ label, value, meta, tone, accent, icon }) => `
+        <div class="kpi-box finance-box fcc-kpi-card fcc-kpi--${accent}">
+          <div class="fcc-kpi-top">
+            <div class="label">${escapeHtml(label)} <span class="badge ${tone}">${tone === "green" ? "Healthy" : (tone === "amber" ? "Watch" : "Risk")}</span></div>
+            <div class="fcc-kpi-icon" aria-hidden="true">${escapeHtml(icon)}</div>
+          </div>
           <div class="value">${escapeHtml(value)}</div>
           <div class="meta">${escapeHtml(meta)}</div>
+          <div class="fcc-kpi-spark" aria-hidden="true"></div>
         </div>
       `).join("");
 
-      if ($("dashboardRevenueStrip") || $("dashboardRevenueNote") || $("dashboardCommandStrip") || $("dashboardCommandQueue") || $("dashboardOwnerTasks") || $("dashboardClientScorecard") || $("dashboardDailyDigest") || $("dashboardProfitabilityRanking") || $("dashboardCashForecast") || $("dashboardWeeklyReview") || $("dashboardRiskSegments")) {
+      if ($("dashboardRevenueStrip") || $("dashboardRevenueNote") || $("dashboardCommandStrip") || $("dashboardCommandQueue") || $("dashboardOwnerTasks") || $("dashboardClientScorecard") || $("dashboardDailyDigest") || $("dashboardProfitabilityRanking") || $("dashboardCashForecast") || $("dashboardWeeklyReview") || $("dashboardRiskSegments") || $("dashboardOwnerAlerts") || $("fccCfCashIn") || $("fccPerfTbody")) {
         const hubRows = buildPortfolioRows(settings);
         const openBalance = hubRows.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
         const collectionsCount = hubRows.filter((row) => ["sent", "partial", "overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0).length;
         const paidTotal = hubRows.filter((row) => row.status === "paid").reduce((sum, row) => sum + finiteNumber(row.amount, 0), 0);
+        if ($("fccCfCashIn")) {
+          $("fccCfCashIn").textContent = money(paidTotal, settings.currency);
+          if ($("fccCfCashInHint")) $("fccCfCashInHint").textContent = "Paid total del hub (suma de facturas pagadas).";
+        }
+        if ($("fccPerfTbody")) {
+          const dc = "—";
+          const perfRows = [
+            ["Total cash on hand", money(totalCash, settings.currency)],
+            ["Critical runway (months)", runwayMonths > 0 ? runwayMonths.toFixed(1) : dc],
+            ["Monthly operating cost", money(state.operatingMonthly, settings.currency)],
+            ["Operating / expenses balance", money(state.expensesBalance, settings.currency)],
+            ["Profit balance", money(state.profitBalance, settings.currency)],
+            ["Savings / reserve", money(state.savingsBalance, settings.currency)],
+            ["Tax reserve", money(state.taxBalance, settings.currency)],
+            ["Open receivables (hub)", money(openBalance, settings.currency)]
+          ];
+          $("fccPerfTbody").innerHTML = perfRows.map(([metric, v]) => `
+          <tr>
+            <td>${escapeHtml(metric)}</td>
+            <td>${escapeHtml(v)}</td>
+            <td class="muted">${dc}</td>
+            <td class="muted">${dc}</td>
+            <td class="muted">${dc}</td>
+          </tr>
+        `).join("");
+        }
         const topPriority = hubRows.slice().sort((left, right) => right.priorityScore - left.priorityScore)[0];
         const focusRows = hubRows
           .filter((row) => row.priorityScore > 0)
@@ -2570,7 +2631,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             ["Paid Total", money(paidTotal, settings.currency), "Facturas liquidadas"],
             ["Top Priority", topPriority ? `${topPriority.title}` : "No priority", topPriority ? `Score ${topPriority.priorityScore}` : "Sin cartera activa"]
           ].map(([title, big, small]) => `
-            <div class="strip-card">
+            <div class="strip-card fcc-strip-card">
               <div class="title">${escapeHtml(title)}</div>
               <div class="big">${escapeHtml(big)}</div>
               <div class="small">${escapeHtml(small)}</div>
@@ -2593,7 +2654,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             ["Auto Queue", String(autoReminderRows.length), "Reminders que ya conviene preparar hoy"],
             ["Auto Stage", String(autoStageCandidates.length), "Rows donde conviene normalizar stage"]
           ].map(([title, big, small]) => `
-            <div class="strip-card">
+            <div class="strip-card fcc-strip-card">
               <div class="title">${escapeHtml(title)}</div>
               <div class="big">${escapeHtml(big)}</div>
               <div class="small">${escapeHtml(small)}</div>

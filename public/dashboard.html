@@ -5,6 +5,586 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Margin Guard | Dashboard</title>
   <link rel="stylesheet" href="/styles.css" />
+  <style>
+    /* Financial Command Center — dashboard only */
+    body[data-role="dashboard"]{
+      background:
+        radial-gradient(1200px 520px at 50% -8%, rgba(34,197,94,.07), transparent 55%),
+        radial-gradient(900px 400px at 100% 20%, rgba(59,130,246,.06), transparent 50%),
+        linear-gradient(180deg, #070b14 0%, #0a101c 40%, #080d18 100%);
+    }
+    body[data-role="dashboard"] .container.fcc-page{
+      max-width:1280px;
+    }
+    body[data-role="dashboard"] .card{
+      border-radius:22px;
+      border:1px solid rgba(255,255,255,.09);
+      background:
+        linear-gradient(165deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,.02) 42%, rgba(255,255,255,.015) 100%);
+      box-shadow:0 18px 48px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+      backdrop-filter:blur(12px);
+    }
+    body[data-role="dashboard"] .topbar{
+      border-bottom:1px solid rgba(255,255,255,.08);
+      background:rgba(6,10,18,.92);
+      backdrop-filter:blur(14px);
+    }
+    .fcc-hero{
+      margin-bottom:16px;
+      border:1px solid rgba(34,197,94,.14);
+      background:
+        radial-gradient(520px 200px at 0% 0%, rgba(34,197,94,.11), transparent 58%),
+        radial-gradient(420px 220px at 100% 100%, rgba(59,130,246,.09), transparent 55%),
+        linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      box-shadow:0 0 0 1px rgba(34,197,94,.06), 0 24px 64px rgba(0,0,0,.4);
+    }
+    .fcc-hero-inner{
+      display:grid;
+      grid-template-columns:1.15fr .85fr;
+      gap:22px;
+      align-items:stretch;
+    }
+    .fcc-eyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      margin-bottom:12px;
+      padding:6px 12px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.1);
+      background:rgba(255,255,255,.04);
+      color:rgba(186,198,220,.95);
+      font-size:11px;
+      font-weight:750;
+      letter-spacing:.14em;
+      text-transform:uppercase;
+    }
+    .fcc-hero-title{
+      margin:0 0 10px;
+      font-size:clamp(28px, 3.2vw, 40px);
+      font-weight:900;
+      letter-spacing:-.035em;
+      line-height:1.05;
+      color:rgba(248,250,252,.98);
+    }
+    .fcc-hero-sub{
+      margin:0 0 18px;
+      max-width:52ch;
+      font-size:14px;
+      line-height:1.55;
+      color:rgba(186,198,220,.88);
+    }
+    .fcc-health-chip{
+      display:inline-flex;
+      flex-direction:column;
+      align-items:flex-start;
+      gap:4px;
+      padding:14px 18px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.1);
+      background:rgba(5,8,16,.65);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+    }
+    .fcc-health-chip-label{
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.12em;
+      color:rgba(148,163,184,.9);
+    }
+    .fcc-health-chip-value{
+      font-size:36px;
+      font-weight:900;
+      line-height:1;
+      letter-spacing:-.03em;
+    }
+    .fcc-health-chip-meta{
+      margin:0;
+      font-size:13px;
+      color:rgba(186,198,220,.82);
+      max-width:42ch;
+    }
+    .fcc-hero-aside{
+      display:flex;
+      flex-direction:column;
+      align-items:flex-end;
+      gap:12px;
+      min-height:180px;
+    }
+    .fcc-date-pill{
+      padding:8px 14px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.1);
+      background:rgba(255,255,255,.04);
+      font-size:12px;
+      font-weight:650;
+      color:rgba(226,232,240,.9);
+      letter-spacing:.02em;
+    }
+    .fcc-hero-viz{
+      flex:1;
+      width:100%;
+      max-width:340px;
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.1);
+      background:
+        radial-gradient(120px 80px at 20% 30%, rgba(34,197,94,.18), transparent 70%),
+        linear-gradient(180deg, rgba(8,12,22,.95), rgba(5,8,14,.98));
+      position:relative;
+      overflow:hidden;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 0 40px rgba(34,197,94,.08);
+    }
+    .fcc-hero-viz svg{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+    }
+    .fcc-hero-viz::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:linear-gradient(180deg, transparent 40%, rgba(0,0,0,.35));
+      pointer-events:none;
+    }
+    @keyframes fccLineGlow{
+      0%{ stroke-opacity:.45; filter:drop-shadow(0 0 4px rgba(34,197,94,.35)); }
+      100%{ stroke-opacity:.95; filter:drop-shadow(0 0 10px rgba(34,197,94,.55)); }
+    }
+    .fcc-hero-line{
+      fill:none;
+      stroke:url(#fccHeroGrad);
+      stroke-width:2.2;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      animation:fccLineGlow 3.2s ease-in-out infinite alternate;
+    }
+    @media (prefers-reduced-motion: reduce){
+      .fcc-hero-line{ animation:none; stroke-opacity:.75; }
+    }
+    .fcc-main-grid{
+      display:grid;
+      grid-template-columns:1.25fr .85fr .42fr;
+      gap:14px;
+      margin-bottom:14px;
+      align-items:start;
+    }
+    .fcc-panel-head{
+      margin-bottom:14px;
+    }
+    .fcc-panel-head h2{
+      margin:0 0 6px;
+      font-size:17px;
+      font-weight:850;
+      letter-spacing:-.02em;
+      color:rgba(248,250,252,.98);
+    }
+    .fcc-panel-sub{
+      font-size:12px;
+      line-height:1.45;
+      color:rgba(148,163,184,.92);
+      max-width:56ch;
+    }
+    .fcc-chart-shell{
+      position:relative;
+      min-height:160px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.08);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015));
+      margin-bottom:14px;
+      overflow:hidden;
+    }
+    .fcc-chart-shell .fcc-chart-svg{
+      position:absolute;
+      inset:0;
+      opacity:.85;
+    }
+    .fcc-chart-metrics{
+      position:relative;
+      z-index:1;
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      padding:14px 16px;
+    }
+    .fcc-chart-metric{
+      display:inline-flex;
+      flex-direction:column;
+      gap:4px;
+      padding:10px 14px;
+      border-radius:12px;
+      background:rgba(5,8,16,.55);
+      border:1px solid rgba(255,255,255,.08);
+    }
+    .fcc-chart-metric .label{
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      color:rgba(148,163,184,.9);
+    }
+    .fcc-chart-metric strong{
+      font-size:18px;
+      font-weight:850;
+      color:rgba(248,250,252,.98);
+    }
+    .fcc-cf-footer{
+      display:grid;
+      grid-template-columns:repeat(3, 1fr);
+      gap:10px;
+    }
+    .fcc-mini-metric{
+      padding:12px 14px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.025);
+    }
+    .fcc-mini-metric .t{
+      display:block;
+      font-size:11px;
+      font-weight:700;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      color:rgba(148,163,184,.95);
+      margin-bottom:6px;
+    }
+    .fcc-mini-metric strong{
+      display:block;
+      font-size:17px;
+      font-weight:850;
+      color:rgba(248,250,252,.98);
+    }
+    .fcc-mini-metric .hint{
+      display:block;
+      margin-top:6px;
+      font-size:11px;
+      line-height:1.35;
+      color:rgba(148,163,184,.75);
+    }
+    .fcc-mini-metric--in{ border-color:rgba(34,197,94,.2); box-shadow:0 0 24px rgba(34,197,94,.06); }
+    .fcc-mini-metric--out{ border-color:rgba(248,113,113,.18); box-shadow:0 0 20px rgba(248,113,113,.05); }
+    .fcc-mini-metric--net{ border-color:rgba(59,130,246,.22); }
+    .fcc-donut-wrap{
+      position:relative;
+      width:min(220px, 100%);
+      margin:8px auto 16px;
+      aspect-ratio:1;
+    }
+    .fcc-donut-ring{
+      width:100%;
+      height:100%;
+      border-radius:50%;
+      background:conic-gradient(
+        from -90deg,
+        rgba(139,92,246,.95) 0deg calc(var(--fcc-profit-deg, 180deg)),
+        rgba(34,197,94,.92) calc(var(--fcc-profit-deg, 180deg)) 360deg
+      );
+      mask:radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 13px));
+      -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 13px));
+      box-shadow:0 0 32px rgba(139,92,246,.12);
+    }
+    .fcc-donut-center{
+      position:absolute;
+      inset:0;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      text-align:center;
+      pointer-events:none;
+    }
+    .fcc-donut-center .big{
+      font-size:22px;
+      font-weight:900;
+      letter-spacing:-.02em;
+      color:rgba(248,250,252,.98);
+    }
+    .fcc-donut-center .small{
+      margin-top:4px;
+      font-size:11px;
+      color:rgba(148,163,184,.88);
+    }
+    .fcc-legend{
+      list-style:none;
+      margin:0;
+      padding:0;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .fcc-legend li{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.07);
+      background:rgba(255,255,255,.02);
+      font-size:13px;
+      color:rgba(226,232,240,.9);
+    }
+    .fcc-legend .sw{
+      width:10px;
+      height:10px;
+      border-radius:3px;
+      flex-shrink:0;
+    }
+    .fcc-legend .sw.violet{ background:rgba(139,92,246,.9); }
+    .fcc-legend .sw.green{ background:rgba(34,197,94,.9); }
+    .fcc-rail{
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+    }
+    .fcc-rail .fcc-panel h3{
+      margin:0 0 12px;
+      font-size:14px;
+      font-weight:800;
+      letter-spacing:-.01em;
+    }
+    .fcc-qa{
+      display:flex;
+      flex-direction:column;
+      gap:0;
+    }
+    .fcc-qa a, .fcc-qa button{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      width:100%;
+      text-align:left;
+      padding:11px 12px;
+      margin:0;
+      border:0;
+      border-bottom:1px solid rgba(255,255,255,.06);
+      background:transparent;
+      color:rgba(226,232,240,.92);
+      font-size:13px;
+      font-weight:650;
+      cursor:pointer;
+      border-radius:0;
+      text-decoration:none;
+      font-family:inherit;
+    }
+    .fcc-qa a:first-child, .fcc-qa button:first-child{ border-radius:12px 12px 0 0; }
+    .fcc-qa a:last-child, .fcc-qa button:last-child{ border-bottom:0; border-radius:0 0 12px 12px; }
+    .fcc-qa a:only-child, .fcc-qa button:only-child{ border-radius:12px; }
+    .fcc-qa a:hover, .fcc-qa button:hover{
+      background:rgba(34,197,94,.08);
+      color:#fff;
+    }
+    .fcc-qa a::after, .fcc-qa button::after{
+      content:"›";
+      opacity:.45;
+      font-size:16px;
+    }
+    .fcc-lower-grid{
+      display:grid;
+      grid-template-columns:1fr;
+      grid-template-areas:
+        "perf"
+        "bank"
+        "stripe";
+      gap:14px;
+      margin-bottom:14px;
+    }
+    @media (min-width: 900px){
+      .fcc-lower-grid{
+        grid-template-columns:1.1fr 1fr .95fr;
+        grid-template-areas:
+          "perf perf perf"
+          "bank bank stripe";
+      }
+    }
+    .fcc-perf-wrap{ grid-area:perf; }
+    .fcc-bank-wrap{ grid-area:bank; }
+    .fcc-stripe-wrap{ grid-area:stripe; }
+    .fcc-perf-table-wrap{
+      overflow:auto;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.08);
+    }
+    .fcc-perf-table{
+      width:100%;
+      border-collapse:collapse;
+      font-size:13px;
+    }
+    .fcc-perf-table caption{
+      caption-side:bottom;
+      text-align:left;
+      padding:10px 12px 0;
+      font-size:11px;
+      color:rgba(148,163,184,.78);
+    }
+    .fcc-perf-table th, .fcc-perf-table td{
+      padding:11px 14px;
+      text-align:right;
+      border-bottom:1px solid rgba(255,255,255,.06);
+    }
+    .fcc-perf-table th:first-child, .fcc-perf-table td:first-child{
+      text-align:left;
+    }
+    .fcc-perf-table th{
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      color:rgba(148,163,184,.9);
+      font-weight:750;
+      background:rgba(5,8,16,.45);
+    }
+    .fcc-perf-table tbody tr:last-child td{ border-bottom:0; }
+    .fcc-perf-table td{ color:rgba(248,250,252,.92); }
+    .fcc-perf-table td.muted{ color:rgba(148,163,184,.65); }
+    .fcc-stripe-panel .fcc-stripe-dl{
+      display:grid;
+      gap:10px;
+      margin:12px 0 16px;
+    }
+    .fcc-stripe-panel .fcc-stripe-dl div{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      font-size:13px;
+      padding:8px 0;
+      border-bottom:1px solid rgba(255,255,255,.06);
+    }
+    .fcc-stripe-panel .fcc-stripe-dl dt{
+      margin:0;
+      color:rgba(148,163,184,.9);
+    }
+    .fcc-stripe-panel .fcc-stripe-dl dd{
+      margin:0;
+      font-weight:700;
+      color:rgba(248,250,252,.95);
+    }
+    .fcc-strip.fcc-strip-tight{
+      grid-template-columns:repeat(3, 1fr);
+    }
+    body[data-role="dashboard"] .strip-card.fcc-strip-card{
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.1);
+      background:rgba(5,8,16,.5);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+    }
+    body[data-role="dashboard"] .strip-card.fcc-strip-card .big{
+      font-size:24px;
+      letter-spacing:-.02em;
+    }
+    .fcc-kpi-deck{
+      display:grid;
+      grid-template-columns:repeat(3, minmax(0, 1fr));
+      gap:12px;
+    }
+    @media (max-width: 900px){
+      .fcc-kpi-deck{ grid-template-columns:1fr 1fr; }
+    }
+    @media (max-width: 600px){
+      .fcc-kpi-deck{ grid-template-columns:1fr; }
+    }
+    .fcc-kpi-card{
+      position:relative;
+      padding:14px 14px 16px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.09);
+      background:rgba(5,8,16,.42);
+      overflow:hidden;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .fcc-kpi-card::before{
+      content:"";
+      position:absolute;
+      top:0; left:0; right:0;
+      height:3px;
+      opacity:.85;
+    }
+    .fcc-kpi-card.fcc-kpi--expense::before{ background:linear-gradient(90deg, #f87171, #fbbf24); }
+    .fcc-kpi-card.fcc-kpi--profit::before{ background:linear-gradient(90deg, #22c55e, #4ade80); }
+    .fcc-kpi-card.fcc-kpi--savings::before{ background:linear-gradient(90deg, #38bdf8, #818cf8); }
+    .fcc-kpi-card.fcc-kpi--tax::before{ background:linear-gradient(90deg, #a78bfa, #c084fc); }
+    .fcc-kpi-card.fcc-kpi--total::before{ background:linear-gradient(90deg, #22c55e, #3b82f6); }
+    .fcc-kpi-card.fcc-kpi--progress::before{ background:linear-gradient(90deg, #f59e0b, #eab308); }
+    .fcc-kpi-top{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:8px;
+    }
+    .fcc-kpi-icon{
+      width:34px;
+      height:34px;
+      border-radius:10px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:11px;
+      font-weight:900;
+      letter-spacing:.04em;
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(255,255,255,.05);
+      color:rgba(248,250,252,.88);
+    }
+    .fcc-kpi-card .label{
+      font-size:12px;
+      font-weight:700;
+      color:rgba(203,213,225,.95);
+      line-height:1.3;
+    }
+    .fcc-kpi-card .value{
+      font-size:clamp(20px, 2.4vw, 26px);
+      font-weight:900;
+      letter-spacing:-.03em;
+      margin:6px 0 4px;
+      color:rgba(248,250,252,.98);
+    }
+    .fcc-kpi-card .meta{
+      font-size:12px;
+      line-height:1.4;
+      color:rgba(148,163,184,.88);
+    }
+    .fcc-kpi-spark{
+      margin-top:12px;
+      height:28px;
+      border-radius:8px;
+      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
+      border:1px solid rgba(255,255,255,.06);
+      position:relative;
+      overflow:hidden;
+    }
+    .fcc-kpi-spark::after{
+      content:"";
+      position:absolute;
+      left:6%; bottom:8px; right:6%;
+      height:2px;
+      border-radius:2px;
+      background:linear-gradient(90deg, transparent, rgba(34,197,94,.35), rgba(34,197,94,.55), rgba(34,197,94,.25), transparent);
+      opacity:.7;
+    }
+    .fcc-kpi-card.fcc-kpi--expense .fcc-kpi-spark::after{
+      background:linear-gradient(90deg, transparent, rgba(248,113,113,.3), rgba(251,191,36,.45), transparent);
+    }
+    .fcc-section-head h2{
+      font-size:18px;
+      font-weight:900;
+      letter-spacing:-.02em;
+    }
+    .fcc-bank-wrap .section-head h2{ font-size:17px; font-weight:850; }
+    .fcc-alerts.msg-list li{
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.07);
+      background:rgba(255,255,255,.02);
+      margin-bottom:8px;
+    }
+    .fcc-stack .card{ margin-top:14px; }
+    .fcc-stack .card:first-child{ margin-top:0; }
+    @media (max-width: 980px){
+      .fcc-hero-inner{ grid-template-columns:1fr; }
+      .fcc-hero-aside{ align-items:stretch; max-width:none; }
+      .fcc-hero-viz{ max-width:none; min-height:160px; }
+      .fcc-main-grid{ grid-template-columns:1fr; }
+      .fcc-cf-footer{ grid-template-columns:1fr; }
+    }
+  </style>
 </head>
 <body data-role="dashboard" data-requires-auth="true">
   <div class="topbar">
@@ -31,43 +611,172 @@
     </div>
   </div>
 
-  <div class="container">
+  <div class="container fcc-page">
     <div class="account-pill" id="accountEmail">Cuenta activa</div>
-    <section class="owner-hero card">
-      <div class="card-inner owner-hero-inner">
-        <div>
-          <div class="eyebrow">Owner Finance Monitor</div>
-          <h2 class="hero-title">Caja real antes que utilidades en papel.</h2>
-          <p class="sub hero-copy">Esta pantalla existe para responder una sola pregunta: si hoy se detienen las ventas, cuanto tiempo sobrevive el negocio con dinero real en banco.</p>
+
+    <section class="card fcc-hero">
+      <div class="card-inner fcc-hero-inner">
+        <div class="fcc-hero-copy">
+          <span class="fcc-eyebrow">Owner · Live monitor</span>
+          <h2 class="fcc-hero-title">Financial Command Center</h2>
+          <p class="fcc-hero-sub">Panorama financiero y de rendimiento total del negocio.</p>
+          <div class="fcc-health-chip">
+            <span class="fcc-health-chip-label">Business health</span>
+            <span class="fcc-health-chip-value" id="overallHealth">0%</span>
+            <p class="fcc-health-chip-meta" id="overallHealthMeta">Esperando balances reales.</p>
+          </div>
         </div>
-        <div class="hero-score">
-          <div class="hero-score-label">Business health</div>
-          <div class="hero-score-value" id="overallHealth">0%</div>
-          <div class="hero-score-meta" id="overallHealthMeta">Esperando balances reales.</div>
+        <div class="fcc-hero-aside">
+          <div class="fcc-date-pill" id="fccDateRange" aria-hidden="true">Vista del mes · hasta hoy</div>
+          <div class="fcc-hero-viz" aria-hidden="true">
+            <svg viewBox="0 0 320 140" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="fccHeroGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="rgba(34,197,94,.25)"/>
+                  <stop offset="50%" stop-color="rgba(34,197,94,.95)"/>
+                  <stop offset="100%" stop-color="rgba(59,130,246,.75)"/>
+                </linearGradient>
+              </defs>
+              <path class="fcc-hero-line" d="M8 112 L52 96 L96 102 L140 78 L176 88 L220 58 L262 68 L308 42" />
+            </svg>
+          </div>
         </div>
       </div>
     </section>
 
-    <div class="owner-grid">
-      <section class="card">
-        <div class="card-inner">
-          <div class="section-head">
-            <div>
-              <h2>Executive Snapshot</h2>
-              <div class="sub">Semaforo financiero por cuenta y panorama total del negocio.</div>
-            </div>
-            <div class="badge green" id="syncBadge">Manual mode</div>
+    <section class="card fcc-panel fcc-snapshot">
+      <div class="card-inner">
+        <div class="section-head fcc-section-head">
+          <div>
+            <h2>Executive snapshot</h2>
+            <div class="sub">Semaforo financiero por cuenta y panorama total del negocio.</div>
           </div>
-          <div class="dashboard-strip" id="executiveStrip"></div>
-          <div class="kpi dashboard-main-kpis" id="dashKpis"></div>
+          <div class="badge green" id="syncBadge">Manual mode</div>
+        </div>
+        <div class="dashboard-strip fcc-strip fcc-strip-tight" id="executiveStrip"></div>
+        <div class="dashboard-main-kpis fcc-kpi-deck" id="dashKpis"></div>
+      </div>
+    </section>
+
+    <div class="fcc-main-grid">
+      <section class="card fcc-panel">
+        <div class="card-inner">
+          <div class="fcc-panel-head">
+            <h2>Cash flow overview</h2>
+            <div class="fcc-panel-sub">Liquidez operativa desde el monitor guardado; cobranza del hub cuando esta disponible.</div>
+          </div>
+          <div class="fcc-chart-shell">
+            <svg class="fcc-chart-svg" viewBox="0 0 400 120" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <defs>
+                <linearGradient id="fccAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="rgba(34,197,94,0.35)"/>
+                  <stop offset="100%" stop-color="rgba(34,197,94,0)"/>
+                </linearGradient>
+              </defs>
+              <path fill="url(#fccAreaGrad)" d="M0 100 L40 88 L90 92 L140 70 L190 78 L240 55 L290 62 L340 48 L400 40 L400 120 L0 120 Z"/>
+              <path fill="none" stroke="rgba(34,197,94,.85)" stroke-width="2" d="M0 100 L40 88 L90 92 L140 70 L190 78 L240 55 L290 62 L340 48 L400 40"/>
+            </svg>
+            <div class="fcc-chart-metrics">
+              <div class="fcc-chart-metric">
+                <span class="label">Net liquidity (saved)</span>
+                <strong id="fccCfNetLiquidity">—</strong>
+              </div>
+            </div>
+          </div>
+          <div class="fcc-cf-footer">
+            <div class="fcc-mini-metric fcc-mini-metric--in">
+              <span class="t">Cash in (paid hub)</span>
+              <strong id="fccCfCashIn">—</strong>
+              <span class="hint" id="fccCfCashInHint">Se completa al cargar cartera en el hub.</span>
+            </div>
+            <div class="fcc-mini-metric fcc-mini-metric--out">
+              <span class="t">Monthly burn</span>
+              <strong id="fccCfCashOut">—</strong>
+              <span class="hint">Monthly operating cost del monitor.</span>
+            </div>
+            <div class="fcc-mini-metric fcc-mini-metric--net">
+              <span class="t">Total cash on hand</span>
+              <strong id="fccCfNetCash">—</strong>
+              <span class="hint">Suma de los cuatro buckets guardados.</span>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section class="card">
+      <section class="card fcc-panel">
+        <div class="card-inner">
+          <div class="fcc-panel-head">
+            <h2>Profit breakdown</h2>
+            <div class="fcc-panel-sub">Relacion visual entre balance operativo y balance de profit en el monitor (no incluye ahorros ni impuestos).</div>
+          </div>
+          <div id="fccDonutRoot" class="fcc-donut-wrap" style="--fcc-profit-deg:180deg;">
+            <div class="fcc-donut-ring" aria-hidden="true"></div>
+            <div class="fcc-donut-center">
+              <div class="big" id="fccDonutCenterLabel">—</div>
+              <div class="small">Profit bucket</div>
+            </div>
+          </div>
+          <ul class="fcc-legend" id="fccProfitLegend"></ul>
+        </div>
+      </section>
+
+      <aside class="fcc-rail">
+        <section class="card fcc-panel">
+          <div class="card-inner">
+            <h3>Quick actions</h3>
+            <nav class="fcc-qa" aria-label="Acciones rapidas">
+              <a href="/estimates-invoices">Generate financial report</a>
+              <a href="#fcc-bank-console">Import bank data</a>
+              <a href="#fcc-bank-console">Sync Stripe payouts</a>
+              <a href="owner.html">Manage budgets</a>
+            </nav>
+          </div>
+        </section>
+        <section class="card fcc-panel">
+          <div class="card-inner">
+            <div class="section-head" style="margin-bottom:10px;">
+              <div>
+                <h2 style="margin:0 0 6px;font-size:15px;">Alerts &amp; insights</h2>
+                <div class="sub">Alertas desde la cartera del hub cuando hay datos.</div>
+              </div>
+              <a class="btn" href="/estimates-invoices">Resolve in Hub</a>
+            </div>
+            <ul class="msg-list fcc-alerts" id="dashboardOwnerAlerts"></ul>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <div class="fcc-lower-grid">
+      <section class="card fcc-panel fcc-perf-wrap">
+        <div class="card-inner">
+          <div class="fcc-panel-head">
+            <h2>Financial performance</h2>
+            <div class="fcc-panel-sub">Comparacion ejecutiva: solo se rellenan celdas con datos reales del monitor o del hub.</div>
+          </div>
+          <div class="fcc-perf-table-wrap">
+            <table class="fcc-perf-table">
+              <thead>
+                <tr>
+                  <th scope="col">Metric</th>
+                  <th scope="col">MTD</th>
+                  <th scope="col">Last month</th>
+                  <th scope="col">Change</th>
+                  <th scope="col">YTD</th>
+                </tr>
+              </thead>
+              <tbody id="fccPerfTbody"></tbody>
+              <caption>MTD / last month / change / YTD: pendiente de series temporales; valores mostrados son instantaneos del monitor o del hub donde aplica.</caption>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="card fcc-bank-wrap" id="fcc-bank-console">
         <div class="card-inner">
           <div class="section-head">
             <div>
-              <h2>Bank Balance Console</h2>
+              <h2>Bank accounts</h2>
               <div class="sub">Carga saldos reales de las cuatro cuentas clave del dueno.</div>
             </div>
           </div>
@@ -141,9 +850,26 @@
           </div>
         </div>
       </section>
+
+      <section class="card fcc-panel fcc-stripe-wrap fcc-stripe-panel">
+        <div class="card-inner">
+          <div class="fcc-panel-head">
+            <h2>Stripe overview</h2>
+            <div class="fcc-panel-sub">Resumen ejecutivo; detalle de cuenta y payouts en el dashboard de Stripe.</div>
+          </div>
+          <dl class="fcc-stripe-dl" aria-label="Stripe snapshot">
+            <div><dt>Connected account</dt><dd id="fccStripeConnected">—</dd></div>
+            <div><dt>Available balance</dt><dd id="fccStripeAvailable">—</dd></div>
+            <div><dt>Last payout</dt><dd id="fccStripeLastPayout">—</dd></div>
+            <div><dt>Next payout</dt><dd id="fccStripeNextPayout">—</dd></div>
+          </dl>
+          <p class="sub" id="fccStripeNote" style="margin-bottom:12px;">Los payouts y balances live no se exponen aqui todavia; usa Stripe para operar.</p>
+          <a class="btn primary" href="https://dashboard.stripe.com" target="_blank" rel="noopener noreferrer">Go to Stripe Dashboard</a>
+        </div>
+      </section>
     </div>
 
-    <section class="card" style="margin-top:14px;">
+    <section class="card fcc-stack">
       <div class="card-inner">
         <div class="section-head">
           <div>
@@ -160,20 +886,7 @@
       </div>
     </section>
 
-    <section class="card" style="margin-top:14px;">
-      <div class="card-inner">
-        <div class="section-head">
-          <div>
-            <h2>Owner Alerts</h2>
-            <div class="sub">Alertas cortas para decidir hoy sin recorrer toda la cartera.</div>
-          </div>
-          <a class="btn" href="/estimates-invoices">Resolve in Hub</a>
-        </div>
-        <ul class="msg-list" id="dashboardOwnerAlerts"></ul>
-      </div>
-    </section>
-
-    <section class="card" style="margin-top:14px;">
+    <section class="card fcc-stack">
       <div class="card-inner">
         <div class="section-head">
           <div>
@@ -192,7 +905,7 @@
       </div>
     </section>
 
-    <section class="card" style="margin-top:14px;">
+    <section class="card fcc-stack">
       <div class="card-inner">
         <div class="section-head">
           <div>
@@ -205,7 +918,7 @@
       </div>
     </section>
 
-    <section class="card" style="margin-top:14px;">
+    <section class="card fcc-stack">
       <div class="card-inner">
         <div class="section-head">
           <div>
@@ -218,7 +931,7 @@
       </div>
     </section>
 
-    <section class="card" style="margin-top:14px;">
+    <section class="card fcc-stack">
       <div class="card-inner">
         <div class="section-head">
           <div>
@@ -234,7 +947,7 @@
       </div>
     </section>
 
-    <section class="card" style="margin-top:14px;">
+    <section class="card fcc-stack">
       <div class="card-inner">
         <div class="section-head">
           <div>
@@ -247,7 +960,7 @@
       </div>
     </section>
 
-    <section class="card" style="margin-top:14px;">
+    <section class="card fcc-stack">
       <div class="card-inner">
         <div class="section-head">
           <div>
@@ -260,7 +973,7 @@
       </div>
     </section>
 
-    <section class="card" style="margin-top:14px;">
+    <section class="card fcc-stack">
       <div class="card-inner">
         <div class="section-head">
           <div>
@@ -273,7 +986,7 @@
       </div>
     </section>
 
-    <section class="card" style="margin-top:14px;">
+    <section class="card fcc-stack">
       <div class="card-inner">
         <div class="section-head">
           <div>
@@ -286,7 +999,7 @@
       </div>
     </section>
 
-    <section class="card" style="margin-top:14px;">
+    <section class="card fcc-stack">
       <div class="card-inner">
         <div class="section-head">
           <div>
@@ -314,5 +1027,3 @@
   <script src="/js/bank-connection.js"></script>
 </body>
 </html>
-
-
