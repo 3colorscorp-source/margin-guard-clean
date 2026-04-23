@@ -273,12 +273,24 @@ exports.handler = async (event) => {
     let claimed = false;
     try {
       const path = `quotes?public_token=eq.${encodeURIComponent(public_token)}&first_view_tracked_at=is.null`;
+      console.log("[DEBUG TOKEN CHECK]", {
+        incoming_public_token: public_token,
+        type: typeof public_token,
+        length: public_token ? public_token.length : null
+      });
+      const SUPABASE_URL = process.env.SUPABASE_URL;
+      console.log("[DEBUG SUPABASE URL]", SUPABASE_URL);
       const rows = await supabaseRequest(path, {
         method: "PATCH",
         body: {
           first_view_tracked_at: nowIso,
           followup_sequence_started_at: nowIso
         }
+      });
+      const data = rows;
+      console.log("[DEBUG PATCH RESPONSE]", {
+        data,
+        count: Array.isArray(data) ? data.length : null
       });
       claimed = Array.isArray(rows) && rows.length > 0;
       if (claimed) {
