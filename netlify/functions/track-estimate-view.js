@@ -92,8 +92,13 @@ exports.handler = async (event) => {
       return json(200, { ok: true, forwarded: false, already_tracked: true });
     }
 
+    const claimedRow = rows[0] && typeof rows[0] === "object" ? rows[0] : {};
+    /** Same `quotes.status` as public estimate API (`get-public-estimate` → estimate.status). Snapshot at claim time. */
+    const quote_status = pickStr(claimedRow.status, 80);
+
     const outbound = {
       client_email,
+      quote_status,
       to_name: pickStr(raw.to_name, 200),
       public_quote_url: pickStr(raw.public_quote_url, 2000),
       business_name: pickStr(raw.business_name, 300),
