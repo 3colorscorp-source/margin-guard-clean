@@ -868,9 +868,12 @@
         }
 
         var token = new URLSearchParams(window.location.search).get("token") || "";
-        var key = token ? "mg_view_tracked_" + token : "";
+        if (!token) {
+          return;
+        }
+        var key = "mg_view_tracked_" + token;
         try {
-          if (key && localStorage.getItem(key)) {
+          if (localStorage.getItem(key)) {
             console.log("Tracking already sent, skipping");
             viewTrackSent = true;
             return;
@@ -889,6 +892,7 @@
         }
 
         var payload = {
+          public_token: token,
           client_email: client_email,
           to_name: pickStr(est.client_name),
           public_quote_url: public_quote_url,
@@ -907,12 +911,18 @@
           keepalive: true
         })
           .then(function (res) {
-            if (res && res.ok && key) {
-              try {
+            if (!res || !res.ok || !res.json) return {};
+            return res.json().catch(function () {
+              return {};
+            });
+          })
+          .then(function (data) {
+            try {
+              if (data && (data.forwarded === true || data.already_tracked === true)) {
                 localStorage.setItem(key, "1");
-              } catch (_e2) {
-                /* ignore */
               }
+            } catch (_e2) {
+              /* ignore */
             }
           })
           .catch(function () {});

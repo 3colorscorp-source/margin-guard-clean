@@ -3,6 +3,8 @@ if (!fetch) {
   throw new Error("Global fetch is not available in this runtime.");
 }
 
+const { supabaseRequest } = require("./_lib/supabase-admin");
+
 const OPS = "track-estimate-view";
 
 function json(statusCode, body) {
@@ -19,10 +21,18 @@ function pickStr(v, maxLen) {
   return s.length > maxLen ? s.slice(0, maxLen) : s;
 }
 
+/** Same rules as get-public-estimate token validation. */
+function normalizePublicToken(raw) {
+  const t = raw == null ? "" : String(raw).trim();
+  if (!t || t.length < 10 || t.length > 256) return "";
+  if (!/^[a-zA-Z0-9_]+$/.test(t)) return "";
+  return t;
+}
+
 /**
- * Public estimate view → Zapier (server-side URL only).
- * Body: { client_email (or clientEmail), to_name, public_quote_url, business_name, tenant_email, owner_alert_email, additional_recipients }
- * Requires ZAPIER_ESTIMATE_VIEW_WEBHOOK_URL in Netlify env (never committed).
+ * Public estimate view → claim row once → Zapier (server-side URL only).
+ * Body: { public_token (or token / publicToken), client_email (or clientEmail), ... }
+ * Dedupe: PATCH quotes WHERE public_token = ? AND first_view_tracked_at IS NULL; forward only if a row was updated.
  */
 exports.handler = async (event) => {
   try {
@@ -50,6 +60,38 @@ exports.handler = async (event) => {
       return json(400, { error: "client_email required" });
     }
 
+    const public_token = normalizePublicToken(
+      pickStr(raw.public_token, 256) || pickStr(raw.token, 256) || pickStr(raw.publicToken, 256)
+    );
+    if (!public_token) {
+      console.warn("[track-estimate-view] missing public_token; cannot dedupe server-side");
+      return json(200, { ok: true, forwarded: false, reason: "no_public_token" });
+    }
+
+    const nowIso = new Date().toISOString();
+    let claimed = false;
+    try {
+      const path = `quotes?public_token=eq.${encodeURIComponent(public_token)}&first_view_tracked_at=is.null`;
+      const rows = await supabaseRequest(path, {
+        method: "PATCH",
+        body: {
+          first_view_tracked_at: nowIso,
+          followup_sequence_started_at: nowIso
+        }
+      });
+      claimed = Array.isArray(rows) && rows.length > 0;
+    } catch (err) {
+      console.warn("[track-estimate-view] claim failed", {
+        message: err && err.message ? String(err.message).slice(0, 500) : "unknown"
+      });
+      return json(200, { ok: true, forwarded: false, reason: "claim_error" });
+    }
+
+    if (!claimed) {
+      console.info(`[${OPS}] skip forward (already tracked or no matching quote)`);
+      return json(200, { ok: true, forwarded: false, already_tracked: true });
+    }
+
     const outbound = {
       client_email,
       to_name: pickStr(raw.to_name, 200),
@@ -62,8 +104,8 @@ exports.handler = async (event) => {
 
     const webhookUrl = String(process.env.ZAPIER_ESTIMATE_VIEW_WEBHOOK_URL || "").trim();
     if (!webhookUrl) {
-      console.info(`[${OPS}] skipped (ZAPIER_ESTIMATE_VIEW_WEBHOOK_URL unset)`);
-      return json(200, { ok: true, forwarded: false });
+      console.info(`[${OPS}] skipped (ZAPIER_ESTIMATE_VIEW_WEBHOOK_URL unset); claim already written`);
+      return json(200, { ok: true, forwarded: false, claimed: true });
     }
 
     console.log("[track-estimate-view] outbound to Zapier:", outbound);
@@ -76,10 +118,10 @@ exports.handler = async (event) => {
 
     if (!resp.ok) {
       console.warn(`[${OPS}] upstream non-OK`, { status: resp.status });
-      return json(200, { ok: true, forwarded: false });
+      return json(200, { ok: true, forwarded: false, claimed: true });
     }
 
-    return json(200, { ok: true, forwarded: true });
+    return json(200, { ok: true, forwarded: true, claimed: true });
   } catch (err) {
     console.warn(`[${OPS}] error`, { message: err && err.message ? String(err.message).slice(0, 200) : "unknown" });
     return json(200, { ok: true, forwarded: false });
