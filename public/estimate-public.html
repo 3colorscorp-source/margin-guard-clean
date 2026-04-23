@@ -841,13 +841,31 @@
         return v == null || v === undefined ? "" : String(v).trim();
       }
 
+      /**
+       * Primary: window.__mgPublicEstimateLast.client_email (API quote row).
+       * Fallbacks: customer_email on estimate, then visible #publicEstimateCustomer (same as render path).
+       */
+      function resolveClientEmailForTracking(est) {
+        var fromRow = pickStr(est.client_email);
+        if (fromRow) return fromRow;
+        var alt = pickStr(est.customer_email);
+        if (alt) return alt;
+        var customerBlock = document.getElementById("publicEstimateCustomer");
+        var text = customerBlock ? String(customerBlock.innerText || "") : "";
+        var match = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+        return match ? match[0].trim() : "";
+      }
+
       function trySendPublicViewTrackOnce() {
         if (viewTrackSent) return;
         var est = window.__mgPublicEstimateLast;
         if (!est || typeof est !== "object") return;
 
-        var client_email = pickStr(est.client_email);
-        if (!client_email) return;
+        var client_email = resolveClientEmailForTracking(est);
+        if (!client_email) {
+          console.warn("Missing client_email in estimate tracking payload");
+          return;
+        }
 
         viewTrackSent = true;
 
@@ -867,6 +885,8 @@
           owner_alert_email: pickStr(est.owner_alert_email),
           additional_recipients: pickStr(est.additional_recipients)
         };
+
+        console.log("Tracking payload:", payload);
 
         fetch(TRACK_VIEW_ENDPOINT, {
           method: "POST",

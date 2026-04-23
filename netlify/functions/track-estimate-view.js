@@ -21,7 +21,7 @@ function pickStr(v, maxLen) {
 
 /**
  * Public estimate view → Zapier (server-side URL only).
- * Body: { client_email, to_name, public_quote_url, business_name, tenant_email, owner_alert_email, additional_recipients }
+ * Body: { client_email (or clientEmail), to_name, public_quote_url, business_name, tenant_email, owner_alert_email, additional_recipients }
  * Requires ZAPIER_ESTIMATE_VIEW_WEBHOOK_URL in Netlify env (never committed).
  */
 exports.handler = async (event) => {
@@ -42,8 +42,11 @@ exports.handler = async (event) => {
       return json(400, { error: "Invalid JSON" });
     }
 
-    const client_email = pickStr(raw.client_email, 320);
+    console.log("[track-estimate-view] received payload (raw keys):", Object.keys(raw));
+
+    const client_email = pickStr(raw.client_email, 320) || pickStr(raw.clientEmail, 320);
     if (!client_email) {
+      console.warn("[track-estimate-view] missing client_email after parse");
       return json(400, { error: "client_email required" });
     }
 
@@ -62,6 +65,8 @@ exports.handler = async (event) => {
       console.info(`[${OPS}] skipped (ZAPIER_ESTIMATE_VIEW_WEBHOOK_URL unset)`);
       return json(200, { ok: true, forwarded: false });
     }
+
+    console.log("[track-estimate-view] outbound to Zapier:", outbound);
 
     const resp = await fetch(webhookUrl, {
       method: "POST",
