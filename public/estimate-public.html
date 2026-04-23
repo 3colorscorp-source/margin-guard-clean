@@ -917,6 +917,10 @@
             });
           })
           .then(function (data) {
+            if (data && data.skipped === "preview") {
+              viewTrackSent = false;
+              return;
+            }
             try {
               if (data && (data.forwarded === true || data.already_tracked === true)) {
                 localStorage.setItem(key, "1");

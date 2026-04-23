@@ -29,6 +29,110 @@ function normalizePublicToken(raw) {
   return t;
 }
 
+function headerValue(v) {
+  if (v == null) return "";
+  if (Array.isArray(v)) return String(v[0] || "").trim();
+  return String(v).trim();
+}
+
+/** Netlify may pass mixed-case keys; normalize for lookups. */
+function lowerHeaderMap(headers) {
+  const out = {};
+  if (!headers || typeof headers !== "object") return out;
+  for (const [k, v] of Object.entries(headers)) {
+    out[String(k).toLowerCase()] = headerValue(v);
+  }
+  return out;
+}
+
+/**
+ * Block link-preview crawlers and non-browser POSTs from consuming the one-time DB claim.
+ *
+ * Note: real tracking uses `fetch()` from estimate-public.html. Browsers send
+ * Sec-Fetch-Mode `cors` or `same-origin` and Sec-Fetch-Dest `empty` — not `navigate`/`document`
+ * (those apply to top-level document navigations). We allow both navigate+document and
+ * cors/same-origin+empty so previews cannot masquerade as our fetch while humans still pass.
+ */
+function previewOrBotSkipReason(h) {
+  const ua = pickStr(h["user-agent"], 4000).toLowerCase();
+  if (!ua) return "no_user_agent";
+
+  const botSubstrings = [
+    "googlebot",
+    "adsbot-google",
+    "mediapartners-google",
+    "feedfetcher-google",
+    "google-read-aloud",
+    "googleimageproxy",
+    "google-web-preview",
+    "google page renderer",
+    "google-structured-data-testing-tool",
+    "apis-google",
+    "bingbot",
+    "bingpreview",
+    "msnbot",
+    "slackbot",
+    "twitterbot",
+    "facebookexternalhit",
+    "facebot",
+    "linkedinbot",
+    "whatsapp",
+    "discordbot",
+    "telegrambot",
+    "pinterest",
+    "embedly",
+    "quora link preview",
+    "skypeuripreview",
+    "vkshare",
+    "redditbot",
+    "yandexbot",
+    "baiduspider",
+    "duckduckbot",
+    "applebot",
+    "amazonbot",
+    "bytespider",
+    "petalbot",
+    "semrushbot",
+    "ahrefsbot",
+    "dotbot",
+    "headlesschrome",
+    "headless",
+    "puppeteer",
+    "playwright",
+    "phantomjs",
+    "ia_archiver",
+    "python-requests",
+    "axios/",
+    "go-http-client",
+    "apache-httpclient",
+    "libwww-perl",
+    "aiohttp"
+  ];
+  for (const b of botSubstrings) {
+    if (ua.includes(b)) return "bot_user_agent";
+  }
+  if (/^curl\//i.test(ua) || /^wget\//i.test(ua) || /^scrapy/i.test(ua)) return "bot_user_agent";
+
+  const purpose = `${h["sec-purpose"] || ""} ${h["purpose"] || ""}`.toLowerCase();
+  if (purpose.includes("prefetch")) return "prefetch_purpose";
+
+  const mode = pickStr(h["sec-fetch-mode"], 64).toLowerCase();
+  const dest = pickStr(h["sec-fetch-dest"], 64).toLowerCase();
+
+  if (mode || dest) {
+    const okTopLevelNav = mode === "navigate" && dest === "document";
+    const okBrowserFetch =
+      (mode === "cors" || mode === "same-origin") && (dest === "empty" || dest === "");
+    const okFetchModeOnly = (mode === "cors" || mode === "same-origin") && !dest;
+
+    if (!okTopLevelNav && !okBrowserFetch && !okFetchModeOnly) {
+      return "fetch_metadata";
+    }
+  }
+
+  return "";
+}
+
 /**
  * Public estimate view → claim row once → Zapier (server-side URL only).
  * Body: { public_token (or token / publicToken), client_email (or clientEmail), ... }
@@ -38,6 +142,19 @@ exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
       return json(405, { error: "Method not allowed" });
+    }
+
+    const hdrs = lowerHeaderMap(event.headers || {});
+    const skipReason = previewOrBotSkipReason(hdrs);
+    if (skipReason) {
+      console.info(`[${OPS}] skipped preview/bot traffic`, {
+        reason: skipReason,
+        sec_fetch_mode: pickStr(hdrs["sec-fetch-mode"], 64),
+        sec_fetch_dest: pickStr(hdrs["sec-fetch-dest"], 64),
+        sec_fetch_site: pickStr(hdrs["sec-fetch-site"], 64),
+        ua_snippet: pickStr(hdrs["user-agent"], 120)
+      });
+      return json(200, { ok: true, skipped: "preview" });
     }
 
     let raw = {};
