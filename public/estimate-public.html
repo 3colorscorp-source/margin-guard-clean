@@ -867,6 +867,18 @@
           return;
         }
 
+        var token = new URLSearchParams(window.location.search).get("token") || "";
+        var key = token ? "mg_view_tracked_" + token : "";
+        try {
+          if (key && localStorage.getItem(key)) {
+            console.log("Tracking already sent, skipping");
+            viewTrackSent = true;
+            return;
+          }
+        } catch (_ls) {
+          /* localStorage unavailable (e.g. private mode) */
+        }
+
         viewTrackSent = true;
 
         var public_quote_url = "";
@@ -893,7 +905,17 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
           keepalive: true
-        }).catch(function () {});
+        })
+          .then(function (res) {
+            if (res && res.ok && key) {
+              try {
+                localStorage.setItem(key, "1");
+              } catch (_e2) {
+                /* ignore */
+              }
+            }
+          })
+          .catch(function () {});
       }
 
       window.__mgOnPublicEstimateRefresh = function () {
