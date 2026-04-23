@@ -144,6 +144,61 @@ exports.handler = async (event) => {
       return json(405, { error: "Method not allowed" });
     }
 
+    const headers = event.headers || {};
+
+    const debugHeaders = {
+      user_agent: headers["user-agent"] || null,
+      referer: headers["referer"] || headers["referrer"] || null,
+      sec_fetch_site: headers["sec-fetch-site"] || null,
+      sec_fetch_mode: headers["sec-fetch-mode"] || null,
+      sec_fetch_dest: headers["sec-fetch-dest"] || null,
+      sec_fetch_user: headers["sec-fetch-user"] || null,
+      x_forwarded_for: headers["x-forwarded-for"] || null
+    };
+
+    const ua = String(headers["user-agent"] || "").toLowerCase();
+    const secFetchUser = headers["sec-fetch-user"];
+    const secFetchMode = headers["sec-fetch-mode"];
+    const secFetchDest = headers["sec-fetch-dest"];
+    /** Top-level navigation, or real `fetch()` from estimate-public (cors/same-origin + empty dest), or legacy clients with no Fetch Metadata. */
+    const isTopNavUser = secFetchUser === "?1" && secFetchMode === "navigate";
+    const isBrowserFetch =
+      (secFetchMode === "cors" || secFetchMode === "same-origin") &&
+      (!secFetchDest || secFetchDest === "empty");
+    const isLegacyNoFetchMetadata = !secFetchMode && !secFetchDest;
+    const isRealUserNavigation = isTopNavUser || isBrowserFetch || isLegacyNoFetchMetadata;
+    /** Targeted tokens only — do not use bare "google"/"bing" (would match Chrome/Edge). */
+    const isBot =
+      ua.includes("googleimageproxy") ||
+      ua.includes("googlebot") ||
+      ua.includes("google-read-aloud") ||
+      ua.includes("google-web-preview") ||
+      ua.includes("apis-google") ||
+      ua.includes("feedfetcher-google") ||
+      ua.includes("mediapartners-google") ||
+      ua.includes("bingpreview") ||
+      ua.includes("bingbot") ||
+      ua.includes("yahoo! slurp") ||
+      ua.includes("slackbot") ||
+      ua.includes("discordbot") ||
+      ua.includes("facebookexternalhit") ||
+      ua.includes("linkedinbot") ||
+      ua.includes("embedly") ||
+      ua.includes("quora link preview") ||
+      ua.includes("skypeuripreview") ||
+      (ua.includes("gmail") && ua.includes("image")) ||
+      /\bweb.?preview\b/i.test(ua) ||
+      /\bheadless\b/i.test(ua) ||
+      /\bpython-requests\b/.test(ua) ||
+      /^curl\//i.test(ua) ||
+      /^wget\//i.test(ua);
+    const shouldBlockClaim = !isRealUserNavigation || isBot;
+
+    console.log("[track-estimate-view] incoming request", {
+      debugHeaders,
+      timestamp: new Date().toISOString()
+    });
+
     const hdrs = lowerHeaderMap(event.headers || {});
     const skipReason = previewOrBotSkipReason(hdrs);
     if (skipReason) {
@@ -194,6 +249,26 @@ exports.handler = async (event) => {
       });
     }
 
+    console.log("[track-estimate-view] FIRST CLAIM ATTEMPT", {
+      public_token,
+      debugHeaders,
+      timestamp: new Date().toISOString()
+    });
+
+    if (shouldBlockClaim) {
+      console.log("[track-estimate-view] BLOCKED BOT / PREVIEW", {
+        public_token,
+        ua,
+        secFetchUser,
+        secFetchMode
+      });
+      return json(200, {
+        ok: true,
+        forwarded: false,
+        reason: "bot_blocked"
+      });
+    }
+
     const nowIso = new Date().toISOString();
     let claimed = false;
     try {
@@ -206,6 +281,13 @@ exports.handler = async (event) => {
         }
       });
       claimed = Array.isArray(rows) && rows.length > 0;
+      if (claimed) {
+        console.log("[track-estimate-view] FIRST CLAIM SUCCESS", {
+          public_token,
+          debugHeaders,
+          timestamp: new Date().toISOString()
+        });
+      }
     } catch (err) {
       console.warn("[track-estimate-view] claim failed", {
         message: err && err.message ? String(err.message).slice(0, 500) : "unknown"
@@ -215,6 +297,11 @@ exports.handler = async (event) => {
 
     if (!claimed) {
       console.info(`[${OPS}] skip forward (already tracked or no matching quote)`);
+      console.log("[track-estimate-view] ALREADY TRACKED", {
+        public_token,
+        debugHeaders,
+        timestamp: new Date().toISOString()
+      });
       return json(200, { ok: true, forwarded: false, already_tracked: true });
     }
 
