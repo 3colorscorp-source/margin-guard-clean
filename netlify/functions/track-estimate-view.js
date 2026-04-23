@@ -154,7 +154,12 @@ exports.handler = async (event) => {
         sec_fetch_site: pickStr(hdrs["sec-fetch-site"], 64),
         ua_snippet: pickStr(hdrs["user-agent"], 120)
       });
-      return json(200, { ok: true, skipped: "preview" });
+      return json(200, {
+        ok: true,
+        forwarded: false,
+        reason: "preview_skipped",
+        skipped: "preview"
+      });
     }
 
     let raw = {};
@@ -182,7 +187,11 @@ exports.handler = async (event) => {
     );
     if (!public_token) {
       console.warn("[track-estimate-view] missing public_token; cannot dedupe server-side");
-      return json(200, { ok: true, forwarded: false, reason: "no_public_token" });
+      return json(200, {
+        ok: true,
+        forwarded: false,
+        reason: "no_public_token"
+      });
     }
 
     const nowIso = new Date().toISOString();
@@ -227,25 +236,53 @@ exports.handler = async (event) => {
     const webhookUrl = String(process.env.ZAPIER_ESTIMATE_VIEW_WEBHOOK_URL || "").trim();
     if (!webhookUrl) {
       console.info(`[${OPS}] skipped (ZAPIER_ESTIMATE_VIEW_WEBHOOK_URL unset); claim already written`);
-      return json(200, { ok: true, forwarded: false, claimed: true });
+      return json(200, {
+        ok: true,
+        forwarded: false,
+        claimed: true,
+        reason: "env_missing"
+      });
     }
 
     console.log("[track-estimate-view] outbound to Zapier:", outbound);
 
-    const resp = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(outbound)
-    });
+    let resp;
+    try {
+      resp = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(outbound)
+      });
+    } catch (zapErr) {
+      console.warn(`[${OPS}] zapier fetch threw`, {
+        message: zapErr && zapErr.message ? String(zapErr.message).slice(0, 200) : "unknown"
+      });
+      return json(200, {
+        ok: true,
+        forwarded: false,
+        claimed: true,
+        reason: "zapier_fetch_error"
+      });
+    }
 
     if (!resp.ok) {
       console.warn(`[${OPS}] upstream non-OK`, { status: resp.status });
-      return json(200, { ok: true, forwarded: false, claimed: true });
+      return json(200, {
+        ok: true,
+        forwarded: false,
+        claimed: true,
+        reason: "zapier_non_ok",
+        zapier_status: resp.status
+      });
     }
 
     return json(200, { ok: true, forwarded: true, claimed: true });
   } catch (err) {
     console.warn(`[${OPS}] error`, { message: err && err.message ? String(err.message).slice(0, 200) : "unknown" });
-    return json(200, { ok: true, forwarded: false });
+    return json(200, {
+      ok: true,
+      forwarded: false,
+      reason: "unexpected_error"
+    });
   }
 };
