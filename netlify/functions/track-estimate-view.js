@@ -345,14 +345,16 @@ exports.handler = async (event) => {
 
     console.log("[track-estimate-view] outbound to Zapier:", outbound);
 
-    let resp;
+    console.log("[ZAPIER WEBHOOK SEND] starting", { public_token });
+    let res;
     try {
-      resp = await fetch(webhookUrl, {
+      res = await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(outbound)
       });
     } catch (zapErr) {
+      console.error("[ZAPIER WEBHOOK ERROR]", zapErr);
       console.warn(`[${OPS}] zapier fetch threw`, {
         message: zapErr && zapErr.message ? String(zapErr.message).slice(0, 200) : "unknown"
       });
@@ -364,16 +366,18 @@ exports.handler = async (event) => {
       });
     }
 
-    if (!resp.ok) {
-      console.warn(`[${OPS}] upstream non-OK`, { status: resp.status });
+    if (!res.ok) {
+      console.warn(`[${OPS}] upstream non-OK`, { status: res.status });
       return json(200, {
         ok: true,
         forwarded: false,
         claimed: true,
         reason: "zapier_non_ok",
-        zapier_status: resp.status
+        zapier_status: res.status
       });
     }
+
+    console.log("[ZAPIER WEBHOOK SEND] completed", { status: res.status });
 
     return json(200, { ok: true, forwarded: true, claimed: true });
   } catch (err) {
