@@ -857,23 +857,32 @@
       }
 
       function trySendPublicViewTrackOnce() {
-        if (viewTrackSent) return;
+        if (viewTrackSent) {
+          console.warn("track-estimate-view skipped:", "viewTrackSent");
+          return;
+        }
         var est = window.__mgPublicEstimateLast;
-        if (!est || typeof est !== "object") return;
+        if (!est || typeof est !== "object") {
+          console.warn("track-estimate-view skipped:", "no_estimate");
+          return;
+        }
 
         var client_email = resolveClientEmailForTracking(est);
         if (!client_email) {
+          console.warn("track-estimate-view skipped:", "missing_client_email");
           console.warn("Missing client_email in estimate tracking payload");
           return;
         }
 
         var token = new URLSearchParams(window.location.search).get("token") || "";
         if (!token) {
+          console.warn("track-estimate-view skipped:", "missing_token");
           return;
         }
         var key = "mg_view_tracked_" + token;
         try {
           if (localStorage.getItem(key)) {
+            console.warn("track-estimate-view skipped:", "localStorage_already_tracked");
             console.log("Tracking already sent, skipping");
             viewTrackSent = true;
             return;
@@ -903,6 +912,7 @@
         };
 
         console.log("Tracking payload:", payload);
+        console.log("Sending track-estimate-view fetch", payload);
 
         fetch(TRACK_VIEW_ENDPOINT, {
           method: "POST",
@@ -911,12 +921,14 @@
           keepalive: true
         })
           .then(function (res) {
+            console.log("track-estimate-view response status", res.status);
             if (!res || !res.ok || !res.json) return {};
             return res.json().catch(function () {
               return {};
             });
           })
           .then(function (data) {
+            console.log("track-estimate-view response data", data);
             if (data && data.skipped === "preview") {
               viewTrackSent = false;
               return;
@@ -929,7 +941,9 @@
               /* ignore */
             }
           })
-          .catch(function () {});
+          .catch(function (err) {
+            console.error("track-estimate-view fetch failed", err);
+          });
       }
 
       window.__mgOnPublicEstimateRefresh = function () {
