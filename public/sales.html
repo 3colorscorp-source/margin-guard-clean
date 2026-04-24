@@ -1203,12 +1203,26 @@
       }
 
 
-      function performStandaloneNewQuoteReset() {
-        const state = loadSalesState();
-        const signedStatus = document.getElementById('salesSignedStatus');
+      /**
+       * New Quote: replace persisted sales draft with a clean project slate.
+       * Preserves only tenant linkage (businessId / business_id). Does not touch mg_settings_v2 or branding cache.
+       */
+      function resetSalesQuoteStateForNewQuote() {
+        const prev = loadSalesState();
+        const preserved = {};
+        if (prev && typeof prev === 'object') {
+          if (prev.businessId != null && String(prev.businessId).trim() !== '') {
+            preserved.businessId = prev.businessId;
+          }
+          if (prev.business_id != null && String(prev.business_id).trim() !== '') {
+            preserved.business_id = prev.business_id;
+          }
+        }
+
         const fresh = {
-          ...state,
+          ...preserved,
           estimateNumber: '',
+          estimateStatus: 'draft',
           issueDate: '',
           expirationDate: '',
           dueDate: '',
@@ -1219,10 +1233,9 @@
           customerPhone: '',
           location: '',
           price: '',
-          offeredPrice: '',
+          offeredPrice: 0,
           messageToClient: '',
           notes: '',
-          estimateStatus: 'draft',
           approvalRequestedAt: '',
           approvedAt: '',
           soldAt: '',
@@ -1236,6 +1249,7 @@
           _manualPriceTouched: false,
           workers: DEFAULT_WORKERS.map((worker) => ({ ...worker }))
         };
+
         _securePricingCache = { fingerprint: null, pricing: null };
         if (_securePricingShadowTimer) {
           clearTimeout(_securePricingShadowTimer);
@@ -1246,35 +1260,77 @@
           delete sendModalEl.dataset.payload;
           delete sendModalEl.dataset.pdf;
         }
+
         saveSalesState(fresh);
 
-        const fields = {
-          salesEstimateNumber: '',
-          salesIssueDate: '',
-          salesExpirationDate: '',
-          salesDueDate: '',
-          salesProjectName: '',
-          salesClientName: '',
-          salesCustomerEmail: '',
-          salesAdditionalRecipients: '',
-          salesCustomerPhone: '',
-          salesLocation: '',
-          salesPrice: '',
-          salesMessageToClient: '',
-          salesNotes: ''
-        };
-        Object.entries(fields).forEach(([id, value]) => {
-          const node = document.getElementById(id);
-          if (node) node.value = value;
+        refreshSellerFromStandalone();
+
+        if (typeof window.renderSales !== 'function') {
+          const fields = {
+            salesEstimateNumber: '',
+            salesIssueDate: '',
+            salesExpirationDate: '',
+            salesDueDate: '',
+            salesProjectName: '',
+            salesClientName: '',
+            salesCustomerEmail: '',
+            salesAdditionalRecipients: '',
+            salesCustomerPhone: '',
+            salesLocation: '',
+            salesPrice: '',
+            salesMessageToClient: '',
+            salesNotes: ''
+          };
+          Object.entries(fields).forEach(function (entry) {
+            const node = document.getElementById(entry[0]);
+            if (node) node.value = entry[1];
+          });
+          renderSellerWorkersStandalone();
+          renderStandaloneSellerPanel();
+        }
+
+        const countPairs = [
+          ['salesProjectName', 'salesProjectNameCount'],
+          ['salesClientName', 'salesClientNameCount'],
+          ['salesMessageToClient', 'salesMessageToClientCount'],
+          ['salesNotes', 'salesNotesCount']
+        ];
+        countPairs.forEach(function (pair) {
+          const input = document.getElementById(pair[0]);
+          const counter = document.getElementById(pair[1]);
+          if (counter && input) counter.textContent = String((input.value || '').length);
         });
+
+        const stageRange = document.getElementById('salesStageRange');
+        if (stageRange) stageRange.value = '2';
+
+        const signedStatus = document.getElementById('salesSignedStatus');
         if (signedStatus) {
           signedStatus.style.display = 'none';
           signedStatus.className = 'notice';
           signedStatus.textContent = '';
         }
-        renderSellerWorkersStandalone();
-        renderStandaloneSellerPanel();
+
+        const signedProject = document.getElementById('salesSignedProject');
+        const signedMeta = document.getElementById('salesSignedMeta');
+        const signedBadge = document.getElementById('salesSignedBadge');
+        if (signedProject) signedProject.textContent = 'Sin proyecto firmado';
+        if (signedMeta) signedMeta.textContent = 'Firma un estimate para mandarlo a Supervisor.';
+        if (signedBadge) {
+          signedBadge.textContent = 'Pendiente de firma';
+          signedBadge.className = 'badge amber';
+        }
+
+        const salesProgress = document.getElementById('salesProgress');
+        if (salesProgress) salesProgress.value = 0;
+
         bindStandaloneSellerWorkers();
+
+        console.log('[Sales New Quote] reset complete');
+      }
+
+      function performStandaloneNewQuoteReset() {
+        resetSalesQuoteStateForNewQuote();
       }
 
       function bindStandaloneSellerActions() {
