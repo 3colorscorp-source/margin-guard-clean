@@ -7783,6 +7783,14 @@ function renderSupervisor() {
     } = config;
     const hubRowPool =
       Array.isArray(mergedHubRows) && mergedHubRows.length ? mergedHubRows : filteredRows;
+    const findHubRowByKey = (key) =>
+      hubRowPool.find(
+        (item) =>
+          String(item.id || "") === key ||
+          String(item.projectId || "") === key ||
+          String(item.serverInvoiceId || "") === key ||
+          String(item.project?.invoice?.publicToken || "") === key
+      );
     if (!$("hubTableBody")) return;
     $("hubTableBody").closest(".supervisor-table-wrap").style.display = activeTab === "pipeline" ? "none" : "block";
     $("hubTableBody").innerHTML = filteredRows.length
@@ -7793,7 +7801,7 @@ function renderSupervisor() {
           const navTitle = isServerRow ? "Solo proyectos locales" : "";
           const rowDomId = escapeHtml(String(row.id != null ? row.id : row.projectId));
           return `
-          <tr>
+          <tr data-hub-row="${rowDomId}" style="cursor:pointer">
             <td><input type="checkbox" data-hub-select="${rowDomId}" ${selectedProjectIds.has(row.projectId) || selectedProjectIds.has(row.id) ? "checked" : ""} /></td>
             <td>${escapeHtml(row.date)}</td>
             <td>${escapeHtml(row.customer)}</td>
@@ -7840,14 +7848,22 @@ function renderSupervisor() {
       $("hubTableBody").querySelectorAll(selector).forEach((button) => {
         button.onclick = () => {
           const key = Object.values(button.dataset)[0] || "";
-          const row = hubRowPool.find(
-            (item) => String(item.id) === key || String(item.projectId) === key
-          );
+          const row = findHubRowByKey(key);
           if (!row || typeof callback !== "function") return;
           callback(row, key);
         };
       });
     };
+
+    $("hubTableBody").querySelectorAll("tr[data-hub-row]").forEach((tr) => {
+      tr.addEventListener("click", (ev) => {
+        const t = ev.target;
+        if (t && t.closest && t.closest("button, input, select, textarea, a, label")) return;
+        const key = String(tr.dataset.hubRow || "").trim();
+        const row = findHubRowByKey(key);
+        if (row && typeof onOpenRow === "function") onOpenRow(row);
+      });
+    });
 
     bindButton("button[data-hub-view]", (row) => onOpenRow(row));
     bindButton("button[data-hub-convert]", (row) => onConvert(row));

@@ -101,8 +101,8 @@ exports.handler = async (event) => {
       return json(400, { ok: false, error: "Invalid JSON body" });
     }
 
-    const id = String(pickFirst(body.id, body.invoice_id, body.invoiceId) || "").trim();
-    const publicToken = String(pickFirst(body.public_token, body.publicToken) || "").trim();
+    const id = String(pickFirstStr(body.id, body.invoice_id, body.invoiceId) || "").trim();
+    const publicToken = String(pickFirstStr(body.public_token, body.publicToken) || "").trim();
 
     if (id && publicToken) {
       return json(400, { ok: false, error: "Provide only one of id or public_token." });
