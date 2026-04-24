@@ -1705,6 +1705,26 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
 }
 
 /* Sales / Vendedor quote workspace — Owner-style section cards (layout only) */
+.sales-quote-header{
+  display:flex;
+  justify-content:flex-end;
+  margin-bottom:16px;
+}
+.sales-quote-header button{
+  padding:6px 12px;
+  font-size:13px;
+  font-weight:600;
+  border-radius:8px;
+  cursor:pointer;
+  background:transparent;
+  border:1px solid #1e293b;
+  color:#94a3b8;
+}
+.sales-quote-header button:hover{
+  border-color:#334155;
+  color:#cbd5e1;
+  background:rgba(148,163,184,.08);
+}
 .sales-quote-section{
   border:1px solid rgba(255,255,255,.1);
   border-radius:14px;
