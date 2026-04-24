@@ -19,7 +19,7 @@ function json(statusCode, body) {
 }
 
 /** Structured error for Invoice Hub; `error` mirrors `message` for older clients. */
-function err(statusCode, reason, message, extra = {}) {
+function jsonError(statusCode, reason, message, extra = {}) {
   const msg = String(message || "").trim() || String(reason || "").replace(/_/g, " ");
   return json(statusCode, {
     ok: false,
@@ -172,7 +172,7 @@ exports.handler = async (event) => {
     // Webhook URL must come only from Netlify env (never hardcoded in repo).
     const webhookUrl = String(process.env.ZAPIER_INVOICE_SEND_WEBHOOK_URL || "").trim();
     if (!webhookUrl || /TU_WEBHOOK_URL_AQUI/i.test(webhookUrl)) {
-      return err(
+      return jsonError(
         503,
         "webhook_not_configured",
         "Zapier invoice webhook is not configured. Set Netlify environment variable ZAPIER_INVOICE_SEND_WEBHOOK_URL to your real Zapier Catch Hook URL (https://hooks.zapier.com/...). Do not use an empty value or the placeholder text."
@@ -181,7 +181,7 @@ exports.handler = async (event) => {
 
     const token = String(invoice.public_token || "").trim();
     if (!token) {
-      return err(422, "missing_public_token", "Missing public token; publish or sync draft first.");
+      return jsonError(422, "missing_public_token", "Missing public token; publish or sync draft first.");
     }
 
     const origin = originFromEvent(event);
@@ -210,15 +210,15 @@ exports.handler = async (event) => {
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify(payload)
       });
-    } catch (err) {
-      console.warn("[Invoice Send] Zapier request failed", err?.message || err);
-      return err(502, "webhook_unreachable", "Unable to reach invoice send webhook.");
+    } catch (error) {
+      console.warn("[Invoice Send] Zapier request failed", error?.message || error);
+      return jsonError(502, "webhook_unreachable", "Unable to reach invoice send webhook.");
     }
 
     if (!zapRes.ok) {
       const zapierText = await zapRes.text().catch(() => "");
       console.warn("[Invoice Send] Zapier non-OK", zapRes.status, zapierText.slice(0, 500));
-      return err(502, "zapier_error", "Zapier webhook returned an error", {
+      return jsonError(502, "zapier_error", "Zapier webhook returned an error", {
         status: zapRes.status,
         details: zapierText.slice(0, 500)
       });
@@ -236,7 +236,7 @@ exports.handler = async (event) => {
     const rows = Array.isArray(updated) ? updated : updated ? [updated] : [];
     const row = rows[0];
     if (!row?.id) {
-      return err(
+      return jsonError(
         500,
         "database_update_failed",
         "Invoice was forwarded but could not be updated in the database."
@@ -246,8 +246,8 @@ exports.handler = async (event) => {
     console.log("[Invoice Send] invoice marked sent");
 
     return json(200, { ok: true, forwarded: true, invoice: row });
-  } catch (err) {
-    console.warn("[Invoice Send] error", err?.message || err);
-    return err(500, "server_error", err.message || "Server error");
+  } catch (error) {
+    console.warn("[Invoice Send] error", error?.message || error);
+    return jsonError(500, "server_error", error.message || "Server error");
   }
 };
