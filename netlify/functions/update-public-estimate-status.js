@@ -128,11 +128,24 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
   }
 
   // --- invoices draft: idempotent on (tenant_id, quote_id) via lookup + insert or PATCH ---
-  const invRows = await supabaseRequest(
+  console.log("[accept-bridge] creating invoice draft", {
+    tenantId,
+    quoteId,
+    total: quoteRow.total
+  });
+
+  const existingInvoices = await supabaseRequest(
     `invoices?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id,public_token`,
     { method: "GET" }
   );
-  const invHit = Array.isArray(invRows) ? invRows[0] : null;
+  console.log("[accept-bridge] existing invoices", existingInvoices);
+
+  const invList = Array.isArray(existingInvoices)
+    ? existingInvoices
+    : existingInvoices && typeof existingInvoices === "object"
+      ? [existingInvoices]
+      : [];
+  const invHit = invList[0] || null;
 
   if (invHit?.id && UUID_RE.test(String(invHit.id))) {
     const iidEnc = encodeURIComponent(String(invHit.id));
@@ -149,24 +162,40 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
       }
     });
   } else {
-    await supabaseRequest("invoices", {
-      method: "POST",
-      headers: { Prefer: "return=minimal" },
-      body: {
-        tenant_id: tenantId,
-        quote_id: quoteId,
-        public_token: makePublicToken("inv"),
-        invoice_no: `INV-${Date.now()}`,
-        customer_name: clientName,
-        customer_email: clientEmail,
-        project_name: projectName,
-        amount: salePrice,
-        paid_amount: 0,
-        balance_due: salePrice,
-        status: "draft",
-        currency
+    const rawTotal = Number(quoteRow.total || 0);
+    const insertAmount = Number.isFinite(rawTotal) ? rawTotal : 0;
+    const invoiceInsertPayload = {
+      tenant_id: tenantId,
+      quote_id: quoteId,
+      public_token: makePublicToken("inv"),
+      invoice_no: `INV-${Date.now()}`,
+      customer_name: quoteRow.client_name || "",
+      customer_email: quoteRow.client_email || "",
+      project_name: quoteRow.project_name || "",
+      amount: insertAmount,
+      paid_amount: 0,
+      balance_due: insertAmount,
+      status: "draft",
+      currency: pickStr(quoteRow.currency, 8) || "USD"
+    };
+
+    console.log("[accept-bridge] inserting invoice", invoiceInsertPayload);
+
+    try {
+      const created = await supabaseRequest("invoices", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: invoiceInsertPayload
+      });
+      const invoiceRow = Array.isArray(created) ? created[0] : created;
+      console.log("[accept-bridge] invoice created", invoiceRow);
+    } catch (err) {
+      console.error("[accept-bridge] invoice insert failed", err);
+      if (err?.supabaseRaw) {
+        console.error("[accept-bridge] invoice insert failed (Supabase body)", err.supabaseRaw);
       }
-    });
+      throw err;
+    }
   }
 }
 
