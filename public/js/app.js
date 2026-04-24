@@ -2257,7 +2257,7 @@ Thank you.`
 
   async function refreshHubServerInvoicesCacheQuietly() {
     try {
-      const raw = await loadTenantInvoicesFromServer({ limit: 100 });
+      const { invoices: raw } = await loadTenantInvoicesFromServer({ limit: 100 });
       hubServerNormalizedInvoicesCache = raw.map(normalizeServerInvoiceForHub);
     } catch (_err) {
       hubServerNormalizedInvoicesCache = [];
@@ -6156,6 +6156,7 @@ function renderSupervisor() {
   }
 
   async function loadTenantInvoicesFromServer(filters = {}) {
+    console.log("[HUB] fetching server invoices...");
     try {
       const params = new URLSearchParams();
       if (filters.status) params.set("status", filters.status);
@@ -6167,16 +6168,26 @@ function renderSupervisor() {
         headers: { Accept: "application/json" }
       });
 
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (_parseErr) {
+        data = {};
+      }
+      console.log("[HUB] server response:", data);
+
       if (!res.ok) {
         console.warn("[Invoice Hub] list-tenant-invoices failed", res.status);
-        return [];
+        return { invoices: [], responseBody: data };
       }
 
-      const data = await res.json();
-      return Array.isArray(data.invoices) ? data.invoices : [];
+      return {
+        invoices: Array.isArray(data.invoices) ? data.invoices : [],
+        responseBody: data
+      };
     } catch (err) {
       console.warn("[Invoice Hub] server invoice load failed", err);
-      return [];
+      return { invoices: [], responseBody: null };
     }
   }
 
@@ -6245,6 +6256,9 @@ function renderSupervisor() {
   }
 
   function mergeHubRows(existingRows, normalizedServerRows) {
+    const existingLen = Array.isArray(existingRows) ? existingRows.length : 0;
+    const normalizedLen = Array.isArray(normalizedServerRows) ? normalizedServerRows.length : 0;
+    console.log("[HUB] merging rows:", existingLen, normalizedLen);
     const out = Array.isArray(existingRows) ? existingRows.slice() : [];
     const seenToken = new Set();
     const seenId = new Set();
@@ -9061,8 +9075,10 @@ function renderSupervisor() {
     if (!hubServerInvoicesFetchStarted) {
       hubServerInvoicesFetchStarted = true;
       void (async () => {
-        const raw = await loadTenantInvoicesFromServer({ limit: 100 });
-        hubServerNormalizedInvoicesCache = raw.map(normalizeServerInvoiceForHub);
+        const { invoices: raw } = await loadTenantInvoicesFromServer({ limit: 100 });
+        const normalized = raw.map(normalizeServerInvoiceForHub);
+        console.log("[HUB] normalized invoices:", normalized);
+        hubServerNormalizedInvoicesCache = normalized;
         if ($("hubTableBody")) refresh();
       })();
     }
