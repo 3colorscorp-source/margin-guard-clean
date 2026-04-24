@@ -104,6 +104,9 @@ small{ color:var(--muted); }
   width:100%;
   margin-left:auto;
   min-width:0;
+  position:sticky;
+  top:100px;
+  align-self:start;
 }
 .grid.sales-layout .sales-right-panel .card-inner{
   padding:12px 12px 14px;
@@ -126,7 +129,12 @@ small{ color:var(--muted); }
 @media (max-width: 980px){
   .grid{ grid-template-columns:1fr; }
   .sales-left-panel{ padding-right:0; }
-  .sales-right-panel{ max-width:none; margin-left:0; }
+  .sales-right-panel{
+    max-width:none;
+    margin-left:0;
+    position:static;
+    top:auto;
+  }
 }
 @media (max-width: 1080px){
   .topbar-inner{ align-items:flex-start; flex-direction:column; }
