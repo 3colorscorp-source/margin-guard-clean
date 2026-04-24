@@ -2271,6 +2271,23 @@ Thank you.`
   }
 
   function getHubRowActionState(row) {
+    if (row?.hubRowSource === "server_invoice") {
+      const hasPublic = Boolean(
+        nonEmptyString(row?.project?.invoice?.publicUrl) || nonEmptyString(row?.project?.invoice?.publicToken)
+      );
+      return {
+        canConvert: false,
+        canMarkSent: false,
+        canSendInvoice: false,
+        canTakePayment: false,
+        canMarkPaid: false,
+        canRequestPayment: false,
+        canPublishLink: false,
+        canOpenPublic: hasPublic,
+        canSetPaymentLink: false,
+        canExportPdf: false
+      };
+    }
     const hasInvoice = Boolean(row?.invoiceNo);
     const hasAmount = finiteNumber(row?.amount, 0) > 0;
     const hasBalance = finiteNumber(row?.balance, 0) > 0;
@@ -6009,6 +6026,227 @@ function renderSupervisor() {
     });
   }
 
+  async function loadTenantInvoicesFromServer(filters = {}) {
+    try {
+      const params = new URLSearchParams();
+      if (filters.status) params.set("status", filters.status);
+      if (filters.payment_status) params.set("payment_status", filters.payment_status);
+      if (filters.limit) params.set("limit", String(filters.limit));
+
+      const res = await fetch(`/.netlify/functions/list-tenant-invoices?${params.toString()}`, {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      });
+
+      if (!res.ok) {
+        console.warn("[Invoice Hub] list-tenant-invoices failed", res.status);
+        return [];
+      }
+
+      const data = await res.json();
+      return Array.isArray(data.invoices) ? data.invoices : [];
+    } catch (err) {
+      console.warn("[Invoice Hub] server invoice load failed", err);
+      return [];
+    }
+  }
+
+  function normalizeServerInvoiceForHub(invoice) {
+    const inv = invoice && typeof invoice === "object" ? invoice : {};
+    const customerName = nonEmptyString(inv.customer_name, inv.client_name);
+    const customerEmail = nonEmptyString(inv.customer_email, inv.client_email);
+    const issueRaw = inv.issue_date || inv.invoice_date || "";
+    const createdRaw = inv.created_at || "";
+    return {
+      source: "server_invoice",
+      id: inv.id,
+      invoiceId: inv.id,
+      tenant_id: inv.tenant_id,
+      publicToken: nonEmptyString(inv.public_token),
+      publicUrl: inv.public_token ? `/invoice-public.html?token=${encodeURIComponent(inv.public_token)}` : "",
+      invoiceNo: nonEmptyString(inv.invoice_no),
+      projectName: nonEmptyString(inv.project_name, inv.description, "Invoice"),
+      clientName: customerName,
+      clientEmail: customerEmail,
+      amount: Number(inv.amount || 0),
+      paidAmount: Number(inv.paid_amount || 0),
+      balanceDue: Number(inv.balance_due != null ? inv.balance_due : Number(inv.amount || 0) - Number(inv.paid_amount || 0)),
+      status: String(inv.status || "draft").toLowerCase(),
+      paymentStatus: String(inv.payment_status || "").toLowerCase(),
+      invoiceDate: issueRaw || createdRaw || "",
+      dueDate: inv.due_date || "",
+      sentAt: inv.sent_at || "",
+      paidAt: inv.paid_at || "",
+      createdAt: createdRaw,
+      updatedAt: inv.updated_at || ""
+    };
+  }
+
+  function hubServerInvoiceStatusForDisplay(norm) {
+    const today = new Date().toISOString().slice(0, 10);
+    let raw = String(norm?.status || "draft").toLowerCase();
+    if (raw === "open") raw = "draft";
+    const dueRaw = normalizeDateInput(norm?.dueDate || "");
+    const bal = Math.max(finiteNumber(norm?.balanceDue, 0), 0);
+    if (raw !== "paid" && raw !== "void" && dueRaw && dueRaw < today && bal > 0) {
+      raw = "overdue";
+    }
+    return raw;
+  }
+
+  function hubServerInvoiceStatusForActions(norm) {
+    const s = hubServerInvoiceStatusForDisplay(norm);
+    if (s === "paid") return "paid";
+    if (s === "partial") return "partial";
+    if (s === "sent" || s === "overdue") return "sent";
+    if (s === "void") return "paid";
+    return "draft";
+  }
+
+  function hubRowMatchesNormalizedServerInvoice(existingRow, norm) {
+    if (!norm) return false;
+    const inv = existingRow?.project?.invoice;
+    const pub = nonEmptyString(inv?.publicToken);
+    if (norm.publicToken && pub && pub === norm.publicToken) return true;
+    const localNo = String(inv?.invoiceNo || "").trim().toLowerCase();
+    const serverNo = String(norm.invoiceNo || "").trim().toLowerCase();
+    if (serverNo && localNo && localNo === serverNo) return true;
+    if (existingRow?.serverInvoiceId && norm.invoiceId && existingRow.serverInvoiceId === norm.invoiceId) return true;
+    return false;
+  }
+
+  function mergeHubRows(existingRows, normalizedServerRows) {
+    const out = Array.isArray(existingRows) ? existingRows.slice() : [];
+    const seenToken = new Set();
+    const seenId = new Set();
+    const seenNo = new Set();
+    out.forEach((r) => {
+      const t = nonEmptyString(r?.project?.invoice?.publicToken);
+      if (t) seenToken.add(t);
+      if (r?.serverInvoiceId) seenId.add(r.serverInvoiceId);
+      const no = String(r?.project?.invoice?.invoiceNo || r?.invoiceNo || "").trim().toLowerCase();
+      if (no && no !== "no invoice") seenNo.add(no);
+    });
+    const normalizedList = Array.isArray(normalizedServerRows) ? normalizedServerRows : [];
+    normalizedList.forEach((norm) => {
+      if (!norm?.invoiceId) return;
+      if (out.some((e) => hubRowMatchesNormalizedServerInvoice(e, norm))) return;
+      if (norm.publicToken && seenToken.has(norm.publicToken)) return;
+      if (norm.invoiceId && seenId.has(norm.invoiceId)) return;
+      const sno = String(norm.invoiceNo || "").trim().toLowerCase();
+      if (sno && seenNo.has(sno)) return;
+      if (norm.publicToken) seenToken.add(norm.publicToken);
+      seenId.add(norm.invoiceId);
+      if (sno) seenNo.add(sno);
+      out.push(buildPortfolioRowFromServerInvoiceNorm(norm));
+    });
+    return out;
+  }
+
+  function buildPortfolioRowFromServerInvoiceNorm(norm) {
+    const projectId = `svc-inv-${norm.invoiceId}`;
+    const displayStatus = hubServerInvoiceStatusForDisplay(norm);
+    const actionStatus = hubServerInvoiceStatusForActions(norm);
+    const amount = Math.max(finiteNumber(norm.amount, 0), 0);
+    const paid = Math.max(finiteNumber(norm.paidAmount, 0), 0);
+    const balance = Math.max(finiteNumber(norm.balanceDue, 0), 0);
+    const primaryRaw = norm.invoiceDate || norm.createdAt || "";
+    const effectiveDue = norm.dueDate || "";
+    const invoiceNoDisplay = nonEmptyString(norm.invoiceNo, "No invoice");
+    const customer = norm.clientName || "Sin cliente";
+    const title = norm.projectName || "Invoice";
+    const stubReport = { changeOrders: [], extras: [], laborBudget: 0, projectedEndDate: "" };
+    const stubProject = {
+      id: projectId,
+      projectName: title,
+      clientName: norm.clientName || "",
+      clientEmail: norm.clientEmail || "",
+      clientPhone: "",
+      location: "",
+      dueDate: effectiveDue,
+      salePrice: amount,
+      laborBudget: 0,
+      status: "active",
+      invoice: {
+        invoiceNo: norm.invoiceNo || "",
+        invoiceDate: normalizeDateInput(primaryRaw) || "",
+        dueDate: normalizeDateInput(effectiveDue) || "",
+        promisedDate: "",
+        baseAmount: amount,
+        depositApplied: 0,
+        receivedApplied: paid,
+        status: actionStatus,
+        collectionStage: "new",
+        payments: [],
+        activity: [],
+        publicToken: norm.publicToken || "",
+        publicUrl: norm.publicUrl || "",
+        paymentLink: ""
+      }
+    };
+    const row = {
+      id: projectId,
+      projectId,
+      serverInvoiceId: norm.invoiceId,
+      hubRowSource: "server_invoice",
+      hubSourceLabel: "Server",
+      date: formatDisplayDate(primaryRaw),
+      dateRaw: normalizeDateInput(primaryRaw),
+      dueDate: formatDisplayDate(effectiveDue),
+      dueDateRaw: normalizeDateInput(effectiveDue),
+      promisedDate: "No date",
+      promisedDateRaw: "",
+      customer,
+      title,
+      status: displayStatus,
+      invoiceStatus: actionStatus,
+      amount,
+      balance,
+      invoiceNo: invoiceNoDisplay,
+      baseAmount: amount,
+      depositApplied: 0,
+      receivedApplied: paid,
+      collectionStage: "new",
+      projectStatus: "active",
+      rowType: "invoice",
+      paymentType: paid > 0 ? "payment" : "",
+      extraSpent: 0,
+      finalCost: 0,
+      soldAmount: amount,
+      cashCollected: paid,
+      estimatedMargin: 0,
+      changeOrderCount: 0,
+      approvedChangeOrderCount: 0,
+      location: nonEmptyString(norm.clientEmail, customer),
+      customerEmail: norm.clientEmail || "",
+      customerPhone: "",
+      report: stubReport,
+      project: stubProject,
+      searchText: [
+        projectId,
+        title,
+        customer,
+        norm.clientEmail,
+        norm.invoiceNo,
+        displayStatus,
+        "server_invoice",
+        norm.publicToken
+      ]
+        .join(" ")
+        .toLowerCase()
+    };
+    const priority = getHubPriority(row);
+    row.priorityScore = priority.score;
+    row.priorityTone = priority.tone;
+    row.nextAction = priority.nextAction;
+    row.daysPastDue = priority.daysPastDue;
+    const health = getProjectHealth(row);
+    row.projectHealthScore = health.score;
+    row.projectHealthTone = health.tone;
+    row.projectHealthLabel = health.label;
+    return row;
+  }
+
   function compareHubValues(left, right, sortKey) {
     const numericKeys = new Set(["amount", "balance"]);
     if (numericKeys.has(sortKey)) {
@@ -6161,6 +6399,9 @@ function renderSupervisor() {
   }
 
   function getHubPriority(row) {
+    if (row?.status === "void") {
+      return { score: 0, tone: "green", nextAction: "Void", daysPastDue: 0 };
+    }
     const balance = Math.max(finiteNumber(row?.balance, 0), 0);
     const daysPastDue = getDaysPastDue(row?.dueDateRaw || row?.project?.dueDate);
     const hasInvoice = Boolean(row?.invoiceNo && row.invoiceNo !== "No invoice");
@@ -7279,6 +7520,9 @@ function renderSupervisor() {
     $("hubTableBody").innerHTML = filteredRows.length
       ? filteredRows.map((row) => {
           const actionState = getHubRowActionState(row);
+          const isServerRow = row.hubRowSource === "server_invoice";
+          const navLocked = isServerRow ? "disabled" : "";
+          const navTitle = isServerRow ? "Solo proyectos locales" : "";
           return `
           <tr>
             <td><input type="checkbox" data-hub-select="${escapeHtml(row.projectId)}" ${selectedProjectIds.has(row.projectId) ? "checked" : ""} /></td>
@@ -7288,6 +7532,7 @@ function renderSupervisor() {
             <td>${escapeHtml(row.location || "No location")}</td>
             <td>
               <strong>${escapeHtml(row.title)}</strong>
+              ${isServerRow ? `<span class="hub-server-badge" style="font-size:10px;margin-left:6px;opacity:0.85" title="Tenant invoice (server)">${escapeHtml(row.hubSourceLabel || "Server")}</span>` : ""}
               <div class="meta">${escapeHtml(row.invoiceNo)}</div>
               <span class="hub-inline-meta">Priority ${escapeHtml(String(row.priorityScore))} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${escapeHtml(row.nextAction)}</span>
               <span class="hub-health ${escapeHtml(row.projectHealthTone || "green")}">Health ${escapeHtml(String(row.projectHealthScore))}% ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${escapeHtml(row.projectHealthLabel)}</span>
@@ -7302,8 +7547,8 @@ function renderSupervisor() {
                 <button class="btn ghost ${actionState.canMarkSent ? "" : "hub-action-disabled"}" ${actionState.canMarkSent ? "" : "disabled"} title="${actionState.canMarkSent ? "" : "Invoice required"}" data-hub-sent="${escapeHtml(row.projectId)}">Sent</button>
                 <button class="btn ghost ${actionState.canRequestPayment ? "" : "hub-action-disabled"}" ${actionState.canRequestPayment ? "" : "disabled"} title="${actionState.canRequestPayment ? "" : "Invoice with open balance required"}" data-hub-reminder="${escapeHtml(row.projectId)}">Reminder</button>
                 <button class="btn ghost ${actionState.canTakePayment ? "" : "hub-action-disabled"}" ${actionState.canTakePayment ? "" : "disabled"} title="${actionState.canTakePayment ? "" : "Invoice with balance required"}" data-hub-pay="${escapeHtml(row.projectId)}">Pay</button>
-                <button class="btn ghost" data-hub-sales="${escapeHtml(row.projectId)}">Sales</button>
-                <button class="btn ghost" data-hub-owner="${escapeHtml(row.projectId)}">Owner</button>
+                <button class="btn ghost ${navLocked ? "hub-action-disabled" : ""}" ${navLocked} title="${escapeHtml(navTitle)}" data-hub-sales="${escapeHtml(row.projectId)}">Sales</button>
+                <button class="btn ghost ${navLocked ? "hub-action-disabled" : ""}" ${navLocked} title="${escapeHtml(navTitle)}" data-hub-owner="${escapeHtml(row.projectId)}">Owner</button>
                 <button class="btn primary ${actionState.canExportPdf ? "" : "hub-action-disabled"}" ${actionState.canExportPdf ? "" : "disabled"} title="${actionState.canExportPdf ? "" : "Invoice required"}" data-hub-pdf="${escapeHtml(row.projectId)}">PDF</button>
               </div>
             </td>
@@ -7375,8 +7620,8 @@ function renderSupervisor() {
                 </div>
                 <div class="hub-pipeline-stack">
                   ${groups[column.key].length ? groups[column.key].map((row) => `
-                    <div class="hub-pipeline-card" draggable="true" data-hub-pipeline="${escapeHtml(row.projectId)}">
-                      <strong>${escapeHtml(row.title)}</strong>
+                    <div class="hub-pipeline-card" draggable="${row.hubRowSource === "server_invoice" ? "false" : "true"}" data-hub-pipeline="${escapeHtml(row.projectId)}">
+                      <strong>${escapeHtml(row.title)}</strong>${row.hubRowSource === "server_invoice" ? ` <span class="hub-server-badge" style="font-size:10px;opacity:0.85" title="Tenant invoice (server)">${escapeHtml(row.hubSourceLabel || "Server")}</span>` : ""}
                       <span class="hub-inline-meta">${escapeHtml(row.customer)}</span>
                       <span class="hub-inline-meta">${escapeHtml(money(row.amount, settings.currency))} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Balance ${escapeHtml(money(row.balance, settings.currency))}</span>
                       <span class="hub-inline-meta">Priority ${escapeHtml(String(row.priorityScore))} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${escapeHtml(row.nextAction)}</span>
@@ -7526,12 +7771,17 @@ function renderSupervisor() {
     if ($("hubClientModal")) $("hubClientModal").setAttribute("aria-hidden", "true");
   }
 
+  /** Normalized tenant invoices from list-tenant-invoices; undefined until first fetch completes. */
+  let hubServerNormalizedInvoicesCache = undefined;
+  let hubServerInvoicesFetchStarted = false;
+
   function renderEstimatesHub() {
     if (!$("hubTableBody")) return;
 
     const settings = loadSettings();
     const hubViewState = loadHubViewState();
     let filteredRows = [];
+    let lastMergedHubRows = [];
     let activeTab = hubViewState.tab || "all";
     let activePreset = hubViewState.preset || "";
     let selectedRow = null;
@@ -7564,11 +7814,17 @@ function renderSupervisor() {
 
     const applyHubActionButtonState = (row) => {
       const actionState = getHubRowActionState(row);
+      const localOnly = row?.hubRowSource !== "server_invoice";
+      const serverNote = "Solo filas locales (proyectos). Edita en tenant invoice tools.";
       const buttonRules = [
-        ["btnHubDrawerCustomer", true, ""],
-        ["btnHubDrawerDuplicate", true, ""],
-        ["btnHubDrawerDuplicateInvoice", actionState.canExportPdf, "Necesitas un invoice real antes de duplicarlo."],
-        ["btnHubDrawerSetup", true, ""],
+        ["btnHubDrawerCustomer", localOnly, serverNote],
+        ["btnHubDrawerDuplicate", localOnly, serverNote],
+        [
+          "btnHubDrawerDuplicateInvoice",
+          localOnly && actionState.canExportPdf,
+          localOnly ? "Necesitas un invoice real antes de duplicarlo." : serverNote
+        ],
+        ["btnHubDrawerSetup", localOnly, serverNote],
         ["btnHubDrawerConvert", actionState.canConvert, "Convierte primero el estimate a invoice cuando ya exista monto vendible."],
         ["btnHubDrawerSendInvoice", actionState.canSendInvoice, "Necesitas invoice, cliente y monto antes de preparar el envio."],
         ["btnHubDrawerRequestPayment", actionState.canRequestPayment, "Request Payment solo aplica a invoices enviadas o parciales con saldo pendiente."],
@@ -7579,7 +7835,11 @@ function renderSupervisor() {
         ["btnHubDrawerPublish", actionState.canPublishLink, "Publish Link requiere invoice, cliente y monto valido."],
         ["btnHubDrawerPaymentLink", actionState.canSetPaymentLink, "Primero crea el invoice para guardar un payment link."],
         ["btnHubDrawerOpenPublic", actionState.canOpenPublic, "Aun no existe link publico para este invoice."],
-        ["btnHubDrawerPdf", actionState.canExportPdf, "El PDF del invoice requiere un invoice valido con monto."]
+        ["btnHubDrawerPdf", actionState.canExportPdf, "El PDF del invoice requiere un invoice valido con monto."],
+        ["btnHubDrawerFollowUp", localOnly, serverNote],
+        ["btnHubDrawerSales", localOnly, serverNote],
+        ["btnHubDrawerOwner", localOnly, serverNote],
+        ["btnHubDrawerCloseout", localOnly, serverNote]
       ];
       buttonRules.forEach(([id, allowed, title]) => {
         const node = $(id);
@@ -7610,7 +7870,7 @@ function renderSupervisor() {
 
     const refreshSelectedRow = () => {
       if (!selectedRow) return;
-      const next = buildPortfolioRows(settings).find((row) => row.projectId === selectedRow.projectId);
+      const next = lastMergedHubRows.find((row) => row.projectId === selectedRow.projectId);
       if (!next) return;
       openHubDrawer(next);
     };
@@ -7885,7 +8145,11 @@ function renderSupervisor() {
     };
 
     const refresh = () => {
-      const allRows = buildPortfolioRows(settings);
+      const localRows = buildPortfolioRows(settings);
+      const normalizedServer =
+        hubServerNormalizedInvoicesCache === undefined ? [] : hubServerNormalizedInvoicesCache;
+      lastMergedHubRows = mergeHubRows(localRows, normalizedServer);
+      const allRows = lastMergedHubRows;
       const search = val("hubSearch").trim().toLowerCase();
       const statusFilter = val("hubStatusFilter") || "all";
       const dateFrom = normalizeDateInput(val("hubDateFrom"));
@@ -8104,18 +8368,21 @@ function renderSupervisor() {
         refreshBulkBar,
         onOpenRow: openHubDrawer,
         onConvert: (row) => {
+          if (row?.hubRowSource === "server_invoice") return;
           if (!guardHubAction(row, "canConvert", "Este proyecto ya tiene invoice o aun no tiene monto listo para convertir.")) return;
           convertEstimateToInvoice(row.projectId);
           refresh();
           setHubFeedback(`Invoice creado para ${row.title}.`, "ok");
         },
         onSent: (row) => {
+          if (row?.hubRowSource === "server_invoice") return;
           if (!guardHubAction(row, "canMarkSent", "Primero crea el invoice antes de marcarlo como enviado.")) return;
           markHubInvoiceSent(row.projectId);
           refresh();
           setHubFeedback(`Invoice marcado como sent para ${row.title}.`, "ok");
         },
         onPay: (row, projectId) => {
+          if (row?.hubRowSource === "server_invoice") return;
           if (!guardHubAction(row, "canTakePayment", "Take Payment solo aplica cuando ya existe invoice con saldo pendiente.")) return;
           openPaymentForm(row, null, ({ amount, method, note, date }) => {
             recordHubPayment(projectId, { amount, method, note, date });
@@ -8123,20 +8390,24 @@ function renderSupervisor() {
           hubFormState.successMessage = `Pago registrado para ${row.title}.`;
         },
         onReminder: (row) => {
+          if (row?.hubRowSource === "server_invoice") return;
           if (!guardHubAction(row, "canRequestPayment", "Solo puedes pedir pago cuando hay invoice enviado o parcial con saldo.")) return;
           requestHubPayment(row.projectId);
           refresh();
           setHubFeedback(`Recordatorio de pago preparado para ${row.customer}.`, "ok");
         },
         onSales: (row) => {
+          if (row?.hubRowSource === "server_invoice") return;
           saveSupervisorSelectedProjectId(row.projectId);
           window.location.href = "/sales";
         },
         onOwner: (row) => {
+          if (row?.hubRowSource === "server_invoice") return;
           saveSupervisorSelectedProjectId(row.projectId);
           window.location.href = "/owner";
         },
         onPdf: (row) => {
+          if (row?.hubRowSource === "server_invoice") return;
           if (!guardHubAction(row, "canExportPdf", "El PDF del invoice requiere un invoice valido.")) return;
           void exportInvoicePdf("hub", row.project, row.report, settings, getProjectInvoiceState(row.project));
         }
@@ -8183,11 +8454,13 @@ function renderSupervisor() {
           });
         },
         onEscalate: (row) => {
+          if (row?.hubRowSource === "server_invoice") return;
           setHubCollectionStage(row.projectId, "escalated");
           refresh();
           setHubFeedback(`Collections stage actualizado a escalated para ${row.title}.`, "warn");
         },
         onDropColumn: (row, targetKey) => {
+          if (row?.hubRowSource === "server_invoice") return;
           const outcome = getHubDropOutcome(row, targetKey);
           if (!outcome.ok) {
             setHubFeedback(outcome.reason || "No fue posible mover la tarjeta.", "warn");
@@ -8588,6 +8861,15 @@ function renderSupervisor() {
     }
 
     refresh();
+
+    if (!hubServerInvoicesFetchStarted) {
+      hubServerInvoicesFetchStarted = true;
+      void (async () => {
+        const raw = await loadTenantInvoicesFromServer({ limit: 100 });
+        hubServerNormalizedInvoicesCache = raw.map(normalizeServerInvoiceForHub);
+        if ($("hubTableBody")) refresh();
+      })();
+    }
   }
 
   /*
