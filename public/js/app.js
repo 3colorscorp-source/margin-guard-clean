@@ -596,6 +596,50 @@ Thank you.`
     return merged;
   }
   function saveOwner(state, metrics) { writeStore(LS_OWNER, { ...state, reservePct: DEFAULTS.reservePct, metrics }); }
+
+  /** Owner: replace persisted quote with a clean project slate (no `...state` merge). */
+  function resetOwnerQuoteStateForNewQuote() {
+    const settings = loadSettings();
+    const prev = readStore(LS_OWNER, {});
+    const workers = structuredClone(DEFAULT_OWNER.workers);
+    const fresh = {
+      projectName: "",
+      clientName: "",
+      clientEmail: "",
+      clientPhone: "",
+      issueDate: "",
+      expirationDate: "",
+      committedDate: "",
+      quoteNotes: "",
+      location: "",
+      dueDate: "",
+      overheadMonthly: 0,
+      stdHours: 0,
+      reservePct: 5,
+      workers,
+      estimateNumber: "",
+      estimateStatus: "draft",
+      messageToClient: "",
+      notes: "",
+      additional_recipients: "",
+      customerEmail: "",
+      quoteId: "",
+      publicToken: "",
+      publicQuoteUrl: "",
+      sentAt: "",
+      _manualPriceTouched: false,
+      offeredPrice: 0,
+      price: ""
+    };
+    const tid = prev.tenant_id;
+    if (tid !== undefined && tid !== null && String(tid).trim() !== "") fresh.tenant_id = tid;
+    const bid = prev.business_id;
+    if (bid !== undefined && bid !== null && String(bid).trim() !== "") fresh.business_id = bid;
+    const bId = prev.businessId;
+    if (bId !== undefined && bId !== null && String(bId).trim() !== "") fresh.businessId = bId;
+    saveOwner(fresh, calcOwner(fresh, settings));
+    console.log("[Owner New Quote] reset complete");
+  }
   function loadDashboard() { return { ...DEFAULT_DASHBOARD, ...readStore(LS_DASHBOARD, {}) }; }
   function saveDashboard(state) { writeStore(LS_DASHBOARD, state); }
   function loadSales() {
@@ -3274,7 +3318,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       saveOwner(state, calcOwner(state, settings));
       renderOwner();
     };
-    if ($("btnClear")) $("btnClear").onclick = () => { if (!confirm("Clear this quote?")) return; writeStore(LS_OWNER, DEFAULT_OWNER); renderOwner(); };
+    if ($("btnClear")) {
+      $("btnClear").onclick = () => {
+        if (!confirm("Start a new quote? Current project fields and send metadata will reset.")) return;
+        resetOwnerQuoteStateForNewQuote();
+        renderOwner();
+      };
+    }
     if ($("btnExportPdf")) $("btnExportPdf").onclick = () => void exportOwnerPdf(state, settings, metrics);
     if ($("btnSendQuote")) $("btnSendQuote").onclick = () => openSendModal(state, settings, metrics);
     if ($("btnSendClose")) $("btnSendClose").onclick = closeSendModal;

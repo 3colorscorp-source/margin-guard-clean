@@ -995,6 +995,28 @@ body[data-role="owner"] .owner-notes__lead{
   color:rgba(232,238,252,.78);
 }
 
+/* /owner — New Quote (secondary; Send stays primary in .owner-quote-cta) */
+body[data-role="owner"] .owner-quote-header{
+  display:flex;
+  justify-content:flex-end;
+  margin-bottom:14px;
+}
+body[data-role="owner"] .owner-quote-header__new{
+  padding:8px 14px;
+  font-size:13px;
+  font-weight:600;
+  border-radius:8px;
+  cursor:pointer;
+  background:rgba(59, 130, 246, 0.15);
+  color:#60a5fa;
+  border:1px solid #3b82f6;
+  transition:all 0.2s ease;
+}
+body[data-role="owner"] .owner-quote-header__new:hover{
+  background:rgba(59, 130, 246, 0.25);
+  color:#93c5fd;
+}
+
 /* /owner — CTA enviar / PDF (una instancia; mismo patrón que acciones labor) */
 body[data-role="owner"] .owner-quote-cta{
   display:flex;
