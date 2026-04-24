@@ -6298,7 +6298,10 @@ function renderSupervisor() {
   }
 
   function buildPortfolioRowFromServerInvoiceNorm(norm) {
-    const projectId = `svc-inv-${norm.invoiceId}`;
+    const serverInvoiceId = norm.invoiceId;
+    const sidRaw = serverInvoiceId != null ? String(serverInvoiceId).trim() : "";
+    const projectId =
+      sidRaw && MG_SERVER_INVOICE_UUID_RE.test(sidRaw) ? sidRaw : sidRaw ? `svc-inv-${sidRaw}` : `svc-inv-${Date.now()}`;
     const displayStatus = hubServerInvoiceStatusForDisplay(norm);
     const actionStatus = hubServerInvoiceStatusForActions(norm);
     const amount = Math.max(finiteNumber(norm.amount, 0), 0);
@@ -6341,7 +6344,7 @@ function renderSupervisor() {
     const row = {
       id: projectId,
       projectId,
-      serverInvoiceId: norm.invoiceId,
+      serverInvoiceId,
       hubRowSource: "server_invoice",
       hubSourceLabel: "Server",
       date: formatDisplayDate(primaryRaw),
@@ -6376,19 +6379,23 @@ function renderSupervisor() {
       customerPhone: "",
       report: stubReport,
       project: stubProject,
-      searchText: [
-        projectId,
-        title,
-        customer,
-        norm.clientEmail,
-        norm.invoiceNo,
-        displayStatus,
-        "server_invoice",
-        norm.publicToken
-      ]
-        .join(" ")
-        .toLowerCase()
+      searchText: ""
     };
+    row.projectId = row.serverInvoiceId || row.id;
+    row.id = row.projectId;
+    row.project.id = row.projectId;
+    row.searchText = [
+      row.projectId,
+      title,
+      customer,
+      norm.clientEmail,
+      norm.invoiceNo,
+      displayStatus,
+      "server_invoice",
+      norm.publicToken
+    ]
+      .join(" ")
+      .toLowerCase();
     const priority = getHubPriority(row);
     row.priorityScore = priority.score;
     row.priorityTone = priority.tone;
@@ -7760,6 +7767,7 @@ function renderSupervisor() {
   function renderHubTableSection(config) {
     const {
       filteredRows,
+      mergedHubRows,
       selectedProjectIds,
       settings,
       activeTab,
@@ -7773,6 +7781,8 @@ function renderSupervisor() {
       onOwner,
       onPdf
     } = config;
+    const hubRowPool =
+      Array.isArray(mergedHubRows) && mergedHubRows.length ? mergedHubRows : filteredRows;
     if (!$("hubTableBody")) return;
     $("hubTableBody").closest(".supervisor-table-wrap").style.display = activeTab === "pipeline" ? "none" : "block";
     $("hubTableBody").innerHTML = filteredRows.length
@@ -7781,9 +7791,10 @@ function renderSupervisor() {
           const isServerRow = row.hubRowSource === "server_invoice";
           const navLocked = isServerRow ? "disabled" : "";
           const navTitle = isServerRow ? "Solo proyectos locales" : "";
+          const rowDomId = escapeHtml(String(row.id != null ? row.id : row.projectId));
           return `
           <tr>
-            <td><input type="checkbox" data-hub-select="${escapeHtml(row.projectId)}" ${selectedProjectIds.has(row.projectId) ? "checked" : ""} /></td>
+            <td><input type="checkbox" data-hub-select="${rowDomId}" ${selectedProjectIds.has(row.projectId) || selectedProjectIds.has(row.id) ? "checked" : ""} /></td>
             <td>${escapeHtml(row.date)}</td>
             <td>${escapeHtml(row.customer)}</td>
             <td>${escapeHtml(row.projectId)}</td>
@@ -7800,14 +7811,14 @@ function renderSupervisor() {
             <td>${money(row.balance, settings.currency)}</td>
             <td>
               <div class="row-actions wrap">
-                <button class="btn ghost" data-hub-view="${escapeHtml(row.projectId)}">View</button>
-                <button class="btn ghost ${actionState.canConvert ? "" : "hub-action-disabled"}" ${actionState.canConvert ? "" : "disabled"} title="${actionState.canConvert ? "" : "Create invoice first"}" data-hub-convert="${escapeHtml(row.projectId)}">Convert</button>
-                <button class="btn ghost ${actionState.canMarkSent ? "" : "hub-action-disabled"}" ${actionState.canMarkSent ? "" : "disabled"} title="${actionState.canMarkSent ? "" : "Invoice required"}" data-hub-sent="${escapeHtml(row.projectId)}">Sent</button>
-                <button class="btn ghost ${actionState.canRequestPayment ? "" : "hub-action-disabled"}" ${actionState.canRequestPayment ? "" : "disabled"} title="${actionState.canRequestPayment ? "" : "Invoice with open balance required"}" data-hub-reminder="${escapeHtml(row.projectId)}">Reminder</button>
-                <button class="btn ghost ${actionState.canTakePayment ? "" : "hub-action-disabled"}" ${actionState.canTakePayment ? "" : "disabled"} title="${actionState.canTakePayment ? "" : "Invoice with balance required"}" data-hub-pay="${escapeHtml(row.projectId)}">Pay</button>
-                <button class="btn ghost ${navLocked ? "hub-action-disabled" : ""}" ${navLocked} title="${escapeHtml(navTitle)}" data-hub-sales="${escapeHtml(row.projectId)}">Sales</button>
-                <button class="btn ghost ${navLocked ? "hub-action-disabled" : ""}" ${navLocked} title="${escapeHtml(navTitle)}" data-hub-owner="${escapeHtml(row.projectId)}">Owner</button>
-                <button class="btn primary ${actionState.canExportPdf ? "" : "hub-action-disabled"}" ${actionState.canExportPdf ? "" : "disabled"} title="${actionState.canExportPdf ? "" : "Invoice required"}" data-hub-pdf="${escapeHtml(row.projectId)}">PDF</button>
+                <button class="btn ghost" data-hub-view="${rowDomId}">View</button>
+                <button class="btn ghost ${actionState.canConvert ? "" : "hub-action-disabled"}" ${actionState.canConvert ? "" : "disabled"} title="${actionState.canConvert ? "" : "Create invoice first"}" data-hub-convert="${rowDomId}">Convert</button>
+                <button class="btn ghost ${actionState.canMarkSent ? "" : "hub-action-disabled"}" ${actionState.canMarkSent ? "" : "disabled"} title="${actionState.canMarkSent ? "" : "Invoice required"}" data-hub-sent="${rowDomId}">Sent</button>
+                <button class="btn ghost ${actionState.canRequestPayment ? "" : "hub-action-disabled"}" ${actionState.canRequestPayment ? "" : "disabled"} title="${actionState.canRequestPayment ? "" : "Invoice with open balance required"}" data-hub-reminder="${rowDomId}">Reminder</button>
+                <button class="btn ghost ${actionState.canTakePayment ? "" : "hub-action-disabled"}" ${actionState.canTakePayment ? "" : "disabled"} title="${actionState.canTakePayment ? "" : "Invoice with balance required"}" data-hub-pay="${rowDomId}">Pay</button>
+                <button class="btn ghost ${navLocked ? "hub-action-disabled" : ""}" ${navLocked} title="${escapeHtml(navTitle)}" data-hub-sales="${rowDomId}">Sales</button>
+                <button class="btn ghost ${navLocked ? "hub-action-disabled" : ""}" ${navLocked} title="${escapeHtml(navTitle)}" data-hub-owner="${rowDomId}">Owner</button>
+                <button class="btn primary ${actionState.canExportPdf ? "" : "hub-action-disabled"}" ${actionState.canExportPdf ? "" : "disabled"} title="${actionState.canExportPdf ? "" : "Invoice required"}" data-hub-pdf="${rowDomId}">PDF</button>
               </div>
             </td>
           </tr>
@@ -7828,10 +7839,12 @@ function renderSupervisor() {
     const bindButton = (selector, callback) => {
       $("hubTableBody").querySelectorAll(selector).forEach((button) => {
         button.onclick = () => {
-          const projectId = Object.values(button.dataset)[0] || "";
-          const row = filteredRows.find((item) => item.projectId === projectId);
+          const key = Object.values(button.dataset)[0] || "";
+          const row = hubRowPool.find(
+            (item) => String(item.id) === key || String(item.projectId) === key
+          );
           if (!row || typeof callback !== "function") return;
-          callback(row, projectId);
+          callback(row, key);
         };
       });
     };
@@ -8132,12 +8145,18 @@ function renderSupervisor() {
 
     const refreshSelectedRow = () => {
       if (!selectedRow) return;
-      const next = lastMergedHubRows.find((row) => row.projectId === selectedRow.projectId);
+      const next = lastMergedHubRows.find(
+        (row) =>
+          row.projectId === selectedRow.projectId ||
+          String(row.id) === String(selectedRow.id) ||
+          String(row.projectId) === String(selectedRow.id)
+      );
       if (!next) return;
       openHubDrawer(next);
     };
 
     const openHubDrawer = (row) => {
+      if (!row) return;
       selectedRow = row;
       renderHubDrawerDetails(row, settings, {
         applyHubActionButtonState,
@@ -8628,6 +8647,7 @@ function renderSupervisor() {
 
       renderHubTableSection({
         filteredRows: rowsToRender,
+        mergedHubRows: lastMergedHubRows,
         selectedProjectIds,
         settings,
         activeTab,
