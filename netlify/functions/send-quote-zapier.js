@@ -177,10 +177,13 @@ exports.handler = async (event) => {
       });
     }
 
+    console.log("[CC DEBUG send-quote-zapier incoming]", {
+      additional_recipients: data?.additional_recipients,
+      additionalRecipients: data?.additionalRecipients
+    });
+
     const client_email = String(pickFirst(data.toEmail, data.client_email, data.to_email) || "").trim();
-    const additional_recipients = String(
-      data.additional_recipients !== undefined && data.additional_recipients !== null ? data.additional_recipients : ""
-    ).trim();
+    const additional_recipients = pickFirst(data.additional_recipients, data.additionalRecipients);
 
     if (!client_email) {
       logOps({
@@ -363,6 +366,9 @@ exports.handler = async (event) => {
           additional_recipients,
           tenant_business_name: businessName,
           tenant_email: tenantEmail
+        });
+        console.log("[CC DEBUG send-quote-zapier outbound]", {
+          additional_recipients: zapierBody?.additional_recipients
         });
         const resp = await fetch(webhookUrl, {
           method: "POST",
