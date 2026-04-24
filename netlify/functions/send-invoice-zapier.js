@@ -228,10 +228,11 @@ exports.handler = async (event) => {
 
     const sentAt = new Date().toISOString();
     const filter = `id=eq.${encodeURIComponent(String(invoice.id))}&tenant_id=eq.${encodeURIComponent(tenantId)}`;
+    // Do not set status here: invoices_status_check may not allow "sent" until DB migration.
     const updated = await supabaseRequest(`invoices?${filter}`, {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
-      body: { sent_at: sentAt, status: "sent" }
+      body: { sent_at: sentAt, updated_at: sentAt }
     });
     const rows = Array.isArray(updated) ? updated : updated ? [updated] : [];
     const row = rows[0];
