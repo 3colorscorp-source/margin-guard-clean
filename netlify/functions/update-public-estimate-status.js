@@ -55,63 +55,16 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
   const currency = pickStr(quoteRow.currency, 8) || "USD";
 
   // --- tenant_projects: idempotent on (tenant_id, quote_id) ---
-  const tpRows = await supabaseRequest(
-    `tenant_projects?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id`,
-    { method: "GET" }
-  );
-  const tpHit = Array.isArray(tpRows) ? tpRows[0] : null;
+  try {
+    const tpRows = await supabaseRequest(
+      `tenant_projects?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id`,
+      { method: "GET" }
+    );
+    const tpHit = Array.isArray(tpRows) ? tpRows[0] : null;
 
-  if (tpHit?.id && UUID_RE.test(String(tpHit.id))) {
-    const pidEnc = encodeURIComponent(String(tpHit.id));
-    await supabaseRequest(`tenant_projects?id=eq.${pidEnc}&tenant_id=eq.${tidEnc}`, {
-      method: "PATCH",
-      body: {
-        project_name: projectName,
-        client_name: clientName,
-        client_email: clientEmail,
-        sale_price: salePrice,
-        recommended_price: salePrice,
-        minimum_price: salePrice,
-        status: "signed",
-        updated_at: nowIso
-      }
-    });
-  } else {
-    try {
-      await supabaseRequest("tenant_projects", {
-        method: "POST",
-        headers: { Prefer: "return=minimal" },
-        body: {
-          tenant_id: tenantId,
-          quote_id: quoteId,
-          project_name: projectName,
-          client_name: clientName,
-          client_email: clientEmail,
-          status: "signed",
-          signed_at: signedAt,
-          deposit_paid: false,
-          estimated_days: 0,
-          labor_budget: 0,
-          sale_price: salePrice,
-          recommended_price: salePrice,
-          minimum_price: salePrice,
-          notes: "",
-          quoted_labor_plan: [],
-          created_at: nowIso,
-          updated_at: nowIso
-        }
-      });
-    } catch (e) {
-      const raw = String(e?.supabaseRaw || e?.message || "");
-      if (!/23505|duplicate key/i.test(raw)) throw e;
-      const again = await supabaseRequest(
-        `tenant_projects?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id`,
-        { method: "GET" }
-      );
-      const againHit = Array.isArray(again) ? again[0] : null;
-      if (!againHit?.id || !UUID_RE.test(String(againHit.id))) throw e;
-      const pidEnc2 = encodeURIComponent(String(againHit.id));
-      await supabaseRequest(`tenant_projects?id=eq.${pidEnc2}&tenant_id=eq.${tidEnc}`, {
+    if (tpHit?.id && UUID_RE.test(String(tpHit.id))) {
+      const pidEnc = encodeURIComponent(String(tpHit.id));
+      await supabaseRequest(`tenant_projects?id=eq.${pidEnc}&tenant_id=eq.${tidEnc}`, {
         method: "PATCH",
         body: {
           project_name: projectName,
@@ -124,8 +77,61 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
           updated_at: nowIso
         }
       });
+    } else {
+      try {
+        await supabaseRequest("tenant_projects", {
+          method: "POST",
+          headers: { Prefer: "return=minimal" },
+          body: {
+            tenant_id: tenantId,
+            quote_id: quoteId,
+            project_name: projectName,
+            client_name: clientName,
+            client_email: clientEmail,
+            status: "signed",
+            signed_at: signedAt,
+            deposit_paid: false,
+            estimated_days: 0,
+            labor_budget: 0,
+            sale_price: salePrice,
+            recommended_price: salePrice,
+            minimum_price: salePrice,
+            notes: "",
+            quoted_labor_plan: [],
+            created_at: nowIso,
+            updated_at: nowIso
+          }
+        });
+      } catch (e) {
+        const raw = String(e?.supabaseRaw || e?.message || "");
+        if (!/23505|duplicate key/i.test(raw)) throw e;
+        const again = await supabaseRequest(
+          `tenant_projects?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id`,
+          { method: "GET" }
+        );
+        const againHit = Array.isArray(again) ? again[0] : null;
+        if (!againHit?.id || !UUID_RE.test(String(againHit.id))) throw e;
+        const pidEnc2 = encodeURIComponent(String(againHit.id));
+        await supabaseRequest(`tenant_projects?id=eq.${pidEnc2}&tenant_id=eq.${tidEnc}`, {
+          method: "PATCH",
+          body: {
+            project_name: projectName,
+            client_name: clientName,
+            client_email: clientEmail,
+            sale_price: salePrice,
+            recommended_price: salePrice,
+            minimum_price: salePrice,
+            status: "signed",
+            updated_at: nowIso
+          }
+        });
+      }
     }
+  } catch (tpErr) {
+    console.error("[accept-bridge] tenant_projects step failed (invoice step will still run)", tpErr);
   }
+
+  console.log("[accept-bridge] project bridge done, starting invoice");
 
   // --- invoices draft: idempotent on (tenant_id, quote_id) via lookup + insert or PATCH ---
   console.log("[accept-bridge] creating invoice draft", {
@@ -135,7 +141,7 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
   });
 
   const existingInvoices = await supabaseRequest(
-    `invoices?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id,public_token`,
+    `invoices?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id,public_token,quote_id`,
     { method: "GET" }
   );
   console.log("[accept-bridge] existing invoices", existingInvoices);
@@ -145,13 +151,23 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
     : existingInvoices && typeof existingInvoices === "object"
       ? [existingInvoices]
       : [];
-  const invHit = invList[0] || null;
+  const invHit =
+    invList.find(
+      (r) =>
+        r &&
+        r.id &&
+        UUID_RE.test(String(r.id)) &&
+        String(r.quote_id || "").replace(/-/g, "").toLowerCase() ===
+          String(quoteId).replace(/-/g, "").toLowerCase()
+    ) || null;
 
   if (invHit?.id && UUID_RE.test(String(invHit.id))) {
+    console.log("[accept-bridge] invoice path: PATCH existing", { id: invHit.id, quote_id: quoteId });
     const iidEnc = encodeURIComponent(String(invHit.id));
     await supabaseRequest(`invoices?id=eq.${iidEnc}&tenant_id=eq.${tidEnc}`, {
       method: "PATCH",
       body: {
+        quote_id: quoteId,
         customer_name: clientName,
         customer_email: clientEmail,
         project_name: projectName,
@@ -176,7 +192,7 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
       paid_amount: 0,
       balance_due: insertAmount,
       currency: pickStr(quoteRow.currency, 8) || "USD",
-      status: "draft",
+      status: "DRAFT",
       type: "FINAL"
     };
 
@@ -193,7 +209,7 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
     } catch (err) {
       console.error("[accept-bridge] invoice insert failed", err);
       if (err?.supabaseRaw) {
-        console.error("[accept-bridge] invoice insert failed (Supabase body)", err.supabaseRaw);
+        console.error("[accept-bridge] invoice insert supabaseRaw", err.supabaseRaw);
       }
       throw err;
     }
