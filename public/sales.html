@@ -2869,6 +2869,11 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
       const projectName = payload.projectName || state.projectName || '';
       const publicToken = publishData.public_token;
 
+      const additionalRecipientsValue =
+        document.getElementById('salesAdditionalRecipients')?.value?.trim() ||
+        String(stateFresh.additional_recipients || payload.additional_recipients || '').trim() ||
+        '';
+
       const zapierPayload = {
         toName: clientName,
         toEmail: clientEmail,
@@ -2911,7 +2916,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         issueDate: payload.issueDate || state.issueDate || '',
         expirationDate: payload.expirationDate || state.expirationDate || '',
         customerPhone,
-        additional_recipients: String(stateFresh.additional_recipients || payload.additional_recipients || ''),
+        additional_recipients: additionalRecipientsValue,
         quoteId: publishData.quote_id,
         pdfFileName: rebuiltPdf.fileName || '',
         pdfMimeType: rebuiltPdf.mimeType || 'application/pdf',
@@ -2923,6 +2928,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         additional_recipients: String(zapierPayload.additional_recipients || '')
       });
       console.log("ZAPIER BODY", zapierPayload);
+      console.log('[CC DEBUG frontend]', additionalRecipientsValue);
 
       const response = await fetch('/.netlify/functions/send-quote-zapier', {
         method: 'POST',
