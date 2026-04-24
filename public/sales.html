@@ -67,87 +67,131 @@
 
             <div class="notice" id="salesEstimateSummary">Completa el header, cliente y mano de obra para dejar listo el estimate.</div>
 
-            <div class="form">
-              <div class="field">
-                <label>Quote number</label>
-                <input id="salesEstimateNumber" maxlength="30" readonly placeholder="Quote number will be assigned when sent" title="Assigned automatically when you send" />
+            <div class="sales-quote-section">
+              <h3 class="sales-quote-section-title">Project Info</h3>
+              <div class="form">
+                <div class="field">
+                  <label>Proyecto / Job name</label>
+                  <input id="salesProjectName" maxlength="60" placeholder="Ej: Master bath remodel" />
+                  <div class="hint"><span id="salesProjectNameCount">0</span>/60</div>
+                </div>
+                <div class="field">
+                  <label>Cliente</label>
+                  <input id="salesClientName" maxlength="60" placeholder="Ej: Maria y Librado" />
+                  <div class="hint"><span id="salesClientNameCount">0</span>/60</div>
+                </div>
+                <div class="field">
+                  <label>Email del cliente (desde el estimate)</label>
+                  <input id="salesCustomerEmail" type="email" maxlength="80" placeholder="cliente@correo.com" />
+                </div>
+                <div class="field">
+                  <label>Telefono del cliente</label>
+                  <input id="salesCustomerPhone" maxlength="30" placeholder="(650) 555-0101" />
+                </div>
+                <div class="field" style="grid-column:1 / -1;">
+                  <label>Job site address</label>
+                  <input id="salesLocation" maxlength="90" placeholder="Direccion del trabajo" />
+                </div>
               </div>
-              <div class="field">
-                <label>Issue date</label>
-                <input id="salesIssueDate" type="date" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()" />
+            </div>
+
+            <div class="sales-quote-section">
+              <h3 class="sales-quote-section-title">Dates</h3>
+              <div class="form sales-quote-dates-row">
+                <div class="field">
+                  <label>Issue date</label>
+                  <input id="salesIssueDate" type="date" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()" />
+                </div>
+                <div class="field">
+                  <label>Expiration date</label>
+                  <input id="salesExpirationDate" type="date" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()" />
+                </div>
+                <div class="field">
+                  <label>Fecha comprometida</label>
+                  <input id="salesDueDate" type="date" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()" />
+                </div>
               </div>
-              <div class="field">
-                <label>Expiration date</label>
-                <input id="salesExpirationDate" type="date" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()" />
+            </div>
+
+            <div class="sales-quote-section">
+              <h3 class="sales-quote-section-title">Business</h3>
+              <div class="form">
+                <div class="field">
+                  <label>Quote number</label>
+                  <input id="salesEstimateNumber" maxlength="30" readonly placeholder="Quote number will be assigned when sent" title="Assigned automatically when you send" />
+                </div>
+                <div class="field">
+                  <label>Precio propuesto al cliente</label>
+                  <input id="salesPrice" type="number" step="0.01" placeholder="0.00" />
+                </div>
+                <div class="field" style="grid-column:1 / -1;">
+                  <label>Send copy to (optional)</label>
+                  <input
+                    id="salesAdditionalRecipients"
+                    name="additional_recipients"
+                    type="text"
+                    maxlength="500"
+                    placeholder="example: spouse@email.com, architect@email.com"
+                    autocomplete="off"
+                  />
+                </div>
               </div>
-              <div class="field">
-                <label>Fecha comprometida</label>
-                <input id="salesDueDate" type="date" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()" />
-              </div>
-              <div class="field">
-                <label>Proyecto / Job name</label>
-                <input id="salesProjectName" maxlength="60" placeholder="Ej: Master bath remodel" />
-                <div class="hint"><span id="salesProjectNameCount">0</span>/60</div>
-              </div>
-              <div class="field">
-                <label>Cliente</label>
-                <input id="salesClientName" maxlength="60" placeholder="Ej: Maria y Librado" />
-                <div class="hint"><span id="salesClientNameCount">0</span>/60</div>
-              </div>
-              <div class="field">
-                <label>Email del cliente (desde el estimate)</label>
-                <input id="salesCustomerEmail" type="email" maxlength="80" placeholder="cliente@correo.com" />
-              </div>
-              <div class="field">
-                <label>Send copy to (optional)</label>
-                <input
-                  id="salesAdditionalRecipients"
-                  name="additional_recipients"
-                  type="text"
-                  maxlength="500"
-                  placeholder="example: spouse@email.com, architect@email.com"
-                  autocomplete="off"
-                />
-              </div>
-              <div class="field">
-                <label>Telefono del cliente</label>
-                <input id="salesCustomerPhone" maxlength="30" placeholder="(650) 555-0101" />
-              </div>
-              <div class="field">
-                <label>Job site address</label>
-                <input id="salesLocation" maxlength="90" placeholder="Direccion del trabajo" />
-              </div>
-              <div class="field">
-                <label>Precio propuesto al cliente</label>
-                <input id="salesPrice" type="number" step="0.01" placeholder="0.00" />
+            </div>
+
+            <div class="sales-quote-section">
+              <h3 class="sales-quote-section-title">Notes</h3>
+              <div class="form sales-quote-notes-col">
+                <div class="field">
+                  <label>Mensaje para cliente</label>
+                  <textarea id="salesMessageToClient" rows="4" maxlength="2000" placeholder="Mensaje visible para el cliente en el estimate o correo."></textarea>
+                  <div class="hint"><span id="salesMessageToClientCount">0</span>/2000</div>
+                </div>
+                <div class="field">
+                  <label>Notas internas</label>
+                  <textarea id="salesNotes" rows="4" maxlength="600" placeholder="Notas de negociacion, exclusiones, observaciones internas."></textarea>
+                  <div class="hint"><span id="salesNotesCount">0</span>/600</div>
+                </div>
               </div>
             </div>
 
             <div class="sep"></div>
 
-            <div class="dashboard-note">
-              <div class="dashboard-note-title">Labor builder</div>
-              <div class="dashboard-note-copy" id="salesCrewHint">Define dias por trabajador para calcular horas-hombre, recomendado, negociacion y piso minimo.</div>
+            <div class="sales-quote-section sales-quote-section--labor">
+              <h3 class="sales-quote-section-title">Labor</h3>
+              <div class="dashboard-note">
+                <div class="dashboard-note-title">Labor builder</div>
+                <div class="dashboard-note-copy" id="salesCrewHint">Define dias por trabajador para calcular horas-hombre, recomendado, negociacion y piso minimo.</div>
+              </div>
+
+              <div class="inline-actions" style="margin-top:12px; margin-bottom:12px;">
+                <button class="btn primary" type="button" id="btnAddSalesWorker">Agregar trabajador</button>
+                <button class="btn danger" type="button" id="btnClearSalesWorkers">Limpiar labor</button>
+              </div>
+
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Trabajador</th>
+                    <th>Tipo</th>
+                    <th>Dias</th>
+                    <th>Costo base</th>
+                    <th>Labor</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="salesWorkersBody"></tbody>
+              </table>
             </div>
 
-            <div class="inline-actions" style="margin-top:12px; margin-bottom:12px;">
-              <button class="btn primary" type="button" id="btnAddSalesWorker">Agregar trabajador</button>
-              <button class="btn danger" type="button" id="btnClearSalesWorkers">Limpiar labor</button>
+            <div class="sales-quote-finalize">
+              <div class="sales-quote-finalize-title">Finalize Quote</div>
+              <div class="inline-actions" style="margin-top:0;">
+                <button class="btn" type="button" id="btnNewSalesQuote">Nueva quote</button>
+                <button class="btn" type="button" id="btnSendQuoteInline">Enviar estimate</button>
+                <button class="btn primary" type="button" id="btnMarkSold">Firmar proyecto</button>
+              </div>
+              <div class="notice" id="salesSignedStatus" style="display:none; margin-top:10px;"></div>
             </div>
-
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Trabajador</th>
-                  <th>Tipo</th>
-                  <th>Dias</th>
-                  <th>Costo base</th>
-                  <th>Labor</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody id="salesWorkersBody"></tbody>
-            </table>
 
             <div class="sep"></div>
 
@@ -169,26 +213,6 @@
             <div class="notice" id="salesRule" style="margin-top:10px;">Precio por debajo del minimo permitido.</div>
             <div class="notice" id="salesMarginDecisionLine" style="margin-top:8px;display:none;"></div>
             <div class="notice" id="salesPricingGuidance" style="margin-top:10px;">Si el precio queda bajo la recomendacion, avanza con responsabilidad y alinea al dueno.</div>
-
-            <div class="sep"></div>
-
-            <div class="field">
-              <label>Mensaje para cliente</label>
-              <textarea id="salesMessageToClient" rows="4" maxlength="2000" placeholder="Mensaje visible para el cliente en el estimate o correo."></textarea>
-              <div class="hint"><span id="salesMessageToClientCount">0</span>/2000</div>
-            </div>
-            <div class="field">
-              <label>Notas internas</label>
-              <textarea id="salesNotes" rows="4" maxlength="600" placeholder="Notas de negociacion, exclusiones, observaciones internas."></textarea>
-              <div class="hint"><span id="salesNotesCount">0</span>/600</div>
-            </div>
-
-            <div class="inline-actions" style="margin-top:12px;">
-              <button class="btn" type="button" id="btnNewSalesQuote">Nueva quote</button>
-              <button class="btn" type="button" id="btnSendQuoteInline">Enviar estimate</button>
-              <button class="btn primary" type="button" id="btnMarkSold">Firmar proyecto</button>
-            </div>
-            <div class="notice" id="salesSignedStatus" style="display:none; margin-top:10px;"></div>
           </div>
         </div>
 
