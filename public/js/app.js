@@ -2141,12 +2141,133 @@ Thank you.`
       activity: Array.isArray(saved.activity) ? saved.activity : [],
       publicToken: nonEmptyString(saved.publicToken),
       publicUrl: nonEmptyString(saved.publicUrl),
-      paymentLink: nonEmptyString(saved.paymentLink)
+      paymentLink: nonEmptyString(saved.paymentLink),
+      serverInvoiceId: nonEmptyString(saved.serverInvoiceId, saved.supabaseInvoiceId)
     };
   }
 
-  function saveProjectInvoiceState(projectId, invoice) {
-    return updateProjectById(projectId, (project) => ({
+  const MG_SERVER_INVOICE_UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  function isEstimatesHubPageForTenantDraftSync() {
+    return document.body?.dataset?.role === "estimates-hub";
+  }
+
+  function finiteMoneyTenantDraft(n) {
+    const x = Number(n);
+    if (!Number.isFinite(x)) return 0;
+    return Math.round(x * 100) / 100;
+  }
+
+  function buildTenantInvoiceDraftBody(project, report, inv) {
+    if (!project) return null;
+    const metrics = calcInvoice(project, report, inv);
+    const paidTotal = finiteMoneyTenantDraft(
+      finiteNumber(inv.depositApplied, 0) + finiteNumber(inv.receivedApplied, 0)
+    );
+    const body = {
+      invoice_no: String(nonEmptyString(inv.invoiceNo, `INV-${Date.now()}`)).trim(),
+      customer_name: String(project.clientName || "").trim(),
+      customer_email: String(project.clientEmail || "").trim(),
+      project_name: String(project.projectName || "").trim(),
+      amount: finiteMoneyTenantDraft(metrics.total),
+      paid_amount: paidTotal,
+      balance_due: finiteMoneyTenantDraft(metrics.balance),
+      status: "draft",
+      issue_date: normalizeDateInput(inv.invoiceDate) || new Date().toISOString().slice(0, 10),
+      due_date: normalizeDateInput(inv.dueDate || project.dueDate) || "",
+      type: "service",
+      notes: String(project.notes || "").slice(0, 8000),
+      payment_link: nonEmptyString(inv.paymentLink) || ""
+    };
+    const qRaw = nonEmptyString(project.quoteId, project.quote_id, inv.quoteId);
+    if (qRaw && MG_SERVER_INVOICE_UUID_RE.test(String(qRaw).trim())) {
+      body.quote_id = String(qRaw).trim();
+    }
+    const sid = nonEmptyString(inv.serverInvoiceId, inv.supabaseInvoiceId);
+    if (sid && MG_SERVER_INVOICE_UUID_RE.test(sid)) {
+      body.id = sid;
+    }
+    return body;
+  }
+
+  function applyServerInvoiceRowToLocalProject(projectId, serverRow) {
+    if (!serverRow?.id) return;
+    updateProjectById(projectId, (project) => {
+      const cur = getProjectInvoiceState(project);
+      const pub = nonEmptyString(serverRow.public_token);
+      const url = pub ? `/invoice-public.html?token=${encodeURIComponent(pub)}` : nonEmptyString(cur.publicUrl);
+      return {
+        ...project,
+        invoice: {
+          ...buildDefaultInvoiceState(project),
+          ...cur,
+          serverInvoiceId: serverRow.id,
+          invoiceNo: nonEmptyString(serverRow.invoice_no, cur.invoiceNo),
+          publicToken: pub || cur.publicToken,
+          publicUrl: url || cur.publicUrl
+        }
+      };
+    });
+  }
+
+  async function saveTenantInvoiceDraftToServer(invoiceDraft) {
+    try {
+      const res = await fetch("/.netlify/functions/upsert-tenant-invoice-draft", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        body: JSON.stringify(invoiceDraft)
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.ok) {
+        console.warn("[Invoice Hub] save draft failed", res.status, data);
+        return null;
+      }
+
+      return data.invoice || null;
+    } catch (err) {
+      console.warn("[Invoice Hub] save draft error", err);
+      return null;
+    }
+  }
+
+  function maybePushTenantInvoiceDraftAfterHubSave(projectId, projectAfterSave) {
+    if (!projectAfterSave || String(projectId).startsWith("svc-inv-")) return;
+    if (!isEstimatesHubPageForTenantDraftSync()) return;
+    const inv = getProjectInvoiceState(projectAfterSave);
+    if (normalizeInvoiceStatus(inv.status) !== "draft") return;
+    const report = loadSupervisorReport(projectAfterSave);
+    const body = buildTenantInvoiceDraftBody(projectAfterSave, report, inv);
+    if (!body || !body.invoice_no) return;
+
+    void saveTenantInvoiceDraftToServer(body).then((serverRow) => {
+      if (!serverRow?.id) return;
+      applyServerInvoiceRowToLocalProject(projectId, serverRow);
+      void refreshHubServerInvoicesCacheQuietly();
+    });
+  }
+
+  async function refreshHubServerInvoicesCacheQuietly() {
+    try {
+      const raw = await loadTenantInvoicesFromServer({ limit: 100 });
+      hubServerNormalizedInvoicesCache = raw.map(normalizeServerInvoiceForHub);
+    } catch (_err) {
+      hubServerNormalizedInvoicesCache = [];
+    }
+    if (typeof window.__mgHubTableRefresh === "function") {
+      window.__mgHubTableRefresh();
+    }
+  }
+
+  function saveProjectInvoiceState(projectId, invoice, options = {}) {
+    const skipTenantDraftSync = options.skipTenantDraftSync === true;
+    const nextProject = updateProjectById(projectId, (project) => ({
       ...project,
       invoice: {
         ...buildDefaultInvoiceState(project),
@@ -2159,9 +2280,14 @@ Thank you.`
         activity: Array.isArray(invoice?.activity) ? invoice.activity : [],
         publicToken: nonEmptyString(invoice?.publicToken),
         publicUrl: nonEmptyString(invoice?.publicUrl),
-        paymentLink: nonEmptyString(invoice?.paymentLink)
+        paymentLink: nonEmptyString(invoice?.paymentLink),
+        serverInvoiceId: nonEmptyString(invoice?.serverInvoiceId, project?.invoice?.serverInvoiceId)
       }
     }));
+    if (nextProject && !skipTenantDraftSync) {
+      maybePushTenantInvoiceDraftAfterHubSave(projectId, nextProject);
+    }
+    return nextProject;
   }
 
   function appendInvoiceActivity(invoice, message, dateValue, type = "note") {
@@ -5973,6 +6099,7 @@ function renderSupervisor() {
       return {
         id: project.id,
         projectId: project.id,
+        serverInvoiceId: nonEmptyString(invoice.serverInvoiceId, invoice.supabaseInvoiceId),
         date: formatDisplayDate(primaryDate),
         dateRaw: normalizeDateInput(primaryDate),
         dueDate: formatDisplayDate(effectiveDueDate),
@@ -6782,7 +6909,8 @@ function renderSupervisor() {
       activity: Array.isArray(overrides.activity) ? overrides.activity : current.activity,
       publicToken: nonEmptyString(overrides.publicToken, current.publicToken),
       publicUrl: nonEmptyString(overrides.publicUrl, current.publicUrl),
-      paymentLink: nonEmptyString(overrides.paymentLink, current.paymentLink)
+      paymentLink: nonEmptyString(overrides.paymentLink, current.paymentLink),
+      serverInvoiceId: nonEmptyString(overrides.serverInvoiceId, current.serverInvoiceId)
     };
   }
 
@@ -6865,7 +6993,7 @@ function renderSupervisor() {
       publicUrl: data.public_url || `/invoice-public.html?token=${data.public_token || payload.public_token}`
     });
     nextInvoice.activity = appendInvoiceActivity(nextInvoice, "Public invoice link published.", undefined, "public");
-    saveProjectInvoiceState(projectId, nextInvoice);
+    saveProjectInvoiceState(projectId, nextInvoice, { skipTenantDraftSync: true });
     return nextInvoice.publicUrl;
   }
 
@@ -8860,6 +8988,7 @@ function renderSupervisor() {
       };
     }
 
+    window.__mgHubTableRefresh = refresh;
     refresh();
 
     if (!hubServerInvoicesFetchStarted) {
