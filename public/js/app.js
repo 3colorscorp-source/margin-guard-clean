@@ -2322,6 +2322,39 @@ Thank you.`
     setNotice("hubFeedback", message, tone);
   }
 
+  /** Human-readable line for #hubFeedback from send-invoice-zapier JSON (or similar). */
+  function formatSendInvoiceHubFailureMessage(httpStatus, data) {
+    const d = data && typeof data === "object" && !Array.isArray(data) ? data : {};
+    const reason = String(d.reason || "").trim();
+    const msg = String(d.message || "").trim();
+    const errStr = String(d.error || "").trim();
+    const details = String(d.details || "").trim();
+    const zapStatusRaw = d.status;
+    const zapStatus =
+      zapStatusRaw !== undefined && zapStatusRaw !== null && String(zapStatusRaw) !== ""
+        ? String(zapStatusRaw)
+        : "";
+
+    if (reason === "zapier_error" && zapStatus) {
+      let line = `Send invoice failed: Zapier returned ${zapStatus}`;
+      if (msg && !line.includes(msg)) line += ` — ${msg}`;
+      if (details) {
+        const short = details.length > 160 ? `${details.slice(0, 160)}…` : details;
+        line += ` — ${short}`;
+      }
+      return line;
+    }
+
+    let core = msg || errStr || (reason ? reason.replace(/_/g, " ") : "");
+    if (!core) core = httpStatus ? `HTTP ${httpStatus}` : "Unknown error";
+    let out = `Send invoice failed: ${core}`;
+    if (details && !out.includes(details.slice(0, 60))) {
+      const short = details.length > 140 ? `${details.slice(0, 140)}…` : details;
+      out += ` — ${short}`;
+    }
+    return out;
+  }
+
   function setText(targetId, value) {
     const node = $(targetId);
     if (!node) return;
@@ -7508,14 +7541,21 @@ function renderSupervisor() {
     }
 
     try {
-      console.log("[Invoice Send] starting");
+      console.info("[InvoiceHub] Send invoice payload", body);
       const res = await fetch("/.netlify/functions/send-invoice-zapier", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify(body)
       });
-      const data = await res.json().catch(() => ({}));
+      const text = await res.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { ok: false, message: text ? text.slice(0, 200) : "Invalid JSON response" };
+      }
+      console.info("[InvoiceHub] Send invoice response", { httpStatus: res.status, body: data });
       if (res.ok && data.ok === true && data.forwarded === true && data.invoice) {
         console.log("[Invoice Send] Zapier completed");
         applyHubSendSuccessToLocalProject(projectId, data.invoice);
@@ -7523,9 +7563,11 @@ function renderSupervisor() {
         void refreshHubServerInvoicesCacheQuietly();
         return;
       }
-      console.warn("[Invoice Send] server send failed", res.status, data);
+      console.error("[InvoiceHub] Send invoice failed", { httpStatus: res.status, body: data });
+      setHubFeedback(formatSendInvoiceHubFailureMessage(res.status, data), "err");
     } catch (err) {
-      console.warn("[Invoice Send] server send error", err);
+      console.error("[InvoiceHub] Send invoice failed", err);
+      setHubFeedback(`Send invoice failed: ${String(err?.message || err || "network error")}`, "err");
     }
     doMailtoFallback();
   }
@@ -7548,25 +7590,32 @@ function renderSupervisor() {
       body.public_token = token;
     }
     try {
-      console.log("[Invoice Send] server row starting");
+      console.info("[InvoiceHub] Send invoice payload", body);
       const res = await fetch("/.netlify/functions/send-invoice-zapier", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify(body)
       });
-      const data = await res.json().catch(() => ({}));
+      const text = await res.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { ok: false, message: text ? text.slice(0, 200) : "Invalid JSON response" };
+      }
+      console.info("[InvoiceHub] Send invoice response", { httpStatus: res.status, body: data });
       if (res.ok && data.ok === true && data.forwarded === true) {
         console.log("[Invoice Send] Zapier completed (server row)");
         void refreshHubServerInvoicesCacheQuietly();
         setHubFeedback("Invoice enviado.", "ok");
         return;
       }
-      console.warn("[Invoice Send] server row failed", res.status, data);
-      setHubFeedback(data.error || "No se pudo enviar el invoice.", "warn");
+      console.error("[InvoiceHub] Send invoice failed", { httpStatus: res.status, body: data });
+      setHubFeedback(formatSendInvoiceHubFailureMessage(res.status, data), "err");
     } catch (err) {
-      console.warn("[Invoice Send] server row error", err);
-      setHubFeedback("Error al enviar el invoice.", "err");
+      console.error("[InvoiceHub] Send invoice failed", err);
+      setHubFeedback(`Send invoice failed: ${String(err?.message || err || "network error")}`, "err");
     }
   }
 

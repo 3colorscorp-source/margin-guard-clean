@@ -18,6 +18,18 @@ function json(statusCode, body) {
   };
 }
 
+/** Structured error for Invoice Hub; `error` mirrors `message` for older clients. */
+function err(statusCode, reason, message, extra = {}) {
+  const msg = String(message || "").trim() || String(reason || "").replace(/_/g, " ");
+  return json(statusCode, {
+    ok: false,
+    reason: String(reason || "error"),
+    message: msg,
+    error: msg,
+    ...extra
+  });
+}
+
 function originFromEvent(event) {
   const host = String(event?.headers?.host || event?.headers?.["x-forwarded-host"] || "").split(",")[0].trim();
   if (!host) {
@@ -66,6 +78,36 @@ async function loadInvoiceForTenant(tenantId, id, publicToken) {
   const invoice = list[0];
   if (String(invoice.tenant_id || "") !== tenantId) return null;
   return invoice;
+}
+
+/** Minimal probe when tenant-scoped lookup returns empty (wrong tenant vs missing). */
+async function probeInvoiceTenantRow(id, publicToken) {
+  try {
+    if (id && UUID_RE.test(id)) {
+      const rows = await supabaseRequest(
+        `invoices?id=eq.${encodeURIComponent(id)}&select=id,tenant_id&limit=1`,
+        { method: "GET" }
+      );
+      const list = Array.isArray(rows) ? rows : [];
+      return list[0] || null;
+    }
+    if (
+      publicToken &&
+      publicToken.length >= 8 &&
+      publicToken.length <= 256 &&
+      /^[a-zA-Z0-9_]+$/.test(publicToken)
+    ) {
+      const rows = await supabaseRequest(
+        `invoices?public_token=eq.${encodeURIComponent(publicToken)}&select=id,tenant_id&limit=1`,
+        { method: "GET" }
+      );
+      const list = Array.isArray(rows) ? rows : [];
+      return list[0] || null;
+    }
+  } catch (_e) {
+    return null;
+  }
+  return null;
 }
 
 /**
@@ -129,12 +171,12 @@ exports.handler = async (event) => {
 
     const webhookUrl = String(process.env.ZAPIER_INVOICE_SEND_WEBHOOK_URL || "").trim();
     if (!webhookUrl) {
-      return json(503, { ok: false, error: "Invoice send webhook is not configured." });
+      return err(503, "webhook_not_configured", "Zapier invoice webhook is not configured");
     }
 
     const token = String(invoice.public_token || "").trim();
     if (!token) {
-      return json(422, { ok: false, error: "Invoice has no public_token; publish or sync draft first." });
+      return err(422, "missing_public_token", "Missing public token; publish or sync draft first.");
     }
 
     const origin = originFromEvent(event);
@@ -176,13 +218,16 @@ exports.handler = async (event) => {
       });
     } catch (err) {
       console.warn("[Invoice Send] Zapier request failed", err?.message || err);
-      return json(502, { ok: false, error: "Unable to reach invoice send webhook." });
+      return err(502, "webhook_unreachable", "Unable to reach invoice send webhook.");
     }
 
     if (!zapRes.ok) {
-      const text = await zapRes.text().catch(() => "");
-      console.warn("[Invoice Send] Zapier non-OK", zapRes.status, text.slice(0, 500));
-      return json(502, { ok: false, error: "Invoice send webhook returned an error." });
+      const zapierText = await zapRes.text().catch(() => "");
+      console.warn("[Invoice Send] Zapier non-OK", zapRes.status, zapierText.slice(0, 500));
+      return err(502, "zapier_error", "Zapier webhook returned an error", {
+        status: zapRes.status,
+        details: zapierText.slice(0, 500)
+      });
     }
 
     console.log("[Invoice Send] Zapier completed");
@@ -197,7 +242,11 @@ exports.handler = async (event) => {
     const rows = Array.isArray(updated) ? updated : updated ? [updated] : [];
     const row = rows[0];
     if (!row?.id) {
-      return json(500, { ok: false, error: "Invoice was forwarded but could not be updated in the database." });
+      return err(
+        500,
+        "database_update_failed",
+        "Invoice was forwarded but could not be updated in the database."
+      );
     }
 
     console.log("[Invoice Send] invoice marked sent");
@@ -205,6 +254,6 @@ exports.handler = async (event) => {
     return json(200, { ok: true, forwarded: true, invoice: row });
   } catch (err) {
     console.warn("[Invoice Send] error", err?.message || err);
-    return json(500, { ok: false, error: err.message || "Server error" });
+    return err(500, "server_error", err.message || "Server error");
   }
 };
