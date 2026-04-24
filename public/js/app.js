@@ -8058,13 +8058,17 @@ function renderSupervisor() {
     };
 
     const refreshBulkBar = () => {
-      const selectedRows = filteredRows.filter((row) => selectedProjectIds.has(row.projectId));
+      const hubTableSource = Array.isArray(lastMergedHubRows) && lastMergedHubRows.length
+        ? lastMergedHubRows
+        : filteredRows;
+      const selectedRows = hubTableSource.filter((row) => selectedProjectIds.has(row.projectId));
       const total = selectedRows.reduce((sum, row) => sum + finiteNumber(row.amount, 0), 0);
       if ($("hubBulkBar")) $("hubBulkBar").style.display = selectedRows.length ? "block" : "none";
       if ($("hubBulkCount")) $("hubBulkCount").textContent = String(selectedRows.length);
       if ($("hubBulkAmount")) $("hubBulkAmount").textContent = money(total, settings.currency);
       if ($("hubSelectAll")) {
-        $("hubSelectAll").checked = Boolean(filteredRows.length) && selectedRows.length === filteredRows.length;
+        $("hubSelectAll").checked =
+          Boolean(hubTableSource.length) && selectedRows.length === hubTableSource.length;
       }
     };
 
@@ -8567,58 +8571,25 @@ function renderSupervisor() {
 
       const campaignSegments = buildCampaignSegments(filteredRows, settings);
 
-      renderHubTableSection({
-        filteredRows,
-        selectedProjectIds,
-        settings,
-        activeTab,
-        refreshBulkBar,
-        onOpenRow: openHubDrawer,
-        onConvert: (row) => {
-          if (row?.hubRowSource === "server_invoice") return;
-          if (!guardHubAction(row, "canConvert", "Este proyecto ya tiene invoice o aun no tiene monto listo para convertir.")) return;
-          convertEstimateToInvoice(row.projectId);
-          refresh();
-          setHubFeedback(`Invoice creado para ${row.title}.`, "ok");
-        },
-        onSent: (row) => {
-          if (row?.hubRowSource === "server_invoice") return;
-          if (!guardHubAction(row, "canMarkSent", "Primero crea el invoice antes de marcarlo como enviado.")) return;
-          markHubInvoiceSent(row.projectId);
-          refresh();
-          setHubFeedback(`Invoice marcado como sent para ${row.title}.`, "ok");
-        },
-        onPay: (row, projectId) => {
-          if (row?.hubRowSource === "server_invoice") return;
-          if (!guardHubAction(row, "canTakePayment", "Take Payment solo aplica cuando ya existe invoice con saldo pendiente.")) return;
-          openPaymentForm(row, null, ({ amount, method, note, date }) => {
-            recordHubPayment(projectId, { amount, method, note, date });
-          });
-          hubFormState.successMessage = `Pago registrado para ${row.title}.`;
-        },
-        onReminder: (row) => {
-          if (row?.hubRowSource === "server_invoice") return;
-          if (!guardHubAction(row, "canRequestPayment", "Solo puedes pedir pago cuando hay invoice enviado o parcial con saldo.")) return;
-          requestHubPayment(row.projectId);
-          refresh();
-          setHubFeedback(`Recordatorio de pago preparado para ${row.customer}.`, "ok");
-        },
-        onSales: (row) => {
-          if (row?.hubRowSource === "server_invoice") return;
-          saveSupervisorSelectedProjectId(row.projectId);
-          window.location.href = "/sales";
-        },
-        onOwner: (row) => {
-          if (row?.hubRowSource === "server_invoice") return;
-          saveSupervisorSelectedProjectId(row.projectId);
-          window.location.href = "/owner";
-        },
-        onPdf: (row) => {
-          if (row?.hubRowSource === "server_invoice") return;
-          if (!guardHubAction(row, "canExportPdf", "El PDF del invoice requiere un invoice valido.")) return;
-          void exportInvoicePdf("hub", row.project, row.report, settings, getProjectInvoiceState(row.project));
-        }
-      });
+      const rowsToRender = lastMergedHubRows || [];
+      console.log("[HUB FIX] rowsToRender:", rowsToRender.length);
+      const hubTableBody = $("hubTableBody");
+      if (hubTableBody) {
+        const wrap = hubTableBody.closest(".supervisor-table-wrap");
+        if (wrap) wrap.style.display = activeTab === "pipeline" ? "none" : "block";
+        hubTableBody.innerHTML = "";
+        rowsToRender.forEach((row) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+    <td>${escapeHtml(String(row.title || "Invoice"))}</td>
+    <td>${escapeHtml(String(row.amount != null ? row.amount : 0))}</td>
+    <td>${escapeHtml(String(row.status || ""))}</td>
+  `;
+          hubTableBody.appendChild(tr);
+        });
+      }
+      console.log("[HUB] final rows rendered:", rowsToRender.length);
+      refreshBulkBar();
 
       renderHubPipelineSection({
         filteredRows,
