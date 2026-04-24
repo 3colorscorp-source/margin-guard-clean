@@ -81,10 +81,24 @@ exports.handler = async (event) => {
 
     const path = `invoices?${params.toString()}`;
     const rows = await supabaseRequest(path, { method: "GET" });
-    const invoices = Array.isArray(rows) ? rows : [];
+    let invoices = Array.isArray(rows) ? rows : [];
+    if (!Array.isArray(invoices)) {
+      invoices = [];
+    }
 
-    return json(200, { ok: true, invoices });
+    console.log("[list-tenant-invoices] returning:", invoices.length);
+
+    return {
+      statusCode: 200,
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        ok: true,
+        invoices
+      })
+    };
   } catch (err) {
-    return json(500, { error: err.message || "Server error" });
+    return json(500, { ok: false, error: err.message || "Server error" });
   }
 };
