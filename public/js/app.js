@@ -2120,7 +2120,8 @@ Thank you.`
       activity: [],
       publicToken: "",
       publicUrl: "",
-      paymentLink: ""
+      paymentLink: "",
+      sentAt: ""
     };
   }
 
@@ -2142,7 +2143,8 @@ Thank you.`
       publicToken: nonEmptyString(saved.publicToken),
       publicUrl: nonEmptyString(saved.publicUrl),
       paymentLink: nonEmptyString(saved.paymentLink),
-      serverInvoiceId: nonEmptyString(saved.serverInvoiceId, saved.supabaseInvoiceId)
+      serverInvoiceId: nonEmptyString(saved.serverInvoiceId, saved.supabaseInvoiceId),
+      sentAt: nonEmptyString(saved.sentAt)
     };
   }
 
@@ -6910,7 +6912,8 @@ function renderSupervisor() {
       publicToken: nonEmptyString(overrides.publicToken, current.publicToken),
       publicUrl: nonEmptyString(overrides.publicUrl, current.publicUrl),
       paymentLink: nonEmptyString(overrides.paymentLink, current.paymentLink),
-      serverInvoiceId: nonEmptyString(overrides.serverInvoiceId, current.serverInvoiceId)
+      serverInvoiceId: nonEmptyString(overrides.serverInvoiceId, current.serverInvoiceId),
+      sentAt: nonEmptyString(overrides.sentAt, current.sentAt)
     };
   }
 
@@ -7286,23 +7289,85 @@ function renderSupervisor() {
     saveProjectInvoiceState(projectId, invoice);
   }
 
-  function sendHubInvoice(projectId) {
+  function applyHubSendSuccessToLocalProject(projectId, serverInvoice) {
+    if (!serverInvoice?.id) return;
     const project = getProjectById(projectId);
     if (!project) return;
     const report = loadSupervisorReport(project);
-    const invoice = buildHubInvoiceState(project, report, { status: "sent" });
-    const metrics = calcInvoice(project, report, invoice);
-    invoice.activity = appendInvoiceActivity(invoice, "Invoice email prepared for client.", undefined, "email");
-    saveProjectInvoiceState(projectId, invoice);
-    const message = buildHubCommunication("invoice_send", buildPortfolioRows(loadSettings()).find((row) => row.projectId === projectId) || {
-      customer: project.clientName || "-",
-      title: project.projectName || "-",
-      project,
-      report
-    }, loadSettings());
-    const subject = encodeURIComponent(message.subject);
-    const body = encodeURIComponent(message.body);
-    window.location.href = `mailto:${encodeURIComponent(project.clientEmail || "")}?subject=${subject}&body=${body}`;
+    const cur = getProjectInvoiceState(project);
+    const sentAtIso = String(serverInvoice.sent_at || "").trim() || new Date().toISOString();
+    const next = buildHubInvoiceState(project, report, {
+      status: "sent",
+      invoiceNo: nonEmptyString(serverInvoice.invoice_no, cur.invoiceNo),
+      publicToken: nonEmptyString(serverInvoice.public_token, cur.publicToken),
+      publicUrl: serverInvoice.public_token
+        ? `/invoice-public.html?token=${encodeURIComponent(serverInvoice.public_token)}`
+        : cur.publicUrl,
+      serverInvoiceId: serverInvoice.id,
+      sentAt: sentAtIso
+    });
+    next.activity = appendInvoiceActivity(next, "Invoice sent (webhook).", undefined, "email");
+    saveProjectInvoiceState(projectId, next, { skipTenantDraftSync: true });
+  }
+
+  async function sendHubInvoice(projectId) {
+    const project = getProjectById(projectId);
+    if (!project) return;
+    const report = loadSupervisorReport(project);
+    const cur = getProjectInvoiceState(project);
+    const sid = nonEmptyString(cur.serverInvoiceId);
+    const token = nonEmptyString(cur.publicToken);
+    const canTryServer =
+      (sid && MG_SERVER_INVOICE_UUID_RE.test(sid)) || (token && token.length >= 8);
+
+    const doMailtoFallback = () => {
+      const invoice = buildHubInvoiceState(project, report, { status: "sent" });
+      invoice.activity = appendInvoiceActivity(invoice, "Invoice email prepared for client.", undefined, "email");
+      saveProjectInvoiceState(projectId, invoice);
+      const message = buildHubCommunication("invoice_send", buildPortfolioRows(loadSettings()).find((row) => row.projectId === projectId) || {
+        customer: project.clientName || "-",
+        title: project.projectName || "-",
+        project,
+        report
+      }, loadSettings());
+      const subject = encodeURIComponent(message.subject);
+      const body = encodeURIComponent(message.body);
+      window.location.href = `mailto:${encodeURIComponent(project.clientEmail || "")}?subject=${subject}&body=${body}`;
+    };
+
+    if (!canTryServer) {
+      doMailtoFallback();
+      return;
+    }
+
+    const body = {};
+    if (sid && MG_SERVER_INVOICE_UUID_RE.test(sid)) {
+      body.id = sid;
+    } else {
+      body.public_token = token;
+    }
+
+    try {
+      console.log("[Invoice Send] starting");
+      const res = await fetch("/.netlify/functions/send-invoice-zapier", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok === true && data.forwarded === true && data.invoice) {
+        console.log("[Invoice Send] Zapier completed");
+        applyHubSendSuccessToLocalProject(projectId, data.invoice);
+        console.log("[Invoice Send] invoice marked sent");
+        void refreshHubServerInvoicesCacheQuietly();
+        return;
+      }
+      console.warn("[Invoice Send] server send failed", res.status, data);
+    } catch (err) {
+      console.warn("[Invoice Send] server send error", err);
+    }
+    doMailtoFallback();
   }
 
   function requestHubPayment(projectId) {
@@ -8878,10 +8943,12 @@ function renderSupervisor() {
       $("btnHubDrawerSendInvoice").onclick = () => {
         if (!selectedRow) return;
         if (!guardHubAction(selectedRow, "canSendInvoice", "Necesitas invoice, cliente y monto antes de enviar.")) return;
-        sendHubInvoice(selectedRow.projectId);
-        refresh();
-        refreshSelectedRow();
-        setHubFeedback(`Correo de invoice preparado para ${selectedRow.customer}.`, "ok");
+        void (async () => {
+          await sendHubInvoice(selectedRow.projectId);
+          refresh();
+          refreshSelectedRow();
+          setHubFeedback(`Correo de invoice preparado para ${selectedRow.customer}.`, "ok");
+        })();
       };
     }
     if ($("btnHubDrawerRequestPayment")) {
