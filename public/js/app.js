@@ -6493,6 +6493,52 @@ function renderSupervisor() {
     return "Completed";
   }
 
+  /** Hub table display only: rows that should float to the top (same cases as "Send Invoice" next-action). */
+  function hubRowIsSendNowCollectPriority(row) {
+    return getHubRowCollectNextActionLabel(row) === "Send Invoice";
+  }
+
+  /**
+   * Visual order for Invoice Hub table: send-now rows first, then higher balance, then active column sort.
+   * Does not change underlying merge/filter logic.
+   */
+  function sortHubRowsForCollectDisplay(rows, sortKey, sortDir) {
+    return rows.slice().sort((a, b) => {
+      const pa = hubRowIsSendNowCollectPriority(a) ? 1 : 0;
+      const pb = hubRowIsSendNowCollectPriority(b) ? 1 : 0;
+      if (pa !== pb) return pb - pa;
+      const balA = finiteNumber(a?.balance, 0);
+      const balB = finiteNumber(b?.balance, 0);
+      if (balA !== balB) return balB - balA;
+      const c = compareHubValues(a?.[sortKey], b?.[sortKey], sortKey);
+      return sortDir === "asc" ? c : -c;
+    });
+  }
+
+  function hubHeroStartWithLine(rows, settings) {
+    if (!rows.length) return "No invoices need action right now.";
+    const row = rows[0];
+    const name = nonEmptyString(row.title, row.customer) || "This job";
+    const balStr = money(finiteNumber(row.balance, 0), settings.currency);
+    if (hubRowIsSendNowCollectPriority(row)) {
+      return `Start with: ${name} — ${balStr} ready to send`;
+    }
+    const na = getHubRowCollectNextActionLabel(row);
+    if (na === "Waiting Payment") return `Start with: ${name} — ${balStr} waiting for payment`;
+    if (na === "Collect Balance") return `Start with: ${name} — ${balStr} collect balance`;
+    if (na === "Completed") return `Start with: ${name} — ${balStr} (completed)`;
+    return `Start with: ${name} — ${balStr}`;
+  }
+
+  function hubTableNextActionDisplay(row, rankIndex) {
+    const raw = getHubRowCollectNextActionLabel(row);
+    if (raw === "Send Invoice") {
+      if (rankIndex === 0) return "Send now • High priority";
+      return "Send now";
+    }
+    return raw;
+  }
+
   function duplicateHubProject(projectId) {
     const sourceProject = getProjectById(projectId);
     if (!sourceProject) return null;
@@ -7811,6 +7857,7 @@ function renderSupervisor() {
   function renderHubTableSection(config) {
     const {
       filteredRows,
+      displayOrderedRows,
       mergedHubRows,
       selectedProjectIds,
       settings,
@@ -7821,6 +7868,8 @@ function renderSupervisor() {
       onMarkPaid,
       onSendInvoice
     } = config;
+    const tableRows =
+      Array.isArray(displayOrderedRows) && displayOrderedRows.length ? displayOrderedRows : filteredRows;
     const hubRowPool =
       Array.isArray(mergedHubRows) && mergedHubRows.length ? mergedHubRows : filteredRows;
     const findHubRowByKey = (key) =>
@@ -7833,36 +7882,47 @@ function renderSupervisor() {
       );
     if (!$("hubTableBody")) return;
     $("hubTableBody").closest(".supervisor-table-wrap").style.display = "block";
-    $("hubTableBody").innerHTML = filteredRows.length
-      ? filteredRows.map((row) => {
+    $("hubTableBody").innerHTML = tableRows.length
+      ? tableRows.map((row, rankIndex) => {
           const actionState = getHubRowActionState(row);
           const isServerRow = row.hubRowSource === "server_invoice";
           const rowDomId = escapeHtml(String(row.id != null ? row.id : row.projectId));
-          const nextLabel = getHubRowCollectNextActionLabel(row);
+          const nextLabel = hubTableNextActionDisplay(row, rankIndex);
           const sendBtn = actionState.canSendInvoice
-            ? `<button type="button" class="btn ghost" data-hub-send-invoice="${rowDomId}">Send Invoice</button>`
+            ? `<button type="button" class="btn hub-cta-send" data-hub-send-invoice="${rowDomId}">Send now</button>`
             : "";
           const payBtn = actionState.canTakePayment
-            ? `<button type="button" class="btn ghost" data-hub-pay="${rowDomId}" title="Record a payment">Pay</button>`
+            ? `<button type="button" class="btn ghost hub-cta-secondary" data-hub-pay="${rowDomId}" title="Record a payment">Pay</button>`
             : actionState.canMarkPaid
-              ? `<button type="button" class="btn ghost" data-hub-mark-paid="${rowDomId}" title="Mark invoice paid">Mark Paid</button>`
+              ? `<button type="button" class="btn ghost hub-cta-secondary" data-hub-mark-paid="${rowDomId}" title="Mark invoice paid">Mark Paid</button>`
               : "";
+          const rankClass =
+            rankIndex === 0 ? "hub-row--priority-1" : rankIndex === 1 ? "hub-row--priority-2" : rankIndex === 2 ? "hub-row--priority-3" : "";
+          let rankBadge = "";
+          if (rankIndex === 0) {
+            rankBadge = `<span class="hub-priority-badge hub-priority-badge--start">Start here</span>`;
+          } else if (rankIndex === 1) {
+            rankBadge = `<span class="hub-priority-badge hub-priority-badge--rank">#2</span>`;
+          } else if (rankIndex === 2) {
+            rankBadge = `<span class="hub-priority-badge hub-priority-badge--rank">#3</span>`;
+          }
           return `
-          <tr data-hub-row="${rowDomId}" style="cursor:pointer">
+          <tr data-hub-row="${rowDomId}" class="${rankClass}" style="cursor:pointer">
             <td><input type="checkbox" data-hub-select="${rowDomId}" ${selectedProjectIds.has(row.projectId) || selectedProjectIds.has(row.id) ? "checked" : ""} /></td>
             <td>${escapeHtml(row.date)}</td>
             <td>${escapeHtml(row.customer)}</td>
             <td>
+              ${rankBadge}
               <strong>${escapeHtml(row.title)}</strong>
               ${isServerRow ? `<span class="hub-server-badge" style="font-size:10px;margin-left:6px;opacity:0.85" title="Tenant invoice (server)">${escapeHtml(row.hubSourceLabel || "Server")}</span>` : ""}
             </td>
             <td>${escapeHtml(row.invoiceNo)}</td>
             <td><span class="hub-status ${escapeHtml(row.status)}">${escapeHtml(row.status)}</span></td>
             <td>${money(row.balance, settings.currency)}</td>
-            <td>${escapeHtml(nextLabel)}</td>
+            <td class="hub-next-action-cell">${escapeHtml(nextLabel)}</td>
             <td>
               <div class="row-actions wrap">
-                <button type="button" class="btn ghost" data-hub-view="${rowDomId}">View</button>
+                <button type="button" class="btn hub-cta-view" data-hub-view="${rowDomId}">View</button>
                 ${sendBtn}
                 ${payBtn}
               </div>
@@ -8474,29 +8534,34 @@ function renderSupervisor() {
           hubViewMode === "all" && statusFilter !== "all" ? statusFilter : hubInvoiceHubViewTitleLabel(hubViewMode);
       }
       if ($("hubKpiTotalCollect")) $("hubKpiTotalCollect").textContent = money(totalBalance, settings.currency);
-      if ($("hubKpiTotalCollectMeta")) $("hubKpiTotalCollectMeta").textContent = "Open balances on this view";
+      if ($("hubKpiTotalCollectMeta")) {
+        $("hubKpiTotalCollectMeta").textContent = `${filteredRows.length} jobs in this view`;
+      }
       if ($("hubKpiReadySend")) $("hubKpiReadySend").textContent = money(readyToSendTotal, settings.currency);
       if ($("hubKpiReadySendMeta")) {
         $("hubKpiReadySendMeta").textContent = `${filteredRows.filter((r) => hubRowMatchesReadyToBillView(r)).length} ready to send`;
       }
       if ($("hubKpiWaitingPay")) $("hubKpiWaitingPay").textContent = money(waitingPaymentTotal, settings.currency);
       if ($("hubKpiWaitingPayMeta")) {
-        $("hubKpiWaitingPayMeta").textContent = `${filteredRows.filter((r) => hubRowMatchesWaitingPaymentKpi(r)).length} waiting on payment`;
+        $("hubKpiWaitingPayMeta").textContent = `${filteredRows.filter((r) => hubRowMatchesWaitingPaymentKpi(r)).length} waiting for payment`;
       }
       if ($("hubKpiPaidStrip")) $("hubKpiPaidStrip").textContent = money(paidAmount, settings.currency);
       if ($("hubKpiPaidStripMeta")) {
         $("hubKpiPaidStripMeta").textContent = `${filteredRows.filter((row) => row.status === "paid").length} paid in this view`;
       }
 
-      const topBalance = filteredRows.slice().sort((a, b) => b.balance - a.balance)[0];
+      const hubTableDisplayRows = sortHubRowsForCollectDisplay(filteredRows, sortKey, sortDir);
+
+      if ($("hubHeroStartWith")) {
+        $("hubHeroStartWith").textContent = hubHeroStartWithLine(hubTableDisplayRows, settings);
+      }
       if ($("hubActionNote")) {
-        $("hubActionNote").textContent = topBalance
-          ? `Start with ${topBalance.title} — ${money(topBalance.balance, settings.currency)} open.`
-          : "You are all caught up on this view.";
+        $("hubActionNote").textContent = hubHeroStartWithLine(hubTableDisplayRows, settings);
       }
 
       renderHubTableSection({
         filteredRows,
+        displayOrderedRows: hubTableDisplayRows,
         mergedHubRows: lastMergedHubRows,
         selectedProjectIds,
         settings,
