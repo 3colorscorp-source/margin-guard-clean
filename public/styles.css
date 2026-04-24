@@ -98,6 +98,45 @@ small{ color:var(--muted); }
 .sales-left-panel{
   padding-right:16px;
   min-width:0;
+  overflow:hidden;
+}
+/* Sales labor table — contain row inputs inside left column */
+.sales-left-panel table{
+  width:100%;
+  table-layout:fixed;
+}
+.sales-left-panel table input,
+.sales-left-panel table select{
+  width:100%;
+  min-width:0;
+  box-sizing:border-box;
+}
+.sales-left-panel table td{
+  overflow:hidden;
+}
+.sales-left-panel table th:nth-child(1),
+.sales-left-panel table td:nth-child(1){
+  width:25%;
+}
+.sales-left-panel table th:nth-child(2),
+.sales-left-panel table td:nth-child(2){
+  width:15%;
+}
+.sales-left-panel table th:nth-child(3),
+.sales-left-panel table td:nth-child(3){
+  width:15%;
+}
+.sales-left-panel table th:nth-child(4),
+.sales-left-panel table td:nth-child(4){
+  width:20%;
+}
+.sales-left-panel table th:nth-child(5),
+.sales-left-panel table td:nth-child(5){
+  width:15%;
+}
+.sales-left-panel table th:nth-child(6),
+.sales-left-panel table td:nth-child(6){
+  width:10%;
 }
 .sales-right-panel{
   max-width:380px;
