@@ -169,9 +169,14 @@ exports.handler = async (event) => {
     );
     const tenantRow = Array.isArray(tenantRows) ? tenantRows[0] : null;
 
+    // Webhook URL must come only from Netlify env (never hardcoded in repo).
     const webhookUrl = String(process.env.ZAPIER_INVOICE_SEND_WEBHOOK_URL || "").trim();
-    if (!webhookUrl) {
-      return err(503, "webhook_not_configured", "Zapier invoice webhook is not configured");
+    if (!webhookUrl || /TU_WEBHOOK_URL_AQUI/i.test(webhookUrl)) {
+      return err(
+        503,
+        "webhook_not_configured",
+        "Zapier invoice webhook is not configured. Set Netlify environment variable ZAPIER_INVOICE_SEND_WEBHOOK_URL to your real Zapier Catch Hook URL (https://hooks.zapier.com/...). Do not use an empty value or the placeholder text."
+      );
     }
 
     const token = String(invoice.public_token || "").trim();
