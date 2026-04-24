@@ -2447,7 +2447,9 @@ Thank you.`
       );
       const hasAmount = finiteNumber(row?.amount, 0) > 0;
       const rawStatus = String(row?.invoiceStatus || row?.status || "").trim().toLowerCase();
-      const isDraftish = rawStatus === "draft" || rawStatus === "open" || rawStatus === "";
+      const isDraftish =
+        (rawStatus === "draft" || rawStatus === "open" || rawStatus === "") &&
+        !["sent", "partial", "paid", "void", "overdue", "issued"].includes(rawStatus);
       const canSendInvoice = Boolean(canTrySend && hasClient && hasAmount && isDraftish);
       return {
         canConvert: false,
@@ -6272,6 +6274,10 @@ function renderSupervisor() {
     const today = new Date().toISOString().slice(0, 10);
     let raw = String(norm?.status || "draft").toLowerCase();
     if (raw === "open") raw = "draft";
+    const sentAtRaw = String(norm?.sentAt || "").trim();
+    if (sentAtRaw && raw !== "paid" && raw !== "void") {
+      raw = "sent";
+    }
     const dueRaw = normalizeDateInput(norm?.dueDate || "");
     const bal = Math.max(finiteNumber(norm?.balanceDue, 0), 0);
     if (raw !== "paid" && raw !== "void" && dueRaw && dueRaw < today && bal > 0) {

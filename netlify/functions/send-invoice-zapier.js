@@ -228,12 +228,27 @@ exports.handler = async (event) => {
 
     const sentAt = new Date().toISOString();
     const filter = `id=eq.${encodeURIComponent(String(invoice.id))}&tenant_id=eq.${encodeURIComponent(tenantId)}`;
-    // Do not set status here: invoices_status_check may not allow "sent" until DB migration.
-    const updated = await supabaseRequest(`invoices?${filter}`, {
-      method: "PATCH",
-      headers: { Prefer: "return=representation" },
-      body: { sent_at: sentAt, updated_at: sentAt }
-    });
+    const patchPath = `invoices?${filter}`;
+    let updated;
+    try {
+      updated = await supabaseRequest(patchPath, {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: { sent_at: sentAt, updated_at: sentAt, status: "issued" }
+      });
+    } catch (patchErr) {
+      const msg = String(patchErr?.message || patchErr || "");
+      const status = patchErr?.status;
+      const isLikelyStatusCheck =
+        status === 400 || /check constraint|invoices_status_check|violates check/i.test(msg);
+      if (!isLikelyStatusCheck) throw patchErr;
+      console.warn("[Invoice Send] status issued not accepted, patching sent_at only", msg.slice(0, 400));
+      updated = await supabaseRequest(patchPath, {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: { sent_at: sentAt, updated_at: sentAt }
+      });
+    }
     const rows = Array.isArray(updated) ? updated : updated ? [updated] : [];
     const row = rows[0];
     if (!row?.id) {
