@@ -37,14 +37,14 @@
       <div class="card-inner">
         <div class="owner-hero-inner">
           <div>
-            <span class="eyebrow">Estimates & Invoices</span>
-            <h2 class="hero-title">Centro operativo para estimates, invoices, balances y seguimiento.</h2>
-            <div class="sub" style="margin:0;">Esta pantalla replica la logica tipo Square: resumen arriba, filtros al centro y cartera completa abajo.</div>
+            <span class="eyebrow">Invoice Hub</span>
+            <h2 class="hero-title">Money to Collect</h2>
+            <div class="sub" style="margin:0;">Invoices ready to send, pending payments, and completed jobs.</div>
           </div>
           <div class="hero-score">
-            <div class="hero-score-label">Portfolio total</div>
+            <div class="hero-score-label">Open balance (this view)</div>
             <div class="hero-score-value" id="hubHeroTotal">$0.00</div>
-            <div class="hero-score-meta" id="hubHeroMeta">Esperando proyectos firmados e invoices.</div>
+            <div class="hero-score-meta" id="hubHeroMeta">No invoices yet.</div>
           </div>
         </div>
       </div>
@@ -55,105 +55,57 @@
         <div class="card-inner">
           <div class="section-head">
             <div>
-              <h2>Resumen financiero</h2>
-              <div class="sub">Lectura rapida por estado y distribucion de cartera.</div>
+              <h2>At a glance</h2>
+              <div class="sub">Same numbers as before, fewer boxes.</div>
             </div>
-            <div class="badge green" id="hubPortfolioBadge">0 rows</div>
+            <div class="badge green" id="hubPortfolioBadge">0 jobs</div>
           </div>
 
           <div class="hub-summary-strip">
             <div class="strip-card">
-              <div class="title">Invoiced Total</div>
-              <div class="big" id="hubInvoicedTotal">$0.00</div>
-              <div class="small" id="hubInvoicedMeta">Monto total en cartera</div>
+              <div class="title">Total to Collect</div>
+              <div class="big" id="hubKpiTotalCollect">$0.00</div>
+              <div class="small" id="hubKpiTotalCollectMeta">Open balances on this view</div>
             </div>
             <div class="strip-card">
-              <div class="title">Pending</div>
-              <div class="big" id="hubPendingTotal">$0.00</div>
-              <div class="small" id="hubPendingMeta">Draft y sent</div>
+              <div class="title">Ready to Send</div>
+              <div class="big" id="hubKpiReadySend">$0.00</div>
+              <div class="small" id="hubKpiReadySendMeta">0 ready to send</div>
             </div>
             <div class="strip-card">
-              <div class="title">Partial</div>
-              <div class="big" id="hubPartialTotal">$0.00</div>
-              <div class="small" id="hubPartialMeta">Cobro en progreso</div>
+              <div class="title">Waiting for Payment</div>
+              <div class="big" id="hubKpiWaitingPay">$0.00</div>
+              <div class="small" id="hubKpiWaitingPayMeta">0 waiting on payment</div>
             </div>
             <div class="strip-card">
               <div class="title">Paid</div>
-              <div class="big" id="hubPaidTotal">$0.00</div>
-              <div class="small" id="hubPaidMeta">Facturas liquidadas</div>
+              <div class="big" id="hubKpiPaidStrip">$0.00</div>
+              <div class="small" id="hubKpiPaidStripMeta">0 paid in this view</div>
             </div>
           </div>
-
-          <div class="hub-progress-shell">
-            <div class="hub-progress-labels">
-              <span id="hubPendingLabel">Pending</span>
-              <span id="hubPartialLabel">Partial</span>
-              <span id="hubPaidLabel">Paid</span>
-            </div>
-            <div class="hub-progress-bar">
-              <div class="hub-progress-segment pending" id="hubProgressPending"></div>
-              <div class="hub-progress-segment partial" id="hubProgressPartial"></div>
-              <div class="hub-progress-segment paid" id="hubProgressPaid"></div>
-            </div>
-          </div>
-
-          <div class="hub-summary-strip">
-            <div class="strip-card">
-              <div class="title">Current</div>
-              <div class="big" id="hubAgeCurrent">$0.00</div>
-              <div class="small">No vencido</div>
-            </div>
-            <div class="strip-card">
-              <div class="title">1-30</div>
-              <div class="big" id="hubAge30">$0.00</div>
-              <div class="small">Atraso leve</div>
-            </div>
-            <div class="strip-card">
-              <div class="title">31-60</div>
-              <div class="big" id="hubAge60">$0.00</div>
-              <div class="small">Seguimiento fuerte</div>
-            </div>
-            <div class="strip-card">
-              <div class="title">61+</div>
-              <div class="big" id="hubAge61">$0.00</div>
-              <div class="small">Cobro urgente</div>
-            </div>
-          </div>
-
-          <div class="kpi hub-kpi-grid" id="hubKpis"></div>
         </div>
       </section>
 
       <section class="card owner-side-card">
         <div class="card-inner">
-          <h2>Filtros y acciones</h2>
-          <div class="sub">Busca rapido, filtra por estado y exporta la cartera.</div>
+          <h2>Filters</h2>
+          <div class="sub">Pick a view, then narrow with search or status.</div>
 
-          <div class="hub-tabs" id="hubTabFilter">
-            <button class="btn active" type="button" data-hub-tab="all">All</button>
-            <button class="btn" type="button" data-hub-tab="estimates">Estimates</button>
-            <button class="btn" type="button" data-hub-tab="invoices">Invoices</button>
-            <button class="btn" type="button" data-hub-tab="payments">Payments</button>
-            <button class="btn" type="button" data-hub-tab="pipeline">Pipeline</button>
-            <button class="btn" type="button" data-hub-tab="collections">Collections</button>
-            <button class="btn" type="button" data-hub-tab="closeout">Closeout</button>
+          <div class="hub-tabs" id="hubModeFilter" style="margin-top:10px;">
+            <button class="btn active" type="button" data-hub-mode="all">All</button>
+            <button class="btn" type="button" data-hub-mode="ready_to_bill">Ready To Bill</button>
+            <button class="btn" type="button" data-hub-mode="sent">Sent</button>
+            <button class="btn" type="button" data-hub-mode="paid">Paid</button>
+            <button class="btn" type="button" data-hub-mode="needs_action">Needs Action</button>
           </div>
 
-          <div class="hub-tabs" id="hubQuickViews" style="margin-top:10px;">
-            <button class="btn ghost" type="button" data-hub-preset="custom">Custom</button>
-            <button class="btn ghost" type="button" data-hub-preset="open">Open Balance</button>
-            <button class="btn ghost" type="button" data-hub-preset="action">Needs Action</button>
-            <button class="btn ghost" type="button" data-hub-preset="promises">Broken Promises</button>
-            <button class="btn ghost" type="button" data-hub-preset="ready">Ready To Bill</button>
-          </div>
-
-          <div class="form">
+          <div class="form" style="margin-top:14px;">
             <div class="field">
-              <label>Buscar</label>
-              <input id="hubSearch" placeholder="Proyecto, cliente, invoice o ID" />
+              <label>Search</label>
+              <input id="hubSearch" placeholder="Job, client, invoice, or ID" />
             </div>
             <div class="field">
-              <label>Estado</label>
+              <label>Status</label>
               <select id="hubStatusFilter">
                 <option value="all">All statuses</option>
                 <option value="draft">draft</option>
@@ -166,16 +118,12 @@
               </select>
             </div>
             <div class="field">
-              <label>Fecha desde</label>
+              <label>From date</label>
               <input id="hubDateFrom" type="date" />
             </div>
             <div class="field">
-              <label>Cliente</label>
-              <input id="hubCustomerFilter" placeholder="Filtrar por cliente" />
-            </div>
-            <div class="field">
-              <label>Location</label>
-              <input id="hubLocationFilter" placeholder="Filtrar por location" />
+              <label>Client</label>
+              <input id="hubCustomerFilter" placeholder="Filter by client" />
             </div>
           </div>
 
@@ -183,33 +131,17 @@
 
           <div class="inline-actions">
             <button class="btn" id="btnHubExport">Export</button>
-            <button class="btn" id="btnHubCollectionsExport">Collections Export</button>
+            <button class="btn" id="btnHubCollectionsExport">Collections export</button>
             <button class="btn" id="btnHubExecutivePdf">Executive PDF</button>
-            <button class="btn" id="btnHubAutoQueue">Auto Queue</button>
-            <button class="btn" id="btnHubAutoStage">Auto Stage</button>
-            <button class="btn" id="btnHubCampaigns">Campaigns</button>
-            <button class="btn" id="btnHubTemplates">Templates</button>
             <a class="btn" href="/owner">Create invoice</a>
             <a class="btn primary" href="/create-estimate">Create estimate</a>
           </div>
 
           <div class="dashboard-note" style="margin-top:12px;">
-            <div class="dashboard-note-title">Operacion recomendada</div>
-            <div class="dashboard-note-copy" id="hubActionNote">Firma proyectos en Vendedor, conviertelos en invoice y luego sigue pagos aqui.</div>
+            <div class="dashboard-note-title">Suggested next step</div>
+            <div class="dashboard-note-copy" id="hubActionNote">You are all caught up on this view.</div>
           </div>
           <div class="notice" id="hubFeedback" style="display:none; margin-top:12px;"></div>
-          <div class="sep"></div>
-          <h2 style="margin-top:0;">Focus Queue</h2>
-          <div class="sub">Prioridad automatica para cobrar, enviar o cerrar hoy.</div>
-          <ul class="msg-list" id="hubFocusQueue"></ul>
-          <div class="sep"></div>
-          <h2 style="margin-top:0;">Client Scorecard</h2>
-          <div class="sub">Clientes que mas concentran saldo, atraso o promesas rotas.</div>
-          <ul class="msg-list" id="hubClientScorecard"></ul>
-          <div class="sep"></div>
-          <h2 style="margin-top:0;">Playbook Board</h2>
-          <div class="sub">Siguiente jugada sugerida por tipo de cartera.</div>
-          <div class="dashboard-strip" id="hubPlaybookBoard"></div>
         </div>
       </section>
     </div>
@@ -219,13 +151,13 @@
         <div class="section-head">
           <div>
             <h2 id="hubListSectionTitle">Invoice Hub — All</h2>
-            <div class="sub">Una fila por proyecto con estimate, invoice, balance y acciones rapidas.</div>
+            <div class="sub">Open a row for full detail. Row buttons stay minimal.</div>
           </div>
           <div class="badge amber" id="hubTableBadge">All estimates</div>
         </div>
 
         <div class="notice" id="hubBulkBar" style="display:none; margin-bottom:12px;">
-          <strong id="hubBulkCount">0</strong> seleccionados -
+          <strong id="hubBulkCount">0</strong> selected —
           <span id="hubBulkAmount">$0.00</span>
           <div class="inline-actions" style="margin-top:10px;">
             <button class="btn" id="btnHubBulkSent">Bulk Sent</button>
@@ -241,13 +173,12 @@
               <tr>
                 <th><input id="hubSelectAll" type="checkbox" /></th>
                 <th><button class="btn ghost hub-sort-btn" type="button" data-hub-sort="dateRaw">Date</button></th>
-                <th><button class="btn ghost hub-sort-btn" type="button" data-hub-sort="customer">Customer</button></th>
-                <th><button class="btn ghost hub-sort-btn" type="button" data-hub-sort="projectId">ID</button></th>
-                <th><button class="btn ghost hub-sort-btn" type="button" data-hub-sort="location">Location</button></th>
-                <th><button class="btn ghost hub-sort-btn" type="button" data-hub-sort="title">Title</button></th>
+                <th><button class="btn ghost hub-sort-btn" type="button" data-hub-sort="customer">Client</button></th>
+                <th><button class="btn ghost hub-sort-btn" type="button" data-hub-sort="title">Project</button></th>
+                <th><button class="btn ghost hub-sort-btn" type="button" data-hub-sort="invoiceNo">Invoice</button></th>
                 <th><button class="btn ghost hub-sort-btn" type="button" data-hub-sort="status">Status</button></th>
-                <th><button class="btn ghost hub-sort-btn" type="button" data-hub-sort="amount">Amount</button></th>
                 <th><button class="btn ghost hub-sort-btn" type="button" data-hub-sort="balance">Balance</button></th>
+                <th>Next action</th>
                 <th>Actions</th>
               </tr>
             </thead>
