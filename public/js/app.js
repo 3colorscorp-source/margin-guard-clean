@@ -8588,9 +8588,6 @@ function renderSupervisor() {
       if ($("hubHeroStartWith")) {
         $("hubHeroStartWith").textContent = hubHeroStartWithLine(hubTableDisplayRows, settings);
       }
-      if ($("hubActionNote")) {
-        $("hubActionNote").textContent = hubHeroStartWithLine(hubTableDisplayRows, settings);
-      }
 
       renderHubTableSection({
         filteredRows,
@@ -8764,15 +8761,6 @@ function renderSupervisor() {
       };
     }
 
-    if ($("btnHubExport")) {
-      $("btnHubExport").onclick = () => exportPortfolioCsv(filteredRows, settings);
-    }
-    if ($("btnHubCollectionsExport")) {
-      $("btnHubCollectionsExport").onclick = () => exportCollectionsCsv(filteredRows, settings);
-    }
-    if ($("btnHubExecutivePdf")) {
-      $("btnHubExecutivePdf").onclick = () => exportHubExecutivePdf(filteredRows, settings);
-    }
     if ($("btnHubAutoQueue")) {
       $("btnHubAutoQueue").onclick = () => {
         const queued = queueHubAutoReminders(filteredRows);
