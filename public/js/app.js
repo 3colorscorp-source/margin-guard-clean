@@ -601,7 +601,8 @@ Thank you.`
   function resetOwnerQuoteStateForNewQuote() {
     const settings = loadSettings();
     const prev = readStore(LS_OWNER, {});
-    const workers = structuredClone(DEFAULT_OWNER.workers);
+    /* Owner rows: { name, type: "installer"|"helper", hours, rate } — hours are stored; cost comes from calcOwner */
+    const workers = [{ name: "Worker 1", type: "installer", hours: 0, rate: "" }];
     const fresh = {
       projectName: "",
       clientName: "",
@@ -617,6 +618,12 @@ Thank you.`
       stdHours: 0,
       reservePct: 5,
       workers,
+      laborTotal: 0,
+      laborCost: 0,
+      laborHours: 0,
+      laborDays: 0,
+      directLabor: 0,
+      laborBurden: 0,
       estimateNumber: "",
       estimateStatus: "draft",
       messageToClient: "",
