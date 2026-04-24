@@ -184,29 +184,18 @@ exports.handler = async (event) => {
       ? `${origin}/invoice-public.html?token=${encodeURIComponent(token)}`
       : `/invoice-public.html?token=${encodeURIComponent(token)}`;
 
-    const tenantEmail = pickFirstStr(session.e, tenantRow?.owner_email);
     const businessName = pickFirstStr(invoice.business_name, tenantRow?.name);
-    const clientEmail = pickFirstStr(invoice.customer_email);
+    const client_name = pickFirstStr(invoice.customer_name, invoice.project_name);
+    const client_email = pickFirstStr(invoice.customer_email);
+    const public_invoice_url = publicInvoiceUrl;
+    const business_name = businessName;
 
-    const amt = Number(invoice.amount || 0);
-    const bal =
-      invoice.balance_due != null && invoice.balance_due !== ""
-        ? Number(invoice.balance_due)
-        : amt - Number(invoice.paid_amount || 0);
-
+    /** Zapier Catch Hook field names (exact keys with spaces). */
     const payload = {
-      event_type: "invoice_sent",
-      invoice_id: invoice.id,
-      invoice_no: invoice.invoice_no || "",
-      client_email: clientEmail,
-      tenant_email: tenantEmail,
-      business_name: businessName,
-      project_name: invoice.project_name || "",
-      amount: amt,
-      balance_due: Number.isFinite(bal) ? bal : amt,
-      due_date: invoice.due_date || "",
-      public_invoice_url: publicInvoiceUrl,
-      public_token: token
+      client_name,
+      "Client Email": client_email,
+      "Public Invoice Url": public_invoice_url,
+      business_name
     };
 
     let zapRes;
