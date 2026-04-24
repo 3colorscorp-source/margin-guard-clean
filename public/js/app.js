@@ -661,6 +661,51 @@ Thank you.`
     el.classList.add("hidden");
     el.setAttribute("aria-hidden", "true");
   }
+
+  function showSalesNewQuoteModal() {
+    const el = document.getElementById("salesNewQuoteModal");
+    if (!el) return;
+    el.classList.remove("hidden");
+    el.setAttribute("aria-hidden", "false");
+  }
+
+  function hideSalesNewQuoteModal() {
+    const el = document.getElementById("salesNewQuoteModal");
+    if (!el) return;
+    el.classList.add("hidden");
+    el.setAttribute("aria-hidden", "true");
+  }
+
+  window.showSalesNewQuoteModal = showSalesNewQuoteModal;
+  window.hideSalesNewQuoteModal = hideSalesNewQuoteModal;
+
+  function setupSalesNewQuoteModalListeners() {
+    const modal = document.getElementById("salesNewQuoteModal");
+    if (!modal || modal.dataset.mgBound === "1") return;
+    modal.dataset.mgBound = "1";
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) hideSalesNewQuoteModal();
+    });
+    const confirmBtn = document.getElementById("salesConfirmNewQuote");
+    if (confirmBtn) {
+      confirmBtn.addEventListener("click", () => {
+        if (typeof window.performStandaloneNewQuoteReset === "function") {
+          window.performStandaloneNewQuoteReset();
+        }
+        hideSalesNewQuoteModal();
+      });
+    }
+    const cancelBtn = document.getElementById("salesCancelNewQuote");
+    if (cancelBtn) {
+      cancelBtn.addEventListener("click", () => hideSalesNewQuoteModal());
+    }
+  }
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("DOMContentLoaded", setupSalesNewQuoteModalListeners);
+    if (document.readyState !== "loading") setupSalesNewQuoteModalListeners();
+  }
+
   function loadDashboard() { return { ...DEFAULT_DASHBOARD, ...readStore(LS_DASHBOARD, {}) }; }
   function saveDashboard(state) { writeStore(LS_DASHBOARD, state); }
   function loadSales() {
@@ -4988,23 +5033,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   if (projectNameInput) {
     const btnNew = document.getElementById("btnNewSalesQuote");
     if (btnNew) {
-      btnNew.onclick = () => {
-        if (!window.confirm("Start a new estimate draft? Current sales values will reset.")) return;
-        const fresh = structuredClone(DEFAULT_SALES);
-        fresh.issueDate = todayInputValue();
-        fresh.expirationDate = addDaysToInputValue(fresh.issueDate, 7);
-        fresh.estimateStatus = "draft";
-        fresh.price = "";
-        fresh.notes = "";
-        fresh.messageToClient = "";
-        fresh.customerEmail = "";
-        fresh.customerPhone = "";
-        fresh.location = "";
-        fresh.projectName = "";
-        fresh.clientName = "";
-        saveSales(fresh);
-        renderSales();
-      };
+      btnNew.onclick = () => showSalesNewQuoteModal();
     }
 
     const btnSendQuoteInline = document.getElementById("btnSendQuoteInline");
