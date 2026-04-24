@@ -56,32 +56,34 @@
         <div class="card-inner">
           <div class="section-head">
             <div>
-              <h2>At a glance</h2>
-              <div class="sub">Your next move</div>
+              <h2>Get paid faster</h2>
+              <div class="sub">Start with your highest-value invoice.</div>
             </div>
             <div class="badge green" id="hubPortfolioBadge">0 jobs</div>
           </div>
 
-          <div class="hub-summary-strip">
-            <div class="strip-card">
-              <div class="title">Total to Collect</div>
-              <div class="big" id="hubKpiTotalCollect">$0.00</div>
-              <div class="small" id="hubKpiTotalCollectMeta">Open balances on this view</div>
+          <div class="hub-paid-faster-grid">
+            <div class="strip-card hub-paid-faster-primary">
+              <div class="title">Total to collect</div>
+              <div class="big hub-paid-faster-primary-value" id="hubKpiTotalCollect">$0.00</div>
+              <div class="small" id="hubKpiTotalCollectMeta">0 jobs still open</div>
             </div>
-            <div class="strip-card">
-              <div class="title">Ready to Send</div>
-              <div class="big" id="hubKpiReadySend">$0.00</div>
-              <div class="small" id="hubKpiReadySendMeta">0 ready to send</div>
+            <div class="strip-card hub-paid-faster-action">
+              <div class="title">Start with</div>
+              <div class="big hub-paid-faster-action-value" id="hubKpiStartWithValue">—</div>
+              <div class="small" id="hubKpiStartWithMeta">You're all caught up 🎉</div>
             </div>
-            <div class="strip-card">
-              <div class="title">Waiting for Payment</div>
-              <div class="big" id="hubKpiWaitingPay">$0.00</div>
-              <div class="small" id="hubKpiWaitingPayMeta">0 waiting for payment</div>
+          </div>
+          <div id="hubKpiSecondaryRow" class="hub-paid-faster-secondary" style="display:none;">
+            <div class="strip-card hub-paid-faster-mini" id="hubKpiWaitingCard" hidden>
+              <div class="title">Waiting for payment</div>
+              <div class="big" id="hubKpiWaitingAmount">$0.00</div>
+              <div class="small" id="hubKpiWaitingMeta">0 waiting for payment</div>
             </div>
-            <div class="strip-card">
+            <div class="strip-card hub-paid-faster-mini" id="hubKpiPaidCard" hidden>
               <div class="title">Paid</div>
-              <div class="big" id="hubKpiPaidStrip">$0.00</div>
-              <div class="small" id="hubKpiPaidStripMeta">0 paid in this view</div>
+              <div class="big" id="hubKpiPaidAmount">$0.00</div>
+              <div class="small" id="hubKpiPaidMeta">0 paid in this view</div>
             </div>
           </div>
         </div>

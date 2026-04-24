@@ -2358,6 +2358,80 @@ body[data-role="estimates-hub"] .hub-hero-start{
   color:rgba(232,238,252,.88);
 }
 
+/* Get paid faster — KPI block (estimates-invoices) */
+body[data-role="estimates-hub"] .hub-paid-faster-grid{
+  display:grid;
+  grid-template-columns:minmax(0, 1.12fr) minmax(0, 1fr);
+  gap:12px;
+  margin-top:14px;
+  align-items:stretch;
+}
+body[data-role="estimates-hub"] .hub-paid-faster-primary{
+  padding:16px 18px;
+  border-radius:18px;
+}
+body[data-role="estimates-hub"] .hub-paid-faster-primary .title{
+  font-size:12px;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  opacity:.85;
+}
+body[data-role="estimates-hub"] .hub-paid-faster-primary-value{
+  font-size:clamp(26px, 3.6vw, 34px);
+  font-weight:800;
+  line-height:1.15;
+  margin:6px 0 4px;
+}
+body[data-role="estimates-hub"] .hub-paid-faster-action{
+  padding:16px 18px;
+  border-radius:18px;
+  border-color:rgba(245,158,11,.22);
+  background:linear-gradient(165deg, rgba(245,158,11,.08), rgba(255,255,255,.02));
+}
+body[data-role="estimates-hub"] .hub-paid-faster-action .title{
+  font-size:12px;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  opacity:.88;
+}
+body[data-role="estimates-hub"] .hub-paid-faster-action-value{
+  font-size:clamp(17px, 2.2vw, 20px);
+  font-weight:750;
+  line-height:1.25;
+  margin:6px 0 4px;
+  word-break:break-word;
+}
+body[data-role="estimates-hub"] .hub-paid-faster-secondary{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(148px, 1fr));
+  gap:10px;
+  margin-top:12px;
+}
+body[data-role="estimates-hub"] .hub-paid-faster-mini{
+  padding:12px 14px;
+  border-radius:16px;
+}
+body[data-role="estimates-hub"] .hub-paid-faster-mini .title{
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.05em;
+  opacity:.8;
+}
+body[data-role="estimates-hub"] .hub-paid-faster-mini .big{
+  font-size:17px;
+  font-weight:750;
+  margin:4px 0 2px;
+}
+body[data-role="estimates-hub"] .hub-paid-faster-mini .small{
+  font-size:11px;
+  opacity:.88;
+}
+@media (max-width: 720px){
+  body[data-role="estimates-hub"] .hub-paid-faster-grid{
+    grid-template-columns:1fr;
+  }
+}
+
 body[data-role="estimates-hub"] #hubModeFilter .btn{
   border-radius:12px;
   font-weight:700;

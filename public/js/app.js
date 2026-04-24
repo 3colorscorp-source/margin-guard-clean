@@ -6515,6 +6515,15 @@ function renderSupervisor() {
     });
   }
 
+  /** One-line “Project — $balance” for KPI action card (no suffix). */
+  function hubKpiStartWithValueLine(rows, settings) {
+    if (!Array.isArray(rows) || !rows.length) return "";
+    const row = rows[0];
+    const name = nonEmptyString(row.title, row.customer) || "This job";
+    const balStr = money(finiteNumber(row.balance, 0), settings.currency);
+    return `${name} — ${balStr}`;
+  }
+
   function hubHeroStartWithLine(rows, settings) {
     if (!rows.length) return "No invoices need action right now.";
     const row = rows[0];
@@ -8511,16 +8520,19 @@ function renderSupervisor() {
       applyHubSortButtons();
       persistHubView();
 
+      const hubTableDisplayRows = sortHubRowsForCollectDisplay(filteredRows, sortKey, sortDir);
+
       const totalBalance = filteredRows.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
       const paidAmount = filteredRows
         .filter((row) => row.status === "paid")
         .reduce((sum, row) => sum + finiteNumber(row.amount, 0), 0);
-      const readyToSendTotal = filteredRows
-        .filter((row) => hubRowMatchesReadyToBillView(row))
-        .reduce((sum, row) => sum + finiteNumber(row.amount, 0), 0);
       const waitingPaymentTotal = filteredRows
         .filter((row) => hubRowMatchesWaitingPaymentKpi(row))
         .reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
+      const readySendCount = filteredRows.filter((row) => hubRowMatchesReadyToBillView(row)).length;
+      const waitingCount = filteredRows.filter((row) => hubRowMatchesWaitingPaymentKpi(row)).length;
+      const paidCount = filteredRows.filter((row) => row.status === "paid").length;
+      const openJobCount = filteredRows.filter((row) => finiteNumber(row.balance, 0) > 0).length;
 
       if ($("hubHeroTotal")) $("hubHeroTotal").textContent = money(totalBalance, settings.currency);
       if ($("hubHeroMeta")) {
@@ -8533,24 +8545,45 @@ function renderSupervisor() {
         $("hubTableBadge").textContent =
           hubViewMode === "all" && statusFilter !== "all" ? statusFilter : hubInvoiceHubViewTitleLabel(hubViewMode);
       }
+
       if ($("hubKpiTotalCollect")) $("hubKpiTotalCollect").textContent = money(totalBalance, settings.currency);
       if ($("hubKpiTotalCollectMeta")) {
-        $("hubKpiTotalCollectMeta").textContent = `${filteredRows.length} jobs in this view`;
+        $("hubKpiTotalCollectMeta").textContent = `${openJobCount} jobs still open`;
       }
-      if ($("hubKpiReadySend")) $("hubKpiReadySend").textContent = money(readyToSendTotal, settings.currency);
-      if ($("hubKpiReadySendMeta")) {
-        $("hubKpiReadySendMeta").textContent = `${filteredRows.filter((r) => hubRowMatchesReadyToBillView(r)).length} ready to send`;
+      if ($("hubKpiStartWithValue")) {
+        $("hubKpiStartWithValue").textContent = hubTableDisplayRows.length
+          ? hubKpiStartWithValueLine(hubTableDisplayRows, settings)
+          : "—";
       }
-      if ($("hubKpiWaitingPay")) $("hubKpiWaitingPay").textContent = money(waitingPaymentTotal, settings.currency);
-      if ($("hubKpiWaitingPayMeta")) {
-        $("hubKpiWaitingPayMeta").textContent = `${filteredRows.filter((r) => hubRowMatchesWaitingPaymentKpi(r)).length} waiting for payment`;
-      }
-      if ($("hubKpiPaidStrip")) $("hubKpiPaidStrip").textContent = money(paidAmount, settings.currency);
-      if ($("hubKpiPaidStripMeta")) {
-        $("hubKpiPaidStripMeta").textContent = `${filteredRows.filter((row) => row.status === "paid").length} paid in this view`;
+      if ($("hubKpiStartWithMeta")) {
+        $("hubKpiStartWithMeta").textContent = hubTableDisplayRows.length
+          ? `${readySendCount} invoice${readySendCount === 1 ? "" : "s"} ready to send`
+          : "You're all caught up 🎉";
       }
 
-      const hubTableDisplayRows = sortHubRowsForCollectDisplay(filteredRows, sortKey, sortDir);
+      const showWaitingKpi = waitingCount > 0 || waitingPaymentTotal > 0;
+      const showPaidKpi = paidCount > 0 || paidAmount > 0;
+      if ($("hubKpiWaitingCard")) {
+        $("hubKpiWaitingCard").hidden = !showWaitingKpi;
+        if (showWaitingKpi) {
+          if ($("hubKpiWaitingAmount")) $("hubKpiWaitingAmount").textContent = money(waitingPaymentTotal, settings.currency);
+          if ($("hubKpiWaitingMeta")) {
+            $("hubKpiWaitingMeta").textContent = `${waitingCount} waiting for payment`;
+          }
+        }
+      }
+      if ($("hubKpiPaidCard")) {
+        $("hubKpiPaidCard").hidden = !showPaidKpi;
+        if (showPaidKpi) {
+          if ($("hubKpiPaidAmount")) $("hubKpiPaidAmount").textContent = money(paidAmount, settings.currency);
+          if ($("hubKpiPaidMeta")) {
+            $("hubKpiPaidMeta").textContent = `${paidCount} paid in this view`;
+          }
+        }
+      }
+      if ($("hubKpiSecondaryRow")) {
+        $("hubKpiSecondaryRow").style.display = showWaitingKpi || showPaidKpi ? "grid" : "none";
+      }
 
       if ($("hubHeroStartWith")) {
         $("hubHeroStartWith").textContent = hubHeroStartWithLine(hubTableDisplayRows, settings);
