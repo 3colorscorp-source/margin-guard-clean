@@ -94,6 +94,7 @@ small{ color:var(--muted); }
 .grid.sales-layout{
   grid-template-columns:1.3fr 0.7fr;
   align-items:start;
+  column-gap:24px;
 }
 .sales-left-panel{
   padding-right:16px;
@@ -141,7 +142,7 @@ small{ color:var(--muted); }
 .sales-right-panel{
   max-width:380px;
   width:100%;
-  margin-left:auto;
+  margin-left:0;
   min-width:0;
   position:sticky;
   top:100px;
