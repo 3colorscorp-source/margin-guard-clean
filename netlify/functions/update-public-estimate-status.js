@@ -175,8 +175,9 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
       amount: insertAmount,
       paid_amount: 0,
       balance_due: insertAmount,
+      currency: pickStr(quoteRow.currency, 8) || "USD",
       status: "draft",
-      currency: pickStr(quoteRow.currency, 8) || "USD"
+      type: "invoice"
     };
 
     console.log("[accept-bridge] inserting invoice", invoiceInsertPayload);
