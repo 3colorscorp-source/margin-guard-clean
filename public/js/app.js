@@ -2403,10 +2403,21 @@ Thank you.`
       const hasPublic = Boolean(
         nonEmptyString(row?.project?.invoice?.publicUrl) || nonEmptyString(row?.project?.invoice?.publicToken)
       );
+      const sid = nonEmptyString(row.serverInvoiceId);
+      const token = nonEmptyString(row?.project?.invoice?.publicToken);
+      const canTrySend =
+        (sid && MG_SERVER_INVOICE_UUID_RE.test(sid)) || (token && token.length >= 8);
+      const hasClient = Boolean(
+        nonEmptyString(row?.customer) || nonEmptyString(row?.project?.clientEmail)
+      );
+      const hasAmount = finiteNumber(row?.amount, 0) > 0;
+      const rawStatus = String(row?.invoiceStatus || row?.status || "").trim().toLowerCase();
+      const isDraftish = rawStatus === "draft" || rawStatus === "open" || rawStatus === "";
+      const canSendInvoice = Boolean(canTrySend && hasClient && hasAmount && isDraftish);
       return {
         canConvert: false,
         canMarkSent: false,
-        canSendInvoice: false,
+        canSendInvoice,
         canTakePayment: false,
         canMarkPaid: false,
         canRequestPayment: false,
@@ -7384,6 +7395,46 @@ function renderSupervisor() {
     doMailtoFallback();
   }
 
+  /** Tenant invoice row from list-tenant-invoices (no local project id). */
+  async function sendHubServerInvoiceRow(row) {
+    if (row?.hubRowSource !== "server_invoice") return;
+    const sid = nonEmptyString(row.serverInvoiceId);
+    const token = nonEmptyString(row.project?.invoice?.publicToken);
+    const canTryServer =
+      (sid && MG_SERVER_INVOICE_UUID_RE.test(sid)) || (token && token.length >= 8);
+    if (!canTryServer) {
+      setHubFeedback("Este invoice no tiene id o token de servidor para enviar.", "warn");
+      return;
+    }
+    const body = {};
+    if (sid && MG_SERVER_INVOICE_UUID_RE.test(sid)) {
+      body.id = sid;
+    } else {
+      body.public_token = token;
+    }
+    try {
+      console.log("[Invoice Send] server row starting");
+      const res = await fetch("/.netlify/functions/send-invoice-zapier", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok === true && data.forwarded === true) {
+        console.log("[Invoice Send] Zapier completed (server row)");
+        void refreshHubServerInvoicesCacheQuietly();
+        setHubFeedback("Invoice enviado.", "ok");
+        return;
+      }
+      console.warn("[Invoice Send] server row failed", res.status, data);
+      setHubFeedback(data.error || "No se pudo enviar el invoice.", "warn");
+    } catch (err) {
+      console.warn("[Invoice Send] server row error", err);
+      setHubFeedback("Error al enviar el invoice.", "err");
+    }
+  }
+
   function requestHubPayment(projectId) {
     const project = getProjectById(projectId);
     if (!project) return;
@@ -8966,10 +9017,14 @@ function renderSupervisor() {
         if (!selectedRow) return;
         if (!guardHubAction(selectedRow, "canSendInvoice", "Necesitas invoice, cliente y monto antes de enviar.")) return;
         void (async () => {
-          await sendHubInvoice(selectedRow.projectId);
+          if (selectedRow.hubRowSource === "server_invoice") {
+            await sendHubServerInvoiceRow(selectedRow);
+          } else {
+            await sendHubInvoice(selectedRow.projectId);
+            setHubFeedback(`Correo de invoice preparado para ${selectedRow.customer}.`, "ok");
+          }
           refresh();
           refreshSelectedRow();
-          setHubFeedback(`Correo de invoice preparado para ${selectedRow.customer}.`, "ok");
         })();
       };
     }
