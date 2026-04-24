@@ -640,6 +640,20 @@ Thank you.`
     saveOwner(fresh, calcOwner(fresh, settings));
     console.log("[Owner New Quote] reset complete");
   }
+
+  function showOwnerNewQuoteModal() {
+    const el = $("ownerNewQuoteModal");
+    if (!el) return;
+    el.classList.remove("hidden");
+    el.setAttribute("aria-hidden", "false");
+  }
+
+  function hideOwnerNewQuoteModal() {
+    const el = $("ownerNewQuoteModal");
+    if (!el) return;
+    el.classList.add("hidden");
+    el.setAttribute("aria-hidden", "true");
+  }
   function loadDashboard() { return { ...DEFAULT_DASHBOARD, ...readStore(LS_DASHBOARD, {}) }; }
   function saveDashboard(state) { writeStore(LS_DASHBOARD, state); }
   function loadSales() {
@@ -3318,13 +3332,21 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       saveOwner(state, calcOwner(state, settings));
       renderOwner();
     };
-    if ($("btnClear")) {
-      $("btnClear").onclick = () => {
-        if (!confirm("Start a new quote? Current project fields and send metadata will reset.")) return;
+    if ($("btnClear")) $("btnClear").onclick = () => showOwnerNewQuoteModal();
+    const ownerNewQuoteModal = $("ownerNewQuoteModal");
+    if (ownerNewQuoteModal) {
+      ownerNewQuoteModal.onclick = (e) => {
+        if (e.target === ownerNewQuoteModal) hideOwnerNewQuoteModal();
+      };
+    }
+    if ($("ownerConfirmNewQuote")) {
+      $("ownerConfirmNewQuote").onclick = () => {
         resetOwnerQuoteStateForNewQuote();
+        hideOwnerNewQuoteModal();
         renderOwner();
       };
     }
+    if ($("ownerCancelNewQuote")) $("ownerCancelNewQuote").onclick = () => hideOwnerNewQuoteModal();
     if ($("btnExportPdf")) $("btnExportPdf").onclick = () => void exportOwnerPdf(state, settings, metrics);
     if ($("btnSendQuote")) $("btnSendQuote").onclick = () => openSendModal(state, settings, metrics);
     if ($("btnSendClose")) $("btnSendClose").onclick = closeSendModal;

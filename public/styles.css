@@ -252,6 +252,59 @@ small{ color:var(--muted); }
 .badge.amber{ border-color: rgba(245,158,11,.35); background: rgba(245,158,11,.10); }
 .badge.red{ border-color: rgba(239,68,68,.35); background: rgba(239,68,68,.10); }
 .modal{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:18px; background: rgba(0,0,0,.55); z-index:9999; }
+
+/* Owner — confirm New Quote (replaces window.confirm) */
+.mg-modal{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.6);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:10000;
+  padding:18px;
+}
+.mg-modal.hidden{
+  display:none;
+}
+.mg-modal-card{
+  background:linear-gradient(145deg, #0b1220, #111827);
+  border:1px solid rgba(59,130,246,0.2);
+  border-radius:14px;
+  padding:20px;
+  width:320px;
+  max-width:calc(100vw - 32px);
+  box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+.mg-modal-card h3{
+  margin:0 0 8px;
+  font-size:17px;
+  font-weight:750;
+  color:var(--text);
+  letter-spacing:-.02em;
+}
+.mg-modal-card p{
+  margin:0;
+  font-size:13px;
+  line-height:1.5;
+  color:var(--muted);
+}
+.mg-modal-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  justify-content:flex-end;
+  margin-top:18px;
+}
+.btn.secondary{
+  border-color:rgba(255,255,255,.14);
+  background:rgba(255,255,255,.04);
+  color:var(--text);
+}
+.btn.secondary:hover{
+  border-color:rgba(255,255,255,.22);
+  background:rgba(255,255,255,.07);
+}
 .modal[aria-hidden="false"]{ display:flex; }
 .modal-card{ width:min(860px, 96vw); max-height: 90vh; overflow:auto; background:#0b1220; border:1px solid rgba(255,255,255,.08); border-radius:16px; box-shadow: 0 20px 80px rgba(0,0,0,.55); }
 .modal-header{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:16px 16px 10px; border-bottom:1px solid rgba(255,255,255,.06); }
