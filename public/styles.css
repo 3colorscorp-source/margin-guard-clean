@@ -90,14 +90,17 @@ small{ color:var(--muted); }
   grid-template-columns: 1.35fr .85fr;
   gap:14px;
 }
-/* Sales / Vendedor — wider quote column, lighter right rail (scoped) */
+/* Sales / Vendedor — wider left column (Labor + estimate), compact right rail */
+.container:has(.grid.sales-layout){
+  max-width:1200px;
+}
 .grid.sales-layout{
-  grid-template-columns:1.3fr 0.7fr;
+  grid-template-columns:1.35fr 0.65fr;
   align-items:start;
   column-gap:24px;
 }
 .sales-left-panel{
-  padding-right:16px;
+  padding-right:12px;
   min-width:0;
   overflow-x:hidden;
   overflow-y:visible;
@@ -471,7 +474,7 @@ small{ color:var(--muted); }
   background:rgba(239,68,68,.12);
 }
 .sales-right-panel{
-  max-width:380px;
+  max-width:420px;
   width:100%;
   margin-left:0;
   min-width:0;
@@ -496,6 +499,11 @@ small{ color:var(--muted); }
 }
 .grid.sales-layout .sales-right-panel .sales-kpi-grid .value{
   font-size:16px;
+}
+@media (max-width:1024px){
+  .grid.sales-layout{
+    grid-template-columns:1fr;
+  }
 }
 @media (max-width: 980px){
   .grid{ grid-template-columns:1fr; }
