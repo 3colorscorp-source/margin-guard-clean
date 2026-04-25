@@ -10,6 +10,11 @@ function json(statusCode, payload) {
   };
 }
 
+function badRequest(reason, message) {
+  const msg = String(message || "").trim() || "Bad request";
+  return json(400, { ok: false, reason, message: msg, error: msg });
+}
+
 function extractSettingsFromSnapshotPayload(payload) {
   if (!payload || typeof payload !== "object") return {};
   const storage =
@@ -68,10 +73,27 @@ function parsePublishPricingInput(body) {
   return { workers, price, _manualPriceTouched };
 }
 
-/** Same as publish-public-quote.js */
+/** Convert hours-only lines to fractional days so pricing-engine (days-based) stays correct. */
+function normalizeWorkersLaborDays(workers, tenantSettings) {
+  const list = Array.isArray(workers) ? workers : [];
+  const hpd = Math.max(Number(tenantSettings?.hoursPerDay || 8), 0.25);
+  return list.map((w) => {
+    const obj = w && typeof w === "object" ? w : {};
+    const d = Math.max(0, Number(obj.days || 0));
+    const h = Math.max(0, Number(obj.hours || 0));
+    const effectiveDays = d > 0 ? d : h > 0 ? h / hpd : 0;
+    return { ...obj, days: effectiveDays };
+  });
+}
+
+/** Same as publish-public-quote.js (expects days already normalized when hours were used). */
 function validateWorkersForPricing(workers) {
   if (!Array.isArray(workers) || workers.length === 0) {
-    return { ok: false, error: "workers must be a non-empty array with labor lines." };
+    return {
+      ok: false,
+      reason: "workers_empty",
+      error: "workers must be a non-empty array with labor lines."
+    };
   }
   let sumDays = 0;
   for (const w of workers) {
@@ -80,7 +102,9 @@ function validateWorkersForPricing(workers) {
   if (!Number.isFinite(sumDays) || sumDays <= 0) {
     return {
       ok: false,
-      error: "workers must include at least one line with days greater than zero."
+      reason: "zero_labor",
+      error:
+        "Each labor line needs days > 0 or hours > 0 (hours are converted using tenant hours per day)."
     };
   }
   return { ok: true };
@@ -113,31 +137,39 @@ exports.handler = async (event) => {
     try {
       body = JSON.parse(event.body || "{}");
     } catch (_err) {
-      return json(400, { error: "Invalid JSON" });
+      return badRequest("invalid_json", "Invalid JSON body");
     }
 
     const pricingIn = parsePublishPricingInput(body);
-    const wCheck = validateWorkersForPricing(pricingIn.workers);
-    if (!wCheck.ok) {
-      return json(400, { error: wCheck.error });
+    if (!Array.isArray(pricingIn.workers) || pricingIn.workers.length === 0) {
+      return badRequest(
+        "workers_empty",
+        "workers must be a non-empty array with labor lines."
+      );
     }
 
     const tenantSettings = await loadTenantSettingsFromLatestSnapshot(tenant.id);
+    const workersNormalized = normalizeWorkersLaborDays(pricingIn.workers, tenantSettings);
+    const wCheck = validateWorkersForPricing(workersNormalized);
+    if (!wCheck.ok) {
+      return badRequest(wCheck.reason || "invalid_workers", wCheck.error);
+    }
 
     let financials;
     try {
       financials = calculateQuotePublishFinancials(
         {
-          workers: pricingIn.workers,
+          workers: workersNormalized,
           price: pricingIn.price,
           _manualPriceTouched: pricingIn._manualPriceTouched
         },
         tenantSettings
       );
     } catch (err) {
-      return json(400, {
-        error: err?.message || "Unable to compute quote pricing from inputs."
-      });
+      return badRequest(
+        "pricing_engine_error",
+        err?.message || "Unable to compute quote pricing from inputs."
+      );
     }
 
     const minPrice = financials.minimum_price;
@@ -145,14 +177,13 @@ exports.handler = async (event) => {
       const rawManual = String(pricingIn.price ?? "").trim();
       const manualRequested = Number(rawManual);
       if (!Number.isFinite(manualRequested)) {
-        return json(400, {
-          error: "Manual offered price must be a valid number."
-        });
+        return badRequest("manual_price_nan", "Manual offered price must be a valid number.");
       }
       if (manualRequested + 1e-9 < Number(minPrice)) {
-        return json(400, {
-          error: `Manual offered price cannot be below the minimum allowed (${Number(minPrice).toFixed(2)}).`
-        });
+        return badRequest(
+          "manual_price_below_minimum",
+          `Manual offered price cannot be below the minimum allowed (${Number(minPrice).toFixed(2)}).`
+        );
       }
     }
 
@@ -162,7 +193,10 @@ exports.handler = async (event) => {
       !Number.isFinite(financials.deposit_required) ||
       financials.deposit_required <= 0
     ) {
-      return json(400, { error: "Computed total or deposit is invalid." });
+      return badRequest(
+        "invalid_totals",
+        "Computed total or deposit is invalid (check tenant snapshot labor rates and overhead)."
+      );
     }
 
     return json(200, {

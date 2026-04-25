@@ -5,6 +5,11 @@
 [build.environment]
   NODE_VERSION = "20"
 
+# Invoice reminder waves (+10m / +24h / +72h after sent_at); see invoice-followups-due.js
+[[functions]]
+  name = "invoice-followups-due"
+  schedule = "*/10 * * * *"
+
 [[redirects]]
   from = "/"
   to = "/index.html"
