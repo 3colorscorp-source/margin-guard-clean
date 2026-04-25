@@ -1457,6 +1457,9 @@
 
       function performStandaloneNewQuoteReset() {
         resetSalesQuoteStateForNewQuote();
+        if (typeof window.hideSalesNewQuoteModal === 'function') {
+          window.hideSalesNewQuoteModal();
+        }
       }
 
       window.performStandaloneNewQuoteReset = performStandaloneNewQuoteReset;

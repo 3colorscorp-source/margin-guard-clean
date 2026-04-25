@@ -666,6 +666,7 @@ Thank you.`
     const el = document.getElementById("salesNewQuoteModal");
     if (!el) return;
     el.classList.remove("hidden");
+    el.style.removeProperty("display");
     el.setAttribute("aria-hidden", "false");
   }
 
@@ -674,6 +675,9 @@ Thank you.`
     if (!el) return;
     el.classList.add("hidden");
     el.setAttribute("aria-hidden", "true");
+    el.style.display = "none";
+    document.body.classList.remove("modal-open", "mg-modal-open", "overflow-hidden");
+    document.documentElement.classList.remove("modal-open", "mg-modal-open", "overflow-hidden");
   }
 
   window.showSalesNewQuoteModal = showSalesNewQuoteModal;
@@ -689,8 +693,15 @@ Thank you.`
     const confirmBtn = document.getElementById("salesConfirmNewQuote");
     if (confirmBtn) {
       confirmBtn.addEventListener("click", () => {
-        if (typeof window.performStandaloneNewQuoteReset === "function") {
+        if (typeof window.performStandaloneNewQuoteReset !== "function") {
+          console.error("[Sales New Quote] performStandaloneNewQuoteReset is not available");
+          return;
+        }
+        try {
           window.performStandaloneNewQuoteReset();
+        } catch (err) {
+          console.error("[Sales New Quote] reset failed", err);
+          return;
         }
         hideSalesNewQuoteModal();
       });
