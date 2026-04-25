@@ -109,17 +109,26 @@ small{ color:var(--muted); }
   overflow-x:auto;
   overflow-y:visible;
   -webkit-overflow-scrolling:touch;
-  padding:4px;
+  padding:4px 24px 8px 4px;
   border-radius:18px;
   border:1px solid rgba(255,255,255,.1);
   background:
     linear-gradient(165deg, rgba(255,255,255,.045), rgba(6,10,18,.42));
+  scrollbar-width:thin;
+  scrollbar-color:rgba(255,255,255,0.15) transparent;
+}
+.sales-labor-table-wrap::-webkit-scrollbar{
+  height:6px;
+}
+.sales-labor-table-wrap::-webkit-scrollbar-thumb{
+  background:rgba(255,255,255,.15);
+  border-radius:999px;
 }
 .sales-labor-table-wrap .table.sales-labor-table{
   width:100%;
-  min-width:700px;
+  min-width:860px;
   margin:0;
-  table-layout:auto;
+  table-layout:fixed;
   overflow:visible;
   border-radius:14px;
 }
@@ -137,10 +146,10 @@ small{ color:var(--muted); }
 }
 .sales-labor-table-wrap table.sales-labor-table th.sales-labor-th-actions,
 .sales-labor-table-wrap table.sales-labor-table td.sales-labor-td-actions{
+  min-width:160px;
+  width:160px;
+  max-width:160px;
   overflow:visible;
-  width:1%;
-  min-width:132px;
-  max-width:none;
   text-align:center;
   vertical-align:middle;
 }
@@ -169,6 +178,8 @@ small{ color:var(--muted); }
   align-items:stretch;
   justify-content:center;
   gap:8px;
+  flex-shrink:0;
+  white-space:nowrap;
 }
 .sales-labor-row-actions .btn{
   width:100%;
@@ -178,6 +189,8 @@ small{ color:var(--muted); }
   font-weight:750;
   border-radius:12px;
   min-height:36px;
+  flex-shrink:0;
+  white-space:nowrap;
 }
 .sales-labor-row-actions .btn.ghost{
   border-color:rgba(255,255,255,.16);
