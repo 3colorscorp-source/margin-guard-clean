@@ -160,43 +160,49 @@
 
             <div class="sep"></div>
 
-            <div class="sales-quote-section sales-quote-section--labor">
-              <h3 class="sales-quote-section-title">Labor</h3>
-              <div class="dashboard-note">
-                <div class="dashboard-note-title">Labor builder</div>
-                <div class="dashboard-note-copy" id="salesCrewHint">Define dias por trabajador para calcular horas-hombre, recomendado, negociacion y piso minimo.</div>
-              </div>
+            <section class="sales-labor" aria-labelledby="salesLaborHeading">
+              <header class="sales-labor__head">
+                <div class="sales-labor__intro">
+                  <span class="eyebrow sales-labor__eyebrow">Labor</span>
+                  <h2 id="salesLaborHeading" class="sales-labor__title">Mano de obra</h2>
+                  <p class="sub sales-labor__lead">Define días por trabajador para horas-hombre, recomendado, negociación y piso mínimo. El costo base por tipo sigue lo definido en Business Settings.</p>
+                </div>
+                <div class="inline-actions sales-labor__actions">
+                  <button class="btn primary" type="button" id="btnAddSalesWorker">Agregar trabajador</button>
+                  <button class="btn danger" type="button" id="btnClearSalesWorkers">Limpiar labor</button>
+                </div>
+              </header>
 
-              <div class="inline-actions" style="margin-top:12px; margin-bottom:12px;">
-                <button class="btn primary" type="button" id="btnAddSalesWorker">Agregar trabajador</button>
-                <button class="btn danger" type="button" id="btnClearSalesWorkers">Limpiar labor</button>
+              <div class="sales-labor-guide" role="note">
+                <div class="sales-labor-guide__head">
+                  <span class="sales-labor-guide__kicker">Guía rápida</span>
+                </div>
+                <p class="sales-labor-guide__text">Añade una fila por trabajador y ajusta tipo, días y costo base: el <strong class="sales-labor-guide__em">costo labor</strong> alimenta el panel derecho. Copia o elimina filas según necesites; arriba puedes limpiar toda la cuadrilla.</p>
+                <p class="sales-labor-guide__meta" id="salesCrewHint"></p>
               </div>
 
               <div class="sales-labor-table-wrap">
                 <table class="table sales-labor-table">
                   <thead>
                     <tr>
-                      <th>Trabajador</th>
-                      <th>Tipo</th>
-                      <th>Dias</th>
-                      <th>Costo base</th>
-                      <th>Labor</th>
-                      <th class="sales-labor-th-actions">Acciones</th>
+                      <th class="sales-labor-th sales-labor-th--worker" scope="col">Trabajador</th>
+                      <th class="sales-labor-th sales-labor-th--type" scope="col">Tipo</th>
+                      <th class="sales-labor-th sales-labor-th--units" scope="col">Días</th>
+                      <th class="sales-labor-th sales-labor-th--rate" scope="col">Costo base</th>
+                      <th class="sales-labor-th sales-labor-th--labor" scope="col">Costo labor</th>
+                      <th class="sales-labor-th sales-labor-th--actions" scope="col">Acciones</th>
                     </tr>
                   </thead>
                   <tbody id="salesWorkersBody"></tbody>
                 </table>
               </div>
-            </div>
+            </section>
 
-            <div class="sales-quote-finalize">
-              <div class="sales-quote-finalize-title">Finalize Quote</div>
-              <div class="inline-actions" style="margin-top:0;">
-                <button class="btn" type="button" id="btnSendQuoteInline">Enviar estimate</button>
-                <button class="btn primary" type="button" id="btnMarkSold">Firmar proyecto</button>
-              </div>
-              <div class="notice" id="salesSignedStatus" style="display:none; margin-top:10px;"></div>
+            <div class="sales-quote-cta" role="group" aria-label="Enviar estimate o firmar proyecto">
+              <button type="button" class="btn primary sales-quote-cta__btn sales-quote-cta__btn--send" id="btnSendQuoteInline">Enviar estimate</button>
+              <button type="button" class="btn sales-quote-cta__btn sales-quote-cta__btn--sold" id="btnMarkSold">Firmar proyecto</button>
             </div>
+            <div class="notice sales-signed-status" id="salesSignedStatus" style="display:none;" aria-live="polite"></div>
 
             <div class="sep"></div>
 
@@ -1206,17 +1212,17 @@
           const rateValue = worker.rate === '' || worker.rate == null ? fallbackRate : Number(worker.rate || 0);
           return `
             <tr data-index="${index}">
-              <td><input data-key="name" maxlength="40" value="${escapeHtml(worker.name)}" /></td>
-              <td>
+              <td class="sales-labor-td sales-labor-td--name"><input data-key="name" maxlength="40" value="${escapeHtml(worker.name)}" /></td>
+              <td class="sales-labor-td sales-labor-td--type">
                 <select data-key="type">
                   <option value="installer" ${worker.type === 'installer' ? 'selected' : ''}>Pro</option>
                   <option value="helper" ${worker.type === 'helper' ? 'selected' : ''}>Assistant</option>
                 </select>
               </td>
-              <td><input data-key="days" type="number" min="0" step="0.25" value="${Number(worker.days || 0)}" /></td>
-              <td><input data-key="rate" type="number" min="0" step="0.01" value="${rateValue}" /></td>
-              <td data-cell="labor">${money(laborCost(worker, settings), settings.currency)}</td>
-              <td class="sales-labor-td-actions">
+              <td class="sales-labor-td sales-labor-td--units"><input data-key="days" type="number" min="0" step="0.25" value="${Number(worker.days || 0)}" /></td>
+              <td class="sales-labor-td sales-labor-td--rate"><input data-key="rate" type="number" min="0" step="0.01" value="${rateValue}" /></td>
+              <td class="sales-labor-td sales-labor-td--labor" data-cell="labor">${money(laborCost(worker, settings), settings.currency)}</td>
+              <td class="sales-labor-td sales-labor-td-actions">
                 <div class="row-actions sales-labor-row-actions">
                   <button class="btn ghost" type="button" data-action="copy">Copy</button>
                   <button class="btn danger" type="button" data-action="delete">Delete</button>
@@ -1427,7 +1433,7 @@
         const signedStatus = document.getElementById('salesSignedStatus');
         if (signedStatus) {
           signedStatus.style.display = 'none';
-          signedStatus.className = 'notice';
+          signedStatus.className = 'notice sales-signed-status';
           signedStatus.textContent = '';
         }
 
@@ -1521,7 +1527,7 @@
             }
             if (signedStatus) {
               signedStatus.style.display = 'block';
-              signedStatus.className = 'notice success';
+              signedStatus.className = 'notice success sales-signed-status';
               signedStatus.textContent = 'Project signed and ready for Supervisor tracking.';
             }
             const signedProject = document.getElementById('salesSignedProject');

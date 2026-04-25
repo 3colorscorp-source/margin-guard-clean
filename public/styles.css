@@ -102,6 +102,134 @@ small{ color:var(--muted); }
   overflow-x:hidden;
   overflow-y:visible;
 }
+
+/* Sales — Labor (visual parity with /owner .owner-labor) */
+.sales-labor{
+  margin:0 0 4px;
+}
+.sales-labor__head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+  flex-wrap:wrap;
+  margin-bottom:18px;
+}
+.sales-labor__intro{
+  flex:1;
+  min-width:min(100%, 260px);
+  max-width:68ch;
+}
+.sales-labor__eyebrow{
+  border-color:rgba(34,197,94,.2);
+  background:rgba(34,197,94,.07);
+  color:rgba(187,247,208,.92);
+}
+.sales-labor__title{
+  margin:0 0 10px;
+  font-size:22px;
+  line-height:1.12;
+  font-weight:850;
+  letter-spacing:-.02em;
+}
+.sales-labor__lead{
+  margin:0;
+  font-size:13px;
+  line-height:1.55;
+  color:rgba(232,238,252,.78);
+}
+.sales-labor__actions{
+  flex-shrink:0;
+  align-self:center;
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  padding:11px 12px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.1);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+  box-shadow:0 10px 32px rgba(0,0,0,.2);
+}
+@media (max-width:720px){
+  .sales-labor__actions{
+    width:100%;
+    justify-content:stretch;
+  }
+  .sales-labor__actions .btn{
+    flex:1 1 140px;
+    text-align:center;
+  }
+}
+.sales-labor-guide{
+  margin:0 0 14px;
+  padding:14px 16px 15px;
+  border-radius:18px;
+  border:1px solid rgba(34,197,94,.2);
+  background:
+    radial-gradient(520px 120px at 0% 0%, rgba(34,197,94,.1), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,.05), rgba(6,10,18,.38));
+  box-shadow:0 10px 32px rgba(0,0,0,.2);
+}
+.sales-labor-guide__head{
+  margin-bottom:8px;
+}
+.sales-labor-guide__kicker{
+  display:inline-block;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:rgba(187,247,208,.88);
+}
+.sales-labor-guide__text{
+  margin:0 0 8px;
+  font-size:13px;
+  line-height:1.55;
+  color:rgba(232,238,252,.78);
+}
+.sales-labor-guide__em{
+  font-weight:750;
+  color:rgba(232,238,252,.94);
+}
+.sales-labor-guide__meta{
+  margin:0;
+  font-size:12px;
+  line-height:1.45;
+  color:rgba(232,238,252,.62);
+  font-family:var(--mono);
+}
+
+/* Sales — CTA bajo Labor (paridad con /owner .owner-quote-cta) */
+.sales-quote-cta{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:12px;
+  margin-top:22px;
+  margin-bottom:14px;
+  padding:16px 18px;
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,.1);
+  background:
+    linear-gradient(145deg, rgba(34,197,94,.07), rgba(59,130,246,.05) 50%, rgba(255,255,255,.02));
+  box-shadow:0 12px 40px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.06);
+}
+.sales-quote-cta__btn--send.btn.primary{
+  box-shadow:0 8px 26px rgba(34,197,94,.14);
+}
+.sales-quote-cta__btn--sold{
+  border-color:rgba(59,130,246,.34);
+  background:
+    linear-gradient(180deg, rgba(59,130,246,.14), rgba(6,10,20,.45));
+  color:rgba(232,238,252,.95);
+  font-weight:680;
+  letter-spacing:.01em;
+}
+.sales-signed-status{
+  margin-top:12px;
+}
+
 /* Sales / Labor — scroll wide table inside panel; actions column never clipped */
 .sales-labor-table-wrap{
   margin-top:8px;
@@ -130,7 +258,152 @@ small{ color:var(--muted); }
   margin:0;
   table-layout:fixed;
   overflow:visible;
+  border:none;
   border-radius:14px;
+  box-shadow:0 14px 44px rgba(0,0,0,.28);
+}
+.sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th{
+  position:sticky;
+  top:0;
+  z-index:2;
+  padding:13px 12px;
+  font-size:11px;
+  font-weight:780;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:rgba(232,238,252,.68);
+  background:
+    linear-gradient(180deg, rgba(16,24,40,.98), rgba(10,16,28,.94));
+  border-bottom:1px solid rgba(34,197,94,.22);
+  box-shadow:0 6px 18px rgba(0,0,0,.22);
+  vertical-align:bottom;
+  line-height:1.25;
+}
+.sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--worker{
+  width:22%;
+  min-width:140px;
+  text-align:left;
+}
+.sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--type{
+  width:12%;
+  min-width:100px;
+  text-align:left;
+}
+.sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--units{
+  width:10%;
+  min-width:88px;
+  text-align:center;
+}
+.sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--rate{
+  width:14%;
+  min-width:104px;
+  text-align:right;
+}
+.sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--labor{
+  width:16%;
+  min-width:100px;
+  text-align:right;
+}
+.sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--actions{
+  text-align:center;
+  letter-spacing:.08em;
+  color:rgba(232,238,252,.58);
+}
+.sales-labor-table-wrap table.sales-labor-table tbody tr{
+  transition:background .12s ease;
+}
+.sales-labor-table-wrap table.sales-labor-table tbody tr:hover{
+  background:rgba(255,255,255,.04);
+}
+.sales-labor-table-wrap table.sales-labor-table tbody tr:nth-child(even){
+  background:rgba(255,255,255,.02);
+}
+.sales-labor-table-wrap table.sales-labor-table tbody tr:nth-child(even):hover{
+  background:rgba(255,255,255,.055);
+}
+.sales-labor-table-wrap table.sales-labor-table td.sales-labor-td{
+  padding:13px 12px;
+}
+.sales-labor-table-wrap table.sales-labor-table td[data-cell="labor"]{
+  font-family:var(--mono);
+  font-weight:780;
+  font-size:14px;
+  font-variant-numeric:tabular-nums;
+  letter-spacing:.03em;
+  text-align:right;
+  white-space:nowrap;
+  color:rgba(232,238,252,.96);
+  background:rgba(34,197,94,.06);
+  border-left:1px solid rgba(34,197,94,.18);
+}
+.sales-labor-table-wrap table.sales-labor-table tbody td.sales-labor-td--name{
+  text-align:left;
+}
+.sales-labor-table-wrap table.sales-labor-table tbody td.sales-labor-td--type{
+  text-align:left;
+}
+.sales-labor-table-wrap table.sales-labor-table tbody td.sales-labor-td--units,
+.sales-labor-table-wrap table.sales-labor-table tbody td.sales-labor-td--rate{
+  text-align:right;
+}
+.sales-labor-table-wrap table.sales-labor-table tbody td.sales-labor-td-actions{
+  text-align:center;
+}
+.sales-labor-table-wrap table.sales-labor-table td input,
+.sales-labor-table-wrap table.sales-labor-table td select{
+  min-height:42px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(6,10,20,.58);
+  font-size:13px;
+  font-weight:600;
+  color:rgba(232,238,252,.96);
+  caret-color:rgba(232,238,252,.96);
+  color-scheme:dark;
+  transition:border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.sales-labor-table-wrap table.sales-labor-table td input::placeholder{
+  color:rgba(232,238,252,.42);
+  font-weight:500;
+}
+.sales-labor-table-wrap table.sales-labor-table td select option{
+  color:rgba(232,238,252,.96);
+  background:#0c1424;
+}
+.sales-labor-table-wrap table.sales-labor-table td input:focus,
+.sales-labor-table-wrap table.sales-labor-table td select:focus{
+  border-color:rgba(34,197,94,.38);
+  box-shadow:0 0 0 3px rgba(34,197,94,.12);
+  outline:none;
+}
+.sales-labor-table-wrap table.sales-labor-table td input[data-key="name"]{
+  font-size:14px;
+  font-weight:650;
+  letter-spacing:.015em;
+  border-color:rgba(255,255,255,.14);
+  background:rgba(8,14,28,.75);
+}
+.sales-labor-table-wrap table.sales-labor-table td select[data-key="type"]{
+  font-weight:750;
+  cursor:pointer;
+  border-color:rgba(34,197,94,.28);
+  background:
+    linear-gradient(180deg, rgba(34,197,94,.11), rgba(6,10,20,.58));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+.sales-labor-table-wrap table.sales-labor-table td select[data-key="type"]:focus{
+  border-color:rgba(34,197,94,.45);
+}
+.sales-labor-table-wrap table.sales-labor-table td input[data-key="days"],
+.sales-labor-table-wrap table.sales-labor-table td input[data-key="rate"]{
+  font-family:var(--mono);
+  font-weight:780;
+  font-variant-numeric:tabular-nums;
+  letter-spacing:.02em;
+  text-align:right;
+  border-color:rgba(59,130,246,.22);
+  background:rgba(59,130,246,.07);
 }
 .sales-labor-table-wrap table.sales-labor-table input,
 .sales-labor-table-wrap table.sales-labor-table select{
@@ -144,7 +417,7 @@ small{ color:var(--muted); }
 .sales-labor-table-wrap table.sales-labor-table td:not(.sales-labor-td-actions){
   overflow:hidden;
 }
-.sales-labor-table-wrap table.sales-labor-table th.sales-labor-th-actions,
+.sales-labor-table-wrap table.sales-labor-table th.sales-labor-th--actions,
 .sales-labor-table-wrap table.sales-labor-table td.sales-labor-td-actions{
   min-width:160px;
   width:160px;
@@ -2062,9 +2335,6 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   margin-bottom:14px;
   background:rgba(255,255,255,.02);
 }
-.sales-quote-section--labor{
-  margin-bottom:12px;
-}
 .sales-quote-section-title{
   margin:0 0 12px;
   font-size:13px;
@@ -2084,20 +2354,6 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
 .sales-quote-notes-col{
   grid-template-columns:1fr;
 }
-.sales-quote-finalize{
-  border:1px solid rgba(59,130,246,.28);
-  border-radius:14px;
-  padding:14px 16px 16px;
-  margin:0 0 14px;
-  background:rgba(59,130,246,.09);
-}
-.sales-quote-finalize-title{
-  margin:0 0 10px;
-  font-size:16px;
-  font-weight:700;
-  letter-spacing:-.01em;
-}
-
 .msg-list{
   list-style:none;
   margin:8px 0 0;
