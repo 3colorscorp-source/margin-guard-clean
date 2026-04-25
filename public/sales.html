@@ -1206,6 +1206,34 @@
         return days * 8 * rate;
       }
 
+      function debounce(fn, waitMs) {
+        let timerId = null;
+        function wrapped() {
+          clearTimeout(timerId);
+          timerId = setTimeout(function () {
+            timerId = null;
+            fn();
+          }, waitMs);
+        }
+        wrapped.cancel = function () {
+          if (timerId) clearTimeout(timerId);
+          timerId = null;
+        };
+        wrapped.flush = function () {
+          if (timerId) clearTimeout(timerId);
+          timerId = null;
+          fn();
+        };
+        return wrapped;
+      }
+
+      const debouncedPostLaborInput = debounce(function () {
+        const state = loadSalesState();
+        const settings = loadSettings();
+        renderStandaloneSellerPanel();
+        requestSecurePricing(state, settings);
+      }, 400);
+
       function renderSellerWorkersStandalone() {
         const body = document.getElementById('salesWorkersBody');
         if (!body) return;
@@ -1280,27 +1308,82 @@
           refreshSellerFromStandalone();
         }, true);
 
-        function applyWorkerFieldChange(field) {
-          if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement)) return;
+        function commitWorkerFieldToState(field) {
+          if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement)) return null;
           const row = field.closest('tr');
           const index = Number(row?.dataset.index ?? -1);
           const key = field.dataset.key;
-          if (index < 0 || !key) return;
+          if (index < 0 || !key) return null;
           const state = loadSalesState();
-          if (!Array.isArray(state.workers) || !state.workers[index]) return;
-          state.workers[index][key] = (key === 'days' || key === 'rate')
-            ? (field.value === '' ? '' : Number(field.value || 0))
-            : field.value;
+          if (!Array.isArray(state.workers) || !state.workers[index]) return null;
+          if (key === 'days' || key === 'rate') {
+            state.workers[index][key] = field.value === '' ? '' : Number(field.value || 0);
+          } else {
+            state.workers[index][key] = field.value;
+          }
+          if (key === 'type' && (state.workers[index].rate === '' || state.workers[index].rate == null)) {
+            state.workers[index].rate = '';
+          }
+          try {
+            const lm = calculateStandaloneSalesMetrics(state, loadSettings());
+            if (lm.workerDays > 0) state.estimateStatus = 'pricing_ready';
+          } catch (_e) { /* ignore */ }
           saveSalesState(state);
-          refreshSellerFromStandalone();
+          return { row: row, index: index, key: key, state: state };
+        }
+
+        function handleWorkerFieldInput(field) {
+          const meta = commitWorkerFieldToState(field);
+          if (!meta) return;
+          const settings = loadSettings();
+          if (meta.key === 'days' || meta.key === 'rate') {
+            const laborTd = meta.row.querySelector('[data-cell="labor"]');
+            if (laborTd) {
+              laborTd.textContent = money(laborCost(meta.state.workers[meta.index], settings), settings.currency);
+            }
+          }
+          const hint = document.getElementById('salesCrewHint');
+          if (hint) {
+            const workerHours = meta.state.workers.reduce(function (sum, w) {
+              return sum + (Number(w.days || 0) * 8);
+            }, 0);
+            hint.textContent = `${meta.state.workers.length} workers configured for ${workerHours.toFixed(2)} labor hours.`;
+          }
+          debouncedPostLaborInput();
+        }
+
+        function handleWorkerFieldChange(field) {
+          if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement)) return;
+          const key = field.dataset.key;
+          if (field instanceof HTMLSelectElement && key === 'type') {
+            debouncedPostLaborInput.cancel();
+            commitWorkerFieldToState(field);
+            refreshSellerFromStandalone();
+            return;
+          }
+          commitWorkerFieldToState(field);
+          debouncedPostLaborInput.flush();
         }
 
         body.addEventListener('input', function (event) {
-          applyWorkerFieldChange(event.target);
+          const t = event.target;
+          if (!(t instanceof HTMLInputElement || t instanceof HTMLSelectElement)) return;
+          if (!t.dataset.key) return;
+          handleWorkerFieldInput(t);
         });
 
         body.addEventListener('change', function (event) {
-          applyWorkerFieldChange(event.target);
+          const t = event.target;
+          if (!(t instanceof HTMLInputElement || t instanceof HTMLSelectElement)) return;
+          if (!t.dataset.key) return;
+          handleWorkerFieldChange(t);
+        });
+
+        body.addEventListener('focusin', function (event) {
+          const t = event.target;
+          if (t instanceof HTMLInputElement && (t.dataset.key === 'days' || t.dataset.key === 'rate')) {
+            t.select();
+          }
         });
 
         body.addEventListener('click', function (event) {
