@@ -3871,7 +3871,16 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   if (scopeInput) scopeInput.value = scopeText;
   if (messageInput) messageInput.value = defaultMessage;
   if (depositInput && !depositInput.value) depositInput.value = "1000";
-  if (sendStatus) { sendStatus.style.display = "none"; sendStatus.textContent = ""; }
+  if (sendStatus) {
+    const fb = window.__MG_QUOTE_SEND_FEEDBACK__;
+    if (fb && typeof fb.clear === "function") fb.clear(sendStatus);
+    else {
+      sendStatus.style.display = "none";
+      sendStatus.innerHTML = "";
+      sendStatus.className = sendStatus.getAttribute("data-mg-send-status-class") || "notice";
+      sendStatus.textContent = "";
+    }
+  }
   modal.style.removeProperty("display");
   modal.setAttribute("aria-hidden", "false");
   updateSendCounts();
@@ -3883,7 +3892,17 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       modal.setAttribute("aria-hidden", "true");
       modal.style.removeProperty("display");
     }
-    if ($("sendStatus")) { $("sendStatus").style.display = "none"; $("sendStatus").className = "notice"; $("sendStatus").textContent = ""; }
+    if ($("sendStatus")) {
+      const el = $("sendStatus");
+      const fb = window.__MG_QUOTE_SEND_FEEDBACK__;
+      if (fb && typeof fb.clear === "function") fb.clear(el);
+      else {
+        el.style.display = "none";
+        el.innerHTML = "";
+        el.className = el.getAttribute("data-mg-send-status-class") || "notice";
+        el.textContent = "";
+      }
+    }
   }
 
   function updateSendCounts() {
@@ -4273,8 +4292,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         sendButton.textContent = "Enviando...";
       }
       if (sendStatus) {
+        const fb0 = window.__MG_QUOTE_SEND_FEEDBACK__;
+        if (fb0 && typeof fb0.stripToPlainNotice === "function") fb0.stripToPlainNotice(sendStatus);
+        else {
+          sendStatus.innerHTML = "";
+          sendStatus.className = sendStatus.getAttribute("data-mg-send-status-class") || "notice";
+        }
         sendStatus.style.display = "block";
-        sendStatus.className = "notice";
         sendStatus.textContent = "Creando enlace público...";
       }
 
@@ -4372,6 +4396,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       const messageWithLink = (message || "").replace(/\[PUBLIC_QUOTE_URL\]/g, publicQuoteUrl);
 
       if (sendStatus) {
+        const fbPdf = window.__MG_QUOTE_SEND_FEEDBACK__;
+        if (fbPdf && typeof fbPdf.stripToPlainNotice === "function") fbPdf.stripToPlainNotice(sendStatus);
+        else {
+          sendStatus.innerHTML = "";
+          sendStatus.className = sendStatus.getAttribute("data-mg-send-status-class") || "notice";
+        }
+        sendStatus.style.display = "block";
         sendStatus.textContent = "Generando PDF...";
       }
 
@@ -4481,13 +4512,17 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         zapData = zapRaw ? JSON.parse(zapRaw) : {};
       } catch (_e) {}
       if (!zapRes.ok) {
-        throw new Error(zapData.error || zapRaw || "Unable to send estimate.");
+        console.error("[MG Quote Send] send-quote-zapier HTTP error", zapRes.status, zapRaw, zapData);
+        throw new Error("Unable to complete send. Please try again.");
       }
-      if (zapData.pdfUploadError) {
-        throw new Error(`PDF: la subida en send-quote-zapier falló (${zapData.pdfUploadError}).`);
-      }
-      if (!zapData.pdfUrl) {
-        throw new Error("PDF: send-quote-zapier no devolvió pdfUrl; Zapier solo recibe pdf_url. Sin URL no hay adjunto.");
+
+      const hadPdfPayload = Boolean(String(zapierPayload.pdfBase64 || "").trim());
+      if (zapData.pdfUploadError || (hadPdfPayload && !zapData.pdfUrl)) {
+        console.error("[MG Quote Send] PDF storage or attach issue", {
+          pdfUploadError: zapData.pdfUploadError,
+          pdfUrl: zapData.pdfUrl,
+          hadPdfPayload
+        });
       }
 
       persistOwnerAfterPublicSend(freshSettings, {
@@ -4498,22 +4533,39 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       });
       resetSalesDraftToNewQuote();
 
-      if (sendStatus) {
+      let closeDelayMs = 900;
+      if (sendStatus && window.__MG_QUOTE_SEND_FEEDBACK__ && typeof window.__MG_QUOTE_SEND_FEEDBACK__.renderQuoteZapierOutcome === "function") {
+        const out = window.__MG_QUOTE_SEND_FEEDBACK__.renderQuoteZapierOutcome(sendStatus, {
+          publishData,
+          zapData,
+          hadPdfPayload,
+          publicQuoteUrl: publishData.public_url
+        });
+        closeDelayMs = out && out.variant === "warning" ? 2400 : 900;
+      } else if (sendStatus) {
+        sendStatus.innerHTML = "";
+        sendStatus.className = sendStatus.getAttribute("data-mg-send-status-class") || "notice";
         sendStatus.style.display = "block";
-        sendStatus.className = "notice";
-        sendStatus.textContent = "Cotización enviada correctamente.";
+        sendStatus.textContent = "Quote sent successfully.";
+        closeDelayMs = 700;
       }
 
       renderOwner();
       try {
         renderSales();
       } catch (_e) {}
-      setTimeout(closeSendModal, 500);
+      setTimeout(closeSendModal, closeDelayMs);
     } catch (err) {
+      console.error("[MG Quote Send] owner public send failed", err);
       if (sendStatus) {
-        sendStatus.style.display = "block";
-        sendStatus.className = "notice error";
-        sendStatus.textContent = err?.message || String(err);
+        const fbErr = window.__MG_QUOTE_SEND_FEEDBACK__;
+        if (fbErr && typeof fbErr.renderSendError === "function" && typeof fbErr.friendlySendFailureMessage === "function") {
+          fbErr.renderSendError(sendStatus, fbErr.friendlySendFailureMessage(err));
+        } else {
+          sendStatus.style.display = "block";
+          sendStatus.className = "notice error";
+          sendStatus.textContent = "Something went wrong. Please try again.";
+        }
       }
     } finally {
       if (sendButton) {
@@ -4628,7 +4680,16 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   const issueDate = normalizeDateInput(nonEmptyString(state.issueDate) || todayInputValue());
   const expirationDate = normalizeDateInput(nonEmptyString(state.expirationDate) || addDaysToInputValue(issueDate, 7));
   try {
-    if (sendStatus) { sendStatus.style.display = "block"; sendStatus.textContent = "Sending estimate..."; }
+    if (sendStatus) {
+      const fbS = window.__MG_QUOTE_SEND_FEEDBACK__;
+      if (fbS && typeof fbS.stripToPlainNotice === "function") fbS.stripToPlainNotice(sendStatus);
+      else {
+        sendStatus.innerHTML = "";
+        sendStatus.className = sendStatus.getAttribute("data-mg-send-status-class") || "notice";
+      }
+      sendStatus.style.display = "block";
+      sendStatus.textContent = "Sending estimate...";
+    }
     const additionalRecipientsLegacy = String(state.additional_recipients || "");
     console.info("[MG Quote Email Recipients]", {
       client_email: toEmail,
@@ -4660,7 +4721,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       })
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Unable to send estimate.");
+    if (!response.ok) {
+      console.error("[MG Quote Send] legacy send-quote-zapier failed", response.status, data);
+      throw new Error(data.error || "Unable to send estimate.");
+    }
     if (!skipPersistSales) {
       state.customerEmail = toEmail;
       state.clientName = toName;
@@ -4672,11 +4736,33 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       state.sentAt = new Date().toISOString();
       saveSales(state);
     }
-    if (sendStatus) { sendStatus.style.display = "block"; sendStatus.textContent = "Estimate sent successfully."; }
-    setTimeout(closeSendModal, 500);
+    if (sendStatus && window.__MG_QUOTE_SEND_FEEDBACK__ && typeof window.__MG_QUOTE_SEND_FEEDBACK__.renderQuoteZapierOutcome === "function") {
+      window.__MG_QUOTE_SEND_FEEDBACK__.renderQuoteZapierOutcome(sendStatus, {
+        publishData: {},
+        zapData: data,
+        hadPdfPayload: false,
+        publicQuoteUrl: data.public_quote_url || ""
+      });
+    } else if (sendStatus) {
+      sendStatus.innerHTML = "";
+      sendStatus.className = sendStatus.getAttribute("data-mg-send-status-class") || "notice";
+      sendStatus.style.display = "block";
+      sendStatus.textContent = "Quote sent successfully.";
+    }
+    setTimeout(closeSendModal, 800);
     renderSales();
   } catch (error) {
-    if (sendStatus) { sendStatus.style.display = "block"; sendStatus.textContent = error.message || "Unable to send estimate."; }
+    console.error("[MG Quote Send] legacy send failed", error);
+    if (sendStatus && window.__MG_QUOTE_SEND_FEEDBACK__ && typeof window.__MG_QUOTE_SEND_FEEDBACK__.renderSendError === "function") {
+      window.__MG_QUOTE_SEND_FEEDBACK__.renderSendError(
+        sendStatus,
+        window.__MG_QUOTE_SEND_FEEDBACK__.friendlySendFailureMessage(error)
+      );
+    } else if (sendStatus) {
+      sendStatus.style.display = "block";
+      sendStatus.className = "notice error";
+      sendStatus.textContent = "Something went wrong. Please try again.";
+    }
   }
 }
 
