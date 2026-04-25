@@ -3334,6 +3334,8 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         throw new Error(data.error || raw || 'Unable to send estimate.');
       }
 
+      console.log('[MG SEND] zapier success');
+
       const hadPdfPayload = Boolean(String(zapierPayload.pdfBase64 || '').trim());
       if (data.pdfUploadError || (hadPdfPayload && !data.pdfUrl)) {
         console.error('[seller-send] PDF storage or attach issue', {
@@ -3346,46 +3348,60 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
       setSendModalSendingState(false);
 
       let closeDelayMs = 1800;
-      if (sendStatus && window.__MG_QUOTE_SEND_FEEDBACK__ && typeof window.__MG_QUOTE_SEND_FEEDBACK__.renderQuoteZapierOutcome === 'function') {
-        const out = window.__MG_QUOTE_SEND_FEEDBACK__.renderQuoteZapierOutcome(sendStatus, {
-          publishData,
-          zapData: data,
-          hadPdfPayload,
-          publicQuoteUrl: publishData.public_url,
-          renderSuccessMode: 'toast',
-          successToastTitle: 'Quote sent successfully',
-          successToastMessage: 'Client received the proposal with the approval and deposit link.'
-        });
-        if (out && out.variant === 'warning') {
-          closeDelayMs = 2600;
-        } else if (out && out.variant === 'success') {
-          closeDelayMs = 1800;
-        } else {
-          closeDelayMs = 1600;
-        }
-      } else if (sendStatus) {
-        sendStatus.innerHTML = '';
-        sendStatus.className = sendStatus.getAttribute('data-mg-send-status-class') || 'notice';
-        sendStatus.style.display = 'none';
-        const fbToast = window.__MG_QUOTE_SEND_FEEDBACK__;
-        if (fbToast && typeof fbToast.showQuoteSendToast === 'function') {
-          fbToast.showQuoteSendToast({
-            title: 'Quote sent successfully',
-            message: 'Client received the proposal with the approval and deposit link.',
-            publicUrl: publishData.public_url,
-            dismissMs: 4500
+      let zapierOutcome = null;
+      try {
+        if (sendStatus && window.__MG_QUOTE_SEND_FEEDBACK__ && typeof window.__MG_QUOTE_SEND_FEEDBACK__.renderQuoteZapierOutcome === 'function') {
+          zapierOutcome = window.__MG_QUOTE_SEND_FEEDBACK__.renderQuoteZapierOutcome(sendStatus, {
+            publishData,
+            zapData: data,
+            hadPdfPayload,
+            publicQuoteUrl: publishData.public_url,
+            renderSuccessMode: 'toast',
+            successToastTitle: 'Quote sent successfully',
+            successToastMessage: 'Client received the proposal with the approval and deposit link.'
           });
+          if (zapierOutcome && zapierOutcome.variant === 'warning') {
+            closeDelayMs = 2600;
+          }
+        } else if (sendStatus) {
+          sendStatus.innerHTML = '';
+          sendStatus.className = sendStatus.getAttribute('data-mg-send-status-class') || 'notice';
+          sendStatus.style.display = 'none';
+          const fbToast = window.__MG_QUOTE_SEND_FEEDBACK__;
+          if (fbToast && typeof fbToast.showQuoteSendToast === 'function') {
+            fbToast.showQuoteSendToast({
+              title: 'Quote sent successfully',
+              message: 'Client received the proposal with the approval and deposit link.',
+              publicUrl: publishData.public_url,
+              dismissMs: 4500
+            });
+          }
         }
-        closeDelayMs = 1800;
+      } catch (mgSendOutcomeErr) {
+        console.error('[MG SEND] renderQuoteZapierOutcome failed', mgSendOutcomeErr);
+      }
+
+      const fbAfter = window.__MG_QUOTE_SEND_FEEDBACK__;
+      if (sendStatus && fbAfter && typeof fbAfter.clear === 'function') {
+        if (!zapierOutcome || zapierOutcome.variant !== 'warning') {
+          fbAfter.clear(sendStatus);
+        }
       }
 
       successCloseScheduled = true;
+      console.log('[MG SEND] scheduling modal close');
       setTimeout(function () {
-        performStandaloneNewQuoteReset();
+        console.log('[MG SEND] closing modal after success');
         closeSellerSendModal();
-        if (sendButton) {
-          sendButton.disabled = false;
-          sendButton.textContent = 'Confirmar y enviar estimate';
+        try {
+          performStandaloneNewQuoteReset();
+        } catch (mgSendResetErr) {
+          console.error('[MG SEND] performStandaloneNewQuoteReset failed', mgSendResetErr);
+        }
+        const sb = document.getElementById('btnSendNow');
+        if (sb) {
+          sb.disabled = false;
+          sb.textContent = 'Confirmar y enviar estimate';
         }
       }, closeDelayMs);
       return true;
