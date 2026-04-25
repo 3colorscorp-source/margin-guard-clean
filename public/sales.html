@@ -172,19 +172,21 @@
                 <button class="btn danger" type="button" id="btnClearSalesWorkers">Limpiar labor</button>
               </div>
 
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Trabajador</th>
-                    <th>Tipo</th>
-                    <th>Dias</th>
-                    <th>Costo base</th>
-                    <th>Labor</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody id="salesWorkersBody"></tbody>
-              </table>
+              <div class="sales-labor-table-wrap">
+                <table class="table sales-labor-table">
+                  <thead>
+                    <tr>
+                      <th>Trabajador</th>
+                      <th>Tipo</th>
+                      <th>Dias</th>
+                      <th>Costo base</th>
+                      <th>Labor</th>
+                      <th class="sales-labor-th-actions">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="salesWorkersBody"></tbody>
+                </table>
+              </div>
             </div>
 
             <div class="sales-quote-finalize">
@@ -1214,8 +1216,8 @@
               <td><input data-key="days" type="number" min="0" step="0.25" value="${Number(worker.days || 0)}" /></td>
               <td><input data-key="rate" type="number" min="0" step="0.01" value="${rateValue}" /></td>
               <td data-cell="labor">${money(laborCost(worker, settings), settings.currency)}</td>
-              <td>
-                <div class="row-actions">
+              <td class="sales-labor-td-actions">
+                <div class="row-actions sales-labor-row-actions">
                   <button class="btn ghost" type="button" data-action="copy">Copy</button>
                   <button class="btn danger" type="button" data-action="delete">Delete</button>
                 </div>
