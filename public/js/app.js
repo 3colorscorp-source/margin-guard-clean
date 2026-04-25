@@ -206,6 +206,41 @@ Thank you.`
     }[m]));
   }
 
+  /** Cantidad labor (días u horas en UI Owner): enteros; "5.7" → 5 (misma idea que /sales, no concatenar dígitos). */
+  function parseOwnerLaborQtyInput(value) {
+    if (value == null) return { empty: true, displayInt: 0 };
+    let s = String(value).trim();
+    if (s === "") return { empty: true, displayInt: 0 };
+    s = s.replace(/,/g, ".");
+    const dot = s.indexOf(".");
+    if (dot >= 0) s = s.slice(0, dot);
+    s = s.replace(/\D/g, "");
+    if (s === "") return { empty: true, displayInt: 0 };
+    const n = Number(s);
+    if (!Number.isFinite(n)) return { empty: false, displayInt: 0 };
+    return { empty: false, displayInt: Math.max(0, Math.floor(n)) };
+  }
+
+  function normalizeLaborQty(value) {
+    const p = parseOwnerLaborQtyInput(value);
+    return p.empty ? 0 : p.displayInt;
+  }
+
+  function ownerLaborDisplayUnitsToHours(displayInt, settings, hoursPerDay) {
+    const hpd = Math.max(Number(hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
+    if (settings.pricingMode === "day") return Math.max(0, displayInt) * hpd;
+    return Math.max(0, displayInt);
+  }
+
+  function ownerLaborHoursToDisplayUnits(hours, settings, hoursPerDay) {
+    const hpd = Math.max(Number(hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
+    const h = Math.max(0, Number(hours || 0));
+    if (settings.pricingMode === "day") return Math.floor(h / hpd);
+    return Math.floor(h);
+  }
+
+  if (typeof window !== "undefined") window.normalizeLaborQty = normalizeLaborQty;
+
   function toTitleCase(value) {
     return String(value || "")
       .toLowerCase()
@@ -3373,6 +3408,35 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     // business-settings.html define su propio Guardar/Recargar (branding + Supabase). No pisar handlers.
     if ($("btnReloadBusinessSettings")) return;
   }
+  let __ownerWorkerUiTimer = null;
+  function scheduleRenderOwnerAfterWorkerInput() {
+    if (__ownerWorkerUiTimer) clearTimeout(__ownerWorkerUiTimer);
+    __ownerWorkerUiTimer = setTimeout(() => {
+      __ownerWorkerUiTimer = null;
+      renderOwner();
+    }, 400);
+  }
+
+  function syncOwnerWorkersTableInputsToState(state, settings) {
+    const body = $("workersBody");
+    if (!body) return;
+    const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
+    body.querySelectorAll("tr[data-index]").forEach((tr) => {
+      const index = Number(tr.dataset.index ?? -1);
+      if (index < 0 || !state.workers[index]) return;
+      const hoursInput = tr.querySelector('input[data-key="hours"]');
+      const nameInput = tr.querySelector('input[data-key="name"]');
+      const typeSel = tr.querySelector('select[data-key="type"]');
+      if (nameInput) state.workers[index].name = nameInput.value;
+      if (typeSel) state.workers[index].type = typeSel.value;
+      if (hoursInput) {
+        const parsed = parseOwnerLaborQtyInput(hoursInput.value);
+        const displayInt = parsed.empty ? 0 : parsed.displayInt;
+        state.workers[index].hours = ownerLaborDisplayUnitsToHours(displayInt, settings, hoursPerDay);
+      }
+    });
+  }
+
   function buildOwnerKpis(state, settings, metrics) {
     return [
       ["Direct Labor", money(metrics.labor, settings.currency), `${state.workers.length} workers modeled`],
@@ -3404,7 +3468,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             <option value="helper" ${worker.type === "helper" ? "selected" : ""}>Assistant</option>
           </select>
         </td>
-        <td><input data-key="hours" type="number" step="0.25" value="${settings.pricingMode === "day" ? ((Number(worker.hours || 0) / hoursPerDay) || 0) : (worker.hours ?? 0)}" /></td>
+        <td><input data-key="hours" type="number" inputmode="numeric" min="0" step="1" pattern="[0-9]*" value="${ownerLaborHoursToDisplayUnits(worker.hours, settings, hoursPerDay)}" /></td>
         <td><input data-key="rate" type="number" step="0.01" value="${worker.type === "helper" ? settings.baseHelper : settings.baseInstaller}" readonly /></td>
         <td data-cell="labor">${money(metrics.laborByWorker[index]?.cost || 0, settings.currency)}</td>
         <td>
@@ -3418,21 +3482,55 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
     body.querySelectorAll("input,select").forEach((el) => {
       const commit = () => {
+        if (__ownerWorkerUiTimer) {
+          clearTimeout(__ownerWorkerUiTimer);
+          __ownerWorkerUiTimer = null;
+        }
         const tr = el.closest("tr");
         const index = Number(tr?.dataset.index ?? -1);
         const key = el.dataset.key;
         if (index < 0 || !key) return;
+        const s = loadOwner();
+        if (!Array.isArray(s.workers) || !s.workers[index]) return;
         if (key === "hours") {
-          const rawUnits = Number(el.value || 0);
-          state.workers[index][key] = settings.pricingMode === "day" ? rawUnits * hoursPerDay : rawUnits;
+          const parsed = parseOwnerLaborQtyInput(el.value);
+          const displayInt = parsed.empty ? 0 : parsed.displayInt;
+          s.workers[index].hours = ownerLaborDisplayUnitsToHours(displayInt, settings, hoursPerDay);
+          el.value = parsed.empty ? "" : String(displayInt);
         } else {
-          state.workers[index][key] = el.value;
+          s.workers[index][key] = el.value;
         }
-        if (key === "type") state.workers[index].rate = "";
-        saveOwner(state, calcOwner(state, settings));
+        if (key === "type") s.workers[index].rate = "";
+        saveOwner(s, calcOwner(s, settings));
         renderOwner();
       };
-      if (el.dataset.key === "name" || el.dataset.key === "hours") {
+      if (el.dataset.key === "hours") {
+        el.addEventListener("input", () => {
+          const tr = el.closest("tr");
+          const index = Number(tr?.dataset.index ?? -1);
+          if (index < 0) return;
+          const s = loadOwner();
+          if (!Array.isArray(s.workers) || !s.workers[index]) return;
+          const parsed = parseOwnerLaborQtyInput(el.value);
+          const displayInt = parsed.empty ? 0 : parsed.displayInt;
+          s.workers[index].hours = ownerLaborDisplayUnitsToHours(displayInt, settings, hoursPerDay);
+          el.value = parsed.empty ? "" : String(displayInt);
+          saveOwner(s, calcOwner(s, settings));
+          const m = calcOwner(s, settings);
+          const laborTd = tr?.querySelector("[data-cell=\"labor\"]");
+          if (laborTd) laborTd.textContent = money(m.laborByWorker[index]?.cost || 0, settings.currency);
+          scheduleRenderOwnerAfterWorkerInput();
+        });
+        el.addEventListener("focus", () => {
+          try {
+            el.select();
+          } catch (_e) {
+            /* noop */
+          }
+        });
+        el.addEventListener("change", commit);
+        el.addEventListener("blur", commit);
+      } else if (el.dataset.key === "name") {
         el.addEventListener("change", commit);
         el.addEventListener("blur", commit);
       } else if (el.tagName === "SELECT") {
@@ -3442,12 +3540,18 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
     body.querySelectorAll("button[data-action]").forEach((button) => {
       button.addEventListener("click", () => {
+        if (__ownerWorkerUiTimer) {
+          clearTimeout(__ownerWorkerUiTimer);
+          __ownerWorkerUiTimer = null;
+        }
         const tr = button.closest("tr");
         const index = Number(tr?.dataset.index ?? -1);
         if (index < 0) return;
-        if (button.dataset.action === "delete") state.workers.splice(index, 1);
-        if (button.dataset.action === "copy") state.workers.splice(index + 1, 0, { ...state.workers[index] });
-        saveOwner(state, calcOwner(state, settings));
+        const s = loadOwner();
+        if (!Array.isArray(s.workers)) return;
+        if (button.dataset.action === "delete") s.workers.splice(index, 1);
+        if (button.dataset.action === "copy") s.workers.splice(index + 1, 0, { ...s.workers[index] });
+        saveOwner(s, calcOwner(s, settings));
         renderOwner();
       });
     });
@@ -3459,7 +3563,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const settings = loadSettings();
     const state = loadOwner();
     state.reservePct = DEFAULTS.reservePct;
-    const metrics = calcOwner(state, settings);
+    let metrics = calcOwner(state, settings);
 
     const projectNameEl = $("projectName");
     if (projectNameEl && document.activeElement === projectNameEl) {
@@ -3517,7 +3621,18 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     count("bizNameOwner", "bizNameOwnerCount");
     count("quoteNotes", "quoteNotesCount");
 
-    renderWorkers(state, settings, metrics);
+    const editingWorkerHours =
+      document.activeElement &&
+      typeof document.activeElement.matches === "function" &&
+      document.activeElement.matches('input[data-key="hours"]') &&
+      document.activeElement.closest("#workersBody");
+
+    if (editingWorkerHours) {
+      syncOwnerWorkersTableInputsToState(state, settings);
+      metrics = calcOwner(state, settings);
+    } else {
+      renderWorkers(state, settings, metrics);
+    }
 
     const ownerProject = getSelectedProject() || {
       projectName: state.projectName,
