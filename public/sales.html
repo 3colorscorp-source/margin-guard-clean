@@ -2785,11 +2785,41 @@ async function fillSendModal() {
     }
   }
 
+  function setSendModalSendingState(isSending) {
+    if (!modal) return;
+    const card = modal.querySelector('.modal-card');
+    if (isSending) {
+      modal.setAttribute('data-mg-quote-sending', '1');
+      modal.setAttribute('aria-busy', 'true');
+      if (card) card.setAttribute('aria-busy', 'true');
+      ['btnSendClose', 'btnSendCancel'].forEach(function (id) {
+        const b = document.getElementById(id);
+        if (b) b.disabled = true;
+      });
+      modal.querySelectorAll('.modal-body input, .modal-body textarea').forEach(function (el) {
+        el.disabled = true;
+      });
+    } else {
+      modal.removeAttribute('data-mg-quote-sending');
+      modal.removeAttribute('aria-busy');
+      if (card) card.removeAttribute('aria-busy');
+      ['btnSendClose', 'btnSendCancel'].forEach(function (id) {
+        const b = document.getElementById(id);
+        if (b) b.disabled = false;
+      });
+      modal.querySelectorAll('.modal-body input, .modal-body textarea').forEach(function (el) {
+        el.disabled = false;
+      });
+    }
+  }
+
 async function openSellerSendModal(event) {
     if (event) {
       event.preventDefault();
       event.stopImmediatePropagation();
     }
+
+    setSendModalSendingState(false);
 
     const preState = loadSalesState();
     const preSettings = loadSettings();
@@ -2817,6 +2847,13 @@ async function openSellerSendModal(event) {
     if (event) {
       event.preventDefault();
       event.stopImmediatePropagation();
+    }
+
+    setSendModalSendingState(false);
+    const sendBtnClose = document.getElementById('btnSendNow');
+    if (sendBtnClose) {
+      sendBtnClose.disabled = false;
+      sendBtnClose.textContent = 'Confirmar y enviar estimate';
     }
 
     modal.setAttribute('aria-hidden', 'true');
@@ -2986,11 +3023,14 @@ async function runSellerSend(event) {
       return false;
     }
 
+    let successCloseScheduled = false;
+
     try {
       if (sendButton) {
         sendButton.disabled = true;
-        sendButton.textContent = 'Enviando...';
+        sendButton.textContent = 'Sending quote…';
       }
+      setSendModalSendingState(true);
 
       if (sendStatus) {
         const fbP = window.__MG_QUOTE_SEND_FEEDBACK__;
@@ -3018,6 +3058,7 @@ async function runSellerSend(event) {
           sendStatus.className = 'notice error';
           sendStatus.textContent = 'Client email is required before sending the quote.';
         }
+        setSendModalSendingState(false);
         return false;
       }
 
@@ -3302,26 +3343,50 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         });
       }
 
-      let closeDelayMs = 1400;
+      setSendModalSendingState(false);
+
+      let closeDelayMs = 1800;
       if (sendStatus && window.__MG_QUOTE_SEND_FEEDBACK__ && typeof window.__MG_QUOTE_SEND_FEEDBACK__.renderQuoteZapierOutcome === 'function') {
         const out = window.__MG_QUOTE_SEND_FEEDBACK__.renderQuoteZapierOutcome(sendStatus, {
           publishData,
           zapData: data,
           hadPdfPayload,
-          publicQuoteUrl: publishData.public_url
+          publicQuoteUrl: publishData.public_url,
+          renderSuccessMode: 'toast',
+          successToastTitle: 'Quote sent successfully',
+          successToastMessage: 'Client received the proposal with the approval and deposit link.'
         });
-        closeDelayMs = out && out.variant === 'warning' ? 2600 : 1400;
+        if (out && out.variant === 'warning') {
+          closeDelayMs = 2600;
+        } else if (out && out.variant === 'success') {
+          closeDelayMs = 1800;
+        } else {
+          closeDelayMs = 1600;
+        }
       } else if (sendStatus) {
         sendStatus.innerHTML = '';
         sendStatus.className = sendStatus.getAttribute('data-mg-send-status-class') || 'notice';
-        sendStatus.style.display = 'block';
-        sendStatus.textContent = 'Quote sent successfully.';
-        closeDelayMs = 1000;
+        sendStatus.style.display = 'none';
+        const fbToast = window.__MG_QUOTE_SEND_FEEDBACK__;
+        if (fbToast && typeof fbToast.showQuoteSendToast === 'function') {
+          fbToast.showQuoteSendToast({
+            title: 'Quote sent successfully',
+            message: 'Client received the proposal with the approval and deposit link.',
+            publicUrl: publishData.public_url,
+            dismissMs: 4500
+          });
+        }
+        closeDelayMs = 1800;
       }
 
+      successCloseScheduled = true;
       setTimeout(function () {
         performStandaloneNewQuoteReset();
         closeSellerSendModal();
+        if (sendButton) {
+          sendButton.disabled = false;
+          sendButton.textContent = 'Confirmar y enviar estimate';
+        }
       }, closeDelayMs);
       return true;
     } catch (error) {
@@ -3338,9 +3403,12 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
       }
       return false;
     } finally {
-      if (sendButton) {
-        sendButton.disabled = false;
-        sendButton.textContent = 'Confirmar y enviar estimate';
+      if (!successCloseScheduled) {
+        setSendModalSendingState(false);
+        if (sendButton) {
+          sendButton.disabled = false;
+          sendButton.textContent = 'Confirmar y enviar estimate';
+        }
       }
     }
   }

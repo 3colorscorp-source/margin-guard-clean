@@ -99,6 +99,55 @@
     el.setAttribute("role", "status");
   }
 
+  function showQuoteSendToast(opts) {
+    opts = opts || {};
+    var title = opts.title || "Quote sent successfully";
+    var message = opts.message || "";
+    var publicUrl = sanitizeHttpUrl(opts.publicUrl);
+    var dismissMs = Number(opts.dismissMs) > 0 ? Number(opts.dismissMs) : 4500;
+    var showLink = opts.showPublicLinkInToast !== false;
+    var wrap = document.createElement("div");
+    wrap.className = "mg-quote-send-toast";
+    wrap.setAttribute("role", "status");
+    var linkBlock =
+      publicUrl && showLink
+        ? '<a class="mg-quote-send-toast__link" href="' +
+          escapeHtml(publicUrl) +
+          '" target="_blank" rel="noopener noreferrer">Open public quote</a>'
+        : "";
+    wrap.innerHTML =
+      '<div class="mg-quote-send-toast__inner">' +
+      '<div class="mg-quote-send-toast__title">' +
+      escapeHtml(title) +
+      "</div>" +
+      (message
+        ? '<div class="mg-quote-send-toast__msg">' + escapeHtml(message) + "</div>"
+        : "") +
+      (linkBlock ? '<div class="mg-quote-send-toast__actions">' + linkBlock + "</div>" : "") +
+      "</div>";
+    document.body.appendChild(wrap);
+    requestAnimationFrame(function () {
+      wrap.classList.add("mg-quote-send-toast--visible");
+    });
+    var tid = setTimeout(function removeToast() {
+      wrap.classList.remove("mg-quote-send-toast--visible");
+      setTimeout(function () {
+        if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+      }, 320);
+    }, dismissMs);
+    function dismissEarly() {
+      clearTimeout(tid);
+      wrap.classList.remove("mg-quote-send-toast--visible");
+      setTimeout(function () {
+        if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+      }, 260);
+    }
+    wrap.addEventListener("click", function (e) {
+      if (e.target.closest("a.mg-quote-send-toast__link")) return;
+      dismissEarly();
+    });
+  }
+
   function renderQuoteZapierOutcome(el, ctx) {
     ctx = ctx || {};
     var publishData = ctx.publishData || {};
@@ -140,6 +189,25 @@
     );
     if (pdfOk) detailLines.push("PDF proposal attached.");
     if (emailOk) detailLines.push("Email delivery confirmed.");
+
+    if (ctx.renderSuccessMode === "toast") {
+      if (el) clear(el);
+      var toastTitle = ctx.successToastTitle || "Quote sent successfully";
+      var toastMessage =
+        ctx.successToastMessage ||
+        (emailOk
+          ? "Client received the proposal with the approval and deposit link."
+          : "Use the public link so your client can review, approve, and pay the deposit.");
+      showQuoteSendToast({
+        title: toastTitle,
+        message: toastMessage,
+        publicUrl: publicUrl,
+        dismissMs: ctx.successToastDismissMs || 4500,
+        showPublicLinkInToast: ctx.showPublicLinkInToast !== false
+      });
+      return { variant: "success", publicUrl: publicUrl };
+    }
+
     render(el, {
       variant: "success",
       title: "Quote sent successfully",
@@ -183,6 +251,7 @@
     stripToPlainNotice: stripToPlainNotice,
     showPlain: showPlain,
     render: render,
+    showQuoteSendToast: showQuoteSendToast,
     renderQuoteZapierOutcome: renderQuoteZapierOutcome,
     renderSendError: renderSendError,
     friendlySendFailureMessage: friendlySendFailureMessage,
