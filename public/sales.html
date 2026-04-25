@@ -791,6 +791,33 @@
         return branding;
       }
 
+      function parseWorkerDaysFromField(raw) {
+        if (raw == null) return '';
+        let s = String(raw).trim();
+        if (s === '') return '';
+        s = s.replace(/,/g, '.');
+        const dot = s.indexOf('.');
+        if (dot >= 0) s = s.slice(0, dot);
+        s = s.replace(/\D/g, '');
+        if (s === '') return '';
+        const n = Number(s);
+        if (!Number.isFinite(n)) return 0;
+        return Math.max(0, Math.floor(n));
+      }
+
+      function workerDaysAsInteger(worker) {
+        const raw = worker && worker.days;
+        if (raw === '' || raw == null) return 0;
+        const n = Number(raw);
+        if (!Number.isFinite(n)) return 0;
+        return Math.floor(Math.max(0, n));
+      }
+
+      /** Cantidad de labor en UI (días / horas-equivalente / unidades); persiste siempre en worker.days. */
+      function isWorkerLaborQtyDataKey(key) {
+        return key === 'days' || key === 'hours' || key === 'units';
+      }
+
       function calculateStandaloneSalesMetrics(state, settings) {
         const hoursPerDay = Math.max(Number(settings.hoursPerDay || 8), 0.25);
         const taxPct = (
@@ -803,7 +830,7 @@
           ? Number(settings.overheadMonthly || 0) / Number(settings.stdHours || 0)
           : 0;
         const laborByWorker = state.workers.map((worker) => {
-          const days = Math.max(0, Number(worker.days || 0));
+          const days = workerDaysAsInteger(worker);
           const fallbackRate = worker.type === 'helper'
             ? Number(settings.baseHelper || 0)
             : Number(settings.baseInstaller || 0);
@@ -1198,7 +1225,7 @@
       }
 
       function laborCost(worker, settings) {
-        const days = Number(worker.days || 0);
+        const days = workerDaysAsInteger(worker);
         const fallbackRate = worker.type === 'helper'
           ? Number(settings.baseHelper || 0)
           : Number(settings.baseInstaller || 0);
@@ -1254,7 +1281,7 @@
                   <option value="helper" ${worker.type === 'helper' ? 'selected' : ''}>Assistant</option>
                 </select>
               </td>
-              <td class="sales-labor-td sales-labor-td--units"><input data-key="days" type="number" min="0" step="0.25" value="${Number(worker.days || 0)}" /></td>
+              <td class="sales-labor-td sales-labor-td--units"><input data-key="units" type="number" inputmode="numeric" min="0" step="1" pattern="[0-9]*" value="${workerDaysAsInteger(worker)}" /></td>
               <td class="sales-labor-td sales-labor-td--rate"><input data-key="rate" type="number" min="0" step="0.01" value="${rateValue}" /></td>
               <td class="sales-labor-td sales-labor-td--labor" data-cell="labor">${money(laborCost(worker, settings), settings.currency)}</td>
               <td class="sales-labor-td sales-labor-td-actions">
@@ -1269,7 +1296,7 @@
 
         const hint = document.getElementById('salesCrewHint');
         if (hint) {
-          const workerHours = state.workers.reduce((sum, worker) => sum + (Number(worker.days || 0) * 8), 0);
+          const workerHours = state.workers.reduce((sum, worker) => sum + workerDaysAsInteger(worker) * 8, 0);
           hint.textContent = `${state.workers.length} workers configured for ${workerHours.toFixed(2)} labor hours.`;
         }
       }
@@ -1316,7 +1343,13 @@
           if (index < 0 || !key) return null;
           const state = loadSalesState();
           if (!Array.isArray(state.workers) || !state.workers[index]) return null;
-          if (key === 'days' || key === 'rate') {
+          if (isWorkerLaborQtyDataKey(key)) {
+            state.workers[index].days = parseWorkerDaysFromField(field.value);
+            if (field instanceof HTMLInputElement) {
+              const dv = state.workers[index].days;
+              field.value = dv === '' || dv == null ? '' : String(Math.floor(Number(dv)));
+            }
+          } else if (key === 'rate') {
             state.workers[index][key] = field.value === '' ? '' : Number(field.value || 0);
           } else {
             state.workers[index][key] = field.value;
@@ -1336,7 +1369,7 @@
           const meta = commitWorkerFieldToState(field);
           if (!meta) return;
           const settings = loadSettings();
-          if (meta.key === 'days' || meta.key === 'rate') {
+          if (isWorkerLaborQtyDataKey(meta.key) || meta.key === 'rate') {
             const laborTd = meta.row.querySelector('[data-cell="labor"]');
             if (laborTd) {
               laborTd.textContent = money(laborCost(meta.state.workers[meta.index], settings), settings.currency);
@@ -1345,7 +1378,7 @@
           const hint = document.getElementById('salesCrewHint');
           if (hint) {
             const workerHours = meta.state.workers.reduce(function (sum, w) {
-              return sum + (Number(w.days || 0) * 8);
+              return sum + workerDaysAsInteger(w) * 8;
             }, 0);
             hint.textContent = `${meta.state.workers.length} workers configured for ${workerHours.toFixed(2)} labor hours.`;
           }
@@ -1381,7 +1414,7 @@
 
         body.addEventListener('focusin', function (event) {
           const t = event.target;
-          if (t instanceof HTMLInputElement && (t.dataset.key === 'days' || t.dataset.key === 'rate')) {
+          if (t instanceof HTMLInputElement && (isWorkerLaborQtyDataKey(t.dataset.key) || t.dataset.key === 'rate')) {
             t.select();
           }
         });
