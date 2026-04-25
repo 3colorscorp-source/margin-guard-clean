@@ -234,7 +234,7 @@ small{ color:var(--muted); }
 .sales-labor-table-wrap{
   margin-top:8px;
   max-width:100%;
-  overflow-x:auto;
+  overflow-x:visible;
   overflow-y:visible;
   -webkit-overflow-scrolling:touch;
   padding:4px 24px 8px 4px;
@@ -254,7 +254,7 @@ small{ color:var(--muted); }
 }
 .sales-labor-table-wrap .table.sales-labor-table{
   width:100%;
-  min-width:860px;
+  min-width:0;
   margin:0;
   table-layout:fixed;
   overflow:visible;
@@ -279,35 +279,54 @@ small{ color:var(--muted); }
   vertical-align:bottom;
   line-height:1.25;
 }
-.sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--worker{
+.sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--worker,
+.sales-labor-table-wrap table.sales-labor-table tbody td.sales-labor-td--name{
   width:22%;
-  min-width:140px;
+  box-sizing:border-box;
+}
+.sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--worker{
   text-align:left;
+}
+.sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--type,
+.sales-labor-table-wrap table.sales-labor-table tbody td.sales-labor-td--type{
+  width:14%;
+  box-sizing:border-box;
 }
 .sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--type{
-  width:12%;
-  min-width:100px;
   text-align:left;
 }
+.sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--units,
+.sales-labor-table-wrap table.sales-labor-table tbody td.sales-labor-td--units{
+  width:12%;
+  box-sizing:border-box;
+}
 .sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--units{
-  width:10%;
-  min-width:88px;
   text-align:center;
 }
+.sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--rate,
+.sales-labor-table-wrap table.sales-labor-table tbody td.sales-labor-td--rate{
+  width:16%;
+  box-sizing:border-box;
+}
 .sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--rate{
-  width:14%;
-  min-width:104px;
   text-align:right;
 }
-.sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--labor{
+.sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--labor,
+.sales-labor-table-wrap table.sales-labor-table tbody td.sales-labor-td--labor{
   width:16%;
-  min-width:100px;
+  box-sizing:border-box;
+}
+.sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--labor{
   text-align:right;
 }
 .sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th--actions{
+  width:20%;
+  min-width:120px;
+  max-width:none;
   text-align:center;
   letter-spacing:.08em;
   color:rgba(232,238,252,.58);
+  box-sizing:border-box;
 }
 .sales-labor-table-wrap table.sales-labor-table tbody tr{
   transition:background .12s ease;
@@ -327,7 +346,7 @@ small{ color:var(--muted); }
 .sales-labor-table-wrap table.sales-labor-table td[data-cell="labor"]{
   font-family:var(--mono);
   font-weight:780;
-  font-size:14px;
+  font-size:12px;
   font-variant-numeric:tabular-nums;
   letter-spacing:.03em;
   text-align:right;
@@ -346,17 +365,14 @@ small{ color:var(--muted); }
 .sales-labor-table-wrap table.sales-labor-table tbody td.sales-labor-td--rate{
   text-align:right;
 }
-.sales-labor-table-wrap table.sales-labor-table tbody td.sales-labor-td-actions{
-  text-align:center;
-}
 .sales-labor-table-wrap table.sales-labor-table td input,
 .sales-labor-table-wrap table.sales-labor-table td select{
-  min-height:42px;
-  padding:10px 12px;
+  min-height:0;
+  padding:6px 8px;
   border-radius:12px;
   border:1px solid rgba(255,255,255,.12);
   background:rgba(6,10,20,.58);
-  font-size:13px;
+  font-size:12px;
   font-weight:600;
   color:rgba(232,238,252,.96);
   caret-color:rgba(232,238,252,.96);
@@ -378,7 +394,7 @@ small{ color:var(--muted); }
   outline:none;
 }
 .sales-labor-table-wrap table.sales-labor-table td input[data-key="name"]{
-  font-size:14px;
+  font-size:12px;
   font-weight:650;
   letter-spacing:.015em;
   border-color:rgba(255,255,255,.14);
@@ -417,53 +433,30 @@ small{ color:var(--muted); }
 .sales-labor-table-wrap table.sales-labor-table td:not(.sales-labor-td-actions){
   overflow:hidden;
 }
-.sales-labor-table-wrap table.sales-labor-table th.sales-labor-th--actions,
 .sales-labor-table-wrap table.sales-labor-table td.sales-labor-td-actions{
-  min-width:160px;
-  width:160px;
-  max-width:160px;
+  width:20%;
+  min-width:120px;
+  max-width:none;
   overflow:visible;
   text-align:center;
   vertical-align:middle;
-}
-.sales-labor-table-wrap table.sales-labor-table th:nth-child(1),
-.sales-labor-table-wrap table.sales-labor-table td:nth-child(1){
-  min-width:140px;
-}
-.sales-labor-table-wrap table.sales-labor-table th:nth-child(2),
-.sales-labor-table-wrap table.sales-labor-table td:nth-child(2){
-  min-width:100px;
-}
-.sales-labor-table-wrap table.sales-labor-table th:nth-child(3),
-.sales-labor-table-wrap table.sales-labor-table td:nth-child(3){
-  min-width:88px;
-}
-.sales-labor-table-wrap table.sales-labor-table th:nth-child(4),
-.sales-labor-table-wrap table.sales-labor-table td:nth-child(4){
-  min-width:104px;
-}
-.sales-labor-table-wrap table.sales-labor-table th:nth-child(5),
-.sales-labor-table-wrap table.sales-labor-table td:nth-child(5){
-  min-width:100px;
+  box-sizing:border-box;
 }
 .sales-labor-row-actions{
+  display:flex;
   flex-direction:column;
   align-items:stretch;
   justify-content:center;
-  gap:8px;
-  flex-shrink:0;
-  white-space:nowrap;
+  gap:6px;
 }
 .sales-labor-row-actions .btn{
   width:100%;
   box-sizing:border-box;
-  padding:8px 12px;
+  padding:6px 8px;
   font-size:12px;
   font-weight:750;
   border-radius:12px;
-  min-height:36px;
-  flex-shrink:0;
-  white-space:nowrap;
+  min-height:0;
 }
 .sales-labor-row-actions .btn.ghost{
   border-color:rgba(255,255,255,.16);
