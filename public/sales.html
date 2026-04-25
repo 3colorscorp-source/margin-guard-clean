@@ -282,7 +282,7 @@
     </div>
   </div>
 
-  <div id="salesNewQuoteModal" class="mg-modal hidden" role="dialog" aria-modal="true" aria-labelledby="salesNewQuoteTitle" aria-hidden="true">
+  <div id="salesNewQuoteModal" class="mg-modal hidden" role="dialog" aria-modal="true" aria-labelledby="salesNewQuoteTitle" aria-hidden="true" data-sales-new-quote-modal>
     <div class="mg-modal-card" role="document">
       <h3 id="salesNewQuoteTitle">Start new quote?</h3>
       <p>Current project fields and send metadata will reset.</p>
@@ -379,13 +379,20 @@
       }
 
       function refreshSellerFromStandalone() {
-        if (typeof window.renderSales === 'function') {
-          try {
-            window.renderSales();
-          } catch (_error) {}
+        try {
+          if (typeof window.renderSales === 'function') {
+            try {
+              window.renderSales();
+            } catch (_error) {}
+          }
+          renderSellerWorkersStandalone();
+          renderStandaloneSellerPanel();
+        } finally {
+          if (window.__mgForceCloseSalesNewQuoteAfterRefresh && typeof window.forceCloseSalesNewQuoteModal === 'function') {
+            window.forceCloseSalesNewQuoteModal();
+            window.__mgForceCloseSalesNewQuoteAfterRefresh = false;
+          }
         }
-        renderSellerWorkersStandalone();
-        renderStandaloneSellerPanel();
       }
 
       function loadSettings() {
@@ -1456,9 +1463,26 @@
       }
 
       function performStandaloneNewQuoteReset() {
-        resetSalesQuoteStateForNewQuote();
-        if (typeof window.hideSalesNewQuoteModal === 'function') {
-          window.hideSalesNewQuoteModal();
+        window.__mgForceCloseSalesNewQuoteAfterRefresh = true;
+        try {
+          resetSalesQuoteStateForNewQuote();
+        } catch (err) {
+          window.__mgForceCloseSalesNewQuoteAfterRefresh = false;
+          console.error('[Sales New Quote] reset failed', err);
+          throw err;
+        }
+        if (typeof window.forceCloseSalesNewQuoteModal === 'function') {
+          window.forceCloseSalesNewQuoteModal();
+          requestAnimationFrame(function () {
+            if (typeof window.forceCloseSalesNewQuoteModal === 'function') {
+              window.forceCloseSalesNewQuoteModal();
+            }
+          });
+          setTimeout(function () {
+            if (typeof window.forceCloseSalesNewQuoteModal === 'function') {
+              window.forceCloseSalesNewQuoteModal();
+            }
+          }, 0);
         }
       }
 

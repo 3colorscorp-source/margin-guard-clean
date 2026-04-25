@@ -662,15 +662,40 @@ Thank you.`
     el.setAttribute("aria-hidden", "true");
   }
 
+  window.forceCloseSalesNewQuoteModal = function forceCloseSalesNewQuoteModal() {
+    document
+      .querySelectorAll(
+        '[data-sales-new-quote-modal], #salesNewQuoteModal, .sales-new-quote-modal, .mg-modal, [role="dialog"]'
+      )
+      .forEach((el) => {
+        if (el.textContent && el.textContent.includes("Start new quote?")) {
+          el.classList.add("hidden");
+          el.setAttribute("aria-hidden", "true");
+          el.style.display = "none";
+          el.style.visibility = "hidden";
+          el.style.pointerEvents = "none";
+        }
+      });
+
+    document.body.classList.remove("modal-open", "mg-modal-open", "overflow-hidden");
+    document.documentElement.classList.remove("modal-open", "mg-modal-open", "overflow-hidden");
+  };
+
   function showSalesNewQuoteModal() {
     const el = document.getElementById("salesNewQuoteModal");
     if (!el) return;
     el.classList.remove("hidden");
     el.style.removeProperty("display");
+    el.style.removeProperty("visibility");
+    el.style.removeProperty("pointer-events");
     el.setAttribute("aria-hidden", "false");
   }
 
   function hideSalesNewQuoteModal() {
+    if (typeof window.forceCloseSalesNewQuoteModal === "function") {
+      window.forceCloseSalesNewQuoteModal();
+      return;
+    }
     const el = document.getElementById("salesNewQuoteModal");
     if (!el) return;
     el.classList.add("hidden");
