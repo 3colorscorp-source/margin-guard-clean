@@ -1198,6 +1198,34 @@
           slider.value = String(stage);
         }
         requestSecurePricing(state);
+
+        // --- Clean-state visual override ---------------------------------------
+        // app.js -> renderSales() pinta "Needs Review" / "Amber" / "Customer ... |
+        // Needs Review | Total $0.00" cuando workerDays === 0 || recommended === 0
+        // porque solo conoce green/amber/red. En una quote recien reseteada o
+        // recien creada eso parece un problema. Pisamos los textos al final del
+        // ciclo de render para mostrar estado neutral "Draft" en clean state.
+        // No tocamos clases CSS ni layout; solo textContent.
+        // Este bloque corre despues de window.renderSales() porque
+        // renderStandaloneSellerPanel() es el ultimo paso de
+        // refreshSellerFromStandalone().
+        const isCleanDraft = !(metrics.workerDays > 0 && metrics.recommended > 0);
+        if (isCleanDraft) {
+          setText('salesTraffic', 'Draft');
+          setText('salesHeroState', 'Base');
+          setText('salesFlowHeadline', 'Complete labor'); // no-op si el id no existe
+          const summaryNode = document.getElementById('salesEstimateSummary');
+          if (summaryNode) {
+            const cleanCustomer = String(state.clientName || '').trim() || 'Pending';
+            summaryNode.textContent =
+              `Customer ${cleanCustomer} | Draft | Total ${money(0, settings.currency)}`;
+          }
+          // Si app.js dejo el meta del hero con copy alarmista, devolverlo a neutro.
+          const heroMetaNode = document.getElementById('salesHeroMeta');
+          if (heroMetaNode && /needs review|amber|at risk/i.test(heroMetaNode.textContent || '')) {
+            heroMetaNode.textContent = 'Completa el estimate para empezar a negociar.';
+          }
+        }
       }
 
       function escapeHtml(value) {
