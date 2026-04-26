@@ -3393,6 +3393,21 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
       setTimeout(function () {
         console.log('[MG SEND] closing modal after success');
         closeSellerSendModal();
+        const active = document.activeElement;
+        if (active && active.closest && active.closest('#salesWorkersBody')) {
+          try {
+            active.blur();
+          } catch (_blurErr) {
+            /* ignore */
+          }
+        }
+        try {
+          const st = loadSalesState();
+          st.workers = [{ name: 'Worker 1', type: 'installer', days: 0, rate: '' }];
+          saveSalesState(st);
+        } catch (_laborPreResetErr) {
+          /* ignore */
+        }
         try {
           performStandaloneNewQuoteReset();
         } catch (mgSendResetErr) {
