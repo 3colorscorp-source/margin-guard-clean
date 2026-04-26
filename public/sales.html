@@ -3302,7 +3302,6 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
 
       setSendModalSendingState(false);
 
-      let closeDelayMs = 1800;
       let zapierOutcome = null;
       try {
         if (sendStatus && window.__MG_QUOTE_SEND_FEEDBACK__ && typeof window.__MG_QUOTE_SEND_FEEDBACK__.renderQuoteZapierOutcome === 'function') {
@@ -3315,9 +3314,6 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
             successToastTitle: 'Quote sent successfully',
             successToastMessage: 'Client received the proposal with the approval and deposit link.'
           });
-          if (zapierOutcome && zapierOutcome.variant === 'warning') {
-            closeDelayMs = 2600;
-          }
         } else if (sendStatus) {
           sendStatus.innerHTML = '';
           sendStatus.className = sendStatus.getAttribute('data-mg-send-status-class') || 'notice';
@@ -3345,28 +3341,54 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
 
       successCloseScheduled = true;
       console.log('[MG SEND] scheduling modal close');
-      setTimeout(function () {
-        console.log('[MG SEND] closing modal after success');
+      setTimeout(() => {
         closeSellerSendModal();
         try {
-          performStandaloneNewQuoteReset();
-        } catch (mgSendResetErr) {
-          console.error('[MG SEND] performStandaloneNewQuoteReset failed', mgSendResetErr);
+          const st = loadSalesState();
+          const _today = new Date();
+          const _todayIso = _today.toISOString().slice(0, 10);
+          const _exp = new Date(_today.getTime() + 7 * 24 * 60 * 60 * 1000);
+          const _expIso = _exp.toISOString().slice(0, 10);
+
+          const cleanState = {
+            tenant_id: st.tenant_id,
+            business_id: st.business_id,
+            businessId: st.businessId,
+            projectName: '',
+            clientName: '',
+            customerEmail: '',
+            customerPhone: '',
+            location: '',
+            issueDate: _todayIso,
+            expirationDate: _expIso,
+            dueDate: '',
+            estimateNumber: '',
+            quoteId: null,
+            publicToken: '',
+            publicQuoteUrl: '',
+            depositRequired: 0,
+            price: 0,
+            offeredPrice: 0,
+            _manualPriceTouched: false,
+            messageToClient: '',
+            notes: '',
+            status: 'draft',
+            sentAt: null,
+            approvedAt: null,
+            soldAt: null
+          };
+
+          saveSalesState(cleanState);
+
+          const active = document.activeElement;
+          if (active && active.closest && active.closest('#salesWorkersBody')) active.blur();
+
+          clearSalesWorkersToDefault();
+          refreshSellerFromStandalone();
+        } catch (err) {
+          console.error('[Sales Send] post-send reset failed', err);
         }
-        const active = document.activeElement;
-        if (active && active.closest && active.closest('#salesWorkersBody')) {
-          try {
-            active.blur();
-          } catch (_blurErr) {
-            /* ignore */
-          }
-        }
-        const sb = document.getElementById('btnSendNow');
-        if (sb) {
-          sb.disabled = false;
-          sb.textContent = 'Confirmar y enviar estimate';
-        }
-      }, closeDelayMs);
+      }, 1200);
       return true;
     } catch (error) {
       console.error('[seller-send]', error);
