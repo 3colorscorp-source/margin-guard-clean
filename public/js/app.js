@@ -4437,6 +4437,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     ].join("\n");
     const message = messageFromModal || fallbackMessage;
 
+    let successCloseScheduled = false;
     try {
       if (sendButton) {
         sendButton.disabled = true;
@@ -4676,36 +4677,71 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         });
       }
 
-      persistOwnerAfterPublicSend(freshSettings, {
-        quote_number_display: quoteNumberDisplay,
-        publicQuoteUrl,
-        quoteId: publishData.quote_id,
-        publicToken: publishData.public_token
-      });
-      resetSalesDraftToNewQuote();
-
-      let closeDelayMs = 900;
-      if (sendStatus && window.__MG_QUOTE_SEND_FEEDBACK__ && typeof window.__MG_QUOTE_SEND_FEEDBACK__.renderQuoteZapierOutcome === "function") {
-        const out = window.__MG_QUOTE_SEND_FEEDBACK__.renderQuoteZapierOutcome(sendStatus, {
-          publishData,
-          zapData,
-          hadPdfPayload,
-          publicQuoteUrl: publishData.public_url
-        });
-        closeDelayMs = out && out.variant === "warning" ? 2400 : 900;
-      } else if (sendStatus) {
-        sendStatus.innerHTML = "";
-        sendStatus.className = sendStatus.getAttribute("data-mg-send-status-class") || "notice";
-        sendStatus.style.display = "block";
-        sendStatus.textContent = "Quote sent successfully.";
-        closeDelayMs = 700;
+      let closeDelayMs = 1800;
+      let zapierOutcome = null;
+      try {
+        if (sendStatus && window.__MG_QUOTE_SEND_FEEDBACK__ && typeof window.__MG_QUOTE_SEND_FEEDBACK__.renderQuoteZapierOutcome === "function") {
+          zapierOutcome = window.__MG_QUOTE_SEND_FEEDBACK__.renderQuoteZapierOutcome(sendStatus, {
+            publishData,
+            zapData,
+            hadPdfPayload,
+            publicQuoteUrl: publishData.public_url,
+            renderSuccessMode: "toast",
+            successToastTitle: "Quote sent successfully",
+            successToastMessage: "Client received the proposal with the approval and deposit link."
+          });
+          if (zapierOutcome && zapierOutcome.variant === "warning") {
+            closeDelayMs = 2600;
+          }
+        } else if (sendStatus) {
+          sendStatus.innerHTML = "";
+          sendStatus.className = sendStatus.getAttribute("data-mg-send-status-class") || "notice";
+          sendStatus.style.display = "none";
+          const fbToast = window.__MG_QUOTE_SEND_FEEDBACK__;
+          if (fbToast && typeof fbToast.showQuoteSendToast === "function") {
+            fbToast.showQuoteSendToast({
+              title: "Quote sent successfully",
+              message: "Client received the proposal with the approval and deposit link.",
+              publicUrl: publishData.public_url,
+              dismissMs: 4500
+            });
+          }
+        }
+      } catch (mgOwnerOutcomeErr) {
+        console.error("[MG Owner Send] renderQuoteZapierOutcome failed", mgOwnerOutcomeErr);
       }
 
-      renderOwner();
-      try {
-        renderSales();
-      } catch (_e) {}
-      setTimeout(closeSendModal, closeDelayMs);
+      const fbAfter = window.__MG_QUOTE_SEND_FEEDBACK__;
+      if (sendStatus && fbAfter && typeof fbAfter.clear === "function") {
+        if (!zapierOutcome || zapierOutcome.variant !== "warning") {
+          fbAfter.clear(sendStatus);
+        }
+      }
+
+      successCloseScheduled = true;
+      setTimeout(function mgOwnerSendCloseAfterSuccess() {
+        closeSendModal();
+        try {
+          persistOwnerAfterPublicSend(freshSettings, {
+            quote_number_display: quoteNumberDisplay,
+            publicQuoteUrl,
+            quoteId: publishData.quote_id,
+            publicToken: publishData.public_token
+          });
+          resetSalesDraftToNewQuote();
+          renderOwner();
+          try {
+            renderSales();
+          } catch (_e) {}
+        } catch (mgOwnerPostSendErr) {
+          console.error("[MG Owner Send] post-close cleanup failed", mgOwnerPostSendErr);
+        }
+        const sb = document.getElementById("btnSendNow");
+        if (sb) {
+          sb.disabled = false;
+          sb.textContent = "Enviar";
+        }
+      }, closeDelayMs);
     } catch (err) {
       console.error("[MG Quote Send] owner public send failed", err);
       if (sendStatus) {
@@ -4719,9 +4755,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         }
       }
     } finally {
-      if (sendButton) {
-        sendButton.disabled = false;
-        sendButton.textContent = "Enviar";
+      if (!successCloseScheduled) {
+        if (sendButton) {
+          sendButton.disabled = false;
+          sendButton.textContent = "Enviar";
+        }
       }
     }
   }
