@@ -3369,13 +3369,16 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
       setTimeout(() => {
         closeSellerSendModal();
         try {
+          // 1) Construir estado fresco preservando solo identificadores de tenant.
+          //    Mismo patron que usa el boton "+ New Quote" (btnNewSalesQuote) para
+          //    garantizar que post-send y New Quote terminen en estados equivalentes.
           const st = loadSalesState();
           const _today = new Date();
           const _todayIso = _today.toISOString().slice(0, 10);
           const _exp = new Date(_today.getTime() + 7 * 24 * 60 * 60 * 1000);
           const _expIso = _exp.toISOString().slice(0, 10);
 
-          const cleanState = {
+          const fresh = {
             tenant_id: st.tenant_id,
             business_id: st.business_id,
             businessId: st.businessId,
@@ -3388,7 +3391,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
             expirationDate: _expIso,
             dueDate: '',
             estimateNumber: '',
-            quoteId: null,
+            quoteId: '',
             publicToken: '',
             publicQuoteUrl: '',
             depositRequired: 0,
@@ -3397,19 +3400,91 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
             _manualPriceTouched: false,
             messageToClient: '',
             notes: '',
+            estimateStatus: 'draft',
             status: 'draft',
+            approvalRequestedAt: '',
+            approvedAt: '',
+            soldAt: '',
             sentAt: null,
-            approvedAt: null,
-            soldAt: null
+            signedProjectName: '',
+            signedClientName: '',
+            workers: DEFAULT_WORKERS.map((worker) => ({ ...worker }))
           };
+          saveSalesState(fresh);
 
-          saveSalesState(cleanState);
-          clearSellerStaleQuoteStorageCaches();
+          // 2) Hard-clear de los <input>/<textarea> editables.
+          //    renderSales() (app.js) NO toca .value en estos inputs, asi que sin
+          //    este paso la quote vieja sigue visible aunque el storage este limpio.
+          //    Idempotente: si algun id no existe en este markup, el guard `if (node)`
+          //    lo ignora y no rompe nada.
+          const FIELDS_TO_CLEAR = {
+            salesEstimateNumber: '',
+            salesIssueDate: _todayIso,
+            salesExpirationDate: _expIso,
+            salesDueDate: '',
+            salesProjectName: '',
+            salesClientName: '',
+            salesCustomerEmail: '',
+            salesCustomerPhone: '',
+            salesLocation: '',
+            salesPrice: '',
+            salesOfferedPrice: '',
+            salesMessageToClient: '',
+            salesNotes: '',
+            salesAdditionalRecipients: ''
+          };
+          Object.entries(FIELDS_TO_CLEAR).forEach(([id, value]) => {
+            const node = document.getElementById(id);
+            if (!node) return;
+            node.value = value;
+            // Notificar a los listeners de app.js para que tambien actualicen su
+            // copia interna y no pisen el storage limpio en el siguiente teclazo.
+            try {
+              node.dispatchEvent(new Event('input', { bubbles: true }));
+            } catch (_e) { /* ignore */ }
+            try {
+              node.dispatchEvent(new Event('change', { bubbles: true }));
+            } catch (_e) { /* ignore */ }
+          });
 
+          // 3) Reset de contadores visibles "0/N" debajo de cada input limitado.
+          const COUNTERS_TO_ZERO = [
+            'salesProjectNameCount',
+            'salesClientNameCount',
+            'salesMessageToClientCount',
+            'salesNotesCount'
+          ];
+          COUNTERS_TO_ZERO.forEach((id) => {
+            const node = document.getElementById(id);
+            if (node) node.textContent = '0';
+          });
+
+          // 4) Ocultar status notices que pudieran estar de la quote anterior.
+          ['approvalStatus', 'salesSignedStatus', 'salesSendStatus'].forEach((id) => {
+            const node = document.getElementById(id);
+            if (!node) return;
+            node.style.display = 'none';
+            node.className = 'notice';
+            node.textContent = '';
+          });
+
+          // 5) Pisar el header/summary que pinta app.js -> renderSales con
+          //    "Customer Julian Q. | Needs Review | Total ...". Si renderSales()
+          //    corre despues, sobrescribira con state.clientName='' -> "Pending",
+          //    asi que el estado final tambien queda limpio.
+          const summaryNode = document.getElementById('salesEstimateSummary');
+          if (summaryNode) {
+            summaryNode.textContent = 'Customer Pending | Needs Review | Total $0.00';
+          }
+
+          // 6) Soltar el foco de cualquier celda de workers que vaya a desaparecer.
           const active = document.activeElement;
           if (active && active.closest && active.closest('#salesWorkersBody')) active.blur();
 
+          // 7) Reset de labor por la unica fuente de verdad acordada.
           clearSalesWorkersToDefault();
+
+          // 8) Render final del panel + summary con el estado limpio.
           refreshSellerFromStandalone();
         } catch (err) {
           console.error('[Sales Send] post-send reset failed', err);
