@@ -3743,6 +3743,17 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       saveOwner(state, calcOwner(state, settings));
       renderOwner();
     };
+    if ($("btnClearOwnerLabor")) {
+      $("btnClearOwnerLabor").onclick = () => {
+        const owner = loadOwner();
+        owner.workers = [
+          { name: "Pro 1", type: "pro", hours: 0, rate: "", cost: 0 },
+          { name: "Assistant 1", type: "assistant", hours: 0, rate: "", cost: 0 }
+        ];
+        saveOwner(owner, calcOwner(owner, settings));
+        renderOwner();
+      };
+    }
     if ($("btnClear")) $("btnClear").onclick = () => showOwnerNewQuoteModal();
     const ownerNewQuoteModal = $("ownerNewQuoteModal");
     if (ownerNewQuoteModal) {
@@ -4749,14 +4760,14 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         try {
           resetOwnerDraftToNewQuote();
           resetSalesDraftToNewQuote();
-          const ae = document.activeElement;
-          if (ae && typeof ae.closest === "function" && ae.closest("#workersBody")) {
-            try {
-              ae.blur();
-            } catch (_blurErr) {
-              /* noop */
-            }
-          }
+          const owner = loadOwner();
+          owner.workers = [
+            { name: "Pro 1", type: "pro", hours: 0, rate: "", cost: 0 },
+            { name: "Assistant 1", type: "assistant", hours: 0, rate: "", cost: 0 }
+          ];
+          saveOwner(owner, calcOwner(owner, freshSettings));
+          const active = document.activeElement;
+          if (active && active.closest && active.closest("#workersBody")) active.blur();
           renderOwner();
           try {
             renderSales();
