@@ -641,7 +641,12 @@ Thank you.`
     const prev = readStore(LS_OWNER, {});
     const today = todayInputValue();
     const expirationDate = addDaysToInputValue(today, 7);
-    const workers = (DEFAULT_OWNER.workers || []).map((w) => ({ ...w }));
+    const workers = (DEFAULT_OWNER.workers || []).map((w) => ({
+      name: String(w.name || "Worker"),
+      type: w.type === "helper" ? "helper" : "installer",
+      hours: 0,
+      rate: ""
+    }));
     const fresh = {
       projectName: "",
       clientName: "",
@@ -4744,6 +4749,14 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         try {
           resetOwnerDraftToNewQuote();
           resetSalesDraftToNewQuote();
+          const ae = document.activeElement;
+          if (ae && typeof ae.closest === "function" && ae.closest("#workersBody")) {
+            try {
+              ae.blur();
+            } catch (_blurErr) {
+              /* noop */
+            }
+          }
           renderOwner();
           try {
             renderSales();
