@@ -395,6 +395,16 @@
         }
       }
 
+      /** Same behavior as #btnClearSalesWorkers (Limpiar labor): DEFAULT_WORKERS clone + persist + refresh. */
+      function clearSalesWorkersToDefault() {
+        const state = loadSalesState();
+        state.workers = DEFAULT_WORKERS.map(function (worker) {
+          return { ...worker };
+        });
+        saveSalesState(state);
+        refreshSellerFromStandalone();
+      }
+
       function loadSettings() {
         return readJson(SETTINGS_KEY, {
           baseInstaller: 75,
@@ -1329,10 +1339,7 @@
         clearButton.addEventListener('click', function (event) {
           event.preventDefault();
           event.stopImmediatePropagation();
-          const state = loadSalesState();
-          state.workers = DEFAULT_WORKERS.map((worker) => ({ ...worker }));
-          saveSalesState(state);
-          refreshSellerFromStandalone();
+          clearSalesWorkersToDefault();
         }, true);
 
         function commitWorkerFieldToState(field) {
@@ -3407,15 +3414,8 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           }
         }
         try {
-          const st = loadSalesState();
-          st.workers = [{ name: 'Worker 1', type: 'installer', days: 0, rate: '' }];
-          saveSalesState(st);
-        } catch (_laborPostResetErr) {
-          /* ignore */
-        }
-        try {
-          refreshSellerFromStandalone();
-        } catch (_refreshErr) {
+          clearSalesWorkersToDefault();
+        } catch (_laborClearErr) {
           /* ignore */
         }
         const sb = document.getElementById('btnSendNow');
