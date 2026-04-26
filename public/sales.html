@@ -355,6 +355,8 @@
     (function () {
       const SALES_KEY = 'mg_sales_v2';
       const SETTINGS_KEY = 'mg_settings_v2';
+      /** Optional Seller draft mirrors (not mg_sales_v2); cleared after successful send to avoid rehydration. */
+      const SELLER_STALE_QUOTE_STORAGE_KEYS = ['mg_sales_draft', 'mg_sales_quote_draft', 'mg_current_sales_quote'];
       const DEFAULT_WORKERS = [{ name: 'Worker 1', type: 'installer', days: 0, rate: '' }];
 
       function readJson(key, fallback) {
@@ -376,6 +378,17 @@
 
       function saveSalesState(state) {
         localStorage.setItem(SALES_KEY, JSON.stringify(state));
+      }
+
+      function clearSellerStaleQuoteStorageCaches() {
+        SELLER_STALE_QUOTE_STORAGE_KEYS.forEach(function (key) {
+          try {
+            localStorage.removeItem(key);
+          } catch (_e) { /* ignore */ }
+          try {
+            sessionStorage.removeItem(key);
+          } catch (_e) { /* ignore */ }
+        });
       }
 
       function refreshSellerFromStandalone() {
@@ -3379,6 +3392,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           };
 
           saveSalesState(cleanState);
+          clearSellerStaleQuoteStorageCaches();
 
           const active = document.activeElement;
           if (active && active.closest && active.closest('#salesWorkersBody')) active.blur();
