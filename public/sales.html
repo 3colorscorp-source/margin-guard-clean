@@ -378,6 +378,18 @@
 
       function saveSalesState(state) {
         localStorage.setItem(SALES_KEY, JSON.stringify(state));
+        // Mantener el snapshot del tenant en el servidor sincronizado con la copia local.
+        // Sin esto, navegar fuera y volver re-hidrata `mg_sales_v2` con el snapshot
+        // viejo guardado por app.js y reaparece la quote anterior.
+        // El bridge global lo expone app.js -> initTenantSnapshotBridge.
+        try {
+          if (typeof window.__mgScheduleTenantSnapshotSync === 'function') {
+            window.__mgScheduleTenantSnapshotSync();
+          }
+        } catch (_err) {
+          // No-op: si el bridge no está disponible (página cargada sin app.js),
+          // la copia local ya quedó persistida y no se rompe nada.
+        }
       }
 
       function clearSellerStaleQuoteStorageCaches() {
