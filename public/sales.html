@@ -3393,6 +3393,11 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
       setTimeout(function () {
         console.log('[MG SEND] closing modal after success');
         closeSellerSendModal();
+        try {
+          performStandaloneNewQuoteReset();
+        } catch (mgSendResetErr) {
+          console.error('[MG SEND] performStandaloneNewQuoteReset failed', mgSendResetErr);
+        }
         const active = document.activeElement;
         if (active && active.closest && active.closest('#salesWorkersBody')) {
           try {
@@ -3405,13 +3410,13 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           const st = loadSalesState();
           st.workers = [{ name: 'Worker 1', type: 'installer', days: 0, rate: '' }];
           saveSalesState(st);
-        } catch (_laborPreResetErr) {
+        } catch (_laborPostResetErr) {
           /* ignore */
         }
         try {
-          performStandaloneNewQuoteReset();
-        } catch (mgSendResetErr) {
-          console.error('[MG SEND] performStandaloneNewQuoteReset failed', mgSendResetErr);
+          refreshSellerFromStandalone();
+        } catch (_refreshErr) {
+          /* ignore */
         }
         const sb = document.getElementById('btnSendNow');
         if (sb) {
