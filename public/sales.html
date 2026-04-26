@@ -1026,56 +1026,41 @@
       }
 
       function requestSecurePricing(state, settings) {
-        const fp = pricingFingerprint(state);
-        if (_securePricingCache.fingerprint === fp && _securePricingCache.pricing) {
+        // --- Silent early-returns for expected clean-state cases ---
+        if (typeof document !== 'undefined' &&
+            document.body &&
+            !document.body.classList.contains('auth-ready')) {
           return;
         }
-        if (_securePricingLastFailureFp === fp) {
+
+        const _workers = Array.isArray(state && state.workers) ? state.workers : [];
+        const _totalDays = _workers.reduce(function (sum, w) {
+          const d = Number(w && w.days);
+          return sum + (Number.isFinite(d) ? d : 0);
+        }, 0);
+
+        if (_workers.length === 0 || _totalDays <= 0) {
           return;
         }
-        if (!isSecurePricingPayloadValid(state, settings)) {
-          if (!_securePricingWarnInvalidPayloadOnce) {
-            _securePricingWarnInvalidPayloadOnce = true;
-            console.warn('[sales] calc-secure-pricing omitido: payload incompleto o local aún no listo (mano de obra, tasas o totales).');
-          }
-          return;
+
+        if (_securePricingTimer) {
+          clearTimeout(_securePricingTimer);
         }
-        if (_securePricingShadowTimer) {
-          clearTimeout(_securePricingShadowTimer);
-        }
-        if (_securePricingAbortController) {
-          try {
-            _securePricingAbortController.abort();
-          } catch (_e) { /* ignore */ }
-          _securePricingAbortController = null;
-        }
-        _securePricingShadowTimer = setTimeout(function () {
-          _securePricingShadowTimer = null;
-          const stateAtSend = loadSalesState();
-          const settingsAtSend = loadSettings();
-          const fpAtSend = pricingFingerprint(stateAtSend);
-          if (_securePricingCache.fingerprint === fpAtSend && _securePricingCache.pricing) {
-            return;
-          }
-          if (_securePricingLastFailureFp === fpAtSend) {
-            return;
-          }
-          if (!isSecurePricingPayloadValid(stateAtSend, settingsAtSend)) {
-            return;
-          }
+
+        _securePricingTimer = setTimeout(function () {
+          _securePricingTimer = null;
+
           const payload = {
-            workers: stateAtSend.workers,
-            price: stateAtSend.price,
-            _manualPriceTouched: stateAtSend._manualPriceTouched
+            workers: state.workers,
+            price: state.price,
+            _manualPriceTouched: state._manualPriceTouched
           };
-          const ac = new AbortController();
-          _securePricingAbortController = ac;
+
           fetch('/.netlify/functions/calc-secure-pricing', {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            signal: ac.signal
+            body: JSON.stringify(payload)
           })
             .then(function (res) {
               return res.json().then(function (data) {
@@ -1083,52 +1068,16 @@
               });
             })
             .then(function (response) {
-              if (_securePricingAbortController === ac) {
-                _securePricingAbortController = null;
-              }
-              const stateNow = loadSalesState();
-              if (pricingFingerprint(stateNow) !== fpAtSend) return;
-              if (response.status === 200 && response.body && response.body.ok && response.body.pricing) {
-                _securePricingLastFailureFp = null;
-                _securePricingCache = { fingerprint: fpAtSend, pricing: response.body.pricing };
-                const dr = Number(response.body.pricing.deposit_required);
-                if (Number.isFinite(dr) && dr > 0) {
-                  const st = loadSalesState();
-                  st.depositRequired = dr;
-                  saveSalesState(st);
-                }
-                renderStandaloneSellerPanel();
+              if (!response || response.status >= 400) {
+                console.error('SECURE PRICING server error', response);
                 return;
               }
-              if (response.status === 400) {
-                _securePricingLastFailureFp = fpAtSend;
-                if (!_securePricingWarnHttp400Once) {
-                  _securePricingWarnHttp400Once = true;
-                  const b = response.body || {};
-                  console.warn('[sales] calc-secure-pricing 400', b.reason || '', b.message || b.error || '');
-                }
-              }
-              if (_securePricingCache.fingerprint === fpAtSend) {
-                _securePricingCache = { fingerprint: null, pricing: null };
-              }
-              renderStandaloneSellerPanel();
+              console.log('SECURE PRICING RESPONSE', response);
             })
             .catch(function (err) {
-              if (_securePricingAbortController === ac) {
-                _securePricingAbortController = null;
-              }
-              if (err && err.name === 'AbortError') {
-                return;
-              }
-              const stateNow = loadSalesState();
-              if (pricingFingerprint(stateNow) !== fpAtSend) return;
-              if (_securePricingCache.fingerprint === fpAtSend) {
-                _securePricingCache = { fingerprint: null, pricing: null };
-              }
-              console.warn('SECURE PRICING request failed', err);
-              renderStandaloneSellerPanel();
+              console.error('SECURE PRICING request failed', err);
             });
-        }, SECURE_PRICING_DEBOUNCE_MS);
+        }, 350);
       }
 
       function renderStandaloneSellerPanel() {
