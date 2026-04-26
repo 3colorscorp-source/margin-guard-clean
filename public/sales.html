@@ -1220,9 +1220,13 @@
             summaryNode.textContent =
               `Customer ${cleanCustomer} | Draft | Total ${money(0, settings.currency)}`;
           }
-          // Si app.js dejo el meta del hero con copy alarmista, devolverlo a neutro.
+          // En clean/new quote state, app.js -> renderSales() pinta
+          // "Estimate <num> | Issue <fecha> | Expires <fecha>" en salesHeroMeta usando
+          // las fechas default. Eso parece una quote vieja activa. Pisamos con copy
+          // neutral. Cuando hay labor real, este bloque no corre y renderSales()
+          // vuelve a pintar las fechas normalmente.
           const heroMetaNode = document.getElementById('salesHeroMeta');
-          if (heroMetaNode && /needs review|amber|at risk/i.test(heroMetaNode.textContent || '')) {
+          if (heroMetaNode) {
             heroMetaNode.textContent = 'Completa el estimate para empezar a negociar.';
           }
         }
