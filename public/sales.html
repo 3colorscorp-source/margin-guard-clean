@@ -1495,8 +1495,7 @@
           quoteId: '',
           publicToken: '',
           depositRequired: '',
-          _manualPriceTouched: false,
-          workers: DEFAULT_WORKERS.map((worker) => ({ ...worker }))
+          _manualPriceTouched: false
         };
 
         _securePricingCache = { fingerprint: null, pricing: null };
@@ -1519,7 +1518,7 @@
 
         saveSalesState(fresh);
 
-        refreshSellerFromStandalone();
+        clearSalesWorkersToDefault();
 
         if (typeof window.renderSales !== 'function') {
           const fields = {
@@ -3412,11 +3411,6 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           } catch (_blurErr) {
             /* ignore */
           }
-        }
-        try {
-          clearSalesWorkersToDefault();
-        } catch (_laborClearErr) {
-          /* ignore */
         }
         const sb = document.getElementById('btnSendNow');
         if (sb) {
