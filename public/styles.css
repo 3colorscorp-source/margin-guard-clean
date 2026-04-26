@@ -1324,19 +1324,23 @@ body[data-role="owner"] .owner-workspace-grid{
   display:grid;
   grid-template-columns:1fr 420px;
   gap:24px;
-  align-items:start;
+  /* default align-items: stretch so the side column is as tall as the quote; sticky snapshot can track page scroll */
 }
 body[data-role="owner"] .owner-workspace-main,
 body[data-role="owner"] .owner-workspace-side{
   min-width:0;
 }
 body[data-role="owner"] .owner-workspace-side{
-  display:block;
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
 }
-/* Quote Snapshot: stable right column; sticky scroll within page (not floated / absolute) */
+/* Quote Snapshot: right column; sticky follows viewport under fixed topbar (~96px) */
 body[data-role="owner"] .owner-workspace-side .owner-quote-snapshot{
+  align-self:flex-start;
+  width:100%;
   position:sticky;
-  top:24px;
+  top:96px;
   height:fit-content;
   max-width:100%;
 }
@@ -1800,11 +1804,12 @@ body[data-role="owner"] .owner-labor-table-wrap{
   border:1px solid rgba(255,255,255,.1);
   background:
     linear-gradient(165deg, rgba(255,255,255,.045), rgba(6,10,18,.42));
-  overflow-x:auto;
-  -webkit-overflow-scrolling:touch;
+  overflow-x:visible;
 }
 body[data-role="owner"] table.owner-labor-table{
-  min-width:700px;
+  width:100%;
+  min-width:0;
+  table-layout:fixed;
   border:none;
   box-shadow:0 14px 44px rgba(0,0,0,.28);
 }
@@ -1826,33 +1831,33 @@ body[data-role="owner"] table.owner-labor-table thead th{
   line-height:1.25;
 }
 body[data-role="owner"] table.owner-labor-table thead th.owner-labor-th--worker{
-  width:30%;
-  min-width:140px;
+  width:26%;
+  min-width:0;
   text-align:left;
 }
 body[data-role="owner"] table.owner-labor-table thead th.owner-labor-th--type{
-  width:14%;
-  min-width:100px;
+  width:13%;
+  min-width:0;
   text-align:left;
 }
 body[data-role="owner"] table.owner-labor-table thead th.owner-labor-th--units{
-  width:14%;
-  min-width:96px;
+  width:11%;
+  min-width:0;
   text-align:center;
 }
 body[data-role="owner"] table.owner-labor-table thead th.owner-labor-th--rate{
-  width:18%;
-  min-width:112px;
+  width:17%;
+  min-width:0;
   text-align:right;
 }
 body[data-role="owner"] table.owner-labor-table thead th.owner-labor-th--labor{
-  width:18%;
-  min-width:112px;
+  width:17%;
+  min-width:0;
   text-align:right;
 }
 body[data-role="owner"] table.owner-labor-table thead th.owner-labor-th--actions{
-  width:6%;
-  min-width:108px;
+  width:16%;
+  min-width:0;
   text-align:center;
   letter-spacing:.08em;
   color:rgba(232,238,252,.58);
@@ -1870,7 +1875,8 @@ body[data-role="owner"] table.owner-labor-table tbody tr:nth-child(even):hover{
   background:rgba(255,255,255,.055);
 }
 body[data-role="owner"] table.owner-labor-table td{
-  padding:13px 12px;
+  min-width:0;
+  padding:13px 10px;
   vertical-align:middle;
 }
 body[data-role="owner"] table.owner-labor-table td[data-cell="labor"]{
@@ -1936,6 +1942,7 @@ body[data-role="owner"] table.owner-labor-table tbody td:nth-child(6){
   text-align:center;
 }
 body[data-role="owner"] table.owner-labor-table input[data-key="name"]{
+  min-width:0;
   font-size:14px;
   font-weight:650;
   letter-spacing:.015em;
@@ -1975,17 +1982,19 @@ body[data-role="owner"] table.owner-labor-table input[data-key="rate"][readonly]
 }
 body[data-role="owner"] table.owner-labor-table .row-actions{
   display:flex;
-  gap:8px;
+  gap:6px;
   flex-wrap:wrap;
-  justify-content:flex-end;
+  justify-content:center;
   align-items:center;
 }
 body[data-role="owner"] table.owner-labor-table .row-actions .btn{
-  padding:8px 12px;
-  font-size:12px;
+  padding:8px 8px;
+  font-size:11px;
   font-weight:750;
   border-radius:12px;
   min-height:36px;
+  flex:0 1 auto;
+  min-width:0;
 }
 body[data-role="owner"] table.owner-labor-table .row-actions .btn.ghost{
   border-color:rgba(255,255,255,.16);
