@@ -632,26 +632,30 @@ Thank you.`
   }
   function saveOwner(state, metrics) { writeStore(LS_OWNER, { ...state, reservePct: DEFAULTS.reservePct, metrics }); }
 
-  /** Owner: replace persisted quote with a clean project slate (no `...state` merge). */
-  function resetOwnerQuoteStateForNewQuote() {
+  /**
+   * Owner active quote draft: full new-quote slate in mg_owner_v2 (and metrics).
+   * Call after persist if you need the sent snapshot recorded first; this overwrites the active draft.
+   */
+  function resetOwnerDraftToNewQuote() {
     const settings = loadSettings();
     const prev = readStore(LS_OWNER, {});
-    /* Owner rows: { name, type: "installer"|"helper", hours, rate } — hours are stored; cost comes from calcOwner */
-    const workers = [{ name: "Worker 1", type: "installer", hours: 0, rate: "" }];
+    const today = todayInputValue();
+    const expirationDate = addDaysToInputValue(today, 7);
+    const workers = (DEFAULT_OWNER.workers || []).map((w) => ({ ...w }));
     const fresh = {
       projectName: "",
       clientName: "",
       clientEmail: "",
       clientPhone: "",
-      issueDate: "",
-      expirationDate: "",
+      issueDate: today,
+      expirationDate,
       committedDate: "",
       quoteNotes: "",
       location: "",
       dueDate: "",
       overheadMonthly: 0,
       stdHours: 0,
-      reservePct: 5,
+      reservePct: DEFAULTS.reservePct,
       workers,
       laborTotal: 0,
       laborCost: 0,
@@ -680,7 +684,13 @@ Thank you.`
     const bId = prev.businessId;
     if (bId !== undefined && bId !== null && String(bId).trim() !== "") fresh.businessId = bId;
     saveOwner(fresh, calcOwner(fresh, settings));
-    console.log("[Owner New Quote] reset complete");
+    if (typeof console !== "undefined" && console.log) {
+      console.log("[Owner New Quote] reset complete");
+    }
+  }
+
+  function resetOwnerQuoteStateForNewQuote() {
+    resetOwnerDraftToNewQuote();
   }
 
   function showOwnerNewQuoteModal() {
@@ -4728,13 +4738,18 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             quoteId: publishData.quote_id,
             publicToken: publishData.public_token
           });
+        } catch (mgOwnerPersistErr) {
+          console.error("[MG Owner Send] persist after send failed", mgOwnerPersistErr);
+        }
+        try {
+          resetOwnerDraftToNewQuote();
           resetSalesDraftToNewQuote();
           renderOwner();
           try {
             renderSales();
           } catch (_e) {}
         } catch (mgOwnerPostSendErr) {
-          console.error("[MG Owner Send] post-close cleanup failed", mgOwnerPostSendErr);
+          console.error("[MG Owner Send] post-close draft reset failed", mgOwnerPostSendErr);
         }
         const sb = document.getElementById("btnSendNow");
         if (sb) {
