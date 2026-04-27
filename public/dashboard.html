@@ -397,7 +397,12 @@
       }
     }
     .fcc-perf-wrap{ grid-area:perf; }
-    .fcc-bank-wrap{ grid-area:bank; }
+    .fcc-bank-lower-slot{
+      grid-area:bank;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
     .fcc-stripe-wrap{ grid-area:stripe; }
     .fcc-perf-table-wrap{
       overflow:auto;
@@ -588,6 +593,9 @@
     .fcc-perf-toggle{
       margin-top:12px;
     }
+    .fcc-bank-toggle{
+      align-self:flex-start;
+    }
   </style>
 </head>
 <body data-role="dashboard" data-requires-auth="true">
@@ -769,7 +777,17 @@
         </div>
       </section>
 
-      <section class="card fcc-bank-wrap" id="fcc-bank-console">
+      <div class="fcc-bank-lower-slot">
+        <button
+          type="button"
+          id="btnToggleBankConsole"
+          class="btn fcc-bank-toggle"
+          aria-expanded="false"
+          aria-controls="fccBankCollapsePanel">
+          Show bank accounts
+        </button>
+        <div id="fccBankCollapsePanel" hidden>
+          <section class="card fcc-bank-wrap" id="fcc-bank-console">
         <div class="card-inner">
           <div class="section-head">
             <div>
@@ -846,7 +864,9 @@
             <button class="btn primary" id="btnSaveDashboard">Guardar monitor</button>
           </div>
         </div>
-      </section>
+          </section>
+        </div>
+      </div>
 
       <section class="card fcc-panel fcc-stripe-wrap fcc-stripe-panel">
         <div class="card-inner">
@@ -888,6 +908,27 @@
         }
       });
     })();
+  </script>
+  <script>
+(function () {
+  const btn = document.getElementById('btnToggleBankConsole');
+  const panel = document.getElementById('fccBankCollapsePanel');
+  if (!btn || !panel) return;
+
+  btn.addEventListener('click', function () {
+    const isHidden = panel.hasAttribute('hidden');
+
+    if (isHidden) {
+      panel.removeAttribute('hidden');
+      btn.textContent = 'Hide bank accounts';
+      btn.setAttribute('aria-expanded', 'true');
+    } else {
+      panel.setAttribute('hidden', '');
+      btn.textContent = 'Show bank accounts';
+      btn.setAttribute('aria-expanded', 'false');
+    }
+  });
+})();
   </script>
   <script src="/js/bank-connection.js"></script>
 </body>
