@@ -402,10 +402,14 @@
       flex-direction:column;
       gap:12px;
     }
-    #fccBankCollapsePanel{
+    /* Do not force display:flex when [hidden], or the panel stays visible. */
+    #fccBankCollapsePanel:not([hidden]){
       display:flex;
       flex-direction:column;
       gap:14px;
+    }
+    #fccBankCollapsePanel[hidden]{
+      display:none !important;
     }
     .fcc-perf-table-wrap{
       overflow:auto;
@@ -874,26 +878,32 @@
     })();
   </script>
   <script>
-(function () {
-  const btn = document.getElementById('btnToggleBankConsole');
-  const panel = document.getElementById('fccBankCollapsePanel');
+const btn = document.getElementById('btnToggleBankConsole');
+const panel = document.getElementById('fccBankCollapsePanel');
 
-  if (!btn || !panel) return;
+if (btn && panel) {
+  function syncBankToggle() {
+    const isHidden = panel.hidden === true || panel.hasAttribute('hidden');
+    btn.textContent = isHidden ? 'Show banking & Stripe' : 'Hide banking & Stripe';
+    btn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
+  }
+
+  syncBankToggle();
 
   btn.addEventListener('click', function () {
-    const isHidden = panel.hasAttribute('hidden');
+    const isHidden = panel.hidden === true || panel.hasAttribute('hidden');
 
     if (isHidden) {
+      panel.hidden = false;
       panel.removeAttribute('hidden');
-      btn.textContent = 'Hide banking & Stripe';
-      btn.setAttribute('aria-expanded', 'true');
     } else {
+      panel.hidden = true;
       panel.setAttribute('hidden', '');
-      btn.textContent = 'Show banking & Stripe';
-      btn.setAttribute('aria-expanded', 'false');
     }
+
+    syncBankToggle();
   });
-})();
+}
   </script>
   <script src="/js/bank-connection.js"></script>
 </body>
