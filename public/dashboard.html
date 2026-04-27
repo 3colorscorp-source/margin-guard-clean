@@ -383,17 +383,16 @@
       grid-template-columns:1fr;
       grid-template-areas:
         "perf"
-        "bank"
-        "stripe";
+        "bank";
       gap:14px;
       margin-bottom:14px;
     }
     @media (min-width: 900px){
       .fcc-lower-grid{
-        grid-template-columns:1.1fr 1fr .95fr;
+        grid-template-columns:1fr;
         grid-template-areas:
-          "perf perf perf"
-          "bank bank stripe";
+          "perf"
+          "bank";
       }
     }
     .fcc-perf-wrap{ grid-area:perf; }
@@ -403,7 +402,11 @@
       flex-direction:column;
       gap:12px;
     }
-    .fcc-stripe-wrap{ grid-area:stripe; }
+    #fccBankCollapsePanel{
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+    }
     .fcc-perf-table-wrap{
       overflow:auto;
       border-radius:14px;
@@ -784,7 +787,7 @@
           class="btn fcc-bank-toggle"
           aria-expanded="false"
           aria-controls="fccBankCollapsePanel">
-          Show bank accounts
+          Show banking &amp; Stripe
         </button>
         <div id="fccBankCollapsePanel" hidden>
           <section class="card fcc-bank-wrap" id="fcc-bank-console">
@@ -865,25 +868,25 @@
           </div>
         </div>
           </section>
+
+          <section class="card fcc-panel fcc-stripe-wrap fcc-stripe-panel">
+            <div class="card-inner">
+              <div class="fcc-panel-head">
+                <h2>Stripe overview</h2>
+                <div class="fcc-panel-sub">Resumen ejecutivo; detalle de cuenta y payouts en el dashboard de Stripe.</div>
+              </div>
+              <dl class="fcc-stripe-dl" aria-label="Stripe snapshot">
+                <div><dt>Connected account</dt><dd id="fccStripeConnected">—</dd></div>
+                <div><dt>Available balance</dt><dd id="fccStripeAvailable">—</dd></div>
+                <div><dt>Last payout</dt><dd id="fccStripeLastPayout">—</dd></div>
+                <div><dt>Next payout</dt><dd id="fccStripeNextPayout">—</dd></div>
+              </dl>
+              <p class="sub" id="fccStripeNote" style="margin-bottom:12px;">Los payouts y balances live no se exponen aqui todavia; usa Stripe para operar.</p>
+              <a class="btn primary" href="https://dashboard.stripe.com" target="_blank" rel="noopener noreferrer">Go to Stripe Dashboard</a>
+            </div>
+          </section>
         </div>
       </div>
-
-      <section class="card fcc-panel fcc-stripe-wrap fcc-stripe-panel">
-        <div class="card-inner">
-          <div class="fcc-panel-head">
-            <h2>Stripe overview</h2>
-            <div class="fcc-panel-sub">Resumen ejecutivo; detalle de cuenta y payouts en el dashboard de Stripe.</div>
-          </div>
-          <dl class="fcc-stripe-dl" aria-label="Stripe snapshot">
-            <div><dt>Connected account</dt><dd id="fccStripeConnected">—</dd></div>
-            <div><dt>Available balance</dt><dd id="fccStripeAvailable">—</dd></div>
-            <div><dt>Last payout</dt><dd id="fccStripeLastPayout">—</dd></div>
-            <div><dt>Next payout</dt><dd id="fccStripeNextPayout">—</dd></div>
-          </dl>
-          <p class="sub" id="fccStripeNote" style="margin-bottom:12px;">Los payouts y balances live no se exponen aqui todavia; usa Stripe para operar.</p>
-          <a class="btn primary" href="https://dashboard.stripe.com" target="_blank" rel="noopener noreferrer">Go to Stripe Dashboard</a>
-        </div>
-      </section>
     </div>
   </div>
 
@@ -920,11 +923,11 @@
 
     if (isHidden) {
       panel.removeAttribute('hidden');
-      btn.textContent = 'Hide bank accounts';
+      btn.textContent = 'Hide banking & Stripe';
       btn.setAttribute('aria-expanded', 'true');
     } else {
       panel.setAttribute('hidden', '');
-      btn.textContent = 'Show bank accounts';
+      btn.textContent = 'Show banking & Stripe';
       btn.setAttribute('aria-expanded', 'false');
     }
   });
