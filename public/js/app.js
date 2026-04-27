@@ -6739,13 +6739,6 @@ function renderSupervisor() {
     return String(row.hubQuoteStatus || "").trim().toLowerCase() === "accepted";
   }
 
-  /** Hub drawer: show Open Sales only for local estimate rows (quote not accepted / not yet invoiced). */
-  function hubDrawerShouldShowOpenSales(row) {
-    if (!row || row.hubRowSource === "server_invoice") return false;
-    if (String(row.status || "").trim().toLowerCase() === "accepted") return false;
-    return row.rowType === "estimate";
-  }
-
   function hubServerDepositRecorded(row) {
     const ps = String(row.hubInvoicePaymentStatus || "").toLowerCase();
     return ps === "deposit_paid" || nonEmptyString(row.hubQuoteDepositPaidAt);
@@ -8801,28 +8794,13 @@ function renderSupervisor() {
 
     const applyHubActionButtonState = (row) => {
       const actionState = getHubRowActionState(row);
-      const localOnly = row?.hubRowSource !== "server_invoice";
-      const serverNote = "Solo filas locales (proyectos). Edita en tenant invoice tools.";
-      const buttonRules = [
-        ["btnHubDrawerCustomer", localOnly, serverNote],
-        ["btnHubDrawerDuplicate", localOnly, serverNote],
-        [
-          "btnHubDrawerDuplicateInvoice",
-          localOnly && actionState.canExportPdf,
-          localOnly ? "Necesitas un invoice real antes de duplicarlo." : serverNote
-        ],
-        ["btnHubDrawerSetup", localOnly, serverNote],
-        ["btnHubDrawerConvert", actionState.canConvert, "Convierte primero el estimate a invoice cuando ya exista monto vendible."],
-        ["btnHubDrawerSendInvoice", actionState.canSendInvoice, "Necesitas invoice, cliente y monto antes de preparar el envio."],
-        ["btnHubDrawerOpenPublic", actionState.canOpenPublic, "Aun no existe link publico para este invoice."]
-      ];
-      buttonRules.forEach(([id, allowed, title]) => {
-        const node = $(id);
-        if (!node) return;
-        node.disabled = !allowed;
-        node.classList.toggle("hub-action-disabled", !allowed);
-        node.title = allowed ? "" : title;
-      });
+      const openBtn = $("btnHubDrawerOpenPublic");
+      if (openBtn) {
+        openBtn.style.display = "";
+        openBtn.disabled = !actionState.canOpenPublic;
+        openBtn.classList.toggle("hub-action-disabled", !actionState.canOpenPublic);
+        openBtn.title = actionState.canOpenPublic ? "" : "Aun no existe link publico para este invoice.";
+      }
 
       const pdfBtn = $("btnHubDrawerPdf");
       if (pdfBtn) {
@@ -8830,25 +8808,6 @@ function renderSupervisor() {
         pdfBtn.disabled = !actionState.canExportPdf;
         pdfBtn.classList.toggle("hub-action-disabled", !actionState.canExportPdf);
         pdfBtn.title = actionState.canExportPdf ? "" : "El PDF del invoice requiere un invoice valido con monto.";
-      }
-
-      const salesBtn = $("btnHubDrawerSales");
-      if (salesBtn) {
-        const showSales = hubDrawerShouldShowOpenSales(row);
-        salesBtn.style.display = showSales ? "" : "none";
-        salesBtn.disabled = !showSales;
-        salesBtn.classList.toggle("hub-action-disabled", !showSales);
-        salesBtn.title = showSales ? "" : "Open Sales is available for local estimates before conversion to invoice.";
-      }
-
-      const closeoutBtn = $("btnHubDrawerCloseout");
-      if (closeoutBtn) {
-        const bal0 = finiteNumber(row.balance, 0) === 0;
-        const showCloseout = localOnly && bal0;
-        closeoutBtn.style.display = showCloseout ? "" : "none";
-        closeoutBtn.disabled = !showCloseout;
-        closeoutBtn.classList.toggle("hub-action-disabled", !showCloseout);
-        closeoutBtn.title = showCloseout ? "" : !localOnly ? serverNote : "Closeout PDF is available when balance is zero.";
       }
 
       const recordPay = $("btnHubDrawerRecordPayment");
@@ -9881,92 +9840,10 @@ function renderSupervisor() {
         setHubFeedback(successMessage, "ok");
       };
     }
-    if ($("btnHubDrawerCustomer")) {
-      $("btnHubDrawerCustomer").onclick = () => {
-        if (!selectedRow) return;
-        openCustomerSetupForm(selectedRow);
-        hubFormState.successMessage = `Cliente actualizado para ${selectedRow.title}.`;
-      };
-    }
-    if ($("btnHubDrawerDuplicate")) {
-      $("btnHubDrawerDuplicate").onclick = () => {
-        if (!selectedRow) return;
-        const duplicate = duplicateHubProject(selectedRow.projectId);
-        refresh();
-        if (duplicate) {
-          const nextRow = buildPortfolioRows(settings).find((row) => row.projectId === duplicate.id);
-          if (nextRow) openHubDrawer(nextRow);
-          setHubFeedback(`Estimate duplicado como ${duplicate.projectName}.`, "ok");
-        } else {
-          setHubFeedback("No fue posible duplicar el estimate.", "err");
-        }
-      };
-    }
-    if ($("btnHubDrawerDuplicateInvoice")) {
-      $("btnHubDrawerDuplicateInvoice").onclick = () => {
-        if (!selectedRow) return;
-        if (!guardHubAction(selectedRow, "canExportPdf", "Necesitas un invoice real antes de duplicarlo.")) return;
-        const duplicate = duplicateHubInvoiceProject(selectedRow.projectId);
-        refresh();
-        if (duplicate) {
-          const nextRow = buildPortfolioRows(settings).find((row) => row.projectId === duplicate.id);
-          if (nextRow) openHubDrawer(nextRow);
-          setHubFeedback(`Invoice duplicado como ${duplicate.projectName}.`, "ok");
-        } else {
-          setHubFeedback("No fue posible duplicar el invoice.", "err");
-        }
-      };
-    }
-    if ($("btnHubDrawerSetup")) {
-      $("btnHubDrawerSetup").onclick = () => {
-        if (!selectedRow) return;
-        openInvoiceSetupForm(selectedRow);
-        hubFormState.successMessage = `Invoice setup actualizado para ${selectedRow.title}.`;
-      };
-    }
-    if ($("btnHubDrawerConvert")) {
-      $("btnHubDrawerConvert").onclick = () => {
-        if (!selectedRow) return;
-        if (!guardHubAction(selectedRow, "canConvert", "Este proyecto ya tiene invoice o aun no tiene un monto listo para convertir.")) return;
-        convertEstimateToInvoice(selectedRow.projectId);
-        refresh();
-        refreshSelectedRow();
-        setHubFeedback(`Invoice creado para ${selectedRow.title}.`, "ok");
-      };
-    }
-    if ($("btnHubDrawerSendInvoice")) {
-      $("btnHubDrawerSendInvoice").onclick = () => {
-        if (!selectedRow) return;
-        if (!guardHubAction(selectedRow, "canSendInvoice", "Necesitas invoice, cliente y monto antes de enviar.")) return;
-        void (async () => {
-          if (selectedRow.hubRowSource === "server_invoice") {
-            await sendHubServerInvoiceRow(selectedRow);
-          } else {
-            await sendHubInvoice(selectedRow.projectId);
-            setHubFeedback(`Correo de invoice preparado para ${selectedRow.customer}.`, "ok");
-          }
-          refresh();
-          refreshSelectedRow();
-        })();
-      };
-    }
-    if ($("btnHubDrawerSales")) {
-      $("btnHubDrawerSales").onclick = () => {
-        if (!selectedRow) return;
-        saveSupervisorSelectedProjectId(selectedRow.projectId);
-        window.location.href = "/sales";
-      };
-    }
     if ($("btnHubDrawerPdf")) {
       $("btnHubDrawerPdf").onclick = () => {
         if (!selectedRow) return;
         void exportInvoicePdf("hub", selectedRow.project, selectedRow.report, settings, getProjectInvoiceState(selectedRow.project));
-      };
-    }
-    if ($("btnHubDrawerCloseout")) {
-      $("btnHubDrawerCloseout").onclick = () => {
-        if (!selectedRow) return;
-        exportCloseoutPdf(selectedRow, settings);
       };
     }
     if ($("btnHubDrawerRecordPayment")) {
