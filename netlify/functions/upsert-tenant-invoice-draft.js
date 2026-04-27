@@ -30,6 +30,7 @@ const UPSERT_KEYS = new Set([
   "payment_status",
   "quote_id",
   "invoice_no",
+  "invoice_label",
   "sent_at",
   "paid_at",
   "voided_at",
@@ -73,6 +74,14 @@ function buildPatchPayload(body) {
     }
     if (key === "status") {
       out[key] = normalizeStatus(v);
+      continue;
+    }
+    if (key === "invoice_label") {
+      const s = String(v ?? "")
+        .trim()
+        .replace(/\s+/g, " ")
+        .slice(0, 200);
+      out[key] = s;
       continue;
     }
     if (key === "quote_id") {

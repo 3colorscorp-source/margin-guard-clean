@@ -3158,6 +3158,20 @@ body[data-role="estimates-hub"] .hub-priority-badge--rank{
   color:rgba(226,232,240,.92);
 }
 
+body[data-role="estimates-hub"] .hub-invoice-row-label{
+  display:inline;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+  color:rgba(248,250,252,.88);
+}
+body[data-role="estimates-hub"] .hub-invoice-row-sep{
+  display:inline;
+  font-weight:600;
+  opacity:.55;
+}
+
 body[data-role="estimates-hub"] .hub-next-action-cell{
   font-weight:700;
   font-size:13px;

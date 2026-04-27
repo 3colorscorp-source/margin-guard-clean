@@ -24,6 +24,7 @@ const INVOICE_SELECT = [
   "customer_name",
   "customer_email",
   "project_name",
+  "invoice_label",
   "issue_date",
   "type",
   "notes"

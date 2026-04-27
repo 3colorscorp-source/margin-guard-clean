@@ -7,6 +7,7 @@ create table if not exists public.invoices (
   customer_name text default '',
   customer_email text default '',
   project_name text default '',
+  invoice_label text default '',
   amount numeric(12,2) not null default 0,
   paid_amount numeric(12,2) not null default 0,
   balance_due numeric(12,2) not null default 0,

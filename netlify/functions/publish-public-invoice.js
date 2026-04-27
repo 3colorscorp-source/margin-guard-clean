@@ -172,6 +172,12 @@ exports.handler = async (event) => {
       });
     }
 
+    const invoiceLabelRaw = pickFirst(body.invoice_label, body.invoiceLabel);
+    const invoiceLabel =
+      invoiceLabelRaw == null || invoiceLabelRaw === ""
+        ? ""
+        : String(invoiceLabelRaw).trim().replace(/\s+/g, " ").slice(0, 200);
+
     const payload = {
       tenant_id: tenant.id,
       public_token: publicToken,
@@ -179,6 +185,7 @@ exports.handler = async (event) => {
       customer_name: customerName,
       customer_email: customerEmail,
       project_name: projectName,
+      invoice_label: invoiceLabel,
       amount: Number(body.amount || 0),
       paid_amount: Number(body.paid_amount || 0),
       balance_due: Number(body.balance_due || 0),

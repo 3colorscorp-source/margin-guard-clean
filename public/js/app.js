@@ -2193,6 +2193,24 @@ Thank you.`
     return ["draft", "sent", "partial", "paid"].includes(value) ? value : "draft";
   }
 
+  const MG_HUB_INVOICE_LABEL_PRESETS = [
+    "START PROJECT DEPOSIT",
+    "PROGRESS PAYMENT 1",
+    "PROGRESS PAYMENT 2",
+    "PROGRESS PAYMENT 3",
+    "FINAL PAYMENT"
+  ];
+
+  function sanitizeInvoiceLabelInput(raw) {
+    return String(raw ?? "").trim().replace(/\s+/g, " ").slice(0, 200);
+  }
+
+  function resolveHubInvoiceLabelFromForm(presetVal, customVal) {
+    const c = sanitizeInvoiceLabelInput(customVal);
+    if (c) return c;
+    return sanitizeInvoiceLabelInput(presetVal);
+  }
+
   function buildDefaultInvoiceState(project) {
     return {
       invoiceNo: "",
@@ -2209,7 +2227,8 @@ Thank you.`
       publicToken: "",
       publicUrl: "",
       paymentLink: "",
-      sentAt: ""
+      sentAt: "",
+      invoiceLabel: ""
     };
   }
 
@@ -2232,7 +2251,8 @@ Thank you.`
       publicUrl: nonEmptyString(saved.publicUrl),
       paymentLink: nonEmptyString(saved.paymentLink),
       serverInvoiceId: nonEmptyString(saved.serverInvoiceId, saved.supabaseInvoiceId),
-      sentAt: nonEmptyString(saved.sentAt)
+      sentAt: nonEmptyString(saved.sentAt),
+      invoiceLabel: sanitizeInvoiceLabelInput(nonEmptyString(saved.invoiceLabel, saved.invoice_label))
     };
   }
 
@@ -2270,6 +2290,7 @@ Thank you.`
       notes: String(project.notes || "").slice(0, 8000),
       payment_link: nonEmptyString(inv.paymentLink) || ""
     };
+    body.invoice_label = sanitizeInvoiceLabelInput(nonEmptyString(inv.invoiceLabel, inv.invoice_label));
     const qRaw = nonEmptyString(project.quoteId, project.quote_id, inv.quoteId);
     if (qRaw && MG_SERVER_INVOICE_UUID_RE.test(String(qRaw).trim())) {
       body.quote_id = String(qRaw).trim();
@@ -2295,7 +2316,8 @@ Thank you.`
           serverInvoiceId: serverRow.id,
           invoiceNo: nonEmptyString(serverRow.invoice_no, cur.invoiceNo),
           publicToken: pub || cur.publicToken,
-          publicUrl: url || cur.publicUrl
+          publicUrl: url || cur.publicUrl,
+          invoiceLabel: sanitizeInvoiceLabelInput(nonEmptyString(serverRow.invoice_label, cur.invoiceLabel))
         }
       };
     });
@@ -2768,6 +2790,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     doc.setFontSize(13);
     doc.text(`Invoice - ${kind}`, 40, y);
     y += 20;
+    const invLbl = sanitizeInvoiceLabelInput(nonEmptyString(input?.invoiceLabel, input?.invoice_label));
+    if (invLbl) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.text(invLbl, 40, y);
+      y += 16;
+    }
     doc.setFont("helvetica", "normal");
     doc.setFontSize(11);
     [
@@ -6536,6 +6565,7 @@ function renderSupervisor() {
         promisedDateRaw: normalizeDateInput(invoice.promisedDate),
         customer: project.clientName || "Sin cliente",
         title: project.projectName || "Project",
+        hubInvoiceLabel: sanitizeInvoiceLabelInput(nonEmptyString(invoice.invoiceLabel)),
         status: rawStatus,
         invoiceStatus: normalizeInvoiceStatus(invoice.status),
         amount,
@@ -6575,7 +6605,8 @@ function renderSupervisor() {
           project.clientPhone,
           project.location,
           invoice.invoiceNo,
-          rawStatus
+          rawStatus,
+          invoice.invoiceLabel
         ].join(" ").toLowerCase()
       };
     });
@@ -6690,7 +6721,8 @@ function renderSupervisor() {
       paidAt: inv.paid_at || "",
       createdAt: createdRaw,
       updatedAt: inv.updated_at || "",
-      tenantProjectId: inv.project_id != null ? String(inv.project_id).trim() : ""
+      tenantProjectId: inv.project_id != null ? String(inv.project_id).trim() : "",
+      invoiceLabel: sanitizeInvoiceLabelInput(nonEmptyString(inv.invoice_label))
     };
   }
 
@@ -6830,7 +6862,9 @@ function renderSupervisor() {
         publicUrl: norm.publicUrl || "",
         paymentLink: "",
         paymentStatus: norm.paymentStatus || "",
-        quoteId: norm.quoteId || ""
+        quoteId: norm.quoteId || "",
+        serverInvoiceId: String(serverInvoiceId || "").trim(),
+        invoiceLabel: sanitizeInvoiceLabelInput(nonEmptyString(norm.invoiceLabel))
       }
     };
     const row = {
@@ -6880,6 +6914,7 @@ function renderSupervisor() {
       customerPhone: "",
       report: stubReport,
       project: stubProject,
+      hubInvoiceLabel: sanitizeInvoiceLabelInput(nonEmptyString(norm.invoiceLabel)),
       searchText: ""
     };
     row.projectId = row.serverInvoiceId || row.id;
@@ -6897,7 +6932,8 @@ function renderSupervisor() {
       norm.quoteAcceptedAt,
       norm.quoteDepositPaidAt,
       norm.paymentStatus,
-      norm.quoteStatus
+      norm.quoteStatus,
+      norm.invoiceLabel
     ]
       .join(" ")
       .toLowerCase();
@@ -7585,7 +7621,10 @@ function renderSupervisor() {
       publicUrl: nonEmptyString(overrides.publicUrl, current.publicUrl),
       paymentLink: nonEmptyString(overrides.paymentLink, current.paymentLink),
       serverInvoiceId: nonEmptyString(overrides.serverInvoiceId, current.serverInvoiceId),
-      sentAt: nonEmptyString(overrides.sentAt, current.sentAt)
+      sentAt: nonEmptyString(overrides.sentAt, current.sentAt),
+      invoiceLabel: sanitizeInvoiceLabelInput(
+        nonEmptyString(overrides.invoiceLabel, overrides.invoice_label, current.invoiceLabel)
+      )
     };
   }
 
@@ -7639,7 +7678,8 @@ function renderSupervisor() {
       logo_url: settings.publicLogoUrl || "",
       accent_color: settings.publicAccentColor || DEFAULTS.publicAccentColor,
       currency: settings.currency === "$" ? "USD" : settings.currency,
-      status: String(invoice.status || "draft").toUpperCase()
+      status: String(invoice.status || "draft").toUpperCase(),
+      invoice_label: sanitizeInvoiceLabelInput(nonEmptyString(invoice.invoiceLabel, invoice.invoice_label))
     };
     const hasQuoteLink = Boolean(quoteIdFromSales || publicQuoteTokenFromSales);
     if (quoteIdFromSales) {
@@ -7976,7 +8016,10 @@ function renderSupervisor() {
         ? `/invoice-public.html?token=${encodeURIComponent(serverInvoice.public_token)}`
         : cur.publicUrl,
       serverInvoiceId: serverInvoice.id,
-      sentAt: sentAtIso
+      sentAt: sentAtIso,
+      invoiceLabel: sanitizeInvoiceLabelInput(
+        nonEmptyString(serverInvoice.invoice_label, cur.invoiceLabel)
+      )
     });
     next.activity = appendInvoiceActivity(next, "Invoice sent (webhook).", undefined, "email");
     saveProjectInvoiceState(projectId, next, { skipTenantDraftSync: true });
@@ -8419,6 +8462,14 @@ function renderSupervisor() {
     }
   }
 
+  function hubRowInvoiceDisplayLabel(row) {
+    if (!row) return "";
+    const fromRow = sanitizeInvoiceLabelInput(nonEmptyString(row.hubInvoiceLabel));
+    if (fromRow) return fromRow;
+    const inv = row.project?.invoice && typeof row.project.invoice === "object" ? row.project.invoice : {};
+    return sanitizeInvoiceLabelInput(nonEmptyString(inv.invoiceLabel, inv.invoice_label));
+  }
+
   function renderHubDrawerDetails(row, settings, handlers) {
     if (!row) return;
     const invoice = getProjectInvoiceState(row.project);
@@ -8431,9 +8482,12 @@ function renderSupervisor() {
           : String(row.projectId || "");
       drawerEl.setAttribute("aria-hidden", "false");
     }
-    if ($("hubDrawerTitle")) $("hubDrawerTitle").textContent = row.title;
+    const drawerLabel = hubRowInvoiceDisplayLabel(row);
+    if ($("hubDrawerTitle")) $("hubDrawerTitle").textContent = drawerLabel || row.title;
     if ($("hubDrawerSubtitle")) {
-      $("hubDrawerSubtitle").textContent = `${row.customer} · ${row.status}`;
+      $("hubDrawerSubtitle").textContent = drawerLabel
+        ? `${row.title} · ${row.customer} · ${row.status}`
+        : `${row.customer} · ${row.status}`;
     }
 
     const amountTotal = finiteNumber(row.amount, 0);
@@ -8630,6 +8684,10 @@ function renderSupervisor() {
           } else if (rankIndex === 2) {
             rankBadge = `<span class="hub-priority-badge hub-priority-badge--rank">#3</span>`;
           }
+          const hubInvLabel = hubRowInvoiceDisplayLabel(row);
+          const hubInvLabelHtml = hubInvLabel
+            ? `<span class="hub-invoice-row-label">${escapeHtml(hubInvLabel)}</span><span class="hub-invoice-row-sep"> · </span>`
+            : "";
           return `
           <tr data-hub-row="${rowDomId}" class="${rankClass}" style="cursor:pointer">
             <td><input type="checkbox" data-hub-select="${rowDomId}" ${selectedProjectIds.has(row.projectId) || selectedProjectIds.has(row.id) ? "checked" : ""} /></td>
@@ -8637,6 +8695,7 @@ function renderSupervisor() {
             <td>${escapeHtml(row.customer)}</td>
             <td>
               ${rankBadge}
+              ${hubInvLabelHtml}
               <strong>${escapeHtml(row.title)}</strong>
               ${isServerRow ? `<span class="hub-server-badge" style="font-size:10px;margin-left:6px;opacity:0.85" title="Tenant invoice (server)">${escapeHtml(row.hubSourceLabel || "Server")}</span>` : ""}
             </td>
@@ -9119,12 +9178,34 @@ function renderSupervisor() {
 
     const openInvoiceSetupForm = (row) => {
       const invoice = getProjectInvoiceState(row.project);
+      const curLbl = sanitizeInvoiceLabelInput(invoice.invoiceLabel);
+      const presetMatch = MG_HUB_INVOICE_LABEL_PRESETS.includes(curLbl) ? curLbl : "";
+      const customInitial = presetMatch ? "" : curLbl;
+      const presetFieldOptions = [{ value: "", label: "— Preset (optional) —" }].concat(
+        MG_HUB_INVOICE_LABEL_PRESETS.map((p) => ({ value: p, label: p }))
+      );
       showHubActionForm({
         title: "Configurar invoice",
         subtitle: `${row.title} · ${row.customer}`,
         submitLabel: "Guardar invoice",
+        successMessage: "Invoice guardado (incl. payment label).",
         fields: [
           { id: "hubFormInvoiceNo", label: "Invoice No", type: "text", value: invoice.invoiceNo || "", placeholder: "INV-1001" },
+          {
+            id: "hubFormInvoiceLabelPreset",
+            label: "Invoice label (preset)",
+            type: "select",
+            value: presetMatch,
+            options: presetFieldOptions
+          },
+          {
+            id: "hubFormInvoiceLabelCustom",
+            label: "Custom label (optional)",
+            type: "text",
+            value: customInitial,
+            placeholder: "Overrides preset when filled",
+            hint: "Custom text wins over the preset. Leave both empty for no label."
+          },
           { id: "hubFormInvoiceDate", label: "Invoice Date", type: "date", value: invoice.invoiceDate || new Date().toISOString().slice(0, 10) },
           { id: "hubFormInvoiceDueDate", label: "Due Date", type: "date", value: invoice.dueDate || row.project?.dueDate || "" },
           { id: "hubFormInvoicePromiseDate", label: "Promised Payment Date", type: "date", value: invoice.promisedDate || "" },
@@ -9144,6 +9225,7 @@ function renderSupervisor() {
           const promisedDate = val("hubFormInvoicePromiseDate");
           const baseAmount = Number(val("hubFormInvoiceBase"));
           const collectionStage = val("hubFormCollectionStage") || "new";
+          const invoiceLabel = resolveHubInvoiceLabelFromForm(val("hubFormInvoiceLabelPreset"), val("hubFormInvoiceLabelCustom"));
           if (!normalizeDateInput(invoiceDate)) {
             setNotice("hubFormFeedback", "Invoice date es obligatoria.", "err");
             return false;
@@ -9160,13 +9242,52 @@ function renderSupervisor() {
             setNotice("hubFormFeedback", "Base amount debe ser un numero valido.", "err");
             return false;
           }
+          const isServerOnly = row.hubRowSource === "server_invoice";
+          const sid = String(row.serverInvoiceId || "").trim();
+          if (isServerOnly) {
+            if (!MG_SERVER_INVOICE_UUID_RE.test(sid)) {
+              setNotice("hubFormFeedback", "Este invoice de servidor no tiene UUID valido.", "err");
+              return false;
+            }
+            return (async () => {
+              const nextInvoice = buildHubInvoiceState(row.project, row.report, {
+                invoiceNo,
+                invoiceDate,
+                dueDate,
+                promisedDate: collectionStage === "promised" ? promisedDate : "",
+                baseAmount,
+                collectionStage,
+                invoiceLabel,
+                serverInvoiceId: sid
+              });
+              nextInvoice.activity = appendInvoiceActivity(nextInvoice, "Invoice setup updated.", undefined, "invoice");
+              const body = buildTenantInvoiceDraftBody(row.project, row.report, nextInvoice);
+              if (!body) {
+                setNotice("hubFormFeedback", "No se pudo construir el payload.", "err");
+                return false;
+              }
+              body.id = sid;
+              const saved = await saveTenantInvoiceDraftToServer(body);
+              if (!saved?.id) {
+                setNotice("hubFormFeedback", "No se pudo guardar en el servidor.", "err");
+                return false;
+              }
+              void refreshHubServerInvoicesCacheQuietly();
+              return true;
+            })();
+          }
+          if (!getProjectById(row.projectId)) {
+            setNotice("hubFormFeedback", "Proyecto no encontrado.", "err");
+            return false;
+          }
           const nextInvoice = buildHubInvoiceState(row.project, row.report, {
             invoiceNo,
             invoiceDate,
             dueDate,
             promisedDate: collectionStage === "promised" ? promisedDate : "",
             baseAmount,
-            collectionStage
+            collectionStage,
+            invoiceLabel
           });
           nextInvoice.activity = appendInvoiceActivity(nextInvoice, "Invoice setup updated.", undefined, "invoice");
           saveProjectInvoiceState(row.projectId, nextInvoice);
@@ -9881,14 +10002,15 @@ function renderSupervisor() {
     if ($("btnHubFormClose")) $("btnHubFormClose").onclick = closeHubFormModal;
     if ($("btnHubFormCancel")) $("btnHubFormCancel").onclick = closeHubFormModal;
     if ($("btnHubFormSubmit")) {
-      $("btnHubFormSubmit").onclick = () => {
+      $("btnHubFormSubmit").onclick = async () => {
         if (!hubFormState?.onSubmit) {
           closeHubFormModal();
           return;
         }
         const successMessage = hubFormState.successMessage || "Cambios guardados.";
         const result = hubFormState.onSubmit();
-        if (result === false) return;
+        const resolved = result && typeof result.then === "function" ? await result : result;
+        if (resolved === false) return;
         closeHubFormModal();
         refresh();
         refreshSelectedRow();
@@ -9899,6 +10021,12 @@ function renderSupervisor() {
       $("btnHubDrawerPdf").onclick = () => {
         if (!selectedRow) return;
         void exportInvoicePdf("hub", selectedRow.project, selectedRow.report, settings, getProjectInvoiceState(selectedRow.project));
+      };
+    }
+    if ($("btnHubDrawerInvoiceSetup")) {
+      $("btnHubDrawerInvoiceSetup").onclick = () => {
+        if (!selectedRow) return;
+        openInvoiceSetupForm(selectedRow);
       };
     }
     if ($("btnHubDrawerRecordPayment")) {

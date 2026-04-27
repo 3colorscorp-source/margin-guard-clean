@@ -121,6 +121,16 @@
       margin-bottom:10px;
     }
 
+    .invoice-label-hero{
+      font-size:clamp(22px, 4vw, 30px);
+      font-weight:800;
+      text-transform:uppercase;
+      letter-spacing:.07em;
+      line-height:1.12;
+      margin:0 0 14px;
+      color:#0f172a;
+    }
+
     .invoice-no{
       font-size:32px;
       font-weight:800;
@@ -454,6 +464,11 @@
           '" target="_blank" rel="noopener noreferrer">Pay Now</a>'
         : '<button class="btn btn-secondary" type="button">Payment link not available yet.</button>';
 
+      const invLabelRaw = String(data.invoice_label || "").trim();
+      const invLabelBlock = invLabelRaw
+        ? '<div class="invoice-label-hero">' + escapeHtml(invLabelRaw) + "</div>"
+        : "";
+
       document.documentElement.style.setProperty("--accent", accent);
       document.documentElement.style.setProperty("--accent-dark", accent);
 
@@ -481,6 +496,7 @@
         '<div class="content">' +
           '<div class="hero">' +
             '<div class="panel">' +
+              invLabelBlock +
               '<div class="eyebrow">Invoice</div>' +
               '<div class="invoice-no">' +
               displayText(data.invoice_no, "Invoice") +
