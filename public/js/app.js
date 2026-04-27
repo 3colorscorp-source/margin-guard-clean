@@ -6689,7 +6689,8 @@ function renderSupervisor() {
       sentAt: inv.sent_at || "",
       paidAt: inv.paid_at || "",
       createdAt: createdRaw,
-      updatedAt: inv.updated_at || ""
+      updatedAt: inv.updated_at || "",
+      tenantProjectId: inv.project_id != null ? String(inv.project_id).trim() : ""
     };
   }
 
@@ -6736,6 +6737,13 @@ function renderSupervisor() {
     if (!row || row.hubRowSource !== "server_invoice") return false;
     if (nonEmptyString(row.hubQuoteAcceptedAt)) return true;
     return String(row.hubQuoteStatus || "").trim().toLowerCase() === "accepted";
+  }
+
+  /** Hub drawer: show Open Sales only for local estimate rows (quote not accepted / not yet invoiced). */
+  function hubDrawerShouldShowOpenSales(row) {
+    if (!row || row.hubRowSource === "server_invoice") return false;
+    if (String(row.status || "").trim().toLowerCase() === "accepted") return false;
+    return row.rowType === "estimate";
   }
 
   function hubServerDepositRecorded(row) {
@@ -6837,6 +6845,9 @@ function renderSupervisor() {
       projectId,
       serverInvoiceId,
       hubQuoteId: norm.quoteId || "",
+      hubTenantProjectId: norm.tenantProjectId && MG_SERVER_INVOICE_UUID_RE.test(String(norm.tenantProjectId).trim())
+        ? String(norm.tenantProjectId).trim()
+        : "",
       hubQuoteAcceptedAt: norm.quoteAcceptedAt || "",
       hubQuoteDepositPaidAt: norm.quoteDepositPaidAt || "",
       hubQuoteStatus: norm.quoteStatus || "",
@@ -8261,21 +8272,73 @@ function renderSupervisor() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  async function fetchHubDrawerLedgerPaidSum(row) {
-    if (row?.hubRowSource !== "server_invoice") return null;
-    const id = String(row.serverInvoiceId || "").trim();
-    if (!MG_SERVER_INVOICE_UUID_RE.test(id)) return null;
+  function hubLedgerInvoiceUuidForRow(row) {
+    if (!row) return "";
+    if (row.hubRowSource === "server_invoice") {
+      const id = String(row.serverInvoiceId || "").trim();
+      return MG_SERVER_INVOICE_UUID_RE.test(id) ? id : "";
+    }
+    const inv = row.project?.invoice && typeof row.project.invoice === "object" ? row.project.invoice : {};
+    const id = String(nonEmptyString(inv.serverInvoiceId, inv.supabaseInvoiceId, row.serverInvoiceId) || "").trim();
+    return MG_SERVER_INVOICE_UUID_RE.test(id) ? id : "";
+  }
+
+  function hubLedgerTargetIds(row) {
+    const invoiceId = hubLedgerInvoiceUuidForRow(row);
+    const quoteRaw = String(nonEmptyString(row.hubQuoteId, row.project?.invoice?.quoteId) || "").trim();
+    const quoteId = MG_SERVER_INVOICE_UUID_RE.test(quoteRaw) ? quoteRaw : "";
+    const projRaw = String(nonEmptyString(row.hubTenantProjectId) || "").trim();
+    const projectId = MG_SERVER_INVOICE_UUID_RE.test(projRaw) ? projRaw : "";
+    return { invoiceId, quoteId, projectId };
+  }
+
+  function hubRowCanRecordLedgerPayment(row) {
+    const { invoiceId, quoteId, projectId } = hubLedgerTargetIds(row);
+    return Boolean(invoiceId || quoteId || projectId);
+  }
+
+  async function fetchHubDrawerLedgerPayments(row) {
+    const { invoiceId, quoteId, projectId } = hubLedgerTargetIds(row);
+    const params = new URLSearchParams({ limit: "500" });
+    if (invoiceId) params.set("invoice_id", invoiceId);
+    else if (projectId) params.set("project_id", projectId);
+    else if (quoteId) params.set("quote_id", quoteId);
+    else return null;
     try {
-      const res = await fetch(
-        `/.netlify/functions/list-tenant-payments?invoice_id=${encodeURIComponent(id)}&limit=500`,
-        { credentials: "same-origin", headers: { Accept: "application/json" } }
-      );
+      const res = await fetch(`/.netlify/functions/list-tenant-payments?${params.toString()}`, {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok || !Array.isArray(data.payments)) return null;
-      return data.payments.reduce((s, p) => s + Math.max(finiteNumber(p?.amount, 0), 0), 0);
+      const payments = data.payments;
+      const netSum = payments.reduce((s, p) => s + finiteNumber(p?.amount, 0), 0);
+      return { payments, netSum };
     } catch (_e) {
       return null;
     }
+  }
+
+  function renderHubDrawerLedgerPaymentsRows(payments, settings) {
+    if (!Array.isArray(payments) || !payments.length) {
+      return `<tr><td colspan="5">No ledger payments yet.</td></tr>`;
+    }
+    return payments
+      .map((p) => {
+        const at = p.paid_at || p.created_at || "";
+        const typ = escapeHtml(String(p.payment_type || p.paymentType || ""));
+        const meth = escapeHtml(String(p.payment_method || p.paymentMethod || ""));
+        const amt = finiteNumber(p.amount, 0);
+        const note = escapeHtml(String(p.notes || p.note || "").slice(0, 400));
+        return `<tr>
+          <td>${escapeHtml(formatDisplayDate(at))}</td>
+          <td>${typ}</td>
+          <td>${meth}</td>
+          <td>${escapeHtml(money(amt, settings.currency))}</td>
+          <td>${note || "—"}</td>
+        </tr>`;
+      })
+      .join("");
   }
 
   function renderHubDrawerDetails(row, settings, handlers) {
@@ -8300,10 +8363,9 @@ function renderSupervisor() {
     const amountTotal = finiteNumber(row.amount, 0);
     const balanceDue = finiteNumber(row.balance, 0);
     const localPaid = finiteNumber(row.depositApplied, 0) + finiteNumber(row.receivedApplied, 0);
-    const serverUuidOk =
-      row.hubRowSource === "server_invoice" && MG_SERVER_INVOICE_UUID_RE.test(String(row.serverInvoiceId || "").trim());
-    const paidLabel = serverUuidOk ? "…" : money(localPaid, settings.currency);
-    const remainingLabel = serverUuidOk ? "…" : money(Math.max(0, amountTotal - localPaid), settings.currency);
+    const ledgerApiOk = hubRowCanRecordLedgerPayment(row);
+    const paidLabel = ledgerApiOk ? "…" : money(localPaid, settings.currency);
+    const remainingLabel = ledgerApiOk ? "…" : money(Math.max(0, amountTotal - localPaid), settings.currency);
 
     if ($("hubDrawerStats")) {
       $("hubDrawerStats").innerHTML = `
@@ -8315,7 +8377,7 @@ function renderSupervisor() {
         <div class="supervisor-summary-card">
           <div class="title">Paid to date</div>
           <div class="big" id="hubDrawerLedgerPaidBig">${escapeHtml(paidLabel)}</div>
-          <div class="small">Ledger total for server invoices; local sum otherwise</div>
+          <div class="small">Sum of tenant_project_payments when linked; otherwise local payments</div>
         </div>
         <div class="supervisor-summary-card">
           <div class="title">Remaining balance</div>
@@ -8330,22 +8392,39 @@ function renderSupervisor() {
       `;
     }
 
-    if (serverUuidOk && drawerEl) {
+    const ledgerWrap = $("hubDrawerLedgerWrap");
+    const ledgerBody = $("hubDrawerLedgerPaymentsBody");
+    if (ledgerWrap && ledgerBody) {
+      if (ledgerApiOk) {
+        ledgerWrap.style.display = "";
+        ledgerBody.innerHTML = `<tr><td colspan="5">Loading ledger…</td></tr>`;
+      } else {
+        ledgerWrap.style.display = "none";
+        ledgerBody.innerHTML = "";
+      }
+    }
+
+    if (ledgerApiOk && drawerEl) {
       const rowKey = drawerEl.dataset.hubDrawerRowKey || "";
       void (async () => {
-        const sum = await fetchHubDrawerLedgerPaidSum(row);
+        const pack = await fetchHubDrawerLedgerPayments(row);
         const d = $("hubDrawer");
         if (!d || d.dataset.hubDrawerRowKey !== rowKey) return;
         const paidEl = $("hubDrawerLedgerPaidBig");
         const remEl = $("hubDrawerLedgerRemainingBig");
+        const lb = $("hubDrawerLedgerPaymentsBody");
+        if (lb && pack) {
+          lb.innerHTML = renderHubDrawerLedgerPaymentsRows(pack.payments, settings);
+        }
         if (!paidEl || !remEl) return;
-        if (sum == null || !Number.isFinite(sum)) {
+        if (!pack || !Number.isFinite(pack.netSum)) {
           paidEl.textContent = "—";
           remEl.textContent = money(Math.max(0, amountTotal - localPaid), settings.currency);
+          if (lb) lb.innerHTML = `<tr><td colspan="5">Could not load ledger.</td></tr>`;
           return;
         }
-        paidEl.textContent = money(sum, settings.currency);
-        remEl.textContent = money(Math.max(0, amountTotal - sum), settings.currency);
+        paidEl.textContent = money(pack.netSum, settings.currency);
+        remEl.textContent = money(Math.max(0, amountTotal - pack.netSum), settings.currency);
       })();
     }
 
@@ -8726,15 +8805,9 @@ function renderSupervisor() {
         ["btnHubDrawerSent", actionState.canMarkSent, "Primero crea el invoice; despues ya lo puedes marcar como sent."],
         ["btnHubDrawerPayment", actionState.canTakePayment, "Take Payment solo aplica cuando el invoice ya existe y aun tiene saldo."],
         ["btnHubDrawerPaid", actionState.canMarkPaid, "Mark Paid solo aplica cuando existe invoice con saldo pendiente."],
-        ["btnHubDrawerStatement", actionState.canExportPdf, "El statement necesita un invoice real para generarse."],
-        ["btnHubDrawerPublish", actionState.canPublishLink, "Publish Link requiere invoice, cliente y monto valido."],
-        ["btnHubDrawerPaymentLink", actionState.canSetPaymentLink, "Primero crea el invoice para guardar un payment link."],
         ["btnHubDrawerOpenPublic", actionState.canOpenPublic, "Aun no existe link publico para este invoice."],
         ["btnHubDrawerPdf", actionState.canExportPdf, "El PDF del invoice requiere un invoice valido con monto."],
-        ["btnHubDrawerFollowUp", localOnly, serverNote],
-        ["btnHubDrawerSales", localOnly, serverNote],
-        ["btnHubDrawerOwner", localOnly, serverNote],
-        ["btnHubDrawerCloseout", localOnly, serverNote]
+        ["btnHubDrawerFollowUp", localOnly, serverNote]
       ];
       buttonRules.forEach(([id, allowed, title]) => {
         const node = $(id);
@@ -8743,6 +8816,36 @@ function renderSupervisor() {
         node.classList.toggle("hub-action-disabled", !allowed);
         node.title = allowed ? "" : title;
       });
+
+      const salesBtn = $("btnHubDrawerSales");
+      if (salesBtn) {
+        const showSales = hubDrawerShouldShowOpenSales(row);
+        salesBtn.style.display = showSales ? "" : "none";
+        salesBtn.disabled = !showSales;
+        salesBtn.classList.toggle("hub-action-disabled", !showSales);
+        salesBtn.title = showSales ? "" : "Open Sales is available for local estimates before conversion to invoice.";
+      }
+
+      const closeoutBtn = $("btnHubDrawerCloseout");
+      if (closeoutBtn) {
+        const bal0 = finiteNumber(row.balance, 0) === 0;
+        const showCloseout = localOnly && bal0;
+        closeoutBtn.style.display = showCloseout ? "" : "none";
+        closeoutBtn.disabled = !showCloseout;
+        closeoutBtn.classList.toggle("hub-action-disabled", !showCloseout);
+        closeoutBtn.title = showCloseout ? "" : !localOnly ? serverNote : "Closeout PDF is available when balance is zero.";
+      }
+
+      const recordPay = $("btnHubDrawerRecordPayment");
+      if (recordPay) {
+        const canLedger = hubRowCanRecordLedgerPayment(row);
+        recordPay.disabled = !canLedger;
+        recordPay.style.display = "";
+        recordPay.classList.toggle("hub-action-disabled", !canLedger);
+        recordPay.title = canLedger
+          ? ""
+          : "Requires a linked server invoice, quote, or tenant project UUID to post to the ledger.";
+      }
 
       const qid = String(row?.hubQuoteId || "").trim();
       const serverQuoteRow =
@@ -8831,6 +8934,8 @@ function renderSupervisor() {
 
     const closeHubDrawer = () => {
       if ($("hubDrawer")) $("hubDrawer").setAttribute("aria-hidden", "true");
+      if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
+      setNotice("hubRecordPayFeedback", "", "");
       clearHubFeedbackOkIfShown();
     };
 
@@ -9395,6 +9500,129 @@ function renderSupervisor() {
       };
     };
 
+    let hubRecordPaySubmitting = false;
+    const hubRecordPayModalCtx = { remaining: 0, paymentCount: 0 };
+
+    function syncHubRecordPayAmountDefault() {
+      if (!$("hubRecordPayType")) return;
+      const t = val("hubRecordPayType");
+      const r = finiteNumber(hubRecordPayModalCtx.remaining, 0);
+      if (t === "final" && r > 0) setVal("hubRecordPayAmount", String(r));
+    }
+
+    async function openHubRecordPaymentModal() {
+      if (!selectedRow || !hubRowCanRecordLedgerPayment(selectedRow)) return;
+      const modal = $("hubRecordPaymentModal");
+      if (!modal) return;
+      setNotice("hubRecordPayFeedback", "", "");
+      if ($("hubRecordPaySubtitle")) {
+        $("hubRecordPaySubtitle").textContent = `${selectedRow.title} · ${selectedRow.customer}`;
+      }
+      const data = await fetchHubDrawerLedgerPayments(selectedRow);
+      const payments = Array.isArray(data?.payments) ? data.payments : [];
+      const netSum = Number.isFinite(data?.netSum)
+        ? data.netSum
+        : payments.reduce((s, p) => s + finiteNumber(p?.amount, 0), 0);
+      const amountTotal = finiteNumber(selectedRow.amount, 0);
+      hubRecordPayModalCtx.remaining = Math.max(0, amountTotal - netSum);
+      hubRecordPayModalCtx.paymentCount = payments.length;
+      setVal("hubRecordPayType", payments.length === 0 ? "deposit" : "progress");
+      setVal("hubRecordPayMethod", "check");
+      setVal("hubRecordPayDate", new Date().toISOString().slice(0, 10));
+      setVal("hubRecordPayAmount", "");
+      setVal("hubRecordPayNotes", "");
+      syncHubRecordPayAmountDefault();
+      modal.setAttribute("aria-hidden", "false");
+    }
+
+    async function submitHubRecordPayment() {
+      if (!selectedRow || hubRecordPaySubmitting) return;
+      if (!hubRowCanRecordLedgerPayment(selectedRow)) {
+        setNotice(
+          "hubRecordPayFeedback",
+          "This row needs at least one valid invoice_id, quote_id, or project_id for the ledger.",
+          "err"
+        );
+        return;
+      }
+      const ids = hubLedgerTargetIds(selectedRow);
+      const payment_type = val("hubRecordPayType");
+      const payment_method = val("hubRecordPayMethod");
+      const amountRaw = Number(val("hubRecordPayAmount"));
+      const paidDate = val("hubRecordPayDate");
+      const notes = String(val("hubRecordPayNotes") || "");
+
+      const types = ["deposit", "progress", "final", "adjustment"];
+      const methods = ["check", "cash", "zelle", "stripe", "bank_transfer", "other"];
+      if (!types.includes(payment_type)) {
+        setNotice("hubRecordPayFeedback", "Pick a valid payment type.", "err");
+        return;
+      }
+      if (!methods.includes(payment_method)) {
+        setNotice("hubRecordPayFeedback", "Pick a valid payment method.", "err");
+        return;
+      }
+      if (!paidDate) {
+        setNotice("hubRecordPayFeedback", "Paid date is required.", "err");
+        return;
+      }
+
+      let amount = amountRaw;
+      if (payment_type === "adjustment") {
+        if (!Number.isFinite(amount) || amount === 0) {
+          setNotice("hubRecordPayFeedback", "Adjustment amount must be non-zero.", "err");
+          return;
+        }
+      } else if (!Number.isFinite(amount) || amount <= 0) {
+        setNotice("hubRecordPayFeedback", "Amount must be greater than zero.", "err");
+        return;
+      }
+
+      const parsed = Date.parse(paidDate.length <= 10 ? `${paidDate}T12:00:00` : paidDate);
+      if (!Number.isFinite(parsed)) {
+        setNotice("hubRecordPayFeedback", "Invalid paid date.", "err");
+        return;
+      }
+      const body = {
+        invoice_id: ids.invoiceId || null,
+        quote_id: ids.quoteId || null,
+        project_id: ids.projectId || null,
+        payment_type,
+        payment_method,
+        amount,
+        paid_at: new Date(parsed).toISOString(),
+        notes
+      };
+
+      hubRecordPaySubmitting = true;
+      const submitBtn = $("btnHubRecordPaySubmit");
+      if (submitBtn) submitBtn.disabled = true;
+      try {
+        const res = await fetch("/.netlify/functions/record-tenant-payment", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.ok) {
+          setNotice("hubRecordPayFeedback", data?.error || "Unable to record payment.", "err");
+          return;
+        }
+        if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
+        setNotice("hubRecordPayFeedback", "", "");
+        if (typeof window.__mgHubRefetchServerInvoices === "function") {
+          await window.__mgHubRefetchServerInvoices();
+        }
+        refresh();
+        refreshSelectedRow();
+        setHubFeedback("Payment recorded in ledger.", "ok");
+      } finally {
+        hubRecordPaySubmitting = false;
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    }
+
     ["hubSearch", "hubStatusFilter", "hubDateFrom", "hubCustomerFilter", "hubLocationFilter"].forEach((id) => {
       const el = $(id);
       if (!el) return;
@@ -9553,6 +9781,26 @@ function renderSupervisor() {
     }
 
     if ($("btnHubDrawerClose")) $("btnHubDrawerClose").onclick = closeHubDrawer;
+    if ($("hubRecordPayType")) {
+      $("hubRecordPayType").onchange = () => syncHubRecordPayAmountDefault();
+    }
+    if ($("btnHubRecordPayClose")) {
+      $("btnHubRecordPayClose").onclick = () => {
+        if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
+        setNotice("hubRecordPayFeedback", "", "");
+      };
+    }
+    if ($("btnHubRecordPayCancel")) {
+      $("btnHubRecordPayCancel").onclick = () => {
+        if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
+        setNotice("hubRecordPayFeedback", "", "");
+      };
+    }
+    if ($("btnHubRecordPaySubmit")) {
+      $("btnHubRecordPaySubmit").onclick = () => {
+        void submitHubRecordPayment();
+      };
+    }
     if ($("btnHubClientClose")) $("btnHubClientClose").onclick = closeHubClientDetail;
     if ($("btnHubFormClose")) $("btnHubFormClose").onclick = closeHubFormModal;
     if ($("btnHubFormCancel")) $("btnHubFormCancel").onclick = closeHubFormModal;
@@ -9694,23 +9942,10 @@ function renderSupervisor() {
         window.location.href = "/sales";
       };
     }
-    if ($("btnHubDrawerOwner")) {
-      $("btnHubDrawerOwner").onclick = () => {
-        if (!selectedRow) return;
-        saveSupervisorSelectedProjectId(selectedRow.projectId);
-        window.location.href = "/owner";
-      };
-    }
     if ($("btnHubDrawerPdf")) {
       $("btnHubDrawerPdf").onclick = () => {
         if (!selectedRow) return;
         void exportInvoicePdf("hub", selectedRow.project, selectedRow.report, settings, getProjectInvoiceState(selectedRow.project));
-      };
-    }
-    if ($("btnHubDrawerStatement")) {
-      $("btnHubDrawerStatement").onclick = () => {
-        if (!selectedRow) return;
-        exportCustomerStatementPdf(selectedRow, settings);
       };
     }
     if ($("btnHubDrawerCloseout")) {
@@ -9719,26 +9954,9 @@ function renderSupervisor() {
         exportCloseoutPdf(selectedRow, settings);
       };
     }
-    if ($("btnHubDrawerPublish")) {
-      $("btnHubDrawerPublish").onclick = async () => {
-        if (!selectedRow) return;
-        if (!guardHubAction(selectedRow, "canPublishLink", "Publish Link requiere invoice, cliente y monto valido.")) return;
-        try {
-          const publicUrl = await publishHubPublicInvoice(selectedRow.projectId);
-          refresh();
-          refreshSelectedRow();
-          setHubFeedback(`Public invoice link listo: ${publicUrl}`, "ok");
-        } catch (err) {
-          setHubFeedback(err.message || "Unable to publish public invoice.", "err");
-        }
-      };
-    }
-    if ($("btnHubDrawerPaymentLink")) {
-      $("btnHubDrawerPaymentLink").onclick = () => {
-        if (!selectedRow) return;
-        if (!guardHubAction(selectedRow, "canSetPaymentLink", "Primero crea el invoice para guardar un payment link.")) return;
-        openPaymentLinkForm(selectedRow);
-        hubFormState.successMessage = `Payment link actualizado para ${selectedRow.title}.`;
+    if ($("btnHubDrawerRecordPayment")) {
+      $("btnHubDrawerRecordPayment").onclick = () => {
+        void openHubRecordPaymentModal();
       };
     }
     if ($("btnHubDrawerOpenPublic")) {

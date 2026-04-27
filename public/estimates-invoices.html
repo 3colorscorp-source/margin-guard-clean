@@ -224,6 +224,23 @@
             <tbody id="hubDrawerPaymentsBody"></tbody>
           </table>
         </div>
+        <div id="hubDrawerLedgerWrap" class="hub-drawer-section" style="display:none;">
+          <div class="sub" style="margin:14px 0 8px;font-size:12px;">Ledger payment history</div>
+          <div class="supervisor-table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Paid</th>
+                  <th>Type</th>
+                  <th>Method</th>
+                  <th>Amount</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody id="hubDrawerLedgerPaymentsBody"></tbody>
+            </table>
+          </div>
+        </div>
         <div id="hubDrawerCollectionsWrap" class="hub-drawer-section" style="display:none;">
           <div class="sub" style="margin:14px 0 8px;font-size:12px;">Collections history</div>
           <div class="supervisor-table-wrap">
@@ -265,17 +282,67 @@
         <button class="btn" id="btnHubDrawerSent">Mark Sent</button>
         <button class="btn" id="btnHubDrawerPayment">Take Payment</button>
         <button class="btn" id="btnHubDrawerPaid">Mark Paid</button>
-        <button class="btn" id="btnHubDrawerSales">Open Sales</button>
-        <button class="btn" id="btnHubDrawerOwner">Open Owner</button>
-        <button class="btn" id="btnHubDrawerStatement">Statement PDF</button>
-        <button class="btn" id="btnHubDrawerCloseout">Closeout PDF</button>
-        <button class="btn" id="btnHubDrawerPublish">Publish Link</button>
-        <button class="btn" id="btnHubDrawerPaymentLink">Set Payment Link</button>
+        <button class="btn" id="btnHubDrawerSales" type="button">Open Sales</button>
+        <button class="btn" id="btnHubDrawerCloseout" type="button" style="display:none;">Closeout PDF</button>
         <button class="btn" id="btnHubDrawerOpenPublic">Open Public</button>
         <button class="btn" type="button" id="btnHubDrawerQuoteAccept" style="display:none;">Mark as accepted</button>
         <button class="btn" type="button" id="btnHubDrawerCheckPending" style="display:none;">Mark check deposit pending</button>
         <button class="btn" type="button" id="btnHubDrawerDepositReceived" style="display:none;">Mark deposit received</button>
         <button class="btn primary" id="btnHubDrawerPdf">Export PDF</button>
+        <button class="btn ghost" type="button" id="btnHubDrawerRecordPayment">Record payment</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="hubRecordPaymentModal" aria-hidden="true">
+    <div class="modal-card" style="width:min(520px, 96vw);">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Record payment</div>
+          <div class="modal-subtitle" id="hubRecordPaySubtitle">Tenant ledger</div>
+        </div>
+        <button type="button" class="icon-btn" id="btnHubRecordPayClose">X</button>
+      </div>
+      <div class="modal-body">
+        <div class="hub-form-grid">
+          <div class="field">
+            <label for="hubRecordPayType">Payment type</label>
+            <select id="hubRecordPayType">
+              <option value="deposit">deposit</option>
+              <option value="progress">progress</option>
+              <option value="final">final</option>
+              <option value="adjustment">adjustment</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="hubRecordPayMethod">Payment method</label>
+            <select id="hubRecordPayMethod">
+              <option value="check">check</option>
+              <option value="cash">cash</option>
+              <option value="zelle">zelle</option>
+              <option value="stripe">stripe</option>
+              <option value="bank_transfer">bank_transfer</option>
+              <option value="other">other</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="hubRecordPayAmount">Amount</label>
+            <input id="hubRecordPayAmount" type="number" step="0.01" placeholder="0.00" />
+          </div>
+          <div class="field">
+            <label for="hubRecordPayDate">Paid date</label>
+            <input id="hubRecordPayDate" type="date" />
+          </div>
+          <div class="field" style="grid-column:1/-1;">
+            <label for="hubRecordPayNotes">Notes</label>
+            <textarea id="hubRecordPayNotes" rows="3" placeholder="Optional reference or memo"></textarea>
+          </div>
+        </div>
+        <div class="notice" id="hubRecordPayFeedback" style="display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" id="btnHubRecordPayCancel">Cancel</button>
+        <button type="button" class="btn primary" id="btnHubRecordPaySubmit">Save to ledger</button>
       </div>
     </div>
   </div>
