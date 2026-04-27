@@ -2536,7 +2536,13 @@ Thank you.`
       const isDraftish =
         (rawStatus === "draft" || rawStatus === "open" || rawStatus === "") &&
         !["sent", "partial", "paid", "void", "overdue", "issued"].includes(rawStatus);
-      const canSendInvoice = Boolean(canTrySend && hasClient && hasAmount && isDraftish);
+      const manualLifecycleBlock =
+        hubServerQuoteIsAccepted(row) ||
+        String(row.hubInvoicePaymentStatus || "").toLowerCase() === "check_pending" ||
+        hubServerDepositRecorded(row);
+      const canSendInvoice = Boolean(
+        canTrySend && hasClient && hasAmount && isDraftish && !manualLifecycleBlock
+      );
       return {
         canConvert: false,
         canMarkSent: false,
@@ -6553,17 +6559,44 @@ function renderSupervisor() {
     }
   }
 
+  async function postHubQuoteManualStep(quoteId, action) {
+    const res = await fetch("/.netlify/functions/hub-quote-manual-step", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ quote_id: quoteId, action })
+    });
+    let data = {};
+    try {
+      data = await res.json();
+    } catch (_e) {
+      data = {};
+    }
+    return { ok: res.ok, status: res.status, data };
+  }
+
   function normalizeServerInvoiceForHub(invoice) {
     const inv = invoice && typeof invoice === "object" ? invoice : {};
     const customerName = nonEmptyString(inv.customer_name, inv.client_name);
     const customerEmail = nonEmptyString(inv.customer_email, inv.client_email);
     const issueRaw = inv.issue_date || inv.invoice_date || "";
     const createdRaw = inv.created_at || "";
+    let quoteWrap = inv.quotes;
+    if (Array.isArray(quoteWrap)) quoteWrap = quoteWrap[0];
+    const embed = quoteWrap && typeof quoteWrap === "object" ? quoteWrap : null;
+    const quoteId = embed?.id != null ? String(embed.id).trim() : inv.quote_id != null ? String(inv.quote_id).trim() : "";
+    const quoteAcceptedAt = embed?.accepted_at != null ? String(embed.accepted_at).trim() : "";
+    const quoteDepositPaidAt = embed?.deposit_paid_at != null ? String(embed.deposit_paid_at).trim() : "";
+    const quoteStatus = embed?.status != null ? String(embed.status).trim() : "";
     return {
       source: "server_invoice",
       id: inv.id,
       invoiceId: inv.id,
       tenant_id: inv.tenant_id,
+      quoteId,
+      quoteAcceptedAt,
+      quoteDepositPaidAt,
+      quoteStatus,
       publicToken: nonEmptyString(inv.public_token),
       publicUrl: inv.public_token ? `/invoice-public.html?token=${encodeURIComponent(inv.public_token)}` : "",
       invoiceNo: nonEmptyString(inv.invoice_no),
@@ -6607,6 +6640,28 @@ function renderSupervisor() {
     if (s === "sent" || s === "overdue") return "sent";
     if (s === "void") return "paid";
     return "draft";
+  }
+
+  /** Hub table Status column for server invoices when quote lifecycle overrides raw invoice row. */
+  function hubServerInvoiceLifecycleDisplayStatus(norm) {
+    const ps = String(norm?.paymentStatus || "").toLowerCase();
+    const qDep = String(norm?.quoteDepositPaidAt || "").trim();
+    if (ps === "deposit_paid" || qDep) return "deposit_paid";
+    const qAcc = String(norm?.quoteAcceptedAt || "").trim();
+    const qs = String(norm?.quoteStatus || "").toLowerCase();
+    if (qAcc || qs === "accepted") return "accepted";
+    return hubServerInvoiceStatusForDisplay(norm);
+  }
+
+  function hubServerQuoteIsAccepted(row) {
+    if (!row || row.hubRowSource !== "server_invoice") return false;
+    if (nonEmptyString(row.hubQuoteAcceptedAt)) return true;
+    return String(row.hubQuoteStatus || "").trim().toLowerCase() === "accepted";
+  }
+
+  function hubServerDepositRecorded(row) {
+    const ps = String(row.hubInvoicePaymentStatus || "").toLowerCase();
+    return ps === "deposit_paid" || nonEmptyString(row.hubQuoteDepositPaidAt);
   }
 
   function hubRowMatchesNormalizedServerInvoice(existingRow, norm) {
@@ -6657,7 +6712,7 @@ function renderSupervisor() {
     const sidRaw = serverInvoiceId != null ? String(serverInvoiceId).trim() : "";
     const projectId =
       sidRaw && MG_SERVER_INVOICE_UUID_RE.test(sidRaw) ? sidRaw : sidRaw ? `svc-inv-${sidRaw}` : `svc-inv-${Date.now()}`;
-    const displayStatus = hubServerInvoiceStatusForDisplay(norm);
+    const displayStatus = hubServerInvoiceLifecycleDisplayStatus(norm);
     const actionStatus = hubServerInvoiceStatusForActions(norm);
     const amount = Math.max(finiteNumber(norm.amount, 0), 0);
     const paid = Math.max(finiteNumber(norm.paidAmount, 0), 0);
@@ -6693,13 +6748,20 @@ function renderSupervisor() {
         activity: [],
         publicToken: norm.publicToken || "",
         publicUrl: norm.publicUrl || "",
-        paymentLink: ""
+        paymentLink: "",
+        paymentStatus: norm.paymentStatus || "",
+        quoteId: norm.quoteId || ""
       }
     };
     const row = {
       id: projectId,
       projectId,
       serverInvoiceId,
+      hubQuoteId: norm.quoteId || "",
+      hubQuoteAcceptedAt: norm.quoteAcceptedAt || "",
+      hubQuoteDepositPaidAt: norm.quoteDepositPaidAt || "",
+      hubQuoteStatus: norm.quoteStatus || "",
+      hubInvoicePaymentStatus: norm.paymentStatus || "",
       hubRowSource: "server_invoice",
       hubSourceLabel: "Server",
       date: formatDisplayDate(primaryRaw),
@@ -6747,14 +6809,18 @@ function renderSupervisor() {
       norm.invoiceNo,
       displayStatus,
       "server_invoice",
-      norm.publicToken
+      norm.publicToken,
+      norm.quoteAcceptedAt,
+      norm.quoteDepositPaidAt,
+      norm.paymentStatus,
+      norm.quoteStatus
     ]
       .join(" ")
       .toLowerCase();
     const priority = getHubPriority(row);
     row.priorityScore = priority.score;
     row.priorityTone = priority.tone;
-    row.nextAction = priority.nextAction;
+    row.nextAction = getHubRowCollectNextActionLabel(row);
     row.daysPastDue = priority.daysPastDue;
     const health = getProjectHealth(row);
     row.projectHealthScore = health.score;
@@ -6838,6 +6904,12 @@ function renderSupervisor() {
     const st = String(row?.status || "").toLowerCase();
     const bal = finiteNumber(row?.balance, 0);
     if (st === "paid" || st === "completed" || st === "void") return "Completed";
+    if (row?.hubRowSource === "server_invoice") {
+      const ps = String(row.hubInvoicePaymentStatus || row?.project?.invoice?.paymentStatus || "").toLowerCase();
+      const qDep = nonEmptyString(row.hubQuoteDepositPaidAt);
+      if (ps === "deposit_paid" || qDep) return "Start project";
+      if (hubServerQuoteIsAccepted(row)) return "Check deposit pending";
+    }
     if (row?.rowType === "estimate" && finiteNumber(row?.amount, 0) > 0 && row?.projectStatus !== "completed") return "Send Invoice";
     if (row?.rowType === "invoice" && st === "draft" && finiteNumber(row?.amount, 0) > 0) return "Send Invoice";
     if (["sent", "partial"].includes(st) && bal > 0) return "Waiting Payment";
@@ -6888,6 +6960,8 @@ function renderSupervisor() {
     const na = getHubRowCollectNextActionLabel(row);
     if (na === "Waiting Payment") return `Start with: ${name} — ${balStr} waiting for payment`;
     if (na === "Collect Balance") return `Start with: ${name} — ${balStr} collect balance`;
+    if (na === "Check deposit pending") return `Start with: ${name} — ${balStr} check deposit pending`;
+    if (na === "Start project") return `Start with: ${name} — ${balStr} start project`;
     if (na === "Completed") return `Start with: ${name} — ${balStr} (completed)`;
     return `Start with: ${name} — ${balStr}`;
   }
@@ -8529,6 +8603,34 @@ function renderSupervisor() {
         node.classList.toggle("hub-action-disabled", !allowed);
         node.title = allowed ? "" : title;
       });
+
+      const qid = String(row?.hubQuoteId || "").trim();
+      const serverQuoteRow =
+        row?.hubRowSource === "server_invoice" && qid && MG_SERVER_INVOICE_UUID_RE.test(qid);
+      const canMarkQuoteAccept =
+        serverQuoteRow && !hubServerQuoteIsAccepted(row);
+      const psLower = String(row?.hubInvoicePaymentStatus || "").toLowerCase();
+      const canMarkCheckPending =
+        serverQuoteRow &&
+        hubServerQuoteIsAccepted(row) &&
+        !hubServerDepositRecorded(row) &&
+        psLower !== "check_pending";
+      const canMarkDepositReceived =
+        serverQuoteRow &&
+        !hubServerDepositRecorded(row) &&
+        (hubServerQuoteIsAccepted(row) || psLower === "check_pending");
+      [
+        ["btnHubDrawerQuoteAccept", canMarkQuoteAccept, "Solo filas de servidor con quote vinculado y aun no aceptado."],
+        ["btnHubDrawerCheckPending", canMarkCheckPending, "Acepta el quote primero o el deposito ya esta registrado."],
+        ["btnHubDrawerDepositReceived", canMarkDepositReceived, "Marca check pendiente o acepta antes; deposito ya registrado."]
+      ].forEach(([id, allowed, title]) => {
+        const node = $(id);
+        if (!node) return;
+        node.disabled = !allowed;
+        node.classList.toggle("hub-action-disabled", !allowed);
+        node.title = allowed ? "" : title;
+        node.style.display = serverQuoteRow ? "" : "none";
+      });
     };
 
     const refreshBulkBar = () => {
@@ -9438,7 +9540,47 @@ function renderSupervisor() {
       };
     }
 
+    const runHubQuoteManualStep = async (action, okMessage) => {
+      if (!selectedRow) return;
+      const qid = String(selectedRow.hubQuoteId || "").trim();
+      if (!qid) {
+        setHubFeedback("Esta fila no tiene quote vinculado en el servidor.", "warn");
+        return;
+      }
+      const { ok, data } = await postHubQuoteManualStep(qid, action);
+      if (!ok) {
+        setHubFeedback(data?.error || "No se pudo actualizar el quote.", "err");
+        return;
+      }
+      if (typeof window.__mgHubRefetchServerInvoices === "function") {
+        await window.__mgHubRefetchServerInvoices();
+      }
+      refreshSelectedRow();
+      setHubFeedback(okMessage, "ok");
+    };
+
+    if ($("btnHubDrawerQuoteAccept")) {
+      $("btnHubDrawerQuoteAccept").onclick = () => {
+        void runHubQuoteManualStep("accept", "Quote marcado como aceptado; proyecto e invoice actualizados.");
+      };
+    }
+    if ($("btnHubDrawerCheckPending")) {
+      $("btnHubDrawerCheckPending").onclick = () => {
+        void runHubQuoteManualStep("check_pending", "Deposito en cheque marcado como pendiente.");
+      };
+    }
+    if ($("btnHubDrawerDepositReceived")) {
+      $("btnHubDrawerDepositReceived").onclick = () => {
+        void runHubQuoteManualStep("deposit_received", "Deposito registrado; proyecto listo en Supervisor.");
+      };
+    }
+
     window.__mgHubTableRefresh = refresh;
+    window.__mgHubRefetchServerInvoices = async () => {
+      const { invoices: raw } = await loadTenantInvoicesFromServer({ limit: 100 });
+      hubServerNormalizedInvoicesCache = raw.map(normalizeServerInvoiceForHub);
+      refresh();
+    };
     refresh();
 
     if (!hubServerInvoicesFetchStarted) {

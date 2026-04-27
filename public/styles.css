@@ -2701,6 +2701,16 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   border-color:rgba(239,68,68,.35);
 }
 
+.hub-status.accepted{
+  background:rgba(59,130,246,.14);
+  border-color:rgba(59,130,246,.38);
+}
+
+.hub-status.deposit_paid{
+  background:rgba(34,197,94,.14);
+  border-color:rgba(34,197,94,.38);
+}
+
 .hub-action-disabled{
   opacity:.55;
   pointer-events:none;
