@@ -2782,6 +2782,23 @@ body[data-role="estimates-hub"] #hubFormModal .hub-form-quick-date:hover{
   color:#fff;
 }
 
+body[data-role="estimates-hub"] #hubFormModal .hub-form-static{
+  grid-column:1/-1;
+}
+body[data-role="estimates-hub"] #hubFormModal .hub-invoice-setup-preview{
+  margin-top:2px;
+  padding:10px 12px;
+  border-radius:10px;
+  border:1px solid rgba(148,163,184,.35);
+  background:rgba(15,23,42,.45);
+}
+body[data-role="estimates-hub"] #hubFormModal .hub-invoice-setup-preview-line{
+  font-size:13px;
+  font-weight:650;
+  line-height:1.35;
+  color:rgba(248,250,252,.95);
+}
+
 #hubFocusQueue li{
   min-height:84px;
   cursor:pointer;

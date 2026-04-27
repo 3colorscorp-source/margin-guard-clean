@@ -2241,6 +2241,20 @@ Thank you.`
     return sanitizeInvoiceLabelInput(presetVal);
   }
 
+  const MG_HUB_INVOICE_PURPOSE_TO_PRESET = {
+    deposit: "START PROJECT DEPOSIT",
+    progress: "PROGRESS PAYMENT 1",
+    final: "FINAL PAYMENT"
+  };
+
+  function hubInferInvoicePurposeFromLabel(lbl) {
+    const s = sanitizeInvoiceLabelInput(lbl);
+    if (s === MG_HUB_INVOICE_PURPOSE_TO_PRESET.deposit) return "deposit";
+    if (s === MG_HUB_INVOICE_PURPOSE_TO_PRESET.final) return "final";
+    if (["PROGRESS PAYMENT 1", "PROGRESS PAYMENT 2", "PROGRESS PAYMENT 3"].includes(s)) return "progress";
+    return "";
+  }
+
   function buildDefaultInvoiceState(project) {
     return {
       invoiceNo: "",
@@ -2555,6 +2569,9 @@ Thank you.`
     if ($("hubFormFields")) {
       $("hubFormFields").className = "hub-form-grid";
       $("hubFormFields").innerHTML = (Array.isArray(config.fields) ? config.fields : []).map((field) => {
+        if (field.type === "static") {
+          return `<div class="field hub-form-static">${field.html || ""}</div>`;
+        }
         if (field.type === "textarea") {
           return `
             <div class="field">
@@ -2613,6 +2630,13 @@ Thank you.`
           input.dispatchEvent(new Event("change", { bubbles: true }));
         };
       });
+    }
+    if (typeof config.afterRender === "function") {
+      try {
+        config.afterRender();
+      } catch (_err) {
+        /* ignore */
+      }
     }
     if ($("hubFormModal")) $("hubFormModal").setAttribute("aria-hidden", "false");
   }
@@ -9240,19 +9264,84 @@ function renderSupervisor() {
       const curLbl = sanitizeInvoiceLabelInput(invoice.invoiceLabel);
       const presetMatch = MG_HUB_INVOICE_LABEL_PRESETS.includes(curLbl) ? curLbl : "";
       const customInitial = presetMatch ? "" : curLbl;
+      const purposeInitial = hubInferInvoicePurposeFromLabel(curLbl);
       const presetFieldOptions = [{ value: "", label: "— Preset (optional) —" }].concat(
         MG_HUB_INVOICE_LABEL_PRESETS.map((p) => ({ value: p, label: p }))
       );
+      const collectionStatusOptions = [
+        { value: "new", label: "New — no outreach yet" },
+        { value: "contacted", label: "Contacted" },
+        { value: "promised", label: "Promised to pay" },
+        { value: "escalated", label: "Escalated" },
+        { value: "resolved", label: "Resolved" }
+      ];
       showHubActionForm({
         title: "Configurar invoice",
         subtitle: `${row.title} · ${row.customer}`,
         submitLabel: "Guardar invoice",
         successMessage: "Invoice guardado (incl. payment label).",
+        afterRender: () => {
+          const updateInvoiceSetupLabelPreview = () => {
+            const el = $("hubFormInvoiceLabelPreview");
+            if (!el) return;
+            const txt = resolveHubInvoiceLabelFromForm(val("hubFormInvoiceLabelPreset"), val("hubFormInvoiceLabelCustom"));
+            el.textContent = txt ? `Client will see: ${txt}` : "Client will see: —";
+          };
+          const syncPurposeFromPresetAndCustom = () => {
+            const purposeEl = $("hubFormInvoicePurpose");
+            if (!purposeEl) return;
+            const cust = String(val("hubFormInvoiceLabelCustom") || "").trim();
+            if (cust) {
+              purposeEl.value = "";
+            } else {
+              purposeEl.value = hubInferInvoicePurposeFromLabel(
+                resolveHubInvoiceLabelFromForm(val("hubFormInvoiceLabelPreset"), "")
+              );
+            }
+            updateInvoiceSetupLabelPreview();
+          };
+          const purposeEl = $("hubFormInvoicePurpose");
+          if (purposeEl) {
+            purposeEl.onchange = () => {
+              const p = purposeEl.value;
+              const presetEl = $("hubFormInvoiceLabelPreset");
+              const customEl = $("hubFormInvoiceLabelCustom");
+              if (p && Object.prototype.hasOwnProperty.call(MG_HUB_INVOICE_PURPOSE_TO_PRESET, p)) {
+                if (presetEl) presetEl.value = MG_HUB_INVOICE_PURPOSE_TO_PRESET[p];
+                if (customEl) customEl.value = "";
+              }
+              updateInvoiceSetupLabelPreview();
+            };
+          }
+          const presetEl = $("hubFormInvoiceLabelPreset");
+          const customEl = $("hubFormInvoiceLabelCustom");
+          if (presetEl) {
+            presetEl.addEventListener("change", syncPurposeFromPresetAndCustom);
+          }
+          if (customEl) {
+            customEl.addEventListener("input", syncPurposeFromPresetAndCustom);
+            customEl.addEventListener("change", syncPurposeFromPresetAndCustom);
+          }
+          syncPurposeFromPresetAndCustom();
+        },
         fields: [
           { id: "hubFormInvoiceNo", label: "Invoice No", type: "text", value: invoice.invoiceNo || "", placeholder: "INV-1001" },
           {
+            id: "hubFormInvoicePurpose",
+            label: "Purpose of invoice",
+            type: "select",
+            value: purposeInitial,
+            options: [
+              { value: "", label: "Select purpose…" },
+              { value: "deposit", label: "Deposit — start project" },
+              { value: "progress", label: "Progress payment" },
+              { value: "final", label: "Final payment" }
+            ],
+            hint: "Sets the default label the client sees. Fine-tune below if needed."
+          },
+          {
             id: "hubFormInvoiceLabelPreset",
-            label: "Invoice label (preset)",
+            label: "Exact wording (optional)",
             type: "select",
             value: presetMatch,
             options: presetFieldOptions
@@ -9263,7 +9352,11 @@ function renderSupervisor() {
             type: "text",
             value: customInitial,
             placeholder: "Overrides preset when filled",
-            hint: "Custom text wins over the preset. Leave both empty for no label."
+            hint: "Custom text wins over the preset."
+          },
+          {
+            type: "static",
+            html: `<div class="hub-invoice-setup-preview" id="hubFormInvoiceLabelPreviewWrap"><div id="hubFormInvoiceLabelPreview" class="hub-invoice-setup-preview-line">Client will see: —</div></div>`
           },
           {
             id: "hubFormInvoiceDate",
@@ -9274,7 +9367,7 @@ function renderSupervisor() {
           },
           {
             id: "hubFormInvoiceDueDate",
-            label: "Due Date",
+            label: "Due Date (optional)",
             type: "date",
             value: invoice.dueDate || row.project?.dueDate || "",
             quickDates: [
@@ -9286,9 +9379,10 @@ function renderSupervisor() {
           },
           {
             id: "hubFormInvoicePromiseDate",
-            label: "Promised Payment Date",
+            label: "Promised payment date",
             type: "date",
             value: invoice.promisedDate || "",
+            hint: "(for follow-up tracking)",
             quickDates: [
               { label: "Today", kind: "today" },
               { label: "Tomorrow", kind: "tomorrow" },
@@ -9299,10 +9393,10 @@ function renderSupervisor() {
           { id: "hubFormInvoiceBase", label: "Base Amount", type: "number", step: "0.01", value: invoice.baseAmount || row.project?.salePrice || 0, placeholder: "0.00" },
           {
             id: "hubFormCollectionStage",
-            label: "Collections Stage",
+            label: "Collection status",
             type: "select",
             value: invoice.collectionStage || "new",
-            options: ["new", "contacted", "promised", "escalated", "resolved"].map((value) => ({ value, label: value }))
+            options: collectionStatusOptions
           }
         ],
         onSubmit: () => {
