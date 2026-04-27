@@ -611,6 +611,36 @@ Thank you.`
     const day = String(d.getDate()).padStart(2, "0");
     return `${y}-${m}-${day}`;
   }
+
+  /** Local-calendar YYYY-MM-DD for hub form quick-date buttons (avoids UTC parse skew). */
+  function hubQuickDateResolveValue(kind, offsetDays) {
+    const anchor = new Date();
+    anchor.setHours(12, 0, 0, 0);
+    const fmt = (d) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    };
+    const addDays = (d, n) => {
+      const x = new Date(d.getTime());
+      x.setDate(x.getDate() + n);
+      return x;
+    };
+    const k = String(kind || "today").trim();
+    if (k === "today") return fmt(anchor);
+    if (k === "tomorrow") return fmt(addDays(anchor, 1));
+    if (k === "next_monday") {
+      const d = new Date(anchor.getTime());
+      const dow = d.getDay();
+      let n = (8 - dow) % 7;
+      if (n === 0) n = 7;
+      return fmt(addDays(d, n));
+    }
+    if (k === "today_plus" && Number.isFinite(offsetDays)) return fmt(addDays(anchor, offsetDays));
+    return fmt(anchor);
+  }
+
   function loadOwner() {
     const saved = readStore(LS_OWNER, {});
     const merged = {
@@ -2545,16 +2575,45 @@ Thank you.`
             </div>
           `;
         }
+        const quickRow =
+          field.type === "date" && Array.isArray(field.quickDates) && field.quickDates.length
+            ? `<div class="hub-form-quick-dates">${field.quickDates
+                .map((q) => {
+                  const kind = escapeHtml(String(q.kind || "today").trim());
+                  const hasDays = q.days != null && String(q.days).trim() !== "";
+                  const daysAttr = hasDays ? ` data-hub-quick-days="${escapeHtml(String(q.days))}"` : "";
+                  return `<button type="button" class="hub-form-quick-date" data-hub-quick-date-target="${escapeHtml(field.id)}" data-hub-quick-kind="${kind}"${daysAttr}>${escapeHtml(q.label || "")}</button>`;
+                })
+                .join("")}</div>`
+            : "";
         return `
           <div class="field">
             <label>${escapeHtml(field.label || "")}</label>
             <input id="${escapeHtml(field.id)}" type="${escapeHtml(field.type || "text")}" step="${field.step || ""}" placeholder="${escapeHtml(field.placeholder || "")}" value="${escapeHtml(field.value ?? "")}" />
+            ${quickRow}
             ${field.hint ? `<div class="hint" style="justify-content:flex-start;">${escapeHtml(field.hint)}</div>` : ""}
           </div>
         `;
       }).join("");
     }
     setNotice("hubFormFeedback", "", "");
+    if ($("hubFormFields")) {
+      $("hubFormFields").querySelectorAll("button.hub-form-quick-date").forEach((btn) => {
+        btn.onclick = (ev) => {
+          ev.preventDefault();
+          const targetId = btn.getAttribute("data-hub-quick-date-target");
+          const kind = (btn.getAttribute("data-hub-quick-kind") || "today").trim();
+          const daysRaw = btn.getAttribute("data-hub-quick-days");
+          const offsetDays = daysRaw !== null && daysRaw !== "" ? Number.parseInt(daysRaw, 10) : NaN;
+          const input = targetId ? document.getElementById(targetId) : null;
+          if (!input || input.tagName !== "INPUT") return;
+          const value = hubQuickDateResolveValue(kind, offsetDays);
+          input.value = value;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        };
+      });
+    }
     if ($("hubFormModal")) $("hubFormModal").setAttribute("aria-hidden", "false");
   }
 
@@ -9206,9 +9265,37 @@ function renderSupervisor() {
             placeholder: "Overrides preset when filled",
             hint: "Custom text wins over the preset. Leave both empty for no label."
           },
-          { id: "hubFormInvoiceDate", label: "Invoice Date", type: "date", value: invoice.invoiceDate || new Date().toISOString().slice(0, 10) },
-          { id: "hubFormInvoiceDueDate", label: "Due Date", type: "date", value: invoice.dueDate || row.project?.dueDate || "" },
-          { id: "hubFormInvoicePromiseDate", label: "Promised Payment Date", type: "date", value: invoice.promisedDate || "" },
+          {
+            id: "hubFormInvoiceDate",
+            label: "Invoice Date",
+            type: "date",
+            value: invoice.invoiceDate || new Date().toISOString().slice(0, 10),
+            quickDates: [{ label: "Today", kind: "today" }]
+          },
+          {
+            id: "hubFormInvoiceDueDate",
+            label: "Due Date",
+            type: "date",
+            value: invoice.dueDate || row.project?.dueDate || "",
+            quickDates: [
+              { label: "Today", kind: "today" },
+              { label: "+7 days", kind: "today_plus", days: 7 },
+              { label: "+14 days", kind: "today_plus", days: 14 },
+              { label: "+30 days", kind: "today_plus", days: 30 }
+            ]
+          },
+          {
+            id: "hubFormInvoicePromiseDate",
+            label: "Promised Payment Date",
+            type: "date",
+            value: invoice.promisedDate || "",
+            quickDates: [
+              { label: "Today", kind: "today" },
+              { label: "Tomorrow", kind: "tomorrow" },
+              { label: "Next Monday", kind: "next_monday" },
+              { label: "+7 days", kind: "today_plus", days: 7 }
+            ]
+          },
           { id: "hubFormInvoiceBase", label: "Base Amount", type: "number", step: "0.01", value: invoice.baseAmount || row.project?.salePrice || 0, placeholder: "0.00" },
           {
             id: "hubFormCollectionStage",
