@@ -8297,6 +8297,11 @@ function renderSupervisor() {
     return Boolean(invoiceId || quoteId || projectId);
   }
 
+  /** Drawer / hub actions: approximate paid-to-date (local + server row aggregates; aligns with stats before ledger fetch). */
+  function hubRowPaidToDateApprox(row) {
+    return finiteNumber(row?.depositApplied, 0) + finiteNumber(row?.receivedApplied, 0);
+  }
+
   async function fetchHubDrawerLedgerPayments(row) {
     const { invoiceId, quoteId, projectId } = hubLedgerTargetIds(row);
     const params = new URLSearchParams({ limit: "500" });
@@ -8378,6 +8383,7 @@ function renderSupervisor() {
   function renderHubDrawerDetails(row, settings, handlers) {
     if (!row) return;
     const invoice = getProjectInvoiceState(row.project);
+    const applyDrawerButtons = typeof handlers?.applyHubActionButtonState === "function" ? handlers.applyHubActionButtonState : null;
     const drawerEl = $("hubDrawer");
     if (drawerEl) {
       drawerEl.dataset.hubDrawerRowKey =
@@ -8473,9 +8479,7 @@ function renderSupervisor() {
       })();
     }
 
-    if (typeof handlers.applyHubActionButtonState === "function") {
-      handlers.applyHubActionButtonState(row);
-    }
+    if (applyDrawerButtons) applyDrawerButtons(row);
 
     const changeOrders = Array.isArray(row.report?.changeOrders) ? row.report.changeOrders : [];
     const changeWrap = $("hubDrawerChangeOrdersWrap");
@@ -8490,42 +8494,6 @@ function renderSupervisor() {
             </tr>
           `).join("")
         : `<tr><td colspan="3">No change orders yet.</td></tr>`;
-    }
-
-    if ($("hubDrawerPaymentsBody")) {
-      $("hubDrawerPaymentsBody").innerHTML = invoice.payments.length
-        ? invoice.payments.map((payment, index) => `
-            <tr>
-              <td>${escapeHtml(formatDisplayDate(payment.date))}</td>
-              <td>${escapeHtml(payment.method || "manual")}</td>
-              <td>${escapeHtml(payment.note || "-")}</td>
-              <td>${money(payment.amount || 0, settings.currency)}</td>
-              <td>
-                <div class="row-actions">
-                  <button class="btn ghost" data-edit-payment="${index}">Edit</button>
-                  <button class="btn danger" data-delete-payment="${index}">Delete</button>
-                </div>
-              </td>
-            </tr>
-          `).join("")
-        : `<tr><td colspan="5">No line-item payments yet. Ledger entries will list here when connected.</td></tr>`;
-
-      $("hubDrawerPaymentsBody").querySelectorAll("button[data-edit-payment]").forEach((button) => {
-        button.onclick = () => {
-          const index = Number(button.dataset.editPayment || -1);
-          const payment = invoice.payments[index];
-          if (!payment || typeof handlers.onEditPayment !== "function") return;
-          handlers.onEditPayment(index, payment);
-        };
-      });
-
-      $("hubDrawerPaymentsBody").querySelectorAll("button[data-delete-payment]").forEach((button) => {
-        button.onclick = () => {
-          const index = Number(button.dataset.deletePayment || -1);
-          if (index < 0 || typeof handlers.onDeletePayment !== "function") return;
-          handlers.onDeletePayment(index);
-        };
-      });
     }
 
     const renderActivityRows = (items, emptyMessage) => items.length
@@ -8846,13 +8814,7 @@ function renderSupervisor() {
         ["btnHubDrawerSetup", localOnly, serverNote],
         ["btnHubDrawerConvert", actionState.canConvert, "Convierte primero el estimate a invoice cuando ya exista monto vendible."],
         ["btnHubDrawerSendInvoice", actionState.canSendInvoice, "Necesitas invoice, cliente y monto antes de preparar el envio."],
-        ["btnHubDrawerRequestPayment", actionState.canRequestPayment, "Request Payment solo aplica a invoices enviadas o parciales con saldo pendiente."],
-        ["btnHubDrawerSent", actionState.canMarkSent, "Primero crea el invoice; despues ya lo puedes marcar como sent."],
-        ["btnHubDrawerPayment", actionState.canTakePayment, "Take Payment solo aplica cuando el invoice ya existe y aun tiene saldo."],
-        ["btnHubDrawerPaid", actionState.canMarkPaid, "Mark Paid solo aplica cuando existe invoice con saldo pendiente."],
-        ["btnHubDrawerOpenPublic", actionState.canOpenPublic, "Aun no existe link publico para este invoice."],
-        ["btnHubDrawerPdf", actionState.canExportPdf, "El PDF del invoice requiere un invoice valido con monto."],
-        ["btnHubDrawerFollowUp", localOnly, serverNote]
+        ["btnHubDrawerOpenPublic", actionState.canOpenPublic, "Aun no existe link publico para este invoice."]
       ];
       buttonRules.forEach(([id, allowed, title]) => {
         const node = $(id);
@@ -8861,6 +8823,14 @@ function renderSupervisor() {
         node.classList.toggle("hub-action-disabled", !allowed);
         node.title = allowed ? "" : title;
       });
+
+      const pdfBtn = $("btnHubDrawerPdf");
+      if (pdfBtn) {
+        pdfBtn.style.display = "";
+        pdfBtn.disabled = !actionState.canExportPdf;
+        pdfBtn.classList.toggle("hub-action-disabled", !actionState.canExportPdf);
+        pdfBtn.title = actionState.canExportPdf ? "" : "El PDF del invoice requiere un invoice valido con monto.";
+      }
 
       const salesBtn = $("btnHubDrawerSales");
       if (salesBtn) {
@@ -8903,22 +8873,41 @@ function renderSupervisor() {
         hubServerQuoteIsAccepted(row) &&
         !hubServerDepositRecorded(row) &&
         psLower !== "check_pending";
+      const paidApprox = hubRowPaidToDateApprox(row);
       const canMarkDepositReceived =
         serverQuoteRow &&
         !hubServerDepositRecorded(row) &&
-        (hubServerQuoteIsAccepted(row) || psLower === "check_pending");
-      [
-        ["btnHubDrawerQuoteAccept", canMarkQuoteAccept, "Solo filas de servidor con quote vinculado y aun no aceptado."],
-        ["btnHubDrawerCheckPending", canMarkCheckPending, "Acepta el quote primero o el deposito ya esta registrado."],
-        ["btnHubDrawerDepositReceived", canMarkDepositReceived, "Marca check pendiente o acepta antes; deposito ya registrado."]
-      ].forEach(([id, allowed, title]) => {
-        const node = $(id);
-        if (!node) return;
-        node.disabled = !allowed;
-        node.classList.toggle("hub-action-disabled", !allowed);
-        node.title = allowed ? "" : title;
-        node.style.display = serverQuoteRow ? "" : "none";
-      });
+        (hubServerQuoteIsAccepted(row) || psLower === "check_pending") &&
+        paidApprox <= 0;
+
+      const qa = $("btnHubDrawerQuoteAccept");
+      if (qa) {
+        const show = Boolean(canMarkQuoteAccept);
+        qa.style.display = show ? "" : "none";
+        qa.disabled = !show;
+        qa.classList.toggle("hub-action-disabled", !show);
+        qa.title = show ? "" : "Quote already accepted or row is not server-backed.";
+      }
+      const cp = $("btnHubDrawerCheckPending");
+      if (cp) {
+        const show = Boolean(canMarkCheckPending);
+        cp.style.display = show ? "" : "none";
+        cp.disabled = !show;
+        cp.classList.toggle("hub-action-disabled", !show);
+        cp.title = show ? "" : "Accept the quote first, or deposit is already on file.";
+      }
+      const dr = $("btnHubDrawerDepositReceived");
+      if (dr) {
+        const show = Boolean(canMarkDepositReceived);
+        dr.style.display = show ? "" : "none";
+        dr.disabled = !show;
+        dr.classList.toggle("hub-action-disabled", !show);
+        dr.title = show
+          ? ""
+          : paidApprox > 0
+            ? "Paid-to-date must be zero before marking deposit received."
+            : "Accept the quote or mark check pending first, or deposit already recorded.";
+      }
     };
 
     const refreshBulkBar = () => {
@@ -8959,21 +8948,7 @@ function renderSupervisor() {
       if (!row) return;
       selectedRow = row;
       renderHubDrawerDetails(row, settings, {
-        applyHubActionButtonState,
-        onEditPayment: (index, payment) => {
-          if (!selectedRow) return;
-          openPaymentForm(selectedRow, payment, ({ amount, method, note, date }) => {
-            editHubPayment(selectedRow.projectId, index, { amount, method, note, date });
-          });
-          hubFormState.successMessage = `Pago actualizado para ${selectedRow.title}.`;
-        },
-        onDeletePayment: (index) => {
-          if (!selectedRow || index < 0) return;
-          deleteHubPayment(selectedRow.projectId, index);
-          refresh();
-          refreshSelectedRow();
-          setHubFeedback(`Pago eliminado de ${selectedRow.title}.`, "ok");
-        }
+        applyHubActionButtonState
       });
     };
 
@@ -9959,16 +9934,6 @@ function renderSupervisor() {
         setHubFeedback(`Invoice creado para ${selectedRow.title}.`, "ok");
       };
     }
-    if ($("btnHubDrawerSent")) {
-      $("btnHubDrawerSent").onclick = () => {
-        if (!selectedRow) return;
-        if (!guardHubAction(selectedRow, "canMarkSent", "Primero crea el invoice antes de marcarlo como enviado.")) return;
-        markHubInvoiceSent(selectedRow.projectId);
-        refresh();
-        refreshSelectedRow();
-        setHubFeedback(`Invoice marcado como sent para ${selectedRow.title}.`, "ok");
-      };
-    }
     if ($("btnHubDrawerSendInvoice")) {
       $("btnHubDrawerSendInvoice").onclick = () => {
         if (!selectedRow) return;
@@ -9983,43 +9948,6 @@ function renderSupervisor() {
           refresh();
           refreshSelectedRow();
         })();
-      };
-    }
-    if ($("btnHubDrawerRequestPayment")) {
-      $("btnHubDrawerRequestPayment").onclick = () => {
-        if (!selectedRow) return;
-        if (!guardHubAction(selectedRow, "canRequestPayment", "Solo puedes pedir pago cuando hay invoice enviado o parcial con saldo.")) return;
-        requestHubPayment(selectedRow.projectId);
-        refresh();
-        refreshSelectedRow();
-        setHubFeedback(`Recordatorio de pago preparado para ${selectedRow.customer}.`, "ok");
-      };
-    }
-    if ($("btnHubDrawerFollowUp")) {
-      $("btnHubDrawerFollowUp").onclick = () => {
-        if (!selectedRow) return;
-        openFollowUpForm(selectedRow);
-        hubFormState.successMessage = `Follow-up guardado para ${selectedRow.title}.`;
-      };
-    }
-    if ($("btnHubDrawerPayment")) {
-      $("btnHubDrawerPayment").onclick = () => {
-        if (!selectedRow) return;
-        if (!guardHubAction(selectedRow, "canTakePayment", "Take Payment solo aplica cuando ya existe invoice con saldo pendiente.")) return;
-        openPaymentForm(selectedRow, null, ({ amount, method, note, date }) => {
-          recordHubPayment(selectedRow.projectId, { amount, method, note, date });
-        });
-        hubFormState.successMessage = `Pago registrado para ${selectedRow.title}.`;
-      };
-    }
-    if ($("btnHubDrawerPaid")) {
-      $("btnHubDrawerPaid").onclick = () => {
-        if (!selectedRow) return;
-        if (!guardHubAction(selectedRow, "canMarkPaid", "Mark Paid solo aplica cuando existe invoice con saldo pendiente.")) return;
-        markHubInvoicePaid(selectedRow.projectId);
-        refresh();
-        refreshSelectedRow();
-        setHubFeedback(`Invoice liquidado para ${selectedRow.title}.`, "ok");
       };
     }
     if ($("btnHubDrawerSales")) {
