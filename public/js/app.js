@@ -9062,6 +9062,17 @@ function renderSupervisor() {
           }
         } else if (statusFilter === "archived") {
           if (String(row.status || "").toLowerCase() !== "archived") return false;
+        } else if (statusFilter === "accepted") {
+          if (
+            row.hubRowSource === "server_invoice" &&
+            String(row.hubInvoiceRawStatus || "").toLowerCase() === "archived"
+          ) {
+            return false;
+          }
+          const acceptedAt = nonEmptyString(row.hubQuoteAcceptedAt);
+          const quoteAccepted = String(row.hubQuoteStatus || "").trim().toLowerCase() === "accepted";
+          const displayAccepted = String(row.status || "").trim().toLowerCase() === "accepted";
+          if (!(acceptedAt || quoteAccepted || displayAccepted)) return false;
         } else if (row.status !== statusFilter) {
           return false;
         }
