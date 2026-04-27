@@ -2521,6 +2521,24 @@ Thank you.`
 
   function getHubRowActionState(row) {
     if (row?.hubRowSource === "server_invoice") {
+      const rawInv = String(row.hubInvoiceRawStatus || "").toLowerCase();
+      const isArchived = rawInv === "archived";
+      if (isArchived) {
+        return {
+          canConvert: false,
+          canMarkSent: false,
+          canSendInvoice: false,
+          canTakePayment: false,
+          canMarkPaid: false,
+          canRequestPayment: false,
+          canPublishLink: false,
+          canOpenPublic: false,
+          canSetPaymentLink: false,
+          canExportPdf: false,
+          canArchiveServerInvoice: false,
+          canDeleteServerInvoice: false
+        };
+      }
       const hasPublic = Boolean(
         nonEmptyString(row?.project?.invoice?.publicUrl) || nonEmptyString(row?.project?.invoice?.publicToken)
       );
@@ -2543,6 +2561,13 @@ Thank you.`
       const canSendInvoice = Boolean(
         canTrySend && hasClient && hasAmount && isDraftish && !manualLifecycleBlock
       );
+      const canArchiveServerInvoice = Boolean(sid && MG_SERVER_INVOICE_UUID_RE.test(sid));
+      const canDeleteServerInvoice = Boolean(
+        sid &&
+          MG_SERVER_INVOICE_UUID_RE.test(sid) &&
+          ["draft", "sent"].includes(String(row.hubInvoiceRawStatus || "").toLowerCase()) &&
+          !hubServerQuoteIsAccepted(row)
+      );
       return {
         canConvert: false,
         canMarkSent: false,
@@ -2553,7 +2578,9 @@ Thank you.`
         canPublishLink: false,
         canOpenPublic: hasPublic,
         canSetPaymentLink: false,
-        canExportPdf: false
+        canExportPdf: false,
+        canArchiveServerInvoice,
+        canDeleteServerInvoice
       };
     }
     const hasInvoice = Boolean(row?.invoiceNo);
@@ -2571,7 +2598,9 @@ Thank you.`
       canPublishLink: hasInvoice && hasClient && hasAmount,
       canOpenPublic: Boolean(row?.project?.invoice?.publicUrl || row?.project?.invoice?.publicToken),
       canSetPaymentLink: hasInvoice,
-      canExportPdf: hasInvoice && hasAmount
+      canExportPdf: hasInvoice && hasAmount,
+      canArchiveServerInvoice: false,
+      canDeleteServerInvoice: false
     };
   }
 
@@ -6575,6 +6604,22 @@ function renderSupervisor() {
     return { ok: res.ok, status: res.status, data };
   }
 
+  async function postHubInvoiceArchiveDelete(invoiceId, action) {
+    const res = await fetch("/.netlify/functions/hub-invoice-archive-delete", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ invoice_id: invoiceId, action })
+    });
+    let data = {};
+    try {
+      data = await res.json();
+    } catch (_e) {
+      data = {};
+    }
+    return { ok: res.ok, status: res.status, data };
+  }
+
   function normalizeServerInvoiceForHub(invoice) {
     const inv = invoice && typeof invoice === "object" ? invoice : {};
     const customerName = nonEmptyString(inv.customer_name, inv.client_name);
@@ -6588,11 +6633,13 @@ function renderSupervisor() {
     const quoteAcceptedAt = embed?.accepted_at != null ? String(embed.accepted_at).trim() : "";
     const quoteDepositPaidAt = embed?.deposit_paid_at != null ? String(embed.deposit_paid_at).trim() : "";
     const quoteStatus = embed?.status != null ? String(embed.status).trim() : "";
+    const hubInvoiceRawStatus = String(inv.status || "draft").toLowerCase();
     return {
       source: "server_invoice",
       id: inv.id,
       invoiceId: inv.id,
       tenant_id: inv.tenant_id,
+      hubInvoiceRawStatus,
       quoteId,
       quoteAcceptedAt,
       quoteDepositPaidAt,
@@ -6606,7 +6653,7 @@ function renderSupervisor() {
       amount: Number(inv.amount || 0),
       paidAmount: Number(inv.paid_amount || 0),
       balanceDue: Number(inv.balance_due != null ? inv.balance_due : Number(inv.amount || 0) - Number(inv.paid_amount || 0)),
-      status: String(inv.status || "draft").toLowerCase(),
+      status: hubInvoiceRawStatus,
       paymentStatus: String(inv.payment_status || "").toLowerCase(),
       invoiceDate: issueRaw || createdRaw || "",
       dueDate: inv.due_date || "",
@@ -6619,7 +6666,8 @@ function renderSupervisor() {
 
   function hubServerInvoiceStatusForDisplay(norm) {
     const today = new Date().toISOString().slice(0, 10);
-    let raw = String(norm?.status || "draft").toLowerCase();
+    let raw = String(norm?.hubInvoiceRawStatus || norm?.status || "draft").toLowerCase();
+    if (raw === "archived") return "archived";
     if (raw === "open") raw = "draft";
     const sentAtRaw = String(norm?.sentAt || "").trim();
     if (sentAtRaw && raw !== "paid" && raw !== "void") {
@@ -6644,6 +6692,8 @@ function renderSupervisor() {
 
   /** Hub table Status column for server invoices when quote lifecycle overrides raw invoice row. */
   function hubServerInvoiceLifecycleDisplayStatus(norm) {
+    const rawInv = String(norm?.hubInvoiceRawStatus || norm?.status || "").toLowerCase();
+    if (rawInv === "archived") return "archived";
     const ps = String(norm?.paymentStatus || "").toLowerCase();
     const qDep = String(norm?.quoteDepositPaidAt || "").trim();
     if (ps === "deposit_paid" || qDep) return "deposit_paid";
@@ -6762,6 +6812,7 @@ function renderSupervisor() {
       hubQuoteDepositPaidAt: norm.quoteDepositPaidAt || "",
       hubQuoteStatus: norm.quoteStatus || "",
       hubInvoicePaymentStatus: norm.paymentStatus || "",
+      hubInvoiceRawStatus: norm.hubInvoiceRawStatus || String(norm.status || "").toLowerCase(),
       hubRowSource: "server_invoice",
       hubSourceLabel: "Server",
       date: formatDisplayDate(primaryRaw),
@@ -6905,6 +6956,7 @@ function renderSupervisor() {
     const bal = finiteNumber(row?.balance, 0);
     if (st === "paid" || st === "completed" || st === "void") return "Completed";
     if (row?.hubRowSource === "server_invoice") {
+      if (String(row.hubInvoiceRawStatus || "").toLowerCase() === "archived") return "Completed";
       const ps = String(row.hubInvoicePaymentStatus || row?.project?.invoice?.paymentStatus || "").toLowerCase();
       const qDep = nonEmptyString(row.hubQuoteDepositPaidAt);
       if (ps === "deposit_paid" || qDep) return "Start project";
@@ -8318,7 +8370,9 @@ function renderSupervisor() {
       onOpenRow,
       onPay,
       onMarkPaid,
-      onSendInvoice
+      onSendInvoice,
+      onArchiveServerInvoice,
+      onDeleteServerInvoice
     } = config;
     const tableRows =
       Array.isArray(displayOrderedRows) && displayOrderedRows.length ? displayOrderedRows : filteredRows;
@@ -8347,6 +8401,14 @@ function renderSupervisor() {
             ? `<button type="button" class="btn ghost hub-cta-secondary" data-hub-pay="${rowDomId}" title="Record a payment">Pay</button>`
             : actionState.canMarkPaid
               ? `<button type="button" class="btn ghost hub-cta-secondary" data-hub-mark-paid="${rowDomId}" title="Mark invoice paid">Mark Paid</button>`
+              : "";
+          const archiveBtn =
+            isServerRow && actionState.canArchiveServerInvoice
+              ? `<button type="button" class="btn ghost hub-cta-secondary" data-hub-archive="${rowDomId}" title="Archive invoice">Archive</button>`
+              : "";
+          const deleteBtn =
+            isServerRow && actionState.canDeleteServerInvoice
+              ? `<button type="button" class="btn ghost hub-cta-secondary" data-hub-delete="${rowDomId}" title="Delete invoice">Delete</button>`
               : "";
           const rankClass =
             rankIndex === 0 ? "hub-row--priority-1" : rankIndex === 1 ? "hub-row--priority-2" : rankIndex === 2 ? "hub-row--priority-3" : "";
@@ -8377,6 +8439,8 @@ function renderSupervisor() {
                 <button type="button" class="btn hub-cta-view" data-hub-view="${rowDomId}">View</button>
                 ${sendBtn}
                 ${payBtn}
+                ${archiveBtn}
+                ${deleteBtn}
               </div>
             </td>
           </tr>
@@ -8419,6 +8483,12 @@ function renderSupervisor() {
     bindButton("button[data-hub-pay]", (row, projectId) => onPay(row, projectId));
     bindButton("button[data-hub-mark-paid]", (row) => onMarkPaid(row));
     bindButton("button[data-hub-send-invoice]", (row) => onSendInvoice(row));
+    if (typeof onArchiveServerInvoice === "function") {
+      bindButton("button[data-hub-archive]", (row) => onArchiveServerInvoice(row));
+    }
+    if (typeof onDeleteServerInvoice === "function") {
+      bindButton("button[data-hub-delete]", (row) => onDeleteServerInvoice(row));
+    }
     refreshBulkBar();
   }
 
@@ -8967,6 +9037,12 @@ function renderSupervisor() {
             if (String(row.status || "").toLowerCase() !== "paid") return false;
             break;
           case "needs_action": {
+            if (
+              row.hubRowSource === "server_invoice" &&
+              String(row.hubInvoiceRawStatus || "").toLowerCase() === "archived"
+            ) {
+              return false;
+            }
             const na = row.nextAction || "";
             const urgent = row.priorityScore >= 60 || ["overdue", "expired", "partial"].includes(row.status);
             const pending = !["Healthy", "Paid", "Void", ""].includes(na);
@@ -8977,7 +9053,18 @@ function renderSupervisor() {
             break;
         }
         if (search && !row.searchText.includes(search)) return false;
-        if (statusFilter !== "all" && row.status !== statusFilter) return false;
+        if (statusFilter === "all") {
+          if (
+            row.hubRowSource === "server_invoice" &&
+            String(row.hubInvoiceRawStatus || "").toLowerCase() === "archived"
+          ) {
+            return false;
+          }
+        } else if (statusFilter === "archived") {
+          if (String(row.status || "").toLowerCase() !== "archived") return false;
+        } else if (row.status !== statusFilter) {
+          return false;
+        }
         if (dateFrom && row.dateRaw && row.dateRaw < dateFrom) return false;
         if (customerFilter && !row.customer.toLowerCase().includes(customerFilter)) return false;
         if (locationFilter && !row.location.toLowerCase().includes(locationFilter)) return false;
@@ -9095,6 +9182,51 @@ function renderSupervisor() {
             }
             refresh();
           })();
+        },
+        onArchiveServerInvoice: async (row) => {
+          const iid = String(row.serverInvoiceId || "").trim();
+          if (!MG_SERVER_INVOICE_UUID_RE.test(iid)) {
+            setHubFeedback("No invoice valido para archivar.", "warn");
+            return;
+          }
+          const { ok, data } = await postHubInvoiceArchiveDelete(iid, "archive");
+          if (!ok) {
+            setHubFeedback(data?.error || "No se pudo archivar.", "err");
+            return;
+          }
+          if (typeof window.__mgHubRefetchServerInvoices === "function") {
+            await window.__mgHubRefetchServerInvoices();
+          }
+          if (selectedRow && String(selectedRow.serverInvoiceId || "") === iid) {
+            const sf = val("hubStatusFilter") || "all";
+            if (sf === "all") closeHubDrawer();
+            else {
+              const next = lastMergedHubRows.find((r) => String(r.serverInvoiceId || "") === iid);
+              if (next) openHubDrawer(next);
+              else closeHubDrawer();
+            }
+          }
+          setHubFeedback("Invoice archivado.", "ok");
+        },
+        onDeleteServerInvoice: async (row) => {
+          const iid = String(row.serverInvoiceId || "").trim();
+          if (!MG_SERVER_INVOICE_UUID_RE.test(iid)) {
+            setHubFeedback("No invoice valido para borrar.", "warn");
+            return;
+          }
+          if (!window.confirm("Delete this invoice permanently? This cannot be undone.")) return;
+          const { ok, data } = await postHubInvoiceArchiveDelete(iid, "delete");
+          if (!ok) {
+            setHubFeedback(data?.error || "No se pudo eliminar.", "err");
+            return;
+          }
+          if (typeof window.__mgHubRefetchServerInvoices === "function") {
+            await window.__mgHubRefetchServerInvoices();
+          }
+          if (selectedRow && String(selectedRow.serverInvoiceId || "") === iid) {
+            closeHubDrawer();
+          }
+          setHubFeedback("Invoice eliminado.", "ok");
         }
       });
 

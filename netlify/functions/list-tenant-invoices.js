@@ -16,7 +16,7 @@ function clampInt(value, min, max, fallback) {
   return Math.min(Math.max(n, min), max);
 }
 
-const ALLOWED_STATUS = new Set(["draft", "issued", "sent", "partial", "paid", "overdue", "void"]);
+const ALLOWED_STATUS = new Set(["draft", "issued", "sent", "partial", "paid", "overdue", "void", "archived"]);
 
 function safeEqFilterValue(raw, label) {
   const s = String(raw || "").trim().toLowerCase();

@@ -2711,6 +2711,11 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   border-color:rgba(34,197,94,.38);
 }
 
+.hub-status.archived{
+  background:rgba(148,163,184,.14);
+  border-color:rgba(148,163,184,.35);
+}
+
 .hub-action-disabled{
   opacity:.55;
   pointer-events:none;
