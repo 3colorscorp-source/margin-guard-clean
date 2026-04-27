@@ -185,15 +185,31 @@
   <div class="modal" id="hubDrawer" aria-hidden="true">
     <div class="modal-card hub-drawer-card">
       <div class="modal-header">
-        <div>
-          <div class="modal-title" id="hubDrawerTitle">Project detail</div>
-          <div class="hub-drawer-next-action" id="hubDrawerNextAction">—</div>
+        <div class="hub-drawer-header-stack">
+          <div class="hub-drawer-next-action hub-drawer-next-action--header-primary" id="hubDrawerNextAction">—</div>
+          <div class="modal-title hub-drawer-title-below-action" id="hubDrawerTitle">Project detail</div>
           <div class="modal-subtitle" id="hubDrawerSubtitle">Invoice and estimate detail</div>
         </div>
         <button class="icon-btn" id="btnHubDrawerClose">X</button>
       </div>
       <div class="modal-body">
         <div class="supervisor-summary-grid" id="hubDrawerStats"></div>
+        <div id="hubDrawerProgressBarWrap" class="hub-drawer-progress-wrap">
+          <div class="hub-drawer-progress-meta" id="hubDrawerProgressMeta">—</div>
+          <div class="hub-drawer-progress-track" aria-hidden="true">
+            <div class="hub-drawer-progress-fill" id="hubDrawerProgressFill"></div>
+          </div>
+        </div>
+        <div id="hubDrawerPaymentContext" class="hub-drawer-payment-context">
+          <div class="hub-drawer-kv">
+            <span class="hub-drawer-k">Last payment</span>
+            <span class="hub-drawer-v" id="hubDrawerPaymentLast">—</span>
+          </div>
+          <div class="hub-drawer-kv">
+            <span class="hub-drawer-k">Next payment</span>
+            <span class="hub-drawer-v" id="hubDrawerPaymentNext">—</span>
+          </div>
+        </div>
         <div id="hubDrawerChangeOrdersWrap" class="hub-drawer-section">
           <div class="sub" style="margin:0 0 8px;font-size:12px;">Change orders</div>
           <div class="supervisor-table-wrap">
@@ -211,7 +227,11 @@
         </div>
         <div id="hubDrawerLedgerWrap" class="hub-drawer-section" style="display:none;">
           <div class="sub" style="margin:14px 0 8px;font-size:12px;">Ledger payment history</div>
-          <div class="supervisor-table-wrap">
+          <div id="hubDrawerLedgerEmpty" class="hub-drawer-ledger-empty" style="display:none;">
+            <p class="hub-drawer-ledger-empty-title">No ledger payments yet.</p>
+            <p class="hub-drawer-ledger-empty-cta">Use <strong>Record payment</strong> below to log what you collected—totals update here automatically.</p>
+          </div>
+          <div id="hubDrawerLedgerTableWrap" class="supervisor-table-wrap">
             <table class="table">
               <thead>
                 <tr>

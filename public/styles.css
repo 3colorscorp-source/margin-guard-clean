@@ -2853,6 +2853,10 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   color:#ffffff;
 }
 
+.hub-drawer-header-stack{
+  min-width:0;
+}
+
 .hub-drawer-next-action{
   margin-top:6px;
   font-size:1.05rem;
@@ -2860,8 +2864,112 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   color:rgba(232,238,252,.95);
 }
 
+.hub-drawer-next-action--header-primary{
+  margin-top:0;
+  margin-bottom:8px;
+  font-size:1.2rem;
+  font-weight:800;
+  letter-spacing:.01em;
+  color:#f2f6ff;
+  line-height:1.25;
+}
+
+.hub-drawer-title-below-action{
+  font-size:1.05rem;
+  font-weight:650;
+  margin:0 0 4px;
+}
+
 .hub-drawer-section{
   margin-top:4px;
+}
+
+.hub-drawer-stat-contract .big{
+  font-weight:800;
+}
+
+.hub-drawer-progress-wrap{
+  margin:10px 0 12px;
+}
+
+.hub-drawer-progress-meta{
+  font-size:12px;
+  color:rgba(232,238,252,.72);
+  margin-bottom:6px;
+}
+
+.hub-drawer-progress-track{
+  height:8px;
+  border-radius:999px;
+  background:rgba(255,255,255,.08);
+  overflow:hidden;
+}
+
+.hub-drawer-progress-fill{
+  height:100%;
+  width:0%;
+  border-radius:999px;
+  background:linear-gradient(90deg, #0f8a5f, #12a06e);
+  transition:width .25s ease;
+}
+
+.hub-drawer-payment-context{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px 16px;
+  margin:0 0 14px;
+  padding:10px 12px;
+  border-radius:10px;
+  background:rgba(0,0,0,.18);
+  border:1px solid rgba(255,255,255,.08);
+}
+
+@media (max-width:520px){
+  .hub-drawer-payment-context{
+    grid-template-columns:1fr;
+  }
+}
+
+.hub-drawer-k{
+  display:block;
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  color:rgba(232,238,252,.55);
+  margin-bottom:2px;
+}
+
+.hub-drawer-v{
+  font-size:13px;
+  font-weight:600;
+  color:rgba(232,238,252,.92);
+}
+
+.hub-drawer-ledger-empty{
+  padding:14px 12px;
+  margin-bottom:10px;
+  border-radius:10px;
+  border:1px dashed rgba(255,255,255,.2);
+  background:rgba(0,0,0,.12);
+}
+
+.hub-drawer-ledger-empty-title{
+  margin:0 0 6px;
+  font-size:14px;
+  font-weight:650;
+  color:rgba(232,238,252,.9);
+}
+
+.hub-drawer-ledger-empty-cta{
+  margin:0;
+  font-size:13px;
+  line-height:1.45;
+  color:rgba(232,238,252,.72);
+}
+
+.hub-drawer-ledger-empty-cta strong{
+  color:rgba(232,238,252,.88);
+  font-weight:700;
 }
 
 .hub-drawer-payment-stats.supervisor-summary-grid{
@@ -2892,8 +3000,7 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   line-height:1.2;
 }
 
-.hub-drawer-stat-secondary .big,
-.hub-drawer-stat-progress .big{
+.hub-drawer-stat-secondary .big{
   font-size:1.12rem;
   font-weight:700;
 }

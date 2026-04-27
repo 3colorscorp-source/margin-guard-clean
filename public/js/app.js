@@ -8357,19 +8357,65 @@ function renderSupervisor() {
     return "Collect remaining";
   }
 
-  function updateHubDrawerPaymentDerivedUi(paid, total, settings) {
+  function hubDrawerNextPaymentPlaceholderText(paid, total) {
+    const na = hubDrawerPaymentNextActionFromTotals(paid, total);
+    if (na === "Ready to close") return "None scheduled — contract is whole.";
+    if (na === "Check deposit") return "Expect deposit or first collection.";
+    return "Apply customer payments until remaining is zero.";
+  }
+
+  function formatHubDrawerLastLedgerPaymentLine(payments, settings) {
+    if (!Array.isArray(payments) || !payments.length) return "";
+    const sorted = payments
+      .slice()
+      .sort((a, b) => {
+        const da = Date.parse(String(a?.paid_at || a?.created_at || "")) || 0;
+        const db = Date.parse(String(b?.paid_at || b?.created_at || "")) || 0;
+        return db - da;
+      });
+    const p = sorted[0];
+    const amt = money(finiteNumber(p?.amount, 0), settings.currency);
+    const d = formatDisplayDate(p?.paid_at || p?.created_at || "");
+    const typ = String(p?.payment_type || p?.paymentType || "").trim();
+    const tail = typ ? ` · ${typ}` : "";
+    return `${amt} · ${d}${tail}`;
+  }
+
+  function hubDrawerSetLedgerEmptyState(showEmpty) {
+    const empty = $("hubDrawerLedgerEmpty");
+    const wrap = $("hubDrawerLedgerTableWrap");
+    if (empty) empty.style.display = showEmpty ? "block" : "none";
+    if (wrap) wrap.style.display = showEmpty ? "none" : "";
+  }
+
+  function updateHubDrawerPaymentDerivedUi(paid, total, settings, lastPaymentLine) {
     const t = finiteNumber(total, 0);
     const p = finiteNumber(paid, 0);
     if ($("hubDrawerNextAction")) {
       $("hubDrawerNextAction").textContent = hubDrawerPaymentNextActionFromTotals(p, t);
     }
     const pct = hubDrawerPaymentProgressPct(p, t);
-    if ($("hubDrawerProgressPct")) {
-      $("hubDrawerProgressPct").textContent = pct == null ? "—" : `${pct.toFixed(1)}%`;
+    const fill = $("hubDrawerProgressFill");
+    if (fill) {
+      fill.style.width = `${pct == null ? 0 : pct}%`;
     }
-    if ($("hubDrawerProgressSub")) {
-      $("hubDrawerProgressSub").textContent =
-        t > 0 ? `${money(p, settings.currency)} / ${money(t, settings.currency)}` : "—";
+    const meta = $("hubDrawerProgressMeta");
+    if (meta) {
+      meta.textContent =
+        pct == null
+          ? t > 0
+            ? `0% · ${money(0, settings.currency)} / ${money(t, settings.currency)}`
+            : "—"
+          : `${pct.toFixed(1)}% · ${money(p, settings.currency)} / ${money(t, settings.currency)}`;
+    }
+    const lastEl = $("hubDrawerPaymentLast");
+    if (lastEl) {
+      const s = lastPaymentLine != null ? String(lastPaymentLine).trim() : "";
+      lastEl.textContent = s || "—";
+    }
+    const nextEl = $("hubDrawerPaymentNext");
+    if (nextEl) {
+      nextEl.textContent = hubDrawerNextPaymentPlaceholderText(p, t);
     }
   }
 
@@ -8387,7 +8433,7 @@ function renderSupervisor() {
     }
     if ($("hubDrawerTitle")) $("hubDrawerTitle").textContent = row.title;
     if ($("hubDrawerSubtitle")) {
-      $("hubDrawerSubtitle").textContent = `${row.customer} · ${money(row.amount, settings.currency)} · ${row.status}`;
+      $("hubDrawerSubtitle").textContent = `${row.customer} · ${row.status}`;
     }
 
     const amountTotal = finiteNumber(row.amount, 0);
@@ -8395,18 +8441,14 @@ function renderSupervisor() {
     const ledgerApiOk = hubRowCanRecordLedgerPayment(row);
     const paidLabel = ledgerApiOk ? "…" : money(localPaid, settings.currency);
     const remainingLabel = ledgerApiOk ? "…" : money(Math.max(0, amountTotal - localPaid), settings.currency);
-    const progressInitial = (() => {
-      const pct = hubDrawerPaymentProgressPct(localPaid, amountTotal);
-      return pct == null ? "—" : `${pct.toFixed(1)}%`;
-    })();
 
     if ($("hubDrawerStats")) {
       $("hubDrawerStats").className = "supervisor-summary-grid hub-drawer-payment-stats";
       $("hubDrawerStats").innerHTML = `
-        <div class="supervisor-summary-card hub-drawer-stat-secondary">
-          <div class="title">Invoice ID</div>
-          <div class="big">${escapeHtml(row.invoiceNo || "—")}</div>
-          <div class="small">Folio o referencia</div>
+        <div class="supervisor-summary-card hub-drawer-stat-contract">
+          <div class="title">Contract total</div>
+          <div class="big">${escapeHtml(money(amountTotal, settings.currency))}</div>
+          <div class="small">Job / invoice amount</div>
         </div>
         <div class="supervisor-summary-card hub-drawer-stat-primary">
           <div class="title">Paid to date</div>
@@ -8418,26 +8460,28 @@ function renderSupervisor() {
         <div class="supervisor-summary-card hub-drawer-stat-primary">
           <div class="title">Remaining balance</div>
           <div class="big" id="hubDrawerLedgerRemainingBig">${escapeHtml(remainingLabel)}</div>
-          <div class="small">Contract total minus paid (ledger when linked)</div>
+          <div class="small">Contract total minus paid</div>
         </div>
-        <div class="supervisor-summary-card hub-drawer-stat-progress">
-          <div class="title">Progress</div>
-          <div class="big" id="hubDrawerProgressPct">${escapeHtml(progressInitial)}</div>
-          <div class="small" id="hubDrawerProgressSub">—</div>
+        <div class="supervisor-summary-card hub-drawer-stat-secondary">
+          <div class="title">Invoice ID</div>
+          <div class="big">${escapeHtml(row.invoiceNo || "—")}</div>
+          <div class="small">Folio o referencia</div>
         </div>
       `;
     }
 
-    updateHubDrawerPaymentDerivedUi(localPaid, amountTotal, settings);
+    updateHubDrawerPaymentDerivedUi(localPaid, amountTotal, settings, "");
 
     const ledgerWrap = $("hubDrawerLedgerWrap");
     const ledgerBody = $("hubDrawerLedgerPaymentsBody");
     if (ledgerWrap && ledgerBody) {
       if (ledgerApiOk) {
         ledgerWrap.style.display = "";
+        hubDrawerSetLedgerEmptyState(false);
         ledgerBody.innerHTML = `<tr><td colspan="5">Loading ledger…</td></tr>`;
       } else {
         ledgerWrap.style.display = "none";
+        hubDrawerSetLedgerEmptyState(false);
         ledgerBody.innerHTML = "";
       }
     }
@@ -8452,23 +8496,34 @@ function renderSupervisor() {
         const remEl = $("hubDrawerLedgerRemainingBig");
         const lb = $("hubDrawerLedgerPaymentsBody");
         if (lb && pack) {
-          lb.innerHTML = renderHubDrawerLedgerPaymentsRows(pack.payments, settings);
+          const rows = Array.isArray(pack.payments) ? pack.payments : [];
+          if (!rows.length) {
+            hubDrawerSetLedgerEmptyState(true);
+            lb.innerHTML = "";
+          } else {
+            hubDrawerSetLedgerEmptyState(false);
+            lb.innerHTML = renderHubDrawerLedgerPaymentsRows(rows, settings);
+          }
         }
         if (!paidEl || !remEl) return;
         if (!pack || !Number.isFinite(pack.netSum)) {
           paidEl.textContent = "—";
           remEl.textContent = money(Math.max(0, amountTotal - localPaid), settings.currency);
-          if (lb) lb.innerHTML = `<tr><td colspan="5">Could not load ledger.</td></tr>`;
+          if (lb) {
+            hubDrawerSetLedgerEmptyState(false);
+            lb.innerHTML = `<tr><td colspan="5">Could not load ledger.</td></tr>`;
+          }
           const sub = $("hubDrawerLedgerPaidSub");
           if (sub) sub.textContent = "Ledger unavailable — showing local totals";
-          updateHubDrawerPaymentDerivedUi(localPaid, amountTotal, settings);
+          updateHubDrawerPaymentDerivedUi(localPaid, amountTotal, settings, "");
           return;
         }
         paidEl.textContent = money(pack.netSum, settings.currency);
         remEl.textContent = money(Math.max(0, amountTotal - pack.netSum), settings.currency);
         const subPaid = $("hubDrawerLedgerPaidSub");
         if (subPaid) subPaid.textContent = "Ledger net (tenant_project_payments)";
-        updateHubDrawerPaymentDerivedUi(pack.netSum, amountTotal, settings);
+        const lastLine = formatHubDrawerLastLedgerPaymentLine(pack.payments, settings);
+        updateHubDrawerPaymentDerivedUi(pack.netSum, amountTotal, settings, lastLine);
       })();
     }
 
