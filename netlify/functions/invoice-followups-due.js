@@ -64,7 +64,7 @@ function buildReminderPayload(invoice, businessName, origin) {
     "Client Email": client_email,
     "Public Invoice Url": public_invoice_url,
     business_name,
-    email_subject: `Reminder: Invoice from ${displayBiz}`
+    email_subject: `Invoice balance reminder — ${displayBiz}`
   };
 }
 

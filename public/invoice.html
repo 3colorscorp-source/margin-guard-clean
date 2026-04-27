@@ -391,15 +391,15 @@
     function buildPayButton(data) {
       if (data.payment_link) {
         return `
-          <a class="btn btn-primary" href="${data.payment_link}" target="_blank" rel="noopener noreferrer">
-            Pay Now
+          <a class="btn btn-primary" href="${data.payment_link}" target="_blank" rel="noopener noreferrer" title="Submit payment for your project">
+            Submit payment
           </a>
         `;
       }
 
       return `
-        <button class="btn btn-secondary" type="button" onclick="alert('Payment link not available yet.')">
-          Payment Link Pending
+        <button class="btn btn-secondary" type="button" onclick="alert('Payment link is not available yet.')">
+          Payment link unavailable
         </button>
       `;
     }
@@ -491,7 +491,7 @@
               </div>
 
               <div class="panel">
-                <div class="eyebrow">Balance Due</div>
+                <div class="eyebrow">Remaining invoice balance</div>
                 <p class="big-amount">${balanceDue}</p>
                 <div class="small-note">Due date: ${dueDate}</div>
               </div>
@@ -555,7 +555,7 @@
                   <strong>${paidAmount}</strong>
                 </div>
                 <div class="sum-row total">
-                  <span>Balance Due</span>
+                  <span>Remaining invoice balance</span>
                   <span>${balanceDue}</span>
                 </div>
               </div>

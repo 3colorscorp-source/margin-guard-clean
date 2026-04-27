@@ -461,8 +461,8 @@
       const payButton = payHref
         ? '<a class="btn btn-primary" href="' +
           escapeHtml(payHref) +
-          '" target="_blank" rel="noopener noreferrer">Pay Now</a>'
-        : '<button class="btn btn-secondary" type="button">Payment link not available yet.</button>';
+          '" target="_blank" rel="noopener noreferrer" title="Submit payment for your project">Submit payment</a>'
+        : '<button class="btn btn-secondary" type="button">Payment link is not available yet.</button>';
 
       const invLabelRaw = String(data.invoice_label || "").trim();
       const invLabelBlock = invLabelRaw
@@ -506,7 +506,7 @@
               "</div>" +
             "</div>" +
             '<div class="panel">' +
-              '<div class="eyebrow">Balance Due</div>' +
+              '<div class="eyebrow">Remaining invoice balance</div>' +
               '<p class="big-amount">' +
               balanceDue +
               "</p>" +
@@ -579,7 +579,7 @@
                 "</strong>" +
               "</div>" +
               '<div class="sum-row total">' +
-                "<span>Balance Due</span>" +
+                "<span>Remaining invoice balance</span>" +
                 "<span>" +
                 balanceDue +
                 "</span>" +

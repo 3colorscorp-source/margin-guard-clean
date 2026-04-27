@@ -133,36 +133,36 @@
 
   const DEFAULT_HUB_TEMPLATES = {
     invoice_send: {
-      subject: "Invoice {{invoice_no}} - {{project}}",
+      subject: "Invoice {{invoice_no}} — {{project}}",
       body:
 `Hello {{customer}},
 
-Your invoice is ready.
+Your project invoice is available for review.
 
 Project: {{project}}
 Invoice No: {{invoice_no}}
 Invoice Date: {{invoice_date}}
 Due Date: {{due_date}}
-Total: {{total}}
-Balance Due: {{balance}}
+Contract total: {{total}}
+Remaining invoice balance: {{balance}}
 
-Please reply if you need a copy or payment instructions.
+Reply if you need a revised copy or payment instructions.
 
 Thank you.`
     },
     payment_request: {
-      subject: "Payment Reminder - {{invoice_no}} - {{project}}",
+      subject: "Invoice balance — {{invoice_no}} — {{project}}",
       body:
 `Hello {{customer}},
 
-This is a friendly reminder for your open balance.
+This is a courtesy notice regarding the remaining balance on your project invoice.
 
 Project: {{project}}
 Invoice No: {{invoice_no}}
 Due Date: {{due_date}}
-Balance Due: {{balance}}
+Remaining invoice balance: {{balance}}
 
-Please let us know once payment has been sent.
+You can submit payment using the link on your invoice when ready.
 
 Thank you.`
     }
@@ -2905,7 +2905,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       `Total: ${money(metrics.total, settings.currency)}`,
       `Deposit applied: ${money(metrics.depositApplied, settings.currency)}`,
       `Payments received: ${money(metrics.receivedApplied, settings.currency)}`,
-      `Balance due: ${money(metrics.balance, settings.currency)}`
+      `Remaining invoice balance: ${money(metrics.balance, settings.currency)}`
     ].forEach((line) => {
       doc.text(line, 40, y);
       y += 15;
@@ -3457,7 +3457,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             alerts.push({
               tone: "red",
               title: row.title,
-              body: `${row.customer} rompio promesa de pago del ${row.promisedDate}. Saldo abierto ${money(row.balance, settings.currency)}.`
+              body: `${row.customer}: past commitment date; remaining invoice balance ${money(row.balance, settings.currency)}.`
             });
           });
           const overdueRows = hubRows.filter((row) => ["overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0)
@@ -3467,7 +3467,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             alerts.push({
               tone: "red",
               title: row.title,
-              body: `${row.customer} tiene ${money(row.balance, settings.currency)} vencidos. Accion sugerida: ${row.nextAction}.`
+              body: `${row.customer}: invoice balance past due (${money(row.balance, settings.currency)}). Suggested next step: ${row.nextAction}.`
             });
           });
           const draftRows = hubRows.filter((row) => row.status === "draft" && finiteNumber(row.amount, 0) > 0)
@@ -3486,7 +3486,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             alerts.push({
               tone: "amber",
               title: row.title,
-              body: `${row.customer} va parcial. Quedan ${money(row.balance, settings.currency)} por cobrar.`
+              body: `${row.customer}: project invoice has a remaining balance of ${money(row.balance, settings.currency)}.`
             });
           });
           $("dashboardOwnerAlerts").innerHTML = alerts.length
@@ -7116,9 +7116,9 @@ function renderSupervisor() {
     }
     if (row?.rowType === "estimate" && finiteNumber(row?.amount, 0) > 0 && row?.projectStatus !== "completed") return "Send Invoice";
     if (row?.rowType === "invoice" && st === "draft" && finiteNumber(row?.amount, 0) > 0) return "Send Invoice";
-    if (["sent", "partial"].includes(st) && bal > 0) return "Waiting Payment";
-    if (["overdue", "expired"].includes(st) && bal > 0) return "Collect Balance";
-    if (bal > 0) return "Collect Balance";
+    if (["sent", "partial"].includes(st) && bal > 0) return "Invoice balance pending";
+    if (["overdue", "expired"].includes(st) && bal > 0) return "Remaining balance due";
+    if (bal > 0) return "Remaining balance due";
     return "Completed";
   }
 
@@ -7162,8 +7162,8 @@ function renderSupervisor() {
       return `Start with: ${name} — ${balStr} ready to send`;
     }
     const na = getHubRowCollectNextActionLabel(row);
-    if (na === "Waiting Payment") return `Start with: ${name} — ${balStr} waiting for payment`;
-    if (na === "Collect Balance") return `Start with: ${name} — ${balStr} collect balance`;
+    if (na === "Invoice balance pending") return `Start with: ${name} — ${balStr} invoice balance pending`;
+    if (na === "Remaining balance due") return `Start with: ${name} — ${balStr} remaining balance due`;
     if (na === "Check deposit pending") return `Start with: ${name} — ${balStr} check deposit pending`;
     if (na === "Start project") return `Start with: ${name} — ${balStr} start project`;
     if (na === "Completed") return `Start with: ${name} — ${balStr} (completed)`;
@@ -7348,7 +7348,7 @@ function renderSupervisor() {
       score += 10;
     } else if (["sent", "partial", "overdue", "expired"].includes(row?.status) && balance > 0) {
       tone = daysPastDue > 30 || row?.status === "expired" ? "red" : "amber";
-      nextAction = daysPastDue > 0 ? "Request payment" : "Follow up";
+      nextAction = daysPastDue > 0 ? "Invoice balance follow-up" : "Schedule client follow-up";
     }
     if (row?.status === "paid") {
       score = 0;
@@ -7564,14 +7564,14 @@ function renderSupervisor() {
 
   function getHubSuggestedPlaybook(row) {
     if (row.status === "draft") return "Convertir a invoice y mandar hoy mismo.";
-    if (row.status === "sent" && !row.promisedDateRaw) return "Contactar cliente y buscar promesa de pago concreta.";
+    if (row.status === "sent" && !row.promisedDateRaw) return "Confirm due date and expected payment timing with the client.";
     if (row.collectionStage === "promised" && row.promisedDateRaw) {
       return row.promisedDateRaw < new Date().toISOString().slice(0, 10)
         ? "Promesa rota: escalar y documentar siguiente compromiso."
         : `Esperar promesa al ${row.promisedDate}.`;
     }
     if (["overdue", "expired"].includes(row.status)) return "Escalar seguimiento y definir siguiente accion hoy.";
-    if (row.status === "partial") return "Cobrar saldo restante y confirmar fecha final.";
+    if (row.status === "partial") return "Confirm remaining project balance and expected payment date.";
     if (row.status === "paid") return "Cerrar seguimiento comercial y dejar historial limpio.";
     return "Mantener seguimiento y documentar siguiente paso.";
   }
@@ -7645,8 +7645,8 @@ function renderSupervisor() {
     [
       `Portfolio rows: ${rows.length}`,
       `Total sold/invoiced: ${money(totalAmount, settings.currency)}`,
-      `Open balance: ${money(totalBalance, settings.currency)}`,
-      `Collected cash: ${money(totalCollected, settings.currency)}`,
+      `Outstanding invoice balances: ${money(totalBalance, settings.currency)}`,
+      `Payments received: ${money(totalCollected, settings.currency)}`,
       `Completed projects: ${closeoutRows.length}`,
       `Estimated margin on closeout: ${money(totalMargin, settings.currency)}`
     ].forEach((line) => {
@@ -7839,10 +7839,10 @@ function renderSupervisor() {
       return { ok: false, reason: "Invoice must exist before moving to sent." };
     }
     if (nextStatus === "paid" && !actionState.canMarkPaid) {
-      return { ok: false, reason: "Mark Paid only applies to invoices with open balance." };
+      return { ok: false, reason: "Mark Paid only applies when an invoice has a remaining balance." };
     }
     if (nextStatus === "partial" && !(finiteNumber(current.receivedApplied, 0) > 0 && finiteNumber(calcInvoice(project, report, current).balance, 0) > 0)) {
-      return { ok: false, reason: "Partial requires a real payment and open balance." };
+      return { ok: false, reason: "Partial requires a recorded payment and a remaining invoice balance." };
     }
     if (nextStatus === "draft" && !current.invoiceNo) {
       return { ok: false, reason: "Draft only applies to an existing invoice workflow." };
@@ -7891,7 +7891,7 @@ function renderSupervisor() {
     }
     if (targetKey === "attention") {
       if (!hasInvoice) return { ok: false, reason: "Attention applies to invoiced work only." };
-      if (!hasBalance) return { ok: false, reason: "No open balance to escalate." };
+      if (!hasBalance) return { ok: false, reason: "No remaining invoice balance to escalate." };
       return { ok: true, kind: "escalate", tone: "warn", message: "Cuenta escalada a attention" };
     }
     return { ok: false, reason: "Target column not supported." };
@@ -7904,15 +7904,15 @@ function renderSupervisor() {
         tasks.push({
           priority: 100,
           title: row.title,
-          action: "Call client now",
-          body: `${row.customer} rompio promesa. Saldo ${money(row.balance, settings.currency)} y stage ${row.collectionStage || "new"}.`
+          action: "Follow up account",
+          body: `${row.customer}: commitment date passed; remaining invoice balance ${money(row.balance, settings.currency)} (stage ${row.collectionStage || "new"}).`
         });
       } else if (["overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0) {
         tasks.push({
           priority: 90,
           title: row.title,
-          action: "Send reminder",
-          body: `${row.customer} tiene vencido ${money(row.balance, settings.currency)}. Conviene reminder hoy.`
+          action: "Send balance reminder",
+          body: `${row.customer}: invoice balance past due (${money(row.balance, settings.currency)}). Send a professional reminder.`
         });
       } else if (row.rowType === "estimate" && finiteNumber(row.amount, 0) > 0 && row.projectStatus !== "completed") {
         tasks.push({
@@ -7925,8 +7925,8 @@ function renderSupervisor() {
         tasks.push({
           priority: 60,
           title: row.title,
-          action: "Follow up partial",
-          body: `${row.customer} sigue parcial. Faltan ${money(row.balance, settings.currency)} por cobrar.`
+          action: "Follow up partial payment",
+          body: `${row.customer}: project invoice still shows a remaining balance of ${money(row.balance, settings.currency)}.`
         });
       }
     });
@@ -7940,11 +7940,14 @@ function renderSupervisor() {
       if (!["sent", "partial", "overdue", "expired"].includes(row.status)) return false;
       const invoice = getProjectInvoiceState(row.project);
       const activity = Array.isArray(invoice.activity) ? invoice.activity : [];
-      const alreadyQueuedToday = activity.some((item) =>
-        (item.type || "") === "collections" &&
-        normalizeDateInput(item.at) === todayIso &&
-        String(item.message || "").includes("Auto reminder queued")
-      );
+      const alreadyQueuedToday = activity.some((item) => {
+        const msg = String(item.message || "");
+        return (
+          (item.type || "") === "collections" &&
+          normalizeDateInput(item.at) === todayIso &&
+          (msg.includes("Invoice balance reminder prepared") || msg.includes("Auto reminder queued"))
+        );
+      });
       return !alreadyQueuedToday;
     }).sort((left, right) => right.priorityScore - left.priorityScore);
   }
@@ -7962,7 +7965,7 @@ function renderSupervisor() {
       });
       invoice.activity = appendInvoiceActivity(
         invoice,
-        `Auto reminder queued for ${project.clientName || "client"}.`,
+        `Invoice balance reminder prepared for ${project.clientName || "customer"}.`,
         undefined,
         "collections"
       );
@@ -8120,7 +8123,7 @@ function renderSupervisor() {
 
     const doMailtoFallback = () => {
       const invoice = buildHubInvoiceState(project, report, { status: "sent" });
-      invoice.activity = appendInvoiceActivity(invoice, "Invoice email prepared for client.", undefined, "email");
+      invoice.activity = appendInvoiceActivity(invoice, "Project invoice email draft prepared for customer.", undefined, "email");
       saveProjectInvoiceState(projectId, invoice);
       const message = buildHubCommunication("invoice_send", buildPortfolioRows(loadSettings()).find((row) => row.projectId === projectId) || {
         customer: project.clientName || "-",
@@ -8231,7 +8234,12 @@ function renderSupervisor() {
     const invoice = getProjectInvoiceState(project);
     const metrics = calcInvoice(project, report, invoice);
     const nextInvoice = buildHubInvoiceState(project, report, { status: invoice.status || "sent" });
-    nextInvoice.activity = appendInvoiceActivity(nextInvoice, "Payment request email prepared for client.", undefined, "collections");
+    nextInvoice.activity = appendInvoiceActivity(
+      nextInvoice,
+      "Invoice balance notice prepared for customer.",
+      undefined,
+      "collections"
+    );
     saveProjectInvoiceState(projectId, nextInvoice);
     const message = buildHubCommunication("payment_request", buildPortfolioRows(loadSettings()).find((row) => row.projectId === projectId) || {
       customer: project.clientName || "-",
@@ -8310,7 +8318,7 @@ function renderSupervisor() {
       `Project: ${row.title || "-"}`,
       `Invoice No: ${invoice.invoiceNo || "No invoice"}`,
       `Statement date: ${new Date().toISOString().slice(0, 10)}`,
-      `Open balance: ${money(metrics.balance, settings.currency)}`
+      `Remaining invoice balance: ${money(metrics.balance, settings.currency)}`
     ].forEach((line) => {
       doc.text(line, 40, y);
       y += 15;
@@ -8340,7 +8348,7 @@ function renderSupervisor() {
       `Total invoice: ${money(metrics.total, settings.currency)}`,
       `Deposit applied: ${money(metrics.depositApplied, settings.currency)}`,
       `Payments received: ${money(metrics.receivedApplied, settings.currency)}`,
-      `Balance due: ${money(metrics.balance, settings.currency)}`
+      `Remaining invoice balance: ${money(metrics.balance, settings.currency)}`
     ].forEach((line) => {
       doc.text(line, 40, y);
       y += 15;
@@ -8475,19 +8483,19 @@ function renderSupervisor() {
   function hubDrawerPaymentNextActionFromTotals(paid, total) {
     const t = finiteNumber(total, 0);
     const p = finiteNumber(paid, 0);
-    if (t <= 0) return "Check deposit";
+    if (t <= 0) return "Initial deposit due";
     const pCents = Math.round(p * 100);
     const tCents = Math.round(t * 100);
-    if (pCents <= 0) return "Check deposit";
-    if (pCents >= tCents) return "Ready to close";
-    return "Collect remaining";
+    if (pCents <= 0) return "Initial deposit due";
+    if (pCents >= tCents) return "Paid in full";
+    return "Remaining balance due";
   }
 
   function hubDrawerNextPaymentPlaceholderText(paid, total) {
     const na = hubDrawerPaymentNextActionFromTotals(paid, total);
-    if (na === "Ready to close") return "None scheduled — contract is whole.";
-    if (na === "Check deposit") return "Expect deposit or first collection.";
-    return "Apply customer payments until remaining is zero.";
+    if (na === "Paid in full") return "No further balance — project invoice is settled.";
+    if (na === "Initial deposit due") return "Await initial deposit or first project payment.";
+    return "Record payments until the remaining invoice balance is zero.";
   }
 
   function formatHubDrawerLastLedgerPaymentLine(payments, settings) {
@@ -8597,7 +8605,7 @@ function renderSupervisor() {
         <div class="supervisor-summary-card hub-drawer-stat-primary">
           <div class="title">Remaining balance</div>
           <div class="big" id="hubDrawerLedgerRemainingBig">${escapeHtml(remainingLabel)}</div>
-          <div class="small">Contract total minus paid</div>
+          <div class="small">Project contract total minus payments recorded</div>
         </div>
         <div class="supervisor-summary-card hub-drawer-stat-secondary">
           <div class="title">Invoice ID</div>
@@ -8899,7 +8907,9 @@ function renderSupervisor() {
         });
         closeHubClientDetail();
         setHubFeedback(
-          sent ? `${sent} reminders preparados para ${customerName}.` : `No habia reminders validos para ${customerName}.`,
+          sent
+            ? `${sent} invoice balance reminders prepared for ${customerName}.`
+            : `No eligible invoice balance reminders for ${customerName}.`,
           sent ? "ok" : "warn"
         );
       };
@@ -9285,7 +9295,7 @@ function renderSupervisor() {
             const el = $("hubFormInvoiceLabelPreview");
             if (!el) return;
             const txt = resolveHubInvoiceLabelFromForm(val("hubFormInvoiceLabelPreset"), val("hubFormInvoiceLabelCustom"));
-            el.textContent = txt ? `Client will see: ${txt}` : "Client will see: —";
+            el.textContent = txt ? `Public invoice will show: ${txt}` : "Public invoice will show: —";
           };
           const syncPurposeFromPresetAndCustom = () => {
             const purposeEl = $("hubFormInvoicePurpose");
@@ -9356,7 +9366,7 @@ function renderSupervisor() {
           },
           {
             type: "static",
-            html: `<div class="hub-invoice-setup-preview" id="hubFormInvoiceLabelPreviewWrap"><div id="hubFormInvoiceLabelPreview" class="hub-invoice-setup-preview-line">Client will see: —</div></div>`
+            html: `<div class="hub-invoice-setup-preview" id="hubFormInvoiceLabelPreviewWrap"><div id="hubFormInvoiceLabelPreview" class="hub-invoice-setup-preview-line">Public invoice will show: —</div></div>`
           },
           {
             id: "hubFormInvoiceDate",
@@ -9622,7 +9632,7 @@ function renderSupervisor() {
       if ($("hubHeroTotal")) $("hubHeroTotal").textContent = money(totalBalance, settings.currency);
       if ($("hubHeroMeta")) {
         $("hubHeroMeta").textContent = filteredRows.length
-          ? `${filteredRows.length} open jobs · ${money(totalBalance, settings.currency)} still out`
+          ? `${filteredRows.length} jobs · ${money(totalBalance, settings.currency)} in outstanding invoice balances`
           : "No invoices yet. Create an estimate to get started.";
       }
       if ($("hubPortfolioBadge")) $("hubPortfolioBadge").textContent = `${filteredRows.length} jobs`;
@@ -9633,7 +9643,7 @@ function renderSupervisor() {
 
       if ($("hubKpiTotalCollect")) $("hubKpiTotalCollect").textContent = money(totalBalance, settings.currency);
       if ($("hubKpiTotalCollectMeta")) {
-        $("hubKpiTotalCollectMeta").textContent = `${openJobCount} jobs still open`;
+        $("hubKpiTotalCollectMeta").textContent = `${openJobCount} jobs with an outstanding invoice balance`;
       }
       if ($("hubKpiStartWithValue")) {
         $("hubKpiStartWithValue").textContent = hubTableDisplayRows.length
@@ -9653,7 +9663,7 @@ function renderSupervisor() {
         if (showWaitingKpi) {
           if ($("hubKpiWaitingAmount")) $("hubKpiWaitingAmount").textContent = money(waitingPaymentTotal, settings.currency);
           if ($("hubKpiWaitingMeta")) {
-            $("hubKpiWaitingMeta").textContent = `${waitingCount} waiting for payment`;
+            $("hubKpiWaitingMeta").textContent = `${waitingCount} with outstanding invoice balance`;
           }
         }
       }
@@ -9705,7 +9715,7 @@ function renderSupervisor() {
               await sendHubServerInvoiceRow(row);
             } else {
               await sendHubInvoice(row.projectId);
-              setHubFeedback(`Correo de invoice preparado para ${row.customer}.`, "ok");
+              setHubFeedback(`Invoice email draft prepared for ${row.customer}.`, "ok");
             }
             refresh();
           })();
