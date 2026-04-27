@@ -880,14 +880,41 @@
   <script>
 const btn = document.getElementById('btnToggleBankConsole');
 const panel = document.getElementById('fccBankCollapsePanel');
+const LS_KEY = 'mg_dashboard_bank_panel_hidden';
 
 if (btn && panel) {
+  function readBankHiddenPref() {
+    try {
+      return localStorage.getItem(LS_KEY) === 'true';
+    } catch (_e) {
+      return false;
+    }
+  }
+
+  function persistBankHiddenPref() {
+    try {
+      const hidden = panel.hidden === true || panel.hasAttribute('hidden');
+      localStorage.setItem(LS_KEY, hidden ? 'true' : 'false');
+    } catch (_e) { /* ignore */ }
+  }
+
+  function applyBankHiddenPref() {
+    if (readBankHiddenPref()) {
+      panel.hidden = true;
+      panel.setAttribute('hidden', '');
+    } else {
+      panel.hidden = false;
+      panel.removeAttribute('hidden');
+    }
+  }
+
   function syncBankToggle() {
     const isHidden = panel.hidden === true || panel.hasAttribute('hidden');
     btn.textContent = isHidden ? 'Show banking & Stripe' : 'Hide banking & Stripe';
     btn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
   }
 
+  applyBankHiddenPref();
   syncBankToggle();
 
   btn.addEventListener('click', function () {
@@ -901,6 +928,7 @@ if (btn && panel) {
       panel.setAttribute('hidden', '');
     }
 
+    persistBankHiddenPref();
     syncBankToggle();
   });
 }
