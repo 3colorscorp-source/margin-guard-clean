@@ -1,13 +1,11 @@
 /**
- * Scheduled (Netlify cron): send invoice payment reminders via Zapier when
- * sent_at is set and the invoice is still open (not paid/void, balance open).
+ * Scheduled (Netlify cron): past-due invoice balance reminders via Zapier.
  *
- * Waves (from sent_at): +10 minutes, +24 hours, +72 hours — same webhook URL
- * as send-invoice (ZAPIER_INVOICE_SEND_WEBHOOK_URL). Payload matches invoice
- * send plus email_subject for the reminder line.
+ * Ladder (calendar days after due_date, UTC date math): D1, D3, D7, D14.
+ * One webhook per qualifying stage; PATCH marks the stage sent only after Zapier POST succeeds.
  *
- * Requires columns followup_1_sent_at, followup_2_sent_at, followup_3_sent_at
- * (see SUPABASE_INVOICES_FOLLOWUP_TRACKING.sql).
+ * Env: ZAPIER_INVOICE_REMINDER_WEBHOOK (Catch Hook URL).
+ * DB: reminder_d1_sent_at … reminder_d14_sent_at (see SUPABASE_INVOICES_DUE_DATE_REMINDER_LADDER.sql).
  */
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -16,11 +14,15 @@ if (!fetch) {
 
 const { supabaseRequest } = require("./_lib/supabase-admin");
 
-const TEN_MIN_MS = 10 * 60 * 1000;
-const H24_MS = 24 * 60 * 60 * 1000;
-const H72_MS = 72 * 60 * 60 * 1000;
-const MAX_SCAN = 150;
+const MAX_SCAN = 250;
 const MAX_SENDS_PER_RUN = 40;
+
+const STAGES = [
+  { key: "D1", days: 1, column: "reminder_d1_sent_at" },
+  { key: "D3", days: 3, column: "reminder_d3_sent_at" },
+  { key: "D7", days: 7, column: "reminder_d7_sent_at" },
+  { key: "D14", days: 14, column: "reminder_d14_sent_at" }
+];
 
 function json(statusCode, body) {
   return {
@@ -39,70 +41,90 @@ function pickFirstStr(...values) {
   return "";
 }
 
-function originBase() {
-  return String(process.env.URL || process.env.DEPLOY_PRIME_URL || "")
-    .trim()
-    .replace(/\/+$/, "");
+/** Parse YYYY-MM-DD (issue_date / due_date) to UTC midnight for that calendar day. */
+function parseDateOnlyUtc(value) {
+  const s = String(value || "").trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const d = Number(m[3]);
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return null;
+  return new Date(Date.UTC(y, mo, d));
 }
 
-function publicInvoiceUrl(origin, token) {
-  const t = encodeURIComponent(String(token || "").trim());
-  if (!t) return "";
-  const o = String(origin || "").replace(/\/+$/, "");
-  return o ? `${o}/invoice-public.html?token=${t}` : `/invoice-public.html?token=${t}`;
+/** Whole calendar days from due date to today (UTC). 0 = due today, 1 = first day after due, etc. */
+function calendarDaysPastDue(dueDateStr) {
+  const due = parseDateOnlyUtc(dueDateStr);
+  if (!due) return -1;
+  const now = new Date();
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const dueUtc = Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate());
+  return Math.floor((todayUtc - dueUtc) / 86400000);
 }
 
-function buildReminderPayload(invoice, businessName, origin) {
-  const token = String(invoice.public_token || "").trim();
-  const client_name = pickFirstStr(invoice.customer_name, invoice.project_name);
-  const client_email = pickFirstStr(invoice.customer_email);
-  const business_name = businessName || "";
-  const public_invoice_url = publicInvoiceUrl(origin, token);
-  const displayBiz = business_name || "your contractor";
-  return {
-    client_name,
-    "Client Email": client_email,
-    "Public Invoice Url": public_invoice_url,
-    business_name,
-    email_subject: `Invoice balance reminder — ${displayBiz}`
-  };
-}
-
-function msSinceSent(sentAtIso) {
-  const t = Date.parse(String(sentAtIso || ""));
-  if (!Number.isFinite(t)) return -1;
-  return Date.now() - t;
-}
-
-function isInvoiceOpenForFollowup(inv) {
-  const st = String(inv.status || "").toLowerCase();
-  if (st === "paid" || st === "void") return false;
+function remainingBalance(inv) {
   const amt = Number(inv.amount || 0);
   const paid = Number(inv.paid_amount || 0);
   let bal = Number(inv.balance_due);
   if (!Number.isFinite(bal)) bal = amt - paid;
-  if (amt > 0 && paid >= amt) return false;
-  if (Number.isFinite(bal) && bal <= 0) return false;
-  return true;
+  if (!Number.isFinite(bal)) return 0;
+  return Math.round(bal * 100) / 100;
 }
 
-/** Which wave (1|2|3) is due, or 0 if none. Strictly sequential: 2 only after 1, 3 after 2. */
-function dueFollowupWave(inv) {
-  const elapsed = msSinceSent(inv.sent_at);
-  if (elapsed < 0) return 0;
-  if (!inv.followup_1_sent_at) {
-    if (elapsed >= TEN_MIN_MS) return 1;
-    return 0;
+function isPaidLike(inv) {
+  const st = String(inv.status || "").trim().toLowerCase();
+  if (st === "paid" || st === "void") return true;
+  const bal = remainingBalance(inv);
+  if (bal <= 0) return true;
+  const amt = Number(inv.amount || 0);
+  const paid = Number(inv.paid_amount || 0);
+  if (amt > 0 && paid >= amt) return true;
+  return false;
+}
+
+function isArchived(inv) {
+  return String(inv.status || "").trim().toLowerCase() === "archived";
+}
+
+function hasClientEmail(inv) {
+  const e = pickFirstStr(inv.customer_email);
+  return e.includes("@") && e.length >= 5;
+}
+
+/**
+ * Earliest ladder stage that qualifies and has not been sent yet (sequential catch-up).
+ */
+function nextReminderStage(inv, daysPastDue) {
+  if (daysPastDue < 1) return null;
+  for (const { key, days, column } of STAGES) {
+    if (daysPastDue < days) return null;
+    if (inv[column]) continue;
+    return { key, days, column };
   }
-  if (!inv.followup_2_sent_at) {
-    if (elapsed >= H24_MS) return 2;
-    return 0;
-  }
-  if (!inv.followup_3_sent_at) {
-    if (elapsed >= H72_MS) return 3;
-    return 0;
-  }
-  return 0;
+  return null;
+}
+
+function buildReminderPayload(inv, tenantName, stageKey, remainingBal) {
+  const business_name = pickFirstStr(inv.business_name, tenantName);
+  const client_name = pickFirstStr(inv.customer_name, inv.project_name);
+  const client_email = pickFirstStr(inv.customer_email);
+  const project_name = pickFirstStr(inv.project_name);
+  const invoice_label = pickFirstStr(inv.invoice_label);
+  const invoice_number = pickFirstStr(inv.invoice_no);
+  const st = String(inv.status || "").trim().toLowerCase();
+  return {
+    client_email,
+    client_name,
+    business_name,
+    project_name,
+    invoice_label,
+    invoice_number,
+    remaining_balance: remainingBal,
+    is_paid: isPaidLike(inv),
+    is_archived: st === "archived",
+    reminder_stage: stageKey
+  };
 }
 
 exports.handler = async (event) => {
@@ -115,17 +137,16 @@ exports.handler = async (event) => {
     return json(405, { ok: false, error: "Method Not Allowed" });
   }
 
-  const webhookUrl = String(process.env.ZAPIER_INVOICE_SEND_WEBHOOK_URL || "").trim();
+  const webhookUrl = String(process.env.ZAPIER_INVOICE_REMINDER_WEBHOOK || "").trim();
   if (!webhookUrl || /TU_WEBHOOK_URL_AQUI/i.test(webhookUrl)) {
-    console.info("[invoice-followups-due] ZAPIER_INVOICE_SEND_WEBHOOK_URL missing; noop");
-    return json(200, { ok: true, skipped: true, reason: "webhook_not_configured" });
+    console.info("[invoice-followups-due] ZAPIER_INVOICE_REMINDER_WEBHOOK missing; noop");
+    return json(200, { ok: true, skipped: true, reason: "reminder_webhook_not_configured" });
   }
 
-  const origin = originBase();
   let list = [];
   try {
     const rows = await supabaseRequest(
-      `invoices?sent_at=not.is.null&order=sent_at.desc&limit=${MAX_SCAN}`,
+      `invoices?due_date=not.is.null&tenant_id=not.is.null&order=due_date.asc&limit=${MAX_SCAN}`,
       { method: "GET" }
     );
     list = Array.isArray(rows) ? rows : [];
@@ -134,7 +155,13 @@ exports.handler = async (event) => {
     return json(500, { ok: false, error: e.message || "list failed" });
   }
 
-  const stats = { scanned: list.length, sent: 0, skipped: 0, errors: 0 };
+  const stats = {
+    scanned: list.length,
+    sent: 0,
+    skipped: 0,
+    errors: 0,
+    byStage: { D1: 0, D3: 0, D7: 0, D14: 0 }
+  };
   const tenantNameCache = new Map();
 
   for (const inv of list) {
@@ -143,18 +170,29 @@ exports.handler = async (event) => {
       stats.skipped += 1;
       continue;
     }
-    if (!isInvoiceOpenForFollowup(inv)) {
+    if (isArchived(inv) || isPaidLike(inv)) {
       stats.skipped += 1;
       continue;
     }
-    const wave = dueFollowupWave(inv);
-    if (!wave) {
+    if (!hasClientEmail(inv)) {
       stats.skipped += 1;
       continue;
     }
 
-    const client_email = pickFirstStr(inv.customer_email);
-    if (!client_email) {
+    const bal = remainingBalance(inv);
+    if (!(bal > 0)) {
+      stats.skipped += 1;
+      continue;
+    }
+
+    const daysPast = calendarDaysPastDue(inv.due_date);
+    if (daysPast < 1) {
+      stats.skipped += 1;
+      continue;
+    }
+
+    const stage = nextReminderStage(inv, daysPast);
+    if (!stage) {
       stats.skipped += 1;
       continue;
     }
@@ -175,12 +213,7 @@ exports.handler = async (event) => {
       tenantNameCache.set(String(inv.tenant_id), tenantName);
     }
 
-    const businessName = pickFirstStr(inv.business_name, tenantName);
-    const payload = buildReminderPayload(inv, businessName, origin);
-    if (!payload["Client Email"] || !payload["Public Invoice Url"]) {
-      stats.skipped += 1;
-      continue;
-    }
+    const payload = buildReminderPayload(inv, tenantName, stage.key, bal);
 
     try {
       const res = await fetch(webhookUrl, {
@@ -191,7 +224,7 @@ exports.handler = async (event) => {
       if (!res.ok) {
         console.warn("[invoice-followups-due] Zapier non-OK", {
           invoiceId: inv.id,
-          wave,
+          stage: stage.key,
           status: res.status
         });
         stats.errors += 1;
@@ -199,19 +232,19 @@ exports.handler = async (event) => {
       }
 
       const nowIso = new Date().toISOString();
-      const patchBody =
-        wave === 1
-          ? { followup_1_sent_at: nowIso, updated_at: nowIso }
-          : wave === 2
-            ? { followup_2_sent_at: nowIso, updated_at: nowIso }
-            : { followup_3_sent_at: nowIso, updated_at: nowIso };
+      const patchBody = {
+        [stage.column]: nowIso,
+        last_reminder_at: nowIso,
+        updated_at: nowIso
+      };
 
       await supabaseRequest(
         `invoices?id=eq.${encodeURIComponent(String(inv.id))}&tenant_id=eq.${encodeURIComponent(String(inv.tenant_id))}`,
         { method: "PATCH", headers: { Prefer: "return=minimal" }, body: patchBody }
       );
       stats.sent += 1;
-      console.log("[invoice-followups-due] sent wave", wave, "invoice", inv.id);
+      if (stats.byStage[stage.key] != null) stats.byStage[stage.key] += 1;
+      console.log("[invoice-followups-due] sent", stage.key, "invoice", inv.id);
     } catch (e) {
       console.warn("[invoice-followups-due] send/patch failed", inv.id, e?.message || e);
       stats.errors += 1;

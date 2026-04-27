@@ -5,7 +5,7 @@
 [build.environment]
   NODE_VERSION = "20"
 
-# Invoice reminder waves (+10m / +24h / +72h after sent_at); see invoice-followups-due.js
+# Invoice past-due reminders (D1/D3/D7/D14 after due_date); see invoice-followups-due.js + ZAPIER_INVOICE_REMINDER_WEBHOOK
 
 [[redirects]]
   from = "/"
