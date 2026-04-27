@@ -2404,8 +2404,36 @@ Thank you.`
     node.textContent = message;
   }
 
+  let hubFeedbackOkClearTimer = null;
+
+  /** Clear #hubFeedback only when it is showing a success (ok) notice; leaves err/warn visible. */
+  function clearHubFeedbackOkIfShown() {
+    if (hubFeedbackOkClearTimer) {
+      clearTimeout(hubFeedbackOkClearTimer);
+      hubFeedbackOkClearTimer = null;
+    }
+    const node = $("hubFeedback");
+    if (!node || node.style.display === "none") return;
+    const classes = String(node.className || "")
+      .trim()
+      .split(/\s+/);
+    if (!classes.includes("ok")) return;
+    setNotice("hubFeedback", "", "");
+  }
+
   function setHubFeedback(message, tone) {
+    if (hubFeedbackOkClearTimer) {
+      clearTimeout(hubFeedbackOkClearTimer);
+      hubFeedbackOkClearTimer = null;
+    }
     setNotice("hubFeedback", message, tone);
+    const t = String(tone ?? "").toLowerCase();
+    if (message && t === "ok") {
+      hubFeedbackOkClearTimer = setTimeout(() => {
+        hubFeedbackOkClearTimer = null;
+        clearHubFeedbackOkIfShown();
+      }, 3500);
+    }
   }
 
   /** Human-readable line for #hubFeedback from send-invoice-zapier JSON (or similar). */
@@ -2464,6 +2492,7 @@ Thank you.`
     if ($("hubFormModal")) $("hubFormModal").setAttribute("aria-hidden", "true");
     if ($("hubFormFields")) $("hubFormFields").innerHTML = "";
     setNotice("hubFormFeedback", "", "");
+    clearHubFeedbackOkIfShown();
   }
 
   function openHubFormModal(config) {
@@ -8761,6 +8790,7 @@ function renderSupervisor() {
 
     const closeHubDrawer = () => {
       if ($("hubDrawer")) $("hubDrawer").setAttribute("aria-hidden", "true");
+      clearHubFeedbackOkIfShown();
     };
 
     const openPaymentForm = (row, existingPayment, onSubmit) => {
