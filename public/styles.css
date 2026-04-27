@@ -2853,6 +2853,17 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   color:#ffffff;
 }
 
+.hub-drawer-next-action{
+  margin-top:6px;
+  font-size:1.05rem;
+  font-weight:700;
+  color:rgba(232,238,252,.95);
+}
+
+.hub-drawer-section{
+  margin-top:4px;
+}
+
 .hub-drawer-card{
   width:min(920px, 96vw);
 }

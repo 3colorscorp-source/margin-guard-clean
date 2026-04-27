@@ -8261,43 +8261,102 @@ function renderSupervisor() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  async function fetchHubDrawerLedgerPaidSum(row) {
+    if (row?.hubRowSource !== "server_invoice") return null;
+    const id = String(row.serverInvoiceId || "").trim();
+    if (!MG_SERVER_INVOICE_UUID_RE.test(id)) return null;
+    try {
+      const res = await fetch(
+        `/.netlify/functions/list-tenant-payments?invoice_id=${encodeURIComponent(id)}&limit=500`,
+        { credentials: "same-origin", headers: { Accept: "application/json" } }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok || !Array.isArray(data.payments)) return null;
+      return data.payments.reduce((s, p) => s + Math.max(finiteNumber(p?.amount, 0), 0), 0);
+    } catch (_e) {
+      return null;
+    }
+  }
+
   function renderHubDrawerDetails(row, settings, handlers) {
     if (!row) return;
     const invoice = getProjectInvoiceState(row.project);
-    if ($("hubDrawer")) $("hubDrawer").setAttribute("aria-hidden", "false");
+    const drawerEl = $("hubDrawer");
+    if (drawerEl) {
+      drawerEl.dataset.hubDrawerRowKey =
+        row.hubRowSource === "server_invoice"
+          ? String(row.serverInvoiceId || "").trim()
+          : String(row.projectId || "");
+      drawerEl.setAttribute("aria-hidden", "false");
+    }
     if ($("hubDrawerTitle")) $("hubDrawerTitle").textContent = row.title;
+    if ($("hubDrawerNextAction")) {
+      $("hubDrawerNextAction").textContent = getHubRowCollectNextActionLabel(row);
+    }
     if ($("hubDrawerSubtitle")) {
-      $("hubDrawerSubtitle").textContent = `${row.customer}   ${row.projectId}   ${row.status}   ${money(row.amount, settings.currency)}`;
+      $("hubDrawerSubtitle").textContent = `${row.customer} · ${money(row.amount, settings.currency)} · ${row.status}`;
     }
+
+    const amountTotal = finiteNumber(row.amount, 0);
+    const balanceDue = finiteNumber(row.balance, 0);
+    const localPaid = finiteNumber(row.depositApplied, 0) + finiteNumber(row.receivedApplied, 0);
+    const serverUuidOk =
+      row.hubRowSource === "server_invoice" && MG_SERVER_INVOICE_UUID_RE.test(String(row.serverInvoiceId || "").trim());
+    const paidLabel = serverUuidOk ? "…" : money(localPaid, settings.currency);
+    const remainingLabel = serverUuidOk ? "…" : money(Math.max(0, amountTotal - localPaid), settings.currency);
+
     if ($("hubDrawerStats")) {
-      $("hubDrawerStats").innerHTML = [
-        ["Location", row.location || "No location", "Ubicación asociada al proyecto"],
-        ["Customer", row.customerEmail || "No email", row.customerPhone || "No phone"],
-        ["Invoice", row.invoiceNo || "No invoice", "Folio o referencia actual"],
-        ["Collections", row.collectionStage || "new", "Etapa actual de seguimiento"],
-        ["Balance", money(row.balance, settings.currency), "Saldo pendiente del proyecto"],
-        ["Due Date", row.dueDate || "No due date", row.daysPastDue > 0 ? `${row.daysPastDue} dias past due` : "Fecha comprometida del cobro"],
-        ["Promise", row.promisedDate || "No promise", row.promisedDateRaw ? "Promesa de pago registrada" : "Sin promesa activa"],
-        ["Priority", `${row.priorityScore}`, `Next: ${row.nextAction}`],
-        ["Health", `${row.projectHealthScore}%`, row.projectHealthLabel],
-        ["Payments", money((row.depositApplied || 0) + (row.receivedApplied || 0), settings.currency), "Depositos y cobros aplicados"]
-      ].map(([title, big, small]) => `
+      $("hubDrawerStats").innerHTML = `
         <div class="supervisor-summary-card">
-          <div class="title">${escapeHtml(title)}</div>
-          <div class="big">${escapeHtml(big)}</div>
-          <div class="small">${escapeHtml(small)}</div>
+          <div class="title">Invoice ID</div>
+          <div class="big">${escapeHtml(row.invoiceNo || "—")}</div>
+          <div class="small">Folio o referencia</div>
         </div>
-      `).join("");
+        <div class="supervisor-summary-card">
+          <div class="title">Paid to date</div>
+          <div class="big" id="hubDrawerLedgerPaidBig">${escapeHtml(paidLabel)}</div>
+          <div class="small">Ledger total for server invoices; local sum otherwise</div>
+        </div>
+        <div class="supervisor-summary-card">
+          <div class="title">Remaining balance</div>
+          <div class="big" id="hubDrawerLedgerRemainingBig">${escapeHtml(remainingLabel)}</div>
+          <div class="small">Invoice total minus paid to date</div>
+        </div>
+        <div class="supervisor-summary-card">
+          <div class="title">Balance</div>
+          <div class="big">${escapeHtml(money(balanceDue, settings.currency))}</div>
+          <div class="small">Balance shown in hub</div>
+        </div>
+      `;
     }
-    if ($("hubDrawerNote")) {
-      $("hubDrawerNote").textContent = `Proyecto ${row.title}. Estado ${row.status}. Proxima accion sugerida: ${row.nextAction}. Playbook: ${getHubSuggestedPlaybook(row)} Change orders totales: ${row.changeOrderCount}. Change orders incluidos en invoice: ${row.approvedChangeOrderCount}.`;
+
+    if (serverUuidOk && drawerEl) {
+      const rowKey = drawerEl.dataset.hubDrawerRowKey || "";
+      void (async () => {
+        const sum = await fetchHubDrawerLedgerPaidSum(row);
+        const d = $("hubDrawer");
+        if (!d || d.dataset.hubDrawerRowKey !== rowKey) return;
+        const paidEl = $("hubDrawerLedgerPaidBig");
+        const remEl = $("hubDrawerLedgerRemainingBig");
+        if (!paidEl || !remEl) return;
+        if (sum == null || !Number.isFinite(sum)) {
+          paidEl.textContent = "—";
+          remEl.textContent = money(Math.max(0, amountTotal - localPaid), settings.currency);
+          return;
+        }
+        paidEl.textContent = money(sum, settings.currency);
+        remEl.textContent = money(Math.max(0, amountTotal - sum), settings.currency);
+      })();
     }
+
     if (typeof handlers.applyHubActionButtonState === "function") {
       handlers.applyHubActionButtonState(row);
     }
 
+    const changeOrders = Array.isArray(row.report?.changeOrders) ? row.report.changeOrders : [];
+    const changeWrap = $("hubDrawerChangeOrdersWrap");
+    if (changeWrap) changeWrap.style.display = changeOrders.length ? "" : "none";
     if ($("hubDrawerCoBody")) {
-      const changeOrders = Array.isArray(row.report?.changeOrders) ? row.report.changeOrders : [];
       $("hubDrawerCoBody").innerHTML = changeOrders.length
         ? changeOrders.map((item) => `
             <tr>
@@ -8325,7 +8384,7 @@ function renderSupervisor() {
               </td>
             </tr>
           `).join("")
-        : `<tr><td colspan="5">No payments recorded yet.</td></tr>`;
+        : `<tr><td colspan="5">No line-item payments yet. Ledger entries will list here when connected.</td></tr>`;
 
       $("hubDrawerPaymentsBody").querySelectorAll("button[data-edit-payment]").forEach((button) => {
         button.onclick = () => {
@@ -8345,30 +8404,6 @@ function renderSupervisor() {
       });
     }
 
-    if ($("hubDrawerPaymentTotals")) {
-      const totalsByMethod = invoice.payments.reduce((acc, payment) => {
-        const key = nonEmptyString(payment.method, "manual");
-        acc[key] = (acc[key] || 0) + Math.max(finiteNumber(payment.amount, 0), 0);
-        return acc;
-      }, {});
-      const methodEntries = Object.entries(totalsByMethod);
-      $("hubDrawerPaymentTotals").innerHTML = methodEntries.length
-        ? methodEntries.map(([method, amount]) => `
-            <div class="supervisor-summary-card">
-              <div class="title">Method</div>
-              <div class="big">${escapeHtml(method)}</div>
-              <div class="small">${escapeHtml(money(amount, settings.currency))}</div>
-            </div>
-          `).join("")
-        : `
-            <div class="supervisor-summary-card">
-              <div class="title">Methods</div>
-              <div class="big">No payments</div>
-              <div class="small">Aun no hay cobros registrados</div>
-            </div>
-          `;
-    }
-
     const renderActivityRows = (items, emptyMessage) => items.length
       ? items.map((item) => `
           <tr>
@@ -8378,12 +8413,18 @@ function renderSupervisor() {
         `).join("")
       : `<tr><td colspan="2">${escapeHtml(emptyMessage)}</td></tr>`;
 
-    if ($("hubDrawerActivityBody")) {
-      $("hubDrawerActivityBody").innerHTML = renderActivityRows(invoice.activity, "No activity recorded yet.");
-    }
+    const activityList = Array.isArray(invoice.activity) ? invoice.activity : [];
+    const collectionEvents = activityList.filter((item) => ["followup", "collections"].includes(item.type || "note"));
+    const collectionsWrap = $("hubDrawerCollectionsWrap");
+    if (collectionsWrap) collectionsWrap.style.display = collectionEvents.length ? "" : "none";
     if ($("hubDrawerCollectionsBody")) {
-      const collectionEvents = invoice.activity.filter((item) => ["followup", "collections"].includes(item.type || "note"));
       $("hubDrawerCollectionsBody").innerHTML = renderActivityRows(collectionEvents, "No collections history yet.");
+    }
+
+    const activityWrap = $("hubDrawerActivityWrap");
+    if (activityWrap) activityWrap.style.display = activityList.length ? "" : "none";
+    if ($("hubDrawerActivityBody")) {
+      $("hubDrawerActivityBody").innerHTML = renderActivityRows(activityList, "No activity recorded yet.");
     }
   }
 

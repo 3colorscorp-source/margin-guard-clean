@@ -187,28 +187,29 @@
       <div class="modal-header">
         <div>
           <div class="modal-title" id="hubDrawerTitle">Project detail</div>
+          <div class="hub-drawer-next-action" id="hubDrawerNextAction">—</div>
           <div class="modal-subtitle" id="hubDrawerSubtitle">Invoice and estimate detail</div>
         </div>
         <button class="icon-btn" id="btnHubDrawerClose">X</button>
       </div>
       <div class="modal-body">
         <div class="supervisor-summary-grid" id="hubDrawerStats"></div>
-        <div class="dashboard-note">
-          <div class="dashboard-note-title">Operacion</div>
-          <div class="dashboard-note-copy" id="hubDrawerNote">Sin detalle cargado.</div>
+        <div id="hubDrawerChangeOrdersWrap" class="hub-drawer-section">
+          <div class="sub" style="margin:0 0 8px;font-size:12px;">Change orders</div>
+          <div class="supervisor-table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Change Order</th>
+                  <th>Status</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody id="hubDrawerCoBody"></tbody>
+            </table>
+          </div>
         </div>
-        <div class="supervisor-table-wrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Change Order</th>
-                <th>Status</th>
-                <th>Amount</th>
-              </tr>
-            </thead>
-            <tbody id="hubDrawerCoBody"></tbody>
-          </table>
-        </div>
+        <div class="sub" style="margin:14px 0 8px;font-size:12px;">Payments</div>
         <div class="supervisor-table-wrap">
           <table class="table">
             <thead>
@@ -223,28 +224,33 @@
             <tbody id="hubDrawerPaymentsBody"></tbody>
           </table>
         </div>
-        <div class="supervisor-summary-grid" id="hubDrawerPaymentTotals"></div>
-        <div class="supervisor-table-wrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Collections History</th>
-                <th>Date</th>
-              </tr>
-            </thead>
-            <tbody id="hubDrawerCollectionsBody"></tbody>
-          </table>
+        <div id="hubDrawerCollectionsWrap" class="hub-drawer-section" style="display:none;">
+          <div class="sub" style="margin:14px 0 8px;font-size:12px;">Collections history</div>
+          <div class="supervisor-table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Collections History</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody id="hubDrawerCollectionsBody"></tbody>
+            </table>
+          </div>
         </div>
-        <div class="supervisor-table-wrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Timeline</th>
-                <th>Date</th>
-              </tr>
-            </thead>
-            <tbody id="hubDrawerActivityBody"></tbody>
-          </table>
+        <div id="hubDrawerActivityWrap" class="hub-drawer-section" style="display:none;">
+          <div class="sub" style="margin:14px 0 8px;font-size:12px;">Timeline</div>
+          <div class="supervisor-table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Timeline</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody id="hubDrawerActivityBody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
