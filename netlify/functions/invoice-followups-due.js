@@ -1,11 +1,6 @@
 /**
- * Scheduled (Netlify cron): past-due invoice balance reminders via Zapier.
- *
- * Ladder (calendar days after due_date, UTC date math): D1, D3, D7, D14.
- * One webhook per qualifying stage; PATCH marks the stage sent only after Zapier POST succeeds.
- *
- * Env: ZAPIER_INVOICE_REMINDER_WEBHOOK (Catch Hook URL).
- * DB: reminder_d1_sent_at … reminder_d14_sent_at (see SUPABASE_INVOICES_DUE_DATE_REMINDER_LADDER.sql).
+ * Scheduled (Netlify cron): past-due invoice reminders via Zapier (due_date ladder D1–D14).
+ * Env: ZAPIER_INVOICE_REMINDER_WEBHOOK
  */
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -41,7 +36,6 @@ function pickFirstStr(...values) {
   return "";
 }
 
-/** Parse YYYY-MM-DD (issue_date / due_date) to UTC midnight for that calendar day. */
 function parseDateOnlyUtc(value) {
   const s = String(value || "").trim();
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -53,7 +47,7 @@ function parseDateOnlyUtc(value) {
   return new Date(Date.UTC(y, mo, d));
 }
 
-/** Whole calendar days from due date to today (UTC). 0 = due today, 1 = first day after due, etc. */
+/** Whole UTC calendar days after due_date (1 = first day past due). */
 function calendarDaysPastDue(dueDateStr) {
   const due = parseDateOnlyUtc(dueDateStr);
   if (!due) return -1;
@@ -72,19 +66,23 @@ function remainingBalance(inv) {
   return Math.round(bal * 100) / 100;
 }
 
-function isPaidLike(inv) {
-  const st = String(inv.status || "").trim().toLowerCase();
-  if (st === "paid" || st === "void") return true;
+function statusLower(inv) {
+  return String(inv.status || "").trim().toLowerCase();
+}
+
+function isArchived(inv) {
+  return statusLower(inv) === "archived";
+}
+
+/** True if invoice should be treated as paid (do not remind). */
+function isPaid(inv) {
+  if (statusLower(inv) === "paid") return true;
   const bal = remainingBalance(inv);
-  if (bal <= 0) return true;
+  if (!(bal > 0)) return true;
   const amt = Number(inv.amount || 0);
   const paid = Number(inv.paid_amount || 0);
   if (amt > 0 && paid >= amt) return true;
   return false;
-}
-
-function isArchived(inv) {
-  return String(inv.status || "").trim().toLowerCase() === "archived";
 }
 
 function hasClientEmail(inv) {
@@ -92,37 +90,28 @@ function hasClientEmail(inv) {
   return e.includes("@") && e.length >= 5;
 }
 
-/**
- * Earliest ladder stage that qualifies and has not been sent yet (sequential catch-up).
- */
+/** First stage in order that is due by calendar day and not yet sent. */
 function nextReminderStage(inv, daysPastDue) {
   if (daysPastDue < 1) return null;
   for (const { key, days, column } of STAGES) {
     if (daysPastDue < days) return null;
     if (inv[column]) continue;
-    return { key, days, column };
+    return { key, column };
   }
   return null;
 }
 
-function buildReminderPayload(inv, tenantName, stageKey, remainingBal) {
-  const business_name = pickFirstStr(inv.business_name, tenantName);
-  const client_name = pickFirstStr(inv.customer_name, inv.project_name);
-  const client_email = pickFirstStr(inv.customer_email);
-  const project_name = pickFirstStr(inv.project_name);
-  const invoice_label = pickFirstStr(inv.invoice_label);
-  const invoice_number = pickFirstStr(inv.invoice_no);
-  const st = String(inv.status || "").trim().toLowerCase();
+function buildPayload(inv, tenantName, stageKey, remainingBal) {
   return {
-    client_email,
-    client_name,
-    business_name,
-    project_name,
-    invoice_label,
-    invoice_number,
+    client_email: pickFirstStr(inv.customer_email),
+    client_name: pickFirstStr(inv.customer_name, inv.project_name),
+    business_name: pickFirstStr(inv.business_name, tenantName),
+    project_name: pickFirstStr(inv.project_name),
+    invoice_label: pickFirstStr(inv.invoice_label),
+    invoice_number: pickFirstStr(inv.invoice_no),
     remaining_balance: remainingBal,
-    is_paid: isPaidLike(inv),
-    is_archived: st === "archived",
+    is_paid: false,
+    is_archived: false,
     reminder_stage: stageKey
   };
 }
@@ -138,7 +127,7 @@ exports.handler = async (event) => {
   }
 
   const webhookUrl = String(process.env.ZAPIER_INVOICE_REMINDER_WEBHOOK || "").trim();
-  if (!webhookUrl || /TU_WEBHOOK_URL_AQUI/i.test(webhookUrl)) {
+  if (!webhookUrl) {
     console.info("[invoice-followups-due] ZAPIER_INVOICE_REMINDER_WEBHOOK missing; noop");
     return json(200, { ok: true, skipped: true, reason: "reminder_webhook_not_configured" });
   }
@@ -170,7 +159,7 @@ exports.handler = async (event) => {
       stats.skipped += 1;
       continue;
     }
-    if (isArchived(inv) || isPaidLike(inv)) {
+    if (isArchived(inv) || isPaid(inv)) {
       stats.skipped += 1;
       continue;
     }
@@ -213,7 +202,7 @@ exports.handler = async (event) => {
       tenantNameCache.set(String(inv.tenant_id), tenantName);
     }
 
-    const payload = buildReminderPayload(inv, tenantName, stage.key, bal);
+    const payload = buildPayload(inv, tenantName, stage.key, bal);
 
     try {
       const res = await fetch(webhookUrl, {
