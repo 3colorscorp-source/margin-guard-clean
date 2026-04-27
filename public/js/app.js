@@ -8341,6 +8341,40 @@ function renderSupervisor() {
       .join("");
   }
 
+  function hubDrawerPaymentProgressPct(paid, total) {
+    const t = finiteNumber(total, 0);
+    const p = finiteNumber(paid, 0);
+    if (t <= 0) return null;
+    return Math.min(100, Math.max(0, (p / t) * 100));
+  }
+
+  function hubDrawerPaymentNextActionFromTotals(paid, total) {
+    const t = finiteNumber(total, 0);
+    const p = finiteNumber(paid, 0);
+    if (t <= 0) return "Check deposit";
+    const pCents = Math.round(p * 100);
+    const tCents = Math.round(t * 100);
+    if (pCents <= 0) return "Check deposit";
+    if (pCents >= tCents) return "Ready to close";
+    return "Collect remaining";
+  }
+
+  function updateHubDrawerPaymentDerivedUi(paid, total, settings) {
+    const t = finiteNumber(total, 0);
+    const p = finiteNumber(paid, 0);
+    if ($("hubDrawerNextAction")) {
+      $("hubDrawerNextAction").textContent = hubDrawerPaymentNextActionFromTotals(p, t);
+    }
+    const pct = hubDrawerPaymentProgressPct(p, t);
+    if ($("hubDrawerProgressPct")) {
+      $("hubDrawerProgressPct").textContent = pct == null ? "—" : `${pct.toFixed(1)}%`;
+    }
+    if ($("hubDrawerProgressSub")) {
+      $("hubDrawerProgressSub").textContent =
+        t > 0 ? `${money(p, settings.currency)} / ${money(t, settings.currency)}` : "—";
+    }
+  }
+
   function renderHubDrawerDetails(row, settings, handlers) {
     if (!row) return;
     const invoice = getProjectInvoiceState(row.project);
@@ -8353,44 +8387,49 @@ function renderSupervisor() {
       drawerEl.setAttribute("aria-hidden", "false");
     }
     if ($("hubDrawerTitle")) $("hubDrawerTitle").textContent = row.title;
-    if ($("hubDrawerNextAction")) {
-      $("hubDrawerNextAction").textContent = getHubRowCollectNextActionLabel(row);
-    }
     if ($("hubDrawerSubtitle")) {
       $("hubDrawerSubtitle").textContent = `${row.customer} · ${money(row.amount, settings.currency)} · ${row.status}`;
     }
 
     const amountTotal = finiteNumber(row.amount, 0);
-    const balanceDue = finiteNumber(row.balance, 0);
     const localPaid = finiteNumber(row.depositApplied, 0) + finiteNumber(row.receivedApplied, 0);
     const ledgerApiOk = hubRowCanRecordLedgerPayment(row);
     const paidLabel = ledgerApiOk ? "…" : money(localPaid, settings.currency);
     const remainingLabel = ledgerApiOk ? "…" : money(Math.max(0, amountTotal - localPaid), settings.currency);
+    const progressInitial = (() => {
+      const pct = hubDrawerPaymentProgressPct(localPaid, amountTotal);
+      return pct == null ? "—" : `${pct.toFixed(1)}%`;
+    })();
 
     if ($("hubDrawerStats")) {
+      $("hubDrawerStats").className = "supervisor-summary-grid hub-drawer-payment-stats";
       $("hubDrawerStats").innerHTML = `
-        <div class="supervisor-summary-card">
+        <div class="supervisor-summary-card hub-drawer-stat-secondary">
           <div class="title">Invoice ID</div>
           <div class="big">${escapeHtml(row.invoiceNo || "—")}</div>
           <div class="small">Folio o referencia</div>
         </div>
-        <div class="supervisor-summary-card">
+        <div class="supervisor-summary-card hub-drawer-stat-primary">
           <div class="title">Paid to date</div>
           <div class="big" id="hubDrawerLedgerPaidBig">${escapeHtml(paidLabel)}</div>
-          <div class="small">Sum of tenant_project_payments when linked; otherwise local payments</div>
+          <div class="small" id="hubDrawerLedgerPaidSub">${
+            ledgerApiOk ? "Ledger (loading…)" : "Local invoice payments + deposits"
+          }</div>
         </div>
-        <div class="supervisor-summary-card">
+        <div class="supervisor-summary-card hub-drawer-stat-primary">
           <div class="title">Remaining balance</div>
           <div class="big" id="hubDrawerLedgerRemainingBig">${escapeHtml(remainingLabel)}</div>
-          <div class="small">Invoice total minus paid to date</div>
+          <div class="small">Contract total minus paid (ledger when linked)</div>
         </div>
-        <div class="supervisor-summary-card">
-          <div class="title">Balance</div>
-          <div class="big">${escapeHtml(money(balanceDue, settings.currency))}</div>
-          <div class="small">Balance shown in hub</div>
+        <div class="supervisor-summary-card hub-drawer-stat-progress">
+          <div class="title">Progress</div>
+          <div class="big" id="hubDrawerProgressPct">${escapeHtml(progressInitial)}</div>
+          <div class="small" id="hubDrawerProgressSub">—</div>
         </div>
       `;
     }
+
+    updateHubDrawerPaymentDerivedUi(localPaid, amountTotal, settings);
 
     const ledgerWrap = $("hubDrawerLedgerWrap");
     const ledgerBody = $("hubDrawerLedgerPaymentsBody");
@@ -8421,10 +8460,16 @@ function renderSupervisor() {
           paidEl.textContent = "—";
           remEl.textContent = money(Math.max(0, amountTotal - localPaid), settings.currency);
           if (lb) lb.innerHTML = `<tr><td colspan="5">Could not load ledger.</td></tr>`;
+          const sub = $("hubDrawerLedgerPaidSub");
+          if (sub) sub.textContent = "Ledger unavailable — showing local totals";
+          updateHubDrawerPaymentDerivedUi(localPaid, amountTotal, settings);
           return;
         }
         paidEl.textContent = money(pack.netSum, settings.currency);
         remEl.textContent = money(Math.max(0, amountTotal - pack.netSum), settings.currency);
+        const subPaid = $("hubDrawerLedgerPaidSub");
+        if (subPaid) subPaid.textContent = "Ledger net (tenant_project_payments)";
+        updateHubDrawerPaymentDerivedUi(pack.netSum, amountTotal, settings);
       })();
     }
 
@@ -8936,6 +8981,10 @@ function renderSupervisor() {
       if ($("hubDrawer")) $("hubDrawer").setAttribute("aria-hidden", "true");
       if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
       setNotice("hubRecordPayFeedback", "", "");
+      if ($("hubRecordPayOverpayWarn")) {
+        $("hubRecordPayOverpayWarn").style.display = "none";
+        $("hubRecordPayOverpayWarn").textContent = "";
+      }
       clearHubFeedbackOkIfShown();
     };
 
@@ -9508,6 +9557,29 @@ function renderSupervisor() {
       const t = val("hubRecordPayType");
       const r = finiteNumber(hubRecordPayModalCtx.remaining, 0);
       if (t === "final" && r > 0) setVal("hubRecordPayAmount", String(r));
+      updateHubRecordPayOverpayWarning();
+    }
+
+    function updateHubRecordPayOverpayWarning() {
+      const warnEl = $("hubRecordPayOverpayWarn");
+      if (!warnEl) return;
+      const payment_type = val("hubRecordPayType");
+      const rem = finiteNumber(hubRecordPayModalCtx.remaining, 0);
+      const raw = val("hubRecordPayAmount");
+      const amt = raw === "" || raw === undefined ? NaN : Number(raw);
+      if (payment_type === "adjustment" || !Number.isFinite(amt)) {
+        warnEl.style.display = "none";
+        warnEl.textContent = "";
+        return;
+      }
+      if (amt > rem + 1e-6) {
+        warnEl.style.display = "block";
+        warnEl.className = "notice warn";
+        warnEl.textContent = `This amount (${money(amt, settings.currency)}) is above remaining (${money(rem, settings.currency)}). You can still submit if intended.`;
+        return;
+      }
+      warnEl.style.display = "none";
+      warnEl.textContent = "";
     }
 
     async function openHubRecordPaymentModal() {
@@ -9611,6 +9683,10 @@ function renderSupervisor() {
         }
         if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
         setNotice("hubRecordPayFeedback", "", "");
+        if ($("hubRecordPayOverpayWarn")) {
+          $("hubRecordPayOverpayWarn").style.display = "none";
+          $("hubRecordPayOverpayWarn").textContent = "";
+        }
         if (typeof window.__mgHubRefetchServerInvoices === "function") {
           await window.__mgHubRefetchServerInvoices();
         }
@@ -9784,16 +9860,27 @@ function renderSupervisor() {
     if ($("hubRecordPayType")) {
       $("hubRecordPayType").onchange = () => syncHubRecordPayAmountDefault();
     }
+    if ($("hubRecordPayAmount")) {
+      $("hubRecordPayAmount").oninput = () => updateHubRecordPayOverpayWarning();
+    }
     if ($("btnHubRecordPayClose")) {
       $("btnHubRecordPayClose").onclick = () => {
         if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
         setNotice("hubRecordPayFeedback", "", "");
+        if ($("hubRecordPayOverpayWarn")) {
+          $("hubRecordPayOverpayWarn").style.display = "none";
+          $("hubRecordPayOverpayWarn").textContent = "";
+        }
       };
     }
     if ($("btnHubRecordPayCancel")) {
       $("btnHubRecordPayCancel").onclick = () => {
         if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
         setNotice("hubRecordPayFeedback", "", "");
+        if ($("hubRecordPayOverpayWarn")) {
+          $("hubRecordPayOverpayWarn").style.display = "none";
+          $("hubRecordPayOverpayWarn").textContent = "";
+        }
       };
     }
     if ($("btnHubRecordPaySubmit")) {
