@@ -443,28 +443,6 @@
     .fcc-perf-table tbody tr:last-child td{ border-bottom:0; }
     .fcc-perf-table td{ color:rgba(248,250,252,.92); }
     .fcc-perf-table td.muted{ color:rgba(148,163,184,.65); }
-    .fcc-stripe-panel .fcc-stripe-dl{
-      display:grid;
-      gap:10px;
-      margin:12px 0 16px;
-    }
-    .fcc-stripe-panel .fcc-stripe-dl div{
-      display:flex;
-      justify-content:space-between;
-      gap:10px;
-      font-size:13px;
-      padding:8px 0;
-      border-bottom:1px solid rgba(255,255,255,.06);
-    }
-    .fcc-stripe-panel .fcc-stripe-dl dt{
-      margin:0;
-      color:rgba(148,163,184,.9);
-    }
-    .fcc-stripe-panel .fcc-stripe-dl dd{
-      margin:0;
-      font-weight:700;
-      color:rgba(248,250,252,.95);
-    }
     .fcc-strip.fcc-strip-tight{
       grid-template-columns:repeat(3, 1fr);
     }
@@ -785,11 +763,11 @@
           type="button"
           id="btnToggleBankConsole"
           class="btn fcc-bank-toggle"
-          aria-expanded="false"
+          aria-expanded="true"
           aria-controls="fccBankCollapsePanel">
-          Show banking &amp; Stripe
+          Hide banking &amp; Stripe
         </button>
-        <div id="fccBankCollapsePanel" hidden>
+        <div id="fccBankCollapsePanel">
           <section class="card fcc-bank-wrap" id="fcc-bank-console">
         <div class="card-inner">
           <div class="section-head">
@@ -868,23 +846,6 @@
           </div>
         </div>
           </section>
-
-          <section class="card fcc-panel fcc-stripe-wrap fcc-stripe-panel">
-            <div class="card-inner">
-              <div class="fcc-panel-head">
-                <h2>Stripe overview</h2>
-                <div class="fcc-panel-sub">Resumen ejecutivo; detalle de cuenta y payouts en el dashboard de Stripe.</div>
-              </div>
-              <dl class="fcc-stripe-dl" aria-label="Stripe snapshot">
-                <div><dt>Connected account</dt><dd id="fccStripeConnected">—</dd></div>
-                <div><dt>Available balance</dt><dd id="fccStripeAvailable">—</dd></div>
-                <div><dt>Last payout</dt><dd id="fccStripeLastPayout">—</dd></div>
-                <div><dt>Next payout</dt><dd id="fccStripeNextPayout">—</dd></div>
-              </dl>
-              <p class="sub" id="fccStripeNote" style="margin-bottom:12px;">Los payouts y balances live no se exponen aqui todavia; usa Stripe para operar.</p>
-              <a class="btn primary" href="https://dashboard.stripe.com" target="_blank" rel="noopener noreferrer">Go to Stripe Dashboard</a>
-            </div>
-          </section>
         </div>
       </div>
     </div>
@@ -916,6 +877,7 @@
 (function () {
   const btn = document.getElementById('btnToggleBankConsole');
   const panel = document.getElementById('fccBankCollapsePanel');
+
   if (!btn || !panel) return;
 
   btn.addEventListener('click', function () {
