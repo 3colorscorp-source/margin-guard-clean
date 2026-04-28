@@ -2260,7 +2260,6 @@ Thank you.`
       invoiceNo: "",
       invoiceDate: "",
       dueDate: normalizeDateInput(project?.dueDate),
-      promisedDate: "",
       baseAmount: finiteNumber(project?.salePrice, 0),
       depositApplied: 0,
       receivedApplied: 0,
@@ -2284,7 +2283,6 @@ Thank you.`
       ...saved,
       baseAmount: finiteNumber(saved.baseAmount, base.baseAmount),
       dueDate: normalizeDateInput(saved.dueDate || base.dueDate),
-      promisedDate: normalizeDateInput(saved.promisedDate),
       depositApplied: finiteNumber(saved.depositApplied, 0),
       receivedApplied: finiteNumber(saved.receivedApplied, 0),
       status: normalizeInvoiceStatus(saved.status),
@@ -2429,7 +2427,6 @@ Thank you.`
         ...buildDefaultInvoiceState(project),
         ...(invoice || {}),
         dueDate: normalizeDateInput(invoice?.dueDate || project?.dueDate),
-        promisedDate: normalizeDateInput(invoice?.promisedDate),
         status: normalizeInvoiceStatus(invoice?.status),
         collectionStage: ["new", "contacted", "promised", "escalated", "resolved"].includes(invoice?.collectionStage) ? invoice.collectionStage : "new",
         payments: Array.isArray(invoice?.payments) ? invoice.payments : [],
@@ -7668,7 +7665,6 @@ function renderSupervisor() {
     const baseAmount = finiteNumber(overrides.baseAmount, current.baseAmount || project?.salePrice || 0);
     const depositApplied = finiteNumber(overrides.depositApplied, current.depositApplied);
     const receivedApplied = finiteNumber(overrides.receivedApplied, current.receivedApplied);
-    const promisedDate = normalizeDateInput(overrides.promisedDate || current.promisedDate);
     const invoiceDate = normalizeDateInput(overrides.invoiceDate || current.invoiceDate) || new Date().toISOString().slice(0, 10);
     const dueDate = normalizeDateInput(overrides.dueDate || current.dueDate || project?.dueDate);
     const metrics = calcInvoice(project, report, {
@@ -7682,17 +7678,13 @@ function renderSupervisor() {
     let collectionStage = ["new", "contacted", "promised", "escalated", "resolved"].includes(overrides.collectionStage)
       ? overrides.collectionStage
       : current.collectionStage;
-    const todayIso = new Date().toISOString().slice(0, 10);
-    const openBalance = Math.max(finiteNumber(metrics.balance, 0), 0);
     if (status === "paid") collectionStage = "resolved";
-    else if (promisedDate && promisedDate < todayIso && openBalance > 0) collectionStage = "escalated";
     else if (status === "partial" && (!collectionStage || collectionStage === "new")) collectionStage = "contacted";
     else if (!collectionStage) collectionStage = "new";
     return {
       invoiceNo: nonEmptyString(overrides.invoiceNo, current.invoiceNo, `INV-${Date.now()}`),
       invoiceDate,
       dueDate,
-      promisedDate,
       baseAmount,
       depositApplied,
       receivedApplied,
@@ -9387,19 +9379,6 @@ function renderSupervisor() {
               { label: "+30 days", kind: "today_plus", days: 30 }
             ]
           },
-          {
-            id: "hubFormInvoicePromiseDate",
-            label: "Promised payment date",
-            type: "date",
-            value: invoice.promisedDate || "",
-            hint: "(for follow-up tracking)",
-            quickDates: [
-              { label: "Today", kind: "today" },
-              { label: "Tomorrow", kind: "tomorrow" },
-              { label: "Next Monday", kind: "next_monday" },
-              { label: "+7 days", kind: "today_plus", days: 7 }
-            ]
-          },
           { id: "hubFormInvoiceBase", label: "Base Amount", type: "number", step: "0.01", value: invoice.baseAmount || row.project?.salePrice || 0, placeholder: "0.00" },
           {
             id: "hubFormCollectionStage",
@@ -9413,7 +9392,6 @@ function renderSupervisor() {
           const invoiceNo = val("hubFormInvoiceNo");
           const invoiceDate = val("hubFormInvoiceDate");
           const dueDate = val("hubFormInvoiceDueDate");
-          const promisedDate = val("hubFormInvoicePromiseDate");
           const baseAmount = Number(val("hubFormInvoiceBase"));
           const collectionStage = val("hubFormCollectionStage") || "new";
           const invoiceLabel = resolveHubInvoiceLabelFromForm(val("hubFormInvoiceLabelPreset"), val("hubFormInvoiceLabelCustom"));
@@ -9423,10 +9401,6 @@ function renderSupervisor() {
           }
           if (dueDate && !normalizeDateInput(dueDate)) {
             setNotice("hubFormFeedback", "Due date no tiene formato valido.", "err");
-            return false;
-          }
-          if (promisedDate && !normalizeDateInput(promisedDate)) {
-            setNotice("hubFormFeedback", "Promised payment date no tiene formato valido.", "err");
             return false;
           }
           if (!Number.isFinite(baseAmount) || baseAmount < 0) {
@@ -9445,7 +9419,6 @@ function renderSupervisor() {
                 invoiceNo,
                 invoiceDate,
                 dueDate,
-                promisedDate: collectionStage === "promised" ? promisedDate : "",
                 baseAmount,
                 collectionStage,
                 invoiceLabel,
@@ -9475,7 +9448,6 @@ function renderSupervisor() {
             invoiceNo,
             invoiceDate,
             dueDate,
-            promisedDate: collectionStage === "promised" ? promisedDate : "",
             baseAmount,
             collectionStage,
             invoiceLabel
