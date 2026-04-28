@@ -6817,6 +6817,29 @@ function renderSupervisor() {
     };
   }
 
+  function resolveContractTotalForServerInvoiceNorm(norm) {
+    const projects = loadProjects();
+    const quoteId = String(norm?.quoteId || "").trim();
+    const tenantProjectId = String(norm?.tenantProjectId || "").trim();
+    const invoiceProjectName = String(norm?.projectName || "").trim().toLowerCase();
+    const invoiceClientName = String(norm?.clientName || "").trim().toLowerCase();
+    const byStrongLink = projects.find((p) => {
+      const pQuoteId = String(p?.quoteId || p?.quote_id || "").trim();
+      if (quoteId && pQuoteId && pQuoteId === quoteId) return true;
+      const pId = String(p?.id || "").trim();
+      if (tenantProjectId && pId && pId === tenantProjectId) return true;
+      return false;
+    });
+    if (byStrongLink) return Math.max(finiteNumber(byStrongLink.salePrice, 0), 0);
+    const byName = projects.find((p) => {
+      const pName = String(p?.projectName || "").trim().toLowerCase();
+      const pClient = String(p?.clientName || "").trim().toLowerCase();
+      return pName && pClient && pName === invoiceProjectName && pClient === invoiceClientName;
+    });
+    if (byName) return Math.max(finiteNumber(byName.salePrice, 0), 0);
+    return Math.max(finiteNumber(norm?.amount, 0), 0);
+  }
+
   function hubServerInvoiceStatusForDisplay(norm) {
     const today = new Date().toISOString().slice(0, 10);
     let raw = String(norm?.hubInvoiceRawStatus || norm?.status || "draft").toLowerCase();
@@ -6918,8 +6941,9 @@ function renderSupervisor() {
     const displayStatus = hubServerInvoiceLifecycleDisplayStatus(norm);
     const actionStatus = hubServerInvoiceStatusForActions(norm);
     const amount = Math.max(finiteNumber(norm.amount, 0), 0);
+    const contractTotal = resolveContractTotalForServerInvoiceNorm(norm);
     const paid = Math.max(finiteNumber(norm.paidAmount, 0), 0);
-    const balance = Math.max(finiteNumber(norm.balanceDue, 0), 0);
+    const balance = Math.max(contractTotal - paid, 0);
     const primaryRaw = norm.invoiceDate || norm.createdAt || "";
     const effectiveDue = norm.dueDate || "";
     const invoiceNoDisplay = nonEmptyString(norm.invoiceNo, "No invoice");
@@ -6934,7 +6958,7 @@ function renderSupervisor() {
       clientPhone: "",
       location: "",
       dueDate: effectiveDue,
-      salePrice: amount,
+      salePrice: contractTotal,
       laborBudget: 0,
       status: "active",
       invoice: {
@@ -6995,7 +7019,7 @@ function renderSupervisor() {
       paymentType: paid > 0 ? "payment" : "",
       extraSpent: 0,
       finalCost: 0,
-      soldAmount: amount,
+      soldAmount: contractTotal,
       cashCollected: paid,
       estimatedMargin: 0,
       changeOrderCount: 0,
@@ -8577,19 +8601,24 @@ function renderSupervisor() {
         : `${row.customer} · ${row.status}`;
     }
 
-    const amountTotal = finiteNumber(row.amount, 0);
+    const invoiceAmount = finiteNumber(row.amount, 0);
+    const contractTotal = Math.max(
+      finiteNumber(row.project?.salePrice, 0),
+      finiteNumber(row.soldAmount, 0),
+      invoiceAmount
+    );
     const localPaid = finiteNumber(row.depositApplied, 0) + finiteNumber(row.receivedApplied, 0);
     const ledgerApiOk = hubRowCanRecordLedgerPayment(row);
     const paidLabel = ledgerApiOk ? "…" : money(localPaid, settings.currency);
-    const remainingLabel = ledgerApiOk ? "…" : money(Math.max(0, amountTotal - localPaid), settings.currency);
+    const remainingLabel = ledgerApiOk ? "…" : money(Math.max(0, contractTotal - localPaid), settings.currency);
 
     if ($("hubDrawerStats")) {
       $("hubDrawerStats").className = "supervisor-summary-grid hub-drawer-payment-stats";
       $("hubDrawerStats").innerHTML = `
         <div class="supervisor-summary-card hub-drawer-stat-contract">
           <div class="title">Contract total</div>
-          <div class="big">${escapeHtml(money(amountTotal, settings.currency))}</div>
-          <div class="small">Job / invoice amount</div>
+          <div class="big">${escapeHtml(money(contractTotal, settings.currency))}</div>
+          <div class="small">Approved project / quote total</div>
         </div>
         <div class="supervisor-summary-card hub-drawer-stat-primary">
           <div class="title">Paid to date</div>
@@ -8604,14 +8633,14 @@ function renderSupervisor() {
           <div class="small">Project contract total minus payments recorded</div>
         </div>
         <div class="supervisor-summary-card hub-drawer-stat-secondary">
-          <div class="title">Invoice ID</div>
-          <div class="big">${escapeHtml(row.invoiceNo || "—")}</div>
-          <div class="small">Folio o referencia</div>
+          <div class="title">Invoice amount</div>
+          <div class="big">${escapeHtml(money(invoiceAmount, settings.currency))}</div>
+          <div class="small">Amount billed on this invoice</div>
         </div>
       `;
     }
 
-    updateHubDrawerPaymentDerivedUi(localPaid, amountTotal, settings, "");
+    updateHubDrawerPaymentDerivedUi(localPaid, contractTotal, settings, "");
 
     const ledgerWrap = $("hubDrawerLedgerWrap");
     const ledgerBody = $("hubDrawerLedgerPaymentsBody");
@@ -8649,22 +8678,22 @@ function renderSupervisor() {
         if (!paidEl || !remEl) return;
         if (!pack || !Number.isFinite(pack.netSum)) {
           paidEl.textContent = "—";
-          remEl.textContent = money(Math.max(0, amountTotal - localPaid), settings.currency);
+          remEl.textContent = money(Math.max(0, contractTotal - localPaid), settings.currency);
           if (lb) {
             hubDrawerSetLedgerEmptyState(false);
             lb.innerHTML = `<tr><td colspan="5">Could not load ledger.</td></tr>`;
           }
           const sub = $("hubDrawerLedgerPaidSub");
           if (sub) sub.textContent = "Ledger unavailable — showing local totals";
-          updateHubDrawerPaymentDerivedUi(localPaid, amountTotal, settings, "");
+          updateHubDrawerPaymentDerivedUi(localPaid, contractTotal, settings, "");
           return;
         }
         paidEl.textContent = money(pack.netSum, settings.currency);
-        remEl.textContent = money(Math.max(0, amountTotal - pack.netSum), settings.currency);
+        remEl.textContent = money(Math.max(0, contractTotal - pack.netSum), settings.currency);
         const subPaid = $("hubDrawerLedgerPaidSub");
         if (subPaid) subPaid.textContent = "Ledger net (tenant_project_payments)";
         const lastLine = formatHubDrawerLastLedgerPaymentLine(pack.payments, settings);
-        updateHubDrawerPaymentDerivedUi(pack.netSum, amountTotal, settings, lastLine);
+        updateHubDrawerPaymentDerivedUi(pack.netSum, contractTotal, settings, lastLine);
       })();
     }
 
