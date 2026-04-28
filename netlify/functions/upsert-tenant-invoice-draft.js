@@ -105,16 +105,6 @@ function buildPatchPayload(body) {
   return out;
 }
 
-function stripLegacyCollectionFields(body) {
-  if (!body || typeof body !== "object") return {};
-  const clean = { ...body };
-  delete clean.collection_status;
-  delete clean.collection_stage;
-  delete clean.collectionsStage;
-  delete clean.collectionStage;
-  return clean;
-}
-
 /**
  * POST — create draft (no id / no id in body) or update draft (body.id UUID).
  * tenant_id always from session on create; updates require id + tenant_id match.
@@ -145,7 +135,6 @@ exports.handler = async (event) => {
     } catch (_err) {
       return json(400, { error: "Invalid JSON body" });
     }
-    body = stripLegacyCollectionFields(body);
 
     const clientTenantId = pickFirst(body.tenant_id, body.tenantId);
     if (
@@ -170,11 +159,17 @@ exports.handler = async (event) => {
       }
 
       const filter = `id=eq.${encodeURIComponent(id)}&tenant_id=eq.${encodeURIComponent(tenantId)}`;
-      const updated = await supabaseRequest(`invoices?${filter}`, {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: patch
-      });
+      let updated;
+      try {
+        updated = await supabaseRequest(`invoices?${filter}`, {
+          method: "PATCH",
+          headers: { Prefer: "return=representation" },
+          body: patch
+        });
+      } catch (error) {
+        console.error("Invoice draft error:", error);
+        return json(500, { ok: false, error: error?.message || "Failed to update invoice draft" });
+      }
       const rows = Array.isArray(updated) ? updated : updated ? [updated] : [];
       if (rows.length === 0) {
         return json(404, { error: "Invoice not found or not in your tenant." });
@@ -199,11 +194,17 @@ exports.handler = async (event) => {
         ? finiteMoney(insert.balance_due, 0)
         : finiteMoney(insert.amount - insert.paid_amount, 0);
 
-    const created = await supabaseRequest("invoices", {
-      method: "POST",
-      headers: { Prefer: "return=representation" },
-      body: insert
-    });
+    let created;
+    try {
+      created = await supabaseRequest("invoices", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: insert
+      });
+    } catch (error) {
+      console.error("Invoice draft error:", error);
+      return json(500, { ok: false, error: error?.message || "Failed to create invoice draft" });
+    }
     const row = Array.isArray(created) ? created[0] : created;
     if (!row?.id) {
       return json(500, { error: "Insert did not return an invoice row." });
