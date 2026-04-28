@@ -2325,7 +2325,7 @@ Thank you.`
       balance_due: finiteMoneyTenantDraft(metrics.balance),
       status: "draft",
       issue_date: normalizeDateInput(inv.invoiceDate) || new Date().toISOString().slice(0, 10),
-      due_date: normalizeDateInput(inv.dueDate || project.dueDate) || "",
+      due_date: normalizeDateInput(inv.dueDate || project.dueDate) || null,
       type: "service",
       notes: String(project.notes || "").slice(0, 8000),
       payment_link: nonEmptyString(inv.paymentLink) || ""
@@ -2375,10 +2375,22 @@ Thank you.`
         body: JSON.stringify(invoiceDraft)
       });
 
-      const data = await res.json().catch(() => ({}));
+      const rawText = await res.text();
+      let data = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch (_err) {
+        data = {};
+      }
 
       if (!res.ok || !data.ok) {
-        console.warn("[Invoice Hub] save draft failed", res.status, data);
+        console.warn("[Invoice Hub] save draft failed", {
+          status: res.status,
+          statusText: res.statusText,
+          response: data,
+          responseText: rawText,
+          payload: invoiceDraft
+        });
         return null;
       }
 
