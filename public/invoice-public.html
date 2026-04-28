@@ -225,6 +225,46 @@
       font-weight:800;
     }
 
+    .progress-wrap{
+      margin-top:14px;
+      padding-top:12px;
+      border-top:1px dashed var(--line);
+    }
+
+    .progress-meta{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      margin-bottom:8px;
+      font-size:13px;
+      color:var(--muted);
+      font-weight:700;
+    }
+
+    .progress-track{
+      width:100%;
+      height:10px;
+      border-radius:999px;
+      background:#e5e7eb;
+      overflow:hidden;
+    }
+
+    .progress-fill{
+      height:100%;
+      width:0%;
+      background:var(--accent);
+      border-radius:999px;
+      transition:width .25s ease;
+    }
+
+    .last-payment{
+      margin-top:10px;
+      font-size:13px;
+      color:#374151;
+      line-height:1.45;
+    }
+
     .actions{
       display:flex;
       flex-wrap:wrap;
@@ -373,12 +413,55 @@
     return escapeHtml(String(value));
   }
 
-  function statusClass(status) {
-    const s = String(status || "").toLowerCase();
+  function invoiceFacts(inv) {
+    const amountNum = Number(inv.amount);
+    const paidNum = Number(inv.paid_amount);
+    const balanceNum = Number(inv.balance_due);
+    const amount = Number.isFinite(amountNum) ? amountNum : 0;
+    const paid = Number.isFinite(paidNum) ? paidNum : 0;
+    const balance = Number.isFinite(balanceNum) ? balanceNum : Math.max(amount - paid, 0);
+    return { amount, paid, balance };
+  }
+
+  function normalizedStatus(inv) {
+    const facts = invoiceFacts(inv);
+    if (facts.balance <= 0) return "Paid";
+    if (facts.paid > 0) return "Partial";
+    const raw = String(inv.status || "").trim().toLowerCase();
+    if (raw === "overdue" || raw === "expired") return "Overdue";
+    const due = parseDateOnly(inv.due_date);
+    if (due) {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      if (due.getTime() < today && facts.balance > 0) return "Overdue";
+    }
+    return "Open";
+  }
+
+  function statusClassFromLabel(label) {
+    const s = String(label || "").toLowerCase();
     if (s === "paid") return "paid";
-    if (s === "partial" || s === "sent") return "partial";
-    if (s === "overdue" || s === "expired") return "overdue";
+    if (s === "partial") return "partial";
+    if (s === "overdue") return "overdue";
     return "open";
+  }
+
+  function parseDateOnly(value) {
+    const s = String(value || "").trim();
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const d = Number(m[3]);
+    if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return null;
+    return new Date(y, mo, d);
+  }
+
+  function paymentProgressPercent(inv) {
+    const facts = invoiceFacts(inv);
+    if (facts.amount <= 0) return facts.paid > 0 ? 100 : 0;
+    const pct = (facts.paid / facts.amount) * 100;
+    return Math.max(0, Math.min(100, Math.round(pct * 100) / 100));
   }
 
   function setDocumentTitle(brandName) {
@@ -446,9 +529,11 @@
       const brandName = businessNameRaw || TENANT_NAME_FALLBACK;
       const brandNameEsc = escapeHtml(brandName);
 
-      const status = String(data.status != null && data.status !== "" ? data.status : "OPEN");
+      const status = normalizedStatus(data);
       const statusEsc = escapeHtml(status);
       const currency = String(data.currency != null && String(data.currency).trim() ? data.currency : "USD");
+      const progressPct = paymentProgressPercent(data);
+      const progressPctLabel = `${Math.round(progressPct)}%`;
 
       const amount = money(data.amount, currency);
       const paidAmount = money(data.paid_amount, currency);
@@ -456,13 +541,6 @@
 
       const accent = safeAccentColor(data.accent_color);
       const logoUrl = safeHttpUrl(data.logo_url);
-      const payHref = safeHttpUrl(data.payment_link);
-
-      const payButton = payHref
-        ? '<a class="btn btn-primary" href="' +
-          escapeHtml(payHref) +
-          '" target="_blank" rel="noopener noreferrer" title="Submit payment for your project">Submit payment</a>'
-        : '<button class="btn btn-secondary" type="button">Payment link is not available yet.</button>';
 
       const invLabelRaw = String(data.invoice_label || "").trim();
       const invLabelBlock = invLabelRaw
@@ -488,7 +566,7 @@
             '<div class="sub">' + escapeHtml(BUSINESS_SUBTITLE) + "</div>" +
           "</div>" +
           '<div class="status-pill ' +
-          escapeHtml(statusClass(status)) +
+          escapeHtml(statusClassFromLabel(status)) +
           '">' +
           statusEsc +
           "</div>" +
@@ -506,7 +584,7 @@
               "</div>" +
             "</div>" +
             '<div class="panel">' +
-              '<div class="eyebrow">Remaining invoice balance</div>' +
+              '<div class="eyebrow">Remaining balance</div>' +
               '<p class="big-amount">' +
               balanceDue +
               "</p>" +
@@ -567,27 +645,41 @@
             '<div class="summary-head">Summary</div>' +
             '<div class="summary-body">' +
               '<div class="sum-row">' +
-                "<span>Total Amount</span>" +
+                "<span>Contract total</span>" +
                 "<strong>" +
                 amount +
                 "</strong>" +
               "</div>" +
               '<div class="sum-row">' +
-                "<span>Paid Amount</span>" +
+                "<span>Paid to date</span>" +
                 "<strong>" +
                 paidAmount +
                 "</strong>" +
               "</div>" +
               '<div class="sum-row total">' +
-                "<span>Remaining invoice balance</span>" +
+                "<span>Remaining balance</span>" +
                 "<span>" +
                 balanceDue +
                 "</span>" +
               "</div>" +
+              '<div class="progress-wrap">' +
+                '<div class="progress-meta">' +
+                  "<span>Payment progress</span>" +
+                  "<span>" + escapeHtml(progressPctLabel) + "</span>" +
+                "</div>" +
+                '<div class="progress-track"><div class="progress-fill" style="width:' +
+                escapeHtml(String(progressPct)) +
+                '%;"></div></div>' +
+                '<div class="last-payment">' +
+                  "Last payment summary: " +
+                  (Number(data.paid_amount) > 0
+                    ? "Paid to date " + paidAmount + " on a contract total of " + amount + "."
+                    : "No payments recorded yet.") +
+                "</div>" +
+              "</div>" +
             "</div>" +
           "</div>" +
           '<div class="actions">' +
-          payButton +
           '<button class="btn btn-secondary" type="button" onclick="window.print()">Print</button>' +
           "</div>" +
           '<div class="notes">' +
