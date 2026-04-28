@@ -76,6 +76,10 @@ function buildPatchPayload(body) {
       out[key] = normalizeStatus(v);
       continue;
     }
+    if (key === "type") {
+      out[key] = String(v ?? "").trim() || "progress";
+      continue;
+    }
     if (key === "invoice_label") {
       const s = String(v ?? "")
         .trim()
@@ -153,6 +157,8 @@ exports.handler = async (event) => {
     ) {
       body.issue_date = body.invoice_date;
     }
+    const invoiceType = String(pickFirst(body.type, body.invoice_type) || "").trim() || "progress";
+    body.type = invoiceType;
 
     const clientTenantId = pickFirst(body.tenant_id, body.tenantId);
     if (
