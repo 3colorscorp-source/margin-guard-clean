@@ -69,7 +69,7 @@ exports.handler = async (event) => {
 
     const params = new URLSearchParams();
     params.set("tenant_id", `eq.${tenantId}`);
-    params.set("select", "*,quotes(id,accepted_at,deposit_paid_at,status)");
+    params.set("select", "*,quotes(id,accepted_at,deposit_paid_at,status,total)");
     params.set("order", "created_at.desc");
     params.set("limit", String(limit));
 

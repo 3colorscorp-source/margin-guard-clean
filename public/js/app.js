@@ -6784,6 +6784,7 @@ function renderSupervisor() {
     const quoteAcceptedAt = embed?.accepted_at != null ? String(embed.accepted_at).trim() : "";
     const quoteDepositPaidAt = embed?.deposit_paid_at != null ? String(embed.deposit_paid_at).trim() : "";
     const quoteStatus = embed?.status != null ? String(embed.status).trim() : "";
+    const quoteTotal = Math.max(finiteNumber(embed?.total, 0), 0);
     const hubInvoiceRawStatus = String(inv.status || "draft").toLowerCase();
     return {
       source: "server_invoice",
@@ -6795,6 +6796,7 @@ function renderSupervisor() {
       quoteAcceptedAt,
       quoteDepositPaidAt,
       quoteStatus,
+      quoteTotal,
       publicToken: nonEmptyString(inv.public_token),
       publicUrl: inv.public_token ? `/invoice-public.html?token=${encodeURIComponent(inv.public_token)}` : "",
       invoiceNo: nonEmptyString(inv.invoice_no),
@@ -6818,6 +6820,8 @@ function renderSupervisor() {
   }
 
   function resolveContractTotalForServerInvoiceNorm(norm) {
+    const quoteTotal = Math.max(finiteNumber(norm?.quoteTotal, 0), 0);
+    if (quoteTotal > 0) return quoteTotal;
     const projects = loadProjects();
     const quoteId = String(norm?.quoteId || "").trim();
     const tenantProjectId = String(norm?.tenantProjectId || "").trim();
@@ -6995,6 +6999,7 @@ function renderSupervisor() {
       hubQuoteStatus: norm.quoteStatus || "",
       hubInvoicePaymentStatus: norm.paymentStatus || "",
       hubInvoiceRawStatus: norm.hubInvoiceRawStatus || String(norm.status || "").toLowerCase(),
+      projectContractTotal: contractTotal,
       hubRowSource: "server_invoice",
       hubSourceLabel: "Server",
       date: formatDisplayDate(primaryRaw),
@@ -8602,11 +8607,7 @@ function renderSupervisor() {
     }
 
     const invoiceAmount = finiteNumber(row.amount, 0);
-    const contractTotal = Math.max(
-      finiteNumber(row.project?.salePrice, 0),
-      finiteNumber(row.soldAmount, 0),
-      invoiceAmount
-    );
+    const contractTotal = Math.max(finiteNumber(row.projectContractTotal, 0), 0);
     const localPaid = finiteNumber(row.depositApplied, 0) + finiteNumber(row.receivedApplied, 0);
     const ledgerApiOk = hubRowCanRecordLedgerPayment(row);
     const paidLabel = ledgerApiOk ? "…" : money(localPaid, settings.currency);
