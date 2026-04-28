@@ -105,6 +105,16 @@ function buildPatchPayload(body) {
   return out;
 }
 
+function stripLegacyCollectionFields(body) {
+  if (!body || typeof body !== "object") return {};
+  const clean = { ...body };
+  delete clean.collection_status;
+  delete clean.collection_stage;
+  delete clean.collectionsStage;
+  delete clean.collectionStage;
+  return clean;
+}
+
 /**
  * POST — create draft (no id / no id in body) or update draft (body.id UUID).
  * tenant_id always from session on create; updates require id + tenant_id match.
@@ -135,6 +145,7 @@ exports.handler = async (event) => {
     } catch (_err) {
       return json(400, { error: "Invalid JSON body" });
     }
+    body = stripLegacyCollectionFields(body);
 
     const clientTenantId = pickFirst(body.tenant_id, body.tenantId);
     if (
@@ -203,6 +214,12 @@ exports.handler = async (event) => {
 
     return json(200, { ok: true, invoice: row });
   } catch (err) {
+    console.error("[upsert-tenant-invoice-draft] unhandled failure", {
+      message: err?.message || "Server error",
+      status: err?.status || null,
+      supabaseRaw: err?.supabaseRaw || "",
+      stack: err?.stack || ""
+    });
     const msg = err.message || "Server error";
     if (msg.startsWith("Invalid status")) {
       return json(400, { error: msg });
