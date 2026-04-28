@@ -8,7 +8,7 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const ALLOWED_STATUS = new Set(["draft", "sent", "partial", "paid", "overdue", "void"]);
-const ALLOWED_INVOICE_TYPES = new Set(["progress_payment", "final", "deposit"]);
+const ALLOWED_INVOICE_TYPES = new Set(["DEPOSIT", "PROGRESS", "FINAL"]);
 
 /** Fields the client may set on create or update (never tenant_id / id via body for update filter). */
 const UPSERT_KEYS = new Set([
@@ -78,7 +78,8 @@ function buildPatchPayload(body) {
       continue;
     }
     if (key === "type") {
-      out[key] = v;
+      const rawType = String(v ?? "").trim().toUpperCase();
+      out[key] = ALLOWED_INVOICE_TYPES.has(rawType) ? rawType : "PROGRESS";
       continue;
     }
     if (key === "invoice_label") {
@@ -158,10 +159,9 @@ exports.handler = async (event) => {
     ) {
       body.issue_date = body.invoice_date;
     }
-    const rawType = String(pickFirst(body.type, body.invoice_type) || "").trim();
-    const invoiceType = ALLOWED_INVOICE_TYPES.has(rawType)
-      ? rawType
-      : "progress_payment";
+    const rawType = String(pickFirst(body.type, body.invoice_type) || "").trim().toUpperCase();
+    const invoiceType = ALLOWED_INVOICE_TYPES.has(rawType) ? rawType : "PROGRESS";
+    console.log("[invoice-draft] type normalize", { rawType, invoiceType });
     body.type = invoiceType;
 
     const clientTenantId = pickFirst(body.tenant_id, body.tenantId);
