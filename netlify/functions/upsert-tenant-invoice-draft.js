@@ -168,7 +168,15 @@ exports.handler = async (event) => {
         });
       } catch (error) {
         console.error("Invoice draft error:", error);
-        return json(500, { ok: false, error: error?.message || "Failed to update invoice draft" });
+        const status =
+          Number.isInteger(error?.status) && error.status >= 400 && error.status <= 599
+            ? error.status
+            : 500;
+        return json(status, {
+          ok: false,
+          error: error?.message || "Failed to update invoice draft",
+          supabaseRaw: error?.supabaseRaw || ""
+        });
       }
       const rows = Array.isArray(updated) ? updated : updated ? [updated] : [];
       if (rows.length === 0) {
@@ -203,7 +211,15 @@ exports.handler = async (event) => {
       });
     } catch (error) {
       console.error("Invoice draft error:", error);
-      return json(500, { ok: false, error: error?.message || "Failed to create invoice draft" });
+      const status =
+        Number.isInteger(error?.status) && error.status >= 400 && error.status <= 599
+          ? error.status
+          : 500;
+      return json(status, {
+        ok: false,
+        error: error?.message || "Failed to create invoice draft",
+        supabaseRaw: error?.supabaseRaw || ""
+      });
     }
     const row = Array.isArray(created) ? created[0] : created;
     if (!row?.id) {
