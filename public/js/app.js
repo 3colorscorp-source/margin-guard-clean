@@ -2264,7 +2264,6 @@ Thank you.`
       depositApplied: 0,
       receivedApplied: 0,
       status: "draft",
-      collectionStage: "new",
       payments: [],
       activity: [],
       publicToken: "",
@@ -2286,7 +2285,6 @@ Thank you.`
       depositApplied: finiteNumber(saved.depositApplied, 0),
       receivedApplied: finiteNumber(saved.receivedApplied, 0),
       status: normalizeInvoiceStatus(saved.status),
-      collectionStage: ["new", "contacted", "promised", "escalated", "resolved"].includes(saved.collectionStage) ? saved.collectionStage : "new",
       payments: Array.isArray(saved.payments) ? saved.payments : [],
       activity: Array.isArray(saved.activity) ? saved.activity : [],
       publicToken: nonEmptyString(saved.publicToken),
@@ -2428,7 +2426,6 @@ Thank you.`
         ...(invoice || {}),
         dueDate: normalizeDateInput(invoice?.dueDate || project?.dueDate),
         status: normalizeInvoiceStatus(invoice?.status),
-        collectionStage: ["new", "contacted", "promised", "escalated", "resolved"].includes(invoice?.collectionStage) ? invoice.collectionStage : "new",
         payments: Array.isArray(invoice?.payments) ? invoice.payments : [],
         activity: Array.isArray(invoice?.activity) ? invoice.activity : [],
         publicToken: nonEmptyString(invoice?.publicToken),
@@ -7675,12 +7672,6 @@ function renderSupervisor() {
     const status = normalizeInvoiceStatus(
       overrides.status || inferInvoiceStatus(metrics.total || baseAmount, depositApplied, receivedApplied, current.status)
     );
-    let collectionStage = ["new", "contacted", "promised", "escalated", "resolved"].includes(overrides.collectionStage)
-      ? overrides.collectionStage
-      : current.collectionStage;
-    if (status === "paid") collectionStage = "resolved";
-    else if (status === "partial" && (!collectionStage || collectionStage === "new")) collectionStage = "contacted";
-    else if (!collectionStage) collectionStage = "new";
     return {
       invoiceNo: nonEmptyString(overrides.invoiceNo, current.invoiceNo, `INV-${Date.now()}`),
       invoiceDate,
@@ -7689,7 +7680,6 @@ function renderSupervisor() {
       depositApplied,
       receivedApplied,
       status,
-      collectionStage,
       payments: Array.isArray(overrides.payments) ? overrides.payments : current.payments,
       activity: Array.isArray(overrides.activity) ? overrides.activity : current.activity,
       publicToken: nonEmptyString(overrides.publicToken, current.publicToken),
@@ -9270,13 +9260,6 @@ function renderSupervisor() {
       const presetFieldOptions = [{ value: "", label: "— Preset (optional) —" }].concat(
         MG_HUB_INVOICE_LABEL_PRESETS.map((p) => ({ value: p, label: p }))
       );
-      const collectionStatusOptions = [
-        { value: "new", label: "New — no outreach yet" },
-        { value: "contacted", label: "Contacted" },
-        { value: "promised", label: "Promised to pay" },
-        { value: "escalated", label: "Escalated" },
-        { value: "resolved", label: "Resolved" }
-      ];
       showHubActionForm({
         title: "Configurar invoice",
         subtitle: `${row.title} · ${row.customer}`,
@@ -9379,21 +9362,13 @@ function renderSupervisor() {
               { label: "+30 days", kind: "today_plus", days: 30 }
             ]
           },
-          { id: "hubFormInvoiceBase", label: "Base Amount", type: "number", step: "0.01", value: invoice.baseAmount || row.project?.salePrice || 0, placeholder: "0.00" },
-          {
-            id: "hubFormCollectionStage",
-            label: "Collection status",
-            type: "select",
-            value: invoice.collectionStage || "new",
-            options: collectionStatusOptions
-          }
+          { id: "hubFormInvoiceBase", label: "Base Amount", type: "number", step: "0.01", value: invoice.baseAmount || row.project?.salePrice || 0, placeholder: "0.00" }
         ],
         onSubmit: () => {
           const invoiceNo = val("hubFormInvoiceNo");
           const invoiceDate = val("hubFormInvoiceDate");
           const dueDate = val("hubFormInvoiceDueDate");
           const baseAmount = Number(val("hubFormInvoiceBase"));
-          const collectionStage = val("hubFormCollectionStage") || "new";
           const invoiceLabel = resolveHubInvoiceLabelFromForm(val("hubFormInvoiceLabelPreset"), val("hubFormInvoiceLabelCustom"));
           if (!normalizeDateInput(invoiceDate)) {
             setNotice("hubFormFeedback", "Invoice date es obligatoria.", "err");
@@ -9420,7 +9395,6 @@ function renderSupervisor() {
                 invoiceDate,
                 dueDate,
                 baseAmount,
-                collectionStage,
                 invoiceLabel,
                 serverInvoiceId: sid
               });
@@ -9449,7 +9423,6 @@ function renderSupervisor() {
             invoiceDate,
             dueDate,
             baseAmount,
-            collectionStage,
             invoiceLabel
           });
           nextInvoice.activity = appendInvoiceActivity(nextInvoice, "Invoice setup updated.", undefined, "invoice");
