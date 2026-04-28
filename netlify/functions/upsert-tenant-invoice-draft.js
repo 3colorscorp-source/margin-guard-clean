@@ -105,6 +105,11 @@ function buildPatchPayload(body) {
   return out;
 }
 
+function sanitizePayloadKeys(body) {
+  if (!body || typeof body !== "object") return [];
+  return Object.keys(body).filter((k) => typeof k === "string").slice(0, 200);
+}
+
 /**
  * POST — create draft (no id / no id in body) or update draft (body.id UUID).
  * tenant_id always from session on create; updates require id + tenant_id match.
@@ -133,7 +138,20 @@ exports.handler = async (event) => {
     try {
       body = JSON.parse(event.body || "{}");
     } catch (_err) {
-      return json(400, { error: "Invalid JSON body" });
+      return json(400, {
+        ok: false,
+        error: "validation:invalid_json_body",
+        missing: [],
+        received: []
+      });
+    }
+    if (
+      body &&
+      typeof body === "object" &&
+      Object.prototype.hasOwnProperty.call(body, "invoice_date") &&
+      !Object.prototype.hasOwnProperty.call(body, "issue_date")
+    ) {
+      body.issue_date = body.invoice_date;
     }
 
     const clientTenantId = pickFirst(body.tenant_id, body.tenantId);
@@ -149,13 +167,23 @@ exports.handler = async (event) => {
     const id = rawId ? String(rawId).trim() : "";
 
     if (id && !UUID_RE.test(id)) {
-      return json(400, { error: "Invalid id (expected UUID)." });
+      return json(400, {
+        ok: false,
+        error: "validation:invalid_id_uuid",
+        missing: [],
+        received: sanitizePayloadKeys(body)
+      });
     }
 
     if (id) {
       const patch = buildPatchPayload(body);
       if (Object.keys(patch).length === 0) {
-        return json(400, { error: "No updatable fields provided." });
+        return json(400, {
+          ok: false,
+          error: "validation:no_updatable_fields",
+          missing: ["any_of: " + [...UPSERT_KEYS].join(", ")],
+          received: sanitizePayloadKeys(body)
+        });
       }
 
       const filter = `id=eq.${encodeURIComponent(id)}&tenant_id=eq.${encodeURIComponent(tenantId)}`;
@@ -192,7 +220,12 @@ exports.handler = async (event) => {
       pickFirst(body.invoice_no, body.invoiceNo) || `INV-${Date.now()}`
     ).trim();
     if (!insert.invoice_no) {
-      return json(400, { error: "invoice_no is required for new invoices." });
+      return json(400, {
+        ok: false,
+        error: "validation:invoice_no_required",
+        missing: ["invoice_no"],
+        received: sanitizePayloadKeys(body)
+      });
     }
     insert.status = insert.status != null ? normalizeStatus(insert.status) : "draft";
     insert.amount = finiteMoney(insert.amount ?? 0, 0);
@@ -239,10 +272,20 @@ exports.handler = async (event) => {
     });
     const msg = err.message || "Server error";
     if (msg.startsWith("Invalid status")) {
-      return json(400, { error: msg });
+      return json(400, {
+        ok: false,
+        error: "validation:invalid_status",
+        missing: [],
+        received: sanitizePayloadKeys(body)
+      });
     }
     if (msg.includes("Invalid quote_id")) {
-      return json(400, { error: msg });
+      return json(400, {
+        ok: false,
+        error: "validation:invalid_quote_id_uuid",
+        missing: [],
+        received: sanitizePayloadKeys(body)
+      });
     }
     return json(500, { error: msg });
   }
