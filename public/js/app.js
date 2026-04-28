@@ -2326,7 +2326,9 @@ Thank you.`
       status: "draft",
       issue_date: normalizeDateInput(inv.invoiceDate) || new Date().toISOString().slice(0, 10),
       due_date: normalizeDateInput(inv.dueDate || project.dueDate) || null,
-      type: nonEmptyString(inv.type, "progress"),
+      type: ["DEPOSIT", "PROGRESS", "FINAL"].includes(String(nonEmptyString(inv.type, "")).trim().toUpperCase())
+        ? String(inv.type).trim().toUpperCase()
+        : "PROGRESS",
       notes: String(project.notes || "").slice(0, 8000),
       payment_link: nonEmptyString(inv.paymentLink) || ""
     };
