@@ -1,4 +1,5 @@
 const { supabaseRequest } = require("./_lib/supabase-admin");
+const { loadTenantDisplayForTenantId, pickFirst } = require("./_lib/tenant-display");
 
 function json(statusCode, body) {
   return {
@@ -27,7 +28,11 @@ const INVOICE_SELECT = [
   "invoice_label",
   "issue_date",
   "type",
-  "notes"
+  "notes",
+  "id",
+  "tenant_id",
+  "quote_id",
+  "project_id"
 ].join(",");
 
 const INVOICE_NUMERIC_KEYS = new Set(["amount", "paid_amount", "balance_due"]);
@@ -92,7 +97,37 @@ exports.handler = async (event) => {
       return json(500, { error: "Invalid invoice reference" });
     }
 
-    const invoice = pickPublicInvoiceFields(rows[0]);
+    const rawRow = rows[0] || {};
+    const invoice = pickPublicInvoiceFields(rawRow);
+    const tenantId = String(rawRow.tenant_id || "").trim();
+    const invoiceId = String(rawRow.id || "").trim();
+    const quoteId = String(rawRow.quote_id || "").trim();
+    const projectId = String(rawRow.project_id || "").trim();
+
+    const invoiceAmount = Number.isFinite(Number(rawRow.amount)) ? Number(rawRow.amount) : 0;
+    const quoteTotal = await loadQuoteTotal(tenantId, quoteId);
+    const projectTotal = await loadProjectTotal(tenantId, projectId);
+    const contractTotal =
+      quoteTotal > 0 ? quoteTotal : projectTotal > 0 ? projectTotal : Math.max(invoiceAmount, 0);
+    const paidToDate = await loadPaidToDate({ tenantId, invoiceId, projectId, quoteId });
+    const remainingBalance = Math.max(contractTotal - paidToDate, 0);
+
+    if (tenantId) {
+      try {
+        const td = await loadTenantDisplayForTenantId(tenantId);
+        const tenantBusinessName = pickFirst(td?.business_name);
+        if (tenantBusinessName) {
+          invoice.business_name = tenantBusinessName;
+        }
+      } catch (_err) {
+        /* keep invoice business_name fallback */
+      }
+    }
+
+    invoice.invoice_amount = invoiceAmount;
+    invoice.contract_total = contractTotal;
+    invoice.paid_to_date = paidToDate;
+    invoice.remaining_balance = remainingBalance;
 
     return json(200, {
       ok: true,
@@ -102,3 +137,55 @@ exports.handler = async (event) => {
     return json(500, { error: err.message || "Server error" });
   }
 };
+
+async function loadQuoteTotal(tenantId, quoteId) {
+  if (!tenantId || !quoteId) return 0;
+  try {
+    const rows = await supabaseRequest(
+      `quotes?id=eq.${encodeURIComponent(quoteId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&select=total&limit=1`,
+      { method: "GET" }
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    const n = Number(row?.total);
+    return Number.isFinite(n) ? Math.max(n, 0) : 0;
+  } catch (_err) {
+    return 0;
+  }
+}
+
+async function loadProjectTotal(tenantId, projectId) {
+  if (!tenantId || !projectId) return 0;
+  try {
+    const rows = await supabaseRequest(
+      `tenant_projects?id=eq.${encodeURIComponent(projectId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&select=sale_price&limit=1`,
+      { method: "GET" }
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    const n = Number(row?.sale_price);
+    return Number.isFinite(n) ? Math.max(n, 0) : 0;
+  } catch (_err) {
+    return 0;
+  }
+}
+
+async function loadPaidToDate({ tenantId, invoiceId, projectId, quoteId }) {
+  if (!tenantId) return 0;
+  const params = new URLSearchParams();
+  params.set("tenant_id", `eq.${tenantId}`);
+  params.set("select", "amount");
+  params.set("limit", "500");
+  if (invoiceId) params.set("invoice_id", `eq.${invoiceId}`);
+  else if (projectId) params.set("project_id", `eq.${projectId}`);
+  else if (quoteId) params.set("quote_id", `eq.${quoteId}`);
+  else return 0;
+  try {
+    const rows = await supabaseRequest(`tenant_project_payments?${params.toString()}`, { method: "GET" });
+    const list = Array.isArray(rows) ? rows : [];
+    return list.reduce((sum, row) => {
+      const n = Number(row?.amount);
+      return sum + (Number.isFinite(n) ? n : 0);
+    }, 0);
+  } catch (_err) {
+    return 0;
+  }
+}

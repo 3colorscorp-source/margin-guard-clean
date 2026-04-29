@@ -414,13 +414,15 @@
   }
 
   function invoiceFacts(inv) {
-    const amountNum = Number(inv.amount);
-    const paidNum = Number(inv.paid_amount);
-    const balanceNum = Number(inv.balance_due);
-    const amount = Number.isFinite(amountNum) ? amountNum : 0;
+    const contractNum = Number(inv.contract_total);
+    const invoiceAmountNum = Number(inv.invoice_amount != null ? inv.invoice_amount : inv.amount);
+    const paidNum = Number(inv.paid_to_date != null ? inv.paid_to_date : inv.paid_amount);
+    const balanceNum = Number(inv.remaining_balance != null ? inv.remaining_balance : inv.balance_due);
+    const contractTotal = Number.isFinite(contractNum) ? contractNum : Number.isFinite(invoiceAmountNum) ? invoiceAmountNum : 0;
+    const invoiceAmount = Number.isFinite(invoiceAmountNum) ? invoiceAmountNum : 0;
     const paid = Number.isFinite(paidNum) ? paidNum : 0;
-    const balance = Number.isFinite(balanceNum) ? balanceNum : Math.max(amount - paid, 0);
-    return { amount, paid, balance };
+    const balance = Number.isFinite(balanceNum) ? balanceNum : Math.max(contractTotal - paid, 0);
+    return { contractTotal, invoiceAmount, paid, balance };
   }
 
   function normalizedStatus(inv) {
@@ -459,8 +461,8 @@
 
   function paymentProgressPercent(inv) {
     const facts = invoiceFacts(inv);
-    if (facts.amount <= 0) return facts.paid > 0 ? 100 : 0;
-    const pct = (facts.paid / facts.amount) * 100;
+    if (facts.contractTotal <= 0) return facts.paid > 0 ? 100 : 0;
+    const pct = (facts.paid / facts.contractTotal) * 100;
     return Math.max(0, Math.min(100, Math.round(pct * 100) / 100));
   }
 
@@ -535,9 +537,11 @@
       const progressPct = paymentProgressPercent(data);
       const progressPctLabel = `${Math.round(progressPct)}%`;
 
-      const amount = money(data.amount, currency);
-      const paidAmount = money(data.paid_amount, currency);
-      const balanceDue = money(data.balance_due, currency);
+      const facts = invoiceFacts(data);
+      const contractTotal = money(facts.contractTotal, currency);
+      const invoiceAmount = money(facts.invoiceAmount, currency);
+      const paidAmount = money(facts.paid, currency);
+      const balanceDue = money(facts.balance, currency);
 
       const accent = safeAccentColor(data.accent_color);
       const logoUrl = safeHttpUrl(data.logo_url);
@@ -647,7 +651,13 @@
               '<div class="sum-row">' +
                 "<span>Contract total</span>" +
                 "<strong>" +
-                amount +
+                contractTotal +
+                "</strong>" +
+              "</div>" +
+              '<div class="sum-row">' +
+                "<span>Invoice amount</span>" +
+                "<strong>" +
+                invoiceAmount +
                 "</strong>" +
               "</div>" +
               '<div class="sum-row">' +
@@ -672,8 +682,8 @@
                 '%;"></div></div>' +
                 '<div class="last-payment">' +
                   "Last payment summary: " +
-                  (Number(data.paid_amount) > 0
-                    ? "Paid to date " + paidAmount + " on a contract total of " + amount + "."
+                  (facts.paid > 0
+                    ? "Paid to date " + paidAmount + " on a contract total of " + contractTotal + "."
                     : "No payments recorded yet.") +
                 "</div>" +
               "</div>" +
