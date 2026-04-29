@@ -2,6 +2,7 @@ const fetch = globalThis.fetch;
 if (!fetch) {
   throw new Error("Global fetch is not available. Set Netlify Node to 18+.");
 }
+const crypto = require("crypto");
 
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
@@ -65,6 +66,27 @@ function formatMoney(value, currency) {
   } catch (_err) {
     return `$${n.toFixed(2)}`;
   }
+}
+
+function buildZapierSignatureMeta(payload) {
+  const secret = String(process.env.ZAPIER_WEBHOOK_SECRET || "").trim();
+  if (!secret) {
+    console.log("[zapier-signature] secret missing; sending unsigned");
+    return null;
+  }
+  const timestamp = new Date().toISOString();
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const canonical = `${timestamp}.${nonce}.${JSON.stringify(payload)}`;
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(canonical)
+    .digest("hex");
+  return {
+    signature,
+    timestamp,
+    nonce,
+    version: "v1"
+  };
 }
 
 async function loadInvoiceForTenant(tenantId, id, publicToken) {
@@ -249,6 +271,13 @@ exports.handler = async (event) => {
       schema_version,
       idempotency_key
     };
+    const signatureMeta = buildZapierSignatureMeta(payload);
+    if (signatureMeta) {
+      payload.zapier_signature = signatureMeta.signature;
+      payload.zapier_timestamp = signatureMeta.timestamp;
+      payload.zapier_nonce = signatureMeta.nonce;
+      payload.zapier_signature_version = signatureMeta.version;
+    }
     console.log("[send-invoice-zapier] payload fields", {
       project_name,
       amount,
@@ -265,9 +294,16 @@ exports.handler = async (event) => {
 
     let zapRes;
     try {
+      const headers = { "Content-Type": "application/json", Accept: "application/json" };
+      if (signatureMeta) {
+        headers["X-MG-Signature"] = signatureMeta.signature;
+        headers["X-MG-Timestamp"] = signatureMeta.timestamp;
+        headers["X-MG-Nonce"] = signatureMeta.nonce;
+        headers["X-MG-Signature-Version"] = signatureMeta.version;
+      }
       zapRes = await fetch(webhookUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers,
         body: JSON.stringify(payload)
       });
     } catch (error) {

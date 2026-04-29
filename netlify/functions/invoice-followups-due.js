@@ -6,6 +6,7 @@ const fetch = globalThis.fetch;
 if (!fetch) {
   throw new Error("Global fetch is not available. Set Netlify Node to 18+.");
 }
+const crypto = require("crypto");
 
 const { supabaseRequest } = require("./_lib/supabase-admin");
 
@@ -99,6 +100,27 @@ function nextReminderStage(inv, daysPastDue) {
     return { key, column };
   }
   return null;
+}
+
+function buildZapierSignatureMeta(payload) {
+  const secret = String(process.env.ZAPIER_WEBHOOK_SECRET || "").trim();
+  if (!secret) {
+    console.log("[zapier-signature] secret missing; sending unsigned");
+    return null;
+  }
+  const timestamp = new Date().toISOString();
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const canonical = `${timestamp}.${nonce}.${JSON.stringify(payload)}`;
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(canonical)
+    .digest("hex");
+  return {
+    signature,
+    timestamp,
+    nonce,
+    version: "v1"
+  };
 }
 
 function buildPayload(inv, tenantName, stageKey, remainingBal) {
@@ -229,6 +251,13 @@ exports.handler = async (event) => {
     }
 
     const payload = buildPayload(inv, tenantName, stage.key, bal);
+    const signatureMeta = buildZapierSignatureMeta(payload);
+    if (signatureMeta) {
+      payload.zapier_signature = signatureMeta.signature;
+      payload.zapier_timestamp = signatureMeta.timestamp;
+      payload.zapier_nonce = signatureMeta.nonce;
+      payload.zapier_signature_version = signatureMeta.version;
+    }
     const claimAt = new Date().toISOString();
     const invoiceIdEnc = encodeURIComponent(String(inv.id));
     const tenantIdEnc = encodeURIComponent(String(inv.tenant_id));
@@ -255,9 +284,16 @@ exports.handler = async (event) => {
         idempotency_key: payload.idempotency_key
       });
 
+      const headers = { "Content-Type": "application/json", Accept: "application/json" };
+      if (signatureMeta) {
+        headers["X-MG-Signature"] = signatureMeta.signature;
+        headers["X-MG-Timestamp"] = signatureMeta.timestamp;
+        headers["X-MG-Nonce"] = signatureMeta.nonce;
+        headers["X-MG-Signature-Version"] = signatureMeta.version;
+      }
       const res = await fetch(webhookUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers,
         body: JSON.stringify(payload)
       });
       if (!res.ok) {
