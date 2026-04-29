@@ -102,13 +102,39 @@ function nextReminderStage(inv, daysPastDue) {
 }
 
 function buildPayload(inv, tenantName, stageKey, remainingBal) {
+  const tenant_id = String(inv.tenant_id || "").trim();
+  const invoice_id = String(inv.id || "").trim();
+  const quote_id = String(inv.quote_id || "").trim();
+  const project_id = String(inv.project_id || "").trim();
+  const public_token = pickFirstStr(inv.public_token);
+  const siteUrl = String(process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.SITE_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
+  const public_invoice_url = public_token
+    ? (siteUrl
+      ? `${siteUrl}/invoice-public.html?token=${encodeURIComponent(public_token)}`
+      : `/invoice-public.html?token=${encodeURIComponent(public_token)}`)
+    : "";
+  const event_type = "invoice_reminder";
+  const schema_version = "invoice_webhook_v1";
+  const idempotency_key = `${tenant_id}:${invoice_id}:${stageKey}`;
   return {
     client_email: pickFirstStr(inv.customer_email),
+    "Client Email": pickFirstStr(inv.customer_email),
     client_name: pickFirstStr(inv.customer_name, inv.project_name),
     business_name: pickFirstStr(inv.business_name, tenantName),
     project_name: pickFirstStr(inv.project_name),
     invoice_label: pickFirstStr(inv.invoice_label),
     invoice_number: pickFirstStr(inv.invoice_no),
+    public_invoice_url,
+    "Public Invoice Url": public_invoice_url,
+    tenant_id,
+    invoice_id,
+    quote_id,
+    project_id,
+    event_type,
+    schema_version,
+    idempotency_key,
     remaining_balance: remainingBal,
     is_paid: false,
     is_archived: false,
@@ -203,8 +229,32 @@ exports.handler = async (event) => {
     }
 
     const payload = buildPayload(inv, tenantName, stage.key, bal);
+    const claimAt = new Date().toISOString();
+    const invoiceIdEnc = encodeURIComponent(String(inv.id));
+    const tenantIdEnc = encodeURIComponent(String(inv.tenant_id));
 
     try {
+      const claimRows = await supabaseRequest(
+        `invoices?id=eq.${invoiceIdEnc}&tenant_id=eq.${tenantIdEnc}&${stage.column}=is.null`,
+        {
+          method: "PATCH",
+          headers: { Prefer: "return=representation" },
+          body: { [stage.column]: claimAt, updated_at: claimAt }
+        }
+      );
+      const claimed = Array.isArray(claimRows) ? claimRows : claimRows ? [claimRows] : [];
+      if (!claimed.length) {
+        stats.skipped += 1;
+        continue;
+      }
+
+      console.log("[zapier-reminder]", {
+        tenant_id: String(inv.tenant_id),
+        invoice_id: String(inv.id),
+        reminder_stage: stage.key,
+        idempotency_key: payload.idempotency_key
+      });
+
       const res = await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -216,19 +266,26 @@ exports.handler = async (event) => {
           stage: stage.key,
           status: res.status
         });
+        await supabaseRequest(
+          `invoices?id=eq.${invoiceIdEnc}&tenant_id=eq.${tenantIdEnc}&${stage.column}=eq.${encodeURIComponent(claimAt)}`,
+          {
+            method: "PATCH",
+            headers: { Prefer: "return=minimal" },
+            body: { [stage.column]: null, updated_at: new Date().toISOString() }
+          }
+        ).catch(() => {});
         stats.errors += 1;
         continue;
       }
 
       const nowIso = new Date().toISOString();
       const patchBody = {
-        [stage.column]: nowIso,
         last_reminder_at: nowIso,
         updated_at: nowIso
       };
 
       await supabaseRequest(
-        `invoices?id=eq.${encodeURIComponent(String(inv.id))}&tenant_id=eq.${encodeURIComponent(String(inv.tenant_id))}`,
+        `invoices?id=eq.${invoiceIdEnc}&tenant_id=eq.${tenantIdEnc}`,
         { method: "PATCH", headers: { Prefer: "return=minimal" }, body: patchBody }
       );
       stats.sent += 1;

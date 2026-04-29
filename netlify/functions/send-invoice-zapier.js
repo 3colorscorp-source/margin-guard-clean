@@ -194,14 +194,36 @@ exports.handler = async (event) => {
     const client_email = pickFirstStr(invoice.customer_email);
     const public_invoice_url = publicInvoiceUrl;
     const business_name = businessName;
+    const invoice_id = String(invoice.id || "").trim();
+    const quote_id = String(invoice.quote_id || "").trim();
+    const project_id = String(invoice.project_id || "").trim();
+    const event_type = "invoice_sent";
+    const schema_version = "invoice_webhook_v1";
+    const idempotency_key = `${tenantId}:${invoice_id || token}:invoice_sent`;
 
     /** Zapier Catch Hook field names (exact keys with spaces). */
     const payload = {
       client_name,
+      client_email,
       "Client Email": client_email,
+      public_invoice_url,
       "Public Invoice Url": public_invoice_url,
-      business_name
+      business_name,
+      tenant_id: tenantId,
+      invoice_id,
+      quote_id,
+      project_id,
+      event_type,
+      schema_version,
+      idempotency_key
     };
+
+    console.log("[zapier-invoice]", {
+      tenant_id: tenantId,
+      invoice_id,
+      event_type,
+      idempotency_key
+    });
 
     let zapRes;
     try {
