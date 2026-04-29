@@ -8307,6 +8307,25 @@ function renderSupervisor() {
     }
   }
 
+  function getHubDrawerSendInvoiceReadiness(row) {
+    const invoice = getProjectInvoiceState(row?.project);
+    const invoiceId = nonEmptyString(row?.serverInvoiceId, invoice.serverInvoiceId, invoice.supabaseInvoiceId);
+    const invoiceNumber = nonEmptyString(row?.invoiceNo, invoice.invoiceNo);
+    const publicToken = nonEmptyString(invoice.publicToken);
+    const publicInvoiceUrl = invoice.publicUrl || (publicToken ? `/invoice-public.html?token=${encodeURIComponent(publicToken)}` : "");
+    const clientEmail = nonEmptyString(row?.customerEmail, row?.project?.clientEmail);
+    const businessName = nonEmptyString(invoice.businessName, row?.project?.business_name);
+    const missing = [];
+    if (!clientEmail || !clientEmail.includes("@")) missing.push("client_email");
+    if (!publicInvoiceUrl) missing.push("public_invoice_url");
+    if (!businessName) missing.push("business_name");
+    if (!invoiceId && !invoiceNumber) missing.push("invoice_id_or_invoice_number");
+    return {
+      ready: missing.length === 0,
+      missing
+    };
+  }
+
   function requestHubPayment(projectId) {
     const project = getProjectById(projectId);
     if (!project) return;
@@ -9111,12 +9130,13 @@ function renderSupervisor() {
 
       const sendBtn = $("btnHubDrawerSendInvoice");
       if (sendBtn) {
+        const sendReady = getHubDrawerSendInvoiceReadiness(row);
         sendBtn.style.display = "";
-        sendBtn.disabled = !actionState.canSendInvoice;
-        sendBtn.classList.toggle("hub-action-disabled", !actionState.canSendInvoice);
-        sendBtn.title = actionState.canSendInvoice
+        sendBtn.disabled = !sendReady.ready;
+        sendBtn.classList.toggle("hub-action-disabled", !sendReady.ready);
+        sendBtn.title = sendReady.ready
           ? ""
-          : "Necesitas invoice valido, cliente y monto para enviar.";
+          : `Missing required fields: ${sendReady.missing.join(", ")}`;
       }
 
       const qid = String(row?.hubQuoteId || "").trim();
@@ -10294,7 +10314,11 @@ function renderSupervisor() {
     if ($("btnHubDrawerSendInvoice")) {
       $("btnHubDrawerSendInvoice").onclick = async () => {
         if (!selectedRow) return;
-        if (!guardHubAction(selectedRow, "canSendInvoice", "Necesitas invoice, cliente y monto antes de enviar.")) return;
+        const sendReady = getHubDrawerSendInvoiceReadiness(selectedRow);
+        if (!sendReady.ready) {
+          setHubFeedback(`Missing required fields: ${sendReady.missing.join(", ")}`, "warn");
+          return;
+        }
         const btn = $("btnHubDrawerSendInvoice");
         const prevLabel = btn ? String(btn.textContent || "Send Invoice") : "Send Invoice";
         if (btn) {
