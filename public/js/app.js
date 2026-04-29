@@ -8252,6 +8252,61 @@ function renderSupervisor() {
     }
   }
 
+  async function sendHubInvoiceFromDrawerRow(row) {
+    if (!row) return { ok: false, message: "No invoice selected." };
+    const invoice = getProjectInvoiceState(row.project);
+    const invoiceId = nonEmptyString(row.serverInvoiceId, invoice.serverInvoiceId, invoice.supabaseInvoiceId);
+    const publicToken = nonEmptyString(invoice.publicToken);
+    const publicUrl = invoice.publicUrl || (publicToken ? `/invoice-public.html?token=${encodeURIComponent(publicToken)}` : "");
+    const payload = {
+      id: MG_SERVER_INVOICE_UUID_RE.test(invoiceId) ? invoiceId : undefined,
+      public_token: !MG_SERVER_INVOICE_UUID_RE.test(invoiceId) ? publicToken : undefined,
+      tenant_id: nonEmptyString(row.tenant_id, row.project?.tenantId, row.project?.tenant_id),
+      invoice_id: invoiceId,
+      quote_id: nonEmptyString(row.hubQuoteId, invoice.quoteId),
+      project_id: nonEmptyString(row.hubTenantProjectId, row.projectId),
+      client_name: nonEmptyString(row.customer, row.project?.clientName),
+      client_email: nonEmptyString(row.customerEmail, row.project?.clientEmail),
+      business_name: nonEmptyString(invoice.businessName, row.project?.business_name),
+      project_name: nonEmptyString(row.title, row.project?.projectName),
+      public_invoice_url: publicUrl,
+      invoice_number: nonEmptyString(row.invoiceNo, invoice.invoiceNo),
+      invoice_amount: finiteNumber(row.amount, 0),
+      contract_total: Math.max(finiteNumber(row.projectContractTotal, 0), 0),
+      paid_to_date: finiteNumber(row.depositApplied, 0) + finiteNumber(row.receivedApplied, 0),
+      remaining_balance: Math.max(finiteNumber(row.balance, 0), 0),
+      "Client Email": nonEmptyString(row.customerEmail, row.project?.clientEmail),
+      "Public Invoice Url": publicUrl
+    };
+    if (!payload.id && !payload.public_token) {
+      return { ok: false, message: "Missing invoice_id/public_token for server send." };
+    }
+    try {
+      const res = await fetch("/.netlify/functions/send-invoice-zapier", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const text = await res.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (_err) {
+        data = {};
+      }
+      if (!res.ok || data.ok !== true) {
+        return {
+          ok: false,
+          message: data?.message || data?.error || data?.details || text || `HTTP ${res.status}`
+        };
+      }
+      return { ok: true, invoice: data.invoice || null };
+    } catch (err) {
+      return { ok: false, message: String(err?.message || err || "Network error") };
+    }
+  }
+
   function requestHubPayment(projectId) {
     const project = getProjectById(projectId);
     if (!project) return;
@@ -9052,6 +9107,16 @@ function renderSupervisor() {
         recordPay.title = canLedger
           ? ""
           : "Requires a linked server invoice, quote, or tenant project UUID to post to the ledger.";
+      }
+
+      const sendBtn = $("btnHubDrawerSendInvoice");
+      if (sendBtn) {
+        sendBtn.style.display = "";
+        sendBtn.disabled = !actionState.canSendInvoice;
+        sendBtn.classList.toggle("hub-action-disabled", !actionState.canSendInvoice);
+        sendBtn.title = actionState.canSendInvoice
+          ? ""
+          : "Necesitas invoice valido, cliente y monto para enviar.";
       }
 
       const qid = String(row?.hubQuoteId || "").trim();
@@ -10224,6 +10289,33 @@ function renderSupervisor() {
           return;
         }
         window.open(publicUrl, "_blank", "noopener");
+      };
+    }
+    if ($("btnHubDrawerSendInvoice")) {
+      $("btnHubDrawerSendInvoice").onclick = async () => {
+        if (!selectedRow) return;
+        if (!guardHubAction(selectedRow, "canSendInvoice", "Necesitas invoice, cliente y monto antes de enviar.")) return;
+        const btn = $("btnHubDrawerSendInvoice");
+        const prevLabel = btn ? String(btn.textContent || "Send Invoice") : "Send Invoice";
+        if (btn) {
+          btn.textContent = "Sending...";
+          btn.disabled = true;
+        }
+        const result = await sendHubInvoiceFromDrawerRow(selectedRow);
+        if (btn) {
+          btn.textContent = prevLabel;
+          applyHubActionButtonState(selectedRow);
+        }
+        if (!result.ok) {
+          setHubFeedback(result.message || "Send invoice failed.", "err");
+          return;
+        }
+        if (selectedRow?.projectId) {
+          applyHubSendSuccessToLocalProject(selectedRow.projectId, result.invoice || null);
+        }
+        await refreshHubServerInvoicesCacheQuietly();
+        refreshSelectedRow();
+        setHubFeedback("Invoice sent successfully", "ok");
       };
     }
 
