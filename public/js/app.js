@@ -10324,17 +10324,41 @@ function renderSupervisor() {
         console.log("[Invoice Hub] Send Invoice clicked");
 
         const row = window.__MG_ACTIVE_INVOICE_ROW__ || window.activeInvoiceRow || window.selectedInvoiceRow || null;
+        console.log("[DEBUG ROW]", row);
 
         if (!row) {
           alert("No invoice selected.");
           console.error("[Invoice Hub] No active invoice row found");
           return;
         }
-
-        const sendReady = getHubDrawerSendInvoiceReadiness(row);
-        if (!sendReady.ready) {
-          alert("Missing client email/public invoice URL/business name");
-          setHubFeedback("Missing client email/public invoice URL/business name", "err");
+        const clientEmail =
+          row.client_email ||
+          row.customer_email ||
+          row.email ||
+          row.customerEmail ||
+          row["Client Email"] ||
+          row.project?.clientEmail ||
+          "";
+        const publicUrl =
+          row.public_invoice_url ||
+          row.public_url ||
+          (row.public_token
+            ? `${location.origin}/invoice-public.html?token=${row.public_token}`
+            : "") ||
+          row["Public Invoice Url"] ||
+          row.project?.invoice?.publicUrl ||
+          (row.project?.invoice?.publicToken
+            ? `${location.origin}/invoice-public.html?token=${row.project.invoice.publicToken}`
+            : "") ||
+          "";
+        const businessName =
+          row.business_name ||
+          row.tenant_business_name ||
+          row.project?.business_name ||
+          "Three Colors Corp";
+        if (!clientEmail || !publicUrl || !businessName) {
+          console.error("Missing fields", { clientEmail, publicUrl, businessName, row });
+          alert("Missing required invoice data. Check console.");
           return;
         }
 
@@ -10349,23 +10373,12 @@ function renderSupervisor() {
             invoice_number: row.invoice_number || row.invoice_id || row.invoiceNo || "",
             tenant_id: row.tenant_id || row.project?.tenant_id || "",
             client_name: row.client_name || row.customer_name || row.customer || row.name || "",
-            client_email: row.client_email || row.customer_email || row.customerEmail || row.email || row["Client Email"] || "",
-            "Client Email":
-              row.client_email || row.customer_email || row.customerEmail || row.email || row["Client Email"] || "",
-            business_name: row.business_name || row.tenant_business_name || invoice.businessName || "Three Colors Corp",
+            client_email: clientEmail,
+            "Client Email": clientEmail,
+            business_name: businessName,
             project_name: row.project_name || row.project?.projectName || row.project || "",
-            public_invoice_url:
-              row.public_invoice_url ||
-              row.public_url ||
-              row["Public Invoice Url"] ||
-              invoice.publicUrl ||
-              (invoice.publicToken ? `/invoice-public.html?token=${encodeURIComponent(invoice.publicToken)}` : ""),
-            "Public Invoice Url":
-              row.public_invoice_url ||
-              row.public_url ||
-              row["Public Invoice Url"] ||
-              invoice.publicUrl ||
-              (invoice.publicToken ? `/invoice-public.html?token=${encodeURIComponent(invoice.publicToken)}` : ""),
+            public_invoice_url: publicUrl,
+            "Public Invoice Url": publicUrl,
             amount: row.invoice_amount || row.amount || row.base_amount || "",
             contract_total: row.contract_total || row.project_contract_total || row.projectContractTotal || "",
             paid_to_date: row.paid_to_date || "",
