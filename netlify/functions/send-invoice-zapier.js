@@ -69,6 +69,7 @@ function formatMoney(value, currency) {
 }
 
 function buildZapierSignatureMeta(payload) {
+  console.log("[zapier-signature] building signature...");
   const secret = String(process.env.ZAPIER_WEBHOOK_SECRET || "").trim();
   if (!secret) {
     console.log("[zapier-signature] secret missing; sending unsigned");
@@ -271,7 +272,13 @@ exports.handler = async (event) => {
       schema_version,
       idempotency_key
     };
+    console.log("[zapier-signature] running...");
+    console.log(
+      "[zapier-signature] secret exists:",
+      !!process.env.ZAPIER_WEBHOOK_SECRET
+    );
     const signatureMeta = buildZapierSignatureMeta(payload);
+    console.log("[zapier-signature] signature generated:", !!signatureMeta?.signature);
     if (signatureMeta) {
       payload.zapier_signature = signatureMeta.signature;
       payload.zapier_timestamp = signatureMeta.timestamp;
