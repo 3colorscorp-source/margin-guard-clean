@@ -10379,9 +10379,9 @@ function renderSupervisor() {
             project_name: row.project_name || row.project?.projectName || row.project || "",
             public_invoice_url: publicUrl,
             "Public Invoice Url": publicUrl,
-            amount: row.invoice_amount || row.amount || row.base_amount || "",
             contract_total: row.contract_total || row.project_contract_total || row.projectContractTotal || "",
-            paid_to_date: row.paid_to_date || "",
+            amount: row.contract_total || row.project_contract_total || row.projectContractTotal || row.invoice_amount || row.amount || row.base_amount || "",
+            paid_to_date: row.paid_to_date || row.depositApplied || row.receivedApplied || "",
             balance_due: row.remaining_balance || row.balance_due || row.balance || "",
             remaining_balance: row.remaining_balance || row.balance_due || row.balance || ""
           };

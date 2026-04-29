@@ -52,6 +52,21 @@ function pickFirstStr(...values) {
   return "";
 }
 
+function toNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function formatMoney(value, currency) {
+  const cur = String(currency || "USD").trim() || "USD";
+  const n = toNumber(value, 0);
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: cur }).format(n);
+  } catch (_err) {
+    return `$${n.toFixed(2)}`;
+  }
+}
+
 async function loadInvoiceForTenant(tenantId, id, publicToken) {
   const params = new URLSearchParams();
   params.set("tenant_id", `eq.${tenantId}`);
@@ -200,6 +215,19 @@ exports.handler = async (event) => {
     const event_type = "invoice_sent";
     const schema_version = "invoice_webhook_v1";
     const idempotency_key = `${tenantId}:${invoice_id || token}:invoice_sent`;
+    const project_name = pickFirstStr(body.project_name, body.projectName, invoice.project_name);
+    const amount = formatMoney(
+      pickFirstStr(body.contract_total, body.amount, invoice.amount),
+      invoice.currency
+    );
+    const paid_to_date = formatMoney(
+      pickFirstStr(body.paid_to_date, body.paidAmount, invoice.paid_amount),
+      invoice.currency
+    );
+    const balance_due = formatMoney(
+      pickFirstStr(body.balance_due, body.remaining_balance, invoice.balance_due),
+      invoice.currency
+    );
 
     /** Zapier Catch Hook field names (exact keys with spaces). */
     const payload = {
@@ -209,6 +237,10 @@ exports.handler = async (event) => {
       public_invoice_url,
       "Public Invoice Url": public_invoice_url,
       business_name,
+      project_name,
+      amount,
+      paid_to_date,
+      balance_due,
       tenant_id: tenantId,
       invoice_id,
       quote_id,
@@ -217,6 +249,12 @@ exports.handler = async (event) => {
       schema_version,
       idempotency_key
     };
+    console.log("[send-invoice-zapier] payload fields", {
+      project_name,
+      amount,
+      paid_to_date,
+      balance_due
+    });
 
     console.log("[zapier-invoice]", {
       tenant_id: tenantId,
