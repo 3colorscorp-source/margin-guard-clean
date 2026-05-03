@@ -205,55 +205,41 @@ exports.handler = async (event) => {
             public_token: trimmed
           };
 
-          const signedPayloadJson = JSON.stringify(outbound);
-          const zapierSignedPayloadB64 = Buffer.from(signedPayloadJson, "utf8").toString("base64url");
+          const originalPayloadJson = JSON.stringify(outbound);
+          const zapierSignedPayloadB64 = Buffer.from(originalPayloadJson, "utf8").toString("base64url");
           const zapierSecretForSigning = await resolveZapierWebhookSecretForEstimate(
             supabaseUrl,
             serviceRoleKey,
             row.tenant_id
           );
-          const signatureMeta = buildZapierSignatureMeta({ ...outbound }, signedPayloadJson, zapierSecretForSigning);
-          console.log("[zapier-signature] signature generated:", !!signatureMeta?.signature);
+          const signatureMeta = buildZapierSignatureMeta({ ...outbound }, originalPayloadJson, zapierSecretForSigning);
 
-          const zapierRequestBody = signatureMeta
-            ? {
-                ...outbound,
-                zapier_signature: String(signatureMeta.signature),
-                zapier_timestamp: String(signatureMeta.timestamp),
-                zapier_nonce: String(signatureMeta.nonce),
-                zapier_signature_version: "v1",
-                zapier_signed_payload_json: String(signedPayloadJson),
-                zapier_signed_payload_b64: zapierSignedPayloadB64
-              }
-            : {
-                ...outbound,
-                zapier_signed_payload_json: String(signedPayloadJson),
-                zapier_signed_payload_b64: zapierSignedPayloadB64
-              };
+          const zapierRequestBody = { ...outbound };
+          if (signatureMeta) {
+            zapierRequestBody.zapier_signature =
+              zapierRequestBody.zapier_signature || String(signatureMeta.signature);
+            zapierRequestBody.zapier_timestamp =
+              zapierRequestBody.zapier_timestamp || String(signatureMeta.timestamp);
+            zapierRequestBody.zapier_nonce = zapierRequestBody.zapier_nonce || String(signatureMeta.nonce);
+            zapierRequestBody.zapier_signature_version =
+              zapierRequestBody.zapier_signature_version || "v1";
+          }
+          zapierRequestBody.zapier_signed_payload_b64 = zapierSignedPayloadB64;
 
           const DBG = "[estimate-accepted-webhook-hmac-debug]";
-          const zapier_webhook_secret_exists = zapierSecretForSigning.length > 0;
-          const zapier_webhook_secret_length = zapierSecretForSigning.length;
-          const json_stringify_unsigned_payload = signedPayloadJson;
           const object_keys_unsigned = Object.keys(outbound);
-          console.log(DBG, "zapier_webhook_secret_exists", zapier_webhook_secret_exists);
-          console.log(DBG, "zapier_webhook_secret_length", zapier_webhook_secret_length);
           console.log(DBG, "object_keys_unsigned", object_keys_unsigned);
-          console.log(DBG, "json_stringify_unsigned_payload", json_stringify_unsigned_payload);
+          console.log(DBG, "json_stringify_unsigned_payload", originalPayloadJson);
           if (signatureMeta) {
-            const signing_canonical = `${signatureMeta.timestamp}.${signatureMeta.nonce}.${signedPayloadJson}`;
-            const zapier_signature_prefix_16 = String(signatureMeta.signature || "").slice(0, 16);
+            const signing_canonical = `${signatureMeta.timestamp}.${signatureMeta.nonce}.${originalPayloadJson}`;
             console.log(DBG, "signing_canonical", signing_canonical);
             console.log(DBG, "zapier_timestamp", signatureMeta.timestamp);
             console.log(DBG, "zapier_nonce", signatureMeta.nonce);
             console.log(DBG, "zapier_signature_version", signatureMeta.version);
-            console.log(DBG, "zapier_signature_prefix_16", zapier_signature_prefix_16);
           } else {
             console.log(DBG, "signing_skipped_no_signature_meta", true);
           }
-
           console.log(DBG, "object_keys_final", Object.keys(zapierRequestBody));
-          console.log(DBG, "json_stringify_final_payload", JSON.stringify(zapierRequestBody));
 
           console.log("[ZAPIER ACCEPTED WEBHOOK SEND] starting", { public_token: trimmed });
           const headers = { "Content-Type": "application/json" };
