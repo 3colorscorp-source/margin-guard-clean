@@ -175,6 +175,15 @@ exports.handler = async (event) => {
         .toLowerCase() === "accepted";
 
     if (status === "accepted" && rowAccepted) {
+      console.log("[estimate-accepted-webhook] diag_build", "estimate-accepted-webhook-diag-20260503a");
+      console.log("[estimate-accepted-webhook] start");
+      console.log("[estimate-accepted-webhook] public_token", trimmed);
+      console.log("[estimate-accepted-webhook] row.status", row ? String(row.status) : "(no row)");
+      console.log(
+        "[estimate-accepted-webhook] row.tenant_id_exists",
+        !!(row && row.tenant_id != null && String(row.tenant_id).trim() !== "")
+      );
+
       try {
         await bridgeAcceptedQuoteToProjectAndInvoice(row);
       } catch (bridgeErr) {
@@ -182,6 +191,8 @@ exports.handler = async (event) => {
       }
 
       const acceptedWebhookUrl = String(process.env.ZAPIER_ESTIMATE_ACCEPTED_WEBHOOK_URL || "").trim();
+      const webhook_url_exists = Boolean(acceptedWebhookUrl);
+      console.log("[estimate-accepted-webhook] webhook_url_exists", webhook_url_exists);
       if (!acceptedWebhookUrl) {
         console.warn("[ZAPIER ACCEPTED WEBHOOK SKIPPED] missing webhook url");
       } else {
@@ -254,14 +265,22 @@ exports.handler = async (event) => {
             headers,
             body: JSON.stringify(zapierRequestBody)
           });
-          console.log("[ZAPIER ACCEPTED WEBHOOK SEND] completed", { status: res.status });
+          console.log("[estimate-accepted-webhook] zapier_response_status", res.status);
           if (!res.ok) {
+            const zapierErrText = await res.text().catch(() => "");
+            console.warn("[estimate-accepted-webhook] zapier_response_text_non2xx", zapierErrText.slice(0, 2000));
             console.warn("[ZAPIER ACCEPTED WEBHOOK] upstream non-OK", { status: res.status });
           }
+          console.log("[ZAPIER ACCEPTED WEBHOOK SEND] completed", { status: res.status });
         } catch (zErr) {
           console.error("[ZAPIER ACCEPTED WEBHOOK ERROR]", zErr);
         }
       }
+    } else if (status === "accepted") {
+      console.log("[estimate-accepted-webhook] skip_not_rowAccepted", {
+        row_present: !!row,
+        row_status: row ? String(row.status) : null
+      });
     }
 
     return json(200, {
