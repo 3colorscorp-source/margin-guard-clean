@@ -167,6 +167,7 @@ exports.handler = async (event) => {
           };
 
           const signedPayloadJson = JSON.stringify(outbound);
+          const zapierSignedPayloadB64 = Buffer.from(signedPayloadJson, "utf8").toString("base64url");
           const signatureMeta = buildZapierSignatureMeta({ ...outbound }, signedPayloadJson);
           console.log("[zapier-signature] signature generated:", !!signatureMeta?.signature);
 
@@ -177,11 +178,13 @@ exports.handler = async (event) => {
                 zapier_timestamp: String(signatureMeta.timestamp),
                 zapier_nonce: String(signatureMeta.nonce),
                 zapier_signature_version: "v1",
-                zapier_signed_payload_json: String(signedPayloadJson)
+                zapier_signed_payload_json: String(signedPayloadJson),
+                zapier_signed_payload_b64: zapierSignedPayloadB64
               }
             : {
                 ...outbound,
-                zapier_signed_payload_json: String(signedPayloadJson)
+                zapier_signed_payload_json: String(signedPayloadJson),
+                zapier_signed_payload_b64: zapierSignedPayloadB64
               };
 
           const DBG = "[estimate-accepted-webhook-hmac-debug]";
