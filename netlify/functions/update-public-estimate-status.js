@@ -21,9 +21,48 @@ function pickStr(v, maxLen) {
   return s.length > maxLen ? s.slice(0, maxLen) : s;
 }
 
-function buildZapierSignatureMeta(payload, signedPayloadJson) {
+async function fetchTenantZapierWebhookSecret(supabaseUrl, serviceRoleKey, tenantId) {
+  const tid = String(tenantId == null ? "" : tenantId).trim();
+  if (!tid) return "";
+  try {
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/tenants?id=eq.${encodeURIComponent(tid)}&select=zapier_webhook_secret&limit=1`,
+      {
+        method: "GET",
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          Accept: "application/json"
+        }
+      }
+    );
+    const text = await res.text();
+    if (!res.ok) return "";
+    let rows = [];
+    try {
+      rows = JSON.parse(text);
+    } catch {
+      rows = [];
+    }
+    const trow = Array.isArray(rows) ? rows[0] : null;
+    if (!trow || typeof trow !== "object") return "";
+    const raw = trow.zapier_webhook_secret;
+    const s = raw == null || raw === undefined ? "" : String(raw).trim();
+    return s;
+  } catch (_e) {
+    return "";
+  }
+}
+
+async function resolveZapierWebhookSecretForEstimate(supabaseUrl, serviceRoleKey, tenantId) {
+  const fromTenant = await fetchTenantZapierWebhookSecret(supabaseUrl, serviceRoleKey, tenantId);
+  if (fromTenant) return fromTenant;
+  return String(process.env.ZAPIER_WEBHOOK_SECRET || "").trim();
+}
+
+function buildZapierSignatureMeta(payload, signedPayloadJson, resolvedSecret) {
   console.log("[zapier-signature] building signature...");
-  const secret = String(process.env.ZAPIER_WEBHOOK_SECRET || "").trim();
+  const secret = String(resolvedSecret == null ? "" : resolvedSecret).trim();
   if (!secret) {
     console.log("[zapier-signature] secret missing; sending unsigned");
     return null;
@@ -168,7 +207,12 @@ exports.handler = async (event) => {
 
           const signedPayloadJson = JSON.stringify(outbound);
           const zapierSignedPayloadB64 = Buffer.from(signedPayloadJson, "utf8").toString("base64url");
-          const signatureMeta = buildZapierSignatureMeta({ ...outbound }, signedPayloadJson);
+          const zapierSecretForSigning = await resolveZapierWebhookSecretForEstimate(
+            supabaseUrl,
+            serviceRoleKey,
+            row.tenant_id
+          );
+          const signatureMeta = buildZapierSignatureMeta({ ...outbound }, signedPayloadJson, zapierSecretForSigning);
           console.log("[zapier-signature] signature generated:", !!signatureMeta?.signature);
 
           const zapierRequestBody = signatureMeta
@@ -188,9 +232,8 @@ exports.handler = async (event) => {
               };
 
           const DBG = "[estimate-accepted-webhook-hmac-debug]";
-          const secretTrimmed = String(process.env.ZAPIER_WEBHOOK_SECRET || "").trim();
-          const zapier_webhook_secret_exists = secretTrimmed.length > 0;
-          const zapier_webhook_secret_length = secretTrimmed.length;
+          const zapier_webhook_secret_exists = zapierSecretForSigning.length > 0;
+          const zapier_webhook_secret_length = zapierSecretForSigning.length;
           const json_stringify_unsigned_payload = signedPayloadJson;
           const object_keys_unsigned = Object.keys(outbound);
           console.log(DBG, "zapier_webhook_secret_exists", zapier_webhook_secret_exists);
