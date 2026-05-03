@@ -21,7 +21,7 @@ function pickStr(v, maxLen) {
   return s.length > maxLen ? s.slice(0, maxLen) : s;
 }
 
-function buildZapierSignatureMeta(payload) {
+function buildZapierSignatureMeta(payload, signedPayloadJson) {
   console.log("[zapier-signature] building signature...");
   const secret = String(process.env.ZAPIER_WEBHOOK_SECRET || "").trim();
   if (!secret) {
@@ -30,7 +30,8 @@ function buildZapierSignatureMeta(payload) {
   }
   const timestamp = new Date().toISOString();
   const nonce = crypto.randomBytes(16).toString("hex");
-  const canonical = `${timestamp}.${nonce}.${JSON.stringify(payload)}`;
+  const bodyJson = typeof signedPayloadJson === "string" ? signedPayloadJson : JSON.stringify(payload);
+  const canonical = `${timestamp}.${nonce}.${bodyJson}`;
   const signature = crypto
     .createHmac("sha256", secret)
     .update(canonical)
@@ -165,22 +166,23 @@ exports.handler = async (event) => {
             public_token: trimmed
           };
 
+          const signedPayloadJson = JSON.stringify(outbound);
           const payload = { ...outbound };
-          const signatureMeta = buildZapierSignatureMeta(payload);
+          const signatureMeta = buildZapierSignatureMeta(payload, signedPayloadJson);
           console.log("[zapier-signature] signature generated:", !!signatureMeta?.signature);
 
           const DBG = "[estimate-accepted-webhook-hmac-debug]";
           const secretTrimmed = String(process.env.ZAPIER_WEBHOOK_SECRET || "").trim();
           const zapier_webhook_secret_exists = secretTrimmed.length > 0;
           const zapier_webhook_secret_length = secretTrimmed.length;
-          const json_stringify_unsigned_payload = JSON.stringify(payload);
+          const json_stringify_unsigned_payload = signedPayloadJson;
           const object_keys_unsigned = Object.keys(payload);
           console.log(DBG, "zapier_webhook_secret_exists", zapier_webhook_secret_exists);
           console.log(DBG, "zapier_webhook_secret_length", zapier_webhook_secret_length);
           console.log(DBG, "object_keys_unsigned", object_keys_unsigned);
           console.log(DBG, "json_stringify_unsigned_payload", json_stringify_unsigned_payload);
           if (signatureMeta) {
-            const signing_canonical = `${signatureMeta.timestamp}.${signatureMeta.nonce}.${json_stringify_unsigned_payload}`;
+            const signing_canonical = `${signatureMeta.timestamp}.${signatureMeta.nonce}.${signedPayloadJson}`;
             const zapier_signature_prefix_16 = String(signatureMeta.signature || "").slice(0, 16);
             console.log(DBG, "signing_canonical", signing_canonical);
             console.log(DBG, "zapier_timestamp", signatureMeta.timestamp);
@@ -197,6 +199,7 @@ exports.handler = async (event) => {
             payload.zapier_nonce = signatureMeta.nonce;
             payload.zapier_signature_version = signatureMeta.version;
           }
+          payload.zapier_signed_payload_json = signedPayloadJson;
 
           console.log(DBG, "object_keys_final", Object.keys(payload));
           console.log(DBG, "json_stringify_final_payload", JSON.stringify(payload));
