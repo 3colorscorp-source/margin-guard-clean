@@ -170,18 +170,19 @@ exports.handler = async (event) => {
           const signatureMeta = buildZapierSignatureMeta({ ...outbound }, signedPayloadJson);
           console.log("[zapier-signature] signature generated:", !!signatureMeta?.signature);
 
-          const zapierRequestBody = {
-            ...outbound,
-            ...(signatureMeta
-              ? {
-                  zapier_signature: signatureMeta.signature,
-                  zapier_timestamp: signatureMeta.timestamp,
-                  zapier_nonce: signatureMeta.nonce,
-                  zapier_signature_version: signatureMeta.version
-                }
-              : {}),
-            zapier_signed_payload_json: signedPayloadJson
-          };
+          const zapierRequestBody = signatureMeta
+            ? {
+                ...outbound,
+                zapier_signature: String(signatureMeta.signature),
+                zapier_timestamp: String(signatureMeta.timestamp),
+                zapier_nonce: String(signatureMeta.nonce),
+                zapier_signature_version: "v1",
+                zapier_signed_payload_json: String(signedPayloadJson)
+              }
+            : {
+                ...outbound,
+                zapier_signed_payload_json: String(signedPayloadJson)
+              };
 
           const DBG = "[estimate-accepted-webhook-hmac-debug]";
           const secretTrimmed = String(process.env.ZAPIER_WEBHOOK_SECRET || "").trim();
