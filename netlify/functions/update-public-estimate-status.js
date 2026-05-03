@@ -167,16 +167,28 @@ exports.handler = async (event) => {
           };
 
           const signedPayloadJson = JSON.stringify(outbound);
-          const payload = { ...outbound };
-          const signatureMeta = buildZapierSignatureMeta(payload, signedPayloadJson);
+          const signatureMeta = buildZapierSignatureMeta({ ...outbound }, signedPayloadJson);
           console.log("[zapier-signature] signature generated:", !!signatureMeta?.signature);
+
+          const zapierRequestBody = {
+            ...outbound,
+            ...(signatureMeta
+              ? {
+                  zapier_signature: signatureMeta.signature,
+                  zapier_timestamp: signatureMeta.timestamp,
+                  zapier_nonce: signatureMeta.nonce,
+                  zapier_signature_version: signatureMeta.version
+                }
+              : {}),
+            zapier_signed_payload_json: signedPayloadJson
+          };
 
           const DBG = "[estimate-accepted-webhook-hmac-debug]";
           const secretTrimmed = String(process.env.ZAPIER_WEBHOOK_SECRET || "").trim();
           const zapier_webhook_secret_exists = secretTrimmed.length > 0;
           const zapier_webhook_secret_length = secretTrimmed.length;
           const json_stringify_unsigned_payload = signedPayloadJson;
-          const object_keys_unsigned = Object.keys(payload);
+          const object_keys_unsigned = Object.keys(outbound);
           console.log(DBG, "zapier_webhook_secret_exists", zapier_webhook_secret_exists);
           console.log(DBG, "zapier_webhook_secret_length", zapier_webhook_secret_length);
           console.log(DBG, "object_keys_unsigned", object_keys_unsigned);
@@ -193,16 +205,8 @@ exports.handler = async (event) => {
             console.log(DBG, "signing_skipped_no_signature_meta", true);
           }
 
-          if (signatureMeta) {
-            payload.zapier_signature = signatureMeta.signature;
-            payload.zapier_timestamp = signatureMeta.timestamp;
-            payload.zapier_nonce = signatureMeta.nonce;
-            payload.zapier_signature_version = signatureMeta.version;
-          }
-          payload.zapier_signed_payload_json = signedPayloadJson;
-
-          console.log(DBG, "object_keys_final", Object.keys(payload));
-          console.log(DBG, "json_stringify_final_payload", JSON.stringify(payload));
+          console.log(DBG, "object_keys_final", Object.keys(zapierRequestBody));
+          console.log(DBG, "json_stringify_final_payload", JSON.stringify(zapierRequestBody));
 
           console.log("[ZAPIER ACCEPTED WEBHOOK SEND] starting", { public_token: trimmed });
           const headers = { "Content-Type": "application/json" };
@@ -215,7 +219,7 @@ exports.handler = async (event) => {
           const res = await fetch(acceptedWebhookUrl, {
             method: "POST",
             headers,
-            body: JSON.stringify(payload)
+            body: JSON.stringify(zapierRequestBody)
           });
           console.log("[ZAPIER ACCEPTED WEBHOOK SEND] completed", { status: res.status });
           if (!res.ok) {
