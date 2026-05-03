@@ -2,6 +2,7 @@ const fetch = globalThis.fetch;
 if (!fetch) {
   throw new Error("Global fetch is not available in this runtime.");
 }
+const crypto = require("crypto");
 
 const { getSupabaseConfig } = require("./_lib/supabase-admin");
 const { bridgeAcceptedQuoteToProjectAndInvoice } = require("./_lib/quote-accept-bridge");
@@ -18,6 +19,28 @@ function pickStr(v, maxLen) {
   const s = v == null || v === undefined ? "" : String(v).trim();
   if (!maxLen || maxLen < 1) return s;
   return s.length > maxLen ? s.slice(0, maxLen) : s;
+}
+
+function buildZapierSignatureMeta(payload) {
+  console.log("[zapier-signature] building signature...");
+  const secret = String(process.env.ZAPIER_WEBHOOK_SECRET || "").trim();
+  if (!secret) {
+    console.log("[zapier-signature] secret missing; sending unsigned");
+    return null;
+  }
+  const timestamp = new Date().toISOString();
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const canonical = `${timestamp}.${nonce}.${JSON.stringify(payload)}`;
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(canonical)
+    .digest("hex");
+  return {
+    signature,
+    timestamp,
+    nonce,
+    version: "v1"
+  };
 }
 
 exports.handler = async (event) => {
@@ -142,11 +165,28 @@ exports.handler = async (event) => {
             public_token: trimmed
           };
 
+          const payload = { ...outbound };
+          const signatureMeta = buildZapierSignatureMeta(payload);
+          console.log("[zapier-signature] signature generated:", !!signatureMeta?.signature);
+          if (signatureMeta) {
+            payload.zapier_signature = signatureMeta.signature;
+            payload.zapier_timestamp = signatureMeta.timestamp;
+            payload.zapier_nonce = signatureMeta.nonce;
+            payload.zapier_signature_version = signatureMeta.version;
+          }
+
           console.log("[ZAPIER ACCEPTED WEBHOOK SEND] starting", { public_token: trimmed });
+          const headers = { "Content-Type": "application/json" };
+          if (signatureMeta) {
+            headers["X-MG-Signature"] = signatureMeta.signature;
+            headers["X-MG-Timestamp"] = signatureMeta.timestamp;
+            headers["X-MG-Nonce"] = signatureMeta.nonce;
+            headers["X-MG-Signature-Version"] = signatureMeta.version;
+          }
           const res = await fetch(acceptedWebhookUrl, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(outbound)
+            headers,
+            body: JSON.stringify(payload)
           });
           console.log("[ZAPIER ACCEPTED WEBHOOK SEND] completed", { status: res.status });
           if (!res.ok) {
