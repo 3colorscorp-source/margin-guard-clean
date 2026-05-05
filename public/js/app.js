@@ -7,14 +7,6 @@
   const LS_DASHBOARD = "mg_dashboard_v2";
   const LS_SALES = "mg_sales_v2";
   const LS_SUPERVISOR = "mg_supervisor_v2";
-  /** Matches server get-supervisor-projects PROJECT_STATUSES (defensive filter if cache is stale). */
-  const SUPERVISOR_UI_PROJECT_STATUSES = new Set([
-    "signed",
-    "deposit_paid",
-    "assigned",
-    "in_progress",
-    "completed",
-  ]);
   const LS_APPROVALS = "mg_approvals_v2";
   const LS_ACTIVE_PROJECT = "mg_active_project_v1";
   const LS_PROJECTS = "mg_projects_v1";
@@ -1298,29 +1290,32 @@ Thank you.`
 
   async function fetchSupervisorProjects() {
     const res = await fetch("/.netlify/functions/get-supervisor-projects", { credentials: "include" });
-    return await res.json();
+    let data = {};
+    try {
+      data = await res.json();
+    } catch (_e) {
+      data = {};
+    }
+    if (!res.ok || !data || data.ok !== true || !Array.isArray(data.projects)) {
+      return { ok: false, projects: [] };
+    }
+    return { ok: true, projects: data.projects.slice() };
   }
 
-  /** Updates in-memory project list only (does not clear report/expense/CO caches). */
+  /** Replaces supervisor project list from API only (no merge). */
   async function pullSupervisorProjectsFromApi() {
     try {
       const data = await fetchSupervisorProjects();
-      if (data && data.ok === true && Array.isArray(data.projects)) {
-        supervisorProjectsCache = data.projects;
-      }
+      supervisorProjectsCache = data.projects;
     } catch (_e) {
-      /* non-fatal */
+      supervisorProjectsCache = [];
     }
   }
 
   async function refreshSupervisorProjectsFromApi() {
     try {
       const data = await fetchSupervisorProjects();
-      if (data && data.ok === true && Array.isArray(data.projects)) {
-        supervisorProjectsCache = data.projects;
-      } else {
-        supervisorProjectsCache = [];
-      }
+      supervisorProjectsCache = data.projects;
     } catch (_err) {
       supervisorProjectsCache = [];
     }
@@ -1330,11 +1325,9 @@ Thank you.`
     renderSupervisor();
   }
 
+  /** Supervisor project picker + KPIs: exact list from last get-supervisor-projects response (no local merge). */
   function getSupervisorProjectsForUi() {
-    const raw = Array.isArray(supervisorProjectsCache) ? supervisorProjectsCache : [];
-    return raw.filter((p) =>
-      p && SUPERVISOR_UI_PROJECT_STATUSES.has(String(p.status || "").trim().toLowerCase())
-    );
+    return Array.isArray(supervisorProjectsCache) ? supervisorProjectsCache.slice() : [];
   }
 
   function upsertProject(project) {
@@ -5912,16 +5905,38 @@ function renderSupervisor() {
       };
     }
 
-    if (selectedProjectId && !projects.find((p) => supervisorProjectKey(p.id) === selectedProjectId)) {
+    const apiProjectsForPicker = getSupervisorProjectsForUi();
+    if (selectedProjectId && !apiProjectsForPicker.find((p) => supervisorProjectKey(p.id) === selectedProjectId)) {
       clearSupervisorSelectedProjectId();
-      if (projects[0]) {
-        saveSupervisorSelectedProjectId(supervisorProjectKey(projects[0].id));
+      if (apiProjectsForPicker[0]) {
+        saveSupervisorSelectedProjectId(supervisorProjectKey(apiProjectsForPicker[0].id));
       }
     }
 
     const refresh = () => {
+      const uiList = getSupervisorProjectsForUi();
+
+      if (picker) {
+        const cur = supervisorProjectKey(picker.value || "");
+        picker.innerHTML = uiList.length
+          ? uiList.map((project) => `
+            <option value="${escapeHtml(project.id)}">${escapeHtml(project.projectName || "Project")} · ${escapeHtml(project.clientName || "Sin cliente")}</option>
+          `).join("")
+          : `<option value="">Sin proyectos firmados</option>`;
+        const still = uiList.find((p) => supervisorProjectKey(p.id) === cur);
+        if (still) {
+          picker.value = still.id;
+        } else if (uiList[0]) {
+          picker.value = uiList[0].id;
+          saveSupervisorSelectedProjectId(supervisorProjectKey(uiList[0].id));
+        } else {
+          picker.value = "";
+          clearSupervisorSelectedProjectId();
+        }
+      }
+
       const lsSel = supervisorProjectKey(loadSupervisorSelectedProjectId());
-      const pickerVal = supervisorProjectKey($("supProjectPicker")?.value);
+      const pickerVal = supervisorProjectKey($("supProjectPicker")?.value || "");
       const wantId = lsSel || pickerVal;
       if (typeof console !== "undefined" && console.info) {
         console.info("[MG Supervisor trace]", "refresh start", {
@@ -5932,7 +5947,6 @@ function renderSupervisor() {
           selectedProjectId: selectedProject?.id,
         });
       }
-      const uiList = getSupervisorProjectsForUi();
       let currentProject = null;
       if (wantId) {
         currentProject = uiList.find((project) => supervisorProjectKey(project.id) === wantId) || null;
@@ -5972,7 +5986,7 @@ function renderSupervisor() {
           }
         }
       } else {
-        currentProject = selectedProject;
+        currentProject = uiList[0] || null;
       }
 
       if (typeof console !== "undefined" && console.info) {
@@ -6028,6 +6042,11 @@ function renderSupervisor() {
             '<p class="small" style="margin:0;">Labor plan not available for this project</p>';
         }
         setSupervisorProjectedFinishDom("", { unavailableText: "Projected finish date unavailable" });
+        if (typeof console !== "undefined" && console.log) {
+          console.log("[supervisor-filter] api projects count", uiList.length);
+          console.log("[supervisor-filter] rendered projects count", uiList.length);
+          console.log("[supervisor-filter] active projects KPI", uiList.length);
+        }
         return;
       }
 
@@ -6220,7 +6239,7 @@ function renderSupervisor() {
       }
       if ($("supEstimatedDaysLabel")) $("supEstimatedDaysLabel").textContent = Number(state.estimatedDays || 0).toFixed(2);
       if ($("supSummaryRegisteredExtras")) $("supSummaryRegisteredExtras").textContent = String(extrasRegCount);
-      if ($("supPortfolioCount")) $("supPortfolioCount").textContent = String(projects.length);
+      if ($("supPortfolioCount")) $("supPortfolioCount").textContent = String(uiList.length);
 
       const supLaborPlanBody = $("supLaborPlanBody");
       if (supLaborPlanBody) {
@@ -6338,7 +6357,7 @@ function renderSupervisor() {
       }
 
       const kpiRows = [
-        ["Proyectos activos", `${projects.length}`, "El supervisor puede alternar entre varios trabajos"],
+        ["Proyectos activos", `${uiList.length}`, "El supervisor puede alternar entre varios trabajos"],
         ["Dias presupuestados", estimatedBudgetDays.toFixed(2), "estimated_days del proyecto seleccionado"],
         ["Dias gastados", daysSpent.toFixed(2), "Suma de dias en reportes de avance (work reports)"],
         ["Dias restantes (lectura)", daysRemainingDisplay.toFixed(2), `max(0, presupuestados - gastados). Sin piso: ${daysRemainingRaw.toFixed(2)}`],
@@ -6380,6 +6399,12 @@ function renderSupervisor() {
           <div class="meta">${escapeHtml(meta)}</div>
         </div>
       `).join("");
+
+      if (typeof console !== "undefined" && console.log) {
+        console.log("[supervisor-filter] api projects count", uiList.length);
+        console.log("[supervisor-filter] rendered projects count", uiList.length);
+        console.log("[supervisor-filter] active projects KPI", uiList.length);
+      }
 
       if (typeof console !== "undefined" && console.info) {
         console.info("[MG Supervisor trace]", "refresh render tables", {
@@ -6518,9 +6543,9 @@ function renderSupervisor() {
 
     if ($("btnAddSupEntry")) {
       $("btnAddSupEntry").onclick = async () => {
-        const currentProject = (getSupervisorProjectsForUi().find(
+        const currentProject = getSupervisorProjectsForUi().find(
           (project) => supervisorProjectKey(project.id) === supervisorProjectKey(loadSupervisorSelectedProjectId())
-        )) || selectedProject;
+        );
         if (!currentProject) return alert("No signed projects yet.");
         const state = loadSupervisorReport(currentProject);
         const rowPid = supervisorProjectKey(currentProject.id);
@@ -6590,9 +6615,9 @@ function renderSupervisor() {
 
     if ($("btnAddSupExtra")) {
       $("btnAddSupExtra").onclick = async () => {
-        const currentProject = (getSupervisorProjectsForUi().find(
+        const currentProject = getSupervisorProjectsForUi().find(
           (project) => supervisorProjectKey(project.id) === supervisorProjectKey(loadSupervisorSelectedProjectId())
-        )) || selectedProject;
+        );
         if (!currentProject) return alert("No signed projects yet.");
         const state = loadSupervisorReport(currentProject);
         const rowPid = supervisorProjectKey(currentProject.id);
