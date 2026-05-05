@@ -2,7 +2,11 @@ const { readSessionFromEvent } = require("./_lib/session");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 
-const STATUSES = ["signed", "deposit_paid", "assigned", "in_progress"];
+/** tenant_projects.status — active work only (excludes draft/sent/cancelled paths). */
+const PROJECT_STATUSES = ["signed", "deposit_paid", "assigned", "in_progress", "completed"];
+
+/** quotes.status — estimate must be accepted/approved before Supervisor sees the job. */
+const QUOTE_STATUSES_ALLOWED = new Set(["accepted", "approved", "signed"]);
 
 function json(statusCode, payload) {
   return {
@@ -65,12 +69,36 @@ exports.handler = async (event) => {
     }
 
     const tid = encodeURIComponent(tenant.id);
-    const inList = STATUSES.map(encodeURIComponent).join(",");
+    const inList = PROJECT_STATUSES.map(encodeURIComponent).join(",");
     const rows = await supabaseRequest(
       `tenant_projects?tenant_id=eq.${tid}&status=in.(${inList})&select=*&order=signed_at.desc`
     );
     const list = Array.isArray(rows) ? rows : [];
-    const projects = list.map(mapRowToProject).filter(Boolean);
+
+    const quoteIds = [...new Set(list.map((r) => (r && r.quote_id ? String(r.quote_id).trim() : "")).filter(Boolean))];
+    const quoteOkById = Object.create(null);
+    if (quoteIds.length) {
+      const qIn = quoteIds.map(encodeURIComponent).join(",");
+      const qRows = await supabaseRequest(`quotes?id=in.(${qIn})&tenant_id=eq.${tid}&select=id,status`);
+      const qList = Array.isArray(qRows) ? qRows : [];
+      for (const q of qList) {
+        if (!q || typeof q !== "object" || !q.id) continue;
+        const st = String(q.status || "")
+          .trim()
+          .toLowerCase();
+        if (QUOTE_STATUSES_ALLOWED.has(st)) {
+          quoteOkById[String(q.id)] = true;
+        }
+      }
+    }
+
+    const filtered = list.filter((row) => {
+      const qid = row && row.quote_id != null ? String(row.quote_id).trim() : "";
+      if (!qid) return false;
+      return quoteOkById[qid] === true;
+    });
+
+    const projects = filtered.map(mapRowToProject).filter(Boolean);
 
     return json(200, { ok: true, projects });
   } catch (err) {

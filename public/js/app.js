@@ -7,6 +7,14 @@
   const LS_DASHBOARD = "mg_dashboard_v2";
   const LS_SALES = "mg_sales_v2";
   const LS_SUPERVISOR = "mg_supervisor_v2";
+  /** Matches server get-supervisor-projects PROJECT_STATUSES (defensive filter if cache is stale). */
+  const SUPERVISOR_UI_PROJECT_STATUSES = new Set([
+    "signed",
+    "deposit_paid",
+    "assigned",
+    "in_progress",
+    "completed",
+  ]);
   const LS_APPROVALS = "mg_approvals_v2";
   const LS_ACTIVE_PROJECT = "mg_active_project_v1";
   const LS_PROJECTS = "mg_projects_v1";
@@ -1323,7 +1331,10 @@ Thank you.`
   }
 
   function getSupervisorProjectsForUi() {
-    return Array.isArray(supervisorProjectsCache) ? supervisorProjectsCache : [];
+    const raw = Array.isArray(supervisorProjectsCache) ? supervisorProjectsCache : [];
+    return raw.filter((p) =>
+      p && SUPERVISOR_UI_PROJECT_STATUSES.has(String(p.status || "").trim().toLowerCase())
+    );
   }
 
   function upsertProject(project) {
