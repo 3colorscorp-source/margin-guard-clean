@@ -1,12 +1,51 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
-const { supabaseRequest } = require("./_lib/supabase-admin");
+const { supabaseRequest, getSupabaseConfig } = require("./_lib/supabase-admin");
 
 /** tenant_projects.status — active work only (excludes draft/sent/cancelled paths). */
 const PROJECT_STATUSES = ["signed", "deposit_paid", "assigned", "in_progress", "completed"];
 
 /** quotes.status — estimate must be accepted/approved before Supervisor sees the job. */
 const QUOTE_STATUSES_ALLOWED = new Set(["accepted", "approved", "signed"]);
+
+const PROJECT_SET = new Set(PROJECT_STATUSES.map((s) => s.toLowerCase()));
+
+const QUOTE_ID_IN_CHUNK = 25;
+
+function normStatus(s) {
+  return String(s || "")
+    .trim()
+    .toLowerCase();
+}
+
+function normQuoteIdKey(id) {
+  return String(id || "")
+    .trim()
+    .toLowerCase();
+}
+
+function parseContentRangeTotal(contentRange) {
+  const parts = String(contentRange || "").split("/");
+  if (parts.length < 2) return null;
+  const n = parseInt(parts[1], 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Total tenant_projects rows for tenant (all statuses), for debug only. */
+async function countAllTenantProjectsForTenant(tenantEncodedId) {
+  const { url, key } = getSupabaseConfig();
+  const res = await fetch(`${url}/rest/v1/tenant_projects?tenant_id=eq.${tenantEncodedId}&select=id`, {
+    method: "GET",
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      Accept: "application/json",
+      Prefer: "count=exact",
+      Range: "0-0",
+    },
+  });
+  return parseContentRangeTotal(res.headers.get("content-range"));
+}
 
 function json(statusCode, payload) {
   return {
@@ -68,37 +107,92 @@ exports.handler = async (event) => {
       return json(404, { error: "Tenant not found" });
     }
 
+    const useDebug = event.queryStringParameters && event.queryStringParameters.debug === "1";
+
     const tid = encodeURIComponent(tenant.id);
     const inList = PROJECT_STATUSES.map(encodeURIComponent).join(",");
     const rows = await supabaseRequest(
       `tenant_projects?tenant_id=eq.${tid}&status=in.(${inList})&select=*&order=signed_at.desc`
     );
-    const list = Array.isArray(rows) ? rows : [];
+    let list = Array.isArray(rows) ? rows : [];
+    const countAfterUrlStatusFilter = list.length;
 
-    const quoteIds = [...new Set(list.map((r) => (r && r.quote_id ? String(r.quote_id).trim() : "")).filter(Boolean))];
+    /** Case-insensitive project status (PostgREST in.() may not match mixed-case enums). */
+    list = list.filter((r) => r && PROJECT_SET.has(normStatus(r.status)));
+    const countAfterProjectStatusNorm = list.length;
+
+    const quoteIdsRaw = [...new Set(list.map((r) => (r && r.quote_id != null ? String(r.quote_id).trim() : "")).filter(Boolean))];
+
     const quoteOkById = Object.create(null);
-    if (quoteIds.length) {
-      const qIn = quoteIds.map(encodeURIComponent).join(",");
-      const qRows = await supabaseRequest(`quotes?id=in.(${qIn})&tenant_id=eq.${tid}&select=id,status`);
-      const qList = Array.isArray(qRows) ? qRows : [];
-      for (const q of qList) {
-        if (!q || typeof q !== "object" || !q.id) continue;
-        const st = String(q.status || "")
-          .trim()
-          .toLowerCase();
-        if (QUOTE_STATUSES_ALLOWED.has(st)) {
-          quoteOkById[String(q.id)] = true;
+    const quoteStatusByKey = Object.create(null);
+    let qListTotal = 0;
+    if (quoteIdsRaw.length) {
+      for (let i = 0; i < quoteIdsRaw.length; i += QUOTE_ID_IN_CHUNK) {
+        const chunk = quoteIdsRaw.slice(i, i + QUOTE_ID_IN_CHUNK);
+        const qIn = chunk.map(encodeURIComponent).join(",");
+        const qRows = await supabaseRequest(`quotes?id=in.(${qIn})&tenant_id=eq.${tid}&select=id,status`);
+        const qList = Array.isArray(qRows) ? qRows : [];
+        qListTotal += qList.length;
+        for (const q of qList) {
+          if (!q || typeof q !== "object" || !q.id) continue;
+          const key = normQuoteIdKey(q.id);
+          const st = normStatus(q.status);
+          quoteStatusByKey[key] = q.status == null ? "" : String(q.status);
+          if (QUOTE_STATUSES_ALLOWED.has(st)) {
+            quoteOkById[key] = true;
+          }
         }
       }
     }
 
     const filtered = list.filter((row) => {
-      const qid = row && row.quote_id != null ? String(row.quote_id).trim() : "";
+      const qid = row && row.quote_id != null ? normQuoteIdKey(row.quote_id) : "";
       if (!qid) return false;
       return quoteOkById[qid] === true;
     });
+    const countAfterQuoteAllowedFilter = filtered.length;
 
     const projects = filtered.map(mapRowToProject).filter(Boolean);
+    const countFinal = projects.length;
+
+    if (useDebug) {
+      let countAllTenantProjects = null;
+      try {
+        countAllTenantProjects = await countAllTenantProjectsForTenant(tid);
+      } catch (_e) {
+        countAllTenantProjects = null;
+      }
+
+      const counts = {
+        tenant_projects_total_for_tenant: countAllTenantProjects,
+        after_url_status_in_filter: countAfterUrlStatusFilter,
+        after_project_status_normalized: countAfterProjectStatusNorm,
+        quote_ids_distinct: quoteIdsRaw.length,
+        quotes_rows_loaded: qListTotal,
+        after_quote_status_allowed_filter: countAfterQuoteAllowedFilter,
+        final_mapped_projects: countFinal,
+      };
+
+      console.log("[get-supervisor-projects] diag counts", counts);
+
+      const sampleSource = list.slice(0, 25);
+      const sample = sampleSource.map((row) => {
+        const qid = row && row.quote_id != null ? normQuoteIdKey(row.quote_id) : "";
+        const qs = qid ? quoteStatusByKey[qid] : "";
+        const qsn = normStatus(qs);
+        const gate = Boolean(qid) && quoteOkById[qid] === true;
+        return {
+          project_id: row.id,
+          project_status: row.status,
+          quote_id: row.quote_id,
+          quote_status: qs === "" && qid ? "(not in quotes response)" : qs,
+          quote_status_normalized: qsn || null,
+          quote_gate_pass: gate,
+        };
+      });
+
+      return json(200, { ok: true, projects, counts, sample });
+    }
 
     return json(200, { ok: true, projects });
   } catch (err) {
