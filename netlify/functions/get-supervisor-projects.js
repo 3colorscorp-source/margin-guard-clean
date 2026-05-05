@@ -6,7 +6,7 @@ const { supabaseRequest, getSupabaseConfig } = require("./_lib/supabase-admin");
 const PROJECT_STATUSES = ["signed", "deposit_paid", "assigned", "in_progress", "completed"];
 
 /** quotes.status — estimate must be accepted/approved before Supervisor sees the job. */
-const QUOTE_STATUSES_ALLOWED = new Set(["accepted", "approved", "signed"]);
+const QUOTE_STATUSES_ALLOWED = new Set(["accepted", "approved"]);
 
 const PROJECT_SET = new Set(PROJECT_STATUSES.map((s) => s.toLowerCase()));
 

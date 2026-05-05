@@ -2172,21 +2172,23 @@ Thank you.`
     saveSupervisorReports(reports);
   }
 
-  function getProjectById(projectId) {
+  function getProjectById(projectId, options) {
+    const supervisorOnly = Boolean(options && options.supervisorOnly);
     const k = supervisorProjectKey(projectId);
     if (!k) return null;
-    return (
-      getSupervisorProjectsForUi().find((project) => supervisorProjectKey(project.id) === k) ||
-      loadProjects().find((project) => supervisorProjectKey(project.id) === k) ||
-      null
-    );
+    const fromSup = getSupervisorProjectsForUi().find((project) => supervisorProjectKey(project.id) === k) || null;
+    if (fromSup) return fromSup;
+    if (supervisorOnly) return null;
+    return loadProjects().find((project) => supervisorProjectKey(project.id) === k) || null;
   }
 
-  function getSelectedProject() {
+  function getSelectedProject(options) {
+    const supervisorOnly = Boolean(options && options.supervisorOnly);
     const selectedId = supervisorProjectKey(loadSupervisorSelectedProjectId());
     const sup = getSupervisorProjectsForUi();
     const fromSup = sup.find((project) => supervisorProjectKey(project.id) === selectedId);
     if (fromSup) return fromSup;
+    if (supervisorOnly) return sup[0] || null;
     const projects = loadProjects();
     return projects.find((project) => supervisorProjectKey(project.id) === selectedId) || projects[0] || null;
   }
@@ -5805,6 +5807,9 @@ function renderSupervisor() {
     const settings = loadSettings();
     const picker = $("supProjectPicker");
     const projects = getSupervisorProjectsForUi();
+    if (typeof console !== "undefined" && console.log) {
+      console.log("[supervisor-filter] api count", projects.length);
+    }
     const selectedProjectId = supervisorProjectKey(loadSupervisorSelectedProjectId());
     const selectedProject =
       projects.find((project) => supervisorProjectKey(project.id) === selectedProjectId) || projects[0] || null;
@@ -5933,6 +5938,9 @@ function renderSupervisor() {
           picker.value = "";
           clearSupervisorSelectedProjectId();
         }
+        if (typeof console !== "undefined" && console.log) {
+          console.log("[supervisor-filter] picker count", uiList.length);
+        }
       }
 
       const lsSel = supervisorProjectKey(loadSupervisorSelectedProjectId());
@@ -6024,6 +6032,9 @@ function renderSupervisor() {
         if ($("supDashboardPlanDeviation")) $("supDashboardPlanDeviation").textContent = "";
         if ($("supDashboardBonus")) $("supDashboardBonus").textContent = "";
         if ($("supPortfolioCount")) $("supPortfolioCount").textContent = "0";
+        if (typeof console !== "undefined" && console.log) {
+          console.log("[supervisor-filter] kpi count", 0);
+        }
         $("supervisorKpis").innerHTML = [
           ["Proyectos firmados", "0", "Firma o aprueba proyectos para empezar a reportar"],
           ["Dias estimados", "0.00", "Esperando proyecto firmado"],
@@ -6043,9 +6054,7 @@ function renderSupervisor() {
         }
         setSupervisorProjectedFinishDom("", { unavailableText: "Projected finish date unavailable" });
         if (typeof console !== "undefined" && console.log) {
-          console.log("[supervisor-filter] api projects count", uiList.length);
-          console.log("[supervisor-filter] rendered projects count", uiList.length);
-          console.log("[supervisor-filter] active projects KPI", uiList.length);
+          console.log("[supervisor-filter] kpi count", 0);
         }
         return;
       }
@@ -6401,9 +6410,7 @@ function renderSupervisor() {
       `).join("");
 
       if (typeof console !== "undefined" && console.log) {
-        console.log("[supervisor-filter] api projects count", uiList.length);
-        console.log("[supervisor-filter] rendered projects count", uiList.length);
-        console.log("[supervisor-filter] active projects KPI", uiList.length);
+        console.log("[supervisor-filter] kpi count", uiList.length);
       }
 
       if (typeof console !== "undefined" && console.info) {
