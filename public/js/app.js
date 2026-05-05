@@ -6395,11 +6395,43 @@ function renderSupervisor() {
         `;
         }).join("");
         $("supEntriesBody").querySelectorAll("button[data-delete-entry]").forEach((button) => {
-          button.onclick = () => {
+          button.onclick = async () => {
             const idx = Number(button.dataset.deleteEntry || -1);
             const row = state.entries[idx];
+            if (row && row.reportId && isServerListedSupervisorProject(currentProject.id)) {
+              try {
+                const res = await fetch("/.netlify/functions/delete-project-report", {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ report_id: row.reportId }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data || data.ok !== true) {
+                  const msg = (data && (data.error || data.message)) || `Delete failed (${res.status}).`;
+                  window.alert(msg);
+                  return;
+                }
+                delete supervisorProjectReportsCache[supervisorProjectKey(currentProject.id)];
+                const fresh = await fetchProjectReports(currentProject.id);
+                supervisorProjectReportsCache[supervisorProjectKey(currentProject.id)] =
+                  fresh && fresh.ok === true && Array.isArray(fresh.reports)
+                    ? { ok: true, reports: fresh.reports }
+                    : { ok: false, reports: [] };
+                state.locked = true;
+                const merged = loadSupervisorReport(currentProject);
+                saveSupervisorReport(currentProject.id, merged);
+                await recalcProjectProfitIfListed(currentProject.id);
+                await pullSupervisorProjectsFromApi();
+                refresh();
+                return;
+              } catch (_e) {
+                window.alert("Network error. Could not delete report.");
+                return;
+              }
+            }
             if (row && row.reportId) {
-              window.alert("This row is saved on the server; delete from database is not wired here yet.");
+              window.alert("This row is saved on the server; sync projects list to enable delete.");
               return;
             }
             state.entries.splice(idx, 1);
@@ -6424,11 +6456,43 @@ function renderSupervisor() {
         `;
         }).join("");
         $("supExtrasBody").querySelectorAll("button[data-delete-extra]").forEach((button) => {
-          button.onclick = () => {
+          button.onclick = async () => {
             const idx = Number(button.dataset.deleteExtra || -1);
             const row = state.extras[idx];
+            if (row && row.expenseId && isServerListedSupervisorProject(currentProject.id)) {
+              try {
+                const res = await fetch("/.netlify/functions/delete-project-expense", {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ expense_id: row.expenseId }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data || data.ok !== true) {
+                  const msg = (data && (data.error || data.message)) || `Delete failed (${res.status}).`;
+                  window.alert(msg);
+                  return;
+                }
+                delete supervisorProjectExpensesCache[supervisorProjectKey(currentProject.id)];
+                const fresh = await fetchProjectExpenses(currentProject.id);
+                supervisorProjectExpensesCache[supervisorProjectKey(currentProject.id)] =
+                  fresh && fresh.ok === true && Array.isArray(fresh.expenses)
+                    ? { ok: true, expenses: fresh.expenses }
+                    : { ok: false, expenses: [] };
+                state.locked = true;
+                const merged = loadSupervisorReport(currentProject);
+                saveSupervisorReport(currentProject.id, merged);
+                await recalcProjectProfitIfListed(currentProject.id);
+                await pullSupervisorProjectsFromApi();
+                refresh();
+                return;
+              } catch (_e) {
+                window.alert("Network error. Could not delete expense.");
+                return;
+              }
+            }
             if (row && row.expenseId) {
-              window.alert("This row is saved on the server; delete from database is not wired here yet.");
+              window.alert("This row is saved on the server; sync projects list to enable delete.");
               return;
             }
             state.extras.splice(idx, 1);

@@ -139,7 +139,7 @@ exports.handler = async (event) => {
 
     if (hit?.id) {
       const { tenant_id: _t, quote_id: _q, ...patch } = row;
-      await supabaseRequest(`tenant_projects?id=eq.${encodeURIComponent(hit.id)}`, {
+      await supabaseRequest(`tenant_projects?id=eq.${encodeURIComponent(hit.id)}&tenant_id=eq.${tid}`, {
         method: "PATCH",
         body: patch,
       });

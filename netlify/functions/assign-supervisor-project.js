@@ -59,7 +59,7 @@ exports.handler = async (event) => {
     }
 
     const now = new Date().toISOString();
-    await supabaseRequest(`tenant_projects?id=eq.${encodeURIComponent(projectId)}`, {
+    await supabaseRequest(`tenant_projects?id=eq.${encodeURIComponent(projectId)}&tenant_id=eq.${tid}`, {
       method: "PATCH",
       body: {
         supervisor_user_id: supervisorUserId,

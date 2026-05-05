@@ -97,7 +97,7 @@ exports.handler = async (event) => {
     const realMarginPct = projectedRevenueTotal > 0 ? realProfitTotal / projectedRevenueTotal : 0;
 
     const now = new Date().toISOString();
-    await supabaseRequest(`tenant_projects?id=eq.${encodeURIComponent(projectId)}`, {
+    await supabaseRequest(`tenant_projects?id=eq.${encodeURIComponent(projectId)}&tenant_id=eq.${tid}`, {
       method: "PATCH",
       body: {
         labor_consumed_total: laborConsumedTotal,

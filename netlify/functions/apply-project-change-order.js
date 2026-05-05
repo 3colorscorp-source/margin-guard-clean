@@ -92,7 +92,7 @@ exports.handler = async (event) => {
 
     const now = new Date().toISOString();
 
-    await supabaseRequest(`tenant_project_change_orders?id=eq.${encodeURIComponent(changeOrderId)}`, {
+    await supabaseRequest(`tenant_project_change_orders?id=eq.${encodeURIComponent(changeOrderId)}&tenant_id=eq.${tid}`, {
       method: "PATCH",
       body: {
         status: "applied",
@@ -100,7 +100,7 @@ exports.handler = async (event) => {
       },
     });
 
-    await supabaseRequest(`tenant_projects?id=eq.${encodeURIComponent(projectId)}`, {
+    await supabaseRequest(`tenant_projects?id=eq.${encodeURIComponent(projectId)}&tenant_id=eq.${tid}`, {
       method: "PATCH",
       body: {
         applied_change_order_total: newApplied,
