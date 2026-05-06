@@ -2,6 +2,7 @@ const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { makePublicToken } = require("./_lib/public-token");
+const { computeManualInvoiceSystemSellRates } = require("./_lib/pricing-engine");
 
 function json(statusCode, body) {
   return {
@@ -30,6 +31,31 @@ function normalizeBillingType(raw) {
   return "";
 }
 
+function snapshotPricingOk(mg) {
+  if (!mg || typeof mg !== "object") return false;
+  const bi = Number(mg.baseInstaller);
+  return Number.isFinite(bi) && bi > 0;
+}
+
+async function loadTenantPricingSettings(tenantId) {
+  const rows = await supabaseRequest(
+    `tenant_snapshots?tenant_id=eq.${encodeURIComponent(String(tenantId))}&select=payload&order=created_at.desc&limit=1`
+  );
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row?.payload || typeof row.payload !== "object") {
+    return { settings: {}, hasSnapshot: false, pricingReady: false };
+  }
+  const storage =
+    row.payload.storage && typeof row.payload.storage === "object" ? row.payload.storage : {};
+  const mg = storage["mg_settings_v2"];
+  const settings = mg && typeof mg === "object" ? mg : {};
+  return {
+    settings,
+    hasSnapshot: true,
+    pricingReady: snapshotPricingOk(settings),
+  };
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -53,6 +79,21 @@ exports.handler = async (event) => {
       return json(400, { error: "invalid_json_body" });
     }
 
+    const tenantId = String(tenant.id);
+    const { settings, hasSnapshot, pricingReady } = await loadTenantPricingSettings(tenantId);
+
+    if (body.preview_system_rates === true) {
+      if (!hasSnapshot || !pricingReady) {
+        return json(422, { error: "pricing_snapshot_required", ok: false });
+      }
+      const rates = computeManualInvoiceSystemSellRates(settings);
+      return json(200, {
+        ok: true,
+        system_hourly_rate: rates.system_hourly_rate,
+        system_daily_rate: rates.system_daily_rate,
+      });
+    }
+
     const clientName = str(body.client_name || body.customer_name, 500);
     const clientEmail = str(body.client_email || body.customer_email, 320).toLowerCase();
     const title = str(body.project_title || body.invoice_title || body.project_name, 2000);
@@ -60,38 +101,75 @@ exports.handler = async (event) => {
     const notesInput = str(body.notes, 8000);
     const billingType = normalizeBillingType(body.billing_type);
     const quantityRaw = money(body.quantity);
-    const rateRaw = money(body.rate);
     const dueDate = str(body.due_date, 32);
+    const materialDescription = str(body.material_description, 4000);
+    const materialsCost = money(body.materials_cost ?? body.material_cost ?? 0);
+
+    if (!hasSnapshot || !pricingReady) {
+      return json(422, { error: "pricing_snapshot_required" });
+    }
 
     if (!clientName) return json(400, { error: "client_name_required" });
     if (!clientEmail || !clientEmail.includes("@")) return json(400, { error: "client_email_required" });
     if (!title) return json(400, { error: "title_required" });
     if (!billingType) return json(400, { error: "billing_type_required" });
+    if (materialsCost < 0) return json(400, { error: "materials_cost_invalid" });
+
+    const rates = computeManualInvoiceSystemSellRates(settings);
+    const systemHourly = money(rates.system_hourly_rate);
+    const systemDaily = money(rates.system_daily_rate);
 
     let quantity = 0;
-    let rate = 0;
-    let total = 0;
+    let systemRateUsed = 0;
+    let laborSubtotal = 0;
+
     if (billingType === "flat_amount") {
-      rate = Math.max(rateRaw, 0);
-      total = rate;
+      const flatRaw = body.flat_amount != null ? body.flat_amount : body.rate;
+      const flatAmount = money(flatRaw);
+      if (!(flatAmount > 0)) return json(400, { error: "flat_amount_required" });
       quantity = 1;
+      systemRateUsed = flatAmount;
+      laborSubtotal = flatAmount;
     } else {
       quantity = Math.max(quantityRaw, 0);
-      rate = Math.max(rateRaw, 0);
-      if (quantity <= 0 || rate <= 0) {
-        return json(400, { error: "quantity_rate_required" });
+      if (!(quantity > 0)) return json(400, { error: "quantity_required" });
+      if (billingType === "hourly") {
+        systemRateUsed = systemHourly;
+        if (!(systemRateUsed > 0)) return json(400, { error: "system_hourly_rate_invalid" });
+        laborSubtotal = money(quantity * systemRateUsed);
+      } else {
+        systemRateUsed = systemDaily;
+        if (!(systemRateUsed > 0)) return json(400, { error: "system_daily_rate_invalid" });
+        laborSubtotal = money(quantity * systemRateUsed);
       }
-      total = money(quantity * rate);
     }
+
+    const total = money(laborSubtotal + materialsCost);
     if (!(total > 0)) return json(400, { error: "total_must_be_positive" });
 
     const now = new Date().toISOString();
     const invoiceNo = `INV-${Date.now()}`;
-    const billingLine = `Billing type: ${billingType}; Quantity: ${quantity}; Rate: ${rate}; Total: ${total}`;
-    const notes = [description, notesInput, billingLine].filter(Boolean).join("\n\n").slice(0, 8000);
+    const detailLines = [
+      "--- Manual invoice (Margin Guard pricing) ---",
+      `Billing type: ${billingType}`,
+      billingType === "flat_amount"
+        ? `Flat service amount: ${systemRateUsed}`
+        : `Quantity: ${quantity} (${billingType === "daily" ? "days" : "hours"})`,
+      billingType === "flat_amount"
+        ? null
+        : `System ${billingType === "daily" ? "daily" : "hourly"} rate: ${systemRateUsed}`,
+      `Labor subtotal: ${laborSubtotal}`,
+      materialDescription ? `Materials: ${materialDescription}` : null,
+      `Materials cost: ${materialsCost}`,
+      `Total / balance due: ${total}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const notes = [description, notesInput, detailLines].filter(Boolean).join("\n\n").slice(0, 8000);
 
     const insertBase = {
-      tenant_id: String(tenant.id),
+      tenant_id: tenantId,
       public_token: makePublicToken("inv"),
       invoice_no: invoiceNo,
       customer_name: clientName,
@@ -152,4 +230,3 @@ exports.handler = async (event) => {
     return json(500, { error: err.message || "Server error" });
   }
 };
-

@@ -202,9 +202,39 @@ function marginLevelForSalesApproval(rowLike, tenantSettings) {
   return { gate, financials };
 }
 
+/**
+ * Sell rates for manual Invoice Hub invoices: one lead-installer hour and one installer day,
+ * using the same economics as quote publish (labor + burden + overhead + profit + reserve).
+ */
+function computeManualInvoiceSystemSellRates(tenantSettings) {
+  const settings = tenantSettings && typeof tenantSettings === "object" ? tenantSettings : {};
+  const hoursPerDay = Math.max(Number(settings.hoursPerDay || 8), 0.25);
+  const hourlyFin = calculateQuotePublishFinancials(
+    {
+      workers: [{ type: "installer", days: 1 / hoursPerDay }],
+      price: "",
+      _manualPriceTouched: false
+    },
+    settings
+  );
+  const dailyFin = calculateQuotePublishFinancials(
+    {
+      workers: [{ type: "installer", days: 1 }],
+      price: "",
+      _manualPriceTouched: false
+    },
+    settings
+  );
+  return {
+    system_hourly_rate: hourlyFin.total,
+    system_daily_rate: dailyFin.total
+  };
+}
+
 module.exports = {
   calculateSecurePricing,
   calculateQuotePublishFinancials,
   computeSalesMarginDecisionFromEconomics,
-  marginLevelForSalesApproval
+  marginLevelForSalesApproval,
+  computeManualInvoiceSystemSellRates
 };

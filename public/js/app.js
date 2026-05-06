@@ -9319,31 +9319,46 @@ function renderSupervisor() {
     };
 
     const openCreateManualInvoiceForm = () => {
+      let systemHourly = 0;
+      let systemDaily = 0;
+      let pricingPreviewOk = false;
+
       const recalcTotal = () => {
         const billingType = String(val("hubManualBillingType") || "").trim();
         const qtyInput = $("hubManualQuantity");
         const qtyLabel = $("hubManualQuantityLabel");
         const rateLabel = $("hubManualRateLabel");
+        const rateInput = $("hubManualRate");
         const q = Math.max(finiteNumber(val("hubManualQuantity"), 0), 0);
-        const r = Math.max(finiteNumber(val("hubManualRate"), 0), 0);
+        const mat = Math.max(finiteNumber(val("hubManualMaterialCost"), 0), 0);
         let total = 0;
         if (billingType === "flat_amount") {
-          total = r;
+          const flatAmt = Math.max(finiteNumber(val("hubManualRate"), 0), 0);
+          total = flatAmt + mat;
           if (qtyInput) qtyInput.disabled = true;
           if (qtyLabel) qtyLabel.textContent = "Quantity";
-          if (rateLabel) rateLabel.textContent = "Flat amount";
+          if (rateLabel) rateLabel.textContent = "Flat service amount (before materials)";
+          if (rateInput) rateInput.readOnly = false;
         } else {
-          total = q * r;
+          const sys = billingType === "daily" ? systemDaily : systemHourly;
+          if (rateInput) {
+            rateInput.readOnly = true;
+            setVal("hubManualRate", round2(sys).toFixed(2));
+          }
+          total = q * sys + mat;
           if (qtyInput) qtyInput.disabled = false;
           if (qtyLabel) qtyLabel.textContent = billingType === "daily" ? "Days" : "Hours";
-          if (rateLabel) rateLabel.textContent = billingType === "daily" ? "Daily rate" : "Hourly rate";
+          if (rateLabel) {
+            rateLabel.textContent =
+              billingType === "daily" ? "System daily rate (read-only)" : "System hourly rate (read-only)";
+          }
         }
         setVal("hubManualTotal", round2(total).toFixed(2));
       };
 
       showHubActionForm({
         title: "Create Invoice",
-        subtitle: "Create a manual invoice without a linked quote/project.",
+        subtitle: "Uses Margin Guard system sell rates from Business Settings (latest snapshot).",
         submitLabel: "Create Invoice",
         successMessage: "Invoice created",
         fields: [
@@ -9363,12 +9378,28 @@ function renderSupervisor() {
             ],
           },
           { id: "hubManualQuantity", label: "Quantity", type: "number", step: "0.01", value: "1" },
-          { id: "hubManualRate", label: "Rate", type: "number", step: "0.01", value: "0" },
+          { id: "hubManualRate", label: "System rate", type: "number", step: "0.01", value: "0" },
+          {
+            type: "static",
+            html: `<div class="field hub-form-static hub-manual-materials-wrap">
+              <button type="button" class="btn btn-secondary" id="hubManualMaterialsBtn" style="margin-bottom:0.5rem;">+ Materials</button>
+              <div id="hubManualMaterialsPanel" style="display:none;">
+                <div class="field" style="margin-top:0.5rem;">
+                  <label for="hubManualMaterialDescription">Material description</label>
+                  <textarea id="hubManualMaterialDescription" rows="2" placeholder="Optional"></textarea>
+                </div>
+                <div class="field">
+                  <label for="hubManualMaterialCost">Material cost</label>
+                  <input id="hubManualMaterialCost" type="number" step="0.01" value="0" />
+                </div>
+              </div>
+            </div>`,
+          },
           { id: "hubManualTotal", label: "Total (auto-calculated)", type: "number", step: "0.01", value: "0.00" },
           { id: "hubManualDueDate", label: "Due date", type: "date", value: "" },
           { id: "hubManualNotes", label: "Notes", type: "textarea", rows: 3, value: "" },
         ],
-        afterRender: () => {
+        afterRender: async () => {
           const totalInput = $("hubManualTotal");
           if (totalInput) totalInput.readOnly = true;
           const qtyInput = $("hubManualQuantity");
@@ -9377,7 +9408,47 @@ function renderSupervisor() {
           const rateLabelNode = rateInput?.closest(".field")?.querySelector("label");
           if (qtyLabelNode) qtyLabelNode.id = "hubManualQuantityLabel";
           if (rateLabelNode) rateLabelNode.id = "hubManualRateLabel";
-          ["hubManualBillingType", "hubManualQuantity", "hubManualRate"].forEach((id) => {
+
+          pricingPreviewOk = false;
+          setNotice("hubFormFeedback", "Loading system rates…", "warn");
+          try {
+            const pres = await fetch("/.netlify/functions/create-manual-invoice", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              body: JSON.stringify({ preview_system_rates: true }),
+            });
+            const pdata = await pres.json().catch(() => ({}));
+            if (!pres.ok || !pdata?.ok) {
+              const errRaw = String(pdata?.error || "").trim();
+              const errMsg =
+                errRaw === "pricing_snapshot_required"
+                  ? "Save Business Settings first (tenant snapshot required for system rates)."
+                  : errRaw || "Could not load system rates.";
+              setNotice("hubFormFeedback", errMsg, "err");
+              return;
+            }
+            systemHourly = finiteNumber(pdata.system_hourly_rate, 0);
+            systemDaily = finiteNumber(pdata.system_daily_rate, 0);
+            pricingPreviewOk = true;
+            setNotice("hubFormFeedback", "", "");
+          } catch (_e) {
+            setNotice("hubFormFeedback", "Network error loading system rates.", "err");
+            return;
+          }
+
+          const matBtn = $("hubManualMaterialsBtn");
+          const matPanel = $("hubManualMaterialsPanel");
+          if (matBtn && matPanel) {
+            matBtn.onclick = (ev) => {
+              ev.preventDefault();
+              const open = matPanel.style.display !== "none";
+              matPanel.style.display = open ? "none" : "block";
+              matBtn.textContent = open ? "+ Materials" : "Hide materials";
+            };
+          }
+
+          ["hubManualBillingType", "hubManualQuantity", "hubManualRate", "hubManualMaterialCost"].forEach((id) => {
             const node = $(id);
             if (!node) return;
             node.oninput = recalcTotal;
@@ -9386,16 +9457,22 @@ function renderSupervisor() {
           recalcTotal();
         },
         onSubmit: async () => {
+          if (!pricingPreviewOk) {
+            setNotice("hubFormFeedback", "System rates are not loaded. Fix errors above or try again.", "err");
+            return false;
+          }
           const client_name = String(val("hubManualClientName") || "").trim();
           const client_email = String(val("hubManualClientEmail") || "").trim();
           const project_title = String(val("hubManualTitle") || "").trim();
           const description = String(val("hubManualDescription") || "").trim();
           const billing_type = String(val("hubManualBillingType") || "").trim();
           const quantity = finiteNumber(val("hubManualQuantity"), 0);
-          const rate = finiteNumber(val("hubManualRate"), 0);
+          const flat_amount = finiteNumber(val("hubManualRate"), 0);
           const due_date = normalizeDateInput(val("hubManualDueDate"));
           const notes = String(val("hubManualNotes") || "").trim();
           const total = finiteNumber(val("hubManualTotal"), 0);
+          const material_description = String(val("hubManualMaterialDescription") || "").trim();
+          const materials_cost = finiteNumber(val("hubManualMaterialCost"), 0);
 
           if (!client_name) {
             setNotice("hubFormFeedback", "Client name is required.", "err");
@@ -9413,9 +9490,25 @@ function renderSupervisor() {
             setNotice("hubFormFeedback", "Billing type is required.", "err");
             return false;
           }
-          if ((billing_type === "hourly" || billing_type === "daily") && (!(quantity > 0) || !(rate > 0))) {
-            setNotice("hubFormFeedback", "Quantity and rate are required for hourly/daily.", "err");
+          if (materials_cost < 0 || !Number.isFinite(materials_cost)) {
+            setNotice("hubFormFeedback", "Material cost must be zero or greater.", "err");
             return false;
+          }
+          if (billing_type === "hourly" || billing_type === "daily") {
+            if (!(quantity > 0)) {
+              setNotice("hubFormFeedback", "Enter a quantity greater than zero.", "err");
+              return false;
+            }
+            const sys = billing_type === "daily" ? systemDaily : systemHourly;
+            if (!(sys > 0)) {
+              setNotice("hubFormFeedback", "System rate is invalid. Check Business Settings.", "err");
+              return false;
+            }
+          } else if (billing_type === "flat_amount") {
+            if (!(flat_amount > 0)) {
+              setNotice("hubFormFeedback", "Flat service amount must be greater than zero.", "err");
+              return false;
+            }
           }
           if (!(total > 0)) {
             setNotice("hubFormFeedback", "Total must be greater than zero.", "err");
@@ -9433,16 +9526,22 @@ function renderSupervisor() {
                 project_title,
                 description,
                 billing_type,
-                quantity,
-                rate,
-                total,
+                quantity: billing_type === "flat_amount" ? 0 : quantity,
+                flat_amount: billing_type === "flat_amount" ? flat_amount : undefined,
+                material_description,
+                materials_cost,
                 due_date: due_date || null,
                 notes,
               }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data?.ok) {
-              setNotice("hubFormFeedback", data?.error || "Could not create invoice.", "err");
+              const er = String(data?.error || "").trim();
+              const shown =
+                er === "pricing_snapshot_required"
+                  ? "Save Business Settings first (snapshot required)."
+                  : er || "Could not create invoice.";
+              setNotice("hubFormFeedback", shown, "err");
               return false;
             }
             if (typeof window.__mgHubRefetchServerInvoices === "function") {
