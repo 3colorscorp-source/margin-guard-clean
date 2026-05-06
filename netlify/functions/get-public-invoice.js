@@ -129,9 +129,12 @@ exports.handler = async (event) => {
     invoice.paid_to_date = paidToDate;
     invoice.remaining_balance = remainingBalance;
 
+    const tenantPayment = await loadTenantPublicPaymentSettings(tenantId);
+
     return json(200, {
       ok: true,
-      invoice
+      invoice,
+      tenant_payment: tenantPayment,
     });
   } catch (err) {
     return json(500, { error: err.message || "Server error" });
@@ -165,6 +168,36 @@ async function loadProjectTotal(tenantId, projectId) {
     return Number.isFinite(n) ? Math.max(n, 0) : 0;
   } catch (_err) {
     return 0;
+  }
+}
+
+async function loadTenantPublicPaymentSettings(tenantId) {
+  const empty = { payment_instructions: "", payment_link: "" };
+  if (!tenantId) return empty;
+  try {
+    let rows;
+    try {
+      rows = await supabaseRequest(
+        `owner_settings?tenant_id=eq.${encodeURIComponent(tenantId)}&select=payment_instructions,payment_link&limit=1`,
+        { method: "GET" }
+      );
+    } catch (err) {
+      const msg = String(err?.message || "");
+      if (!/payment_instructions|payment_link|column/i.test(msg)) throw err;
+      return empty;
+    }
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row) return empty;
+    const instr =
+      row.payment_instructions != null ? String(row.payment_instructions).trim().slice(0, 8000) : "";
+    let link = row.payment_link != null ? String(row.payment_link).trim().slice(0, 2000) : "";
+    if (link && !/^https?:\/\//i.test(link)) link = "";
+    return {
+      payment_instructions: instr,
+      payment_link: link,
+    };
+  } catch (_err) {
+    return empty;
   }
 }
 

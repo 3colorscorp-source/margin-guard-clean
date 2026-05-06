@@ -322,6 +322,52 @@
       white-space:pre-wrap;
     }
 
+    .payment-panel{
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:22px 24px;
+      margin-bottom:24px;
+      background:linear-gradient(180deg,#fafbfc 0%,#fff 45%);
+      box-shadow:0 1px 0 rgba(15,23,42,0.04);
+    }
+
+    .payment-panel-head{
+      font-size:12px;
+      font-weight:800;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      color:var(--muted);
+      margin-bottom:12px;
+    }
+
+    .payment-panel-body.instructions{
+      color:#1f2937;
+      font-size:15px;
+      line-height:1.65;
+      white-space:pre-wrap;
+      margin:0;
+    }
+
+    .payment-actions{
+      margin-top:16px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+    }
+
+    .payment-panel.muted{
+      background:#f9fafb;
+      border-style:dashed;
+    }
+
+    .payment-placeholder{
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.55;
+      margin:0;
+      font-style:italic;
+    }
+
     .error{
       color:var(--danger);
       background:var(--danger-bg);
@@ -360,6 +406,11 @@
 
       .big-amount{
         font-size:32px;
+      }
+
+      .payment-actions .btn{
+        width:100%;
+        min-width:0;
       }
     }
   </style>
@@ -527,6 +578,34 @@
         return;
       }
 
+      const tenantPayment =
+        payload.tenant_payment && typeof payload.tenant_payment === "object" ? payload.tenant_payment : {};
+      const instrRaw = String(tenantPayment.payment_instructions || "").trim();
+      const tenantPayLink = safeHttpUrl(tenantPayment.payment_link);
+
+      let paymentSectionHtml = "";
+      if (instrRaw || tenantPayLink) {
+        const headBlock = instrRaw
+          ? '<div class="payment-panel-head">Payment Instructions</div>' +
+            '<div class="payment-panel-body instructions">' +
+            escapeHtml(instrRaw) +
+            "</div>"
+          : "";
+        const linkBlock = tenantPayLink
+          ? '<div class="payment-actions">' +
+            '<a class="btn btn-primary" href="' +
+            escapeHtml(tenantPayLink) +
+            '" target="_blank" rel="noopener noreferrer">Open Payment Link</a></div>'
+          : "";
+        paymentSectionHtml = '<div class="payment-panel">' + headBlock + linkBlock + "</div>";
+      } else {
+        paymentSectionHtml =
+          '<div class="payment-panel muted">' +
+          '<p class="payment-placeholder">' +
+          escapeHtml("Payment instructions will be provided by the contractor.") +
+          "</p></div>";
+      }
+
       const businessNameRaw = String(data.business_name || "").trim();
       const brandName = businessNameRaw || TENANT_NAME_FALLBACK;
       const brandNameEsc = escapeHtml(brandName);
@@ -692,6 +771,7 @@
           '<div class="actions">' +
           '<button class="btn btn-secondary" type="button" onclick="window.print()">Print</button>' +
           "</div>" +
+          paymentSectionHtml +
           '<div class="notes">' +
           '<div class="notes-title">Notes</div>' +
           '<div class="notes-text">' +

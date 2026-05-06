@@ -197,6 +197,32 @@
               <div class="hint">Paste your Stripe Payment Link for project deposits.</div>
             </div>
 
+            <div class="sep" style="margin:18px 0;"></div>
+            <h3 style="margin:0 0 6px;font-size:1.05rem;">Public invoice (client page)</h3>
+            <p class="sub" style="margin:0 0 12px;">
+              Shown when clients open your invoice link. Margin Guard does not process these payments.
+            </p>
+            <div class="field">
+              <label for="tenantPaymentInstructions">Payment instructions</label>
+              <textarea
+                id="tenantPaymentInstructions"
+                rows="5"
+                maxlength="8000"
+                placeholder="How clients should pay you (check payable to, mailing address, Zelle phone, reference line, etc.)"
+              ></textarea>
+            </div>
+            <div class="field">
+              <label for="tenantPaymentLink">Payment link (optional)</label>
+              <input
+                id="tenantPaymentLink"
+                type="url"
+                maxlength="2000"
+                placeholder="https://…"
+                autocomplete="off"
+              />
+              <div class="hint">External link only (your bank, QuickBooks, Square, etc.). Opens in a new tab for the customer.</div>
+            </div>
+
             <p class="sub" style="margin:0 0 10px 0;">
               Status: <strong id="depositStripeStatusText">Loading…</strong>
             </p>
@@ -761,6 +787,17 @@
     return v.toLowerCase().startsWith('https://buy.stripe.com/');
   }
 
+  function isValidTenantInvoicePaymentLink(value) {
+    const v = safeTrim(value || '');
+    if (!v) return true;
+    try {
+      var u = new URL(v);
+      return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch (_e) {
+      return false;
+    }
+  }
+
   async function loadOwnerDepositPaymentLink() {
     try {
       const res = await fetch('/.netlify/functions/owner-settings-deposit-link', {
@@ -773,11 +810,22 @@
         const raw = data.deposit_payment_link;
         const s = raw != null && String(raw).trim() !== '' ? String(raw).trim() : '';
         setInputValue('depositPaymentLink', s);
+        var instr = data.payment_instructions != null ? String(data.payment_instructions) : '';
+        setInputValue('tenantPaymentInstructions', instr);
+        var pl =
+          data.payment_link != null && String(data.payment_link).trim() !== ''
+            ? String(data.payment_link).trim()
+            : '';
+        setInputValue('tenantPaymentLink', pl);
       } else {
         setInputValue('depositPaymentLink', '');
+        setInputValue('tenantPaymentInstructions', '');
+        setInputValue('tenantPaymentLink', '');
       }
     } catch (_err) {
       setInputValue('depositPaymentLink', '');
+      setInputValue('tenantPaymentInstructions', '');
+      setInputValue('tenantPaymentLink', '');
     }
   }
 
@@ -800,6 +848,12 @@
         'Deposit Payment Link must be empty or start with https://buy.stripe.com/',
         'error'
       );
+      return;
+    }
+
+    const tenantPayLinkRaw = safeTrim(document.getElementById('tenantPaymentLink')?.value || '');
+    if (!isValidTenantInvoicePaymentLink(tenantPayLinkRaw)) {
+      setStatus('Payment link (optional) must be empty or a valid http(s) URL.', 'error');
       return;
     }
 
@@ -856,12 +910,18 @@
       saveJson(BRANDING_CACHE_KEY, finalBranding);
       fillForm(settings, finalBranding);
 
+      const paymentInstructionsRaw = String(
+        document.getElementById('tenantPaymentInstructions')?.value ?? ''
+      );
+
       const linkRes = await fetch('/.netlify/functions/owner-settings-deposit-link', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          deposit_payment_link: depositRaw ? depositRaw : null
+          deposit_payment_link: depositRaw ? depositRaw : null,
+          payment_instructions: paymentInstructionsRaw,
+          payment_link: tenantPayLinkRaw ? tenantPayLinkRaw : null
         })
       });
       const linkData = await linkRes.json().catch(function () {
@@ -874,7 +934,7 @@
       }
 
       setStatus(
-        'Guardado en el servidor: snapshot, tenant branding y enlace de deposito (Stripe Payment Link).',
+        'Guardado en el servidor: snapshot, tenant branding, deposito Stripe, e instrucciones de pago del invoice publico.',
         'success'
       );
       clearBusinessSettingsCriticalFieldErrors();
@@ -895,7 +955,7 @@
       'publicAccentColor', 'serviceLine', 'marketLine', 'signatureLine', 'baseInstaller',
       'baseHelper', 'pricingMode', 'hoursPerDay', 'overheadMonthly', 'stdHours', 'wcPct',
       'ficaPct', 'futaPct', 'casuiPct', 'profitPct', 'minimumMarginPct', 'salesCommissionPct', 'supervisorBonusPct',
-      'reservePct'
+      'reservePct', 'depositPaymentLink', 'tenantPaymentInstructions', 'tenantPaymentLink'
     ];
 
     watchedIds.forEach(function (id) {
