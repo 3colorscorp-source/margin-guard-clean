@@ -9318,6 +9318,145 @@ function renderSupervisor() {
       });
     };
 
+    const openCreateManualInvoiceForm = () => {
+      const recalcTotal = () => {
+        const billingType = String(val("hubManualBillingType") || "").trim();
+        const qtyInput = $("hubManualQuantity");
+        const qtyLabel = $("hubManualQuantityLabel");
+        const rateLabel = $("hubManualRateLabel");
+        const q = Math.max(finiteNumber(val("hubManualQuantity"), 0), 0);
+        const r = Math.max(finiteNumber(val("hubManualRate"), 0), 0);
+        let total = 0;
+        if (billingType === "flat_amount") {
+          total = r;
+          if (qtyInput) qtyInput.disabled = true;
+          if (qtyLabel) qtyLabel.textContent = "Quantity";
+          if (rateLabel) rateLabel.textContent = "Flat amount";
+        } else {
+          total = q * r;
+          if (qtyInput) qtyInput.disabled = false;
+          if (qtyLabel) qtyLabel.textContent = billingType === "daily" ? "Days" : "Hours";
+          if (rateLabel) rateLabel.textContent = billingType === "daily" ? "Daily rate" : "Hourly rate";
+        }
+        setVal("hubManualTotal", round2(total).toFixed(2));
+      };
+
+      showHubActionForm({
+        title: "Create Invoice",
+        subtitle: "Create a manual invoice without a linked quote/project.",
+        submitLabel: "Create Invoice",
+        successMessage: "Invoice created",
+        fields: [
+          { id: "hubManualClientName", label: "Client name", type: "text", value: "" },
+          { id: "hubManualClientEmail", label: "Client email", type: "email", value: "" },
+          { id: "hubManualTitle", label: "Project / invoice title", type: "text", value: "" },
+          { id: "hubManualDescription", label: "Description / scope", type: "textarea", rows: 3, value: "" },
+          {
+            id: "hubManualBillingType",
+            label: "Billing type",
+            type: "select",
+            value: "hourly",
+            options: [
+              { value: "hourly", label: "Hourly" },
+              { value: "daily", label: "Daily" },
+              { value: "flat_amount", label: "Flat amount" },
+            ],
+          },
+          { id: "hubManualQuantity", label: "Quantity", type: "number", step: "0.01", value: "1" },
+          { id: "hubManualRate", label: "Rate", type: "number", step: "0.01", value: "0" },
+          { id: "hubManualTotal", label: "Total (auto-calculated)", type: "number", step: "0.01", value: "0.00" },
+          { id: "hubManualDueDate", label: "Due date", type: "date", value: "" },
+          { id: "hubManualNotes", label: "Notes", type: "textarea", rows: 3, value: "" },
+        ],
+        afterRender: () => {
+          const totalInput = $("hubManualTotal");
+          if (totalInput) totalInput.readOnly = true;
+          const qtyInput = $("hubManualQuantity");
+          const rateInput = $("hubManualRate");
+          const qtyLabelNode = qtyInput?.closest(".field")?.querySelector("label");
+          const rateLabelNode = rateInput?.closest(".field")?.querySelector("label");
+          if (qtyLabelNode) qtyLabelNode.id = "hubManualQuantityLabel";
+          if (rateLabelNode) rateLabelNode.id = "hubManualRateLabel";
+          ["hubManualBillingType", "hubManualQuantity", "hubManualRate"].forEach((id) => {
+            const node = $(id);
+            if (!node) return;
+            node.oninput = recalcTotal;
+            node.onchange = recalcTotal;
+          });
+          recalcTotal();
+        },
+        onSubmit: async () => {
+          const client_name = String(val("hubManualClientName") || "").trim();
+          const client_email = String(val("hubManualClientEmail") || "").trim();
+          const project_title = String(val("hubManualTitle") || "").trim();
+          const description = String(val("hubManualDescription") || "").trim();
+          const billing_type = String(val("hubManualBillingType") || "").trim();
+          const quantity = finiteNumber(val("hubManualQuantity"), 0);
+          const rate = finiteNumber(val("hubManualRate"), 0);
+          const due_date = normalizeDateInput(val("hubManualDueDate"));
+          const notes = String(val("hubManualNotes") || "").trim();
+          const total = finiteNumber(val("hubManualTotal"), 0);
+
+          if (!client_name) {
+            setNotice("hubFormFeedback", "Client name is required.", "err");
+            return false;
+          }
+          if (!client_email || !client_email.includes("@")) {
+            setNotice("hubFormFeedback", "Client email is required.", "err");
+            return false;
+          }
+          if (!project_title) {
+            setNotice("hubFormFeedback", "Project / invoice title is required.", "err");
+            return false;
+          }
+          if (!billing_type) {
+            setNotice("hubFormFeedback", "Billing type is required.", "err");
+            return false;
+          }
+          if ((billing_type === "hourly" || billing_type === "daily") && (!(quantity > 0) || !(rate > 0))) {
+            setNotice("hubFormFeedback", "Quantity and rate are required for hourly/daily.", "err");
+            return false;
+          }
+          if (!(total > 0)) {
+            setNotice("hubFormFeedback", "Total must be greater than zero.", "err");
+            return false;
+          }
+
+          try {
+            const res = await fetch("/.netlify/functions/create-manual-invoice", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              body: JSON.stringify({
+                client_name,
+                client_email,
+                project_title,
+                description,
+                billing_type,
+                quantity,
+                rate,
+                total,
+                due_date: due_date || null,
+                notes,
+              }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data?.ok) {
+              setNotice("hubFormFeedback", data?.error || "Could not create invoice.", "err");
+              return false;
+            }
+            if (typeof window.__mgHubRefetchServerInvoices === "function") {
+              await window.__mgHubRefetchServerInvoices();
+            }
+            return true;
+          } catch (_e) {
+            setNotice("hubFormFeedback", "Network error. Could not create invoice.", "err");
+            return false;
+          }
+        },
+      });
+    };
+
     const refreshSelectedRow = () => {
       if (!selectedRow) return;
       const next = lastMergedHubRows.find(
@@ -10290,6 +10429,11 @@ function renderSupervisor() {
       $("btnHubTemplates").onclick = () => {
         openTemplateEditorForm();
         hubFormState.successMessage = "Templates de comunicacion guardados.";
+      };
+    }
+    if ($("btnHubCreateInvoice")) {
+      $("btnHubCreateInvoice").onclick = () => {
+        openCreateManualInvoiceForm();
       };
     }
     if ($("btnHubBulkClear")) {
