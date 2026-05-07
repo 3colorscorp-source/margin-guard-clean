@@ -1,3 +1,9 @@
+// LOCKED STABLE FILE - ANTI-REGRESSION WARNING
+// Multi-tenant safety for manual invoice creation has been audited.
+// Owner approval is required before any modification to this file.
+// Public Work Details rendering depends on persisted invoices.notes.
+// Stripe checkout-related invoice behavior is protected and must not be changed incidentally.
+// Any future change requires full regression testing across manual create, DB persistence, and public invoice display.
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
@@ -275,21 +281,45 @@ exports.handler = async (event) => {
       return json(500, { error: "Insert did not return invoice row." });
     }
 
+    const insertedId = String(insertedInvoice.id);
+    const selectedRows = await supabaseRequest(
+      `invoices?id=eq.${encodeURIComponent(insertedId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&select=id,tenant_id,invoice_no,customer_name,customer_email,project_name,amount,balance_due,status,due_date,notes&limit=1`
+    );
+    let finalInvoice = Array.isArray(selectedRows) ? selectedRows[0] : selectedRows;
+    if (!finalInvoice?.id) {
+      return json(500, { ok: false, error: "manual_invoice_post_insert_lookup_failed" });
+    }
+
+    if (!String(finalInvoice.notes || "").trim()) {
+      const repaired = await supabaseRequest(
+        `invoices?id=eq.${encodeURIComponent(insertedId)}&tenant_id=eq.${encodeURIComponent(tenantId)}`,
+        {
+          method: "PATCH",
+          headers: { Prefer: "return=representation" },
+          body: { notes: notesFinal, updated_at: new Date().toISOString() },
+        }
+      );
+      finalInvoice = Array.isArray(repaired) ? repaired[0] : repaired;
+      if (!String(finalInvoice?.notes || "").trim()) {
+        return json(500, { ok: false, error: "manual_invoice_notes_persist_failed" });
+      }
+    }
+
     return json(200, {
       ok: true,
-      debug_notes_length: String(insertedInvoice?.notes || "").length,
-      debug_notes_preview: String(insertedInvoice?.notes || "").slice(0, 120),
+      debug_notes_length: String(finalInvoice?.notes || "").length,
+      debug_notes_preview: String(finalInvoice?.notes || "").slice(0, 120),
       invoice: {
-        id: insertedInvoice.id,
-        tenant_id: insertedInvoice.tenant_id,
-        invoice_no: insertedInvoice.invoice_no,
-        customer_name: insertedInvoice.customer_name,
-        customer_email: insertedInvoice.customer_email,
-        project_name: insertedInvoice.project_name,
-        amount: insertedInvoice.amount,
-        balance_due: insertedInvoice.balance_due,
-        status: insertedInvoice.status,
-        due_date: insertedInvoice.due_date,
+        id: finalInvoice.id,
+        tenant_id: finalInvoice.tenant_id,
+        invoice_no: finalInvoice.invoice_no,
+        customer_name: finalInvoice.customer_name,
+        customer_email: finalInvoice.customer_email,
+        project_name: finalInvoice.project_name,
+        amount: finalInvoice.amount,
+        balance_due: finalInvoice.balance_due,
+        status: finalInvoice.status,
+        due_date: finalInvoice.due_date,
       },
     });
   } catch (err) {
