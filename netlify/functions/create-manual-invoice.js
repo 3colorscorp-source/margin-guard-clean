@@ -213,7 +213,7 @@ exports.handler = async (event) => {
 
     const now = new Date().toISOString();
     const invoiceNo = `INV-${Date.now()}`;
-    const notes = buildManualInvoiceClientNotes({
+    const notesFinal = buildManualInvoiceClientNotes({
       description,
       billingType,
       quantity,
@@ -223,14 +223,13 @@ exports.handler = async (event) => {
       materialsCost,
       total,
     });
-    const notesFinal = String(notes || "").trim();
     console.log("[manual-invoice-notes-trace] generated_notes", {
       traceId,
-      notes_length: notesFinal.length,
-      notes_preview: notesFinal.slice(0, 500),
+      notes_length: String(notesFinal || "").length,
+      notes_preview: String(notesFinal || "").slice(0, 500),
     });
-    if (!notesFinal) {
-      return json(500, { error: "manual_invoice_notes_generation_failed" });
+    if (!String(notesFinal || "").trim()) {
+      return json(500, { ok: false, error: "manual_invoice_notes_generation_failed" });
     }
 
     const insertBase = {
@@ -252,10 +251,11 @@ exports.handler = async (event) => {
       created_at: now,
       updated_at: now,
     };
+    const insertPayload = { ...insertBase, notes: String(notesFinal).trim() };
     console.log("[manual-invoice-notes-trace] insert_payload_notes", {
       traceId,
-      notes_length: String(insertBase.notes || "").length,
-      notes_preview: String(insertBase.notes || "").slice(0, 500),
+      notes_length: String(insertPayload.notes || "").length,
+      notes_preview: String(insertPayload.notes || "").slice(0, 500),
     });
 
     let created;
@@ -263,7 +263,7 @@ exports.handler = async (event) => {
       created = await supabaseRequest("invoices", {
         method: "POST",
         headers: { Prefer: "return=representation" },
-        body: { ...insertBase, source: "manual_invoice" },
+        body: { ...insertPayload, source: "manual_invoice" },
       });
     } catch (err) {
       const msg = String(err?.message || "");
@@ -272,7 +272,7 @@ exports.handler = async (event) => {
       created = await supabaseRequest("invoices", {
         method: "POST",
         headers: { Prefer: "return=representation" },
-        body: insertBase,
+        body: insertPayload,
       });
     }
 
