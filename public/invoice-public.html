@@ -624,7 +624,7 @@
       const instrRaw = String(tenantPayment.payment_instructions || "").trim();
       const tenantPayLink = safeHttpUrl(tenantPayment.payment_link);
       const notesRaw = String(data.notes == null ? "" : data.notes);
-      const hasWorkDetails = notesRaw.trim() !== "";
+      const hasWorkDetails = String(data.notes || "").trim().length > 0;
 
       const businessNameRaw = String(data.business_name || "").trim();
       const brandName = businessNameRaw || TENANT_NAME_FALLBACK;
@@ -684,7 +684,7 @@
       const invoiceTitleBlock = invLabelRaw ? `<div class="header-title">${escapeHtml(invLabelRaw)}</div>` : "";
       const workDetailsHtml = hasWorkDetails
         ? '<div class="notes">' +
-          '<div class="notes-title">Work Details</div>' +
+          '<div class="notes-title">WORK DETAILS</div>' +
           '<div class="notes-text">' +
           displayText(notesRaw) +
           "</div>" +

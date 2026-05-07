@@ -223,6 +223,9 @@ exports.handler = async (event) => {
     notesParts.push(`Invoice total: ${formatMoney(total)}`);
 
     const notesFinal = notesParts.join("\n\n").trim();
+    console.log("[manual invoice incoming description]", body.description);
+    console.log("[manual invoice notesFinal]", notesFinal);
+    console.log("[manual invoice notesFinal length]", String(notesFinal || "").length);
     if (!String(notesFinal || "").trim()) {
       return json(500, { ok: false, error: "manual_invoice_notes_generation_failed" });
     }
@@ -247,6 +250,7 @@ exports.handler = async (event) => {
       updated_at: now,
     };
     const insertPayload = { ...insertBase, notes: notesFinal };
+    console.log("[manual invoice insertPayload notes length]", String(insertPayload?.notes || "").length);
 
     let created;
     try {
@@ -266,24 +270,26 @@ exports.handler = async (event) => {
       });
     }
 
-    const row = Array.isArray(created) ? created[0] : created;
-    if (!row?.id) {
+    const insertedInvoice = Array.isArray(created) ? created[0] : created;
+    if (!insertedInvoice?.id) {
       return json(500, { error: "Insert did not return invoice row." });
     }
 
     return json(200, {
       ok: true,
+      debug_notes_length: String(insertedInvoice?.notes || "").length,
+      debug_notes_preview: String(insertedInvoice?.notes || "").slice(0, 120),
       invoice: {
-        id: row.id,
-        tenant_id: row.tenant_id,
-        invoice_no: row.invoice_no,
-        customer_name: row.customer_name,
-        customer_email: row.customer_email,
-        project_name: row.project_name,
-        amount: row.amount,
-        balance_due: row.balance_due,
-        status: row.status,
-        due_date: row.due_date,
+        id: insertedInvoice.id,
+        tenant_id: insertedInvoice.tenant_id,
+        invoice_no: insertedInvoice.invoice_no,
+        customer_name: insertedInvoice.customer_name,
+        customer_email: insertedInvoice.customer_email,
+        project_name: insertedInvoice.project_name,
+        amount: insertedInvoice.amount,
+        balance_due: insertedInvoice.balance_due,
+        status: insertedInvoice.status,
+        due_date: insertedInvoice.due_date,
       },
     });
   } catch (err) {
