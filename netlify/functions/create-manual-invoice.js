@@ -213,16 +213,28 @@ exports.handler = async (event) => {
 
     const now = new Date().toISOString();
     const invoiceNo = `INV-${Date.now()}`;
-    const notesFinal = buildManualInvoiceClientNotes({
-      description,
-      billingType,
-      quantity,
-      systemRateUsed,
-      laborSubtotal,
-      materialDescription,
-      materialsCost,
-      total,
-    });
+    const billingTypeLabel =
+      billingType === "hourly" ? "Hourly service" : billingType === "daily" ? "Daily service" : "Flat service";
+    const quantityLabel = billingType === "hourly" ? "hours" : billingType === "daily" ? "days" : "flat";
+    const rateLabel = billingType === "hourly" ? "hr" : billingType === "daily" ? "day" : "flat";
+    const formatMoney = (value) => moneyText(value);
+
+    const notesParts = [];
+    if (description) {
+      notesParts.push(`Service details:\n${description}`);
+    }
+    notesParts.push(
+      `Billing:\n${billingTypeLabel} — ${quantity} ${quantityLabel} at ${formatMoney(systemRateUsed)}/${rateLabel}`
+    );
+    notesParts.push(`Labor subtotal: ${formatMoney(laborSubtotal)}`);
+    if (materialDescription || materialsCost > 0) {
+      notesParts.push(
+        `Materials:\n${materialDescription || "Materials"}\nMaterials subtotal: ${formatMoney(materialsCost)}`
+      );
+    }
+    notesParts.push(`Invoice total: ${formatMoney(total)}`);
+
+    const notesFinal = notesParts.filter(Boolean).join("\n\n").trim();
     console.log("[manual-invoice-notes-trace] generated_notes", {
       traceId,
       notes_length: String(notesFinal || "").length,
@@ -251,7 +263,7 @@ exports.handler = async (event) => {
       created_at: now,
       updated_at: now,
     };
-    const insertPayload = { ...insertBase, notes: String(notesFinal).trim() };
+    const insertPayload = { ...insertBase, notes: notesFinal };
     console.log("[manual-invoice-notes-trace] insert_payload_notes", {
       traceId,
       notes_length: String(insertPayload.notes || "").length,
