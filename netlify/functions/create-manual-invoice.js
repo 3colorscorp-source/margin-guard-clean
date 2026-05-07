@@ -69,10 +69,10 @@ function buildManualInvoiceClientNotes({
 
   const billingLine =
     billingType === "hourly"
-      ? `Hourly service - ${quantity} hours at ${moneyText(systemRateUsed)}/hr`
+      ? `Hourly service — ${quantity} hours at ${moneyText(systemRateUsed)}/hr`
       : billingType === "daily"
-        ? `Daily service - ${quantity} days at ${moneyText(systemRateUsed)}/day`
-        : `Flat service - ${moneyText(systemRateUsed)}`;
+        ? `Daily service — ${quantity} days at ${moneyText(systemRateUsed)}/day`
+        : `Flat service — ${moneyText(systemRateUsed)}`;
   sections.push(`Billing:\n${billingLine}\nLabor subtotal: ${moneyText(laborSubtotal)}`);
 
   if (materialDescription || materialsCost > 0) {
