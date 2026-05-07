@@ -545,6 +545,14 @@
     return o;
   }
 
+  function showPanelNotice(kind, message) {
+    const node = document.getElementById("invoicePayNotice");
+    if (!node) return;
+    node.style.display = "block";
+    node.className = `notice ${kind || ""}`.trim();
+    node.textContent = String(message || "");
+  }
+
   async function loadInvoice() {
     try {
       const token = new URLSearchParams(window.location.search).get("token");
@@ -583,29 +591,6 @@
       const instrRaw = String(tenantPayment.payment_instructions || "").trim();
       const tenantPayLink = safeHttpUrl(tenantPayment.payment_link);
 
-      let paymentSectionHtml = "";
-      if (instrRaw || tenantPayLink) {
-        const headBlock = instrRaw
-          ? '<div class="payment-panel-head">Payment Instructions</div>' +
-            '<div class="payment-panel-body instructions">' +
-            escapeHtml(instrRaw) +
-            "</div>"
-          : "";
-        const linkBlock = tenantPayLink
-          ? '<div class="payment-actions">' +
-            '<a class="btn btn-primary" href="' +
-            escapeHtml(tenantPayLink) +
-            '" target="_blank" rel="noopener noreferrer">Open Payment Link</a></div>'
-          : "";
-        paymentSectionHtml = '<div class="payment-panel">' + headBlock + linkBlock + "</div>";
-      } else {
-        paymentSectionHtml =
-          '<div class="payment-panel muted">' +
-          '<p class="payment-placeholder">' +
-          escapeHtml("Payment instructions will be provided by the contractor.") +
-          "</p></div>";
-      }
-
       const businessNameRaw = String(data.business_name || "").trim();
       const brandName = businessNameRaw || TENANT_NAME_FALLBACK;
       const brandNameEsc = escapeHtml(brandName);
@@ -617,6 +602,42 @@
       const progressPctLabel = `${Math.round(progressPct)}%`;
 
       const facts = invoiceFacts(data);
+      const canTryDynamicPay = Number(facts.balance || 0) > 0 && String(status || "").toLowerCase() !== "paid";
+      const dynamicPayButton = canTryDynamicPay
+        ? '<button class="btn btn-primary" type="button" id="btnInvoicePayNow">Pay Invoice</button>'
+        : "";
+      let paymentSectionHtml = "";
+      if (instrRaw || tenantPayLink) {
+        const headBlock = instrRaw
+          ? '<div class="payment-panel-head">Payment Instructions</div>' +
+            '<div class="payment-panel-body instructions">' +
+            escapeHtml(instrRaw) +
+            "</div>"
+          : "";
+        const linkBlock = tenantPayLink
+          ? '<a class="btn btn-secondary" href="' +
+            escapeHtml(tenantPayLink) +
+            '" target="_blank" rel="noopener noreferrer">Open Payment Link</a>'
+          : "";
+        paymentSectionHtml =
+          '<div class="payment-panel">' +
+          headBlock +
+          '<div class="payment-actions">' +
+          dynamicPayButton +
+          linkBlock +
+          "</div>" +
+          '<div class="notice" id="invoicePayNotice" style="display:none;margin-top:12px;"></div>' +
+          "</div>";
+      } else {
+        paymentSectionHtml =
+          '<div class="payment-panel muted">' +
+          (dynamicPayButton ? `<div class="payment-actions">${dynamicPayButton}</div>` : "") +
+          '<p class="payment-placeholder">' +
+          escapeHtml("Payment instructions will be provided by the contractor.") +
+          "</p>" +
+          '<div class="notice" id="invoicePayNotice" style="display:none;margin-top:12px;"></div>' +
+          "</div>";
+      }
       const contractTotal = money(facts.contractTotal, currency);
       const invoiceAmount = money(facts.invoiceAmount, currency);
       const paidAmount = money(facts.paid, currency);
@@ -780,6 +801,54 @@
           "</div>" +
           '<p class="powered-by">Powered by Margin Guard</p>' +
         "</div>";
+
+      const payBtn = document.getElementById("btnInvoicePayNow");
+      if (payBtn) {
+        payBtn.onclick = async function () {
+          try {
+            payBtn.disabled = true;
+            payBtn.textContent = "Redirecting...";
+            const r = await fetch("/.netlify/functions/create-invoice-checkout-session", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              body: JSON.stringify({ public_token: String(token).trim() }),
+            });
+            const d = await r.json().catch(function () {
+              return {};
+            });
+            if (r.ok && d && d.ok && d.checkout_url) {
+              window.location.href = String(d.checkout_url);
+              return;
+            }
+            if (tenantPayLink) {
+              showPanelNotice(
+                "warn",
+                "Secure invoice checkout is temporarily unavailable. You can still use Open Payment Link."
+              );
+            } else {
+              showPanelNotice("err", "Payment checkout is temporarily unavailable. Please contact the contractor.");
+            }
+          } catch (_err) {
+            if (tenantPayLink) {
+              showPanelNotice(
+                "warn",
+                "Secure invoice checkout is temporarily unavailable. You can still use Open Payment Link."
+              );
+            } else {
+              showPanelNotice("err", "Payment checkout is temporarily unavailable. Please contact the contractor.");
+            }
+          } finally {
+            payBtn.disabled = false;
+            payBtn.textContent = "Pay Invoice";
+          }
+        };
+      }
+      const paymentState = String(new URLSearchParams(window.location.search).get("payment") || "").trim();
+      if (paymentState === "success") {
+        showPanelNotice("ok", "Payment submitted successfully. We are confirming your invoice payment.");
+      } else if (paymentState === "cancel") {
+        showPanelNotice("warn", "Payment was canceled. Your invoice remains open.");
+      }
     } catch (err) {
       showError(err && err.message ? err.message : "Unexpected error loading invoice.");
     }
