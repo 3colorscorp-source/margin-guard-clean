@@ -9144,7 +9144,17 @@ function renderSupervisor() {
     const bindButton = (selector, callback) => {
       $("hubTableBody").querySelectorAll(selector).forEach((button) => {
         button.onclick = () => {
-          const key = Object.values(button.dataset)[0] || "";
+          const key = String(
+            button.dataset.hubDelete ||
+              button.dataset.hubArchive ||
+              button.dataset.hubSendInvoice ||
+              button.dataset.hubMarkPaid ||
+              button.dataset.hubPay ||
+              button.dataset.hubView ||
+              Object.values(button.dataset)[0] ||
+              button.closest("tr")?.dataset?.hubRow ||
+              ""
+          ).trim();
           const row = findHubRowByKey(key);
           if (!row || typeof callback !== "function") return;
           callback(row, key);
