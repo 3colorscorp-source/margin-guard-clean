@@ -22,9 +22,11 @@
     body{
       margin:0;
       font-family:Inter, "Segoe UI", Arial, Helvetica, sans-serif;
-      background:#eef2f6;
+      background:#f4f7fb;
       color:var(--text);
       padding:32px 16px;
+      font-size:16px;
+      line-height:1.55;
     }
 
     .wrap{
@@ -34,54 +36,63 @@
 
     .card{
       background:var(--card);
-      border:1px solid var(--line);
-      border-radius:18px;
+      border:1px solid #dfe6ef;
+      border-radius:16px;
       overflow:hidden;
-      box-shadow:0 12px 36px rgba(15,23,42,0.08);
+      box-shadow:0 8px 24px rgba(15,23,42,0.06);
     }
 
-    .topbar{
+    .invoice-topbar{
       padding:24px 28px;
       border-bottom:1px solid var(--line);
       display:flex;
       justify-content:space-between;
-      align-items:center;
-      gap:18px;
+      align-items:flex-start;
+      gap:24px;
       flex-wrap:wrap;
       background:#fff;
     }
 
-    .topbar-main{
+    .brand-block{
       min-width:220px;
       flex:1 1 auto;
     }
 
-    .brand h1{
+    .brand-block h1{
       margin:0;
       font-size:26px;
       letter-spacing:-0.02em;
       line-height:1.2;
+      font-weight:800;
     }
 
-    .brand .sub{
+    .brand-block p{
+      margin:4px 0 0;
       color:var(--muted);
       font-size:13px;
-      margin-top:4px;
     }
 
-    .header-title{
-      margin-top:8px;
-      font-size:14px;
-      font-weight:700;
-      color:#1f2937;
-    }
-
-    .topbar-right{
+    .invoice-meta-top{
       display:flex;
-      align-items:center;
+      align-items:flex-start;
       justify-content:flex-end;
       gap:14px;
       flex-wrap:wrap;
+    }
+
+    .invoice-meta-top > span{
+      color:var(--muted);
+      font-size:12px;
+      font-weight:700;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      padding-top:6px;
+    }
+
+    .invoice-meta-top > strong{
+      font-size:24px;
+      font-weight:800;
+      line-height:1;
     }
 
     .invoice-meta{
@@ -104,7 +115,7 @@
       line-height:1;
     }
 
-    .status-pill{
+    .status-badge{
       display:inline-flex;
       align-items:center;
       border-radius:999px;
@@ -117,20 +128,20 @@
       background:#f9fafb;
     }
 
-    .status-pill.paid{
+    .status-badge.paid{
       color:#065f46;
       background:#ecfdf5;
       border-color:#a7f3d0;
     }
 
-    .status-pill.partial,
-    .status-pill.open{
+    .status-badge.partial,
+    .status-badge.open{
       color:#92400e;
       background:#fffbeb;
       border-color:#fcd34d;
     }
 
-    .status-pill.overdue{
+    .status-badge.overdue{
       color:#991b1b;
       background:#fef2f2;
       border-color:#fecaca;
@@ -141,7 +152,7 @@
     }
 
     .panel{
-      border:1px solid var(--line);
+      border:1px solid #dfe6ef;
       border-radius:16px;
       padding:20px;
       background:#fff;
@@ -201,7 +212,7 @@
     }
 
     .summary{
-      border:1px solid var(--line);
+      border:1px solid #dfe6ef;
       border-radius:16px;
       overflow:hidden;
       margin-bottom:24px;
@@ -315,16 +326,19 @@
     }
 
     .notes{
-      border:1px solid var(--line);
+      border:1px solid #dfe6ef;
       border-radius:16px;
       padding:18px 20px;
       background:#fff;
+      margin-bottom:24px;
     }
 
     .notes-title{
-      font-size:15px;
+      font-size:17px;
       font-weight:800;
       margin-bottom:8px;
+      letter-spacing:.02em;
+      text-transform:uppercase;
     }
 
     .notes-text{
@@ -335,7 +349,7 @@
     }
 
     .payment-panel{
-      border:1px solid var(--line);
+      border:1px solid #dfe6ef;
       border-radius:16px;
       padding:22px 24px;
       margin-bottom:24px;
@@ -396,7 +410,7 @@
       text-align:center;
     }
 
-    @media (max-width: 800px){
+    @media (max-width: 720px){
       .hero,
       .grid{
         grid-template-columns:1fr;
@@ -412,13 +426,13 @@
         padding:20px;
       }
 
-      .topbar{
+      .invoice-topbar{
         align-items:flex-start;
       }
 
-      .topbar-right{
+      .invoice-meta-top{
         width:100%;
-        justify-content:space-between;
+        justify-content:flex-start;
       }
 
       .payment-actions .btn{
@@ -426,7 +440,7 @@
         min-width:0;
       }
 
-      .invoice-inline-no{
+      .invoice-meta-top > strong{
         font-size:22px;
       }
     }
@@ -664,8 +678,6 @@
       const balanceDue = money(facts.balance, currency);
 
       const accent = safeAccentColor(data.accent_color);
-      const invLabelRaw = String(data.invoice_label || "").trim();
-      const invoiceTitleBlock = invLabelRaw ? `<div class="header-title">${escapeHtml(invLabelRaw)}</div>` : "";
       const workDetailsHtml = hasWorkDetails
         ? '<div class="notes">' +
           '<div class="notes-title">Work Details</div>' +
@@ -681,24 +693,21 @@
       setDocumentTitle(businessNameRaw || "");
 
       invoiceBox.innerHTML =
-        '<div class="topbar">' +
-          '<div class="topbar-main brand">' +
+        '<header class="invoice-topbar">' +
+          '<div class="brand-block">' +
             "<h1>" + brandNameEsc + "</h1>" +
-            '<div class="sub">' + escapeHtml(BUSINESS_SUBTITLE) + "</div>" +
-            invoiceTitleBlock +
+            "<p>" + escapeHtml(BUSINESS_SUBTITLE) + "</p>" +
           "</div>" +
-          '<div class="topbar-right">' +
-            '<div class="invoice-meta">' +
-              '<span class="invoice-inline-label">Invoice</span>' +
-              '<span class="invoice-inline-no">' + displayText(data.invoice_no, "Invoice") + "</span>" +
-            "</div>" +
-            '<div class="status-pill ' +
+          '<div class="invoice-meta-top">' +
+            "<span>Invoice</span>" +
+            "<strong>" + displayText(data.invoice_no, "Invoice") + "</strong>" +
+            '<span class="status-badge ' +
             escapeHtml(statusClassFromLabel(status)) +
             '">' +
             statusEsc +
-            "</div>" +
+            "</span>" +
           "</div>" +
-        "</div>" +
+        "</header>" +
         '<div class="content">' +
           '<div class="grid">' +
             '<div class="panel">' +
