@@ -21,14 +21,14 @@
     *{ box-sizing:border-box; }
     body{
       margin:0;
-      font-family:Arial, Helvetica, sans-serif;
-      background:linear-gradient(180deg, #f9fafb, #eef2f7);
+      font-family:Inter, "Segoe UI", Arial, Helvetica, sans-serif;
+      background:#eef2f6;
       color:var(--text);
       padding:32px 16px;
     }
 
     .wrap{
-      max-width:980px;
+      max-width:1100px;
       margin:0 auto;
     }
 
@@ -37,7 +37,7 @@
       border:1px solid var(--line);
       border-radius:18px;
       overflow:hidden;
-      box-shadow:0 20px 60px rgba(15,23,42,0.08);
+      box-shadow:0 12px 36px rgba(15,23,42,0.08);
     }
 
     .topbar{
@@ -45,21 +45,63 @@
       border-bottom:1px solid var(--line);
       display:flex;
       justify-content:space-between;
-      align-items:flex-start;
+      align-items:center;
       gap:18px;
       flex-wrap:wrap;
       background:#fff;
     }
 
+    .topbar-main{
+      min-width:220px;
+      flex:1 1 auto;
+    }
+
     .brand h1{
-      margin:0 0 6px;
-      font-size:28px;
-      letter-spacing:-0.03em;
+      margin:0;
+      font-size:26px;
+      letter-spacing:-0.02em;
+      line-height:1.2;
     }
 
     .brand .sub{
       color:var(--muted);
+      font-size:13px;
+      margin-top:4px;
+    }
+
+    .header-title{
+      margin-top:8px;
       font-size:14px;
+      font-weight:700;
+      color:#1f2937;
+    }
+
+    .topbar-right{
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      gap:14px;
+      flex-wrap:wrap;
+    }
+
+    .invoice-meta{
+      display:inline-flex;
+      align-items:baseline;
+      gap:8px;
+    }
+
+    .invoice-inline-label{
+      color:var(--muted);
+      font-size:12px;
+      font-weight:700;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+    }
+
+    .invoice-inline-no{
+      font-size:26px;
+      font-weight:800;
+      line-height:1;
     }
 
     .status-pill{
@@ -98,18 +140,12 @@
       padding:28px;
     }
 
-    .hero{
-      display:grid;
-      grid-template-columns:1.2fr .8fr;
-      gap:24px;
-      margin-bottom:24px;
-    }
-
     .panel{
       border:1px solid var(--line);
       border-radius:16px;
       padding:20px;
-      background:var(--soft);
+      background:#fff;
+      box-shadow:0 1px 0 rgba(15,23,42,0.03);
     }
 
     .eyebrow{
@@ -121,40 +157,16 @@
       margin-bottom:10px;
     }
 
-    .invoice-label-hero{
-      font-size:clamp(22px, 4vw, 30px);
-      font-weight:800;
-      text-transform:uppercase;
-      letter-spacing:.07em;
-      line-height:1.12;
-      margin:0 0 14px;
-      color:#0f172a;
-    }
-
-    .invoice-no{
-      font-size:32px;
-      font-weight:800;
-      margin:0 0 10px;
-      line-height:1.05;
-    }
-
-    .big-amount{
-      margin:0;
-      font-size:40px;
-      font-weight:800;
-      line-height:1;
-    }
-
     .small-note{
-      margin-top:8px;
+      margin-top:6px;
       color:var(--muted);
-      font-size:14px;
+      font-size:13px;
     }
 
     .grid{
       display:grid;
       grid-template-columns:1fr 1fr;
-      gap:24px;
+      gap:20px;
       margin-bottom:24px;
     }
 
@@ -400,17 +412,22 @@
         padding:20px;
       }
 
-      .invoice-no{
-        font-size:26px;
+      .topbar{
+        align-items:flex-start;
       }
 
-      .big-amount{
-        font-size:32px;
+      .topbar-right{
+        width:100%;
+        justify-content:space-between;
       }
 
       .payment-actions .btn{
         width:100%;
         min-width:0;
+      }
+
+      .invoice-inline-no{
+        font-size:22px;
       }
     }
   </style>
@@ -646,11 +663,15 @@
       const balanceDue = money(facts.balance, currency);
 
       const accent = safeAccentColor(data.accent_color);
-      const logoUrl = safeHttpUrl(data.logo_url);
-
       const invLabelRaw = String(data.invoice_label || "").trim();
-      const invLabelBlock = invLabelRaw
-        ? '<div class="invoice-label-hero">' + escapeHtml(invLabelRaw) + "</div>"
+      const invoiceTitleBlock = invLabelRaw ? `<div class="header-title">${escapeHtml(invLabelRaw)}</div>` : "";
+      const workDetailsHtml = notesText
+        ? '<div class="notes">' +
+          '<div class="notes-title">Work Details</div>' +
+          '<div class="notes-text">' +
+          displayText(notesText) +
+          "</div>" +
+          "</div>"
         : "";
 
       document.documentElement.style.setProperty("--accent", accent);
@@ -658,41 +679,26 @@
 
       setDocumentTitle(businessNameRaw || "");
 
-      const logoBlock = logoUrl
-        ? '<img src="' +
-          escapeHtml(logoUrl) +
-          '" alt="" style="max-height:44px;max-width:180px;display:block;margin-bottom:10px;" />'
-        : "";
-
       invoiceBox.innerHTML =
         '<div class="topbar">' +
-          '<div class="brand">' +
-            logoBlock +
+          '<div class="topbar-main brand">' +
             "<h1>" + brandNameEsc + "</h1>" +
             '<div class="sub">' + escapeHtml(BUSINESS_SUBTITLE) + "</div>" +
+            invoiceTitleBlock +
           "</div>" +
-          '<div class="status-pill ' +
-          escapeHtml(statusClassFromLabel(status)) +
-          '">' +
-          statusEsc +
+          '<div class="topbar-right">' +
+            '<div class="invoice-meta">' +
+              '<span class="invoice-inline-label">Invoice</span>' +
+              '<span class="invoice-inline-no">' + displayText(data.invoice_no, "Invoice") + "</span>" +
+            "</div>" +
+            '<div class="status-pill ' +
+            escapeHtml(statusClassFromLabel(status)) +
+            '">' +
+            statusEsc +
+            "</div>" +
           "</div>" +
         "</div>" +
         '<div class="content">' +
-          '<div class="hero">' +
-            '<div class="panel">' +
-              invLabelBlock +
-              '<div class="eyebrow">Invoice</div>' +
-              '<div class="invoice-no">' +
-              displayText(data.invoice_no, "Invoice") +
-              "</div>" +
-              '<div class="small-note">Issued by ' +
-              brandNameEsc +
-              "</div>" +
-              '<div class="small-note">Due date: ' +
-              displayText(data.due_date) +
-              "</div>" +
-            "</div>" +
-          "</div>" +
           '<div class="grid">' +
             '<div class="panel">' +
               '<div class="eyebrow">Customer</div>' +
@@ -741,12 +747,7 @@
               "</div>" +
             "</div>" +
           "</div>" +
-          '<div class="notes">' +
-          '<div class="notes-title">Work Details</div>' +
-          '<div class="notes-text">' +
-          displayText(notesText, "No notes added.") +
-          "</div>" +
-          "</div>" +
+          workDetailsHtml +
           '<div class="summary">' +
             '<div class="summary-head">Summary</div>' +
             '<div class="summary-body">' +
