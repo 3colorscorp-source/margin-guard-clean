@@ -688,14 +688,15 @@
       const accent = safeAccentColor(data.accent_color);
       const invLabelRaw = String(data.invoice_label || "").trim();
       const invoiceTitleBlock = invLabelRaw ? `<div class="header-title">${escapeHtml(invLabelRaw)}</div>` : "";
-      const workDetailsHtml = hasWorkDetails
-        ? '<div class="notes">' +
-          '<div class="notes-title">WORK DETAILS</div>' +
-          '<div class="notes-text">' +
-          displayText(notesRaw) +
-          "</div>" +
-          "</div>"
-        : "";
+      const workDetailsHtml =
+        '<div class="notes">' +
+        '<div class="notes-title">WORK DETAILS</div>' +
+        '<div class="notes-text">' +
+        (hasWorkDetails
+          ? displayText(notesRaw)
+          : escapeHtml("Work details were not provided for this invoice.")) +
+        "</div>" +
+        "</div>";
 
       document.documentElement.style.setProperty("--accent", accent);
       document.documentElement.style.setProperty("--accent-dark", accent);
