@@ -2655,6 +2655,120 @@ Thank you.`
     if ($("hubFormModal")) $("hubFormModal").setAttribute("aria-hidden", "false");
   }
 
+  function openHubDeleteInvoiceConfirmModal(row, onConfirmDelete) {
+    const existing = document.getElementById("hubDeleteInvoiceConfirmModal");
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+    const balanceText = money(finiteNumber(row?.amount, 0), settings.currency);
+    const invoiceNo = nonEmptyString(row?.invoiceNo, row?.serverInvoiceNo, "—");
+    const clientName = nonEmptyString(row?.customer, row?.project?.clientName, "—");
+    const projectName = nonEmptyString(row?.title, row?.project?.name, "—");
+
+    const modal = document.createElement("div");
+    modal.id = "hubDeleteInvoiceConfirmModal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.style.position = "fixed";
+    modal.style.inset = "0";
+    modal.style.zIndex = "1200";
+    modal.style.display = "grid";
+    modal.style.placeItems = "center";
+    modal.style.background = "rgba(8,12,20,0.66)";
+    modal.innerHTML = `
+      <div data-hub-delete-card style="
+        width:min(560px, 94vw);
+        border-radius:16px;
+        border:1px solid rgba(255,255,255,0.16);
+        background:rgba(15,23,42,0.82);
+        backdrop-filter:blur(8px);
+        box-shadow:0 22px 60px rgba(0,0,0,0.45);
+        color:#e5e7eb;
+        padding:20px 20px 16px;
+      ">
+        <div style="font-size:1.12rem;font-weight:800;margin-bottom:8px;color:#fff;">Delete invoice?</div>
+        <div style="font-size:0.96rem;line-height:1.5;color:#cbd5e1;margin-bottom:14px;">
+          This will permanently delete this invoice. This action cannot be undone.
+        </div>
+        <div style="
+          border:1px solid rgba(255,255,255,0.12);
+          border-radius:12px;
+          background:rgba(255,255,255,0.05);
+          padding:10px 12px;
+          margin-bottom:12px;
+          font-size:0.92rem;
+          line-height:1.45;
+        ">
+          <div><strong>Invoice:</strong> ${escapeHtml(invoiceNo)}</div>
+          <div><strong>Client:</strong> ${escapeHtml(clientName)}</div>
+          <div><strong>Project:</strong> ${escapeHtml(projectName)}</div>
+          <div><strong>Balance:</strong> ${escapeHtml(balanceText)}</div>
+        </div>
+        <div id="hubDeleteInvoiceModalError" style="display:none;color:#fecaca;font-size:0.9rem;margin-bottom:10px;"></div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
+          <button type="button" id="hubDeleteInvoiceModalCancel" class="btn" style="min-width:140px;">Cancel</button>
+          <button type="button" id="hubDeleteInvoiceModalConfirm" class="btn" style="min-width:180px;background:#b91c1c;color:#fff;border:1px solid #ef4444;">Delete permanently</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const card = modal.querySelector("[data-hub-delete-card]");
+    const btnCancel = modal.querySelector("#hubDeleteInvoiceModalCancel");
+    const btnConfirm = modal.querySelector("#hubDeleteInvoiceModalConfirm");
+    const errNode = modal.querySelector("#hubDeleteInvoiceModalError");
+    let submitting = false;
+
+    const close = () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      if (modal.parentNode) modal.parentNode.removeChild(modal);
+    };
+    const showError = (msg) => {
+      if (!errNode) return;
+      errNode.textContent = String(msg || "Could not delete invoice.");
+      errNode.style.display = "block";
+    };
+    const setLoading = (loading) => {
+      submitting = !!loading;
+      if (btnCancel) btnCancel.disabled = submitting;
+      if (btnConfirm) {
+        btnConfirm.disabled = submitting;
+        btnConfirm.textContent = submitting ? "Deleting..." : "Delete permanently";
+      }
+    };
+    const onKeyDown = (ev) => {
+      if (ev.key === "Escape" && !submitting) {
+        ev.preventDefault();
+        close();
+      }
+    };
+
+    modal.addEventListener("click", (ev) => {
+      if (ev.target === modal && !submitting) close();
+    });
+    if (card) {
+      card.addEventListener("click", (ev) => ev.stopPropagation());
+    }
+    if (btnCancel) btnCancel.onclick = () => {
+      if (!submitting) close();
+    };
+    if (btnConfirm) {
+      btnConfirm.onclick = async () => {
+        if (submitting) return;
+        setLoading(true);
+        if (errNode) errNode.style.display = "none";
+        try {
+          await onConfirmDelete();
+          close();
+        } catch (err) {
+          const safe = String(err?.message || "Could not delete invoice. Please try again.");
+          showError(safe);
+          setLoading(false);
+        }
+      };
+    }
+    document.addEventListener("keydown", onKeyDown, true);
+  }
+
   function canTransitionInvoiceStatus(currentStatus, nextStatus) {
     const current = normalizeInvoiceStatus(currentStatus);
     const next = normalizeInvoiceStatus(nextStatus);
@@ -10170,19 +10284,20 @@ function renderSupervisor() {
             setHubFeedback("No invoice valido para borrar.", "warn");
             return;
           }
-          if (!window.confirm("Delete this invoice permanently? This cannot be undone.")) return;
-          const { ok, data } = await postHubInvoiceArchiveDelete(iid, "delete");
-          if (!ok) {
-            setHubFeedback(data?.error || "No se pudo eliminar.", "err");
-            return;
-          }
-          if (typeof window.__mgHubRefetchServerInvoices === "function") {
-            await window.__mgHubRefetchServerInvoices();
-          }
-          if (selectedRow && String(selectedRow.serverInvoiceId || "") === iid) {
-            closeHubDrawer();
-          }
-          setHubFeedback("Invoice eliminado.", "ok");
+          openHubDeleteInvoiceConfirmModal(row, async () => {
+            const { ok, data } = await postHubInvoiceArchiveDelete(iid, "delete");
+            if (!ok) {
+              const msg = String(data?.error || "Could not delete invoice.");
+              throw new Error(msg);
+            }
+            if (typeof window.__mgHubRefetchServerInvoices === "function") {
+              await window.__mgHubRefetchServerInvoices();
+            }
+            if (selectedRow && String(selectedRow.serverInvoiceId || "") === iid) {
+              closeHubDrawer();
+            }
+            setHubFeedback("Invoice eliminado.", "ok");
+          });
         }
       });
 
