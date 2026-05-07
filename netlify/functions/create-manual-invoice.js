@@ -50,7 +50,6 @@ function cleanMultilineText(raw, maxLen = 8000) {
 
 function buildManualInvoiceClientNotes({
   description,
-  userNotes,
   billingType,
   quantity,
   systemRateUsed,
@@ -60,11 +59,8 @@ function buildManualInvoiceClientNotes({
   total,
 }) {
   const sections = [];
-  const serviceParts = [];
-  if (description) serviceParts.push(description);
-  if (userNotes) serviceParts.push(userNotes);
-  if (serviceParts.length) {
-    sections.push(`Service details:\n${serviceParts.join("\n\n")}`);
+  if (description) {
+    sections.push(`Service details:\n${description}`);
   }
 
   const billingLine =
@@ -154,7 +150,6 @@ exports.handler = async (event) => {
     const clientEmail = str(body.client_email || body.customer_email, 320).toLowerCase();
     const title = str(body.project_title || body.invoice_title || body.project_name, 2000);
     const description = cleanMultilineText(body.description, 5000);
-    const notesInput = cleanMultilineText(body.notes, 5000);
     const billingType = normalizeBillingType(body.billing_type);
     const quantityRaw = money(body.quantity);
     const dueDate = str(body.due_date, 32);
@@ -165,7 +160,6 @@ exports.handler = async (event) => {
       traceId,
       tenantId,
       has_description: Boolean(String(body.description || "").trim()),
-      has_notes: Boolean(String(body.notes || "").trim()),
       has_material_description: Boolean(String(body.material_description || "").trim()),
       materials_cost: body.materials_cost ?? body.material_cost ?? 0,
       billing_type: body.billing_type,
@@ -221,7 +215,6 @@ exports.handler = async (event) => {
     const invoiceNo = `INV-${Date.now()}`;
     const notes = buildManualInvoiceClientNotes({
       description,
-      userNotes: notesInput,
       billingType,
       quantity,
       systemRateUsed,

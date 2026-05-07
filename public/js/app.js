@@ -9397,7 +9397,6 @@ function renderSupervisor() {
           },
           { id: "hubManualTotal", label: "Total (auto-calculated)", type: "number", step: "0.01", value: "0.00" },
           { id: "hubManualDueDate", label: "Due date", type: "date", value: "" },
-          { id: "hubManualNotes", label: "Notes", type: "textarea", rows: 3, value: "" },
         ],
         afterRender: async () => {
           const totalInput = $("hubManualTotal");
@@ -9469,7 +9468,6 @@ function renderSupervisor() {
           const quantity = finiteNumber(val("hubManualQuantity"), 0);
           const flat_amount = finiteNumber(val("hubManualRate"), 0);
           const due_date = normalizeDateInput(val("hubManualDueDate"));
-          const notes = String(val("hubManualNotes") || "").trim();
           const total = finiteNumber(val("hubManualTotal"), 0);
           const material_description = String(val("hubManualMaterialDescription") || "").trim();
           const materials_cost = finiteNumber(val("hubManualMaterialCost"), 0);
@@ -9531,7 +9529,6 @@ function renderSupervisor() {
                 material_description,
                 materials_cost,
                 due_date: due_date || null,
-                notes,
               }),
             });
             const data = await res.json().catch(() => ({}));
