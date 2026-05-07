@@ -22,11 +22,9 @@
     body{
       margin:0;
       font-family:Inter, "Segoe UI", Arial, Helvetica, sans-serif;
-      background:#f4f7fb;
+      background:#eef2f6;
       color:var(--text);
       padding:32px 16px;
-      font-size:16px;
-      line-height:1.55;
     }
 
     .wrap{
@@ -36,45 +34,51 @@
 
     .card{
       background:var(--card);
-      border:1px solid #dfe6ef;
-      border-radius:16px;
+      border:1px solid var(--line);
+      border-radius:18px;
       overflow:hidden;
-      box-shadow:0 8px 24px rgba(15,23,42,0.06);
+      box-shadow:0 12px 36px rgba(15,23,42,0.08);
     }
 
-    .invoice-topbar{
+    .topbar{
       padding:24px 28px;
       border-bottom:1px solid var(--line);
       display:flex;
       justify-content:space-between;
-      align-items:flex-start;
-      gap:24px;
+      align-items:center;
+      gap:18px;
       flex-wrap:wrap;
       background:#fff;
     }
 
-    .brand-block{
+    .topbar-main{
       min-width:220px;
       flex:1 1 auto;
     }
 
-    .brand-block h1{
+    .brand h1{
       margin:0;
       font-size:26px;
       letter-spacing:-0.02em;
       line-height:1.2;
-      font-weight:800;
     }
 
-    .brand-block p{
-      margin:4px 0 0;
+    .brand .sub{
       color:var(--muted);
       font-size:13px;
+      margin-top:4px;
     }
 
-    .invoice-meta-top{
+    .header-title{
+      margin-top:8px;
+      font-size:14px;
+      font-weight:700;
+      color:#1f2937;
+    }
+
+    .topbar-right{
       display:flex;
-      align-items:flex-start;
+      align-items:center;
       justify-content:flex-end;
       gap:14px;
       flex-wrap:wrap;
@@ -115,7 +119,7 @@
       line-height:1;
     }
 
-    .status-badge{
+    .status-pill{
       display:inline-flex;
       align-items:center;
       border-radius:999px;
@@ -128,20 +132,20 @@
       background:#f9fafb;
     }
 
-    .status-badge.paid{
+    .status-pill.paid{
       color:#065f46;
       background:#ecfdf5;
       border-color:#a7f3d0;
     }
 
-    .status-badge.partial,
-    .status-badge.open{
+    .status-pill.partial,
+    .status-pill.open{
       color:#92400e;
       background:#fffbeb;
       border-color:#fcd34d;
     }
 
-    .status-badge.overdue{
+    .status-pill.overdue{
       color:#991b1b;
       background:#fef2f2;
       border-color:#fecaca;
@@ -152,7 +156,7 @@
     }
 
     .panel{
-      border:1px solid #dfe6ef;
+      border:1px solid var(--line);
       border-radius:16px;
       padding:20px;
       background:#fff;
@@ -212,7 +216,7 @@
     }
 
     .summary{
-      border:1px solid #dfe6ef;
+      border:1px solid var(--line);
       border-radius:16px;
       overflow:hidden;
       margin-bottom:24px;
@@ -326,7 +330,7 @@
     }
 
     .notes{
-      border:1px solid #dfe6ef;
+      border:1px solid var(--line);
       border-radius:16px;
       padding:18px 20px;
       background:#fff;
@@ -349,7 +353,7 @@
     }
 
     .payment-panel{
-      border:1px solid #dfe6ef;
+      border:1px solid var(--line);
       border-radius:16px;
       padding:22px 24px;
       margin-bottom:24px;
@@ -426,13 +430,13 @@
         padding:20px;
       }
 
-      .invoice-topbar{
+      .topbar{
         align-items:flex-start;
       }
 
-      .invoice-meta-top{
+      .topbar-right{
         width:100%;
-        justify-content:flex-start;
+        justify-content:space-between;
       }
 
       .payment-actions .btn{
@@ -440,9 +444,7 @@
         min-width:0;
       }
 
-      .invoice-meta-top > strong{
-        font-size:22px;
-      }
+      .invoice-inline-no{ font-size:22px; }
     }
   </style>
 </head>
@@ -678,6 +680,8 @@
       const balanceDue = money(facts.balance, currency);
 
       const accent = safeAccentColor(data.accent_color);
+      const invLabelRaw = String(data.invoice_label || "").trim();
+      const invoiceTitleBlock = invLabelRaw ? `<div class="header-title">${escapeHtml(invLabelRaw)}</div>` : "";
       const workDetailsHtml = hasWorkDetails
         ? '<div class="notes">' +
           '<div class="notes-title">Work Details</div>' +
@@ -693,21 +697,24 @@
       setDocumentTitle(businessNameRaw || "");
 
       invoiceBox.innerHTML =
-        '<header class="invoice-topbar">' +
-          '<div class="brand-block">' +
+        '<div class="topbar">' +
+          '<div class="topbar-main brand">' +
             "<h1>" + brandNameEsc + "</h1>" +
-            "<p>" + escapeHtml(BUSINESS_SUBTITLE) + "</p>" +
+            '<div class="sub">' + escapeHtml(BUSINESS_SUBTITLE) + "</div>" +
+            invoiceTitleBlock +
           "</div>" +
-          '<div class="invoice-meta-top">' +
-            "<span>Invoice</span>" +
-            "<strong>" + displayText(data.invoice_no, "Invoice") + "</strong>" +
-            '<span class="status-badge ' +
+          '<div class="topbar-right">' +
+            '<div class="invoice-meta">' +
+              '<span class="invoice-inline-label">Invoice</span>' +
+              '<span class="invoice-inline-no">' + displayText(data.invoice_no, "Invoice") + "</span>" +
+            "</div>" +
+            '<div class="status-pill ' +
             escapeHtml(statusClassFromLabel(status)) +
             '">' +
             statusEsc +
-            "</span>" +
+            "</div>" +
           "</div>" +
-        "</header>" +
+        "</div>" +
         '<div class="content">' +
           '<div class="grid">' +
             '<div class="panel">' +
