@@ -29,6 +29,8 @@ const INVOICE_SELECT = [
   "issue_date",
   "type",
   "notes",
+  "description",
+  "details",
   "id",
   "tenant_id",
   "quote_id",
@@ -121,6 +123,13 @@ exports.handler = async (event) => {
         }
       } catch (_err) {
         /* keep invoice business_name fallback */
+      }
+    }
+
+    if (!String(invoice.notes || "").trim()) {
+      const fallbackNotes = pickFirst(rawRow.notes, rawRow.description, rawRow.details);
+      if (fallbackNotes) {
+        invoice.notes = String(fallbackNotes);
       }
     }
 

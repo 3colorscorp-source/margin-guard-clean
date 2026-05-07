@@ -590,6 +590,7 @@
         payload.tenant_payment && typeof payload.tenant_payment === "object" ? payload.tenant_payment : {};
       const instrRaw = String(tenantPayment.payment_instructions || "").trim();
       const tenantPayLink = safeHttpUrl(tenantPayment.payment_link);
+      const notesText = String(data.notes || data.description || data.details || "").trim();
 
       const businessNameRaw = String(data.business_name || "").trim();
       const brandName = businessNameRaw || TENANT_NAME_FALLBACK;
@@ -790,7 +791,7 @@
           '<div class="notes">' +
           '<div class="notes-title">Notes</div>' +
           '<div class="notes-text">' +
-          displayText(data.notes, "No notes added.") +
+          displayText(notesText, "No notes added.") +
           "</div>" +
           "</div>" +
           '<p class="powered-by">Powered by Margin Guard</p>' +
@@ -820,9 +821,9 @@
               } catch (_openErr) {
                 /* ignore and show notice below */
               }
-              showPanelNotice("warn", "Secure invoice checkout is temporarily unavailable. Redirecting to payment page.");
+              showPanelNotice("warn", "Secure checkout is temporarily unavailable. Redirecting to backup payment page.");
             } else {
-              showPanelNotice("err", "Payment checkout is temporarily unavailable. Please contact the contractor.");
+              showPanelNotice("err", "Secure checkout is temporarily unavailable. Please contact the contractor.");
             }
           } catch (_err) {
             if (tenantPayLink) {
@@ -831,9 +832,9 @@
               } catch (_openErr) {
                 /* ignore and show notice below */
               }
-              showPanelNotice("warn", "Secure invoice checkout is temporarily unavailable. Redirecting to payment page.");
+              showPanelNotice("warn", "Secure checkout is temporarily unavailable. Redirecting to backup payment page.");
             } else {
-              showPanelNotice("err", "Payment checkout is temporarily unavailable. Please contact the contractor.");
+              showPanelNotice("err", "Secure checkout is temporarily unavailable. Please contact the contractor.");
             }
           } finally {
             payBtn.disabled = false;
