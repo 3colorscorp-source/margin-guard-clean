@@ -25,10 +25,65 @@ function money(v) {
   return Math.round(num(v, 0) * 100) / 100;
 }
 
+function moneyText(v) {
+  return `$${money(v).toFixed(2)}`;
+}
+
 function normalizeBillingType(raw) {
   const s = str(raw, 32).toLowerCase();
   if (s === "hourly" || s === "daily" || s === "flat_amount") return s;
   return "";
+}
+
+function cleanMultilineText(raw, maxLen = 8000) {
+  const s = String(raw == null ? "" : raw)
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .trim()
+    .slice(0, maxLen);
+  return s
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .trim();
+}
+
+function buildManualInvoiceClientNotes({
+  description,
+  userNotes,
+  billingType,
+  quantity,
+  systemRateUsed,
+  laborSubtotal,
+  materialDescription,
+  materialsCost,
+  total,
+}) {
+  const sections = [];
+  const serviceParts = [];
+  if (description) serviceParts.push(description);
+  if (userNotes) serviceParts.push(userNotes);
+  if (serviceParts.length) {
+    sections.push(`Service details:\n${serviceParts.join("\n\n")}`);
+  }
+
+  const billingLine =
+    billingType === "hourly"
+      ? `Hourly service - ${quantity} hours at ${moneyText(systemRateUsed)}/hr`
+      : billingType === "daily"
+        ? `Daily service - ${quantity} days at ${moneyText(systemRateUsed)}/day`
+        : `Flat service - ${moneyText(systemRateUsed)}`;
+  sections.push(`Billing:\n${billingLine}\nLabor subtotal: ${moneyText(laborSubtotal)}`);
+
+  if (materialDescription || materialsCost > 0) {
+    const materialLines = [];
+    if (materialDescription) materialLines.push(materialDescription);
+    materialLines.push(`Materials subtotal: ${moneyText(materialsCost)}`);
+    sections.push(`Materials:\n${materialLines.join("\n")}`);
+  }
+
+  sections.push(`Invoice total:\n${moneyText(total)}`);
+  return sections.join("\n\n").slice(0, 8000);
 }
 
 function snapshotPricingOk(mg) {
@@ -97,12 +152,12 @@ exports.handler = async (event) => {
     const clientName = str(body.client_name || body.customer_name, 500);
     const clientEmail = str(body.client_email || body.customer_email, 320).toLowerCase();
     const title = str(body.project_title || body.invoice_title || body.project_name, 2000);
-    const description = str(body.description, 8000);
-    const notesInput = str(body.notes, 8000);
+    const description = cleanMultilineText(body.description, 5000);
+    const notesInput = cleanMultilineText(body.notes, 5000);
     const billingType = normalizeBillingType(body.billing_type);
     const quantityRaw = money(body.quantity);
     const dueDate = str(body.due_date, 32);
-    const materialDescription = str(body.material_description, 4000);
+    const materialDescription = cleanMultilineText(body.material_description, 2000);
     const materialsCost = money(body.materials_cost ?? body.material_cost ?? 0);
 
     if (!hasSnapshot || !pricingReady) {
@@ -149,24 +204,17 @@ exports.handler = async (event) => {
 
     const now = new Date().toISOString();
     const invoiceNo = `INV-${Date.now()}`;
-    const detailLines = [
-      "--- Manual invoice (Margin Guard pricing) ---",
-      `Billing type: ${billingType}`,
-      billingType === "flat_amount"
-        ? `Flat service amount: ${systemRateUsed}`
-        : `Quantity: ${quantity} (${billingType === "daily" ? "days" : "hours"})`,
-      billingType === "flat_amount"
-        ? null
-        : `System ${billingType === "daily" ? "daily" : "hourly"} rate: ${systemRateUsed}`,
-      `Labor subtotal: ${laborSubtotal}`,
-      materialDescription ? `Materials: ${materialDescription}` : null,
-      `Materials cost: ${materialsCost}`,
-      `Total / balance due: ${total}`,
-    ]
-      .filter(Boolean)
-      .join("\n");
-
-    const notes = [description, notesInput, detailLines].filter(Boolean).join("\n\n").slice(0, 8000);
+    const notes = buildManualInvoiceClientNotes({
+      description,
+      userNotes: notesInput,
+      billingType,
+      quantity,
+      systemRateUsed,
+      laborSubtotal,
+      materialDescription,
+      materialsCost,
+      total,
+    });
 
     const insertBase = {
       tenant_id: tenantId,

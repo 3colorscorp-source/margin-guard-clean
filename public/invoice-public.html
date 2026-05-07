@@ -590,7 +590,7 @@
         payload.tenant_payment && typeof payload.tenant_payment === "object" ? payload.tenant_payment : {};
       const instrRaw = String(tenantPayment.payment_instructions || "").trim();
       const tenantPayLink = safeHttpUrl(tenantPayment.payment_link);
-      const notesText = String(data.notes || data.description || data.details || "").trim();
+      const notesText = String(data.notes || "").trim();
 
       const businessNameRaw = String(data.business_name || "").trim();
       const brandName = businessNameRaw || TENANT_NAME_FALLBACK;
