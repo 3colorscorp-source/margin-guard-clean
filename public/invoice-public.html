@@ -629,6 +629,9 @@
         payload.tenant_payment && typeof payload.tenant_payment === "object" ? payload.tenant_payment : {};
       const instrRaw = String(tenantPayment.payment_instructions || "").trim();
       const tenantPayLink = safeHttpUrl(tenantPayment.payment_link);
+      const businessAddressRaw = String(data.business_address || "").trim();
+      const businessEmailRaw = String(data.business_email || "").trim();
+      const businessPhoneRaw = String(data.business_phone || "").trim();
       const notesRaw = String(data.notes == null ? "" : data.notes);
       const hasWorkDetails = String(data.notes || "").trim().length > 0;
 
@@ -643,10 +646,6 @@
       const progressPctLabel = `${Math.round(progressPct)}%`;
 
       const facts = invoiceFacts(data);
-      const canTryDynamicPay = Number(facts.balance || 0) > 0 && String(status || "").toLowerCase() !== "paid";
-      const dynamicPayButton = canTryDynamicPay
-        ? '<button class="btn btn-primary" type="button" id="btnInvoicePayNow">Pay Invoice</button>'
-        : "";
       let paymentSectionHtml = "";
       if (instrRaw || tenantPayLink) {
         const headBlock = instrRaw
@@ -655,25 +654,36 @@
             escapeHtml(instrRaw) +
             "</div>"
           : "";
-        const secureCheckoutCopy =
+        const mailingBlock = businessAddressRaw
+          ? '<div class="payment-panel-body instructions" style="margin-top:10px;">' +
+            "<strong>Checks payable to:</strong><br>" +
+            escapeHtml(brandName) +
+            "<br><br><strong>Mail payment to:</strong><br>" +
+            escapeHtml(businessAddressRaw) +
+            "</div>"
+          : "";
+        const contactLines = [businessEmailRaw, businessPhoneRaw].filter(Boolean);
+        const contactBlock = contactLines.length
+          ? '<div class="payment-panel-body instructions" style="margin-top:10px;">' +
+            "<strong>For payment questions:</strong><br>" +
+            contactLines.map((line) => escapeHtml(line)).join("<br>") +
+            "</div>"
+          : "";
+        const manualPaymentCopy =
           '<div class="payment-panel-body instructions" style="margin-top:10px;">' +
-          escapeHtml(
-            "Payments submitted through secure checkout are processed by Stripe and sent directly to Three Colors Corp."
-          ) +
+          escapeHtml("Please follow the contractor's payment instructions above to complete payment.") +
           "</div>";
         paymentSectionHtml =
           '<div class="payment-panel">' +
           headBlock +
-          secureCheckoutCopy +
-          '<div class="payment-actions">' +
-          dynamicPayButton +
-          "</div>" +
+          mailingBlock +
+          contactBlock +
+          manualPaymentCopy +
           '<div class="notice" id="invoicePayNotice" style="display:none;margin-top:12px;"></div>' +
           "</div>";
       } else {
         paymentSectionHtml =
           '<div class="payment-panel muted">' +
-          (dynamicPayButton ? `<div class="payment-actions">${dynamicPayButton}</div>` : "") +
           '<p class="payment-placeholder">' +
           escapeHtml("Payment instructions will be provided by the contractor.") +
           "</p>" +
@@ -823,60 +833,6 @@
           '<p class="powered-by">Powered by Margin Guard</p>' +
         "</div>";
 
-      const payBtn = document.getElementById("btnInvoicePayNow");
-      if (payBtn) {
-        payBtn.onclick = async function () {
-          if (payBtn.dataset.pending === "1") return;
-          try {
-            payBtn.dataset.pending = "1";
-            payBtn.disabled = true;
-            payBtn.textContent = "Redirecting...";
-            const r = await fetch("/.netlify/functions/create-invoice-checkout-session", {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Accept: "application/json" },
-              body: JSON.stringify({ public_token: String(token).trim() }),
-            });
-            const d = await r.json().catch(function () {
-              return {};
-            });
-            if (r.ok && d && d.ok && d.checkout_url) {
-              window.location.href = String(d.checkout_url);
-              return;
-            }
-            if (tenantPayLink) {
-              try {
-                window.open(tenantPayLink, "_blank", "noopener,noreferrer");
-              } catch (_openErr) {
-                /* ignore and show notice below */
-              }
-              showPanelNotice("warn", "Secure checkout is temporarily unavailable. Redirecting to backup payment page.");
-            } else {
-              showPanelNotice("err", "Secure checkout is temporarily unavailable. Please contact the contractor.");
-            }
-          } catch (_err) {
-            if (tenantPayLink) {
-              try {
-                window.open(tenantPayLink, "_blank", "noopener,noreferrer");
-              } catch (_openErr) {
-                /* ignore and show notice below */
-              }
-              showPanelNotice("warn", "Secure checkout is temporarily unavailable. Redirecting to backup payment page.");
-            } else {
-              showPanelNotice("err", "Secure checkout is temporarily unavailable. Please contact the contractor.");
-            }
-          } finally {
-            payBtn.dataset.pending = "0";
-            payBtn.disabled = false;
-            payBtn.textContent = "Pay Invoice";
-          }
-        };
-      }
-      const paymentState = String(new URLSearchParams(window.location.search).get("payment") || "").trim();
-      if (paymentState === "success") {
-        showPanelNotice("ok", "Payment submitted successfully. We are confirming your invoice payment.");
-      } else if (paymentState === "cancel") {
-        showPanelNotice("warn", "Payment was canceled. Your invoice remains open.");
-      }
     } catch (err) {
       showError(err && err.message ? err.message : "Unexpected error loading invoice.");
     }

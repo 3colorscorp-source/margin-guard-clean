@@ -113,8 +113,20 @@ exports.handler = async (event) => {
       try {
         const td = await loadTenantDisplayForTenantId(tenantId);
         const tenantBusinessName = pickFirst(td?.business_name);
+        const tenantBusinessEmail = pickFirst(td?.business_email);
+        const tenantBusinessPhone = pickFirst(td?.business_phone);
+        const tenantBusinessAddress = pickFirst(td?.business_address);
         if (tenantBusinessName) {
           invoice.business_name = tenantBusinessName;
+        }
+        if (tenantBusinessEmail) {
+          invoice.business_email = tenantBusinessEmail;
+        }
+        if (tenantBusinessPhone) {
+          invoice.business_phone = tenantBusinessPhone;
+        }
+        if (tenantBusinessAddress) {
+          invoice.business_address = tenantBusinessAddress;
         }
       } catch (_err) {
         /* keep invoice business_name fallback */

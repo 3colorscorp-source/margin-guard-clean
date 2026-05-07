@@ -74,7 +74,7 @@ exports.handler = async (event) => {
     }
 
     const rows = await supabaseRequest(
-      `invoices?public_token=eq.${encodeURIComponent(publicToken)}&tenant_id=not.is.null&select=id,tenant_id,invoice_no,status,balance_due,amount,currency,customer_email,project_name,quote_id,project_id&limit=2`,
+      `invoices?public_token=eq.${encodeURIComponent(publicToken)}&tenant_id=not.is.null&select=id,tenant_id,invoice_no,status,balance_due,amount,paid_amount,currency,customer_email,project_name,quote_id,project_id&limit=2`,
       { method: "GET" }
     );
     if (!Array.isArray(rows) || rows.length === 0) return json(404, { error: "invoice_not_found" });
@@ -86,11 +86,20 @@ exports.handler = async (event) => {
     if (!tenantId || !invoiceId) return json(404, { error: "invoice_not_found" });
     if (invoiceIsBlockedStatus(inv.status)) return json(409, { error: "invoice_not_payable" });
 
+    const amountRaw = money(inv.amount);
+    const paidRaw = money(inv.paid_amount);
+    const derivedRemaining = money(Math.max(amountRaw - paidRaw, 0));
     const balanceDueRaw = money(inv.balance_due);
-    const remaining = money(balanceDueRaw);
+    const remaining = amountRaw > 0 || paidRaw > 0 ? derivedRemaining : money(balanceDueRaw);
     if (!(remaining > 0)) return json(409, { error: "invoice_balance_not_payable" });
 
     const cents = Math.round(remaining * 100);
+    console.log("[invoice checkout amount]", {
+      invoiceId,
+      tenantId,
+      amountDollars: remaining,
+      amountCents: cents,
+    });
     if (!(cents >= 50)) return json(409, { error: "invoice_balance_too_small" });
 
     const tenantRows = await supabaseRequest(
