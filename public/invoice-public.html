@@ -607,7 +607,8 @@
         payload.tenant_payment && typeof payload.tenant_payment === "object" ? payload.tenant_payment : {};
       const instrRaw = String(tenantPayment.payment_instructions || "").trim();
       const tenantPayLink = safeHttpUrl(tenantPayment.payment_link);
-      const notesText = String(data.notes || "").trim();
+      const notesRaw = String(data.notes == null ? "" : data.notes);
+      const hasWorkDetails = notesRaw.trim() !== "";
 
       const businessNameRaw = String(data.business_name || "").trim();
       const brandName = businessNameRaw || TENANT_NAME_FALLBACK;
@@ -665,11 +666,11 @@
       const accent = safeAccentColor(data.accent_color);
       const invLabelRaw = String(data.invoice_label || "").trim();
       const invoiceTitleBlock = invLabelRaw ? `<div class="header-title">${escapeHtml(invLabelRaw)}</div>` : "";
-      const workDetailsHtml = notesText
+      const workDetailsHtml = hasWorkDetails
         ? '<div class="notes">' +
           '<div class="notes-title">Work Details</div>' +
           '<div class="notes-text">' +
-          displayText(notesText) +
+          displayText(notesRaw) +
           "</div>" +
           "</div>"
         : "";
