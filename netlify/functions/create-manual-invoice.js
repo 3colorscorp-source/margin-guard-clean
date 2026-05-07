@@ -218,23 +218,25 @@ exports.handler = async (event) => {
     const quantityLabel = billingType === "hourly" ? "hours" : billingType === "daily" ? "days" : "flat";
     const rateLabel = billingType === "hourly" ? "hr" : billingType === "daily" ? "day" : "flat";
     const formatMoney = (value) => moneyText(value);
+    const safeDescription = String(description || "").trim();
+    const safeMaterialDescription = String(materialDescription || "").trim();
 
     const notesParts = [];
-    if (description) {
-      notesParts.push(`Service details:\n${description}`);
+    if (safeDescription) {
+      notesParts.push(`Service details:\n${safeDescription}`);
     }
     notesParts.push(
       `Billing:\n${billingTypeLabel} — ${quantity} ${quantityLabel} at ${formatMoney(systemRateUsed)}/${rateLabel}`
     );
     notesParts.push(`Labor subtotal: ${formatMoney(laborSubtotal)}`);
-    if (materialDescription || materialsCost > 0) {
+    if (safeMaterialDescription || Number(materialsCost || 0) > 0) {
       notesParts.push(
-        `Materials:\n${materialDescription || "Materials"}\nMaterials subtotal: ${formatMoney(materialsCost)}`
+        `Materials:\n${safeMaterialDescription || "Materials"}\nMaterials subtotal: ${formatMoney(materialsCost)}`
       );
     }
     notesParts.push(`Invoice total: ${formatMoney(total)}`);
 
-    const notesFinal = notesParts.filter(Boolean).join("\n\n").trim();
+    const notesFinal = notesParts.join("\n\n").trim();
     console.log("[manual-invoice-notes-trace] generated_notes", {
       traceId,
       notes_length: String(notesFinal || "").length,
