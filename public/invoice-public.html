@@ -615,9 +615,16 @@
             escapeHtml(instrRaw) +
             "</div>"
           : "";
+        const secureCheckoutCopy =
+          '<div class="payment-panel-body instructions" style="margin-top:10px;">' +
+          escapeHtml(
+            "Payments submitted through secure checkout are processed by Stripe and sent directly to Three Colors Corp."
+          ) +
+          "</div>";
         paymentSectionHtml =
           '<div class="payment-panel">' +
           headBlock +
+          secureCheckoutCopy +
           '<div class="payment-actions">' +
           dynamicPayButton +
           "</div>" +
@@ -681,12 +688,6 @@
               '<div class="small-note">Issued by ' +
               brandNameEsc +
               "</div>" +
-            "</div>" +
-            '<div class="panel">' +
-              '<div class="eyebrow">Remaining balance</div>' +
-              '<p class="big-amount">' +
-              balanceDue +
-              "</p>" +
               '<div class="small-note">Due date: ' +
               displayText(data.due_date) +
               "</div>" +
@@ -740,6 +741,12 @@
               "</div>" +
             "</div>" +
           "</div>" +
+          '<div class="notes">' +
+          '<div class="notes-title">Work Details</div>' +
+          '<div class="notes-text">' +
+          displayText(notesText, "No notes added.") +
+          "</div>" +
+          "</div>" +
           '<div class="summary">' +
             '<div class="summary-head">Summary</div>' +
             '<div class="summary-body">' +
@@ -788,12 +795,6 @@
           '<button class="btn btn-secondary" type="button" onclick="window.print()">Print</button>' +
           "</div>" +
           paymentSectionHtml +
-          '<div class="notes">' +
-          '<div class="notes-title">Notes</div>' +
-          '<div class="notes-text">' +
-          displayText(notesText, "No notes added.") +
-          "</div>" +
-          "</div>" +
           '<p class="powered-by">Powered by Margin Guard</p>' +
         "</div>";
 
