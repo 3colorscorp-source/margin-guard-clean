@@ -28,12 +28,9 @@ const INVOICE_SELECT = [
   "invoice_label",
   "issue_date",
   "type",
-  "notes",
-  "id",
-  "tenant_id",
-  "quote_id",
-  "project_id"
+  "notes"
 ].join(",");
+const INVOICE_INTERNAL_SELECT = "id,tenant_id,quote_id,project_id";
 
 const INVOICE_NUMERIC_KEYS = new Set(["amount", "paid_amount", "balance_due"]);
 
@@ -76,7 +73,7 @@ exports.handler = async (event) => {
       return json(400, { error: "Invalid token" });
     }
 
-    const path = `invoices?public_token=eq.${encodeURIComponent(trimmed)}&tenant_id=not.is.null&select=${INVOICE_SELECT}&limit=2`;
+    const path = `invoices?public_token=eq.${encodeURIComponent(trimmed)}&tenant_id=not.is.null&select=${INVOICE_SELECT},${INVOICE_INTERNAL_SELECT}&limit=2`;
 
     let rows;
     try {

@@ -9526,7 +9526,6 @@ function renderSupervisor() {
               materials_cost,
               due_date: due_date || null,
             };
-            console.log("[manual invoice payload]", body);
             const res = await fetch("/.netlify/functions/create-manual-invoice", {
               method: "POST",
               credentials: "same-origin",

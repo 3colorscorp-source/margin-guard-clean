@@ -812,7 +812,9 @@
       const payBtn = document.getElementById("btnInvoicePayNow");
       if (payBtn) {
         payBtn.onclick = async function () {
+          if (payBtn.dataset.pending === "1") return;
           try {
+            payBtn.dataset.pending = "1";
             payBtn.disabled = true;
             payBtn.textContent = "Redirecting...";
             const r = await fetch("/.netlify/functions/create-invoice-checkout-session", {
@@ -849,6 +851,7 @@
               showPanelNotice("err", "Secure checkout is temporarily unavailable. Please contact the contractor.");
             }
           } finally {
+            payBtn.dataset.pending = "0";
             payBtn.disabled = false;
             payBtn.textContent = "Pay Invoice";
           }

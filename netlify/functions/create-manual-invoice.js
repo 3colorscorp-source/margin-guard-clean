@@ -131,7 +131,6 @@ exports.handler = async (event) => {
     }
 
     const tenantId = String(tenant.id);
-    const traceId = `manual-invoice-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const { settings, hasSnapshot, pricingReady } = await loadTenantPricingSettings(tenantId);
 
     if (body.preview_system_rates === true) {
@@ -155,19 +154,6 @@ exports.handler = async (event) => {
     const dueDate = str(body.due_date, 32);
     const materialDescription = cleanMultilineText(body.material_description, 2000);
     const materialsCost = money(body.materials_cost ?? body.material_cost ?? 0);
-
-    console.log("[manual-invoice-notes-trace] incoming_payload", {
-      traceId,
-      tenantId,
-      has_description: Boolean(String(body.description || "").trim()),
-      has_material_description: Boolean(String(body.material_description || "").trim()),
-      materials_cost: body.materials_cost ?? body.material_cost ?? 0,
-      billing_type: body.billing_type,
-      quantity: body.quantity,
-      flat_amount: body.flat_amount,
-      client_name: clientName ? "present" : "missing",
-      project_title: title ? "present" : "missing",
-    });
 
     if (!hasSnapshot || !pricingReady) {
       return json(422, { error: "pricing_snapshot_required" });
@@ -237,14 +223,6 @@ exports.handler = async (event) => {
     notesParts.push(`Invoice total: ${formatMoney(total)}`);
 
     const notesFinal = notesParts.join("\n\n").trim();
-    console.log("[manual invoice incoming description]", body.description);
-    console.log("[manual invoice notesFinal]", notesFinal);
-    console.log("[manual invoice notesFinal length]", String(notesFinal || "").length);
-    console.log("[manual-invoice-notes-trace] generated_notes", {
-      traceId,
-      notes_length: String(notesFinal || "").length,
-      notes_preview: String(notesFinal || "").slice(0, 500),
-    });
     if (!String(notesFinal || "").trim()) {
       return json(500, { ok: false, error: "manual_invoice_notes_generation_failed" });
     }
@@ -269,12 +247,6 @@ exports.handler = async (event) => {
       updated_at: now,
     };
     const insertPayload = { ...insertBase, notes: notesFinal };
-    console.log("[manual invoice insertPayload notes length]", String(insertPayload?.notes || "").length);
-    console.log("[manual-invoice-notes-trace] insert_payload_notes", {
-      traceId,
-      notes_length: String(insertPayload.notes || "").length,
-      notes_preview: String(insertPayload.notes || "").slice(0, 500),
-    });
 
     let created;
     try {
@@ -298,17 +270,9 @@ exports.handler = async (event) => {
     if (!row?.id) {
       return json(500, { error: "Insert did not return invoice row." });
     }
-    console.log("[manual-invoice-notes-trace] inserted_row_notes", {
-      traceId,
-      invoice_id: row.id,
-      notes_length: String(row.notes || "").length,
-      notes_preview: String(row.notes || "").slice(0, 500),
-    });
 
     return json(200, {
       ok: true,
-      debug_notes_length: String(row?.notes || "").length,
-      debug_notes_preview: String(row?.notes || "").slice(0, 120),
       invoice: {
         id: row.id,
         tenant_id: row.tenant_id,

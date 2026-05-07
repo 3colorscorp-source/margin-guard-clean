@@ -86,15 +86,8 @@ exports.handler = async (event) => {
     if (!tenantId || !invoiceId) return json(404, { error: "invoice_not_found" });
     if (invoiceIsBlockedStatus(inv.status)) return json(409, { error: "invoice_not_payable" });
 
-    const quoteId = String(inv.quote_id || "").trim();
-    const projectId = String(inv.project_id || "").trim();
-    const amount = money(inv.amount);
-    const paidToDate = money(await loadPaidToDate({ tenantId, invoiceId, projectId, quoteId }));
-    const remainingFromLedger = money(Math.max(amount - paidToDate, 0));
     const balanceDueRaw = money(inv.balance_due);
-    const remaining = money(
-      balanceDueRaw > 0 ? Math.min(balanceDueRaw, remainingFromLedger || balanceDueRaw) : remainingFromLedger
-    );
+    const remaining = money(balanceDueRaw);
     if (!(remaining > 0)) return json(409, { error: "invoice_balance_not_payable" });
 
     const cents = Math.round(remaining * 100);
@@ -141,7 +134,7 @@ exports.handler = async (event) => {
     form.set("client_reference_id", publicToken);
     form.set("metadata[tenant_id]", tenantId);
     form.set("metadata[invoice_id]", invoiceId);
-    form.set("metadata[invoice_number]", String(inv.invoice_no || "").trim());
+    form.set("metadata[invoice_no]", String(inv.invoice_no || "").trim());
     form.set("metadata[public_token]", publicToken);
     if (String(inv.customer_email || "").includes("@")) {
       form.set("customer_email", String(inv.customer_email).trim());
