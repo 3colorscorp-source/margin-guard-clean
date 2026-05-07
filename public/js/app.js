@@ -2840,7 +2840,7 @@ Thank you.`
         canPublishLink: false,
         canOpenPublic: hasPublic,
         canSetPaymentLink: false,
-        canExportPdf: false,
+        canExportPdf: hasPublic,
         canArchiveServerInvoice,
         canDeleteServerInvoice
       };
@@ -10761,6 +10761,16 @@ function renderSupervisor() {
     if ($("btnHubDrawerPdf")) {
       $("btnHubDrawerPdf").onclick = () => {
         if (!selectedRow) return;
+        if (selectedRow?.hubRowSource === "server_invoice") {
+          const invoice = getProjectInvoiceState(selectedRow.project);
+          const publicUrl = invoice.publicUrl || (invoice.publicToken ? `/invoice-public.html?token=${invoice.publicToken}` : "");
+          if (!publicUrl) {
+            setHubFeedback("Primero publica el invoice para generar el link publico.", "warn");
+            return;
+          }
+          window.open(publicUrl, "_blank", "noopener");
+          return;
+        }
         void exportInvoicePdf("hub", selectedRow.project, selectedRow.report, settings, getProjectInvoiceState(selectedRow.project));
       };
     }
