@@ -614,17 +614,11 @@
             escapeHtml(instrRaw) +
             "</div>"
           : "";
-        const linkBlock = tenantPayLink
-          ? '<a class="btn btn-secondary" href="' +
-            escapeHtml(tenantPayLink) +
-            '" target="_blank" rel="noopener noreferrer">Open Payment Link</a>'
-          : "";
         paymentSectionHtml =
           '<div class="payment-panel">' +
           headBlock +
           '<div class="payment-actions">' +
           dynamicPayButton +
-          linkBlock +
           "</div>" +
           '<div class="notice" id="invoicePayNotice" style="display:none;margin-top:12px;"></div>' +
           "</div>";
@@ -821,19 +815,23 @@
               return;
             }
             if (tenantPayLink) {
-              showPanelNotice(
-                "warn",
-                "Secure invoice checkout is temporarily unavailable. You can still use Open Payment Link."
-              );
+              try {
+                window.open(tenantPayLink, "_blank", "noopener,noreferrer");
+              } catch (_openErr) {
+                /* ignore and show notice below */
+              }
+              showPanelNotice("warn", "Secure invoice checkout is temporarily unavailable. Redirecting to payment page.");
             } else {
               showPanelNotice("err", "Payment checkout is temporarily unavailable. Please contact the contractor.");
             }
           } catch (_err) {
             if (tenantPayLink) {
-              showPanelNotice(
-                "warn",
-                "Secure invoice checkout is temporarily unavailable. You can still use Open Payment Link."
-              );
+              try {
+                window.open(tenantPayLink, "_blank", "noopener,noreferrer");
+              } catch (_openErr) {
+                /* ignore and show notice below */
+              }
+              showPanelNotice("warn", "Secure invoice checkout is temporarily unavailable. Redirecting to payment page.");
             } else {
               showPanelNotice("err", "Payment checkout is temporarily unavailable. Please contact the contractor.");
             }
