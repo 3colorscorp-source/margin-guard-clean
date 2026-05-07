@@ -9514,22 +9514,24 @@ function renderSupervisor() {
           }
 
           try {
+            const body = {
+              client_name,
+              client_email,
+              project_title,
+              description,
+              billing_type,
+              quantity: billing_type === "flat_amount" ? 0 : quantity,
+              flat_amount: billing_type === "flat_amount" ? flat_amount : undefined,
+              material_description,
+              materials_cost,
+              due_date: due_date || null,
+            };
+            console.log("[manual invoice payload]", body);
             const res = await fetch("/.netlify/functions/create-manual-invoice", {
               method: "POST",
               credentials: "same-origin",
               headers: { "Content-Type": "application/json", Accept: "application/json" },
-              body: JSON.stringify({
-                client_name,
-                client_email,
-                project_title,
-                description,
-                billing_type,
-                quantity: billing_type === "flat_amount" ? 0 : quantity,
-                flat_amount: billing_type === "flat_amount" ? flat_amount : undefined,
-                material_description,
-                materials_cost,
-                due_date: due_date || null,
-              }),
+              body: JSON.stringify(body),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data?.ok) {

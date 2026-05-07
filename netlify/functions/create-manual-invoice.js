@@ -237,6 +237,9 @@ exports.handler = async (event) => {
     notesParts.push(`Invoice total: ${formatMoney(total)}`);
 
     const notesFinal = notesParts.join("\n\n").trim();
+    console.log("[manual invoice incoming description]", body.description);
+    console.log("[manual invoice notesFinal]", notesFinal);
+    console.log("[manual invoice notesFinal length]", String(notesFinal || "").length);
     console.log("[manual-invoice-notes-trace] generated_notes", {
       traceId,
       notes_length: String(notesFinal || "").length,
@@ -266,6 +269,7 @@ exports.handler = async (event) => {
       updated_at: now,
     };
     const insertPayload = { ...insertBase, notes: notesFinal };
+    console.log("[manual invoice insertPayload notes length]", String(insertPayload?.notes || "").length);
     console.log("[manual-invoice-notes-trace] insert_payload_notes", {
       traceId,
       notes_length: String(insertPayload.notes || "").length,
@@ -303,6 +307,8 @@ exports.handler = async (event) => {
 
     return json(200, {
       ok: true,
+      debug_notes_length: String(row?.notes || "").length,
+      debug_notes_preview: String(row?.notes || "").slice(0, 120),
       invoice: {
         id: row.id,
         tenant_id: row.tenant_id,
