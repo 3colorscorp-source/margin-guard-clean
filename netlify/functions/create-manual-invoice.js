@@ -150,6 +150,8 @@ exports.handler = async (event) => {
         system_daily_rate: rates.system_daily_rate,
       });
     }
+    console.log("[CREATE MANUAL INVOICE EXECUTED]");
+    console.log("[MANUAL INVOICE VERSION]", "WORK_DETAILS_DEBUG_V1");
 
     const clientName = str(body.client_name || body.customer_name, 500);
     const clientEmail = str(body.client_email || body.customer_email, 320).toLowerCase();

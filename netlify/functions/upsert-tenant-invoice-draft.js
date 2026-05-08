@@ -108,6 +108,9 @@ function buildPatchPayload(body) {
     }
     out[key] = typeof v === "string" ? v : v;
   }
+  if (!String(out.notes || "").trim()) {
+    delete out.notes;
+  }
   return out;
 }
 

@@ -2335,9 +2335,12 @@ Thank you.`
       type: ["DEPOSIT", "PROGRESS", "FINAL"].includes(String(nonEmptyString(inv.type, "")).trim().toUpperCase())
         ? String(inv.type).trim().toUpperCase()
         : "PROGRESS",
-      notes: String(project.notes || "").slice(0, 8000),
       payment_link: nonEmptyString(inv.paymentLink) || ""
     };
+    const notesText = String(project.notes || "").trim();
+    if (notesText) {
+      body.notes = notesText.slice(0, 8000);
+    }
     body.invoice_label = sanitizeInvoiceLabelInput(nonEmptyString(inv.invoiceLabel, inv.invoice_label));
     const qRaw = nonEmptyString(project.quoteId, project.quote_id, inv.quoteId);
     if (qRaw && MG_SERVER_INVOICE_UUID_RE.test(String(qRaw).trim())) {
