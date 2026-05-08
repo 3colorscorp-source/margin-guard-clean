@@ -115,7 +115,10 @@ exports.handler = async (event) => {
         const tenantBusinessName = pickFirst(td?.business_name);
         const tenantBusinessEmail = pickFirst(td?.business_email);
         const tenantBusinessPhone = pickFirst(td?.business_phone);
-        const tenantBusinessAddress = pickFirst(td?.business_address);
+        let tenantBusinessAddress = pickFirst(td?.business_address);
+        if (!tenantBusinessAddress) {
+          tenantBusinessAddress = await loadTenantBusinessAddressFromSnapshot(tenantId);
+        }
         if (tenantBusinessName) {
           invoice.business_name = tenantBusinessName;
         }
@@ -229,5 +232,29 @@ async function loadPaidToDate({ tenantId, invoiceId, projectId, quoteId }) {
     }, 0);
   } catch (_err) {
     return 0;
+  }
+}
+
+async function loadTenantBusinessAddressFromSnapshot(tenantId) {
+  if (!tenantId) return "";
+  try {
+    const rows = await supabaseRequest(
+      `tenant_snapshots?tenant_id=eq.${encodeURIComponent(String(tenantId))}&select=payload&order=created_at.desc&limit=1`,
+      { method: "GET" }
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    const payload = row && typeof row.payload === "object" ? row.payload : null;
+    const storage = payload && typeof payload.storage === "object" ? payload.storage : {};
+    const mg = storage && typeof storage.mg_settings_v2 === "object" ? storage.mg_settings_v2 : {};
+    return pickFirst(
+      mg.businessAddress,
+      mg.business_address,
+      mg.address,
+      mg.companyAddress,
+      mg.company_address,
+      mg.mailing_address
+    );
+  } catch (_err) {
+    return "";
   }
 }
