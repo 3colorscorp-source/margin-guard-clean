@@ -628,6 +628,17 @@
       const tenantPayment =
         payload.tenant_payment && typeof payload.tenant_payment === "object" ? payload.tenant_payment : {};
       const instrRaw = String(tenantPayment.payment_instructions || "").trim();
+      const instrClean = instrRaw
+        .split(/\r?\n/)
+        .filter((line) => {
+          const t = String(line || "").trim();
+          return (
+            t !== "Payments submitted through the payment link are processed securely through Stripe and sent directly to Three Colors Corp." &&
+            t !== "Please follow the contractor's payment instructions above to complete payment."
+          );
+        })
+        .join("\n")
+        .trim();
       const tenantPayLink = safeHttpUrl(tenantPayment.payment_link);
       const businessAddressRaw = String(data.business_address || "").trim();
       const businessEmailRaw = String(data.business_email || "").trim();
@@ -647,11 +658,11 @@
 
       const facts = invoiceFacts(data);
       let paymentSectionHtml = "";
-      if (instrRaw || tenantPayLink) {
-        const headBlock = instrRaw
+      if (instrClean || tenantPayLink) {
+        const headBlock = instrClean
           ? '<div class="payment-panel-head">Payment Instructions</div>' +
             '<div class="payment-panel-body instructions">' +
-            escapeHtml(instrRaw) +
+            escapeHtml(instrClean) +
             "</div>"
           : "";
         const mailingBlock = businessAddressRaw
@@ -669,16 +680,11 @@
             contactLines.map((line) => escapeHtml(line)).join("<br>") +
             "</div>"
           : "";
-        const manualPaymentCopy =
-          '<div class="payment-panel-body instructions" style="margin-top:10px;">' +
-          escapeHtml("Please follow the contractor's payment instructions above to complete payment.") +
-          "</div>";
         paymentSectionHtml =
           '<div class="payment-panel">' +
           headBlock +
           mailingBlock +
           contactBlock +
-          manualPaymentCopy +
           '<div class="notice" id="invoicePayNotice" style="display:none;margin-top:12px;"></div>' +
           "</div>";
       } else {
