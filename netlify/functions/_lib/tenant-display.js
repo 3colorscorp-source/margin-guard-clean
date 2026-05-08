@@ -51,7 +51,13 @@ async function loadTenantDisplayForTenantId(tenantId) {
     business_name: pickFirst(branding?.business_name, fallbackName),
     business_email: pickFirst(branding?.business_email),
     business_phone: pickFirst(branding?.business_phone),
-    business_address: pickFirst(branding?.business_address),
+    business_address: pickFirst(
+      branding?.business_address,
+      branding?.address,
+      branding?.company_address,
+      branding?.mailing_address,
+      branding?.businessAddress
+    ),
     logo_url: pickFirst(
       branding?.logo_url,
       branding?.logoUrl,

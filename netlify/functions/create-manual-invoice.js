@@ -154,20 +154,35 @@ exports.handler = async (event) => {
     const clientName = str(body.client_name || body.customer_name, 500);
     const clientEmail = str(body.client_email || body.customer_email, 320).toLowerCase();
     const title = str(body.project_title || body.invoice_title || body.project_name, 2000);
-    const descriptionSource = [
-      body.description,
-      body.work_details,
-      body.workDetails,
-      body.notes,
-      body.scope,
-      body.scope_of_work,
-      body.scopeOfWork,
-    ].find((v) => String(v == null ? "" : v).trim());
-    const description = cleanMultilineText(descriptionSource, 5000);
+    console.log("[manual invoice raw body keys]", Object.keys(body || {}));
+    console.log("[manual invoice raw work fields]", {
+      description: body.description,
+      scope: body.scope,
+      notes: body.notes,
+      work_details: body.work_details,
+      workDetails: body.workDetails,
+      scope_of_work: body.scope_of_work,
+      scopeOfWork: body.scopeOfWork,
+      material_description: body.material_description,
+      materials_description: body.materials_description
+    });
+    const workDescription =
+      body.description ||
+      body.scope ||
+      body.notes ||
+      body.work_details ||
+      body.workDetails ||
+      body.scope_of_work ||
+      body.scopeOfWork ||
+      "";
+    const description = cleanMultilineText(workDescription, 5000);
     const billingType = normalizeBillingType(body.billing_type);
     const quantityRaw = money(body.quantity);
     const dueDate = str(body.due_date, 32);
-    const materialDescription = cleanMultilineText(body.material_description, 2000);
+    const materialDescription = cleanMultilineText(
+      body.material_description != null ? body.material_description : body.materials_description,
+      2000
+    );
     const materialsCost = money(body.materials_cost ?? body.material_cost ?? 0);
 
     if (!hasSnapshot || !pricingReady) {
@@ -238,6 +253,11 @@ exports.handler = async (event) => {
     notesParts.push(`Invoice total: ${formatMoney(total)}`);
 
     const notesFinal = notesParts.join("\n\n").trim();
+    console.log("[manual invoice notesFinal]", {
+      hasNotes: Boolean(String(notesFinal || "").trim()),
+      length: String(notesFinal || "").trim().length,
+      preview: String(notesFinal || "").slice(0, 300)
+    });
     console.log("[manual invoice incoming description]", body.description);
     console.log("[manual invoice notesFinal]", notesFinal);
     console.log("[manual invoice notesFinal length]", String(notesFinal || "").length);
