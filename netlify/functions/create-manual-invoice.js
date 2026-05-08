@@ -154,7 +154,16 @@ exports.handler = async (event) => {
     const clientName = str(body.client_name || body.customer_name, 500);
     const clientEmail = str(body.client_email || body.customer_email, 320).toLowerCase();
     const title = str(body.project_title || body.invoice_title || body.project_name, 2000);
-    const description = cleanMultilineText(body.description, 5000);
+    const descriptionSource = [
+      body.description,
+      body.work_details,
+      body.workDetails,
+      body.notes,
+      body.scope,
+      body.scope_of_work,
+      body.scopeOfWork,
+    ].find((v) => String(v == null ? "" : v).trim());
+    const description = cleanMultilineText(descriptionSource, 5000);
     const billingType = normalizeBillingType(body.billing_type);
     const quantityRaw = money(body.quantity);
     const dueDate = str(body.due_date, 32);
