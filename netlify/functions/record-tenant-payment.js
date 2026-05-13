@@ -42,6 +42,52 @@ function optionalUuid(raw) {
   return UUID_RE.test(s) ? s : "";
 }
 
+/** Recompute invoices.paid_amount / balance_due from ledger; mark paid when balance is zero (tenant-scoped). */
+async function syncInvoiceRollupFromLedger({ tidEnc, invoiceId, lastPaidAtIso }) {
+  const payRows = await supabaseRequest(
+    `tenant_project_payments?tenant_id=eq.${tidEnc}&invoice_id=eq.${encodeURIComponent(
+      invoiceId
+    )}&select=amount`,
+    { method: "GET" }
+  );
+  const rows = Array.isArray(payRows) ? payRows : [];
+  let totalPaid = 0;
+  for (const p of rows) {
+    const m = finiteMoney(p?.amount);
+    if (m != null) totalPaid += m;
+  }
+  totalPaid = finiteMoney(totalPaid) ?? 0;
+
+  const invList = await supabaseRequest(
+    `invoices?id=eq.${encodeURIComponent(invoiceId)}&tenant_id=eq.${tidEnc}&select=id,amount,status`,
+    { method: "GET" }
+  );
+  const inv = Array.isArray(invList) && invList[0] ? invList[0] : null;
+  if (!inv?.id) {
+    throw new Error("Invoice missing during payment rollup.");
+  }
+
+  const invAmount = finiteMoney(inv.amount) ?? 0;
+  const newBalance = Math.max(0, finiteMoney(invAmount - totalPaid) ?? 0);
+  const nowIso = new Date().toISOString();
+  const patch = {
+    paid_amount: totalPaid,
+    balance_due: newBalance,
+    updated_at: nowIso
+  };
+  const rawSt = String(inv.status || "").toLowerCase();
+  if (newBalance <= 0 && rawSt !== "void" && rawSt !== "archived") {
+    patch.status = "paid";
+    patch.paid_at = lastPaidAtIso || nowIso;
+  }
+
+  await supabaseRequest(`invoices?id=eq.${encodeURIComponent(invoiceId)}&tenant_id=eq.${tidEnc}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: patch
+  });
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -157,6 +203,14 @@ exports.handler = async (event) => {
     });
 
     const row = Array.isArray(created) ? created[0] : created;
+
+    if (invoiceId) {
+      try {
+        await syncInvoiceRollupFromLedger({ tidEnc, invoiceId, lastPaidAtIso: paidAt });
+      } catch (rollupErr) {
+        console.error("[record-tenant-payment] invoice rollup failed", rollupErr);
+      }
+    }
 
     return json(200, {
       ok: true,

@@ -7043,6 +7043,15 @@ function renderSupervisor() {
     };
   }
 
+  function hubServerInvoiceIsFullyPaid(norm) {
+    const balDue = Math.max(finiteNumber(norm?.balanceDue, 0), 0);
+    if (balDue <= 0.005) return true;
+    const contractTotal = resolveContractTotalForServerInvoiceNorm(norm);
+    const paid = Math.max(finiteNumber(norm?.paidAmount, 0), 0);
+    if (contractTotal > 0 && paid + 0.005 >= contractTotal) return true;
+    return false;
+  }
+
   function resolveContractTotalForServerInvoiceNorm(norm) {
     const quoteTotal = Math.max(finiteNumber(norm?.quoteTotal, 0), 0);
     if (quoteTotal > 0) return quoteTotal;
@@ -7072,6 +7081,8 @@ function renderSupervisor() {
     const today = new Date().toISOString().slice(0, 10);
     let raw = String(norm?.hubInvoiceRawStatus || norm?.status || "draft").toLowerCase();
     if (raw === "archived") return "archived";
+    if (raw === "void") return "void";
+    if (hubServerInvoiceIsFullyPaid(norm)) return "paid";
     if (raw === "open") raw = "draft";
     const sentAtRaw = String(norm?.sentAt || "").trim();
     if (sentAtRaw && raw !== "paid" && raw !== "void") {
@@ -7098,6 +7109,8 @@ function renderSupervisor() {
   function hubServerInvoiceLifecycleDisplayStatus(norm) {
     const rawInv = String(norm?.hubInvoiceRawStatus || norm?.status || "").toLowerCase();
     if (rawInv === "archived") return "archived";
+    if (rawInv === "void") return "void";
+    if (hubServerInvoiceIsFullyPaid(norm)) return "paid";
     const ps = String(norm?.paymentStatus || "").toLowerCase();
     const qDep = String(norm?.quoteDepositPaidAt || "").trim();
     if (ps === "deposit_paid" || qDep) return "deposit_paid";
@@ -7370,6 +7383,7 @@ function renderSupervisor() {
     if (st === "paid" || st === "completed" || st === "void") return "Completed";
     if (row?.hubRowSource === "server_invoice") {
       if (String(row.hubInvoiceRawStatus || "").toLowerCase() === "archived") return "Completed";
+      if (bal <= 0) return "Completed";
       const ps = String(row.hubInvoicePaymentStatus || row?.project?.invoice?.paymentStatus || "").toLowerCase();
       const qDep = nonEmptyString(row.hubQuoteDepositPaidAt);
       if (ps === "deposit_paid" || qDep) return "Start project";
