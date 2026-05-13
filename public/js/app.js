@@ -7010,6 +7010,24 @@ function renderSupervisor() {
     const quoteStatus = embed?.status != null ? String(embed.status).trim() : "";
     const quoteTotal = Math.max(finiteNumber(embed?.total, 0), 0);
     const hubInvoiceRawStatus = String(inv.status || "draft").toLowerCase();
+    const tenantProjectId = inv.project_id != null ? String(inv.project_id).trim() : "";
+    const amount = Number(inv.amount || 0);
+    const dbPaid = Number(inv.paid_amount || 0);
+    const ledgerRaw = inv.ledger_paid_total;
+    let paidAmount = dbPaid;
+    if (ledgerRaw != null && Number.isFinite(Number(ledgerRaw))) {
+      paidAmount = Math.max(dbPaid, Number(ledgerRaw));
+    }
+    const partialForContract = {
+      quoteId,
+      quoteTotal,
+      tenantProjectId,
+      projectName: nonEmptyString(inv.project_name, inv.description, "Invoice"),
+      clientName: customerName,
+      amount
+    };
+    const contractTotal = resolveContractTotalForServerInvoiceNorm(partialForContract);
+    const balanceDue = Math.max(0, contractTotal - paidAmount);
     return {
       source: "server_invoice",
       id: inv.id,
@@ -7027,9 +7045,9 @@ function renderSupervisor() {
       projectName: nonEmptyString(inv.project_name, inv.description, "Invoice"),
       clientName: customerName,
       clientEmail: customerEmail,
-      amount: Number(inv.amount || 0),
-      paidAmount: Number(inv.paid_amount || 0),
-      balanceDue: Number(inv.balance_due != null ? inv.balance_due : Number(inv.amount || 0) - Number(inv.paid_amount || 0)),
+      amount,
+      paidAmount,
+      balanceDue,
       status: hubInvoiceRawStatus,
       paymentStatus: String(inv.payment_status || "").toLowerCase(),
       invoiceDate: issueRaw || createdRaw || "",
@@ -7038,7 +7056,7 @@ function renderSupervisor() {
       paidAt: inv.paid_at || "",
       createdAt: createdRaw,
       updatedAt: inv.updated_at || "",
-      tenantProjectId: inv.project_id != null ? String(inv.project_id).trim() : "",
+      tenantProjectId,
       invoiceLabel: sanitizeInvoiceLabelInput(nonEmptyString(inv.invoice_label))
     };
   }
@@ -7139,8 +7157,52 @@ function renderSupervisor() {
     const localNo = String(inv?.invoiceNo || "").trim().toLowerCase();
     const serverNo = String(norm.invoiceNo || "").trim().toLowerCase();
     if (serverNo && localNo && localNo === serverNo) return true;
-    if (existingRow?.serverInvoiceId && norm.invoiceId && existingRow.serverInvoiceId === norm.invoiceId) return true;
+    const sid = String(
+      nonEmptyString(existingRow?.serverInvoiceId, inv?.serverInvoiceId, inv?.supabaseInvoiceId) || ""
+    ).trim();
+    if (sid && norm.invoiceId && sid === norm.invoiceId) return true;
     return false;
+  }
+
+  /** Align merged local Hub row with normalized server invoice (ledger-aware paid/balance/status). */
+  function syncHubRowFromServerInvoiceNorm(row, norm) {
+    if (!row || !norm?.invoiceId) return;
+    if (!hubRowMatchesNormalizedServerInvoice(row, norm)) return;
+    const srv = buildPortfolioRowFromServerInvoiceNorm(norm);
+    row.status = srv.status;
+    row.balance = srv.balance;
+    row.invoiceStatus = srv.invoiceStatus;
+    row.amount = srv.amount;
+    row.baseAmount = srv.baseAmount;
+    row.cashCollected = srv.cashCollected;
+    row.receivedApplied = srv.receivedApplied;
+    row.depositApplied = srv.depositApplied;
+    row.paymentType = srv.paymentType;
+    row.projectContractTotal = srv.projectContractTotal;
+    row.hubInvoiceRawStatus = srv.hubInvoiceRawStatus;
+    row.hubQuoteId = srv.hubQuoteId || row.hubQuoteId;
+    row.hubTenantProjectId = srv.hubTenantProjectId || row.hubTenantProjectId;
+    row.hubQuoteAcceptedAt = srv.hubQuoteAcceptedAt;
+    row.hubQuoteDepositPaidAt = srv.hubQuoteDepositPaidAt;
+    row.hubQuoteStatus = srv.hubQuoteStatus;
+    row.hubInvoicePaymentStatus = srv.hubInvoicePaymentStatus;
+    row.serverInvoiceId = srv.serverInvoiceId;
+    row.nextAction = getHubRowCollectNextActionLabel(row);
+    const pr = getHubPriority(row);
+    row.priorityScore = pr.score;
+    row.priorityTone = pr.tone;
+    row.daysPastDue = pr.daysPastDue;
+    const health = getProjectHealth(row);
+    row.projectHealthScore = health.score;
+    row.projectHealthTone = health.tone;
+    row.projectHealthLabel = health.label;
+    if (row.project?.invoice) {
+      row.project.invoice.receivedApplied = srv.receivedApplied;
+      row.project.invoice.depositApplied = srv.depositApplied;
+      row.project.invoice.status = srv.invoiceStatus;
+      row.project.invoice.baseAmount = srv.baseAmount;
+      row.project.salePrice = row.projectContractTotal;
+    }
   }
 
   function mergeHubRows(existingRows, normalizedServerRows) {
@@ -7161,7 +7223,15 @@ function renderSupervisor() {
     const normalizedList = Array.isArray(normalizedServerRows) ? normalizedServerRows : [];
     normalizedList.forEach((norm) => {
       if (!norm?.invoiceId) return;
-      if (out.some((e) => hubRowMatchesNormalizedServerInvoice(e, norm))) return;
+      const dup = out.find((e) => hubRowMatchesNormalizedServerInvoice(e, norm));
+      if (dup) {
+        syncHubRowFromServerInvoiceNorm(dup, norm);
+        if (norm.publicToken) seenToken.add(norm.publicToken);
+        seenId.add(norm.invoiceId);
+        const snoDup = String(norm.invoiceNo || "").trim().toLowerCase();
+        if (snoDup) seenNo.add(snoDup);
+        return;
+      }
       if (norm.publicToken && seenToken.has(norm.publicToken)) return;
       if (norm.invoiceId && seenId.has(norm.invoiceId)) return;
       const sno = String(norm.invoiceNo || "").trim().toLowerCase();

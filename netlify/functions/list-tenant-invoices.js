@@ -30,6 +30,37 @@ function safeEqFilterValue(raw, label) {
   return s;
 }
 
+function finiteMoney(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100) / 100;
+}
+
+/** Sum tenant_project_payments.amount per invoice_id (tenant-scoped). */
+async function sumLedgerPaidByInvoiceId(tenantId, invoiceIds) {
+  const tid = encodeURIComponent(String(tenantId));
+  const sums = new Map();
+  const ids = Array.from(new Set((invoiceIds || []).map((id) => String(id || "").trim()).filter(Boolean)));
+  const chunkSize = 40;
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const inList = chunk.map((id) => encodeURIComponent(id)).join(",");
+    const path = `tenant_project_payments?tenant_id=eq.${tid}&invoice_id=in.(${inList})&select=invoice_id,amount`;
+    const rows = await supabaseRequest(path, { method: "GET" });
+    const list = Array.isArray(rows) ? rows : [];
+    for (const p of list) {
+      const iid = p?.invoice_id != null ? String(p.invoice_id).trim() : "";
+      if (!iid) continue;
+      const prev = sums.get(iid) || 0;
+      sums.set(iid, prev + finiteMoney(p?.amount));
+    }
+  }
+  for (const [k, v] of sums) {
+    sums.set(k, finiteMoney(v));
+  }
+  return sums;
+}
+
 /**
  * GET — list invoices for the signed-in tenant only.
  * Query: status, payment_status, limit (default 50, max 200).
@@ -86,6 +117,15 @@ exports.handler = async (event) => {
     if (!Array.isArray(invoices)) {
       invoices = [];
     }
+
+    const idList = invoices.map((inv) => inv?.id).filter(Boolean);
+    const ledgerSums = idList.length ? await sumLedgerPaidByInvoiceId(tenantId, idList) : new Map();
+    invoices = invoices.map((inv) => {
+      const iid = inv?.id != null ? String(inv.id).trim() : "";
+      const ledger = iid ? ledgerSums.get(iid) : undefined;
+      const ledgerPaidTotal = ledger !== undefined ? finiteMoney(ledger) : 0;
+      return { ...inv, ledger_paid_total: ledgerPaidTotal };
+    });
 
     console.log("[list-tenant-invoices] returning:", invoices.length);
 
