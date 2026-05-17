@@ -15,6 +15,13 @@ const {
   mayWriteLaborPlan,
   shouldLockLaborPlan,
 } = require("./project-labor-plan");
+const {
+  normalizeOperationalPlan,
+  computeOperationalPlanMetrics,
+  planHasDays,
+  resolveOperationalPlanForQuote,
+} = require("./operational-plan");
+const { persistOperationalSnapshot } = require("./persist-operational-snapshot");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -127,6 +134,52 @@ async function buildLaborSnapshotFields(quoteRow, existingProject) {
   return patch;
 }
 
+async function applyOperationalSnapshotForProject(quoteRow, projectId) {
+  const pid = String(projectId || "").trim();
+  const tenantId = String(quoteRow?.tenant_id || "").trim();
+  if (!pid || !tenantId) return;
+
+  const resolved = await resolveOperationalPlanForQuote(
+    quoteRow,
+    loadLatestTenantSnapshotPayload
+  );
+  if (!resolved?.plan?.length) return;
+
+  const normalized = normalizeOperationalPlan(
+    resolved.plan,
+    resolved.override
+  );
+  if (!planHasDays(normalized)) return;
+
+  const metrics = computeOperationalPlanMetrics(normalized, resolved.override);
+  const tidEnc = encodeURIComponent(tenantId);
+  const pidEnc = encodeURIComponent(pid);
+
+  await supabaseRequest(`tenant_projects?id=eq.${pidEnc}&tenant_id=eq.${tidEnc}`, {
+    method: "PATCH",
+    body: {
+      estimated_days: metrics.estimated_days,
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  let commitmentDate = null;
+  const payload = await loadLatestTenantSnapshotPayload(tenantId);
+  if (payload?.storage?.mg_sales_v2?.dueDate) {
+    commitmentDate = String(payload.storage.mg_sales_v2.dueDate).trim();
+  }
+
+  await persistOperationalSnapshot({
+    tenantId,
+    projectId: pid,
+    quoteId: String(quoteRow.id || "").trim(),
+    operationalPlan: normalized,
+    estimatedDaysOverride: resolved.override,
+    due_date: commitmentDate,
+    source: "quote_accept",
+  });
+}
+
 async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
   if (!quoteRow || typeof quoteRow !== "object") return;
 
@@ -203,11 +256,13 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
           body: { ...laborPatch, updated_at: nowIso },
         });
       }
+      await applyOperationalSnapshotForProject(quoteRow, tpHit.id);
     } else {
+      let newProjectId = null;
       try {
-        await supabaseRequest("tenant_projects", {
+        const inserted = await supabaseRequest("tenant_projects", {
           method: "POST",
-          headers: { Prefer: "return=minimal" },
+          headers: { Prefer: "return=representation" },
           body: {
             tenant_id: tenantId,
             quote_id: quoteId,
@@ -227,6 +282,10 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
             ...insertLaborFields,
           },
         });
+        const ins = Array.isArray(inserted) ? inserted[0] : inserted;
+        if (ins?.id && UUID_RE.test(String(ins.id))) {
+          newProjectId = String(ins.id);
+        }
       } catch (e) {
         const raw = String(e?.supabaseRaw || e?.message || "");
         if (!/23505|duplicate key/i.test(raw)) throw e;
@@ -236,7 +295,8 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
         );
         const againHit = Array.isArray(again) ? again[0] : null;
         if (!againHit?.id || !UUID_RE.test(String(againHit.id))) throw e;
-        const pidEnc2 = encodeURIComponent(String(againHit.id));
+        newProjectId = String(againHit.id);
+        const pidEnc2 = encodeURIComponent(newProjectId);
         await supabaseRequest(`tenant_projects?id=eq.${pidEnc2}&tenant_id=eq.${tidEnc}`, {
           method: "PATCH",
           body: basePatch,
@@ -248,6 +308,21 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
             body: { ...laborPatch, updated_at: nowIso },
           });
         }
+      }
+
+      if (!newProjectId) {
+        const created = await supabaseRequest(
+          `tenant_projects?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id&limit=1`,
+          { method: "GET" }
+        );
+        const createdHit = Array.isArray(created) ? created[0] : null;
+        if (createdHit?.id && UUID_RE.test(String(createdHit.id))) {
+          newProjectId = String(createdHit.id);
+        }
+      }
+
+      if (newProjectId) {
+        await applyOperationalSnapshotForProject(quoteRow, newProjectId);
       }
     }
   } catch (tpErr) {

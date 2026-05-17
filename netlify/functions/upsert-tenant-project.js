@@ -14,6 +14,12 @@ const {
   isPlanEffectivelyEmpty,
   planHasRows,
 } = require("./_lib/project-labor-plan");
+const {
+  normalizeOperationalPlan,
+  computeOperationalPlanMetrics,
+  planHasDays,
+} = require("./_lib/operational-plan");
+const { persistOperationalSnapshot } = require("./_lib/persist-operational-snapshot");
 
 const ALLOWED_STATUS = new Set([
   "signed",
@@ -137,6 +143,19 @@ exports.handler = async (event) => {
     const signedAt = str(body.signed_at, 64) || nowIso;
     const incomingPlan = economics.quotedLaborPlan;
 
+    const opOverrideRaw = pickFinite(body, [
+      "operational_estimated_days_override",
+      "estimated_days_override",
+    ]);
+    const opOverride = Number.isFinite(opOverrideRaw) ? opOverrideRaw : null;
+    const opNormalized = normalizeOperationalPlan(
+      body.operational_plan,
+      opOverride
+    );
+    const opMetrics = planHasDays(opNormalized)
+      ? computeOperationalPlanMetrics(opNormalized, opOverride)
+      : null;
+
     const row = {
       tenant_id: tenant.id,
       quote_id: quoteId,
@@ -146,7 +165,9 @@ exports.handler = async (event) => {
       status: normStatus(body.status),
       signed_at: signedAt,
       deposit_paid: Boolean(body.deposit_paid),
-      estimated_days: num(body.estimated_days, 0),
+      estimated_days: opMetrics
+        ? opMetrics.estimated_days
+        : num(body.estimated_days, 0),
       labor_budget: num(body.labor_budget, economics.estimatedLaborCost),
       sale_price: salePrice,
       recommended_price: num(body.recommended_price, 0),
@@ -184,11 +205,23 @@ exports.handler = async (event) => {
           body: patch,
         }
       );
+      if (planHasDays(opNormalized)) {
+        await persistOperationalSnapshot({
+          tenantId: tenant.id,
+          projectId: existing.id,
+          quoteId,
+          operationalPlan: opNormalized,
+          estimatedDaysOverride: opOverride,
+          due_date: row.due_date,
+          source: "mark_sold",
+        });
+      }
       return json(200, {
         ok: true,
         id: existing.id,
         updated: true,
         labor_plan_locked: locked || Boolean(patch.quoted_labor_plan_locked_at),
+        operational_snapshot: planHasDays(opNormalized),
       });
     }
 
@@ -204,11 +237,23 @@ exports.handler = async (event) => {
       body: insertBody,
     });
     const ins = Array.isArray(inserted) ? inserted[0] : inserted;
+    if (ins?.id && planHasDays(opNormalized)) {
+      await persistOperationalSnapshot({
+        tenantId: tenant.id,
+        projectId: ins.id,
+        quoteId,
+        operationalPlan: opNormalized,
+        estimatedDaysOverride: opOverride,
+        due_date: row.due_date,
+        source: "mark_sold",
+      });
+    }
     return json(200, {
       ok: true,
       id: ins?.id,
       updated: false,
       labor_plan_locked: Boolean(insertBody.quoted_labor_plan_locked_at),
+      operational_snapshot: planHasDays(opNormalized),
     });
   } catch (err) {
     return json(500, { error: err.message || "Unexpected error" });

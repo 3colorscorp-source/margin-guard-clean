@@ -106,7 +106,9 @@
     sentAt: "",
     workers: [
       { name: "Worker 1", type: "installer", days: 5, rate: "" }
-    ]
+    ],
+    operational_plan: [],
+    operational_estimated_days_override: "",
   };
 
   const DEFAULT_SUPERVISOR = {

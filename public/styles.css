@@ -106,6 +106,74 @@ small{ color:var(--muted); }
   overflow-y:visible;
 }
 
+/* Sales — Operational plan (additive execution schedule) */
+.sales-operational{
+  margin:0 0 14px;
+  padding:14px 16px 16px;
+  border-radius:18px;
+  border:1px solid rgba(59,130,246,.22);
+  background:
+    radial-gradient(520px 120px at 0% 0%, rgba(59,130,246,.08), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,.04), rgba(6,10,18,.35));
+}
+.sales-operational__summary{
+  cursor:pointer;
+  list-style:none;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:10px 14px;
+}
+.sales-operational__summary::-webkit-details-marker{display:none;}
+.sales-operational__eyebrow{
+  border-color:rgba(59,130,246,.25);
+  background:rgba(59,130,246,.1);
+  color:rgba(191,219,254,.95);
+}
+.sales-operational__title{
+  font-size:15px;
+  font-weight:850;
+  letter-spacing:.04em;
+}
+.sales-operational__meta{
+  margin-left:auto;
+  font-size:12px;
+  color:rgba(232,238,252,.65);
+}
+.sales-operational__lead{margin:0 0 12px;}
+.sales-operational-metrics{margin:0 0 12px;}
+.sales-operational-metrics__grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+  font-size:13px;
+}
+.sales-operational-day{
+  margin:0 0 10px;
+  padding:12px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.1);
+  background:rgba(0,0,0,.15);
+}
+.sales-operational-day__head{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+  margin-bottom:10px;
+}
+.sales-operational-day__head .sales-op-day-number{width:4.5rem;}
+.sales-operational-day__head .sales-op-phase{flex:1;min-width:160px;}
+.sales-operational-day__workers{display:flex;flex-direction:column;gap:8px;}
+.sales-operational-worker{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+}
+.sales-operational-worker .sales-op-role{flex:1;min-width:120px;}
+.sales-operational-worker .sales-op-hours{width:5rem;}
+
 /* Sales — Labor (visual parity with /owner .owner-labor) */
 .sales-labor{
   margin:0 0 4px;
