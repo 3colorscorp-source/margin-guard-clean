@@ -92,6 +92,7 @@ const OPERATIONAL_SNAPSHOT_KEYS = [
   "remaining_labor_budget",
   "estimated_days",
   "actual_days",
+  "days_remaining",
   "estimated_hours",
   "actual_hours",
   "labor_deviation_days",
@@ -175,12 +176,15 @@ function computeProjectOperationalSnapshot({
   const completionPacePct =
     estimatedDays > 0 ? Math.round((actualDays / estimatedDays) * 100) : null;
 
+  const daysRemaining = round2(Math.max(0, estimatedDays - actualDays));
+
   const raw = {
     labor_budget: laborBudget,
     actual_labor: actualLabor,
     remaining_labor_budget: remainingLaborBudget,
     estimated_days: estimatedDays,
     actual_days: actualDays,
+    days_remaining: daysRemaining,
     estimated_hours: estimatedHours,
     actual_hours: actualHours,
     labor_deviation_days: laborDeviationDays,

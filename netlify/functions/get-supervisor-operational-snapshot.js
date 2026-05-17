@@ -2,6 +2,9 @@ const { readSessionFromEvent } = require("./_lib/session");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { computeProjectOperationalSnapshot } = require("./_lib/project-operational-snapshot");
+const {
+  operationalPlanForSupervisorVisibility,
+} = require("./_lib/operational-plan");
 
 function json(statusCode, payload) {
   return {
@@ -11,9 +14,22 @@ function json(statusCode, payload) {
   };
 }
 
-function num(v, fallback) {
+function num(v, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function round2(n) {
+  return Math.round(num(n, 0) * 100) / 100;
+}
+
+function normDate(d) {
+  const t = String(d == null ? "" : d).trim();
+  if (!t) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  const parsed = new Date(t);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
 }
 
 function extractSupervisorBonusPctFromSnapshotPayload(payload) {
@@ -38,6 +54,62 @@ async function loadSupervisorBonusPctForTenant(tenantId) {
   } catch (_e) {
     return 1;
   }
+}
+
+async function loadOperationalSnapshotRow(tenantId, projectId) {
+  const tid = encodeURIComponent(tenantId);
+  const pid = encodeURIComponent(projectId);
+  try {
+    const rows = await supabaseRequest(
+      `tenant_project_operational_snapshots?tenant_id=eq.${tid}&project_id=eq.${pid}&select=operational_plan,estimated_days,estimated_hours,worker_count,commitment_date,locked_at&limit=1`
+    );
+    return Array.isArray(rows) ? rows[0] : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+function mergeMetricsWithStoredPlan(metrics, opRow, project) {
+  const out = { ...metrics };
+  if (opRow && typeof opRow === "object") {
+    const storedDays = num(opRow.estimated_days, 0);
+    const storedHours = num(opRow.estimated_hours, 0);
+    if (storedDays > 0) {
+      out.estimated_days = round2(storedDays);
+      out.days_remaining = round2(Math.max(0, storedDays - num(out.actual_days, 0)));
+      if (storedDays > 0) {
+        out.completion_pace_pct = Math.round(
+          (num(out.actual_days, 0) / storedDays) * 100
+        );
+      }
+    }
+    if (storedHours > 0) {
+      out.estimated_hours = round2(storedHours);
+    }
+    const actual = num(out.actual_days, 0);
+    const est = num(out.estimated_days, 0);
+    out.labor_deviation_days = round2(actual - est);
+    const dev = out.labor_deviation_days;
+    if (Math.abs(dev) < 0.01) out.labor_deviation_label = "On budget";
+    else if (dev > 0) out.labor_deviation_label = `${dev.toFixed(2)} day(s) over budget`;
+    else out.labor_deviation_label = `${Math.abs(dev).toFixed(2)} day(s) under budget`;
+  } else if (num(project?.estimated_days, 0) > 0 && num(out.estimated_days, 0) <= 0) {
+    out.estimated_days = round2(num(project.estimated_days, 0));
+    out.days_remaining = round2(
+      Math.max(0, out.estimated_days - num(out.actual_days, 0))
+    );
+  }
+  return out;
+}
+
+function buildScheduleFields(project, opRow) {
+  const signedAt = normDate(project?.signed_at);
+  const due = normDate(opRow?.commitment_date || project?.due_date);
+  return {
+    start_date: signedAt,
+    commitment_date: due,
+    target_finish_date: due,
+  };
 }
 
 exports.handler = async (event) => {
@@ -73,7 +145,7 @@ exports.handler = async (event) => {
       return json(403, { error: "Project not found for this tenant" });
     }
 
-    const [reportRows, expenseRows, bonusPct] = await Promise.all([
+    const [reportRows, expenseRows, bonusPct, opRow] = await Promise.all([
       supabaseRequest(
         `tenant_project_reports?tenant_id=eq.${tid}&project_id=eq.${pid}&select=hours,days`
       ),
@@ -81,19 +153,37 @@ exports.handler = async (event) => {
         `tenant_project_expenses?tenant_id=eq.${tid}&project_id=eq.${pid}&select=id`
       ),
       loadSupervisorBonusPctForTenant(tenant.id),
+      loadOperationalSnapshotRow(tenant.id, project.id),
     ]);
 
-    const operational_snapshot = computeProjectOperationalSnapshot({
+    let operational_snapshot = computeProjectOperationalSnapshot({
       project,
       reports: Array.isArray(reportRows) ? reportRows : [],
       expenses: Array.isArray(expenseRows) ? expenseRows : [],
       supervisorBonusPctPoints: bonusPct,
     });
 
+    operational_snapshot = mergeMetricsWithStoredPlan(
+      operational_snapshot,
+      opRow,
+      project
+    );
+
+    const planRaw =
+      opRow?.operational_plan && Array.isArray(opRow.operational_plan)
+        ? opRow.operational_plan
+        : [];
+    const operational_plan = operationalPlanForSupervisorVisibility(planRaw);
+    const schedule = buildScheduleFields(project, opRow);
+    const has_execution_plan = operational_plan.length > 0;
+
     return json(200, {
       ok: true,
       project_id: project.id,
       operational_snapshot,
+      operational_plan,
+      schedule,
+      has_execution_plan,
     });
   } catch (err) {
     return json(500, { error: err.message || "Unexpected error" });

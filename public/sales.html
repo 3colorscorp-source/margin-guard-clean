@@ -2037,6 +2037,10 @@
             state.estimateStatus = 'sold';
             state.signedProjectName = state.projectName || document.getElementById('salesProjectName')?.value || 'Project';
             state.signedClientName = state.clientName || document.getElementById('salesClientName')?.value || 'Client';
+            const dueInput = document.getElementById('salesDueDate');
+            if (dueInput && dueInput.value) {
+              state.dueDate = String(dueInput.value).trim().slice(0, 10);
+            }
             saveSalesState(state);
             if (state.quoteId && String(state.quoteId).trim()) {
               const settings = loadSettings();

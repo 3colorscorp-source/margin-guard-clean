@@ -1114,6 +1114,108 @@ Thank you.`
   const supervisorProjectOperationalCache = Object.create(null);
   const supervisorProjectOperationalFetchInFlight = new Set();
 
+  function buildSupervisorOperationalFallback(project, localState) {
+    const estimatedDays = finiteNumber(project?.estimatedDays, 0);
+    const entries = Array.isArray(localState?.entries) ? localState.entries : [];
+    const actualDays = entries.reduce((sum, row) => sum + Number(row?.days || 0), 0);
+    const actualHours = entries.reduce((sum, row) => sum + Number(row?.hours || 0), 0);
+    const hpd = Math.max(Number(loadSettings()?.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
+    const estimatedHours = estimatedDays > 0 ? estimatedDays * hpd : 0;
+    const daysRemaining = Math.max(0, estimatedDays - actualDays);
+    const laborBudget = finiteNumber(project?.laborBudget, 0);
+    const laborDeviationDays = actualDays - estimatedDays;
+    let laborDeviationLabel = "On budget";
+    if (laborDeviationDays > 0) {
+      laborDeviationLabel = `${laborDeviationDays.toFixed(2)} day(s) over budget`;
+    } else if (laborDeviationDays < 0) {
+      laborDeviationLabel = `${Math.abs(laborDeviationDays).toFixed(2)} day(s) under budget`;
+    }
+    let operationalRisk = "low";
+    if (estimatedDays > 0 && actualDays > estimatedDays * 1.1) operationalRisk = "high";
+    else if (estimatedDays > 0 && actualDays > estimatedDays) operationalRisk = "medium";
+    return {
+      labor_budget: laborBudget,
+      actual_labor: 0,
+      remaining_labor_budget: laborBudget,
+      estimated_days: estimatedDays,
+      actual_days: actualDays,
+      days_remaining: daysRemaining,
+      estimated_hours: estimatedHours,
+      actual_hours: actualHours,
+      labor_deviation_days: laborDeviationDays,
+      labor_deviation_label: laborDeviationLabel,
+      operational_risk: operationalRisk,
+      supervisor_bonus_amount: 0,
+      supervisor_bonus_status: "pending",
+      supervisor_bonus_pct_of_potential: 0,
+      report_count: entries.length,
+      expense_count: Array.isArray(localState?.extras) ? localState.extras.length : 0,
+      completion_pace_pct:
+        estimatedDays > 0 ? Math.round((actualDays / estimatedDays) * 100) : null,
+    };
+  }
+
+  function supervisorScheduleLabels(schedule, project, state) {
+    const sched = schedule && typeof schedule === "object" ? schedule : {};
+    const startRaw =
+      sched.start_date ||
+      (project?.signedAt ? String(project.signedAt).slice(0, 10) : "") ||
+      "";
+    const targetRaw =
+      sched.target_finish_date ||
+      sched.commitment_date ||
+      state?.dueDate ||
+      project?.dueDate ||
+      "";
+    const start = normalizeDateInput(startRaw);
+    const target = normalizeDateInput(targetRaw);
+    return {
+      startLabel: start ? formatDateUS(start) || start : "No start date set",
+      targetLabel: target ? formatDateUS(target) || target : "No target finish date set",
+    };
+  }
+
+  function renderSupervisorExecutionPlanHtml(plan, settings) {
+    if (!Array.isArray(plan) || !plan.length) return null;
+    const hpd = Math.max(Number(settings?.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
+    const dayMode = settings?.pricingMode === "day";
+    const unitHeader = dayMode ? "Planned days" : "Planned hours";
+    const rows = [];
+    for (const day of plan) {
+      const dayNum = day?.day_number;
+      const phase = day?.phase == null ? "" : String(day.phase);
+      const workers = Array.isArray(day?.workers) ? day.workers : [];
+      for (const w of workers) {
+        const hours = Number(w?.estimated_hours) || 0;
+        const units = dayMode ? hours / hpd : hours;
+        const role = String(w?.role || w?.worker_type || "—").trim() || "—";
+        rows.push({
+          dayNum: dayNum == null ? "—" : String(dayNum),
+          phase: phase || "—",
+          role,
+          units: finiteNumber(units, 0),
+        });
+      }
+    }
+    if (!rows.length) return null;
+    return `
+      <table class="table" style="margin-top:4px;width:100%;">
+        <thead>
+          <tr><th>Day</th><th>Phase</th><th>Role</th><th>${escapeHtml(unitHeader)}</th></tr>
+        </thead>
+        <tbody>${rows
+          .map(
+            (row) => `<tr>
+              <td>${escapeHtml(row.dayNum)}</td>
+              <td>${escapeHtml(row.phase)}</td>
+              <td>${escapeHtml(row.role)}</td>
+              <td>${row.units.toFixed(2)}</td>
+            </tr>`
+          )
+          .join("")}</tbody>
+      </table>`;
+  }
+
   async function fetchSupervisorOperationalSnapshot(projectId) {
     const id = String(projectId || "").trim();
     if (!id) return { ok: false, error: "Missing project id" };
@@ -1129,7 +1231,14 @@ Thank you.`
         (res.ok ? "Field snapshot unavailable." : `Field snapshot failed (${res.status}).`);
       return { ok: false, error: String(msg) };
     }
-    return { ok: true, operational_snapshot: snap };
+    return {
+      ok: true,
+      operational_snapshot: snap,
+      operational_plan: Array.isArray(data.operational_plan) ? data.operational_plan : [],
+      schedule:
+        data.schedule && typeof data.schedule === "object" ? data.schedule : {},
+      has_execution_plan: Boolean(data.has_execution_plan),
+    };
   }
 
   function renderSupervisorOperationalPanel(opts) {
@@ -1158,6 +1267,7 @@ Thank you.`
         "supOpRemainingLabor",
         "supOpEstimatedDays",
         "supOpActualDays",
+        "supOpDaysRemaining",
         "supOpEstimatedHours",
         "supOpActualHours",
         "supOpLaborDeviation",
@@ -1183,7 +1293,9 @@ Thank you.`
       return;
     }
 
-    if (o.error) {
+    const snap = o.snapshot && typeof o.snapshot === "object" ? o.snapshot : null;
+
+    if (o.error && !snap) {
       if (loadingEl) loadingEl.style.display = "none";
       if (errorEl) {
         errorEl.style.display = "";
@@ -1194,8 +1306,6 @@ Thank you.`
       if (riskMetaEl) riskMetaEl.style.display = "none";
       return;
     }
-
-    const snap = o.snapshot && typeof o.snapshot === "object" ? o.snapshot : null;
     if (!snap) {
       if (loadingEl) loadingEl.style.display = "none";
       if (errorEl) {
@@ -1211,8 +1321,14 @@ Thank you.`
 
     if (loadingEl) loadingEl.style.display = "none";
     if (errorEl) {
-      errorEl.style.display = "none";
-      errorEl.textContent = "";
+      if (o.error) {
+        errorEl.style.display = "";
+        errorEl.textContent = String(o.error);
+        errorEl.style.color = "var(--muted,#666)";
+      } else {
+        errorEl.style.display = "none";
+        errorEl.textContent = "";
+      }
     }
     if (gridEl) gridEl.style.display = "";
 
@@ -1221,6 +1337,13 @@ Thank you.`
     setOpText("supOpRemainingLabor", snapMoney(snap.remaining_labor_budget));
     setOpText("supOpEstimatedDays", finiteNumber(snap.estimated_days, 0).toFixed(2));
     setOpText("supOpActualDays", finiteNumber(snap.actual_days, 0).toFixed(2));
+    setOpText(
+      "supOpDaysRemaining",
+      finiteNumber(
+        snap.days_remaining != null ? snap.days_remaining : Math.max(0, finiteNumber(snap.estimated_days, 0) - finiteNumber(snap.actual_days, 0)),
+        0
+      ).toFixed(2)
+    );
     setOpText("supOpEstimatedHours", finiteNumber(snap.estimated_hours, 0).toFixed(2));
     setOpText("supOpActualHours", finiteNumber(snap.actual_hours, 0).toFixed(2));
 
@@ -6148,8 +6271,14 @@ function renderSupervisor() {
                   ? { ok: true, expenses: e.expenses }
                   : { ok: false, expenses: [] };
               supervisorProjectOperationalCache[nextId] =
-                snap && snap.ok === true
-                  ? { ok: true, snapshot: snap.operational_snapshot }
+                snap && snap.ok === true && snap.operational_snapshot
+                  ? {
+                      ok: true,
+                      snapshot: snap.operational_snapshot,
+                      operational_plan: snap.operational_plan || [],
+                      schedule: snap.schedule || {},
+                      has_execution_plan: Boolean(snap.has_execution_plan),
+                    }
                   : { ok: false, error: (snap && snap.error) || "Field snapshot unavailable." };
             } finally {
               supervisorProjectReportsFetchInFlight.delete(nextId);
@@ -6309,7 +6438,8 @@ function renderSupervisor() {
         if ($("supHeroState")) $("supHeroState").textContent = "Base";
         if ($("supHeroMeta")) $("supHeroMeta").textContent = "No hay proyectos firmados. Firma uno desde Vendedor o apruebalo en Sales Admin.";
         if ($("supProjectLabel")) $("supProjectLabel").textContent = "Sin proyecto";
-        if ($("supDueDateLabel")) $("supDueDateLabel").textContent = "Sin fecha";
+        if ($("supStartDateLabel")) $("supStartDateLabel").textContent = "No start date set";
+        if ($("supDueDateLabel")) $("supDueDateLabel").textContent = "No target finish date set";
         if ($("supEstimatedDaysLabel")) $("supEstimatedDaysLabel").textContent = "0.00";
         if ($("supSummaryRegisteredExtras")) $("supSummaryRegisteredExtras").textContent = "0";
         if ($("supExecutiveNote")) $("supExecutiveNote").textContent = "Todavia no hay proyectos firmados para este supervisor.";
@@ -6330,7 +6460,7 @@ function renderSupervisor() {
         $("supervisorKpis").innerHTML = [
           ["Proyectos firmados", "0", "Firma o aprueba proyectos para empezar a reportar"],
           ["Dias estimados", "0.00", "Esperando proyecto firmado"],
-          ["Fecha comprometida", "Sin fecha", "La fecha entra desde el proyecto firmado"]
+          ["Target finish", "No target finish date set", "Set in Sales when signing the project"]
         ].map(([label, value, meta]) => `
           <div class="kpi-box">
             <div class="label">${escapeHtml(label)}</div>
@@ -6400,23 +6530,37 @@ function renderSupervisor() {
         }
         if (!supervisorProjectOperationalCache[pid] && !supervisorProjectOperationalFetchInFlight.has(pid)) {
           supervisorProjectOperationalFetchInFlight.add(pid);
-          void fetchSupervisorOperationalSnapshot(pid).then((data) => {
-            supervisorProjectOperationalFetchInFlight.delete(pid);
-            if (data && data.ok === true && data.operational_snapshot) {
-              supervisorProjectOperationalCache[pid] = {
-                ok: true,
-                snapshot: data.operational_snapshot,
-              };
-            } else {
+          void fetchSupervisorOperationalSnapshot(pid)
+            .then((data) => {
+              supervisorProjectOperationalFetchInFlight.delete(pid);
+              if (data && data.ok === true && data.operational_snapshot) {
+                supervisorProjectOperationalCache[pid] = {
+                  ok: true,
+                  snapshot: data.operational_snapshot,
+                  operational_plan: data.operational_plan || [],
+                  schedule: data.schedule || {},
+                  has_execution_plan: Boolean(data.has_execution_plan),
+                };
+              } else {
+                supervisorProjectOperationalCache[pid] = {
+                  ok: false,
+                  error: (data && data.error) || "Field snapshot unavailable.",
+                };
+              }
+              if ($("supervisorKpis") && supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
+                renderSupervisor();
+              }
+            })
+            .catch(() => {
+              supervisorProjectOperationalFetchInFlight.delete(pid);
               supervisorProjectOperationalCache[pid] = {
                 ok: false,
-                error: (data && data.error) || "Field snapshot unavailable.",
+                error: "Field snapshot unavailable (network error).",
               };
-            }
-            if ($("supervisorKpis") && supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
-              renderSupervisor();
-            }
-          });
+              if ($("supervisorKpis") && supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
+                renderSupervisor();
+              }
+            });
         }
       }
 
@@ -6558,49 +6702,41 @@ function renderSupervisor() {
       if ($("supHeroState")) $("supHeroState").textContent = stateLabel;
       if ($("supHeroMeta")) $("supHeroMeta").textContent = stateMeta;
       if ($("supProjectLabel")) $("supProjectLabel").textContent = state.projectName || "Sin proyecto";
-      if ($("supDueDateLabel")) {
-        $("supDueDateLabel").textContent = state.dueDate ? formatDateUS(state.dueDate) || state.dueDate : "Sin fecha";
-      }
+      const opCacheEarly = supervisorProjectOperationalCache[pid];
+      const scheduleLabels = supervisorScheduleLabels(
+        opCacheEarly?.schedule,
+        currentProject,
+        state
+      );
+      if ($("supStartDateLabel")) $("supStartDateLabel").textContent = scheduleLabels.startLabel;
+      if ($("supDueDateLabel")) $("supDueDateLabel").textContent = scheduleLabels.targetLabel;
       if ($("supEstimatedDaysLabel")) $("supEstimatedDaysLabel").textContent = Number(state.estimatedDays || 0).toFixed(2);
       if ($("supSummaryRegisteredExtras")) $("supSummaryRegisteredExtras").textContent = String(extrasRegCount);
       if ($("supPortfolioCount")) $("supPortfolioCount").textContent = String(uiList.length);
 
       const supLaborPlanBody = $("supLaborPlanBody");
       if (supLaborPlanBody) {
-        const planWorkers = Array.isArray(currentProject.workers) ? currentProject.workers : [];
-        if (!planWorkers.length) {
+        const opCacheForPlan = supervisorProjectOperationalCache[pid];
+        const execPlan =
+          opCacheForPlan?.ok === true && Array.isArray(opCacheForPlan.operational_plan)
+            ? opCacheForPlan.operational_plan
+            : [];
+        const execHtml = renderSupervisorExecutionPlanHtml(execPlan, loadSettings());
+        if (execHtml) {
+          supLaborPlanBody.innerHTML = execHtml;
+        } else if (supervisorProjectOperationalFetchInFlight.has(pid)) {
           supLaborPlanBody.innerHTML =
-            '<p class="small" style="margin:0;">Labor plan not available for this project</p>';
+            '<p class="small" style="margin:0;">Loading execution plan…</p>';
         } else {
-          const displayRows = supervisorLaborPlanDisplayRows(planWorkers);
-          const maxDays = supervisorMaxPlanWorkerDays(planWorkers);
-          supLaborPlanBody.innerHTML = `
-            <table class="table" style="margin-top:4px;width:100%;">
-              <thead>
-                <tr><th>Worker</th><th>Role</th><th>Budgeted days</th><th>Budgeted hours</th></tr>
-              </thead>
-              <tbody>${displayRows
-                .map((row) => {
-                  return `<tr>
-                    <td>${escapeHtml(row.displayName)}</td>
-                    <td>${escapeHtml(row.roleLabel)}</td>
-                    <td>${finiteNumber(row.days, 0).toFixed(2)}</td>
-                    <td>${finiteNumber(row.hours, 0).toFixed(2)}</td>
-                  </tr>`;
-                })
-                .join("")}</tbody>
-            </table>
-            <p class="small" style="margin:10px 0 0;color:var(--muted,#666);line-height:1.45;">
-              Total project duration follows the <strong>longest</strong> worker schedule (${escapeHtml(
-                String(maxDays.toFixed(2))
-              )} budgeted days here), not the sum of all workers.
-            </p>`;
+          supLaborPlanBody.innerHTML =
+            '<p class="small" style="margin:0;">Execution plan not available for this project</p>';
         }
       }
 
       if ($("supSnapshotGrid")) {
         const snapCached = supervisorProjectOperationalCache[pid];
         const snapInflight = supervisorProjectOperationalFetchInFlight.has(pid);
+        const fallbackSnap = buildSupervisorOperationalFallback(currentProject, state);
         if (!isServerListedSupervisorProject(pid)) {
           renderSupervisorOperationalPanel({});
         } else if (snapInflight && !snapCached) {
@@ -6609,10 +6745,13 @@ function renderSupervisor() {
           renderSupervisorOperationalPanel({ snapshot: snapCached.snapshot });
         } else if (snapCached && snapCached.ok === false) {
           renderSupervisorOperationalPanel({
-            error: snapCached.error || "Field snapshot unavailable.",
+            snapshot: fallbackSnap,
+            error:
+              (snapCached.error || "Field snapshot unavailable.") +
+              " Showing project baseline metrics.",
           });
         } else {
-          renderSupervisorOperationalPanel({ loading: true });
+          renderSupervisorOperationalPanel({ snapshot: fallbackSnap });
         }
       }
 
