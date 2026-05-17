@@ -1,0 +1,88 @@
+const fs = require("fs");
+const path = require("path");
+
+const p = path.join(__dirname, "..", "public", "supervisor.html");
+const s = fs.readFileSync(p, "utf8");
+
+const marker =
+  '            <div class="sep"></div>\n\n            <div class="field">\n              <label>Labor plan</label>';
+
+const markerOk =
+  '            <div class="sep"></div>\n\n            <div class="field">\n              <label>Labor plan</label>';
+
+const block = `            <div class="sep"></div>
+
+            <div class="section-head" style="margin-bottom:8px;">
+              <div>
+                <h2 style="margin:0;font-size:1.1rem;">Project snapshot</h2>
+                <div class="sub" style="margin:4px 0 0;">Read-only contract and margin view (server-calculated).</div>
+              </div>
+              <div class="badge amber" id="supSnapshotRiskBadge" style="display:none;">—</div>
+            </div>
+            <div id="supSnapshotLoading" class="notice" style="display:none;margin-bottom:10px;">Loading snapshot…</div>
+            <div id="supSnapshotError" class="notice" style="display:none;margin-bottom:10px;color:#b42318;"></div>
+            <div id="supSnapshotGrid" class="supervisor-summary-grid" style="display:none;">
+              <div class="supervisor-summary-card">
+                <div class="title">Original contract</div>
+                <div class="big" id="supSnapOriginalContract">—</div>
+                <div class="small">Signed sale price</div>
+              </div>
+              <div class="supervisor-summary-card">
+                <div class="title">Approved change orders</div>
+                <div class="big" id="supSnapApprovedCos">—</div>
+                <div class="small">Applied CO total</div>
+              </div>
+              <div class="supervisor-summary-card">
+                <div class="title">Current contract total</div>
+                <div class="big" id="supSnapCurrentContract">—</div>
+                <div class="small">Contract + approved COs</div>
+              </div>
+              <div class="supervisor-summary-card">
+                <div class="title">Labor budget</div>
+                <div class="big" id="supSnapLaborBudget">—</div>
+                <div class="small">Estimated / quoted labor</div>
+              </div>
+              <div class="supervisor-summary-card">
+                <div class="title">Actual labor</div>
+                <div class="big" id="supSnapActualLabor">—</div>
+                <div class="small">Consumed labor cost</div>
+              </div>
+              <div class="supervisor-summary-card">
+                <div class="title">Material budget</div>
+                <div class="big" id="supSnapMaterialBudget">—</div>
+                <div class="small">Estimated materials</div>
+              </div>
+              <div class="supervisor-summary-card">
+                <div class="title">Actual materials</div>
+                <div class="big" id="supSnapActualMaterials">—</div>
+                <div class="small">Not tracked yet</div>
+              </div>
+              <div class="supervisor-summary-card">
+                <div class="title">Unexpected expenses</div>
+                <div class="big" id="supSnapUnexpected">—</div>
+                <div class="small">Field extras total</div>
+              </div>
+              <div class="supervisor-summary-card">
+                <div class="title">Projected profit</div>
+                <div class="big" id="supSnapProjectedProfit">—</div>
+                <div class="small">At sign (estimated)</div>
+              </div>
+              <div class="supervisor-summary-card">
+                <div class="title">Current profit</div>
+                <div class="big" id="supSnapCurrentProfit">—</div>
+                <div class="small" id="supSnapMarginMeta">Margin —</div>
+              </div>
+            </div>
+            <div id="supSnapshotRiskMeta" class="small" style="display:none;margin-top:8px;line-height:1.45;color:var(--muted,#666);"></div>
+
+            <div class="sep"></div>
+
+            <div class="field">
+              <label>Labor plan</label>`;
+
+// I keep introducing motion - write block to separate file
+const blockPath = path.join(__dirname, "_snapshot-block.html");
+if (!fs.existsSync(blockPath)) {
+  console.error("missing block file");
+  process.exit(1);
+}

@@ -1105,6 +1105,138 @@ Thank you.`
     } catch (_e) {
       /* non-fatal */
     }
+    delete supervisorProjectSnapshotCache[pid];
+  }
+
+  /** projectId -> { ok, snapshot?, error? } from get-project-snapshot */
+  const supervisorProjectSnapshotCache = Object.create(null);
+  const supervisorProjectSnapshotFetchInFlight = new Set();
+
+  async function fetchProjectSnapshot(projectId) {
+    const id = String(projectId || "").trim();
+    if (!id) return { ok: false, error: "Missing project id" };
+    const res = await fetch(
+      `/.netlify/functions/get-project-snapshot?project_id=${encodeURIComponent(id)}`,
+      { credentials: "include" }
+    );
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || data.ok !== true || !data.snapshot || typeof data.snapshot !== "object") {
+      const msg =
+        (data && (data.error || data.message)) ||
+        (res.ok ? "Snapshot unavailable." : `Snapshot failed (${res.status}).`);
+      return { ok: false, error: String(msg) };
+    }
+    return { ok: true, snapshot: data.snapshot };
+  }
+
+  function renderSupervisorSnapshotPanel(opts) {
+    if (!$("supSnapshotGrid")) return;
+    const o = opts && typeof opts === "object" ? opts : {};
+    const loadingEl = $("supSnapshotLoading");
+    const errorEl = $("supSnapshotError");
+    const gridEl = $("supSnapshotGrid");
+    const badgeEl = $("supSnapshotRiskBadge");
+    const riskMetaEl = $("supSnapshotRiskMeta");
+
+    const snapMoney = (n) => {
+      if (n == null || n === "" || !Number.isFinite(Number(n))) return "—";
+      return formatMoney(n);
+    };
+
+    const setSnapText = (id, text) => {
+      const el = $(id);
+      if (el) el.textContent = text == null || text === "" ? "—" : String(text);
+    };
+
+    if (o.loading) {
+      if (loadingEl) loadingEl.style.display = "";
+      if (errorEl) {
+        errorEl.style.display = "none";
+        errorEl.textContent = "";
+      }
+      if (gridEl) gridEl.style.display = "none";
+      if (badgeEl) badgeEl.style.display = "none";
+      if (riskMetaEl) riskMetaEl.style.display = "none";
+      return;
+    }
+
+    if (o.error) {
+      if (loadingEl) loadingEl.style.display = "none";
+      if (errorEl) {
+        errorEl.style.display = "";
+        errorEl.textContent = String(o.error);
+      }
+      if (gridEl) gridEl.style.display = "none";
+      if (badgeEl) badgeEl.style.display = "none";
+      if (riskMetaEl) riskMetaEl.style.display = "none";
+      return;
+    }
+
+    const snap = o.snapshot && typeof o.snapshot === "object" ? o.snapshot : null;
+    if (!snap) {
+      if (loadingEl) loadingEl.style.display = "none";
+      if (errorEl) {
+        errorEl.style.display = "none";
+        errorEl.textContent = "";
+      }
+      if (gridEl) gridEl.style.display = "none";
+      if (badgeEl) badgeEl.style.display = "none";
+      if (riskMetaEl) riskMetaEl.style.display = "none";
+      setSnapText("supSnapOriginalContract", "—");
+      setSnapText("supSnapApprovedCos", "—");
+      setSnapText("supSnapCurrentContract", "—");
+      setSnapText("supSnapLaborBudget", "—");
+      setSnapText("supSnapActualLabor", "—");
+      setSnapText("supSnapMaterialBudget", "—");
+      setSnapText("supSnapActualMaterials", "—");
+      setSnapText("supSnapUnexpected", "—");
+      setSnapText("supSnapProjectedProfit", "—");
+      setSnapText("supSnapCurrentProfit", "—");
+      setSnapText("supSnapMarginMeta", "Margin —");
+      return;
+    }
+
+    if (loadingEl) loadingEl.style.display = "none";
+    if (errorEl) {
+      errorEl.style.display = "none";
+      errorEl.textContent = "";
+    }
+    if (gridEl) gridEl.style.display = "";
+
+    setSnapText("supSnapOriginalContract", snapMoney(snap.original_contract));
+    setSnapText("supSnapApprovedCos", snapMoney(snap.approved_change_orders));
+    setSnapText("supSnapCurrentContract", snapMoney(snap.current_contract_total));
+    setSnapText("supSnapLaborBudget", snapMoney(snap.labor_budget));
+    setSnapText("supSnapActualLabor", snapMoney(snap.actual_labor));
+    setSnapText("supSnapMaterialBudget", snapMoney(snap.material_budget));
+    setSnapText("supSnapActualMaterials", snapMoney(snap.actual_materials));
+    setSnapText("supSnapUnexpected", snapMoney(snap.unexpected_expenses));
+    setSnapText("supSnapProjectedProfit", snapMoney(snap.projected_profit));
+    setSnapText("supSnapCurrentProfit", snapMoney(snap.current_profit));
+
+    const marginPct = Number(snap.current_margin_pct);
+    setSnapText(
+      "supSnapMarginMeta",
+      Number.isFinite(marginPct) ? `Margin ${Math.round(marginPct * 100)}%` : "Margin —"
+    );
+
+    const risk = String(snap.margin_risk || "").trim().toLowerCase();
+    const riskLabels = { low: "Low risk", medium: "Medium risk", high: "High risk" };
+    const riskClasses = { low: "green", medium: "amber", high: "red" };
+    if (badgeEl) {
+      badgeEl.style.display = risk && riskLabels[risk] ? "" : "none";
+      badgeEl.textContent = riskLabels[risk] || "—";
+      badgeEl.className = `badge ${riskClasses[risk] || "amber"}`;
+    }
+    if (riskMetaEl) {
+      if (risk && riskLabels[risk]) {
+        riskMetaEl.style.display = "";
+        riskMetaEl.textContent = `Margin risk: ${riskLabels[risk]} (server-calculated).`;
+      } else {
+        riskMetaEl.style.display = "none";
+        riskMetaEl.textContent = "";
+      }
+    }
   }
 
   function mapTenantProjectReportRowToEntry(row) {
@@ -5948,25 +6080,30 @@ function renderSupervisor() {
           delete supervisorProjectReportsCache[prevId];
           delete supervisorProjectExpensesCache[prevId];
           delete supervisorProjectChangeOrdersCache[prevId];
+          delete supervisorProjectSnapshotCache[prevId];
           supervisorProjectReportsFetchInFlight.delete(prevId);
           supervisorProjectExpensesFetchInFlight.delete(prevId);
           supervisorProjectChangeOrdersFetchInFlight.delete(prevId);
+          supervisorProjectSnapshotFetchInFlight.delete(prevId);
         }
         if (prevId !== nextId && nextId) {
           delete supervisorProjectReportsCache[nextId];
           delete supervisorProjectExpensesCache[nextId];
           delete supervisorProjectChangeOrdersCache[nextId];
+          delete supervisorProjectSnapshotCache[nextId];
         }
         if (nextId && isServerListedSupervisorProject(nextId)) {
           supervisorProjectReportsFetchInFlight.add(nextId);
           supervisorProjectExpensesFetchInFlight.add(nextId);
+          supervisorProjectSnapshotFetchInFlight.add(nextId);
           renderSupervisor();
           void (async () => {
             try {
               if (supervisorProjectKey(loadSupervisorSelectedProjectId()) !== nextId) return;
-              const [r, e] = await Promise.all([
+              const [r, e, snap] = await Promise.all([
                 fetchProjectReports(nextId),
                 fetchProjectExpenses(nextId),
+                fetchProjectSnapshot(nextId),
               ]);
               if (supervisorProjectKey(loadSupervisorSelectedProjectId()) !== nextId) return;
               supervisorProjectReportsCache[nextId] =
@@ -5977,9 +6114,14 @@ function renderSupervisor() {
                 e && e.ok === true && Array.isArray(e.expenses)
                   ? { ok: true, expenses: e.expenses }
                   : { ok: false, expenses: [] };
+              supervisorProjectSnapshotCache[nextId] =
+                snap && snap.ok === true
+                  ? { ok: true, snapshot: snap.snapshot }
+                  : { ok: false, error: (snap && snap.error) || "Snapshot unavailable." };
             } finally {
               supervisorProjectReportsFetchInFlight.delete(nextId);
               supervisorProjectExpensesFetchInFlight.delete(nextId);
+              supervisorProjectSnapshotFetchInFlight.delete(nextId);
             }
             if (supervisorProjectKey(loadSupervisorSelectedProjectId()) !== nextId) return;
             renderSupervisor();
@@ -6170,6 +6312,7 @@ function renderSupervisor() {
             '<p class="small" style="margin:0;">Labor plan not available for this project</p>';
         }
         setSupervisorProjectedFinishDom("", { unavailableText: "Projected finish date unavailable" });
+        renderSupervisorSnapshotPanel({});
         if (typeof console !== "undefined" && console.log) {
           console.log("[supervisor-filter] kpi count", 0);
         }
@@ -6184,9 +6327,11 @@ function renderSupervisor() {
         delete supervisorProjectReportsCache[oldPid];
         delete supervisorProjectExpensesCache[oldPid];
         delete supervisorProjectChangeOrdersCache[oldPid];
+        delete supervisorProjectSnapshotCache[oldPid];
         supervisorProjectReportsFetchInFlight.delete(oldPid);
         supervisorProjectExpensesFetchInFlight.delete(oldPid);
         supervisorProjectChangeOrdersFetchInFlight.delete(oldPid);
+        supervisorProjectSnapshotFetchInFlight.delete(oldPid);
         clearSupervisorSwitchDomBleed();
         wipeSupervisorLocalScratchOnProjectSwitch(currentProject);
       }
@@ -6214,6 +6359,23 @@ function renderSupervisor() {
               supervisorProjectExpensesCache[pid] = { ok: true, expenses: data.expenses };
             } else {
               supervisorProjectExpensesCache[pid] = { ok: false, expenses: [] };
+            }
+            if ($("supervisorKpis") && supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
+              renderSupervisor();
+            }
+          });
+        }
+        if (!supervisorProjectSnapshotCache[pid] && !supervisorProjectSnapshotFetchInFlight.has(pid)) {
+          supervisorProjectSnapshotFetchInFlight.add(pid);
+          void fetchProjectSnapshot(pid).then((data) => {
+            supervisorProjectSnapshotFetchInFlight.delete(pid);
+            if (data && data.ok === true && data.snapshot) {
+              supervisorProjectSnapshotCache[pid] = { ok: true, snapshot: data.snapshot };
+            } else {
+              supervisorProjectSnapshotCache[pid] = {
+                ok: false,
+                error: (data && data.error) || "Snapshot unavailable.",
+              };
             }
             if ($("supervisorKpis") && supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
               renderSupervisor();
@@ -6397,6 +6559,24 @@ function renderSupervisor() {
                 String(maxDays.toFixed(2))
               )} budgeted days here), not the sum of all workers.
             </p>`;
+        }
+      }
+
+      if ($("supSnapshotGrid")) {
+        const snapCached = supervisorProjectSnapshotCache[pid];
+        const snapInflight = supervisorProjectSnapshotFetchInFlight.has(pid);
+        if (!isServerListedSupervisorProject(pid)) {
+          renderSupervisorSnapshotPanel({});
+        } else if (snapInflight && !snapCached) {
+          renderSupervisorSnapshotPanel({ loading: true });
+        } else if (snapCached && snapCached.ok === true && snapCached.snapshot) {
+          renderSupervisorSnapshotPanel({ snapshot: snapCached.snapshot });
+        } else if (snapCached && snapCached.ok === false) {
+          renderSupervisorSnapshotPanel({
+            error: snapCached.error || "Snapshot unavailable.",
+          });
+        } else {
+          renderSupervisorSnapshotPanel({ loading: true });
         }
       }
 
