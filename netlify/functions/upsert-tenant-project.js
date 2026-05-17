@@ -147,13 +147,24 @@ exports.handler = async (event) => {
       "operational_estimated_days_override",
       "estimated_days_override",
     ]);
+    const opHoursOverrideRaw = pickFinite(body, [
+      "operational_estimated_hours_override",
+      "estimated_hours_override",
+    ]);
     const opOverride = Number.isFinite(opOverrideRaw) ? opOverrideRaw : null;
+    const opHoursOverride = Number.isFinite(opHoursOverrideRaw) ? opHoursOverrideRaw : null;
     const opNormalized = normalizeOperationalPlan(
       body.operational_plan,
-      opOverride
+      opOverride,
+      hoursPerDay
     );
     const opMetrics = planHasDays(opNormalized)
-      ? computeOperationalPlanMetrics(opNormalized, opOverride)
+      ? computeOperationalPlanMetrics(
+          opNormalized,
+          opOverride,
+          opHoursOverride,
+          hoursPerDay
+        )
       : null;
 
     const row = {
@@ -212,6 +223,8 @@ exports.handler = async (event) => {
           quoteId,
           operationalPlan: opNormalized,
           estimatedDaysOverride: opOverride,
+          estimatedHoursOverride: opHoursOverride,
+          hoursPerDay,
           due_date: row.due_date,
           source: "mark_sold",
         });
@@ -244,6 +257,8 @@ exports.handler = async (event) => {
         quoteId,
         operationalPlan: opNormalized,
         estimatedDaysOverride: opOverride,
+        estimatedHoursOverride: opHoursOverride,
+        hoursPerDay,
         due_date: row.due_date,
         source: "mark_sold",
       });

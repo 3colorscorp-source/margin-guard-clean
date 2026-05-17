@@ -17,6 +17,8 @@ function str(v, max = 500) {
     .slice(0, max);
 }
 
+const DEFAULT_HOURS_PER_DAY = 8;
+
 const WORKER_TYPE_ALIASES = {
   pro: "pro",
   installer: "pro",
@@ -37,10 +39,18 @@ function normRoleLabel(raw, workerType) {
   return workerType === "helper" ? "Assistant" : "Installer";
 }
 
-function normalizeWorker(row) {
+function normalizeWorker(row, hoursPerDay) {
   if (!row || typeof row !== "object") return null;
   const worker_type = normWorkerType(row.worker_type ?? row.type);
-  const estimated_hours = Math.max(0, round2(row.estimated_hours ?? row.hours ?? 0));
+  const hpd = Math.max(num(hoursPerDay, DEFAULT_HOURS_PER_DAY), 0.25);
+  let estimated_hours = num(row.estimated_hours ?? row.hours, NaN);
+  if (!Number.isFinite(estimated_hours) || estimated_hours <= 0) {
+    const days = num(row.estimated_days ?? row.days ?? row.crew_days, NaN);
+    if (Number.isFinite(days) && days > 0) {
+      estimated_hours = round2(days * hpd);
+    }
+  }
+  estimated_hours = Math.max(0, round2(estimated_hours));
   if (estimated_hours <= 0) return null;
   return {
     role: normRoleLabel(row.role, worker_type),
@@ -49,7 +59,7 @@ function normalizeWorker(row) {
   };
 }
 
-function normalizeDay(row, fallbackDayNumber) {
+function normalizeDay(row, fallbackDayNumber, hoursPerDay) {
   if (!row || typeof row !== "object") return null;
   const day_number = Math.max(
     1,
@@ -57,7 +67,9 @@ function normalizeDay(row, fallbackDayNumber) {
   );
   const phase = str(row.phase, 240) || `Day ${day_number}`;
   const workersIn = Array.isArray(row.workers) ? row.workers : [];
-  const workers = workersIn.map(normalizeWorker).filter(Boolean);
+  const workers = workersIn
+    .map((w) => normalizeWorker(w, hoursPerDay))
+    .filter(Boolean);
   if (!workers.length) return null;
   return { day_number, phase, workers };
 }
@@ -65,9 +77,10 @@ function normalizeDay(row, fallbackDayNumber) {
 /**
  * @param {Array|object} input - array of days or { days, estimated_days_override }
  * @param {number|null} estimatedDaysOverride
+ * @param {number} [hoursPerDay]
  * @returns {Array<{day_number, phase, workers}>}
  */
-function normalizeOperationalPlan(input, estimatedDaysOverride = null) {
+function normalizeOperationalPlan(input, estimatedDaysOverride = null, hoursPerDay = DEFAULT_HOURS_PER_DAY) {
   let daysRaw = input;
   let override = estimatedDaysOverride;
 
@@ -78,12 +91,13 @@ function normalizeOperationalPlan(input, estimatedDaysOverride = null) {
     }
   }
 
+  const hpd = Math.max(num(hoursPerDay, DEFAULT_HOURS_PER_DAY), 0.25);
   const days = Array.isArray(daysRaw) ? daysRaw : [];
   const out = [];
   let i = 0;
   for (const row of days) {
     i += 1;
-    const day = normalizeDay(row, i);
+    const day = normalizeDay(row, i, hpd);
     if (day) out.push(day);
   }
   out.sort((a, b) => a.day_number - b.day_number);
@@ -97,9 +111,17 @@ function planHasDays(plan) {
 /**
  * @param {Array} normalizedPlan - output of normalizeOperationalPlan (array only)
  * @param {number|null} estimatedDaysOverride
+ * @param {number|null} [estimatedHoursOverride]
+ * @param {number} [hoursPerDay]
  */
-function computeOperationalPlanMetrics(normalizedPlan, estimatedDaysOverride = null) {
+function computeOperationalPlanMetrics(
+  normalizedPlan,
+  estimatedDaysOverride = null,
+  estimatedHoursOverride = null,
+  hoursPerDay = DEFAULT_HOURS_PER_DAY
+) {
   const days = Array.isArray(normalizedPlan) ? normalizedPlan : [];
+  const hpd = Math.max(num(hoursPerDay, DEFAULT_HOURS_PER_DAY), 0.25);
   const maxDay = days.reduce((mx, d) => Math.max(mx, num(d?.day_number, 0)), 0);
 
   let estimated_hours = 0;
@@ -113,15 +135,25 @@ function computeOperationalPlanMetrics(normalizedPlan, estimatedDaysOverride = n
       roleKeys.add(key);
     }
   }
+  estimated_hours = round2(estimated_hours);
 
-  const override = Number.isFinite(estimatedDaysOverride) ? estimatedDaysOverride : NaN;
+  const daysOv = Number.isFinite(estimatedDaysOverride) ? estimatedDaysOverride : NaN;
+  const hoursOv = Number.isFinite(estimatedHoursOverride) ? estimatedHoursOverride : NaN;
 
-  const estimated_days =
-    Number.isFinite(override) && override > 0 ? round2(override) : round2(maxDay);
+  let estimated_days =
+    Number.isFinite(daysOv) && daysOv > 0 ? round2(daysOv) : round2(maxDay);
+
+  if (Number.isFinite(hoursOv) && hoursOv > 0) {
+    estimated_hours = round2(hoursOv);
+  }
+
+  if ((!Number.isFinite(daysOv) || daysOv <= 0) && estimated_hours > 0 && maxDay <= 0) {
+    estimated_days = round2(estimated_hours / hpd);
+  }
 
   return {
     estimated_days,
-    estimated_hours: round2(estimated_hours),
+    estimated_hours,
     worker_count: roleKeys.size,
     max_day_number: round2(maxDay),
   };

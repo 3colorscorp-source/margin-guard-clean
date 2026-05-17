@@ -1,5 +1,6 @@
 /**
  * Sales operational execution plan (browser) — schedule only, no financial fields.
+ * UI unit mode follows Business Settings pricingMode (day | hour).
  */
 (function (global) {
   function num(v, fallback) {
@@ -24,6 +25,15 @@
     assistant: "helper",
   };
 
+  function getOperationalPlanUnitMode(settings) {
+    const pm = str(settings && settings.pricingMode, 16).toLowerCase();
+    return pm === "day" ? "day" : "hour";
+  }
+
+  function getHoursPerDay(settings) {
+    return Math.max(num(settings && settings.hoursPerDay, 8), 0.25);
+  }
+
   function normWorkerType(raw) {
     const key = str(raw, 64).toLowerCase();
     return WORKER_TYPE_ALIASES[key] || "pro";
@@ -35,10 +45,32 @@
     return workerType === "helper" ? "Assistant" : "Installer";
   }
 
-  function normalizeWorker(row) {
+  function workerHoursToDisplayUnits(worker, mode, hoursPerDay) {
+    const hours = num(worker && worker.estimated_hours, 0);
+    const hpd = Math.max(num(hoursPerDay, 8), 0.25);
+    if (mode === "day") return round2(hours / hpd);
+    return round2(hours);
+  }
+
+  function setWorkerDisplayUnits(worker, displayValue, mode, hoursPerDay) {
+    if (!worker || typeof worker !== "object") return;
+    const hpd = Math.max(num(hoursPerDay, 8), 0.25);
+    const v = Math.max(0, num(displayValue, 0));
+    worker.estimated_hours = mode === "day" ? round2(v * hpd) : round2(v);
+  }
+
+  function normalizeWorker(row, hoursPerDay) {
     if (!row || typeof row !== "object") return null;
     const worker_type = normWorkerType(row.worker_type || row.type);
-    const estimated_hours = Math.max(0, round2(row.estimated_hours ?? row.hours ?? 0));
+    const hpd = Math.max(num(hoursPerDay, 8), 0.25);
+    let estimated_hours = num(row.estimated_hours, NaN);
+    if (!Number.isFinite(estimated_hours) || estimated_hours <= 0) {
+      const days = num(row.estimated_days ?? row.days ?? row.crew_days, NaN);
+      if (Number.isFinite(days) && days > 0) {
+        estimated_hours = round2(days * hpd);
+      }
+    }
+    estimated_hours = Math.max(0, round2(estimated_hours));
     if (estimated_hours <= 0) return null;
     return {
       role: normRoleLabel(row.role, worker_type),
@@ -47,18 +79,20 @@
     };
   }
 
-  function normalizeDay(row, fallbackDayNumber) {
+  function normalizeDay(row, fallbackDayNumber, hoursPerDay) {
     if (!row || typeof row !== "object") return null;
     const day_number = Math.max(1, Math.floor(num(row.day_number, fallbackDayNumber)));
     const phase = str(row.phase, 240) || "Day " + day_number;
     const workers = (Array.isArray(row.workers) ? row.workers : [])
-      .map(normalizeWorker)
+      .map(function (w) {
+        return normalizeWorker(w, hoursPerDay);
+      })
       .filter(Boolean);
     if (!workers.length) return null;
     return { day_number, phase, workers };
   }
 
-  function normalizeOperationalPlan(input, estimatedDaysOverride) {
+  function normalizeOperationalPlan(input, estimatedDaysOverride, hoursPerDay) {
     let daysRaw = input;
     let override = estimatedDaysOverride;
     if (input && typeof input === "object" && !Array.isArray(input)) {
@@ -67,12 +101,13 @@
         override = num(input.estimated_days_override, NaN);
       }
     }
+    const hpd = Math.max(num(hoursPerDay, 8), 0.25);
     const days = Array.isArray(daysRaw) ? daysRaw : [];
     const out = [];
     let i = 0;
     for (const row of days) {
       i += 1;
-      const day = normalizeDay(row, i);
+      const day = normalizeDay(row, i, hpd);
       if (day) out.push(day);
     }
     out.sort(function (a, b) {
@@ -85,8 +120,14 @@
     return Array.isArray(plan) && plan.length > 0;
   }
 
-  function computeOperationalPlanMetrics(normalizedPlan, estimatedDaysOverride) {
+  function computeOperationalPlanMetrics(
+    normalizedPlan,
+    estimatedDaysOverride,
+    estimatedHoursOverride,
+    hoursPerDay
+  ) {
     const days = Array.isArray(normalizedPlan) ? normalizedPlan : [];
+    const hpd = Math.max(num(hoursPerDay, 8), 0.25);
     const maxDay = days.reduce(function (mx, d) {
       return Math.max(mx, num(d && d.day_number, 0));
     }, 0);
@@ -102,30 +143,83 @@
         roleKeys[key] = true;
       });
     });
-    const override = Number.isFinite(estimatedDaysOverride) ? estimatedDaysOverride : NaN;
-    const estimated_days =
-      Number.isFinite(override) && override > 0 ? round2(override) : round2(maxDay);
+    estimated_hours = round2(estimated_hours);
+
+    const daysOv = Number.isFinite(estimatedDaysOverride) ? estimatedDaysOverride : NaN;
+    const hoursOv = Number.isFinite(estimatedHoursOverride) ? estimatedHoursOverride : NaN;
+
+    let estimated_days =
+      Number.isFinite(daysOv) && daysOv > 0 ? round2(daysOv) : round2(maxDay);
+
+    if (Number.isFinite(hoursOv) && hoursOv > 0) {
+      estimated_hours = round2(hoursOv);
+    }
+
+    if ((!Number.isFinite(daysOv) || daysOv <= 0) && estimated_hours > 0 && maxDay <= 0) {
+      estimated_days = round2(estimated_hours / hpd);
+    }
+
     return {
       estimated_days: estimated_days,
-      estimated_hours: round2(estimated_hours),
+      estimated_hours: estimated_hours,
       worker_count: Object.keys(roleKeys).length,
       max_day_number: round2(maxDay),
     };
   }
 
-  function createEmptyDay(dayNumber) {
+  function formatOperationalSummary(metrics, mode) {
+    if (!metrics) return "No schedule yet";
+    if (mode === "day") {
+      return metrics.estimated_days + " days · " + metrics.worker_count + " roles";
+    }
+    return metrics.estimated_hours + " hours · " + metrics.worker_count + " roles";
+  }
+
+  function formatMetricsHtml(metrics, mode) {
+    if (!metrics) {
+      return '<p class="small" style="margin:0;">Add schedule days or apply a template.</p>';
+    }
+    if (mode === "day") {
+      return (
+        '<div class="sales-operational-metrics__grid sales-operational-metrics__grid--day">' +
+        '<div><strong>Estimated project days</strong><br>' +
+        metrics.estimated_days +
+        "</div>" +
+        '<div><strong>Crew roles</strong><br>' +
+        metrics.worker_count +
+        "</div>" +
+        "</div>"
+      );
+    }
+    return (
+      '<div class="sales-operational-metrics__grid sales-operational-metrics__grid--hour">' +
+      '<div><strong>Estimated project hours</strong><br>' +
+      metrics.estimated_hours +
+      "</div>" +
+      '<div><strong>Crew roles</strong><br>' +
+      metrics.worker_count +
+      "</div>" +
+      "</div>"
+    );
+  }
+
+  function createEmptyDay(dayNumber, mode, hoursPerDay) {
+    const hpd = Math.max(num(hoursPerDay, 8), 0.25);
+    const unitHours = mode === "day" ? hpd : 8;
     return {
       day_number: Math.max(1, Math.floor(num(dayNumber, 1))),
       phase: "",
       workers: [
-        { role: "Installer", worker_type: "pro", estimated_hours: 8 },
-        { role: "Assistant", worker_type: "helper", estimated_hours: 8 },
+        { role: "Installer", worker_type: "pro", estimated_hours: unitHours },
+        { role: "Assistant", worker_type: "helper", estimated_hours: unitHours },
       ],
     };
   }
 
-  function createEmptyWorker() {
-    return { role: "Installer", worker_type: "pro", estimated_hours: 8 };
+  function createEmptyWorker(mode, hoursPerDay) {
+    const hpd = Math.max(num(hoursPerDay, 8), 0.25);
+    const unitHours = mode === "day" ? hpd : 8;
+    return { role: "Installer", worker_type: "pro", estimated_hours: unitHours };
   }
 
   const OPERATIONAL_PLAN_TEMPLATES = {
@@ -199,8 +293,14 @@
   }
 
   global.MgSalesOperationalPlan = {
+    getOperationalPlanUnitMode: getOperationalPlanUnitMode,
+    getHoursPerDay: getHoursPerDay,
+    workerHoursToDisplayUnits: workerHoursToDisplayUnits,
+    setWorkerDisplayUnits: setWorkerDisplayUnits,
     normalizeOperationalPlan: normalizeOperationalPlan,
     computeOperationalPlanMetrics: computeOperationalPlanMetrics,
+    formatOperationalSummary: formatOperationalSummary,
+    formatMetricsHtml: formatMetricsHtml,
     planHasDays: planHasDays,
     createEmptyDay: createEmptyDay,
     createEmptyWorker: createEmptyWorker,

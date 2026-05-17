@@ -48,9 +48,20 @@ async function persistOperationalSnapshot(params) {
       ? null
       : num(overrideRaw, NaN);
 
+  const hoursOverrideRaw = params?.estimatedHoursOverride ?? params?.operational_estimated_hours_override;
+  const hoursOverride =
+    hoursOverrideRaw == null || hoursOverrideRaw === ""
+      ? null
+      : num(hoursOverrideRaw, NaN);
+  const hoursPerDay = Math.max(
+    num(params?.hoursPerDay ?? params?.hours_per_day, 8),
+    0.25
+  );
+
   const normalized = normalizeOperationalPlan(
     params?.operationalPlan,
-    Number.isFinite(override) && override > 0 ? override : null
+    Number.isFinite(override) && override > 0 ? override : null,
+    hoursPerDay
   );
 
   if (!planHasDays(normalized)) {
@@ -59,7 +70,9 @@ async function persistOperationalSnapshot(params) {
 
   const metrics = computeOperationalPlanMetrics(
     normalized,
-    Number.isFinite(override) && override > 0 ? override : null
+    Number.isFinite(override) && override > 0 ? override : null,
+    Number.isFinite(hoursOverride) && hoursOverride > 0 ? hoursOverride : null,
+    hoursPerDay
   );
 
   const tid = encodeURIComponent(tenantId);

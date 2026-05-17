@@ -207,8 +207,8 @@
                 <span class="sales-operational__meta" id="salesOperationalSummary">No schedule yet</span>
               </summary>
               <div class="sales-operational__body">
-                <p class="sub sales-operational__lead">
-                  Define daily phases and crew hours for Supervisor execution. This does not change pricing.
+                <p class="sub sales-operational__lead" id="salesOperationalLead">
+                  Define daily phases and crew schedule for Supervisor execution. Units follow Business Settings.
                 </p>
                 <div class="form sales-operational__toolbar">
                   <div class="field">
@@ -220,10 +220,15 @@
                       <button type="button" class="btn" id="btnApplyOperationalTemplate">Apply template</button>
                     </div>
                   </div>
-                  <div class="field">
-                    <label>Estimated project days (override)</label>
+                  <div class="field" id="salesOperationalOverrideDaysWrap">
+                    <label id="salesOperationalOverrideDaysLabel">Estimated project days (override)</label>
                     <input id="salesOperationalDaysOverride" type="number" min="0" step="0.25" placeholder="Auto from max day" />
-                    <div class="hint">Leave blank to use the highest day number in the plan.</div>
+                    <div class="hint" id="salesOperationalOverrideDaysHint">Leave blank to use the highest day number in the plan.</div>
+                  </div>
+                  <div class="field" id="salesOperationalOverrideHoursWrap" style="display:none;">
+                    <label id="salesOperationalOverrideHoursLabel">Estimated project hours (override)</label>
+                    <input id="salesOperationalHoursOverride" type="number" min="0" step="0.25" placeholder="Auto from crew hours total" />
+                    <div class="hint" id="salesOperationalOverrideHoursHint">Leave blank to sum crew hours in the plan.</div>
                   </div>
                 </div>
                 <div class="sales-operational-metrics" id="salesOperationalMetrics" aria-live="polite"></div>
@@ -414,6 +419,9 @@
         if (state.operational_estimated_days_override == null) {
           state.operational_estimated_days_override = '';
         }
+        if (state.operational_estimated_hours_override == null) {
+          state.operational_estimated_hours_override = '';
+        }
         return state;
       }
 
@@ -428,12 +436,46 @@
         return Number.isFinite(n) && n > 0 ? n : null;
       }
 
-      function getOperationalMetricsForState(state) {
+      function readOperationalHoursOverride(state) {
+        const raw = state && state.operational_estimated_hours_override;
+        if (raw === '' || raw == null) return null;
+        const n = Number(raw);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      }
+
+      function getOperationalMetricsForState(state, settings) {
         const api = getOperationalPlanApi();
         if (!api) return null;
-        const plan = api.normalizeOperationalPlan(state.operational_plan || []);
-        const override = readOperationalDaysOverride(state);
-        return api.computeOperationalPlanMetrics(plan, override);
+        const s = settings || loadSettings();
+        const hpd = api.getHoursPerDay(s);
+        const plan = api.normalizeOperationalPlan(state.operational_plan || [], null, hpd);
+        const mode = api.getOperationalPlanUnitMode(s);
+        const daysOv = readOperationalDaysOverride(state);
+        const hoursOv = readOperationalHoursOverride(state);
+        return api.computeOperationalPlanMetrics(
+          plan,
+          mode === 'day' ? daysOv : null,
+          mode === 'hour' ? hoursOv : null,
+          hpd
+        );
+      }
+
+      function applyOperationalPlanUnitModeToChrome(settings) {
+        const api = getOperationalPlanApi();
+        if (!api) return 'hour';
+        const mode = api.getOperationalPlanUnitMode(settings || loadSettings());
+        const daysWrap = document.getElementById('salesOperationalOverrideDaysWrap');
+        const hoursWrap = document.getElementById('salesOperationalOverrideHoursWrap');
+        const lead = document.getElementById('salesOperationalLead');
+        if (daysWrap) daysWrap.style.display = mode === 'day' ? '' : 'none';
+        if (hoursWrap) hoursWrap.style.display = mode === 'hour' ? '' : 'none';
+        if (lead) {
+          lead.textContent =
+            mode === 'day'
+              ? 'Define daily phases and crew-days for Supervisor execution. Units follow Business Settings (days).'
+              : 'Define daily phases and crew hours for Supervisor execution. Units follow Business Settings (hours).';
+        }
+        return mode;
       }
 
       function escapeHtmlOperational(text) {
@@ -448,40 +490,51 @@
         const host = document.getElementById('salesOperationalDaysHost');
         const summaryEl = document.getElementById('salesOperationalSummary');
         const metricsEl = document.getElementById('salesOperationalMetrics');
-        const overrideInput = document.getElementById('salesOperationalDaysOverride');
+        const daysOverrideInput = document.getElementById('salesOperationalDaysOverride');
+        const hoursOverrideInput = document.getElementById('salesOperationalHoursOverride');
         if (!host) return;
 
         const state = loadSalesState();
+        const settings = loadSettings();
         const api = getOperationalPlanApi();
         if (!api) {
           host.innerHTML = '<p class="small">Operational plan module not loaded.</p>';
           return;
         }
 
+        const mode = applyOperationalPlanUnitModeToChrome(settings);
+        const hpd = api.getHoursPerDay(settings);
         const plan = Array.isArray(state.operational_plan) ? state.operational_plan : [];
-        if (overrideInput && document.activeElement !== overrideInput) {
-          overrideInput.value =
+
+        if (daysOverrideInput && document.activeElement !== daysOverrideInput) {
+          daysOverrideInput.value =
             state.operational_estimated_days_override === '' ||
             state.operational_estimated_days_override == null
               ? ''
               : String(state.operational_estimated_days_override);
         }
+        if (hoursOverrideInput && document.activeElement !== hoursOverrideInput) {
+          hoursOverrideInput.value =
+            state.operational_estimated_hours_override === '' ||
+            state.operational_estimated_hours_override == null
+              ? ''
+              : String(state.operational_estimated_hours_override);
+        }
 
-        const metrics = getOperationalMetricsForState(state);
+        const metrics = getOperationalMetricsForState(state, settings);
         if (summaryEl) {
           summaryEl.textContent = api.planHasDays(plan)
-            ? metrics.estimated_days + ' days · ' + metrics.estimated_hours + ' h · ' + metrics.worker_count + ' roles'
+            ? api.formatOperationalSummary(metrics, mode)
             : 'No schedule yet';
         }
         if (metricsEl) {
           metricsEl.innerHTML = api.planHasDays(plan)
-            ? '<div class="sales-operational-metrics__grid">' +
-              '<div><strong>Estimated days</strong><br>' + metrics.estimated_days + '</div>' +
-              '<div><strong>Estimated hours</strong><br>' + metrics.estimated_hours + '</div>' +
-              '<div><strong>Crew roles</strong><br>' + metrics.worker_count + '</div>' +
-              '</div>'
-            : '<p class="small" style="margin:0;">Add days or apply a template to build the field schedule.</p>';
+            ? api.formatMetricsHtml(metrics, mode)
+            : '<p class="small" style="margin:0;">Add schedule days or apply a template to build the field schedule.</p>';
         }
+
+        const unitLabel = mode === 'day' ? 'd' : 'h';
+        const unitStep = '0.25';
 
         host.innerHTML = plan
           .map(function (day, dayIndex) {
@@ -489,6 +542,7 @@
             const workerRows = workers
               .map(function (worker, workerIndex) {
                 const wt = worker.worker_type === 'helper' ? 'helper' : 'pro';
+                const displayUnits = api.workerHoursToDisplayUnits(worker, mode, hpd);
                 return (
                   '<div class="sales-operational-worker" data-day-index="' +
                   dayIndex +
@@ -506,10 +560,14 @@
                   (wt === 'helper' ? ' selected' : '') +
                   '>Assistant</option>' +
                   '</select>' +
-                  '<input class="sales-op-hours" data-field="estimated_hours" type="number" min="0" step="0.25" value="' +
-                  escapeHtmlOperational(worker.estimated_hours != null ? worker.estimated_hours : 8) +
+                  '<input class="sales-op-units" data-field="estimated_units" type="number" min="0" step="' +
+                  unitStep +
+                  '" value="' +
+                  escapeHtmlOperational(displayUnits) +
                   '" />' +
-                  '<span class="small">h</span>' +
+                  '<span class="small sales-op-unit-label">' +
+                  unitLabel +
+                  '</span>' +
                   '<button type="button" class="btn danger sales-op-remove-worker" data-action="remove-worker">Remove</button>' +
                   '</div>'
                 );
@@ -565,6 +623,7 @@
             const state = loadSalesState();
             state.operational_plan = api.applyTemplate(key);
             state.operational_estimated_days_override = '';
+            state.operational_estimated_hours_override = '';
             saveSalesState(state);
             refreshSellerFromStandalone();
           }, true);
@@ -576,20 +635,38 @@
           addDayBtn.addEventListener('click', function (event) {
             event.preventDefault();
             const state = loadSalesState();
+            const settings = loadSettings();
             const nextDay = (state.operational_plan || []).length + 1;
             state.operational_plan = state.operational_plan || [];
-            state.operational_plan.push(api.createEmptyDay(nextDay));
+            state.operational_plan.push(
+              api.createEmptyDay(
+                nextDay,
+                api.getOperationalPlanUnitMode(settings),
+                api.getHoursPerDay(settings)
+              )
+            );
             saveSalesState(state);
             refreshSellerFromStandalone();
           }, true);
         }
 
-        const overrideInput = document.getElementById('salesOperationalDaysOverride');
-        if (overrideInput && !overrideInput.dataset.bound) {
-          overrideInput.dataset.bound = '1';
-          overrideInput.addEventListener('change', function () {
+        const daysOverrideInput = document.getElementById('salesOperationalDaysOverride');
+        if (daysOverrideInput && !daysOverrideInput.dataset.bound) {
+          daysOverrideInput.dataset.bound = '1';
+          daysOverrideInput.addEventListener('change', function () {
             const state = loadSalesState();
-            state.operational_estimated_days_override = overrideInput.value;
+            state.operational_estimated_days_override = daysOverrideInput.value;
+            saveSalesState(state);
+            renderSalesOperationalPlanStandalone();
+          });
+        }
+
+        const hoursOverrideInput = document.getElementById('salesOperationalHoursOverride');
+        if (hoursOverrideInput && !hoursOverrideInput.dataset.bound) {
+          hoursOverrideInput.dataset.bound = '1';
+          hoursOverrideInput.addEventListener('change', function () {
+            const state = loadSalesState();
+            state.operational_estimated_hours_override = hoursOverrideInput.value;
             saveSalesState(state);
             renderSalesOperationalPlanStandalone();
           });
@@ -616,8 +693,14 @@
               return;
             }
             if (action === 'add-worker' && dayIndex >= 0 && state.operational_plan[dayIndex]) {
+              const settings = loadSettings();
               state.operational_plan[dayIndex].workers = state.operational_plan[dayIndex].workers || [];
-              state.operational_plan[dayIndex].workers.push(api.createEmptyWorker());
+              state.operational_plan[dayIndex].workers.push(
+                api.createEmptyWorker(
+                  api.getOperationalPlanUnitMode(settings),
+                  api.getHoursPerDay(settings)
+                )
+              );
               saveSalesState(state);
               refreshSellerFromStandalone();
               return;
@@ -641,11 +724,16 @@
             if (!state.operational_plan || !state.operational_plan[dayIndex]) return;
 
             if (workerRow) {
+              const settings = loadSettings();
+              const mode = api.getOperationalPlanUnitMode(settings);
+              const hpd = api.getHoursPerDay(settings);
               const workerIndex = Number(workerRow.dataset.workerIndex);
               const worker = state.operational_plan[dayIndex].workers[workerIndex];
               if (!worker) return;
               const key = field.dataset.field;
-              if (key === 'estimated_hours') {
+              if (key === 'estimated_units') {
+                api.setWorkerDisplayUnits(worker, field.value, mode, hpd);
+              } else if (key === 'estimated_hours') {
                 worker.estimated_hours = Number(field.value || 0);
               } else if (key === 'worker_type') {
                 worker.worker_type = field.value === 'helper' ? 'helper' : 'pro';
@@ -728,6 +816,7 @@
           baseInstaller: 75,
           baseHelper: 45,
           currency: 'USD',
+          pricingMode: 'hour',
           hoursPerDay: 8,
           wcPct: 10,
           ficaPct: 7.65,
@@ -1796,7 +1885,8 @@
           depositRequired: '',
           _manualPriceTouched: false,
           operational_plan: [],
-          operational_estimated_days_override: ''
+          operational_estimated_days_override: '',
+          operational_estimated_hours_override: ''
         };
 
         _securePricingCache = { fingerprint: null, pricing: null };
@@ -1986,7 +2076,8 @@
                     estimated_profit_margin: estMargin,
                     workers: state.workers,
                     operational_plan: state.operational_plan || [],
-                    operational_estimated_days_override: state.operational_estimated_days_override || ''
+                    operational_estimated_days_override: state.operational_estimated_days_override || '',
+                    operational_estimated_hours_override: state.operational_estimated_hours_override || ''
                   })
                 });
               })().catch(function () { /* non-fatal */ });
