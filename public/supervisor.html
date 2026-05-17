@@ -37,18 +37,9 @@
 
     <section class="card owner-hero">
       <div class="card-inner">
-        <div class="owner-hero-inner">
-          <div>
-            <span class="eyebrow">Field Control</span>
-            <h2 class="hero-title">Reporta avance real y deja que el sistema te diga si vas bien o si debes apurarte.</h2>
-            <div class="sub" style="margin:0;">Supervisor solo trabaja sobre proyectos firmados desde Vendedor. Aqui reporta horas, dias y gastos imprevistos.</div>
-          </div>
-          <div class="hero-score">
-            <div class="hero-score-label">Semaforo</div>
-            <div class="hero-score-value" id="supHeroState">Base</div>
-            <div class="hero-score-meta" id="supHeroMeta">Esperando avance real para evaluar el proyecto.</div>
-          </div>
-        </div>
+        <span class="eyebrow">Field execution</span>
+        <h2 class="hero-title" style="margin:8px 0 6px;font-size:1.35rem;">Run the job on schedule.</h2>
+        <p class="sub" style="margin:0;">Signed projects only. Report crew days, hours, and field expenses below.</p>
       </div>
     </section>
 
@@ -58,163 +49,108 @@
           <div class="card-inner">
             <div class="section-head">
               <div>
-                <h2>Datos del proyecto</h2>
-                <div class="sub">Estos datos llegan del proyecto activo firmado en Vendedor.</div>
+                <h2>Project</h2>
+                <p class="sub">Select a signed project to run in the field.</p>
               </div>
-              <div class="badge amber" id="supStatus">Esperando</div>
             </div>
 
             <div class="form">
               <div class="field">
-                <label>Proyecto seleccionado</label>
+                <label>Active project</label>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
                   <select id="supProjectPicker" style="flex:1;min-width:200px;"></select>
-                  <button type="button" class="btn" id="supAssignToMeBtn">Assign this project to me</button>
+                  <button type="button" class="btn" id="supAssignToMeBtn">Assign to me</button>
                 </div>
                 <div class="small" id="supAssignFeedback" style="margin-top:6px;min-height:1.25em;" aria-live="polite"></div>
+                <p class="small" style="margin-top:4px;"><strong id="supPortfolioCount">0</strong> signed projects available</p>
               </div>
-              <div class="field">
-                <label>Proyectos firmados</label>
-                <div class="notice"><strong id="supPortfolioCount">0</strong> proyectos activos disponibles</div>
+            </div>
+
+            <div id="supExecHero" class="sup-exec-hero" style="display:none;">
+              <div class="sup-exec-hero__top">
+                <div>
+                  <h2 class="sup-exec-hero__title" id="supHeroProjectName">—</h2>
+                  <div class="sup-exec-hero__chips">
+                    <span class="sup-exec-chip" id="supHeroDurationLabel">—</span>
+                    <span class="sup-exec-chip" id="supHeroDayProgress">—</span>
+                  </div>
+                </div>
+                <span class="badge green sup-exec-hero__status" id="supHeroStatusBadge">ON SCHEDULE</span>
               </div>
+              <p class="sup-exec-hero__status-line" id="supHeroStatusLine">On pace</p>
+              <div class="sup-exec-progress">
+                <div class="sup-exec-progress__track"><div class="sup-exec-progress__fill" id="supHeroProgressFill" style="width:0%;"></div></div>
+                <span class="sup-exec-progress__label" id="supHeroProgressPct">0% complete</span>
+              </div>
+              <div class="sup-exec-hero__grid">
+                <div class="sup-exec-hero__cell">
+                  <span class="sup-exec-hero__label">Start</span>
+                  <strong id="supHeroStart">—</strong>
+                </div>
+                <div class="sup-exec-hero__cell">
+                  <span class="sup-exec-hero__label">Target finish</span>
+                  <strong id="supHeroTarget">—</strong>
+                </div>
+                <div class="sup-exec-hero__cell sup-exec-hero__cell--wide">
+                  <span class="sup-exec-hero__label">Crew</span>
+                  <strong id="supHeroCrew">—</strong>
+                </div>
+              </div>
+            </div>
+
+            <div id="supTodayTarget" class="sup-today-target" style="display:none;">
+              <h3 class="sup-section-title">Today&rsquo;s target</h3>
+              <p class="sup-today-target__phase" id="supTodayPhase">—</p>
+              <p class="sup-today-target__crew small" id="supTodayCrew">—</p>
             </div>
 
             <div class="sep"></div>
 
-            <div class="supervisor-summary-grid">
-              <div class="supervisor-summary-card">
-                <div class="title">Proyecto</div>
-                <div class="big" id="supProjectLabel">Sin proyecto</div>
-                <div class="small">Asignado al supervisor</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Start date</div>
-                <div class="big" id="supStartDateLabel">No start date set</div>
-                <div class="small">When the project was signed</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Target finish</div>
-                <div class="big" id="supDueDateLabel">No target finish date set</div>
-                <div class="small">Commitment from Sales</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Dias estimados</div>
-                <div class="big" id="supEstimatedDaysLabel">0</div>
-                <div class="small">Meta planeada del proyecto</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Gastos imprevistos (registros)</div>
-                <div class="big" id="supSummaryRegisteredExtras">0</div>
-                <div class="small">Cuantas entradas en gasto imprevisto (sin importes)</div>
-              </div>
-            </div>
+            <section class="sup-exec-plan-section">
+              <h3 class="sup-section-title">Execution plan</h3>
+              <div id="supLaborPlanBody" class="sup-exec-plan-list"></div>
+            </section>
 
             <div class="sep"></div>
 
-            <div class="section-head" style="margin-bottom:8px;">
-              <div>
-                <h2 style="margin:0;font-size:1.1rem;">FIELD PERFORMANCE SNAPSHOT</h2>
-                <div class="sub" style="margin:4px 0 0;">Labor pace, schedule, and bonus progress (operational only).</div>
+            <section>
+              <div class="section-head" style="margin-bottom:8px;">
+                <div>
+                  <h3 class="sup-section-title" style="margin:0;">Field execution snapshot</h3>
+                </div>
+                <span class="badge green" id="supOpRiskBadge" style="display:none;">—</span>
               </div>
-              <div class="badge amber" id="supOpRiskBadge" style="display:none;">—</div>
-            </div>
-            <div id="supSnapshotLoading" class="notice" style="display:none;margin-bottom:10px;">Loading field snapshot…</div>
-            <div id="supSnapshotError" class="notice" style="display:none;margin-bottom:10px;color:#b42318;"></div>
-            <div id="supSnapshotGrid" class="supervisor-summary-grid" style="display:none;">
-              <div class="supervisor-summary-card">
-                <div class="title">Labor budget</div>
-                <div class="big" id="supOpLaborBudget">—</div>
-                <div class="small">Quoted labor allowance</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Actual labor</div>
-                <div class="big" id="supOpActualLabor">—</div>
-                <div class="small">Consumed labor cost</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Remaining labor budget</div>
-                <div class="big" id="supOpRemainingLabor">—</div>
-                <div class="small">Budget minus consumed</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Estimated days</div>
-                <div class="big" id="supOpEstimatedDays">—</div>
-                <div class="small">Plan / quoted timeline</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Actual days</div>
-                <div class="big" id="supOpActualDays">—</div>
-                <div class="small">Reported crew days</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Days remaining</div>
-                <div class="big" id="supOpDaysRemaining">—</div>
-                <div class="small">Estimated minus actual days</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Estimated hours</div>
-                <div class="big" id="supOpEstimatedHours">—</div>
-                <div class="small">From labor plan</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Actual hours</div>
-                <div class="big" id="supOpActualHours">—</div>
-                <div class="small">Reported hours</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Schedule deviation</div>
-                <div class="big" id="supOpLaborDeviation">—</div>
-                <div class="small" id="supOpLaborDeviationLabel">—</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Completion pace</div>
-                <div class="big" id="supOpCompletionPace">—</div>
-                <div class="small">Actual vs estimated days</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Supervisor bonus</div>
-                <div class="big" id="supOpBonusAmount">—</div>
-                <div class="small" id="supOpBonusMeta">—</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Field reports</div>
-                <div class="big" id="supOpReportCount">—</div>
-                <div class="small">Submitted reports</div>
-              </div>
-              <div class="supervisor-summary-card">
-                <div class="title">Field expenses</div>
-                <div class="big" id="supOpExpenseCount">—</div>
-                <div class="small">Logged expense entries</div>
-              </div>
-            </div>
+              <div id="supSnapshotLoading" class="notice" style="display:none;margin-bottom:10px;">Loading snapshot…</div>
+              <div id="supSnapshotError" class="notice" style="display:none;margin-bottom:10px;color:#b42318;"></div>
 
-            <div id="supOpRiskMeta" class="small" style="display:none;margin-top:8px;line-height:1.45;color:var(--muted,#666);"></div>
-
-            <div class="sep"></div>
-
-
-            <div class="field">
-              <label>Labor plan</label>
-              <div class="small" style="margin-bottom:8px;line-height:1.45;">
-                Budgeted crew from the signed quote (read-only). Shows worker, role, budgeted days and hours only.
+              <div id="supSnapshotGrid" style="display:none;">
+                <h4 class="sup-snapshot-group">Timeline</h4>
+                <div class="supervisor-summary-grid sup-snapshot-grid">
+                  <div class="supervisor-summary-card"><div class="title">Estimated days</div><div class="big" id="supOpEstimatedDays">—</div></div>
+                  <div class="supervisor-summary-card"><div class="title">Actual days</div><div class="big" id="supOpActualDays">—</div></div>
+                  <div class="supervisor-summary-card"><div class="title">Remaining days</div><div class="big" id="supOpDaysRemaining">—</div></div>
+                </div>
+                <h4 class="sup-snapshot-group">Crew activity</h4>
+                <div class="supervisor-summary-grid sup-snapshot-grid">
+                  <div class="supervisor-summary-card"><div class="title">Estimated crew hours</div><div class="big" id="supOpEstimatedHours">—</div></div>
+                  <div class="supervisor-summary-card"><div class="title">Reported hours</div><div class="big" id="supOpActualHours">—</div></div>
+                  <div class="supervisor-summary-card"><div class="title">Field reports</div><div class="big" id="supOpReportCount">—</div></div>
+                  <div class="supervisor-summary-card"><div class="title">Expense entries</div><div class="big" id="supOpExpenseCount">—</div></div>
+                </div>
+                <h4 class="sup-snapshot-group">Execution</h4>
+                <div class="supervisor-summary-grid sup-snapshot-grid">
+                  <div class="supervisor-summary-card"><div class="title">Completion pace</div><div class="big" id="supOpCompletionPace">—</div></div>
+                  <div class="supervisor-summary-card"><div class="title">Schedule deviation</div><div class="big" id="supOpLaborDeviation">—</div><div class="small" id="supOpLaborDeviationLabel">—</div></div>
+                  <div class="supervisor-summary-card"><div class="title">Operational risk</div><div class="big" id="supOpOperationalRisk">—</div></div>
+                </div>
+                <h4 class="sup-snapshot-group">Bonus</h4>
+                <div class="supervisor-summary-grid sup-snapshot-grid">
+                  <div class="supervisor-summary-card"><div class="title">Bonus status</div><div class="big" id="supOpBonusStatus">—</div></div>
+                  <div class="supervisor-summary-card"><div class="title">Pace toward bonus</div><div class="big" id="supOpBonusPace">—</div></div>
+                </div>
               </div>
-              <div id="supLaborPlanBody"></div>
-            </div>
-
-            <div class="sep"></div>
-
-            <div class="form">
-              <div class="field">
-                <label>Fecha proyectada final</label>
-                <div class="big" id="supProjectedFinishDisplay" style="min-height:1.25em;">—</div>
-                <p class="small" id="supProjectedFinishMeta" style="margin:6px 0 0;line-height:1.45;color:var(--muted,#666);"></p>
-              </div>
-            </div>
-
-            <div class="dashboard-note">
-              <div class="dashboard-note-title">Lectura operativa</div>
-              <div class="dashboard-note-copy" id="supExecutiveNote">Cuando reportes horas, dias y gastos extra, aqui veras si el proyecto sigue sano o si debes acelerar.</div>
-            </div>
+              <div id="supOpRiskMeta" class="small" style="display:none;margin-top:8px;"></div>
+            </section>
           </div>
         </div>
 
@@ -320,44 +256,20 @@
       <div>
         <div class="card owner-side-card">
           <div class="card-inner">
-            <h2>Tablero del supervisor</h2>
-            <div class="sub">Solo ejecucion: dias presupuestados vs gastados, avance y desviacion operativa.</div>
-
-            <div class="owner-kpi-shell">
-              <div class="owner-quote-hero">
-                <div class="owner-quote-kicker">Avance de obra (dias)</div>
-                <div class="owner-quote-price" id="supPrimaryOpProgress">—</div>
-                <div class="owner-quote-meta" id="supPrimaryOpMeta">dias_gastados / dias_presupuestados cuando aplica.</div>
-                <div class="owner-quote-strip">
-                  <div class="owner-mini-card">
-                    <div class="title">Dias presupuestados</div>
-                    <div class="big" id="supPrimaryBudgetedDays">0</div>
-                    <div class="small" id="supPrimaryBudgetedMeta">Meta estimated_days del proyecto</div>
-                  </div>
-                  <div class="owner-mini-card">
-                    <div class="title">Dias gastados</div>
-                    <div class="big" id="supPrimaryDaysSpent">0</div>
-                    <div class="small" id="supPrimaryDaysSpentMeta">Suma de dias en reportes de avance</div>
-                  </div>
-                  <div class="owner-mini-card">
-                    <div class="title">Dias restantes</div>
-                    <div class="big" id="supPrimaryDays">0</div>
-                    <div class="small" id="supPrimaryDaysMeta">max(0, presupuestados - gastados) para lectura rapida</div>
-                  </div>
-                  <div class="owner-mini-card">
-                    <div class="title">Gastos imprevistos</div>
-                    <div class="big" id="supPrimaryExtrasCount">0</div>
-                    <div class="small" id="supPrimaryExtrasMeta">Solo conteo de registros</div>
-                  </div>
-                </div>
-                <div class="notice" id="supDashboardPlanDeviation" style="margin-top:12px;line-height:1.45;"></div>
-                <div class="notice" id="supDashboardBonus" style="margin-top:10px;line-height:1.45;"></div>
+                        <h2>Field activity</h2>
+            <p class="sub">Quick counts for the selected project.</p>
+            <div class="sup-side-strip">
+              <div class="sup-side-strip__item">
+                <span class="sup-side-strip__label">Reports logged</span>
+                <strong id="supSideReportCount">0</strong>
+              </div>
+              <div class="sup-side-strip__item">
+                <span class="sup-side-strip__label">Expense entries</span>
+                <strong id="supSideExpenseCount">0</strong>
               </div>
             </div>
+            <div class="kpi supervisor-kpi-grid" id="supervisorKpis" style="display:none;" aria-hidden="true"></div>
 
-            <div class="sep"></div>
-
-            <div class="kpi supervisor-kpi-grid" id="supervisorKpis"></div>
           </div>
         </div>
       </div>

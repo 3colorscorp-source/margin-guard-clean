@@ -1170,50 +1170,233 @@ Thank you.`
     const start = normalizeDateInput(startRaw);
     const target = normalizeDateInput(targetRaw);
     return {
-      startLabel: start ? formatDateUS(start) || start : "No start date set",
-      targetLabel: target ? formatDateUS(target) || target : "No target finish date set",
+      startIso: start,
+      targetIso: target,
+      startLabel: start ? formatDateUS(start) || start : "Waiting for project timeline.",
+      targetLabel: target
+        ? formatDateUS(target) || target
+        : "Target finish pending from Sales",
     };
   }
 
-  function renderSupervisorExecutionPlanHtml(plan, settings) {
-    if (!Array.isArray(plan) || !plan.length) return null;
-    const hpd = Math.max(Number(settings?.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
-    const dayMode = settings?.pricingMode === "day";
-    const unitHeader = dayMode ? "Planned days" : "Planned hours";
-    const rows = [];
-    for (const day of plan) {
-      const dayNum = day?.day_number;
-      const phase = day?.phase == null ? "" : String(day.phase);
-      const workers = Array.isArray(day?.workers) ? day.workers : [];
-      for (const w of workers) {
-        const hours = Number(w?.estimated_hours) || 0;
-        const units = dayMode ? hours / hpd : hours;
-        const role = String(w?.role || w?.worker_type || "—").trim() || "—";
-        rows.push({
-          dayNum: dayNum == null ? "—" : String(dayNum),
-          phase: phase || "—",
-          role,
-          units: finiteNumber(units, 0),
-        });
+  function supervisorCrewSummaryFromPlan(plan) {
+    const roles = new Set();
+    for (const day of plan || []) {
+      for (const w of day.workers || []) {
+        const r = String(w.role || w.worker_type || "").trim();
+        if (r) roles.add(r);
       }
     }
-    if (!rows.length) return null;
-    return `
-      <table class="table" style="margin-top:4px;width:100%;">
-        <thead>
-          <tr><th>Day</th><th>Phase</th><th>Role</th><th>${escapeHtml(unitHeader)}</th></tr>
-        </thead>
-        <tbody>${rows
-          .map(
-            (row) => `<tr>
-              <td>${escapeHtml(row.dayNum)}</td>
-              <td>${escapeHtml(row.phase)}</td>
-              <td>${escapeHtml(row.role)}</td>
-              <td>${row.units.toFixed(2)}</td>
-            </tr>`
-          )
-          .join("")}</tbody>
-      </table>`;
+    if (!roles.size) return "Crew pending from Sales";
+    return [...roles].join(" + ");
+  }
+
+  function supervisorCurrentPlanDayIndex(plan, startIso, actualDays) {
+    const maxDay =
+      Array.isArray(plan) && plan.length
+        ? Math.max(...plan.map((d) => Number(d.day_number) || 0))
+        : 0;
+    if (startIso) {
+      const start = new Date(startIso);
+      const today = new Date();
+      start.setHours(0, 0, 0, 0);
+      today.setHours(0, 0, 0, 0);
+      const diff = Math.floor((today - start) / 86400000) + 1;
+      if (diff >= 1) return Math.min(diff, maxDay || diff);
+    }
+    return Math.max(1, Math.min(Math.floor(actualDays) + 1, maxDay || 999));
+  }
+
+  function findOperationalPlanDay(plan, dayIndex) {
+    if (!Array.isArray(plan) || !plan.length) return null;
+    return (
+      plan.find((d) => Number(d.day_number) === dayIndex) ||
+      plan[dayIndex - 1] ||
+      null
+    );
+  }
+
+  function computeSupervisorSmartStatus(opts) {
+    const est = finiteNumber(opts.estimatedDays, 0);
+    const actual = finiteNumber(opts.actualDays, 0);
+    const daysRemainingRaw = est - actual;
+    const dayDelta = finiteNumber(opts.calendarDayDelta, 0);
+    const estInt = Math.max(0, Math.round(est));
+
+    if (est <= 0) {
+      return {
+        tone: "amber",
+        badge: "SET PLAN",
+        headline: "Timeline not set",
+        subline: "Waiting for project timeline.",
+      };
+    }
+
+    const overBy = Math.max(
+      0,
+      Math.ceil(actual - est),
+      dayDelta > 0 ? dayDelta : 0
+    );
+    if (daysRemainingRaw < 0 || dayDelta > 2 || actual > est + 1) {
+      const n = Math.max(2, overBy, Math.ceil(-daysRemainingRaw));
+      return {
+        tone: "red",
+        badge: "BEHIND SCHEDULE",
+        headline: `${n} day${n === 1 ? "" : "s"} over schedule`,
+        subline: "Bonus at risk",
+      };
+    }
+
+    if (daysRemainingRaw <= 1 || dayDelta > 0 || actual > est) {
+      const behind = Math.max(
+        1,
+        Math.ceil(actual - est) || (dayDelta > 0 ? dayDelta : 1)
+      );
+      return {
+        tone: "amber",
+        badge: "WATCH PACE",
+        headline: `Behind by ${behind} day${behind === 1 ? "" : "s"}`,
+        subline: `${Math.floor(actual)} of ${estInt} days used`,
+      };
+    }
+
+    return {
+      tone: "green",
+      badge: "ON SCHEDULE",
+      headline: "On pace",
+      subline: `${Math.floor(actual)} of ${estInt} days used`,
+    };
+  }
+
+  function formatSupervisorDeviationLabel(devDays) {
+    const d = finiteNumber(devDays, 0);
+    if (Math.abs(d) < 0.01) return "On schedule";
+    if (d > 0) return `${d.toFixed(1)}d behind`;
+    return `${Math.abs(d).toFixed(1)}d ahead`;
+  }
+
+  function formatSupervisorOperationalRisk(risk) {
+    const r = String(risk || "").toLowerCase();
+    if (r === "high") return "High";
+    if (r === "medium") return "Watch";
+    if (r === "low") return "Low";
+    return "—";
+  }
+
+  function formatSupervisorBonusCopy(snap, laborBudgetConfigured) {
+    if (!laborBudgetConfigured) {
+      return { status: "Bonus rules not configured yet.", pace: "—" };
+    }
+    const risk = String(snap.operational_risk || "").toLowerCase();
+    const bonusStatus = String(snap.supervisor_bonus_status || "").toLowerCase();
+    const pct = finiteNumber(snap.supervisor_bonus_pct_of_potential, 0);
+    let status = "On track for bonus";
+    if (risk === "high" || bonusStatus.includes("risk") || bonusStatus === "at_risk") {
+      status = "Bonus at risk";
+    } else if (bonusStatus.includes("not") || bonusStatus === "unavailable") {
+      status = "Bonus rules not configured yet.";
+    }
+    const pace =
+      pct > 0
+        ? `${Math.round(pct)}% toward bonus`
+        : status === "Bonus at risk"
+          ? "Behind pace"
+          : "Building pace";
+    return { status, pace };
+  }
+
+  function renderSupervisorExecutionPlanHtml(plan) {
+    if (!Array.isArray(plan) || !plan.length) return null;
+    const cards = plan.map((day) => {
+      const dayNum = day.day_number != null ? day.day_number : "";
+      const phase = String(day.phase || "").trim() || "Work scheduled";
+      const crew = (day.workers || [])
+        .map((w) => String(w.role || w.worker_type || "").trim())
+        .filter(Boolean);
+      const uniqueCrew = [...new Set(crew)];
+      const crewHtml = uniqueCrew.length
+        ? `<ul class="sup-exec-day-card__crew">${uniqueCrew
+            .map((r) => `<li>${escapeHtml(r)}</li>`)
+            .join("")}</ul>`
+        : '<p class="small" style="margin:0;">Crew pending</p>';
+      return `<article class="sup-exec-day-card">
+        <header class="sup-exec-day-card__head">
+          <span class="sup-exec-day-card__day">DAY ${escapeHtml(String(dayNum))}</span>
+        </header>
+        <p class="sup-exec-day-card__phase">${escapeHtml(phase)}</p>
+        <div class="sup-exec-day-card__crew-label">Crew</div>
+        ${crewHtml}
+      </article>`;
+    });
+    return `<div class="sup-exec-plan-cards">${cards.join("")}</div>`;
+  }
+
+  function renderSupervisorHero(ctx) {
+    const hero = $("supExecHero");
+    if (!hero) return;
+    if (!ctx || !ctx.projectName) {
+      hero.style.display = "none";
+      return;
+    }
+    hero.style.display = "";
+    const set = (id, text) => {
+      const el = $(id);
+      if (el) el.textContent = text == null ? "" : String(text);
+    };
+    const estInt = Math.max(0, Math.round(finiteNumber(ctx.estimatedDays, 0)));
+    const durationLabel = estInt > 0 ? `${estInt}-Day Project` : "Project timeline pending";
+    const planDay = finiteNumber(ctx.planDayIndex, 1);
+    const dayProgress =
+      estInt > 0 ? `Day ${Math.min(planDay, estInt)} of ${estInt}` : `Day ${planDay}`;
+    set("supHeroProjectName", ctx.projectName);
+    set("supHeroDurationLabel", durationLabel);
+    set("supHeroDayProgress", dayProgress);
+    set("supHeroStatusLine", ctx.status.headline);
+    set("supHeroStart", ctx.schedule.startLabel);
+    set("supHeroTarget", ctx.schedule.targetLabel);
+    set("supHeroCrew", ctx.crewSummary);
+    const pct =
+      ctx.progressPct == null
+        ? 0
+        : Math.min(100, Math.max(0, Math.round(ctx.progressPct)));
+    set("supHeroProgressPct", `${pct}% complete`);
+    const fill = $("supHeroProgressFill");
+    if (fill) fill.style.width = `${pct}%`;
+    const badge = $("supHeroStatusBadge");
+    if (badge) {
+      badge.textContent = ctx.status.badge;
+      badge.className = `badge ${ctx.status.tone} sup-exec-hero__status`;
+    }
+  }
+
+  function renderSupervisorTodayTarget(plan, startIso, actualDays) {
+    const wrap = $("supTodayTarget");
+    if (!wrap) return;
+    if (!Array.isArray(plan) || !plan.length) {
+      wrap.style.display = "none";
+      return;
+    }
+    const dayIndex = supervisorCurrentPlanDayIndex(plan, startIso, actualDays);
+    const day = findOperationalPlanDay(plan, dayIndex);
+    if (!day) {
+      wrap.style.display = "none";
+      return;
+    }
+    wrap.style.display = "";
+    const phase = String(day.phase || "").trim() || "Continue scheduled work";
+    const roles = [
+      ...new Set(
+        (day.workers || [])
+          .map((w) => String(w.role || w.worker_type || "").trim())
+          .filter(Boolean)
+      ),
+    ];
+    if ($("supTodayPhase")) $("supTodayPhase").textContent = phase;
+    if ($("supTodayCrew")) {
+      $("supTodayCrew").textContent = roles.length
+        ? `Crew expected: ${roles.join(" + ")}`
+        : "Crew expected: see execution plan";
+    }
   }
 
   async function fetchSupervisorOperationalSnapshot(projectId) {
@@ -1250,11 +1433,6 @@ Thank you.`
     const badgeEl = $("supOpRiskBadge");
     const riskMetaEl = $("supOpRiskMeta");
 
-    const snapMoney = (n) => {
-      if (n == null || n === "" || !Number.isFinite(Number(n))) return "—";
-      return formatMoney(n);
-    };
-
     const setOpText = (id, text) => {
       const el = $(id);
       if (el) el.textContent = text == null || text === "" ? "—" : String(text);
@@ -1262,9 +1440,6 @@ Thank you.`
 
     const clearOperationalFields = () => {
       const ids = [
-        "supOpLaborBudget",
-        "supOpActualLabor",
-        "supOpRemainingLabor",
         "supOpEstimatedDays",
         "supOpActualDays",
         "supOpDaysRemaining",
@@ -1273,8 +1448,9 @@ Thank you.`
         "supOpLaborDeviation",
         "supOpLaborDeviationLabel",
         "supOpCompletionPace",
-        "supOpBonusAmount",
-        "supOpBonusMeta",
+        "supOpOperationalRisk",
+        "supOpBonusStatus",
+        "supOpBonusPace",
         "supOpReportCount",
         "supOpExpenseCount",
       ];
@@ -1332,28 +1508,26 @@ Thank you.`
     }
     if (gridEl) gridEl.style.display = "";
 
-    setOpText("supOpLaborBudget", snapMoney(snap.labor_budget));
-    setOpText("supOpActualLabor", snapMoney(snap.actual_labor));
-    setOpText("supOpRemainingLabor", snapMoney(snap.remaining_labor_budget));
-    setOpText("supOpEstimatedDays", finiteNumber(snap.estimated_days, 0).toFixed(2));
-    setOpText("supOpActualDays", finiteNumber(snap.actual_days, 0).toFixed(2));
+    setOpText("supOpEstimatedDays", finiteNumber(snap.estimated_days, 0).toFixed(1));
+    setOpText("supOpActualDays", finiteNumber(snap.actual_days, 0).toFixed(1));
     setOpText(
       "supOpDaysRemaining",
       finiteNumber(
-        snap.days_remaining != null ? snap.days_remaining : Math.max(0, finiteNumber(snap.estimated_days, 0) - finiteNumber(snap.actual_days, 0)),
+        snap.days_remaining != null
+          ? snap.days_remaining
+          : Math.max(
+              0,
+              finiteNumber(snap.estimated_days, 0) - finiteNumber(snap.actual_days, 0)
+            ),
         0
-      ).toFixed(2)
+      ).toFixed(1)
     );
-    setOpText("supOpEstimatedHours", finiteNumber(snap.estimated_hours, 0).toFixed(2));
-    setOpText("supOpActualHours", finiteNumber(snap.actual_hours, 0).toFixed(2));
+    setOpText("supOpEstimatedHours", finiteNumber(snap.estimated_hours, 0).toFixed(1));
+    setOpText("supOpActualHours", finiteNumber(snap.actual_hours, 0).toFixed(1));
 
     const devDays = finiteNumber(snap.labor_deviation_days, 0);
-    const devSign = devDays > 0 ? "+" : "";
-    setOpText("supOpLaborDeviation", `${devSign}${devDays.toFixed(2)} d`);
-    setOpText(
-      "supOpLaborDeviationLabel",
-      snap.labor_deviation_label || "—"
-    );
+    setOpText("supOpLaborDeviation", formatSupervisorDeviationLabel(devDays));
+    setOpText("supOpLaborDeviationLabel", "vs planned days");
 
     const pace = snap.completion_pace_pct;
     setOpText(
@@ -1363,36 +1537,24 @@ Thank you.`
         : `${Math.round(Number(pace))}%`
     );
 
-    setOpText("supOpBonusAmount", snapMoney(snap.supervisor_bonus_amount));
-    const bonusStatus = String(snap.supervisor_bonus_status || "").trim();
-    const bonusPct = finiteNumber(snap.supervisor_bonus_pct_of_potential, 0);
-    setOpText(
-      "supOpBonusMeta",
-      bonusStatus
-        ? `${bonusStatus} · ${bonusPct}% of potential`
-        : `${bonusPct}% of potential`
-    );
+    const laborConfigured = finiteNumber(o.laborBudget, 0) > 0;
+    const bonusCopy = formatSupervisorBonusCopy(snap, laborConfigured);
+    setOpText("supOpBonusStatus", bonusCopy.status);
+    setOpText("supOpBonusPace", bonusCopy.pace);
 
     setOpText("supOpReportCount", String(finiteNumber(snap.report_count, 0)));
     setOpText("supOpExpenseCount", String(finiteNumber(snap.expense_count, 0)));
 
     const risk = String(snap.operational_risk || "").trim().toLowerCase();
-    const riskLabels = { low: "Low risk", medium: "Medium risk", high: "High risk" };
+    setOpText("supOpOperationalRisk", formatSupervisorOperationalRisk(risk));
+    const riskLabels = { low: "Low", medium: "Watch", high: "High" };
     const riskClasses = { low: "green", medium: "amber", high: "red" };
     if (badgeEl) {
       badgeEl.style.display = risk && riskLabels[risk] ? "" : "none";
       badgeEl.textContent = riskLabels[risk] || "—";
       badgeEl.className = `badge ${riskClasses[risk] || "amber"}`;
     }
-    if (riskMetaEl) {
-      if (risk && riskLabels[risk]) {
-        riskMetaEl.style.display = "";
-        riskMetaEl.textContent = `Operational risk: ${riskLabels[risk]} (labor pace / schedule).`;
-      } else {
-        riskMetaEl.style.display = "none";
-        riskMetaEl.textContent = "";
-      }
-    }
+    if (riskMetaEl) riskMetaEl.style.display = "none";
   }
 
   function mapTenantProjectReportRowToEntry(row) {
@@ -6207,7 +6369,7 @@ window.closeSendModal = closeSendModal;
 window.sendQuote = sendQuote;
 
 function renderSupervisor() {
-    if (!$("supervisorKpis")) return;
+    if (!$("supProjectPicker")) return;
 
     const settings = loadSettings();
     const picker = $("supProjectPicker");
@@ -6431,29 +6593,11 @@ function renderSupervisor() {
 
       if (!currentProject) {
         supervisorLastRefreshedProjectId = null;
-        if ($("supStatus")) {
-          $("supStatus").className = "badge amber";
-          $("supStatus").textContent = "Sin proyectos";
-        }
-        if ($("supHeroState")) $("supHeroState").textContent = "Base";
-        if ($("supHeroMeta")) $("supHeroMeta").textContent = "No hay proyectos firmados. Firma uno desde Vendedor o apruebalo en Sales Admin.";
-        if ($("supProjectLabel")) $("supProjectLabel").textContent = "Sin proyecto";
-        if ($("supStartDateLabel")) $("supStartDateLabel").textContent = "No start date set";
-        if ($("supDueDateLabel")) $("supDueDateLabel").textContent = "No target finish date set";
-        if ($("supEstimatedDaysLabel")) $("supEstimatedDaysLabel").textContent = "0.00";
-        if ($("supSummaryRegisteredExtras")) $("supSummaryRegisteredExtras").textContent = "0";
-        if ($("supExecutiveNote")) $("supExecutiveNote").textContent = "Todavia no hay proyectos firmados para este supervisor.";
-        if ($("supPrimaryOpProgress")) $("supPrimaryOpProgress").textContent = "—";
-        if ($("supPrimaryOpMeta")) $("supPrimaryOpMeta").textContent = "Esperando proyecto firmado";
-        if ($("supPrimaryBudgetedDays")) $("supPrimaryBudgetedDays").textContent = "0.00";
-        if ($("supPrimaryDaysSpent")) $("supPrimaryDaysSpent").textContent = "0.00";
-        if ($("supPrimaryDays")) $("supPrimaryDays").textContent = "0.00";
-        if ($("supPrimaryDaysMeta")) $("supPrimaryDaysMeta").textContent = "Sin meta activa";
-        if ($("supPrimaryExtrasCount")) $("supPrimaryExtrasCount").textContent = "0";
-        if ($("supPrimaryExtrasMeta")) $("supPrimaryExtrasMeta").textContent = "Registros capturados";
-        if ($("supDashboardPlanDeviation")) $("supDashboardPlanDeviation").textContent = "";
-        if ($("supDashboardBonus")) $("supDashboardBonus").textContent = "";
+        renderSupervisorHero(null);
+        if ($("supTodayTarget")) $("supTodayTarget").style.display = "none";
         if ($("supPortfolioCount")) $("supPortfolioCount").textContent = "0";
+        if ($("supSideReportCount")) $("supSideReportCount").textContent = "0";
+        if ($("supSideExpenseCount")) $("supSideExpenseCount").textContent = "0";
         if (typeof console !== "undefined" && console.log) {
           console.log("[supervisor-filter] kpi count", 0);
         }
@@ -6472,9 +6616,8 @@ function renderSupervisor() {
         if ($("supExtrasBody")) $("supExtrasBody").innerHTML = "";
         if ($("supLaborPlanBody")) {
           $("supLaborPlanBody").innerHTML =
-            '<p class="small" style="margin:0;">Labor plan not available for this project</p>';
+            '<p class="small" style="margin:0;">Execution plan has not been prepared in Sales.</p>';
         }
-        setSupervisorProjectedFinishDom("", { unavailableText: "Projected finish date unavailable" });
         renderSupervisorOperationalPanel({});
         if (typeof console !== "undefined" && console.log) {
           console.log("[supervisor-filter] kpi count", 0);
@@ -6631,22 +6774,33 @@ function renderSupervisor() {
         });
       }
       saveSupervisorReport(pid, state);
-      setSupervisorProjectedFinishDom(state.projectedEndDate, {
-        unavailableText: !state.dueDate
-          ? "Projected finish date unavailable (no commitment date)"
-          : !planWorkersForProjection.length
-            ? "Projected finish date unavailable (no labor plan)"
-            : "Projected finish date unavailable",
-      });
-
       const reportedHours = state.entries.reduce((sum, row) => sum + Number(row.hours || 0), 0);
       const daysSpent = state.entries.reduce((sum, row) => sum + Number(row.days || 0), 0);
-      const estimatedBudgetDays = finiteNumber(state.estimatedDays, 0);
-      const daysRemainingRaw = estimatedBudgetDays - daysSpent;
-      const daysRemainingDisplay = Math.max(0, daysRemainingRaw);
+      const opCache = supervisorProjectOperationalCache[pid];
+      const fallbackSnap = buildSupervisorOperationalFallback(currentProject, state);
+      const activeSnap =
+        opCache?.ok === true && opCache.snapshot ? opCache.snapshot : fallbackSnap;
+      const estimatedBudgetDays = finiteNumber(
+        activeSnap.estimated_days,
+        finiteNumber(state.estimatedDays, 0)
+      );
+      const actualDays = finiteNumber(activeSnap.actual_days, daysSpent);
       const progressPct =
-        estimatedBudgetDays > 0 ? (daysSpent / estimatedBudgetDays) * 100 : null;
+        activeSnap.completion_pace_pct != null
+          ? finiteNumber(activeSnap.completion_pace_pct, 0)
+          : estimatedBudgetDays > 0
+            ? (actualDays / estimatedBudgetDays) * 100
+            : null;
       const extrasRegCount = state.extras.length;
+      const scheduleLabels = supervisorScheduleLabels(
+        opCache?.schedule,
+        currentProject,
+        state
+      );
+      const execPlan =
+        opCache?.ok === true && Array.isArray(opCache.operational_plan)
+          ? opCache.operational_plan
+          : [];
 
       let dayDelta = 0;
       if (state.dueDate && state.projectedEndDate) {
@@ -6654,74 +6808,41 @@ function renderSupervisor() {
         const projected = new Date(state.projectedEndDate).getTime();
         dayDelta = Math.round((projected - due) / (1000 * 60 * 60 * 24));
       }
-
-      const laborDeltaVsBudget = daysSpent - estimatedBudgetDays;
-      let planDeviationLine = "";
-      if (estimatedBudgetDays <= 0) {
-        planDeviationLine =
-          "Sin dias presupuestados no se puede medir desviacion de labor. Revisa fecha comprometida vs proyectada abajo si aplica.";
-      } else if (laborDeltaVsBudget > 0) {
-        planDeviationLine = `Labor: vas ${laborDeltaVsBudget.toFixed(2)} dia(s) sobre el presupuesto de dias.`;
-      } else if (laborDeltaVsBudget < 0) {
-        planDeviationLine = `Labor: vas ${Math.abs(laborDeltaVsBudget).toFixed(2)} dia(s) por debajo del presupuesto de dias.`;
-      } else {
-        planDeviationLine = "Labor: alineado con el presupuesto de dias.";
-      }
-      if (state.dueDate && state.projectedEndDate) {
-        if (dayDelta > 0) {
-          planDeviationLine += ` Entrega proyectada: ${dayDelta} dia(s) despues de la fecha comprometida.`;
-        } else if (dayDelta < 0) {
-          planDeviationLine += ` Entrega proyectada: ${Math.abs(dayDelta)} dia(s) antes de la fecha comprometida.`;
-        } else {
-          planDeviationLine += " Entrega proyectada: alineada con la fecha comprometida.";
-        }
-      } else {
-        planDeviationLine += " Sin ambas fechas (comprometida y proyectada) no se compara el calendario.";
+      if (scheduleLabels.targetIso && scheduleLabels.startIso) {
+        const targetMs = new Date(scheduleLabels.targetIso).getTime();
+        const todayMs = new Date().setHours(0, 0, 0, 0);
+        const calendarBehind = Math.round((todayMs - targetMs) / (1000 * 60 * 60 * 24));
+        if (calendarBehind > dayDelta) dayDelta = calendarBehind;
       }
 
-      let tone = "green";
-      let stateLabel = "Verde";
-      let stateMeta = "Vas bien. El proyecto sigue dentro del ritmo esperado.";
-
-      if (daysRemainingDisplay <= 1 || dayDelta > 0 || laborDeltaVsBudget > 0) {
-        tone = "amber";
-        stateLabel = "Amarillo";
-        stateMeta = "Necesitas atencion. Ajusta ritmo o plazos; revisa atraso vs fecha comprometida.";
-      }
-
-      if (daysRemainingRaw < 0 || dayDelta > 2) {
-        tone = "red";
-        stateLabel = "Rojo";
-        stateMeta = "Necesitas apurarte. El avance o la fecha proyectada se salen del plan operativo.";
-      }
-
-      if ($("supStatus")) {
-        $("supStatus").className = `badge ${tone}`;
-        $("supStatus").textContent = tone === "green" ? "Vas bien" : (tone === "amber" ? "Atencion" : "Necesitas apurarte");
-      }
-      if ($("supHeroState")) $("supHeroState").textContent = stateLabel;
-      if ($("supHeroMeta")) $("supHeroMeta").textContent = stateMeta;
-      if ($("supProjectLabel")) $("supProjectLabel").textContent = state.projectName || "Sin proyecto";
-      const opCacheEarly = supervisorProjectOperationalCache[pid];
-      const scheduleLabels = supervisorScheduleLabels(
-        opCacheEarly?.schedule,
-        currentProject,
-        state
+      const smartStatus = computeSupervisorSmartStatus({
+        estimatedDays: estimatedBudgetDays,
+        actualDays,
+        calendarDayDelta: dayDelta,
+      });
+      const planDayIndex = supervisorCurrentPlanDayIndex(
+        execPlan,
+        scheduleLabels.startIso,
+        actualDays
       );
-      if ($("supStartDateLabel")) $("supStartDateLabel").textContent = scheduleLabels.startLabel;
-      if ($("supDueDateLabel")) $("supDueDateLabel").textContent = scheduleLabels.targetLabel;
-      if ($("supEstimatedDaysLabel")) $("supEstimatedDaysLabel").textContent = Number(state.estimatedDays || 0).toFixed(2);
-      if ($("supSummaryRegisteredExtras")) $("supSummaryRegisteredExtras").textContent = String(extrasRegCount);
+      const crewSummary = supervisorCrewSummaryFromPlan(execPlan);
+
+      renderSupervisorHero({
+        projectName: state.projectName || "Project",
+        estimatedDays: estimatedBudgetDays,
+        planDayIndex,
+        status: smartStatus,
+        schedule: scheduleLabels,
+        crewSummary,
+        progressPct,
+      });
+      renderSupervisorTodayTarget(execPlan, scheduleLabels.startIso, actualDays);
+
       if ($("supPortfolioCount")) $("supPortfolioCount").textContent = String(uiList.length);
 
       const supLaborPlanBody = $("supLaborPlanBody");
       if (supLaborPlanBody) {
-        const opCacheForPlan = supervisorProjectOperationalCache[pid];
-        const execPlan =
-          opCacheForPlan?.ok === true && Array.isArray(opCacheForPlan.operational_plan)
-            ? opCacheForPlan.operational_plan
-            : [];
-        const execHtml = renderSupervisorExecutionPlanHtml(execPlan, loadSettings());
+        const execHtml = renderSupervisorExecutionPlanHtml(execPlan);
         if (execHtml) {
           supLaborPlanBody.innerHTML = execHtml;
         } else if (supervisorProjectOperationalFetchInFlight.has(pid)) {
@@ -6729,157 +6850,43 @@ function renderSupervisor() {
             '<p class="small" style="margin:0;">Loading execution plan…</p>';
         } else {
           supLaborPlanBody.innerHTML =
-            '<p class="small" style="margin:0;">Execution plan not available for this project</p>';
+            '<p class="small" style="margin:0;">Execution plan has not been prepared in Sales.</p>';
         }
       }
 
+      const projectLaborBudget = finiteNumber(currentProject.laborBudget, 0);
       if ($("supSnapshotGrid")) {
         const snapCached = supervisorProjectOperationalCache[pid];
         const snapInflight = supervisorProjectOperationalFetchInFlight.has(pid);
-        const fallbackSnap = buildSupervisorOperationalFallback(currentProject, state);
+        const panelOpts = { laborBudget: projectLaborBudget };
         if (!isServerListedSupervisorProject(pid)) {
           renderSupervisorOperationalPanel({});
         } else if (snapInflight && !snapCached) {
           renderSupervisorOperationalPanel({ loading: true });
         } else if (snapCached && snapCached.ok === true && snapCached.snapshot) {
-          renderSupervisorOperationalPanel({ snapshot: snapCached.snapshot });
+          renderSupervisorOperationalPanel({
+            ...panelOpts,
+            snapshot: snapCached.snapshot,
+          });
         } else if (snapCached && snapCached.ok === false) {
           renderSupervisorOperationalPanel({
+            ...panelOpts,
             snapshot: fallbackSnap,
-            error:
-              (snapCached.error || "Field snapshot unavailable.") +
-              " Showing project baseline metrics.",
+            error: "Using baseline field metrics.",
           });
         } else {
-          renderSupervisorOperationalPanel({ snapshot: fallbackSnap });
+          renderSupervisorOperationalPanel({
+            ...panelOpts,
+            snapshot: fallbackSnap,
+          });
         }
       }
 
-      if ($("supExecutiveNote")) {
-        const fin = !state.dueDate || !state.projectedEndDate
-          ? "Compara primero la fecha comprometida y la proyectada."
-          : dayDelta <= 0
-            ? "Fecha proyectada alineada o adelantada respecto a la comprometida."
-            : `Atraso operativo: +${dayDelta} dia(s) de calendario vs el compromiso.`;
-        $("supExecutiveNote").textContent = `Proyecto: ${state.projectName}. Reportado: ${daysSpent.toFixed(2)} dias y ${reportedHours.toFixed(2)} horas. Quedan ${daysRemainingRaw.toFixed(2)} dias estimados. ${fin}`;
-      }
-
-      if ($("supPrimaryOpProgress")) {
-        $("supPrimaryOpProgress").textContent =
-          progressPct == null ? "—" : `${progressPct.toFixed(0)}%`;
-      }
-      if ($("supPrimaryOpMeta")) {
-        $("supPrimaryOpMeta").textContent =
-          estimatedBudgetDays > 0
-            ? `dias_gastados / dias_presupuestados: ${daysSpent.toFixed(2)} / ${estimatedBudgetDays.toFixed(2)}`
-            : "Sin dias presupuestados: no se muestra porcentaje de avance.";
-      }
-      if ($("supPrimaryBudgetedDays")) $("supPrimaryBudgetedDays").textContent = estimatedBudgetDays.toFixed(2);
-      if ($("supPrimaryDaysSpent")) $("supPrimaryDaysSpent").textContent = daysSpent.toFixed(2);
-      if ($("supPrimaryDays")) $("supPrimaryDays").textContent = daysRemainingDisplay.toFixed(2);
-      if ($("supPrimaryDaysMeta")) {
-        $("supPrimaryDaysMeta").textContent =
-          daysRemainingRaw < 0
-            ? `Sin piso: quedarian ${daysRemainingRaw.toFixed(2)} (ya pasaste el presupuesto de dias).`
-            : "Lectura con piso en 0 para rapidez (max(0, presupuestados - gastados)).";
-      }
-      if ($("supPrimaryExtrasCount")) $("supPrimaryExtrasCount").textContent = String(extrasRegCount);
-      if ($("supPrimaryExtrasMeta")) $("supPrimaryExtrasMeta").textContent = "Solo conteo de registros";
-      if ($("supDashboardPlanDeviation")) $("supDashboardPlanDeviation").textContent = planDeviationLine;
-
-      const projectLaborBudget = finiteNumber(currentProject.laborBudget, 0);
-      const planWorkersForBonus = Array.isArray(currentProject.workers) ? currentProject.workers : [];
-      const bonusUsesLaborPlanTimeline = planWorkersForBonus.length > 0;
-      const effectiveDaysForBonus = bonusUsesLaborPlanTimeline
-        ? supervisorMaxPlanWorkerDays(planWorkersForBonus)
-        : finiteNumber(currentProject.estimatedDays, 0);
-      const bonusTimelineNote = bonusUsesLaborPlanTimeline
-        ? "Bonus timeline based on labor plan duration."
-        : "Bonus timeline based on estimated project days.";
-      const tenantSupervisorBonusPct = finiteNumber(settings.supervisorBonusPct, DEFAULTS.supervisorBonusPct);
-      const bonusCalc = computeSupervisorExecutionBonus({
-        laborBudget: projectLaborBudget,
-        effectiveDays: effectiveDaysForBonus,
-        daysSpent,
-        supervisorBonusPctPoints: tenantSupervisorBonusPct,
-      });
-      if ($("supDashboardBonus")) {
-        if (projectLaborBudget <= 0) {
-          $("supDashboardBonus").textContent =
-            "Bonus: sin presupuesto de mano de obra en el proyecto no se calcula.";
-        } else {
-          const bonusActualStr = money(round2(bonusCalc.bonusActual), settings.currency);
-          const bonusBaseStr = money(round2(bonusCalc.bonusBase), settings.currency);
-          const penaltyDayStr = money(round2(bonusCalc.penaltyPerDay), settings.currency);
-          $("supDashboardBonus").textContent =
-            `Bonus: ${bonusActualStr} (${bonusCalc.pctOfPotential}%). ` +
-            `Potencial (base): ${bonusBaseStr}. ` +
-            `Tasa (Business Settings): ${bonusCalc.pctPoints}% sobre mano de obra. ` +
-            `Demora: ${bonusCalc.delayDays.toFixed(2)} dia(s); multa/dia: ${penaltyDayStr}. ` +
-            `${bonusTimelineNote}`;
-        }
-      }
-
-      let planDeviationLabel = "—";
-      if (estimatedBudgetDays <= 0) {
-        planDeviationLabel = "Sin meta de dias";
-      } else if (laborDeltaVsBudget > 0 && dayDelta > 0) {
-        planDeviationLabel = "Atrasado (labor y entrega)";
-      } else if (laborDeltaVsBudget > 0) {
-        planDeviationLabel = "Atrasado (labor)";
-      } else if (dayDelta > 0) {
-        planDeviationLabel = "Atrasado (entrega)";
-      } else if (laborDeltaVsBudget < 0 && dayDelta < 0) {
-        planDeviationLabel = "Adelantado (labor y entrega)";
-      } else if (laborDeltaVsBudget < 0 || dayDelta < 0) {
-        planDeviationLabel = "Adelantado (parcial)";
-      } else {
-        planDeviationLabel = "En tiempo";
-      }
-
-      const kpiRows = [
-        ["Proyectos activos", `${uiList.length}`, "El supervisor puede alternar entre varios trabajos"],
-        ["Dias presupuestados", estimatedBudgetDays.toFixed(2), "estimated_days del proyecto seleccionado"],
-        ["Dias gastados", daysSpent.toFixed(2), "Suma de dias en reportes de avance (work reports)"],
-        ["Dias restantes (lectura)", daysRemainingDisplay.toFixed(2), `max(0, presupuestados - gastados). Sin piso: ${daysRemainingRaw.toFixed(2)}`],
-        ["Horas reportadas", reportedHours.toFixed(2), "Horas reales capturadas en campo"],
-      ];
-      if (estimatedBudgetDays > 0) {
-        kpiRows.push([
-          "Avance del proyecto",
-          `${progressPct.toFixed(0)}%`,
-          "dias_gastados / dias_presupuestados (puede superar 100% si te pasas en labor)",
-        ]);
-      }
-      kpiRows.push(
-        ["Desviacion del plan", planDeviationLabel, planDeviationLine],
-      );
-      if (projectLaborBudget > 0) {
-        kpiRows.push(
-          [
-            "Bonus potencial (base)",
-            money(round2(bonusCalc.bonusBase), settings.currency),
-            `labor_budget x ${bonusCalc.pctPoints}% (solo Business Settings / tenant)`,
-          ],
-          [
-            "Bonus actual",
-            `${money(round2(bonusCalc.bonusActual), settings.currency)} (${bonusCalc.pctOfPotential}%)`,
-            bonusUsesLaborPlanTimeline
-              ? `Linea de tiempo bonus: max(dias/trabajador) del plan (${finiteNumber(effectiveDaysForBonus, 0).toFixed(2)} d). multa/dia = potencial / esos dias.`
-              : `Linea de tiempo bonus: dias estimados del proyecto (${finiteNumber(effectiveDaysForBonus, 0).toFixed(2)} d). multa/dia = potencial / esos dias.`,
-          ],
-        );
-      }
-      kpiRows.push(
-        ["Gastos imprevistos (registros)", `${extrasRegCount}`, "Filas de gasto imprevisto (sin importes, solo conteo)"]
-      );
-      $("supervisorKpis").innerHTML = kpiRows.map(([label, value, meta]) => `
-        <div class="kpi-box">
-          <div class="label">${escapeHtml(label)}</div>
-          <div class="value">${escapeHtml(value)}</div>
-          <div class="meta">${escapeHtml(meta)}</div>
-        </div>
-      `).join("");
+      const reportCount = finiteNumber(activeSnap.report_count, state.entries.length);
+      const expenseCount = finiteNumber(activeSnap.expense_count, extrasRegCount);
+      if ($("supSideReportCount")) $("supSideReportCount").textContent = String(reportCount);
+      if ($("supSideExpenseCount")) $("supSideExpenseCount").textContent = String(expenseCount);
+      if ($("supervisorKpis")) $("supervisorKpis").innerHTML = "";
 
       if (typeof console !== "undefined" && console.log) {
         console.log("[supervisor-filter] kpi count", uiList.length);
