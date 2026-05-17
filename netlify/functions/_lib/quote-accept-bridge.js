@@ -6,6 +6,15 @@
 
 const { supabaseRequest } = require("./supabase-admin");
 const { makePublicToken } = require("./public-token");
+const {
+  buildEstimateEconomics,
+  extractWorkersFromQuoteRow,
+  extractWorkersFromSnapshotPayload,
+  extractSettingsFromSnapshotPayload,
+  isPlanEffectivelyEmpty,
+  mayWriteLaborPlan,
+  shouldLockLaborPlan,
+} = require("./project-labor-plan");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -20,6 +29,102 @@ function finiteMoney(value, fallback = 0) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.round(n * 100) / 100;
+}
+
+async function loadLatestTenantSnapshotPayload(tenantId) {
+  const tidEnc = encodeURIComponent(tenantId);
+  try {
+    const rows = await supabaseRequest(
+      `tenant_snapshots?tenant_id=eq.${tidEnc}&select=payload&order=created_at.desc&limit=1`,
+      { method: "GET" }
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    return row?.payload && typeof row.payload === "object" ? row.payload : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
+ * Resolve workers + settings for labor plan from quote row and optional tenant snapshot.
+ */
+async function resolveLaborContextForQuote(quoteRow) {
+  if (!quoteRow || typeof quoteRow !== "object") {
+    return { workers: [], settings: {} };
+  }
+
+  let workers = extractWorkersFromQuoteRow(quoteRow);
+  let settings = {};
+
+  const tenantId = String(quoteRow.tenant_id || "").trim();
+  const quoteId = String(quoteRow.id || "").trim();
+
+  if ((!workers || !workers.length) && UUID_RE.test(tenantId)) {
+    const payload = await loadLatestTenantSnapshotPayload(tenantId);
+    if (payload) {
+      const hit = extractWorkersFromSnapshotPayload(payload, quoteId);
+      if (hit?.workers?.length) {
+        workers = hit.workers;
+        settings = hit.settings || extractSettingsFromSnapshotPayload(payload);
+      } else {
+        settings = extractSettingsFromSnapshotPayload(payload);
+      }
+    }
+  }
+
+  return {
+    workers: Array.isArray(workers) ? workers : [],
+    settings,
+  };
+}
+
+/**
+ * Build PATCH fields for quoted labor plan + estimate economics (never overwrites locked plan).
+ */
+async function buildLaborSnapshotFields(quoteRow, existingProject) {
+  const locked = Boolean(existingProject?.quoted_labor_plan_locked_at);
+  if (locked) return null;
+
+  const currentPlan = existingProject?.quoted_labor_plan;
+  const currentEmpty = isPlanEffectivelyEmpty(currentPlan);
+
+  const { workers, settings } = await resolveLaborContextForQuote(quoteRow);
+  if (!workers.length && currentEmpty) return null;
+
+  const salePrice = Math.max(finiteMoney(quoteRow.total, 0), 0);
+  const economics = buildEstimateEconomics({
+    workers,
+    settings,
+    salePrice,
+    hoursPerDay: Number(settings.hoursPerDay) || 8,
+  });
+
+  if (!mayWriteLaborPlan(existingProject, economics.quotedLaborPlan)) {
+    if (currentEmpty) return null;
+    return {
+      estimated_labor_cost: economics.estimatedLaborCost,
+      estimated_material_cost: economics.estimatedMaterialCost,
+      estimated_profit: economics.estimatedProfit,
+      estimated_profit_margin: economics.estimatedProfitMargin,
+      labor_budget: economics.estimatedLaborCost,
+    };
+  }
+
+  const nowIso = new Date().toISOString();
+  const patch = {
+    quoted_labor_plan: economics.quotedLaborPlan,
+    estimated_labor_cost: economics.estimatedLaborCost,
+    estimated_material_cost: economics.estimatedMaterialCost,
+    estimated_profit: economics.estimatedProfit,
+    estimated_profit_margin: economics.estimatedProfitMargin,
+    labor_budget: economics.estimatedLaborCost,
+  };
+
+  if (shouldLockLaborPlan(existingProject, economics.quotedLaborPlan)) {
+    patch.quoted_labor_plan_locked_at = nowIso;
+  }
+
+  return patch;
 }
 
 async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
@@ -43,28 +148,61 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
   const signedAt = pickStr(quoteRow.accepted_at, 64) || nowIso;
   const currency = pickStr(quoteRow.currency, 8) || "USD";
 
+  const laborContext = await resolveLaborContextForQuote(quoteRow);
+  const insertEconomics = buildEstimateEconomics({
+    workers: laborContext.workers,
+    settings: laborContext.settings,
+    salePrice,
+    hoursPerDay: Number(laborContext.settings?.hoursPerDay) || 8,
+  });
+
+  const insertLaborFields = {};
+  if (laborContext.workers.length && !isPlanEffectivelyEmpty(insertEconomics.quotedLaborPlan)) {
+    insertLaborFields.quoted_labor_plan = insertEconomics.quotedLaborPlan;
+    insertLaborFields.estimated_labor_cost = insertEconomics.estimatedLaborCost;
+    insertLaborFields.estimated_material_cost = insertEconomics.estimatedMaterialCost;
+    insertLaborFields.estimated_profit = insertEconomics.estimatedProfit;
+    insertLaborFields.estimated_profit_margin = insertEconomics.estimatedProfitMargin;
+    insertLaborFields.labor_budget = insertEconomics.estimatedLaborCost;
+    if (shouldLockLaborPlan(null, insertEconomics.quotedLaborPlan)) {
+      insertLaborFields.quoted_labor_plan_locked_at = nowIso;
+    }
+  } else {
+    insertLaborFields.quoted_labor_plan = [];
+  }
+
   try {
     const tpRows = await supabaseRequest(
-      `tenant_projects?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id`,
+      `tenant_projects?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id,quoted_labor_plan,quoted_labor_plan_locked_at`,
       { method: "GET" }
     );
     const tpHit = Array.isArray(tpRows) ? tpRows[0] : null;
+
+    const basePatch = {
+      project_name: projectName,
+      client_name: clientName,
+      client_email: clientEmail,
+      sale_price: salePrice,
+      recommended_price: salePrice,
+      minimum_price: salePrice,
+      status: "signed",
+      updated_at: nowIso,
+    };
 
     if (tpHit?.id && UUID_RE.test(String(tpHit.id))) {
       const pidEnc = encodeURIComponent(String(tpHit.id));
       await supabaseRequest(`tenant_projects?id=eq.${pidEnc}&tenant_id=eq.${tidEnc}`, {
         method: "PATCH",
-        body: {
-          project_name: projectName,
-          client_name: clientName,
-          client_email: clientEmail,
-          sale_price: salePrice,
-          recommended_price: salePrice,
-          minimum_price: salePrice,
-          status: "signed",
-          updated_at: nowIso
-        }
+        body: basePatch,
       });
+
+      const laborPatch = await buildLaborSnapshotFields(quoteRow, tpHit);
+      if (laborPatch && Object.keys(laborPatch).length) {
+        await supabaseRequest(`tenant_projects?id=eq.${pidEnc}&tenant_id=eq.${tidEnc}`, {
+          method: "PATCH",
+          body: { ...laborPatch, updated_at: nowIso },
+        });
+      }
     } else {
       try {
         await supabaseRequest("tenant_projects", {
@@ -80,21 +218,20 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
             signed_at: signedAt,
             deposit_paid: false,
             estimated_days: 0,
-            labor_budget: 0,
             sale_price: salePrice,
             recommended_price: salePrice,
             minimum_price: salePrice,
             notes: "",
-            quoted_labor_plan: [],
             created_at: nowIso,
-            updated_at: nowIso
-          }
+            updated_at: nowIso,
+            ...insertLaborFields,
+          },
         });
       } catch (e) {
         const raw = String(e?.supabaseRaw || e?.message || "");
         if (!/23505|duplicate key/i.test(raw)) throw e;
         const again = await supabaseRequest(
-          `tenant_projects?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id`,
+          `tenant_projects?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id,quoted_labor_plan,quoted_labor_plan_locked_at`,
           { method: "GET" }
         );
         const againHit = Array.isArray(again) ? again[0] : null;
@@ -102,17 +239,15 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
         const pidEnc2 = encodeURIComponent(String(againHit.id));
         await supabaseRequest(`tenant_projects?id=eq.${pidEnc2}&tenant_id=eq.${tidEnc}`, {
           method: "PATCH",
-          body: {
-            project_name: projectName,
-            client_name: clientName,
-            client_email: clientEmail,
-            sale_price: salePrice,
-            recommended_price: salePrice,
-            minimum_price: salePrice,
-            status: "signed",
-            updated_at: nowIso
-          }
+          body: basePatch,
         });
+        const laborPatch = await buildLaborSnapshotFields(quoteRow, againHit);
+        if (laborPatch && Object.keys(laborPatch).length) {
+          await supabaseRequest(`tenant_projects?id=eq.${pidEnc2}&tenant_id=eq.${tidEnc}`, {
+            method: "PATCH",
+            body: { ...laborPatch, updated_at: nowIso },
+          });
+        }
       }
     }
   } catch (tpErr) {
@@ -155,8 +290,8 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
         amount: salePrice,
         paid_amount: 0,
         balance_due: salePrice,
-        currency
-      }
+        currency,
+      },
     });
   } else {
     const rawTotal = Number(quoteRow.total || 0);
@@ -174,7 +309,7 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
       balance_due: insertAmount,
       currency: pickStr(quoteRow.currency, 8) || "USD",
       status: "DRAFT",
-      type: "FINAL"
+      type: "FINAL",
     };
 
     console.log("[accept-bridge] inserting invoice", invoiceInsertPayload);
@@ -183,7 +318,7 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
       const created = await supabaseRequest("invoices", {
         method: "POST",
         headers: { Prefer: "return=representation" },
-        body: invoiceInsertPayload
+        body: invoiceInsertPayload,
       });
       const invoiceRow = Array.isArray(created) ? created[0] : created;
       console.log("[accept-bridge] invoice created", invoiceRow);
@@ -199,5 +334,7 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
 
 module.exports = {
   bridgeAcceptedQuoteToProjectAndInvoice,
-  UUID_RE
+  UUID_RE,
+  resolveLaborContextForQuote,
+  buildLaborSnapshotFields,
 };

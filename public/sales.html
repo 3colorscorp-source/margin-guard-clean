@@ -1657,28 +1657,38 @@
               const settings = loadSettings();
               const metrics = buildSalesUIMetrics(state, settings);
               const laborMetrics = calculateStandaloneSalesMetrics(state, settings);
-              void fetch('/.netlify/functions/upsert-tenant-project', {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  quote_id: String(state.quoteId).trim(),
-                  project_name: state.projectName || document.getElementById('salesProjectName')?.value || '',
-                  client_name: state.clientName || document.getElementById('salesClientName')?.value || '',
-                  client_email: state.customerEmail || document.getElementById('salesCustomerEmail')?.value || '',
-                  status: 'signed',
-                  signed_at: state.soldAt,
-                  deposit_paid: false,
-                  estimated_days: metrics.workerDays,
-                  labor_budget: Number(laborMetrics.laborCost) || 0,
-                  sale_price: metrics.offered,
-                  recommended_price: metrics.recommended,
-                  minimum_price: metrics.minimum,
-                  due_date: state.dueDate || '',
-                  notes: state.notes || state.messageToClient || '',
-                  workers: state.workers
-                })
-              }).catch(function () { /* non-fatal */ });
+              (function () {
+                var internalCost = Number(laborMetrics.beforeProfit || 0) + Number(laborMetrics.reserve || 0);
+                var estProfit = Number(metrics.offered || 0) - internalCost;
+                var estMargin = Number(metrics.offered || 0) > 0 ? estProfit / Number(metrics.offered) : 0;
+                return fetch('/.netlify/functions/upsert-tenant-project', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    quote_id: String(state.quoteId).trim(),
+                    project_name: state.projectName || document.getElementById('salesProjectName')?.value || '',
+                    client_name: state.clientName || document.getElementById('salesClientName')?.value || '',
+                    client_email: state.customerEmail || document.getElementById('salesCustomerEmail')?.value || '',
+                    status: 'signed',
+                    signed_at: state.soldAt,
+                    deposit_paid: false,
+                    estimated_days: metrics.workerDays,
+                    labor_budget: Number(laborMetrics.laborCost) || 0,
+                    sale_price: metrics.offered,
+                    recommended_price: metrics.recommended,
+                    minimum_price: metrics.minimum,
+                    due_date: state.dueDate || '',
+                    notes: state.notes || state.messageToClient || '',
+                    hours_per_day: Number(settings.hoursPerDay || 8),
+                    estimated_labor_cost: Number(laborMetrics.laborCost) || 0,
+                    estimated_material_cost: 0,
+                    estimated_profit: estProfit,
+                    estimated_profit_margin: estMargin,
+                    workers: state.workers
+                  })
+                });
+              })().catch(function () { /* non-fatal */ });
             }
             if (signedStatus) {
               signedStatus.style.display = 'block';
