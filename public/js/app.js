@@ -1105,47 +1105,68 @@ Thank you.`
     } catch (_e) {
       /* non-fatal */
     }
-    delete supervisorProjectSnapshotCache[pid];
+    delete supervisorProjectOperationalCache[pid];
   }
 
-  /** projectId -> { ok, snapshot?, error? } from get-project-snapshot */
-  const supervisorProjectSnapshotCache = Object.create(null);
-  const supervisorProjectSnapshotFetchInFlight = new Set();
+  /** projectId -> { ok, operational_snapshot?, error? } from get-supervisor-operational-snapshot */
+  const supervisorProjectOperationalCache = Object.create(null);
+  const supervisorProjectOperationalFetchInFlight = new Set();
 
-  async function fetchProjectSnapshot(projectId) {
+  async function fetchSupervisorOperationalSnapshot(projectId) {
     const id = String(projectId || "").trim();
     if (!id) return { ok: false, error: "Missing project id" };
     const res = await fetch(
-      `/.netlify/functions/get-project-snapshot?project_id=${encodeURIComponent(id)}`,
+      `/.netlify/functions/get-supervisor-operational-snapshot?project_id=${encodeURIComponent(id)}`,
       { credentials: "include" }
     );
     const data = await res.json().catch(() => null);
-    if (!res.ok || !data || data.ok !== true || !data.snapshot || typeof data.snapshot !== "object") {
+    const snap = data && data.operational_snapshot;
+    if (!res.ok || !data || data.ok !== true || !snap || typeof snap !== "object") {
       const msg =
         (data && (data.error || data.message)) ||
-        (res.ok ? "Snapshot unavailable." : `Snapshot failed (${res.status}).`);
+        (res.ok ? "Field snapshot unavailable." : `Field snapshot failed (${res.status}).`);
       return { ok: false, error: String(msg) };
     }
-    return { ok: true, snapshot: data.snapshot };
+    return { ok: true, operational_snapshot: snap };
   }
 
-  function renderSupervisorSnapshotPanel(opts) {
+  function renderSupervisorOperationalPanel(opts) {
     if (!$("supSnapshotGrid")) return;
     const o = opts && typeof opts === "object" ? opts : {};
     const loadingEl = $("supSnapshotLoading");
     const errorEl = $("supSnapshotError");
     const gridEl = $("supSnapshotGrid");
-    const badgeEl = $("supSnapshotRiskBadge");
-    const riskMetaEl = $("supSnapshotRiskMeta");
+    const badgeEl = $("supOpRiskBadge");
+    const riskMetaEl = $("supOpRiskMeta");
 
     const snapMoney = (n) => {
       if (n == null || n === "" || !Number.isFinite(Number(n))) return "—";
       return formatMoney(n);
     };
 
-    const setSnapText = (id, text) => {
+    const setOpText = (id, text) => {
       const el = $(id);
       if (el) el.textContent = text == null || text === "" ? "—" : String(text);
+    };
+
+    const clearOperationalFields = () => {
+      const ids = [
+        "supOpLaborBudget",
+        "supOpActualLabor",
+        "supOpRemainingLabor",
+        "supOpEstimatedDays",
+        "supOpActualDays",
+        "supOpEstimatedHours",
+        "supOpActualHours",
+        "supOpLaborDeviation",
+        "supOpLaborDeviationLabel",
+        "supOpCompletionPace",
+        "supOpBonusAmount",
+        "supOpBonusMeta",
+        "supOpReportCount",
+        "supOpExpenseCount",
+      ];
+      ids.forEach((id) => setOpText(id, "—"));
     };
 
     if (o.loading) {
@@ -1182,17 +1203,7 @@ Thank you.`
       if (gridEl) gridEl.style.display = "none";
       if (badgeEl) badgeEl.style.display = "none";
       if (riskMetaEl) riskMetaEl.style.display = "none";
-      setSnapText("supSnapOriginalContract", "—");
-      setSnapText("supSnapApprovedCos", "—");
-      setSnapText("supSnapCurrentContract", "—");
-      setSnapText("supSnapLaborBudget", "—");
-      setSnapText("supSnapActualLabor", "—");
-      setSnapText("supSnapMaterialBudget", "—");
-      setSnapText("supSnapActualMaterials", "—");
-      setSnapText("supSnapUnexpected", "—");
-      setSnapText("supSnapProjectedProfit", "—");
-      setSnapText("supSnapCurrentProfit", "—");
-      setSnapText("supSnapMarginMeta", "Margin —");
+      clearOperationalFields();
       return;
     }
 
@@ -1203,24 +1214,44 @@ Thank you.`
     }
     if (gridEl) gridEl.style.display = "";
 
-    setSnapText("supSnapOriginalContract", snapMoney(snap.original_contract));
-    setSnapText("supSnapApprovedCos", snapMoney(snap.approved_change_orders));
-    setSnapText("supSnapCurrentContract", snapMoney(snap.current_contract_total));
-    setSnapText("supSnapLaborBudget", snapMoney(snap.labor_budget));
-    setSnapText("supSnapActualLabor", snapMoney(snap.actual_labor));
-    setSnapText("supSnapMaterialBudget", snapMoney(snap.material_budget));
-    setSnapText("supSnapActualMaterials", snapMoney(snap.actual_materials));
-    setSnapText("supSnapUnexpected", snapMoney(snap.unexpected_expenses));
-    setSnapText("supSnapProjectedProfit", snapMoney(snap.projected_profit));
-    setSnapText("supSnapCurrentProfit", snapMoney(snap.current_profit));
+    setOpText("supOpLaborBudget", snapMoney(snap.labor_budget));
+    setOpText("supOpActualLabor", snapMoney(snap.actual_labor));
+    setOpText("supOpRemainingLabor", snapMoney(snap.remaining_labor_budget));
+    setOpText("supOpEstimatedDays", finiteNumber(snap.estimated_days, 0).toFixed(2));
+    setOpText("supOpActualDays", finiteNumber(snap.actual_days, 0).toFixed(2));
+    setOpText("supOpEstimatedHours", finiteNumber(snap.estimated_hours, 0).toFixed(2));
+    setOpText("supOpActualHours", finiteNumber(snap.actual_hours, 0).toFixed(2));
 
-    const marginPct = Number(snap.current_margin_pct);
-    setSnapText(
-      "supSnapMarginMeta",
-      Number.isFinite(marginPct) ? `Margin ${Math.round(marginPct * 100)}%` : "Margin —"
+    const devDays = finiteNumber(snap.labor_deviation_days, 0);
+    const devSign = devDays > 0 ? "+" : "";
+    setOpText("supOpLaborDeviation", `${devSign}${devDays.toFixed(2)} d`);
+    setOpText(
+      "supOpLaborDeviationLabel",
+      snap.labor_deviation_label || "—"
     );
 
-    const risk = String(snap.margin_risk || "").trim().toLowerCase();
+    const pace = snap.completion_pace_pct;
+    setOpText(
+      "supOpCompletionPace",
+      pace == null || pace === "" || !Number.isFinite(Number(pace))
+        ? "—"
+        : `${Math.round(Number(pace))}%`
+    );
+
+    setOpText("supOpBonusAmount", snapMoney(snap.supervisor_bonus_amount));
+    const bonusStatus = String(snap.supervisor_bonus_status || "").trim();
+    const bonusPct = finiteNumber(snap.supervisor_bonus_pct_of_potential, 0);
+    setOpText(
+      "supOpBonusMeta",
+      bonusStatus
+        ? `${bonusStatus} · ${bonusPct}% of potential`
+        : `${bonusPct}% of potential`
+    );
+
+    setOpText("supOpReportCount", String(finiteNumber(snap.report_count, 0)));
+    setOpText("supOpExpenseCount", String(finiteNumber(snap.expense_count, 0)));
+
+    const risk = String(snap.operational_risk || "").trim().toLowerCase();
     const riskLabels = { low: "Low risk", medium: "Medium risk", high: "High risk" };
     const riskClasses = { low: "green", medium: "amber", high: "red" };
     if (badgeEl) {
@@ -1231,7 +1262,7 @@ Thank you.`
     if (riskMetaEl) {
       if (risk && riskLabels[risk]) {
         riskMetaEl.style.display = "";
-        riskMetaEl.textContent = `Margin risk: ${riskLabels[risk]} (server-calculated).`;
+        riskMetaEl.textContent = `Operational risk: ${riskLabels[risk]} (labor pace / schedule).`;
       } else {
         riskMetaEl.style.display = "none";
         riskMetaEl.textContent = "";
@@ -6080,22 +6111,22 @@ function renderSupervisor() {
           delete supervisorProjectReportsCache[prevId];
           delete supervisorProjectExpensesCache[prevId];
           delete supervisorProjectChangeOrdersCache[prevId];
-          delete supervisorProjectSnapshotCache[prevId];
+          delete supervisorProjectOperationalCache[prevId];
           supervisorProjectReportsFetchInFlight.delete(prevId);
           supervisorProjectExpensesFetchInFlight.delete(prevId);
           supervisorProjectChangeOrdersFetchInFlight.delete(prevId);
-          supervisorProjectSnapshotFetchInFlight.delete(prevId);
+          supervisorProjectOperationalFetchInFlight.delete(prevId);
         }
         if (prevId !== nextId && nextId) {
           delete supervisorProjectReportsCache[nextId];
           delete supervisorProjectExpensesCache[nextId];
           delete supervisorProjectChangeOrdersCache[nextId];
-          delete supervisorProjectSnapshotCache[nextId];
+          delete supervisorProjectOperationalCache[nextId];
         }
         if (nextId && isServerListedSupervisorProject(nextId)) {
           supervisorProjectReportsFetchInFlight.add(nextId);
           supervisorProjectExpensesFetchInFlight.add(nextId);
-          supervisorProjectSnapshotFetchInFlight.add(nextId);
+          supervisorProjectOperationalFetchInFlight.add(nextId);
           renderSupervisor();
           void (async () => {
             try {
@@ -6103,7 +6134,7 @@ function renderSupervisor() {
               const [r, e, snap] = await Promise.all([
                 fetchProjectReports(nextId),
                 fetchProjectExpenses(nextId),
-                fetchProjectSnapshot(nextId),
+                fetchSupervisorOperationalSnapshot(nextId),
               ]);
               if (supervisorProjectKey(loadSupervisorSelectedProjectId()) !== nextId) return;
               supervisorProjectReportsCache[nextId] =
@@ -6114,14 +6145,14 @@ function renderSupervisor() {
                 e && e.ok === true && Array.isArray(e.expenses)
                   ? { ok: true, expenses: e.expenses }
                   : { ok: false, expenses: [] };
-              supervisorProjectSnapshotCache[nextId] =
+              supervisorProjectOperationalCache[nextId] =
                 snap && snap.ok === true
-                  ? { ok: true, snapshot: snap.snapshot }
-                  : { ok: false, error: (snap && snap.error) || "Snapshot unavailable." };
+                  ? { ok: true, snapshot: snap.operational_snapshot }
+                  : { ok: false, error: (snap && snap.error) || "Field snapshot unavailable." };
             } finally {
               supervisorProjectReportsFetchInFlight.delete(nextId);
               supervisorProjectExpensesFetchInFlight.delete(nextId);
-              supervisorProjectSnapshotFetchInFlight.delete(nextId);
+              supervisorProjectOperationalFetchInFlight.delete(nextId);
             }
             if (supervisorProjectKey(loadSupervisorSelectedProjectId()) !== nextId) return;
             renderSupervisor();
@@ -6312,7 +6343,7 @@ function renderSupervisor() {
             '<p class="small" style="margin:0;">Labor plan not available for this project</p>';
         }
         setSupervisorProjectedFinishDom("", { unavailableText: "Projected finish date unavailable" });
-        renderSupervisorSnapshotPanel({});
+        renderSupervisorOperationalPanel({});
         if (typeof console !== "undefined" && console.log) {
           console.log("[supervisor-filter] kpi count", 0);
         }
@@ -6327,11 +6358,11 @@ function renderSupervisor() {
         delete supervisorProjectReportsCache[oldPid];
         delete supervisorProjectExpensesCache[oldPid];
         delete supervisorProjectChangeOrdersCache[oldPid];
-        delete supervisorProjectSnapshotCache[oldPid];
+        delete supervisorProjectOperationalCache[oldPid];
         supervisorProjectReportsFetchInFlight.delete(oldPid);
         supervisorProjectExpensesFetchInFlight.delete(oldPid);
         supervisorProjectChangeOrdersFetchInFlight.delete(oldPid);
-        supervisorProjectSnapshotFetchInFlight.delete(oldPid);
+        supervisorProjectOperationalFetchInFlight.delete(oldPid);
         clearSupervisorSwitchDomBleed();
         wipeSupervisorLocalScratchOnProjectSwitch(currentProject);
       }
@@ -6365,16 +6396,19 @@ function renderSupervisor() {
             }
           });
         }
-        if (!supervisorProjectSnapshotCache[pid] && !supervisorProjectSnapshotFetchInFlight.has(pid)) {
-          supervisorProjectSnapshotFetchInFlight.add(pid);
-          void fetchProjectSnapshot(pid).then((data) => {
-            supervisorProjectSnapshotFetchInFlight.delete(pid);
-            if (data && data.ok === true && data.snapshot) {
-              supervisorProjectSnapshotCache[pid] = { ok: true, snapshot: data.snapshot };
+        if (!supervisorProjectOperationalCache[pid] && !supervisorProjectOperationalFetchInFlight.has(pid)) {
+          supervisorProjectOperationalFetchInFlight.add(pid);
+          void fetchSupervisorOperationalSnapshot(pid).then((data) => {
+            supervisorProjectOperationalFetchInFlight.delete(pid);
+            if (data && data.ok === true && data.operational_snapshot) {
+              supervisorProjectOperationalCache[pid] = {
+                ok: true,
+                snapshot: data.operational_snapshot,
+              };
             } else {
-              supervisorProjectSnapshotCache[pid] = {
+              supervisorProjectOperationalCache[pid] = {
                 ok: false,
-                error: (data && data.error) || "Snapshot unavailable.",
+                error: (data && data.error) || "Field snapshot unavailable.",
               };
             }
             if ($("supervisorKpis") && supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
@@ -6563,20 +6597,20 @@ function renderSupervisor() {
       }
 
       if ($("supSnapshotGrid")) {
-        const snapCached = supervisorProjectSnapshotCache[pid];
-        const snapInflight = supervisorProjectSnapshotFetchInFlight.has(pid);
+        const snapCached = supervisorProjectOperationalCache[pid];
+        const snapInflight = supervisorProjectOperationalFetchInFlight.has(pid);
         if (!isServerListedSupervisorProject(pid)) {
-          renderSupervisorSnapshotPanel({});
+          renderSupervisorOperationalPanel({});
         } else if (snapInflight && !snapCached) {
-          renderSupervisorSnapshotPanel({ loading: true });
+          renderSupervisorOperationalPanel({ loading: true });
         } else if (snapCached && snapCached.ok === true && snapCached.snapshot) {
-          renderSupervisorSnapshotPanel({ snapshot: snapCached.snapshot });
+          renderSupervisorOperationalPanel({ snapshot: snapCached.snapshot });
         } else if (snapCached && snapCached.ok === false) {
-          renderSupervisorSnapshotPanel({
-            error: snapCached.error || "Snapshot unavailable.",
+          renderSupervisorOperationalPanel({
+            error: snapCached.error || "Field snapshot unavailable.",
           });
         } else {
-          renderSupervisorSnapshotPanel({ loading: true });
+          renderSupervisorOperationalPanel({ loading: true });
         }
       }
 

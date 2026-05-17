@@ -180,4 +180,5 @@ module.exports = {
   computeMarginRisk,
   deriveLaborConsumedFromReports,
   round2,
+  num,
 };

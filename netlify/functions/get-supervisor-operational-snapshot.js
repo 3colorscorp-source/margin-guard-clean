@@ -1,11 +1,7 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
-const { computeProjectSnapshot } = require("./_lib/project-snapshot");
-const {
-  resolveProfileRoleForSession,
-  roleMayAccessFinancialSnapshot,
-} = require("./_lib/resolve-profile-role");
+const { computeProjectOperationalSnapshot } = require("./_lib/project-operational-snapshot");
 
 function json(statusCode, payload) {
   return {
@@ -13,6 +9,35 @@ function json(statusCode, payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   };
+}
+
+function num(v, fallback) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function extractSupervisorBonusPctFromSnapshotPayload(payload) {
+  if (!payload || typeof payload !== "object") return 1;
+  const storage =
+    payload.storage && typeof payload.storage === "object" ? payload.storage : {};
+  const mg =
+    storage.mg_settings_v2 && typeof storage.mg_settings_v2 === "object"
+      ? storage.mg_settings_v2
+      : {};
+  return num(mg.supervisorBonusPct, 1);
+}
+
+async function loadSupervisorBonusPctForTenant(tenantId) {
+  const tid = encodeURIComponent(tenantId);
+  try {
+    const rows = await supabaseRequest(
+      `tenant_snapshots?tenant_id=eq.${tid}&select=payload&order=created_at.desc&limit=1`
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    return extractSupervisorBonusPctFromSnapshotPayload(row?.payload);
+  } catch (_e) {
+    return 1;
+  }
 }
 
 exports.handler = async (event) => {
@@ -29,13 +54,6 @@ exports.handler = async (event) => {
     const tenant = await resolveTenantFromSession(session);
     if (!tenant?.id) {
       return json(404, { error: "Tenant not found" });
-    }
-
-    const role = await resolveProfileRoleForSession(session, tenant.id);
-    if (!roleMayAccessFinancialSnapshot(role)) {
-      return json(403, {
-        error: "Financial project snapshot is restricted to owner role.",
-      });
     }
 
     const qs = event.queryStringParameters || {};
@@ -55,33 +73,27 @@ exports.handler = async (event) => {
       return json(403, { error: "Project not found for this tenant" });
     }
 
-    const [reportRows, expenseRows, coRows] = await Promise.all([
+    const [reportRows, expenseRows, bonusPct] = await Promise.all([
       supabaseRequest(
         `tenant_project_reports?tenant_id=eq.${tid}&project_id=eq.${pid}&select=hours,days`
       ),
       supabaseRequest(
-        `tenant_project_expenses?tenant_id=eq.${tid}&project_id=eq.${pid}&select=amount`
+        `tenant_project_expenses?tenant_id=eq.${tid}&project_id=eq.${pid}&select=id`
       ),
-      supabaseRequest(
-        `tenant_project_change_orders?tenant_id=eq.${tid}&project_id=eq.${pid}&select=client_price,status`
-      ),
+      loadSupervisorBonusPctForTenant(tenant.id),
     ]);
 
-    const reports = Array.isArray(reportRows) ? reportRows : [];
-    const expenses = Array.isArray(expenseRows) ? expenseRows : [];
-    const changeOrders = Array.isArray(coRows) ? coRows : [];
-
-    const snapshot = computeProjectSnapshot({
+    const operational_snapshot = computeProjectOperationalSnapshot({
       project,
-      reports,
-      expenses,
-      changeOrders,
+      reports: Array.isArray(reportRows) ? reportRows : [],
+      expenses: Array.isArray(expenseRows) ? expenseRows : [],
+      supervisorBonusPctPoints: bonusPct,
     });
 
     return json(200, {
       ok: true,
       project_id: project.id,
-      snapshot,
+      operational_snapshot,
     });
   } catch (err) {
     return json(500, { error: err.message || "Unexpected error" });
