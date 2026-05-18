@@ -1331,10 +1331,46 @@ Thank you.`
     return `<div class="sup-exec-plan-cards">${cards.join("")}</div>`;
   }
 
+  function syncSupConsoleLogsWrap() {
+    const wrap = $("supConsoleLogs");
+    const laborPanel = $("supLaborLogPanel");
+    const expensePanel = $("supExpenseLogPanel");
+    if (!wrap) return;
+    const laborOpen = laborPanel && laborPanel.hidden === false;
+    const extraOpen = expensePanel && expensePanel.hidden === false;
+    wrap.hidden = !(laborOpen || extraOpen);
+  }
+
+  function openSupReportPanel(kind) {
+    const laborPanel = $("supLaborLogPanel");
+    const expensePanel = $("supExpenseLogPanel");
+    if (kind === "labor") {
+      if (expensePanel) expensePanel.hidden = true;
+      if (laborPanel) laborPanel.hidden = false;
+    } else if (kind === "extra") {
+      if (laborPanel) laborPanel.hidden = true;
+      if (expensePanel) expensePanel.hidden = false;
+    }
+    syncSupConsoleLogsWrap();
+  }
+
+  function closeSupReportPanels(kind) {
+    const laborPanel = $("supLaborLogPanel");
+    const expensePanel = $("supExpenseLogPanel");
+    if (kind === "labor" || kind === "all") {
+      if (laborPanel) laborPanel.hidden = true;
+    }
+    if (kind === "extra" || kind === "all") {
+      if (expensePanel) expensePanel.hidden = true;
+    }
+    syncSupConsoleLogsWrap();
+  }
+
   function openSupFieldModal(kind) {
     const labor = $("supLaborReportModal");
     const extra = $("supExpenseReportModal");
     if (kind !== "labor" && kind !== "extra") return;
+    openSupReportPanel(kind);
     if (kind === "labor") {
       if (extra) {
         extra.setAttribute("aria-hidden", "true");
@@ -1381,6 +1417,8 @@ Thank you.`
     const laborOpen = labor && labor.getAttribute("aria-hidden") === "false";
     const extraOpen = extra && extra.getAttribute("aria-hidden") === "false";
     if (!laborOpen && !extraOpen) document.body.style.overflow = "";
+    if (kind === "labor" || kind === "all") closeSupReportPanels("labor");
+    if (kind === "extra" || kind === "all") closeSupReportPanels("extra");
   }
 
   function bindSupFieldModalsOnce() {
@@ -6517,6 +6555,8 @@ function renderSupervisor() {
         const prevId = supervisorProjectKey(loadSupervisorSelectedProjectId());
         const nextId = supervisorProjectKey(picker.value);
         saveSupervisorSelectedProjectId(nextId);
+        closeSupFieldModal("all");
+        closeSupReportPanels("all");
         const fb = $("supAssignFeedback");
         if (fb) fb.textContent = "";
         if (prevId && prevId !== nextId) {

@@ -121,19 +121,23 @@
               </div>
               <div id="supLaborPlanBody" class="sup-exec-plan-list"></div>
             </section>
+
+            <div class="sup-console-field-actions" aria-label="Acciones de campo">
+              <div class="sup-console-action-row">
+                <button type="button" class="btn primary sup-console-action-btn" id="btnOpenSupLaborReport">Reportar labor</button>
+                <button type="button" class="btn sup-console-action-btn" id="btnOpenSupExpenseReport">Reportar gasto imprevisto</button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div class="sup-console-logs">
-          <div class="card sup-console-log-card">
+        <div class="sup-console-logs" id="supConsoleLogs" hidden>
+          <div id="supLaborLogPanel" class="card sup-console-log-card" hidden>
             <div class="card-inner">
-              <div class="section-action-row">
+              <div class="section-action-row section-action-row--compact">
                 <div class="section-action-row__main">
                   <h3 class="sup-section-title">Labor reports</h3>
                   <p class="small sup-section-desc">Recent field entries for this project.</p>
-                </div>
-                <div class="section-action-row__actions">
-                  <button type="button" class="btn primary" id="btnOpenSupLaborReport">Reportar labor</button>
                 </div>
               </div>
               <div class="supervisor-table-wrap">
@@ -152,15 +156,12 @@
               </div>
             </div>
           </div>
-          <div class="card sup-console-log-card">
+          <div id="supExpenseLogPanel" class="card sup-console-log-card" hidden>
             <div class="card-inner">
-              <div class="section-action-row">
+              <div class="section-action-row section-action-row--compact">
                 <div class="section-action-row__main">
                   <h3 class="sup-section-title">Unexpected expenses</h3>
                   <p class="small sup-section-desc">Logged extras for this project.</p>
-                </div>
-                <div class="section-action-row__actions">
-                  <button type="button" class="btn" id="btnOpenSupExpenseReport">Reportar gasto imprevisto</button>
                 </div>
               </div>
               <div class="supervisor-table-wrap">
