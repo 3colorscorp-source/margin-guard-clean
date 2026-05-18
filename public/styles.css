@@ -3022,6 +3022,30 @@ body.supervisor-page .topbar-inner{
 .sup-field-modal__close{
   flex-shrink:0;
 }
+.sup-field-modal input[type="date"],
+.sup-field-modal .sup-field-date-input{
+  color-scheme:dark;
+  appearance:auto;
+  -webkit-appearance:auto;
+  background-image:none !important;
+  padding-right:16px;
+  cursor:pointer;
+}
+.sup-field-modal input[type="date"]::-webkit-calendar-picker-indicator{
+  opacity:1 !important;
+  position:static !important;
+  width:auto;
+  height:auto;
+  margin-left:6px;
+  padding:0;
+  cursor:pointer;
+  filter:invert(1);
+  background:transparent !important;
+}
+.sup-field-modal input[type="date"]::-moz-calendar-picker-indicator{
+  opacity:1;
+  cursor:pointer;
+}
 .sup-console-rail-title{
   margin:0 0 4px;
   font-size:1.15rem;

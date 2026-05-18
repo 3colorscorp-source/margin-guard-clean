@@ -1379,7 +1379,7 @@ Thank you.`
       if (labor) {
         labor.setAttribute("aria-hidden", "false");
         labor.style.display = "flex";
-        if (!val("supEntryDate")) setVal("supEntryDate", todayInputValue());
+        setVal("supEntryDate", todayInputValue());
         const focusEl = $("supEntryDate");
         if (focusEl && typeof focusEl.focus === "function") focusEl.focus();
       }
@@ -1391,8 +1391,8 @@ Thank you.`
       if (extra) {
         extra.setAttribute("aria-hidden", "false");
         extra.style.display = "flex";
-        if (!val("supExtraDate")) setVal("supExtraDate", todayInputValue());
-        const focusEl = $("supExtraItem");
+        setVal("supExtraDate", todayInputValue());
+        const focusEl = $("supExtraDate");
         if (focusEl && typeof focusEl.focus === "function") focusEl.focus();
       }
     }
@@ -1421,11 +1421,29 @@ Thank you.`
     if (kind === "extra" || kind === "all") closeSupReportPanels("extra");
   }
 
+  function bindSupFieldDatePicker(inputEl) {
+    if (!inputEl || inputEl.dataset?.supDatePickerBound === "1") return;
+    inputEl.dataset.supDatePickerBound = "1";
+    const openPicker = () => {
+      if (typeof inputEl.showPicker === "function") {
+        try {
+          inputEl.showPicker();
+        } catch (_e) {
+          /* ignore if browser blocks showPicker without user gesture */
+        }
+      }
+    };
+    inputEl.addEventListener("click", openPicker);
+    inputEl.addEventListener("focus", openPicker);
+  }
+
   function bindSupFieldModalsOnce() {
     if (document.body?.dataset?.supFieldModalsBound === "1") return;
     if (document.body) document.body.dataset.supFieldModalsBound = "1";
     const laborModal = $("supLaborReportModal");
     const extraModal = $("supExpenseReportModal");
+    bindSupFieldDatePicker($("supEntryDate"));
+    bindSupFieldDatePicker($("supExtraDate"));
     const wire = (id, handler) => {
       const el = $(id);
       if (el) el.onclick = handler;
@@ -7202,7 +7220,7 @@ function renderSupervisor() {
         const state = loadSupervisorReport(currentProject);
         const rowPid = supervisorProjectKey(currentProject.id);
         const entry = {
-          date: val("supEntryDate"),
+          date: normalizeDateInput(val("supEntryDate")),
           hours: num("supEntryHours", 0),
           days: num("supEntryDays", 0),
           note: val("supEntryNote").trim(),
@@ -7276,7 +7294,7 @@ function renderSupervisor() {
         const state = loadSupervisorReport(currentProject);
         const rowPid = supervisorProjectKey(currentProject.id);
         const extra = {
-          date: val("supExtraDate"),
+          date: normalizeDateInput(val("supExtraDate")),
           item: val("supExtraItem").trim(),
           amount: num("supExtraAmount", 0),
           note: val("supExtraNote").trim(),
