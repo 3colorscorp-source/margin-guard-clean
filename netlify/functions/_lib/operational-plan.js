@@ -108,6 +108,34 @@ function planHasDays(plan) {
   return Array.isArray(plan) && plan.length > 0;
 }
 
+/** Parse operational_plan from PostgREST jsonb (array or JSON string). */
+function parseOperationalPlanJsonb(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === "object" && Array.isArray(raw.days)) return raw.days;
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      return parseOperationalPlanJsonb(parsed);
+    } catch (_e) {
+      return [];
+    }
+  }
+  return [];
+}
+
+/** Field-facing crew label for Supervisor (no financial data). */
+function crewSummaryFromOperationalPlan(plan) {
+  const roles = new Set();
+  for (const day of Array.isArray(plan) ? plan : []) {
+    for (const w of day?.workers || []) {
+      const r = str(w?.role || w?.worker_type, 120);
+      if (r) roles.add(r);
+    }
+  }
+  if (!roles.size) return "";
+  return [...roles].join(" + ");
+}
+
 /**
  * @param {Array} normalizedPlan - output of normalizeOperationalPlan (array only)
  * @param {number|null} estimatedDaysOverride
@@ -325,6 +353,8 @@ module.exports = {
   normalizeOperationalPlan,
   computeOperationalPlanMetrics,
   operationalPlanForSupervisorVisibility,
+  parseOperationalPlanJsonb,
+  crewSummaryFromOperationalPlan,
   planHasDays,
   extractOperationalPlanFromQuoteRow,
   extractOperationalPlanFromSnapshotPayload,

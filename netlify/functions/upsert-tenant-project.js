@@ -216,8 +216,9 @@ exports.handler = async (event) => {
           body: patch,
         }
       );
+      let operationalPersist = { ok: false, skipped: true };
       if (planHasDays(opNormalized)) {
-        await persistOperationalSnapshot({
+        operationalPersist = await persistOperationalSnapshot({
           tenantId: tenant.id,
           projectId: existing.id,
           quoteId,
@@ -235,6 +236,7 @@ exports.handler = async (event) => {
         updated: true,
         labor_plan_locked: locked || Boolean(patch.quoted_labor_plan_locked_at),
         operational_snapshot: planHasDays(opNormalized),
+        operational_persist: operationalPersist,
       });
     }
 
@@ -250,8 +252,9 @@ exports.handler = async (event) => {
       body: insertBody,
     });
     const ins = Array.isArray(inserted) ? inserted[0] : inserted;
+    let operationalPersist = { ok: false, skipped: true };
     if (ins?.id && planHasDays(opNormalized)) {
-      await persistOperationalSnapshot({
+      operationalPersist = await persistOperationalSnapshot({
         tenantId: tenant.id,
         projectId: ins.id,
         quoteId,
@@ -269,6 +272,7 @@ exports.handler = async (event) => {
       updated: false,
       labor_plan_locked: Boolean(insertBody.quoted_labor_plan_locked_at),
       operational_snapshot: planHasDays(opNormalized),
+      operational_persist: operationalPersist,
     });
   } catch (err) {
     return json(500, { error: err.message || "Unexpected error" });

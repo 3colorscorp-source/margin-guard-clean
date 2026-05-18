@@ -7,6 +7,7 @@ const {
   normalizeOperationalPlan,
   computeOperationalPlanMetrics,
   planHasDays,
+  parseOperationalPlanJsonb,
 } = require("./operational-plan");
 
 function num(v, fallback = 0) {
@@ -80,10 +81,11 @@ async function persistOperationalSnapshot(params) {
   const nowIso = new Date().toISOString();
 
   const existingRows = await supabaseRequest(
-    `tenant_project_operational_snapshots?tenant_id=eq.${tid}&project_id=eq.${pid}&select=id,locked_at&limit=1`
+    `tenant_project_operational_snapshots?tenant_id=eq.${tid}&project_id=eq.${pid}&select=id,locked_at,operational_plan&limit=1`
   );
   const existing = Array.isArray(existingRows) ? existingRows[0] : null;
-  if (existing?.locked_at) {
+  const existingPlan = parseOperationalPlanJsonb(existing?.operational_plan);
+  if (existing?.locked_at && planHasDays(existingPlan)) {
     return { ok: true, skipped: true, id: existing.id };
   }
 

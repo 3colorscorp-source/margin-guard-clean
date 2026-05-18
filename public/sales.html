@@ -2050,6 +2050,13 @@
                 var internalCost = Number(laborMetrics.beforeProfit || 0) + Number(laborMetrics.reserve || 0);
                 var estProfit = Number(metrics.offered || 0) - internalCost;
                 var estMargin = Number(metrics.offered || 0) > 0 ? estProfit / Number(metrics.offered) : 0;
+                var opApi = getOperationalPlanApi();
+                var hpd = opApi ? opApi.getHoursPerDay(settings) : Number(settings.hoursPerDay || 8);
+                var daysOv = typeof readOperationalDaysOverride === 'function' ? readOperationalDaysOverride(state) : null;
+                var hoursOv = typeof readOperationalHoursOverride === 'function' ? readOperationalHoursOverride(state) : null;
+                var normalizedOperationalPlan = opApi
+                  ? opApi.normalizeOperationalPlan(state.operational_plan || [], daysOv, hpd)
+                  : (state.operational_plan || []);
                 var opMetrics = typeof getOperationalMetricsForState === 'function' ? getOperationalMetricsForState(state) : null;
                 var signedEstimatedDays = opMetrics && opMetrics.estimated_days > 0
                   ? opMetrics.estimated_days
@@ -2073,18 +2080,34 @@
                     minimum_price: metrics.minimum,
                     due_date: state.dueDate || '',
                     notes: state.notes || state.messageToClient || '',
-                    hours_per_day: Number(settings.hoursPerDay || 8),
+                    hours_per_day: hpd,
                     estimated_labor_cost: Number(laborMetrics.laborCost) || 0,
                     estimated_material_cost: 0,
                     estimated_profit: estProfit,
                     estimated_profit_margin: estMargin,
                     workers: state.workers,
-                    operational_plan: state.operational_plan || [],
-                    operational_estimated_days_override: state.operational_estimated_days_override || '',
-                    operational_estimated_hours_override: state.operational_estimated_hours_override || ''
+                    operational_plan: normalizedOperationalPlan,
+                    operational_estimated_days_override: daysOv != null ? daysOv : '',
+                    operational_estimated_hours_override: hoursOv != null ? hoursOv : ''
                   })
-                });
-              })().catch(function () { /* non-fatal */ });
+                })
+                  .then(function (res) {
+                    return res.json().then(function (data) {
+                      return { res: res, data: data };
+                    });
+                  })
+                  .then(function (out) {
+                    if (!out.res.ok || !out.data || out.data.ok !== true) {
+                      if (typeof console !== 'undefined' && console.error) {
+                        console.error('[MG Sales] upsert-tenant-project failed', out.data || out.res.status);
+                      }
+                    }
+                  });
+              })().catch(function (err) {
+                if (typeof console !== 'undefined' && console.error) {
+                  console.error('[MG Sales] upsert-tenant-project network error', err);
+                }
+              });
             }
             if (signedStatus) {
               signedStatus.style.display = 'block';

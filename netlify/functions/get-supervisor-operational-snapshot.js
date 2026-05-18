@@ -4,6 +4,12 @@ const { supabaseRequest } = require("./_lib/supabase-admin");
 const { computeProjectOperationalSnapshot } = require("./_lib/project-operational-snapshot");
 const {
   operationalPlanForSupervisorVisibility,
+  parseOperationalPlanJsonb,
+  resolveOperationalPlanForQuote,
+  normalizeOperationalPlan,
+  computeOperationalPlanMetrics,
+  planHasDays,
+  crewSummaryFromOperationalPlan,
 } = require("./_lib/operational-plan");
 
 function json(statusCode, payload) {
@@ -41,6 +47,19 @@ function extractSupervisorBonusPctFromSnapshotPayload(payload) {
       ? storage.mg_settings_v2
       : {};
   return num(mg.supervisorBonusPct, 1);
+}
+
+async function loadLatestTenantSnapshotPayload(tenantId) {
+  const tid = encodeURIComponent(tenantId);
+  try {
+    const rows = await supabaseRequest(
+      `tenant_snapshots?tenant_id=eq.${tid}&select=payload&order=created_at.desc&limit=1`
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    return row?.payload && typeof row.payload === "object" ? row.payload : null;
+  } catch (_e) {
+    return null;
+  }
 }
 
 async function loadSupervisorBonusPctForTenant(tenantId) {
@@ -163,19 +182,52 @@ exports.handler = async (event) => {
       supervisorBonusPctPoints: bonusPct,
     });
 
+    let planRaw = parseOperationalPlanJsonb(opRow?.operational_plan);
+    if (!planRaw.length && project.quote_id) {
+      try {
+        const qRows = await supabaseRequest(
+          `quotes?id=eq.${encodeURIComponent(project.quote_id)}&tenant_id=eq.${tid}&select=*&limit=1`
+        );
+        const quoteRow = Array.isArray(qRows) ? qRows[0] : null;
+        if (quoteRow) {
+          const resolved = await resolveOperationalPlanForQuote(
+            quoteRow,
+            () => loadLatestTenantSnapshotPayload(tenant.id)
+          );
+          if (resolved?.plan?.length) {
+            planRaw = resolved.plan;
+          }
+        }
+      } catch (_e) {
+        /* fallback optional */
+      }
+    }
+
+    const operational_plan = operationalPlanForSupervisorVisibility(planRaw);
+    const has_execution_plan = operational_plan.length > 0;
+
+    let metricsRow = opRow;
+    if (!metricsRow && planHasDays(planRaw)) {
+      const normalized = normalizeOperationalPlan(planRaw);
+      const metrics = computeOperationalPlanMetrics(normalized);
+      metricsRow = {
+        estimated_days: metrics.estimated_days,
+        estimated_hours: metrics.estimated_hours,
+        worker_count: metrics.worker_count,
+        commitment_date: normDate(project.due_date),
+      };
+    }
+
     operational_snapshot = mergeMetricsWithStoredPlan(
       operational_snapshot,
-      opRow,
+      metricsRow,
       project
     );
 
-    const planRaw =
-      opRow?.operational_plan && Array.isArray(opRow.operational_plan)
-        ? opRow.operational_plan
-        : [];
-    const operational_plan = operationalPlanForSupervisorVisibility(planRaw);
-    const schedule = buildScheduleFields(project, opRow);
-    const has_execution_plan = operational_plan.length > 0;
+    const schedule = {
+      ...buildScheduleFields(project, metricsRow || opRow),
+      crew_summary: crewSummaryFromOperationalPlan(operational_plan),
+    };
 
     return json(200, {
       ok: true,

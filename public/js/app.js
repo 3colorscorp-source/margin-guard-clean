@@ -1114,6 +1114,18 @@ Thank you.`
   const supervisorProjectOperationalCache = Object.create(null);
   const supervisorProjectOperationalFetchInFlight = new Set();
 
+  function clearSupervisorProjectOperationalCache(pid) {
+    if (pid) {
+      delete supervisorProjectOperationalCache[pid];
+      supervisorProjectOperationalFetchInFlight.delete(pid);
+      return;
+    }
+    Object.keys(supervisorProjectOperationalCache).forEach((k) => {
+      delete supervisorProjectOperationalCache[k];
+    });
+    supervisorProjectOperationalFetchInFlight.clear();
+  }
+
   function buildSupervisorOperationalFallback(project, localState) {
     const estimatedDays = finiteNumber(project?.estimatedDays, 0);
     const entries = Array.isArray(localState?.entries) ? localState.entries : [];
@@ -1157,6 +1169,7 @@ Thank you.`
 
   function supervisorScheduleLabels(schedule, project, state) {
     const sched = schedule && typeof schedule === "object" ? schedule : {};
+    const crewFromSchedule = String(sched.crew_summary || "").trim();
     const startRaw =
       sched.start_date ||
       (project?.signedAt ? String(project.signedAt).slice(0, 10) : "") ||
@@ -1176,6 +1189,7 @@ Thank you.`
       targetLabel: target
         ? formatDateUS(target) || target
         : "Target finish pending from Sales",
+      crewSummary: crewFromSchedule,
     };
   }
 
@@ -1586,13 +1600,16 @@ Thank you.`
       { credentials: "include" }
     );
     const data = await res.json().catch(() => null);
-    const snap = data && data.operational_snapshot;
-    if (!res.ok || !data || data.ok !== true || !snap || typeof snap !== "object") {
+    if (!res.ok || !data || data.ok !== true) {
       const msg =
         (data && (data.error || data.message)) ||
         (res.ok ? "Field snapshot unavailable." : `Field snapshot failed (${res.status}).`);
       return { ok: false, error: String(msg) };
     }
+    const snap =
+      data.operational_snapshot && typeof data.operational_snapshot === "object"
+        ? data.operational_snapshot
+        : {};
     return {
       ok: true,
       operational_snapshot: snap,
@@ -1952,6 +1969,7 @@ Thank you.`
     clearSupervisorProjectReportsCache();
     clearSupervisorProjectExpensesCache();
     clearSupervisorProjectChangeOrdersCache();
+    clearSupervisorProjectOperationalCache();
     renderSupervisor();
   }
 
@@ -6616,7 +6634,7 @@ function renderSupervisor() {
                   ? { ok: true, expenses: e.expenses }
                   : { ok: false, expenses: [] };
               supervisorProjectOperationalCache[nextId] =
-                snap && snap.ok === true && snap.operational_snapshot
+                snap && snap.ok === true
                   ? {
                       ok: true,
                       snapshot: snap.operational_snapshot,
@@ -6860,7 +6878,7 @@ function renderSupervisor() {
           void fetchSupervisorOperationalSnapshot(pid)
             .then((data) => {
               supervisorProjectOperationalFetchInFlight.delete(pid);
-              if (data && data.ok === true && data.operational_snapshot) {
+              if (data && data.ok === true) {
                 supervisorProjectOperationalCache[pid] = {
                   ok: true,
                   snapshot: data.operational_snapshot,
@@ -6874,7 +6892,7 @@ function renderSupervisor() {
                   error: (data && data.error) || "Field snapshot unavailable.",
                 };
               }
-              if ($("supervisorKpis") && supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
+              if (supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
                 renderSupervisor();
               }
             })
@@ -6884,7 +6902,7 @@ function renderSupervisor() {
                 ok: false,
                 error: "Field snapshot unavailable (network error).",
               };
-              if ($("supervisorKpis") && supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
+              if (supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
                 renderSupervisor();
               }
             });
@@ -7009,7 +7027,8 @@ function renderSupervisor() {
         scheduleLabels.startIso,
         actualDays
       );
-      const crewSummary = supervisorCrewSummaryFromPlan(execPlan);
+      const crewSummary =
+        scheduleLabels.crewSummary || supervisorCrewSummaryFromPlan(execPlan);
 
       renderSupervisorHero({
         projectName: state.projectName || "Project",
