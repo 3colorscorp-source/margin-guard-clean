@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/styles.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
-<body data-requires-auth="true">
+<body data-requires-auth="true" class="supervisor-page">
   <div class="topbar">
     <div class="topbar-inner">
       <div class="brand">
@@ -32,10 +32,10 @@
     </div>
   </div>
 
-  <div class="container">
+  <div class="container supervisor-console">
     <div class="account-pill" id="accountEmail">Cuenta activa</div>
 
-    <section class="card owner-hero">
+    <section class="card owner-hero sup-console-intro">
       <div class="card-inner">
         <span class="eyebrow">Field execution</span>
         <h2 class="hero-title" style="margin:8px 0 6px;font-size:1.35rem;">Run the job on schedule.</h2>
@@ -43,9 +43,9 @@
       </div>
     </section>
 
-    <div class="grid">
-      <div>
-        <div class="card">
+    <div class="grid sup-console-grid">
+      <main class="sup-console-main">
+        <div class="card sup-console-plan-card">
           <div class="card-inner">
             <div class="section-head">
               <div>
@@ -110,10 +110,155 @@
               <h3 class="sup-section-title">Execution plan</h3>
               <div id="supLaborPlanBody" class="sup-exec-plan-list"></div>
             </section>
+          </div>
+        </div>
+
+        <div class="sup-console-forms">
+          <div class="card sup-console-form-card">
+            <div class="card-inner">
+              <div class="section-head">
+                <div>
+                  <h2>Reporte de avance</h2>
+                  <div class="sub">El supervisor solo reporta lo que realmente se hizo en campo.</div>
+                </div>
+              </div>
+
+              <div class="form">
+                <div class="field">
+                  <label>Fecha</label>
+                  <input id="supEntryDate" type="date" />
+                </div>
+                <div class="field">
+                  <label>Horas trabajadas</label>
+                  <input id="supEntryHours" type="number" step="0.25" min="0" placeholder="0.00" />
+                </div>
+                <div class="field">
+                  <label>Dias trabajados</label>
+                  <input id="supEntryDays" type="number" step="0.25" min="0" placeholder="0.00" />
+                </div>
+                <div class="field">
+                  <label>Nota</label>
+                  <input id="supEntryNote" maxlength="100" placeholder="Ej: rough plumbing / tile prep / finish" />
+                </div>
+              </div>
+
+              <div class="inline-actions" style="margin-top:10px;">
+                <button class="btn primary" id="btnAddSupEntry">Agregar avance</button>
+              </div>
+
+              <div class="supervisor-table-wrap" style="margin-top:12px;">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Nota</th>
+                      <th>Horas</th>
+                      <th>Dias</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="supEntriesBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="card sup-console-form-card">
+            <div class="card-inner">
+              <div class="section-head">
+                <div>
+                  <h2>Gasto imprevisto</h2>
+                  <div class="sub">Usalo para gasolina, tornillos, cinta, escoba, aspiradora o cualquier gasto no planeado.</div>
+                </div>
+              </div>
+
+              <div class="form">
+                <div class="field">
+                  <label>Fecha</label>
+                  <input id="supExtraDate" type="date" />
+                </div>
+                <div class="field">
+                  <label>Concepto</label>
+                  <input id="supExtraItem" maxlength="80" placeholder="Ej: gasolina, tornillos, cinta" />
+                </div>
+                <div class="field">
+                  <label>Monto</label>
+                  <input id="supExtraAmount" type="number" step="0.01" min="0" placeholder="0.00" />
+                </div>
+                <div class="field">
+                  <label>Nota</label>
+                  <input id="supExtraNote" maxlength="120" placeholder="Opcional" />
+                </div>
+              </div>
+
+              <div class="inline-actions" style="margin-top:10px;">
+                <button class="btn primary" id="btnAddSupExtra">Agregar gasto imprevisto</button>
+              </div>
+
+              <div class="supervisor-table-wrap" style="margin-top:12px;">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Concepto</th>
+                      <th>Monto</th>
+                      <th>Nota</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="supExtrasBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <aside class="sup-console-sidebar">
+        <div class="card owner-side-card sup-console-live-card">
+          <div class="card-inner">
+            <h2 class="sup-console-rail-title">Live operations</h2>
+            <p class="sub">Status and field metrics for the selected project.</p>
+
+            <div class="sup-console-rail-status">
+              <span class="badge green sup-console-rail-badge" id="supSideStatusBadge">ON SCHEDULE</span>
+              <p class="sup-console-rail-headline" id="supSideStatusLine">On pace</p>
+            </div>
+
+            <div class="sup-console-rail-metrics">
+              <div class="sup-console-rail-metric">
+                <span class="sup-console-rail-metric__label">Progress</span>
+                <strong id="supSideProgressPct">0% complete</strong>
+              </div>
+              <div class="sup-console-rail-metric">
+                <span class="sup-console-rail-metric__label">Days remaining</span>
+                <strong id="supSideDaysRemaining">—</strong>
+              </div>
+              <div class="sup-console-rail-metric">
+                <span class="sup-console-rail-metric__label">Bonus</span>
+                <strong id="supSideBonusStatus">—</strong>
+              </div>
+            </div>
+
+            <div id="supSideAlerts" class="sup-console-alerts" style="display:none;" role="status"></div>
 
             <div class="sep"></div>
 
-            <section>
+            <h3 class="sup-section-title">Field activity</h3>
+            <div class="sup-side-strip">
+              <div class="sup-side-strip__item">
+                <span class="sup-side-strip__label">Reports logged</span>
+                <strong id="supSideReportCount">0</strong>
+              </div>
+              <div class="sup-side-strip__item">
+                <span class="sup-side-strip__label">Expense entries</span>
+                <strong id="supSideExpenseCount">0</strong>
+              </div>
+            </div>
+
+            <div class="sep"></div>
+
+            <section class="sup-console-snapshot-rail">
               <div class="section-head" style="margin-bottom:8px;">
                 <div>
                   <h3 class="sup-section-title" style="margin:0;">Field execution snapshot</h3>
@@ -125,154 +270,37 @@
 
               <div id="supSnapshotGrid" style="display:none;">
                 <h4 class="sup-snapshot-group">Timeline</h4>
-                <div class="supervisor-summary-grid sup-snapshot-grid">
+                <div class="supervisor-summary-grid sup-snapshot-grid sup-snapshot-grid--rail">
                   <div class="supervisor-summary-card"><div class="title">Estimated days</div><div class="big" id="supOpEstimatedDays">—</div></div>
                   <div class="supervisor-summary-card"><div class="title">Actual days</div><div class="big" id="supOpActualDays">—</div></div>
                   <div class="supervisor-summary-card"><div class="title">Remaining days</div><div class="big" id="supOpDaysRemaining">—</div></div>
                 </div>
                 <h4 class="sup-snapshot-group">Crew activity</h4>
-                <div class="supervisor-summary-grid sup-snapshot-grid">
+                <div class="supervisor-summary-grid sup-snapshot-grid sup-snapshot-grid--rail">
                   <div class="supervisor-summary-card"><div class="title">Estimated crew hours</div><div class="big" id="supOpEstimatedHours">—</div></div>
                   <div class="supervisor-summary-card"><div class="title">Reported hours</div><div class="big" id="supOpActualHours">—</div></div>
                   <div class="supervisor-summary-card"><div class="title">Field reports</div><div class="big" id="supOpReportCount">—</div></div>
                   <div class="supervisor-summary-card"><div class="title">Expense entries</div><div class="big" id="supOpExpenseCount">—</div></div>
                 </div>
                 <h4 class="sup-snapshot-group">Execution</h4>
-                <div class="supervisor-summary-grid sup-snapshot-grid">
+                <div class="supervisor-summary-grid sup-snapshot-grid sup-snapshot-grid--rail">
                   <div class="supervisor-summary-card"><div class="title">Completion pace</div><div class="big" id="supOpCompletionPace">—</div></div>
                   <div class="supervisor-summary-card"><div class="title">Schedule deviation</div><div class="big" id="supOpLaborDeviation">—</div><div class="small" id="supOpLaborDeviationLabel">—</div></div>
                   <div class="supervisor-summary-card"><div class="title">Operational risk</div><div class="big" id="supOpOperationalRisk">—</div></div>
                 </div>
                 <h4 class="sup-snapshot-group">Bonus</h4>
-                <div class="supervisor-summary-grid sup-snapshot-grid">
+                <div class="supervisor-summary-grid sup-snapshot-grid sup-snapshot-grid--rail">
                   <div class="supervisor-summary-card"><div class="title">Bonus status</div><div class="big" id="supOpBonusStatus">—</div></div>
                   <div class="supervisor-summary-card"><div class="title">Pace toward bonus</div><div class="big" id="supOpBonusPace">—</div></div>
                 </div>
               </div>
               <div id="supOpRiskMeta" class="small" style="display:none;margin-top:8px;"></div>
             </section>
-          </div>
-        </div>
 
-        <div class="card" style="margin-top:14px;">
-          <div class="card-inner">
-            <div class="section-head">
-              <div>
-                <h2>Reporte de avance</h2>
-                <div class="sub">El supervisor solo reporta lo que realmente se hizo en campo.</div>
-              </div>
-            </div>
-
-            <div class="form">
-              <div class="field">
-                <label>Fecha</label>
-                <input id="supEntryDate" type="date" />
-              </div>
-              <div class="field">
-                <label>Horas trabajadas</label>
-                <input id="supEntryHours" type="number" step="0.25" min="0" placeholder="0.00" />
-              </div>
-              <div class="field">
-                <label>Dias trabajados</label>
-                <input id="supEntryDays" type="number" step="0.25" min="0" placeholder="0.00" />
-              </div>
-              <div class="field">
-                <label>Nota</label>
-                <input id="supEntryNote" maxlength="100" placeholder="Ej: rough plumbing / tile prep / finish" />
-              </div>
-            </div>
-
-            <div class="inline-actions" style="margin-top:10px;">
-              <button class="btn primary" id="btnAddSupEntry">Agregar avance</button>
-            </div>
-
-            <div class="supervisor-table-wrap" style="margin-top:12px;">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Fecha</th>
-                    <th>Nota</th>
-                    <th>Horas</th>
-                    <th>Dias</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody id="supEntriesBody"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <div class="card" style="margin-top:14px;">
-          <div class="card-inner">
-            <div class="section-head">
-              <div>
-                <h2>Gasto imprevisto</h2>
-                <div class="sub">Usalo para gasolina, tornillos, cinta, escoba, aspiradora o cualquier gasto no planeado.</div>
-              </div>
-            </div>
-
-            <div class="form">
-              <div class="field">
-                <label>Fecha</label>
-                <input id="supExtraDate" type="date" />
-              </div>
-              <div class="field">
-                <label>Concepto</label>
-                <input id="supExtraItem" maxlength="80" placeholder="Ej: gasolina, tornillos, cinta" />
-              </div>
-              <div class="field">
-                <label>Monto</label>
-                <input id="supExtraAmount" type="number" step="0.01" min="0" placeholder="0.00" />
-              </div>
-              <div class="field">
-                <label>Nota</label>
-                <input id="supExtraNote" maxlength="120" placeholder="Opcional" />
-              </div>
-            </div>
-
-            <div class="inline-actions" style="margin-top:10px;">
-              <button class="btn primary" id="btnAddSupExtra">Agregar gasto imprevisto</button>
-            </div>
-
-            <div class="supervisor-table-wrap" style="margin-top:12px;">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Fecha</th>
-                    <th>Concepto</th>
-                    <th>Monto</th>
-                    <th>Nota</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody id="supExtrasBody"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <div class="card owner-side-card">
-          <div class="card-inner">
-                        <h2>Field activity</h2>
-            <p class="sub">Quick counts for the selected project.</p>
-            <div class="sup-side-strip">
-              <div class="sup-side-strip__item">
-                <span class="sup-side-strip__label">Reports logged</span>
-                <strong id="supSideReportCount">0</strong>
-              </div>
-              <div class="sup-side-strip__item">
-                <span class="sup-side-strip__label">Expense entries</span>
-                <strong id="supSideExpenseCount">0</strong>
-              </div>
-            </div>
             <div class="kpi supervisor-kpi-grid" id="supervisorKpis" style="display:none;" aria-hidden="true"></div>
-
           </div>
         </div>
-      </div>
+      </aside>
     </div>
   </div>
 
@@ -281,5 +309,3 @@
   <script src="/js/app.js"></script>
 </body>
 </html>
-
-

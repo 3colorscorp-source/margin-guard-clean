@@ -1331,6 +1331,49 @@ Thank you.`
     return `<div class="sup-exec-plan-cards">${cards.join("")}</div>`;
   }
 
+  function syncSupervisorConsoleSidebar() {
+    const copyText = (srcId, dstId) => {
+      const src = $(srcId);
+      const dst = $(dstId);
+      if (!src || !dst) return;
+      dst.textContent = src.textContent || "";
+    };
+    copyText("supHeroStatusBadge", "supSideStatusBadge");
+    copyText("supHeroStatusLine", "supSideStatusLine");
+    copyText("supHeroProgressPct", "supSideProgressPct");
+    copyText("supOpDaysRemaining", "supSideDaysRemaining");
+    copyText("supOpBonusStatus", "supSideBonusStatus");
+    const sideBadge = $("supSideStatusBadge");
+    const heroBadge = $("supHeroStatusBadge");
+    if (sideBadge && heroBadge) {
+      sideBadge.className = heroBadge.className.replace(
+        "sup-exec-hero__status",
+        "sup-console-rail-badge"
+      );
+    }
+    const alerts = $("supSideAlerts");
+    const err = $("supSnapshotError");
+    const start = $("supHeroStart");
+    const target = $("supHeroTarget");
+    const parts = [];
+    if (err && err.style.display !== "none" && String(err.textContent || "").trim()) {
+      parts.push(String(err.textContent).trim());
+    }
+    const startTxt = start ? String(start.textContent || "") : "";
+    const targetTxt = target ? String(target.textContent || "") : "";
+    if (/pending|waiting/i.test(startTxt)) parts.push(startTxt);
+    if (/pending|waiting/i.test(targetTxt)) parts.push(targetTxt);
+    if (alerts) {
+      if (parts.length) {
+        alerts.textContent = parts.join(" · ");
+        alerts.style.display = "";
+      } else {
+        alerts.textContent = "";
+        alerts.style.display = "none";
+      }
+    }
+  }
+
   function renderSupervisorHero(ctx) {
     const hero = $("supExecHero");
     if (!hero) return;
@@ -1367,6 +1410,7 @@ Thank you.`
       badge.textContent = ctx.status.badge;
       badge.className = `badge ${ctx.status.tone} sup-exec-hero__status`;
     }
+    syncSupervisorConsoleSidebar();
   }
 
   function renderSupervisorTodayTarget(plan, startIso, actualDays) {
@@ -1555,6 +1599,7 @@ Thank you.`
       badgeEl.className = `badge ${riskClasses[risk] || "amber"}`;
     }
     if (riskMetaEl) riskMetaEl.style.display = "none";
+    syncSupervisorConsoleSidebar();
   }
 
   function mapTenantProjectReportRowToEntry(row) {
@@ -6598,6 +6643,7 @@ function renderSupervisor() {
         if ($("supPortfolioCount")) $("supPortfolioCount").textContent = "0";
         if ($("supSideReportCount")) $("supSideReportCount").textContent = "0";
         if ($("supSideExpenseCount")) $("supSideExpenseCount").textContent = "0";
+        syncSupervisorConsoleSidebar();
         if (typeof console !== "undefined" && console.log) {
           console.log("[supervisor-filter] kpi count", 0);
         }
