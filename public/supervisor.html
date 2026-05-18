@@ -47,9 +47,9 @@
       <main class="sup-console-main">
         <div class="card sup-console-plan-card">
           <div class="card-inner">
-            <div class="section-head">
-              <div>
-                <h2>Project</h2>
+            <div class="section-action-row">
+              <div class="section-action-row__main">
+                <h2 class="sup-section-title sup-section-title--lg">Project</h2>
                 <p class="sub">Select a signed project to run in the field.</p>
               </div>
             </div>
@@ -67,15 +67,17 @@
             </div>
 
             <div id="supExecHero" class="sup-exec-hero" style="display:none;">
-              <div class="sup-exec-hero__top">
-                <div>
+              <div class="section-action-row section-action-row--hero">
+                <div class="section-action-row__main">
                   <h2 class="sup-exec-hero__title" id="supHeroProjectName">—</h2>
                   <div class="sup-exec-hero__chips">
                     <span class="sup-exec-chip" id="supHeroDurationLabel">—</span>
                     <span class="sup-exec-chip" id="supHeroDayProgress">—</span>
                   </div>
                 </div>
-                <span class="badge green sup-exec-hero__status" id="supHeroStatusBadge">ON SCHEDULE</span>
+                <div class="section-action-row__actions">
+                  <span class="badge green sup-exec-hero__status" id="supHeroStatusBadge">ON SCHEDULE</span>
+                </div>
               </div>
               <p class="sup-exec-hero__status-line" id="supHeroStatusLine">On pace</p>
               <div class="sup-exec-progress">
@@ -99,7 +101,11 @@
             </div>
 
             <div id="supTodayTarget" class="sup-today-target" style="display:none;">
-              <h3 class="sup-section-title">Today&rsquo;s target</h3>
+              <div class="section-action-row section-action-row--compact">
+                <div class="section-action-row__main">
+                  <h3 class="sup-section-title">Today&rsquo;s target</h3>
+                </div>
+              </div>
               <p class="sup-today-target__phase" id="supTodayPhase">—</p>
               <p class="sup-today-target__crew small" id="supTodayCrew">—</p>
             </div>
@@ -107,22 +113,29 @@
             <div class="sep"></div>
 
             <section class="sup-exec-plan-section">
-              <h3 class="sup-section-title">Execution plan</h3>
+              <div class="section-action-row">
+                <div class="section-action-row__main">
+                  <h3 class="sup-section-title">Execution plan</h3>
+                  <p class="small sup-section-desc">Daily phases and crew for this job.</p>
+                </div>
+              </div>
               <div id="supLaborPlanBody" class="sup-exec-plan-list"></div>
             </section>
-
-            <div class="sup-console-actions">
-              <button type="button" class="btn primary" id="btnOpenSupLaborReport">Reportar labor</button>
-              <button type="button" class="btn" id="btnOpenSupExpenseReport">Reportar gasto imprevisto</button>
-            </div>
           </div>
         </div>
 
         <div class="sup-console-logs">
           <div class="card sup-console-log-card">
             <div class="card-inner">
-              <h3 class="sup-section-title">Labor reports</h3>
-              <p class="small" style="margin:0 0 10px;color:var(--muted,#888);">Recent field entries for this project.</p>
+              <div class="section-action-row">
+                <div class="section-action-row__main">
+                  <h3 class="sup-section-title">Labor reports</h3>
+                  <p class="small sup-section-desc">Recent field entries for this project.</p>
+                </div>
+                <div class="section-action-row__actions">
+                  <button type="button" class="btn primary" id="btnOpenSupLaborReport">Reportar labor</button>
+                </div>
+              </div>
               <div class="supervisor-table-wrap">
                 <table class="table">
                   <thead>
@@ -141,8 +154,15 @@
           </div>
           <div class="card sup-console-log-card">
             <div class="card-inner">
-              <h3 class="sup-section-title">Unexpected expenses</h3>
-              <p class="small" style="margin:0 0 10px;color:var(--muted,#888);">Logged extras for this project.</p>
+              <div class="section-action-row">
+                <div class="section-action-row__main">
+                  <h3 class="sup-section-title">Unexpected expenses</h3>
+                  <p class="small sup-section-desc">Logged extras for this project.</p>
+                </div>
+                <div class="section-action-row__actions">
+                  <button type="button" class="btn" id="btnOpenSupExpenseReport">Reportar gasto imprevisto</button>
+                </div>
+              </div>
               <div class="supervisor-table-wrap">
                 <table class="table">
                   <thead>
@@ -165,8 +185,12 @@
       <aside class="sup-console-sidebar">
         <div class="card owner-side-card sup-console-live-card">
           <div class="card-inner">
-            <h2 class="sup-console-rail-title">Live operations</h2>
-            <p class="sub">Status and field metrics for the selected project.</p>
+            <div class="section-action-row section-action-row--rail">
+              <div class="section-action-row__main">
+                <h2 class="sup-console-rail-title">Live operations</h2>
+                <p class="sub">Status and field metrics for the selected project.</p>
+              </div>
+            </div>
 
             <div class="sup-console-rail-status">
               <span class="badge green sup-console-rail-badge" id="supSideStatusBadge">ON SCHEDULE</span>
@@ -192,7 +216,11 @@
 
             <div class="sep"></div>
 
-            <h3 class="sup-section-title">Field activity</h3>
+            <div class="section-action-row section-action-row--compact">
+              <div class="section-action-row__main">
+                <h3 class="sup-section-title">Field activity</h3>
+              </div>
+            </div>
             <div class="sup-side-strip">
               <div class="sup-side-strip__item">
                 <span class="sup-side-strip__label">Reports logged</span>
@@ -207,11 +235,13 @@
             <div class="sep"></div>
 
             <section class="sup-console-snapshot-rail">
-              <div class="section-head" style="margin-bottom:8px;">
-                <div>
-                  <h3 class="sup-section-title" style="margin:0;">Field execution snapshot</h3>
+              <div class="section-action-row">
+                <div class="section-action-row__main">
+                  <h3 class="sup-section-title">Field execution snapshot</h3>
                 </div>
-                <span class="badge green" id="supOpRiskBadge" style="display:none;">—</span>
+                <div class="section-action-row__actions">
+                  <span class="badge green" id="supOpRiskBadge" style="display:none;">—</span>
+                </div>
               </div>
               <div id="supSnapshotLoading" class="notice" style="display:none;margin-bottom:10px;">Loading snapshot…</div>
               <div id="supSnapshotError" class="notice" style="display:none;margin-bottom:10px;color:#b42318;"></div>
