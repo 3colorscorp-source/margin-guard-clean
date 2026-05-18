@@ -2707,7 +2707,29 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   background:linear-gradient(145deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
 }
 .sup-exec-hero .section-action-row--hero{
-  align-items:flex-start;
+  align-items:center;
+}
+.project-status-actions{
+  display:flex;
+  flex-direction:row;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  flex-wrap:nowrap;
+}
+.project-status-actions .btn{
+  width:auto;
+  min-width:0;
+  max-width:240px;
+  flex:0 0 auto;
+  min-height:40px;
+  padding:8px 14px;
+  font-weight:700;
+  font-size:13px;
+  white-space:nowrap;
+}
+.project-status-actions .sup-exec-hero__status{
+  flex:0 0 auto;
 }
 .sup-exec-hero__title{
   margin:0;
@@ -2948,29 +2970,6 @@ body.supervisor-page .topbar-inner{
 .section-action-row--rail .sup-console-rail-title{
   margin-bottom:4px;
 }
-.sup-console-field-actions{
-  margin-top:16px;
-  padding-top:14px;
-  border-top:1px solid rgba(255,255,255,.08);
-}
-.supervisor-action-buttons{
-  display:flex;
-  flex-wrap:wrap;
-  justify-content:flex-end;
-  align-items:center;
-  gap:12px;
-  margin-top:18px;
-}
-.supervisor-action-buttons .btn{
-  width:auto;
-  min-width:190px;
-  max-width:240px;
-  flex:0 0 auto;
-  min-height:44px;
-  padding:10px 18px;
-  font-weight:700;
-  white-space:nowrap;
-}
 .sup-console-logs{
   display:grid;
   grid-template-columns:minmax(0, 1fr);
@@ -3079,13 +3078,12 @@ body.supervisor-page .topbar-inner{
   }
 }
 @media (max-width: 720px){
-  .supervisor-action-buttons{
-    flex-direction:column;
-    align-items:stretch;
+  .project-status-actions{
+    flex-wrap:wrap;
+    justify-content:flex-end;
   }
-  .supervisor-action-buttons .btn{
+  .project-status-actions .btn{
     width:100%;
-    min-width:0;
     max-width:none;
     white-space:normal;
   }

@@ -76,7 +76,11 @@
                   </div>
                 </div>
                 <div class="section-action-row__actions">
-                  <span class="badge green sup-exec-hero__status" id="supHeroStatusBadge">ON SCHEDULE</span>
+                  <div class="project-status-actions" aria-label="Estado y acciones de campo">
+                    <span class="badge green sup-exec-hero__status" id="supHeroStatusBadge">ON SCHEDULE</span>
+                    <button type="button" class="btn primary" id="btnOpenSupLaborReport">Reportar labor</button>
+                    <button type="button" class="btn" id="btnOpenSupExpenseReport">Reportar gasto imprevisto</button>
+                  </div>
                 </div>
               </div>
               <p class="sup-exec-hero__status-line" id="supHeroStatusLine">On pace</p>
@@ -121,13 +125,6 @@
               </div>
               <div id="supLaborPlanBody" class="sup-exec-plan-list"></div>
             </section>
-
-            <div class="sup-console-field-actions" aria-label="Acciones de campo">
-              <div class="supervisor-action-buttons">
-                <button type="button" class="btn primary" id="btnOpenSupLaborReport">Reportar labor</button>
-                <button type="button" class="btn" id="btnOpenSupExpenseReport">Reportar gasto imprevisto</button>
-              </div>
-            </div>
           </div>
         </div>
 
