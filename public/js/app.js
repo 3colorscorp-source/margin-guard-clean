@@ -1331,6 +1331,85 @@ Thank you.`
     return `<div class="sup-exec-plan-cards">${cards.join("")}</div>`;
   }
 
+  function openSupFieldModal(kind) {
+    const labor = $("supLaborReportModal");
+    const extra = $("supExpenseReportModal");
+    if (kind !== "labor" && kind !== "extra") return;
+    if (kind === "labor") {
+      if (extra) {
+        extra.setAttribute("aria-hidden", "true");
+        extra.style.display = "";
+      }
+      if (labor) {
+        labor.setAttribute("aria-hidden", "false");
+        labor.style.display = "flex";
+        if (!val("supEntryDate")) setVal("supEntryDate", todayInputValue());
+        const focusEl = $("supEntryDate");
+        if (focusEl && typeof focusEl.focus === "function") focusEl.focus();
+      }
+    } else {
+      if (labor) {
+        labor.setAttribute("aria-hidden", "true");
+        labor.style.display = "";
+      }
+      if (extra) {
+        extra.setAttribute("aria-hidden", "false");
+        extra.style.display = "flex";
+        if (!val("supExtraDate")) setVal("supExtraDate", todayInputValue());
+        const focusEl = $("supExtraItem");
+        if (focusEl && typeof focusEl.focus === "function") focusEl.focus();
+      }
+    }
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeSupFieldModal(kind) {
+    const labor = $("supLaborReportModal");
+    const extra = $("supExpenseReportModal");
+    if (kind === "labor" || kind === "all") {
+      if (labor) {
+        labor.setAttribute("aria-hidden", "true");
+        labor.style.display = "";
+      }
+    }
+    if (kind === "extra" || kind === "all") {
+      if (extra) {
+        extra.setAttribute("aria-hidden", "true");
+        extra.style.display = "";
+      }
+    }
+    const laborOpen = labor && labor.getAttribute("aria-hidden") === "false";
+    const extraOpen = extra && extra.getAttribute("aria-hidden") === "false";
+    if (!laborOpen && !extraOpen) document.body.style.overflow = "";
+  }
+
+  function bindSupFieldModalsOnce() {
+    if (document.body?.dataset?.supFieldModalsBound === "1") return;
+    if (document.body) document.body.dataset.supFieldModalsBound = "1";
+    const laborModal = $("supLaborReportModal");
+    const extraModal = $("supExpenseReportModal");
+    const wire = (id, handler) => {
+      const el = $(id);
+      if (el) el.onclick = handler;
+    };
+    wire("btnOpenSupLaborReport", () => openSupFieldModal("labor"));
+    wire("btnOpenSupExpenseReport", () => openSupFieldModal("extra"));
+    wire("btnCloseSupLaborReport", () => closeSupFieldModal("labor"));
+    wire("btnCancelSupLaborReport", () => closeSupFieldModal("labor"));
+    wire("btnCloseSupExpenseReport", () => closeSupFieldModal("extra"));
+    wire("btnCancelSupExpenseReport", () => closeSupFieldModal("extra"));
+    [laborModal, extraModal].forEach((modal) => {
+      if (!modal) return;
+      modal.addEventListener("click", (e) => {
+        if (e.target !== modal) return;
+        closeSupFieldModal(modal === laborModal ? "labor" : "extra");
+      });
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeSupFieldModal("all");
+    });
+  }
+
   function syncSupervisorConsoleSidebar() {
     const copyText = (srcId, dstId) => {
       const src = $(srcId);
@@ -6415,6 +6494,7 @@ window.sendQuote = sendQuote;
 
 function renderSupervisor() {
     if (!$("supProjectPicker")) return;
+    bindSupFieldModalsOnce();
 
     const settings = loadSettings();
     const picker = $("supProjectPicker");
@@ -7126,6 +7206,7 @@ function renderSupervisor() {
             setVal("supEntryNote", "");
             await recalcProjectProfitIfListed(currentProject.id);
             await pullSupervisorProjectsFromApi();
+            closeSupFieldModal("labor");
             refresh();
             return;
           } catch (_e) {
@@ -7141,6 +7222,7 @@ function renderSupervisor() {
         setNum("supEntryDays", 0);
         setVal("supEntryNote", "");
         saveSupervisorReport(currentProject.id, state);
+        closeSupFieldModal("labor");
         refresh();
       };
     }
@@ -7198,6 +7280,7 @@ function renderSupervisor() {
             setVal("supExtraNote", "");
             await recalcProjectProfitIfListed(currentProject.id);
             await pullSupervisorProjectsFromApi();
+            closeSupFieldModal("extra");
             refresh();
             return;
           } catch (_e) {
@@ -7213,6 +7296,7 @@ function renderSupervisor() {
         setNum("supExtraAmount", 0);
         setVal("supExtraNote", "");
         saveSupervisorReport(currentProject.id, state);
+        closeSupFieldModal("extra");
         refresh();
       };
     }

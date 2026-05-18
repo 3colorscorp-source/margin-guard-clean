@@ -110,43 +110,20 @@
               <h3 class="sup-section-title">Execution plan</h3>
               <div id="supLaborPlanBody" class="sup-exec-plan-list"></div>
             </section>
+
+            <div class="sup-console-actions">
+              <button type="button" class="btn primary" id="btnOpenSupLaborReport">Reportar labor</button>
+              <button type="button" class="btn" id="btnOpenSupExpenseReport">Reportar gasto imprevisto</button>
+            </div>
           </div>
         </div>
 
-        <div class="sup-console-forms">
-          <div class="card sup-console-form-card">
+        <div class="sup-console-logs">
+          <div class="card sup-console-log-card">
             <div class="card-inner">
-              <div class="section-head">
-                <div>
-                  <h2>Reporte de avance</h2>
-                  <div class="sub">El supervisor solo reporta lo que realmente se hizo en campo.</div>
-                </div>
-              </div>
-
-              <div class="form">
-                <div class="field">
-                  <label>Fecha</label>
-                  <input id="supEntryDate" type="date" />
-                </div>
-                <div class="field">
-                  <label>Horas trabajadas</label>
-                  <input id="supEntryHours" type="number" step="0.25" min="0" placeholder="0.00" />
-                </div>
-                <div class="field">
-                  <label>Dias trabajados</label>
-                  <input id="supEntryDays" type="number" step="0.25" min="0" placeholder="0.00" />
-                </div>
-                <div class="field">
-                  <label>Nota</label>
-                  <input id="supEntryNote" maxlength="100" placeholder="Ej: rough plumbing / tile prep / finish" />
-                </div>
-              </div>
-
-              <div class="inline-actions" style="margin-top:10px;">
-                <button class="btn primary" id="btnAddSupEntry">Agregar avance</button>
-              </div>
-
-              <div class="supervisor-table-wrap" style="margin-top:12px;">
+              <h3 class="sup-section-title">Labor reports</h3>
+              <p class="small" style="margin:0 0 10px;color:var(--muted,#888);">Recent field entries for this project.</p>
+              <div class="supervisor-table-wrap">
                 <table class="table">
                   <thead>
                     <tr>
@@ -162,40 +139,11 @@
               </div>
             </div>
           </div>
-
-          <div class="card sup-console-form-card">
+          <div class="card sup-console-log-card">
             <div class="card-inner">
-              <div class="section-head">
-                <div>
-                  <h2>Gasto imprevisto</h2>
-                  <div class="sub">Usalo para gasolina, tornillos, cinta, escoba, aspiradora o cualquier gasto no planeado.</div>
-                </div>
-              </div>
-
-              <div class="form">
-                <div class="field">
-                  <label>Fecha</label>
-                  <input id="supExtraDate" type="date" />
-                </div>
-                <div class="field">
-                  <label>Concepto</label>
-                  <input id="supExtraItem" maxlength="80" placeholder="Ej: gasolina, tornillos, cinta" />
-                </div>
-                <div class="field">
-                  <label>Monto</label>
-                  <input id="supExtraAmount" type="number" step="0.01" min="0" placeholder="0.00" />
-                </div>
-                <div class="field">
-                  <label>Nota</label>
-                  <input id="supExtraNote" maxlength="120" placeholder="Opcional" />
-                </div>
-              </div>
-
-              <div class="inline-actions" style="margin-top:10px;">
-                <button class="btn primary" id="btnAddSupExtra">Agregar gasto imprevisto</button>
-              </div>
-
-              <div class="supervisor-table-wrap" style="margin-top:12px;">
+              <h3 class="sup-section-title">Unexpected expenses</h3>
+              <p class="small" style="margin:0 0 10px;color:var(--muted,#888);">Logged extras for this project.</p>
+              <div class="supervisor-table-wrap">
                 <table class="table">
                   <thead>
                     <tr>
@@ -303,6 +251,80 @@
       </aside>
     </div>
   </div>
+
+
+  <div id="supLaborReportModal" class="modal sup-field-modal" aria-hidden="true" role="dialog" aria-labelledby="supLaborReportModalTitle">
+    <div class="modal-card sup-field-modal__card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="supLaborReportModalTitle">Reportar labor</div>
+          <div class="modal-subtitle">Registra horas y dias trabajados en campo.</div>
+        </div>
+        <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupLaborReport" aria-label="Cerrar">Cerrar</button>
+      </div>
+      <div class="modal-body">
+        <div class="form">
+          <div class="field">
+            <label>Fecha</label>
+            <input id="supEntryDate" type="date" />
+          </div>
+          <div class="field">
+            <label>Horas trabajadas</label>
+            <input id="supEntryHours" type="number" step="0.25" min="0" placeholder="0.00" />
+          </div>
+          <div class="field">
+            <label>Dias trabajados</label>
+            <input id="supEntryDays" type="number" step="0.25" min="0" placeholder="0.00" />
+          </div>
+          <div class="field">
+            <label>Nota</label>
+            <input id="supEntryNote" maxlength="100" placeholder="Ej: rough plumbing / tile prep / finish" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn ghost" id="btnCancelSupLaborReport">Cancelar</button>
+        <button type="button" class="btn primary" id="btnAddSupEntry">Guardar reporte</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="supExpenseReportModal" class="modal sup-field-modal" aria-hidden="true" role="dialog" aria-labelledby="supExpenseReportModalTitle">
+    <div class="modal-card sup-field-modal__card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="supExpenseReportModalTitle">Reportar gasto imprevisto</div>
+          <div class="modal-subtitle">Gasolina, materiales, o gastos no planeados.</div>
+        </div>
+        <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupExpenseReport" aria-label="Cerrar">Cerrar</button>
+      </div>
+      <div class="modal-body">
+        <div class="form">
+          <div class="field">
+            <label>Fecha</label>
+            <input id="supExtraDate" type="date" />
+          </div>
+          <div class="field">
+            <label>Concepto</label>
+            <input id="supExtraItem" maxlength="80" placeholder="Ej: gasolina, tornillos, cinta" />
+          </div>
+          <div class="field">
+            <label>Monto</label>
+            <input id="supExtraAmount" type="number" step="0.01" min="0" placeholder="0.00" />
+          </div>
+          <div class="field">
+            <label>Nota</label>
+            <input id="supExtraNote" maxlength="120" placeholder="Opcional" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn ghost" id="btnCancelSupExpenseReport">Cancelar</button>
+        <button type="button" class="btn primary" id="btnAddSupExtra">Guardar gasto</button>
+      </div>
+    </div>
+  </div>
+
 
   <script src="/js/tenant.js"></script>
   <script src="/js/auth.js"></script>
