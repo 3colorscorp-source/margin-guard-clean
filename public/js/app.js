@@ -1093,6 +1093,20 @@ Thank you.`
     return getSupervisorProjectsForUi().some((p) => supervisorProjectKey(p.id) === pid);
   }
 
+  /** Picker-visible project for Supervisor report/expense submit (not stale LS-only lookup). */
+  function resolveActiveSupervisorProject() {
+    const uiList = getSupervisorProjectsForUi();
+    if (!uiList.length) return null;
+    const pickerVal = supervisorProjectKey($("supProjectPicker")?.value || "");
+    const lsSel = supervisorProjectKey(loadSupervisorSelectedProjectId());
+    const wantId = pickerVal || lsSel;
+    if (wantId) {
+      const found = uiList.find((p) => supervisorProjectKey(p.id) === wantId);
+      if (found) return found;
+    }
+    return uiList[0] || null;
+  }
+
   async function recalcProjectProfitIfListed(projectId) {
     const pid = supervisorProjectKey(projectId);
     if (!pid || !isServerListedSupervisorProject(pid)) return;
@@ -7232,9 +7246,7 @@ function renderSupervisor() {
 
     if ($("btnAddSupEntry")) {
       $("btnAddSupEntry").onclick = async () => {
-        const currentProject = getSupervisorProjectsForUi().find(
-          (project) => supervisorProjectKey(project.id) === supervisorProjectKey(loadSupervisorSelectedProjectId())
-        );
+        const currentProject = resolveActiveSupervisorProject();
         if (!currentProject) return alert("No signed projects yet.");
         const state = loadSupervisorReport(currentProject);
         const rowPid = supervisorProjectKey(currentProject.id);
@@ -7306,9 +7318,7 @@ function renderSupervisor() {
 
     if ($("btnAddSupExtra")) {
       $("btnAddSupExtra").onclick = async () => {
-        const currentProject = getSupervisorProjectsForUi().find(
-          (project) => supervisorProjectKey(project.id) === supervisorProjectKey(loadSupervisorSelectedProjectId())
-        );
+        const currentProject = resolveActiveSupervisorProject();
         if (!currentProject) return alert("No signed projects yet.");
         const state = loadSupervisorReport(currentProject);
         const rowPid = supervisorProjectKey(currentProject.id);
