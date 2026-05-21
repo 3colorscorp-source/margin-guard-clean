@@ -486,21 +486,51 @@ Thank you.`
    * @param reports Work report rows { days, hours, entry_date, note }
    * @param expensesList Unexpected expense rows (count only)
    */
-  function computeProjectControlMetrics(project, reports, expensesList) {
+  function computeProjectControlMetrics(project, reports, expensesList, migrationBaseline) {
     const entries = Array.isArray(reports) ? reports : [];
     const extrasList = Array.isArray(expensesList) ? expensesList : [];
-    const estimatedDays = finiteNumber(project?.estimatedDays, 0);
+    const mig =
+      migrationBaseline && typeof migrationBaseline === "object"
+        ? migrationBaseline
+        : null;
+    let estimatedDays = finiteNumber(project?.estimatedDays, 0);
+    if (mig && finiteNumber(mig.estimated_total_days, 0) > 0) {
+      estimatedDays = finiteNumber(mig.estimated_total_days, 0);
+    }
     const reportedHours = entries.reduce((sum, row) => sum + finiteNumber(row?.hours, 0), 0);
-    const daysSpent = entries.reduce((sum, row) => sum + finiteNumber(row?.days, 0), 0);
+    let daysSpent = entries.reduce((sum, row) => sum + finiteNumber(row?.days, 0), 0);
+    if (mig) {
+      const baselineDays = finiteNumber(mig.days_completed_to_date, 0);
+      const cutoffRaw = mig.baseline_set_at || mig.updated_at;
+      const cutoffMs = cutoffRaw ? new Date(cutoffRaw).getTime() : NaN;
+      let newReportDays = 0;
+      if (Number.isFinite(cutoffMs)) {
+        newReportDays = entries.reduce((sum, row) => {
+          const createdMs = new Date(row?.created_at || 0).getTime();
+          if (!Number.isFinite(createdMs) || createdMs < cutoffMs) return sum;
+          return sum + finiteNumber(row?.days, 0);
+        }, 0);
+      } else {
+        newReportDays = entries.reduce((sum, row) => sum + finiteNumber(row?.days, 0), 0);
+      }
+      daysSpent = baselineDays + newReportDays;
+    }
     const daysRemainingRaw = estimatedDays - daysSpent;
     const daysRemainingDisplay = Math.max(0, daysRemainingRaw);
     const daysRemaining = daysRemainingDisplay;
-    const progressPct = estimatedDays > 0 ? (daysSpent / estimatedDays) * 100 : null;
+    let progressPct = estimatedDays > 0 ? (daysSpent / estimatedDays) * 100 : null;
+    if (mig && progressPct != null) {
+      progressPct = Math.max(finiteNumber(mig.progress_pct, 0), progressPct);
+    } else if (mig && finiteNumber(mig.progress_pct, 0) > 0) {
+      progressPct = finiteNumber(mig.progress_pct, 0);
+    }
     const unexpectedExpensesCount = extrasList.length;
 
     const workers = Array.isArray(project?.workers) ? project.workers : [];
     const maxPlanWorkerDays = supervisorMaxPlanWorkerDays(workers);
-    const dueDate = normalizeDateInput(project?.dueDate || "");
+    const dueDate = normalizeDateInput(
+      (mig && mig.target_finish_date) || project?.dueDate || ""
+    );
     const projectedEndDate =
       dueDate && workers.length
         ? normalizeDateInput(supervisorProjectedFinishFromCommitment(dueDate, maxPlanWorkerDays))
@@ -1140,6 +1170,12 @@ Thank you.`
         operational_plan: Array.isArray(data.operational_plan) ? data.operational_plan : [],
         schedule: data.schedule && typeof data.schedule === "object" ? data.schedule : {},
         has_execution_plan: Boolean(data.has_execution_plan),
+        migration_baseline:
+          data.migration_baseline && typeof data.migration_baseline === "object"
+            ? data.migration_baseline
+            : null,
+        has_migrated_baseline: Boolean(data.has_migrated_baseline),
+        show_migrated_execution: Boolean(data.show_migrated_execution),
       };
     } else {
       supervisorProjectOperationalCache[k] = {
@@ -1232,27 +1268,30 @@ Thank you.`
     };
   }
 
-  function enrichOperationalSnapshotFromFieldCaches(pid, baseSnap, project, state) {
+  function enrichOperationalSnapshotFromFieldCaches(pid, baseSnap, project, state, opts) {
     const snap = { ...(baseSnap && typeof baseSnap === "object" ? baseSnap : {}) };
+    const hasMigration = Boolean(opts && opts.hasMigrationBaseline);
     const est = finiteNumber(
       snap.estimated_days,
       finiteNumber(project?.estimatedDays, finiteNumber(state?.estimatedDays, 0))
     );
-    if (est > 0 && !finiteNumber(snap.estimated_days, 0)) {
+    if (!hasMigration && est > 0 && !finiteNumber(snap.estimated_days, 0)) {
       snap.estimated_days = est;
     }
     const repCache = supervisorProjectReportsCache[pid];
-    if (repCache?.ok === true && Array.isArray(repCache.reports)) {
+    if (!hasMigration && repCache?.ok === true && Array.isArray(repCache.reports)) {
       const actualDays = repCache.reports.reduce((s, r) => s + Number(r?.days || 0), 0);
       const actualHours = repCache.reports.reduce((s, r) => s + Number(r?.hours || 0), 0);
       snap.actual_days = actualDays;
       snap.actual_hours = actualHours;
       snap.report_count = repCache.reports.length;
-    } else if (!Number.isFinite(Number(snap.actual_days))) {
+    } else if (!hasMigration && !Number.isFinite(Number(snap.actual_days))) {
       const entries = Array.isArray(state?.entries) ? state.entries : [];
       snap.actual_days = entries.reduce((s, r) => s + Number(r?.days || 0), 0);
       snap.actual_hours = entries.reduce((s, r) => s + Number(r?.hours || 0), 0);
       snap.report_count = entries.length;
+    } else if (repCache?.ok === true && Array.isArray(repCache.reports)) {
+      snap.report_count = repCache.reports.length;
     }
     const expCache = supervisorProjectExpensesCache[pid];
     if (expCache?.ok === true && Array.isArray(expCache.expenses)) {
@@ -1262,9 +1301,11 @@ Thank you.`
     }
     const estDays = finiteNumber(snap.estimated_days, est);
     const actDays = finiteNumber(snap.actual_days, 0);
-    snap.days_remaining = Math.max(0, estDays - actDays);
-    if (estDays > 0) {
-      snap.completion_pace_pct = Math.round((actDays / estDays) * 100);
+    if (!hasMigration) {
+      snap.days_remaining = Math.max(0, estDays - actDays);
+      if (estDays > 0) {
+        snap.completion_pace_pct = Math.round((actDays / estDays) * 100);
+      }
     }
     return snap;
   }
@@ -1315,13 +1356,16 @@ Thank you.`
   }
 
   function resolveSupervisorOperationalPanelState(pid, currentProject, state, opCache) {
+    const cached = opCache || supervisorProjectOperationalCache[pid];
+    const hasMigrationBaseline = Boolean(cached?.has_migrated_baseline && cached?.migration_baseline);
+    const enrichOpts = { hasMigrationBaseline };
     const fallbackSnap = enrichOperationalSnapshotFromFieldCaches(
       pid,
       buildSupervisorOperationalFallback(currentProject, state),
       currentProject,
-      state
+      state,
+      enrichOpts
     );
-    const cached = opCache || supervisorProjectOperationalCache[pid];
     const inflight = supervisorProjectOperationalFetchInFlight.has(pid);
     let snapshot = fallbackSnap;
     let error = null;
@@ -1330,7 +1374,8 @@ Thank you.`
         pid,
         { ...fallbackSnap, ...cached.snapshot },
         currentProject,
-        state
+        state,
+        enrichOpts
       );
     } else if (cached?.ok === false) {
       error = cached.error || "Field metrics unavailable. Showing local baseline.";
@@ -1529,6 +1574,27 @@ Thank you.`
     return `<div class="sup-exec-plan-cards">${cards.join("")}</div>`;
   }
 
+  function renderSupervisorMigrationPlanHtml(baseline) {
+    const b = baseline && typeof baseline === "object" ? baseline : null;
+    if (!b) return "";
+    const source = escapeHtml(String(b.external_source || "External").trim());
+    const phase = escapeHtml(String(b.current_phase || "—").trim());
+    const scope = escapeHtml(String(b.remaining_scope_notes || "—").trim());
+    const ref = String(b.original_contract_reference || "").trim();
+    return `<div class="sup-migrated-plan">
+      <p class="small" style="margin:0 0 12px;">Migrated from <strong>${source}</strong> — original execution plan was not built in Margin Guard.</p>
+      <div class="sup-migrated-plan__block">
+        <div class="sup-migrated-plan__label">Current phase</div>
+        <p class="sup-migrated-plan__value">${phase || "—"}</p>
+      </div>
+      <div class="sup-migrated-plan__block">
+        <div class="sup-migrated-plan__label">Remaining scope</div>
+        <p class="sup-migrated-plan__value">${scope || "—"}</p>
+      </div>
+      ${ref ? `<p class="small" style="margin:12px 0 0;">Contract reference: ${escapeHtml(ref)}</p>` : ""}
+    </div>`;
+  }
+
   function syncSupConsoleLogsWrap() {
     const wrap = $("supConsoleLogs");
     const laborPanel = $("supLaborLogPanel");
@@ -1720,10 +1786,20 @@ Thank you.`
       if (el) el.textContent = text == null ? "" : String(text);
     };
     const estInt = Math.max(0, Math.round(finiteNumber(ctx.estimatedDays, 0)));
-    const durationLabel = estInt > 0 ? `${estInt}-Day Project` : "Project timeline pending";
+    const actInt = Math.max(0, Math.round(finiteNumber(ctx.actualDays, 0)));
+    const mig = ctx.migrationBaseline;
+    const durationLabel = mig
+      ? `Migrated · ${String(mig.external_source || "External").trim()}`
+      : estInt > 0
+        ? `${estInt}-Day Project`
+        : "Project timeline pending";
     const planDay = finiteNumber(ctx.planDayIndex, 1);
     const dayProgress =
-      estInt > 0 ? `Day ${Math.min(planDay, estInt)} of ${estInt}` : `Day ${planDay}`;
+      estInt > 0
+        ? mig
+          ? `${actInt} of ${estInt} days`
+          : `Day ${Math.min(planDay, estInt)} of ${estInt}`
+        : `Day ${planDay}`;
     set("supHeroProjectName", ctx.projectName);
     set("supHeroDurationLabel", durationLabel);
     set("supHeroDayProgress", dayProgress);
@@ -1742,6 +1818,16 @@ Thank you.`
     if (badge) {
       badge.textContent = ctx.status.badge;
       badge.className = `badge ${ctx.status.tone} sup-exec-hero__status`;
+    }
+    const migBadge = $("supMigrationBadge");
+    if (migBadge) {
+      if (mig) {
+        migBadge.style.display = "";
+        migBadge.textContent = `External source: ${String(mig.external_source || "External").trim()}`;
+      } else {
+        migBadge.style.display = "none";
+        migBadge.textContent = "";
+      }
     }
     syncSupervisorConsoleSidebar();
   }
@@ -1801,6 +1887,12 @@ Thank you.`
       schedule:
         data.schedule && typeof data.schedule === "object" ? data.schedule : {},
       has_execution_plan: Boolean(data.has_execution_plan),
+      migration_baseline:
+        data.migration_baseline && typeof data.migration_baseline === "object"
+          ? data.migration_baseline
+          : null,
+      has_migrated_baseline: Boolean(data.has_migrated_baseline),
+      show_migrated_execution: Boolean(data.show_migrated_execution),
     };
   }
 
@@ -7146,11 +7238,16 @@ function renderSupervisor() {
         currentProject,
         state
       );
-      const execPlan = resolveSupervisorExecutionPlan(
-        opCache,
-        currentProject,
-        estimatedBudgetDays
+      const migrationBaseline =
+        opCache?.migration_baseline && typeof opCache.migration_baseline === "object"
+          ? opCache.migration_baseline
+          : null;
+      const showMigratedExecution = Boolean(
+        opCache?.show_migrated_execution && migrationBaseline
       );
+      const execPlan = showMigratedExecution
+        ? []
+        : resolveSupervisorExecutionPlan(opCache, currentProject, estimatedBudgetDays);
 
       let dayDelta = 0;
       if (state.dueDate && state.projectedEndDate) {
@@ -7175,20 +7272,23 @@ function renderSupervisor() {
         scheduleLabels.startIso,
         actualDays
       );
-      const crewSummary =
-        scheduleLabels.crewSummary ||
-        supervisorCrewSummaryFromPlan(execPlan) ||
-        supervisorCrewSummaryFromProjectWorkers(currentProject) ||
-        "Crew not set by Sales";
+      const crewSummary = migrationBaseline?.current_phase
+        ? String(migrationBaseline.current_phase).trim()
+        : scheduleLabels.crewSummary ||
+          supervisorCrewSummaryFromPlan(execPlan) ||
+          supervisorCrewSummaryFromProjectWorkers(currentProject) ||
+          "Crew not set by Sales";
 
       renderSupervisorHero({
         projectName: state.projectName || "Project",
         estimatedDays: estimatedBudgetDays,
+        actualDays,
         planDayIndex,
         status: smartStatus,
         schedule: scheduleLabels,
         crewSummary,
         progressPct,
+        migrationBaseline,
       });
       renderSupervisorTodayTarget(execPlan, scheduleLabels.startIso, actualDays);
 
@@ -7196,12 +7296,17 @@ function renderSupervisor() {
 
       const supLaborPlanBody = $("supLaborPlanBody");
       if (supLaborPlanBody) {
-        const execHtml = renderSupervisorExecutionPlanHtml(execPlan);
-        if (execHtml) {
-          supLaborPlanBody.innerHTML = execHtml;
-        } else {
+        if (showMigratedExecution) {
           supLaborPlanBody.innerHTML =
-            '<p class="small" style="margin:0;">Execution plan has not been prepared in Sales.</p>';
+            renderSupervisorMigrationPlanHtml(migrationBaseline);
+        } else {
+          const execHtml = renderSupervisorExecutionPlanHtml(execPlan);
+          if (execHtml) {
+            supLaborPlanBody.innerHTML = execHtml;
+          } else {
+            supLaborPlanBody.innerHTML =
+              '<p class="small" style="margin:0;">Execution plan has not been prepared in Sales.</p>';
+          }
         }
       }
 

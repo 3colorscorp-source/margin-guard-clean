@@ -3,6 +3,12 @@ const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { computeProjectOperationalSnapshot } = require("./_lib/project-operational-snapshot");
 const {
+  loadMigrationBaseline,
+  applyMigrationBaselineToMetrics,
+  scheduleFromMigrationBaseline,
+  migrationBaselineForSupervisor,
+} = require("./_lib/migration-baseline");
+const {
   operationalPlanForSupervisorVisibility,
   parseOperationalPlanJsonb,
   resolveOperationalPlanForQuote,
@@ -170,16 +176,18 @@ exports.handler = async (event) => {
       return json(403, { error: "Project not found for this tenant" });
     }
 
-    const [reportRows, expenseRows, bonusPct, opRow] = await Promise.all([
-      supabaseRequest(
-        `tenant_project_reports?tenant_id=eq.${tid}&project_id=eq.${pid}&select=hours,days`
-      ),
-      supabaseRequest(
-        `tenant_project_expenses?tenant_id=eq.${tid}&project_id=eq.${pid}&select=id`
-      ),
-      loadSupervisorBonusPctForTenant(tenant.id),
-      loadOperationalSnapshotRow(tenant.id, project.id),
-    ]);
+    const [reportRows, expenseRows, bonusPct, opRow, migrationBaseline] =
+      await Promise.all([
+        supabaseRequest(
+          `tenant_project_reports?tenant_id=eq.${tid}&project_id=eq.${pid}&select=hours,days,created_at`
+        ),
+        supabaseRequest(
+          `tenant_project_expenses?tenant_id=eq.${tid}&project_id=eq.${pid}&select=id`
+        ),
+        loadSupervisorBonusPctForTenant(tenant.id),
+        loadOperationalSnapshotRow(tenant.id, project.id),
+        loadMigrationBaseline(tenant.id, project.id),
+      ]);
 
     let operational_snapshot = computeProjectOperationalSnapshot({
       project,
@@ -230,10 +238,29 @@ exports.handler = async (event) => {
       project
     );
 
-    const schedule = {
+    if (migrationBaseline) {
+      operational_snapshot = applyMigrationBaselineToMetrics(
+        operational_snapshot,
+        migrationBaseline,
+        Array.isArray(reportRows) ? reportRows : []
+      );
+    }
+
+    let schedule = {
       ...buildScheduleFields(project, metricsRow || opRow),
       crew_summary: crewSummaryFromOperationalPlan(operational_plan),
     };
+    if (migrationBaseline) {
+      schedule = {
+        ...schedule,
+        ...scheduleFromMigrationBaseline(migrationBaseline),
+      };
+    }
+
+    const migration_baseline = migrationBaselineForSupervisor(migrationBaseline);
+    const has_migrated_baseline = Boolean(migration_baseline);
+    const show_migrated_execution =
+      has_migrated_baseline && !has_execution_plan;
 
     return json(200, {
       ok: true,
@@ -242,6 +269,9 @@ exports.handler = async (event) => {
       operational_plan,
       schedule,
       has_execution_plan,
+      migration_baseline,
+      has_migrated_baseline,
+      show_migrated_execution,
     });
   } catch (err) {
     return json(500, { error: err.message || "Unexpected error" });

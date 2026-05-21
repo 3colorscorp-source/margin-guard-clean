@@ -231,6 +231,12 @@
     .pcc-kv .k { font-size: 0.8rem; color: var(--muted, #666); }
     .pcc-kv .v { font-weight: 600; margin-top: 2px; }
     .pcc-deviation { font-size: 1.05rem; line-height: 1.45; padding: 12px 14px; border-radius: 8px; background: #f8faf9; border: 1px solid #e0ebe6; margin: 12px 0; }
+    .pcc-baseline-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .pcc-baseline-modal { position: fixed; inset: 0; z-index: 1200; display: none; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,.45); }
+    .pcc-baseline-modal.open { display: flex; }
+    .pcc-baseline-modal__panel { width: min(520px, 100%); max-height: 90vh; overflow: auto; background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 12px 40px rgba(0,0,0,.2); }
+    .pcc-baseline-modal__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .pcc-baseline-modal__grid .field--wide { grid-column: 1 / -1; }
   </style>
 </head>
 <body data-requires-auth="true">
@@ -383,6 +389,10 @@
           </div>
           <button type="button" class="btn ghost" id="pccCloseDetail">Close detail</button>
         </div>
+        <div class="pcc-baseline-actions">
+          <button type="button" class="btn primary" id="pccBtnSetBaseline">Set migrated baseline</button>
+          <span class="hint" id="pccBaselineStatus" aria-live="polite"></span>
+        </div>
         <div class="pcc-kv" id="pccDetailKv"></div>
         <div class="pcc-deviation" id="pccDetailDeviation"></div>
         <h4 style="margin:16px 0 8px;">Work report history</h4>
@@ -394,6 +404,55 @@
             <tbody id="pccDetailReports"></tbody>
           </table>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pcc-baseline-modal" id="pccBaselineModal" aria-hidden="true">
+    <div class="pcc-baseline-modal__panel" role="dialog" aria-labelledby="pccBaselineTitle">
+      <h3 id="pccBaselineTitle" style="margin:0 0 8px;">Set migrated baseline</h3>
+      <p class="sub" style="margin:0 0 16px;">For projects started in Square (or elsewhere) before Margin Guard tracking. Supervisor will continue from this point.</p>
+      <form id="pccBaselineForm" class="form pcc-baseline-modal__grid">
+        <div class="field">
+          <label for="pccBaselineSource">External source</label>
+          <input id="pccBaselineSource" type="text" maxlength="64" value="Square" required />
+        </div>
+        <div class="field">
+          <label for="pccBaselineEstDays">Estimated total days</label>
+          <input id="pccBaselineEstDays" type="number" min="0.25" step="0.25" required />
+        </div>
+        <div class="field">
+          <label for="pccBaselineDaysDone">Days completed to date</label>
+          <input id="pccBaselineDaysDone" type="number" min="0" step="0.25" required />
+        </div>
+        <div class="field">
+          <label for="pccBaselineProgress">Progress %</label>
+          <input id="pccBaselineProgress" type="number" min="0" max="100" step="1" />
+        </div>
+        <div class="field">
+          <label for="pccBaselineStart">Actual start date</label>
+          <input id="pccBaselineStart" type="date" />
+        </div>
+        <div class="field">
+          <label for="pccBaselineTarget">Target finish date</label>
+          <input id="pccBaselineTarget" type="date" />
+        </div>
+        <div class="field field--wide">
+          <label for="pccBaselinePhase">Current phase</label>
+          <input id="pccBaselinePhase" type="text" maxlength="500" placeholder="e.g. Avanzar con el proyecto" />
+        </div>
+        <div class="field field--wide">
+          <label for="pccBaselineScope">Remaining scope notes</label>
+          <textarea id="pccBaselineScope" rows="4" maxlength="8000" placeholder="What is left to complete (from project notes/scope)."></textarea>
+        </div>
+        <div class="field field--wide">
+          <label for="pccBaselineContractRef">Original contract reference (optional)</label>
+          <input id="pccBaselineContractRef" type="text" maxlength="500" placeholder="e.g. Square job # or internal ref" />
+        </div>
+      </form>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+        <button type="button" class="btn ghost" id="pccBaselineCancel">Cancel</button>
+        <button type="button" class="btn primary" id="pccBaselineSave">Save baseline</button>
       </div>
     </div>
   </div>
@@ -423,6 +482,7 @@
       var allRows = [];
       var activeFilter = 'all';
       var selectedId = '';
+      var selectedBaseline = null;
 
       function badgeClass(tone) {
         if (tone === 'green') return 'green';
@@ -486,17 +546,57 @@
         });
       }
 
-      function openDetail(id) {
+      function fillBaselineForm(b) {
+        document.getElementById('pccBaselineSource').value = (b && b.external_source) ? b.external_source : 'Square';
+        document.getElementById('pccBaselineEstDays').value = b && b.estimated_total_days > 0 ? b.estimated_total_days : '';
+        document.getElementById('pccBaselineDaysDone').value = b ? b.days_completed_to_date : '';
+        document.getElementById('pccBaselineProgress').value = b && b.progress_pct != null ? b.progress_pct : '';
+        document.getElementById('pccBaselineStart').value = (b && b.actual_start_date) ? b.actual_start_date : '';
+        document.getElementById('pccBaselineTarget').value = (b && b.target_finish_date) ? b.target_finish_date : '';
+        document.getElementById('pccBaselinePhase').value = (b && b.current_phase) ? b.current_phase : '';
+        document.getElementById('pccBaselineScope').value = (b && b.remaining_scope_notes) ? b.remaining_scope_notes : '';
+        document.getElementById('pccBaselineContractRef').value = (b && b.original_contract_reference) ? b.original_contract_reference : '';
+      }
+
+      function openBaselineModal() {
+        fillBaselineForm(selectedBaseline);
+        var modal = document.getElementById('pccBaselineModal');
+        modal.classList.add('open');
+        modal.setAttribute('aria-hidden', 'false');
+      }
+
+      function closeBaselineModal() {
+        var modal = document.getElementById('pccBaselineModal');
+        modal.classList.remove('open');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+
+      async function loadBaselineForProject(projectId) {
+        var rid = encodeURIComponent(String(projectId));
+        var res = await fetch('/.netlify/functions/get-project-migration-baseline?project_id=' + rid, { credentials: 'include' });
+        var data = await res.json().catch(function () { return {}; });
+        if (res.ok && data && data.ok === true && data.baseline) return data.baseline;
+        return null;
+      }
+
+      async function openDetail(id) {
         var row = allRows.find(function (r) { return String(r.project.id) === String(id); });
         if (!row) return;
         selectedId = String(id);
+        selectedBaseline = await loadBaselineForProject(id);
         renderTable();
         var m = row.metrics;
         var p = row.project;
         document.getElementById('pccDetailTitle').textContent = p.projectName || 'Project';
         document.getElementById('pccDetailClient').textContent = p.clientName ? ('Client: ' + p.clientName) : '';
+        var statusEl = document.getElementById('pccBaselineStatus');
+        if (statusEl) {
+          statusEl.textContent = selectedBaseline
+            ? ('Baseline set · ' + (selectedBaseline.external_source || 'External'))
+            : 'No migrated baseline yet.';
+        }
         var kv = document.getElementById('pccDetailKv');
-        kv.innerHTML = [
+        var kvPairs = [
           ['Due date', fmtDate(m.dueDate)],
           ['Projected finish', m.projectedEndDate ? fmtDate(m.projectedEndDate) : '—'],
           ['Budgeted days', m.estimatedDays > 0 ? m.estimatedDays.toFixed(2) : '—'],
@@ -507,7 +607,17 @@
           ['Progress', pct(m.progressPct)],
           ['Plan deviation', m.planDeviationLabel],
           ['Status', m.statusLabel]
-        ].map(function (pair) {
+        ];
+        if (selectedBaseline) {
+          kvPairs.splice(1, 0,
+            ['Migration source', selectedBaseline.external_source || '—'],
+            ['Baseline start', fmtDate(selectedBaseline.actual_start_date)],
+            ['Baseline target', fmtDate(selectedBaseline.target_finish_date)],
+            ['Baseline days done', Number(selectedBaseline.days_completed_to_date || 0).toFixed(2)],
+            ['Current phase', selectedBaseline.current_phase || '—']
+          );
+        }
+        kv.innerHTML = kvPairs.map(function (pair) {
           return '<div><div class="k">' + esc(pair[0]) + '</div><div class="v">' + esc(pair[1]) + '</div></div>';
         }).join('');
         document.getElementById('pccDetailDeviation').textContent = m.planDeviationDetail;
@@ -572,10 +682,12 @@
           var rid = encodeURIComponent(String(p.id));
           var repRes = await fetch('/.netlify/functions/get-project-reports?project_id=' + rid, { credentials: 'include' }).then(function (r) { return r.json(); }).catch(function () { return {}; });
           var expRes = await fetch('/.netlify/functions/get-project-expenses?project_id=' + rid, { credentials: 'include' }).then(function (r) { return r.json(); }).catch(function () { return {}; });
+          var baseRes = await fetch('/.netlify/functions/get-project-migration-baseline?project_id=' + rid, { credentials: 'include' }).then(function (r) { return r.json(); }).catch(function () { return {}; });
           var reports = repRes && repRes.ok === true && Array.isArray(repRes.reports) ? repRes.reports : [];
           var expenses = expRes && expRes.ok === true && Array.isArray(expRes.expenses) ? expRes.expenses : [];
-          var metrics = compute(p, reports, expenses);
-          return { project: p, reports: reports, expenses: expenses, metrics: metrics };
+          var baseline = baseRes && baseRes.ok === true && baseRes.baseline ? baseRes.baseline : null;
+          var metrics = compute(p, reports, expenses, baseline);
+          return { project: p, reports: reports, expenses: expenses, baseline: baseline, metrics: metrics };
         }));
 
         renderSummary();
@@ -599,6 +711,51 @@
           }
         }, 50);
       }
+
+      document.getElementById('pccBtnSetBaseline').addEventListener('click', function () {
+        if (!selectedId) {
+          window.alert('Select a project first.');
+          return;
+        }
+        openBaselineModal();
+      });
+      document.getElementById('pccBaselineCancel').addEventListener('click', closeBaselineModal);
+      document.getElementById('pccBaselineModal').addEventListener('click', function (e) {
+        if (e.target === document.getElementById('pccBaselineModal')) closeBaselineModal();
+      });
+      document.getElementById('pccBaselineSave').addEventListener('click', async function () {
+        if (!selectedId) return;
+        var payload = {
+          project_id: selectedId,
+          external_source: document.getElementById('pccBaselineSource').value.trim() || 'Square',
+          estimated_total_days: Number(document.getElementById('pccBaselineEstDays').value),
+          days_completed_to_date: Number(document.getElementById('pccBaselineDaysDone').value),
+          progress_pct: Number(document.getElementById('pccBaselineProgress').value),
+          actual_start_date: document.getElementById('pccBaselineStart').value,
+          target_finish_date: document.getElementById('pccBaselineTarget').value,
+          current_phase: document.getElementById('pccBaselinePhase').value.trim(),
+          remaining_scope_notes: document.getElementById('pccBaselineScope').value.trim(),
+          original_contract_reference: document.getElementById('pccBaselineContractRef').value.trim()
+        };
+        if (!payload.estimated_total_days || payload.estimated_total_days <= 0) {
+          window.alert('Estimated total days must be greater than zero.');
+          return;
+        }
+        var res = await fetch('/.netlify/functions/upsert-project-migration-baseline', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok || !data || data.ok !== true) {
+          window.alert((data && data.error) ? data.error : 'Could not save baseline.');
+          return;
+        }
+        closeBaselineModal();
+        await load();
+        openDetail(selectedId);
+      });
 
       document.addEventListener('DOMContentLoaded', function () {
         bindFilters();
