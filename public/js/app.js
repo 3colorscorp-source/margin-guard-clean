@@ -1121,12 +1121,63 @@ Thank you.`
     } catch (_e) {
       /* non-fatal */
     }
-    delete supervisorProjectOperationalCache[pid];
   }
 
   /** projectId -> { ok, operational_snapshot?, error? } from get-supervisor-operational-snapshot */
   const supervisorProjectOperationalCache = Object.create(null);
   const supervisorProjectOperationalFetchInFlight = new Set();
+
+  function cacheSupervisorOperationalSnapshotFromFetch(pid, data) {
+    const k = supervisorProjectKey(pid);
+    if (!k) return;
+    if (data && data.ok === true) {
+      supervisorProjectOperationalCache[k] = {
+        ok: true,
+        snapshot:
+          data.operational_snapshot && typeof data.operational_snapshot === "object"
+            ? data.operational_snapshot
+            : {},
+        operational_plan: Array.isArray(data.operational_plan) ? data.operational_plan : [],
+        schedule: data.schedule && typeof data.schedule === "object" ? data.schedule : {},
+        has_execution_plan: Boolean(data.has_execution_plan),
+      };
+    } else {
+      supervisorProjectOperationalCache[k] = {
+        ok: false,
+        error: (data && data.error) || "Field snapshot unavailable.",
+      };
+    }
+  }
+
+  async function loadSupervisorOperationalSnapshot(projectId, options) {
+    const k = supervisorProjectKey(projectId);
+    if (!k) return null;
+    const force = Boolean(options && options.force);
+    if (force) {
+      delete supervisorProjectOperationalCache[k];
+      supervisorProjectOperationalFetchInFlight.delete(k);
+    }
+    if (supervisorProjectOperationalCache[k] && !force) {
+      return supervisorProjectOperationalCache[k];
+    }
+    if (supervisorProjectOperationalFetchInFlight.has(k)) {
+      return supervisorProjectOperationalCache[k] || null;
+    }
+    supervisorProjectOperationalFetchInFlight.add(k);
+    try {
+      const data = await fetchSupervisorOperationalSnapshot(k);
+      cacheSupervisorOperationalSnapshotFromFetch(k, data);
+      return supervisorProjectOperationalCache[k];
+    } catch (_e) {
+      supervisorProjectOperationalCache[k] = {
+        ok: false,
+        error: "Field snapshot unavailable (network error).",
+      };
+      return supervisorProjectOperationalCache[k];
+    } finally {
+      supervisorProjectOperationalFetchInFlight.delete(k);
+    }
+  }
 
   function clearSupervisorProjectOperationalCache(pid) {
     if (pid) {
@@ -1181,6 +1232,114 @@ Thank you.`
     };
   }
 
+  function enrichOperationalSnapshotFromFieldCaches(pid, baseSnap, project, state) {
+    const snap = { ...(baseSnap && typeof baseSnap === "object" ? baseSnap : {}) };
+    const est = finiteNumber(
+      snap.estimated_days,
+      finiteNumber(project?.estimatedDays, finiteNumber(state?.estimatedDays, 0))
+    );
+    if (est > 0 && !finiteNumber(snap.estimated_days, 0)) {
+      snap.estimated_days = est;
+    }
+    const repCache = supervisorProjectReportsCache[pid];
+    if (repCache?.ok === true && Array.isArray(repCache.reports)) {
+      const actualDays = repCache.reports.reduce((s, r) => s + Number(r?.days || 0), 0);
+      const actualHours = repCache.reports.reduce((s, r) => s + Number(r?.hours || 0), 0);
+      snap.actual_days = actualDays;
+      snap.actual_hours = actualHours;
+      snap.report_count = repCache.reports.length;
+    } else if (!Number.isFinite(Number(snap.actual_days))) {
+      const entries = Array.isArray(state?.entries) ? state.entries : [];
+      snap.actual_days = entries.reduce((s, r) => s + Number(r?.days || 0), 0);
+      snap.actual_hours = entries.reduce((s, r) => s + Number(r?.hours || 0), 0);
+      snap.report_count = entries.length;
+    }
+    const expCache = supervisorProjectExpensesCache[pid];
+    if (expCache?.ok === true && Array.isArray(expCache.expenses)) {
+      snap.expense_count = expCache.expenses.length;
+    } else if (snap.expense_count == null) {
+      snap.expense_count = Array.isArray(state?.extras) ? state.extras.length : 0;
+    }
+    const estDays = finiteNumber(snap.estimated_days, est);
+    const actDays = finiteNumber(snap.actual_days, 0);
+    snap.days_remaining = Math.max(0, estDays - actDays);
+    if (estDays > 0) {
+      snap.completion_pace_pct = Math.round((actDays / estDays) * 100);
+    }
+    return snap;
+  }
+
+  function buildSupervisorExecutionPlanFallback(project, estimatedDays) {
+    const dayCount = Math.max(0, Math.ceil(finiteNumber(estimatedDays, 0)));
+    if (dayCount <= 0) return [];
+    const hpd = Math.max(Number(loadSettings()?.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
+    const workers = Array.isArray(project?.workers) ? project.workers : [];
+    const roles = [
+      ...new Set(
+        workers
+          .map((w) =>
+            String(w?.role || w?.type || w?.worker_type || "").trim()
+          )
+          .filter(Boolean)
+      ),
+    ];
+    const dayWorkers =
+      roles.length > 0
+        ? roles.map((role) => ({
+            role,
+            worker_type: "pro",
+            estimated_hours: hpd,
+          }))
+        : [{ role: "Scheduled crew", worker_type: "pro", estimated_hours: hpd }];
+    const out = [];
+    for (let d = 1; d <= dayCount; d += 1) {
+      out.push({
+        day_number: d,
+        phase: `Day ${d}`,
+        workers: dayWorkers.map((w) => ({ ...w })),
+      });
+    }
+    return out;
+  }
+
+  function resolveSupervisorExecutionPlan(opCache, project, estimatedDays) {
+    if (
+      opCache?.ok === true &&
+      Array.isArray(opCache.operational_plan) &&
+      opCache.operational_plan.length
+    ) {
+      return opCache.operational_plan;
+    }
+    const fromSales = buildSupervisorExecutionPlanFallback(project, estimatedDays);
+    return fromSales.length ? fromSales : [];
+  }
+
+  function resolveSupervisorOperationalPanelState(pid, currentProject, state, opCache) {
+    const fallbackSnap = enrichOperationalSnapshotFromFieldCaches(
+      pid,
+      buildSupervisorOperationalFallback(currentProject, state),
+      currentProject,
+      state
+    );
+    const cached = opCache || supervisorProjectOperationalCache[pid];
+    const inflight = supervisorProjectOperationalFetchInFlight.has(pid);
+    let snapshot = fallbackSnap;
+    let error = null;
+    if (cached?.ok === true && cached.snapshot) {
+      snapshot = enrichOperationalSnapshotFromFieldCaches(
+        pid,
+        { ...fallbackSnap, ...cached.snapshot },
+        currentProject,
+        state
+      );
+    } else if (cached?.ok === false) {
+      error = cached.error || "Field metrics unavailable. Showing local baseline.";
+    } else if (inflight) {
+      error = "Refreshing field metrics…";
+    }
+    return { snapshot, error, inflight };
+  }
+
   function supervisorScheduleLabels(schedule, project, state) {
     const sched = schedule && typeof schedule === "object" ? schedule : {};
     const crewFromSchedule = String(sched.crew_summary || "").trim();
@@ -1202,7 +1361,7 @@ Thank you.`
       startLabel: start ? formatDateUS(start) || start : "Waiting for project timeline.",
       targetLabel: target
         ? formatDateUS(target) || target
-        : "Target finish pending from Sales",
+        : "No target finish set in Sales",
       crewSummary: crewFromSchedule,
     };
   }
@@ -1215,7 +1374,18 @@ Thank you.`
         if (r) roles.add(r);
       }
     }
-    if (!roles.size) return "Crew pending from Sales";
+    if (!roles.size) return "";
+    return [...roles].join(" + ");
+  }
+
+  function supervisorCrewSummaryFromProjectWorkers(project) {
+    const workers = Array.isArray(project?.workers) ? project.workers : [];
+    const roles = new Set();
+    for (const w of workers) {
+      const r = String(w?.role || w?.type || w?.worker_type || "").trim();
+      if (r) roles.add(r);
+    }
+    if (!roles.size) return "";
     return [...roles].join(" + ");
   }
 
@@ -6628,15 +6798,14 @@ function renderSupervisor() {
         if (nextId && isServerListedSupervisorProject(nextId)) {
           supervisorProjectReportsFetchInFlight.add(nextId);
           supervisorProjectExpensesFetchInFlight.add(nextId);
-          supervisorProjectOperationalFetchInFlight.add(nextId);
           renderSupervisor();
           void (async () => {
             try {
               if (supervisorProjectKey(loadSupervisorSelectedProjectId()) !== nextId) return;
-              const [r, e, snap] = await Promise.all([
+              const [r, e] = await Promise.all([
                 fetchProjectReports(nextId),
                 fetchProjectExpenses(nextId),
-                fetchSupervisorOperationalSnapshot(nextId),
+                loadSupervisorOperationalSnapshot(nextId, { force: true }),
               ]);
               if (supervisorProjectKey(loadSupervisorSelectedProjectId()) !== nextId) return;
               supervisorProjectReportsCache[nextId] =
@@ -6647,20 +6816,9 @@ function renderSupervisor() {
                 e && e.ok === true && Array.isArray(e.expenses)
                   ? { ok: true, expenses: e.expenses }
                   : { ok: false, expenses: [] };
-              supervisorProjectOperationalCache[nextId] =
-                snap && snap.ok === true
-                  ? {
-                      ok: true,
-                      snapshot: snap.operational_snapshot,
-                      operational_plan: snap.operational_plan || [],
-                      schedule: snap.schedule || {},
-                      has_execution_plan: Boolean(snap.has_execution_plan),
-                    }
-                  : { ok: false, error: (snap && snap.error) || "Field snapshot unavailable." };
             } finally {
               supervisorProjectReportsFetchInFlight.delete(nextId);
               supervisorProjectExpensesFetchInFlight.delete(nextId);
-              supervisorProjectOperationalFetchInFlight.delete(nextId);
             }
             if (supervisorProjectKey(loadSupervisorSelectedProjectId()) !== nextId) return;
             renderSupervisor();
@@ -6887,40 +7045,11 @@ function renderSupervisor() {
             }
           });
         }
-        if (!supervisorProjectOperationalCache[pid] && !supervisorProjectOperationalFetchInFlight.has(pid)) {
-          supervisorProjectOperationalFetchInFlight.add(pid);
-          void fetchSupervisorOperationalSnapshot(pid)
-            .then((data) => {
-              supervisorProjectOperationalFetchInFlight.delete(pid);
-              if (data && data.ok === true) {
-                supervisorProjectOperationalCache[pid] = {
-                  ok: true,
-                  snapshot: data.operational_snapshot,
-                  operational_plan: data.operational_plan || [],
-                  schedule: data.schedule || {},
-                  has_execution_plan: Boolean(data.has_execution_plan),
-                };
-              } else {
-                supervisorProjectOperationalCache[pid] = {
-                  ok: false,
-                  error: (data && data.error) || "Field snapshot unavailable.",
-                };
-              }
-              if (supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
-                renderSupervisor();
-              }
-            })
-            .catch(() => {
-              supervisorProjectOperationalFetchInFlight.delete(pid);
-              supervisorProjectOperationalCache[pid] = {
-                ok: false,
-                error: "Field snapshot unavailable (network error).",
-              };
-              if (supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
-                renderSupervisor();
-              }
-            });
-        }
+        void loadSupervisorOperationalSnapshot(pid).then(() => {
+          if (supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
+            renderSupervisor();
+          }
+        });
       }
 
       let state = loadSupervisorReport(currentProject);
@@ -6993,9 +7122,13 @@ function renderSupervisor() {
       const reportedHours = state.entries.reduce((sum, row) => sum + Number(row.hours || 0), 0);
       const daysSpent = state.entries.reduce((sum, row) => sum + Number(row.days || 0), 0);
       const opCache = supervisorProjectOperationalCache[pid];
-      const fallbackSnap = buildSupervisorOperationalFallback(currentProject, state);
-      const activeSnap =
-        opCache?.ok === true && opCache.snapshot ? opCache.snapshot : fallbackSnap;
+      const panelState = resolveSupervisorOperationalPanelState(
+        pid,
+        currentProject,
+        state,
+        opCache
+      );
+      const activeSnap = panelState.snapshot;
       const estimatedBudgetDays = finiteNumber(
         activeSnap.estimated_days,
         finiteNumber(state.estimatedDays, 0)
@@ -7013,10 +7146,11 @@ function renderSupervisor() {
         currentProject,
         state
       );
-      const execPlan =
-        opCache?.ok === true && Array.isArray(opCache.operational_plan)
-          ? opCache.operational_plan
-          : [];
+      const execPlan = resolveSupervisorExecutionPlan(
+        opCache,
+        currentProject,
+        estimatedBudgetDays
+      );
 
       let dayDelta = 0;
       if (state.dueDate && state.projectedEndDate) {
@@ -7042,7 +7176,10 @@ function renderSupervisor() {
         actualDays
       );
       const crewSummary =
-        scheduleLabels.crewSummary || supervisorCrewSummaryFromPlan(execPlan);
+        scheduleLabels.crewSummary ||
+        supervisorCrewSummaryFromPlan(execPlan) ||
+        supervisorCrewSummaryFromProjectWorkers(currentProject) ||
+        "Crew not set by Sales";
 
       renderSupervisorHero({
         projectName: state.projectName || "Project",
@@ -7062,9 +7199,6 @@ function renderSupervisor() {
         const execHtml = renderSupervisorExecutionPlanHtml(execPlan);
         if (execHtml) {
           supLaborPlanBody.innerHTML = execHtml;
-        } else if (supervisorProjectOperationalFetchInFlight.has(pid)) {
-          supLaborPlanBody.innerHTML =
-            '<p class="small" style="margin:0;">Loading execution plan…</p>';
         } else {
           supLaborPlanBody.innerHTML =
             '<p class="small" style="margin:0;">Execution plan has not been prepared in Sales.</p>';
@@ -7073,28 +7207,14 @@ function renderSupervisor() {
 
       const projectLaborBudget = finiteNumber(currentProject.laborBudget, 0);
       if ($("supSnapshotGrid")) {
-        const snapCached = supervisorProjectOperationalCache[pid];
-        const snapInflight = supervisorProjectOperationalFetchInFlight.has(pid);
         const panelOpts = { laborBudget: projectLaborBudget };
         if (!isServerListedSupervisorProject(pid)) {
           renderSupervisorOperationalPanel({});
-        } else if (snapInflight && !snapCached) {
-          renderSupervisorOperationalPanel({ loading: true });
-        } else if (snapCached && snapCached.ok === true && snapCached.snapshot) {
-          renderSupervisorOperationalPanel({
-            ...panelOpts,
-            snapshot: snapCached.snapshot,
-          });
-        } else if (snapCached && snapCached.ok === false) {
-          renderSupervisorOperationalPanel({
-            ...panelOpts,
-            snapshot: fallbackSnap,
-            error: "Using baseline field metrics.",
-          });
         } else {
           renderSupervisorOperationalPanel({
             ...panelOpts,
-            snapshot: fallbackSnap,
+            snapshot: panelState.snapshot,
+            error: panelState.error,
           });
         }
       }
@@ -7294,6 +7414,7 @@ function renderSupervisor() {
             setNum("supEntryDays", 0);
             setVal("supEntryNote", "");
             await recalcProjectProfitIfListed(currentProject.id);
+            await loadSupervisorOperationalSnapshot(currentProject.id, { force: true });
             await pullSupervisorProjectsFromApi();
             closeSupFieldModal("labor");
             refresh();
@@ -7366,6 +7487,7 @@ function renderSupervisor() {
             setNum("supExtraAmount", 0);
             setVal("supExtraNote", "");
             await recalcProjectProfitIfListed(currentProject.id);
+            await loadSupervisorOperationalSnapshot(currentProject.id, { force: true });
             await pullSupervisorProjectsFromApi();
             closeSupFieldModal("extra");
             refresh();

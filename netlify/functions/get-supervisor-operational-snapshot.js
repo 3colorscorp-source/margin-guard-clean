@@ -118,6 +118,12 @@ function mergeMetricsWithStoredPlan(metrics, opRow, project) {
       Math.max(0, out.estimated_days - num(out.actual_days, 0))
     );
   }
+  const estFinal = num(out.estimated_days, 0);
+  const actFinal = num(out.actual_days, 0);
+  if (estFinal > 0) {
+    out.days_remaining = round2(Math.max(0, estFinal - actFinal));
+    out.completion_pace_pct = Math.round((actFinal / estFinal) * 100);
+  }
   return out;
 }
 
