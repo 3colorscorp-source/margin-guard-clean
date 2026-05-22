@@ -55,9 +55,10 @@ exports.handler = async (event) => {
 
     const tid = encodeURIComponent(tenant.id);
     const projRows = await supabaseRequest(
-      `tenant_projects?id=eq.${encodeURIComponent(projectId)}&tenant_id=eq.${tid}&select=id&limit=1`
+      `tenant_projects?id=eq.${encodeURIComponent(projectId)}&tenant_id=eq.${tid}&select=id,notes&limit=1`
     );
-    if (!Array.isArray(projRows) || !projRows[0]?.id) {
+    const project = Array.isArray(projRows) ? projRows[0] : null;
+    if (!project?.id) {
       return json(403, { error: "Project not found for this tenant" });
     }
 
@@ -66,7 +67,13 @@ exports.handler = async (event) => {
       return json(400, { error: "estimated_total_days must be greater than zero" });
     }
 
-    const result = await upsertMigrationBaseline(tenant.id, projectId, body);
+    const saveBody = { ...body };
+    if (!str(saveBody.remaining_scope_notes, 8000)) {
+      const fromNotes = str(project.notes, 8000);
+      if (fromNotes) saveBody.remaining_scope_notes = fromNotes;
+    }
+
+    const result = await upsertMigrationBaseline(tenant.id, projectId, saveBody);
     const baseline = await loadMigrationBaseline(tenant.id, projectId);
     if (baseline) {
       await syncOperationalSnapshotDatesFromBaseline(tenant.id, projectId, baseline);

@@ -443,17 +443,23 @@
         </div>
         <div class="field field--wide">
           <label for="pccBaselineScope">Remaining scope notes</label>
+          <p class="small" style="margin:0 0 8px;">Original contract/scope can stay in project notes — use the button below to copy them here for Supervisor, or leave blank to auto-copy on save.</p>
           <textarea id="pccBaselineScope" rows="4" maxlength="8000" placeholder="What is left to complete (from project notes/scope)."></textarea>
+          <button type="button" class="btn ghost" id="pccBaselineUseNotes" style="margin-top:8px;">Use project notes for remaining scope</button>
         </div>
         <div class="field field--wide">
           <label for="pccBaselineContractRef">Original contract reference (optional)</label>
           <input id="pccBaselineContractRef" type="text" maxlength="500" placeholder="e.g. Square job # or internal ref" />
         </div>
       </form>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
-        <button type="button" class="btn ghost" id="pccBaselineCancel">Cancel</button>
-        <button type="button" class="btn primary" id="pccBaselineSave">Save baseline</button>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;margin-top:16px;">
+        <button type="button" class="btn ghost" id="pccBaselineSquareTemplate">Fill Square template (14d / 9 done / 70%)</button>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn ghost" id="pccBaselineCancel">Cancel</button>
+          <button type="button" class="btn primary" id="pccBaselineSave">Save baseline</button>
+        </div>
       </div>
+      <p class="small" style="margin:12px 0 0;color:var(--muted,#666);">Invoice sent / paid amounts are not stored here — use Invoices Hub. Field expenses already in Margin Guard stay counted automatically.</p>
     </div>
   </div>
 
@@ -483,6 +489,8 @@
       var activeFilter = 'all';
       var selectedId = '';
       var selectedBaseline = null;
+      var selectedProjectNotes = '';
+      var selectedProjectName = '';
 
       function badgeClass(tone) {
         if (tone === 'green') return 'green';
@@ -546,20 +554,37 @@
         });
       }
 
-      function fillBaselineForm(b) {
+      function fillBaselineForm(b, opts) {
+        var o = opts || {};
         document.getElementById('pccBaselineSource').value = (b && b.external_source) ? b.external_source : 'Square';
         document.getElementById('pccBaselineEstDays').value = b && b.estimated_total_days > 0 ? b.estimated_total_days : '';
-        document.getElementById('pccBaselineDaysDone').value = b ? b.days_completed_to_date : '';
+        document.getElementById('pccBaselineDaysDone').value = b && b.days_completed_to_date != null ? b.days_completed_to_date : '';
         document.getElementById('pccBaselineProgress').value = b && b.progress_pct != null ? b.progress_pct : '';
         document.getElementById('pccBaselineStart').value = (b && b.actual_start_date) ? b.actual_start_date : '';
         document.getElementById('pccBaselineTarget').value = (b && b.target_finish_date) ? b.target_finish_date : '';
         document.getElementById('pccBaselinePhase').value = (b && b.current_phase) ? b.current_phase : '';
-        document.getElementById('pccBaselineScope').value = (b && b.remaining_scope_notes) ? b.remaining_scope_notes : '';
+        var scopeVal = (b && b.remaining_scope_notes) ? b.remaining_scope_notes : '';
+        if (!scopeVal && o.projectNotes) scopeVal = o.projectNotes;
+        document.getElementById('pccBaselineScope').value = scopeVal;
         document.getElementById('pccBaselineContractRef').value = (b && b.original_contract_reference) ? b.original_contract_reference : '';
       }
 
+      function applySquareInProgressTemplate() {
+        fillBaselineForm({
+          external_source: 'Square',
+          estimated_total_days: 14,
+          days_completed_to_date: 9,
+          progress_pct: 70,
+          actual_start_date: '2026-05-11',
+          target_finish_date: '2026-05-28',
+          current_phase: 'Avanzar con el proyecto',
+          remaining_scope_notes: selectedProjectNotes || '',
+          original_contract_reference: 'Square migration — scope in project notes'
+        }, { projectNotes: selectedProjectNotes });
+      }
+
       function openBaselineModal() {
-        fillBaselineForm(selectedBaseline);
+        fillBaselineForm(selectedBaseline, { projectNotes: selectedProjectNotes });
         var modal = document.getElementById('pccBaselineModal');
         modal.classList.add('open');
         modal.setAttribute('aria-hidden', 'false');
@@ -575,25 +600,41 @@
         var rid = encodeURIComponent(String(projectId));
         var res = await fetch('/.netlify/functions/get-project-migration-baseline?project_id=' + rid, { credentials: 'include' });
         var data = await res.json().catch(function () { return {}; });
-        if (res.ok && data && data.ok === true && data.baseline) return data.baseline;
-        return null;
+        if (!res.ok || !data || data.ok !== true) return { baseline: null, projectNotes: '', projectName: '' };
+        selectedProjectNotes = String(data.project_notes || '').trim();
+        selectedProjectName = String(data.project_name || '').trim();
+        return {
+          baseline: data.baseline || null,
+          projectNotes: selectedProjectNotes,
+          projectName: selectedProjectName,
+          scopeInNotes: Boolean(data.scope_in_project_notes)
+        };
       }
 
       async function openDetail(id) {
         var row = allRows.find(function (r) { return String(r.project.id) === String(id); });
         if (!row) return;
         selectedId = String(id);
-        selectedBaseline = await loadBaselineForProject(id);
+        var p = row.project;
+        var baseLoad = await loadBaselineForProject(id);
+        selectedBaseline = baseLoad.baseline;
+        selectedProjectNotes = baseLoad.projectNotes || String(p.notes || '').trim();
+        selectedProjectName = baseLoad.projectName || String(p.projectName || '').trim();
         renderTable();
         var m = row.metrics;
-        var p = row.project;
         document.getElementById('pccDetailTitle').textContent = p.projectName || 'Project';
         document.getElementById('pccDetailClient').textContent = p.clientName ? ('Client: ' + p.clientName) : '';
         var statusEl = document.getElementById('pccBaselineStatus');
         if (statusEl) {
-          statusEl.textContent = selectedBaseline
-            ? ('Baseline set · ' + (selectedBaseline.external_source || 'External'))
-            : 'No migrated baseline yet.';
+          if (selectedBaseline) {
+            statusEl.textContent = 'Baseline set · ' + (selectedBaseline.external_source || 'External') +
+              ' · ' + Number(selectedBaseline.days_completed_to_date || 0).toFixed(0) + ' of ' +
+              Number(selectedBaseline.estimated_total_days || 0).toFixed(0) + ' days';
+          } else if (baseLoad.scopeInNotes) {
+            statusEl.textContent = 'No baseline yet — contract/scope is in project notes. Use Set migrated baseline.';
+          } else {
+            statusEl.textContent = 'No migrated baseline yet.';
+          }
         }
         var kv = document.getElementById('pccDetailKv');
         var kvPairs = [
@@ -603,7 +644,8 @@
           ['Days spent', m.daysSpent.toFixed(2)],
           ['Days remaining', m.daysRemaining.toFixed(2)],
           ['Hours reported', m.reportedHours.toFixed(2)],
-          ['Unexpected expenses (count)', String(m.unexpectedExpensesCount)],
+          ['Unexpected expenses (count)', String(m.unexpectedExpensesCount) + ' (field entries in Margin Guard)'],
+          ['Invoice / payments', 'See Invoices Hub (not part of field baseline)'],
           ['Progress', pct(m.progressPct)],
           ['Plan deviation', m.planDeviationLabel],
           ['Status', m.statusLabel]
@@ -712,6 +754,16 @@
         }, 50);
       }
 
+      document.getElementById('pccBaselineUseNotes').addEventListener('click', function () {
+        if (!selectedProjectNotes) {
+          window.alert('This project has no notes/scope text on file yet.');
+          return;
+        }
+        document.getElementById('pccBaselineScope').value = selectedProjectNotes;
+      });
+      document.getElementById('pccBaselineSquareTemplate').addEventListener('click', function () {
+        applySquareInProgressTemplate();
+      });
       document.getElementById('pccBtnSetBaseline').addEventListener('click', function () {
         if (!selectedId) {
           window.alert('Select a project first.');

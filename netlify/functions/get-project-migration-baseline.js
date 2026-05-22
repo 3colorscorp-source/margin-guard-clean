@@ -35,19 +35,24 @@ exports.handler = async (event) => {
 
     const tid = encodeURIComponent(tenant.id);
     const projRows = await supabaseRequest(
-      `tenant_projects?id=eq.${encodeURIComponent(projectId)}&tenant_id=eq.${tid}&select=id&limit=1`
+      `tenant_projects?id=eq.${encodeURIComponent(projectId)}&tenant_id=eq.${tid}&select=id,project_name,notes,due_date&limit=1`
     );
-    if (!Array.isArray(projRows) || !projRows[0]?.id) {
+    const project = Array.isArray(projRows) ? projRows[0] : null;
+    if (!project?.id) {
       return json(403, { error: "Project not found for this tenant" });
     }
 
     const baseline = await loadMigrationBaseline(tenant.id, projectId);
+    const projectNotes = String(project.notes ?? "").trim();
 
     return json(200, {
       ok: true,
       project_id: projectId,
+      project_name: String(project.project_name ?? "").trim(),
+      project_notes: projectNotes,
       baseline: mapBaselineRow(baseline),
       has_baseline: Boolean(baseline),
+      scope_in_project_notes: Boolean(projectNotes),
     });
   } catch (err) {
     return json(500, { error: err.message || "Unexpected error" });
