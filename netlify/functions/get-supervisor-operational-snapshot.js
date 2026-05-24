@@ -133,6 +133,30 @@ function mergeMetricsWithStoredPlan(metrics, opRow, project) {
   return out;
 }
 
+/** Qualitative invoice label for migrated field view (no dollar amounts). */
+async function loadSupervisorInvoiceStatusLabel(tenantId, projectId) {
+  const tid = encodeURIComponent(tenantId);
+  const pid = encodeURIComponent(projectId);
+  try {
+    const rows = await supabaseRequest(
+      `invoices?tenant_id=eq.${tid}&project_id=eq.${pid}&select=status&order=created_at.desc&limit=1`
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row?.status) return "No invoice on file";
+    const s = String(row.status || "")
+      .trim()
+      .toLowerCase();
+    if (s === "paid") return "Invoice sent · paid";
+    if (s === "partial" || s === "partially_paid") return "Invoice sent · partial";
+    if (s === "draft" || s === "sent" || s === "open" || s === "unpaid") {
+      return "Invoice sent · unpaid";
+    }
+    return `Invoice ${s.replace(/_/g, " ")}`;
+  } catch (_e) {
+    return "Invoice status unavailable";
+  }
+}
+
 function buildScheduleFields(project, opRow) {
   const signedAt = normDate(project?.signed_at);
   const due = normDate(opRow?.commitment_date || project?.due_date);
@@ -262,6 +286,18 @@ exports.handler = async (event) => {
     const show_migrated_execution =
       has_migrated_baseline && !has_execution_plan;
 
+    let migrated_field_context = null;
+    if (show_migrated_execution) {
+      const expenseCount = Array.isArray(expenseRows) ? expenseRows.length : 0;
+      migrated_field_context = {
+        expense_count: expenseCount,
+        invoice_status_label: await loadSupervisorInvoiceStatusLabel(
+          tenant.id,
+          project.id
+        ),
+      };
+    }
+
     return json(200, {
       ok: true,
       project_id: project.id,
@@ -272,6 +308,7 @@ exports.handler = async (event) => {
       migration_baseline,
       has_migrated_baseline,
       show_migrated_execution,
+      migrated_field_context,
     });
   } catch (err) {
     return json(500, { error: err.message || "Unexpected error" });

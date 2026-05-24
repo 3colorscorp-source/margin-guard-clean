@@ -1176,6 +1176,10 @@ Thank you.`
             : null,
         has_migrated_baseline: Boolean(data.has_migrated_baseline),
         show_migrated_execution: Boolean(data.show_migrated_execution),
+        migrated_field_context:
+          data.migrated_field_context && typeof data.migrated_field_context === "object"
+            ? data.migrated_field_context
+            : null,
       };
     } else {
       supervisorProjectOperationalCache[k] = {
@@ -1343,7 +1347,19 @@ Thank you.`
     return out;
   }
 
+  function resolveShowMigratedExecution(opCache) {
+    if (!opCache || opCache.ok !== true) return false;
+    const baseline =
+      opCache.migration_baseline && typeof opCache.migration_baseline === "object"
+        ? opCache.migration_baseline
+        : null;
+    if (!baseline) return false;
+    if (opCache.show_migrated_execution) return true;
+    return Boolean(opCache.has_migrated_baseline && !opCache.has_execution_plan);
+  }
+
   function resolveSupervisorExecutionPlan(opCache, project, estimatedDays) {
+    if (resolveShowMigratedExecution(opCache)) return [];
     if (
       opCache?.ok === true &&
       Array.isArray(opCache.operational_plan) &&
@@ -1353,6 +1369,146 @@ Thank you.`
     }
     const fromSales = buildSupervisorExecutionPlanFallback(project, estimatedDays);
     return fromSales.length ? fromSales : [];
+  }
+
+  function formatSupervisorDaysLabel(n) {
+    const v = finiteNumber(n, 0);
+    const rounded = Math.round(v * 10) / 10;
+    const label = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+    return `${label} day${Math.abs(rounded) === 1 ? "" : "s"}`;
+  }
+
+  function renderSupervisorMigratedExecutionHtml(ctx) {
+    const c = ctx && typeof ctx === "object" ? ctx : {};
+    const b = c.baseline && typeof c.baseline === "object" ? c.baseline : {};
+    const snap = c.snapshot && typeof c.snapshot === "object" ? c.snapshot : {};
+    const sched = c.schedule && typeof c.schedule === "object" ? c.schedule : {};
+    const source = escapeHtml(String(b.external_source || "Square").trim());
+
+    const estDays = finiteNumber(
+      snap.estimated_days,
+      finiteNumber(b.estimated_total_days, 0)
+    );
+    const actDays = finiteNumber(snap.actual_days, finiteNumber(b.days_completed_to_date, 0));
+    const daysRem = finiteNumber(
+      snap.days_remaining,
+      Math.max(0, estDays - actDays)
+    );
+    const pct =
+      snap.completion_pace_pct != null
+        ? Math.round(finiteNumber(snap.completion_pace_pct, 0))
+        : estDays > 0
+          ? Math.round((actDays / estDays) * 100)
+          : Math.round(finiteNumber(b.progress_pct, 0));
+
+    const startIso =
+      sched.start_date || b.actual_start_date || "";
+    const targetIso =
+      sched.target_finish_date || sched.commitment_date || b.target_finish_date || "";
+    const startLabel = startIso ? formatDateUS(startIso) || startIso : "—";
+    const targetLabel = targetIso ? formatDateUS(targetIso) || targetIso : "—";
+
+    const phase = escapeHtml(
+      String(b.current_phase || "Continue scheduled work").trim()
+    );
+    const expenseCount = finiteNumber(
+      c.expenseCount,
+      finiteNumber(snap.expense_count, 0)
+    );
+    const invoiceLabel = escapeHtml(
+      String(c.invoiceStatusLabel || "See Invoices Hub").trim()
+    );
+
+    const status = c.status && typeof c.status === "object" ? c.status : {};
+    const statusBadge = escapeHtml(String(status.badge || "ON SCHEDULE"));
+    const statusTone =
+      status.tone === "red" ? "red" : status.tone === "amber" ? "amber" : "green";
+    const statusHeadline = escapeHtml(String(status.headline || "On pace"));
+
+    const row = (label, value) =>
+      `<div class="sup-migrated-row">
+        <span class="sup-migrated-row__label">${escapeHtml(label)}</span>
+        <strong class="sup-migrated-row__value">${value}</strong>
+      </div>`;
+
+    return `<div class="sup-migrated-exec" data-mode="migrated">
+      <header class="sup-migrated-exec__head">
+        <span class="badge amber sup-migrated-exec__badge">Migrated · ${source}</span>
+        <p class="small sup-migrated-exec__lead">Legacy job imported into Margin Guard. Field tracking continues from the imported baseline — not a day-by-day Sales plan.</p>
+      </header>
+
+      <section class="sup-migrated-exec__section">
+        <h4 class="sup-migrated-exec__title">Migrated execution summary</h4>
+        ${row("Original estimate", formatSupervisorDaysLabel(estDays))}
+        ${row("Days completed", formatSupervisorDaysLabel(actDays))}
+        ${row("Days remaining", formatSupervisorDaysLabel(daysRem))}
+        ${row("Current phase", phase)}
+        ${row("Original start", escapeHtml(startLabel))}
+        ${row("Target finish", escapeHtml(targetLabel))}
+        ${row("Imported expenses", `${expenseCount} entr${expenseCount === 1 ? "y" : "ies"}`)}
+        ${row("Imported invoice status", invoiceLabel)}
+      </section>
+
+      <section class="sup-migrated-exec__section">
+        <h4 class="sup-migrated-exec__title">Today focus</h4>
+        <p class="sup-migrated-exec__focus">${phase}</p>
+        <p class="small sup-migrated-exec__focus-meta">Continue the current project phase. Monitor remaining schedule against the target finish date.</p>
+      </section>
+
+      <section class="sup-migrated-exec__section sup-migrated-exec__status">
+        <h4 class="sup-migrated-exec__title">Field status</h4>
+        <div class="sup-migrated-exec__status-grid">
+          <div class="sup-migrated-stat">
+            <span class="sup-migrated-stat__label">Progress</span>
+            <strong class="sup-migrated-stat__value">${pct}% complete</strong>
+          </div>
+          <div class="sup-migrated-stat">
+            <span class="sup-migrated-stat__label">Schedule</span>
+            <strong class="sup-migrated-stat__value">${formatSupervisorDaysLabel(daysRem)} remaining</strong>
+          </div>
+          <div class="sup-migrated-stat sup-migrated-stat--wide">
+            <span class="badge ${statusTone}">${statusBadge}</span>
+            <strong class="sup-migrated-stat__value">${statusHeadline}</strong>
+          </div>
+        </div>
+      </section>
+    </div>`;
+  }
+
+  function renderSupervisorExecutionPlanSection(opts) {
+    const o = opts && typeof opts === "object" ? opts : {};
+    const body = $("supLaborPlanBody");
+    const sectionDesc = document.querySelector(
+      ".sup-exec-plan-section .sup-section-desc"
+    );
+    const sectionTitle = document.querySelector(
+      ".sup-exec-plan-section .sup-section-title"
+    );
+    if (!body) return;
+
+    if (o.showMigrated) {
+      if (sectionTitle) sectionTitle.textContent = "Migrated execution";
+      if (sectionDesc) {
+        sectionDesc.textContent =
+          "Imported project timeline and phase — report labor and expenses below.";
+      }
+      body.innerHTML = renderSupervisorMigratedExecutionHtml(o.migratedCtx);
+      return;
+    }
+
+    if (sectionTitle) sectionTitle.textContent = "Execution plan";
+    if (sectionDesc) {
+      sectionDesc.textContent = "Daily phases and crew for this job.";
+    }
+
+    const execPlan = Array.isArray(o.execPlan) ? o.execPlan : [];
+    const execHtml = renderSupervisorExecutionPlanHtml(execPlan);
+    if (execHtml) {
+      body.innerHTML = execHtml;
+    } else {
+      body.innerHTML =
+        '<p class="small" style="margin:0;">Execution plan has not been prepared in Sales.</p>';
+    }
   }
 
   function resolveSupervisorOperationalPanelState(pid, currentProject, state, opCache) {
@@ -1572,27 +1728,6 @@ Thank you.`
       </article>`;
     });
     return `<div class="sup-exec-plan-cards">${cards.join("")}</div>`;
-  }
-
-  function renderSupervisorMigrationPlanHtml(baseline) {
-    const b = baseline && typeof baseline === "object" ? baseline : null;
-    if (!b) return "";
-    const source = escapeHtml(String(b.external_source || "External").trim());
-    const phase = escapeHtml(String(b.current_phase || "—").trim());
-    const scope = escapeHtml(String(b.remaining_scope_notes || "—").trim());
-    const ref = String(b.original_contract_reference || "").trim();
-    return `<div class="sup-migrated-plan">
-      <p class="small" style="margin:0 0 12px;">Migrated from <strong>${source}</strong> — original execution plan was not built in Margin Guard.</p>
-      <div class="sup-migrated-plan__block">
-        <div class="sup-migrated-plan__label">Current phase</div>
-        <p class="sup-migrated-plan__value">${phase || "—"}</p>
-      </div>
-      <div class="sup-migrated-plan__block">
-        <div class="sup-migrated-plan__label">Remaining scope</div>
-        <p class="sup-migrated-plan__value">${scope || "—"}</p>
-      </div>
-      ${ref ? `<p class="small" style="margin:12px 0 0;">Contract reference: ${escapeHtml(ref)}</p>` : ""}
-    </div>`;
   }
 
   function syncSupConsoleLogsWrap() {
@@ -1832,9 +1967,22 @@ Thank you.`
     syncSupervisorConsoleSidebar();
   }
 
-  function renderSupervisorTodayTarget(plan, startIso, actualDays) {
+  function renderSupervisorTodayTarget(plan, startIso, actualDays, migratedCtx) {
     const wrap = $("supTodayTarget");
     if (!wrap) return;
+    if (migratedCtx && migratedCtx.baseline) {
+      wrap.style.display = "";
+      const phase = String(migratedCtx.baseline.current_phase || "").trim();
+      if ($("supTodayPhase")) {
+        $("supTodayPhase").textContent = phase || "Continue current project phase";
+      }
+      if ($("supTodayCrew")) {
+        $("supTodayCrew").textContent =
+          "Monitor schedule vs target finish · " +
+          String(migratedCtx.baseline.external_source || "imported").trim();
+      }
+      return;
+    }
     if (!Array.isArray(plan) || !plan.length) {
       wrap.style.display = "none";
       return;
@@ -1893,6 +2041,10 @@ Thank you.`
           : null,
       has_migrated_baseline: Boolean(data.has_migrated_baseline),
       show_migrated_execution: Boolean(data.show_migrated_execution),
+      migrated_field_context:
+        data.migrated_field_context && typeof data.migrated_field_context === "object"
+          ? data.migrated_field_context
+          : null,
     };
   }
 
@@ -7242,12 +7394,13 @@ function renderSupervisor() {
         opCache?.migration_baseline && typeof opCache.migration_baseline === "object"
           ? opCache.migration_baseline
           : null;
-      const showMigratedExecution = Boolean(
-        opCache?.show_migrated_execution && migrationBaseline
+      const showMigratedExecution = resolveShowMigratedExecution(opCache);
+      const execPlan = resolveSupervisorExecutionPlan(
+        opCache,
+        currentProject,
+        estimatedBudgetDays
       );
-      const execPlan = showMigratedExecution
-        ? []
-        : resolveSupervisorExecutionPlan(opCache, currentProject, estimatedBudgetDays);
+      const fieldCtx = opCache?.migrated_field_context;
 
       let dayDelta = 0;
       if (state.dueDate && state.projectedEndDate) {
@@ -7272,8 +7425,8 @@ function renderSupervisor() {
         scheduleLabels.startIso,
         actualDays
       );
-      const crewSummary = migrationBaseline?.current_phase
-        ? String(migrationBaseline.current_phase).trim()
+      const crewSummary = showMigratedExecution
+        ? String(migrationBaseline?.current_phase || "Imported project phase").trim()
         : scheduleLabels.crewSummary ||
           supervisorCrewSummaryFromPlan(execPlan) ||
           supervisorCrewSummaryFromProjectWorkers(currentProject) ||
@@ -7290,25 +7443,36 @@ function renderSupervisor() {
         progressPct,
         migrationBaseline,
       });
-      renderSupervisorTodayTarget(execPlan, scheduleLabels.startIso, actualDays);
+      renderSupervisorTodayTarget(
+        execPlan,
+        scheduleLabels.startIso,
+        actualDays,
+        showMigratedExecution
+          ? { baseline: migrationBaseline, schedule: scheduleLabels }
+          : null
+      );
 
       if ($("supPortfolioCount")) $("supPortfolioCount").textContent = String(uiList.length);
 
-      const supLaborPlanBody = $("supLaborPlanBody");
-      if (supLaborPlanBody) {
-        if (showMigratedExecution) {
-          supLaborPlanBody.innerHTML =
-            renderSupervisorMigrationPlanHtml(migrationBaseline);
-        } else {
-          const execHtml = renderSupervisorExecutionPlanHtml(execPlan);
-          if (execHtml) {
-            supLaborPlanBody.innerHTML = execHtml;
-          } else {
-            supLaborPlanBody.innerHTML =
-              '<p class="small" style="margin:0;">Execution plan has not been prepared in Sales.</p>';
-          }
-        }
-      }
+      renderSupervisorExecutionPlanSection({
+        showMigrated: showMigratedExecution,
+        execPlan,
+        migratedCtx: showMigratedExecution
+          ? {
+              baseline: migrationBaseline,
+              snapshot: activeSnap,
+              schedule: scheduleLabels,
+              status: smartStatus,
+              progressPct,
+              expenseCount: finiteNumber(
+                activeSnap.expense_count,
+                extrasRegCount
+              ),
+              invoiceStatusLabel:
+                fieldCtx?.invoice_status_label || "See Invoices Hub",
+            }
+          : null,
+      });
 
       const projectLaborBudget = finiteNumber(currentProject.laborBudget, 0);
       if ($("supSnapshotGrid")) {
