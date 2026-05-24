@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/styles.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
-<body data-role="estimates-hub" data-requires-auth="true">
+<body data-role="estimates-hub" data-requires-auth="true" class="invoice-hub-page">
   <div class="topbar">
     <div class="topbar-inner">
       <div class="brand">
@@ -30,10 +30,10 @@
     </div>
   </div>
 
-  <div class="container">
+  <div class="container invoice-hub-console">
     <div class="account-pill" id="accountEmail">Cuenta activa</div>
 
-    <section class="card owner-hero">
+    <section class="card owner-hero hub-console-intro">
       <div class="card-inner">
         <div class="owner-hero-inner">
           <div>
@@ -51,8 +51,9 @@
       </div>
     </section>
 
-    <div class="owner-grid">
-      <section class="card">
+    <div class="hub-console-stack">
+      <div class="hub-console-ops">
+      <section class="card hub-console-kpis-card">
         <div class="card-inner">
           <div class="section-head">
             <div>
@@ -89,7 +90,7 @@
         </div>
       </section>
 
-      <section class="card owner-side-card">
+      <section class="card owner-side-card hub-console-filters-card">
         <div class="card-inner">
           <h2>Filters</h2>
           <div class="sub">Pick a view, then narrow with search or status.</div>
@@ -135,9 +136,9 @@
           <div class="notice" id="hubFeedback" style="display:none; margin-top:12px;"></div>
         </div>
       </section>
-    </div>
+      </div>
 
-    <section class="card" style="margin-top:14px;">
+    <section class="card hub-console-table-card">
       <div class="card-inner">
         <div class="section-head">
           <div>
@@ -183,6 +184,7 @@
         <div id="hubPipelineBoard" style="display:none; margin-top:14px;"></div>
       </div>
     </section>
+    </div>
   </div>
 
   <div class="modal" id="hubDrawer" aria-hidden="true">
