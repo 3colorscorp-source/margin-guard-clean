@@ -1,7 +1,10 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
-const { computeProjectOperationalSnapshot } = require("./_lib/project-operational-snapshot");
+const {
+  computeProjectOperationalSnapshot,
+  pickAllowlistedOperational,
+} = require("./_lib/project-operational-snapshot");
 const {
   loadMigrationBaseline,
   applyMigrationBaselineToMetrics,
@@ -256,35 +259,40 @@ exports.handler = async (event) => {
       };
     }
 
-    operational_snapshot = mergeMetricsWithStoredPlan(
-      operational_snapshot,
-      metricsRow,
-      project
-    );
+    const migration_baseline = migrationBaselineForSupervisor(migrationBaseline);
+    const has_migrated_baseline = Boolean(migration_baseline);
 
-    if (migrationBaseline) {
+    if (has_migrated_baseline) {
       operational_snapshot = applyMigrationBaselineToMetrics(
         operational_snapshot,
         migrationBaseline,
         Array.isArray(reportRows) ? reportRows : []
       );
+      operational_snapshot = pickAllowlistedOperational(operational_snapshot);
+    } else {
+      operational_snapshot = mergeMetricsWithStoredPlan(
+        operational_snapshot,
+        metricsRow,
+        project
+      );
     }
 
-    let schedule = {
-      ...buildScheduleFields(project, metricsRow || opRow),
-      crew_summary: crewSummaryFromOperationalPlan(operational_plan),
-    };
-    if (migrationBaseline) {
+    let schedule;
+    if (has_migrated_baseline) {
+      const phase = String(migrationBaseline.current_phase || "").trim();
       schedule = {
-        ...schedule,
         ...scheduleFromMigrationBaseline(migrationBaseline),
+        crew_summary: phase,
+      };
+    } else {
+      schedule = {
+        ...buildScheduleFields(project, metricsRow || opRow),
+        crew_summary: crewSummaryFromOperationalPlan(operational_plan),
       };
     }
 
-    const migration_baseline = migrationBaselineForSupervisor(migrationBaseline);
-    const has_migrated_baseline = Boolean(migration_baseline);
-    const show_migrated_execution =
-      has_migrated_baseline && !has_execution_plan;
+    const show_migrated_execution = has_migrated_baseline;
+    const operational_plan_out = has_migrated_baseline ? [] : operational_plan;
 
     let migrated_field_context = null;
     if (show_migrated_execution) {
@@ -302,9 +310,9 @@ exports.handler = async (event) => {
       ok: true,
       project_id: project.id,
       operational_snapshot,
-      operational_plan,
+      operational_plan: operational_plan_out,
       schedule,
-      has_execution_plan,
+      has_execution_plan: has_migrated_baseline ? false : has_execution_plan,
       migration_baseline,
       has_migrated_baseline,
       show_migrated_execution,

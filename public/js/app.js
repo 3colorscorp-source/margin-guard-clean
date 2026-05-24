@@ -1354,8 +1354,36 @@ Thank you.`
         ? opCache.migration_baseline
         : null;
     if (!baseline) return false;
-    if (opCache.show_migrated_execution) return true;
-    return Boolean(opCache.has_migrated_baseline && !opCache.has_execution_plan);
+    return Boolean(opCache.show_migrated_execution || opCache.has_migrated_baseline);
+  }
+
+  function reconcileSupervisorMigratedSnapshot(snapshot, migrationBaseline) {
+    const snap = { ...(snapshot && typeof snapshot === "object" ? snapshot : {}) };
+    const b =
+      migrationBaseline && typeof migrationBaseline === "object"
+        ? migrationBaseline
+        : null;
+    if (!b) return snap;
+    const est = finiteNumber(b.estimated_total_days, finiteNumber(snap.estimated_days, 0));
+    const baselineDays = finiteNumber(b.days_completed_to_date, 0);
+    const act = finiteNumber(snap.actual_days, baselineDays);
+    const remaining = Math.max(0, est - act);
+    const paceFromRatio = est > 0 ? Math.round((act / est) * 100) : 0;
+    const baselinePct = finiteNumber(b.progress_pct, 0);
+    snap.estimated_days = est;
+    snap.actual_days = act;
+    snap.days_remaining = remaining;
+    snap.completion_pace_pct =
+      baselinePct > 0 ? Math.max(baselinePct, paceFromRatio) : paceFromRatio;
+    const dev = act - est;
+    snap.labor_deviation_days = dev;
+    if (Math.abs(dev) < 0.01) snap.labor_deviation_label = "On budget";
+    else if (dev > 0) {
+      snap.labor_deviation_label = `${Math.abs(dev).toFixed(2)} day(s) over budget`;
+    } else {
+      snap.labor_deviation_label = `${Math.abs(dev).toFixed(2)} day(s) under budget`;
+    }
+    return snap;
   }
 
   function resolveSupervisorExecutionPlan(opCache, project, estimatedDays) {
@@ -1513,7 +1541,13 @@ Thank you.`
 
   function resolveSupervisorOperationalPanelState(pid, currentProject, state, opCache) {
     const cached = opCache || supervisorProjectOperationalCache[pid];
-    const hasMigrationBaseline = Boolean(cached?.has_migrated_baseline && cached?.migration_baseline);
+    const migrationBaseline =
+      cached?.migration_baseline && typeof cached.migration_baseline === "object"
+        ? cached.migration_baseline
+        : null;
+    const hasMigrationBaseline = Boolean(
+      cached?.has_migrated_baseline && migrationBaseline
+    );
     const enrichOpts = { hasMigrationBaseline };
     const fallbackSnap = enrichOperationalSnapshotFromFieldCaches(
       pid,
@@ -1526,13 +1560,19 @@ Thank you.`
     let snapshot = fallbackSnap;
     let error = null;
     if (cached?.ok === true && cached.snapshot) {
+      const merged = hasMigrationBaseline
+        ? { ...cached.snapshot }
+        : { ...fallbackSnap, ...cached.snapshot };
       snapshot = enrichOperationalSnapshotFromFieldCaches(
         pid,
-        { ...fallbackSnap, ...cached.snapshot },
+        merged,
         currentProject,
         state,
         enrichOpts
       );
+      if (hasMigrationBaseline) {
+        snapshot = reconcileSupervisorMigratedSnapshot(snapshot, migrationBaseline);
+      }
     } else if (cached?.ok === false) {
       error = cached.error || "Field metrics unavailable. Showing local baseline.";
     } else if (inflight) {
@@ -1541,7 +1581,25 @@ Thank you.`
     return { snapshot, error, inflight };
   }
 
-  function supervisorScheduleLabels(schedule, project, state) {
+  function supervisorScheduleLabels(schedule, project, state, migrationBaseline) {
+    const mig =
+      migrationBaseline && typeof migrationBaseline === "object"
+        ? migrationBaseline
+        : null;
+    if (mig) {
+      const start = normalizeDateInput(mig.actual_start_date || "");
+      const target = normalizeDateInput(mig.target_finish_date || "");
+      const phase = String(mig.current_phase || "").trim();
+      return {
+        startIso: start,
+        targetIso: target,
+        startLabel: start ? formatDateUS(start) || start : "Waiting for project timeline.",
+        targetLabel: target
+          ? formatDateUS(target) || target
+          : "No target finish set in Sales",
+        crewSummary: phase,
+      };
+    }
     const sched = schedule && typeof schedule === "object" ? schedule : {};
     const crewFromSchedule = String(sched.crew_summary || "").trim();
     const startRaw =
@@ -1958,7 +2016,8 @@ Thank you.`
     if (migBadge) {
       if (mig) {
         migBadge.style.display = "";
-        migBadge.textContent = `External source: ${String(mig.external_source || "External").trim()}`;
+        const src = String(mig.external_source || "Square").trim();
+        migBadge.textContent = `Migrated from ${src}`;
       } else {
         migBadge.style.display = "none";
         migBadge.textContent = "";
@@ -7385,16 +7444,17 @@ function renderSupervisor() {
             ? (actualDays / estimatedBudgetDays) * 100
             : null;
       const extrasRegCount = state.extras.length;
-      const scheduleLabels = supervisorScheduleLabels(
-        opCache?.schedule,
-        currentProject,
-        state
-      );
       const migrationBaseline =
         opCache?.migration_baseline && typeof opCache.migration_baseline === "object"
           ? opCache.migration_baseline
           : null;
       const showMigratedExecution = resolveShowMigratedExecution(opCache);
+      const scheduleLabels = supervisorScheduleLabels(
+        opCache?.schedule,
+        currentProject,
+        state,
+        showMigratedExecution ? migrationBaseline : null
+      );
       const execPlan = resolveSupervisorExecutionPlan(
         opCache,
         currentProject,

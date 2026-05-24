@@ -116,19 +116,20 @@ function applyMigrationBaselineToMetrics(metrics, baseline, reports) {
   const newReportDays = sumReportDaysAfterBaseline(reports, baseline);
   const actualDays = round2(baselineDays + newReportDays);
   const daysRemaining = round2(Math.max(0, est - actualDays));
-  const paceFromDays = est > 0 ? Math.round((actualDays / est) * 100) : null;
   const baselinePct = clampPct(baseline.progress_pct);
-  const completionPacePct =
-    paceFromDays == null
-      ? Math.round(baselinePct)
-      : Math.max(baselinePct, paceFromDays);
+  let completionPacePct = 0;
+  if (est > 0) {
+    const paceFromRatio = Math.round((actualDays / est) * 100);
+    completionPacePct =
+      baselinePct > 0 ? Math.max(baselinePct, paceFromRatio) : paceFromRatio;
+  } else if (baselinePct > 0) {
+    completionPacePct = Math.round(baselinePct);
+  }
 
   out.estimated_days = est;
   out.actual_days = actualDays;
   out.days_remaining = daysRemaining;
   out.completion_pace_pct = completionPacePct;
-  out.migration_baseline_days = baselineDays;
-  out.migration_new_report_days = newReportDays;
 
   const dev = round2(actualDays - est);
   out.labor_deviation_days = dev;
