@@ -109,6 +109,10 @@
     ],
     operational_plan: [],
     operational_estimated_days_override: "",
+    price: "",
+    pricingStage: 2,
+    _sliderTouched: false,
+    _manualPriceTouched: false,
   };
 
   const DEFAULT_SUPERVISOR = {
@@ -5950,7 +5954,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           address: projectAddress,
           workers: Array.isArray(state.workers) ? state.workers : [],
           price: state.price,
-          _manualPriceTouched: state._manualPriceTouched,
+          pricing_stage: state.pricingStage,
+          _sliderTouched: Boolean(state._sliderTouched),
+          _manualPriceTouched: Boolean(state._sliderTouched),
           offeredPrice: state.offeredPrice,
           total: estimateTotal,
           recommended_total: estimateTotal,
@@ -6489,6 +6495,42 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     };
   }
 
+  function workerRateFromSettings(worker, settings) {
+    return worker.type === "helper"
+      ? Number(settings.baseHelper || 0)
+      : Number(settings.baseInstaller || 0);
+  }
+
+  function resolveSalesOfferedFromState(state, base) {
+    const recommended = finiteNumber(base.recommended, 0);
+    const minimum = finiteNumber(base.minimum, 0);
+    const negotiation = finiteNumber(base.negotiation, 0);
+    const sliderTouched = Boolean(state?._sliderTouched || state?._manualPriceTouched);
+    if (!sliderTouched) return recommended;
+    const stageRaw = state?.pricingStage;
+    const stage =
+      stageRaw === undefined || stageRaw === null || stageRaw === ""
+        ? 2
+        : Number(stageRaw);
+    if (stage <= 0) return minimum;
+    if (stage === 1) return negotiation;
+    return recommended;
+  }
+
+  function salesPricingRuleCopy(state, metrics, isReady) {
+    if (!isReady) return "Completa la mano de obra para calcular el precio.";
+    if (metrics.marginBlocked && Boolean(state?._sliderTouched)) {
+      return "Precio por debajo del minimo permitido.";
+    }
+    if (metrics.needsApproval && Boolean(state?._sliderTouched)) {
+      return "Margen bajo el objetivo: no hay bloqueo, solo responsabilidad comercial.";
+    }
+    if (Boolean(state?._sliderTouched)) {
+      return "Precio dentro del rango permitido del negocio.";
+    }
+    return "Precio listo segun las reglas del negocio.";
+  }
+
   function calcSales(state, settings) {
     const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
     const taxPct = (
@@ -6503,10 +6545,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
     const laborByWorker = (Array.isArray(state.workers) ? state.workers : []).map((worker) => {
       const days = Math.max(0, Number(worker.days || 0));
-      const baseRate = worker.type === "helper"
-        ? Number(settings.baseHelper || 0)
-        : Number(settings.baseInstaller || 0);
-      const rate = worker.rate === "" || worker.rate == null ? baseRate : Number(worker.rate || 0);
+      const rate = workerRateFromSettings(worker, settings);
       const hours = days * hoursPerDay;
       const cost = hours * rate;
       return { days, rate, hours, cost };
@@ -6552,9 +6591,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const recommended = finiteNumber(base.recommended, 0);
     const minimum = finiteNumber(base.minimum, 0);
     const negotiation = finiteNumber(base.negotiation, 0);
-    const rawOffered = nonEmptyString(state?.price, state?.offeredPrice);
-    const manualOfferedActive = Boolean(state?._manualPriceTouched) && rawOffered !== "";
-    const offered = manualOfferedActive ? finiteNumber(rawOffered, recommended) : recommended;
+    const offered = resolveSalesOfferedFromState(state, base);
     const commissionRate = finiteNumber(settings?.salesCommissionPct, DEFAULTS.salesCommissionPct);
     const commissionDisplay = round2(Math.max(offered, 0) * (commissionRate / 100));
     const stage = offered >= recommended ? 2 : offered >= negotiation ? 1 : 0;
@@ -6598,7 +6635,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           </select>
         </td>
         <td><input data-key="days" type="number" min="0" step="0.25" value="${Number(worker.days || 0)}" /></td>
-        <td><input data-key="rate" type="number" min="0" step="0.01" value="${worker.rate === "" || worker.rate == null ? (worker.type === "helper" ? Number(settings.baseHelper || 0) : Number(settings.baseInstaller || 0)) : Number(worker.rate || 0)}" /></td>
+        <td class="sales-labor-td sales-labor-td--rate" data-cell="rate">${money(workerRateFromSettings(worker, settings), settings.currency)}<span class="small" style="display:block;margin-top:4px;opacity:.72;">Business Settings</span></td>
         <td data-cell="labor">${money(metrics.laborByWorker[index]?.cost || 0, settings.currency)}</td>
         <td>
           <div class="row-actions">
@@ -6616,13 +6653,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         const key = el.dataset.key;
         if (index < 0 || !key) return;
 
-        if (key === "days" || key === "rate") {
+        if (key === "days") {
           state.workers[index][key] = el.value === "" ? "" : Number(el.value || 0);
         } else {
           state.workers[index][key] = el.value;
         }
 
-        if (key === "type" && (state.workers[index].rate === "" || state.workers[index].rate == null)) {
+        if (key === "type") {
           state.workers[index].rate = "";
         }
 
@@ -6732,7 +6769,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   if (customerPhoneInput) customerPhoneInput.value = state.customerPhone || "";
   if (locationInput) locationInput.value = state.location || "";
   if (dueDateInput) dueDateInput.value = state.dueDate || "";
-  if (priceInput) priceInput.value = state.price || "";
+  const priceDisplay = document.getElementById("salesPriceDisplay");
+  if (priceDisplay) {
+    priceDisplay.textContent = isReady ? formatMoney(offered) : "—";
+  }
+  if (priceInput) priceInput.value = isReady ? String(round2(offered)) : "";
   if (messageToClientInput) messageToClientInput.value = state.messageToClient || "";
   if (notesInput) notesInput.value = state.notes || "";
 
@@ -6776,17 +6817,35 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       ? "Precio bajo la recomendacion: puedes seguir, pero hazlo con criterio y alinea expectativas con el dueno."
       : "Precio alineado con el rango recomendado o superior."
   );
-  setText("salesRule", metrics.needsApproval ? "Margen bajo el objetivo: no hay bloqueo, solo responsabilidad comercial." : "Estimate is inside a healthy selling range.");
+  setText("salesRule", salesPricingRuleCopy(state, metrics, isReady));
+  const salesRuleEl = document.getElementById("salesRule");
+  if (salesRuleEl) {
+    salesRuleEl.style.display = isReady || Boolean(state._sliderTouched) ? "" : "";
+    if (!isReady) {
+      salesRuleEl.className = "notice";
+    } else if (metrics.marginBlocked && state._sliderTouched) {
+      salesRuleEl.className = "notice err";
+    } else if (metrics.needsApproval && state._sliderTouched) {
+      salesRuleEl.className = "notice amber";
+    } else {
+      salesRuleEl.className = "notice success";
+    }
+  }
   const marginLine = $("salesMarginDecisionLine");
   if (marginLine) {
-    marginLine.style.display = "block";
-    marginLine.className =
-      metrics.marginLevel === "green"
-        ? "notice success"
-        : metrics.marginLevel === "yellow"
-          ? "notice amber"
-          : "notice err";
-    marginLine.textContent = metrics.marginMessage || "";
+    if (!isReady || !state._sliderTouched) {
+      marginLine.style.display = "none";
+      marginLine.textContent = "";
+    } else {
+      marginLine.style.display = "block";
+      marginLine.className =
+        metrics.marginLevel === "green"
+          ? "notice success"
+          : metrics.marginLevel === "yellow"
+            ? "notice amber"
+            : "notice err";
+      marginLine.textContent = metrics.marginMessage || "";
+    }
   }
 
   const kpiBlocks = [
@@ -6843,7 +6902,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     state.customerPhone = nonEmptyString(customerPhoneInput?.value);
     state.location = nonEmptyString(locationInput?.value);
     state.dueDate = normalizeDateInput(dueDateInput?.value || state.expirationDate);
-    state.price = priceInput?.value || "";
+    state.price = isReady ? String(round2(metrics.offered)) : "";
+    state.pricingStage = metrics.stage;
     state.messageToClient = nonEmptyString(messageToClientInput?.value);
     state.notes = nonEmptyString(notesInput?.value);
     if (nextStatus) state.estimateStatus = nextStatus;
@@ -6856,22 +6916,14 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     input.onchange = () => persistSalesDraft();
   });
 
-  if (priceInput) {
-    priceInput.oninput = () => {
-      state.price = priceInput.value;
-      state._manualPriceTouched = true;
-      state.estimateStatus = metrics.recommended > 0 ? "pricing_ready" : state.estimateStatus;
-      saveSales(state);
-      renderSales();
-    };
-  }
-
   if (stageRange) {
     stageRange.oninput = () => {
       const stage = Number(stageRange.value || 2);
       const nextPrice = stage <= 0 ? metrics.minimum : stage === 1 ? metrics.negotiation : metrics.recommended;
+      state.pricingStage = stage;
+      state._sliderTouched = true;
+      state._manualPriceTouched = false;
       state.price = nextPrice ? String(round2(nextPrice)) : "";
-      state._manualPriceTouched = true;
       state.estimateStatus = nextPrice ? "pricing_ready" : state.estimateStatus;
       saveSales(state);
       renderSales();

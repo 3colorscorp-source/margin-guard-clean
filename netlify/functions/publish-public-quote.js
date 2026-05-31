@@ -3,7 +3,7 @@ const { supabaseRequest, getSupabaseConfig } = require("./_lib/supabase-admin");
 const { loadTenantDisplayForTenantId } = require("./_lib/tenant-display");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { makePublicToken } = require("./_lib/public-token");
-const { calculateQuotePublishFinancials } = require("./_lib/pricing-engine");
+const { calculateQuotePublishFinancials, sanitizeWorkersForTenantPricing } = require("./_lib/pricing-engine");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -104,7 +104,12 @@ function parsePublishPricingInput(body) {
   const _manualPriceTouched = Boolean(
     body._manualPriceTouched ?? body.manual_price_touched ?? body.manualPriceTouched
   );
-  return { workers, price, _manualPriceTouched };
+  const _sliderTouched = Boolean(
+    body._sliderTouched ?? body.slider_touched ?? _manualPriceTouched
+  );
+  const pricing_stage =
+    body.pricing_stage ?? body.pricingStage ?? body.pricing_stage_index;
+  return { workers, price, _manualPriceTouched, _sliderTouched, pricing_stage };
 }
 
 function validateWorkersForPricing(workers) {
@@ -204,9 +209,14 @@ function resolveCanonicalPublishAmounts({
   let publish_amounts_reason = "default_server_financials";
 
   if (Number.isFinite(clientT) && clientT > 0 && clientT + 1e-6 >= minPriceN) {
-    total = round2(clientT);
-    publish_amounts_source = "client_session_minimum_floor";
-    publish_amounts_reason = "client_total_meets_minimum_floor";
+    const matchesServer = Math.abs(clientT - serverTotal) <= 0.02;
+    if (matchesServer) {
+      total = round2(clientT);
+      publish_amounts_source = "client_session_minimum_floor";
+      publish_amounts_reason = "client_total_matches_server_anchor";
+    } else {
+      publish_amounts_reason = "client_total_ignored_use_server";
+    }
     const depFloor = round2(Math.max(1000, total * 0.1));
     if (Number.isFinite(clientD) && clientD > 0 && clientD <= total + 1e-6) {
       depositRequired = round2(Math.min(total, Math.max(depFloor, clientD)));
@@ -275,13 +285,16 @@ exports.handler = async (event) => {
     }
 
     const tenantSettings = await loadTenantSettingsFromLatestSnapshot(tenant.id);
+    const workersSanitized = sanitizeWorkersForTenantPricing(pricingIn.workers);
     let financials;
     try {
       financials = calculateQuotePublishFinancials(
         {
-          workers: pricingIn.workers,
+          workers: workersSanitized,
           price: pricingIn.price,
-          _manualPriceTouched: pricingIn._manualPriceTouched
+          _manualPriceTouched: pricingIn._manualPriceTouched,
+          _sliderTouched: pricingIn._sliderTouched,
+          pricing_stage: pricingIn.pricing_stage,
         },
         tenantSettings
       );
@@ -292,36 +305,9 @@ exports.handler = async (event) => {
     }
 
     const minPrice = financials.minimum_price;
-    if (isManualOfferActive(pricingIn)) {
-      const rawManual = String(pricingIn.price ?? "").trim();
-      const manualRequested = Number(rawManual);
-      if (!Number.isFinite(manualRequested)) {
-        console.log("[publish-public-quote] manual price rejected (invalid number)", {
-          tenant_id: tenant.id,
-          manual_requested_raw: rawManual,
-          minimum_price: minPrice,
-          accepted: false
-        });
-        return json(400, {
-          error: "Manual offered price must be a valid number."
-        });
-      }
-      if (manualRequested + 1e-9 < Number(minPrice)) {
-        console.log("[publish-public-quote] manual price rejected below minimum_price", {
-          tenant_id: tenant.id,
-          manual_requested: manualRequested,
-          minimum_price: minPrice,
-          accepted: false
-        });
-        return json(400, {
-          error: `Manual offered price cannot be below the minimum allowed (${Number(minPrice).toFixed(2)}).`
-        });
-      }
-      console.log("[publish-public-quote] manual price accepted vs minimum_price", {
-        tenant_id: tenant.id,
-        manual_requested: manualRequested,
-        minimum_price: minPrice,
-        accepted: true
+    if (Number(financials.total) + 1e-9 < Number(minPrice)) {
+      return json(400, {
+        error: `Offered price cannot be below the minimum allowed (${Number(minPrice).toFixed(2)}).`
       });
     }
 

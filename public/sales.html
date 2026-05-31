@@ -125,8 +125,10 @@
                   <input id="salesEstimateNumber" maxlength="30" readonly placeholder="Quote number will be assigned when sent" title="Assigned automatically when you send" />
                 </div>
                 <div class="field">
-                  <label>Precio propuesto al cliente</label>
-                  <input id="salesPrice" type="number" step="0.01" placeholder="0.00" />
+                  <label>Precio del estimate (sistema)</label>
+                  <div id="salesPriceDisplay" class="hub-form-static" aria-live="polite">—</div>
+                  <input id="salesPrice" type="hidden" value="" />
+                  <div class="hint">Ajusta con el control de posicion del estimate; no se permite entrada manual.</div>
                 </div>
                 <div class="field" style="grid-column:1 / -1;">
                   <label>Send copy to (optional)</label>
@@ -177,7 +179,7 @@
                 <div class="sales-labor-guide__head">
                   <span class="sales-labor-guide__kicker">Guía rápida</span>
                 </div>
-                <p class="sales-labor-guide__text">Añade una fila por trabajador y ajusta tipo, días y costo base: el <strong class="sales-labor-guide__em">costo labor</strong> alimenta el panel derecho. Copia o elimina filas según necesites; arriba puedes limpiar toda la cuadrilla.</p>
+                <p class="sales-labor-guide__text">Añade una fila por trabajador y ajusta tipo y días: el <strong class="sales-labor-guide__em">costo labor</strong> usa las tarifas de Business Settings. Copia o elimina filas según necesites; arriba puedes limpiar toda la cuadrilla.</p>
                 <p class="sales-labor-guide__meta" id="salesCrewHint"></p>
               </div>
 
@@ -188,7 +190,7 @@
                       <th class="sales-labor-th sales-labor-th--worker" scope="col">Trabajador</th>
                       <th class="sales-labor-th sales-labor-th--type" scope="col">Tipo</th>
                       <th class="sales-labor-th sales-labor-th--units" scope="col">Días</th>
-                      <th class="sales-labor-th sales-labor-th--rate" scope="col">Costo base</th>
+                      <th class="sales-labor-th sales-labor-th--rate" scope="col">Costo base (sistema)</th>
                       <th class="sales-labor-th sales-labor-th--labor" scope="col">Costo labor</th>
                       <th class="sales-labor-th sales-labor-th--actions" scope="col">Acciones</th>
                     </tr>
@@ -249,7 +251,7 @@
 
             <div class="dashboard-note">
               <div class="dashboard-note-title">Control de precio</div>
-              <div class="dashboard-note-copy" id="salesEntryHint">El slider mueve el estimate entre minimo, negociacion y recomendado. Si editas el precio manualmente, el sistema respeta tu numero.</div>
+              <div class="dashboard-note-copy" id="salesEntryHint">El sistema protege el mínimo, la negociación y el precio recomendado según las reglas del negocio.</div>
             </div>
 
             <div style="margin-top:10px;">
@@ -262,7 +264,7 @@
               </div>
             </div>
 
-            <div class="notice" id="salesRule" style="margin-top:10px;">Precio por debajo del minimo permitido.</div>
+            <div class="notice" id="salesRule" style="margin-top:10px;display:none;">Completa la mano de obra para calcular el precio.</div>
             <div class="notice" id="salesMarginDecisionLine" style="margin-top:8px;display:none;"></div>
             <div class="notice" id="salesPricingGuidance" style="margin-top:10px;">Si el precio queda bajo la recomendacion, avanza con responsabilidad y alinea al dueno.</div>
           </div>
@@ -1251,7 +1253,7 @@
           const fallbackRate = worker.type === 'helper'
             ? Number(settings.baseHelper || 0)
             : Number(settings.baseInstaller || 0);
-          const rate = worker.rate === '' || worker.rate == null ? fallbackRate : Number(worker.rate || 0);
+          const rate = fallbackRate;
           const hours = days * hoursPerDay;
           const cost = hours * rate;
           return { days, rate, hours, cost };
@@ -1269,8 +1271,15 @@
         const minimum = beforeProfit + minimumProfit + reserve;
         const negotiation = recommended > minimum ? minimum + ((recommended - minimum) * 0.5) : minimum;
         const rawOffered = state.price == null ? '' : String(state.price);
-        const manualOfferedActive = Boolean(state._manualPriceTouched) && rawOffered !== '';
-        const offered = manualOfferedActive ? Number(rawOffered || 0) : recommended;
+        const sliderTouched = Boolean(state._sliderTouched || state._manualPriceTouched);
+        const stageRaw = state.pricingStage;
+        const stage = stageRaw === undefined || stageRaw === null || stageRaw === '' ? 2 : Number(stageRaw);
+        let offered = recommended;
+        if (sliderTouched) {
+          if (stage <= 0) offered = minimum;
+          else if (stage === 1) offered = negotiation;
+          else offered = recommended;
+        }
         const commissionRate = Number(settings.salesCommissionPct || 10);
         const commissionDisplay = round2(Math.max(offered, 0) * (commissionRate / 100));
         const needsApproval = offered < negotiation;
@@ -1333,8 +1342,8 @@
       function pricingFingerprint(state) {
         return JSON.stringify({
           w: state.workers,
-          p: state.price === undefined ? null : state.price,
-          m: Boolean(state._manualPriceTouched)
+          s: state.pricingStage == null ? 2 : state.pricingStage,
+          t: Boolean(state._sliderTouched || state._manualPriceTouched)
         });
       }
 
@@ -1405,12 +1414,16 @@
           const fallbackRate = w && w.type === 'helper'
             ? Number(settings.baseHelper || 0)
             : Number(settings.baseInstaller || 0);
-          const rate = w.rate === '' || w.rate == null ? fallbackRate : Number(w.rate || 0);
+          const rate = fallbackRate;
           if (!Number.isFinite(rate) || rate < 0) return false;
         }
-        const rawOffer = state.price === null || state.price === undefined ? '' : String(state.price);
-        if (Boolean(state._manualPriceTouched) && String(rawOffer).trim() !== '') {
-          if (!Number.isFinite(Number(rawOffer))) return false;
+        if (Boolean(state._sliderTouched || state._manualPriceTouched)) {
+          const localSnap = calculateStandaloneSalesMetrics(state, settings);
+          const anchors = [localSnap.minimum, localSnap.negotiation, localSnap.recommended];
+          const p = Number(state.price);
+          if (Number.isFinite(p) && !anchors.some(function (a) { return Math.abs(a - p) <= 0.02; })) {
+            return false;
+          }
         }
         const local = calculateStandaloneSalesMetrics(state, settings);
         if (!(Number(local.workersCount) > 0)) return false;
@@ -1460,7 +1473,9 @@
           const payload = {
             workers: state.workers,
             price: state.price,
-            _manualPriceTouched: state._manualPriceTouched
+            pricing_stage: state.pricingStage == null ? 2 : state.pricingStage,
+            _sliderTouched: Boolean(state._sliderTouched || state._manualPriceTouched),
+            _manualPriceTouched: Boolean(state._sliderTouched || state._manualPriceTouched)
           };
 
           fetch('/.netlify/functions/calc-secure-pricing', {
@@ -1538,17 +1553,47 @@
           signed: 'Signed'
         };
         const estimateStatusLabel = estimateStatusMap[state.estimateStatus] || String(state.estimateStatus || 'draft').replace(/_/g, ' ');
-        setText('salesRule', metrics.needsApproval ? 'Margen bajo el objetivo: no hay bloqueo, solo responsabilidad comercial.' : 'Estimate is inside a healthy selling range.');
+        setText('salesRule', (function () {
+          const isReady = metrics.workerDays > 0 && metrics.recommended > 0;
+          const ruleEl = document.getElementById('salesRule');
+          if (!isReady) {
+            if (ruleEl) {
+              ruleEl.style.display = '';
+              ruleEl.className = 'notice';
+            }
+            return 'Completa la mano de obra para calcular el precio.';
+          }
+          if (ruleEl) ruleEl.style.display = '';
+          if (metrics.marginBlocked && Boolean(state._sliderTouched || state._manualPriceTouched)) {
+            if (ruleEl) ruleEl.className = 'notice err';
+            return 'Precio por debajo del minimo permitido.';
+          }
+          if (metrics.needsApproval && Boolean(state._sliderTouched || state._manualPriceTouched)) {
+            if (ruleEl) ruleEl.className = 'notice amber';
+            return 'Margen bajo el objetivo: no hay bloqueo, solo responsabilidad comercial.';
+          }
+          if (ruleEl) ruleEl.className = 'notice success';
+          return Boolean(state._sliderTouched || state._manualPriceTouched)
+            ? 'Precio dentro del rango permitido del negocio.'
+            : 'Precio listo segun las reglas del negocio.';
+        })());
         const mline = document.getElementById('salesMarginDecisionLine');
         if (mline) {
-          mline.style.display = 'block';
-          mline.className =
-            metrics.marginLevel === 'green'
-              ? 'notice success'
-              : metrics.marginLevel === 'yellow'
-                ? 'notice amber'
-                : 'notice err';
-          mline.textContent = metrics.marginMessage || '';
+          const showMargin = (metrics.workerDays > 0 && metrics.recommended > 0) &&
+            Boolean(state._sliderTouched || state._manualPriceTouched);
+          if (!showMargin) {
+            mline.style.display = 'none';
+            mline.textContent = '';
+          } else {
+            mline.style.display = 'block';
+            mline.className =
+              metrics.marginLevel === 'green'
+                ? 'notice success'
+                : metrics.marginLevel === 'yellow'
+                  ? 'notice amber'
+                  : 'notice err';
+            mline.textContent = metrics.marginMessage || '';
+          }
         }
         const salesKpis = document.getElementById('salesKpis');
         if (salesKpis) {
@@ -1627,7 +1672,7 @@
         const fallbackRate = worker.type === 'helper'
           ? Number(settings.baseHelper || 0)
           : Number(settings.baseInstaller || 0);
-        const rate = worker.rate === '' || worker.rate == null ? fallbackRate : Number(worker.rate || 0);
+        const rate = fallbackRate;
         return days * 8 * rate;
       }
 
@@ -1669,7 +1714,7 @@
           const fallbackRate = worker.type === 'helper'
             ? Number(settings.baseHelper || 0)
             : Number(settings.baseInstaller || 0);
-          const rateValue = worker.rate === '' || worker.rate == null ? fallbackRate : Number(worker.rate || 0);
+          const rateValue = fallbackRate;
           return `
             <tr data-index="${index}">
               <td class="sales-labor-td sales-labor-td--name"><input data-key="name" maxlength="40" value="${escapeHtml(worker.name)}" /></td>
@@ -1680,7 +1725,7 @@
                 </select>
               </td>
               <td class="sales-labor-td sales-labor-td--units"><input data-key="units" type="number" inputmode="numeric" min="0" step="1" pattern="[0-9]*" value="${workerDaysAsInteger(worker)}" /></td>
-              <td class="sales-labor-td sales-labor-td--rate"><input data-key="rate" type="number" min="0" step="0.01" value="${rateValue}" /></td>
+              <td class="sales-labor-td sales-labor-td--rate" data-cell="rate">${money(rateValue, settings.currency)}<span class="small" style="display:block;margin-top:4px;opacity:.72;">Business Settings</span></td>
               <td class="sales-labor-td sales-labor-td--labor" data-cell="labor">${money(laborCost(worker, settings), settings.currency)}</td>
               <td class="sales-labor-td sales-labor-td-actions">
                 <div class="row-actions sales-labor-row-actions">
@@ -1744,12 +1789,10 @@
               const dv = state.workers[index].days;
               field.value = dv === '' || dv == null ? '' : String(Math.floor(Number(dv)));
             }
-          } else if (key === 'rate') {
-            state.workers[index][key] = field.value === '' ? '' : Number(field.value || 0);
           } else {
             state.workers[index][key] = field.value;
           }
-          if (key === 'type' && (state.workers[index].rate === '' || state.workers[index].rate == null)) {
+          if (key === 'type') {
             state.workers[index].rate = '';
           }
           try {
@@ -1764,10 +1807,19 @@
           const meta = commitWorkerFieldToState(field);
           if (!meta) return;
           const settings = loadSettings();
-          if (isWorkerLaborQtyDataKey(meta.key) || meta.key === 'rate') {
+          if (isWorkerLaborQtyDataKey(meta.key)) {
             const laborTd = meta.row.querySelector('[data-cell="labor"]');
             if (laborTd) {
               laborTd.textContent = money(laborCost(meta.state.workers[meta.index], settings), settings.currency);
+            }
+            const rateTd = meta.row.querySelector('[data-cell="rate"]');
+            if (rateTd && meta.key === 'type') {
+              const w = meta.state.workers[meta.index];
+              const fr = w.type === 'helper'
+                ? Number(settings.baseHelper || 0)
+                : Number(settings.baseInstaller || 0);
+              rateTd.innerHTML = money(fr, settings.currency) +
+                '<span class="small" style="display:block;margin-top:4px;opacity:.72;">Business Settings</span>';
             }
           }
           const hint = document.getElementById('salesCrewHint');
@@ -1809,7 +1861,7 @@
 
         body.addEventListener('focusin', function (event) {
           const t = event.target;
-          if (t instanceof HTMLInputElement && (isWorkerLaborQtyDataKey(t.dataset.key) || t.dataset.key === 'rate')) {
+          if (t instanceof HTMLInputElement && isWorkerLaborQtyDataKey(t.dataset.key)) {
             t.select();
           }
         });
@@ -1884,6 +1936,8 @@
           publicToken: '',
           depositRequired: '',
           _manualPriceTouched: false,
+          _sliderTouched: false,
+          pricingStage: 2,
           operational_plan: [],
           operational_estimated_days_override: '',
           operational_estimated_hours_override: ''
@@ -3076,16 +3130,10 @@
 
 async function fillSendModal() {
     const state = loadSalesState();
-    const priceEl = document.getElementById('salesPrice');
-    if (priceEl) {
-      const pv = String(priceEl.value ?? '').trim();
-      if (pv !== '') {
-        state.price = pv;
-        state._manualPriceTouched = true;
-      }
-    }
     const settings = loadSettings();
     const metrics = buildSalesUIMetrics(state, settings);
+    state.price = metrics.offered ? String(metrics.offered) : '';
+    state.pricingStage = state.pricingStage == null ? 2 : state.pricingStage;
     const branding = await getBranding(true);
     const tenantPdf = buildEstimateTenantPayload(branding, settings, {});
     const estimateNumber =
@@ -3522,7 +3570,9 @@ async function runSellerSend(event) {
           address: projectAddress,
           workers: Array.isArray(stateFresh.workers) ? stateFresh.workers : [],
           price: stateFresh.price,
-          _manualPriceTouched: stateFresh._manualPriceTouched,
+          pricing_stage: stateFresh.pricingStage == null ? 2 : stateFresh.pricingStage,
+          _sliderTouched: Boolean(stateFresh._sliderTouched || stateFresh._manualPriceTouched),
+          _manualPriceTouched: Boolean(stateFresh._sliderTouched || stateFresh._manualPriceTouched),
           offeredPrice: stateFresh.offeredPrice,
           total: estimateTotal,
           recommended_total: estimateTotal,
@@ -3859,6 +3909,8 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
             price: 0,
             offeredPrice: 0,
             _manualPriceTouched: false,
+            _sliderTouched: false,
+            pricingStage: 2,
             messageToClient: '',
             notes: '',
             estimateStatus: 'draft',

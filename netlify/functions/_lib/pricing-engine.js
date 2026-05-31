@@ -7,6 +7,11 @@ function round2(n) {
   return Math.round(Number(n) * 100) / 100;
 }
 
+function finiteNumber(n, fallback = 0) {
+  const x = Number(n);
+  return Number.isFinite(x) ? x : fallback;
+}
+
 function laborBaseFromWorkers(workers, tenantSettings) {
   const list = Array.isArray(workers) ? workers : [];
   const hoursPerDay = Number(tenantSettings.hoursPerDay || 8);
@@ -16,12 +21,54 @@ function laborBaseFromWorkers(workers, tenantSettings) {
   let sum = 0;
   for (const w of list) {
     const days = Number(w?.days || 0);
-    const fallback = w?.type === 'helper' ? baseHelper : baseInstaller;
-    const rate =
-      w?.rate === '' || w?.rate == null ? fallback : Number(w?.rate || 0);
+    const fallback = w?.type === "helper" ? baseHelper : baseInstaller;
+    // Seller cannot override rates — always tenant Business Settings.
+    const rate = fallback;
     sum += days * hoursPerDay * rate;
   }
   return sum;
+}
+
+/** Strip client-supplied labor rates; keep type, days, hours, name only. */
+function sanitizeWorkersForTenantPricing(workers) {
+  const list = Array.isArray(workers) ? workers : [];
+  return list.map((w) => {
+    const obj = w && typeof w === "object" ? w : {};
+    return {
+      name: obj.name,
+      type: obj.type === "helper" ? "helper" : "installer",
+      days: Math.max(0, Number(obj.days || 0)),
+      hours: Math.max(0, Number(obj.hours || 0)),
+    };
+  });
+}
+
+/**
+ * Offered price from allowed slider stages only (min / negotiation / recommended).
+ * Ignores arbitrary manual typed prices from the browser.
+ */
+function resolveOfferedFromPricingInput(input, financials) {
+  const min = finiteNumber(financials.minimum_price, 0);
+  const neg = finiteNumber(financials.negotiation, 0);
+  const rec = finiteNumber(financials.recommended_price, 0);
+  const stageRaw =
+    input?.pricing_stage ?? input?.pricingStage ?? input?.pricing_stage_index;
+  if (stageRaw !== undefined && stageRaw !== null && String(stageRaw).trim() !== "") {
+    const stage = Number(stageRaw);
+    if (stage <= 0) return round2(min);
+    if (stage === 1) return round2(neg);
+    return round2(rec);
+  }
+  const touched = Boolean(input?._sliderTouched || input?._manualPriceTouched);
+  if (touched) {
+    const p = finiteNumber(input?.price, NaN);
+    if (Number.isFinite(p)) {
+      for (const anchor of [min, neg, rec]) {
+        if (Math.abs(p - anchor) <= 0.02) return round2(anchor);
+      }
+    }
+  }
+  return round2(rec);
 }
 
 /**
@@ -65,7 +112,9 @@ function calculateSecurePricing(input, tenantSettings) {
  */
 function calculateQuotePublishFinancials(input, tenantSettings) {
   const settings = tenantSettings && typeof tenantSettings === "object" ? tenantSettings : {};
-  const workers = Array.isArray(input?.workers) ? input.workers : [];
+  const workers = sanitizeWorkersForTenantPricing(
+    Array.isArray(input?.workers) ? input.workers : []
+  );
 
   function finiteNumber(n, fallback = 0) {
     const x = Number(n);
@@ -89,8 +138,7 @@ function calculateQuotePublishFinancials(input, tenantSettings) {
       worker.type === "helper"
         ? Number(settings.baseHelper || 0)
         : Number(settings.baseInstaller || 0);
-    const rate =
-      worker.rate === "" || worker.rate == null ? baseRate : Number(worker.rate || 0);
+    const rate = baseRate;
     const hours = days * hoursPerDay;
     const cost = hours * rate;
     return { days, rate, hours, cost };
@@ -111,12 +159,11 @@ function calculateQuotePublishFinancials(input, tenantSettings) {
   const negotiation =
     recommended > minimum ? minimum + (recommended - minimum) * 0.5 : minimum;
 
-  const rawOffered =
-    input?.price === null || input?.price === undefined ? "" : String(input.price);
-  const manualOfferedActive = Boolean(input?._manualPriceTouched) && rawOffered !== "";
-  const offered = manualOfferedActive
-    ? finiteNumber(rawOffered, recommended)
-    : recommended;
+  const offered = resolveOfferedFromPricingInput(input, {
+    minimum_price: round2(minimum),
+    negotiation: round2(negotiation),
+    recommended_price: round2(recommended),
+  });
 
   const total = round2(offered);
   const deposit_required = round2(Math.max(1000, total * 0.1));
@@ -133,11 +180,6 @@ function calculateQuotePublishFinancials(input, tenantSettings) {
     before_profit: round2(beforeProfit),
     reserve: round2(reserve)
   };
-}
-
-function finiteNumber(n, fallback = 0) {
-  const x = Number(n);
-  return Number.isFinite(x) ? x : fallback;
 }
 
 /**
@@ -236,5 +278,7 @@ module.exports = {
   calculateQuotePublishFinancials,
   computeSalesMarginDecisionFromEconomics,
   marginLevelForSalesApproval,
-  computeManualInvoiceSystemSellRates
+  computeManualInvoiceSystemSellRates,
+  sanitizeWorkersForTenantPricing,
+  resolveOfferedFromPricingInput,
 };

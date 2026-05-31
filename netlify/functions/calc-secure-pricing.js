@@ -1,6 +1,6 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
-const { calculateQuotePublishFinancials } = require("./_lib/pricing-engine");
+const { calculateQuotePublishFinancials, sanitizeWorkersForTenantPricing } = require("./_lib/pricing-engine");
 
 function json(statusCode, payload) {
   return {
@@ -70,7 +70,12 @@ function parsePublishPricingInput(body) {
   const _manualPriceTouched = Boolean(
     body._manualPriceTouched ?? body.manual_price_touched ?? body.manualPriceTouched
   );
-  return { workers, price, _manualPriceTouched };
+  const _sliderTouched = Boolean(
+    body._sliderTouched ?? body.slider_touched ?? _manualPriceTouched
+  );
+  const pricing_stage =
+    body.pricing_stage ?? body.pricingStage ?? body.pricing_stage_index;
+  return { workers, price, _manualPriceTouched, _sliderTouched, pricing_stage };
 }
 
 /** Convert hours-only lines to fractional days so pricing-engine (days-based) stays correct. */
@@ -150,7 +155,8 @@ exports.handler = async (event) => {
 
     const tenantSettings = await loadTenantSettingsFromLatestSnapshot(tenant.id);
     const workersNormalized = normalizeWorkersLaborDays(pricingIn.workers, tenantSettings);
-    const wCheck = validateWorkersForPricing(workersNormalized);
+    const workersSanitized = sanitizeWorkersForTenantPricing(workersNormalized);
+    const wCheck = validateWorkersForPricing(workersSanitized);
     if (!wCheck.ok) {
       return badRequest(wCheck.reason || "invalid_workers", wCheck.error);
     }
@@ -159,9 +165,11 @@ exports.handler = async (event) => {
     try {
       financials = calculateQuotePublishFinancials(
         {
-          workers: workersNormalized,
+          workers: workersSanitized,
           price: pricingIn.price,
-          _manualPriceTouched: pricingIn._manualPriceTouched
+          _manualPriceTouched: pricingIn._manualPriceTouched,
+          _sliderTouched: pricingIn._sliderTouched,
+          pricing_stage: pricingIn.pricing_stage,
         },
         tenantSettings
       );
@@ -173,18 +181,11 @@ exports.handler = async (event) => {
     }
 
     const minPrice = financials.minimum_price;
-    if (isManualOfferActive(pricingIn)) {
-      const rawManual = String(pricingIn.price ?? "").trim();
-      const manualRequested = Number(rawManual);
-      if (!Number.isFinite(manualRequested)) {
-        return badRequest("manual_price_nan", "Manual offered price must be a valid number.");
-      }
-      if (manualRequested + 1e-9 < Number(minPrice)) {
-        return badRequest(
-          "manual_price_below_minimum",
-          `Manual offered price cannot be below the minimum allowed (${Number(minPrice).toFixed(2)}).`
-        );
-      }
+    if (Number(financials.total) + 1e-9 < Number(minPrice)) {
+      return badRequest(
+        "price_below_minimum",
+        `Offered price cannot be below the minimum allowed (${Number(minPrice).toFixed(2)}).`
+      );
     }
 
     if (
