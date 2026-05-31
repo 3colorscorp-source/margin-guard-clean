@@ -240,27 +240,24 @@ function buildBlockedDates(fromYmd, untilExclusiveYmd) {
   return out;
 }
 
-function buildCapacityReason(activeCount, maxRemaining, buffer, settings) {
+function buildCapacityReason(activeCount, maxRemaining, buffer) {
   if (activeCount <= 0) {
-    return "No active crew commitments. Next start date is available.";
+    return "No active crew commitments. Production schedule is open for a new start date.";
   }
-  const parts = [];
-  if (maxRemaining > 0) {
-    parts.push(
-      `Current project has ${maxRemaining} working day${maxRemaining === 1 ? "" : "s"} remaining`
-    );
-  } else {
-    parts.push("Current project is near completion");
+  const remaining = round2(Math.max(0, maxRemaining));
+  const bufferDays = Math.max(0, Math.floor(num(buffer, 0)));
+  if (remaining > 0) {
+    return `Current active project has ${remaining} working day${remaining === 1 ? "" : "s"} remaining plus ${bufferDays} buffer day${bufferDays === 1 ? "" : "s"}.`;
   }
-  if (buffer > 0) {
-    parts.push(`plus ${buffer} buffer day${buffer === 1 ? "" : "s"}`);
-  }
-  if (settings.crewCapacity === 1) {
-    parts.push("with one crew committed");
-  } else {
-    parts.push(`with ${settings.crewCapacity} crews`);
-  }
-  return `${parts.slice(0, 2).join(" ")} ${parts.slice(2).join(" ")}.`.replace(/\s+/g, " ").trim();
+  return `Current active project is finishing plus ${bufferDays} buffer day${bufferDays === 1 ? "" : "s"}.`;
+}
+
+function effectiveStartMinYmd(nextAvailableStartDate, todayYmd, settings) {
+  const next = normDate(nextAvailableStartDate);
+  const today = normDate(todayYmd) || todayYmdLocal();
+  if (!next) return nextWorkdayOnOrAfter(today, settings);
+  if (compareYmd(next, today) >= 0) return next;
+  return nextWorkdayOnOrAfter(today, settings);
 }
 
 /**
@@ -350,6 +347,7 @@ async function computeSalesCapacityCalendar(params) {
   } else {
     nextAvailableStartDate = nextWorkdayOnOrAfter(todayYmd, settings);
   }
+  nextAvailableStartDate = effectiveStartMinYmd(nextAvailableStartDate, todayYmd, settings);
 
   const blockedDates = buildBlockedDates(todayYmd, nextAvailableStartDate);
 
@@ -371,18 +369,16 @@ async function computeSalesCapacityCalendar(params) {
         ? projectFinishFromStart(nextAvailableStartDate, estimatedDays, settings)
         : null;
 
-  const reason = buildCapacityReason(
-    projects.length,
-    maxRemaining,
-    settings.scheduleBufferDays,
-    settings
-  );
+  const bufferDays = settings.scheduleBufferDays;
+  const reason = buildCapacityReason(projects.length, maxRemaining, bufferDays);
 
   return {
     ok: true,
     next_available_start_date: nextAvailableStartDate,
     blocked_dates: blockedDates,
     reason,
+    remaining_days: round2(Math.max(0, maxRemaining)),
+    buffer_days: bufferDays,
     capacity_status: capacityStatus,
     projected_finish_date: projectedFinishDate,
     schedule_settings: {

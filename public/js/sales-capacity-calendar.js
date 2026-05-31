@@ -30,6 +30,15 @@
     return formatYmd(new Date());
   }
 
+  function compareYmd(a, b) {
+    const aa = normDate(a);
+    const bb = normDate(b);
+    if (!aa || !bb) return 0;
+    if (aa < bb) return -1;
+    if (aa > bb) return 1;
+    return 0;
+  }
+
   function addCalendarDays(fromYmd, days) {
     const dt = parseYmd(fromYmd);
     if (!dt) return "";
@@ -71,14 +80,33 @@
     });
   }
 
+  /** min selectable start = max(today, next_available_start_date from capacity engine). */
+  function effectiveStartMin(calendar) {
+    const today = todayYmd();
+    const next = normDate(calendar && calendar.next_available_start_date);
+    if (!next) return today;
+    return compareYmd(next, today) >= 0 ? next : today;
+  }
+
   function isStartBlocked(calendar, chosenStart) {
     if (!calendar || !normDate(chosenStart)) return false;
     if (calendar.schedule_settings && calendar.schedule_settings.allow_seller_schedule_override) {
       return false;
     }
-    const next = normDate(calendar.next_available_start_date);
-    if (!next) return false;
-    return chosenStart < next;
+    const min = effectiveStartMin(calendar);
+    if (!min) return false;
+    return compareYmd(chosenStart, min) < 0;
+  }
+
+  function buildGuidanceReason(calendar) {
+    if (!calendar) return "";
+    if (calendar.reason) return String(calendar.reason);
+    const remaining = Number(calendar.remaining_days);
+    const buffer = Number(calendar.buffer_days);
+    if (Number.isFinite(remaining) && remaining > 0 && Number.isFinite(buffer)) {
+      return `Current active project has ${remaining} working day${remaining === 1 ? "" : "s"} remaining plus ${buffer} buffer day${buffer === 1 ? "" : "s"}.`;
+    }
+    return "Production schedule is based on active crew workload.";
   }
 
   async function fetchCapacityCalendar(estimatedDays, desiredStartDate, projectId) {
@@ -98,25 +126,56 @@
     return data;
   }
 
+  /**
+   * Apply picker min, guidance, and clear stale start dates before next safe date.
+   * @returns {{ cleared: boolean, value: string, min: string }}
+   */
+  function reconcileStartDateWithCapacity(calendar, startInput, state) {
+    const min = effectiveStartMin(calendar);
+    const result = { cleared: false, value: "", min: min || todayYmd() };
+    if (startInput && min) {
+      startInput.min = min;
+      startInput.setAttribute("min", min);
+    }
+    const chosen = normDate(startInput && startInput.value);
+    if (chosen && min && compareYmd(chosen, min) < 0) {
+      if (startInput) startInput.value = "";
+      if (state && typeof state === "object") {
+        state.startDate = "";
+        state.targetFinishDate = "";
+        state.dueDate = "";
+      }
+      result.cleared = true;
+      return result;
+    }
+    result.value = chosen || "";
+    return result;
+  }
+
   function applyCapacityGuidance(calendar) {
     const guidance = document.getElementById("salesCapacityGuidance");
     const warning = document.getElementById("salesCapacityWarning");
     const startInput = document.getElementById("salesStartDate");
     if (!calendar) return;
 
-    const nextLabel = formatDateUS(calendar.next_available_start_date);
+    const min = effectiveStartMin(calendar);
+    const nextLabel = formatDateUS(min || calendar.next_available_start_date);
+    const reasonText = buildGuidanceReason(calendar);
     if (guidance) {
-      guidance.textContent = `Next safe start date: ${nextLabel}. Reason: ${calendar.reason || ""}`;
+      guidance.innerHTML =
+        `Next safe start date: <strong>${nextLabel}</strong><br>` +
+        `Reason: ${reasonText}`;
     }
-    if (startInput && calendar.next_available_start_date) {
-      startInput.min = calendar.next_available_start_date;
+    if (startInput && min) {
+      startInput.min = min;
+      startInput.setAttribute("min", min);
     }
     if (warning && startInput) {
       const chosen = normDate(startInput.value);
       if (chosen && isStartBlocked(calendar, chosen)) {
         warning.style.display = "block";
         warning.className = "notice error";
-        warning.textContent = `This start date is not available based on current crew capacity. Next available date is ${nextLabel}.`;
+        warning.textContent = blockedStartMessage(calendar);
       } else {
         warning.style.display = "none";
         warning.textContent = "";
@@ -134,22 +193,27 @@
   }
 
   function blockedStartMessage(calendar) {
-    const nextLabel = formatDateUS(calendar && calendar.next_available_start_date);
+    const min = effectiveStartMin(calendar);
+    const nextLabel = formatDateUS(min || (calendar && calendar.next_available_start_date));
     return `This start date is not available based on current crew capacity. Next available date is ${nextLabel}.`;
   }
 
   global.MarginGuardSalesCapacity = {
     normDate,
     todayYmd,
+    compareYmd,
+    effectiveStartMin,
     addCalendarDays,
     addBusinessDaysLocal,
     projectFinishFromStartLocal,
     formatDateUS,
     fetchCapacityCalendar,
     applyCapacityGuidance,
+    reconcileStartDateWithCapacity,
     syncTargetFinishFromStart,
     isStartBlocked,
     blockedStartMessage,
+    buildGuidanceReason,
     QUOTE_EXPIRATION_DAYS: 15,
   };
 })(typeof window !== "undefined" ? window : globalThis);

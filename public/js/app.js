@@ -6828,14 +6828,17 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       cap
         .fetchCapacityCalendar(days, desired, projectId)
         .then((data) => {
-          cap.applyCapacityGuidance(data);
           window.__mgSalesCapacityCalendar = data;
-          if (!desired && data.next_available_start_date && startDateInput && !startDateInput.value) {
-            startDateInput.value = data.next_available_start_date;
-            syncSalesTargetFinish(data.next_available_start_date);
+          const reconciled = cap.reconcileStartDateWithCapacity(data, startDateInput, state);
+          cap.applyCapacityGuidance(data);
+          if (reconciled.cleared) {
+            syncSalesTargetFinish("");
             saveSales(state);
-          } else if (desired) {
-            syncSalesTargetFinish(desired);
+          } else if (reconciled.value) {
+            syncSalesTargetFinish(reconciled.value);
+            saveSales(state);
+          } else {
+            syncSalesTargetFinish("");
           }
         })
         .catch(() => {
@@ -6876,9 +6879,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   if (customerPhoneInput) customerPhoneInput.value = state.customerPhone || "";
   if (locationInput) locationInput.value = state.location || "";
   if (startDateInput) {
-    startDateInput.value = normalizeDateInput(state.startDate || state.dueDate || "");
+    startDateInput.value = normalizeDateInput(state.startDate || "");
   }
-  syncSalesTargetFinish(startDateInput?.value || state.startDate || "");
+  syncSalesTargetFinish(normalizeDateInput(state.startDate || startDateInput?.value || ""));
   if (targetFinishInput) targetFinishInput.readOnly = true;
   const priceDisplay = document.getElementById("salesPriceDisplay");
   if (priceDisplay) {
@@ -7027,13 +7030,34 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     input.oninput = () => persistSalesDraft();
     input.onchange = () => {
       persistSalesDraft();
-      if (input === startDateInput) refreshSalesCapacityCalendar(startDateInput.value);
+      if (input === startDateInput) {
+        const cached = window.__mgSalesCapacityCalendar;
+        const cap = window.MarginGuardSalesCapacity;
+        if (cached && cap && cap.isStartBlocked(cached, startDateInput.value)) {
+          cap.reconcileStartDateWithCapacity(cached, startDateInput, state);
+          cap.applyCapacityGuidance(cached);
+          syncSalesTargetFinish("");
+          saveSales(state);
+        }
+        refreshSalesCapacityCalendar(startDateInput.value);
+      }
     };
   });
   if (startDateInput && startDateInput.dataset.capacityBound !== "true") {
     startDateInput.dataset.capacityBound = "true";
     startDateInput.addEventListener("change", () => {
       refreshSalesCapacityCalendar(startDateInput.value);
+    });
+    startDateInput.addEventListener("input", () => {
+      const cached = window.__mgSalesCapacityCalendar;
+      const cap = window.MarginGuardSalesCapacity;
+      if (!cached || !cap) return;
+      if (cap.isStartBlocked(cached, startDateInput.value)) {
+        cap.reconcileStartDateWithCapacity(cached, startDateInput, state);
+        cap.applyCapacityGuidance(cached);
+        syncSalesTargetFinish("");
+        saveSales(state);
+      }
     });
   }
 
