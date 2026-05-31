@@ -134,8 +134,8 @@
                 </div>
                 <div class="field">
                   <label>Target finish date</label>
-                  <input id="salesTargetFinishDate" type="date" readonly tabindex="-1" aria-readonly="true" />
-                  <div class="hint">Calculated from start date and estimated project days (Mon–Fri).</div>
+                  <input id="salesTargetFinishDate" type="date" readonly tabindex="-1" aria-readonly="true" disabled />
+                  <div class="hint" id="salesTargetFinishHint">Target finish will calculate after labor days and safe start date are set.</div>
                 </div>
               </div>
               <input id="salesDueDate" type="hidden" value="" />
@@ -467,6 +467,7 @@
           hpd
         );
       }
+      window.getOperationalMetricsForState = getOperationalMetricsForState;
 
       function applyOperationalPlanUnitModeToChrome(settings) {
         const api = getOperationalPlanApi();
@@ -2108,9 +2109,16 @@
             const signedEstimatedDays = opMetrics && opMetrics.estimated_days > 0
               ? opMetrics.estimated_days
               : metrics.workerDays;
-            const finishDate = cap && cap.projectFinishFromStartLocal
-              ? cap.projectFinishFromStartLocal(startDate, signedEstimatedDays)
-              : String(document.getElementById('salesTargetFinishDate')?.value || state.targetFinishDate || '').trim().slice(0, 10);
+            const finishDate =
+              cap && typeof cap.updateTargetFinishDisplay === 'function'
+                ? cap.updateTargetFinishDisplay(startDate, signedEstimatedDays, {
+                    workdaysEnabled: settings.workdaysEnabled !== false
+                  }).finish
+                : cap && cap.projectFinishFromStartLocal
+                  ? cap.projectFinishFromStartLocal(startDate, signedEstimatedDays, {
+                      workdaysEnabled: settings.workdaysEnabled !== false
+                    })
+                  : String(document.getElementById('salesTargetFinishDate')?.value || state.targetFinishDate || '').trim().slice(0, 10);
 
             function proceedMarkSold(calendar) {
               if (calendar && cap && cap.isStartBlocked(calendar, startDate)) {

@@ -2596,7 +2596,8 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
 .sales-quote-dates-row{
   grid-template-columns:repeat(4, minmax(0, 1fr));
 }
-.sales-quote-dates-row input[readonly]{
+.sales-quote-dates-row input[readonly],
+.sales-quote-dates-row input[disabled]{
   opacity:.88;
   cursor:not-allowed;
   background:rgba(255,255,255,.04);

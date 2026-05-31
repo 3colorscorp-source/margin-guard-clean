@@ -6790,30 +6790,43 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     expirationDateInput.readOnly = true;
   }
 
-  const estimatedProjectDays =
-    finiteNumber(state.operational_estimated_days_override, NaN) > 0
-      ? finiteNumber(state.operational_estimated_days_override, 0)
-      : metrics.workerDays > 0
-        ? metrics.workerDays
-        : 0;
+  const resolveSalesEstimatedProjectDays = (salesState, salesSettings, salesMetrics) => {
+    const getOp =
+      typeof window.getOperationalMetricsForState === "function"
+        ? window.getOperationalMetricsForState
+        : null;
+    if (getOp) {
+      const op = getOp(salesState, salesSettings);
+      if (op && finiteNumber(op.estimated_days, 0) > 0) {
+        return finiteNumber(op.estimated_days, 0);
+      }
+    }
+    const override = finiteNumber(salesState.operational_estimated_days_override, NaN);
+    if (override > 0) return override;
+    return salesMetrics.workerDays > 0 ? salesMetrics.workerDays : 0;
+  };
 
-  const syncSalesTargetFinish = (startYmd) => {
+  const estimatedProjectDays = resolveSalesEstimatedProjectDays(state, settings, metrics);
+
+  const syncSalesTargetFinish = (startYmd, projectedFinishDate) => {
     const cap = window.MarginGuardSalesCapacity;
     const start = normalizeDateInput(startYmd || startDateInput?.value || state.startDate || "");
-    if (!start || !cap || estimatedProjectDays <= 0) {
+    const finishOpts = {
+      workdaysEnabled: settings.workdaysEnabled !== false,
+      projectedFinishDate: projectedFinishDate || null,
+    };
+    if (!cap || typeof cap.updateTargetFinishDisplay !== "function") {
       if (targetFinishInput) targetFinishInput.value = "";
       if (dueDateInput) dueDateInput.value = "";
       state.targetFinishDate = "";
       state.dueDate = "";
       return "";
     }
-    const finish = cap.projectFinishFromStartLocal(start, estimatedProjectDays);
-    if (targetFinishInput) targetFinishInput.value = finish;
-    if (dueDateInput) dueDateInput.value = finish;
-    state.startDate = start;
-    state.targetFinishDate = finish;
-    state.dueDate = finish;
-    return finish;
+    const result = cap.updateTargetFinishDisplay(start, estimatedProjectDays, finishOpts);
+    if (result.start) state.startDate = result.start;
+    state.targetFinishDate = result.finish || "";
+    state.dueDate = result.finish || "";
+    return result.finish || "";
   };
 
   let salesCapacityRefreshTimer = null;
@@ -6835,7 +6848,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             syncSalesTargetFinish("");
             saveSales(state);
           } else if (reconciled.value) {
-            syncSalesTargetFinish(reconciled.value);
+            syncSalesTargetFinish(reconciled.value, data.projected_finish_date);
             saveSales(state);
           } else {
             syncSalesTargetFinish("");
@@ -6882,7 +6895,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     startDateInput.value = normalizeDateInput(state.startDate || "");
   }
   syncSalesTargetFinish(normalizeDateInput(state.startDate || startDateInput?.value || ""));
-  if (targetFinishInput) targetFinishInput.readOnly = true;
+  if (targetFinishInput) {
+    targetFinishInput.readOnly = true;
+    targetFinishInput.disabled = true;
+  }
   const priceDisplay = document.getElementById("salesPriceDisplay");
   if (priceDisplay) {
     priceDisplay.textContent = isReady ? formatMoney(offered) : "—";

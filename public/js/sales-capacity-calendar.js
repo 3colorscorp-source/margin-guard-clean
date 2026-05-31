@@ -64,10 +64,54 @@
     return formatYmd(cur);
   }
 
-  function projectFinishFromStartLocal(startYmd, estimatedDays) {
+  function projectFinishFromStart(startYmd, estimatedDays, options) {
     const days = Math.max(1, Math.ceil(Number(estimatedDays) || 0));
     if (!normDate(startYmd)) return "";
+    const workdaysOnly = !options || options.workdaysEnabled !== false;
+    if (!workdaysOnly) return addCalendarDays(startYmd, days - 1);
     return addBusinessDaysLocal(startYmd, days - 1);
+  }
+
+  const TARGET_FINISH_HINT_DEFAULT =
+    "Target finish will calculate after labor days and safe start date are set.";
+
+  /**
+   * System-controlled target finish from approved capacity start + estimated project days.
+   * Never uses issue date.
+   */
+  function updateTargetFinishDisplay(startYmd, estimatedDays, options) {
+    const finishInput = document.getElementById("salesTargetFinishDate");
+    const dueHidden = document.getElementById("salesDueDate");
+    const hint = document.getElementById("salesTargetFinishHint");
+    const start = normDate(startYmd);
+    const days = Number(estimatedDays);
+    const hasDays = Number.isFinite(days) && days > 0;
+    const workdaysEnabled = !options || options.workdaysEnabled !== false;
+    const serverFinish = normDate(options && options.projectedFinishDate);
+
+    if (!start || !hasDays) {
+      if (finishInput) finishInput.value = "";
+      if (dueHidden) dueHidden.value = "";
+      if (hint) hint.textContent = TARGET_FINISH_HINT_DEFAULT;
+      return { start: "", finish: "" };
+    }
+
+    const finish =
+      serverFinish && compareYmd(serverFinish, start) >= 0
+        ? serverFinish
+        : projectFinishFromStart(start, days, { workdaysEnabled });
+
+    if (finishInput) finishInput.value = finish;
+    if (dueHidden) dueHidden.value = finish;
+    if (hint) {
+      const dayLabel = workdaysEnabled ? "workday" : "day";
+      hint.textContent = `System calculated from approved start (${formatDateUS(start)}) + ${Math.ceil(days)} ${dayLabel}(s) (Mon–Fri when enabled in Business Settings).`;
+    }
+    return { start, finish };
+  }
+
+  function projectFinishFromStartLocal(startYmd, estimatedDays, options) {
+    return projectFinishFromStart(startYmd, estimatedDays, options);
   }
 
   function formatDateUS(ymd) {
@@ -183,13 +227,8 @@
     }
   }
 
-  function syncTargetFinishFromStart(startYmd, estimatedDays) {
-    const finishInput = document.getElementById("salesTargetFinishDate");
-    const dueHidden = document.getElementById("salesDueDate");
-    const finish = projectFinishFromStartLocal(startYmd, estimatedDays);
-    if (finishInput) finishInput.value = finish;
-    if (dueHidden) dueHidden.value = finish;
-    return finish;
+  function syncTargetFinishFromStart(startYmd, estimatedDays, options) {
+    return updateTargetFinishDisplay(startYmd, estimatedDays, options);
   }
 
   function blockedStartMessage(calendar) {
@@ -205,7 +244,9 @@
     effectiveStartMin,
     addCalendarDays,
     addBusinessDaysLocal,
+    projectFinishFromStart,
     projectFinishFromStartLocal,
+    updateTargetFinishDisplay,
     formatDateUS,
     fetchCapacityCalendar,
     applyCapacityGuidance,
