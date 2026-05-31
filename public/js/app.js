@@ -6759,6 +6759,23 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   bindNativeDatePicker(expirationDateInput);
   bindNativeDatePicker(dueDateInput);
 
+  const ccWrap = document.getElementById("salesCcWrap");
+  const ccToggle = document.getElementById("btnSalesToggleCc");
+  if (ccWrap && additionalRecipientsInput) {
+    const hasCc = String(additionalRecipientsInput.value || state.additional_recipients || "").trim();
+    ccWrap.hidden = !hasCc;
+    if (ccToggle) ccToggle.setAttribute("aria-expanded", hasCc ? "true" : "false");
+  }
+  if (ccToggle && ccWrap && ccToggle.dataset.bound !== "true") {
+    ccToggle.dataset.bound = "true";
+    ccToggle.onclick = () => {
+      const open = ccWrap.hidden;
+      ccWrap.hidden = !open;
+      ccToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open && additionalRecipientsInput) additionalRecipientsInput.focus();
+    };
+  }
+
   if (estimateNumberInput) estimateNumberInput.value = state.estimateNumber;
   if (issueDateInput) issueDateInput.value = state.issueDate;
   if (expirationDateInput) expirationDateInput.value = state.expirationDate;

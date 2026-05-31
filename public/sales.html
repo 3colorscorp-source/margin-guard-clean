@@ -84,9 +84,23 @@
                   <input id="salesClientName" maxlength="60" placeholder="Ej: Maria y Librado" />
                   <div class="hint"><span id="salesClientNameCount">0</span>/60</div>
                 </div>
-                <div class="field">
+                <div class="field sales-email-field">
                   <label>Email del cliente (desde el estimate)</label>
                   <input id="salesCustomerEmail" type="email" maxlength="80" placeholder="cliente@correo.com" />
+                  <button type="button" class="btn ghost sales-cc-toggle" id="btnSalesToggleCc" aria-expanded="false" aria-controls="salesCcWrap">
+                    Add CC / Send copy
+                  </button>
+                  <div id="salesCcWrap" class="sales-cc-wrap" hidden>
+                    <label for="salesAdditionalRecipients">Send copy to (optional)</label>
+                    <input
+                      id="salesAdditionalRecipients"
+                      name="additional_recipients"
+                      type="text"
+                      maxlength="500"
+                      placeholder="example: spouse@email.com, architect@email.com"
+                      autocomplete="off"
+                    />
+                  </div>
                 </div>
                 <div class="field">
                   <label>Telefono del cliente</label>
@@ -117,32 +131,7 @@
               </div>
             </div>
 
-            <div class="sales-quote-section">
-              <h3 class="sales-quote-section-title">Business</h3>
-              <div class="form">
-                <div class="field">
-                  <label>Quote number</label>
-                  <input id="salesEstimateNumber" maxlength="30" readonly placeholder="Quote number will be assigned when sent" title="Assigned automatically when you send" />
-                </div>
-                <div class="field">
-                  <label>Precio del estimate (sistema)</label>
-                  <div id="salesPriceDisplay" class="hub-form-static" aria-live="polite">—</div>
-                  <input id="salesPrice" type="hidden" value="" />
-                  <div class="hint">Ajusta con el control de posicion del estimate; no se permite entrada manual.</div>
-                </div>
-                <div class="field" style="grid-column:1 / -1;">
-                  <label>Send copy to (optional)</label>
-                  <input
-                    id="salesAdditionalRecipients"
-                    name="additional_recipients"
-                    type="text"
-                    maxlength="500"
-                    placeholder="example: spouse@email.com, architect@email.com"
-                    autocomplete="off"
-                  />
-                </div>
-              </div>
-            </div>
+            <input id="salesEstimateNumber" type="hidden" value="" />
 
             <div class="sales-quote-section">
               <h3 class="sales-quote-section-title">Notes</h3>
@@ -289,6 +278,12 @@
                 <div class="owner-quote-kicker">Precio recomendado</div>
                 <div class="owner-quote-price" id="salesPrimaryPrice">$0.00</div>
                 <div class="owner-quote-meta" id="salesPrimaryMeta">Ingresa mano de obra para calcular el recomendado.</div>
+                <div class="sales-system-price" aria-live="polite">
+                  <span class="sales-system-price__label">Precio del estimate (sistema)</span>
+                  <strong id="salesPriceDisplay" class="sales-system-price__value">—</strong>
+                  <p class="small sales-system-price__hint">Controlled by Margin Guard pricing rules.</p>
+                </div>
+                <input id="salesPrice" type="hidden" value="" />
                 <div class="owner-quote-strip">
                   <div class="owner-mini-card">
                     <div class="title">Comision estimada</div>

@@ -2604,6 +2604,50 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
 .sales-quote-notes-col{
   grid-template-columns:1fr;
 }
+.sales-email-field .sales-cc-toggle{
+  margin-top:8px;
+  padding:6px 10px;
+  font-size:12px;
+  font-weight:650;
+}
+.sales-cc-wrap{
+  margin-top:10px;
+  padding-top:10px;
+  border-top:1px dashed rgba(255,255,255,.12);
+}
+.sales-cc-wrap label{
+  display:block;
+  font-size:12px;
+  color:var(--muted);
+  margin:0 0 6px;
+}
+.sales-system-price{
+  margin-top:12px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);
+}
+.sales-system-price__label{
+  display:block;
+  font-size:11px;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.sales-system-price__value{
+  display:block;
+  margin-top:4px;
+  font-size:20px;
+  font-weight:800;
+  line-height:1.2;
+}
+.sales-system-price__hint{
+  margin:6px 0 0;
+  font-size:11px;
+  color:rgba(232,238,252,.68);
+  line-height:1.35;
+}
 .msg-list{
   list-style:none;
   margin:8px 0 0;
