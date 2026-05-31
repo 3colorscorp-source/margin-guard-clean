@@ -585,13 +585,18 @@ body[data-requires-auth="true"] .container:has(.grid.sales-layout),
   border-color:rgba(239,68,68,.4);
   background:rgba(239,68,68,.12);
 }
-.sales-right-panel{
+.sales-right-panel,
+.sales-live-sidebar{
   max-width:none;
   width:100%;
   margin-left:0;
   min-width:0;
-  position:static;
-  top:auto;
+  align-self:start;
+}
+.grid.sales-layout .sales-right-panel,
+.grid.sales-layout .sales-live-sidebar{
+  position:sticky;
+  top:96px;
   align-self:start;
 }
 .grid.sales-layout .sales-left-panel > .card,
@@ -624,11 +629,17 @@ body[data-requires-auth="true"] .container:has(.grid.sales-layout),
     grid-template-columns:1fr;
     gap:16px;
   }
+  .grid.sales-layout .sales-right-panel,
+  .grid.sales-layout .sales-live-sidebar{
+    position:static;
+    top:auto;
+  }
 }
 @media (max-width: 980px){
   .grid:not(.sup-console-stack){ grid-template-columns:1fr; }
   .sales-left-panel{ padding-right:0; }
-  .sales-right-panel{
+  .sales-right-panel,
+  .sales-live-sidebar{
     max-width:none;
     margin-left:0;
     position:static;
