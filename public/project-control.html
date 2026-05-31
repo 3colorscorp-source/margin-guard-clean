@@ -216,6 +216,24 @@
       font-weight: 500;
     }
 
+    .pcc-row-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
+      min-width: 220px;
+    }
+
+    .pcc-remove {
+      color: #991b1b;
+      border-color: rgba(153, 27, 27, 0.35);
+    }
+
+    .pcc-remove:hover {
+      background: rgba(153, 27, 27, 0.08);
+    }
+
     .pcc-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
     .pcc-filters .hint { font-size: 0.85rem; color: var(--muted, #666); margin-left: auto; }
     .pcc-filter-btn.active { box-shadow: inset 0 0 0 2px var(--accent, #0f8a5f); }
@@ -371,7 +389,7 @@
                 <th>Days remaining</th>
                 <th>Progress %</th>
                 <th>Status</th>
-                <th></th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody id="pccTableBody"></tbody>
@@ -535,14 +553,17 @@
             '<td>' + m.daysRemaining.toFixed(2) + '</td>' +
             '<td>' + pct(m.progressPct) + '</td>' +
             '<td><span class="badge ' + tone + '">' + esc(m.statusLabel) + '</span></td>' +
-            '<td><button type="button" class="btn primary pcc-view" data-id="' + esc(p.id) + '">View detail</button></td>' +
+            '<td class="pcc-row-actions">' +
+            '<button type="button" class="btn primary pcc-view" data-id="' + esc(p.id) + '">View detail</button>' +
+            '<button type="button" class="btn ghost pcc-remove" data-id="' + esc(p.id) + '" data-name="' + esc(p.projectName || 'Project') + '">Remove</button>' +
+            '</td>' +
             '</tr>'
           );
         }).join('');
 
         body.querySelectorAll('.pcc-row').forEach(function (tr) {
           tr.addEventListener('click', function (e) {
-            if (e.target.closest('.pcc-view')) return;
+            if (e.target.closest('.pcc-view') || e.target.closest('.pcc-remove')) return;
             openDetail(String(tr.getAttribute('data-id') || ''));
           });
         });
@@ -552,6 +573,59 @@
             openDetail(String(btn.getAttribute('data-id') || ''));
           });
         });
+        body.querySelectorAll('.pcc-remove').forEach(function (btn) {
+          btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            void removeFromProjectControl(
+              String(btn.getAttribute('data-id') || ''),
+              String(btn.getAttribute('data-name') || 'Project')
+            );
+          });
+        });
+      }
+
+      async function removeFromProjectControl(projectId, projectName) {
+        if (!projectId) return;
+        var label = projectName || 'this project';
+        var ok = window.confirm(
+          'Remove "' + label + '" from Project Control?\n\nThis will hide it from active production lists but keep history.'
+        );
+        if (!ok) return;
+
+        var errEl = document.getElementById('pccLoadError');
+        try {
+          var res = await fetch('/.netlify/functions/archive-tenant-project', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: projectId })
+          });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok || !data || data.ok !== true) {
+            if (errEl) {
+              errEl.style.display = 'block';
+              errEl.className = 'notice err';
+              errEl.textContent = (data && data.error) ? String(data.error) : 'Could not remove project from Project Control.';
+            }
+            return;
+          }
+          if (errEl) errEl.style.display = 'none';
+          allRows = allRows.filter(function (row) {
+            return String(row.project.id) !== String(projectId);
+          });
+          if (selectedId === String(projectId)) {
+            selectedId = '';
+            document.getElementById('pccDetail').classList.remove('open');
+          }
+          renderSummary();
+          renderTable();
+        } catch (_err) {
+          if (errEl) {
+            errEl.style.display = 'block';
+            errEl.className = 'notice err';
+            errEl.textContent = 'Network error while removing project from Project Control.';
+          }
+        }
       }
 
       function fillBaselineForm(b, opts) {
@@ -707,7 +781,7 @@
           }
           return;
         }
-        var pr = await fetch('/.netlify/functions/get-supervisor-projects', { credentials: 'include' });
+        var pr = await fetch('/.netlify/functions/get-project-control-projects', { credentials: 'include' });
         var pj = await pr.json().catch(function () { return {}; });
         if (!pr.ok || !pj || pj.ok !== true || !Array.isArray(pj.projects)) {
           if (errEl) {
