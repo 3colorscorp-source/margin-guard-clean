@@ -126,12 +126,25 @@ body[data-requires-auth="true"] .container:has(.grid.sales-layout),
   max-width:1680px;
 }
 .grid.sales-layout{
-  grid-template-columns:1.35fr 0.65fr;
+  --sales-col-left:minmax(0, 1.35fr);
+  --sales-col-right:minmax(0, 0.65fr);
+  grid-template-columns:var(--sales-col-left) var(--sales-col-right);
   align-items:start;
   column-gap:24px;
+  row-gap:14px;
+}
+.grid.sales-layout > .sales-layout-hero{
+  grid-column:1 / -1;
+  margin-bottom:0;
+}
+.grid.sales-layout > .sales-layout-hero .owner-hero-inner{
+  grid-template-columns:var(--sales-col-left) var(--sales-col-right);
+  column-gap:24px;
+  gap:24px;
+  align-items:start;
 }
 .sales-left-panel{
-  padding-right:12px;
+  padding-right:0;
   min-width:0;
   overflow-x:hidden;
   overflow-y:visible;
@@ -573,13 +586,17 @@ body[data-requires-auth="true"] .container:has(.grid.sales-layout),
   background:rgba(239,68,68,.12);
 }
 .sales-right-panel{
-  max-width:420px;
+  max-width:none;
   width:100%;
   margin-left:0;
   min-width:0;
-  position:sticky;
-  top:100px;
+  position:static;
+  top:auto;
   align-self:start;
+}
+.grid.sales-layout .sales-left-panel > .card,
+.grid.sales-layout .sales-right-panel > .card{
+  margin-top:0;
 }
 .grid.sales-layout .sales-right-panel .card-inner{
   padding:12px 12px 14px;
@@ -602,6 +619,10 @@ body[data-requires-auth="true"] .container:has(.grid.sales-layout),
 @media (max-width:1024px){
   .grid.sales-layout{
     grid-template-columns:1fr;
+  }
+  .grid.sales-layout > .sales-layout-hero .owner-hero-inner{
+    grid-template-columns:1fr;
+    gap:16px;
   }
 }
 @media (max-width: 980px){
