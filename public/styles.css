@@ -83,6 +83,36 @@ small{ color:var(--muted); }
   max-width:1180px; margin:0 auto;
   padding:18px 16px 40px;
 }
+/* Authenticated app pages — full-width operations console (Supervisor pattern) */
+body[data-requires-auth="true"] .topbar-inner{
+  max-width:1680px;
+  width:100%;
+  padding-left:24px;
+  padding-right:24px;
+  box-sizing:border-box;
+}
+body[data-requires-auth="true"] .container:not(.narrow){
+  max-width:1680px;
+  width:100%;
+  padding-left:24px;
+  padding-right:32px;
+  padding-bottom:48px;
+  box-sizing:border-box;
+}
+body[data-requires-auth="true"] .container:has(.grid.sales-layout){
+  max-width:1680px;
+}
+@media (max-width: 720px){
+  body[data-requires-auth="true"] .topbar-inner{
+    padding-left:16px;
+    padding-right:16px;
+  }
+  body[data-requires-auth="true"] .container:not(.narrow){
+    padding-left:16px;
+    padding-right:16px;
+    padding-bottom:32px;
+  }
+}
 .narrow{ max-width:760px; }
 .center{ text-align:center; }
 .grid{
@@ -91,8 +121,9 @@ small{ color:var(--muted); }
   gap:14px;
 }
 /* Sales / Vendedor — wider left column (Labor + estimate), compact right rail */
+body[data-requires-auth="true"] .container:has(.grid.sales-layout),
 .container:has(.grid.sales-layout){
-  max-width:1200px;
+  max-width:1680px;
 }
 .grid.sales-layout{
   grid-template-columns:1.35fr 0.65fr;
@@ -3013,20 +3044,7 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   }
 }
 
-/* Supervisor — full-width operations console */
-body.supervisor-page .topbar-inner{
-  max-width:1680px;
-  width:100%;
-  padding-left:24px;
-  padding-right:24px;
-}
-.container.supervisor-console{
-  max-width:1680px;
-  width:100%;
-  padding-left:24px;
-  padding-right:32px;
-  padding-bottom:48px;
-}
+/* Supervisor — full-width operations console (width: global auth rule; layout below) */
 .sup-console-intro{
   margin-bottom:4px;
 }
@@ -3254,16 +3272,6 @@ body.supervisor-page .topbar-inner{
   .supervisor-console .section-action-row__actions .btn{
     width:100%;
     white-space:normal;
-  }
-}
-@media (max-width: 900px){
-  .container.supervisor-console{
-    padding-left:16px;
-    padding-right:16px;
-  }
-  body.supervisor-page .topbar-inner{
-    padding-left:16px;
-    padding-right:16px;
   }
 }
 
@@ -3728,24 +3736,7 @@ body[data-role="estimates-hub"] #hubFormModal .hub-invoice-setup-preview-line{
   width:min(920px, 96vw);
 }
 
-/* Invoice Hub — full-width operations console (matches Supervisor) */
-body.invoice-hub-page .topbar-inner,
-body[data-role="estimates-hub"] .topbar-inner{
-  max-width:1680px;
-  width:100%;
-  padding-left:24px;
-  padding-right:24px;
-  box-sizing:border-box;
-}
-body.invoice-hub-page .container.invoice-hub-console,
-body[data-role="estimates-hub"] .container.invoice-hub-console{
-  max-width:1680px;
-  width:100%;
-  padding-left:24px;
-  padding-right:32px;
-  padding-bottom:48px;
-  box-sizing:border-box;
-}
+/* Invoice Hub — ops layout (width: global auth rule) */
 body[data-role="estimates-hub"] .hub-console-stack{
   display:flex;
   flex-direction:column;
@@ -3810,11 +3801,6 @@ body[data-role="estimates-hub"] .hub-console-table-card .section-head{
   }
 }
 @media (max-width: 720px){
-  body[data-role="estimates-hub"] .invoice-hub-console{
-    padding-left:16px;
-    padding-right:16px;
-    padding-bottom:32px;
-  }
   body[data-role="estimates-hub"] .hub-console-filters-card .form{
     grid-template-columns:1fr;
   }
