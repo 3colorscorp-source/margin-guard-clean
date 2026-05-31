@@ -46,7 +46,15 @@ exports.handler = async (event) => {
       filter: {
         quote_statuses: ["accepted", "approved"],
         requires_project_name: true,
-        excludes_hidden_from_project_control: true,
+        excluded_project_statuses: [
+          "archived",
+          "cancelled",
+          "draft",
+          "test",
+          "pending",
+          "abandoned",
+        ],
+        allowed_project_statuses: PRODUCTION_PROJECT_STATUSES,
       },
     };
 

@@ -1,10 +1,10 @@
 /**
- * Shared filters for accepted / signed production projects (Supervisor + Project Control).
+ * Shared filters for accepted / signed production projects (Project Control).
  */
 
 const { supabaseRequest } = require("./supabase-admin");
 
-/** Accepted production statuses on tenant_projects (excludes draft/cancelled/test paths). */
+/** Active production statuses shown in Project Control. */
 const PRODUCTION_PROJECT_STATUSES = [
   "signed",
   "deposit_paid",
@@ -16,6 +16,16 @@ const PRODUCTION_PROJECT_STATUSES = [
 const PRODUCTION_STATUS_SET = new Set(
   PRODUCTION_PROJECT_STATUSES.map((s) => s.toLowerCase())
 );
+
+/** Never show these in Project Control (includes soft-archived rows). */
+const PROJECT_CONTROL_EXCLUDED_STATUSES = new Set([
+  "archived",
+  "cancelled",
+  "draft",
+  "test",
+  "pending",
+  "abandoned",
+]);
 
 /** Quote must be accepted/approved before showing in production surfaces. */
 const QUOTE_STATUSES_ALLOWED = new Set(["accepted", "approved"]);
@@ -67,7 +77,6 @@ function mapRowToProductionProject(row) {
     realProfitTotal: Number(row.real_profit_total) || 0,
     realMarginPct: Number(row.real_margin_pct) || 0,
     workers: Array.isArray(row.quoted_labor_plan) ? row.quoted_labor_plan : [],
-    hiddenFromProjectControl: Boolean(row.hidden_from_project_control),
   };
 }
 
@@ -77,10 +86,11 @@ function isCompleteProductionProject(row) {
   return name.length > 0;
 }
 
-function isVisibleInProjectControl(row) {
+function isActiveProjectControlStatus(row) {
   if (!row || typeof row !== "object") return false;
-  if (row.hidden_from_project_control === true) return false;
-  return true;
+  const st = normStatus(row.status);
+  if (PROJECT_CONTROL_EXCLUDED_STATUSES.has(st)) return false;
+  return PRODUCTION_STATUS_SET.has(st);
 }
 
 async function loadQuoteAcceptanceMap(tenantId, quoteIdsRaw) {
@@ -118,35 +128,22 @@ async function loadQuoteAcceptanceMap(tenantId, quoteIdsRaw) {
 /**
  * @param {string} tenantId
  * @param {object} [options]
- * @param {boolean} [options.forProjectControl] - exclude hidden + incomplete rows
+ * @param {boolean} [options.forProjectControl] - stricter acceptance + completeness filters
  */
 async function loadProductionProjectsForTenant(tenantId, options) {
   const forProjectControl = Boolean(options && options.forProjectControl);
   const tid = encodeURIComponent(tenantId);
   const inList = PRODUCTION_PROJECT_STATUSES.map(encodeURIComponent).join(",");
 
-  let rows;
-  if (forProjectControl) {
-    try {
-      rows = await supabaseRequest(
-        `tenant_projects?tenant_id=eq.${tid}&status=in.(${inList})&hidden_from_project_control=eq.false&select=*&order=signed_at.desc`
-      );
-    } catch (_e) {
-      rows = await supabaseRequest(
-        `tenant_projects?tenant_id=eq.${tid}&status=in.(${inList})&select=*&order=signed_at.desc`
-      );
-    }
-  } else {
-    rows = await supabaseRequest(
-      `tenant_projects?tenant_id=eq.${tid}&status=in.(${inList})&select=*&order=signed_at.desc`
-    );
-  }
+  const rows = await supabaseRequest(
+    `tenant_projects?tenant_id=eq.${tid}&status=in.(${inList})&select=*&order=signed_at.desc`
+  );
 
   let list = Array.isArray(rows) ? rows : [];
-  list = list.filter((r) => r && PRODUCTION_STATUS_SET.has(normStatus(r.status)));
+  list = list.filter((r) => isActiveProjectControlStatus(r));
 
   if (forProjectControl) {
-    list = list.filter(isVisibleInProjectControl).filter(isCompleteProductionProject);
+    list = list.filter(isCompleteProductionProject);
   }
 
   const quoteIdsRaw = [
@@ -185,9 +182,10 @@ async function loadProductionProjectsForTenant(tenantId, options) {
 module.exports = {
   PRODUCTION_PROJECT_STATUSES,
   PRODUCTION_STATUS_SET,
+  PROJECT_CONTROL_EXCLUDED_STATUSES,
   QUOTE_STATUSES_ALLOWED,
   loadProductionProjectsForTenant,
   mapRowToProductionProject,
   isCompleteProductionProject,
-  isVisibleInProjectControl,
+  isActiveProjectControlStatus,
 };

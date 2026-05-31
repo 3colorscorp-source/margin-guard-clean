@@ -1,13 +1,21 @@
 /**
- * Soft-hide a tenant project from Project Control (does not delete row or touch invoices).
+ * Soft-archive a tenant project from Project Control (status update only; no row delete).
+ * Uses existing tenant_projects.status — prefers "archived", falls back to "cancelled"
+ * when the DB check constraint does not yet allow "archived".
  */
 
 const { readSessionFromEvent } = require("./_lib/session");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
+const {
+  PROJECT_CONTROL_EXCLUDED_STATUSES,
+} = require("./_lib/tenant-production-projects");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const ARCHIVE_STATUS_PREFERRED = "archived";
+const ARCHIVE_STATUS_FALLBACK = "cancelled";
 
 function json(statusCode, payload) {
   return {
@@ -23,6 +31,27 @@ function parseBody(raw) {
   } catch {
     return {};
   }
+}
+
+function normStatus(s) {
+  return String(s || "")
+    .trim()
+    .toLowerCase();
+}
+
+function isAlreadyArchived(status) {
+  const st = normStatus(status);
+  return (
+    PROJECT_CONTROL_EXCLUDED_STATUSES.has(st) &&
+    (st === ARCHIVE_STATUS_PREFERRED || st === ARCHIVE_STATUS_FALLBACK)
+  );
+}
+
+async function patchProjectStatus(tid, pid, status, nowIso) {
+  await supabaseRequest(`tenant_projects?id=eq.${pid}&tenant_id=eq.${tid}`, {
+    method: "PATCH",
+    body: { status, updated_at: nowIso },
+  });
 }
 
 exports.handler = async (event) => {
@@ -51,51 +80,44 @@ exports.handler = async (event) => {
     const pid = encodeURIComponent(projectId);
 
     const rows = await supabaseRequest(
-      `tenant_projects?id=eq.${pid}&tenant_id=eq.${tid}&select=id,hidden_from_project_control,status&limit=1`
+      `tenant_projects?id=eq.${pid}&tenant_id=eq.${tid}&select=id,status&limit=1`
     );
     const project = Array.isArray(rows) ? rows[0] : null;
     if (!project?.id) {
       return json(403, { error: "Project not found for this tenant" });
     }
 
-    if (project.hidden_from_project_control === true) {
+    if (isAlreadyArchived(project.status)) {
       return json(200, {
         ok: true,
         id: project.id,
-        already_hidden: true,
-        method: "hidden_from_project_control",
+        already_archived: true,
+        status: normStatus(project.status),
       });
     }
 
     const nowIso = new Date().toISOString();
-    const patch = {
-      hidden_from_project_control: true,
-      project_control_archived_at: nowIso,
-      updated_at: nowIso,
-    };
+    let appliedStatus = ARCHIVE_STATUS_PREFERRED;
 
     try {
-      await supabaseRequest(`tenant_projects?id=eq.${pid}&tenant_id=eq.${tid}`, {
-        method: "PATCH",
-        body: patch,
-      });
+      await patchProjectStatus(tid, pid, ARCHIVE_STATUS_PREFERRED, nowIso);
     } catch (err) {
       const msg = String(err?.message || err || "");
-      if (/hidden_from_project_control|column/i.test(msg)) {
-        return json(500, {
-          error:
-            "Project Control archive columns are missing. Run SUPABASE_TENANT_PROJECTS_PROJECT_CONTROL_ARCHIVE.sql in Supabase.",
-        });
+      const constraintBlocked =
+        /check constraint|invalid input value|violates|archived/i.test(msg);
+      if (!constraintBlocked) {
+        throw err;
       }
-      throw err;
+      appliedStatus = ARCHIVE_STATUS_FALLBACK;
+      await patchProjectStatus(tid, pid, ARCHIVE_STATUS_FALLBACK, nowIso);
     }
 
     return json(200, {
       ok: true,
       id: project.id,
-      already_hidden: false,
-      method: "hidden_from_project_control",
-      archived_at: nowIso,
+      already_archived: false,
+      status: appliedStatus,
+      updated_at: nowIso,
     });
   } catch (err) {
     return json(500, { error: err.message || "Unexpected error" });
