@@ -118,17 +118,27 @@
               <div class="form sales-quote-dates-row">
                 <div class="field">
                   <label>Issue date</label>
-                  <input id="salesIssueDate" type="date" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()" />
+                  <input id="salesIssueDate" type="date" readonly tabindex="-1" aria-readonly="true" />
+                  <div class="hint">Auto-set to today. Controlled by Margin Guard.</div>
                 </div>
                 <div class="field">
                   <label>Expiration date</label>
-                  <input id="salesExpirationDate" type="date" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()" />
+                  <input id="salesExpirationDate" type="date" readonly tabindex="-1" aria-readonly="true" />
+                  <div class="hint">Auto-set to issue date + 15 days.</div>
                 </div>
                 <div class="field">
-                  <label>Fecha comprometida</label>
-                  <input id="salesDueDate" type="date" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()" />
+                  <label>Start date</label>
+                  <input id="salesStartDate" type="date" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()" />
+                  <div class="hint" id="salesCapacityGuidance">Loading crew availability…</div>
+                  <div class="notice error" id="salesCapacityWarning" style="display:none; margin-top:8px;"></div>
+                </div>
+                <div class="field">
+                  <label>Target finish date</label>
+                  <input id="salesTargetFinishDate" type="date" readonly tabindex="-1" aria-readonly="true" />
+                  <div class="hint">Calculated from start date and estimated project days (Mon–Fri).</div>
                 </div>
               </div>
+              <input id="salesDueDate" type="hidden" value="" />
             </div>
 
             <input id="salesEstimateNumber" type="hidden" value="" />
@@ -389,6 +399,7 @@
   <script src="/js/auth.js"></script>
   <script src="/js/quote-send-feedback.js"></script>
   <script src="/js/sales-operational-plan.js"></script>
+  <script src="/js/sales-capacity-calendar.js"></script>
   <script src="/js/app.js"></script>
   <script>
     (function () {
@@ -1965,6 +1976,8 @@
             salesEstimateNumber: '',
             salesIssueDate: '',
             salesExpirationDate: '',
+            salesStartDate: '',
+            salesTargetFinishDate: '',
             salesDueDate: '',
             salesProjectName: '',
             salesClientName: '',
@@ -2082,97 +2095,134 @@
               window.alert('Price too low');
               return;
             }
-            state.soldAt = new Date().toISOString();
-            state.estimateStatus = 'sold';
-            state.signedProjectName = state.projectName || document.getElementById('salesProjectName')?.value || 'Project';
-            state.signedClientName = state.clientName || document.getElementById('salesClientName')?.value || 'Client';
-            const dueInput = document.getElementById('salesDueDate');
-            if (dueInput && dueInput.value) {
-              state.dueDate = String(dueInput.value).trim().slice(0, 10);
+            const cap = window.MarginGuardSalesCapacity;
+            const startInput = document.getElementById('salesStartDate');
+            const startDate = cap && cap.normDate
+              ? cap.normDate(startInput && startInput.value ? startInput.value : state.startDate || '')
+              : String(startInput && startInput.value ? startInput.value : state.startDate || '').trim().slice(0, 10);
+            if (!startDate) {
+              window.alert('Choose a start date confirmed by the capacity calendar before marking the project sold.');
+              return;
             }
-            saveSalesState(state);
-            if (state.quoteId && String(state.quoteId).trim()) {
-              const settings = loadSettings();
-              const metrics = buildSalesUIMetrics(state, settings);
-              const laborMetrics = calculateStandaloneSalesMetrics(state, settings);
-              (function () {
-                var internalCost = Number(laborMetrics.beforeProfit || 0) + Number(laborMetrics.reserve || 0);
-                var estProfit = Number(metrics.offered || 0) - internalCost;
-                var estMargin = Number(metrics.offered || 0) > 0 ? estProfit / Number(metrics.offered) : 0;
-                var opApi = getOperationalPlanApi();
-                var hpd = opApi ? opApi.getHoursPerDay(settings) : Number(settings.hoursPerDay || 8);
-                var daysOv = typeof readOperationalDaysOverride === 'function' ? readOperationalDaysOverride(state) : null;
-                var hoursOv = typeof readOperationalHoursOverride === 'function' ? readOperationalHoursOverride(state) : null;
-                var normalizedOperationalPlan = opApi
-                  ? opApi.normalizeOperationalPlan(state.operational_plan || [], daysOv, hpd)
-                  : (state.operational_plan || []);
-                var opMetrics = typeof getOperationalMetricsForState === 'function' ? getOperationalMetricsForState(state) : null;
-                var signedEstimatedDays = opMetrics && opMetrics.estimated_days > 0
-                  ? opMetrics.estimated_days
-                  : metrics.workerDays;
-                return fetch('/.netlify/functions/upsert-tenant-project', {
-                  method: 'POST',
-                  credentials: 'include',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    quote_id: String(state.quoteId).trim(),
-                    project_name: state.projectName || document.getElementById('salesProjectName')?.value || '',
-                    client_name: state.clientName || document.getElementById('salesClientName')?.value || '',
-                    client_email: state.customerEmail || document.getElementById('salesCustomerEmail')?.value || '',
-                    status: 'signed',
-                    signed_at: state.soldAt,
-                    deposit_paid: false,
-                    estimated_days: signedEstimatedDays,
-                    labor_budget: Number(laborMetrics.laborCost) || 0,
-                    sale_price: metrics.offered,
-                    recommended_price: metrics.recommended,
-                    minimum_price: metrics.minimum,
-                    due_date: state.dueDate || '',
-                    notes: state.notes || state.messageToClient || '',
-                    hours_per_day: hpd,
-                    estimated_labor_cost: Number(laborMetrics.laborCost) || 0,
-                    estimated_material_cost: 0,
-                    estimated_profit: estProfit,
-                    estimated_profit_margin: estMargin,
-                    workers: state.workers,
-                    operational_plan: normalizedOperationalPlan,
-                    operational_estimated_days_override: daysOv != null ? daysOv : '',
-                    operational_estimated_hours_override: hoursOv != null ? hoursOv : ''
+            const opMetrics = typeof getOperationalMetricsForState === 'function' ? getOperationalMetricsForState(state) : null;
+            const signedEstimatedDays = opMetrics && opMetrics.estimated_days > 0
+              ? opMetrics.estimated_days
+              : metrics.workerDays;
+            const finishDate = cap && cap.projectFinishFromStartLocal
+              ? cap.projectFinishFromStartLocal(startDate, signedEstimatedDays)
+              : String(document.getElementById('salesTargetFinishDate')?.value || state.targetFinishDate || '').trim().slice(0, 10);
+
+            function proceedMarkSold(calendar) {
+              if (calendar && cap && cap.isStartBlocked(calendar, startDate)) {
+                window.alert(cap.blockedStartMessage(calendar));
+                return;
+              }
+              state.soldAt = new Date().toISOString();
+              state.startDate = startDate;
+              state.targetFinishDate = finishDate;
+              state.dueDate = finishDate;
+              state.estimateStatus = 'sold';
+              state.signedProjectName = state.projectName || document.getElementById('salesProjectName')?.value || 'Project';
+              state.signedClientName = state.clientName || document.getElementById('salesClientName')?.value || 'Client';
+              saveSalesState(state);
+              if (state.quoteId && String(state.quoteId).trim()) {
+                const settings = loadSettings();
+                const metrics = buildSalesUIMetrics(state, settings);
+                const laborMetrics = calculateStandaloneSalesMetrics(state, settings);
+                (function () {
+                  var internalCost = Number(laborMetrics.beforeProfit || 0) + Number(laborMetrics.reserve || 0);
+                  var estProfit = Number(metrics.offered || 0) - internalCost;
+                  var estMargin = Number(metrics.offered || 0) > 0 ? estProfit / Number(metrics.offered) : 0;
+                  var opApi = getOperationalPlanApi();
+                  var hpd = opApi ? opApi.getHoursPerDay(settings) : Number(settings.hoursPerDay || 8);
+                  var daysOv = typeof readOperationalDaysOverride === 'function' ? readOperationalDaysOverride(state) : null;
+                  var hoursOv = typeof readOperationalHoursOverride === 'function' ? readOperationalHoursOverride(state) : null;
+                  var normalizedOperationalPlan = opApi
+                    ? opApi.normalizeOperationalPlan(state.operational_plan || [], daysOv, hpd)
+                    : (state.operational_plan || []);
+                  return fetch('/.netlify/functions/upsert-tenant-project', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      quote_id: String(state.quoteId).trim(),
+                      project_name: state.projectName || document.getElementById('salesProjectName')?.value || '',
+                      client_name: state.clientName || document.getElementById('salesClientName')?.value || '',
+                      client_email: state.customerEmail || document.getElementById('salesCustomerEmail')?.value || '',
+                      status: 'signed',
+                      start_date: startDate,
+                      signed_at: startDate + 'T12:00:00.000Z',
+                      deposit_paid: false,
+                      estimated_days: signedEstimatedDays,
+                      labor_budget: Number(laborMetrics.laborCost) || 0,
+                      sale_price: metrics.offered,
+                      recommended_price: metrics.recommended,
+                      minimum_price: metrics.minimum,
+                      due_date: finishDate,
+                      notes: state.notes || state.messageToClient || '',
+                      hours_per_day: hpd,
+                      estimated_labor_cost: Number(laborMetrics.laborCost) || 0,
+                      estimated_material_cost: 0,
+                      estimated_profit: estProfit,
+                      estimated_profit_margin: estMargin,
+                      workers: state.workers,
+                      operational_plan: normalizedOperationalPlan,
+                      operational_estimated_days_override: daysOv != null ? daysOv : '',
+                      operational_estimated_hours_override: hoursOv != null ? hoursOv : ''
+                    })
                   })
-                })
-                  .then(function (res) {
-                    return res.json().then(function (data) {
-                      return { res: res, data: data };
-                    });
-                  })
-                  .then(function (out) {
-                    if (!out.res.ok || !out.data || out.data.ok !== true) {
-                      if (typeof console !== 'undefined' && console.error) {
-                        console.error('[MG Sales] upsert-tenant-project failed', out.data || out.res.status);
+                    .then(function (res) {
+                      return res.json().then(function (data) {
+                        return { res: res, data: data };
+                      });
+                    })
+                    .then(function (out) {
+                      if (!out.res.ok || !out.data || out.data.ok !== true) {
+                        if (typeof console !== 'undefined' && console.error) {
+                          console.error('[MG Sales] upsert-tenant-project failed', out.data || out.res.status);
+                        }
                       }
-                    }
-                  });
-              })().catch(function (err) {
-                if (typeof console !== 'undefined' && console.error) {
-                  console.error('[MG Sales] upsert-tenant-project network error', err);
-                }
-              });
+                    });
+                })().catch(function (err) {
+                  if (typeof console !== 'undefined' && console.error) {
+                    console.error('[MG Sales] upsert-tenant-project network error', err);
+                  }
+                });
+              }
+              if (signedStatus) {
+                signedStatus.style.display = 'block';
+                signedStatus.className = 'notice success sales-signed-status';
+                signedStatus.textContent = 'Project signed and ready for Supervisor tracking.';
+              }
+              const signedProject = document.getElementById('salesSignedProject');
+              const signedMeta = document.getElementById('salesSignedMeta');
+              const signedBadge = document.getElementById('salesSignedBadge');
+              if (signedProject) signedProject.textContent = state.signedProjectName;
+              if (signedMeta) signedMeta.textContent = 'Client: ' + state.signedClientName + ' | Start: ' + startDate + ' | Target finish: ' + finishDate;
+              if (signedBadge) {
+                signedBadge.textContent = 'Proyecto firmado';
+                signedBadge.className = 'badge green';
+              }
+              renderStandaloneSellerPanel();
             }
-            if (signedStatus) {
-              signedStatus.style.display = 'block';
-              signedStatus.className = 'notice success sales-signed-status';
-              signedStatus.textContent = 'Project signed and ready for Supervisor tracking.';
+
+            const cachedCalendar = window.__mgSalesCapacityCalendar;
+            if (cachedCalendar && cap && !cap.isStartBlocked(cachedCalendar, startDate)) {
+              proceedMarkSold(cachedCalendar);
+              return;
             }
-            const signedProject = document.getElementById('salesSignedProject');
-            const signedMeta = document.getElementById('salesSignedMeta');
-            const signedBadge = document.getElementById('salesSignedBadge');
-            if (signedProject) signedProject.textContent = state.signedProjectName;
-            if (signedMeta) signedMeta.textContent = 'Client: ' + state.signedClientName + ' | Signed: ' + new Date(state.soldAt).toLocaleString();
-            if (signedBadge) {
-              signedBadge.textContent = 'Proyecto firmado';
-              signedBadge.className = 'badge green';
+            if (cap && typeof cap.fetchCapacityCalendar === 'function') {
+              cap.fetchCapacityCalendar(signedEstimatedDays, startDate, state.tenantProjectId || '')
+                .then(function (calendar) {
+                  window.__mgSalesCapacityCalendar = calendar;
+                  proceedMarkSold(calendar);
+                })
+                .catch(function () {
+                  window.alert('Could not verify crew availability. Try again in a moment.');
+                });
+              return;
             }
-            renderStandaloneSellerPanel();
+            proceedMarkSold(null);
           }, true);
         }
       }
@@ -3466,6 +3516,47 @@ async function runSellerSend(event) {
       }
       return false;
     }
+
+    const cap = window.MarginGuardSalesCapacity;
+    const startInput = document.getElementById('salesStartDate');
+    const chosenStart = cap && cap.normDate
+      ? cap.normDate(startInput && startInput.value ? startInput.value : state.startDate || '')
+      : String(startInput && startInput.value ? startInput.value : state.startDate || '').trim().slice(0, 10);
+    if (chosenStart) {
+      const cached = window.__mgSalesCapacityCalendar;
+      if (cached && cap && cap.isStartBlocked(cached, chosenStart)) {
+        if (sendStatus) {
+          sendStatus.style.display = 'block';
+          sendStatus.className = 'notice error';
+          sendStatus.textContent = cap.blockedStartMessage(cached);
+        }
+        return false;
+      }
+      if (cap && typeof cap.fetchCapacityCalendar === 'function') {
+        try {
+          const opMetrics = typeof getOperationalMetricsForState === 'function' ? getOperationalMetricsForState(state) : null;
+          const estDays = opMetrics && opMetrics.estimated_days > 0 ? opMetrics.estimated_days : metrics.workerDays;
+          const calendar = await cap.fetchCapacityCalendar(estDays, chosenStart, state.tenantProjectId || '');
+          window.__mgSalesCapacityCalendar = calendar;
+          if (cap.isStartBlocked(calendar, chosenStart)) {
+            if (sendStatus) {
+              sendStatus.style.display = 'block';
+              sendStatus.className = 'notice error';
+              sendStatus.textContent = cap.blockedStartMessage(calendar);
+            }
+            return false;
+          }
+        } catch (_capErr) {
+          if (sendStatus) {
+            sendStatus.style.display = 'block';
+            sendStatus.className = 'notice error';
+            sendStatus.textContent = 'Could not verify crew availability for the chosen start date.';
+          }
+          return false;
+        }
+      }
+    }
+
     let payload = JSON.parse(modal.dataset.payload || '{}');
     const pdf = JSON.parse(modal.dataset.pdf || '{}');
     const branding = await getBranding(true);
@@ -3881,7 +3972,8 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           const st = loadSalesState();
           const _today = new Date();
           const _todayIso = _today.toISOString().slice(0, 10);
-          const _exp = new Date(_today.getTime() + 7 * 24 * 60 * 60 * 1000);
+          const _expDays = (window.MarginGuardSalesCapacity && window.MarginGuardSalesCapacity.QUOTE_EXPIRATION_DAYS) || 15;
+          const _exp = new Date(_today.getTime() + _expDays * 24 * 60 * 60 * 1000);
           const _expIso = _exp.toISOString().slice(0, 10);
 
           const fresh = {
@@ -3896,6 +3988,8 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
             issueDate: _todayIso,
             expirationDate: _expIso,
             dueDate: '',
+            startDate: '',
+            targetFinishDate: '',
             estimateNumber: '',
             quoteId: '',
             publicToken: '',
@@ -3929,6 +4023,8 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
             salesEstimateNumber: '',
             salesIssueDate: _todayIso,
             salesExpirationDate: _expIso,
+            salesStartDate: '',
+            salesTargetFinishDate: '',
             salesDueDate: '',
             salesProjectName: '',
             salesClientName: '',

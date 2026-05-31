@@ -140,7 +140,10 @@ exports.handler = async (event) => {
     });
 
     const nowIso = new Date().toISOString();
-    const signedAt = str(body.signed_at, 64) || nowIso;
+    const startDate = normDate(body.start_date);
+    const signedAt = startDate
+      ? `${startDate}T12:00:00.000Z`
+      : str(body.signed_at, 64) || nowIso;
     const incomingPlan = economics.quotedLaborPlan;
 
     const opOverrideRaw = pickFinite(body, [

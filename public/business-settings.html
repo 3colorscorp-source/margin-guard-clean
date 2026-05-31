@@ -154,6 +154,22 @@
                 </select>
               </div>
               <div class="field"><label>Horas por dia laboral</label><input id="hoursPerDay" type="number" step="0.25" placeholder="8" /></div>
+              <div class="field">
+                <label>Workdays (Mon–Fri)</label>
+                <select id="workdaysEnabled">
+                  <option value="true">Monday–Friday only</option>
+                  <option value="false">All calendar days</option>
+                </select>
+              </div>
+              <div class="field"><label>Crew capacity</label><input id="crewCapacity" type="number" step="1" min="1" placeholder="1" /></div>
+              <div class="field"><label>Schedule buffer days</label><input id="scheduleBufferDays" type="number" step="1" min="0" placeholder="2" /></div>
+              <div class="field">
+                <label>Allow seller schedule override</label>
+                <select id="allowSellerScheduleOverride">
+                  <option value="false">No — capacity calendar enforced</option>
+                  <option value="true">Yes — owner override (advanced)</option>
+                </select>
+              </div>
               <div class="field"><label>Gastos operativos mensuales ($)</label><input id="overheadMonthly" type="number" step="0.01" placeholder="0" /></div>
               <div class="field"><label>Horas estandar por trabajador / mes</label><input id="stdHours" type="number" step="1" placeholder="160" /></div>
               <div class="field"><label>Workers Comp (%)</label><input id="wcPct" type="number" step="0.01" placeholder="10" /></div>
@@ -369,7 +385,11 @@
     salesCommissionPct: 10,
     supervisorBonusPct: 1,
     reservePct: 5,
-    currency: 'USD'
+    currency: 'USD',
+    workdaysEnabled: true,
+    crewCapacity: 1,
+    scheduleBufferDays: 2,
+    allowSellerScheduleOverride: false
   };
 
   const DEFAULT_BRANDING = {
@@ -676,7 +696,11 @@
       salesCommissionPct: Number(document.getElementById('salesCommissionPct')?.value || 0),
       supervisorBonusPct: Number(document.getElementById('supervisorBonusPct')?.value || 0),
       reservePct: Number(document.getElementById('reservePct')?.value || DEFAULT_SETTINGS.reservePct),
-      currency: 'USD'
+      currency: 'USD',
+      workdaysEnabled: safeTrim(document.getElementById('workdaysEnabled')?.value || 'true') !== 'false',
+      crewCapacity: Math.max(1, Math.floor(Number(document.getElementById('crewCapacity')?.value || 1))),
+      scheduleBufferDays: Math.max(0, Math.floor(Number(document.getElementById('scheduleBufferDays')?.value || 2))),
+      allowSellerScheduleOverride: safeTrim(document.getElementById('allowSellerScheduleOverride')?.value || 'false') === 'true'
     };
   }
 
@@ -724,6 +748,10 @@
     setInputValue('baseHelper', settings.baseHelper);
     setInputValue('pricingMode', settings.pricingMode);
     setInputValue('hoursPerDay', settings.hoursPerDay);
+    setInputValue('workdaysEnabled', settings.workdaysEnabled === false ? 'false' : 'true');
+    setInputValue('crewCapacity', settings.crewCapacity != null ? settings.crewCapacity : DEFAULT_SETTINGS.crewCapacity);
+    setInputValue('scheduleBufferDays', settings.scheduleBufferDays != null ? settings.scheduleBufferDays : DEFAULT_SETTINGS.scheduleBufferDays);
+    setInputValue('allowSellerScheduleOverride', settings.allowSellerScheduleOverride ? 'true' : 'false');
     setInputValue('overheadMonthly', settings.overheadMonthly);
     setInputValue('stdHours', settings.stdHours);
     setInputValue('wcPct', settings.wcPct);
@@ -953,7 +981,7 @@
     const watchedIds = [
       'bizNameOwner', 'businessEmail', 'businessPhone', 'businessAddress', 'publicLogoUrl',
       'publicAccentColor', 'serviceLine', 'marketLine', 'signatureLine', 'baseInstaller',
-      'baseHelper', 'pricingMode', 'hoursPerDay', 'overheadMonthly', 'stdHours', 'wcPct',
+      'baseHelper', 'pricingMode', 'hoursPerDay', 'workdaysEnabled', 'crewCapacity', 'scheduleBufferDays', 'allowSellerScheduleOverride', 'overheadMonthly', 'stdHours', 'wcPct',
       'ficaPct', 'futaPct', 'casuiPct', 'profitPct', 'minimumMarginPct', 'salesCommissionPct', 'supervisorBonusPct',
       'reservePct', 'depositPaymentLink', 'tenantPaymentInstructions', 'tenantPaymentLink'
     ];

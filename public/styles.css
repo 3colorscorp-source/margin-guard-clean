@@ -2594,7 +2594,17 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   color:var(--muted);
 }
 .sales-quote-dates-row{
-  grid-template-columns:repeat(3, minmax(0, 1fr));
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+}
+.sales-quote-dates-row input[readonly]{
+  opacity:.88;
+  cursor:not-allowed;
+  background:rgba(255,255,255,.04);
+}
+@media (max-width: 980px){
+  .sales-quote-dates-row{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
 }
 @media (max-width: 740px){
   .sales-quote-dates-row{

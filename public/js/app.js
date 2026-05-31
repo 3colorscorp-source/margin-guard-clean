@@ -57,7 +57,12 @@
     minimumMarginPct: 15,
     reservePct: 5,
     salesCommissionPct: 10,
-    supervisorBonusPct: 1
+    supervisorBonusPct: 1,
+    workdaysEnabled: true,
+    crewCapacity: 1,
+    scheduleBufferDays: 2,
+    allowSellerScheduleOverride: false,
+    salesQuoteExpirationDays: 15
   };
 
   const DEFAULT_OWNER = {
@@ -100,6 +105,8 @@
     customerPhone: "",
     location: "",
     dueDate: "",
+    startDate: "",
+    targetFinishDate: "",
     offeredPrice: 0,
     messageToClient: "",
     notes: "",
@@ -630,6 +637,13 @@ Thank you.`
   function parseNumber(value) {
     return finiteNumber(value, 0);
   }
+  const SALES_QUOTE_EXPIRATION_DAYS = 15;
+
+  function salesQuoteExpirationDays(settings) {
+    const n = finiteNumber(settings?.salesQuoteExpirationDays, SALES_QUOTE_EXPIRATION_DAYS);
+    return n > 0 ? Math.floor(n) : SALES_QUOTE_EXPIRATION_DAYS;
+  }
+
   function todayInputValue() {
     const d = new Date();
     const y = d.getFullYear();
@@ -876,7 +890,9 @@ Thank you.`
         : nonEmptyString(saved.estimateNumber) || buildEstimateNumber(),
       estimateStatus: nonEmptyString(saved.estimateStatus) || "draft",
       issueDate,
-      expirationDate: normalizeDateInput(saved.expirationDate) || addDaysToInputValue(issueDate, 7),
+      expirationDate:
+        normalizeDateInput(saved.expirationDate) ||
+        addDaysToInputValue(issueDate, salesQuoteExpirationDays(loadSettings())),
       projectName: hasProjectName ? String(saved.projectName ?? "") : (owner.projectName || ""),
       clientName: hasClientName ? String(saved.clientName ?? "") : (owner.clientName || ""),
       customerEmail: String(saved.customerEmail ?? ""),
@@ -894,7 +910,7 @@ Thank you.`
   function resetSalesDraftToNewQuote() {
     const fresh = structuredClone(DEFAULT_SALES);
     fresh.issueDate = todayInputValue();
-    fresh.expirationDate = addDaysToInputValue(fresh.issueDate, 7);
+    fresh.expirationDate = addDaysToInputValue(fresh.issueDate, salesQuoteExpirationDays(loadSettings()));
     fresh.estimateStatus = "draft";
     fresh.price = "";
     fresh.notes = "";
@@ -6695,7 +6711,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   const projectIndex = new Map(signedProjects.map((project) => [project.projectId, project]));
 
   if (!state.issueDate) state.issueDate = todayInputValue();
-  if (!state.expirationDate) state.expirationDate = addDaysToInputValue(state.issueDate, 7);
+  if (!state.expirationDate) {
+    state.expirationDate = addDaysToInputValue(state.issueDate, salesQuoteExpirationDays(settings));
+  }
   if (!state.estimateStatus) state.estimateStatus = "draft";
 
   const estimateStatusMap = {
@@ -6725,6 +6743,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   const locationInput = document.getElementById("salesLocation");
   const issueDateInput = document.getElementById("salesIssueDate");
   const expirationDateInput = document.getElementById("salesExpirationDate");
+  const startDateInput = document.getElementById("salesStartDate");
+  const targetFinishInput = document.getElementById("salesTargetFinishDate");
   const dueDateInput = document.getElementById("salesDueDate");
   const estimateNumberInput = document.getElementById("salesEstimateNumber");
   const priceInput = document.getElementById("salesPrice");
@@ -6755,9 +6775,79 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     });
   };
 
-  bindNativeDatePicker(issueDateInput);
-  bindNativeDatePicker(expirationDateInput);
-  bindNativeDatePicker(dueDateInput);
+  bindNativeDatePicker(startDateInput);
+
+  const autoIssueDate = todayInputValue();
+  const autoExpirationDate = addDaysToInputValue(autoIssueDate, salesQuoteExpirationDays(settings));
+  state.issueDate = autoIssueDate;
+  state.expirationDate = autoExpirationDate;
+  if (issueDateInput) {
+    issueDateInput.value = autoIssueDate;
+    issueDateInput.readOnly = true;
+  }
+  if (expirationDateInput) {
+    expirationDateInput.value = autoExpirationDate;
+    expirationDateInput.readOnly = true;
+  }
+
+  const estimatedProjectDays =
+    finiteNumber(state.operational_estimated_days_override, NaN) > 0
+      ? finiteNumber(state.operational_estimated_days_override, 0)
+      : metrics.workerDays > 0
+        ? metrics.workerDays
+        : 0;
+
+  const syncSalesTargetFinish = (startYmd) => {
+    const cap = window.MarginGuardSalesCapacity;
+    const start = normalizeDateInput(startYmd || startDateInput?.value || state.startDate || "");
+    if (!start || !cap || estimatedProjectDays <= 0) {
+      if (targetFinishInput) targetFinishInput.value = "";
+      if (dueDateInput) dueDateInput.value = "";
+      state.targetFinishDate = "";
+      state.dueDate = "";
+      return "";
+    }
+    const finish = cap.projectFinishFromStartLocal(start, estimatedProjectDays);
+    if (targetFinishInput) targetFinishInput.value = finish;
+    if (dueDateInput) dueDateInput.value = finish;
+    state.startDate = start;
+    state.targetFinishDate = finish;
+    state.dueDate = finish;
+    return finish;
+  };
+
+  let salesCapacityRefreshTimer = null;
+  const refreshSalesCapacityCalendar = (desiredStart) => {
+    const cap = window.MarginGuardSalesCapacity;
+    if (!cap || typeof cap.fetchCapacityCalendar !== "function") return;
+    const days = estimatedProjectDays;
+    const desired = normalizeDateInput(desiredStart || startDateInput?.value || state.startDate || "");
+    const projectId = String(state.tenantProjectId || state.projectId || "").trim();
+    clearTimeout(salesCapacityRefreshTimer);
+    salesCapacityRefreshTimer = setTimeout(() => {
+      cap
+        .fetchCapacityCalendar(days, desired, projectId)
+        .then((data) => {
+          cap.applyCapacityGuidance(data);
+          window.__mgSalesCapacityCalendar = data;
+          if (!desired && data.next_available_start_date && startDateInput && !startDateInput.value) {
+            startDateInput.value = data.next_available_start_date;
+            syncSalesTargetFinish(data.next_available_start_date);
+            saveSales(state);
+          } else if (desired) {
+            syncSalesTargetFinish(desired);
+          }
+        })
+        .catch(() => {
+          const guidance = document.getElementById("salesCapacityGuidance");
+          if (guidance) {
+            guidance.textContent = "Crew availability will load when you add labor days.";
+          }
+        });
+    }, 200);
+  };
+
+  refreshSalesCapacityCalendar(state.startDate || startDateInput?.value || "");
 
   const ccWrap = document.getElementById("salesCcWrap");
   const ccToggle = document.getElementById("btnSalesToggleCc");
@@ -6785,7 +6875,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   if (additionalRecipientsInput) additionalRecipientsInput.value = state.additional_recipients || "";
   if (customerPhoneInput) customerPhoneInput.value = state.customerPhone || "";
   if (locationInput) locationInput.value = state.location || "";
-  if (dueDateInput) dueDateInput.value = state.dueDate || "";
+  if (startDateInput) {
+    startDateInput.value = normalizeDateInput(state.startDate || state.dueDate || "");
+  }
+  syncSalesTargetFinish(startDateInput?.value || state.startDate || "");
+  if (targetFinishInput) targetFinishInput.readOnly = true;
   const priceDisplay = document.getElementById("salesPriceDisplay");
   if (priceDisplay) {
     priceDisplay.textContent = isReady ? formatMoney(offered) : "—";
@@ -6911,14 +7005,15 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
   function persistSalesDraft(nextStatus) {
     state.estimateNumber = String(estimateNumberInput?.value ?? "").trim();
-    state.issueDate = normalizeDateInput(issueDateInput?.value || todayInputValue());
-    state.expirationDate = normalizeDateInput(expirationDateInput?.value || addDaysToInputValue(state.issueDate, 7));
+    state.issueDate = autoIssueDate;
+    state.expirationDate = autoExpirationDate;
     state.projectName = nonEmptyString(projectNameInput?.value);
     state.clientName = nonEmptyString(clientNameInput?.value);
     state.customerEmail = nonEmptyString(customerEmailInput?.value);
     state.customerPhone = nonEmptyString(customerPhoneInput?.value);
     state.location = nonEmptyString(locationInput?.value);
-    state.dueDate = normalizeDateInput(dueDateInput?.value || state.expirationDate);
+    state.startDate = normalizeDateInput(startDateInput?.value || state.startDate || "");
+    syncSalesTargetFinish(state.startDate);
     state.price = isReady ? String(round2(metrics.offered)) : "";
     state.pricingStage = metrics.stage;
     state.messageToClient = nonEmptyString(messageToClientInput?.value);
@@ -6927,11 +7022,20 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     saveSales(state);
   }
 
-  [projectNameInput, clientNameInput, customerEmailInput, additionalRecipientsInput, customerPhoneInput, locationInput, issueDateInput, expirationDateInput, dueDateInput, estimateNumberInput, messageToClientInput, notesInput].forEach((input) => {
+  [projectNameInput, clientNameInput, customerEmailInput, additionalRecipientsInput, customerPhoneInput, locationInput, startDateInput, estimateNumberInput, messageToClientInput, notesInput].forEach((input) => {
     if (!input) return;
     input.oninput = () => persistSalesDraft();
-    input.onchange = () => persistSalesDraft();
+    input.onchange = () => {
+      persistSalesDraft();
+      if (input === startDateInput) refreshSalesCapacityCalendar(startDateInput.value);
+    };
   });
+  if (startDateInput && startDateInput.dataset.capacityBound !== "true") {
+    startDateInput.dataset.capacityBound = "true";
+    startDateInput.addEventListener("change", () => {
+      refreshSalesCapacityCalendar(startDateInput.value);
+    });
+  }
 
   if (stageRange) {
     stageRange.oninput = () => {
@@ -7079,8 +7183,15 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           window.alert("Price too low");
           return;
         }
-        if (!state.projectName || !state.clientName || !state.dueDate || currentMetrics.workerDays <= 0) {
-          window.alert("Complete project, customer, due date, and labor details before signing the estimate.");
+        if (!state.projectName || !state.clientName || !(state.startDate || state.dueDate) || currentMetrics.workerDays <= 0) {
+          window.alert("Complete project, customer, start date, and labor details before signing the estimate.");
+          return;
+        }
+        const cap = window.MarginGuardSalesCapacity;
+        const startDate = normalizeDateInput(state.startDate || state.dueDate || "");
+        const cached = window.__mgSalesCapacityCalendar;
+        if (cap && cached && cap.isStartBlocked(cached, startDate)) {
+          window.alert(cap.blockedStartMessage(cached));
           return;
         }
         const project = buildSignedProjectFromSales(state, settings, currentMetrics);
