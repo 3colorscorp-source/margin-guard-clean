@@ -48,6 +48,11 @@ function normalizeWorker(row, hoursPerDay) {
     const days = num(row.estimated_days ?? row.days ?? row.crew_days, NaN);
     if (Number.isFinite(days) && days > 0) {
       estimated_hours = round2(days * hpd);
+    } else {
+      const units = num(row.planned_units, NaN);
+      if (Number.isFinite(units) && units > 0) {
+        estimated_hours = round2(units * hpd);
+      }
     }
   }
   estimated_hours = Math.max(0, round2(estimated_hours));
@@ -66,7 +71,11 @@ function normalizeDay(row, fallbackDayNumber, hoursPerDay) {
     Math.floor(num(row.day_number, fallbackDayNumber))
   );
   const phase = str(row.phase, 240) || `Day ${day_number}`;
-  const workersIn = Array.isArray(row.workers) ? row.workers : [];
+  const workersIn = Array.isArray(row.workers)
+    ? row.workers
+    : Array.isArray(row.crew)
+      ? row.crew
+      : [];
   const workers = workersIn
     .map((w) => normalizeWorker(w, hoursPerDay))
     .filter(Boolean);
@@ -127,7 +136,7 @@ function parseOperationalPlanJsonb(raw) {
 function crewSummaryFromOperationalPlan(plan) {
   const roles = new Set();
   for (const day of Array.isArray(plan) ? plan : []) {
-    for (const w of day?.workers || []) {
+    for (const w of day?.workers || day?.crew || []) {
       const r = str(w?.role || w?.worker_type, 120);
       if (r) roles.add(r);
     }
@@ -156,7 +165,11 @@ function computeOperationalPlanMetrics(
   const roleKeys = new Set();
 
   for (const day of days) {
-    const workers = Array.isArray(day?.workers) ? day.workers : [];
+    const workers = Array.isArray(day?.workers)
+      ? day.workers
+      : Array.isArray(day?.crew)
+        ? day.crew
+        : [];
     for (const w of workers) {
       estimated_hours += num(w?.estimated_hours, 0);
       const key = `${normWorkerType(w?.worker_type)}::${normRoleLabel(w?.role, w?.worker_type)}`;
@@ -191,16 +204,28 @@ function computeOperationalPlanMetrics(
  * Supervisor-safe view: schedule only (no costs).
  */
 function operationalPlanForSupervisorVisibility(plan) {
+  const daysRaw = Array.isArray(plan) ? plan : [];
   const normalized = normalizeOperationalPlan(plan);
-  return normalized.map((day) => ({
-    day_number: day.day_number,
-    phase: day.phase,
-    workers: (day.workers || []).map((w) => ({
-      role: w.role,
-      worker_type: w.worker_type,
-      estimated_hours: w.estimated_hours,
-    })),
-  }));
+  return normalized.map((day, idx) => {
+    const raw =
+      daysRaw.find((d) => Math.floor(num(d?.day_number, 0)) === day.day_number) ||
+      daysRaw[idx] ||
+      null;
+    const tasks = Array.isArray(raw?.tasks)
+      ? raw.tasks.map((t) => str(t, 500)).filter(Boolean)
+      : [];
+    const out = {
+      day_number: day.day_number,
+      phase: day.phase,
+      workers: (day.workers || []).map((w) => ({
+        role: w.role,
+        worker_type: w.worker_type,
+        estimated_hours: w.estimated_hours,
+      })),
+    };
+    if (tasks.length) out.tasks = tasks;
+    return out;
+  });
 }
 
 function extractOperationalPlanFromUnknown(value) {

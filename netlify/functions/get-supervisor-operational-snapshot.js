@@ -12,6 +12,10 @@ const {
   migrationBaselineForSupervisor,
 } = require("./_lib/migration-baseline");
 const {
+  loadDayProgressForProject,
+  countCompletedDays,
+} = require("./_lib/project-day-progress");
+const {
   operationalPlanForSupervisorVisibility,
   parseOperationalPlanJsonb,
   resolveOperationalPlanForQuote,
@@ -170,6 +174,30 @@ function buildScheduleFields(project, opRow) {
   };
 }
 
+/** Blend labor reports with marked-complete plan days (supervisor-safe). */
+function applyDayProgressToMetrics(metrics, dayProgressRows) {
+  const out = { ...(metrics && typeof metrics === "object" ? metrics : {}) };
+  const completedCount = countCompletedDays(dayProgressRows);
+  if (completedCount <= 0) return out;
+  const reportDays = num(out.actual_days, 0);
+  const effectiveDays = Math.max(reportDays, completedCount);
+  out.actual_days = round2(effectiveDays);
+  const est = num(out.estimated_days, 0);
+  if (est > 0) {
+    out.days_remaining = round2(Math.max(0, est - effectiveDays));
+    out.completion_pace_pct = Math.round((effectiveDays / est) * 100);
+    const dev = effectiveDays - est;
+    out.labor_deviation_days = round2(dev);
+    if (Math.abs(dev) < 0.01) out.labor_deviation_label = "On budget";
+    else if (dev > 0) {
+      out.labor_deviation_label = `${dev.toFixed(2)} day(s) over budget`;
+    } else {
+      out.labor_deviation_label = `${Math.abs(dev).toFixed(2)} day(s) under budget`;
+    }
+  }
+  return out;
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "GET") {
@@ -203,7 +231,7 @@ exports.handler = async (event) => {
       return json(403, { error: "Project not found for this tenant" });
     }
 
-    const [reportRows, expenseRows, bonusPct, opRow, migrationBaseline] =
+    const [reportRows, expenseRows, bonusPct, opRow, migrationBaseline, dayProgressRows] =
       await Promise.all([
         supabaseRequest(
           `tenant_project_reports?tenant_id=eq.${tid}&project_id=eq.${pid}&select=hours,days,created_at`
@@ -214,6 +242,7 @@ exports.handler = async (event) => {
         loadSupervisorBonusPctForTenant(tenant.id),
         loadOperationalSnapshotRow(tenant.id, project.id),
         loadMigrationBaseline(tenant.id, project.id),
+        loadDayProgressForProject(tenant.id, project.id),
       ]);
 
     let operational_snapshot = computeProjectOperationalSnapshot({
@@ -275,6 +304,10 @@ exports.handler = async (event) => {
         metricsRow,
         project
       );
+      operational_snapshot = applyDayProgressToMetrics(
+        operational_snapshot,
+        dayProgressRows
+      );
     }
 
     let schedule;
@@ -312,6 +345,7 @@ exports.handler = async (event) => {
       operational_snapshot,
       operational_plan: operational_plan_out,
       schedule,
+      day_progress: Array.isArray(dayProgressRows) ? dayProgressRows : [],
       has_execution_plan: has_migrated_baseline ? false : has_execution_plan,
       migration_baseline,
       has_migrated_baseline,

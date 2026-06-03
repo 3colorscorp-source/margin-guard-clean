@@ -102,21 +102,46 @@ exports.handler = async (event) => {
     }
 
     const now = new Date().toISOString();
-    const inserted = await supabaseRequest("tenant_project_reports", {
-      method: "POST",
-      headers: { Prefer: "return=representation" },
-      body: {
-        tenant_id: tenant.id,
-        project_id: projectId,
-        entry_date: entryDate,
-        hours,
-        days,
-        note: str(body.note, 8000),
-        created_by: supervisorUserId,
-        created_at: now,
-        updated_at: now,
-      },
-    });
+    const baseRow = {
+      tenant_id: tenant.id,
+      project_id: projectId,
+      entry_date: entryDate,
+      hours,
+      days,
+      note: str(body.note, 8000),
+      created_by: supervisorUserId,
+      created_at: now,
+      updated_at: now,
+    };
+    const dayNumberRaw = Number(body.day_number);
+    const phase = str(body.phase, 500);
+    if (Number.isFinite(dayNumberRaw) && dayNumberRaw >= 1) {
+      baseRow.day_number = Math.floor(dayNumberRaw);
+      if (phase) baseRow.phase = phase;
+    }
+
+    let inserted;
+    try {
+      inserted = await supabaseRequest("tenant_project_reports", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: baseRow,
+      });
+    } catch (insertErr) {
+      const msg = String(insertErr?.message || insertErr || "");
+      if (/day_number|phase|column/i.test(msg)) {
+        const fallback = { ...baseRow };
+        delete fallback.day_number;
+        delete fallback.phase;
+        inserted = await supabaseRequest("tenant_project_reports", {
+          method: "POST",
+          headers: { Prefer: "return=representation" },
+          body: fallback,
+        });
+      } else {
+        throw insertErr;
+      }
+    }
 
     const row = Array.isArray(inserted) ? inserted[0] : inserted;
     const report = mapRow(row);

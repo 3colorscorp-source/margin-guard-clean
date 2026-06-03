@@ -2949,11 +2949,105 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   flex-direction:column;
   gap:10px;
 }
+.sup-exec-calendar-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));
+  gap:12px;
+  width:100%;
+}
 .sup-exec-day-card{
   padding:12px 14px;
   border-radius:14px;
   border:1px solid rgba(255,255,255,.08);
   background:rgba(255,255,255,.03);
+  text-align:left;
+  width:100%;
+  cursor:pointer;
+  transition:transform .12s ease, border-color .12s ease, background .12s ease;
+}
+button.sup-exec-day-card{
+  font:inherit;
+  color:inherit;
+}
+.sup-exec-day-card:hover{
+  transform:translateY(-1px);
+  border-color:rgba(15,138,95,.35);
+  background:rgba(15,138,95,.06);
+}
+.sup-exec-day-card--completed{
+  border-color:rgba(15,138,95,.35);
+}
+.sup-exec-day-card--today{
+  border-color:rgba(245,158,11,.45);
+  box-shadow:0 0 0 1px rgba(245,158,11,.15);
+}
+.sup-exec-day-card--behind{
+  border-color:rgba(220,38,38,.35);
+}
+.sup-exec-day-card__head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+.sup-exec-day-card__status{
+  font-size:10px;
+  letter-spacing:.04em;
+}
+.sup-exec-day-card__date{
+  margin:4px 0 0;
+  color:var(--muted);
+}
+.sup-exec-day-card__crew-inline{
+  margin:0;
+  font-size:14px;
+  line-height:1.45;
+}
+.sup-exec-day-card__progress{
+  margin-top:10px;
+  height:4px;
+  border-radius:999px;
+  background:rgba(255,255,255,.08);
+  overflow:hidden;
+}
+.sup-exec-day-card__progress > span{
+  display:block;
+  height:100%;
+  border-radius:999px;
+  background:linear-gradient(90deg, #0f8a5f, #12a06e);
+}
+.sup-day-detail__card{
+  max-width:560px;
+}
+.sup-day-detail__meta{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:10px;
+}
+.sup-day-detail__phase{
+  margin:0 0 12px;
+  font-size:1.05rem;
+  font-weight:700;
+}
+.sup-day-detail__label{
+  margin:0 0 6px;
+  font-size:.72rem;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  color:var(--muted);
+}
+.sup-day-detail__block{
+  margin-bottom:12px;
+}
+.sup-day-detail__tasks{
+  margin:0;
+  padding-left:18px;
+}
+.sup-day-detail__actions{
+  flex-wrap:wrap;
+  justify-content:flex-start;
+  gap:8px;
 }
 .sup-exec-day-card__day{
   font-size:11px;

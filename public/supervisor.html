@@ -223,10 +223,10 @@
               <div class="section-action-row">
                 <div class="section-action-row__main">
                   <h3 class="sup-section-title">Execution plan</h3>
-                  <p class="small sup-section-desc">Daily phases and crew for this job.</p>
+                  <p class="small sup-section-desc">Field calendar — tap a day for details and actions.</p>
                 </div>
               </div>
-              <div id="supLaborPlanBody" class="sup-exec-plan-list"></div>
+              <div id="supLaborPlanBody" class="sup-exec-plan-list sup-exec-calendar-host"></div>
             </section>
           </div>
         </div>
@@ -287,6 +287,38 @@
     </div>
   </div>
 
+
+  <div id="supDayDetailModal" class="modal sup-field-modal" aria-hidden="true" role="dialog" aria-labelledby="supDayDetailTitle">
+    <div class="modal-card sup-field-modal__card sup-day-detail__card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="supDayDetailTitle">Day detail</div>
+          <div class="modal-subtitle" id="supDayDetailSubtitle">—</div>
+        </div>
+        <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupDayDetail" aria-label="Cerrar">Cerrar</button>
+      </div>
+      <div class="modal-body">
+        <div class="sup-day-detail__meta">
+          <span class="badge" id="supDayDetailStatus">Pending</span>
+          <span class="small" id="supDayDetailDate">—</span>
+        </div>
+        <p class="sup-day-detail__phase" id="supDayDetailPhase">—</p>
+        <div class="sup-day-detail__block">
+          <h4 class="sup-day-detail__label">Expected crew</h4>
+          <ul id="supDayDetailCrew" class="sup-exec-day-card__crew"></ul>
+        </div>
+        <div class="sup-day-detail__block" id="supDayDetailTasksWrap" hidden>
+          <h4 class="sup-day-detail__label">Tasks</h4>
+          <ul id="supDayDetailTasks" class="sup-day-detail__tasks"></ul>
+        </div>
+      </div>
+      <div class="modal-footer sup-day-detail__actions">
+        <button type="button" class="btn primary" id="btnSupMarkDayCompleted">Mark completed</button>
+        <button type="button" class="btn" id="btnSupDayReportLabor">Report labor</button>
+        <button type="button" class="btn" id="btnSupDayReportExpense">Report unexpected expense</button>
+      </div>
+    </div>
+  </div>
 
   <div id="supLaborReportModal" class="modal sup-field-modal" aria-hidden="true" role="dialog" aria-labelledby="supLaborReportModalTitle">
     <div class="modal-card sup-field-modal__card">
