@@ -3452,19 +3452,286 @@ Thank you.`
 
   function mapTenantProjectExpenseRowToExtra(row) {
     if (!row) return null;
-    const d = row.expense_date == null ? "" : String(row.expense_date).slice(0, 10);
-    const raw = row.note == null ? "" : String(row.note);
-    const nl = raw.indexOf("\n");
-    const item = nl >= 0 ? raw.slice(0, nl).trim() : raw.trim();
-    const note = nl >= 0 ? raw.slice(nl + 1).trim() : "";
+    const parsed = parseSupervisorExpenseRow(row);
+    if (!parsed) return null;
     return {
-      expenseId: row.id,
-      serverProjectId: row.project_id == null ? "" : supervisorProjectKey(row.project_id),
-      date: d,
-      item,
-      amount: Number(row.amount) || 0,
-      note,
+      expenseId: parsed.id,
+      serverProjectId: parsed.project_id == null ? "" : supervisorProjectKey(parsed.project_id),
+      date: parsed.expense_date,
+      item: parsed.concept,
+      amount: parsed.amount,
+      note: parsed.note,
     };
+  }
+
+  function parseSupervisorExpenseRow(row) {
+    if (!row || typeof row !== "object") return null;
+    const rawNote = row.note == null ? "" : String(row.note);
+    const nl = rawNote.indexOf("\n");
+    const concept = (nl >= 0 ? rawNote.slice(0, nl) : rawNote).trim();
+    const note = nl >= 0 ? rawNote.slice(nl + 1).trim() : "";
+    const expenseDate = normalizeDateInput(row.expense_date || row.date || "");
+    const createdAt = row.created_at ? String(row.created_at) : "";
+    const expenseMs = expenseDate ? new Date(expenseDate).getTime() : 0;
+    const createdMs = createdAt ? new Date(createdAt).getTime() : 0;
+    const dayNumRaw = row.day_number;
+    const dayNumber =
+      dayNumRaw == null || dayNumRaw === ""
+        ? null
+        : Math.max(1, Math.floor(finiteNumber(dayNumRaw, 0))) || null;
+    return {
+      id: row.id,
+      project_id: row.project_id,
+      expense_date: expenseDate,
+      concept: concept || "Expense",
+      amount: finiteNumber(row.amount, 0),
+      note,
+      day_number: dayNumber,
+      created_at: createdAt || null,
+      sortMs: Math.max(
+        Number.isFinite(expenseMs) ? expenseMs : 0,
+        Number.isFinite(createdMs) ? createdMs : 0
+      ),
+    };
+  }
+
+  function sortSupervisorExpensesNewestFirst(rows) {
+    return (Array.isArray(rows) ? rows : [])
+      .map(parseSupervisorExpenseRow)
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (b.sortMs !== a.sortMs) return b.sortMs - a.sortMs;
+        return String(b.id || "").localeCompare(String(a.id || ""));
+      });
+  }
+
+  function computeSupervisorExpenseSummary(rows) {
+    const list = sortSupervisorExpensesNewestFirst(rows);
+    const count = list.length;
+    const total = list.reduce((sum, row) => sum + finiteNumber(row.amount, 0), 0);
+    const average = count > 0 ? total / count : 0;
+    const latest = list[0] || null;
+    return {
+      rows: list,
+      count,
+      total,
+      average,
+      latestConcept: latest ? latest.concept : "—",
+      latestDate: latest?.expense_date
+        ? formatDateUS(latest.expense_date) || latest.expense_date
+        : "—",
+    };
+  }
+
+  async function loadSupervisorProjectExpensesForSummary(projectId) {
+    const k = supervisorProjectKey(projectId);
+    if (!k) return [];
+    try {
+      const data = await fetchProjectExpenses(k);
+      if (data && data.ok !== false && Array.isArray(data.expenses)) {
+        supervisorProjectExpensesCache[k] = { ok: true, expenses: data.expenses };
+        return data.expenses;
+      }
+    } catch (_e) {
+      /* fall through to cache */
+    }
+    const cached = supervisorProjectExpensesCache[k];
+    if (cached?.ok === true && Array.isArray(cached.expenses)) {
+      return cached.expenses;
+    }
+    return [];
+  }
+
+  function renderSupExpenseSummaryModalContent(summary, projectName) {
+    const settings = loadSettings();
+    const currency = settings.currency || DEFAULTS.currency;
+    const countEl = $("supExpenseSummaryCount");
+    const totalEl = $("supExpenseSummaryTotal");
+    const avgEl = $("supExpenseSummaryAverage");
+    const lastConceptEl = $("supExpenseSummaryLastConcept");
+    const lastDateEl = $("supExpenseSummaryLastDate");
+    const emptyEl = $("supExpenseSummaryEmpty");
+    const bodyEl = $("supExpenseSummaryBody");
+    const tableWrap = document.querySelector(".sup-expense-summary-table-wrap");
+
+    if (countEl) countEl.textContent = String(summary.count);
+    if (totalEl) totalEl.textContent = money(summary.total, currency);
+    if (avgEl) avgEl.textContent = money(summary.average, currency);
+    if (lastConceptEl) lastConceptEl.textContent = summary.latestConcept || "—";
+    if (lastDateEl) lastDateEl.textContent = summary.latestDate || "—";
+
+    if (emptyEl) emptyEl.style.display = summary.count ? "none" : "";
+    if (tableWrap) tableWrap.style.display = summary.count ? "" : "none";
+    if (bodyEl) {
+      if (!summary.count) {
+        bodyEl.innerHTML = "";
+      } else {
+        bodyEl.innerHTML = summary.rows
+          .map((row) => {
+            const dateLabel = row.expense_date
+              ? formatDateUS(row.expense_date) || row.expense_date
+              : "—";
+            const dayCol =
+              row.day_number != null && row.day_number > 0
+                ? String(row.day_number)
+                : "—";
+            return `<tr>
+              <td>${escapeHtml(dateLabel)}</td>
+              <td>${escapeHtml(row.concept)}</td>
+              <td>${escapeHtml(money(row.amount, currency))}</td>
+              <td>${escapeHtml(row.note || "—")}</td>
+              <td>${escapeHtml(dayCol)}</td>
+            </tr>`;
+          })
+          .join("");
+      }
+    }
+
+    const printBiz = $("supExpensePrintBusiness");
+    const printProject = $("supExpensePrintProject");
+    const printStats = $("supExpensePrintStats");
+    const printBody = $("supExpensePrintBody");
+    const printFooter = $("supExpensePrintFooter");
+    const bizName = String(settings.bizName || DEFAULTS.bizName || "").trim();
+    if (printBiz) printBiz.textContent = bizName || "Margin Guard";
+    if (printProject) {
+      printProject.textContent = `Project: ${projectName || "Project"} · Supervisor field expense summary`;
+    }
+    if (printStats) {
+      printStats.textContent = `Entries: ${summary.count} · Total spent: ${money(summary.total, currency)} · Average: ${money(summary.average, currency)} · Last expense: ${summary.latestConcept} · Last date: ${summary.latestDate}`;
+    }
+    if (printBody) {
+      printBody.innerHTML = summary.count
+        ? summary.rows
+            .map((row) => {
+              const dateLabel = row.expense_date
+                ? formatDateUS(row.expense_date) || row.expense_date
+                : "—";
+              const dayCol =
+                row.day_number != null && row.day_number > 0
+                  ? String(row.day_number)
+                  : "—";
+              return `<tr>
+                <td>${escapeHtml(dateLabel)}</td>
+                <td>${escapeHtml(row.concept)}</td>
+                <td>${escapeHtml(money(row.amount, currency))}</td>
+                <td>${escapeHtml(row.note || "—")}</td>
+                <td>${escapeHtml(dayCol)}</td>
+              </tr>`;
+            })
+            .join("")
+        : `<tr><td colspan="5">No unexpected expenses recorded for this project yet.</td></tr>`;
+    }
+    if (printFooter) {
+      const printedOn = formatDateUS(new Date().toISOString().slice(0, 10)) || new Date().toLocaleDateString();
+      printFooter.textContent = `Printed ${printedOn}`;
+    }
+  }
+
+  function closeSupExpenseSummaryModal() {
+    const modal = $("supExpenseSummaryModal");
+    if (!modal) return;
+    modal.setAttribute("aria-hidden", "true");
+    modal.style.display = "";
+    document.body.classList.remove("sup-expense-summary-printing");
+    const laborOpen = $("supLaborReportModal")?.getAttribute("aria-hidden") === "false";
+    const extraOpen = $("supExpenseReportModal")?.getAttribute("aria-hidden") === "false";
+    const dayOpen = $("supDayDetailModal")?.getAttribute("aria-hidden") === "false";
+    if (!laborOpen && !extraOpen && !dayOpen) document.body.style.overflow = "";
+  }
+
+  async function openSupExpenseSummaryModal() {
+    const modal = $("supExpenseSummaryModal");
+    if (!modal) return;
+    const project = resolveActiveSupervisorProject();
+    const projectId = supervisorProjectKey(project?.id);
+    if (!projectId) {
+      showSupervisorToast("Select a project to view expenses.", "error");
+      return;
+    }
+    const loadingEl = $("supExpenseSummaryLoading");
+    const errorEl = $("supExpenseSummaryError");
+    const contentEl = $("supExpenseSummaryContent");
+    modal.setAttribute("aria-hidden", "false");
+    modal.style.display = "flex";
+    document.body.style.overflow = "hidden";
+    if (loadingEl) loadingEl.hidden = false;
+    if (errorEl) {
+      errorEl.style.display = "none";
+      errorEl.textContent = "";
+    }
+    if (contentEl) contentEl.style.opacity = "0.55";
+
+    let rows = [];
+    try {
+      rows = await loadSupervisorProjectExpensesForSummary(projectId);
+    } catch (_e) {
+      if (errorEl) {
+        errorEl.style.display = "";
+        errorEl.textContent = "Could not load project expenses.";
+      }
+      if (loadingEl) loadingEl.hidden = true;
+      if (contentEl) contentEl.style.opacity = "";
+      return;
+    }
+
+    const summary = computeSupervisorExpenseSummary(rows);
+    renderSupExpenseSummaryModalContent(
+      summary,
+      project?.projectName || "Project"
+    );
+    if (loadingEl) loadingEl.hidden = true;
+    if (contentEl) contentEl.style.opacity = "";
+  }
+
+  function printSupExpenseSummary() {
+    const modal = $("supExpenseSummaryModal");
+    if (!modal || modal.getAttribute("aria-hidden") !== "false") return;
+    document.body.classList.add("sup-expense-summary-printing");
+    window.print();
+    window.addEventListener(
+      "afterprint",
+      () => {
+        document.body.classList.remove("sup-expense-summary-printing");
+      },
+      { once: true }
+    );
+  }
+
+  function bindSupExpenseSummaryOnce() {
+    if (document.body?.dataset?.supExpenseSummaryBound === "1") return;
+    if (document.body) document.body.dataset.supExpenseSummaryBound = "1";
+    const wire = (id, handler) => {
+      const el = $(id);
+      if (el) el.onclick = handler;
+    };
+    wire("btnSupViewExpenses", () => openSupExpenseSummaryModal());
+    wire("btnSupViewExpensesLink", () => openSupExpenseSummaryModal());
+    wire("btnCloseSupExpenseSummary", () => closeSupExpenseSummaryModal());
+    wire("btnCloseSupExpenseSummaryFooter", () => closeSupExpenseSummaryModal());
+    wire("btnSupPrintExpenseSummary", () => printSupExpenseSummary());
+    const expenseCard = $("supOpExpenseCountCard");
+    if (expenseCard) {
+      expenseCard.onclick = () => openSupExpenseSummaryModal();
+      expenseCard.onkeydown = (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openSupExpenseSummaryModal();
+        }
+      };
+    }
+    const summaryModal = $("supExpenseSummaryModal");
+    if (summaryModal) {
+      summaryModal.addEventListener("click", (e) => {
+        if (e.target === summaryModal) closeSupExpenseSummaryModal();
+      });
+    }
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if ($("supExpenseSummaryModal")?.getAttribute("aria-hidden") === "false") {
+        closeSupExpenseSummaryModal();
+      }
+    });
   }
 
   function clearSupervisorProjectExpensesCache() {
@@ -8413,6 +8680,7 @@ window.sendQuote = sendQuote;
 function renderSupervisor() {
     if (!$("supProjectPicker")) return;
     bindSupFieldModalsOnce();
+    bindSupExpenseSummaryOnce();
 
     const settings = loadSettings();
     const picker = $("supProjectPicker");
@@ -8437,6 +8705,7 @@ function renderSupervisor() {
         saveSupervisorSelectedProjectId(nextId);
         closeSupFieldModal("all");
         closeSupReportPanels("all");
+        closeSupExpenseSummaryModal();
         const fb = $("supAssignFeedback");
         if (fb) fb.textContent = "";
         if (prevId && prevId !== nextId) {

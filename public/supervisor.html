@@ -141,10 +141,15 @@
               <span class="sup-live-ops-strip__item" id="supCompactDaysUsed">—</span>
               <span class="sup-live-ops-strip__item" id="supCompactDaysRemaining">—</span>
               <span class="sup-live-ops-strip__item" id="supCompactReports">—</span>
-              <span class="sup-live-ops-strip__item" id="supCompactExpenses">—</span>
+              <button type="button" class="sup-live-ops-strip__btn" id="btnSupViewExpenses" aria-haspopup="dialog" aria-controls="supExpenseSummaryModal" title="View project expense summary">
+                <span id="supCompactExpenses">Expenses: 0</span>
+              </button>
               <span class="sup-live-ops-strip__item" id="supCompactRisk">—</span>
               <span class="sup-live-ops-strip__item" id="supCompactBonus">—</span>
             </div>
+            <p class="sup-live-ops-actions">
+              <button type="button" class="btn ghost small" id="btnSupViewExpensesLink">View expenses</button>
+            </p>
 
             <div class="sup-live-ops-overview sup-live-ops-overview--compact" hidden aria-hidden="true">
               <div class="sup-console-rail-status">
@@ -167,7 +172,9 @@
               <div class="sup-live-metric"><span class="sup-live-metric__label">Reported hours</span><strong class="sup-live-metric__value" id="supOpActualHours">—</strong></div>
               <div class="sup-live-metric"><span class="sup-live-metric__label">Est. crew hours</span><strong class="sup-live-metric__value" id="supOpEstimatedHours">—</strong></div>
               <div class="sup-live-metric"><span class="sup-live-metric__label">Field reports</span><strong class="sup-live-metric__value" id="supOpReportCount">—</strong></div>
-              <div class="sup-live-metric"><span class="sup-live-metric__label">Expense entries</span><strong class="sup-live-metric__value" id="supOpExpenseCount">—</strong></div>
+              <div class="sup-live-metric sup-live-metric--clickable" id="supOpExpenseCountCard" role="button" tabindex="0" title="View project expense summary">
+                <span class="sup-live-metric__label">Expense entries</span><strong class="sup-live-metric__value" id="supOpExpenseCount">—</strong>
+              </div>
               <div class="sup-live-metric"><span class="sup-live-metric__label">Completion pace</span><strong class="sup-live-metric__value" id="supOpCompletionPace">—</strong></div>
               <div class="sup-live-metric sup-live-metric--wide"><span class="sup-live-metric__label">Schedule deviation</span><strong class="sup-live-metric__value" id="supOpLaborDeviation">—</strong><span class="sup-live-metric__hint" id="supOpLaborDeviationLabel">vs planned days</span></div>
               <div class="sup-live-metric"><span class="sup-live-metric__label">Operational risk</span><strong class="sup-live-metric__value" id="supOpOperationalRisk">—</strong></div>
@@ -355,6 +362,63 @@
     </div>
   </div>
 
+
+  <div id="supExpenseSummaryModal" class="modal sup-field-modal sup-expense-summary-modal" aria-hidden="true" role="dialog" aria-labelledby="supExpenseSummaryTitle">
+    <div class="modal-card sup-field-modal__card sup-expense-summary-modal__card">
+      <div class="modal-header sup-expense-summary-modal__screen">
+        <div>
+          <div class="modal-title" id="supExpenseSummaryTitle">Project Expense Summary</div>
+          <div class="modal-subtitle">Recorded unexpected expenses for this project.</div>
+        </div>
+        <button type="button" class="btn ghost sup-field-modal__close" id="btnCloseSupExpenseSummary" aria-label="Cerrar">Cerrar</button>
+      </div>
+      <div class="modal-body sup-expense-summary-modal__screen">
+        <div id="supExpenseSummaryLoading" class="sup-expense-summary-loading" hidden>Loading expenses…</div>
+        <div id="supExpenseSummaryError" class="sup-expense-summary-error" style="display:none;" role="alert"></div>
+        <div id="supExpenseSummaryContent">
+          <div class="sup-expense-summary-cards">
+            <div class="sup-expense-summary-card"><span class="sup-expense-summary-card__label">Entries</span><strong id="supExpenseSummaryCount">0</strong></div>
+            <div class="sup-expense-summary-card"><span class="sup-expense-summary-card__label">Total spent</span><strong id="supExpenseSummaryTotal">$0.00</strong></div>
+            <div class="sup-expense-summary-card"><span class="sup-expense-summary-card__label">Average</span><strong id="supExpenseSummaryAverage">$0.00</strong></div>
+            <div class="sup-expense-summary-card"><span class="sup-expense-summary-card__label">Last expense</span><strong id="supExpenseSummaryLastConcept">—</strong></div>
+            <div class="sup-expense-summary-card"><span class="sup-expense-summary-card__label">Last date</span><strong id="supExpenseSummaryLastDate">—</strong></div>
+          </div>
+          <p id="supExpenseSummaryEmpty" class="sup-expense-summary-empty" style="display:none;">No unexpected expenses recorded for this project yet.</p>
+          <div class="supervisor-table-wrap sup-expense-summary-table-wrap">
+            <table class="table sup-expense-summary-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Concept</th>
+                  <th>Amount</th>
+                  <th>Note</th>
+                  <th>Day</th>
+                </tr>
+              </thead>
+              <tbody id="supExpenseSummaryBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer sup-expense-summary-modal__screen">
+        <button type="button" class="btn ghost" id="btnCloseSupExpenseSummaryFooter">Close</button>
+        <button type="button" class="btn primary" id="btnSupPrintExpenseSummary">Print expense summary</button>
+      </div>
+      <div id="supExpenseSummaryPrint" class="sup-expense-summary-print" hidden aria-hidden="true">
+        <h1 id="supExpensePrintBusiness">—</h1>
+        <h2 id="supExpensePrintTitle">Project Expense Summary</h2>
+        <p id="supExpensePrintProject" class="sup-expense-summary-print__meta">—</p>
+        <div class="sup-expense-summary-print__stats" id="supExpensePrintStats"></div>
+        <table class="sup-expense-summary-print__table">
+          <thead>
+            <tr><th>Date</th><th>Concept</th><th>Amount</th><th>Note</th><th>Day</th></tr>
+          </thead>
+          <tbody id="supExpensePrintBody"></tbody>
+        </table>
+        <p id="supExpensePrintFooter" class="sup-expense-summary-print__footer"></p>
+      </div>
+    </div>
+  </div>
 
   <div id="supToastHost" class="sup-toast-host" aria-live="polite" aria-atomic="true"></div>
 
