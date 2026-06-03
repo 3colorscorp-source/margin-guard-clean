@@ -1358,23 +1358,86 @@ Thank you.`
           .filter(Boolean)
       ),
     ];
-    const dayWorkers =
-      roles.length > 0
-        ? roles.map((role) => ({
-            role,
-            worker_type: "pro",
-            estimated_hours: hpd,
-          }))
-        : [{ role: "Scheduled crew", worker_type: "pro", estimated_hours: hpd }];
+    const dayWorkers = roles.length
+      ? roles.map((role) => ({
+          role,
+          worker_type: "pro",
+          estimated_hours: hpd,
+        }))
+      : [];
     const out = [];
     for (let d = 1; d <= dayCount; d += 1) {
       out.push({
         day_number: d,
-        phase: `Day ${d}`,
+        phase: "Phase not set from Sales",
         workers: dayWorkers.map((w) => ({ ...w })),
+        plan_fallback: true,
       });
     }
     return out;
+  }
+
+  function buildMigratedCalendarPlan(baseline, estimatedDays) {
+    const b = baseline && typeof baseline === "object" ? baseline : {};
+    const est = Math.max(
+      0,
+      Math.ceil(
+        finiteNumber(b.estimated_total_days, finiteNumber(estimatedDays, 0))
+      )
+    );
+    if (est <= 0) return [];
+    const completedThru = Math.max(
+      0,
+      Math.floor(finiteNumber(b.days_completed_to_date, 0))
+    );
+    const currentPhase = String(b.current_phase || "Continue scheduled work").trim();
+    const out = [];
+    for (let d = 1; d <= est; d += 1) {
+      let phase = "Scheduled work";
+      if (d < completedThru) phase = "Imported work completed";
+      else if (d === completedThru) phase = currentPhase || "Imported work completed";
+      else if (d === completedThru + 1) phase = currentPhase || "Continue scheduled work";
+      out.push({
+        day_number: d,
+        phase,
+        workers: [],
+        migrated: true,
+      });
+    }
+    return out;
+  }
+
+  function supervisorProgressMapWithMigratedBaseline(dayProgressRows, baseline) {
+    const map = supervisorDayProgressMap(dayProgressRows);
+    const thru = Math.max(
+      0,
+      Math.floor(finiteNumber(baseline?.days_completed_to_date, 0))
+    );
+    for (let d = 1; d <= thru; d += 1) {
+      const key = String(d);
+      const existing = map[key];
+      if (existing && String(existing.status || "").toLowerCase() === "pending") {
+        continue;
+      }
+      if (!existing || String(existing.status || "").toLowerCase() !== "completed") {
+        map[key] = {
+          day_number: d,
+          status: "completed",
+          completion_note: "Imported baseline",
+        };
+      }
+    }
+    return map;
+  }
+
+  function supervisorMigratedCurrentPlanDayIndex(baseline, execPlan) {
+    const est = Array.isArray(execPlan) ? execPlan.length : 0;
+    const thru = Math.max(
+      0,
+      Math.floor(finiteNumber(baseline?.days_completed_to_date, 0))
+    );
+    if (est <= 0) return 1;
+    return Math.min(est, Math.max(1, thru + 1));
   }
 
   function resolveShowMigratedExecution(opCache) {
@@ -1416,14 +1479,28 @@ Thank you.`
     return snap;
   }
 
-  function resolveSupervisorExecutionPlan(opCache, _project, _estimatedDays) {
-    if (resolveShowMigratedExecution(opCache)) return [];
+  function resolveSupervisorExecutionPlan(opCache, project, estimatedDays) {
+    const est = Math.max(
+      0,
+      Math.ceil(
+        finiteNumber(
+          estimatedDays,
+          finiteNumber(project?.estimatedDays, 0)
+        )
+      )
+    );
     if (
       opCache?.ok === true &&
       Array.isArray(opCache.operational_plan) &&
       opCache.operational_plan.length
     ) {
       return opCache.operational_plan;
+    }
+    if (resolveShowMigratedExecution(opCache)) {
+      return buildMigratedCalendarPlan(opCache.migration_baseline, est);
+    }
+    if (est > 0) {
+      return buildSupervisorExecutionPlanFallback(project, est);
     }
     return [];
   }
@@ -1532,48 +1609,96 @@ Thank you.`
     </div>`;
   }
 
+  function renderSupervisorMigratedCalendarBanner(migratedCtx) {
+    const c = migratedCtx && typeof migratedCtx === "object" ? migratedCtx : {};
+    const b = c.baseline && typeof c.baseline === "object" ? c.baseline : {};
+    const snap = c.snapshot && typeof c.snapshot === "object" ? c.snapshot : {};
+    const source = escapeHtml(String(b.external_source || "Square").trim());
+    const estDays = finiteNumber(
+      snap.estimated_days,
+      finiteNumber(b.estimated_total_days, 0)
+    );
+    const actDays = finiteNumber(snap.actual_days, finiteNumber(b.days_completed_to_date, 0));
+    const daysRem = Math.max(0, estDays - actDays);
+    const phase = escapeHtml(String(b.current_phase || "Continue scheduled work").trim());
+    return `<div class="sup-cal-migrated-banner" role="status">
+      <span class="badge amber">Migrated from ${source}</span>
+      <p class="sup-cal-migrated-banner__line"><strong>${formatSupervisorDaysLabel(actDays)}</strong> completed · <strong>${formatSupervisorDaysLabel(daysRem)}</strong> remaining · Current phase: ${phase}</p>
+    </div>`;
+  }
+
+  function renderSupervisorCalendarChrome(planLength, calendarCtx) {
+    const chrome = $("supExecCalendarChrome");
+    const desc = $("supExecCalendarDesc");
+    const n = Math.max(0, Math.floor(finiteNumber(planLength, 0)));
+    if (desc) {
+      desc.textContent =
+        n > 0
+          ? `${n}-day plan · Click a day to view details and take action`
+          : "Field execution planner — click a day for details and actions.";
+    }
+    if (!chrome) return "";
+    if (n <= 0) {
+      chrome.hidden = true;
+      chrome.innerHTML = "";
+      return "";
+    }
+    chrome.hidden = false;
+    chrome.innerHTML = `<div class="sup-cal-legend" aria-label="Calendar legend">
+      <span class="sup-cal-legend__item"><span class="sup-cal-legend__dot sup-cal-legend__dot--completed"></span>Completed</span>
+      <span class="sup-cal-legend__item"><span class="sup-cal-legend__dot sup-cal-legend__dot--in_progress"></span>In progress</span>
+      <span class="sup-cal-legend__item"><span class="sup-cal-legend__dot sup-cal-legend__dot--pending"></span>Pending</span>
+      <span class="sup-cal-legend__item"><span class="sup-cal-legend__dot sup-cal-legend__dot--behind"></span>Attention</span>
+    </div>`;
+    return chrome.innerHTML;
+  }
+
   function renderSupervisorExecutionPlanSection(opts) {
     const o = opts && typeof opts === "object" ? opts : {};
     const body = $("supLaborPlanBody");
-    const sectionDesc = document.querySelector(
-      ".sup-exec-plan-section .sup-section-desc"
-    );
     const sectionTitle = document.querySelector(
       ".sup-exec-plan-section .sup-section-title"
     );
     if (!body) return;
 
-    if (o.showMigrated) {
-      if (sectionTitle) sectionTitle.textContent = "Migrated execution";
-      if (sectionDesc) {
-        sectionDesc.textContent =
-          "Imported project timeline and phase — report labor and expenses below.";
-      }
-      body.innerHTML = renderSupervisorMigratedExecutionHtml(o.migratedCtx);
+    if (sectionTitle) sectionTitle.textContent = "Execution calendar";
+
+    const execPlan = Array.isArray(o.execPlan) ? o.execPlan : [];
+    const estDays = Math.max(
+      execPlan.length,
+      Math.ceil(finiteNumber(o.estimatedDays, 0))
+    );
+
+    if (!execPlan.length && estDays <= 0) {
+      renderSupervisorCalendarChrome(0, o.calendarCtx);
+      if ($("supExecCalendarChrome")) $("supExecCalendarChrome").hidden = true;
+      body.innerHTML =
+        '<p class="sup-cal-empty small">Execution plan has not been prepared in Sales.</p>';
       return;
     }
 
-    if (sectionTitle) sectionTitle.textContent = "Execution calendar";
-    if (sectionDesc) {
-      sectionDesc.textContent =
-        "Jobsite diary — each card is one planned day. Use actions on the card or open for full detail.";
-    }
-
-    const execPlan = Array.isArray(o.execPlan) ? o.execPlan : [];
     const calendarHtml = renderSupervisorExecutionCalendarHtml(execPlan, o.calendarCtx);
     if (calendarHtml) {
-      body.innerHTML = calendarHtml;
+      const migratedBanner = o.showMigrated
+        ? renderSupervisorMigratedCalendarBanner(o.migratedCtx)
+        : "";
+      renderSupervisorCalendarChrome(execPlan.length, o.calendarCtx);
+      body.innerHTML = migratedBanner + calendarHtml;
       supervisorActiveDayContext = {
         plan: execPlan,
         startIso: o.calendarCtx?.startIso || "",
         progressMap: o.calendarCtx?.progressMap || {},
         dayActivityMap: o.calendarCtx?.dayActivityMap || {},
+        migratedCompletedThru: finiteNumber(o.calendarCtx?.migratedCompletedThru, 0),
+        currentPlanDayIndex: finiteNumber(o.calendarCtx?.currentPlanDayIndex, 1),
         projectId: o.projectId || "",
+        showMigrated: Boolean(o.showMigrated),
       };
       bindSupExecutionCalendarOnce();
     } else {
+      renderSupervisorCalendarChrome(0, o.calendarCtx);
       body.innerHTML =
-        '<p class="small" style="margin:0;">Execution plan has not been prepared in Sales.</p>';
+        '<p class="sup-cal-empty small">Execution plan has not been prepared in Sales.</p>';
     }
   }
 
@@ -1673,6 +1798,8 @@ Thank you.`
       progressMap: base.progressMap || {},
       dayActivityMap: base.dayActivityMap || {},
       dayActivity: (base.dayActivityMap || {})[String(n)] || null,
+      migratedCompletedThru: finiteNumber(base.migratedCompletedThru, 0),
+      currentPlanDayIndex: finiteNumber(base.currentPlanDayIndex, 1),
       ...(overrides && typeof overrides === "object" ? overrides : {}),
     };
   }
@@ -1739,7 +1866,7 @@ Thank you.`
     const modal = $("supDayDetailModal");
     if (!modal) return;
     const dayNum = Math.max(1, Math.floor(finiteNumber(dayCtx.day_number, 1)));
-    const phase = String(dayCtx.phase || "").trim() || "Work scheduled";
+    const phase = String(dayCtx.phase || "").trim() || "Phase not set from Sales";
     const plannedDate = normalizeDateInput(dayCtx.plannedDate || "");
     const progressMap =
       dayCtx.progressMap && typeof dayCtx.progressMap === "object"
@@ -1750,16 +1877,37 @@ Thank you.`
         ? dayCtx.dayActivityMap
         : supervisorActiveDayContext?.dayActivityMap || {};
     const activity = dayCtx.dayActivity || dayActivityMap[String(dayNum)] || null;
-    const currentPlanDay = supervisorCurrentPlanDayIndex(
-      supervisorActiveDayContext?.plan || [],
-      supervisorActiveDayContext?.startIso || "",
-      0
+    const currentPlanDay = Math.max(
+      1,
+      Math.floor(
+        finiteNumber(
+          dayCtx.currentPlanDayIndex,
+          finiteNumber(
+            supervisorActiveDayContext?.currentPlanDayIndex,
+            supervisorCurrentPlanDayIndex(
+              supervisorActiveDayContext?.plan || [],
+              supervisorActiveDayContext?.startIso || "",
+              0
+            )
+          )
+        )
+      )
     );
+    const planDay =
+      (supervisorActiveDayContext?.plan || []).find(
+        (d) => Math.floor(finiteNumber(d?.day_number, 0)) === dayNum
+      ) || {};
     const status = supervisorResolveDayDisplayStatus(
       dayNum,
       progressMap,
       currentPlanDay,
-      activity
+      activity,
+      {
+        migratedCompletedThru: finiteNumber(
+          dayCtx.migratedCompletedThru,
+          finiteNumber(supervisorActiveDayContext?.migratedCompletedThru, 0)
+        ),
+      }
     );
     setText("supDayDetailTitle", `Day ${dayNum}`);
     setText(
@@ -1781,7 +1929,7 @@ Thank you.`
       const uniqueCrew = [...new Set(crew)];
       crewList.innerHTML = uniqueCrew.length
         ? uniqueCrew.map((r) => `<li>${escapeHtml(r)}</li>`).join("")
-        : '<li class="small">Crew pending</li>';
+        : '<li class="small">Crew not set from Sales</li>';
     }
     const tasksWrap = $("supDayDetailTasksWrap");
     const tasksList = $("supDayDetailTasks");
@@ -1799,15 +1947,24 @@ Thank you.`
     }
     const notesWrap = $("supDayDetailNotesWrap");
     const notesEl = $("supDayDetailNotes");
+    const targetHrs = supervisorPlannedHoursForDay(planDay);
+    const reportedHrs = finiteNumber(activity?.hours, 0);
+    const metaParts = [];
+    if (targetHrs > 0) metaParts.push(`Target hours: ${targetHrs.toFixed(1)}`);
+    if (reportedHrs > 0) metaParts.push(`Hours reported: ${reportedHrs.toFixed(1)}`);
+    if (finiteNumber(activity?.expenseCount, 0) > 0) {
+      metaParts.push(`Expense entries: ${finiteNumber(activity.expenseCount, 0)}`);
+    }
     const notesText = tasks.length
       ? tasks.join(" · ")
-      : phase && phase !== "Work scheduled"
+      : phase && phase !== "Work scheduled" && phase !== "Phase not set from Sales"
         ? phase
         : "";
+    const notesFull = [notesText, metaParts.join(" · ")].filter(Boolean).join("\n");
     if (notesWrap && notesEl) {
-      if (notesText) {
+      if (notesFull) {
         notesWrap.hidden = false;
-        notesEl.textContent = notesText;
+        notesEl.textContent = notesFull;
       } else {
         notesWrap.hidden = true;
         notesEl.textContent = "";
@@ -2168,10 +2325,19 @@ Thank you.`
     dayNum,
     progressMap,
     currentPlanDayIndex,
-    activity
+    activity,
+    opts
   ) {
     const prog = progressMap[String(dayNum)];
-    if (prog && String(prog.status || "").toLowerCase() === "completed") return "completed";
+    const progStatus = String(prog?.status || "").toLowerCase();
+    if (progStatus === "completed") return "completed";
+    const migratedThru = Math.max(
+      0,
+      Math.floor(finiteNumber(opts?.migratedCompletedThru, 0))
+    );
+    if (migratedThru > 0 && dayNum <= migratedThru && progStatus !== "pending") {
+      return "completed";
+    }
     const act = activity && typeof activity === "object" ? activity : null;
     const cur = Math.max(1, Math.floor(finiteNumber(currentPlanDayIndex, 1)));
     if (
@@ -2188,16 +2354,31 @@ Thank you.`
     const s = String(status || "pending").toLowerCase();
     if (s === "completed") return "Completed";
     if (s === "in_progress") return "In progress";
-    if (s === "behind") return "Pending";
+    if (s === "behind") return "Attention";
     return "Pending";
   }
 
   function supervisorDayStatusBadgeClass(status) {
     const s = String(status || "pending").toLowerCase();
     if (s === "completed") return "green";
-    if (s === "in_progress") return "amber";
+    if (s === "in_progress") return "blue";
     if (s === "behind") return "red";
     return "";
+  }
+
+  function supervisorFormatCrewLine(day) {
+    const crew = (day?.workers || day?.crew || [])
+      .map((w) => String(w.role || w.worker_type || "").trim())
+      .filter(Boolean);
+    const uniqueCrew = [...new Set(crew)];
+    if (uniqueCrew.length) return `Crew: ${uniqueCrew.join(" + ")}`;
+    return "Crew not set from Sales";
+  }
+
+  function supervisorPlannedHoursForDay(day) {
+    const workers = Array.isArray(day?.workers) ? day.workers : [];
+    if (!workers.length) return 0;
+    return workers.reduce((s, w) => s + finiteNumber(w.estimated_hours, 0), 0);
   }
 
   function renderSupervisorExecutionCalendarHtml(plan, calendarCtx) {
@@ -2214,20 +2395,20 @@ Thank you.`
       1,
       Math.floor(finiteNumber(ctx.currentPlanDayIndex, 1))
     );
+    const statusOpts = {
+      migratedCompletedThru: finiteNumber(ctx.migratedCompletedThru, 0),
+    };
     const cards = plan.map((day) => {
       const dayNum = Math.max(1, Math.floor(finiteNumber(day.day_number, 1)));
-      const phase = String(day.phase || "").trim() || "Work scheduled";
-      const crew = (day.workers || day.crew || [])
-        .map((w) => String(w.role || w.worker_type || "").trim())
-        .filter(Boolean);
-      const uniqueCrew = [...new Set(crew)];
-      const crewLabel = uniqueCrew.length ? uniqueCrew.join(" + ") : "Crew pending";
+      const phase = String(day.phase || "").trim() || "Phase not set from Sales";
+      const crewLine = supervisorFormatCrewLine(day);
       const activity = dayActivityMap[String(dayNum)] || null;
       const status = supervisorResolveDayDisplayStatus(
         dayNum,
         progressMap,
         currentPlanDayIndex,
-        activity
+        activity,
+        statusOpts
       );
       const plannedDate = supervisorPlannedDateForDay(startIso, dayNum);
       const dateLabel = plannedDate ? formatDateUS(plannedDate) || plannedDate : "";
@@ -2236,29 +2417,32 @@ Thank you.`
       const hoursReported = finiteNumber(activity?.hours, 0);
       const isDone = status === "completed";
       const badgeClass = supervisorDayStatusBadgeClass(status);
+      const checkMark = isDone
+        ? '<span class="sup-diary-day__check" aria-hidden="true">✓</span>'
+        : "";
       return `<article class="sup-diary-day sup-diary-day--${escapeHtml(status)}">
         <button type="button" class="sup-diary-day__open" data-sup-day-open="${escapeHtml(String(dayNum))}" aria-label="Day ${escapeHtml(String(dayNum))} details">
           <header class="sup-diary-day__head">
             <span class="sup-diary-day__label">Day ${escapeHtml(String(dayNum))}</span>
-            <span class="badge ${badgeClass} sup-diary-day__badge">${escapeHtml(supervisorDayStatusLabel(status))}</span>
+            <span class="sup-diary-day__badge-wrap">${checkMark}<span class="badge ${badgeClass} sup-diary-day__badge">${escapeHtml(supervisorDayStatusLabel(status))}</span></span>
           </header>
           ${dateLabel ? `<p class="sup-diary-day__date">${escapeHtml(dateLabel)}</p>` : ""}
           <h4 class="sup-diary-day__phase">${escapeHtml(phase)}</h4>
-          <p class="sup-diary-day__crew">${escapeHtml(crewLabel)}</p>
+          <p class="sup-diary-day__crew">${escapeHtml(crewLine)}</p>
           <div class="sup-diary-day__chips">
-            <span class="sup-diary-chip">Labor ${laborCount}</span>
-            <span class="sup-diary-chip">Expenses ${expenseCount}</span>
-            <span class="sup-diary-chip">${hoursReported > 0 ? `${hoursReported.toFixed(1)}h` : "0h"}</span>
+            <span class="sup-diary-chip" title="Labor reports">Labor ${laborCount}</span>
+            <span class="sup-diary-chip" title="Expense entries">Expenses ${expenseCount}</span>
+            <span class="sup-diary-chip" title="Hours reported">${hoursReported > 0 ? `${hoursReported.toFixed(1)}h` : "0h"}</span>
           </div>
         </button>
         <div class="sup-diary-day__actions">
           <button type="button" class="btn small ${isDone ? "ghost" : "primary"}" data-sup-complete data-sup-day="${escapeHtml(String(dayNum))}" data-sup-done="${isDone ? "1" : "0"}" ${isDone ? "disabled" : ""}>Completed</button>
-          <button type="button" class="btn small" data-sup-labor data-sup-day="${escapeHtml(String(dayNum))}">Report labor</button>
-          <button type="button" class="btn small" data-sup-expense data-sup-day="${escapeHtml(String(dayNum))}">Report expense</button>
+          <button type="button" class="btn small" data-sup-labor data-sup-day="${escapeHtml(String(dayNum))}">Labor</button>
+          <button type="button" class="btn small" data-sup-expense data-sup-day="${escapeHtml(String(dayNum))}">Expense</button>
         </div>
       </article>`;
     });
-    return `<div class="sup-exec-calendar-grid sup-diary-calendar-grid">${cards.join("")}</div>`;
+    return `<div class="sup-exec-calendar-grid sup-diary-calendar-grid" role="list">${cards.join("")}</div>`;
   }
 
   function renderSupervisorExecutionPlanHtml(plan) {
@@ -8039,8 +8223,9 @@ function renderSupervisor() {
         if ($("supExtrasBody")) $("supExtrasBody").innerHTML = "";
         if ($("supLaborPlanBody")) {
           $("supLaborPlanBody").innerHTML =
-            '<p class="small" style="margin:0;">Execution plan has not been prepared in Sales.</p>';
+            '<p class="sup-cal-empty small">Execution plan has not been prepared in Sales.</p>';
         }
+        if ($("supExecCalendarChrome")) $("supExecCalendarChrome").hidden = true;
         renderSupervisorOperationalPanel({});
         if (typeof console !== "undefined" && console.log) {
           console.log("[supervisor-filter] kpi count", 0);
@@ -8260,30 +8445,43 @@ function renderSupervisor() {
 
       if ($("supPortfolioCount")) $("supPortfolioCount").textContent = String(uiList.length);
 
-      const dayActivityMap = showMigratedExecution
-        ? {}
-        : supervisorBuildDayFieldActivityMap(
-            pid,
-            state,
+      const dayActivityMap = supervisorBuildDayFieldActivityMap(
+        pid,
+        state,
+        scheduleLabels.startIso,
+        execPlan
+      );
+      const migratedCompletedThru = showMigratedExecution
+        ? Math.max(
+            0,
+            Math.floor(finiteNumber(migrationBaseline?.days_completed_to_date, 0))
+          )
+        : 0;
+      const progressMap = showMigratedExecution
+        ? supervisorProgressMapWithMigratedBaseline(
+            opCache?.day_progress || [],
+            migrationBaseline
+          )
+        : supervisorDayProgressMap(opCache?.day_progress || []);
+      const calendarCurrentDay = showMigratedExecution
+        ? supervisorMigratedCurrentPlanDayIndex(migrationBaseline, execPlan)
+        : supervisorCurrentPlanDayIndex(
+            execPlan,
             scheduleLabels.startIso,
-            execPlan
+            actualDays
           );
       renderSupervisorExecutionPlanSection({
         showMigrated: showMigratedExecution,
         execPlan,
+        estimatedDays: estimatedBudgetDays,
         projectId: pid,
-        calendarCtx: showMigratedExecution
-          ? null
-          : {
-              startIso: scheduleLabels.startIso,
-              progressMap: supervisorDayProgressMap(opCache?.day_progress || []),
-              dayActivityMap,
-              currentPlanDayIndex: supervisorCurrentPlanDayIndex(
-                execPlan,
-                scheduleLabels.startIso,
-                actualDays
-              ),
-            },
+        calendarCtx: {
+          startIso: scheduleLabels.startIso,
+          progressMap,
+          dayActivityMap,
+          currentPlanDayIndex: calendarCurrentDay,
+          migratedCompletedThru,
+        },
         migratedCtx: showMigratedExecution
           ? {
               baseline: migrationBaseline,

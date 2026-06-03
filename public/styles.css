@@ -721,6 +721,7 @@ body[data-requires-auth="true"] .container:has(.grid.sales-layout),
 }
 .badge.green{ border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.10); }
 .badge.amber{ border-color: rgba(245,158,11,.35); background: rgba(245,158,11,.10); }
+.badge.blue{ border-color: rgba(59,130,246,.4); background: rgba(59,130,246,.12); }
 .badge.red{ border-color: rgba(239,68,68,.35); background: rgba(239,68,68,.10); }
 .modal{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:18px; background: rgba(0,0,0,.55); z-index:9999; }
 
@@ -2953,24 +2954,64 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
 .sup-exec-calendar-host{
   width:100%;
 }
+.sup-exec-calendar-section{
+  width:100%;
+}
+.sup-exec-calendar-section .section-action-row{
+  margin-bottom:8px;
+}
+.sup-cal-chrome{
+  margin:0 0 12px;
+}
+.sup-cal-legend{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px 18px;
+  align-items:center;
+}
+.sup-cal-legend__item{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-size:11px;
+  color:var(--muted);
+}
+.sup-cal-legend__dot{
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  display:inline-block;
+}
+.sup-cal-legend__dot--completed{ background:#22c55e; }
+.sup-cal-legend__dot--in_progress{ background:#3b82f6; }
+.sup-cal-legend__dot--pending{ background:rgba(255,255,255,.25); }
+.sup-cal-legend__dot--behind{ background:#ef4444; }
+.sup-cal-migrated-banner{
+  margin:0 0 14px;
+  padding:12px 14px;
+  border-radius:12px;
+  border:1px solid rgba(245,158,11,.25);
+  background:rgba(245,158,11,.06);
+}
+.sup-cal-migrated-banner__line{
+  margin:8px 0 0;
+  font-size:13px;
+  line-height:1.45;
+}
+.sup-cal-empty{
+  margin:0;
+  padding:16px;
+  border-radius:12px;
+  border:1px dashed rgba(255,255,255,.12);
+  text-align:center;
+  color:var(--muted);
+}
 .sup-exec-calendar-grid,
 .sup-diary-calendar-grid{
   display:grid;
-  grid-template-columns:repeat(7, minmax(0, 1fr));
+  grid-template-columns:repeat(auto-fit, minmax(230px, 1fr));
   gap:14px;
   width:100%;
-}
-@media (max-width:1280px){
-  .sup-exec-calendar-grid,
-  .sup-diary-calendar-grid{
-    grid-template-columns:repeat(5, minmax(0, 1fr));
-  }
-}
-@media (max-width:960px){
-  .sup-exec-calendar-grid,
-  .sup-diary-calendar-grid{
-    grid-template-columns:repeat(3, minmax(0, 1fr));
-  }
 }
 @media (max-width:640px){
   .sup-exec-calendar-grid,
@@ -2993,8 +3034,8 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   box-shadow:inset 0 0 0 1px rgba(15,138,95,.12);
 }
 .sup-diary-day--in_progress{
-  border-color:rgba(245,158,11,.45);
-  box-shadow:0 0 0 1px rgba(245,158,11,.12);
+  border-color:rgba(59,130,246,.5);
+  box-shadow:0 0 0 1px rgba(59,130,246,.18);
 }
 .sup-diary-day--behind{
   border-color:rgba(220,38,38,.35);
@@ -3031,6 +3072,17 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   letter-spacing:.08em;
   text-transform:uppercase;
   color:var(--muted);
+}
+.sup-diary-day__badge-wrap{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+}
+.sup-diary-day__check{
+  color:#22c55e;
+  font-size:12px;
+  font-weight:800;
+  line-height:1;
 }
 .sup-diary-day__badge{
   font-size:10px;

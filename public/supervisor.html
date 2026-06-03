@@ -219,13 +219,14 @@
 
         <div class="card sup-console-exec-card">
           <div class="card-inner">
-            <section class="sup-exec-plan-section">
+            <section class="sup-exec-plan-section sup-exec-calendar-section">
               <div class="section-action-row">
                 <div class="section-action-row__main">
-                  <h3 class="sup-section-title">Execution plan</h3>
-                  <p class="small sup-section-desc">Field calendar — tap a day for details and actions.</p>
+                  <h3 class="sup-section-title">Execution calendar</h3>
+                  <p class="small sup-section-desc" id="supExecCalendarDesc">Field execution planner — click a day for details and actions.</p>
                 </div>
               </div>
+              <div id="supExecCalendarChrome" class="sup-cal-chrome" hidden></div>
               <div id="supLaborPlanBody" class="sup-exec-calendar-host sup-diary-calendar-host"></div>
             </section>
           </div>
