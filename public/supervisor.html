@@ -38,8 +38,8 @@
     <section class="card owner-hero sup-console-intro">
       <div class="card-inner">
         <span class="eyebrow">Field execution</span>
-        <h2 class="hero-title" style="margin:8px 0 6px;font-size:1.35rem;">Run the job on schedule.</h2>
-        <p class="sub" style="margin:0;">Signed projects only. Report crew days, hours, and field expenses below.</p>
+        <h2 class="hero-title" style="margin:8px 0 6px;font-size:1.35rem;">What to do today on site.</h2>
+        <p class="sub" style="margin:0;">Pick a project, check today&rsquo;s target, then use the execution calendar to report labor and expenses.</p>
       </div>
     </section>
 
@@ -66,25 +66,11 @@
               </div>
             </div>
 
-            <div id="supExecHero" class="sup-exec-hero" style="display:none;">
-              <div class="section-action-row section-action-row--hero">
-                <div class="section-action-row__main">
-                  <h2 class="sup-exec-hero__title" id="supHeroProjectName">—</h2>
-                  <div class="sup-exec-hero__chips">
-                    <span class="sup-exec-chip" id="supHeroDurationLabel">—</span>
-                    <span class="sup-exec-chip" id="supHeroDayProgress">—</span>
-                  </div>
-                </div>
-                <div class="section-action-row__actions">
-                  <div class="project-status-actions" aria-label="Estado y acciones de campo">
-                    <span class="badge green sup-exec-hero__status" id="supHeroStatusBadge">ON SCHEDULE</span>
-                    <button type="button" class="btn primary" id="btnOpenSupLaborReport">Reportar labor</button>
-                    <button type="button" class="btn" id="btnOpenSupExpenseReport">Reportar gasto imprevisto</button>
-                  </div>
-                </div>
+            <div id="supExecHero" class="sup-exec-hero sup-command-card" style="display:none;">
+              <div class="sup-command-card__head">
+                <h2 class="sup-exec-hero__title" id="supHeroProjectName">—</h2>
+                <p class="sup-command-card__summary" id="supHeroCommandLine">—</p>
               </div>
-              <p class="sup-exec-hero__status-line" id="supHeroStatusLine">On pace</p>
-              <p class="small sup-migration-badge" id="supMigrationBadge" style="display:none;margin:0 0 10px;"></p>
               <div class="sup-exec-progress">
                 <div class="sup-exec-progress__track"><div class="sup-exec-progress__fill" id="supHeroProgressFill" style="width:0%;"></div></div>
                 <span class="sup-exec-progress__label" id="supHeroProgressPct">0% complete</span>
@@ -97,30 +83,70 @@
                 <div class="sup-exec-hero__cell">
                   <span class="sup-exec-hero__label">Target finish</span>
                   <strong id="supHeroTarget">—</strong>
+                  <span class="sup-exec-hero__hint" id="supHeroTargetHint" style="display:none;"></span>
                 </div>
                 <div class="sup-exec-hero__cell sup-exec-hero__cell--wide">
                   <span class="sup-exec-hero__label">Crew</span>
                   <strong id="supHeroCrew">—</strong>
                 </div>
               </div>
+              <p class="small sup-migration-badge" id="supMigrationBadge" style="display:none;margin:0;"></p>
+              <div class="sup-command-card__actions project-status-actions" aria-label="Estado y acciones de campo">
+                <span class="badge green sup-exec-hero__status" id="supHeroStatusBadge">ON SCHEDULE</span>
+                <button type="button" class="btn primary" id="btnOpenSupLaborReport">Reportar labor</button>
+                <button type="button" class="btn" id="btnOpenSupExpenseReport">Reportar gasto imprevisto</button>
+              </div>
+              <span id="supHeroStatusLine" hidden aria-hidden="true"></span>
+              <span id="supHeroDurationLabel" hidden aria-hidden="true"></span>
+              <span id="supHeroDayProgress" hidden aria-hidden="true"></span>
             </div>
 
           </div>
         </div>
 
-        <div class="card owner-side-card sup-console-live-card sup-console-live-wide sup-console-live-compact">
+        <div id="supTodayTarget" class="card sup-today-target-card" style="display:none;">
+          <div class="card-inner sup-today-target">
+            <p class="sup-today-target__eyebrow">Today&rsquo;s target</p>
+            <p class="sup-today-target__headline" id="supTodayHeadline">—</p>
+            <p class="sup-today-target__crew" id="supTodayCrew">—</p>
+            <p class="sup-today-target__action" id="supTodayAction">—</p>
+          </div>
+        </div>
+
+        <div class="card sup-console-exec-card">
           <div class="card-inner">
-            <div class="section-action-row section-action-row--rail">
-              <div class="section-action-row__main">
-                <h2 class="sup-console-rail-title">Live operations</h2>
-                <p class="sub">Compact field metrics for the selected project.</p>
+            <section class="sup-exec-plan-section sup-exec-calendar-section">
+              <div class="section-action-row">
+                <div class="section-action-row__main">
+                  <h3 class="sup-section-title">Execution calendar</h3>
+                  <p class="small sup-section-desc" id="supExecCalendarDesc">Your field planner — tap a day to report labor, expenses, or mark complete.</p>
+                </div>
               </div>
-              <div class="section-action-row__actions">
-                <span class="badge green" id="supOpRiskBadge" style="display:none;" aria-label="Operational risk">—</span>
-              </div>
+              <div id="supExecCalendarChrome" class="sup-cal-chrome" hidden></div>
+              <div id="supLaborPlanBody" class="sup-exec-calendar-host sup-diary-calendar-host"></div>
+            </section>
+          </div>
+        </div>
+
+        <div class="card owner-side-card sup-console-live-card sup-console-live-wide sup-live-ops-compact">
+          <div class="card-inner">
+            <h2 class="sup-section-title sup-section-title--sm">Live operations</h2>
+            <p class="small sup-section-desc sup-live-ops-compact__desc">Supporting metrics for the selected project.</p>
+
+            <div id="supSnapshotLoading" class="sup-live-ops-loading" hidden aria-hidden="true">Loading snapshot…</div>
+            <div id="supSnapshotError" class="sup-live-ops-error" style="display:none;" role="alert"></div>
+
+            <div id="supLiveOpsStrip" class="sup-live-ops-strip" style="display:none;">
+              <span class="sup-live-ops-strip__item"><strong id="supCompactPace">—</strong></span>
+              <span class="sup-live-ops-strip__item" id="supCompactDaysUsed">—</span>
+              <span class="sup-live-ops-strip__item" id="supCompactDaysRemaining">—</span>
+              <span class="sup-live-ops-strip__item" id="supCompactReports">—</span>
+              <span class="sup-live-ops-strip__item" id="supCompactExpenses">—</span>
+              <span class="sup-live-ops-strip__item" id="supCompactRisk">—</span>
+              <span class="sup-live-ops-strip__item" id="supCompactBonus">—</span>
             </div>
 
-            <div class="sup-live-ops-overview sup-live-ops-overview--compact">
+            <div class="sup-live-ops-overview sup-live-ops-overview--compact" hidden aria-hidden="true">
               <div class="sup-console-rail-status">
                 <span class="badge green sup-console-rail-badge" id="supSideStatusBadge">ON SCHEDULE</span>
                 <p class="sup-console-rail-headline" id="supSideStatusLine">On pace</p>
@@ -133,10 +159,8 @@
             </div>
 
             <div id="supSideAlerts" class="sup-console-alerts" style="display:none;" role="status"></div>
-            <div id="supSnapshotLoading" class="sup-live-ops-loading" hidden aria-hidden="true">Loading snapshot…</div>
-            <div id="supSnapshotError" class="sup-live-ops-error" style="display:none;" role="alert"></div>
 
-            <div id="supSnapshotGrid" class="sup-live-ops-metrics">
+            <div id="supSnapshotGrid" class="sup-live-ops-metrics sup-live-ops-metrics--detail" aria-hidden="true">
               <div class="sup-live-metric"><span class="sup-live-metric__label">Estimated days</span><strong class="sup-live-metric__value" id="supOpEstimatedDays">—</strong></div>
               <div class="sup-live-metric"><span class="sup-live-metric__label">Actual days</span><strong class="sup-live-metric__value" id="supOpActualDays">—</strong></div>
               <div class="sup-live-metric"><span class="sup-live-metric__label">Remaining days</span><strong class="sup-live-metric__value" id="supOpDaysRemaining">—</strong></div>
@@ -150,32 +174,10 @@
               <div class="sup-live-metric"><span class="sup-live-metric__label">Bonus status</span><strong class="sup-live-metric__value" id="supOpBonusStatus">—</strong></div>
               <div class="sup-live-metric"><span class="sup-live-metric__label">Bonus pace</span><strong class="sup-live-metric__value" id="supOpBonusPace">—</strong></div>
             </div>
+            <span class="badge green" id="supOpRiskBadge" style="display:none;" hidden aria-hidden="true">—</span>
             <div id="supOpRiskMeta" hidden aria-hidden="true"></div>
 
             <div class="kpi supervisor-kpi-grid" id="supervisorKpis" style="display:none;" aria-hidden="true"></div>
-          </div>
-        </div>
-
-        <div id="supTodayTarget" class="card sup-today-target-card" style="display:none;">
-          <div class="card-inner sup-today-target">
-            <h3 class="sup-section-title">Today&rsquo;s target</h3>
-            <p class="sup-today-target__phase" id="supTodayPhase">—</p>
-            <p class="sup-today-target__crew small" id="supTodayCrew">—</p>
-          </div>
-        </div>
-
-        <div class="card sup-console-exec-card">
-          <div class="card-inner">
-            <section class="sup-exec-plan-section sup-exec-calendar-section">
-              <div class="section-action-row">
-                <div class="section-action-row__main">
-                  <h3 class="sup-section-title">Execution calendar</h3>
-                  <p class="small sup-section-desc" id="supExecCalendarDesc">Field execution planner — click a day for details and actions.</p>
-                </div>
-              </div>
-              <div id="supExecCalendarChrome" class="sup-cal-chrome" hidden></div>
-              <div id="supLaborPlanBody" class="sup-exec-calendar-host sup-diary-calendar-host"></div>
-            </section>
           </div>
         </div>
 

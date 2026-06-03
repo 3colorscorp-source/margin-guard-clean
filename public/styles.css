@@ -2825,6 +2825,29 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   border:1px solid rgba(255,255,255,.1);
   background:linear-gradient(145deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
 }
+.sup-command-card__head{
+  margin-bottom:10px;
+}
+.sup-command-card__summary{
+  margin:6px 0 0;
+  font-size:1rem;
+  font-weight:700;
+  color:rgba(232,238,252,.92);
+  line-height:1.35;
+}
+.sup-command-card__actions{
+  margin-top:14px;
+  padding-top:12px;
+  border-top:1px solid rgba(255,255,255,.08);
+}
+.sup-exec-hero__hint{
+  display:block;
+  margin-top:4px;
+  font-size:11px;
+  font-weight:500;
+  color:var(--muted);
+  line-height:1.3;
+}
 .sup-exec-hero .section-action-row--hero{
   align-items:center;
 }
@@ -2933,11 +2956,39 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   font-weight:800;
 }
 .sup-today-target{
-  margin-top:14px;
-  padding:14px;
-  border-radius:14px;
-  border:1px solid rgba(34,197,94,.35);
-  background:rgba(34,197,94,.08);
+  margin-top:0;
+  padding:0;
+  border-radius:0;
+  border:0;
+  background:transparent;
+}
+.sup-today-target-card .card-inner{
+  padding:16px 18px;
+}
+.sup-today-target__eyebrow{
+  margin:0;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.sup-today-target__headline{
+  margin:6px 0 0;
+  font-size:1.15rem;
+  font-weight:800;
+  line-height:1.3;
+}
+.sup-today-target__crew{
+  margin:8px 0 0;
+  font-size:14px;
+  color:rgba(232,238,252,.88);
+}
+.sup-today-target__action{
+  margin:8px 0 0;
+  font-size:13px;
+  color:var(--muted);
+  line-height:1.4;
 }
 .sup-today-target__phase{
   margin:0;
@@ -3104,6 +3155,16 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   font-size:12px;
   line-height:1.4;
   color:var(--muted);
+}
+.sup-diary-day__stats{
+  margin:0;
+  font-size:12px;
+  font-weight:600;
+  color:rgba(232,238,252,.78);
+  line-height:1.35;
+}
+.sup-diary-day--completed .sup-diary-day__stats{
+  color:rgba(134,239,172,.95);
 }
 .sup-diary-day__chips{
   display:flex;
@@ -3533,6 +3594,35 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
 }
 .sup-today-target-card .card-inner{
   padding:12px 16px;
+}
+.sup-live-ops-compact .card-inner{
+  padding:14px 16px;
+}
+.sup-live-ops-compact__desc{
+  margin:-2px 0 10px;
+}
+.sup-section-title--sm{
+  font-size:1rem;
+  margin:0 0 4px;
+}
+.sup-live-ops-strip{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 14px;
+  align-items:center;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);
+  font-size:13px;
+  color:var(--muted);
+}
+.sup-live-ops-strip__item strong{
+  color:var(--text, #fff);
+  font-weight:700;
+}
+.sup-live-ops-metrics--detail{
+  display:none !important;
 }
 .sup-console-live-wide .sup-console-rail-status{
   margin-top:0;
