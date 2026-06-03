@@ -2118,8 +2118,8 @@ Thank you.`
       }
     } else if (cached?.ok === false) {
       error = cached.error || "Field metrics unavailable. Showing local baseline.";
-    } else if (inflight) {
-      error = "Refreshing field metrics…";
+    } else if (inflight && !snapshot?.estimated_days && !snapshot?.actual_days) {
+      error = null;
     }
     return { snapshot, error, inflight };
   }
@@ -2677,8 +2677,14 @@ Thank you.`
     const start = $("supHeroStart");
     const target = $("supHeroTarget");
     const parts = [];
-    if (err && err.style.display !== "none" && String(err.textContent || "").trim()) {
-      parts.push(String(err.textContent).trim());
+    const errTxt = err ? String(err.textContent || "").trim() : "";
+    if (
+      err &&
+      err.style.display !== "none" &&
+      errTxt &&
+      !/refreshing field metrics/i.test(errTxt)
+    ) {
+      parts.push(errTxt);
     }
     const startTxt = start ? String(start.textContent || "") : "";
     const targetTxt = target ? String(target.textContent || "") : "";
@@ -2871,7 +2877,10 @@ Thank you.`
     };
 
     if (o.loading) {
-      if (loadingEl) loadingEl.style.display = "";
+      if (loadingEl) {
+        loadingEl.hidden = true;
+        loadingEl.style.display = "none";
+      }
       if (errorEl) {
         errorEl.style.display = "none";
         errorEl.textContent = "";
@@ -2908,12 +2917,18 @@ Thank you.`
       return;
     }
 
-    if (loadingEl) loadingEl.style.display = "none";
+    if (loadingEl) {
+      loadingEl.hidden = true;
+      loadingEl.style.display = "none";
+    }
     if (errorEl) {
-      if (o.error) {
+      const errMsg = String(o.error || "").trim();
+      const showErr =
+        errMsg &&
+        !/refreshing field metrics/i.test(errMsg);
+      if (showErr) {
         errorEl.style.display = "";
-        errorEl.textContent = String(o.error);
-        errorEl.style.color = "var(--muted,#666)";
+        errorEl.textContent = errMsg;
       } else {
         errorEl.style.display = "none";
         errorEl.textContent = "";
@@ -8202,8 +8217,6 @@ function renderSupervisor() {
         renderSupervisorHero(null);
         if ($("supTodayTarget")) $("supTodayTarget").style.display = "none";
         if ($("supPortfolioCount")) $("supPortfolioCount").textContent = "0";
-        if ($("supSideReportCount")) $("supSideReportCount").textContent = "0";
-        if ($("supSideExpenseCount")) $("supSideExpenseCount").textContent = "0";
         syncSupervisorConsoleSidebar();
         if (typeof console !== "undefined" && console.log) {
           console.log("[supervisor-filter] kpi count", 0);
@@ -8508,15 +8521,15 @@ function renderSupervisor() {
           renderSupervisorOperationalPanel({
             ...panelOpts,
             snapshot: panelState.snapshot,
-            error: panelState.error,
+            error:
+              panelState.error &&
+              !/refreshing field metrics/i.test(String(panelState.error))
+                ? panelState.error
+                : null,
           });
         }
       }
 
-      const reportCount = finiteNumber(activeSnap.report_count, state.entries.length);
-      const expenseCount = finiteNumber(activeSnap.expense_count, extrasRegCount);
-      if ($("supSideReportCount")) $("supSideReportCount").textContent = String(reportCount);
-      if ($("supSideExpenseCount")) $("supSideExpenseCount").textContent = String(expenseCount);
       if ($("supervisorKpis")) $("supervisorKpis").innerHTML = "";
 
       if (typeof console !== "undefined" && console.log) {

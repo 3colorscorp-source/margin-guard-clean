@@ -105,115 +105,62 @@
               </div>
             </div>
 
-            <div id="supTodayTarget" class="sup-today-target" style="display:none;">
-              <div class="section-action-row section-action-row--compact">
-                <div class="section-action-row__main">
-                  <h3 class="sup-section-title">Today&rsquo;s target</h3>
-                </div>
-              </div>
-              <p class="sup-today-target__phase" id="supTodayPhase">—</p>
-              <p class="sup-today-target__crew small" id="supTodayCrew">—</p>
-            </div>
-
-
           </div>
         </div>
 
-        <div class="card owner-side-card sup-console-live-card sup-console-live-wide">
+        <div class="card owner-side-card sup-console-live-card sup-console-live-wide sup-console-live-compact">
           <div class="card-inner">
             <div class="section-action-row section-action-row--rail">
               <div class="section-action-row__main">
                 <h2 class="sup-console-rail-title">Live operations</h2>
-                <p class="sub">Status and field metrics for the selected project.</p>
+                <p class="sub">Compact field metrics for the selected project.</p>
+              </div>
+              <div class="section-action-row__actions">
+                <span class="badge green" id="supOpRiskBadge" style="display:none;" aria-label="Operational risk">—</span>
               </div>
             </div>
 
-            <div class="sup-live-ops-overview">
+            <div class="sup-live-ops-overview sup-live-ops-overview--compact">
               <div class="sup-console-rail-status">
                 <span class="badge green sup-console-rail-badge" id="supSideStatusBadge">ON SCHEDULE</span>
                 <p class="sup-console-rail-headline" id="supSideStatusLine">On pace</p>
               </div>
-
-              <div class="sup-console-rail-metrics">
-              <div class="sup-console-rail-metric">
-                <span class="sup-console-rail-metric__label">Progress</span>
-                <strong id="supSideProgressPct">0% complete</strong>
-              </div>
-              <div class="sup-console-rail-metric">
-                <span class="sup-console-rail-metric__label">Days remaining</span>
-                <strong id="supSideDaysRemaining">—</strong>
-              </div>
-              <div class="sup-console-rail-metric">
-                <span class="sup-console-rail-metric__label">Bonus</span>
-                <strong id="supSideBonusStatus">—</strong>
-              </div>
+              <div class="sup-live-ops-quick">
+                <span class="sup-live-ops-quick__item"><span class="sup-live-ops-quick__label">Progress</span> <strong id="supSideProgressPct">0% complete</strong></span>
+                <span class="sup-live-ops-quick__item"><span class="sup-live-ops-quick__label">Remaining</span> <strong id="supSideDaysRemaining">—</strong></span>
+                <span class="sup-live-ops-quick__item"><span class="sup-live-ops-quick__label">Bonus</span> <strong id="supSideBonusStatus">—</strong></span>
               </div>
             </div>
 
             <div id="supSideAlerts" class="sup-console-alerts" style="display:none;" role="status"></div>
+            <div id="supSnapshotLoading" class="sup-live-ops-loading" hidden aria-hidden="true">Loading snapshot…</div>
+            <div id="supSnapshotError" class="sup-live-ops-error" style="display:none;" role="alert"></div>
 
-            <div class="sep"></div>
-
-            <div class="section-action-row section-action-row--compact">
-              <div class="section-action-row__main">
-                <h3 class="sup-section-title">Field activity</h3>
-              </div>
+            <div id="supSnapshotGrid" class="sup-live-ops-metrics">
+              <div class="sup-live-metric"><span class="sup-live-metric__label">Estimated days</span><strong class="sup-live-metric__value" id="supOpEstimatedDays">—</strong></div>
+              <div class="sup-live-metric"><span class="sup-live-metric__label">Actual days</span><strong class="sup-live-metric__value" id="supOpActualDays">—</strong></div>
+              <div class="sup-live-metric"><span class="sup-live-metric__label">Remaining days</span><strong class="sup-live-metric__value" id="supOpDaysRemaining">—</strong></div>
+              <div class="sup-live-metric"><span class="sup-live-metric__label">Reported hours</span><strong class="sup-live-metric__value" id="supOpActualHours">—</strong></div>
+              <div class="sup-live-metric"><span class="sup-live-metric__label">Est. crew hours</span><strong class="sup-live-metric__value" id="supOpEstimatedHours">—</strong></div>
+              <div class="sup-live-metric"><span class="sup-live-metric__label">Field reports</span><strong class="sup-live-metric__value" id="supOpReportCount">—</strong></div>
+              <div class="sup-live-metric"><span class="sup-live-metric__label">Expense entries</span><strong class="sup-live-metric__value" id="supOpExpenseCount">—</strong></div>
+              <div class="sup-live-metric"><span class="sup-live-metric__label">Completion pace</span><strong class="sup-live-metric__value" id="supOpCompletionPace">—</strong></div>
+              <div class="sup-live-metric sup-live-metric--wide"><span class="sup-live-metric__label">Schedule deviation</span><strong class="sup-live-metric__value" id="supOpLaborDeviation">—</strong><span class="sup-live-metric__hint" id="supOpLaborDeviationLabel">vs planned days</span></div>
+              <div class="sup-live-metric"><span class="sup-live-metric__label">Operational risk</span><strong class="sup-live-metric__value" id="supOpOperationalRisk">—</strong></div>
+              <div class="sup-live-metric"><span class="sup-live-metric__label">Bonus status</span><strong class="sup-live-metric__value" id="supOpBonusStatus">—</strong></div>
+              <div class="sup-live-metric"><span class="sup-live-metric__label">Bonus pace</span><strong class="sup-live-metric__value" id="supOpBonusPace">—</strong></div>
             </div>
-            <div class="sup-side-strip sup-live-field-strip">
-              <div class="sup-side-strip__item">
-                <span class="sup-side-strip__label">Reports logged</span>
-                <strong id="supSideReportCount">0</strong>
-              </div>
-              <div class="sup-side-strip__item">
-                <span class="sup-side-strip__label">Expense entries</span>
-                <strong id="supSideExpenseCount">0</strong>
-              </div>
-            </div>
-
-            <div class="sep"></div>
-
-            <section class="sup-console-snapshot-rail">
-              <div class="section-action-row">
-                <div class="section-action-row__main">
-                  <h3 class="sup-section-title">Field execution snapshot</h3>
-                </div>
-                <div class="section-action-row__actions">
-                  <span class="badge green" id="supOpRiskBadge" style="display:none;">—</span>
-                </div>
-              </div>
-              <div id="supSnapshotLoading" class="notice" style="display:none;margin-bottom:10px;">Loading snapshot…</div>
-              <div id="supSnapshotError" class="notice" style="display:none;margin-bottom:10px;color:#b42318;"></div>
-
-              <div id="supSnapshotGrid" style="display:none;">
-                <h4 class="sup-snapshot-group">Timeline</h4>
-                <div class="supervisor-summary-grid sup-snapshot-grid sup-snapshot-grid--wide">
-                  <div class="supervisor-summary-card"><div class="title">Estimated days</div><div class="big" id="supOpEstimatedDays">—</div></div>
-                  <div class="supervisor-summary-card"><div class="title">Actual days</div><div class="big" id="supOpActualDays">—</div></div>
-                  <div class="supervisor-summary-card"><div class="title">Remaining days</div><div class="big" id="supOpDaysRemaining">—</div></div>
-                </div>
-                <h4 class="sup-snapshot-group">Crew activity</h4>
-                <div class="supervisor-summary-grid sup-snapshot-grid sup-snapshot-grid--wide">
-                  <div class="supervisor-summary-card"><div class="title">Estimated crew hours</div><div class="big" id="supOpEstimatedHours">—</div></div>
-                  <div class="supervisor-summary-card"><div class="title">Reported hours</div><div class="big" id="supOpActualHours">—</div></div>
-                  <div class="supervisor-summary-card"><div class="title">Field reports</div><div class="big" id="supOpReportCount">—</div></div>
-                  <div class="supervisor-summary-card"><div class="title">Expense entries</div><div class="big" id="supOpExpenseCount">—</div></div>
-                </div>
-                <h4 class="sup-snapshot-group">Execution</h4>
-                <div class="supervisor-summary-grid sup-snapshot-grid sup-snapshot-grid--wide">
-                  <div class="supervisor-summary-card"><div class="title">Completion pace</div><div class="big" id="supOpCompletionPace">—</div></div>
-                  <div class="supervisor-summary-card"><div class="title">Schedule deviation</div><div class="big" id="supOpLaborDeviation">—</div><div class="small" id="supOpLaborDeviationLabel">—</div></div>
-                  <div class="supervisor-summary-card"><div class="title">Operational risk</div><div class="big" id="supOpOperationalRisk">—</div></div>
-                </div>
-                <h4 class="sup-snapshot-group">Bonus</h4>
-                <div class="supervisor-summary-grid sup-snapshot-grid sup-snapshot-grid--wide">
-                  <div class="supervisor-summary-card"><div class="title">Bonus status</div><div class="big" id="supOpBonusStatus">—</div></div>
-                  <div class="supervisor-summary-card"><div class="title">Pace toward bonus</div><div class="big" id="supOpBonusPace">—</div></div>
-                </div>
-              </div>
-              <div id="supOpRiskMeta" class="small" style="display:none;margin-top:8px;"></div>
-            </section>
+            <div id="supOpRiskMeta" hidden aria-hidden="true"></div>
 
             <div class="kpi supervisor-kpi-grid" id="supervisorKpis" style="display:none;" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <div id="supTodayTarget" class="card sup-today-target-card" style="display:none;">
+          <div class="card-inner sup-today-target">
+            <h3 class="sup-section-title">Today&rsquo;s target</h3>
+            <p class="sup-today-target__phase" id="supTodayPhase">—</p>
+            <p class="sup-today-target__crew small" id="supTodayCrew">—</p>
           </div>
         </div>
 
