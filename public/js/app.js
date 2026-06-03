@@ -1804,6 +1804,89 @@ Thank you.`
     };
   }
 
+  function normalizeSupDayProgressError(data, res) {
+    const raw = String((data && data.error) || `Request failed (${res?.status || 0})`).trim();
+    if (/tenant_project_day_progress|relation|column|42703|not available/i.test(raw)) {
+      return "Day progress table is missing. Run SUPABASE_TENANT_PROJECT_DAY_PROGRESS.sql.";
+    }
+    return raw || "Could not mark day completed.";
+  }
+
+  function showSupervisorToast(message, type) {
+    const msg = String(message || "").trim();
+    if (!msg) return;
+    const host = $("supToastHost") || document.body;
+    let el = $("supToastLive");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "supToastLive";
+      host.appendChild(el);
+    }
+    const tone = type === "error" ? "error" : "success";
+    el.className = `sup-toast sup-toast--${tone} sup-toast--visible`;
+    el.textContent = msg;
+    if (showSupervisorToast._timer) clearTimeout(showSupervisorToast._timer);
+    showSupervisorToast._timer = setTimeout(() => {
+      el.classList.remove("sup-toast--visible");
+    }, 4200);
+  }
+
+  function setSupDayCompleteButtonBusy(btn, busy) {
+    if (!btn) return;
+    if (busy) {
+      btn.dataset.supBusy = "1";
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+      btn.classList.add("is-saving");
+    } else if (String(btn.getAttribute("data-sup-done") || "") !== "1") {
+      btn.dataset.supBusy = "0";
+      btn.disabled = false;
+      btn.textContent = "Completed";
+      btn.classList.remove("is-saving");
+    }
+  }
+
+  function mergeDayProgressCompletedIntoCache(projectId, dayNum, phase) {
+    const k = supervisorProjectKey(projectId);
+    const day = Math.max(1, Math.floor(finiteNumber(dayNum, 0)));
+    if (!k || !day) return;
+    const cache = supervisorProjectOperationalCache[k];
+    if (!cache || cache.ok !== true) return;
+    const rows = Array.isArray(cache.day_progress) ? [...cache.day_progress] : [];
+    const existingIdx = rows.findIndex(
+      (r) => Math.floor(finiteNumber(r?.day_number, 0)) === day
+    );
+    const row = {
+      day_number: day,
+      status: "completed",
+      completed_at: new Date().toISOString(),
+      completion_note: phase
+        ? `Day ${day} completed — phase: ${phase}`
+        : `Day ${day} completed`,
+    };
+    if (existingIdx >= 0) rows[existingIdx] = { ...rows[existingIdx], ...row };
+    else rows.push(row);
+    cache.day_progress = rows;
+    const snap = { ...(cache.snapshot && typeof cache.snapshot === "object" ? cache.snapshot : {}) };
+    const completedCount = rows.filter(
+      (r) => r && String(r.status || "").toLowerCase() === "completed"
+    ).length;
+    const est = finiteNumber(snap.estimated_days, 0);
+    if (est > 0) {
+      const effective = Math.max(finiteNumber(snap.actual_days, 0), completedCount);
+      snap.actual_days = effective;
+      snap.days_remaining = Math.max(0, est - effective);
+      snap.completion_pace_pct = Math.round((effective / est) * 100);
+    }
+    cache.snapshot = snap;
+  }
+
+  function refreshSupervisorAfterDayAction() {
+    if (typeof window.renderSupervisor === "function") {
+      window.renderSupervisor();
+    }
+  }
+
   function bindSupExecutionCalendarOnce() {
     const host = $("supLaborPlanBody");
     if (!host || host.dataset.supCalendarBound === "1") return;
@@ -1819,10 +1902,16 @@ Thank you.`
         );
         const ctx = supervisorBuildDayContext(dayNum);
         if (String(completeBtn.getAttribute("data-sup-done") || "") === "1") return;
-        completeBtn.disabled = true;
-        const ok = await markSupervisorDayCompleted(ctx);
-        completeBtn.disabled = false;
-        if (ok && typeof window.renderSupervisor === "function") window.renderSupervisor();
+        if (String(completeBtn.dataset.supBusy || "") === "1") return;
+        setSupDayCompleteButtonBusy(completeBtn, true);
+        const result = await markSupervisorDayCompleted(ctx);
+        if (result.ok) {
+          showSupervisorToast("Day marked completed.", "success");
+          refreshSupervisorAfterDayAction();
+        } else {
+          setSupDayCompleteButtonBusy(completeBtn, false);
+          showSupervisorToast(result.error, "error");
+        }
         return;
       }
       const laborBtn = event.target.closest("[data-sup-labor]");
@@ -2033,24 +2122,33 @@ Thank you.`
       dayCtx?.projectId || resolveActiveSupervisorProject()?.id
     );
     const dayNum = Math.max(1, Math.floor(finiteNumber(dayCtx?.day_number, 0)));
-    if (!projectId || !dayNum) return false;
-    const res = await fetch("/.netlify/functions/save-project-day-progress", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        project_id: projectId,
-        day_number: dayNum,
-        phase: dayCtx?.phase || "",
-      }),
-    });
+    const phase = String(dayCtx?.phase || "").trim();
+    if (!projectId || !dayNum) {
+      return { ok: false, error: "Select a project before marking a day completed." };
+    }
+    const payload = {
+      project_id: projectId,
+      day_number: dayNum,
+      phase,
+    };
+    let res;
+    try {
+      res = await fetch("/.netlify/functions/save-project-day-progress", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (_e) {
+      return { ok: false, error: "Network error. Could not mark day completed." };
+    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data || data.ok !== true) {
-      window.alert((data && data.error) || "Could not mark day completed.");
-      return false;
+      return { ok: false, error: normalizeSupDayProgressError(data, res) };
     }
+    mergeDayProgressCompletedIntoCache(projectId, dayNum, phase);
     await loadSupervisorOperationalSnapshot(projectId, { force: true });
-    return true;
+    return { ok: true, error: null };
   }
 
   async function reopenSupervisorDay(ctx) {
@@ -2059,24 +2157,30 @@ Thank you.`
       dayCtx?.projectId || resolveActiveSupervisorProject()?.id
     );
     const dayNum = Math.max(1, Math.floor(finiteNumber(dayCtx?.day_number, 0)));
-    if (!projectId || !dayNum) return false;
-    const res = await fetch("/.netlify/functions/save-project-day-progress", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        project_id: projectId,
-        day_number: dayNum,
-        reopen: true,
-      }),
-    });
+    if (!projectId || !dayNum) {
+      return { ok: false, error: "Select a project before reopening a day." };
+    }
+    let res;
+    try {
+      res = await fetch("/.netlify/functions/save-project-day-progress", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: projectId,
+          day_number: dayNum,
+          reopen: true,
+        }),
+      });
+    } catch (_e) {
+      return { ok: false, error: "Network error. Could not reopen day." };
+    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data || data.ok !== true) {
-      window.alert((data && data.error) || "Could not reopen day.");
-      return false;
+      return { ok: false, error: normalizeSupDayProgressError(data, res) };
     }
     await loadSupervisorOperationalSnapshot(projectId, { force: true });
-    return true;
+    return { ok: true, error: null };
   }
 
   function resolveSupervisorOperationalPanelState(pid, currentProject, state, opCache) {
@@ -2623,17 +2727,32 @@ Thank you.`
       openSupFieldModal("extra", ctx);
     });
     wire("btnSupMarkDayCompleted", async () => {
-      const ok = await markSupervisorDayCompleted(supervisorActiveDayContext);
-      if (ok) {
+      const btn = $("btnSupMarkDayCompleted");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Saving…";
+      }
+      const result = await markSupervisorDayCompleted(supervisorActiveDayContext);
+      if (result.ok) {
+        showSupervisorToast("Day marked completed.", "success");
         closeSupDayDetailModal();
-        if (typeof window.renderSupervisor === "function") window.renderSupervisor();
+        refreshSupervisorAfterDayAction();
+      } else {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "Mark completed";
+        }
+        showSupervisorToast(result.error, "error");
       }
     });
     wire("btnSupReopenDay", async () => {
-      const ok = await reopenSupervisorDay(supervisorActiveDayContext);
-      if (ok) {
+      const result = await reopenSupervisorDay(supervisorActiveDayContext);
+      if (result.ok) {
+        showSupervisorToast("Day reopened.", "success");
         closeSupDayDetailModal();
-        if (typeof window.renderSupervisor === "function") window.renderSupervisor();
+        refreshSupervisorAfterDayAction();
+      } else {
+        showSupervisorToast(result.error, "error");
       }
     });
     [laborModal, extraModal, dayModal].forEach((modal) => {
@@ -8823,6 +8942,8 @@ function renderSupervisor() {
 
     refresh();
   }
+
+window.renderSupervisor = renderSupervisor;
 
   function formatDisplayDate(value) {
     const normalized = normalizeDateInput(value);
