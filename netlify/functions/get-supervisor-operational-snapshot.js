@@ -297,6 +297,10 @@ exports.handler = async (event) => {
         migrationBaseline,
         Array.isArray(reportRows) ? reportRows : []
       );
+      operational_snapshot = applyDayProgressToMetrics(
+        operational_snapshot,
+        dayProgressRows
+      );
       operational_snapshot = pickAllowlistedOperational(operational_snapshot);
     } else {
       operational_snapshot = mergeMetricsWithStoredPlan(

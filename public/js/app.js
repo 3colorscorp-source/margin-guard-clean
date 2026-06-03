@@ -1297,23 +1297,33 @@ Thank you.`
   function enrichOperationalSnapshotFromFieldCaches(pid, baseSnap, project, state, opts) {
     const snap = { ...(baseSnap && typeof baseSnap === "object" ? baseSnap : {}) };
     const hasMigration = Boolean(opts && opts.hasMigrationBaseline);
-    const est = finiteNumber(
-      snap.estimated_days,
-      finiteNumber(project?.estimatedDays, finiteNumber(state?.estimatedDays, 0))
+    const estFallback = finiteNumber(
+      project?.estimatedDays,
+      finiteNumber(state?.estimatedDays, 0)
     );
+    const est = finiteNumber(snap.estimated_days, estFallback);
     if (!hasMigration && est > 0 && !finiteNumber(snap.estimated_days, 0)) {
       snap.estimated_days = est;
     }
     const repCache = supervisorProjectReportsCache[pid];
+    const reportRows =
+      Array.isArray(opts?.reportRows) && opts.reportRows.length
+        ? opts.reportRows
+        : repCache?.ok === true && Array.isArray(repCache.reports)
+          ? repCache.reports
+          : !hasMigration && Array.isArray(state?.entries)
+            ? state.entries
+            : [];
     if (!hasMigration && repCache?.ok === true && Array.isArray(repCache.reports)) {
-      const actualDays = repCache.reports.reduce((s, r) => s + Number(r?.days || 0), 0);
-      const actualHours = repCache.reports.reduce((s, r) => s + Number(r?.hours || 0), 0);
-      snap.actual_days = actualDays;
-      snap.actual_hours = actualHours;
+      const fromReports = repCache.reports.reduce((s, r) => s + Number(r?.days || 0), 0);
+      const fromHours = repCache.reports.reduce((s, r) => s + Number(r?.hours || 0), 0);
+      snap.actual_days = Math.max(finiteNumber(snap.actual_days, 0), fromReports);
+      snap.actual_hours = Math.max(finiteNumber(snap.actual_hours, 0), fromHours);
       snap.report_count = repCache.reports.length;
     } else if (!hasMigration && !Number.isFinite(Number(snap.actual_days))) {
       const entries = Array.isArray(state?.entries) ? state.entries : [];
-      snap.actual_days = entries.reduce((s, r) => s + Number(r?.days || 0), 0);
+      const fromEntries = entries.reduce((s, r) => s + Number(r?.days || 0), 0);
+      snap.actual_days = Math.max(finiteNumber(snap.actual_days, 0), fromEntries);
       snap.actual_hours = entries.reduce((s, r) => s + Number(r?.hours || 0), 0);
       snap.report_count = entries.length;
     } else if (repCache?.ok === true && Array.isArray(repCache.reports)) {
@@ -1326,22 +1336,12 @@ Thank you.`
       snap.expense_count = Array.isArray(state?.extras) ? state.extras.length : 0;
     }
     const dayProgress = Array.isArray(opts?.dayProgress) ? opts.dayProgress : [];
-    const completedPlanDays = dayProgress.filter(
-      (r) => r && String(r.status || "").toLowerCase() === "completed"
-    ).length;
-    let actDays = finiteNumber(snap.actual_days, 0);
-    if (!hasMigration && completedPlanDays > 0) {
-      actDays = Math.max(actDays, completedPlanDays);
-      snap.actual_days = actDays;
-    }
-    const estDays = finiteNumber(snap.estimated_days, est);
-    if (!hasMigration) {
-      snap.days_remaining = Math.max(0, estDays - actDays);
-      if (estDays > 0) {
-        snap.completion_pace_pct = Math.round((actDays / estDays) * 100);
-      }
-    }
-    return snap;
+    return applySupervisorUnifiedProgressToSnapshot(snap, {
+      migrationBaseline: hasMigration ? opts?.migrationBaseline : null,
+      dayProgressRows: dayProgress,
+      reportRows,
+      estimatedDaysFallback: estFallback,
+    });
   }
 
   function buildSupervisorExecutionPlanFallback(project, estimatedDays) {
@@ -1450,33 +1450,171 @@ Thank you.`
     return Boolean(opCache.show_migrated_execution || opCache.has_migrated_baseline);
   }
 
-  function reconcileSupervisorMigratedSnapshot(snapshot, migrationBaseline) {
-    const snap = { ...(snapshot && typeof snapshot === "object" ? snapshot : {}) };
-    const b =
-      migrationBaseline && typeof migrationBaseline === "object"
-        ? migrationBaseline
-        : null;
-    if (!b) return snap;
-    const est = finiteNumber(b.estimated_total_days, finiteNumber(snap.estimated_days, 0));
-    const baselineDays = finiteNumber(b.days_completed_to_date, 0);
-    const act = finiteNumber(snap.actual_days, baselineDays);
-    const remaining = Math.max(0, est - act);
-    const paceFromRatio = est > 0 ? Math.round((act / est) * 100) : 0;
-    const baselinePct = finiteNumber(b.progress_pct, 0);
-    snap.estimated_days = est;
-    snap.actual_days = act;
-    snap.days_remaining = remaining;
-    snap.completion_pace_pct =
-      baselinePct > 0 ? Math.max(baselinePct, paceFromRatio) : paceFromRatio;
-    const dev = act - est;
-    snap.labor_deviation_days = dev;
-    if (Math.abs(dev) < 0.01) snap.labor_deviation_label = "On budget";
-    else if (dev > 0) {
-      snap.labor_deviation_label = `${Math.abs(dev).toFixed(2)} day(s) over budget`;
-    } else {
-      snap.labor_deviation_label = `${Math.abs(dev).toFixed(2)} day(s) under budget`;
+  function supervisorReportDaysAfterBaseline(reports, baseline) {
+    if (!baseline || !Array.isArray(reports)) return 0;
+    const cutoffRaw = baseline.baseline_set_at || baseline.updated_at;
+    const cutoffMs = cutoffRaw ? new Date(cutoffRaw).getTime() : NaN;
+    if (!Number.isFinite(cutoffMs)) {
+      return reports.reduce((s, r) => s + finiteNumber(r?.days, 0), 0);
     }
-    return snap;
+    return reports.reduce((sum, row) => {
+      const createdMs = new Date(row?.created_at || row?.createdAt || 0).getTime();
+      if (!Number.isFinite(createdMs) || createdMs < cutoffMs) return sum;
+      return sum + finiteNumber(row?.days, 0);
+    }, 0);
+  }
+
+  function supervisorCountCompletedPlanDays(dayProgressRows) {
+    return (Array.isArray(dayProgressRows) ? dayProgressRows : []).filter(
+      (r) => r && String(r.status || "").toLowerCase() === "completed"
+    ).length;
+  }
+
+  function supervisorMaxCompletedDayNumber(dayProgressRows) {
+    return (Array.isArray(dayProgressRows) ? dayProgressRows : []).reduce((m, r) => {
+      if (String(r?.status || "").toLowerCase() !== "completed") return m;
+      return Math.max(m, Math.floor(finiteNumber(r?.day_number, 0)));
+    }, 0);
+  }
+
+  /**
+   * Single source of truth for Supervisor progress %, actual days, and days remaining.
+   */
+  function computeSupervisorUnifiedProgress(opts) {
+    const o = opts && typeof opts === "object" ? opts : {};
+    const mig =
+      o.migrationBaseline && typeof o.migrationBaseline === "object"
+        ? o.migrationBaseline
+        : null;
+    const snap = o.snapshot && typeof o.snapshot === "object" ? o.snapshot : {};
+    const dayProgress = Array.isArray(o.dayProgressRows) ? o.dayProgressRows : [];
+    const reports = Array.isArray(o.reportRows) ? o.reportRows : [];
+    const completedPlanDays = supervisorCountCompletedPlanDays(dayProgress);
+    const maxCompletedDay = supervisorMaxCompletedDayNumber(dayProgress);
+    const serverPace = snap.completion_pace_pct;
+    const serverPaceNum =
+      serverPace != null && serverPace !== "" && Number.isFinite(Number(serverPace))
+        ? finiteNumber(serverPace, NaN)
+        : NaN;
+
+    let estimatedDays = finiteNumber(snap.estimated_days, finiteNumber(o.estimatedDaysFallback, 0));
+    let actualDays = finiteNumber(snap.actual_days, 0);
+    let progressPct =
+      Number.isFinite(serverPaceNum) ? Math.round(serverPaceNum) : null;
+
+    if (mig) {
+      const est = finiteNumber(
+        mig.estimated_total_days,
+        finiteNumber(snap.estimated_days, estimatedDays)
+      );
+      estimatedDays = est > 0 ? est : estimatedDays;
+      const baselineDays = finiteNumber(mig.days_completed_to_date, 0);
+      const baselinePct = finiteNumber(mig.progress_pct, 0);
+      const newReportDays = supervisorReportDaysAfterBaseline(reports, mig);
+      actualDays = baselineDays + newReportDays;
+      if (maxCompletedDay > 0) {
+        actualDays = Math.max(actualDays, maxCompletedDay);
+      }
+      if (completedPlanDays > 0) {
+        actualDays = Math.max(actualDays, completedPlanDays);
+      }
+      if (actualDays <= 0 && baselineDays > 0) {
+        actualDays = baselineDays;
+      }
+      if (estimatedDays > 0) {
+        const paceFromRatio = Math.round((actualDays / estimatedDays) * 100);
+        progressPct =
+          baselinePct > 0
+            ? Math.max(baselinePct, paceFromRatio)
+            : paceFromRatio;
+      } else if (baselinePct > 0) {
+        progressPct = Math.round(baselinePct);
+      } else if (Number.isFinite(serverPaceNum)) {
+        progressPct = Math.round(serverPaceNum);
+      } else {
+        progressPct = null;
+      }
+    } else {
+      if (estimatedDays <= 0) {
+        estimatedDays = finiteNumber(
+          snap.estimated_days,
+          finiteNumber(o.estimatedDaysFallback, 0)
+        );
+      }
+      const reportDays = reports.reduce((s, r) => s + finiteNumber(r?.days, 0), 0);
+      if (reportDays > 0) {
+        actualDays = Math.max(actualDays, reportDays);
+      }
+      if (completedPlanDays > 0) {
+        actualDays = Math.max(actualDays, completedPlanDays);
+      }
+      if (maxCompletedDay > 0) {
+        actualDays = Math.max(actualDays, maxCompletedDay);
+      }
+      if (estimatedDays > 0) {
+        const paceFromRatio = Math.round((actualDays / estimatedDays) * 100);
+        progressPct =
+          Number.isFinite(serverPaceNum) && serverPaceNum > 0
+            ? Math.max(serverPaceNum, paceFromRatio)
+            : paceFromRatio;
+      } else if (Number.isFinite(serverPaceNum) && serverPaceNum > 0) {
+        progressPct = Math.round(serverPaceNum);
+      }
+    }
+
+    const daysRemaining =
+      estimatedDays > 0 ? Math.max(0, estimatedDays - actualDays) : null;
+    const progressOut =
+      progressPct != null && Number.isFinite(progressPct)
+        ? Math.min(100, Math.max(0, Math.round(progressPct)))
+        : null;
+
+    return {
+      estimatedDays,
+      actualDays,
+      daysRemaining,
+      progressPct: progressOut,
+    };
+  }
+
+  function applySupervisorUnifiedProgressToSnapshot(snap, opts) {
+    const base = snap && typeof snap === "object" ? { ...snap } : {};
+    const progress = computeSupervisorUnifiedProgress({
+      ...opts,
+      snapshot: base,
+    });
+    if (progress.estimatedDays > 0) {
+      base.estimated_days = progress.estimatedDays;
+    }
+    base.actual_days = progress.actualDays;
+    if (progress.daysRemaining != null) {
+      base.days_remaining = progress.daysRemaining;
+    }
+    if (progress.progressPct != null) {
+      base.completion_pace_pct = progress.progressPct;
+    }
+    const est = finiteNumber(base.estimated_days, 0);
+    const act = finiteNumber(base.actual_days, 0);
+    if (est > 0) {
+      const dev = act - est;
+      base.labor_deviation_days = dev;
+      if (Math.abs(dev) < 0.01) base.labor_deviation_label = "On budget";
+      else if (dev > 0) {
+        base.labor_deviation_label = `${Math.abs(dev).toFixed(2)} day(s) over budget`;
+      } else {
+        base.labor_deviation_label = `${Math.abs(dev).toFixed(2)} day(s) under budget`;
+      }
+    }
+    return base;
+  }
+
+  function reconcileSupervisorMigratedSnapshot(snapshot, migrationBaseline, enrichOpts) {
+    return applySupervisorUnifiedProgressToSnapshot(snapshot, {
+      migrationBaseline,
+      dayProgressRows: enrichOpts?.dayProgress,
+      reportRows: enrichOpts?.reportRows,
+      estimatedDaysFallback: enrichOpts?.estimatedDaysFallback,
+    });
   }
 
   function resolveSupervisorExecutionPlan(opCache, project, estimatedDays) {
@@ -1867,18 +2005,21 @@ Thank you.`
     if (existingIdx >= 0) rows[existingIdx] = { ...rows[existingIdx], ...row };
     else rows.push(row);
     cache.day_progress = rows;
-    const snap = { ...(cache.snapshot && typeof cache.snapshot === "object" ? cache.snapshot : {}) };
-    const completedCount = rows.filter(
-      (r) => r && String(r.status || "").toLowerCase() === "completed"
-    ).length;
-    const est = finiteNumber(snap.estimated_days, 0);
-    if (est > 0) {
-      const effective = Math.max(finiteNumber(snap.actual_days, 0), completedCount);
-      snap.actual_days = effective;
-      snap.days_remaining = Math.max(0, est - effective);
-      snap.completion_pace_pct = Math.round((effective / est) * 100);
-    }
-    cache.snapshot = snap;
+    const repCache = supervisorProjectReportsCache[k];
+    const reportRows =
+      repCache?.ok === true && Array.isArray(repCache.reports) ? repCache.reports : [];
+    cache.snapshot = applySupervisorUnifiedProgressToSnapshot(
+      cache.snapshot && typeof cache.snapshot === "object" ? cache.snapshot : {},
+      {
+        migrationBaseline:
+          cache.migration_baseline && typeof cache.migration_baseline === "object"
+            ? cache.migration_baseline
+            : null,
+        dayProgressRows: rows,
+        reportRows,
+        estimatedDaysFallback: finiteNumber(cache.snapshot?.estimated_days, 0),
+      }
+    );
   }
 
   function refreshSupervisorAfterDayAction() {
@@ -2192,9 +2333,18 @@ Thank you.`
     const hasMigrationBaseline = Boolean(
       cached?.has_migrated_baseline && migrationBaseline
     );
+    const repCache = supervisorProjectReportsCache[pid];
+    const reportRows =
+      repCache?.ok === true && Array.isArray(repCache.reports) ? repCache.reports : [];
     const enrichOpts = {
       hasMigrationBaseline,
+      migrationBaseline: hasMigrationBaseline ? migrationBaseline : null,
       dayProgress: Array.isArray(cached?.day_progress) ? cached.day_progress : [],
+      reportRows,
+      estimatedDaysFallback: finiteNumber(
+        currentProject?.estimatedDays,
+        finiteNumber(state?.estimatedDays, 0)
+      ),
     };
     const fallbackSnap = enrichOperationalSnapshotFromFieldCaches(
       pid,
@@ -2209,7 +2359,7 @@ Thank you.`
     if (cached?.ok === true && cached.snapshot) {
       const merged = hasMigrationBaseline
         ? { ...cached.snapshot }
-        : { ...fallbackSnap, ...cached.snapshot };
+        : { ...cached.snapshot };
       snapshot = enrichOperationalSnapshotFromFieldCaches(
         pid,
         merged,
@@ -2218,10 +2368,26 @@ Thank you.`
         enrichOpts
       );
       if (hasMigrationBaseline) {
-        snapshot = reconcileSupervisorMigratedSnapshot(snapshot, migrationBaseline);
+        snapshot = reconcileSupervisorMigratedSnapshot(
+          snapshot,
+          migrationBaseline,
+          enrichOpts
+        );
       }
+    } else if (hasMigrationBaseline && migrationBaseline) {
+      snapshot = reconcileSupervisorMigratedSnapshot(
+        fallbackSnap,
+        migrationBaseline,
+        enrichOpts
+      );
     } else if (cached?.ok === false) {
       error = cached.error || "Field metrics unavailable. Showing local baseline.";
+      if (
+        finiteNumber(fallbackSnap?.completion_pace_pct, 0) > 0 ||
+        finiteNumber(fallbackSnap?.actual_days, 0) > 0
+      ) {
+        snapshot = fallbackSnap;
+      }
     } else if (inflight && !snapshot?.estimated_days && !snapshot?.actual_days) {
       error = null;
     }
@@ -8495,22 +8661,30 @@ function renderSupervisor() {
         opCache
       );
       const activeSnap = panelState.snapshot;
-      const estimatedBudgetDays = finiteNumber(
-        activeSnap.estimated_days,
-        finiteNumber(state.estimatedDays, 0)
-      );
-      const actualDays = finiteNumber(activeSnap.actual_days, daysSpent);
-      const progressPct =
-        activeSnap.completion_pace_pct != null
-          ? finiteNumber(activeSnap.completion_pace_pct, 0)
-          : estimatedBudgetDays > 0
-            ? (actualDays / estimatedBudgetDays) * 100
-            : null;
-      const extrasRegCount = state.extras.length;
       const migrationBaseline =
         opCache?.migration_baseline && typeof opCache.migration_baseline === "object"
           ? opCache.migration_baseline
           : null;
+      const unifiedProgress = computeSupervisorUnifiedProgress({
+        migrationBaseline,
+        snapshot: activeSnap,
+        dayProgressRows: opCache?.day_progress || [],
+        reportRows:
+          supervisorProjectReportsCache[pid]?.ok === true
+            ? supervisorProjectReportsCache[pid].reports
+            : [],
+        estimatedDaysFallback: finiteNumber(
+          currentProject?.estimatedDays,
+          finiteNumber(state.estimatedDays, 0)
+        ),
+      });
+      const actualDays = unifiedProgress.actualDays;
+      const progressPct = unifiedProgress.progressPct;
+      const estimatedBudgetDays =
+        unifiedProgress.estimatedDays > 0
+          ? unifiedProgress.estimatedDays
+          : finiteNumber(activeSnap.estimated_days, finiteNumber(state.estimatedDays, 0));
+      const extrasRegCount = state.extras.length;
       const showMigratedExecution = resolveShowMigratedExecution(opCache);
       const scheduleLabels = supervisorScheduleLabels(
         opCache?.schedule,
