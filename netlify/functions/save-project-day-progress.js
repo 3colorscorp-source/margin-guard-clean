@@ -6,7 +6,10 @@ const { readSessionFromEvent } = require("./_lib/session");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveAuthUserIdByEmail } = require("./_lib/auth-resolve-user-id");
-const { upsertDayProgressCompleted } = require("./_lib/project-day-progress");
+const {
+  upsertDayProgressCompleted,
+  reopenDayProgress,
+} = require("./_lib/project-day-progress");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -80,15 +83,27 @@ exports.handler = async (event) => {
       return json(403, { error: "Project not found for this tenant" });
     }
 
+    const reopen =
+      body.reopen === true ||
+      String(body.action || "")
+        .trim()
+        .toLowerCase() === "reopen";
+
     try {
-      const result = await upsertDayProgressCompleted({
-        tenantId: tenant.id,
-        projectId,
-        dayNumber,
-        phase,
-        completionNote,
-        completedBy: supervisorUserId || null,
-      });
+      const result = reopen
+        ? await reopenDayProgress({
+            tenantId: tenant.id,
+            projectId,
+            dayNumber,
+          })
+        : await upsertDayProgressCompleted({
+            tenantId: tenant.id,
+            projectId,
+            dayNumber,
+            phase,
+            completionNote,
+            completedBy: supervisorUserId || null,
+          });
       return json(200, { ok: true, ...result });
     } catch (err) {
       const msg = String(err?.message || err || "");

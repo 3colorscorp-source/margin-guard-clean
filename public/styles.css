@@ -2949,50 +2949,150 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   flex-direction:column;
   gap:10px;
 }
-.sup-exec-calendar-grid{
-  display:grid;
-  grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));
-  gap:12px;
+.sup-diary-calendar-host,
+.sup-exec-calendar-host{
   width:100%;
+}
+.sup-exec-calendar-grid,
+.sup-diary-calendar-grid{
+  display:grid;
+  grid-template-columns:repeat(7, minmax(0, 1fr));
+  gap:14px;
+  width:100%;
+}
+@media (max-width:1280px){
+  .sup-exec-calendar-grid,
+  .sup-diary-calendar-grid{
+    grid-template-columns:repeat(5, minmax(0, 1fr));
+  }
+}
+@media (max-width:960px){
+  .sup-exec-calendar-grid,
+  .sup-diary-calendar-grid{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width:640px){
+  .sup-exec-calendar-grid,
+  .sup-diary-calendar-grid{
+    grid-template-columns:1fr;
+  }
+}
+.sup-diary-day{
+  display:flex;
+  flex-direction:column;
+  min-height:168px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.1);
+  background:linear-gradient(165deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+  overflow:hidden;
+  transition:border-color .12s ease, box-shadow .12s ease;
+}
+.sup-diary-day--completed{
+  border-color:rgba(15,138,95,.4);
+  box-shadow:inset 0 0 0 1px rgba(15,138,95,.12);
+}
+.sup-diary-day--in_progress{
+  border-color:rgba(245,158,11,.45);
+  box-shadow:0 0 0 1px rgba(245,158,11,.12);
+}
+.sup-diary-day--behind{
+  border-color:rgba(220,38,38,.35);
+}
+.sup-diary-day--pending{
+  border-color:rgba(255,255,255,.08);
+}
+.sup-diary-day__open{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  text-align:left;
+  padding:12px 12px 8px;
+  border:0;
+  background:transparent;
+  color:inherit;
+  font:inherit;
+  cursor:pointer;
+}
+.sup-diary-day__open:hover{
+  background:rgba(15,138,95,.05);
+}
+.sup-diary-day__head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:6px;
+}
+.sup-diary-day__label{
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.sup-diary-day__badge{
+  font-size:10px;
+  letter-spacing:.04em;
+}
+.sup-diary-day__date{
+  margin:0 0 6px;
+  font-size:12px;
+  color:var(--muted);
+}
+.sup-diary-day__phase{
+  margin:0 0 6px;
+  font-size:14px;
+  font-weight:700;
+  line-height:1.35;
+}
+.sup-diary-day__crew{
+  margin:0 0 8px;
+  font-size:12px;
+  line-height:1.4;
+  color:var(--muted);
+}
+.sup-diary-day__chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:auto;
+}
+.sup-diary-chip{
+  font-size:10px;
+  padding:3px 8px;
+  border-radius:999px;
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.08);
+  color:var(--muted);
+}
+.sup-diary-day__actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  padding:8px 10px 10px;
+  border-top:1px solid rgba(255,255,255,.06);
+  background:rgba(0,0,0,.12);
+}
+.sup-diary-day__actions .btn.small{
+  padding:5px 8px;
+  font-size:11px;
+  line-height:1.2;
+  flex:1 1 auto;
+  min-width:0;
 }
 .sup-exec-day-card{
   padding:12px 14px;
   border-radius:14px;
   border:1px solid rgba(255,255,255,.08);
   background:rgba(255,255,255,.03);
-  text-align:left;
-  width:100%;
-  cursor:pointer;
-  transition:transform .12s ease, border-color .12s ease, background .12s ease;
-}
-button.sup-exec-day-card{
-  font:inherit;
-  color:inherit;
-}
-.sup-exec-day-card:hover{
-  transform:translateY(-1px);
-  border-color:rgba(15,138,95,.35);
-  background:rgba(15,138,95,.06);
-}
-.sup-exec-day-card--completed{
-  border-color:rgba(15,138,95,.35);
-}
-.sup-exec-day-card--today{
-  border-color:rgba(245,158,11,.45);
-  box-shadow:0 0 0 1px rgba(245,158,11,.15);
-}
-.sup-exec-day-card--behind{
-  border-color:rgba(220,38,38,.35);
 }
 .sup-exec-day-card__head{
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap:8px;
-}
-.sup-exec-day-card__status{
-  font-size:10px;
-  letter-spacing:.04em;
 }
 .sup-exec-day-card__date{
   margin:4px 0 0;
@@ -3003,21 +3103,8 @@ button.sup-exec-day-card{
   font-size:14px;
   line-height:1.45;
 }
-.sup-exec-day-card__progress{
-  margin-top:10px;
-  height:4px;
-  border-radius:999px;
-  background:rgba(255,255,255,.08);
-  overflow:hidden;
-}
-.sup-exec-day-card__progress > span{
-  display:block;
-  height:100%;
-  border-radius:999px;
-  background:linear-gradient(90deg, #0f8a5f, #12a06e);
-}
 .sup-day-detail__card{
-  max-width:560px;
+  max-width:620px;
 }
 .sup-day-detail__meta{
   display:flex;
@@ -3040,9 +3127,14 @@ button.sup-exec-day-card{
 .sup-day-detail__block{
   margin-bottom:12px;
 }
-.sup-day-detail__tasks{
+.sup-day-detail__tasks,
+.sup-day-detail__list{
   margin:0;
   padding-left:18px;
+}
+.sup-day-detail__notes{
+  margin:0;
+  line-height:1.5;
 }
 .sup-day-detail__actions{
   flex-wrap:wrap;

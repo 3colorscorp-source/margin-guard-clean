@@ -19,6 +19,11 @@ function mapRow(row) {
     expense_date: row.expense_date == null ? null : String(row.expense_date).slice(0, 10),
     amount: Number(row.amount) || 0,
     note: row.note == null ? "" : String(row.note),
+    day_number:
+      row.day_number == null || row.day_number === ""
+        ? null
+        : Math.max(1, Math.floor(Number(row.day_number) || 0)) || null,
+    phase: row.phase == null ? "" : String(row.phase),
     created_by: row.created_by ?? null,
     created_at: row.created_at ?? null,
     updated_at: row.updated_at ?? null,

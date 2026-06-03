@@ -116,9 +116,41 @@ function countCompletedDays(rows) {
   ).length;
 }
 
+async function reopenDayProgress(params) {
+  const tenantId = str(params?.tenantId, 128);
+  const projectId = str(params?.projectId, 128);
+  const dayNumber = Math.max(1, Math.floor(num(params?.dayNumber, 0)));
+  const tid = encodeURIComponent(tenantId);
+  const pid = encodeURIComponent(projectId);
+  const nowIso = new Date().toISOString();
+
+  const existingRows = await supabaseRequest(
+    `tenant_project_day_progress?tenant_id=eq.${tid}&project_id=eq.${pid}&day_number=eq.${dayNumber}&select=id&limit=1`
+  );
+  const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+  if (!existing?.id) {
+    return { ok: true, id: null, reopened: false, day_number: dayNumber };
+  }
+
+  await supabaseRequest(
+    `tenant_project_day_progress?id=eq.${encodeURIComponent(existing.id)}&tenant_id=eq.${tid}`,
+    {
+      method: "PATCH",
+      body: {
+        status: "pending",
+        completed_at: null,
+        completed_by: null,
+        updated_at: nowIso,
+      },
+    }
+  );
+  return { ok: true, id: existing.id, reopened: true, day_number: dayNumber };
+}
+
 module.exports = {
   loadDayProgressForProject,
   upsertDayProgressCompleted,
+  reopenDayProgress,
   dayProgressMap,
   countCompletedDays,
   mapDayProgressRow,

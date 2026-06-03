@@ -226,7 +226,7 @@
                   <p class="small sup-section-desc">Field calendar — tap a day for details and actions.</p>
                 </div>
               </div>
-              <div id="supLaborPlanBody" class="sup-exec-plan-list sup-exec-calendar-host"></div>
+              <div id="supLaborPlanBody" class="sup-exec-calendar-host sup-diary-calendar-host"></div>
             </section>
           </div>
         </div>
@@ -311,9 +311,22 @@
           <h4 class="sup-day-detail__label">Tasks</h4>
           <ul id="supDayDetailTasks" class="sup-day-detail__tasks"></ul>
         </div>
+        <div class="sup-day-detail__block" id="supDayDetailNotesWrap" hidden>
+          <h4 class="sup-day-detail__label">Planned notes</h4>
+          <p id="supDayDetailNotes" class="sup-day-detail__notes small">—</p>
+        </div>
+        <div class="sup-day-detail__block">
+          <h4 class="sup-day-detail__label">Labor reports this day</h4>
+          <ul id="supDayDetailLaborList" class="sup-day-detail__list"></ul>
+        </div>
+        <div class="sup-day-detail__block">
+          <h4 class="sup-day-detail__label">Expenses this day</h4>
+          <ul id="supDayDetailExpenseList" class="sup-day-detail__list"></ul>
+        </div>
       </div>
       <div class="modal-footer sup-day-detail__actions">
         <button type="button" class="btn primary" id="btnSupMarkDayCompleted">Mark completed</button>
+        <button type="button" class="btn ghost" id="btnSupReopenDay" hidden>Undo completed</button>
         <button type="button" class="btn" id="btnSupDayReportLabor">Report labor</button>
         <button type="button" class="btn" id="btnSupDayReportExpense">Report unexpected expense</button>
       </div>
