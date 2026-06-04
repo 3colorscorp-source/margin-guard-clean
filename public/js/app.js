@@ -2932,8 +2932,6 @@ Thank you.`
       const el = $(id);
       if (el) el.onclick = handler;
     };
-    wire("btnOpenSupLaborReport", () => openSupFieldModal("labor"));
-    wire("btnOpenSupExpenseReport", () => openSupFieldModal("extra"));
     wire("btnCloseSupLaborReport", () => closeSupFieldModal("labor"));
     wire("btnCancelSupLaborReport", () => closeSupFieldModal("labor"));
     wire("btnCloseSupExpenseReport", () => closeSupFieldModal("extra"));

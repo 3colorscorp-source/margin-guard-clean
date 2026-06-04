@@ -2840,6 +2840,11 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   padding-top:12px;
   border-top:1px solid rgba(255,255,255,.08);
 }
+.sup-command-card__hint{
+  margin:10px 0 0;
+  color:var(--muted);
+  line-height:1.45;
+}
 .sup-exec-hero__hint{
   display:block;
   margin-top:4px;
