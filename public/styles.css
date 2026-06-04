@@ -2818,15 +2818,103 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
 }
 
 /* Supervisor execution UI */
-.sup-exec-hero{
-  margin-top:14px;
-  padding:16px;
-  border-radius:18px;
+.sup-console-intro__inner{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px 16px;
+}
+.sup-console-intro__main{
+  flex:1 1 280px;
+  min-width:0;
+}
+.sup-console-intro__title{
+  margin:8px 0 6px;
+  font-size:1.35rem;
+}
+.sup-console-intro__lead{
+  margin:0;
+  max-width:52rem;
+}
+.sup-console-intro__aside{
+  flex:0 1 220px;
+  min-width:180px;
+  padding:10px 12px;
+  border-radius:12px;
   border:1px solid rgba(255,255,255,.1);
-  background:linear-gradient(145deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+  background:rgba(255,255,255,.04);
+}
+.sup-console-intro__pill{
+  margin:0;
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  color:rgba(232,238,252,.92);
+}
+.sup-console-intro__aside-note{
+  margin:6px 0 0;
+  color:var(--muted);
+  line-height:1.35;
+}
+.sup-console-plan-card__inner,
+.sup-command-card__inner,
+.sup-live-ops-compact__inner{
+  padding:14px 16px;
+}
+.sup-project-picker{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.sup-project-picker__label{
+  font-size:13px;
+  font-weight:700;
+  color:rgba(232,238,252,.9);
+}
+.sup-project-picker__row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+}
+.sup-project-picker__select{
+  flex:1 1 200px;
+  min-width:0;
+}
+.sup-project-picker__assign{
+  flex:0 0 auto;
+}
+.sup-project-picker__feedback:empty{
+  display:none;
+}
+.sup-project-picker__meta{
+  margin:0;
+  color:var(--muted);
+}
+.sup-command-card{
+  margin-top:0;
+}
+.sup-command-card__inner{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.sup-command-card__top{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px 12px;
 }
 .sup-command-card__head{
-  margin-bottom:10px;
+  flex:1 1 240px;
+  min-width:0;
+}
+.sup-command-card__status{
+  flex:0 0 auto;
+  align-self:flex-start;
 }
 .sup-command-card__summary{
   margin:6px 0 0;
@@ -2835,15 +2923,20 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   color:rgba(232,238,252,.92);
   line-height:1.35;
 }
-.sup-command-card__actions{
-  margin-top:14px;
-  padding-top:12px;
-  border-top:1px solid rgba(255,255,255,.08);
+.sup-command-card__meta-grid{
+  margin-top:0;
 }
 .sup-command-card__hint{
-  margin:10px 0 0;
+  margin:0;
   color:var(--muted);
   line-height:1.45;
+}
+.sup-exec-hero{
+  padding:0;
+  margin-top:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
 }
 .sup-exec-hero__hint{
   display:block;
@@ -2909,7 +3002,7 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   font-weight:700;
 }
 .sup-exec-progress{
-  margin-top:12px;
+  margin-top:0;
 }
 .sup-exec-progress__track{
   height:8px;
@@ -2931,9 +3024,9 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
 }
 .sup-exec-hero__grid{
   display:grid;
-  grid-template-columns:repeat(2, minmax(0, 1fr));
+  grid-template-columns:repeat(3, minmax(0, 1fr));
   gap:10px;
-  margin-top:14px;
+  margin-top:0;
 }
 .sup-exec-hero__cell{
   padding:10px 12px;
@@ -2941,7 +3034,7 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   background:rgba(0,0,0,.15);
 }
 .sup-exec-hero__cell--wide{
-  grid-column:1 / -1;
+  grid-column:auto;
 }
 .sup-exec-hero__label{
   display:block;
@@ -3437,12 +3530,12 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
 
 /* Supervisor — full-width operations console (width: global auth rule; layout below) */
 .sup-console-intro{
-  margin-bottom:4px;
+  margin-bottom:0;
 }
 .sup-console-stack{
   display:flex;
   flex-direction:column;
-  gap:14px;
+  gap:12px;
   width:100%;
   min-width:0;
 }
@@ -3450,7 +3543,7 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   min-width:0;
   display:flex;
   flex-direction:column;
-  gap:14px;
+  gap:12px;
   width:100%;
 }
 .sup-console-main .card{
@@ -3603,17 +3696,30 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
 .sup-live-ops-compact .card-inner{
   padding:14px 16px;
 }
-.sup-live-ops-compact__desc{
-  margin:-2px 0 10px;
+.sup-live-ops-compact__title{
+  margin:0 0 8px;
+  font-size:1rem;
 }
 .sup-section-title--sm{
   font-size:1rem;
-  margin:0 0 4px;
+  margin:0 0 8px;
+}
+.sup-live-ops-compact__link{
+  margin-top:8px;
+  min-height:32px;
+  padding:4px 10px;
+  font-size:12px;
+}
+.sup-live-ops-legacy{
+  display:none !important;
+}
+.sup-live-ops-metrics--detail{
+  display:none !important;
 }
 .sup-live-ops-strip{
   display:flex;
   flex-wrap:wrap;
-  gap:8px 14px;
+  gap:6px 12px;
   align-items:center;
   padding:10px 12px;
   border-radius:12px;
@@ -3621,6 +3727,7 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   background:rgba(255,255,255,.03);
   font-size:13px;
   color:var(--muted);
+  margin:0;
 }
 .sup-live-ops-strip__item strong{
   color:var(--text, #fff);
@@ -3643,12 +3750,25 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   color:var(--text, #fff);
 }
 .sup-live-ops-actions{
-  margin:8px 0 0;
+  display:none !important;
 }
-.sup-live-ops-actions .btn.small{
-  min-height:32px;
-  padding:4px 10px;
-  font-size:12px;
+.sup-console-exec-card .card-inner{
+  padding:14px 16px;
+}
+.sup-exec-plan-section .section-action-row{
+  margin-bottom:8px;
+}
+@media (max-width:640px){
+  .sup-console-intro__aside{
+    flex:1 1 100%;
+  }
+  .sup-console-intro__inner{
+    gap:10px;
+  }
+  .sup-exec-hero__grid,
+  .sup-command-card__meta-grid{
+    grid-template-columns:1fr;
+  }
 }
 .sup-live-metric--clickable{
   cursor:pointer;
