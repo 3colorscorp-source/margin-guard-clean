@@ -42,29 +42,23 @@
           <h2 class="hero-title sup-console-intro__title">What to do today on site.</h2>
           <p class="sub sup-console-intro__lead">Pick a project, check today&rsquo;s target, then use the execution calendar to report labor and expenses.</p>
         </div>
-        <aside class="sup-console-intro__aside" aria-label="Field workflow">
+        <div class="sup-console-intro__controls" aria-label="Project selection">
           <p class="sup-console-intro__pill">Calendar-first workflow</p>
-          <p class="small sup-console-intro__aside-note">Reports are tied to each day</p>
-        </aside>
+          <div class="sup-project-picker sup-project-picker--header">
+            <label class="sup-project-picker__label" for="supProjectPicker">Project</label>
+            <div class="sup-project-picker__row">
+              <select id="supProjectPicker" class="sup-project-picker__select"></select>
+              <button type="button" class="btn sup-project-picker__assign" id="supAssignToMeBtn">Assign to me</button>
+            </div>
+            <div class="small sup-project-picker__feedback" id="supAssignFeedback" aria-live="polite"></div>
+            <p class="small sup-project-picker__meta"><strong id="supPortfolioCount">0</strong> signed projects available</p>
+          </div>
+        </div>
       </div>
     </section>
 
     <div class="sup-console-stack">
       <main class="sup-console-main">
-        <div class="card sup-console-plan-card">
-          <div class="card-inner sup-console-plan-card__inner">
-            <div class="sup-project-picker">
-              <label class="sup-project-picker__label" for="supProjectPicker">Project</label>
-              <div class="sup-project-picker__row">
-                <select id="supProjectPicker" class="sup-project-picker__select"></select>
-                <button type="button" class="btn sup-project-picker__assign" id="supAssignToMeBtn">Assign to me</button>
-              </div>
-              <div class="small sup-project-picker__feedback" id="supAssignFeedback" aria-live="polite"></div>
-              <p class="small sup-project-picker__meta"><strong id="supPortfolioCount">0</strong> signed projects available</p>
-            </div>
-          </div>
-        </div>
-
         <div id="supExecHero" class="card sup-command-card" style="display:none;">
           <div class="card-inner sup-command-card__inner">
             <div class="sup-command-card__top">

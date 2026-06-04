@@ -2823,10 +2823,10 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   flex-wrap:wrap;
   align-items:flex-start;
   justify-content:space-between;
-  gap:12px 16px;
+  gap:12px 20px;
 }
 .sup-console-intro__main{
-  flex:1 1 280px;
+  flex:1 1 300px;
   min-width:0;
 }
 .sup-console-intro__title{
@@ -2835,30 +2835,24 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
 }
 .sup-console-intro__lead{
   margin:0;
-  max-width:52rem;
+  max-width:42rem;
 }
-.sup-console-intro__aside{
-  flex:0 1 220px;
-  min-width:180px;
-  padding:10px 12px;
-  border-radius:12px;
-  border:1px solid rgba(255,255,255,.1);
-  background:rgba(255,255,255,.04);
+.sup-console-intro__controls{
+  flex:1 1 320px;
+  min-width:min(100%, 280px);
+  max-width:440px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
 }
 .sup-console-intro__pill{
   margin:0;
-  font-size:12px;
+  font-size:11px;
   font-weight:800;
   letter-spacing:.04em;
   text-transform:uppercase;
-  color:rgba(232,238,252,.92);
+  color:rgba(232,238,252,.88);
 }
-.sup-console-intro__aside-note{
-  margin:6px 0 0;
-  color:var(--muted);
-  line-height:1.35;
-}
-.sup-console-plan-card__inner,
 .sup-command-card__inner,
 .sup-live-ops-compact__inner{
   padding:14px 16px;
@@ -2866,10 +2860,16 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
 .sup-project-picker{
   display:flex;
   flex-direction:column;
-  gap:8px;
+  gap:6px;
+}
+.sup-project-picker--header{
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.1);
+  background:rgba(255,255,255,.04);
 }
 .sup-project-picker__label{
-  font-size:13px;
+  font-size:12px;
   font-weight:700;
   color:rgba(232,238,252,.9);
 }
@@ -2880,11 +2880,13 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   align-items:center;
 }
 .sup-project-picker__select{
-  flex:1 1 200px;
+  flex:1 1 180px;
   min-width:0;
+  width:100%;
 }
 .sup-project-picker__assign{
   flex:0 0 auto;
+  white-space:nowrap;
 }
 .sup-project-picker__feedback:empty{
   display:none;
@@ -2892,6 +2894,8 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
 .sup-project-picker__meta{
   margin:0;
   color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
 }
 .sup-command-card{
   margin-top:0;
@@ -3549,7 +3553,6 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
 .sup-console-main .card{
   margin-top:0 !important;
 }
-.sup-console-plan-card,
 .sup-console-exec-card{
   min-width:0;
   width:100%;
@@ -3759,11 +3762,19 @@ body[data-role="owner"] .owner-invoices-hub-cta__btn{
   margin-bottom:8px;
 }
 @media (max-width:640px){
-  .sup-console-intro__aside{
+  .sup-console-intro__controls{
     flex:1 1 100%;
+    max-width:none;
   }
   .sup-console-intro__inner{
     gap:10px;
+  }
+  .sup-project-picker__row{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .sup-project-picker__assign{
+    width:100%;
   }
   .sup-exec-hero__grid,
   .sup-command-card__meta-grid{
