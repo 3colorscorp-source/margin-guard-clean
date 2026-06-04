@@ -218,6 +218,264 @@ body[data-requires-auth="true"] .container:has(.grid.sales-layout),
 .sales-operational-worker .sales-op-role{flex:1;min-width:120px;}
 .sales-operational-worker .sales-op-hours{width:5rem;}
 
+/* Sales — Ultra-pro operational plan (timeline + calendar preview) */
+.sales-operational--pro .sales-operational__body{padding-top:4px;}
+.sales-op-layout{
+  display:grid;
+  grid-template-columns:minmax(0,1.65fr) minmax(280px,1fr);
+  gap:16px 20px;
+  align-items:start;
+}
+.sales-op-layout__left,
+.sales-op-layout__right{
+  min-width:0;
+}
+.sales-op-layout__right{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  position:sticky;
+  top:12px;
+}
+.sales-op-timeline-head{margin:0 0 10px;}
+.sales-op-timeline-title{
+  margin:0;
+  font-size:16px;
+  font-weight:850;
+  letter-spacing:.02em;
+}
+.sales-op-timeline-sub{
+  margin:4px 0 0;
+  font-size:12px;
+  color:rgba(232,238,252,.62);
+}
+.sales-op-toolbar{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin:0 0 10px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(0,0,0,.12);
+}
+.sales-op-toolbar .field{margin:0;flex:1;min-width:160px;}
+.sales-op-metrics-inline{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 14px;
+  margin:0 0 10px;
+  font-size:12px;
+  color:rgba(232,238,252,.78);
+}
+.sales-op-metrics-inline strong{color:#fff;font-weight:750;}
+.sales-op-phase-block{margin:0 0 12px;}
+.sales-op-phase-block__title{
+  margin:0 0 6px;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:rgba(191,219,254,.85);
+}
+.sales-op-phase-block__title.sales-op-phase-tone--a{border-left:3px solid #3b82f6;padding-left:8px;}
+.sales-op-phase-block__title.sales-op-phase-tone--b{border-left:3px solid #8b5cf6;padding-left:8px;}
+.sales-op-phase-block__title.sales-op-phase-tone--c{border-left:3px solid #22c55e;padding-left:8px;}
+.sales-op-phase-block__title.sales-op-phase-tone--d{border-left:3px solid #f59e0b;padding-left:8px;}
+.sales-op-timeline{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.sales-op-timeline-row{
+  display:grid;
+  grid-template-columns:3.2rem minmax(0,1fr) auto auto auto;
+  gap:8px 10px;
+  align-items:center;
+  padding:8px 10px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(0,0,0,.18);
+  cursor:pointer;
+  transition:border-color .15s, background .15s;
+}
+.sales-op-timeline-row:hover{
+  border-color:rgba(59,130,246,.35);
+  background:rgba(59,130,246,.08);
+}
+.sales-op-timeline-row__day{
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.04em;
+  color:rgba(191,219,254,.9);
+}
+.sales-op-timeline-row__task{
+  min-width:0;
+  font-size:13px;
+  font-weight:650;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.sales-op-timeline-row__crew{
+  font-size:11px;
+  color:rgba(232,238,252,.65);
+  white-space:nowrap;
+}
+.sales-op-timeline-row__units{
+  font-size:11px;
+  color:rgba(232,238,252,.55);
+  white-space:nowrap;
+}
+.sales-op-timeline-row__actions{
+  display:flex;
+  gap:4px;
+}
+.sales-op-timeline-row__actions .btn{
+  padding:4px 8px;
+  font-size:11px;
+  min-height:0;
+}
+.sales-op-empty{
+  padding:14px;
+  border-radius:12px;
+  border:1px dashed rgba(255,255,255,.14);
+  color:rgba(232,238,252,.62);
+  font-size:13px;
+}
+.sales-op-summary-card,
+.sales-op-calendar-card,
+.sales-op-availability-card,
+.sales-op-actions-card{
+  padding:12px 14px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.1);
+  background:
+    radial-gradient(420px 100px at 100% 0%, rgba(59,130,246,.08), transparent 55%),
+    rgba(0,0,0,.18);
+}
+.sales-op-summary-card__title,
+.sales-op-calendar-card__title{
+  margin:0 0 10px;
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:rgba(191,219,254,.9);
+}
+.sales-op-summary-kv{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);
+  gap:6px 10px;
+  font-size:12px;
+}
+.sales-op-summary-kv dt{
+  margin:0;
+  color:rgba(232,238,252,.55);
+}
+.sales-op-summary-kv dd{
+  margin:0;
+  font-weight:650;
+  color:rgba(248,250,252,.95);
+  text-align:right;
+}
+.sales-op-summary-total{
+  margin-top:10px;
+  padding-top:10px;
+  border-top:1px solid rgba(255,255,255,.08);
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  gap:8px;
+}
+.sales-op-summary-total__label{font-size:12px;color:rgba(232,238,252,.62);}
+.sales-op-summary-total__value{font-size:18px;font-weight:850;color:#fff;}
+.sales-op-status-pill{
+  display:inline-block;
+  padding:2px 8px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:700;
+  text-transform:capitalize;
+  background:rgba(245,158,11,.15);
+  color:#fcd34d;
+}
+.sales-op-avail{
+  font-size:12px;
+  line-height:1.45;
+  color:rgba(232,238,252,.78);
+}
+.sales-op-avail--ok{color:#86efac;}
+.sales-op-avail--warn{color:#fcd34d;}
+.sales-op-avail--unknown{color:rgba(232,238,252,.65);}
+.sales-op-calendar-grid{
+  display:grid;
+  grid-template-columns:repeat(7,minmax(0,1fr));
+  gap:6px;
+}
+.sales-op-cal-cell{
+  min-height:72px;
+  padding:6px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(0,0,0,.2);
+  font-size:10px;
+  line-height:1.3;
+}
+.sales-op-cal-cell--empty{
+  opacity:.35;
+  min-height:48px;
+}
+.sales-op-cal-cell.sales-op-phase-tone--a{border-color:rgba(59,130,246,.35);background:rgba(59,130,246,.1);}
+.sales-op-cal-cell.sales-op-phase-tone--b{border-color:rgba(139,92,246,.35);background:rgba(139,92,246,.1);}
+.sales-op-cal-cell.sales-op-phase-tone--c{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.1);}
+.sales-op-cal-cell.sales-op-phase-tone--d{border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.1);}
+.sales-op-cal-cell.sales-op-phase-tone--muted{opacity:.45;}
+.sales-op-cal-cell__date{font-weight:800;color:rgba(191,219,254,.95);margin-bottom:2px;}
+.sales-op-cal-cell__task{
+  color:rgba(248,250,252,.9);
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+}
+.sales-op-cal-cell__crew{color:rgba(232,238,252,.55);margin-top:2px;}
+.sales-op-cal-weekdays{
+  display:grid;
+  grid-template-columns:repeat(7,minmax(0,1fr));
+  gap:6px;
+  margin-bottom:4px;
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:rgba(232,238,252,.45);
+  text-align:center;
+}
+.sales-op-actions-card{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.sales-op-actions-card .btn{width:100%;justify-content:center;}
+.sales-op-day-modal .sales-operational-day{margin:0;border:none;background:transparent;padding:0;}
+.sales-operational-days-host--legacy{display:none!important;}
+@media (max-width:1080px){
+  .sales-op-layout{grid-template-columns:1fr;}
+  .sales-op-layout__right{position:static;}
+}
+@media (max-width:720px){
+  .sales-op-timeline-row{
+    grid-template-columns:2.8rem minmax(0,1fr);
+    grid-template-rows:auto auto;
+  }
+  .sales-op-timeline-row__crew,
+  .sales-op-timeline-row__units{grid-column:2;}
+  .sales-op-timeline-row__actions{grid-column:1 / -1;justify-content:flex-end;}
+  .sales-op-calendar-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .sales-op-cal-weekdays{display:none;}
+}
+
 /* Sales — Labor (visual parity with /owner .owner-labor) */
 .sales-labor{
   margin:0 0 4px;

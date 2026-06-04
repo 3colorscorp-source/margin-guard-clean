@@ -292,6 +292,178 @@
     });
   }
 
+  const DISPLAY_PHASE_COLORS = [
+    "sales-op-phase-tone--a",
+    "sales-op-phase-tone--b",
+    "sales-op-phase-tone--c",
+    "sales-op-phase-tone--d",
+  ];
+
+  /** Presentation-only phase grouping from task/phase text. */
+  function deriveDisplayPhaseGroup(phaseText, fallbackIndex) {
+    const p = str(phaseText, 240).toLowerCase();
+    if (/downstairs|lower bath|guest bath|powder/.test(p)) {
+      return { key: "downstairs", label: "Downstairs Bathroom", tone: 0 };
+    }
+    if (/master|primary bath|owner bath| ensuite/.test(p)) {
+      return { key: "master", label: "Master Bathroom", tone: 1 };
+    }
+    if (/grout|cleanup|clean up|clean-up|final|punch|turnover|finish|detail/.test(p)) {
+      return { key: "final", label: "Final / Cleanup", tone: 2 };
+    }
+    const trimmed = str(phaseText, 240);
+    if (trimmed) {
+      return { key: "custom:" + trimmed.slice(0, 40), label: trimmed, tone: 3 };
+    }
+    const idx = Math.max(0, Math.floor(num(fallbackIndex, 0)));
+    return {
+      key: "execution",
+      label: "Phase " + (idx + 1) + " — Project Execution",
+      tone: idx % DISPLAY_PHASE_COLORS.length,
+    };
+  }
+
+  function groupPlanByDisplayPhase(plan) {
+    const days = Array.isArray(plan) ? plan : [];
+    const groups = [];
+    const map = new Map();
+    days.forEach(function (day, index) {
+      const meta = deriveDisplayPhaseGroup(day && day.phase, index);
+      let group = map.get(meta.key);
+      if (!group) {
+        group = {
+          key: meta.key,
+          label: meta.label,
+          tone: meta.tone,
+          toneClass: DISPLAY_PHASE_COLORS[meta.tone % DISPLAY_PHASE_COLORS.length],
+          days: [],
+        };
+        map.set(meta.key, group);
+        groups.push(group);
+      }
+      group.days.push({ day: day, dayIndex: index });
+    });
+    groups.forEach(function (g) {
+      g.days.sort(function (a, b) {
+        return num(a.day && a.day.day_number, 0) - num(b.day && b.day.day_number, 0);
+      });
+    });
+    return groups;
+  }
+
+  function formatCrewShortLabel(workers) {
+    let hasPro = false;
+    let hasHelper = false;
+    (Array.isArray(workers) ? workers : []).forEach(function (w) {
+      const t = normWorkerType(w && w.worker_type);
+      if (t === "helper") hasHelper = true;
+      else hasPro = true;
+    });
+    const parts = [];
+    if (hasPro) parts.push("Pro");
+    if (hasHelper) parts.push("Helper");
+    return parts.length ? parts.join(" + ") : "—";
+  }
+
+  function sumDayDisplayUnits(workers, mode, hoursPerDay) {
+    let sum = 0;
+    (Array.isArray(workers) ? workers : []).forEach(function (w) {
+      sum += workerHoursToDisplayUnits(w, mode, hoursPerDay);
+    });
+    return round2(sum);
+  }
+
+  function parseYmdLocal(ymd) {
+    const s = str(ymd, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    const parts = s.split("-").map(Number);
+    const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+    if (
+      dt.getFullYear() !== parts[0] ||
+      dt.getMonth() !== parts[1] - 1 ||
+      dt.getDate() !== parts[2]
+    ) {
+      return null;
+    }
+    return dt;
+  }
+
+  function formatYmdLocal(dt) {
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, "0");
+    const d = String(dt.getDate()).padStart(2, "0");
+    return y + "-" + m + "-" + d;
+  }
+
+  function isWorkdayLocal(dt) {
+    const dow = dt.getDay();
+    return dow !== 0 && dow !== 6;
+  }
+
+  function addCalendarDaysLocal(fromYmd, days) {
+    const dt = parseYmdLocal(fromYmd);
+    if (!dt) return "";
+    dt.setDate(dt.getDate() + Number(days || 0));
+    return formatYmdLocal(dt);
+  }
+
+  function buildWorkdaySequence(startYmd, count, workdaysOnly) {
+    const n = Math.max(0, Math.ceil(Number(count) || 0));
+    const start = str(startYmd, 10);
+    if (!start || n <= 0) return [];
+    const out = [];
+    let cur = start;
+    let guard = 0;
+    while (out.length < n && guard < 4000) {
+      const dt = parseYmdLocal(cur);
+      if (!dt) break;
+      if (!workdaysOnly || isWorkdayLocal(dt)) out.push(cur);
+      cur = addCalendarDaysLocal(cur, 1);
+      guard += 1;
+    }
+    return out;
+  }
+
+  /**
+   * Weekly-style calendar preview cells for Sales planning (presentation only).
+   */
+  function buildSalesPlanCalendarPreview(input) {
+    const plan = Array.isArray(input && input.plan) ? input.plan : [];
+    const startYmd = str(input && input.startDate, 10);
+    const estimatedDays = Math.max(
+      1,
+      Math.ceil(Number(input && input.estimatedDays) || plan.length || 1)
+    );
+    const workdaysOnly = !input || input.workdaysEnabled !== false;
+    const sorted = plan.slice().sort(function (a, b) {
+      return num(a.day_number, 0) - num(b.day_number, 0);
+    });
+    const dates = buildWorkdaySequence(startYmd, estimatedDays, workdaysOnly);
+    const cells = [];
+    for (let i = 0; i < estimatedDays; i += 1) {
+      const day = sorted[i] || null;
+      const meta = day ? deriveDisplayPhaseGroup(day.phase, i) : null;
+      cells.push({
+        index: i,
+        day_number: day ? day.day_number : i + 1,
+        date: dates[i] || "",
+        phase: day ? str(day.phase, 120) : "",
+        crew: day ? formatCrewShortLabel(day.workers) : "",
+        toneClass: meta
+          ? DISPLAY_PHASE_COLORS[meta.tone % DISPLAY_PHASE_COLORS.length]
+          : "sales-op-phase-tone--muted",
+        hasPlan: Boolean(day),
+      });
+    }
+    return { cells: cells, startDate: startYmd, estimatedDays: estimatedDays };
+  }
+
+  function formatDayUnitsLabel(units, mode) {
+    const v = round2(units);
+    if (mode === "day") return v + (v === 1 ? " day" : " days");
+    return v + (v === 1 ? " hr" : " hrs");
+  }
+
   global.MgSalesOperationalPlan = {
     getOperationalPlanUnitMode: getOperationalPlanUnitMode,
     getHoursPerDay: getHoursPerDay,
@@ -306,5 +478,12 @@
     createEmptyWorker: createEmptyWorker,
     OPERATIONAL_PLAN_TEMPLATES: OPERATIONAL_PLAN_TEMPLATES,
     applyTemplate: applyTemplate,
+    deriveDisplayPhaseGroup: deriveDisplayPhaseGroup,
+    groupPlanByDisplayPhase: groupPlanByDisplayPhase,
+    formatCrewShortLabel: formatCrewShortLabel,
+    sumDayDisplayUnits: sumDayDisplayUnits,
+    buildSalesPlanCalendarPreview: buildSalesPlanCalendarPreview,
+    formatDayUnitsLabel: formatDayUnitsLabel,
+    DISPLAY_PHASE_COLORS: DISPLAY_PHASE_COLORS,
   };
 })(typeof window !== "undefined" ? window : globalThis);

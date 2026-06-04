@@ -201,41 +201,73 @@
 
             <div class="sep"></div>
 
-            <details class="sales-operational" id="salesOperationalSection" open>
+            <details class="sales-operational sales-operational--pro" id="salesOperationalSection" open>
               <summary class="sales-operational__summary">
                 <span class="eyebrow sales-operational__eyebrow">Execution</span>
                 <span class="sales-operational__title">OPERATIONAL PLAN</span>
                 <span class="sales-operational__meta" id="salesOperationalSummary">No schedule yet</span>
               </summary>
               <div class="sales-operational__body">
-                <p class="sub sales-operational__lead" id="salesOperationalLead">
-                  Define daily phases and crew schedule for Supervisor execution. Units follow Business Settings.
-                </p>
-                <div class="form sales-operational__toolbar">
-                  <div class="field">
-                    <label>Quick template</label>
-                    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-                      <select id="salesOperationalTemplate" style="flex:1;min-width:200px;">
-                        <option value="">Choose a template…</option>
-                      </select>
-                      <button type="button" class="btn" id="btnApplyOperationalTemplate">Apply template</button>
+                <div class="sales-op-layout">
+                  <div class="sales-op-layout__left">
+                    <header class="sales-op-timeline-head">
+                      <h3 class="sales-op-timeline-title">Operational Plan <span id="salesOpPlanDayCount"></span></h3>
+                      <p class="sales-op-timeline-sub" id="salesOperationalLead">Click a day to edit tasks and crew.</p>
+                    </header>
+                    <div class="sales-op-toolbar form sales-operational__toolbar">
+                      <div class="field">
+                        <label>Quick template</label>
+                        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                          <select id="salesOperationalTemplate" style="flex:1;min-width:200px;">
+                            <option value="">Choose a template…</option>
+                          </select>
+                          <button type="button" class="btn" id="btnApplyOperationalTemplate">Apply template</button>
+                        </div>
+                      </div>
+                      <div class="field" id="salesOperationalOverrideDaysWrap">
+                        <label id="salesOperationalOverrideDaysLabel">Estimated project days (override)</label>
+                        <input id="salesOperationalDaysOverride" type="number" min="0" step="0.25" placeholder="Auto from max day" />
+                        <div class="hint" id="salesOperationalOverrideDaysHint">Leave blank to use the highest day number in the plan.</div>
+                      </div>
+                      <div class="field" id="salesOperationalOverrideHoursWrap" style="display:none;">
+                        <label id="salesOperationalOverrideHoursLabel">Estimated project hours (override)</label>
+                        <input id="salesOperationalHoursOverride" type="number" min="0" step="0.25" placeholder="Auto from crew hours total" />
+                        <div class="hint" id="salesOperationalOverrideHoursHint">Leave blank to sum crew hours in the plan.</div>
+                      </div>
                     </div>
+                    <div class="sales-op-metrics-inline" id="salesOperationalMetrics" aria-live="polite"></div>
+                    <div id="salesOperationalTimelineHost"></div>
+                    <div class="inline-actions" style="margin-top:10px;">
+                      <button type="button" class="btn primary" id="btnAddOperationalDay">Add day</button>
+                    </div>
+                    <div id="salesOperationalDaysHost" class="sales-operational-days-host--legacy" hidden aria-hidden="true"></div>
                   </div>
-                  <div class="field" id="salesOperationalOverrideDaysWrap">
-                    <label id="salesOperationalOverrideDaysLabel">Estimated project days (override)</label>
-                    <input id="salesOperationalDaysOverride" type="number" min="0" step="0.25" placeholder="Auto from max day" />
-                    <div class="hint" id="salesOperationalOverrideDaysHint">Leave blank to use the highest day number in the plan.</div>
+                  <div class="sales-op-layout__right">
+                    <section class="sales-op-summary-card" aria-labelledby="salesOpSummaryTitle">
+                      <h4 class="sales-op-summary-card__title" id="salesOpSummaryTitle">Proposal summary</h4>
+                      <dl class="sales-op-summary-kv" id="salesOpProposalSummary"></dl>
+                      <div class="sales-op-summary-total">
+                        <span class="sales-op-summary-total__label">Total proposal</span>
+                        <strong class="sales-op-summary-total__value" id="salesOpProposalTotal">—</strong>
+                      </div>
+                    </section>
+                    <section class="sales-op-calendar-card" aria-labelledby="salesOpCalendarTitle">
+                      <h4 class="sales-op-calendar-card__title" id="salesOpCalendarTitle">Calendar preview</h4>
+                      <div class="sales-op-cal-weekdays" aria-hidden="true">
+                        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                      </div>
+                      <div class="sales-op-calendar-grid" id="salesOpCalendarPreview"></div>
+                    </section>
+                    <section class="sales-op-availability-card" aria-labelledby="salesOpAvailTitle">
+                      <h4 class="sales-op-summary-card__title" id="salesOpAvailTitle">Crew availability</h4>
+                      <div class="sales-op-avail sales-op-avail--unknown" id="salesOpCrewAvailability" role="status">Checking schedule…</div>
+                    </section>
+                    <section class="sales-op-actions-card" aria-label="Quote actions">
+                      <button type="button" class="btn primary" id="btnSalesOpSend">Send Estimate</button>
+                      <button type="button" class="btn" id="btnSalesOpPreview">Preview Proposal</button>
+                      <button type="button" class="btn ghost" id="btnSalesOpSaveExit">Save &amp; Exit</button>
+                    </section>
                   </div>
-                  <div class="field" id="salesOperationalOverrideHoursWrap" style="display:none;">
-                    <label id="salesOperationalOverrideHoursLabel">Estimated project hours (override)</label>
-                    <input id="salesOperationalHoursOverride" type="number" min="0" step="0.25" placeholder="Auto from crew hours total" />
-                    <div class="hint" id="salesOperationalOverrideHoursHint">Leave blank to sum crew hours in the plan.</div>
-                  </div>
-                </div>
-                <div class="sales-operational-metrics" id="salesOperationalMetrics" aria-live="polite"></div>
-                <div id="salesOperationalDaysHost"></div>
-                <div class="inline-actions" style="margin-top:10px;">
-                  <button type="button" class="btn primary" id="btnAddOperationalDay">Add day</button>
                 </div>
               </div>
             </details>
@@ -337,6 +369,23 @@
       <div class="mg-modal-actions">
         <button type="button" id="salesConfirmNewQuote" class="btn primary">Yes, reset</button>
         <button type="button" id="salesCancelNewQuote" class="btn secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal sales-op-day-modal" id="salesOpDayModal" aria-hidden="true" role="dialog" aria-labelledby="salesOpDayModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="salesOpDayModalTitle">Edit plan day</div>
+          <div class="modal-subtitle" id="salesOpDayModalSubtitle">Update task, crew roles, and planned units.</div>
+        </div>
+        <button type="button" class="icon-btn" id="salesOpDayModalClose" aria-label="Close">X</button>
+      </div>
+      <div class="modal-body" id="salesOpDayModalBody"></div>
+      <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;">
+        <button type="button" class="btn" id="salesOpDayModalCancel">Cancel</button>
+        <button type="button" class="btn primary" id="salesOpDayModalSave">Save day</button>
       </div>
     </div>
   </div>
@@ -495,19 +544,194 @@
           .replace(/"/g, '&quot;');
       }
 
+      function formatSalesOpDate(ymd) {
+        if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(String(ymd))) return '—';
+        const parts = String(ymd).split('-').map(Number);
+        const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+        if (Number.isNaN(dt.getTime())) return String(ymd);
+        return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      }
+
+      function renderSalesOpCrewAvailability() {
+        const el = document.getElementById('salesOpCrewAvailability');
+        if (!el) return;
+        const warnEl = document.getElementById('salesCapacityWarning');
+        const cap = window.MarginGuardSalesCapacity;
+        const startInput = document.getElementById('salesStartDate');
+        const state = loadSalesState();
+        const start = cap && cap.normDate
+          ? cap.normDate(startInput && startInput.value ? startInput.value : state.startDate || '')
+          : String(startInput && startInput.value ? startInput.value : state.startDate || '').trim().slice(0, 10);
+
+        if (warnEl && warnEl.style.display !== 'none' && String(warnEl.textContent || '').trim()) {
+          el.textContent = String(warnEl.textContent).trim();
+          el.className = 'sales-op-avail sales-op-avail--warn';
+          return;
+        }
+        const cached = window.__mgSalesCapacityCalendar;
+        if (cached && cap && start && cap.isStartBlocked(cached, start)) {
+          el.textContent =
+            (cap.blockedStartMessage(cached) || 'Crew availability warning.') +
+            (cap.ADVISORY_SUFFIX_SEND || ' You may still send this estimate.');
+          el.className = 'sales-op-avail sales-op-avail--warn';
+          return;
+        }
+        if (cached && start) {
+          el.textContent = 'Crew availability OK';
+          el.className = 'sales-op-avail sales-op-avail--ok';
+          return;
+        }
+        el.textContent = 'Set a start date to preview crew schedule.';
+        el.className = 'sales-op-avail sales-op-avail--unknown';
+      }
+
+      function renderSalesOpProposalSummary(state, settings, metrics) {
+        const host = document.getElementById('salesOpProposalSummary');
+        const totalEl = document.getElementById('salesOpProposalTotal');
+        if (!host) return;
+        const opMetrics = getOperationalMetricsForState(state, settings);
+        const offered = Number(metrics && metrics.offered) || Number(state.price) || 0;
+        const workerCount = Array.isArray(state.workers)
+          ? state.workers.filter(function (w) { return Number(w && w.days) > 0; }).length
+          : 0;
+        const statusRaw = String(state.estimateStatus || 'draft').replace(/_/g, ' ');
+        const statusLabel = statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1);
+        const rows = [
+          ['Project', state.projectName || '—'],
+          ['Client', state.clientName || '—'],
+          ['Duration', opMetrics && opMetrics.estimated_days ? opMetrics.estimated_days + ' days' : '—'],
+          ['Labor', opMetrics && opMetrics.estimated_hours ? opMetrics.estimated_hours + ' hours' : '—'],
+          ['Crew', workerCount > 0 ? workerCount + ' workers' : (opMetrics && opMetrics.worker_count ? opMetrics.worker_count + ' roles' : '—')],
+          ['Start date', formatSalesOpDate(state.startDate)],
+          ['Target finish', formatSalesOpDate(state.targetFinishDate || state.dueDate)],
+          ['Issue date', formatSalesOpDate(state.issueDate)],
+          ['Expiration', formatSalesOpDate(state.expirationDate)],
+          ['Status', '<span class="sales-op-status-pill">' + escapeHtmlOperational(statusLabel) + '</span>']
+        ];
+        host.innerHTML = rows.map(function (row) {
+          return '<dt>' + escapeHtmlOperational(row[0]) + '</dt><dd>' + row[1] + '</dd>';
+        }).join('');
+        if (totalEl) {
+          totalEl.textContent = offered > 0 ? money(offered, settings.currency) : '—';
+        }
+      }
+
+      function renderSalesOpCalendarPreview(state, settings, plan, metrics) {
+        const host = document.getElementById('salesOpCalendarPreview');
+        if (!host || !getOperationalPlanApi()) return;
+        const api = getOperationalPlanApi();
+        const startInput = document.getElementById('salesStartDate');
+        const start = String(startInput && startInput.value ? startInput.value : state.startDate || '').trim().slice(0, 10);
+        const estDays = metrics && metrics.estimated_days > 0
+          ? metrics.estimated_days
+          : (plan && plan.length ? plan.length : 0);
+        if (!plan.length || !start) {
+          host.innerHTML = '<div class="sales-op-empty">Add plan days and a start date to preview the schedule on the calendar.</div>';
+          return;
+        }
+        const preview = api.buildSalesPlanCalendarPreview({
+          plan: plan,
+          startDate: start,
+          estimatedDays: estDays,
+          workdaysEnabled: settings.workdaysEnabled !== false
+        });
+        if (!preview.cells.length) {
+          host.innerHTML = '<div class="sales-op-empty">No calendar cells to display.</div>';
+          return;
+        }
+        host.innerHTML = preview.cells.map(function (cell) {
+          if (!cell.hasPlan && !cell.date) {
+            return '<div class="sales-op-cal-cell sales-op-cal-cell--empty" aria-hidden="true"></div>';
+          }
+          const dateLabel = cell.date ? formatSalesOpDate(cell.date).replace(/, \d{4}$/, '') : 'Day ' + cell.day_number;
+          return (
+            '<article class="sales-op-cal-cell ' + escapeHtmlOperational(cell.toneClass) + '">' +
+            '<div class="sales-op-cal-cell__date">' + escapeHtmlOperational(dateLabel) + '</div>' +
+            '<div class="sales-op-cal-cell__task">' + escapeHtmlOperational(cell.phase || 'Scheduled work') + '</div>' +
+            '<div class="sales-op-cal-cell__crew">' + escapeHtmlOperational(cell.crew || '') + '</div>' +
+            '</article>'
+          );
+        }).join('');
+      }
+
+      function buildSalesOpDayEditorHtml(day, dayIndex, mode, hpd, api) {
+        const workers = Array.isArray(day.workers) ? day.workers : [];
+        const unitLabel = mode === 'day' ? 'd' : 'h';
+        const unitStep = '0.25';
+        const workerRows = workers.map(function (worker, workerIndex) {
+          const wt = worker.worker_type === 'helper' ? 'helper' : 'pro';
+          const displayUnits = api.workerHoursToDisplayUnits(worker, mode, hpd);
+          return (
+            '<div class="sales-operational-worker" data-day-index="' + dayIndex + '" data-worker-index="' + workerIndex + '">' +
+            '<input class="sales-op-role" data-field="role" maxlength="60" value="' + escapeHtmlOperational(worker.role || '') + '" placeholder="Role" />' +
+            '<select class="sales-op-type" data-field="worker_type">' +
+            '<option value="pro"' + (wt === 'pro' ? ' selected' : '') + '>Installer</option>' +
+            '<option value="helper"' + (wt === 'helper' ? ' selected' : '') + '>Assistant</option>' +
+            '</select>' +
+            '<input class="sales-op-units" data-field="estimated_units" type="number" min="0" step="' + unitStep + '" value="' + escapeHtmlOperational(displayUnits) + '" />' +
+            '<span class="small sales-op-unit-label">' + unitLabel + '</span>' +
+            '<button type="button" class="btn danger sales-op-remove-worker" data-action="remove-worker">Remove</button>' +
+            '</div>'
+          );
+        }).join('');
+        return (
+          '<article class="sales-operational-day" data-day-index="' + dayIndex + '">' +
+          '<div class="sales-operational-day__head">' +
+          '<label class="small">Day</label>' +
+          '<input class="sales-op-day-number" data-field="day_number" type="number" min="1" step="1" value="' +
+          escapeHtmlOperational(day.day_number != null ? day.day_number : dayIndex + 1) + '" />' +
+          '<input class="sales-op-phase" data-field="phase" maxlength="120" value="' + escapeHtmlOperational(day.phase || '') +
+          '" placeholder="Phase (e.g. Prep + waterproofing)" />' +
+          '</div>' +
+          '<div class="sales-operational-day__workers">' + workerRows +
+          '<button type="button" class="btn sales-op-add-worker" data-action="add-worker">Add crew</button>' +
+          '<button type="button" class="btn danger sales-op-remove-day" data-action="remove-day" style="margin-top:8px;">Remove day</button>' +
+          '</div></article>'
+        );
+      }
+
+      let salesOpEditingDayIndex = -1;
+
+      function openSalesOpDayEditor(dayIndex) {
+        const modal = document.getElementById('salesOpDayModal');
+        const body = document.getElementById('salesOpDayModalBody');
+        const state = loadSalesState();
+        const settings = loadSettings();
+        const api = getOperationalPlanApi();
+        if (!modal || !body || !api || !state.operational_plan || !state.operational_plan[dayIndex]) return;
+        salesOpEditingDayIndex = dayIndex;
+        const mode = api.getOperationalPlanUnitMode(settings);
+        const hpd = api.getHoursPerDay(settings);
+        const day = state.operational_plan[dayIndex];
+        document.getElementById('salesOpDayModalTitle').textContent = 'Edit day ' + (day.day_number != null ? day.day_number : dayIndex + 1);
+        body.innerHTML = buildSalesOpDayEditorHtml(day, dayIndex, mode, hpd, api);
+        modal.setAttribute('aria-hidden', 'false');
+      }
+
+      function closeSalesOpDayEditor() {
+        const modal = document.getElementById('salesOpDayModal');
+        if (!modal) return;
+        salesOpEditingDayIndex = -1;
+        modal.setAttribute('aria-hidden', 'true');
+      }
+
+      window.renderSalesOpCrewAvailability = renderSalesOpCrewAvailability;
+
       function renderSalesOperationalPlanStandalone() {
-        const host = document.getElementById('salesOperationalDaysHost');
+        const timelineHost = document.getElementById('salesOperationalTimelineHost');
+        const legacyHost = document.getElementById('salesOperationalDaysHost');
         const summaryEl = document.getElementById('salesOperationalSummary');
         const metricsEl = document.getElementById('salesOperationalMetrics');
+        const dayCountEl = document.getElementById('salesOpPlanDayCount');
         const daysOverrideInput = document.getElementById('salesOperationalDaysOverride');
         const hoursOverrideInput = document.getElementById('salesOperationalHoursOverride');
-        if (!host) return;
+        if (!timelineHost) return;
 
         const state = loadSalesState();
         const settings = loadSettings();
         const api = getOperationalPlanApi();
         if (!api) {
-          host.innerHTML = '<p class="small">Operational plan module not loaded.</p>';
+          timelineHost.innerHTML = '<p class="sales-op-empty">Operational plan module not loaded.</p>';
           return;
         }
 
@@ -517,94 +741,116 @@
 
         if (daysOverrideInput && document.activeElement !== daysOverrideInput) {
           daysOverrideInput.value =
-            state.operational_estimated_days_override === '' ||
-            state.operational_estimated_days_override == null
-              ? ''
-              : String(state.operational_estimated_days_override);
+            state.operational_estimated_days_override === '' || state.operational_estimated_days_override == null
+              ? '' : String(state.operational_estimated_days_override);
         }
         if (hoursOverrideInput && document.activeElement !== hoursOverrideInput) {
           hoursOverrideInput.value =
-            state.operational_estimated_hours_override === '' ||
-            state.operational_estimated_hours_override == null
-              ? ''
-              : String(state.operational_estimated_hours_override);
+            state.operational_estimated_hours_override === '' || state.operational_estimated_hours_override == null
+              ? '' : String(state.operational_estimated_hours_override);
         }
 
         const metrics = getOperationalMetricsForState(state, settings);
+        const uiMetrics = typeof buildSalesUIMetrics === 'function'
+          ? buildSalesUIMetrics(state, settings)
+          : { offered: Number(state.price) || 0 };
+
         if (summaryEl) {
           summaryEl.textContent = api.planHasDays(plan)
             ? api.formatOperationalSummary(metrics, mode)
             : 'No schedule yet';
         }
+        if (dayCountEl) {
+          dayCountEl.textContent = metrics && metrics.estimated_days
+            ? '· ' + metrics.estimated_days + ' days'
+            : plan.length ? '· ' + plan.length + ' days' : '';
+        }
         if (metricsEl) {
-          metricsEl.innerHTML = api.planHasDays(plan)
-            ? api.formatMetricsHtml(metrics, mode)
-            : '<p class="small" style="margin:0;">Add schedule days or apply a template to build the field schedule.</p>';
+          if (!api.planHasDays(plan)) {
+            metricsEl.innerHTML = '<span>Add schedule days or apply a template.</span>';
+          } else if (mode === 'day') {
+            metricsEl.innerHTML =
+              '<span><strong>Est. days</strong> ' + metrics.estimated_days + '</span>' +
+              '<span><strong>Crew roles</strong> ' + metrics.worker_count + '</span>';
+          } else {
+            metricsEl.innerHTML =
+              '<span><strong>Est. hours</strong> ' + metrics.estimated_hours + '</span>' +
+              '<span><strong>Crew roles</strong> ' + metrics.worker_count + '</span>';
+          }
         }
 
-        const unitLabel = mode === 'day' ? 'd' : 'h';
-        const unitStep = '0.25';
-
-        host.innerHTML = plan
-          .map(function (day, dayIndex) {
-            const workers = Array.isArray(day.workers) ? day.workers : [];
-            const workerRows = workers
-              .map(function (worker, workerIndex) {
-                const wt = worker.worker_type === 'helper' ? 'helper' : 'pro';
-                const displayUnits = api.workerHoursToDisplayUnits(worker, mode, hpd);
-                return (
-                  '<div class="sales-operational-worker" data-day-index="' +
-                  dayIndex +
-                  '" data-worker-index="' +
-                  workerIndex +
-                  '">' +
-                  '<input class="sales-op-role" data-field="role" maxlength="60" value="' +
-                  escapeHtmlOperational(worker.role || '') +
-                  '" placeholder="Role" />' +
-                  '<select class="sales-op-type" data-field="worker_type">' +
-                  '<option value="pro"' +
-                  (wt === 'pro' ? ' selected' : '') +
-                  '>Installer</option>' +
-                  '<option value="helper"' +
-                  (wt === 'helper' ? ' selected' : '') +
-                  '>Assistant</option>' +
-                  '</select>' +
-                  '<input class="sales-op-units" data-field="estimated_units" type="number" min="0" step="' +
-                  unitStep +
-                  '" value="' +
-                  escapeHtmlOperational(displayUnits) +
-                  '" />' +
-                  '<span class="small sales-op-unit-label">' +
-                  unitLabel +
-                  '</span>' +
-                  '<button type="button" class="btn danger sales-op-remove-worker" data-action="remove-worker">Remove</button>' +
-                  '</div>'
-                );
-              })
-              .join('');
-
+        if (!plan.length) {
+          timelineHost.innerHTML = '<div class="sales-op-empty">Apply a template or add days to build the execution timeline.</div>';
+        } else {
+          const groups = api.groupPlanByDisplayPhase(plan);
+          timelineHost.innerHTML = groups.map(function (group) {
+            const rows = group.days.map(function (entry) {
+              const day = entry.day;
+              const dayIndex = entry.dayIndex;
+              const crew = api.formatCrewShortLabel(day.workers);
+              const units = api.formatDayUnitsLabel(api.sumDayDisplayUnits(day.workers, mode, hpd), mode);
+              const task = day.phase || ('Day ' + (day.day_number != null ? day.day_number : dayIndex + 1));
+              return (
+                '<div class="sales-op-timeline-row" data-day-index="' + dayIndex + '" role="button" tabindex="0">' +
+                '<div class="sales-op-timeline-row__day">D' + escapeHtmlOperational(day.day_number != null ? day.day_number : dayIndex + 1) + '</div>' +
+                '<div class="sales-op-timeline-row__task">' + escapeHtmlOperational(task) + '</div>' +
+                '<div class="sales-op-timeline-row__crew">' + escapeHtmlOperational(crew) + '</div>' +
+                '<div class="sales-op-timeline-row__units">' + escapeHtmlOperational(units) + '</div>' +
+                '<div class="sales-op-timeline-row__actions">' +
+                '<button type="button" class="btn" data-action="edit-day" data-day-index="' + dayIndex + '">Edit</button>' +
+                '<button type="button" class="btn danger" data-action="remove-day" data-day-index="' + dayIndex + '">Remove</button>' +
+                '</div></div>'
+              );
+            }).join('');
             return (
-              '<article class="sales-operational-day" data-day-index="' +
-              dayIndex +
-              '">' +
-              '<div class="sales-operational-day__head">' +
-              '<label class="small">Day</label>' +
-              '<input class="sales-op-day-number" data-field="day_number" type="number" min="1" step="1" value="' +
-              escapeHtmlOperational(day.day_number != null ? day.day_number : dayIndex + 1) +
-              '" />' +
-              '<input class="sales-op-phase" data-field="phase" maxlength="120" value="' +
-              escapeHtmlOperational(day.phase || '') +
-              '" placeholder="Phase (e.g. Prep + waterproofing)" />' +
-              '<button type="button" class="btn danger sales-op-remove-day" data-action="remove-day">Remove day</button>' +
-              '</div>' +
-              '<div class="sales-operational-day__workers">' +
-              workerRows +
-              '<button type="button" class="btn sales-op-add-worker" data-action="add-worker">Add crew</button>' +
-              '</div>' +
-              '</article>'
+              '<section class="sales-op-phase-block">' +
+              '<h4 class="sales-op-phase-block__title ' + escapeHtmlOperational(group.toneClass) + '">' +
+              escapeHtmlOperational(group.label) + '</h4>' +
+              '<div class="sales-op-timeline">' + rows + '</div></section>'
             );
-          })
-          .join('');
+          }).join('');
+        }
+
+        if (legacyHost) legacyHost.innerHTML = '';
+        renderSalesOpProposalSummary(state, settings, uiMetrics);
+        renderSalesOpCalendarPreview(state, settings, plan, metrics);
+        renderSalesOpCrewAvailability();
+      }
+
+      function persistSalesOpDayEditorFromDom() {
+        const api = getOperationalPlanApi();
+        const body = document.getElementById('salesOpDayModalBody');
+        if (!api || !body || salesOpEditingDayIndex < 0) return false;
+        const dayArticle = body.querySelector('.sales-operational-day');
+        if (!dayArticle) return false;
+        const dayIndex = salesOpEditingDayIndex;
+        const state = loadSalesState();
+        const settings = loadSettings();
+        const mode = api.getOperationalPlanUnitMode(settings);
+        const hpd = api.getHoursPerDay(settings);
+        if (!state.operational_plan || !state.operational_plan[dayIndex]) return false;
+        const day = state.operational_plan[dayIndex];
+        const dayNumInput = dayArticle.querySelector('[data-field="day_number"]');
+        const phaseInput = dayArticle.querySelector('[data-field="phase"]');
+        if (dayNumInput) day.day_number = Math.max(1, Math.floor(Number(dayNumInput.value || 1)));
+        if (phaseInput) day.phase = phaseInput.value;
+        const workerRows = dayArticle.querySelectorAll('.sales-operational-worker');
+        const workers = [];
+        workerRows.forEach(function (row, workerIndex) {
+          const worker = state.operational_plan[dayIndex].workers[workerIndex] || {};
+          const roleInput = row.querySelector('[data-field="role"]');
+          const typeInput = row.querySelector('[data-field="worker_type"]');
+          const unitsInput = row.querySelector('[data-field="estimated_units"]');
+          if (roleInput) worker.role = roleInput.value;
+          if (typeInput) worker.worker_type = typeInput.value === 'helper' ? 'helper' : 'pro';
+          if (unitsInput) api.setWorkerDisplayUnits(worker, unitsInput.value, mode, hpd);
+          workers.push(worker);
+        });
+        day.workers = workers.filter(function (w) {
+          return Number(w.estimated_hours) > 0;
+        });
+        saveSalesState(state);
+        return true;
       }
 
       function bindSalesOperationalPlanStandalone() {
@@ -648,14 +894,11 @@
             const nextDay = (state.operational_plan || []).length + 1;
             state.operational_plan = state.operational_plan || [];
             state.operational_plan.push(
-              api.createEmptyDay(
-                nextDay,
-                api.getOperationalPlanUnitMode(settings),
-                api.getHoursPerDay(settings)
-              )
+              api.createEmptyDay(nextDay, api.getOperationalPlanUnitMode(settings), api.getHoursPerDay(settings))
             );
             saveSalesState(state);
             refreshSellerFromStandalone();
+            openSalesOpDayEditor(state.operational_plan.length - 1);
           }, true);
         }
 
@@ -681,86 +924,143 @@
           });
         }
 
-        const host = document.getElementById('salesOperationalDaysHost');
-        if (host && !host.dataset.bound) {
-          host.dataset.bound = '1';
-          host.addEventListener('click', function (event) {
+        const timelineHost = document.getElementById('salesOperationalTimelineHost');
+        if (timelineHost && !timelineHost.dataset.bound) {
+          timelineHost.dataset.bound = '1';
+          timelineHost.addEventListener('click', function (event) {
             const btn = event.target.closest('button[data-action]');
-            if (!btn) return;
-            const action = btn.getAttribute('data-action');
-            const dayArticle = btn.closest('.sales-operational-day');
-            const workerRow = btn.closest('.sales-operational-worker');
-            const dayIndex = Number(dayArticle && dayArticle.dataset.dayIndex);
-            const workerIndex = Number(workerRow && workerRow.dataset.workerIndex);
+            const row = event.target.closest('.sales-op-timeline-row');
+            if (btn) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+            const action = btn ? btn.getAttribute('data-action') : null;
+            const dayIndex = Number(
+              (btn && btn.getAttribute('data-day-index')) ||
+              (row && row.getAttribute('data-day-index'))
+            );
             const state = loadSalesState();
             state.operational_plan = state.operational_plan || [];
-
             if (action === 'remove-day' && dayIndex >= 0) {
               state.operational_plan.splice(dayIndex, 1);
               saveSalesState(state);
               refreshSellerFromStandalone();
               return;
             }
-            if (action === 'add-worker' && dayIndex >= 0 && state.operational_plan[dayIndex]) {
-              const settings = loadSettings();
-              state.operational_plan[dayIndex].workers = state.operational_plan[dayIndex].workers || [];
-              state.operational_plan[dayIndex].workers.push(
-                api.createEmptyWorker(
-                  api.getOperationalPlanUnitMode(settings),
-                  api.getHoursPerDay(settings)
-                )
+            if ((action === 'edit-day' || (!action && row)) && dayIndex >= 0) {
+              openSalesOpDayEditor(dayIndex);
+            }
+          });
+          timelineHost.addEventListener('keydown', function (event) {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            const row = event.target.closest('.sales-op-timeline-row');
+            if (!row) return;
+            event.preventDefault();
+            openSalesOpDayEditor(Number(row.getAttribute('data-day-index')));
+          });
+        }
+
+        const modal = document.getElementById('salesOpDayModal');
+        const modalBody = document.getElementById('salesOpDayModalBody');
+        if (modal && modalBody && !modal.dataset.bound) {
+          modal.dataset.bound = '1';
+          ['salesOpDayModalClose', 'salesOpDayModalCancel'].forEach(function (id) {
+            const btn = document.getElementById(id);
+            if (btn) btn.addEventListener('click', function (e) {
+              e.preventDefault();
+              closeSalesOpDayEditor();
+            }, true);
+          });
+          const saveBtn = document.getElementById('salesOpDayModalSave');
+          if (saveBtn) {
+            saveBtn.addEventListener('click', function (e) {
+              e.preventDefault();
+              persistSalesOpDayEditorFromDom();
+              closeSalesOpDayEditor();
+              refreshSellerFromStandalone();
+            }, true);
+          }
+          modalBody.addEventListener('click', function (event) {
+            const btn = event.target.closest('button[data-action]');
+            if (!btn || salesOpEditingDayIndex < 0) return;
+            const action = btn.getAttribute('data-action');
+            const state = loadSalesState();
+            const settings = loadSettings();
+            if (action === 'add-worker' && state.operational_plan[salesOpEditingDayIndex]) {
+              state.operational_plan[salesOpEditingDayIndex].workers =
+                state.operational_plan[salesOpEditingDayIndex].workers || [];
+              state.operational_plan[salesOpEditingDayIndex].workers.push(
+                api.createEmptyWorker(api.getOperationalPlanUnitMode(settings), api.getHoursPerDay(settings))
               );
               saveSalesState(state);
-              refreshSellerFromStandalone();
+              openSalesOpDayEditor(salesOpEditingDayIndex);
               return;
             }
-            if (action === 'remove-worker' && dayIndex >= 0 && workerIndex >= 0) {
-              const workers = state.operational_plan[dayIndex].workers || [];
-              workers.splice(workerIndex, 1);
-              state.operational_plan[dayIndex].workers = workers;
+            if (action === 'remove-worker') {
+              const workerRow = btn.closest('.sales-operational-worker');
+              const workerIndex = Number(workerRow && workerRow.dataset.workerIndex);
+              if (workerIndex >= 0) {
+                state.operational_plan[salesOpEditingDayIndex].workers.splice(workerIndex, 1);
+                saveSalesState(state);
+                openSalesOpDayEditor(salesOpEditingDayIndex);
+              }
+              return;
+            }
+            if (action === 'remove-day') {
+              state.operational_plan.splice(salesOpEditingDayIndex, 1);
               saveSalesState(state);
+              closeSalesOpDayEditor();
               refreshSellerFromStandalone();
             }
           });
+        }
 
-          host.addEventListener('change', function (event) {
-            const field = event.target;
-            const dayArticle = field.closest('.sales-operational-day');
-            const workerRow = field.closest('.sales-operational-worker');
-            if (!dayArticle) return;
-            const dayIndex = Number(dayArticle.dataset.dayIndex);
-            const state = loadSalesState();
-            if (!state.operational_plan || !state.operational_plan[dayIndex]) return;
-
-            if (workerRow) {
-              const settings = loadSettings();
-              const mode = api.getOperationalPlanUnitMode(settings);
-              const hpd = api.getHoursPerDay(settings);
-              const workerIndex = Number(workerRow.dataset.workerIndex);
-              const worker = state.operational_plan[dayIndex].workers[workerIndex];
-              if (!worker) return;
-              const key = field.dataset.field;
-              if (key === 'estimated_units') {
-                api.setWorkerDisplayUnits(worker, field.value, mode, hpd);
-              } else if (key === 'estimated_hours') {
-                worker.estimated_hours = Number(field.value || 0);
-              } else if (key === 'worker_type') {
-                worker.worker_type = field.value === 'helper' ? 'helper' : 'pro';
-              } else if (key === 'role') {
-                worker.role = field.value;
-              }
-            } else {
-              const key = field.dataset.field;
-              const day = state.operational_plan[dayIndex];
-              if (key === 'day_number') {
-                day.day_number = Math.max(1, Math.floor(Number(field.value || 1)));
-              } else if (key === 'phase') {
-                day.phase = field.value;
-              }
+        const btnOpSend = document.getElementById('btnSalesOpSend');
+        if (btnOpSend && !btnOpSend.dataset.bound) {
+          btnOpSend.dataset.bound = '1';
+          btnOpSend.addEventListener('click', function (e) {
+            e.preventDefault();
+            const inline = document.getElementById('btnSendQuoteInline');
+            if (inline) inline.click();
+            else if (typeof openSellerSendModal === 'function') openSellerSendModal(e);
+          }, true);
+        }
+        const btnOpPreview = document.getElementById('btnSalesOpPreview');
+        if (btnOpPreview && !btnOpPreview.dataset.bound) {
+          btnOpPreview.dataset.bound = '1';
+          btnOpPreview.addEventListener('click', function (e) {
+            e.preventDefault();
+            const preview = document.getElementById('btnSendPreview');
+            if (preview) preview.click();
+            else if (typeof runSellerPreview === 'function') runSellerPreview(e);
+            else {
+              const inline = document.getElementById('btnSendQuoteInline');
+              if (inline) inline.click();
             }
-            saveSalesState(state);
-            renderSalesOperationalPlanStandalone();
-          });
+          }, true);
+        }
+        const btnOpSave = document.getElementById('btnSalesOpSaveExit');
+        if (btnOpSave && !btnOpSave.dataset.bound) {
+          btnOpSave.dataset.bound = '1';
+          btnOpSave.addEventListener('click', function (e) {
+            e.preventDefault();
+            saveSalesState(loadSalesState());
+            const avail = document.getElementById('salesOpCrewAvailability');
+            if (avail) {
+              const prev = avail.textContent;
+              avail.textContent = 'Quote saved.';
+              avail.className = 'sales-op-avail sales-op-avail--ok';
+              setTimeout(function () { renderSalesOpCrewAvailability(); }, 2000);
+            }
+          }, true);
+        }
+
+        if (!window.__mgSalesOpCapacityHook) {
+          window.__mgSalesOpCapacityHook = true;
+          const startInput = document.getElementById('salesStartDate');
+          if (startInput) {
+            startInput.addEventListener('change', function () { renderSalesOpCrewAvailability(); });
+          }
         }
       }
 

@@ -8307,6 +8307,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           window.__mgSalesCapacityCalendar = data;
           const reconciled = cap.reconcileStartDateWithCapacity(data, startDateInput, state);
           cap.applyCapacityGuidance(data);
+          if (typeof window.renderSalesOpCrewAvailability === "function") {
+            window.renderSalesOpCrewAvailability();
+          }
           if (reconciled.cleared) {
             syncSalesTargetFinish("");
             saveSales(state);
@@ -8327,6 +8330,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             "Crew availability could not be verified. You may still send this estimate.";
           if (typeof cap.showCapacityWarning === "function") {
             cap.showCapacityWarning(unverified);
+          }
+          if (typeof window.renderSalesOpCrewAvailability === "function") {
+            window.renderSalesOpCrewAvailability();
           }
         });
     }, 200);
