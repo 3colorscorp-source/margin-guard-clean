@@ -110,10 +110,17 @@
         <div class="card sup-console-exec-card supervisor-calendar-panel">
           <div class="card-inner sup-console-exec-card__inner">
             <section class="sup-exec-plan-section sup-exec-calendar-section">
-              <div class="section-action-row section-action-row--compact">
-                <div class="section-action-row__main">
+              <div class="sup-cal-header-bar">
+                <div class="sup-cal-header-bar__left">
                   <h3 class="sup-section-title">Execution calendar</h3>
                   <p class="small sup-section-desc" id="supExecCalendarDesc">Tap a day — labor, expenses, or mark complete.</p>
+                </div>
+                <div class="sup-cal-header-bar__mid">
+                  <p class="sup-cal-header-summary" id="supCalHeaderSummary" aria-live="polite">—</p>
+                  <p id="supSnapshotError" class="sup-cal-header__error" style="display:none;" role="alert"></p>
+                </div>
+                <div class="sup-cal-header-bar__right">
+                  <button type="button" class="btn sup-cal-header-bar__expenses-btn" id="btnSupViewExpenses" aria-haspopup="dialog" aria-controls="supExpenseSummaryModal" title="View project expense summary">View expenses</button>
                 </div>
               </div>
               <div id="supExecCalendarChrome" class="sup-cal-chrome" hidden></div>
@@ -122,60 +129,42 @@
           </div>
         </div>
 
-        <div class="card supervisor-live-compact sup-live-ops-compact">
-          <div class="card-inner supervisor-live-compact__inner">
-            <div class="supervisor-live-compact__head">
-              <h2 class="sup-section-title sup-section-title--sm supervisor-live-compact__title">Live operations</h2>
-              <button type="button" class="btn ghost small" id="btnSupToggleLiveOpsDetails" aria-expanded="false" aria-controls="supLiveOpsDetails">View details</button>
-            </div>
-            <div id="supSnapshotLoading" class="sup-live-ops-loading" hidden aria-hidden="true">Loading snapshot…</div>
-            <div id="supSnapshotError" class="sup-live-ops-error" style="display:none;" role="alert"></div>
-            <div id="supLiveOpsStrip" class="sup-live-ops-strip" style="display:none;">
-              <span class="sup-live-ops-strip__item"><strong id="supCompactPace">—</strong></span>
-              <span class="sup-live-ops-strip__item" id="supCompactDaysUsed">—</span>
-              <span class="sup-live-ops-strip__item" id="supCompactDaysRemaining">—</span>
-              <span class="sup-live-ops-strip__item" id="supCompactReports">—</span>
-              <button type="button" class="sup-live-ops-strip__btn" id="btnSupViewExpenses" aria-haspopup="dialog" aria-controls="supExpenseSummaryModal" title="View project expense summary">
-                <span id="supCompactExpenses">Expenses: 0</span>
-              </button>
-              <span class="sup-live-ops-strip__item" id="supCompactRisk">—</span>
-              <span class="sup-live-ops-strip__item" id="supCompactBonus">—</span>
-            </div>
-            <button type="button" class="btn ghost small sup-live-ops-compact__link" id="btnSupViewExpensesLink">View expenses</button>
-            <div id="supLiveOpsDetails" class="supervisor-live-ops-details" hidden>
-              <div class="sup-live-ops-overview sup-live-ops-overview--compact">
-                <div class="sup-console-rail-status">
-                  <span class="badge green sup-console-rail-badge" id="supSideStatusBadge">ON SCHEDULE</span>
-                  <p class="sup-console-rail-headline" id="supSideStatusLine">On pace</p>
-                </div>
-                <div class="sup-live-ops-quick">
-                  <span class="sup-live-ops-quick__item"><span class="sup-live-ops-quick__label">Progress</span> <strong id="supSideProgressPct">0% complete</strong></span>
-                  <span class="sup-live-ops-quick__item"><span class="sup-live-ops-quick__label">Remaining</span> <strong id="supSideDaysRemaining">—</strong></span>
-                  <span class="sup-live-ops-quick__item"><span class="sup-live-ops-quick__label">Bonus</span> <strong id="supSideBonusStatus">—</strong></span>
-                </div>
-              </div>
-              <div id="supSideAlerts" class="sup-console-alerts" style="display:none;" role="status"></div>
-              <div id="supSnapshotGrid" class="sup-live-ops-metrics sup-live-ops-metrics--detail" aria-hidden="true">
-                <div class="sup-live-metric"><span class="sup-live-metric__label">Estimated days</span><strong class="sup-live-metric__value" id="supOpEstimatedDays">—</strong></div>
-                <div class="sup-live-metric"><span class="sup-live-metric__label">Actual days</span><strong class="sup-live-metric__value" id="supOpActualDays">—</strong></div>
-                <div class="sup-live-metric"><span class="sup-live-metric__label">Remaining days</span><strong class="sup-live-metric__value" id="supOpDaysRemaining">—</strong></div>
-                <div class="sup-live-metric"><span class="sup-live-metric__label">Reported hours</span><strong class="sup-live-metric__value" id="supOpActualHours">—</strong></div>
-                <div class="sup-live-metric"><span class="sup-live-metric__label">Est. crew hours</span><strong class="sup-live-metric__value" id="supOpEstimatedHours">—</strong></div>
-                <div class="sup-live-metric"><span class="sup-live-metric__label">Field reports</span><strong class="sup-live-metric__value" id="supOpReportCount">—</strong></div>
-                <div class="sup-live-metric sup-live-metric--clickable" id="supOpExpenseCountCard" role="button" tabindex="0" title="View project expense summary">
-                  <span class="sup-live-metric__label">Expense entries</span><strong class="sup-live-metric__value" id="supOpExpenseCount">—</strong>
-                </div>
-                <div class="sup-live-metric"><span class="sup-live-metric__label">Completion pace</span><strong class="sup-live-metric__value" id="supOpCompletionPace">—</strong></div>
-                <div class="sup-live-metric sup-live-metric--wide"><span class="sup-live-metric__label">Schedule deviation</span><strong class="sup-live-metric__value" id="supOpLaborDeviation">—</strong><span class="sup-live-metric__hint" id="supOpLaborDeviationLabel">vs planned days</span></div>
-                <div class="sup-live-metric"><span class="sup-live-metric__label">Operational risk</span><strong class="sup-live-metric__value" id="supOpOperationalRisk">—</strong></div>
-                <div class="sup-live-metric"><span class="sup-live-metric__label">Bonus status</span><strong class="sup-live-metric__value" id="supOpBonusStatus">—</strong></div>
-                <div class="sup-live-metric"><span class="sup-live-metric__label">Bonus pace</span><strong class="sup-live-metric__value" id="supOpBonusPace">—</strong></div>
-              </div>
-              <span class="badge green" id="supOpRiskBadge" style="display:none;" hidden aria-hidden="true">—</span>
-              <div id="supOpRiskMeta" hidden aria-hidden="true"></div>
-              <div class="kpi supervisor-kpi-grid" id="supervisorKpis" style="display:none;" aria-hidden="true"></div>
-            </div>
+        <div id="supLiveOpsCompat" class="sup-live-ops-compat" hidden aria-hidden="true">
+          <div id="supSnapshotLoading" class="sup-live-ops-loading" hidden>Loading snapshot…</div>
+          <div id="supLiveOpsStrip" class="sup-live-ops-strip" style="display:none;">
+            <span id="supCompactPace">—</span>
+            <span id="supCompactDaysUsed">—</span>
+            <span id="supCompactDaysRemaining">—</span>
+            <span id="supCompactReports">—</span>
+            <span id="supCompactExpenses">—</span>
+            <span id="supCompactRisk">—</span>
+            <span id="supCompactBonus">—</span>
           </div>
+          <span class="badge green sup-console-rail-badge" id="supSideStatusBadge">ON SCHEDULE</span>
+          <p id="supSideStatusLine">On pace</p>
+          <strong id="supSideProgressPct">0% complete</strong>
+          <strong id="supSideDaysRemaining">—</strong>
+          <strong id="supSideBonusStatus">—</strong>
+          <div id="supSideAlerts" style="display:none;"></div>
+          <div id="supSnapshotGrid" class="sup-live-ops-metrics sup-live-ops-metrics--detail" aria-hidden="true">
+            <strong id="supOpEstimatedDays">—</strong>
+            <strong id="supOpActualDays">—</strong>
+            <strong id="supOpDaysRemaining">—</strong>
+            <strong id="supOpActualHours">—</strong>
+            <strong id="supOpEstimatedHours">—</strong>
+            <strong id="supOpReportCount">—</strong>
+            <div id="supOpExpenseCountCard" role="button" tabindex="-1" hidden></div>
+            <strong id="supOpExpenseCount">—</strong>
+            <strong id="supOpCompletionPace">—</strong>
+            <strong id="supOpLaborDeviation">—</strong>
+            <span id="supOpLaborDeviationLabel">vs planned days</span>
+            <strong id="supOpOperationalRisk">—</strong>
+            <strong id="supOpBonusStatus">—</strong>
+            <strong id="supOpBonusPace">—</strong>
+          </div>
+          <span class="badge green" id="supOpRiskBadge" style="display:none;" hidden>—</span>
+          <div id="supOpRiskMeta" hidden></div>
+          <div class="kpi supervisor-kpi-grid" id="supervisorKpis" style="display:none;" aria-hidden="true"></div>
         </div>
 
         <div class="sup-console-logs" id="supConsoleLogs" hidden>

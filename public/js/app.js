@@ -2562,6 +2562,49 @@ Thank you.`
     return "—";
   }
 
+  function compactSupervisorBonusHeaderLabel(status) {
+    const s = String(status || "").trim();
+    if (!s || /not configured/i.test(s)) return "Bonus not configured";
+    if (/at risk/i.test(s)) return "Bonus at risk";
+    if (/on track/i.test(s)) return "Bonus on track";
+    return s.replace(/\.$/, "");
+  }
+
+  function formatSupervisorCalHeaderSummary(snap, risk, bonusCopy) {
+    if (!snap || typeof snap !== "object") return "—";
+    const estDays = Math.round(finiteNumber(snap.estimated_days, 0));
+    const completed = Math.round(finiteNumber(snap.actual_days, 0));
+    const rem = Math.round(
+      finiteNumber(
+        snap.days_remaining != null
+          ? snap.days_remaining
+          : Math.max(0, finiteNumber(snap.estimated_days, 0) - finiteNumber(snap.actual_days, 0)),
+        0
+      )
+    );
+    const paceNum = snap.completion_pace_pct;
+    const paceStr =
+      paceNum != null && paceNum !== "" && Number.isFinite(Number(paceNum))
+        ? `${Math.round(Number(paceNum))}% complete`
+        : null;
+    const parts = [];
+    if (estDays > 0) parts.push(`${estDays} days`);
+    parts.push(`${completed} completed`);
+    parts.push(rem === 1 ? "1 remaining" : `${rem} remaining`);
+    if (paceStr) parts.push(paceStr);
+    parts.push(`Reports ${finiteNumber(snap.report_count, 0)}`);
+    parts.push(`Expenses ${finiteNumber(snap.expense_count, 0)}`);
+    const riskLabel = formatSupervisorOperationalRisk(risk);
+    if (riskLabel !== "—") parts.push(`Risk ${riskLabel}`);
+    parts.push(compactSupervisorBonusHeaderLabel(bonusCopy?.status));
+    return parts.join(" · ");
+  }
+
+  function setSupervisorCalHeaderSummary(text) {
+    const el = $("supCalHeaderSummary");
+    if (el) el.textContent = text == null || text === "" ? "—" : String(text);
+  }
+
   function formatSupervisorBonusCopy(snap, laborBudgetConfigured) {
     if (!laborBudgetConfigured) {
       return { status: "Bonus rules not configured yet.", pace: "—" };
@@ -3259,6 +3302,7 @@ Thank you.`
       }
       if (gridEl) gridEl.style.display = "none";
       if ($("supLiveOpsStrip")) $("supLiveOpsStrip").style.display = "none";
+      setSupervisorCalHeaderSummary("—");
       if (badgeEl) badgeEl.style.display = "none";
       if (riskMetaEl) riskMetaEl.style.display = "none";
       return;
@@ -3274,6 +3318,7 @@ Thank you.`
       }
       if (gridEl) gridEl.style.display = "none";
       if ($("supLiveOpsStrip")) $("supLiveOpsStrip").style.display = "none";
+      setSupervisorCalHeaderSummary("—");
       if (badgeEl) badgeEl.style.display = "none";
       if (riskMetaEl) riskMetaEl.style.display = "none";
       return;
@@ -3286,6 +3331,7 @@ Thank you.`
       }
       if (gridEl) gridEl.style.display = "none";
       if ($("supLiveOpsStrip")) $("supLiveOpsStrip").style.display = "none";
+      setSupervisorCalHeaderSummary("—");
       if (badgeEl) badgeEl.style.display = "none";
       if (riskMetaEl) riskMetaEl.style.display = "none";
       clearOperationalFields();
@@ -3378,7 +3424,7 @@ Thank you.`
       const el = $(id);
       if (el) el.textContent = text == null ? "—" : String(text);
     };
-    if (strip) strip.style.display = "";
+    if (strip) strip.style.display = "none";
     setStrip("supCompactPace", paceVal);
     setStrip(
       "supCompactDaysUsed",
@@ -3392,6 +3438,9 @@ Thank you.`
     setStrip("supCompactExpenses", `Expenses: ${finiteNumber(snap.expense_count, 0)}`);
     setStrip("supCompactRisk", `Risk: ${formatSupervisorOperationalRisk(risk)}`);
     setStrip("supCompactBonus", `Bonus: ${bonusCopy.status}`);
+    setSupervisorCalHeaderSummary(
+      formatSupervisorCalHeaderSummary(snap, risk, bonusCopy)
+    );
 
     syncSupervisorConsoleSidebar();
   }
@@ -3696,20 +3745,6 @@ Thank you.`
     );
   }
 
-  function bindSupLiveOpsDetailsOnce() {
-    if (document.body?.dataset?.supLiveOpsDetailsBound === "1") return;
-    if (document.body) document.body.dataset.supLiveOpsDetailsBound = "1";
-    const btn = $("btnSupToggleLiveOpsDetails");
-    const panel = $("supLiveOpsDetails");
-    if (!btn || !panel) return;
-    btn.onclick = () => {
-      const open = panel.hidden;
-      panel.hidden = !open;
-      btn.setAttribute("aria-expanded", open ? "true" : "false");
-      btn.textContent = open ? "Hide details" : "View details";
-    };
-  }
-
   function bindSupExpenseSummaryOnce() {
     if (document.body?.dataset?.supExpenseSummaryBound === "1") return;
     if (document.body) document.body.dataset.supExpenseSummaryBound = "1";
@@ -3718,7 +3753,6 @@ Thank you.`
       if (el) el.onclick = handler;
     };
     wire("btnSupViewExpenses", () => openSupExpenseSummaryModal());
-    wire("btnSupViewExpensesLink", () => openSupExpenseSummaryModal());
     wire("btnCloseSupExpenseSummary", () => closeSupExpenseSummaryModal());
     wire("btnCloseSupExpenseSummaryFooter", () => closeSupExpenseSummaryModal());
     wire("btnSupPrintExpenseSummary", () => printSupExpenseSummary());
@@ -8693,7 +8727,6 @@ function renderSupervisor() {
     if (!$("supProjectPicker")) return;
     bindSupFieldModalsOnce();
     bindSupExpenseSummaryOnce();
-    bindSupLiveOpsDetailsOnce();
 
     const settings = loadSettings();
     const picker = $("supProjectPicker");
