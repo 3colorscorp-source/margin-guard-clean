@@ -166,7 +166,7 @@
                 <div class="sales-labor__intro">
                   <span class="eyebrow sales-labor__eyebrow">Labor</span>
                   <h2 id="salesLaborHeading" class="sales-labor__title">Mano de obra</h2>
-                  <p class="sub sales-labor__lead">Define días por trabajador para horas-hombre, recomendado, negociación y piso mínimo. El costo base por tipo sigue lo definido en Business Settings.</p>
+                  <p class="sub sales-labor__lead">Labor worker-days sync from the Operational Plan when auto-sync is on. Rates come from Business Settings.</p>
                 </div>
                 <div class="inline-actions sales-labor__actions">
                   <button class="btn primary" type="button" id="btnAddSalesWorker">Agregar trabajador</button>
@@ -178,7 +178,14 @@
                 <div class="sales-labor-guide__head">
                   <span class="sales-labor-guide__kicker">Guía rápida</span>
                 </div>
-                <p class="sales-labor-guide__text">Añade una fila por trabajador y ajusta tipo y días: el <strong class="sales-labor-guide__em">costo labor</strong> usa las tarifas de Business Settings. Copia o elimina filas según necesites; arriba puedes limpiar toda la cuadrilla.</p>
+                <label class="sales-labor-sync-toggle" id="salesLaborAutoSyncWrap">
+                  <input type="checkbox" id="salesLaborAutoSync" checked />
+                  Auto-sync labor from Operational Plan
+                </label>
+                <p class="sales-labor-guide__text" id="salesLaborSyncNote">Labor days are synced from the Operational Plan.</p>
+                <p class="notice" id="salesLaborManualWarn" style="display:none;margin-top:8px;" role="status">
+                  Manual labor override is active. Operational Plan changes will not update labor totals until auto-sync is turned back on.
+                </p>
                 <p class="sales-labor-guide__meta" id="salesCrewHint"></p>
               </div>
 
@@ -479,6 +486,12 @@
         if (state.operational_estimated_hours_override == null) {
           state.operational_estimated_hours_override = '';
         }
+        if (state.labor_auto_sync_from_plan == null) {
+          state.labor_auto_sync_from_plan = true;
+        }
+        if (state.labor_manual_override == null) {
+          state.labor_manual_override = false;
+        }
         return state;
       }
 
@@ -517,6 +530,63 @@
         );
       }
       window.getOperationalMetricsForState = getOperationalMetricsForState;
+
+      function isLaborAutoSyncActive(state) {
+        if (!state || state.labor_auto_sync_from_plan === false) return false;
+        if (state.labor_manual_override) return false;
+        const api = getOperationalPlanApi();
+        return Boolean(api && api.planHasDays(state.operational_plan || []));
+      }
+
+      function syncLaborWorkersFromOperationalPlan(state, settings) {
+        if (!isLaborAutoSyncActive(state)) return false;
+        const api = getOperationalPlanApi();
+        if (!api || typeof api.aggregateLaborWorkersFromOperationalPlan !== 'function') return false;
+        const next = api.aggregateLaborWorkersFromOperationalPlan(state.operational_plan || [], settings);
+        if (!next.length) return false;
+        const prev = JSON.stringify(state.workers || []);
+        state.workers = next;
+        if (Number(state.workers.reduce(function (s, w) { return s + Number(w.days || 0); }, 0)) > 0) {
+          state.estimateStatus = state.estimateStatus || 'pricing_ready';
+          if (state.estimateStatus === 'draft') state.estimateStatus = 'pricing_ready';
+        }
+        return JSON.stringify(state.workers) !== prev;
+      }
+
+      function updateLaborSyncChrome(state) {
+        const autoSync = document.getElementById('salesLaborAutoSync');
+        const wrap = document.getElementById('salesLaborAutoSyncWrap');
+        const note = document.getElementById('salesLaborSyncNote');
+        const warn = document.getElementById('salesLaborManualWarn');
+        const active = isLaborAutoSyncActive(state);
+        if (autoSync) autoSync.checked = active;
+        if (wrap) wrap.style.opacity = state.labor_manual_override && !active ? '0.85' : '1';
+        if (note) {
+          note.textContent = active
+            ? 'Labor days are synced from the Operational Plan.'
+            : (state.labor_manual_override
+              ? 'Manual labor editing is active. Turn auto-sync on to drive labor from the workflow again.'
+              : 'Add Operational Plan days to auto-sync labor worker-days.');
+        }
+        if (warn) warn.style.display = state.labor_manual_override && !active ? 'block' : 'none';
+      }
+
+      function markLaborManualOverride(state) {
+        state.labor_manual_override = true;
+        state.labor_auto_sync_from_plan = false;
+      }
+
+      function enableLaborAutoSync(state) {
+        state.labor_manual_override = false;
+        state.labor_auto_sync_from_plan = true;
+      }
+
+      function laborHoursFromWorkers(workers, hoursPerDay) {
+        const hpd = Math.max(Number(hoursPerDay || 8), 0.25);
+        return (workers || []).reduce(function (sum, worker) {
+          return sum + workerDaysAsInteger(worker) * hpd;
+        }, 0);
+      }
 
       function applyOperationalPlanUnitModeToChrome(settings) {
         const api = getOperationalPlanApi();
@@ -879,6 +949,7 @@
             state.operational_plan = api.applyTemplate(key);
             state.operational_estimated_days_override = '';
             state.operational_estimated_hours_override = '';
+            enableLaborAutoSync(state);
             saveSalesState(state);
             refreshSellerFromStandalone();
           }, true);
@@ -1093,6 +1164,12 @@
 
       function refreshSellerFromStandalone() {
         try {
+          const state = loadSalesState();
+          const settings = loadSettings();
+          if (syncLaborWorkersFromOperationalPlan(state, settings)) {
+            saveSalesState(state);
+          }
+          updateLaborSyncChrome(loadSalesState());
           if (typeof window.renderSales === 'function') {
             try {
               window.renderSales();
@@ -1113,6 +1190,7 @@
       /** Same behavior as #btnClearSalesWorkers (Limpiar labor): DEFAULT_WORKERS clone + persist + refresh. */
       function clearSalesWorkersToDefault() {
         const state = loadSalesState();
+        markLaborManualOverride(state);
         state.workers = DEFAULT_WORKERS.map(function (worker) {
           return { ...worker };
         });
@@ -2016,28 +2094,36 @@
         if (!body) return;
         const state = loadSalesState();
         const settings = loadSettings();
+        const autoSync = isLaborAutoSyncActive(state);
+        const hpd = Math.max(Number(settings.hoursPerDay || 8), 0.25);
+        updateLaborSyncChrome(state);
 
         body.innerHTML = state.workers.map((worker, index) => {
           const fallbackRate = worker.type === 'helper'
             ? Number(settings.baseHelper || 0)
             : Number(settings.baseInstaller || 0);
           const rateValue = fallbackRate;
+          const daysVal = workerDaysAsInteger(worker);
+          const unitsAttrs = autoSync
+            ? 'readonly tabindex="-1" aria-readonly="true" title="Synced from Operational Plan"'
+            : '';
+          const rowClass = autoSync ? 'sales-labor-row--synced' : '';
           return `
-            <tr data-index="${index}">
-              <td class="sales-labor-td sales-labor-td--name"><input data-key="name" maxlength="40" value="${escapeHtml(worker.name)}" /></td>
+            <tr data-index="${index}"${rowClass ? ' class="' + rowClass + '"' : ''}>
+              <td class="sales-labor-td sales-labor-td--name"><input data-key="name" maxlength="40" value="${escapeHtml(worker.name)}" ${autoSync ? 'readonly tabindex="-1"' : ''} /></td>
               <td class="sales-labor-td sales-labor-td--type">
-                <select data-key="type">
+                <select data-key="type" ${autoSync ? 'disabled' : ''}>
                   <option value="installer" ${worker.type === 'installer' ? 'selected' : ''}>Pro</option>
                   <option value="helper" ${worker.type === 'helper' ? 'selected' : ''}>Assistant</option>
                 </select>
               </td>
-              <td class="sales-labor-td sales-labor-td--units"><input data-key="units" type="number" inputmode="numeric" min="0" step="1" pattern="[0-9]*" value="${workerDaysAsInteger(worker)}" /></td>
+              <td class="sales-labor-td sales-labor-td--units"><input data-key="units" type="number" inputmode="numeric" min="0" step="1" pattern="[0-9]*" value="${daysVal}" ${unitsAttrs} /></td>
               <td class="sales-labor-td sales-labor-td--rate" data-cell="rate">${money(rateValue, settings.currency)}<span class="small" style="display:block;margin-top:4px;opacity:.72;">Business Settings</span></td>
               <td class="sales-labor-td sales-labor-td--labor" data-cell="labor">${money(laborCost(worker, settings), settings.currency)}</td>
               <td class="sales-labor-td sales-labor-td-actions">
                 <div class="row-actions sales-labor-row-actions">
-                  <button class="btn ghost" type="button" data-action="copy">Copy</button>
-                  <button class="btn danger" type="button" data-action="delete">Delete</button>
+                  <button class="btn ghost" type="button" data-action="copy" ${autoSync ? 'disabled title="Disable auto-sync to copy rows"' : ''}>Copy</button>
+                  <button class="btn danger" type="button" data-action="delete" ${autoSync ? 'disabled title="Edit crew in Operational Plan"' : ''}>Delete</button>
                 </div>
               </td>
             </tr>
@@ -2046,8 +2132,11 @@
 
         const hint = document.getElementById('salesCrewHint');
         if (hint) {
-          const workerHours = state.workers.reduce((sum, worker) => sum + workerDaysAsInteger(worker) * 8, 0);
-          hint.textContent = `${state.workers.length} workers configured for ${workerHours.toFixed(2)} labor hours.`;
+          const workerHours = laborHoursFromWorkers(state.workers, hpd);
+          const totalDays = state.workers.reduce(function (sum, w) { return sum + workerDaysAsInteger(w); }, 0);
+          hint.textContent = autoSync
+            ? `${state.workers.length} workers · ${totalDays} worker-days · ${workerHours.toFixed(2)} labor hours (from Operational Plan).`
+            : `${state.workers.length} workers configured for ${workerHours.toFixed(2)} labor hours.`;
         }
       }
 
@@ -2071,6 +2160,7 @@
           event.preventDefault();
           event.stopImmediatePropagation();
           const state = loadSalesState();
+          markLaborManualOverride(state);
           state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: 'installer', days: 0, rate: '' });
           saveSalesState(state);
           refreshSellerFromStandalone();
@@ -2082,6 +2172,21 @@
           clearSalesWorkersToDefault();
         }, true);
 
+        const autoSyncToggle = document.getElementById('salesLaborAutoSync');
+        if (autoSyncToggle && !autoSyncToggle.dataset.bound) {
+          autoSyncToggle.dataset.bound = '1';
+          autoSyncToggle.addEventListener('change', function () {
+            const state = loadSalesState();
+            if (autoSyncToggle.checked) {
+              enableLaborAutoSync(state);
+            } else {
+              markLaborManualOverride(state);
+            }
+            saveSalesState(state);
+            refreshSellerFromStandalone();
+          }, true);
+        }
+
         function commitWorkerFieldToState(field) {
           if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement)) return null;
           const row = field.closest('tr');
@@ -2090,6 +2195,9 @@
           if (index < 0 || !key) return null;
           const state = loadSalesState();
           if (!Array.isArray(state.workers) || !state.workers[index]) return null;
+          if (isWorkerLaborQtyDataKey(key) || key === 'type' || key === 'name') {
+            markLaborManualOverride(state);
+          }
           if (isWorkerLaborQtyDataKey(key)) {
             state.workers[index].days = parseWorkerDaysFromField(field.value);
             if (field instanceof HTMLInputElement) {
@@ -2131,10 +2239,12 @@
           }
           const hint = document.getElementById('salesCrewHint');
           if (hint) {
-            const workerHours = meta.state.workers.reduce(function (sum, w) {
-              return sum + workerDaysAsInteger(w) * 8;
-            }, 0);
-            hint.textContent = `${meta.state.workers.length} workers configured for ${workerHours.toFixed(2)} labor hours.`;
+            const hpd = Math.max(Number(settings.hoursPerDay || 8), 0.25);
+            const workerHours = laborHoursFromWorkers(meta.state.workers, hpd);
+            const totalDays = meta.state.workers.reduce(function (sum, w) { return sum + workerDaysAsInteger(w); }, 0);
+            hint.textContent = isLaborAutoSyncActive(meta.state)
+              ? `${meta.state.workers.length} workers · ${totalDays} worker-days · ${workerHours.toFixed(2)} labor hours (from Operational Plan).`
+              : `${meta.state.workers.length} workers configured for ${workerHours.toFixed(2)} labor hours.`;
           }
           debouncedPostLaborInput();
         }
@@ -2182,6 +2292,7 @@
           if (index < 0) return;
           const state = loadSalesState();
           if (!Array.isArray(state.workers)) state.workers = DEFAULT_WORKERS.map((worker) => ({ ...worker }));
+          markLaborManualOverride(state);
           if (actionButton.dataset.action === 'copy') {
             state.workers.splice(index + 1, 0, { ...state.workers[index] });
           }
@@ -2247,7 +2358,9 @@
           pricingStage: 2,
           operational_plan: [],
           operational_estimated_days_override: '',
-          operational_estimated_hours_override: ''
+          operational_estimated_hours_override: '',
+          labor_auto_sync_from_plan: true,
+          labor_manual_override: false
         };
 
         _securePricingCache = { fingerprint: null, pricing: null };
@@ -2269,8 +2382,6 @@
         }
 
         saveSalesState(fresh);
-
-        clearSalesWorkersToDefault();
 
         if (typeof window.renderSales !== 'function') {
           const fields = {

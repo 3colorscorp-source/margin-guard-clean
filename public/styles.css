@@ -604,6 +604,25 @@ body[data-requires-auth="true"] .container:has(.grid.sales-layout),
 }
 
 /* Sales / Labor — scroll wide table inside panel; actions column never clipped */
+.sales-labor-sync-toggle{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:0 0 8px;
+  font-size:13px;
+  font-weight:650;
+  color:rgba(232,238,252,.88);
+  cursor:pointer;
+}
+.sales-labor-sync-toggle input{margin:0;}
+.sales-labor-row--synced td{
+  background:rgba(59,130,246,.06);
+}
+.sales-labor-row--synced input[readonly],
+.sales-labor-row--synced select[disabled]{
+  opacity:.92;
+  cursor:default;
+}
 .sales-labor-table-wrap{
   margin-top:8px;
   max-width:100%;

@@ -464,6 +464,56 @@
     return v + (v === 1 ? " hr" : " hrs");
   }
 
+  /**
+   * Worker-days contributed by one operational-plan crew row (default 1 day if blank).
+   */
+  function crewRowWorkerDays(worker, mode, hoursPerDay) {
+    const hpd = Math.max(num(hoursPerDay, 8), 0.25);
+    const hours = num(worker && worker.estimated_hours, 0);
+    if (hours <= 0) return 1;
+    if (mode === "hour") return round2(hours / hpd);
+    const units = workerHoursToDisplayUnits(worker, mode, hpd);
+    return round2(units > 0 ? units : 1);
+  }
+
+  /**
+   * Sum operational plan crew rows into Sales labor table workers (Pro / Assistant buckets).
+   * Presentation + labor sync only — does not mutate operational_plan.
+   */
+  function aggregateLaborWorkersFromOperationalPlan(plan, settings) {
+    const mode = getOperationalPlanUnitMode(settings);
+    const hpd = getHoursPerDay(settings);
+    const days = Array.isArray(plan) ? plan : [];
+    const totals = { pro: 0, helper: 0 };
+
+    days.forEach(function (day) {
+      (day && day.workers ? day.workers : []).forEach(function (w) {
+        const wt = normWorkerType(w && w.worker_type);
+        const bucket = wt === "helper" ? "helper" : "pro";
+        totals[bucket] += crewRowWorkerDays(w, mode, hpd);
+      });
+    });
+
+    const out = [];
+    if (totals.pro > 0) {
+      out.push({
+        name: "Worker " + (out.length + 1),
+        type: "installer",
+        days: round2(totals.pro),
+        rate: "",
+      });
+    }
+    if (totals.helper > 0) {
+      out.push({
+        name: "Worker " + (out.length + 1),
+        type: "helper",
+        days: round2(totals.helper),
+        rate: "",
+      });
+    }
+    return out;
+  }
+
   global.MgSalesOperationalPlan = {
     getOperationalPlanUnitMode: getOperationalPlanUnitMode,
     getHoursPerDay: getHoursPerDay,
@@ -484,6 +534,8 @@
     sumDayDisplayUnits: sumDayDisplayUnits,
     buildSalesPlanCalendarPreview: buildSalesPlanCalendarPreview,
     formatDayUnitsLabel: formatDayUnitsLabel,
+    crewRowWorkerDays: crewRowWorkerDays,
+    aggregateLaborWorkersFromOperationalPlan: aggregateLaborWorkersFromOperationalPlan,
     DISPLAY_PHASE_COLORS: DISPLAY_PHASE_COLORS,
   };
 })(typeof window !== "undefined" ? window : globalThis);
