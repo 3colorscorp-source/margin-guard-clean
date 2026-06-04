@@ -35,15 +35,17 @@
   <div class="container supervisor-console">
     <div class="account-pill" id="accountEmail">Cuenta activa</div>
 
-    <section class="card owner-hero sup-console-intro">
-      <div class="card-inner sup-console-intro__inner">
-        <div class="sup-console-intro__main">
-          <span class="eyebrow">Field execution</span>
-          <h2 class="hero-title sup-console-intro__title">What to do today on site.</h2>
-          <p class="sub sup-console-intro__lead">Pick a project, check today&rsquo;s target, then use the execution calendar to report labor and expenses.</p>
+    <header class="card supervisor-top-workflow">
+      <div class="card-inner supervisor-top-workflow__inner">
+        <div class="supervisor-top-workflow__copy">
+          <p class="supervisor-top-workflow__title">
+            <span class="eyebrow">Field execution</span>
+            <span class="supervisor-top-workflow__sep" aria-hidden="true">·</span>
+            <span class="supervisor-top-workflow__pill">Calendar-first workflow</span>
+          </p>
+          <p class="supervisor-top-workflow__helper">Use calendar cards to complete days, report labor, and add expenses.</p>
         </div>
-        <div class="sup-console-intro__controls" aria-label="Project selection">
-          <p class="sup-console-intro__pill">Calendar-first workflow</p>
+        <div class="supervisor-top-workflow__picker" aria-label="Project selection">
           <div class="sup-project-picker sup-project-picker--header">
             <label class="sup-project-picker__label" for="supProjectPicker">Project</label>
             <div class="sup-project-picker__row">
@@ -55,62 +57,63 @@
           </div>
         </div>
       </div>
-    </section>
+    </header>
 
     <div class="sup-console-stack">
       <main class="sup-console-main">
-        <div id="supExecHero" class="card sup-command-card" style="display:none;">
-          <div class="card-inner sup-command-card__inner">
-            <div class="sup-command-card__top">
-              <div class="sup-command-card__head">
-                <h2 class="sup-exec-hero__title" id="supHeroProjectName">—</h2>
-                <p class="sup-command-card__summary" id="supHeroCommandLine">—</p>
+        <div class="supervisor-command-grid">
+          <div id="supExecHero" class="card supervisor-command-card sup-command-card" style="display:none;">
+            <div class="card-inner sup-command-card__inner">
+              <div class="sup-command-card__top">
+                <div class="sup-command-card__head">
+                  <h2 class="sup-exec-hero__title" id="supHeroProjectName">—</h2>
+                  <p class="sup-command-card__summary" id="supHeroCommandLine">—</p>
+                </div>
+                <span class="badge green sup-exec-hero__status sup-command-card__status" id="supHeroStatusBadge">ON SCHEDULE</span>
               </div>
-              <span class="badge green sup-exec-hero__status sup-command-card__status" id="supHeroStatusBadge">ON SCHEDULE</span>
+              <div class="sup-exec-progress">
+                <div class="sup-exec-progress__track"><div class="sup-exec-progress__fill" id="supHeroProgressFill" style="width:0%;"></div></div>
+                <span class="sup-exec-progress__label" id="supHeroProgressPct">0% complete</span>
+              </div>
+              <div class="sup-exec-hero__grid sup-command-card__meta-grid">
+                <div class="sup-exec-hero__cell">
+                  <span class="sup-exec-hero__label">Start</span>
+                  <strong id="supHeroStart">—</strong>
+                </div>
+                <div class="sup-exec-hero__cell">
+                  <span class="sup-exec-hero__label">Target finish</span>
+                  <strong id="supHeroTarget">—</strong>
+                  <span class="sup-exec-hero__hint" id="supHeroTargetHint" style="display:none;"></span>
+                </div>
+                <div class="sup-exec-hero__cell">
+                  <span class="sup-exec-hero__label">Crew</span>
+                  <strong id="supHeroCrew">—</strong>
+                </div>
+              </div>
+              <p class="small sup-migration-badge" id="supMigrationBadge" style="display:none;"></p>
+              <span id="supHeroStatusLine" hidden aria-hidden="true"></span>
+              <span id="supHeroDurationLabel" hidden aria-hidden="true"></span>
+              <span id="supHeroDayProgress" hidden aria-hidden="true"></span>
             </div>
-            <div class="sup-exec-progress">
-              <div class="sup-exec-progress__track"><div class="sup-exec-progress__fill" id="supHeroProgressFill" style="width:0%;"></div></div>
-              <span class="sup-exec-progress__label" id="supHeroProgressPct">0% complete</span>
+          </div>
+
+          <div id="supTodayTarget" class="card supervisor-today-card sup-today-target-card" style="display:none;">
+            <div class="card-inner sup-today-target">
+              <p class="sup-today-target__eyebrow">Today&rsquo;s target</p>
+              <p class="sup-today-target__headline" id="supTodayHeadline">—</p>
+              <p class="sup-today-target__crew" id="supTodayCrew">—</p>
+              <p class="sup-today-target__action" id="supTodayAction">—</p>
             </div>
-            <div class="sup-exec-hero__grid sup-command-card__meta-grid">
-              <div class="sup-exec-hero__cell">
-                <span class="sup-exec-hero__label">Start</span>
-                <strong id="supHeroStart">—</strong>
-              </div>
-              <div class="sup-exec-hero__cell">
-                <span class="sup-exec-hero__label">Target finish</span>
-                <strong id="supHeroTarget">—</strong>
-                <span class="sup-exec-hero__hint" id="supHeroTargetHint" style="display:none;"></span>
-              </div>
-              <div class="sup-exec-hero__cell">
-                <span class="sup-exec-hero__label">Crew</span>
-                <strong id="supHeroCrew">—</strong>
-              </div>
-            </div>
-            <p class="small sup-migration-badge" id="supMigrationBadge" style="display:none;"></p>
-            <p class="sup-command-card__hint small">Use the calendar cards below to report labor, expenses, or complete each day.</p>
-            <span id="supHeroStatusLine" hidden aria-hidden="true"></span>
-            <span id="supHeroDurationLabel" hidden aria-hidden="true"></span>
-            <span id="supHeroDayProgress" hidden aria-hidden="true"></span>
           </div>
         </div>
 
-        <div id="supTodayTarget" class="card sup-today-target-card" style="display:none;">
-          <div class="card-inner sup-today-target">
-            <p class="sup-today-target__eyebrow">Today&rsquo;s target</p>
-            <p class="sup-today-target__headline" id="supTodayHeadline">—</p>
-            <p class="sup-today-target__crew" id="supTodayCrew">—</p>
-            <p class="sup-today-target__action" id="supTodayAction">—</p>
-          </div>
-        </div>
-
-        <div class="card sup-console-exec-card">
-          <div class="card-inner">
+        <div class="card sup-console-exec-card supervisor-calendar-panel">
+          <div class="card-inner sup-console-exec-card__inner">
             <section class="sup-exec-plan-section sup-exec-calendar-section">
-              <div class="section-action-row">
+              <div class="section-action-row section-action-row--compact">
                 <div class="section-action-row__main">
                   <h3 class="sup-section-title">Execution calendar</h3>
-                  <p class="small sup-section-desc" id="supExecCalendarDesc">Tap a day to report labor, expenses, or mark complete.</p>
+                  <p class="small sup-section-desc" id="supExecCalendarDesc">Tap a day — labor, expenses, or mark complete.</p>
                 </div>
               </div>
               <div id="supExecCalendarChrome" class="sup-cal-chrome" hidden></div>
@@ -119,13 +122,14 @@
           </div>
         </div>
 
-        <div class="card owner-side-card sup-console-live-card sup-live-ops-compact">
-          <div class="card-inner sup-live-ops-compact__inner">
-            <h2 class="sup-section-title sup-section-title--sm sup-live-ops-compact__title">Live operations</h2>
-
+        <div class="card supervisor-live-compact sup-live-ops-compact">
+          <div class="card-inner supervisor-live-compact__inner">
+            <div class="supervisor-live-compact__head">
+              <h2 class="sup-section-title sup-section-title--sm supervisor-live-compact__title">Live operations</h2>
+              <button type="button" class="btn ghost small" id="btnSupToggleLiveOpsDetails" aria-expanded="false" aria-controls="supLiveOpsDetails">View details</button>
+            </div>
             <div id="supSnapshotLoading" class="sup-live-ops-loading" hidden aria-hidden="true">Loading snapshot…</div>
             <div id="supSnapshotError" class="sup-live-ops-error" style="display:none;" role="alert"></div>
-
             <div id="supLiveOpsStrip" class="sup-live-ops-strip" style="display:none;">
               <span class="sup-live-ops-strip__item"><strong id="supCompactPace">—</strong></span>
               <span class="sup-live-ops-strip__item" id="supCompactDaysUsed">—</span>
@@ -138,8 +142,7 @@
               <span class="sup-live-ops-strip__item" id="supCompactBonus">—</span>
             </div>
             <button type="button" class="btn ghost small sup-live-ops-compact__link" id="btnSupViewExpensesLink">View expenses</button>
-
-            <div class="sup-live-ops-legacy" hidden aria-hidden="true">
+            <div id="supLiveOpsDetails" class="supervisor-live-ops-details" hidden>
               <div class="sup-live-ops-overview sup-live-ops-overview--compact">
                 <div class="sup-console-rail-status">
                   <span class="badge green sup-console-rail-badge" id="supSideStatusBadge">ON SCHEDULE</span>

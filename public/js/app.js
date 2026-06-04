@@ -3696,6 +3696,20 @@ Thank you.`
     );
   }
 
+  function bindSupLiveOpsDetailsOnce() {
+    if (document.body?.dataset?.supLiveOpsDetailsBound === "1") return;
+    if (document.body) document.body.dataset.supLiveOpsDetailsBound = "1";
+    const btn = $("btnSupToggleLiveOpsDetails");
+    const panel = $("supLiveOpsDetails");
+    if (!btn || !panel) return;
+    btn.onclick = () => {
+      const open = panel.hidden;
+      panel.hidden = !open;
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      btn.textContent = open ? "Hide details" : "View details";
+    };
+  }
+
   function bindSupExpenseSummaryOnce() {
     if (document.body?.dataset?.supExpenseSummaryBound === "1") return;
     if (document.body) document.body.dataset.supExpenseSummaryBound = "1";
@@ -8679,6 +8693,7 @@ function renderSupervisor() {
     if (!$("supProjectPicker")) return;
     bindSupFieldModalsOnce();
     bindSupExpenseSummaryOnce();
+    bindSupLiveOpsDetailsOnce();
 
     const settings = loadSettings();
     const picker = $("supProjectPicker");
