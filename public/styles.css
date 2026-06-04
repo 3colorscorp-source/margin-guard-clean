@@ -431,7 +431,28 @@ body[data-requires-auth="true"] .container:has(.grid.sales-layout),
 .sales-op-cal-cell.sales-op-phase-tone--c{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.1);}
 .sales-op-cal-cell.sales-op-phase-tone--d{border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.1);}
 .sales-op-cal-cell.sales-op-phase-tone--muted{opacity:.45;}
-.sales-op-cal-cell__date{font-weight:800;color:rgba(191,219,254,.95);margin-bottom:2px;}
+.sales-op-cal-cell__date{
+  font-weight:800;
+  color:rgba(191,219,254,.95);
+  margin-bottom:2px;
+}
+.sales-op-cal-cell__daynum{
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:rgba(191,219,254,.75);
+  margin-bottom:2px;
+}
+.sales-op-cal-notice{
+  margin:0 0 8px;
+  font-size:11px;
+  line-height:1.45;
+  color:rgba(232,238,252,.68);
+}
+.sales-op-cal-notice--warn{
+  color:#fcd34d;
+}
 .sales-op-cal-cell__task{
   color:rgba(248,250,252,.9);
   display:-webkit-box;

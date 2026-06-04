@@ -430,15 +430,16 @@
   function buildSalesPlanCalendarPreview(input) {
     const plan = Array.isArray(input && input.plan) ? input.plan : [];
     const startYmd = str(input && input.startDate, 10);
+    const hasStart = /^\d{4}-\d{2}-\d{2}$/.test(startYmd);
     const estimatedDays = Math.max(
-      1,
+      plan.length,
       Math.ceil(Number(input && input.estimatedDays) || plan.length || 1)
     );
     const workdaysOnly = !input || input.workdaysEnabled !== false;
     const sorted = plan.slice().sort(function (a, b) {
       return num(a.day_number, 0) - num(b.day_number, 0);
     });
-    const dates = buildWorkdaySequence(startYmd, estimatedDays, workdaysOnly);
+    const dates = hasStart ? buildWorkdaySequence(startYmd, estimatedDays, workdaysOnly) : [];
     const cells = [];
     for (let i = 0; i < estimatedDays; i += 1) {
       const day = sorted[i] || null;
@@ -453,9 +454,16 @@
           ? DISPLAY_PHASE_COLORS[meta.tone % DISPLAY_PHASE_COLORS.length]
           : "sales-op-phase-tone--muted",
         hasPlan: Boolean(day),
+        previewMode: hasStart ? "dated" : "plan_day",
       });
     }
-    return { cells: cells, startDate: startYmd, estimatedDays: estimatedDays };
+    return {
+      cells: cells,
+      startDate: hasStart ? startYmd : "",
+      estimatedDays: estimatedDays,
+      hasStart: hasStart,
+      planDayCount: sorted.length,
+    };
   }
 
   function formatDayUnitsLabel(units, mode) {

@@ -692,36 +692,66 @@
         const api = getOperationalPlanApi();
         const startInput = document.getElementById('salesStartDate');
         const start = String(startInput && startInput.value ? startInput.value : state.startDate || '').trim().slice(0, 10);
-        const estDays = metrics && metrics.estimated_days > 0
-          ? metrics.estimated_days
-          : (plan && plan.length ? plan.length : 0);
-        if (!plan.length || !start) {
-          host.innerHTML = '<div class="sales-op-empty">Add plan days and a start date to preview the schedule on the calendar.</div>';
+        const hasStart = /^\d{4}-\d{2}-\d{2}$/.test(start);
+
+        if (!plan.length) {
+          host.innerHTML = '<div class="sales-op-empty">Add plan days to preview the schedule on the calendar.</div>';
           return;
         }
+
+        const estDays = metrics && metrics.estimated_days > 0
+          ? metrics.estimated_days
+          : plan.length;
+
         const preview = api.buildSalesPlanCalendarPreview({
           plan: plan,
-          startDate: start,
+          startDate: hasStart ? start : '',
           estimatedDays: estDays,
           workdaysEnabled: settings.workdaysEnabled !== false
         });
-        if (!preview.cells.length) {
-          host.innerHTML = '<div class="sales-op-empty">No calendar cells to display.</div>';
+
+        const planCells = (preview.cells || []).filter(function (cell) {
+          return cell.hasPlan;
+        });
+
+        if (!planCells.length) {
+          host.innerHTML = '<div class="sales-op-empty">Add plan days to preview the schedule on the calendar.</div>';
           return;
         }
-        host.innerHTML = preview.cells.map(function (cell) {
-          if (!cell.hasPlan && !cell.date) {
-            return '<div class="sales-op-cal-cell sales-op-cal-cell--empty" aria-hidden="true"></div>';
-          }
-          const dateLabel = cell.date ? formatSalesOpDate(cell.date).replace(/, \d{4}$/, '') : 'Day ' + cell.day_number;
-          return (
-            '<article class="sales-op-cal-cell ' + escapeHtmlOperational(cell.toneClass) + '">' +
-            '<div class="sales-op-cal-cell__date">' + escapeHtmlOperational(dateLabel) + '</div>' +
-            '<div class="sales-op-cal-cell__task">' + escapeHtmlOperational(cell.phase || 'Scheduled work') + '</div>' +
-            '<div class="sales-op-cal-cell__crew">' + escapeHtmlOperational(cell.crew || '') + '</div>' +
-            '</article>'
-          );
-        }).join('');
+
+        let noticeHtml = '';
+        if (!hasStart) {
+          noticeHtml =
+            '<p class="sales-op-cal-notice" role="status">Start date not set — preview shown by plan day.</p>';
+        }
+
+        const warnEl = document.getElementById('salesCapacityWarning');
+        if (warnEl && warnEl.style.display !== 'none' && String(warnEl.textContent || '').trim()) {
+          noticeHtml +=
+            '<p class="sales-op-cal-notice sales-op-cal-notice--warn" role="status">' +
+            escapeHtmlOperational(String(warnEl.textContent).trim()) +
+            '</p>';
+        }
+
+        host.innerHTML =
+          noticeHtml +
+          planCells
+            .map(function (cell) {
+              const dayNum = cell.day_number != null ? cell.day_number : cell.index + 1;
+              const dayLabel = 'D' + dayNum;
+              const dateLabel = hasStart && cell.date
+                ? formatSalesOpDate(cell.date).replace(/, \d{4}$/, '')
+                : 'Plan day';
+              return (
+                '<article class="sales-op-cal-cell ' + escapeHtmlOperational(cell.toneClass) + '">' +
+                '<div class="sales-op-cal-cell__daynum">' + escapeHtmlOperational(dayLabel) + '</div>' +
+                '<div class="sales-op-cal-cell__date">' + escapeHtmlOperational(dateLabel) + '</div>' +
+                '<div class="sales-op-cal-cell__task">' + escapeHtmlOperational(cell.phase || 'Scheduled work') + '</div>' +
+                '<div class="sales-op-cal-cell__crew">' + escapeHtmlOperational(cell.crew || '') + '</div>' +
+                '</article>'
+              );
+            })
+            .join('');
       }
 
       function buildSalesOpDayEditorHtml(day, dayIndex, mode, hpd, api) {
@@ -1130,7 +1160,10 @@
           window.__mgSalesOpCapacityHook = true;
           const startInput = document.getElementById('salesStartDate');
           if (startInput) {
-            startInput.addEventListener('change', function () { renderSalesOpCrewAvailability(); });
+            startInput.addEventListener('change', function () {
+              renderSalesOpCrewAvailability();
+              renderSalesOperationalPlanStandalone();
+            });
           }
         }
       }
