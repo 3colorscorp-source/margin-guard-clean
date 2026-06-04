@@ -8320,7 +8320,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         .catch(() => {
           const guidance = document.getElementById("salesCapacityGuidance");
           if (guidance) {
-            guidance.textContent = "Crew availability will load when you add labor days.";
+            guidance.textContent = "Production schedule unavailable right now.";
+          }
+          const unverified =
+            cap.ADVISORY_UNVERIFIED_MSG ||
+            "Crew availability could not be verified. You may still send this estimate.";
+          if (typeof cap.showCapacityWarning === "function") {
+            cap.showCapacityWarning(unverified);
           }
         });
     }, 200);
@@ -8510,14 +8516,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     input.onchange = () => {
       persistSalesDraft();
       if (input === startDateInput) {
-        const cached = window.__mgSalesCapacityCalendar;
-        const cap = window.MarginGuardSalesCapacity;
-        if (cached && cap && cap.isStartBlocked(cached, startDateInput.value)) {
-          cap.reconcileStartDateWithCapacity(cached, startDateInput, state);
-          cap.applyCapacityGuidance(cached);
-          syncSalesTargetFinish("");
-          saveSales(state);
-        }
         refreshSalesCapacityCalendar(startDateInput.value);
       }
     };
@@ -8531,11 +8529,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       const cached = window.__mgSalesCapacityCalendar;
       const cap = window.MarginGuardSalesCapacity;
       if (!cached || !cap) return;
-      if (cap.isStartBlocked(cached, startDateInput.value)) {
-        cap.reconcileStartDateWithCapacity(cached, startDateInput, state);
+      if (typeof cap.applyCapacityGuidance === "function") {
         cap.applyCapacityGuidance(cached);
-        syncSalesTargetFinish("");
-        saveSales(state);
       }
     });
   }
@@ -8694,8 +8689,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         const startDate = normalizeDateInput(state.startDate || state.dueDate || "");
         const cached = window.__mgSalesCapacityCalendar;
         if (cap && cached && cap.isStartBlocked(cached, startDate)) {
-          window.alert(cap.blockedStartMessage(cached));
-          return;
+          const suffix = cap.ADVISORY_SUFFIX_SOLD || " You may still mark this project sold.";
+          if (typeof cap.showCapacityWarning === "function") {
+            cap.showCapacityWarning(cap.blockedStartMessage(cached) + suffix);
+          }
         }
         const project = buildSignedProjectFromSales(state, settings, currentMetrics);
         saveActiveProject(project);

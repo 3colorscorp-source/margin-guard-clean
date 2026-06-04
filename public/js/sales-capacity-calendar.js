@@ -75,6 +75,26 @@
   const TARGET_FINISH_HINT_DEFAULT =
     "Target finish will calculate after labor days and safe start date are set.";
 
+  const ADVISORY_UNVERIFIED_MSG =
+    "Crew availability could not be verified. You may still send this estimate.";
+
+  const ADVISORY_SUFFIX_SEND = " You may still send this estimate.";
+  const ADVISORY_SUFFIX_SOLD = " You may still mark this project sold.";
+
+  function showCapacityWarning(message, className) {
+    const warning = document.getElementById("salesCapacityWarning");
+    if (!warning) return;
+    const text = String(message || "").trim();
+    if (!text) {
+      warning.style.display = "none";
+      warning.textContent = "";
+      return;
+    }
+    warning.style.display = "block";
+    warning.className = className || "notice";
+    warning.textContent = text;
+  }
+
   /**
    * System-controlled target finish from approved capacity start + estimated project days.
    * Never uses issue date.
@@ -183,13 +203,7 @@
     }
     const chosen = normDate(startInput && startInput.value);
     if (chosen && min && compareYmd(chosen, min) < 0) {
-      if (startInput) startInput.value = "";
-      if (state && typeof state === "object") {
-        state.startDate = "";
-        state.targetFinishDate = "";
-        state.dueDate = "";
-      }
-      result.cleared = true;
+      result.value = chosen;
       return result;
     }
     result.value = chosen || "";
@@ -217,12 +231,9 @@
     if (warning && startInput) {
       const chosen = normDate(startInput.value);
       if (chosen && isStartBlocked(calendar, chosen)) {
-        warning.style.display = "block";
-        warning.className = "notice error";
-        warning.textContent = blockedStartMessage(calendar);
+        showCapacityWarning(blockedStartMessage(calendar) + ADVISORY_SUFFIX_SEND);
       } else {
-        warning.style.display = "none";
-        warning.textContent = "";
+        showCapacityWarning("");
       }
     }
   }
@@ -255,6 +266,10 @@
     isStartBlocked,
     blockedStartMessage,
     buildGuidanceReason,
+    showCapacityWarning,
+    ADVISORY_UNVERIFIED_MSG,
+    ADVISORY_SUFFIX_SEND,
+    ADVISORY_SUFFIX_SOLD,
     QUOTE_EXPIRATION_DAYS: 15,
   };
 })(typeof window !== "undefined" ? window : globalThis);

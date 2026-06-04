@@ -130,7 +130,7 @@
                   <label>Start date</label>
                   <input id="salesStartDate" type="date" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()" />
                   <div class="hint" id="salesCapacityGuidance">Loading production schedule…</div>
-                  <div class="notice error" id="salesCapacityWarning" style="display:none; margin-top:8px;"></div>
+                  <div class="notice" id="salesCapacityWarning" style="display:none; margin-top:8px;"></div>
                 </div>
                 <div class="field">
                   <label>Target finish date</label>
@@ -2102,7 +2102,7 @@
               ? cap.normDate(startInput && startInput.value ? startInput.value : state.startDate || '')
               : String(startInput && startInput.value ? startInput.value : state.startDate || '').trim().slice(0, 10);
             if (!startDate) {
-              window.alert('Choose a start date confirmed by the capacity calendar before marking the project sold.');
+              window.alert('Choose a start date before marking the project sold.');
               return;
             }
             const opMetrics = typeof getOperationalMetricsForState === 'function' ? getOperationalMetricsForState(state) : null;
@@ -2122,8 +2122,11 @@
 
             function proceedMarkSold(calendar) {
               if (calendar && cap && cap.isStartBlocked(calendar, startDate)) {
-                window.alert(cap.blockedStartMessage(calendar));
-                return;
+                const blockedMsg = cap.blockedStartMessage(calendar);
+                const suffix = cap.ADVISORY_SUFFIX_SOLD || ' You may still mark this project sold.';
+                if (typeof cap.showCapacityWarning === 'function') {
+                  cap.showCapacityWarning(blockedMsg + suffix);
+                }
               }
               state.soldAt = new Date().toISOString();
               state.startDate = startDate;
@@ -2214,23 +2217,36 @@
               renderStandaloneSellerPanel();
             }
 
+            function finishMarkSoldWithCapacity(calendar) {
+              proceedMarkSold(calendar);
+            }
             const cachedCalendar = window.__mgSalesCapacityCalendar;
-            if (cachedCalendar && cap && !cap.isStartBlocked(cachedCalendar, startDate)) {
-              proceedMarkSold(cachedCalendar);
+            if (cachedCalendar) {
+              finishMarkSoldWithCapacity(cachedCalendar);
               return;
             }
             if (cap && typeof cap.fetchCapacityCalendar === 'function') {
               cap.fetchCapacityCalendar(signedEstimatedDays, startDate, state.tenantProjectId || '')
                 .then(function (calendar) {
                   window.__mgSalesCapacityCalendar = calendar;
-                  proceedMarkSold(calendar);
+                  finishMarkSoldWithCapacity(calendar);
                 })
                 .catch(function () {
-                  window.alert('Could not verify crew availability. Try again in a moment.');
+                  const unverified =
+                    cap.ADVISORY_UNVERIFIED_MSG ||
+                    'Crew availability could not be verified. You may still send this estimate.';
+                  const soldMsg = unverified.replace(
+                    'send this estimate',
+                    'mark this project sold'
+                  );
+                  if (typeof cap.showCapacityWarning === 'function') {
+                    cap.showCapacityWarning(soldMsg);
+                  }
+                  finishMarkSoldWithCapacity(null);
                 });
               return;
             }
-            proceedMarkSold(null);
+            finishMarkSoldWithCapacity(null);
           }, true);
         }
       }
@@ -3530,15 +3546,16 @@ async function runSellerSend(event) {
     const chosenStart = cap && cap.normDate
       ? cap.normDate(startInput && startInput.value ? startInput.value : state.startDate || '')
       : String(startInput && startInput.value ? startInput.value : state.startDate || '').trim().slice(0, 10);
+    const capUnverifiedMsg =
+      (cap && cap.ADVISORY_UNVERIFIED_MSG) ||
+      'Crew availability could not be verified. You may still send this estimate.';
+    const capSendSuffix = (cap && cap.ADVISORY_SUFFIX_SEND) || ' You may still send this estimate.';
     if (chosenStart) {
       const cached = window.__mgSalesCapacityCalendar;
       if (cached && cap && cap.isStartBlocked(cached, chosenStart)) {
-        if (sendStatus) {
-          sendStatus.style.display = 'block';
-          sendStatus.className = 'notice error';
-          sendStatus.textContent = cap.blockedStartMessage(cached);
+        if (typeof cap.showCapacityWarning === 'function') {
+          cap.showCapacityWarning(cap.blockedStartMessage(cached) + capSendSuffix);
         }
-        return false;
       }
       if (cap && typeof cap.fetchCapacityCalendar === 'function') {
         try {
@@ -3547,20 +3564,16 @@ async function runSellerSend(event) {
           const calendar = await cap.fetchCapacityCalendar(estDays, chosenStart, state.tenantProjectId || '');
           window.__mgSalesCapacityCalendar = calendar;
           if (cap.isStartBlocked(calendar, chosenStart)) {
-            if (sendStatus) {
-              sendStatus.style.display = 'block';
-              sendStatus.className = 'notice error';
-              sendStatus.textContent = cap.blockedStartMessage(calendar);
+            if (typeof cap.showCapacityWarning === 'function') {
+              cap.showCapacityWarning(cap.blockedStartMessage(calendar) + capSendSuffix);
             }
-            return false;
+          } else if (typeof cap.applyCapacityGuidance === 'function') {
+            cap.applyCapacityGuidance(calendar);
           }
         } catch (_capErr) {
-          if (sendStatus) {
-            sendStatus.style.display = 'block';
-            sendStatus.className = 'notice error';
-            sendStatus.textContent = 'Could not verify crew availability for the chosen start date.';
+          if (typeof cap.showCapacityWarning === 'function') {
+            cap.showCapacityWarning(capUnverifiedMsg);
           }
-          return false;
         }
       }
     }
