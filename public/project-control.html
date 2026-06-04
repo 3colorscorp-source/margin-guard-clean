@@ -594,7 +594,7 @@
       <header class="pcc-fin-modal__head">
         <div class="pcc-fin-modal__title-row">
           <div>
-            <h3 id="pccFinTitle">Project financial detail</h3>
+            <h3 id="pccFinTitle">PROJECT FINANCIAL DETAIL</h3>
             <p class="pcc-fin-modal__meta" id="pccFinClient">—</p>
           </div>
           <div class="pcc-fin-modal__badges" id="pccFinBadges"></div>
@@ -781,9 +781,10 @@
           if (rowMetrics.tone) h.tone = rowMetrics.tone;
         }
 
-        document.getElementById('pccFinTitle').textContent = proj.project_name || 'Project';
+        document.getElementById('pccFinTitle').textContent = 'PROJECT FINANCIAL DETAIL';
         document.getElementById('pccFinClient').textContent =
-          (proj.client_name ? 'Client: ' + proj.client_name : '') +
+          (proj.project_name ? proj.project_name : 'Project') +
+          (proj.client_name ? ' · Client: ' + proj.client_name : '') +
           (proj.status ? ' · Status: ' + proj.status : '');
 
         var tone = h.tone === 'yellow' ? 'amber' : (h.tone === 'red' ? 'red' : 'green');
@@ -957,9 +958,15 @@
         }, { once: true });
       }
 
+      function closeOperationalDetail() {
+        var detail = document.getElementById('pccDetail');
+        if (detail) detail.classList.remove('open');
+      }
+
       async function openFinancialDetail(id) {
         var row = allRows.find(function (r) { return String(r.project.id) === String(id); });
         if (!row) return;
+        closeOperationalDetail();
         selectedId = String(id);
         pccFinProjectId = String(id);
         pccFinProjectName = String(row.project.projectName || 'Project');
@@ -1043,33 +1050,41 @@
             '<td>' + pct(m.progressPct) + '</td>' +
             '<td><span class="badge ' + tone + '">' + esc(m.statusLabel) + '</span></td>' +
             '<td class="pcc-row-actions">' +
-            '<button type="button" class="btn primary pcc-view" data-id="' + esc(p.id) + '">View detail</button>' +
+            '<button type="button" class="btn primary pcc-view-financial" data-pcc-action="financial" data-id="' + esc(p.id) + '">View detail</button>' +
             '<button type="button" class="btn ghost pcc-remove" data-id="' + esc(p.id) + '" data-name="' + esc(p.projectName || 'Project') + '">Remove</button>' +
             '</td>' +
             '</tr>'
           );
         }).join('');
 
-        body.querySelectorAll('.pcc-row').forEach(function (tr) {
-          tr.addEventListener('click', function (e) {
-            if (e.target.closest('.pcc-view') || e.target.closest('.pcc-remove')) return;
-            openDetail(String(tr.getAttribute('data-id') || ''));
-          });
-        });
-        body.querySelectorAll('.pcc-view').forEach(function (btn) {
-          btn.addEventListener('click', function (e) {
+      }
+
+      function bindPccTableActionsOnce() {
+        var body = document.getElementById('pccTableBody');
+        if (!body || body.dataset.pccActionsBound === '1') return;
+        body.dataset.pccActionsBound = '1';
+        body.addEventListener('click', function (e) {
+          var finBtn = e.target.closest('[data-pcc-action="financial"]');
+          if (finBtn) {
+            e.preventDefault();
             e.stopPropagation();
-            void openFinancialDetail(String(btn.getAttribute('data-id') || ''));
-          });
-        });
-        body.querySelectorAll('.pcc-remove').forEach(function (btn) {
-          btn.addEventListener('click', function (e) {
+            void openFinancialDetail(String(finBtn.getAttribute('data-id') || ''));
+            return;
+          }
+          var removeBtn = e.target.closest('.pcc-remove');
+          if (removeBtn) {
+            e.preventDefault();
             e.stopPropagation();
             void removeFromProjectControl(
-              String(btn.getAttribute('data-id') || ''),
-              String(btn.getAttribute('data-name') || 'Project')
+              String(removeBtn.getAttribute('data-id') || ''),
+              String(removeBtn.getAttribute('data-name') || 'Project')
             );
-          });
+            return;
+          }
+          if (e.target.closest('.pcc-row-actions')) return;
+          var tr = e.target.closest('.pcc-row');
+          if (!tr) return;
+          void openDetail(String(tr.getAttribute('data-id') || ''));
         });
       }
 
@@ -1177,6 +1192,8 @@
       async function openDetail(id) {
         var row = allRows.find(function (r) { return String(r.project.id) === String(id); });
         if (!row) return;
+        closePccFinancialModal();
+        closeOperationalDetail();
         selectedId = String(id);
         var p = row.project;
         var baseLoad = await loadBaselineForProject(id);
@@ -1394,6 +1411,7 @@
 
       document.addEventListener('DOMContentLoaded', function () {
         bindFilters();
+        bindPccTableActionsOnce();
         whenAuthReady(function () { void load(); });
       });
     })();
