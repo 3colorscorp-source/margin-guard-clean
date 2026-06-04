@@ -7,8 +7,12 @@ const { computeProjectSnapshot, round2, num } = require("./project-snapshot");
 const { computeProjectOperationalSnapshot } = require("./project-operational-snapshot");
 const { normalizeQuotedLaborPlan } = require("./project-labor-plan");
 const { countCompletedDays } = require("./project-day-progress");
+const { applyMigrationBaselineToMetrics } = require("./migration-baseline");
+const { supabaseRequest } = require("./supabase-admin");
 
 const DEFAULT_HOURS_PER_DAY = 8;
+const INVOICE_SELECT =
+  "id,amount,paid_amount,balance_due,status,due_date,created_at,paid_at,project_id,quote_id,project_name";
 
 function str(v, max = 500) {
   return String(v == null ? "" : v)
@@ -197,6 +201,32 @@ function sumExpenseAmounts(expenses) {
   return round2(expenses.reduce((s, r) => s + num(r?.amount, 0), 0));
 }
 
+/** Same ledger rollup as list-tenant-invoices (read-only). */
+async function sumLedgerPaidByInvoiceId(tenantId, invoiceIds) {
+  const sums = new Map();
+  const ids = Array.from(
+    new Set((invoiceIds || []).map((id) => String(id || "").trim()).filter(Boolean))
+  );
+  if (!ids.length) return sums;
+  const tid = encodeURIComponent(String(tenantId));
+  const chunkSize = 40;
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const inList = chunk.map((id) => encodeURIComponent(id)).join(",");
+    const rows = await supabaseRequest(
+      `tenant_project_payments?tenant_id=eq.${tid}&invoice_id=in.(${inList})&select=invoice_id,amount,paid_at,created_at`,
+      { method: "GET" }
+    );
+    const list = Array.isArray(rows) ? rows : [];
+    for (const p of list) {
+      const iid = p?.invoice_id != null ? String(p.invoice_id).trim() : "";
+      if (!iid) continue;
+      sums.set(iid, round2((sums.get(iid) || 0) + num(p.amount, 0)));
+    }
+  }
+  return sums;
+}
+
 function invoiceStatusSummary(invoices) {
   if (!Array.isArray(invoices) || !invoices.length) {
     return { label: "No invoice on file", last_payment_date: null };
@@ -217,7 +247,111 @@ function invoiceStatusSummary(invoices) {
   return { label, latest_invoice_id: latest.id || null };
 }
 
-function buildCollectionSection({ project, invoices, payments, changeOrders }) {
+function applyDayProgressToOperationalMetrics(metrics, dayProgressRows) {
+  const out = { ...(metrics && typeof metrics === "object" ? metrics : {}) };
+  const completedCount = countCompletedDays(dayProgressRows);
+  if (completedCount <= 0) return out;
+  const reportDays = num(out.actual_days, 0);
+  const effectiveDays = Math.max(reportDays, completedCount);
+  out.actual_days = round2(effectiveDays);
+  const est = num(out.estimated_days, 0);
+  if (est > 0) {
+    out.days_remaining = round2(Math.max(0, est - effectiveDays));
+    out.completion_pace_pct = Math.round((effectiveDays / est) * 100);
+    const dev = effectiveDays - est;
+    out.labor_deviation_days = round2(dev);
+    if (Math.abs(dev) < 0.01) out.labor_deviation_label = "On budget";
+    else if (dev > 0) {
+      out.labor_deviation_label = `${dev.toFixed(2)} day(s) over budget`;
+    } else {
+      out.labor_deviation_label = `${Math.abs(dev).toFixed(2)} day(s) under budget`;
+    }
+  }
+  out.completed_days_from_progress = completedCount;
+  out.progress_source = "day_progress";
+  return out;
+}
+
+/**
+ * Align operational progress with Supervisor: day_progress > migration+reports > reports.
+ */
+function computeFinancialOperationalState({
+  project,
+  reports,
+  expenses,
+  dayProgressRows,
+  migrationBaseline,
+  supervisorBonusPct = 1,
+  hoursPerDay = DEFAULT_HOURS_PER_DAY,
+}) {
+  let op = computeProjectOperationalSnapshot({
+    project,
+    reports,
+    expenses,
+    supervisorBonusPctPoints: supervisorBonusPct,
+    hoursPerDay,
+  });
+
+  if (migrationBaseline) {
+    op = applyMigrationBaselineToMetrics(op, migrationBaseline, reports);
+  }
+
+  const completedFromProgress = countCompletedDays(dayProgressRows);
+  const estDays = num(op.estimated_days, 0);
+
+  if (completedFromProgress > 0 && estDays > 0) {
+    op.completed_days = completedFromProgress;
+    op.days_spent = round2(Math.max(num(op.actual_days, 0), completedFromProgress));
+    op.days_remaining = round2(Math.max(0, estDays - completedFromProgress));
+    op.completion_pace_pct = Math.round((completedFromProgress / estDays) * 100);
+    op.progress_source = "day_progress";
+    const dev = completedFromProgress - estDays;
+    op.labor_deviation_days = round2(dev);
+    if (Math.abs(dev) < 0.01) op.labor_deviation_label = "On budget";
+    else if (dev > 0) {
+      op.labor_deviation_label = `${dev.toFixed(2)} day(s) over budget`;
+    } else {
+      op.labor_deviation_label = `${Math.abs(dev).toFixed(2)} day(s) under budget`;
+    }
+  } else {
+    op = applyDayProgressToOperationalMetrics(op, dayProgressRows);
+    if (!op.progress_source && completedFromProgress > 0) {
+      op.progress_source = "day_progress";
+    }
+    if (!op.progress_source && migrationBaseline) {
+      op.progress_source = "migration_baseline";
+    }
+    if (!op.progress_source) op.progress_source = "field_reports";
+    op.completed_days = completedFromProgress || countCompletedDays(dayProgressRows);
+  }
+
+  return op;
+}
+
+function deriveCompletionStatusSuggestion({ progressPct, completedDays, estimatedDays, balanceDue }) {
+  const pct = num(progressPct, 0);
+  const est = num(estimatedDays, 0);
+  const completed = num(completedDays, 0);
+  const bal = num(balanceDue, 0);
+  const workComplete =
+    (est > 0 && completed >= est) || pct >= 100;
+
+  if (workComplete && bal <= 0.01) {
+    return { label: "Ready to close", tone: "green" };
+  }
+  if (workComplete && bal > 0.01) {
+    return { label: "Work complete — balance still due", tone: "amber" };
+  }
+  return null;
+}
+
+function buildCollectionSection({
+  project,
+  invoices,
+  payments,
+  changeOrders,
+  ledgerPaidByInvoiceId,
+}) {
   const originalContract = round2(Math.max(0, num(project?.sale_price, 0)));
   const approvedChangeOrders = sumAppliedChangeOrders(changeOrders);
   const storedRev = num(project?.projected_revenue_total, NaN);
@@ -226,27 +360,31 @@ function buildCollectionSection({ project, invoices, payments, changeOrders }) {
       ? round2(storedRev)
       : round2(originalContract + approvedChangeOrders);
 
+  const ledgerMap =
+    ledgerPaidByInvoiceId instanceof Map ? ledgerPaidByInvoiceId : new Map();
+
   let totalInvoiced = 0;
   let paidToDate = 0;
-  let balanceDue = 0;
   for (const inv of invoices || []) {
     const amt = num(inv.amount, 0);
-    const paid = num(inv.paid_amount, 0);
-    const bal = num(inv.balance_due, Math.max(0, amt - paid));
+    const iid = inv?.id != null ? String(inv.id).trim() : "";
+    const ledgerPaid = iid ? num(ledgerMap.get(iid), 0) : 0;
+    const paid = round2(Math.max(num(inv.paid_amount, 0), ledgerPaid));
     totalInvoiced += amt;
     paidToDate += paid;
-    balanceDue += bal;
   }
   totalInvoiced = round2(totalInvoiced);
   paidToDate = round2(paidToDate);
-  balanceDue = round2(balanceDue);
 
-  const ledgerPaid = round2(
-    (payments || []).reduce((s, p) => s + num(p.amount, 0), 0)
+  const paymentRows = Array.isArray(payments) ? payments : [];
+  const ledgerPaymentTotal = round2(
+    paymentRows.reduce((s, p) => s + num(p.amount, 0), 0)
   );
-  if (ledgerPaid > paidToDate) paidToDate = ledgerPaid;
+  if (ledgerPaymentTotal > paidToDate) paidToDate = ledgerPaymentTotal;
 
-  const lastPay = (payments || [])
+  const balanceDue = round2(Math.max(0, currentContractTotal - paidToDate));
+
+  const lastPay = paymentRows
     .map((p) => p.paid_at || p.created_at)
     .filter(Boolean)
     .sort()
@@ -254,16 +392,111 @@ function buildCollectionSection({ project, invoices, payments, changeOrders }) {
 
   const invStatus = invoiceStatusSummary(invoices);
 
+  let invoice_data_note = null;
+  if (!invoices || !invoices.length) {
+    if (paidToDate > 0) {
+      invoice_data_note =
+        "No invoice rows linked by project_id or quote_id; paid total from payment ledger records.";
+    } else {
+      invoice_data_note = "Invoice data not linked to this project";
+    }
+  }
+
   return {
     original_contract: originalContract,
     approved_change_orders: approvedChangeOrders,
     current_contract_total: currentContractTotal,
     total_invoiced: totalInvoiced,
     paid_to_date: paidToDate,
-    balance_due: balanceDue > 0 ? balanceDue : round2(Math.max(0, currentContractTotal - paidToDate)),
+    balance_due: balanceDue,
     invoice_status: invStatus.label,
     last_payment_date: lastPay ? String(lastPay).slice(0, 10) : null,
+    invoice_data_note,
+    invoices_linked: (invoices || []).length,
   };
+}
+
+/** Load invoices the same way Invoice Hub lists them — project_id, then quote_id, then exact project_name. */
+async function loadInvoicesForProject(tenantId, project) {
+  const tid = encodeURIComponent(String(tenantId));
+  const pid = encodeURIComponent(String(project.id));
+  const select = INVOICE_SELECT;
+
+  let rows = await supabaseRequest(
+    `invoices?tenant_id=eq.${tid}&project_id=eq.${pid}&select=${select}&order=created_at.desc`
+  );
+  let list = Array.isArray(rows) ? rows : [];
+
+  if (!list.length && project.quote_id) {
+    const qid = encodeURIComponent(String(project.quote_id));
+    rows = await supabaseRequest(
+      `invoices?tenant_id=eq.${tid}&quote_id=eq.${qid}&select=${select}&order=created_at.desc`
+    );
+    list = Array.isArray(rows) ? rows : [];
+  }
+
+  if (!list.length && project.project_name) {
+    const pname = encodeURIComponent(String(project.project_name).trim());
+    rows = await supabaseRequest(
+      `invoices?tenant_id=eq.${tid}&project_name=eq.${pname}&select=${select}&order=created_at.desc`
+    );
+    list = Array.isArray(rows) ? rows : [];
+  }
+
+  return list;
+}
+
+async function loadPaymentsForProject(tenantId, project, invoiceIds) {
+  const tid = encodeURIComponent(String(tenantId));
+  const pid = encodeURIComponent(String(project.id));
+  const seen = new Set();
+  const out = [];
+
+  const pushRows = (rows) => {
+    for (const p of Array.isArray(rows) ? rows : []) {
+      const key = [
+        p?.id,
+        p?.invoice_id,
+        p?.paid_at,
+        p?.created_at,
+        p?.amount,
+      ].join("|");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(p);
+    }
+  };
+
+  pushRows(
+    await supabaseRequest(
+      `tenant_project_payments?tenant_id=eq.${tid}&project_id=eq.${pid}&select=id,amount,paid_at,created_at,invoice_id&order=paid_at.desc`
+    )
+  );
+
+  if (project.quote_id) {
+    const qid = encodeURIComponent(String(project.quote_id));
+    pushRows(
+      await supabaseRequest(
+        `tenant_project_payments?tenant_id=eq.${tid}&quote_id=eq.${qid}&select=id,amount,paid_at,created_at,invoice_id&order=paid_at.desc`
+      )
+    );
+  }
+
+  const ids = Array.from(
+    new Set((invoiceIds || []).map((id) => String(id || "").trim()).filter(Boolean))
+  );
+  const chunkSize = 40;
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const inList = chunk.map((id) => encodeURIComponent(id)).join(",");
+    pushRows(
+      await supabaseRequest(
+        `tenant_project_payments?tenant_id=eq.${tid}&invoice_id=in.(${inList})&select=id,amount,paid_at,created_at,invoice_id&order=paid_at.desc`
+      )
+    );
+  }
+
+  return out;
 }
 
 function buildProfitSection({
@@ -421,60 +654,35 @@ function buildProfitSection({
     margin_risk: marginRisk,
     profit_is_incomplete: profitIncomplete,
     profit_incomplete_message: profitIncomplete
-      ? laborSection.labor_rates_message ||
-        "Profit and margin are preliminary — actual labor cost was not calculated."
+      ? laborSection.labor_rates_missing
+        ? "Profit is incomplete because labor cost settings are missing."
+        : laborSection.labor_rates_message ||
+          "Profit and margin are preliminary — actual labor cost was not calculated."
       : null,
     assumptions,
   };
 }
 
-function buildOperationalSection({
-  project,
-  reports,
-  expenses,
-  dayProgressRows,
-  supervisorBonusPct,
-  hoursPerDay,
-  migrationMetrics,
-}) {
-  let op = computeProjectOperationalSnapshot({
-    project,
-    reports,
-    expenses,
-    supervisorBonusPctPoints: supervisorBonusPct,
-    hoursPerDay,
-  });
-
-  if (migrationMetrics && typeof migrationMetrics === "object") {
-    if (migrationMetrics.estimatedDays > 0) {
-      op.estimated_days = round2(migrationMetrics.estimatedDays);
-      op.days_remaining = round2(
-        Math.max(0, op.estimated_days - num(op.actual_days, 0))
-      );
-      if (op.estimated_days > 0) {
-        op.completion_pace_pct = Math.round(
-          (num(op.actual_days, 0) / op.estimated_days) * 100
-        );
-      }
-    }
-    if (migrationMetrics.progressPct != null) {
-      op.completion_pace_pct = Math.round(num(migrationMetrics.progressPct, 0));
-    }
-  }
-
-  const completedDays = countCompletedDays(dayProgressRows);
-
+function mapOperationalForDetail(op) {
+  const o = op && typeof op === "object" ? op : {};
+  const completed =
+    o.completed_days != null
+      ? o.completed_days
+      : o.completed_days_from_progress != null
+        ? o.completed_days_from_progress
+        : 0;
   return {
-    estimated_days: op.estimated_days,
-    days_spent: op.actual_days,
-    days_remaining: op.days_remaining,
-    progress_pct: op.completion_pace_pct,
-    completed_days: completedDays,
-    reports_count: op.report_count,
-    expense_entries_count: op.expense_count,
-    estimated_hours: op.estimated_hours,
-    actual_hours: op.actual_hours,
-    operational_risk: op.operational_risk,
+    estimated_days: o.estimated_days,
+    days_spent: o.actual_days,
+    days_remaining: o.days_remaining,
+    progress_pct: o.completion_pace_pct,
+    completed_days: completed,
+    reports_count: o.report_count,
+    expense_entries_count: o.expense_count,
+    estimated_hours: o.estimated_hours,
+    actual_hours: o.actual_hours,
+    operational_risk: o.operational_risk,
+    progress_source: o.progress_source || "field_reports",
   };
 }
 
@@ -511,7 +719,8 @@ function buildProjectFinancialDetail({
   tenantSnapshotPayload,
   supervisorBonusPct = 1,
   hoursPerDay = DEFAULT_HOURS_PER_DAY,
-  tableMetrics,
+  migrationBaseline,
+  ledgerPaidByInvoiceId,
 }) {
   const mg = extractMgSettings(tenantSnapshotPayload);
   const labor = computeLaborCostSection({
@@ -525,33 +734,53 @@ function buildProjectFinancialDetail({
     invoices,
     payments,
     changeOrders,
+    ledgerPaidByInvoiceId,
   });
   const expenseRows = (expenses || []).map(mapExpenseRow).filter(Boolean);
   const expenseTotal = sumExpenseAmounts(expenseRows);
 
-  const operational = buildOperationalSection({
+  const opRaw = computeFinancialOperationalState({
     project,
     reports,
     expenses: expenseRows,
     dayProgressRows,
+    migrationBaseline,
     supervisorBonusPct,
     hoursPerDay,
-    migrationMetrics: tableMetrics,
   });
+  const operational = mapOperationalForDetail(opRaw);
 
   const profit = buildProfitSection({
     project,
     collection,
     laborSection: labor,
     expenses: expenseRows,
-    operational,
+    operational: opRaw,
     mgSettings: mg,
   });
 
-  const progressPct =
-    tableMetrics?.progressPct != null
-      ? Math.round(num(tableMetrics.progressPct, 0))
-      : operational.progress_pct;
+  const progressPct = operational.progress_pct;
+  const completionSuggestion = deriveCompletionStatusSuggestion({
+    progressPct,
+    completedDays: operational.completed_days,
+    estimatedDays: operational.estimated_days,
+    balanceDue: collection.balance_due,
+  });
+
+  let statusLabel = str(project.status, 64);
+  let tone = "green";
+  if (completionSuggestion) {
+    statusLabel = completionSuggestion.label;
+    tone = completionSuggestion.tone;
+  } else if (num(operational.days_remaining, 0) <= 1 && progressPct >= 90) {
+    statusLabel = "At risk";
+    tone = "yellow";
+  } else if (num(opRaw.labor_deviation_days, 0) > 0) {
+    statusLabel = "Delayed";
+    tone = "red";
+  } else {
+    statusLabel = "On track";
+  }
 
   return {
     project: {
@@ -562,9 +791,10 @@ function buildProjectFinancialDetail({
     },
     header: {
       progress_pct: progressPct,
-      status_label: tableMetrics?.statusLabel || str(project.status, 64),
+      status_label: statusLabel,
       margin_risk: profit.margin_risk,
-      tone: tableMetrics?.tone || "green",
+      tone,
+      completion_status: completionSuggestion?.label || null,
     },
     kpis: {
       contract_total: collection.current_contract_total,
@@ -601,6 +831,10 @@ module.exports = {
   computeLaborCostSection,
   buildCollectionSection,
   buildProfitSection,
+  computeFinancialOperationalState,
+  loadInvoicesForProject,
+  loadPaymentsForProject,
+  sumLedgerPaidByInvoiceId,
   extractMgSettings,
   laborRatesFromSettings,
   mapExpenseRow,

@@ -10,8 +10,14 @@ const {
   resolveProfileRoleForSession,
   roleMayAccessFinancialSnapshot,
 } = require("./_lib/resolve-profile-role");
-const { buildProjectFinancialDetail } = require("./_lib/project-financial-detail");
+const {
+  buildProjectFinancialDetail,
+  loadInvoicesForProject,
+  loadPaymentsForProject,
+  sumLedgerPaidByInvoiceId,
+} = require("./_lib/project-financial-detail");
 const { loadDayProgressForProject } = require("./_lib/project-day-progress");
+const { loadMigrationBaseline } = require("./_lib/migration-baseline");
 
 function json(statusCode, payload) {
   return {
@@ -104,9 +110,10 @@ exports.handler = async (event) => {
       reportRows,
       expenseRows,
       coRows,
-      invoiceRows,
       snapshotPayload,
       dayProgress,
+      migrationBaseline,
+      invoices,
     ] = await Promise.all([
       supabaseRequest(
         `tenant_project_reports?tenant_id=eq.${tid}&project_id=eq.${pid}&select=*&order=entry_date.desc`
@@ -117,44 +124,36 @@ exports.handler = async (event) => {
       supabaseRequest(
         `tenant_project_change_orders?tenant_id=eq.${tid}&project_id=eq.${pid}&select=client_price,status`
       ),
-      supabaseRequest(
-        `invoices?tenant_id=eq.${tid}&project_id=eq.${pid}&select=id,amount,paid_amount,balance_due,status,due_date,created_at&order=created_at.desc`
-      ),
       loadLatestTenantSnapshotPayload(tenant.id),
       loadDayProgressForProject(tenant.id, projectId),
+      loadMigrationBaseline(tenant.id, projectId),
+      loadInvoicesForProject(tenant.id, project),
     ]);
 
     const reports = Array.isArray(reportRows) ? reportRows : [];
     const expenses = Array.isArray(expenseRows) ? expenseRows : [];
     const changeOrders = Array.isArray(coRows) ? coRows : [];
-    const invoices = Array.isArray(invoiceRows) ? invoiceRows : [];
+    const invoiceList = Array.isArray(invoices) ? invoices : [];
 
-    let payments = [];
-    const invoiceIds = invoices.map((i) => i.id).filter(Boolean);
-    if (invoiceIds.length) {
-      const chunk = invoiceIds.slice(0, 40).map((id) => encodeURIComponent(id)).join(",");
-      try {
-        const payRows = await supabaseRequest(
-          `tenant_project_payments?tenant_id=eq.${tid}&invoice_id=in.(${chunk})&select=amount,paid_at,created_at&order=paid_at.desc`
-        );
-        payments = Array.isArray(payRows) ? payRows : [];
-      } catch (_e) {
-        payments = [];
-      }
-    }
+    const invoiceIds = invoiceList.map((i) => i.id).filter(Boolean);
+    const [ledgerPaidByInvoiceId, payments] = await Promise.all([
+      sumLedgerPaidByInvoiceId(tenant.id, invoiceIds),
+      loadPaymentsForProject(tenant.id, project, invoiceIds),
+    ]);
 
     const detail = buildProjectFinancialDetail({
       project,
       reports,
       expenses,
       changeOrders,
-      invoices,
+      invoices: invoiceList,
       payments,
       dayProgressRows: dayProgress,
       tenantSnapshotPayload: snapshotPayload,
       supervisorBonusPct: extractSupervisorBonusPct(snapshotPayload),
       hoursPerDay: extractHoursPerDay(snapshotPayload),
-      tableMetrics: null,
+      migrationBaseline,
+      ledgerPaidByInvoiceId,
     });
 
     return json(200, { ok: true, detail });

@@ -497,9 +497,17 @@ Thank you.`
    * @param reports Work report rows { days, hours, entry_date, note }
    * @param expensesList Unexpected expense rows (count only)
    */
-  function computeProjectControlMetrics(project, reports, expensesList, migrationBaseline) {
+  function computeProjectControlMetrics(
+    project,
+    reports,
+    expensesList,
+    migrationBaseline,
+    dayProgressRows
+  ) {
     const entries = Array.isArray(reports) ? reports : [];
     const extrasList = Array.isArray(expensesList) ? expensesList : [];
+    const dayProgress = Array.isArray(dayProgressRows) ? dayProgressRows : [];
+    const completedPlanDays = supervisorCountCompletedPlanDays(dayProgress);
     const mig =
       migrationBaseline && typeof migrationBaseline === "object"
         ? migrationBaseline
@@ -526,13 +534,18 @@ Thank you.`
       }
       daysSpent = baselineDays + newReportDays;
     }
+    if (completedPlanDays > 0) {
+      daysSpent = Math.max(daysSpent, completedPlanDays);
+    }
     const daysRemainingRaw = estimatedDays - daysSpent;
     const daysRemainingDisplay = Math.max(0, daysRemainingRaw);
     const daysRemaining = daysRemainingDisplay;
     let progressPct = estimatedDays > 0 ? (daysSpent / estimatedDays) * 100 : null;
-    if (mig && progressPct != null) {
+    if (completedPlanDays > 0 && estimatedDays > 0) {
+      progressPct = (completedPlanDays / estimatedDays) * 100;
+    } else if (mig && progressPct != null) {
       progressPct = Math.max(finiteNumber(mig.progress_pct, 0), progressPct);
-    } else if (mig && finiteNumber(mig.progress_pct, 0) > 0) {
+    } else if (mig && finiteNumber(mig.progress_pct, 0) > 0 && completedPlanDays <= 0) {
       progressPct = finiteNumber(mig.progress_pct, 0);
     }
     const unexpectedExpensesCount = extrasList.length;

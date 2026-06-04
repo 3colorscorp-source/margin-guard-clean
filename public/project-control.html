@@ -775,12 +775,6 @@
         var op = detail.operational || {};
         var proj = detail.project || {};
 
-        if (rowMetrics) {
-          if (rowMetrics.progressPct != null) h.progress_pct = Math.round(Number(rowMetrics.progressPct));
-          if (rowMetrics.statusLabel) h.status_label = rowMetrics.statusLabel;
-          if (rowMetrics.tone) h.tone = rowMetrics.tone;
-        }
-
         document.getElementById('pccFinTitle').textContent = 'PROJECT FINANCIAL DETAIL';
         document.getElementById('pccFinClient').textContent =
           (proj.project_name ? proj.project_name : 'Project') +
@@ -789,10 +783,14 @@
 
         var tone = h.tone === 'yellow' ? 'amber' : (h.tone === 'red' ? 'red' : 'green');
         if (badges) {
-          badges.innerHTML =
+          var badgeHtml =
             '<span class="badge ' + tone + '">' + esc(h.status_label || '—') + '</span>' +
             '<span class="badge">' + esc(pct(h.progress_pct)) + ' progress</span>' +
             '<span class="badge ' + marginRiskBadgeClass(h.margin_risk) + '">Margin ' + esc(marginRiskLabel(h.margin_risk)) + '</span>';
+          if (h.completion_status) {
+            badgeHtml += '<span class="badge amber">' + esc(h.completion_status) + '</span>';
+          }
+          badges.innerHTML = badgeHtml;
         }
 
         var estL = labor.estimated || {};
@@ -996,6 +994,16 @@
             ? data.detail.expenses.entries
             : [];
           renderFinancialModal(data.detail, row.metrics);
+          if (row && data.detail) {
+            var op = data.detail.operational || {};
+            var hdr = data.detail.header || {};
+            if (op.progress_pct != null) row.metrics.progressPct = op.progress_pct;
+            if (op.days_spent != null) row.metrics.daysSpent = Number(op.days_spent);
+            if (op.days_remaining != null) row.metrics.daysRemaining = Number(op.days_remaining);
+            if (hdr.status_label) row.metrics.statusLabel = hdr.status_label;
+            if (hdr.tone) row.metrics.tone = hdr.tone;
+            renderTable();
+          }
           if (loading) loading.style.display = 'none';
         } catch (_err) {
           if (errEl) {
@@ -1305,11 +1313,13 @@
           var repRes = await fetch('/.netlify/functions/get-project-reports?project_id=' + rid, { credentials: 'include' }).then(function (r) { return r.json(); }).catch(function () { return {}; });
           var expRes = await fetch('/.netlify/functions/get-project-expenses?project_id=' + rid, { credentials: 'include' }).then(function (r) { return r.json(); }).catch(function () { return {}; });
           var baseRes = await fetch('/.netlify/functions/get-project-migration-baseline?project_id=' + rid, { credentials: 'include' }).then(function (r) { return r.json(); }).catch(function () { return {}; });
+          var dpRes = await fetch('/.netlify/functions/get-project-day-progress?project_id=' + rid, { credentials: 'include' }).then(function (r) { return r.json(); }).catch(function () { return {}; });
           var reports = repRes && repRes.ok === true && Array.isArray(repRes.reports) ? repRes.reports : [];
           var expenses = expRes && expRes.ok === true && Array.isArray(expRes.expenses) ? expRes.expenses : [];
           var baseline = baseRes && baseRes.ok === true && baseRes.baseline ? baseRes.baseline : null;
-          var metrics = compute(p, reports, expenses, baseline);
-          return { project: p, reports: reports, expenses: expenses, baseline: baseline, metrics: metrics };
+          var dayProgress = dpRes && dpRes.ok === true && Array.isArray(dpRes.day_progress) ? dpRes.day_progress : [];
+          var metrics = compute(p, reports, expenses, baseline, dayProgress);
+          return { project: p, reports: reports, expenses: expenses, baseline: baseline, dayProgress: dayProgress, metrics: metrics };
         }));
 
         renderSummary();
