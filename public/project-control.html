@@ -729,18 +729,26 @@
       function marginRiskLabel(risk) {
         var r = String(risk || '').toLowerCase();
         if (r === 'incomplete') return 'Incomplete';
-        if (r === 'high') return 'High';
+        if (r === 'good') return 'Good';
+        if (r === 'at risk' || r === 'at_risk') return 'At Risk';
+        if (r === 'watch') return 'Watch';
+        if (r === 'high') return 'At Risk';
         if (r === 'medium') return 'Watch';
-        if (r === 'low') return 'Low';
+        if (r === 'low') return 'Good';
         return '—';
       }
 
       function marginRiskBadgeClass(risk) {
         var r = String(risk || '').toLowerCase();
         if (r === 'incomplete') return 'amber';
-        if (r === 'high') return 'red';
-        if (r === 'medium') return 'amber';
+        if (r === 'at risk' || r === 'at_risk' || r === 'high') return 'red';
+        if (r === 'watch' || r === 'medium') return 'amber';
         return 'green';
+      }
+
+      function ownerProfitAmount(val, status) {
+        if (status === 'not_configured' || val == null || !isFinite(Number(val))) return 'Not configured.';
+        return moneyUsd(val);
       }
 
       function fmtActualLaborCost(actL, labor) {
@@ -800,24 +808,34 @@
           ? '<p class="pcc-fin-note">' + esc(labor.labor_rates_message) + '</p>'
           : '';
         var profitIncomplete = Boolean(profit.profit_is_incomplete || k.profit_is_incomplete);
+        var opb = profit.owner_profit_breakdown || {};
+        var riskDisplay = profit.risk_label || opb.risk_label || marginRiskLabel(k.risk_status);
         var profitBanner = profitIncomplete
           ? '<p class="pcc-fin-note" role="status">' + esc(
               profit.profit_incomplete_message || k.profit_incomplete_message ||
-              'Profit and margin are preliminary — not a final financial close.'
+              'Configure Business Settings to finalize project profit.'
             ) + '</p>'
           : '';
-        var profitKpiLabel = profitIncomplete ? 'Current profit (preliminary)' : 'Current profit';
-        var marginKpiLabel = profitIncomplete ? 'Margin % (preliminary)' : 'Margin %';
+        var profitKpiLabel = profitIncomplete ? 'Owner remaining profit (incomplete)' : 'Owner remaining profit';
+        var marginKpiLabel = profitIncomplete ? 'Margin % (incomplete)' : 'Margin %';
 
-        var assumptionsHtml = '';
-        if (Array.isArray(profit.assumptions) && profit.assumptions.length) {
-          assumptionsHtml = '<ul class="pcc-fin-assumptions">' + profit.assumptions.map(function (a) {
-            var st = String(a.status || '');
-            var amt = a.amount != null && a.amount > 0 ? ' · ' + moneyUsd(a.amount) : '';
-            var note = a.note ? ' — ' + a.note : '';
-            return '<li><strong>' + esc(a.label) + ':</strong> ' + esc(st.replace(/_/g, ' ')) + amt + esc(note) + '</li>';
-          }).join('') + '</ul>';
-        }
+        var ownerBreakdownHtml =
+          '<section class="pcc-fin-section pcc-fin-section--owner-profit"><h4>Owner profit breakdown</h4><div class="pcc-fin-kv">' +
+          finKvRow('Project total', moneyUsd(opb.project_total)) +
+          finKvRow('Direct labor cost', ownerProfitAmount(opb.direct_labor_cost, opb.direct_labor_cost == null ? 'not_configured' : 'calculated')) +
+          finKvRow('Employer burden', ownerProfitAmount(opb.employer_burden, opb.employer_burden == null ? 'not_configured' : 'calculated')) +
+          finKvRow('Loaded labor cost', ownerProfitAmount(opb.loaded_labor_cost, opb.loaded_labor_cost == null ? 'not_configured' : 'calculated')) +
+          finKvRow('Unexpected expenses', moneyUsd(opb.unexpected_expenses)) +
+          finKvRow('Operating cost allocation', ownerProfitAmount(opb.operating_cost_allocation, opb.operating_cost_allocation == null ? 'not_configured' : 'calculated')) +
+          finKvRow('Seller commission', ownerProfitAmount(opb.seller_commission, opb.seller_commission == null ? 'not_configured' : 'calculated')) +
+          finKvRow('Supervisor bonus', opb.supervisor_bonus_note ? esc(opb.supervisor_bonus_note) : ownerProfitAmount(opb.supervisor_bonus, opb.supervisor_bonus == null ? 'not_configured' : 'calculated')) +
+          finKvRow('Savings reserve', ownerProfitAmount(opb.savings_reserve, opb.savings_reserve == null ? 'not_configured' : 'calculated')) +
+          (opb.material_costs != null && opb.material_costs > 0 ? finKvRow('Material costs', moneyUsd(opb.material_costs)) : '') +
+          finKvRow(profitIncomplete ? 'Owner remaining profit (incomplete)' : 'Owner remaining profit', ownerProfitAmount(opb.owner_remaining_profit, profitIncomplete ? 'not_configured' : 'calculated')) +
+          finKvRow('Margin %', opb.margin_pct != null && !profitIncomplete ? String(opb.margin_pct) + '%' : (profitIncomplete ? 'Incomplete' : '—')) +
+          finKvRow('Target margin %', opb.target_margin_pct != null ? String(opb.target_margin_pct) + '%' : '—') +
+          finKvRow('Risk', esc(riskDisplay)) +
+          '</div></section>';
 
         content.innerHTML =
           profitBanner +
@@ -827,8 +845,9 @@
           '<div class="pcc-fin-kpi"><div class="pcc-fin-kpi__label">Balance due</div><div class="pcc-fin-kpi__value">' + moneyUsd(k.balance_due) + '</div></div>' +
           '<div class="pcc-fin-kpi"><div class="pcc-fin-kpi__label">' + esc(profitKpiLabel) + '</div><div class="pcc-fin-kpi__value">' + moneyUsd(k.current_profit) + '</div></div>' +
           '<div class="pcc-fin-kpi"><div class="pcc-fin-kpi__label">' + esc(marginKpiLabel) + '</div><div class="pcc-fin-kpi__value">' + (k.margin_pct != null ? esc(String(k.margin_pct)) + '%' : '—') + '</div></div>' +
-          '<div class="pcc-fin-kpi"><div class="pcc-fin-kpi__label">Risk</div><div class="pcc-fin-kpi__value">' + esc(marginRiskLabel(k.risk_status)) + '</div></div>' +
+          '<div class="pcc-fin-kpi"><div class="pcc-fin-kpi__label">Risk</div><div class="pcc-fin-kpi__value">' + esc(riskDisplay) + '</div></div>' +
           '</div>' +
+          ownerBreakdownHtml +
           '<div class="pcc-fin-grid">' +
           '<div class="pcc-fin-col">' +
           '<section class="pcc-fin-section"><h4>Labor cost control</h4><div class="pcc-fin-kv">' +
@@ -864,13 +883,10 @@
           finKvRow('Invoice status', cc.invoice_status || '—') +
           finKvRow('Last payment', cc.last_payment_date ? fmtDate(cc.last_payment_date) : '—') +
           '</div></section>' +
-          '<section class="pcc-fin-section"><h4>Profit snapshot</h4><div class="pcc-fin-kv">' +
-          finKvRow('Projected profit', moneyUsd(profit.projected_profit)) +
-          finKvRow(profitIncomplete ? 'Current profit (preliminary)' : 'Current profit', moneyUsd(profit.current_profit)) +
-          finKvRow('Profit variance', moneyUsd(profit.profit_variance)) +
-          finKvRow(profitIncomplete ? 'Margin % (preliminary)' : 'Margin %', profit.margin_pct != null ? String(profit.margin_pct) + '%' : '—') +
-          finKvRow('Margin risk', marginRiskLabel(profit.margin_risk)) +
-          '</div>' + assumptionsHtml + '</section>' +
+          '<section class="pcc-fin-section"><h4>Estimate comparison</h4><div class="pcc-fin-kv">' +
+          finKvRow('Projected profit (estimate)', moneyUsd(profit.projected_profit)) +
+          finKvRow('Variance vs estimate', profit.profit_variance != null ? moneyUsd(profit.profit_variance) : '—') +
+          '</div></section>' +
           '</div></div>' +
           '<section class="pcc-fin-section"><h4>Field expenses</h4>' +
           '<div class="pcc-fin-expense-actions">' +

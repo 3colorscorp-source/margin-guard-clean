@@ -8,6 +8,7 @@ const { computeProjectOperationalSnapshot } = require("./project-operational-sna
 const { normalizeQuotedLaborPlan } = require("./project-labor-plan");
 const { countCompletedDays } = require("./project-day-progress");
 const { applyMigrationBaselineToMetrics } = require("./migration-baseline");
+const { computeSupervisorExecutionBonus } = require("./supervisor-execution-bonus");
 const { supabaseRequest } = require("./supabase-admin");
 
 const DEFAULT_HOURS_PER_DAY = 8;
@@ -63,14 +64,148 @@ function planRoleBudgetHours(quotedPlanRaw, hoursPerDay, settings) {
 function laborRatesFromSettings(mg) {
   const proRate = num(mg?.baseInstaller, 0);
   const assistantRate = num(mg?.baseHelper, 0);
-  const missing = !(proRate > 0 && assistantRate > 0);
+  const roleRatesMissing = !(proRate > 0 && assistantRate > 0);
   return {
     pro_rate: round2(proRate),
     assistant_rate: round2(assistantRate),
-    missing,
-    missing_message:
-      "Labor cost settings missing. Configure Operating Costs first.",
+    role_rates_missing: roleRatesMissing,
+    missing: roleRatesMissing,
+    missing_message: "Labor rate settings missing. Configure Business Settings.",
   };
+}
+
+/** mg_settings_v2 keys used for owner profit (Business Settings source of truth). */
+function parseBusinessSettingsForOwnerProfit(mg) {
+  const missing = [];
+  if (!mg || typeof mg !== "object") {
+    return {
+      configured: false,
+      missing: ["mg_settings_v2"],
+      missing_message: "Configure Business Settings to finalize project profit.",
+      pro_rate: null,
+      assistant_rate: null,
+      fica_pct: null,
+      futa_pct: null,
+      casui_pct: null,
+      wc_pct: null,
+      burden_pct_total: null,
+      overhead_monthly: null,
+      std_hours: null,
+      overhead_per_hour: null,
+      sales_commission_pct: null,
+      supervisor_bonus_pct: null,
+      reserve_pct: null,
+      profit_pct: null,
+      minimum_margin_pct: null,
+      hours_per_day: DEFAULT_HOURS_PER_DAY,
+      labor_rates_ok: false,
+      burden_ok: false,
+      overhead_ok: false,
+      reserve_ok: false,
+      commission_ok: false,
+      supervisor_bonus_ok: false,
+    };
+  }
+
+  const proRate = num(mg.baseInstaller, NaN);
+  const assistantRate = num(mg.baseHelper, NaN);
+  const ficaPct = num(mg.ficaPct, NaN);
+  const futaPct = num(mg.futaPct, NaN);
+  const casuiPct = num(mg.casuiPct, NaN);
+  const wcPct = num(mg.wcPct, NaN);
+  const overheadMonthly = num(mg.overheadMonthly, NaN);
+  const stdHours = num(mg.stdHours, NaN);
+  const salesCommissionPct = num(mg.salesCommissionPct, NaN);
+  const supervisorBonusPct = num(mg.supervisorBonusPct, NaN);
+  const reservePct = num(mg.reservePct, NaN);
+  const profitPct = num(mg.profitPct, NaN);
+  const minimumMarginPct = num(mg.minimumMarginPct, NaN);
+  const hoursPerDay = num(mg.hoursPerDay, DEFAULT_HOURS_PER_DAY);
+
+  const laborRatesOk = proRate > 0 && assistantRate > 0;
+  const burdenOk =
+    ficaPct > 0 &&
+    wcPct > 0 &&
+    Number.isFinite(futaPct) &&
+    futaPct >= 0 &&
+    Number.isFinite(casuiPct) &&
+    casuiPct >= 0;
+  const overheadOk =
+    Number.isFinite(overheadMonthly) &&
+    overheadMonthly >= 0 &&
+    stdHours > 0;
+  const reserveOk = reservePct >= 5;
+  const commissionOk =
+    Number.isFinite(salesCommissionPct) && salesCommissionPct >= 0;
+  const supervisorBonusOk =
+    Number.isFinite(supervisorBonusPct) && supervisorBonusPct >= 0;
+  const targetMarginOk = Number.isFinite(profitPct) && profitPct >= 0;
+
+  if (!(ficaPct > 0)) missing.push("ficaPct");
+  if (!(wcPct > 0)) missing.push("wcPct");
+  if (!Number.isFinite(futaPct) || futaPct < 0) missing.push("futaPct");
+  if (!Number.isFinite(casuiPct) || casuiPct < 0) missing.push("casuiPct");
+  if (!overheadOk) {
+    if (!Number.isFinite(overheadMonthly) || overheadMonthly < 0) missing.push("overheadMonthly");
+    if (!(stdHours > 0)) missing.push("stdHours");
+  }
+  if (!reserveOk) missing.push("reservePct");
+  if (!commissionOk) missing.push("salesCommissionPct");
+  if (!supervisorBonusOk) missing.push("supervisorBonusPct");
+  if (!targetMarginOk) missing.push("profitPct");
+
+  const burdenPctTotal = burdenOk
+    ? round2(ficaPct + futaPct + casuiPct + wcPct)
+    : null;
+  const overheadPerHour =
+    overheadOk && stdHours > 0 ? round2(overheadMonthly / stdHours) : null;
+
+  return {
+    configured: true,
+    missing,
+    missing_message: "Configure Business Settings to finalize project profit.",
+    pro_rate: laborRatesOk ? round2(proRate) : null,
+    assistant_rate: laborRatesOk ? round2(assistantRate) : null,
+    fica_pct: burdenOk ? round2(ficaPct) : null,
+    futa_pct: burdenOk ? round2(futaPct) : null,
+    casui_pct: burdenOk ? round2(casuiPct) : null,
+    wc_pct: burdenOk ? round2(wcPct) : null,
+    burden_pct_total: burdenPctTotal,
+    overhead_monthly: overheadOk ? round2(overheadMonthly) : null,
+    std_hours: overheadOk ? round2(stdHours) : null,
+    overhead_per_hour: overheadPerHour,
+    sales_commission_pct: commissionOk ? round2(salesCommissionPct) : null,
+    supervisor_bonus_pct: supervisorBonusOk ? round2(supervisorBonusPct) : null,
+    reserve_pct: reserveOk ? round2(reservePct) : null,
+    profit_pct: targetMarginOk ? round2(profitPct) : null,
+    minimum_margin_pct:
+      Number.isFinite(minimumMarginPct) && minimumMarginPct >= 0
+        ? round2(minimumMarginPct)
+        : 0,
+    hours_per_day: hoursPerDay > 0 ? hoursPerDay : DEFAULT_HOURS_PER_DAY,
+    labor_rates_ok: laborRatesOk,
+    burden_ok: burdenOk,
+    overhead_ok: overheadOk,
+    reserve_ok: reserveOk,
+    commission_ok: commissionOk,
+    supervisor_bonus_ok: supervisorBonusOk,
+  };
+}
+
+function maxPlanWorkerDays(quotedLaborPlan) {
+  if (!Array.isArray(quotedLaborPlan)) return 0;
+  let mx = 0;
+  for (const w of quotedLaborPlan) {
+    if (!w || typeof w !== "object") continue;
+    mx = Math.max(mx, num(w.budget_days ?? w.days, 0));
+  }
+  return round2(mx);
+}
+
+function effectiveDaysForSupervisorBonus(project, operational) {
+  const fromPlan = maxPlanWorkerDays(project?.quoted_labor_plan);
+  if (fromPlan > 0) return fromPlan;
+  return round2(num(operational?.estimated_days, num(project?.estimated_days, 0)));
 }
 
 function blendedHourlyRate(project, hoursPerDay) {
@@ -135,16 +270,13 @@ function computeLaborCostSection({
       cost: null,
     },
     cost_method: null,
-    labor_rates_missing: rates.missing,
-    labor_rates_message: rates.missing ? rates.missing_message : null,
-    pro_rate: rates.missing ? null : rates.pro_rate,
-    assistant_rate: rates.missing ? null : rates.assistant_rate,
+    labor_rates_missing: false,
+    labor_rates_message: null,
+    pro_rate: rates.role_rates_missing ? null : rates.pro_rate,
+    assistant_rate: rates.role_rates_missing ? null : rates.assistant_rate,
     blended_rate: null,
+    has_role_breakdown: rolePlan.has_role_breakdown,
   };
-
-  if (rates.missing) {
-    return base;
-  }
 
   let actualCost = 0;
   let proH = 0;
@@ -152,6 +284,11 @@ function computeLaborCostSection({
   let method = "blended_rate";
 
   if (rolePlan.has_role_breakdown) {
+    if (rates.role_rates_missing) {
+      base.labor_rates_missing = true;
+      base.labor_rates_message = rates.missing_message;
+      return base;
+    }
     method = "role_breakdown";
     const planTotal = rolePlan.pro_hours + rolePlan.assistant_hours;
     if (reportedHours > 0 && planTotal > 0) {
@@ -167,8 +304,9 @@ function computeLaborCostSection({
     base.blended_rate = blended > 0 ? blended : null;
     if (blended <= 0) {
       base.cost_method = "no_rate";
+      base.labor_rates_missing = true;
       base.labor_rates_message =
-        "No labor plan role breakdown and no blended rate (set labor budget and estimated days).";
+        "Labor rate settings missing. Configure Business Settings.";
       return base;
     }
     proH = reportedHours;
@@ -499,7 +637,34 @@ async function loadPaymentsForProject(tenantId, project, invoiceIds) {
   return out;
 }
 
-function buildProfitSection({
+function ownerProfitLine(label, amount, status, note) {
+  return {
+    label,
+    amount: amount == null ? null : round2(amount),
+    status: status || (amount == null ? "not_configured" : "calculated"),
+    note: note || null,
+  };
+}
+
+function deriveOwnerRiskLabel({ profitIncomplete, marginPct, bs }) {
+  if (profitIncomplete || marginPct == null) {
+    return { risk_label: "Incomplete", margin_risk: "incomplete" };
+  }
+  const target = num(bs.profit_pct, 0);
+  const minimum = num(bs.minimum_margin_pct, 0);
+  if (marginPct >= target) {
+    return { risk_label: "Good", margin_risk: "low" };
+  }
+  if (marginPct >= minimum) {
+    return { risk_label: "Watch", margin_risk: "medium" };
+  }
+  return { risk_label: "At Risk", margin_risk: "high" };
+}
+
+/**
+ * Owner profit breakdown — all rates and percentages from mg_settings_v2 (Business Settings).
+ */
+function buildOwnerProfitBreakdown({
   project,
   collection,
   laborSection,
@@ -507,6 +672,7 @@ function buildProfitSection({
   operational,
   mgSettings,
 }) {
+  const bs = parseBusinessSettingsForOwnerProfit(mgSettings);
   const snap = computeProjectSnapshot({
     project,
     reports: [],
@@ -514,152 +680,259 @@ function buildProfitSection({
     changeOrders: [],
   });
 
-  const assumptions = [];
-
   const contractTotal = collection.current_contract_total;
   const unexpectedTotal = sumExpenseAmounts(expenses);
+  const reportedHours = num(laborSection.actual.hours, 0);
+  const materialCost = round2(Math.max(0, num(project?.estimated_material_cost, 0)));
 
-  let actualLabor = laborSection.actual.labor_cost;
-  if (actualLabor == null) {
-    if (laborSection.labor_rates_missing || laborSection.cost_method === "no_rate") {
-      actualLabor = 0;
-      assumptions.push({
-        key: "actual_labor",
-        label: "Actual labor cost",
-        status: "missing_settings",
-        amount: 0,
-        note:
-          laborSection.labor_rates_message ||
-          "Labor cost not included in profit until rates are configured.",
-      });
-    } else {
-      actualLabor = snap.actual_labor;
-      assumptions.push({
-        key: "actual_labor",
-        label: "Actual labor cost",
-        status: "stored_fallback",
-        amount: actualLabor,
-        note: "Using stored labor consumed on project record.",
-      });
-    }
-  }
-
-  const materialBudget = round2(Math.max(0, num(project?.estimated_material_cost, 0)));
-  let materialCost = 0;
-  if (materialBudget > 0) {
-    materialCost = materialBudget;
-    assumptions.push({
-      key: "material_costs",
-      label: "Material costs",
-      status: "budget_estimate",
-      amount: materialCost,
-      note: "Using estimated material budget from project.",
-    });
-  } else {
-    assumptions.push({
-      key: "material_costs",
-      label: "Material costs",
-      status: "not_configured",
-      amount: 0,
-    });
-  }
-
-  const om = num(mgSettings?.overheadMonthly, 0);
-  const stdHours = num(mgSettings?.stdHours, 0);
-  let overheadAllocation = 0;
-  if (om > 0 && stdHours > 0 && laborSection.actual.hours > 0) {
-    overheadAllocation = round2((om / stdHours) * laborSection.actual.hours);
-    assumptions.push({
-      key: "overhead_allocation",
-      label: "Overhead allocation",
-      status: "calculated",
-      amount: overheadAllocation,
-      note: "Monthly overhead ÷ standard hours × reported hours.",
-    });
-  } else {
-    assumptions.push({
-      key: "overhead_allocation",
-      label: "Overhead allocation",
-      status: "not_configured",
-      amount: 0,
-    });
-  }
-
-  const commPct = num(mgSettings?.salesCommissionPct, 0);
-  let sellerCommission = 0;
-  if (commPct > 0 && contractTotal > 0) {
-    sellerCommission = round2(contractTotal * (commPct / 100));
-    assumptions.push({
-      key: "seller_commission",
-      label: "Seller commission",
-      status: "calculated",
-      amount: sellerCommission,
-      note: `${commPct}% of current contract total.`,
-    });
-  } else {
-    assumptions.push({
-      key: "seller_commission",
-      label: "Seller commission",
-      status: "not_configured",
-      amount: 0,
-    });
-  }
-
-  const bonusAmount = round2(num(operational?.supervisor_bonus_amount, 0));
-  if (bonusAmount > 0) {
-    assumptions.push({
-      key: "supervisor_bonus",
-      label: "Supervisor bonus",
-      status: "included",
-      amount: bonusAmount,
-    });
-  } else {
-    assumptions.push({
-      key: "supervisor_bonus",
-      label: "Supervisor bonus",
-      status: "not_applicable",
-      amount: 0,
-    });
-  }
-
-  const projectedProfit = round2(num(project?.estimated_profit, snap.projected_profit));
-
-  const currentProfit = round2(
-    contractTotal -
-      num(actualLabor, 0) -
-      unexpectedTotal -
-      materialCost -
-      overheadAllocation -
-      sellerCommission -
-      bonusAmount
-  );
-
-  const currentMarginPct =
-    contractTotal > 0 ? round2((currentProfit / contractTotal) * 100) : 0;
-
-  const profitVariance = round2(currentProfit - projectedProfit);
-
-  const profitIncomplete =
+  const laborDirectMissing =
     Boolean(laborSection.labor_rates_missing) ||
     laborSection.cost_method === "no_rate" ||
     laborSection.actual.labor_cost == null;
 
-  const marginRisk = profitIncomplete ? "incomplete" : snap.margin_risk || "low";
+  let directLabor = laborDirectMissing ? null : round2(laborSection.actual.labor_cost);
+
+  let employerBurden = null;
+  if (!laborDirectMissing && directLabor != null && bs.burden_ok) {
+    const taxPct =
+      (num(bs.fica_pct, 0) +
+        num(bs.futa_pct, 0) +
+        num(bs.casui_pct, 0) +
+        num(bs.wc_pct, 0)) /
+      100;
+    employerBurden = round2(directLabor * taxPct);
+  }
+
+  let loadedLabor =
+    directLabor != null && employerBurden != null
+      ? round2(directLabor + employerBurden)
+      : null;
+
+  let operatingAllocation = null;
+  if (bs.overhead_ok) {
+    operatingAllocation = round2(num(bs.overhead_per_hour, 0) * reportedHours);
+  }
+
+  let sellerCommission = null;
+  if (bs.commission_ok && contractTotal >= 0) {
+    sellerCommission = round2(
+      contractTotal * (num(bs.sales_commission_pct, 0) / 100)
+    );
+  }
+
+  let supervisorBonus = null;
+  let supervisorBonusNote = null;
+  const laborBudget = round2(Math.max(0, num(project?.labor_budget, 0)));
+  if (!bs.supervisor_bonus_ok) {
+    supervisorBonusNote = "Supervisor bonus not configured.";
+  } else if (laborBudget <= 0) {
+    supervisorBonusNote = "Supervisor bonus not configured.";
+  } else {
+    const bonusCalc = computeSupervisorExecutionBonus({
+      laborBudget,
+      effectiveDays: effectiveDaysForSupervisorBonus(project, operational),
+      daysSpent: num(operational?.actual_days, num(laborSection.actual.days, 0)),
+      supervisorBonusPctPoints: bs.supervisor_bonus_pct,
+    });
+    supervisorBonus = bonusCalc.bonusActual;
+  }
+
+  let savingsReserve = null;
+  if (bs.reserve_ok && contractTotal >= 0) {
+    savingsReserve = round2(contractTotal * (num(bs.reserve_pct, 0) / 100));
+  }
+
+  const settingsMissing = [...bs.missing];
+  if (laborDirectMissing) {
+    if (!settingsMissing.includes("direct_labor")) settingsMissing.push("direct_labor");
+  }
+  if (supervisorBonusNote) {
+    if (!settingsMissing.includes("supervisor_bonus_rule")) {
+      settingsMissing.push("supervisor_bonus_rule");
+    }
+  }
+
+  const profitIncomplete =
+    !bs.configured ||
+    laborDirectMissing ||
+    !bs.burden_ok ||
+    !bs.overhead_ok ||
+    !bs.reserve_ok ||
+    !bs.commission_ok ||
+    !bs.supervisor_bonus_ok ||
+    loadedLabor == null ||
+    supervisorBonus == null;
+
+  let ownerRemaining = null;
+  if (!profitIncomplete) {
+    ownerRemaining = round2(
+      contractTotal -
+        loadedLabor -
+        unexpectedTotal -
+        num(operatingAllocation, 0) -
+        num(sellerCommission, 0) -
+        num(supervisorBonus, 0) -
+        num(savingsReserve, 0) -
+        materialCost
+    );
+  }
+
+  const marginPct =
+    !profitIncomplete && contractTotal > 0
+      ? round2((ownerRemaining / contractTotal) * 100)
+      : null;
+
+  const { risk_label, margin_risk } = deriveOwnerRiskLabel({
+    profitIncomplete,
+    marginPct,
+    bs,
+  });
+
+  let incompleteMessage = null;
+  if (profitIncomplete) {
+    if (laborDirectMissing && laborSection.labor_rates_message) {
+      incompleteMessage = laborSection.labor_rates_message;
+    } else if (!bs.overhead_ok) {
+      incompleteMessage = "Operating cost settings missing. Configure Business Settings.";
+    } else if (!bs.burden_ok) {
+      incompleteMessage = bs.missing_message;
+    } else {
+      incompleteMessage = bs.missing_message;
+    }
+  }
+
+  const breakdown = {
+    project_total: contractTotal,
+    direct_labor_cost: directLabor,
+    employer_burden: employerBurden,
+    loaded_labor_cost: loadedLabor,
+    unexpected_expenses: unexpectedTotal,
+    operating_cost_allocation: operatingAllocation,
+    seller_commission: sellerCommission,
+    supervisor_bonus: supervisorBonus,
+    supervisor_bonus_note: supervisorBonusNote,
+    savings_reserve: savingsReserve,
+    material_costs: materialCost > 0 ? materialCost : null,
+    owner_remaining_profit: ownerRemaining,
+    margin_pct: marginPct,
+    target_margin_pct: bs.profit_pct,
+    risk_label,
+    burden_pct_total: bs.burden_pct_total,
+    burden_breakdown: bs.burden_ok
+      ? {
+          fica_pct: bs.fica_pct,
+          futa_pct: bs.futa_pct,
+          casui_pct: bs.casui_pct,
+          wc_pct: bs.wc_pct,
+        }
+      : null,
+    overhead_per_hour: bs.overhead_per_hour,
+    settings_missing: settingsMissing,
+    lines: [
+      ownerProfitLine("Project total", contractTotal, "calculated"),
+      ownerProfitLine(
+        "Direct labor cost",
+        directLabor,
+        laborDirectMissing ? "not_configured" : "calculated",
+        laborDirectMissing ? laborSection.labor_rates_message : null
+      ),
+      ownerProfitLine(
+        "Employer burden",
+        employerBurden,
+        !bs.burden_ok || laborDirectMissing ? "not_configured" : "calculated",
+        bs.burden_ok && bs.burden_pct_total != null
+          ? `${bs.burden_pct_total}% of direct labor (FICA, FUTA, CA SUI, Workers Comp)`
+          : null
+      ),
+      ownerProfitLine(
+        "Loaded labor cost",
+        loadedLabor,
+        loadedLabor == null ? "not_configured" : "calculated"
+      ),
+      ownerProfitLine("Unexpected expenses", unexpectedTotal, "calculated"),
+      ownerProfitLine(
+        "Operating cost allocation",
+        operatingAllocation,
+        !bs.overhead_ok ? "not_configured" : "calculated",
+        !bs.overhead_ok
+          ? "Operating cost settings missing. Configure Business Settings."
+          : bs.overhead_per_hour != null
+            ? `$${bs.overhead_per_hour}/hr × ${reportedHours} reported hrs`
+            : null
+      ),
+      ownerProfitLine(
+        "Seller commission",
+        sellerCommission,
+        !bs.commission_ok ? "not_configured" : "calculated",
+        bs.commission_ok
+          ? `${bs.sales_commission_pct}% of contract`
+          : null
+      ),
+      ownerProfitLine(
+        "Supervisor bonus",
+        supervisorBonus,
+        supervisorBonus == null ? "not_configured" : "calculated",
+        supervisorBonusNote
+      ),
+      ownerProfitLine(
+        "Savings reserve",
+        savingsReserve,
+        !bs.reserve_ok ? "not_configured" : "calculated",
+        bs.reserve_ok ? `${bs.reserve_pct}% of contract` : null
+      ),
+      ownerProfitLine(
+        "Owner remaining profit",
+        ownerRemaining,
+        profitIncomplete ? "not_configured" : "calculated"
+      ),
+    ],
+  };
+
+  const projectedProfit = round2(num(project?.estimated_profit, snap.projected_profit));
 
   return {
+    owner_profit_breakdown: breakdown,
     projected_profit: projectedProfit,
-    current_profit: currentProfit,
-    profit_variance: profitVariance,
-    margin_pct: currentMarginPct,
-    margin_risk: marginRisk,
+    current_profit: ownerRemaining,
+    profit_variance:
+      ownerRemaining != null ? round2(ownerRemaining - projectedProfit) : null,
+    margin_pct: marginPct,
+    margin_risk,
+    risk_label,
     profit_is_incomplete: profitIncomplete,
-    profit_incomplete_message: profitIncomplete
-      ? laborSection.labor_rates_missing
-        ? "Profit is incomplete because labor cost settings are missing."
-        : laborSection.labor_rates_message ||
-          "Profit and margin are preliminary — actual labor cost was not calculated."
-      : null,
-    assumptions,
+    profit_incomplete_message: profitIncomplete ? incompleteMessage : null,
+    business_settings_keys_used: [
+      "baseInstaller",
+      "baseHelper",
+      "ficaPct",
+      "futaPct",
+      "casuiPct",
+      "wcPct",
+      "overheadMonthly",
+      "stdHours",
+      "salesCommissionPct",
+      "supervisorBonusPct",
+      "reservePct",
+      "profitPct",
+      "minimumMarginPct",
+      "hoursPerDay",
+    ],
+  };
+}
+
+function buildProfitSection(args) {
+  const result = buildOwnerProfitBreakdown(args);
+  return {
+    projected_profit: result.projected_profit,
+    current_profit: result.current_profit,
+    profit_variance: result.profit_variance,
+    margin_pct: result.margin_pct,
+    margin_risk: result.margin_risk,
+    risk_label: result.risk_label,
+    profit_is_incomplete: result.profit_is_incomplete,
+    profit_incomplete_message: result.profit_incomplete_message,
+    owner_profit_breakdown: result.owner_profit_breakdown,
+    business_settings_keys_used: result.business_settings_keys_used,
   };
 }
 
@@ -831,6 +1104,8 @@ module.exports = {
   computeLaborCostSection,
   buildCollectionSection,
   buildProfitSection,
+  buildOwnerProfitBreakdown,
+  parseBusinessSettingsForOwnerProfit,
   computeFinancialOperationalState,
   loadInvoicesForProject,
   loadPaymentsForProject,
