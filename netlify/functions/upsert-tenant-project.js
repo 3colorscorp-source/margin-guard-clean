@@ -84,6 +84,29 @@ function incomingPlanIsValid(plan) {
   return planHasRows(plan) && !isPlanEffectivelyEmpty(plan);
 }
 
+const SUPERVISOR_QUOTE_STATUSES = new Set(["accepted", "approved"]);
+
+/** Direct Firmar: Supervisor list requires quote accepted/approved (get-supervisor-projects). */
+async function markQuoteAcceptedForSupervisorListing(tenantId, quoteRow) {
+  if (!quoteRow?.id) return { skipped: true };
+  const st = String(quoteRow.status || "").trim().toLowerCase();
+  if (SUPERVISOR_QUOTE_STATUSES.has(st)) {
+    return { ok: true, status: st, already_accepted: true };
+  }
+  const tid = encodeURIComponent(tenantId);
+  const qid = encodeURIComponent(String(quoteRow.id));
+  const nowIso = new Date().toISOString();
+  await supabaseRequest(`quotes?id=eq.${qid}&tenant_id=eq.${tid}`, {
+    method: "PATCH",
+    body: {
+      status: "accepted",
+      accepted_at: quoteRow.accepted_at || nowIso,
+      updated_at: nowIso,
+    },
+  });
+  return { ok: true, status: "accepted", already_accepted: false };
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -108,7 +131,7 @@ exports.handler = async (event) => {
 
     const tid = encodeURIComponent(tenant.id);
     const quoteRows = await supabaseRequest(
-      `quotes?id=eq.${encodeURIComponent(quoteId)}&tenant_id=eq.${tid}&select=id,total`
+      `quotes?id=eq.${encodeURIComponent(quoteId)}&tenant_id=eq.${tid}&select=id,total,status,accepted_at`
     );
     const quoteOk = Array.isArray(quoteRows) ? quoteRows[0] : null;
     if (!quoteOk?.id) {
@@ -233,6 +256,7 @@ exports.handler = async (event) => {
           source: "mark_sold",
         });
       }
+      const quoteAccept = await markQuoteAcceptedForSupervisorListing(tenant.id, quoteOk);
       return json(200, {
         ok: true,
         id: existing.id,
@@ -240,6 +264,8 @@ exports.handler = async (event) => {
         labor_plan_locked: locked || Boolean(patch.quoted_labor_plan_locked_at),
         operational_snapshot: planHasDays(opNormalized),
         operational_persist: operationalPersist,
+        quote_status: quoteAccept.status || null,
+        quote_already_accepted: Boolean(quoteAccept.already_accepted),
       });
     }
 
@@ -269,6 +295,7 @@ exports.handler = async (event) => {
         source: "mark_sold",
       });
     }
+    const quoteAccept = await markQuoteAcceptedForSupervisorListing(tenant.id, quoteOk);
     return json(200, {
       ok: true,
       id: ins?.id,
@@ -276,6 +303,8 @@ exports.handler = async (event) => {
       labor_plan_locked: Boolean(insertBody.quoted_labor_plan_locked_at),
       operational_snapshot: planHasDays(opNormalized),
       operational_persist: operationalPersist,
+      quote_status: quoteAccept.status || null,
+      quote_already_accepted: Boolean(quoteAccept.already_accepted),
     });
   } catch (err) {
     return json(500, { error: err.message || "Unexpected error" });

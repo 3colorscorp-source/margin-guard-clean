@@ -2680,6 +2680,27 @@
                       if (out.data.id != null && String(out.data.id).trim()) {
                         state.tenantProjectId = String(out.data.id).trim();
                         saveSalesState(state);
+                        var capAfterFirmar = window.MarginGuardSalesCapacity;
+                        if (capAfterFirmar && typeof capAfterFirmar.fetchCapacityCalendar === 'function') {
+                          capAfterFirmar.fetchCapacityCalendar(
+                            signedEstimatedDays,
+                            startDate,
+                            state.tenantProjectId
+                          )
+                            .then(function (calendar) {
+                              window.__mgSalesCapacityUnverified = false;
+                              window.__mgSalesCapacityCalendar = calendar;
+                              if (typeof window.renderSalesOpCrewAvailability === 'function') {
+                                window.renderSalesOpCrewAvailability();
+                              }
+                            })
+                            .catch(function () {
+                              window.__mgSalesCapacityUnverified = true;
+                              if (typeof window.renderSalesOpCrewAvailability === 'function') {
+                                window.renderSalesOpCrewAvailability();
+                              }
+                            });
+                        }
                       }
                     });
                 })().catch(function (err) {
