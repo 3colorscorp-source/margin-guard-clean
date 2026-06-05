@@ -152,8 +152,19 @@
     return compareYmd(next, today) >= 0 ? next : today;
   }
 
+  function isAdvisoryCapacityMode(calendar) {
+    const mode =
+      (calendar && calendar.crew_availability_mode) ||
+      (calendar &&
+        calendar.schedule_settings &&
+        calendar.schedule_settings.crew_availability_mode) ||
+      "advisory";
+    return String(mode).toLowerCase() !== "strict";
+  }
+
   function isStartBlocked(calendar, chosenStart) {
     if (!calendar || !normDate(chosenStart)) return false;
+    if (isAdvisoryCapacityMode(calendar)) return false;
     if (calendar.schedule_settings && calendar.schedule_settings.allow_seller_schedule_override) {
       return false;
     }
@@ -164,6 +175,10 @@
 
   function buildGuidanceReason(calendar) {
     if (!calendar) return "";
+    if (calendar.guidance_message) return String(calendar.guidance_message);
+    if (calendar.availability_message) {
+      return String(calendar.availability_message).replace(/\sYou may still send this estimate\.\s*$/i, "");
+    }
     if (calendar.reason) return String(calendar.reason);
     const remaining = Number(calendar.remaining_days);
     const buffer = Number(calendar.buffer_days);
@@ -219,18 +234,30 @@
     const min = effectiveStartMin(calendar);
     const nextLabel = formatDateUS(min || calendar.next_available_start_date);
     const reasonText = buildGuidanceReason(calendar);
+    const status = String(calendar.capacity_status || "").toLowerCase();
+
     if (guidance) {
-      guidance.innerHTML =
-        `Next safe start date: <strong>${nextLabel}</strong><br>` +
-        `Reason: ${reasonText}`;
+      if (status === "available" || !status) {
+        guidance.innerHTML =
+          `Next safe start date: <strong>${nextLabel}</strong><br>` +
+          `Reason: ${reasonText}`;
+      } else {
+        guidance.innerHTML = reasonText || `Next safe start date: <strong>${nextLabel}</strong>`;
+      }
     }
     if (startInput && min) {
       startInput.min = min;
       startInput.setAttribute("min", min);
     }
-    if (warning && startInput) {
-      const chosen = normDate(startInput.value);
-      if (chosen && isStartBlocked(calendar, chosen)) {
+    if (warning) {
+      const msg =
+        calendar.availability_message ||
+        (status === "conflict" || status === "incomplete_reporting" || status === "warning"
+          ? reasonText + ADVISORY_SUFFIX_SEND
+          : "");
+      if (msg && status !== "available") {
+        showCapacityWarning(msg);
+      } else if (startInput && isStartBlocked(calendar, startInput.value)) {
         showCapacityWarning(blockedStartMessage(calendar) + ADVISORY_SUFFIX_SEND);
       } else {
         showCapacityWarning("");
