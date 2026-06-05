@@ -342,14 +342,54 @@ const OPERATIONAL_PLAN_TEMPLATES = {
   },
 };
 
+function normIsoDate(raw) {
+  const t = str(raw, 32).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : null;
+}
+
+function readQuoteOperationalDaysOverride(quoteRow) {
+  const raw =
+    quoteRow?.operational_estimated_days_override ??
+    quoteRow?.estimated_days_override ??
+    quoteRow?.operationalEstimatedDaysOverride;
+  if (raw == null || raw === "") return null;
+  const n = num(raw, NaN);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function readQuoteOperationalHoursOverride(quoteRow) {
+  const raw =
+    quoteRow?.operational_estimated_hours_override ??
+    quoteRow?.estimated_hours_override ??
+    quoteRow?.operationalEstimatedHoursOverride;
+  if (raw == null || raw === "") return null;
+  const n = num(raw, NaN);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function scheduleFieldsFromQuoteRow(quoteRow) {
+  if (!quoteRow || typeof quoteRow !== "object") {
+    return { start_date: null, due_date: null };
+  }
+  return {
+    start_date: normIsoDate(quoteRow.start_date ?? quoteRow.startDate),
+    due_date: normIsoDate(
+      quoteRow.due_date ?? quoteRow.target_finish_date ?? quoteRow.dueDate
+    ),
+  };
+}
+
 /**
  * Resolve operational plan from quote row and tenant snapshot (accept / bridge).
+ * Priority: quotes.operational_plan → quote JSON fields → tenant_snapshots mg_sales_v2.
  */
 async function resolveOperationalPlanForQuote(quoteRow, loadSnapshotPayload) {
   if (!quoteRow || typeof quoteRow !== "object") return null;
 
   let plan = extractOperationalPlanFromQuoteRow(quoteRow);
-  let override = null;
+  let override = readQuoteOperationalDaysOverride(quoteRow);
+  let hoursOverride = readQuoteOperationalHoursOverride(quoteRow);
+  const schedule = scheduleFieldsFromQuoteRow(quoteRow);
 
   if (!plan || !plan.length) {
     const tenantId = String(quoteRow.tenant_id || "").trim();
@@ -371,6 +411,10 @@ async function resolveOperationalPlanForQuote(quoteRow, loadSnapshotPayload) {
   return {
     plan,
     override: Number.isFinite(override) && override > 0 ? override : null,
+    hoursOverride:
+      Number.isFinite(hoursOverride) && hoursOverride > 0 ? hoursOverride : null,
+    start_date: schedule.start_date,
+    due_date: schedule.due_date,
   };
 }
 
@@ -384,5 +428,9 @@ module.exports = {
   extractOperationalPlanFromQuoteRow,
   extractOperationalPlanFromSnapshotPayload,
   resolveOperationalPlanForQuote,
+  readQuoteOperationalDaysOverride,
+  readQuoteOperationalHoursOverride,
+  scheduleFieldsFromQuoteRow,
+  normIsoDate,
   OPERATIONAL_PLAN_TEMPLATES,
 };

@@ -20,6 +20,7 @@ const {
   computeOperationalPlanMetrics,
   planHasDays,
   resolveOperationalPlanForQuote,
+  scheduleFieldsFromQuoteRow,
 } = require("./operational-plan");
 const { persistOperationalSnapshot } = require("./persist-operational-snapshot");
 
@@ -163,10 +164,15 @@ async function applyOperationalSnapshotForProject(quoteRow, projectId) {
     },
   });
 
-  let commitmentDate = null;
-  const payload = await loadLatestTenantSnapshotPayload(tenantId);
-  if (payload?.storage?.mg_sales_v2?.dueDate) {
-    commitmentDate = String(payload.storage.mg_sales_v2.dueDate).trim();
+  let commitmentDate =
+    resolved?.due_date ||
+    scheduleFieldsFromQuoteRow(quoteRow).due_date ||
+    null;
+  if (!commitmentDate) {
+    const payload = await loadLatestTenantSnapshotPayload(tenantId);
+    if (payload?.storage?.mg_sales_v2?.dueDate) {
+      commitmentDate = String(payload.storage.mg_sales_v2.dueDate).trim();
+    }
   }
 
   await persistOperationalSnapshot({
@@ -175,6 +181,7 @@ async function applyOperationalSnapshotForProject(quoteRow, projectId) {
     quoteId: String(quoteRow.id || "").trim(),
     operationalPlan: normalized,
     estimatedDaysOverride: resolved.override,
+    estimatedHoursOverride: resolved.hoursOverride,
     due_date: commitmentDate,
     source: "quote_accept",
   });
@@ -200,6 +207,9 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
   const salePrice = Math.max(finiteMoney(quoteRow.total, 0), 0);
   const signedAt = pickStr(quoteRow.accepted_at, 64) || nowIso;
   const currency = pickStr(quoteRow.currency, 8) || "USD";
+  const quoteSchedule = scheduleFieldsFromQuoteRow(quoteRow);
+  const quoteDueDate = quoteSchedule.due_date;
+  const quoteStartDate = quoteSchedule.start_date;
 
   const laborContext = await resolveLaborContextForQuote(quoteRow);
   const insertEconomics = buildEstimateEconomics({
@@ -241,6 +251,8 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
       status: "signed",
       updated_at: nowIso,
     };
+    if (quoteDueDate) basePatch.due_date = quoteDueDate;
+    if (quoteStartDate) basePatch.signed_at = `${quoteStartDate}T12:00:00.000Z`;
 
     if (tpHit?.id && UUID_RE.test(String(tpHit.id))) {
       const pidEnc = encodeURIComponent(String(tpHit.id));
@@ -270,9 +282,10 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
             client_name: clientName,
             client_email: clientEmail,
             status: "signed",
-            signed_at: signedAt,
+            signed_at: quoteStartDate ? `${quoteStartDate}T12:00:00.000Z` : signedAt,
             deposit_paid: false,
-            estimated_days: 0,
+            estimated_days: Math.max(0, Number(quoteRow.estimated_days) || 0),
+            ...(quoteDueDate ? { due_date: quoteDueDate } : {}),
             sale_price: salePrice,
             recommended_price: salePrice,
             minimum_price: salePrice,

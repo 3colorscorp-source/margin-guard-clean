@@ -531,6 +531,41 @@
       }
       window.getOperationalMetricsForState = getOperationalMetricsForState;
 
+      function buildOperationalPublishFields(state, settings) {
+        const api = getOperationalPlanApi();
+        if (!api || !state) return {};
+        const s = settings || loadSettings();
+        const hpd = api.getHoursPerDay(s);
+        const daysOv = readOperationalDaysOverride(state);
+        const hoursOv = readOperationalHoursOverride(state);
+        const plan = api.normalizeOperationalPlan(state.operational_plan || [], daysOv, hpd);
+        if (!api.planHasDays(plan)) return {};
+        const metrics = getOperationalMetricsForState(state, s);
+        const normDate = function (d) {
+          const t = String(d == null ? '' : d).trim().slice(0, 10);
+          return t && /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : '';
+        };
+        const start = normDate(state.startDate);
+        const finish = normDate(state.targetFinishDate || state.dueDate);
+        const out = {
+          operational_plan: plan,
+          hours_per_day: hpd
+        };
+        if (start) out.start_date = start;
+        if (finish) {
+          out.due_date = finish;
+          out.target_finish_date = finish;
+        }
+        if (daysOv != null) out.operational_estimated_days_override = daysOv;
+        if (hoursOv != null) out.operational_estimated_hours_override = hoursOv;
+        if (metrics) {
+          out.estimated_days = metrics.estimated_days;
+          out.estimated_hours = metrics.estimated_hours;
+        }
+        return out;
+      }
+      window.buildOperationalPublishFields = buildOperationalPublishFields;
+
       function isLaborAutoSyncActive(state) {
         if (!state || state.labor_auto_sync_from_plan === false) return false;
         if (state.labor_manual_override) return false;
@@ -2640,6 +2675,11 @@
                         if (typeof console !== 'undefined' && console.error) {
                           console.error('[MG Sales] upsert-tenant-project failed', out.data || out.res.status);
                         }
+                        return;
+                      }
+                      if (out.data.id != null && String(out.data.id).trim()) {
+                        state.tenantProjectId = String(out.data.id).trim();
+                        saveSalesState(state);
                       }
                     });
                 })().catch(function (err) {
@@ -4143,7 +4183,10 @@ async function runSellerSend(event) {
           company_name: bn,
           business_email: branding.businessEmail || payload.businessEmail || settings.businessEmail || settings.email || '',
           business_phone: branding.businessPhone || payload.businessPhone || settings.businessPhone || settings.phone || '',
-          business_address: branding.businessAddress || payload.businessAddress || settings.address || settings.companyAddress || ''
+          business_address: branding.businessAddress || payload.businessAddress || settings.address || settings.companyAddress || '',
+          ...(typeof buildOperationalPublishFields === 'function'
+            ? buildOperationalPublishFields(stateFresh, settings)
+            : {})
         })
       });
 

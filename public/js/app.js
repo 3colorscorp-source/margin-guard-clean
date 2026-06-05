@@ -7525,7 +7525,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           business_email: branding.businessEmail || freshSettings.businessEmail || freshSettings.email || "",
           business_phone: branding.businessPhone || freshSettings.businessPhone || freshSettings.phone || "",
           business_address:
-            branding.businessAddress || freshSettings.businessAddress || freshSettings.address || freshSettings.companyAddress || ""
+            branding.businessAddress || freshSettings.businessAddress || freshSettings.address || freshSettings.companyAddress || "",
+          ...(window.MarginGuardEstimatePublicSend &&
+          typeof window.MarginGuardEstimatePublicSend.buildOperationalPublishFields === "function"
+            ? window.MarginGuardEstimatePublicSend.buildOperationalPublishFields(state, freshSettings)
+            : {})
         })
       });
 

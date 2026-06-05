@@ -15,6 +15,66 @@
     return s.indexOf(".", at + 1) > at;
   }
 
+  function readOperationalDaysOverride(state) {
+    const raw = state && state.operational_estimated_days_override;
+    if (raw === "" || raw == null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  function readOperationalHoursOverride(state) {
+    const raw = state && state.operational_estimated_hours_override;
+    if (raw === "" || raw == null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  function buildOperationalPublishFields(state, settings) {
+    const op = window.MgSalesOperationalPlan;
+    const planRaw = Array.isArray(state?.operational_plan) ? state.operational_plan : [];
+    if (!planRaw.length) return {};
+    const s = settings && typeof settings === "object" ? settings : {};
+    const hpd = op && typeof op.getHoursPerDay === "function" ? op.getHoursPerDay(s) : Number(s.hoursPerDay || 8);
+    const daysOv = readOperationalDaysOverride(state);
+    const hoursOv = readOperationalHoursOverride(state);
+    const plan =
+      op && typeof op.normalizeOperationalPlan === "function"
+        ? op.normalizeOperationalPlan(planRaw, daysOv, hpd)
+        : planRaw;
+    if (op && typeof op.planHasDays === "function" && !op.planHasDays(plan)) return {};
+    const normDate = function (d) {
+      const t = String(d == null ? "" : d).trim().slice(0, 10);
+      return t && /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : "";
+    };
+    const start = normDate(state.startDate);
+    const finish = normDate(state.targetFinishDate || state.dueDate);
+    const out = {
+      operational_plan: plan,
+      hours_per_day: hpd
+    };
+    if (start) out.start_date = start;
+    if (finish) {
+      out.due_date = finish;
+      out.target_finish_date = finish;
+    }
+    if (daysOv != null) out.operational_estimated_days_override = daysOv;
+    if (hoursOv != null) out.operational_estimated_hours_override = hoursOv;
+    if (op && typeof op.computeOperationalPlanMetrics === "function") {
+      const mode = op.getOperationalPlanUnitMode ? op.getOperationalPlanUnitMode(s) : "day";
+      const metrics = op.computeOperationalPlanMetrics(
+        plan,
+        mode === "day" ? daysOv : null,
+        mode === "hour" ? hoursOv : null,
+        hpd
+      );
+      if (metrics) {
+        out.estimated_days = metrics.estimated_days;
+        out.estimated_hours = metrics.estimated_hours;
+      }
+    }
+    return out;
+  }
+
   function getHelpers(override) {
     const h = override || registeredHelpers || window.__MG_ESTIMATE_SEND_HELPERS__;
     if (
@@ -111,7 +171,8 @@
         company_name: bn,
         business_email: branding.businessEmail || payload.businessEmail || settings.businessEmail || settings.email || "",
         business_phone: branding.businessPhone || payload.businessPhone || settings.businessPhone || settings.phone || "",
-        business_address: branding.businessAddress || payload.businessAddress || settings.address || settings.companyAddress || ""
+        business_address: branding.businessAddress || payload.businessAddress || settings.address || settings.companyAddress || "",
+        ...buildOperationalPublishFields(state, settings)
       })
     });
 
@@ -336,6 +397,7 @@
 
   window.MarginGuardEstimatePublicSend = {
     runPublicQuoteSendPipeline,
-    registerEstimateSendHelpers
+    registerEstimateSendHelpers,
+    buildOperationalPublishFields
   };
 })();

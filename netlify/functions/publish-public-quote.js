@@ -4,6 +4,11 @@ const { loadTenantDisplayForTenantId } = require("./_lib/tenant-display");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { makePublicToken } = require("./_lib/public-token");
 const { calculateQuotePublishFinancials, sanitizeWorkersForTenantPricing } = require("./_lib/pricing-engine");
+const {
+  normalizeOperationalPlan,
+  computeOperationalPlanMetrics,
+  planHasDays,
+} = require("./_lib/operational-plan");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -29,6 +34,75 @@ function pickFirst(...values) {
 
 function round2(n) {
   return Math.round(Number(n) * 100) / 100;
+}
+
+function normIsoDate(raw) {
+  const t = String(raw == null ? "" : raw).trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : null;
+}
+
+function pickFiniteNumber(body, keys) {
+  for (const key of keys) {
+    const v = body[key];
+    if (v !== undefined && v !== null && v !== "") {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return NaN;
+}
+
+function parseOperationalPublishFields(body, tenantSettings) {
+  const hpd = Math.max(
+    Number(body.hours_per_day ?? tenantSettings.hoursPerDay ?? 8) || 8,
+    0.25
+  );
+  const daysOvRaw = pickFiniteNumber(body, [
+    "operational_estimated_days_override",
+    "estimated_days_override",
+  ]);
+  const hoursOvRaw = pickFiniteNumber(body, [
+    "operational_estimated_hours_override",
+    "estimated_hours_override",
+  ]);
+  const daysOv = Number.isFinite(daysOvRaw) && daysOvRaw > 0 ? daysOvRaw : null;
+  const hoursOv = Number.isFinite(hoursOvRaw) && hoursOvRaw > 0 ? hoursOvRaw : null;
+
+  const opNormalized = normalizeOperationalPlan(
+    body.operational_plan ?? body.operationalPlan,
+    daysOv,
+    hpd
+  );
+
+  if (!planHasDays(opNormalized)) {
+    return { include: false, fields: {} };
+  }
+
+  const metrics = computeOperationalPlanMetrics(opNormalized, daysOv, hoursOv, hpd);
+  const startDate = normIsoDate(body.start_date ?? body.startDate);
+  const dueDate = normIsoDate(
+    body.due_date ?? body.target_finish_date ?? body.targetFinishDate ?? body.dueDate
+  );
+
+  const fields = {
+    operational_plan: opNormalized,
+    estimated_days: metrics.estimated_days,
+    estimated_hours: metrics.estimated_hours,
+  };
+  if (startDate) fields.start_date = startDate;
+  if (dueDate) fields.due_date = dueDate;
+  if (daysOv != null) fields.operational_estimated_days_override = daysOv;
+  if (hoursOv != null) fields.operational_estimated_hours_override = hoursOv;
+
+  return { include: true, fields };
+}
+
+function isMissingOperationalQuoteColumns(text) {
+  const t = String(text || "").toLowerCase();
+  if (!/42703|column|schema cache|could not find/i.test(t)) return false;
+  return /operational_plan|start_date|due_date|estimated_days|estimated_hours|operational_estimated/i.test(
+    t
+  );
 }
 
 /**
@@ -550,6 +624,8 @@ exports.handler = async (event) => {
       balance_after_deposit: canonical.balance_after_deposit
     };
 
+    const opPublish = parseOperationalPublishFields(body, tenantSettings);
+
     function buildBasePayload(withAudit) {
       return {
         tenant_id: tenant.id,
@@ -571,7 +647,8 @@ exports.handler = async (event) => {
         business_phone: businessPhone || "",
         business_address: businessAddress || "",
         ...quoteNumberFields,
-        ...(withAudit ? amountAudit : {})
+        ...(withAudit ? amountAudit : {}),
+        ...(opPublish.include ? opPublish.fields : {})
       };
     }
 
@@ -626,6 +703,14 @@ exports.handler = async (event) => {
     }
 
     if (!insertResult) {
+      if (opPublish.include && isMissingOperationalQuoteColumns(lastErrorText)) {
+        return json(503, {
+          error:
+            "Quote operational_plan columns are missing. Run SUPABASE_QUOTES_OPERATIONAL_PLAN.sql in Supabase SQL editor, then retry Send Estimate.",
+          migration: "SUPABASE_QUOTES_OPERATIONAL_PLAN.sql",
+          missing_columns_hint: lastErrorText
+        });
+      }
       return json(502, {
         error: lastErrorText || "Supabase write failed"
       });
