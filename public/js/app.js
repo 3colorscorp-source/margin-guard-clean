@@ -1195,26 +1195,35 @@ Thank you.`
     const k = supervisorProjectKey(pid);
     if (!k) return;
     if (data && data.ok === true) {
+      const dayProgress = Array.isArray(data.day_progress) ? data.day_progress : [];
+      const migrationBaseline =
+        data.migration_baseline && typeof data.migration_baseline === "object"
+          ? data.migration_baseline
+          : null;
+      const snapRaw =
+        data.operational_snapshot && typeof data.operational_snapshot === "object"
+          ? data.operational_snapshot
+          : {};
+      const snapshot = applySupervisorUnifiedProgressToSnapshot(snapRaw, {
+        migrationBaseline: data.has_migrated_baseline ? migrationBaseline : null,
+        dayProgressRows: dayProgress,
+        reportRows: [],
+        estimatedDaysFallback: finiteNumber(snapRaw.estimated_days, 0),
+      });
       supervisorProjectOperationalCache[k] = {
         ok: true,
-        snapshot:
-          data.operational_snapshot && typeof data.operational_snapshot === "object"
-            ? data.operational_snapshot
-            : {},
+        snapshot,
         operational_plan: Array.isArray(data.operational_plan) ? data.operational_plan : [],
         schedule: data.schedule && typeof data.schedule === "object" ? data.schedule : {},
         has_execution_plan: Boolean(data.has_execution_plan),
-        migration_baseline:
-          data.migration_baseline && typeof data.migration_baseline === "object"
-            ? data.migration_baseline
-            : null,
+        migration_baseline: migrationBaseline,
         has_migrated_baseline: Boolean(data.has_migrated_baseline),
         show_migrated_execution: Boolean(data.show_migrated_execution),
         migrated_field_context:
           data.migrated_field_context && typeof data.migrated_field_context === "object"
             ? data.migrated_field_context
             : null,
-        day_progress: Array.isArray(data.day_progress) ? data.day_progress : [],
+        day_progress: dayProgress,
       };
     } else {
       supervisorProjectOperationalCache[k] = {
@@ -1429,18 +1438,53 @@ Thank you.`
     for (let d = 1; d <= thru; d += 1) {
       const key = String(d);
       const existing = map[key];
-      if (existing && String(existing.status || "").toLowerCase() === "pending") {
-        continue;
-      }
-      if (!existing || String(existing.status || "").toLowerCase() !== "completed") {
-        map[key] = {
-          day_number: d,
-          status: "completed",
-          completion_note: "Imported baseline",
-        };
-      }
+      const existingStatus = String(existing?.status || "").toLowerCase();
+      if (existingStatus === "completed") continue;
+      if (existingStatus === "pending") continue;
+      if (existingStatus === "delayed" || existingStatus === "skipped") continue;
+      map[key] = {
+        day_number: d,
+        status: "completed",
+        completion_note: "Imported baseline",
+      };
     }
     return map;
+  }
+
+  /** Day card progress map — tenant_project_day_progress first, baseline fallback only when no row exists. */
+  function buildSupervisorProgressMapForRender(dayProgressRows, baseline, showMigrated) {
+    if (showMigrated && baseline) {
+      return supervisorProgressMapWithMigratedBaseline(dayProgressRows, baseline);
+    }
+    return supervisorDayProgressMap(dayProgressRows);
+  }
+
+  function pruneSupervisorCachesForProjectList(projects) {
+    const allowed = new Set(
+      (Array.isArray(projects) ? projects : [])
+        .map((p) => supervisorProjectKey(p?.id))
+        .filter(Boolean)
+    );
+    Object.keys(supervisorProjectOperationalCache).forEach((k) => {
+      if (!allowed.has(k)) delete supervisorProjectOperationalCache[k];
+    });
+    Object.keys(supervisorProjectReportsCache).forEach((k) => {
+      if (!allowed.has(k)) delete supervisorProjectReportsCache[k];
+    });
+    Object.keys(supervisorProjectExpensesCache).forEach((k) => {
+      if (!allowed.has(k)) delete supervisorProjectExpensesCache[k];
+    });
+    Object.keys(supervisorProjectChangeOrdersCache).forEach((k) => {
+      if (!allowed.has(k)) delete supervisorProjectChangeOrdersCache[k];
+    });
+  }
+
+  function supervisorOperationalSnapshotLoading(pid) {
+    const k = supervisorProjectKey(pid);
+    if (!k || !isServerListedSupervisorProject(k)) return false;
+    const cached = supervisorProjectOperationalCache[k];
+    if (cached?.ok === true) return false;
+    return supervisorProjectOperationalFetchInFlight.has(k) || !cached;
   }
 
   function supervisorMigratedCurrentPlanDayIndex(baseline, execPlan) {
@@ -1813,6 +1857,14 @@ Thank you.`
     if (!body) return;
 
     if (sectionTitle) sectionTitle.textContent = "Execution calendar";
+
+    if (o.loading) {
+      renderSupervisorCalendarChrome(0, o.calendarCtx);
+      if ($("supExecCalendarChrome")) $("supExecCalendarChrome").hidden = true;
+      body.innerHTML =
+        '<p class="sup-cal-empty small">Loading day progress…</p>';
+      return;
+    }
 
     const execPlan = Array.isArray(o.execPlan) ? o.execPlan : [];
     const estDays = Math.max(
@@ -2280,7 +2332,9 @@ Thank you.`
   async function markSupervisorDayCompleted(ctx) {
     const dayCtx = ctx && typeof ctx === "object" ? ctx : supervisorActiveDayContext;
     const projectId = supervisorProjectKey(
-      dayCtx?.projectId || resolveActiveSupervisorProject()?.id
+      dayCtx?.projectId ||
+        resolveActiveSupervisorProject()?.id ||
+        loadSupervisorSelectedProjectId()
     );
     const dayNum = Math.max(1, Math.floor(finiteNumber(dayCtx?.day_number, 0)));
     const phase = String(dayCtx?.phase || "").trim();
@@ -2315,7 +2369,9 @@ Thank you.`
   async function reopenSupervisorDay(ctx) {
     const dayCtx = ctx && typeof ctx === "object" ? ctx : supervisorActiveDayContext;
     const projectId = supervisorProjectKey(
-      dayCtx?.projectId || resolveActiveSupervisorProject()?.id
+      dayCtx?.projectId ||
+        resolveActiveSupervisorProject()?.id ||
+        loadSupervisorSelectedProjectId()
     );
     const dayNum = Math.max(1, Math.floor(finiteNumber(dayCtx?.day_number, 0)));
     if (!projectId || !dayNum) {
@@ -2808,7 +2864,7 @@ Thank you.`
             ? `Needs attention · Reports: ${laborCount} · Expenses: ${expenseCount}`
             : `Reports: ${laborCount} · Expenses: ${expenseCount}`;
       const completeBtn = isDone
-        ? ""
+        ? '<span class="sup-diary-day__done-label">Completed</span>'
         : `<button type="button" class="btn small primary" data-sup-complete data-sup-day="${escapeHtml(String(dayNum))}" data-sup-done="0">Mark completed</button>`;
       return `<article class="sup-diary-day sup-diary-day--${escapeHtml(status)}">
         <button type="button" class="sup-diary-day__open" data-sup-day-open="${escapeHtml(String(dayNum))}" aria-label="Day ${escapeHtml(String(dayNum))} details">
@@ -3167,6 +3223,18 @@ Thank you.`
     if (!wrap) return;
     const o = opts && typeof opts === "object" ? opts : {};
     const estDays = Math.max(0, Math.floor(finiteNumber(o.estimatedDays, 0)));
+    const progressPct = finiteNumber(o.progressPct, NaN);
+    if (estDays > 0 && Number.isFinite(progressPct) && progressPct >= 100) {
+      wrap.style.display = "";
+      if ($("supTodayHeadline")) {
+        $("supTodayHeadline").textContent = "Project complete — all scheduled days marked done";
+      }
+      if ($("supTodayCrew")) $("supTodayCrew").textContent = "Crew released for next job";
+      if ($("supTodayAction")) {
+        $("supTodayAction").textContent = "No remaining scheduled work on this project.";
+      }
+      return;
+    }
     const dayIndex = Math.max(
       1,
       Math.floor(
@@ -3936,10 +4004,18 @@ Thank you.`
     } catch (_err) {
       supervisorProjectsCache = [];
     }
-    clearSupervisorProjectReportsCache();
-    clearSupervisorProjectExpensesCache();
-    clearSupervisorProjectChangeOrdersCache();
-    clearSupervisorProjectOperationalCache();
+    pruneSupervisorCachesForProjectList(supervisorProjectsCache || []);
+    const sel = supervisorProjectKey(loadSupervisorSelectedProjectId());
+    const pid =
+      sel ||
+      supervisorProjectKey(
+        (Array.isArray(supervisorProjectsCache) && supervisorProjectsCache[0]
+          ? supervisorProjectsCache[0].id
+          : "") || ""
+      );
+    if (pid && isServerListedSupervisorProject(pid)) {
+      await loadSupervisorOperationalSnapshot(pid, { force: true });
+    }
     renderSupervisor();
   }
 
@@ -9211,6 +9287,7 @@ function renderSupervisor() {
           : null,
         {
           estimatedDays: estimatedBudgetDays,
+          progressPct,
           currentDayIndex: showMigratedExecution
             ? supervisorMigratedCurrentPlanDayIndex(migrationBaseline, execPlan)
             : planDayIndex,
@@ -9231,12 +9308,11 @@ function renderSupervisor() {
             Math.floor(finiteNumber(migrationBaseline?.days_completed_to_date, 0))
           )
         : 0;
-      const progressMap = showMigratedExecution
-        ? supervisorProgressMapWithMigratedBaseline(
-            opCache?.day_progress || [],
-            migrationBaseline
-          )
-        : supervisorDayProgressMap(opCache?.day_progress || []);
+      const progressMap = buildSupervisorProgressMapForRender(
+        opCache?.day_progress || [],
+        migrationBaseline,
+        showMigratedExecution
+      );
       const calendarCurrentDay = showMigratedExecution
         ? supervisorMigratedCurrentPlanDayIndex(migrationBaseline, execPlan)
         : supervisorCurrentPlanDayIndex(
@@ -9244,8 +9320,10 @@ function renderSupervisor() {
             scheduleLabels.startIso,
             actualDays
           );
+      const opSnapshotLoading = supervisorOperationalSnapshotLoading(pid);
       renderSupervisorExecutionPlanSection({
         showMigrated: showMigratedExecution,
+        loading: opSnapshotLoading,
         execPlan,
         estimatedDays: estimatedBudgetDays,
         projectId: pid,

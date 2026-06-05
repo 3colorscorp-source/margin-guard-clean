@@ -63,6 +63,14 @@ async function upsertDayProgressCompleted(params) {
     `tenant_project_day_progress?tenant_id=eq.${tid}&project_id=eq.${pid}&day_number=eq.${dayNumber}&select=id,status&limit=1`
   );
   const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+  if (existing?.id && str(existing.status, 32).toLowerCase() === "completed") {
+    return {
+      ok: true,
+      id: existing.id,
+      already_completed: true,
+      day_number: dayNumber,
+    };
+  }
 
   const row = {
     tenant_id: tenantId,
@@ -73,29 +81,22 @@ async function upsertDayProgressCompleted(params) {
     completed_by: completedBy,
     completion_note: note,
     updated_at: nowIso,
+    created_at: existing?.id ? undefined : nowIso,
   };
+  if (row.created_at === undefined) delete row.created_at;
 
-  if (existing?.id) {
-    if (str(existing.status, 32).toLowerCase() === "completed") {
-      return { ok: true, id: existing.id, already_completed: true, day_number: dayNumber };
+  const upserted = await supabaseRequest(
+    "tenant_project_day_progress?on_conflict=tenant_id,project_id,day_number",
+    {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+      body: row,
     }
-    await supabaseRequest(
-      `tenant_project_day_progress?id=eq.${encodeURIComponent(existing.id)}&tenant_id=eq.${tid}`,
-      { method: "PATCH", body: row }
-    );
-    return { ok: true, id: existing.id, already_completed: false, day_number: dayNumber };
-  }
-
-  row.created_at = nowIso;
-  const inserted = await supabaseRequest("tenant_project_day_progress", {
-    method: "POST",
-    headers: { Prefer: "return=representation" },
-    body: row,
-  });
-  const ins = Array.isArray(inserted) ? inserted[0] : inserted;
+  );
+  const ins = Array.isArray(upserted) ? upserted[0] : upserted;
   return {
     ok: true,
-    id: ins?.id,
+    id: ins?.id || existing?.id,
     already_completed: false,
     day_number: dayNumber,
   };
