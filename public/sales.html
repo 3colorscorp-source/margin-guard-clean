@@ -626,47 +626,44 @@
         const el = document.getElementById('salesOpCrewAvailability');
         if (!el) return;
         const cap = window.MarginGuardSalesCapacity;
-        const cached = window.__mgSalesCapacityCalendar;
 
-        if (cached && cached.availability_message) {
-          const st = String(cached.capacity_status || '').toLowerCase();
-          el.textContent = String(cached.availability_message).trim();
-          if (st === 'available') el.className = 'sales-op-avail sales-op-avail--ok';
-          else if (st === 'conflict' || st === 'incomplete_reporting') el.className = 'sales-op-avail sales-op-avail--warn';
-          else el.className = 'sales-op-avail sales-op-avail--warn';
+        if (window.__mgSalesCapacityUnverified) {
+          el.textContent =
+            (cap && cap.ADVISORY_UNVERIFIED_MSG) ||
+            'Crew availability could not be verified. You may still send this estimate.';
+          el.className = 'sales-op-avail sales-op-avail--warn';
           return;
         }
 
-        const warnEl = document.getElementById('salesCapacityWarning');
+        const cached = window.__mgSalesCapacityCalendar;
+        let cardMsg =
+          cached &&
+          (cached.crew_availability_card_message || cached.availability_message);
+        if (cardMsg && !cached.crew_availability_card_message && cap) {
+          cardMsg = String(cardMsg).replace(/\sYou may still send this estimate\.\s*$/i, "").trim();
+        }
+        if (cardMsg) {
+          const st = String(cached.capacity_status || '').toLowerCase();
+          el.textContent = String(cardMsg).trim();
+          if (st === 'available') el.className = 'sales-op-avail sales-op-avail--ok';
+          else if (st === 'conflict' || st === 'incomplete_reporting' || st === 'warning') {
+            el.className = 'sales-op-avail sales-op-avail--warn';
+          } else el.className = 'sales-op-avail sales-op-avail--warn';
+          return;
+        }
+
         const startInput = document.getElementById('salesStartDate');
         const state = loadSalesState();
         const start = cap && cap.normDate
           ? cap.normDate(startInput && startInput.value ? startInput.value : state.startDate || '')
           : String(startInput && startInput.value ? startInput.value : state.startDate || '').trim().slice(0, 10);
 
-        if (warnEl && warnEl.style.display !== 'none' && String(warnEl.textContent || '').trim()) {
-          el.textContent = String(warnEl.textContent).trim();
-          el.className = 'sales-op-avail sales-op-avail--warn';
+        if (!start) {
+          el.textContent = 'Set a start date to preview crew schedule.';
+          el.className = 'sales-op-avail sales-op-avail--unknown';
           return;
         }
-        if (cached && cap && start && cap.isStartBlocked(cached, start)) {
-          el.textContent =
-            (cap.blockedStartMessage(cached) || 'Crew availability warning.') +
-            (cap.ADVISORY_SUFFIX_SEND || ' You may still send this estimate.');
-          el.className = 'sales-op-avail sales-op-avail--warn';
-          return;
-        }
-        if (cached && cached.guidance_message) {
-          el.textContent = String(cached.guidance_message).trim();
-          el.className = 'sales-op-avail sales-op-avail--ok';
-          return;
-        }
-        if (cached && start) {
-          el.textContent = 'Crew availability OK';
-          el.className = 'sales-op-avail sales-op-avail--ok';
-          return;
-        }
-        el.textContent = 'Set a start date to preview crew schedule.';
+        el.textContent = 'Checking schedule…';
         el.className = 'sales-op-avail sales-op-avail--unknown';
       }
 
@@ -738,14 +735,6 @@
         if (!hasStart) {
           noticeHtml =
             '<p class="sales-op-cal-notice" role="status">Start date not set — preview shown by plan day.</p>';
-        }
-
-        const warnEl = document.getElementById('salesCapacityWarning');
-        if (warnEl && warnEl.style.display !== 'none' && String(warnEl.textContent || '').trim()) {
-          noticeHtml +=
-            '<p class="sales-op-cal-notice sales-op-cal-notice--warn" role="status">' +
-            escapeHtmlOperational(String(warnEl.textContent).trim()) +
-            '</p>';
         }
 
         host.innerHTML =
@@ -2687,19 +2676,17 @@
             if (cap && typeof cap.fetchCapacityCalendar === 'function') {
               cap.fetchCapacityCalendar(signedEstimatedDays, startDate, state.tenantProjectId || '')
                 .then(function (calendar) {
+                  window.__mgSalesCapacityUnverified = false;
                   window.__mgSalesCapacityCalendar = calendar;
                   finishMarkSoldWithCapacity(calendar);
                 })
                 .catch(function () {
-                  const unverified =
-                    cap.ADVISORY_UNVERIFIED_MSG ||
-                    'Crew availability could not be verified. You may still send this estimate.';
-                  const soldMsg = unverified.replace(
-                    'send this estimate',
-                    'mark this project sold'
-                  );
+                  window.__mgSalesCapacityUnverified = true;
                   if (typeof cap.showCapacityWarning === 'function') {
-                    cap.showCapacityWarning(soldMsg);
+                    cap.showCapacityWarning('');
+                  }
+                  if (typeof window.renderSalesOpCrewAvailability === 'function') {
+                    window.renderSalesOpCrewAvailability();
                   }
                   finishMarkSoldWithCapacity(null);
                 });
@@ -4021,6 +4008,7 @@ async function runSellerSend(event) {
           const opMetrics = typeof getOperationalMetricsForState === 'function' ? getOperationalMetricsForState(state) : null;
           const estDays = opMetrics && opMetrics.estimated_days > 0 ? opMetrics.estimated_days : metrics.workerDays;
           const calendar = await cap.fetchCapacityCalendar(estDays, chosenStart, state.tenantProjectId || '');
+          window.__mgSalesCapacityUnverified = false;
           window.__mgSalesCapacityCalendar = calendar;
           if (cap.isStartBlocked(calendar, chosenStart)) {
             if (typeof cap.showCapacityWarning === 'function') {
@@ -4030,8 +4018,12 @@ async function runSellerSend(event) {
             cap.applyCapacityGuidance(calendar);
           }
         } catch (_capErr) {
+          window.__mgSalesCapacityUnverified = true;
           if (typeof cap.showCapacityWarning === 'function') {
-            cap.showCapacityWarning(capUnverifiedMsg);
+            cap.showCapacityWarning('');
+          }
+          if (typeof window.renderSalesOpCrewAvailability === 'function') {
+            window.renderSalesOpCrewAvailability();
           }
         }
       }

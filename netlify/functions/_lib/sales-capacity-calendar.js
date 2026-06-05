@@ -176,26 +176,79 @@ async function loadScheduleSettingsForTenant(tenantId) {
   return resolveScheduleSettings(mg);
 }
 
-function resolveEstimatedDays(project, opRow, baseline) {
+function resolveEstimatedDays(project, opRow, baseline, dayProgressRows) {
   let estimated =
     num(opRow?.estimated_days, NaN) ||
     num(project?.estimated_days, NaN) ||
     num(baseline?.estimated_total_days, NaN);
+  if ((!Number.isFinite(estimated) || estimated <= 0) && Array.isArray(dayProgressRows)) {
+    let maxDay = 0;
+    for (const row of dayProgressRows) {
+      const dn = Math.floor(num(row?.day_number, 0));
+      if (dn > maxDay) maxDay = dn;
+    }
+    if (maxDay > 0) estimated = maxDay;
+  }
   if (!Number.isFinite(estimated) || estimated <= 0) return 0;
   return round2(estimated);
 }
 
-function resolveCompletedDays(dayProgressRows, reports, baseline) {
+/** Supervisor-aligned completion metrics — day progress first, then reports/baseline. */
+function resolveSupervisorCompletionMetrics(project, opRow, baseline, reports, dayProgressRows) {
   const rows = Array.isArray(dayProgressRows) ? dayProgressRows : [];
   const fromProgress = countCompletedDays(rows);
-  if (fromProgress > 0) return fromProgress;
-  if (rows.length > 0) return fromProgress;
+  let reportDays = 0;
   if (baseline) {
-    return round2(
+    reportDays = round2(
       num(baseline.days_completed_to_date, 0) + sumReportDaysAfterBaseline(reports, baseline)
     );
+  } else {
+    reportDays = sumReportDays(reports);
   }
-  return sumReportDays(reports);
+
+  let completedDays;
+  if (fromProgress > 0 || rows.length > 0) {
+    completedDays = round2(Math.max(fromProgress, reportDays));
+  } else if (baseline && num(baseline.days_completed_to_date, 0) > 0) {
+    completedDays = round2(Math.max(reportDays, num(baseline.days_completed_to_date, 0)));
+  } else {
+    completedDays = reportDays;
+  }
+
+  const estimatedDays = resolveEstimatedDays(project, opRow, baseline, dayProgressRows);
+  let remainingDays = round2(Math.max(0, estimatedDays - completedDays));
+  let progressPct =
+    estimatedDays > 0 ? Math.round((completedDays / estimatedDays) * 100) : 0;
+
+  if (
+    rows.length === 0 &&
+    baseline &&
+    num(baseline.progress_pct, 0) >= 100 &&
+    estimatedDays > 0 &&
+    completedDays < estimatedDays
+  ) {
+    progressPct = 100;
+    completedDays = estimatedDays;
+    remainingDays = 0;
+  }
+
+  return {
+    estimatedDays,
+    completedDays: round2(completedDays),
+    remainingDays,
+    progressPct,
+  };
+}
+
+function resolveCompletedDays(dayProgressRows, reports, baseline) {
+  const metrics = resolveSupervisorCompletionMetrics(
+    {},
+    null,
+    baseline,
+    reports,
+    dayProgressRows
+  );
+  return metrics.completedDays;
 }
 
 function isCompletedBySupervisor(estimatedDays, completedDays) {
@@ -272,12 +325,20 @@ function analyzeProjectForCrewAvailability(
     };
   }
 
-  const estimatedDays = resolveEstimatedDays(project, opRow, baseline);
-  const completedDays = resolveCompletedDays(dayProgressRows, reports, baseline);
-  const remainingDays = round2(Math.max(0, estimatedDays - completedDays));
-  const completedBySupervisor = isCompletedBySupervisor(estimatedDays, completedDays);
-  const progressPct =
-    estimatedDays > 0 ? Math.round((completedDays / estimatedDays) * 100) : 0;
+  const estimatedDays = resolveEstimatedDays(project, opRow, baseline, dayProgressRows);
+  const completion = resolveSupervisorCompletionMetrics(
+    project,
+    opRow,
+    baseline,
+    reports,
+    dayProgressRows
+  );
+  const completedDays = completion.completedDays;
+  const remainingDays = completion.remainingDays;
+  const progressPct = completion.progressPct;
+  const completedBySupervisor =
+    isCompletedBySupervisor(estimatedDays, completedDays) ||
+    (progressPct >= 100 && remainingDays <= 0.01);
   const isDelayed = hasDelayedStatus(project, dayProgressRows);
 
   const base = {
@@ -387,40 +448,46 @@ function buildAvailabilitySummary({
   const conflict = blockingProjects.find((p) => p.conflict_with_desired);
   if (conflict) {
     const until = formatDateUS(conflict.target_finish_date || conflict.occupation_end);
+    const card = `Crew may still be booked on ${conflict.project_name} until ${until}.`;
     return {
       capacity_status: "conflict",
-      availability_message: `Crew may be booked until ${until} on ${conflict.project_name}.${suffix}`,
-      guidance_message: `Crew may be booked until ${until} on ${conflict.project_name}.`,
+      crew_availability_card_message: card,
+      availability_message: card + suffix,
+      guidance_message: card,
     };
   }
 
   if (incompleteReportingProjects.length) {
-    const names = incompleteReportingProjects.map((p) => p.project_name).join(", ");
+    const card =
+      "Target finish has passed, but Supervisor has not marked the current project complete. Confirm crew availability.";
     return {
       capacity_status: "incomplete_reporting",
-      availability_message:
-        `Supervisor has not marked the current project complete (${names}). Availability is based on target finish and should be confirmed.${suffix}`,
-      guidance_message:
-        "Supervisor has not marked the current project complete. Availability is based on target finish and should be confirmed.",
+      crew_availability_card_message: card,
+      availability_message: card + suffix,
+      guidance_message: card,
     };
   }
 
   if (blockingProjects.length && desiredStartDate) {
     const top = blockingProjects[0];
     const until = formatDateUS(top.target_finish_date || top.occupation_end);
+    const card = `Crew may still be booked on ${top.project_name} until ${until}.`;
     return {
       capacity_status: "warning",
-      availability_message: `Crew may be booked until ${until} on ${top.project_name}.${suffix}`,
-      guidance_message: `Active project ${top.project_name} may hold crew until ${until}.`,
+      crew_availability_card_message: card,
+      availability_message: card + suffix,
+      guidance_message: card,
     };
   }
 
+  const card = desiredStartDate
+    ? "Crew appears available for the selected start date."
+    : "No unfinished project conflicts found.";
   const nextLabel = formatDateUS(nextAvailableStartDate);
   return {
     capacity_status: "available",
-    availability_message: nextLabel
-      ? `Crew appears available starting ${nextLabel}.${suffix}`
-      : `Crew appears available.${suffix}`,
+    crew_availability_card_message: card,
+    availability_message: card + suffix,
     guidance_message: nextLabel
       ? `Crew appears available starting ${nextLabel}.`
       : "No active crew commitments blocking new starts.",
@@ -429,7 +496,7 @@ function buildAvailabilitySummary({
 
 /** @deprecated kept for tests — prefer analyzeProjectForCrewAvailability */
 function computeRemainingDays(project, reports, opRow, baseline, dayProgressRows) {
-  const estimated = resolveEstimatedDays(project, opRow, baseline) || 1;
+  const estimated = resolveEstimatedDays(project, opRow, baseline, dayProgressRows) || 1;
   const actualDays = resolveCompletedDays(dayProgressRows || [], reports, baseline);
   return {
     estimated: round2(estimated),
@@ -477,6 +544,15 @@ function effectiveStartMinYmd(nextAvailableStartDate, todayYmd, settings) {
   return nextWorkdayOnOrAfter(today, settings);
 }
 
+async function safeFetchRows(path) {
+  try {
+    const rows = await supabaseRequest(path, { method: "GET" });
+    return Array.isArray(rows) ? rows : [];
+  } catch (_e) {
+    return [];
+  }
+}
+
 /**
  * @param {object} params
  * @param {string} params.tenantId
@@ -500,22 +576,22 @@ async function computeSalesCapacityCalendar(params) {
 
   const [projectRows, snapshotRows, baselineRows, reportRows, dayProgressRows] =
     await Promise.all([
-    supabaseRequest(
-      `tenant_projects?tenant_id=eq.${tid}&status=in.(${statusList})&select=id,status,signed_at,due_date,estimated_days,quote_id,project_name`
-    ),
-    supabaseRequest(
-      `tenant_project_operational_snapshots?tenant_id=eq.${tid}&select=project_id,estimated_days,commitment_date`
-    ),
-    supabaseRequest(
-      `tenant_project_migration_baselines?tenant_id=eq.${tid}&select=project_id,actual_start_date,target_finish_date,estimated_total_days,days_completed_to_date,baseline_set_at,updated_at`
-    ),
-    supabaseRequest(
-      `tenant_project_reports?tenant_id=eq.${tid}&select=project_id,days,created_at`
-    ),
-    supabaseRequest(
-      `tenant_project_day_progress?tenant_id=eq.${tid}&select=project_id,day_number,status`
-    ),
-  ]);
+      supabaseRequest(
+        `tenant_projects?tenant_id=eq.${tid}&status=in.(${statusList})&select=id,status,signed_at,due_date,estimated_days,quote_id,project_name`
+      ),
+      safeFetchRows(
+        `tenant_project_operational_snapshots?tenant_id=eq.${tid}&select=project_id,estimated_days,commitment_date`
+      ),
+      safeFetchRows(
+        `tenant_project_migration_baselines?tenant_id=eq.${tid}&select=project_id,actual_start_date,target_finish_date,estimated_total_days,days_completed_to_date,progress_pct,baseline_set_at,updated_at`
+      ),
+      safeFetchRows(
+        `tenant_project_reports?tenant_id=eq.${tid}&select=project_id,days,created_at`
+      ),
+      safeFetchRows(
+        `tenant_project_day_progress?tenant_id=eq.${tid}&select=project_id,day_number,status,completed_at`
+      ),
+    ]);
 
   const projects = (Array.isArray(projectRows) ? projectRows : []).filter(
     (p) => p?.id && String(p.id) !== excludeProjectId
@@ -633,6 +709,7 @@ async function computeSalesCapacityCalendar(params) {
     blocked_dates: blockedDates,
     reason,
     availability_message: summary.availability_message,
+    crew_availability_card_message: summary.crew_availability_card_message,
     guidance_message: summary.guidance_message,
     remaining_days: round2(Math.max(0, maxRemaining)),
     buffer_days: bufferDays,
@@ -678,6 +755,7 @@ module.exports = {
   computeSalesCapacityCalendar,
   analyzeProjectForCrewAvailability,
   resolveCompletedDays,
+  resolveSupervisorCompletionMetrics,
   isCompletedBySupervisor,
   addBusinessDays,
   projectFinishFromStart,

@@ -250,12 +250,20 @@
       startInput.setAttribute("min", min);
     }
     if (warning) {
+      const opAvail = document.getElementById("salesOpCrewAvailability");
       const msg =
+        calendar.crew_availability_card_message ||
         calendar.availability_message ||
         (status === "conflict" || status === "incomplete_reporting" || status === "warning"
           ? reasonText + ADVISORY_SUFFIX_SEND
           : "");
-      if (msg && status !== "available") {
+      if (opAvail) {
+        if (typeof global.renderSalesOpCrewAvailability === "function") {
+          global.__mgSalesCapacityUnverified = false;
+          global.renderSalesOpCrewAvailability();
+        }
+        showCapacityWarning("");
+      } else if (msg && status !== "available") {
         showCapacityWarning(msg);
       } else if (startInput && isStartBlocked(calendar, startInput.value)) {
         showCapacityWarning(blockedStartMessage(calendar) + ADVISORY_SUFFIX_SEND);

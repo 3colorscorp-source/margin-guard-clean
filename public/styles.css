@@ -449,6 +449,7 @@ body[data-requires-auth="true"] .container:has(.grid.sales-layout),
   font-size:11px;
   line-height:1.45;
   color:rgba(232,238,252,.68);
+  grid-column:1 / -1;
 }
 .sales-op-cal-notice--warn{
   color:#fcd34d;

@@ -8304,6 +8304,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       cap
         .fetchCapacityCalendar(days, desired, projectId)
         .then((data) => {
+          window.__mgSalesCapacityUnverified = false;
           window.__mgSalesCapacityCalendar = data;
           const reconciled = cap.reconcileStartDateWithCapacity(data, startDateInput, state);
           cap.applyCapacityGuidance(data);
@@ -8321,15 +8322,19 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           }
         })
         .catch(() => {
+          window.__mgSalesCapacityUnverified = true;
           const guidance = document.getElementById("salesCapacityGuidance");
           if (guidance) {
             guidance.textContent = "Production schedule unavailable right now.";
           }
-          const unverified =
-            cap.ADVISORY_UNVERIFIED_MSG ||
-            "Crew availability could not be verified. You may still send this estimate.";
-          if (typeof cap.showCapacityWarning === "function") {
+          const opAvail = document.getElementById("salesOpCrewAvailability");
+          if (!opAvail && typeof cap.showCapacityWarning === "function") {
+            const unverified =
+              cap.ADVISORY_UNVERIFIED_MSG ||
+              "Crew availability could not be verified. You may still send this estimate.";
             cap.showCapacityWarning(unverified);
+          } else if (typeof cap.showCapacityWarning === "function") {
+            cap.showCapacityWarning("");
           }
           if (typeof window.renderSalesOpCrewAvailability === "function") {
             window.renderSalesOpCrewAvailability();
