@@ -1210,6 +1210,7 @@ Thank you.`
   /** projectId -> { ok, operational_snapshot?, error? } from get-supervisor-operational-snapshot */
   const supervisorProjectOperationalCache = Object.create(null);
   const supervisorProjectOperationalFetchInFlight = new Set();
+  const supervisorProjectOperationalFetchPromises = Object.create(null);
   let supervisorActiveDayContext = null;
 
   function cacheSupervisorOperationalSnapshotFromFetch(pid, data) {
@@ -1260,38 +1261,48 @@ Thank you.`
     const force = Boolean(options && options.force);
     if (force) {
       delete supervisorProjectOperationalCache[k];
+      delete supervisorProjectOperationalFetchPromises[k];
       supervisorProjectOperationalFetchInFlight.delete(k);
     }
     if (supervisorProjectOperationalCache[k] && !force) {
       return supervisorProjectOperationalCache[k];
     }
-    if (supervisorProjectOperationalFetchInFlight.has(k)) {
-      return supervisorProjectOperationalCache[k] || null;
+    if (supervisorProjectOperationalFetchPromises[k] && !force) {
+      return supervisorProjectOperationalFetchPromises[k];
     }
     supervisorProjectOperationalFetchInFlight.add(k);
-    try {
-      const data = await fetchSupervisorOperationalSnapshot(k);
-      cacheSupervisorOperationalSnapshotFromFetch(k, data);
-      return supervisorProjectOperationalCache[k];
-    } catch (_e) {
-      supervisorProjectOperationalCache[k] = {
-        ok: false,
-        error: "Field snapshot unavailable (network error).",
-      };
-      return supervisorProjectOperationalCache[k];
-    } finally {
-      supervisorProjectOperationalFetchInFlight.delete(k);
-    }
+    const promise = (async () => {
+      try {
+        const data = await fetchSupervisorOperationalSnapshot(k);
+        cacheSupervisorOperationalSnapshotFromFetch(k, data);
+        return supervisorProjectOperationalCache[k];
+      } catch (_e) {
+        supervisorProjectOperationalCache[k] = {
+          ok: false,
+          error: "Field snapshot unavailable (network error).",
+        };
+        return supervisorProjectOperationalCache[k];
+      } finally {
+        supervisorProjectOperationalFetchInFlight.delete(k);
+        delete supervisorProjectOperationalFetchPromises[k];
+      }
+    })();
+    supervisorProjectOperationalFetchPromises[k] = promise;
+    return promise;
   }
 
   function clearSupervisorProjectOperationalCache(pid) {
     if (pid) {
       delete supervisorProjectOperationalCache[pid];
+      delete supervisorProjectOperationalFetchPromises[pid];
       supervisorProjectOperationalFetchInFlight.delete(pid);
       return;
     }
     Object.keys(supervisorProjectOperationalCache).forEach((k) => {
       delete supervisorProjectOperationalCache[k];
+    });
+    Object.keys(supervisorProjectOperationalFetchPromises).forEach((k) => {
+      delete supervisorProjectOperationalFetchPromises[k];
     });
     supervisorProjectOperationalFetchInFlight.clear();
   }
@@ -1503,9 +1514,68 @@ Thank you.`
   function supervisorOperationalSnapshotLoading(pid) {
     const k = supervisorProjectKey(pid);
     if (!k || !isServerListedSupervisorProject(k)) return false;
-    const cached = supervisorProjectOperationalCache[k];
-    if (cached?.ok === true) return false;
-    return supervisorProjectOperationalFetchInFlight.has(k) || !cached;
+    return supervisorProjectOperationalFetchInFlight.has(k);
+  }
+
+  function supervisorMaxDayNumberFromProgress(dayProgressRows) {
+    return (Array.isArray(dayProgressRows) ? dayProgressRows : []).reduce((m, r) => {
+      return Math.max(m, Math.floor(finiteNumber(r?.day_number, 0)));
+    }, 0);
+  }
+
+  /** Build day cards when quoted_labor_plan rows include day_number (legacy shapes). */
+  function buildSupervisorPlanFromQuotedLaborDays(project) {
+    const workers = Array.isArray(project?.workers) ? project.workers : [];
+    const byDay = Object.create(null);
+    for (const w of workers) {
+      const dn = Math.floor(finiteNumber(w?.day_number, 0));
+      if (dn < 1) continue;
+      const key = String(dn);
+      if (!byDay[key]) {
+        byDay[key] = {
+          day_number: dn,
+          phase: String(w?.phase || "").trim(),
+          workers: [],
+        };
+      }
+      byDay[key].workers.push(w);
+    }
+    const keys = Object.keys(byDay)
+      .map((k) => Number(k))
+      .filter((n) => Number.isFinite(n) && n >= 1)
+      .sort((a, b) => a - b);
+    if (!keys.length) return [];
+    return keys.map((dn) => {
+      const row = byDay[String(dn)];
+      const phase = String(row.phase || "").trim();
+      return {
+        day_number: dn,
+        phase: phase || supervisorFallbackPhaseLabel(dn, keys.length),
+        workers: row.workers,
+        plan_from_quoted_labor: true,
+      };
+    });
+  }
+
+  function inferSupervisorExecutionEstimatedDays(project, opCache, estimatedDays) {
+    let est = Math.max(
+      0,
+      Math.ceil(
+        finiteNumber(estimatedDays, finiteNumber(project?.estimatedDays, 0))
+      )
+    );
+    const progressRows = Array.isArray(opCache?.day_progress) ? opCache.day_progress : [];
+    const maxDay = supervisorMaxDayNumberFromProgress(progressRows);
+    if (maxDay > est) est = maxDay;
+    if (est <= 0 && Array.isArray(project?.workers) && project.workers.length) {
+      const fromWorkers = supervisorMaxPlanWorkerDays(project.workers);
+      if (fromWorkers > 0) est = Math.ceil(fromWorkers);
+    }
+    if (opCache?.ok === true && opCache.snapshot) {
+      const snapEst = Math.ceil(finiteNumber(opCache.snapshot.estimated_days, 0));
+      if (snapEst > est) est = snapEst;
+    }
+    return est;
   }
 
   function supervisorMigratedCurrentPlanDayIndex(baseline, execPlan) {
@@ -1696,15 +1766,8 @@ Thank you.`
   }
 
   function resolveSupervisorExecutionPlan(opCache, project, estimatedDays) {
-    const est = Math.max(
-      0,
-      Math.ceil(
-        finiteNumber(
-          estimatedDays,
-          finiteNumber(project?.estimatedDays, 0)
-        )
-      )
-    );
+    const est = inferSupervisorExecutionEstimatedDays(project, opCache, estimatedDays);
+
     if (
       opCache?.ok === true &&
       Array.isArray(opCache.operational_plan) &&
@@ -1712,12 +1775,18 @@ Thank you.`
     ) {
       return opCache.operational_plan;
     }
+
+    const fromQuoted = buildSupervisorPlanFromQuotedLaborDays(project);
+    if (fromQuoted.length) return fromQuoted;
+
     if (resolveShowMigratedExecution(opCache)) {
       return buildMigratedCalendarPlan(opCache.migration_baseline, est);
     }
+
     if (est > 0) {
       return buildSupervisorExecutionPlanFallback(project, est);
     }
+
     return [];
   }
 
@@ -1879,7 +1948,13 @@ Thank you.`
 
     if (sectionTitle) sectionTitle.textContent = "Execution calendar";
 
-    if (o.loading) {
+    const execPlanEarly = Array.isArray(o.execPlan) ? o.execPlan : [];
+    const estDaysEarly = Math.max(
+      execPlanEarly.length,
+      Math.ceil(finiteNumber(o.estimatedDays, 0))
+    );
+
+    if (o.loading && execPlanEarly.length <= 0 && estDaysEarly <= 0) {
       renderSupervisorCalendarChrome(0, o.calendarCtx);
       if ($("supExecCalendarChrome")) $("supExecCalendarChrome").hidden = true;
       body.innerHTML =
@@ -1887,11 +1962,8 @@ Thank you.`
       return;
     }
 
-    const execPlan = Array.isArray(o.execPlan) ? o.execPlan : [];
-    const estDays = Math.max(
-      execPlan.length,
-      Math.ceil(finiteNumber(o.estimatedDays, 0))
-    );
+    const execPlan = execPlanEarly;
+    const estDays = estDaysEarly;
 
     if (!execPlan.length && estDays <= 0) {
       renderSupervisorCalendarChrome(0, o.calendarCtx);
@@ -1906,8 +1978,13 @@ Thank you.`
       const migratedBanner = o.showMigrated
         ? renderSupervisorMigratedCalendarBanner(o.migratedCtx)
         : "";
+      const snapshotWarn = o.snapshotWarning
+        ? '<p class="sup-cal-empty small sup-cal-warn">' +
+          escapeHtml(String(o.snapshotWarning)) +
+          "</p>"
+        : "";
       renderSupervisorCalendarChrome(execPlan.length, o.calendarCtx);
-      body.innerHTML = migratedBanner + calendarHtml;
+      body.innerHTML = snapshotWarn + migratedBanner + calendarHtml;
       supervisorActiveDayContext = {
         plan: execPlan,
         startIso: o.calendarCtx?.startIso || "",
@@ -8911,6 +8988,7 @@ function renderSupervisor() {
           delete supervisorProjectExpensesCache[prevId];
           delete supervisorProjectChangeOrdersCache[prevId];
           delete supervisorProjectOperationalCache[prevId];
+          delete supervisorProjectOperationalFetchPromises[prevId];
           supervisorProjectReportsFetchInFlight.delete(prevId);
           supervisorProjectExpensesFetchInFlight.delete(prevId);
           supervisorProjectChangeOrdersFetchInFlight.delete(prevId);
@@ -8921,6 +8999,7 @@ function renderSupervisor() {
           delete supervisorProjectExpensesCache[nextId];
           delete supervisorProjectChangeOrdersCache[nextId];
           delete supervisorProjectOperationalCache[nextId];
+          delete supervisorProjectOperationalFetchPromises[nextId];
         }
         if (nextId && isServerListedSupervisorProject(nextId)) {
           supervisorProjectReportsFetchInFlight.add(nextId);
@@ -9134,6 +9213,7 @@ function renderSupervisor() {
         delete supervisorProjectExpensesCache[oldPid];
         delete supervisorProjectChangeOrdersCache[oldPid];
         delete supervisorProjectOperationalCache[oldPid];
+        delete supervisorProjectOperationalFetchPromises[oldPid];
         supervisorProjectReportsFetchInFlight.delete(oldPid);
         supervisorProjectExpensesFetchInFlight.delete(oldPid);
         supervisorProjectChangeOrdersFetchInFlight.delete(oldPid);
@@ -9387,9 +9467,18 @@ function renderSupervisor() {
             actualDays
           );
       const opSnapshotLoading = supervisorOperationalSnapshotLoading(pid);
+      const canRenderCalendar =
+        execPlan.length > 0 || Math.ceil(finiteNumber(estimatedBudgetDays, 0)) > 0;
       renderSupervisorExecutionPlanSection({
         showMigrated: showMigratedExecution,
-        loading: opSnapshotLoading,
+        loading: opSnapshotLoading && !canRenderCalendar,
+        snapshotWarning:
+          opCache?.ok === false && canRenderCalendar
+            ? String(
+                opCache.error ||
+                  "Field snapshot unavailable. Showing schedule from project baseline."
+              )
+            : null,
         execPlan,
         estimatedDays: estimatedBudgetDays,
         projectId: pid,

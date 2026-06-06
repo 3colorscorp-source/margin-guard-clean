@@ -3634,6 +3634,12 @@ body.supervisor-page .container.supervisor-console{
   text-align:center;
   color:var(--muted);
 }
+.sup-cal-warn{
+  margin-bottom:10px;
+  text-align:left;
+  color:#fcd34d;
+  border-color:rgba(252,211,77,.35);
+}
 .sup-exec-calendar-grid,
 .sup-diary-calendar-grid{
   display:grid;
