@@ -314,11 +314,13 @@ function analyzeProjectForCrewAvailability(
     .toLowerCase();
   const projectName = String(project?.project_name || project?.id || "Active project").trim();
   const projectId = String(project?.id || "").trim();
+  const clientName = String(project?.client_name || "").trim();
 
   if (status === "completed" || status === "cancelled") {
     return {
       project_id: projectId,
       project_name: projectName,
+      client_name: clientName,
       blocks_capacity: false,
       completed_by_supervisor: true,
       released: true,
@@ -344,6 +346,7 @@ function analyzeProjectForCrewAvailability(
   const base = {
     project_id: projectId,
     project_name: projectName,
+    client_name: clientName,
     estimated_days: estimatedDays,
     completed_days: round2(completedDays),
     remaining_days: remainingDays,
@@ -372,6 +375,29 @@ function analyzeProjectForCrewAvailability(
       const occupationEnd = addBusinessDays(
         todayYmd,
         Math.max(1, Math.ceil(remainingDays)) + settings.scheduleBufferDays,
+        settings
+      );
+      return {
+        ...base,
+        blocks_capacity: true,
+        target_finish_date: targetFinish,
+        start_date: startDate,
+        occupation_end: occupationEnd,
+        past_target_incomplete: true,
+        advisory_only: false,
+        conflict_with_desired: overlapsDesiredStart(
+          desiredStartDate,
+          startDate,
+          targetFinish
+        ),
+      };
+    }
+    const hasSupervisorProgress =
+      Array.isArray(dayProgressRows) && dayProgressRows.length > 0;
+    if (hasSupervisorProgress && !completedBySupervisor) {
+      const occupationEnd = addBusinessDays(
+        todayYmd,
+        Math.max(0, Math.ceil(remainingDays)) + settings.scheduleBufferDays,
         settings
       );
       return {
@@ -437,13 +463,236 @@ function overlapsDesiredStart(desiredStartDate, projectStart, windowEnd) {
   return true;
 }
 
+function supervisorProgressAvailable(progressRows, analysis) {
+  const rows = Array.isArray(progressRows) ? progressRows : [];
+  if (rows.length > 0) return true;
+  if (analysis?.completed_by_supervisor) return true;
+  return false;
+}
+
+function recommendedStartAfterRemainingWorkdays(anchorYmd, remaining, settings) {
+  const remainingDays = Math.max(0, Math.ceil(num(remaining, 0)));
+  if (remainingDays <= 0) return null;
+  let anchor = nextWorkdayOnOrAfter(normDate(anchorYmd), settings) || normDate(anchorYmd);
+  if (!anchor) return null;
+  const lastBusy = addBusinessDays(anchor, Math.max(remainingDays - 1, 0), settings);
+  const rec = lastBusy ? addBusinessDays(lastBusy, 1, settings) : null;
+  return rec ? nextWorkdayOnOrAfter(rec, settings) : null;
+}
+
+/** Earliest recommended start for the next quote after this active project. */
+function computeRecommendedNextStartDate(
+  analysis,
+  settings,
+  todayYmd,
+  desiredStartDate,
+  supervisorProgressOk
+) {
+  if (!analysis || typeof analysis !== "object") return null;
+
+  const remaining = Math.max(0, Math.ceil(num(analysis.remaining_days, 0)));
+  const today = normDate(todayYmd) || todayYmdLocal();
+  const trulyReleased =
+    analysis.completed_by_supervisor ||
+    (analysis.released && remaining <= 0);
+
+  if (trulyReleased) {
+    const pick = normDate(desiredStartDate) || today;
+    return pick ? nextWorkdayOnOrAfter(pick, settings) : null;
+  }
+
+  if (!supervisorProgressOk) return null;
+
+  const target = normDate(analysis.target_finish_date);
+  if (target && compareYmd(target, today) > 0) {
+    const dayAfter = addBusinessDays(target, 1, settings);
+    return dayAfter ? nextWorkdayOnOrAfter(dayAfter, settings) : null;
+  }
+
+  if (remaining > 0) {
+    if (target && compareYmd(target, today) <= 0) {
+      return recommendedStartAfterRemainingWorkdays(today, remaining, settings);
+    }
+    const start = normDate(analysis.start_date);
+    const anchor = start && compareYmd(today, start) < 0 ? start : today;
+    return recommendedStartAfterRemainingWorkdays(anchor, remaining, settings);
+  }
+
+  const occ = normDate(analysis.occupation_end);
+  if (occ) {
+    const dayAfter = addBusinessDays(occ, 1, settings);
+    return dayAfter ? nextWorkdayOnOrAfter(dayAfter, settings) : null;
+  }
+  return null;
+}
+
+function serializeProjectForCrewCard(
+  analysis,
+  project,
+  progressRows,
+  settings,
+  todayYmd,
+  desiredStartDate
+) {
+  const est = Math.max(0, Math.round(num(analysis.estimated_days, 0)));
+  const completed = Math.max(0, Math.round(num(analysis.completed_days, 0)));
+  const remaining = round2(Math.max(0, num(analysis.remaining_days, est - completed)));
+  const progressPct =
+    est > 0 ? Math.round((completed / est) * 100) : Math.round(num(analysis.progress_pct, 0));
+  const supervisorOk = supervisorProgressAvailable(progressRows, analysis);
+  const recommended = computeRecommendedNextStartDate(
+    analysis,
+    settings,
+    todayYmd,
+    desiredStartDate,
+    supervisorOk
+  );
+  let reason = "";
+  if (analysis.released || analysis.completed_by_supervisor) {
+    reason = "Crew released — project completed by Supervisor.";
+  } else if (!supervisorOk && analysis.incomplete_supervisor_reporting) {
+    reason =
+      "Supervisor progress not available. Confirm crew availability before promising this start date.";
+  } else if (remaining > 0 && recommended) {
+    reason = `Current project has ${Math.ceil(remaining)} scheduled day${Math.ceil(remaining) === 1 ? "" : "s"} remaining according to Supervisor. Earliest recommended start: ${formatDateUS(recommended)}.`;
+  } else if (analysis.target_finish_date) {
+    reason = `Crew may still be booked on ${analysis.project_name} through ${formatDateUS(analysis.target_finish_date)}.`;
+  }
+
+  return {
+    project_id: analysis.project_id,
+    project_name: analysis.project_name,
+    client_name: String(project?.client_name || analysis.client_name || "").trim(),
+    start_date: analysis.start_date || null,
+    target_finish_date: analysis.target_finish_date || analysis.occupation_end || null,
+    due_date: normDate(project?.due_date) || null,
+    estimated_days: est,
+    completed_days: completed,
+    remaining_days: remaining,
+    progress_pct: progressPct,
+    is_completed_by_supervisor: Boolean(analysis.completed_by_supervisor),
+    is_delayed: Boolean(analysis.is_delayed),
+    supervisor_progress_available: supervisorOk,
+    recommended_next_start_date: recommended,
+    incomplete_supervisor_reporting: Boolean(analysis.incomplete_supervisor_reporting),
+    past_target_incomplete: Boolean(analysis.past_target_incomplete),
+    conflict_with_desired: Boolean(analysis.conflict_with_desired),
+    released: Boolean(analysis.released),
+    reason,
+  };
+}
+
+function buildCrewAvailabilityDetail({
+  blockingProjects,
+  incompleteReportingProjects,
+  serializedProjects,
+  desiredStartDate,
+  nextAvailableStartDate,
+}) {
+  const advisory =
+    "Crew availability depends on Supervisor completion. Do not promise an earlier start unless the Supervisor confirms release.";
+
+  let primary = null;
+  let status = "available";
+
+  const conflict = blockingProjects.find((p) => p.conflict_with_desired);
+  if (conflict) {
+    primary = conflict;
+    status = "conflict";
+  } else if (incompleteReportingProjects.length) {
+    primary = incompleteReportingProjects[0];
+    status = "incomplete_reporting";
+  } else if (blockingProjects.length) {
+    primary = blockingProjects[0];
+    status = "warning";
+  }
+
+  if (primary) {
+    if (!primary.supervisor_progress_available && primary.incomplete_supervisor_reporting) {
+      status = "progress_unverified";
+    } else if (
+      primary.is_completed_by_supervisor ||
+      (primary.released && num(primary.remaining_days, 0) <= 0.01)
+    ) {
+      status = "released";
+    } else if (status === "incomplete_reporting") {
+      status = "incomplete_reporting";
+    } else {
+      status = primary.conflict_with_desired ? "conflict" : "active_incomplete";
+    }
+  } else if (serializedProjects.length) {
+    const allReleased = serializedProjects.every(
+      (p) => p.released || p.is_completed_by_supervisor
+    );
+    if (allReleased) status = "released";
+  }
+
+  const recommended =
+    (primary && primary.recommended_next_start_date) ||
+    nextAvailableStartDate ||
+    null;
+
+  let message = "";
+  if (status === "progress_unverified") {
+    message =
+      "Supervisor progress not available. Confirm crew availability before promising this start date.";
+  } else if (status === "released") {
+    message =
+      "Crew released. Last project completed by Supervisor. You may schedule this project for the selected start date.";
+  } else if (primary && primary.supervisor_progress_available && !primary.released) {
+    const rem = Math.max(1, Math.ceil(num(primary.remaining_days, 0)));
+    const recLabel = recommended ? formatDateUS(recommended) : "";
+    message = `Current project has ${rem} scheduled day${rem === 1 ? "" : "s"} remaining according to Supervisor.`;
+    if (recLabel) message += ` Earliest recommended start: ${recLabel}.`;
+  } else if (primary && primary.reason) {
+    message = primary.reason;
+  } else if (status === "available") {
+    message = desiredStartDate
+      ? "Crew appears available for the selected start date."
+      : "No unfinished project conflicts found.";
+    if (recommended && desiredStartDate) {
+      const recLabel = formatDateUS(recommended);
+      if (recLabel) message += ` Next available start: ${recLabel}.`;
+    }
+  }
+
+  return {
+    status,
+    primary_project: primary,
+    active_projects: serializedProjects.filter((p) => !p.released && !p.is_completed_by_supervisor),
+    recommended_next_start_date: recommended,
+    message,
+    advisory_note:
+      primary && !primary.released && !primary.is_completed_by_supervisor ? advisory : "",
+  };
+}
+
 function buildAvailabilitySummary({
   blockingProjects,
   incompleteReportingProjects,
   desiredStartDate,
   nextAvailableStartDate,
   settings,
+  crewAvailabilityDetail,
 }) {
+  if (crewAvailabilityDetail?.message) {
+    const card = crewAvailabilityDetail.message;
+    const suffix = " You may still send this estimate.";
+    const detailStatus = String(crewAvailabilityDetail.status || "").toLowerCase();
+    let capacityStatus = "available";
+    if (detailStatus === "conflict") capacityStatus = "conflict";
+    else if (detailStatus === "incomplete_reporting" || detailStatus === "progress_unverified") {
+      capacityStatus = "incomplete_reporting";
+    } else if (detailStatus === "warning" || detailStatus === "active_incomplete") {
+      capacityStatus = "warning";
+    }
+    return {
+      capacity_status: capacityStatus,
+      crew_availability_card_message: card,
+      availability_message: card + suffix,
+      guidance_message: card,
+    };
+  }
   const suffix = " You may still send this estimate.";
   const conflict = blockingProjects.find((p) => p.conflict_with_desired);
   if (conflict) {
@@ -577,7 +826,7 @@ async function computeSalesCapacityCalendar(params) {
   const [projectRows, snapshotRows, baselineRows, reportRows, dayProgressRows] =
     await Promise.all([
       supabaseRequest(
-        `tenant_projects?tenant_id=eq.${tid}&status=in.(${statusList})&select=id,status,signed_at,due_date,estimated_days,quote_id,project_name`
+        `tenant_projects?tenant_id=eq.${tid}&status=in.(${statusList})&select=id,status,signed_at,due_date,estimated_days,quote_id,project_name,client_name`
       ),
       safeFetchRows(
         `tenant_project_operational_snapshots?tenant_id=eq.${tid}&select=project_id,estimated_days,commitment_date`
@@ -664,6 +913,31 @@ async function computeSalesCapacityCalendar(params) {
     compareYmd(b.target_finish_date || b.occupation_end, a.target_finish_date || a.occupation_end)
   );
 
+  const projectById = new Map(
+    projects.map((p) => [String(p.id), p])
+  );
+  const serializedProjects = projectAnalyses.map((analysis) => {
+    const progressRows = dayProgressByProject.get(String(analysis.project_id)) || [];
+    return serializeProjectForCrewCard(
+      analysis,
+      projectById.get(String(analysis.project_id)),
+      progressRows,
+      settings,
+      todayYmd,
+      desiredStartDate
+    );
+  });
+  const serializedById = new Map(
+    serializedProjects.map((row) => [String(row.project_id), row])
+  );
+  const mergeSerialized = (list) =>
+    list.map((p) => {
+      const full = serializedById.get(String(p.project_id));
+      return full ? { ...p, ...full } : p;
+    });
+  const blockingEnriched = mergeSerialized(blockingProjects);
+  const incompleteEnriched = mergeSerialized(incompleteReportingProjects);
+
   let nextAvailableStartDate;
   if (maxOccupationEnd) {
     nextAvailableStartDate = addBusinessDays(maxOccupationEnd, 1, settings);
@@ -675,12 +949,21 @@ async function computeSalesCapacityCalendar(params) {
 
   const blockedDates = buildBlockedDates(todayYmd, nextAvailableStartDate);
 
+  const crewAvailabilityDetail = buildCrewAvailabilityDetail({
+    blockingProjects: blockingEnriched,
+    incompleteReportingProjects: incompleteEnriched,
+    serializedProjects,
+    desiredStartDate,
+    nextAvailableStartDate,
+  });
+
   const summary = buildAvailabilitySummary({
     blockingProjects,
     incompleteReportingProjects,
     desiredStartDate,
     nextAvailableStartDate,
     settings,
+    crewAvailabilityDetail,
   });
 
   let capacityStatus = summary.capacity_status;
@@ -710,6 +993,9 @@ async function computeSalesCapacityCalendar(params) {
     reason,
     availability_message: summary.availability_message,
     crew_availability_card_message: summary.crew_availability_card_message,
+    crew_availability_detail: crewAvailabilityDetail,
+    recommended_next_start_date:
+      crewAvailabilityDetail.recommended_next_start_date || nextAvailableStartDate,
     guidance_message: summary.guidance_message,
     remaining_days: round2(Math.max(0, maxRemaining)),
     buffer_days: bufferDays,
@@ -724,26 +1010,9 @@ async function computeSalesCapacityCalendar(params) {
       crew_availability_mode: settings.crewAvailabilityMode,
     },
     active_project_count: projects.length,
-    blocking_projects: blockingProjects.map((p) => ({
-      project_id: p.project_id,
-      project_name: p.project_name,
-      target_finish_date: p.target_finish_date || null,
-      occupation_end: p.occupation_end || null,
-      completed_days: p.completed_days,
-      estimated_days: p.estimated_days,
-      progress_pct: p.progress_pct,
-      completed_by_supervisor: Boolean(p.completed_by_supervisor),
-      is_delayed: Boolean(p.is_delayed),
-      conflict_with_desired: Boolean(p.conflict_with_desired),
-    })),
-    incomplete_reporting_projects: incompleteReportingProjects.map((p) => ({
-      project_id: p.project_id,
-      project_name: p.project_name,
-      target_finish_date: p.target_finish_date || null,
-      completed_days: p.completed_days,
-      estimated_days: p.estimated_days,
-      progress_pct: p.progress_pct,
-    })),
+    blocking_projects: blockingEnriched,
+    incomplete_reporting_projects: incompleteEnriched,
+    active_projects: crewAvailabilityDetail.active_projects,
     project_analyses: projectAnalyses,
   };
 }

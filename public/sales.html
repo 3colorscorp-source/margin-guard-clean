@@ -657,20 +657,88 @@
         return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       }
 
+      function buildSalesOpCrewAvailabilityHtml(detail, cached) {
+        if (!detail || typeof detail !== 'object') return '';
+        const esc = escapeHtmlOperational;
+        const fmt = formatSalesOpDate;
+        const st = String(detail.status || '').toLowerCase();
+        const p = detail.primary_project;
+
+        if (st === 'released') {
+          return '<p class="sales-op-avail-lead">' + esc(detail.message || 'Crew released.') + '</p>';
+        }
+        if (st === 'progress_unverified') {
+          return '<p class="sales-op-avail-lead">' + esc(detail.message || 'Supervisor progress not available. Confirm crew availability before promising this start date.') + '</p>';
+        }
+        if (p && !p.released && !p.is_completed_by_supervisor) {
+          const projectLabel = esc(p.project_name || 'Active project') +
+            (p.client_name ? ' · ' + esc(p.client_name) : '');
+          const est = Math.max(0, Math.round(Number(p.estimated_days) || 0));
+          const done = Math.max(0, Math.round(Number(p.completed_days) || 0));
+          const rem = Math.max(0, Math.ceil(Number(p.remaining_days) || 0));
+          const rows = [
+            ['Current project', projectLabel],
+            ['Supervisor progress', est > 0 ? done + ' of ' + est + ' days completed' : done + ' days completed'],
+            ['Remaining', rem + ' scheduled day' + (rem === 1 ? '' : 's')]
+          ];
+          if (p.target_finish_date) {
+            rows.push(['Target finish', fmt(p.target_finish_date) || p.target_finish_date]);
+          }
+          const recStart = detail.recommended_next_start_date || p.recommended_next_start_date;
+          if (recStart) {
+            rows.push(['Earliest recommended start', fmt(recStart) || recStart]);
+          }
+          let html = '<dl class="sales-op-summary-kv sales-op-avail-kv">';
+          rows.forEach(function (row) {
+            html += '<dt>' + esc(row[0]) + '</dt><dd>' + row[1] + '</dd>';
+          });
+          html += '</dl>';
+          if (detail.advisory_note) {
+            html += '<p class="sales-op-avail-note">' + esc(detail.advisory_note) + '</p>';
+          }
+          if (p.is_delayed) {
+            html += '<p class="sales-op-avail-delay">Field delay reported — confirm with Supervisor before promising an earlier start.</p>';
+          }
+          return html;
+        }
+        const fallbackMsg = detail.message ||
+          (cached && (cached.crew_availability_card_message || cached.availability_message)) ||
+          '';
+        return fallbackMsg
+          ? '<p class="sales-op-avail-lead">' + esc(String(fallbackMsg).replace(/\sYou may still send this estimate\.\s*$/i, '').trim()) + '</p>'
+          : '';
+      }
+
       function renderSalesOpCrewAvailability() {
         const el = document.getElementById('salesOpCrewAvailability');
         if (!el) return;
         const cap = window.MarginGuardSalesCapacity;
 
         if (window.__mgSalesCapacityUnverified) {
-          el.textContent =
+          el.innerHTML = '<p class="sales-op-avail-lead">' + escapeHtmlOperational(
             (cap && cap.ADVISORY_UNVERIFIED_MSG) ||
-            'Crew availability could not be verified. You may still send this estimate.';
+            'Crew availability could not be verified. You may still send this estimate.'
+          ) + '</p>';
           el.className = 'sales-op-avail sales-op-avail--warn';
           return;
         }
 
         const cached = window.__mgSalesCapacityCalendar;
+        const detail = cached && cached.crew_availability_detail;
+
+        if (detail && typeof detail === 'object') {
+          el.innerHTML = buildSalesOpCrewAvailabilityHtml(detail, cached);
+          const st = String(detail.status || cached.capacity_status || '').toLowerCase();
+          if (st === 'available' || st === 'released') {
+            el.className = 'sales-op-avail sales-op-avail--ok';
+          } else if (st === 'conflict' || st === 'incomplete_reporting' || st === 'progress_unverified' || st === 'warning' || st === 'active_incomplete') {
+            el.className = 'sales-op-avail sales-op-avail--warn';
+          } else {
+            el.className = 'sales-op-avail sales-op-avail--warn';
+          }
+          return;
+        }
+
         let cardMsg =
           cached &&
           (cached.crew_availability_card_message || cached.availability_message);
@@ -679,7 +747,7 @@
         }
         if (cardMsg) {
           const st = String(cached.capacity_status || '').toLowerCase();
-          el.textContent = String(cardMsg).trim();
+          el.innerHTML = '<p class="sales-op-avail-lead">' + escapeHtmlOperational(String(cardMsg).trim()) + '</p>';
           if (st === 'available') el.className = 'sales-op-avail sales-op-avail--ok';
           else if (st === 'conflict' || st === 'incomplete_reporting' || st === 'warning') {
             el.className = 'sales-op-avail sales-op-avail--warn';

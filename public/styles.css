@@ -408,6 +408,20 @@ body[data-requires-auth="true"] .container:has(.grid.sales-layout),
 .sales-op-avail--ok{color:#86efac;}
 .sales-op-avail--warn{color:#fcd34d;}
 .sales-op-avail--unknown{color:rgba(232,238,252,.65);}
+.sales-op-avail-kv{margin-top:4px;}
+.sales-op-avail-lead{margin:0 0 8px;font-size:12px;line-height:1.45;}
+.sales-op-avail-note{
+  margin:8px 0 0;
+  font-size:11px;
+  line-height:1.4;
+  color:rgba(232,238,252,.62);
+}
+.sales-op-avail-delay{
+  margin:6px 0 0;
+  font-size:11px;
+  line-height:1.4;
+  color:#fcd34d;
+}
 .sales-op-calendar-grid{
   display:grid;
   grid-template-columns:repeat(7,minmax(0,1fr));
