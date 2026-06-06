@@ -8,7 +8,7 @@ const {
   sumReportDaysAfterBaseline,
 } = require("./migration-baseline");
 const { extractSettingsFromSnapshotPayload } = require("./project-labor-plan");
-const { countCompletedDays } = require("./project-day-progress");
+const { countCompletedDays, loadDayProgressForProject } = require("./project-day-progress");
 
 const ACTIVE_STATUSES = ["signed", "deposit_paid", "assigned", "in_progress"];
 
@@ -207,8 +207,10 @@ function resolveSupervisorCompletionMetrics(project, opRow, baseline, reports, d
   }
 
   let completedDays;
-  if (fromProgress > 0 || rows.length > 0) {
-    completedDays = round2(Math.max(fromProgress, reportDays));
+  if (rows.length > 0) {
+    completedDays = round2(fromProgress);
+  } else if (fromProgress > 0) {
+    completedDays = round2(fromProgress);
   } else if (baseline && num(baseline.days_completed_to_date, 0) > 0) {
     completedDays = round2(Math.max(reportDays, num(baseline.days_completed_to_date, 0)));
   } else {
@@ -274,9 +276,9 @@ function rowsSomeDelayed(dayProgressRows) {
 
 function resolveTargetFinish(project, opRow, baseline) {
   return (
-    normDate(baseline?.target_finish_date) ||
-    normDate(project?.due_date) ||
     normDate(opRow?.commitment_date) ||
+    normDate(project?.due_date) ||
+    normDate(baseline?.target_finish_date) ||
     null
   );
 }
@@ -392,8 +394,7 @@ function analyzeProjectForCrewAvailability(
         ),
       };
     }
-    const hasSupervisorProgress =
-      Array.isArray(dayProgressRows) && dayProgressRows.length > 0;
+    const hasSupervisorProgress = countCompletedDays(dayProgressRows) > 0;
     if (hasSupervisorProgress && !completedBySupervisor) {
       const occupationEnd = addBusinessDays(
         todayYmd,
@@ -465,7 +466,7 @@ function overlapsDesiredStart(desiredStartDate, projectStart, windowEnd) {
 
 function supervisorProgressAvailable(progressRows, analysis) {
   const rows = Array.isArray(progressRows) ? progressRows : [];
-  if (rows.length > 0) return true;
+  if (countCompletedDays(rows) > 0) return true;
   if (analysis?.completed_by_supervisor) return true;
   return false;
 }
@@ -599,12 +600,12 @@ function buildCrewAvailabilityDetail({
   if (conflict) {
     primary = conflict;
     status = "conflict";
-  } else if (incompleteReportingProjects.length) {
-    primary = incompleteReportingProjects[0];
-    status = "incomplete_reporting";
   } else if (blockingProjects.length) {
     primary = blockingProjects[0];
     status = "warning";
+  } else if (incompleteReportingProjects.length) {
+    primary = incompleteReportingProjects[0];
+    status = "incomplete_reporting";
   }
 
   if (primary) {
@@ -823,27 +824,33 @@ async function computeSalesCapacityCalendar(params) {
   const tid = encodeURIComponent(tenantId);
   const statusList = ACTIVE_STATUSES.map(encodeURIComponent).join(",");
 
-  const [projectRows, snapshotRows, baselineRows, reportRows, dayProgressRows] =
-    await Promise.all([
-      supabaseRequest(
-        `tenant_projects?tenant_id=eq.${tid}&status=in.(${statusList})&select=id,status,signed_at,due_date,estimated_days,quote_id,project_name,client_name`
-      ),
-      safeFetchRows(
-        `tenant_project_operational_snapshots?tenant_id=eq.${tid}&select=project_id,estimated_days,commitment_date`
-      ),
-      safeFetchRows(
-        `tenant_project_migration_baselines?tenant_id=eq.${tid}&select=project_id,actual_start_date,target_finish_date,estimated_total_days,days_completed_to_date,progress_pct,baseline_set_at,updated_at`
-      ),
-      safeFetchRows(
-        `tenant_project_reports?tenant_id=eq.${tid}&select=project_id,days,created_at`
-      ),
-      safeFetchRows(
-        `tenant_project_day_progress?tenant_id=eq.${tid}&select=project_id,day_number,status,completed_at`
-      ),
-    ]);
+  const [projectRows, snapshotRows, baselineRows, reportRows] = await Promise.all([
+    supabaseRequest(
+      `tenant_projects?tenant_id=eq.${tid}&status=in.(${statusList})&select=id,status,signed_at,due_date,estimated_days,quote_id,project_name,client_name`
+    ),
+    safeFetchRows(
+      `tenant_project_operational_snapshots?tenant_id=eq.${tid}&select=project_id,estimated_days,commitment_date`
+    ),
+    safeFetchRows(
+      `tenant_project_migration_baselines?tenant_id=eq.${tid}&select=project_id,actual_start_date,target_finish_date,estimated_total_days,days_completed_to_date,progress_pct,baseline_set_at,updated_at`
+    ),
+    safeFetchRows(
+      `tenant_project_reports?tenant_id=eq.${tid}&select=project_id,days,created_at`
+    ),
+  ]);
 
   const projects = (Array.isArray(projectRows) ? projectRows : []).filter(
     (p) => p?.id && String(p.id) !== excludeProjectId
+  );
+
+  const dayProgressByProject = new Map();
+  await Promise.all(
+    projects.map(async (project) => {
+      const pid = String(project.id || "").trim();
+      if (!pid) return;
+      const rows = await loadDayProgressForProject(tenantId, pid);
+      dayProgressByProject.set(pid, rows);
+    })
   );
   const snapshotsByProject = new Map();
   for (const row of Array.isArray(snapshotRows) ? snapshotRows : []) {
@@ -860,14 +867,6 @@ async function computeSalesCapacityCalendar(params) {
     if (!reportsByProject.has(key)) reportsByProject.set(key, []);
     reportsByProject.get(key).push(row);
   }
-  const dayProgressByProject = new Map();
-  for (const row of Array.isArray(dayProgressRows) ? dayProgressRows : []) {
-    if (!row?.project_id) continue;
-    const key = String(row.project_id);
-    if (!dayProgressByProject.has(key)) dayProgressByProject.set(key, []);
-    dayProgressByProject.get(key).push(row);
-  }
-
   let maxOccupationEnd = null;
   let maxRemaining = 0;
   const blockingProjects = [];
