@@ -303,20 +303,44 @@ Thank you.`
     return Number.isFinite(n) ? n : fallback;
   }
 
+  function parseLocalDateOnly(value) {
+    if (value == null || value === "") return null;
+    const text = nonEmptyString(value);
+    if (!text) return null;
+    const m = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  }
+
+  function localDateToIso(d) {
+    if (!d || Number.isNaN(d.getTime())) return "";
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  function todayLocalDateOnly() {
+    const t = new Date();
+    return new Date(t.getFullYear(), t.getMonth(), t.getDate());
+  }
+
   function normalizeDateInput(value) {
     const text = nonEmptyString(value);
     if (!text) return "";
     const direct = /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
     if (direct) return direct;
-    const parsed = new Date(text);
-    if (Number.isNaN(parsed.getTime())) return "";
-    return parsed.toISOString().slice(0, 10);
+    const local = parseLocalDateOnly(text);
+    if (local) return localDateToIso(local);
+    return "";
   }
 
   function formatDateUS(isoDateStr) {
     if (!isoDateStr) return "";
-    const d = new Date(isoDateStr + "T00:00:00");
-    if (isNaN(d.getTime())) return isoDateStr;
+    const d = parseLocalDateOnly(isoDateStr);
+    if (!d || Number.isNaN(d.getTime())) return isoDateStr;
 
     const mm = String(d.getMonth() + 1).padStart(2, "0");
     const dd = String(d.getDate()).padStart(2, "0");
@@ -666,13 +690,10 @@ Thank you.`
   }
   function addDaysToInputValue(dateStr, days) {
     if (!dateStr) return "";
-    const d = new Date(dateStr);
-    if (Number.isNaN(d.getTime())) return "";
+    const d = parseLocalDateOnly(dateStr);
+    if (!d || Number.isNaN(d.getTime())) return "";
     d.setDate(d.getDate() + Number(days || 0));
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
+    return localDateToIso(d);
   }
 
   /** Local-calendar YYYY-MM-DD for hub form quick-date buttons (avoids UTC parse skew). */
@@ -1911,9 +1932,12 @@ Thank you.`
     const entryDate = normalizeDateInput(row?.entry_date || row?.expense_date || row?.date || "");
     const start = normalizeDateInput(startIso || "");
     if (!entryDate || !start || maxDay < 1) return 0;
-    const startMs = new Date(start).setHours(0, 0, 0, 0);
-    const entryMs = new Date(entryDate).setHours(0, 0, 0, 0);
-    const diff = Math.floor((entryMs - startMs) / 86400000) + 1;
+    const startD = parseLocalDateOnly(start);
+    const entryD = parseLocalDateOnly(entryDate);
+    if (!startD || !entryD) return 0;
+    startD.setHours(0, 0, 0, 0);
+    entryD.setHours(0, 0, 0, 0);
+    const diff = Math.floor((entryD - startD) / 86400000) + 1;
     if (diff >= 1 && diff <= maxDay) return diff;
     return 0;
   }
@@ -2545,12 +2569,14 @@ Thank you.`
         ? Math.max(...plan.map((d) => Number(d.day_number) || 0))
         : 0;
     if (startIso) {
-      const start = new Date(startIso);
-      const today = new Date();
-      start.setHours(0, 0, 0, 0);
-      today.setHours(0, 0, 0, 0);
-      const diff = Math.floor((today - start) / 86400000) + 1;
-      if (diff >= 1) return Math.min(diff, maxDay || diff);
+      const start = parseLocalDateOnly(startIso);
+      const today = todayLocalDateOnly();
+      if (start) {
+        start.setHours(0, 0, 0, 0);
+        const diff = Math.floor((today - start) / 86400000) + 1;
+        if (diff >= 1) return Math.min(diff, maxDay || diff);
+        return 1;
+      }
     }
     return Math.max(1, Math.min(Math.floor(actualDays) + 1, maxDay || 999));
   }
@@ -2570,6 +2596,9 @@ Thank you.`
     const daysRemainingRaw = est - actual;
     const dayDelta = finiteNumber(opts.calendarDayDelta, 0);
     const estInt = Math.max(0, Math.round(est));
+    const startIso = normalizeDateInput(opts.startIso || "");
+    const today = todayLocalDateOnly();
+    const start = parseLocalDateOnly(startIso);
 
     if (est <= 0) {
       return {
@@ -2578,6 +2607,28 @@ Thank you.`
         headline: "Timeline not set",
         subline: "Waiting for project timeline.",
       };
+    }
+
+    if (start) {
+      start.setHours(0, 0, 0, 0);
+      if (today.getTime() < start.getTime()) {
+        return {
+          tone: "green",
+          badge: "SCHEDULED",
+          headline: "Not started",
+          subline: startIso
+            ? `Starts ${formatDateUS(startIso) || startIso}`
+            : "Waiting for start date",
+        };
+      }
+      if (today.getTime() === start.getTime() && actual <= 0 && dayDelta <= 0) {
+        return {
+          tone: "green",
+          badge: "ON SCHEDULE",
+          headline: "Day 1",
+          subline: "On schedule",
+        };
+      }
     }
 
     const overBy = Math.max(
@@ -9244,21 +9295,32 @@ function renderSupervisor() {
 
       let dayDelta = 0;
       if (state.dueDate && state.projectedEndDate) {
-        const due = new Date(state.dueDate).getTime();
-        const projected = new Date(state.projectedEndDate).getTime();
-        dayDelta = Math.round((projected - due) / (1000 * 60 * 60 * 24));
+        const dueD = parseLocalDateOnly(state.dueDate);
+        const projectedD = parseLocalDateOnly(state.projectedEndDate);
+        if (dueD && projectedD) {
+          dueD.setHours(0, 0, 0, 0);
+          projectedD.setHours(0, 0, 0, 0);
+          dayDelta = Math.round((projectedD - dueD) / 86400000);
+        }
       }
       if (scheduleLabels.targetIso && scheduleLabels.startIso) {
-        const targetMs = new Date(scheduleLabels.targetIso).getTime();
-        const todayMs = new Date().setHours(0, 0, 0, 0);
-        const calendarBehind = Math.round((todayMs - targetMs) / (1000 * 60 * 60 * 24));
-        if (calendarBehind > dayDelta) dayDelta = calendarBehind;
+        const startD = parseLocalDateOnly(scheduleLabels.startIso);
+        const targetD = parseLocalDateOnly(scheduleLabels.targetIso);
+        const todayD = todayLocalDateOnly();
+        if (startD && targetD && todayD.getTime() >= startD.getTime()) {
+          targetD.setHours(0, 0, 0, 0);
+          todayD.setHours(0, 0, 0, 0);
+          const calendarBehind = Math.round((todayD - targetD) / 86400000);
+          if (calendarBehind > dayDelta) dayDelta = calendarBehind;
+        }
       }
 
       const smartStatus = computeSupervisorSmartStatus({
         estimatedDays: estimatedBudgetDays,
         actualDays,
         calendarDayDelta: dayDelta,
+        startIso: scheduleLabels.startIso,
+        targetIso: scheduleLabels.targetIso,
       });
       const planDayIndex = supervisorCurrentPlanDayIndex(
         execPlan,

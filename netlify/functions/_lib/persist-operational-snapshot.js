@@ -18,10 +18,14 @@ function num(v, fallback = 0) {
 function normDate(d) {
   const t = String(d == null ? "" : d).trim();
   if (!t) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  const datePrefix = t.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (datePrefix) return datePrefix[1];
   const parsed = new Date(t);
   if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toISOString().slice(0, 10);
+  const y = parsed.getFullYear();
+  const mo = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${y}-${mo}-${day}`;
 }
 
 /**
