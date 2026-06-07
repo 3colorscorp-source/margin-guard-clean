@@ -379,10 +379,72 @@ function scheduleFieldsFromQuoteRow(quoteRow) {
   };
 }
 
+/** Hourly rate from Business Settings — installer/pro vs assistant/helper only. */
+function hourlyRateForPlanWorker(worker, settings) {
+  const settingsObj = settings && typeof settings === "object" ? settings : {};
+  if (worker?.hourly_rate != null && worker?.hourly_rate !== "") {
+    return Math.max(0, round2(num(worker.hourly_rate, 0)));
+  }
+  const wt = normWorkerType(worker?.worker_type ?? worker?.type);
+  return wt === "helper"
+    ? Math.max(0, round2(num(settingsObj.baseHelper, 45)))
+    : Math.max(0, round2(num(settingsObj.baseInstaller, 75)));
+}
+
 /**
- * Resolve operational plan from quote row and tenant snapshot (accept / bridge).
- * Priority: quotes.operational_plan → quote JSON fields → tenant_snapshots mg_sales_v2.
+ * Sum labor cost across every worker on every operational plan day.
+ * hours × Business Settings rate (no contract revenue).
  */
+function laborCostFromOperationalPlan(normalizedPlan, settings) {
+  const days = Array.isArray(normalizedPlan) ? normalizedPlan : [];
+  let total = 0;
+  for (const day of days) {
+    for (const w of day?.workers || []) {
+      const hours = num(w?.estimated_hours, 0);
+      if (hours <= 0) continue;
+      total += hours * hourlyRateForPlanWorker(w, settings);
+    }
+  }
+  return round2(total);
+}
+
+/**
+ * Flat quoted_labor_plan rows — one row per worker per day with estimated_cost.
+ */
+function quotedLaborPlanRowsFromOperationalPlan(
+  normalizedPlan,
+  settings,
+  hoursPerDay = DEFAULT_HOURS_PER_DAY
+) {
+  const hpd = Math.max(num(hoursPerDay, DEFAULT_HOURS_PER_DAY), 0.25);
+  const days = Array.isArray(normalizedPlan) ? normalizedPlan : [];
+  const out = [];
+  for (const day of days) {
+    for (const w of day?.workers || []) {
+      const hours = num(w?.estimated_hours, 0);
+      if (hours <= 0) continue;
+      const wt = normWorkerType(w.worker_type);
+      const rate = hourlyRateForPlanWorker(w, settings);
+      const budgetDays = round2(hours / hpd);
+      const cost = round2(hours * rate);
+      out.push({
+        role: w.role,
+        name: w.role,
+        type: wt === "helper" ? "helper" : "installer",
+        worker_type: wt,
+        day_number: day.day_number,
+        budget_days: budgetDays,
+        budget_hours: round2(hours),
+        hourly_rate: round2(rate),
+        daily_rate: round2(rate * hpd),
+        estimated_cost: cost,
+        days: budgetDays,
+      });
+    }
+  }
+  return out;
+}
+
 async function resolveOperationalPlanForQuote(quoteRow, loadSnapshotPayload) {
   if (!quoteRow || typeof quoteRow !== "object") return null;
 
@@ -425,6 +487,9 @@ module.exports = {
   parseOperationalPlanJsonb,
   crewSummaryFromOperationalPlan,
   planHasDays,
+  hourlyRateForPlanWorker,
+  laborCostFromOperationalPlan,
+  quotedLaborPlanRowsFromOperationalPlan,
   extractOperationalPlanFromQuoteRow,
   extractOperationalPlanFromSnapshotPayload,
   resolveOperationalPlanForQuote,

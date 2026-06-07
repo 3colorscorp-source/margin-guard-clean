@@ -3,6 +3,12 @@
  * Accepts legacy { name, type, days } and rich rows; never throws on bad input.
  */
 
+const {
+  normalizeOperationalPlan,
+  planHasDays: operationalPlanHasDays,
+  laborCostFromOperationalPlan,
+  quotedLaborPlanRowsFromOperationalPlan,
+} = require("./operational-plan");
 const { calculateQuotePublishFinancials } = require("./pricing-engine");
 
 const DEFAULT_HOURS_PER_DAY = 8;
@@ -160,11 +166,26 @@ function buildEstimateEconomics(params) {
   const workers = Array.isArray(p.workers) ? p.workers : [];
   const salePrice = clampNum(p.salePrice, 0);
 
-  const quotedLaborPlan = normalizeQuotedLaborPlan(workers, { hoursPerDay, settings });
+  const opNormalized = operationalPlanHasDays(p.operationalPlanNormalized)
+    ? p.operationalPlanNormalized
+    : normalizeOperationalPlan(p.operationalPlan, null, hoursPerDay);
+
+  let quotedLaborPlan = normalizeQuotedLaborPlan(workers, { hoursPerDay, settings });
   const planLabor = laborCostFromPlan(quotedLaborPlan);
 
+  if (operationalPlanHasDays(opNormalized)) {
+    const opQuoted = quotedLaborPlanRowsFromOperationalPlan(
+      opNormalized,
+      settings,
+      hoursPerDay
+    );
+    if (opQuoted.length) {
+      quotedLaborPlan = opQuoted;
+    }
+  }
+
   let financials = null;
-  if (workers.length) {
+  if (workers.length && !operationalPlanHasDays(opNormalized)) {
     try {
       financials = calculateQuotePublishFinancials(
         {
@@ -180,7 +201,9 @@ function buildEstimateEconomics(params) {
   }
 
   let estimatedLaborCost = clampNum(p.estimatedLaborCost, NaN);
-  if (!Number.isFinite(estimatedLaborCost)) {
+  if (operationalPlanHasDays(opNormalized)) {
+    estimatedLaborCost = laborCostFromOperationalPlan(opNormalized, settings);
+  } else if (!Number.isFinite(estimatedLaborCost)) {
     estimatedLaborCost =
       financials && Number.isFinite(Number(financials.labor))
         ? clampNum(financials.labor, 0)

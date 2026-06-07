@@ -148,27 +148,6 @@ exports.handler = async (event) => {
     const salePrice = num(body.sale_price, num(quoteOk.total, 0));
     const workersRaw = body.workers ?? body.quoted_labor_plan ?? [];
 
-    const economics = buildEstimateEconomics({
-      workers: workersRaw,
-      settings:
-        body.pricing_settings && typeof body.pricing_settings === "object"
-          ? body.pricing_settings
-          : {},
-      salePrice,
-      hoursPerDay,
-      estimatedLaborCost: pickFinite(body, ["estimated_labor_cost", "estimatedLaborCost"]),
-      estimatedMaterialCost: pickFinite(body, ["estimated_material_cost", "estimatedMaterialCost"]),
-      estimatedProfit: pickFinite(body, ["estimated_profit", "estimatedProfit"]),
-      estimatedProfitMargin: pickFinite(body, ["estimated_profit_margin", "estimatedProfitMargin"]),
-    });
-
-    const nowIso = new Date().toISOString();
-    const startDate = normDate(body.start_date);
-    const signedAt = startDate
-      ? `${startDate}T12:00:00.000Z`
-      : str(body.signed_at, 64) || nowIso;
-    const incomingPlan = economics.quotedLaborPlan;
-
     const opOverrideRaw = pickFinite(body, [
       "operational_estimated_days_override",
       "estimated_days_override",
@@ -193,6 +172,34 @@ exports.handler = async (event) => {
         )
       : null;
 
+    const pricingSettings =
+      body.pricing_settings && typeof body.pricing_settings === "object"
+        ? body.pricing_settings
+        : {};
+
+    const economics = buildEstimateEconomics({
+      workers: workersRaw,
+      settings: pricingSettings,
+      salePrice,
+      hoursPerDay,
+      operationalPlan: body.operational_plan,
+      operationalPlanNormalized: opNormalized,
+      estimatedLaborCost: planHasDays(opNormalized)
+        ? NaN
+        : pickFinite(body, ["estimated_labor_cost", "estimatedLaborCost"]),
+      estimatedMaterialCost: pickFinite(body, ["estimated_material_cost", "estimatedMaterialCost"]),
+      estimatedProfit: pickFinite(body, ["estimated_profit", "estimatedProfit"]),
+      estimatedProfitMargin: pickFinite(body, ["estimated_profit_margin", "estimatedProfitMargin"]),
+    });
+
+    const nowIso = new Date().toISOString();
+    const startDate = normDate(body.start_date);
+    const signedAt = startDate
+      ? `${startDate}T12:00:00.000Z`
+      : str(body.signed_at, 64) || nowIso;
+    const incomingPlan = economics.quotedLaborPlan;
+    const opPlanLabor = planHasDays(opNormalized);
+
     const row = {
       tenant_id: tenant.id,
       quote_id: quoteId,
@@ -205,7 +212,7 @@ exports.handler = async (event) => {
       estimated_days: opMetrics
         ? opMetrics.estimated_days
         : num(body.estimated_days, 0),
-      labor_budget: num(body.labor_budget, economics.estimatedLaborCost),
+      labor_budget: economics.estimatedLaborCost,
       sale_price: salePrice,
       recommended_price: num(body.recommended_price, 0),
       minimum_price: num(body.minimum_price, 0),
@@ -214,8 +221,10 @@ exports.handler = async (event) => {
       updated_at: nowIso,
     };
 
-    if (!locked) {
+    if (!locked || opPlanLabor) {
       row.estimated_labor_cost = economics.estimatedLaborCost;
+    }
+    if (!locked) {
       row.estimated_material_cost = economics.estimatedMaterialCost;
       row.estimated_profit = economics.estimatedProfit;
       row.estimated_profit_margin = economics.estimatedProfitMargin;

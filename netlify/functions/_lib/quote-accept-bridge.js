@@ -21,6 +21,8 @@ const {
   planHasDays,
   resolveOperationalPlanForQuote,
   scheduleFieldsFromQuoteRow,
+  laborCostFromOperationalPlan,
+  quotedLaborPlanRowsFromOperationalPlan,
 } = require("./operational-plan");
 const { persistOperationalSnapshot } = require("./persist-operational-snapshot");
 
@@ -97,14 +99,26 @@ async function buildLaborSnapshotFields(quoteRow, existingProject) {
   const currentEmpty = isPlanEffectivelyEmpty(currentPlan);
 
   const { workers, settings } = await resolveLaborContextForQuote(quoteRow);
-  if (!workers.length && currentEmpty) return null;
+  const hoursPerDay = Number(settings.hoursPerDay) || 8;
+
+  const resolved = await resolveOperationalPlanForQuote(
+    quoteRow,
+    loadLatestTenantSnapshotPayload
+  );
+  const opNormalized = resolved?.plan?.length
+    ? normalizeOperationalPlan(resolved.plan, resolved.override, hoursPerDay)
+    : null;
+
+  if (!workers.length && currentEmpty && !planHasDays(opNormalized)) return null;
 
   const salePrice = Math.max(finiteMoney(quoteRow.total, 0), 0);
   const economics = buildEstimateEconomics({
     workers,
     settings,
     salePrice,
-    hoursPerDay: Number(settings.hoursPerDay) || 8,
+    hoursPerDay,
+    operationalPlan: resolved?.plan,
+    operationalPlanNormalized: opNormalized,
   });
 
   if (!mayWriteLaborPlan(existingProject, economics.quotedLaborPlan)) {
@@ -146,22 +160,57 @@ async function applyOperationalSnapshotForProject(quoteRow, projectId) {
   );
   if (!resolved?.plan?.length) return;
 
+  const payload = await loadLatestTenantSnapshotPayload(tenantId);
+  const settings = extractSettingsFromSnapshotPayload(payload) || {};
+  const hoursPerDay = Math.max(Number(settings.hoursPerDay) || 8, 0.25);
+
   const normalized = normalizeOperationalPlan(
     resolved.plan,
-    resolved.override
+    resolved.override,
+    hoursPerDay
   );
   if (!planHasDays(normalized)) return;
 
-  const metrics = computeOperationalPlanMetrics(normalized, resolved.override);
+  const metrics = computeOperationalPlanMetrics(
+    normalized,
+    resolved.override,
+    resolved.hoursOverride,
+    hoursPerDay
+  );
+  const laborBudget = laborCostFromOperationalPlan(normalized, settings);
+  const quotedPlan = quotedLaborPlanRowsFromOperationalPlan(
+    normalized,
+    settings,
+    hoursPerDay
+  );
+
   const tidEnc = encodeURIComponent(tenantId);
   const pidEnc = encodeURIComponent(pid);
+  const nowIso = new Date().toISOString();
+
+  const tpRows = await supabaseRequest(
+    `tenant_projects?id=eq.${pidEnc}&tenant_id=eq.${tidEnc}&select=quoted_labor_plan_locked_at`,
+    { method: "GET" }
+  );
+  const tpHit = Array.isArray(tpRows) ? tpRows[0] : null;
+  const laborLocked = Boolean(tpHit?.quoted_labor_plan_locked_at);
+
+  const projectPatch = {
+    estimated_days: metrics.estimated_days,
+    labor_budget: laborBudget,
+    estimated_labor_cost: laborBudget,
+    updated_at: nowIso,
+  };
+  if (!laborLocked && quotedPlan.length && mayWriteLaborPlan(tpHit, quotedPlan)) {
+    projectPatch.quoted_labor_plan = quotedPlan;
+    if (shouldLockLaborPlan(tpHit, quotedPlan)) {
+      projectPatch.quoted_labor_plan_locked_at = nowIso;
+    }
+  }
 
   await supabaseRequest(`tenant_projects?id=eq.${pidEnc}&tenant_id=eq.${tidEnc}`, {
     method: "PATCH",
-    body: {
-      estimated_days: metrics.estimated_days,
-      updated_at: new Date().toISOString(),
-    },
+    body: projectPatch,
   });
 
   let commitmentDate =
@@ -212,15 +261,29 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
   const quoteStartDate = quoteSchedule.start_date;
 
   const laborContext = await resolveLaborContextForQuote(quoteRow);
+  const hoursPerDay = Number(laborContext.settings?.hoursPerDay) || 8;
+  const opResolved = await resolveOperationalPlanForQuote(
+    quoteRow,
+    loadLatestTenantSnapshotPayload
+  );
+  const opNormalized = opResolved?.plan?.length
+    ? normalizeOperationalPlan(opResolved.plan, opResolved.override, hoursPerDay)
+    : null;
+
   const insertEconomics = buildEstimateEconomics({
     workers: laborContext.workers,
     settings: laborContext.settings,
     salePrice,
-    hoursPerDay: Number(laborContext.settings?.hoursPerDay) || 8,
+    hoursPerDay,
+    operationalPlan: opResolved?.plan,
+    operationalPlanNormalized: opNormalized,
   });
 
   const insertLaborFields = {};
-  if (laborContext.workers.length && !isPlanEffectivelyEmpty(insertEconomics.quotedLaborPlan)) {
+  const hasLaborPlan =
+    (laborContext.workers.length && !isPlanEffectivelyEmpty(insertEconomics.quotedLaborPlan)) ||
+    planHasDays(opNormalized);
+  if (hasLaborPlan) {
     insertLaborFields.quoted_labor_plan = insertEconomics.quotedLaborPlan;
     insertLaborFields.estimated_labor_cost = insertEconomics.estimatedLaborCost;
     insertLaborFields.estimated_material_cost = insertEconomics.estimatedMaterialCost;

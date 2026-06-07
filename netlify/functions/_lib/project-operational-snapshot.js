@@ -35,12 +35,16 @@ function sumReportHours(reports) {
 
 function maxPlanWorkerDays(quotedLaborPlan) {
   if (!Array.isArray(quotedLaborPlan)) return 0;
+  let maxDayNumber = 0;
   let mx = 0;
   for (const w of quotedLaborPlan) {
     if (!w || typeof w !== "object") continue;
+    const dayNum = num(w.day_number, 0);
+    if (dayNum > 0) maxDayNumber = Math.max(maxDayNumber, dayNum);
     const days = num(w.budget_days ?? w.days, 0);
     mx = Math.max(mx, days);
   }
+  if (maxDayNumber > 0) return round2(maxDayNumber);
   return round2(mx);
 }
 
