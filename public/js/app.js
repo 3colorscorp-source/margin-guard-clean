@@ -2762,9 +2762,93 @@ Thank you.`
   function compactSupervisorBonusHeaderLabel(status) {
     const s = String(status || "").trim();
     if (!s || /not configured/i.test(s)) return "Bonus not configured";
+    if (/labor budget not available/i.test(s)) return "Labor budget not available yet.";
     if (/at risk/i.test(s)) return "Bonus at risk";
     if (/on track/i.test(s)) return "Bonus on track";
     return s.replace(/\.$/, "");
+  }
+
+  function formatSupervisorBonusRateLabel(pctPoints) {
+    const p = finiteNumber(pctPoints, 0);
+    if (!Number.isFinite(p) || p < 0) return "—";
+    const rounded = Math.round(p * 100) / 100;
+    const label = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/\.?0+$/, "");
+    return `${label}%`;
+  }
+
+  function formatSupervisorBonusCopy(snap, laborBudgetConfigured) {
+    const settings = loadSettings();
+    const ratePct = finiteNumber(
+      settings?.supervisorBonusPct,
+      finiteNumber(DEFAULTS.supervisorBonusPct, 1)
+    );
+    const laborFromSnap = finiteNumber(snap?.labor_budget, 0);
+    const hasLabor = Boolean(laborBudgetConfigured) || laborFromSnap > 0;
+
+    if (!hasLabor) {
+      return {
+        status: "Labor budget not available yet.",
+        pace: "—",
+        headerLabel: "Labor budget not available yet.",
+        amountLabel: null,
+        ruleLabel: null,
+        rateLabel: null,
+      };
+    }
+
+    const risk = String(snap?.operational_risk || "").toLowerCase();
+    const bonusStatus = String(snap?.supervisor_bonus_status || "").toLowerCase();
+    const pctToward = finiteNumber(snap?.supervisor_bonus_pct_of_potential, 0);
+    let statusShort = "Bonus on track";
+    let statusLong = "On track for bonus";
+    if (risk === "high" || bonusStatus.includes("risk") || bonusStatus === "at_risk") {
+      statusShort = "Bonus at risk";
+      statusLong = "Bonus at risk";
+    } else if (bonusStatus.includes("not") || bonusStatus === "unavailable") {
+      return {
+        status: "Labor budget not available yet.",
+        pace: "—",
+        headerLabel: "Labor budget not available yet.",
+        amountLabel: null,
+        ruleLabel: null,
+        rateLabel: null,
+      };
+    }
+
+    const bonusRaw = snap?.supervisor_bonus_amount;
+    const bonusAmount = finiteNumber(bonusRaw, NaN);
+    const hasBonusAmount =
+      bonusRaw != null &&
+      bonusRaw !== "" &&
+      Number.isFinite(bonusAmount);
+    const amountText = hasBonusAmount ? formatMoney(bonusAmount) : null;
+    const rateLabel = formatSupervisorBonusRateLabel(ratePct);
+    const ruleLabel = `Rule: ${rateLabel} of labor cost`;
+    const baseNote = "Base: Labor cost only";
+
+    const headerLabel = amountText
+      ? `${statusShort} · Est. bonus ${amountText}`
+      : statusShort;
+
+    let pace = `${ruleLabel} · ${baseNote}`;
+    if (!amountText) {
+      pace =
+        pctToward > 0
+          ? `${Math.round(pctToward)}% toward bonus · ${ruleLabel} · ${baseNote}`
+          : statusShort === "Bonus at risk"
+            ? `Behind pace · ${ruleLabel} · ${baseNote}`
+            : `${ruleLabel} · ${baseNote}`;
+    }
+
+    return {
+      status: amountText ? `${statusLong} · Est. bonus ${amountText}` : statusLong,
+      pace,
+      headerLabel,
+      amountLabel: amountText ? `Estimated bonus: ${amountText}` : null,
+      ruleLabel,
+      rateLabel: `Bonus rate: ${rateLabel}`,
+      baseNote,
+    };
   }
 
   function formatSupervisorCalHeaderSummary(snap, risk, bonusCopy) {
@@ -2793,35 +2877,16 @@ Thank you.`
     parts.push(`Expenses ${finiteNumber(snap.expense_count, 0)}`);
     const riskLabel = formatSupervisorOperationalRisk(risk);
     if (riskLabel !== "—") parts.push(`Risk ${riskLabel}`);
-    parts.push(compactSupervisorBonusHeaderLabel(bonusCopy?.status));
+    parts.push(
+      bonusCopy?.headerLabel ||
+        compactSupervisorBonusHeaderLabel(bonusCopy?.status)
+    );
     return parts.join(" · ");
   }
 
   function setSupervisorCalHeaderSummary(text) {
     const el = $("supCalHeaderSummary");
     if (el) el.textContent = text == null || text === "" ? "—" : String(text);
-  }
-
-  function formatSupervisorBonusCopy(snap, laborBudgetConfigured) {
-    if (!laborBudgetConfigured) {
-      return { status: "Bonus rules not configured yet.", pace: "—" };
-    }
-    const risk = String(snap.operational_risk || "").toLowerCase();
-    const bonusStatus = String(snap.supervisor_bonus_status || "").toLowerCase();
-    const pct = finiteNumber(snap.supervisor_bonus_pct_of_potential, 0);
-    let status = "On track for bonus";
-    if (risk === "high" || bonusStatus.includes("risk") || bonusStatus === "at_risk") {
-      status = "Bonus at risk";
-    } else if (bonusStatus.includes("not") || bonusStatus === "unavailable") {
-      status = "Bonus rules not configured yet.";
-    }
-    const pace =
-      pct > 0
-        ? `${Math.round(pct)}% toward bonus`
-        : status === "Bonus at risk"
-          ? "Behind pace"
-          : "Building pace";
-    return { status, pace };
   }
 
   function supervisorDayProgressMap(rows) {
@@ -3595,7 +3660,11 @@ Thank you.`
         : `${Math.round(Number(pace))}%`
     );
 
-    const laborConfigured = finiteNumber(o.laborBudget, 0) > 0;
+    const laborBudget = Math.max(
+      finiteNumber(o.laborBudget, 0),
+      finiteNumber(snap.labor_budget, 0)
+    );
+    const laborConfigured = laborBudget > 0;
     const bonusCopy = formatSupervisorBonusCopy(snap, laborConfigured);
     setOpText("supOpBonusStatus", bonusCopy.status);
     setOpText("supOpBonusPace", bonusCopy.pace);
@@ -3646,7 +3715,7 @@ Thank you.`
     setStrip("supCompactReports", `Reports: ${finiteNumber(snap.report_count, 0)}`);
     setStrip("supCompactExpenses", `Expenses: ${finiteNumber(snap.expense_count, 0)}`);
     setStrip("supCompactRisk", `Risk: ${formatSupervisorOperationalRisk(risk)}`);
-    setStrip("supCompactBonus", `Bonus: ${bonusCopy.status}`);
+    setStrip("supCompactBonus", `Bonus: ${bonusCopy.headerLabel || bonusCopy.status}`);
     setSupervisorCalHeaderSummary(
       formatSupervisorCalHeaderSummary(snap, risk, bonusCopy)
     );
