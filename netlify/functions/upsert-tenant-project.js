@@ -13,6 +13,7 @@ const {
   shouldLockLaborPlan,
   isPlanEffectivelyEmpty,
   planHasRows,
+  extractSettingsFromSnapshotPayload,
 } = require("./_lib/project-labor-plan");
 const {
   normalizeOperationalPlan,
@@ -82,6 +83,20 @@ function pickFinite(body, keys) {
 
 function incomingPlanIsValid(plan) {
   return planHasRows(plan) && !isPlanEffectivelyEmpty(plan);
+}
+
+async function loadTenantSettingsFromLatestSnapshot(tenantId) {
+  const tid = encodeURIComponent(String(tenantId || "").trim());
+  if (!tid) return {};
+  try {
+    const rows = await supabaseRequest(
+      `tenant_snapshots?tenant_id=eq.${tid}&select=payload&order=created_at.desc&limit=1`
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    return extractSettingsFromSnapshotPayload(row?.payload);
+  } catch (_e) {
+    return {};
+  }
 }
 
 const SUPERVISOR_QUOTE_STATUSES = new Set(["accepted", "approved"]);
@@ -172,10 +187,12 @@ exports.handler = async (event) => {
         )
       : null;
 
-    const pricingSettings =
-      body.pricing_settings && typeof body.pricing_settings === "object"
+    const pricingSettings = {
+      ...(await loadTenantSettingsFromLatestSnapshot(tenant.id)),
+      ...(body.pricing_settings && typeof body.pricing_settings === "object"
         ? body.pricing_settings
-        : {};
+        : {}),
+    };
 
     const economics = buildEstimateEconomics({
       workers: workersRaw,
