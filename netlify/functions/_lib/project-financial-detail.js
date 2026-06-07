@@ -714,9 +714,21 @@ function buildOwnerProfitBreakdown({
   }
 
   let sellerCommission = null;
-  if (bs.commission_ok && contractTotal >= 0) {
+  let sellerCommissionNote = null;
+  const commissionLaborBase = round2(
+    Math.max(
+      num(project?.estimated_labor_cost, 0),
+      num(project?.labor_budget, 0),
+      num(laborSection.estimated.labor_cost, 0)
+    )
+  );
+  if (!bs.commission_ok) {
+    sellerCommissionNote = "Seller commission not configured.";
+  } else if (commissionLaborBase <= 0) {
+    sellerCommissionNote = "Labor budget not available yet.";
+  } else {
     sellerCommission = round2(
-      contractTotal * (num(bs.sales_commission_pct, 0) / 100)
+      commissionLaborBase * (num(bs.sales_commission_pct, 0) / 100)
     );
   }
 
@@ -758,10 +770,9 @@ function buildOwnerProfitBreakdown({
     !bs.burden_ok ||
     !bs.overhead_ok ||
     !bs.reserve_ok ||
-    !bs.commission_ok ||
-    !bs.supervisor_bonus_ok ||
     loadedLabor == null ||
-    supervisorBonus == null;
+    (bs.commission_ok && sellerCommission == null) ||
+    (bs.supervisor_bonus_ok && supervisorBonus == null);
 
   let ownerRemaining = null;
   if (!profitIncomplete) {
@@ -809,6 +820,7 @@ function buildOwnerProfitBreakdown({
     unexpected_expenses: unexpectedTotal,
     operating_cost_allocation: operatingAllocation,
     seller_commission: sellerCommission,
+    seller_commission_note: sellerCommissionNote,
     supervisor_bonus: supervisorBonus,
     supervisor_bonus_note: supervisorBonusNote,
     savings_reserve: savingsReserve,
@@ -863,10 +875,11 @@ function buildOwnerProfitBreakdown({
       ownerProfitLine(
         "Seller commission",
         sellerCommission,
-        !bs.commission_ok ? "not_configured" : "calculated",
-        bs.commission_ok
-          ? `${bs.sales_commission_pct}% of contract`
-          : null
+        !bs.commission_ok || sellerCommission == null ? "not_configured" : "calculated",
+        sellerCommissionNote ||
+          (bs.commission_ok
+            ? `${bs.sales_commission_pct}% of labor cost`
+            : null)
       ),
       ownerProfitLine(
         "Supervisor bonus",

@@ -484,10 +484,28 @@
     return round2(units > 0 ? units : 1);
   }
 
-  /**
-   * Sum operational plan crew rows into Sales labor table workers (Pro / Assistant buckets).
-   * Presentation + labor sync only — does not mutate operational_plan.
-   */
+  function hourlyRateForPlanWorker(worker, settings) {
+    const s = settings && typeof settings === "object" ? settings : {};
+    const wt = normWorkerType(worker && (worker.worker_type || worker.type));
+    return wt === "helper"
+      ? Math.max(0, num(s.baseHelper, 0))
+      : Math.max(0, num(s.baseInstaller, 0));
+  }
+
+  /** Sum labor cost across every worker on every operational plan day (Business Settings rates). */
+  function laborCostFromOperationalPlan(plan, settings) {
+    const days = Array.isArray(plan) ? plan : [];
+    let total = 0;
+    days.forEach(function (day) {
+      (day && day.workers ? day.workers : []).forEach(function (w) {
+        const hours = num(w && w.estimated_hours, 0);
+        if (hours <= 0) return;
+        total += hours * hourlyRateForPlanWorker(w, settings);
+      });
+    });
+    return round2(total);
+  }
+
   function aggregateLaborWorkersFromOperationalPlan(plan, settings) {
     const mode = getOperationalPlanUnitMode(settings);
     const hpd = getHoursPerDay(settings);
@@ -544,6 +562,8 @@
     formatDayUnitsLabel: formatDayUnitsLabel,
     crewRowWorkerDays: crewRowWorkerDays,
     aggregateLaborWorkersFromOperationalPlan: aggregateLaborWorkersFromOperationalPlan,
+    laborCostFromOperationalPlan: laborCostFromOperationalPlan,
+    hourlyRateForPlanWorker: hourlyRateForPlanWorker,
     DISPLAY_PHASE_COLORS: DISPLAY_PHASE_COLORS,
   };
 })(typeof window !== "undefined" ? window : globalThis);

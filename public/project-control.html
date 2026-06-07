@@ -827,7 +827,7 @@
           finKvRow('Loaded labor cost', ownerProfitAmount(opb.loaded_labor_cost, opb.loaded_labor_cost == null ? 'not_configured' : 'calculated')) +
           finKvRow('Unexpected expenses', moneyUsd(opb.unexpected_expenses)) +
           finKvRow('Operating cost allocation', ownerProfitAmount(opb.operating_cost_allocation, opb.operating_cost_allocation == null ? 'not_configured' : 'calculated')) +
-          finKvRow('Seller commission', ownerProfitAmount(opb.seller_commission, opb.seller_commission == null ? 'not_configured' : 'calculated')) +
+          finKvRow('Seller commission', opb.seller_commission_note ? esc(opb.seller_commission_note) : ownerProfitAmount(opb.seller_commission, opb.seller_commission == null ? 'not_configured' : 'calculated')) +
           finKvRow('Supervisor bonus', opb.supervisor_bonus_note ? esc(opb.supervisor_bonus_note) : ownerProfitAmount(opb.supervisor_bonus, opb.supervisor_bonus == null ? 'not_configured' : 'calculated')) +
           finKvRow('Savings reserve', ownerProfitAmount(opb.savings_reserve, opb.savings_reserve == null ? 'not_configured' : 'calculated')) +
           (opb.material_costs != null && opb.material_costs > 0 ? finKvRow('Material costs', moneyUsd(opb.material_costs)) : '') +

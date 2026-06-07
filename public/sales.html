@@ -1762,6 +1762,20 @@
         return key === 'days' || key === 'hours' || key === 'units';
       }
 
+      function resolveSalesCommissionLaborBase(state, settings, workerLabor) {
+        const labor = Number(workerLabor) || 0;
+        const api = getOperationalPlanApi();
+        const plan = state && state.operational_plan;
+        if (api && api.planHasDays(plan) && typeof api.laborCostFromOperationalPlan === 'function') {
+          const hpd = api.getHoursPerDay(settings);
+          const daysOv = typeof readOperationalDaysOverride === 'function' ? readOperationalDaysOverride(state) : null;
+          const normalized = api.normalizeOperationalPlan(plan, daysOv, hpd);
+          const fromPlan = api.laborCostFromOperationalPlan(normalized, settings);
+          if (fromPlan > 0) return fromPlan;
+        }
+        return labor;
+      }
+
       function calculateStandaloneSalesMetrics(state, settings) {
         const hoursPerDay = Math.max(Number(settings.hoursPerDay || 8), 0.25);
         const taxPct = (
@@ -1806,7 +1820,8 @@
           else offered = recommended;
         }
         const commissionRate = Number(settings.salesCommissionPct || 10);
-        const commissionDisplay = round2(Math.max(offered, 0) * (commissionRate / 100));
+        const commissionLaborBase = resolveSalesCommissionLaborBase(state, settings, labor);
+        const commissionDisplay = round2(Math.max(commissionLaborBase, 0) * (commissionRate / 100));
         const needsApproval = offered < negotiation;
         return {
           workerHours: totalHours,
@@ -1821,6 +1836,7 @@
           offered,
           commissionRate,
           commissionDisplay,
+          commissionLaborBase,
           needsApproval
         };
       }
@@ -1899,7 +1915,8 @@
           const offered = Number(p.total);
           const negotiation = negotiationFromBounds(recommended, minimum);
           const commissionRate = local.commissionRate;
-          const commissionDisplay = round2(Math.max(offered, 0) * (commissionRate / 100));
+          const commissionLaborBase = resolveSalesCommissionLaborBase(state, settings, local.laborCost);
+          const commissionDisplay = round2(Math.max(commissionLaborBase, 0) * (commissionRate / 100));
           const needsApproval = offered < negotiation;
           let depositRequired = Number(p.deposit_required);
           if (!Number.isFinite(depositRequired) || depositRequired <= 0) {
@@ -2051,7 +2068,7 @@
         setText('salesPrimaryPrice', money(metrics.recommended, settings.currency));
         setText('salesPrimaryMeta', `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${money(metrics.offered, settings.currency)}`);
         setText('salesPrimaryCommission', `${metrics.commissionRate.toFixed(2)}%`);
-        setText('salesPrimaryCommissionMeta', `${money(metrics.commissionDisplay, settings.currency)} estimado`);
+        setText('salesPrimaryCommissionMeta', `${money(metrics.commissionDisplay, settings.currency)} estimado · ${money(metrics.commissionLaborBase != null ? metrics.commissionLaborBase : metrics.laborCost, settings.currency)} mano de obra`);
         setText('salesFlowHeadline', metrics.workerDays <= 0 ? 'Completar datos' : metrics.needsApproval ? 'Bajo recomendado' : 'Listo para enviar');
         setText(
           'salesFlowCaption',

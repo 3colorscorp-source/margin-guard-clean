@@ -93,7 +93,7 @@ function calculateSecurePricing(input, tenantSettings) {
   const offered =
     manualTouched && Number.isFinite(parsedPrice) ? parsedPrice : recommended_price;
 
-  const commission_amount = round2(Math.max(offered, 0) * (commission_pct / 100));
+  const commission_amount = round2(Math.max(base, 0) * (commission_pct / 100));
   const needs_approval = offered < negotiationMid;
 
   return {

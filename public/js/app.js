@@ -8345,6 +8345,24 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     };
   }
 
+  function resolveCommissionLaborBase(state, settings, workerLabor) {
+    const labor = finiteNumber(workerLabor, 0);
+    const api = typeof window !== "undefined" ? window.MgSalesOperationalPlan : null;
+    const plan = state?.operational_plan;
+    if (api?.planHasDays?.(plan) && typeof api.laborCostFromOperationalPlan === "function") {
+      const hpd = api.getHoursPerDay(settings);
+      const rawOv = state?.operational_estimated_days_override;
+      const override =
+        rawOv != null && rawOv !== "" && Number.isFinite(Number(rawOv)) && Number(rawOv) > 0
+          ? Number(rawOv)
+          : null;
+      const normalized = api.normalizeOperationalPlan(plan, override, hpd);
+      const fromPlan = api.laborCostFromOperationalPlan(normalized, settings);
+      if (fromPlan > 0) return fromPlan;
+    }
+    return labor;
+  }
+
   function calculateSalesMetrics(state, settings) {
     const base = calcSales(state, settings);
     const workers = Array.isArray(state?.workers) ? state.workers : [];
@@ -8356,7 +8374,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const negotiation = finiteNumber(base.negotiation, 0);
     const offered = resolveSalesOfferedFromState(state, base);
     const commissionRate = finiteNumber(settings?.salesCommissionPct, DEFAULTS.salesCommissionPct);
-    const commissionDisplay = round2(Math.max(offered, 0) * (commissionRate / 100));
+    const commissionLaborBase = resolveCommissionLaborBase(state, settings, base.labor);
+    const commissionDisplay = round2(Math.max(commissionLaborBase, 0) * (commissionRate / 100));
     const stage = offered >= recommended ? 2 : offered >= negotiation ? 1 : 0;
     const marginGate = computeSalesMarginDecisionFromEconomics(offered, base.beforeProfit, base.reserve, settings);
     const needsApproval = marginGate.level === "yellow";
@@ -8380,7 +8399,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       floorMarginPct: marginGate.minimumMarginPct,
       approved,
       commissionRate,
-      commissionDisplay
+      commissionDisplay,
+      commissionLaborBase
     };
   }
 
@@ -8691,7 +8711,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   setText("salesPrimaryPrice", formatMoney(metrics.recommended));
   setText("salesPrimaryMeta", `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${formatMoney(offered)}`);
   setText("salesPrimaryCommission", metrics.commissionRate.toFixed(2) + "%");
-  setText("salesPrimaryCommissionMeta", `${formatMoney(metrics.commissionDisplay)} estimated commission`);
+  setText("salesPrimaryCommissionMeta", `${formatMoney(metrics.commissionDisplay)} estimated · ${formatMoney(metrics.commissionLaborBase ?? metrics.labor)} labor cost`);
   setText("salesFlowHeadline", metrics.workerDays <= 0 ? "Complete labor" : metrics.needsApproval ? "Below recommendation" : "Ready to send");
   setText(
     "salesFlowCaption",
