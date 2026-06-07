@@ -1109,6 +1109,13 @@ Thank you.`
   /** Last supervisor project id used to force an in-memory empty slice before reloading report state on switch. */
   let lastSupervisorProjectId = null;
 
+  /** Prevents overlapping full Supervisor paints (async completions coalesce to one follow-up). */
+  let supervisorRendering = false;
+  let supervisorRenderQueued = false;
+
+  /** True while assign-supervisor-project request is in flight (survives re-render). */
+  let supervisorAssignInProgress = false;
+
   /** projectId -> { ok: boolean, reports: array } for tenant_project_reports (Supervisor daily entries). */
   const supervisorProjectReportsCache = Object.create(null);
   const supervisorProjectReportsFetchInFlight = new Set();
@@ -9022,6 +9029,12 @@ window.closeSendModal = closeSendModal;
 window.sendQuote = sendQuote;
 
 function renderSupervisor() {
+    if (supervisorRendering) {
+      supervisorRenderQueued = true;
+      return;
+    }
+    supervisorRendering = true;
+    try {
     if (!$("supProjectPicker")) return;
     bindSupFieldModalsOnce();
     bindSupExpenseSummaryOnce();
@@ -9108,14 +9121,16 @@ function renderSupervisor() {
     const supAssignFb = $("supAssignFeedback");
     if (btnSupAssign) {
       const pid = String(picker?.value || "").trim();
-      btnSupAssign.disabled = !pid;
+      btnSupAssign.disabled = !pid || supervisorAssignInProgress;
       btnSupAssign.onclick = async () => {
         const projectId = String(picker?.value || "").trim();
         if (!projectId) {
           if (supAssignFb) supAssignFb.textContent = "Select a project first.";
           return;
         }
+        if (supervisorAssignInProgress) return;
         if (supAssignFb) supAssignFb.textContent = "";
+        supervisorAssignInProgress = true;
         btnSupAssign.disabled = true;
         try {
           const res = await fetch("/.netlify/functions/assign-supervisor-project", {
@@ -9135,6 +9150,7 @@ function renderSupervisor() {
         } catch (_e) {
           if (supAssignFb) supAssignFb.textContent = "Network error. Try again.";
         } finally {
+          supervisorAssignInProgress = false;
           const cur = String($("supProjectPicker")?.value || "").trim();
           if (btnSupAssign) btnSupAssign.disabled = !cur;
         }
@@ -9320,11 +9336,16 @@ function renderSupervisor() {
             }
           });
         }
-        void loadSupervisorOperationalSnapshot(pid).then(() => {
-          if (supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
-            renderSupervisor();
-          }
-        });
+        if (
+          !supervisorProjectOperationalCache[pid] &&
+          !supervisorProjectOperationalFetchInFlight.has(pid)
+        ) {
+          void loadSupervisorOperationalSnapshot(pid).then(() => {
+            if (supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
+              renderSupervisor();
+            }
+          });
+        }
       }
 
       let state = loadSupervisorReport(currentProject);
@@ -9885,6 +9906,13 @@ function renderSupervisor() {
     }
 
     refresh();
+    } finally {
+      supervisorRendering = false;
+      if (supervisorRenderQueued) {
+        supervisorRenderQueued = false;
+        renderSupervisor();
+      }
+    }
   }
 
 window.renderSupervisor = renderSupervisor;
