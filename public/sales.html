@@ -1896,9 +1896,16 @@
       }
 
       function depositFromStateOrHeuristic(state, local) {
+        const workerDays = Number(local && local.workerDays);
+        const recommended = Number(local && local.recommended);
+        if (!(workerDays > 0) && !(recommended > 0)) {
+          return 0;
+        }
         let d = Number(state.depositRequired);
         if (Number.isFinite(d) && d > 0) return d;
-        return Math.max(1000, round2(Math.max(Number(local.offered) || 0, 0) * 0.1));
+        const offered = Math.max(Number(local.offered) || 0, 0);
+        if (offered <= 0) return 0;
+        return Math.max(1000, round2(offered * 0.1));
       }
 
       /**
@@ -2137,15 +2144,25 @@
             mline.textContent = metrics.marginMessage || '';
           }
         }
+        const isCleanDraft = !(metrics.workerDays > 0 && metrics.recommended > 0);
+
         const salesKpis = document.getElementById('salesKpis');
         if (salesKpis) {
-          const kpiBlocks = [
-            { label: 'Subtotal', value: money(offered, settings.currency) },
-            { label: 'Recommended', value: money(metrics.recommended, settings.currency) },
-            { label: 'Minimum', value: money(metrics.minimum, settings.currency) },
-            { label: 'Deposit', value: money(metrics.depositRequired, settings.currency) },
-            { label: 'Commission', value: money(metrics.commissionDisplay, settings.currency) }
-          ];
+          const kpiBlocks = isCleanDraft
+            ? [
+                { label: 'Subtotal', value: money(0, settings.currency) },
+                { label: 'Recommended', value: money(0, settings.currency) },
+                { label: 'Minimum', value: money(0, settings.currency) },
+                { label: 'Deposit', value: money(0, settings.currency) },
+                { label: 'Commission', value: money(0, settings.currency) }
+              ]
+            : [
+                { label: 'Subtotal', value: money(offered, settings.currency) },
+                { label: 'Recommended', value: money(metrics.recommended, settings.currency) },
+                { label: 'Minimum', value: money(metrics.minimum, settings.currency) },
+                { label: 'Deposit', value: money(metrics.depositRequired, settings.currency) },
+                { label: 'Commission', value: money(metrics.commissionDisplay, settings.currency) }
+              ];
           salesKpis.innerHTML = kpiBlocks.map(function (item) {
             return '<article class="compact-stat"><span>' + escapeHtml(item.label) + '</span><strong>' + escapeHtml(item.value) + '</strong></article>';
           }).join('');
@@ -2178,8 +2195,18 @@
         // Este bloque corre despues de window.renderSales() porque
         // renderStandaloneSellerPanel() es el ultimo paso de
         // refreshSellerFromStandalone().
-        const isCleanDraft = !(metrics.workerDays > 0 && metrics.recommended > 0);
         if (isCleanDraft) {
+          setText('salesPrimaryPrice', money(0, settings.currency));
+          setText('salesPrimaryMeta', '0.00 worker-days | 0.00 labor-hours | 0 workers | Current ' + money(0, settings.currency));
+          setText('salesPrimaryCommission', `${metrics.commissionRate.toFixed(2)}%`);
+          setText('salesPrimaryCommissionMeta', money(0, settings.currency) + ' estimado · ' + money(0, settings.currency) + ' mano de obra');
+          setText('salesStageMin', money(0, settings.currency));
+          setText('salesStageNegotiation', money(0, settings.currency));
+          setText('salesStageRecommended', money(0, settings.currency));
+          const priceDisplay = document.getElementById('salesPriceDisplay');
+          if (priceDisplay) priceDisplay.textContent = '—';
+          const depositEl = document.getElementById('deposit');
+          if (depositEl) depositEl.value = money(0, settings.currency);
           setText('salesTraffic', 'Draft');
           setText('salesHeroState', 'Base');
           setText('salesFlowHeadline', 'Complete labor'); // no-op si el id no existe
@@ -2490,6 +2517,8 @@
           issueDate: '',
           expirationDate: '',
           dueDate: '',
+          startDate: '',
+          targetFinishDate: '',
           projectName: '',
           clientName: '',
           customerEmail: '',
@@ -2509,7 +2538,11 @@
           publicQuoteUrl: '',
           quoteId: '',
           publicToken: '',
-          depositRequired: '',
+          tenantProjectId: '',
+          depositRequired: 0,
+          workers: DEFAULT_WORKERS.map(function (worker) {
+            return { ...worker };
+          }),
           _manualPriceTouched: false,
           _sliderTouched: false,
           pricingStage: 2,
@@ -2532,6 +2565,7 @@
           clearTimeout(_securePricingShadowTimer);
           _securePricingShadowTimer = null;
         }
+        clearSellerStaleQuoteStorageCaches();
         const sendModalEl = document.getElementById('sendModal');
         if (sendModalEl && sendModalEl.dataset) {
           delete sendModalEl.dataset.payload;
@@ -2540,31 +2574,27 @@
 
         saveSalesState(fresh);
 
-        if (typeof window.renderSales !== 'function') {
-          const fields = {
-            salesEstimateNumber: '',
-            salesIssueDate: '',
-            salesExpirationDate: '',
-            salesStartDate: '',
-            salesTargetFinishDate: '',
-            salesDueDate: '',
-            salesProjectName: '',
-            salesClientName: '',
-            salesCustomerEmail: '',
-            salesAdditionalRecipients: '',
-            salesCustomerPhone: '',
-            salesLocation: '',
-            salesPrice: '',
-            salesMessageToClient: '',
-            salesNotes: ''
-          };
-          Object.entries(fields).forEach(function (entry) {
-            const node = document.getElementById(entry[0]);
-            if (node) node.value = entry[1];
-          });
-          renderSellerWorkersStandalone();
-          renderStandaloneSellerPanel();
-        }
+        const fields = {
+          salesEstimateNumber: '',
+          salesIssueDate: '',
+          salesExpirationDate: '',
+          salesStartDate: '',
+          salesTargetFinishDate: '',
+          salesDueDate: '',
+          salesProjectName: '',
+          salesClientName: '',
+          salesCustomerEmail: '',
+          salesAdditionalRecipients: '',
+          salesCustomerPhone: '',
+          salesLocation: '',
+          salesPrice: '',
+          salesMessageToClient: '',
+          salesNotes: ''
+        };
+        Object.entries(fields).forEach(function (entry) {
+          const node = document.getElementById(entry[0]);
+          if (node) node.value = entry[1];
+        });
 
         const countPairs = [
           ['salesProjectName', 'salesProjectNameCount'],
@@ -2602,6 +2632,8 @@
         if (salesProgress) salesProgress.value = 0;
 
         bindStandaloneSellerWorkers();
+
+        refreshSellerFromStandalone();
 
         console.log('[Sales New Quote] reset complete');
       }
