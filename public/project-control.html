@@ -7,119 +7,36 @@
   <link rel="stylesheet" href="/styles.css" />
   <style>
     .pcc-hero {
-      margin-bottom: 1.25rem;
+      margin-bottom: 0.75rem;
+    }
+    .pcc-hero .card-inner {
+      padding-top: 12px;
+      padding-bottom: 12px;
     }
     .pcc-hero-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 1.5rem 2rem;
-      flex-wrap: wrap;
+      display: block;
     }
     .pcc-hero-head .section-head {
-      flex: 1 1 280px;
       min-width: 0;
     }
-
-    .pcc-hero-visual {
-      width: 220px;
-      height: 140px;
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      opacity: 0.92;
+    .pcc-hero-head .hero-title {
+      font-size: clamp(1.35rem, 2.5vw, 1.75rem);
+      margin-bottom: 4px;
+    }
+    .pcc-hero-head .sub {
+      font-size: 0.875rem;
+      max-width: 56ch;
+      line-height: 1.45;
     }
 
-    .pcc-radar {
-      position: relative;
-      width: 140px;
-      height: 140px;
-    }
-
-    .pcc-radar-ring {
-      position: absolute;
-      inset: 0;
-      border-radius: 50%;
-      border: 1px solid rgba(80, 255, 180, 0.15);
-      box-shadow: 0 0 25px rgba(80, 255, 180, 0.08);
-      pointer-events: none;
-      animation: pccRadarPulse 3s infinite ease-in-out;
-    }
-
-    .pcc-radar-ring:nth-child(2) {
-      inset: 10px;
-      animation-delay: 0.5s;
-    }
-
-    .pcc-radar-ring:nth-child(3) {
-      inset: 20px;
-      animation-delay: 1s;
-    }
-
-    .pcc-radar-line {
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 8px;
-      height: 52px;
-      width: 100%;
-      overflow: visible;
-      pointer-events: none;
-    }
-
-    .pcc-radar-line polyline {
-      fill: none;
-      stroke: #4df2a1;
-      stroke-width: 2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      filter: drop-shadow(0 0 6px rgba(77, 242, 161, 0.55));
-      animation: pccDrawLine 2.8s ease-out forwards;
-    }
-
-    @keyframes pccRadarPulse {
-      0%,
-      100% {
-        opacity: 0.28;
-        transform: scale(1);
-      }
-      50% {
-        opacity: 0.55;
-        transform: scale(1.04);
-      }
-    }
-
-    @keyframes pccDrawLine {
-      from {
-        stroke-dasharray: 320;
-        stroke-dashoffset: 320;
-      }
-      to {
-        stroke-dashoffset: 0;
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .pcc-radar-ring,
-      .pcc-radar-line polyline {
-        animation: none !important;
-      }
-      .pcc-radar-line polyline {
-        stroke-dasharray: none;
-        stroke-dashoffset: 0;
-      }
-    }
-
-    /* KPI row — light premium cards on dark shell (#pccSummary only) */
+    /* KPI row — compact owner strip (#pccSummary only) */
     .pcc-stats--kpi {
       display: grid;
-      grid-template-columns: 1fr;
-      gap: 16px;
-      margin-bottom: 1.5rem;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 0.75rem;
     }
-    @media (min-width: 900px) {
+    @media (min-width: 720px) {
       .pcc-stats--kpi {
         grid-template-columns: repeat(4, minmax(0, 1fr));
       }
@@ -128,14 +45,14 @@
     .pcc-kpi {
       position: relative;
       display: flex;
-      align-items: flex-start;
-      gap: 18px;
-      padding: 22px 24px;
-      border-radius: 22px;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 14px;
       background: linear-gradient(165deg, #fafbfc 0%, #f0f2f6 100%);
       border: 1px solid rgba(255, 255, 255, 0.12);
       box-shadow:
-        0 14px 36px rgba(0, 0, 0, 0.32),
+        0 8px 20px rgba(0, 0, 0, 0.22),
         0 0 0 1px rgba(13, 20, 34, 0.06),
         inset 0 1px 0 rgba(255, 255, 255, 0.85);
       overflow: hidden;
@@ -147,7 +64,7 @@
       right: 0;
       top: 0;
       height: 3px;
-      border-radius: 22px 22px 0 0;
+      border-radius: 14px 14px 0 0;
       opacity: 0.95;
     }
     .pcc-kpi--active::before { background: linear-gradient(90deg, #0f8a5f, #12a06e); box-shadow: 0 0 24px rgba(15, 138, 95, 0.35); }
@@ -157,16 +74,16 @@
 
     .pcc-kpi__icon {
       flex: 0 0 auto;
-      width: 52px;
-      height: 52px;
-      border-radius: 14px;
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
       display: flex;
       align-items: center;
       justify-content: center;
     }
     .pcc-kpi__icon svg {
-      width: 26px;
-      height: 26px;
+      width: 17px;
+      height: 17px;
     }
     .pcc-kpi--active .pcc-kpi__icon {
       background: rgba(15, 138, 95, 0.14);
@@ -202,45 +119,53 @@
       line-height: 1.2;
     }
     .pcc-kpi__value {
-      font-size: clamp(1.75rem, 3vw, 2.15rem);
+      font-size: clamp(1.25rem, 2.2vw, 1.55rem);
       font-weight: 800;
       line-height: 1.05;
       letter-spacing: -0.03em;
       color: #0d1422;
     }
     .pcc-kpi__hint {
-      margin: 6px 0 0;
-      font-size: 0.8125rem;
-      line-height: 1.4;
-      color: #6b7280;
-      font-weight: 500;
+      display: none;
     }
 
     .pcc-row-actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 6px;
       align-items: center;
       justify-content: flex-end;
-      min-width: 220px;
+      min-width: 0;
+    }
+    .pcc-row-actions .btn {
+      font-size: 0.8125rem;
+      padding: 6px 10px;
+      white-space: nowrap;
     }
 
     .pcc-remove {
-      color: #991b1b;
-      border-color: rgba(153, 27, 27, 0.35);
+      font-size: 0.75rem;
+      color: #7f1d1d;
+      border-color: rgba(127, 29, 29, 0.2);
+      opacity: 0.9;
     }
 
     .pcc-remove:hover {
-      background: rgba(153, 27, 27, 0.08);
+      background: rgba(127, 29, 29, 0.06);
+    }
+
+    .pcc-progress-cell {
+      font-size: 0.8125rem;
+      line-height: 1.35;
+      color: rgba(232, 238, 252, 0.88);
+      white-space: nowrap;
     }
 
     .pcc-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
-    .pcc-filters .hint { font-size: 0.85rem; color: var(--muted, #666); margin-left: auto; }
     .pcc-filter-btn.active { box-shadow: inset 0 0 0 2px var(--accent, #0f8a5f); }
     .pcc-table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border, #e8e8e8); }
-    .pcc-row { cursor: pointer; transition: background 0.12s ease; }
-    .pcc-row:hover { background: rgba(15, 138, 95, 0.06); }
-    .pcc-row.selected { background: rgba(15, 138, 95, 0.1); }
+    .pcc-row { transition: background 0.12s ease; }
+    .pcc-row.selected { background: rgba(15, 138, 95, 0.08); }
     .pcc-detail { margin-top: 1.5rem; display: none; }
     .pcc-detail.open { display: block; }
     .pcc-detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -453,20 +378,9 @@
         <div class="pcc-hero-head">
           <div class="section-head">
             <div>
-              <span class="eyebrow">Owner / Admin</span>
+              <span class="eyebrow">Owner command center</span>
               <h2 class="hero-title">Project Control Center™</h2>
-              <p class="sub" style="margin:0;">One place to see every active job: on track, at risk, or delayed — using the same field reports and dates as Supervisor.</p>
-            </div>
-          </div>
-          <div class="pcc-hero-visual" aria-hidden="true">
-            <div class="pcc-radar">
-              <div class="pcc-radar-ring"></div>
-              <div class="pcc-radar-ring"></div>
-              <div class="pcc-radar-ring"></div>
-
-              <svg class="pcc-radar-line" viewBox="0 0 200 100" preserveAspectRatio="xMidYMax meet">
-                <polyline points="0,80 40,60 80,70 120,40 160,50 200,20" />
-              </svg>
+              <p class="sub" style="margin:0;">Active jobs at a glance — on track, at risk, or delayed — using the same field reports and dates as Supervisor.</p>
             </div>
           </div>
         </div>
@@ -534,10 +448,9 @@
       <div class="card-inner">
         <div class="pcc-filters">
           <button type="button" class="btn pcc-filter-btn active" data-filter="all">All</button>
-          <button type="button" class="btn pcc-filter-btn" data-filter="green">Green</button>
-          <button type="button" class="btn pcc-filter-btn" data-filter="yellow">Yellow</button>
-          <button type="button" class="btn pcc-filter-btn" data-filter="red">Red</button>
-          <span class="hint">View detail = financial modal · row click = baseline &amp; reports.</span>
+          <button type="button" class="btn pcc-filter-btn" data-filter="green">On track</button>
+          <button type="button" class="btn pcc-filter-btn" data-filter="yellow">At risk</button>
+          <button type="button" class="btn pcc-filter-btn" data-filter="red">Delayed</button>
         </div>
         <div class="notice" id="pccLoadError" style="display:none;"></div>
         <div class="pcc-table-wrap">
@@ -546,11 +459,8 @@
               <tr>
                 <th>Project</th>
                 <th>Client</th>
-                <th>Due date</th>
-                <th>Budgeted days</th>
-                <th>Days spent</th>
-                <th>Days remaining</th>
-                <th>Progress %</th>
+                <th>Due</th>
+                <th>Progress</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -708,6 +618,22 @@
       function pct(v) {
         if (v == null || !isFinite(Number(v))) return '—';
         return Math.round(Number(v)) + '%';
+      }
+      function fmtDayNum(n) {
+        var x = Number(n);
+        if (!isFinite(x)) return '—';
+        if (Math.abs(x - Math.round(x)) < 0.05) return String(Math.round(x));
+        return x.toFixed(1);
+      }
+      function fmtProgressSummary(m) {
+        var pctStr = pct(m.progressPct);
+        var est = Number(m.estimatedDays);
+        var spent = Number(m.daysSpent);
+        var left = Number(m.daysRemaining);
+        if (est > 0) {
+          return pctStr + ' · ' + fmtDayNum(spent) + '/' + fmtDayNum(est) + ' days · ' + fmtDayNum(left) + ' left';
+        }
+        return pctStr + ' · ' + fmtDayNum(spent) + ' days spent';
       }
 
       var allRows = [];
@@ -1068,14 +994,12 @@
             '<td><strong>' + esc(p.projectName || '—') + '</strong></td>' +
             '<td>' + esc(p.clientName || '—') + '</td>' +
             '<td>' + esc(fmtDate(m.dueDate)) + '</td>' +
-            '<td>' + (m.estimatedDays > 0 ? m.estimatedDays.toFixed(2) : '—') + '</td>' +
-            '<td>' + m.daysSpent.toFixed(2) + '</td>' +
-            '<td>' + m.daysRemaining.toFixed(2) + '</td>' +
-            '<td>' + pct(m.progressPct) + '</td>' +
+            '<td class="pcc-progress-cell">' + esc(fmtProgressSummary(m)) + '</td>' +
             '<td><span class="badge ' + tone + '">' + esc(m.statusLabel) + '</span></td>' +
             '<td class="pcc-row-actions">' +
-            '<button type="button" class="btn primary pcc-view-financial" data-pcc-action="financial" data-id="' + esc(p.id) + '">View detail</button>' +
-            '<button type="button" class="btn ghost pcc-remove" data-id="' + esc(p.id) + '" data-name="' + esc(p.projectName || 'Project') + '">Remove</button>' +
+            '<button type="button" class="btn primary pcc-view-financial" data-pcc-action="financial" data-id="' + esc(p.id) + '">Financials</button>' +
+            '<button type="button" class="btn pcc-view-reports" data-pcc-action="reports" data-id="' + esc(p.id) + '">Reports &amp; baseline</button>' +
+            '<button type="button" class="btn ghost pcc-remove" data-id="' + esc(p.id) + '" data-name="' + esc(p.projectName || 'Project') + '">Archive</button>' +
             '</td>' +
             '</tr>'
           );
@@ -1095,6 +1019,13 @@
             void openFinancialDetail(String(finBtn.getAttribute('data-id') || ''));
             return;
           }
+          var reportsBtn = e.target.closest('[data-pcc-action="reports"]');
+          if (reportsBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            void openDetail(String(reportsBtn.getAttribute('data-id') || ''));
+            return;
+          }
           var removeBtn = e.target.closest('.pcc-remove');
           if (removeBtn) {
             e.preventDefault();
@@ -1105,10 +1036,6 @@
             );
             return;
           }
-          if (e.target.closest('.pcc-row-actions')) return;
-          var tr = e.target.closest('.pcc-row');
-          if (!tr) return;
-          void openDetail(String(tr.getAttribute('data-id') || ''));
         });
       }
 
@@ -1116,7 +1043,7 @@
         if (!projectId) return;
         var label = projectName || 'this project';
         var ok = window.confirm(
-          'Remove "' + label + '" from Project Control?\n\nThis will hide it from active production lists but keep history.'
+          'Archive "' + label + '" from Project Control?\n\nThis will hide it from active production lists but keep history.'
         );
         if (!ok) return;
 
