@@ -75,9 +75,11 @@
         Complete los campos obligatorios para guardar Business Settings y calcular precios correctamente.
       </div>
 
-      <div class="bs-dashboard-grid">
+      <div class="bs-columns">
 
-        <div class="card bs-dash-card">
+        <div class="bs-column bs-column--left">
+
+        <div class="card bs-dash-card bs-order-company">
           <div class="card-inner bs-card-inner-tight">
             <h2 class="bs-card-title">Company Profile</h2>
             <p class="sub bs-card-sub">Public identity on Sales, PDF, email, and public quote view.</p>
@@ -95,25 +97,28 @@
                 <label for="businessPhone">Business phone</label>
                 <input id="businessPhone" maxlength="30" placeholder="(650) 555-0101" />
               </div>
-              <div class="field">
+              <div class="field field--full">
                 <label for="businessAddress">Business address</label>
                 <input id="businessAddress" maxlength="160" placeholder="123 Main St, City, State ZIP" />
               </div>
-              <div class="field">
-                <label for="publicLogoUrl">Public logo URL</label>
-                <input id="publicLogoUrl" maxlength="500" placeholder="https://..." />
-                <div class="hint hint--start">Paste a URL or upload below.</div>
-              </div>
-              <div class="field field--full">
-                <label for="businessLogoUpload">Upload logo</label>
-                <input type="file" id="businessLogoUpload" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/svg+xml" />
+              <div class="field field--full bs-logo-band">
+                <div class="bs-logo-band-main">
+                  <div class="field">
+                    <label for="publicLogoUrl">Public logo URL</label>
+                    <input id="publicLogoUrl" maxlength="500" placeholder="https://..." />
+                  </div>
+                  <div class="field">
+                    <label for="businessLogoUpload">Upload logo</label>
+                    <input type="file" id="businessLogoUpload" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/svg+xml" />
+                  </div>
+                  <div class="field bs-logo-accent-field">
+                    <label for="publicAccentColor">Accent color</label>
+                    <input id="publicAccentColor" type="color" value="#0f8a5f" />
+                  </div>
+                </div>
                 <div class="bs-logo-preview-wrap">
                   <img id="businessLogoPreview" alt="" class="bs-logo-preview" />
                 </div>
-              </div>
-              <div class="field">
-                <label for="publicAccentColor">Accent color</label>
-                <input id="publicAccentColor" type="color" value="#0f8a5f" />
               </div>
               <div class="field">
                 <label for="serviceLine">Service line</label>
@@ -123,7 +128,7 @@
                 <label for="marketLine">Market line</label>
                 <input id="marketLine" maxlength="90" placeholder="Bay Area, CA" />
               </div>
-              <div class="field">
+              <div class="field field--full">
                 <label for="signatureLine">Signature line</label>
                 <input id="signatureLine" maxlength="120" placeholder="Professional Estimate Delivery" />
               </div>
@@ -131,7 +136,89 @@
           </div>
         </div>
 
-        <div class="card bs-dash-card">
+        <div class="card bs-dash-card bs-order-commissions">
+          <div class="card-inner bs-card-inner-tight">
+            <h2 class="bs-card-title">Commissions &amp; Bonuses</h2>
+            <p class="sub bs-card-sub">Both are calculated from labor cost only, not contract total.</p>
+            <div class="form bs-form-dense">
+              <div class="field">
+                <label for="salesCommissionPct">Seller commission (%)</label>
+                <input id="salesCommissionPct" type="number" step="0.01" placeholder="10" />
+              </div>
+              <div class="field">
+                <label for="supervisorBonusPct">Supervisor bonus (%)</label>
+                <input id="supervisorBonusPct" type="number" step="0.01" placeholder="1" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card bs-dash-card bs-order-payments">
+          <div class="card-inner bs-card-inner-tight">
+            <div class="section-head bs-payments-head">
+              <div>
+                <h2 class="bs-card-title">Payments &amp; Invoice Text</h2>
+                <p class="sub bs-card-sub">Deposits via Stripe Connect. Invoice text on client links only.</p>
+              </div>
+              <div class="badge" id="depositStripeBadge">—</div>
+            </div>
+            <div class="bs-payments-stack">
+              <div class="bs-payments-col">
+                <h3 class="bs-subsection-title">Project deposits</h3>
+                <div class="field">
+                  <label for="depositPaymentLink">Deposit Payment Link</label>
+                  <input
+                    id="depositPaymentLink"
+                    type="url"
+                    maxlength="2000"
+                    placeholder="https://buy.stripe.com/..."
+                    autocomplete="off"
+                  />
+                </div>
+                <p class="sub bs-stripe-status-line">Stripe: <strong id="depositStripeStatusText">Loading…</strong></p>
+                <ul class="msg-list bs-stripe-lines bs-stripe-lines--compact">
+                  <li id="depositStripeLineAccount">Stripe account: —</li>
+                  <li id="depositStripeLineCharges">Charges: —</li>
+                  <li id="depositStripeLineDetails">Details submitted: —</li>
+                </ul>
+                <div class="inline-actions bs-stripe-actions">
+                  <button class="btn primary" type="button" id="btnStripeDepositConnect">Connect Stripe</button>
+                  <button class="btn" type="button" id="btnStripeDepositRefresh">Refresh</button>
+                </div>
+                <div class="notice" id="depositStripeNotice" style="display:none;margin-top:6px;"></div>
+              </div>
+              <div class="bs-payments-col">
+                <h3 class="bs-subsection-title">Public invoice (client page)</h3>
+                <div class="field">
+                  <label for="tenantPaymentInstructions">Payment instructions</label>
+                  <textarea
+                    id="tenantPaymentInstructions"
+                    rows="3"
+                    maxlength="8000"
+                    placeholder="How clients should pay you (check payable to, mailing address, Zelle phone, reference line, etc.)"
+                  ></textarea>
+                </div>
+                <div class="field">
+                  <label for="tenantPaymentLink">Payment link (optional)</label>
+                  <input
+                    id="tenantPaymentLink"
+                    type="url"
+                    maxlength="2000"
+                    placeholder="https://…"
+                    autocomplete="off"
+                  />
+                  <div class="hint hint--start">External link only (bank, QuickBooks, Square, etc.).</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        </div>
+
+        <div class="bs-column bs-column--right">
+
+        <div class="card bs-dash-card bs-order-labor">
           <div class="card-inner bs-card-inner-tight">
             <h2 class="bs-card-title">Labor &amp; Crew</h2>
             <p class="sub bs-card-sub">Base rates, quote mode, and scheduling capacity.</p>
@@ -182,28 +269,11 @@
           </div>
         </div>
 
-        <div class="card bs-dash-card">
-          <div class="card-inner bs-card-inner-tight">
-            <h2 class="bs-card-title">Commissions &amp; Bonuses</h2>
-            <p class="sub bs-card-sub">Both are calculated from labor cost only, not contract total.</p>
-            <div class="form bs-form-dense">
-              <div class="field">
-                <label for="salesCommissionPct">Seller commission (%)</label>
-                <input id="salesCommissionPct" type="number" step="0.01" placeholder="10" />
-              </div>
-              <div class="field">
-                <label for="supervisorBonusPct">Supervisor bonus (%)</label>
-                <input id="supervisorBonusPct" type="number" step="0.01" placeholder="1" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card bs-dash-card">
+        <div class="card bs-dash-card bs-order-financial">
           <div class="card-inner bs-card-inner-tight">
             <h2 class="bs-card-title">Financial Protection</h2>
             <p class="sub bs-card-sub">Overhead, payroll burden, margins, and fixed reserve.</p>
-            <div class="form bs-form-dense bs-form-dense--3">
+            <div class="form bs-form-dense">
               <div class="field">
                 <label for="overheadMonthly">Monthly overhead ($)</label>
                 <input id="overheadMonthly" type="number" step="0.01" placeholder="0" />
@@ -244,80 +314,19 @@
           </div>
         </div>
 
-        <div class="card bs-dash-card bs-dash-card--wide">
-          <div class="card-inner bs-card-inner-tight">
-            <div class="section-head bs-payments-head">
-              <div>
-                <h2 class="bs-card-title">Payments &amp; Invoice Text</h2>
-                <p class="sub bs-card-sub">Deposits via your Stripe Connect account. Invoice text on client links only.</p>
-              </div>
-              <div class="badge" id="depositStripeBadge">—</div>
-            </div>
-            <div class="bs-payments-split">
-              <div class="bs-payments-col">
-                <h3 class="bs-subsection-title">Project deposits</h3>
-                <div class="field">
-                  <label for="depositPaymentLink">Deposit Payment Link</label>
-                  <input
-                    id="depositPaymentLink"
-                    type="url"
-                    maxlength="2000"
-                    placeholder="https://buy.stripe.com/..."
-                    autocomplete="off"
-                  />
-                </div>
-                <p class="sub bs-stripe-status-line">Stripe: <strong id="depositStripeStatusText">Loading…</strong></p>
-                <ul class="msg-list bs-stripe-lines bs-stripe-lines--compact">
-                  <li id="depositStripeLineAccount">Stripe account: —</li>
-                  <li id="depositStripeLineCharges">Charges: —</li>
-                  <li id="depositStripeLineDetails">Details submitted: —</li>
-                </ul>
-                <div class="inline-actions bs-stripe-actions">
-                  <button class="btn primary" type="button" id="btnStripeDepositConnect">Connect Stripe</button>
-                  <button class="btn" type="button" id="btnStripeDepositRefresh">Refresh</button>
-                </div>
-                <div class="notice" id="depositStripeNotice" style="display:none;margin-top:8px;"></div>
-              </div>
-              <div class="bs-payments-col">
-                <h3 class="bs-subsection-title">Public invoice (client page)</h3>
-                <div class="field">
-                  <label for="tenantPaymentInstructions">Payment instructions</label>
-                  <textarea
-                    id="tenantPaymentInstructions"
-                    rows="4"
-                    maxlength="8000"
-                    placeholder="How clients should pay you (check payable to, mailing address, Zelle phone, reference line, etc.)"
-                  ></textarea>
-                </div>
-                <div class="field">
-                  <label for="tenantPaymentLink">Payment link (optional)</label>
-                  <input
-                    id="tenantPaymentLink"
-                    type="url"
-                    maxlength="2000"
-                    placeholder="https://…"
-                    autocomplete="off"
-                  />
-                  <div class="hint hint--start">External link only (bank, QuickBooks, Square, etc.).</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card bs-dash-card bs-dash-card--wide">
+        <div class="card bs-dash-card bs-order-bank">
           <div class="card-inner bs-card-inner-tight">
             <h2 class="bs-card-title">Bank connection</h2>
-            <p class="sub bs-card-sub">Cash monitor — map linked accounts to buckets, then sync balances.</p>
+            <p class="sub bs-card-sub">Cash monitor — map accounts to buckets, then sync.</p>
             <div data-mg-bank-panel>
               <div class="inline-actions bs-bank-actions">
                 <button type="button" class="btn primary" data-mg-action="connect-bank">Connect bank</button>
                 <button type="button" class="btn" data-mg-action="sync-summary">Sync</button>
                 <button type="button" class="btn" data-mg-action="save-mapping">Save mapping</button>
               </div>
-              <p class="sub" data-mg-bank-status style="margin-top:8px;min-height:1.2em;"></p>
-              <div class="sub" data-mg-bank-summary style="margin-top:4px;">—</div>
-              <div class="form bs-form-dense bs-bank-map" style="margin-top:10px;">
+              <p class="sub bs-bank-status" data-mg-bank-status> </p>
+              <div class="sub bs-bank-summary" data-mg-bank-summary>—</div>
+              <div class="form bs-form-dense bs-bank-map">
                 <div class="field">
                   <label>Operating / Expenses</label>
                   <select data-mg-map-bucket="operating"></select>
@@ -339,6 +348,34 @@
           </div>
         </div>
 
+        <footer class="card bs-summary-bar bs-order-summary">
+          <div class="card-inner bs-card-inner-tight">
+            <div class="bs-summary-row">
+              <div class="bs-summary-preview">
+                <span class="bs-summary-label">Preview</span>
+                <strong id="previewBusinessName" class="bs-summary-name">—</strong>
+                <span id="previewBusinessMeta" class="sub bs-summary-meta">Sin email ni telefono.</span>
+              </div>
+              <div class="bs-summary-preview">
+                <span class="bs-summary-label">Accent</span>
+                <strong id="previewAccentHex" class="bs-summary-accent">#0f8a5f</strong>
+                <span id="previewSignatureLine" class="sub bs-summary-meta">Professional Estimate Delivery</span>
+              </div>
+              <div class="bs-summary-used">
+                <span class="bs-summary-label">Used by</span>
+                <span class="bs-chip">Sales</span>
+                <span class="bs-chip">Supervisor</span>
+                <span class="bs-chip">Project Control</span>
+                <span class="bs-chip">Public quote / PDF</span>
+                <span class="bs-chip">Public invoice</span>
+              </div>
+            </div>
+            <p class="sub bs-summary-save">Saves to tenant snapshot, branding, and owner settings per tenant.</p>
+          </div>
+        </footer>
+
+        </div>
+
       </div>
 
       <div class="inline-actions bs-save-actions">
@@ -346,34 +383,6 @@
         <button class="btn" id="btnReloadBusinessSettings" type="button">Recargar</button>
       </div>
       <div class="notice" id="businessSettingsStatus" style="display:none; margin-top:10px;"></div>
-
-      <footer class="card bs-summary-bar">
-        <div class="card-inner bs-card-inner-tight">
-          <div class="bs-summary-row">
-            <div class="bs-summary-preview">
-              <span class="bs-summary-label">Preview</span>
-              <strong id="previewBusinessName" class="bs-summary-name">—</strong>
-              <span id="previewBusinessMeta" class="sub bs-summary-meta">Sin email ni telefono.</span>
-            </div>
-            <div class="bs-summary-preview">
-              <span class="bs-summary-label">Accent</span>
-              <strong id="previewAccentHex" class="bs-summary-accent">#0f8a5f</strong>
-              <span id="previewSignatureLine" class="sub bs-summary-meta">Professional Estimate Delivery</span>
-            </div>
-            <div class="bs-summary-used">
-              <span class="bs-summary-label">Used by</span>
-              <span class="bs-chip">Sales</span>
-              <span class="bs-chip">Supervisor</span>
-              <span class="bs-chip">Project Control</span>
-              <span class="bs-chip">Public quote / PDF</span>
-              <span class="bs-chip">Public invoice</span>
-            </div>
-            <div class="bs-summary-save sub">
-              Saves to tenant snapshot, branding, and owner settings per tenant.
-            </div>
-          </div>
-        </div>
-      </footer>
 
     </div>
   </div>
