@@ -937,15 +937,17 @@
         var riskDisplay = profit.risk_label || (profit.owner_profit_breakdown || {}).risk_label || marginRiskLabel(k.risk_status || h.margin_risk);
         var finProgress = fmtFinProgressBadge(h.progress_pct);
         if (badges) {
+          var statusLabel = h.status_label || '—';
+          var completionStatus = h.completion_status ? String(h.completion_status).trim() : '';
           var badgeHtml =
-            '<span class="badge ' + tone + '">' + esc(h.status_label || '—') + '</span>' +
+            '<span class="badge ' + tone + '">' + esc(statusLabel) + '</span>' +
             '<span class="badge">' + esc(finProgress.text) + '</span>' +
             '<span class="badge ' + marginRiskBadgeClass(h.margin_risk || k.risk_status) + '">Margin ' + esc(marginRiskLabel(h.margin_risk || k.risk_status)) + '</span>';
           if (finProgress.overPlan) {
-            badgeHtml += '<span class="badge amber">Over plan</span>';
+            badgeHtml += '<span class="badge amber">Over scheduled days</span>';
           }
-          if (h.completion_status) {
-            badgeHtml += '<span class="badge amber">' + esc(h.completion_status) + '</span>';
+          if (completionStatus && completionStatus !== statusLabel) {
+            badgeHtml += '<span class="badge amber">' + esc(completionStatus) + '</span>';
           }
           badges.innerHTML = badgeHtml;
         }
