@@ -271,30 +271,32 @@
       .pcc-fin-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     .pcc-fin-dash {
-      display: grid;
-      grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr) minmax(0, 1fr);
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      align-content: flex-start;
       gap: 10px;
-      align-items: start;
     }
     @media (max-width: 1100px) {
-      .pcc-fin-dash {
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      }
-      .pcc-fin-col--ledger { grid-column: 1 / -1; }
+      .pcc-fin-col--ledger { flex: 1 1 100%; }
+      .pcc-fin-col--labor,
+      .pcc-fin-col--right { flex: 1 1 calc(50% - 5px); min-width: 260px; }
     }
     @media (max-width: 720px) {
-      .pcc-fin-dash { grid-template-columns: 1fr; }
-      .pcc-fin-col--ledger { grid-column: auto; }
+      .pcc-fin-col--labor,
+      .pcc-fin-col--right { flex: 1 1 100%; min-width: 0; }
     }
     .pcc-fin-col {
       display: flex;
       flex-direction: column;
       align-items: stretch;
-      gap: 8px;
+      gap: 6px;
       min-width: 0;
       height: auto;
-      align-self: start;
-      justify-self: stretch;
+      min-height: 0;
+      flex: 1 1 280px;
+      align-self: flex-start;
     }
     .pcc-fin-col .pcc-fin-section {
       margin-bottom: 0;
@@ -320,36 +322,63 @@
     .pcc-fin-section--owner-profit {
       margin-bottom: 0;
       flex: 0 0 auto;
-      align-self: start;
+      align-self: flex-start;
+      height: auto;
+      min-height: 0;
     }
     .pcc-fin-section--labor {
       flex: 0 0 auto;
-      align-self: start;
+      align-self: flex-start;
+      height: auto;
+      min-height: 0;
+    }
+    .pcc-fin-col--ledger,
+    .pcc-fin-col--labor,
+    .pcc-fin-col--right {
+      height: auto;
+      min-height: 0;
+      align-self: flex-start;
     }
     .pcc-fin-details--snapshot {
       flex: 0 0 auto;
       height: auto;
       min-height: 0;
-      margin: 8px 0 0;
-      padding: 0;
-      border: 0;
-      border-radius: 0;
-      background: transparent;
+      margin: 0;
+      padding: 6px 10px;
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.02);
+      width: 100%;
+      box-sizing: border-box;
     }
     .pcc-fin-details--snapshot:not([open]) {
-      padding: 0;
-      margin-bottom: 0;
+      padding: 6px 10px;
+      margin: 0;
+      height: auto;
+      min-height: 0;
+      overflow: hidden;
     }
-    .pcc-fin-details--snapshot:not([open]) .pcc-fin-mini-grid {
-      display: none;
+    .pcc-fin-details--snapshot:not([open]) > :not(summary) {
+      display: none !important;
+      height: 0 !important;
+      min-height: 0 !important;
+      max-height: 0 !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      border: 0 !important;
+      overflow: hidden !important;
+      visibility: hidden !important;
     }
     .pcc-fin-details--snapshot summary {
       margin: 0;
-      padding: 8px 0 0;
-      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 0;
+      border: 0;
+      line-height: 1.35;
     }
     .pcc-fin-details--snapshot[open] summary {
       margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     }
     .pcc-fin-details--snapshot[open] .pcc-fin-mini-grid {
       margin-top: 0;
@@ -478,6 +507,15 @@
       user-select: none;
     }
     .pcc-fin-details summary::-webkit-details-marker { display: none; }
+    .pcc-fin-details:not([open]) > :not(summary) {
+      display: none !important;
+      height: 0 !important;
+      min-height: 0 !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      border: 0 !important;
+      overflow: hidden !important;
+    }
     .pcc-fin-details[open] summary { margin-bottom: 8px; }
     .pcc-fin-expense-bar {
       display: flex;
@@ -605,10 +643,10 @@
         background: #eee !important;
       }
       body.pcc-fin-printing .pcc-fin-dash {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
         gap: 12px;
-        align-items: start;
       }
       body.pcc-fin-printing .pcc-fin-col {
         flex: 1 1 280px;
@@ -1137,7 +1175,7 @@
 
         var operationalHtml =
           '<details class="pcc-fin-details pcc-fin-details--snapshot">' +
-          '<summary>Operational snapshot</summary>' +
+          '<summary>Show operational snapshot</summary>' +
           '<div class="pcc-fin-mini-grid">' +
           finMini('Est. days', op.estimated_days != null ? Number(op.estimated_days).toFixed(1) : '—') +
           finMini('Days spent', op.days_spent != null ? Number(op.days_spent).toFixed(1) : '—') +
@@ -1164,7 +1202,6 @@
           '</div>' +
           (labor.cost_method ? '<div class="pcc-fin-rows" style="margin-top:6px;">' + finRow('Cost method', labor.cost_method, { wide: true }) + '</div>' : '') +
           laborNote +
-          operationalHtml +
           '</section>';
 
         var contractRows =
@@ -1228,7 +1265,7 @@
           '</div>' +
           '<div class="pcc-fin-dash">' +
           '<div class="pcc-fin-col pcc-fin-col--ledger">' + ownerBreakdownHtml + '</div>' +
-          '<div class="pcc-fin-col pcc-fin-col--labor">' + laborSectionHtml + '</div>' +
+          '<div class="pcc-fin-col pcc-fin-col--labor">' + laborSectionHtml + operationalHtml + '</div>' +
           '<div class="pcc-fin-col pcc-fin-col--right">' +
           contractSectionHtml +
           estimateSectionHtml +
