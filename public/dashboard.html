@@ -654,10 +654,9 @@
           <div class="card-inner">
             <span class="fcc-qa-label">Quick actions</span>
             <nav class="fcc-qa--bar" aria-label="Quick actions">
-              <a href="/estimates-invoices">Financial report</a>
-              <a href="#fcc-bank-console">Import bank data</a>
-              <a href="#fcc-bank-console">Open bank sync</a>
-              <a href="owner.html">Manage budgets</a>
+              <a href="/estimates-invoices">Invoice Hub</a>
+              <a href="#fcc-bank-console" id="btnQuickOpenBank">Banking &amp; Stripe</a>
+              <a href="owner.html">Owner Budgets</a>
             </nav>
           </div>
         </section>
@@ -839,6 +838,24 @@ if (btn && panel) {
     syncBankToggle();
   });
 }
+  </script>
+  <script>
+    (function () {
+      var qaBank = document.getElementById('btnQuickOpenBank');
+      var toggle = document.getElementById('btnToggleBankConsole');
+      var panel = document.getElementById('fccBankCollapsePanel');
+      var target = document.getElementById('fcc-bank-console');
+      if (!qaBank || !toggle || !panel) return;
+      qaBank.addEventListener('click', function (e) {
+        e.preventDefault();
+        var isHidden = panel.hidden === true || panel.hasAttribute('hidden');
+        if (isHidden) toggle.click();
+        var scrollTarget = target || panel;
+        requestAnimationFrame(function () {
+          scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
+    })();
   </script>
   <script src="/js/bank-connection.js"></script>
 </body>
