@@ -5587,128 +5587,213 @@ body[data-role="owner"] input[type="date"] {
   box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.35);
 }
 
-/* Business Settings — layout & section grouping (UI only) */
-.business-settings-page .bs-layout{
-  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.55fr);
-  align-items: start;
+/* Business Settings — compact dashboard layout (UI only) */
+.business-settings-page .container{
+  max-width: 1280px;
+}
+.business-settings-page .bs-page-bar{
+  margin-bottom: 12px;
+}
+.business-settings-page .bs-page-bar-inner{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 14px;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
-.business-settings-page .bs-hero-compact .owner-hero-inner{
-  gap: 16px;
+.business-settings-page .bs-page-lead{
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
 }
-.business-settings-page .bs-hero-compact .hero-title{
-  font-size: clamp(1.15rem, 2vw, 1.35rem);
+.business-settings-page .bs-page-bar-meta{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.business-settings-page .bs-tenant-mode{
+  margin: 0;
+  font-size: 12px;
 }
 .business-settings-page .bs-loading-note,
 .business-settings-page .bs-banner{
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
-.business-settings-page .bs-section{
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(255,255,255,.07);
+.business-settings-page .bs-dashboard-grid{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
 }
-.business-settings-page .bs-section:first-of-type{
-  margin-top: 0;
-  padding-top: 0;
-  border-top: none;
+.business-settings-page .bs-dash-card--wide{
+  grid-column: 1 / -1;
 }
-.business-settings-page .bs-section-head{
-  margin-bottom: 10px;
-}
-.business-settings-page .bs-section-title{
-  margin: 0 0 4px;
-  font-size: 0.92rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--text);
-}
-.business-settings-page .bs-section-sub{
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.45;
-}
-.business-settings-page .bs-subsection{
-  margin-top: 14px;
+.business-settings-page .bs-card-inner-tight{
   padding-top: 14px;
-  border-top: 1px solid rgba(255,255,255,.06);
+  padding-bottom: 14px;
 }
-.business-settings-page .bs-subsection:first-of-type{
-  margin-top: 8px;
-  padding-top: 0;
-  border-top: none;
+.business-settings-page .bs-card-title{
+  margin: 0 0 2px;
+  font-size: 0.95rem;
+  line-height: 1.2;
 }
-.business-settings-page .bs-subsection-title{
-  margin: 0 0 8px;
-  font-size: 0.88rem;
-  font-weight: 650;
-  color: rgba(232,238,252,.92);
+.business-settings-page .bs-card-sub{
+  margin: 0 0 10px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.business-settings-page .bs-form-dense{
+  gap: 8px;
+}
+.business-settings-page .bs-form-dense--3{
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.business-settings-page .bs-form-dense .field label{
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+.business-settings-page .bs-form-dense .field input,
+.business-settings-page .bs-form-dense .field select,
+.business-settings-page .bs-form-dense .field textarea{
+  padding: 9px 10px;
+  font-size: 13px;
 }
 .business-settings-page .form .field.field--full{
   grid-column: 1 / -1;
 }
-.business-settings-page .form.bs-form-single{
-  grid-template-columns: minmax(0, 1fr);
-  max-width: 360px;
-}
 .business-settings-page .hint.hint--start{
   justify-content: flex-start;
   text-align: left;
+  font-size: 10px;
+  margin-top: 4px;
 }
 .business-settings-page .bs-logo-preview-wrap{
-  margin-top: 10px;
+  margin-top: 8px;
 }
 .business-settings-page .bs-logo-preview{
   display: none;
-  max-height: 88px;
-  max-width: 240px;
+  max-height: 72px;
+  max-width: 200px;
   width: auto;
   height: auto;
   object-fit: contain;
-  border-radius: 14px;
+  border-radius: 12px;
   background: rgba(0,0,0,.18);
-  padding: 10px;
+  padding: 8px;
   box-sizing: border-box;
 }
-.business-settings-page .bs-save-actions{
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(255,255,255,.07);
+.business-settings-page .bs-subsection-title{
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: rgba(232,238,252,.9);
 }
-.business-settings-page .bs-card-spaced{
-  margin-top: 14px;
+.business-settings-page .bs-payments-head{
+  margin-bottom: 8px;
+}
+.business-settings-page .bs-payments-head .bs-card-title{
+  margin-bottom: 2px;
+}
+.business-settings-page .bs-payments-split{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
 }
 .business-settings-page .bs-stripe-status-line{
-  margin: 10px 0 8px;
-}
-.business-settings-page .bs-stripe-lines{
-  margin-bottom: 10px;
-}
-.business-settings-page .bs-stripe-actions{
-  flex-wrap: wrap;
-}
-.business-settings-page .bs-aside-card{
-  position: sticky;
-  top: 12px;
-}
-.business-settings-page .bs-kpi-compact{
-  gap: 10px;
-}
-.business-settings-page .bs-used-by-list{
+  margin: 6px 0 4px;
   font-size: 12px;
-  line-height: 1.45;
 }
-.business-settings-page .bs-used-by-list code{
+.business-settings-page .bs-stripe-lines--compact{
+  margin: 0 0 8px;
+  padding-left: 18px;
   font-size: 11px;
+  line-height: 1.4;
 }
-.business-settings-page .bs-aside-action{
+.business-settings-page .bs-stripe-actions,
+.business-settings-page .bs-bank-actions{
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.business-settings-page .bs-bank-map{
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.business-settings-page .bs-save-actions{
   margin-top: 12px;
 }
-@media (max-width: 980px){
-  .business-settings-page .bs-layout{
+.business-settings-page .bs-summary-bar{
+  margin-top: 12px;
+}
+.business-settings-page .bs-summary-row{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px 18px;
+}
+.business-settings-page .bs-summary-preview{
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 140px;
+  flex: 1 1 160px;
+}
+.business-settings-page .bs-summary-label{
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.business-settings-page .bs-summary-name,
+.business-settings-page .bs-summary-accent{
+  font-size: 13px;
+}
+.business-settings-page .bs-summary-meta{
+  font-size: 11px;
+  line-height: 1.35;
+}
+.business-settings-page .bs-summary-used{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex: 2 1 240px;
+}
+.business-settings-page .bs-summary-used .bs-summary-label{
+  width: 100%;
+}
+.business-settings-page .bs-chip{
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.04);
+  color: rgba(232,238,252,.85);
+}
+.business-settings-page .bs-summary-save{
+  flex: 1 1 200px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  align-self: center;
+}
+@media (max-width: 900px){
+  .business-settings-page .bs-dashboard-grid{
     grid-template-columns: 1fr;
   }
-  .business-settings-page .bs-aside-card{
-    position: static;
+  .business-settings-page .bs-form-dense--3,
+  .business-settings-page .bs-bank-map,
+  .business-settings-page .bs-payments-split{
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 740px){
+  .business-settings-page .form.bs-form-dense{
+    grid-template-columns: 1fr;
   }
 }
