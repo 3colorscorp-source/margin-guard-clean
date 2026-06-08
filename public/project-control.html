@@ -195,8 +195,8 @@
     }
     .pcc-fin-modal.open { display: flex; }
     .pcc-fin-modal__panel {
-      width: min(80vw, 1280px);
-      max-height: 85vh;
+      width: min(92vw, 960px);
+      max-height: 88vh;
       display: flex;
       flex-direction: column;
       background: linear-gradient(165deg, #121a2b 0%, #0d1422 100%);
@@ -222,76 +222,203 @@
     .pcc-fin-modal__body {
       flex: 1;
       overflow: auto;
-      padding: 14px 18px 18px;
+      padding: 10px 14px 14px;
     }
     .pcc-fin-modal__title-row {
       display: flex;
       flex-wrap: wrap;
       align-items: flex-start;
       justify-content: space-between;
-      gap: 10px 16px;
+      gap: 8px 12px;
     }
-    .pcc-fin-modal__title-row h3 { margin: 0 0 4px; font-size: 1.15rem; }
-    .pcc-fin-modal__meta { font-size: 0.85rem; color: rgba(232, 238, 252, 0.72); margin: 0; }
-    .pcc-fin-modal__badges { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .pcc-fin-kpis {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: 10px;
-      margin-bottom: 14px;
-    }
+    .pcc-fin-modal__title-row h3 { margin: 0 0 2px; font-size: 1.05rem; }
+    .pcc-fin-modal__meta { font-size: 0.8rem; color: rgba(232, 238, 252, 0.72); margin: 0; }
+    .pcc-fin-modal__badges { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
     .pcc-fin-kpi {
-      padding: 12px 14px;
-      border-radius: 12px;
+      padding: 8px 10px;
+      border-radius: 10px;
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid rgba(255, 255, 255, 0.08);
     }
     .pcc-fin-kpi__label {
-      font-size: 0.65rem;
+      font-size: 0.6rem;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: rgba(232, 238, 252, 0.6);
-      margin-bottom: 4px;
+      letter-spacing: 0.06em;
+      color: rgba(232, 238, 252, 0.58);
+      margin-bottom: 2px;
     }
-    .pcc-fin-kpi__value { font-size: 1.1rem; font-weight: 800; }
-    .pcc-fin-grid {
+    .pcc-fin-kpi__value { font-size: 0.95rem; font-weight: 800; }
+    .pcc-fin-kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .pcc-fin-board {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 14px;
-      margin-bottom: 14px;
+      gap: 8px;
+      margin-bottom: 8px;
     }
-    @media (max-width: 900px) {
-      .pcc-fin-modal__panel { width: min(96vw, 100%); }
-      .pcc-fin-grid { grid-template-columns: 1fr; }
+    @media (max-width: 760px) {
+      .pcc-fin-board { grid-template-columns: 1fr; }
     }
     .pcc-fin-section {
-      padding: 12px 14px;
-      border-radius: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid rgba(255, 255, 255, 0.07);
-      margin-bottom: 12px;
+      margin-bottom: 8px;
     }
     .pcc-fin-section h4 {
-      margin: 0 0 10px;
-      font-size: 0.72rem;
+      margin: 0 0 8px;
+      font-size: 0.68rem;
       text-transform: uppercase;
       letter-spacing: 0.08em;
       color: rgba(232, 238, 252, 0.75);
     }
-    .pcc-fin-kv {
+    .pcc-fin-section--owner-profit {
+      margin-bottom: 10px;
+    }
+    .pcc-fin-ledger-group {
+      margin-bottom: 8px;
+    }
+    .pcc-fin-ledger-group:last-child {
+      margin-bottom: 0;
+    }
+    .pcc-fin-ledger-group h5 {
+      margin: 0 0 4px;
+      font-size: 0.62rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: rgba(232, 238, 252, 0.45);
+    }
+    .pcc-fin-rows {
+      display: flex;
+      flex-direction: column;
+    }
+    .pcc-fin-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.8125rem;
+      line-height: 1.35;
+    }
+    .pcc-fin-row:last-child {
+      border-bottom: 0;
+    }
+    .pcc-fin-row__k {
+      flex: 1 1 auto;
+      min-width: 0;
+      color: rgba(232, 238, 252, 0.58);
+    }
+    .pcc-fin-row__v {
+      flex: 0 1 auto;
+      max-width: 58%;
+      font-weight: 600;
+      text-align: right;
+      word-break: break-word;
+    }
+    .pcc-fin-row--emph .pcc-fin-row__v {
+      font-weight: 800;
+      color: rgba(74, 222, 128, 0.95);
+    }
+    .pcc-fin-row--wide {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 2px;
+    }
+    .pcc-fin-row--wide .pcc-fin-row__v {
+      max-width: none;
+      text-align: left;
+      font-weight: 500;
+      font-size: 0.78rem;
+      color: rgba(232, 238, 252, 0.82);
+    }
+    .pcc-fin-mini-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+    @media (max-width: 640px) {
+      .pcc-fin-mini-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    .pcc-fin-mini {
+      padding: 7px 9px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .pcc-fin-mini__k {
+      font-size: 0.58rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: rgba(232, 238, 252, 0.5);
+      margin-bottom: 2px;
+      line-height: 1.2;
+    }
+    .pcc-fin-mini__v {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+    .pcc-fin-estimate-pair {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 6px 12px;
-      font-size: 0.82rem;
+      gap: 6px;
     }
-    .pcc-fin-kv .k { color: rgba(232, 238, 252, 0.55); }
-    .pcc-fin-kv .v { font-weight: 600; text-align: right; }
-    .pcc-fin-kv .v--wide { grid-column: 1 / -1; text-align: left; margin-top: 4px; }
-    .pcc-fin-note {
-      margin: 8px 0 0;
+    .pcc-fin-details {
+      margin-top: 6px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding-top: 6px;
+    }
+    .pcc-fin-details summary {
+      cursor: pointer;
+      font-size: 0.72rem;
+      font-weight: 650;
+      color: rgba(232, 238, 252, 0.72);
+      list-style: none;
+      user-select: none;
+    }
+    .pcc-fin-details summary::-webkit-details-marker { display: none; }
+    .pcc-fin-details[open] summary { margin-bottom: 8px; }
+    .pcc-fin-expense-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 8px 12px;
+      justify-content: space-between;
+    }
+    .pcc-fin-expense-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      flex: 1 1 200px;
+    }
+    .pcc-fin-expense-stat {
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid rgba(255, 255, 255, 0.06);
       font-size: 0.78rem;
+    }
+    .pcc-fin-expense-stat strong {
+      display: block;
+      font-size: 0.8125rem;
+      margin-top: 1px;
+    }
+    .pcc-fin-kv {
+      display: none;
+    }
+    .pcc-fin-note {
+      margin: 0 0 8px;
+      font-size: 0.75rem;
       color: #fbbf24;
-      line-height: 1.4;
+      line-height: 1.35;
     }
     .pcc-fin-assumptions {
       margin: 8px 0 0;
@@ -301,9 +428,11 @@
       color: rgba(232, 238, 252, 0.7);
     }
     .pcc-fin-assumptions li { margin: 4px 0; }
-    .pcc-fin-expense-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-    .pcc-fin-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-    .pcc-fin-actions .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+    .pcc-fin-expense-actions { display: flex; flex-wrap: wrap; gap: 6px; flex-shrink: 0; }
+    .pcc-fin-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    @media (max-width: 900px) {
+      .pcc-fin-modal__panel { width: min(96vw, 100%); }
+    }
     .pcc-fin-loading { padding: 24px; text-align: center; color: rgba(232, 238, 252, 0.7); }
     .pcc-fin-error { color: #f87171; margin: 0 0 12px; font-size: 0.9rem; }
     .pcc-expense-modal {
@@ -692,7 +821,43 @@
       }
 
       function finKvRow(label, value, wide) {
-        return '<div class="k">' + esc(label) + '</div><div class="v' + (wide ? ' v--wide' : '') + '">' + esc(value) + '</div>';
+        return finRow(label, value, { wide: wide });
+      }
+
+      function finRow(label, value, opts) {
+        opts = opts || {};
+        var cls = 'pcc-fin-row';
+        if (opts.emph) cls += ' pcc-fin-row--emph';
+        if (opts.wide) cls += ' pcc-fin-row--wide';
+        return (
+          '<div class="' + cls + '">' +
+          '<div class="pcc-fin-row__k">' + esc(label) + '</div>' +
+          '<div class="pcc-fin-row__v">' + esc(value) + '</div>' +
+          '</div>'
+        );
+      }
+
+      function finMini(label, value) {
+        return (
+          '<div class="pcc-fin-mini">' +
+          '<div class="pcc-fin-mini__k">' + esc(label) + '</div>' +
+          '<div class="pcc-fin-mini__v">' + esc(value) + '</div>' +
+          '</div>'
+        );
+      }
+
+      function finLedgerGroup(title, rowsHtml) {
+        if (!rowsHtml) return '';
+        return (
+          '<div class="pcc-fin-ledger-group">' +
+          '<h5>' + esc(title) + '</h5>' +
+          '<div class="pcc-fin-rows">' + rowsHtml + '</div>' +
+          '</div>'
+        );
+      }
+
+      function ownerProfitVal(val, configured) {
+        return ownerProfitAmount(val, configured ? 'calculated' : 'not_configured');
       }
 
       function renderFinancialModal(detail, rowMetrics) {
@@ -716,11 +881,12 @@
           (proj.status ? ' · Status: ' + proj.status : '');
 
         var tone = h.tone === 'yellow' ? 'amber' : (h.tone === 'red' ? 'red' : 'green');
+        var riskDisplay = profit.risk_label || (profit.owner_profit_breakdown || {}).risk_label || marginRiskLabel(k.risk_status || h.margin_risk);
         if (badges) {
           var badgeHtml =
             '<span class="badge ' + tone + '">' + esc(h.status_label || '—') + '</span>' +
             '<span class="badge">' + esc(pct(h.progress_pct)) + ' progress</span>' +
-            '<span class="badge ' + marginRiskBadgeClass(h.margin_risk) + '">Margin ' + esc(marginRiskLabel(h.margin_risk)) + '</span>';
+            '<span class="badge ' + marginRiskBadgeClass(h.margin_risk || k.risk_status) + '">Margin ' + esc(marginRiskLabel(h.margin_risk || k.risk_status)) + '</span>';
           if (h.completion_status) {
             badgeHtml += '<span class="badge amber">' + esc(h.completion_status) + '</span>';
           }
@@ -735,33 +901,87 @@
           : '';
         var profitIncomplete = Boolean(profit.profit_is_incomplete || k.profit_is_incomplete);
         var opb = profit.owner_profit_breakdown || {};
-        var riskDisplay = profit.risk_label || opb.risk_label || marginRiskLabel(k.risk_status);
         var profitBanner = profitIncomplete
           ? '<p class="pcc-fin-note" role="status">' + esc(
               profit.profit_incomplete_message || k.profit_incomplete_message ||
               'Configure Business Settings to finalize project profit.'
             ) + '</p>'
           : '';
-        var profitKpiLabel = profitIncomplete ? 'Owner remaining profit (incomplete)' : 'Owner remaining profit';
+        var profitKpiLabel = profitIncomplete ? 'Owner profit (incomplete)' : 'Owner profit';
         var marginKpiLabel = profitIncomplete ? 'Margin % (incomplete)' : 'Margin %';
 
+        var deductionsRows =
+          finRow('Unexpected expenses', moneyUsd(opb.unexpected_expenses)) +
+          finRow('Operating cost allocation', ownerProfitVal(opb.operating_cost_allocation, opb.operating_cost_allocation != null)) +
+          finRow('Seller commission', opb.seller_commission_note ? opb.seller_commission_note : ownerProfitVal(opb.seller_commission, opb.seller_commission != null)) +
+          finRow('Supervisor bonus', opb.supervisor_bonus_note ? opb.supervisor_bonus_note : ownerProfitVal(opb.supervisor_bonus, opb.supervisor_bonus != null)) +
+          finRow('Savings reserve', ownerProfitVal(opb.savings_reserve, opb.savings_reserve != null));
+        if (opb.material_costs != null && opb.material_costs > 0) {
+          deductionsRows += finRow('Material costs', moneyUsd(opb.material_costs));
+        }
+
         var ownerBreakdownHtml =
-          '<section class="pcc-fin-section pcc-fin-section--owner-profit"><h4>Owner profit breakdown</h4><div class="pcc-fin-kv">' +
-          finKvRow('Project total', moneyUsd(opb.project_total)) +
-          finKvRow('Direct labor cost', ownerProfitAmount(opb.direct_labor_cost, opb.direct_labor_cost == null ? 'not_configured' : 'calculated')) +
-          finKvRow('Employer burden', ownerProfitAmount(opb.employer_burden, opb.employer_burden == null ? 'not_configured' : 'calculated')) +
-          finKvRow('Loaded labor cost', ownerProfitAmount(opb.loaded_labor_cost, opb.loaded_labor_cost == null ? 'not_configured' : 'calculated')) +
-          finKvRow('Unexpected expenses', moneyUsd(opb.unexpected_expenses)) +
-          finKvRow('Operating cost allocation', ownerProfitAmount(opb.operating_cost_allocation, opb.operating_cost_allocation == null ? 'not_configured' : 'calculated')) +
-          finKvRow('Seller commission', opb.seller_commission_note ? esc(opb.seller_commission_note) : ownerProfitAmount(opb.seller_commission, opb.seller_commission == null ? 'not_configured' : 'calculated')) +
-          finKvRow('Supervisor bonus', opb.supervisor_bonus_note ? esc(opb.supervisor_bonus_note) : ownerProfitAmount(opb.supervisor_bonus, opb.supervisor_bonus == null ? 'not_configured' : 'calculated')) +
-          finKvRow('Savings reserve', ownerProfitAmount(opb.savings_reserve, opb.savings_reserve == null ? 'not_configured' : 'calculated')) +
-          (opb.material_costs != null && opb.material_costs > 0 ? finKvRow('Material costs', moneyUsd(opb.material_costs)) : '') +
-          finKvRow(profitIncomplete ? 'Owner remaining profit (incomplete)' : 'Owner remaining profit', ownerProfitAmount(opb.owner_remaining_profit, profitIncomplete ? 'not_configured' : 'calculated')) +
-          finKvRow('Margin %', opb.margin_pct != null && !profitIncomplete ? String(opb.margin_pct) + '%' : (profitIncomplete ? 'Incomplete' : '—')) +
-          finKvRow('Target margin %', opb.target_margin_pct != null ? String(opb.target_margin_pct) + '%' : '—') +
-          finKvRow('Risk', esc(riskDisplay)) +
-          '</div></section>';
+          '<section class="pcc-fin-section pcc-fin-section--owner-profit">' +
+          '<h4>Owner profit breakdown</h4>' +
+          finLedgerGroup('Revenue', finRow('Project total', moneyUsd(opb.project_total))) +
+          finLedgerGroup('Labor',
+            finRow('Direct labor cost', ownerProfitVal(opb.direct_labor_cost, opb.direct_labor_cost != null)) +
+            finRow('Employer burden', ownerProfitVal(opb.employer_burden, opb.employer_burden != null)) +
+            finRow('Loaded labor cost', ownerProfitVal(opb.loaded_labor_cost, opb.loaded_labor_cost != null))
+          ) +
+          finLedgerGroup('Deductions', deductionsRows) +
+          finLedgerGroup('Result',
+            finRow(profitIncomplete ? 'Owner remaining profit (incomplete)' : 'Owner remaining profit', ownerProfitVal(opb.owner_remaining_profit, !profitIncomplete && opb.owner_remaining_profit != null), { emph: true }) +
+            finRow('Margin %', opb.margin_pct != null && !profitIncomplete ? String(opb.margin_pct) + '%' : (profitIncomplete ? 'Incomplete' : '—')) +
+            finRow('Target margin %', opb.target_margin_pct != null ? String(opb.target_margin_pct) + '%' : '—') +
+            finRow('Risk', riskDisplay)
+          ) +
+          '</section>';
+
+        var laborSectionHtml =
+          '<section class="pcc-fin-section">' +
+          '<h4>Labor cost control</h4>' +
+          '<div class="pcc-fin-mini-grid">' +
+          finMini('Est. hours', estL.hours != null ? Number(estL.hours).toFixed(1) : '—') +
+          finMini('Est. days', estL.days != null ? Number(estL.days).toFixed(1) : '—') +
+          finMini('Est. labor', estL.labor_cost != null ? moneyUsd(estL.labor_cost) : '—') +
+          finMini('Reported hrs', actL.hours != null ? Number(actL.hours).toFixed(1) : '—') +
+          finMini('Reported days', actL.days != null ? Number(actL.days).toFixed(1) : '—') +
+          finMini('Actual labor', fmtActualLaborCost(actL, labor)) +
+          finMini('Hrs variance', varL.hours != null ? Number(varL.hours).toFixed(1) : '—') +
+          finMini('Days variance', varL.days != null ? Number(varL.days).toFixed(1) : '—') +
+          finMini('Cost variance', varL.cost != null ? moneyUsd(varL.cost) : '—') +
+          '</div>' +
+          (labor.cost_method ? '<div class="pcc-fin-rows" style="margin-top:6px;">' + finRow('Cost method', labor.cost_method, { wide: true }) + '</div>' : '') +
+          laborNote +
+          '</section>';
+
+        var operationalHtml =
+          '<details class="pcc-fin-details">' +
+          '<summary>Operational snapshot</summary>' +
+          '<div class="pcc-fin-mini-grid">' +
+          finMini('Est. days', op.estimated_days != null ? Number(op.estimated_days).toFixed(1) : '—') +
+          finMini('Days spent', op.days_spent != null ? Number(op.days_spent).toFixed(1) : '—') +
+          finMini('Days left', op.days_remaining != null ? Number(op.days_remaining).toFixed(1) : '—') +
+          finMini('Progress', op.progress_pct != null ? pct(op.progress_pct) : '—') +
+          finMini('Completed', op.completed_days != null ? String(op.completed_days) : '—') +
+          finMini('Reports', op.reports_count != null ? String(op.reports_count) : '—') +
+          finMini('Expenses', op.expense_entries_count != null ? String(op.expense_entries_count) : '—') +
+          '</div></details>';
+
+        var contractRows =
+          finRow('Contract total', moneyUsd(cc.original_contract)) +
+          finRow('Change orders', moneyUsd(cc.approved_change_orders)) +
+          finRow('Current contract', moneyUsd(cc.current_contract_total)) +
+          finRow('Total invoiced', moneyUsd(cc.total_invoiced)) +
+          finRow('Paid to date', moneyUsd(cc.paid_to_date)) +
+          finRow('Balance due', moneyUsd(cc.balance_due)) +
+          finRow('Invoice status', cc.invoice_status || '—') +
+          finRow('Last payment', cc.last_payment_date ? fmtDate(cc.last_payment_date) : '—');
+
+        var expenseLast = exp.last
+          ? (fmtDate(exp.last.date) + ' · ' + (exp.last.concept || '—') + ' · ' + moneyUsd(exp.last.amount))
+          : 'None recorded';
 
         content.innerHTML =
           profitBanner +
@@ -771,66 +991,39 @@
           '<div class="pcc-fin-kpi"><div class="pcc-fin-kpi__label">Balance due</div><div class="pcc-fin-kpi__value">' + moneyUsd(k.balance_due) + '</div></div>' +
           '<div class="pcc-fin-kpi"><div class="pcc-fin-kpi__label">' + esc(profitKpiLabel) + '</div><div class="pcc-fin-kpi__value">' + moneyUsd(k.current_profit) + '</div></div>' +
           '<div class="pcc-fin-kpi"><div class="pcc-fin-kpi__label">' + esc(marginKpiLabel) + '</div><div class="pcc-fin-kpi__value">' + (k.margin_pct != null ? esc(String(k.margin_pct)) + '%' : '—') + '</div></div>' +
-          '<div class="pcc-fin-kpi"><div class="pcc-fin-kpi__label">Risk</div><div class="pcc-fin-kpi__value">' + esc(riskDisplay) + '</div></div>' +
           '</div>' +
           ownerBreakdownHtml +
-          '<div class="pcc-fin-grid">' +
-          '<div class="pcc-fin-col">' +
-          '<section class="pcc-fin-section"><h4>Labor cost control</h4><div class="pcc-fin-kv">' +
-          finKvRow('Est. hours', estL.hours != null ? Number(estL.hours).toFixed(1) : '—') +
-          finKvRow('Est. days', estL.days != null ? Number(estL.days).toFixed(1) : '—') +
-          finKvRow('Est. labor cost', estL.labor_cost != null ? moneyUsd(estL.labor_cost) : '—') +
-          finKvRow('Reported hours', actL.hours != null ? Number(actL.hours).toFixed(1) : '—') +
-          finKvRow('Reported days', actL.days != null ? Number(actL.days).toFixed(1) : '—') +
-          finKvRow('Actual labor cost', fmtActualLaborCost(actL, labor)) +
-          finKvRow('Hours variance', varL.hours != null ? Number(varL.hours).toFixed(1) : '—') +
-          finKvRow('Days variance', varL.days != null ? Number(varL.days).toFixed(1) : '—') +
-          finKvRow('Cost variance', varL.cost != null ? moneyUsd(varL.cost) : '—') +
-          (labor.cost_method ? finKvRow('Cost method', labor.cost_method, true) : '') +
-          '</div>' + laborNote + '</section>' +
-          '<section class="pcc-fin-section"><h4>Operational snapshot</h4><div class="pcc-fin-kv">' +
-          finKvRow('Estimated days', op.estimated_days != null ? Number(op.estimated_days).toFixed(1) : '—') +
-          finKvRow('Days spent', op.days_spent != null ? Number(op.days_spent).toFixed(1) : '—') +
-          finKvRow('Days remaining', op.days_remaining != null ? Number(op.days_remaining).toFixed(1) : '—') +
-          finKvRow('Progress %', op.progress_pct != null ? pct(op.progress_pct) : '—') +
-          finKvRow('Completed days', op.completed_days != null ? String(op.completed_days) : '—') +
-          finKvRow('Reports', op.reports_count != null ? String(op.reports_count) : '—') +
-          finKvRow('Expense entries', op.expense_entries_count != null ? String(op.expense_entries_count) : '—') +
+          '<div class="pcc-fin-board">' +
+          laborSectionHtml +
+          '<section class="pcc-fin-section">' +
+          '<h4>Contract &amp; collection</h4>' +
+          '<div class="pcc-fin-rows">' + contractRows + '</div>' +
+          operationalHtml +
+          '</section>' +
+          '<section class="pcc-fin-section">' +
+          '<h4>Estimate comparison</h4>' +
+          '<div class="pcc-fin-estimate-pair">' +
+          finMini('Projected profit', moneyUsd(profit.projected_profit)) +
+          finMini('Variance vs est.', profit.profit_variance != null ? moneyUsd(profit.profit_variance) : '—') +
           '</div></section>' +
-          '</div>' +
-          '<div class="pcc-fin-col">' +
-          '<section class="pcc-fin-section"><h4>Contract &amp; collection</h4><div class="pcc-fin-kv">' +
-          finKvRow('Contract total', moneyUsd(cc.original_contract)) +
-          finKvRow('Approved change orders', moneyUsd(cc.approved_change_orders)) +
-          finKvRow('Current contract', moneyUsd(cc.current_contract_total)) +
-          finKvRow('Total invoiced', moneyUsd(cc.total_invoiced)) +
-          finKvRow('Paid to date', moneyUsd(cc.paid_to_date)) +
-          finKvRow('Balance due', moneyUsd(cc.balance_due)) +
-          finKvRow('Invoice status', cc.invoice_status || '—') +
-          finKvRow('Last payment', cc.last_payment_date ? fmtDate(cc.last_payment_date) : '—') +
-          '</div></section>' +
-          '<section class="pcc-fin-section"><h4>Estimate comparison</h4><div class="pcc-fin-kv">' +
-          finKvRow('Projected profit (estimate)', moneyUsd(profit.projected_profit)) +
-          finKvRow('Variance vs estimate', profit.profit_variance != null ? moneyUsd(profit.profit_variance) : '—') +
-          '</div></section>' +
-          '</div></div>' +
-          '<section class="pcc-fin-section"><h4>Field expenses</h4>' +
+          '<section class="pcc-fin-section">' +
+          '<h4>Field expenses</h4>' +
+          '<div class="pcc-fin-expense-bar">' +
           '<div class="pcc-fin-expense-actions">' +
           '<button type="button" class="btn" id="pccFinBtnViewExpenses">View expenses</button>' +
           '<button type="button" class="btn ghost" id="pccFinBtnPrintExpenses">Print expense report</button>' +
           '</div>' +
-          '<div class="pcc-fin-kv">' +
-          finKvRow('Unexpected total', moneyUsd(exp.total)) +
-          finKvRow('Entries', exp.count != null ? String(exp.count) : '0') +
-          finKvRow('Last expense', exp.last ? (fmtDate(exp.last.date) + ' · ' + (exp.last.concept || '—') + ' · ' + moneyUsd(exp.last.amount)) : '—', true) +
-          '</div></section>' +
-          '<section class="pcc-fin-section"><h4>Owner actions</h4>' +
+          '<div class="pcc-fin-expense-stats">' +
+          '<div class="pcc-fin-expense-stat">Unexpected total<strong>' + esc(moneyUsd(exp.total)) + '</strong></div>' +
+          '<div class="pcc-fin-expense-stat">Entries<strong>' + esc(exp.count != null ? String(exp.count) : '0') + '</strong></div>' +
+          '</div></div>' +
+          (exp.last ? '<div class="pcc-fin-rows" style="margin-top:6px;">' + finRow('Last expense', expenseLast, { wide: true }) + '</div>' : '') +
+          '</section>' +
+          '</div>' +
+          '<section class="pcc-fin-section">' +
+          '<h4>Owner actions</h4>' +
           '<div class="pcc-fin-actions">' +
-          '<button type="button" class="btn" disabled title="Coming soon">Create progress invoice</button>' +
-          '<button type="button" class="btn" disabled title="Coming soon">Create change order</button>' +
           '<button type="button" class="btn ghost" id="pccFinBtnExpenseReport">View expense report</button>' +
-          '<button type="button" class="btn" disabled title="Coming soon">Close project</button>' +
-          '<button type="button" class="btn" disabled title="Coming soon">Request honest review</button>' +
           '</div></section>';
 
         content.style.display = '';
