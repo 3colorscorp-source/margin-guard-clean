@@ -409,6 +409,58 @@ function laborCostFromOperationalPlan(normalizedPlan, settings) {
 }
 
 /**
+ * Labor metrics for completed scheduled days only (Supervisor day progress).
+ * @param {Array} normalizedPlan
+ * @param {Set<number>|Array<number>} completedDayNumbers
+ * @param {object} settings - mg_settings_v2
+ * @param {number} [hoursPerDay]
+ * @returns {{ labor_cost: number, hours: number, days: number, pro_hours: number, assistant_hours: number }}
+ */
+function laborMetricsForCompletedOperationalDays(
+  normalizedPlan,
+  completedDayNumbers,
+  settings,
+  hoursPerDay = DEFAULT_HOURS_PER_DAY
+) {
+  const completed =
+    completedDayNumbers instanceof Set
+      ? completedDayNumbers
+      : new Set(
+          (Array.isArray(completedDayNumbers) ? completedDayNumbers : [])
+            .map((d) => Math.max(1, Math.floor(num(d, 0))))
+            .filter((d) => d > 0)
+        );
+  const days = Array.isArray(normalizedPlan) ? normalizedPlan : [];
+  let laborCost = 0;
+  let totalHours = 0;
+  let proHours = 0;
+  let assistantHours = 0;
+
+  for (const day of days) {
+    const dn = Math.max(1, Math.floor(num(day?.day_number, 0)));
+    if (!completed.has(dn)) continue;
+    for (const w of day?.workers || []) {
+      const hours = num(w?.estimated_hours, 0);
+      if (hours <= 0) continue;
+      const rate = hourlyRateForPlanWorker(w, settings);
+      laborCost += hours * rate;
+      totalHours += hours;
+      const wt = normWorkerType(w?.worker_type ?? w?.type);
+      if (wt === "helper") assistantHours += hours;
+      else proHours += hours;
+    }
+  }
+
+  return {
+    labor_cost: round2(laborCost),
+    hours: round2(totalHours),
+    days: completed.size,
+    pro_hours: round2(proHours),
+    assistant_hours: round2(assistantHours),
+  };
+}
+
+/**
  * Flat quoted_labor_plan rows — one row per worker per day with estimated_cost.
  */
 function quotedLaborPlanRowsFromOperationalPlan(
@@ -489,6 +541,7 @@ module.exports = {
   planHasDays,
   hourlyRateForPlanWorker,
   laborCostFromOperationalPlan,
+  laborMetricsForCompletedOperationalDays,
   quotedLaborPlanRowsFromOperationalPlan,
   extractOperationalPlanFromQuoteRow,
   extractOperationalPlanFromSnapshotPayload,

@@ -220,8 +220,9 @@
       gap: 8px;
     }
     .pcc-fin-modal__body {
-      flex: 1;
+      flex: 0 1 auto;
       overflow: auto;
+      max-height: calc(90vh - 120px);
       padding: 10px 14px 14px;
     }
     .pcc-fin-modal__title-row {
@@ -230,6 +231,10 @@
       align-items: flex-start;
       justify-content: space-between;
       gap: 8px 12px;
+    }
+    .pcc-fin-modal__head-actions {
+      flex: 0 0 auto;
+      margin-left: auto;
     }
     .pcc-fin-modal__title-row h3 { margin: 0 0 2px; font-size: 1.05rem; }
     .pcc-fin-modal__meta { font-size: 0.8rem; color: rgba(232, 238, 252, 0.72); margin: 0; }
@@ -261,25 +266,34 @@
       .pcc-fin-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     .pcc-fin-dash {
-      display: grid;
-      grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr) minmax(0, 1fr);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      align-content: flex-start;
       gap: 10px;
-      align-items: start;
+    }
+    @media (min-width: 1101px) {
+      .pcc-fin-col { flex: 1 1 0; min-width: 280px; }
     }
     @media (max-width: 1100px) {
-      .pcc-fin-dash { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-      .pcc-fin-col--ledger { grid-column: 1 / -1; }
+      .pcc-fin-col--ledger { flex: 1 1 100%; }
+      .pcc-fin-col--labor,
+      .pcc-fin-col--right { flex: 1 1 calc(50% - 5px); min-width: 260px; }
     }
     @media (max-width: 720px) {
-      .pcc-fin-dash { grid-template-columns: 1fr; }
-      .pcc-fin-col--ledger { grid-column: auto; }
+      .pcc-fin-col--labor,
+      .pcc-fin-col--right { flex: 1 1 100%; }
     }
     .pcc-fin-col {
       display: flex;
       flex-direction: column;
+      align-items: stretch;
       gap: 8px;
       min-width: 0;
+      height: auto;
+      align-self: flex-start;
     }
+    .pcc-fin-col--ledger { flex: 1 1 320px; }
     .pcc-fin-col .pcc-fin-section {
       margin-bottom: 0;
     }
@@ -288,7 +302,10 @@
       border-radius: 10px;
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid rgba(255, 255, 255, 0.07);
-      margin-bottom: 8px;
+      height: auto;
+      min-height: 0;
+      flex: 0 0 auto;
+      align-self: stretch;
     }
     .pcc-fin-section h4 {
       margin: 0 0 8px;
@@ -300,13 +317,24 @@
     .pcc-fin-section--owner-profit {
       margin-bottom: 0;
     }
-    .pcc-fin-section--snapshot {
-      padding: 8px 12px 10px;
+    .pcc-fin-details--snapshot {
+      flex: 0 0 auto;
+      height: auto;
+      min-height: 0;
+      padding: 8px 12px;
+      margin: 0;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.07);
     }
-    .pcc-fin-section--snapshot .pcc-fin-details {
-      margin-top: 0;
-      border-top: 0;
-      padding-top: 0;
+    .pcc-fin-details--snapshot:not([open]) {
+      padding-bottom: 8px;
+    }
+    .pcc-fin-details--snapshot summary {
+      margin: 0;
+    }
+    .pcc-fin-details--snapshot[open] .pcc-fin-mini-grid {
+      margin-top: 8px;
     }
     .pcc-fin-ledger-card {
       padding: 7px 9px;
@@ -480,6 +508,94 @@
     }
     .pcc-fin-loading { padding: 24px; text-align: center; color: rgba(232, 238, 252, 0.7); }
     .pcc-fin-error { color: #f87171; margin: 0 0 12px; font-size: 0.9rem; }
+    @media print {
+      body.pcc-fin-printing > *:not(#pccFinancialModal) { display: none !important; }
+      body.pcc-fin-printing .pcc-fin-modal {
+        display: block !important;
+        position: static;
+        inset: auto;
+        padding: 0;
+        background: #fff;
+        backdrop-filter: none;
+      }
+      body.pcc-fin-printing .pcc-fin-modal__panel {
+        width: 100%;
+        max-height: none;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        background: #fff;
+        color: #111;
+        overflow: visible;
+      }
+      body.pcc-fin-printing .pcc-fin-modal__head {
+        border-bottom: 1px solid #ccc;
+        padding: 12px 0 10px;
+      }
+      body.pcc-fin-printing .pcc-fin-modal__body {
+        max-height: none;
+        overflow: visible;
+        padding: 10px 0 0;
+      }
+      body.pcc-fin-printing .pcc-fin-modal__meta {
+        color: #444;
+      }
+      body.pcc-fin-printing .pcc-fin-no-print { display: none !important; }
+      body.pcc-fin-printing .pcc-fin-details--snapshot { display: none !important; }
+      body.pcc-fin-printing .pcc-fin-kpi {
+        background: #f5f5f5;
+        border-color: #ddd;
+      }
+      body.pcc-fin-printing .pcc-fin-kpi__label { color: #555; }
+      body.pcc-fin-printing .pcc-fin-kpi__value { color: #111; }
+      body.pcc-fin-printing .pcc-fin-section {
+        background: #fafafa;
+        border-color: #ddd;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      body.pcc-fin-printing .pcc-fin-section h4 { color: #333; }
+      body.pcc-fin-printing .pcc-fin-row__k { color: #555; }
+      body.pcc-fin-printing .pcc-fin-row__v { color: #111; }
+      body.pcc-fin-printing .pcc-fin-row--emph .pcc-fin-row__v { color: #0a5c40; }
+      body.pcc-fin-printing .pcc-fin-mini {
+        background: #f5f5f5;
+        border-color: #ddd;
+      }
+      body.pcc-fin-printing .pcc-fin-mini__k { color: #666; }
+      body.pcc-fin-printing .pcc-fin-mini__v { color: #111; }
+      body.pcc-fin-printing .pcc-fin-ledger-card {
+        background: #fff;
+        border-color: #e5e5e5;
+      }
+      body.pcc-fin-printing .pcc-fin-ledger-card > h5 { color: #666; }
+      body.pcc-fin-printing .pcc-fin-expense-stat {
+        background: #f5f5f5;
+        border-color: #ddd;
+        color: #333;
+      }
+      body.pcc-fin-printing .pcc-fin-note {
+        color: #92400e;
+        border: 1px solid #fcd34d;
+        background: #fffbeb;
+        padding: 8px 10px;
+        border-radius: 6px;
+      }
+      body.pcc-fin-printing .badge {
+        border: 1px solid #ccc;
+        color: #111 !important;
+        background: #eee !important;
+      }
+      body.pcc-fin-printing .pcc-fin-dash {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      body.pcc-fin-printing .pcc-fin-col {
+        flex: 1 1 280px;
+        min-width: 240px;
+      }
+    }
     .pcc-expense-modal {
       position: fixed;
       inset: 0;
@@ -682,6 +798,9 @@
             <p class="pcc-fin-modal__meta" id="pccFinClient">—</p>
           </div>
           <div class="pcc-fin-modal__badges" id="pccFinBadges"></div>
+          <div class="pcc-fin-modal__head-actions pcc-fin-no-print">
+            <button type="button" class="btn" id="pccFinBtnPrint">Print / Save PDF</button>
+          </div>
         </div>
       </header>
       <div class="pcc-fin-modal__body" id="pccFinBody">
@@ -1030,8 +1149,7 @@
           : 'None recorded';
 
         var operationalHtml =
-          '<section class="pcc-fin-section pcc-fin-section--snapshot">' +
-          '<details class="pcc-fin-details">' +
+          '<details class="pcc-fin-details pcc-fin-details--snapshot">' +
           '<summary>Operational snapshot</summary>' +
           '<div class="pcc-fin-mini-grid">' +
           finMini('Est. days', op.estimated_days != null ? Number(op.estimated_days).toFixed(1) : '—') +
@@ -1041,7 +1159,7 @@
           finMini('Completed', op.completed_days != null ? String(op.completed_days) : '—') +
           finMini('Reports', op.reports_count != null ? String(op.reports_count) : '—') +
           finMini('Expenses', op.expense_entries_count != null ? String(op.expense_entries_count) : '—') +
-          '</div></details></section>';
+          '</div></details>';
 
         var contractSectionHtml =
           '<section class="pcc-fin-section">' +
@@ -1061,7 +1179,7 @@
           '<section class="pcc-fin-section">' +
           '<h4>Field expenses</h4>' +
           '<div class="pcc-fin-expense-bar">' +
-          '<div class="pcc-fin-expense-actions">' +
+          '<div class="pcc-fin-expense-actions pcc-fin-no-print">' +
           '<button type="button" class="btn" id="pccFinBtnViewExpenses">View expenses</button>' +
           '<button type="button" class="btn ghost" id="pccFinBtnPrintExpenses">Print expense report</button>' +
           '</div>' +
@@ -1073,7 +1191,7 @@
           '</section>';
 
         var ownerActionsHtml =
-          '<section class="pcc-fin-section">' +
+          '<section class="pcc-fin-section pcc-fin-no-print">' +
           '<h4>Owner actions</h4>' +
           '<div class="pcc-fin-actions">' +
           '<button type="button" class="btn ghost" id="pccFinBtnExpenseReport">View expense report</button>' +
@@ -1123,6 +1241,7 @@
         modal.classList.remove('open');
         modal.setAttribute('aria-hidden', 'true');
         document.body.style.overflow = '';
+        document.body.classList.remove('pcc-fin-printing');
       }
 
       function openPccExpenseModal() {
@@ -1160,6 +1279,14 @@
         window.print();
         window.addEventListener('afterprint', function () {
           document.body.classList.remove('pcc-expense-printing');
+        }, { once: true });
+      }
+
+      function printPccFinancialReport() {
+        document.body.classList.add('pcc-fin-printing');
+        window.print();
+        window.addEventListener('afterprint', function () {
+          document.body.classList.remove('pcc-fin-printing');
         }, { once: true });
       }
 
@@ -1608,6 +1735,7 @@
       });
 
       document.getElementById('pccFinClose').addEventListener('click', closePccFinancialModal);
+      document.getElementById('pccFinBtnPrint').addEventListener('click', printPccFinancialReport);
       document.getElementById('pccFinancialModal').addEventListener('click', function (e) {
         if (e.target === document.getElementById('pccFinancialModal')) closePccFinancialModal();
       });

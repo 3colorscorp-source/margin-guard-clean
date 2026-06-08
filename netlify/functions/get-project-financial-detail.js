@@ -45,6 +45,20 @@ async function loadLatestTenantSnapshotPayload(tenantId) {
   }
 }
 
+async function loadOperationalSnapshotPlan(tenantId, projectId) {
+  const tid = encodeURIComponent(tenantId);
+  const pid = encodeURIComponent(projectId);
+  try {
+    const rows = await supabaseRequest(
+      `tenant_project_operational_snapshots?tenant_id=eq.${tid}&project_id=eq.${pid}&select=operational_plan&limit=1`
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    return row?.operational_plan ?? null;
+  } catch (_e) {
+    return null;
+  }
+}
+
 function extractSupervisorBonusPct(payload) {
   const storage =
     payload?.storage && typeof payload.storage === "object" ? payload.storage : {};
@@ -114,6 +128,7 @@ exports.handler = async (event) => {
       dayProgress,
       migrationBaseline,
       invoices,
+      operationalPlanRaw,
     ] = await Promise.all([
       supabaseRequest(
         `tenant_project_reports?tenant_id=eq.${tid}&project_id=eq.${pid}&select=*&order=entry_date.desc`
@@ -128,6 +143,7 @@ exports.handler = async (event) => {
       loadDayProgressForProject(tenant.id, projectId),
       loadMigrationBaseline(tenant.id, projectId),
       loadInvoicesForProject(tenant.id, project),
+      loadOperationalSnapshotPlan(tenant.id, projectId),
     ]);
 
     const reports = Array.isArray(reportRows) ? reportRows : [];
@@ -154,6 +170,7 @@ exports.handler = async (event) => {
       hoursPerDay: extractHoursPerDay(snapshotPayload),
       migrationBaseline,
       ledgerPaidByInvoiceId,
+      operationalPlanRaw,
     });
 
     return json(200, { ok: true, detail });
