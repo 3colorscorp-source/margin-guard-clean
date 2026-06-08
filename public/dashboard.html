@@ -230,85 +230,9 @@
       color:rgba(148,163,184,.92);
       max-width:56ch;
     }
-    .fcc-chart-shell{
-      position:relative;
-      min-height:88px;
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,.08);
-      background:
-        linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015));
-      margin-bottom:10px;
-      overflow:hidden;
+    .fcc-cf-hooks{
+      display:none !important;
     }
-    .fcc-chart-shell .fcc-chart-svg{
-      position:absolute;
-      inset:0;
-      opacity:.85;
-    }
-    .fcc-chart-metrics{
-      position:relative;
-      z-index:1;
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      padding:10px 12px;
-    }
-    .fcc-chart-metric{
-      display:inline-flex;
-      flex-direction:column;
-      gap:4px;
-      padding:10px 14px;
-      border-radius:12px;
-      background:rgba(5,8,16,.55);
-      border:1px solid rgba(255,255,255,.08);
-    }
-    .fcc-chart-metric .label{
-      font-size:11px;
-      text-transform:uppercase;
-      letter-spacing:.08em;
-      color:rgba(148,163,184,.9);
-    }
-    .fcc-chart-metric strong{
-      font-size:18px;
-      font-weight:850;
-      color:rgba(248,250,252,.98);
-    }
-    .fcc-cf-footer{
-      display:grid;
-      grid-template-columns:repeat(3, 1fr);
-      gap:10px;
-    }
-    .fcc-mini-metric{
-      padding:10px 12px;
-      border-radius:12px;
-      border:1px solid rgba(255,255,255,.08);
-      background:rgba(255,255,255,.025);
-    }
-    .fcc-mini-metric .t{
-      display:block;
-      font-size:11px;
-      font-weight:700;
-      text-transform:uppercase;
-      letter-spacing:.06em;
-      color:rgba(148,163,184,.95);
-      margin-bottom:6px;
-    }
-    .fcc-mini-metric strong{
-      display:block;
-      font-size:17px;
-      font-weight:850;
-      color:rgba(248,250,252,.98);
-    }
-    .fcc-mini-metric .hint{
-      display:block;
-      margin-top:6px;
-      font-size:11px;
-      line-height:1.35;
-      color:rgba(148,163,184,.75);
-    }
-    .fcc-mini-metric--in{ border-color:rgba(34,197,94,.2); box-shadow:0 0 24px rgba(34,197,94,.06); }
-    .fcc-mini-metric--out{ border-color:rgba(248,113,113,.18); box-shadow:0 0 20px rgba(248,113,113,.05); }
-    .fcc-mini-metric--net{ border-color:rgba(59,130,246,.22); }
     .fcc-donut-wrap{
       position:relative;
       width:min(180px, 100%);
@@ -593,17 +517,15 @@
         display:contents;
       }
       .fcc-order-snapshot{ order:1; }
-      .fcc-order-cashflow{ order:2; }
-      .fcc-order-profit{ order:3; }
-      .fcc-order-qa{ order:4; }
-      .fcc-order-perf{ order:5; }
-      .fcc-order-bank{ order:6; }
+      .fcc-order-profit{ order:2; }
+      .fcc-order-qa{ order:3; }
+      .fcc-order-perf{ order:4; }
+      .fcc-order-bank{ order:5; }
       .fcc-columns{
         display:flex;
         flex-direction:column;
         gap:12px;
       }
-      .fcc-cf-footer{ grid-template-columns:1fr; }
     }
 
     .fcc-perf-toggle{
@@ -677,50 +599,6 @@
             </div>
             <div class="dashboard-strip fcc-strip fcc-strip-tight" id="executiveStrip"></div>
             <div class="dashboard-main-kpis fcc-kpi-deck" id="dashKpis"></div>
-          </div>
-        </section>
-
-        <section class="card fcc-panel fcc-order-cashflow">
-          <div class="card-inner">
-            <div class="fcc-panel-head">
-              <h2>Cash flow overview</h2>
-              <div class="fcc-panel-sub">Operating liquidity from the saved monitor; hub collections when available.</div>
-            </div>
-            <div class="fcc-chart-shell">
-              <svg class="fcc-chart-svg" viewBox="0 0 400 120" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <defs>
-                  <linearGradient id="fccAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="rgba(34,197,94,0.35)"/>
-                    <stop offset="100%" stop-color="rgba(34,197,94,0)"/>
-                  </linearGradient>
-                </defs>
-                <path fill="url(#fccAreaGrad)" d="M0 100 L40 88 L90 92 L140 70 L190 78 L240 55 L290 62 L340 48 L400 40 L400 120 L0 120 Z"/>
-                <path fill="none" stroke="rgba(34,197,94,.85)" stroke-width="2" d="M0 100 L40 88 L90 92 L140 70 L190 78 L240 55 L290 62 L340 48 L400 40"/>
-              </svg>
-              <div class="fcc-chart-metrics">
-                <div class="fcc-chart-metric">
-                  <span class="label">Net liquidity (saved)</span>
-                  <strong id="fccCfNetLiquidity">—</strong>
-                </div>
-              </div>
-            </div>
-            <div class="fcc-cf-footer">
-              <div class="fcc-mini-metric fcc-mini-metric--in">
-                <span class="t">Cash in (paid hub)</span>
-                <strong id="fccCfCashIn">—</strong>
-                <span class="hint" id="fccCfCashInHint">Fills in when the portfolio loads in the hub.</span>
-              </div>
-              <div class="fcc-mini-metric fcc-mini-metric--out">
-                <span class="t">Monthly burn</span>
-                <strong id="fccCfCashOut">—</strong>
-                <span class="hint">Monthly operating cost from the monitor.</span>
-              </div>
-              <div class="fcc-mini-metric fcc-mini-metric--net">
-                <span class="t">Total cash on hand</span>
-                <strong id="fccCfNetCash">—</strong>
-                <span class="hint">Sum of the four saved buckets.</span>
-              </div>
-            </div>
           </div>
         </section>
 
@@ -873,6 +751,14 @@
           </section>
         </div>
       </div>
+    </div>
+
+    <div class="fcc-cf-hooks" hidden aria-hidden="true">
+      <span id="fccCfNetLiquidity">—</span>
+      <span id="fccCfNetCash">—</span>
+      <span id="fccCfCashOut">—</span>
+      <span id="fccCfCashIn">—</span>
+      <span id="fccCfCashInHint"></span>
     </div>
   </div>
 
