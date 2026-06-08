@@ -793,6 +793,12 @@
         if (v == null || !isFinite(Number(v))) return '—';
         return Math.round(Number(v)) + '%';
       }
+      function fmtFinProgressBadge(rawPct) {
+        var n = Number(rawPct);
+        if (!isFinite(n)) return { text: '—', overPlan: false };
+        if (n > 100) return { text: '100% complete', overPlan: true };
+        return { text: pct(n) + ' progress', overPlan: false };
+      }
       function fmtDayNum(n) {
         var x = Number(n);
         if (!isFinite(x)) return '—';
@@ -929,11 +935,15 @@
 
         var tone = h.tone === 'yellow' ? 'amber' : (h.tone === 'red' ? 'red' : 'green');
         var riskDisplay = profit.risk_label || (profit.owner_profit_breakdown || {}).risk_label || marginRiskLabel(k.risk_status || h.margin_risk);
+        var finProgress = fmtFinProgressBadge(h.progress_pct);
         if (badges) {
           var badgeHtml =
             '<span class="badge ' + tone + '">' + esc(h.status_label || '—') + '</span>' +
-            '<span class="badge">' + esc(pct(h.progress_pct)) + ' progress</span>' +
+            '<span class="badge">' + esc(finProgress.text) + '</span>' +
             '<span class="badge ' + marginRiskBadgeClass(h.margin_risk || k.risk_status) + '">Margin ' + esc(marginRiskLabel(h.margin_risk || k.risk_status)) + '</span>';
+          if (finProgress.overPlan) {
+            badgeHtml += '<span class="badge amber">Over plan</span>';
+          }
           if (h.completion_status) {
             badgeHtml += '<span class="badge amber">' + esc(h.completion_status) + '</span>';
           }
