@@ -6,7 +6,7 @@
   <title>Margin Guard | Business Settings</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
-<body data-role="owner" data-requires-auth="true">
+<body data-role="owner" data-requires-auth="true" class="business-settings-page">
   <div class="topbar">
     <div class="topbar-inner">
       <div class="brand">
@@ -35,155 +35,240 @@
   <div class="container">
     <div class="account-pill" id="accountEmail">Cuenta activa</div>
 
-    <section class="card owner-hero">
+    <section class="card owner-hero bs-hero-compact">
       <div class="card-inner">
         <div class="owner-hero-inner">
           <div>
             <span class="eyebrow">Business Settings</span>
-            <h2 class="hero-title">Configura reglas y branding del negocio en modo multitenant.</h2>
-            <div class="sub" style="margin:0;">Esta pantalla guarda la logica permanente del negocio y tambien el branding publico que debe reflejarse en Sales, PDF, email, firma y quote view para cada tenant.</div>
+            <h2 class="hero-title">Tenant rules, crew inputs, and public branding</h2>
+            <div class="sub" style="margin:0;">Configure what Margin Guard uses for pricing inputs, scheduling capacity, and what clients see on quotes, PDFs, emails, and public pages.</div>
           </div>
           <div class="hero-score">
-            <div class="hero-score-label">Tenant Mode</div>
+            <div class="hero-score-label">Tenant mode</div>
             <div class="hero-score-value" id="tenantModeBadge">Multitenant</div>
-            <div class="hero-score-meta">Cada negocio guarda su propio branding y sus propias reglas sin romper la logica del sistema.</div>
+            <div class="hero-score-meta">Each business keeps its own settings. Save once to persist all sections.</div>
           </div>
         </div>
       </div>
     </section>
 
-    <div class="grid">
-      <div>
+    <div class="grid bs-layout">
+      <div class="bs-main">
         <div class="card">
           <div class="card-inner">
             <div class="section-head">
               <div>
-                <h2>Business Settings</h2>
-                <div class="sub">Reglas permanentes del negocio y branding publico del tenant.</div>
+                <h2>Settings</h2>
+                <div class="sub">Grouped by area. All fields below save together.</div>
               </div>
-              <div class="badge green">Multitenant ready</div>
+              <div class="badge green">Multitenant</div>
             </div>
 
-            <div id="businessSettingsLoadingNote" class="dashboard-note" style="margin-bottom:14px;" role="status" aria-live="polite">
-              <div class="dashboard-note-title">Cargando branding</div>
-              <div class="dashboard-note-copy">Obteniendo datos del servidor. El formulario aparecera cuando termine la carga (sin parpadeos desde datos viejos).</div>
+            <div id="businessSettingsLoadingNote" class="dashboard-note bs-loading-note" role="status" aria-live="polite">
+              <div class="dashboard-note-title">Loading settings</div>
+              <div class="dashboard-note-copy">Fetching tenant data from the server. The form appears when loading completes.</div>
             </div>
 
             <div id="businessSettingsContentBlock" hidden>
-            <div class="dashboard-note" style="margin-bottom:14px;">
-              <div class="dashboard-note-title">Tenant branding</div>
-              <div class="dashboard-note-copy">Lo que guardes aqui debe verse en sales, estimate PDF, email, firma y public quote view del negocio actual.</div>
-            </div>
 
             <div
               id="businessSettingsUnsavedBanner"
-              class="notice warn"
+              class="notice warn bs-banner"
               role="status"
               aria-live="polite"
               hidden
-              style="margin-bottom:14px;"
             >
-              <strong>Cambios sin guardar.</strong> Tus ediciones solo estan en esta pestana; pulsa <strong>Guardar business settings</strong> para enviarlas al servidor.
+              <strong>Unsaved changes.</strong> Edits are only in this tab until you click <strong>Guardar business settings</strong>.
             </div>
 
             <div
               id="businessSettingsValidationBanner"
-              class="notice err"
+              class="notice err bs-banner"
               role="alert"
               aria-live="assertive"
               hidden
-              style="margin-bottom:14px;"
             >
               Complete los campos obligatorios para guardar Business Settings y calcular precios correctamente.
             </div>
 
-            <div class="form">
-              <div class="field">
-                <label>Nombre del negocio</label>
-                <input id="bizNameOwner" maxlength="60" placeholder="Nombre comercial del negocio" />
-                <div class="hint"><span id="bizNameOwnerCount">0</span>/60</div>
+            <section class="bs-section">
+              <div class="bs-section-head">
+                <h3 class="bs-section-title">1. Company Profile</h3>
+                <p class="sub bs-section-sub">Public identity for Sales, estimate PDF, email, signature, and public quote view.</p>
               </div>
-              <div class="field">
-                <label>Business email</label>
-                <input id="businessEmail" type="email" maxlength="120" placeholder="sales@business.com" />
-              </div>
-              <div class="field">
-                <label>Business phone</label>
-                <input id="businessPhone" maxlength="30" placeholder="(650) 555-0101" />
-              </div>
-              <div class="field">
-                <label>Business address</label>
-                <input id="businessAddress" maxlength="160" placeholder="123 Main St, City, State ZIP" />
-              </div>
-              <div class="field">
-                <label>Public logo URL</label>
-                <input id="publicLogoUrl" maxlength="500" placeholder="https://..." />
-                <div class="hint">Puedes pegar una URL o subir una imagen abajo (solo este tenant).</div>
-              </div>
-              <div class="field">
-                <label>Subir logo</label>
-                <input type="file" id="businessLogoUpload" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/svg+xml" />
-                <div class="hint">PNG, JPG, WebP, GIF o SVG. Max ~2.5 MB. Se sube a tu carpeta en Storage; <strong>no</strong> se guarda en quotes ni estimates.</div>
-                <div style="margin-top:10px;">
-                  <img id="businessLogoPreview" alt="" style="display:none;max-height:88px;max-width:240px;width:auto;height:auto;object-fit:contain;border-radius:14px;background:rgba(0,0,0,.18);padding:10px;box-sizing:border-box;" />
+              <div class="form">
+                <div class="field">
+                  <label for="bizNameOwner">Business name</label>
+                  <input id="bizNameOwner" maxlength="60" placeholder="Nombre comercial del negocio" />
+                  <div class="hint"><span id="bizNameOwnerCount">0</span>/60</div>
+                </div>
+                <div class="field">
+                  <label for="businessEmail">Business email</label>
+                  <input id="businessEmail" type="email" maxlength="120" placeholder="sales@business.com" />
+                </div>
+                <div class="field">
+                  <label for="businessPhone">Business phone</label>
+                  <input id="businessPhone" maxlength="30" placeholder="(650) 555-0101" />
+                </div>
+                <div class="field">
+                  <label for="businessAddress">Business address</label>
+                  <input id="businessAddress" maxlength="160" placeholder="123 Main St, City, State ZIP" />
+                </div>
+                <div class="field">
+                  <label for="publicLogoUrl">Public logo URL</label>
+                  <input id="publicLogoUrl" maxlength="500" placeholder="https://..." />
+                  <div class="hint hint--start">Paste a URL or upload below (this tenant only).</div>
+                </div>
+                <div class="field field--full">
+                  <label for="businessLogoUpload">Upload logo</label>
+                  <input type="file" id="businessLogoUpload" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/svg+xml" />
+                  <div class="hint hint--start">PNG, JPG, WebP, GIF, or SVG. Max ~2.5 MB. Stored in your tenant folder — not embedded in quotes.</div>
+                  <div class="bs-logo-preview-wrap">
+                    <img id="businessLogoPreview" alt="" class="bs-logo-preview" />
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="publicAccentColor">Public accent color</label>
+                  <input id="publicAccentColor" type="color" value="#0f8a5f" />
+                </div>
+                <div class="field">
+                  <label for="serviceLine">Service line</label>
+                  <input id="serviceLine" maxlength="90" placeholder="Professional Service Estimate" />
+                </div>
+                <div class="field">
+                  <label for="marketLine">Market line</label>
+                  <input id="marketLine" maxlength="90" placeholder="Bay Area, CA" />
+                </div>
+                <div class="field">
+                  <label for="signatureLine">Signature line</label>
+                  <input id="signatureLine" maxlength="120" placeholder="Professional Estimate Delivery" />
                 </div>
               </div>
-              <div class="field">
-                <label>Public accent color</label>
-                <input id="publicAccentColor" type="color" value="#0f8a5f" />
-              </div>
-              <div class="field">
-                <label>Service line</label>
-                <input id="serviceLine" maxlength="90" placeholder="Professional Service Estimate" />
-              </div>
-              <div class="field">
-                <label>Market line</label>
-                <input id="marketLine" maxlength="90" placeholder="Bay Area, CA" />
-              </div>
-              <div class="field">
-                <label>Signature line</label>
-                <input id="signatureLine" maxlength="120" placeholder="Professional Estimate Delivery" />
-              </div>
-              <div class="field"><label>Costo base Pro ($/h)</label><input id="baseInstaller" type="number" step="0.01" placeholder="75" /></div>
-              <div class="field"><label>Costo base Assistant ($/h)</label><input id="baseHelper" type="number" step="0.01" placeholder="45" /></div>
-              <div class="field">
-                <label>Modo de cotizacion</label>
-                <select id="pricingMode">
-                  <option value="hour">Cobrar por hora</option>
-                  <option value="day">Cobrar por dia</option>
-                </select>
-              </div>
-              <div class="field"><label>Horas por dia laboral</label><input id="hoursPerDay" type="number" step="0.25" placeholder="8" /></div>
-              <div class="field">
-                <label>Workdays (Mon–Fri)</label>
-                <select id="workdaysEnabled">
-                  <option value="true">Monday–Friday only</option>
-                  <option value="false">All calendar days</option>
-                </select>
-              </div>
-              <div class="field"><label>Crew capacity</label><input id="crewCapacity" type="number" step="1" min="1" placeholder="1" /></div>
-              <div class="field"><label>Schedule buffer days</label><input id="scheduleBufferDays" type="number" step="1" min="0" placeholder="2" /></div>
-              <div class="field">
-                <label>Allow seller schedule override</label>
-                <select id="allowSellerScheduleOverride">
-                  <option value="false">No — capacity calendar enforced</option>
-                  <option value="true">Yes — owner override (advanced)</option>
-                </select>
-              </div>
-              <div class="field"><label>Gastos operativos mensuales ($)</label><input id="overheadMonthly" type="number" step="0.01" placeholder="0" /></div>
-              <div class="field"><label>Horas estandar por trabajador / mes</label><input id="stdHours" type="number" step="1" placeholder="160" /></div>
-              <div class="field"><label>Workers Comp (%)</label><input id="wcPct" type="number" step="0.01" placeholder="10" /></div>
-              <div class="field"><label>FICA (%)</label><input id="ficaPct" type="number" step="0.01" placeholder="7.65" /></div>
-              <div class="field"><label>FUTA (%)</label><input id="futaPct" type="number" step="0.01" placeholder="0.6" /></div>
-              <div class="field"><label>CA SUI (%)</label><input id="casuiPct" type="number" step="0.01" placeholder="3.4" /></div>
-              <div class="field"><label>Ganancia objetivo — target margin (%)</label><input id="profitPct" type="number" step="0.01" placeholder="30" /></div>
-              <div class="field"><label>Margen minimo aceptable — minimum margin (%)</label><input id="minimumMarginPct" type="number" step="0.01" placeholder="15" /></div>
-              <div class="field"><label>Comision de vendedor (%)</label><input id="salesCommissionPct" type="number" step="0.01" placeholder="10" /></div>
-              <div class="field"><label>Bonus base supervisor (%)</label><input id="supervisorBonusPct" type="number" step="0.01" placeholder="1" /></div>
-              <div class="field"><label>Reserva / Ahorro (%) (fija)</label><input id="reservePct" type="number" step="0.01" placeholder="5" readonly /></div>
-            </div>
+            </section>
 
-            <div class="inline-actions" style="margin-top:12px;">
+            <section class="bs-section">
+              <div class="bs-section-head">
+                <h3 class="bs-section-title">2. Labor &amp; Crew</h3>
+                <p class="sub bs-section-sub">Base labor rates, quote mode, and scheduling capacity — not per-project crew headcount.</p>
+              </div>
+              <div class="form">
+                <div class="field">
+                  <label for="baseInstaller">Pro base cost ($/h)</label>
+                  <input id="baseInstaller" type="number" step="0.01" placeholder="75" />
+                </div>
+                <div class="field">
+                  <label for="baseHelper">Assistant base cost ($/h)</label>
+                  <input id="baseHelper" type="number" step="0.01" placeholder="45" />
+                </div>
+                <div class="field">
+                  <label for="pricingMode">Quote mode</label>
+                  <select id="pricingMode">
+                    <option value="hour">Bill by hour</option>
+                    <option value="day">Bill by day</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="hoursPerDay">Work hours per day</label>
+                  <input id="hoursPerDay" type="number" step="0.25" placeholder="8" />
+                </div>
+                <div class="field">
+                  <label for="workdaysEnabled">Workdays</label>
+                  <select id="workdaysEnabled">
+                    <option value="true">Monday–Friday only</option>
+                    <option value="false">All calendar days</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="crewCapacity">Active crew capacity</label>
+                  <input id="crewCapacity" type="number" step="1" min="1" placeholder="1" />
+                  <div class="hint hint--start">1 = one active crew/project at a time. Crew members are defined in each operational plan.</div>
+                </div>
+                <div class="field">
+                  <label for="scheduleBufferDays">Schedule buffer days</label>
+                  <input id="scheduleBufferDays" type="number" step="1" min="0" placeholder="2" />
+                </div>
+                <div class="field field--full">
+                  <label for="allowSellerScheduleOverride">Allow seller schedule override</label>
+                  <select id="allowSellerScheduleOverride">
+                    <option value="false">No — capacity calendar enforced</option>
+                    <option value="true">Yes — owner override (advanced)</option>
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            <section class="bs-section">
+              <div class="bs-section-head">
+                <h3 class="bs-section-title">3. Sales Rules</h3>
+                <p class="sub bs-section-sub">Seller commission applied on labor cost in Sales and Project Control.</p>
+              </div>
+              <div class="form bs-form-single">
+                <div class="field">
+                  <label for="salesCommissionPct">Seller commission (%)</label>
+                  <input id="salesCommissionPct" type="number" step="0.01" placeholder="10" />
+                </div>
+              </div>
+            </section>
+
+            <section class="bs-section">
+              <div class="bs-section-head">
+                <h3 class="bs-section-title">4. Supervisor Rules</h3>
+                <p class="sub bs-section-sub">Supervisor bonus percentage applied on verified labor in Supervisor and Project Control.</p>
+              </div>
+              <div class="form bs-form-single">
+                <div class="field">
+                  <label for="supervisorBonusPct">Supervisor bonus (%)</label>
+                  <input id="supervisorBonusPct" type="number" step="0.01" placeholder="1" />
+                </div>
+              </div>
+            </section>
+
+            <section class="bs-section">
+              <div class="bs-section-head">
+                <h3 class="bs-section-title">5. Financial Protection</h3>
+                <p class="sub bs-section-sub">Overhead, payroll burden, target margins, and fixed reserve used in pricing protection.</p>
+              </div>
+              <div class="form">
+                <div class="field">
+                  <label for="overheadMonthly">Monthly overhead ($)</label>
+                  <input id="overheadMonthly" type="number" step="0.01" placeholder="0" />
+                </div>
+                <div class="field">
+                  <label for="stdHours">Standard hours per worker / month</label>
+                  <input id="stdHours" type="number" step="1" placeholder="160" />
+                </div>
+                <div class="field">
+                  <label for="wcPct">Workers Comp (%)</label>
+                  <input id="wcPct" type="number" step="0.01" placeholder="10" />
+                </div>
+                <div class="field">
+                  <label for="ficaPct">FICA (%)</label>
+                  <input id="ficaPct" type="number" step="0.01" placeholder="7.65" />
+                </div>
+                <div class="field">
+                  <label for="futaPct">FUTA (%)</label>
+                  <input id="futaPct" type="number" step="0.01" placeholder="0.6" />
+                </div>
+                <div class="field">
+                  <label for="casuiPct">CA SUI (%)</label>
+                  <input id="casuiPct" type="number" step="0.01" placeholder="3.4" />
+                </div>
+                <div class="field">
+                  <label for="profitPct">Target margin (%)</label>
+                  <input id="profitPct" type="number" step="0.01" placeholder="30" />
+                </div>
+                <div class="field">
+                  <label for="minimumMarginPct">Minimum acceptable margin (%)</label>
+                  <input id="minimumMarginPct" type="number" step="0.01" placeholder="15" />
+                </div>
+                <div class="field">
+                  <label for="reservePct">Reserve / savings (%) — fixed</label>
+                  <input id="reservePct" type="number" step="0.01" placeholder="5" readonly />
+                </div>
+              </div>
+            </section>
+
+            <div class="inline-actions bs-save-actions">
               <button class="btn primary" id="btnSaveBusinessSettings" type="button">Guardar business settings</button>
               <button class="btn" id="btnReloadBusinessSettings" type="button">Recargar</button>
             </div>
@@ -192,75 +277,77 @@
           </div>
         </div>
 
-        <div class="card" style="margin-top:16px;">
+        <div class="card bs-card-spaced">
           <div class="card-inner">
             <div class="section-head">
               <div>
-                <h2>Payments</h2>
-                <div class="sub">Project deposits use <strong>your</strong> Stripe account (Connect). This is separate from the Margin Guard annual subscription.</div>
+                <h2>6. Payments &amp; Invoice Text</h2>
+                <div class="sub">Deposits use <strong>your</strong> Stripe Connect account. Public invoice text is shown on client invoice links only.</div>
               </div>
               <div class="badge" id="depositStripeBadge">—</div>
             </div>
-            <div class="field" style="margin-top:4px;">
-              <label for="depositPaymentLink">Deposit Payment Link</label>
-              <input
-                id="depositPaymentLink"
-                type="url"
-                maxlength="2000"
-                placeholder="https://buy.stripe.com/..."
-                autocomplete="off"
-              />
-              <div class="hint">Paste your Stripe Payment Link for project deposits.</div>
+
+            <div class="bs-subsection">
+              <h3 class="bs-subsection-title">Project deposits</h3>
+              <div class="field">
+                <label for="depositPaymentLink">Deposit Payment Link</label>
+                <input
+                  id="depositPaymentLink"
+                  type="url"
+                  maxlength="2000"
+                  placeholder="https://buy.stripe.com/..."
+                  autocomplete="off"
+                />
+                <div class="hint hint--start">Optional Stripe Payment Link for project deposits on public quotes.</div>
+              </div>
+              <p class="sub bs-stripe-status-line">
+                Stripe status: <strong id="depositStripeStatusText">Loading…</strong>
+              </p>
+              <ul class="msg-list sales-msg-grid bs-stripe-lines">
+                <li id="depositStripeLineAccount">Stripe account: —</li>
+                <li id="depositStripeLineCharges">Charges: —</li>
+                <li id="depositStripeLineDetails">Details submitted: —</li>
+              </ul>
+              <div class="inline-actions bs-stripe-actions">
+                <button class="btn primary" type="button" id="btnStripeDepositConnect">Connect Stripe for deposits</button>
+                <button class="btn" type="button" id="btnStripeDepositRefresh">Refresh status</button>
+              </div>
+              <div class="notice" id="depositStripeNotice" style="display:none;margin-top:10px;"></div>
             </div>
 
-            <div class="sep" style="margin:18px 0;"></div>
-            <h3 style="margin:0 0 6px;font-size:1.05rem;">Public invoice (client page)</h3>
-            <p class="sub" style="margin:0 0 12px;">
-              Shown when clients open your invoice link. Margin Guard does not process these payments.
-            </p>
-            <div class="field">
-              <label for="tenantPaymentInstructions">Payment instructions</label>
-              <textarea
-                id="tenantPaymentInstructions"
-                rows="5"
-                maxlength="8000"
-                placeholder="How clients should pay you (check payable to, mailing address, Zelle phone, reference line, etc.)"
-              ></textarea>
+            <div class="bs-subsection">
+              <h3 class="bs-subsection-title">Public invoice (client page)</h3>
+              <p class="sub bs-section-sub">Shown when clients open your invoice link. Margin Guard does not process these payments.</p>
+              <div class="field field--full">
+                <label for="tenantPaymentInstructions">Payment instructions</label>
+                <textarea
+                  id="tenantPaymentInstructions"
+                  rows="5"
+                  maxlength="8000"
+                  placeholder="How clients should pay you (check payable to, mailing address, Zelle phone, reference line, etc.)"
+                ></textarea>
+              </div>
+              <div class="field field--full">
+                <label for="tenantPaymentLink">Payment link (optional)</label>
+                <input
+                  id="tenantPaymentLink"
+                  type="url"
+                  maxlength="2000"
+                  placeholder="https://…"
+                  autocomplete="off"
+                />
+                <div class="hint hint--start">External link only (bank portal, QuickBooks, Square, etc.).</div>
+              </div>
             </div>
-            <div class="field">
-              <label for="tenantPaymentLink">Payment link (optional)</label>
-              <input
-                id="tenantPaymentLink"
-                type="url"
-                maxlength="2000"
-                placeholder="https://…"
-                autocomplete="off"
-              />
-              <div class="hint">External link only (your bank, QuickBooks, Square, etc.). Opens in a new tab for the customer.</div>
-            </div>
-
-            <p class="sub" style="margin:0 0 10px 0;">
-              Status: <strong id="depositStripeStatusText">Loading…</strong>
-            </p>
-            <ul class="msg-list sales-msg-grid" style="margin-bottom:12px;">
-              <li id="depositStripeLineAccount">Stripe account: —</li>
-              <li id="depositStripeLineCharges">Charges: —</li>
-              <li id="depositStripeLineDetails">Details submitted: —</li>
-            </ul>
-            <div class="inline-actions" style="flex-wrap:wrap;">
-              <button class="btn primary" type="button" id="btnStripeDepositConnect">Connect Stripe for deposits</button>
-              <button class="btn" type="button" id="btnStripeDepositRefresh">Refresh status</button>
-            </div>
-            <div class="notice" id="depositStripeNotice" style="display:none;margin-top:10px;"></div>
           </div>
         </div>
 
-        <div class="card" style="margin-top:16px;">
+        <div class="card bs-card-spaced">
           <div class="card-inner">
             <div class="section-head">
               <div>
-                <h2>Bank connection (Financial Connections)</h2>
-                <div class="sub">Conecta cuentas bancarias para el monitor de caja (solo tu tenant). Mapea cada cuenta enlazada a Operating, Savings, Profit o Tax Reserve; luego sincroniza saldos agregados.</div>
+                <h2>Bank connection</h2>
+                <div class="sub">Link bank accounts for the cash monitor (this tenant only). Map accounts to buckets, then sync balances.</div>
               </div>
             </div>
             <div data-mg-bank-panel>
@@ -296,12 +383,16 @@
         </div>
       </div>
 
-      <div>
-        <div class="card">
+      <aside class="bs-aside">
+        <div class="card bs-aside-card">
           <div class="card-inner">
-            <h2>Preview del tenant</h2>
-            <div class="sub">Esto debe reflejarse en el sistema actual del negocio.</div>
-            <div class="kpi">
+            <div class="section-head">
+              <div>
+                <h2>7. Used By / System Summary</h2>
+                <div class="sub">Live preview of tenant branding and where settings flow.</div>
+              </div>
+            </div>
+            <div class="kpi bs-kpi-compact">
               <div class="kpi-box">
                 <div class="label">Business</div>
                 <div class="value" id="previewBusinessName">—</div>
@@ -312,28 +403,32 @@
                 <div class="value" id="previewAccentHex">#0f8a5f</div>
                 <div class="meta" id="previewSignatureLine">Professional Estimate Delivery</div>
               </div>
-              <div class="kpi-box">
-                <div class="label">Sales / PDF / Email</div>
-                <div class="value">Tenant payload</div>
-                <div class="meta">Business name, phone, email, address, accent, service line y firma deben viajar dinamicamente.</div>
-              </div>
-              <div class="kpi-box">
-                <div class="label">Next step</div>
-                <div class="value"><a href="/sales">Ir a Vendedor</a></div>
-                <div class="meta">Despues de guardar, valida el PDF, el email y el quote publico del tenant.</div>
-              </div>
             </div>
 
             <div class="sep"></div>
-            <h2 style="margin-top:0;">Como guarda</h2>
-            <ul class="msg-list sales-msg-grid">
-              <li>Owner settings siguen guardando reglas de pricing por tenant.</li>
-              <li>Business branding guarda identidad publica del negocio actual.</li>
-              <li>No cambia calculos, recommended price, deposit flow ni send flow.</li>
+            <h3 class="bs-subsection-title">Used by</h3>
+            <ul class="msg-list sales-msg-grid bs-used-by-list">
+              <li><strong>Sales</strong> — pricing inputs, commission, crew capacity calendar</li>
+              <li><strong>Supervisor</strong> — bonus %, operational scheduling context</li>
+              <li><strong>Project Control</strong> — margins, commission, labor protection</li>
+              <li><strong>Public quote / PDF / email</strong> — company profile &amp; branding</li>
+              <li><strong>Public invoice</strong> — payment instructions text</li>
             </ul>
+
+            <div class="sep"></div>
+            <h3 class="bs-subsection-title">How save works</h3>
+            <ul class="msg-list sales-msg-grid bs-used-by-list">
+              <li>Snapshot stores pricing rules per tenant.</li>
+              <li>Branding stores public identity in <code>tenant_branding</code>.</li>
+              <li>Payment fields store in <code>owner_settings</code> per tenant.</li>
+            </ul>
+
+            <div class="inline-actions bs-aside-action">
+              <a class="btn" href="/sales">Open Sales</a>
+            </div>
           </div>
         </div>
-      </div>
+      </aside>
     </div>
   </div>
 

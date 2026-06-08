@@ -5586,3 +5586,129 @@ body[data-role="owner"] input[type="date"] {
   border-color: var(--red) !important;
   box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.35);
 }
+
+/* Business Settings — layout & section grouping (UI only) */
+.business-settings-page .bs-layout{
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.55fr);
+  align-items: start;
+  gap: 14px;
+}
+.business-settings-page .bs-hero-compact .owner-hero-inner{
+  gap: 16px;
+}
+.business-settings-page .bs-hero-compact .hero-title{
+  font-size: clamp(1.15rem, 2vw, 1.35rem);
+}
+.business-settings-page .bs-loading-note,
+.business-settings-page .bs-banner{
+  margin-bottom: 14px;
+}
+.business-settings-page .bs-section{
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,.07);
+}
+.business-settings-page .bs-section:first-of-type{
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+.business-settings-page .bs-section-head{
+  margin-bottom: 10px;
+}
+.business-settings-page .bs-section-title{
+  margin: 0 0 4px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.business-settings-page .bs-section-sub{
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.business-settings-page .bs-subsection{
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+.business-settings-page .bs-subsection:first-of-type{
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: none;
+}
+.business-settings-page .bs-subsection-title{
+  margin: 0 0 8px;
+  font-size: 0.88rem;
+  font-weight: 650;
+  color: rgba(232,238,252,.92);
+}
+.business-settings-page .form .field.field--full{
+  grid-column: 1 / -1;
+}
+.business-settings-page .form.bs-form-single{
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 360px;
+}
+.business-settings-page .hint.hint--start{
+  justify-content: flex-start;
+  text-align: left;
+}
+.business-settings-page .bs-logo-preview-wrap{
+  margin-top: 10px;
+}
+.business-settings-page .bs-logo-preview{
+  display: none;
+  max-height: 88px;
+  max-width: 240px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 14px;
+  background: rgba(0,0,0,.18);
+  padding: 10px;
+  box-sizing: border-box;
+}
+.business-settings-page .bs-save-actions{
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255,255,255,.07);
+}
+.business-settings-page .bs-card-spaced{
+  margin-top: 14px;
+}
+.business-settings-page .bs-stripe-status-line{
+  margin: 10px 0 8px;
+}
+.business-settings-page .bs-stripe-lines{
+  margin-bottom: 10px;
+}
+.business-settings-page .bs-stripe-actions{
+  flex-wrap: wrap;
+}
+.business-settings-page .bs-aside-card{
+  position: sticky;
+  top: 12px;
+}
+.business-settings-page .bs-kpi-compact{
+  gap: 10px;
+}
+.business-settings-page .bs-used-by-list{
+  font-size: 12px;
+  line-height: 1.45;
+}
+.business-settings-page .bs-used-by-list code{
+  font-size: 11px;
+}
+.business-settings-page .bs-aside-action{
+  margin-top: 12px;
+}
+@media (max-width: 980px){
+  .business-settings-page .bs-layout{
+    grid-template-columns: 1fr;
+  }
+  .business-settings-page .bs-aside-card{
+    position: static;
+  }
+}
