@@ -419,11 +419,10 @@
       flex-direction:column;
       gap:14px;
     }
-    /* Do not force display:flex when [hidden], or the panel stays visible. */
-    #fccBankCollapsePanel:not([hidden]){
-      display:flex;
-      flex-direction:column;
-      gap:14px;
+    /* Collapsed bank panel must not reserve layout space. */
+    #fccBankCollapsePanel{
+      min-height:0;
+      margin:0;
     }
     #fccBankCollapsePanel[hidden]{
       display:none !important;
@@ -432,6 +431,13 @@
       display:flex;
       flex-direction:column;
       gap:8px;
+      align-self:flex-start;
+      flex:0 0 auto;
+      width:100%;
+      min-height:0;
+    }
+    .fcc-bank-lower-slot:has(#fccBankCollapsePanel[hidden]){
+      gap:0;
     }
     .fcc-bank-wrap .card-inner{
       padding-top:12px;
@@ -787,9 +793,8 @@
             aria-controls="fccBankCollapsePanel">
             Hide banking &amp; Stripe
           </button>
-          <div id="fccBankCollapsePanel">
-            <section class="card fcc-bank-wrap" id="fcc-bank-console">
-              <div class="card-inner">
+          <section id="fccBankCollapsePanel" class="card fcc-bank-wrap">
+            <div class="card-inner" id="fcc-bank-console">
                 <div class="section-head">
                   <div>
                     <h2>Bank accounts</h2>
@@ -865,8 +870,7 @@
                   <button class="btn primary" id="btnSaveDashboard">Guardar monitor</button>
                 </div>
               </div>
-            </section>
-          </div>
+          </section>
         </div>
       </div>
     </div>
