@@ -196,6 +196,7 @@
     .pcc-fin-modal.open { display: flex; }
     .pcc-fin-modal__panel {
       width: min(96vw, 1500px);
+      height: fit-content;
       max-height: 90vh;
       display: flex;
       flex-direction: column;
@@ -223,7 +224,11 @@
       flex: 0 1 auto;
       overflow: auto;
       max-height: calc(90vh - 120px);
+      min-height: 0;
       padding: 10px 14px 14px;
+    }
+    #pccFinContent {
+      min-height: 0;
     }
     .pcc-fin-modal__title-row {
       display: flex;
@@ -266,23 +271,20 @@
       .pcc-fin-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     .pcc-fin-dash {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: flex-start;
-      align-content: flex-start;
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr) minmax(0, 1fr);
       gap: 10px;
-    }
-    @media (min-width: 1101px) {
-      .pcc-fin-col { flex: 1 1 0; min-width: 280px; }
+      align-items: start;
     }
     @media (max-width: 1100px) {
-      .pcc-fin-col--ledger { flex: 1 1 100%; }
-      .pcc-fin-col--labor,
-      .pcc-fin-col--right { flex: 1 1 calc(50% - 5px); min-width: 260px; }
+      .pcc-fin-dash {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      }
+      .pcc-fin-col--ledger { grid-column: 1 / -1; }
     }
     @media (max-width: 720px) {
-      .pcc-fin-col--labor,
-      .pcc-fin-col--right { flex: 1 1 100%; }
+      .pcc-fin-dash { grid-template-columns: 1fr; }
+      .pcc-fin-col--ledger { grid-column: auto; }
     }
     .pcc-fin-col {
       display: flex;
@@ -291,9 +293,9 @@
       gap: 8px;
       min-width: 0;
       height: auto;
-      align-self: flex-start;
+      align-self: start;
+      justify-self: stretch;
     }
-    .pcc-fin-col--ledger { flex: 1 1 320px; }
     .pcc-fin-col .pcc-fin-section {
       margin-bottom: 0;
     }
@@ -305,7 +307,8 @@
       height: auto;
       min-height: 0;
       flex: 0 0 auto;
-      align-self: stretch;
+      align-self: start;
+      width: 100%;
     }
     .pcc-fin-section h4 {
       margin: 0 0 8px;
@@ -316,25 +319,40 @@
     }
     .pcc-fin-section--owner-profit {
       margin-bottom: 0;
+      flex: 0 0 auto;
+      align-self: start;
+    }
+    .pcc-fin-section--labor {
+      flex: 0 0 auto;
+      align-self: start;
     }
     .pcc-fin-details--snapshot {
       flex: 0 0 auto;
       height: auto;
       min-height: 0;
-      padding: 8px 12px;
-      margin: 0;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.07);
+      margin: 8px 0 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
     }
     .pcc-fin-details--snapshot:not([open]) {
-      padding-bottom: 8px;
+      padding: 0;
+      margin-bottom: 0;
+    }
+    .pcc-fin-details--snapshot:not([open]) .pcc-fin-mini-grid {
+      display: none;
     }
     .pcc-fin-details--snapshot summary {
       margin: 0;
+      padding: 8px 0 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .pcc-fin-details--snapshot[open] summary {
+      margin-bottom: 8px;
     }
     .pcc-fin-details--snapshot[open] .pcc-fin-mini-grid {
-      margin-top: 8px;
+      margin-top: 0;
     }
     .pcc-fin-ledger-card {
       padding: 7px 9px;
@@ -447,9 +465,9 @@
       gap: 6px;
     }
     .pcc-fin-details {
-      margin-top: 6px;
-      border-top: 1px solid rgba(255, 255, 255, 0.06);
-      padding-top: 6px;
+      margin-top: 0;
+      border-top: 0;
+      padding-top: 0;
     }
     .pcc-fin-details summary {
       cursor: pointer;
@@ -587,9 +605,10 @@
         background: #eee !important;
       }
       body.pcc-fin-printing .pcc-fin-dash {
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 12px;
+        align-items: start;
       }
       body.pcc-fin-printing .pcc-fin-col {
         flex: 1 1 280px;
@@ -1116,8 +1135,21 @@
           ) +
           '</section>';
 
+        var operationalHtml =
+          '<details class="pcc-fin-details pcc-fin-details--snapshot">' +
+          '<summary>Operational snapshot</summary>' +
+          '<div class="pcc-fin-mini-grid">' +
+          finMini('Est. days', op.estimated_days != null ? Number(op.estimated_days).toFixed(1) : '—') +
+          finMini('Days spent', op.days_spent != null ? Number(op.days_spent).toFixed(1) : '—') +
+          finMini('Days left', op.days_remaining != null ? Number(op.days_remaining).toFixed(1) : '—') +
+          finMini('Progress', op.progress_pct != null ? pct(op.progress_pct) : '—') +
+          finMini('Completed', op.completed_days != null ? String(op.completed_days) : '—') +
+          finMini('Reports', op.reports_count != null ? String(op.reports_count) : '—') +
+          finMini('Expenses', op.expense_entries_count != null ? String(op.expense_entries_count) : '—') +
+          '</div></details>';
+
         var laborSectionHtml =
-          '<section class="pcc-fin-section">' +
+          '<section class="pcc-fin-section pcc-fin-section--labor">' +
           '<h4>Labor cost control</h4>' +
           '<div class="pcc-fin-mini-grid">' +
           finMini('Est. hours', estL.hours != null ? Number(estL.hours).toFixed(1) : '—') +
@@ -1132,6 +1164,7 @@
           '</div>' +
           (labor.cost_method ? '<div class="pcc-fin-rows" style="margin-top:6px;">' + finRow('Cost method', labor.cost_method, { wide: true }) + '</div>' : '') +
           laborNote +
+          operationalHtml +
           '</section>';
 
         var contractRows =
@@ -1147,19 +1180,6 @@
         var expenseLast = exp.last
           ? (fmtDate(exp.last.date) + ' · ' + (exp.last.concept || '—') + ' · ' + moneyUsd(exp.last.amount))
           : 'None recorded';
-
-        var operationalHtml =
-          '<details class="pcc-fin-details pcc-fin-details--snapshot">' +
-          '<summary>Operational snapshot</summary>' +
-          '<div class="pcc-fin-mini-grid">' +
-          finMini('Est. days', op.estimated_days != null ? Number(op.estimated_days).toFixed(1) : '—') +
-          finMini('Days spent', op.days_spent != null ? Number(op.days_spent).toFixed(1) : '—') +
-          finMini('Days left', op.days_remaining != null ? Number(op.days_remaining).toFixed(1) : '—') +
-          finMini('Progress', op.progress_pct != null ? pct(op.progress_pct) : '—') +
-          finMini('Completed', op.completed_days != null ? String(op.completed_days) : '—') +
-          finMini('Reports', op.reports_count != null ? String(op.reports_count) : '—') +
-          finMini('Expenses', op.expense_entries_count != null ? String(op.expense_entries_count) : '—') +
-          '</div></details>';
 
         var contractSectionHtml =
           '<section class="pcc-fin-section">' +
@@ -1208,7 +1228,7 @@
           '</div>' +
           '<div class="pcc-fin-dash">' +
           '<div class="pcc-fin-col pcc-fin-col--ledger">' + ownerBreakdownHtml + '</div>' +
-          '<div class="pcc-fin-col pcc-fin-col--labor">' + laborSectionHtml + operationalHtml + '</div>' +
+          '<div class="pcc-fin-col pcc-fin-col--labor">' + laborSectionHtml + '</div>' +
           '<div class="pcc-fin-col pcc-fin-col--right">' +
           contractSectionHtml +
           estimateSectionHtml +
