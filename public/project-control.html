@@ -267,6 +267,10 @@
       margin-bottom: 2px;
     }
     .pcc-fin-kpi__value { font-size: 0.95rem; font-weight: 800; }
+    .pcc-money-positive { color: rgba(74, 222, 128, 0.95); }
+    .pcc-money-negative { color: rgba(248, 113, 113, 0.95); }
+    .pcc-money-warning { color: rgba(251, 191, 36, 0.95); }
+    .pcc-money-neutral { color: rgba(232, 238, 252, 0.88); }
     .pcc-fin-kpis {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -426,7 +430,6 @@
     }
     .pcc-fin-row--emph .pcc-fin-row__v {
       font-weight: 800;
-      color: rgba(74, 222, 128, 0.95);
     }
     .pcc-fin-row--wide {
       grid-template-columns: 1fr;
@@ -600,6 +603,10 @@
       body.pcc-fin-printing .pcc-fin-row__k { color: #555; }
       body.pcc-fin-printing .pcc-fin-row__v { color: #111; }
       body.pcc-fin-printing .pcc-fin-row--emph .pcc-fin-row__v { color: #0a5c40; }
+      body.pcc-fin-printing .pcc-money-positive { color: #0a5c40; }
+      body.pcc-fin-printing .pcc-money-negative { color: #b91c1c; }
+      body.pcc-fin-printing .pcc-money-warning { color: #92400e; }
+      body.pcc-fin-printing .pcc-money-neutral { color: #111; }
       body.pcc-fin-printing .pcc-fin-mini {
         background: #f5f5f5;
         border-color: #ddd;
@@ -1033,6 +1040,74 @@
         return finRow(label, value, { wide: wide });
       }
 
+      function finMoneyClass(kind) {
+        if (kind === 'positive') return 'pcc-money-positive';
+        if (kind === 'negative') return 'pcc-money-negative';
+        if (kind === 'warning') return 'pcc-money-warning';
+        return 'pcc-money-neutral';
+      }
+
+      function laborVarianceClass(n) {
+        if (n == null || !isFinite(Number(n))) return finMoneyClass('neutral');
+        var v = Number(n);
+        if (Math.abs(v) < 0.005) return finMoneyClass('neutral');
+        return v > 0 ? finMoneyClass('negative') : finMoneyClass('positive');
+      }
+
+      function profitVarianceClass(n) {
+        if (n == null || !isFinite(Number(n))) return finMoneyClass('neutral');
+        var v = Number(n);
+        if (Math.abs(v) < 0.005) return finMoneyClass('neutral');
+        return v > 0 ? finMoneyClass('positive') : finMoneyClass('warning');
+      }
+
+      function marginPctMoneyClass(risk, marginPct) {
+        var r = String(risk || '').toLowerCase();
+        if (r === 'high' || r === 'at_risk' || r === 'at risk') return finMoneyClass('negative');
+        if (r === 'medium' || r === 'watch' || r === 'incomplete') return finMoneyClass('warning');
+        if (marginPct != null && isFinite(Number(marginPct)) && Number(marginPct) > 0) {
+          return finMoneyClass('positive');
+        }
+        return finMoneyClass('neutral');
+      }
+
+      function ownerProfitMoneyClass(incomplete, val) {
+        if (incomplete) return finMoneyClass('warning');
+        if (val != null && isFinite(Number(val))) {
+          if (Number(val) < 0) return finMoneyClass('negative');
+          if (Number(val) > 0) return finMoneyClass('positive');
+        }
+        return finMoneyClass('neutral');
+      }
+
+      function riskLabelMoneyClass(label) {
+        var s = String(label || '').toLowerCase();
+        if (s.indexOf('risk') >= 0 || s.indexOf('at risk') >= 0) return finMoneyClass('negative');
+        if (s.indexOf('watch') >= 0) return finMoneyClass('warning');
+        if (s.indexOf('good') >= 0) return finMoneyClass('positive');
+        if (s.indexOf('incomplete') >= 0) return finMoneyClass('warning');
+        return finMoneyClass('neutral');
+      }
+
+      function invoiceStatusMoneyClass(status) {
+        var s = String(status || '').toLowerCase();
+        if (!s || s === '—') return finMoneyClass('neutral');
+        if (s === 'paid') return finMoneyClass('positive');
+        if (s.indexOf('draft') >= 0 || s.indexOf('unpaid') >= 0 || s.indexOf('partial') >= 0 ||
+            s.indexOf('sent') >= 0 || s.indexOf('issued') >= 0 || s.indexOf('overdue') >= 0 ||
+            s.indexOf('no invoice') >= 0) {
+          return finMoneyClass('warning');
+        }
+        return finMoneyClass('neutral');
+      }
+
+      function balanceDueMoneyClass(amt) {
+        if (amt != null && isFinite(Number(amt)) && Number(amt) <= 0.01) {
+          return finMoneyClass('positive');
+        }
+        return finMoneyClass('warning');
+      }
+
       function finRow(label, value, opts) {
         opts = opts || {};
         var cls = 'pcc-fin-row';
@@ -1040,6 +1115,7 @@
         if (opts.wide) cls += ' pcc-fin-row--wide';
         var vCls = 'pcc-fin-row__v';
         if (opts.wide || opts.wrap) vCls += ' pcc-fin-row__v--wrap';
+        if (opts.money) vCls += ' ' + opts.money;
         return (
           '<div class="' + cls + '">' +
           '<div class="pcc-fin-row__k">' + esc(label) + '</div>' +
@@ -1048,11 +1124,22 @@
         );
       }
 
-      function finMini(label, value) {
+      function finMini(label, value, moneyClass) {
+        var vCls = 'pcc-fin-mini__v' + (moneyClass ? ' ' + moneyClass : '');
         return (
           '<div class="pcc-fin-mini">' +
           '<div class="pcc-fin-mini__k">' + esc(label) + '</div>' +
-          '<div class="pcc-fin-mini__v">' + esc(value) + '</div>' +
+          '<div class="' + vCls + '">' + esc(value) + '</div>' +
+          '</div>'
+        );
+      }
+
+      function finKpi(label, valueHtml, moneyClass) {
+        var vCls = 'pcc-fin-kpi__value' + (moneyClass ? ' ' + moneyClass : '');
+        return (
+          '<div class="pcc-fin-kpi">' +
+          '<div class="pcc-fin-kpi__label">' + esc(label) + '</div>' +
+          '<div class="' + vCls + '">' + valueHtml + '</div>' +
           '</div>'
         );
       }
@@ -1127,31 +1214,37 @@
         var profitKpiLabel = profitIncomplete ? 'Owner profit (incomplete)' : 'Owner profit';
         var marginKpiLabel = profitIncomplete ? 'Margin % (incomplete)' : 'Margin %';
 
+        var marginRisk = h.margin_risk || k.risk_status;
+        var pos = finMoneyClass('positive');
+        var neg = finMoneyClass('negative');
+        var warn = finMoneyClass('warning');
+        var neu = finMoneyClass('neutral');
+
         var deductionsRows =
-          finRow('Unexpected expenses', moneyUsd(opb.unexpected_expenses)) +
-          finRow('Operating cost allocation', ownerProfitVal(opb.operating_cost_allocation, opb.operating_cost_allocation != null)) +
-          finRow('Seller commission', opb.seller_commission_note ? opb.seller_commission_note : ownerProfitVal(opb.seller_commission, opb.seller_commission != null), { wrap: Boolean(opb.seller_commission_note) }) +
-          finRow('Supervisor bonus', opb.supervisor_bonus_note ? opb.supervisor_bonus_note : ownerProfitVal(opb.supervisor_bonus, opb.supervisor_bonus != null), { wrap: Boolean(opb.supervisor_bonus_note) }) +
-          finRow('Savings reserve', ownerProfitVal(opb.savings_reserve, opb.savings_reserve != null));
+          finRow('Unexpected expenses', moneyUsd(opb.unexpected_expenses), { money: neg }) +
+          finRow('Operating cost allocation', ownerProfitVal(opb.operating_cost_allocation, opb.operating_cost_allocation != null), { money: neg, wrap: opb.operating_cost_allocation == null }) +
+          finRow('Seller commission', opb.seller_commission_note ? opb.seller_commission_note : ownerProfitVal(opb.seller_commission, opb.seller_commission != null), { money: neg, wrap: Boolean(opb.seller_commission_note) }) +
+          finRow('Supervisor bonus', opb.supervisor_bonus_note ? opb.supervisor_bonus_note : ownerProfitVal(opb.supervisor_bonus, opb.supervisor_bonus != null), { money: neg, wrap: Boolean(opb.supervisor_bonus_note) }) +
+          finRow('Savings reserve', ownerProfitVal(opb.savings_reserve, opb.savings_reserve != null), { money: neg });
         if (opb.material_costs != null && opb.material_costs > 0) {
-          deductionsRows += finRow('Material costs', moneyUsd(opb.material_costs));
+          deductionsRows += finRow('Material costs', moneyUsd(opb.material_costs), { money: neg });
         }
 
         var ownerBreakdownHtml =
           '<section class="pcc-fin-section pcc-fin-section--owner-profit">' +
           '<h4>Owner profit breakdown</h4>' +
-          finLedgerGroup('Revenue', finRow('Project total', moneyUsd(opb.project_total))) +
+          finLedgerGroup('Revenue', finRow('Project total', moneyUsd(opb.project_total), { money: pos })) +
           finLedgerGroup('Labor',
-            finRow('Direct labor cost', ownerProfitVal(opb.direct_labor_cost, opb.direct_labor_cost != null)) +
-            finRow('Employer burden', ownerProfitVal(opb.employer_burden, opb.employer_burden != null)) +
-            finRow('Loaded labor cost', ownerProfitVal(opb.loaded_labor_cost, opb.loaded_labor_cost != null))
+            finRow('Direct labor cost', ownerProfitVal(opb.direct_labor_cost, opb.direct_labor_cost != null), { money: neg }) +
+            finRow('Employer burden', ownerProfitVal(opb.employer_burden, opb.employer_burden != null), { money: neg }) +
+            finRow('Loaded labor cost', ownerProfitVal(opb.loaded_labor_cost, opb.loaded_labor_cost != null), { money: neg })
           ) +
           finLedgerGroup('Deductions', deductionsRows) +
           finLedgerGroup('Result',
-            finRow(profitIncomplete ? 'Owner remaining profit (incomplete)' : 'Owner remaining profit', ownerProfitVal(opb.owner_remaining_profit, !profitIncomplete && opb.owner_remaining_profit != null), { emph: true }) +
-            finRow('Margin %', opb.margin_pct != null && !profitIncomplete ? String(opb.margin_pct) + '%' : (profitIncomplete ? 'Incomplete' : '—')) +
-            finRow('Target margin %', opb.target_margin_pct != null ? String(opb.target_margin_pct) + '%' : '—') +
-            finRow('Risk', riskDisplay)
+            finRow(profitIncomplete ? 'Owner remaining profit (incomplete)' : 'Owner remaining profit', ownerProfitVal(opb.owner_remaining_profit, !profitIncomplete && opb.owner_remaining_profit != null), { emph: true, money: ownerProfitMoneyClass(profitIncomplete, opb.owner_remaining_profit) }) +
+            finRow('Margin %', opb.margin_pct != null && !profitIncomplete ? String(opb.margin_pct) + '%' : (profitIncomplete ? 'Incomplete' : '—'), { money: marginPctMoneyClass(marginRisk, opb.margin_pct) }) +
+            finRow('Target margin %', opb.target_margin_pct != null ? String(opb.target_margin_pct) + '%' : '—', { money: neu }) +
+            finRow('Risk', riskDisplay, { money: riskLabelMoneyClass(riskDisplay) })
           ) +
           '</section>';
 
@@ -1164,13 +1257,13 @@
           '<button type="button" class="pcc-fin-snapshot-toggle pcc-fin-no-print" id="pccFinOpSnapshotToggle" aria-expanded="false" aria-controls="pccFinOpSnapshot">Show operational snapshot</button>' +
           '<div id="pccFinOpSnapshot" class="pcc-fin-op-snapshot" hidden aria-hidden="true">' +
           '<div class="pcc-fin-mini-grid">' +
-          finMini('Est. days', op.estimated_days != null ? Number(op.estimated_days).toFixed(1) : '—') +
-          finMini('Days spent', op.days_spent != null ? Number(op.days_spent).toFixed(1) : '—') +
-          finMini('Days left', op.days_remaining != null ? Number(op.days_remaining).toFixed(1) : '—') +
-          finMini('Progress', op.progress_pct != null ? opProgress.text : '—') +
-          finMini('Completed', op.completed_days != null ? String(op.completed_days) : '—') +
-          finMini('Reports', op.reports_count != null ? String(op.reports_count) : '—') +
-          finMini('Expenses', op.expense_entries_count != null ? String(op.expense_entries_count) : '—') +
+          finMini('Est. days', op.estimated_days != null ? Number(op.estimated_days).toFixed(1) : '—', neu) +
+          finMini('Days spent', op.days_spent != null ? Number(op.days_spent).toFixed(1) : '—', neu) +
+          finMini('Days left', op.days_remaining != null ? Number(op.days_remaining).toFixed(1) : '—', neu) +
+          finMini('Progress', op.progress_pct != null ? opProgress.text : '—', neu) +
+          finMini('Completed', op.completed_days != null ? String(op.completed_days) : '—', neu) +
+          finMini('Reports', op.reports_count != null ? String(op.reports_count) : '—', neu) +
+          finMini('Expenses', op.expense_entries_count != null ? String(op.expense_entries_count) : '—', neu) +
           '</div>' +
           opScheduleFlag +
           '</div>';
@@ -1179,29 +1272,29 @@
           '<section class="pcc-fin-section pcc-fin-section--labor">' +
           '<h4>Labor cost control</h4>' +
           '<div class="pcc-fin-mini-grid">' +
-          finMini('Est. hours', estL.hours != null ? Number(estL.hours).toFixed(1) : '—') +
-          finMini('Est. days', estL.days != null ? Number(estL.days).toFixed(1) : '—') +
-          finMini('Est. labor', estL.labor_cost != null ? moneyUsd(estL.labor_cost) : '—') +
-          finMini('Reported hrs', actL.hours != null ? Number(actL.hours).toFixed(1) : '—') +
-          finMini('Reported days', actL.days != null ? Number(actL.days).toFixed(1) : '—') +
-          finMini('Actual labor', fmtActualLaborCost(actL, labor)) +
-          finMini('Hrs variance', varL.hours != null ? Number(varL.hours).toFixed(1) : '—') +
-          finMini('Days variance', varL.days != null ? Number(varL.days).toFixed(1) : '—') +
-          finMini('Cost variance', varL.cost != null ? moneyUsd(varL.cost) : '—') +
+          finMini('Est. hours', estL.hours != null ? Number(estL.hours).toFixed(1) : '—', neu) +
+          finMini('Est. days', estL.days != null ? Number(estL.days).toFixed(1) : '—', neu) +
+          finMini('Est. labor', estL.labor_cost != null ? moneyUsd(estL.labor_cost) : '—', neg) +
+          finMini('Reported hrs', actL.hours != null ? Number(actL.hours).toFixed(1) : '—', neu) +
+          finMini('Reported days', actL.days != null ? Number(actL.days).toFixed(1) : '—', neu) +
+          finMini('Actual labor', fmtActualLaborCost(actL, labor), neg) +
+          finMini('Hrs variance', varL.hours != null ? Number(varL.hours).toFixed(1) : '—', laborVarianceClass(varL.hours)) +
+          finMini('Days variance', varL.days != null ? Number(varL.days).toFixed(1) : '—', laborVarianceClass(varL.days)) +
+          finMini('Cost variance', varL.cost != null ? moneyUsd(varL.cost) : '—', laborVarianceClass(varL.cost)) +
           '</div>' +
-          (labor.cost_method ? '<div class="pcc-fin-rows" style="margin-top:6px;">' + finRow('Cost method', labor.cost_method, { wide: true }) + '</div>' : '') +
+          (labor.cost_method ? '<div class="pcc-fin-rows" style="margin-top:6px;">' + finRow('Cost method', labor.cost_method, { wide: true, money: neu }) + '</div>' : '') +
           laborNote +
           '</section>';
 
         var contractRows =
-          finRow('Contract total', moneyUsd(cc.original_contract)) +
-          finRow('Change orders', moneyUsd(cc.approved_change_orders)) +
-          finRow('Current contract', moneyUsd(cc.current_contract_total)) +
-          finRow('Total invoiced', moneyUsd(cc.total_invoiced)) +
-          finRow('Paid to date', moneyUsd(cc.paid_to_date)) +
-          finRow('Balance due', moneyUsd(cc.balance_due)) +
-          finRow('Invoice status', cc.invoice_status || '—') +
-          finRow('Last payment', cc.last_payment_date ? fmtDate(cc.last_payment_date) : '—');
+          finRow('Contract total', moneyUsd(cc.original_contract), { money: pos }) +
+          finRow('Change orders', moneyUsd(cc.approved_change_orders), { money: pos }) +
+          finRow('Current contract', moneyUsd(cc.current_contract_total), { money: pos }) +
+          finRow('Total invoiced', moneyUsd(cc.total_invoiced), { money: pos }) +
+          finRow('Paid to date', moneyUsd(cc.paid_to_date), { money: pos }) +
+          finRow('Balance due', moneyUsd(cc.balance_due), { money: balanceDueMoneyClass(cc.balance_due) }) +
+          finRow('Invoice status', cc.invoice_status || '—', { money: invoiceStatusMoneyClass(cc.invoice_status) }) +
+          finRow('Last payment', cc.last_payment_date ? fmtDate(cc.last_payment_date) : '—', { money: neu });
 
         var expenseLast = exp.last
           ? (fmtDate(exp.last.date) + ' · ' + (exp.last.concept || '—') + ' · ' + moneyUsd(exp.last.amount))
@@ -1217,8 +1310,8 @@
           '<section class="pcc-fin-section">' +
           '<h4>Estimate comparison</h4>' +
           '<div class="pcc-fin-estimate-pair">' +
-          finMini('Projected profit', moneyUsd(profit.projected_profit)) +
-          finMini('Variance vs est.', profit.profit_variance != null ? moneyUsd(profit.profit_variance) : '—') +
+          finMini('Projected profit', moneyUsd(profit.projected_profit), pos) +
+          finMini('Variance vs est.', profit.profit_variance != null ? moneyUsd(profit.profit_variance) : '—', profitVarianceClass(profit.profit_variance)) +
           '</div></section>';
 
         var expenseSectionHtml =
@@ -1230,10 +1323,10 @@
           '<button type="button" class="btn ghost" id="pccFinBtnPrintExpenses">Print expense report</button>' +
           '</div>' +
           '<div class="pcc-fin-expense-stats">' +
-          '<div class="pcc-fin-expense-stat">Unexpected total<strong>' + esc(moneyUsd(exp.total)) + '</strong></div>' +
-          '<div class="pcc-fin-expense-stat">Entries<strong>' + esc(exp.count != null ? String(exp.count) : '0') + '</strong></div>' +
+          '<div class="pcc-fin-expense-stat">Unexpected total<strong class="' + neg + '">' + esc(moneyUsd(exp.total)) + '</strong></div>' +
+          '<div class="pcc-fin-expense-stat">Entries<strong class="' + neu + '">' + esc(exp.count != null ? String(exp.count) : '0') + '</strong></div>' +
           '</div></div>' +
-          (exp.last ? '<div class="pcc-fin-rows" style="margin-top:6px;">' + finRow('Last expense', expenseLast, { wide: true }) + '</div>' : '') +
+          (exp.last ? '<div class="pcc-fin-rows" style="margin-top:6px;">' + finRow('Last expense', expenseLast, { wide: true, money: neu }) + '</div>' : '') +
           '</section>';
 
         var ownerActionsHtml =
@@ -1246,11 +1339,11 @@
         content.innerHTML =
           profitBanner +
           '<div class="pcc-fin-kpis">' +
-          '<div class="pcc-fin-kpi"><div class="pcc-fin-kpi__label">Contract total</div><div class="pcc-fin-kpi__value">' + moneyUsd(k.contract_total) + '</div></div>' +
-          '<div class="pcc-fin-kpi"><div class="pcc-fin-kpi__label">Paid to date</div><div class="pcc-fin-kpi__value">' + moneyUsd(k.paid_to_date) + '</div></div>' +
-          '<div class="pcc-fin-kpi"><div class="pcc-fin-kpi__label">Balance due</div><div class="pcc-fin-kpi__value">' + moneyUsd(k.balance_due) + '</div></div>' +
-          '<div class="pcc-fin-kpi"><div class="pcc-fin-kpi__label">' + esc(profitKpiLabel) + '</div><div class="pcc-fin-kpi__value">' + moneyUsd(k.current_profit) + '</div></div>' +
-          '<div class="pcc-fin-kpi"><div class="pcc-fin-kpi__label">' + esc(marginKpiLabel) + '</div><div class="pcc-fin-kpi__value">' + (k.margin_pct != null ? esc(String(k.margin_pct)) + '%' : '—') + '</div></div>' +
+          finKpi('Contract total', moneyUsd(k.contract_total), pos) +
+          finKpi('Paid to date', moneyUsd(k.paid_to_date), pos) +
+          finKpi('Balance due', moneyUsd(k.balance_due), balanceDueMoneyClass(k.balance_due)) +
+          finKpi(profitKpiLabel, moneyUsd(k.current_profit), ownerProfitMoneyClass(profitIncomplete, k.current_profit)) +
+          finKpi(marginKpiLabel, k.margin_pct != null ? esc(String(k.margin_pct)) + '%' : '—', marginPctMoneyClass(marginRisk, k.margin_pct)) +
           '</div>' +
           '<div class="pcc-fin-dash">' +
           '<div class="pcc-fin-stack pcc-fin-stack--left">' + ownerBreakdownHtml + '</div>' +
