@@ -1451,6 +1451,48 @@
         if (detail) detail.classList.remove('open');
       }
 
+      function applyPccServerOperationalDisplay(metrics, detail) {
+        if (!metrics || !detail) return false;
+        var op = detail.operational || {};
+        var hdr = detail.header || {};
+        if (hdr.progress_pct != null) metrics.progressPct = hdr.progress_pct;
+        else if (op.progress_pct != null) metrics.progressPct = op.progress_pct;
+        if (op.completed_days != null) metrics.daysSpent = Number(op.completed_days);
+        else if (op.days_spent != null) metrics.daysSpent = Number(op.days_spent);
+        if (op.days_remaining != null) metrics.daysRemaining = Number(op.days_remaining);
+        if (op.estimated_days != null && Number(op.estimated_days) > 0) {
+          metrics.estimatedDays = Number(op.estimated_days);
+        }
+        if (hdr.status_label) metrics.statusLabel = hdr.status_label;
+        if (hdr.tone) metrics.tone = hdr.tone;
+        metrics.serverOpAligned = true;
+        return true;
+      }
+
+      async function enrichPccRowsFromFinancialDetail(rows) {
+        if (!rows || !rows.length) return;
+        await Promise.allSettled(rows.map(async function (row) {
+          var id = row.project && row.project.id;
+          if (!id) return;
+          try {
+            var res = await fetch(
+              '/.netlify/functions/get-project-financial-detail?project_id=' + encodeURIComponent(id),
+              { credentials: 'include' }
+            );
+            var data = await res.json().catch(function () { return {}; });
+            if (!res.ok || !data || data.ok !== true || !data.detail) {
+              console.warn('[PCC] Server operational enrich skipped for project', id);
+              return;
+            }
+            applyPccServerOperationalDisplay(row.metrics, data.detail);
+          } catch (_err) {
+            console.warn('[PCC] Server operational enrich failed for project', id);
+          }
+        }));
+        renderSummary();
+        renderTable();
+      }
+
       async function openFinancialDetail(id) {
         var row = allRows.find(function (r) { return String(r.project.id) === String(id); });
         if (!row) return;
@@ -1485,13 +1527,7 @@
             : [];
           renderFinancialModal(data.detail, row.metrics);
           if (row && data.detail) {
-            var op = data.detail.operational || {};
-            var hdr = data.detail.header || {};
-            if (op.progress_pct != null) row.metrics.progressPct = op.progress_pct;
-            if (op.days_spent != null) row.metrics.daysSpent = Number(op.days_spent);
-            if (op.days_remaining != null) row.metrics.daysRemaining = Number(op.days_remaining);
-            if (hdr.status_label) row.metrics.statusLabel = hdr.status_label;
-            if (hdr.tone) row.metrics.tone = hdr.tone;
+            applyPccServerOperationalDisplay(row.metrics, data.detail);
             renderTable();
           }
           if (loading) loading.style.display = 'none';
@@ -1543,7 +1579,9 @@
             '<td>' + esc(p.clientName || '—') + '</td>' +
             '<td>' + esc(fmtDate(m.dueDate)) + '</td>' +
             '<td class="pcc-progress-cell">' + esc(fmtProgressSummary(m)) + '</td>' +
-            '<td><span class="badge ' + tone + '">' + esc(m.statusLabel) + '</span></td>' +
+            '<td><span class="badge ' + tone + '"' +
+            (m.serverOpAligned ? ' data-pcc-op-source="server"' : '') + '>' +
+            esc(m.statusLabel) + '</span></td>' +
             '<td class="pcc-row-actions">' +
             '<button type="button" class="btn primary pcc-view-financial" data-pcc-action="financial" data-id="' + esc(p.id) + '">Financials</button>' +
             '<button type="button" class="btn pcc-view-reports" data-pcc-action="reports" data-id="' + esc(p.id) + '">Reports &amp; baseline</button>' +
@@ -1815,6 +1853,7 @@
 
         renderSummary();
         renderTable();
+        void enrichPccRowsFromFinancialDetail(allRows);
       }
 
       function whenAuthReady(cb) {
