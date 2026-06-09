@@ -12,7 +12,10 @@ const {
   normalizeOperationalPlan,
   planHasDays,
   laborMetricsForCompletedOperationalDays,
+  laborCostFromOperationalPlan,
+  computeOperationalPlanMetrics,
   computeOperationalPlanExecutionState,
+  scheduledDayNumbersSet,
 } = require("./operational-plan");
 const { applyMigrationBaselineToMetrics } = require("./migration-baseline");
 const { computeSupervisorExecutionBonus } = require("./supervisor-execution-bonus");
@@ -62,7 +65,8 @@ function completedDayNumbersSet(dayProgressRows) {
   return set;
 }
 
-function supplementalReportTotals(reports, completedDaySet) {
+function supplementalReportTotals(reports, completedDaySet, options) {
+  const skipUndifferentiated = Boolean(options?.skipUndifferentiatedReports);
   let hours = 0;
   let days = 0;
   for (const r of Array.isArray(reports) ? reports : []) {
@@ -72,7 +76,11 @@ function supplementalReportTotals(reports, completedDaySet) {
       dayRaw != null && dayRaw !== ""
         ? Math.max(1, Math.floor(num(dayRaw, 0)))
         : null;
-    if (dayNum != null && completedDaySet.has(dayNum)) continue;
+    if (dayNum == null) {
+      if (skipUndifferentiated) continue;
+    } else if (completedDaySet.has(dayNum)) {
+      continue;
+    }
     hours += num(r.hours, 0);
     days += num(r.days, 0);
   }
@@ -283,9 +291,41 @@ function maxPlanWorkerDays(quotedLaborPlan) {
 }
 
 function effectiveDaysForSupervisorBonus(project, operational) {
+  const fromOperational = round2(num(operational?.estimated_days, 0));
+  if (fromOperational > 0) return fromOperational;
   const fromPlan = maxPlanWorkerDays(project?.quoted_labor_plan);
   if (fromPlan > 0) return fromPlan;
-  return round2(num(operational?.estimated_days, num(project?.estimated_days, 0)));
+  return round2(num(project?.estimated_days, 0));
+}
+
+function resolveLaborEstimatesFromOperationalPlan(
+  opPlan,
+  mgSettings,
+  hpd,
+  project,
+  rolePlan
+) {
+  const planMetrics = computeOperationalPlanMetrics(opPlan, null, null, hpd);
+  let estimatedLaborCost = laborCostFromOperationalPlan(opPlan, mgSettings || {});
+  if (!(estimatedLaborCost > 0)) {
+    estimatedLaborCost = round2(
+      Math.max(num(project?.estimated_labor_cost, 0), num(project?.labor_budget, 0)) ||
+        rolePlan.plan.reduce((s, w) => s + num(w.estimated_cost, 0), 0)
+    );
+  }
+  return {
+    estimatedDays: planMetrics.estimated_days,
+    estimatedHours: planMetrics.estimated_hours,
+    estimatedLaborCost,
+  };
+}
+
+function completedScheduledDaySet(completedDaySet, scheduledSet) {
+  const out = new Set();
+  for (const dn of completedDaySet) {
+    if (scheduledSet.has(dn)) out.add(dn);
+  }
+  return out;
 }
 
 function blendedHourlyRate(project, hoursPerDay) {
@@ -320,21 +360,35 @@ function computeLaborCostSection({
   const reportedDays = sumReportDays(reports);
   const completedDaySet = completedDayNumbersSet(dayProgressRows);
   const opPlan = resolveNormalizedOperationalPlan(operationalPlanRaw, hpd);
-  const useCompletedPlanDays = opPlan.length > 0 && completedDaySet.size > 0;
+  const hasOpPlan = opPlan.length > 0;
+  const useCompletedPlanDays = hasOpPlan && completedDaySet.size > 0;
 
-  const estimatedDays = round2(
+  let estimatedDays = round2(
     rolePlan.plan.length
       ? Math.max(...rolePlan.plan.map((w) => num(w.budget_days, 0)), 0)
       : num(project?.estimated_days, 0)
   );
-  const estimatedHours =
+  let estimatedHours =
     rolePlan.pro_hours + rolePlan.assistant_hours > 0
       ? round2(rolePlan.pro_hours + rolePlan.assistant_hours)
       : round2(estimatedDays * hpd);
-  const estimatedLaborCost = round2(
+  let estimatedLaborCost = round2(
     Math.max(num(project?.estimated_labor_cost, 0), num(project?.labor_budget, 0)) ||
       rolePlan.plan.reduce((s, w) => s + num(w.estimated_cost, 0), 0)
   );
+
+  if (hasOpPlan) {
+    const planEst = resolveLaborEstimatesFromOperationalPlan(
+      opPlan,
+      mgSettings,
+      hpd,
+      project,
+      rolePlan
+    );
+    estimatedDays = planEst.estimatedDays;
+    estimatedHours = planEst.estimatedHours;
+    estimatedLaborCost = planEst.estimatedLaborCost;
+  }
 
   const base = {
     estimated: {
@@ -374,13 +428,20 @@ function computeLaborCostSection({
       return base;
     }
 
+    const scheduledSet = scheduledDayNumbersSet(opPlan);
+    const completedScheduled = completedScheduledDaySet(completedDaySet, scheduledSet);
+    const laborCompletedSet =
+      completedScheduled.size > 0 ? completedScheduled : completedDaySet;
+
     const planMetrics = laborMetricsForCompletedOperationalDays(
       opPlan,
-      completedDaySet,
+      laborCompletedSet,
       mgSettings || {},
       hpd
     );
-    const supplemental = supplementalReportTotals(reports, completedDaySet);
+    const supplemental = supplementalReportTotals(reports, laborCompletedSet, {
+      skipUndifferentiatedReports: true,
+    });
     const supLabor = computeSupplementalLaborCost(
       supplemental.hours,
       rolePlan,
@@ -390,8 +451,7 @@ function computeLaborCostSection({
     );
 
     const actualHours = round2(planMetrics.hours + supplemental.hours);
-    const completedDaysCount = countCompletedDays(dayProgressRows);
-    const actualDays = round2(completedDaysCount + supplemental.days);
+    const actualDays = round2(laborCompletedSet.size + supplemental.days);
     const actualCost = round2(planMetrics.labor_cost + supLabor.cost);
     const proH = round2(planMetrics.pro_hours + supLabor.pro_hours);
     const asstH = round2(planMetrics.assistant_hours + supLabor.assistant_hours);
@@ -918,14 +978,21 @@ function buildOwnerProfitBreakdown({
 
   let supervisorBonus = null;
   let supervisorBonusNote = null;
-  const laborBudget = round2(Math.max(0, num(project?.labor_budget, 0)));
+  const supervisorLaborBase = round2(
+    Math.max(
+      num(laborSection.estimated?.labor_cost, 0),
+      num(laborSection.actual?.labor_cost, 0),
+      num(project?.labor_budget, 0),
+      num(project?.estimated_labor_cost, 0)
+    )
+  );
   if (!bs.supervisor_bonus_ok) {
     supervisorBonusNote = "Supervisor bonus not configured.";
-  } else if (laborBudget <= 0) {
+  } else if (supervisorLaborBase <= 0) {
     supervisorBonusNote = "Supervisor bonus not configured.";
   } else {
     const bonusCalc = computeSupervisorExecutionBonus({
-      laborBudget,
+      laborBudget: supervisorLaborBase,
       effectiveDays: effectiveDaysForSupervisorBonus(project, operational),
       daysSpent: num(operational?.actual_days, num(laborSection.actual.days, 0)),
       supervisorBonusPctPoints: bs.supervisor_bonus_pct,
