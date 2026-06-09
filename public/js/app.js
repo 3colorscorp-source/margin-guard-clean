@@ -14257,10 +14257,97 @@ window.renderSupervisor = renderSupervisor;
     });
   }
 
+  function saMarginReviewLabel(mg) {
+    if (!mg || typeof mg !== "object") return "Review";
+    if (mg.level === "yellow") return "Below target margin";
+    if (mg.level === "red") return "Below minimum margin";
+    if (mg.level === "green") return "Within target";
+    return "Review";
+  }
+
+  function saMarginReviewBadge(mg) {
+    const label = saMarginReviewLabel(mg);
+    const tone = mg && mg.level === "red" ? "red" : (mg && mg.level === "green" ? "green" : "amber");
+    return `<span class="badge ${tone}">${escapeHtml(label)}</span>`;
+  }
+
+  function saCommissionDisplayForRow(row, settings) {
+    const base = calcSales({ workers: Array.isArray(row.workers) ? row.workers : [], price: "" }, settings);
+    const rate = finiteNumber(settings?.salesCommissionPct, DEFAULTS.salesCommissionPct);
+    const labor = finiteNumber(base.labor, 0);
+    return money(labor * (rate / 100), settings.currency);
+  }
+
+  function saUpdateSalesAdminKpis(mapped) {
+    const pendingEl = $("saKpiPending");
+    const approvedEl = $("saKpiApproved");
+    if (!Array.isArray(mapped)) {
+      if (pendingEl) pendingEl.textContent = "—";
+      if (approvedEl) approvedEl.textContent = "—";
+      return;
+    }
+    if (pendingEl) {
+      const pending = mapped.filter((row) => String(row?.status || "").toLowerCase() === "requested").length;
+      pendingEl.textContent = String(pending);
+    }
+    if (approvedEl) {
+      const approved = mapped.filter((row) => String(row?.status || "").toLowerCase() === "approved").length;
+      approvedEl.textContent = String(approved);
+    }
+  }
+
+  function saSetSalesAdminQueueEmpty(showEmpty) {
+    const empty = $("saQueueEmpty");
+    const wrap = $("saQueueTableWrap");
+    if (empty) empty.hidden = !showEmpty;
+    if (wrap) wrap.hidden = showEmpty;
+  }
+
+  function saCloseSalesAdminDetailModal() {
+    const modal = $("saDetailModal");
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+  }
+
+  function saOpenSalesAdminDetailModal(row, settings) {
+    const modal = $("saDetailModal");
+    const body = $("saDetailBody");
+    if (!modal || !body || !row) return;
+
+    const base = calcSales({ workers: Array.isArray(row.workers) ? row.workers : [], price: "" }, settings);
+    const mg = computeSalesMarginDecisionFromEconomics(row.offeredPrice, base.beforeProfit, base.reserve, settings);
+    const realPct = mg.realMarginPct != null && Number.isFinite(mg.realMarginPct) ? `${mg.realMarginPct.toFixed(1)}%` : "—";
+    const quoteRef = String(row.id || "").trim();
+    const quoteLabel = quoteRef ? `${quoteRef.slice(0, 8)}…` : "—";
+
+    body.innerHTML = `
+      <div class="sa-detail-rows">
+        <div class="sa-detail-row"><span class="sa-detail-row__k">Quote / Project</span><span class="sa-detail-row__v">${escapeHtml(row.projectName || "—")}</span></div>
+        <div class="sa-detail-row"><span class="sa-detail-row__k">Quote ref</span><span class="sa-detail-row__v">${escapeHtml(quoteLabel)}</span></div>
+        <div class="sa-detail-row"><span class="sa-detail-row__k">Client</span><span class="sa-detail-row__v">${escapeHtml(row.clientName || "—")}</span></div>
+        <div class="sa-detail-row"><span class="sa-detail-row__k">Seller</span><span class="sa-detail-row__v">${escapeHtml(row.sellerEmail || "—")}</span></div>
+        <div class="sa-detail-row"><span class="sa-detail-row__k">Final price</span><span class="sa-detail-row__v">${money(row.offeredPrice, settings.currency)}</span></div>
+        <div class="sa-detail-row"><span class="sa-detail-row__k">Real margin</span><span class="sa-detail-row__v">${escapeHtml(realPct)}</span></div>
+        <div class="sa-detail-row"><span class="sa-detail-row__k">Target margin</span><span class="sa-detail-row__v">${escapeHtml(String(mg.profitPct))}%</span></div>
+        <div class="sa-detail-row"><span class="sa-detail-row__k">Minimum margin</span><span class="sa-detail-row__v">${escapeHtml(String(mg.minimumMarginPct))}%</span></div>
+        <div class="sa-detail-row"><span class="sa-detail-row__k">Review reason</span><span class="sa-detail-row__v">${escapeHtml(saMarginReviewLabel(mg))}</span></div>
+        <div class="sa-detail-row"><span class="sa-detail-row__k">Status</span><span class="sa-detail-row__v">${escapeHtml(row.status || "—")}</span></div>
+        <div class="sa-detail-row"><span class="sa-detail-row__k">Est. labor (basis)</span><span class="sa-detail-row__v">${money(base.labor, settings.currency)}</span></div>
+        <div class="sa-detail-row"><span class="sa-detail-row__k">Est. seller commission</span><span class="sa-detail-row__v">${escapeHtml(saCommissionDisplayForRow(row, settings))}</span></div>
+      </div>
+      <p class="sa-rule-note" style="margin-top:10px;">Commission is based on labor cost × seller commission %, never contract total.</p>
+    `;
+
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+  }
+
   function renderSalesAdmin() {
     if (!$("adminQueueBody")) return;
     const settings = loadSettings();
     let rows = [];
+    let lastMapped = null;
 
     const activateApprovedProject = (row) => {
       const project = {
@@ -14287,23 +14374,28 @@ window.renderSupervisor = renderSupervisor;
     };
 
     const refresh = () => {
+      saUpdateSalesAdminKpis(lastMapped);
+      saSetSalesAdminQueueEmpty(rows.length === 0);
+
       $("adminQueueBody").innerHTML = rows.map((row, index) => {
         const base = calcSales({ workers: Array.isArray(row.workers) ? row.workers : [], price: "" }, settings);
         const mg = computeSalesMarginDecisionFromEconomics(row.offeredPrice, base.beforeProfit, base.reserve, settings);
         const realPct = mg.realMarginPct != null && Number.isFinite(mg.realMarginPct) ? `${mg.realMarginPct.toFixed(1)}%` : "—";
+        const projectLabel = [row.projectName, row.id ? `${String(row.id).slice(0, 8)}…` : ""].filter(Boolean).join(" · ") || "—";
         return `
           <tr>
-            <td>${escapeHtml(String(row.id || "").slice(0, 8))}…</td>
-            <td>${escapeHtml(row.projectName)}</td>
+            <td>${escapeHtml(projectLabel)}</td>
+            <td>${escapeHtml(row.clientName || "—")}</td>
             <td>${escapeHtml(row.sellerEmail || "—")}</td>
             <td>${money(row.offeredPrice, settings.currency)}</td>
             <td>${escapeHtml(realPct)}</td>
             <td>${escapeHtml(String(mg.profitPct))}%</td>
             <td>${escapeHtml(String(mg.minimumMarginPct))}%</td>
-            <td><span class="badge amber">review</span></td>
+            <td>${saMarginReviewBadge(mg)}</td>
             <td><span class="badge ${row.status === "approved" ? "green" : (row.status === "rejected" ? "red" : "amber")}">${escapeHtml(row.status)}</span></td>
             <td>
-              <div class="row-actions">
+              <div class="row-actions sa-row-actions">
+                <button type="button" class="btn ghost" data-admin-details="${index}">View Details</button>
                 <button class="btn primary" data-admin-approve="${index}">Approve</button>
                 <button class="btn danger" data-admin-reject="${index}">Reject</button>
               </div>
@@ -14389,27 +14481,53 @@ window.renderSupervisor = renderSupervisor;
             });
         };
       });
+      $("adminQueueBody").querySelectorAll("button[data-admin-details]").forEach((button) => {
+        button.onclick = () => {
+          const index = Number(button.dataset.adminDetails || -1);
+          if (index < 0 || !rows[index]) return;
+          saOpenSalesAdminDetailModal(rows[index], settings);
+        };
+      });
     };
 
-    refresh();
-
-    fetch("/.netlify/functions/get-sales-approvals", { method: "GET", credentials: "include" })
-      .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
-      .then(({ ok, data }) => {
-        if (ok && data && data.ok === true && Array.isArray(data.approvals)) {
-          const mapped = mapServerApprovalsToAdminRows(data.approvals);
-          saveApprovals(mapped);
-          rows = filterSalesAdminYellowMarginQueue(mapped);
+    const loadQueue = () => {
+      fetch("/.netlify/functions/get-sales-approvals", { method: "GET", credentials: "include" })
+        .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+        .then(({ ok, data }) => {
+          if (ok && data && data.ok === true && Array.isArray(data.approvals)) {
+            const mapped = mapServerApprovalsToAdminRows(data.approvals);
+            saveApprovals(mapped);
+            lastMapped = mapped;
+            rows = filterSalesAdminYellowMarginQueue(mapped);
+            refresh();
+            return;
+          }
+          lastMapped = loadApprovals();
+          rows = filterSalesAdminYellowMarginQueue(lastMapped);
           refresh();
-          return;
-        }
-        rows = filterSalesAdminYellowMarginQueue(loadApprovals());
-        refresh();
-      })
-      .catch(() => {
-        rows = filterSalesAdminYellowMarginQueue(loadApprovals());
-        refresh();
-      });
+        })
+        .catch(() => {
+          lastMapped = loadApprovals();
+          rows = filterSalesAdminYellowMarginQueue(lastMapped);
+          refresh();
+        });
+    };
+
+    const refreshBtn = $("saBtnRefresh");
+    if (refreshBtn) refreshBtn.onclick = loadQueue;
+
+    const detailClose = $("saDetailClose");
+    if (detailClose) detailClose.onclick = saCloseSalesAdminDetailModal;
+
+    const detailModal = $("saDetailModal");
+    if (detailModal) {
+      detailModal.onclick = (event) => {
+        if (event.target === detailModal) saCloseSalesAdminDetailModal();
+      };
+    }
+
+    refresh();
+    loadQueue();
   }
 
   function render() {

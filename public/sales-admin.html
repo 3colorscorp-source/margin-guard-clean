@@ -5,6 +5,187 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Margin Guard | Sales Admin</title>
   <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .sa-hero {
+      margin-bottom: 10px;
+    }
+    .sa-hero .card-inner {
+      padding-top: 12px;
+      padding-bottom: 12px;
+    }
+    .sa-hero h2 {
+      margin: 0 0 4px;
+      font-size: clamp(1.25rem, 2.2vw, 1.55rem);
+    }
+    .sa-hero .sub {
+      margin: 0;
+      max-width: 52ch;
+      line-height: 1.45;
+    }
+    .sa-kpis {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    @media (max-width: 1100px) {
+      .sa-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 520px) {
+      .sa-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    .sa-kpi {
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .sa-kpi__label {
+      font-size: 0.58rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: rgba(232, 238, 252, 0.58);
+      margin-bottom: 2px;
+      line-height: 1.25;
+    }
+    .sa-kpi__value {
+      font-size: 0.95rem;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+    .sa-section {
+      margin-bottom: 10px;
+    }
+    .sa-section__head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px 12px;
+      margin-bottom: 6px;
+    }
+    .sa-section__head h2,
+    .sa-section__head h3 {
+      margin: 0;
+      font-size: 1rem;
+    }
+    .sa-section__head .sub {
+      margin: 2px 0 0;
+      font-size: 0.8125rem;
+    }
+    .sa-section__head-main {
+      min-width: 0;
+    }
+    .sa-queue-note {
+      margin: 0 0 8px;
+      font-size: 0.8125rem;
+      color: rgba(232, 238, 252, 0.72);
+    }
+    .sa-empty {
+      padding: 18px 14px;
+      text-align: center;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px dashed rgba(255, 255, 255, 0.1);
+    }
+    .sa-empty__title {
+      margin: 0 0 6px;
+      font-weight: 700;
+      font-size: 0.9375rem;
+    }
+    .sa-empty__sub {
+      margin: 0;
+      font-size: 0.8125rem;
+      color: rgba(232, 238, 252, 0.65);
+      line-height: 1.45;
+      max-width: 42ch;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .sa-rule-note {
+      margin: 0 0 8px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      line-height: 1.4;
+      color: rgba(232, 238, 252, 0.78);
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+    }
+    .sa-table-wrap {
+      overflow-x: auto;
+    }
+    .sa-table-wrap .table {
+      min-width: 880px;
+    }
+    .sa-row-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .sa-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: rgba(4, 8, 18, 0.72);
+      backdrop-filter: blur(4px);
+    }
+    .sa-modal[hidden] {
+      display: none !important;
+    }
+    .sa-modal__panel {
+      width: min(520px, 96vw);
+      max-height: 85vh;
+      overflow: auto;
+      background: linear-gradient(165deg, #121a2b 0%, #0d1422 100%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+      color: #e8eefc;
+    }
+    .sa-modal__head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .sa-modal__head h3 {
+      margin: 0;
+      font-size: 1rem;
+    }
+    .sa-modal__body {
+      padding: 12px 16px 16px;
+    }
+    .sa-detail-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.8125rem;
+    }
+    .sa-detail-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px 12px;
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .sa-detail-row:last-child {
+      border-bottom: 0;
+    }
+    .sa-detail-row__k {
+      color: rgba(232, 238, 252, 0.58);
+    }
+    .sa-detail-row__v {
+      font-weight: 600;
+      text-align: right;
+    }
+  </style>
 </head>
 <body data-requires-auth="true">
   <div class="topbar">
@@ -32,28 +213,141 @@
 
   <div class="container">
     <div class="account-pill" id="accountEmail">Cuenta activa</div>
-    <div class="card">
+
+    <section class="card sa-hero">
       <div class="card-inner">
-        <h2>Cola de aprobaciones de descuentos</h2>
-        <div class="sub">Aprobar o rechazar solicitudes de vendedores.</div>
-        <table class="table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Proyecto</th>
-              <th>Vendedor</th>
-              <th>Precio final</th>
-              <th>Margen real</th>
-              <th>Margen objetivo</th>
-              <th>Margen minimo</th>
-              <th>Revision</th>
-              <th>Estado</th>
-              <th>Accion</th>
-            </tr>
-          </thead>
-          <tbody id="adminQueueBody"></tbody>
-        </table>
+        <h2>Sales Admin</h2>
+        <p class="sub">Manage seller activity, quote approvals, pipeline, and commissions.</p>
       </div>
+    </section>
+
+    <section class="sa-kpis" id="saKpiStrip" aria-label="Sales KPIs">
+      <div class="sa-kpi">
+        <div class="sa-kpi__label">Pending Approvals</div>
+        <div class="sa-kpi__value" id="saKpiPending">—</div>
+      </div>
+      <div class="sa-kpi">
+        <div class="sa-kpi__label">Quotes Sent This Month</div>
+        <div class="sa-kpi__value" id="saKpiSent">—</div>
+      </div>
+      <div class="sa-kpi">
+        <div class="sa-kpi__label">Approved Quotes</div>
+        <div class="sa-kpi__value" id="saKpiApproved">—</div>
+      </div>
+      <div class="sa-kpi">
+        <div class="sa-kpi__label">Converted Projects</div>
+        <div class="sa-kpi__value" id="saKpiConverted">—</div>
+      </div>
+      <div class="sa-kpi">
+        <div class="sa-kpi__label">Estimated Labor Sold</div>
+        <div class="sa-kpi__value" id="saKpiLabor">—</div>
+      </div>
+      <div class="sa-kpi">
+        <div class="sa-kpi__label">Seller Commission Pending</div>
+        <div class="sa-kpi__value" id="saKpiCommission">—</div>
+      </div>
+    </section>
+
+    <section class="card sa-section">
+      <div class="card-inner">
+        <div class="sa-section__head">
+          <div class="sa-section__head-main">
+            <h2>Approval Queue</h2>
+            <p class="sub">Discount and below-target margin requests from sellers.</p>
+          </div>
+          <button type="button" class="btn ghost" id="saBtnRefresh">Refresh</button>
+        </div>
+        <div id="saQueueEmpty" class="sa-empty" hidden>
+          <p class="sa-empty__title">No approval requests right now.</p>
+          <p class="sa-empty__sub">When a seller submits a quote that needs owner review, it will appear here.</p>
+        </div>
+        <div id="saQueueTableWrap" class="sa-table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Quote / Project</th>
+                <th>Client</th>
+                <th>Seller</th>
+                <th>Final Price</th>
+                <th>Real Margin</th>
+                <th>Target Margin</th>
+                <th>Minimum Margin</th>
+                <th>Review Reason</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="adminQueueBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="card sa-section" id="saPipelineSection">
+      <div class="card-inner">
+        <div class="sa-section__head">
+          <div class="sa-section__head-main">
+            <h3>Quote Pipeline</h3>
+            <p class="sub">Track quotes through sent, approved, accepted, rejected, and converted stages.</p>
+          </div>
+        </div>
+        <div class="sa-empty">
+          <p class="sa-empty__title">Quote pipeline will appear here once quote activity is available.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card sa-section" id="saSellerSection">
+      <div class="card-inner">
+        <div class="sa-section__head">
+          <div class="sa-section__head-main">
+            <h3>Seller Performance</h3>
+            <p class="sub">Compare seller activity, approvals, won quotes, labor sold, and commission health.</p>
+          </div>
+        </div>
+        <div class="sa-empty">
+          <p class="sa-empty__title">Seller performance metrics will appear here once sales data is connected.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card sa-section" id="saCommissionSection">
+      <div class="card-inner">
+        <div class="sa-section__head">
+          <div class="sa-section__head-main">
+            <h3>Commission Tracking</h3>
+            <p class="sub">Track seller commissions using labor-cost basis only.</p>
+          </div>
+        </div>
+        <p class="sa-rule-note">Commission is based on labor cost × seller commission %, never contract total.</p>
+        <div class="sa-empty">
+          <p class="sa-empty__title">Commission tracking will appear here once eligible seller activity is available.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card sa-section" id="saActivitySection">
+      <div class="card-inner">
+        <div class="sa-section__head">
+          <div class="sa-section__head-main">
+            <h3>Recent Sales Activity</h3>
+            <p class="sub">Recent quote, approval, conversion, and sales actions.</p>
+          </div>
+        </div>
+        <div class="sa-empty">
+          <p class="sa-empty__title">Recent sales activity will appear here once activity history is available.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="saDetailModal" class="sa-modal" hidden aria-hidden="true" role="dialog" aria-labelledby="saDetailTitle">
+    <div class="sa-modal__panel">
+      <header class="sa-modal__head">
+        <h3 id="saDetailTitle">Approval details</h3>
+        <button type="button" class="btn ghost" id="saDetailClose">Close</button>
+      </header>
+      <div class="sa-modal__body" id="saDetailBody"></div>
     </div>
   </div>
 
@@ -62,4 +356,3 @@
   <script src="/js/app.js"></script>
 </body>
 </html>
-
