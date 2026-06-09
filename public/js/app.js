@@ -14278,22 +14278,322 @@ window.renderSupervisor = renderSupervisor;
     return money(labor * (rate / 100), settings.currency);
   }
 
-  function saUpdateSalesAdminKpis(mapped) {
+  function saUpdateSalesAdminKpis(mapped, convertedRows, settings) {
     const pendingEl = $("saKpiPending");
     const approvedEl = $("saKpiApproved");
+    const sentEl = $("saKpiSent");
+    const convertedEl = $("saKpiConverted");
+    const laborEl = $("saKpiLabor");
+    const commissionEl = $("saKpiCommission");
+    const currency = settings?.currency || DEFAULTS.currency;
+
     if (!Array.isArray(mapped)) {
       if (pendingEl) pendingEl.textContent = "—";
       if (approvedEl) approvedEl.textContent = "—";
+    } else {
+      if (pendingEl) {
+        const pending = mapped.filter((row) => String(row?.status || "").toLowerCase() === "requested").length;
+        pendingEl.textContent = String(pending);
+      }
+      if (approvedEl) {
+        const approved = mapped.filter((row) => String(row?.status || "").toLowerCase() === "approved").length;
+        approvedEl.textContent = String(approved);
+      }
+    }
+
+    if (sentEl) sentEl.textContent = "Not available yet";
+
+    const converted = Array.isArray(convertedRows) ? convertedRows : [];
+    if (convertedEl) convertedEl.textContent = converted.length ? String(converted.length) : "—";
+
+    let laborSum = 0;
+    let commissionSum = 0;
+    const rate = finiteNumber(settings?.salesCommissionPct, DEFAULTS.salesCommissionPct);
+    for (const row of converted) {
+      laborSum += finiteNumber(row.laborBudget, 0);
+      commissionSum += finiteNumber(row.estCommission, 0);
+    }
+    if (laborEl) laborEl.textContent = converted.length ? money(laborSum, currency) : "—";
+    if (commissionEl) {
+      commissionEl.textContent = converted.length ? money(commissionSum, currency) : "—";
+      commissionEl.title = converted.length ? `${rate}% of labor budget (estimate only)` : "";
+    }
+  }
+
+  function saEstimatedCommissionFromLabor(laborBudget, settings) {
+    const labor = finiteNumber(laborBudget, 0);
+    const rate = finiteNumber(settings?.salesCommissionPct, DEFAULTS.salesCommissionPct);
+    return round2(labor * (rate / 100));
+  }
+
+  function saBuildInvoiceLookup(invoices) {
+    const byProjectId = new Map();
+    const byQuoteId = new Map();
+    const byProjectName = new Map();
+    for (const inv of Array.isArray(invoices) ? invoices : []) {
+      if (!inv || typeof inv !== "object") continue;
+      const pid = String(inv.project_id || "").trim();
+      const qid = String(inv.quote_id || "").trim();
+      const pname = String(inv.project_name || "").trim().toLowerCase();
+      if (pid && !byProjectId.has(pid)) byProjectId.set(pid, inv);
+      if (qid && !byQuoteId.has(qid)) byQuoteId.set(qid, inv);
+      if (pname && !byProjectName.has(pname)) byProjectName.set(pname, inv);
+    }
+    return { byProjectId, byQuoteId, byProjectName };
+  }
+
+  function saResolveInvoiceForProject(project, lookup) {
+    const pid = String(project?.id || "").trim();
+    const qid = String(project?.quoteId || project?.quote_id || "").trim();
+    const pname = String(project?.projectName || project?.project_name || "").trim().toLowerCase();
+    if (pid && lookup.byProjectId.has(pid)) {
+      return { invoice: lookup.byProjectId.get(pid), matchKind: "project_id" };
+    }
+    if (qid && lookup.byQuoteId.has(qid)) {
+      return { invoice: lookup.byQuoteId.get(qid), matchKind: "quote_id" };
+    }
+    if (pname && lookup.byProjectName.has(pname)) {
+      return { invoice: lookup.byProjectName.get(pname), matchKind: "name" };
+    }
+    return { invoice: null, matchKind: null };
+  }
+
+  function saFormatInvoiceStatus(inv) {
+    if (!inv) return "—";
+    const st = String(inv.status || "").trim();
+    return st ? st.toUpperCase() : "—";
+  }
+
+  function saQuoteStatusForConvertedRow(project, invoice) {
+    const embedded = invoice?.quotes?.status;
+    if (embedded != null && String(embedded).trim() !== "") {
+      return String(embedded).trim();
+    }
+    if (project?.quoteId || project?.quote_id) return "accepted";
+    return "—";
+  }
+
+  function saJoinConvertedProjectRows(projects, invoices, settings) {
+    const lookup = saBuildInvoiceLookup(invoices);
+    const rate = finiteNumber(settings?.salesCommissionPct, DEFAULTS.salesCommissionPct);
+    return (Array.isArray(projects) ? projects : []).map((project) => {
+      const { invoice, matchKind } = saResolveInvoiceForProject(project, lookup);
+      const laborBudget = finiteNumber(project.laborBudget ?? project.labor_budget, 0);
+      const estCommission = saEstimatedCommissionFromLabor(laborBudget, settings);
+      const balanceDue = invoice != null ? finiteNumber(invoice.balance_due, finiteNumber(invoice.amount, 0)) : null;
+      return {
+        project,
+        invoice,
+        matchKind,
+        projectName: String(project.projectName || project.project_name || "").trim() || "—",
+        clientName: String(project.clientName || project.client_name || "").trim() || "—",
+        quoteStatus: saQuoteStatusForConvertedRow(project, invoice),
+        projectStatus: String(project.status || "—"),
+        salePrice: finiteNumber(project.salePrice ?? project.sale_price, 0),
+        laborBudget,
+        estCommission,
+        sellerPct: rate,
+        invoiceStatus: saFormatInvoiceStatus(invoice),
+        balanceDue,
+        signedAt: project.signedAt || project.signed_at || ""
+      };
+    });
+  }
+
+  function saProjectControlHref(projectId) {
+    const id = String(projectId || "").trim();
+    return id ? `/project-control?project_id=${encodeURIComponent(id)}` : "/project-control";
+  }
+
+  function saInvoiceHubHref(project, invoice) {
+    const qid = String(project?.quoteId || project?.quote_id || invoice?.quote_id || "").trim();
+    const pid = String(project?.id || invoice?.project_id || "").trim();
+    if (qid) return `/estimates-invoices?quote_id=${encodeURIComponent(qid)}`;
+    if (pid) return `/estimates-invoices?project_id=${encodeURIComponent(pid)}`;
+    return "/estimates-invoices";
+  }
+
+  function saRenderConvertedProjectsTable(convertedRows, settings) {
+    const body = $("saConvertedBody");
+    const wrap = $("saConvertedTableWrap");
+    const empty = $("saConvertedEmpty");
+    const err = $("saConvertedError");
+    const loading = $("saConvertedLoading");
+    if (!body) return;
+
+    if (loading) loading.hidden = true;
+    if (err) err.hidden = true;
+
+    if (!Array.isArray(convertedRows) || convertedRows.length === 0) {
+      body.innerHTML = "";
+      if (wrap) wrap.hidden = true;
+      if (empty) empty.hidden = false;
       return;
     }
-    if (pendingEl) {
-      const pending = mapped.filter((row) => String(row?.status || "").toLowerCase() === "requested").length;
-      pendingEl.textContent = String(pending);
+
+    if (empty) empty.hidden = true;
+    if (wrap) wrap.hidden = false;
+
+    const currency = settings?.currency || DEFAULTS.currency;
+    body.innerHTML = convertedRows.map((row) => {
+      const uncertain =
+        row.matchKind === "name"
+          ? ' <span class="sa-uncertain" title="Invoice matched by project name only">uncertain</span>'
+          : "";
+      const balanceLabel =
+        row.balanceDue != null ? money(row.balanceDue, currency) : "—";
+      const pid = row.project?.id;
+      return `
+        <tr>
+          <td>${escapeHtml(row.projectName)}</td>
+          <td>${escapeHtml(row.clientName)}</td>
+          <td>${escapeHtml(row.quoteStatus)}${uncertain}</td>
+          <td>${escapeHtml(row.projectStatus)}</td>
+          <td>${money(row.salePrice, currency)}</td>
+          <td>${money(row.laborBudget, currency)}</td>
+          <td>${money(row.estCommission, currency)}</td>
+          <td>${escapeHtml(row.invoiceStatus)}</td>
+          <td>${balanceLabel}</td>
+          <td>
+            <div class="sa-link-group">
+              <a class="btn ghost" href="${escapeHtml(saProjectControlHref(pid))}">Project Control</a>
+              <a class="btn ghost" href="${escapeHtml(saInvoiceHubHref(row.project, row.invoice))}">Invoice Hub</a>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  function saRenderCommissionTable(convertedRows, settings) {
+    const body = $("saCommissionBody");
+    const wrap = $("saCommissionTableWrap");
+    const empty = $("saCommissionEmpty");
+    if (!body) return;
+
+    const withLabor = (Array.isArray(convertedRows) ? convertedRows : []).filter(
+      (row) => finiteNumber(row.laborBudget, 0) > 0
+    );
+
+    if (!withLabor.length) {
+      body.innerHTML = "";
+      if (wrap) wrap.hidden = true;
+      if (empty) empty.hidden = false;
+      return;
     }
-    if (approvedEl) {
-      const approved = mapped.filter((row) => String(row?.status || "").toLowerCase() === "approved").length;
-      approvedEl.textContent = String(approved);
+
+    if (empty) empty.hidden = true;
+    if (wrap) wrap.hidden = false;
+
+    const currency = settings?.currency || DEFAULTS.currency;
+    const rate = finiteNumber(settings?.salesCommissionPct, DEFAULTS.salesCommissionPct);
+    body.innerHTML = withLabor.map((row) => {
+      const balanceLabel =
+        row.balanceDue != null ? money(row.balanceDue, currency) : "—";
+      return `
+        <tr>
+          <td>${escapeHtml(row.projectName)}</td>
+          <td>${money(row.laborBudget, currency)}</td>
+          <td>${escapeHtml(String(rate))}%</td>
+          <td>${money(row.estCommission, currency)}</td>
+          <td>${escapeHtml(row.invoiceStatus)}</td>
+          <td>${balanceLabel}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  function saRenderRecentActivity(convertedRows, settings) {
+    const list = $("saActivityList");
+    const empty = $("saActivityEmpty");
+    if (!list) return;
+
+    const sorted = (Array.isArray(convertedRows) ? convertedRows : [])
+      .slice()
+      .sort((a, b) => String(b.signedAt || "").localeCompare(String(a.signedAt || "")))
+      .slice(0, 8);
+
+    if (!sorted.length) {
+      list.innerHTML = "";
+      list.hidden = true;
+      if (empty) empty.hidden = false;
+      return;
     }
+
+    if (empty) empty.hidden = true;
+    list.hidden = false;
+    const currency = settings?.currency || DEFAULTS.currency;
+    list.innerHTML = sorted.map((row) => {
+      const when = row.signedAt ? String(row.signedAt).slice(0, 10) : "—";
+      return `
+        <div class="sa-detail-row">
+          <span class="sa-detail-row__k">${escapeHtml(row.projectName)} · ${escapeHtml(row.clientName)}</span>
+          <span class="sa-detail-row__v">${escapeHtml(row.projectStatus)} · ${money(row.salePrice, currency)} · ${escapeHtml(when)}</span>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function saSetConvertedProjectsLoadState(state, message) {
+    const loading = $("saConvertedLoading");
+    const err = $("saConvertedError");
+    const errMsg = $("saConvertedErrorMsg");
+    const wrap = $("saConvertedTableWrap");
+    const empty = $("saConvertedEmpty");
+    if (loading) loading.hidden = state !== "loading";
+    if (err) err.hidden = state !== "error";
+    if (errMsg && message) errMsg.textContent = message;
+    if (state === "loading") {
+      if (wrap) wrap.hidden = true;
+      if (empty) empty.hidden = true;
+    }
+  }
+
+  function saLoadConvertedProjectsData(settings, onRows) {
+    saSetConvertedProjectsLoadState("loading");
+    return Promise.all([
+      fetch("/.netlify/functions/get-project-control-projects", {
+        method: "GET",
+        credentials: "include"
+      }).then((res) => res.json().then((data) => ({ ok: res.ok, data }))),
+      fetch("/.netlify/functions/list-tenant-invoices?limit=200", {
+        method: "GET",
+        credentials: "include"
+      }).then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+    ])
+      .then(([pccRes, invRes]) => {
+        const projects =
+          pccRes.ok && pccRes.data?.ok === true && Array.isArray(pccRes.data.projects)
+            ? pccRes.data.projects
+            : [];
+        const invoices =
+          invRes.ok && invRes.data?.ok === true && Array.isArray(invRes.data.invoices)
+            ? invRes.data.invoices
+            : [];
+        if (!pccRes.ok && !invRes.ok) {
+          saSetConvertedProjectsLoadState("error", "Could not reach project or invoice APIs.");
+          saRenderConvertedProjectsTable([], settings);
+          saRenderCommissionTable([], settings);
+          saRenderRecentActivity([], settings);
+          if (typeof onRows === "function") onRows([]);
+          return [];
+        }
+        const rows = saJoinConvertedProjectRows(projects, invoices, settings);
+        saSetConvertedProjectsLoadState("idle");
+        saRenderConvertedProjectsTable(rows, settings);
+        saRenderCommissionTable(rows, settings);
+        saRenderRecentActivity(rows, settings);
+        if (typeof onRows === "function") onRows(rows);
+        return rows;
+      })
+      .catch((err) => {
+        saSetConvertedProjectsLoadState("error", err?.message || "Unexpected error loading converted projects.");
+        saRenderConvertedProjectsTable([], settings);
+        saRenderCommissionTable([], settings);
+        saRenderRecentActivity([], settings);
+        if (typeof onRows === "function") onRows([]);
+        return [];
+      });
   }
 
   function saSetSalesAdminQueueEmpty(showEmpty) {
@@ -14348,6 +14648,7 @@ window.renderSupervisor = renderSupervisor;
     const settings = loadSettings();
     let rows = [];
     let lastMapped = null;
+    let convertedRows = [];
 
     const activateApprovedProject = (row) => {
       const project = {
@@ -14374,7 +14675,7 @@ window.renderSupervisor = renderSupervisor;
     };
 
     const refresh = () => {
-      saUpdateSalesAdminKpis(lastMapped);
+      saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
       saSetSalesAdminQueueEmpty(rows.length === 0);
 
       $("adminQueueBody").innerHTML = rows.map((row, index) => {
@@ -14528,6 +14829,10 @@ window.renderSupervisor = renderSupervisor;
 
     refresh();
     loadQueue();
+    void saLoadConvertedProjectsData(settings, (joined) => {
+      convertedRows = joined;
+      saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
+    });
   }
 
   function render() {

@@ -185,6 +185,25 @@
       font-weight: 600;
       text-align: right;
     }
+    .sa-link-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .sa-link-group .btn {
+      font-size: 0.75rem;
+      padding: 4px 8px;
+    }
+    .sa-uncertain {
+      font-size: 0.68rem;
+      color: rgba(232, 238, 252, 0.55);
+      font-weight: 500;
+    }
+    .sa-loading-note {
+      margin: 0 0 8px;
+      font-size: 0.8125rem;
+      color: rgba(232, 238, 252, 0.65);
+    }
   </style>
 </head>
 <body data-requires-auth="true">
@@ -228,10 +247,10 @@
       </div>
       <div class="sa-kpi">
         <div class="sa-kpi__label">Quotes Sent This Month</div>
-        <div class="sa-kpi__value" id="saKpiSent">—</div>
+        <div class="sa-kpi__value" id="saKpiSent" title="Requires quote list API (Phase 2B)">—</div>
       </div>
       <div class="sa-kpi">
-        <div class="sa-kpi__label">Approved Quotes</div>
+        <div class="sa-kpi__label">Approved Requests</div>
         <div class="sa-kpi__value" id="saKpiApproved">—</div>
       </div>
       <div class="sa-kpi">
@@ -243,7 +262,7 @@
         <div class="sa-kpi__value" id="saKpiLabor">—</div>
       </div>
       <div class="sa-kpi">
-        <div class="sa-kpi__label">Seller Commission Pending</div>
+        <div class="sa-kpi__label">Est. Commission</div>
         <div class="sa-kpi__value" id="saKpiCommission">—</div>
       </div>
     </section>
@@ -287,12 +306,37 @@
       <div class="card-inner">
         <div class="sa-section__head">
           <div class="sa-section__head-main">
-            <h3>Quote Pipeline</h3>
-            <p class="sub">Track quotes through sent, approved, accepted, rejected, and converted stages.</p>
+            <h3>Accepted / Converted Projects</h3>
+            <p class="sub">Production projects with accepted quotes (Project Control list).</p>
           </div>
         </div>
-        <div class="sa-empty">
-          <p class="sa-empty__title">Quote pipeline will appear here once quote activity is available.</p>
+        <p id="saConvertedLoading" class="sa-loading-note" hidden>Loading converted projects…</p>
+        <div id="saConvertedError" class="sa-empty" hidden>
+          <p class="sa-empty__title">Could not load converted projects.</p>
+          <p class="sa-empty__sub" id="saConvertedErrorMsg">Try refreshing the page.</p>
+        </div>
+        <div id="saConvertedEmpty" class="sa-empty" hidden>
+          <p class="sa-empty__title">No converted projects yet.</p>
+          <p class="sa-empty__sub">Accepted quotes that bridge to tenant projects will appear here.</p>
+        </div>
+        <div id="saConvertedTableWrap" class="sa-table-wrap" hidden>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Client</th>
+                <th>Quote Status</th>
+                <th>Project Status</th>
+                <th>Sale Price</th>
+                <th>Labor Budget</th>
+                <th>Est. Commission</th>
+                <th>Invoice Status</th>
+                <th>Balance Due</th>
+                <th>Links</th>
+              </tr>
+            </thead>
+            <tbody id="saConvertedBody"></tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -306,7 +350,8 @@
           </div>
         </div>
         <div class="sa-empty">
-          <p class="sa-empty__title">Seller performance metrics will appear here once sales data is connected.</p>
+          <p class="sa-empty__title">Seller attribution is not available yet.</p>
+          <p class="sa-empty__sub">Phase 2B/2C will require seller_email on quotes/projects before seller performance can be shown.</p>
         </div>
       </div>
     </section>
@@ -315,13 +360,29 @@
       <div class="card-inner">
         <div class="sa-section__head">
           <div class="sa-section__head-main">
-            <h3>Commission Tracking</h3>
-            <p class="sub">Track seller commissions using labor-cost basis only.</p>
+            <h3>Estimated Commission Tracking</h3>
+            <p class="sub">Labor-budget commission estimates for converted projects.</p>
           </div>
         </div>
-        <p class="sa-rule-note">Commission is based on labor cost × seller commission %, never contract total.</p>
-        <div class="sa-empty">
-          <p class="sa-empty__title">Commission tracking will appear here once eligible seller activity is available.</p>
+        <p class="sa-rule-note">Estimate only. Commission is labor budget × seller commission %, never contract total. Does not represent a paid/pending commission ledger.</p>
+        <div id="saCommissionEmpty" class="sa-empty" hidden>
+          <p class="sa-empty__title">No commission estimates yet.</p>
+          <p class="sa-empty__sub">Converted projects with a labor budget will appear here.</p>
+        </div>
+        <div id="saCommissionTableWrap" class="sa-table-wrap" hidden>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Labor Budget</th>
+                <th>Seller %</th>
+                <th>Estimated Commission</th>
+                <th>Invoice Status</th>
+                <th>Balance Due</th>
+              </tr>
+            </thead>
+            <tbody id="saCommissionBody"></tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -331,12 +392,13 @@
         <div class="sa-section__head">
           <div class="sa-section__head-main">
             <h3>Recent Sales Activity</h3>
-            <p class="sub">Recent quote, approval, conversion, and sales actions.</p>
+            <p class="sub">Latest converted production projects.</p>
           </div>
         </div>
-        <div class="sa-empty">
-          <p class="sa-empty__title">Recent sales activity will appear here once activity history is available.</p>
+        <div id="saActivityEmpty" class="sa-empty" hidden>
+          <p class="sa-empty__title">No recent converted projects.</p>
         </div>
+        <div id="saActivityList" class="sa-detail-rows" hidden></div>
       </div>
     </section>
   </div>
