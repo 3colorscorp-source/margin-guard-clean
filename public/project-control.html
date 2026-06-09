@@ -360,6 +360,13 @@
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid rgba(255, 255, 255, 0.07);
     }
+    .pcc-fin-op-flag {
+      margin: 6px 0 0;
+      padding: 0;
+    }
+    .pcc-fin-op-flag .badge {
+      font-size: 0.62rem;
+    }
     .pcc-fin-ledger-card {
       padding: 7px 9px;
       margin-bottom: 6px;
@@ -1148,6 +1155,11 @@
           ) +
           '</section>';
 
+        var opProgress = fmtFinProgressBadge(op.progress_pct);
+        var opScheduleFlag = opProgress.overPlan
+          ? '<p class="pcc-fin-op-flag" role="status"><span class="badge amber">Over scheduled days</span></p>'
+          : '';
+
         var operationalHtml =
           '<button type="button" class="pcc-fin-snapshot-toggle pcc-fin-no-print" id="pccFinOpSnapshotToggle" aria-expanded="false" aria-controls="pccFinOpSnapshot">Show operational snapshot</button>' +
           '<div id="pccFinOpSnapshot" class="pcc-fin-op-snapshot" hidden aria-hidden="true">' +
@@ -1155,11 +1167,13 @@
           finMini('Est. days', op.estimated_days != null ? Number(op.estimated_days).toFixed(1) : '—') +
           finMini('Days spent', op.days_spent != null ? Number(op.days_spent).toFixed(1) : '—') +
           finMini('Days left', op.days_remaining != null ? Number(op.days_remaining).toFixed(1) : '—') +
-          finMini('Progress', op.progress_pct != null ? pct(op.progress_pct) : '—') +
+          finMini('Progress', op.progress_pct != null ? opProgress.text : '—') +
           finMini('Completed', op.completed_days != null ? String(op.completed_days) : '—') +
           finMini('Reports', op.reports_count != null ? String(op.reports_count) : '—') +
           finMini('Expenses', op.expense_entries_count != null ? String(op.expense_entries_count) : '—') +
-          '</div></div>';
+          '</div>' +
+          opScheduleFlag +
+          '</div>';
 
         var laborSectionHtml =
           '<section class="pcc-fin-section pcc-fin-section--labor">' +
