@@ -1108,6 +1108,12 @@
         return finMoneyClass('warning');
       }
 
+      function costMoneyClass(amt) {
+        if (amt == null || !isFinite(Number(amt))) return finMoneyClass('neutral');
+        if (Number(amt) <= 0.005) return finMoneyClass('neutral');
+        return finMoneyClass('negative');
+      }
+
       function finRow(label, value, opts) {
         opts = opts || {};
         var cls = 'pcc-fin-row';
@@ -1216,18 +1222,16 @@
 
         var marginRisk = h.margin_risk || k.risk_status;
         var pos = finMoneyClass('positive');
-        var neg = finMoneyClass('negative');
-        var warn = finMoneyClass('warning');
         var neu = finMoneyClass('neutral');
 
         var deductionsRows =
-          finRow('Unexpected expenses', moneyUsd(opb.unexpected_expenses), { money: neg }) +
-          finRow('Operating cost allocation', ownerProfitVal(opb.operating_cost_allocation, opb.operating_cost_allocation != null), { money: neg, wrap: opb.operating_cost_allocation == null }) +
-          finRow('Seller commission', opb.seller_commission_note ? opb.seller_commission_note : ownerProfitVal(opb.seller_commission, opb.seller_commission != null), { money: neg, wrap: Boolean(opb.seller_commission_note) }) +
-          finRow('Supervisor bonus', opb.supervisor_bonus_note ? opb.supervisor_bonus_note : ownerProfitVal(opb.supervisor_bonus, opb.supervisor_bonus != null), { money: neg, wrap: Boolean(opb.supervisor_bonus_note) }) +
-          finRow('Savings reserve', ownerProfitVal(opb.savings_reserve, opb.savings_reserve != null), { money: neg });
+          finRow('Unexpected expenses', moneyUsd(opb.unexpected_expenses), { money: costMoneyClass(opb.unexpected_expenses) }) +
+          finRow('Operating cost allocation', ownerProfitVal(opb.operating_cost_allocation, opb.operating_cost_allocation != null), { money: costMoneyClass(opb.operating_cost_allocation), wrap: opb.operating_cost_allocation == null }) +
+          finRow('Seller commission', opb.seller_commission_note ? opb.seller_commission_note : ownerProfitVal(opb.seller_commission, opb.seller_commission != null), { money: opb.seller_commission_note ? neu : costMoneyClass(opb.seller_commission), wrap: Boolean(opb.seller_commission_note) }) +
+          finRow('Supervisor bonus', opb.supervisor_bonus_note ? opb.supervisor_bonus_note : ownerProfitVal(opb.supervisor_bonus, opb.supervisor_bonus != null), { money: opb.supervisor_bonus_note ? neu : costMoneyClass(opb.supervisor_bonus), wrap: Boolean(opb.supervisor_bonus_note) }) +
+          finRow('Savings reserve', ownerProfitVal(opb.savings_reserve, opb.savings_reserve != null), { money: costMoneyClass(opb.savings_reserve) });
         if (opb.material_costs != null && opb.material_costs > 0) {
-          deductionsRows += finRow('Material costs', moneyUsd(opb.material_costs), { money: neg });
+          deductionsRows += finRow('Material costs', moneyUsd(opb.material_costs), { money: costMoneyClass(opb.material_costs) });
         }
 
         var ownerBreakdownHtml =
@@ -1235,9 +1239,9 @@
           '<h4>Owner profit breakdown</h4>' +
           finLedgerGroup('Revenue', finRow('Project total', moneyUsd(opb.project_total), { money: pos })) +
           finLedgerGroup('Labor',
-            finRow('Direct labor cost', ownerProfitVal(opb.direct_labor_cost, opb.direct_labor_cost != null), { money: neg }) +
-            finRow('Employer burden', ownerProfitVal(opb.employer_burden, opb.employer_burden != null), { money: neg }) +
-            finRow('Loaded labor cost', ownerProfitVal(opb.loaded_labor_cost, opb.loaded_labor_cost != null), { money: neg })
+            finRow('Direct labor cost', ownerProfitVal(opb.direct_labor_cost, opb.direct_labor_cost != null), { money: costMoneyClass(opb.direct_labor_cost) }) +
+            finRow('Employer burden', ownerProfitVal(opb.employer_burden, opb.employer_burden != null), { money: costMoneyClass(opb.employer_burden) }) +
+            finRow('Loaded labor cost', ownerProfitVal(opb.loaded_labor_cost, opb.loaded_labor_cost != null), { money: costMoneyClass(opb.loaded_labor_cost) })
           ) +
           finLedgerGroup('Deductions', deductionsRows) +
           finLedgerGroup('Result',
@@ -1274,10 +1278,10 @@
           '<div class="pcc-fin-mini-grid">' +
           finMini('Est. hours', estL.hours != null ? Number(estL.hours).toFixed(1) : '—', neu) +
           finMini('Est. days', estL.days != null ? Number(estL.days).toFixed(1) : '—', neu) +
-          finMini('Est. labor', estL.labor_cost != null ? moneyUsd(estL.labor_cost) : '—', neg) +
+          finMini('Est. labor', estL.labor_cost != null ? moneyUsd(estL.labor_cost) : '—', costMoneyClass(estL.labor_cost)) +
           finMini('Reported hrs', actL.hours != null ? Number(actL.hours).toFixed(1) : '—', neu) +
           finMini('Reported days', actL.days != null ? Number(actL.days).toFixed(1) : '—', neu) +
-          finMini('Actual labor', fmtActualLaborCost(actL, labor), neg) +
+          finMini('Actual labor', fmtActualLaborCost(actL, labor), costMoneyClass(actL.labor_cost)) +
           finMini('Hrs variance', varL.hours != null ? Number(varL.hours).toFixed(1) : '—', laborVarianceClass(varL.hours)) +
           finMini('Days variance', varL.days != null ? Number(varL.days).toFixed(1) : '—', laborVarianceClass(varL.days)) +
           finMini('Cost variance', varL.cost != null ? moneyUsd(varL.cost) : '—', laborVarianceClass(varL.cost)) +
@@ -1323,7 +1327,7 @@
           '<button type="button" class="btn ghost" id="pccFinBtnPrintExpenses">Print expense report</button>' +
           '</div>' +
           '<div class="pcc-fin-expense-stats">' +
-          '<div class="pcc-fin-expense-stat">Unexpected total<strong class="' + neg + '">' + esc(moneyUsd(exp.total)) + '</strong></div>' +
+          '<div class="pcc-fin-expense-stat">Unexpected total<strong class="' + costMoneyClass(exp.total) + '">' + esc(moneyUsd(exp.total)) + '</strong></div>' +
           '<div class="pcc-fin-expense-stat">Entries<strong class="' + neu + '">' + esc(exp.count != null ? String(exp.count) : '0') + '</strong></div>' +
           '</div></div>' +
           (exp.last ? '<div class="pcc-fin-rows" style="margin-top:6px;">' + finRow('Last expense', expenseLast, { wide: true, money: neu }) + '</div>' : '') +
