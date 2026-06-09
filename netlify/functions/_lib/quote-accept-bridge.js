@@ -297,9 +297,27 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
     insertLaborFields.quoted_labor_plan = [];
   }
 
+  let resolvedProjectId = null;
+
+  function resolveInvoiceProjectIdLink(existingInvoiceProjectId) {
+    if (!resolvedProjectId || !UUID_RE.test(resolvedProjectId)) return null;
+    const existing = String(existingInvoiceProjectId == null ? "" : existingInvoiceProjectId).trim();
+    if (!existing) return resolvedProjectId;
+    const same =
+      existing.replace(/-/g, "").toLowerCase() ===
+      resolvedProjectId.replace(/-/g, "").toLowerCase();
+    if (same) return resolvedProjectId;
+    console.warn("[accept-bridge] invoice project_id mismatch; skip overwrite", {
+      invoice_project_id: existing,
+      resolved_project_id: resolvedProjectId,
+      quote_id: quoteId,
+    });
+    return null;
+  }
+
   try {
     const tpRows = await supabaseRequest(
-      `tenant_projects?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id,quoted_labor_plan,quoted_labor_plan_locked_at`,
+      `tenant_projects?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id,quote_id,quoted_labor_plan,quoted_labor_plan_locked_at`,
       { method: "GET" }
     );
     const tpHit = Array.isArray(tpRows) ? tpRows[0] : null;
@@ -312,13 +330,15 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
       recommended_price: salePrice,
       minimum_price: salePrice,
       status: "signed",
+      quote_id: quoteId,
       updated_at: nowIso,
     };
     if (quoteDueDate) basePatch.due_date = quoteDueDate;
     if (quoteStartDate) basePatch.signed_at = `${quoteStartDate}T12:00:00.000Z`;
 
     if (tpHit?.id && UUID_RE.test(String(tpHit.id))) {
-      const pidEnc = encodeURIComponent(String(tpHit.id));
+      resolvedProjectId = String(tpHit.id);
+      const pidEnc = encodeURIComponent(resolvedProjectId);
       await supabaseRequest(`tenant_projects?id=eq.${pidEnc}&tenant_id=eq.${tidEnc}`, {
         method: "PATCH",
         body: basePatch,
@@ -398,6 +418,7 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
       }
 
       if (newProjectId) {
+        resolvedProjectId = newProjectId;
         await applyOperationalSnapshotForProject(quoteRow, newProjectId);
       }
     }
@@ -405,10 +426,27 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
     console.error("[accept-bridge] tenant_projects step failed (invoice step will still run)", tpErr);
   }
 
-  console.log("[accept-bridge] project bridge done, starting invoice");
+  if (!resolvedProjectId) {
+    try {
+      const fallbackRows = await supabaseRequest(
+        `tenant_projects?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id&limit=1`,
+        { method: "GET" }
+      );
+      const fallbackHit = Array.isArray(fallbackRows) ? fallbackRows[0] : null;
+      if (fallbackHit?.id && UUID_RE.test(String(fallbackHit.id))) {
+        resolvedProjectId = String(fallbackHit.id);
+      }
+    } catch (_fallbackErr) {
+      /* non-blocking */
+    }
+  }
+
+  console.log("[accept-bridge] project bridge done, starting invoice", {
+    resolved_project_id: resolvedProjectId || null,
+  });
 
   const existingInvoices = await supabaseRequest(
-    `invoices?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id,public_token,quote_id`,
+    `invoices?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id,public_token,quote_id,project_id`,
     { method: "GET" }
   );
   console.log("[accept-bridge] existing invoices", existingInvoices);
@@ -429,20 +467,27 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
     ) || null;
 
   if (invHit?.id && UUID_RE.test(String(invHit.id))) {
-    console.log("[accept-bridge] invoice path: PATCH existing", { id: invHit.id, quote_id: quoteId });
+    const invoiceProjectId = resolveInvoiceProjectIdLink(invHit.project_id);
+    console.log("[accept-bridge] invoice path: PATCH existing", {
+      id: invHit.id,
+      quote_id: quoteId,
+      project_id: invoiceProjectId || invHit.project_id || null,
+    });
     const iidEnc = encodeURIComponent(String(invHit.id));
+    const invoicePatch = {
+      quote_id: quoteId,
+      customer_name: clientName,
+      customer_email: clientEmail,
+      project_name: projectName,
+      amount: salePrice,
+      paid_amount: 0,
+      balance_due: salePrice,
+      currency,
+    };
+    if (invoiceProjectId) invoicePatch.project_id = invoiceProjectId;
     await supabaseRequest(`invoices?id=eq.${iidEnc}&tenant_id=eq.${tidEnc}`, {
       method: "PATCH",
-      body: {
-        quote_id: quoteId,
-        customer_name: clientName,
-        customer_email: clientEmail,
-        project_name: projectName,
-        amount: salePrice,
-        paid_amount: 0,
-        balance_due: salePrice,
-        currency,
-      },
+      body: invoicePatch,
     });
   } else {
     const rawTotal = Number(quoteRow.total || 0);
@@ -462,6 +507,8 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
       status: "DRAFT",
       type: "FINAL",
     };
+    const insertProjectId = resolveInvoiceProjectIdLink(null);
+    if (insertProjectId) invoiceInsertPayload.project_id = insertProjectId;
 
     console.log("[accept-bridge] inserting invoice", invoiceInsertPayload);
 
