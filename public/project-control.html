@@ -1101,7 +1101,7 @@
             '<span class="badge ' + tone + '">' + esc(statusLabel) + '</span>' +
             '<span class="badge">' + esc(finProgress.text) + '</span>' +
             '<span class="badge ' + marginRiskBadgeClass(h.margin_risk || k.risk_status) + '">Margin ' + esc(marginRiskLabel(h.margin_risk || k.risk_status)) + '</span>';
-          if (finProgress.overPlan) {
+          if (finProgress.overPlan || h.over_scheduled_days) {
             badgeHtml += '<span class="badge amber">Over scheduled days</span>';
           }
           if (completionStatus && completionStatus !== statusLabel) {
@@ -1156,7 +1156,7 @@
           '</section>';
 
         var opProgress = fmtFinProgressBadge(op.progress_pct);
-        var opScheduleFlag = opProgress.overPlan
+        var opScheduleFlag = (opProgress.overPlan || op.over_scheduled_days)
           ? '<p class="pcc-fin-op-flag" role="status"><span class="badge amber">Over scheduled days</span></p>'
           : '';
 

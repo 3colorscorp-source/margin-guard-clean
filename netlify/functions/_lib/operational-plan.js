@@ -151,6 +151,84 @@ function crewSummaryFromOperationalPlan(plan) {
  * @param {number|null} [estimatedHoursOverride]
  * @param {number} [hoursPerDay]
  */
+function scheduledDayNumbersSet(normalizedPlan) {
+  const set = new Set();
+  for (const day of Array.isArray(normalizedPlan) ? normalizedPlan : []) {
+    const dn = Math.max(1, Math.floor(num(day?.day_number, 0)));
+    if (dn > 0) set.add(dn);
+  }
+  return set;
+}
+
+/**
+ * Execution progress from operational_plan + day_progress (Financial Detail / owner read model).
+ * scheduledDays follows computeOperationalPlanMetrics (max day_number convention, same as Supervisor).
+ * @returns {object|null}
+ */
+function computeOperationalPlanExecutionState(
+  normalizedPlan,
+  dayProgressRows,
+  hoursPerDay = DEFAULT_HOURS_PER_DAY,
+  estimatedDaysOverride = null
+) {
+  if (!planHasDays(normalizedPlan)) return null;
+
+  const hpd = Math.max(num(hoursPerDay, DEFAULT_HOURS_PER_DAY), 0.25);
+  const metrics = computeOperationalPlanMetrics(
+    normalizedPlan,
+    estimatedDaysOverride,
+    null,
+    hpd
+  );
+  const scheduledDays = metrics.estimated_days;
+  const scheduledSet = scheduledDayNumbersSet(normalizedPlan);
+
+  let totalCompletedRows = 0;
+  const completedUnique = new Set();
+  const completedScheduledUnique = new Set();
+
+  for (const row of Array.isArray(dayProgressRows) ? dayProgressRows : []) {
+    if (!row || typeof row !== "object") continue;
+    const status = str(row.status, 32).toLowerCase();
+    if (status !== "completed") continue;
+    const dn = Math.max(1, Math.floor(num(row.day_number, 0)));
+    if (dn <= 0) continue;
+    totalCompletedRows += 1;
+    completedUnique.add(dn);
+    if (scheduledSet.has(dn)) completedScheduledUnique.add(dn);
+  }
+
+  const completedScheduledDays = completedScheduledUnique.size;
+  const progressPct =
+    scheduledDays > 0
+      ? Math.round((completedScheduledDays / scheduledDays) * 100)
+      : null;
+
+  let overScheduled = false;
+  if (scheduledDays > 0 && totalCompletedRows > scheduledDays) {
+    overScheduled = true;
+  }
+  if (!overScheduled) {
+    for (const dn of completedUnique) {
+      if (!scheduledSet.has(dn)) {
+        overScheduled = true;
+        break;
+      }
+    }
+  }
+
+  return {
+    estimated_days: scheduledDays,
+    estimated_hours: metrics.estimated_hours,
+    completed_days: totalCompletedRows,
+    completed_scheduled_days: completedScheduledDays,
+    days_remaining: round2(Math.max(0, scheduledDays - completedScheduledDays)),
+    completion_pace_pct: progressPct,
+    over_scheduled_days: overScheduled,
+    progress_source: "operational_plan",
+  };
+}
+
 function computeOperationalPlanMetrics(
   normalizedPlan,
   estimatedDaysOverride = null,
@@ -535,6 +613,8 @@ async function resolveOperationalPlanForQuote(quoteRow, loadSnapshotPayload) {
 module.exports = {
   normalizeOperationalPlan,
   computeOperationalPlanMetrics,
+  computeOperationalPlanExecutionState,
+  scheduledDayNumbersSet,
   operationalPlanForSupervisorVisibility,
   parseOperationalPlanJsonb,
   crewSummaryFromOperationalPlan,

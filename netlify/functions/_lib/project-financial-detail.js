@@ -12,6 +12,7 @@ const {
   normalizeOperationalPlan,
   planHasDays,
   laborMetricsForCompletedOperationalDays,
+  computeOperationalPlanExecutionState,
 } = require("./operational-plan");
 const { applyMigrationBaselineToMetrics } = require("./migration-baseline");
 const { computeSupervisorExecutionBonus } = require("./supervisor-execution-bonus");
@@ -553,8 +554,31 @@ function applyDayProgressToOperationalMetrics(metrics, dayProgressRows) {
   return out;
 }
 
+function applyPlanExecutionToOperationalMetrics(op, planExec, reportDays) {
+  const out = { ...(op && typeof op === "object" ? op : {}) };
+  out.estimated_days = planExec.estimated_days;
+  out.estimated_hours = planExec.estimated_hours;
+  out.completed_days = planExec.completed_days;
+  out.completed_scheduled_days = planExec.completed_scheduled_days;
+  out.over_scheduled_days = planExec.over_scheduled_days;
+  out.days_remaining = planExec.days_remaining;
+  out.completion_pace_pct = planExec.completion_pace_pct;
+  out.progress_source = planExec.progress_source;
+  out.actual_days = round2(Math.max(num(reportDays, 0), planExec.completed_days));
+  const dev = round2(planExec.completed_scheduled_days - planExec.estimated_days);
+  out.labor_deviation_days = dev;
+  if (Math.abs(dev) < 0.01) out.labor_deviation_label = "On budget";
+  else if (dev > 0) {
+    out.labor_deviation_label = `${dev.toFixed(2)} day(s) over budget`;
+  } else {
+    out.labor_deviation_label = `${Math.abs(dev).toFixed(2)} day(s) under budget`;
+  }
+  return out;
+}
+
 /**
  * Align operational progress with Supervisor: day_progress > migration+reports > reports.
+ * When operational_plan exists, scheduled days and progress come from the plan day count.
  */
 function computeFinancialOperationalState({
   project,
@@ -564,6 +588,7 @@ function computeFinancialOperationalState({
   migrationBaseline,
   supervisorBonusPct = 1,
   hoursPerDay = DEFAULT_HOURS_PER_DAY,
+  operationalPlanRaw,
 }) {
   let op = computeProjectOperationalSnapshot({
     project,
@@ -577,6 +602,17 @@ function computeFinancialOperationalState({
     op = applyMigrationBaselineToMetrics(op, migrationBaseline, reports);
   }
 
+  const reportDays = num(op.actual_days, 0);
+  const opPlan = resolveNormalizedOperationalPlan(operationalPlanRaw, hoursPerDay);
+  const planExec =
+    opPlan.length > 0
+      ? computeOperationalPlanExecutionState(opPlan, dayProgressRows, hoursPerDay)
+      : null;
+
+  if (planExec) {
+    return applyPlanExecutionToOperationalMetrics(op, planExec, reportDays);
+  }
+
   const completedFromProgress = countCompletedDays(dayProgressRows);
   const estDays = num(op.estimated_days, 0);
 
@@ -586,6 +622,7 @@ function computeFinancialOperationalState({
     op.days_remaining = round2(Math.max(0, estDays - completedFromProgress));
     op.completion_pace_pct = Math.round((completedFromProgress / estDays) * 100);
     op.progress_source = "day_progress";
+    op.over_scheduled_days = completedFromProgress > estDays;
     const dev = completedFromProgress - estDays;
     op.labor_deviation_days = round2(dev);
     if (Math.abs(dev) < 0.01) op.labor_deviation_label = "On budget";
@@ -604,6 +641,10 @@ function computeFinancialOperationalState({
     }
     if (!op.progress_source) op.progress_source = "field_reports";
     op.completed_days = completedFromProgress || countCompletedDays(dayProgressRows);
+    if (op.over_scheduled_days == null) {
+      op.over_scheduled_days =
+        estDays > 0 && num(op.completed_days, 0) > estDays;
+    }
   }
 
   return op;
@@ -1106,6 +1147,7 @@ function mapOperationalForDetail(op) {
     days_remaining: o.days_remaining,
     progress_pct: o.completion_pace_pct,
     completed_days: completed,
+    over_scheduled_days: Boolean(o.over_scheduled_days),
     reports_count: o.report_count,
     expense_entries_count: o.expense_count,
     estimated_hours: o.estimated_hours,
@@ -1179,6 +1221,7 @@ function buildProjectFinancialDetail({
     migrationBaseline,
     supervisorBonusPct,
     hoursPerDay,
+    operationalPlanRaw,
   });
   const operational = mapOperationalForDetail(opRaw);
 
@@ -1223,6 +1266,7 @@ function buildProjectFinancialDetail({
     },
     header: {
       progress_pct: progressPct,
+      over_scheduled_days: Boolean(operational.over_scheduled_days),
       status_label: statusLabel,
       margin_risk: profit.margin_risk,
       tone,
