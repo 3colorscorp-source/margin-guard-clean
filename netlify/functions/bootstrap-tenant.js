@@ -36,6 +36,20 @@ function buildResponse(tenant, profile, email) {
   };
 }
 
+function normEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function tenantOwnerEmailMatches(tenant, email) {
+  return normEmail(tenant?.owner_email) === normEmail(email);
+}
+
+const ALLOWED_BOOTSTRAP_STATUSES = new Set(["active", "invited"]);
+
+function membershipStatusAllowed(status) {
+  return ALLOWED_BOOTSTRAP_STATUSES.has(normEmail(status));
+}
+
 exports.handler = async (event) => {
   try {
     if (!["GET", "POST"].includes(event.httpMethod)) {
@@ -141,13 +155,23 @@ exports.handler = async (event) => {
       return json(500, { error: "Unable to resolve tenant" });
     }
 
-    // 6) Create profile if missing; link profile.tenant_id to tenant.id
+    // 6) Resolve profile for this tenant + email (no auto-owner for non-owner emails)
     profileRows = await supabaseRequest(
       `profiles?tenant_id=eq.${encodeURIComponent(tenant.id)}&email=eq.${encodeURIComponent(email)}&select=*`
     );
     profile = Array.isArray(profileRows) ? profileRows[0] : null;
 
+    const ownerEmailMatches = tenantOwnerEmailMatches(tenant, email);
+
     if (!profile) {
+      if (!ownerEmailMatches) {
+        return json(403, {
+          error:
+            "No membership found for this account. Ask your company owner to invite you before signing in.",
+          code: "membership_not_found",
+        });
+      }
+
       try {
         const createdProfiles = await supabaseRequest("profiles", {
           method: "POST",
@@ -170,6 +194,13 @@ exports.handler = async (event) => {
 
     if (!profile?.id) {
       return json(500, { error: "Unable to resolve profile" });
+    }
+
+    if (!membershipStatusAllowed(profile.status)) {
+      return json(403, {
+        error: "This membership is not active. Contact your company owner for access.",
+        code: "membership_not_active",
+      });
     }
 
     return json(200, buildResponse(tenant, profile, email));
