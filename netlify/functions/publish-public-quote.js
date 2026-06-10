@@ -1,7 +1,7 @@
-const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest, getSupabaseConfig } = require("./_lib/supabase-admin");
+const { buildSellerAttribution } = require("./_lib/attribution-context");
 const { loadTenantDisplayForTenantId } = require("./_lib/tenant-display");
-const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { resolveOwnerOrSellerContext } = require("./_lib/tenant-device-guard");
 const { makePublicToken } = require("./_lib/public-token");
 const { calculateQuotePublishFinancials, sanitizeWorkersForTenantPricing } = require("./_lib/pricing-engine");
 const {
@@ -314,18 +314,37 @@ function resolveCanonicalPublishAmounts({
   };
 }
 
+const QUOTE_SELLER_ATTRIBUTION_KEYS = new Set([
+  "seller_membership_id",
+  "seller_user_id",
+  "seller_email",
+  "source_device_id",
+  "created_by_role",
+]);
+
+function sellerAttributionForInsert(ctx) {
+  if (ctx?.auth_mode !== "device") return {};
+  const raw = buildSellerAttribution({
+    membership: ctx.membership,
+    device: ctx.device,
+    deviceSession: ctx.device_session,
+    session: ctx.session,
+  });
+  const out = {};
+  for (const key of QUOTE_SELLER_ATTRIBUTION_KEYS) {
+    if (raw[key] !== undefined) out[key] = raw[key];
+  }
+  return out;
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
       return json(405, { error: "Method Not Allowed" });
     }
 
-    const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
-      return json(401, { error: "Unauthorized" });
-    }
-
-    const tenant = await resolveTenantFromSession(session);
+    const ctx = await resolveOwnerOrSellerContext(event);
+    const tenant = ctx.tenant;
     if (!tenant?.id) {
       return json(422, {
         error:
@@ -648,7 +667,8 @@ exports.handler = async (event) => {
         business_address: businessAddress || "",
         ...quoteNumberFields,
         ...(withAudit ? amountAudit : {}),
-        ...(opPublish.include ? opPublish.fields : {})
+        ...(opPublish.include ? opPublish.fields : {}),
+        ...sellerAttributionForInsert(ctx),
       };
     }
 
@@ -769,6 +789,16 @@ exports.handler = async (event) => {
       row
     });
   } catch (err) {
+    if (err.isGuardError) {
+      if (err.code === "tenant_not_found") {
+        return json(422, {
+          error:
+            "Cannot publish quote: missing tenant for this account. Run bootstrap-tenant before publishing.",
+          code: err.code,
+        });
+      }
+      return json(err.statusCode, { error: err.message, code: err.code });
+    }
     return json(500, { error: err.message || "Server error" });
   }
 };
