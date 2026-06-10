@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Device Pairing</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .pp-page { max-width: 420px; margin: 0 auto; padding-top: 24px; }
+    .pp-hero { margin-bottom: 12px; }
+    .pp-hero h2 { margin: 0 0 6px; font-size: 1.35rem; }
+    .pp-hero .sub { margin: 0; line-height: 1.45; }
+    .pp-note {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 0.8125rem;
+      line-height: 1.45;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.08);
+      color: rgba(232, 238, 252, 0.88);
+    }
+    .pp-error {
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 0.8125rem;
+      line-height: 1.45;
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      background: rgba(239, 68, 68, 0.08);
+      color: rgba(252, 165, 165, 0.95);
+    }
+    .pp-error[hidden], .pp-success[hidden] { display: none !important; }
+    .pp-success {
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 0.8125rem;
+      border: 1px solid rgba(34, 197, 94, 0.35);
+      background: rgba(34, 197, 94, 0.08);
+    }
+    .pp-code-input {
+      font-size: 1.25rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-weight: 700;
+      text-align: center;
+    }
+    .pp-footer { margin-top: 16px; text-align: center; font-size: 0.8125rem; }
+    .pp-footer a { color: rgba(186, 198, 220, 0.95); }
+  </style>
+</head>
+<body class="portal-pair-page">
+  <div class="container pp-page">
+    <section class="card pp-hero">
+      <div class="card-inner">
+        <span class="eyebrow">Device pairing</span>
+        <h2>Pair this device</h2>
+        <p class="sub">Enter the 8-character code from Team &amp; Devices. This page is for seller and supervisor tablets only.</p>
+      </div>
+    </section>
+
+    <p class="pp-note">
+      Use this page only on the assigned seller/supervisor device. Do not pair from the owner browser.
+    </p>
+
+    <div id="ppError" class="pp-error" hidden role="alert"></div>
+    <div id="ppSuccess" class="pp-success" hidden role="status">Pairing successful. Redirecting…</div>
+
+    <section class="card">
+      <div class="card-inner">
+        <form id="ppPairForm" class="form">
+          <div class="field">
+            <label for="ppPortalType">Portal</label>
+            <select id="ppPortalType" required>
+              <option value="seller">Seller (Vendedor)</option>
+              <option value="supervisor">Supervisor</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ppPairingCode">Pairing code</label>
+            <input
+              id="ppPairingCode"
+              class="pp-code-input"
+              type="text"
+              inputmode="text"
+              autocomplete="off"
+              autocapitalize="characters"
+              maxlength="8"
+              placeholder="AB12CD34"
+              required
+            />
+            <div class="hint">8 letters or digits · expires in 5 minutes</div>
+          </div>
+          <button type="submit" class="btn primary" id="ppSubmitBtn">Pair device</button>
+        </form>
+      </div>
+    </section>
+
+    <p class="pp-footer"><a href="/index.html">Back to home</a></p>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const API = "/.netlify/functions";
+      const PORTAL_REDIRECT = {
+        seller: "/sales",
+        supervisor: "/supervisor",
+      };
+
+      const form = document.getElementById("ppPairForm");
+      const portalSel = document.getElementById("ppPortalType");
+      const codeInput = document.getElementById("ppPairingCode");
+      const errEl = document.getElementById("ppError");
+      const okEl = document.getElementById("ppSuccess");
+      const submitBtn = document.getElementById("ppSubmitBtn");
+
+      function normPortal(value) {
+        return String(value || "").trim().toLowerCase();
+      }
+
+      function normPairingCode(value) {
+        return String(value || "")
+          .trim()
+          .replace(/\s+/g, "")
+          .toUpperCase();
+      }
+
+      function showError(message) {
+        if (!errEl) return;
+        errEl.hidden = false;
+        errEl.textContent = message || "Pairing failed.";
+        if (okEl) okEl.hidden = true;
+      }
+
+      function clearError() {
+        if (errEl) {
+          errEl.hidden = true;
+          errEl.textContent = "";
+        }
+      }
+
+      function prefillFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        const portal = normPortal(params.get("portal"));
+        if (portal === "seller" || portal === "supervisor") {
+          portalSel.value = portal;
+        }
+      }
+
+      codeInput.addEventListener("input", function () {
+        const pos = codeInput.selectionStart;
+        codeInput.value = normPairingCode(codeInput.value).slice(0, 8);
+        if (typeof pos === "number") codeInput.setSelectionRange(codeInput.value.length, codeInput.value.length);
+      });
+
+      form.addEventListener("submit", async function (event) {
+        event.preventDefault();
+        clearError();
+
+        const portalType = normPortal(portalSel.value);
+        const pairingCode = normPairingCode(codeInput.value);
+
+        if (portalType !== "seller" && portalType !== "supervisor") {
+          showError("Select seller or supervisor portal.");
+          return;
+        }
+        if (!/^[A-Z0-9]{8}$/.test(pairingCode)) {
+          showError("Pairing code must be 8 uppercase letters or digits.");
+          return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Pairing…";
+
+        try {
+          const res = await fetch(API + "/pair-device", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pairing_code: pairingCode, portal_type: portalType }),
+          });
+          const data = await res.json().catch(function () {
+            return {};
+          });
+
+          if (!res.ok || data.ok !== true) {
+            const msg =
+              (data && data.error) ||
+              (data && data.code === "pairing_code_invalid"
+                ? "Invalid or expired pairing code."
+                : "Pairing failed.");
+            showError(msg);
+            return;
+          }
+
+          const pairedPortal = normPortal(data.portal_type);
+          if (pairedPortal !== portalType) {
+            await fetch(API + "/device-logout", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            }).catch(function () {});
+            showError(
+              "This code belongs to a " +
+                (pairedPortal || "different") +
+                " device. Select the correct portal and try again."
+            );
+            return;
+          }
+
+          if (okEl) okEl.hidden = false;
+          const target = PORTAL_REDIRECT[portalType] || "/";
+          window.setTimeout(function () {
+            window.location.href = target;
+          }, 400);
+        } catch (_err) {
+          showError("Network error. Check connection and try again.");
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Pair device";
+        }
+      });
+
+      prefillFromQuery();
+    })();
+  </script>
+</body>
+</html>

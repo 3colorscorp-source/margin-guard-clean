@@ -68,6 +68,11 @@
   status = 200
 
 [[redirects]]
+  from = "/portal-pair"
+  to = "/portal-pair.html"
+  status = 200
+
+[[redirects]]
   from = "/project-control"
   to = "/project-control.html"
   status = 200
