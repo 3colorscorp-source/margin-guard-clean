@@ -4145,6 +4145,212 @@ async function openSellerSendModal(event) {
     return s.indexOf('.', at + 1) > at;
   }
 
+  function buildPublishPublicQuoteBody(opts) {
+    const payload = opts.payload && typeof opts.payload === 'object' ? opts.payload : {};
+    const stateFresh = opts.stateFresh && typeof opts.stateFresh === 'object' ? opts.stateFresh : {};
+    const settings = opts.settings && typeof opts.settings === 'object' ? opts.settings : {};
+    const branding = opts.branding && typeof opts.branding === 'object' ? opts.branding : {};
+    const toName = String(opts.toName || '').trim();
+    const toEmailSend = String(opts.toEmailSend || '').trim();
+    const customerPhone = String(opts.customerPhone || '').trim();
+    const projectAddress = String(opts.projectAddress || '').trim();
+    const estimateTotal = Number(opts.estimateTotal || 0);
+    const depositRequired = Number(opts.depositRequired || 0);
+    const message = String(opts.message || '');
+    const scope = String(opts.scope || '');
+    const bn = resolvePublishBusinessName(branding, payload, settings);
+    return {
+      project_name: payload.projectName || stateFresh.projectName || '',
+      title: payload.projectName || stateFresh.projectName || '',
+      client_name: toName || payload.clientName || stateFresh.clientName || '',
+      client_email: toEmailSend || payload.customerEmail || stateFresh.customerEmail || '',
+      client_phone: customerPhone,
+      customer_phone: customerPhone,
+      phone: customerPhone,
+      project_address: projectAddress,
+      customer_address: projectAddress,
+      job_site: projectAddress,
+      address: projectAddress,
+      workers: Array.isArray(stateFresh.workers) ? stateFresh.workers : [],
+      price: stateFresh.price,
+      pricing_stage: stateFresh.pricingStage == null ? 2 : stateFresh.pricingStage,
+      _sliderTouched: Boolean(stateFresh._sliderTouched || stateFresh._manualPriceTouched),
+      _manualPriceTouched: Boolean(stateFresh._sliderTouched || stateFresh._manualPriceTouched),
+      offeredPrice: stateFresh.offeredPrice,
+      total: estimateTotal,
+      recommended_total: estimateTotal,
+      deposit_required: depositRequired,
+      notes: message,
+      public_message: payload.scopeSummary || scope || '',
+      currency: 'USD',
+      status: 'READY_TO_SEND',
+      business_name: bn,
+      company_name: bn,
+      business_email: branding.businessEmail || payload.businessEmail || settings.businessEmail || settings.email || '',
+      business_phone: branding.businessPhone || payload.businessPhone || settings.businessPhone || settings.phone || '',
+      business_address: branding.businessAddress || payload.businessAddress || settings.address || settings.companyAddress || '',
+      ...(typeof buildOperationalPublishFields === 'function'
+        ? buildOperationalPublishFields(stateFresh, settings)
+        : {})
+    };
+  }
+
+  let sellerPublishInFlight = false;
+
+  async function runSellerPublishPublicLinkOnly() {
+    if (document.documentElement.dataset.authMode !== 'device') {
+      return { ok: false, error: 'Seller device mode required.' };
+    }
+    if (sellerPublishInFlight) {
+      return { ok: false, error: 'Publish already in progress.' };
+    }
+
+    const state = loadSalesState();
+    const existingQuoteId = String(state.quoteId || '').trim();
+    const existingPublicUrl = String(state.publicQuoteUrl || '').trim();
+    if (existingQuoteId && existingPublicUrl) {
+      return {
+        ok: true,
+        alreadyPublished: true,
+        quote_id: existingQuoteId,
+        public_url: existingPublicUrl,
+        quote_number_display: String(state.estimateNumber || '').trim(),
+        message: 'Quote created. Owner/full send step is still disabled.'
+      };
+    }
+
+    const settings = loadSettings();
+    const metrics = buildSalesUIMetrics(state, settings);
+    if (metrics.marginBlocked) {
+      return { ok: false, error: 'Price too low' };
+    }
+
+    const workers = Array.isArray(state.workers) ? state.workers : [];
+    let workerDays = 0;
+    for (const w of workers) {
+      workerDays += Math.max(0, Number(w && w.days != null ? w.days : 0));
+    }
+    if (!workers.length || workerDays <= 0) {
+      return { ok: false, error: 'Add labor lines before creating a public quote link.' };
+    }
+
+    await fillSendModal();
+    const payload = JSON.parse(modal.dataset.payload || '{}');
+    const stateFresh = loadSalesState();
+    const metricsFresh = buildSalesUIMetrics(stateFresh, settings);
+    const estimateTotal = Number(payload.totalAmount || metricsFresh.offered || metricsFresh.recommended || 0);
+    const depositRequired = Number(payload.depositRequired || 1000);
+    const toName = String(
+      document.getElementById('toName')?.value ||
+        document.getElementById('salesClientName')?.value ||
+        stateFresh.clientName ||
+        ''
+    ).trim();
+    const toEmailSend = String(
+      document.getElementById('toEmail')?.value ||
+        document.getElementById('salesCustomerEmail')?.value ||
+        stateFresh.customerEmail ||
+        ''
+    ).trim();
+    const customerPhone = String(
+      document.getElementById('salesCustomerPhone')?.value || stateFresh.customerPhone || payload.customerPhone || ''
+    ).trim();
+    const projectAddress = String(
+      document.getElementById('salesLocation')?.value || stateFresh.location || payload.location || ''
+    ).trim();
+    const message = String(
+      document.getElementById('message')?.value || stateFresh.messageToClient || payload.messageText || ''
+    ).trim();
+    const scope = String(
+      document.getElementById('scope')?.value || payload.scopeSummary || stateFresh.messageToClient || ''
+    ).trim();
+
+    if (!toName) {
+      return { ok: false, error: 'Add customer name before creating a public quote link.' };
+    }
+    if (!isClientEmailValidForQuoteSend(toEmailSend)) {
+      return { ok: false, error: 'Client email is required before creating a public quote link.' };
+    }
+
+    stateFresh.clientName = toName;
+    stateFresh.customerEmail = toEmailSend;
+    stateFresh.customerPhone = customerPhone;
+    stateFresh.location = projectAddress;
+    saveSalesState(stateFresh);
+
+    sellerPublishInFlight = true;
+    try {
+      const branding = await getBranding(true);
+      const publishBody = buildPublishPublicQuoteBody({
+        payload,
+        stateFresh,
+        settings,
+        branding,
+        toName,
+        toEmailSend,
+        customerPhone,
+        projectAddress,
+        estimateTotal,
+        depositRequired,
+        message,
+        scope
+      });
+
+      const publishResponse = await fetch('/.netlify/functions/publish-public-quote', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(publishBody)
+      });
+
+      const publishRaw = await publishResponse.text();
+      let publishData = {};
+      try {
+        publishData = publishRaw ? JSON.parse(publishRaw) : {};
+      } catch (_error) {}
+
+      if (!publishResponse.ok || !publishData?.quote_id || !publishData?.public_token || !publishData?.public_url) {
+        throw new Error(publishData.error || publishRaw || 'Unable to create public quote link.');
+      }
+
+      console.info('[seller-publish-only] publish-public-quote response', {
+        quote_id: publishData.quote_id,
+        quote_number_display: publishData.quote_number_display || ''
+      });
+
+      stateFresh.quoteId = publishData.quote_id;
+      stateFresh.publicToken = publishData.public_token;
+      stateFresh.publicQuoteUrl = publishData.public_url;
+      stateFresh.estimateNumber =
+        publishData.quote_number_display || stateFresh.estimateNumber || '';
+      saveSalesState(stateFresh);
+
+      return {
+        ok: true,
+        quote_id: publishData.quote_id,
+        public_url: publishData.public_url,
+        quote_number_display: publishData.quote_number_display || stateFresh.estimateNumber || '',
+        message: 'Quote created. Owner/full send step is still disabled.'
+      };
+    } catch (err) {
+      return { ok: false, error: err.message || 'Unable to create public quote link.' };
+    } finally {
+      sellerPublishInFlight = false;
+    }
+  }
+
+  function getSalesPublishedQuoteSnapshot() {
+    const state = loadSalesState();
+    const quoteId = String(state.quoteId || '').trim();
+    const publicUrl = String(state.publicQuoteUrl || '').trim();
+    if (!quoteId || !publicUrl) return null;
+    return {
+      quote_id: quoteId,
+      public_url: publicUrl,
+      quote_number_display: String(state.estimateNumber || '').trim()
+    };
+  }
+
 async function runSellerSend(event) {
     if (event) {
       event.preventDefault();
@@ -4289,45 +4495,25 @@ async function runSellerSend(event) {
         return false;
       }
 
-      const bn = resolvePublishBusinessName(branding, payload, settings);
+      const publishBody = buildPublishPublicQuoteBody({
+        payload,
+        stateFresh,
+        settings,
+        branding,
+        toName,
+        toEmailSend,
+        customerPhone,
+        projectAddress,
+        estimateTotal,
+        depositRequired,
+        message,
+        scope
+      });
       const publishResponse = await fetch('/.netlify/functions/publish-public-quote', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          project_name: payload.projectName || stateFresh.projectName || '',
-          title: payload.projectName || stateFresh.projectName || '',
-          client_name: toName || payload.clientName || stateFresh.clientName || '',
-          client_email: toEmailSend || payload.customerEmail || stateFresh.customerEmail || '',
-          client_phone: customerPhone,
-          customer_phone: customerPhone,
-          phone: customerPhone,
-          project_address: projectAddress,
-          customer_address: projectAddress,
-          job_site: projectAddress,
-          address: projectAddress,
-          workers: Array.isArray(stateFresh.workers) ? stateFresh.workers : [],
-          price: stateFresh.price,
-          pricing_stage: stateFresh.pricingStage == null ? 2 : stateFresh.pricingStage,
-          _sliderTouched: Boolean(stateFresh._sliderTouched || stateFresh._manualPriceTouched),
-          _manualPriceTouched: Boolean(stateFresh._sliderTouched || stateFresh._manualPriceTouched),
-          offeredPrice: stateFresh.offeredPrice,
-          total: estimateTotal,
-          recommended_total: estimateTotal,
-          deposit_required: depositRequired,
-          notes: message,
-          public_message: payload.scopeSummary || scope || '',
-          currency: 'USD',
-          status: 'READY_TO_SEND',
-          business_name: bn,
-          company_name: bn,
-          business_email: branding.businessEmail || payload.businessEmail || settings.businessEmail || settings.email || '',
-          business_phone: branding.businessPhone || payload.businessPhone || settings.businessPhone || settings.phone || '',
-          business_address: branding.businessAddress || payload.businessAddress || settings.address || settings.companyAddress || '',
-          ...(typeof buildOperationalPublishFields === 'function'
-            ? buildOperationalPublishFields(stateFresh, settings)
-            : {})
-        })
+        body: JSON.stringify(publishBody)
       });
 
       const publishRaw = await publishResponse.text();
@@ -4775,6 +4961,8 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
   }
 
   window.runMarginGuardSellerSend = runSellerSend;
+  window.runSellerPublishPublicLinkOnly = runSellerPublishPublicLinkOnly;
+  window.getSalesPublishedQuoteSnapshot = getSalesPublishedQuoteSnapshot;
 
   [topSend, inlineSend].forEach((button) => {
     if (!button) return;

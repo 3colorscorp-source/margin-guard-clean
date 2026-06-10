@@ -3,18 +3,21 @@
 
   const API = "/.netlify/functions";
   const SELLER_NOTICE =
-    "Seller device mode: pricing and quote drafting enabled. Firmar and Send are disabled until approved.";
-  const BLOCKED_ENDPOINT_RE =
-    /\/upsert-tenant-project|\/send-quote-zapier|\/publish-public-quote/i;
+    "Seller device mode: pricing, calendar, and public quote link are enabled. Send and Firmar are disabled until approved.";
+  const SELLER_PUBLISH_RESULT_MSG =
+    "Quote created. Owner/full send step is still disabled.";
+  const BLOCKED_ENDPOINT_RE = /\/upsert-tenant-project|\/send-quote-zapier/i;
   const BLOCKED_CONTROL_IDS = new Set([
     "btnMarkSold",
     "btnSendQuote",
     "btnSendQuoteInline",
     "btnSendNow",
     "btnManagePlan",
+    "btnSalesOpSend",
   ]);
 
   let sellerModeActive = false;
+  let sellerPublishUiBusy = false;
   let clickGuardInstalled = false;
   let fetchGuardInstalled = false;
   let initPromise = null;
@@ -134,6 +137,7 @@
     document.documentElement.dataset.authMode = "owner";
     delete document.documentElement.dataset.portalType;
     removeSellerNotice();
+    removeSellerPublishUi();
     removeDeviceLogoutButton();
     paintOwnerAccount(ownerData);
     bindOwnerAccountButtons();
@@ -216,6 +220,203 @@
     if (btn) btn.remove();
   }
 
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function sanitizePublicUrl(raw) {
+    const url = String(raw || "").trim();
+    if (!/^https?:\/\//i.test(url)) return "";
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+      return parsed.href;
+    } catch (_err) {
+      return "";
+    }
+  }
+
+  function removeSellerPublishUi() {
+    const shell = document.getElementById("mgSellerPublishShell");
+    if (shell) shell.remove();
+  }
+
+  function readPublishedSnapshot() {
+    if (typeof window.getSalesPublishedQuoteSnapshot === "function") {
+      return window.getSalesPublishedQuoteSnapshot();
+    }
+    return null;
+  }
+
+  function syncSellerPublishButtonState(btn) {
+    if (!btn) return;
+    const snapshot = readPublishedSnapshot();
+    const hasPublished = Boolean(snapshot && snapshot.public_url);
+    btn.disabled = sellerPublishUiBusy || hasPublished;
+    btn.setAttribute("aria-disabled", btn.disabled ? "true" : "false");
+    btn.textContent = hasPublished
+      ? "Public quote link created"
+      : "Create Public Quote Link";
+  }
+
+  function renderSellerPublishResult(result) {
+    const panel = document.getElementById("mgSellerPublishResult");
+    const btn = document.getElementById("btnSellerPublishPublicLink");
+    if (!panel) return;
+
+    const publicUrl = sanitizePublicUrl(result?.public_url);
+    const quoteNumber = String(result?.quote_number_display || "").trim();
+    const message = String(result?.message || SELLER_PUBLISH_RESULT_MSG);
+
+    if (!publicUrl) {
+      panel.hidden = true;
+      panel.innerHTML = "";
+      syncSellerPublishButtonState(btn);
+      return;
+    }
+
+    panel.hidden = false;
+    panel.innerHTML =
+      '<div class="mg-seller-publish-result__title">Public quote link ready</div>' +
+      (quoteNumber
+        ? '<div class="mg-seller-publish-result__meta"><strong>Quote #</strong> ' +
+          escapeHtml(quoteNumber) +
+          "</div>"
+        : "") +
+      '<div class="mg-seller-publish-result__meta"><strong>Link</strong> ' +
+      '<a href="' +
+      escapeHtml(publicUrl) +
+      '" target="_blank" rel="noopener noreferrer">' +
+      escapeHtml(publicUrl) +
+      "</a></div>" +
+      '<div class="mg-seller-publish-result__actions">' +
+      '<button type="button" class="btn secondary" id="btnSellerCopyPublicLink">Copy link</button>' +
+      "</div>" +
+      '<p class="mg-seller-publish-result__note">' +
+      escapeHtml(message) +
+      "</p>";
+
+    const copyBtn = document.getElementById("btnSellerCopyPublicLink");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", async () => {
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(publicUrl);
+          } else {
+            window.prompt("Copy this link:", publicUrl);
+            return;
+          }
+          copyBtn.textContent = "Copied";
+          setTimeout(() => {
+            copyBtn.textContent = "Copy link";
+          }, 1800);
+        } catch (_err) {
+          window.alert("Unable to copy link.");
+        }
+      });
+    }
+
+    syncSellerPublishButtonState(btn);
+  }
+
+  async function handleSellerPublishClick() {
+    const btn = document.getElementById("btnSellerPublishPublicLink");
+    const panel = document.getElementById("mgSellerPublishResult");
+    if (!btn || sellerPublishUiBusy) return;
+
+    const existing = readPublishedSnapshot();
+    if (existing && existing.public_url) {
+      renderSellerPublishResult({
+        public_url: existing.public_url,
+        quote_number_display: existing.quote_number_display,
+        message: SELLER_PUBLISH_RESULT_MSG,
+      });
+      return;
+    }
+
+    if (typeof window.runSellerPublishPublicLinkOnly !== "function") {
+      window.alert("Publish is unavailable on this page.");
+      return;
+    }
+
+    sellerPublishUiBusy = true;
+    btn.disabled = true;
+    btn.setAttribute("aria-busy", "true");
+    btn.textContent = "Creating link…";
+    if (panel) {
+      panel.hidden = false;
+      panel.innerHTML =
+        '<p class="mg-seller-publish-result__note">Creating public quote link…</p>';
+    }
+
+    try {
+      const result = await window.runSellerPublishPublicLinkOnly();
+      if (!result || result.ok !== true) {
+        throw new Error((result && result.error) || "Unable to create public quote link.");
+      }
+      renderSellerPublishResult(result);
+    } catch (err) {
+      if (panel) {
+        panel.hidden = false;
+        panel.innerHTML =
+          '<p class="mg-seller-publish-result__note mg-seller-publish-result__note--error">' +
+          escapeHtml(err.message || "Unable to create public quote link.") +
+          "</p>";
+      }
+      syncSellerPublishButtonState(btn);
+    } finally {
+      sellerPublishUiBusy = false;
+      if (btn) btn.removeAttribute("aria-busy");
+      syncSellerPublishButtonState(btn);
+    }
+  }
+
+  function ensureSellerPublishUi() {
+    if (document.getElementById("mgSellerPublishShell")) return;
+
+    const shell = document.createElement("div");
+    shell.id = "mgSellerPublishShell";
+    shell.className = "mg-seller-publish-shell";
+    shell.style.margin = "12px 0";
+    shell.innerHTML =
+      '<button type="button" class="btn primary" id="btnSellerPublishPublicLink">Create Public Quote Link</button>' +
+      '<div class="notice mg-seller-publish-result" id="mgSellerPublishResult" hidden></div>';
+
+    const cta = document.querySelector(".sales-quote-cta");
+    if (cta && cta.parentNode) {
+      cta.parentNode.insertBefore(shell, cta);
+    } else {
+      const container = document.querySelector(".container");
+      if (container) {
+        container.insertBefore(shell, container.firstChild);
+      }
+    }
+
+    const btn = document.getElementById("btnSellerPublishPublicLink");
+    if (btn) {
+      btn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        handleSellerPublishClick();
+      });
+    }
+
+    const snapshot = readPublishedSnapshot();
+    if (snapshot && snapshot.public_url) {
+      renderSellerPublishResult({
+        public_url: snapshot.public_url,
+        quote_number_display: snapshot.quote_number_display,
+        message: SELLER_PUBLISH_RESULT_MSG,
+      });
+    } else {
+      syncSellerPublishButtonState(btn);
+    }
+  }
+
   function disableBlockedControls() {
     BLOCKED_CONTROL_IDS.forEach((id) => {
       const el = document.getElementById(id);
@@ -292,6 +493,7 @@
 
     hideOwnerChrome();
     ensureSellerNotice();
+    ensureSellerPublishUi();
     showSellerAccountPill(auth);
     ensureDeviceLogoutButton();
     disableBlockedControls();
@@ -348,5 +550,6 @@
   window.MGSalesDevicePortal = {
     boot,
     isSellerMode: () => sellerModeActive,
+    renderPublishResult: renderSellerPublishResult,
   };
 })();
