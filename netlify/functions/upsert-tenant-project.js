@@ -1,11 +1,15 @@
 /**
  * Upserts public.tenant_projects for the session tenant (never trusts client tenant_id).
  * Primary production trigger: Sales "Firmar proyecto" after publish (see public/sales.html).
+ * Step 3E-C9-C10-B — owner mg_session or seller device dual-auth (backend only; UI unblock is C10-C).
  */
 
-const { readSessionFromEvent } = require("./_lib/session");
-const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
+const {
+  assertSellerOwnQuote,
+  resolveOwnerOrSellerContext,
+  throwGuard,
+} = require("./_lib/tenant-device-guard");
 const {
   DEFAULT_HOURS_PER_DAY,
   buildEstimateEconomics,
@@ -100,6 +104,49 @@ async function loadTenantSettingsFromLatestSnapshot(tenantId) {
 }
 
 const SUPERVISOR_QUOTE_STATUSES = new Set(["accepted", "approved"]);
+const QUOTE_FIRMAR_SELECT =
+  "id,tenant_id,total,status,accepted_at,seller_membership_id,created_by_role";
+const SELLER_FIRST_FIRMAR_STATUS = "ready_to_send";
+const SELLER_FIRMAR_RETRY_STATUSES = new Set(["accepted", "approved"]);
+const ARCHIVED_QUOTE_STATUS = "archived";
+
+function normQuoteStatus(s) {
+  return String(s || "")
+    .trim()
+    .toLowerCase();
+}
+
+/** Seller device only: READY_TO_SEND for first Firmar; idempotent retry when project exists. */
+function assertSellerFirmarQuoteStatus(ctx, quote, existingProject) {
+  if (ctx?.auth_mode !== "device") return;
+
+  const st = normQuoteStatus(quote?.status);
+  if (st === ARCHIVED_QUOTE_STATUS) {
+    throwGuard(422, "Cannot Firmar an archived quote.", "quote_archived");
+  }
+
+  if (existingProject?.id) {
+    if (
+      st === SELLER_FIRST_FIRMAR_STATUS ||
+      SELLER_FIRMAR_RETRY_STATUSES.has(st)
+    ) {
+      return;
+    }
+    throwGuard(
+      422,
+      "Quote status does not allow seller Firmar retry.",
+      "quote_not_ready_to_firmar"
+    );
+  }
+
+  if (st !== SELLER_FIRST_FIRMAR_STATUS) {
+    throwGuard(
+      422,
+      "Seller Firmar requires quote status READY_TO_SEND.",
+      "quote_not_ready_to_firmar"
+    );
+  }
+}
 
 /** Direct Firmar: Supervisor list requires quote accepted/approved (get-supervisor-projects). */
 async function markQuoteAcceptedForSupervisorListing(tenantId, quoteRow) {
@@ -128,12 +175,8 @@ exports.handler = async (event) => {
       return json(405, { error: "Method not allowed" });
     }
 
-    const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
-      return json(401, { error: "Unauthorized" });
-    }
-
-    const tenant = await resolveTenantFromSession(session);
+    const ctx = await resolveOwnerOrSellerContext(event);
+    const tenant = ctx.tenant;
     if (!tenant?.id) {
       return json(404, { error: "Tenant not found" });
     }
@@ -146,7 +189,7 @@ exports.handler = async (event) => {
 
     const tid = encodeURIComponent(tenant.id);
     const quoteRows = await supabaseRequest(
-      `quotes?id=eq.${encodeURIComponent(quoteId)}&tenant_id=eq.${tid}&select=id,total,status,accepted_at`
+      `quotes?id=eq.${encodeURIComponent(quoteId)}&tenant_id=eq.${tid}&select=${QUOTE_FIRMAR_SELECT}`
     );
     const quoteOk = Array.isArray(quoteRows) ? quoteRows[0] : null;
     if (!quoteOk?.id) {
@@ -157,6 +200,12 @@ exports.handler = async (event) => {
       `tenant_projects?tenant_id=eq.${tid}&quote_id=eq.${encodeURIComponent(quoteId)}&select=id,quoted_labor_plan,quoted_labor_plan_locked_at`
     );
     const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+
+    if (ctx.auth_mode === "device") {
+      assertSellerOwnQuote(ctx, quoteOk);
+      assertSellerFirmarQuoteStatus(ctx, quoteOk, existing);
+    }
+
     const locked = Boolean(existing?.quoted_labor_plan_locked_at);
 
     const hoursPerDay = Math.max(num(body.hours_per_day, DEFAULT_HOURS_PER_DAY), 0.25);
@@ -333,6 +382,9 @@ exports.handler = async (event) => {
       quote_already_accepted: Boolean(quoteAccept.already_accepted),
     });
   } catch (err) {
+    if (err.isGuardError) {
+      return json(err.statusCode, { error: err.message, code: err.code });
+    }
     return json(500, { error: err.message || "Unexpected error" });
   }
 };
