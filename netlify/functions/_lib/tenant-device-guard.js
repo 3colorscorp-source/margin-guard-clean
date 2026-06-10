@@ -214,6 +214,36 @@ async function requireSellerDevice(event) {
   return requireDeviceSession(event, { portals: [PORTAL_ROLES.seller] });
 }
 
+/**
+ * Owner mg_session OR seller mg_device_session. Owner session takes precedence when both exist.
+ * @param {object} event
+ * @returns {Promise<object>}
+ */
+async function resolveOwnerOrSellerContext(event) {
+  const session = readSessionFromEvent(event);
+  if (session?.e && session?.c) {
+    const tenant = await resolveTenantFromSession(session);
+    if (tenant?.id) {
+      return {
+        auth_mode: "owner",
+        tenant,
+        session,
+      };
+    }
+    throwGuard(404, "Tenant not found", "tenant_not_found");
+  }
+
+  const deviceCtx = await requireSellerDevice(event);
+  return {
+    auth_mode: "device",
+    portal_type: PORTAL_ROLES.seller,
+    tenant: deviceCtx.tenant,
+    membership: deviceCtx.membership,
+    device: deviceCtx.device,
+    device_session: deviceCtx.deviceSession,
+  };
+}
+
 async function requireSupervisorDevice(event) {
   return requireDeviceSession(event, { portals: [PORTAL_ROLES.supervisor] });
 }
@@ -295,5 +325,6 @@ module.exports = {
   requireSellerDevice,
   requireSupervisorDevice,
   resolveDeviceSession,
+  resolveOwnerOrSellerContext,
   throwGuard,
 };
