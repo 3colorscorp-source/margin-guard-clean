@@ -247,8 +247,8 @@
         <div class="sa-kpi__value" id="saKpiPending">—</div>
       </div>
       <div class="sa-kpi">
-        <div class="sa-kpi__label">Quotes Sent This Month</div>
-        <div class="sa-kpi__value" id="saKpiSent" title="Requires quote list API (Phase 2B)">—</div>
+        <div class="sa-kpi__label" id="saKpiSentLabel">Published This Month</div>
+        <div class="sa-kpi__value" id="saKpiSent" title="Quotes published (created) this UTC month — not email sent">—</div>
       </div>
       <div class="sa-kpi">
         <div class="sa-kpi__label">Approved Requests</div>
@@ -265,6 +265,45 @@
       <div class="sa-kpi">
         <div class="sa-kpi__label">Est. Commission</div>
         <div class="sa-kpi__value" id="saKpiCommission">—</div>
+      </div>
+    </section>
+
+    <section class="card sa-section" id="saQuotePipelineSection">
+      <div class="card-inner">
+        <div class="sa-section__head">
+          <div class="sa-section__head-main">
+            <h2>Quote Pipeline</h2>
+            <p class="sub">Published quotes by status, seller attribution, and project link.</p>
+          </div>
+          <button type="button" class="btn ghost" id="saQuotePipelineRefresh">Refresh</button>
+        </div>
+        <p id="saQuotePipelineLoading" class="sa-loading-note" hidden>Loading quote pipeline…</p>
+        <div id="saQuotePipelineError" class="sa-empty" hidden>
+          <p class="sa-empty__title">Could not load quote pipeline.</p>
+          <p class="sa-empty__sub" id="saQuotePipelineErrorMsg">Try refreshing the page.</p>
+        </div>
+        <div id="saQuotePipelineEmpty" class="sa-empty" hidden>
+          <p class="sa-empty__title">No quotes found.</p>
+          <p class="sa-empty__sub">Published quotes for this tenant will appear here.</p>
+        </div>
+        <div id="saQuotePipelineTableWrap" class="sa-table-wrap" hidden>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Estimate #</th>
+                <th>Project</th>
+                <th>Client</th>
+                <th>Status</th>
+                <th>Seller / Owner</th>
+                <th>Total</th>
+                <th>Created</th>
+                <th>Accepted</th>
+                <th>Project Linked</th>
+              </tr>
+            </thead>
+            <tbody id="saQuotePipelineBody"></tbody>
+          </table>
+        </div>
       </div>
     </section>
 
@@ -417,5 +456,6 @@
   <script src="/js/tenant.js"></script>
   <script src="/js/auth.js"></script>
   <script src="/js/app.js"></script>
+  <script src="/js/sales-admin-quotes.js"></script>
 </body>
 </html>
