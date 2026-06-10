@@ -386,12 +386,43 @@
         <div class="sa-section__head">
           <div class="sa-section__head-main">
             <h3>Seller Performance</h3>
-            <p class="sub">Compare seller activity, approvals, won quotes, labor sold, and commission health.</p>
+            <p class="sub">Quote activity and conversions by seller attribution — estimate-based, not email-sent or paid commission.</p>
           </div>
+          <button type="button" class="btn ghost" id="saSellerRefresh">Refresh</button>
         </div>
-        <div class="sa-empty">
-          <p class="sa-empty__title">Seller attribution is not available yet.</p>
-          <p class="sa-empty__sub">Phase 2B/2C will require seller_email on quotes/projects before seller performance can be shown.</p>
+        <p class="sa-rule-note">Published quotes are counted by created date. Labor sold and estimated commission use converted project labor budgets only — not a paid commission ledger.</p>
+        <p id="saSellerStatus" class="sa-loading-note" hidden>Loading seller performance…</p>
+        <div id="saSellerError" class="sa-empty" hidden>
+          <p class="sa-empty__title">Could not load seller performance.</p>
+          <p class="sa-empty__sub" id="saSellerErrorMsg">Try refreshing the page.</p>
+        </div>
+        <div id="saSellerEmpty" class="sa-empty" hidden>
+          <p class="sa-empty__title">No published quotes yet.</p>
+          <p class="sa-empty__sub">Seller performance will appear when quotes exist for this tenant.</p>
+        </div>
+        <div id="saSellerSummary" class="sa-kpis" hidden aria-label="Seller performance summary"></div>
+        <p id="saSellerPartialNote" class="sa-queue-note" hidden></p>
+        <div id="saSellerTableWrap" class="sa-table-wrap" hidden>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Seller / Source</th>
+                <th>Published quotes</th>
+                <th>Ready to send</th>
+                <th>Accepted / approved</th>
+                <th>Archived</th>
+                <th>Linked to project</th>
+                <th>Device quotes</th>
+                <th>Total quoted</th>
+                <th>Labor sold est.</th>
+                <th>Est. commission</th>
+                <th>Approval requests</th>
+                <th>Approved</th>
+                <th>Rejected</th>
+              </tr>
+            </thead>
+            <tbody id="saSellerBody"></tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -457,5 +488,6 @@
   <script src="/js/auth.js"></script>
   <script src="/js/app.js"></script>
   <script src="/js/sales-admin-quotes.js"></script>
+  <script src="/js/sales-admin-sellers.js"></script>
 </body>
 </html>
