@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/styles.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
-<body data-requires-auth="true">
+<body data-sales-dual-auth="true" data-requires-auth="true">
   <div class="topbar">
     <div class="topbar-inner">
       <div class="brand">
@@ -18,17 +18,17 @@
         </div>
       </div>
       <div class="topbar-actions">
-        <a class="btn" href="/dashboard">Dashboard</a>
-        <a class="btn" href="/estimates-invoices">Invoices Hub</a>
-        <a class="btn" href="/owner">Dueno</a>
-        <a class="btn" href="/business-settings">Business Settings</a>
+        <a class="btn" href="/dashboard" data-owner-nav>Dashboard</a>
+        <a class="btn" href="/estimates-invoices" data-owner-nav>Invoices Hub</a>
+        <a class="btn" href="/owner" data-owner-nav>Dueno</a>
+        <a class="btn" href="/business-settings" data-owner-nav>Business Settings</a>
         <a class="btn active" href="/sales">Vendedor</a>
-        <a class="btn" href="/supervisor">Supervisor</a>
-        <a class="btn" href="/project-control">Project Control</a>
-        <a class="btn" href="/sales-admin">Sales Admin</a>
-        <button class="btn" id="btnManagePlan">Gestionar plan</button>
-        <button class="btn" id="btnSendQuote">Enviar estimate</button>
-        <button class="btn danger" id="btnLogout">Cerrar sesion</button>
+        <a class="btn" href="/supervisor" data-owner-nav>Supervisor</a>
+        <a class="btn" href="/project-control" data-owner-nav>Project Control</a>
+        <a class="btn" href="/sales-admin" data-owner-nav>Sales Admin</a>
+        <button class="btn" type="button" id="btnManagePlan" data-owner-nav>Gestionar plan</button>
+        <button class="btn" type="button" id="btnSendQuote" data-owner-nav>Enviar estimate</button>
+        <button class="btn danger" type="button" id="btnLogout" data-owner-nav>Cerrar sesion</button>
       </div>
     </div>
   </div>
@@ -451,8 +451,10 @@
     </div>
   </div>
 
+  <script>window.MG_DEVICE_PORTAL_AUTO_INIT = false;</script>
+  <script src="/js/device-portal-auth.js"></script>
+  <script src="/js/sales-device-portal.js"></script>
   <script src="/js/tenant.js"></script>
-  <script src="/js/auth.js"></script>
   <script src="/js/quote-send-feedback.js"></script>
   <script src="/js/sales-operational-plan.js"></script>
   <script src="/js/sales-capacity-calendar.js"></script>
