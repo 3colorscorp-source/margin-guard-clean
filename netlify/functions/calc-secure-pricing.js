@@ -1,5 +1,5 @@
-const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
+const { resolveOwnerOrSellerContext } = require("./_lib/tenant-device-guard");
 const { calculateQuotePublishFinancials, sanitizeWorkersForTenantPricing } = require("./_lib/pricing-engine");
 
 function json(statusCode, payload) {
@@ -24,29 +24,6 @@ function extractSettingsFromSnapshotPayload(payload) {
       ? storage["mg_settings_v2"]
       : {};
   return mg;
-}
-
-async function resolveTenant(session) {
-  let tenants = await supabaseRequest(
-    `tenants?stripe_customer_id=eq.${encodeURIComponent(session.c)}&select=id,owner_email,stripe_customer_id`
-  );
-  let tenant = Array.isArray(tenants) ? tenants[0] : null;
-
-  if (!tenant?.id && session.e) {
-    const byEmail = await supabaseRequest(
-      `tenants?owner_email=eq.${encodeURIComponent(String(session.e).trim().toLowerCase())}&select=id,owner_email,stripe_customer_id`
-    );
-    tenant = Array.isArray(byEmail) ? byEmail[0] : null;
-
-    if (tenant?.id && session.c && tenant.stripe_customer_id !== session.c) {
-      await supabaseRequest(`tenants?id=eq.${encodeURIComponent(tenant.id)}`, {
-        method: "PATCH",
-        body: { stripe_customer_id: session.c }
-      });
-    }
-  }
-
-  return tenant;
 }
 
 async function loadTenantSettingsFromLatestSnapshot(tenantId) {
@@ -128,12 +105,8 @@ exports.handler = async (event) => {
       return json(405, { error: "Method not allowed" });
     }
 
-    const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
-      return json(401, { error: "Unauthorized" });
-    }
-
-    const tenant = await resolveTenant(session);
+    const ctx = await resolveOwnerOrSellerContext(event);
+    const tenant = ctx.tenant;
     if (!tenant?.id) {
       return json(404, { error: "Tenant not found. Run bootstrap first." });
     }
@@ -211,6 +184,9 @@ exports.handler = async (event) => {
       }
     });
   } catch (err) {
+    if (err.isGuardError) {
+      return json(err.statusCode, { error: err.message, code: err.code });
+    }
     return json(500, { error: err.message || "Unable to calculate secure pricing" });
   }
 };
