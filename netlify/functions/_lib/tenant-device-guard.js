@@ -301,7 +301,11 @@ function assertSellerOwnQuote(ctx, quote) {
   }
   assertSameTenant(ctx?.tenant?.id, quote.tenant_id);
 
-  if (ctx?.authMode === "owner" || isOwnerRole(ctx?.membership?.role)) {
+  if (
+    ctx?.authMode === "owner" ||
+    ctx?.auth_mode === "owner" ||
+    isOwnerRole(ctx?.membership?.role)
+  ) {
     return;
   }
 

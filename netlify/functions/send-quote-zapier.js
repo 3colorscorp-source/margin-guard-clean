@@ -3,10 +3,17 @@ if (!fetch) {
   throw new Error("Global fetch is not available. Set Netlify's Node version to 18+.");
 }
 
-const { readSessionFromEvent } = require("./_lib/session");
-const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { supabaseRequest, getSupabaseConfig } = require("./_lib/supabase-admin");
+const {
+  assertSellerOwnQuote,
+  resolveOwnerOrSellerContext,
+  throwGuard,
+} = require("./_lib/tenant-device-guard");
 const { makeReqId, logOps, truncatePublicToken } = require("./_lib/ops-log");
+
+const QUOTE_SEND_SELECT =
+  "id,tenant_id,status,seller_membership_id,created_by_role,source_device_id";
+const BLOCKED_SEND_STATUSES = new Set(["archived", "accepted", "approved", "declined"]);
 
 function pickFirst(...values) {
   for (const value of values) {
@@ -105,6 +112,27 @@ function resolvePublicQuoteUrl(data, siteUrl) {
 
 const OPS_FN = "send-quote-zapier";
 
+function normQuoteStatus(s) {
+  return String(s || "")
+    .trim()
+    .toLowerCase();
+}
+
+function assertQuoteSendableStatus(quote) {
+  const st = normQuoteStatus(quote?.status);
+  if (BLOCKED_SEND_STATUSES.has(st)) {
+    throwGuard(422, "Quote cannot be sent in its current status.", "quote_not_sendable");
+  }
+}
+
+function guardJson(statusCode, body) {
+  return {
+    statusCode,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  };
+}
+
 exports.handler = async (event) => {
   const req_id = makeReqId();
 
@@ -122,21 +150,8 @@ exports.handler = async (event) => {
       return { statusCode: 405, body: JSON.stringify({ error: "Method not allowed" }) };
     }
 
-    const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
-      logOps({
-        req_id,
-        fn: OPS_FN,
-        event: "auth_fail",
-        level: "warn",
-        outcome: "fail",
-        http_status: 401,
-        detail: "missing session"
-      });
-      return { statusCode: 401, body: JSON.stringify({ error: "Unauthorized" }) };
-    }
-
-    const tenant = await resolveTenantFromSession(session);
+    const ctx = await resolveOwnerOrSellerContext(event);
+    const tenant = ctx.tenant;
     if (!tenant?.id) {
       logOps({
         req_id,
@@ -147,8 +162,10 @@ exports.handler = async (event) => {
         http_status: 401,
         detail: "no tenant for session"
       });
-      return { statusCode: 401, body: JSON.stringify({ error: "Unauthorized" }) };
+      return guardJson(401, { error: "Unauthorized" });
     }
+
+    const isSellerDevice = ctx.auth_mode === "device";
 
     let data = {};
     let bodyParseFailed = false;
@@ -207,9 +224,26 @@ exports.handler = async (event) => {
     const publicTokenLog = truncatePublicToken(publicToken);
     let quoteId = null;
 
+    if (isSellerDevice && !publicToken) {
+      logOps({
+        req_id,
+        fn: OPS_FN,
+        event: "seller_public_token_required",
+        level: "warn",
+        outcome: "fail",
+        tenant_id: tenant.id,
+        http_status: 400,
+        detail: "seller device requires public_token"
+      });
+      return guardJson(400, {
+        error: "public_token is required for seller device quote send",
+        code: "public_token_required",
+      });
+    }
+
     if (publicToken) {
       const rows = await supabaseRequest(
-        `quotes?public_token=eq.${encodeURIComponent(publicToken)}&tenant_id=eq.${encodeURIComponent(String(tenant.id))}&select=id&limit=1`
+        `quotes?public_token=eq.${encodeURIComponent(publicToken)}&tenant_id=eq.${encodeURIComponent(String(tenant.id))}&select=${QUOTE_SEND_SELECT}&limit=1`
       );
       if (!Array.isArray(rows) || rows.length === 0) {
         logOps({
@@ -223,9 +257,17 @@ exports.handler = async (event) => {
           http_status: 403,
           detail: "no quote for token and tenant"
         });
-        return { statusCode: 403, body: JSON.stringify({ error: "Forbidden" }) };
+        return guardJson(403, { error: "Forbidden" });
       }
-      quoteId = rows[0]?.id != null ? String(rows[0].id) : null;
+      const quote = rows[0];
+      quoteId = quote?.id != null ? String(quote.id) : null;
+
+      if (isSellerDevice) {
+        assertSellerOwnQuote(ctx, quote);
+      }
+
+      assertQuoteSendableStatus(quote);
+
       logOps({
         req_id,
         fn: OPS_FN,
@@ -443,6 +485,18 @@ exports.handler = async (event) => {
       })
     };
   } catch (err) {
+    if (err.isGuardError) {
+      logOps({
+        req_id,
+        fn: OPS_FN,
+        event: "guard_reject",
+        level: "warn",
+        outcome: "fail",
+        http_status: err.statusCode,
+        detail: err.code || err.message || "guard_error"
+      });
+      return guardJson(err.statusCode, { error: err.message, code: err.code });
+    }
     logOps({
       req_id,
       fn: OPS_FN,
