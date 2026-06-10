@@ -3,12 +3,13 @@
 
   const API = "/.netlify/functions";
   const SELLER_NOTICE =
-    "Seller device mode: pricing, calendar, and public quote link are enabled. Send and Firmar are disabled until approved.";
+    "Seller device mode: create a public quote link, then Firmar. Full send, email, and PDF remain disabled.";
   const SELLER_PUBLISH_RESULT_MSG =
-    "Quote created. Owner/full send step is still disabled.";
-  const BLOCKED_ENDPOINT_RE = /\/upsert-tenant-project|\/send-quote-zapier/i;
+    "Quote created. Firmar is now available. Full send, email, and PDF remain disabled.";
+  const SELLER_FIRMAR_GATE_MSG =
+    "Create a public quote link before using Firmar.";
+  const BLOCKED_ENDPOINT_RE = /\/send-quote-zapier/i;
   const BLOCKED_CONTROL_IDS = new Set([
-    "btnMarkSold",
     "btnSendQuote",
     "btnSendQuoteInline",
     "btnSendNow",
@@ -252,6 +253,49 @@
     return null;
   }
 
+  function hasPublishedQuoteForFirmar() {
+    const snapshot = readPublishedSnapshot();
+    return Boolean(
+      snapshot &&
+        String(snapshot.quote_id || "").trim() &&
+        String(snapshot.public_url || "").trim()
+    );
+  }
+
+  function syncSellerFirmarButtonState() {
+    if (!sellerModeActive) return;
+    const btn = document.getElementById("btnMarkSold");
+    if (!btn) return;
+    const canFirmar = hasPublishedQuoteForFirmar();
+    btn.disabled = !canFirmar;
+    btn.setAttribute("aria-disabled", btn.disabled ? "true" : "false");
+    if (!canFirmar) {
+      btn.title = SELLER_FIRMAR_GATE_MSG;
+      btn.setAttribute("data-mg-seller-firmar-gated", "1");
+    } else {
+      btn.removeAttribute("data-mg-seller-firmar-gated");
+      btn.title = "";
+    }
+  }
+
+  function installFirmarGateGuard() {
+    const btn = document.getElementById("btnMarkSold");
+    if (!btn || btn.dataset.mgSellerFirmarGateBound === "1") return;
+    btn.dataset.mgSellerFirmarGateBound = "1";
+    btn.addEventListener(
+      "click",
+      (event) => {
+        if (!sellerModeActive) return;
+        if (hasPublishedQuoteForFirmar()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        window.alert(SELLER_FIRMAR_GATE_MSG);
+      },
+      true
+    );
+  }
+
   function syncSellerPublishButtonState(btn) {
     if (!btn) return;
     const snapshot = readPublishedSnapshot();
@@ -321,6 +365,7 @@
     }
 
     syncSellerPublishButtonState(btn);
+    syncSellerFirmarButtonState();
   }
 
   async function handleSellerPublishClick() {
@@ -368,10 +413,12 @@
           "</p>";
       }
       syncSellerPublishButtonState(btn);
+      syncSellerFirmarButtonState();
     } finally {
       sellerPublishUiBusy = false;
       if (btn) btn.removeAttribute("aria-busy");
       syncSellerPublishButtonState(btn);
+      syncSellerFirmarButtonState();
     }
   }
 
@@ -415,6 +462,8 @@
     } else {
       syncSellerPublishButtonState(btn);
     }
+    syncSellerFirmarButtonState();
+    installFirmarGateGuard();
   }
 
   function disableBlockedControls() {
@@ -497,13 +546,21 @@
     showSellerAccountPill(auth);
     ensureDeviceLogoutButton();
     disableBlockedControls();
+    syncSellerFirmarButtonState();
+    installFirmarGateGuard();
     installClickGuard();
     installFetchGuard();
 
     // Inline sales handlers clone Firmar/send buttons on DOMContentLoaded; re-apply after they run.
     requestAnimationFrame(() => {
       disableBlockedControls();
-      setTimeout(disableBlockedControls, 0);
+      syncSellerFirmarButtonState();
+      installFirmarGateGuard();
+      setTimeout(() => {
+        disableBlockedControls();
+        syncSellerFirmarButtonState();
+        installFirmarGateGuard();
+      }, 0);
     });
 
     document.body.classList.add("auth-ready");
