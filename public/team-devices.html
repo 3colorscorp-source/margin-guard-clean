@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Team &amp; Devices</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .td-hero { margin-bottom: 10px; }
+    .td-hero .card-inner { padding-top: 12px; padding-bottom: 12px; }
+    .td-hero h2 { margin: 0 0 4px; font-size: clamp(1.25rem, 2.2vw, 1.55rem); }
+    .td-hero .sub { margin: 0; max-width: 56ch; line-height: 1.45; }
+    .td-section { margin-bottom: 12px; }
+    .td-section__head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px 12px;
+      margin-bottom: 8px;
+    }
+    .td-section__head h3 { margin: 0; font-size: 1rem; }
+    .td-section__head .sub { margin: 2px 0 0; font-size: 0.8125rem; }
+    .td-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .td-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .td-filters label {
+      font-size: 0.75rem;
+      color: rgba(232, 238, 252, 0.65);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .td-filters select {
+      padding: 6px 10px;
+      border-radius: 10px;
+      font-size: 0.8125rem;
+      min-width: 120px;
+    }
+    .td-table-wrap { overflow-x: auto; }
+    .td-table-wrap .table { min-width: 760px; }
+    .td-row-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .td-empty {
+      padding: 18px 14px;
+      text-align: center;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px dashed rgba(255, 255, 255, 0.1);
+    }
+    .td-empty__title { margin: 0 0 6px; font-weight: 700; font-size: 0.9375rem; }
+    .td-empty__sub {
+      margin: 0;
+      font-size: 0.8125rem;
+      color: rgba(232, 238, 252, 0.65);
+      line-height: 1.45;
+    }
+    .td-notice {
+      margin-bottom: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 0.8125rem;
+      line-height: 1.45;
+    }
+    .td-notice.ok {
+      border: 1px solid rgba(34, 197, 94, 0.35);
+      background: rgba(34, 197, 94, 0.08);
+    }
+    .td-notice.err {
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      background: rgba(239, 68, 68, 0.08);
+    }
+    .td-notice[hidden] { display: none !important; }
+    .td-protected {
+      font-size: 0.75rem;
+      color: rgba(232, 238, 252, 0.55);
+    }
+    .td-pair-code {
+      font-size: 1.75rem;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-align: center;
+      padding: 12px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      user-select: all;
+    }
+    .td-pair-note {
+      margin: 10px 0 0;
+      font-size: 0.8125rem;
+      color: rgba(232, 238, 252, 0.72);
+      line-height: 1.45;
+    }
+  </style>
+</head>
+<body data-role="owner" data-requires-auth="true" class="team-devices-page">
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"><b id="tenantLogoMark">MG</b></div>
+        <div>
+          <h1>Margin Guard</h1>
+          <p id="planStatus">Validando suscripcion...</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <a class="btn" href="/dashboard">Dashboard</a>
+        <a class="btn" href="/estimates-invoices">Invoices Hub</a>
+        <a class="btn" href="/owner">Dueno</a>
+        <a class="btn" href="/business-settings">Business Settings</a>
+        <a class="btn" href="/sales">Vendedor</a>
+        <a class="btn" href="/supervisor">Supervisor</a>
+        <a class="btn" href="/project-control">Project Control</a>
+        <a class="btn" href="/sales-admin">Sales Admin</a>
+        <a class="btn active" href="/team-devices">Team &amp; Devices</a>
+        <button class="btn" id="btnManagePlan">Gestionar plan</button>
+        <button class="btn danger" id="btnLogout">Cerrar sesion</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="account-pill" id="accountEmail">Cuenta activa</div>
+
+    <section class="card td-hero">
+      <div class="card-inner">
+        <span class="eyebrow">Owner · Access control</span>
+        <h2>Team &amp; Devices</h2>
+        <p class="sub">Manage seller and supervisor memberships and portal devices. Pairing codes are shown once for field devices only.</p>
+      </div>
+    </section>
+
+    <div id="tdNotice" class="td-notice ok" hidden role="status" aria-live="polite"></div>
+
+    <section class="card td-section" id="tdMembersSection">
+      <div class="card-inner">
+        <div class="td-section__head">
+          <div>
+            <h3>Team Members</h3>
+            <p class="sub">Create and manage seller or supervisor memberships for this tenant.</p>
+          </div>
+          <div class="td-toolbar">
+            <button type="button" class="btn ghost" id="tdBtnRefreshMembers">Refresh</button>
+            <button type="button" class="btn primary" id="tdBtnCreateMember">Create Member</button>
+          </div>
+        </div>
+        <div class="td-filters">
+          <label>
+            Role
+            <select id="tdFilterRole">
+              <option value="">All</option>
+              <option value="seller">Seller</option>
+              <option value="supervisor">Supervisor</option>
+              <option value="owner">Owner</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
+          <label>
+            Status
+            <select id="tdFilterStatus">
+              <option value="">All</option>
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+              <option value="removed">Removed</option>
+              <option value="invited">Invited</option>
+            </select>
+          </label>
+        </div>
+        <div id="tdMembersEmpty" class="td-empty" hidden>
+          <p class="td-empty__title">No memberships match these filters.</p>
+          <p class="td-empty__sub">Create a seller or supervisor to assign portal devices.</p>
+        </div>
+        <div id="tdMembersTableWrap" class="td-table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tdMembersBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="card td-section" id="tdDevicesSection">
+      <div class="card-inner">
+        <div class="td-section__head">
+          <div>
+            <h3>Devices</h3>
+            <p class="sub">Portal tablets for sellers and supervisors. Reset pairing to generate a one-time code.</p>
+          </div>
+          <div class="td-toolbar">
+            <button type="button" class="btn ghost" id="tdBtnRefreshDevices">Refresh</button>
+            <button type="button" class="btn primary" id="tdBtnCreateDevice" disabled title="Requires an active seller or supervisor">Create Device</button>
+          </div>
+        </div>
+        <div id="tdDevicesEmpty" class="td-empty" hidden>
+          <p class="td-empty__title">No devices yet.</p>
+          <p class="td-empty__sub">Create a device for an active seller or supervisor, then reset pairing to share a code with the field device.</p>
+        </div>
+        <div id="tdDevicesTableWrap" class="td-table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Device Name</th>
+                <th>Portal Type</th>
+                <th>Assigned Member</th>
+                <th>Device Status</th>
+                <th>Last Seen</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tdDevicesBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="tdCreateMemberModal" class="modal" hidden aria-hidden="true" role="dialog" aria-labelledby="tdCreateMemberTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="tdCreateMemberTitle">Create member</div>
+          <div class="modal-subtitle">Seller or supervisor only. Owner email cannot be reused.</div>
+        </div>
+        <button type="button" class="btn ghost" id="tdCreateMemberClose">Close</button>
+      </div>
+      <div class="modal-body">
+        <div class="form">
+          <div class="field">
+            <label for="tdMemberEmail">Email</label>
+            <input id="tdMemberEmail" type="email" maxlength="200" placeholder="seller@example.com" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="tdMemberRole">Role</label>
+            <select id="tdMemberRole">
+              <option value="seller">Seller</option>
+              <option value="supervisor">Supervisor</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="tdMemberDisplayName">Display name</label>
+            <input id="tdMemberDisplayName" maxlength="200" placeholder="Field display name" />
+          </div>
+          <div class="field">
+            <label for="tdMemberFullName">Full name</label>
+            <input id="tdMemberFullName" maxlength="200" placeholder="Optional full name" />
+          </div>
+          <p id="tdCreateMemberError" class="sub" style="color:#fca5a5;margin:0;" hidden></p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn ghost" id="tdCreateMemberCancel">Cancel</button>
+        <button type="button" class="btn primary" id="tdCreateMemberSubmit">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tdCreateDeviceModal" class="modal" hidden aria-hidden="true" role="dialog" aria-labelledby="tdCreateDeviceTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="tdCreateDeviceTitle">Create device</div>
+          <div class="modal-subtitle">Assign to an active seller or supervisor membership.</div>
+        </div>
+        <button type="button" class="btn ghost" id="tdCreateDeviceClose">Close</button>
+      </div>
+      <div class="modal-body">
+        <div class="form">
+          <div class="field">
+            <label for="tdDevicePortalType">Portal type</label>
+            <select id="tdDevicePortalType">
+              <option value="seller">Seller</option>
+              <option value="supervisor">Supervisor</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="tdDeviceMember">Assigned member</label>
+            <select id="tdDeviceMember"></select>
+          </div>
+          <div class="field">
+            <label for="tdDeviceDisplayName">Device name</label>
+            <input id="tdDeviceDisplayName" maxlength="200" placeholder="e.g. Sales Tablet 1" />
+          </div>
+          <p id="tdCreateDeviceError" class="sub" style="color:#fca5a5;margin:0;" hidden></p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn ghost" id="tdCreateDeviceCancel">Cancel</button>
+        <button type="button" class="btn primary" id="tdCreateDeviceSubmit">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tdPairingModal" class="modal" hidden aria-hidden="true" role="dialog" aria-labelledby="tdPairingTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="tdPairingTitle">Pairing code</div>
+          <div class="modal-subtitle">Enter this code on the assigned portal device only.</div>
+        </div>
+        <button type="button" class="btn ghost" id="tdPairingClose">Close</button>
+      </div>
+      <div class="modal-body">
+        <div id="tdPairingCode" class="td-pair-code" aria-live="polite"></div>
+        <p class="td-pair-note">Code expires in 5 minutes. Share it only with the assigned device/user.</p>
+        <p id="tdPairingError" class="sub" style="color:#fca5a5;margin:8px 0 0;" hidden></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn ghost" id="tdPairingCopy">Copy code</button>
+        <button type="button" class="btn primary" id="tdPairingDone">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/tenant.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/team-devices.js"></script>
+</body>
+</html>
