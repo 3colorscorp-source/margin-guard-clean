@@ -1,6 +1,6 @@
 /**
  * Owner-only: revoke a tenant_devices row (soft revoke; no row delete).
- * Step 3E-C1 skeleton — device session revocation comes in a later step.
+ * Also revokes any active device_sessions for the device.
  */
 
 const { supabaseRequest } = require("./_lib/supabase-admin");
@@ -23,6 +23,26 @@ function parseBody(raw) {
   } catch {
     return {};
   }
+}
+
+async function revokeActiveDeviceSessions(deviceId, tenantId, nowIso) {
+  const rows = await supabaseRequest(
+    [
+      "device_sessions",
+      "?device_id=eq." + encodeURIComponent(deviceId),
+      "&tenant_id=eq." + encodeURIComponent(tenantId),
+      "&status=eq.active",
+    ].join(""),
+    {
+      method: "PATCH",
+      body: {
+        status: "revoked",
+        revoked_at: nowIso,
+      },
+    }
+  );
+  if (Array.isArray(rows)) return rows.length;
+  return rows?.id ? 1 : 0;
 }
 
 function serializeDevice(row) {
@@ -85,7 +105,17 @@ exports.handler = async (event) => {
       return json(500, { error: "Device row was not returned after revoke" });
     }
 
-    return json(200, { ok: true, device: serializeDevice(device) });
+    const revokedSessionsCount = await revokeActiveDeviceSessions(
+      device.id,
+      ctx.tenant.id,
+      nowIso
+    );
+
+    return json(200, {
+      ok: true,
+      device: serializeDevice(device),
+      revoked_sessions_count: revokedSessionsCount,
+    });
   } catch (err) {
     if (err.isGuardError) {
       return json(err.statusCode, { error: err.message, code: err.code });
