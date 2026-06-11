@@ -10,6 +10,8 @@
     "approved",
     "deposit_paid",
   ]);
+  const UNLINKED_SUPERVISOR_WARNING =
+    "This supervisor is not linked to a login yet. Create/link the supervisor Auth user before assigning projects.";
 
   const state = {
     projects: [],
@@ -76,11 +78,37 @@
     return { response, data };
   }
 
+  function supervisorCount(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.floor(n);
+  }
+
+  function isSupervisorLinked(row) {
+    return row?.auth_linked === true;
+  }
+
+  function supervisorName(row) {
+    const display = String(row?.display_name || row?.full_name || "").trim();
+    const email = String(row?.email || "").trim();
+    return display || email || "Supervisor";
+  }
+
   function supervisorLabel(row) {
     const display = String(row?.display_name || row?.full_name || "").trim();
     const email = String(row?.email || "").trim();
     if (display && email) return `${display} · ${email}`;
     return display || email || "Supervisor";
+  }
+
+  function supervisorDropdownLabel(row) {
+    const linked = isSupervisorLinked(row);
+    const projects = supervisorCount(row?.assigned_project_count);
+    const devices = supervisorCount(row?.active_device_count);
+    const authLabel = linked ? "linked" : "auth not linked";
+    const projectWord = projects === 1 ? "project" : "projects";
+    const deviceWord = devices === 1 ? "device" : "devices";
+    return `${supervisorName(row)} — ${authLabel} — ${projects} ${projectWord} — ${devices} ${deviceWord}`;
   }
 
   function projectLabel(row) {
@@ -97,9 +125,10 @@
     const el = $("supOwnerAssignFeedback");
     if (!el) return;
     el.textContent = message || "";
-    el.classList.remove("is-ok", "is-err");
+    el.classList.remove("is-ok", "is-err", "is-warn");
     if (tone === "ok") el.classList.add("is-ok");
     if (tone === "err") el.classList.add("is-err");
+    if (tone === "warn") el.classList.add("is-warn");
   }
 
   function safeErrorMessage(data, fallback) {
@@ -127,6 +156,31 @@
     }
     if (data?.error) return String(data.error);
     return fallback;
+  }
+
+  function selectedSupervisorRow() {
+    const select = $("supOwnerAssignSupervisor");
+    const id = String(select?.value || "").trim();
+    if (!id) return null;
+    return state.supervisors.find((m) => String(m.id) === id) || null;
+  }
+
+  function updateAssignGuard() {
+    const btn = $("supOwnerAssignBtn");
+    const row = selectedSupervisorRow();
+    const blocked = Boolean(row && !isSupervisorLinked(row));
+
+    if (btn) btn.disabled = state.busy || blocked;
+
+    if (blocked) {
+      setFeedback(UNLINKED_SUPERVISOR_WARNING, "warn");
+      return;
+    }
+
+    const el = $("supOwnerAssignFeedback");
+    if (el?.classList.contains("is-warn")) {
+      setFeedback("", null);
+    }
   }
 
   function renderProjectOptions() {
@@ -160,15 +214,22 @@
 
     for (const row of state.supervisors) {
       if (!row?.id) continue;
+      const linked = isSupervisorLinked(row);
       options.push(
-        `<option value="${escapeHtml(row.id)}">${escapeHtml(supervisorLabel(row))}</option>`
+        `<option value="${escapeHtml(row.id)}"${linked ? "" : " disabled"}>${escapeHtml(supervisorDropdownLabel(row))}</option>`
       );
     }
 
     select.innerHTML = options.join("");
-    if (current && [...select.options].some((opt) => opt.value === current)) {
+    if (current && [...select.options].some((opt) => opt.value === current && !opt.disabled)) {
       select.value = current;
+    } else if (
+      current &&
+      [...select.options].some((opt) => opt.value === current && opt.disabled)
+    ) {
+      select.value = "";
     }
+    updateAssignGuard();
   }
 
   async function loadProjects() {
@@ -196,6 +257,15 @@
     await Promise.all([loadProjects(), loadSupervisors()]);
   }
 
+  async function refreshSupervisorProjectPicker() {
+    if (typeof window.refreshSupervisorProjectsFromApi !== "function") return;
+    try {
+      await window.refreshSupervisorProjectsFromApi();
+    } catch (_err) {
+      console.warn("Supervisor project picker refresh failed.");
+    }
+  }
+
   function selectedProjectSummary() {
     const select = $("supOwnerAssignProject");
     const id = String(select?.value || "").trim();
@@ -210,11 +280,8 @@
   }
 
   function selectedSupervisorSummary() {
-    const select = $("supOwnerAssignSupervisor");
-    const id = String(select?.value || "").trim();
-    if (!id) return null;
-    const row = state.supervisors.find((m) => String(m.id) === id);
-    if (!row) return { label: "Selected supervisor" };
+    const row = selectedSupervisorRow();
+    if (!row) return null;
     return {
       label: supervisorLabel(row),
       display: String(row.display_name || row.full_name || "").trim(),
@@ -236,6 +303,12 @@
     }
     if (!supervisorMembershipId) {
       setFeedback("Select a supervisor first.", "err");
+      return;
+    }
+
+    const supervisorRow = selectedSupervisorRow();
+    if (!supervisorRow || !isSupervisorLinked(supervisorRow)) {
+      setFeedback(UNLINKED_SUPERVISOR_WARNING, "warn");
       return;
     }
 
@@ -279,17 +352,23 @@
 
       setFeedback(`Assigned ${projectName} to ${supervisorName}.`, "ok");
       await loadProjects();
+      await loadSupervisors();
+      await refreshSupervisorProjectPicker();
     } catch (_err) {
       setFeedback("Network error. Try again.", "err");
     } finally {
       state.busy = false;
-      if (btn) btn.disabled = false;
+      updateAssignGuard();
     }
   }
 
   function bindEvents() {
     $("supOwnerAssignBtn")?.addEventListener("click", () => {
       void handleAssign();
+    });
+
+    $("supOwnerAssignSupervisor")?.addEventListener("change", () => {
+      updateAssignGuard();
     });
 
     document.addEventListener("device-auth-ready", hidePanel, { once: true });

@@ -3423,6 +3423,9 @@ body.supervisor-page .container.supervisor-console{
 .sup-owner-assign__feedback.is-err{
   color:#fca5a5;
 }
+.sup-owner-assign__feedback.is-warn{
+  color:#fcd34d;
+}
 @media (max-width: 900px){
   .sup-owner-assign__grid{
     grid-template-columns:1fr;

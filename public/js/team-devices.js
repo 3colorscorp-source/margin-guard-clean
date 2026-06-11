@@ -65,6 +65,30 @@
     return `<span class="badge ${tone}">${escapeHtml(status || "—")}</span>`;
   }
 
+  function supervisorCount(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.floor(n);
+  }
+
+  function supervisorReadinessCell(row) {
+    if (norm(row?.role) !== "supervisor") return "—";
+
+    const linked = row.auth_linked === true;
+    const projectCount = supervisorCount(row.assigned_project_count);
+    const deviceCount = supervisorCount(row.active_device_count);
+    const authBadge = linked
+      ? '<span class="badge green">Auth linked</span>'
+      : '<span class="badge amber">Auth not linked</span>';
+
+    return `
+      <div class="td-readiness">
+        ${authBadge}
+        <span class="td-readiness__counts">Projects: ${projectCount} · Devices: ${deviceCount}</span>
+      </div>
+    `;
+  }
+
   function apiErrorMessage(data, fallback) {
     if (!data || typeof data !== "object") return fallback;
     if (data.error && data.code) return `${data.error} (${data.code})`;
@@ -224,6 +248,7 @@
             <td>${escapeHtml(row.email || "—")}</td>
             <td>${escapeHtml(row.role || "—")}</td>
             <td>${statusBadge(row.status)}</td>
+            <td>${supervisorReadinessCell(row)}</td>
             <td>${escapeHtml(formatDate(row.created_at))}</td>
             <td>${actionsHtml}</td>
           </tr>
