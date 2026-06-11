@@ -3372,6 +3372,62 @@ body.supervisor-page .container.supervisor-console{
   font-size:12px;
   line-height:1.35;
 }
+.sup-owner-assign{
+  margin-bottom:16px;
+}
+.sup-owner-assign__inner{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.sup-owner-assign__title{
+  margin:0;
+  font-size:1.05rem;
+}
+.sup-owner-assign__hint{
+  margin:0;
+  color:var(--muted);
+  line-height:1.4;
+}
+.sup-owner-assign__grid{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;
+  gap:12px;
+  align-items:end;
+}
+.sup-owner-assign__field{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  min-width:0;
+}
+.sup-owner-assign__label{
+  font-size:12px;
+  font-weight:700;
+  color:rgba(232,238,252,.9);
+}
+.sup-owner-assign__select{
+  width:100%;
+  min-width:0;
+}
+.sup-owner-assign__actions{
+  display:flex;
+  align-items:center;
+}
+.sup-owner-assign__feedback:empty{
+  display:none;
+}
+.sup-owner-assign__feedback.is-ok{
+  color:#86efac;
+}
+.sup-owner-assign__feedback.is-err{
+  color:#fca5a5;
+}
+@media (max-width: 900px){
+  .sup-owner-assign__grid{
+    grid-template-columns:1fr;
+  }
+}
 .sup-command-card{
   margin-top:0;
 }

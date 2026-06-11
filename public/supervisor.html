@@ -59,6 +59,31 @@
       </div>
     </header>
 
+    <section class="card sup-owner-assign" id="supOwnerAssignPanel" data-owner-nav hidden aria-hidden="true" aria-label="Assign project to supervisor">
+      <div class="card-inner sup-owner-assign__inner">
+        <h2 class="sup-owner-assign__title">Assign Project to Supervisor</h2>
+        <p class="small sup-owner-assign__hint">Choose a project and an active supervisor. This changes who can access the project on a supervisor device.</p>
+        <div class="sup-owner-assign__grid">
+          <div class="sup-owner-assign__field">
+            <label class="sup-owner-assign__label" for="supOwnerAssignProject">Project</label>
+            <select id="supOwnerAssignProject" class="sup-owner-assign__select">
+              <option value="">Select a project…</option>
+            </select>
+          </div>
+          <div class="sup-owner-assign__field">
+            <label class="sup-owner-assign__label" for="supOwnerAssignSupervisor">Supervisor</label>
+            <select id="supOwnerAssignSupervisor" class="sup-owner-assign__select">
+              <option value="">Select a supervisor…</option>
+            </select>
+          </div>
+          <div class="sup-owner-assign__actions">
+            <button type="button" class="btn primary" id="supOwnerAssignBtn">Assign to supervisor</button>
+          </div>
+        </div>
+        <p class="small sup-owner-assign__feedback" id="supOwnerAssignFeedback" aria-live="polite"></p>
+      </div>
+    </section>
+
     <div class="sup-console-stack">
       <main class="sup-console-main">
         <div class="supervisor-command-grid">
@@ -404,6 +429,7 @@
   <script>window.MG_DEVICE_PORTAL_AUTO_INIT = false;</script>
   <script src="/js/device-portal-auth.js"></script>
   <script src="/js/supervisor-device-portal.js"></script>
+  <script src="/js/supervisor-owner-assign.js"></script>
   <script src="/js/tenant.js"></script>
   <script src="/js/app.js"></script>
 </body>
