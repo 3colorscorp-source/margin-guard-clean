@@ -3,37 +3,46 @@
 
   const API = "/.netlify/functions";
   const SUPERVISOR_NOTICE =
-    "Supervisor Device Shell — read-only project list and operational snapshot are enabled. Field reports and expenses remain locked until the next approved phase.";
+    "Supervisor Device Shell — assigned projects are visible. Record labor, expenses, and day progress for assigned projects only. Owner pricing, financials, assignment, send/publish, and delete actions remain blocked.";
   const BLOCKED_FETCH_MSG =
-    "Supervisor device endpoint blocked until approved. Read access is limited to project list and operational snapshot only.";
+    "Supervisor device endpoint blocked. Field updates are limited to assigned-project labor, expenses, and day progress only.";
   const BLOCKED_CONTROL_MSG =
-    "Field actions are disabled in supervisor device shell mode until a later approved phase.";
+    "This action is disabled in supervisor device shell mode.";
 
-  const ALLOWED_DEVICE_READ_RES = [
+  const ALLOWED_DEVICE_ENDPOINT_RES = [
     /\/get-supervisor-projects(?:\?|$|\/)/i,
     /\/get-supervisor-operational-snapshot(?:\?|$|\/)/i,
+    /\/save-project-report(?:\?|$|\/)/i,
+    /\/save-project-expense(?:\?|$|\/)/i,
+    /\/save-project-day-progress(?:\?|$|\/)/i,
+    /\/get-project-reports(?:\?|$|\/)/i,
+    /\/get-project-expenses(?:\?|$|\/)/i,
   ];
 
-  const ALWAYS_BLOCKED_ENDPOINT_RES = [
-    /\/save-project-/i,
+  const BLOCKED_DEVICE_ENDPOINT_RES = [
+    /\/get-project-financial-detail/i,
+    /\/recalc-project-profit/i,
+    /\/delete-project-/i,
+    /\/assign-project-to-supervisor/i,
     /\/assign-supervisor-project/i,
+    /\/list-tenant-memberships/i,
+    /\/send-/i,
+    /\/publish-public/i,
+    /\/upsert-/i,
+    /\/invoice/i,
+    /\/payment/i,
+    /\/financial/i,
+    /\/quote/i,
+    /\/public-token/i,
     /\/get-project-/i,
-    /\/send-quote-zapier/i,
-    /\/publish-public-quote/i,
-    /\/upsert-tenant-project/i,
+    /\/save-project-/i,
+    /\/get-supervisor-/i,
   ];
 
   const BLOCKED_CONTROL_IDS = new Set([
     "btnManagePlan",
     "btnLogout",
     "supAssignToMeBtn",
-    "btnSupMarkDayCompleted",
-    "btnSupReopenDay",
-    "btnSupDayReportLabor",
-    "btnSupDayReportExpense",
-    "btnAddSupEntry",
-    "btnAddSupExtra",
-    "btnSupViewExpenses",
     "btnSupPrintExpenseSummary",
     "supOpExpenseCountCard",
   ]);
@@ -243,13 +252,10 @@
   }
 
   function isBlockedFetchUrl(url) {
-    if (ALWAYS_BLOCKED_ENDPOINT_RES.some((re) => re.test(url))) {
-      return true;
+    if (ALLOWED_DEVICE_ENDPOINT_RES.some((re) => re.test(url))) {
+      return false;
     }
-    if (/\/get-supervisor-/i.test(url)) {
-      return !ALLOWED_DEVICE_READ_RES.some((re) => re.test(url));
-    }
-    return false;
+    return BLOCKED_DEVICE_ENDPOINT_RES.some((re) => re.test(url));
   }
 
   function blockedFetchResponse() {
@@ -321,6 +327,7 @@
 
   function isBlockedControlTarget(target) {
     if (!target || typeof target.closest !== "function") return false;
+    if (target.closest("[data-delete-entry], [data-delete-extra]")) return true;
     for (const id of BLOCKED_CONTROL_IDS) {
       const el = document.getElementById(id);
       if (el && (target === el || el.contains(target))) return true;
