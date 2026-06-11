@@ -83,6 +83,10 @@
       border: 1px solid rgba(239, 68, 68, 0.35);
       background: rgba(239, 68, 68, 0.08);
     }
+    .td-notice.info {
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.08);
+    }
     .td-notice[hidden] { display: none !important; }
     .td-protected {
       font-size: 0.75rem;
@@ -162,7 +166,7 @@
         <div class="td-section__head">
           <div>
             <h3>Team Members</h3>
-            <p class="sub">Create and manage seller or supervisor memberships for this tenant.</p>
+            <p class="sub">Create and manage seller or supervisor memberships for this tenant. Invite creates the supervisor login through Supabase Auth. Project assignment unlocks after the supervisor login is linked.</p>
           </div>
           <div class="td-toolbar">
             <button type="button" class="btn ghost" id="tdBtnRefreshMembers">Refresh</button>

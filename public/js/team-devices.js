@@ -9,6 +9,7 @@
     memberships: [],
     devices: [],
     pairingCode: null,
+    inviteInFlight: false,
   };
 
   function $(id) {
@@ -125,8 +126,55 @@
     }
     el.hidden = false;
     el.textContent = message;
-    el.classList.remove("ok", "err");
-    el.classList.add(type === "err" ? "err" : "ok");
+    el.classList.remove("ok", "err", "info");
+    if (type === "err") el.classList.add("err");
+    else if (type === "info") el.classList.add("info");
+    else el.classList.add("ok");
+  }
+
+  function canInviteSupervisor(row) {
+    return (
+      norm(row?.role) === "supervisor" &&
+      norm(row?.status) === "active" &&
+      row?.auth_linked !== true
+    );
+  }
+
+  function inviteErrorMessage(data, fallback) {
+    const code = String(data?.error || data?.code || "").trim();
+    if (code === "missing_membership_id") {
+      return "Could not send invite. Refresh and try again.";
+    }
+    if (code === "membership_not_found") {
+      return "Supervisor membership was not found. Refresh and try again.";
+    }
+    if (code === "not_supervisor_membership") {
+      return "Only supervisor memberships can receive a login invite.";
+    }
+    if (code === "membership_not_active") {
+      return "Supervisor membership must be active before sending an invite.";
+    }
+    if (code === "membership_email_missing") {
+      return "This supervisor membership has no valid email for an invite.";
+    }
+    if (code === "auth_lookup_failed") {
+      return "Could not verify login status. Try again later.";
+    }
+    if (code === "invite_failed") {
+      return "Could not send login invite. Try again later.";
+    }
+    if (
+      code === "no_owner_session" ||
+      code === "owner_membership_required" ||
+      code === "owner_required" ||
+      code === "unauthorized"
+    ) {
+      return "Owner session required.";
+    }
+    if (code === "method_not_allowed") {
+      return "Invite request was not accepted.";
+    }
+    return fallback;
   }
 
   function openModal(modal) {
@@ -224,6 +272,12 @@
 
         if (!protectedRow && MANAGED_ROLES.has(role)) {
           const parts = [];
+          if (canInviteSupervisor(row)) {
+            const inviteDisabled = state.inviteInFlight ? " disabled" : "";
+            parts.push(
+              `<button type="button" class="btn primary" data-td-action="invite-login" data-td-id="${escapeHtml(row.id)}"${inviteDisabled}>Send login invite</button>`
+            );
+          }
           if (status === "active") {
             parts.push(
               `<button type="button" class="btn ghost" data-td-action="suspend" data-td-id="${escapeHtml(row.id)}">Suspend</button>`
@@ -261,9 +315,68 @@
         const action = btn.getAttribute("data-td-action");
         const id = btn.getAttribute("data-td-id");
         if (!id) return;
+        if (action === "invite-login") {
+          void handleSupervisorInvite(id);
+          return;
+        }
         void handleMemberAction(action, id);
       });
     });
+  }
+
+  async function handleSupervisorInvite(membershipId) {
+    if (state.inviteInFlight) return;
+
+    const row = state.memberships.find((m) => String(m.id) === String(membershipId));
+    if (!row || !canInviteSupervisor(row)) {
+      showNotice("This supervisor is not eligible for a login invite.", "info");
+      return;
+    }
+
+    const ok = window.confirm("Send a login invite to this supervisor?");
+    if (!ok) return;
+
+    state.inviteInFlight = true;
+    renderMembersTable();
+
+    try {
+      const { response, data } = await apiRequest("/invite-supervisor-auth", {
+        method: "POST",
+        body: JSON.stringify({ membership_id: membershipId }),
+      });
+
+      if (!response.ok || data.ok !== true) {
+        showNotice(
+          inviteErrorMessage(data, "Could not send login invite."),
+          "err"
+        );
+        return;
+      }
+
+      const status = String(data.status || "").trim();
+      if (status === "invite_sent") {
+        showNotice(
+          "Login invite sent. Ask the supervisor to check their email.",
+          "ok"
+        );
+      } else if (status === "already_linked") {
+        showNotice("This supervisor is already linked.", "info");
+      } else if (status === "auth_user_exists_link_pending") {
+        showNotice(
+          "An Auth user already exists for this supervisor. Ask them to complete login so the profile can link automatically.",
+          "info"
+        );
+      } else {
+        showNotice("Invite request completed.", "ok");
+      }
+
+      await loadMemberships();
+    } catch (_err) {
+      showNotice("Network error. Try again.", "err");
+    } finally {
+      state.inviteInFlight = false;
+      renderMembersTable();
+    }
   }
 
   function renderDevicesTable() {
