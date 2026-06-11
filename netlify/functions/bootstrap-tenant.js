@@ -1,3 +1,4 @@
+const { linkProfileAuthUserOnLogin } = require("./_lib/profile-auth-link");
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest, toSlug } = require("./_lib/supabase-admin");
 
@@ -203,7 +204,20 @@ exports.handler = async (event) => {
       });
     }
 
-    return json(200, buildResponse(tenant, profile, email));
+    const sessionAuthUserId = session.u ? String(session.u).trim() : "";
+    const authLink = await linkProfileAuthUserOnLogin(supabaseRequest, {
+      tenantId: tenant.id,
+      email,
+      sessionAuthUserId,
+      profile,
+    });
+    profile = authLink.profile || profile;
+
+    return json(200, {
+      ...buildResponse(tenant, profile, email),
+      profileAuthLinked: authLink.profileAuthLinked === true,
+      profileAuthLinkStatus: authLink.profileAuthLinkStatus,
+    });
   } catch (err) {
     return json(500, { error: err.message || "Bootstrap failed" });
   }
