@@ -4223,6 +4223,10 @@ Thank you.`
     renderSupervisor();
   }
 
+  if (typeof window !== "undefined") {
+    window.refreshSupervisorProjectsFromApi = refreshSupervisorProjectsFromApi;
+  }
+
   /** Supervisor project picker + KPIs: exact list from last get-supervisor-projects response (no local merge). */
   function getSupervisorProjectsForUi() {
     return Array.isArray(supervisorProjectsCache) ? supervisorProjectsCache.slice() : [];
