@@ -13,7 +13,7 @@
     return document.getElementById(id);
   }
 
-  function readConfig() {
+  function readStaticConfig() {
     let url =
       typeof window.__MG_SUPABASE_URL === "string" ? window.__MG_SUPABASE_URL.trim() : "";
     let anon =
@@ -33,6 +33,34 @@
     }
 
     return { url, anon };
+  }
+
+  async function loadConfig() {
+    const staticConfig = readStaticConfig();
+    if (staticConfig.url && staticConfig.anon) {
+      return staticConfig;
+    }
+
+    try {
+      const response = await fetch(`${API}/get-supabase-public-config`, { method: "GET" });
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (_err) {
+        data = {};
+      }
+      if (response.ok && data.ok === true) {
+        const url = String(data.supabaseUrl || "").trim();
+        const anon = String(data.supabaseAnonKey || "").trim();
+        if (url && anon) {
+          return { url, anon };
+        }
+      }
+    } catch (_err) {
+      /* ignore */
+    }
+
+    return staticConfig;
   }
 
   function setStatus(message, tone) {
@@ -107,8 +135,13 @@
   }
 
   async function initSession() {
-    const { url, anon } = readConfig();
-    if (!url || !anon || typeof window.supabase?.createClient !== "function") {
+    const { url, anon } = await loadConfig();
+    if (!url || !anon) {
+      setStatus("Supervisor login setup is not configured. Contact your company owner.", "err");
+      showForm(false);
+      return false;
+    }
+    if (typeof window.supabase?.createClient !== "function") {
       setStatus("Supervisor login setup is not configured. Contact your company owner.", "err");
       showForm(false);
       return false;
