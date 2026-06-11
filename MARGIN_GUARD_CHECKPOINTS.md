@@ -4,6 +4,121 @@ Authoritative closed-step records for reconnect and approval gates.
 
 ---
 
+## Step 3E-C14-C — Supervisor Device Read Dual-Auth
+
+**Status:** CLOSED — PRODUCTION PASS / DEVICE READ SMOKE COMPLETE / TEMP DEVICE REVOKED  
+**Recorded:** 2026-06-10 (C14-C7 checkpoint close)
+
+### Final production state
+
+| Item | Value |
+|------|--------|
+| **Production commit** | `1080f63` |
+| **Production URL** | https://marginguardsystem.netlify.app |
+| **Last deploy ID** | `6a2a0e406c3f72b7f9279fb6` |
+| **GitHub origin/main** | Matches local HEAD at close |
+| **Working tree** | Clean |
+
+### Implementation chain
+
+1. **C14-C** added supervisor device read dual-auth on `get-supervisor-projects` and `get-supervisor-operational-snapshot`.
+2. **Owner path** remains unchanged; owner DTO still exposes owner-only fields.
+3. **Device path** filters by supervisor membership `auth_user_id` matching `tenant_projects.supervisor_user_id` for assigned projects only.
+4. **Device project DTO** is sanitized — excludes financial and owner-only fields (`quoteId`, `clientEmail`, `depositPaid`, `notes`, `supervisorUserId`, sale/recommended/minimum price, profit, margin, etc.).
+5. **Device operational snapshot** is sanitized — no invoice status labels, no financial fields, no quote linkage on device path.
+
+### Commits and deploys
+
+| Hash | Message |
+|------|---------|
+| `ac82a1e` | Step 3E-C14-C add supervisor read dual-auth |
+| `fb0b8e9` | Step 3E-C14-C4a link membership auth user on login |
+| `12fd9b4` | Step 3E-C14-C4b add supervisor assignment endpoint |
+| `1080f63` | Step 3E-C14-C4a-b2 resolve membership auth user on bootstrap |
+
+| Deploy | ID |
+|--------|-----|
+| C14-C read dual-auth baseline | `6a2a0130a8f5998430e9a209` |
+| **Final production deploy** | `6a2a0e406c3f72b7f9279fb6` |
+
+### C14-C5 / C14-C6 smoke evidence
+
+| Item | Result |
+|------|--------|
+| **C7B test supervisor** (`mg-c7b-supervisor-001@marginguard.test`) | role `supervisor`, status `active`, auth link completed |
+| **Project Test A** | client `Test A`, status `assigned`, assigned to C7B supervisor chain |
+| **Protected production projects unchanged** | Soco bathroom, 625 2nd St RENOVATION, Freemont H. R304, Sharon Bathroom — all remain owner-assigned |
+| **C14-C6 temp supervisor device** | created → paired → read smoke passed → revoked |
+| **Active temp devices remaining** | 0 |
+
+### Device read smoke results (C14-C6)
+
+| Check | Result |
+|-------|--------|
+| Device `get-supervisor-projects` HTTP | 200 |
+| Device project count | 1 |
+| Project Test A visible | Yes |
+| Protected production projects visible in device mode | No |
+| Forbidden fields in device project list | None |
+| Device `get-supervisor-operational-snapshot` HTTP (Project Test A) | 200 |
+| Forbidden financial/owner fields in snapshot | None |
+| Invoice status label leak on device path | No |
+| Protected project snapshot guard (Soco bathroom) | 403 `supervisor_not_assigned` |
+| Post-revoke device read | 401 |
+
+### Device write guard results (C14-C6)
+
+All device-mode write/send probes blocked — no successful mutations:
+
+| Endpoint | Status |
+|----------|--------|
+| `save-project-report` | 401 |
+| `save-project-expense` | 401 |
+| `save-project-day-progress` | 401 |
+| `assign-supervisor-project` | 401 |
+| `send-quote-zapier` | 403 |
+| `upsert-tenant-project` | 403 |
+| `publish-public-quote` | 403 |
+| `get-project-financial-detail` | 401 |
+
+### Side effects and cleanup state
+
+| Item | Value |
+|------|--------|
+| SQL | 0 |
+| New quotes / projects / invoices | 0 |
+| `send-quote-zapier` successful calls | 0 |
+| `upsert-tenant-project` successful calls | 0 |
+| `publish-public-quote` successful calls | 0 |
+| Supervisor save write success | 0 |
+| Production project assignments changed | 0 |
+| Temp C14-C6 device revoked | Yes |
+| Active temp devices remaining | 0 |
+
+### Remaining smoke artifacts (intentional)
+
+These remain in production as documented test artifacts — see `MARGIN_GUARD_SMOKE_CLEANUP_POLICY.md` §11:
+
+- C7B test supervisor membership — **active**
+- C7B Supabase Auth user — exists (linked via C14-C4a-b2 bootstrap)
+- Project Test A — **assigned to C7B**
+
+### Known notes
+
+- `assign-supervisor-project` (owner “Assign to me”) unchanged; new owner-only `assign-project-to-supervisor` assigns via supervisor membership `auth_user_id`.
+- Five other supervisor-list projects remain owner-assigned; only Project Test A points at C7B.
+- Supervisor device shell UI (C14-B) blocks field writes client-side; backend write endpoints still owner-session-only until C14-D.
+
+### Approval gate (active)
+
+Do **not** start without a fresh reconnect report and explicit approval:
+
+- **C14-D** — supervisor device write path for reports / expenses / day-progress
+- **Minimal owner UI** — assign projects to supervisor memberships from owner context
+- C13-C / C13-D artifact cleanup (2026-0099, 2026-0100) — deferred unless separately approved
+
+---
+
 ## Step 3E-C12 — Seller Performance Phase 2C v1
 
 **Status:** CLOSED — COMPLETE / PRODUCTION PASS  

@@ -222,7 +222,23 @@ Smallest safe endpoint behavior (to be implemented only with explicit approval):
 
 ---
 
+## 11. C14-C supervisor smoke artifacts (C14-C7 register)
+
+Step 3E-C14-C6 device read smoke completed with temp device revoked. The following **intentional** artifacts remain — default policy: **leave in place** (Option A).
+
+| Artifact | Label / name | Status | Cleanup status | Notes |
+|----------|--------------|--------|----------------|-------|
+| C7B test supervisor membership | `mg-c7b-supervisor-001@marginguard.test` | active | **Open — keep** | Auth link completed (C14-C5B); display name Test Supervisor C7B |
+| C7B Supabase Auth user | same email | exists | **Open — keep** | Linked via C14-C4a-b2 bootstrap fallback |
+| Project Test A | client `Test A` | assigned to C7B | **Open — keep** | Only C7B-assigned test project; protected production projects unchanged |
+| C14-C6 temp supervisor device | `C14-C6 Temp Supervisor Device C7B` | revoked | **Closed** | Created, paired, read smoke passed, revoked in same run; active temp devices: 0 |
+
+**Do not bulk-remove** C7B membership, Auth user, or Project Test A assignment without explicit owner approval and a dedicated cleanup step. Protected production projects (Soco bathroom, 625 2nd St RENOVATION, Freemont H. R304, Sharon Bathroom) must never be touched by C14-C cleanup.
+
+---
+
 ## Related checkpoints
 
-- `MARGIN_GUARD_CHECKPOINTS.md` — Step 3E-C12 and prior closed steps
+- `MARGIN_GUARD_CHECKPOINTS.md` — Step 3E-C14-C, Step 3E-C12, and prior closed steps
 - Step 3E-C13-A preflight report (conversation record, 2026-06-10)
+- Step 3E-C14-C7 checkpoint close (conversation record, 2026-06-10)
