@@ -4,7 +4,7 @@
 
 const { getSupabaseConfig } = require("./supabase-admin");
 
-const INVITE_REDIRECT_TO = "https://marginguardsystem.netlify.app/";
+const INVITE_REDIRECT_TO = "https://marginguardsystem.netlify.app/supervisor-invite.html";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function normEmail(value) {

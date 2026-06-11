@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Supervisor Login Invite</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .si-page { max-width: 440px; margin: 0 auto; padding-top: 24px; }
+    .si-hero { margin-bottom: 12px; }
+    .si-hero h2 { margin: 0 0 6px; font-size: 1.35rem; }
+    .si-hero .sub { margin: 0; line-height: 1.45; }
+    .si-status {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 0.8125rem;
+      line-height: 1.45;
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      background: rgba(59, 130, 246, 0.08);
+      color: rgba(232, 238, 252, 0.92);
+    }
+    .si-status[hidden] { display: none !important; }
+    .si-status--ok {
+      border-color: rgba(34, 197, 94, 0.35);
+      background: rgba(34, 197, 94, 0.08);
+      color: rgba(187, 247, 208, 0.95);
+    }
+    .si-status--err {
+      border-color: rgba(239, 68, 68, 0.35);
+      background: rgba(239, 68, 68, 0.08);
+      color: rgba(252, 165, 165, 0.95);
+    }
+    .si-status--info {
+      border-color: rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.08);
+      color: rgba(253, 230, 138, 0.95);
+    }
+    .si-footer { margin-top: 16px; text-align: center; font-size: 0.8125rem; }
+    .si-footer a { color: rgba(186, 198, 220, 0.95); }
+  </style>
+</head>
+<body class="supervisor-invite-page">
+  <div class="container si-page">
+    <section class="card si-hero">
+      <div class="card-inner">
+        <span class="eyebrow">Supervisor onboarding</span>
+        <h2>Supervisor Login Invite</h2>
+        <p class="sub">Create your login password to link your supervisor access.</p>
+      </div>
+    </section>
+
+    <div id="siStatus" class="si-status" hidden role="status" aria-live="polite"></div>
+
+    <section class="card" id="siFormPanel" hidden>
+      <div class="card-inner">
+        <form id="siForm" class="form" novalidate>
+          <div class="field">
+            <label for="siPassword">Password</label>
+            <input id="siPassword" type="password" autocomplete="new-password" minlength="8" required />
+            <div class="hint">At least 8 characters</div>
+          </div>
+          <div class="field">
+            <label for="siPasswordConfirm">Confirm password</label>
+            <input id="siPasswordConfirm" type="password" autocomplete="new-password" minlength="8" required />
+          </div>
+          <button type="submit" class="btn primary" id="siSubmitBtn">Create password and link access</button>
+        </form>
+      </div>
+    </section>
+
+    <p class="si-footer"><a href="/index.html">Back to home</a></p>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/js/mg-supabase-init.js"></script>
+  <script src="/js/supervisor-invite.js"></script>
+</body>
+</html>
