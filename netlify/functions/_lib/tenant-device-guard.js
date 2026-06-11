@@ -280,6 +280,32 @@ async function requireSupervisorDevice(event) {
 }
 
 /**
+ * Load tenant_projects row and enforce supervisor assignment on device context.
+ * @param {GuardContext|object} ctx
+ * @param {string} projectId
+ * @returns {Promise<object>}
+ */
+async function loadTenantProjectForSupervisorAction(ctx, projectId) {
+  const pid = String(projectId || "").trim();
+  if (!pid) {
+    throwGuard(400, "project_id is required", "invalid_project_id");
+  }
+
+  const tid = encodeURIComponent(ctx.tenant.id);
+  const encodedPid = encodeURIComponent(pid);
+  const rows = await supabaseRequest(
+    `tenant_projects?id=eq.${encodedPid}&tenant_id=eq.${tid}&select=id,tenant_id,supervisor_user_id&limit=1`
+  );
+  const project = Array.isArray(rows) ? rows[0] : null;
+  if (!project?.id) {
+    throwGuard(403, "Project not found for this tenant", "project_not_found");
+  }
+
+  assertAssignedSupervisorProject(ctx, project);
+  return project;
+}
+
+/**
  * @param {GuardContext} ctx
  * @param {string|string[]} portalType
  */
@@ -305,13 +331,21 @@ function assertSameTenant(expectedTenantId, rowTenantId) {
  * @param {GuardContext} ctx
  * @param {object} project - tenant_projects row
  */
+function isOwnerContext(ctx) {
+  return (
+    ctx?.authMode === "owner" ||
+    ctx?.auth_mode === "owner" ||
+    isOwnerRole(ctx?.membership?.role)
+  );
+}
+
 function assertAssignedSupervisorProject(ctx, project) {
   if (!project || typeof project !== "object") {
     throwGuard(404, "Project not found", "project_not_found");
   }
   assertSameTenant(ctx?.tenant?.id, project.tenant_id);
 
-  if (ctx?.authMode === "owner" || isOwnerRole(ctx?.membership?.role)) {
+  if (isOwnerContext(ctx)) {
     return;
   }
 
@@ -332,11 +366,7 @@ function assertSellerOwnQuote(ctx, quote) {
   }
   assertSameTenant(ctx?.tenant?.id, quote.tenant_id);
 
-  if (
-    ctx?.authMode === "owner" ||
-    ctx?.auth_mode === "owner" ||
-    isOwnerRole(ctx?.membership?.role)
-  ) {
+  if (isOwnerContext(ctx)) {
     return;
   }
 
@@ -355,6 +385,8 @@ module.exports = {
   assertSameTenant,
   assertSellerOwnQuote,
   guardError,
+  isOwnerContext,
+  loadTenantProjectForSupervisorAction,
   requireDeviceSession,
   requireOwnerMembership,
   requireSellerDevice,

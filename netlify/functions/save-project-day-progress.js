@@ -2,10 +2,13 @@
  * Mark an operational plan day completed (Supervisor-safe, tenant-scoped).
  */
 
-const { readSessionFromEvent } = require("./_lib/session");
-const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
-const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveAuthUserIdByEmail } = require("./_lib/auth-resolve-user-id");
+const { mapDeviceDayProgressWriteResult } = require("./_lib/supervisor-device-field-dto");
+const {
+  isOwnerContext,
+  loadTenantProjectForSupervisorAction,
+  resolveOwnerOrSupervisorContext,
+} = require("./_lib/tenant-device-guard");
 const {
   upsertDayProgressCompleted,
   reopenDayProgress,
@@ -26,7 +29,7 @@ function parseBody(raw) {
   try {
     return JSON.parse(raw || "{}");
   } catch {
-    return {};
+    return null;
   }
 }
 
@@ -41,28 +44,32 @@ function num(v) {
   return Number.isFinite(n) ? n : NaN;
 }
 
+async function resolveOwnerActorUserId(session) {
+  let supervisorUserId = session?.u ? String(session.u).trim() : "";
+  if (!supervisorUserId) {
+    supervisorUserId = (await resolveAuthUserIdByEmail(session.e)) || "";
+  }
+  return supervisorUserId;
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
       return json(405, { error: "Method not allowed" });
     }
 
-    const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
-      return json(401, { error: "Unauthorized" });
+    const body = parseBody(event.body);
+    if (body == null) {
+      return json(400, { error: "Invalid JSON", code: "invalid_json" });
     }
 
-    const tenant = await resolveTenantFromSession(session);
+    const ctx = await resolveOwnerOrSupervisorContext(event);
+    const isDevice = ctx.auth_mode === "device";
+    const tenant = ctx.tenant;
     if (!tenant?.id) {
       return json(404, { error: "Tenant not found" });
     }
 
-    let supervisorUserId = session.u ? String(session.u).trim() : "";
-    if (!supervisorUserId) {
-      supervisorUserId = (await resolveAuthUserIdByEmail(session.e)) || "";
-    }
-
-    const body = parseBody(event.body);
     const projectId = str(body.project_id, 128);
     const dayNumber = Math.floor(num(body.day_number));
     const phase = str(body.phase, 500);
@@ -75,12 +82,22 @@ exports.handler = async (event) => {
       return json(400, { error: "day_number must be a positive integer" });
     }
 
-    const tid = encodeURIComponent(tenant.id);
-    const projRows = await supabaseRequest(
-      `tenant_projects?id=eq.${encodeURIComponent(projectId)}&tenant_id=eq.${tid}&select=id&limit=1`
-    );
-    if (!Array.isArray(projRows) || !projRows[0]?.id) {
-      return json(403, { error: "Project not found for this tenant" });
+    await loadTenantProjectForSupervisorAction(ctx, projectId);
+
+    let supervisorUserId = null;
+    if (isDevice) {
+      const authUserId = String(ctx.membership?.auth_user_id || "").trim();
+      if (!authUserId) {
+        return json(403, {
+          error: "Supervisor must sign in once before updating day progress",
+          code: "supervisor_auth_user_id_missing",
+        });
+      }
+      supervisorUserId = authUserId;
+    } else if (isOwnerContext(ctx)) {
+      supervisorUserId = (await resolveOwnerActorUserId(ctx.session)) || null;
+    } else {
+      return json(403, { error: "Forbidden", code: "forbidden" });
     }
 
     const reopen =
@@ -102,8 +119,13 @@ exports.handler = async (event) => {
             dayNumber,
             phase,
             completionNote,
-            completedBy: supervisorUserId || null,
+            completedBy: supervisorUserId,
           });
+
+      if (isDevice) {
+        return json(200, mapDeviceDayProgressWriteResult(result));
+      }
+
       return json(200, { ok: true, ...result });
     } catch (err) {
       const msg = String(err?.message || err || "");
@@ -116,6 +138,12 @@ exports.handler = async (event) => {
       throw err;
     }
   } catch (err) {
+    if (err.isGuardError) {
+      return json(err.statusCode || 403, {
+        error: err.message,
+        code: err.code || "guard_error",
+      });
+    }
     return json(500, { error: err.message || "Unexpected error" });
   }
 };

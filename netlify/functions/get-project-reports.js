@@ -1,6 +1,9 @@
-const { readSessionFromEvent } = require("./_lib/session");
-const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
+const { mapDeviceReportList } = require("./_lib/supervisor-device-field-dto");
+const {
+  loadTenantProjectForSupervisorAction,
+  resolveOwnerOrSupervisorContext,
+} = require("./_lib/tenant-device-guard");
 
 function json(statusCode, payload) {
   return {
@@ -37,12 +40,9 @@ exports.handler = async (event) => {
       return json(405, { error: "Method not allowed" });
     }
 
-    const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
-      return json(401, { error: "Unauthorized" });
-    }
-
-    const tenant = await resolveTenantFromSession(session);
+    const ctx = await resolveOwnerOrSupervisorContext(event);
+    const isDevice = ctx.auth_mode === "device";
+    const tenant = ctx.tenant;
     if (!tenant?.id) {
       return json(404, { error: "Tenant not found" });
     }
@@ -53,22 +53,27 @@ exports.handler = async (event) => {
       return json(400, { error: "project_id is required" });
     }
 
-    const tid = encodeURIComponent(tenant.id);
-    const projRows = await supabaseRequest(
-      `tenant_projects?id=eq.${encodeURIComponent(projectId)}&tenant_id=eq.${tid}&select=id`
-    );
-    const proj = Array.isArray(projRows) ? projRows[0] : null;
-    if (!proj?.id) {
-      return json(403, { error: "Project not found for this tenant" });
-    }
+    await loadTenantProjectForSupervisorAction(ctx, projectId);
 
+    const tid = encodeURIComponent(tenant.id);
     const rows = await supabaseRequest(
       `tenant_project_reports?tenant_id=eq.${tid}&project_id=eq.${encodeURIComponent(projectId)}&select=*&order=entry_date.desc,created_at.desc`
     );
-    const list = Array.isArray(rows) ? rows.map(mapRow).filter(Boolean) : [];
+    const list = Array.isArray(rows) ? rows : [];
 
-    return json(200, { ok: true, reports: list });
+    if (isDevice) {
+      return json(200, { ok: true, reports: mapDeviceReportList(list) });
+    }
+
+    const reports = list.map(mapRow).filter(Boolean);
+    return json(200, { ok: true, reports });
   } catch (err) {
-    return json(500, { error: err.message || "Unexpected error" });
+    if (err.isGuardError) {
+      return json(err.statusCode || 403, {
+        error: err.message,
+        code: err.code || "guard_error",
+      });
+    }
+    return json(500, { error: "Fetch failed", code: "fetch_failed" });
   }
 };
