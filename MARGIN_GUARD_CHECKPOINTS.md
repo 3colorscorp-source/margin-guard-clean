@@ -102,6 +102,23 @@ Authoritative closed-step records for reconnect and approval gates.
 | Post-revoke read/write | 401 blocked |
 | Active temp devices remaining | 0 |
 
+### C14-D3B — Smoke report/expense cleanup (2026-06-10)
+
+| Item | Result |
+|------|--------|
+| **Status** | PASS — owner-approved report/expense cleanup (Option A) |
+| **Method** | Owner session `delete-project-report` ×2, `delete-project-expense` ×2 |
+| **SQL** | 0 |
+| **Deploy** | None |
+| **Code/files changed during cleanup** | 0 |
+| **Devices created/paired** | 0 |
+| **Assignments changed** | 0 |
+| **Protected production projects** | Unchanged |
+
+**Deleted (closed):** D2B smoke report, D2D UI smoke report, D2B smoke expense, D2D UI smoke expense on Project Test A (masked refs at delete: `5936…1341`, `da12…3265`, `f2ca…975c`, `d791…b5b4`).
+
+**Kept:** day 99 completed progress (`9338…161e`, note `C14-D2B smoke day progress`); C7B membership; C7B Auth user; Project Test A → C7B assignment.
+
 ### Side effects and remaining smoke artifacts
 
 | Item | Value |
@@ -109,8 +126,10 @@ Authoritative closed-step records for reconnect and approval gates.
 | Project Test A assignment | Remains assigned to C7B |
 | C7B supervisor membership | Active |
 | C7B Auth user | Exists (linked) |
-| Smoke rows on Project Test A | D2B report, D2B expense, D2B day 99 progress, D2D UI report, D2D UI expense — **intentional; leave in place** |
-| Temp devices (D2B1, D2D) | Revoked; active temp devices: 0 |
+| Project Test A report smoke rows | **Closed/deleted** (D3B) — 0 remaining |
+| Project Test A expense smoke rows | **Closed/deleted** (D3B) — 0 remaining |
+| Project Test A day 99 progress | **Open — keep** — sole remaining C14-D field artifact |
+| Temp devices (C14-C6, D2B1, D2D) | Revoked; active temp devices: 0 |
 | Protected production projects | Unchanged — Soco bathroom, 625 2nd St RENOVATION, Freemont H. R304, Sharon Bathroom |
 | SQL | 0 |
 | New quotes / projects / invoices | 0 |
@@ -129,7 +148,7 @@ See `MARGIN_GUARD_SMOKE_CLEANUP_POLICY.md` §11 for artifact register.
 
 Do **not** start without a fresh reconnect report and explicit approval:
 
-- **Optional C14-D cleanup** — owner-approved cleanup of Project Test A smoke report/expense/day-progress rows
+- **Optional day 99 reopen** — owner-approved `save-project-day-progress` reopen only (no delete endpoint; not required)
 - **C14-E** — production-ready supervisor onboarding / assignment polish
 - **C14-D hardening** — unassign endpoint / assignment history / UI refresh sync
 

@@ -222,9 +222,22 @@ Smallest safe endpoint behavior (to be implemented only with explicit approval):
 
 ---
 
-## 11. C14-C / C14-D supervisor smoke artifacts (C14-C7 + C14-D2E register)
+## 11. C14-C / C14-D supervisor smoke artifacts (C14-C7 + C14-D2E + C14-D3B register)
 
-Step 3E-C14-C6 device read smoke and Step 3E-C14-D2B1/D2D device write smokes completed with temp devices revoked. The following **intentional** artifacts remain — default policy: **leave in place** (Option A).
+Step 3E-C14-C6 device read smoke and Step 3E-C14-D2B1/D2D device write smokes completed with temp devices revoked. Step 3E-C14-D3B (2026-06-10) deleted Project Test A report/expense smoke rows via owner delete endpoints. Remaining C14-D field artifact: day 99 progress only.
+
+### C14-D3B cleanup summary
+
+| Item | Result |
+|------|--------|
+| **Step** | 3E-C14-D3B — PASS |
+| **Type** | Owner-approved report/expense smoke cleanup (Option A) |
+| **SQL** | 0 |
+| **Deploy** | None |
+| **Code/files changed during cleanup** | 0 |
+| **Devices created/paired** | 0 |
+| **Assignments changed** | 0 |
+| **Protected production projects** | Unchanged |
 
 | Artifact | Label / name | Status | Cleanup status | Notes |
 |----------|--------------|--------|----------------|-------|
@@ -234,15 +247,25 @@ Step 3E-C14-C6 device read smoke and Step 3E-C14-D2B1/D2D device write smokes co
 | C14-C6 temp supervisor device | `C14-C6 Temp Supervisor Device C7B` | revoked | **Closed** | Read smoke; revoked in same run |
 | C14-D2B1 temp supervisor device | `C14-D2B Temp Supervisor Device C7B` | revoked | **Closed** | API write smoke; revoked in same run |
 | C14-D2D temp supervisor device | `C14-D2D Temp Supervisor Device C7B` | revoked | **Closed** | Full UI write smoke; revoked in same run |
-| Project Test A smoke report (D2B) | note `C14-D2B smoke report` | on server | **Open — keep** | Created via D2B1 API-only device smoke |
-| Project Test A smoke expense (D2B) | note `C14-D2B smoke expense` | on server | **Open — keep** | Created via D2B1 API-only device smoke |
-| Project Test A day progress (D2B) | day 99 completed | on server | **Open — keep** | Created via D2B1 API-only device smoke |
-| Project Test A smoke report (D2D) | note `C14-D2D UI smoke report` | on server | **Open — keep** | Created via D2D UI device smoke |
-| Project Test A smoke expense (D2D) | note includes `C14-D2D UI smoke expense` | on server | **Open — keep** | Created via D2D UI device smoke; concept + note combined |
+| Project Test A smoke report (D2B) | note `C14-D2B smoke report` | deleted | **Closed** | Deleted D3B via `delete-project-report` (ref `5936…1341`) |
+| Project Test A smoke expense (D2B) | note `C14-D2B smoke expense` | deleted | **Closed** | Deleted D3B via `delete-project-expense` (ref `f2ca…975c`) |
+| Project Test A smoke report (D2D) | note `C14-D2D UI smoke report` | deleted | **Closed** | Deleted D3B via `delete-project-report` (ref `da12…3265`) |
+| Project Test A smoke expense (D2D) | note includes `C14-D2D UI smoke expense` | deleted | **Closed** | Deleted D3B via `delete-project-expense` (ref `d791…b5b4`); was composite note |
+| Project Test A day progress (D2B) | day 99 completed | on server | **Open — keep** | Sole remaining C14-D field artifact; ref `9338…161e`; note `C14-D2B smoke day progress`; no owner-safe delete endpoint; reopen optional but not approved |
+
+**Register summary:**
+
+| Category | State |
+|----------|--------|
+| Project Test A report smoke rows | Closed/deleted (0 remaining) |
+| Project Test A expense smoke rows | Closed/deleted (0 remaining) |
+| Project Test A day 99 progress | Open/kept |
+| Temp devices | Closed/revoked |
+| Active temp devices remaining | 0 |
 
 **Active temp supervisor devices remaining:** 0 (all C14-C6 / D2B1 / D2D temp devices revoked).
 
-**Optional C14-D cleanup:** Owner may approve a dedicated step to delete Project Test A smoke report/expense/day-progress rows via owner `delete-project-report` / `delete-project-expense` and day-progress reopen — not covered by this policy doc alone.
+**Optional day 99 reopen:** Owner may approve `save-project-day-progress` with `reopen: true` to set day 99 to pending — row is not deleted. Not required for C14-D closure.
 
 **Do not bulk-remove** C7B membership, Auth user, or Project Test A assignment without explicit owner approval and a dedicated cleanup step. Protected production projects (Soco bathroom, 625 2nd St RENOVATION, Freemont H. R304, Sharon Bathroom) must never be touched by C14 cleanup.
 
@@ -254,3 +277,4 @@ Step 3E-C14-C6 device read smoke and Step 3E-C14-D2B1/D2D device write smokes co
 - Step 3E-C13-A preflight report (conversation record, 2026-06-10)
 - Step 3E-C14-C7 checkpoint close (conversation record, 2026-06-10)
 - Step 3E-C14-D2E checkpoint close (conversation record, 2026-06-10)
+- Step 3E-C14-D3B smoke cleanup + D3C register update (conversation record, 2026-06-10)
