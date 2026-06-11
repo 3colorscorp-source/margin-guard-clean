@@ -11,18 +11,17 @@ function getServiceConfig() {
 
 /**
  * Resolve auth.users.id for an email via Supabase Auth Admin API (GoTrue).
- * Paginates until a matching email is found or pages are exhausted.
+ * @returns {Promise<{ status: "found"|"not_found"|"resolve_failed", userId: string|null }>}
  */
-async function resolveAuthUserIdByEmail(email) {
+async function resolveAuthUserIdByEmailDetailed(email) {
   const normalized = String(email || "").trim().toLowerCase();
   if (!normalized || !normalized.includes("@")) {
-    return null;
+    return { status: "not_found", userId: null };
   }
 
   const { url, key } = getServiceConfig();
   if (!url || !key) {
-    console.warn("[auth-resolve-user-id] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-    return null;
+    return { status: "resolve_failed", userId: null };
   }
 
   let page = 1;
@@ -38,23 +37,24 @@ async function resolveAuthUserIdByEmail(email) {
       },
     });
 
-    const text = await res.text();
     let data = {};
     try {
+      const text = await res.text();
       data = text ? JSON.parse(text) : {};
     } catch {
       data = {};
     }
 
     if (!res.ok) {
-      console.warn("[auth-resolve-user-id] auth admin users failed:", res.status, text?.slice(0, 200));
-      return null;
+      return { status: "resolve_failed", userId: null };
     }
 
     const users = Array.isArray(data.users) ? data.users : [];
     for (const u of users) {
       if (String(u.email || "").trim().toLowerCase() === normalized) {
-        return u.id ? String(u.id) : null;
+        return u.id
+          ? { status: "found", userId: String(u.id) }
+          : { status: "not_found", userId: null };
       }
     }
 
@@ -64,7 +64,16 @@ async function resolveAuthUserIdByEmail(email) {
     page += 1;
   }
 
-  return null;
+  return { status: "not_found", userId: null };
 }
 
-module.exports = { resolveAuthUserIdByEmail };
+/**
+ * Resolve auth.users.id for an email via Supabase Auth Admin API (GoTrue).
+ * Paginates until a matching email is found or pages are exhausted.
+ */
+async function resolveAuthUserIdByEmail(email) {
+  const result = await resolveAuthUserIdByEmailDetailed(email);
+  return result.status === "found" ? result.userId : null;
+}
+
+module.exports = { resolveAuthUserIdByEmail, resolveAuthUserIdByEmailDetailed };

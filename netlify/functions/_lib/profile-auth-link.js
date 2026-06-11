@@ -1,8 +1,10 @@
 /**
- * Step 3E-C14-C4a — Link profiles.auth_user_id from session on login (non-SQL onboarding).
+ * Step 3E-C14-C4a / C4a-b2 — Link profiles.auth_user_id from session on login (non-SQL onboarding).
  * Tenant-scoped; never overwrites an existing non-null auth_user_id.
+ * C4a-b2: resolve Auth user id by email when session.u is missing.
  */
 
+const { resolveAuthUserIdByEmailDetailed } = require("./auth-resolve-user-id");
 const { membershipIsActive, membershipRole } = require("./membership-resolve");
 
 const AUTH_LINK_ELIGIBLE_ROLES = new Set(["seller", "supervisor", "owner"]);
@@ -30,17 +32,16 @@ function toSafeProfileRow(row) {
  * @param {object} params
  * @param {string} params.tenantId
  * @param {string} params.email
- * @param {string} params.sessionAuthUserId - session.u
+ * @param {string} params.sessionAuthUserId - session.u (optional; resolved by email when missing)
  * @param {object} params.profile - resolved tenant profile row
  * @returns {Promise<{ profileAuthLinked: boolean, profileAuthLinkStatus: string, profile: object }>}
  */
 async function linkProfileAuthUserOnLogin(supabaseRequest, { tenantId, email, sessionAuthUserId, profile }) {
   const tid = normId(tenantId);
   const em = normEmail(email);
-  const sessionUid = normId(sessionAuthUserId);
   const current = profile && typeof profile === "object" ? profile : null;
 
-  if (!tid || !em || !sessionUid || !current?.id) {
+  if (!tid || !em || !current?.id) {
     return { profileAuthLinked: false, profileAuthLinkStatus: "not_applicable", profile: current };
   }
 
@@ -58,6 +59,26 @@ async function linkProfileAuthUserOnLogin(supabaseRequest, { tenantId, email, se
 
   if (!AUTH_LINK_ELIGIBLE_ROLES.has(membershipRole(current))) {
     return { profileAuthLinked: false, profileAuthLinkStatus: "not_applicable", profile: current };
+  }
+
+  let sessionUid = normId(sessionAuthUserId);
+  if (!sessionUid) {
+    const resolved = await resolveAuthUserIdByEmailDetailed(em);
+    if (resolved.status === "resolve_failed") {
+      return {
+        profileAuthLinked: false,
+        profileAuthLinkStatus: "auth_resolve_failed",
+        profile: current,
+      };
+    }
+    if (resolved.status !== "found" || !resolved.userId) {
+      return {
+        profileAuthLinked: false,
+        profileAuthLinkStatus: "auth_user_not_found",
+        profile: current,
+      };
+    }
+    sessionUid = normId(resolved.userId);
   }
 
   const existingAuthUserId = current.auth_user_id ? normId(current.auth_user_id) : "";
