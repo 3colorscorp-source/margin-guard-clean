@@ -222,23 +222,35 @@ Smallest safe endpoint behavior (to be implemented only with explicit approval):
 
 ---
 
-## 11. C14-C supervisor smoke artifacts (C14-C7 register)
+## 11. C14-C / C14-D supervisor smoke artifacts (C14-C7 + C14-D2E register)
 
-Step 3E-C14-C6 device read smoke completed with temp device revoked. The following **intentional** artifacts remain — default policy: **leave in place** (Option A).
+Step 3E-C14-C6 device read smoke and Step 3E-C14-D2B1/D2D device write smokes completed with temp devices revoked. The following **intentional** artifacts remain — default policy: **leave in place** (Option A).
 
 | Artifact | Label / name | Status | Cleanup status | Notes |
 |----------|--------------|--------|----------------|-------|
 | C7B test supervisor membership | `mg-c7b-supervisor-001@marginguard.test` | active | **Open — keep** | Auth link completed (C14-C5B); display name Test Supervisor C7B |
 | C7B Supabase Auth user | same email | exists | **Open — keep** | Linked via C14-C4a-b2 bootstrap fallback |
 | Project Test A | client `Test A` | assigned to C7B | **Open — keep** | Only C7B-assigned test project; protected production projects unchanged |
-| C14-C6 temp supervisor device | `C14-C6 Temp Supervisor Device C7B` | revoked | **Closed** | Created, paired, read smoke passed, revoked in same run; active temp devices: 0 |
+| C14-C6 temp supervisor device | `C14-C6 Temp Supervisor Device C7B` | revoked | **Closed** | Read smoke; revoked in same run |
+| C14-D2B1 temp supervisor device | `C14-D2B Temp Supervisor Device C7B` | revoked | **Closed** | API write smoke; revoked in same run |
+| C14-D2D temp supervisor device | `C14-D2D Temp Supervisor Device C7B` | revoked | **Closed** | Full UI write smoke; revoked in same run |
+| Project Test A smoke report (D2B) | note `C14-D2B smoke report` | on server | **Open — keep** | Created via D2B1 API-only device smoke |
+| Project Test A smoke expense (D2B) | note `C14-D2B smoke expense` | on server | **Open — keep** | Created via D2B1 API-only device smoke |
+| Project Test A day progress (D2B) | day 99 completed | on server | **Open — keep** | Created via D2B1 API-only device smoke |
+| Project Test A smoke report (D2D) | note `C14-D2D UI smoke report` | on server | **Open — keep** | Created via D2D UI device smoke |
+| Project Test A smoke expense (D2D) | note includes `C14-D2D UI smoke expense` | on server | **Open — keep** | Created via D2D UI device smoke; concept + note combined |
 
-**Do not bulk-remove** C7B membership, Auth user, or Project Test A assignment without explicit owner approval and a dedicated cleanup step. Protected production projects (Soco bathroom, 625 2nd St RENOVATION, Freemont H. R304, Sharon Bathroom) must never be touched by C14-C cleanup.
+**Active temp supervisor devices remaining:** 0 (all C14-C6 / D2B1 / D2D temp devices revoked).
+
+**Optional C14-D cleanup:** Owner may approve a dedicated step to delete Project Test A smoke report/expense/day-progress rows via owner `delete-project-report` / `delete-project-expense` and day-progress reopen — not covered by this policy doc alone.
+
+**Do not bulk-remove** C7B membership, Auth user, or Project Test A assignment without explicit owner approval and a dedicated cleanup step. Protected production projects (Soco bathroom, 625 2nd St RENOVATION, Freemont H. R304, Sharon Bathroom) must never be touched by C14 cleanup.
 
 ---
 
 ## Related checkpoints
 
-- `MARGIN_GUARD_CHECKPOINTS.md` — Step 3E-C14-C, Step 3E-C12, and prior closed steps
+- `MARGIN_GUARD_CHECKPOINTS.md` — Step 3E-C14-D, Step 3E-C14-C, Step 3E-C12, and prior closed steps
 - Step 3E-C13-A preflight report (conversation record, 2026-06-10)
 - Step 3E-C14-C7 checkpoint close (conversation record, 2026-06-10)
+- Step 3E-C14-D2E checkpoint close (conversation record, 2026-06-10)

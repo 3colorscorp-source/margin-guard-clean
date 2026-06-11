@@ -4,6 +4,137 @@ Authoritative closed-step records for reconnect and approval gates.
 
 ---
 
+## Step 3E-C14-D — Supervisor Device Field Writes + Owner Assignment UI
+
+**Status:** CLOSED — PRODUCTION PASS / FULL DEVICE UI WRITE SMOKE COMPLETE / TEMP DEVICES REVOKED  
+**Recorded:** 2026-06-10 (C14-D2E checkpoint close)
+
+### Final production state
+
+| Item | Value |
+|------|--------|
+| **Production commit** | `ca8d077` |
+| **Production URL** | https://marginguardsystem.netlify.app |
+| **Last deploy ID** | `6a2a3eadce5511b141d7327f` |
+| **GitHub origin/main** | Matches local HEAD at close |
+| **Working tree** | Clean |
+
+### Implementation chain
+
+1. **C14-D1** — owner assignment UI on `/supervisor` (owner-only panel; device mode hidden).
+2. **C14-D2B** — backend dual-auth write guards on report/expense/day-progress save + report/expense read refresh.
+3. **C14-D2C** — supervisor device portal allowlist + field control unblock (`supervisor-device-portal.js` only).
+4. **C14-D2D** — full supervisor device UI write smoke on Project Test A (temp device revoked).
+
+### Commits and deploys
+
+| Hash | Message | Deploy ID |
+|------|---------|-----------|
+| `cbfde63` | Step 3E-C14-D1 add owner supervisor assignment UI | `6a2a3555e261f0f4b65df6a7` (D1A) |
+| `a42a62a` | Step 3E-C14-D2B add supervisor device write backend guards | `6a2a3b449f76f2fadbbea711` (D2B1) |
+| `ca8d077` | Step 3E-C14-D2C allow supervisor device field controls | `6a2a3eadce5511b141d7327f` (D2D) |
+
+### C14-D1 — Owner assignment UI (D1A smoke)
+
+| Item | Result |
+|------|--------|
+| **Status** | PASS — owner UI visible / device hidden / no-mutation smoke |
+| **Panel** | “Assign Project to Supervisor” on `/supervisor` |
+| **Project dropdown** | Safe labels only |
+| **Supervisor dropdown** | Safe labels only |
+| **Confirmation** | Required before POST |
+| **Valid assign POST during D1A** | None |
+| **Existing “Assign to me”** | Unchanged |
+| **Device mode** | Assignment panel hidden; owner-assign script no-ops |
+
+### C14-D2B — Backend write dual-auth (D2B1 deploy)
+
+| Item | Result |
+|------|--------|
+| **Status** | PASS — backend deployed / API-only device smoke passed |
+| **Endpoints** | `save-project-report`, `save-project-expense`, `save-project-day-progress`, `get-project-reports`, `get-project-expenses` |
+| **Helpers** | `supervisor-device-field-dto.js`, `tenant-device-guard.js` (`assertAssignedSupervisorProject`, `loadTenantProjectForSupervisorAction`) |
+| **Device path** | Supervisor device only; assigned projects only; assignment guard before write/read; sanitized DTOs |
+| **Owner path** | Preserved unchanged |
+
+### C14-D2B1 — API-only device write smoke
+
+| Check | Result |
+|-------|--------|
+| Temp C7B device | Created → paired → revoked |
+| Scope | Project Test A only |
+| Device report save | 200 / `ok true` / DTO safe |
+| Device reports read | 200 / DTO safe |
+| Device expense save | 200 / `ok true` / DTO safe |
+| Device expenses read | 200 / DTO safe |
+| Device day-progress save | 200 / `ok true` / DTO safe (day 99) |
+| Protected project write guard (Soco bathroom) | 403 `supervisor_not_assigned` |
+| Protected project read guard | 403 `supervisor_not_assigned` |
+| Forbidden routes blocked | `get-project-financial-detail`, `send-quote-zapier`, `upsert-tenant-project`, `publish-public-quote`, `assign-project-to-supervisor`, `assign-supervisor-project`, `delete-project-report`, `delete-project-expense` — all 401/403 |
+| Active temp devices remaining | 0 |
+
+### C14-D2C — Portal allowlist (deployed with D2D)
+
+| Item | Detail |
+|------|--------|
+| **File** | `public/js/supervisor-device-portal.js` only |
+| **Allowed device routes** | `get-supervisor-projects`, `get-supervisor-operational-snapshot`, `save-project-report`, `save-project-expense`, `save-project-day-progress`, `get-project-reports`, `get-project-expenses` |
+| **Still blocked** | `get-project-day-progress`, `get-project-financial-detail`, `recalc-project-profit`, all `delete-project-*`, `assign-project-to-supervisor`, `assign-supervisor-project`, `list-tenant-memberships`, send/publish/upsert, invoice/payment/financial/quote/public-token patterns |
+| **Controls unblocked** | Labor/report, expense, day-progress, view expenses |
+| **Controls still blocked** | Print expense summary, delete buttons, assignment buttons, financial/admin/send/publish/upsert |
+
+### C14-D2D — Full device UI write smoke
+
+| Check | Result |
+|-------|--------|
+| Temp C7B device | Created → paired → revoked |
+| `/supervisor` device mode | Loaded; device notice updated |
+| Project Test A visible | Yes (1 project) |
+| Protected production projects visible | No |
+| Owner assignment panel | Hidden |
+| Labor/report UI smoke | PASS |
+| Expense UI smoke | PASS |
+| Day-progress UI smoke | Deferred — all calendar days already completed (D2B1 day 99 + prior state); backend day-progress passed in D2B1 |
+| Device read DTOs | Safe — reports, expenses, operational snapshot |
+| Forbidden fields leaked | No API leaks |
+| Protected project guard | PASS |
+| Forbidden route guards | PASS |
+| Post-revoke read/write | 401 blocked |
+| Active temp devices remaining | 0 |
+
+### Side effects and remaining smoke artifacts
+
+| Item | Value |
+|------|--------|
+| Project Test A assignment | Remains assigned to C7B |
+| C7B supervisor membership | Active |
+| C7B Auth user | Exists (linked) |
+| Smoke rows on Project Test A | D2B report, D2B expense, D2B day 99 progress, D2D UI report, D2D UI expense — **intentional; leave in place** |
+| Temp devices (D2B1, D2D) | Revoked; active temp devices: 0 |
+| Protected production projects | Unchanged — Soco bathroom, 625 2nd St RENOVATION, Freemont H. R304, Sharon Bathroom |
+| SQL | 0 |
+| New quotes / projects / invoices | 0 |
+| Successful send / upsert / publish | 0 |
+
+See `MARGIN_GUARD_SMOKE_CLEANUP_POLICY.md` §11 for artifact register.
+
+### Known notes
+
+- Device portal allowlist is client-side guard only; backend D2B guards are authoritative.
+- `get-project-day-progress` remains blocked in device portal; UI uses operational snapshot + `save-project-day-progress`.
+- `recalc-project-profit` remains blocked in device mode; saves succeed (non-fatal in `app.js`).
+- Expense UI stores concept + note as combined note field (e.g. `smoke` + D2D note).
+
+### Recommended next phase
+
+Do **not** start without a fresh reconnect report and explicit approval:
+
+- **Optional C14-D cleanup** — owner-approved cleanup of Project Test A smoke report/expense/day-progress rows
+- **C14-E** — production-ready supervisor onboarding / assignment polish
+- **C14-D hardening** — unassign endpoint / assignment history / UI refresh sync
+
+---
+
 ## Step 3E-C14-C — Supervisor Device Read Dual-Auth
 
 **Status:** CLOSED — PRODUCTION PASS / DEVICE READ SMOKE COMPLETE / TEMP DEVICE REVOKED  
@@ -107,14 +238,13 @@ These remain in production as documented test artifacts — see `MARGIN_GUARD_SM
 
 - `assign-supervisor-project` (owner “Assign to me”) unchanged; new owner-only `assign-project-to-supervisor` assigns via supervisor membership `auth_user_id`.
 - Five other supervisor-list projects remain owner-assigned; only Project Test A points at C7B.
-- Supervisor device shell UI (C14-B) blocks field writes client-side; backend write endpoints still owner-session-only until C14-D.
+- C14-D closed — supervisor device field writes + owner assignment UI are production-pass (see Step 3E-C14-D above).
 
 ### Approval gate (active)
 
 Do **not** start without a fresh reconnect report and explicit approval:
 
-- **C14-D** — supervisor device write path for reports / expenses / day-progress
-- **Minimal owner UI** — assign projects to supervisor memberships from owner context
+- C14-D optional cleanup / C14-E polish / C14-D hardening (see Step 3E-C14-D recommended next phase)
 - C13-C / C13-D artifact cleanup (2026-0099, 2026-0100) — deferred unless separately approved
 
 ---
