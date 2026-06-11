@@ -3,14 +3,18 @@
 
   const API = "/.netlify/functions";
   const SUPERVISOR_NOTICE =
-    "Supervisor Device Shell — read-only device access is not enabled yet. Project data unlocks in the next approved phase.";
+    "Supervisor Device Shell — read-only project list and operational snapshot are enabled. Field reports and expenses remain locked until the next approved phase.";
   const BLOCKED_FETCH_MSG =
-    "Supervisor device reads and writes are gated until backend dual-auth (C14-C/C14-E). No project API access in this phase.";
+    "Supervisor device endpoint blocked until approved. Read access is limited to project list and operational snapshot only.";
   const BLOCKED_CONTROL_MSG =
     "Field actions are disabled in supervisor device shell mode until a later approved phase.";
 
-  const BLOCKED_ENDPOINT_RES = [
-    /\/get-supervisor-/i,
+  const ALLOWED_DEVICE_READ_RES = [
+    /\/get-supervisor-projects(?:\?|$|\/)/i,
+    /\/get-supervisor-operational-snapshot(?:\?|$|\/)/i,
+  ];
+
+  const ALWAYS_BLOCKED_ENDPOINT_RES = [
     /\/save-project-/i,
     /\/assign-supervisor-project/i,
     /\/get-project-/i,
@@ -239,7 +243,13 @@
   }
 
   function isBlockedFetchUrl(url) {
-    return BLOCKED_ENDPOINT_RES.some((re) => re.test(url));
+    if (ALWAYS_BLOCKED_ENDPOINT_RES.some((re) => re.test(url))) {
+      return true;
+    }
+    if (/\/get-supervisor-/i.test(url)) {
+      return !ALLOWED_DEVICE_READ_RES.some((re) => re.test(url));
+    }
+    return false;
   }
 
   function blockedFetchResponse() {
@@ -283,22 +293,13 @@
       el.setAttribute("aria-disabled", "true");
       el.setAttribute("data-mg-supervisor-blocked", "1");
       el.title = BLOCKED_CONTROL_MSG;
+      if (id === "supAssignToMeBtn") {
+        el.setAttribute("hidden", "");
+      }
       if (id === "supOpExpenseCountCard") {
         el.setAttribute("tabindex", "-1");
       }
     });
-
-    const picker = document.getElementById("supProjectPicker");
-    if (picker) {
-      picker.disabled = true;
-      picker.setAttribute("aria-disabled", "true");
-    }
-
-    const calendarHost = document.getElementById("supLaborPlanBody");
-    if (calendarHost) {
-      calendarHost.style.pointerEvents = "none";
-      calendarHost.setAttribute("aria-disabled", "true");
-    }
   }
 
   function restoreDeviceShellUi() {
@@ -309,22 +310,13 @@
       el.removeAttribute("aria-disabled");
       el.removeAttribute("data-mg-supervisor-blocked");
       el.removeAttribute("title");
+      if (id === "supAssignToMeBtn") {
+        el.removeAttribute("hidden");
+      }
       if (id === "supOpExpenseCountCard") {
         el.removeAttribute("tabindex");
       }
     });
-
-    const picker = document.getElementById("supProjectPicker");
-    if (picker) {
-      picker.disabled = false;
-      picker.removeAttribute("aria-disabled");
-    }
-
-    const calendarHost = document.getElementById("supLaborPlanBody");
-    if (calendarHost) {
-      calendarHost.style.pointerEvents = "";
-      calendarHost.removeAttribute("aria-disabled");
-    }
   }
 
   function isBlockedControlTarget(target) {

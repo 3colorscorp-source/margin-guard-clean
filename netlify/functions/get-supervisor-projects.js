@@ -1,5 +1,4 @@
-const { readSessionFromEvent } = require("./_lib/session");
-const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { resolveOwnerOrSupervisorContext } = require("./_lib/tenant-device-guard");
 const { supabaseRequest, getSupabaseConfig } = require("./_lib/supabase-admin");
 
 /** tenant_projects.status — active work only (excludes draft/sent/cancelled paths). */
@@ -91,71 +90,136 @@ function mapRowToProject(row) {
   };
 }
 
+/** Supervisor device read-only DTO — no owner financial or quote linkage fields. */
+function mapRowToDeviceProject(row) {
+  if (!row || typeof row !== "object") return null;
+  const due =
+    row.due_date == null || row.due_date === ""
+      ? ""
+      : String(row.due_date).slice(0, 10);
+  return {
+    id: row.id,
+    projectName: row.project_name ?? "",
+    clientName: row.client_name ?? "",
+    status: row.status ?? "signed",
+    signedAt: row.signed_at ?? null,
+    dueDate: due,
+    estimatedDays: Number(row.estimated_days) || 0,
+    laborBudget: Number(row.labor_budget) || 0,
+    laborConsumedTotal: Number(row.labor_consumed_total) || 0,
+    unexpectedExpenseTotal: Number(row.unexpected_expense_total) || 0,
+    workers: Array.isArray(row.quoted_labor_plan) ? row.quoted_labor_plan : [],
+  };
+}
+
+function filterRowsAssignedToSupervisor(rows, authUserId) {
+  const uid = String(authUserId || "").trim();
+  if (!uid) return [];
+  return rows.filter(
+    (row) => row && String(row.supervisor_user_id || "").trim() === uid
+  );
+}
+
+async function loadSupervisorProjectList(tenantId) {
+  const tid = encodeURIComponent(tenantId);
+  const inList = PROJECT_STATUSES.map(encodeURIComponent).join(",");
+  const rows = await supabaseRequest(
+    `tenant_projects?tenant_id=eq.${tid}&status=in.(${inList})&select=*&order=signed_at.desc`
+  );
+  let list = Array.isArray(rows) ? rows : [];
+  const countAfterUrlStatusFilter = list.length;
+
+  list = list.filter((r) => r && PROJECT_SET.has(normStatus(r.status)));
+  const countAfterProjectStatusNorm = list.length;
+
+  const quoteIdsRaw = [
+    ...new Set(
+      list
+        .map((r) => (r && r.quote_id != null ? String(r.quote_id).trim() : ""))
+        .filter(Boolean)
+    ),
+  ];
+
+  const quoteOkById = Object.create(null);
+  const quoteStatusByKey = Object.create(null);
+  let qListTotal = 0;
+  if (quoteIdsRaw.length) {
+    for (let i = 0; i < quoteIdsRaw.length; i += QUOTE_ID_IN_CHUNK) {
+      const chunk = quoteIdsRaw.slice(i, i + QUOTE_ID_IN_CHUNK);
+      const qIn = chunk.map(encodeURIComponent).join(",");
+      const qRows = await supabaseRequest(
+        `quotes?id=in.(${qIn})&tenant_id=eq.${tid}&select=id,status`
+      );
+      const qList = Array.isArray(qRows) ? qRows : [];
+      qListTotal += qList.length;
+      for (const q of qList) {
+        if (!q || typeof q !== "object" || !q.id) continue;
+        const key = normQuoteIdKey(q.id);
+        const st = normStatus(q.status);
+        quoteStatusByKey[key] = q.status == null ? "" : String(q.status);
+        if (QUOTE_STATUSES_ALLOWED.has(st)) {
+          quoteOkById[key] = true;
+        }
+      }
+    }
+  }
+
+  const filtered = list.filter((row) => {
+    const qid = row && row.quote_id != null ? normQuoteIdKey(row.quote_id) : "";
+    if (!qid) return false;
+    return quoteOkById[qid] === true;
+  });
+  const countAfterQuoteAllowedFilter = filtered.length;
+
+  return {
+    list,
+    filtered,
+    quoteStatusByKey,
+    quoteOkById,
+    counts: {
+      after_url_status_in_filter: countAfterUrlStatusFilter,
+      after_project_status_normalized: countAfterProjectStatusNorm,
+      quote_ids_distinct: quoteIdsRaw.length,
+      quotes_rows_loaded: qListTotal,
+      after_quote_status_allowed_filter: countAfterQuoteAllowedFilter,
+    },
+  };
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "GET") {
       return json(405, { error: "Method not allowed" });
     }
 
-    const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
-      return json(401, { error: "Unauthorized" });
-    }
-
-    const tenant = await resolveTenantFromSession(session);
+    const ctx = await resolveOwnerOrSupervisorContext(event);
+    const tenant = ctx.tenant;
     if (!tenant?.id) {
       return json(404, { error: "Tenant not found" });
     }
 
-    const useDebug = event.queryStringParameters && event.queryStringParameters.debug === "1";
+    const isDevice = ctx.auth_mode === "device";
+    const useDebug =
+      !isDevice && event.queryStringParameters && event.queryStringParameters.debug === "1";
 
-    const tid = encodeURIComponent(tenant.id);
-    const inList = PROJECT_STATUSES.map(encodeURIComponent).join(",");
-    const rows = await supabaseRequest(
-      `tenant_projects?tenant_id=eq.${tid}&status=in.(${inList})&select=*&order=signed_at.desc`
-    );
-    let list = Array.isArray(rows) ? rows : [];
-    const countAfterUrlStatusFilter = list.length;
+    const { list, filtered, quoteStatusByKey, quoteOkById, counts } =
+      await loadSupervisorProjectList(tenant.id);
 
-    /** Case-insensitive project status (PostgREST in.() may not match mixed-case enums). */
-    list = list.filter((r) => r && PROJECT_SET.has(normStatus(r.status)));
-    const countAfterProjectStatusNorm = list.length;
-
-    const quoteIdsRaw = [...new Set(list.map((r) => (r && r.quote_id != null ? String(r.quote_id).trim() : "")).filter(Boolean))];
-
-    const quoteOkById = Object.create(null);
-    const quoteStatusByKey = Object.create(null);
-    let qListTotal = 0;
-    if (quoteIdsRaw.length) {
-      for (let i = 0; i < quoteIdsRaw.length; i += QUOTE_ID_IN_CHUNK) {
-        const chunk = quoteIdsRaw.slice(i, i + QUOTE_ID_IN_CHUNK);
-        const qIn = chunk.map(encodeURIComponent).join(",");
-        const qRows = await supabaseRequest(`quotes?id=in.(${qIn})&tenant_id=eq.${tid}&select=id,status`);
-        const qList = Array.isArray(qRows) ? qRows : [];
-        qListTotal += qList.length;
-        for (const q of qList) {
-          if (!q || typeof q !== "object" || !q.id) continue;
-          const key = normQuoteIdKey(q.id);
-          const st = normStatus(q.status);
-          quoteStatusByKey[key] = q.status == null ? "" : String(q.status);
-          if (QUOTE_STATUSES_ALLOWED.has(st)) {
-            quoteOkById[key] = true;
-          }
-        }
-      }
+    let rowsForMap = filtered;
+    if (isDevice) {
+      rowsForMap = filterRowsAssignedToSupervisor(
+        filtered,
+        ctx.membership?.auth_user_id
+      );
     }
 
-    const filtered = list.filter((row) => {
-      const qid = row && row.quote_id != null ? normQuoteIdKey(row.quote_id) : "";
-      if (!qid) return false;
-      return quoteOkById[qid] === true;
-    });
-    const countAfterQuoteAllowedFilter = filtered.length;
-
-    const projects = filtered.map(mapRowToProject).filter(Boolean);
+    const projects = isDevice
+      ? rowsForMap.map(mapRowToDeviceProject).filter(Boolean)
+      : rowsForMap.map(mapRowToProject).filter(Boolean);
     const countFinal = projects.length;
 
     if (useDebug) {
+      const tid = encodeURIComponent(tenant.id);
       let countAllTenantProjects = null;
       try {
         countAllTenantProjects = await countAllTenantProjectsForTenant(tid);
@@ -163,17 +227,13 @@ exports.handler = async (event) => {
         countAllTenantProjects = null;
       }
 
-      const counts = {
+      const diagCounts = {
         tenant_projects_total_for_tenant: countAllTenantProjects,
-        after_url_status_in_filter: countAfterUrlStatusFilter,
-        after_project_status_normalized: countAfterProjectStatusNorm,
-        quote_ids_distinct: quoteIdsRaw.length,
-        quotes_rows_loaded: qListTotal,
-        after_quote_status_allowed_filter: countAfterQuoteAllowedFilter,
+        ...counts,
         final_mapped_projects: countFinal,
       };
 
-      console.log("[get-supervisor-projects] diag counts", counts);
+      console.log("[get-supervisor-projects] diag counts", diagCounts);
 
       const sampleSource = list.slice(0, 25);
       const sample = sampleSource.map((row) => {
@@ -191,11 +251,18 @@ exports.handler = async (event) => {
         };
       });
 
-      return json(200, { ok: true, projects, counts, sample });
+      return json(200, { ok: true, projects, counts: diagCounts, sample });
     }
 
     return json(200, { ok: true, projects });
   } catch (err) {
+    if (err.isGuardError) {
+      return json(err.statusCode || 403, {
+        ok: false,
+        error: err.message,
+        code: err.code || "guard_error",
+      });
+    }
     return json(500, { error: err.message || "Unexpected error" });
   }
 };

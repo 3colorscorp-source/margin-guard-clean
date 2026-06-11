@@ -244,6 +244,37 @@ async function resolveOwnerOrSellerContext(event) {
   };
 }
 
+async function resolveOwnerOrSupervisorContext(event) {
+  const session = readSessionFromEvent(event);
+  if (session?.e && session?.c) {
+    const tenant = await resolveTenantFromSession(session);
+    if (tenant?.id) {
+      return {
+        auth_mode: "owner",
+        authMode: "owner",
+        tenant,
+        session,
+        membership: null,
+        device: null,
+        device_session: null,
+        portal_type: null,
+      };
+    }
+    throwGuard(404, "Tenant not found", "tenant_not_found");
+  }
+
+  const deviceCtx = await requireSupervisorDevice(event);
+  return {
+    auth_mode: "device",
+    authMode: "device",
+    portal_type: PORTAL_ROLES.supervisor,
+    tenant: deviceCtx.tenant,
+    membership: deviceCtx.membership,
+    device: deviceCtx.device,
+    device_session: deviceCtx.deviceSession,
+  };
+}
+
 async function requireSupervisorDevice(event) {
   return requireDeviceSession(event, { portals: [PORTAL_ROLES.supervisor] });
 }
@@ -330,5 +361,6 @@ module.exports = {
   requireSupervisorDevice,
   resolveDeviceSession,
   resolveOwnerOrSellerContext,
+  resolveOwnerOrSupervisorContext,
   throwGuard,
 };

@@ -1,5 +1,7 @@
-const { readSessionFromEvent } = require("./_lib/session");
-const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const {
+  resolveOwnerOrSupervisorContext,
+  assertAssignedSupervisorProject,
+} = require("./_lib/tenant-device-guard");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const {
   computeProjectOperationalSnapshot,
@@ -208,15 +210,13 @@ exports.handler = async (event) => {
       return json(405, { error: "Method not allowed" });
     }
 
-    const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
-      return json(401, { error: "Unauthorized" });
-    }
-
-    const tenant = await resolveTenantFromSession(session);
+    const ctx = await resolveOwnerOrSupervisorContext(event);
+    const tenant = ctx.tenant;
     if (!tenant?.id) {
       return json(404, { error: "Tenant not found" });
     }
+
+    const isDevice = ctx.auth_mode === "device";
 
     const qs = event.queryStringParameters || {};
     const projectId = String(qs.project_id || "").trim();
@@ -234,6 +234,8 @@ exports.handler = async (event) => {
     if (!project?.id) {
       return json(403, { error: "Project not found for this tenant" });
     }
+
+    assertAssignedSupervisorProject(ctx, project);
 
     const [reportRows, expenseRows, bonusPct, opRow, migrationBaseline, dayProgressRows] =
       await Promise.all([
@@ -316,6 +318,9 @@ exports.handler = async (event) => {
         operational_snapshot,
         dayProgressRows
       );
+      if (isDevice) {
+        operational_snapshot = pickAllowlistedOperational(operational_snapshot);
+      }
     }
 
     let schedule;
@@ -338,16 +343,20 @@ exports.handler = async (event) => {
     let migrated_field_context = null;
     if (show_migrated_execution) {
       const expenseCount = Array.isArray(expenseRows) ? expenseRows.length : 0;
-      migrated_field_context = {
-        expense_count: expenseCount,
-        invoice_status_label: await loadSupervisorInvoiceStatusLabel(
-          tenant.id,
-          project.id
-        ),
-      };
+      if (isDevice) {
+        migrated_field_context = { expense_count: expenseCount };
+      } else {
+        migrated_field_context = {
+          expense_count: expenseCount,
+          invoice_status_label: await loadSupervisorInvoiceStatusLabel(
+            tenant.id,
+            project.id
+          ),
+        };
+      }
     }
 
-    return json(200, {
+    const payload = {
       ok: true,
       project_id: project.id,
       operational_snapshot,
@@ -359,8 +368,17 @@ exports.handler = async (event) => {
       has_migrated_baseline,
       show_migrated_execution,
       migrated_field_context,
-    });
+    };
+
+    return json(200, payload);
   } catch (err) {
+    if (err.isGuardError) {
+      return json(err.statusCode || 403, {
+        ok: false,
+        error: err.message,
+        code: err.code || "guard_error",
+      });
+    }
     return json(500, { error: err.message || "Unexpected error" });
   }
 };
