@@ -90,6 +90,49 @@
     }
   }
 
+  function hasAuthCallbackHash() {
+    const hash = window.location.hash || "";
+    return /access_token=|refresh_token=|type=invite|type=recovery|type=magiclink/i.test(hash);
+  }
+
+  async function waitForAuthSession(client) {
+    const initial = await client.auth.getSession();
+    if (initial.data?.session?.access_token) {
+      return initial.data.session;
+    }
+    if (!hasAuthCallbackHash()) {
+      return null;
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (session) => {
+        if (settled) return;
+        settled = true;
+        subscription.unsubscribe();
+        clearTimeout(timer);
+        resolve(session || null);
+      };
+
+      const {
+        data: { subscription },
+      } = client.auth.onAuthStateChange((event, session) => {
+        if (
+          event === "INITIAL_SESSION" ||
+          event === "SIGNED_IN" ||
+          event === "PASSWORD_RECOVERY"
+        ) {
+          finish(session);
+        }
+      });
+
+      const timer = setTimeout(async () => {
+        const { data } = await client.auth.getSession();
+        finish(data?.session || null);
+      }, 2500);
+    });
+  }
+
   function mapLinkError(code) {
     const value = String(code || "").trim();
     if (value === "membership_not_found") {
@@ -108,7 +151,7 @@
       return "This membership is already linked to a different login.";
     }
     if (value === "invalid_token") {
-      return "Your login session expired. Open the invite link again from your email.";
+      return "Your login session expired. Open the login link again from your email.";
     }
     if (value === "link_failed") {
       return "Could not link your login. Try again or contact your company owner.";
@@ -154,15 +197,9 @@
       },
     });
 
-    const { data, error } = await supabase.auth.getSession();
-    if (error) {
-      setStatus("Open this page from your supervisor invite email.", "info");
-      showForm(false);
-      return false;
-    }
-
-    if (!data?.session?.access_token) {
-      setStatus("Open this page from your supervisor invite email.", "info");
+    const session = await waitForAuthSession(supabase);
+    if (!session?.access_token) {
+      setStatus("Open this page from your supervisor login email.", "info");
       showForm(false);
       return false;
     }
@@ -197,13 +234,13 @@
     try {
       const { error: passwordError } = await supabase.auth.updateUser({ password });
       if (passwordError) {
-        setStatus("Could not set password. Try again or open the invite link again.", "err");
+        setStatus("Could not set password. Try again or open the login link again.", "err");
         return;
       }
 
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !sessionData?.session?.access_token) {
-        setStatus("Password saved but session was lost. Open the invite link again.", "err");
+        setStatus("Password saved but session was lost. Open the login link again.", "err");
         return;
       }
 

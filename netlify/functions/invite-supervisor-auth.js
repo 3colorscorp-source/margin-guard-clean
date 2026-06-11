@@ -1,5 +1,6 @@
 /**
  * Step 3E-C14-E2B — Owner-only: send Supabase Auth invite for an active supervisor membership.
+ * Step 3E-C14-E2G-D1C — Recovery resend when Auth user exists but profile is unlinked.
  * Input: membership_id only (tenant-scoped). No client email or redirect override.
  */
 
@@ -13,6 +14,7 @@ const {
   inviteAuthUserByEmail,
   isValidInviteEmail,
   normEmail,
+  recoverAuthUserByEmail,
 } = require("./_lib/supervisor-auth-invite");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { requireOwnerMembership } = require("./_lib/tenant-device-guard");
@@ -116,10 +118,15 @@ exports.handler = async (event) => {
       return fail(502, "auth_lookup_failed");
     }
     if (authLookup.status === "found") {
-      safeLog("auth_user_exists_link_pending", { role, status });
+      const recoveryResult = await recoverAuthUserByEmail(email);
+      if (!recoveryResult.ok) {
+        safeLog("recovery_failed", { role, status });
+        return fail(502, "recovery_failed");
+      }
+      safeLog("recovery_sent", { role, status });
       return success(
-        "auth_user_exists_link_pending",
-        "A login account exists for this supervisor. They must sign in once to complete linking."
+        "recovery_sent",
+        "A login setup link was sent. Ask the supervisor to check their email and complete password setup."
       );
     }
 

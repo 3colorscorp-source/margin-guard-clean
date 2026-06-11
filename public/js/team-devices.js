@@ -163,6 +163,9 @@
     if (code === "invite_failed") {
       return "Could not send login invite. Try again later.";
     }
+    if (code === "recovery_failed") {
+      return "Could not send login link. Try again later.";
+    }
     if (
       code === "no_owner_session" ||
       code === "owner_membership_required" ||
@@ -357,6 +360,11 @@
       if (status === "invite_sent") {
         showNotice(
           "Login invite sent. Ask the supervisor to check their email.",
+          "ok"
+        );
+      } else if (status === "recovery_sent") {
+        showNotice(
+          "Login link sent. Ask the supervisor to check their email and complete password setup.",
           "ok"
         );
       } else if (status === "already_linked") {
