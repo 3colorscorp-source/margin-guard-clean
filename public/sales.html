@@ -8,6 +8,15 @@
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
 <body data-sales-dual-auth="true" data-requires-auth="true">
+  <script>
+    (function () {
+      var path = String(window.location.pathname || '');
+      var params = new URLSearchParams(window.location.search || '');
+      if (/\/seller(?:\.html)?\/?$/i.test(path) || params.get('portal') === 'seller') {
+        document.documentElement.dataset.salesPortal = 'seller';
+      }
+    })();
+  </script>
   <div class="topbar">
     <div class="topbar-inner">
       <div class="brand">
@@ -22,7 +31,7 @@
         <a class="btn" href="/estimates-invoices" data-owner-nav>Invoices Hub</a>
         <a class="btn" href="/owner" data-owner-nav>Dueno</a>
         <a class="btn" href="/business-settings" data-owner-nav>Business Settings</a>
-        <a class="btn active" href="/sales">Vendedor</a>
+        <a class="btn active" href="/sales" id="navSalesVendor">Vendedor</a>
         <a class="btn" href="/supervisor" data-owner-nav>Supervisor</a>
         <a class="btn" href="/project-control" data-owner-nav>Project Control</a>
         <a class="btn" href="/sales-admin" data-owner-nav>Sales Admin</a>
@@ -465,7 +474,94 @@
       const SETTINGS_KEY = 'mg_settings_v2';
       /** Optional Seller draft mirrors (not mg_sales_v2); cleared after successful send to avoid rehydration. */
       const SELLER_STALE_QUOTE_STORAGE_KEYS = ['mg_sales_draft', 'mg_sales_quote_draft', 'mg_current_sales_quote'];
+      const SELLER_DRAFT_STALE_MSG =
+        'Start a new seller quote and recalculate before creating the public quote link.';
       const DEFAULT_WORKERS = [{ name: 'Worker 1', type: 'installer', days: 0, rate: '' }];
+
+      function createSellerDraftId() {
+        return (
+          'sd_' +
+          Date.now().toString(36) +
+          '_' +
+          Math.random().toString(36).slice(2, 10)
+        );
+      }
+
+      function isSellerForcedPortalRoute() {
+        return document.documentElement.dataset.salesPortal === 'seller';
+      }
+
+      function sellerDraftFingerprint(state) {
+        return JSON.stringify({
+          pricing: pricingFingerprint(state),
+          projectName: String(state.projectName || '').trim(),
+          clientName: String(state.clientName || '').trim(),
+          customerEmail: String(state.customerEmail || '').trim(),
+          location: String(state.location || '').trim()
+        });
+      }
+
+      function validateSellerDraftForAction(state, action) {
+        if (!isSellerDeviceSalesMode()) {
+          return { ok: true };
+        }
+
+        const draftId = String(state._sellerDraftId || '').trim();
+        const publishedDraftId = String(state._sellerPublishedDraftId || '').trim();
+        const quoteId = String(state.quoteId || '').trim();
+        const publicUrl = String(state.publicQuoteUrl || '').trim();
+        const publishFingerprint = String(state._sellerPublishFingerprint || '').trim();
+        const currentFingerprint = sellerDraftFingerprint(state);
+
+        if (!draftId) {
+          return { ok: false, error: SELLER_DRAFT_STALE_MSG };
+        }
+
+        const workers = Array.isArray(state.workers) ? state.workers : [];
+        let workerDays = 0;
+        for (let i = 0; i < workers.length; i++) {
+          workerDays += Math.max(0, Number(workers[i] && workers[i].days != null ? workers[i].days : 0));
+        }
+
+        if (action === 'publish') {
+          if (quoteId && publicUrl && publishedDraftId === draftId) {
+            return {
+              ok: true,
+              alreadyPublished: true,
+              quote_id: quoteId,
+              public_url: publicUrl,
+              quote_number_display: String(state.estimateNumber || '').trim()
+            };
+          }
+          if (quoteId || publicUrl) {
+            if (publishedDraftId !== draftId) {
+              return { ok: false, error: SELLER_DRAFT_STALE_MSG };
+            }
+          }
+          if (!workers.length || workerDays <= 0) {
+            return { ok: false, error: 'Add labor lines before creating a public quote link.' };
+          }
+          return { ok: true };
+        }
+
+        if (action === 'firmar') {
+          if (!quoteId || !publicUrl) {
+            return { ok: false, error: 'Create a public quote link before using Firmar.' };
+          }
+          if (publishedDraftId !== draftId) {
+            return { ok: false, error: SELLER_DRAFT_STALE_MSG };
+          }
+          if (publishFingerprint && publishFingerprint !== currentFingerprint) {
+            return { ok: false, error: SELLER_DRAFT_STALE_MSG };
+          }
+          if (!workers.length || workerDays <= 0) {
+            return { ok: false, error: SELLER_DRAFT_STALE_MSG };
+          }
+          return { ok: true };
+        }
+
+        return { ok: true };
+      }
 
       function readJson(key, fallback) {
         try {
@@ -1328,6 +1424,7 @@
           }
         }
       }
+      window.refreshSellerFromStandalone = refreshSellerFromStandalone;
 
       /** Same behavior as #btnClearSalesWorkers (Limpiar labor): DEFAULT_WORKERS clone + persist + refresh. */
       function clearSalesWorkersToDefault() {
@@ -2552,7 +2649,10 @@
           operational_estimated_days_override: '',
           operational_estimated_hours_override: '',
           labor_auto_sync_from_plan: true,
-          labor_manual_override: false
+          labor_manual_override: false,
+          _sellerDraftId: createSellerDraftId(),
+          _sellerPublishedDraftId: '',
+          _sellerPublishFingerprint: ''
         };
 
         _securePricingCache = { fingerprint: null, pricing: null };
@@ -2637,8 +2737,32 @@
 
         refreshSellerFromStandalone();
 
+        if (
+          window.MGSalesDevicePortal &&
+          typeof window.MGSalesDevicePortal.renderPublishResult === 'function'
+        ) {
+          window.MGSalesDevicePortal.renderPublishResult({});
+        }
+        if (
+          window.MGSalesDevicePortal &&
+          typeof window.MGSalesDevicePortal.rebindSellerFirmarControls === 'function'
+        ) {
+          window.MGSalesDevicePortal.rebindSellerFirmarControls();
+        }
+
         console.log('[Sales New Quote] reset complete');
       }
+
+      function initializeSellerPortalQuoteState() {
+        if (!isSellerForcedPortalRoute()) return;
+        try {
+          resetSalesQuoteStateForNewQuote();
+        } catch (err) {
+          console.error('[Seller Portal] clean quote init failed', err);
+        }
+      }
+
+      window.initializeSellerPortalQuoteState = initializeSellerPortalQuoteState;
 
       function performStandaloneNewQuoteReset() {
         window.__mgForceCloseSalesNewQuoteAfterRefresh = true;
@@ -2748,6 +2872,12 @@
               return;
             }
             if (sellerDevice) {
+              const draftCheck = validateSellerDraftForAction(state, 'firmar');
+              if (!draftCheck.ok) {
+                showFirmarSignedStatus(signedStatus, draftCheck.error, 'error');
+                window.alert(draftCheck.error);
+                return;
+              }
               const published =
                 typeof getSalesPublishedQuoteSnapshot === 'function'
                   ? getSalesPublishedQuoteSnapshot()
@@ -4321,15 +4451,17 @@ async function openSellerSendModal(event) {
     }
 
     const state = loadSalesState();
-    const existingQuoteId = String(state.quoteId || '').trim();
-    const existingPublicUrl = String(state.publicQuoteUrl || '').trim();
-    if (existingQuoteId && existingPublicUrl) {
+    const draftCheck = validateSellerDraftForAction(state, 'publish');
+    if (!draftCheck.ok) {
+      return { ok: false, error: draftCheck.error };
+    }
+    if (draftCheck.alreadyPublished) {
       return {
         ok: true,
         alreadyPublished: true,
-        quote_id: existingQuoteId,
-        public_url: existingPublicUrl,
-        quote_number_display: String(state.estimateNumber || '').trim(),
+        quote_id: draftCheck.quote_id,
+        public_url: draftCheck.public_url,
+        quote_number_display: draftCheck.quote_number_display || '',
         message: 'Quote created. Owner/full send step is still disabled.'
       };
     }
@@ -4438,6 +4570,8 @@ async function openSellerSendModal(event) {
       stateFresh.publicQuoteUrl = publishData.public_url;
       stateFresh.estimateNumber =
         publishData.quote_number_display || stateFresh.estimateNumber || '';
+      stateFresh._sellerPublishedDraftId = String(stateFresh._sellerDraftId || '').trim();
+      stateFresh._sellerPublishFingerprint = sellerDraftFingerprint(stateFresh);
       saveSalesState(stateFresh);
 
       if (

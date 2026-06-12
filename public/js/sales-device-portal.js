@@ -8,6 +8,8 @@
     "Quote created. Firmar is now available. Full send, email, and PDF remain disabled.";
   const SELLER_FIRMAR_GATE_MSG =
     "Create a public quote link before using Firmar.";
+  const SELLER_PORTAL_BLOCKED_MSG =
+    "Seller portal requires a clean paired seller device session. Open this link from the assigned seller browser/profile.";
   const BLOCKED_ENDPOINT_RE = /\/send-quote-zapier/i;
   const BLOCKED_CONTROL_IDS = new Set([
     "btnSendQuote",
@@ -130,6 +132,57 @@
       }
     }
     return data;
+  }
+
+  function isForcedSellerPortal() {
+    return document.documentElement.dataset.salesPortal === "seller";
+  }
+
+  function applySellerPortalBlockedState() {
+    sellerModeActive = false;
+    window.MG_SALES_PORTAL_MODE = "seller-blocked";
+    document.documentElement.dataset.authMode = "blocked";
+    document.documentElement.dataset.portalType = "seller";
+
+    hideOwnerChrome();
+    removeSellerPublishUi();
+    removeDeviceLogoutButton();
+
+    const plan = document.getElementById("planStatus");
+    if (plan) plan.textContent = "Seller portal · Session required";
+
+    const email = document.getElementById("accountEmail");
+    if (email) email.textContent = "Use a paired seller device profile";
+
+    let notice = document.getElementById("mgSellerPortalBlockedNotice");
+    if (!notice) {
+      notice = document.createElement("div");
+      notice.id = "mgSellerPortalBlockedNotice";
+      notice.className = "notice err";
+      notice.setAttribute("role", "alert");
+      const container = document.querySelector(".container");
+      if (container) {
+        container.insertBefore(notice, container.firstChild);
+      } else {
+        document.body.insertBefore(notice, document.body.firstChild);
+      }
+    }
+    notice.textContent = SELLER_PORTAL_BLOCKED_MSG;
+    notice.hidden = false;
+    notice.style.display = "";
+
+    document.querySelectorAll(".container .grid, .container > .card").forEach((el) => {
+      el.setAttribute("hidden", "");
+      el.setAttribute("aria-hidden", "true");
+    });
+
+    const navSales = document.getElementById("navSalesVendor");
+    if (navSales) {
+      navSales.href = "/seller";
+      navSales.classList.add("active");
+    }
+
+    document.body.classList.add("auth-ready", "mg-seller-portal-blocked");
   }
 
   function applyOwnerMode(ownerData) {
@@ -556,6 +609,12 @@
     const plan = document.getElementById("planStatus");
     if (plan) plan.textContent = "Seller device · Vendedor";
 
+    const navSales = document.getElementById("navSalesVendor");
+    if (navSales && isForcedSellerPortal()) {
+      navSales.href = "/seller";
+      navSales.classList.add("active");
+    }
+
     hideOwnerChrome();
     ensureSellerNotice();
     ensureSellerPublishUi();
@@ -566,6 +625,13 @@
     installFirmarGateGuard();
     installClickGuard();
     installFetchGuard();
+
+    if (
+      isForcedSellerPortal() &&
+      typeof window.initializeSellerPortalQuoteState === "function"
+    ) {
+      window.initializeSellerPortalQuoteState();
+    }
 
     // Inline sales handlers clone Firmar/send buttons on DOMContentLoaded; re-apply after they run.
     requestAnimationFrame(() => {
@@ -584,6 +650,28 @@
   }
 
   async function initSalesPortalAuth() {
+    const forcedSeller = isForcedSellerPortal();
+
+    if (forcedSeller) {
+      const ownerData = await tryOwnerAuth();
+      if (ownerData) {
+        applySellerPortalBlockedState();
+        return;
+      }
+
+      if (!window.MGDevicePortal?.init) {
+        window.location.href = "/portal-pair?portal=seller&return=/seller";
+        return;
+      }
+
+      const auth = await window.MGDevicePortal.init({ expectedPortal: "seller" });
+      if (!auth) {
+        return;
+      }
+      applySellerMode(auth);
+      return;
+    }
+
     const ownerData = await tryOwnerAuth();
     if (ownerData) {
       applyOwnerMode(ownerData);
@@ -621,6 +709,7 @@
   window.MGSalesDevicePortal = {
     boot,
     isSellerMode: () => sellerModeActive,
+    isForcedSellerPortal,
     renderPublishResult: renderSellerPublishResult,
     rebindSellerFirmarControls,
     syncSellerFirmarButtonState,
