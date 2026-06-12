@@ -365,7 +365,21 @@
     }
 
     syncSellerPublishButtonState(btn);
+    rebindSellerFirmarControls();
+  }
+
+  function rebindSellerFirmarControls() {
+    if (!sellerModeActive) return;
     syncSellerFirmarButtonState();
+    installFirmarGateGuard();
+    requestAnimationFrame(() => {
+      syncSellerFirmarButtonState();
+      installFirmarGateGuard();
+    });
+    setTimeout(() => {
+      syncSellerFirmarButtonState();
+      installFirmarGateGuard();
+    }, 0);
   }
 
   async function handleSellerPublishClick() {
@@ -413,12 +427,12 @@
           "</p>";
       }
       syncSellerPublishButtonState(btn);
-      syncSellerFirmarButtonState();
+      rebindSellerFirmarControls();
     } finally {
       sellerPublishUiBusy = false;
       if (btn) btn.removeAttribute("aria-busy");
       syncSellerPublishButtonState(btn);
-      syncSellerFirmarButtonState();
+      rebindSellerFirmarControls();
     }
   }
 
@@ -513,11 +527,13 @@
           typeof input === "string" ? input : input && input.url ? input.url : ""
         );
         if (BLOCKED_ENDPOINT_RE.test(url)) {
+          // Client-side guard mirrors backend send-quote-zapier hard-deny code.
           return Promise.resolve(
             new Response(
               JSON.stringify({
-                error: "Blocked in seller device mode",
-                code: "seller_device_blocked",
+                ok: false,
+                error: "Quote email send is not available on seller devices.",
+                code: "seller_device_send_blocked",
               }),
               {
                 status: 403,
@@ -554,12 +570,10 @@
     // Inline sales handlers clone Firmar/send buttons on DOMContentLoaded; re-apply after they run.
     requestAnimationFrame(() => {
       disableBlockedControls();
-      syncSellerFirmarButtonState();
-      installFirmarGateGuard();
+      rebindSellerFirmarControls();
       setTimeout(() => {
         disableBlockedControls();
-        syncSellerFirmarButtonState();
-        installFirmarGateGuard();
+        rebindSellerFirmarControls();
       }, 0);
     });
 
@@ -608,5 +622,7 @@
     boot,
     isSellerMode: () => sellerModeActive,
     renderPublishResult: renderSellerPublishResult,
+    rebindSellerFirmarControls,
+    syncSellerFirmarButtonState,
   };
 })();

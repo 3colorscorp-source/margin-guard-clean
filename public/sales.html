@@ -2666,6 +2666,53 @@
 
       window.performStandaloneNewQuoteReset = performStandaloneNewQuoteReset;
 
+      function isSellerDeviceSalesMode() {
+        return (
+          document.documentElement.dataset.authMode === 'device' ||
+          (window.MGSalesDevicePortal &&
+            typeof window.MGSalesDevicePortal.isSellerMode === 'function' &&
+            window.MGSalesDevicePortal.isSellerMode())
+        );
+      }
+
+      function showFirmarSignedStatus(el, message, kind) {
+        if (!el) return;
+        el.style.display = 'block';
+        var tone = kind === 'error' ? ' err' : kind === 'success' ? ' ok' : '';
+        el.className = 'notice sales-signed-status' + tone;
+        el.textContent = String(message || '').trim();
+      }
+
+      function safeUpsertFirmarErrorMessage(data, status) {
+        var code = data && data.code ? String(data.code).trim() : '';
+        var msg = data && (data.error || data.message) ? String(data.error || data.message).trim() : '';
+        if (code && msg) return msg + ' (' + code + ')';
+        if (msg) return msg;
+        if (code) return 'Unable to sign project (' + code + ').';
+        return 'Unable to sign project (HTTP ' + status + ').';
+      }
+
+      function renderFirmarSuccessUi(state, startDate, finishDate, signedStatus) {
+        showFirmarSignedStatus(
+          signedStatus,
+          'Project signed and ready for Supervisor tracking.',
+          'success'
+        );
+        const signedProject = document.getElementById('salesSignedProject');
+        const signedMeta = document.getElementById('salesSignedMeta');
+        const signedBadge = document.getElementById('salesSignedBadge');
+        if (signedProject) signedProject.textContent = state.signedProjectName;
+        if (signedMeta) {
+          signedMeta.textContent =
+            'Client: ' + state.signedClientName + ' | Start: ' + startDate + ' | Target finish: ' + finishDate;
+        }
+        if (signedBadge) {
+          signedBadge.textContent = 'Proyecto firmado';
+          signedBadge.className = 'badge green';
+        }
+        renderStandaloneSellerPanel();
+      }
+
       function bindStandaloneSellerActions() {
         const newQuoteBtn = document.getElementById('btnNewSalesQuote');
         const markSoldBtn = document.getElementById('btnMarkSold');
@@ -2691,12 +2738,33 @@
           cleanMarkSoldBtn.addEventListener('click', function (event) {
             event.preventDefault();
             event.stopImmediatePropagation();
+            const sellerDevice = isSellerDeviceSalesMode();
             const state = loadSalesState();
             const settings = loadSettings();
             const metrics = buildSalesUIMetrics(state, settings);
             if (metrics.marginBlocked) {
+              showFirmarSignedStatus(signedStatus, 'Price too low to sign this project.', 'error');
               window.alert('Price too low');
               return;
+            }
+            if (sellerDevice) {
+              const published =
+                typeof getSalesPublishedQuoteSnapshot === 'function'
+                  ? getSalesPublishedQuoteSnapshot()
+                  : null;
+              if (
+                !published ||
+                !String(published.quote_id || '').trim() ||
+                !String(published.public_url || '').trim()
+              ) {
+                showFirmarSignedStatus(
+                  signedStatus,
+                  'Create a public quote link before using Firmar.',
+                  'error'
+                );
+                window.alert('Create a public quote link before using Firmar.');
+                return;
+              }
             }
             const cap = window.MarginGuardSalesCapacity;
             const startInput = document.getElementById('salesStartDate');
@@ -2704,6 +2772,11 @@
               ? cap.normDate(startInput && startInput.value ? startInput.value : state.startDate || '')
               : String(startInput && startInput.value ? startInput.value : state.startDate || '').trim().slice(0, 10);
             if (!startDate) {
+              showFirmarSignedStatus(
+                signedStatus,
+                'Choose a start date before marking the project sold.',
+                'error'
+              );
               window.alert('Choose a start date before marking the project sold.');
               return;
             }
@@ -2738,111 +2811,147 @@
               state.signedProjectName = state.projectName || document.getElementById('salesProjectName')?.value || 'Project';
               state.signedClientName = state.clientName || document.getElementById('salesClientName')?.value || 'Client';
               saveSalesState(state);
-              if (state.quoteId && String(state.quoteId).trim()) {
-                const settings = loadSettings();
-                const metrics = buildSalesUIMetrics(state, settings);
-                const laborMetrics = calculateStandaloneSalesMetrics(state, settings);
-                (function () {
-                  var internalCost = Number(laborMetrics.beforeProfit || 0) + Number(laborMetrics.reserve || 0);
-                  var estProfit = Number(metrics.offered || 0) - internalCost;
-                  var estMargin = Number(metrics.offered || 0) > 0 ? estProfit / Number(metrics.offered) : 0;
-                  var opApi = getOperationalPlanApi();
-                  var hpd = opApi ? opApi.getHoursPerDay(settings) : Number(settings.hoursPerDay || 8);
-                  var daysOv = typeof readOperationalDaysOverride === 'function' ? readOperationalDaysOverride(state) : null;
-                  var hoursOv = typeof readOperationalHoursOverride === 'function' ? readOperationalHoursOverride(state) : null;
-                  var normalizedOperationalPlan = opApi
-                    ? opApi.normalizeOperationalPlan(state.operational_plan || [], daysOv, hpd)
-                    : (state.operational_plan || []);
-                  return fetch('/.netlify/functions/upsert-tenant-project', {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      quote_id: String(state.quoteId).trim(),
-                      project_name: state.projectName || document.getElementById('salesProjectName')?.value || '',
-                      client_name: state.clientName || document.getElementById('salesClientName')?.value || '',
-                      client_email: state.customerEmail || document.getElementById('salesCustomerEmail')?.value || '',
-                      status: 'signed',
-                      start_date: startDate,
-                      signed_at: startDate + 'T12:00:00.000Z',
-                      deposit_paid: false,
-                      estimated_days: signedEstimatedDays,
-                      labor_budget: Number(laborMetrics.laborCost) || 0,
-                      sale_price: metrics.offered,
-                      recommended_price: metrics.recommended,
-                      minimum_price: metrics.minimum,
-                      due_date: finishDate,
-                      notes: state.notes || state.messageToClient || '',
-                      hours_per_day: hpd,
-                      estimated_labor_cost: Number(laborMetrics.laborCost) || 0,
-                      estimated_material_cost: 0,
-                      estimated_profit: estProfit,
-                      estimated_profit_margin: estMargin,
-                      workers: state.workers,
-                      operational_plan: normalizedOperationalPlan,
-                      operational_estimated_days_override: daysOv != null ? daysOv : '',
-                      operational_estimated_hours_override: hoursOv != null ? hoursOv : ''
-                    })
+
+              const quoteId = state.quoteId && String(state.quoteId).trim();
+              if (!quoteId) {
+                if (sellerDevice) {
+                  showFirmarSignedStatus(
+                    signedStatus,
+                    'Create a public quote link before using Firmar.',
+                    'error'
+                  );
+                  window.alert('Create a public quote link before using Firmar.');
+                  return;
+                }
+                renderFirmarSuccessUi(state, startDate, finishDate, signedStatus);
+                return;
+              }
+
+              function runFirmarUpsert(onSuccess, onFailure) {
+                const settingsForUpsert = loadSettings();
+                const metricsForUpsert = buildSalesUIMetrics(state, settingsForUpsert);
+                const laborMetrics = calculateStandaloneSalesMetrics(state, settingsForUpsert);
+                var internalCost = Number(laborMetrics.beforeProfit || 0) + Number(laborMetrics.reserve || 0);
+                var estProfit = Number(metricsForUpsert.offered || 0) - internalCost;
+                var estMargin =
+                  Number(metricsForUpsert.offered || 0) > 0
+                    ? estProfit / Number(metricsForUpsert.offered)
+                    : 0;
+                var opApi = getOperationalPlanApi();
+                var hpd = opApi ? opApi.getHoursPerDay(settingsForUpsert) : Number(settingsForUpsert.hoursPerDay || 8);
+                var daysOv =
+                  typeof readOperationalDaysOverride === 'function'
+                    ? readOperationalDaysOverride(state)
+                    : null;
+                var hoursOv =
+                  typeof readOperationalHoursOverride === 'function'
+                    ? readOperationalHoursOverride(state)
+                    : null;
+                var normalizedOperationalPlan = opApi
+                  ? opApi.normalizeOperationalPlan(state.operational_plan || [], daysOv, hpd)
+                  : state.operational_plan || [];
+
+                return fetch('/.netlify/functions/upsert-tenant-project', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    quote_id: quoteId,
+                    project_name: state.projectName || document.getElementById('salesProjectName')?.value || '',
+                    client_name: state.clientName || document.getElementById('salesClientName')?.value || '',
+                    client_email: state.customerEmail || document.getElementById('salesCustomerEmail')?.value || '',
+                    status: 'signed',
+                    start_date: startDate,
+                    signed_at: startDate + 'T12:00:00.000Z',
+                    deposit_paid: false,
+                    estimated_days: signedEstimatedDays,
+                    labor_budget: Number(laborMetrics.laborCost) || 0,
+                    sale_price: metricsForUpsert.offered,
+                    recommended_price: metricsForUpsert.recommended,
+                    minimum_price: metricsForUpsert.minimum,
+                    due_date: finishDate,
+                    notes: state.notes || state.messageToClient || '',
+                    hours_per_day: hpd,
+                    estimated_labor_cost: Number(laborMetrics.laborCost) || 0,
+                    estimated_material_cost: 0,
+                    estimated_profit: estProfit,
+                    estimated_profit_margin: estMargin,
+                    workers: state.workers,
+                    operational_plan: normalizedOperationalPlan,
+                    operational_estimated_days_override: daysOv != null ? daysOv : '',
+                    operational_estimated_hours_override: hoursOv != null ? hoursOv : ''
                   })
-                    .then(function (res) {
-                      return res.json().then(function (data) {
-                        return { res: res, data: data };
-                      });
-                    })
-                    .then(function (out) {
-                      if (!out.res.ok || !out.data || out.data.ok !== true) {
-                        if (typeof console !== 'undefined' && console.error) {
-                          console.error('[MG Sales] upsert-tenant-project failed', out.data || out.res.status);
-                        }
-                        return;
-                      }
-                      if (out.data.id != null && String(out.data.id).trim()) {
-                        state.tenantProjectId = String(out.data.id).trim();
-                        saveSalesState(state);
-                        var capAfterFirmar = window.MarginGuardSalesCapacity;
-                        if (capAfterFirmar && typeof capAfterFirmar.fetchCapacityCalendar === 'function') {
-                          capAfterFirmar.fetchCapacityCalendar(
-                            signedEstimatedDays,
-                            startDate,
-                            state.tenantProjectId
-                          )
-                            .then(function (calendar) {
-                              window.__mgSalesCapacityUnverified = false;
-                              window.__mgSalesCapacityCalendar = calendar;
-                              if (typeof window.renderSalesOpCrewAvailability === 'function') {
-                                window.renderSalesOpCrewAvailability();
-                              }
-                            })
-                            .catch(function () {
-                              window.__mgSalesCapacityUnverified = true;
-                              if (typeof window.renderSalesOpCrewAvailability === 'function') {
-                                window.renderSalesOpCrewAvailability();
-                              }
-                            });
-                        }
-                      }
+                })
+                  .then(function (res) {
+                    return res.json().then(function (data) {
+                      return { res: res, data: data };
                     });
-                })().catch(function (err) {
-                  if (typeof console !== 'undefined' && console.error) {
-                    console.error('[MG Sales] upsert-tenant-project network error', err);
+                  })
+                  .then(function (out) {
+                    if (!out.res.ok || !out.data || out.data.ok !== true) {
+                      if (typeof onFailure === 'function') {
+                        onFailure(out);
+                      } else if (typeof console !== 'undefined' && console.error) {
+                        console.error('[MG Sales] upsert-tenant-project failed', out.data || out.res.status);
+                      }
+                      return;
+                    }
+                    if (out.data.id != null && String(out.data.id).trim()) {
+                      state.tenantProjectId = String(out.data.id).trim();
+                      saveSalesState(state);
+                      var capAfterFirmar = window.MarginGuardSalesCapacity;
+                      if (capAfterFirmar && typeof capAfterFirmar.fetchCapacityCalendar === 'function') {
+                        capAfterFirmar
+                          .fetchCapacityCalendar(signedEstimatedDays, startDate, state.tenantProjectId)
+                          .then(function (calendar) {
+                            window.__mgSalesCapacityUnverified = false;
+                            window.__mgSalesCapacityCalendar = calendar;
+                            if (typeof window.renderSalesOpCrewAvailability === 'function') {
+                              window.renderSalesOpCrewAvailability();
+                            }
+                          })
+                          .catch(function () {
+                            window.__mgSalesCapacityUnverified = true;
+                            if (typeof window.renderSalesOpCrewAvailability === 'function') {
+                              window.renderSalesOpCrewAvailability();
+                            }
+                          });
+                      }
+                    }
+                    if (typeof onSuccess === 'function') onSuccess();
+                  })
+                  .catch(function (err) {
+                    if (typeof onFailure === 'function') {
+                      onFailure({ res: { status: 0, ok: false }, data: null, networkError: err });
+                    } else if (typeof console !== 'undefined' && console.error) {
+                      console.error('[MG Sales] upsert-tenant-project network error', err);
+                    }
+                  });
+              }
+
+              if (sellerDevice) {
+                showFirmarSignedStatus(signedStatus, 'Signing project…', 'info');
+                runFirmarUpsert(
+                  function () {
+                    renderFirmarSuccessUi(state, startDate, finishDate, signedStatus);
+                  },
+                  function (out) {
+                    var errMsg =
+                      out && out.networkError
+                        ? 'Network error while signing project. Please try again.'
+                        : safeUpsertFirmarErrorMessage(out && out.data, out && out.res ? out.res.status : 0);
+                    showFirmarSignedStatus(signedStatus, errMsg, 'error');
+                    window.alert(errMsg);
+                    if (typeof console !== 'undefined' && console.error) {
+                      console.error('[MG Sales] upsert-tenant-project failed', (out && out.data) || (out && out.res && out.res.status));
+                    }
                   }
-                });
+                );
+                return;
               }
-              if (signedStatus) {
-                signedStatus.style.display = 'block';
-                signedStatus.className = 'notice success sales-signed-status';
-                signedStatus.textContent = 'Project signed and ready for Supervisor tracking.';
-              }
-              const signedProject = document.getElementById('salesSignedProject');
-              const signedMeta = document.getElementById('salesSignedMeta');
-              const signedBadge = document.getElementById('salesSignedBadge');
-              if (signedProject) signedProject.textContent = state.signedProjectName;
-              if (signedMeta) signedMeta.textContent = 'Client: ' + state.signedClientName + ' | Start: ' + startDate + ' | Target finish: ' + finishDate;
-              if (signedBadge) {
-                signedBadge.textContent = 'Proyecto firmado';
-                signedBadge.className = 'badge green';
-              }
-              renderStandaloneSellerPanel();
+
+              runFirmarUpsert();
+              renderFirmarSuccessUi(state, startDate, finishDate, signedStatus);
             }
 
             function finishMarkSoldWithCapacity(calendar) {
@@ -2874,6 +2983,12 @@
             }
             finishMarkSoldWithCapacity(null);
           }, true);
+          if (
+            window.MGSalesDevicePortal &&
+            typeof window.MGSalesDevicePortal.rebindSellerFirmarControls === 'function'
+          ) {
+            window.MGSalesDevicePortal.rebindSellerFirmarControls();
+          }
         }
       }
 
@@ -4324,6 +4439,13 @@ async function openSellerSendModal(event) {
       stateFresh.estimateNumber =
         publishData.quote_number_display || stateFresh.estimateNumber || '';
       saveSalesState(stateFresh);
+
+      if (
+        window.MGSalesDevicePortal &&
+        typeof window.MGSalesDevicePortal.rebindSellerFirmarControls === 'function'
+      ) {
+        window.MGSalesDevicePortal.rebindSellerFirmarControls();
+      }
 
       return {
         ok: true,
