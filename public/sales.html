@@ -476,6 +476,8 @@
       const SELLER_STALE_QUOTE_STORAGE_KEYS = ['mg_sales_draft', 'mg_sales_quote_draft', 'mg_current_sales_quote'];
       const SELLER_DRAFT_STALE_MSG =
         'Start a new seller quote and recalculate before creating the public quote link.';
+      const SELLER_PUBLISH_ORPHAN_MSG =
+        'This seller quote needs a fresh public quote link before Firmar.';
       const SELLER_SETTINGS_BLOCKED_MSG =
         'Seller pricing settings are not loaded. Ask the owner to save Business Settings before creating a quote.';
       const SETTINGS_FALLBACK_DEFAULTS = {
@@ -565,6 +567,93 @@
           customerEmail: String(state.customerEmail || '').trim(),
           location: String(state.location || '').trim()
         });
+      }
+
+      function inspectSellerPublishedQuoteSnapshot(state) {
+        const quoteId = String((state && state.quoteId) || '').trim();
+        const publicUrl = String((state && state.publicQuoteUrl) || '').trim();
+        const draftId = String((state && state._sellerDraftId) || '').trim();
+        const publishedDraftId = String((state && state._sellerPublishedDraftId) || '').trim();
+        const publishFingerprint = String((state && state._sellerPublishFingerprint) || '').trim();
+        const currentFingerprint = sellerDraftFingerprint(state || {});
+        const hasAnyPublishField = Boolean(
+          quoteId || publicUrl || publishedDraftId || publishFingerprint
+        );
+
+        if (
+          quoteId &&
+          publicUrl &&
+          draftId &&
+          publishedDraftId === draftId &&
+          publishFingerprint &&
+          publishFingerprint === currentFingerprint
+        ) {
+          return { valid: true, orphan: false };
+        }
+
+        return { valid: false, orphan: hasAnyPublishField };
+      }
+
+      function clearInvalidSellerPublishedFields(state) {
+        state.quoteId = '';
+        state.publicToken = '';
+        state.publicQuoteUrl = '';
+        state._sellerPublishedDraftId = '';
+        state._sellerPublishFingerprint = '';
+      }
+
+      function showSellerPublishOrphanNotice(message) {
+        let notice = document.getElementById('mgSellerPublishOrphanNotice');
+        if (!notice) {
+          notice = document.createElement('div');
+          notice.id = 'mgSellerPublishOrphanNotice';
+          notice.className = 'notice err';
+          notice.setAttribute('role', 'alert');
+          const sellerNotice = document.getElementById('mgSellerDeviceNotice');
+          if (sellerNotice && sellerNotice.parentNode) {
+            sellerNotice.parentNode.insertBefore(notice, sellerNotice.nextSibling);
+          } else {
+            const container = document.querySelector('.container');
+            if (container) {
+              container.insertBefore(notice, container.firstChild);
+            }
+          }
+        }
+        notice.textContent = String(message || SELLER_PUBLISH_ORPHAN_MSG).trim();
+        notice.hidden = false;
+        notice.style.display = '';
+      }
+
+      function removeSellerPublishOrphanNotice() {
+        const notice = document.getElementById('mgSellerPublishOrphanNotice');
+        if (notice) notice.remove();
+      }
+
+      function rehydrateSellerPublishedQuoteUi() {
+        const snapshot =
+          typeof getSalesPublishedQuoteSnapshot === 'function'
+            ? getSalesPublishedQuoteSnapshot()
+            : null;
+        if (
+          window.MGSalesDevicePortal &&
+          typeof window.MGSalesDevicePortal.renderPublishResult === 'function'
+        ) {
+          if (snapshot && snapshot.public_url) {
+            window.MGSalesDevicePortal.renderPublishResult({
+              public_url: snapshot.public_url,
+              quote_number_display: snapshot.quote_number_display || '',
+              message: 'Quote created. Owner/full send step is still disabled.'
+            });
+          } else {
+            window.MGSalesDevicePortal.renderPublishResult({});
+          }
+        }
+        if (
+          window.MGSalesDevicePortal &&
+          typeof window.MGSalesDevicePortal.rebindSellerFirmarControls === 'function'
+        ) {
+          window.MGSalesDevicePortal.rebindSellerFirmarControls();
+        }
       }
 
       function validateSellerDraftForAction(state, action) {
@@ -2908,6 +2997,7 @@
 
         refreshSellerFromStandalone();
 
+        removeSellerPublishOrphanNotice();
         if (
           window.MGSalesDevicePortal &&
           typeof window.MGSalesDevicePortal.renderPublishResult === 'function'
@@ -2925,12 +3015,43 @@
       }
 
       function initializeSellerPortalQuoteState() {
-        if (!isSellerForcedPortalRoute()) return;
-        try {
-          resetSalesQuoteStateForNewQuote();
-        } catch (err) {
-          console.error('[Seller Portal] clean quote init failed', err);
+        if (!isSellerForcedPortalRoute()) {
+          return { ok: true, skipped: true };
         }
+        if (window.__mgSellerPortalQuoteInitDone) {
+          return window.__mgSellerPortalQuoteInitResult || { ok: true, skipped: true, duplicate: true };
+        }
+
+        let result = { ok: true };
+        try {
+          const state = loadSalesState();
+          const inspection = inspectSellerPublishedQuoteSnapshot(state);
+
+          if (inspection.valid) {
+            removeSellerPublishOrphanNotice();
+            result = { ok: true, preserved: true };
+          } else if (inspection.orphan) {
+            clearInvalidSellerPublishedFields(state);
+            saveSalesState(state);
+            showSellerPublishOrphanNotice(SELLER_PUBLISH_ORPHAN_MSG);
+            rehydrateSellerPublishedQuoteUi();
+            result = { ok: true, clearedOrphan: true };
+          } else {
+            removeSellerPublishOrphanNotice();
+            resetSalesQuoteStateForNewQuote();
+            result = { ok: true, reset: true };
+          }
+        } catch (err) {
+          console.error('[Seller Portal] quote init failed', err);
+          result = { ok: false, error: err && err.message ? err.message : 'Seller quote init failed.' };
+        }
+
+        window.__mgSellerPortalQuoteInitDone = true;
+        window.__mgSellerPortalQuoteInitResult = result;
+        if (result.preserved) {
+          rehydrateSellerPublishedQuoteUi();
+        }
+        return result;
       }
 
       window.initializeSellerPortalQuoteState = initializeSellerPortalQuoteState;
@@ -4792,6 +4913,7 @@ async function openSellerSendModal(event) {
         publishData.quote_number_display || stateFresh.estimateNumber || '';
       stateFresh._sellerPublishedDraftId = String(stateFresh._sellerDraftId || '').trim();
       stateFresh._sellerPublishFingerprint = sellerDraftFingerprint(stateFresh);
+      removeSellerPublishOrphanNotice();
       saveSalesState(stateFresh);
 
       if (

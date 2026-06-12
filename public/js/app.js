@@ -14854,13 +14854,6 @@ window.renderSupervisor = renderSupervisor;
     await waitForAuthReadyIfNeeded();
     void ensureTenant();
     await initTenantSnapshotBridge();
-    if (
-      document.documentElement.dataset.salesPortal === "seller" &&
-      document.documentElement.dataset.authMode === "device" &&
-      typeof window.initializeSellerPortalQuoteState === "function"
-    ) {
-      window.initializeSellerPortalQuoteState();
-    }
     await hydrateOwnerBrandingCacheFromServer();
     render();
     if (

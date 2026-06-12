@@ -673,14 +673,13 @@
 
     hideOwnerChrome();
     ensureSellerNotice();
+    if (isForcedSellerPortal() && typeof window.initializeSellerPortalQuoteState === "function") {
+      window.initializeSellerPortalQuoteState();
+    }
     ensureSellerPublishUi();
     showSellerAccountPill(auth);
     ensureDeviceLogoutButton();
     disableBlockedControls();
-
-    if (isForcedSellerPortal() && typeof window.initializeSellerPortalQuoteState === "function") {
-      window.initializeSellerPortalQuoteState();
-    }
 
     let settingsHydration = { ok: true };
     if (typeof window.hydrateSellerBusinessSettingsFromServer === "function") {
