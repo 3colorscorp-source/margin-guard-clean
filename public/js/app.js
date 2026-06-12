@@ -14863,6 +14863,13 @@ window.renderSupervisor = renderSupervisor;
     }
     await hydrateOwnerBrandingCacheFromServer();
     render();
+    if (
+      document.documentElement.dataset.salesPortal === "seller" &&
+      document.documentElement.dataset.authMode === "device" &&
+      typeof window.refreshSellerFromStandalone === "function"
+    ) {
+      window.refreshSellerFromStandalone();
+    }
     if ($("supervisorKpis")) {
       void refreshSupervisorProjectsFromApi();
     }

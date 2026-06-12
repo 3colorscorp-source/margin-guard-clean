@@ -138,6 +138,40 @@
     return document.documentElement.dataset.salesPortal === "seller";
   }
 
+  function sellerSettingsReadyForQuote() {
+    if (!isForcedSellerPortal()) return true;
+    return window.__mgSellerBusinessSettingsReady === true;
+  }
+
+  function ensureSellerSettingsBlockedNotice(message) {
+    let notice = document.getElementById("mgSellerSettingsBlockedNotice");
+    if (!notice) {
+      notice = document.createElement("div");
+      notice.id = "mgSellerSettingsBlockedNotice";
+      notice.className = "notice err";
+      notice.setAttribute("role", "alert");
+      const sellerNotice = document.getElementById("mgSellerDeviceNotice");
+      if (sellerNotice && sellerNotice.parentNode) {
+        sellerNotice.parentNode.insertBefore(notice, sellerNotice.nextSibling);
+      } else {
+        const container = document.querySelector(".container");
+        if (container) {
+          container.insertBefore(notice, container.firstChild);
+        }
+      }
+    }
+    notice.textContent =
+      message ||
+      "Seller pricing settings are not loaded. Ask the owner to save Business Settings before creating a quote.";
+    notice.hidden = false;
+    notice.style.display = "";
+  }
+
+  function removeSellerSettingsBlockedNotice() {
+    const notice = document.getElementById("mgSellerSettingsBlockedNotice");
+    if (notice) notice.remove();
+  }
+
   function applySellerPortalBlockedState() {
     sellerModeActive = false;
     window.MG_SALES_PORTAL_MODE = "seller-blocked";
@@ -319,6 +353,13 @@
     if (!sellerModeActive) return;
     const btn = document.getElementById("btnMarkSold");
     if (!btn) return;
+    if (isForcedSellerPortal() && !sellerSettingsReadyForQuote()) {
+      btn.disabled = true;
+      btn.setAttribute("aria-disabled", "true");
+      btn.title = "Business Settings must load before Firmar.";
+      btn.setAttribute("data-mg-seller-firmar-gated", "1");
+      return;
+    }
     const canFirmar = hasPublishedQuoteForFirmar();
     btn.disabled = !canFirmar;
     btn.setAttribute("aria-disabled", btn.disabled ? "true" : "false");
@@ -353,11 +394,14 @@
     if (!btn) return;
     const snapshot = readPublishedSnapshot();
     const hasPublished = Boolean(snapshot && snapshot.public_url);
-    btn.disabled = sellerPublishUiBusy || hasPublished;
+    const settingsBlocked = isForcedSellerPortal() && !sellerSettingsReadyForQuote();
+    btn.disabled = sellerPublishUiBusy || hasPublished || settingsBlocked;
     btn.setAttribute("aria-disabled", btn.disabled ? "true" : "false");
-    btn.textContent = hasPublished
-      ? "Public quote link created"
-      : "Create Public Quote Link";
+    btn.textContent = settingsBlocked
+      ? "Business Settings required"
+      : hasPublished
+        ? "Public quote link created"
+        : "Create Public Quote Link";
   }
 
   function renderSellerPublishResult(result) {
@@ -600,7 +644,7 @@
     };
   }
 
-  function applySellerMode(auth) {
+  async function applySellerMode(auth) {
     sellerModeActive = true;
     window.MG_SALES_PORTAL_MODE = "device";
     document.documentElement.dataset.authMode = "device";
@@ -621,16 +665,35 @@
     showSellerAccountPill(auth);
     ensureDeviceLogoutButton();
     disableBlockedControls();
+
+    let settingsHydration = { ok: true };
+    if (isForcedSellerPortal()) {
+      if (typeof window.initializeSellerPortalQuoteState === "function") {
+        window.initializeSellerPortalQuoteState();
+      }
+      if (typeof window.hydrateSellerBusinessSettingsFromServer === "function") {
+        settingsHydration = await window.hydrateSellerBusinessSettingsFromServer();
+      } else {
+        settingsHydration = {
+          ok: false,
+          error:
+            "Seller pricing settings are not loaded. Ask the owner to save Business Settings before creating a quote.",
+        };
+      }
+      if (!settingsHydration.ok) {
+        ensureSellerSettingsBlockedNotice(settingsHydration.error);
+      } else {
+        removeSellerSettingsBlockedNotice();
+      }
+    }
+
     syncSellerFirmarButtonState();
     installFirmarGateGuard();
     installClickGuard();
     installFetchGuard();
 
-    if (
-      isForcedSellerPortal() &&
-      typeof window.initializeSellerPortalQuoteState === "function"
-    ) {
-      window.initializeSellerPortalQuoteState();
+    if (settingsHydration.ok && typeof window.refreshSellerFromStandalone === "function") {
+      window.refreshSellerFromStandalone();
     }
 
     // Inline sales handlers clone Firmar/send buttons on DOMContentLoaded; re-apply after they run.
@@ -668,7 +731,7 @@
       if (!auth) {
         return;
       }
-      applySellerMode(auth);
+      await applySellerMode(auth);
       return;
     }
 
@@ -687,7 +750,7 @@
     if (!auth) {
       return;
     }
-    applySellerMode(auth);
+    await applySellerMode(auth);
   }
 
   function boot() {
