@@ -138,8 +138,18 @@
     return document.documentElement.dataset.salesPortal === "seller";
   }
 
+  function isDirectSalesRouteWithoutForcedPortal() {
+    if (isForcedSellerPortal()) return false;
+    const path = String(window.location.pathname || "").toLowerCase();
+    return /^\/sales(?:\.html)?\/?$/.test(path);
+  }
+
+  function redirectSellerDeviceToSafePortal() {
+    window.location.replace("/seller");
+  }
+
   function sellerSettingsReadyForQuote() {
-    if (!isForcedSellerPortal()) return true;
+    if (!sellerModeActive) return true;
     return window.__mgSellerBusinessSettingsReady === true;
   }
 
@@ -353,7 +363,7 @@
     if (!sellerModeActive) return;
     const btn = document.getElementById("btnMarkSold");
     if (!btn) return;
-    if (isForcedSellerPortal() && !sellerSettingsReadyForQuote()) {
+    if (sellerModeActive && !sellerSettingsReadyForQuote()) {
       btn.disabled = true;
       btn.setAttribute("aria-disabled", "true");
       btn.title = "Business Settings must load before Firmar.";
@@ -394,7 +404,7 @@
     if (!btn) return;
     const snapshot = readPublishedSnapshot();
     const hasPublished = Boolean(snapshot && snapshot.public_url);
-    const settingsBlocked = isForcedSellerPortal() && !sellerSettingsReadyForQuote();
+    const settingsBlocked = sellerModeActive && !sellerSettingsReadyForQuote();
     btn.disabled = sellerPublishUiBusy || hasPublished || settingsBlocked;
     btn.setAttribute("aria-disabled", btn.disabled ? "true" : "false");
     btn.textContent = settingsBlocked
@@ -654,9 +664,11 @@
     if (plan) plan.textContent = "Seller device · Vendedor";
 
     const navSales = document.getElementById("navSalesVendor");
-    if (navSales && isForcedSellerPortal()) {
+    if (navSales) {
       navSales.href = "/seller";
-      navSales.classList.add("active");
+      if (isForcedSellerPortal()) {
+        navSales.classList.add("active");
+      }
     }
 
     hideOwnerChrome();
@@ -666,25 +678,24 @@
     ensureDeviceLogoutButton();
     disableBlockedControls();
 
+    if (isForcedSellerPortal() && typeof window.initializeSellerPortalQuoteState === "function") {
+      window.initializeSellerPortalQuoteState();
+    }
+
     let settingsHydration = { ok: true };
-    if (isForcedSellerPortal()) {
-      if (typeof window.initializeSellerPortalQuoteState === "function") {
-        window.initializeSellerPortalQuoteState();
-      }
-      if (typeof window.hydrateSellerBusinessSettingsFromServer === "function") {
-        settingsHydration = await window.hydrateSellerBusinessSettingsFromServer();
-      } else {
-        settingsHydration = {
-          ok: false,
-          error:
-            "Seller pricing settings are not loaded. Ask the owner to save Business Settings before creating a quote.",
-        };
-      }
-      if (!settingsHydration.ok) {
-        ensureSellerSettingsBlockedNotice(settingsHydration.error);
-      } else {
-        removeSellerSettingsBlockedNotice();
-      }
+    if (typeof window.hydrateSellerBusinessSettingsFromServer === "function") {
+      settingsHydration = await window.hydrateSellerBusinessSettingsFromServer();
+    } else {
+      settingsHydration = {
+        ok: false,
+        error:
+          "Seller pricing settings are not loaded. Ask the owner to save Business Settings before creating a quote.",
+      };
+    }
+    if (!settingsHydration.ok) {
+      ensureSellerSettingsBlockedNotice(settingsHydration.error);
+    } else {
+      removeSellerSettingsBlockedNotice();
     }
 
     syncSellerFirmarButtonState();
@@ -750,6 +761,12 @@
     if (!auth) {
       return;
     }
+
+    if (isDirectSalesRouteWithoutForcedPortal()) {
+      redirectSellerDeviceToSafePortal();
+      return;
+    }
+
     await applySellerMode(auth);
   }
 

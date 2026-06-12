@@ -510,14 +510,36 @@
         return document.documentElement.dataset.salesPortal === 'seller';
       }
 
-      function isSellerPricingControlledByServer() {
+      function hasSellerDeviceSessionCookie() {
+        try {
+          return /(?:^|;\s*)mg_device_session=/.test(document.cookie || '');
+        } catch (_cookieErr) {
+          return false;
+        }
+      }
+
+      function isDirectSalesSellerDevicePath() {
+        var path = String(window.location.pathname || '');
+        if (!/^\/sales(?:\.html)?\/?$/i.test(path)) return false;
+        if (isSellerForcedPortalRoute()) return false;
+        return hasSellerDeviceSessionCookie();
+      }
+
+      function isSellerDeviceSessionActive() {
         return (
-          isSellerForcedPortalRoute() &&
-          (document.documentElement.dataset.authMode === 'device' ||
-            (window.MGSalesDevicePortal &&
-              typeof window.MGSalesDevicePortal.isSellerMode === 'function' &&
-              window.MGSalesDevicePortal.isSellerMode()))
+          document.documentElement.dataset.authMode === 'device' ||
+          (window.MGSalesDevicePortal &&
+            typeof window.MGSalesDevicePortal.isSellerMode === 'function' &&
+            window.MGSalesDevicePortal.isSellerMode())
         );
+      }
+
+      function isSellerPricingControlledByServer() {
+        if (document.documentElement.dataset.authMode === 'owner') return false;
+        if (isSellerForcedPortalRoute()) return true;
+        if (isSellerDeviceSessionActive()) return true;
+        if (isDirectSalesSellerDevicePath()) return true;
+        return false;
       }
 
       function isSellerBusinessSettingsReady() {
@@ -1514,7 +1536,12 @@
       }
 
       async function hydrateSellerBusinessSettingsFromServer() {
-        if (!isSellerForcedPortalRoute()) {
+        var serverControlled =
+          isSellerForcedPortalRoute() ||
+          isSellerDeviceSessionActive() ||
+          isDirectSalesSellerDevicePath();
+
+        if (!serverControlled) {
           return { ok: true, skipped: true };
         }
 
