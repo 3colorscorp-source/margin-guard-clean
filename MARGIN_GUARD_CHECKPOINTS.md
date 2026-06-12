@@ -4,6 +4,136 @@ Authoritative closed-step records for reconnect and approval gates.
 
 ---
 
+## Step 3E-C14 Rollout Checkpoint — Supervisor + Seller Device Pilot
+
+**Status:** CLOSED — SUPERVISOR PILOT PASS / SELLER PILOT PASS / SELLER SEND BACKEND HARD-DENY PASS  
+**Recorded:** 2026-06-12 (C14-E4-CP1 checkpoint close)
+
+### Production
+
+| Item | Value |
+|------|--------|
+| **Production URL** | https://marginguardsystem.netlify.app |
+| **Production deploy** | `6a2c3c6f1e90b02e40a5c299` |
+| **Current commit** | `2e73319` |
+| **Previous checkpoint/base commit** | `34bf724` |
+
+### Supervisor Pilot final state
+
+| Item | Value |
+|------|--------|
+| **Display name** | Librado Muñoz — Supervisor Pilot |
+| **Email** | libradomunoztcc@gmail.com |
+| **Role** | supervisor |
+| **Status** | active |
+| **Auth linked** | true |
+| **Active devices** | 1 |
+| **Assigned project** | Bridge Link Test |
+| **Device** | Librado — Supervisor Device Pilot |
+| **Device portal type** | supervisor |
+| **Device status** | active |
+| **Read scope verified** | sees Bridge Link Test only |
+| **Hidden from supervisor device** | Project Test A, C7B project, protected projects, owner-wide projects |
+| **Operational policy** | read-only approved; report writes deferred; expenses disabled; day-progress disabled |
+
+### Seller Pilot final state
+
+| Item | Value |
+|------|--------|
+| **Display name** | Librado Muñoz — Seller Pilot |
+| **Email** | 3colorscorp+mg-seller-librado@gmail.com |
+| **Role** | seller |
+| **Status** | active |
+| **Auth linked** | false (expected — device-bound) |
+| **Active devices** | 1 |
+| **Device** | Librado — Seller Device Pilot |
+| **Device portal type** | seller |
+| **Device status** | active |
+| **Paired profile** | `C:\Users\lalom\AppData\Local\mg-e4c-seller-device-profile` |
+
+**Seller `/sales` mode verified:**
+
+- owner nav hidden
+- Business Settings hidden
+- Supervisor controls hidden
+- Sales Admin hidden
+- owner/admin controls hidden
+- seller notice visible
+
+**Seller allowed pilot actions:**
+
+- build quote draft
+- create public quote link
+- Firmar only with owner approval
+
+**Seller blocked actions:**
+
+- send quote email
+- PDF/send flow
+- invoice creation
+- owner settings
+- supervisor controls
+- protected project data
+
+### Seller smoke artifacts
+
+| Artifact | Detail |
+|----------|--------|
+| **E4-E quote** | Estimate `2026-0101`; marker `E4-E Seller Publish Smoke — Do Not Send`; status `archived`; no project; no invoice; no send/PDF |
+| **E4-F quote** | Estimate `2026-0102`; marker `E4-F Firmar Smoke — Do Not Send`; status `accepted`; linked to archived QA project; retained as audit artifact; no invoice; no send/PDF |
+| **E4-F QA project** | Marker `E4-F Firmar Smoke — Do Not Send`; status `archived`; no invoice; no supervisor assignment |
+
+### Backend hardening
+
+| Item | Value |
+|------|--------|
+| **Commit** | `2e73319` |
+| **File changed** | `netlify/functions/send-quote-zapier.js` |
+| **Behavior** | seller device direct POST to `send-quote-zapier` returns 403; safe response code `seller_device_send_blocked`; deny occurs before quote lookup, PDF upload, Zapier/email |
+| **Owner path** | empty-body POST reaches normal `client_email` validation — owner path not blocked |
+
+**Production smoke (C14-E4-H1-D):**
+
+| Check | Result |
+|-------|--------|
+| Seller direct send POST | 403 `seller_device_send_blocked` |
+| Owner safe empty-body POST | 400 missing `client_email` validation |
+| Quotes / projects / invoices / PDF / email side effects | 0 |
+
+### Protected baseline
+
+| Item | Value |
+|------|--------|
+| **Owner/Admin** | 3colorscorp@gmail.com |
+| **Bridge Link Test** | assigned to Supervisor Pilot |
+| **C7B** | unchanged |
+| **Project Test A** | unchanged |
+| **Protected projects** | Soco bathroom, 625 2nd St RENOVATION, Freemont H. R304, Sharon Bathroom — unchanged |
+
+### Rollout track summary
+
+| Track | Status |
+|-------|--------|
+| C14-E3 Supervisor Pilot rollout | COMPLETE / PASS |
+| C14-E4 Seller Pilot rollout | COMPLETE / PASS |
+| C14-E4-H1 backend hard-deny | COMPLETE / PASS |
+| C14-E4-H1-D production smoke | PASS |
+
+### Known future optional work
+
+- **E4-H2 optional cleanup** — remove unreachable seller send branches in `send-quote-zapier.js`
+- **Optional future hardening** — seller quote approval queue; owner review step before Firmar in production; accepted quote unlink/cleanup tooling; seller activity log panel
+
+### Approval gate (active)
+
+Do **not** start without a fresh reconnect report and explicit approval:
+
+- E4-H2 dead-code cleanup in `send-quote-zapier.js`
+- Seller send/email/PDF production approval (remains blocked)
+- Supervisor device field writes re-enablement (deferred per Supervisor Pilot policy)
+
+---
+
 ## Step 3E-C14-D — Supervisor Device Field Writes + Owner Assignment UI
 
 **Status:** CLOSED — PRODUCTION PASS / FULL DEVICE UI WRITE SMOKE COMPLETE / TEMP DEVICES REVOKED  
