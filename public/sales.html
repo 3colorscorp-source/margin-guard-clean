@@ -2951,13 +2951,47 @@
         el.textContent = String(message || '').trim();
       }
 
-      function safeUpsertFirmarErrorMessage(data, status) {
+      function safeUpsertFirmarErrorMessage(out) {
+        if (out && out.networkError) {
+          return 'Network error while signing project. Please check connection and try again.';
+        }
+        var status = out && out.res && out.res.status ? out.res.status : 0;
+        var data =
+          out && out.data && typeof out.data === 'object' && !Array.isArray(out.data) ? out.data : null;
+        var parseError = Boolean(out && out.parseError);
         var code = data && data.code ? String(data.code).trim() : '';
-        var msg = data && (data.error || data.message) ? String(data.error || data.message).trim() : '';
+        var msg =
+          data && (data.error || data.message)
+            ? String(data.error || data.message).trim().slice(0, 500)
+            : '';
+
+        if (parseError || (status > 0 && !data)) {
+          var nonJsonBase = 'Unable to sign project (HTTP ' + status + ').';
+          return (
+            nonJsonBase + ' Server returned a non-JSON response. Check Netlify function logs.'
+          );
+        }
+
         if (code && msg) return msg + ' (' + code + ')';
-        if (msg) return msg;
+        if (msg) return msg + (status ? ' (HTTP ' + status + ').' : '');
         if (code) return 'Unable to sign project (' + code + ').';
-        return 'Unable to sign project (HTTP ' + status + ').';
+        if (status > 0) return 'Unable to sign project (HTTP ' + status + ').';
+        return 'Unable to sign project.';
+      }
+
+      function logSellerFirmarUpsertFailure(out) {
+        if (typeof console === 'undefined' || !console.error) return;
+        if (out && out.networkError) {
+          console.error('[MG Sales] Seller Firmar upsert failed (network)');
+          return;
+        }
+        var status = out && out.res && out.res.status ? out.res.status : 0;
+        var code = out && out.data && out.data.code ? String(out.data.code).trim() : '';
+        console.error('[MG Sales] Seller Firmar upsert failed', {
+          status: status,
+          code: code || undefined,
+          parseError: Boolean(out && out.parseError)
+        });
       }
 
       function renderFirmarSuccessUi(state, startDate, finishDate, signedStatus) {
@@ -3157,16 +3191,27 @@
                   })
                 })
                   .then(function (res) {
-                    return res.json().then(function (data) {
-                      return { res: res, data: data };
+                    return res.text().then(function (raw) {
+                      var data = null;
+                      var parseError = false;
+                      if (raw) {
+                        try {
+                          data = JSON.parse(raw);
+                        } catch (_parseErr) {
+                          parseError = true;
+                        }
+                      } else if (!res.ok) {
+                        parseError = true;
+                      }
+                      return { res: res, data: data, raw: raw, parseError: parseError };
                     });
                   })
                   .then(function (out) {
                     if (!out.res.ok || !out.data || out.data.ok !== true) {
                       if (typeof onFailure === 'function') {
                         onFailure(out);
-                      } else if (typeof console !== 'undefined' && console.error) {
-                        console.error('[MG Sales] upsert-tenant-project failed', out.data || out.res.status);
+                      } else {
+                        logSellerFirmarUpsertFailure(out);
                       }
                       return;
                     }
@@ -3194,11 +3239,16 @@
                     }
                     if (typeof onSuccess === 'function') onSuccess();
                   })
-                  .catch(function (err) {
+                  .catch(function (_err) {
                     if (typeof onFailure === 'function') {
-                      onFailure({ res: { status: 0, ok: false }, data: null, networkError: err });
+                      onFailure({
+                        res: { status: 0, ok: false },
+                        data: null,
+                        parseError: false,
+                        networkError: true
+                      });
                     } else if (typeof console !== 'undefined' && console.error) {
-                      console.error('[MG Sales] upsert-tenant-project network error', err);
+                      console.error('[MG Sales] Seller Firmar upsert failed (network)');
                     }
                   });
               }
@@ -3210,15 +3260,10 @@
                     renderFirmarSuccessUi(state, startDate, finishDate, signedStatus);
                   },
                   function (out) {
-                    var errMsg =
-                      out && out.networkError
-                        ? 'Network error while signing project. Please try again.'
-                        : safeUpsertFirmarErrorMessage(out && out.data, out && out.res ? out.res.status : 0);
+                    var errMsg = safeUpsertFirmarErrorMessage(out);
                     showFirmarSignedStatus(signedStatus, errMsg, 'error');
                     window.alert(errMsg);
-                    if (typeof console !== 'undefined' && console.error) {
-                      console.error('[MG Sales] upsert-tenant-project failed', (out && out.data) || (out && out.res && out.res.status));
-                    }
+                    logSellerFirmarUpsertFailure(out);
                   }
                 );
                 return;
