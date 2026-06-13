@@ -169,6 +169,55 @@ async function markQuoteAcceptedForSupervisorListing(tenantId, quoteRow) {
   return { ok: true, status: "accepted", already_accepted: false };
 }
 
+async function safePersistOperationalSnapshot(params) {
+  try {
+    return await persistOperationalSnapshot(params);
+  } catch (err) {
+    return { ok: false, error: err?.message || "operational_snapshot_failed" };
+  }
+}
+
+async function safeMarkQuoteAcceptedForSupervisorListing(tenantId, quoteRow) {
+  try {
+    return await markQuoteAcceptedForSupervisorListing(tenantId, quoteRow);
+  } catch (err) {
+    return { ok: false, error: err?.message || "quote_accept_failed" };
+  }
+}
+
+async function finalizeFirmarSideEffects({
+  tenantId,
+  projectId,
+  quoteId,
+  quoteRow,
+  opNormalized,
+  opOverride,
+  opHoursOverride,
+  hoursPerDay,
+  dueDate,
+}) {
+  const snapshotPromise = planHasDays(opNormalized)
+    ? safePersistOperationalSnapshot({
+        tenantId,
+        projectId,
+        quoteId,
+        operationalPlan: opNormalized,
+        estimatedDaysOverride: opOverride,
+        estimatedHoursOverride: opHoursOverride,
+        hoursPerDay,
+        due_date: dueDate,
+        source: "mark_sold",
+      })
+    : Promise.resolve({ ok: false, skipped: true });
+
+  const [operationalPersist, quoteAccept] = await Promise.all([
+    snapshotPromise,
+    safeMarkQuoteAcceptedForSupervisorListing(tenantId, quoteRow),
+  ]);
+
+  return { operationalPersist, quoteAccept };
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -188,17 +237,19 @@ exports.handler = async (event) => {
     }
 
     const tid = encodeURIComponent(tenant.id);
-    const quoteRows = await supabaseRequest(
-      `quotes?id=eq.${encodeURIComponent(quoteId)}&tenant_id=eq.${tid}&select=${QUOTE_FIRMAR_SELECT}`
-    );
+    const [quoteRows, existingRows] = await Promise.all([
+      supabaseRequest(
+        `quotes?id=eq.${encodeURIComponent(quoteId)}&tenant_id=eq.${tid}&select=${QUOTE_FIRMAR_SELECT}`
+      ),
+      supabaseRequest(
+        `tenant_projects?tenant_id=eq.${tid}&quote_id=eq.${encodeURIComponent(quoteId)}&select=id,quoted_labor_plan,quoted_labor_plan_locked_at`
+      ),
+    ]);
     const quoteOk = Array.isArray(quoteRows) ? quoteRows[0] : null;
     if (!quoteOk?.id) {
       return json(403, { error: "Quote not found for this tenant" });
     }
 
-    const existingRows = await supabaseRequest(
-      `tenant_projects?tenant_id=eq.${tid}&quote_id=eq.${encodeURIComponent(quoteId)}&select=id,quoted_labor_plan,quoted_labor_plan_locked_at`
-    );
     const existing = Array.isArray(existingRows) ? existingRows[0] : null;
 
     if (ctx.auth_mode === "device") {
@@ -317,21 +368,17 @@ exports.handler = async (event) => {
           body: patch,
         }
       );
-      let operationalPersist = { ok: false, skipped: true };
-      if (planHasDays(opNormalized)) {
-        operationalPersist = await persistOperationalSnapshot({
-          tenantId: tenant.id,
-          projectId: existing.id,
-          quoteId,
-          operationalPlan: opNormalized,
-          estimatedDaysOverride: opOverride,
-          estimatedHoursOverride: opHoursOverride,
-          hoursPerDay,
-          due_date: row.due_date,
-          source: "mark_sold",
-        });
-      }
-      const quoteAccept = await markQuoteAcceptedForSupervisorListing(tenant.id, quoteOk);
+      const { operationalPersist, quoteAccept } = await finalizeFirmarSideEffects({
+        tenantId: tenant.id,
+        projectId: existing.id,
+        quoteId,
+        quoteRow: quoteOk,
+        opNormalized,
+        opOverride,
+        opHoursOverride,
+        hoursPerDay,
+        dueDate: row.due_date,
+      });
       return json(200, {
         ok: true,
         id: existing.id,
@@ -341,6 +388,7 @@ exports.handler = async (event) => {
         operational_persist: operationalPersist,
         quote_status: quoteAccept.status || null,
         quote_already_accepted: Boolean(quoteAccept.already_accepted),
+        quote_accept_ok: quoteAccept.ok !== false,
       });
     }
 
@@ -356,21 +404,17 @@ exports.handler = async (event) => {
       body: insertBody,
     });
     const ins = Array.isArray(inserted) ? inserted[0] : inserted;
-    let operationalPersist = { ok: false, skipped: true };
-    if (ins?.id && planHasDays(opNormalized)) {
-      operationalPersist = await persistOperationalSnapshot({
-        tenantId: tenant.id,
-        projectId: ins.id,
-        quoteId,
-        operationalPlan: opNormalized,
-        estimatedDaysOverride: opOverride,
-        estimatedHoursOverride: opHoursOverride,
-        hoursPerDay,
-        due_date: row.due_date,
-        source: "mark_sold",
-      });
-    }
-    const quoteAccept = await markQuoteAcceptedForSupervisorListing(tenant.id, quoteOk);
+    const { operationalPersist, quoteAccept } = await finalizeFirmarSideEffects({
+      tenantId: tenant.id,
+      projectId: ins?.id,
+      quoteId,
+      quoteRow: quoteOk,
+      opNormalized,
+      opOverride,
+      opHoursOverride,
+      hoursPerDay,
+      dueDate: row.due_date,
+    });
     return json(200, {
       ok: true,
       id: ins?.id,
@@ -380,6 +424,7 @@ exports.handler = async (event) => {
       operational_persist: operationalPersist,
       quote_status: quoteAccept.status || null,
       quote_already_accepted: Boolean(quoteAccept.already_accepted),
+      quote_accept_ok: quoteAccept.ok !== false,
     });
   } catch (err) {
     if (err.isGuardError) {

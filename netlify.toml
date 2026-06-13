@@ -5,6 +5,9 @@
 [build.environment]
   NODE_VERSION = "20"
 
+[functions."upsert-tenant-project"]
+  timeout = 26
+
 # Invoice past-due reminders (D1/D3/D7/D14 after due_date); see invoice-followups-due.js + ZAPIER_INVOICE_REMINDER_WEBHOOK
 
 [[redirects]]
