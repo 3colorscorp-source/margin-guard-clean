@@ -3160,7 +3160,18 @@
           signedBadge.textContent = 'Proyecto firmado';
           signedBadge.className = 'badge green';
         }
-        renderStandaloneSellerPanel();
+        const markSoldBtn = document.getElementById('btnMarkSold');
+        if (markSoldBtn) {
+          markSoldBtn.disabled = true;
+          markSoldBtn.title = 'Project already signed.';
+        }
+        try {
+          renderStandaloneSellerPanel();
+        } catch (uiErr) {
+          if (typeof console !== 'undefined' && console.warn) {
+            console.warn('[MG Sales] Seller Firmar success UI warning', uiErr);
+          }
+        }
       }
 
       function bindStandaloneSellerActions() {
@@ -3306,6 +3317,7 @@
                 var normalizedOperationalPlan = opApi
                   ? opApi.normalizeOperationalPlan(state.operational_plan || [], daysOv, hpd)
                   : state.operational_plan || [];
+                var firmarBackendOk = false;
 
                 return fetch('/.netlify/functions/upsert-tenant-project', {
                   method: 'POST',
@@ -3363,31 +3375,52 @@
                       }
                       return;
                     }
-                    if (out.data.id != null && String(out.data.id).trim()) {
-                      state.tenantProjectId = String(out.data.id).trim();
-                      saveSalesState(state);
-                      var capAfterFirmar = window.MarginGuardSalesCapacity;
-                      if (capAfterFirmar && typeof capAfterFirmar.fetchCapacityCalendar === 'function') {
-                        capAfterFirmar
-                          .fetchCapacityCalendar(signedEstimatedDays, startDate, state.tenantProjectId)
-                          .then(function (calendar) {
-                            window.__mgSalesCapacityUnverified = false;
-                            window.__mgSalesCapacityCalendar = calendar;
-                            if (typeof window.renderSalesOpCrewAvailability === 'function') {
-                              window.renderSalesOpCrewAvailability();
-                            }
-                          })
-                          .catch(function () {
-                            window.__mgSalesCapacityUnverified = true;
-                            if (typeof window.renderSalesOpCrewAvailability === 'function') {
-                              window.renderSalesOpCrewAvailability();
-                            }
-                          });
+                    firmarBackendOk = true;
+                    try {
+                      if (out.data.id != null && String(out.data.id).trim()) {
+                        state.tenantProjectId = String(out.data.id).trim();
+                        saveSalesState(state);
+                        var capAfterFirmar = window.MarginGuardSalesCapacity;
+                        if (capAfterFirmar && typeof capAfterFirmar.fetchCapacityCalendar === 'function') {
+                          capAfterFirmar
+                            .fetchCapacityCalendar(signedEstimatedDays, startDate, state.tenantProjectId)
+                            .then(function (calendar) {
+                              window.__mgSalesCapacityUnverified = false;
+                              window.__mgSalesCapacityCalendar = calendar;
+                              if (typeof window.renderSalesOpCrewAvailability === 'function') {
+                                window.renderSalesOpCrewAvailability();
+                              }
+                            })
+                            .catch(function () {
+                              window.__mgSalesCapacityUnverified = true;
+                              if (typeof window.renderSalesOpCrewAvailability === 'function') {
+                                window.renderSalesOpCrewAvailability();
+                              }
+                            });
+                        }
+                      }
+                      if (typeof onSuccess === 'function') {
+                        try {
+                          onSuccess();
+                        } catch (uiErr) {
+                          if (typeof console !== 'undefined' && console.warn) {
+                            console.warn('[MG Sales] Seller Firmar success UI warning', uiErr);
+                          }
+                        }
+                      }
+                    } catch (postErr) {
+                      if (typeof console !== 'undefined' && console.warn) {
+                        console.warn('[MG Sales] Seller Firmar success UI warning', postErr);
                       }
                     }
-                    if (typeof onSuccess === 'function') onSuccess();
                   })
                   .catch(function (_err) {
+                    if (firmarBackendOk) {
+                      if (typeof console !== 'undefined' && console.warn) {
+                        console.warn('[MG Sales] Seller Firmar success UI warning', _err);
+                      }
+                      return;
+                    }
                     if (typeof onFailure === 'function') {
                       onFailure({
                         res: { status: 0, ok: false },
@@ -3402,12 +3435,15 @@
               }
 
               if (sellerDevice) {
+                var firmarBtnEl = document.getElementById('btnMarkSold');
+                if (firmarBtnEl) firmarBtnEl.disabled = true;
                 showFirmarSignedStatus(signedStatus, 'Signing project…', 'info');
                 runFirmarUpsert(
                   function () {
                     renderFirmarSuccessUi(state, startDate, finishDate, signedStatus);
                   },
                   function (out) {
+                    if (firmarBtnEl) firmarBtnEl.disabled = false;
                     var errMsg = safeUpsertFirmarErrorMessage(out);
                     showFirmarSignedStatus(signedStatus, errMsg, 'error');
                     window.alert(errMsg);
