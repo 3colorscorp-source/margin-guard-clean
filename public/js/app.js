@@ -82,7 +82,12 @@
     workers: [
       { name: "Pro 1", type: "installer", hours: 40, rate: "" },
       { name: "Assistant 1", type: "helper", hours: 10, rate: "" }
-    ]
+    ],
+    operational_plan: [],
+    operational_estimated_days_override: "",
+    operational_estimated_hours_override: "",
+    labor_auto_sync_from_plan: true,
+    labor_manual_override: false
   };
 
   const DEFAULT_DASHBOARD = {
@@ -742,6 +747,13 @@ Thank you.`
     merged.committedDate = normalizeDateInput(merged.committedDate);
     merged.quoteNotes = String(merged.quoteNotes ?? "");
     merged.location = String(merged.location ?? "");
+    merged.operational_plan = Array.isArray(saved.operational_plan) ? saved.operational_plan : [];
+    merged.operational_estimated_days_override =
+      saved.operational_estimated_days_override != null ? saved.operational_estimated_days_override : "";
+    merged.operational_estimated_hours_override =
+      saved.operational_estimated_hours_override != null ? saved.operational_estimated_hours_override : "";
+    merged.labor_manual_override = Boolean(saved.labor_manual_override);
+    merged.labor_auto_sync_from_plan = saved.labor_auto_sync_from_plan !== false;
     return merged;
   }
   function saveOwner(state, metrics) { writeStore(LS_OWNER, { ...state, reservePct: DEFAULTS.reservePct, metrics }); }
@@ -794,7 +806,12 @@ Thank you.`
       sentAt: "",
       _manualPriceTouched: false,
       offeredPrice: 0,
-      price: ""
+      price: "",
+      operational_plan: [],
+      operational_estimated_days_override: "",
+      operational_estimated_hours_override: "",
+      labor_auto_sync_from_plan: true,
+      labor_manual_override: false
     };
     const tid = prev.tenant_id;
     if (tid !== undefined && tid !== null && String(tid).trim() !== "") fresh.tenant_id = tid;
@@ -6632,6 +6649,577 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     // business-settings.html define su propio Guardar/Recargar (branding + Supabase). No pisar handlers.
     if ($("btnReloadBusinessSettings")) return;
   }
+
+  let ownerOpEditingDayIndex = -1;
+
+  function getOwnerOperationalPlanApi() {
+    return typeof window !== "undefined" ? window.MgSalesOperationalPlan : null;
+  }
+
+  function readOwnerOperationalDaysOverride(state) {
+    const raw = state && state.operational_estimated_days_override;
+    if (raw === "" || raw == null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  function readOwnerOperationalHoursOverride(state) {
+    const raw = state && state.operational_estimated_hours_override;
+    if (raw === "" || raw == null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  function isOwnerLaborAutoSyncActive(state) {
+    if (!state || state.labor_manual_override) return false;
+    if (state.labor_auto_sync_from_plan === false) return false;
+    const api = getOwnerOperationalPlanApi();
+    return Boolean(api && api.planHasDays(state.operational_plan || []));
+  }
+
+  function markOwnerLaborManualOverride(state) {
+    state.labor_manual_override = true;
+    state.labor_auto_sync_from_plan = false;
+  }
+
+  function enableOwnerLaborAutoSync(state) {
+    state.labor_manual_override = false;
+    state.labor_auto_sync_from_plan = true;
+  }
+
+  function syncOwnerLaborFromOperationalPlan(state, settings) {
+    if (!isOwnerLaborAutoSyncActive(state)) return false;
+    const api = getOwnerOperationalPlanApi();
+    if (!api || typeof api.aggregateLaborWorkersFromOperationalPlan !== "function") return false;
+    const planWorkers = api.aggregateLaborWorkersFromOperationalPlan(
+      state.operational_plan || [],
+      settings
+    );
+    if (!planWorkers.length) return false;
+    const hpd = api.getHoursPerDay(settings);
+    const prev = JSON.stringify(state.workers || []);
+    state.workers = planWorkers.map((w, i) => {
+      const days = Number(w.days || 0);
+      return {
+        name: w.name || `Worker ${i + 1}`,
+        type: w.type === "helper" ? "helper" : "installer",
+        hours: Math.round(days * hpd * 100) / 100,
+        rate: ""
+      };
+    });
+    return JSON.stringify(state.workers) !== prev;
+  }
+
+  function ownerLaborHoursFromWorkers(workers, hoursPerDay) {
+    const hpd = Math.max(Number(hoursPerDay || 8), 0.25);
+    return (workers || []).reduce((sum, worker) => {
+      return sum + Number(worker.hours || 0);
+    }, 0);
+  }
+
+  function updateOwnerLaborSyncChrome(state) {
+    const autoSync = $("ownerLaborAutoSync");
+    const wrap = $("ownerLaborAutoSyncWrap");
+    const note = $("ownerLaborSyncNote");
+    const warn = $("ownerLaborManualWarn");
+    const active = isOwnerLaborAutoSyncActive(state);
+    if (autoSync) autoSync.checked = active;
+    if (wrap) wrap.style.opacity = state.labor_manual_override && !active ? "0.85" : "1";
+    if (note) {
+      note.textContent = active
+        ? "Labor days are synced from the Operational Plan."
+        : state.labor_manual_override
+          ? "Manual labor editing is active. Turn auto-sync on to drive labor from the workflow again."
+          : "Add Operational Plan days to auto-sync labor worker-days.";
+    }
+    if (warn) warn.style.display = state.labor_manual_override && !active ? "block" : "none";
+  }
+
+  function getOwnerOperationalMetrics(state, settings) {
+    const api = getOwnerOperationalPlanApi();
+    if (!api) return null;
+    const s = settings || loadSettings();
+    const hpd = api.getHoursPerDay(s);
+    const plan = api.normalizeOperationalPlan(state.operational_plan || [], null, hpd);
+    const mode = api.getOperationalPlanUnitMode(s);
+    const daysOv = readOwnerOperationalDaysOverride(state);
+    const hoursOv = readOwnerOperationalHoursOverride(state);
+    return api.computeOperationalPlanMetrics(
+      plan,
+      mode === "day" ? daysOv : null,
+      mode === "hour" ? hoursOv : null,
+      hpd
+    );
+  }
+
+  function applyOwnerOperationalPlanUnitModeToChrome(settings) {
+    const api = getOwnerOperationalPlanApi();
+    if (!api) return "hour";
+    const mode = api.getOperationalPlanUnitMode(settings || loadSettings());
+    const daysWrap = $("ownerOperationalOverrideDaysWrap");
+    const hoursWrap = $("ownerOperationalOverrideHoursWrap");
+    const lead = $("ownerOperationalLead");
+    if (daysWrap) daysWrap.style.display = mode === "day" ? "" : "none";
+    if (hoursWrap) hoursWrap.style.display = mode === "hour" ? "" : "none";
+    if (lead) {
+      lead.textContent =
+        mode === "day"
+          ? "Define daily phases and crew-days for Supervisor execution. Units follow Business Settings (days)."
+          : "Define daily phases and crew hours for Supervisor execution. Units follow Business Settings (hours).";
+    }
+    return mode;
+  }
+
+  function formatOwnerOpDate(ymd) {
+    if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(String(ymd))) return "—";
+    const parts = String(ymd).split("-").map(Number);
+    const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+    if (Number.isNaN(dt.getTime())) return String(ymd);
+    return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }
+
+  function renderOwnerOpCalendarPreview(state, settings, plan, metrics) {
+    const host = $("ownerOpCalendarPreview");
+    const api = getOwnerOperationalPlanApi();
+    if (!host || !api) return;
+    const start = normalizeDateInput(state.committedDate || state.issueDate || "");
+    const hasStart = /^\d{4}-\d{2}-\d{2}$/.test(start);
+    if (!plan.length) {
+      host.innerHTML = '<div class="sales-op-empty">Add plan days to preview the schedule on the calendar.</div>';
+      return;
+    }
+    const estDays =
+      metrics && metrics.estimated_days > 0 ? metrics.estimated_days : plan.length;
+    const preview = api.buildSalesPlanCalendarPreview({
+      plan,
+      startDate: hasStart ? start : "",
+      estimatedDays: estDays,
+      workdaysEnabled: settings.workdaysEnabled !== false
+    });
+    const planCells = (preview.cells || []).filter((cell) => cell.hasPlan);
+    if (!planCells.length) {
+      host.innerHTML = '<div class="sales-op-empty">Add plan days to preview the schedule on the calendar.</div>';
+      return;
+    }
+    const noticeHtml = !hasStart
+      ? '<p class="sales-op-cal-notice" role="status">Start date not set — preview shown by plan day.</p>'
+      : "";
+    host.innerHTML =
+      noticeHtml +
+      planCells
+        .map((cell) => {
+          const dayNum = cell.day_number != null ? cell.day_number : cell.index + 1;
+          const dayLabel = "D" + dayNum;
+          const dateLabel =
+            hasStart && cell.date ? formatOwnerOpDate(cell.date).replace(/, \d{4}$/, "") : "Plan day";
+          return (
+            `<article class="sales-op-cal-cell ${escapeHtml(cell.toneClass || "")}">` +
+            `<div class="sales-op-cal-cell__daynum">${escapeHtml(dayLabel)}</div>` +
+            `<div class="sales-op-cal-cell__date">${escapeHtml(dateLabel)}</div>` +
+            `<div class="sales-op-cal-cell__task">${escapeHtml(cell.phase || "Scheduled work")}</div>` +
+            `<div class="sales-op-cal-cell__crew">${escapeHtml(cell.crew || "")}</div>` +
+            `</article>`
+          );
+        })
+        .join("");
+  }
+
+  function buildOwnerOpDayEditorHtml(day, dayIndex, mode, hpd, api) {
+    const workers = Array.isArray(day.workers) ? day.workers : [];
+    const unitLabel = mode === "day" ? "d" : "h";
+    const workerRows = workers
+      .map((worker, workerIndex) => {
+        const wt = worker.worker_type === "helper" ? "helper" : "pro";
+        const displayUnits = api.workerHoursToDisplayUnits(worker, mode, hpd);
+        return (
+          `<div class="sales-operational-worker" data-day-index="${dayIndex}" data-worker-index="${workerIndex}">` +
+          `<input class="sales-op-role" data-field="role" maxlength="60" value="${escapeHtml(worker.role || "")}" placeholder="Role" />` +
+          `<select class="sales-op-type" data-field="worker_type">` +
+          `<option value="pro"${wt === "pro" ? " selected" : ""}>Installer</option>` +
+          `<option value="helper"${wt === "helper" ? " selected" : ""}>Assistant</option>` +
+          `</select>` +
+          `<input class="sales-op-units" data-field="estimated_units" type="number" min="0" step="0.25" value="${escapeHtml(String(displayUnits))}" />` +
+          `<span class="small sales-op-unit-label">${unitLabel}</span>` +
+          `<button type="button" class="btn danger sales-op-remove-worker" data-action="remove-worker">Remove</button>` +
+          `</div>`
+        );
+      })
+      .join("");
+    return (
+      `<article class="sales-operational-day" data-day-index="${dayIndex}">` +
+      `<div class="sales-operational-day__head">` +
+      `<label class="small">Day</label>` +
+      `<input class="sales-op-day-number" data-field="day_number" type="number" min="1" step="1" value="${escapeHtml(String(day.day_number != null ? day.day_number : dayIndex + 1))}" />` +
+      `<input class="sales-op-phase" data-field="phase" maxlength="120" value="${escapeHtml(day.phase || "")}" placeholder="Phase (e.g. Prep + waterproofing)" />` +
+      `</div>` +
+      `<div class="sales-operational-day__workers">${workerRows}` +
+      `<button type="button" class="btn sales-op-add-worker" data-action="add-worker">Add crew</button>` +
+      `<button type="button" class="btn danger sales-op-remove-day" data-action="remove-day" style="margin-top:8px;">Remove day</button>` +
+      `</div></article>`
+    );
+  }
+
+  function openOwnerOpDayEditor(dayIndex) {
+    const modal = $("ownerOpDayModal");
+    const body = $("ownerOpDayModalBody");
+    const state = loadOwner();
+    const settings = loadSettings();
+    const api = getOwnerOperationalPlanApi();
+    if (!modal || !body || !api || !state.operational_plan || !state.operational_plan[dayIndex]) return;
+    ownerOpEditingDayIndex = dayIndex;
+    const mode = api.getOperationalPlanUnitMode(settings);
+    const hpd = api.getHoursPerDay(settings);
+    const day = state.operational_plan[dayIndex];
+    const titleEl = $("ownerOpDayModalTitle");
+    if (titleEl) {
+      titleEl.textContent = "Edit day " + (day.day_number != null ? day.day_number : dayIndex + 1);
+    }
+    body.innerHTML = buildOwnerOpDayEditorHtml(day, dayIndex, mode, hpd, api);
+    modal.setAttribute("aria-hidden", "false");
+    modal.style.display = "flex";
+  }
+
+  function closeOwnerOpDayEditor() {
+    const modal = $("ownerOpDayModal");
+    if (!modal) return;
+    ownerOpEditingDayIndex = -1;
+    modal.setAttribute("aria-hidden", "true");
+    modal.style.display = "";
+  }
+
+  function persistOwnerOpDayEditorFromDom() {
+    const api = getOwnerOperationalPlanApi();
+    const body = $("ownerOpDayModalBody");
+    if (!api || !body || ownerOpEditingDayIndex < 0) return false;
+    const dayArticle = body.querySelector(".sales-operational-day");
+    if (!dayArticle) return false;
+    const dayIndex = ownerOpEditingDayIndex;
+    const state = loadOwner();
+    const settings = loadSettings();
+    const mode = api.getOperationalPlanUnitMode(settings);
+    const hpd = api.getHoursPerDay(settings);
+    if (!state.operational_plan || !state.operational_plan[dayIndex]) return false;
+    const day = state.operational_plan[dayIndex];
+    const dayNumInput = dayArticle.querySelector('[data-field="day_number"]');
+    const phaseInput = dayArticle.querySelector('[data-field="phase"]');
+    if (dayNumInput) day.day_number = Math.max(1, Math.floor(Number(dayNumInput.value || 1)));
+    if (phaseInput) day.phase = phaseInput.value;
+    const workerRows = dayArticle.querySelectorAll(".sales-operational-worker");
+    const workers = [];
+    workerRows.forEach((row, workerIndex) => {
+      const worker = state.operational_plan[dayIndex].workers[workerIndex] || {};
+      const roleInput = row.querySelector('[data-field="role"]');
+      const typeInput = row.querySelector('[data-field="worker_type"]');
+      const unitsInput = row.querySelector('[data-field="estimated_units"]');
+      if (roleInput) worker.role = roleInput.value;
+      if (typeInput) worker.worker_type = typeInput.value === "helper" ? "helper" : "pro";
+      if (unitsInput) api.setWorkerDisplayUnits(worker, unitsInput.value, mode, hpd);
+      workers.push(worker);
+    });
+    day.workers = workers.filter((w) => Number(w.estimated_hours) > 0);
+    saveOwner(state, calcOwner(state, settings));
+    return true;
+  }
+
+  function refreshOwnerAfterOpChange() {
+    const state = loadOwner();
+    const settings = loadSettings();
+    if (syncOwnerLaborFromOperationalPlan(state, settings)) {
+      enableOwnerLaborAutoSync(state);
+    }
+    saveOwner(state, calcOwner(state, settings));
+    renderOwner();
+  }
+
+  function renderOwnerOperationalPlan() {
+    const timelineHost = $("ownerOperationalTimelineHost");
+    const summaryEl = $("ownerOperationalSummary");
+    const metricsEl = $("ownerOperationalMetrics");
+    const dayCountEl = $("ownerOpPlanDayCount");
+    const daysOverrideInput = $("ownerOperationalDaysOverride");
+    const hoursOverrideInput = $("ownerOperationalHoursOverride");
+    if (!timelineHost) return;
+
+    const state = loadOwner();
+    const settings = loadSettings();
+    const api = getOwnerOperationalPlanApi();
+    if (!api) {
+      timelineHost.innerHTML = '<p class="sales-op-empty">Operational plan module not loaded.</p>';
+      return;
+    }
+
+    const mode = applyOwnerOperationalPlanUnitModeToChrome(settings);
+    const hpd = api.getHoursPerDay(settings);
+    const plan = Array.isArray(state.operational_plan) ? state.operational_plan : [];
+
+    if (daysOverrideInput && document.activeElement !== daysOverrideInput) {
+      daysOverrideInput.value =
+        state.operational_estimated_days_override === "" || state.operational_estimated_days_override == null
+          ? ""
+          : String(state.operational_estimated_days_override);
+    }
+    if (hoursOverrideInput && document.activeElement !== hoursOverrideInput) {
+      hoursOverrideInput.value =
+        state.operational_estimated_hours_override === "" || state.operational_estimated_hours_override == null
+          ? ""
+          : String(state.operational_estimated_hours_override);
+    }
+
+    const metrics = getOwnerOperationalMetrics(state, settings);
+
+    if (summaryEl) {
+      summaryEl.textContent = api.planHasDays(plan)
+        ? api.formatOperationalSummary(metrics, mode)
+        : "No schedule yet";
+    }
+    if (dayCountEl) {
+      dayCountEl.textContent =
+        metrics && metrics.estimated_days
+          ? "· " + metrics.estimated_days + " days"
+          : plan.length
+            ? "· " + plan.length + " days"
+            : "";
+    }
+    if (metricsEl) {
+      if (!api.planHasDays(plan)) {
+        metricsEl.innerHTML = "<span>Add schedule days or apply a template.</span>";
+      } else if (mode === "day") {
+        metricsEl.innerHTML =
+          `<span><strong>Est. days</strong> ${metrics.estimated_days}</span>` +
+          `<span><strong>Crew roles</strong> ${metrics.worker_count}</span>`;
+      } else {
+        metricsEl.innerHTML =
+          `<span><strong>Est. hours</strong> ${metrics.estimated_hours}</span>` +
+          `<span><strong>Crew roles</strong> ${metrics.worker_count}</span>`;
+      }
+    }
+
+    if (!plan.length) {
+      timelineHost.innerHTML =
+        '<div class="sales-op-empty">Apply a template or add days to build the execution timeline.</div>';
+    } else {
+      const groups = api.groupPlanByDisplayPhase(plan);
+      timelineHost.innerHTML = groups
+        .map((group) => {
+          const rows = group.days
+            .map((entry) => {
+              const day = entry.day;
+              const dayIndex = entry.dayIndex;
+              const crew = api.formatCrewShortLabel(day.workers);
+              const units = api.formatDayUnitsLabel(api.sumDayDisplayUnits(day.workers, mode, hpd), mode);
+              const task = day.phase || "Day " + (day.day_number != null ? day.day_number : dayIndex + 1);
+              return (
+                `<div class="sales-op-timeline-row" data-day-index="${dayIndex}" role="button" tabindex="0">` +
+                `<div class="sales-op-timeline-row__day">D${escapeHtml(String(day.day_number != null ? day.day_number : dayIndex + 1))}</div>` +
+                `<div class="sales-op-timeline-row__task">${escapeHtml(task)}</div>` +
+                `<div class="sales-op-timeline-row__crew">${escapeHtml(crew)}</div>` +
+                `<div class="sales-op-timeline-row__units">${escapeHtml(units)}</div>` +
+                `<div class="sales-op-timeline-row__actions">` +
+                `<button type="button" class="btn" data-action="edit-day" data-day-index="${dayIndex}">Edit</button>` +
+                `<button type="button" class="btn danger" data-action="remove-day" data-day-index="${dayIndex}">Remove</button>` +
+                `</div></div>`
+              );
+            })
+            .join("");
+          return (
+            `<section class="sales-op-phase-block">` +
+            `<h4 class="sales-op-phase-block__title ${escapeHtml(group.toneClass || "")}">${escapeHtml(group.label)}</h4>` +
+            `<div class="sales-op-timeline">${rows}</div></section>`
+          );
+        })
+        .join("");
+    }
+
+    renderOwnerOpCalendarPreview(state, settings, plan, metrics);
+  }
+
+  function bindOwnerLaborSyncOnce() {
+    const autoSyncToggle = $("ownerLaborAutoSync");
+    if (!autoSyncToggle || autoSyncToggle.dataset.bound === "1") return;
+    autoSyncToggle.dataset.bound = "1";
+    autoSyncToggle.addEventListener("change", () => {
+      const state = loadOwner();
+      const settings = loadSettings();
+      if (autoSyncToggle.checked) {
+        enableOwnerLaborAutoSync(state);
+        syncOwnerLaborFromOperationalPlan(state, settings);
+      } else {
+        markOwnerLaborManualOverride(state);
+      }
+      saveOwner(state, calcOwner(state, settings));
+      renderOwner();
+    });
+  }
+
+  function bindOwnerOperationalPlanOnce() {
+    const api = getOwnerOperationalPlanApi();
+    if (!api || !$("ownerOperationalSection")) return;
+
+    const templateSelect = $("ownerOperationalTemplate");
+    if (templateSelect && templateSelect.dataset.bound !== "1") {
+      templateSelect.dataset.bound = "1";
+      Object.keys(api.OPERATIONAL_PLAN_TEMPLATES).forEach((key) => {
+        const opt = document.createElement("option");
+        opt.value = key;
+        opt.textContent = api.OPERATIONAL_PLAN_TEMPLATES[key].label;
+        templateSelect.appendChild(opt);
+      });
+    }
+
+    const applyTplBtn = $("btnOwnerApplyOperationalTemplate");
+    if (applyTplBtn && applyTplBtn.dataset.bound !== "1") {
+      applyTplBtn.dataset.bound = "1";
+      applyTplBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        const key = templateSelect && templateSelect.value;
+        if (!key) return;
+        const state = loadOwner();
+        const settings = loadSettings();
+        state.operational_plan = api.applyTemplate(key);
+        state.operational_estimated_days_override = "";
+        state.operational_estimated_hours_override = "";
+        enableOwnerLaborAutoSync(state);
+        saveOwner(state, calcOwner(state, settings));
+        refreshOwnerAfterOpChange();
+      }, true);
+    }
+
+    const addDayBtn = $("btnOwnerAddOperationalDay");
+    if (addDayBtn && addDayBtn.dataset.bound !== "1") {
+      addDayBtn.dataset.bound = "1";
+      addDayBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        const state = loadOwner();
+        const settings = loadSettings();
+        const nextDay = (state.operational_plan || []).length + 1;
+        state.operational_plan = state.operational_plan || [];
+        state.operational_plan.push(
+          api.createEmptyDay(nextDay, api.getOperationalPlanUnitMode(settings), api.getHoursPerDay(settings))
+        );
+        saveOwner(state, calcOwner(state, settings));
+        refreshOwnerAfterOpChange();
+        openOwnerOpDayEditor(state.operational_plan.length - 1);
+      }, true);
+    }
+
+    const daysOverrideInput = $("ownerOperationalDaysOverride");
+    if (daysOverrideInput && daysOverrideInput.dataset.bound !== "1") {
+      daysOverrideInput.dataset.bound = "1";
+      daysOverrideInput.addEventListener("change", () => {
+        const state = loadOwner();
+        const settings = loadSettings();
+        state.operational_estimated_days_override = daysOverrideInput.value;
+        saveOwner(state, calcOwner(state, settings));
+        renderOwnerOperationalPlan();
+      });
+    }
+
+    const hoursOverrideInput = $("ownerOperationalHoursOverride");
+    if (hoursOverrideInput && hoursOverrideInput.dataset.bound !== "1") {
+      hoursOverrideInput.dataset.bound = "1";
+      hoursOverrideInput.addEventListener("change", () => {
+        const state = loadOwner();
+        const settings = loadSettings();
+        state.operational_estimated_hours_override = hoursOverrideInput.value;
+        saveOwner(state, calcOwner(state, settings));
+        renderOwnerOperationalPlan();
+      });
+    }
+
+    const timelineHost = $("ownerOperationalTimelineHost");
+    if (timelineHost && timelineHost.dataset.bound !== "1") {
+      timelineHost.dataset.bound = "1";
+      timelineHost.addEventListener("click", (event) => {
+        const btn = event.target.closest("button[data-action]");
+        const row = event.target.closest(".sales-op-timeline-row");
+        if (btn) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        const action = btn ? btn.getAttribute("data-action") : null;
+        const dayIndex = Number(
+          (btn && btn.getAttribute("data-day-index")) || (row && row.getAttribute("data-day-index"))
+        );
+        const state = loadOwner();
+        const settings = loadSettings();
+        state.operational_plan = state.operational_plan || [];
+        if (action === "remove-day" && dayIndex >= 0) {
+          state.operational_plan.splice(dayIndex, 1);
+          saveOwner(state, calcOwner(state, settings));
+          refreshOwnerAfterOpChange();
+          return;
+        }
+        if ((action === "edit-day" || (!action && row)) && dayIndex >= 0) {
+          openOwnerOpDayEditor(dayIndex);
+        }
+      });
+      timelineHost.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        const row = event.target.closest(".sales-op-timeline-row");
+        if (!row) return;
+        event.preventDefault();
+        openOwnerOpDayEditor(Number(row.getAttribute("data-day-index")));
+      });
+    }
+
+    const modal = $("ownerOpDayModal");
+    const modalBody = $("ownerOpDayModalBody");
+    if (modal && modalBody && modal.dataset.bound !== "1") {
+      modal.dataset.bound = "1";
+      ["ownerOpDayModalClose", "ownerOpDayModalCancel"].forEach((id) => {
+        const btn = $(id);
+        if (btn) {
+          btn.addEventListener("click", (e) => {
+            e.preventDefault();
+            closeOwnerOpDayEditor();
+          }, true);
+        }
+      });
+      const saveBtn = $("ownerOpDayModalSave");
+      if (saveBtn) {
+        saveBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          persistOwnerOpDayEditorFromDom();
+          closeOwnerOpDayEditor();
+          refreshOwnerAfterOpChange();
+        }, true);
+      }
+      modalBody.addEventListener("click", (event) => {
+        const btn = event.target.closest("button[data-action]");
+        if (!btn || ownerOpEditingDayIndex < 0) return;
+        const action = btn.getAttribute("data-action");
+        const state = loadOwner();
+        const settings = loadSettings();
+        if (action === "add-worker" && state.operational_plan[ownerOpEditingDayIndex]) {
+          state.operational_plan[ownerOpEditingDayIndex].workers =
+            state.operational_plan[ownerOpEditingDayIndex].workers || [];
+          state.operational_plan[ownerOpEditingDayIndex].workers.push(
+            api.createEmptyWorker(api.getOperationalPlanUnitMode(settings), api.getHoursPerDay(settings))
+          );
+          saveOwner(state, calcOwner(state, settings));
+          openOwnerOpDayEditor(ownerOpEditingDayIndex);
+          return;
+        }
+        if (action === "remove-worker") {
+          const workerRow = btn.closest(".sales-operational-worker");
+          const workerIndex = Number(workerRow && workerRow.dataset.workerIndex);
+          if (workerIndex >= 0) {
+            state.operational_plan[ownerOpEditingDayIndex].workers.splice(workerIndex, 1);
+            saveOwner(state, calcOwner(state, settings));
+            openOwnerOpDayEditor(ownerOpEditingDayIndex);
+          }
+          return;
+        }
+        if (action === "remove-day") {
+          state.operational_plan.splice(ownerOpEditingDayIndex, 1);
+          saveOwner(state, calcOwner(state, settings));
+          closeOwnerOpDayEditor();
+          refreshOwnerAfterOpChange();
+        }
+      });
+    }
+  }
+
   let __ownerWorkerUiTimer = null;
   function scheduleRenderOwnerAfterWorkerInput() {
     if (__ownerWorkerUiTimer) clearTimeout(__ownerWorkerUiTimer);
@@ -6680,29 +7268,51 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if (!body) return;
     const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
     const unitsLabel = settings.pricingMode === "day" ? "Dias" : "Horas";
+    const autoSync = isOwnerLaborAutoSyncActive(state);
     if ($("workerUnitsHead")) $("workerUnitsHead").textContent = unitsLabel;
     if ($("workerRateHead")) $("workerRateHead").textContent = "Costo base";
 
-    body.innerHTML = state.workers.map((worker, index) => `
-      <tr data-index="${index}">
-        <td><input data-key="name" maxlength="40" value="${escapeHtml(worker.name || "")}" /></td>
+    const hint = $("ownerCrewHint");
+    if (hint) {
+      const workerHours = ownerLaborHoursFromWorkers(state.workers, hoursPerDay);
+      if (autoSync) {
+        const totalDisplay = state.workers.reduce(
+          (sum, w) => sum + ownerLaborHoursToDisplayUnits(w.hours, settings, hoursPerDay),
+          0
+        );
+        hint.textContent = `${state.workers.length} workers · ${totalDisplay.toFixed(2)} worker-days · ${workerHours.toFixed(2)} labor hours (from Operational Plan).`;
+      } else {
+        hint.textContent = `${state.workers.length} workers configured for ${workerHours.toFixed(2)} labor hours.`;
+      }
+    }
+
+    body.innerHTML = state.workers.map((worker, index) => {
+      const unitsVal = ownerLaborHoursToDisplayUnits(worker.hours, settings, hoursPerDay);
+      const unitsAttrs = autoSync
+        ? 'readonly tabindex="-1" aria-readonly="true" title="Synced from Operational Plan"'
+        : "";
+      const rowClass = autoSync ? ' class="owner-labor-row--synced"' : "";
+      return `
+      <tr data-index="${index}"${rowClass}>
+        <td><input data-key="name" maxlength="40" value="${escapeHtml(worker.name || "")}" ${autoSync ? "readonly tabindex=\"-1\"" : ""} /></td>
         <td>
-          <select data-key="type">
+          <select data-key="type" ${autoSync ? "disabled" : ""}>
             <option value="installer" ${worker.type === "installer" ? "selected" : ""}>Pro</option>
             <option value="helper" ${worker.type === "helper" ? "selected" : ""}>Assistant</option>
           </select>
         </td>
-        <td><input data-key="hours" type="number" inputmode="numeric" min="0" step="1" pattern="[0-9]*" value="${ownerLaborHoursToDisplayUnits(worker.hours, settings, hoursPerDay)}" /></td>
+        <td><input data-key="hours" type="number" inputmode="numeric" min="0" step="1" pattern="[0-9]*" value="${unitsVal}" ${unitsAttrs} /></td>
         <td><input data-key="rate" type="number" step="0.01" value="${worker.type === "helper" ? settings.baseHelper : settings.baseInstaller}" readonly /></td>
         <td data-cell="labor">${money(metrics.laborByWorker[index]?.cost || 0, settings.currency)}</td>
         <td>
           <div class="row-actions">
-            <button class="btn ghost" data-action="copy">Copy</button>
-            <button class="btn danger" data-action="delete">Delete</button>
+            <button class="btn ghost" data-action="copy" ${autoSync ? 'disabled title="Disable auto-sync to copy rows"' : ""}>Copy</button>
+            <button class="btn danger" data-action="delete" ${autoSync ? 'disabled title="Edit crew in Operational Plan"' : ""}>Delete</button>
           </div>
         </td>
       </tr>
-    `).join("");
+    `;
+    }).join("");
 
     body.querySelectorAll("input,select").forEach((el) => {
       const commit = () => {
@@ -6716,6 +7326,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         if (index < 0 || !key) return;
         const s = loadOwner();
         if (!Array.isArray(s.workers) || !s.workers[index]) return;
+        if (key !== "rate") markOwnerLaborManualOverride(s);
         if (key === "hours") {
           const parsed = parseOwnerLaborQtyInput(el.value);
           const displayInt = parsed.empty ? 0 : parsed.displayInt;
@@ -6735,6 +7346,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           if (index < 0) return;
           const s = loadOwner();
           if (!Array.isArray(s.workers) || !s.workers[index]) return;
+          markOwnerLaborManualOverride(s);
           const parsed = parseOwnerLaborQtyInput(el.value);
           const displayInt = parsed.empty ? 0 : parsed.displayInt;
           s.workers[index].hours = ownerLaborDisplayUnitsToHours(displayInt, settings, hoursPerDay);
@@ -6787,6 +7399,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const settings = loadSettings();
     const state = loadOwner();
     state.reservePct = DEFAULTS.reservePct;
+    if (syncOwnerLaborFromOperationalPlan(state, settings)) {
+      saveOwner(state, calcOwner(state, settings));
+    }
     let metrics = calcOwner(state, settings);
 
     const projectNameEl = $("projectName");
@@ -6948,6 +7563,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     });
 
     if ($("btnAddWorker")) $("btnAddWorker").onclick = () => {
+      markOwnerLaborManualOverride(state);
       state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: "installer", hours: 0, rate: "" });
       saveOwner(state, calcOwner(state, settings));
       renderOwner();
@@ -6955,10 +7571,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if ($("btnClearOwnerLabor")) {
       $("btnClearOwnerLabor").onclick = () => {
         const owner = loadOwner();
-        owner.workers = [
-          { name: "Pro 1", type: "pro", hours: 0, rate: "", cost: 0 },
-          { name: "Assistant 1", type: "assistant", hours: 0, rate: "", cost: 0 }
-        ];
+        markOwnerLaborManualOverride(owner);
+        owner.workers = (DEFAULT_OWNER.workers || []).map((w) => ({
+          name: String(w.name || "Worker"),
+          type: w.type === "helper" ? "helper" : "installer",
+          hours: 0,
+          rate: ""
+        }));
         saveOwner(owner, calcOwner(owner, settings));
         renderOwner();
       };
@@ -6990,6 +7609,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     } catch (e) {
       console.warn("saveOwner failed, UI still usable", e);
     }
+
+    updateOwnerLaborSyncChrome(state);
+    renderOwnerOperationalPlan();
+    bindOwnerLaborSyncOnce();
+    bindOwnerOperationalPlanOnce();
 
     const ownerInvoiceState = getProjectInvoiceState(ownerProject);
 

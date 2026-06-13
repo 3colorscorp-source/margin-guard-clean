@@ -2238,6 +2238,17 @@ body[data-role="owner"] .owner-labor-guide__text{
   line-height:1.55;
   color:rgba(232,238,252,.78);
 }
+body[data-role="owner"] .owner-labor-guide__meta{
+  margin:8px 0 0;
+  font-size:13px;
+  opacity:.88;
+}
+body[data-role="owner"] .owner-labor-row--synced td{
+  opacity:.92;
+}
+body[data-role="owner"] .owner-operational .owner-op-layout__main{
+  max-width:100%;
+}
 body[data-role="owner"] .owner-labor-guide__em{
   font-weight:750;
   color:rgba(232,238,252,.94);

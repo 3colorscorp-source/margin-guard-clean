@@ -167,11 +167,19 @@
                 </div>
               </header>
 
-              <div class="owner-labor-guide" role="note">
-                <div class="owner-labor-guide__head">
-                  <span class="owner-labor-guide__kicker">Guía rápida</span>
+              <div class="owner-labor-guide sales-labor-guide" role="note">
+                <div class="owner-labor-guide__head sales-labor-guide__head">
+                  <span class="owner-labor-guide__kicker sales-labor-guide__kicker">Guía rápida</span>
                 </div>
-                <p class="owner-labor-guide__text">Esta tabla modela la <strong class="owner-labor-guide__em">mano de obra del proyecto actual</strong>: agrega una fila por trabajador y completa tipo y unidades (horas o días, según tu configuración). El costo base viene de Business Settings por tipo; aquí solo ajustas lo necesario para cotizar. El labor calculado por fila alimenta el precio recomendado en <strong class="owner-labor-guide__em">Quote Snapshot</strong>. Usa los controles del encabezado de esta sección para añadir o vaciar filas; en cada fila, copia o elimina según necesites.</p>
+                <label class="sales-labor-sync-toggle owner-labor-sync-toggle" id="ownerLaborAutoSyncWrap">
+                  <input type="checkbox" id="ownerLaborAutoSync" checked />
+                  Auto-sync labor from Operational Plan
+                </label>
+                <p class="owner-labor-guide__text sales-labor-guide__text" id="ownerLaborSyncNote">Add Operational Plan days to auto-sync labor worker-days.</p>
+                <p class="notice" id="ownerLaborManualWarn" style="display:none;margin-top:8px;" role="status">
+                  Manual labor override is active. Operational Plan changes will not update labor totals until auto-sync is turned back on.
+                </p>
+                <p class="owner-labor-guide__meta sales-labor-guide__meta" id="ownerCrewHint"></p>
               </div>
 
               <div class="owner-labor-table-wrap">
@@ -190,6 +198,59 @@
               </table>
               </div>
             </section>
+
+            <div class="sep"></div>
+
+            <details class="sales-operational sales-operational--pro owner-operational" id="ownerOperationalSection" open>
+              <summary class="sales-operational__summary owner-operational__summary">
+                <span class="eyebrow sales-operational__eyebrow">Execution</span>
+                <span class="sales-operational__title">OPERATIONAL PLAN</span>
+                <span class="sales-operational__meta" id="ownerOperationalSummary">No schedule yet</span>
+              </summary>
+              <div class="sales-operational__body owner-operational__body">
+                <div class="sales-op-layout owner-op-layout">
+                  <div class="sales-op-layout__left owner-op-layout__main">
+                    <header class="sales-op-timeline-head">
+                      <h3 class="sales-op-timeline-title">Operational Plan <span id="ownerOpPlanDayCount"></span></h3>
+                      <p class="sales-op-timeline-sub" id="ownerOperationalLead">Click a day to edit tasks and crew.</p>
+                    </header>
+                    <div class="sales-op-toolbar form sales-operational__toolbar">
+                      <div class="field">
+                        <label>Quick template</label>
+                        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                          <select id="ownerOperationalTemplate" style="flex:1;min-width:200px;">
+                            <option value="">Choose a template…</option>
+                          </select>
+                          <button type="button" class="btn" id="btnOwnerApplyOperationalTemplate">Apply template</button>
+                        </div>
+                      </div>
+                      <div class="field" id="ownerOperationalOverrideDaysWrap">
+                        <label id="ownerOperationalOverrideDaysLabel">Estimated project days (override)</label>
+                        <input id="ownerOperationalDaysOverride" type="number" min="0" step="0.25" placeholder="Auto from max day" />
+                        <div class="hint" id="ownerOperationalOverrideDaysHint">Leave blank to use the highest day number in the plan.</div>
+                      </div>
+                      <div class="field" id="ownerOperationalOverrideHoursWrap" style="display:none;">
+                        <label id="ownerOperationalOverrideHoursLabel">Estimated project hours (override)</label>
+                        <input id="ownerOperationalHoursOverride" type="number" min="0" step="0.25" placeholder="Auto from crew hours total" />
+                        <div class="hint" id="ownerOperationalOverrideHoursHint">Leave blank to sum crew hours in the plan.</div>
+                      </div>
+                    </div>
+                    <div class="sales-op-metrics-inline" id="ownerOperationalMetrics" aria-live="polite"></div>
+                    <div id="ownerOperationalTimelineHost"></div>
+                    <div class="inline-actions" style="margin-top:10px;">
+                      <button type="button" class="btn primary" id="btnOwnerAddOperationalDay">Add day</button>
+                    </div>
+                    <section class="sales-op-calendar-card owner-op-calendar-card" aria-labelledby="ownerOpCalendarTitle" style="margin-top:16px;">
+                      <h4 class="sales-op-calendar-card__title" id="ownerOpCalendarTitle">Calendar preview</h4>
+                      <div class="sales-op-cal-weekdays" aria-hidden="true">
+                        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                      </div>
+                      <div class="sales-op-calendar-grid" id="ownerOpCalendarPreview"></div>
+                    </section>
+                  </div>
+                </div>
+              </div>
+            </details>
 
             <div class="owner-quote-cta" role="group" aria-label="Enviar o exportar cotizacion">
               <button type="button" class="btn primary owner-quote-cta__btn owner-quote-cta__btn--send" id="btnSendQuote">Enviar cotizacion</button>
@@ -355,7 +416,25 @@
     </div>
   </div>
 
+  <div class="modal sales-op-day-modal" id="ownerOpDayModal" aria-hidden="true" role="dialog" aria-labelledby="ownerOpDayModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="ownerOpDayModalTitle">Edit plan day</div>
+          <div class="modal-subtitle" id="ownerOpDayModalSubtitle">Update task, crew roles, and planned units.</div>
+        </div>
+        <button type="button" class="icon-btn" id="ownerOpDayModalClose" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body" id="ownerOpDayModalBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn" id="ownerOpDayModalCancel">Cancel</button>
+        <button type="button" class="btn primary" id="ownerOpDayModalSave">Save day</button>
+      </div>
+    </div>
+  </div>
+
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="/js/sales-operational-plan.js"></script>
 <script src="/js/estimate-send-helpers.js"></script>
 <script src="/js/tenant.js"></script>
 <script src="/js/auth.js"></script>
