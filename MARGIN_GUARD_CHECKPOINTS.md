@@ -4,6 +4,34 @@ Authoritative closed-step records for reconnect and approval gates.
 
 ---
 
+## Step 3E-C15-F — Internal Operational Readiness Closeout
+
+**Status:** IN PROGRESS — policy clarified; beta gates open  
+**Recorded:** 2026-06-10  
+**Full document:** `MARGIN_GUARD_C15_CLOSEOUT.md`
+
+### Supervisor financial / reporting boundary (approved)
+
+Supervisor **may** see field-execution information only: reported days, labor/progress, schedule completion state, field reports, and indirect/unexpected field expenses.
+
+Supervisor **must not** see owner financials: contract total, revenue, owner profit, margin %, overhead, seller commission, reserve, invoice/payment controls, balance due, recommended/minimum price, or full owner financial detail.
+
+Labor / expense / view-expenses controls are acceptable only inside the field-reporting boundary (reported labor, indirect field expenses, supervisor-visible field expenses). Before public beta, decide whether those controls stay active, are disabled, or show “coming soon.”
+
+**Rule:** Supervisor can report field progress and indirect project expenses. Supervisor cannot see or manage owner financial performance.
+
+### C15 track summary
+
+| Track | Status |
+|-------|--------|
+| C15-C Owner | COMPLETE / APPROVED WITH GAPS |
+| C15-D Seller | COMPLETE / APPROVED |
+| C15-E Supervisor | COMPLETE / APPROVED WITH GAPS |
+
+See `MARGIN_GUARD_C15_CLOSEOUT.md` for remaining beta gaps and approval gates.
+
+---
+
 ## Step 3E-C14 Rollout Checkpoint — Supervisor + Seller Device Pilot
 
 **Status:** CLOSED — SUPERVISOR PILOT PASS / SELLER PILOT PASS / SELLER SEND BACKEND HARD-DENY PASS  
@@ -34,7 +62,7 @@ Authoritative closed-step records for reconnect and approval gates.
 | **Device status** | active |
 | **Read scope verified** | sees Bridge Link Test only |
 | **Hidden from supervisor device** | Project Test A, C7B project, protected projects, owner-wide projects |
-| **Operational policy** | read-only approved; report writes deferred; expenses disabled; day-progress disabled |
+| **Operational policy** | Field-execution boundary per C15-F (`MARGIN_GUARD_C15_CLOSEOUT.md`); pre-beta UX for labor/expense controls TBD |
 
 ### Seller Pilot final state
 
