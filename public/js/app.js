@@ -224,37 +224,81 @@ Thank you.`
     }[m]));
   }
 
-  /** Cantidad labor (días u horas en UI Owner): enteros; "5.7" → 5 (misma idea que /sales, no concatenar dígitos). */
+  /** Cantidad labor Owner: enteros en modo hora; cuartos de día en modo día (como Seller). */
+  function parseOwnerLaborDisplayInput(value, settings) {
+    if (value == null) return { empty: true, display: 0 };
+    const raw = String(value).trim();
+    if (raw === "") return { empty: true, display: 0 };
+    const n = Number(raw.replace(/,/g, "."));
+    if (!Number.isFinite(n) || n < 0) return { empty: true, display: 0 };
+    const display =
+      settings.pricingMode === "day" ? Math.round(n * 4) / 4 : Math.max(0, Math.floor(n));
+    return { empty: false, display };
+  }
+
   function parseOwnerLaborQtyInput(value) {
-    if (value == null) return { empty: true, displayInt: 0 };
-    let s = String(value).trim();
-    if (s === "") return { empty: true, displayInt: 0 };
-    s = s.replace(/,/g, ".");
-    const dot = s.indexOf(".");
-    if (dot >= 0) s = s.slice(0, dot);
-    s = s.replace(/\D/g, "");
-    if (s === "") return { empty: true, displayInt: 0 };
-    const n = Number(s);
-    if (!Number.isFinite(n)) return { empty: false, displayInt: 0 };
-    return { empty: false, displayInt: Math.max(0, Math.floor(n)) };
+    const parsed = parseOwnerLaborDisplayInput(value, { pricingMode: "hour" });
+    return { empty: parsed.empty, displayInt: parsed.display };
   }
 
   function normalizeLaborQty(value) {
-    const p = parseOwnerLaborQtyInput(value);
-    return p.empty ? 0 : p.displayInt;
+    const p = parseOwnerLaborDisplayInput(value, loadSettings());
+    return p.empty ? 0 : p.display;
   }
 
-  function ownerLaborDisplayUnitsToHours(displayInt, settings, hoursPerDay) {
+  function ownerLaborDisplayUnitsToHours(display, settings, hoursPerDay) {
     const hpd = Math.max(Number(hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
-    if (settings.pricingMode === "day") return Math.max(0, displayInt) * hpd;
-    return Math.max(0, displayInt);
+    const v = Math.max(0, Number(display) || 0);
+    if (settings.pricingMode === "day") return Math.round(v * hpd * 100) / 100;
+    return Math.round(v * 100) / 100;
   }
 
   function ownerLaborHoursToDisplayUnits(hours, settings, hoursPerDay) {
     const hpd = Math.max(Number(hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
     const h = Math.max(0, Number(hours || 0));
-    if (settings.pricingMode === "day") return Math.floor(h / hpd);
-    return Math.floor(h);
+    if (settings.pricingMode === "day") return Math.round((h / hpd) * 100) / 100;
+    return Math.round(h * 100) / 100;
+  }
+
+  function resolveOwnerQuoteSettings(settings) {
+    const merged = settings && typeof settings === "object" ? settings : loadSettings();
+    const pricingMode = String(merged.pricingMode || DEFAULTS.pricingMode).toLowerCase() === "day" ? "day" : "hour";
+    return { ...merged, pricingMode };
+  }
+
+  function computeOwnerLaborSummary(state, settings) {
+    const s = resolveOwnerQuoteSettings(settings);
+    const hoursPerDay = Math.max(Number(s.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
+    const workers = Array.isArray(state?.workers) ? state.workers : [];
+    const workerHours = Math.round(ownerLaborHoursFromWorkers(workers, hoursPerDay) * 100) / 100;
+    const workerDays = s.pricingMode === "day"
+      ? Math.round(
+          workers.reduce((sum, w) => sum + ownerLaborHoursToDisplayUnits(w.hours, s, hoursPerDay), 0) * 100
+        ) / 100
+      : Math.round((workerHours / hoursPerDay) * 100) / 100;
+    return {
+      workersCount: workers.length,
+      workerHours,
+      workerDays,
+      isDayMode: s.pricingMode === "day"
+    };
+  }
+
+  function formatOwnerCrewHint(state, settings, autoSync) {
+    const summary = computeOwnerLaborSummary(state, settings);
+    const suffix = autoSync ? " (from Operational Plan)" : ".";
+    if (summary.isDayMode) {
+      return `${summary.workersCount} workers · ${summary.workerDays.toFixed(2)} worker-days · ${summary.workerHours.toFixed(2)} labor hours${suffix}`;
+    }
+    return `${summary.workersCount} workers · ${summary.workerHours.toFixed(2)} labor hours${suffix}`;
+  }
+
+  function ownerOverheadMeta(settings, metrics) {
+    const stdHours = Number(settings.stdHours || 0);
+    if (stdHours <= 0) return "Set std hours in Business Settings to activate overhead";
+    const perHour = Number(settings.overheadMonthly || 0) / stdHours;
+    const hours = Number(metrics?.totalHours || 0);
+    return `${money(perHour, settings.currency)}/hr × ${hours.toFixed(2)} labor hrs`;
   }
 
   if (typeof window !== "undefined") window.normalizeLaborQty = normalizeLaborQty;
@@ -668,8 +712,27 @@ Thank you.`
 
   window.__mgComputeProjectControlMetrics = computeProjectControlMetrics;
 
-  function loadSettings() { return { ...DEFAULTS, ...readStore(LS_SETTINGS, {}) }; }
+  function loadSettings() {
+    const merged = { ...DEFAULTS, ...readStore(LS_SETTINGS, {}) };
+    return resolveOwnerQuoteSettings(merged);
+  }
   function saveSettings(settings) { writeStore(LS_SETTINGS, settings); }
+
+  /** Owner/Seller labor row rates always come from Business Settings (mg_settings_v2). */
+  function workerRateFromSettings(worker, settings) {
+    return worker.type === "helper"
+      ? Number(settings.baseHelper || 0)
+      : Number(settings.baseInstaller || 0);
+  }
+
+  /** Owner workers do not persist custom rates; clear stale localStorage values (e.g. legacy 75/45). */
+  function normalizeOwnerWorkers(workers) {
+    return (Array.isArray(workers) ? workers : []).map((worker) => ({
+      ...worker,
+      type: worker.type === "helper" ? "helper" : "installer",
+      rate: ""
+    }));
+  }
   function formatMoney(amount) {
     return money(finiteNumber(amount, 0), loadSettings().currency);
   }
@@ -736,7 +799,9 @@ Thank you.`
       ...DEFAULT_OWNER,
       ...saved,
       reservePct: DEFAULTS.reservePct,
-      workers: Array.isArray(saved.workers) && saved.workers.length ? saved.workers : DEFAULT_OWNER.workers
+      workers: normalizeOwnerWorkers(
+        Array.isArray(saved.workers) && saved.workers.length ? saved.workers : DEFAULT_OWNER.workers
+      )
     };
     merged.projectName = String(merged.projectName ?? "");
     merged.clientName = String(merged.clientName ?? "");
@@ -756,7 +821,14 @@ Thank you.`
     merged.labor_auto_sync_from_plan = saved.labor_auto_sync_from_plan !== false;
     return merged;
   }
-  function saveOwner(state, metrics) { writeStore(LS_OWNER, { ...state, reservePct: DEFAULTS.reservePct, metrics }); }
+  function saveOwner(state, metrics) {
+    writeStore(LS_OWNER, {
+      ...state,
+      workers: normalizeOwnerWorkers(state.workers),
+      reservePct: DEFAULTS.reservePct,
+      metrics
+    });
+  }
 
   /**
    * Owner active quote draft: full new-quote slate in mg_owner_v2 (and metrics).
@@ -6082,8 +6154,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   function calcOwner(state, settings) {
     const laborByWorker = state.workers.map((worker) => {
       const hours = Number(worker.hours || 0);
-      const baseRate = worker.type === "helper" ? Number(settings.baseHelper || 0) : Number(settings.baseInstaller || 0);
-      const rate = worker.rate === "" || worker.rate == null ? baseRate : Number(worker.rate || 0);
+      const rate = workerRateFromSettings(worker, settings);
       return { hours, rate, cost: hours * rate };
     });
 
@@ -6095,8 +6166,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const beforeProfit = labor + taxes + overhead;
     const profit = beforeProfit * (Number(settings.profitPct || 0) / 100);
     const reserve = beforeProfit * (DEFAULTS.reservePct / 100);
+    const minimumMarginPct = finiteNumber(settings.minimumMarginPct, DEFAULTS.minimumMarginPct);
     const recommended = beforeProfit + profit + reserve;
-    const minimum = beforeProfit * (1 + 0.15 + DEFAULTS.reservePct / 100);
+    const minimum = beforeProfit * (1 + minimumMarginPct / 100 + DEFAULTS.reservePct / 100);
     const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
     const quotedUnits = settings.pricingMode === "day" ? (totalHours / hoursPerDay) : totalHours;
     const pricePerUnit = quotedUnits > 0 ? recommended / quotedUnits : 0;
@@ -6717,7 +6789,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     }, 0);
   }
 
-  function updateOwnerLaborSyncChrome(state) {
+  function updateOwnerLaborSyncChrome(state, settings) {
+    const s = resolveOwnerQuoteSettings(settings);
     const autoSync = $("ownerLaborAutoSync");
     const wrap = $("ownerLaborAutoSyncWrap");
     const note = $("ownerLaborSyncNote");
@@ -6726,11 +6799,17 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if (autoSync) autoSync.checked = active;
     if (wrap) wrap.style.opacity = state.labor_manual_override && !active ? "0.85" : "1";
     if (note) {
-      note.textContent = active
-        ? "Labor days are synced from the Operational Plan."
-        : state.labor_manual_override
-          ? "Manual labor editing is active. Turn auto-sync on to drive labor from the workflow again."
-          : "Add Operational Plan days to auto-sync labor worker-days.";
+      if (active) {
+        note.textContent = s.pricingMode === "day"
+          ? "Labor days are synced from the Operational Plan (Business Settings: day mode)."
+          : "Labor hours are synced from the Operational Plan (Business Settings: hour mode).";
+      } else if (state.labor_manual_override) {
+        note.textContent = "Manual labor editing is active. Turn auto-sync on to drive labor from the workflow again.";
+      } else {
+        note.textContent = s.pricingMode === "day"
+          ? "Add Operational Plan days to auto-sync labor worker-days."
+          : "Add Operational Plan hours to auto-sync labor totals.";
+      }
     }
     if (warn) warn.style.display = state.labor_manual_override && !active ? "block" : "none";
   }
@@ -6778,6 +6857,15 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   }
 
+  function formatOwnerOpPlanCrewLabel(workers, api) {
+    const list = Array.isArray(workers) ? workers : [];
+    if (!list.length) return "—";
+    const roleCount = list.length;
+    const types =
+      api && typeof api.formatCrewShortLabel === "function" ? api.formatCrewShortLabel(list) : "Crew";
+    return `${roleCount} ${roleCount === 1 ? "role" : "roles"} · ${types}`;
+  }
+
   function renderOwnerOpCalendarPreview(state, settings, plan, metrics) {
     const host = $("ownerOpCalendarPreview");
     const api = getOwnerOperationalPlanApi();
@@ -6790,6 +6878,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     }
     const estDays =
       metrics && metrics.estimated_days > 0 ? metrics.estimated_days : plan.length;
+    const sortedPlan = plan.slice().sort((a, b) => {
+      const an = Number(a?.day_number ?? 0);
+      const bn = Number(b?.day_number ?? 0);
+      return an - bn;
+    });
     const preview = api.buildSalesPlanCalendarPreview({
       plan,
       startDate: hasStart ? start : "",
@@ -6812,12 +6905,14 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           const dayLabel = "D" + dayNum;
           const dateLabel =
             hasStart && cell.date ? formatOwnerOpDate(cell.date).replace(/, \d{4}$/, "") : "Plan day";
+          const planDay = sortedPlan[cell.index] || null;
+          const crewLabel = formatOwnerOpPlanCrewLabel(planDay?.workers, api);
           return (
             `<article class="sales-op-cal-cell ${escapeHtml(cell.toneClass || "")}">` +
             `<div class="sales-op-cal-cell__daynum">${escapeHtml(dayLabel)}</div>` +
             `<div class="sales-op-cal-cell__date">${escapeHtml(dateLabel)}</div>` +
             `<div class="sales-op-cal-cell__task">${escapeHtml(cell.phase || "Scheduled work")}</div>` +
-            `<div class="sales-op-cal-cell__crew">${escapeHtml(cell.crew || "")}</div>` +
+            `<div class="sales-op-cal-cell__crew">${escapeHtml(crewLabel)}</div>` +
             `</article>`
           );
         })
@@ -7005,7 +7100,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             .map((entry) => {
               const day = entry.day;
               const dayIndex = entry.dayIndex;
-              const crew = api.formatCrewShortLabel(day.workers);
+              const crew = formatOwnerOpPlanCrewLabel(day.workers, api);
               const units = api.formatDayUnitsLabel(api.sumDayDisplayUnits(day.workers, mode, hpd), mode);
               const task = day.phase || "Day " + (day.day_number != null ? day.day_number : dayIndex + 1);
               return (
@@ -7242,9 +7337,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       if (nameInput) state.workers[index].name = nameInput.value;
       if (typeSel) state.workers[index].type = typeSel.value;
       if (hoursInput) {
-        const parsed = parseOwnerLaborQtyInput(hoursInput.value);
-        const displayInt = parsed.empty ? 0 : parsed.displayInt;
-        state.workers[index].hours = ownerLaborDisplayUnitsToHours(displayInt, settings, hoursPerDay);
+        const parsed = parseOwnerLaborDisplayInput(hoursInput.value, settings);
+        const display = parsed.empty ? 0 : parsed.display;
+        state.workers[index].hours = ownerLaborDisplayUnitsToHours(display, settings, hoursPerDay);
       }
     });
   }
@@ -7257,7 +7352,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       ["Cost Before Profit", money(metrics.beforeProfit, settings.currency), "Direct cost plus indirect burden"],
       ["Target Profit", money(metrics.profit, settings.currency), `${Number(settings.profitPct || 0).toFixed(1)}% owner rule`],
       ["Fixed Reserve", money(metrics.reserve, settings.currency), `${DEFAULTS.reservePct}% non-negotiable`],
-      ["Minimum Floor", money(metrics.minimum, settings.currency), "Below this, the business bleeds cash"],
+      ["Minimum Floor", money(metrics.minimum, settings.currency), `${finiteNumber(settings.minimumMarginPct, DEFAULTS.minimumMarginPct).toFixed(1)}% minimum margin rule`],
       ["Recommended Price", money(metrics.recommended, settings.currency), "This is the number the system wants sold"],
       [`Recommended per ${metrics.pricingModeLabel}`, money(metrics.pricePerUnit, settings.currency), `${metrics.quotedUnits.toFixed(2)} ${metrics.pricingModeLabel === "dia" ? "dias" : "horas"} cotizables`]
     ];
@@ -7266,28 +7361,21 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   function renderWorkers(state, settings, metrics) {
     const body = $("workersBody");
     if (!body) return;
-    const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
-    const unitsLabel = settings.pricingMode === "day" ? "Dias" : "Horas";
+    const quoteSettings = resolveOwnerQuoteSettings(settings);
+    const hoursPerDay = Math.max(Number(quoteSettings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
+    const unitsLabel = quoteSettings.pricingMode === "day" ? "Dias" : "Horas";
+    const unitsStep = quoteSettings.pricingMode === "day" ? "0.25" : "1";
     const autoSync = isOwnerLaborAutoSyncActive(state);
     if ($("workerUnitsHead")) $("workerUnitsHead").textContent = unitsLabel;
     if ($("workerRateHead")) $("workerRateHead").textContent = "Costo base";
 
     const hint = $("ownerCrewHint");
     if (hint) {
-      const workerHours = ownerLaborHoursFromWorkers(state.workers, hoursPerDay);
-      if (autoSync) {
-        const totalDisplay = state.workers.reduce(
-          (sum, w) => sum + ownerLaborHoursToDisplayUnits(w.hours, settings, hoursPerDay),
-          0
-        );
-        hint.textContent = `${state.workers.length} workers · ${totalDisplay.toFixed(2)} worker-days · ${workerHours.toFixed(2)} labor hours (from Operational Plan).`;
-      } else {
-        hint.textContent = `${state.workers.length} workers configured for ${workerHours.toFixed(2)} labor hours.`;
-      }
+      hint.textContent = formatOwnerCrewHint(state, quoteSettings, autoSync);
     }
 
     body.innerHTML = state.workers.map((worker, index) => {
-      const unitsVal = ownerLaborHoursToDisplayUnits(worker.hours, settings, hoursPerDay);
+      const unitsVal = ownerLaborHoursToDisplayUnits(worker.hours, quoteSettings, hoursPerDay);
       const unitsAttrs = autoSync
         ? 'readonly tabindex="-1" aria-readonly="true" title="Synced from Operational Plan"'
         : "";
@@ -7301,9 +7389,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             <option value="helper" ${worker.type === "helper" ? "selected" : ""}>Assistant</option>
           </select>
         </td>
-        <td><input data-key="hours" type="number" inputmode="numeric" min="0" step="1" pattern="[0-9]*" value="${unitsVal}" ${unitsAttrs} /></td>
-        <td><input data-key="rate" type="number" step="0.01" value="${worker.type === "helper" ? settings.baseHelper : settings.baseInstaller}" readonly /></td>
-        <td data-cell="labor">${money(metrics.laborByWorker[index]?.cost || 0, settings.currency)}</td>
+        <td><input data-key="hours" type="number" inputmode="decimal" min="0" step="${unitsStep}" value="${unitsVal}" ${unitsAttrs} /></td>
+        <td><input data-key="rate" type="number" step="0.01" value="${workerRateFromSettings(worker, quoteSettings)}" readonly /></td>
+        <td data-cell="labor">${money(metrics.laborByWorker[index]?.cost || 0, quoteSettings.currency)}</td>
         <td>
           <div class="row-actions">
             <button class="btn ghost" data-action="copy" ${autoSync ? 'disabled title="Disable auto-sync to copy rows"' : ""}>Copy</button>
@@ -7328,15 +7416,15 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         if (!Array.isArray(s.workers) || !s.workers[index]) return;
         if (key !== "rate") markOwnerLaborManualOverride(s);
         if (key === "hours") {
-          const parsed = parseOwnerLaborQtyInput(el.value);
-          const displayInt = parsed.empty ? 0 : parsed.displayInt;
-          s.workers[index].hours = ownerLaborDisplayUnitsToHours(displayInt, settings, hoursPerDay);
-          el.value = parsed.empty ? "" : String(displayInt);
+          const parsed = parseOwnerLaborDisplayInput(el.value, quoteSettings);
+          const display = parsed.empty ? 0 : parsed.display;
+          s.workers[index].hours = ownerLaborDisplayUnitsToHours(display, quoteSettings, hoursPerDay);
+          el.value = parsed.empty ? "" : String(display);
         } else {
           s.workers[index][key] = el.value;
         }
         if (key === "type") s.workers[index].rate = "";
-        saveOwner(s, calcOwner(s, settings));
+        saveOwner(s, calcOwner(s, quoteSettings));
         renderOwner();
       };
       if (el.dataset.key === "hours") {
@@ -7347,14 +7435,14 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           const s = loadOwner();
           if (!Array.isArray(s.workers) || !s.workers[index]) return;
           markOwnerLaborManualOverride(s);
-          const parsed = parseOwnerLaborQtyInput(el.value);
-          const displayInt = parsed.empty ? 0 : parsed.displayInt;
-          s.workers[index].hours = ownerLaborDisplayUnitsToHours(displayInt, settings, hoursPerDay);
-          el.value = parsed.empty ? "" : String(displayInt);
-          saveOwner(s, calcOwner(s, settings));
-          const m = calcOwner(s, settings);
+          const parsed = parseOwnerLaborDisplayInput(el.value, quoteSettings);
+          const display = parsed.empty ? 0 : parsed.display;
+          s.workers[index].hours = ownerLaborDisplayUnitsToHours(display, quoteSettings, hoursPerDay);
+          el.value = parsed.empty ? "" : String(display);
+          saveOwner(s, calcOwner(s, quoteSettings));
+          const m = calcOwner(s, quoteSettings);
           const laborTd = tr?.querySelector("[data-cell=\"labor\"]");
-          if (laborTd) laborTd.textContent = money(m.laborByWorker[index]?.cost || 0, settings.currency);
+          if (laborTd) laborTd.textContent = money(m.laborByWorker[index]?.cost || 0, quoteSettings.currency);
           scheduleRenderOwnerAfterWorkerInput();
         });
         el.addEventListener("focus", () => {
@@ -7387,14 +7475,25 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         if (!Array.isArray(s.workers)) return;
         if (button.dataset.action === "delete") s.workers.splice(index, 1);
         if (button.dataset.action === "copy") s.workers.splice(index + 1, 0, { ...s.workers[index] });
-        saveOwner(s, calcOwner(s, settings));
+        saveOwner(s, calcOwner(s, quoteSettings));
         renderOwner();
       });
     });
   }
 
+  let ownerSettingsStorageBound = false;
+
+  function bindOwnerSettingsStorageRefreshOnce() {
+    if (ownerSettingsStorageBound || !$("ownerKpis")) return;
+    ownerSettingsStorageBound = true;
+    window.addEventListener("storage", (ev) => {
+      if (ev && ev.key === "mg_settings_v2") renderOwner();
+    });
+  }
+
   function renderOwner() {
     if (!$("ownerKpis")) return;
+    bindOwnerSettingsStorageRefreshOnce();
 
     const settings = loadSettings();
     const state = loadOwner();
@@ -7482,11 +7581,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const ownerReport = ownerProject?.id ? loadSupervisorReport(ownerProject) : buildDefaultSupervisorReport(null);
 
     const pricingModeCopy = settings.pricingMode === "day" ? "per dia laboral" : "por hora";
+    const laborSummary = computeOwnerLaborSummary(state, settings);
     const primaryCards = [
       ["Recommended", money(metrics.recommended, settings.currency), `${money(metrics.pricePerUnit, settings.currency)} ${pricingModeCopy}`],
-      ["Minimum Floor", money(metrics.minimum, settings.currency), "No vender por debajo de esto"],
+      ["Minimum Floor", money(metrics.minimum, settings.currency), `${finiteNumber(settings.minimumMarginPct, DEFAULTS.minimumMarginPct).toFixed(1)}% minimum margin · no vender por debajo`],
       ["Labor + Burden", money(metrics.labor + metrics.taxes, settings.currency), "Labor directa + employer burden"],
-      ["Overhead", money(metrics.overhead, settings.currency), "Carga operativa del negocio"]
+      ["Overhead", money(metrics.overhead, settings.currency), ownerOverheadMeta(settings, metrics)]
     ];
     const detailCards = [
       ["Direct Labor", money(metrics.labor, settings.currency), `${state.workers.length} workers modeled`],
@@ -7494,13 +7594,16 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       ["Target Profit", money(metrics.profit, settings.currency), `${Number(settings.profitPct || 0).toFixed(1)}% owner rule`],
       ["Reserve", money(metrics.reserve, settings.currency), `${DEFAULTS.reservePct}% fixed reserve`]
     ];
+    const quoteUnitsMeta = settings.pricingMode === "day"
+      ? `${metrics.quotedUnits.toFixed(2)} dias cotizables · ${laborSummary.workerHours.toFixed(2)} labor hrs`
+      : `${metrics.quotedUnits.toFixed(2)} horas cotizables`;
 
     $("ownerKpis").innerHTML = `
       <div class="owner-kpi-shell">
         <div class="owner-quote-hero">
           <div class="owner-quote-kicker">Precio recomendado</div>
           <div class="owner-quote-price">${escapeHtml(money(metrics.recommended, settings.currency))}</div>
-          <div class="owner-quote-meta">${escapeHtml(money(metrics.pricePerUnit, settings.currency))} ${escapeHtml(pricingModeCopy)} · ${escapeHtml(metrics.quotedUnits.toFixed(2))} ${escapeHtml(metrics.pricingModeLabel === "dia" ? "dias" : "horas")} cotizables</div>
+          <div class="owner-quote-meta">${escapeHtml(money(metrics.pricePerUnit, settings.currency))} ${escapeHtml(pricingModeCopy)} · ${escapeHtml(quoteUnitsMeta)}</div>
           <div class="owner-quote-strip">
             ${primaryCards.map(([title, big, small]) => `
               <div class="owner-mini-card">
@@ -7610,7 +7713,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       console.warn("saveOwner failed, UI still usable", e);
     }
 
-    updateOwnerLaborSyncChrome(state);
+    updateOwnerLaborSyncChrome(state, settings);
     renderOwnerOperationalPlan();
     bindOwnerLaborSyncOnce();
     bindOwnerOperationalPlanOnce();
@@ -8884,12 +8987,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       internalCost,
       message,
     };
-  }
-
-  function workerRateFromSettings(worker, settings) {
-    return worker.type === "helper"
-      ? Number(settings.baseHelper || 0)
-      : Number(settings.baseInstaller || 0);
   }
 
   function resolveSalesOfferedFromState(state, base) {
