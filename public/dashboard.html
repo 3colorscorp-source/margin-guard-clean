@@ -30,14 +30,14 @@
       box-sizing:border-box;
     }
     body[data-role="dashboard"] .card{
-      border-radius:20px;
-      border:1px solid rgba(255,255,255,.08);
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.07);
       background:
-        linear-gradient(168deg, rgba(255,255,255,.055) 0%, rgba(255,255,255,.022) 48%, rgba(255,255,255,.012) 100%);
+        linear-gradient(168deg, rgba(255,255,255,.045) 0%, rgba(255,255,255,.018) 48%, rgba(255,255,255,.01) 100%);
       box-shadow:
-        0 20px 50px rgba(0,0,0,.32),
-        inset 0 1px 0 rgba(255,255,255,.07);
-      backdrop-filter:blur(14px);
+        0 10px 32px rgba(0,0,0,.24),
+        inset 0 1px 0 rgba(255,255,255,.05);
+      backdrop-filter:blur(12px);
     }
     body[data-role="dashboard"] .topbar{
       border-bottom:1px solid rgba(255,255,255,.07);
@@ -45,9 +45,46 @@
       backdrop-filter:blur(16px);
     }
     body[data-role="dashboard"] .account-pill{
-      margin-bottom:8px;
-      opacity:.82;
-      font-size:12px;
+      display:none;
+    }
+    .fcc-hero-bar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px 20px;
+      flex-wrap:wrap;
+      margin-bottom:10px;
+      padding:8px 14px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.08);
+      background:
+        radial-gradient(480px 120px at 0% 0%, rgba(34,197,94,.07), transparent 62%),
+        linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015));
+      box-shadow:0 8px 24px rgba(0,0,0,.22);
+    }
+    .fcc-hero-bar__left{
+      min-width:0;
+      flex:1 1 280px;
+    }
+    .fcc-hero-bar__topline{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:8px 12px;
+      margin-bottom:4px;
+    }
+    .fcc-account-inline{
+      font-size:11px;
+      color:rgba(148,163,184,.88);
+      letter-spacing:.02em;
+    }
+    .fcc-hero-bar__aside{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:flex-end;
+      gap:8px 10px;
+      flex:0 1 auto;
     }
     .fcc-hero{
       margin-bottom:10px;
@@ -132,12 +169,13 @@
     }
     .fcc-health-chip{
       display:flex;
-      flex-direction:column;
-      align-items:flex-start;
-      gap:2px;
-      padding:10px 14px;
-      min-width:168px;
-      border-radius:14px;
+      flex-direction:row;
+      flex-wrap:wrap;
+      align-items:baseline;
+      gap:6px 10px;
+      padding:8px 12px;
+      min-width:0;
+      border-radius:12px;
       border:1px solid rgba(255,255,255,.1);
       background:rgba(4,7,14,.72);
       box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
@@ -164,7 +202,7 @@
       color:rgba(148,163,184,.95);
     }
     .fcc-health-chip-value{
-      font-size:26px;
+      font-size:22px;
       font-weight:900;
       line-height:1;
       letter-spacing:-.04em;
@@ -175,10 +213,30 @@
     .fcc-health-chip--red .fcc-health-chip-value{ color:#fca5a5; }
     .fcc-health-chip-meta{
       margin:0;
+      font-size:10px;
+      line-height:1.35;
+      color:rgba(148,163,184,.85);
+      max-width:32ch;
+      flex:1 1 100%;
+    }
+    .fcc-hero-bar .fcc-eyebrow{
+      margin:0;
+      padding:3px 8px;
+      font-size:9px;
+      letter-spacing:.14em;
+    }
+    .fcc-hero-bar .fcc-hero-title{
+      margin:0;
+      font-size:clamp(18px, 2vw, 24px);
+      font-weight:900;
+      letter-spacing:-.04em;
+      line-height:1.15;
+    }
+    .fcc-hero-bar .fcc-hero-compact-sub{
+      margin:2px 0 0;
+      max-width:52ch;
       font-size:11px;
-      line-height:1.4;
-      color:rgba(148,163,184,.88);
-      max-width:28ch;
+      line-height:1.35;
     }
     .fcc-date-pill{
       padding:6px 12px;
@@ -191,7 +249,7 @@
       letter-spacing:.04em;
     }
     body[data-role="dashboard"] .fcc-panel .card-inner{
-      padding:14px 16px;
+      padding:12px 14px;
     }
     .fcc-treasury-inner{
       display:flex;
@@ -247,10 +305,8 @@
       align-items:stretch;
     }
     .fcc-dashboard-lower{
-      display:grid;
-      grid-template-columns:minmax(0, 1.15fr) minmax(0, 0.85fr);
-      gap:clamp(12px, 1.4vw, 18px);
-      align-items:start;
+      margin-top:2px;
+      margin-bottom:0;
     }
     .fcc-column{
       min-width:0;
@@ -299,11 +355,11 @@
       align-items:baseline;
       justify-content:space-between;
       gap:12px;
-      padding:0 2px 4px;
+      padding:0 2px 6px;
       border-bottom:1px solid rgba(255,255,255,.06);
     }
     .fcc-skyline-chart__headline .big{
-      font-size:clamp(22px, 2.4vw, 28px);
+      font-size:clamp(20px, 2.2vw, 26px);
       font-weight:900;
       letter-spacing:-.03em;
       color:rgba(248,250,252,.98);
@@ -320,7 +376,7 @@
       align-items:flex-end;
       justify-content:space-between;
       gap:clamp(10px, 2vw, 20px);
-      height:188px;
+      height:172px;
       padding:12px clamp(12px, 2vw, 24px) 0;
       border-radius:14px 14px 0 0;
       border:1px solid rgba(255,255,255,.09);
@@ -346,15 +402,13 @@
       height:100%;
     }
     .fcc-skyline-bar__value{
-      font-size:11px;
+      font-size:12px;
       font-weight:800;
       letter-spacing:-.02em;
       color:rgba(248,250,252,.95);
-      margin-bottom:6px;
+      margin-bottom:5px;
       white-space:nowrap;
       text-align:center;
-      transform:scale(.95);
-      transform-origin:center bottom;
     }
     .fcc-skyline-bar__tower{
       flex:1;
@@ -414,14 +468,14 @@
       background:linear-gradient(180deg, rgba(186,230,253,.98), rgba(56,189,248,.95));
     }
     .fcc-skyline-bar__label{
-      margin-top:8px;
-      font-size:9px;
+      margin-top:7px;
+      font-size:10px;
       font-weight:750;
-      letter-spacing:.08em;
+      letter-spacing:.07em;
       text-transform:uppercase;
-      color:rgba(148,163,184,.92);
+      color:rgba(186,198,220,.92);
       text-align:center;
-      line-height:1.3;
+      line-height:1.25;
     }
     .fcc-legend{
       list-style:none;
@@ -523,25 +577,6 @@
       gap:14px;
     }
     /* Collapsed bank panel must not reserve layout space. */
-    #fccBankCollapsePanel{
-      min-height:0;
-      margin:0;
-    }
-    #fccBankCollapsePanel[hidden]{
-      display:none !important;
-    }
-    .fcc-bank-lower-slot{
-      display:flex;
-      flex-direction:column;
-      gap:8px;
-      align-self:flex-start;
-      flex:0 0 auto;
-      width:100%;
-      min-height:0;
-    }
-    .fcc-bank-lower-slot:has(#fccBankCollapsePanel[hidden]){
-      gap:0;
-    }
     .fcc-bank-wrap .card-inner{
       padding-top:12px;
       padding-bottom:12px;
@@ -729,7 +764,107 @@
       color:rgba(148,163,184,.82);
     }
     .fcc-section-head{
-      margin-bottom:10px;
+      margin-bottom:8px;
+    }
+    .fcc-section-head .sub{
+      font-size:11px;
+      margin-top:2px;
+    }
+    .fcc-util-bar{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      padding:10px 12px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.07);
+      background:rgba(255,255,255,.02);
+    }
+    .fcc-util-bar .btn{
+      flex:1 1 220px;
+      justify-content:center;
+      font-size:12px;
+      font-weight:650;
+      padding:10px 14px;
+      border-radius:12px;
+    }
+    .fcc-exec-modal{
+      position:fixed;
+      inset:0;
+      z-index:10050;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:clamp(12px, 3vw, 28px);
+      background:rgba(4,7,14,.78);
+      backdrop-filter:blur(10px);
+    }
+    .fcc-exec-modal.hidden{
+      display:none;
+    }
+    .fcc-exec-modal__panel{
+      width:min(920px, 100%);
+      max-height:min(88vh, 920px);
+      display:flex;
+      flex-direction:column;
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.12);
+      background:linear-gradient(168deg, rgba(14,20,34,.98), rgba(8,12,22,.98));
+      box-shadow:0 28px 80px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+    }
+    .fcc-exec-modal__head{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      padding:14px 18px;
+      border-bottom:1px solid rgba(255,255,255,.08);
+      flex-shrink:0;
+    }
+    .fcc-exec-modal__head h2{
+      margin:0;
+      font-size:15px;
+      font-weight:850;
+      letter-spacing:.06em;
+      text-transform:uppercase;
+      color:rgba(248,250,252,.96);
+    }
+    .fcc-exec-modal__sub{
+      margin:4px 0 0;
+      font-size:12px;
+      color:rgba(148,163,184,.88);
+      line-height:1.4;
+    }
+    .fcc-exec-modal__close{
+      flex-shrink:0;
+      width:36px;
+      height:36px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(255,255,255,.04);
+      color:rgba(248,250,252,.92);
+      font-size:22px;
+      line-height:1;
+      cursor:pointer;
+      font-family:inherit;
+    }
+    .fcc-exec-modal__close:hover{
+      background:rgba(255,255,255,.08);
+      border-color:rgba(255,255,255,.18);
+    }
+    .fcc-exec-modal__body{
+      overflow:auto;
+      padding:16px 18px 18px;
+      -webkit-overflow-scrolling:touch;
+    }
+    .fcc-exec-modal__body .card-inner{
+      padding:0;
+      box-shadow:none;
+      border:0;
+      background:transparent;
+    }
+    .fcc-exec-modal__body .section-head h2{
+      font-size:17px;
+      font-weight:850;
     }
     .fcc-section-head h2{
       font-size:13px;
@@ -743,36 +878,19 @@
       color:rgba(148,163,184,.88);
       margin-top:4px;
     }
-    .fcc-perf-wrap{
-      border-style:dashed;
-      border-color:rgba(255,255,255,.07);
-      background:rgba(255,255,255,.012);
+    .fcc-hero-bar .fcc-health-chip-value{
+      font-size:20px;
     }
-    .fcc-perf-toggle{
-      margin-top:4px;
-      margin-bottom:0;
-      font-size:12px;
-    }
-    .fcc-bank-wrap .section-head h2{ font-size:17px; font-weight:850; }
-    .fcc-alerts.msg-list li{
-      border-radius:12px;
-      border:1px solid rgba(255,255,255,.07);
-      background:rgba(255,255,255,.02);
-      margin-bottom:8px;
-    }
-    .fcc-stack .card{ margin-top:14px; }
-    .fcc-stack .card:first-child{ margin-top:0; }
     @media (max-width: 980px){
-      .fcc-hero-compact-inner{
-        grid-template-columns:1fr;
-      }
-      .fcc-hero-compact-stats{
+      .fcc-hero-bar{
+        flex-direction:column;
         align-items:flex-start;
-        flex-direction:row;
-        flex-wrap:wrap;
       }
-      .fcc-columns,
-      .fcc-dashboard-lower{
+      .fcc-hero-bar__aside{
+        width:100%;
+        justify-content:flex-start;
+      }
+      .fcc-columns{
         grid-template-columns:1fr;
       }
       .fcc-column{
@@ -780,21 +898,18 @@
       }
       .fcc-order-snapshot{ order:1; }
       .fcc-order-profit{ order:2; }
-      .fcc-order-perf{ order:3; }
-      .fcc-order-bank{ order:4; }
+      .fcc-order-util{ order:3; }
       .fcc-legend--accounts{ grid-template-columns:repeat(2, 1fr); }
       .fcc-legend{ grid-template-columns:1fr; }
-    }
-
-    .fcc-perf-toggle{
-      margin-top:8px;
-      margin-bottom:0;
-    }
-    #fccPerfCollapsePanel:not([hidden]){
-      margin-top:10px;
-    }
-    .fcc-bank-toggle{
-      align-self:flex-start;
+      .fcc-exec-modal{
+        align-items:flex-end;
+        padding:0;
+      }
+      .fcc-exec-modal__panel{
+        width:100%;
+        max-height:92vh;
+        border-radius:18px 18px 0 0;
+      }
     }
   </style>
 </head>
@@ -825,23 +940,22 @@
   </div>
 
   <div class="container fcc-page">
-    <div class="account-pill" id="accountEmail">Cuenta activa</div>
-
-    <section class="card fcc-hero">
-      <div class="card-inner fcc-hero-compact-inner">
-        <div class="fcc-hero-copy">
+    <section class="fcc-hero-bar" aria-label="Financial Command Center">
+      <div class="fcc-hero-bar__left">
+        <div class="fcc-hero-bar__topline">
           <span class="fcc-eyebrow">Executive · Owner view</span>
-          <h2 class="fcc-hero-title">Financial Command Center</h2>
-          <p class="fcc-hero-compact-sub">Cash, runway, and protected accounts — one executive view.</p>
+          <span class="fcc-account-inline" id="accountEmail">Cuenta activa</span>
         </div>
-        <div class="fcc-hero-compact-stats">
-          <div class="fcc-health-chip" id="fccHealthChip">
-            <span class="fcc-health-chip-label">Business health</span>
-            <span class="fcc-health-chip-value" id="overallHealth">0%</span>
-            <p class="fcc-health-chip-meta" id="overallHealthMeta">Waiting for saved balances.</p>
-          </div>
-          <div class="fcc-date-pill" id="fccDateRange">Month view · through today</div>
+        <h2 class="fcc-hero-title">Financial Command Center</h2>
+        <p class="fcc-hero-compact-sub">Cash, runway, and protected accounts — one executive view.</p>
+      </div>
+      <div class="fcc-hero-bar__aside">
+        <div class="fcc-health-chip" id="fccHealthChip">
+          <span class="fcc-health-chip-label">Business health</span>
+          <span class="fcc-health-chip-value" id="overallHealth">0%</span>
+          <p class="fcc-health-chip-meta" id="overallHealthMeta">Waiting for saved balances.</p>
         </div>
+        <div class="fcc-date-pill" id="fccDateRange">Month view · through today</div>
       </div>
     </section>
 
@@ -886,7 +1000,7 @@
               <span class="fcc-qa-label">Quick actions</span>
               <nav class="fcc-qa--bar" aria-label="Quick actions">
                 <a href="/estimates-invoices">Invoice Hub</a>
-                <a href="#fcc-bank-console" id="btnQuickOpenBank">Banking &amp; Stripe</a>
+                <a href="#" id="btnQuickOpenBank">Banking &amp; Stripe</a>
                 <a href="/business-settings">Business Settings</a>
               </nav>
             </div>
@@ -895,124 +1009,15 @@
       </div>
     </div>
 
-    <div class="fcc-dashboard-lower">
-      <section class="card fcc-panel fcc-perf-wrap fcc-order-perf">
-        <div class="card-inner">
-          <div class="fcc-panel-head fcc-panel-head--compact">
-            <h2>Financial performance</h2>
-            <div class="fcc-panel-sub">Executive comparison — monitor or hub data only.</div>
-          </div>
-          <button type="button" class="btn fcc-perf-toggle" id="btnToggleFccPerf" aria-expanded="false" aria-controls="fccPerfCollapsePanel">
-            Show financial performance
-          </button>
-          <div id="fccPerfCollapsePanel" hidden>
-            <div class="fcc-perf-table-wrap">
-              <table class="fcc-perf-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Metric</th>
-                    <th scope="col">MTD</th>
-                    <th scope="col">Last month</th>
-                    <th scope="col">Change</th>
-                    <th scope="col">YTD</th>
-                  </tr>
-                </thead>
-                <tbody id="fccPerfTbody"></tbody>
-                <caption>MTD / last month / change / YTD: time series pending; values shown are snapshot from monitor or hub where available.</caption>
-              </table>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <div class="fcc-bank-lower-slot fcc-order-bank">
-          <button
-            type="button"
-            id="btnToggleBankConsole"
-            class="btn fcc-bank-toggle"
-            aria-expanded="true"
-            aria-controls="fccBankCollapsePanel">
-            Hide banking &amp; Stripe
-          </button>
-          <section id="fccBankCollapsePanel" class="card fcc-bank-wrap">
-            <div class="card-inner" id="fcc-bank-console">
-                <div class="section-head">
-                  <div>
-                    <h2>Bank accounts</h2>
-                    <div class="sub">Load real balances for the four owner buckets.</div>
-                  </div>
-                </div>
-
-                <div data-mg-bank-panel class="finance-form" style="margin-bottom:14px;">
-                  <div class="section-head" style="margin-bottom:10px;">
-                    <div>
-                      <h3 style="margin:0;font-size:1rem;">Stripe bank link</h3>
-                      <div class="sub">Connect your bank (your workspace only). Aggregated data is not visible to admin.</div>
-                    </div>
-                  </div>
-                  <div class="inline-actions" style="flex-wrap:wrap;gap:8px;">
-                    <button type="button" class="btn primary" data-mg-action="connect-bank">Connect bank</button>
-                    <button type="button" class="btn" data-mg-action="sync-summary">Sync bank data</button>
-                    <button type="button" class="btn" data-mg-action="save-mapping">Save bucket mapping</button>
-                  </div>
-                  <p class="sub" data-mg-bank-status style="margin-top:10px;min-height:1.2em;"></p>
-                  <div class="sub" data-mg-bank-summary style="margin-top:8px;">—</div>
-                  <div class="sep" style="margin:14px 0;"></div>
-                  <div class="sub" style="margin-bottom:8px;">Map linked accounts to buckets (max one account per bucket).</div>
-                  <div class="field">
-                    <label>Operating / Expenses</label>
-                    <select data-mg-map-bucket="operating"></select>
-                  </div>
-                  <div class="field">
-                    <label>Savings</label>
-                    <select data-mg-map-bucket="savings"></select>
-                  </div>
-                  <div class="field">
-                    <label>Profit</label>
-                    <select data-mg-map-bucket="profit"></select>
-                  </div>
-                  <div class="field">
-                    <label>Tax Reserve</label>
-                    <select data-mg-map-bucket="tax_reserve"></select>
-                  </div>
-                </div>
-
-                <div class="finance-form">
-                  <div class="field">
-                    <label>Operating / Expenses</label>
-                    <input id="expensesBalance" type="number" step="0.01" placeholder="0" />
-                  </div>
-                  <div class="field">
-                    <label>Profit</label>
-                    <input id="profitBalance" type="number" step="0.01" placeholder="0" />
-                  </div>
-                  <div class="field">
-                    <label>Savings / Reserve</label>
-                    <input id="savingsBalance" type="number" step="0.01" placeholder="0" />
-                  </div>
-                  <div class="field">
-                    <label>Tax Reserve</label>
-                    <input id="taxBalance" type="number" step="0.01" placeholder="0" />
-                  </div>
-                  <div class="field finance-form-wide">
-                    <label>Monthly Operating Cost</label>
-                    <input id="operatingMonthly" type="number" step="0.01" placeholder="0" />
-                  </div>
-                </div>
-
-                <div class="dashboard-note" id="dashboardBankNote">
-                  <div class="dashboard-note-title">Bank sync status</div>
-                  <div class="dashboard-note-copy" id="dashboardBankSyncMeta">Manual entry or server snapshot below.</div>
-                </div>
-
-                <div class="sep"></div>
-                <div class="actions" style="justify-content:flex-start;">
-                  <button class="btn" id="btnResetDashboard">Reset balances</button>
-                  <button class="btn primary" id="btnSaveDashboard">Guardar monitor</button>
-                </div>
-              </div>
-          </section>
-      </div>
+    <div class="fcc-dashboard-lower fcc-order-util" role="region" aria-label="Secondary tools">
+      <nav class="fcc-util-bar" aria-label="Executive utilities">
+        <button type="button" class="btn" id="btnOpenFccPerf" aria-haspopup="dialog" aria-controls="fccPerfModal">
+          Financial performance
+        </button>
+        <button type="button" class="btn" id="btnOpenFccBank" aria-haspopup="dialog" aria-controls="fccBankModal">
+          Banking &amp; Stripe
+        </button>
+      </nav>
     </div>
 
     <div class="fcc-cf-hooks" hidden aria-hidden="true">
@@ -1024,102 +1029,182 @@
     </div>
   </div>
 
+  <div id="fccPerfModal" class="fcc-exec-modal hidden" role="dialog" aria-modal="true" aria-labelledby="fccPerfModalTitle" hidden>
+    <div class="fcc-exec-modal__panel">
+      <header class="fcc-exec-modal__head">
+        <div>
+          <h2 id="fccPerfModalTitle">Financial performance</h2>
+          <p class="fcc-exec-modal__sub">Executive comparison — monitor or hub data only.</p>
+        </div>
+        <button type="button" class="fcc-exec-modal__close" id="btnCloseFccPerf" aria-label="Close financial performance">×</button>
+      </header>
+      <div class="fcc-exec-modal__body">
+        <div class="fcc-perf-table-wrap">
+          <table class="fcc-perf-table">
+            <thead>
+              <tr>
+                <th scope="col">Metric</th>
+                <th scope="col">MTD</th>
+                <th scope="col">Last month</th>
+                <th scope="col">Change</th>
+                <th scope="col">YTD</th>
+              </tr>
+            </thead>
+            <tbody id="fccPerfTbody"></tbody>
+            <caption>MTD / last month / change / YTD: time series pending; values shown are snapshot from monitor or hub where available.</caption>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="fccBankModal" class="fcc-exec-modal hidden" role="dialog" aria-modal="true" aria-labelledby="fccBankModalTitle" hidden>
+    <div class="fcc-exec-modal__panel">
+      <header class="fcc-exec-modal__head">
+        <div>
+          <h2 id="fccBankModalTitle">Banking &amp; Stripe</h2>
+          <p class="fcc-exec-modal__sub">Load real balances, connect your bank, and map owner buckets.</p>
+        </div>
+        <button type="button" class="fcc-exec-modal__close" id="btnCloseFccBank" aria-label="Close banking and Stripe">×</button>
+      </header>
+      <div class="fcc-exec-modal__body">
+        <div class="card-inner fcc-bank-wrap" id="fcc-bank-console">
+          <div class="section-head">
+            <div>
+              <h2>Bank accounts</h2>
+              <div class="sub">Load real balances for the four owner buckets.</div>
+            </div>
+          </div>
+
+          <div data-mg-bank-panel class="finance-form" style="margin-bottom:14px;">
+            <div class="section-head" style="margin-bottom:10px;">
+              <div>
+                <h3 style="margin:0;font-size:1rem;">Stripe bank link</h3>
+                <div class="sub">Connect your bank (your workspace only). Aggregated data is not visible to admin.</div>
+              </div>
+            </div>
+            <div class="inline-actions" style="flex-wrap:wrap;gap:8px;">
+              <button type="button" class="btn primary" data-mg-action="connect-bank">Connect bank</button>
+              <button type="button" class="btn" data-mg-action="sync-summary">Sync bank data</button>
+              <button type="button" class="btn" data-mg-action="save-mapping">Save bucket mapping</button>
+            </div>
+            <p class="sub" data-mg-bank-status style="margin-top:10px;min-height:1.2em;"></p>
+            <div class="sub" data-mg-bank-summary style="margin-top:8px;">—</div>
+            <div class="sep" style="margin:14px 0;"></div>
+            <div class="sub" style="margin-bottom:8px;">Map linked accounts to buckets (max one account per bucket).</div>
+            <div class="field">
+              <label>Operating / Expenses</label>
+              <select data-mg-map-bucket="operating"></select>
+            </div>
+            <div class="field">
+              <label>Savings</label>
+              <select data-mg-map-bucket="savings"></select>
+            </div>
+            <div class="field">
+              <label>Profit</label>
+              <select data-mg-map-bucket="profit"></select>
+            </div>
+            <div class="field">
+              <label>Tax Reserve</label>
+              <select data-mg-map-bucket="tax_reserve"></select>
+            </div>
+          </div>
+
+          <div class="finance-form">
+            <div class="field">
+              <label>Operating / Expenses</label>
+              <input id="expensesBalance" type="number" step="0.01" placeholder="0" />
+            </div>
+            <div class="field">
+              <label>Profit</label>
+              <input id="profitBalance" type="number" step="0.01" placeholder="0" />
+            </div>
+            <div class="field">
+              <label>Savings / Reserve</label>
+              <input id="savingsBalance" type="number" step="0.01" placeholder="0" />
+            </div>
+            <div class="field">
+              <label>Tax Reserve</label>
+              <input id="taxBalance" type="number" step="0.01" placeholder="0" />
+            </div>
+            <div class="field finance-form-wide">
+              <label>Monthly Operating Cost</label>
+              <input id="operatingMonthly" type="number" step="0.01" placeholder="0" />
+            </div>
+          </div>
+
+          <div class="dashboard-note" id="dashboardBankNote">
+            <div class="dashboard-note-title">Bank sync status</div>
+            <div class="dashboard-note-copy" id="dashboardBankSyncMeta">Manual entry or server snapshot below.</div>
+          </div>
+
+          <div class="sep"></div>
+          <div class="actions" style="justify-content:flex-start;">
+            <button class="btn" id="btnResetDashboard">Reset balances</button>
+            <button class="btn primary" id="btnSaveDashboard">Guardar monitor</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="/js/tenant.js"></script>
   <script src="/js/auth.js"></script>
   <script src="/js/app.js"></script>
   <script>
     (function () {
-      var btn = document.getElementById('btnToggleFccPerf');
-      var panel = document.getElementById('fccPerfCollapsePanel');
-      if (!btn || !panel) return;
-      btn.addEventListener('click', function () {
-        var open = panel.hasAttribute('hidden');
-        if (open) {
-          panel.removeAttribute('hidden');
-          btn.setAttribute('aria-expanded', 'true');
-          btn.textContent = 'Hide financial performance';
-        } else {
-          panel.setAttribute('hidden', '');
-          btn.setAttribute('aria-expanded', 'false');
-          btn.textContent = 'Show financial performance';
+      var openModals = [];
+
+      function bindExecModal(modalId, openBtnIds, closeBtnId) {
+        var modal = document.getElementById(modalId);
+        if (!modal) return;
+
+        function isOpen() {
+          return !modal.classList.contains('hidden') && !modal.hasAttribute('hidden');
         }
-      });
-    })();
-  </script>
-  <script>
-const btn = document.getElementById('btnToggleBankConsole');
-const panel = document.getElementById('fccBankCollapsePanel');
-const LS_KEY = 'mg_dashboard_bank_panel_hidden';
 
-if (btn && panel) {
-  function readBankHiddenPref() {
-    try {
-      const v = localStorage.getItem(LS_KEY);
-      if (v === null) return true;
-      return v === 'true';
-    } catch (_e) {
-      return true;
-    }
-  }
+        function openModal() {
+          modal.hidden = false;
+          modal.removeAttribute('hidden');
+          modal.classList.remove('hidden');
+          if (openModals.indexOf(modal) === -1) openModals.push(modal);
+          document.body.style.overflow = 'hidden';
+          var closeBtn = document.getElementById(closeBtnId);
+          if (closeBtn) closeBtn.focus();
+        }
 
-  function persistBankHiddenPref() {
-    try {
-      const hidden = panel.hidden === true || panel.hasAttribute('hidden');
-      localStorage.setItem(LS_KEY, hidden ? 'true' : 'false');
-    } catch (_e) { /* ignore */ }
-  }
+        function closeModal() {
+          modal.hidden = true;
+          modal.setAttribute('hidden', '');
+          modal.classList.add('hidden');
+          openModals = openModals.filter(function (m) { return m !== modal; });
+          if (!openModals.length) document.body.style.overflow = '';
+        }
 
-  function applyBankHiddenPref() {
-    if (readBankHiddenPref()) {
-      panel.hidden = true;
-      panel.setAttribute('hidden', '');
-    } else {
-      panel.hidden = false;
-      panel.removeAttribute('hidden');
-    }
-  }
-
-  function syncBankToggle() {
-    const isHidden = panel.hidden === true || panel.hasAttribute('hidden');
-    btn.textContent = isHidden ? 'Show banking & Stripe' : 'Hide banking & Stripe';
-    btn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
-  }
-
-  applyBankHiddenPref();
-  syncBankToggle();
-
-  btn.addEventListener('click', function () {
-    const isHidden = panel.hidden === true || panel.hasAttribute('hidden');
-
-    if (isHidden) {
-      panel.hidden = false;
-      panel.removeAttribute('hidden');
-    } else {
-      panel.hidden = true;
-      panel.setAttribute('hidden', '');
-    }
-
-    persistBankHiddenPref();
-    syncBankToggle();
-  });
-}
-  </script>
-  <script>
-    (function () {
-      var qaBank = document.getElementById('btnQuickOpenBank');
-      var toggle = document.getElementById('btnToggleBankConsole');
-      var panel = document.getElementById('fccBankCollapsePanel');
-      var target = document.getElementById('fcc-bank-console');
-      if (!qaBank || !toggle || !panel) return;
-      qaBank.addEventListener('click', function (e) {
-        e.preventDefault();
-        var isHidden = panel.hidden === true || panel.hasAttribute('hidden');
-        if (isHidden) toggle.click();
-        var scrollTarget = target || panel;
-        requestAnimationFrame(function () {
-          scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        (openBtnIds || []).forEach(function (id) {
+          var btn = document.getElementById(id);
+          if (!btn) return;
+          btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            openModal();
+          });
         });
-      });
+
+        var closeBtn = document.getElementById(closeBtnId);
+        if (closeBtn) closeBtn.addEventListener('click', closeModal);
+
+        modal.addEventListener('click', function (e) {
+          if (e.target === modal) closeModal();
+        });
+
+        document.addEventListener('keydown', function (e) {
+          if (e.key !== 'Escape' || !isOpen()) return;
+          closeModal();
+        });
+      }
+
+      bindExecModal('fccPerfModal', ['btnOpenFccPerf'], 'btnCloseFccPerf');
+      bindExecModal('fccBankModal', ['btnOpenFccBank', 'btnQuickOpenBank'], 'btnCloseFccBank');
     })();
   </script>
   <script src="/js/bank-connection.js"></script>
