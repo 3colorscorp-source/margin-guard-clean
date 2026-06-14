@@ -213,7 +213,8 @@ function parseBusinessSettingsForOwnerProfit(mg) {
   const laborRatesOk = proRate > 0 && assistantRate > 0;
   const burdenOk =
     ficaPct > 0 &&
-    wcPct > 0 &&
+    Number.isFinite(wcPct) &&
+    wcPct >= 0 &&
     Number.isFinite(futaPct) &&
     futaPct >= 0 &&
     Number.isFinite(casuiPct) &&
@@ -230,7 +231,7 @@ function parseBusinessSettingsForOwnerProfit(mg) {
   const targetMarginOk = Number.isFinite(profitPct) && profitPct >= 0;
 
   if (!(ficaPct > 0)) missing.push("ficaPct");
-  if (!(wcPct > 0)) missing.push("wcPct");
+  if (!Number.isFinite(wcPct) || wcPct < 0) missing.push("wcPct");
   if (!Number.isFinite(futaPct) || futaPct < 0) missing.push("futaPct");
   if (!Number.isFinite(casuiPct) || casuiPct < 0) missing.push("casuiPct");
   if (!overheadOk) {

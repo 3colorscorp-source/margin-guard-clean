@@ -72,8 +72,8 @@ function validateTenantSnapshotPayload(payload) {
 
   const wc = num("wcPct");
   const fi = num("ficaPct");
-  if (!Number.isFinite(wc) || wc <= 0) {
-    return { ok: false, reason: "mg_settings_v2.wcPct must be a finite number greater than 0" };
+  if (!Number.isFinite(wc) || wc < 0) {
+    return { ok: false, reason: "mg_settings_v2.wcPct must be a finite number >= 0" };
   }
   if (!Number.isFinite(fi) || fi <= 0) {
     return { ok: false, reason: "mg_settings_v2.ficaPct must be a finite number greater than 0" };
