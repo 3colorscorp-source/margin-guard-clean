@@ -132,14 +132,12 @@
         Complete los campos obligatorios para guardar Business Settings y calcular precios correctamente.
       </div>
 
-      <div class="bs-columns">
+      <div class="bs-layout-grid">
 
-        <div class="bs-column bs-column--left">
-
-        <div class="card bs-dash-card bs-order-company">
+        <div class="card bs-dash-card bs-order-company bs-layout-full">
           <div class="card-inner bs-card-inner-tight">
-            <h2 class="bs-card-title">Company Profile</h2>
-            <p class="sub bs-card-sub">Public identity on Sales, PDF, email, and public quote view.</p>
+            <h2 class="bs-card-title">Company Identity</h2>
+            <p class="sub bs-card-sub">Logo, contact, and public-facing business lines for Sales, PDF, and client views.</p>
             <div class="form bs-form-dense">
               <div class="field">
                 <label for="bizNameOwner">Business name</label>
@@ -193,6 +191,159 @@
           </div>
         </div>
 
+        <div class="bs-layout-pair">
+        <div class="card bs-dash-card bs-order-labor">
+          <div class="card-inner bs-card-inner-tight">
+            <h2 class="bs-card-title">Labor &amp; Crew Rules</h2>
+            <p class="sub bs-card-sub">Base rates, quote mode, and scheduling capacity.</p>
+            <div class="form bs-form-dense">
+              <div class="field">
+                <label for="baseInstaller">Pro base cost ($/h)</label>
+                <input id="baseInstaller" type="number" step="0.01" placeholder="75" />
+                <div class="hint hint--start">Internal labor cost used in pricing — not the customer billing rate.</div>
+              </div>
+              <div class="field">
+                <label for="baseHelper">Assistant base cost ($/h)</label>
+                <input id="baseHelper" type="number" step="0.01" placeholder="45" />
+                <div class="hint hint--start">Internal assistant labor cost used in pricing — not the customer billing rate.</div>
+              </div>
+              <div class="field">
+                <label for="pricingMode">Quote mode</label>
+                <select id="pricingMode">
+                  <option value="hour">Bill by hour</option>
+                  <option value="day">Bill by day</option>
+                </select>
+                <div class="hint hint--start">Hour mode bills labor by the hour. Day mode bills by crew-day using work hours per day.</div>
+              </div>
+              <div class="field">
+                <label for="hoursPerDay">Work hours per day</label>
+                <input id="hoursPerDay" type="number" step="0.25" placeholder="8" />
+              </div>
+              <div class="field">
+                <label for="workdaysEnabled">Workdays</label>
+                <select id="workdaysEnabled">
+                  <option value="true">Monday–Friday only</option>
+                  <option value="false">All calendar days</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="crewCapacity">Active crew capacity</label>
+                <input id="crewCapacity" type="number" step="1" min="1" placeholder="1" />
+                <div class="hint hint--start">1 = one active crew/project at a time. Crew members are defined in each operational plan.</div>
+              </div>
+              <div class="field">
+                <label for="scheduleBufferDays">Schedule buffer days</label>
+                <input id="scheduleBufferDays" type="number" step="1" min="0" placeholder="2" />
+              </div>
+              <div class="field field--full">
+                <label for="allowSellerScheduleOverride">Allow seller schedule override</label>
+                <select id="allowSellerScheduleOverride">
+                  <option value="false">No — capacity calendar enforced</option>
+                  <option value="true">Yes — owner override (advanced)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card bs-dash-card bs-order-financial">
+          <div class="card-inner bs-card-inner-tight">
+            <h2 class="bs-card-title">Financial Protection</h2>
+            <p class="sub bs-card-sub">Payroll burden, overhead allocation, and margin protection for pricing.</p>
+            <div class="form bs-form-dense">
+              <div class="field field--full bs-payroll-preset" id="bsPayrollPresetSection">
+                <h3 class="bs-subsection-title">State Payroll Defaults</h3>
+                <p class="sub bs-payroll-preset-sub">Reference employer payroll tax defaults by state. Apply fills the form only — save to persist.</p>
+                <div class="field">
+                  <label for="payrollPresetState">State</label>
+                  <select id="payrollPresetState">
+                    <option value="CA">California</option>
+                  </select>
+                </div>
+                <div class="inline-actions bs-payroll-preset-actions">
+                  <button type="button" class="btn primary" id="btnApplyPayrollDefaults">Apply Payroll Defaults</button>
+                  <a
+                    class="btn"
+                    id="payrollPresetOfficialLink"
+                    href="https://edd.ca.gov/en/payroll_taxes/rates_and_withholding/"
+                    target="_blank"
+                    rel="noopener">View California Payroll Tax Rates</a>
+                </div>
+                <p class="sub bs-payroll-preset-meta" id="payrollPresetMeta">Source year: 2026 · Last reviewed: 2026-06-14 · Source: California EDD</p>
+                <div class="notice warn bs-payroll-preset-notice" id="payrollPresetNotice" role="note">
+                  These payroll tax presets are default reference values only. Actual employer payroll taxes may vary based on your business entity, payroll setup, employer experience rating, wage limits, class codes, local requirements, and official state notices. You are responsible for verifying your actual obligations with your accountant, payroll provider, or state agency.
+                </div>
+                <div class="bs-payroll-preset-preview" id="payrollPresetPreview" hidden>
+                  <span class="bs-summary-label">Applied preview</span>
+                  <ul class="bs-payroll-preset-preview-list" id="payrollPresetPreviewList"></ul>
+                </div>
+                <p class="sub bs-payroll-preset-confirm" id="payrollPresetApplyConfirm" hidden></p>
+              </div>
+              <div class="bs-fin-block field--full">
+                <h3 class="bs-subsection-title">Payroll Burden</h3>
+                <p class="sub bs-fin-block-sub">Employer payroll taxes applied over W-2 labor. Workers Comp is always manual.</p>
+                <div class="form bs-form-dense bs-fin-block-fields">
+              <div class="field">
+                <label for="wcPct">Workers Comp (%)</label>
+                <input id="wcPct" type="number" step="0.01" min="0" placeholder="10" />
+                <div class="hint hint--start">Enter your actual workers compensation policy rate. This applies over W-2 payroll / worker wages. If you are excluded from coverage or have no applicable policy, enter 0%.</div>
+              </div>
+              <div class="field">
+                <label for="ficaPct">FICA (%)</label>
+                <input id="ficaPct" type="number" step="0.01" placeholder="7.65" />
+              </div>
+              <div class="field">
+                <label for="futaPct">FUTA (%)</label>
+                <input id="futaPct" type="number" step="0.01" placeholder="0.6" />
+              </div>
+              <div class="field">
+                <label for="casuiPct">State UI / SUI (%)</label>
+                <input id="casuiPct" type="number" step="0.01" placeholder="3.4" />
+              </div>
+                </div>
+              </div>
+              <div class="bs-fin-block field--full">
+                <h3 class="bs-subsection-title">Overhead Allocation</h3>
+                <p class="sub bs-fin-block-sub">Spread monthly fixed overhead across job labor hours.</p>
+                <div class="form bs-form-dense bs-fin-block-fields">
+              <div class="field">
+                <label for="overheadMonthly">Monthly overhead ($)</label>
+                <input id="overheadMonthly" type="number" step="0.01" placeholder="0" />
+              </div>
+              <div class="field">
+                <label for="stdHours">Std hours / worker / mo</label>
+                <input id="stdHours" type="number" step="1" placeholder="160" />
+                <div class="hint hint--start">Used with monthly overhead to allocate office and fixed cost into each job hour.</div>
+              </div>
+                </div>
+              </div>
+              <div class="bs-fin-block field--full">
+                <h3 class="bs-subsection-title">Margin Protection</h3>
+                <p class="sub bs-fin-block-sub">Target and floor margins plus fixed reserve protection.</p>
+                <div class="form bs-form-dense bs-fin-block-fields">
+              <div class="field">
+                <label for="profitPct">Target margin (%)</label>
+                <input id="profitPct" type="number" step="0.01" placeholder="30" />
+                <div class="hint hint--start">Desired profit margin on protected price calculations.</div>
+              </div>
+              <div class="field">
+                <label for="minimumMarginPct">Minimum margin (%)</label>
+                <input id="minimumMarginPct" type="number" step="0.01" placeholder="15" />
+                <div class="hint hint--start">Protected floor — quotes below this need review. Must be at or below target margin.</div>
+              </div>
+              <div class="field">
+                <label for="reservePct">Reserve (%) — fixed</label>
+                <input id="reservePct" type="number" step="0.01" placeholder="5" readonly />
+                <div class="hint hint--start">Fixed protection reserve applied before profit. Currently locked at 5%.</div>
+              </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        </div>
+
+        <div class="bs-layout-pair">
         <div class="card bs-dash-card bs-order-commissions">
           <div class="card-inner bs-card-inner-tight">
             <h2 class="bs-card-title">Commissions &amp; Bonuses</h2>
@@ -215,7 +366,7 @@
             <div class="section-head bs-payments-head">
               <div>
                 <h2 class="bs-card-title">Payments &amp; Invoice Text</h2>
-                <p class="sub bs-card-sub">Deposits via Stripe Connect. Invoice text on client links only.</p>
+                <p class="sub bs-card-sub">Project deposits (Stripe), deposit payment link, and text clients see on public invoices.</p>
               </div>
               <div class="badge" id="depositStripeBadge">—</div>
             </div>
@@ -272,138 +423,40 @@
         </div>
 
         </div>
-
-        <div class="bs-column bs-column--right">
-
-        <div class="card bs-dash-card bs-order-labor">
-          <div class="card-inner bs-card-inner-tight">
-            <h2 class="bs-card-title">Labor &amp; Crew</h2>
-            <p class="sub bs-card-sub">Base rates, quote mode, and scheduling capacity.</p>
-            <div class="form bs-form-dense">
-              <div class="field">
-                <label for="baseInstaller">Pro base cost ($/h)</label>
-                <input id="baseInstaller" type="number" step="0.01" placeholder="75" />
-              </div>
-              <div class="field">
-                <label for="baseHelper">Assistant base cost ($/h)</label>
-                <input id="baseHelper" type="number" step="0.01" placeholder="45" />
-              </div>
-              <div class="field">
-                <label for="pricingMode">Quote mode</label>
-                <select id="pricingMode">
-                  <option value="hour">Bill by hour</option>
-                  <option value="day">Bill by day</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="hoursPerDay">Work hours per day</label>
-                <input id="hoursPerDay" type="number" step="0.25" placeholder="8" />
-              </div>
-              <div class="field">
-                <label for="workdaysEnabled">Workdays</label>
-                <select id="workdaysEnabled">
-                  <option value="true">Monday–Friday only</option>
-                  <option value="false">All calendar days</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="crewCapacity">Active crew capacity</label>
-                <input id="crewCapacity" type="number" step="1" min="1" placeholder="1" />
-                <div class="hint hint--start">1 = one active crew/project at a time. Crew members are defined in each operational plan.</div>
-              </div>
-              <div class="field">
-                <label for="scheduleBufferDays">Schedule buffer days</label>
-                <input id="scheduleBufferDays" type="number" step="1" min="0" placeholder="2" />
-              </div>
-              <div class="field field--full">
-                <label for="allowSellerScheduleOverride">Allow seller schedule override</label>
-                <select id="allowSellerScheduleOverride">
-                  <option value="false">No — capacity calendar enforced</option>
-                  <option value="true">Yes — owner override (advanced)</option>
-                </select>
-              </div>
-            </div>
-          </div>
         </div>
 
-        <div class="card bs-dash-card bs-order-financial">
+        <footer class="card bs-summary-bar bs-order-summary bs-layout-full">
           <div class="card-inner bs-card-inner-tight">
-            <h2 class="bs-card-title">Financial Protection</h2>
-            <p class="sub bs-card-sub">Overhead, payroll burden, margins, and fixed reserve.</p>
-            <div class="form bs-form-dense">
-              <div class="field field--full bs-payroll-preset" id="bsPayrollPresetSection">
-                <h3 class="bs-subsection-title">State Payroll Defaults</h3>
-                <p class="sub bs-payroll-preset-sub">Reference employer payroll tax defaults by state. Apply fills the form only — save to persist.</p>
-                <div class="field">
-                  <label for="payrollPresetState">State</label>
-                  <select id="payrollPresetState">
-                    <option value="CA">California</option>
-                  </select>
-                </div>
-                <div class="inline-actions bs-payroll-preset-actions">
-                  <button type="button" class="btn primary" id="btnApplyPayrollDefaults">Apply Payroll Defaults</button>
-                  <a
-                    class="btn"
-                    id="payrollPresetOfficialLink"
-                    href="https://edd.ca.gov/en/payroll_taxes/rates_and_withholding/"
-                    target="_blank"
-                    rel="noopener">View California Payroll Tax Rates</a>
-                </div>
-                <p class="sub bs-payroll-preset-meta" id="payrollPresetMeta">Source year: 2026 · Last reviewed: 2026-06-14 · Source: California EDD</p>
-                <div class="notice warn bs-payroll-preset-notice" id="payrollPresetNotice" role="note">
-                  These payroll tax presets are default reference values only. Actual employer payroll taxes may vary based on your business entity, payroll setup, employer experience rating, wage limits, class codes, local requirements, and official state notices. You are responsible for verifying your actual obligations with your accountant, payroll provider, or state agency.
-                </div>
-                <div class="bs-payroll-preset-preview" id="payrollPresetPreview" hidden>
-                  <span class="bs-summary-label">Applied preview</span>
-                  <ul class="bs-payroll-preset-preview-list" id="payrollPresetPreviewList"></ul>
-                </div>
-                <p class="sub bs-payroll-preset-confirm" id="payrollPresetApplyConfirm" hidden></p>
+            <h2 class="bs-card-title">Preview / Public Identity</h2>
+            <p class="sub bs-card-sub">How clients see your business on Sales, public quotes, PDFs, and invoices.</p>
+            <div class="bs-summary-row">
+              <div class="bs-summary-preview">
+                <span class="bs-summary-label">Business</span>
+                <strong id="previewBusinessName" class="bs-summary-name">—</strong>
+                <span id="previewBusinessMeta" class="sub bs-summary-meta">Sin email ni telefono.</span>
               </div>
-              <div class="field">
-                <label for="overheadMonthly">Monthly overhead ($)</label>
-                <input id="overheadMonthly" type="number" step="0.01" placeholder="0" />
+              <div class="bs-summary-preview">
+                <span class="bs-summary-label">Accent</span>
+                <strong id="previewAccentHex" class="bs-summary-accent">#0f8a5f</strong>
+                <span id="previewSignatureLine" class="sub bs-summary-meta">Professional Estimate Delivery</span>
               </div>
-              <div class="field">
-                <label for="stdHours">Std hours / worker / mo</label>
-                <input id="stdHours" type="number" step="1" placeholder="160" />
-              </div>
-              <div class="field">
-                <label for="wcPct">Workers Comp (%)</label>
-                <input id="wcPct" type="number" step="0.01" min="0" placeholder="10" />
-                <div class="hint hint--start">Enter your actual workers compensation policy rate. This applies over W-2 payroll / worker wages. If you are excluded from coverage or have no applicable policy, enter 0%.</div>
-              </div>
-              <div class="field">
-                <label for="ficaPct">FICA (%)</label>
-                <input id="ficaPct" type="number" step="0.01" placeholder="7.65" />
-              </div>
-              <div class="field">
-                <label for="futaPct">FUTA (%)</label>
-                <input id="futaPct" type="number" step="0.01" placeholder="0.6" />
-              </div>
-              <div class="field">
-                <label for="casuiPct">State UI / SUI (%)</label>
-                <input id="casuiPct" type="number" step="0.01" placeholder="3.4" />
-              </div>
-              <div class="field">
-                <label for="profitPct">Target margin (%)</label>
-                <input id="profitPct" type="number" step="0.01" placeholder="30" />
-              </div>
-              <div class="field">
-                <label for="minimumMarginPct">Minimum margin (%)</label>
-                <input id="minimumMarginPct" type="number" step="0.01" placeholder="15" />
-              </div>
-              <div class="field">
-                <label for="reservePct">Reserve (%) — fixed</label>
-                <input id="reservePct" type="number" step="0.01" placeholder="5" readonly />
+              <div class="bs-summary-used">
+                <span class="bs-summary-label">Used by</span>
+                <span class="bs-chip">Sales</span>
+                <span class="bs-chip">Supervisor</span>
+                <span class="bs-chip">Project Control</span>
+                <span class="bs-chip">Public quote / PDF</span>
+                <span class="bs-chip">Public invoice</span>
               </div>
             </div>
+            <p class="sub bs-summary-save">Saves to tenant snapshot, branding, and owner settings per tenant.</p>
           </div>
-        </div>
+        </footer>
 
-        <div class="card bs-dash-card bs-order-bank">
+        <div class="card bs-dash-card bs-order-bank bs-layout-full bs-layout-optional">
           <div class="card-inner bs-card-inner-tight">
-            <h2 class="bs-card-title">Bank connection</h2>
-            <p class="sub bs-card-sub">Cash monitor — map accounts to buckets, then sync.</p>
+            <h2 class="bs-card-title">Cash Monitor / Bank Connection (Optional)</h2>
+            <p class="sub bs-card-sub">Optional — map bank accounts to cash buckets for Dashboard sync. Not required for quoting.</p>
             <div data-mg-bank-panel>
               <div class="inline-actions bs-bank-actions">
                 <button type="button" class="btn primary" data-mg-action="connect-bank">Connect bank</button>
@@ -432,34 +485,6 @@
               </div>
             </div>
           </div>
-        </div>
-
-        <footer class="card bs-summary-bar bs-order-summary">
-          <div class="card-inner bs-card-inner-tight">
-            <div class="bs-summary-row">
-              <div class="bs-summary-preview">
-                <span class="bs-summary-label">Preview</span>
-                <strong id="previewBusinessName" class="bs-summary-name">—</strong>
-                <span id="previewBusinessMeta" class="sub bs-summary-meta">Sin email ni telefono.</span>
-              </div>
-              <div class="bs-summary-preview">
-                <span class="bs-summary-label">Accent</span>
-                <strong id="previewAccentHex" class="bs-summary-accent">#0f8a5f</strong>
-                <span id="previewSignatureLine" class="sub bs-summary-meta">Professional Estimate Delivery</span>
-              </div>
-              <div class="bs-summary-used">
-                <span class="bs-summary-label">Used by</span>
-                <span class="bs-chip">Sales</span>
-                <span class="bs-chip">Supervisor</span>
-                <span class="bs-chip">Project Control</span>
-                <span class="bs-chip">Public quote / PDF</span>
-                <span class="bs-chip">Public invoice</span>
-              </div>
-            </div>
-            <p class="sub bs-summary-save">Saves to tenant snapshot, branding, and owner settings per tenant.</p>
-          </div>
-        </footer>
-
         </div>
 
       </div>
