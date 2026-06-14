@@ -14,9 +14,20 @@
         linear-gradient(180deg, #060a12 0%, #0a101c 38%, #070b14 100%);
     }
     body[data-role="dashboard"] .container.fcc-page{
-      max-width:1320px;
-      padding-top:10px;
-      padding-bottom:18px;
+      max-width:none;
+      width:100%;
+      padding-top:8px;
+      padding-bottom:16px;
+      padding-left:clamp(18px, 2.2vw, 36px);
+      padding-right:clamp(18px, 2.2vw, 36px);
+      box-sizing:border-box;
+    }
+    body[data-role="dashboard"] .topbar-inner{
+      max-width:none;
+      width:100%;
+      padding-left:clamp(18px, 2.2vw, 36px);
+      padding-right:clamp(18px, 2.2vw, 36px);
+      box-sizing:border-box;
     }
     body[data-role="dashboard"] .card{
       border-radius:20px;
@@ -230,10 +241,16 @@
     }
     .fcc-columns{
       display:grid;
-      grid-template-columns:1.08fr .92fr;
-      gap:12px;
+      grid-template-columns:minmax(0, 1fr) minmax(0, 1fr);
+      gap:clamp(12px, 1.4vw, 18px);
       margin-bottom:10px;
       align-items:stretch;
+    }
+    .fcc-dashboard-lower{
+      display:grid;
+      grid-template-columns:minmax(0, 1.15fr) minmax(0, 0.85fr);
+      gap:clamp(12px, 1.4vw, 18px);
+      align-items:start;
     }
     .fcc-column{
       min-width:0;
@@ -302,9 +319,9 @@
       display:flex;
       align-items:flex-end;
       justify-content:space-between;
-      gap:clamp(8px, 2vw, 14px);
-      height:196px;
-      padding:12px 12px 0;
+      gap:clamp(10px, 2vw, 20px);
+      height:188px;
+      padding:12px clamp(12px, 2vw, 24px) 0;
       border-radius:14px 14px 0 0;
       border:1px solid rgba(255,255,255,.09);
       border-bottom:3px solid rgba(255,255,255,.16);
@@ -347,7 +364,7 @@
       justify-content:center;
     }
     .fcc-skyline-bar__fill{
-      width:min(64px, 88%);
+      width:min(96px, 94%);
       height:0;
       min-height:0;
       border-radius:3px 3px 0 0;
@@ -754,7 +771,8 @@
         flex-direction:row;
         flex-wrap:wrap;
       }
-      .fcc-columns{
+      .fcc-columns,
+      .fcc-dashboard-lower{
         grid-template-columns:1fr;
       }
       .fcc-column{
@@ -843,35 +861,6 @@
             <div class="fcc-kpi-deck__secondary" id="dashKpisSecondary"></div>
           </div>
         </section>
-
-        <section class="card fcc-panel fcc-perf-wrap fcc-order-perf">
-          <div class="card-inner">
-            <div class="fcc-panel-head">
-              <h2>Financial performance</h2>
-              <div class="fcc-panel-sub">Executive comparison: cells fill only with real monitor or hub data.</div>
-            </div>
-            <button type="button" class="btn fcc-perf-toggle" id="btnToggleFccPerf" aria-expanded="false" aria-controls="fccPerfCollapsePanel">
-              Show financial performance
-            </button>
-            <div id="fccPerfCollapsePanel" hidden>
-              <div class="fcc-perf-table-wrap">
-                <table class="fcc-perf-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Metric</th>
-                      <th scope="col">MTD</th>
-                      <th scope="col">Last month</th>
-                      <th scope="col">Change</th>
-                      <th scope="col">YTD</th>
-                    </tr>
-                  </thead>
-                  <tbody id="fccPerfTbody"></tbody>
-                  <caption>MTD / last month / change / YTD: time series pending; values shown are snapshot from monitor or hub where available.</caption>
-                </table>
-              </div>
-            </div>
-          </div>
-        </section>
       </div>
 
       <div class="fcc-column">
@@ -903,8 +892,40 @@
             </div>
           </div>
         </section>
+      </div>
+    </div>
 
-        <div class="fcc-bank-lower-slot fcc-order-bank">
+    <div class="fcc-dashboard-lower">
+      <section class="card fcc-panel fcc-perf-wrap fcc-order-perf">
+        <div class="card-inner">
+          <div class="fcc-panel-head fcc-panel-head--compact">
+            <h2>Financial performance</h2>
+            <div class="fcc-panel-sub">Executive comparison — monitor or hub data only.</div>
+          </div>
+          <button type="button" class="btn fcc-perf-toggle" id="btnToggleFccPerf" aria-expanded="false" aria-controls="fccPerfCollapsePanel">
+            Show financial performance
+          </button>
+          <div id="fccPerfCollapsePanel" hidden>
+            <div class="fcc-perf-table-wrap">
+              <table class="fcc-perf-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Metric</th>
+                    <th scope="col">MTD</th>
+                    <th scope="col">Last month</th>
+                    <th scope="col">Change</th>
+                    <th scope="col">YTD</th>
+                  </tr>
+                </thead>
+                <tbody id="fccPerfTbody"></tbody>
+                <caption>MTD / last month / change / YTD: time series pending; values shown are snapshot from monitor or hub where available.</caption>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="fcc-bank-lower-slot fcc-order-bank">
           <button
             type="button"
             id="btnToggleBankConsole"
@@ -991,7 +1012,6 @@
                 </div>
               </div>
           </section>
-        </div>
       </div>
     </div>
 
