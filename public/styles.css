@@ -2117,6 +2117,9 @@ body[data-role="owner"] .owner-quote-cta__btn--pdf{
   font-weight:680;
   letter-spacing:.01em;
 }
+body[data-role="owner"] .sales-op-actions-card .owner-quote-cta__btn--send.btn.primary{
+  box-shadow:0 8px 26px rgba(34,197,94,.14);
+}
 
 /* /owner — bloque Business Rules (referencia; edición en Business Settings) */
 body[data-role="owner"] .owner-biz-rules{

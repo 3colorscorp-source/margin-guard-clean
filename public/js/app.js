@@ -7164,6 +7164,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       if (api) {
         const plan = Array.isArray(state.operational_plan) ? state.operational_plan : [];
         const metrics = getOwnerOperationalMetrics(state, settings);
+        renderOwnerOpProposalSummary(state, settings, metrics);
         renderOwnerOpCalendarPreview(state, settings, plan, metrics);
       }
       if (typeof window.renderOwnerOpCrewAvailability === "function") {
@@ -7204,6 +7205,44 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const dt = new Date(parts[0], parts[1] - 1, parts[2]);
     if (Number.isNaN(dt.getTime())) return String(ymd);
     return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }
+
+  function renderOwnerOpProposalSummary(state, settings, opMetrics) {
+    const host = $("ownerOpProposalSummary");
+    const totalEl = $("ownerOpProposalTotal");
+    if (!host) return;
+    const calcMetrics = calcOwner(state, settings);
+    const recommended = Number(calcMetrics.recommended) || 0;
+    const workerCount = Array.isArray(state.workers)
+      ? state.workers.filter((w) => Number(w && w.hours) > 0).length
+      : 0;
+    const statusRaw = String(state.estimateStatus || "draft").replace(/_/g, " ");
+    const statusLabel = statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1);
+    const rows = [
+      ["Project", state.projectName || "—"],
+      ["Client", state.clientName || "—"],
+      ["Duration", opMetrics && opMetrics.estimated_days ? opMetrics.estimated_days + " days" : "—"],
+      ["Labor", opMetrics && opMetrics.estimated_hours ? opMetrics.estimated_hours + " hours" : "—"],
+      [
+        "Crew",
+        workerCount > 0
+          ? workerCount + " workers"
+          : opMetrics && opMetrics.worker_count
+            ? opMetrics.worker_count + " roles"
+            : "—"
+      ],
+      ["Start date", formatOwnerOpDate(state.startDate)],
+      ["Target finish", formatOwnerOpDate(state.targetFinishDate || state.dueDate)],
+      ["Issue date", formatOwnerOpDate(state.issueDate)],
+      ["Expiration", formatOwnerOpDate(state.expirationDate)],
+      ["Status", '<span class="sales-op-status-pill">' + escapeHtml(statusLabel) + "</span>"]
+    ];
+    host.innerHTML = rows
+      .map((row) => `<dt>${escapeHtml(row[0])}</dt><dd>${row[1]}</dd>`)
+      .join("");
+    if (totalEl) {
+      totalEl.textContent = recommended > 0 ? money(recommended, settings.currency) : "—";
+    }
   }
 
   function formatOwnerOpPlanCrewLabel(workers, api) {
@@ -7476,6 +7515,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         .join("");
     }
 
+    renderOwnerOpProposalSummary(state, settings, metrics);
     renderOwnerOpCalendarPreview(state, settings, plan, metrics);
 
     if ($("ownerStartDate")) {

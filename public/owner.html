@@ -259,6 +259,14 @@
                     </div>
                   </div>
                   <div class="sales-op-layout__right">
+                    <section class="sales-op-summary-card" aria-labelledby="ownerOpSummaryTitle">
+                      <h4 class="sales-op-summary-card__title" id="ownerOpSummaryTitle">Proposal summary</h4>
+                      <dl class="sales-op-summary-kv" id="ownerOpProposalSummary"></dl>
+                      <div class="sales-op-summary-total">
+                        <span class="sales-op-summary-total__label">Total proposal</span>
+                        <strong class="sales-op-summary-total__value" id="ownerOpProposalTotal">—</strong>
+                      </div>
+                    </section>
                     <section class="sales-op-calendar-card" aria-labelledby="ownerOpCalendarTitle">
                       <h4 class="sales-op-calendar-card__title" id="ownerOpCalendarTitle">Calendar preview</h4>
                       <div class="sales-op-cal-weekdays" aria-hidden="true">
@@ -272,15 +280,14 @@
                         <div class="sales-op-avail sales-op-avail--unknown" id="ownerOpCrewAvailability" role="status">Checking schedule…</div>
                       </div>
                     </section>
+                    <section class="sales-op-actions-card" aria-label="Quote actions">
+                      <button type="button" class="btn primary owner-quote-cta__btn owner-quote-cta__btn--send" id="btnSendQuote">Enviar cotizacion</button>
+                      <button type="button" class="btn owner-quote-cta__btn owner-quote-cta__btn--pdf" id="btnExportPdf">Exportar PDF</button>
+                    </section>
                   </div>
                 </div>
               </div>
             </details>
-
-            <div class="owner-quote-cta" role="group" aria-label="Enviar o exportar cotizacion">
-              <button type="button" class="btn primary owner-quote-cta__btn owner-quote-cta__btn--send" id="btnSendQuote">Enviar cotizacion</button>
-              <button type="button" class="btn owner-quote-cta__btn owner-quote-cta__btn--pdf" id="btnExportPdf">Exportar PDF</button>
-            </div>
           </div>
         </div>
 
