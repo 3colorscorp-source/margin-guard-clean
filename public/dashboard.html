@@ -6,77 +6,81 @@
   <title>Margin Guard | Dashboard</title>
   <link rel="stylesheet" href="/styles.css" />
   <style>
-    /* Financial Command Center — dashboard only */
+    /* Financial Command Center — executive dashboard (visual only) */
     body[data-role="dashboard"]{
       background:
-        radial-gradient(1200px 520px at 50% -8%, rgba(34,197,94,.07), transparent 55%),
-        radial-gradient(900px 400px at 100% 20%, rgba(59,130,246,.06), transparent 50%),
-        linear-gradient(180deg, #070b14 0%, #0a101c 40%, #080d18 100%);
+        radial-gradient(1400px 600px at 12% -12%, rgba(34,197,94,.06), transparent 58%),
+        radial-gradient(1000px 480px at 88% 8%, rgba(59,130,246,.05), transparent 52%),
+        linear-gradient(180deg, #060a12 0%, #0a101c 38%, #070b14 100%);
+    }
+    body[data-role="dashboard"] .container.fcc-page{
+      max-width:1280px;
+      padding-top:18px;
+      padding-bottom:32px;
     }
     body[data-role="dashboard"] .card{
-      border-radius:22px;
-      border:1px solid rgba(255,255,255,.09);
+      border-radius:20px;
+      border:1px solid rgba(255,255,255,.08);
       background:
-        linear-gradient(165deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,.02) 42%, rgba(255,255,255,.015) 100%);
-      box-shadow:0 18px 48px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
-      backdrop-filter:blur(12px);
-    }
-    body[data-role="dashboard"] .topbar{
-      border-bottom:1px solid rgba(255,255,255,.08);
-      background:rgba(6,10,18,.92);
+        linear-gradient(168deg, rgba(255,255,255,.055) 0%, rgba(255,255,255,.022) 48%, rgba(255,255,255,.012) 100%);
+      box-shadow:
+        0 20px 50px rgba(0,0,0,.32),
+        inset 0 1px 0 rgba(255,255,255,.07);
       backdrop-filter:blur(14px);
     }
+    body[data-role="dashboard"] .topbar{
+      border-bottom:1px solid rgba(255,255,255,.07);
+      background:rgba(5,8,14,.94);
+      backdrop-filter:blur(16px);
+    }
+    body[data-role="dashboard"] .account-pill{
+      margin-bottom:14px;
+      opacity:.88;
+    }
     .fcc-hero{
-      margin-bottom:12px;
-      border:1px solid rgba(34,197,94,.14);
+      margin-bottom:16px;
+      border:1px solid rgba(255,255,255,.1);
       background:
-        radial-gradient(420px 160px at 0% 0%, rgba(34,197,94,.09), transparent 58%),
-        linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
-      box-shadow:0 0 0 1px rgba(34,197,94,.06), 0 12px 32px rgba(0,0,0,.28);
+        radial-gradient(520px 200px at 0% 0%, rgba(34,197,94,.08), transparent 62%),
+        linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.018));
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.04),
+        0 16px 40px rgba(0,0,0,.3);
     }
     .fcc-hero-compact-inner{
-      display:flex;
-      align-items:flex-start;
-      justify-content:space-between;
-      gap:14px;
-      flex-wrap:wrap;
-      padding-top:12px;
-      padding-bottom:12px;
+      display:grid;
+      grid-template-columns:1fr auto;
+      align-items:center;
+      gap:20px 28px;
+      padding:18px 20px;
     }
     .fcc-hero-compact-sub{
-      margin:6px 0 0;
-      max-width:52ch;
+      margin:8px 0 0;
+      max-width:48ch;
       font-size:13px;
-      line-height:1.45;
-      color:rgba(186,198,220,.88);
+      line-height:1.5;
+      color:rgba(148,163,184,.92);
     }
     .fcc-hero-compact-inner .fcc-eyebrow{
-      margin-bottom:8px;
-      padding:5px 10px;
+      margin-bottom:10px;
+      padding:4px 10px;
       font-size:10px;
+      letter-spacing:.16em;
+      border-color:rgba(255,255,255,.08);
+      background:rgba(255,255,255,.03);
     }
     .fcc-hero-compact-inner .fcc-hero-title{
-      margin:0 0 4px;
-      font-size:clamp(22px, 2.4vw, 30px);
-    }
-    .fcc-hero-compact-inner .fcc-health-chip{
-      padding:8px 12px;
-    }
-    .fcc-hero-compact-inner .fcc-health-chip-value{
-      font-size:22px;
-    }
-    .fcc-hero-compact-inner .fcc-health-chip-meta{
-      font-size:11px;
-    }
-    body[data-role="dashboard"] .fcc-panel .card-inner{
-      padding-top:14px;
-      padding-bottom:14px;
+      margin:0;
+      font-size:clamp(24px, 2.6vw, 34px);
+      font-weight:900;
+      letter-spacing:-.04em;
     }
     .fcc-hero-compact-stats{
       display:flex;
-      flex-wrap:wrap;
-      align-items:flex-start;
+      flex-direction:column;
+      align-items:flex-end;
       gap:10px;
+      min-width:min(100%, 240px);
     }
     .fcc-hero-inner{
       display:grid;
@@ -115,50 +119,67 @@
       color:rgba(186,198,220,.88);
     }
     .fcc-health-chip{
-      display:inline-flex;
-      flex-direction:column;
-      align-items:flex-start;
-      gap:2px;
-      padding:10px 14px;
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,.1);
-      background:rgba(5,8,16,.65);
-      box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
-    }
-    .fcc-health-chip-label{
-      font-size:11px;
-      text-transform:uppercase;
-      letter-spacing:.12em;
-      color:rgba(148,163,184,.9);
-    }
-    .fcc-health-chip-value{
-      font-size:28px;
-      font-weight:900;
-      line-height:1;
-      letter-spacing:-.03em;
-    }
-    .fcc-health-chip-meta{
-      margin:0;
-      font-size:12px;
-      color:rgba(186,198,220,.82);
-      max-width:36ch;
-    }
-    .fcc-hero-aside{
       display:flex;
       flex-direction:column;
-      align-items:flex-end;
-      gap:12px;
-      min-height:180px;
+      align-items:flex-start;
+      gap:4px;
+      padding:14px 18px;
+      min-width:200px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.1);
+      background:rgba(4,7,14,.72);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+      position:relative;
+      overflow:hidden;
+    }
+    .fcc-health-chip::before{
+      content:"";
+      position:absolute;
+      left:0;
+      top:0;
+      bottom:0;
+      width:4px;
+      background:rgba(148,163,184,.5);
+    }
+    .fcc-health-chip--green::before{ background:linear-gradient(180deg, #4ade80, #22c55e); }
+    .fcc-health-chip--amber::before{ background:linear-gradient(180deg, #fcd34d, #f59e0b); }
+    .fcc-health-chip--red::before{ background:linear-gradient(180deg, #fca5a5, #ef4444); }
+    .fcc-health-chip-label{
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:.14em;
+      font-weight:750;
+      color:rgba(148,163,184,.95);
+    }
+    .fcc-health-chip-value{
+      font-size:32px;
+      font-weight:900;
+      line-height:1;
+      letter-spacing:-.04em;
+      color:rgba(248,250,252,.98);
+    }
+    .fcc-health-chip--green .fcc-health-chip-value{ color:#86efac; }
+    .fcc-health-chip--amber .fcc-health-chip-value{ color:#fcd34d; }
+    .fcc-health-chip--red .fcc-health-chip-value{ color:#fca5a5; }
+    .fcc-health-chip-meta{
+      margin:0;
+      font-size:11px;
+      line-height:1.4;
+      color:rgba(148,163,184,.88);
+      max-width:28ch;
     }
     .fcc-date-pill{
-      padding:8px 14px;
+      padding:6px 12px;
       border-radius:999px;
-      border:1px solid rgba(255,255,255,.1);
-      background:rgba(255,255,255,.04);
-      font-size:12px;
+      border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.03);
+      font-size:11px;
       font-weight:650;
-      color:rgba(226,232,240,.9);
-      letter-spacing:.02em;
+      color:rgba(148,163,184,.92);
+      letter-spacing:.04em;
+    }
+    body[data-role="dashboard"] .fcc-panel .card-inner{
+      padding:18px 20px;
     }
     .fcc-hero-viz{
       flex:1;
@@ -202,33 +223,34 @@
       .fcc-hero-line{ animation:none; stroke-opacity:.75; }
     }
     .fcc-columns{
-      display:flex;
-      align-items:flex-start;
-      gap:12px;
-      margin-bottom:12px;
+      display:grid;
+      grid-template-columns:1.15fr .85fr;
+      gap:16px;
+      margin-bottom:16px;
+      align-items:start;
     }
     .fcc-column{
-      flex:1;
       min-width:0;
       display:flex;
       flex-direction:column;
-      gap:12px;
+      gap:16px;
     }
     .fcc-panel-head{
-      margin-bottom:10px;
+      margin-bottom:14px;
     }
     .fcc-panel-head h2{
-      margin:0 0 6px;
-      font-size:17px;
+      margin:0 0 4px;
+      font-size:15px;
       font-weight:850;
-      letter-spacing:-.02em;
-      color:rgba(248,250,252,.98);
+      letter-spacing:.06em;
+      text-transform:uppercase;
+      color:rgba(248,250,252,.96);
     }
     .fcc-panel-sub{
       font-size:12px;
       line-height:1.45;
-      color:rgba(148,163,184,.92);
-      max-width:56ch;
+      color:rgba(148,163,184,.88);
+      max-width:52ch;
     }
     .fcc-cf-hooks{
       display:none !important;
@@ -236,60 +258,73 @@
     .fcc-skyline-chart{
       display:flex;
       flex-direction:column;
-      gap:12px;
-      margin:6px 0 12px;
+      gap:14px;
+      margin:0;
     }
     .fcc-skyline-chart__headline{
-      text-align:center;
-      padding:0 8px 2px;
+      display:flex;
+      align-items:baseline;
+      justify-content:space-between;
+      gap:12px;
+      padding:0 2px 4px;
+      border-bottom:1px solid rgba(255,255,255,.06);
     }
     .fcc-skyline-chart__headline .big{
-      font-size:22px;
+      font-size:clamp(22px, 2.4vw, 28px);
       font-weight:900;
-      letter-spacing:-.02em;
+      letter-spacing:-.03em;
       color:rgba(248,250,252,.98);
     }
-    .fcc-skyline-chart__headline .small{
-      margin-top:4px;
-      font-size:11px;
-      color:rgba(148,163,184,.88);
+    .fcc-skyline-chart__kicker{
+      font-size:10px;
+      font-weight:750;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+      color:rgba(148,163,184,.9);
     }
     .fcc-skyline-chart__stage{
       display:flex;
       align-items:flex-end;
       justify-content:center;
-      gap:clamp(16px, 6vw, 28px);
-      height:168px;
-      padding:12px 14px 0;
-      border-radius:14px 14px 0 0;
-      border:1px solid rgba(255,255,255,.08);
-      border-bottom:2px solid rgba(255,255,255,.14);
+      gap:clamp(20px, 8vw, 36px);
+      height:220px;
+      padding:16px 18px 0;
+      border-radius:16px 16px 0 0;
+      border:1px solid rgba(255,255,255,.09);
+      border-bottom:3px solid rgba(255,255,255,.16);
       background:
-        linear-gradient(180deg, rgba(255,255,255,.03), transparent 55%),
+        linear-gradient(180deg, rgba(255,255,255,.035), transparent 50%),
+        repeating-linear-gradient(
+          0deg,
+          rgba(255,255,255,.04) 0,
+          rgba(255,255,255,.04) 1px,
+          transparent 1px,
+          transparent 44px
+        ),
         repeating-linear-gradient(
           90deg,
-          rgba(255,255,255,.02) 0,
-          rgba(255,255,255,.02) 1px,
+          rgba(255,255,255,.015) 0,
+          rgba(255,255,255,.015) 1px,
           transparent 1px,
-          transparent 24px
+          transparent 32px
         );
-      box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
     }
     .fcc-skyline-bar{
       display:flex;
       flex-direction:column;
       align-items:center;
       flex:1;
-      max-width:96px;
+      max-width:120px;
       min-width:0;
       height:100%;
     }
     .fcc-skyline-bar__value{
-      font-size:11px;
-      font-weight:750;
-      letter-spacing:.01em;
-      color:rgba(226,232,240,.92);
-      margin-bottom:6px;
+      font-size:12px;
+      font-weight:800;
+      letter-spacing:-.01em;
+      color:rgba(248,250,252,.95);
+      margin-bottom:8px;
       white-space:nowrap;
       text-align:center;
     }
@@ -301,115 +336,106 @@
       justify-content:center;
     }
     .fcc-skyline-bar__fill{
-      width:min(72px, 88%);
+      width:min(88px, 92%);
       height:0;
       min-height:0;
-      border-radius:3px 3px 0 0;
+      border-radius:4px 4px 0 0;
       position:relative;
-      transition:height .35s ease;
+      transition:height .4s cubic-bezier(.22,1,.36,1);
       box-shadow:
-        0 -10px 28px rgba(0,0,0,.28),
-        inset 0 1px 0 rgba(255,255,255,.18);
-      background-image:
-        repeating-linear-gradient(
-          180deg,
-          rgba(255,255,255,.07) 0,
-          rgba(255,255,255,.07) 1px,
-          transparent 1px,
-          transparent 14px
-        );
+        0 -12px 32px rgba(0,0,0,.35),
+        inset 0 1px 0 rgba(255,255,255,.2);
     }
     .fcc-skyline-bar__fill::before{
       content:"";
       position:absolute;
-      top:-7px;
+      top:-8px;
       left:50%;
       transform:translateX(-50%);
-      width:calc(100% + 6px);
-      height:7px;
-      border-radius:2px 2px 0 0;
-      box-shadow:inset 0 1px 0 rgba(255,255,255,.22);
+      width:calc(100% + 8px);
+      height:8px;
+      border-radius:3px 3px 0 0;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.25);
     }
     .fcc-skyline-bar--profit .fcc-skyline-bar__fill{
-      background-color:rgba(139,92,246,.88);
-      background-image:
-        linear-gradient(180deg, rgba(196,181,253,.95), rgba(109,40,217,.82)),
-        repeating-linear-gradient(
-          180deg,
-          rgba(255,255,255,.08) 0,
-          rgba(255,255,255,.08) 1px,
-          transparent 1px,
-          transparent 14px
-        );
+      background:
+        linear-gradient(180deg, rgba(196,181,253,.98) 0%, rgba(124,58,237,.88) 55%, rgba(91,33,182,.92) 100%);
     }
     .fcc-skyline-bar--profit .fcc-skyline-bar__fill::before{
-      background:linear-gradient(180deg, rgba(221,214,254,.98), rgba(167,139,250,.92));
+      background:linear-gradient(180deg, rgba(233,213,255,.98), rgba(167,139,250,.95));
     }
     .fcc-skyline-bar--operating .fcc-skyline-bar__fill{
-      background-color:rgba(34,197,94,.88);
-      background-image:
-        linear-gradient(180deg, rgba(134,239,172,.95), rgba(21,128,61,.82)),
-        repeating-linear-gradient(
-          180deg,
-          rgba(255,255,255,.08) 0,
-          rgba(255,255,255,.08) 1px,
-          transparent 1px,
-          transparent 14px
-        );
+      background:
+        linear-gradient(180deg, rgba(134,239,172,.98) 0%, rgba(34,197,94,.88) 55%, rgba(21,128,61,.92) 100%);
     }
     .fcc-skyline-bar--operating .fcc-skyline-bar__fill::before{
-      background:linear-gradient(180deg, rgba(187,247,208,.98), rgba(74,222,128,.92));
+      background:linear-gradient(180deg, rgba(187,247,208,.98), rgba(74,222,128,.95));
     }
     .fcc-skyline-bar__label{
-      margin-top:8px;
+      margin-top:10px;
       font-size:10px;
-      font-weight:700;
-      letter-spacing:.06em;
+      font-weight:750;
+      letter-spacing:.08em;
       text-transform:uppercase;
-      color:rgba(148,163,184,.9);
+      color:rgba(148,163,184,.92);
       text-align:center;
-      line-height:1.25;
+      line-height:1.3;
     }
     .fcc-legend{
       list-style:none;
       margin:0;
       padding:0;
-      display:flex;
-      flex-direction:column;
+      display:grid;
+      grid-template-columns:1fr 1fr;
       gap:8px;
     }
     .fcc-legend li{
       display:flex;
       align-items:center;
       justify-content:space-between;
-      gap:10px;
+      gap:8px;
       padding:10px 12px;
       border-radius:12px;
       border:1px solid rgba(255,255,255,.07);
-      background:rgba(255,255,255,.02);
-      font-size:13px;
-      color:rgba(226,232,240,.9);
+      background:rgba(255,255,255,.025);
+      font-size:12px;
+      font-weight:650;
+      color:rgba(226,232,240,.92);
+    }
+    .fcc-legend li span:nth-child(2){
+      flex:1;
+      color:rgba(148,163,184,.92);
+      font-weight:600;
+    }
+    .fcc-legend li span:last-child{
+      font-weight:800;
+      letter-spacing:-.02em;
+      color:rgba(248,250,252,.96);
     }
     .fcc-legend .sw{
-      width:10px;
-      height:10px;
-      border-radius:3px;
+      width:8px;
+      height:8px;
+      border-radius:2px;
       flex-shrink:0;
     }
-    .fcc-legend .sw.violet{ background:rgba(139,92,246,.9); }
-    .fcc-legend .sw.green{ background:rgba(34,197,94,.9); }
+    .fcc-legend .sw.violet{ background:rgba(167,139,250,.95); box-shadow:0 0 8px rgba(139,92,246,.35); }
+    .fcc-legend .sw.green{ background:rgba(74,222,128,.95); box-shadow:0 0 8px rgba(34,197,94,.3); }
+    .fcc-profit-panel .card-inner{
+      display:flex;
+      flex-direction:column;
+      gap:16px;
+    }
     .fcc-qa-wrap .card-inner{
-      padding-top:12px;
-      padding-bottom:12px;
+      padding:14px 18px;
     }
     .fcc-qa-label{
       display:block;
-      margin:0 0 8px;
-      font-size:11px;
+      margin:0 0 10px;
+      font-size:10px;
       font-weight:750;
       text-transform:uppercase;
-      letter-spacing:.08em;
-      color:rgba(148,163,184,.92);
+      letter-spacing:.12em;
+      color:rgba(148,163,184,.9);
     }
     .fcc-qa--bar{
       display:flex;
@@ -419,20 +445,21 @@
     .fcc-qa--bar a{
       display:inline-flex;
       align-items:center;
-      padding:8px 12px;
-      border-radius:12px;
-      border:1px solid rgba(255,255,255,.1);
-      background:rgba(255,255,255,.04);
+      padding:9px 14px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.09);
+      background:rgba(255,255,255,.035);
       color:rgba(226,232,240,.92);
       font-size:12px;
       font-weight:650;
       text-decoration:none;
       font-family:inherit;
       white-space:nowrap;
+      transition:border-color .15s ease, background .15s ease;
     }
     .fcc-qa--bar a:hover{
-      background:rgba(34,197,94,.1);
-      border-color:rgba(34,197,94,.25);
+      background:rgba(255,255,255,.06);
+      border-color:rgba(255,255,255,.14);
       color:#fff;
     }
     .fcc-rail{
@@ -506,36 +533,85 @@
     .fcc-perf-table td.muted{ color:rgba(148,163,184,.65); }
     .fcc-strip.fcc-strip-tight{
       grid-template-columns:repeat(3, 1fr);
+      gap:10px;
+      margin-bottom:14px;
     }
     body[data-role="dashboard"] .strip-card.fcc-strip-card{
-      border-radius:16px;
-      border:1px solid rgba(255,255,255,.1);
-      background:rgba(5,8,16,.5);
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.09);
+      background:rgba(4,7,14,.55);
       box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+      padding:14px 16px;
+    }
+    body[data-role="dashboard"] .strip-card.fcc-strip-card .title{
+      font-size:10px;
+      font-weight:750;
+      letter-spacing:.1em;
+      text-transform:uppercase;
+      color:rgba(148,163,184,.92);
     }
     body[data-role="dashboard"] .strip-card.fcc-strip-card .big{
-      font-size:20px;
-      letter-spacing:-.02em;
+      font-size:clamp(20px, 2.2vw, 26px);
+      font-weight:900;
+      letter-spacing:-.03em;
+      margin:6px 0 4px;
+      color:rgba(248,250,252,.98);
+    }
+    body[data-role="dashboard"] .strip-card.fcc-strip-card .small{
+      font-size:11px;
+      color:rgba(148,163,184,.85);
+      line-height:1.35;
+    }
+    body[data-role="dashboard"] .strip-card.fcc-strip-card--cash{
+      border-color:rgba(59,130,246,.18);
+      background:linear-gradient(165deg, rgba(59,130,246,.08), rgba(4,7,14,.55));
+    }
+    body[data-role="dashboard"] .strip-card.fcc-strip-card--runway{
+      border-color:rgba(34,197,94,.18);
+      background:linear-gradient(165deg, rgba(34,197,94,.07), rgba(4,7,14,.55));
+    }
+    body[data-role="dashboard"] .strip-card.fcc-strip-card--tax{
+      border-color:rgba(167,139,250,.18);
+      background:linear-gradient(165deg, rgba(139,92,246,.07), rgba(4,7,14,.55));
     }
     .fcc-kpi-deck{
       display:grid;
-      grid-template-columns:repeat(3, minmax(0, 1fr));
-      gap:8px;
+      grid-template-columns:repeat(4, minmax(0, 1fr));
+      gap:10px;
+    }
+    .fcc-kpi-deck__secondary{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:10px;
+      margin-top:10px;
+      padding-top:12px;
+      border-top:1px solid rgba(255,255,255,.06);
     }
     @media (max-width: 900px){
-      .fcc-kpi-deck{ grid-template-columns:1fr 1fr; }
+      .fcc-kpi-deck{ grid-template-columns:repeat(2, 1fr); }
+      .fcc-kpi-deck__secondary{ grid-template-columns:1fr; }
     }
     @media (max-width: 600px){
       .fcc-kpi-deck{ grid-template-columns:1fr; }
     }
     .fcc-kpi-card{
       position:relative;
-      padding:10px 10px 8px;
+      padding:14px 14px 12px;
       border-radius:14px;
-      border:1px solid rgba(255,255,255,.09);
-      background:rgba(5,8,16,.42);
+      border:1px solid rgba(255,255,255,.08);
+      background:rgba(4,7,14,.48);
       overflow:hidden;
       box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .fcc-kpi-card--tier-primary{
+      min-height:104px;
+    }
+    .fcc-kpi-card--tier-secondary{
+      padding:11px 12px 10px;
+      background:rgba(4,7,14,.38);
+    }
+    .fcc-kpi-card--tier-secondary .value{
+      font-size:clamp(16px, 1.8vw, 20px) !important;
     }
     .fcc-kpi-card::before{
       content:"";
@@ -572,30 +648,55 @@
       color:rgba(248,250,252,.88);
     }
     .fcc-kpi-card .label{
-      font-size:12px;
-      font-weight:700;
-      color:rgba(203,213,225,.95);
+      font-size:11px;
+      font-weight:750;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+      color:rgba(148,163,184,.95);
       line-height:1.3;
     }
+    .fcc-kpi-card .label .badge{
+      font-size:9px;
+      letter-spacing:.06em;
+      margin-left:4px;
+      vertical-align:middle;
+    }
     .fcc-kpi-card .value{
-      font-size:clamp(17px, 2vw, 22px);
+      font-size:clamp(18px, 2.1vw, 24px);
       font-weight:900;
-      letter-spacing:-.03em;
-      margin:4px 0 2px;
+      letter-spacing:-.035em;
+      margin:8px 0 4px;
       color:rgba(248,250,252,.98);
     }
     .fcc-kpi-card .meta{
       font-size:11px;
       line-height:1.35;
-      color:rgba(148,163,184,.88);
+      color:rgba(148,163,184,.82);
     }
-    .fcc-kpi-spark{
-      display:none;
+    .fcc-section-head{
+      margin-bottom:16px;
     }
     .fcc-section-head h2{
-      font-size:18px;
-      font-weight:900;
-      letter-spacing:-.02em;
+      font-size:13px;
+      font-weight:850;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      color:rgba(248,250,252,.96);
+    }
+    .fcc-section-head .sub{
+      font-size:12px;
+      color:rgba(148,163,184,.88);
+      margin-top:4px;
+    }
+    .fcc-perf-wrap{
+      border-style:dashed;
+      border-color:rgba(255,255,255,.07);
+      background:rgba(255,255,255,.012);
+    }
+    .fcc-perf-toggle{
+      margin-top:4px;
+      margin-bottom:0;
+      font-size:12px;
     }
     .fcc-bank-wrap .section-head h2{ font-size:17px; font-weight:850; }
     .fcc-alerts.msg-list li{
@@ -607,8 +708,16 @@
     .fcc-stack .card{ margin-top:14px; }
     .fcc-stack .card:first-child{ margin-top:0; }
     @media (max-width: 980px){
+      .fcc-hero-compact-inner{
+        grid-template-columns:1fr;
+      }
+      .fcc-hero-compact-stats{
+        align-items:flex-start;
+        flex-direction:row;
+        flex-wrap:wrap;
+      }
       .fcc-columns{
-        flex-direction:column;
+        grid-template-columns:1fr;
       }
       .fcc-column{
         display:contents;
@@ -618,11 +727,7 @@
       .fcc-order-qa{ order:3; }
       .fcc-order-perf{ order:4; }
       .fcc-order-bank{ order:5; }
-      .fcc-columns{
-        display:flex;
-        flex-direction:column;
-        gap:12px;
-      }
+      .fcc-legend{ grid-template-columns:1fr; }
     }
 
     .fcc-perf-toggle{
@@ -669,17 +774,17 @@
     <section class="card fcc-hero">
       <div class="card-inner fcc-hero-compact-inner">
         <div class="fcc-hero-copy">
-          <span class="fcc-eyebrow">Owner · Executive view</span>
+          <span class="fcc-eyebrow">Executive · Owner view</span>
           <h2 class="fcc-hero-title">Financial Command Center</h2>
-          <p class="fcc-hero-compact-sub">Business health, cash position, runway, and tax reserve. Operational detail lives in Invoices Hub.</p>
+          <p class="fcc-hero-compact-sub">Cash position, runway, tax reserve, and profit buckets at a glance. Detail lives in Invoices Hub.</p>
         </div>
         <div class="fcc-hero-compact-stats">
-          <div class="fcc-health-chip">
+          <div class="fcc-health-chip" id="fccHealthChip">
             <span class="fcc-health-chip-label">Business health</span>
             <span class="fcc-health-chip-value" id="overallHealth">0%</span>
             <p class="fcc-health-chip-meta" id="overallHealthMeta">Waiting for saved balances.</p>
           </div>
-          <div class="fcc-date-pill" id="fccDateRange" aria-hidden="true">Month view · through today</div>
+          <div class="fcc-date-pill" id="fccDateRange">Month view · through today</div>
         </div>
       </div>
     </section>
@@ -691,12 +796,13 @@
             <div class="section-head fcc-section-head">
               <div>
                 <h2>Executive snapshot</h2>
-                <div class="sub">Account traffic lights and total business overview.</div>
+                <div class="sub">Priority signals — cash, runway, buckets, and health.</div>
               </div>
               <div class="badge green" id="syncBadge">Manual mode</div>
             </div>
             <div class="dashboard-strip fcc-strip fcc-strip-tight" id="executiveStrip"></div>
             <div class="dashboard-main-kpis fcc-kpi-deck" id="dashKpis"></div>
+            <div class="fcc-kpi-deck__secondary" id="dashKpisSecondary"></div>
           </div>
         </section>
 
@@ -731,17 +837,21 @@
       </div>
 
       <div class="fcc-column">
-        <section class="card fcc-panel fcc-order-profit">
+        <section class="card fcc-panel fcc-profit-panel fcc-order-profit">
           <div class="card-inner">
             <div class="fcc-panel-head">
               <h2>Profit breakdown</h2>
-              <div class="fcc-panel-sub">Operating balance vs. profit bucket in the monitor (excludes savings and tax).</div>
+              <div class="fcc-panel-sub">Operating balance vs. profit bucket — monitor buckets only.</div>
             </div>
             <div
               id="fccBarChartRoot"
               class="fcc-skyline-chart"
               role="img"
               aria-label="Profit breakdown: profit bucket and operating expenses">
+              <div class="fcc-skyline-chart__headline">
+                <span class="fcc-skyline-chart__kicker">Profit bucket</span>
+                <div class="big" id="fccBarChartHeadline">—</div>
+              </div>
               <div class="fcc-skyline-chart__stage">
                 <div class="fcc-skyline-bar fcc-skyline-bar--profit">
                   <div class="fcc-skyline-bar__value" id="fccBarProfitValue">—</div>
@@ -757,10 +867,6 @@
                   </div>
                   <div class="fcc-skyline-bar__label">Operating / expenses</div>
                 </div>
-              </div>
-              <div class="fcc-skyline-chart__headline">
-                <div class="big" id="fccBarChartHeadline">—</div>
-                <div class="small">Profit bucket</div>
               </div>
             </div>
             <ul class="fcc-legend" id="fccProfitLegend"></ul>

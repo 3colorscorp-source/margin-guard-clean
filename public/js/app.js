@@ -6415,7 +6415,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
       if ($("overallHealth")) {
         $("overallHealth").textContent = `${healthScore.toFixed(0)}%`;
-        $("overallHealth").style.color = healthTone === "green" ? "#86efac" : (healthTone === "amber" ? "#fcd34d" : "#fca5a5");
+      }
+      const healthChip = $("fccHealthChip");
+      if (healthChip) {
+        healthChip.classList.remove("fcc-health-chip--green", "fcc-health-chip--amber", "fcc-health-chip--red");
+        healthChip.classList.add(`fcc-health-chip--${healthTone}`);
       }
       if ($("overallHealthMeta")) {
         $("overallHealthMeta").textContent = healthTone === "green" ? "Cash discipline is protecting the business." : (healthTone === "amber" ? "The business is stable but under pressure." : "High risk. Real cash is not protecting operations.");
@@ -6425,17 +6429,22 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         $("syncBadge").textContent = "Manual sync";
       }
       if ($("executiveStrip")) {
-        $("executiveStrip").innerHTML = [
-          ["Cash On Hand", money(totalCash, settings.currency), "Across 4 protected accounts"],
-          ["Critical Runway", `${runwayMonths.toFixed(1)} months`, "Owner target: 12.0 months"],
-          ["Tax Protection", money(state.taxBalance, settings.currency), "Reserved for obligations"]
-        ].map(([title, big, small]) => `
-          <div class="strip-card fcc-strip-card">
+        const stripItems = [
+          ["Cash On Hand", money(totalCash, settings.currency), "Across 4 protected accounts", "cash"],
+          ["Critical Runway", `${runwayMonths.toFixed(1)} months`, "Owner target: 12.0 months", "runway"],
+          ["Tax Protection", money(state.taxBalance, settings.currency), "Reserved for obligations", "tax"]
+        ];
+        $("executiveStrip").innerHTML = stripItems
+          .map(
+            ([title, big, small, accent]) => `
+          <div class="strip-card fcc-strip-card fcc-strip-card--${accent}">
             <div class="title">${escapeHtml(title)}</div>
             <div class="big">${escapeHtml(big)}</div>
             <div class="small">${escapeHtml(small)}</div>
           </div>
-        `).join("");
+        `
+          )
+          .join("");
       }
 
       if ($("fccDateRange")) {
@@ -6482,26 +6491,35 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         `;
       }
 
-      const kpis = [
-        { label: "Operating / Expenses", value: money(state.expensesBalance, settings.currency), meta: "Immediate working capital", tone: healthClass(state.expensesBalance, state.operatingMonthly * 0.5, state.operatingMonthly), accent: "expense", icon: "OP" },
-        { label: "Profit", value: money(state.profitBalance, settings.currency), meta: "Protected owner profit", tone: healthClass(state.profitBalance, state.operatingMonthly * 0.1, state.operatingMonthly * 0.35), accent: "profit", icon: "PR" },
-        { label: "Savings", value: money(state.savingsBalance, settings.currency), meta: `12-month target: ${money(savingsTarget, settings.currency)}`, tone: healthClass(state.savingsBalance, state.operatingMonthly * 6, savingsTarget), accent: "savings", icon: "SV" },
-        { label: "Tax Reserve", value: money(state.taxBalance, settings.currency), meta: "Reserved tax liability", tone: healthClass(state.taxBalance, state.operatingMonthly * 0.5, state.operatingMonthly), accent: "tax", icon: "TX" },
-        { label: "Total Cash", value: money(totalCash, settings.currency), meta: "Real bank cash, not paper profit", tone: healthClass(totalCash, state.operatingMonthly * 3, state.operatingMonthly * 12), accent: "total", icon: "$$" },
-        { label: "Savings Progress", value: `${savingsPct.toFixed(1)}%`, meta: "Progress to 12-month safety target", tone: healthClass(savingsPct, 50, 100), accent: "progress", icon: "%" }
-      ];
-
-      $("dashKpis").innerHTML = kpis.map(({ label, value, meta, tone, accent, icon }) => `
-        <div class="kpi-box finance-box fcc-kpi-card fcc-kpi--${accent}">
+      const renderFccKpiCard = ({ label, value, meta, tone, accent, icon, tier }) => `
+        <div class="kpi-box finance-box fcc-kpi-card fcc-kpi--${accent} fcc-kpi-card--tier-${tier}">
           <div class="fcc-kpi-top">
-            <div class="label">${escapeHtml(label)} <span class="badge ${tone}">${tone === "green" ? "Healthy" : (tone === "amber" ? "Watch" : "Risk")}</span></div>
+            <div class="label">${escapeHtml(label)} <span class="badge ${tone}">${tone === "green" ? "Healthy" : tone === "amber" ? "Watch" : "Risk"}</span></div>
             <div class="fcc-kpi-icon" aria-hidden="true">${escapeHtml(icon)}</div>
           </div>
           <div class="value">${escapeHtml(value)}</div>
           <div class="meta">${escapeHtml(meta)}</div>
-          <div class="fcc-kpi-spark" aria-hidden="true"></div>
         </div>
-      `).join("");
+      `;
+
+      const kpisPrimary = [
+        { label: "Total Cash", value: money(totalCash, settings.currency), meta: "Real bank cash, not paper profit", tone: healthClass(totalCash, state.operatingMonthly * 3, state.operatingMonthly * 12), accent: "total", icon: "$$", tier: "primary" },
+        { label: "Operating / Expenses", value: money(state.expensesBalance, settings.currency), meta: "Immediate working capital", tone: healthClass(state.expensesBalance, state.operatingMonthly * 0.5, state.operatingMonthly), accent: "expense", icon: "OP", tier: "primary" },
+        { label: "Profit", value: money(state.profitBalance, settings.currency), meta: "Protected owner profit", tone: healthClass(state.profitBalance, state.operatingMonthly * 0.1, state.operatingMonthly * 0.35), accent: "profit", icon: "PR", tier: "primary" },
+        { label: "Tax Reserve", value: money(state.taxBalance, settings.currency), meta: "Reserved tax liability", tone: healthClass(state.taxBalance, state.operatingMonthly * 0.5, state.operatingMonthly), accent: "tax", icon: "TX", tier: "primary" }
+      ];
+
+      const kpisSecondary = [
+        { label: "Savings", value: money(state.savingsBalance, settings.currency), meta: `12-month target: ${money(savingsTarget, settings.currency)}`, tone: healthClass(state.savingsBalance, state.operatingMonthly * 6, savingsTarget), accent: "savings", icon: "SV", tier: "secondary" },
+        { label: "Savings Progress", value: `${savingsPct.toFixed(1)}%`, meta: "Progress to 12-month safety target", tone: healthClass(savingsPct, 50, 100), accent: "progress", icon: "%", tier: "secondary" }
+      ];
+
+      if ($("dashKpis")) {
+        $("dashKpis").innerHTML = kpisPrimary.map(renderFccKpiCard).join("");
+      }
+      if ($("dashKpisSecondary")) {
+        $("dashKpisSecondary").innerHTML = kpisSecondary.map(renderFccKpiCard).join("");
+      }
 
       const dashboardHubNeeded =
         $("dashboardRevenueStrip") || $("dashboardRevenueNote") || $("dashboardCommandStrip") || $("dashboardCommandQueue") ||
