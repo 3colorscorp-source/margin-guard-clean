@@ -1856,11 +1856,7 @@ body[data-role="owner"] .owner-quote-pricing-source{
   max-width:42rem;
 }
 body[data-role="owner"] .owner-date-group{
-  grid-column:1 / -1;
   margin-bottom:2px;
-}
-body[data-role="owner"] .owner-date-section{
-  margin-bottom:14px;
 }
 body[data-role="owner"] .owner-date-section__title{
   margin:0 0 12px;
