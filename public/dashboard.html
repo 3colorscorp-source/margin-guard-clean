@@ -14,9 +14,9 @@
         linear-gradient(180deg, #060a12 0%, #0a101c 38%, #070b14 100%);
     }
     body[data-role="dashboard"] .container.fcc-page{
-      max-width:1280px;
-      padding-top:18px;
-      padding-bottom:32px;
+      max-width:1320px;
+      padding-top:10px;
+      padding-bottom:18px;
     }
     body[data-role="dashboard"] .card{
       border-radius:20px;
@@ -34,11 +34,12 @@
       backdrop-filter:blur(16px);
     }
     body[data-role="dashboard"] .account-pill{
-      margin-bottom:14px;
-      opacity:.88;
+      margin-bottom:8px;
+      opacity:.82;
+      font-size:12px;
     }
     .fcc-hero{
-      margin-bottom:16px;
+      margin-bottom:10px;
       border:1px solid rgba(255,255,255,.1);
       background:
         radial-gradient(520px 200px at 0% 0%, rgba(34,197,94,.08), transparent 62%),
@@ -51,15 +52,15 @@
       display:grid;
       grid-template-columns:1fr auto;
       align-items:center;
-      gap:20px 28px;
-      padding:18px 20px;
+      gap:12px 20px;
+      padding:12px 16px;
     }
     .fcc-hero-compact-sub{
-      margin:8px 0 0;
-      max-width:48ch;
-      font-size:13px;
-      line-height:1.5;
-      color:rgba(148,163,184,.92);
+      margin:4px 0 0;
+      max-width:44ch;
+      font-size:12px;
+      line-height:1.4;
+      color:rgba(148,163,184,.9);
     }
     .fcc-hero-compact-inner .fcc-eyebrow{
       margin-bottom:10px;
@@ -71,7 +72,7 @@
     }
     .fcc-hero-compact-inner .fcc-hero-title{
       margin:0;
-      font-size:clamp(24px, 2.6vw, 34px);
+      font-size:clamp(20px, 2.2vw, 28px);
       font-weight:900;
       letter-spacing:-.04em;
     }
@@ -122,10 +123,10 @@
       display:flex;
       flex-direction:column;
       align-items:flex-start;
-      gap:4px;
-      padding:14px 18px;
-      min-width:200px;
-      border-radius:16px;
+      gap:2px;
+      padding:10px 14px;
+      min-width:168px;
+      border-radius:14px;
       border:1px solid rgba(255,255,255,.1);
       background:rgba(4,7,14,.72);
       box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
@@ -152,7 +153,7 @@
       color:rgba(148,163,184,.95);
     }
     .fcc-health-chip-value{
-      font-size:32px;
+      font-size:26px;
       font-weight:900;
       line-height:1;
       letter-spacing:-.04em;
@@ -179,7 +180,12 @@
       letter-spacing:.04em;
     }
     body[data-role="dashboard"] .fcc-panel .card-inner{
-      padding:18px 20px;
+      padding:14px 16px;
+    }
+    .fcc-treasury-inner{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
     }
     .fcc-hero-viz{
       flex:1;
@@ -224,19 +230,22 @@
     }
     .fcc-columns{
       display:grid;
-      grid-template-columns:1.15fr .85fr;
-      gap:16px;
-      margin-bottom:16px;
-      align-items:start;
+      grid-template-columns:1.08fr .92fr;
+      gap:12px;
+      margin-bottom:10px;
+      align-items:stretch;
     }
     .fcc-column{
       min-width:0;
       display:flex;
       flex-direction:column;
-      gap:16px;
+      gap:10px;
     }
     .fcc-panel-head{
-      margin-bottom:14px;
+      margin-bottom:8px;
+    }
+    .fcc-panel-head--compact{
+      margin-bottom:6px;
     }
     .fcc-panel-head h2{
       margin:0 0 4px;
@@ -255,10 +264,17 @@
     .fcc-cf-hooks{
       display:none !important;
     }
+    .fcc-treasury-chart{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      margin:0;
+      flex:1;
+    }
     .fcc-skyline-chart{
       display:flex;
       flex-direction:column;
-      gap:14px;
+      gap:10px;
       margin:0;
     }
     .fcc-skyline-chart__headline{
@@ -285,11 +301,11 @@
     .fcc-skyline-chart__stage{
       display:flex;
       align-items:flex-end;
-      justify-content:center;
-      gap:clamp(20px, 8vw, 36px);
-      height:220px;
-      padding:16px 18px 0;
-      border-radius:16px 16px 0 0;
+      justify-content:space-between;
+      gap:clamp(8px, 2vw, 14px);
+      height:196px;
+      padding:12px 12px 0;
+      border-radius:14px 14px 0 0;
       border:1px solid rgba(255,255,255,.09);
       border-bottom:3px solid rgba(255,255,255,.16);
       background:
@@ -299,14 +315,7 @@
           rgba(255,255,255,.04) 0,
           rgba(255,255,255,.04) 1px,
           transparent 1px,
-          transparent 44px
-        ),
-        repeating-linear-gradient(
-          90deg,
-          rgba(255,255,255,.015) 0,
-          rgba(255,255,255,.015) 1px,
-          transparent 1px,
-          transparent 32px
+          transparent 36px
         );
       box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
     }
@@ -315,18 +324,20 @@
       flex-direction:column;
       align-items:center;
       flex:1;
-      max-width:120px;
+      max-width:none;
       min-width:0;
       height:100%;
     }
     .fcc-skyline-bar__value{
-      font-size:12px;
+      font-size:11px;
       font-weight:800;
-      letter-spacing:-.01em;
+      letter-spacing:-.02em;
       color:rgba(248,250,252,.95);
-      margin-bottom:8px;
+      margin-bottom:6px;
       white-space:nowrap;
       text-align:center;
+      transform:scale(.95);
+      transform-origin:center bottom;
     }
     .fcc-skyline-bar__tower{
       flex:1;
@@ -336,14 +347,14 @@
       justify-content:center;
     }
     .fcc-skyline-bar__fill{
-      width:min(88px, 92%);
+      width:min(64px, 88%);
       height:0;
       min-height:0;
-      border-radius:4px 4px 0 0;
+      border-radius:3px 3px 0 0;
       position:relative;
       transition:height .4s cubic-bezier(.22,1,.36,1);
       box-shadow:
-        0 -12px 32px rgba(0,0,0,.35),
+        0 -10px 28px rgba(0,0,0,.32),
         inset 0 1px 0 rgba(255,255,255,.2);
     }
     .fcc-skyline-bar__fill::before{
@@ -371,9 +382,23 @@
     .fcc-skyline-bar--operating .fcc-skyline-bar__fill::before{
       background:linear-gradient(180deg, rgba(187,247,208,.98), rgba(74,222,128,.95));
     }
+    .fcc-skyline-bar--tax .fcc-skyline-bar__fill{
+      background:
+        linear-gradient(180deg, rgba(196,181,253,.98) 0%, rgba(99,102,241,.88) 55%, rgba(67,56,202,.92) 100%);
+    }
+    .fcc-skyline-bar--tax .fcc-skyline-bar__fill::before{
+      background:linear-gradient(180deg, rgba(221,214,254,.98), rgba(129,140,248,.95));
+    }
+    .fcc-skyline-bar--savings .fcc-skyline-bar__fill{
+      background:
+        linear-gradient(180deg, rgba(125,211,252,.98) 0%, rgba(14,165,233,.88) 55%, rgba(2,132,199,.92) 100%);
+    }
+    .fcc-skyline-bar--savings .fcc-skyline-bar__fill::before{
+      background:linear-gradient(180deg, rgba(186,230,253,.98), rgba(56,189,248,.95));
+    }
     .fcc-skyline-bar__label{
-      margin-top:10px;
-      font-size:10px;
+      margin-top:8px;
+      font-size:9px;
       font-weight:750;
       letter-spacing:.08em;
       text-transform:uppercase;
@@ -386,19 +411,22 @@
       margin:0;
       padding:0;
       display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:8px;
+      grid-template-columns:repeat(2, 1fr);
+      gap:6px;
+    }
+    .fcc-legend--accounts{
+      grid-template-columns:repeat(4, 1fr);
     }
     .fcc-legend li{
       display:flex;
       align-items:center;
       justify-content:space-between;
-      gap:8px;
-      padding:10px 12px;
-      border-radius:12px;
+      gap:6px;
+      padding:7px 9px;
+      border-radius:10px;
       border:1px solid rgba(255,255,255,.07);
       background:rgba(255,255,255,.025);
-      font-size:12px;
+      font-size:11px;
       font-weight:650;
       color:rgba(226,232,240,.92);
     }
@@ -418,12 +446,22 @@
       border-radius:2px;
       flex-shrink:0;
     }
-    .fcc-legend .sw.violet{ background:rgba(167,139,250,.95); box-shadow:0 0 8px rgba(139,92,246,.35); }
-    .fcc-legend .sw.green{ background:rgba(74,222,128,.95); box-shadow:0 0 8px rgba(34,197,94,.3); }
-    .fcc-profit-panel .card-inner{
-      display:flex;
-      flex-direction:column;
-      gap:16px;
+    .fcc-legend .sw.violet,
+    .fcc-legend .sw--profit{ background:rgba(167,139,250,.95); box-shadow:0 0 8px rgba(139,92,246,.35); }
+    .fcc-legend .sw.green,
+    .fcc-legend .sw--operating{ background:rgba(74,222,128,.95); box-shadow:0 0 8px rgba(34,197,94,.3); }
+    .fcc-legend .sw--tax{ background:rgba(129,140,248,.95); box-shadow:0 0 8px rgba(99,102,241,.35); }
+    .fcc-legend .sw--savings{ background:rgba(56,189,248,.95); box-shadow:0 0 8px rgba(14,165,233,.3); }
+    .fcc-treasury-panel .card-inner{
+      min-height:100%;
+    }
+    .fcc-qa-inline{
+      margin-top:2px;
+      padding-top:10px;
+      border-top:1px solid rgba(255,255,255,.06);
+    }
+    .fcc-qa-inline .fcc-qa-label{
+      margin-bottom:6px;
     }
     .fcc-qa-wrap .card-inner{
       padding:14px 18px;
@@ -533,15 +571,15 @@
     .fcc-perf-table td.muted{ color:rgba(148,163,184,.65); }
     .fcc-strip.fcc-strip-tight{
       grid-template-columns:repeat(3, 1fr);
-      gap:10px;
-      margin-bottom:14px;
+      gap:8px;
+      margin-bottom:10px;
     }
     body[data-role="dashboard"] .strip-card.fcc-strip-card{
-      border-radius:14px;
+      border-radius:12px;
       border:1px solid rgba(255,255,255,.09);
       background:rgba(4,7,14,.55);
       box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
-      padding:14px 16px;
+      padding:10px 12px;
     }
     body[data-role="dashboard"] .strip-card.fcc-strip-card .title{
       font-size:10px;
@@ -577,14 +615,14 @@
     .fcc-kpi-deck{
       display:grid;
       grid-template-columns:repeat(4, minmax(0, 1fr));
-      gap:10px;
+      gap:8px;
     }
     .fcc-kpi-deck__secondary{
       display:grid;
       grid-template-columns:repeat(2, minmax(0, 1fr));
-      gap:10px;
-      margin-top:10px;
-      padding-top:12px;
+      gap:8px;
+      margin-top:8px;
+      padding-top:8px;
       border-top:1px solid rgba(255,255,255,.06);
     }
     @media (max-width: 900px){
@@ -596,18 +634,18 @@
     }
     .fcc-kpi-card{
       position:relative;
-      padding:14px 14px 12px;
-      border-radius:14px;
+      padding:10px 11px 9px;
+      border-radius:12px;
       border:1px solid rgba(255,255,255,.08);
       background:rgba(4,7,14,.48);
       overflow:hidden;
       box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
     }
     .fcc-kpi-card--tier-primary{
-      min-height:104px;
+      min-height:88px;
     }
     .fcc-kpi-card--tier-secondary{
-      padding:11px 12px 10px;
+      padding:9px 10px 8px;
       background:rgba(4,7,14,.38);
     }
     .fcc-kpi-card--tier-secondary .value{
@@ -662,10 +700,10 @@
       vertical-align:middle;
     }
     .fcc-kpi-card .value{
-      font-size:clamp(18px, 2.1vw, 24px);
+      font-size:clamp(16px, 1.9vw, 21px);
       font-weight:900;
       letter-spacing:-.035em;
-      margin:8px 0 4px;
+      margin:6px 0 2px;
       color:rgba(248,250,252,.98);
     }
     .fcc-kpi-card .meta{
@@ -674,7 +712,7 @@
       color:rgba(148,163,184,.82);
     }
     .fcc-section-head{
-      margin-bottom:16px;
+      margin-bottom:10px;
     }
     .fcc-section-head h2{
       font-size:13px;
@@ -724,9 +762,9 @@
       }
       .fcc-order-snapshot{ order:1; }
       .fcc-order-profit{ order:2; }
-      .fcc-order-qa{ order:3; }
-      .fcc-order-perf{ order:4; }
-      .fcc-order-bank{ order:5; }
+      .fcc-order-perf{ order:3; }
+      .fcc-order-bank{ order:4; }
+      .fcc-legend--accounts{ grid-template-columns:repeat(2, 1fr); }
       .fcc-legend{ grid-template-columns:1fr; }
     }
 
@@ -776,7 +814,7 @@
         <div class="fcc-hero-copy">
           <span class="fcc-eyebrow">Executive · Owner view</span>
           <h2 class="fcc-hero-title">Financial Command Center</h2>
-          <p class="fcc-hero-compact-sub">Cash position, runway, tax reserve, and profit buckets at a glance. Detail lives in Invoices Hub.</p>
+          <p class="fcc-hero-compact-sub">Cash, runway, and protected accounts — one executive view.</p>
         </div>
         <div class="fcc-hero-compact-stats">
           <div class="fcc-health-chip" id="fccHealthChip">
@@ -796,7 +834,7 @@
             <div class="section-head fcc-section-head">
               <div>
                 <h2>Executive snapshot</h2>
-                <div class="sub">Priority signals — cash, runway, buckets, and health.</div>
+                <div class="sub">Cash · runway · buckets · health</div>
               </div>
               <div class="badge green" id="syncBadge">Manual mode</div>
             </div>
@@ -837,50 +875,32 @@
       </div>
 
       <div class="fcc-column">
-        <section class="card fcc-panel fcc-profit-panel fcc-order-profit">
-          <div class="card-inner">
-            <div class="fcc-panel-head">
-              <h2>Profit breakdown</h2>
-              <div class="fcc-panel-sub">Operating balance vs. profit bucket — monitor buckets only.</div>
+        <section class="card fcc-panel fcc-treasury-panel fcc-order-profit">
+          <div class="card-inner fcc-treasury-inner">
+            <div class="fcc-panel-head fcc-panel-head--compact">
+              <h2>Account treasury</h2>
+              <div class="fcc-panel-sub">Each protected business account — balance scaled to skyline.</div>
             </div>
             <div
               id="fccBarChartRoot"
-              class="fcc-skyline-chart"
+              class="fcc-treasury-chart"
               role="img"
-              aria-label="Profit breakdown: profit bucket and operating expenses">
+              aria-label="Account treasury balances">
               <div class="fcc-skyline-chart__headline">
-                <span class="fcc-skyline-chart__kicker">Profit bucket</span>
+                <span class="fcc-skyline-chart__kicker" id="fccBarChartKicker">Total cash on hand</span>
                 <div class="big" id="fccBarChartHeadline">—</div>
               </div>
-              <div class="fcc-skyline-chart__stage">
-                <div class="fcc-skyline-bar fcc-skyline-bar--profit">
-                  <div class="fcc-skyline-bar__value" id="fccBarProfitValue">—</div>
-                  <div class="fcc-skyline-bar__tower">
-                    <div class="fcc-skyline-bar__fill" id="fccBarProfitFill"></div>
-                  </div>
-                  <div class="fcc-skyline-bar__label">Profit bucket</div>
-                </div>
-                <div class="fcc-skyline-bar fcc-skyline-bar--operating">
-                  <div class="fcc-skyline-bar__value" id="fccBarOperatingValue">—</div>
-                  <div class="fcc-skyline-bar__tower">
-                    <div class="fcc-skyline-bar__fill" id="fccBarOperatingFill"></div>
-                  </div>
-                  <div class="fcc-skyline-bar__label">Operating / expenses</div>
-                </div>
-              </div>
+              <div class="fcc-skyline-chart__stage" id="fccAccountBarsHost"></div>
             </div>
-            <ul class="fcc-legend" id="fccProfitLegend"></ul>
-          </div>
-        </section>
-
-        <section class="card fcc-panel fcc-qa-wrap fcc-order-qa">
-          <div class="card-inner">
-            <span class="fcc-qa-label">Quick actions</span>
-            <nav class="fcc-qa--bar" aria-label="Quick actions">
-              <a href="/estimates-invoices">Invoice Hub</a>
-              <a href="#fcc-bank-console" id="btnQuickOpenBank">Banking &amp; Stripe</a>
-              <a href="/business-settings">Business Settings</a>
-            </nav>
+            <ul class="fcc-legend fcc-legend--accounts" id="fccProfitLegend"></ul>
+            <div class="fcc-qa-inline">
+              <span class="fcc-qa-label">Quick actions</span>
+              <nav class="fcc-qa--bar" aria-label="Quick actions">
+                <a href="/estimates-invoices">Invoice Hub</a>
+                <a href="#fcc-bank-console" id="btnQuickOpenBank">Banking &amp; Stripe</a>
+                <a href="/business-settings">Business Settings</a>
+              </nav>
+            </div>
           </div>
         </section>
 
@@ -1014,9 +1034,11 @@ const LS_KEY = 'mg_dashboard_bank_panel_hidden';
 if (btn && panel) {
   function readBankHiddenPref() {
     try {
-      return localStorage.getItem(LS_KEY) === 'true';
+      const v = localStorage.getItem(LS_KEY);
+      if (v === null) return true;
+      return v === 'true';
     } catch (_e) {
-      return false;
+      return true;
     }
   }
 

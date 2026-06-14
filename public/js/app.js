@@ -6387,6 +6387,58 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     }
   }
 
+  function buildFccDashboardAccounts(state) {
+    return [
+      { key: "operating", label: "Operating", balance: Number(state.expensesBalance) || 0, tone: "operating" },
+      { key: "profit", label: "Profit", balance: Number(state.profitBalance) || 0, tone: "profit" },
+      { key: "tax", label: "Tax Reserve", balance: Number(state.taxBalance) || 0, tone: "tax" },
+      { key: "savings", label: "Savings", balance: Number(state.savingsBalance) || 0, tone: "savings" }
+    ];
+  }
+
+  function renderFccAccountTreasury(state, settings, totalCash) {
+    const accounts = buildFccDashboardAccounts(state);
+    const maxBar = Math.max(...accounts.map((acc) => acc.balance), 1);
+    const root = $("fccBarChartRoot");
+    const host = $("fccAccountBarsHost");
+    const legend = $("fccProfitLegend");
+
+    if ($("fccBarChartHeadline")) {
+      $("fccBarChartHeadline").textContent = money(totalCash, settings.currency);
+    }
+    if ($("fccBarChartKicker")) {
+      $("fccBarChartKicker").textContent = "Total cash on hand";
+    }
+    if (root) {
+      root.setAttribute(
+        "aria-label",
+        accounts.map((acc) => `${acc.label} ${money(acc.balance, settings.currency)}`).join(", ")
+      );
+    }
+    if (host) {
+      host.innerHTML = accounts
+        .map((acc) => {
+          const pct = acc.balance > 0 ? Math.max(6, (acc.balance / maxBar) * 100) : 0;
+          return (
+            `<div class="fcc-skyline-bar fcc-skyline-bar--${acc.tone}" data-account="${escapeHtml(acc.key)}">` +
+            `<div class="fcc-skyline-bar__value">${escapeHtml(money(acc.balance, settings.currency))}</div>` +
+            `<div class="fcc-skyline-bar__tower"><div class="fcc-skyline-bar__fill" style="height:${pct}%"></div></div>` +
+            `<div class="fcc-skyline-bar__label">${escapeHtml(acc.label)}</div>` +
+            `</div>`
+          );
+        })
+        .join("");
+    }
+    if (legend) {
+      legend.innerHTML = accounts
+        .map(
+          (acc) =>
+            `<li><span class="sw sw--${acc.tone}" aria-hidden="true"></span><span>${escapeHtml(acc.label)}</span><span>${escapeHtml(money(acc.balance, settings.currency))}</span></li>`
+        )
+        .join("");
+    }
+  }
+
   function renderDashboard() {
     if (!$("dashKpis")) return;
 
@@ -6465,32 +6517,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         if ($("fccCfCashInHint")) $("fccCfCashInHint").textContent = "Se completa al cargar cartera en el hub.";
       }
 
-      const pb = Number(state.profitBalance) || 0;
-      const eb = Number(state.expensesBalance) || 0;
-      const maxBar = Math.max(pb, eb, 1);
-      const profitBarPct = pb > 0 ? Math.max(8, (pb / maxBar) * 100) : 0;
-      const opBarPct = eb > 0 ? Math.max(8, (eb / maxBar) * 100) : 0;
-      const barRoot = $("fccBarChartRoot");
-      if (barRoot) {
-        barRoot.setAttribute(
-          "aria-label",
-          `Profit breakdown: profit bucket ${money(pb, settings.currency)}, operating expenses ${money(eb, settings.currency)}`
-        );
-      }
-      const profitFill = $("fccBarProfitFill");
-      const opFill = $("fccBarOperatingFill");
-      if (profitFill) profitFill.style.height = `${profitBarPct}%`;
-      if (opFill) opFill.style.height = `${opBarPct}%`;
-      if ($("fccBarChartHeadline")) $("fccBarChartHeadline").textContent = money(pb, settings.currency);
-      if ($("fccBarProfitValue")) $("fccBarProfitValue").textContent = money(pb, settings.currency);
-      if ($("fccBarOperatingValue")) $("fccBarOperatingValue").textContent = money(eb, settings.currency);
-      if ($("fccProfitLegend")) {
-        $("fccProfitLegend").innerHTML = `
-          <li><span class="sw violet" aria-hidden="true"></span><span>Profit bucket</span><span>${escapeHtml(money(pb, settings.currency))}</span></li>
-          <li><span class="sw green" aria-hidden="true"></span><span>Operating / expenses</span><span>${escapeHtml(money(eb, settings.currency))}</span></li>
-        `;
-      }
-
+      renderFccAccountTreasury(state, settings, totalCash);
       const renderFccKpiCard = ({ label, value, meta, tone, accent, icon, tier }) => `
         <div class="kpi-box finance-box fcc-kpi-card fcc-kpi--${accent} fcc-kpi-card--tier-${tier}">
           <div class="fcc-kpi-top">
