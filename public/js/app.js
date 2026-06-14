@@ -73,6 +73,8 @@
     issueDate: "",
     expirationDate: "",
     committedDate: "",
+    startDate: "",
+    targetFinishDate: "",
     quoteNotes: "",
     location: "",
     dueDate: "",
@@ -264,6 +266,74 @@ Thank you.`
     const merged = settings && typeof settings === "object" ? settings : loadSettings();
     const pricingMode = String(merged.pricingMode || DEFAULTS.pricingMode).toLowerCase() === "day" ? "day" : "hour";
     return { ...merged, pricingMode };
+  }
+
+  /** Pricing fields that must come from tenant Business Settings (mg_settings_v2). */
+  const TENANT_PRICING_SETTING_KEYS = [
+    "baseInstaller",
+    "baseHelper",
+    "hoursPerDay",
+    "pricingMode",
+    "overheadMonthly",
+    "stdHours",
+    "wcPct",
+    "ficaPct",
+    "futaPct",
+    "casuiPct",
+    "profitPct",
+    "reservePct",
+    "minimumMarginPct",
+    "currency",
+    "workdaysEnabled",
+    "crewCapacity",
+    "scheduleBufferDays",
+    "allowSellerScheduleOverride",
+    "salesQuoteExpirationDays"
+  ];
+
+  function tenantSettingPresent(stored, key) {
+    if (!stored || typeof stored !== "object") return false;
+    const v = stored[key];
+    if (v === undefined || v === null) return false;
+    if (typeof v === "string" && v.trim() === "") return false;
+    return true;
+  }
+
+  function hasTenantBusinessSettingsSaved() {
+    const stored = readStore(LS_SETTINGS, {});
+    return (
+      tenantSettingPresent(stored, "baseInstaller") &&
+      tenantSettingPresent(stored, "baseHelper") &&
+      tenantSettingPresent(stored, "profitPct")
+    );
+  }
+
+  /**
+   * Owner pricing source: tenant mg_settings_v2 wins; DEFAULTS only fill missing keys.
+   * No QA seed, no worker.rate, no cross-tenant reads.
+   */
+  function loadOwnerPricingSettings() {
+    const stored = readStore(LS_SETTINGS, {});
+    const merged = { ...DEFAULTS, ...stored };
+    TENANT_PRICING_SETTING_KEYS.forEach((key) => {
+      if (!tenantSettingPresent(stored, key)) merged[key] = DEFAULTS[key];
+    });
+    return resolveOwnerQuoteSettings(merged);
+  }
+
+  function ownerPricingSettingsSourceLabel() {
+    const hasTenant = hasTenantBusinessSettingsSaved();
+    if (!hasTenant) {
+      return {
+        shortStatus: "Configure Business Settings",
+        detail:
+          "Recommended price uses placeholder defaults until this tenant's Business Settings are saved."
+      };
+    }
+    return {
+      shortStatus: "Pricing live",
+      detail: "Recommended price is calculated from this tenant's Business Settings and current quote labor."
+    };
   }
 
   function computeOwnerLaborSummary(state, settings) {
@@ -749,6 +819,41 @@ Thank you.`
     return n > 0 ? Math.floor(n) : SALES_QUOTE_EXPIRATION_DAYS;
   }
 
+  function compareOwnerDateInputs(a, b) {
+    const cap = window.MarginGuardSalesCapacity;
+    if (cap && typeof cap.compareYmd === "function") return cap.compareYmd(a, b);
+    const aa = normalizeDateInput(a);
+    const bb = normalizeDateInput(b);
+    if (!aa || !bb) return 0;
+    if (aa < bb) return -1;
+    if (aa > bb) return 1;
+    return 0;
+  }
+
+  function ownerQuoteExpirationFromIssue(issueDate, settings) {
+    const issue = normalizeDateInput(issueDate) || todayInputValue();
+    return addDaysToInputValue(issue, salesQuoteExpirationDays(settings || loadSettings()));
+  }
+
+  function normalizeOwnerQuoteDates(state, settings, options) {
+    if (!state) return state;
+    const opts = options || {};
+    const settingsResolved = settings || loadSettings();
+    const issue = normalizeDateInput(state.issueDate) || todayInputValue();
+    state.issueDate = issue;
+    const defaultExp = ownerQuoteExpirationFromIssue(issue, settingsResolved);
+    const exp = normalizeDateInput(state.expirationDate);
+    if (opts.recalcExpirationFromIssue || !exp || compareOwnerDateInputs(exp, issue) < 0) {
+      state.expirationDate = defaultExp;
+    } else {
+      state.expirationDate = exp;
+    }
+    if (compareOwnerDateInputs(state.expirationDate, issue) < 0) {
+      state.expirationDate = defaultExp;
+    }
+    return state;
+  }
+
   function todayInputValue() {
     const d = new Date();
     const y = d.getFullYear();
@@ -793,6 +898,14 @@ Thank you.`
     return fmt(anchor);
   }
 
+  function syncOwnerQuoteIssueExpirationFromSellerRules(state, settings) {
+    const autoIssueDate = todayInputValue();
+    const autoExpirationDate = addDaysToInputValue(autoIssueDate, salesQuoteExpirationDays(settings));
+    state.issueDate = autoIssueDate;
+    state.expirationDate = autoExpirationDate;
+    return state;
+  }
+
   function loadOwner() {
     const saved = readStore(LS_OWNER, {});
     const merged = {
@@ -810,6 +923,8 @@ Thank you.`
     merged.issueDate = normalizeDateInput(merged.issueDate);
     merged.expirationDate = normalizeDateInput(merged.expirationDate);
     merged.committedDate = normalizeDateInput(merged.committedDate);
+    merged.startDate = normalizeDateInput(merged.startDate);
+    merged.targetFinishDate = normalizeDateInput(merged.targetFinishDate);
     merged.quoteNotes = String(merged.quoteNotes ?? "");
     merged.location = String(merged.location ?? "");
     merged.operational_plan = Array.isArray(saved.operational_plan) ? saved.operational_plan : [];
@@ -819,13 +934,13 @@ Thank you.`
       saved.operational_estimated_hours_override != null ? saved.operational_estimated_hours_override : "";
     merged.labor_manual_override = Boolean(saved.labor_manual_override);
     merged.labor_auto_sync_from_plan = saved.labor_auto_sync_from_plan !== false;
+    normalizeOwnerQuoteDates(merged, loadOwnerPricingSettings());
     return merged;
   }
   function saveOwner(state, metrics) {
     writeStore(LS_OWNER, {
       ...state,
       workers: normalizeOwnerWorkers(state.workers),
-      reservePct: DEFAULTS.reservePct,
       metrics
     });
   }
@@ -835,10 +950,10 @@ Thank you.`
    * Call after persist if you need the sent snapshot recorded first; this overwrites the active draft.
    */
   function resetOwnerDraftToNewQuote() {
-    const settings = loadSettings();
+    const settings = loadOwnerPricingSettings();
     const prev = readStore(LS_OWNER, {});
     const today = todayInputValue();
-    const expirationDate = addDaysToInputValue(today, 7);
+    const expirationDate = ownerQuoteExpirationFromIssue(today, settings);
     const workers = (DEFAULT_OWNER.workers || []).map((w) => ({
       name: String(w.name || "Worker"),
       type: w.type === "helper" ? "helper" : "installer",
@@ -853,6 +968,8 @@ Thank you.`
       issueDate: today,
       expirationDate,
       committedDate: "",
+      startDate: "",
+      targetFinishDate: "",
       quoteNotes: "",
       location: "",
       dueDate: "",
@@ -6165,10 +6282,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const overhead = overheadPerHour * totalHours;
     const beforeProfit = labor + taxes + overhead;
     const profit = beforeProfit * (Number(settings.profitPct || 0) / 100);
-    const reserve = beforeProfit * (DEFAULTS.reservePct / 100);
+    const reservePct = finiteNumber(settings.reservePct, DEFAULTS.reservePct);
+    const reserve = beforeProfit * (reservePct / 100);
     const minimumMarginPct = finiteNumber(settings.minimumMarginPct, DEFAULTS.minimumMarginPct);
     const recommended = beforeProfit + profit + reserve;
-    const minimum = beforeProfit * (1 + minimumMarginPct / 100 + DEFAULTS.reservePct / 100);
+    const minimum = beforeProfit * (1 + minimumMarginPct / 100 + reservePct / 100);
     const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
     const quotedUnits = settings.pricingMode === "day" ? (totalHours / hoursPerDay) : totalHours;
     const pricePerUnit = quotedUnits > 0 ? recommended / quotedUnits : 0;
@@ -6817,7 +6935,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   function getOwnerOperationalMetrics(state, settings) {
     const api = getOwnerOperationalPlanApi();
     if (!api) return null;
-    const s = settings || loadSettings();
+    const s = settings || loadOwnerPricingSettings();
     const hpd = api.getHoursPerDay(s);
     const plan = api.normalizeOperationalPlan(state.operational_plan || [], null, hpd);
     const mode = api.getOperationalPlanUnitMode(s);
@@ -6831,10 +6949,241 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     );
   }
 
+  function getOwnerCapacityUi() {
+    const ownerCap = window.MarginGuardOwnerCapacity;
+    return (ownerCap && ownerCap.OWNER_IDS) || {
+      guidanceId: "ownerCapacityGuidance",
+      warningId: "ownerCapacityWarning",
+      startId: "ownerStartDate",
+      finishId: "ownerTargetFinishDate",
+      hintId: "ownerTargetFinishHint",
+      crewAvailId: "ownerOpCrewAvailability",
+      advisorySuffix: " You may still send this quote.",
+      renderCrewFn: "renderOwnerOpCrewAvailability",
+      unverifiedKey: "__mgOwnerCapacityUnverified"
+    };
+  }
+
+  /** Display-only: attach local Supervisor labor rows; never overrides API availability status. */
+  function enrichOwnerCrewAvailabilityDetail(detail) {
+    if (!detail || typeof detail !== "object") return detail;
+    const p = detail.primary_project;
+    if (!p || !p.project_id) return detail;
+    const project = findOwnerProjectByServerId(p.project_id);
+    if (!project) return detail;
+    const report = loadSupervisorReport(project);
+    const entries = Array.isArray(report.entries) ? report.entries : [];
+    if (!entries.length) return detail;
+    return {
+      ...detail,
+      _supervisorEntries: entries.slice(-5)
+    };
+  }
+
+  window.enrichOwnerCrewAvailabilityDetail = enrichOwnerCrewAvailabilityDetail;
+
+  function findOwnerProjectByServerId(projectId) {
+    const want = supervisorProjectKey(projectId);
+    if (!want) return null;
+    return loadProjects().find((p) => supervisorProjectKey(p.id) === want) || null;
+  }
+
+  function bindOwnerSupervisorReportsRefreshOnce() {
+    if (window.__mgOwnerSupReportsBound) return;
+    window.__mgOwnerSupReportsBound = true;
+    window.addEventListener("storage", (ev) => {
+      if (!ev || ev.key !== LS_SUPERVISOR_REPORTS) return;
+      if (!$("ownerOpCrewAvailability")) return;
+      if (typeof window.renderOwnerOpCrewAvailability === "function") {
+        window.renderOwnerOpCrewAvailability();
+      }
+      const state = loadOwner();
+      refreshOwnerCapacityCalendar(state.startDate, state, loadOwnerPricingSettings());
+    });
+  }
+
+  function resolveOwnerEstimatedProjectDays(state, settings) {
+    const op = getOwnerOperationalMetrics(state, settings);
+    if (op && finiteNumber(op.estimated_days, 0) > 0) {
+      return finiteNumber(op.estimated_days, 0);
+    }
+    const override = finiteNumber(state.operational_estimated_days_override, NaN);
+    if (override > 0) return override;
+    const plan = Array.isArray(state.operational_plan) ? state.operational_plan : [];
+    return plan.length > 0 ? plan.length : 0;
+  }
+
+  let ownerCapacityRefreshTimer = null;
+
+  function syncOwnerTargetFinish(state, settings, startYmd, projectedFinishDate) {
+    const salesCap = window.MarginGuardSalesCapacity;
+    const ownerCap = window.MarginGuardOwnerCapacity;
+    const start = normalizeDateInput(startYmd || state.startDate || "");
+    const estimatedDays = resolveOwnerEstimatedProjectDays(state, settings);
+    const calendar = window.__mgOwnerCapacityCalendar || null;
+    if (!ownerCap || typeof ownerCap.updateTargetFinishDisplay !== "function") {
+      if ($("ownerTargetFinishDate")) $("ownerTargetFinishDate").value = "";
+      state.targetFinishDate = "";
+      return "";
+    }
+    const result = ownerCap.updateTargetFinishDisplay(start, estimatedDays, {
+      workdaysEnabled: settings.workdaysEnabled !== false,
+      projectedFinishDate: projectedFinishDate || null,
+      calendar
+    });
+    if (result.start) state.startDate = result.start;
+    state.targetFinishDate = result.finish || "";
+    return result.finish || "";
+  }
+
+  function showOwnerScheduleWarning(ownerState, calendarOverride) {
+    const ownerCap = window.MarginGuardOwnerCapacity;
+    if (!ownerCap || typeof ownerCap.resolveScheduleWarningMessage !== "function") return "";
+    const startDate = normalizeDateInput(ownerState.startDate || val("ownerStartDate") || "");
+    if (!startDate) return "";
+    const cached = calendarOverride || window.__mgOwnerCapacityCalendar;
+    if (!cached) return "";
+    const msg = ownerCap.resolveScheduleWarningMessage(cached, startDate);
+    if (msg && typeof ownerCap.showCapacityWarning === "function") {
+      ownerCap.showCapacityWarning(msg, "notice");
+    }
+    return msg;
+  }
+
+  function refreshOwnerCapacityCalendar(desiredStart, stateOverride, settingsOverride) {
+    const salesCap = window.MarginGuardSalesCapacity;
+    const ownerCap = window.MarginGuardOwnerCapacity;
+    if (!salesCap || typeof salesCap.fetchCapacityCalendar !== "function") return;
+    const state = stateOverride || loadOwner();
+    const settings = settingsOverride || loadOwnerPricingSettings();
+    const days = resolveOwnerEstimatedProjectDays(state, settings);
+    const desired = normalizeDateInput(desiredStart || state.startDate || val("ownerStartDate") || "");
+    const ownerProject = getSelectedProject();
+    const projectId = String(ownerProject?.id || ownerProject?.projectId || state.projectId || "").trim();
+    clearTimeout(ownerCapacityRefreshTimer);
+    ownerCapacityRefreshTimer = setTimeout(() => {
+      salesCap
+        .fetchCapacityCalendar(days, desired, projectId)
+        .then((data) => {
+          window.__mgOwnerCapacityUnverified = false;
+          window.__mgOwnerCapacityCalendar = data;
+          const startInput = $("ownerStartDate");
+          const reconciled = salesCap.reconcileStartDateWithCapacity(data, startInput, state);
+          if (ownerCap && typeof ownerCap.applyCapacityGuidance === "function") {
+            ownerCap.applyCapacityGuidance(data);
+          }
+          if (typeof window.renderOwnerOpCrewAvailability === "function") {
+            window.renderOwnerOpCrewAvailability();
+          }
+          if (reconciled.cleared) {
+            syncOwnerTargetFinish(state, settings, "");
+          } else if (reconciled.value) {
+            syncOwnerTargetFinish(state, settings, reconciled.value, data.projected_finish_date);
+          } else {
+            syncOwnerTargetFinish(state, settings, desired || "", data.projected_finish_date);
+          }
+          saveOwner(state, calcOwner(state, settings));
+        })
+        .catch(() => {
+          window.__mgOwnerCapacityUnverified = true;
+          const guidance = $("ownerCapacityGuidance");
+          if (guidance) guidance.textContent = "Production schedule unavailable right now.";
+          if (ownerCap && typeof ownerCap.showCapacityWarning === "function") {
+            ownerCap.showCapacityWarning("");
+          }
+          if (typeof window.renderOwnerOpCrewAvailability === "function") {
+            window.renderOwnerOpCrewAvailability();
+          }
+        });
+    }, 200);
+  }
+
+  function applyOwnerCapacityWarningFromCache(ownerState) {
+    showOwnerScheduleWarning(ownerState);
+  }
+
+  async function verifyOwnerCapacityBeforeSend(ownerState, settings) {
+    const salesCap = window.MarginGuardSalesCapacity;
+    const ownerCap = window.MarginGuardOwnerCapacity;
+    if (!salesCap || typeof salesCap.fetchCapacityCalendar !== "function") return;
+    const startDate = normalizeDateInput(ownerState.startDate || val("ownerStartDate") || "");
+    if (!startDate) return;
+    showOwnerScheduleWarning(ownerState);
+    try {
+      const days = resolveOwnerEstimatedProjectDays(ownerState, settings);
+      const ownerProject = getSelectedProject();
+      const projectId = String(ownerProject?.id || ownerProject?.projectId || "").trim();
+      const calendar = await salesCap.fetchCapacityCalendar(days, startDate, projectId);
+      window.__mgOwnerCapacityUnverified = false;
+      window.__mgOwnerCapacityCalendar = calendar;
+      if (ownerCap && typeof ownerCap.applyCapacityGuidance === "function") {
+        ownerCap.applyCapacityGuidance(calendar);
+      }
+      syncOwnerTargetFinish(ownerState, settings, startDate, calendar.projected_finish_date);
+      const warnMsg = showOwnerScheduleWarning(ownerState, calendar);
+      const sendStatus = document.getElementById("sendStatus");
+      if (warnMsg && sendStatus) {
+        sendStatus.style.display = "block";
+        sendStatus.className = "notice";
+        sendStatus.textContent = warnMsg;
+      }
+      if (typeof window.renderOwnerOpCrewAvailability === "function") {
+        window.renderOwnerOpCrewAvailability();
+      }
+    } catch (_err) {
+      window.__mgOwnerCapacityUnverified = true;
+      if (typeof window.renderOwnerOpCrewAvailability === "function") {
+        window.renderOwnerOpCrewAvailability();
+      }
+    }
+  }
+
+  function bindOwnerCapacityOnce() {
+    const startInput = $("ownerStartDate");
+    if (!startInput || startInput.dataset.capacityBound === "true") return;
+    startInput.dataset.capacityBound = "true";
+    const onStartChange = () => {
+      const state = loadOwner();
+      const settings = loadOwnerPricingSettings();
+      state.startDate = normalizeDateInput(val("ownerStartDate"));
+      saveOwner(state, calcOwner(state, settings));
+      renderOwnerOperationalPlan();
+    };
+    startInput.addEventListener("change", onStartChange);
+    startInput.addEventListener("input", () => {
+      const state = loadOwner();
+      const settings = loadOwnerPricingSettings();
+      state.startDate = normalizeDateInput(val("ownerStartDate"));
+      syncOwnerTargetFinish(state, settings, state.startDate);
+      const ownerCap = window.MarginGuardOwnerCapacity;
+      const cached = window.__mgOwnerCapacityCalendar;
+      if (cached && ownerCap && typeof ownerCap.applyCapacityGuidance === "function") {
+        ownerCap.applyCapacityGuidance(cached);
+      }
+      const api = getOwnerOperationalPlanApi();
+      if (api) {
+        const plan = Array.isArray(state.operational_plan) ? state.operational_plan : [];
+        const metrics = getOwnerOperationalMetrics(state, settings);
+        renderOwnerOpCalendarPreview(state, settings, plan, metrics);
+      }
+      if (typeof window.renderOwnerOpCrewAvailability === "function") {
+        window.renderOwnerOpCrewAvailability();
+      }
+    });
+    startInput.addEventListener("pointerdown", () => {
+      if (typeof startInput.showPicker !== "function") return;
+      try {
+        startInput.showPicker();
+      } catch (_err) {
+        /* noop */
+      }
+    });
+  }
+
   function applyOwnerOperationalPlanUnitModeToChrome(settings) {
     const api = getOwnerOperationalPlanApi();
     if (!api) return "hour";
-    const mode = api.getOperationalPlanUnitMode(settings || loadSettings());
+    const mode = api.getOperationalPlanUnitMode(settings || loadOwnerPricingSettings());
     const daysWrap = $("ownerOperationalOverrideDaysWrap");
     const hoursWrap = $("ownerOperationalOverrideHoursWrap");
     const lead = $("ownerOperationalLead");
@@ -6870,7 +7219,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const host = $("ownerOpCalendarPreview");
     const api = getOwnerOperationalPlanApi();
     if (!host || !api) return;
-    const start = normalizeDateInput(state.committedDate || state.issueDate || "");
+    const start = normalizeDateInput(
+      val("ownerStartDate") || state.startDate || ""
+    );
     const hasStart = /^\d{4}-\d{2}-\d{2}$/.test(start);
     if (!plan.length) {
       host.innerHTML = '<div class="sales-op-empty">Add plan days to preview the schedule on the calendar.</div>';
@@ -6906,7 +7257,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           const dateLabel =
             hasStart && cell.date ? formatOwnerOpDate(cell.date).replace(/, \d{4}$/, "") : "Plan day";
           const planDay = sortedPlan[cell.index] || null;
-          const crewLabel = formatOwnerOpPlanCrewLabel(planDay?.workers, api);
+          const crewLabel = cell.crew || formatOwnerOpPlanCrewLabel(planDay?.workers, api);
           return (
             `<article class="sales-op-cal-cell ${escapeHtml(cell.toneClass || "")}">` +
             `<div class="sales-op-cal-cell__daynum">${escapeHtml(dayLabel)}</div>` +
@@ -6958,7 +7309,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const modal = $("ownerOpDayModal");
     const body = $("ownerOpDayModalBody");
     const state = loadOwner();
-    const settings = loadSettings();
+    const settings = loadOwnerPricingSettings();
     const api = getOwnerOperationalPlanApi();
     if (!modal || !body || !api || !state.operational_plan || !state.operational_plan[dayIndex]) return;
     ownerOpEditingDayIndex = dayIndex;
@@ -6990,7 +7341,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if (!dayArticle) return false;
     const dayIndex = ownerOpEditingDayIndex;
     const state = loadOwner();
-    const settings = loadSettings();
+    const settings = loadOwnerPricingSettings();
     const mode = api.getOperationalPlanUnitMode(settings);
     const hpd = api.getHoursPerDay(settings);
     if (!state.operational_plan || !state.operational_plan[dayIndex]) return false;
@@ -7018,7 +7369,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
   function refreshOwnerAfterOpChange() {
     const state = loadOwner();
-    const settings = loadSettings();
+    const settings = loadOwnerPricingSettings();
     if (syncOwnerLaborFromOperationalPlan(state, settings)) {
       enableOwnerLaborAutoSync(state);
     }
@@ -7036,7 +7387,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if (!timelineHost) return;
 
     const state = loadOwner();
-    const settings = loadSettings();
+    const settings = loadOwnerPricingSettings();
     const api = getOwnerOperationalPlanApi();
     if (!api) {
       timelineHost.innerHTML = '<p class="sales-op-empty">Operational plan module not loaded.</p>';
@@ -7126,6 +7477,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     }
 
     renderOwnerOpCalendarPreview(state, settings, plan, metrics);
+
+    if ($("ownerStartDate")) {
+      const stateFresh = loadOwner();
+      const settingsFresh = loadOwnerPricingSettings();
+      syncOwnerTargetFinish(stateFresh, settingsFresh, stateFresh.startDate);
+      refreshOwnerCapacityCalendar(stateFresh.startDate, stateFresh, settingsFresh);
+    }
   }
 
   function bindOwnerLaborSyncOnce() {
@@ -7134,7 +7492,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     autoSyncToggle.dataset.bound = "1";
     autoSyncToggle.addEventListener("change", () => {
       const state = loadOwner();
-      const settings = loadSettings();
+      const settings = loadOwnerPricingSettings();
       if (autoSyncToggle.checked) {
         enableOwnerLaborAutoSync(state);
         syncOwnerLaborFromOperationalPlan(state, settings);
@@ -7169,7 +7527,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         const key = templateSelect && templateSelect.value;
         if (!key) return;
         const state = loadOwner();
-        const settings = loadSettings();
+        const settings = loadOwnerPricingSettings();
         state.operational_plan = api.applyTemplate(key);
         state.operational_estimated_days_override = "";
         state.operational_estimated_hours_override = "";
@@ -7185,7 +7543,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       addDayBtn.addEventListener("click", (event) => {
         event.preventDefault();
         const state = loadOwner();
-        const settings = loadSettings();
+        const settings = loadOwnerPricingSettings();
         const nextDay = (state.operational_plan || []).length + 1;
         state.operational_plan = state.operational_plan || [];
         state.operational_plan.push(
@@ -7202,10 +7560,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       daysOverrideInput.dataset.bound = "1";
       daysOverrideInput.addEventListener("change", () => {
         const state = loadOwner();
-        const settings = loadSettings();
+        const settings = loadOwnerPricingSettings();
         state.operational_estimated_days_override = daysOverrideInput.value;
         saveOwner(state, calcOwner(state, settings));
-        renderOwnerOperationalPlan();
+        refreshOwnerAfterOpChange();
       });
     }
 
@@ -7214,10 +7572,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       hoursOverrideInput.dataset.bound = "1";
       hoursOverrideInput.addEventListener("change", () => {
         const state = loadOwner();
-        const settings = loadSettings();
+        const settings = loadOwnerPricingSettings();
         state.operational_estimated_hours_override = hoursOverrideInput.value;
         saveOwner(state, calcOwner(state, settings));
-        renderOwnerOperationalPlan();
+        refreshOwnerAfterOpChange();
       });
     }
 
@@ -7236,7 +7594,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           (btn && btn.getAttribute("data-day-index")) || (row && row.getAttribute("data-day-index"))
         );
         const state = loadOwner();
-        const settings = loadSettings();
+        const settings = loadOwnerPricingSettings();
         state.operational_plan = state.operational_plan || [];
         if (action === "remove-day" && dayIndex >= 0) {
           state.operational_plan.splice(dayIndex, 1);
@@ -7284,7 +7642,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         if (!btn || ownerOpEditingDayIndex < 0) return;
         const action = btn.getAttribute("data-action");
         const state = loadOwner();
-        const settings = loadSettings();
+        const settings = loadOwnerPricingSettings();
         if (action === "add-worker" && state.operational_plan[ownerOpEditingDayIndex]) {
           state.operational_plan[ownerOpEditingDayIndex].workers =
             state.operational_plan[ownerOpEditingDayIndex].workers || [];
@@ -7351,7 +7709,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       ["Overhead Allocation", money(metrics.overhead, settings.currency), Number(settings.stdHours || 0) > 0 ? `${money(Number(settings.overheadMonthly || 0) / Number(settings.stdHours || 0), settings.currency)}/hour` : "Set standard hours to activate"],
       ["Cost Before Profit", money(metrics.beforeProfit, settings.currency), "Direct cost plus indirect burden"],
       ["Target Profit", money(metrics.profit, settings.currency), `${Number(settings.profitPct || 0).toFixed(1)}% owner rule`],
-      ["Fixed Reserve", money(metrics.reserve, settings.currency), `${DEFAULTS.reservePct}% non-negotiable`],
+      ["Fixed Reserve", money(metrics.reserve, settings.currency), `${finiteNumber(settings.reservePct, DEFAULTS.reservePct).toFixed(1)}% non-negotiable`],
       ["Minimum Floor", money(metrics.minimum, settings.currency), `${finiteNumber(settings.minimumMarginPct, DEFAULTS.minimumMarginPct).toFixed(1)}% minimum margin rule`],
       ["Recommended Price", money(metrics.recommended, settings.currency), "This is the number the system wants sold"],
       [`Recommended per ${metrics.pricingModeLabel}`, money(metrics.pricePerUnit, settings.currency), `${metrics.quotedUnits.toFixed(2)} ${metrics.pricingModeLabel === "dia" ? "dias" : "horas"} cotizables`]
@@ -7495,9 +7853,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if (!$("ownerKpis")) return;
     bindOwnerSettingsStorageRefreshOnce();
 
-    const settings = loadSettings();
+    const settings = loadOwnerPricingSettings();
     const state = loadOwner();
-    state.reservePct = DEFAULTS.reservePct;
+    normalizeOwnerQuoteDates(state, settings);
     if (syncOwnerLaborFromOperationalPlan(state, settings)) {
       saveOwner(state, calcOwner(state, settings));
     }
@@ -7527,14 +7885,32 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     } else {
       setVal("clientPhone", state.clientPhone);
     }
-    ["issueDate", "expirationDate", "committedDate"].forEach((id) => {
-      const el = $(id);
-      if (el && document.activeElement === el) {
-        state[id] = normalizeDateInput(val(id));
-      } else {
-        setVal(id, state[id] || "");
-      }
-    });
+    normalizeOwnerQuoteDates(state, settings);
+    syncOwnerQuoteIssueExpirationFromSellerRules(state, settings);
+    const expDays = salesQuoteExpirationDays(settings);
+    setVal("issueDate", state.issueDate);
+    setVal("expirationDate", state.expirationDate);
+    const issueDateEl = $("issueDate");
+    const expirationDateEl = $("expirationDate");
+    if (issueDateEl) issueDateEl.readOnly = true;
+    if (expirationDateEl) expirationDateEl.readOnly = true;
+    const committedHidden = $("committedDate");
+    if (committedHidden) committedHidden.value = state.committedDate || "";
+    const ownerStartEl = $("ownerStartDate");
+    if (ownerStartEl && document.activeElement === ownerStartEl) {
+      state.startDate = normalizeDateInput(val("ownerStartDate"));
+    } else if (ownerStartEl) {
+      setVal("ownerStartDate", state.startDate || "");
+    }
+    syncOwnerTargetFinish(state, settings, state.startDate);
+    if ($("ownerTargetFinishDate")) {
+      $("ownerTargetFinishDate").readOnly = true;
+      $("ownerTargetFinishDate").disabled = true;
+    }
+    const expHint = $("ownerExpirationHint");
+    if (expHint) {
+      expHint.textContent = `Auto-set to issue date + ${expDays} days.`;
+    }
     const locationEl = $("location");
     if (locationEl && document.activeElement === locationEl) {
       state.location = val("location");
@@ -7592,11 +7968,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       ["Direct Labor", money(metrics.labor, settings.currency), `${state.workers.length} workers modeled`],
       ["Employer Burden", money(metrics.taxes, settings.currency), `WC ${settings.wcPct}% | FICA ${settings.ficaPct}% | FUTA ${settings.futaPct}% | CASUI ${settings.casuiPct}%`],
       ["Target Profit", money(metrics.profit, settings.currency), `${Number(settings.profitPct || 0).toFixed(1)}% owner rule`],
-      ["Reserve", money(metrics.reserve, settings.currency), `${DEFAULTS.reservePct}% fixed reserve`]
+      ["Reserve", money(metrics.reserve, settings.currency), `${finiteNumber(settings.reservePct, DEFAULTS.reservePct).toFixed(1)}% fixed reserve`]
     ];
     const quoteUnitsMeta = settings.pricingMode === "day"
       ? `${metrics.quotedUnits.toFixed(2)} dias cotizables · ${laborSummary.workerHours.toFixed(2)} labor hrs`
       : `${metrics.quotedUnits.toFixed(2)} horas cotizables`;
+    const pricingSource = ownerPricingSettingsSourceLabel();
 
     $("ownerKpis").innerHTML = `
       <div class="owner-kpi-shell">
@@ -7604,6 +7981,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           <div class="owner-quote-kicker">Precio recomendado</div>
           <div class="owner-quote-price">${escapeHtml(money(metrics.recommended, settings.currency))}</div>
           <div class="owner-quote-meta">${escapeHtml(money(metrics.pricePerUnit, settings.currency))} ${escapeHtml(pricingModeCopy)} · ${escapeHtml(quoteUnitsMeta)}</div>
+          <p class="small owner-quote-pricing-source" role="note">${escapeHtml(pricingSource.detail)}</p>
           <div class="owner-quote-strip">
             ${primaryCards.map(([title, big, small]) => `
               <div class="owner-mini-card">
@@ -7628,7 +8006,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
     if ($("statusBadge")) {
       $("statusBadge").className = `badge ${metrics.recommended > 0 ? "green" : "amber"}`;
-      $("statusBadge").textContent = metrics.recommended > 0 ? "Pricing live" : "Add labor data";
+      $("statusBadge").textContent =
+        metrics.recommended > 0 ? pricingSource.shortStatus : "Add labor data";
     }
 
     [["projectName", "projectNameCount"], ["clientName", "clientNameCount"], ["clientEmail", "clientEmailCount"], ["clientPhone", "clientPhoneCount"], ["location", "locationCount"], ["quoteNotes", "quoteNotesCount"], ["bizNameOwner", "bizNameOwnerCount"]].forEach(([id, counter]) => {
@@ -7637,7 +8016,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       el.oninput = () => {
         count(id, counter);
         if (id === "bizNameOwner") {
-          const settingsCopy = loadSettings();
+          const settingsCopy = loadOwnerPricingSettings();
           settingsCopy.bizName = val("bizNameOwner") || DEFAULTS.bizName;
           saveSettings(settingsCopy);
           renderOwner();
@@ -7647,24 +8026,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         }
       };
     });
-    ["issueDate", "expirationDate", "committedDate"].forEach((id) => {
-      const el = $(id);
-      if (!el) return;
-      el.oninput = () => {
-        state[id] = normalizeDateInput(val(id));
-        saveOwner(state, calcOwner(state, settings));
-      };
-      el.onchange = el.oninput;
-      el.onpointerdown = () => {
-        if (typeof el.showPicker !== "function") return;
-        try {
-          el.showPicker();
-        } catch (_err) {
-          /* noop: unsupported or not user-activatable */
-        }
-      };
-    });
-
     if ($("btnAddWorker")) $("btnAddWorker").onclick = () => {
       markOwnerLaborManualOverride(state);
       state.workers.push({ name: `Worker ${state.workers.length + 1}`, type: "installer", hours: 0, rate: "" });
@@ -7717,6 +8078,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     renderOwnerOperationalPlan();
     bindOwnerLaborSyncOnce();
     bindOwnerOperationalPlanOnce();
+    bindOwnerCapacityOnce();
+    bindOwnerSupervisorReportsRefreshOnce();
 
     const ownerInvoiceState = getProjectInvoiceState(ownerProject);
 
@@ -7828,14 +8191,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         saveOwner(state, calcOwner(state, settings));
       }
     }
-    ["issueDate", "expirationDate", "committedDate"].forEach((id) => {
-      if (!$(id)) return;
-      const next = normalizeDateInput(val(id));
-      if (next !== state[id]) {
-        state[id] = next;
-        saveOwner(state, calcOwner(state, settings));
-      }
-    });
+    syncOwnerQuoteIssueExpirationFromSellerRules(state, settings);
     if ($("quoteNotes")) {
       const next = val("quoteNotes");
       if (next !== state.quoteNotes) {
@@ -7844,14 +8200,14 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       }
     }
     if ($("bizNameOwner")) {
-      const s = loadSettings();
+      const s = loadOwnerPricingSettings();
       const nextBiz = val("bizNameOwner") || DEFAULTS.bizName;
       if (nextBiz !== String(s.bizName ?? DEFAULTS.bizName)) {
         s.bizName = nextBiz;
         saveSettings(s);
       }
     }
-    const settingsPdf = loadSettings();
+    const settingsPdf = loadOwnerPricingSettings();
 
     const doc = new jsPDF({ unit: "pt", format: "letter" });
     let y = await drawPdfTenantLetterhead(doc, settingsPdf, 48);
@@ -7904,7 +8260,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     }
   }
   if ($("bizNameOwner")) {
-    const s = loadSettings();
+    const s = loadOwnerPricingSettings();
     const nextBiz = val("bizNameOwner") || DEFAULTS.bizName;
     if (nextBiz !== String(s.bizName ?? DEFAULTS.bizName)) {
       s.bizName = nextBiz;
@@ -7925,14 +8281,23 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       saveOwner(state, calcOwner(state, settings));
     }
   }
-  ["issueDate", "expirationDate", "committedDate"].forEach((id) => {
-    if (!$(id)) return;
-    const next = normalizeDateInput(val(id));
-    if (next !== state[id]) {
-      state[id] = next;
+  syncOwnerQuoteIssueExpirationFromSellerRules(state, settings);
+  if ($("ownerStartDate")) {
+    const nextStart = normalizeDateInput(val("ownerStartDate"));
+    if (nextStart !== state.startDate) {
+      state.startDate = nextStart;
+      syncOwnerTargetFinish(state, settings, nextStart);
       saveOwner(state, calcOwner(state, settings));
     }
-  });
+  }
+  applyOwnerCapacityWarningFromCache(state);
+  const ownerCapWarn = $("ownerCapacityWarning");
+  const sendStatusOpen = $("sendStatus");
+  if (ownerCapWarn && ownerCapWarn.style.display !== "none" && ownerCapWarn.textContent && sendStatusOpen) {
+    sendStatusOpen.style.display = "block";
+    sendStatusOpen.className = "notice";
+    sendStatusOpen.textContent = ownerCapWarn.textContent;
+  }
   if ($("quoteNotes")) {
     const next = val("quoteNotes");
     if (next !== state.quoteNotes) {
@@ -7941,11 +8306,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     }
   }
   const estimateNumber = String(state.estimateNumber ?? "").trim();
-  const issueDate = normalizeDateInput(nonEmptyString(state.issueDate) || todayInputValue());
-  const expirationDate = normalizeDateInput(nonEmptyString(state.expirationDate) || addDaysToInputValue(issueDate, 7));
+  syncOwnerQuoteIssueExpirationFromSellerRules(state, settings);
+  const issueDate = normalizeDateInput(state.issueDate);
+  const expirationDate = normalizeDateInput(state.expirationDate);
   state.estimateNumber = estimateNumber;
-  state.issueDate = issueDate;
-  state.expirationDate = expirationDate;
   const subject = estimateNumber
     ? `Estimate ${estimateNumber} - ${nonEmptyString(state.projectName, "Project")}`
     : `Estimate - ${nonEmptyString(state.projectName, "Project")}`;
@@ -8041,7 +8405,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     });
     const existing = loadSales();
     const issueDate = normalizeDateInput(nonEmptyString(ownerState.issueDate) || todayInputValue());
-    const expirationDate = normalizeDateInput(nonEmptyString(ownerState.expirationDate) || addDaysToInputValue(issueDate, 7));
+    const dateDraft = { issueDate, expirationDate: ownerState.expirationDate };
+    normalizeOwnerQuoteDates(dateDraft, settings);
+    const expirationDate = normalizeDateInput(dateDraft.expirationDate);
     const estimateNo = nonEmptyString(ownerState.estimateNumber) || buildEstimateNumber();
     const messageToClient = nonEmptyString(ownerState.messageToClient, ownerState.quoteNotes, existing.messageToClient);
     saveSales({
@@ -8212,7 +8578,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       publishData.quote_number_display || (savedRow && savedRow.quote_number_display) || state.estimateNumber || ""
     ).trim();
     const issueDate = normalizeDateInput(nonEmptyString(state.issueDate) || todayInputValue());
-    const expirationDate = normalizeDateInput(nonEmptyString(state.expirationDate) || addDaysToInputValue(issueDate, 7));
+    const dateDraft = { issueDate, expirationDate: state.expirationDate };
+    normalizeOwnerQuoteDates(dateDraft, freshSettings);
+    const expirationDate = normalizeDateInput(dateDraft.expirationDate);
     const savedName = savedRow ? String(savedRow.business_name || savedRow.company_name || "").trim() : "";
     const savedEmail = savedRow ? String(savedRow.business_email || "").trim() : "";
     const savedPhone = savedRow ? String(savedRow.business_phone || "").trim() : "";
@@ -8339,9 +8707,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   }
 
   async function runOwnerSellerPublicSend() {
-    const freshSettings = loadSettings();
+    const freshSettings = loadOwnerPricingSettings();
     const ownerState = loadOwner();
-    ownerState.reservePct = DEFAULTS.reservePct;
     const metrics = calcOwner(ownerState, freshSettings);
     syncOwnerDraftToSalesStateForPublicSend(ownerState, freshSettings, metrics);
     syncOwnerSendModalIntoSalesDraft();
@@ -8388,6 +8755,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       }
       return;
     }
+
+    await verifyOwnerCapacityBeforeSend(ownerState, freshSettings);
 
     const fallbackMessage = [
       `Hello ${nonEmptyString(toName, "there")},`,
@@ -8785,7 +9154,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       }
     }
     if ($("bizNameOwner")) {
-      const s = loadSettings();
+      const s = loadOwnerPricingSettings();
       const nextBiz = val("bizNameOwner") || DEFAULTS.bizName;
       if (nextBiz !== String(s.bizName ?? DEFAULTS.bizName)) {
         s.bizName = nextBiz;
@@ -8806,14 +9175,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         saveOwner(state, calcOwner(state, settings));
       }
     }
-    ["issueDate", "expirationDate", "committedDate"].forEach((id) => {
-      if (!$(id)) return;
-      const next = normalizeDateInput(val(id));
-      if (next !== state[id]) {
-        state[id] = next;
-        saveOwner(state, calcOwner(state, settings));
-      }
-    });
+    syncOwnerQuoteIssueExpirationFromSellerRules(state, settings);
     if ($("quoteNotes")) {
       const next = val("quoteNotes");
       if (next !== state.quoteNotes) {
@@ -8822,7 +9184,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       }
     }
   }
-  const settingsSend = loadSettings();
+  const settingsSend = loadOwnerPricingSettings();
   const toEmail = String(document.getElementById("toEmail")?.value ?? "").trim();
   const toName = nonEmptyString(document.getElementById("toName")?.value, state.clientName);
   const subject = nonEmptyString(document.getElementById("subject")?.value);
@@ -8848,7 +9210,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   }
   const estimateNumber = nonEmptyString(state.estimateNumber, buildEstimateNumber());
   const issueDate = normalizeDateInput(nonEmptyString(state.issueDate) || todayInputValue());
-  const expirationDate = normalizeDateInput(nonEmptyString(state.expirationDate) || addDaysToInputValue(issueDate, 7));
+  normalizeOwnerQuoteDates(state, settings);
+  const expirationDate = normalizeDateInput(state.expirationDate);
   try {
     if (sendStatus) {
       const fbS = window.__MG_QUOTE_SEND_FEEDBACK__;
@@ -9306,6 +9669,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const finishOpts = {
       workdaysEnabled: settings.workdaysEnabled !== false,
       projectedFinishDate: projectedFinishDate || null,
+      calendar: window.__mgSalesCapacityCalendar || null,
     };
     if (!cap || typeof cap.updateTargetFinishDisplay !== "function") {
       if (targetFinishInput) targetFinishInput.value = "";
