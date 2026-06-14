@@ -6458,10 +6458,23 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
       const pb = Number(state.profitBalance) || 0;
       const eb = Number(state.expensesBalance) || 0;
-      const splitSum = pb + eb;
-      const profitDeg = splitSum > 0 ? (pb / splitSum) * 360 : 180;
-      if ($("fccDonutRoot")) $("fccDonutRoot").style.setProperty("--fcc-profit-deg", `${profitDeg}deg`);
-      if ($("fccDonutCenterLabel")) $("fccDonutCenterLabel").textContent = money(pb, settings.currency);
+      const maxBar = Math.max(pb, eb, 1);
+      const profitBarPct = pb > 0 ? Math.max(8, (pb / maxBar) * 100) : 0;
+      const opBarPct = eb > 0 ? Math.max(8, (eb / maxBar) * 100) : 0;
+      const barRoot = $("fccBarChartRoot");
+      if (barRoot) {
+        barRoot.setAttribute(
+          "aria-label",
+          `Profit breakdown: profit bucket ${money(pb, settings.currency)}, operating expenses ${money(eb, settings.currency)}`
+        );
+      }
+      const profitFill = $("fccBarProfitFill");
+      const opFill = $("fccBarOperatingFill");
+      if (profitFill) profitFill.style.height = `${profitBarPct}%`;
+      if (opFill) opFill.style.height = `${opBarPct}%`;
+      if ($("fccBarChartHeadline")) $("fccBarChartHeadline").textContent = money(pb, settings.currency);
+      if ($("fccBarProfitValue")) $("fccBarProfitValue").textContent = money(pb, settings.currency);
+      if ($("fccBarOperatingValue")) $("fccBarOperatingValue").textContent = money(eb, settings.currency);
       if ($("fccProfitLegend")) {
         $("fccProfitLegend").innerHTML = `
           <li><span class="sw violet" aria-hidden="true"></span><span>Profit bucket</span><span>${escapeHtml(money(pb, settings.currency))}</span></li>

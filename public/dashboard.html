@@ -233,45 +233,142 @@
     .fcc-cf-hooks{
       display:none !important;
     }
-    .fcc-donut-wrap{
-      position:relative;
-      width:min(180px, 100%);
-      margin:4px auto 10px;
-      aspect-ratio:1;
-    }
-    .fcc-donut-ring{
-      width:100%;
-      height:100%;
-      border-radius:50%;
-      background:conic-gradient(
-        from -90deg,
-        rgba(139,92,246,.95) 0deg calc(var(--fcc-profit-deg, 180deg)),
-        rgba(34,197,94,.92) calc(var(--fcc-profit-deg, 180deg)) 360deg
-      );
-      mask:radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 13px));
-      -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 13px));
-      box-shadow:0 0 32px rgba(139,92,246,.12);
-    }
-    .fcc-donut-center{
-      position:absolute;
-      inset:0;
+    .fcc-skyline-chart{
       display:flex;
       flex-direction:column;
-      align-items:center;
-      justify-content:center;
-      text-align:center;
-      pointer-events:none;
+      gap:12px;
+      margin:6px 0 12px;
     }
-    .fcc-donut-center .big{
+    .fcc-skyline-chart__headline{
+      text-align:center;
+      padding:0 8px 2px;
+    }
+    .fcc-skyline-chart__headline .big{
       font-size:22px;
       font-weight:900;
       letter-spacing:-.02em;
       color:rgba(248,250,252,.98);
     }
-    .fcc-donut-center .small{
+    .fcc-skyline-chart__headline .small{
       margin-top:4px;
       font-size:11px;
       color:rgba(148,163,184,.88);
+    }
+    .fcc-skyline-chart__stage{
+      display:flex;
+      align-items:flex-end;
+      justify-content:center;
+      gap:clamp(16px, 6vw, 28px);
+      height:168px;
+      padding:12px 14px 0;
+      border-radius:14px 14px 0 0;
+      border:1px solid rgba(255,255,255,.08);
+      border-bottom:2px solid rgba(255,255,255,.14);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.03), transparent 55%),
+        repeating-linear-gradient(
+          90deg,
+          rgba(255,255,255,.02) 0,
+          rgba(255,255,255,.02) 1px,
+          transparent 1px,
+          transparent 24px
+        );
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .fcc-skyline-bar{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      flex:1;
+      max-width:96px;
+      min-width:0;
+      height:100%;
+    }
+    .fcc-skyline-bar__value{
+      font-size:11px;
+      font-weight:750;
+      letter-spacing:.01em;
+      color:rgba(226,232,240,.92);
+      margin-bottom:6px;
+      white-space:nowrap;
+      text-align:center;
+    }
+    .fcc-skyline-bar__tower{
+      flex:1;
+      width:100%;
+      display:flex;
+      align-items:flex-end;
+      justify-content:center;
+    }
+    .fcc-skyline-bar__fill{
+      width:min(72px, 88%);
+      height:0;
+      min-height:0;
+      border-radius:3px 3px 0 0;
+      position:relative;
+      transition:height .35s ease;
+      box-shadow:
+        0 -10px 28px rgba(0,0,0,.28),
+        inset 0 1px 0 rgba(255,255,255,.18);
+      background-image:
+        repeating-linear-gradient(
+          180deg,
+          rgba(255,255,255,.07) 0,
+          rgba(255,255,255,.07) 1px,
+          transparent 1px,
+          transparent 14px
+        );
+    }
+    .fcc-skyline-bar__fill::before{
+      content:"";
+      position:absolute;
+      top:-7px;
+      left:50%;
+      transform:translateX(-50%);
+      width:calc(100% + 6px);
+      height:7px;
+      border-radius:2px 2px 0 0;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.22);
+    }
+    .fcc-skyline-bar--profit .fcc-skyline-bar__fill{
+      background-color:rgba(139,92,246,.88);
+      background-image:
+        linear-gradient(180deg, rgba(196,181,253,.95), rgba(109,40,217,.82)),
+        repeating-linear-gradient(
+          180deg,
+          rgba(255,255,255,.08) 0,
+          rgba(255,255,255,.08) 1px,
+          transparent 1px,
+          transparent 14px
+        );
+    }
+    .fcc-skyline-bar--profit .fcc-skyline-bar__fill::before{
+      background:linear-gradient(180deg, rgba(221,214,254,.98), rgba(167,139,250,.92));
+    }
+    .fcc-skyline-bar--operating .fcc-skyline-bar__fill{
+      background-color:rgba(34,197,94,.88);
+      background-image:
+        linear-gradient(180deg, rgba(134,239,172,.95), rgba(21,128,61,.82)),
+        repeating-linear-gradient(
+          180deg,
+          rgba(255,255,255,.08) 0,
+          rgba(255,255,255,.08) 1px,
+          transparent 1px,
+          transparent 14px
+        );
+    }
+    .fcc-skyline-bar--operating .fcc-skyline-bar__fill::before{
+      background:linear-gradient(180deg, rgba(187,247,208,.98), rgba(74,222,128,.92));
+    }
+    .fcc-skyline-bar__label{
+      margin-top:8px;
+      font-size:10px;
+      font-weight:700;
+      letter-spacing:.06em;
+      text-transform:uppercase;
+      color:rgba(148,163,184,.9);
+      text-align:center;
+      line-height:1.25;
     }
     .fcc-legend{
       list-style:none;
@@ -640,10 +737,29 @@
               <h2>Profit breakdown</h2>
               <div class="fcc-panel-sub">Operating balance vs. profit bucket in the monitor (excludes savings and tax).</div>
             </div>
-            <div id="fccDonutRoot" class="fcc-donut-wrap" style="--fcc-profit-deg:180deg;">
-              <div class="fcc-donut-ring" aria-hidden="true"></div>
-              <div class="fcc-donut-center">
-                <div class="big" id="fccDonutCenterLabel">—</div>
+            <div
+              id="fccBarChartRoot"
+              class="fcc-skyline-chart"
+              role="img"
+              aria-label="Profit breakdown: profit bucket and operating expenses">
+              <div class="fcc-skyline-chart__stage">
+                <div class="fcc-skyline-bar fcc-skyline-bar--profit">
+                  <div class="fcc-skyline-bar__value" id="fccBarProfitValue">—</div>
+                  <div class="fcc-skyline-bar__tower">
+                    <div class="fcc-skyline-bar__fill" id="fccBarProfitFill"></div>
+                  </div>
+                  <div class="fcc-skyline-bar__label">Profit bucket</div>
+                </div>
+                <div class="fcc-skyline-bar fcc-skyline-bar--operating">
+                  <div class="fcc-skyline-bar__value" id="fccBarOperatingValue">—</div>
+                  <div class="fcc-skyline-bar__tower">
+                    <div class="fcc-skyline-bar__fill" id="fccBarOperatingFill"></div>
+                  </div>
+                  <div class="fcc-skyline-bar__label">Operating / expenses</div>
+                </div>
+              </div>
+              <div class="fcc-skyline-chart__headline">
+                <div class="big" id="fccBarChartHeadline">—</div>
                 <div class="small">Profit bucket</div>
               </div>
             </div>
