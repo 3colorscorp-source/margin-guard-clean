@@ -280,7 +280,7 @@
                 <div class="field">
                   <label for="payrollPresetState">State</label>
                   <select id="payrollPresetState"></select>
-                  <div class="hint hint--start" id="payrollPresetStateHelper">Verified defaults are available for California, Texas, Florida, Georgia, North Carolina, Arizona, Alabama, Arkansas, Idaho, Mississippi, Missouri, and Oklahoma. Other states are listed for future preset support; enter rates manually until verified presets are added.</div>
+                  <div class="hint hint--start" id="payrollPresetStateHelper">Verified defaults are available for California, Texas, Florida, Georgia, North Carolina, Arizona, Alabama, Arkansas, Idaho, Mississippi, Missouri, Oklahoma, and Maine. Other states are listed for future preset support; enter rates manually until verified presets are added.</div>
                 </div>
                 <div class="inline-actions bs-payroll-preset-actions">
                   <button type="button" class="btn primary" id="btnApplyPayrollDefaults">Apply Payroll Defaults</button>
@@ -1334,6 +1334,16 @@
       officialUrl: 'https://oklahoma.gov/oesc/employers/tax/contribution-rates.html',
       officialLinkLabel: 'View Oklahoma Payroll Tax Rates',
       notes: 'Oklahoma newly established employer UI rate is 1.50% on the first $25,000 per employee. Rate applies until four quarters of experience in a rate cycle. Verify your official OESC rate notice.'
+    },
+    ME: {
+      label: 'Maine',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 2.54 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'Maine Department of Labor, Bureau of Unemployment Compensation',
+      officialUrl: 'https://www.maine.gov/unemployment/docs/2026/employers/uitaxrates2026.pdf',
+      officialLinkLabel: 'View Maine Payroll Tax Rates',
+      notes: 'Maine 2026 new-employer combined UI premium is 2.54% (2.23% UI + 0.14% CSSF + 0.17% UPAF) on the first $12,000 per employee. CSSF and UPAF are mandatory assessments included in this combined rate. Rate becomes experience-rated when eligible. Direct-reimbursable employers are treated differently. Verify your official MDOL rate notice.'
     }
   };
 
@@ -1408,15 +1418,35 @@
       officialLinkLabel: 'View Mississippi Payroll Tax Rates',
       sourceAgency: 'Mississippi Department of Employment Security'
     },
+    MI: {
+      officialUrl: 'https://www.michigan.gov/leo/bureaus-agencies/uia/employers/about-taxes-and-ui/unemployment-insurance-taxes',
+      officialLinkLabel: 'View Michigan Payroll Tax Rates',
+      sourceAgency: 'Michigan Unemployment Insurance Agency'
+    },
     MO: {
       officialUrl: 'https://labor.mo.gov/des/employers/tax-rates',
       officialLinkLabel: 'View Missouri Payroll Tax Rates',
       sourceAgency: 'Missouri Division of Employment Security'
     },
+    NE: {
+      officialUrl: 'https://dol.nebraska.gov/UITax/UnemploymentInsuranceTax/CombinedTaxRates',
+      officialLinkLabel: 'View Nebraska Payroll Tax Rates',
+      sourceAgency: 'Nebraska Department of Labor'
+    },
     OK: {
       officialUrl: 'https://oklahoma.gov/oesc/employers/tax/contribution-rates.html',
       officialLinkLabel: 'View Oklahoma Payroll Tax Rates',
       sourceAgency: 'Oklahoma Employment Security Commission'
+    },
+    PA: {
+      officialUrl: 'https://www.pa.gov/agencies/dli/resources/for-employers-and-educators/how-to-file/uc-tax/yearly-tax-highlights',
+      officialLinkLabel: 'View Pennsylvania Payroll Tax Rates',
+      sourceAgency: 'Pennsylvania Department of Labor & Industry'
+    },
+    ME: {
+      officialUrl: 'https://www.maine.gov/unemployment/docs/2026/employers/uitaxrates2026.pdf',
+      officialLinkLabel: 'View Maine Payroll Tax Rates',
+      sourceAgency: 'Maine Department of Labor, Bureau of Unemployment Compensation'
     },
     KY: {
       officialUrl: 'https://kewes.ky.gov/',
@@ -1432,6 +1462,11 @@
       officialUrl: 'https://jobs.utah.gov/ui/employer.html',
       officialLinkLabel: 'View Utah Payroll Tax Rates',
       sourceAgency: 'Utah Department of Workforce Services'
+    },
+    WI: {
+      officialUrl: 'https://dwd.wisconsin.gov/ui/employers/taxrates.htm',
+      officialLinkLabel: 'View Wisconsin Payroll Tax Rates',
+      sourceAgency: 'Wisconsin Department of Workforce Development'
     },
     WY: {
       officialUrl: 'https://dws.wyo.gov/dws-division/unemployment-insurance/employers/unemployment-tax-rates/',
