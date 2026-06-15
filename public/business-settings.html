@@ -280,7 +280,7 @@
                 <div class="field">
                   <label for="payrollPresetState">State</label>
                   <select id="payrollPresetState"></select>
-                  <div class="hint hint--start" id="payrollPresetStateHelper">Verified defaults are available for California, Texas, Florida, Georgia, North Carolina, and Arizona. Other states are listed for future preset support; enter rates manually until verified presets are added.</div>
+                  <div class="hint hint--start" id="payrollPresetStateHelper">Verified defaults are available for California, Texas, Florida, Georgia, North Carolina, Arizona, Alabama, Arkansas, Idaho, Mississippi, Missouri, and Oklahoma. Other states are listed for future preset support; enter rates manually until verified presets are added.</div>
                 </div>
                 <div class="inline-actions bs-payroll-preset-actions">
                   <button type="button" class="btn primary" id="btnApplyPayrollDefaults">Apply Payroll Defaults</button>
@@ -1274,6 +1274,66 @@
       officialUrl: 'https://des.az.gov/services/employment/unemployment-employer/employment-taxes-calculating-unemployment-taxes',
       officialLinkLabel: 'View Arizona Payroll Tax Rates',
       notes: 'Arizona new employers are assigned 2.00% UI for at least two calendar years. Taxable wage base is $8,000. Arizona Job Training Tax 0.10% is not included in this preset. Verify your DES UC-603 rate determination.'
+    },
+    AL: {
+      label: 'Alabama',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 2.7 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'Alabama Department of Labor',
+      officialUrl: 'https://labor.alabama.gov/UC/employer.aspx',
+      officialLinkLabel: 'View Alabama Payroll Tax Rates',
+      notes: 'Alabama new-employer entry rate is 2.70% on the first $8,000 per employee. Rate becomes experience-rated after approximately two years. Verify your official ADOL rate notice.'
+    },
+    AR: {
+      label: 'Arkansas',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 2.0 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'Arkansas Division of Workforce Services',
+      officialUrl: 'https://dws.arkansas.gov/workforce-services/unemployment/employer-ui-information/',
+      officialLinkLabel: 'View Arkansas Payroll Tax Rates',
+      notes: 'Arkansas 2026 new-employer UI tax rate is 2.00% on the first $7,000 per employee. Rate becomes experience-rated after three years. Verify your official DWS rate notice.'
+    },
+    ID: {
+      label: 'Idaho',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 1.0 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'Idaho Department of Labor',
+      officialUrl: 'https://www.labor.idaho.gov/businesses/unemployment-tax-rates/',
+      officialLinkLabel: 'View Idaho Payroll Tax Rates',
+      notes: 'Idaho 2026 standard new-employer UI tax rate is 1.00% for at least six calendar quarters. Rate may change with experience rating. Verify your official IDOL rate notice.'
+    },
+    MS: {
+      label: 'Mississippi',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 1.0 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'Mississippi Department of Employment Security',
+      officialUrl: 'https://mdes.ms.gov/employers/unemployment-tax/reporting-and-filing/unemployment-tax-rates/',
+      officialLinkLabel: 'View Mississippi Payroll Tax Rates',
+      notes: 'Mississippi start-up year-one UI rate is 1.00% on the first $14,000 per employee. Year two is 1.10%, year three and later is 1.20% until a modified rate applies. Workforce Investment and Training contribution is not included in this preset. Verify your MDES rate notice.'
+    },
+    MO: {
+      label: 'Missouri',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 2.376 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'Missouri Division of Employment Security',
+      officialUrl: 'https://labor.mo.gov/des/employers/tax-rates',
+      officialLinkLabel: 'View Missouri Payroll Tax Rates',
+      notes: 'Missouri 2026 new-employer UI rate is 2.376% for mining, construction, and all other industries. Nonprofit 501(c)(3) new employers are 1.00%. Rate becomes experience-rated after two to three years. Verify your official DES rate notice.'
+    },
+    OK: {
+      label: 'Oklahoma',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 1.5 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'Oklahoma Employment Security Commission',
+      officialUrl: 'https://oklahoma.gov/oesc/employers/tax/contribution-rates.html',
+      officialLinkLabel: 'View Oklahoma Payroll Tax Rates',
+      notes: 'Oklahoma newly established employer UI rate is 1.50% on the first $25,000 per employee. Rate applies until four quarters of experience in a rate cycle. Verify your official OESC rate notice.'
     }
   };
 
@@ -1327,6 +1387,56 @@
       officialUrl: 'https://www.in.gov/dwd/indiana-unemployment/employers/employer-guide/rate-computation/new-employer-premium-rate/',
       officialLinkLabel: 'View Indiana Payroll Tax Rates',
       sourceAgency: 'Indiana Department of Workforce Development'
+    },
+    AL: {
+      officialUrl: 'https://labor.alabama.gov/UC/employer.aspx',
+      officialLinkLabel: 'View Alabama Payroll Tax Rates',
+      sourceAgency: 'Alabama Department of Labor'
+    },
+    AR: {
+      officialUrl: 'https://dws.arkansas.gov/workforce-services/unemployment/employer-ui-information/',
+      officialLinkLabel: 'View Arkansas Payroll Tax Rates',
+      sourceAgency: 'Arkansas Division of Workforce Services'
+    },
+    ID: {
+      officialUrl: 'https://www.labor.idaho.gov/businesses/unemployment-tax-rates/',
+      officialLinkLabel: 'View Idaho Payroll Tax Rates',
+      sourceAgency: 'Idaho Department of Labor'
+    },
+    MS: {
+      officialUrl: 'https://mdes.ms.gov/employers/unemployment-tax/reporting-and-filing/unemployment-tax-rates/',
+      officialLinkLabel: 'View Mississippi Payroll Tax Rates',
+      sourceAgency: 'Mississippi Department of Employment Security'
+    },
+    MO: {
+      officialUrl: 'https://labor.mo.gov/des/employers/tax-rates',
+      officialLinkLabel: 'View Missouri Payroll Tax Rates',
+      sourceAgency: 'Missouri Division of Employment Security'
+    },
+    OK: {
+      officialUrl: 'https://oklahoma.gov/oesc/employers/tax/contribution-rates.html',
+      officialLinkLabel: 'View Oklahoma Payroll Tax Rates',
+      sourceAgency: 'Oklahoma Employment Security Commission'
+    },
+    KY: {
+      officialUrl: 'https://kewes.ky.gov/',
+      officialLinkLabel: 'View Kentucky Payroll Tax Rates',
+      sourceAgency: 'Kentucky Office of Unemployment Insurance'
+    },
+    LA: {
+      officialUrl: 'https://www.laworks.net/FAQs/FAQ_UI_EmployerTaxes.asp',
+      officialLinkLabel: 'View Louisiana Payroll Tax Rates',
+      sourceAgency: 'Louisiana Workforce Commission'
+    },
+    UT: {
+      officialUrl: 'https://jobs.utah.gov/ui/employer.html',
+      officialLinkLabel: 'View Utah Payroll Tax Rates',
+      sourceAgency: 'Utah Department of Workforce Services'
+    },
+    WY: {
+      officialUrl: 'https://dws.wyo.gov/dws-division/unemployment-insurance/employers/unemployment-tax-rates/',
+      officialLinkLabel: 'View Wyoming Payroll Tax Rates',
+      sourceAgency: 'Wyoming Department of Workforce Services'
     }
   };
 
