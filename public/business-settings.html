@@ -280,7 +280,7 @@
                 <div class="field">
                   <label for="payrollPresetState">State</label>
                   <select id="payrollPresetState"></select>
-                  <div class="hint hint--start" id="payrollPresetStateHelper">California and Texas defaults are available now. Other states are listed for future preset support; enter rates manually until verified presets are added.</div>
+                  <div class="hint hint--start" id="payrollPresetStateHelper">Verified defaults are available for California, Texas, Florida, Georgia, North Carolina, and Arizona. Other states are listed for future preset support; enter rates manually until verified presets are added.</div>
                 </div>
                 <div class="inline-actions bs-payroll-preset-actions">
                   <button type="button" class="btn primary" id="btnApplyPayrollDefaults">Apply Payroll Defaults</button>
@@ -293,7 +293,7 @@
                 </div>
                 <p class="sub bs-payroll-preset-meta" id="payrollPresetMeta">Source year: 2026 · Last reviewed: 2026-06-14 · Source: California EDD</p>
                 <p class="sub bs-payroll-preset-notes" id="payrollPresetStateNotes" hidden></p>
-                <p class="sub bs-payroll-preset-unavailable" id="payrollPresetUnavailableNotice" hidden>Payroll defaults for this state are not available yet. You can still enter your payroll rates manually. If you are unsure, contact your accountant or payroll provider and ask which employer payroll tax rates apply to your business.</p>
+                <p class="sub bs-payroll-preset-unavailable" id="payrollPresetUnavailableNotice" hidden>No verified payroll default is available yet. Enter your rates manually or ask your accountant or payroll provider which employer payroll tax rates apply to your business.</p>
                 <div class="notice warn bs-payroll-preset-notice" id="payrollPresetNotice" role="note">
                   These payroll tax presets are default reference values only. Actual employer payroll taxes may vary based on your business entity, payroll setup, employer experience rating, wage limits, class codes, local requirements, and official state notices. You are responsible for verifying your actual obligations with your accountant, payroll provider, or state agency. If you are unsure how to read the official rate page, contact your accountant or payroll provider and ask for the employer payroll tax rates that apply to your business before saving.
                 </div>
@@ -1234,8 +1234,104 @@
       officialUrl: 'https://www.twc.texas.gov/programs/unemployment-tax/tax-rates',
       officialLinkLabel: 'View Texas Payroll Tax Rates',
       notes: 'Texas 2026 entry-level unemployment tax rate is 2.70%. Employer-specific rates may vary after experience rating. Verify your official TWC tax rate notice.'
+    },
+    FL: {
+      label: 'Florida',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 2.7 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'Florida Department of Revenue',
+      officialUrl: 'https://floridarevenue.com/taxes/taxesfees/pages/rt_rate.aspx',
+      officialLinkLabel: 'View Florida Payroll Tax Rates',
+      notes: 'Florida 2026 new-employer reemployment tax rate is 2.70% on the first $7,000 per employee. Rate becomes experience-rated after approximately 10 quarters. Verify your official DOR rate notice.'
+    },
+    GA: {
+      label: 'Georgia',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 2.7 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'Georgia Department of Labor',
+      officialUrl: 'https://dol.georgia.gov/faqs-employers/employers-faqs-unemployment-insurance',
+      officialLinkLabel: 'View Georgia Payroll Tax Rates',
+      notes: 'Georgia new or newly covered employers are assigned 2.70% until experience-rated. Taxable wage base is $9,500 per employee. Verify your GDOL tax rate notice.'
+    },
+    NC: {
+      label: 'North Carolina',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 1.0 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'NC Division of Employment Security',
+      officialUrl: 'https://www.des.nc.gov/employers/tax-rate-information',
+      officialLinkLabel: 'View North Carolina Payroll Tax Rates',
+      notes: 'North Carolina 2026 standard beginning employer UI rate is 1.00%. Taxable wage base is $34,200. Employer-specific experience rates apply after eligibility. Verify your DES rate notice in NCSUITS.'
+    },
+    AZ: {
+      label: 'Arizona',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 2.0 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'Arizona Department of Economic Security',
+      officialUrl: 'https://des.az.gov/services/employment/unemployment-employer/employment-taxes-calculating-unemployment-taxes',
+      officialLinkLabel: 'View Arizona Payroll Tax Rates',
+      notes: 'Arizona new employers are assigned 2.00% UI for at least two calendar years. Taxable wage base is $8,000. Arizona Job Training Tax 0.10% is not included in this preset. Verify your DES UC-603 rate determination.'
     }
   };
+
+  const PAYROLL_STATE_INFO_LINKS = {
+    CA: {
+      officialUrl: 'https://edd.ca.gov/en/payroll_taxes/rates_and_withholding/',
+      officialLinkLabel: 'View California Payroll Tax Rates',
+      sourceAgency: 'California EDD'
+    },
+    TX: {
+      officialUrl: 'https://www.twc.texas.gov/programs/unemployment-tax/tax-rates',
+      officialLinkLabel: 'View Texas Payroll Tax Rates',
+      sourceAgency: 'Texas Workforce Commission (TWC)'
+    },
+    FL: {
+      officialUrl: 'https://floridarevenue.com/taxes/taxesfees/pages/rt_rate.aspx',
+      officialLinkLabel: 'View Florida Payroll Tax Rates',
+      sourceAgency: 'Florida Department of Revenue'
+    },
+    GA: {
+      officialUrl: 'https://dol.georgia.gov/faqs-employers/employers-faqs-unemployment-insurance',
+      officialLinkLabel: 'View Georgia Payroll Tax Rates',
+      sourceAgency: 'Georgia Department of Labor'
+    },
+    NC: {
+      officialUrl: 'https://www.des.nc.gov/employers/tax-rate-information',
+      officialLinkLabel: 'View North Carolina Payroll Tax Rates',
+      sourceAgency: 'NC Division of Employment Security'
+    },
+    AZ: {
+      officialUrl: 'https://des.az.gov/services/employment/unemployment-employer/employment-taxes-calculating-unemployment-taxes',
+      officialLinkLabel: 'View Arizona Payroll Tax Rates',
+      sourceAgency: 'Arizona Department of Economic Security'
+    },
+    SC: {
+      officialUrl: 'https://www.dew.sc.gov/employers/tax-rate-information',
+      officialLinkLabel: 'View South Carolina Payroll Tax Rates',
+      sourceAgency: 'SC Department of Employment and Workforce'
+    },
+    TN: {
+      officialUrl: 'https://lwdsupport.tn.gov/hc/en-us/articles/202843724-How-is-my-premium-rate-determined',
+      officialLinkLabel: 'View Tennessee Payroll Tax Rates',
+      sourceAgency: 'Tennessee Department of Labor and Workforce Development'
+    },
+    VA: {
+      officialUrl: 'https://www.vec.virginia.gov/FAQs/employers/how-are-tax-rates-assigned',
+      officialLinkLabel: 'View Virginia Payroll Tax Rates',
+      sourceAgency: 'Virginia Employment Commission'
+    },
+    IN: {
+      officialUrl: 'https://www.in.gov/dwd/indiana-unemployment/employers/employer-guide/rate-computation/new-employer-premium-rate/',
+      officialLinkLabel: 'View Indiana Payroll Tax Rates',
+      sourceAgency: 'Indiana Department of Workforce Development'
+    }
+  };
+
+  const PAYROLL_PRESET_UNAVAILABLE_MSG = 'No verified payroll default is available yet. Enter your rates manually or ask your accountant or payroll provider which employer payroll tax rates apply to your business.';
+  const PAYROLL_STATE_INFO_ONLY_NOTE = 'Official state information link only. No verified Margin Guard payroll default has been approved for this state yet.';
 
   const PAYROLL_PRESET_APPLY_FIELD_IDS = ['ficaPct', 'futaPct', 'casuiPct'];
 
@@ -1274,9 +1370,28 @@
     }
   }
 
+  function getPayrollStateOfficialInfo(stateCode) {
+    const preset = PAYROLL_STATE_PRESETS[stateCode];
+    if (preset && preset.officialUrl) {
+      return {
+        officialUrl: preset.officialUrl,
+        officialLinkLabel: preset.officialLinkLabel || 'View State Payroll Tax Rates',
+        sourceLabel: preset.sourceLabel || ''
+      };
+    }
+    const info = PAYROLL_STATE_INFO_LINKS[stateCode];
+    if (!info || !info.officialUrl) return null;
+    return {
+      officialUrl: info.officialUrl,
+      officialLinkLabel: info.officialLinkLabel || 'View State Payroll Tax Rates',
+      sourceLabel: info.sourceAgency || ''
+    };
+  }
+
   function syncPayrollPresetStateUi() {
     const stateCode = getSelectedPayrollStateCode();
     const preset = PAYROLL_STATE_PRESETS[stateCode];
+    const officialInfo = getPayrollStateOfficialInfo(stateCode);
     const applyBtn = document.getElementById('btnApplyPayrollDefaults');
     const officialLink = document.getElementById('payrollPresetOfficialLink');
     const meta = document.getElementById('payrollPresetMeta');
@@ -1290,9 +1405,9 @@
       applyBtn.setAttribute('aria-disabled', preset ? 'false' : 'true');
     }
     if (officialLink) {
-      if (preset && preset.officialUrl) {
-        officialLink.href = preset.officialUrl;
-        officialLink.textContent = preset.officialLinkLabel || 'View State Payroll Tax Rates';
+      if (officialInfo && officialInfo.officialUrl) {
+        officialLink.href = officialInfo.officialUrl;
+        officialLink.textContent = officialInfo.officialLinkLabel;
         officialLink.removeAttribute('hidden');
         officialLink.removeAttribute('aria-hidden');
       } else {
@@ -1304,6 +1419,9 @@
       if (preset) {
         meta.textContent = 'Source year: ' + preset.sourceYear + ' · Last reviewed: ' + preset.lastReviewed + ' · Source: ' + preset.sourceLabel;
         setPayrollPresetElementHidden(meta, false);
+      } else if (officialInfo && officialInfo.sourceLabel) {
+        meta.textContent = 'Official information source: ' + officialInfo.sourceLabel;
+        setPayrollPresetElementHidden(meta, false);
       } else {
         setPayrollPresetElementHidden(meta, true);
       }
@@ -1311,6 +1429,9 @@
     if (stateNotes) {
       if (preset && preset.notes) {
         stateNotes.textContent = preset.notes;
+        setPayrollPresetElementHidden(stateNotes, false);
+      } else if (!preset && officialInfo) {
+        stateNotes.textContent = PAYROLL_STATE_INFO_ONLY_NOTE;
         setPayrollPresetElementHidden(stateNotes, false);
       } else {
         stateNotes.textContent = '';
@@ -1321,6 +1442,7 @@
       setPayrollPresetElementHidden(notice, !preset);
     }
     if (unavailable) {
+      unavailable.textContent = PAYROLL_PRESET_UNAVAILABLE_MSG;
       setPayrollPresetElementHidden(unavailable, !!preset);
     }
     if (!preset) {
@@ -1354,7 +1476,7 @@
     const stateCode = getSelectedPayrollStateCode();
     const preset = PAYROLL_STATE_PRESETS[stateCode];
     if (!preset) {
-      setStatus('Payroll defaults for this state are not available yet. You can still enter your payroll rates manually. If you are unsure, contact your accountant or payroll provider and ask which employer payroll tax rates apply to your business.', 'error');
+      setStatus(PAYROLL_PRESET_UNAVAILABLE_MSG, 'error');
       return;
     }
 
