@@ -280,7 +280,7 @@
                 <div class="field">
                   <label for="payrollPresetState">State</label>
                   <select id="payrollPresetState"></select>
-                  <div class="hint hint--start" id="payrollPresetStateHelper">Verified defaults are available for California, Texas, Florida, Georgia, North Carolina, Arizona, Alabama, Arkansas, Idaho, Mississippi, Missouri, Oklahoma, and Maine. Other states are listed for future preset support; enter rates manually until verified presets are added.</div>
+                  <div class="hint hint--start" id="payrollPresetStateHelper">Verified defaults are available for California, Texas, Florida, Georgia, North Carolina, Arizona, Alabama, Arkansas, Idaho, Mississippi, Missouri, Oklahoma, Maine, Alaska, Connecticut, Hawaii, Nevada, New Jersey, New York, and Rhode Island. Other states are listed for future preset support; enter rates manually until verified presets are added.</div>
                 </div>
                 <div class="inline-actions bs-payroll-preset-actions">
                   <button type="button" class="btn primary" id="btnApplyPayrollDefaults">Apply Payroll Defaults</button>
@@ -1344,6 +1344,76 @@
       officialUrl: 'https://www.maine.gov/unemployment/docs/2026/employers/uitaxrates2026.pdf',
       officialLinkLabel: 'View Maine Payroll Tax Rates',
       notes: 'Maine 2026 new-employer combined UI premium is 2.54% (2.23% UI + 0.14% CSSF + 0.17% UPAF) on the first $12,000 per employee. CSSF and UPAF are mandatory assessments included in this combined rate. Rate becomes experience-rated when eligible. Direct-reimbursable employers are treated differently. Verify your official MDOL rate notice.'
+    },
+    AK: {
+      label: 'Alaska',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 1.0 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'Alaska Department of Labor and Workforce Development',
+      officialUrl: 'https://labor.alaska.gov/estax/2026-industry-rates.html',
+      officialLinkLabel: 'View Alaska Payroll Tax Rates',
+      notes: 'Alaska 2026 new-employer employer UI rate is 1.00% on the first $54,200 per employee. A separate 0.50% employee UI contribution applies and is not included. All industries share the same new-employer employer rate. Verify your official ADOLWD rate notice.'
+    },
+    CT: {
+      label: 'Connecticut',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 1.9 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'Connecticut Department of Labor',
+      officialUrl: 'https://portal.ct.gov/dol/knowledge-base/articles/unemployment-taxes/tax-rates-and-taxable-wage-base',
+      officialLinkLabel: 'View Connecticut Payroll Tax Rates',
+      notes: 'Connecticut 2026 new-employer UI rate is 1.90% on the first $27,000 per employee. Rate becomes experience-rated when eligible. Verify your official CTDOL rate notice.'
+    },
+    HI: {
+      label: 'Hawaii',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 2.4 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'Hawaii Department of Labor and Industrial Relations',
+      officialUrl: 'https://labor.hawaii.gov/ui/tax-rate-schedule-and-weekly-benefit-amount/',
+      officialLinkLabel: 'View Hawaii Payroll Tax Rates',
+      notes: 'Hawaii 2026 new-employer UI rate is 2.40% on the first $64,500 per employee. Employment & Training assessment 0.01% is not included in this preset. Verify your official DLIR rate notice.'
+    },
+    NV: {
+      label: 'Nevada',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 2.95 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'Nevada Department of Employment, Training and Rehabilitation',
+      officialUrl: 'https://detr.nv.gov/Page/NUI_View_Quarterly_Reporting_Info',
+      officialLinkLabel: 'View Nevada Payroll Tax Rates',
+      notes: 'Nevada new-employer UI tax rate is 2.95% on taxable wages. Career Enhancement Program surcharge 0.05% is not included in this preset. Verify your official DETR rate notice.'
+    },
+    NJ: {
+      label: 'New Jersey',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 2.6825 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'New Jersey Division of Employer Accounts',
+      officialUrl: 'https://www.nj.gov/labor/ea/assets/PDFs/20252026%20TABLE%20C.pdf',
+      officialLinkLabel: 'View New Jersey Payroll Tax Rates',
+      notes: 'New Jersey FY 2026 new-employer effective UI rate is 2.6825% per Table C. Disability, family leave, and employee UI contributions are not included. Verify your official NJ Employer Access rate notice.'
+    },
+    NY: {
+      label: 'New York',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 4.1 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'New York Department of Labor',
+      officialUrl: 'https://dol.ny.gov/unemployment-insurance-rate-information',
+      officialLinkLabel: 'View New York Payroll Tax Rates',
+      notes: 'New York 2026 new-employer total UI contribution rate is 4.10% (4.025% UI + 0.075% Re-employment Services Fund) on the first $17,600 per employee. Verify your official NYS DOL rate notice.'
+    },
+    RI: {
+      label: 'Rhode Island',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 1.21 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'Rhode Island Department of Labor and Training',
+      officialUrl: 'https://dlt.ri.gov/press-releases/2026-tax-rates-unemployment-insurance-and-temporary-disability-insurance',
+      officialLinkLabel: 'View Rhode Island Payroll Tax Rates',
+      notes: 'Rhode Island 2026 new-employer UI rate is 1.21% including the 0.21% Job Development Assessment on the first $30,800 per employee for most employers. TDI is separate and not included. Verify your official DLT rate notice.'
     }
   };
 
@@ -1378,6 +1448,26 @@
       officialLinkLabel: 'View Arizona Payroll Tax Rates',
       sourceAgency: 'Arizona Department of Economic Security'
     },
+    AK: {
+      officialUrl: 'https://labor.alaska.gov/estax/2026-industry-rates.html',
+      officialLinkLabel: 'View Alaska Payroll Tax Rates',
+      sourceAgency: 'Alaska Department of Labor and Workforce Development'
+    },
+    CO: {
+      officialUrl: 'https://cdle.colorado.gov/employers/unemployment-insurance-premiums',
+      officialLinkLabel: 'View Colorado Payroll Tax Rates',
+      sourceAgency: 'Colorado Department of Labor and Employment'
+    },
+    CT: {
+      officialUrl: 'https://portal.ct.gov/dol/knowledge-base/articles/unemployment-taxes/tax-rates-and-taxable-wage-base',
+      officialLinkLabel: 'View Connecticut Payroll Tax Rates',
+      sourceAgency: 'Connecticut Department of Labor'
+    },
+    DE: {
+      officialUrl: 'https://labor.delaware.gov/divisions/unemployment-insurance/employer-services/',
+      officialLinkLabel: 'View Delaware Payroll Tax Rates',
+      sourceAgency: 'Delaware Division of Unemployment Insurance'
+    },
     SC: {
       officialUrl: 'https://www.dew.sc.gov/employers/tax-rate-information',
       officialLinkLabel: 'View South Carolina Payroll Tax Rates',
@@ -1398,6 +1488,16 @@
       officialLinkLabel: 'View Indiana Payroll Tax Rates',
       sourceAgency: 'Indiana Department of Workforce Development'
     },
+    IL: {
+      officialUrl: 'https://ides.illinois.gov/content/dam/soi/en/web/ides/ides_forms_and_publications/EA-50_2026.pdf',
+      officialLinkLabel: 'View Illinois Payroll Tax Rates',
+      sourceAgency: 'Illinois Department of Employment Security'
+    },
+    IA: {
+      officialUrl: 'https://workforce.iowa.gov/employers/unemployment-insurance/unemployment-insurance-employer-handbook/unemployment-insurance-taxes',
+      officialLinkLabel: 'View Iowa Payroll Tax Rates',
+      sourceAgency: 'Iowa Workforce Development'
+    },
     AL: {
       officialUrl: 'https://labor.alabama.gov/UC/employer.aspx',
       officialLinkLabel: 'View Alabama Payroll Tax Rates',
@@ -1413,35 +1513,115 @@
       officialLinkLabel: 'View Idaho Payroll Tax Rates',
       sourceAgency: 'Idaho Department of Labor'
     },
+    HI: {
+      officialUrl: 'https://labor.hawaii.gov/ui/tax-rate-schedule-and-weekly-benefit-amount/',
+      officialLinkLabel: 'View Hawaii Payroll Tax Rates',
+      sourceAgency: 'Hawaii Department of Labor and Industrial Relations'
+    },
+    KS: {
+      officialUrl: 'https://www.ksrevisor.gov/statutes/chapters/ch44/044_007_0010a.html',
+      officialLinkLabel: 'View Kansas Payroll Tax Rates',
+      sourceAgency: 'Kansas Department of Labor'
+    },
     MS: {
       officialUrl: 'https://mdes.ms.gov/employers/unemployment-tax/reporting-and-filing/unemployment-tax-rates/',
       officialLinkLabel: 'View Mississippi Payroll Tax Rates',
       sourceAgency: 'Mississippi Department of Employment Security'
+    },
+    MD: {
+      officialUrl: 'https://labor.maryland.gov/unemployment-insurance/employer-agent/tax-rate.shtml',
+      officialLinkLabel: 'View Maryland Payroll Tax Rates',
+      sourceAgency: 'Maryland Department of Labor'
+    },
+    MA: {
+      officialUrl: 'https://www.mass.gov/info-details/employer-contributions-to-unemployment',
+      officialLinkLabel: 'View Massachusetts Payroll Tax Rates',
+      sourceAgency: 'Massachusetts Department of Unemployment Assistance'
     },
     MI: {
       officialUrl: 'https://www.michigan.gov/leo/bureaus-agencies/uia/employers/about-taxes-and-ui/unemployment-insurance-taxes',
       officialLinkLabel: 'View Michigan Payroll Tax Rates',
       sourceAgency: 'Michigan Unemployment Insurance Agency'
     },
+    MN: {
+      officialUrl: 'https://mn.gov/uimn/employers/wages-taxes/tax-rates/new-employer-rates.jsp',
+      officialLinkLabel: 'View Minnesota Payroll Tax Rates',
+      sourceAgency: 'Minnesota Unemployment Insurance'
+    },
     MO: {
       officialUrl: 'https://labor.mo.gov/des/employers/tax-rates',
       officialLinkLabel: 'View Missouri Payroll Tax Rates',
       sourceAgency: 'Missouri Division of Employment Security'
+    },
+    MT: {
+      officialUrl: 'https://uid.dli.mt.gov/employer-handbook.pdf',
+      officialLinkLabel: 'View Montana Payroll Tax Rates',
+      sourceAgency: 'Montana UI Division, Department of Labor & Industry'
     },
     NE: {
       officialUrl: 'https://dol.nebraska.gov/UITax/UnemploymentInsuranceTax/CombinedTaxRates',
       officialLinkLabel: 'View Nebraska Payroll Tax Rates',
       sourceAgency: 'Nebraska Department of Labor'
     },
+    NH: {
+      officialUrl: 'https://www.nhes.nh.gov/employers/employer-claims-taxes',
+      officialLinkLabel: 'View New Hampshire Payroll Tax Rates',
+      sourceAgency: 'New Hampshire Employment Security'
+    },
+    NJ: {
+      officialUrl: 'https://www.nj.gov/labor/ea/assets/PDFs/20252026%20TABLE%20C.pdf',
+      officialLinkLabel: 'View New Jersey Payroll Tax Rates',
+      sourceAgency: 'New Jersey Division of Employer Accounts'
+    },
+    NM: {
+      officialUrl: 'https://www.srca.nm.gov/parts/title11/11.003.0400.html',
+      officialLinkLabel: 'View New Mexico Payroll Tax Rates',
+      sourceAgency: 'New Mexico Department of Workforce Solutions'
+    },
+    NV: {
+      officialUrl: 'https://detr.nv.gov/Page/NUI_View_Quarterly_Reporting_Info',
+      officialLinkLabel: 'View Nevada Payroll Tax Rates',
+      sourceAgency: 'Nevada Department of Employment, Training and Rehabilitation'
+    },
+    NY: {
+      officialUrl: 'https://dol.ny.gov/unemployment-insurance-rate-information',
+      officialLinkLabel: 'View New York Payroll Tax Rates',
+      sourceAgency: 'New York Department of Labor'
+    },
+    ND: {
+      officialUrl: 'https://www.library.nd.gov/statedocs/JobService/jsnd4036.pdf',
+      officialLinkLabel: 'View North Dakota Payroll Tax Rates',
+      sourceAgency: 'Job Service North Dakota'
+    },
+    OH: {
+      officialUrl: 'https://jfs.ohio.gov/job-services-and-unemployment/unemployment/for-employers/file-unemployment-taxes/tax-resources/contribution-rates',
+      officialLinkLabel: 'View Ohio Payroll Tax Rates',
+      sourceAgency: 'Ohio Department of Job and Family Services'
+    },
     OK: {
       officialUrl: 'https://oklahoma.gov/oesc/employers/tax/contribution-rates.html',
       officialLinkLabel: 'View Oklahoma Payroll Tax Rates',
       sourceAgency: 'Oklahoma Employment Security Commission'
     },
+    OR: {
+      officialUrl: 'https://www.oregon.gov/employ/Businesses/Pages/Current-Tax-Rate.aspx',
+      officialLinkLabel: 'View Oregon Payroll Tax Rates',
+      sourceAgency: 'Oregon Employment Department'
+    },
     PA: {
       officialUrl: 'https://www.pa.gov/agencies/dli/resources/for-employers-and-educators/how-to-file/uc-tax/yearly-tax-highlights',
       officialLinkLabel: 'View Pennsylvania Payroll Tax Rates',
       sourceAgency: 'Pennsylvania Department of Labor & Industry'
+    },
+    RI: {
+      officialUrl: 'https://dlt.ri.gov/press-releases/2026-tax-rates-unemployment-insurance-and-temporary-disability-insurance',
+      officialLinkLabel: 'View Rhode Island Payroll Tax Rates',
+      sourceAgency: 'Rhode Island Department of Labor and Training'
+    },
+    SD: {
+      officialUrl: 'https://dlr.sd.gov/ra/businesses/faq.aspx',
+      officialLinkLabel: 'View South Dakota Payroll Tax Rates',
+      sourceAgency: 'South Dakota Department of Labor and Regulation'
     },
     ME: {
       officialUrl: 'https://www.maine.gov/unemployment/docs/2026/employers/uitaxrates2026.pdf',
@@ -1467,6 +1647,11 @@
       officialUrl: 'https://dwd.wisconsin.gov/ui/employers/taxrates.htm',
       officialLinkLabel: 'View Wisconsin Payroll Tax Rates',
       sourceAgency: 'Wisconsin Department of Workforce Development'
+    },
+    WV: {
+      officialUrl: 'https://workforcewv.org/wp-content/uploads/2024/07/Employer-Handbook-Rev.-07.24.pdf',
+      officialLinkLabel: 'View West Virginia Payroll Tax Rates',
+      sourceAgency: 'WorkForce West Virginia'
     },
     WY: {
       officialUrl: 'https://dws.wyo.gov/dws-division/unemployment-insurance/employers/unemployment-tax-rates/',
