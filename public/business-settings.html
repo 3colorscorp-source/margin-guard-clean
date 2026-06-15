@@ -168,6 +168,11 @@
                 <div class="hint"><span id="bizNameOwnerCount">0</span>/60</div>
               </div>
               <div class="field">
+                <label for="primaryTrade">Primary trade</label>
+                <select id="primaryTrade"></select>
+                <div class="hint hint--start">Classifies your business for future templates and wording. Does not change pricing formulas in Phase 1.</div>
+              </div>
+              <div class="field">
                 <label for="businessEmail">Business email</label>
                 <input id="businessEmail" type="email" maxlength="120" placeholder="sales@business.com" />
               </div>
@@ -458,6 +463,7 @@
                 <span class="bs-summary-label">Business</span>
                 <strong id="previewBusinessName" class="bs-summary-name">—</strong>
                 <span id="previewBusinessMeta" class="sub bs-summary-meta">Sin email ni telefono.</span>
+                <span class="bs-chip" id="previewPrimaryTradeChip" hidden></span>
               </div>
               <div class="bs-summary-preview">
                 <span class="bs-summary-label">Accent</span>
@@ -587,8 +593,59 @@
     serviceLine: 'Professional Service Estimate',
     marketLine: '',
     signatureLine: 'Professional Estimate Delivery',
+    primaryTrade: '',
     initials: ''
   };
+
+  const PRIMARY_TRADES = [
+    { code: '', label: 'Select primary trade (optional)' },
+    { code: 'tile_contractor', label: 'Tile Contractor' },
+    { code: 'general_contractor', label: 'General Contractor' },
+    { code: 'painter', label: 'Painter' },
+    { code: 'landscaper', label: 'Landscaper' },
+    { code: 'roofer', label: 'Roofer' },
+    { code: 'flooring_installer', label: 'Flooring Installer' },
+    { code: 'drywall_contractor', label: 'Drywall Contractor' },
+    { code: 'framing_contractor', label: 'Framing Contractor' },
+    { code: 'concrete_contractor', label: 'Concrete Contractor' },
+    { code: 'plumber', label: 'Plumber' },
+    { code: 'electrician', label: 'Electrician' },
+    { code: 'hvac_contractor', label: 'HVAC Contractor' },
+    { code: 'handyman', label: 'Handyman' },
+    { code: 'remodeler', label: 'Remodeler' },
+    { code: 'cabinet_installer', label: 'Cabinet Installer' },
+    { code: 'countertop_installer', label: 'Countertop Installer' },
+    { code: 'masonry_contractor', label: 'Masonry Contractor' },
+    { code: 'fence_contractor', label: 'Fence Contractor' },
+    { code: 'deck_builder', label: 'Deck Builder' },
+    { code: 'window_door_installer', label: 'Window & Door Installer' },
+    { code: 'other', label: 'Other' }
+  ];
+
+  function normalizePrimaryTradeCode(code) {
+    const value = safeTrim(code);
+    if (!value) return '';
+    return PRIMARY_TRADES.some(function (trade) {
+      return trade.code === value;
+    }) ? value : '';
+  }
+
+  function getPrimaryTradeLabel(code) {
+    const normalized = normalizePrimaryTradeCode(code);
+    if (!normalized) return '';
+    const match = PRIMARY_TRADES.find(function (trade) {
+      return trade.code === normalized;
+    });
+    return match ? match.label : '';
+  }
+
+  function populatePrimaryTradeSelector() {
+    const sel = document.getElementById('primaryTrade');
+    if (!sel) return;
+    sel.innerHTML = PRIMARY_TRADES.map(function (trade) {
+      return '<option value="' + trade.code + '">' + trade.label + '</option>';
+    }).join('');
+  }
 
   function safeTrim(value) {
     return String(value == null ? '' : value).trim();
@@ -725,6 +782,7 @@
       serviceLine: safeTrim(row?.service_line || row?.serviceLine || row?.estimate_subtitle || DEFAULT_BRANDING.serviceLine),
       marketLine: safeTrim(row?.marketLine || row?.business_region_label || ''),
       signatureLine,
+      primaryTrade: normalizePrimaryTradeCode(row?.primaryTrade || row?.primary_trade || ''),
       initials: buildInitials(businessName)
     };
   }
@@ -901,6 +959,7 @@
       serviceLine: safeTrim(document.getElementById('serviceLine')?.value || DEFAULT_BRANDING.serviceLine),
       marketLine: safeTrim(document.getElementById('marketLine')?.value || ''),
       signatureLine: safeTrim(document.getElementById('signatureLine')?.value || DEFAULT_BRANDING.signatureLine),
+      primaryTrade: normalizePrimaryTradeCode(document.getElementById('primaryTrade')?.value || ''),
       initials: buildInitials(businessName)
     };
   }
@@ -911,6 +970,17 @@
     setText('previewBusinessMeta', previewMeta);
     setText('previewAccentHex', branding.accentHex || DEFAULT_BRANDING.accentHex);
     setText('previewSignatureLine', branding.signatureLine || DEFAULT_BRANDING.signatureLine);
+    const tradeChip = document.getElementById('previewPrimaryTradeChip');
+    const tradeLabel = getPrimaryTradeLabel(branding.primaryTrade);
+    if (tradeChip) {
+      if (tradeLabel) {
+        tradeChip.textContent = tradeLabel;
+        tradeChip.removeAttribute('hidden');
+      } else {
+        tradeChip.textContent = '';
+        tradeChip.setAttribute('hidden', '');
+      }
+    }
     setText('tenantLogoMark', 'MG');
     syncBusinessLogoPreview(branding.logoUrl || '');
     document.title = 'Margin Guard | Business Settings';
@@ -926,6 +996,7 @@
     setInputValue('businessAddress', branding.businessAddress || '');
     setInputValue('publicLogoUrl', branding.logoUrl || '');
     setInputValue('publicAccentColor', branding.accentHex || DEFAULT_BRANDING.accentHex);
+    setInputValue('primaryTrade', normalizePrimaryTradeCode(branding.primaryTrade));
     setInputValue('serviceLine', branding.serviceLine || DEFAULT_BRANDING.serviceLine);
     setInputValue('marketLine', branding.marketLine || '');
     setInputValue('signatureLine', branding.signatureLine || DEFAULT_BRANDING.signatureLine);
@@ -1856,7 +1927,7 @@
 
   function bindLivePreview() {
     const watchedIds = [
-      'bizNameOwner', 'businessEmail', 'businessPhone', 'businessAddress', 'publicLogoUrl',
+      'bizNameOwner', 'primaryTrade', 'businessEmail', 'businessPhone', 'businessAddress', 'publicLogoUrl',
       'publicAccentColor', 'serviceLine', 'marketLine', 'signatureLine', 'baseInstaller',
       'baseHelper', 'pricingMode', 'hoursPerDay', 'workdaysEnabled', 'crewCapacity', 'scheduleBufferDays', 'allowSellerScheduleOverride', 'overheadMonthly', 'stdHours', 'wcPct',
       'ficaPct', 'futaPct', 'casuiPct', 'profitPct', 'minimumMarginPct', 'salesCommissionPct', 'supervisorBonusPct',
@@ -2079,6 +2150,7 @@
     loadDepositStripeStatus(true);
   });
 
+  populatePrimaryTradeSelector();
   bindPayrollPresetControls();
   bindLivePreview();
   loadBusinessSettings();
