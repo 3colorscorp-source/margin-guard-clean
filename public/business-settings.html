@@ -60,6 +60,15 @@
       color:#86efac;
       font-size:12px;
     }
+    .business-settings-page .bs-payroll-preset-unavailable{
+      margin:10px 0 0;
+      padding:10px 12px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.03);
+      font-size:12px;
+      line-height:1.45;
+    }
   </style>
 </head>
 <body data-role="owner" data-requires-auth="true" class="business-settings-page">
@@ -256,9 +265,8 @@
                 <p class="sub bs-payroll-preset-sub">Reference employer payroll tax defaults by state. Apply fills the form only — save to persist.</p>
                 <div class="field">
                   <label for="payrollPresetState">State</label>
-                  <select id="payrollPresetState">
-                    <option value="CA">California</option>
-                  </select>
+                  <select id="payrollPresetState"></select>
+                  <div class="hint hint--start" id="payrollPresetStateHelper">California defaults are available now. Other states are listed for future preset support; enter rates manually until verified presets are added.</div>
                 </div>
                 <div class="inline-actions bs-payroll-preset-actions">
                   <button type="button" class="btn primary" id="btnApplyPayrollDefaults">Apply Payroll Defaults</button>
@@ -270,6 +278,7 @@
                     rel="noopener">View California Payroll Tax Rates</a>
                 </div>
                 <p class="sub bs-payroll-preset-meta" id="payrollPresetMeta">Source year: 2026 · Last reviewed: 2026-06-14 · Source: California EDD</p>
+                <p class="sub bs-payroll-preset-unavailable" id="payrollPresetUnavailableNotice" hidden>Payroll defaults for this state are not available yet. You can still enter your payroll rates manually and verify them with your accountant, payroll provider, or state agency.</p>
                 <div class="notice warn bs-payroll-preset-notice" id="payrollPresetNotice" role="note">
                   These payroll tax presets are default reference values only. Actual employer payroll taxes may vary based on your business entity, payroll setup, employer experience rating, wage limits, class codes, local requirements, and official state notices. You are responsible for verifying your actual obligations with your accountant, payroll provider, or state agency.
                 </div>
@@ -1138,6 +1147,59 @@
     }
   }
 
+  const US_STATES = [
+    { code: 'AL', label: 'Alabama' },
+    { code: 'AK', label: 'Alaska' },
+    { code: 'AZ', label: 'Arizona' },
+    { code: 'AR', label: 'Arkansas' },
+    { code: 'CA', label: 'California' },
+    { code: 'CO', label: 'Colorado' },
+    { code: 'CT', label: 'Connecticut' },
+    { code: 'DE', label: 'Delaware' },
+    { code: 'FL', label: 'Florida' },
+    { code: 'GA', label: 'Georgia' },
+    { code: 'HI', label: 'Hawaii' },
+    { code: 'ID', label: 'Idaho' },
+    { code: 'IL', label: 'Illinois' },
+    { code: 'IN', label: 'Indiana' },
+    { code: 'IA', label: 'Iowa' },
+    { code: 'KS', label: 'Kansas' },
+    { code: 'KY', label: 'Kentucky' },
+    { code: 'LA', label: 'Louisiana' },
+    { code: 'ME', label: 'Maine' },
+    { code: 'MD', label: 'Maryland' },
+    { code: 'MA', label: 'Massachusetts' },
+    { code: 'MI', label: 'Michigan' },
+    { code: 'MN', label: 'Minnesota' },
+    { code: 'MS', label: 'Mississippi' },
+    { code: 'MO', label: 'Missouri' },
+    { code: 'MT', label: 'Montana' },
+    { code: 'NE', label: 'Nebraska' },
+    { code: 'NV', label: 'Nevada' },
+    { code: 'NH', label: 'New Hampshire' },
+    { code: 'NJ', label: 'New Jersey' },
+    { code: 'NM', label: 'New Mexico' },
+    { code: 'NY', label: 'New York' },
+    { code: 'NC', label: 'North Carolina' },
+    { code: 'ND', label: 'North Dakota' },
+    { code: 'OH', label: 'Ohio' },
+    { code: 'OK', label: 'Oklahoma' },
+    { code: 'OR', label: 'Oregon' },
+    { code: 'PA', label: 'Pennsylvania' },
+    { code: 'RI', label: 'Rhode Island' },
+    { code: 'SC', label: 'South Carolina' },
+    { code: 'SD', label: 'South Dakota' },
+    { code: 'TN', label: 'Tennessee' },
+    { code: 'TX', label: 'Texas' },
+    { code: 'UT', label: 'Utah' },
+    { code: 'VT', label: 'Vermont' },
+    { code: 'VA', label: 'Virginia' },
+    { code: 'WA', label: 'Washington' },
+    { code: 'WV', label: 'West Virginia' },
+    { code: 'WI', label: 'Wisconsin' },
+    { code: 'WY', label: 'Wyoming' }
+  ];
+
   const PAYROLL_STATE_PRESETS = {
     CA: {
       label: 'California',
@@ -1150,6 +1212,69 @@
   };
 
   const PAYROLL_PRESET_APPLY_FIELD_IDS = ['ficaPct', 'futaPct', 'casuiPct'];
+
+  function populatePayrollStateSelector() {
+    const sel = document.getElementById('payrollPresetState');
+    if (!sel) return;
+    const prev = String(sel.value || 'CA').trim() || 'CA';
+    sel.innerHTML = US_STATES.map(function (s) {
+      return '<option value="' + s.code + '">' + s.label + '</option>';
+    }).join('');
+    if (US_STATES.some(function (s) { return s.code === prev; })) {
+      sel.value = prev;
+    } else {
+      sel.value = 'CA';
+    }
+  }
+
+  function getSelectedPayrollStateCode() {
+    const sel = document.getElementById('payrollPresetState');
+    return sel ? String(sel.value || '').trim() : '';
+  }
+
+  function syncPayrollPresetStateUi() {
+    const stateCode = getSelectedPayrollStateCode();
+    const preset = PAYROLL_STATE_PRESETS[stateCode];
+    const applyBtn = document.getElementById('btnApplyPayrollDefaults');
+    const officialLink = document.getElementById('payrollPresetOfficialLink');
+    const meta = document.getElementById('payrollPresetMeta');
+    const notice = document.getElementById('payrollPresetNotice');
+    const unavailable = document.getElementById('payrollPresetUnavailableNotice');
+    const confirmEl = document.getElementById('payrollPresetApplyConfirm');
+
+    if (applyBtn) {
+      applyBtn.disabled = !preset;
+      applyBtn.setAttribute('aria-disabled', preset ? 'false' : 'true');
+    }
+    if (officialLink) {
+      if (preset && preset.officialUrl) {
+        officialLink.href = preset.officialUrl;
+        officialLink.hidden = false;
+        officialLink.removeAttribute('aria-hidden');
+      } else {
+        officialLink.hidden = true;
+        officialLink.setAttribute('aria-hidden', 'true');
+      }
+    }
+    if (meta) {
+      if (preset) {
+        meta.textContent = 'Source year: ' + preset.sourceYear + ' · Last reviewed: ' + preset.lastReviewed + ' · Source: ' + preset.sourceLabel;
+        meta.hidden = false;
+      } else {
+        meta.hidden = true;
+      }
+    }
+    if (notice) {
+      notice.hidden = !preset;
+    }
+    if (unavailable) {
+      unavailable.hidden = !!preset;
+    }
+    if (confirmEl && !preset) {
+      confirmEl.hidden = true;
+      confirmEl.textContent = '';
+    }
+  }
 
   function formatPayrollPresetPct(value) {
     return Number(value).toFixed(2) + '%';
@@ -1170,15 +1295,10 @@
   }
 
   function applyPayrollDefaults() {
-    const stateSel = document.getElementById('payrollPresetState');
-    const stateCode = stateSel ? String(stateSel.value || '').trim() : '';
-    if (stateCode !== 'CA') {
-      setStatus('Phase 1A supports California only.', 'error');
-      return;
-    }
+    const stateCode = getSelectedPayrollStateCode();
     const preset = PAYROLL_STATE_PRESETS[stateCode];
     if (!preset) {
-      setStatus('Select a supported state to apply payroll defaults.', 'error');
+      setStatus('Payroll defaults for this state are not available yet. Enter rates manually and verify with your accountant, payroll provider, or state agency.', 'error');
       return;
     }
 
@@ -1203,6 +1323,11 @@
   }
 
   function bindPayrollPresetControls() {
+    populatePayrollStateSelector();
+    syncPayrollPresetStateUi();
+    document.getElementById('payrollPresetState')?.addEventListener('change', function () {
+      syncPayrollPresetStateUi();
+    });
     document.getElementById('btnApplyPayrollDefaults')?.addEventListener('click', function (event) {
       event.preventDefault();
       applyPayrollDefaults();
