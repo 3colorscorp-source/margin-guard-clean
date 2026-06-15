@@ -266,7 +266,7 @@
                 <div class="field">
                   <label for="payrollPresetState">State</label>
                   <select id="payrollPresetState"></select>
-                  <div class="hint hint--start" id="payrollPresetStateHelper">California defaults are available now. Other states are listed for future preset support; enter rates manually until verified presets are added.</div>
+                  <div class="hint hint--start" id="payrollPresetStateHelper">California and Texas defaults are available now. Other states are listed for future preset support; enter rates manually until verified presets are added.</div>
                 </div>
                 <div class="inline-actions bs-payroll-preset-actions">
                   <button type="button" class="btn primary" id="btnApplyPayrollDefaults">Apply Payroll Defaults</button>
@@ -278,6 +278,7 @@
                     rel="noopener">View California Payroll Tax Rates</a>
                 </div>
                 <p class="sub bs-payroll-preset-meta" id="payrollPresetMeta">Source year: 2026 · Last reviewed: 2026-06-14 · Source: California EDD</p>
+                <p class="sub bs-payroll-preset-notes" id="payrollPresetStateNotes" hidden></p>
                 <p class="sub bs-payroll-preset-unavailable" id="payrollPresetUnavailableNotice" hidden>Payroll defaults for this state are not available yet. You can still enter your payroll rates manually and verify them with your accountant, payroll provider, or state agency.</p>
                 <div class="notice warn bs-payroll-preset-notice" id="payrollPresetNotice" role="note">
                   These payroll tax presets are default reference values only. Actual employer payroll taxes may vary based on your business entity, payroll setup, employer experience rating, wage limits, class codes, local requirements, and official state notices. You are responsible for verifying your actual obligations with your accountant, payroll provider, or state agency.
@@ -1207,7 +1208,18 @@
       sourceYear: 2026,
       lastReviewed: '2026-06-14',
       sourceLabel: 'California EDD',
-      officialUrl: 'https://edd.ca.gov/en/payroll_taxes/rates_and_withholding/'
+      officialUrl: 'https://edd.ca.gov/en/payroll_taxes/rates_and_withholding/',
+      officialLinkLabel: 'View California Payroll Tax Rates'
+    },
+    TX: {
+      label: 'Texas',
+      defaults: { ficaPct: 7.65, futaPct: 0.6, casuiPct: 2.7 },
+      sourceYear: 2026,
+      lastReviewed: '2026-06-15',
+      sourceLabel: 'Texas Workforce Commission (TWC)',
+      officialUrl: 'https://www.twc.texas.gov/programs/unemployment-tax/tax-rates',
+      officialLinkLabel: 'View Texas Payroll Tax Rates',
+      notes: 'Texas 2026 entry-level unemployment tax rate is 2.70%. Employer-specific rates may vary after experience rating. Verify your official TWC tax rate notice.'
     }
   };
 
@@ -1241,6 +1253,7 @@
     const notice = document.getElementById('payrollPresetNotice');
     const unavailable = document.getElementById('payrollPresetUnavailableNotice');
     const confirmEl = document.getElementById('payrollPresetApplyConfirm');
+    const stateNotes = document.getElementById('payrollPresetStateNotes');
 
     if (applyBtn) {
       applyBtn.disabled = !preset;
@@ -1249,6 +1262,7 @@
     if (officialLink) {
       if (preset && preset.officialUrl) {
         officialLink.href = preset.officialUrl;
+        officialLink.textContent = preset.officialLinkLabel || ('View ' + preset.label + ' Payroll Tax Rates');
         officialLink.hidden = false;
         officialLink.removeAttribute('aria-hidden');
       } else {
@@ -1262,6 +1276,15 @@
         meta.hidden = false;
       } else {
         meta.hidden = true;
+      }
+    }
+    if (stateNotes) {
+      if (preset && preset.notes) {
+        stateNotes.textContent = preset.notes;
+        stateNotes.hidden = false;
+      } else {
+        stateNotes.textContent = '';
+        stateNotes.hidden = true;
       }
     }
     if (notice) {
@@ -1315,11 +1338,13 @@
     markBusinessSettingsDirty();
 
     const confirmEl = document.getElementById('payrollPresetApplyConfirm');
+    const stateLabel = preset.label || 'State';
+    const appliedMsg = stateLabel + ' payroll defaults applied to the form. Review and click Save to persist.';
     if (confirmEl) {
-      confirmEl.textContent = 'California payroll defaults applied to the form. Review and click Save to persist.';
+      confirmEl.textContent = appliedMsg;
       confirmEl.hidden = false;
     }
-    setStatus('California payroll defaults applied to the form. Review and click Save to persist.', 'success');
+    setStatus(appliedMsg, 'success');
   }
 
   function bindPayrollPresetControls() {
