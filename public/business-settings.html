@@ -69,6 +69,20 @@
       font-size:12px;
       line-height:1.45;
     }
+    .business-settings-page #payrollPresetOfficialLink[hidden],
+    .business-settings-page #payrollPresetPreview[hidden],
+    .business-settings-page #payrollPresetMeta[hidden],
+    .business-settings-page #payrollPresetStateNotes[hidden],
+    .business-settings-page #payrollPresetNotice[hidden],
+    .business-settings-page #payrollPresetUnavailableNotice[hidden],
+    .business-settings-page #payrollPresetApplyConfirm[hidden]{
+      display:none !important;
+    }
+    .business-settings-page #payrollPresetOfficialLink:not([hidden]){
+      display:inline-flex;
+      align-items:center;
+      text-decoration:none;
+    }
   </style>
 </head>
 <body data-role="owner" data-requires-auth="true" class="business-settings-page">
@@ -279,9 +293,9 @@
                 </div>
                 <p class="sub bs-payroll-preset-meta" id="payrollPresetMeta">Source year: 2026 · Last reviewed: 2026-06-14 · Source: California EDD</p>
                 <p class="sub bs-payroll-preset-notes" id="payrollPresetStateNotes" hidden></p>
-                <p class="sub bs-payroll-preset-unavailable" id="payrollPresetUnavailableNotice" hidden>Payroll defaults for this state are not available yet. You can still enter your payroll rates manually and verify them with your accountant, payroll provider, or state agency.</p>
+                <p class="sub bs-payroll-preset-unavailable" id="payrollPresetUnavailableNotice" hidden>Payroll defaults for this state are not available yet. You can still enter your payroll rates manually. If you are unsure, contact your accountant or payroll provider and ask which employer payroll tax rates apply to your business.</p>
                 <div class="notice warn bs-payroll-preset-notice" id="payrollPresetNotice" role="note">
-                  These payroll tax presets are default reference values only. Actual employer payroll taxes may vary based on your business entity, payroll setup, employer experience rating, wage limits, class codes, local requirements, and official state notices. You are responsible for verifying your actual obligations with your accountant, payroll provider, or state agency.
+                  These payroll tax presets are default reference values only. Actual employer payroll taxes may vary based on your business entity, payroll setup, employer experience rating, wage limits, class codes, local requirements, and official state notices. You are responsible for verifying your actual obligations with your accountant, payroll provider, or state agency. If you are unsure how to read the official rate page, contact your accountant or payroll provider and ask for the employer payroll tax rates that apply to your business before saving.
                 </div>
                 <div class="bs-payroll-preset-preview" id="payrollPresetPreview" hidden>
                   <span class="bs-summary-label">Applied preview</span>
@@ -1244,6 +1258,22 @@
     return sel ? String(sel.value || '').trim() : '';
   }
 
+  function clearPayrollPresetPreview() {
+    const preview = document.getElementById('payrollPresetPreview');
+    const list = document.getElementById('payrollPresetPreviewList');
+    if (list) list.innerHTML = '';
+    if (preview) preview.setAttribute('hidden', '');
+  }
+
+  function setPayrollPresetElementHidden(el, hidden) {
+    if (!el) return;
+    if (hidden) {
+      el.setAttribute('hidden', '');
+    } else {
+      el.removeAttribute('hidden');
+    }
+  }
+
   function syncPayrollPresetStateUi() {
     const stateCode = getSelectedPayrollStateCode();
     const preset = PAYROLL_STATE_PRESETS[stateCode];
@@ -1262,40 +1292,43 @@
     if (officialLink) {
       if (preset && preset.officialUrl) {
         officialLink.href = preset.officialUrl;
-        officialLink.textContent = preset.officialLinkLabel || ('View ' + preset.label + ' Payroll Tax Rates');
-        officialLink.hidden = false;
+        officialLink.textContent = preset.officialLinkLabel || 'View State Payroll Tax Rates';
+        officialLink.removeAttribute('hidden');
         officialLink.removeAttribute('aria-hidden');
       } else {
-        officialLink.hidden = true;
+        officialLink.setAttribute('hidden', '');
         officialLink.setAttribute('aria-hidden', 'true');
       }
     }
     if (meta) {
       if (preset) {
         meta.textContent = 'Source year: ' + preset.sourceYear + ' · Last reviewed: ' + preset.lastReviewed + ' · Source: ' + preset.sourceLabel;
-        meta.hidden = false;
+        setPayrollPresetElementHidden(meta, false);
       } else {
-        meta.hidden = true;
+        setPayrollPresetElementHidden(meta, true);
       }
     }
     if (stateNotes) {
       if (preset && preset.notes) {
         stateNotes.textContent = preset.notes;
-        stateNotes.hidden = false;
+        setPayrollPresetElementHidden(stateNotes, false);
       } else {
         stateNotes.textContent = '';
-        stateNotes.hidden = true;
+        setPayrollPresetElementHidden(stateNotes, true);
       }
     }
     if (notice) {
-      notice.hidden = !preset;
+      setPayrollPresetElementHidden(notice, !preset);
     }
     if (unavailable) {
-      unavailable.hidden = !!preset;
+      setPayrollPresetElementHidden(unavailable, !!preset);
     }
-    if (confirmEl && !preset) {
-      confirmEl.hidden = true;
-      confirmEl.textContent = '';
+    if (!preset) {
+      clearPayrollPresetPreview();
+      if (confirmEl) {
+        confirmEl.textContent = '';
+        setPayrollPresetElementHidden(confirmEl, true);
+      }
     }
   }
 
@@ -1314,14 +1347,14 @@
       '<li><span>State UI / SUI</span><strong>' + formatPayrollPresetPct(d.casuiPct) + '</strong></li>',
       '<li><span>Workers Comp</span><strong>Manual — unchanged</strong></li>'
     ].join('');
-    preview.hidden = false;
+    preview.removeAttribute('hidden');
   }
 
   function applyPayrollDefaults() {
     const stateCode = getSelectedPayrollStateCode();
     const preset = PAYROLL_STATE_PRESETS[stateCode];
     if (!preset) {
-      setStatus('Payroll defaults for this state are not available yet. Enter rates manually and verify with your accountant, payroll provider, or state agency.', 'error');
+      setStatus('Payroll defaults for this state are not available yet. You can still enter your payroll rates manually. If you are unsure, contact your accountant or payroll provider and ask which employer payroll tax rates apply to your business.', 'error');
       return;
     }
 
@@ -1342,7 +1375,7 @@
     const appliedMsg = stateLabel + ' payroll defaults applied to the form. Review and click Save to persist.';
     if (confirmEl) {
       confirmEl.textContent = appliedMsg;
-      confirmEl.hidden = false;
+      confirmEl.removeAttribute('hidden');
     }
     setStatus(appliedMsg, 'success');
   }
