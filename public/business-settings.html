@@ -84,10 +84,11 @@
       text-decoration:none;
     }
     body.business-settings-page[data-requires-auth="true"] .container{
-      max-width:min(1280px,calc(100vw - 48px));
+      max-width:1680px;
       width:100%;
       margin-left:auto;
       margin-right:auto;
+      box-sizing:border-box;
     }
     .business-settings-page .bs-layout-grid{
       width:100%;
@@ -237,6 +238,7 @@
     @media (max-width:900px){
       body.business-settings-page[data-requires-auth="true"] .container{
         max-width:none;
+        width:100%;
       }
       .business-settings-page .bs-fin-columns,
       .business-settings-page .bs-layout-pair{
