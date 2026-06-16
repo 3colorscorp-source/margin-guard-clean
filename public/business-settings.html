@@ -232,8 +232,225 @@
     .business-settings-page .bs-preview-modal__body .bs-summary-used{
       min-width:0;
     }
-    body.business-settings-page.bs-preview-modal-open{
+    body.business-settings-page.bs-preview-modal-open,
+    body.business-settings-page.bs-opex-modal-open{
       overflow:hidden;
+    }
+    .business-settings-page .bs-overhead-actions{
+      flex-wrap:wrap;
+      gap:8px;
+      margin:8px 0 4px;
+    }
+    .business-settings-page #opexApplyConfirm[hidden]{
+      display:none !important;
+    }
+    .business-settings-page .bs-opex-modal[hidden]{
+      display:none !important;
+    }
+    .business-settings-page .bs-opex-modal{
+      position:fixed;
+      inset:0;
+      z-index:1250;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:16px;
+      box-sizing:border-box;
+    }
+    .business-settings-page .bs-opex-modal__overlay{
+      position:absolute;
+      inset:0;
+      background:rgba(2,6,23,.78);
+      backdrop-filter:blur(2px);
+    }
+    .business-settings-page .bs-opex-modal__dialog{
+      position:relative;
+      z-index:1;
+      width:min(1180px,calc(100vw - 32px));
+      max-height:calc(100vh - 32px);
+      display:flex;
+      flex-direction:column;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.12);
+      background:linear-gradient(180deg,rgba(15,23,42,.99),rgba(15,23,42,.95));
+      box-shadow:0 24px 64px rgba(0,0,0,.5);
+      overflow:hidden;
+    }
+    .business-settings-page .bs-opex-modal__header{
+      flex:0 0 auto;
+      padding:16px 18px 12px;
+      border-bottom:1px solid rgba(255,255,255,.08);
+    }
+    .business-settings-page .bs-opex-modal__header .bs-card-title{
+      margin:0 0 4px;
+    }
+    .business-settings-page .bs-opex-modal__subtitle{
+      margin:0 0 10px;
+      font-size:12px;
+      line-height:1.45;
+      color:var(--muted);
+      max-width:72ch;
+    }
+    .business-settings-page .bs-opex-modal__warning{
+      margin:0;
+      padding:10px 12px;
+      border-radius:10px;
+      border:1px solid rgba(251,191,36,.28);
+      background:rgba(251,191,36,.08);
+      font-size:11px;
+      line-height:1.45;
+      color:rgba(254,243,199,.95);
+    }
+    .business-settings-page .bs-opex-modal__body{
+      flex:1 1 auto;
+      min-height:0;
+      overflow:hidden;
+      padding:0 18px;
+    }
+    .business-settings-page .bs-opex-modal__layout{
+      display:grid;
+      grid-template-columns:minmax(0,1fr) minmax(260px,300px);
+      gap:18px;
+      align-items:start;
+      height:100%;
+      max-height:calc(100vh - 200px);
+      padding:14px 0;
+      box-sizing:border-box;
+    }
+    .business-settings-page .bs-opex-modal__categories{
+      min-width:0;
+      max-height:calc(100vh - 200px);
+      overflow-y:auto;
+      padding-right:6px;
+    }
+    .business-settings-page .bs-opex-group{
+      margin-bottom:16px;
+    }
+    .business-settings-page .bs-opex-group-title{
+      margin:0 0 8px;
+      font-size:0.82rem;
+      font-weight:700;
+      color:rgba(232,238,252,.92);
+      letter-spacing:.02em;
+    }
+    .business-settings-page .bs-opex-row{
+      display:grid;
+      grid-template-columns:auto minmax(0,1fr) minmax(108px,128px);
+      gap:8px 10px;
+      align-items:start;
+      padding:8px 10px;
+      margin-bottom:6px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.07);
+      background:rgba(255,255,255,.02);
+    }
+    .business-settings-page .bs-opex-row--custom{
+      grid-template-columns:auto minmax(0,1fr) minmax(0,1fr) minmax(108px,128px);
+    }
+    .business-settings-page .bs-opex-row__check{
+      margin-top:8px;
+    }
+    .business-settings-page .bs-opex-row__label{
+      font-size:12px;
+      font-weight:650;
+      line-height:1.3;
+      color:rgba(248,250,252,.95);
+    }
+    .business-settings-page .bs-opex-row__desc{
+      margin:2px 0 0;
+      font-size:10px;
+      line-height:1.35;
+      color:var(--muted);
+    }
+    .business-settings-page .bs-opex-row__amount{
+      width:100%;
+      padding:7px 9px;
+      font-size:13px;
+      border-radius:8px;
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(0,0,0,.2);
+      color:inherit;
+      box-sizing:border-box;
+    }
+    .business-settings-page .bs-opex-row__amount:disabled{
+      opacity:.45;
+    }
+    .business-settings-page .bs-opex-row__name{
+      width:100%;
+      padding:7px 9px;
+      font-size:12px;
+      border-radius:8px;
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(0,0,0,.2);
+      color:inherit;
+      box-sizing:border-box;
+    }
+    .business-settings-page .bs-opex-row__name:disabled{
+      opacity:.45;
+    }
+    .business-settings-page .bs-opex-modal__summary{
+      position:sticky;
+      top:0;
+      align-self:start;
+      padding:14px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.1);
+      background:rgba(255,255,255,.04);
+    }
+    .business-settings-page .bs-opex-summary-label{
+      display:block;
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      color:var(--muted);
+      margin-bottom:4px;
+    }
+    .business-settings-page .bs-opex-summary-total{
+      margin:0 0 12px;
+      font-size:1.65rem;
+      font-weight:800;
+      line-height:1.1;
+      color:#86efac;
+    }
+    .business-settings-page .bs-opex-summary-stats{
+      display:grid;
+      gap:8px;
+      margin:0 0 12px;
+      font-size:11px;
+    }
+    .business-settings-page .bs-opex-summary-stats div{
+      display:flex;
+      justify-content:space-between;
+      gap:8px;
+    }
+    .business-settings-page .bs-opex-summary-list{
+      list-style:none;
+      margin:8px 0 0;
+      padding:0;
+      max-height:220px;
+      overflow-y:auto;
+      font-size:10px;
+      line-height:1.4;
+    }
+    .business-settings-page .bs-opex-summary-list li{
+      display:flex;
+      justify-content:space-between;
+      gap:8px;
+      padding:4px 0;
+      border-bottom:1px solid rgba(255,255,255,.06);
+    }
+    .business-settings-page .bs-opex-summary-list__empty{
+      color:var(--muted);
+      font-style:italic;
+    }
+    .business-settings-page .bs-opex-modal__footer{
+      flex:0 0 auto;
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      justify-content:flex-end;
+      padding:12px 18px 16px;
+      border-top:1px solid rgba(255,255,255,.08);
     }
     @media (max-width:900px){
       body.business-settings-page[data-requires-auth="true"] .container{
@@ -273,6 +490,36 @@
       .business-settings-page .bs-preview-modal__dialog{
         width:100%;
         max-height:calc(100vh - 24px);
+      }
+      .business-settings-page .bs-opex-modal{
+        padding:12px;
+      }
+      .business-settings-page .bs-opex-modal__dialog{
+        width:100%;
+        max-height:calc(100vh - 24px);
+      }
+      .business-settings-page .bs-opex-modal__layout{
+        grid-template-columns:1fr;
+        max-height:none;
+      }
+      .business-settings-page .bs-opex-modal__categories{
+        max-height:min(52vh,420px);
+        order:2;
+      }
+      .business-settings-page .bs-opex-modal__summary{
+        position:relative;
+        top:auto;
+        order:1;
+      }
+      .business-settings-page .bs-opex-row{
+        grid-template-columns:auto minmax(0,1fr);
+      }
+      .business-settings-page .bs-opex-row--custom{
+        grid-template-columns:auto minmax(0,1fr);
+      }
+      .business-settings-page .bs-opex-row__amount,
+      .business-settings-page .bs-opex-row__name{
+        grid-column:2;
       }
     }
   </style>
@@ -484,6 +731,10 @@
               <div class="field">
                 <label for="overheadMonthly">Monthly overhead ($)</label>
                 <input id="overheadMonthly" type="number" step="0.01" placeholder="0" />
+                <div class="inline-actions bs-overhead-actions">
+                  <button type="button" class="btn primary" id="btnOpenOperatingExpenseCalc">Add Monthly Overhead</button>
+                </div>
+                <p class="sub bs-payroll-preset-confirm" id="opexApplyConfirm" hidden></p>
               </div>
               <div class="field">
                 <label for="stdHours">Std hours / worker / mo</label>
@@ -684,6 +935,42 @@
           </div>
         </div>
 
+      </div>
+
+      <div id="bsOperatingExpenseModal" class="bs-opex-modal" hidden aria-hidden="true">
+        <div class="bs-opex-modal__overlay" id="bsOperatingExpenseOverlay"></div>
+        <div class="bs-opex-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="bsOperatingExpenseTitle">
+          <div class="bs-opex-modal__header">
+            <h2 class="bs-card-title" id="bsOperatingExpenseTitle">Operating Expense Calculator</h2>
+            <p class="bs-opex-modal__subtitle">Choose every fixed monthly business cost your company actually pays. This calculator only prepares your Monthly Overhead number.</p>
+            <p class="bs-opex-modal__warning" role="note">Use only fixed monthly business costs required to keep the business operating. Do not include job labor, project materials, payroll burden, Workers Comp, commissions, profit, or reserves.</p>
+          </div>
+          <div class="bs-opex-modal__body">
+            <div class="bs-opex-modal__layout">
+              <div class="bs-opex-modal__categories" id="opexCategoryList"></div>
+              <aside class="bs-opex-modal__summary" id="opexSummaryPanel" aria-live="polite">
+                <span class="bs-opex-summary-label">Prepared Monthly Cost</span>
+                <p class="bs-opex-summary-total" id="opexPreparedMonthlyCost">$0.00</p>
+                <div class="bs-opex-summary-stats">
+                  <div><span>Selected costs</span><strong id="opexSelectedCount">0</strong></div>
+                  <div><span>Monthly total</span><strong id="opexMonthlyTotal">$0.00</strong></div>
+                  <div><span>Annual total</span><strong id="opexAnnualTotal">$0.00</strong></div>
+                  <div><span>Core costs selected</span><strong id="opexCoreCount">0</strong></div>
+                  <div><span>Optional costs selected</span><strong id="opexOptionalCount">0</strong></div>
+                  <div><span>Custom costs selected</span><strong id="opexCustomCount">0</strong></div>
+                </div>
+                <span class="bs-opex-summary-label">Selected cost list</span>
+                <ul class="bs-opex-summary-list" id="opexSelectedList">
+                  <li class="bs-opex-summary-list__empty">No costs selected yet.</li>
+                </ul>
+              </aside>
+            </div>
+          </div>
+          <div class="bs-opex-modal__footer">
+            <button type="button" class="btn primary" id="btnApplyOperatingExpenseTotal">Apply Total to Monthly Overhead</button>
+            <button type="button" class="btn" id="btnCloseOperatingExpense">Close</button>
+          </div>
+        </div>
       </div>
 
       <div id="bsPublicPreviewModal" class="bs-preview-modal" hidden aria-hidden="true">
@@ -1228,6 +1515,7 @@
     setInputValue('reservePct', settings.reservePct);
     setCounter('bizNameOwnerCount', branding.businessName || settings.bizName || '', 60);
     renderBrandPreview(branding);
+    syncOperatingExpenseButtonLabel();
   }
 
   async function loadBusinessSettings() {
@@ -2147,6 +2435,7 @@
         const branding = currentFormBranding(settings);
         setCounter('bizNameOwnerCount', branding.businessName || '', 60);
         renderBrandPreview(branding);
+        if (id === 'overheadMonthly') syncOperatingExpenseButtonLabel();
       });
       node.addEventListener('change', function () {
         const wrap = getBusinessFieldWrap(id);
@@ -2156,8 +2445,306 @@
         const branding = currentFormBranding(settings);
         setCounter('bizNameOwnerCount', branding.businessName || '', 60);
         renderBrandPreview(branding);
+        if (id === 'overheadMonthly') syncOperatingExpenseButtonLabel();
       });
     });
+  }
+
+  const OPERATING_EXPENSE_GROUPS = [
+    { title: 'Facilities & Workspace', items: [
+      { id: 'office_rent', label: 'Office / Shop Rent', desc: 'Fixed monthly lease or rent for office or shop space.', tier: 'core' },
+      { id: 'storage_warehouse', label: 'Storage / Warehouse', desc: 'Monthly storage unit or warehouse rent.', tier: 'core' },
+      { id: 'coworking_mail', label: 'Coworking / Business Mailing Office', desc: 'Coworking desk or virtual office / mailing address service.', tier: 'optional' },
+      { id: 'office_utilities', label: 'Office Utilities', desc: 'Electric, gas, water, trash for office or shop.', tier: 'core' },
+      { id: 'security_alarm', label: 'Security / Alarm / Cameras', desc: 'Monitoring, alarm, or camera subscriptions.', tier: 'core' },
+      { id: 'cleaning_janitorial', label: 'Cleaning / Janitorial', desc: 'Recurring office or shop cleaning service.', tier: 'core' },
+      { id: 'parking_yard', label: 'Parking / Yard Space', desc: 'Fixed monthly parking, yard, or lot fees.', tier: 'core' }
+    ]},
+    { title: 'Communication & Client Access', items: [
+      { id: 'business_phone', label: 'Business Phone', desc: 'Business line, VoIP, or mobile plan baseline.', tier: 'core' },
+      { id: 'internet', label: 'Internet', desc: 'Office or shop internet service.', tier: 'core' },
+      { id: 'email_domain', label: 'Email / Domain Mailbox', desc: 'Domain, email hosting, or mailbox fees.', tier: 'core' },
+      { id: 'answering_service', label: 'Answering Service', desc: 'Live or virtual answering service.', tier: 'optional' },
+      { id: 'sms_messaging', label: 'SMS / Customer Messaging', desc: 'Business texting or messaging platform.', tier: 'optional' },
+      { id: 'video_meeting', label: 'Video Meeting / Conferencing', desc: 'Zoom, Teams, or similar subscription.', tier: 'optional' }
+    ]},
+    { title: 'Insurance & Risk Protection', items: [
+      { id: 'general_liability', label: 'General Liability Insurance', desc: 'GL policy monthly premium or accrual.', tier: 'core' },
+      { id: 'commercial_auto', label: 'Commercial Auto Insurance', desc: 'Fleet or commercial vehicle insurance.', tier: 'core' },
+      { id: 'umbrella_liability', label: 'Umbrella Liability Policy', desc: 'Excess liability coverage premium.', tier: 'optional' },
+      { id: 'contractor_bond', label: 'Bond / Contractor Bond Monthly Accrual', desc: 'Monthly accrual for required contractor bond.', tier: 'core' },
+      { id: 'tools_equipment_ins', label: 'Tools / Equipment Insurance', desc: 'Inland marine or tools coverage.', tier: 'core' },
+      { id: 'property_insurance', label: 'Office / Shop Property Insurance', desc: 'Building or contents property coverage.', tier: 'core' },
+      { id: 'cyber_insurance', label: 'Cyber / Data Insurance', desc: 'Cyber liability or data breach coverage.', tier: 'optional' }
+    ]},
+    { title: 'Compliance, Licenses & Professional Requirements', items: [
+      { id: 'license_renewal', label: 'Contractor License Renewal Monthly Accrual', desc: 'Set aside monthly for license renewal.', tier: 'core' },
+      { id: 'business_licenses', label: 'City / County Business Licenses', desc: 'Fixed business license fees spread monthly.', tier: 'core' },
+      { id: 'permits_registrations', label: 'Permits / Annual Registrations', desc: 'Fixed business registrations — not project permits.', tier: 'core' },
+      { id: 'registered_agent', label: 'Registered Agent / Corporate Filing', desc: 'Registered agent or annual filing accrual.', tier: 'core' },
+      { id: 'legal_retainer', label: 'Legal Retainer / Contract Review', desc: 'Ongoing legal retainer or subscription.', tier: 'optional' },
+      { id: 'safety_program', label: 'Safety Program Subscription', desc: 'Safety compliance or training platform.', tier: 'core' }
+    ]},
+    { title: 'Vehicles & Fleet Baseline', items: [
+      { id: 'truck_payment', label: 'Truck Payment', desc: 'Monthly truck loan or finance payment.', tier: 'core' },
+      { id: 'trailer_payment', label: 'Trailer Payment', desc: 'Monthly trailer loan or finance payment.', tier: 'core' },
+      { id: 'vehicle_lease', label: 'Vehicle Lease', desc: 'Fixed vehicle lease payment.', tier: 'core' },
+      { id: 'fuel_baseline', label: 'Fuel Baseline / Admin Allowance', desc: 'Fixed admin fuel allowance — not job fuel.', tier: 'core' },
+      { id: 'vehicle_registration', label: 'Vehicle Registration Monthly Accrual', desc: 'Monthly set-aside for registration renewals.', tier: 'core' },
+      { id: 'vehicle_maintenance', label: 'Vehicle Maintenance Monthly Reserve', desc: 'Fixed monthly reserve for fleet upkeep.', tier: 'core' },
+      { id: 'gps_fleet', label: 'GPS / Fleet Tracking', desc: 'Fleet tracking or telematics subscription.', tier: 'core' }
+    ]},
+    { title: 'Equipment, Tools & Financing', items: [
+      { id: 'equipment_financing', label: 'Equipment Financing', desc: 'Monthly equipment loan or lease payment.', tier: 'core' },
+      { id: 'tool_replacement', label: 'Tool Replacement Monthly Reserve', desc: 'Fixed monthly tool replacement reserve.', tier: 'core' },
+      { id: 'equipment_rental_sub', label: 'Equipment Rental Subscription', desc: 'Standing equipment rental — fixed monthly only.', tier: 'optional' },
+      { id: 'small_tools_allowance', label: 'Small Tools / Consumables Monthly Allowance', desc: 'Fixed overhead consumables — not job materials.', tier: 'optional' }
+    ]},
+    { title: 'Admin, Accounting & Office Operations', items: [
+      { id: 'accounting_bookkeeping', label: 'Accounting / Bookkeeping', desc: 'Bookkeeper, CPA retainer, or accounting service.', tier: 'core' },
+      { id: 'office_supplies', label: 'Office Supplies', desc: 'Baseline office supplies budget.', tier: 'core' },
+      { id: 'postage_printing', label: 'Postage / Printing', desc: 'Mail, postage meter, or print services.', tier: 'core' },
+      { id: 'admin_payroll', label: 'Admin Payroll', desc: 'Fixed admin staff wages — not field labor.', tier: 'core' },
+      { id: 'payroll_service', label: 'Payroll Service Subscription', desc: 'Payroll provider monthly fee.', tier: 'core' }
+    ]},
+    { title: 'Software & Operating Systems', items: [
+      { id: 'estimating_software', label: 'Estimating Software', desc: 'Estimating or takeoff software subscription.', tier: 'core' },
+      { id: 'crm_client', label: 'CRM / Client Management', desc: 'CRM or client management platform.', tier: 'core' },
+      { id: 'cloud_storage', label: 'Cloud Storage', desc: 'Business cloud storage subscription.', tier: 'core' },
+      { id: 'website_hosting', label: 'Website / Hosting', desc: 'Website hosting and domain baseline.', tier: 'core' },
+      { id: 'business_email_platform', label: 'Business Email Platform', desc: 'Microsoft 365, Google Workspace, etc.', tier: 'core' },
+      { id: 'ai_automation', label: 'AI / Automation Tools', desc: 'Business automation or AI subscriptions.', tier: 'optional' }
+    ]},
+    { title: 'Marketing, Sales Presence & Reputation', items: [
+      { id: 'advertising_baseline', label: 'Advertising / Marketing Baseline', desc: 'Fixed monthly ad or marketing spend.', tier: 'optional' },
+      { id: 'website_maintenance', label: 'Website Maintenance', desc: 'Ongoing website care or agency retainer.', tier: 'optional' },
+      { id: 'local_seo', label: 'Local SEO / Listings', desc: 'SEO tools or listing management services.', tier: 'optional' },
+      { id: 'review_management', label: 'Review Management', desc: 'Review monitoring or reputation platform.', tier: 'optional' },
+      { id: 'yard_signs_accrual', label: 'Yard Signs / Branding Monthly Accrual', desc: 'Monthly accrual for signs and branding.', tier: 'optional' },
+      { id: 'photography_content', label: 'Photography / Content Monthly Baseline', desc: 'Content or photo subscription baseline.', tier: 'optional' }
+    ]},
+    { title: 'Owner & Management Overhead', items: [
+      { id: 'owner_management', label: 'Owner Management Overhead', desc: 'Owner salary or management overhead allocation.', tier: 'core' },
+      { id: 'business_training', label: 'Business Training / Education Subscription', desc: 'Courses, coaching, or trade education.', tier: 'optional' },
+      { id: 'trade_association', label: 'Trade Association Membership', desc: 'Chamber, association, or trade group dues.', tier: 'optional' }
+    ]},
+    { title: 'Other Fixed Monthly Costs', items: [
+      { id: 'other_fixed', label: 'Other Fixed Monthly Cost', desc: 'Any other fixed monthly operating cost.', tier: 'custom' },
+      { id: 'custom_fixed', label: 'Custom fixed monthly cost', desc: 'Name and amount for another fixed monthly cost.', tier: 'custom', customName: true }
+    ]}
+  ];
+
+  let operatingExpenseCategoriesRendered = false;
+
+  function formatOpexMoney(amount) {
+    const n = Number(amount || 0);
+    return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function parseOpexAmount(value) {
+    const s = String(value == null ? '' : value).trim();
+    if (s === '') return 0;
+    const n = Number(s);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return n;
+  }
+
+  function getOverheadMonthlyNumeric() {
+    const el = document.getElementById('overheadMonthly');
+    return parseOpexAmount(el?.value);
+  }
+
+  function syncOperatingExpenseButtonLabel() {
+    const btn = document.getElementById('btnOpenOperatingExpenseCalc');
+    if (!btn) return;
+    const value = getOverheadMonthlyNumeric();
+    const raw = String(document.getElementById('overheadMonthly')?.value ?? '').trim();
+    if (raw === '' || value === 0) {
+      btn.textContent = 'Add Monthly Overhead';
+    } else {
+      btn.textContent = 'Review / Edit Operating Expenses';
+    }
+  }
+
+  function renderOperatingExpenseCategories() {
+    const host = document.getElementById('opexCategoryList');
+    if (!host || operatingExpenseCategoriesRendered) return;
+    const parts = [];
+    OPERATING_EXPENSE_GROUPS.forEach(function (group) {
+      parts.push('<section class="bs-opex-group"><h3 class="bs-opex-group-title">' + group.title + '</h3>');
+      group.items.forEach(function (item) {
+        const isCustomName = !!item.customName;
+        const rowClass = isCustomName ? 'bs-opex-row bs-opex-row--custom' : 'bs-opex-row';
+        parts.push('<div class="' + rowClass + '" data-opex-id="' + item.id + '">');
+        parts.push('<input type="checkbox" class="bs-opex-row__check" id="opex-check-' + item.id + '" data-opex-check="' + item.id + '" aria-label="Include ' + item.label + '" />');
+        parts.push('<div><div class="bs-opex-row__label">' + item.label + '</div><p class="bs-opex-row__desc">' + item.desc + '</p></div>');
+        if (isCustomName) {
+          parts.push('<input type="text" class="bs-opex-row__name" id="opex-name-' + item.id + '" data-opex-name="' + item.id + '" maxlength="80" placeholder="Custom cost name" disabled />');
+        }
+        parts.push('<input type="number" class="bs-opex-row__amount" id="opex-amount-' + item.id + '" data-opex-amount="' + item.id + '" step="0.01" min="0" placeholder="0.00" disabled />');
+        parts.push('</div>');
+      });
+      parts.push('</section>');
+    });
+    host.innerHTML = parts.join('');
+    operatingExpenseCategoriesRendered = true;
+  }
+
+  function setOperatingExpenseRowEnabled(itemId, enabled) {
+    const amountEl = document.getElementById('opex-amount-' + itemId);
+    const nameEl = document.getElementById('opex-name-' + itemId);
+    if (amountEl) amountEl.disabled = !enabled;
+    if (nameEl) nameEl.disabled = !enabled;
+  }
+
+  function getOperatingExpenseSelections() {
+    const selections = [];
+    OPERATING_EXPENSE_GROUPS.forEach(function (group) {
+      group.items.forEach(function (item) {
+        const check = document.getElementById('opex-check-' + item.id);
+        if (!check || !check.checked) return;
+        const amount = parseOpexAmount(document.getElementById('opex-amount-' + item.id)?.value);
+        let label = item.label;
+        if (item.customName) {
+          const customName = safeTrim(document.getElementById('opex-name-' + item.id)?.value || '');
+          label = customName || 'Custom fixed monthly cost';
+        }
+        selections.push({ id: item.id, label: label, amount: amount, tier: item.tier });
+      });
+    });
+    return selections;
+  }
+
+  function calculateOperatingExpenseTotal() {
+    return getOperatingExpenseSelections().reduce(function (sum, row) {
+      return sum + row.amount;
+    }, 0);
+  }
+
+  function renderOperatingExpenseSummary() {
+    const selections = getOperatingExpenseSelections();
+    const monthlyTotal = calculateOperatingExpenseTotal();
+    const annualTotal = monthlyTotal * 12;
+    let coreCount = 0;
+    let optionalCount = 0;
+    let customCount = 0;
+    selections.forEach(function (row) {
+      if (row.tier === 'optional') optionalCount += 1;
+      else if (row.tier === 'custom') customCount += 1;
+      else coreCount += 1;
+    });
+    setText('opexPreparedMonthlyCost', formatOpexMoney(monthlyTotal));
+    setText('opexSelectedCount', String(selections.length));
+    setText('opexMonthlyTotal', formatOpexMoney(monthlyTotal));
+    setText('opexAnnualTotal', formatOpexMoney(annualTotal));
+    setText('opexCoreCount', String(coreCount));
+    setText('opexOptionalCount', String(optionalCount));
+    setText('opexCustomCount', String(customCount));
+    const listEl = document.getElementById('opexSelectedList');
+    if (!listEl) return;
+    if (!selections.length) {
+      listEl.innerHTML = '<li class="bs-opex-summary-list__empty">No costs selected yet.</li>';
+      return;
+    }
+    listEl.innerHTML = selections.map(function (row) {
+      return '<li><span>' + row.label + '</span><strong>' + formatOpexMoney(row.amount) + '</strong></li>';
+    }).join('');
+  }
+
+  function applyOperatingExpenseTotal() {
+    const total = Math.round(calculateOperatingExpenseTotal() * 100) / 100;
+    setInputValue('overheadMonthly', total);
+    markBusinessSettingsDirty();
+    const overheadInput = document.getElementById('overheadMonthly');
+    if (overheadInput) {
+      overheadInput.dispatchEvent(new Event('input', { bubbles: true }));
+      const wrap = getBusinessFieldWrap('overheadMonthly');
+      if (wrap) wrap.classList.remove('field--error');
+    }
+    const confirmMsg = 'Applied to Monthly Overhead. Review the value and click Save Business Settings to save.';
+    const confirmEl = document.getElementById('opexApplyConfirm');
+    if (confirmEl) {
+      confirmEl.textContent = confirmMsg;
+      confirmEl.removeAttribute('hidden');
+    }
+    setStatus('Operating expense total applied to Monthly overhead. Review and click Save Business Settings to save.', 'success');
+    syncOperatingExpenseButtonLabel();
+    closeOperatingExpenseModal();
+  }
+
+  function openOperatingExpenseModal() {
+    const modal = document.getElementById('bsOperatingExpenseModal');
+    const openBtn = document.getElementById('btnOpenOperatingExpenseCalc');
+    if (!modal) return;
+    renderOperatingExpenseCategories();
+    renderOperatingExpenseSummary();
+    modal.removeAttribute('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('bs-opex-modal-open');
+    document.getElementById('btnCloseOperatingExpense')?.focus();
+  }
+
+  function closeOperatingExpenseModal() {
+    const modal = document.getElementById('bsOperatingExpenseModal');
+    const openBtn = document.getElementById('btnOpenOperatingExpenseCalc');
+    if (!modal) return;
+    modal.setAttribute('hidden', '');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('bs-opex-modal-open');
+    openBtn?.focus();
+  }
+
+  function bindOperatingExpenseCalculator() {
+    renderOperatingExpenseCategories();
+    const list = document.getElementById('opexCategoryList');
+    if (list) {
+      list.addEventListener('change', function (event) {
+        const target = event.target;
+        if (!target || !target.getAttribute) return;
+        const checkId = target.getAttribute('data-opex-check');
+        if (checkId) {
+          setOperatingExpenseRowEnabled(checkId, !!target.checked);
+          renderOperatingExpenseSummary();
+          return;
+        }
+        if (target.getAttribute('data-opex-amount') || target.getAttribute('data-opex-name')) {
+          renderOperatingExpenseSummary();
+        }
+      });
+      list.addEventListener('input', function (event) {
+        const target = event.target;
+        if (!target || !target.getAttribute) return;
+        if (target.getAttribute('data-opex-amount') || target.getAttribute('data-opex-name')) {
+          renderOperatingExpenseSummary();
+        }
+      });
+    }
+    document.getElementById('btnOpenOperatingExpenseCalc')?.addEventListener('click', function (event) {
+      event.preventDefault();
+      openOperatingExpenseModal();
+    });
+    document.getElementById('btnApplyOperatingExpenseTotal')?.addEventListener('click', function (event) {
+      event.preventDefault();
+      applyOperatingExpenseTotal();
+    });
+    document.getElementById('btnCloseOperatingExpense')?.addEventListener('click', function (event) {
+      event.preventDefault();
+      closeOperatingExpenseModal();
+    });
+    document.getElementById('bsOperatingExpenseOverlay')?.addEventListener('click', function () {
+      closeOperatingExpenseModal();
+    });
+    const modal = document.getElementById('bsOperatingExpenseModal');
+    modal?.querySelector('.bs-opex-modal__dialog')?.addEventListener('click', function (event) {
+      event.stopPropagation();
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key !== 'Escape') return;
+      const opexModal = document.getElementById('bsOperatingExpenseModal');
+      if (!opexModal || opexModal.hasAttribute('hidden')) return;
+      closeOperatingExpenseModal();
+    });
+    syncOperatingExpenseButtonLabel();
   }
 
   function bindPublicPreviewModal() {
@@ -2397,6 +2984,7 @@
   populatePrimaryTradeSelector();
   bindPayrollPresetControls();
   bindLivePreview();
+  bindOperatingExpenseCalculator();
   bindPublicPreviewModal();
   loadBusinessSettings();
 
