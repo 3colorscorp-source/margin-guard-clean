@@ -94,36 +94,22 @@
       max-width:none;
     }
     .business-settings-page .bs-layout-full,
-    .business-settings-page .bs-layout-pair,
-    .business-settings-page .bs-identity-row{
+    .business-settings-page .bs-layout-pair{
       width:100%;
     }
-    .business-settings-page .bs-identity-row{
-      display:grid;
-      grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-      gap:clamp(16px,2vw,24px);
-      align-items:stretch;
-    }
-    .business-settings-page .bs-identity-row > .card,
-    .business-settings-page .bs-identity-row > .bs-order-summary{
-      min-width:0;
-      width:100%;
-    }
-    .business-settings-page .bs-identity-row > .bs-order-summary .card-inner{
-      height:100%;
+    .business-settings-page .bs-card-head-row{
       display:flex;
-      flex-direction:column;
-    }
-    .business-settings-page .bs-identity-row .bs-summary-row{
-      display:grid;
-      grid-template-columns:repeat(3,minmax(0,1fr));
+      align-items:flex-start;
+      justify-content:space-between;
       gap:12px 16px;
-      width:100%;
-      flex:1;
+      flex-wrap:wrap;
+      margin-bottom:12px;
     }
-    .business-settings-page .bs-identity-row .bs-summary-preview,
-    .business-settings-page .bs-identity-row .bs-summary-used{
-      min-width:0;
+    .business-settings-page .bs-card-head-row .bs-card-title{
+      margin-bottom:4px;
+    }
+    .business-settings-page .bs-card-head-row .bs-card-sub{
+      margin:0;
     }
     .business-settings-page .bs-layout-pair{
       display:grid;
@@ -153,6 +139,11 @@
       padding-top:0;
       margin-top:0;
     }
+    .business-settings-page .bs-labor-incentives-block{
+      margin-top:2px;
+      padding-top:14px;
+      border-top:1px solid rgba(255,255,255,.07);
+    }
     .business-settings-page .bs-payroll-preset-sub,
     .business-settings-page .bs-fin-block-sub{
       max-width:none;
@@ -162,23 +153,79 @@
     .business-settings-page .bs-payments-col{
       width:100%;
     }
-    .business-settings-page .bs-order-summary{
-      margin-top:0;
-    }
     .business-settings-page .bs-order-bank{
       margin-top:0;
+    }
+    .business-settings-page .bs-preview-modal[hidden]{
+      display:none !important;
+    }
+    .business-settings-page .bs-preview-modal{
+      position:fixed;
+      inset:0;
+      z-index:1200;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:16px;
+      box-sizing:border-box;
+    }
+    .business-settings-page .bs-preview-modal__overlay{
+      position:absolute;
+      inset:0;
+      background:rgba(2,6,23,.72);
+      backdrop-filter:blur(2px);
+    }
+    .business-settings-page .bs-preview-modal__dialog{
+      position:relative;
+      z-index:1;
+      width:min(720px,calc(100vw - 32px));
+      max-height:calc(100vh - 32px);
+      overflow:auto;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.12);
+      background:linear-gradient(180deg,rgba(15,23,42,.98),rgba(15,23,42,.94));
+      box-shadow:0 24px 64px rgba(0,0,0,.45);
+    }
+    .business-settings-page .bs-preview-modal__header{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      padding:16px 18px 0;
+    }
+    .business-settings-page .bs-preview-modal__header .bs-card-title{
+      margin:0;
+    }
+    .business-settings-page .bs-preview-modal__body .bs-summary-row{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:12px 16px;
+      width:100%;
+    }
+    .business-settings-page .bs-preview-modal__body .bs-summary-preview,
+    .business-settings-page .bs-preview-modal__body .bs-summary-used{
+      min-width:0;
+    }
+    body.business-settings-page.bs-preview-modal-open{
+      overflow:hidden;
     }
     @media (max-width:900px){
       body.business-settings-page[data-requires-auth="true"] .container{
         max-width:none;
       }
-      .business-settings-page .bs-identity-row,
       .business-settings-page .bs-fin-columns,
       .business-settings-page .bs-layout-pair{
         grid-template-columns:1fr;
       }
-      .business-settings-page .bs-identity-row .bs-summary-row{
+      .business-settings-page .bs-preview-modal__body .bs-summary-row{
         grid-template-columns:1fr;
+      }
+      .business-settings-page .bs-preview-modal{
+        padding:12px;
+      }
+      .business-settings-page .bs-preview-modal__dialog{
+        width:100%;
+        max-height:calc(100vh - 24px);
       }
     }
   </style>
@@ -255,11 +302,15 @@
 
       <div class="bs-layout-grid">
 
-        <div class="bs-identity-row">
-        <div class="card bs-dash-card bs-order-company">
+        <div class="card bs-dash-card bs-order-company bs-layout-full">
           <div class="card-inner bs-card-inner-tight">
-            <h2 class="bs-card-title">Company Identity</h2>
-            <p class="sub bs-card-sub">Logo, contact, and public-facing business lines for Sales, PDF, and client views.</p>
+            <div class="bs-card-head-row">
+              <div>
+                <h2 class="bs-card-title">Company Identity</h2>
+                <p class="sub bs-card-sub">Logo, contact, and public-facing business lines for Sales, PDF, and client views.</p>
+              </div>
+              <button type="button" class="btn" id="btnOpenPublicPreview">Preview Public Identity</button>
+            </div>
             <div class="form bs-form-dense">
               <div class="field">
                 <label for="bizNameOwner">Business name</label>
@@ -316,36 +367,6 @@
               </div>
             </div>
           </div>
-        </div>
-
-        <footer class="card bs-summary-bar bs-order-summary">
-          <div class="card-inner bs-card-inner-tight">
-            <h2 class="bs-card-title">Preview / Public Identity</h2>
-            <p class="sub bs-card-sub">How clients see your business on Sales, public quotes, PDFs, and invoices.</p>
-            <div class="bs-summary-row">
-              <div class="bs-summary-preview">
-                <span class="bs-summary-label">Business</span>
-                <strong id="previewBusinessName" class="bs-summary-name">—</strong>
-                <span id="previewBusinessMeta" class="sub bs-summary-meta">Sin email ni telefono.</span>
-                <span class="bs-chip" id="previewPrimaryTradeChip" hidden></span>
-              </div>
-              <div class="bs-summary-preview">
-                <span class="bs-summary-label">Accent</span>
-                <strong id="previewAccentHex" class="bs-summary-accent">#0f8a5f</strong>
-                <span id="previewSignatureLine" class="sub bs-summary-meta">Professional Estimate Delivery</span>
-              </div>
-              <div class="bs-summary-used">
-                <span class="bs-summary-label">Used by</span>
-                <span class="bs-chip">Sales</span>
-                <span class="bs-chip">Supervisor</span>
-                <span class="bs-chip">Project Control</span>
-                <span class="bs-chip">Public quote / PDF</span>
-                <span class="bs-chip">Public invoice</span>
-              </div>
-            </div>
-            <p class="sub bs-summary-save">Saves to tenant snapshot, branding, and owner settings per tenant.</p>
-          </div>
-        </footer>
         </div>
 
         <div class="card bs-dash-card bs-order-financial bs-layout-full">
@@ -454,8 +475,8 @@
         <div class="bs-layout-pair">
         <div class="card bs-dash-card bs-order-labor">
           <div class="card-inner bs-card-inner-tight">
-            <h2 class="bs-card-title">Labor &amp; Crew Rules</h2>
-            <p class="sub bs-card-sub">Base rates, quote mode, and scheduling capacity.</p>
+            <h2 class="bs-card-title">Labor, Crew &amp; Incentives</h2>
+            <p class="sub bs-card-sub">Base rates, quote mode, scheduling capacity, and labor-based incentives.</p>
             <div class="form bs-form-dense">
               <div class="field">
                 <label for="baseInstaller">Pro base cost ($/h)</label>
@@ -502,29 +523,25 @@
                   <option value="true">Yes — owner override (advanced)</option>
                 </select>
               </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card bs-dash-card bs-order-commissions">
-          <div class="card-inner bs-card-inner-tight">
-            <h2 class="bs-card-title">Commissions &amp; Bonuses</h2>
-            <p class="sub bs-card-sub">Both are calculated from labor cost only, not contract total.</p>
-            <div class="form bs-form-dense">
-              <div class="field">
-                <label for="salesCommissionPct">Seller commission (%)</label>
-                <input id="salesCommissionPct" type="number" step="0.01" placeholder="10" />
-              </div>
-              <div class="field">
-                <label for="supervisorBonusPct">Supervisor bonus (%)</label>
-                <input id="supervisorBonusPct" type="number" step="0.01" placeholder="1" />
+              <div class="bs-labor-incentives-block field--full">
+                <h3 class="bs-subsection-title">Commissions &amp; Bonuses</h3>
+                <p class="sub bs-fin-block-sub">Both are calculated from labor cost only, not contract total.</p>
+                <div class="form bs-form-dense bs-fin-block-fields">
+                  <div class="field">
+                    <label for="salesCommissionPct">Seller commission (%)</label>
+                    <input id="salesCommissionPct" type="number" step="0.01" placeholder="10" />
+                  </div>
+                  <div class="field">
+                    <label for="supervisorBonusPct">Supervisor bonus (%)</label>
+                    <input id="supervisorBonusPct" type="number" step="0.01" placeholder="1" />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
-        </div>
 
-        <div class="card bs-dash-card bs-order-payments bs-layout-full">
+        <div class="card bs-dash-card bs-order-payments">
           <div class="card-inner bs-card-inner-tight">
             <div class="section-head bs-payments-head">
               <div>
@@ -584,6 +601,7 @@
             </div>
           </div>
         </div>
+        </div>
 
         <div class="card bs-dash-card bs-order-bank bs-layout-full bs-layout-optional">
           <div class="card-inner bs-card-inner-tight">
@@ -619,6 +637,41 @@
           </div>
         </div>
 
+      </div>
+
+      <div id="bsPublicPreviewModal" class="bs-preview-modal" hidden aria-hidden="true">
+        <div class="bs-preview-modal__overlay" id="bsPublicPreviewOverlay"></div>
+        <div class="bs-preview-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="bsPublicPreviewTitle">
+          <div class="bs-preview-modal__header">
+            <h2 class="bs-card-title" id="bsPublicPreviewTitle">Preview / Public Identity</h2>
+            <button type="button" class="btn" id="btnClosePublicPreview">Close</button>
+          </div>
+          <div class="card-inner bs-card-inner-tight bs-preview-modal__body">
+            <p class="sub bs-card-sub">How clients see your business on Sales, public quotes, PDFs, and invoices.</p>
+            <div class="bs-summary-row">
+              <div class="bs-summary-preview">
+                <span class="bs-summary-label">Business</span>
+                <strong id="previewBusinessName" class="bs-summary-name">—</strong>
+                <span id="previewBusinessMeta" class="sub bs-summary-meta">Sin email ni telefono.</span>
+                <span class="bs-chip" id="previewPrimaryTradeChip" hidden></span>
+              </div>
+              <div class="bs-summary-preview">
+                <span class="bs-summary-label">Accent</span>
+                <strong id="previewAccentHex" class="bs-summary-accent">#0f8a5f</strong>
+                <span id="previewSignatureLine" class="sub bs-summary-meta">Professional Estimate Delivery</span>
+              </div>
+              <div class="bs-summary-used">
+                <span class="bs-summary-label">Used by</span>
+                <span class="bs-chip">Sales</span>
+                <span class="bs-chip">Supervisor</span>
+                <span class="bs-chip">Project Control</span>
+                <span class="bs-chip">Public quote / PDF</span>
+                <span class="bs-chip">Public invoice</span>
+              </div>
+            </div>
+            <p class="sub bs-summary-save">Saves to tenant snapshot, branding, and owner settings per tenant.</p>
+          </div>
+        </div>
       </div>
 
       <div class="inline-actions bs-save-actions">
@@ -2060,6 +2113,48 @@
     });
   }
 
+  function bindPublicPreviewModal() {
+    const modal = document.getElementById('bsPublicPreviewModal');
+    const openBtn = document.getElementById('btnOpenPublicPreview');
+    const closeBtn = document.getElementById('btnClosePublicPreview');
+    const overlay = document.getElementById('bsPublicPreviewOverlay');
+    if (!modal || !openBtn) return;
+
+    function openPublicPreviewModal() {
+      modal.removeAttribute('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('bs-preview-modal-open');
+      if (closeBtn) closeBtn.focus();
+    }
+
+    function closePublicPreviewModal() {
+      modal.setAttribute('hidden', '');
+      modal.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('bs-preview-modal-open');
+      openBtn.focus();
+    }
+
+    openBtn.addEventListener('click', function (event) {
+      event.preventDefault();
+      openPublicPreviewModal();
+    });
+    closeBtn?.addEventListener('click', function (event) {
+      event.preventDefault();
+      closePublicPreviewModal();
+    });
+    overlay?.addEventListener('click', function () {
+      closePublicPreviewModal();
+    });
+    modal.querySelector('.bs-preview-modal__dialog')?.addEventListener('click', function (event) {
+      event.stopPropagation();
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key !== 'Escape') return;
+      if (modal.hasAttribute('hidden')) return;
+      closePublicPreviewModal();
+    });
+  }
+
   document.getElementById('btnSaveBusinessSettings')?.addEventListener('click', function (event) {
     event.preventDefault();
     saveBusinessSettings();
@@ -2255,6 +2350,7 @@
   populatePrimaryTradeSelector();
   bindPayrollPresetControls();
   bindLivePreview();
+  bindPublicPreviewModal();
   loadBusinessSettings();
 
   const _params = new URLSearchParams(window.location.search);
