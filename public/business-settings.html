@@ -83,6 +83,46 @@
       align-items:center;
       text-decoration:none;
     }
+    .business-settings-page .bs-identity-row{
+      display:grid;
+      grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);
+      gap:clamp(16px,2vw,24px);
+      align-items:start;
+    }
+    .business-settings-page .bs-layout-pair{
+      align-items:start;
+    }
+    .business-settings-page .bs-layout-pair > .card{
+      height:auto;
+    }
+    .business-settings-page .bs-fin-columns{
+      display:grid;
+      grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+      gap:clamp(14px,2vw,20px);
+      align-items:start;
+      grid-column:1 / -1;
+      width:100%;
+    }
+    .business-settings-page .bs-fin-column{
+      min-width:0;
+    }
+    .business-settings-page .bs-fin-column--overhead > .bs-fin-block:first-child{
+      border-top:none;
+      padding-top:0;
+      margin-top:0;
+    }
+    .business-settings-page .bs-order-summary{
+      margin-top:0;
+    }
+    .business-settings-page .bs-order-bank{
+      margin-top:0;
+    }
+    @media (max-width:900px){
+      .business-settings-page .bs-identity-row,
+      .business-settings-page .bs-fin-columns{
+        grid-template-columns:1fr;
+      }
+    }
   </style>
 </head>
 <body data-role="owner" data-requires-auth="true" class="business-settings-page">
@@ -157,7 +197,8 @@
 
       <div class="bs-layout-grid">
 
-        <div class="card bs-dash-card bs-order-company bs-layout-full">
+        <div class="bs-identity-row">
+        <div class="card bs-dash-card bs-order-company">
           <div class="card-inner bs-card-inner-tight">
             <h2 class="bs-card-title">Company Identity</h2>
             <p class="sub bs-card-sub">Logo, contact, and public-facing business lines for Sales, PDF, and client views.</p>
@@ -219,6 +260,139 @@
           </div>
         </div>
 
+        <footer class="card bs-summary-bar bs-order-summary">
+          <div class="card-inner bs-card-inner-tight">
+            <h2 class="bs-card-title">Preview / Public Identity</h2>
+            <p class="sub bs-card-sub">How clients see your business on Sales, public quotes, PDFs, and invoices.</p>
+            <div class="bs-summary-row">
+              <div class="bs-summary-preview">
+                <span class="bs-summary-label">Business</span>
+                <strong id="previewBusinessName" class="bs-summary-name">—</strong>
+                <span id="previewBusinessMeta" class="sub bs-summary-meta">Sin email ni telefono.</span>
+                <span class="bs-chip" id="previewPrimaryTradeChip" hidden></span>
+              </div>
+              <div class="bs-summary-preview">
+                <span class="bs-summary-label">Accent</span>
+                <strong id="previewAccentHex" class="bs-summary-accent">#0f8a5f</strong>
+                <span id="previewSignatureLine" class="sub bs-summary-meta">Professional Estimate Delivery</span>
+              </div>
+              <div class="bs-summary-used">
+                <span class="bs-summary-label">Used by</span>
+                <span class="bs-chip">Sales</span>
+                <span class="bs-chip">Supervisor</span>
+                <span class="bs-chip">Project Control</span>
+                <span class="bs-chip">Public quote / PDF</span>
+                <span class="bs-chip">Public invoice</span>
+              </div>
+            </div>
+            <p class="sub bs-summary-save">Saves to tenant snapshot, branding, and owner settings per tenant.</p>
+          </div>
+        </footer>
+        </div>
+
+        <div class="card bs-dash-card bs-order-financial bs-layout-full">
+          <div class="card-inner bs-card-inner-tight">
+            <h2 class="bs-card-title">Financial Protection</h2>
+            <p class="sub bs-card-sub">Payroll burden, overhead allocation, and margin protection for pricing.</p>
+            <div class="form bs-form-dense">
+              <div class="bs-fin-columns field--full">
+                <div class="bs-fin-column bs-fin-column--payroll">
+              <div class="field field--full bs-payroll-preset" id="bsPayrollPresetSection">
+                <h3 class="bs-subsection-title">State Payroll Defaults</h3>
+                <p class="sub bs-payroll-preset-sub">Reference employer payroll tax defaults by state. Apply fills the form only — save to persist.</p>
+                <div class="field">
+                  <label for="payrollPresetState">State</label>
+                  <select id="payrollPresetState"></select>
+                  <div class="hint hint--start" id="payrollPresetStateHelper">Verified defaults are available for California, Texas, Florida, Georgia, North Carolina, Arizona, Alabama, Arkansas, Idaho, Mississippi, Missouri, Oklahoma, Maine, Alaska, Connecticut, Hawaii, Nevada, New Jersey, New York, and Rhode Island. Other states are listed for future preset support; enter rates manually until verified presets are added.</div>
+                </div>
+                <div class="inline-actions bs-payroll-preset-actions">
+                  <button type="button" class="btn primary" id="btnApplyPayrollDefaults">Apply Payroll Defaults</button>
+                  <a
+                    class="btn"
+                    id="payrollPresetOfficialLink"
+                    href="https://edd.ca.gov/en/payroll_taxes/rates_and_withholding/"
+                    target="_blank"
+                    rel="noopener">View California Payroll Tax Rates</a>
+                </div>
+                <p class="sub bs-payroll-preset-meta" id="payrollPresetMeta">Source year: 2026 · Last reviewed: 2026-06-14 · Source: California EDD</p>
+                <p class="sub bs-payroll-preset-notes" id="payrollPresetStateNotes" hidden></p>
+                <p class="sub bs-payroll-preset-unavailable" id="payrollPresetUnavailableNotice" hidden>No verified payroll default is available yet. Enter your rates manually or ask your accountant or payroll provider which employer payroll tax rates apply to your business.</p>
+                <div class="notice warn bs-payroll-preset-notice" id="payrollPresetNotice" role="note">
+                  These payroll tax presets are default reference values only. Actual employer payroll taxes may vary based on your business entity, payroll setup, employer experience rating, wage limits, class codes, local requirements, and official state notices. You are responsible for verifying your actual obligations with your accountant, payroll provider, or state agency. If you are unsure how to read the official rate page, contact your accountant or payroll provider and ask for the employer payroll tax rates that apply to your business before saving.
+                </div>
+                <div class="bs-payroll-preset-preview" id="payrollPresetPreview" hidden>
+                  <span class="bs-summary-label">Applied preview</span>
+                  <ul class="bs-payroll-preset-preview-list" id="payrollPresetPreviewList"></ul>
+                </div>
+                <p class="sub bs-payroll-preset-confirm" id="payrollPresetApplyConfirm" hidden></p>
+              </div>
+              <div class="bs-fin-block field--full">
+                <h3 class="bs-subsection-title">Payroll Burden</h3>
+                <p class="sub bs-fin-block-sub">Employer payroll taxes applied over W-2 labor. Workers Comp is always manual.</p>
+                <div class="form bs-form-dense bs-fin-block-fields">
+              <div class="field">
+                <label for="wcPct">Workers Comp (%)</label>
+                <input id="wcPct" type="number" step="0.01" min="0" placeholder="10" />
+                <div class="hint hint--start">Enter your actual workers compensation policy rate. This applies over W-2 payroll / worker wages. If you are excluded from coverage or have no applicable policy, enter 0%.</div>
+              </div>
+              <div class="field">
+                <label for="ficaPct">FICA (%)</label>
+                <input id="ficaPct" type="number" step="0.01" placeholder="7.65" />
+              </div>
+              <div class="field">
+                <label for="futaPct">FUTA (%)</label>
+                <input id="futaPct" type="number" step="0.01" placeholder="0.6" />
+              </div>
+              <div class="field">
+                <label for="casuiPct">State UI / SUI (%)</label>
+                <input id="casuiPct" type="number" step="0.01" placeholder="3.4" />
+              </div>
+                </div>
+              </div>
+                </div>
+                <div class="bs-fin-column bs-fin-column--overhead">
+              <div class="bs-fin-block field--full">
+                <h3 class="bs-subsection-title">Overhead Allocation</h3>
+                <p class="sub bs-fin-block-sub">Spread monthly fixed overhead across job labor hours.</p>
+                <div class="form bs-form-dense bs-fin-block-fields">
+              <div class="field">
+                <label for="overheadMonthly">Monthly overhead ($)</label>
+                <input id="overheadMonthly" type="number" step="0.01" placeholder="0" />
+              </div>
+              <div class="field">
+                <label for="stdHours">Std hours / worker / mo</label>
+                <input id="stdHours" type="number" step="1" placeholder="160" />
+                <div class="hint hint--start">Used with monthly overhead to allocate office and fixed cost into each job hour.</div>
+              </div>
+                </div>
+              </div>
+              <div class="bs-fin-block field--full">
+                <h3 class="bs-subsection-title">Margin Protection</h3>
+                <p class="sub bs-fin-block-sub">Target and floor margins plus fixed reserve protection.</p>
+                <div class="form bs-form-dense bs-fin-block-fields">
+              <div class="field">
+                <label for="profitPct">Target margin (%)</label>
+                <input id="profitPct" type="number" step="0.01" placeholder="30" />
+                <div class="hint hint--start">Desired profit margin on protected price calculations.</div>
+              </div>
+              <div class="field">
+                <label for="minimumMarginPct">Minimum margin (%)</label>
+                <input id="minimumMarginPct" type="number" step="0.01" placeholder="15" />
+                <div class="hint hint--start">Protected floor — quotes below this need review. Must be at or below target margin.</div>
+              </div>
+              <div class="field">
+                <label for="reservePct">Reserve (%) — fixed</label>
+                <input id="reservePct" type="number" step="0.01" placeholder="5" readonly />
+                <div class="hint hint--start">Fixed protection reserve applied before profit. Currently locked at 5%.</div>
+              </div>
+                </div>
+              </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="bs-layout-pair">
         <div class="card bs-dash-card bs-order-labor">
           <div class="card-inner bs-card-inner-tight">
@@ -274,105 +448,6 @@
           </div>
         </div>
 
-        <div class="card bs-dash-card bs-order-financial">
-          <div class="card-inner bs-card-inner-tight">
-            <h2 class="bs-card-title">Financial Protection</h2>
-            <p class="sub bs-card-sub">Payroll burden, overhead allocation, and margin protection for pricing.</p>
-            <div class="form bs-form-dense">
-              <div class="field field--full bs-payroll-preset" id="bsPayrollPresetSection">
-                <h3 class="bs-subsection-title">State Payroll Defaults</h3>
-                <p class="sub bs-payroll-preset-sub">Reference employer payroll tax defaults by state. Apply fills the form only — save to persist.</p>
-                <div class="field">
-                  <label for="payrollPresetState">State</label>
-                  <select id="payrollPresetState"></select>
-                  <div class="hint hint--start" id="payrollPresetStateHelper">Verified defaults are available for California, Texas, Florida, Georgia, North Carolina, Arizona, Alabama, Arkansas, Idaho, Mississippi, Missouri, Oklahoma, Maine, Alaska, Connecticut, Hawaii, Nevada, New Jersey, New York, and Rhode Island. Other states are listed for future preset support; enter rates manually until verified presets are added.</div>
-                </div>
-                <div class="inline-actions bs-payroll-preset-actions">
-                  <button type="button" class="btn primary" id="btnApplyPayrollDefaults">Apply Payroll Defaults</button>
-                  <a
-                    class="btn"
-                    id="payrollPresetOfficialLink"
-                    href="https://edd.ca.gov/en/payroll_taxes/rates_and_withholding/"
-                    target="_blank"
-                    rel="noopener">View California Payroll Tax Rates</a>
-                </div>
-                <p class="sub bs-payroll-preset-meta" id="payrollPresetMeta">Source year: 2026 · Last reviewed: 2026-06-14 · Source: California EDD</p>
-                <p class="sub bs-payroll-preset-notes" id="payrollPresetStateNotes" hidden></p>
-                <p class="sub bs-payroll-preset-unavailable" id="payrollPresetUnavailableNotice" hidden>No verified payroll default is available yet. Enter your rates manually or ask your accountant or payroll provider which employer payroll tax rates apply to your business.</p>
-                <div class="notice warn bs-payroll-preset-notice" id="payrollPresetNotice" role="note">
-                  These payroll tax presets are default reference values only. Actual employer payroll taxes may vary based on your business entity, payroll setup, employer experience rating, wage limits, class codes, local requirements, and official state notices. You are responsible for verifying your actual obligations with your accountant, payroll provider, or state agency. If you are unsure how to read the official rate page, contact your accountant or payroll provider and ask for the employer payroll tax rates that apply to your business before saving.
-                </div>
-                <div class="bs-payroll-preset-preview" id="payrollPresetPreview" hidden>
-                  <span class="bs-summary-label">Applied preview</span>
-                  <ul class="bs-payroll-preset-preview-list" id="payrollPresetPreviewList"></ul>
-                </div>
-                <p class="sub bs-payroll-preset-confirm" id="payrollPresetApplyConfirm" hidden></p>
-              </div>
-              <div class="bs-fin-block field--full">
-                <h3 class="bs-subsection-title">Payroll Burden</h3>
-                <p class="sub bs-fin-block-sub">Employer payroll taxes applied over W-2 labor. Workers Comp is always manual.</p>
-                <div class="form bs-form-dense bs-fin-block-fields">
-              <div class="field">
-                <label for="wcPct">Workers Comp (%)</label>
-                <input id="wcPct" type="number" step="0.01" min="0" placeholder="10" />
-                <div class="hint hint--start">Enter your actual workers compensation policy rate. This applies over W-2 payroll / worker wages. If you are excluded from coverage or have no applicable policy, enter 0%.</div>
-              </div>
-              <div class="field">
-                <label for="ficaPct">FICA (%)</label>
-                <input id="ficaPct" type="number" step="0.01" placeholder="7.65" />
-              </div>
-              <div class="field">
-                <label for="futaPct">FUTA (%)</label>
-                <input id="futaPct" type="number" step="0.01" placeholder="0.6" />
-              </div>
-              <div class="field">
-                <label for="casuiPct">State UI / SUI (%)</label>
-                <input id="casuiPct" type="number" step="0.01" placeholder="3.4" />
-              </div>
-                </div>
-              </div>
-              <div class="bs-fin-block field--full">
-                <h3 class="bs-subsection-title">Overhead Allocation</h3>
-                <p class="sub bs-fin-block-sub">Spread monthly fixed overhead across job labor hours.</p>
-                <div class="form bs-form-dense bs-fin-block-fields">
-              <div class="field">
-                <label for="overheadMonthly">Monthly overhead ($)</label>
-                <input id="overheadMonthly" type="number" step="0.01" placeholder="0" />
-              </div>
-              <div class="field">
-                <label for="stdHours">Std hours / worker / mo</label>
-                <input id="stdHours" type="number" step="1" placeholder="160" />
-                <div class="hint hint--start">Used with monthly overhead to allocate office and fixed cost into each job hour.</div>
-              </div>
-                </div>
-              </div>
-              <div class="bs-fin-block field--full">
-                <h3 class="bs-subsection-title">Margin Protection</h3>
-                <p class="sub bs-fin-block-sub">Target and floor margins plus fixed reserve protection.</p>
-                <div class="form bs-form-dense bs-fin-block-fields">
-              <div class="field">
-                <label for="profitPct">Target margin (%)</label>
-                <input id="profitPct" type="number" step="0.01" placeholder="30" />
-                <div class="hint hint--start">Desired profit margin on protected price calculations.</div>
-              </div>
-              <div class="field">
-                <label for="minimumMarginPct">Minimum margin (%)</label>
-                <input id="minimumMarginPct" type="number" step="0.01" placeholder="15" />
-                <div class="hint hint--start">Protected floor — quotes below this need review. Must be at or below target margin.</div>
-              </div>
-              <div class="field">
-                <label for="reservePct">Reserve (%) — fixed</label>
-                <input id="reservePct" type="number" step="0.01" placeholder="5" readonly />
-                <div class="hint hint--start">Fixed protection reserve applied before profit. Currently locked at 5%.</div>
-              </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        </div>
-
-        <div class="bs-layout-pair">
         <div class="card bs-dash-card bs-order-commissions">
           <div class="card-inner bs-card-inner-tight">
             <h2 class="bs-card-title">Commissions &amp; Bonuses</h2>
@@ -389,8 +464,9 @@
             </div>
           </div>
         </div>
+        </div>
 
-        <div class="card bs-dash-card bs-order-payments">
+        <div class="card bs-dash-card bs-order-payments bs-layout-full">
           <div class="card-inner bs-card-inner-tight">
             <div class="section-head bs-payments-head">
               <div>
@@ -450,38 +526,6 @@
             </div>
           </div>
         </div>
-
-        </div>
-        </div>
-
-        <footer class="card bs-summary-bar bs-order-summary bs-layout-full">
-          <div class="card-inner bs-card-inner-tight">
-            <h2 class="bs-card-title">Preview / Public Identity</h2>
-            <p class="sub bs-card-sub">How clients see your business on Sales, public quotes, PDFs, and invoices.</p>
-            <div class="bs-summary-row">
-              <div class="bs-summary-preview">
-                <span class="bs-summary-label">Business</span>
-                <strong id="previewBusinessName" class="bs-summary-name">—</strong>
-                <span id="previewBusinessMeta" class="sub bs-summary-meta">Sin email ni telefono.</span>
-                <span class="bs-chip" id="previewPrimaryTradeChip" hidden></span>
-              </div>
-              <div class="bs-summary-preview">
-                <span class="bs-summary-label">Accent</span>
-                <strong id="previewAccentHex" class="bs-summary-accent">#0f8a5f</strong>
-                <span id="previewSignatureLine" class="sub bs-summary-meta">Professional Estimate Delivery</span>
-              </div>
-              <div class="bs-summary-used">
-                <span class="bs-summary-label">Used by</span>
-                <span class="bs-chip">Sales</span>
-                <span class="bs-chip">Supervisor</span>
-                <span class="bs-chip">Project Control</span>
-                <span class="bs-chip">Public quote / PDF</span>
-                <span class="bs-chip">Public invoice</span>
-              </div>
-            </div>
-            <p class="sub bs-summary-save">Saves to tenant snapshot, branding, and owner settings per tenant.</p>
-          </div>
-        </footer>
 
         <div class="card bs-dash-card bs-order-bank bs-layout-full bs-layout-optional">
           <div class="card-inner bs-card-inner-tight">
