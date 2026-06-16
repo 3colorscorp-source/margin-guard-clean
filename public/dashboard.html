@@ -913,32 +913,7 @@
     }
   </style>
 </head>
-<body data-role="dashboard" data-requires-auth="true">
-  <div class="topbar">
-    <div class="topbar-inner">
-      <div class="brand">
-        <div class="logo" aria-hidden="true"><b>MG</b></div>
-        <div>
-          <h1>Margin Guard</h1>
-          <p id="planStatus">Validando suscripcion...</p>
-        </div>
-      </div>
-
-      <div class="actions">
-        <a class="btn active" href="dashboard.html">Dashboard</a>
-        <a class="btn" href="/estimates-invoices">Invoices Hub</a>
-        <a class="btn" href="owner.html">Dueno</a>
-        <a class="btn" href="sales.html">Vendedor</a>
-        <a class="btn" href="supervisor.html">Supervisor</a>
-        <a class="btn" href="/project-control">Project Control</a>
-        <a class="btn" href="sales-admin.html">Sales Admin</a>
-        <a class="btn" href="/team-devices">Team &amp; Devices</a>
-        <button class="btn" id="btnManagePlan">Gestionar plan</button>
-        <button class="btn danger" id="btnLogout">Cerrar sesion</button>
-      </div>
-    </div>
-  </div>
-
+<body data-role="dashboard" data-requires-auth="true" data-mg-app-nav data-mg-page-title="Dashboard">
   <div class="container fcc-page">
     <section class="fcc-hero-bar" aria-label="Financial Command Center">
       <div class="fcc-hero-bar__left">
@@ -1148,6 +1123,7 @@
     </div>
   </div>
 
+  <script src="/js/mg-app-nav.js"></script>
   <script src="/js/tenant.js"></script>
   <script src="/js/auth.js"></script>
   <script src="/js/app.js"></script>
