@@ -115,12 +115,37 @@
       display:grid;
       grid-template-columns:minmax(0,1fr) minmax(0,1fr);
       gap:clamp(16px,2vw,24px);
-      align-items:start;
+      align-items:stretch;
     }
     .business-settings-page .bs-layout-pair > .card{
-      height:auto;
+      height:100%;
       min-width:0;
       width:100%;
+      display:flex;
+      flex-direction:column;
+    }
+    .business-settings-page .bs-layout-pair > .card > .card-inner{
+      display:flex;
+      flex-direction:column;
+      flex:1;
+      min-height:0;
+    }
+    .business-settings-page .bs-order-payments .bs-payments-stack{
+      flex:1;
+      align-items:stretch;
+      gap:clamp(12px,1.5vw,18px);
+    }
+    .business-settings-page .bs-order-payments .bs-payments-col{
+      display:flex;
+      flex-direction:column;
+    }
+    .business-settings-page .bs-order-payments .bs-payments-col .inline-actions.bs-stripe-actions{
+      margin-top:auto;
+      padding-top:8px;
+    }
+    .business-settings-page .bs-order-payments .bs-payments-col:last-child .field:last-child{
+      margin-top:auto;
+      padding-top:8px;
     }
     .business-settings-page .bs-fin-columns{
       display:grid;
@@ -216,6 +241,26 @@
       .business-settings-page .bs-fin-columns,
       .business-settings-page .bs-layout-pair{
         grid-template-columns:1fr;
+      }
+      .business-settings-page .bs-layout-pair > .card{
+        height:auto;
+        display:block;
+      }
+      .business-settings-page .bs-layout-pair > .card > .card-inner{
+        display:block;
+        flex:none;
+      }
+      .business-settings-page .bs-order-payments .bs-payments-stack{
+        flex:none;
+        align-items:start;
+      }
+      .business-settings-page .bs-order-payments .bs-payments-col{
+        display:block;
+      }
+      .business-settings-page .bs-order-payments .bs-payments-col .inline-actions.bs-stripe-actions,
+      .business-settings-page .bs-order-payments .bs-payments-col:last-child .field:last-child{
+        margin-top:0;
+        padding-top:0;
       }
       .business-settings-page .bs-preview-modal__body .bs-summary-row{
         grid-template-columns:1fr;
