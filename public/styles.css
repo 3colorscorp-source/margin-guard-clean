@@ -6408,3 +6408,119 @@ body.mg-portal-mode-seller-device .mg-sidebar__footer--device,
 body.mg-portal-mode-supervisor-device .mg-sidebar__footer--device{
   border-top:1px solid rgba(255,255,255,.08);
 }
+
+/* Step 3E-C16-Q3I — mobile polish (dashboard header + supervisor project picker) */
+@media (max-width:640px){
+  body[data-role="dashboard"] .container.fcc-page{
+    padding-left:12px;
+    padding-right:12px;
+    overflow-x:hidden;
+    max-width:100%;
+  }
+  body[data-role="dashboard"] .fcc-hero-bar{
+    align-items:stretch;
+    gap:8px;
+    padding:8px 12px;
+    margin-bottom:8px;
+  }
+  body[data-role="dashboard"] .fcc-hero-bar__left{
+    flex:0 0 auto;
+    min-height:0;
+  }
+  body[data-role="dashboard"] .fcc-hero-bar__topline{
+    margin-bottom:2px;
+    gap:6px 10px;
+  }
+  body[data-role="dashboard"] .fcc-hero-bar .fcc-hero-title{
+    font-size:clamp(17px, 4.8vw, 22px);
+    line-height:1.15;
+  }
+  body[data-role="dashboard"] .fcc-hero-bar .fcc-hero-compact-sub{
+    margin:2px 0 0;
+    font-size:11px;
+    line-height:1.35;
+  }
+  body[data-role="dashboard"] .fcc-hero-bar__aside{
+    flex:0 0 auto;
+    width:100%;
+    gap:6px 8px;
+    justify-content:flex-start;
+    align-items:stretch;
+  }
+  body[data-role="dashboard"] .fcc-health-chip{
+    padding:7px 10px;
+    width:100%;
+  }
+  body[data-role="dashboard"] .fcc-date-pill{
+    padding:5px 10px;
+    font-size:10px;
+  }
+
+  body.supervisor-page .container.supervisor-console{
+    padding-left:12px;
+    padding-right:12px;
+    overflow-x:hidden;
+    max-width:100%;
+  }
+  body.supervisor-page .supervisor-top-workflow__inner{
+    padding:10px 12px;
+    gap:10px;
+  }
+  body.supervisor-page .supervisor-top-workflow__copy,
+  body.supervisor-page .supervisor-top-workflow__picker{
+    min-height:0;
+    justify-content:flex-start;
+  }
+  body.supervisor-page .supervisor-top-workflow__picker .sup-project-picker--header{
+    height:auto;
+    justify-content:flex-start;
+    padding:8px 10px;
+    gap:4px;
+    background:rgba(4,7,14,.55);
+    border-color:rgba(255,255,255,.1);
+  }
+  body.supervisor-page .sup-project-picker__label{
+    font-size:11px;
+    margin:0;
+  }
+  body.supervisor-page .sup-project-picker__row{
+    gap:6px;
+  }
+  body.supervisor-page .sup-project-picker__select{
+    appearance:none;
+    -webkit-appearance:none;
+    -moz-appearance:none;
+    color-scheme:dark;
+    width:100%;
+    min-width:0;
+    max-width:100%;
+    margin:0;
+    padding:8px 34px 8px 12px;
+    min-height:40px;
+    font-size:16px;
+    line-height:1.25;
+    font-weight:600;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.14);
+    background-color:rgba(6,10,20,.92);
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23cbd5e1' d='M1.5 1.5 6 6l4.5-4.5'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;
+    background-position:right 12px center;
+    background-size:12px 8px;
+    color:var(--text);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  body.supervisor-page .sup-project-picker__select:focus{
+    outline:none;
+    border-color:rgba(34,197,94,.4);
+    box-shadow:0 0 0 3px rgba(34,197,94,.12);
+  }
+  body.supervisor-page .sup-project-picker__assign{
+    padding:8px 12px;
+    font-size:13px;
+  }
+  body.supervisor-page .sup-project-picker__meta{
+    font-size:11px;
+    line-height:1.3;
+  }
+}
