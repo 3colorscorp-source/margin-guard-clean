@@ -6465,15 +6465,20 @@ body.mg-portal-mode-supervisor-device .mg-sidebar__footer--device{
   body.supervisor-page .supervisor-top-workflow__inner{
     padding:10px 12px;
     gap:10px;
+    align-items:start;
   }
   body.supervisor-page .supervisor-top-workflow__copy,
   body.supervisor-page .supervisor-top-workflow__picker{
     min-height:0;
+    height:auto;
     justify-content:flex-start;
+    align-self:stretch;
   }
   body.supervisor-page .supervisor-top-workflow__picker .sup-project-picker--header{
     height:auto;
+    min-height:0;
     justify-content:flex-start;
+    align-self:stretch;
     padding:8px 10px;
     gap:4px;
     background:rgba(4,7,14,.55);
@@ -6485,18 +6490,23 @@ body.mg-portal-mode-supervisor-device .mg-sidebar__footer--device{
   }
   body.supervisor-page .sup-project-picker__row{
     gap:6px;
+    align-items:stretch;
+    flex:0 0 auto;
   }
   body.supervisor-page .sup-project-picker__select{
     appearance:none;
     -webkit-appearance:none;
     -moz-appearance:none;
     color-scheme:dark;
+    flex:0 0 auto;
     width:100%;
     min-width:0;
     max-width:100%;
     margin:0;
-    padding:8px 34px 8px 12px;
-    min-height:40px;
+    padding:10px 34px 10px 12px;
+    min-height:44px;
+    max-height:48px;
+    height:44px;
     font-size:16px;
     line-height:1.25;
     font-weight:600;
