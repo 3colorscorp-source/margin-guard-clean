@@ -7737,4 +7737,172 @@ body.business-settings-page .bs-summary-label{
     overflow-wrap:anywhere;
     word-break:normal;
   }
+
+  /* Step 3E-C16-Q3K-2 — mobile hero typography tightening */
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-hero .card-inner,
+  body[data-mg-page-title="Dueno"] .owner-hero .card-inner,
+  body[data-mg-page-title="Dueño"] .owner-hero .card-inner,
+  body[data-mg-page-title="Vendedor"] .sales-layout-hero .card-inner,
+  body[data-role="estimates-hub"] .hub-console-intro .card-inner{
+    padding:14px 14px 16px;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-hero-inner,
+  body[data-mg-page-title="Dueno"] .owner-hero-inner,
+  body[data-mg-page-title="Dueño"] .owner-hero-inner,
+  body[data-mg-page-title="Vendedor"] .sales-layout-hero .owner-hero-inner,
+  body[data-role="estimates-hub"] .hub-console-intro .owner-hero-inner{
+    gap:12px;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-hero .hero-title,
+  body[data-mg-page-title="Dueno"] .owner-hero .hero-title,
+  body[data-mg-page-title="Dueño"] .owner-hero .hero-title,
+  body[data-mg-page-title="Vendedor"] .sales-layout-hero .hero-title,
+  body[data-role="estimates-hub"] .hub-console-intro .hero-title{
+    font-size:clamp(18px,5vw,20px);
+    line-height:var(--mg-line-height-title);
+    letter-spacing:-.02em;
+    margin-bottom:8px;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-hero-lead,
+  body[data-mg-page-title="Dueno"] .owner-hero-lead,
+  body[data-mg-page-title="Dueño"] .owner-hero-lead,
+  body[data-mg-page-title="Vendedor"] .sales-layout-hero .sub,
+  body[data-role="estimates-hub"] .hub-console-intro .sub{
+    font-size:13px;
+    line-height:1.4;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-hero .hero-score,
+  body[data-mg-page-title="Dueno"] .owner-hero .hero-score,
+  body[data-mg-page-title="Dueño"] .owner-hero .hero-score,
+  body[data-mg-page-title="Vendedor"] .sales-layout-hero .hero-score,
+  body[data-role="estimates-hub"] .hub-console-intro .hero-score{
+    padding:14px 16px;
+    border-radius:16px;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-hero .hero-score-value,
+  body[data-mg-page-title="Dueno"] .owner-hero .hero-score-value,
+  body[data-mg-page-title="Dueño"] .owner-hero .hero-score-value,
+  body[data-mg-page-title="Vendedor"] .sales-layout-hero .hero-score-value,
+  body[data-role="estimates-hub"] .hub-console-intro .hero-score-value{
+    margin-top:6px;
+    font-size:clamp(26px,7vw,30px);
+    font-weight:850;
+    line-height:1.05;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-hero .hero-score-label,
+  body[data-mg-page-title="Dueno"] .owner-hero .hero-score-label,
+  body[data-mg-page-title="Dueño"] .owner-hero .hero-score-label,
+  body[data-mg-page-title="Vendedor"] .sales-layout-hero .hero-score-label,
+  body[data-role="estimates-hub"] .hub-console-intro .hero-score-label{
+    font-size:10px;
+    letter-spacing:var(--mg-label-tracking);
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-hero .hero-score-meta,
+  body[data-mg-page-title="Dueno"] .owner-hero .hero-score-meta,
+  body[data-mg-page-title="Dueño"] .owner-hero .hero-score-meta,
+  body[data-mg-page-title="Vendedor"] .sales-layout-hero .hero-score-meta,
+  body[data-role="estimates-hub"] .hub-console-intro .hero-score-meta{
+    margin-top:6px;
+    font-size:12px;
+    line-height:1.35;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-hero .eyebrow,
+  body[data-mg-page-title="Dueno"] .owner-hero .eyebrow,
+  body[data-mg-page-title="Dueño"] .owner-hero .eyebrow,
+  body[data-mg-page-title="Vendedor"] .sales-layout-hero .eyebrow,
+  body[data-role="estimates-hub"] .hub-console-intro .eyebrow{
+    margin-bottom:8px;
+    padding:5px 9px;
+    font-size:10px;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-workspace-main .section-head h2{
+    font-size:var(--mg-font-card-title);
+    line-height:var(--mg-line-height-title);
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-workspace-main .section-head .sub{
+    font-size:var(--mg-font-body);
+    line-height:1.35;
+  }
+  body[data-mg-page-title="Vendedor"] #salesEstimateSummary{
+    font-size:13px;
+    line-height:1.4;
+    padding:10px 12px;
+  }
+  body[data-mg-page-title="Vendedor"] .sales-op-summary-total__value{
+    font-size:clamp(16px,4.5vw,18px);
+  }
+  body[data-mg-page-title="Vendedor"] .sales-op-summary-kv,
+  body[data-mg-page-title="Vendedor"] .sales-op-summary-kv dd{
+    font-size:12px;
+  }
+  body[data-mg-page-title="Vendedor"] .grid.sales-layout .owner-quote-price{
+    font-size:clamp(22px,6.5vw,28px);
+    line-height:1.1;
+  }
+  body[data-mg-page-title="Vendedor"] .grid.sales-layout .owner-quote-hero{
+    padding:12px;
+  }
+  body[data-role="estimates-hub"] .hub-hero-start{
+    margin-top:8px;
+    font-size:13px;
+    line-height:1.35;
+    font-weight:600;
+  }
+  body[data-role="estimates-hub"] .hub-console-kpis-card .card-inner{
+    padding:14px;
+  }
+  body[data-role="estimates-hub"] .hub-console-kpis-card .section-head{
+    margin-bottom:8px;
+  }
+  body[data-role="estimates-hub"] .hub-console-kpis-card .section-head h2{
+    font-size:var(--mg-font-card-title);
+    line-height:var(--mg-line-height-title);
+  }
+  body[data-role="estimates-hub"] .hub-console-kpis-card .section-head .sub{
+    font-size:var(--mg-font-body);
+    line-height:1.35;
+  }
+  body[data-role="estimates-hub"] .hub-paid-faster-grid{
+    margin-top:10px;
+    gap:8px;
+  }
+  body[data-role="estimates-hub"] .hub-paid-faster-primary,
+  body[data-role="estimates-hub"] .hub-paid-faster-action{
+    padding:12px 14px;
+    border-radius:14px;
+  }
+  body[data-role="estimates-hub"] .hub-paid-faster-primary-value,
+  body[data-role="estimates-hub"] .hub-paid-faster-primary .big{
+    font-size:clamp(22px,6.5vw,28px);
+    font-weight:800;
+    line-height:1.1;
+    margin:4px 0 2px;
+  }
+  body[data-role="estimates-hub"] .hub-paid-faster-action-value{
+    font-size:clamp(14px,3.8vw,16px);
+    font-weight:700;
+    line-height:1.25;
+    margin:4px 0 2px;
+  }
+  body[data-role="estimates-hub"] .hub-paid-faster-mini{
+    padding:10px 12px;
+  }
+  body[data-role="estimates-hub"] .hub-paid-faster-mini .big{
+    font-size:15px;
+    font-weight:750;
+    margin-top:4px;
+  }
+  body[data-role="estimates-hub"] .hub-paid-faster-primary .title,
+  body[data-role="estimates-hub"] .hub-paid-faster-action .title,
+  body[data-role="estimates-hub"] .hub-paid-faster-mini .title{
+    font-size:10px;
+    letter-spacing:var(--mg-label-tracking);
+  }
+  body[data-role="estimates-hub"] .hub-paid-faster-primary .small,
+  body[data-role="estimates-hub"] .hub-paid-faster-action .small,
+  body[data-role="estimates-hub"] .hub-paid-faster-mini .small{
+    font-size:12px;
+    line-height:1.35;
+    margin-top:4px;
+  }
 }
