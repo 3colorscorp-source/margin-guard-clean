@@ -7906,3 +7906,102 @@ body.business-settings-page .bs-summary-label{
     margin-top:4px;
   }
 }
+
+/* Step 3E-C16-Q3K-3B — invoice hub dashboard typography alignment */
+@media (min-width: 641px){
+  body[data-role="estimates-hub"] .hub-console-intro .hero-score-value,
+  body[data-role="estimates-hub"] .hub-console-intro #hubHeroTotal{
+    font-size:clamp(20px, 2.2vw, 26px);
+    font-weight:900;
+    line-height:1.2;
+    letter-spacing:-.03em;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+  body[data-role="estimates-hub"] .hub-console-intro .hero-score-label{
+    font-size:10px;
+    font-weight:750;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+  }
+  body[data-role="estimates-hub"] .hub-console-intro .hero-score-meta{
+    font-size:12px;
+    line-height:1.35;
+  }
+  body[data-role="estimates-hub"] .hub-paid-faster-primary-value,
+  body[data-role="estimates-hub"] .hub-paid-faster-primary .big{
+    font-size:clamp(20px, 2.2vw, 26px);
+    font-weight:900;
+    line-height:1.2;
+    letter-spacing:-.03em;
+    margin:6px 0 4px;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+  body[data-role="estimates-hub"] .hub-paid-faster-action-value{
+    font-size:clamp(16px, 1.8vw, 20px);
+    font-weight:900;
+    line-height:1.2;
+    letter-spacing:-.035em;
+    margin:6px 0 4px;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+  body[data-role="estimates-hub"] .hub-paid-faster-mini .big{
+    font-size:clamp(16px, 1.9vw, 21px);
+    font-weight:900;
+    line-height:1.2;
+    letter-spacing:-.035em;
+    margin:4px 0 2px;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+  body[data-role="estimates-hub"] .hub-drawer-stat-primary .big{
+    font-size:clamp(20px, 2.2vw, 26px);
+    font-weight:900;
+    line-height:var(--mg-line-height-tight);
+  }
+  body[data-role="estimates-hub"] .hub-drawer-stat-secondary .big{
+    font-size:clamp(16px, 1.9vw, 21px);
+    font-weight:900;
+    line-height:var(--mg-line-height-tight);
+  }
+  body[data-role="estimates-hub"] .hub-paid-faster-primary .title,
+  body[data-role="estimates-hub"] .hub-paid-faster-action .title{
+    font-size:10px;
+    font-weight:750;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    opacity:.92;
+  }
+  body[data-role="estimates-hub"] .hub-paid-faster-mini .title{
+    font-size:10px;
+    font-weight:750;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    opacity:.85;
+  }
+  body[data-role="estimates-hub"] .hub-paid-faster-primary .small,
+  body[data-role="estimates-hub"] .hub-paid-faster-action .small,
+  body[data-role="estimates-hub"] .hub-paid-faster-mini .small{
+    font-size:11px;
+    line-height:1.35;
+  }
+  body[data-role="estimates-hub"] .hub-hero-start{
+    font-size:13px;
+    font-weight:400;
+    line-height:1.35;
+  }
+  body[data-role="estimates-hub"] .hub-console-kpis-card .section-head h2,
+  body[data-role="estimates-hub"] .hub-console-table-card .section-head h2{
+    font-size:13px;
+    font-weight:850;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    line-height:1.15;
+  }
+  body[data-role="estimates-hub"] .hub-console-kpis-card .section-head .sub{
+    font-size:12px;
+    line-height:1.35;
+  }
+}
