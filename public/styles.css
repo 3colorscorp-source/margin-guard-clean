@@ -8005,3 +8005,126 @@ body.business-settings-page .bs-summary-label{
     line-height:1.35;
   }
 }
+
+/* Step 3E-C16-Q3K-3C — owner desktop dashboard typography alignment */
+@media (min-width: 641px){
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-hero .hero-score-value,
+  body[data-mg-page-title="Dueno"] .owner-hero .hero-score-value,
+  body[data-mg-page-title="Dueño"] .owner-hero .hero-score-value{
+    font-size:clamp(20px, 2.2vw, 26px);
+    font-weight:900;
+    line-height:1.2;
+    letter-spacing:-.03em;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-hero .hero-score-label,
+  body[data-mg-page-title="Dueno"] .owner-hero .hero-score-label,
+  body[data-mg-page-title="Dueño"] .owner-hero .hero-score-label{
+    font-size:10px;
+    font-weight:750;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-hero .hero-score-meta,
+  body[data-mg-page-title="Dueno"] .owner-hero .hero-score-meta,
+  body[data-mg-page-title="Dueño"] .owner-hero .hero-score-meta{
+    font-size:12px;
+    line-height:1.35;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-hero .hero-title,
+  body[data-mg-page-title="Dueno"] .owner-hero .hero-title,
+  body[data-mg-page-title="Dueño"] .owner-hero .hero-title{
+    font-size:clamp(18px, 2vw, 24px);
+    font-weight:900;
+    line-height:1.15;
+    letter-spacing:-.04em;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-hero-lead,
+  body[data-mg-page-title="Dueno"] .owner-hero-lead,
+  body[data-mg-page-title="Dueño"] .owner-hero-lead{
+    font-size:13px;
+    line-height:1.35;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-quote-price,
+  body[data-mg-page-title="Dueno"] .owner-quote-price,
+  body[data-mg-page-title="Dueño"] .owner-quote-price{
+    font-size:clamp(20px, 2.2vw, 28px);
+    font-weight:900;
+    line-height:1.2;
+    letter-spacing:-.03em;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-quote-kicker,
+  body[data-mg-page-title="Dueno"] .owner-quote-kicker,
+  body[data-mg-page-title="Dueño"] .owner-quote-kicker{
+    font-size:10px;
+    font-weight:750;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-workspace-main .section-head h2,
+  body[data-mg-page-title="Dueno"] .owner-workspace-main .section-head h2,
+  body[data-mg-page-title="Dueño"] .owner-workspace-main .section-head h2{
+    font-size:13px;
+    font-weight:850;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    line-height:1.15;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-workspace-main .section-head .sub,
+  body[data-mg-page-title="Dueno"] .owner-workspace-main .section-head .sub,
+  body[data-mg-page-title="Dueño"] .owner-workspace-main .section-head .sub{
+    font-size:12px;
+    line-height:1.35;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-quote-snapshot__title,
+  body[data-mg-page-title="Dueno"] .owner-quote-snapshot__title,
+  body[data-mg-page-title="Dueño"] .owner-quote-snapshot__title{
+    font-size:15px;
+    font-weight:850;
+    line-height:1.15;
+    letter-spacing:-.02em;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-quote-snapshot__lead,
+  body[data-mg-page-title="Dueno"] .owner-quote-snapshot__lead,
+  body[data-mg-page-title="Dueño"] .owner-quote-snapshot__lead{
+    font-size:12px;
+    line-height:1.35;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-mini-card .big,
+  body[data-mg-page-title="Dueno"] .owner-mini-card .big,
+  body[data-mg-page-title="Dueño"] .owner-mini-card .big{
+    font-size:clamp(16px, 1.9vw, 21px);
+    font-weight:900;
+    line-height:1.2;
+    letter-spacing:-.035em;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-detail-grid .kpi-box .value,
+  body[data-mg-page-title="Dueno"] .owner-detail-grid .kpi-box .value,
+  body[data-mg-page-title="Dueño"] .owner-detail-grid .kpi-box .value,
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-quote-snapshot .owner-detail-grid .kpi-box .value,
+  body[data-mg-page-title="Dueno"] .owner-quote-snapshot .owner-detail-grid .kpi-box .value,
+  body[data-mg-page-title="Dueño"] .owner-quote-snapshot .owner-detail-grid .kpi-box .value{
+    font-size:clamp(16px, 1.9vw, 21px);
+    font-weight:900;
+    line-height:1.2;
+    letter-spacing:-.035em;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-mini-card .title,
+  body[data-mg-page-title="Dueno"] .owner-mini-card .title,
+  body[data-mg-page-title="Dueño"] .owner-mini-card .title,
+  body[data-role="owner"]:not(.team-devices-page):not(.business-settings-page) .owner-detail-grid .kpi-box .label,
+  body[data-mg-page-title="Dueno"] .owner-detail-grid .kpi-box .label,
+  body[data-mg-page-title="Dueño"] .owner-detail-grid .kpi-box .label{
+    font-size:10px;
+    font-weight:750;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+  }
+}
