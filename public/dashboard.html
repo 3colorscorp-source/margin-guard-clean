@@ -911,6 +911,82 @@
         border-radius:18px 18px 0 0;
       }
     }
+
+    /* Step 3E-C16-Q3L-2 — dashboard FCC pro dark cleanup */
+    body[data-role="dashboard"]{
+      background:
+        radial-gradient(ellipse 120% 80% at 50% -20%, rgba(255,255,255,.02), transparent 70%),
+        #06080f;
+    }
+    body[data-role="dashboard"] .card{
+      background:#0d1119;
+      border-color:rgba(255,255,255,.08);
+      box-shadow:0 8px 24px rgba(0,0,0,.28);
+      backdrop-filter:none;
+    }
+    body[data-role="dashboard"] .topbar{
+      background:#0a0e16;
+      backdrop-filter:none;
+    }
+    .fcc-hero-bar{
+      background:#0d1119;
+      box-shadow:0 8px 24px rgba(0,0,0,.28);
+    }
+    .fcc-hero{
+      background:#0d1119;
+      box-shadow:0 8px 24px rgba(0,0,0,.28);
+    }
+    .fcc-hero-viz{
+      background:linear-gradient(180deg, rgba(12,16,26,.96), rgba(8,11,20,.98));
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    @keyframes fccLineGlow{
+      0%{ stroke-opacity:.55; filter:none; }
+      100%{ stroke-opacity:.85; filter:none; }
+    }
+    .fcc-kpi-card::before{
+      height:2px;
+      opacity:.6;
+    }
+    .fcc-kpi-card.fcc-kpi--expense::before{ background:rgba(239,68,68,.42); }
+    .fcc-kpi-card.fcc-kpi--profit::before{ background:rgba(34,197,94,.42); }
+    .fcc-kpi-card.fcc-kpi--savings::before{ background:rgba(71,85,105,.55); }
+    .fcc-kpi-card.fcc-kpi--tax::before{ background:rgba(180,130,70,.5); }
+    .fcc-kpi-card.fcc-kpi--total::before{ background:rgba(255,255,255,.14); }
+    .fcc-kpi-card.fcc-kpi--progress::before{ background:rgba(245,158,11,.45); }
+    body[data-role="dashboard"] .strip-card.fcc-strip-card--cash,
+    body[data-role="dashboard"] .strip-card.fcc-strip-card--runway,
+    body[data-role="dashboard"] .strip-card.fcc-strip-card--tax{
+      border-color:rgba(255,255,255,.09);
+      background:rgba(4,7,14,.55);
+    }
+    .fcc-skyline-bar__fill{
+      box-shadow:0 -6px 18px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.1);
+    }
+    .fcc-skyline-bar__fill::before{
+      display:none;
+    }
+    .fcc-skyline-bar--profit .fcc-skyline-bar__fill{
+      background:linear-gradient(180deg, rgba(52,211,153,.7) 0%, rgba(22,101,52,.88) 100%);
+    }
+    .fcc-skyline-bar--operating .fcc-skyline-bar__fill{
+      background:linear-gradient(180deg, rgba(100,116,139,.72) 0%, rgba(51,65,85,.9) 100%);
+    }
+    .fcc-skyline-bar--tax .fcc-skyline-bar__fill{
+      background:linear-gradient(180deg, rgba(217,119,6,.62) 0%, rgba(146,64,14,.88) 100%);
+    }
+    .fcc-skyline-bar--savings .fcc-skyline-bar__fill{
+      background:linear-gradient(180deg, rgba(71,85,105,.72) 0%, rgba(30,41,59,.92) 100%);
+    }
+    .fcc-legend .sw.violet,
+    .fcc-legend .sw--profit{ background:rgba(52,211,153,.82); box-shadow:none; }
+    .fcc-legend .sw.green,
+    .fcc-legend .sw--operating{ background:rgba(100,116,139,.82); box-shadow:none; }
+    .fcc-legend .sw--tax{ background:rgba(217,119,6,.78); box-shadow:none; }
+    .fcc-legend .sw--savings{ background:rgba(71,85,105,.88); box-shadow:none; }
+    .fcc-health-chip--green::before{ background:#22c55e; }
+    .fcc-health-chip--amber::before{ background:#f59e0b; }
+    .fcc-health-chip--red::before{ background:#ef4444; }
   </style>
 </head>
 <body data-role="dashboard" data-requires-auth="true" data-mg-app-nav data-mg-page-title="Dashboard">
