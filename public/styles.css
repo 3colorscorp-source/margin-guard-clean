@@ -8299,3 +8299,69 @@ body.business-settings-page .bs-summary-label{
     box-sizing:border-box;
   }
 }
+
+/* Step 3E-C16-Q3L-1 — global pro dark foundation */
+:root{
+  --bg:#06080f;
+  --panel:#0d1119;
+  --panel2:#0a0e16;
+  --shadow:0 12px 40px rgba(0,0,0,.35);
+}
+body:not([data-role="dashboard"]){
+  background:
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(255,255,255,.02), transparent 70%),
+    #06080f;
+}
+.topbar{
+  background:#0a0e16;
+  backdrop-filter:none;
+}
+.mg-topbar{
+  background:#0a0e16;
+  backdrop-filter:none;
+}
+.mg-sidebar{
+  background:#0a0e16;
+  backdrop-filter:none;
+  box-shadow:4px 0 24px rgba(0,0,0,.32);
+}
+.card{
+  background:#0d1119;
+  border-color:rgba(255,255,255,.08);
+  box-shadow:0 8px 24px rgba(0,0,0,.28);
+}
+.logo{
+  background:rgba(255,255,255,.04);
+  border-color:rgba(34,197,94,.22);
+  box-shadow:none;
+}
+.mg-sidebar__brand-mark{
+  background:rgba(255,255,255,.04);
+  border-color:rgba(34,197,94,.22);
+}
+.btn.primary,
+.btn.primary:hover{
+  box-shadow:none;
+}
+.btn.active{
+  outline:2px solid rgba(255,255,255,.18);
+  box-shadow:none;
+}
+.owner-hero{
+  background:#0d1119;
+}
+body[data-role="owner"] .owner-hero .hero-score{
+  background:rgba(9,14,24,.92);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+body[data-role="owner"] .owner-hero .hero-score::after{
+  display:none;
+}
+.owner-quote-price{
+  color:#34d399;
+  text-shadow:none;
+}
+body[data-role="owner"] .owner-quote-snapshot{
+  background:#0d1119;
+  box-shadow:0 8px 24px rgba(0,0,0,.28);
+}
