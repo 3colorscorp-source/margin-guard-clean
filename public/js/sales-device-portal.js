@@ -227,6 +227,7 @@
     }
 
     document.body.classList.add("auth-ready", "mg-seller-portal-blocked");
+    window.MGAppNav?.applyPortalMode?.("seller-device");
   }
 
   function applyOwnerMode(ownerData) {
@@ -240,6 +241,7 @@
     paintOwnerAccount(ownerData);
     bindOwnerAccountButtons();
     document.body.classList.add("auth-ready");
+    window.MGAppNav?.applyPortalMode?.("owner");
   }
 
   function ensureSellerNotice() {
@@ -284,6 +286,12 @@
     email.textContent = tenant ? `${member} · ${tenant}` : member;
   }
 
+  function getDeviceLogoutAnchor() {
+    const shellAnchor = window.MGAppNav?.getDeviceLogoutAnchor?.();
+    if (shellAnchor) return shellAnchor;
+    return document.querySelector(".topbar-actions");
+  }
+
   function ensureDeviceLogoutButton() {
     let btn = document.getElementById("btnDeviceLogout");
     if (btn) return btn;
@@ -306,9 +314,9 @@
       }
     });
 
-    const actions = document.querySelector(".topbar-actions");
-    if (actions) {
-      actions.appendChild(btn);
+    const anchor = getDeviceLogoutAnchor();
+    if (anchor) {
+      anchor.appendChild(btn);
     }
     return btn;
   }
@@ -717,6 +725,7 @@
     });
 
     document.body.classList.add("auth-ready");
+    window.MGAppNav?.applyPortalMode?.("seller-device");
     window.dispatchEvent(
       new CustomEvent("device-auth-ready", { detail: { auth } })
     );
