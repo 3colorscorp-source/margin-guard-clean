@@ -8128,3 +8128,125 @@ body.business-settings-page .bs-summary-label{
     text-transform:uppercase;
   }
 }
+
+/* Step 3E-C16-Q3K-3D — vendedor desktop dashboard typography alignment */
+@media (min-width: 641px){
+  body[data-mg-page-title="Vendedor"] .sales-layout-hero .hero-score-value,
+  body[data-role="sales"] .sales-layout-hero .hero-score-value{
+    font-size:clamp(20px, 2.2vw, 26px);
+    font-weight:900;
+    line-height:1.2;
+    letter-spacing:-.03em;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+  body[data-mg-page-title="Vendedor"] .sales-layout-hero .hero-score-label,
+  body[data-role="sales"] .sales-layout-hero .hero-score-label{
+    font-size:10px;
+    font-weight:750;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+  }
+  body[data-mg-page-title="Vendedor"] .sales-layout-hero .hero-score-meta,
+  body[data-role="sales"] .sales-layout-hero .hero-score-meta{
+    font-size:12px;
+    line-height:1.35;
+  }
+  body[data-mg-page-title="Vendedor"] .sales-layout-hero .hero-title,
+  body[data-role="sales"] .sales-layout-hero .hero-title{
+    font-size:clamp(18px, 2vw, 24px);
+    font-weight:900;
+    line-height:1.15;
+    letter-spacing:-.04em;
+  }
+  body[data-mg-page-title="Vendedor"] .sales-layout-hero .sub,
+  body[data-role="sales"] .sales-layout-hero .sub{
+    font-size:13px;
+    line-height:1.35;
+  }
+  body[data-mg-page-title="Vendedor"] .grid.sales-layout .owner-quote-price,
+  body[data-role="sales"] .grid.sales-layout .owner-quote-price{
+    font-size:clamp(20px, 2.2vw, 28px);
+    font-weight:900;
+    line-height:1.2;
+    letter-spacing:-.03em;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+  body[data-mg-page-title="Vendedor"] .sales-op-summary-total__value,
+  body[data-role="sales"] .sales-op-summary-total__value{
+    font-size:clamp(16px, 1.9vw, 21px);
+    font-weight:900;
+    line-height:1.2;
+    letter-spacing:-.035em;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+  body[data-mg-page-title="Vendedor"] .sales-op-summary-kv,
+  body[data-role="sales"] .sales-op-summary-kv{
+    font-size:12px;
+    line-height:1.35;
+  }
+  body[data-mg-page-title="Vendedor"] .sales-op-summary-kv dd,
+  body[data-role="sales"] .sales-op-summary-kv dd{
+    font-size:13px;
+    font-weight:650;
+    line-height:1.35;
+  }
+  body[data-mg-page-title="Vendedor"] #salesEstimateSummary,
+  body[data-role="sales"] #salesEstimateSummary{
+    font-size:13px;
+    line-height:1.35;
+  }
+  body[data-mg-page-title="Vendedor"] .grid.sales-layout .owner-mini-card .big,
+  body[data-role="sales"] .grid.sales-layout .owner-mini-card .big{
+    font-size:clamp(16px, 1.9vw, 21px);
+    font-weight:900;
+    line-height:1.2;
+    letter-spacing:-.035em;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+  body[data-mg-page-title="Vendedor"] .grid.sales-layout .owner-detail-grid .kpi-box .value,
+  body[data-role="sales"] .grid.sales-layout .owner-detail-grid .kpi-box .value,
+  body[data-mg-page-title="Vendedor"] .grid.sales-layout .sales-kpi-grid .value,
+  body[data-role="sales"] .grid.sales-layout .sales-kpi-grid .value{
+    font-size:clamp(16px, 1.9vw, 21px);
+    font-weight:900;
+    line-height:1.2;
+    letter-spacing:-.035em;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+  body[data-mg-page-title="Vendedor"] .grid.sales-layout .owner-mini-card .title,
+  body[data-role="sales"] .grid.sales-layout .owner-mini-card .title,
+  body[data-mg-page-title="Vendedor"] .grid.sales-layout .owner-detail-grid .kpi-box .label,
+  body[data-role="sales"] .grid.sales-layout .owner-detail-grid .kpi-box .label,
+  body[data-mg-page-title="Vendedor"] .sales-op-summary-card__title,
+  body[data-role="sales"] .sales-op-summary-card__title{
+    font-size:10px;
+    font-weight:750;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+  }
+  body[data-mg-page-title="Vendedor"] .grid.sales-layout .section-head h2,
+  body[data-role="sales"] .grid.sales-layout .section-head h2{
+    font-size:13px;
+    font-weight:850;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    line-height:1.15;
+  }
+  body[data-mg-page-title="Vendedor"] .grid.sales-layout .section-head .sub,
+  body[data-role="sales"] .grid.sales-layout .section-head .sub{
+    font-size:12px;
+    line-height:1.35;
+  }
+  body[data-mg-page-title="Vendedor"] .owner-quote-kicker,
+  body[data-role="sales"] .owner-quote-kicker{
+    font-size:10px;
+    font-weight:750;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+  }
+}
