@@ -6644,4 +6644,616 @@ body.mg-portal-mode-supervisor-device .mg-sidebar__footer--device{
     font-size:11px;
     line-height:1.3;
   }
+
+  /* Step 3E-C16-Q3J — Invoice Hub mobile cards (tap-to-detail) */
+  body[data-role="estimates-hub"]{
+    overflow-x:hidden;
+  }
+  body[data-role="estimates-hub"] .invoice-hub-console,
+  body[data-role="estimates-hub"] .hub-console-table-card,
+  body[data-role="estimates-hub"] .hub-console-table-card .card-inner{
+    min-width:0;
+    max-width:100%;
+    box-sizing:border-box;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .supervisor-table-wrap{
+    overflow-x:visible;
+    max-width:100%;
+    width:100%;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table{
+    min-width:0;
+    width:100%;
+    border:none;
+    background:transparent;
+    border-radius:0;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table thead{
+    position:absolute;
+    width:1px;
+    height:1px;
+    padding:0;
+    margin:-1px;
+    overflow:hidden;
+    clip:rect(0,0,0,0);
+    white-space:nowrap;
+    border:0;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody{
+    display:block;
+    width:100%;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr:not([data-hub-row]){
+    display:block;
+    margin:0;
+    padding:0;
+    border:none;
+    background:transparent;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr:not([data-hub-row]) > td{
+    display:block;
+    padding:18px 14px;
+    border:none;
+    text-align:center;
+    color:var(--muted);
+    font-size:13px;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row]{
+    display:grid;
+    grid-template-columns:2.25rem minmax(0,1fr);
+    grid-template-areas:
+      "check project"
+      "client client"
+      "date invoice"
+      "status balance"
+      "next next"
+      "actions actions"
+      "hint hint";
+    gap:8px 10px;
+    width:100%;
+    max-width:100%;
+    margin:0 0 10px;
+    padding:14px;
+    border-radius:14px;
+    border:1px solid rgba(255,255,255,.1);
+    background:rgba(4,7,14,.58);
+    box-sizing:border-box;
+    cursor:pointer;
+    min-width:0;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+    -webkit-tap-highlight-color:rgba(34,197,94,.12);
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row]::after{
+    content:"Tap to view details";
+    grid-area:hint;
+    font-size:11px;
+    font-weight:650;
+    letter-spacing:.02em;
+    color:rgba(148,163,184,.88);
+    padding-top:2px;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td{
+    display:block;
+    padding:0;
+    border:none;
+    min-width:0;
+    max-width:100%;
+    font-size:13px;
+    line-height:1.35;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+    box-sizing:border-box;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td::before{
+    display:block;
+    font-size:10px;
+    font-weight:750;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:rgba(148,163,184,.9);
+    margin-bottom:3px;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(1){
+    grid-area:check;
+    align-self:start;
+    padding-top:2px;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(1)::before{
+    display:none;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(1) input[type="checkbox"]{
+    width:18px;
+    height:18px;
+    margin:0;
+    cursor:pointer;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(2){
+    grid-area:date;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(2)::before{
+    content:"Date";
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(3){
+    grid-area:client;
+    font-size:14px;
+    font-weight:650;
+    color:rgba(232,238,252,.92);
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(3)::before{
+    content:"Client";
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(4){
+    grid-area:project;
+    font-size:14px;
+    color:rgba(232,238,252,.95);
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(4)::before{
+    display:none;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(4) strong{
+    display:block;
+    font-size:16px;
+    font-weight:800;
+    line-height:1.3;
+    margin-top:2px;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(4) .hub-priority-badge{
+    margin:0 6px 6px 0;
+    vertical-align:middle;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(4) .hub-invoice-row-label,
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(4) .hub-server-badge{
+    display:inline-block;
+    max-width:100%;
+    overflow-wrap:anywhere;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(5){
+    grid-area:invoice;
+    font-weight:700;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(5)::before{
+    content:"Invoice";
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(6){
+    grid-area:status;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(6)::before{
+    content:"Status";
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(7){
+    grid-area:balance;
+    font-size:18px;
+    font-weight:850;
+    letter-spacing:-.02em;
+    color:rgba(248,250,252,.98);
+    text-align:right;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(7)::before{
+    content:"Balance";
+    text-align:left;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(8){
+    grid-area:next;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(8)::before{
+    content:"Next action";
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(9){
+    grid-area:actions;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(9)::before{
+    content:"Actions";
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(9) .row-actions{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-top:2px;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr[data-hub-row] > td:nth-child(9) .btn{
+    padding:7px 10px;
+    font-size:12px;
+    min-height:36px;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr.hub-row--priority-1 > td,
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr.hub-row--priority-2 > td,
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr.hub-row--priority-3 > td{
+    border-top:none;
+    border-bottom:none;
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr.hub-row--priority-1{
+    border-left:3px solid rgba(245,158,11,.85);
+    background:linear-gradient(165deg, rgba(245,158,11,.1), rgba(4,7,14,.58));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04), 0 0 20px rgba(245,158,11,.06);
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr.hub-row--priority-2{
+    background:linear-gradient(165deg, rgba(245,158,11,.04), rgba(4,7,14,.55));
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .hub-table tbody tr.hub-row--priority-3{
+    background:rgba(4,7,14,.52);
+  }
+  body[data-role="estimates-hub"] .hub-console-table-card .section-head .btn.primary,
+  body[data-role="estimates-hub"] #hubModeFilter .btn.active{
+    min-height:40px;
+  }
+
+  /* Step 3E-C16-Q3J-EXT2 — mobile cards for PC/SA/Team */
+  body[data-mg-page-title="Project Control"],
+  body[data-mg-page-title="Sales Admin"],
+  body.team-devices-page{
+    overflow-x:hidden;
+  }
+
+  /* —— Project Control —— */
+  body[data-mg-page-title="Project Control"] .pcc-table-wrap{
+    overflow-x:visible;
+    max-width:100%;
+    width:100%;
+    border:none;
+    border-radius:0;
+  }
+  body[data-mg-page-title="Project Control"] .pcc-table-wrap .table{
+    min-width:0;
+    width:100%;
+    border:none;
+    background:transparent;
+    border-radius:0;
+  }
+  body[data-mg-page-title="Project Control"] #pccTableBody{
+    display:block;
+    width:100%;
+  }
+  body[data-mg-page-title="Project Control"] .pcc-table-wrap .table thead{
+    position:absolute;
+    width:1px;
+    height:1px;
+    padding:0;
+    margin:-1px;
+    overflow:hidden;
+    clip:rect(0,0,0,0);
+    white-space:nowrap;
+    border:0;
+  }
+  body[data-mg-page-title="Project Control"] .pcc-progress-cell{
+    white-space:normal;
+    overflow-wrap:anywhere;
+    word-break:normal;
+  }
+  body[data-mg-page-title="Project Control"] #pccTableBody tr.pcc-row{
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    gap:8px;
+    width:100%;
+    max-width:100%;
+    margin:0 0 10px;
+    padding:14px;
+    border-radius:14px;
+    border:1px solid rgba(255,255,255,.1);
+    background:rgba(4,7,14,.58);
+    box-sizing:border-box;
+    min-width:0;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  body[data-mg-page-title="Project Control"] #pccTableBody tr.pcc-row.selected{
+    border-color:rgba(15,138,95,.45);
+    background:linear-gradient(165deg, rgba(15,138,95,.12), rgba(4,7,14,.58));
+  }
+  body[data-mg-page-title="Project Control"] #pccTableBody tr.pcc-row > td{
+    display:block;
+    padding:0;
+    border:none;
+    min-width:0;
+    max-width:100%;
+    font-size:13px;
+    line-height:1.35;
+    overflow-wrap:anywhere;
+    word-break:normal;
+    box-sizing:border-box;
+  }
+  body[data-mg-page-title="Project Control"] #pccTableBody tr.pcc-row > td::before{
+    display:block;
+    font-size:10px;
+    font-weight:750;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:rgba(148,163,184,.9);
+    margin-bottom:3px;
+  }
+  body[data-mg-page-title="Project Control"] #pccTableBody tr.pcc-row > td:nth-child(1){
+    font-size:16px;
+    font-weight:800;
+    line-height:1.3;
+    color:rgba(248,250,252,.98);
+  }
+  body[data-mg-page-title="Project Control"] #pccTableBody tr.pcc-row > td:nth-child(1)::before,
+  body[data-mg-page-title="Project Control"] #pccTableBody tr.pcc-row > td.pcc-row-actions::before{
+    display:none;
+  }
+  body[data-mg-page-title="Project Control"] #pccTableBody tr.pcc-row > td:nth-child(2)::before{ content:"Client"; }
+  body[data-mg-page-title="Project Control"] #pccTableBody tr.pcc-row > td:nth-child(3)::before{ content:"Due"; }
+  body[data-mg-page-title="Project Control"] #pccTableBody tr.pcc-row > td:nth-child(4)::before{ content:"Progress"; }
+  body[data-mg-page-title="Project Control"] #pccTableBody tr.pcc-row > td:nth-child(5)::before{ content:"Status"; }
+  body[data-mg-page-title="Project Control"] #pccTableBody tr.pcc-row > td.pcc-row-actions{
+    padding-top:8px;
+    margin-top:2px;
+    border-top:1px solid rgba(255,255,255,.08);
+  }
+  body[data-mg-page-title="Project Control"] #pccTableBody tr.pcc-row .pcc-row-actions{
+    justify-content:flex-start;
+    gap:8px;
+  }
+  body[data-mg-page-title="Project Control"] #pccTableBody tr.pcc-row .pcc-row-actions .btn{
+    white-space:normal;
+    text-align:center;
+    min-height:40px;
+  }
+
+  /* —— Sales Admin (all sa-table-wrap lists) —— */
+  body[data-mg-page-title="Sales Admin"] .sa-table-wrap{
+    overflow-x:visible;
+    max-width:100%;
+    width:100%;
+  }
+  body[data-mg-page-title="Sales Admin"] .sa-table-wrap .table{
+    min-width:0;
+    width:100%;
+    border:none;
+    background:transparent;
+    border-radius:0;
+  }
+  body[data-mg-page-title="Sales Admin"] .sa-table-wrap .table thead{
+    position:absolute;
+    width:1px;
+    height:1px;
+    padding:0;
+    margin:-1px;
+    overflow:hidden;
+    clip:rect(0,0,0,0);
+    white-space:nowrap;
+    border:0;
+  }
+  body[data-mg-page-title="Sales Admin"] .sa-table-wrap tbody{
+    display:block;
+    width:100%;
+  }
+  body[data-mg-page-title="Sales Admin"] .sa-table-wrap tbody tr{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    gap:8px 12px;
+    width:100%;
+    max-width:100%;
+    margin:0 0 10px;
+    padding:14px;
+    border-radius:14px;
+    border:1px solid rgba(255,255,255,.1);
+    background:rgba(4,7,14,.58);
+    box-sizing:border-box;
+    min-width:0;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  body[data-mg-page-title="Sales Admin"] .sa-table-wrap tbody tr > td{
+    display:block;
+    padding:0;
+    border:none;
+    min-width:0;
+    max-width:100%;
+    font-size:13px;
+    line-height:1.35;
+    overflow-wrap:anywhere;
+    word-break:normal;
+    box-sizing:border-box;
+  }
+  body[data-mg-page-title="Sales Admin"] .sa-table-wrap tbody tr > td::before{
+    display:block;
+    font-size:10px;
+    font-weight:750;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:rgba(148,163,184,.9);
+    margin-bottom:3px;
+  }
+  body[data-mg-page-title="Sales Admin"] .sa-table-wrap tbody tr > td:nth-child(1){
+    grid-column:1 / -1;
+    font-size:16px;
+    font-weight:800;
+    line-height:1.3;
+    color:rgba(248,250,252,.98);
+  }
+  body[data-mg-page-title="Sales Admin"] .sa-table-wrap tbody tr > td:nth-child(1)::before{
+    display:none;
+  }
+  body[data-mg-page-title="Sales Admin"] .sa-table-wrap tbody tr > td:nth-child(2){
+    grid-column:1 / -1;
+  }
+  body[data-mg-page-title="Sales Admin"] .sa-table-wrap tbody tr > td:last-child{
+    grid-column:1 / -1;
+    padding-top:8px;
+    margin-top:2px;
+    border-top:1px solid rgba(255,255,255,.08);
+  }
+  body[data-mg-page-title="Sales Admin"] .sa-table-wrap tbody tr > td:last-child::before{
+    display:none;
+  }
+  body[data-mg-page-title="Sales Admin"] .sa-table-wrap .sa-row-actions,
+  body[data-mg-page-title="Sales Admin"] .sa-table-wrap .sa-link-group{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    justify-content:flex-start;
+  }
+  body[data-mg-page-title="Sales Admin"] .sa-table-wrap .sa-row-actions .btn,
+  body[data-mg-page-title="Sales Admin"] .sa-table-wrap .sa-link-group .btn{
+    min-height:40px;
+    white-space:normal;
+    text-align:center;
+  }
+
+  /* Quote pipeline */
+  body[data-mg-page-title="Sales Admin"] #saQuotePipelineBody tr > td:nth-child(2)::before{ content:"Project"; }
+  body[data-mg-page-title="Sales Admin"] #saQuotePipelineBody tr > td:nth-child(3)::before{ content:"Client"; }
+  body[data-mg-page-title="Sales Admin"] #saQuotePipelineBody tr > td:nth-child(4)::before{ content:"Status"; }
+  body[data-mg-page-title="Sales Admin"] #saQuotePipelineBody tr > td:nth-child(5)::before{ content:"Seller / Owner"; }
+  body[data-mg-page-title="Sales Admin"] #saQuotePipelineBody tr > td:nth-child(6)::before{ content:"Total"; }
+  body[data-mg-page-title="Sales Admin"] #saQuotePipelineBody tr > td:nth-child(7)::before{ content:"Created"; }
+  body[data-mg-page-title="Sales Admin"] #saQuotePipelineBody tr > td:nth-child(8)::before{ content:"Accepted"; }
+  body[data-mg-page-title="Sales Admin"] #saQuotePipelineBody tr > td:nth-child(9)::before{ content:"Project Linked"; }
+
+  /* Approval queue */
+  body[data-mg-page-title="Sales Admin"] #adminQueueBody tr > td:nth-child(2)::before{ content:"Client"; }
+  body[data-mg-page-title="Sales Admin"] #adminQueueBody tr > td:nth-child(3)::before{ content:"Seller"; }
+  body[data-mg-page-title="Sales Admin"] #adminQueueBody tr > td:nth-child(4)::before{ content:"Final Price"; }
+  body[data-mg-page-title="Sales Admin"] #adminQueueBody tr > td:nth-child(5)::before{ content:"Real Margin"; }
+  body[data-mg-page-title="Sales Admin"] #adminQueueBody tr > td:nth-child(6)::before{ content:"Target Margin"; }
+  body[data-mg-page-title="Sales Admin"] #adminQueueBody tr > td:nth-child(7)::before{ content:"Minimum Margin"; }
+  body[data-mg-page-title="Sales Admin"] #adminQueueBody tr > td:nth-child(8)::before{ content:"Review Reason"; }
+  body[data-mg-page-title="Sales Admin"] #adminQueueBody tr > td:nth-child(9)::before{ content:"Status"; }
+
+  /* Converted projects (primary) */
+  body[data-mg-page-title="Sales Admin"] #saConvertedBody tr > td:nth-child(2)::before{ content:"Client"; }
+  body[data-mg-page-title="Sales Admin"] #saConvertedBody tr > td:nth-child(3)::before{ content:"Quote Status"; }
+  body[data-mg-page-title="Sales Admin"] #saConvertedBody tr > td:nth-child(4)::before{ content:"Project Status"; }
+  body[data-mg-page-title="Sales Admin"] #saConvertedBody tr > td:nth-child(5)::before{ content:"Sale Price"; }
+  body[data-mg-page-title="Sales Admin"] #saConvertedBody tr > td:nth-child(6)::before{ content:"Labor Budget"; }
+  body[data-mg-page-title="Sales Admin"] #saConvertedBody tr > td:nth-child(7)::before{ content:"Est. Commission"; }
+  body[data-mg-page-title="Sales Admin"] #saConvertedBody tr > td:nth-child(8)::before{ content:"Invoice Status"; }
+  body[data-mg-page-title="Sales Admin"] #saConvertedBody tr > td:nth-child(9)::before{ content:"Balance Due"; }
+
+  /* Seller performance */
+  body[data-mg-page-title="Sales Admin"] #saSellerBody tr > td:nth-child(2)::before{ content:"Published quotes"; }
+  body[data-mg-page-title="Sales Admin"] #saSellerBody tr > td:nth-child(3)::before{ content:"Ready to send"; }
+  body[data-mg-page-title="Sales Admin"] #saSellerBody tr > td:nth-child(4)::before{ content:"Accepted / approved"; }
+  body[data-mg-page-title="Sales Admin"] #saSellerBody tr > td:nth-child(5)::before{ content:"Archived"; }
+  body[data-mg-page-title="Sales Admin"] #saSellerBody tr > td:nth-child(6)::before{ content:"Linked to project"; }
+  body[data-mg-page-title="Sales Admin"] #saSellerBody tr > td:nth-child(7)::before{ content:"Device quotes"; }
+  body[data-mg-page-title="Sales Admin"] #saSellerBody tr > td:nth-child(8)::before{ content:"Total quoted"; }
+  body[data-mg-page-title="Sales Admin"] #saSellerBody tr > td:nth-child(9)::before{ content:"Labor sold est."; }
+  body[data-mg-page-title="Sales Admin"] #saSellerBody tr > td:nth-child(10)::before{ content:"Est. commission"; }
+  body[data-mg-page-title="Sales Admin"] #saSellerBody tr > td:nth-child(11)::before{ content:"Approval requests"; }
+  body[data-mg-page-title="Sales Admin"] #saSellerBody tr > td:nth-child(12)::before{ content:"Approved"; }
+  body[data-mg-page-title="Sales Admin"] #saSellerBody tr > td:nth-child(13)::before{ content:"Rejected"; }
+
+  /* Commission tracking */
+  body[data-mg-page-title="Sales Admin"] #saCommissionBody tr > td:nth-child(2)::before{ content:"Labor Budget"; }
+  body[data-mg-page-title="Sales Admin"] #saCommissionBody tr > td:nth-child(3)::before{ content:"Seller %"; }
+  body[data-mg-page-title="Sales Admin"] #saCommissionBody tr > td:nth-child(4)::before{ content:"Estimated Commission"; }
+  body[data-mg-page-title="Sales Admin"] #saCommissionBody tr > td:nth-child(5)::before{ content:"Invoice Status"; }
+  body[data-mg-page-title="Sales Admin"] #saCommissionBody tr > td:nth-child(6)::before{ content:"Balance Due"; }
+
+  /* —— Team & Devices —— */
+  body.team-devices-page .td-table-wrap{
+    overflow-x:visible;
+    max-width:100%;
+    width:100%;
+  }
+  body.team-devices-page .td-table-wrap .table{
+    min-width:0;
+    width:100%;
+    border:none;
+    background:transparent;
+    border-radius:0;
+  }
+  body.team-devices-page .td-table-wrap .table thead{
+    position:absolute;
+    width:1px;
+    height:1px;
+    padding:0;
+    margin:-1px;
+    overflow:hidden;
+    clip:rect(0,0,0,0);
+    white-space:nowrap;
+    border:0;
+  }
+  body.team-devices-page #tdMembersBody,
+  body.team-devices-page #tdDevicesBody{
+    display:block;
+    width:100%;
+  }
+  body.team-devices-page #tdMembersBody tr,
+  body.team-devices-page #tdDevicesBody tr{
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    gap:8px;
+    width:100%;
+    max-width:100%;
+    margin:0 0 10px;
+    padding:14px;
+    border-radius:14px;
+    border:1px solid rgba(255,255,255,.1);
+    background:rgba(4,7,14,.58);
+    box-sizing:border-box;
+    min-width:0;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  body.team-devices-page #tdMembersBody tr > td,
+  body.team-devices-page #tdDevicesBody tr > td{
+    display:block;
+    padding:0;
+    border:none;
+    min-width:0;
+    max-width:100%;
+    font-size:13px;
+    line-height:1.35;
+    overflow-wrap:anywhere;
+    word-break:normal;
+    box-sizing:border-box;
+  }
+  body.team-devices-page #tdMembersBody tr > td::before,
+  body.team-devices-page #tdDevicesBody tr > td::before{
+    display:block;
+    font-size:10px;
+    font-weight:750;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:rgba(148,163,184,.9);
+    margin-bottom:3px;
+  }
+  body.team-devices-page #tdMembersBody tr > td:nth-child(1),
+  body.team-devices-page #tdDevicesBody tr > td:nth-child(1){
+    font-size:16px;
+    font-weight:800;
+    line-height:1.3;
+    color:rgba(248,250,252,.98);
+  }
+  body.team-devices-page #tdMembersBody tr > td:nth-child(1)::before,
+  body.team-devices-page #tdDevicesBody tr > td:nth-child(1)::before,
+  body.team-devices-page #tdMembersBody tr > td:last-child::before,
+  body.team-devices-page #tdDevicesBody tr > td:last-child::before{
+    display:none;
+  }
+  body.team-devices-page #tdMembersBody tr > td:nth-child(2)::before{ content:"Email"; }
+  body.team-devices-page #tdMembersBody tr > td:nth-child(3)::before{ content:"Role"; }
+  body.team-devices-page #tdMembersBody tr > td:nth-child(4)::before{ content:"Status"; }
+  body.team-devices-page #tdMembersBody tr > td:nth-child(5)::before{ content:"Readiness"; }
+  body.team-devices-page #tdMembersBody tr > td:nth-child(6)::before{ content:"Created"; }
+  body.team-devices-page #tdMembersBody tr > td:nth-child(2){
+    overflow-wrap:anywhere;
+    word-break:normal;
+  }
+  body.team-devices-page #tdMembersBody tr > td:last-child,
+  body.team-devices-page #tdDevicesBody tr > td:last-child{
+    padding-top:8px;
+    margin-top:2px;
+    border-top:1px solid rgba(255,255,255,.08);
+  }
+  body.team-devices-page #tdDevicesBody tr > td:nth-child(2)::before{ content:"Portal Type"; }
+  body.team-devices-page #tdDevicesBody tr > td:nth-child(3)::before{ content:"Assigned Member"; }
+  body.team-devices-page #tdDevicesBody tr > td:nth-child(4)::before{ content:"Device Status"; }
+  body.team-devices-page #tdDevicesBody tr > td:nth-child(5)::before{ content:"Last Seen"; }
+  body.team-devices-page #tdDevicesBody tr > td:nth-child(3){
+    overflow-wrap:anywhere;
+    word-break:normal;
+  }
+  body.team-devices-page .td-row-actions{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    justify-content:flex-start;
+  }
+  body.team-devices-page .td-row-actions .btn{
+    min-height:40px;
+    white-space:normal;
+    text-align:center;
+  }
 }
