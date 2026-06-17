@@ -8250,3 +8250,52 @@ body.business-settings-page .bs-summary-label{
     text-transform:uppercase;
   }
 }
+
+/* Step 3E-C16-Q3K-3E — desktop paired card height alignment */
+@media (min-width: 981px){
+  body[data-role="dashboard"] .fcc-columns{
+    align-items:stretch;
+  }
+  body[data-role="dashboard"] .fcc-column{
+    display:flex;
+    flex-direction:column;
+    min-height:0;
+  }
+  body[data-role="dashboard"] .fcc-column > .fcc-panel{
+    flex:1 1 auto;
+    display:flex;
+    flex-direction:column;
+    height:100%;
+    min-height:0;
+    margin-top:0;
+  }
+  body[data-role="dashboard"] .fcc-snapshot .card-inner,
+  body[data-role="dashboard"] .fcc-treasury-panel .fcc-treasury-inner{
+    flex:1 1 auto;
+    display:flex;
+    flex-direction:column;
+    height:100%;
+    min-height:0;
+    box-sizing:border-box;
+  }
+
+  body[data-role="estimates-hub"] .hub-console-ops{
+    align-items:stretch;
+  }
+  body[data-role="estimates-hub"] .hub-console-ops > .hub-console-kpis-card,
+  body[data-role="estimates-hub"] .hub-console-ops > .hub-console-filters-card{
+    display:flex;
+    flex-direction:column;
+    height:100%;
+    min-height:0;
+    margin-top:0;
+  }
+  body[data-role="estimates-hub"] .hub-console-ops > .card > .card-inner{
+    flex:1 1 auto;
+    display:flex;
+    flex-direction:column;
+    height:100%;
+    min-height:0;
+    box-sizing:border-box;
+  }
+}
