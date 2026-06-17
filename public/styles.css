@@ -6456,6 +6456,117 @@ body.mg-portal-mode-supervisor-device .mg-sidebar__footer--device{
     font-size:10px;
   }
 
+  /* Step 3E-C16-Q3I-FIX2 — dashboard mobile fit / no horizontal clip */
+  body[data-requires-auth="true"][data-role="dashboard"]{
+    overflow-x:hidden;
+  }
+  body[data-requires-auth="true"][data-role="dashboard"] .mg-app-main,
+  body[data-requires-auth="true"][data-role="dashboard"] .mg-app-main__body{
+    min-width:0;
+    max-width:100%;
+    overflow-x:hidden;
+  }
+  body[data-requires-auth="true"][data-role="dashboard"] .container.fcc-page{
+    width:100%;
+    max-width:min(100%, calc(100vw - 24px));
+    margin-left:auto;
+    margin-right:auto;
+    padding-left:12px;
+    padding-right:12px;
+    box-sizing:border-box;
+  }
+  body[data-role="dashboard"] .fcc-columns,
+  body[data-role="dashboard"] .fcc-column,
+  body[data-role="dashboard"] .fcc-panel,
+  body[data-role="dashboard"] .fcc-panel .card-inner,
+  body[data-role="dashboard"] .fcc-hero-bar,
+  body[data-role="dashboard"] .fcc-dashboard-lower,
+  body[data-role="dashboard"] .fcc-util-bar{
+    min-width:0;
+    max-width:100%;
+    box-sizing:border-box;
+  }
+  body[data-role="dashboard"] .dashboard-strip,
+  body[data-role="dashboard"] .fcc-strip.fcc-strip-tight{
+    grid-template-columns:1fr;
+    gap:8px;
+    margin-bottom:10px;
+  }
+  body[data-role="dashboard"] .dashboard-main-kpis.fcc-kpi-deck,
+  body[data-role="dashboard"] .fcc-kpi-deck{
+    grid-template-columns:1fr;
+    gap:8px;
+  }
+  body[data-role="dashboard"] .fcc-kpi-deck__secondary{
+    grid-template-columns:1fr;
+    gap:8px;
+  }
+  body[data-role="dashboard"] .section-head.fcc-section-head{
+    flex-wrap:wrap;
+    align-items:flex-start;
+    gap:8px 10px;
+    min-width:0;
+  }
+  body[data-role="dashboard"] .section-head.fcc-section-head > div:first-child{
+    min-width:0;
+    flex:1 1 160px;
+  }
+  body[data-role="dashboard"] .section-head.fcc-section-head .badge,
+  body[data-role="dashboard"] #syncBadge{
+    flex:0 0 auto;
+    max-width:100%;
+    white-space:normal;
+    text-align:right;
+  }
+  body[data-role="dashboard"] .strip-card.fcc-strip-card{
+    min-width:0;
+    max-width:100%;
+    box-sizing:border-box;
+  }
+  body[data-role="dashboard"] .strip-card.fcc-strip-card .title,
+  body[data-role="dashboard"] .strip-card.fcc-strip-card .small{
+    overflow-wrap:anywhere;
+  }
+  body[data-role="dashboard"] .strip-card.fcc-strip-card .big{
+    font-size:clamp(18px, 5.2vw, 24px);
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+  body[data-role="dashboard"] .fcc-kpi-card,
+  body[data-role="dashboard"] .kpi-box.fcc-kpi-card{
+    min-width:0;
+    max-width:100%;
+    box-sizing:border-box;
+  }
+  body[data-role="dashboard"] .fcc-kpi-top{
+    min-width:0;
+    gap:6px;
+  }
+  body[data-role="dashboard"] .fcc-kpi-top .label{
+    min-width:0;
+    flex:1 1 auto;
+  }
+  body[data-role="dashboard"] .fcc-kpi-top .label .badge{
+    white-space:normal;
+  }
+  body[data-role="dashboard"] .fcc-kpi-icon{
+    flex:0 0 auto;
+  }
+  body[data-role="dashboard"] .fcc-kpi-card .value{
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+  body[data-role="dashboard"] .fcc-kpi-card .meta{
+    overflow-wrap:anywhere;
+  }
+  body[data-role="dashboard"] .fcc-treasury-chart,
+  body[data-role="dashboard"] .fcc-skyline-chart__stage,
+  body[data-role="dashboard"] .fcc-legend--accounts{
+    min-width:0;
+    max-width:100%;
+    box-sizing:border-box;
+  }
+
   body.supervisor-page .container.supervisor-console{
     padding-left:12px;
     padding-right:12px;
