@@ -204,6 +204,77 @@
       line-height: 1.45;
     }
     .co-history-state.err { color: #fca5a5; border-color: rgba(239, 68, 68, 0.35); }
+    .co-toolbar-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+    .co-import-help {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+      font-size: 12px;
+      line-height: 1.5;
+      color: rgba(232, 238, 252, 0.78);
+    }
+    .co-import-help strong { color: #f8fafc; font-weight: 700; }
+    .co-import-kpis {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 12px 0;
+    }
+    .co-import-kpi {
+      flex: 1 1 110px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .co-import-kpi .label {
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.65);
+    }
+    .co-import-kpi .value {
+      margin-top: 3px;
+      font-size: 16px;
+      font-weight: 800;
+      color: #f8fafc;
+    }
+    .co-import-preview-wrap { overflow-x: auto; margin-top: 10px; }
+    .co-import-preview-wrap .table { min-width: 640px; }
+    .co-import-warnings {
+      margin: 10px 0 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.08);
+      font-size: 12px;
+      line-height: 1.45;
+      color: rgba(232, 238, 252, 0.85);
+    }
+    .co-import-success {
+      margin: 12px 0 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(34, 197, 94, 0.35);
+      background: rgba(34, 197, 94, 0.08);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .co-import-state {
+      margin-top: 10px;
+      padding: 14px;
+      text-align: center;
+      border-radius: 12px;
+      border: 1px dashed rgba(255, 255, 255, 0.1);
+      color: rgba(232, 238, 252, 0.75);
+      font-size: 13px;
+    }
+    .co-import-state.err { color: #fca5a5; border-color: rgba(239, 68, 68, 0.35); }
+    .badge.create { background: rgba(34, 197, 94, 0.15); color: #86efac; }
+    .badge.duplicate { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
+    .badge.invalid { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
   </style>
 </head>
 <body data-role="owner" data-requires-auth="true" class="contacts-page" data-mg-app-nav data-mg-page-title="Contacts">
@@ -265,7 +336,10 @@
                 </select>
               </label>
             </div>
-            <button type="button" class="btn primary" id="coBtnAdd">Add Contact</button>
+            <div class="co-toolbar-actions">
+              <button type="button" class="btn ghost" id="coBtnImport">Import CSV</button>
+              <button type="button" class="btn primary" id="coBtnAdd">Add Contact</button>
+            </div>
           </div>
 
           <div id="coEmpty" class="co-empty" hidden>
@@ -407,6 +481,72 @@
     </div>
   </div>
 
+  <div id="coImportModal" class="modal" hidden aria-hidden="true" role="dialog" aria-labelledby="coImportTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="coImportTitle">Import Contacts</div>
+          <div class="modal-subtitle" id="coImportSubtitle">Upload a CSV exported from Google Contacts or another contact list.</div>
+        </div>
+        <button type="button" class="btn ghost" id="coImportClose">Close</button>
+      </div>
+      <div class="modal-body">
+        <div class="co-import-help">
+          <strong>How it works:</strong> Export contacts from Google Contacts as CSV, then upload here. You can review duplicates before importing.<br />
+          <strong>Privacy:</strong> Margin Guard does not connect to your email. Only the CSV file you choose is imported.
+        </div>
+        <div class="form co-form-grid">
+          <div class="field field--full">
+            <label for="coImportFile">CSV file</label>
+            <input id="coImportFile" type="file" accept=".csv,text/csv" />
+          </div>
+          <div class="field field--full">
+            <label for="coImportDefaultType">Default contact type</label>
+            <select id="coImportDefaultType">
+              <option value="homeowner">Homeowner</option>
+              <option value="general_contractor">General contractor</option>
+              <option value="designer">Designer</option>
+              <option value="property_manager">Property manager</option>
+              <option value="business">Business</option>
+              <option value="supplier">Supplier</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div id="coImportKpis" class="co-import-kpis" hidden>
+          <div class="co-import-kpi"><div class="label">Total rows</div><div class="value" id="coImportTotalRows">0</div></div>
+          <div class="co-import-kpi"><div class="label">Would create</div><div class="value" id="coImportWouldCreate">0</div></div>
+          <div class="co-import-kpi"><div class="label">Duplicates</div><div class="value" id="coImportDupes">0</div></div>
+          <div class="co-import-kpi"><div class="label">Invalid</div><div class="value" id="coImportInvalid">0</div></div>
+        </div>
+        <div id="coImportWarnings" class="co-import-warnings" hidden></div>
+        <div id="coImportPreviewWrap" class="co-import-preview-wrap" hidden>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>City</th>
+                <th>Action</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody id="coImportPreviewBody"></tbody>
+          </table>
+        </div>
+        <div id="coImportSuccess" class="co-import-success" hidden></div>
+        <div id="coImportState" class="co-import-state" hidden></div>
+        <p id="coImportError" class="sub" style="color:#fca5a5;margin:8px 0 0;" hidden></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn ghost" id="coImportCancel">Cancel</button>
+        <button type="button" class="btn" id="coImportPreviewBtn">Preview</button>
+        <button type="button" class="btn primary" id="coImportCommitBtn" disabled>Confirm Import</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/js/mg-app-nav.js"></script>
   <script src="/js/tenant.js"></script>
   <script src="/js/auth.js"></script>
@@ -415,7 +555,14 @@
     "use strict";
 
     const API = "/.netlify/functions";
-    const state = { contacts: [], stats: null, editingId: null, accessDenied: false, historyContact: null };
+    const state = {
+      contacts: [],
+      stats: null,
+      editingId: null,
+      accessDenied: false,
+      historyContact: null,
+      import: { csvText: null, filename: null, batchId: null, preview: null, committing: false, previewing: false },
+    };
 
     function $(id) { return document.getElementById(id); }
 
@@ -778,12 +925,279 @@
       await loadContacts();
     }
 
+    async function archiveContact(id, restore) {
+      const { response, data } = await apiRequest("/archive-tenant-contact", {
+        method: "POST",
+        body: JSON.stringify({ id, restore: !!restore }),
+      });
+      if (!response.ok || !data.ok) {
+        showNotice(data.error || "Could not update contact status.", "err");
+        return;
+      }
+      showNotice(restore ? "Contact restored." : "Contact archived.", "ok");
+      await loadContacts();
+    }
+
+    function formatImportAction(action) {
+      const a = String(action || "").toLowerCase();
+      if (a === "create") return { label: "Create", cls: "create" };
+      if (a === "skip_duplicate") return { label: "Duplicate", cls: "duplicate" };
+      if (a === "skip_invalid") return { label: "Invalid", cls: "invalid" };
+      return { label: action || "—", cls: "invalid" };
+    }
+
+    function formatImportReason(row) {
+      if (row?.message) return row.message;
+      const reason = String(row?.reason || "").toLowerCase();
+      if (reason === "no_identity") return "Missing name, email, or phone";
+      if (reason === "email" || reason === "phone") return "Matches existing active contact";
+      if (reason === "email_csv" || reason === "phone_csv") return "Duplicate within CSV";
+      return row?.reason || "—";
+    }
+
+    function setImportError(message) {
+      const err = $("coImportError");
+      if (!err) return;
+      if (!message) {
+        err.hidden = true;
+        err.textContent = "";
+        return;
+      }
+      err.hidden = false;
+      err.textContent = message;
+    }
+
+    function setImportState(message, tone) {
+      const el = $("coImportState");
+      if (!el) return;
+      if (!message) {
+        el.hidden = true;
+        el.textContent = "";
+        el.className = "co-import-state";
+        return;
+      }
+      el.hidden = false;
+      el.textContent = message;
+      el.className = "co-import-state" + (tone === "err" ? " err" : "");
+    }
+
+    function resetImportPreviewUi() {
+      state.import.batchId = null;
+      state.import.preview = null;
+      if ($("coImportKpis")) $("coImportKpis").hidden = true;
+      if ($("coImportPreviewWrap")) $("coImportPreviewWrap").hidden = true;
+      if ($("coImportPreviewBody")) $("coImportPreviewBody").innerHTML = "";
+      if ($("coImportWarnings")) { $("coImportWarnings").hidden = true; $("coImportWarnings").textContent = ""; }
+      if ($("coImportSuccess")) { $("coImportSuccess").hidden = true; $("coImportSuccess").textContent = ""; }
+      if ($("coImportCommitBtn")) $("coImportCommitBtn").disabled = true;
+      setImportState("");
+      setImportError("");
+    }
+
+    function openImportModal() {
+      resetImportPreviewUi();
+      state.import.csvText = null;
+      state.import.filename = null;
+      if ($("coImportFile")) $("coImportFile").value = "";
+      if ($("coImportDefaultType")) $("coImportDefaultType").value = "homeowner";
+      if ($("coImportPreviewBtn")) $("coImportPreviewBtn").disabled = false;
+      const modal = $("coImportModal");
+      if (!modal) return;
+      modal.hidden = false;
+      modal.setAttribute("aria-hidden", "false");
+    }
+
+    function closeImportModal() {
+      const modal = $("coImportModal");
+      if (!modal) return;
+      modal.hidden = true;
+      modal.setAttribute("aria-hidden", "true");
+      resetImportPreviewUi();
+      state.import.csvText = null;
+      state.import.filename = null;
+      state.import.previewing = false;
+      state.import.committing = false;
+      if ($("coImportFile")) $("coImportFile").value = "";
+    }
+
+    function readSelectedImportFile() {
+      return new Promise((resolve, reject) => {
+        const input = $("coImportFile");
+        const file = input?.files?.[0];
+        if (!file) {
+          reject(new Error("Select a CSV file to import."));
+          return;
+        }
+        const name = String(file.name || "").toLowerCase();
+        if (!name.endsWith(".csv")) {
+          reject(new Error("Please choose a .csv file."));
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          state.import.csvText = String(reader.result ?? "");
+          state.import.filename = file.name || "contacts.csv";
+          resolve({ csv_text: state.import.csvText, filename: state.import.filename });
+        };
+        reader.onerror = () => reject(new Error("Could not read the CSV file."));
+        reader.readAsText(file);
+      });
+    }
+
+    function renderImportPreview(data) {
+      const counts = data.counts || {};
+      if ($("coImportKpis")) $("coImportKpis").hidden = false;
+      if ($("coImportTotalRows")) $("coImportTotalRows").textContent = String(data.total_rows ?? 0);
+      if ($("coImportWouldCreate")) $("coImportWouldCreate").textContent = String(counts.create ?? 0);
+      if ($("coImportDupes")) $("coImportDupes").textContent = String(counts.skip_duplicate ?? 0);
+      if ($("coImportInvalid")) $("coImportInvalid").textContent = String(counts.skip_invalid ?? 0);
+
+      const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+      const warnEl = $("coImportWarnings");
+      if (warnEl) {
+        if (warnings.length) {
+          warnEl.hidden = false;
+          warnEl.textContent = warnings.slice(0, 8).map((w) => `Row ${w.row_index}: ${w.message}`).join(" · ");
+        } else {
+          warnEl.hidden = true;
+          warnEl.textContent = "";
+        }
+      }
+
+      const rows = Array.isArray(data.preview_rows) ? data.preview_rows : [];
+      const tbody = $("coImportPreviewBody");
+      if (tbody) {
+        tbody.innerHTML = rows.map((row) => {
+          const badge = formatImportAction(row.action);
+          return `<tr>
+            <td>${escapeHtml(row.display_name || "—")}</td>
+            <td>${escapeHtml(row.email || "—")}</td>
+            <td>${escapeHtml(row.phone || "—")}</td>
+            <td>${escapeHtml(row.city || "—")}</td>
+            <td><span class="badge ${badge.cls}">${escapeHtml(badge.label)}</span></td>
+            <td>${escapeHtml(formatImportReason(row))}</td>
+          </tr>`;
+        }).join("");
+      }
+      if ($("coImportPreviewWrap")) $("coImportPreviewWrap").hidden = !rows.length;
+
+      const canCommit = !!(data.batch_id && (counts.create ?? 0) > 0);
+      if ($("coImportCommitBtn")) $("coImportCommitBtn").disabled = !canCommit;
+      state.import.batchId = data.batch_id || null;
+      state.import.preview = data;
+    }
+
+    function renderImportSuccess(data) {
+      const el = $("coImportSuccess");
+      if (!el) return;
+      el.hidden = false;
+      el.innerHTML = [
+        "<strong>Import complete.</strong>",
+        `Created: ${Number(data.created_count ?? 0)}`,
+        `Skipped: ${Number(data.skipped_count ?? 0)}`,
+        `Errors: ${Number(data.error_count ?? 0)}`,
+      ].join(" · ");
+      if ($("coImportCommitBtn")) $("coImportCommitBtn").disabled = true;
+      if ($("coImportPreviewBtn")) $("coImportPreviewBtn").disabled = true;
+    }
+
+    async function runImportPreview() {
+      if (state.import.previewing) return;
+      setImportError("");
+      setImportState("Reading CSV file…");
+      resetImportPreviewUi();
+
+      let payload;
+      try {
+        payload = await readSelectedImportFile();
+      } catch (err) {
+        setImportState("");
+        setImportError(err.message || "Could not read CSV file.");
+        return;
+      }
+
+      state.import.previewing = true;
+      if ($("coImportPreviewBtn")) $("coImportPreviewBtn").disabled = true;
+      setImportState("Generating import preview…");
+
+      const body = {
+        filename: payload.filename,
+        csv_text: payload.csv_text,
+        default_contact_type: $("coImportDefaultType")?.value || "homeowner",
+      };
+
+      const { response, data } = await apiRequest("/preview-tenant-contact-import", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+
+      state.import.previewing = false;
+      if ($("coImportPreviewBtn")) $("coImportPreviewBtn").disabled = false;
+      setImportState("");
+
+      if (response.status === 401) {
+        window.location.href = "/index.html?login=1";
+        return;
+      }
+      if (!response.ok || !data.ok) {
+        setImportError(data.error || "Could not preview import.");
+        return;
+      }
+
+      renderImportPreview(data);
+      if ((data.counts?.create ?? 0) === 0) {
+        setImportError("No new contacts to import. Review duplicates or invalid rows below.");
+      }
+    }
+
+    async function runImportCommit() {
+      if (state.import.committing || !state.import.batchId) return;
+      setImportError("");
+      setImportState("Importing contacts…");
+      state.import.committing = true;
+      if ($("coImportCommitBtn")) $("coImportCommitBtn").disabled = true;
+
+      const { response, data } = await apiRequest("/commit-tenant-contact-import", {
+        method: "POST",
+        body: JSON.stringify({ batch_id: state.import.batchId, confirm: true }),
+      });
+
+      state.import.committing = false;
+
+      if (response.status === 401) {
+        window.location.href = "/index.html?login=1";
+        return;
+      }
+      if (!response.ok || !data.ok) {
+        setImportState("");
+        setImportError(data.error || "Could not complete import.");
+        if ($("coImportCommitBtn")) $("coImportCommitBtn").disabled = true;
+        return;
+      }
+
+      setImportState("");
+      renderImportSuccess(data);
+      showNotice(`Imported ${data.created_count ?? 0} contact(s).`, "ok");
+      if ($("coFilterStatus")) $("coFilterStatus").value = "active";
+      await loadContacts();
+    }
+
     function bindUi() {
       $("coBtnAdd")?.addEventListener("click", () => openModal(null));
+      $("coBtnImport")?.addEventListener("click", openImportModal);
       $("coModalClose")?.addEventListener("click", closeModal);
       $("coModalCancel")?.addEventListener("click", closeModal);
       $("coModalSave")?.addEventListener("click", () => { void saveContact(); });
       $("coHistoryClose")?.addEventListener("click", closeHistoryModal);
+      $("coImportClose")?.addEventListener("click", closeImportModal);
+      $("coImportCancel")?.addEventListener("click", closeImportModal);
+      $("coImportPreviewBtn")?.addEventListener("click", () => { void runImportPreview(); });
+      $("coImportCommitBtn")?.addEventListener("click", () => { void runImportCommit(); });
+      $("coImportFile")?.addEventListener("change", () => {
+        resetImportPreviewUi();
+        state.import.csvText = null;
+        state.import.filename = null;
+      });
 
       let searchTimer = null;
       $("coSearch")?.addEventListener("input", () => {
@@ -826,6 +1240,9 @@
       });
       $("coHistoryModal")?.addEventListener("click", (event) => {
         if (event.target === $("coHistoryModal")) closeHistoryModal();
+      });
+      $("coImportModal")?.addEventListener("click", (event) => {
+        if (event.target === $("coImportModal")) closeImportModal();
       });
     }
 
