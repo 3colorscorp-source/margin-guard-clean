@@ -4810,6 +4810,15 @@ async function openSellerSendModal(event) {
     return s.indexOf('.', at + 1) > at;
   }
 
+  const PUBLISH_CONTACT_UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  function parsePublishContactId(state) {
+    const cid = String(state && state.selectedContactId || '').trim();
+    if (!cid || !PUBLISH_CONTACT_UUID_RE.test(cid)) return null;
+    return cid;
+  }
+
   function buildPublishPublicQuoteBody(opts) {
     const payload = opts.payload && typeof opts.payload === 'object' ? opts.payload : {};
     const stateFresh = opts.stateFresh && typeof opts.stateFresh === 'object' ? opts.stateFresh : {};
@@ -4824,6 +4833,7 @@ async function openSellerSendModal(event) {
     const message = String(opts.message || '');
     const scope = String(opts.scope || '');
     const bn = resolvePublishBusinessName(branding, payload, settings);
+    const publishContactId = parsePublishContactId(stateFresh);
     return {
       project_name: payload.projectName || stateFresh.projectName || '',
       title: payload.projectName || stateFresh.projectName || '',
@@ -4854,6 +4864,7 @@ async function openSellerSendModal(event) {
       business_email: branding.businessEmail || payload.businessEmail || settings.businessEmail || settings.email || '',
       business_phone: branding.businessPhone || payload.businessPhone || settings.businessPhone || settings.phone || '',
       business_address: branding.businessAddress || payload.businessAddress || settings.address || settings.companyAddress || '',
+      ...(publishContactId ? { contact_id: publishContactId } : {}),
       ...(typeof buildOperationalPublishFields === 'function'
         ? buildOperationalPublishFields(stateFresh, settings)
         : {})

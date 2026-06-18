@@ -36,6 +36,33 @@ function round2(n) {
   return Math.round(Number(n) * 100) / 100;
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+async function resolveQuoteContactId(body, tenantId) {
+  const raw = pickFirst(body.contact_id, body.contactId);
+  if (!raw || !UUID_RE.test(raw)) return null;
+
+  const tid = String(tenantId || "").trim();
+  if (!tid || !UUID_RE.test(tid)) return null;
+
+  try {
+    const rows = await supabaseRequest(
+      `tenant_contacts?id=eq.${encodeURIComponent(raw)}&tenant_id=eq.${encodeURIComponent(tid)}&status=eq.active&select=id&limit=1`,
+      { method: "GET" }
+    );
+    const hit = Array.isArray(rows) ? rows[0] : null;
+    return hit?.id ? String(hit.id) : null;
+  } catch (err) {
+    console.warn("[publish-public-quote] contact_id lookup failed", {
+      contact_id: raw,
+      tenant_id: tid,
+      message: err?.message || String(err)
+    });
+    return null;
+  }
+}
+
 function normIsoDate(raw) {
   const t = String(raw == null ? "" : raw).trim().slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : null;
@@ -645,6 +672,14 @@ exports.handler = async (event) => {
 
     const opPublish = parseOperationalPublishFields(body, tenantSettings);
 
+    const resolvedContactId = await resolveQuoteContactId(body, tenant.id);
+    if (pickFirst(body.contact_id, body.contactId) && !resolvedContactId) {
+      console.warn("[publish-public-quote] contact_id omitted (invalid, inactive, or cross-tenant)", {
+        contact_id: pickFirst(body.contact_id, body.contactId),
+        tenant_id: tenant.id
+      });
+    }
+
     function buildBasePayload(withAudit) {
       return {
         tenant_id: tenant.id,
@@ -669,6 +704,7 @@ exports.handler = async (event) => {
         ...(withAudit ? amountAudit : {}),
         ...(opPublish.include ? opPublish.fields : {}),
         ...sellerAttributionForInsert(ctx),
+        ...(resolvedContactId ? { contact_id: resolvedContactId } : {}),
       };
     }
 
