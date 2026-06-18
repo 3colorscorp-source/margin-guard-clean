@@ -164,7 +164,7 @@
       overflow: auto;
     }
     .co-history-card {
-      padding: 12px 14px;
+      padding: 14px 14px;
       border-radius: 14px;
       border: 1px solid rgba(255, 255, 255, 0.08);
       background: rgba(255, 255, 255, 0.03);
@@ -386,8 +386,8 @@
     <div class="modal-card">
       <div class="modal-header">
         <div>
-          <div class="modal-title" id="coHistoryTitle">Contact</div>
-          <div class="modal-subtitle" id="coHistorySubtitle">Quote history</div>
+          <div class="modal-title" id="coHistoryTitle">Quote History</div>
+          <div class="modal-subtitle" id="coHistorySubtitle">Contact</div>
         </div>
         <button type="button" class="btn ghost" id="coHistoryClose">Close</button>
       </div>
@@ -450,7 +450,10 @@
     }
 
     function formatStatusLabel(status) {
-      return String(status || "unknown").replace(/_/g, " ");
+      return String(status || "unknown")
+        .replace(/_/g, " ")
+        .toLowerCase()
+        .replace(/\b\w/g, (ch) => ch.toUpperCase());
     }
 
     function showNotice(msg, tone) {
@@ -647,7 +650,7 @@
         const project = q.project_name || "Untitled project";
         const address = q.project_address || "—";
         const publicLink = q.public_url
-          ? `<a class="btn ghost" href="${escapeHtml(q.public_url)}" target="_blank" rel="noopener noreferrer">Open public quote</a>`
+          ? `<a class="btn ghost" href="${escapeHtml(q.public_url)}" target="_blank" rel="noopener noreferrer">View public quote</a>`
           : "";
         return `<article class="co-history-card">
           <div class="co-history-card__head">
@@ -668,8 +671,8 @@
       state.historyContact = contact;
       const modal = $("coHistoryModal");
       if (!modal) return;
-      $("coHistoryTitle").textContent = contact.display_name || "Contact";
-      $("coHistorySubtitle").textContent = "Quote history";
+      $("coHistoryTitle").textContent = "Quote History";
+      $("coHistorySubtitle").textContent = contact.display_name || "Contact";
       modal.hidden = false;
       modal.setAttribute("aria-hidden", "false");
       renderHistoryState("Loading quote history…", "");
