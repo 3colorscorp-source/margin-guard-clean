@@ -84,8 +84,8 @@ function normalizeContactInput(body, { isInsert, sourceOverride } = {}) {
   };
 
   if (isInsert) {
-    row.source = options.sourceOverride && CONTACT_SOURCES.has(options.sourceOverride)
-      ? options.sourceOverride
+    row.source = sourceOverride && CONTACT_SOURCES.has(sourceOverride)
+      ? sourceOverride
       : "manual";
   }
 
