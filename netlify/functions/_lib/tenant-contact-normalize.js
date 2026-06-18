@@ -44,7 +44,7 @@ function deriveDisplayName(fields) {
   return "Unnamed Contact";
 }
 
-function normalizeContactInput(body, { isInsert } = {}) {
+function normalizeContactInput(body, { isInsert, sourceOverride } = {}) {
   const first_name = trimStr(body?.first_name, 200) || null;
   const last_name = trimStr(body?.last_name, 200) || null;
   const company_name = trimStr(body?.company_name, 300) || null;
@@ -84,7 +84,9 @@ function normalizeContactInput(body, { isInsert } = {}) {
   };
 
   if (isInsert) {
-    row.source = "manual";
+    row.source = options.sourceOverride && CONTACT_SOURCES.has(options.sourceOverride)
+      ? options.sourceOverride
+      : "manual";
   }
 
   return row;

@@ -1,5 +1,6 @@
 /**
  * Step 3E-C17-C — create/update tenant contact (owner/admin, session-scoped).
+ * Step 3E-C17-D2 — seller create-only from quote form (device session + source_context).
  */
 
 const { supabaseRequest } = require("./_lib/supabase-admin");
@@ -10,7 +11,10 @@ const {
   membershipRole,
   membershipIsActive,
 } = require("./_lib/membership-resolve");
-const { throwGuard } = require("./_lib/tenant-device-guard");
+const {
+  throwGuard,
+  resolveOwnerOrSellerContext,
+} = require("./_lib/tenant-device-guard");
 const {
   UUID_RE,
   trimStr,
@@ -36,6 +40,13 @@ function parseBody(raw) {
   }
 }
 
+function isSellerQuoteCreateRequest(body) {
+  const ctx = trimStr(body?.source_context, 64).toLowerCase();
+  if (ctx === "seller_quote_form") return true;
+  if (body?.from_sales_quote === true) return true;
+  return String(body?.from_sales_quote || "").trim().toLowerCase() === "true";
+}
+
 async function requireOwnerOrAdmin(event) {
   const session = readSessionFromEvent(event);
   if (!session?.e || !session?.c) {
@@ -56,7 +67,39 @@ async function requireOwnerOrAdmin(event) {
   if (!OWNER_ADMIN_ROLES.has(role)) {
     throwGuard(403, "Owner or admin membership required", "owner_required");
   }
-  return { session, tenant, membership };
+  return { session, tenant, membership, accessMode: "owner_admin" };
+}
+
+async function resolveUpsertAccess(event, body) {
+  try {
+    return await requireOwnerOrAdmin(event);
+  } catch (ownerErr) {
+    if (!ownerErr?.isGuardError) throw ownerErr;
+
+    const ctx = await resolveOwnerOrSellerContext(event);
+    if (ctx.auth_mode !== "device") {
+      throw ownerErr;
+    }
+
+    if (!isSellerQuoteCreateRequest(body)) {
+      throwGuard(
+        403,
+        "Seller contact create requires source_context seller_quote_form",
+        "seller_create_context_required"
+      );
+    }
+
+    const contactId = trimStr(body?.id, 64);
+    if (UUID_RE.test(contactId)) {
+      throwGuard(403, "Seller cannot update contacts", "seller_update_forbidden");
+    }
+
+    return {
+      tenant: ctx.tenant,
+      membership: ctx.membership,
+      accessMode: "seller_create",
+    };
+  }
 }
 
 async function findDuplicateWarnings(tenantId, normalized, excludeId) {
@@ -105,8 +148,6 @@ exports.handler = async (event) => {
       return json(405, { error: "Method Not Allowed" });
     }
 
-    const { tenant, membership } = await requireOwnerOrAdmin(event);
-    const tenantId = String(tenant.id);
     const body = parseBody(event.body);
     if (body == null) {
       return json(400, { ok: false, error: "Invalid JSON" });
@@ -116,9 +157,21 @@ exports.handler = async (event) => {
       return json(400, { ok: false, error: "tenant_id must not be sent by client", code: "tenant_id_forbidden" });
     }
 
+    const { tenant, membership, accessMode } = await resolveUpsertAccess(event, body);
+    const tenantId = String(tenant.id);
+
     const contactId = trimStr(body.id, 64);
-    const isEdit = UUID_RE.test(contactId);
-    const normalized = normalizeContactInput(body, { isInsert: !isEdit });
+    const isEdit = accessMode === "owner_admin" && UUID_RE.test(contactId);
+    const isSellerCreate = accessMode === "seller_create";
+
+    const normalized = normalizeContactInput(body, {
+      isInsert: !isEdit,
+      sourceOverride: isSellerCreate ? "quote" : undefined,
+    });
+
+    if (isSellerCreate) {
+      normalized.status = "active";
+    }
 
     if (!normalized.display_name) {
       return json(400, { ok: false, error: "display_name could not be derived" });
@@ -150,7 +203,7 @@ exports.handler = async (event) => {
       const insert = {
         ...normalized,
         tenant_id: tenantId,
-        source: "manual",
+        source: isSellerCreate ? "quote" : normalized.source || "manual",
         status: "active",
         created_by_membership_id: membershipId,
         updated_by_membership_id: membershipId,

@@ -81,6 +81,10 @@
                   <button type="button" class="btn ghost" id="salesContactClear">Clear</button>
                 </div>
                 <p class="hint sales-contact-picker__hint">Selecting a contact only prefills this quote. You can still edit the fields.</p>
+                <div class="sales-contact-picker__actions">
+                  <button type="button" class="btn ghost" id="salesContactSave" disabled>Save as contact</button>
+                </div>
+                <p class="hint sales-contact-picker__notice" id="salesContactNotice" hidden role="status"></p>
                 <p class="hint sales-contact-picker__warn" id="salesContactWarn" hidden role="status"></p>
               </div>
               <div class="form">
@@ -2991,6 +2995,13 @@
           contactWarn.hidden = true;
           contactWarn.textContent = '';
         }
+        const contactNotice = document.getElementById('salesContactNotice');
+        if (contactNotice) {
+          contactNotice.hidden = true;
+          contactNotice.textContent = '';
+        }
+        const contactSave = document.getElementById('salesContactSave');
+        if (contactSave) contactSave.disabled = true;
 
         const countPairs = [
           ['salesProjectName', 'salesProjectNameCount'],
@@ -5669,6 +5680,8 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         const chipEl = document.getElementById('salesContactChip');
         const chipLabelEl = document.getElementById('salesContactChipLabel');
         const clearBtn = document.getElementById('salesContactClear');
+        const saveBtn = document.getElementById('salesContactSave');
+        const noticeEl = document.getElementById('salesContactNotice');
         const warnEl = document.getElementById('salesContactWarn');
         if (!searchEl || !resultsEl || searchEl.dataset.bound === '1') return;
         searchEl.dataset.bound = '1';
@@ -5725,6 +5738,110 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           }
           warnEl.hidden = false;
           warnEl.textContent = msg;
+        }
+
+        function setNotice(msg, tone) {
+          if (!noticeEl) return;
+          if (!msg) {
+            noticeEl.hidden = true;
+            noticeEl.textContent = '';
+            noticeEl.className = 'hint sales-contact-picker__notice';
+            return;
+          }
+          noticeEl.hidden = false;
+          noticeEl.textContent = msg;
+          noticeEl.className = 'hint sales-contact-picker__notice' + (tone === 'err' ? ' sales-contact-picker__notice--err' : tone === 'warn' ? ' sales-contact-picker__notice--warn' : ' sales-contact-picker__notice--ok');
+        }
+
+        function gatherClientIdentity() {
+          return {
+            display_name: String(document.getElementById('salesClientName')?.value || '').trim(),
+            email: String(document.getElementById('salesCustomerEmail')?.value || '').trim(),
+            phone: String(document.getElementById('salesCustomerPhone')?.value || '').trim(),
+            location: String(document.getElementById('salesLocation')?.value || '').trim(),
+          };
+        }
+
+        function hasSaveableIdentity(identity) {
+          const id = identity || gatherClientIdentity();
+          return !!(id.display_name || id.email || id.phone);
+        }
+
+        function updateSaveButtonState() {
+          if (!saveBtn) return;
+          saveBtn.disabled = !hasSaveableIdentity();
+        }
+
+        function buildSaveContactBody() {
+          const id = gatherClientIdentity();
+          return {
+            display_name: id.display_name,
+            email: id.email,
+            phone: id.phone,
+            address_line1: id.location || null,
+            contact_type: 'homeowner',
+            source_context: 'seller_quote_form',
+          };
+        }
+
+        function setSelectedContactOnly(contact) {
+          pickerState.selected = contact;
+          showSelectedChip(contact);
+        }
+
+        async function saveContactFromForm() {
+          if (!hasSaveableIdentity()) return;
+          if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving…';
+          }
+          setNotice('');
+          setWarn('');
+          try {
+            const response = await fetch('/.netlify/functions/upsert-tenant-contact', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+              body: JSON.stringify(buildSaveContactBody()),
+            });
+            let data = {};
+            try { data = await response.json(); } catch (_e) { data = {}; }
+            if (!response.ok || !data.ok) {
+              setNotice(data.error || 'Could not save contact. You can still use this quote.', 'err');
+              return;
+            }
+            const warnings = Array.isArray(data.duplicate_warnings) ? data.duplicate_warnings : [];
+            if (warnings.length) {
+              setWarn('Duplicate warning: ' + warnings.map(function (w) { return w.message; }).join(' · '));
+            }
+            setNotice('Contact saved.', warnings.length ? 'warn' : 'ok');
+            if (data.contact) {
+              setSelectedContactOnly(data.contact);
+              pickerState.results = [data.contact];
+            }
+          } catch (_err) {
+            setNotice('Could not save contact. You can still use this quote.', 'err');
+          } finally {
+            if (saveBtn) {
+              saveBtn.textContent = 'Save as contact';
+              updateSaveButtonState();
+            }
+          }
+        }
+
+        ['salesClientName', 'salesCustomerEmail', 'salesCustomerPhone', 'salesLocation'].forEach(function (fieldId) {
+          const el = document.getElementById(fieldId);
+          if (!el) return;
+          el.addEventListener('input', updateSaveButtonState);
+          el.addEventListener('change', updateSaveButtonState);
+        });
+        updateSaveButtonState();
+
+        if (saveBtn) {
+          saveBtn.addEventListener('click', function (event) {
+            event.preventDefault();
+            void saveContactFromForm();
+          });
         }
 
         function hideResults() {

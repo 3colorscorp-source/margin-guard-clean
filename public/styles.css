@@ -8530,3 +8530,22 @@ body[data-role="sales"] .sales-contact-picker__warn{
   margin:6px 0 0;
   color:#fbbf24;
 }
+body[data-mg-page-title="Vendedor"] .sales-contact-picker__actions,
+body[data-role="sales"] .sales-contact-picker__actions{
+  margin-top:8px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+body[data-mg-page-title="Vendedor"] .sales-contact-picker__notice--ok,
+body[data-role="sales"] .sales-contact-picker__notice--ok{
+  color:#86efac;
+}
+body[data-mg-page-title="Vendedor"] .sales-contact-picker__notice--warn,
+body[data-role="sales"] .sales-contact-picker__notice--warn{
+  color:#fbbf24;
+}
+body[data-mg-page-title="Vendedor"] .sales-contact-picker__notice--err,
+body[data-role="sales"] .sales-contact-picker__notice--err{
+  color:#fca5a5;
+}
