@@ -35,6 +35,9 @@ const ALLOWED_STATUS = new Set([
   "cancelled",
 ]);
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function json(statusCode, payload) {
   return {
     statusCode,
@@ -105,7 +108,7 @@ async function loadTenantSettingsFromLatestSnapshot(tenantId) {
 
 const SUPERVISOR_QUOTE_STATUSES = new Set(["accepted", "approved"]);
 const QUOTE_FIRMAR_SELECT =
-  "id,tenant_id,total,status,accepted_at,seller_membership_id,created_by_role";
+  "id,tenant_id,total,status,accepted_at,seller_membership_id,created_by_role,contact_id";
 const SELLER_FIRST_FIRMAR_STATUS = "ready_to_send";
 const SELLER_FIRMAR_RETRY_STATUSES = new Set(["accepted", "approved"]);
 const ARCHIVED_QUOTE_STATUS = "archived";
@@ -114,6 +117,12 @@ function normQuoteStatus(s) {
   return String(s || "")
     .trim()
     .toLowerCase();
+}
+
+/** CRM link from tenant-scoped quote row only — never from request body. */
+function contactIdFromQuote(quote) {
+  const raw = String(quote?.contact_id ?? "").trim();
+  return UUID_RE.test(raw) ? raw : "";
 }
 
 /** Seller device only: READY_TO_SEND for first Firmar; idempotent retry when project exists. */
@@ -337,6 +346,9 @@ exports.handler = async (event) => {
       notes: str(body.notes, 8000),
       updated_at: nowIso,
     };
+
+    const quoteContactId = contactIdFromQuote(quoteOk);
+    if (quoteContactId) row.contact_id = quoteContactId;
 
     if (!locked || opPlanLabor) {
       row.estimated_labor_cost = economics.estimatedLaborCost;

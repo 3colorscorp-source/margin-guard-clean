@@ -41,6 +41,12 @@ function finiteMoney(value, fallback = 0) {
   return Math.round(n * 100) / 100;
 }
 
+/** CRM link from quote row only — never from client request body. */
+function contactIdFromQuoteRow(quoteRow) {
+  const raw = String(quoteRow?.contact_id ?? "").trim();
+  return UUID_RE.test(raw) ? raw : "";
+}
+
 async function loadLatestTenantSnapshotPayload(tenantId) {
   const tidEnc = encodeURIComponent(tenantId);
   try {
@@ -322,6 +328,8 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
     );
     const tpHit = Array.isArray(tpRows) ? tpRows[0] : null;
 
+    const quoteContactId = contactIdFromQuoteRow(quoteRow);
+
     const basePatch = {
       project_name: projectName,
       client_name: clientName,
@@ -333,6 +341,7 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
       quote_id: quoteId,
       updated_at: nowIso,
     };
+    if (quoteContactId) basePatch.contact_id = quoteContactId;
     if (quoteDueDate) basePatch.due_date = quoteDueDate;
     if (quoteStartDate) basePatch.signed_at = `${quoteStartDate}T12:00:00.000Z`;
 
@@ -361,6 +370,7 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
           body: {
             tenant_id: tenantId,
             quote_id: quoteId,
+            ...(quoteContactId ? { contact_id: quoteContactId } : {}),
             project_name: projectName,
             client_name: clientName,
             client_email: clientEmail,
