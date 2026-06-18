@@ -31,6 +31,7 @@
       ownerOnly: true,
       items: [
         { type: 'link', href: '/business-settings', label: 'Business Settings', icon: 'BS', ownerNav: true },
+        { type: 'link', href: '/contacts.html', label: 'Contacts', icon: 'CO', ownerNav: true },
         { type: 'link', href: '/team-devices', label: 'Team & Devices', icon: 'TD', ownerNav: true }
       ]
     },

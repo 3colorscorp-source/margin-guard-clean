@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Contacts</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .co-hero { margin-bottom: 10px; }
+    .co-hero .card-inner { padding-top: 12px; padding-bottom: 12px; }
+    .co-hero h2 { margin: 0 0 4px; font-size: clamp(1.25rem, 2.2vw, 1.55rem); }
+    .co-hero .sub { margin: 0; max-width: 62ch; line-height: 1.45; }
+    .co-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    @media (max-width: 900px) {
+      .co-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 480px) {
+      .co-kpi-grid { grid-template-columns: 1fr 1fr; }
+    }
+    .co-kpi {
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .co-kpi .label {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.65);
+    }
+    .co-kpi .value {
+      margin-top: 4px;
+      font-size: clamp(18px, 2.4vw, 22px);
+      font-weight: 800;
+      color: #f8fafc;
+    }
+    .co-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .co-toolbar .field { flex: 1 1 200px; margin: 0; min-width: 160px; }
+    .co-toolbar .field input,
+    .co-toolbar .field select {
+      width: 100%;
+      padding: 9px 11px;
+      border-radius: 12px;
+    }
+    .co-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .co-filters label {
+      font-size: 12px;
+      color: rgba(232, 238, 252, 0.65);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .co-filters select { min-width: 120px; padding: 8px 10px; border-radius: 10px; }
+    .co-table-wrap { overflow-x: auto; }
+    .co-table-wrap .table { min-width: 720px; }
+    .co-row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .co-empty {
+      padding: 20px 14px;
+      text-align: center;
+      border-radius: 12px;
+      border: 1px dashed rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .co-empty__title { margin: 0 0 6px; font-weight: 700; }
+    .co-empty__sub { margin: 0; color: rgba(232, 238, 252, 0.65); font-size: 13px; }
+    .co-notice {
+      margin-bottom: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .co-notice.ok { border: 1px solid rgba(34, 197, 94, 0.35); background: rgba(34, 197, 94, 0.08); }
+    .co-notice.warn { border: 1px solid rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.08); }
+    .co-notice.err { border: 1px solid rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.08); }
+    .co-access-denied { padding: 24px; text-align: center; }
+    .co-type-badge { text-transform: capitalize; }
+    .co-mobile-cards { display: none; flex-direction: column; gap: 10px; }
+    @media (max-width: 640px) {
+      .co-table-wrap { display: none; }
+      .co-mobile-cards { display: flex; }
+      .co-mobile-card {
+        padding: 12px 14px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .co-mobile-card__head {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: flex-start;
+        margin-bottom: 8px;
+      }
+      .co-mobile-card__name { font-weight: 800; color: #f8fafc; font-size: 15px; }
+      .co-mobile-card__meta { font-size: 12px; color: rgba(232, 238, 252, 0.72); line-height: 1.4; }
+      .co-mobile-card__actions { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+    }
+    .co-form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    @media (max-width: 640px) {
+      .co-form-grid { grid-template-columns: 1fr; }
+    }
+    .co-form-grid .field--full { grid-column: 1 / -1; }
+    .co-dup-warn {
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.08);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+  </style>
+</head>
+<body data-role="owner" data-requires-auth="true" class="contacts-page" data-mg-app-nav data-mg-page-title="Contacts">
+  <div class="container">
+    <div class="account-pill" id="accountEmail">Cuenta activa</div>
+
+    <div id="coAccessDenied" class="card co-access-denied" hidden>
+      <div class="card-inner">
+        <h2>Access denied</h2>
+        <p class="sub">Contacts is available to the owner account only.</p>
+        <a class="btn" href="/dashboard">Back to Dashboard</a>
+      </div>
+    </div>
+
+    <div id="coMain" hidden>
+      <section class="card co-hero">
+        <div class="card-inner">
+          <span class="eyebrow">Owner · Customer directory</span>
+          <h2>Contacts</h2>
+          <p class="sub">Save customers, contractors, suppliers, and repeat clients for future quotes.</p>
+          <div class="co-kpi-grid" id="coKpiGrid">
+            <div class="co-kpi"><div class="label">Active</div><div class="value" id="coKpiActive">—</div></div>
+            <div class="co-kpi"><div class="label">Homeowners</div><div class="value" id="coKpiHomeowners">—</div></div>
+            <div class="co-kpi"><div class="label">GCs</div><div class="value" id="coKpiGc">—</div></div>
+            <div class="co-kpi"><div class="label">Suppliers</div><div class="value" id="coKpiSuppliers">—</div></div>
+            <div class="co-kpi"><div class="label">Archived</div><div class="value" id="coKpiArchived">—</div></div>
+          </div>
+        </div>
+      </section>
+
+      <div id="coNotice" class="co-notice ok" hidden role="status" aria-live="polite"></div>
+
+      <section class="card">
+        <div class="card-inner">
+          <div class="co-toolbar">
+            <div class="field">
+              <label for="coSearch">Search</label>
+              <input id="coSearch" type="search" placeholder="Name, email, phone, company, city…" autocomplete="off" />
+            </div>
+            <div class="co-filters">
+              <label>
+                Type
+                <select id="coFilterType">
+                  <option value="">All types</option>
+                  <option value="homeowner">Homeowner</option>
+                  <option value="general_contractor">General contractor</option>
+                  <option value="designer">Designer</option>
+                  <option value="property_manager">Property manager</option>
+                  <option value="business">Business</option>
+                  <option value="supplier">Supplier</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label>
+                Status
+                <select id="coFilterStatus">
+                  <option value="active">Active</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </label>
+            </div>
+            <button type="button" class="btn primary" id="coBtnAdd">Add Contact</button>
+          </div>
+
+          <div id="coEmpty" class="co-empty" hidden>
+            <p class="co-empty__title">No contacts yet.</p>
+            <p class="co-empty__sub">Add your first customer or contractor.</p>
+          </div>
+
+          <div id="coTableWrap" class="co-table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>City</th>
+                  <th>Updated</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="coTableBody"></tbody>
+            </table>
+          </div>
+
+          <div id="coMobileCards" class="co-mobile-cards"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="coModal" class="modal" hidden aria-hidden="true" role="dialog" aria-labelledby="coModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="coModalTitle">Add contact</div>
+          <div class="modal-subtitle" id="coModalSubtitle">Save a customer or contractor for this tenant.</div>
+        </div>
+        <button type="button" class="btn ghost" id="coModalClose">Close</button>
+      </div>
+      <div class="modal-body">
+        <div id="coDupWarn" class="co-dup-warn" hidden></div>
+        <div class="form co-form-grid">
+          <div class="field field--full">
+            <label for="coDisplayName">Display name</label>
+            <input id="coDisplayName" maxlength="500" placeholder="Auto-derived if left blank" />
+          </div>
+          <div class="field">
+            <label for="coFirstName">First name</label>
+            <input id="coFirstName" maxlength="200" />
+          </div>
+          <div class="field">
+            <label for="coLastName">Last name</label>
+            <input id="coLastName" maxlength="200" />
+          </div>
+          <div class="field field--full">
+            <label for="coCompany">Company name</label>
+            <input id="coCompany" maxlength="300" />
+          </div>
+          <div class="field">
+            <label for="coType">Type</label>
+            <select id="coType">
+              <option value="homeowner">Homeowner</option>
+              <option value="general_contractor">General contractor</option>
+              <option value="designer">Designer</option>
+              <option value="property_manager">Property manager</option>
+              <option value="business">Business</option>
+              <option value="supplier">Supplier</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="coEmail">Email</label>
+            <input id="coEmail" type="email" maxlength="320" />
+          </div>
+          <div class="field">
+            <label for="coPhone">Phone</label>
+            <input id="coPhone" maxlength="40" placeholder="(555) 123-4567" />
+          </div>
+          <div class="field field--full">
+            <label for="coAddress1">Address line 1</label>
+            <input id="coAddress1" maxlength="300" />
+          </div>
+          <div class="field field--full">
+            <label for="coAddress2">Address line 2</label>
+            <input id="coAddress2" maxlength="300" />
+          </div>
+          <div class="field">
+            <label for="coCity">City</label>
+            <input id="coCity" maxlength="120" />
+          </div>
+          <div class="field">
+            <label for="coState">State</label>
+            <input id="coState" maxlength="32" />
+          </div>
+          <div class="field">
+            <label for="coPostal">ZIP</label>
+            <input id="coPostal" maxlength="20" />
+          </div>
+          <div class="field">
+            <label for="coCountry">Country</label>
+            <input id="coCountry" maxlength="2" value="US" />
+          </div>
+          <div class="field field--full">
+            <label for="coNotes">Notes</label>
+            <textarea id="coNotes" rows="3" maxlength="4000"></textarea>
+          </div>
+        </div>
+        <p id="coModalError" class="sub" style="color:#fca5a5;margin:8px 0 0;" hidden></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn ghost" id="coModalCancel">Cancel</button>
+        <button type="button" class="btn primary" id="coModalSave">Save contact</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/mg-app-nav.js"></script>
+  <script src="/js/tenant.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+  (() => {
+    "use strict";
+
+    const API = "/.netlify/functions";
+    const state = { contacts: [], stats: null, editingId: null, accessDenied: false };
+
+    function $(id) { return document.getElementById(id); }
+
+    function escapeHtml(v) {
+      return String(v ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function formatTypeLabel(t) {
+      return String(t || "other").replace(/_/g, " ");
+    }
+
+    function formatDate(value) {
+      if (!value) return "—";
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return "—";
+      return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    }
+
+    function showNotice(msg, tone) {
+      const el = $("coNotice");
+      if (!el) return;
+      if (!msg) { el.hidden = true; el.textContent = ""; return; }
+      el.hidden = false;
+      el.textContent = msg;
+      el.className = "co-notice " + (tone || "ok");
+    }
+
+    async function apiRequest(path, options) {
+      const response = await fetch(API + path, {
+        credentials: "include",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        ...options,
+      });
+      let data = {};
+      try { data = await response.json(); } catch (_e) { data = {}; }
+      return { response, data };
+    }
+
+    function paintStats(stats) {
+      const s = stats || {};
+      if ($("coKpiActive")) $("coKpiActive").textContent = String(s.total_active ?? 0);
+      if ($("coKpiHomeowners")) $("coKpiHomeowners").textContent = String(s.homeowners ?? 0);
+      if ($("coKpiGc")) $("coKpiGc").textContent = String(s.general_contractors ?? 0);
+      if ($("coKpiSuppliers")) $("coKpiSuppliers").textContent = String(s.suppliers ?? 0);
+      if ($("coKpiArchived")) $("coKpiArchived").textContent = String(s.archived ?? 0);
+    }
+
+    function renderRows() {
+      const tbody = $("coTableBody");
+      const mobile = $("coMobileCards");
+      const empty = $("coEmpty");
+      const tableWrap = $("coTableWrap");
+      const status = $("coFilterStatus")?.value || "active";
+      const rows = state.contacts;
+
+      if (!rows.length) {
+        if (empty) empty.hidden = false;
+        if (tableWrap) tableWrap.hidden = true;
+        if (mobile) mobile.innerHTML = "";
+        if (tbody) tbody.innerHTML = "";
+        return;
+      }
+
+      if (empty) empty.hidden = true;
+      if (tableWrap) tableWrap.hidden = false;
+
+      const html = rows.map((c) => {
+        const archiveBtn = status === "archived"
+          ? `<button type="button" class="btn ghost" data-co-restore="${escapeHtml(c.id)}">Restore</button>`
+          : `<button type="button" class="btn ghost" data-co-archive="${escapeHtml(c.id)}">Archive</button>`;
+        return `<tr>
+          <td><strong>${escapeHtml(c.display_name)}</strong></td>
+          <td><span class="badge amber co-type-badge">${escapeHtml(formatTypeLabel(c.contact_type))}</span></td>
+          <td>${escapeHtml(c.email || "—")}</td>
+          <td>${escapeHtml(c.phone || "—")}</td>
+          <td>${escapeHtml(c.city || "—")}</td>
+          <td>${escapeHtml(formatDate(c.updated_at || c.created_at))}</td>
+          <td><div class="co-row-actions">
+            <button type="button" class="btn" data-co-edit="${escapeHtml(c.id)}">Edit</button>
+            ${archiveBtn}
+          </div></td>
+        </tr>`;
+      }).join("");
+
+      if (tbody) tbody.innerHTML = html;
+
+      if (mobile) {
+        mobile.innerHTML = rows.map((c) => {
+          const archiveBtn = status === "archived"
+            ? `<button type="button" class="btn ghost" data-co-restore="${escapeHtml(c.id)}">Restore</button>`
+            : `<button type="button" class="btn ghost" data-co-archive="${escapeHtml(c.id)}">Archive</button>`;
+          return `<article class="co-mobile-card">
+            <div class="co-mobile-card__head">
+              <div class="co-mobile-card__name">${escapeHtml(c.display_name)}</div>
+              <span class="badge amber co-type-badge">${escapeHtml(formatTypeLabel(c.contact_type))}</span>
+            </div>
+            <div class="co-mobile-card__meta">
+              ${escapeHtml(c.email || "—")}<br />
+              ${escapeHtml(c.phone || "—")}<br />
+              ${escapeHtml(c.city || "—")} · ${escapeHtml(formatDate(c.updated_at || c.created_at))}
+            </div>
+            <div class="co-mobile-card__actions">
+              <button type="button" class="btn" data-co-edit="${escapeHtml(c.id)}">Edit</button>
+              ${archiveBtn}
+            </div>
+          </article>`;
+        }).join("");
+      }
+    }
+
+    async function loadContacts() {
+      const q = String($("coSearch")?.value || "").trim();
+      const status = $("coFilterStatus")?.value || "active";
+      const contact_type = $("coFilterType")?.value || "";
+      const params = new URLSearchParams({ status, limit: "200" });
+      if (q) params.set("q", q);
+      if (contact_type) params.set("contact_type", contact_type);
+
+      const { response, data } = await apiRequest("/list-tenant-contacts?" + params.toString(), { method: "GET" });
+
+      if (response.status === 401) {
+        window.location.href = "/index.html?login=1";
+        return;
+      }
+      if (response.status === 403) {
+        state.accessDenied = true;
+        $("coMain").hidden = true;
+        $("coAccessDenied").hidden = false;
+        return;
+      }
+      if (!response.ok || !data.ok) {
+        showNotice(data.error || "Could not load contacts.", "err");
+        return;
+      }
+
+      state.contacts = Array.isArray(data.contacts) ? data.contacts : [];
+      state.stats = data.stats || null;
+      paintStats(state.stats);
+      renderRows();
+    }
+
+    function openModal(contact) {
+      state.editingId = contact?.id || null;
+      $("coModalTitle").textContent = contact ? "Edit contact" : "Add contact";
+      $("coModalSubtitle").textContent = contact ? "Update saved contact details." : "Save a customer or contractor for this tenant.";
+      $("coDisplayName").value = contact?.display_name || "";
+      $("coFirstName").value = contact?.first_name || "";
+      $("coLastName").value = contact?.last_name || "";
+      $("coCompany").value = contact?.company_name || "";
+      $("coType").value = contact?.contact_type || "homeowner";
+      $("coEmail").value = contact?.email || "";
+      $("coPhone").value = contact?.phone || "";
+      $("coAddress1").value = contact?.address_line1 || "";
+      $("coAddress2").value = contact?.address_line2 || "";
+      $("coCity").value = contact?.city || "";
+      $("coState").value = contact?.state || "";
+      $("coPostal").value = contact?.postal_code || "";
+      $("coCountry").value = contact?.country || "US";
+      $("coNotes").value = contact?.notes || "";
+      const err = $("coModalError");
+      if (err) { err.hidden = true; err.textContent = ""; }
+      const dw = $("coDupWarn");
+      if (dw) { dw.hidden = true; dw.textContent = ""; }
+      const modal = $("coModal");
+      modal.hidden = false;
+      modal.setAttribute("aria-hidden", "false");
+    }
+
+    function closeModal() {
+      const modal = $("coModal");
+      modal.hidden = true;
+      modal.setAttribute("aria-hidden", "true");
+      state.editingId = null;
+    }
+
+    function collectFormBody() {
+      const body = {
+        display_name: $("coDisplayName").value,
+        first_name: $("coFirstName").value,
+        last_name: $("coLastName").value,
+        company_name: $("coCompany").value,
+        contact_type: $("coType").value,
+        email: $("coEmail").value,
+        phone: $("coPhone").value,
+        address_line1: $("coAddress1").value,
+        address_line2: $("coAddress2").value,
+        city: $("coCity").value,
+        state: $("coState").value,
+        postal_code: $("coPostal").value,
+        country: $("coCountry").value,
+        notes: $("coNotes").value,
+      };
+      if (state.editingId) body.id = state.editingId;
+      return body;
+    }
+
+    async function saveContact() {
+      const err = $("coModalError");
+      const body = collectFormBody();
+      const { response, data } = await apiRequest("/upsert-tenant-contact", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok || !data.ok) {
+        if (err) {
+          err.hidden = false;
+          err.textContent = data.error || "Could not save contact.";
+        }
+        return;
+      }
+
+      const warnings = Array.isArray(data.duplicate_warnings) ? data.duplicate_warnings : [];
+      if (warnings.length) {
+        const dw = $("coDupWarn");
+        if (dw) {
+          dw.hidden = false;
+          dw.textContent = "Duplicate warning: " + warnings.map((w) => w.message).join(" · ");
+        }
+        showNotice("Contact saved with duplicate warning.", "warn");
+      } else {
+        showNotice(state.editingId ? "Contact updated." : "Contact added.", "ok");
+        closeModal();
+      }
+
+      await loadContacts();
+    }
+
+    async function archiveContact(id, restore) {
+      const { response, data } = await apiRequest("/archive-tenant-contact", {
+        method: "POST",
+        body: JSON.stringify({ id, restore: !!restore }),
+      });
+      if (!response.ok || !data.ok) {
+        showNotice(data.error || "Could not update contact status.", "err");
+        return;
+      }
+      showNotice(restore ? "Contact restored." : "Contact archived.", "ok");
+      await loadContacts();
+    }
+
+    function bindUi() {
+      $("coBtnAdd")?.addEventListener("click", () => openModal(null));
+      $("coModalClose")?.addEventListener("click", closeModal);
+      $("coModalCancel")?.addEventListener("click", closeModal);
+      $("coModalSave")?.addEventListener("click", () => { void saveContact(); });
+
+      let searchTimer = null;
+      $("coSearch")?.addEventListener("input", () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => { void loadContacts(); }, 250);
+      });
+      $("coFilterType")?.addEventListener("change", () => { void loadContacts(); });
+      $("coFilterStatus")?.addEventListener("change", () => { void loadContacts(); });
+
+      const onActionClick = (event) => {
+        const edit = event.target.closest("[data-co-edit]");
+        if (edit) {
+          const id = edit.getAttribute("data-co-edit");
+          const row = state.contacts.find((c) => String(c.id) === String(id));
+          if (row) openModal(row);
+          return;
+        }
+        const arch = event.target.closest("[data-co-archive]");
+        if (arch) {
+          void archiveContact(arch.getAttribute("data-co-archive"), false);
+          return;
+        }
+        const rest = event.target.closest("[data-co-restore]");
+        if (rest) {
+          void archiveContact(rest.getAttribute("data-co-restore"), true);
+        }
+      };
+      $("coTableBody")?.addEventListener("click", onActionClick);
+      $("coMobileCards")?.addEventListener("click", onActionClick);
+
+      $("coModal")?.addEventListener("click", (event) => {
+        if (event.target === $("coModal")) closeModal();
+      });
+    }
+
+    async function initWhenReady() {
+      if (!document.body.classList.contains("auth-ready")) {
+        window.setTimeout(initWhenReady, 50);
+        return;
+      }
+      $("coMain").hidden = false;
+      bindUi();
+      await loadContacts();
+    }
+
+    document.addEventListener("DOMContentLoaded", () => { void initWhenReady(); });
+  })();
+  </script>
+</body>
+</html>
