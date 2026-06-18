@@ -1,24 +1,19 @@
 /**
  * Step 3E-C17-C — list tenant contacts (owner/admin, session-scoped).
+ * Step 3E-C17-D — seller device read/search for quote form prefill.
  */
 
 const { supabaseRequest } = require("./_lib/supabase-admin");
-const { readSessionFromEvent } = require("./_lib/session");
-const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const {
-  resolveMembershipByEmail,
-  membershipRole,
-  membershipIsActive,
-} = require("./_lib/membership-resolve");
-const { throwGuard } = require("./_lib/tenant-device-guard");
+  resolveOwnerOrSellerContext,
+  throwGuard,
+} = require("./_lib/tenant-device-guard");
 const {
   CONTACT_TYPES,
   CONTACT_STATUSES,
   serializeContact,
   trimStr,
 } = require("./_lib/tenant-contact-normalize");
-
-const OWNER_ADMIN_ROLES = new Set(["owner", "admin"]);
 
 function json(statusCode, body) {
   return {
@@ -34,27 +29,20 @@ function clampInt(value, min, max, fallback) {
   return Math.min(Math.max(n, min), max);
 }
 
-async function requireOwnerOrAdmin(event) {
-  const session = readSessionFromEvent(event);
-  if (!session?.e || !session?.c) {
-    throwGuard(401, "Unauthorized", "no_session");
-  }
-  const tenant = await resolveTenantFromSession(session);
-  if (!tenant?.id) {
+async function requireContactListAccess(event, { pickerMode } = {}) {
+  const ctx = await resolveOwnerOrSellerContext(event);
+  if (!ctx?.tenant?.id) {
     throwGuard(422, "Tenant not found for this session.", "tenant_not_found");
   }
-  const membership = await resolveMembershipByEmail(supabaseRequest, tenant.id, session.e);
-  if (!membership?.id) {
-    throwGuard(403, "Membership not found", "membership_not_found");
-  }
-  if (!membershipIsActive(membership)) {
-    throwGuard(403, "Membership is not active", "membership_inactive");
-  }
-  const role = membershipRole(membership);
-  if (!OWNER_ADMIN_ROLES.has(role)) {
+  const isSellerDevice = ctx.auth_mode === "device";
+  if (isSellerDevice && !pickerMode) {
     throwGuard(403, "Owner or admin membership required", "owner_required");
   }
-  return { session, tenant, membership };
+  return {
+    tenant: ctx.tenant,
+    membership: ctx.membership || null,
+    isSellerDevice,
+  };
 }
 
 function matchesSearch(contact, q) {
@@ -103,17 +91,27 @@ exports.handler = async (event) => {
       return json(405, { error: "Method Not Allowed" });
     }
 
-    const { tenant } = await requireOwnerOrAdmin(event);
+    const qs = event.queryStringParameters || {};
+    const pickerMode =
+      trimStr(qs.picker, 8).toLowerCase() === "1" ||
+      trimStr(qs.picker, 8).toLowerCase() === "true";
+
+    const { tenant, isSellerDevice } = await requireContactListAccess(event, { pickerMode });
     const tenantId = String(tenant.id);
     const tid = encodeURIComponent(tenantId);
-    const qs = event.queryStringParameters || {};
 
     let status = trimStr(qs.status, 32).toLowerCase() || "active";
-    if (!CONTACT_STATUSES.has(status)) status = "active";
+    if (isSellerDevice) {
+      status = "active";
+    } else if (!CONTACT_STATUSES.has(status)) {
+      status = "active";
+    }
 
     const typeFilter = trimStr(qs.contact_type, 64).toLowerCase();
     const q = trimStr(qs.q, 120).toLowerCase();
-    const limit = clampInt(qs.limit, 1, 200, 100);
+    const defaultLimit = isSellerDevice ? 30 : 100;
+    const maxLimit = isSellerDevice ? 50 : 200;
+    const limit = clampInt(qs.limit, 1, maxLimit, defaultLimit);
 
     const params = new URLSearchParams();
     params.set("tenant_id", `eq.${tenantId}`);
@@ -132,11 +130,20 @@ exports.handler = async (event) => {
       contacts = contacts.filter((c) => matchesSearch(c, q)).slice(0, limit);
     }
 
-    const statsRows = await supabaseRequest(
-      `tenant_contacts?tenant_id=eq.${tid}&select=status,contact_type&limit=1000`,
-      { method: "GET" }
-    );
-    const stats = buildStats(Array.isArray(statsRows) ? statsRows : []);
+    let stats = {
+      total_active: 0,
+      homeowners: 0,
+      general_contractors: 0,
+      suppliers: 0,
+      archived: 0,
+    };
+    if (!isSellerDevice) {
+      const statsRows = await supabaseRequest(
+        `tenant_contacts?tenant_id=eq.${tid}&select=status,contact_type&limit=1000`,
+        { method: "GET" }
+      );
+      stats = buildStats(Array.isArray(statsRows) ? statsRows : []);
+    }
 
     return json(200, { ok: true, contacts, stats, count: contacts.length });
   } catch (err) {

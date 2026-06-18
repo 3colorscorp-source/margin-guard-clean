@@ -61,6 +61,28 @@
 
             <div class="sales-quote-section">
               <h3 class="sales-quote-section-title">Project Info</h3>
+              <div class="sales-contact-picker field field--full" id="salesContactPicker">
+                <label for="salesContactSearch">Search contact</label>
+                <div class="sales-contact-picker__search-wrap">
+                  <input
+                    id="salesContactSearch"
+                    type="search"
+                    maxlength="120"
+                    placeholder="Search name, email, phone…"
+                    autocomplete="off"
+                    aria-autocomplete="list"
+                    aria-controls="salesContactResults"
+                    aria-expanded="false"
+                  />
+                  <div id="salesContactResults" class="sales-contact-picker__results" hidden role="listbox"></div>
+                </div>
+                <div id="salesContactChip" class="sales-contact-picker__chip" hidden>
+                  <span class="sales-contact-picker__chip-label" id="salesContactChipLabel"></span>
+                  <button type="button" class="btn ghost" id="salesContactClear">Clear</button>
+                </div>
+                <p class="hint sales-contact-picker__hint">Selecting a contact only prefills this quote. You can still edit the fields.</p>
+                <p class="hint sales-contact-picker__warn" id="salesContactWarn" hidden role="status"></p>
+              </div>
               <div class="form">
                 <div class="field">
                   <label>Proyecto / Job name</label>
@@ -2959,6 +2981,17 @@
           if (node) node.value = entry[1];
         });
 
+        if (typeof window.clearSalesContactPickerSelection === 'function') {
+          window.clearSalesContactPickerSelection();
+        }
+        const contactSearch = document.getElementById('salesContactSearch');
+        if (contactSearch) contactSearch.value = '';
+        const contactWarn = document.getElementById('salesContactWarn');
+        if (contactWarn) {
+          contactWarn.hidden = true;
+          contactWarn.textContent = '';
+        }
+
         const countPairs = [
           ['salesProjectName', 'salesProjectNameCount'],
           ['salesClientName', 'salesClientNameCount'],
@@ -5630,6 +5663,261 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
   }
 }
 
+      function bindSalesContactPicker() {
+        const searchEl = document.getElementById('salesContactSearch');
+        const resultsEl = document.getElementById('salesContactResults');
+        const chipEl = document.getElementById('salesContactChip');
+        const chipLabelEl = document.getElementById('salesContactChipLabel');
+        const clearBtn = document.getElementById('salesContactClear');
+        const warnEl = document.getElementById('salesContactWarn');
+        if (!searchEl || !resultsEl || searchEl.dataset.bound === '1') return;
+        searchEl.dataset.bound = '1';
+
+        const pickerState = {
+          selected: null,
+          results: [],
+          searchTimer: null,
+          apiFailed: false,
+        };
+
+        function escapeHtml(v) {
+          return String(v ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+        }
+
+        function formatTypeLabel(t) {
+          return String(t || 'other').replace(/_/g, ' ');
+        }
+
+        function contactDisplayName(contact) {
+          if (!contact) return '';
+          return String(
+            contact.display_name ||
+            contact.company_name ||
+            [contact.first_name, contact.last_name].filter(Boolean).join(' ') ||
+            contact.email ||
+            contact.phone ||
+            'Contact'
+          ).trim();
+        }
+
+        function buildContactAddress(contact) {
+          if (!contact) return '';
+          const parts = [
+            contact.address_line1,
+            contact.address_line2,
+            contact.city,
+            contact.state,
+            contact.postal_code,
+          ].map(function (v) { return String(v || '').trim(); }).filter(Boolean);
+          return parts.join(', ');
+        }
+
+        function setWarn(msg) {
+          if (!warnEl) return;
+          if (!msg) {
+            warnEl.hidden = true;
+            warnEl.textContent = '';
+            return;
+          }
+          warnEl.hidden = false;
+          warnEl.textContent = msg;
+        }
+
+        function hideResults() {
+          resultsEl.hidden = true;
+          resultsEl.innerHTML = '';
+          searchEl.setAttribute('aria-expanded', 'false');
+        }
+
+        function showSelectedChip(contact) {
+          if (!chipEl || !chipLabelEl) return;
+          if (!contact) {
+            chipEl.hidden = true;
+            chipLabelEl.textContent = '';
+            return;
+          }
+          chipEl.hidden = false;
+          chipLabelEl.textContent = contactDisplayName(contact);
+        }
+
+        function updateCharCounter(inputId, counterId) {
+          const input = document.getElementById(inputId);
+          const counter = document.getElementById(counterId);
+          if (input && counter) counter.textContent = String((input.value || '').length);
+        }
+
+        function syncPrefillToSalesState() {
+          try {
+            const state = loadSalesState();
+            state.clientName = document.getElementById('salesClientName')?.value || '';
+            state.customerEmail = document.getElementById('salesCustomerEmail')?.value || '';
+            state.customerPhone = document.getElementById('salesCustomerPhone')?.value || '';
+            state.location = document.getElementById('salesLocation')?.value || '';
+            saveSalesState(state);
+          } catch (_e) { /* non-blocking */ }
+        }
+
+        function setFieldValue(id, value) {
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.value = value;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        function applyContactPrefill(contact, opts) {
+          if (!contact) return;
+          const force = opts && opts.force;
+          const mappings = [
+            { id: 'salesClientName', value: contactDisplayName(contact).slice(0, 60) },
+            { id: 'salesCustomerEmail', value: String(contact.email || '').trim().slice(0, 80) },
+            { id: 'salesCustomerPhone', value: String(contact.phone || '').trim().slice(0, 30) },
+            { id: 'salesLocation', value: buildContactAddress(contact).slice(0, 90) },
+          ];
+          const blocked = [];
+          mappings.forEach(function (map) {
+            if (!map.value) return;
+            const el = document.getElementById(map.id);
+            if (!el) return;
+            const current = String(el.value || '').trim();
+            if (!current || force) {
+              setFieldValue(map.id, map.value);
+            } else if (current !== map.value) {
+              blocked.push(map.id);
+            }
+          });
+          if (blocked.length && !force) {
+            const ok = window.confirm(
+              'Some client fields already have text. Replace them with the selected contact details?'
+            );
+            if (ok) {
+              mappings.forEach(function (map) {
+                if (!map.value) return;
+                if (blocked.indexOf(map.id) >= 0) setFieldValue(map.id, map.value);
+              });
+            }
+          }
+          updateCharCounter('salesClientName', 'salesClientNameCount');
+          syncPrefillToSalesState();
+        }
+
+        function selectContact(contact) {
+          pickerState.selected = contact;
+          searchEl.value = '';
+          hideResults();
+          showSelectedChip(contact);
+          setWarn('');
+          applyContactPrefill(contact, { force: false });
+        }
+
+        function clearSelectedContact() {
+          pickerState.selected = null;
+          showSelectedChip(null);
+          setWarn('');
+          hideResults();
+        }
+
+        window.clearSalesContactPickerSelection = clearSelectedContact;
+
+        function renderResults(contacts) {
+          if (!Array.isArray(contacts) || !contacts.length) {
+            resultsEl.innerHTML = '<div class="sales-contact-picker__empty">No contacts found.</div>';
+            resultsEl.hidden = false;
+            searchEl.setAttribute('aria-expanded', 'true');
+            return;
+          }
+          resultsEl.innerHTML = contacts.map(function (c, idx) {
+            const meta = [c.email, c.phone].filter(Boolean).join(' · ') || '—';
+            return (
+              '<button type="button" class="sales-contact-picker__result" role="option" data-contact-idx="' + idx + '">' +
+              '<span class="sales-contact-picker__result-name">' + escapeHtml(contactDisplayName(c)) + '</span>' +
+              '<span class="sales-contact-picker__result-meta">' + escapeHtml(meta) + '</span>' +
+              '<span class="badge amber sales-contact-picker__result-type">' + escapeHtml(formatTypeLabel(c.contact_type)) + '</span>' +
+              '</button>'
+            );
+          }).join('');
+          resultsEl.hidden = false;
+          searchEl.setAttribute('aria-expanded', 'true');
+        }
+
+        async function searchContacts(query) {
+          const q = String(query || '').trim();
+          if (q.length < 2) {
+            hideResults();
+            return;
+          }
+          try {
+            const params = new URLSearchParams({
+              q: q,
+              status: 'active',
+              limit: '20',
+              picker: '1',
+            });
+            const response = await fetch('/.netlify/functions/list-tenant-contacts?' + params.toString(), {
+              method: 'GET',
+              credentials: 'include',
+              headers: { Accept: 'application/json' },
+            });
+            let data = {};
+            try { data = await response.json(); } catch (_e) { data = {}; }
+            if (!response.ok || !data.ok) {
+              pickerState.apiFailed = true;
+              hideResults();
+              setWarn('Contacts search is unavailable. You can still enter client details manually.');
+              return;
+            }
+            pickerState.apiFailed = false;
+            setWarn('');
+            pickerState.results = Array.isArray(data.contacts) ? data.contacts : [];
+            renderResults(pickerState.results);
+          } catch (_err) {
+            pickerState.apiFailed = true;
+            hideResults();
+            setWarn('Contacts search is unavailable. You can still enter client details manually.');
+          }
+        }
+
+        searchEl.addEventListener('input', function () {
+          clearTimeout(pickerState.searchTimer);
+          pickerState.searchTimer = setTimeout(function () {
+            void searchContacts(searchEl.value);
+          }, 280);
+        });
+
+        searchEl.addEventListener('focus', function () {
+          if (String(searchEl.value || '').trim().length >= 2 && pickerState.results.length) {
+            renderResults(pickerState.results);
+          }
+        });
+
+        resultsEl.addEventListener('click', function (event) {
+          const btn = event.target.closest('[data-contact-idx]');
+          if (!btn) return;
+          const idx = Number(btn.getAttribute('data-contact-idx'));
+          const contact = pickerState.results[idx];
+          if (contact) selectContact(contact);
+        });
+
+        document.addEventListener('click', function (event) {
+          if (!event.target.closest('#salesContactPicker')) hideResults();
+        });
+
+        if (clearBtn) {
+          clearBtn.addEventListener('click', function (event) {
+            event.preventDefault();
+            clearSelectedContact();
+          });
+        }
+
+        searchEl.addEventListener('keydown', function (event) {
+          if (event.key === 'Escape') hideResults();
+        });
+      }
+
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
           bindStandaloneSellerWorkers();
@@ -5638,6 +5926,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           bindStandaloneSellerActions();
           bindStandaloneSellerSend();
           applyBrandingToSalesPage();
+          bindSalesContactPicker();
         });
       } else {
         bindStandaloneSellerWorkers();
@@ -5646,6 +5935,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         bindStandaloneSellerActions();
         bindStandaloneSellerSend();
         applyBrandingToSalesPage();
+        bindSalesContactPicker();
       }
     })();
   </script>

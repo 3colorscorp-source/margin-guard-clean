@@ -8441,3 +8441,92 @@ body[data-mg-page-title="Vendedor"] #salesNewQuoteTitle,
 body[data-role="sales"] #salesNewQuoteTitle{
   color:#f8fafc;
 }
+
+/* Step 3E-C17-D — Sales contact picker (scoped) */
+body[data-mg-page-title="Vendedor"] .sales-contact-picker,
+body[data-role="sales"] .sales-contact-picker{
+  margin-bottom:12px;
+}
+body[data-mg-page-title="Vendedor"] .sales-contact-picker__search-wrap,
+body[data-role="sales"] .sales-contact-picker__search-wrap{
+  position:relative;
+}
+body[data-mg-page-title="Vendedor"] .sales-contact-picker__results,
+body[data-role="sales"] .sales-contact-picker__results{
+  position:absolute;
+  z-index:40;
+  left:0;
+  right:0;
+  top:calc(100% + 4px);
+  max-height:240px;
+  overflow:auto;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.12);
+  background:#0f172a;
+  box-shadow:0 12px 28px rgba(0,0,0,.35);
+}
+body[data-mg-page-title="Vendedor"] .sales-contact-picker__result,
+body[data-role="sales"] .sales-contact-picker__result{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:4px 10px;
+  width:100%;
+  text-align:left;
+  padding:10px 12px;
+  border:0;
+  border-bottom:1px solid rgba(255,255,255,.06);
+  background:transparent;
+  color:#f8fafc;
+  cursor:pointer;
+}
+body[data-mg-page-title="Vendedor"] .sales-contact-picker__result:hover,
+body[data-role="sales"] .sales-contact-picker__result:hover{
+  background:rgba(255,255,255,.05);
+}
+body[data-mg-page-title="Vendedor"] .sales-contact-picker__result-name,
+body[data-role="sales"] .sales-contact-picker__result-name{
+  font-weight:700;
+  grid-column:1 / -1;
+}
+body[data-mg-page-title="Vendedor"] .sales-contact-picker__result-meta,
+body[data-role="sales"] .sales-contact-picker__result-meta{
+  font-size:12px;
+  color:rgba(232,238,252,.72);
+}
+body[data-mg-page-title="Vendedor"] .sales-contact-picker__result-type,
+body[data-role="sales"] .sales-contact-picker__result-type{
+  text-transform:capitalize;
+  font-size:10px;
+}
+body[data-mg-page-title="Vendedor"] .sales-contact-picker__empty,
+body[data-role="sales"] .sales-contact-picker__empty{
+  padding:12px;
+  font-size:13px;
+  color:rgba(232,238,252,.65);
+}
+body[data-mg-page-title="Vendedor"] .sales-contact-picker__chip,
+body[data-role="sales"] .sales-contact-picker__chip{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:8px;
+  padding:8px 10px;
+  border-radius:10px;
+  border:1px solid rgba(34,197,94,.28);
+  background:rgba(34,197,94,.08);
+}
+body[data-mg-page-title="Vendedor"] .sales-contact-picker__chip-label,
+body[data-role="sales"] .sales-contact-picker__chip-label{
+  flex:1;
+  font-weight:700;
+  color:#f8fafc;
+}
+body[data-mg-page-title="Vendedor"] .sales-contact-picker__hint,
+body[data-role="sales"] .sales-contact-picker__hint{
+  margin:6px 0 0;
+}
+body[data-mg-page-title="Vendedor"] .sales-contact-picker__warn,
+body[data-role="sales"] .sales-contact-picker__warn{
+  margin:6px 0 0;
+  color:#fbbf24;
+}
