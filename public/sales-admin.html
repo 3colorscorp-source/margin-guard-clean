@@ -204,6 +204,132 @@
       font-size: 0.8125rem;
       color: rgba(232, 238, 252, 0.65);
     }
+    .sa-modal__panel--edit {
+      width: min(640px, 96vw);
+    }
+    .sa-edit-subtitle {
+      margin: 4px 0 0;
+      font-size: 0.8125rem;
+      color: rgba(232, 238, 252, 0.68);
+      line-height: 1.4;
+    }
+    .sa-edit-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      margin: 0 0 10px;
+      font-size: 0.75rem;
+      color: rgba(232, 238, 252, 0.62);
+    }
+    .sa-edit-meta strong {
+      color: rgba(232, 238, 252, 0.9);
+      font-weight: 700;
+    }
+    .sa-edit-banner {
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.8125rem;
+      line-height: 1.45;
+    }
+    .sa-edit-banner--lock {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.28);
+      color: #fecaca;
+    }
+    .sa-edit-banner--warn {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.28);
+      color: #fde68a;
+    }
+    .sa-edit-banner--ok {
+      background: rgba(34, 197, 94, 0.12);
+      border: 1px solid rgba(34, 197, 94, 0.28);
+      color: #bbf7d0;
+    }
+    .sa-edit-banner--err {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.22);
+      color: #fecaca;
+    }
+    .sa-edit-lock-list {
+      margin: 8px 0 0;
+      padding-left: 18px;
+    }
+    .sa-edit-lock-list li {
+      margin: 2px 0;
+    }
+    .sa-edit-form {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 12px;
+    }
+    @media (max-width: 560px) {
+      .sa-edit-form {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+    .sa-edit-form .field--full {
+      grid-column: 1 / -1;
+    }
+    .sa-edit-form label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: rgba(232, 238, 252, 0.58);
+    }
+    .sa-edit-form input,
+    .sa-edit-form textarea {
+      width: 100%;
+      box-sizing: border-box;
+      max-width: 100%;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.04);
+      color: #e8eefc;
+      font: inherit;
+      font-size: 0.875rem;
+    }
+    .sa-edit-form textarea {
+      min-height: 72px;
+      resize: vertical;
+    }
+    .sa-edit-form input:disabled,
+    .sa-edit-form textarea:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .sa-edit-confirm {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 0.8125rem;
+      line-height: 1.4;
+      color: rgba(232, 238, 252, 0.85);
+    }
+    .sa-edit-confirm input {
+      margin-top: 3px;
+      flex-shrink: 0;
+    }
+    .sa-edit-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .sa-edit-btn-locked {
+      opacity: 0.72;
+    }
+    .sa-table-wrap .table {
+      min-width: 960px;
+    }
   </style>
 </head>
 <body data-requires-auth="true" data-mg-app-nav data-mg-page-title="Sales Admin">
@@ -275,6 +401,7 @@
                 <th>Created</th>
                 <th>Accepted</th>
                 <th>Project Linked</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody id="saQuotePipelineBody"></tbody>
@@ -448,6 +575,87 @@
         <div id="saActivityList" class="sa-detail-rows" hidden></div>
       </div>
     </section>
+  </div>
+
+  <div id="saQuoteEditModal" class="sa-modal" hidden aria-hidden="true" role="dialog" aria-labelledby="saQuoteEditTitle">
+    <div class="sa-modal__panel sa-modal__panel--edit">
+      <header class="sa-modal__head">
+        <div>
+          <h3 id="saQuoteEditTitle">Edit Quote</h3>
+          <p class="sa-edit-subtitle" id="saQuoteEditSubtitle">—</p>
+        </div>
+        <button type="button" class="btn ghost" id="saQuoteEditClose" aria-label="Close">Close</button>
+      </header>
+      <div class="sa-modal__body">
+        <p id="saQuoteEditLoading" class="sa-loading-note" hidden>Loading quote…</p>
+        <div id="saQuoteEditLockBanner" class="sa-edit-banner sa-edit-banner--lock" hidden>
+          <strong>This quote is locked</strong>
+          <ul id="saQuoteEditLockList" class="sa-edit-lock-list"></ul>
+        </div>
+        <div id="saQuoteEditWarning" class="sa-edit-banner sa-edit-banner--warn" hidden>
+          <p style="margin:0 0 8px;">This quote may already have been sent or viewed. Saving will update the same public quote link.</p>
+          <label class="sa-edit-confirm">
+            <input type="checkbox" id="saQuoteEditSentConfirm" />
+            <span>I understand this updates the public quote link.</span>
+          </label>
+        </div>
+        <p id="saQuoteEditFeedback" class="sa-edit-banner" hidden role="status"></p>
+        <div class="sa-edit-meta" id="saQuoteEditMeta" hidden>
+          <span>Status: <strong id="saQuoteEditMetaStatus">—</strong></span>
+          <span>Total: <strong id="saQuoteEditMetaTotal">—</strong></span>
+        </div>
+        <form id="saQuoteEditForm" class="sa-edit-form" novalidate>
+          <div class="field">
+            <label for="saEditClientName">Client name</label>
+            <input type="text" id="saEditClientName" name="client_name" maxlength="255" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="saEditClientEmail">Client email</label>
+            <input type="email" id="saEditClientEmail" name="client_email" maxlength="255" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="saEditClientPhone">Client phone</label>
+            <input type="text" id="saEditClientPhone" name="client_phone" maxlength="255" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="saEditProjectName">Project name</label>
+            <input type="text" id="saEditProjectName" name="project_name" maxlength="255" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="saEditTitle">Title</label>
+            <input type="text" id="saEditTitle" name="title" maxlength="255" autocomplete="off" />
+          </div>
+          <div class="field field--full">
+            <label for="saEditProjectAddress">Project address</label>
+            <input type="text" id="saEditProjectAddress" name="project_address" maxlength="255" autocomplete="off" />
+          </div>
+          <div class="field field--full">
+            <label for="saEditJobSite">Job site</label>
+            <input type="text" id="saEditJobSite" name="job_site" maxlength="255" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="saEditStartDate">Start date</label>
+            <input type="date" id="saEditStartDate" name="start_date" />
+          </div>
+          <div class="field">
+            <label for="saEditDueDate">Due date</label>
+            <input type="date" id="saEditDueDate" name="due_date" />
+          </div>
+          <div class="field field--full">
+            <label for="saEditNotes">Notes</label>
+            <textarea id="saEditNotes" name="notes" maxlength="5000" rows="3"></textarea>
+          </div>
+          <div class="field field--full">
+            <label for="saEditTerms">Terms</label>
+            <textarea id="saEditTerms" name="terms" maxlength="5000" rows="3"></textarea>
+          </div>
+        </form>
+        <div class="sa-edit-actions">
+          <button type="button" class="btn ghost" id="saQuoteEditCancel">Cancel</button>
+          <button type="button" class="btn primary" id="saQuoteEditSave">Save changes</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="saDetailModal" class="sa-modal" hidden aria-hidden="true" role="dialog" aria-labelledby="saDetailTitle">

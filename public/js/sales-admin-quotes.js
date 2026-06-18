@@ -2,10 +2,44 @@
   "use strict";
 
   const API = "/.netlify/functions/list-tenant-quotes";
+  const GET_EDIT_API = "/.netlify/functions/get-tenant-quote-edit";
+  const UPDATE_EDIT_API = "/.netlify/functions/update-tenant-quote-edit";
   const LIST_QUERY = "?limit=25&offset=0";
+
+  const LOCK_REASON_LABELS = {
+    quote_accepted_status: "Quote has been accepted",
+    quote_accepted_at: "Quote has an accepted timestamp",
+    quote_has_project: "Project already exists",
+    quote_has_invoice: "Invoice already exists",
+    quote_has_payment: "Payment exists",
+    deposit_paid: "Deposit was paid",
+    client_ack_started: "Client acknowledgement/signature started",
+    quote_archived_status: "Quote is archived",
+    quote_approved_status: "Quote is approved",
+  };
+
+  const EDIT_FIELD_IDS = {
+    client_name: "saEditClientName",
+    client_email: "saEditClientEmail",
+    client_phone: "saEditClientPhone",
+    project_name: "saEditProjectName",
+    title: "saEditTitle",
+    project_address: "saEditProjectAddress",
+    job_site: "saEditJobSite",
+    notes: "saEditNotes",
+    terms: "saEditTerms",
+    start_date: "saEditStartDate",
+    due_date: "saEditDueDate",
+  };
 
   let publishedThisMonth = null;
   let kpiObserverInstalled = false;
+  let editState = {
+    quoteId: "",
+    locked: false,
+    requiresSentConfirm: false,
+    saving: false,
+  };
 
   function $(id) {
     return document.getElementById(id);
@@ -74,6 +108,18 @@
     return title || "—";
   }
 
+  function isLikelyLockedRow(quote) {
+    const st = normStatus(quote?.status);
+    if (["accepted", "approved", "archived"].includes(st)) return true;
+    if (quote?.has_tenant_project) return true;
+    if (String(quote?.accepted_at || "").trim()) return true;
+    return false;
+  }
+
+  function lockReasonLabel(code) {
+    return LOCK_REASON_LABELS[code] || String(code || "").replace(/_/g, " ");
+  }
+
   function applyPublishedKpi() {
     const labelEl = $("saKpiSentLabel");
     const valueEl = $("saKpiSent");
@@ -115,6 +161,283 @@
     }
   }
 
+  function setEditFeedback(message, tone) {
+    const el = $("saQuoteEditFeedback");
+    if (!el) return;
+    const text = String(message || "").trim();
+    if (!text) {
+      el.hidden = true;
+      el.textContent = "";
+      el.className = "sa-edit-banner";
+      return;
+    }
+    el.hidden = false;
+    el.textContent = text;
+    el.className = "sa-edit-banner";
+    if (tone === "ok") el.classList.add("sa-edit-banner--ok");
+    else if (tone === "err") el.classList.add("sa-edit-banner--err");
+    else if (tone === "warn") el.classList.add("sa-edit-banner--warn");
+  }
+
+  function setEditFormDisabled(disabled) {
+    const form = $("saQuoteEditForm");
+    if (!form) return;
+    form.querySelectorAll("input, textarea").forEach((el) => {
+      el.disabled = Boolean(disabled);
+    });
+    const confirm = $("saQuoteEditSentConfirm");
+    if (confirm) confirm.disabled = Boolean(disabled);
+  }
+
+  function updateSaveButtonState() {
+    const saveBtn = $("saQuoteEditSave");
+    if (!saveBtn) return;
+    if (editState.locked) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Quote locked";
+      return;
+    }
+    if (editState.saving) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving…";
+      return;
+    }
+    if (editState.requiresSentConfirm) {
+      const checked = Boolean($("saQuoteEditSentConfirm")?.checked);
+      saveBtn.disabled = !checked;
+      saveBtn.textContent = checked ? "Save changes" : "Confirm public link update";
+      return;
+    }
+    saveBtn.disabled = false;
+    saveBtn.textContent = "Save changes";
+  }
+
+  function isoDateForInput(value) {
+    const t = String(value ?? "").trim();
+    if (!t) return "";
+    const d = t.slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : "";
+  }
+
+  function fillEditForm(quote) {
+    const q = quote && typeof quote === "object" ? quote : {};
+    for (const [key, id] of Object.entries(EDIT_FIELD_IDS)) {
+      const el = $(id);
+      if (!el) continue;
+      const raw = q[key];
+      if (key === "start_date" || key === "due_date") {
+        el.value = isoDateForInput(raw);
+      } else {
+        el.value = raw == null ? "" : String(raw);
+      }
+    }
+  }
+
+  function readEditFormBody() {
+    const body = { quote_id: editState.quoteId };
+    for (const key of Object.keys(EDIT_FIELD_IDS)) {
+      const el = $(EDIT_FIELD_IDS[key]);
+      if (!el) continue;
+      body[key] = el.value;
+    }
+    if (editState.requiresSentConfirm && $("saQuoteEditSentConfirm")?.checked) {
+      body.confirm_sent_update = true;
+    }
+    return body;
+  }
+
+  function mapApiError(data, status) {
+    const code = String(data?.code || "").trim();
+    const err = String(data?.error || "").trim();
+    if (status === 401) return "Sign in required to edit quotes.";
+    if (status === 403) return err || "Owner or admin permission required.";
+    if (code === "quote_not_found") return "Quote not found.";
+    if (code === "quote_locked") {
+      const reasons = Array.isArray(data?.lock_reasons) ? data.lock_reasons : [];
+      if (reasons.length) {
+        return `Quote is locked: ${reasons.map(lockReasonLabel).join("; ")}`;
+      }
+      return err || "Quote is locked.";
+    }
+    if (code === "sent_quote_confirmation_required") {
+      return "Check the box to confirm updating the public quote link.";
+    }
+    if (code === "unknown_fields") {
+      const fields = Array.isArray(data?.fields) ? data.fields.join(", ") : "";
+      return fields ? `Disallowed fields: ${fields}` : err || "Unknown fields in request.";
+    }
+    if (code === "no_edit_fields") return "No editable fields were provided.";
+    if (code === "invalid_date") return err || "Invalid date format. Use YYYY-MM-DD.";
+    return err || "Unable to complete request.";
+  }
+
+  function closeEditModal() {
+    const modal = $("saQuoteEditModal");
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+    editState = { quoteId: "", locked: false, requiresSentConfirm: false, saving: false };
+    setEditFeedback("");
+  }
+
+  function openEditModalShell() {
+    const modal = $("saQuoteEditModal");
+    if (!modal) return;
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+    setEditFeedback("");
+    const lockBanner = $("saQuoteEditLockBanner");
+    const warnBanner = $("saQuoteEditWarning");
+    const loading = $("saQuoteEditLoading");
+    const meta = $("saQuoteEditMeta");
+    const lockList = $("saQuoteEditLockList");
+    if (lockBanner) lockBanner.hidden = true;
+    if (warnBanner) warnBanner.hidden = true;
+    if (loading) loading.hidden = false;
+    if (meta) meta.hidden = true;
+    if (lockList) lockList.innerHTML = "";
+    const confirm = $("saQuoteEditSentConfirm");
+    if (confirm) confirm.checked = false;
+    setEditFormDisabled(true);
+    updateSaveButtonState();
+  }
+
+  function applyEditPayload(data) {
+    const quote = data?.quote || {};
+    const edit = data?.edit || {};
+    const locked = Boolean(edit.locked) || !edit.is_editable;
+    editState.locked = locked;
+    editState.requiresSentConfirm =
+      !locked && Array.isArray(edit.warnings) && edit.warnings.includes("quote_viewed_or_sent");
+
+    const subtitle = $("saQuoteEditSubtitle");
+    if (subtitle) {
+      const num = String(quote.quote_number_display || "").trim() || "—";
+      const proj = String(quote.project_name || quote.title || "").trim() || "—";
+      subtitle.textContent = `${num} · ${proj}`;
+    }
+
+    const meta = $("saQuoteEditMeta");
+    const metaStatus = $("saQuoteEditMetaStatus");
+    const metaTotal = $("saQuoteEditMetaTotal");
+    if (meta) meta.hidden = false;
+    if (metaStatus) metaStatus.textContent = formatStatusLabel(quote.status);
+    if (metaTotal) metaTotal.textContent = formatMoney(quote.total, quote.currency);
+
+    const lockBanner = $("saQuoteEditLockBanner");
+    const lockList = $("saQuoteEditLockList");
+    const reasons = Array.isArray(edit.lock_reasons) ? edit.lock_reasons : [];
+    if (locked && lockBanner && lockList) {
+      lockBanner.hidden = false;
+      lockList.innerHTML = reasons
+        .map((code) => `<li>${escapeHtml(lockReasonLabel(code))}</li>`)
+        .join("");
+    } else if (lockBanner) {
+      lockBanner.hidden = true;
+    }
+
+    const warnBanner = $("saQuoteEditWarning");
+    if (warnBanner) warnBanner.hidden = !editState.requiresSentConfirm;
+
+    fillEditForm(quote);
+    setEditFormDisabled(locked);
+    updateSaveButtonState();
+  }
+
+  async function fetchQuoteEdit(quoteId) {
+    const qid = encodeURIComponent(String(quoteId || "").trim());
+    const response = await fetch(`${GET_EDIT_API}?quote_id=${qid}`, {
+      method: "GET",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    let data = {};
+    try {
+      data = await response.json();
+    } catch (_err) {
+      data = {};
+    }
+    return { response, data };
+  }
+
+  async function openQuoteEdit(quoteId) {
+    if (!quoteId) return;
+    editState.quoteId = String(quoteId).trim();
+    openEditModalShell();
+
+    try {
+      const { response, data } = await fetchQuoteEdit(editState.quoteId);
+      const loading = $("saQuoteEditLoading");
+      if (loading) loading.hidden = true;
+
+      if (!response.ok || data.ok !== true) {
+        setEditFeedback(mapApiError(data, response.status), "err");
+        editState.locked = true;
+        setEditFormDisabled(true);
+        updateSaveButtonState();
+        return;
+      }
+
+      applyEditPayload(data);
+    } catch (err) {
+      const loading = $("saQuoteEditLoading");
+      if (loading) loading.hidden = true;
+      setEditFeedback(err?.message || "Network error loading quote.", "err");
+      editState.locked = true;
+      setEditFormDisabled(true);
+      updateSaveButtonState();
+    }
+  }
+
+  async function saveQuoteEdit() {
+    if (editState.locked || editState.saving || !editState.quoteId) return;
+
+    if (editState.requiresSentConfirm && !$("saQuoteEditSentConfirm")?.checked) {
+      setEditFeedback("Check the box to confirm updating the public quote link.", "warn");
+      updateSaveButtonState();
+      return;
+    }
+
+    editState.saving = true;
+    updateSaveButtonState();
+    setEditFeedback("");
+
+    try {
+      const body = readEditFormBody();
+      const response = await fetch(UPDATE_EDIT_API, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(body),
+      });
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (_err) {
+        data = {};
+      }
+
+      if (!response.ok || data.ok !== true) {
+        setEditFeedback(mapApiError(data, response.status), "err");
+        if (data?.code === "sent_quote_confirmation_required") {
+          editState.requiresSentConfirm = true;
+          const warnBanner = $("saQuoteEditWarning");
+          if (warnBanner) warnBanner.hidden = false;
+        }
+        return;
+      }
+
+      applyEditPayload(data);
+      setEditFeedback("Quote updated successfully.", "ok");
+      void loadQuotePipeline();
+    } catch (err) {
+      setEditFeedback(err?.message || "Network error saving quote.", "err");
+    } finally {
+      editState.saving = false;
+      updateSaveButtonState();
+    }
+  }
+
   function renderQuotePipeline(quotes) {
     const body = $("saQuotePipelineBody");
     if (!body) return;
@@ -130,6 +453,12 @@
         const estimate = String(quote.quote_number_display || "").trim() || "—";
         const status = formatStatusLabel(quote.status);
         const linked = quote.has_tenant_project ? "Yes" : "No";
+        const qid = String(quote.id || "").trim();
+        const likelyLocked = isLikelyLockedRow(quote);
+        const editBtnClass = likelyLocked ? "btn ghost sa-edit-btn-locked" : "btn ghost";
+        const editTitle = likelyLocked
+          ? "View lock status — this quote may not be editable"
+          : "Edit quote metadata";
         return (
           "<tr>" +
           `<td>${escapeHtml(estimate)}</td>` +
@@ -141,6 +470,9 @@
           `<td>${escapeHtml(formatDate(quote.created_at))}</td>` +
           `<td>${escapeHtml(formatDate(quote.accepted_at))}</td>` +
           `<td>${escapeHtml(linked)}</td>` +
+          `<td><div class="sa-row-actions">` +
+          `<button type="button" class="${editBtnClass}" data-sa-quote-edit="${escapeHtml(qid)}" title="${escapeHtml(editTitle)}">Edit</button>` +
+          `</div></td>` +
           "</tr>"
         );
       })
@@ -189,8 +521,46 @@
     }
   }
 
+  function installEditModalHandlers() {
+    const modal = $("saQuoteEditModal");
+    const closeBtn = $("saQuoteEditClose");
+    const cancelBtn = $("saQuoteEditCancel");
+    const saveBtn = $("saQuoteEditSave");
+    const confirm = $("saQuoteEditSentConfirm");
+    const body = $("saQuotePipelineBody");
+
+    if (closeBtn) closeBtn.addEventListener("click", closeEditModal);
+    if (cancelBtn) cancelBtn.addEventListener("click", closeEditModal);
+    if (saveBtn) saveBtn.addEventListener("click", () => void saveQuoteEdit());
+    if (confirm) {
+      confirm.addEventListener("change", () => {
+        updateSaveButtonState();
+        if (confirm.checked) setEditFeedback("");
+      });
+    }
+    if (modal) {
+      modal.addEventListener("click", (ev) => {
+        if (ev.target === modal) closeEditModal();
+      });
+    }
+    if (body) {
+      body.addEventListener("click", (ev) => {
+        const btn = ev.target.closest("[data-sa-quote-edit]");
+        if (!btn) return;
+        const qid = String(btn.getAttribute("data-sa-quote-edit") || "").trim();
+        if (qid) void openQuoteEdit(qid);
+      });
+    }
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Escape") return;
+      if (modal && !modal.hidden) closeEditModal();
+    });
+  }
+
   function boot() {
     if (!$("saQuotePipelineSection")) return;
+
+    installEditModalHandlers();
 
     const refreshBtn = $("saQuotePipelineRefresh");
     if (refreshBtn) {
