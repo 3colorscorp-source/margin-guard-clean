@@ -131,6 +131,79 @@
       font-size: 12px;
       line-height: 1.45;
     }
+    .co-history-kpis {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .co-history-kpi {
+      flex: 1 1 140px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .co-history-kpi .label {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.65);
+    }
+    .co-history-kpi .value {
+      margin-top: 4px;
+      font-size: 18px;
+      font-weight: 800;
+      color: #f8fafc;
+    }
+    .co-history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: min(60vh, 520px);
+      overflow: auto;
+    }
+    .co-history-card {
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .co-history-card__head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: flex-start;
+      margin-bottom: 6px;
+    }
+    .co-history-card__title {
+      font-weight: 800;
+      color: #f8fafc;
+      font-size: 15px;
+      line-height: 1.3;
+    }
+    .co-history-card__meta {
+      font-size: 12px;
+      color: rgba(232, 238, 252, 0.72);
+      line-height: 1.45;
+    }
+    .co-history-card__actions {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .co-history-state {
+      padding: 18px 14px;
+      text-align: center;
+      border-radius: 12px;
+      border: 1px dashed rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.02);
+      color: rgba(232, 238, 252, 0.75);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .co-history-state.err { color: #fca5a5; border-color: rgba(239, 68, 68, 0.35); }
   </style>
 </head>
 <body data-role="owner" data-requires-auth="true" class="contacts-page" data-mg-app-nav data-mg-page-title="Contacts">
@@ -309,6 +382,31 @@
     </div>
   </div>
 
+  <div id="coHistoryModal" class="modal" hidden aria-hidden="true" role="dialog" aria-labelledby="coHistoryTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="coHistoryTitle">Contact</div>
+          <div class="modal-subtitle" id="coHistorySubtitle">Quote history</div>
+        </div>
+        <button type="button" class="btn ghost" id="coHistoryClose">Close</button>
+      </div>
+      <div class="modal-body">
+        <div id="coHistoryKpis" class="co-history-kpis" hidden>
+          <div class="co-history-kpi">
+            <div class="label">Quotes</div>
+            <div class="value" id="coHistoryCount">0</div>
+          </div>
+          <div class="co-history-kpi">
+            <div class="label">Total quoted</div>
+            <div class="value" id="coHistoryTotal">$0</div>
+          </div>
+        </div>
+        <div id="coHistoryBody" class="co-history-list"></div>
+      </div>
+    </div>
+  </div>
+
   <script src="/js/mg-app-nav.js"></script>
   <script src="/js/tenant.js"></script>
   <script src="/js/auth.js"></script>
@@ -317,7 +415,7 @@
     "use strict";
 
     const API = "/.netlify/functions";
-    const state = { contacts: [], stats: null, editingId: null, accessDenied: false };
+    const state = { contacts: [], stats: null, editingId: null, accessDenied: false, historyContact: null };
 
     function $(id) { return document.getElementById(id); }
 
@@ -338,6 +436,21 @@
       const d = new Date(value);
       if (Number.isNaN(d.getTime())) return "—";
       return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    }
+
+    function formatMoney(value, currency) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return "—";
+      const cur = String(currency || "USD").trim() || "USD";
+      try {
+        return new Intl.NumberFormat(undefined, { style: "currency", currency: cur }).format(n);
+      } catch (_e) {
+        return "$" + n.toFixed(2);
+      }
+    }
+
+    function formatStatusLabel(status) {
+      return String(status || "unknown").replace(/_/g, " ");
     }
 
     function showNotice(msg, tone) {
@@ -400,6 +513,7 @@
           <td>${escapeHtml(c.city || "—")}</td>
           <td>${escapeHtml(formatDate(c.updated_at || c.created_at))}</td>
           <td><div class="co-row-actions">
+            <button type="button" class="btn ghost" data-co-history="${escapeHtml(c.id)}">Quotes</button>
             <button type="button" class="btn" data-co-edit="${escapeHtml(c.id)}">Edit</button>
             ${archiveBtn}
           </div></td>
@@ -424,6 +538,7 @@
               ${escapeHtml(c.city || "—")} · ${escapeHtml(formatDate(c.updated_at || c.created_at))}
             </div>
             <div class="co-mobile-card__actions">
+              <button type="button" class="btn ghost" data-co-history="${escapeHtml(c.id)}">Quotes</button>
               <button type="button" class="btn" data-co-edit="${escapeHtml(c.id)}">Edit</button>
               ${archiveBtn}
             </div>
@@ -488,6 +603,103 @@
       const modal = $("coModal");
       modal.hidden = false;
       modal.setAttribute("aria-hidden", "false");
+    }
+
+    function closeHistoryModal() {
+      const modal = $("coHistoryModal");
+      if (!modal) return;
+      modal.hidden = true;
+      modal.setAttribute("aria-hidden", "true");
+      state.historyContact = null;
+      const body = $("coHistoryBody");
+      if (body) body.innerHTML = "";
+      const kpis = $("coHistoryKpis");
+      if (kpis) kpis.hidden = true;
+    }
+
+    function renderHistoryState(message, tone) {
+      const body = $("coHistoryBody");
+      const kpis = $("coHistoryKpis");
+      if (kpis) kpis.hidden = true;
+      if (!body) return;
+      body.innerHTML = `<div class="co-history-state${tone === "err" ? " err" : ""}">${escapeHtml(message)}</div>`;
+    }
+
+    function renderHistoryQuotes(quotes, summary) {
+      const body = $("coHistoryBody");
+      const kpis = $("coHistoryKpis");
+      if (!body) return;
+
+      if (!Array.isArray(quotes) || !quotes.length) {
+        if (kpis) kpis.hidden = true;
+        renderHistoryState("No quotes linked to this contact yet.", "");
+        return;
+      }
+
+      if (kpis) kpis.hidden = false;
+      if ($("coHistoryCount")) $("coHistoryCount").textContent = String(summary?.count ?? quotes.length);
+      if ($("coHistoryTotal")) {
+        $("coHistoryTotal").textContent = formatMoney(summary?.total_quoted, quotes[0]?.currency || "USD");
+      }
+
+      body.innerHTML = quotes.map((q) => {
+        const number = q.quote_number_display || "—";
+        const project = q.project_name || "Untitled project";
+        const address = q.project_address || "—";
+        const publicLink = q.public_url
+          ? `<a class="btn ghost" href="${escapeHtml(q.public_url)}" target="_blank" rel="noopener noreferrer">Open public quote</a>`
+          : "";
+        return `<article class="co-history-card">
+          <div class="co-history-card__head">
+            <div class="co-history-card__title">${escapeHtml(number)} · ${escapeHtml(project)}</div>
+            <span class="badge amber">${escapeHtml(formatStatusLabel(q.status))}</span>
+          </div>
+          <div class="co-history-card__meta">
+            ${escapeHtml(formatMoney(q.total, q.currency))} · Created ${escapeHtml(formatDate(q.created_at))}<br />
+            ${escapeHtml(address)}
+          </div>
+          <div class="co-history-card__actions">${publicLink}</div>
+        </article>`;
+      }).join("");
+    }
+
+    async function openHistoryModal(contact) {
+      if (!contact?.id) return;
+      state.historyContact = contact;
+      const modal = $("coHistoryModal");
+      if (!modal) return;
+      $("coHistoryTitle").textContent = contact.display_name || "Contact";
+      $("coHistorySubtitle").textContent = "Quote history";
+      modal.hidden = false;
+      modal.setAttribute("aria-hidden", "false");
+      renderHistoryState("Loading quote history…", "");
+
+      const params = new URLSearchParams({
+        contact_id: String(contact.id),
+        limit: "25",
+      });
+      const { response, data } = await apiRequest("/list-tenant-contact-quotes?" + params.toString(), {
+        method: "GET",
+      });
+
+      if (response.status === 401) {
+        window.location.href = "/index.html?login=1";
+        return;
+      }
+      if (response.status === 403) {
+        renderHistoryState(data.error || "Access denied.", "err");
+        return;
+      }
+      if (response.status === 404) {
+        renderHistoryState(data.error || "Contact not found.", "err");
+        return;
+      }
+      if (!response.ok || !data.ok) {
+        renderHistoryState(data.error || "Could not load quote history.", "err");
+        return;
+      }
+
+      renderHistoryQuotes(data.quotes, data.summary);
     }
 
     function closeModal() {
@@ -568,6 +780,7 @@
       $("coModalClose")?.addEventListener("click", closeModal);
       $("coModalCancel")?.addEventListener("click", closeModal);
       $("coModalSave")?.addEventListener("click", () => { void saveContact(); });
+      $("coHistoryClose")?.addEventListener("click", closeHistoryModal);
 
       let searchTimer = null;
       $("coSearch")?.addEventListener("input", () => {
@@ -585,6 +798,13 @@
           if (row) openModal(row);
           return;
         }
+        const history = event.target.closest("[data-co-history]");
+        if (history) {
+          const id = history.getAttribute("data-co-history");
+          const row = state.contacts.find((c) => String(c.id) === String(id));
+          if (row) void openHistoryModal(row);
+          return;
+        }
         const arch = event.target.closest("[data-co-archive]");
         if (arch) {
           void archiveContact(arch.getAttribute("data-co-archive"), false);
@@ -600,6 +820,9 @@
 
       $("coModal")?.addEventListener("click", (event) => {
         if (event.target === $("coModal")) closeModal();
+      });
+      $("coHistoryModal")?.addEventListener("click", (event) => {
+        if (event.target === $("coHistoryModal")) closeHistoryModal();
       });
     }
 
