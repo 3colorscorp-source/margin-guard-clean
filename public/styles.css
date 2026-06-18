@@ -8365,3 +8365,79 @@ body[data-role="owner"] .owner-quote-snapshot{
   background:#0d1119;
   box-shadow:0 8px 24px rgba(0,0,0,.28);
 }
+
+/* Step 3E-C16-Q3L-3 — important text contrast recovery LOCAL DRAFT */
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .section-head h2,
+body[data-role="sales"] .grid.sales-layout .section-head h2,
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .sales-right-panel .card-inner > h2,
+body[data-role="sales"] .grid.sales-layout .sales-right-panel .card-inner > h2{
+  color:#f8fafc;
+}
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .sales-quote-section-title,
+body[data-role="sales"] .grid.sales-layout .sales-quote-section-title{
+  color:#f8fafc;
+}
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .field > label,
+body[data-role="sales"] .grid.sales-layout .field > label,
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .sales-cc-wrap > label,
+body[data-role="sales"] .grid.sales-layout .sales-cc-wrap > label,
+body[data-mg-page-title="Vendedor"] .grid.sales-layout label.sub[for],
+body[data-role="sales"] .grid.sales-layout label.sub[for]{
+  color:#f8fafc;
+}
+body[data-mg-page-title="Vendedor"] .sales-layout-hero .hero-score-label,
+body[data-role="sales"] .sales-layout-hero .hero-score-label{
+  color:#f8fafc;
+}
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .sales-labor__title,
+body[data-role="sales"] .grid.sales-layout .sales-labor__title{
+  color:#f8fafc;
+}
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .sales-operational__title,
+body[data-role="sales"] .grid.sales-layout .sales-operational__title{
+  color:#f8fafc;
+}
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .sales-op-timeline-title,
+body[data-role="sales"] .grid.sales-layout .sales-op-timeline-title,
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .sales-op-summary-card__title,
+body[data-role="sales"] .grid.sales-layout .sales-op-summary-card__title,
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .sales-op-calendar-card__title,
+body[data-role="sales"] .grid.sales-layout .sales-op-calendar-card__title{
+  color:#f8fafc;
+}
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .sales-op-summary-kv dt,
+body[data-role="sales"] .grid.sales-layout .sales-op-summary-kv dt,
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .sales-op-summary-total__label,
+body[data-role="sales"] .grid.sales-layout .sales-op-summary-total__label{
+  color:#f8fafc;
+}
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th,
+body[data-role="sales"] .grid.sales-layout .sales-labor-table-wrap table.sales-labor-table thead th.sales-labor-th{
+  color:#f8fafc;
+}
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .owner-quote-kicker,
+body[data-role="sales"] .grid.sales-layout .owner-quote-kicker,
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .owner-mini-card .title,
+body[data-role="sales"] .grid.sales-layout .owner-mini-card .title{
+  color:#f8fafc;
+}
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .sales-system-price__label,
+body[data-role="sales"] .grid.sales-layout .sales-system-price__label{
+  color:#f8fafc;
+}
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .dashboard-note-title,
+body[data-role="sales"] .grid.sales-layout .dashboard-note-title{
+  color:#f8fafc;
+}
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .sales-stage-labels > span,
+body[data-role="sales"] .grid.sales-layout .sales-stage-labels > span{
+  color:#f8fafc;
+}
+body[data-mg-page-title="Vendedor"] .grid.sales-layout .sales-labor-sync-toggle,
+body[data-role="sales"] .grid.sales-layout .sales-labor-sync-toggle{
+  color:#f8fafc;
+}
+body[data-mg-page-title="Vendedor"] #salesNewQuoteTitle,
+body[data-role="sales"] #salesNewQuoteTitle{
+  color:#f8fafc;
+}
