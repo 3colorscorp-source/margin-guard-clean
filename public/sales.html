@@ -2939,7 +2939,9 @@
           labor_manual_override: false,
           _sellerDraftId: createSellerDraftId(),
           _sellerPublishedDraftId: '',
-          _sellerPublishFingerprint: ''
+          _sellerPublishFingerprint: '',
+          selectedContactId: null,
+          selectedContactSource: null
         };
 
         _securePricingCache = { fingerprint: null, pricing: null };
@@ -5784,6 +5786,33 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           };
         }
 
+        function persistContactRef(contact, source) {
+          try {
+            const state = loadSalesState();
+            const cid = contact && contact.id ? String(contact.id).trim() : '';
+            state.selectedContactId = cid || null;
+            state.selectedContactSource = cid ? (source || null) : null;
+            saveSalesState(state);
+          } catch (_e) { /* non-blocking */ }
+        }
+
+        function clearContactRef() {
+          persistContactRef(null, null);
+        }
+
+        function restoreContactRefFromState() {
+          try {
+            const state = loadSalesState();
+            const cid = String(state.selectedContactId || '').trim();
+            if (!cid) return;
+            pickerState.selected = {
+              id: cid,
+              display_name: state.clientName || 'Selected contact',
+            };
+            showSelectedChip(pickerState.selected);
+          } catch (_e) { /* non-blocking */ }
+        }
+
         function setSelectedContactOnly(contact) {
           pickerState.selected = contact;
           showSelectedChip(contact);
@@ -5817,6 +5846,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
             setNotice('Contact saved.', warnings.length ? 'warn' : 'ok');
             if (data.contact) {
               setSelectedContactOnly(data.contact);
+              persistContactRef(data.contact, 'save');
               pickerState.results = [data.contact];
             }
           } catch (_err) {
@@ -5886,38 +5916,21 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           el.dispatchEvent(new Event('change', { bubbles: true }));
         }
 
-        function applyContactPrefill(contact, opts) {
+        function applyContactPrefill(contact) {
           if (!contact) return;
-          const force = opts && opts.force;
           const mappings = [
             { id: 'salesClientName', value: contactDisplayName(contact).slice(0, 60) },
             { id: 'salesCustomerEmail', value: String(contact.email || '').trim().slice(0, 80) },
             { id: 'salesCustomerPhone', value: String(contact.phone || '').trim().slice(0, 30) },
             { id: 'salesLocation', value: buildContactAddress(contact).slice(0, 90) },
           ];
-          const blocked = [];
           mappings.forEach(function (map) {
             if (!map.value) return;
             const el = document.getElementById(map.id);
             if (!el) return;
             const current = String(el.value || '').trim();
-            if (!current || force) {
-              setFieldValue(map.id, map.value);
-            } else if (current !== map.value) {
-              blocked.push(map.id);
-            }
+            if (!current) setFieldValue(map.id, map.value);
           });
-          if (blocked.length && !force) {
-            const ok = window.confirm(
-              'Some client fields already have text. Replace them with the selected contact details?'
-            );
-            if (ok) {
-              mappings.forEach(function (map) {
-                if (!map.value) return;
-                if (blocked.indexOf(map.id) >= 0) setFieldValue(map.id, map.value);
-              });
-            }
-          }
           updateCharCounter('salesClientName', 'salesClientNameCount');
           syncPrefillToSalesState();
         }
@@ -5928,7 +5941,8 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           hideResults();
           showSelectedChip(contact);
           setWarn('');
-          applyContactPrefill(contact, { force: false });
+          persistContactRef(contact, 'picker');
+          applyContactPrefill(contact);
         }
 
         function clearSelectedContact() {
@@ -5936,6 +5950,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           showSelectedChip(null);
           setWarn('');
           hideResults();
+          clearContactRef();
         }
 
         window.clearSalesContactPickerSelection = clearSelectedContact;
@@ -6033,6 +6048,8 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         searchEl.addEventListener('keydown', function (event) {
           if (event.key === 'Escape') hideResults();
         });
+
+        restoreContactRefFromState();
       }
 
       if (document.readyState === 'loading') {
