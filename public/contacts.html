@@ -204,6 +204,96 @@
       line-height: 1.45;
     }
     .co-history-state.err { color: #fca5a5; border-color: rgba(239, 68, 68, 0.35); }
+    .co-360-modal-card { max-width: min(720px, 96vw); }
+    .co-360-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .co-360-tab {
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.03);
+      color: rgba(232, 238, 252, 0.78);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .co-360-tab.is-active {
+      border-color: rgba(59, 130, 246, 0.45);
+      background: rgba(59, 130, 246, 0.14);
+      color: #f8fafc;
+    }
+    .co-360-panel { display: none; }
+    .co-360-panel.is-active { display: block; }
+    .co-360-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    @media (max-width: 480px) {
+      .co-360-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    .co-360-kpi {
+      padding: 10px 11px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+      min-width: 0;
+    }
+    .co-360-kpi .label {
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.65);
+    }
+    .co-360-kpi .value {
+      margin-top: 4px;
+      font-size: clamp(15px, 2.2vw, 18px);
+      font-weight: 800;
+      color: #f8fafc;
+      word-break: break-word;
+    }
+    .co-360-next {
+      margin-bottom: 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      background: rgba(59, 130, 246, 0.1);
+    }
+    .co-360-next .label {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(147, 197, 253, 0.9);
+      margin-bottom: 4px;
+    }
+    .co-360-next .title { font-weight: 800; color: #f8fafc; font-size: 14px; }
+    .co-360-next .detail {
+      margin-top: 4px;
+      font-size: 12px;
+      color: rgba(232, 238, 252, 0.78);
+      line-height: 1.45;
+    }
+    .co-360-meta {
+      font-size: 12px;
+      color: rgba(232, 238, 252, 0.68);
+      margin-bottom: 10px;
+    }
+    .co-360-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: min(52vh, 480px);
+      overflow: auto;
+      overflow-x: hidden;
+    }
     .co-toolbar-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
     .co-import-help {
       margin: 0 0 12px;
@@ -457,26 +547,30 @@
   </div>
 
   <div id="coHistoryModal" class="modal" hidden aria-hidden="true" role="dialog" aria-labelledby="coHistoryTitle">
-    <div class="modal-card">
+    <div class="modal-card co-360-modal-card">
       <div class="modal-header">
         <div>
-          <div class="modal-title" id="coHistoryTitle">Quote History</div>
+          <div class="modal-title" id="coHistoryTitle">Contact 360</div>
           <div class="modal-subtitle" id="coHistorySubtitle">Contact</div>
         </div>
         <button type="button" class="btn ghost" id="coHistoryClose">Close</button>
       </div>
       <div class="modal-body">
-        <div id="coHistoryKpis" class="co-history-kpis" hidden>
-          <div class="co-history-kpi">
-            <div class="label">Quotes</div>
-            <div class="value" id="coHistoryCount">0</div>
-          </div>
-          <div class="co-history-kpi">
-            <div class="label">Total quoted</div>
-            <div class="value" id="coHistoryTotal">$0</div>
-          </div>
+        <div id="co360State" class="co-history-state">Loading contact activity…</div>
+        <div id="co360Content" hidden>
+          <nav class="co-360-tabs" id="co360Tabs" aria-label="Contact 360 sections">
+            <button type="button" class="co-360-tab is-active" data-co360-tab="overview">Overview</button>
+            <button type="button" class="co-360-tab" data-co360-tab="quotes">Quotes</button>
+            <button type="button" class="co-360-tab" data-co360-tab="projects">Projects</button>
+            <button type="button" class="co-360-tab" data-co360-tab="invoices">Invoices</button>
+            <button type="button" class="co-360-tab" data-co360-tab="payments">Payments</button>
+          </nav>
+          <div id="co360PanelOverview" class="co-360-panel is-active" data-co360-panel="overview"></div>
+          <div id="co360PanelQuotes" class="co-360-panel" data-co360-panel="quotes"></div>
+          <div id="co360PanelProjects" class="co-360-panel" data-co360-panel="projects"></div>
+          <div id="co360PanelInvoices" class="co-360-panel" data-co360-panel="invoices"></div>
+          <div id="co360PanelPayments" class="co-360-panel" data-co360-panel="payments"></div>
         </div>
-        <div id="coHistoryBody" class="co-history-list"></div>
       </div>
     </div>
   </div>
@@ -561,6 +655,7 @@
       editingId: null,
       accessDenied: false,
       historyContact: null,
+      activity360: { data: null, activeTab: "overview", currency: "USD" },
       import: { csvText: null, filename: null, batchId: null, preview: null, committing: false, previewing: false },
     };
 
@@ -663,7 +758,7 @@
           <td>${escapeHtml(c.city || "—")}</td>
           <td>${escapeHtml(formatDate(c.updated_at || c.created_at))}</td>
           <td><div class="co-row-actions">
-            <button type="button" class="btn ghost" data-co-history="${escapeHtml(c.id)}">Quotes</button>
+            <button type="button" class="btn ghost" data-co-history="${escapeHtml(c.id)}">Activity</button>
             <button type="button" class="btn" data-co-edit="${escapeHtml(c.id)}">Edit</button>
             ${archiveBtn}
           </div></td>
@@ -688,7 +783,7 @@
               ${escapeHtml(c.city || "—")} · ${escapeHtml(formatDate(c.updated_at || c.created_at))}
             </div>
             <div class="co-mobile-card__actions">
-              <button type="button" class="btn ghost" data-co-history="${escapeHtml(c.id)}">Quotes</button>
+              <button type="button" class="btn ghost" data-co-history="${escapeHtml(c.id)}">Activity</button>
               <button type="button" class="btn" data-co-edit="${escapeHtml(c.id)}">Edit</button>
               ${archiveBtn}
             </div>
@@ -761,41 +856,84 @@
       modal.hidden = true;
       modal.setAttribute("aria-hidden", "true");
       state.historyContact = null;
-      const body = $("coHistoryBody");
-      if (body) body.innerHTML = "";
-      const kpis = $("coHistoryKpis");
-      if (kpis) kpis.hidden = true;
+      state.activity360 = { data: null, activeTab: "overview", currency: "USD" };
+      const content = $("co360Content");
+      if (content) content.hidden = true;
+      const st = $("co360State");
+      if (st) {
+        st.hidden = false;
+        st.className = "co-history-state";
+        st.textContent = "";
+      }
+      ["co360PanelOverview", "co360PanelQuotes", "co360PanelProjects", "co360PanelInvoices", "co360PanelPayments"].forEach((id) => {
+        const el = $(id);
+        if (el) el.innerHTML = "";
+      });
     }
 
-    function renderHistoryState(message, tone) {
-      const body = $("coHistoryBody");
-      const kpis = $("coHistoryKpis");
-      if (kpis) kpis.hidden = true;
-      if (!body) return;
-      body.innerHTML = `<div class="co-history-state${tone === "err" ? " err" : ""}">${escapeHtml(message)}</div>`;
+    function setActivityState(message, tone) {
+      const st = $("co360State");
+      const content = $("co360Content");
+      if (content) content.hidden = true;
+      if (!st) return;
+      st.hidden = false;
+      st.className = "co-history-state" + (tone === "err" ? " err" : "");
+      st.textContent = message;
     }
 
-    function renderHistoryQuotes(quotes, summary) {
-      const body = $("coHistoryBody");
-      const kpis = $("coHistoryKpis");
-      if (!body) return;
+    function switchActivityTab(tab) {
+      const name = String(tab || "overview").trim() || "overview";
+      state.activity360.activeTab = name;
+      document.querySelectorAll("[data-co360-tab]").forEach((btn) => {
+        btn.classList.toggle("is-active", btn.getAttribute("data-co360-tab") === name);
+      });
+      document.querySelectorAll("[data-co360-panel]").forEach((panel) => {
+        panel.classList.toggle("is-active", panel.getAttribute("data-co360-panel") === name);
+      });
+    }
 
+    function renderActivityList(html) {
+      return `<div class="co-360-list">${html}</div>`;
+    }
+
+    function renderActivityEmpty(message) {
+      return `<div class="co-history-state">${escapeHtml(message)}</div>`;
+    }
+
+    function renderOverviewPanel(totals, activity) {
+      const t = totals || {};
+      const cur = state.activity360.currency || "USD";
+      const kpis = [
+        { label: "Total quoted", value: formatMoney(t.quoted_total, cur) },
+        { label: "Total invoiced", value: formatMoney(t.invoiced_total, cur) },
+        { label: "Total paid", value: formatMoney(t.paid_total, cur) },
+        { label: "Open balance", value: formatMoney(t.balance_due, cur) },
+        { label: "Quotes", value: String(t.quote_count ?? 0) },
+        { label: "Projects", value: String(t.project_count ?? 0) },
+      ];
+      const kpiHtml = kpis.map((k) => `<div class="co-360-kpi"><div class="label">${escapeHtml(k.label)}</div><div class="value">${escapeHtml(k.value)}</div></div>`).join("");
+      const na = activity?.next_action;
+      const nextHtml = na && na.label
+        ? `<div class="co-360-next">
+            <div class="label">Next action</div>
+            <div class="title">${escapeHtml(na.label)}</div>
+            ${na.detail ? `<div class="detail">${escapeHtml(na.detail)}</div>` : ""}
+          </div>`
+        : "";
+      const lastAt = activity?.last_activity_at
+        ? `<div class="co-360-meta">Last activity: ${escapeHtml(formatDate(activity.last_activity_at))}</div>`
+        : "";
+      return `${kpiHtml ? `<div class="co-360-kpi-grid">${kpiHtml}</div>` : ""}${nextHtml}${lastAt}`;
+    }
+
+    function renderQuotesPanel(quotes) {
       if (!Array.isArray(quotes) || !quotes.length) {
-        if (kpis) kpis.hidden = true;
-        renderHistoryState("No quotes linked to this contact yet.", "");
-        return;
+        return renderActivityEmpty("No quotes linked to this contact yet.");
       }
-
-      if (kpis) kpis.hidden = false;
-      if ($("coHistoryCount")) $("coHistoryCount").textContent = String(summary?.count ?? quotes.length);
-      if ($("coHistoryTotal")) {
-        $("coHistoryTotal").textContent = formatMoney(summary?.total_quoted, quotes[0]?.currency || "USD");
-      }
-
-      body.innerHTML = quotes.map((q) => {
-        const number = q.quote_number_display || "—";
+      const html = quotes.map((q) => {
+        const number = q.quote_number_display || q.estimate_number || "—";
         const project = q.project_name || "Untitled project";
-        const address = q.project_address || "—";
+        const accepted = q.accepted_at ? ` · Accepted ${formatDate(q.accepted_at)}` : "";
         const publicLink = q.public_url
           ? `<a class="btn ghost" href="${escapeHtml(q.public_url)}" target="_blank" rel="noopener noreferrer">View public quote</a>`
           : "";
@@ -805,30 +943,132 @@
             <span class="badge amber">${escapeHtml(formatStatusLabel(q.status))}</span>
           </div>
           <div class="co-history-card__meta">
-            ${escapeHtml(formatMoney(q.total, q.currency))} · Created ${escapeHtml(formatDate(q.created_at))}<br />
-            ${escapeHtml(address)}
+            ${escapeHtml(formatMoney(q.total, q.currency || state.activity360.currency))} · Created ${escapeHtml(formatDate(q.created_at))}${escapeHtml(accepted)}<br />
           </div>
           <div class="co-history-card__actions">${publicLink}</div>
         </article>`;
       }).join("");
+      return renderActivityList(html);
+    }
+
+    function renderProjectsPanel(projects) {
+      if (!Array.isArray(projects) || !projects.length) {
+        return renderActivityEmpty("No projects linked to this contact yet.");
+      }
+      const html = projects.map((p) => {
+        const link = p.project_control_url
+          ? `<a class="btn ghost" href="${escapeHtml(p.project_control_url)}">Open Project Control</a>`
+          : "";
+        return `<article class="co-history-card">
+          <div class="co-history-card__head">
+            <div class="co-history-card__title">${escapeHtml(p.project_name || "Untitled project")}</div>
+            <span class="badge amber">${escapeHtml(formatStatusLabel(p.status))}</span>
+          </div>
+          <div class="co-history-card__meta">
+            ${escapeHtml(formatMoney(p.sale_price, state.activity360.currency))} · Signed ${escapeHtml(formatDate(p.signed_at || p.created_at))}
+          </div>
+          <div class="co-history-card__actions">${link}</div>
+        </article>`;
+      }).join("");
+      return renderActivityList(html);
+    }
+
+    function renderInvoicesPanel(invoices) {
+      if (!Array.isArray(invoices) || !invoices.length) {
+        return renderActivityEmpty("No invoices linked to this contact yet.");
+      }
+      const html = invoices.map((inv) => {
+        const num = inv.invoice_number || "—";
+        const link = inv.invoices_url
+          ? `<a class="btn ghost" href="${escapeHtml(inv.invoices_url)}">Open Invoice Hub</a>`
+          : "";
+        return `<article class="co-history-card">
+          <div class="co-history-card__head">
+            <div class="co-history-card__title">${escapeHtml(num)} · ${escapeHtml(inv.project_name || "Invoice")}</div>
+            <span class="badge amber">${escapeHtml(formatStatusLabel(inv.status))}</span>
+          </div>
+          <div class="co-history-card__meta">
+            Amount ${escapeHtml(formatMoney(inv.amount, inv.currency || state.activity360.currency))}
+            · Paid ${escapeHtml(formatMoney(inv.paid_amount, inv.currency || state.activity360.currency))}
+            · Balance ${escapeHtml(formatMoney(inv.balance_due, inv.currency || state.activity360.currency))}<br />
+            Due ${escapeHtml(formatDate(inv.due_date))} · Created ${escapeHtml(formatDate(inv.created_at))}
+          </div>
+          <div class="co-history-card__actions">${link}</div>
+        </article>`;
+      }).join("");
+      return renderActivityList(html);
+    }
+
+    function renderPaymentsPanel(payments) {
+      if (!Array.isArray(payments) || !payments.length) {
+        return renderActivityEmpty("No payments recorded yet.");
+      }
+      const html = payments.map((pay) => {
+        const method = pay.method ? formatStatusLabel(pay.method) : "—";
+        const type = pay.payment_type ? formatStatusLabel(pay.payment_type) : "—";
+        const invRef = pay.invoice_id ? `Invoice ref ${String(pay.invoice_id).slice(0, 8)}…` : "";
+        return `<article class="co-history-card">
+          <div class="co-history-card__head">
+            <div class="co-history-card__title">${escapeHtml(formatMoney(pay.amount, state.activity360.currency))}</div>
+            <span class="badge amber">${escapeHtml(type)}</span>
+          </div>
+          <div class="co-history-card__meta">
+            ${escapeHtml(method)} · Paid ${escapeHtml(formatDate(pay.paid_at || pay.created_at))}<br />
+            ${escapeHtml(invRef)}
+          </div>
+        </article>`;
+      }).join("");
+      return renderActivityList(html);
+    }
+
+    function renderActivity360(data) {
+      const totals = data.totals || {};
+      const activity = data.activity || {};
+      const quotes = Array.isArray(data.quotes) ? data.quotes : [];
+      const projects = Array.isArray(data.projects) ? data.projects : [];
+      const invoices = Array.isArray(data.invoices) ? data.invoices : [];
+      const payments = Array.isArray(data.payments) ? data.payments : [];
+
+      state.activity360.currency =
+        quotes[0]?.currency || invoices[0]?.currency || "USD";
+
+      const st = $("co360State");
+      const content = $("co360Content");
+      if (st) st.hidden = true;
+      if (content) content.hidden = false;
+
+      const overview = $("co360PanelOverview");
+      const qPanel = $("co360PanelQuotes");
+      const pPanel = $("co360PanelProjects");
+      const iPanel = $("co360PanelInvoices");
+      const payPanel = $("co360PanelPayments");
+
+      if (overview) overview.innerHTML = renderOverviewPanel(totals, activity);
+      if (qPanel) qPanel.innerHTML = renderQuotesPanel(quotes);
+      if (pPanel) pPanel.innerHTML = renderProjectsPanel(projects);
+      if (iPanel) iPanel.innerHTML = renderInvoicesPanel(invoices);
+      if (payPanel) payPanel.innerHTML = renderPaymentsPanel(payments);
+
+      switchActivityTab(state.activity360.activeTab || "overview");
     }
 
     async function openHistoryModal(contact) {
       if (!contact?.id) return;
       state.historyContact = contact;
+      state.activity360 = { data: null, activeTab: "overview", currency: "USD" };
       const modal = $("coHistoryModal");
       if (!modal) return;
-      $("coHistoryTitle").textContent = "Quote History";
+      $("coHistoryTitle").textContent = "Contact 360";
       $("coHistorySubtitle").textContent = contact.display_name || "Contact";
       modal.hidden = false;
       modal.setAttribute("aria-hidden", "false");
-      renderHistoryState("Loading quote history…", "");
+      setActivityState("Loading contact activity…", "");
 
       const params = new URLSearchParams({
         contact_id: String(contact.id),
-        limit: "25",
+        limit: "50",
       });
-      const { response, data } = await apiRequest("/list-tenant-contact-quotes?" + params.toString(), {
+      const { response, data } = await apiRequest("/get-tenant-contact-360?" + params.toString(), {
         method: "GET",
       });
 
@@ -837,19 +1077,20 @@
         return;
       }
       if (response.status === 403) {
-        renderHistoryState(data.error || "Access denied.", "err");
+        setActivityState(data.error || "Access denied.", "err");
         return;
       }
       if (response.status === 404) {
-        renderHistoryState(data.error || "Contact not found.", "err");
+        setActivityState(data.error || "Contact not found.", "err");
         return;
       }
       if (!response.ok || !data.ok) {
-        renderHistoryState(data.error || "Could not load quote history.", "err");
+        setActivityState(data.error || "Could not load contact activity.", "err");
         return;
       }
 
-      renderHistoryQuotes(data.quotes, data.summary);
+      state.activity360.data = data;
+      renderActivity360(data);
     }
 
     function closeModal() {
@@ -1189,6 +1430,11 @@
       $("coModalCancel")?.addEventListener("click", closeModal);
       $("coModalSave")?.addEventListener("click", () => { void saveContact(); });
       $("coHistoryClose")?.addEventListener("click", closeHistoryModal);
+      $("co360Tabs")?.addEventListener("click", (event) => {
+        const tabBtn = event.target.closest("[data-co360-tab]");
+        if (!tabBtn) return;
+        switchActivityTab(tabBtn.getAttribute("data-co360-tab"));
+      });
       $("coImportClose")?.addEventListener("click", closeImportModal);
       $("coImportCancel")?.addEventListener("click", closeImportModal);
       $("coImportPreviewBtn")?.addEventListener("click", () => { void runImportPreview(); });
