@@ -34,6 +34,20 @@ const INVOICE_INTERNAL_SELECT = "id,tenant_id,quote_id,project_id";
 
 const INVOICE_NUMERIC_KEYS = new Set(["amount", "paid_amount", "balance_due"]);
 
+/** Normalize tenant branding logo for public clients (absolute http(s), never scheme-relative). */
+function normalizePublicLogoUrl(value) {
+  let s = String(value ?? "").trim();
+  if (!s) return "";
+  if (s.startsWith("//")) s = `https:${s}`;
+  try {
+    const u = new URL(s);
+    if (u.protocol === "http:" || u.protocol === "https:") return u.href;
+  } catch (_e) {
+    /* ignore */
+  }
+  return "";
+}
+
 function pickPublicInvoiceFields(row) {
   const keys = INVOICE_SELECT.split(",");
   const out = {};
@@ -130,6 +144,13 @@ exports.handler = async (event) => {
         }
         if (tenantBusinessAddress) {
           invoice.business_address = tenantBusinessAddress;
+        }
+        const snapshotLogo = normalizePublicLogoUrl(pickFirst(invoice.logo_url));
+        const tenantLogo = normalizePublicLogoUrl(pickFirst(td?.logo_url));
+        if (snapshotLogo) {
+          invoice.logo_url = snapshotLogo;
+        } else if (tenantLogo) {
+          invoice.logo_url = tenantLogo;
         }
       } catch (_err) {
         /* keep invoice business_name fallback */

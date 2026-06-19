@@ -75,6 +75,40 @@
       margin-top:4px;
     }
 
+    .brand-head{
+      display:flex;
+      align-items:flex-start;
+      gap:14px;
+    }
+
+    .brand-mark{
+      width:44px;
+      height:44px;
+      min-width:44px;
+      min-height:44px;
+      flex-shrink:0;
+      border-radius:12px;
+      object-fit:contain;
+      background:#f3f4f6;
+      border:1px solid var(--line);
+    }
+
+    .brand-mark--initials{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:14px;
+      font-weight:800;
+      letter-spacing:.04em;
+      color:#374151;
+      background:linear-gradient(155deg,#f9fafb 0%,#eef2f7 100%);
+    }
+
+    .brand-copy{
+      min-width:0;
+      flex:1 1 auto;
+    }
+
     .header-title{
       margin-top:8px;
       font-size:14px;
@@ -477,8 +511,44 @@
   }
 
   function safeHttpUrl(url) {
-    const u = String(url || "").trim();
-    return /^https?:\/\//i.test(u) ? u : "";
+    let s = String(url ?? "").trim();
+    if (!s) return "";
+    if (s.startsWith("//")) s = `https:${s}`;
+    try {
+      const u = new URL(s);
+      if (u.protocol === "http:" || u.protocol === "https:") return u.href;
+    } catch (_e) {
+      if (/^https?:\/\//i.test(s)) return s;
+    }
+    return "";
+  }
+
+  function buildInitialsFromBusinessName(name) {
+    const parts = String(name || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!parts.length) return "MG";
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
+  }
+
+  function buildBrandHeaderHtml(brandName, logoUrl) {
+    const nameEsc = escapeHtml(brandName || TENANT_NAME_FALLBACK);
+    const logoResolved = safeHttpUrl(logoUrl);
+    const altText = escapeHtml(brandName || "Business logo");
+    const mark = logoResolved
+      ? `<img class="brand-mark" src="${escapeHtml(logoResolved)}" alt="${altText}" width="44" height="44" decoding="async" />`
+      : `<div class="brand-mark brand-mark--initials" aria-hidden="true">${escapeHtml(buildInitialsFromBusinessName(brandName))}</div>`;
+    return (
+      '<div class="brand-head">' +
+        mark +
+        '<div class="brand-copy">' +
+          "<h1>" + nameEsc + "</h1>" +
+          '<div class="sub">' + escapeHtml(BUSINESS_SUBTITLE) + "</div>" +
+        "</div>" +
+      "</div>"
+    );
   }
 
   function safeAccentColor(hex) {
@@ -648,7 +718,6 @@
 
       const businessNameRaw = String(data.business_name || "").trim();
       const brandName = businessNameRaw || TENANT_NAME_FALLBACK;
-      const brandNameEsc = escapeHtml(brandName);
 
       const status = normalizedStatus(data);
       const statusEsc = escapeHtml(status);
@@ -722,8 +791,7 @@
       invoiceBox.innerHTML =
         '<div class="topbar">' +
           '<div class="topbar-main brand">' +
-            "<h1>" + brandNameEsc + "</h1>" +
-            '<div class="sub">' + escapeHtml(BUSINESS_SUBTITLE) + "</div>" +
+            buildBrandHeaderHtml(brandName, data.logo_url) +
             invoiceTitleBlock +
           "</div>" +
           '<div class="topbar-right">' +
