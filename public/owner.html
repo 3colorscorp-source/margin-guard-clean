@@ -16,12 +16,58 @@
     .owner-operational .owner-op-dash__plan {
       min-width: 0;
     }
-    .owner-operational .owner-op-dash__plan-add {
+    .owner-operational .owner-op-dash__action-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px 10px;
+      margin: 6px 0 2px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(0, 0, 0, 0.12);
+      min-width: 0;
+    }
+    .owner-operational .owner-op-dash__action-bar-labor {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
       align-items: center;
-      margin-top: 10px;
+      margin-left: auto;
+    }
+    .owner-operational .owner-op-dash__action-bar .btn {
+      min-height: 36px;
+      white-space: nowrap;
+    }
+    .owner-operational .owner-labor {
+      margin-top: 0;
+    }
+    .owner-operational .owner-labor__head {
+      margin-bottom: 8px;
+    }
+    @media (max-width: 720px) {
+      .owner-operational .owner-op-dash__action-bar {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .owner-operational .owner-op-dash__action-bar > .btn {
+        grid-column: 1 / -1;
+        width: 100%;
+        justify-content: center;
+      }
+      .owner-operational .owner-op-dash__action-bar-labor {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-left: 0;
+        width: 100%;
+      }
+      .owner-operational .owner-op-dash__action-bar-labor .btn {
+        width: 100%;
+        justify-content: center;
+      }
     }
     .owner-operational .owner-op-dash__cards {
       display: grid;
@@ -318,8 +364,12 @@
                     </div>
                     <div class="sales-op-metrics-inline" id="ownerOperationalMetrics" aria-live="polite"></div>
                     <div id="ownerOperationalTimelineHost"></div>
-                    <div class="owner-op-dash__plan-add">
-                      <button type="button" class="btn primary" id="btnOwnerAddOperationalDay">Add day</button>
+                  </div>
+                  <div class="owner-op-dash__action-bar" role="toolbar" aria-label="Operational plan and labor actions">
+                    <button type="button" class="btn primary" id="btnOwnerAddOperationalDay">Add day</button>
+                    <div class="owner-op-dash__action-bar-labor">
+                      <button class="btn primary" type="button" id="btnAddWorker">+ Agregar trabajador</button>
+                      <button class="btn danger" type="button" id="btnClearOwnerLabor">Limpiar labor</button>
                     </div>
                   </div>
                   <section class="owner-labor" aria-labelledby="ownerLaborHeading">
@@ -328,10 +378,6 @@
                         <span class="eyebrow owner-labor__eyebrow">Labor</span>
                         <h2 id="ownerLaborHeading" class="owner-labor__title">Mano de obra</h2>
                         <p class="sub owner-labor__lead">Si dejas Costo/Hora vacío, se aplica el costo base definido en Business Settings según el Tipo de cada trabajador.</p>
-                      </div>
-                      <div class="inline-actions owner-labor__actions">
-                        <button class="btn primary" id="btnAddWorker">+ Agregar trabajador</button>
-                        <button class="btn danger" type="button" id="btnClearOwnerLabor">Limpiar labor</button>
                       </div>
                     </header>
 
