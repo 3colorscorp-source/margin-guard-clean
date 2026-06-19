@@ -5,6 +5,91 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Margin Guard | Dueno</title>
   <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .owner-operational .owner-op-dash {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-width: 0;
+      grid-template-columns: unset;
+    }
+    .owner-operational .owner-op-dash__plan {
+      min-width: 0;
+    }
+    .owner-operational .owner-op-dash__plan-add {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-top: 10px;
+    }
+    .owner-operational .owner-op-dash__cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      align-items: start;
+      min-width: 0;
+    }
+    .owner-operational .owner-op-dash__cards > * {
+      min-width: 0;
+    }
+    .owner-operational .owner-op-dash__dates-card {
+      margin: 0;
+    }
+    .owner-operational .owner-op-dash__dates-card .owner-date-group {
+      margin-bottom: 0;
+    }
+    .owner-operational .owner-op-dash__dates-card .owner-date-group--primary {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
+      margin-bottom: 0;
+    }
+    .owner-operational .owner-op-dash__dates-card .field .hint {
+      font-size: 11px;
+      line-height: 1.35;
+    }
+    .owner-operational .owner-op-dash__dates-card .field input[type="date"] {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .owner-operational .owner-op-dash__crew {
+      padding: 10px 12px;
+    }
+    .owner-operational .owner-op-dash__crew .sales-op-summary-card__title {
+      margin-bottom: 8px;
+    }
+    .owner-operational .owner-op-dash__crew .sales-op-avail-table-wrap {
+      max-height: 9.5rem;
+      overflow: auto;
+    }
+    .owner-operational .owner-op-dash__crew .sales-op-avail-summary-table th,
+    .owner-operational .owner-op-dash__crew .sales-op-avail-summary-table td {
+      padding: 4px 6px;
+      font-size: 11px;
+    }
+    .owner-operational .owner-op-dash__actions {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.14);
+    }
+    .owner-operational .owner-op-dash__actions .btn {
+      flex: 1 1 160px;
+      width: auto;
+      justify-content: center;
+      margin: 0;
+    }
+    @media (max-width: 960px) {
+      .owner-operational .owner-op-dash__cards {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </head>
 <body data-role="owner" data-requires-auth="true" data-mg-app-nav data-mg-page-title="Dueno">
   <div class="container">
@@ -171,8 +256,8 @@
                 <span class="sales-operational__meta" id="ownerOperationalSummary">No schedule yet</span>
               </summary>
               <div class="sales-operational__body owner-operational__body">
-                <div class="sales-op-layout">
-                  <div class="sales-op-layout__left">
+                <div class="sales-op-layout owner-op-dash">
+                  <div class="owner-op-dash__plan">
                     <header class="sales-op-timeline-head">
                       <h3 class="sales-op-timeline-title">Operational Plan <span id="ownerOpPlanDayCount"></span></h3>
                       <p class="sales-op-timeline-sub" id="ownerOperationalLead">Click a day to edit tasks and crew.</p>
@@ -200,11 +285,11 @@
                     </div>
                     <div class="sales-op-metrics-inline" id="ownerOperationalMetrics" aria-live="polite"></div>
                     <div id="ownerOperationalTimelineHost"></div>
-                    <div class="inline-actions" style="margin-top:10px;">
+                    <div class="owner-op-dash__plan-add">
                       <button type="button" class="btn primary" id="btnOwnerAddOperationalDay">Add day</button>
                     </div>
                   </div>
-                  <div class="sales-op-layout__right">
+                  <div class="owner-op-dash__cards">
                     <section class="sales-op-summary-card" aria-labelledby="ownerOpSummaryTitle">
                       <h4 class="sales-op-summary-card__title" id="ownerOpSummaryTitle">Proposal summary</h4>
                       <dl class="sales-op-summary-kv" id="ownerOpProposalSummary"></dl>
@@ -220,8 +305,8 @@
                       </div>
                       <div class="sales-op-calendar-grid" id="ownerOpCalendarPreview"></div>
                     </section>
-                    <div class="sales-quote-section owner-date-section" aria-labelledby="ownerDatesHeading">
-                      <h3 class="sales-quote-section-title" id="ownerDatesHeading">Dates</h3>
+                    <section class="sales-op-summary-card owner-op-dash__dates-card owner-date-section" aria-labelledby="ownerDatesHeading">
+                      <h4 class="sales-op-summary-card__title" id="ownerDatesHeading">Dates</h4>
                       <div class="form sales-quote-dates-row owner-date-group owner-date-group--primary" role="group" aria-label="Quote and production dates">
                         <div class="field owner-field-issue-date">
                           <label for="issueDate" class="owner-field-issue-date__label">Issue date</label>
@@ -246,18 +331,18 @@
                         </div>
                       </div>
                       <input type="hidden" id="committedDate" value="" />
-                    </div>
-                    <section class="sales-op-availability-card" aria-labelledby="ownerOpAvailTitle">
-                      <h4 class="sales-op-summary-card__title" id="ownerOpAvailTitle">Crew availability</h4>
-                      <div class="supervisor-table-wrap sales-op-avail-table-wrap">
-                        <div class="sales-op-avail sales-op-avail--unknown" id="ownerOpCrewAvailability" role="status">Checking schedule…</div>
-                      </div>
-                    </section>
-                    <section class="sales-op-actions-card" aria-label="Quote actions">
-                      <button type="button" class="btn primary owner-quote-cta__btn owner-quote-cta__btn--send" id="btnSendQuote">Enviar cotizacion</button>
-                      <button type="button" class="btn owner-quote-cta__btn owner-quote-cta__btn--pdf" id="btnExportPdf">Exportar PDF</button>
                     </section>
                   </div>
+                  <section class="sales-op-availability-card owner-op-dash__crew" aria-labelledby="ownerOpAvailTitle">
+                    <h4 class="sales-op-summary-card__title" id="ownerOpAvailTitle">Crew availability</h4>
+                    <div class="supervisor-table-wrap sales-op-avail-table-wrap">
+                      <div class="sales-op-avail sales-op-avail--unknown" id="ownerOpCrewAvailability" role="status">Checking schedule…</div>
+                    </div>
+                  </section>
+                  <section class="sales-op-actions-card owner-op-dash__actions" aria-label="Quote actions">
+                    <button type="button" class="btn primary owner-quote-cta__btn owner-quote-cta__btn--send" id="btnSendQuote">Enviar cotizacion</button>
+                    <button type="button" class="btn owner-quote-cta__btn owner-quote-cta__btn--pdf" id="btnExportPdf">Exportar PDF</button>
+                  </section>
                 </div>
               </div>
             </details>
