@@ -21,10 +21,10 @@
       flex-wrap: wrap;
       align-items: center;
       justify-content: space-between;
-      gap: 8px 10px;
-      margin: 6px 0 2px;
-      padding: 8px 10px;
-      border-radius: 12px;
+      gap: 6px 8px;
+      margin: 4px 0 0;
+      padding: 6px 8px;
+      border-radius: 10px;
       border: 1px solid rgba(255, 255, 255, 0.08);
       background: rgba(0, 0, 0, 0.12);
       min-width: 0;
@@ -32,19 +32,61 @@
     .owner-operational .owner-op-dash__action-bar-labor {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 6px;
       align-items: center;
       margin-left: auto;
     }
     .owner-operational .owner-op-dash__action-bar .btn {
-      min-height: 36px;
+      min-height: 30px;
+      padding: 5px 10px;
+      font-size: 12px;
+      line-height: 1.2;
       white-space: nowrap;
     }
     .owner-operational .owner-labor {
       margin-top: 0;
     }
     .owner-operational .owner-labor__head {
-      margin-bottom: 8px;
+      margin-bottom: 4px;
+    }
+    .owner-operational .owner-labor__title {
+      margin: 0 0 4px;
+      font-size: 17px;
+      line-height: 1.2;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+    .owner-operational .owner-labor__lead {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .owner-operational .owner-labor-guide {
+      margin: 6px 0 8px;
+      padding: 8px 10px;
+      border-radius: 12px;
+    }
+    .owner-operational .owner-labor-guide__head {
+      margin-bottom: 4px;
+    }
+    .owner-operational .owner-labor-guide__kicker {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+    }
+    .owner-operational .owner-labor-guide__text,
+    .owner-operational .owner-labor-sync-toggle {
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .owner-operational .owner-labor-guide__text {
+      margin-top: 4px;
+    }
+    .owner-operational .owner-labor-guide__meta {
+      margin-top: 4px;
+      font-size: 12px;
+    }
+    .owner-operational .owner-labor-table-wrap {
+      margin-top: 4px;
     }
     @media (max-width: 720px) {
       .owner-operational .owner-op-dash__action-bar {
@@ -375,8 +417,7 @@
                   <section class="owner-labor" aria-labelledby="ownerLaborHeading">
                     <header class="owner-labor__head">
                       <div class="owner-labor__intro">
-                        <span class="eyebrow owner-labor__eyebrow">Labor</span>
-                        <h2 id="ownerLaborHeading" class="owner-labor__title">Mano de obra</h2>
+                        <h2 id="ownerLaborHeading" class="owner-labor__title">Labor</h2>
                         <p class="sub owner-labor__lead">Si dejas Costo/Hora vacío, se aplica el costo base definido en Business Settings según el Tipo de cada trabajador.</p>
                       </div>
                     </header>
