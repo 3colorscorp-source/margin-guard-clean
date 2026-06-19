@@ -13,6 +13,53 @@
       min-width: 0;
       grid-template-columns: unset;
     }
+    .owner-operational .owner-op-dash__stack {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      width: 100%;
+      min-width: 0;
+      max-width: none;
+    }
+    .owner-operational .owner-op-dash__plan,
+    .owner-operational .owner-op-dash__action-bar,
+    .owner-operational .owner-op-dash__stack .owner-labor {
+      width: 100%;
+      max-width: none;
+      box-sizing: border-box;
+    }
+    .owner-operational .owner-op-dash__plan .sales-op-timeline-head,
+    .owner-operational .owner-op-dash__plan .sales-op-toolbar,
+    .owner-operational .owner-op-dash__plan .sales-op-metrics-inline,
+    .owner-operational .owner-op-dash__plan #ownerOperationalTimelineHost,
+    .owner-operational .owner-op-dash__plan .sales-op-timeline,
+    .owner-operational .owner-op-dash__plan .sales-op-phase-block {
+      width: 100%;
+      max-width: none;
+      box-sizing: border-box;
+    }
+    .owner-operational .owner-op-dash__plan .sales-op-timeline-row {
+      width: 100%;
+      max-width: none;
+      box-sizing: border-box;
+    }
+    .owner-operational .owner-op-dash__plan .sales-op-toolbar .field {
+      min-width: 0;
+      flex: 1 1 220px;
+    }
+    .owner-operational .owner-op-dash__stack .owner-labor__intro {
+      max-width: none;
+      width: 100%;
+    }
+    .owner-operational .owner-op-dash__stack .owner-labor__head {
+      width: 100%;
+    }
+    .owner-operational .owner-op-dash__stack .owner-labor-guide,
+    .owner-operational .owner-op-dash__stack .owner-labor-table-wrap {
+      width: 100%;
+      max-width: none;
+      box-sizing: border-box;
+    }
     .owner-operational .owner-op-dash__plan {
       min-width: 0;
     }
@@ -378,6 +425,7 @@
               </summary>
               <div class="sales-operational__body owner-operational__body">
                 <div class="sales-op-layout owner-op-dash">
+                  <div class="owner-op-dash__stack">
                   <div class="owner-op-dash__plan">
                     <header class="sales-op-timeline-head">
                       <h3 class="sales-op-timeline-title">Operational Plan <span id="ownerOpPlanDayCount"></span></h3>
@@ -453,6 +501,7 @@
                     </table>
                     </div>
                   </section>
+                  </div>
                   <div class="owner-op-dash__cards">
                     <section class="sales-op-summary-card owner-op-dash__sibling-card owner-op-dash__summary-card" aria-labelledby="ownerOpSummaryTitle">
                       <h4 class="sales-op-summary-card__title" id="ownerOpSummaryTitle">Proposal summary</h4>
