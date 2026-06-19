@@ -92,8 +92,8 @@
     }
     .owner-operational .owner-op-scope-draft {
       width: 100%;
-      margin: 8px 0 0;
-      padding: 10px 12px;
+      margin: 10px 0 0;
+      padding: 12px 14px;
       border-radius: 12px;
       border: 1px solid rgba(255, 255, 255, 0.1);
       background: rgba(0, 0, 0, 0.16);
@@ -103,42 +103,43 @@
       display: none !important;
     }
     .owner-operational .owner-op-scope-draft__title {
-      margin: 0 0 4px;
-      font-size: 13px;
+      margin: 0 0 6px;
+      font-size: 14px;
       font-weight: 800;
       letter-spacing: 0.02em;
       color: rgba(248, 250, 252, 0.95);
     }
     .owner-operational .owner-op-scope-draft__safety {
-      margin: 0 0 8px;
-      font-size: 11px;
-      line-height: 1.4;
+      margin: 0 0 10px;
+      font-size: 11.5px;
+      line-height: 1.45;
       color: #fcd34d;
     }
     .owner-operational .owner-op-scope-draft__preview {
       width: 100%;
-      min-height: 7rem;
-      max-height: 12rem;
-      margin: 0 0 8px;
-      padding: 8px 10px;
+      min-height: 4.5rem;
+      margin: 0 0 10px;
+      padding: 12px 14px;
       border-radius: 10px;
       border: 1px solid rgba(255, 255, 255, 0.08);
       background: rgba(0, 0, 0, 0.22);
-      color: rgba(232, 238, 252, 0.9);
+      color: rgba(232, 238, 252, 0.92);
       font-family: inherit;
-      font-size: 12px;
-      line-height: 1.45;
-      resize: vertical;
+      font-size: 13px;
+      line-height: 1.6;
+      resize: none;
+      overflow: hidden;
       box-sizing: border-box;
     }
     .owner-operational .owner-op-scope-draft__actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      align-items: center;
+      gap: 10px;
     }
     .owner-operational .owner-op-scope-draft__actions .btn {
-      min-height: 30px;
-      padding: 5px 10px;
+      min-height: 32px;
+      padding: 6px 12px;
       font-size: 12px;
     }
     .owner-operational .owner-labor {
@@ -522,7 +523,7 @@
                     <textarea
                       class="owner-op-scope-draft__preview"
                       id="ownerOpScopeDraftPreview"
-                      rows="8"
+                      rows="6"
                       readonly
                       aria-labelledby="ownerOpScopeDraftTitle"
                       aria-describedby="ownerOpScopeDraftSafety"
@@ -931,13 +932,26 @@
 
   const SCOPE_KEYWORD_LINES = [
     { test: /\b(cover|protect|mask|tape|protection)\b/i, line: "Protect and cover work areas before construction begins." },
+    { test: /\bwork\s+areas?\b/i, line: "Protect and cover work areas before construction begins." },
     { test: /\b(install|installation|set[\s-]?tile|lay[\s-]?tile)\b/i, line: "Install specified materials per the approved plan." },
     { test: /\b(grout)\b/i, line: "Grout installed tile surfaces as planned." },
-    { test: /\b(clean[\s-]?up|cleanup|final\s+clean|walkthrough)\b/i, line: "Complete final cleanup and walkthrough of completed work areas." }
+    { test: /\b(clean[\s-]?up|cleanup|final\s+clean|walkthrough|punch|turnover)\b/i, line: "Complete final cleanup and walkthrough of completed work areas." }
   ];
 
   function safeTrim(value) {
     return String(value == null ? "" : value).trim();
+  }
+
+  function normalizeTypoText(text) {
+    let t = safeTrim(text);
+    if (!t) return "";
+    t = t.replace(/\bwals\b/gi, "walls");
+    t = t.replace(/\bvover\b/gi, "cover");
+    t = t.replace(/\bwork\s*ae\s*a\b/gi, "work area");
+    t = t.replace(/\bwork\s*aea\b/gi, "work area");
+    t = t.replace(/\bae\s+a\b/gi, "area");
+    t = t.replace(/\baea\b/gi, "area");
+    return t.replace(/\s+/g, " ").trim();
   }
 
   function dayNumberLabel(day, index) {
@@ -946,38 +960,43 @@
   }
 
   function isGenericDayText(text, dayNumber) {
-    const t = safeTrim(text);
+    const t = normalizeTypoText(text);
     if (!t) return true;
     const lower = t.toLowerCase();
     if (/^plan\s+day$/i.test(lower)) return true;
     if (/^scheduled\s+work$/i.test(lower)) return true;
     if (/^final$/i.test(lower)) return true;
     if (/^day\s*\d+$/i.test(lower)) return true;
+    if (/^phase\s+\d+\s*[—–-]\s*project\s+execution$/i.test(lower)) return true;
     if (Number.isFinite(dayNumber) && dayNumber > 0 && lower === "day " + String(dayNumber)) return true;
     return false;
   }
 
   function hasWall(text) {
-    return /\bwall(s)?\b/i.test(text);
+    const t = normalizeTypoText(text);
+    return /\bwall(s)?\b/i.test(t);
   }
 
   function hasFloor(text) {
-    return /\bfloor(s)?\b/i.test(text);
+    const t = normalizeTypoText(text);
+    return /\bfloor(s)?\b/i.test(t);
   }
 
-  function surfacePhrase(text) {
-    const wall = hasWall(text);
-    const floor = hasFloor(text);
+  function surfacePhrase(text, planContext) {
+    const wall = hasWall(text) || (planContext && planContext.hasWall);
+    const floor = hasFloor(text) || (planContext && planContext.hasFloor);
     if (wall && floor) return "wall and floor surfaces";
     if (wall) return "wall surfaces";
     if (floor) return "floor surfaces";
     return "surfaces";
   }
 
-  function finishingSubject(text) {
-    if (hasWall(text) && hasFloor(text)) return "wall and floor";
-    if (hasWall(text)) return "wall";
-    if (hasFloor(text)) return "floor";
+  function finishingSubject(text, planContext) {
+    if (hasWall(text) || (planContext && planContext.hasWall)) {
+      if (hasFloor(text) || (planContext && planContext.hasFloor)) return "wall and floor";
+      return "wall";
+    }
+    if (hasFloor(text) || (planContext && planContext.hasFloor)) return "floor";
     return "";
   }
 
@@ -987,7 +1006,29 @@
     const row = host.querySelector('.sales-op-timeline-row[data-day-index="' + dayIndex + '"]');
     if (!row) return "";
     const taskEl = row.querySelector(".sales-op-timeline-row__task");
-    return taskEl ? safeTrim(taskEl.textContent) : "";
+    return taskEl ? normalizeTypoText(taskEl.textContent) : "";
+  }
+
+  function readTimelinePhaseGroupText(dayIndex) {
+    const host = document.getElementById("ownerOperationalTimelineHost");
+    if (!host || dayIndex < 0) return "";
+    const row = host.querySelector('.sales-op-timeline-row[data-day-index="' + dayIndex + '"]');
+    if (!row) return "";
+    const block = row.closest(".sales-op-phase-block");
+    if (!block) return "";
+    const titleEl = block.querySelector(".sales-op-phase-block__title");
+    return titleEl ? normalizeTypoText(titleEl.textContent) : "";
+  }
+
+  function deriveDisplayPhaseGroupLabel(phaseText, fallbackIndex) {
+    const p = normalizeTypoText(phaseText).toLowerCase();
+    if (/downstairs|lower bath|guest bath|powder/.test(p)) return "Downstairs Bathroom";
+    if (/master|primary bath|owner bath| ensuite/.test(p)) return "Master Bathroom";
+    if (/grout|cleanup|clean[\s-]?up|final|punch|turnover|finish|detail/.test(p)) return "Final / Cleanup";
+    const trimmed = normalizeTypoText(phaseText);
+    if (trimmed && !isGenericDayText(trimmed, null)) return trimmed;
+    const idx = Math.max(0, Math.floor(Number(fallbackIndex) || 0));
+    return "Phase " + (idx + 1) + " — Project Execution";
   }
 
   function resolveDayDescriptionText(day, dayIndex) {
@@ -1002,16 +1043,52 @@
     ];
 
     for (let i = 0; i < candidates.length; i += 1) {
-      const text = safeTrim(candidates[i]);
+      const text = normalizeTypoText(candidates[i]);
       if (text && !isGenericDayText(text, dayNumber)) return text;
     }
 
     for (let i = 0; i < candidates.length; i += 1) {
-      const text = safeTrim(candidates[i]);
+      const text = normalizeTypoText(candidates[i]);
       if (text) return text;
     }
 
     return "";
+  }
+
+  function resolveScopeMappingText(day, dayIndex) {
+    const dayNumber = dayNumberLabel(day, dayIndex);
+    const title = resolveDayDescriptionText(day, dayIndex);
+    if (title && !isGenericDayText(title, dayNumber)) return title;
+
+    const phaseGroup = readTimelinePhaseGroupText(dayIndex);
+    if (phaseGroup && !isGenericDayText(phaseGroup, dayNumber)) return phaseGroup;
+
+    const phaseLabel = deriveDisplayPhaseGroupLabel(day && day.phase, dayIndex);
+    if (phaseLabel && !isGenericDayText(phaseLabel, dayNumber)) return phaseLabel;
+
+    if (day && day.phase) {
+      const phase = normalizeTypoText(day.phase);
+      if (phase && !isGenericDayText(phase, dayNumber)) return phase;
+    }
+
+    return title || phaseLabel || "";
+  }
+
+  function collectPlanSurfaceContext(planEntries) {
+    let planHasWall = false;
+    let planHasFloor = false;
+    planEntries.forEach(function (entry) {
+      const day = entry.day;
+      const parts = [
+        resolveDayDescriptionText(day, entry.dayIndex),
+        safeTrim(day && day.phase),
+        readTimelinePhaseGroupText(entry.dayIndex)
+      ];
+      const combined = normalizeTypoText(parts.join(" "));
+      if (hasWall(combined)) planHasWall = true;
+      if (hasFloor(combined)) planHasFloor = true;
+    });
+    return { hasWall: planHasWall, hasFloor: planHasFloor };
   }
 
   function loadOperationalPlanDays() {
@@ -1032,22 +1109,40 @@
     }
   }
 
-  function scopeLineForDayTitle(title) {
-    const text = safeTrim(title);
-    if (!text) return "Complete planned work for this schedule day.";
+  function isFinalCleanupContext(text) {
+    const normalized = normalizeTypoText(text);
+    const lower = normalized.toLowerCase();
+    return (
+      /final\s*\/\s*cleanup/i.test(normalized) ||
+      /\b(clean[\s-]?up|cleanup|walkthrough|punch|turnover)\b/i.test(lower) ||
+      (/\bfinal\b/i.test(lower) && !/\b(finish|finishing)\b/i.test(lower))
+    );
+  }
 
-    const surfaces = surfacePhrase(text);
-    const finishSubject = finishingSubject(text);
+  function scopeLineForDay(day, dayIndex, planContext) {
+    const mappingText = resolveScopeMappingText(day, dayIndex);
+    if (!mappingText) return "Complete scheduled work for this project day.";
+
+    const text = normalizeTypoText(mappingText);
+    const surfaces = surfacePhrase(text, planContext);
+    const finishSubject = finishingSubject(text, planContext);
+
+    if (
+      /\b(cover|protect|mask|tape|protection)\b/i.test(text) ||
+      (/\bwork\s+areas?\b/i.test(text) && /\b(cover|protect)\b/i.test(text))
+    ) {
+      return "Protect and cover work areas before construction begins.";
+    }
 
     if (/\b(demolition|demo|demolish|tear[\s-]?out)\b/i.test(text)) {
-      if (hasWall(text) || hasFloor(text)) {
+      if (hasWall(text) || hasFloor(text) || (planContext && (planContext.hasWall || planContext.hasFloor))) {
         return "Perform demolition of existing " + surfaces + " as required for the project.";
       }
       return "Perform demolition of existing surfaces as required for the project.";
     }
 
     if (/\b(prep|preparation|prepare|substrate|surface\s+prep)\b/i.test(text)) {
-      if (hasWall(text) || hasFloor(text)) {
+      if (hasWall(text) || hasFloor(text) || (planContext && (planContext.hasWall || planContext.hasFloor))) {
         return "Prepare " + surfaces + " for installation.";
       }
       return "Prepare substrate and work areas for installation.";
@@ -1060,11 +1155,16 @@
       return "Complete planned finishing work.";
     }
 
-    if (/\b(clean)\b/i.test(text) && !/\b(clean[\s-]?up|cleanup)\b/i.test(text)) {
-      if (hasWall(text) || hasFloor(text)) {
-        return "Clean " + surfaces + " as planned.";
-      }
-      return "Complete planned cleaning for this work area.";
+    if (/\b(grout)\b/i.test(text)) {
+      return "Grout installed tile surfaces as planned.";
+    }
+
+    if (/\b(install|installation|set[\s-]?tile|lay[\s-]?tile)\b/i.test(text)) {
+      return "Install specified materials per the approved plan.";
+    }
+
+    if (isFinalCleanupContext(text)) {
+      return "Complete final cleanup and walkthrough of completed work areas.";
     }
 
     for (let i = 0; i < SCOPE_KEYWORD_LINES.length; i += 1) {
@@ -1072,16 +1172,22 @@
       if (entry.test.test(text)) return entry.line;
     }
 
+    if (isGenericDayText(text, dayNumberLabel(day, dayIndex))) {
+      return "Complete scheduled work for this project day.";
+    }
+
     return "Complete planned work: " + text + ".";
   }
 
   function buildScopeDraftFromPlan(planEntries) {
+    const planContext = collectPlanSurfaceContext(planEntries);
     const usableDays = planEntries.filter(function (entry) {
       const day = entry.day;
       if (!day) return false;
       const text = resolveDayDescriptionText(day, entry.dayIndex);
+      const mapping = resolveScopeMappingText(day, entry.dayIndex);
       const hasWorkers = Array.isArray(day.workers) && day.workers.length > 0;
-      return Boolean(text) || hasWorkers;
+      return Boolean(text) || Boolean(mapping) || hasWorkers;
     });
     if (!usableDays.length) return "";
 
@@ -1095,14 +1201,20 @@
     usableDays.forEach(function (entry) {
       const day = entry.day;
       const label = dayNumberLabel(day, entry.dayIndex);
-      const title = resolveDayDescriptionText(day, entry.dayIndex) || "Day " + label;
-      lines.push("* Day " + label + ": " + scopeLineForDayTitle(title));
+      const scopeLine = scopeLineForDay(day, entry.dayIndex, planContext);
+      lines.push("• Day " + label + ": " + scopeLine);
     });
 
     lines.push("");
     lines.push("Owner Review Required:");
     lines.push(SCOPE_DRAFT_REVIEW_LINE);
     return lines.join("\n");
+  }
+
+  function fitScopeDraftPreviewHeight(preview) {
+    if (!preview) return;
+    preview.style.height = "auto";
+    preview.style.height = preview.scrollHeight + "px";
   }
 
   function syncNotesField(nextValue) {
@@ -1142,6 +1254,7 @@
     if (!panel || !preview) return;
     currentScopeDraft = draft;
     preview.value = draft;
+    fitScopeDraftPreviewHeight(preview);
     panel.hidden = false;
   }
 
