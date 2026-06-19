@@ -467,7 +467,6 @@
       font-size: 0.875rem;
     }
     @media (min-width: 721px) {
-      #hubQuoteEditModal.hub-qe-modal,
       #hubFormModal.hub-invoice-form-modal,
       #hubRecordPaymentModal {
         align-items: flex-start;
@@ -478,38 +477,63 @@
         scrollbar-width: thin;
         scrollbar-color: rgba(100, 116, 139, 0.4) transparent;
       }
-      #hubQuoteEditModal.hub-qe-modal::-webkit-scrollbar,
       #hubFormModal.hub-invoice-form-modal::-webkit-scrollbar,
       #hubRecordPaymentModal::-webkit-scrollbar {
         width: 8px;
       }
-      #hubQuoteEditModal.hub-qe-modal::-webkit-scrollbar-thumb,
       #hubFormModal.hub-invoice-form-modal::-webkit-scrollbar-thumb,
       #hubRecordPaymentModal::-webkit-scrollbar-thumb {
         background: rgba(100, 116, 139, 0.4);
         border-radius: 4px;
       }
 
-      /* Edit Quote */
+      /* Edit Quote — fullscreen workspace (C20-A6) */
+      #hubQuoteEditModal.hub-qe-modal {
+        align-items: flex-start;
+        justify-content: flex-start;
+        padding: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(100, 116, 139, 0.4) transparent;
+      }
+      #hubQuoteEditModal.hub-qe-modal::-webkit-scrollbar {
+        width: 8px;
+      }
+      #hubQuoteEditModal.hub-qe-modal::-webkit-scrollbar-thumb {
+        background: rgba(100, 116, 139, 0.4);
+        border-radius: 4px;
+      }
       #hubQuoteEditModal.hub-qe-modal .modal-card {
-        width: min(88vw, 1240px);
+        width: 100vw;
+        max-width: none;
+        min-height: 100dvh;
         max-height: none;
         height: auto;
         overflow: visible;
-        display: block;
-        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        border-radius: 0;
+        border-left: 0;
+        border-right: 0;
+        box-shadow: none;
         background: linear-gradient(165deg, #121a2b 0%, #0d1422 100%);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 14px;
-        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+        border-top: 0;
+        border-bottom: 0;
       }
       #hubQuoteEditModal .modal-header {
-        padding: 12px 16px 10px;
+        flex: 0 0 auto;
+        padding: 14px 20px 10px;
       }
       #hubQuoteEditModal .modal-body {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
         overflow: visible;
         max-height: none;
-        padding: 10px 16px 12px;
+        padding: 10px 20px 16px;
         scrollbar-width: none;
         -ms-overflow-style: none;
       }
@@ -531,7 +555,9 @@
         margin: 0 0 8px;
       }
       #hubQuoteEditModal .hub-qe-form {
-        gap: 10px 18px;
+        flex: 1 1 auto;
+        gap: 10px 20px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
       #hubQuoteEditModal .hub-qe-form .field.field--full:has(#hubEditProjectAddress),
       #hubQuoteEditModal .hub-qe-form .field.field--full:has(#hubEditJobSite),
@@ -540,10 +566,11 @@
         grid-column: span 1;
       }
       #hubQuoteEditModal .hub-qe-form textarea {
-        min-height: 52px;
+        min-height: 48px;
       }
       #hubQuoteEditModal .hub-qe-actions {
-        margin-top: 10px;
+        flex: 0 0 auto;
+        margin-top: auto;
         padding-top: 10px;
         gap: 8px;
       }
