@@ -153,9 +153,14 @@
       align-items: flex-start;
     }
     .owner-operational .owner-op-scope-draft {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px 12px;
       width: 100%;
-      margin: 10px 0 0;
-      padding: 10px 12px;
+      margin: 0 0 10px;
+      padding: 8px 12px;
       border-radius: 10px;
       border: 1px dashed rgba(252, 211, 77, 0.35);
       background: rgba(0, 0, 0, 0.12);
@@ -165,37 +170,25 @@
       display: none !important;
     }
     .owner-operational .owner-op-scope-draft__hint {
-      margin: 0 0 8px;
+      margin: 0;
+      flex: 1 1 200px;
       font-size: 11.5px;
       line-height: 1.45;
       color: #fcd34d;
-    }
-    .owner-operational .owner-op-scope-draft__preview {
-      width: 100%;
-      min-height: 4.5rem;
-      margin: 0 0 10px;
-      padding: 12px 14px;
-      border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(0, 0, 0, 0.22);
-      color: rgba(232, 238, 252, 0.92);
-      font-family: inherit;
-      font-size: 13px;
-      line-height: 1.6;
-      resize: none;
-      overflow: hidden;
-      box-sizing: border-box;
     }
     .owner-operational .owner-op-scope-draft__actions {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 10px;
+      gap: 6px;
+      flex: 0 0 auto;
     }
     .owner-operational .owner-op-scope-draft__actions .btn {
-      min-height: 32px;
-      padding: 6px 12px;
-      font-size: 12px;
+      min-height: 28px;
+      padding: 4px 10px;
+      font-size: 11.5px;
+      line-height: 1.2;
+      white-space: nowrap;
     }
     .owner-operational .owner-labor {
       margin-top: 0;
@@ -557,6 +550,15 @@
                       <h3 class="owner-op-scope-work__title" id="ownerScopeWorkHeading">Scope of Work</h3>
                       <p class="owner-op-scope-work__lead" id="ownerScopeWorkLead">Review and edit before sending to client.</p>
                     </header>
+                    <div class="owner-op-scope-draft" id="ownerOpScopeDraftPanel" hidden role="status" aria-live="polite">
+                      <p class="owner-op-scope-draft__hint" id="ownerOpScopeDraftHint">
+                        Generated from Operational Plan. Review and accept below or edit manually.
+                      </p>
+                      <div class="owner-op-scope-draft__actions">
+                        <button type="button" class="btn primary" id="btnOwnerApplyScopeDraft">Accept Draft</button>
+                        <button type="button" class="btn" id="btnOwnerClearScopeDraft">Clear Draft</button>
+                      </div>
+                    </div>
                     <div class="field owner-field-quote-notes owner-op-scope-work__field">
                       <label for="quoteNotes" class="owner-field-quote-notes__label">Scope of Work</label>
                       <textarea
@@ -570,22 +572,6 @@
                       <div class="hint owner-field-quote-notes__foot owner-op-scope-work__foot">
                         <span class="owner-field-quote-notes__tip">This text is sent with the quote PDF and client email.</span>
                         <span class="owner-char-pill" title="Caracteres usados"><span id="quoteNotesCount">0</span><span class="owner-char-pill__max">/2000</span></span>
-                      </div>
-                    </div>
-                    <div class="owner-op-scope-draft" id="ownerOpScopeDraftPanel" hidden>
-                      <p class="owner-op-scope-draft__hint" id="ownerOpScopeDraftHint">
-                        Generated from Operational Plan. Accept to apply below or edit manually in Scope of Work.
-                      </p>
-                      <textarea
-                        class="owner-op-scope-draft__preview"
-                        id="ownerOpScopeDraftPreview"
-                        rows="5"
-                        readonly
-                        aria-labelledby="ownerOpScopeDraftHint"
-                      ></textarea>
-                      <div class="owner-op-scope-draft__actions">
-                        <button type="button" class="btn primary" id="btnOwnerApplyScopeDraft">Accept Draft</button>
-                        <button type="button" class="btn" id="btnOwnerClearScopeDraft">Clear Draft</button>
                       </div>
                     </div>
                   </section>
@@ -1260,10 +1246,18 @@
     return lines.join("\n");
   }
 
-  function fitScopeDraftPreviewHeight(preview) {
-    if (!preview) return;
-    preview.style.height = "auto";
-    preview.style.height = preview.scrollHeight + "px";
+  function showScopeDraftPanel(draft) {
+    const panel = document.getElementById("ownerOpScopeDraftPanel");
+    if (!panel) return;
+    currentScopeDraft = draft;
+    panel.hidden = false;
+  }
+
+  function clearScopeDraftPanel() {
+    const panel = document.getElementById("ownerOpScopeDraftPanel");
+    if (!panel) return;
+    currentScopeDraft = "";
+    panel.hidden = true;
   }
 
   function syncNotesField(nextValue) {
@@ -1337,25 +1331,6 @@
     return draft;
   }
 
-  function showScopeDraftPanel(draft) {
-    const panel = document.getElementById("ownerOpScopeDraftPanel");
-    const preview = document.getElementById("ownerOpScopeDraftPreview");
-    if (!panel || !preview) return;
-    currentScopeDraft = draft;
-    preview.value = draft;
-    fitScopeDraftPreviewHeight(preview);
-    panel.hidden = false;
-  }
-
-  function clearScopeDraftPanel() {
-    const panel = document.getElementById("ownerOpScopeDraftPanel");
-    const preview = document.getElementById("ownerOpScopeDraftPreview");
-    if (!panel || !preview) return;
-    currentScopeDraft = "";
-    preview.value = "";
-    panel.hidden = true;
-  }
-
   function generateScopeDraft() {
     const draft = buildScopeDraftFromPlan(loadOperationalPlanDays());
     if (!draft) {
@@ -1378,7 +1353,7 @@
     const existing = notesEl.value;
     const existingTrim = safeTrim(existing);
     if (!existingTrim) {
-      syncNotesField(draft);
+      if (syncNotesField(draft)) clearScopeDraftPanel();
       return;
     }
 
@@ -1387,7 +1362,7 @@
         "Scope of Work already contains a generated scope. Replace existing scope?"
       );
       if (!replace) return;
-      syncNotesField(replaceScopeDraftInNotes(existing, draft));
+      if (syncNotesField(replaceScopeDraftInNotes(existing, draft))) clearScopeDraftPanel();
       return;
     }
 
@@ -1395,7 +1370,7 @@
       "Scope of Work already has text.\n\nClick OK to append the generated scope below existing content.\nClick Cancel to keep Scope of Work unchanged."
     );
     if (!append) return;
-    syncNotesField(existingTrim + "\n\n" + draft);
+    if (syncNotesField(existingTrim + "\n\n" + draft)) clearScopeDraftPanel();
   }
 
   function installOwnerScopeDraftUi() {
