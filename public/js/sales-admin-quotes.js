@@ -4,7 +4,14 @@
   const API = "/.netlify/functions/list-tenant-quotes";
   const GET_EDIT_API = "/.netlify/functions/get-tenant-quote-edit";
   const UPDATE_EDIT_API = "/.netlify/functions/update-tenant-quote-edit";
+  const RESEND_QUOTE_API = "/.netlify/functions/resend-tenant-quote";
   const LIST_QUERY = "?limit=25&offset=0";
+
+  const RESEND_DEFAULT_MESSAGE_NOTE =
+    "We updated your estimate as requested. Please review the corrected version using the same link.";
+
+  const RESEND_CONFIRM_TEXT =
+    "This will resend the updated quote to the client using the same public quote link. Continue?";
 
   const LOCK_REASON_LABELS = {
     quote_accepted_status: "Quote has been accepted",
@@ -39,6 +46,9 @@
     locked: false,
     requiresSentConfirm: false,
     saving: false,
+    resending: false,
+    saveSucceeded: false,
+    canResend: false,
   };
 
   function $(id) {
@@ -189,27 +199,74 @@
     if (confirm) confirm.disabled = Boolean(disabled);
   }
 
+  function isClientEmailPresent(raw) {
+    const s = String(raw || "").trim();
+    if (!s) return false;
+    const at = s.indexOf("@");
+    if (at < 1) return false;
+    return s.indexOf(".", at + 1) > at;
+  }
+
+  function canResendQuote(quote, edit) {
+    if (!quote || !edit) return false;
+    if (Boolean(edit.locked) || !edit.is_editable) return false;
+    const publicUrl = String(quote.public_url || "").trim();
+    if (!publicUrl) return false;
+    return isClientEmailPresent(quote.client_email);
+  }
+
+  function updateResendButtonState() {
+    const resendBtn = $("saQuoteEditResend");
+    const hint = $("saQuoteEditResendHint");
+    if (!resendBtn) return;
+
+    const showResend = editState.canResend && !editState.locked;
+    resendBtn.hidden = !showResend;
+
+    const emailField = $("saEditClientEmail");
+    const emailFromForm = emailField ? String(emailField.value || "").trim() : "";
+    const hasEmail = isClientEmailPresent(emailFromForm);
+
+    if (hint) {
+      const showHint = showResend && !hasEmail && !editState.locked;
+      hint.hidden = !showHint;
+    }
+
+    if (!showResend) {
+      resendBtn.disabled = true;
+      return;
+    }
+
+    if (editState.resending) {
+      resendBtn.disabled = true;
+      resendBtn.textContent = "Resending…";
+      return;
+    }
+
+    resendBtn.textContent = "Resend Edited Quote";
+    resendBtn.disabled =
+      editState.saving || editState.resending || !hasEmail || !editState.saveSucceeded;
+  }
+
   function updateSaveButtonState() {
     const saveBtn = $("saQuoteEditSave");
-    if (!saveBtn) return;
-    if (editState.locked) {
-      saveBtn.disabled = true;
-      saveBtn.textContent = "Quote locked";
-      return;
+    if (saveBtn) {
+      if (editState.locked) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = "Quote locked";
+      } else if (editState.saving) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = "Saving…";
+      } else if (editState.requiresSentConfirm) {
+        const checked = Boolean($("saQuoteEditSentConfirm")?.checked);
+        saveBtn.disabled = !checked;
+        saveBtn.textContent = checked ? "Save changes" : "Confirm public link update";
+      } else {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Save changes";
+      }
     }
-    if (editState.saving) {
-      saveBtn.disabled = true;
-      saveBtn.textContent = "Saving…";
-      return;
-    }
-    if (editState.requiresSentConfirm) {
-      const checked = Boolean($("saQuoteEditSentConfirm")?.checked);
-      saveBtn.disabled = !checked;
-      saveBtn.textContent = checked ? "Save changes" : "Confirm public link update";
-      return;
-    }
-    saveBtn.disabled = false;
-    saveBtn.textContent = "Save changes";
+    updateResendButtonState();
   }
 
   function isoDateForInput(value) {
@@ -271,13 +328,79 @@
     return err || "Unable to complete request.";
   }
 
+  function mapResendApiError(data, status) {
+    const code = String(data?.code || "").trim();
+    const err = String(data?.error || "").trim();
+    if (status === 401) return "Sign in required to resend quotes.";
+    if (status === 403) return err || "Owner or admin permission required.";
+    if (code === "client_email_required") {
+      return "Client email is required before resending.";
+    }
+    if (code === "quote_locked") {
+      const reasons = Array.isArray(data?.lock_reasons) ? data.lock_reasons : [];
+      if (reasons.length) {
+        return `Quote is locked: ${reasons.map(lockReasonLabel).join("; ")}`;
+      }
+      return err || "Quote is locked.";
+    }
+    if (code === "public_link_missing") {
+      return "Quote has no public link. Publish the quote before resending.";
+    }
+    if (code === "zapier_not_configured") {
+      return "Quote was saved, but resend email is not configured.";
+    }
+    if (code === "zapier_send_failed") {
+      return "Quote was saved, but resend email failed. Please try again.";
+    }
+    if (code === "unknown_fields") {
+      const fields = Array.isArray(data?.fields) ? data.fields.join(", ") : "";
+      return fields ? `Disallowed fields: ${fields}` : err || "Unknown fields in request.";
+    }
+    return err || "Unable to resend quote.";
+  }
+
+  function readResendBody() {
+    return {
+      quote_id: editState.quoteId,
+      message_note: RESEND_DEFAULT_MESSAGE_NOTE,
+    };
+  }
+
+  function applyResendLockFromResponse(data) {
+    const reasons = Array.isArray(data?.lock_reasons) ? data.lock_reasons : [];
+    editState.locked = true;
+    editState.canResend = false;
+    const lockBanner = $("saQuoteEditLockBanner");
+    const lockList = $("saQuoteEditLockList");
+    if (lockBanner && lockList && reasons.length) {
+      lockBanner.hidden = false;
+      lockList.innerHTML = reasons
+        .map((code) => `<li>${escapeHtml(lockReasonLabel(code))}</li>`)
+        .join("");
+    }
+    setEditFormDisabled(true);
+    updateSaveButtonState();
+    updateResendButtonState();
+  }
+
   function closeEditModal() {
     const modal = $("saQuoteEditModal");
     if (!modal) return;
     modal.hidden = true;
     modal.setAttribute("aria-hidden", "true");
-    editState = { quoteId: "", locked: false, requiresSentConfirm: false, saving: false };
+    editState = {
+      quoteId: "",
+      locked: false,
+      requiresSentConfirm: false,
+      saving: false,
+      resending: false,
+      saveSucceeded: false,
+      canResend: false,
+    };
     setEditFeedback("");
+    updateResendButtonState();
+    const hint = $("saQuoteEditResendHint");
+    if (hint) hint.hidden = true;
   }
 
   function openEditModalShell() {
@@ -286,6 +409,13 @@
     modal.hidden = false;
     modal.setAttribute("aria-hidden", "false");
     setEditFeedback("");
+    editState.saveSucceeded = false;
+    editState.canResend = false;
+    editState.resending = false;
+    const resendBtn = $("saQuoteEditResend");
+    if (resendBtn) resendBtn.hidden = true;
+    const hint = $("saQuoteEditResendHint");
+    if (hint) hint.hidden = true;
     const lockBanner = $("saQuoteEditLockBanner");
     const warnBanner = $("saQuoteEditWarning");
     const loading = $("saQuoteEditLoading");
@@ -300,6 +430,7 @@
     if (confirm) confirm.checked = false;
     setEditFormDisabled(true);
     updateSaveButtonState();
+    updateResendButtonState();
   }
 
   function applyEditPayload(data) {
@@ -307,6 +438,7 @@
     const edit = data?.edit || {};
     const locked = Boolean(edit.locked) || !edit.is_editable;
     editState.locked = locked;
+    editState.canResend = canResendQuote(quote, edit);
     editState.requiresSentConfirm =
       !locked && Array.isArray(edit.warnings) && edit.warnings.includes("quote_viewed_or_sent");
 
@@ -342,6 +474,7 @@
     fillEditForm(quote);
     setEditFormDisabled(locked);
     updateSaveButtonState();
+    updateResendButtonState();
   }
 
   async function fetchQuoteEdit(quoteId) {
@@ -375,6 +508,7 @@
         editState.locked = true;
         setEditFormDisabled(true);
         updateSaveButtonState();
+        updateResendButtonState();
         return;
       }
 
@@ -386,6 +520,7 @@
       editState.locked = true;
       setEditFormDisabled(true);
       updateSaveButtonState();
+      updateResendButtonState();
     }
   }
 
@@ -428,6 +563,7 @@
       }
 
       applyEditPayload(data);
+      editState.saveSucceeded = true;
       setEditFeedback("Quote updated successfully.", "ok");
       void loadQuotePipeline();
     } catch (err) {
@@ -435,6 +571,76 @@
     } finally {
       editState.saving = false;
       updateSaveButtonState();
+      updateResendButtonState();
+    }
+  }
+
+  async function resendQuoteEdit() {
+    if (
+      editState.locked ||
+      editState.resending ||
+      editState.saving ||
+      !editState.quoteId ||
+      !editState.canResend ||
+      !editState.saveSucceeded
+    ) {
+      return;
+    }
+
+    const emailField = $("saEditClientEmail");
+    if (!isClientEmailPresent(emailField?.value)) {
+      setEditFeedback("Client email is required before resending.", "warn");
+      updateResendButtonState();
+      return;
+    }
+
+    if (!window.confirm(RESEND_CONFIRM_TEXT)) {
+      return;
+    }
+
+    editState.resending = true;
+    updateResendButtonState();
+    setEditFeedback("");
+
+    try {
+      const body = readResendBody();
+      const response = await fetch(RESEND_QUOTE_API, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(body),
+      });
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (_err) {
+        data = {};
+      }
+
+      if (!response.ok || data.ok !== true) {
+        const msg = mapResendApiError(data, response.status);
+        const tone =
+          data?.code === "zapier_not_configured" || data?.code === "zapier_send_failed"
+            ? "warn"
+            : "err";
+        setEditFeedback(msg, tone);
+        if (data?.code === "quote_locked") {
+          applyResendLockFromResponse(data);
+        }
+        return;
+      }
+
+      const sentTo = String(data.sent_to || "").trim();
+      setEditFeedback(
+        sentTo ? `Updated quote resent to ${sentTo}.` : "Updated quote resent to client.",
+        "ok"
+      );
+      void loadQuotePipeline();
+    } catch (err) {
+      setEditFeedback(err?.message || "Network error resending quote.", "err");
+    } finally {
+      editState.resending = false;
+      updateResendButtonState();
     }
   }
 
@@ -526,12 +732,18 @@
     const closeBtn = $("saQuoteEditClose");
     const cancelBtn = $("saQuoteEditCancel");
     const saveBtn = $("saQuoteEditSave");
+    const resendBtn = $("saQuoteEditResend");
     const confirm = $("saQuoteEditSentConfirm");
     const body = $("saQuotePipelineBody");
+    const emailField = $("saEditClientEmail");
 
     if (closeBtn) closeBtn.addEventListener("click", closeEditModal);
     if (cancelBtn) cancelBtn.addEventListener("click", closeEditModal);
     if (saveBtn) saveBtn.addEventListener("click", () => void saveQuoteEdit());
+    if (resendBtn) resendBtn.addEventListener("click", () => void resendQuoteEdit());
+    if (emailField) {
+      emailField.addEventListener("input", () => updateResendButtonState());
+    }
     if (confirm) {
       confirm.addEventListener("change", () => {
         updateSaveButtonState();

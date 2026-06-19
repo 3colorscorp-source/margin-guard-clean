@@ -318,11 +318,22 @@
     .sa-edit-actions {
       display: flex;
       flex-wrap: wrap;
+      align-items: center;
       justify-content: flex-end;
       gap: 8px;
       margin-top: 14px;
       padding-top: 12px;
       border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .sa-edit-actions__resend:not([hidden]) {
+      margin-right: auto;
+    }
+    .sa-edit-resend-hint {
+      flex: 1 1 100%;
+      margin: 0;
+      font-size: 0.75rem;
+      color: rgba(245, 158, 11, 0.95);
+      line-height: 1.4;
     }
     .sa-edit-btn-locked {
       opacity: 0.72;
@@ -650,7 +661,13 @@
             <textarea id="saEditTerms" name="terms" maxlength="5000" rows="3"></textarea>
           </div>
         </form>
+        <p id="saQuoteEditResendHint" class="sa-edit-resend-hint" hidden>
+          Client email is required before resending.
+        </p>
         <div class="sa-edit-actions">
+          <button type="button" class="btn ghost sa-edit-actions__resend" id="saQuoteEditResend" hidden>
+            Resend Edited Quote
+          </button>
           <button type="button" class="btn ghost" id="saQuoteEditCancel">Cancel</button>
           <button type="button" class="btn primary" id="saQuoteEditSave">Save changes</button>
         </div>
