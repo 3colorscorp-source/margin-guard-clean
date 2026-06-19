@@ -238,6 +238,57 @@
       white-space: nowrap;
       border: 0;
     }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-scope-work__foot,
+    html[data-sales-portal="seller"] .seller-operational .owner-op-scope-work__foot {
+      margin-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    html[data-sales-portal="seller"] .seller-operational .owner-field-quote-notes__tip {
+      font-size: 11px;
+      line-height: 1.4;
+      color: rgba(203, 213, 225, 0.88);
+      flex: 1 1 auto;
+    }
+    html[data-sales-portal="seller"] .seller-operational .sales-labor__eyebrow {
+      display: none !important;
+    }
+    html[data-sales-portal="seller"] .card-inner > #salesLaborSection {
+      display: none !important;
+    }
+    html[data-sales-portal="seller"] .seller-op-dash__stack .sales-labor,
+    html[data-sales-portal="seller"] .seller-op-dash__stack .owner-labor {
+      display: block !important;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash,
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash {
+      overflow-x: hidden;
+      max-width: 100%;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card.owner-date-section {
+      margin: 0;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__crew .sales-op-avail-table-wrap {
+      max-height: 9.5rem;
+      overflow: auto;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__crew .sales-op-avail-summary-table th,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__crew .sales-op-avail-summary-table td {
+      padding: 4px 6px;
+      font-size: 11px;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__actions .btn {
+      flex: 1 1 160px;
+      width: auto;
+    }
+    html[data-sales-portal="seller"] #salesQuoteCta {
+      display: none !important;
+    }
+    html[data-sales-portal="seller"] .seller-operational .sales-op-layout:not(.seller-op-dash):not(.owner-op-dash) {
+      display: none !important;
+    }
     html[data-sales-portal="seller"] .seller-operational .sales-labor.owner-labor {
       margin-top: 0;
     }
@@ -1114,15 +1165,122 @@
         return true;
       }
 
+      function polishSellerOperationalPlanMatch() {
+        if (!isSellerForcedPortalRoute()) return false;
+
+        var opSection = document.getElementById('salesOperationalSection');
+        if (opSection) {
+          opSection.classList.add('seller-operational', 'owner-operational');
+          opSection.setAttribute('open', '');
+        }
+
+        var dash = document.querySelector(
+          '#salesOperationalSection .seller-op-dash[data-seller-owner-layout="true"]'
+        );
+        if (!dash) return false;
+
+        dash.classList.add('owner-op-dash');
+
+        var stack = dash.querySelector('.seller-op-dash__stack, .owner-op-dash__stack');
+        var labor = document.getElementById('salesLaborSection');
+        if (stack && labor) {
+          if (!stack.contains(labor)) {
+            var scopeAnchor = stack.querySelector('.seller-op-scope-work, .owner-op-scope-work');
+            if (scopeAnchor) {
+              stack.insertBefore(labor, scopeAnchor.nextSibling);
+            } else {
+              stack.appendChild(labor);
+            }
+          }
+          labor.classList.add('owner-labor');
+          var laborEyebrow = labor.querySelector('.sales-labor__eyebrow');
+          if (laborEyebrow) laborEyebrow.hidden = true;
+          var laborTitle = labor.querySelector('.sales-labor__title');
+          if (laborTitle) laborTitle.textContent = 'Labor';
+          var laborLead = labor.querySelector('.sales-labor__lead');
+          if (laborLead) {
+            laborLead.textContent = 'Plan crew roles and worker-days for this estimate.';
+          }
+          var tableWrap = labor.querySelector('.sales-labor-table-wrap');
+          if (tableWrap) tableWrap.classList.add('owner-labor-table-wrap');
+          var laborTable = labor.querySelector('.sales-labor-table');
+          if (laborTable) laborTable.classList.add('owner-labor-table');
+        }
+
+        var messageField = dash.querySelector('#salesMessageToClient');
+        messageField = messageField ? messageField.closest('.field') : null;
+        if (messageField) {
+          messageField.classList.add('owner-op-scope-work__field');
+          var scopeLabel = messageField.querySelector('label');
+          if (scopeLabel) scopeLabel.classList.add('owner-field-quote-notes__label');
+          var messageInput = messageField.querySelector('#salesMessageToClient');
+          if (messageInput) {
+            messageInput.classList.add('owner-op-scope-work__editor', 'seller-op-scope-work__editor');
+            messageInput.rows = 6;
+            messageInput.placeholder = 'Scope of work included with this estimate for the client.';
+            messageInput.setAttribute('aria-describedby', 'sellerScopeWorkLead');
+          }
+          var hint = messageField.querySelector('.hint');
+          if (hint) {
+            hint.classList.add('owner-op-scope-work__foot', 'owner-field-quote-notes__foot');
+            if (!hint.querySelector('.owner-field-quote-notes__tip')) {
+              var tip = document.createElement('span');
+              tip.className = 'owner-field-quote-notes__tip';
+              tip.textContent = 'This text is sent with the estimate PDF and client email.';
+              hint.insertBefore(tip, hint.firstChild);
+            }
+          }
+        }
+
+        var addDayBtn = document.getElementById('btnAddOperationalDay');
+        if (addDayBtn) addDayBtn.classList.add('primary');
+        var addWorkerBtn = document.getElementById('btnAddSalesWorker');
+        if (addWorkerBtn) addWorkerBtn.textContent = '+ Agregar trabajador';
+        var clearLaborBtn = document.getElementById('btnClearSalesWorkers');
+        if (clearLaborBtn) clearLaborBtn.textContent = 'Limpiar labor';
+
+        var crewAvail = document.getElementById('salesOpCrewAvailability');
+        if (crewAvail && !crewAvail.closest('.sales-op-avail-table-wrap')) {
+          var crewWrap = document.createElement('div');
+          crewWrap.className = 'sales-op-avail-table-wrap supervisor-table-wrap';
+          crewAvail.parentNode.insertBefore(crewWrap, crewAvail);
+          crewWrap.appendChild(crewAvail);
+        }
+
+        var datesCard = dash.querySelector('.seller-op-dash__dates-card, .owner-op-dash__dates-card');
+        if (datesCard) datesCard.classList.add('owner-date-section');
+
+        var actionsCard = dash.querySelector('.seller-op-dash__actions, .owner-op-dash__actions');
+        if (actionsCard) {
+          actionsCard.classList.add('owner-op-dash__actions');
+          var sendBtn = document.getElementById('btnSalesOpSend');
+          if (sendBtn) sendBtn.classList.add('owner-quote-cta__btn', 'owner-quote-cta__btn--send');
+          var previewBtn = document.getElementById('btnSalesOpPreview');
+          if (previewBtn) previewBtn.classList.add('owner-quote-cta__btn', 'owner-quote-cta__btn--pdf');
+        }
+
+        var quoteCta = document.getElementById('salesQuoteCta');
+        if (quoteCta) {
+          quoteCta.hidden = true;
+          quoteCta.setAttribute('aria-hidden', 'true');
+        }
+
+        return true;
+      }
+
       function applySellerOwnerQuoteLayout() {
         if (!isSellerForcedPortalRoute()) return false;
         applySellerOwnerShellLayout();
 
         var opSection = document.getElementById('salesOperationalSection');
         var opBody = opSection && opSection.querySelector('.sales-operational__body');
-        var opLayout = opBody && opBody.querySelector('.sales-op-layout');
-        if (!opBody || !opLayout) return false;
-        if (opBody.querySelector('.seller-op-dash[data-seller-owner-layout="true"]')) return false;
+        var opLayout = opBody && opBody.querySelector('.sales-op-layout:not(.seller-op-dash):not(.owner-op-dash)');
+        if (!opBody) return false;
+        if (opBody.querySelector('.seller-op-dash[data-seller-owner-layout="true"]')) {
+          polishSellerOperationalPlanMatch();
+          return true;
+        }
+        if (!opLayout) return false;
 
         var left = opLayout.querySelector('.sales-op-layout__left');
         var right = opLayout.querySelector('.sales-op-layout__right');
@@ -1156,7 +1314,10 @@
         actionBar.className = 'seller-op-dash__action-bar owner-op-dash__action-bar';
         actionBar.setAttribute('role', 'toolbar');
         actionBar.setAttribute('aria-label', 'Operational plan and labor actions');
-        if (addDayBtn) actionBar.appendChild(addDayBtn);
+        if (addDayBtn) {
+          addDayBtn.classList.add('primary');
+          actionBar.appendChild(addDayBtn);
+        }
         var laborBar = document.createElement('div');
         laborBar.className = 'seller-op-dash__action-bar-labor owner-op-dash__action-bar-labor';
         if (addWorkerBtn) laborBar.appendChild(addWorkerBtn);
@@ -1178,12 +1339,25 @@
           messageField = messageField ? messageField.closest('.field') : null;
         }
         if (messageField) {
+          messageField.classList.add('owner-op-scope-work__field');
+          var scopeLabel = messageField.querySelector('label');
+          if (scopeLabel) scopeLabel.classList.add('owner-field-quote-notes__label');
           var messageInput = messageField.querySelector('#salesMessageToClient');
           if (messageInput) {
-            messageInput.classList.add('seller-op-scope-work__editor');
+            messageInput.classList.add('owner-op-scope-work__editor', 'seller-op-scope-work__editor');
             messageInput.rows = 6;
             messageInput.placeholder = 'Scope of work included with this estimate for the client.';
             messageInput.setAttribute('aria-describedby', 'sellerScopeWorkLead');
+          }
+          var scopeHint = messageField.querySelector('.hint');
+          if (scopeHint) {
+            scopeHint.classList.add('owner-op-scope-work__foot', 'owner-field-quote-notes__foot');
+            if (!scopeHint.querySelector('.owner-field-quote-notes__tip')) {
+              var scopeTip = document.createElement('span');
+              scopeTip.className = 'owner-field-quote-notes__tip';
+              scopeTip.textContent = 'This text is sent with the estimate PDF and client email.';
+              scopeHint.insertBefore(scopeTip, scopeHint.firstChild);
+            }
           }
           scopeWork.appendChild(messageField);
         }
@@ -1212,7 +1386,7 @@
         }
 
         var datesCard = document.createElement('section');
-        datesCard.className = 'sales-op-summary-card seller-op-dash__sibling-card owner-op-dash__sibling-card owner-op-dash__dates-card';
+        datesCard.className = 'sales-op-summary-card seller-op-dash__sibling-card owner-op-dash__sibling-card owner-op-dash__dates-card owner-date-section';
         datesCard.setAttribute('aria-labelledby', 'sellerOpDatesTitle');
         datesCard.innerHTML = '<h4 class="sales-op-summary-card__title" id="sellerOpDatesTitle">Dates</h4>';
         var datesForm = datesSection && datesSection.querySelector('.sales-quote-dates-row');
@@ -1227,11 +1401,22 @@
         var crewCard = right.querySelector('.sales-op-availability-card');
         if (crewCard) {
           crewCard.classList.add('seller-op-dash__crew', 'owner-op-dash__crew');
+          var crewAvailEl = crewCard.querySelector('#salesOpCrewAvailability');
+          if (crewAvailEl && !crewAvailEl.closest('.sales-op-avail-table-wrap')) {
+            var availWrap = document.createElement('div');
+            availWrap.className = 'sales-op-avail-table-wrap supervisor-table-wrap';
+            crewAvailEl.parentNode.insertBefore(availWrap, crewAvailEl);
+            availWrap.appendChild(crewAvailEl);
+          }
         }
 
         var actionsCard = right.querySelector('.sales-op-actions-card');
         if (actionsCard) {
           actionsCard.classList.add('seller-op-dash__actions', 'owner-op-dash__actions');
+          var opSendBtn = actionsCard.querySelector('#btnSalesOpSend');
+          if (opSendBtn) opSendBtn.classList.add('owner-quote-cta__btn', 'owner-quote-cta__btn--send');
+          var opPreviewBtn = actionsCard.querySelector('#btnSalesOpPreview');
+          if (opPreviewBtn) opPreviewBtn.classList.add('owner-quote-cta__btn', 'owner-quote-cta__btn--pdf');
         }
 
         dash.appendChild(stack);
@@ -1241,6 +1426,7 @@
 
         opLayout.replaceWith(dash);
         dash.dataset.sellerOwnerLayout = 'true';
+        polishSellerOperationalPlanMatch();
         return true;
       }
 
@@ -1250,6 +1436,7 @@
         }
         if (!isSellerForcedPortalRoute()) return false;
         applySellerOwnerQuoteLayout();
+        polishSellerOperationalPlanMatch();
         updateSellerShellChrome();
         return true;
       }
@@ -1257,6 +1444,7 @@
       window.applySellerOwnerQuoteLayout = applySellerOwnerQuoteLayout;
       window.applySellerOwnerShellLayout = applySellerOwnerShellLayout;
       window.ensureSellerOwnerLayoutApplied = ensureSellerOwnerLayoutApplied;
+      window.polishSellerOperationalPlanMatch = polishSellerOperationalPlanMatch;
 
       function hasSellerDeviceSessionCookie() {
         try {
