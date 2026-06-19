@@ -924,12 +924,13 @@
 <script>
 (function () {
   const OWNER_STORE_KEY = "mg_owner_v2";
+  const SCOPE_DRAFT_TITLE = "Scope of Work Draft";
+  const SCOPE_DRAFT_REVIEW_LINE =
+    "This draft is based on planned field execution and may be adjusted before final approval.";
   let currentScopeDraft = "";
 
   const SCOPE_KEYWORD_LINES = [
     { test: /\b(cover|protect|mask|tape|protection)\b/i, line: "Protect and cover work areas before construction begins." },
-    { test: /\b(demolition|demo|demolish|tear[\s-]?out)\b/i, line: "Perform demolition of existing surfaces as required for the project." },
-    { test: /\b(prep|preparation|prepare|substrate|surface\s+prep)\b/i, line: "Prepare substrate and work areas for installation." },
     { test: /\b(install|installation|set[\s-]?tile|lay[\s-]?tile)\b/i, line: "Install specified materials per the approved plan." },
     { test: /\b(grout)\b/i, line: "Grout installed tile surfaces as planned." },
     { test: /\b(clean[\s-]?up|cleanup|final\s+clean|walkthrough)\b/i, line: "Complete final cleanup and walkthrough of completed work areas." }
@@ -939,6 +940,80 @@
     return String(value == null ? "" : value).trim();
   }
 
+  function dayNumberLabel(day, index) {
+    const dayNumber = Number(day && day.day_number);
+    return Number.isFinite(dayNumber) && dayNumber > 0 ? dayNumber : index + 1;
+  }
+
+  function isGenericDayText(text, dayNumber) {
+    const t = safeTrim(text);
+    if (!t) return true;
+    const lower = t.toLowerCase();
+    if (/^plan\s+day$/i.test(lower)) return true;
+    if (/^scheduled\s+work$/i.test(lower)) return true;
+    if (/^final$/i.test(lower)) return true;
+    if (/^day\s*\d+$/i.test(lower)) return true;
+    if (Number.isFinite(dayNumber) && dayNumber > 0 && lower === "day " + String(dayNumber)) return true;
+    return false;
+  }
+
+  function hasWall(text) {
+    return /\bwall(s)?\b/i.test(text);
+  }
+
+  function hasFloor(text) {
+    return /\bfloor(s)?\b/i.test(text);
+  }
+
+  function surfacePhrase(text) {
+    const wall = hasWall(text);
+    const floor = hasFloor(text);
+    if (wall && floor) return "wall and floor surfaces";
+    if (wall) return "wall surfaces";
+    if (floor) return "floor surfaces";
+    return "surfaces";
+  }
+
+  function finishingSubject(text) {
+    if (hasWall(text) && hasFloor(text)) return "wall and floor";
+    if (hasWall(text)) return "wall";
+    if (hasFloor(text)) return "floor";
+    return "";
+  }
+
+  function readTimelineTaskText(dayIndex) {
+    const host = document.getElementById("ownerOperationalTimelineHost");
+    if (!host || dayIndex < 0) return "";
+    const row = host.querySelector('.sales-op-timeline-row[data-day-index="' + dayIndex + '"]');
+    if (!row) return "";
+    const taskEl = row.querySelector(".sales-op-timeline-row__task");
+    return taskEl ? safeTrim(taskEl.textContent) : "";
+  }
+
+  function resolveDayDescriptionText(day, dayIndex) {
+    const dayNumber = Number(day && day.day_number);
+    const candidates = [
+      day && day.scope,
+      day && day.title,
+      day && day.description,
+      day && day.name,
+      day && day.phase,
+      readTimelineTaskText(dayIndex)
+    ];
+
+    for (let i = 0; i < candidates.length; i += 1) {
+      const text = safeTrim(candidates[i]);
+      if (text && !isGenericDayText(text, dayNumber)) return text;
+    }
+
+    for (let i = 0; i < candidates.length; i += 1) {
+      const text = safeTrim(candidates[i]);
+      if (text) return text;
+    }
+
+    return "";
+  }
+
   function loadOperationalPlanDays() {
     try {
       const raw = localStorage.getItem(OWNER_STORE_KEY);
@@ -946,54 +1021,87 @@
       const state = JSON.parse(raw);
       const plan = Array.isArray(state.operational_plan) ? state.operational_plan : [];
       return plan
-        .slice()
+        .map(function (day, dayIndex) {
+          return { day: day, dayIndex: dayIndex };
+        })
         .sort(function (a, b) {
-          return (Number(a && a.day_number) || 0) - (Number(b && b.day_number) || 0);
+          return dayNumberLabel(a.day, a.dayIndex) - dayNumberLabel(b.day, b.dayIndex);
         });
     } catch (_err) {
       return [];
     }
   }
 
-  function dayTitle(day, index) {
-    const phase = safeTrim(day && day.phase);
-    if (phase) return phase;
-    const dayNumber = Number(day && day.day_number);
-    return "Day " + (Number.isFinite(dayNumber) && dayNumber > 0 ? dayNumber : index + 1);
-  }
-
   function scopeLineForDayTitle(title) {
     const text = safeTrim(title);
     if (!text) return "Complete planned work for this schedule day.";
+
+    const surfaces = surfacePhrase(text);
+    const finishSubject = finishingSubject(text);
+
+    if (/\b(demolition|demo|demolish|tear[\s-]?out)\b/i.test(text)) {
+      if (hasWall(text) || hasFloor(text)) {
+        return "Perform demolition of existing " + surfaces + " as required for the project.";
+      }
+      return "Perform demolition of existing surfaces as required for the project.";
+    }
+
+    if (/\b(prep|preparation|prepare|substrate|surface\s+prep)\b/i.test(text)) {
+      if (hasWall(text) || hasFloor(text)) {
+        return "Prepare " + surfaces + " for installation.";
+      }
+      return "Prepare substrate and work areas for installation.";
+    }
+
+    if (/\b(finish|finishing)\b/i.test(text)) {
+      if (finishSubject) {
+        return "Complete planned " + finishSubject + " finishing work.";
+      }
+      return "Complete planned finishing work.";
+    }
+
+    if (/\b(clean)\b/i.test(text) && !/\b(clean[\s-]?up|cleanup)\b/i.test(text)) {
+      if (hasWall(text) || hasFloor(text)) {
+        return "Clean " + surfaces + " as planned.";
+      }
+      return "Complete planned cleaning for this work area.";
+    }
+
     for (let i = 0; i < SCOPE_KEYWORD_LINES.length; i += 1) {
       const entry = SCOPE_KEYWORD_LINES[i];
       if (entry.test.test(text)) return entry.line;
     }
+
     return "Complete planned work: " + text + ".";
   }
 
-  function buildScopeDraftFromPlan(plan) {
-    const usableDays = plan.filter(function (day) {
-      return day && (safeTrim(day.phase) || Number(day.day_number) > 0 || Array.isArray(day.workers));
+  function buildScopeDraftFromPlan(planEntries) {
+    const usableDays = planEntries.filter(function (entry) {
+      const day = entry.day;
+      if (!day) return false;
+      const text = resolveDayDescriptionText(day, entry.dayIndex);
+      const hasWorkers = Array.isArray(day.workers) && day.workers.length > 0;
+      return Boolean(text) || hasWorkers;
     });
     if (!usableDays.length) return "";
 
     const lines = [
-      "Scope of Work Draft",
+      SCOPE_DRAFT_TITLE,
       "",
       "This scope was generated from the operational plan and should be reviewed before sending.",
       ""
     ];
 
-    usableDays.forEach(function (day, index) {
-      const dayNumber = Number(day.day_number);
-      const label = Number.isFinite(dayNumber) && dayNumber > 0 ? dayNumber : index + 1;
-      lines.push("* Day " + label + ": " + scopeLineForDayTitle(dayTitle(day, index)));
+    usableDays.forEach(function (entry) {
+      const day = entry.day;
+      const label = dayNumberLabel(day, entry.dayIndex);
+      const title = resolveDayDescriptionText(day, entry.dayIndex) || "Day " + label;
+      lines.push("* Day " + label + ": " + scopeLineForDayTitle(title));
     });
 
     lines.push("");
     lines.push("Owner Review Required:");
-    lines.push("This draft is based on planned field execution and may be adjusted before final approval.");
+    lines.push(SCOPE_DRAFT_REVIEW_LINE);
     return lines.join("\n");
   }
 
@@ -1003,6 +1111,29 @@
     notesEl.value = nextValue;
     notesEl.dispatchEvent(new Event("input", { bubbles: true }));
     return true;
+  }
+
+  function notesContainsScopeDraft(notes) {
+    return safeTrim(notes).includes(SCOPE_DRAFT_TITLE);
+  }
+
+  function findScopeDraftBlock(notes) {
+    const startIdx = notes.indexOf(SCOPE_DRAFT_TITLE);
+    if (startIdx < 0) return null;
+    const endIdx = notes.indexOf(SCOPE_DRAFT_REVIEW_LINE, startIdx);
+    const end = endIdx >= 0 ? endIdx + SCOPE_DRAFT_REVIEW_LINE.length : notes.length;
+    return { start: startIdx, end: end };
+  }
+
+  function replaceScopeDraftInNotes(existingNotes, draft) {
+    const block = findScopeDraftBlock(existingNotes);
+    if (!block) return safeTrim(existingNotes) + "\n\n" + draft;
+    const before = safeTrim(existingNotes.slice(0, block.start));
+    const after = safeTrim(existingNotes.slice(block.end));
+    if (before && after) return before + "\n\n" + draft + "\n\n" + after;
+    if (before) return before + "\n\n" + draft;
+    if (after) return draft + "\n\n" + after;
+    return draft;
   }
 
   function showScopeDraftPanel(draft) {
@@ -1042,9 +1173,19 @@
     const notesEl = document.getElementById("quoteNotes");
     if (!notesEl) return;
 
-    const existing = safeTrim(notesEl.value);
-    if (!existing) {
+    const existing = notesEl.value;
+    const existingTrim = safeTrim(existing);
+    if (!existingTrim) {
       syncNotesField(draft);
+      return;
+    }
+
+    if (notesContainsScopeDraft(existing)) {
+      const replace = window.confirm(
+        "Notes already contain a Scope of Work Draft. Replace existing draft?"
+      );
+      if (!replace) return;
+      syncNotesField(replaceScopeDraftInNotes(existing, draft));
       return;
     }
 
@@ -1052,7 +1193,7 @@
       "Notes already has text.\n\nClick OK to append the generated scope below existing Notes.\nClick Cancel to keep Notes unchanged."
     );
     if (!append) return;
-    syncNotesField(existing + "\n\n" + draft);
+    syncNotesField(existingTrim + "\n\n" + draft);
   }
 
   function installOwnerScopeDraftUi() {
