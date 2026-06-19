@@ -27,33 +27,89 @@
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 12px;
-      align-items: start;
+      align-items: stretch;
       min-width: 0;
+      width: 100%;
     }
     .owner-operational .owner-op-dash__cards > * {
       min-width: 0;
+    }
+    .owner-operational .owner-op-dash__sibling-card {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background:
+        radial-gradient(420px 100px at 100% 0%, rgba(59, 130, 246, 0.08), transparent 55%),
+        rgba(0, 0, 0, 0.18);
+      box-sizing: border-box;
+    }
+    .owner-operational .owner-op-dash__sibling-card > .sales-op-summary-card__title {
+      margin: 0 0 8px;
+      flex: 0 0 auto;
+    }
+    .owner-operational .owner-op-dash__summary-card .sales-op-summary-kv {
+      flex: 1 1 auto;
+    }
+    .owner-operational .owner-op-dash__summary-card .sales-op-summary-total {
+      margin-top: auto;
+      padding-top: 8px;
+    }
+    .owner-operational .owner-op-dash__calendar-card .sales-op-cal-weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 4px;
+      margin: 0 0 6px;
+      font-size: 10px;
+      color: rgba(232, 238, 252, 0.55);
+    }
+    .owner-operational .owner-op-dash__calendar-card .sales-op-calendar-grid {
+      gap: 4px;
+      flex: 1 1 auto;
+    }
+    .owner-operational .owner-op-dash__calendar-card .sales-op-cal-cell {
+      min-height: 40px;
+      padding: 4px;
+    }
+    .owner-operational .owner-op-dash__calendar-card .sales-op-cal-cell--empty {
+      min-height: 28px;
     }
     .owner-operational .owner-op-dash__dates-card {
       margin: 0;
     }
     .owner-operational .owner-op-dash__dates-card .owner-date-group {
       margin-bottom: 0;
+      flex: 1 1 auto;
     }
     .owner-operational .owner-op-dash__dates-card .owner-date-group--primary {
-      grid-template-columns: minmax(0, 1fr);
-      gap: 10px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) !important;
+      gap: 8px;
       margin-bottom: 0;
     }
+    .owner-operational .owner-op-dash__dates-card .field {
+      margin: 0;
+    }
     .owner-operational .owner-op-dash__dates-card .field .hint {
-      font-size: 11px;
-      line-height: 1.35;
+      margin-top: 3px;
+      font-size: 10px;
+      line-height: 1.3;
     }
     .owner-operational .owner-op-dash__dates-card .field input[type="date"] {
       width: 100%;
       max-width: 100%;
       box-sizing: border-box;
     }
+    .owner-operational .owner-op-dash__dates-card .notice {
+      margin-top: 4px !important;
+    }
     .owner-operational .owner-op-dash__crew {
+      width: 100%;
+      flex: 0 0 auto;
       padding: 10px 12px;
     }
     .owner-operational .owner-op-dash__crew .sales-op-summary-card__title {
@@ -69,6 +125,8 @@
       font-size: 11px;
     }
     .owner-operational .owner-op-dash__actions {
+      width: 100%;
+      flex: 0 0 auto;
       display: flex;
       flex-direction: row;
       flex-wrap: wrap;
@@ -290,7 +348,7 @@
                     </div>
                   </div>
                   <div class="owner-op-dash__cards">
-                    <section class="sales-op-summary-card" aria-labelledby="ownerOpSummaryTitle">
+                    <section class="sales-op-summary-card owner-op-dash__sibling-card owner-op-dash__summary-card" aria-labelledby="ownerOpSummaryTitle">
                       <h4 class="sales-op-summary-card__title" id="ownerOpSummaryTitle">Proposal summary</h4>
                       <dl class="sales-op-summary-kv" id="ownerOpProposalSummary"></dl>
                       <div class="sales-op-summary-total">
@@ -298,14 +356,14 @@
                         <strong class="sales-op-summary-total__value" id="ownerOpProposalTotal">—</strong>
                       </div>
                     </section>
-                    <section class="sales-op-calendar-card" aria-labelledby="ownerOpCalendarTitle">
-                      <h4 class="sales-op-calendar-card__title" id="ownerOpCalendarTitle">Calendar preview</h4>
+                    <section class="sales-op-summary-card owner-op-dash__sibling-card owner-op-dash__calendar-card" aria-labelledby="ownerOpCalendarTitle">
+                      <h4 class="sales-op-summary-card__title" id="ownerOpCalendarTitle">Calendar preview</h4>
                       <div class="sales-op-cal-weekdays" aria-hidden="true">
                         <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
                       </div>
                       <div class="sales-op-calendar-grid" id="ownerOpCalendarPreview"></div>
                     </section>
-                    <section class="sales-op-summary-card owner-op-dash__dates-card owner-date-section" aria-labelledby="ownerDatesHeading">
+                    <section class="sales-op-summary-card owner-op-dash__sibling-card owner-op-dash__dates-card owner-date-section" aria-labelledby="ownerDatesHeading">
                       <h4 class="sales-op-summary-card__title" id="ownerDatesHeading">Dates</h4>
                       <div class="form sales-quote-dates-row owner-date-group owner-date-group--primary" role="group" aria-label="Quote and production dates">
                         <div class="field owner-field-issue-date">
