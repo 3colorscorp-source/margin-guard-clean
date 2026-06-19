@@ -147,10 +147,16 @@ exports.handler = async (event) => {
         }
         const snapshotLogo = normalizePublicLogoUrl(pickFirst(invoice.logo_url));
         const tenantLogo = normalizePublicLogoUrl(pickFirst(td?.logo_url));
+        let resolvedLogo = "";
         if (snapshotLogo) {
-          invoice.logo_url = snapshotLogo;
+          resolvedLogo = snapshotLogo;
         } else if (tenantLogo) {
-          invoice.logo_url = tenantLogo;
+          resolvedLogo = tenantLogo;
+        } else {
+          resolvedLogo = normalizePublicLogoUrl(await loadTenantLogoFromSnapshot(tenantId));
+        }
+        if (resolvedLogo) {
+          invoice.logo_url = resolvedLogo;
         }
       } catch (_err) {
         /* keep invoice business_name fallback */
@@ -259,12 +265,7 @@ async function loadPaidToDate({ tenantId, invoiceId, projectId, quoteId }) {
 async function loadTenantBusinessAddressFromSnapshot(tenantId) {
   if (!tenantId) return "";
   try {
-    const rows = await supabaseRequest(
-      `tenant_snapshots?tenant_id=eq.${encodeURIComponent(String(tenantId))}&select=payload&order=created_at.desc&limit=1`,
-      { method: "GET" }
-    );
-    const row = Array.isArray(rows) ? rows[0] : null;
-    const payload = row && typeof row.payload === "object" ? row.payload : null;
+    const payload = await loadLatestTenantSnapshotPayload(tenantId);
     const storage = payload && typeof payload.storage === "object" ? payload.storage : {};
     const mg = storage && typeof storage.mg_settings_v2 === "object" ? storage.mg_settings_v2 : {};
     return pickFirst(
@@ -278,4 +279,37 @@ async function loadTenantBusinessAddressFromSnapshot(tenantId) {
   } catch (_err) {
     return "";
   }
+}
+
+async function loadTenantLogoFromSnapshot(tenantId) {
+  if (!tenantId) return "";
+  try {
+    const payload = await loadLatestTenantSnapshotPayload(tenantId);
+    const storage = payload && typeof payload.storage === "object" ? payload.storage : {};
+    const brand =
+      storage && typeof storage.mg_business_branding_v1 === "object" ? storage.mg_business_branding_v1 : {};
+    const mg = storage && typeof storage.mg_settings_v2 === "object" ? storage.mg_settings_v2 : {};
+    const settings = payload && typeof payload.settings === "object" ? payload.settings : {};
+    const branding = payload && typeof payload.branding === "object" ? payload.branding : {};
+    return pickFirst(
+      brand.logoUrl,
+      brand.logo_url,
+      mg.publicLogoUrl,
+      mg.logo_url,
+      settings.publicLogoUrl,
+      branding.logoUrl,
+      branding.logo_url
+    );
+  } catch (_err) {
+    return "";
+  }
+}
+
+async function loadLatestTenantSnapshotPayload(tenantId) {
+  const rows = await supabaseRequest(
+    `tenant_snapshots?tenant_id=eq.${encodeURIComponent(String(tenantId))}&select=payload&order=created_at.desc&limit=1`,
+    { method: "GET" }
+  );
+  const row = Array.isArray(rows) ? rows[0] : null;
+  return row && typeof row.payload === "object" ? row.payload : null;
 }
