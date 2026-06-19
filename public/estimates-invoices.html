@@ -430,6 +430,214 @@
         min-height: 46px;
       }
     }
+
+    /* C20-A5 — Invoice Hub action modals: Edit Quote, Invoice Label, Record Payment */
+    .hub-record-pay-card {
+      width: min(96vw, 1240px);
+      background: linear-gradient(165deg, #121a2b 0%, #0d1422 100%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+      color: #e8eefc;
+    }
+    .hub-record-pay-card .hub-form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px 16px;
+    }
+    .hub-record-pay-card .hub-form-grid .field label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: rgba(232, 238, 252, 0.58);
+    }
+    .hub-record-pay-card .hub-form-grid input,
+    .hub-record-pay-card .hub-form-grid select,
+    .hub-record-pay-card .hub-form-grid textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.04);
+      color: #e8eefc;
+      font: inherit;
+      font-size: 0.875rem;
+    }
+    @media (min-width: 721px) {
+      #hubQuoteEditModal.hub-qe-modal,
+      #hubFormModal.hub-invoice-form-modal,
+      #hubRecordPaymentModal {
+        align-items: flex-start;
+        justify-content: center;
+        padding: 16px;
+        overflow-x: hidden;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(100, 116, 139, 0.4) transparent;
+      }
+      #hubQuoteEditModal.hub-qe-modal::-webkit-scrollbar,
+      #hubFormModal.hub-invoice-form-modal::-webkit-scrollbar,
+      #hubRecordPaymentModal::-webkit-scrollbar {
+        width: 8px;
+      }
+      #hubQuoteEditModal.hub-qe-modal::-webkit-scrollbar-thumb,
+      #hubFormModal.hub-invoice-form-modal::-webkit-scrollbar-thumb,
+      #hubRecordPaymentModal::-webkit-scrollbar-thumb {
+        background: rgba(100, 116, 139, 0.4);
+        border-radius: 4px;
+      }
+
+      /* Edit Quote */
+      #hubQuoteEditModal.hub-qe-modal .modal-card {
+        width: min(88vw, 1240px);
+        max-height: none;
+        height: auto;
+        overflow: visible;
+        display: block;
+        margin: 0 auto;
+        background: linear-gradient(165deg, #121a2b 0%, #0d1422 100%);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 14px;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+      }
+      #hubQuoteEditModal .modal-header {
+        padding: 12px 16px 10px;
+      }
+      #hubQuoteEditModal .modal-body {
+        overflow: visible;
+        max-height: none;
+        padding: 10px 16px 12px;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      #hubQuoteEditModal .modal-body::-webkit-scrollbar {
+        display: none;
+        width: 0;
+        height: 0;
+      }
+      #hubQuoteEditModal .hub-qe-banner {
+        margin: 0 0 8px;
+        padding: 8px 10px;
+        font-size: 0.78rem;
+        line-height: 1.4;
+      }
+      #hubQuoteEditModal .hub-qe-lock-list {
+        margin: 4px 0 0;
+      }
+      #hubQuoteEditModal .hub-qe-meta {
+        margin: 0 0 8px;
+      }
+      #hubQuoteEditModal .hub-qe-form {
+        gap: 10px 18px;
+      }
+      #hubQuoteEditModal .hub-qe-form .field.field--full:has(#hubEditProjectAddress),
+      #hubQuoteEditModal .hub-qe-form .field.field--full:has(#hubEditJobSite),
+      #hubQuoteEditModal .hub-qe-form .field.field--full:has(#hubEditNotes),
+      #hubQuoteEditModal .hub-qe-form .field.field--full:has(#hubEditTerms) {
+        grid-column: span 1;
+      }
+      #hubQuoteEditModal .hub-qe-form textarea {
+        min-height: 52px;
+      }
+      #hubQuoteEditModal .hub-qe-actions {
+        margin-top: 10px;
+        padding-top: 10px;
+        gap: 8px;
+      }
+      #hubQuoteEditModal .hub-qe-actions .btn {
+        min-height: 34px;
+        padding: 6px 12px;
+        font-size: 0.8125rem;
+        border-radius: 8px;
+      }
+
+      /* Invoice Label */
+      #hubFormModal.hub-invoice-form-modal .hub-invoice-form-card {
+        width: min(88vw, 1240px);
+        max-height: none;
+        height: auto;
+        overflow: visible;
+        display: block;
+        margin: 0 auto;
+      }
+      #hubFormModal .modal-header {
+        padding: 12px 16px 10px;
+      }
+      #hubFormModal .modal-body {
+        overflow: visible;
+        max-height: none;
+        padding: 10px 16px 12px;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      #hubFormModal .modal-body::-webkit-scrollbar {
+        display: none;
+        width: 0;
+        height: 0;
+      }
+      #hubFormModal .hub-form-grid {
+        gap: 10px 18px;
+      }
+      #hubFormModal .hub-invoice-form-card .hub-form-grid .field:has(#hubFormInvoiceLabelCustom),
+      #hubFormModal .hub-invoice-form-card .hub-form-grid .field:has(#hubFormInvoiceDate),
+      #hubFormModal .hub-invoice-form-card .hub-form-grid .field:has(#hubFormInvoiceDueDate) {
+        grid-column: span 1;
+      }
+      #hubFormModal .modal-footer {
+        padding: 10px 16px 12px;
+        gap: 8px;
+      }
+      #hubFormModal .modal-footer .btn {
+        min-height: 34px;
+        padding: 6px 12px;
+        font-size: 0.8125rem;
+        border-radius: 8px;
+      }
+
+      /* Record Payment */
+      #hubRecordPaymentModal .hub-record-pay-card {
+        width: min(88vw, 1240px);
+        max-height: none;
+        height: auto;
+        overflow: visible;
+        display: block;
+        margin: 0 auto;
+      }
+      #hubRecordPaymentModal .modal-header {
+        padding: 12px 16px 10px;
+      }
+      #hubRecordPaymentModal .modal-body {
+        overflow: visible;
+        max-height: none;
+        padding: 10px 16px 12px;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      #hubRecordPaymentModal .modal-body::-webkit-scrollbar {
+        display: none;
+        width: 0;
+        height: 0;
+      }
+      #hubRecordPaymentModal .hub-form-grid {
+        gap: 10px 18px;
+      }
+      #hubRecordPaymentModal .hub-form-grid .field:has(#hubRecordPayNotes) textarea {
+        min-height: 52px;
+      }
+      #hubRecordPaymentModal .modal-footer {
+        padding: 10px 16px 12px;
+        gap: 8px;
+      }
+      #hubRecordPaymentModal .modal-footer .btn {
+        min-height: 34px;
+        padding: 6px 12px;
+        font-size: 0.8125rem;
+        border-radius: 8px;
+      }
+    }
   </style>
 </head>
 <body data-role="estimates-hub" data-requires-auth="true" class="invoice-hub-page" data-mg-app-nav data-mg-page-title="Invoices Hub">
@@ -698,7 +906,7 @@
   </div>
 
   <div class="modal" id="hubRecordPaymentModal" aria-hidden="true">
-    <div class="modal-card" style="width:min(520px, 96vw);">
+    <div class="modal-card hub-record-pay-card">
       <div class="modal-header">
         <div>
           <div class="modal-title">Record payment</div>
