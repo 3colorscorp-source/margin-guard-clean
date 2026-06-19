@@ -23,6 +23,7 @@
     }
     .owner-operational .owner-op-dash__plan,
     .owner-operational .owner-op-dash__action-bar,
+    .owner-operational .owner-op-dash__stack .owner-op-scope-work,
     .owner-operational .owner-op-dash__stack .owner-labor {
       width: 100%;
       max-width: none;
@@ -90,27 +91,81 @@
       line-height: 1.2;
       white-space: nowrap;
     }
-    .owner-operational .owner-op-scope-draft {
+    .owner-operational .owner-op-scope-work {
       width: 100%;
       margin: 10px 0 0;
       padding: 12px 14px;
       border-radius: 12px;
       border: 1px solid rgba(255, 255, 255, 0.1);
-      background: rgba(0, 0, 0, 0.16);
+      background: rgba(0, 0, 0, 0.14);
       box-sizing: border-box;
     }
-    .owner-operational .owner-op-scope-draft[hidden] {
-      display: none !important;
+    .owner-operational .owner-op-scope-work__head {
+      margin: 0 0 10px;
     }
-    .owner-operational .owner-op-scope-draft__title {
-      margin: 0 0 6px;
+    .owner-operational .owner-op-scope-work__title {
+      margin: 0 0 4px;
       font-size: 14px;
       font-weight: 800;
       letter-spacing: 0.02em;
       color: rgba(248, 250, 252, 0.95);
     }
-    .owner-operational .owner-op-scope-draft__safety {
-      margin: 0 0 10px;
+    .owner-operational .owner-op-scope-work__lead {
+      margin: 0;
+      font-size: 11.5px;
+      line-height: 1.45;
+      color: rgba(203, 213, 225, 0.88);
+    }
+    .owner-operational .owner-op-scope-work__field {
+      margin: 0;
+    }
+    .owner-operational .owner-op-scope-work__field .owner-field-quote-notes__label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .owner-operational .owner-op-scope-work__editor {
+      width: 100%;
+      min-height: 7rem;
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(0, 0, 0, 0.22);
+      color: rgba(232, 238, 252, 0.92);
+      font-family: inherit;
+      font-size: 13px;
+      line-height: 1.6;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+    .owner-operational .owner-op-scope-work__foot {
+      margin-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .owner-operational .owner-op-scope-draft {
+      width: 100%;
+      margin: 10px 0 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px dashed rgba(252, 211, 77, 0.35);
+      background: rgba(0, 0, 0, 0.12);
+      box-sizing: border-box;
+    }
+    .owner-operational .owner-op-scope-draft[hidden] {
+      display: none !important;
+    }
+    .owner-operational .owner-op-scope-draft__hint {
+      margin: 0 0 8px;
       font-size: 11.5px;
       line-height: 1.45;
       color: #fcd34d;
@@ -451,24 +506,6 @@
 
             <div class="sep"></div>
 
-            <section class="owner-notes" aria-labelledby="ownerNotesHeading">
-              <div class="owner-notes__head">
-                <span class="eyebrow owner-notes__eyebrow">Contexto</span>
-                <h2 id="ownerNotesHeading" class="owner-notes__title">Notas</h2>
-                <p class="sub owner-notes__lead">Notas internas del quote; no sustituyen el envío formal al cliente.</p>
-              </div>
-              <div class="field owner-field-quote-notes">
-                <label for="quoteNotes" class="owner-field-quote-notes__label">Notas del proyecto</label>
-                <textarea class="owner-input-quote-notes" id="quoteNotes" rows="5" maxlength="2000" placeholder="Condiciones, supuestos, riesgos o recordatorios para tu equipo."></textarea>
-                <div class="hint owner-field-quote-notes__foot">
-                  <span class="owner-field-quote-notes__tip">Texto libre para el contexto del trabajo actual.</span>
-                  <span class="owner-char-pill" title="Caracteres usados"><span id="quoteNotesCount">0</span><span class="owner-char-pill__max">/2000</span></span>
-                </div>
-              </div>
-            </section>
-
-            <div class="sep"></div>
-
             <details class="sales-operational sales-operational--pro owner-operational" id="ownerOperationalSection" open>
               <summary class="sales-operational__summary owner-operational__summary">
                 <span class="eyebrow sales-operational__eyebrow">Execution</span>
@@ -515,24 +552,43 @@
                       <button class="btn danger" type="button" id="btnClearOwnerLabor">Limpiar labor</button>
                     </div>
                   </div>
-                  <div class="owner-op-scope-draft" id="ownerOpScopeDraftPanel" hidden>
-                    <h4 class="owner-op-scope-draft__title" id="ownerOpScopeDraftTitle">Scope of Work Draft</h4>
-                    <p class="owner-op-scope-draft__safety" id="ownerOpScopeDraftSafety">
-                      Draft generated from Operational Plan. Review and edit before sending to client.
-                    </p>
-                    <textarea
-                      class="owner-op-scope-draft__preview"
-                      id="ownerOpScopeDraftPreview"
-                      rows="6"
-                      readonly
-                      aria-labelledby="ownerOpScopeDraftTitle"
-                      aria-describedby="ownerOpScopeDraftSafety"
-                    ></textarea>
-                    <div class="owner-op-scope-draft__actions">
-                      <button type="button" class="btn primary" id="btnOwnerApplyScopeDraft">Apply to Notes</button>
-                      <button type="button" class="btn" id="btnOwnerClearScopeDraft">Clear Draft</button>
+                  <section class="owner-op-scope-work" aria-labelledby="ownerScopeWorkHeading">
+                    <header class="owner-op-scope-work__head">
+                      <h3 class="owner-op-scope-work__title" id="ownerScopeWorkHeading">Scope of Work</h3>
+                      <p class="owner-op-scope-work__lead" id="ownerScopeWorkLead">Review and edit before sending to client.</p>
+                    </header>
+                    <div class="field owner-field-quote-notes owner-op-scope-work__field">
+                      <label for="quoteNotes" class="owner-field-quote-notes__label">Scope of Work</label>
+                      <textarea
+                        class="owner-input-quote-notes owner-op-scope-work__editor"
+                        id="quoteNotes"
+                        rows="6"
+                        maxlength="2000"
+                        placeholder="Scope of work included with this quote for the client."
+                        aria-describedby="ownerScopeWorkLead"
+                      ></textarea>
+                      <div class="hint owner-field-quote-notes__foot owner-op-scope-work__foot">
+                        <span class="owner-field-quote-notes__tip">This text is sent with the quote PDF and client email.</span>
+                        <span class="owner-char-pill" title="Caracteres usados"><span id="quoteNotesCount">0</span><span class="owner-char-pill__max">/2000</span></span>
+                      </div>
                     </div>
-                  </div>
+                    <div class="owner-op-scope-draft" id="ownerOpScopeDraftPanel" hidden>
+                      <p class="owner-op-scope-draft__hint" id="ownerOpScopeDraftHint">
+                        Generated from Operational Plan. Accept to apply below or edit manually in Scope of Work.
+                      </p>
+                      <textarea
+                        class="owner-op-scope-draft__preview"
+                        id="ownerOpScopeDraftPreview"
+                        rows="5"
+                        readonly
+                        aria-labelledby="ownerOpScopeDraftHint"
+                      ></textarea>
+                      <div class="owner-op-scope-draft__actions">
+                        <button type="button" class="btn primary" id="btnOwnerApplyScopeDraft">Accept Draft</button>
+                        <button type="button" class="btn" id="btnOwnerClearScopeDraft">Clear Draft</button>
+                      </div>
+                    </div>
+                  </section>
                   <section class="owner-labor" aria-labelledby="ownerLaborHeading">
                     <header class="owner-labor__head">
                       <div class="owner-labor__intro">
@@ -925,8 +981,9 @@
 <script>
 (function () {
   const OWNER_STORE_KEY = "mg_owner_v2";
-  const SCOPE_DRAFT_TITLE = "Scope of Work Draft";
-  const SCOPE_DRAFT_REVIEW_LINE =
+  const SCOPE_WORK_TITLE = "Scope of Work";
+  const LEGACY_SCOPE_DRAFT_TITLE = "Scope of Work Draft";
+  const LEGACY_SCOPE_DRAFT_REVIEW_LINE =
     "This draft is based on planned field execution and may be adjusted before final approval.";
   let currentScopeDraft = "";
 
@@ -1191,12 +1248,7 @@
     });
     if (!usableDays.length) return "";
 
-    const lines = [
-      SCOPE_DRAFT_TITLE,
-      "",
-      "This scope was generated from the operational plan and should be reviewed before sending.",
-      ""
-    ];
+    const lines = [SCOPE_WORK_TITLE, ""];
 
     usableDays.forEach(function (entry) {
       const day = entry.day;
@@ -1205,9 +1257,6 @@
       lines.push("• Day " + label + ": " + scopeLine);
     });
 
-    lines.push("");
-    lines.push("Owner Review Required:");
-    lines.push(SCOPE_DRAFT_REVIEW_LINE);
     return lines.join("\n");
   }
 
@@ -1226,15 +1275,55 @@
   }
 
   function notesContainsScopeDraft(notes) {
-    return safeTrim(notes).includes(SCOPE_DRAFT_TITLE);
+    const text = safeTrim(notes);
+    return text.includes(SCOPE_WORK_TITLE) || text.includes(LEGACY_SCOPE_DRAFT_TITLE);
+  }
+
+  function isScopeBulletLine(line) {
+    return /^\s*•\s+Day\s+\d+:/i.test(line);
+  }
+
+  function findLegacyScopeDraftBlock(notes) {
+    const startIdx = notes.indexOf(LEGACY_SCOPE_DRAFT_TITLE);
+    if (startIdx < 0) return null;
+    const endIdx = notes.indexOf(LEGACY_SCOPE_DRAFT_REVIEW_LINE, startIdx);
+    const end = endIdx >= 0 ? endIdx + LEGACY_SCOPE_DRAFT_REVIEW_LINE.length : notes.length;
+    return { start: startIdx, end: end };
+  }
+
+  function findScopeWorkBlock(notes) {
+    const startIdx = notes.indexOf(SCOPE_WORK_TITLE);
+    if (startIdx < 0) return null;
+
+    let end = startIdx + SCOPE_WORK_TITLE.length;
+    const rest = notes.slice(end);
+    const lines = rest.split("\n");
+    let offset = 0;
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (i === 0 && line === "") {
+        offset += 1;
+        continue;
+      }
+      if (isScopeBulletLine(line)) {
+        offset += line.length + 1;
+        continue;
+      }
+      if (line === "" && i + 1 < lines.length && isScopeBulletLine(lines[i + 1])) {
+        offset += line.length + 1;
+        continue;
+      }
+      break;
+    }
+
+    end += offset;
+    while (end > startIdx && (notes[end - 1] === "\n" || notes[end - 1] === "\r")) end -= 1;
+    return { start: startIdx, end: end };
   }
 
   function findScopeDraftBlock(notes) {
-    const startIdx = notes.indexOf(SCOPE_DRAFT_TITLE);
-    if (startIdx < 0) return null;
-    const endIdx = notes.indexOf(SCOPE_DRAFT_REVIEW_LINE, startIdx);
-    const end = endIdx >= 0 ? endIdx + SCOPE_DRAFT_REVIEW_LINE.length : notes.length;
-    return { start: startIdx, end: end };
+    return findLegacyScopeDraftBlock(notes) || findScopeWorkBlock(notes);
   }
 
   function replaceScopeDraftInNotes(existingNotes, draft) {
@@ -1295,7 +1384,7 @@
 
     if (notesContainsScopeDraft(existing)) {
       const replace = window.confirm(
-        "Notes already contain a Scope of Work Draft. Replace existing draft?"
+        "Scope of Work already contains a generated scope. Replace existing scope?"
       );
       if (!replace) return;
       syncNotesField(replaceScopeDraftInNotes(existing, draft));
@@ -1303,7 +1392,7 @@
     }
 
     const append = window.confirm(
-      "Notes already has text.\n\nClick OK to append the generated scope below existing Notes.\nClick Cancel to keep Notes unchanged."
+      "Scope of Work already has text.\n\nClick OK to append the generated scope below existing content.\nClick Cancel to keep Scope of Work unchanged."
     );
     if (!append) return;
     syncNotesField(existingTrim + "\n\n" + draft);
