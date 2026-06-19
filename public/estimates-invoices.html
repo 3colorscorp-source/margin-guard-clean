@@ -487,8 +487,16 @@
         border-radius: 4px;
       }
 
-      /* Edit Quote — fullscreen workspace (C20-A6) */
+      /* Edit Quote — content-area workspace (C20-A6 / C20-A7 sidebar-aware) */
       #hubQuoteEditModal.hub-qe-modal {
+        inset: auto;
+        left: 0;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 100vw;
+        height: 100dvh;
+        max-height: 100dvh;
         align-items: flex-start;
         justify-content: flex-start;
         padding: 0;
@@ -505,7 +513,7 @@
         border-radius: 4px;
       }
       #hubQuoteEditModal.hub-qe-modal .modal-card {
-        width: 100vw;
+        width: 100%;
         max-width: none;
         min-height: 100dvh;
         max-height: none;
@@ -663,6 +671,12 @@
         padding: 6px 12px;
         font-size: 0.8125rem;
         border-radius: 8px;
+      }
+    }
+    @media (min-width: 1200px) {
+      body.mg-app-shell #hubQuoteEditModal.hub-qe-modal {
+        left: var(--mg-sidebar-width, 64px);
+        width: calc(100vw - var(--mg-sidebar-width, 64px));
       }
     }
   </style>
