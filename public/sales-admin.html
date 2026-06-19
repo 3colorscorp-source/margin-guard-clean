@@ -335,6 +335,169 @@
       color: rgba(245, 158, 11, 0.95);
       line-height: 1.4;
     }
+    .sa-edit-pricing {
+      margin: 14px 0 12px;
+      padding: 12px 12px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .sa-edit-pricing__title {
+      margin: 0 0 6px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: rgba(232, 238, 252, 0.95);
+    }
+    .sa-edit-pricing__purpose {
+      margin: 0 0 10px;
+      font-size: 0.75rem;
+      line-height: 1.45;
+      color: rgba(232, 238, 252, 0.62);
+    }
+    .sa-edit-pricing__locked {
+      margin: 0;
+      font-size: 0.8125rem;
+      color: #fecaca;
+      line-height: 1.45;
+    }
+    .sa-edit-pricing__totals {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      margin: 0 0 8px;
+      font-size: 0.75rem;
+      color: rgba(232, 238, 252, 0.62);
+    }
+    .sa-edit-pricing__totals strong {
+      color: rgba(232, 238, 252, 0.92);
+    }
+    .sa-edit-pricing__last {
+      margin: 0 0 10px;
+      font-size: 0.72rem;
+      color: rgba(232, 238, 252, 0.5);
+      line-height: 1.4;
+    }
+    .sa-edit-workers {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 0 0 8px;
+    }
+    .sa-edit-worker-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 72px 72px minmax(0, 1fr) auto;
+      gap: 6px;
+      align-items: end;
+    }
+    @media (max-width: 560px) {
+      .sa-edit-worker-row {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      }
+      .sa-edit-worker-row .sa-worker-remove {
+        grid-column: 1 / -1;
+        justify-self: start;
+      }
+    }
+    .sa-edit-worker-row label {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: rgba(232, 238, 252, 0.5);
+    }
+    .sa-edit-worker-row select,
+    .sa-edit-worker-row input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 7px 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.04);
+      color: #e8eefc;
+      font: inherit;
+      font-size: 0.8125rem;
+    }
+    .sa-edit-worker-row select:disabled,
+    .sa-edit-worker-row input:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .sa-edit-workers-add {
+      margin: 0 0 10px;
+      font-size: 0.8125rem;
+    }
+    .sa-edit-pricing-stage {
+      margin: 0 0 10px;
+      padding: 0;
+      border: 0;
+    }
+    .sa-edit-pricing-stage legend {
+      margin-bottom: 6px;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: rgba(232, 238, 252, 0.58);
+    }
+    .sa-edit-pricing-stage__options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+    }
+    .sa-edit-pricing-stage__options label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8125rem;
+      color: rgba(232, 238, 252, 0.82);
+      cursor: pointer;
+    }
+    .sa-edit-pricing-stage__options input {
+      margin: 0;
+    }
+    .sa-edit-reprice-preview {
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: rgba(34, 197, 94, 0.08);
+      border: 1px solid rgba(34, 197, 94, 0.22);
+      font-size: 0.75rem;
+      line-height: 1.5;
+      color: rgba(232, 238, 252, 0.85);
+    }
+    .sa-edit-reprice-preview dl {
+      margin: 0;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 4px 10px;
+    }
+    .sa-edit-reprice-preview dt {
+      margin: 0;
+      color: rgba(232, 238, 252, 0.55);
+    }
+    .sa-edit-reprice-preview dd {
+      margin: 0;
+      font-weight: 600;
+    }
+    .sa-edit-pricing__apply {
+      width: 100%;
+      max-width: 100%;
+    }
+    @media (max-width: 390px) {
+      .sa-modal__panel--edit {
+        width: min(100vw - 12px, 96vw);
+        max-height: 92vh;
+      }
+      .sa-modal__body {
+        max-height: calc(92vh - 56px);
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+      .sa-edit-pricing-stage__options {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
     .sa-edit-btn-locked {
       opacity: 0.72;
     }
@@ -614,7 +777,64 @@
         <div class="sa-edit-meta" id="saQuoteEditMeta" hidden>
           <span>Status: <strong id="saQuoteEditMetaStatus">—</strong></span>
           <span>Total: <strong id="saQuoteEditMetaTotal">—</strong></span>
+          <span>Deposit: <strong id="saQuoteEditMetaDeposit">—</strong></span>
         </div>
+        <section id="saQuoteEditPricing" class="sa-edit-pricing" hidden aria-labelledby="saQuoteEditPricingTitle">
+          <h4 id="saQuoteEditPricingTitle" class="sa-edit-pricing__title">Pricing adjustment</h4>
+          <p class="sa-edit-pricing__purpose">
+            Adjust workers and price stage before the client accepts. Margin Guard recalculates the protected price.
+          </p>
+          <p id="saQuoteEditPricingLocked" class="sa-edit-pricing__locked" hidden>
+            Pricing cannot be changed because this quote is locked.
+          </p>
+          <div id="saQuoteEditPricingBody">
+            <div class="sa-edit-pricing__totals">
+              <span>Total: <strong id="saQuoteEditPricingTotal">—</strong></span>
+              <span>Deposit: <strong id="saQuoteEditPricingDeposit">—</strong></span>
+            </div>
+            <p id="saQuoteEditPricingLast" class="sa-edit-pricing__last" hidden></p>
+            <div id="saQuoteEditWorkers" class="sa-edit-workers" aria-label="Worker lines"></div>
+            <button type="button" class="btn ghost sa-edit-workers-add" id="saQuoteEditAddWorker">Add worker</button>
+            <fieldset class="sa-edit-pricing-stage">
+              <legend>Price stage</legend>
+              <div class="sa-edit-pricing-stage__options">
+                <label>
+                  <input type="radio" name="saPricingStage" value="0" />
+                  <span>Minimum</span>
+                </label>
+                <label>
+                  <input type="radio" name="saPricingStage" value="1" />
+                  <span>Negotiation</span>
+                </label>
+                <label>
+                  <input type="radio" name="saPricingStage" value="2" checked />
+                  <span>Recommended</span>
+                </label>
+              </div>
+            </fieldset>
+            <div id="saQuoteEditRepricePreview" class="sa-edit-reprice-preview" hidden>
+              <dl>
+                <dt>Previous total</dt>
+                <dd id="saRepricePrevTotal">—</dd>
+                <dt>New total</dt>
+                <dd id="saRepriceNewTotal">—</dd>
+                <dt>Deposit required</dt>
+                <dd id="saRepriceDeposit">—</dd>
+                <dt>Minimum price</dt>
+                <dd id="saRepriceMin">—</dd>
+                <dt>Negotiation price</dt>
+                <dd id="saRepriceNeg">—</dd>
+                <dt>Recommended price</dt>
+                <dd id="saRepriceRec">—</dd>
+                <dt>Stage used</dt>
+                <dd id="saRepriceStageLabel">—</dd>
+              </dl>
+            </div>
+            <button type="button" class="btn primary sa-edit-pricing__apply" id="saQuoteEditApplyPrice">
+              Apply Price Change
+            </button>
+          </div>
+        </section>
         <form id="saQuoteEditForm" class="sa-edit-form" novalidate>
           <div class="field">
             <label for="saEditClientName">Client name</label>

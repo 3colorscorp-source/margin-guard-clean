@@ -3,7 +3,9 @@
 
   const API = "/.netlify/functions/list-tenant-quotes";
   const GET_EDIT_API = "/.netlify/functions/get-tenant-quote-edit";
+  const GET_REPRICE_API = "/.netlify/functions/get-tenant-quote-reprice";
   const UPDATE_EDIT_API = "/.netlify/functions/update-tenant-quote-edit";
+  const REPRICE_QUOTE_API = "/.netlify/functions/reprice-tenant-quote";
   const RESEND_QUOTE_API = "/.netlify/functions/resend-tenant-quote";
   const LIST_QUERY = "?limit=25&offset=0";
 
@@ -12,6 +14,14 @@
 
   const RESEND_CONFIRM_TEXT =
     "This will resend the updated quote to the client using the same public quote link. Continue?";
+
+  const REPRICE_DEFAULT_REASON = "Owner pricing adjustment";
+
+  const PRICING_STAGE_LABELS = {
+    0: "Minimum",
+    1: "Negotiation",
+    2: "Recommended",
+  };
 
   const LOCK_REASON_LABELS = {
     quote_accepted_status: "Quote has been accepted",
@@ -47,8 +57,11 @@
     requiresSentConfirm: false,
     saving: false,
     resending: false,
+    repricing: false,
     saveSucceeded: false,
+    repriceSucceeded: false,
     canResend: false,
+    currency: "USD",
   };
 
   function $(id) {
@@ -245,7 +258,11 @@
 
     resendBtn.textContent = "Resend Edited Quote";
     resendBtn.disabled =
-      editState.saving || editState.resending || !hasEmail || !editState.saveSucceeded;
+      editState.saving ||
+      editState.resending ||
+      editState.repricing ||
+      !hasEmail ||
+      !(editState.saveSucceeded || editState.repriceSucceeded);
   }
 
   function updateSaveButtonState() {
@@ -267,6 +284,7 @@
       }
     }
     updateResendButtonState();
+    updateApplyPriceButtonState();
   }
 
   function isoDateForInput(value) {
@@ -359,6 +377,278 @@
     return err || "Unable to resend quote.";
   }
 
+  function mapRepriceApiError(data, status) {
+    const code = String(data?.code || "").trim();
+    const err = String(data?.error || "").trim();
+    if (status === 401) return "Sign in required to reprice quotes.";
+    if (status === 403) return err || "Owner or admin permission required.";
+    if (code === "quote_not_found") return "Quote not found.";
+    if (code === "workers_required" || code === "invalid_workers") {
+      return err || "Each worker needs type, days or hours, and no rate overrides.";
+    }
+    if (code === "invalid_pricing_stage") {
+      return err || "Choose a valid price stage: Minimum, Negotiation, or Recommended.";
+    }
+    if (code === "sent_quote_confirmation_required") {
+      return "Check the box to confirm updating the public quote link.";
+    }
+    if (code === "quote_locked") {
+      const reasons = Array.isArray(data?.lock_reasons) ? data.lock_reasons : [];
+      if (reasons.length) {
+        return `Quote is locked: ${reasons.map(lockReasonLabel).join("; ")}`;
+      }
+      return err || "Quote is locked.";
+    }
+    if (code === "price_below_minimum") {
+      const min = Number(data?.minimum_price);
+      if (Number.isFinite(min) && min > 0) {
+        return `Price cannot go below the protected minimum (${formatMoney(min, editState.currency)}).`;
+      }
+      return err || "Price cannot go below the protected minimum.";
+    }
+    if (code === "pricing_engine_error") {
+      return err || "Unable to calculate quote pricing. Check worker lines and try again.";
+    }
+    if (code === "audit_insert_failed") {
+      return (
+        err ||
+        "Quote may have been repriced, but audit history failed. Contact support before repricing again."
+      );
+    }
+    if (code === "unknown_fields") {
+      const fields = Array.isArray(data?.fields) ? data.fields.join(", ") : "";
+      return fields ? `Disallowed fields: ${fields}` : err || "Unknown fields in request.";
+    }
+    return err || "Unable to reprice quote.";
+  }
+
+  function pricingStageLabel(stage) {
+    const n = Number(stage);
+    return PRICING_STAGE_LABELS[n] || "Recommended";
+  }
+
+  function normalizeWorkerRow(raw) {
+    const w = raw && typeof raw === "object" ? raw : {};
+    const type = String(w.type || "installer").toLowerCase() === "helper" ? "helper" : "installer";
+    const days = Math.max(0, Number(w.days || 0));
+    const hours = Math.max(0, Number(w.hours || 0));
+    const name = String(w.name || "").trim();
+    return { type, days: Number.isFinite(days) ? days : 0, hours: Number.isFinite(hours) ? hours : 0, name };
+  }
+
+  function defaultWorkerRows() {
+    return [{ type: "installer", days: 0, hours: 0, name: "" }];
+  }
+
+  function renderWorkerRows(workers) {
+    const wrap = $("saQuoteEditWorkers");
+    if (!wrap) return;
+    const list = Array.isArray(workers) && workers.length ? workers.map(normalizeWorkerRow) : defaultWorkerRows();
+    wrap.innerHTML = list
+      .map((w, idx) => {
+        const typeInst = w.type === "installer" ? " selected" : "";
+        const typeHelp = w.type === "helper" ? " selected" : "";
+        const daysVal = w.days > 0 ? String(w.days) : "";
+        const hoursVal = w.hours > 0 ? String(w.hours) : "";
+        const nameVal = escapeHtml(w.name);
+        return (
+          `<div class="sa-edit-worker-row" data-worker-index="${idx}">` +
+          `<div><label>Type</label><select class="sa-worker-type" aria-label="Worker type">` +
+          `<option value="installer"${typeInst}>Installer</option>` +
+          `<option value="helper"${typeHelp}>Helper</option>` +
+          `</select></div>` +
+          `<div><label>Days</label><input type="number" class="sa-worker-days" min="0" step="0.25" placeholder="0" value="${daysVal}" aria-label="Days" /></div>` +
+          `<div><label>Hours</label><input type="number" class="sa-worker-hours" min="0" step="0.25" placeholder="opt" value="${hoursVal}" aria-label="Hours optional" /></div>` +
+          `<div><label>Name</label><input type="text" class="sa-worker-name" maxlength="120" placeholder="optional" value="${nameVal}" aria-label="Name optional" /></div>` +
+          `<button type="button" class="btn ghost sa-worker-remove" aria-label="Remove worker">Remove</button>` +
+          `</div>`
+        );
+      })
+      .join("");
+    setPricingControlsDisabled(editState.locked);
+  }
+
+  function setPricingControlsDisabled(disabled) {
+    const section = $("saQuoteEditPricing");
+    if (!section) return;
+    section.querySelectorAll("select, input, button.sa-worker-remove, button#saQuoteEditAddWorker, button#saQuoteEditApplyPrice").forEach((el) => {
+      el.disabled = Boolean(disabled) || editState.repricing;
+    });
+    section.querySelectorAll('input[name="saPricingStage"]').forEach((el) => {
+      el.disabled = Boolean(disabled) || editState.repricing;
+    });
+  }
+
+  function setPricingStageValue(stage) {
+    const n = Number(stage);
+    const value = [0, 1, 2].includes(n) ? String(n) : "2";
+    document.querySelectorAll('input[name="saPricingStage"]').forEach((el) => {
+      el.checked = el.value === value;
+    });
+  }
+
+  function readPricingStageFromUI() {
+    const checked = document.querySelector('input[name="saPricingStage"]:checked');
+    const n = Number(checked?.value);
+    return [0, 1, 2].includes(n) ? n : 2;
+  }
+
+  function readWorkersFromUI() {
+    const wrap = $("saQuoteEditWorkers");
+    if (!wrap) return [];
+    const rows = wrap.querySelectorAll(".sa-edit-worker-row");
+    const out = [];
+    rows.forEach((row) => {
+      const type = String(row.querySelector(".sa-worker-type")?.value || "installer").toLowerCase();
+      const days = Number(row.querySelector(".sa-worker-days")?.value || 0);
+      const hours = Number(row.querySelector(".sa-worker-hours")?.value || 0);
+      const name = String(row.querySelector(".sa-worker-name")?.value || "").trim();
+      const worker = {
+        type: type === "helper" ? "helper" : "installer",
+      };
+      if (days > 0) worker.days = days;
+      if (hours > 0) worker.hours = hours;
+      if (name) worker.name = name.slice(0, 120);
+      out.push(worker);
+    });
+    return out;
+  }
+
+  function validateWorkersForReprice(workers) {
+    if (!Array.isArray(workers) || !workers.length) {
+      return "Add at least one worker line before applying a price change.";
+    }
+    let hasLabor = false;
+    for (const w of workers) {
+      const days = Math.max(0, Number(w.days || 0));
+      const hours = Math.max(0, Number(w.hours || 0));
+      if (days > 0 || hours > 0) hasLabor = true;
+    }
+    if (!hasLabor) {
+      return "Each worker line needs days greater than zero or hours greater than zero.";
+    }
+    return "";
+  }
+
+  function readRepriceBody() {
+    const body = {
+      quote_id: editState.quoteId,
+      workers: readWorkersFromUI(),
+      pricing_stage: readPricingStageFromUI(),
+      reason: REPRICE_DEFAULT_REASON,
+    };
+    if (editState.requiresSentConfirm && $("saQuoteEditSentConfirm")?.checked) {
+      body.confirm_sent_update = true;
+    }
+    return body;
+  }
+
+  function updatePricingTotalsDisplay(quote) {
+    const q = quote && typeof quote === "object" ? quote : {};
+    const cur = String(q.currency || editState.currency || "USD");
+    editState.currency = cur;
+    const totalEl = $("saQuoteEditPricingTotal");
+    const depEl = $("saQuoteEditPricingDeposit");
+    const metaTotal = $("saQuoteEditMetaTotal");
+    const metaDep = $("saQuoteEditMetaDeposit");
+    const moneyTotal = formatMoney(q.total, cur);
+    const moneyDep = formatMoney(q.deposit_required, cur);
+    if (totalEl) totalEl.textContent = moneyTotal;
+    if (depEl) depEl.textContent = moneyDep;
+    if (metaTotal) metaTotal.textContent = moneyTotal;
+    if (metaDep) metaDep.textContent = moneyDep;
+  }
+
+  function showRepricePreview(reprice, quote) {
+    const panel = $("saQuoteEditRepricePreview");
+    if (!panel || !reprice) {
+      if (panel) panel.hidden = true;
+      return;
+    }
+    const cur = String(quote?.currency || editState.currency || "USD");
+    const set = (id, amount) => {
+      const el = $(id);
+      if (el) el.textContent = formatMoney(amount, cur);
+    };
+    set("saRepricePrevTotal", reprice.previous_total);
+    set("saRepriceNewTotal", reprice.new_total ?? quote?.total);
+    set("saRepriceDeposit", reprice.new_deposit_required ?? quote?.deposit_required);
+    set("saRepriceMin", reprice.minimum_price);
+    set("saRepriceNeg", reprice.negotiation_price);
+    set("saRepriceRec", reprice.recommended_price);
+    const stageEl = $("saRepriceStageLabel");
+    if (stageEl) stageEl.textContent = pricingStageLabel(reprice.pricing_stage);
+    panel.hidden = false;
+  }
+
+  function applyRepricePayload(data) {
+    const quote = data?.quote || {};
+    const edit = data?.edit || {};
+    const reprice = data?.reprice || {};
+    const locked = Boolean(edit.locked) || !edit.is_editable;
+
+    const section = $("saQuoteEditPricing");
+    const body = $("saQuoteEditPricingBody");
+    const lockedMsg = $("saQuoteEditPricingLocked");
+    if (section) section.hidden = false;
+    if (lockedMsg) lockedMsg.hidden = !locked;
+    if (body) body.hidden = locked;
+
+    editState.currency = String(quote.currency || "USD");
+    updatePricingTotalsDisplay(quote);
+
+    const lastEl = $("saQuoteEditPricingLast");
+    if (lastEl) {
+      const parts = [];
+      if (reprice.last_repriced_at) {
+        parts.push(`Last repriced: ${formatDate(reprice.last_repriced_at)}`);
+      }
+      if (reprice.last_reprice_reason) {
+        parts.push(String(reprice.last_reprice_reason));
+      }
+      if (parts.length) {
+        lastEl.textContent = parts.join(" · ");
+        lastEl.hidden = false;
+      } else {
+        lastEl.hidden = true;
+        lastEl.textContent = "";
+      }
+    }
+
+    const workers = Array.isArray(reprice.pricing_workers) && reprice.pricing_workers.length
+      ? reprice.pricing_workers
+      : defaultWorkerRows();
+    renderWorkerRows(workers);
+    setPricingStageValue(
+      reprice.pricing_stage === null || reprice.pricing_stage === undefined ? 2 : reprice.pricing_stage
+    );
+    setPricingControlsDisabled(locked);
+    updateApplyPriceButtonState();
+  }
+
+  function updateApplyPriceButtonState() {
+    const btn = $("saQuoteEditApplyPrice");
+    if (!btn) return;
+    if (editState.locked) {
+      btn.disabled = true;
+      btn.textContent = "Quote locked";
+      return;
+    }
+    if (editState.repricing) {
+      btn.disabled = true;
+      btn.textContent = "Applying…";
+      return;
+    }
+    if (editState.requiresSentConfirm) {
+      const checked = Boolean($("saQuoteEditSentConfirm")?.checked);
+      btn.disabled = !checked || editState.saving || editState.resending;
+      btn.textContent = checked ? "Apply Price Change" : "Confirm public link update";
+      return;
+    }
+    btn.disabled = editState.saving || editState.resending;
+    btn.textContent = "Apply Price Change";
+  }
+
   function readResendBody() {
     return {
       quote_id: editState.quoteId,
@@ -394,10 +684,17 @@
       requiresSentConfirm: false,
       saving: false,
       resending: false,
+      repricing: false,
       saveSucceeded: false,
+      repriceSucceeded: false,
       canResend: false,
+      currency: "USD",
     };
     setEditFeedback("");
+    const preview = $("saQuoteEditRepricePreview");
+    if (preview) preview.hidden = true;
+    const pricing = $("saQuoteEditPricing");
+    if (pricing) pricing.hidden = true;
     updateResendButtonState();
     const hint = $("saQuoteEditResendHint");
     if (hint) hint.hidden = true;
@@ -410,8 +707,10 @@
     modal.setAttribute("aria-hidden", "false");
     setEditFeedback("");
     editState.saveSucceeded = false;
+    editState.repriceSucceeded = false;
     editState.canResend = false;
     editState.resending = false;
+    editState.repricing = false;
     const resendBtn = $("saQuoteEditResend");
     if (resendBtn) resendBtn.hidden = true;
     const hint = $("saQuoteEditResendHint");
@@ -421,6 +720,10 @@
     const loading = $("saQuoteEditLoading");
     const meta = $("saQuoteEditMeta");
     const lockList = $("saQuoteEditLockList");
+    const pricing = $("saQuoteEditPricing");
+    const preview = $("saQuoteEditRepricePreview");
+    if (pricing) pricing.hidden = true;
+    if (preview) preview.hidden = true;
     if (lockBanner) lockBanner.hidden = true;
     if (warnBanner) warnBanner.hidden = true;
     if (loading) loading.hidden = false;
@@ -430,6 +733,7 @@
     if (confirm) confirm.checked = false;
     setEditFormDisabled(true);
     updateSaveButtonState();
+    updateApplyPriceButtonState();
     updateResendButtonState();
   }
 
@@ -452,9 +756,13 @@
     const meta = $("saQuoteEditMeta");
     const metaStatus = $("saQuoteEditMetaStatus");
     const metaTotal = $("saQuoteEditMetaTotal");
+    const metaDeposit = $("saQuoteEditMetaDeposit");
     if (meta) meta.hidden = false;
     if (metaStatus) metaStatus.textContent = formatStatusLabel(quote.status);
+    editState.currency = String(quote.currency || "USD");
     if (metaTotal) metaTotal.textContent = formatMoney(quote.total, quote.currency);
+    if (metaDeposit) metaDeposit.textContent = formatMoney(quote.deposit_required, quote.currency);
+    updatePricingTotalsDisplay(quote);
 
     const lockBanner = $("saQuoteEditLockBanner");
     const lockList = $("saQuoteEditLockList");
@@ -474,7 +782,24 @@
     fillEditForm(quote);
     setEditFormDisabled(locked);
     updateSaveButtonState();
+    updateApplyPriceButtonState();
     updateResendButtonState();
+  }
+
+  async function fetchQuoteReprice(quoteId) {
+    const qid = encodeURIComponent(String(quoteId || "").trim());
+    const response = await fetch(`${GET_REPRICE_API}?quote_id=${qid}`, {
+      method: "GET",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    let data = {};
+    try {
+      data = await response.json();
+    } catch (_err) {
+      data = {};
+    }
+    return { response, data };
   }
 
   async function fetchQuoteEdit(quoteId) {
@@ -499,7 +824,11 @@
     openEditModalShell();
 
     try {
-      const { response, data } = await fetchQuoteEdit(editState.quoteId);
+      const [editResult, repriceResult] = await Promise.all([
+        fetchQuoteEdit(editState.quoteId),
+        fetchQuoteReprice(editState.quoteId),
+      ]);
+      const { response, data } = editResult;
       const loading = $("saQuoteEditLoading");
       if (loading) loading.hidden = true;
 
@@ -508,11 +837,24 @@
         editState.locked = true;
         setEditFormDisabled(true);
         updateSaveButtonState();
+        updateApplyPriceButtonState();
         updateResendButtonState();
         return;
       }
 
       applyEditPayload(data);
+
+      if (repriceResult.response.ok && repriceResult.data.ok === true) {
+        applyRepricePayload(repriceResult.data);
+      } else {
+        const section = $("saQuoteEditPricing");
+        if (section) section.hidden = false;
+        setEditFeedback(
+          mapRepriceApiError(repriceResult.data, repriceResult.response.status) ||
+            "Pricing details could not be loaded.",
+          "warn"
+        );
+      }
     } catch (err) {
       const loading = $("saQuoteEditLoading");
       if (loading) loading.hidden = true;
@@ -520,6 +862,103 @@
       editState.locked = true;
       setEditFormDisabled(true);
       updateSaveButtonState();
+      updateApplyPriceButtonState();
+      updateResendButtonState();
+    }
+  }
+
+  async function applyPriceChange() {
+    if (editState.locked || editState.repricing || !editState.quoteId) return;
+
+    if (editState.requiresSentConfirm && !$("saQuoteEditSentConfirm")?.checked) {
+      setEditFeedback("Check the box to confirm updating the public quote link.", "warn");
+      updateApplyPriceButtonState();
+      return;
+    }
+
+    const workers = readWorkersFromUI();
+    const workerErr = validateWorkersForReprice(workers);
+    if (workerErr) {
+      setEditFeedback(workerErr, "warn");
+      return;
+    }
+
+    editState.repricing = true;
+    updateApplyPriceButtonState();
+    updateResendButtonState();
+    setEditFeedback("");
+
+    try {
+      const body = readRepriceBody();
+      const response = await fetch(REPRICE_QUOTE_API, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(body),
+      });
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (_err) {
+        data = {};
+      }
+
+      if (!response.ok || data.ok !== true) {
+        const tone =
+          data?.code === "audit_insert_failed" || data?.code === "price_below_minimum"
+            ? "warn"
+            : "err";
+        setEditFeedback(mapRepriceApiError(data, response.status), tone);
+        if (data?.code === "sent_quote_confirmation_required") {
+          editState.requiresSentConfirm = true;
+          const warnBanner = $("saQuoteEditWarning");
+          if (warnBanner) warnBanner.hidden = false;
+        }
+        if (data?.code === "quote_locked") {
+          editState.locked = true;
+          applyResendLockFromResponse(data);
+          const lockedMsg = $("saQuoteEditPricingLocked");
+          const pricingBody = $("saQuoteEditPricingBody");
+          if (lockedMsg) lockedMsg.hidden = false;
+          if (pricingBody) pricingBody.hidden = true;
+          setPricingControlsDisabled(true);
+        }
+        return;
+      }
+
+      const quote = data.quote || {};
+      const reprice = data.reprice || {};
+      applyEditPayload({
+        quote,
+        edit: {
+          is_editable: true,
+          locked: false,
+          lock_reasons: [],
+          warnings: editState.requiresSentConfirm ? ["quote_viewed_or_sent"] : [],
+        },
+      });
+      applyRepricePayload({
+        quote,
+        edit: { locked: false, is_editable: true },
+        reprice: {
+          pricing_workers: reprice.workers,
+          pricing_stage: reprice.pricing_stage,
+          last_repriced_at: new Date().toISOString(),
+          last_reprice_reason: reprice.reason || REPRICE_DEFAULT_REASON,
+          last_minimum_price: reprice.minimum_price,
+          last_negotiation_price: reprice.negotiation_price,
+          last_recommended_price: reprice.recommended_price,
+        },
+      });
+      showRepricePreview(reprice, quote);
+      editState.repriceSucceeded = true;
+      setEditFeedback(data.message || "Quote price updated safely.", "ok");
+      void loadQuotePipeline();
+    } catch (err) {
+      setEditFeedback(err?.message || "Network error repricing quote.", "err");
+    } finally {
+      editState.repricing = false;
+      updateApplyPriceButtonState();
       updateResendButtonState();
     }
   }
@@ -579,10 +1018,10 @@
     if (
       editState.locked ||
       editState.resending ||
-      editState.saving ||
+      editState.repricing ||
       !editState.quoteId ||
       !editState.canResend ||
-      !editState.saveSucceeded
+      !(editState.saveSucceeded || editState.repriceSucceeded)
     ) {
       return;
     }
@@ -747,7 +1186,34 @@
     if (confirm) {
       confirm.addEventListener("change", () => {
         updateSaveButtonState();
+        updateApplyPriceButtonState();
         if (confirm.checked) setEditFeedback("");
+      });
+    }
+    const applyPriceBtn = $("saQuoteEditApplyPrice");
+    const addWorkerBtn = $("saQuoteEditAddWorker");
+    const workersWrap = $("saQuoteEditWorkers");
+    if (applyPriceBtn) applyPriceBtn.addEventListener("click", () => void applyPriceChange());
+    if (addWorkerBtn) {
+      addWorkerBtn.addEventListener("click", () => {
+        if (editState.locked) return;
+        const current = readWorkersFromUI();
+        current.push({ type: "installer", days: 0, hours: 0, name: "" });
+        renderWorkerRows(current);
+      });
+    }
+    if (workersWrap) {
+      workersWrap.addEventListener("click", (ev) => {
+        const btn = ev.target.closest(".sa-worker-remove");
+        if (!btn || editState.locked) return;
+        const row = btn.closest(".sa-edit-worker-row");
+        if (!row) return;
+        const rows = readWorkersFromUI();
+        const idx = Number(row.getAttribute("data-worker-index"));
+        if (Number.isFinite(idx) && idx >= 0 && idx < rows.length) {
+          rows.splice(idx, 1);
+        }
+        renderWorkerRows(rows.length ? rows : defaultWorkerRows());
       });
     }
     if (modal) {
