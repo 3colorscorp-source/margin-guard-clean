@@ -110,6 +110,236 @@
       font-size: 0.8125rem;
       color: rgba(232, 238, 252, 0.65);
     }
+
+    /* C20-A1 — Remaining Balance drawer action bar */
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: stretch;
+      justify-content: flex-start;
+      gap: 10px;
+      padding: 14px 18px 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer .btn {
+      min-height: 40px;
+      padding: 9px 16px;
+      border-radius: 10px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      line-height: 1.25;
+      flex: 1 1 auto;
+      min-width: 128px;
+      max-width: 100%;
+      justify-content: center;
+      text-align: center;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      box-sizing: border-box;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer .btn.hub-drawer-action {
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.04);
+      color: rgba(232, 238, 252, 0.92);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer .btn.hub-drawer-action:hover,
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer .btn.hub-drawer-action:focus-visible {
+      border-color: rgba(255, 255, 255, 0.24);
+      background: rgba(255, 255, 255, 0.09);
+      color: #fff;
+      outline: none;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer .btn:not(.primary):not(.ghost):not(.hub-drawer-action) {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.06);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer .btn.primary {
+      flex: 1 1 100%;
+      min-height: 42px;
+      font-weight: 700;
+    }
+    @media (min-width: 721px) {
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        align-items: stretch;
+      }
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer .btn {
+        min-width: 0;
+        max-width: none;
+      }
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer .btn.primary {
+        grid-column: 1 / -1;
+      }
+    }
+    @media (max-width: 720px) {
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+      }
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer .btn {
+        width: 100%;
+        min-width: 0;
+        min-height: 46px;
+        max-width: 100%;
+      }
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer .btn.primary {
+        grid-column: 1 / -1;
+      }
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer .btn[style*="display: none"],
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer .btn[style*="display:none"] {
+        display: none !important;
+      }
+    }
+
+    /* C20-A1 — Invoice label / hub form modal polish */
+    .hub-invoice-form-modal {
+      z-index: 10040;
+    }
+    .hub-invoice-form-card {
+      width: min(640px, calc(100vw - 48px));
+      max-height: min(90vh, 100dvh);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: linear-gradient(165deg, #121a2b 0%, #0d1422 100%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+      color: #e8eefc;
+    }
+    .hub-invoice-form-card .modal-header {
+      flex: 0 0 auto;
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .hub-invoice-form-card .modal-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: rgba(232, 238, 252, 0.96);
+    }
+    .hub-invoice-form-card .modal-subtitle {
+      margin-top: 4px;
+      font-size: 0.8125rem;
+      line-height: 1.4;
+      color: rgba(232, 238, 252, 0.68);
+    }
+    .hub-invoice-form-card .modal-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 14px 20px 16px;
+    }
+    .hub-invoice-form-card .hub-form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px 16px;
+    }
+    .hub-invoice-form-card .hub-form-grid .field {
+      min-width: 0;
+    }
+    .hub-invoice-form-card .hub-form-grid .field label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: rgba(232, 238, 252, 0.58);
+    }
+    .hub-invoice-form-card .hub-form-grid input,
+    .hub-invoice-form-card .hub-form-grid select,
+    .hub-invoice-form-card .hub-form-grid textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.04);
+      color: #e8eefc;
+      font: inherit;
+      font-size: 0.875rem;
+    }
+    .hub-invoice-form-card .hub-form-grid .hub-form-static,
+    .hub-invoice-form-card .hub-form-grid .field:has(#hubFormInvoiceBase),
+    .hub-invoice-form-card .hub-form-grid .field:has(textarea) {
+      grid-column: 1 / -1;
+    }
+    .hub-invoice-form-card .hub-invoice-setup-preview {
+      margin-top: 0;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .hub-invoice-form-card .hub-invoice-setup-preview-line {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      line-height: 1.45;
+      color: rgba(232, 238, 252, 0.9);
+    }
+    .hub-invoice-form-card .hub-form-quick-date {
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.04);
+      color: rgba(232, 238, 252, 0.88);
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .hub-invoice-form-card .hub-form-quick-date:hover {
+      border-color: rgba(255, 255, 255, 0.24);
+      background: rgba(255, 255, 255, 0.09);
+      color: #fff;
+    }
+    .hub-invoice-form-card .modal-footer {
+      flex: 0 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px 12px;
+      padding: 14px 20px 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .hub-invoice-form-card .modal-footer .btn {
+      min-height: 40px;
+      padding: 9px 16px;
+      border-radius: 10px;
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+    @media (max-width: 560px) {
+      .hub-invoice-form-card .hub-form-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+    @media (max-width: 390px) {
+      .hub-invoice-form-card {
+        width: min(calc(100vw - 12px), 96vw);
+        max-height: 92vh;
+      }
+      .hub-invoice-form-card .modal-header {
+        padding: 14px 14px 10px;
+      }
+      .hub-invoice-form-card .modal-body {
+        padding: 12px 14px 14px;
+      }
+      .hub-invoice-form-card .modal-footer {
+        padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+      }
+      .hub-invoice-form-card .modal-footer .btn {
+        flex: 1 1 calc(50% - 6px);
+        min-width: 0;
+      }
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer .btn {
+        min-height: 46px;
+      }
+    }
   </style>
 </head>
 <body data-role="estimates-hub" data-requires-auth="true" class="invoice-hub-page" data-mg-app-nav data-mg-page-title="Invoices Hub">
@@ -363,15 +593,15 @@
           </div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn" type="button" id="btnHubDrawerOpenPublic">Open Public</button>
-        <button class="btn ghost" type="button" id="btnHubDrawerEditQuote" style="display:none;">Edit Quote</button>
-        <button class="btn ghost" type="button" id="btnHubDrawerInvoiceSetup">Invoice label</button>
-        <button class="btn" type="button" id="btnHubDrawerSendInvoice" data-hub-send-invoice="1">Send Invoice</button>
+      <div class="modal-footer hub-drawer-footer">
+        <button class="btn hub-drawer-action" type="button" id="btnHubDrawerOpenPublic">Open Public</button>
+        <button class="btn ghost hub-drawer-action" type="button" id="btnHubDrawerEditQuote" style="display:none;">Edit Quote</button>
+        <button class="btn ghost hub-drawer-action" type="button" id="btnHubDrawerInvoiceSetup">Invoice label</button>
+        <button class="btn hub-drawer-action" type="button" id="btnHubDrawerSendInvoice" data-hub-send-invoice="1">Send Invoice</button>
         <button class="btn" type="button" id="btnHubDrawerQuoteAccept" style="display:none;">Mark as accepted</button>
         <button class="btn" type="button" id="btnHubDrawerCheckPending" style="display:none;">Mark check deposit pending</button>
         <button class="btn" type="button" id="btnHubDrawerDepositReceived" style="display:none;">Mark deposit received</button>
-        <button class="btn ghost" type="button" id="btnHubDrawerRecordPayment">Record payment</button>
+        <button class="btn ghost hub-drawer-action" type="button" id="btnHubDrawerRecordPayment">Record payment</button>
         <button class="btn primary" type="button" id="btnHubDrawerPdf">Export PDF</button>
       </div>
     </div>
@@ -431,8 +661,8 @@
     </div>
   </div>
 
-  <div class="modal" id="hubFormModal" aria-hidden="true">
-    <div class="modal-card" style="width:min(560px, 96vw);">
+  <div class="modal hub-invoice-form-modal" id="hubFormModal" aria-hidden="true">
+    <div class="modal-card hub-invoice-form-card">
       <div class="modal-header">
         <div>
           <div class="modal-title" id="hubFormTitle">Actualizar proyecto</div>
@@ -445,7 +675,7 @@
         <div class="notice" id="hubFormFeedback" style="display:none;"></div>
       </div>
       <div class="modal-footer">
-        <button class="btn" id="btnHubFormCancel">Cancelar</button>
+        <button class="btn ghost" id="btnHubFormCancel">Cancelar</button>
         <button class="btn primary" id="btnHubFormSubmit">Guardar</button>
       </div>
     </div>
