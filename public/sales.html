@@ -5,6 +5,141 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Margin Guard | Vendedor</title>
   <link rel="stylesheet" href="/styles.css" />
+  <style>
+    html[data-sales-portal="seller"] .seller-operational.owner-operational .seller-op-dash {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-width: 0;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__stack {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      width: 100%;
+      min-width: 0;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__plan,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__action-bar,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-scope-work,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__stack .sales-labor {
+      width: 100%;
+      max-width: none;
+      box-sizing: border-box;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__action-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px 8px;
+      margin: 4px 0 0;
+      padding: 6px 8px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(0, 0, 0, 0.12);
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__action-bar-labor {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      margin-left: auto;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__action-bar .btn {
+      min-height: 30px;
+      padding: 5px 10px;
+      font-size: 12px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-scope-work {
+      margin: 10px 0 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.14);
+      box-sizing: border-box;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-scope-work__title {
+      margin: 0 0 4px;
+      font-size: 14px;
+      font-weight: 800;
+      color: rgba(248, 250, 252, 0.95);
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-scope-work__lead {
+      margin: 0 0 10px;
+      font-size: 11.5px;
+      line-height: 1.45;
+      color: rgba(203, 213, 225, 0.88);
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-scope-work__editor {
+      width: 100%;
+      min-height: 7rem;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(0, 0, 0, 0.22);
+      color: rgba(232, 238, 252, 0.92);
+      font-family: inherit;
+      font-size: 13px;
+      line-height: 1.6;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      width: 100%;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__sibling-card {
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.14);
+      box-sizing: border-box;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__crew,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__actions {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.14);
+      box-sizing: border-box;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__actions .btn {
+      flex: 1 1 160px;
+      justify-content: center;
+    }
+    html[data-sales-portal="seller"] .seller-operational .sales-labor__actions {
+      display: none !important;
+    }
+    html[data-sales-portal="seller"] #salesDatesSection,
+    html[data-sales-portal="seller"] #salesNotesSection,
+    html[data-sales-portal="seller"] #salesPriceControlsSection,
+    html[data-sales-portal="seller"] .seller-operational .sales-op-summary-total {
+      display: none !important;
+    }
+    html[data-sales-portal="seller"] .sales-left-panel .sep:has(+ #salesOperationalSection),
+    html[data-sales-portal="seller"] .sales-left-panel .sep:has(+ #salesPriceControlsSection) {
+      display: none !important;
+    }
+    @media (max-width: 960px) {
+      html[data-sales-portal="seller"] .seller-operational .seller-op-dash__cards {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
 <body data-sales-dual-auth="true" data-requires-auth="true" data-mg-app-nav data-mg-page-title="Vendedor">
@@ -127,7 +262,7 @@
               </div>
             </div>
 
-            <div class="sales-quote-section">
+            <div class="sales-quote-section" id="salesDatesSection">
               <h3 class="sales-quote-section-title">Dates</h3>
               <div class="form sales-quote-dates-row">
                 <div class="field">
@@ -157,7 +292,7 @@
 
             <input id="salesEstimateNumber" type="hidden" value="" />
 
-            <div class="sales-quote-section">
+            <div class="sales-quote-section" id="salesNotesSection">
               <h3 class="sales-quote-section-title">Notes</h3>
               <div class="form sales-quote-notes-col">
                 <div class="field">
@@ -175,7 +310,7 @@
 
             <div class="sep"></div>
 
-            <section class="sales-labor" aria-labelledby="salesLaborHeading">
+            <section class="sales-labor" id="salesLaborSection" aria-labelledby="salesLaborHeading">
               <header class="sales-labor__head">
                 <div class="sales-labor__intro">
                   <span class="eyebrow sales-labor__eyebrow">Labor</span>
@@ -222,7 +357,7 @@
 
             <div class="sep"></div>
 
-            <details class="sales-operational sales-operational--pro" id="salesOperationalSection" open>
+            <details class="sales-operational sales-operational--pro seller-operational owner-operational" id="salesOperationalSection" open>
               <summary class="sales-operational__summary">
                 <span class="eyebrow sales-operational__eyebrow">Execution</span>
                 <span class="sales-operational__title">OPERATIONAL PLAN</span>
@@ -301,6 +436,7 @@
 
             <div class="sep"></div>
 
+            <div id="salesPriceControlsSection">
             <div class="dashboard-note">
               <div class="dashboard-note-title">Control de precio</div>
               <div class="dashboard-note-copy" id="salesEntryHint">El sistema protege el mínimo, la negociación y el precio recomendado según las reglas del negocio.</div>
@@ -319,6 +455,7 @@
             <div class="notice" id="salesRule" style="margin-top:10px;display:none;">Completa la mano de obra para calcular el precio.</div>
             <div class="notice" id="salesMarginDecisionLine" style="margin-top:8px;display:none;"></div>
             <div class="notice" id="salesPricingGuidance" style="margin-top:10px;">Si el precio queda bajo la recomendacion, avanza con responsabilidad y alinea al dueno.</div>
+            </div>
           </div>
         </div>
 
@@ -538,6 +675,135 @@
       function isSellerForcedPortalRoute() {
         return document.documentElement.dataset.salesPortal === 'seller';
       }
+
+      function applySellerOwnerQuoteLayout() {
+        if (!isSellerForcedPortalRoute()) return false;
+
+        var opSection = document.getElementById('salesOperationalSection');
+        var opBody = opSection && opSection.querySelector('.sales-operational__body');
+        var opLayout = opBody && opBody.querySelector('.sales-op-layout');
+        if (!opBody || !opLayout) return false;
+        if (opBody.querySelector('.seller-op-dash[data-seller-owner-layout="true"]')) return false;
+
+        var left = opLayout.querySelector('.sales-op-layout__left');
+        var right = opLayout.querySelector('.sales-op-layout__right');
+        var laborSection = document.getElementById('salesLaborSection');
+        var datesSection = document.getElementById('salesDatesSection');
+        var notesSection = document.getElementById('salesNotesSection');
+        if (!left || !right) return false;
+
+        var addDayWrap = left.querySelector('.inline-actions');
+        var addDayBtn = document.getElementById('btnAddOperationalDay');
+        var addWorkerBtn = document.getElementById('btnAddSalesWorker');
+        var clearLaborBtn = document.getElementById('btnClearSalesWorkers');
+
+        var dash = document.createElement('div');
+        dash.className = 'sales-op-layout seller-op-dash owner-op-dash';
+
+        var stack = document.createElement('div');
+        stack.className = 'seller-op-dash__stack owner-op-dash__stack';
+
+        var plan = document.createElement('div');
+        plan.className = 'seller-op-dash__plan owner-op-dash__plan';
+        while (left.firstChild) {
+          if (left.firstChild === addDayWrap) {
+            left.removeChild(addDayWrap);
+            break;
+          }
+          plan.appendChild(left.firstChild);
+        }
+
+        var actionBar = document.createElement('div');
+        actionBar.className = 'seller-op-dash__action-bar owner-op-dash__action-bar';
+        actionBar.setAttribute('role', 'toolbar');
+        actionBar.setAttribute('aria-label', 'Operational plan and labor actions');
+        if (addDayBtn) actionBar.appendChild(addDayBtn);
+        var laborBar = document.createElement('div');
+        laborBar.className = 'seller-op-dash__action-bar-labor owner-op-dash__action-bar-labor';
+        if (addWorkerBtn) laborBar.appendChild(addWorkerBtn);
+        if (clearLaborBtn) laborBar.appendChild(clearLaborBtn);
+        actionBar.appendChild(laborBar);
+
+        var scopeWork = document.createElement('section');
+        scopeWork.className = 'seller-op-scope-work owner-op-scope-work';
+        scopeWork.setAttribute('aria-labelledby', 'sellerScopeWorkHeading');
+        scopeWork.innerHTML =
+          '<header class="seller-op-scope-work__head">' +
+          '<h3 class="seller-op-scope-work__title" id="sellerScopeWorkHeading">Scope of Work</h3>' +
+          '<p class="seller-op-scope-work__lead" id="sellerScopeWorkLead">Review and edit before sending to client.</p>' +
+          '</header>';
+
+        var messageField = notesSection && notesSection.querySelector('.field:has(#salesMessageToClient)');
+        if (!messageField && notesSection) {
+          messageField = notesSection.querySelector('#salesMessageToClient');
+          messageField = messageField ? messageField.closest('.field') : null;
+        }
+        if (messageField) {
+          var messageInput = messageField.querySelector('#salesMessageToClient');
+          if (messageInput) {
+            messageInput.classList.add('seller-op-scope-work__editor');
+            messageInput.rows = 6;
+            messageInput.placeholder = 'Scope of work included with this estimate for the client.';
+            messageInput.setAttribute('aria-describedby', 'sellerScopeWorkLead');
+          }
+          scopeWork.appendChild(messageField);
+        }
+
+        stack.appendChild(plan);
+        stack.appendChild(actionBar);
+        stack.appendChild(scopeWork);
+        if (laborSection) {
+          stack.appendChild(laborSection);
+        }
+
+        var cards = document.createElement('div');
+        cards.className = 'seller-op-dash__cards owner-op-dash__cards';
+
+        var summaryCard = right.querySelector('.sales-op-summary-card');
+        if (summaryCard) {
+          summaryCard.classList.add('seller-op-dash__sibling-card', 'owner-op-dash__sibling-card', 'owner-op-dash__summary-card');
+          cards.appendChild(summaryCard);
+        }
+
+        var calendarCard = right.querySelector('.sales-op-calendar-card');
+        if (calendarCard) {
+          calendarCard.classList.add('seller-op-dash__sibling-card', 'owner-op-dash__sibling-card', 'owner-op-dash__calendar-card');
+          cards.appendChild(calendarCard);
+        }
+
+        var datesCard = document.createElement('section');
+        datesCard.className = 'sales-op-summary-card seller-op-dash__sibling-card owner-op-dash__sibling-card owner-op-dash__dates-card';
+        datesCard.setAttribute('aria-labelledby', 'sellerOpDatesTitle');
+        datesCard.innerHTML = '<h4 class="sales-op-summary-card__title" id="sellerOpDatesTitle">Dates</h4>';
+        var datesForm = datesSection && datesSection.querySelector('.sales-quote-dates-row');
+        if (datesForm) {
+          datesCard.appendChild(datesForm);
+        }
+        var dueInput = datesSection && datesSection.querySelector('#salesDueDate');
+        if (dueInput) datesCard.appendChild(dueInput);
+        cards.appendChild(datesCard);
+
+        var crewCard = right.querySelector('.sales-op-availability-card');
+        if (crewCard) {
+          crewCard.classList.add('seller-op-dash__crew', 'owner-op-dash__crew');
+        }
+
+        var actionsCard = right.querySelector('.sales-op-actions-card');
+        if (actionsCard) {
+          actionsCard.classList.add('seller-op-dash__actions', 'owner-op-dash__actions');
+        }
+
+        dash.appendChild(stack);
+        dash.appendChild(cards);
+        if (crewCard) dash.appendChild(crewCard);
+        if (actionsCard) dash.appendChild(actionsCard);
+
+        opLayout.replaceWith(dash);
+        dash.dataset.sellerOwnerLayout = 'true';
+        return true;
+      }
+
+      window.applySellerOwnerQuoteLayout = applySellerOwnerQuoteLayout;
 
       function hasSellerDeviceSessionCookie() {
         try {
@@ -6065,6 +6331,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
 
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
+          applySellerOwnerQuoteLayout();
           bindStandaloneSellerWorkers();
           bindSalesOperationalPlanStandalone();
           renderSalesOperationalPlanStandalone();
@@ -6074,6 +6341,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           bindSalesContactPicker();
         });
       } else {
+        applySellerOwnerQuoteLayout();
         bindStandaloneSellerWorkers();
         bindSalesOperationalPlanStandalone();
         renderSalesOperationalPlanStandalone();
