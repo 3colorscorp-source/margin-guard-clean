@@ -147,6 +147,28 @@
         grid-template-columns: 1fr;
       }
     }
+    #ownerCapacityWarning {
+      display: none !important;
+      visibility: hidden !important;
+      height: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: hidden !important;
+      border: 0 !important;
+    }
+    .owner-start-warn-modal {
+      z-index: 10001;
+    }
+    .owner-start-warn-modal__card {
+      width: min(420px, 92vw);
+      max-height: none;
+    }
+    .owner-start-warn-modal__message {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.5;
+      color: rgba(232, 238, 252, 0.9);
+    }
   </style>
 </head>
 <body data-role="owner" data-requires-auth="true" data-mg-app-nav data-mg-page-title="Dueno">
@@ -578,6 +600,22 @@
     </div>
   </div>
 
+  <div class="modal owner-start-warn-modal" id="ownerStartDateWarnModal" aria-hidden="true" role="dialog" aria-labelledby="ownerStartDateWarnTitle" aria-modal="true">
+    <div class="modal-card owner-start-warn-modal__card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="ownerStartDateWarnTitle">Crew availability warning</div>
+        </div>
+      </div>
+      <div class="modal-body">
+        <p class="owner-start-warn-modal__message" id="ownerStartDateWarnMessage"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn primary" id="ownerStartDateWarnOk">OK, continue</button>
+      </div>
+    </div>
+  </div>
+
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="/js/sales-operational-plan.js"></script>
 <script src="/js/sales-capacity-calendar.js"></script>
@@ -589,5 +627,93 @@
 <script src="/js/auth.js"></script>
 <script src="/js/quote-send-feedback.js"></script>
 <script src="/js/app.js"></script>
+<script>
+(function () {
+  function hideInlineCapacityWarning(warning) {
+    if (!warning) return;
+    warning.style.display = "none";
+    warning.textContent = "";
+    warning.className = "notice";
+  }
+
+  function closeStartWarnModal(modal) {
+    if (!modal) return;
+    modal.setAttribute("aria-hidden", "true");
+  }
+
+  function openStartWarnModal(modal, messageEl, message) {
+    if (!modal || !messageEl) return;
+    messageEl.textContent = String(message || "").trim();
+    modal.setAttribute("aria-hidden", "false");
+    const okBtn = document.getElementById("ownerStartDateWarnOk");
+    if (okBtn) okBtn.focus();
+  }
+
+  function installOwnerStartWarnModal() {
+    const cap = window.MarginGuardOwnerCapacity;
+    const warning = document.getElementById("ownerCapacityWarning");
+    const modal = document.getElementById("ownerStartDateWarnModal");
+    const messageEl = document.getElementById("ownerStartDateWarnMessage");
+    const okBtn = document.getElementById("ownerStartDateWarnOk");
+    const startInput = document.getElementById("ownerStartDate");
+    if (!cap || typeof cap.showCapacityWarning !== "function" || cap.__mgStartWarnModalPatched) return;
+
+    let awaitingUserStartWarn = false;
+    let lastModalKey = "";
+
+    if (startInput) {
+      startInput.addEventListener("change", function () {
+        awaitingUserStartWarn = true;
+        lastModalKey = "";
+      });
+      startInput.addEventListener("input", function () {
+        awaitingUserStartWarn = true;
+        lastModalKey = "";
+      });
+    }
+
+    const originalShow = cap.showCapacityWarning;
+    cap.showCapacityWarning = function (message, className) {
+      const text = String(message || "").trim();
+      hideInlineCapacityWarning(warning);
+
+      if (!text) {
+        closeStartWarnModal(modal);
+        return;
+      }
+
+      if (!awaitingUserStartWarn) return;
+
+      const startValue = startInput ? String(startInput.value || "").trim() : "";
+      const modalKey = startValue + "|" + text;
+      if (modalKey === lastModalKey) return;
+
+      awaitingUserStartWarn = false;
+      lastModalKey = modalKey;
+      openStartWarnModal(modal, messageEl, text);
+    };
+
+    cap.__mgStartWarnModalPatched = true;
+
+    okBtn?.addEventListener("click", function () {
+      closeStartWarnModal(modal);
+    });
+
+    modal?.addEventListener("click", function (event) {
+      if (event.target === modal) closeStartWarnModal(modal);
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape") return;
+      if (!modal || modal.getAttribute("aria-hidden") !== "false") return;
+      closeStartWarnModal(modal);
+    });
+
+    hideInlineCapacityWarning(warning);
+  }
+
+  installOwnerStartWarnModal();
+})();
+</script>
 </body>
 </html>
