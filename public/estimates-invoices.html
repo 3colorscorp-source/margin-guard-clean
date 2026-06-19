@@ -111,6 +111,56 @@
       color: rgba(232, 238, 252, 0.65);
     }
 
+    /* C20-A2 — View / Remaining Balance drawer sizing (not Invoice Label / Record Payment) */
+    @media (min-width: 721px) {
+      body[data-role="estimates-hub"] #hubDrawer.modal {
+        align-items: center;
+        justify-content: center;
+        padding: clamp(16px, 10vh, 48px) 16px;
+        overflow: hidden;
+      }
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-card {
+        width: min(80vw, 1180px);
+        max-height: min(80vh, calc(100dvh - 64px));
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-sizing: border-box;
+      }
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-card .modal-header {
+        flex: 0 0 auto;
+      }
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-card .modal-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-card .modal-footer {
+        flex: 0 0 auto;
+      }
+    }
+    @media (max-width: 720px) {
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-card {
+        width: min(96vw, 100%);
+        max-height: min(92vh, 100dvh);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-sizing: border-box;
+      }
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-card .modal-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+      }
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-card .modal-footer {
+        flex: 0 0 auto;
+      }
+    }
+
     /* C20-A1 — Remaining Balance drawer action bar */
     body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer {
       display: flex;
