@@ -90,6 +90,57 @@
       line-height: 1.2;
       white-space: nowrap;
     }
+    .owner-operational .owner-op-scope-draft {
+      width: 100%;
+      margin: 8px 0 0;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.16);
+      box-sizing: border-box;
+    }
+    .owner-operational .owner-op-scope-draft[hidden] {
+      display: none !important;
+    }
+    .owner-operational .owner-op-scope-draft__title {
+      margin: 0 0 4px;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      color: rgba(248, 250, 252, 0.95);
+    }
+    .owner-operational .owner-op-scope-draft__safety {
+      margin: 0 0 8px;
+      font-size: 11px;
+      line-height: 1.4;
+      color: #fcd34d;
+    }
+    .owner-operational .owner-op-scope-draft__preview {
+      width: 100%;
+      min-height: 7rem;
+      max-height: 12rem;
+      margin: 0 0 8px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(0, 0, 0, 0.22);
+      color: rgba(232, 238, 252, 0.9);
+      font-family: inherit;
+      font-size: 12px;
+      line-height: 1.45;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+    .owner-operational .owner-op-scope-draft__actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .owner-operational .owner-op-scope-draft__actions .btn {
+      min-height: 30px;
+      padding: 5px 10px;
+      font-size: 12px;
+    }
     .owner-operational .owner-labor {
       margin-top: 0;
     }
@@ -457,9 +508,28 @@
                   </div>
                   <div class="owner-op-dash__action-bar" role="toolbar" aria-label="Operational plan and labor actions">
                     <button type="button" class="btn primary" id="btnOwnerAddOperationalDay">Add day</button>
+                    <button type="button" class="btn" id="btnOwnerGenerateScopeDraft">Generate Scope Draft</button>
                     <div class="owner-op-dash__action-bar-labor">
                       <button class="btn primary" type="button" id="btnAddWorker">+ Agregar trabajador</button>
                       <button class="btn danger" type="button" id="btnClearOwnerLabor">Limpiar labor</button>
+                    </div>
+                  </div>
+                  <div class="owner-op-scope-draft" id="ownerOpScopeDraftPanel" hidden>
+                    <h4 class="owner-op-scope-draft__title" id="ownerOpScopeDraftTitle">Scope of Work Draft</h4>
+                    <p class="owner-op-scope-draft__safety" id="ownerOpScopeDraftSafety">
+                      Draft generated from Operational Plan. Review and edit before sending to client.
+                    </p>
+                    <textarea
+                      class="owner-op-scope-draft__preview"
+                      id="ownerOpScopeDraftPreview"
+                      rows="8"
+                      readonly
+                      aria-labelledby="ownerOpScopeDraftTitle"
+                      aria-describedby="ownerOpScopeDraftSafety"
+                    ></textarea>
+                    <div class="owner-op-scope-draft__actions">
+                      <button type="button" class="btn primary" id="btnOwnerApplyScopeDraft">Apply to Notes</button>
+                      <button type="button" class="btn" id="btnOwnerClearScopeDraft">Clear Draft</button>
                     </div>
                   </div>
                   <section class="owner-labor" aria-labelledby="ownerLaborHeading">
@@ -849,6 +919,155 @@
   }
 
   installOwnerStartWarnModal();
+})();
+</script>
+<script>
+(function () {
+  const OWNER_STORE_KEY = "mg_owner_v2";
+  let currentScopeDraft = "";
+
+  const SCOPE_KEYWORD_LINES = [
+    { test: /\b(cover|protect|mask|tape|protection)\b/i, line: "Protect and cover work areas before construction begins." },
+    { test: /\b(demolition|demo|demolish|tear[\s-]?out)\b/i, line: "Perform demolition of existing surfaces as required for the project." },
+    { test: /\b(prep|preparation|prepare|substrate|surface\s+prep)\b/i, line: "Prepare substrate and work areas for installation." },
+    { test: /\b(install|installation|set[\s-]?tile|lay[\s-]?tile)\b/i, line: "Install specified materials per the approved plan." },
+    { test: /\b(grout)\b/i, line: "Grout installed tile surfaces as planned." },
+    { test: /\b(clean[\s-]?up|cleanup|final\s+clean|walkthrough)\b/i, line: "Complete final cleanup and walkthrough of completed work areas." }
+  ];
+
+  function safeTrim(value) {
+    return String(value == null ? "" : value).trim();
+  }
+
+  function loadOperationalPlanDays() {
+    try {
+      const raw = localStorage.getItem(OWNER_STORE_KEY);
+      if (!raw) return [];
+      const state = JSON.parse(raw);
+      const plan = Array.isArray(state.operational_plan) ? state.operational_plan : [];
+      return plan
+        .slice()
+        .sort(function (a, b) {
+          return (Number(a && a.day_number) || 0) - (Number(b && b.day_number) || 0);
+        });
+    } catch (_err) {
+      return [];
+    }
+  }
+
+  function dayTitle(day, index) {
+    const phase = safeTrim(day && day.phase);
+    if (phase) return phase;
+    const dayNumber = Number(day && day.day_number);
+    return "Day " + (Number.isFinite(dayNumber) && dayNumber > 0 ? dayNumber : index + 1);
+  }
+
+  function scopeLineForDayTitle(title) {
+    const text = safeTrim(title);
+    if (!text) return "Complete planned work for this schedule day.";
+    for (let i = 0; i < SCOPE_KEYWORD_LINES.length; i += 1) {
+      const entry = SCOPE_KEYWORD_LINES[i];
+      if (entry.test.test(text)) return entry.line;
+    }
+    return "Complete planned work: " + text + ".";
+  }
+
+  function buildScopeDraftFromPlan(plan) {
+    const usableDays = plan.filter(function (day) {
+      return day && (safeTrim(day.phase) || Number(day.day_number) > 0 || Array.isArray(day.workers));
+    });
+    if (!usableDays.length) return "";
+
+    const lines = [
+      "Scope of Work Draft",
+      "",
+      "This scope was generated from the operational plan and should be reviewed before sending.",
+      ""
+    ];
+
+    usableDays.forEach(function (day, index) {
+      const dayNumber = Number(day.day_number);
+      const label = Number.isFinite(dayNumber) && dayNumber > 0 ? dayNumber : index + 1;
+      lines.push("* Day " + label + ": " + scopeLineForDayTitle(dayTitle(day, index)));
+    });
+
+    lines.push("");
+    lines.push("Owner Review Required:");
+    lines.push("This draft is based on planned field execution and may be adjusted before final approval.");
+    return lines.join("\n");
+  }
+
+  function syncNotesField(nextValue) {
+    const notesEl = document.getElementById("quoteNotes");
+    if (!notesEl) return false;
+    notesEl.value = nextValue;
+    notesEl.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  }
+
+  function showScopeDraftPanel(draft) {
+    const panel = document.getElementById("ownerOpScopeDraftPanel");
+    const preview = document.getElementById("ownerOpScopeDraftPreview");
+    if (!panel || !preview) return;
+    currentScopeDraft = draft;
+    preview.value = draft;
+    panel.hidden = false;
+  }
+
+  function clearScopeDraftPanel() {
+    const panel = document.getElementById("ownerOpScopeDraftPanel");
+    const preview = document.getElementById("ownerOpScopeDraftPreview");
+    if (!panel || !preview) return;
+    currentScopeDraft = "";
+    preview.value = "";
+    panel.hidden = true;
+  }
+
+  function generateScopeDraft() {
+    const draft = buildScopeDraftFromPlan(loadOperationalPlanDays());
+    if (!draft) {
+      window.alert("Add Operational Plan days before generating a scope draft.");
+      return;
+    }
+    showScopeDraftPanel(draft);
+  }
+
+  function applyScopeDraftToNotes() {
+    const draft = safeTrim(currentScopeDraft);
+    if (!draft) {
+      window.alert("Generate a scope draft first.");
+      return;
+    }
+
+    const notesEl = document.getElementById("quoteNotes");
+    if (!notesEl) return;
+
+    const existing = safeTrim(notesEl.value);
+    if (!existing) {
+      syncNotesField(draft);
+      return;
+    }
+
+    const append = window.confirm(
+      "Notes already has text.\n\nClick OK to append the generated scope below existing Notes.\nClick Cancel to keep Notes unchanged."
+    );
+    if (!append) return;
+    syncNotesField(existing + "\n\n" + draft);
+  }
+
+  function installOwnerScopeDraftUi() {
+    const generateBtn = document.getElementById("btnOwnerGenerateScopeDraft");
+    const applyBtn = document.getElementById("btnOwnerApplyScopeDraft");
+    const clearBtn = document.getElementById("btnOwnerClearScopeDraft");
+    if (!generateBtn || generateBtn.dataset.bound === "true") return;
+
+    generateBtn.dataset.bound = "true";
+    generateBtn.addEventListener("click", generateScopeDraft);
+    applyBtn?.addEventListener("click", applyScopeDraftToNotes);
+    clearBtn?.addEventListener("click", clearScopeDraftPanel);
+  }
+
+  installOwnerScopeDraftUi();
 })();
 </script>
 </body>
