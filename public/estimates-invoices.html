@@ -6,6 +6,111 @@
   <title>Margin Guard | Estimates & Invoices</title>
   <link rel="stylesheet" href="/styles.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <style>
+    .hub-qe-modal {
+      z-index: 10050;
+    }
+    .hub-qe-modal .modal-card {
+      width: min(640px, 96vw);
+      max-height: 90vh;
+      overflow: auto;
+    }
+    .hub-qe-subtitle {
+      margin: 4px 0 0;
+      font-size: 0.8125rem;
+      color: var(--muted, rgba(232, 238, 252, 0.68));
+      line-height: 1.4;
+    }
+    .hub-qe-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      margin: 0 0 10px;
+      font-size: 0.75rem;
+      color: rgba(232, 238, 252, 0.62);
+    }
+    .hub-qe-meta strong {
+      color: rgba(232, 238, 252, 0.9);
+      font-weight: 700;
+    }
+    .hub-qe-banner {
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.8125rem;
+      line-height: 1.45;
+    }
+    .hub-qe-banner--lock {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.28);
+      color: #fecaca;
+    }
+    .hub-qe-banner--warn {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.28);
+      color: #fde68a;
+    }
+    .hub-qe-banner--ok {
+      background: rgba(34, 197, 94, 0.12);
+      border: 1px solid rgba(34, 197, 94, 0.28);
+      color: #bbf7d0;
+    }
+    .hub-qe-banner--err {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.22);
+      color: #fecaca;
+    }
+    .hub-qe-lock-list {
+      margin: 8px 0 0;
+      padding-left: 18px;
+    }
+    .hub-qe-lock-list li {
+      margin: 2px 0;
+    }
+    .hub-qe-form {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 12px;
+    }
+    @media (max-width: 560px) {
+      .hub-qe-form {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+    .hub-qe-form .field--full {
+      grid-column: 1 / -1;
+    }
+    .hub-qe-form input:disabled,
+    .hub-qe-form textarea:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .hub-qe-confirm {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 0.8125rem;
+      line-height: 1.4;
+    }
+    .hub-qe-confirm input {
+      margin-top: 3px;
+      flex-shrink: 0;
+    }
+    .hub-qe-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .hub-qe-loading {
+      margin: 0 0 8px;
+      font-size: 0.8125rem;
+      color: rgba(232, 238, 252, 0.65);
+    }
+  </style>
 </head>
 <body data-role="estimates-hub" data-requires-auth="true" class="invoice-hub-page" data-mg-app-nav data-mg-page-title="Invoices Hub">
   <div class="container invoice-hub-console">
@@ -260,6 +365,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn" type="button" id="btnHubDrawerOpenPublic">Open Public</button>
+        <button class="btn ghost" type="button" id="btnHubDrawerEditQuote" style="display:none;">Edit Quote</button>
         <button class="btn ghost" type="button" id="btnHubDrawerInvoiceSetup">Invoice label</button>
         <button class="btn" type="button" id="btnHubDrawerSendInvoice" data-hub-send-invoice="1">Send Invoice</button>
         <button class="btn" type="button" id="btnHubDrawerQuoteAccept" style="display:none;">Mark as accepted</button>
@@ -374,6 +480,88 @@
         <button class="btn" id="btnHubClientRequestAll">Request All</button>
         <button class="btn" id="btnHubClientOpenCollections">Open Collections View</button>
         <button class="btn primary" id="btnHubClientOpenHub">Open Hub</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hub-qe-modal" id="hubQuoteEditModal" aria-hidden="true" role="dialog" aria-labelledby="hubQuoteEditTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="hubQuoteEditTitle">Edit Quote</div>
+          <div class="hub-qe-subtitle" id="hubQuoteEditSubtitle">—</div>
+        </div>
+        <button type="button" class="icon-btn" id="btnHubQuoteEditClose" aria-label="Close">X</button>
+      </div>
+      <div class="modal-body">
+        <p id="hubQuoteEditLoading" class="hub-qe-loading" style="display:none;">Loading quote…</p>
+        <div id="hubQuoteEditLockBanner" class="hub-qe-banner hub-qe-banner--lock" style="display:none;">
+          <strong>This quote is locked</strong>
+          <ul id="hubQuoteEditLockList" class="hub-qe-lock-list"></ul>
+        </div>
+        <div id="hubQuoteEditWarning" class="hub-qe-banner hub-qe-banner--warn" style="display:none;">
+          <p style="margin:0 0 8px;">This quote may already have been sent or viewed. Saving will update the same public quote link.</p>
+          <label class="hub-qe-confirm">
+            <input type="checkbox" id="hubQuoteEditSentConfirm" />
+            <span>I understand this updates the public quote link.</span>
+          </label>
+        </div>
+        <p id="hubQuoteEditFeedback" class="hub-qe-banner" style="display:none;" role="status"></p>
+        <div class="hub-qe-meta" id="hubQuoteEditMeta" style="display:none;">
+          <span>Quote #: <strong id="hubQuoteEditMetaNumber">—</strong></span>
+          <span>Status: <strong id="hubQuoteEditMetaStatus">—</strong></span>
+          <span>Total: <strong id="hubQuoteEditMetaTotal">—</strong></span>
+        </div>
+        <form id="hubQuoteEditForm" class="hub-qe-form" novalidate>
+          <div class="field">
+            <label for="hubEditClientName">Client name</label>
+            <input type="text" id="hubEditClientName" name="client_name" maxlength="255" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="hubEditClientEmail">Client email</label>
+            <input type="email" id="hubEditClientEmail" name="client_email" maxlength="255" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="hubEditClientPhone">Client phone</label>
+            <input type="text" id="hubEditClientPhone" name="client_phone" maxlength="255" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="hubEditProjectName">Project name</label>
+            <input type="text" id="hubEditProjectName" name="project_name" maxlength="255" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="hubEditTitle">Title</label>
+            <input type="text" id="hubEditTitle" name="title" maxlength="255" autocomplete="off" />
+          </div>
+          <div class="field field--full">
+            <label for="hubEditProjectAddress">Project address</label>
+            <input type="text" id="hubEditProjectAddress" name="project_address" maxlength="255" autocomplete="off" />
+          </div>
+          <div class="field field--full">
+            <label for="hubEditJobSite">Job site</label>
+            <input type="text" id="hubEditJobSite" name="job_site" maxlength="255" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="hubEditStartDate">Start date</label>
+            <input type="date" id="hubEditStartDate" name="start_date" />
+          </div>
+          <div class="field">
+            <label for="hubEditDueDate">Due date</label>
+            <input type="date" id="hubEditDueDate" name="due_date" />
+          </div>
+          <div class="field field--full">
+            <label for="hubEditNotes">Notes</label>
+            <textarea id="hubEditNotes" name="notes" maxlength="5000" rows="3"></textarea>
+          </div>
+          <div class="field field--full">
+            <label for="hubEditTerms">Terms</label>
+            <textarea id="hubEditTerms" name="terms" maxlength="5000" rows="3"></textarea>
+          </div>
+        </form>
+        <div class="hub-qe-actions">
+          <button type="button" class="btn" id="btnHubQuoteEditCancel">Cancel</button>
+          <button type="button" class="btn primary" id="btnHubQuoteEditSave">Save changes</button>
+        </div>
       </div>
     </div>
   </div>

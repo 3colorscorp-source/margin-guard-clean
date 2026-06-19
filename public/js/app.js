@@ -13192,6 +13192,376 @@ window.renderSupervisor = renderSupervisor;
       .join("");
   }
 
+  const HUB_QUOTE_EDIT_GET = "/.netlify/functions/get-tenant-quote-edit";
+  const HUB_QUOTE_EDIT_UPDATE = "/.netlify/functions/update-tenant-quote-edit";
+  const HUB_QUOTE_LOCK_LABELS = {
+    quote_accepted_status: "Quote has been accepted",
+    quote_accepted_at: "Quote has an accepted timestamp",
+    quote_has_project: "Project already exists",
+    quote_has_invoice: "Invoice already exists",
+    quote_has_payment: "Payment exists",
+    deposit_paid: "Deposit was paid",
+    client_ack_started: "Client acknowledgement/signature started",
+    quote_archived_status: "Quote is archived",
+    quote_approved_status: "Quote is approved",
+  };
+  const HUB_QUOTE_EDIT_FIELD_IDS = {
+    client_name: "hubEditClientName",
+    client_email: "hubEditClientEmail",
+    client_phone: "hubEditClientPhone",
+    project_name: "hubEditProjectName",
+    title: "hubEditTitle",
+    project_address: "hubEditProjectAddress",
+    job_site: "hubEditJobSite",
+    notes: "hubEditNotes",
+    terms: "hubEditTerms",
+    start_date: "hubEditStartDate",
+    due_date: "hubEditDueDate",
+  };
+  let hubQuoteEditState = {
+    quoteId: "",
+    locked: false,
+    requiresSentConfirm: false,
+    saving: false,
+  };
+
+  function hubQuoteEditPageReady() {
+    return Boolean($("hubQuoteEditModal"));
+  }
+
+  function hubQuoteLockReasonLabel(code) {
+    return HUB_QUOTE_LOCK_LABELS[code] || String(code || "").replace(/_/g, " ");
+  }
+
+  function hubQuoteEditStatusLabel(raw) {
+    const st = String(raw || "")
+      .trim()
+      .toLowerCase();
+    if (st === "ready_to_send") return "Ready to send";
+    if (st === "accepted") return "Accepted";
+    if (st === "approved") return "Approved";
+    if (st === "archived") return "Archived";
+    if (st === "declined") return "Declined";
+    if (st === "draft") return "Draft";
+    if (st === "sent") return "Sent";
+    if (!st) return "—";
+    return st.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  function hubQuoteEditIsoDateForInput(value) {
+    const t = String(value ?? "").trim();
+    if (!t) return "";
+    const d = t.slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : "";
+  }
+
+  function hubQuoteEditSetFeedback(message, tone) {
+    const el = $("hubQuoteEditFeedback");
+    if (!el) return;
+    const text = String(message || "").trim();
+    if (!text) {
+      el.style.display = "none";
+      el.textContent = "";
+      el.className = "hub-qe-banner";
+      return;
+    }
+    el.style.display = "";
+    el.textContent = text;
+    el.className = "hub-qe-banner";
+    if (tone === "ok") el.classList.add("hub-qe-banner--ok");
+    else if (tone === "err") el.classList.add("hub-qe-banner--err");
+    else if (tone === "warn") el.classList.add("hub-qe-banner--warn");
+  }
+
+  function hubQuoteEditSetFormDisabled(disabled) {
+    const form = $("hubQuoteEditForm");
+    if (!form) return;
+    form.querySelectorAll("input, textarea").forEach((el) => {
+      el.disabled = Boolean(disabled);
+    });
+    const confirm = $("hubQuoteEditSentConfirm");
+    if (confirm) confirm.disabled = Boolean(disabled);
+  }
+
+  function hubQuoteEditUpdateSaveButton() {
+    const saveBtn = $("btnHubQuoteEditSave");
+    if (!saveBtn) return;
+    if (hubQuoteEditState.locked) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Quote locked";
+      return;
+    }
+    if (hubQuoteEditState.saving) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving…";
+      return;
+    }
+    if (hubQuoteEditState.requiresSentConfirm) {
+      const checked = Boolean($("hubQuoteEditSentConfirm")?.checked);
+      saveBtn.disabled = !checked;
+      saveBtn.textContent = checked ? "Save changes" : "Confirm public link update";
+      return;
+    }
+    saveBtn.disabled = false;
+    saveBtn.textContent = "Save changes";
+  }
+
+  function hubQuoteEditFillForm(quote) {
+    const q = quote && typeof quote === "object" ? quote : {};
+    for (const [key, id] of Object.entries(HUB_QUOTE_EDIT_FIELD_IDS)) {
+      const el = $(id);
+      if (!el) continue;
+      const raw = q[key];
+      if (key === "start_date" || key === "due_date") {
+        el.value = hubQuoteEditIsoDateForInput(raw);
+      } else {
+        el.value = raw == null ? "" : String(raw);
+      }
+    }
+  }
+
+  function hubQuoteEditReadFormBody() {
+    const body = { quote_id: hubQuoteEditState.quoteId };
+    for (const key of Object.keys(HUB_QUOTE_EDIT_FIELD_IDS)) {
+      const el = $(HUB_QUOTE_EDIT_FIELD_IDS[key]);
+      if (!el) continue;
+      body[key] = el.value;
+    }
+    if (hubQuoteEditState.requiresSentConfirm && $("hubQuoteEditSentConfirm")?.checked) {
+      body.confirm_sent_update = true;
+    }
+    return body;
+  }
+
+  function hubQuoteEditMapApiError(data, status) {
+    const code = String(data?.code || "").trim();
+    const err = String(data?.error || "").trim();
+    if (status === 401) return "Sign in required to edit quotes.";
+    if (status === 403) return err || "Owner or admin permission required.";
+    if (code === "quote_not_found") return "Quote not found.";
+    if (code === "quote_locked") {
+      const reasons = Array.isArray(data?.lock_reasons) ? data.lock_reasons : [];
+      if (reasons.length) {
+        return `Quote is locked: ${reasons.map(hubQuoteLockReasonLabel).join("; ")}`;
+      }
+      return err || "Quote is locked.";
+    }
+    if (code === "sent_quote_confirmation_required") {
+      return "Check the box to confirm updating the public quote link.";
+    }
+    if (code === "unknown_fields") {
+      const fields = Array.isArray(data?.fields) ? data.fields.join(", ") : "";
+      return fields ? `Disallowed fields: ${fields}` : err || "Unknown fields in request.";
+    }
+    if (code === "no_edit_fields") return "No editable fields were provided.";
+    if (code === "invalid_date") return err || "Invalid date format. Use YYYY-MM-DD.";
+    return err || "Unable to complete request.";
+  }
+
+  function hubQuoteEditCloseModal() {
+    const modal = $("hubQuoteEditModal");
+    if (!modal) return;
+    modal.setAttribute("aria-hidden", "true");
+    hubQuoteEditState = { quoteId: "", locked: false, requiresSentConfirm: false, saving: false };
+    hubQuoteEditSetFeedback("");
+  }
+
+  function hubQuoteEditOpenShell() {
+    const modal = $("hubQuoteEditModal");
+    if (!modal) return;
+    modal.setAttribute("aria-hidden", "false");
+    hubQuoteEditSetFeedback("");
+    const lockBanner = $("hubQuoteEditLockBanner");
+    const warnBanner = $("hubQuoteEditWarning");
+    const loading = $("hubQuoteEditLoading");
+    const meta = $("hubQuoteEditMeta");
+    const lockList = $("hubQuoteEditLockList");
+    if (lockBanner) lockBanner.style.display = "none";
+    if (warnBanner) warnBanner.style.display = "none";
+    if (loading) loading.style.display = "";
+    if (meta) meta.style.display = "none";
+    if (lockList) lockList.innerHTML = "";
+    const confirm = $("hubQuoteEditSentConfirm");
+    if (confirm) confirm.checked = false;
+    hubQuoteEditSetFormDisabled(true);
+    hubQuoteEditUpdateSaveButton();
+  }
+
+  function hubQuoteEditApplyPayload(data, settings) {
+    const quote = data?.quote || {};
+    const edit = data?.edit || {};
+    const locked = Boolean(edit.locked) || !edit.is_editable;
+    hubQuoteEditState.locked = locked;
+    hubQuoteEditState.requiresSentConfirm =
+      !locked && Array.isArray(edit.warnings) && edit.warnings.includes("quote_viewed_or_sent");
+
+    const subtitle = $("hubQuoteEditSubtitle");
+    if (subtitle) {
+      const num = String(quote.quote_number_display || "").trim() || "—";
+      const proj = String(quote.project_name || quote.title || "").trim() || "—";
+      subtitle.textContent = `${num} · ${proj}`;
+    }
+
+    const meta = $("hubQuoteEditMeta");
+    const metaNumber = $("hubQuoteEditMetaNumber");
+    const metaStatus = $("hubQuoteEditMetaStatus");
+    const metaTotal = $("hubQuoteEditMetaTotal");
+    const cur = String(quote.currency || settings?.currency || "USD").trim() || "USD";
+    if (meta) meta.style.display = "";
+    if (metaNumber) metaNumber.textContent = String(quote.quote_number_display || "").trim() || "—";
+    if (metaStatus) metaStatus.textContent = hubQuoteEditStatusLabel(quote.status);
+    if (metaTotal) metaTotal.textContent = money(quote.total, cur);
+
+    const lockBanner = $("hubQuoteEditLockBanner");
+    const lockList = $("hubQuoteEditLockList");
+    const reasons = Array.isArray(edit.lock_reasons) ? edit.lock_reasons : [];
+    if (locked && lockBanner && lockList) {
+      lockBanner.style.display = "";
+      lockList.innerHTML = reasons
+        .map((code) => `<li>${escapeHtml(hubQuoteLockReasonLabel(code))}</li>`)
+        .join("");
+    } else if (lockBanner) {
+      lockBanner.style.display = "none";
+    }
+
+    const warnBanner = $("hubQuoteEditWarning");
+    if (warnBanner) warnBanner.style.display = hubQuoteEditState.requiresSentConfirm ? "" : "none";
+
+    hubQuoteEditFillForm(quote);
+    hubQuoteEditSetFormDisabled(locked);
+    hubQuoteEditUpdateSaveButton();
+  }
+
+  async function hubQuoteEditFetch(quoteId) {
+    const qid = encodeURIComponent(String(quoteId || "").trim());
+    const response = await fetch(`${HUB_QUOTE_EDIT_GET}?quote_id=${qid}`, {
+      method: "GET",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    let data = {};
+    try {
+      data = await response.json();
+    } catch (_err) {
+      data = {};
+    }
+    return { response, data };
+  }
+
+  async function hubQuoteEditOpen(quoteId, settings) {
+    if (!quoteId || !hubQuoteEditPageReady()) return;
+    hubQuoteEditState.quoteId = String(quoteId).trim();
+    hubQuoteEditOpenShell();
+
+    try {
+      const { response, data } = await hubQuoteEditFetch(hubQuoteEditState.quoteId);
+      const loading = $("hubQuoteEditLoading");
+      if (loading) loading.style.display = "none";
+
+      if (!response.ok || data.ok !== true) {
+        hubQuoteEditSetFeedback(hubQuoteEditMapApiError(data, response.status), "err");
+        hubQuoteEditState.locked = true;
+        hubQuoteEditSetFormDisabled(true);
+        hubQuoteEditUpdateSaveButton();
+        return;
+      }
+
+      hubQuoteEditApplyPayload(data, settings);
+    } catch (err) {
+      const loading = $("hubQuoteEditLoading");
+      if (loading) loading.style.display = "none";
+      hubQuoteEditSetFeedback(err?.message || "Network error loading quote.", "err");
+      hubQuoteEditState.locked = true;
+      hubQuoteEditSetFormDisabled(true);
+      hubQuoteEditUpdateSaveButton();
+    }
+  }
+
+  async function hubQuoteEditAfterSaveRefresh() {
+    if (typeof window.__mgHubRefetchServerInvoices === "function") {
+      await window.__mgHubRefetchServerInvoices();
+    } else if (typeof window.__mgHubTableRefresh === "function") {
+      window.__mgHubTableRefresh();
+    }
+    if (typeof window.__mgHubRefreshSelectedRow === "function") {
+      window.__mgHubRefreshSelectedRow();
+    }
+  }
+
+  async function hubQuoteEditSave(settings) {
+    if (hubQuoteEditState.locked || hubQuoteEditState.saving || !hubQuoteEditState.quoteId) return;
+
+    if (hubQuoteEditState.requiresSentConfirm && !$("hubQuoteEditSentConfirm")?.checked) {
+      hubQuoteEditSetFeedback("Check the box to confirm updating the public quote link.", "warn");
+      hubQuoteEditUpdateSaveButton();
+      return;
+    }
+
+    hubQuoteEditState.saving = true;
+    hubQuoteEditUpdateSaveButton();
+    hubQuoteEditSetFeedback("");
+
+    try {
+      const body = hubQuoteEditReadFormBody();
+      const response = await fetch(HUB_QUOTE_EDIT_UPDATE, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(body),
+      });
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (_err) {
+        data = {};
+      }
+
+      if (!response.ok || data.ok !== true) {
+        hubQuoteEditSetFeedback(hubQuoteEditMapApiError(data, response.status), "err");
+        if (data?.code === "sent_quote_confirmation_required") {
+          hubQuoteEditState.requiresSentConfirm = true;
+          const warnBanner = $("hubQuoteEditWarning");
+          if (warnBanner) warnBanner.style.display = "";
+        }
+        hubQuoteEditUpdateSaveButton();
+        return;
+      }
+
+      hubQuoteEditApplyPayload(data, settings);
+      hubQuoteEditSetFeedback("Quote updated successfully.", "ok");
+      await hubQuoteEditAfterSaveRefresh();
+    } catch (err) {
+      hubQuoteEditSetFeedback(err?.message || "Network error saving quote.", "err");
+    } finally {
+      hubQuoteEditState.saving = false;
+      hubQuoteEditUpdateSaveButton();
+    }
+  }
+
+  function bindHubQuoteEditHandlers(settings) {
+    if (window.__MG_HUB_QUOTE_EDIT_BOUND__ || !hubQuoteEditPageReady()) return;
+    window.__MG_HUB_QUOTE_EDIT_BOUND__ = true;
+
+    if ($("btnHubQuoteEditClose")) $("btnHubQuoteEditClose").onclick = hubQuoteEditCloseModal;
+    if ($("btnHubQuoteEditCancel")) $("btnHubQuoteEditCancel").onclick = hubQuoteEditCloseModal;
+    if ($("hubQuoteEditSentConfirm")) {
+      $("hubQuoteEditSentConfirm").onchange = hubQuoteEditUpdateSaveButton;
+    }
+    if ($("btnHubQuoteEditSave")) {
+      $("btnHubQuoteEditSave").onclick = () => {
+        void hubQuoteEditSave(settings);
+      };
+    }
+    if ($("btnHubDrawerEditQuote")) {
+      $("btnHubDrawerEditQuote").onclick = () => {
+        const row = window.__MG_ACTIVE_INVOICE_ROW__ || null;
+        const quoteId = row ? hubLedgerTargetIds(row).quoteId : "";
+        if (!quoteId) return;
+        void hubQuoteEditOpen(quoteId, settings);
+      };
+    }
+  }
+
   function hubDrawerPaymentProgressPct(paid, total) {
     const t = finiteNumber(total, 0);
     const p = finiteNumber(paid, 0);
@@ -13816,6 +14186,16 @@ window.renderSupervisor = renderSupervisor;
           : paidApprox > 0
             ? "Paid-to-date must be zero before marking deposit received."
             : "Accept the quote or mark check pending first, or deposit already recorded.";
+      }
+
+      const editQuoteBtn = $("btnHubDrawerEditQuote");
+      if (editQuoteBtn) {
+        const quoteId = hubLedgerTargetIds(row).quoteId;
+        const show = Boolean(quoteId);
+        editQuoteBtn.style.display = show ? "" : "none";
+        editQuoteBtn.disabled = !show;
+        editQuoteBtn.classList.toggle("hub-action-disabled", !show);
+        editQuoteBtn.title = show ? "Edit quote metadata" : "No linked quote on this row.";
       }
     };
 
@@ -15350,6 +15730,8 @@ window.renderSupervisor = renderSupervisor;
     }
 
     window.__mgHubTableRefresh = refresh;
+    window.__mgHubRefreshSelectedRow = refreshSelectedRow;
+    bindHubQuoteEditHandlers(settings);
     window.__mgHubRefetchServerInvoices = async () => {
       const { invoices: raw } = await loadTenantInvoicesFromServer({ limit: 100 });
       hubServerNormalizedInvoicesCache = raw.map(normalizeServerInvoiceForHub);
