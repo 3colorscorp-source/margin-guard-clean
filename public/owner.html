@@ -260,53 +260,6 @@
 
             <div class="sep"></div>
 
-            <section class="owner-labor" aria-labelledby="ownerLaborHeading">
-              <header class="owner-labor__head">
-                <div class="owner-labor__intro">
-                  <span class="eyebrow owner-labor__eyebrow">Labor</span>
-                  <h2 id="ownerLaborHeading" class="owner-labor__title">Mano de obra</h2>
-                  <p class="sub owner-labor__lead">Si dejas Costo/Hora vacío, se aplica el costo base definido en Business Settings según el Tipo de cada trabajador.</p>
-                </div>
-                <div class="inline-actions owner-labor__actions">
-                  <button class="btn primary" id="btnAddWorker">+ Agregar trabajador</button>
-                  <button class="btn danger" type="button" id="btnClearOwnerLabor">Limpiar labor</button>
-                </div>
-              </header>
-
-              <div class="owner-labor-guide sales-labor-guide" role="note">
-                <div class="owner-labor-guide__head sales-labor-guide__head">
-                  <span class="owner-labor-guide__kicker sales-labor-guide__kicker">Guía rápida</span>
-                </div>
-                <label class="sales-labor-sync-toggle owner-labor-sync-toggle" id="ownerLaborAutoSyncWrap">
-                  <input type="checkbox" id="ownerLaborAutoSync" checked />
-                  Auto-sync labor from Operational Plan
-                </label>
-                <p class="owner-labor-guide__text sales-labor-guide__text" id="ownerLaborSyncNote">Add Operational Plan days to auto-sync labor worker-days.</p>
-                <p class="notice" id="ownerLaborManualWarn" style="display:none;margin-top:8px;" role="status">
-                  Manual labor override is active. Operational Plan changes will not update labor totals until auto-sync is turned back on.
-                </p>
-                <p class="owner-labor-guide__meta sales-labor-guide__meta" id="ownerCrewHint"></p>
-              </div>
-
-              <div class="supervisor-table-wrap owner-labor-table-wrap">
-              <table class="table owner-labor-table">
-                <thead>
-                  <tr>
-                    <th class="owner-labor-th owner-labor-th--worker" scope="col" title="Nombre en la cuadrilla">Trabajador</th>
-                    <th class="owner-labor-th owner-labor-th--type" scope="col" title="Pro o Assistant (define costo base)">Tipo</th>
-                    <th class="owner-labor-th owner-labor-th--units" scope="col" id="workerUnitsHead" title="Horas o días según el modo de cotización">Horas</th>
-                    <th class="owner-labor-th owner-labor-th--rate" scope="col" id="workerRateHead" title="Costo base por unidad según Business Settings (día u hora)">Costo base</th>
-                    <th class="owner-labor-th owner-labor-th--labor" scope="col" title="Importe de labor para esta fila">Costo labor</th>
-                    <th class="owner-labor-th owner-labor-th--actions" scope="col" title="Copiar o eliminar fila">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody id="workersBody"></tbody>
-              </table>
-              </div>
-            </section>
-
-            <div class="sep"></div>
-
             <details class="sales-operational sales-operational--pro owner-operational" id="ownerOperationalSection" open>
               <summary class="sales-operational__summary owner-operational__summary">
                 <span class="eyebrow sales-operational__eyebrow">Execution</span>
@@ -347,6 +300,50 @@
                       <button type="button" class="btn primary" id="btnOwnerAddOperationalDay">Add day</button>
                     </div>
                   </div>
+                  <section class="owner-labor" aria-labelledby="ownerLaborHeading">
+                    <header class="owner-labor__head">
+                      <div class="owner-labor__intro">
+                        <span class="eyebrow owner-labor__eyebrow">Labor</span>
+                        <h2 id="ownerLaborHeading" class="owner-labor__title">Mano de obra</h2>
+                        <p class="sub owner-labor__lead">Si dejas Costo/Hora vacío, se aplica el costo base definido en Business Settings según el Tipo de cada trabajador.</p>
+                      </div>
+                      <div class="inline-actions owner-labor__actions">
+                        <button class="btn primary" id="btnAddWorker">+ Agregar trabajador</button>
+                        <button class="btn danger" type="button" id="btnClearOwnerLabor">Limpiar labor</button>
+                      </div>
+                    </header>
+
+                    <div class="owner-labor-guide sales-labor-guide" role="note">
+                      <div class="owner-labor-guide__head sales-labor-guide__head">
+                        <span class="owner-labor-guide__kicker sales-labor-guide__kicker">Guía rápida</span>
+                      </div>
+                      <label class="sales-labor-sync-toggle owner-labor-sync-toggle" id="ownerLaborAutoSyncWrap">
+                        <input type="checkbox" id="ownerLaborAutoSync" checked />
+                        Auto-sync labor from Operational Plan
+                      </label>
+                      <p class="owner-labor-guide__text sales-labor-guide__text" id="ownerLaborSyncNote">Add Operational Plan days to auto-sync labor worker-days.</p>
+                      <p class="notice" id="ownerLaborManualWarn" style="display:none;margin-top:8px;" role="status">
+                        Manual labor override is active. Operational Plan changes will not update labor totals until auto-sync is turned back on.
+                      </p>
+                      <p class="owner-labor-guide__meta sales-labor-guide__meta" id="ownerCrewHint"></p>
+                    </div>
+
+                    <div class="supervisor-table-wrap owner-labor-table-wrap">
+                    <table class="table owner-labor-table">
+                      <thead>
+                        <tr>
+                          <th class="owner-labor-th owner-labor-th--worker" scope="col" title="Nombre en la cuadrilla">Trabajador</th>
+                          <th class="owner-labor-th owner-labor-th--type" scope="col" title="Pro o Assistant (define costo base)">Tipo</th>
+                          <th class="owner-labor-th owner-labor-th--units" scope="col" id="workerUnitsHead" title="Horas o días según el modo de cotización">Horas</th>
+                          <th class="owner-labor-th owner-labor-th--rate" scope="col" id="workerRateHead" title="Costo base por unidad según Business Settings (día u hora)">Costo base</th>
+                          <th class="owner-labor-th owner-labor-th--labor" scope="col" title="Importe de labor para esta fila">Costo labor</th>
+                          <th class="owner-labor-th owner-labor-th--actions" scope="col" title="Copiar o eliminar fila">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody id="workersBody"></tbody>
+                    </table>
+                    </div>
+                  </section>
                   <div class="owner-op-dash__cards">
                     <section class="sales-op-summary-card owner-op-dash__sibling-card owner-op-dash__summary-card" aria-labelledby="ownerOpSummaryTitle">
                       <h4 class="sales-op-summary-card__title" id="ownerOpSummaryTitle">Proposal summary</h4>
