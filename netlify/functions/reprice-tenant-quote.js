@@ -22,6 +22,8 @@ const {
   buildSettingsSnapshotForAudit,
   buildEngineResultForAudit,
   computeRepriceFinancials,
+  parseManualRepriceInput,
+  applyOwnerManualPrice,
   requireOwnerOrAdmin,
   sanitizeWorkersForTenantPricing,
 } = require("./_lib/quote-reprice-helpers");
@@ -157,6 +159,28 @@ exports.handler = async (event) => {
         error: err?.message || "Unable to compute quote pricing from inputs.",
         code: "pricing_engine_error",
       });
+    }
+
+    const manualInput = parseManualRepriceInput(body);
+    if (manualInput.active) {
+      if (manualInput.ok === false) {
+        return json(400, {
+          ok: false,
+          error: manualInput.error,
+          code: manualInput.code,
+        });
+      }
+      const manualApplied = applyOwnerManualPrice(financials, manualInput.price);
+      if (!manualApplied.ok) {
+        const statusCode = manualApplied.code === "price_below_minimum" ? 422 : 500;
+        return json(statusCode, {
+          ok: false,
+          error: manualApplied.error,
+          code: manualApplied.code,
+          minimum_price: manualApplied.minimum_price,
+        });
+      }
+      financials = manualApplied.financials;
     }
 
     const minPrice = Number(financials.minimum_price);

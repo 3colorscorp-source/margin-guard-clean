@@ -6,6 +6,7 @@
   const GET_REPRICE_API = "/.netlify/functions/get-tenant-quote-reprice";
   const UPDATE_EDIT_API = "/.netlify/functions/update-tenant-quote-edit";
   const REPRICE_QUOTE_API = "/.netlify/functions/reprice-tenant-quote";
+  const CALC_PRICING_API = "/.netlify/functions/calc-secure-pricing";
   const RESEND_QUOTE_API = "/.netlify/functions/resend-tenant-quote";
   const LIST_QUERY = "?limit=25&offset=0";
 
@@ -62,7 +63,15 @@
     repriceSucceeded: false,
     canResend: false,
     currency: "USD",
+    pricingAnchors: {
+      minimum: null,
+      negotiation: null,
+      recommended: null,
+    },
+    manualDriver: "none",
+    pricingAnchorsBusy: false,
   };
+  let pricingAnchorsTimer = null;
 
   function $(id) {
     return document.getElementById(id);
@@ -389,6 +398,9 @@
     if (code === "invalid_pricing_stage") {
       return err || "Choose a valid price stage: Minimum, Negotiation, or Recommended.";
     }
+    if (code === "invalid_manual_price") {
+      return err || "Enter a valid manual final price.";
+    }
     if (code === "sent_quote_confirmation_required") {
       return "Check the box to confirm updating the public quote link.";
     }
@@ -420,6 +432,313 @@
       return fields ? `Disallowed fields: ${fields}` : err || "Unknown fields in request.";
     }
     return err || "Unable to reprice quote.";
+  }
+
+  function roundMoney(amount) {
+    const n = Number(amount);
+    if (!Number.isFinite(n)) return NaN;
+    return Math.round(n * 100) / 100;
+  }
+
+  function parsePositiveMoneyInput(id) {
+    const el = $(id);
+    if (!el) return null;
+    const raw = String(el.value ?? "").trim();
+    if (!raw) return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return roundMoney(n);
+  }
+
+  function resetManualPricingUI() {
+    editState.manualDriver = "none";
+    const discount = $("saManualDiscount");
+    const final = $("saManualFinalPrice");
+    const computed = $("saManualPriceComputed");
+    const guard = $("saManualPriceGuard");
+    if (discount) discount.value = "";
+    if (final) final.value = "";
+    if (computed) {
+      computed.hidden = true;
+      computed.textContent = "";
+    }
+    if (guard) {
+      guard.hidden = true;
+      guard.textContent = "";
+      guard.className = "sa-edit-pricing-manual__guard";
+    }
+  }
+
+  function updatePricingRefsDisplay() {
+    const cur = editState.currency || "USD";
+    const anchors = editState.pricingAnchors || {};
+    const set = (id, amount) => {
+      const el = $(id);
+      if (!el) return;
+      const n = Number(amount);
+      el.textContent = Number.isFinite(n) ? formatMoney(n, cur) : "—";
+    };
+    set("saPricingRefMin", anchors.minimum);
+    set("saPricingRefNeg", anchors.negotiation);
+    set("saPricingRefRec", anchors.recommended);
+  }
+
+  function stageBasePriceFromAnchors(stage) {
+    const anchors = editState.pricingAnchors || {};
+    const n = Number(stage);
+    if (n <= 0 && Number.isFinite(Number(anchors.minimum))) return Number(anchors.minimum);
+    if (n === 1 && Number.isFinite(Number(anchors.negotiation))) return Number(anchors.negotiation);
+    if (Number.isFinite(Number(anchors.recommended))) return Number(anchors.recommended);
+    return NaN;
+  }
+
+  function readManualPricingState() {
+    const driver = editState.manualDriver || "none";
+    const discount = parsePositiveMoneyInput("saManualDiscount");
+    const finalRaw = parsePositiveMoneyInput("saManualFinalPrice");
+    const stage = readPricingStageFromUI();
+    const stageBase = stageBasePriceFromAnchors(stage);
+    const minimum = Number(editState.pricingAnchors?.minimum);
+    const hasAnchors =
+      Number.isFinite(minimum) &&
+      Number.isFinite(Number(editState.pricingAnchors?.negotiation)) &&
+      Number.isFinite(Number(editState.pricingAnchors?.recommended));
+
+    if (!hasAnchors || driver === "none") {
+      return {
+        active: false,
+        driver,
+        stageBase,
+        minimum,
+        finalPrice: NaN,
+        belowMinimum: false,
+        valid: true,
+      };
+    }
+
+    let finalPrice = NaN;
+    if (driver === "discount") {
+      if (discount == null) {
+        return {
+          active: false,
+          driver,
+          stageBase,
+          minimum,
+          finalPrice: NaN,
+          belowMinimum: false,
+          valid: true,
+        };
+      }
+      if (!Number.isFinite(stageBase)) {
+        return {
+          active: true,
+          driver,
+          stageBase,
+          minimum,
+          finalPrice: NaN,
+          belowMinimum: false,
+          valid: false,
+        };
+      }
+      finalPrice = roundMoney(stageBase - discount);
+    } else if (driver === "final") {
+      if (finalRaw == null) {
+        return {
+          active: false,
+          driver,
+          stageBase,
+          minimum,
+          finalPrice: NaN,
+          belowMinimum: false,
+          valid: true,
+        };
+      }
+      finalPrice = finalRaw;
+    }
+
+    if (!Number.isFinite(finalPrice) || finalPrice <= 0) {
+      return {
+        active: true,
+        driver,
+        stageBase,
+        minimum,
+        finalPrice,
+        belowMinimum: false,
+        valid: false,
+      };
+    }
+
+    const belowMinimum = Number.isFinite(minimum) && finalPrice + 1e-9 < minimum;
+    return {
+      active: true,
+      driver,
+      stageBase,
+      minimum,
+      finalPrice,
+      belowMinimum,
+      valid: !belowMinimum,
+    };
+  }
+
+  function setManualGuardMessage(message, tone) {
+    const el = $("saManualPriceGuard");
+    if (!el) return;
+    const text = String(message || "").trim();
+    if (!text) {
+      el.hidden = true;
+      el.textContent = "";
+      el.className = "sa-edit-pricing-manual__guard";
+      return;
+    }
+    el.hidden = false;
+    el.textContent = text;
+    el.className = "sa-edit-pricing-manual__guard";
+    if (tone === "ok") el.classList.add("is-ok");
+    if (tone === "err") el.classList.add("is-err");
+  }
+
+  function updateManualPricingUI() {
+    const manual = readManualPricingState();
+    const computed = $("saManualPriceComputed");
+    const cur = editState.currency || "USD";
+
+    if (!manual.active) {
+      if (computed) {
+        computed.hidden = true;
+        computed.textContent = "";
+      }
+      setManualGuardMessage("", null);
+      updateApplyPriceButtonState();
+      return;
+    }
+
+    if (computed) {
+      if (manual.driver === "discount" && Number.isFinite(manual.finalPrice)) {
+        computed.hidden = false;
+        computed.textContent = `Calculated final price: ${formatMoney(manual.finalPrice, cur)}`;
+      } else if (manual.driver === "final" && Number.isFinite(manual.stageBase) && Number.isFinite(manual.finalPrice)) {
+        const discountAmt = roundMoney(Math.max(0, manual.stageBase - manual.finalPrice));
+        computed.hidden = false;
+        computed.textContent = `Discount from selected stage: ${formatMoney(discountAmt, cur)}`;
+      } else {
+        computed.hidden = true;
+        computed.textContent = "";
+      }
+    }
+
+    if (!Number.isFinite(manual.finalPrice) || manual.finalPrice <= 0) {
+      setManualGuardMessage("Enter a valid manual amount.", "err");
+    } else if (manual.belowMinimum) {
+      setManualGuardMessage(
+        "This price is below the protected minimum. Margin Guard will not allow selling below minimum.",
+        "err"
+      );
+    } else {
+      setManualGuardMessage("Manual owner price is protected.", "ok");
+    }
+
+    updateApplyPriceButtonState();
+  }
+
+  async function postCalcSecurePricing(workers, pricingStage) {
+    const response = await fetch(CALC_PRICING_API, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        workers,
+        pricing_stage: pricingStage,
+      }),
+    });
+    let data = {};
+    try {
+      data = await response.json();
+    } catch (_err) {
+      data = {};
+    }
+    return { response, data };
+  }
+
+  async function refreshPricingAnchors() {
+    if (editState.locked) return;
+    const workers = readWorkersFromUI();
+    const workerErr = validateWorkersForReprice(workers);
+    if (workerErr) {
+      editState.pricingAnchors = { minimum: null, negotiation: null, recommended: null };
+      updatePricingRefsDisplay();
+      updateManualPricingUI();
+      return;
+    }
+
+    editState.pricingAnchorsBusy = true;
+    try {
+      const [minRes, negRes, recRes] = await Promise.all([
+        postCalcSecurePricing(workers, 0),
+        postCalcSecurePricing(workers, 1),
+        postCalcSecurePricing(workers, 2),
+      ]);
+      const ok = (r) => r.response.ok && r.data?.ok === true && r.data?.pricing;
+      if (!ok(minRes) || !ok(negRes) || !ok(recRes)) {
+        return;
+      }
+      editState.pricingAnchors = {
+        minimum: Number(minRes.data.pricing.minimum_price),
+        negotiation: Number(negRes.data.pricing.total),
+        recommended: Number(recRes.data.pricing.total),
+      };
+      updatePricingRefsDisplay();
+      updateManualPricingUI();
+    } catch (_err) {
+      /* keep previous anchors */
+    } finally {
+      editState.pricingAnchorsBusy = false;
+      updateApplyPriceButtonState();
+    }
+  }
+
+  function schedulePricingAnchorRefresh() {
+    if (pricingAnchorsTimer) clearTimeout(pricingAnchorsTimer);
+    pricingAnchorsTimer = setTimeout(() => {
+      pricingAnchorsTimer = null;
+      void refreshPricingAnchors();
+    }, 300);
+  }
+
+  function onManualDiscountInput() {
+    editState.manualDriver = "discount";
+    const stageBase = stageBasePriceFromAnchors(readPricingStageFromUI());
+    const discount = parsePositiveMoneyInput("saManualDiscount");
+    const finalEl = $("saManualFinalPrice");
+    if (discount != null && Number.isFinite(stageBase) && finalEl) {
+      finalEl.value = String(roundMoney(stageBase - discount));
+    } else if (discount == null && finalEl) {
+      finalEl.value = "";
+    }
+    updateManualPricingUI();
+  }
+
+  function onManualFinalInput() {
+    editState.manualDriver = "final";
+    const stageBase = stageBasePriceFromAnchors(readPricingStageFromUI());
+    const finalPrice = parsePositiveMoneyInput("saManualFinalPrice");
+    const discountEl = $("saManualDiscount");
+    if (finalPrice != null && Number.isFinite(stageBase) && discountEl) {
+      discountEl.value = String(roundMoney(Math.max(0, stageBase - finalPrice)));
+    } else if (finalPrice == null && discountEl) {
+      discountEl.value = "";
+    }
+    updateManualPricingUI();
+  }
+
+  function onPricingStageChange() {
+    if (editState.manualDriver === "discount") {
+      onManualDiscountInput();
+    } else if (editState.manualDriver === "final") {
+      onManualFinalInput();
+    } else {
+      updateManualPricingUI();
+    }
+    schedulePricingAnchorRefresh();
   }
 
   function pricingStageLabel(stage) {
@@ -466,6 +785,7 @@
       })
       .join("");
     setPricingControlsDisabled(editState.locked);
+    schedulePricingAnchorRefresh();
   }
 
   function setPricingControlsDisabled(disabled) {
@@ -476,6 +796,10 @@
     });
     section.querySelectorAll('input[name="saPricingStage"]').forEach((el) => {
       el.disabled = Boolean(disabled) || editState.repricing;
+    });
+    ["saManualDiscount", "saManualFinalPrice"].forEach((id) => {
+      const el = $(id);
+      if (el) el.disabled = Boolean(disabled) || editState.repricing;
     });
   }
 
@@ -537,6 +861,11 @@
       pricing_stage: readPricingStageFromUI(),
       reason: REPRICE_DEFAULT_REASON,
     };
+    const manual = readManualPricingState();
+    if (manual.active && manual.valid && Number.isFinite(manual.finalPrice)) {
+      body.price = manual.finalPrice;
+      body._manualPriceTouched = true;
+    }
     if (editState.requiresSentConfirm && $("saQuoteEditSentConfirm")?.checked) {
       body.confirm_sent_update = true;
     }
@@ -622,7 +951,19 @@
     setPricingStageValue(
       reprice.pricing_stage === null || reprice.pricing_stage === undefined ? 2 : reprice.pricing_stage
     );
+    if (Number.isFinite(Number(reprice.last_minimum_price))) {
+      editState.pricingAnchors.minimum = Number(reprice.last_minimum_price);
+    }
+    if (Number.isFinite(Number(reprice.last_negotiation_price))) {
+      editState.pricingAnchors.negotiation = Number(reprice.last_negotiation_price);
+    }
+    if (Number.isFinite(Number(reprice.last_recommended_price))) {
+      editState.pricingAnchors.recommended = Number(reprice.last_recommended_price);
+    }
+    updatePricingRefsDisplay();
+    resetManualPricingUI();
     setPricingControlsDisabled(locked);
+    schedulePricingAnchorRefresh();
     updateApplyPriceButtonState();
   }
 
@@ -637,6 +978,17 @@
     if (editState.repricing) {
       btn.disabled = true;
       btn.textContent = "Applying…";
+      return;
+    }
+    const manual = readManualPricingState();
+    if (manual.active && manual.belowMinimum) {
+      btn.disabled = true;
+      btn.textContent = "Apply Price Change";
+      return;
+    }
+    if (manual.active && !manual.valid) {
+      btn.disabled = true;
+      btn.textContent = "Apply Price Change";
       return;
     }
     if (editState.requiresSentConfirm) {
@@ -689,7 +1041,16 @@
       repriceSucceeded: false,
       canResend: false,
       currency: "USD",
+      pricingAnchors: { minimum: null, negotiation: null, recommended: null },
+      manualDriver: "none",
+      pricingAnchorsBusy: false,
     };
+    if (pricingAnchorsTimer) {
+      clearTimeout(pricingAnchorsTimer);
+      pricingAnchorsTimer = null;
+    }
+    resetManualPricingUI();
+    updatePricingRefsDisplay();
     setEditFeedback("");
     const preview = $("saQuoteEditRepricePreview");
     if (preview) preview.hidden = true;
@@ -724,6 +1085,10 @@
     const preview = $("saQuoteEditRepricePreview");
     if (pricing) pricing.hidden = true;
     if (preview) preview.hidden = true;
+    resetManualPricingUI();
+    editState.pricingAnchors = { minimum: null, negotiation: null, recommended: null };
+    editState.manualDriver = "none";
+    updatePricingRefsDisplay();
     if (lockBanner) lockBanner.hidden = true;
     if (warnBanner) warnBanner.hidden = true;
     if (loading) loading.hidden = false;
@@ -883,6 +1248,23 @@
       return;
     }
 
+    const manual = readManualPricingState();
+    if (manual.active) {
+      if (manual.belowMinimum) {
+        setEditFeedback(
+          "This price is below the protected minimum. Margin Guard will not allow selling below minimum.",
+          "warn"
+        );
+        updateApplyPriceButtonState();
+        return;
+      }
+      if (!manual.valid || !Number.isFinite(manual.finalPrice)) {
+        setEditFeedback("Enter a valid manual discount or final price.", "warn");
+        updateApplyPriceButtonState();
+        return;
+      }
+    }
+
     editState.repricing = true;
     updateApplyPriceButtonState();
     updateResendButtonState();
@@ -951,6 +1333,7 @@
         },
       });
       showRepricePreview(reprice, quote);
+      resetManualPricingUI();
       editState.repriceSucceeded = true;
       setEditFeedback(data.message || "Quote price updated safely.", "ok");
       void loadQuotePipeline();
@@ -1215,7 +1598,39 @@
         }
         renderWorkerRows(rows.length ? rows : defaultWorkerRows());
       });
+      workersWrap.addEventListener("input", () => {
+        if (editState.locked) return;
+        schedulePricingAnchorRefresh();
+        if (editState.manualDriver === "discount") onManualDiscountInput();
+        else if (editState.manualDriver === "final") onManualFinalInput();
+      });
+      workersWrap.addEventListener("change", () => {
+        if (editState.locked) return;
+        schedulePricingAnchorRefresh();
+        if (editState.manualDriver === "discount") onManualDiscountInput();
+        else if (editState.manualDriver === "final") onManualFinalInput();
+      });
     }
+    const manualDiscount = $("saManualDiscount");
+    const manualFinal = $("saManualFinalPrice");
+    if (manualDiscount) {
+      manualDiscount.addEventListener("input", () => {
+        if (editState.locked) return;
+        onManualDiscountInput();
+      });
+    }
+    if (manualFinal) {
+      manualFinal.addEventListener("input", () => {
+        if (editState.locked) return;
+        onManualFinalInput();
+      });
+    }
+    document.querySelectorAll('input[name="saPricingStage"]').forEach((el) => {
+      el.addEventListener("change", () => {
+        if (editState.locked) return;
+        onPricingStageChange();
+      });
+    });
     if (modal) {
       modal.addEventListener("click", (ev) => {
         if (ev.target === modal) closeEditModal();

@@ -493,6 +493,92 @@
     .sa-edit-pricing-stage__options input {
       margin: 0;
     }
+    .sa-edit-pricing-refs {
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .sa-edit-pricing-refs__label {
+      margin: 0 0 6px;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: rgba(232, 238, 252, 0.58);
+    }
+    .sa-edit-pricing-refs__grid {
+      margin: 0;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 4px 10px;
+      font-size: 0.75rem;
+    }
+    .sa-edit-pricing-refs__grid dt {
+      margin: 0;
+      color: rgba(232, 238, 252, 0.55);
+    }
+    .sa-edit-pricing-refs__grid dd {
+      margin: 0;
+      font-weight: 600;
+      color: rgba(232, 238, 252, 0.9);
+    }
+    .sa-edit-pricing-manual {
+      margin: 0 0 10px;
+      padding: 0;
+      border: 0;
+    }
+    .sa-edit-pricing-manual legend {
+      margin-bottom: 4px;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: rgba(232, 238, 252, 0.58);
+    }
+    .sa-edit-pricing-manual__hint {
+      margin: 0 0 8px;
+      font-size: 0.72rem;
+      line-height: 1.45;
+      color: rgba(232, 238, 252, 0.55);
+    }
+    .sa-edit-pricing-manual__grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 12px;
+    }
+    @media (max-width: 560px) {
+      .sa-edit-pricing-manual__grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+    .sa-edit-pricing-manual__grid .field {
+      margin: 0;
+    }
+    .sa-edit-pricing-manual__grid label {
+      font-size: 0.72rem;
+      margin-bottom: 4px;
+    }
+    .sa-edit-pricing-manual__grid input {
+      width: 100%;
+      min-height: 34px;
+      font-size: 0.8125rem;
+    }
+    .sa-edit-pricing-manual__computed {
+      margin: 6px 0 0;
+      font-size: 0.72rem;
+      color: rgba(232, 238, 252, 0.62);
+    }
+    .sa-edit-pricing-manual__guard {
+      margin: 6px 0 0;
+      font-size: 0.75rem;
+      line-height: 1.45;
+    }
+    .sa-edit-pricing-manual__guard.is-ok {
+      color: rgba(134, 239, 172, 0.95);
+    }
+    .sa-edit-pricing-manual__guard.is-err {
+      color: #fecaca;
+    }
     .sa-edit-reprice-preview {
       margin: 0 0 10px;
       padding: 10px 12px;
@@ -956,6 +1042,51 @@
                   <span>Recommended</span>
                 </label>
               </div>
+            </fieldset>
+            <div class="sa-edit-pricing-refs" id="saQuoteEditPricingRefs" aria-live="polite">
+              <p class="sa-edit-pricing-refs__label">Protected price references</p>
+              <dl class="sa-edit-pricing-refs__grid">
+                <dt>Minimum price</dt>
+                <dd id="saPricingRefMin">—</dd>
+                <dt>Negotiation price</dt>
+                <dd id="saPricingRefNeg">—</dd>
+                <dt>Recommended price</dt>
+                <dd id="saPricingRefRec">—</dd>
+              </dl>
+            </div>
+            <fieldset class="sa-edit-pricing-manual">
+              <legend>Owner manual adjustment</legend>
+              <p class="sa-edit-pricing-manual__hint">
+                Optional. Discount from the selected stage price, or enter a custom final price. Only one field drives the applied amount at a time.
+              </p>
+              <div class="sa-edit-pricing-manual__grid">
+                <div class="field">
+                  <label for="saManualDiscount">Manual discount</label>
+                  <input
+                    type="number"
+                    id="saManualDiscount"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    inputmode="decimal"
+                    autocomplete="off"
+                  />
+                </div>
+                <div class="field">
+                  <label for="saManualFinalPrice">Manual final price</label>
+                  <input
+                    type="number"
+                    id="saManualFinalPrice"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    inputmode="decimal"
+                    autocomplete="off"
+                  />
+                </div>
+              </div>
+              <p id="saManualPriceComputed" class="sa-edit-pricing-manual__computed" hidden></p>
+              <p id="saManualPriceGuard" class="sa-edit-pricing-manual__guard" hidden role="status"></p>
             </fieldset>
             <div id="saQuoteEditRepricePreview" class="sa-edit-reprice-preview" hidden>
               <dl>

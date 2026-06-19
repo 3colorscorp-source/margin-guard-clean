@@ -22,6 +22,9 @@ const ALLOWED_REPRICE_BODY_KEYS = new Set([
   "quote_id",
   "workers",
   "pricing_stage",
+  "price",
+  "_manualPriceTouched",
+  "manual_price_touched",
   "reason",
   "confirm_sent_update",
 ]);
@@ -308,6 +311,10 @@ function buildEngineResultForAudit(financials) {
   };
 }
 
+function round2(n) {
+  return Math.round(Number(n) * 100) / 100;
+}
+
 function computeRepriceFinancials(workersSanitized, pricingStage, tenantSettings) {
   return calculateQuotePublishFinancials(
     {
@@ -316,6 +323,57 @@ function computeRepriceFinancials(workersSanitized, pricingStage, tenantSettings
     },
     tenantSettings
   );
+}
+
+/** Owner manual final price override (Sales Admin); engine anchors unchanged. */
+function parseManualRepriceInput(body) {
+  const touched = Boolean(
+    body?._manualPriceTouched ?? body?.manual_price_touched ?? body?.manualPriceTouched
+  );
+  const raw = body?.price;
+  if (!touched || raw === undefined || raw === null || String(raw).trim() === "") {
+    return { active: false };
+  }
+  const price = Number(raw);
+  if (!Number.isFinite(price) || price <= 0) {
+    return {
+      active: true,
+      ok: false,
+      code: "invalid_manual_price",
+      error: "Manual final price must be a positive number.",
+    };
+  }
+  return { active: true, ok: true, price: round2(price) };
+}
+
+function applyOwnerManualPrice(financials, manualPrice) {
+  const min = Number(financials?.minimum_price);
+  const price = round2(manualPrice);
+  if (!Number.isFinite(min) || min <= 0) {
+    return {
+      ok: false,
+      code: "pricing_engine_error",
+      error: "Unable to resolve protected minimum price.",
+    };
+  }
+  if (price + 1e-9 < min) {
+    return {
+      ok: false,
+      code: "price_below_minimum",
+      minimum_price: min,
+      error: `Offered price cannot be below the minimum allowed (${min.toFixed(2)}).`,
+    };
+  }
+  const total = price;
+  const deposit_required = round2(Math.max(1000, total * 0.1));
+  return {
+    ok: true,
+    financials: {
+      ...financials,
+      total,
+      deposit_required,
+    },
+  };
 }
 
 async function requireOwnerOrAdmin(event) {
@@ -362,6 +420,8 @@ module.exports = {
   buildSettingsSnapshotForAudit,
   buildEngineResultForAudit,
   computeRepriceFinancials,
+  parseManualRepriceInput,
+  applyOwnerManualPrice,
   requireOwnerOrAdmin,
   sanitizeWorkersForTenantPricing,
 };
