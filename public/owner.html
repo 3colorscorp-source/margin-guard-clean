@@ -97,34 +97,6 @@
               </div>
             </div>
 
-            <div class="sales-quote-section owner-date-section" aria-labelledby="ownerDatesHeading">
-              <h3 class="sales-quote-section-title" id="ownerDatesHeading">Dates</h3>
-              <div class="form sales-quote-dates-row owner-date-group owner-date-group--primary" role="group" aria-label="Quote and production dates">
-                <div class="field owner-field-issue-date">
-                  <label for="issueDate" class="owner-field-issue-date__label">Issue date</label>
-                  <input class="owner-input-issue-date" id="issueDate" type="date" readonly tabindex="-1" aria-readonly="true" />
-                  <div class="hint">Auto-set to today. Controlled by Margin Guard.</div>
-                </div>
-                <div class="field owner-field-expiration-date">
-                  <label for="expirationDate" class="owner-field-expiration-date__label">Expiration date</label>
-                  <input class="owner-input-expiration-date" id="expirationDate" type="date" readonly tabindex="-1" aria-readonly="true" />
-                  <div class="hint" id="ownerExpirationHint">Auto-set to issue date + 15 days.</div>
-                </div>
-                <div class="field owner-field-start-date">
-                  <label for="ownerStartDate" class="owner-field-start-date__label">Start date</label>
-                  <input class="owner-input-start-date" id="ownerStartDate" type="date" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()" />
-                  <div class="hint" id="ownerCapacityGuidance">Loading production schedule…</div>
-                  <div class="notice" id="ownerCapacityWarning" style="display:none;margin-top:8px;" role="status"></div>
-                </div>
-                <div class="field owner-field-target-finish">
-                  <label for="ownerTargetFinishDate" class="owner-field-target-finish__label">Target finish date</label>
-                  <input class="owner-input-target-finish" id="ownerTargetFinishDate" type="date" readonly tabindex="-1" aria-readonly="true" disabled />
-                  <div class="hint" id="ownerTargetFinishHint">Target finish will calculate after labor days and safe start date are set.</div>
-                </div>
-              </div>
-              <input type="hidden" id="committedDate" value="" />
-            </div>
-
             <div class="sep"></div>
 
             <section class="owner-notes" aria-labelledby="ownerNotesHeading">
@@ -248,6 +220,33 @@
                       </div>
                       <div class="sales-op-calendar-grid" id="ownerOpCalendarPreview"></div>
                     </section>
+                    <div class="sales-quote-section owner-date-section" aria-labelledby="ownerDatesHeading">
+                      <h3 class="sales-quote-section-title" id="ownerDatesHeading">Dates</h3>
+                      <div class="form sales-quote-dates-row owner-date-group owner-date-group--primary" role="group" aria-label="Quote and production dates">
+                        <div class="field owner-field-issue-date">
+                          <label for="issueDate" class="owner-field-issue-date__label">Issue date</label>
+                          <input class="owner-input-issue-date" id="issueDate" type="date" readonly tabindex="-1" aria-readonly="true" />
+                          <div class="hint">Auto-set to today. Controlled by Margin Guard.</div>
+                        </div>
+                        <div class="field owner-field-expiration-date">
+                          <label for="expirationDate" class="owner-field-expiration-date__label">Expiration date</label>
+                          <input class="owner-input-expiration-date" id="expirationDate" type="date" readonly tabindex="-1" aria-readonly="true" />
+                          <div class="hint" id="ownerExpirationHint">Auto-set to issue date + 15 days.</div>
+                        </div>
+                        <div class="field owner-field-start-date">
+                          <label for="ownerStartDate" class="owner-field-start-date__label">Start date</label>
+                          <input class="owner-input-start-date" id="ownerStartDate" type="date" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()" />
+                          <div class="hint" id="ownerCapacityGuidance">Loading production schedule…</div>
+                          <div class="notice" id="ownerCapacityWarning" style="display:none;margin-top:8px;" role="status"></div>
+                        </div>
+                        <div class="field owner-field-target-finish">
+                          <label for="ownerTargetFinishDate" class="owner-field-target-finish__label">Target finish date</label>
+                          <input class="owner-input-target-finish" id="ownerTargetFinishDate" type="date" readonly tabindex="-1" aria-readonly="true" disabled />
+                          <div class="hint" id="ownerTargetFinishHint">Target finish will calculate after labor days and safe start date are set.</div>
+                        </div>
+                      </div>
+                      <input type="hidden" id="committedDate" value="" />
+                    </div>
                     <section class="sales-op-availability-card" aria-labelledby="ownerOpAvailTitle">
                       <h4 class="sales-op-summary-card__title" id="ownerOpAvailTitle">Crew availability</h4>
                       <div class="supervisor-table-wrap sales-op-avail-table-wrap">
