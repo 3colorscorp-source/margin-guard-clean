@@ -9,20 +9,68 @@
     html[data-sales-portal="seller"] body.seller-portal-layout {
       overflow-x: hidden;
     }
-    html[data-sales-portal="seller"] .grid.sales-layout {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+    html[data-sales-portal="seller"] .seller-owner-upper {
+      display: flex;
+      flex-direction: column;
       gap: 14px;
-      align-items: start;
+      margin-bottom: 14px;
     }
-    html[data-sales-portal="seller"] .sales-layout-hero .owner-hero-inner {
+    html[data-sales-portal="seller"] .seller-owner-upper .account-pill {
+      align-self: flex-start;
+      padding: 8px 14px;
+      background: rgba(255, 255, 255, 0.045);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 36px rgba(0, 0, 0, 0.28);
+    }
+    html[data-sales-portal="seller"] .seller-owner-upper .owner-hero,
+    html[data-sales-portal="seller"] .seller-owner-upper .sales-layout-hero {
+      margin-bottom: 0;
+    }
+    html[data-sales-portal="seller"] .seller-owner-upper .owner-hero-inner {
       gap: 12px;
     }
-    html[data-sales-portal="seller"] .sales-left-panel.seller-workspace-main {
+    html[data-sales-portal="seller"] .seller-owner-upper .owner-hero-copy,
+    html[data-sales-portal="seller"] .seller-owner-upper .owner-hero-inner > div:first-child {
+      max-width: 58ch;
+    }
+    html[data-sales-portal="seller"] .seller-owner-upper .owner-hero-lead,
+    html[data-sales-portal="seller"] .seller-owner-upper .sales-layout-hero .sub {
+      margin: 0;
+      line-height: 1.55;
+      font-size: 13px;
+      color: rgba(232, 238, 252, 0.78);
+    }
+    html[data-sales-portal="seller"] .seller-owner-upper .owner-hero .card-inner,
+    html[data-sales-portal="seller"] .seller-owner-upper .sales-layout-hero .card-inner {
+      padding: 22px 22px 24px;
+    }
+    html[data-sales-portal="seller"] .seller-workspace-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    html[data-sales-portal="seller"] .seller-workspace-grid .owner-workspace-main,
+    html[data-sales-portal="seller"] .seller-workspace-grid .sales-left-panel.seller-workspace-main {
       width: 100%;
       max-width: none;
       padding: 0;
       min-width: 0;
+    }
+    html[data-sales-portal="seller"] .seller-shell-hidden-panel,
+    html[data-sales-portal="seller"] .sales-right-panel,
+    html[data-sales-portal="seller"] .sales-live-sidebar {
+      display: none !important;
+      visibility: hidden !important;
+      height: 0 !important;
+      overflow: hidden !important;
+      pointer-events: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    html[data-sales-portal="seller"] .sales-owner-nav-actions,
+    html[data-sales-portal="seller"] #salesEstimateSummary {
+      display: none !important;
     }
     html[data-sales-portal="seller"] .seller-quote-card,
     html[data-sales-portal="seller"] .seller-quote-card__inner {
@@ -325,10 +373,24 @@
     html[data-sales-portal="seller"] .seller-operational .sales-labor-td--labor,
     html[data-sales-portal="seller"] #salesKpis,
     html[data-sales-portal="seller"] #salesProgress,
+    html[data-sales-portal="seller"] .sales-right-panel .owner-quote-hero,
     html[data-sales-portal="seller"] .sales-right-panel .owner-quote-strip,
+    html[data-sales-portal="seller"] .sales-right-panel .owner-quote-price,
+    html[data-sales-portal="seller"] .sales-right-panel .owner-quote-meta,
     html[data-sales-portal="seller"] .sales-right-panel .sales-system-price,
+    html[data-sales-portal="seller"] #salesPrimaryPrice,
+    html[data-sales-portal="seller"] #salesPrimaryMeta,
+    html[data-sales-portal="seller"] #salesPrimaryCommission,
+    html[data-sales-portal="seller"] #salesPrimaryCommissionMeta,
+    html[data-sales-portal="seller"] #salesFlowHeadline,
+    html[data-sales-portal="seller"] #salesFlowCaption,
+    html[data-sales-portal="seller"] #salesStageRange,
+    html[data-sales-portal="seller"] .sales-stage-labels,
     html[data-sales-portal="seller"] #salesMarginDecisionLine,
-    html[data-sales-portal="seller"] #salesRule {
+    html[data-sales-portal="seller"] #salesRule,
+    html[data-sales-portal="seller"] #salesPricingGuidance,
+    html[data-sales-portal="seller"] #salesTraffic,
+    html[data-sales-portal="seller"] .dashboard-note {
       display: none !important;
     }
     html[data-sales-portal="seller"] .sales-left-panel .card-inner > .sep:not(.seller-quote-sep) {
@@ -342,9 +404,6 @@
       overflow: hidden !important;
     }
     @media (max-width: 960px) {
-      html[data-sales-portal="seller"] .grid.sales-layout {
-        grid-template-columns: 1fr;
-      }
       html[data-sales-portal="seller"] .seller-operational .seller-op-dash__cards {
         grid-template-columns: 1fr;
       }
@@ -378,11 +437,47 @@
 <body data-sales-dual-auth="true" data-requires-auth="true" data-mg-app-nav data-mg-page-title="Vendedor">
   <script>
     (function () {
-      var path = String(window.location.pathname || '');
-      var params = new URLSearchParams(window.location.search || '');
-      if (/\/seller(?:\.html)?\/?$/i.test(path) || params.get('portal') === 'seller') {
-        document.documentElement.dataset.salesPortal = 'seller';
+      var SELLER_PORTAL_KEY = 'mg_sales_portal_seller';
+      function hasSellerDeviceSessionCookieEarly() {
+        try {
+          return /(?:^|;\s*)mg_device_session=/.test(document.cookie || '');
+        } catch (_cookieErr) {
+          return false;
+        }
       }
+      window.__mgInitSellerPortalGuard = function initSellerPortalGuard() {
+        var path = String(window.location.pathname || '');
+        var params = new URLSearchParams(window.location.search || '');
+        var isSellerPath = /\/seller(?:\.html)?\/?$/i.test(path);
+        var isSellerParam = params.get('portal') === 'seller';
+        var isSalesPage = /^\/sales(?:\.html)?\/?$/i.test(path);
+
+        if (isSellerPath || isSellerParam) {
+          try {
+            sessionStorage.setItem(SELLER_PORTAL_KEY, '1');
+          } catch (_storageErr) { /* ignore */ }
+          document.documentElement.dataset.salesPortal = 'seller';
+          return;
+        }
+
+        if (isSalesPage && hasSellerDeviceSessionCookieEarly()) {
+          try {
+            if (sessionStorage.getItem(SELLER_PORTAL_KEY) === '1') {
+              document.documentElement.dataset.salesPortal = 'seller';
+              if (!isSellerParam) {
+                var next = new URL(window.location.href);
+                next.searchParams.set('portal', 'seller');
+                window.history.replaceState(
+                  null,
+                  '',
+                  next.pathname + '?' + next.searchParams.toString() + next.hash
+                );
+              }
+            }
+          } catch (_restoreErr) { /* ignore */ }
+        }
+      };
+      window.__mgInitSellerPortalGuard();
     })();
   </script>
   <div class="container">
@@ -909,11 +1004,91 @@
         return document.documentElement.dataset.salesPortal === 'seller';
       }
 
+      function restructureSellerOuterShell() {
+        if (document.querySelector('.seller-owner-upper[data-seller-outer-shell="true"]')) {
+          return true;
+        }
+
+        var container = document.querySelector('.container');
+        var grid = document.querySelector('.grid.sales-layout');
+        if (!container || !grid) return false;
+
+        var hero = grid.querySelector('.sales-layout-hero');
+        var leftPanel = grid.querySelector('.sales-left-panel');
+        var rightPanel = grid.querySelector('.sales-right-panel');
+        var pill = container.querySelector('.account-pill');
+        var logoutHost = document.getElementById('salesDeviceLogoutHost');
+
+        var upper = document.createElement('div');
+        upper.className = 'owner-upper seller-owner-upper';
+        upper.dataset.sellerOuterShell = 'true';
+
+        if (pill) upper.appendChild(pill);
+        if (logoutHost) upper.appendChild(logoutHost);
+        if (hero) upper.appendChild(hero);
+
+        var workspace = document.createElement('div');
+        workspace.className = 'owner-workspace-grid seller-workspace-grid';
+        workspace.setAttribute('role', 'region');
+        workspace.setAttribute('aria-label', 'Cotizacion vendedor');
+
+        if (leftPanel) {
+          leftPanel.classList.add('owner-workspace-main');
+          workspace.appendChild(leftPanel);
+        }
+
+        if (rightPanel) {
+          rightPanel.classList.add('seller-shell-hidden-panel');
+          rightPanel.setAttribute('hidden', '');
+          rightPanel.setAttribute('aria-hidden', 'true');
+          workspace.appendChild(rightPanel);
+        }
+
+        container.insertBefore(upper, grid);
+        container.insertBefore(workspace, grid);
+        grid.remove();
+        return true;
+      }
+
+      function updateSellerShellChrome() {
+        var heroInner = document.querySelector('.sales-layout-hero .owner-hero-inner');
+        var heroCopy = heroInner && heroInner.firstElementChild;
+        if (heroCopy) heroCopy.classList.add('owner-hero-copy');
+
+        var eyebrow = document.querySelector('.sales-layout-hero .eyebrow');
+        var title = document.querySelector('.sales-layout-hero .hero-title');
+        var sub = document.querySelector('.sales-layout-hero .sub');
+        var scoreLabel = document.querySelector('.sales-layout-hero .hero-score-label');
+        var scoreMeta = document.getElementById('salesHeroMeta');
+        if (eyebrow) eyebrow.textContent = 'Quote Workspace';
+        if (title) title.textContent = 'Cotiza el proyecto actual sin mover las reglas del negocio.';
+        if (sub) {
+          sub.textContent =
+            'Vendedor se enfoca en la cotizacion viva. Las reglas permanentes del negocio las define el dueno.';
+          sub.classList.add('owner-hero-lead');
+        }
+        if (scoreLabel) scoreLabel.textContent = 'Estado actual';
+        if (scoreMeta && !String(scoreMeta.textContent || '').trim()) {
+          scoreMeta.textContent = 'Proyecto, mano de obra, PDF y envio al cliente.';
+        }
+
+        var quoteHead = document.querySelector('.sales-left-panel .section-head h2');
+        var quoteSub = document.querySelector('.sales-left-panel .section-head .sub');
+        var quoteBadge = document.getElementById('salesEstimateStatus');
+        if (quoteHead) quoteHead.textContent = 'Project Quote';
+        if (quoteSub) {
+          quoteSub.textContent =
+            'Estos datos cambian por proyecto. No alteran la configuracion permanente del negocio.';
+        }
+        if (quoteBadge) quoteBadge.textContent = 'Quote actual';
+      }
+
       function applySellerOwnerShellLayout() {
         if (!isSellerForcedPortalRoute()) return false;
-        if (document.body.dataset.sellerOwnerShell === 'true') return true;
 
         document.body.classList.add('seller-portal-layout');
+        restructureSellerOuterShell();
+        updateSellerShellChrome();
 
         var leftCard = document.querySelector('.sales-left-panel .card-inner');
         var projectSection = document.getElementById('salesProjectInfoSection');
@@ -934,12 +1109,6 @@
           var tableWrap = laborSection.querySelector('.sales-labor-table-wrap');
           if (tableWrap) tableWrap.classList.add('owner-labor-table-wrap');
         }
-
-        var quoteHead = document.querySelector('.sales-left-panel .section-head h2');
-        if (quoteHead) quoteHead.textContent = 'Project Quote';
-
-        var heroEyebrow = document.querySelector('.sales-layout-hero .eyebrow');
-        if (heroEyebrow) heroEyebrow.textContent = 'Quote Workspace';
 
         document.body.dataset.sellerOwnerShell = 'true';
         return true;
@@ -1075,8 +1244,19 @@
         return true;
       }
 
+      function ensureSellerOwnerLayoutApplied() {
+        if (typeof window.__mgInitSellerPortalGuard === 'function') {
+          window.__mgInitSellerPortalGuard();
+        }
+        if (!isSellerForcedPortalRoute()) return false;
+        applySellerOwnerQuoteLayout();
+        updateSellerShellChrome();
+        return true;
+      }
+
       window.applySellerOwnerQuoteLayout = applySellerOwnerQuoteLayout;
       window.applySellerOwnerShellLayout = applySellerOwnerShellLayout;
+      window.ensureSellerOwnerLayoutApplied = ensureSellerOwnerLayoutApplied;
 
       function hasSellerDeviceSessionCookie() {
         try {
@@ -2143,6 +2323,9 @@
           renderSalesOperationalPlanStandalone();
           bindSalesOperationalPlanStandalone();
           renderStandaloneSellerPanel();
+          if (isSellerForcedPortalRoute()) {
+            ensureSellerOwnerLayoutApplied();
+          }
         } finally {
           if (window.__mgForceCloseSalesNewQuoteAfterRefresh && typeof window.forceCloseSalesNewQuoteModal === 'function') {
             window.forceCloseSalesNewQuoteModal();
@@ -6602,19 +6785,8 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         restoreContactRefFromState();
       }
 
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-          applySellerOwnerQuoteLayout();
-          bindStandaloneSellerWorkers();
-          bindSalesOperationalPlanStandalone();
-          renderSalesOperationalPlanStandalone();
-          bindStandaloneSellerActions();
-          bindStandaloneSellerSend();
-          applyBrandingToSalesPage();
-          bindSalesContactPicker();
-        });
-      } else {
-        applySellerOwnerQuoteLayout();
+      function bootSellerPortalLayout() {
+        ensureSellerOwnerLayoutApplied();
         bindStandaloneSellerWorkers();
         bindSalesOperationalPlanStandalone();
         renderSalesOperationalPlanStandalone();
@@ -6622,6 +6794,16 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         bindStandaloneSellerSend();
         applyBrandingToSalesPage();
         bindSalesContactPicker();
+      }
+
+      document.addEventListener('device-auth-ready', function () {
+        ensureSellerOwnerLayoutApplied();
+      });
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootSellerPortalLayout);
+      } else {
+        bootSellerPortalLayout();
       }
     })();
   </script>
