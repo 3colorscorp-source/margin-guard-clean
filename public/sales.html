@@ -906,8 +906,16 @@
           return false;
         }
       }
+      function isOwnerNavSalesPreviewEarly() {
+        try {
+          return new URLSearchParams(window.location.search || '').get('portal') === 'owner';
+        } catch (_ownerNavErr) {
+          return false;
+        }
+      }
       function isOwnerSalesSessionEarly() {
         return (
+          isOwnerNavSalesPreviewEarly() ||
           document.documentElement.dataset.authMode === 'owner' ||
           window.MG_SALES_PORTAL_MODE === 'owner'
         );
@@ -956,7 +964,7 @@
           var path = String(window.location.pathname || '');
           var params = new URLSearchParams(window.location.search || '');
           var isSalesPage = /^\/sales(?:\.html)?\/?$/i.test(path);
-          if (!isSalesPage || params.get('portal') === 'seller') {
+          if (!isSalesPage || params.get('portal') === 'seller' || params.get('portal') === 'owner') {
             window.__mgSellerPortalUrlSynced = true;
             return;
           }
@@ -1016,6 +1024,27 @@
           if (typeof window.cleanupIncompleteSellerRootIfBlocked === 'function') {
             window.cleanupIncompleteSellerRootIfBlocked();
           }
+          clearSellerPortalGuardEarly();
+          try {
+            sessionStorage.removeItem(SELLER_PORTAL_KEY);
+          } catch (_ownerSyncStorageErr) { /* ignore */ }
+          return;
+        }
+        var isOwnerPreviewNav = false;
+        try {
+          isOwnerPreviewNav = new URLSearchParams(window.location.search || '').get('portal') === 'owner';
+        } catch (_ownerPreviewErr) { /* ignore */ }
+        if (isOwnerPreviewNav) {
+          if (typeof window.teardownSellerOwnerWorkspaceRoot === 'function') {
+            window.teardownSellerOwnerWorkspaceRoot();
+          }
+          if (typeof window.cleanupIncompleteSellerRootIfBlocked === 'function') {
+            window.cleanupIncompleteSellerRootIfBlocked();
+          }
+          clearSellerPortalGuardEarly();
+          try {
+            sessionStorage.removeItem(SELLER_PORTAL_KEY);
+          } catch (_ownerPreviewStorageErr) { /* ignore */ }
           return;
         }
         var isDeviceSellerAuth =
@@ -1059,6 +1088,10 @@
         var attempts = 0;
         var iv = window.setInterval(function () {
           attempts += 1;
+          if (isOwnerSalesSessionEarly()) {
+            window.clearInterval(iv);
+            return;
+          }
           var topbar = document.querySelector('.mg-topbar__title');
           var visibleRole = topbar ? String(topbar.textContent || '').trim() : '';
           var sellerUrlParam = false;
@@ -1687,7 +1720,16 @@
         return document.documentElement.dataset.salesPortal === 'seller';
       }
 
+      function isOwnerNavSalesPreview() {
+        try {
+          return new URLSearchParams(window.location.search || '').get('portal') === 'owner';
+        } catch (_ownerNavPreviewErr) {
+          return false;
+        }
+      }
+
       function isSalesAdminNormalSession() {
+        if (isOwnerNavSalesPreview()) return true;
         if (document.documentElement.dataset.authMode === 'owner') return true;
         if (document.body.classList.contains('mg-portal-mode-owner')) return true;
         if (window.MG_SALES_PORTAL_MODE === 'owner') return true;
@@ -1726,6 +1768,7 @@
       }
 
       function isOwnerPortalSessionActive() {
+        if (isOwnerNavSalesPreview()) return true;
         if (isSalesAdminNormalSession()) return true;
         if (document.documentElement.dataset.authMode === 'owner') return true;
         if (document.body.classList.contains('mg-portal-mode-owner')) return true;

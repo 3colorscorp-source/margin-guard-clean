@@ -20,7 +20,7 @@
       ownerOnly: true,
       items: [
         { type: 'link', href: '/owner', label: 'Dueno', icon: 'DU', ownerNav: true },
-        { type: 'link', href: '/sales', label: 'Vendedor', icon: 'VE', ownerNav: true },
+        { type: 'link', href: '/sales?portal=owner', label: 'Vendedor', icon: 'VE', ownerNav: true, activePaths: ['/sales'] },
         { type: 'link', href: '/supervisor', label: 'Supervisor', icon: 'SU', ownerNav: true },
         { type: 'link', href: '/project-control', label: 'Project Control', icon: 'PC', ownerNav: true },
         { type: 'link', href: '/sales-admin', label: 'Sales Admin', icon: 'SA', ownerNav: true }
