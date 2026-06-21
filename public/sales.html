@@ -46,20 +46,17 @@
     }
     html[data-sales-portal="seller"] .seller-workspace-grid {
       display: grid;
-      grid-template-columns: 1fr;
-      gap: 24px;
+      grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr);
+      gap: 24px 24px;
       align-items: start;
     }
-    html[data-sales-portal="seller"] .seller-workspace-grid .owner-workspace-main,
-    html[data-sales-portal="seller"] .seller-workspace-grid .sales-left-panel.seller-workspace-main {
-      width: 100%;
-      max-width: none;
-      padding: 0;
+    html[data-sales-portal="seller"] .seller-workspace-grid .sales-right-panel,
+    html[data-sales-portal="seller"] .seller-workspace-grid .sales-live-sidebar {
+      display: block;
+      visibility: visible;
       min-width: 0;
     }
-    html[data-sales-portal="seller"] .seller-shell-hidden-panel,
-    html[data-sales-portal="seller"] .sales-right-panel,
-    html[data-sales-portal="seller"] .sales-live-sidebar {
+    html[data-sales-portal="seller"] .seller-shell-hidden-panel {
       display: none !important;
       visibility: hidden !important;
       height: 0 !important;
@@ -67,6 +64,13 @@
       pointer-events: none !important;
       margin: 0 !important;
       padding: 0 !important;
+    }
+    html[data-sales-portal="seller"] .seller-workspace-grid .owner-workspace-main,
+    html[data-sales-portal="seller"] .seller-workspace-grid .sales-left-panel.seller-workspace-main {
+      width: 100%;
+      max-width: none;
+      padding: 0;
+      min-width: 0;
     }
     html[data-sales-portal="seller"] .sales-owner-nav-actions,
     html[data-sales-portal="seller"] #salesEstimateSummary {
@@ -444,26 +448,16 @@
     html[data-sales-portal="seller"] .seller-operational .sales-labor-th--labor,
     html[data-sales-portal="seller"] .seller-operational .sales-labor-td--rate,
     html[data-sales-portal="seller"] .seller-operational .sales-labor-td--labor,
-    html[data-sales-portal="seller"] #salesKpis,
-    html[data-sales-portal="seller"] #salesProgress,
-    html[data-sales-portal="seller"] .sales-right-panel .owner-quote-hero,
-    html[data-sales-portal="seller"] .sales-right-panel .owner-quote-strip,
-    html[data-sales-portal="seller"] .sales-right-panel .owner-quote-price,
-    html[data-sales-portal="seller"] .sales-right-panel .owner-quote-meta,
-    html[data-sales-portal="seller"] .sales-right-panel .sales-system-price,
-    html[data-sales-portal="seller"] #salesPrimaryPrice,
-    html[data-sales-portal="seller"] #salesPrimaryMeta,
-    html[data-sales-portal="seller"] #salesPrimaryCommission,
-    html[data-sales-portal="seller"] #salesPrimaryCommissionMeta,
-    html[data-sales-portal="seller"] #salesFlowHeadline,
-    html[data-sales-portal="seller"] #salesFlowCaption,
     html[data-sales-portal="seller"] #salesStageRange,
     html[data-sales-portal="seller"] .sales-stage-labels,
     html[data-sales-portal="seller"] #salesMarginDecisionLine,
     html[data-sales-portal="seller"] #salesRule,
     html[data-sales-portal="seller"] #salesPricingGuidance,
-    html[data-sales-portal="seller"] #salesTraffic,
-    html[data-sales-portal="seller"] .dashboard-note {
+    html[data-sales-portal="seller"] .dashboard-note,
+    html[data-sales-portal="seller"] .owner-quote-snapshot,
+    html[data-sales-portal="seller"] .owner-workspace-side[aria-label="Quote Snapshot"],
+    html[data-sales-portal="seller"] .owner-financial-snapshot,
+    html[data-sales-portal="seller"] [data-owner-internal-financial="true"] {
       display: none !important;
     }
     html[data-sales-portal="seller"] .sales-left-panel .card-inner > .sep:not(.seller-quote-sep) {
@@ -477,6 +471,9 @@
       overflow: hidden !important;
     }
     @media (max-width: 960px) {
+      html[data-sales-portal="seller"] .seller-workspace-grid {
+        grid-template-columns: 1fr;
+      }
       html[data-sales-portal="seller"] .seller-operational .seller-op-dash__cards {
         grid-template-columns: 1fr;
       }
@@ -618,6 +615,9 @@
         var isSellerParam = params.get('portal') === 'seller';
 
         if (isOwnerSalesSessionEarly()) {
+          if (typeof window.teardownSellerOwnerWorkspaceRoot === 'function') {
+            window.teardownSellerOwnerWorkspaceRoot();
+          }
           clearSellerPortalGuardEarly();
           try {
             sessionStorage.removeItem(SELLER_PORTAL_KEY);
@@ -642,11 +642,19 @@
         var isOwnerAuth =
           document.documentElement.dataset.authMode === 'owner' ||
           document.body.classList.contains('mg-portal-mode-owner');
+        if (isOwnerAuth) {
+          if (typeof window.teardownSellerOwnerWorkspaceRoot === 'function') {
+            window.teardownSellerOwnerWorkspaceRoot();
+          }
+          if (typeof window.cleanupIncompleteSellerRootIfBlocked === 'function') {
+            window.cleanupIncompleteSellerRootIfBlocked();
+          }
+          return;
+        }
         var isDeviceSellerAuth =
           document.documentElement.dataset.authMode === 'device' ||
           document.body.classList.contains('mg-portal-mode-seller-device');
         if (
-          !isOwnerAuth &&
           isDeviceSellerAuth &&
           /^(Vendedor|Seller)$/i.test(visibleRole) &&
           typeof window.forceBuildSellerOwnerWorkspaceRootNow === 'function'
@@ -1377,6 +1385,112 @@
         if (banner) banner.remove();
       }
 
+      function restoreSellerRightPanelVisible() {
+        document.querySelectorAll('.sales-right-panel, .sales-live-sidebar').forEach(function (el) {
+          el.hidden = false;
+          el.removeAttribute('aria-hidden');
+          el.classList.remove(
+            'seller-shell-hidden-panel',
+            'seller-legacy-hidden',
+            'seller-owner-like-hidden-panel',
+            'seller-hard-hidden-orphan'
+          );
+          el.style.removeProperty('display');
+        });
+      }
+
+      function teardownSellerOwnerWorkspaceRoot() {
+        var root = document.getElementById('sellerOwnerWorkspaceRoot');
+        if (!root) return false;
+
+        var container = document.querySelector('.container');
+        var grid = document.querySelector('.grid.sales-layout');
+        if (!container) {
+          root.remove();
+          return false;
+        }
+
+        if (!grid) {
+          grid = document.createElement('div');
+          grid.className = 'grid sales-layout';
+          container.appendChild(grid);
+        }
+
+        var upper = root.querySelector('.seller-owner-upper[data-seller-outer-shell="true"]');
+        if (upper) {
+          var pill = upper.querySelector('.account-pill');
+          var logoutHost = upper.querySelector('#salesDeviceLogoutHost');
+          var navActions = container.querySelector('.sales-owner-nav-actions');
+          if (pill && pill.parentNode !== container) {
+            container.insertBefore(pill, container.firstChild);
+          }
+          if (logoutHost && logoutHost.parentNode !== container) {
+            if (navActions) container.insertBefore(logoutHost, navActions);
+            else container.insertBefore(logoutHost, grid);
+          }
+          var hero = upper.querySelector('.sales-layout-hero');
+          if (hero && !grid.contains(hero)) {
+            grid.insertBefore(hero, grid.firstChild);
+          }
+        }
+
+        var heroFallback = document.querySelector('.sales-layout-hero');
+        if (heroFallback && !grid.contains(heroFallback)) {
+          grid.insertBefore(heroFallback, grid.firstChild);
+        }
+
+        var workspace = root.querySelector('.seller-workspace-grid');
+        var leftPanel =
+          (workspace && workspace.querySelector('.sales-left-panel')) ||
+          document.querySelector('.sales-left-panel');
+        var rightPanel =
+          (workspace && workspace.querySelector('.sales-right-panel')) ||
+          document.querySelector('.sales-right-panel');
+
+        if (leftPanel) {
+          leftPanel.classList.remove('owner-workspace-main', 'seller-workspace-main');
+          leftPanel.hidden = false;
+          leftPanel.removeAttribute('aria-hidden');
+          leftPanel.style.removeProperty('display');
+          if (!grid.contains(leftPanel)) grid.appendChild(leftPanel);
+        }
+        if (rightPanel) {
+          rightPanel.classList.remove(
+            'seller-live-sidebar-panel',
+            'seller-shell-hidden-panel',
+            'seller-legacy-hidden',
+            'seller-owner-like-hidden-panel'
+          );
+          rightPanel.hidden = false;
+          rightPanel.removeAttribute('aria-hidden');
+          rightPanel.style.removeProperty('display');
+          if (!grid.contains(rightPanel)) grid.appendChild(rightPanel);
+        }
+
+        grid.hidden = false;
+        grid.removeAttribute('aria-hidden');
+        grid.classList.remove(
+          'sales-legacy-layout-hidden',
+          'seller-owner-like-hidden',
+          'seller-legacy-hidden'
+        );
+        grid.style.removeProperty('display');
+
+        document.querySelectorAll('.seller-owner-upper[data-seller-outer-shell="true"]').forEach(function (el) {
+          if (el !== upper) el.remove();
+        });
+        document.querySelectorAll('.owner-workspace-grid.seller-workspace-grid').forEach(function (el) {
+          if (root.contains(el)) return;
+          if (!el.querySelector('.sales-left-panel, .sales-right-panel')) el.remove();
+        });
+
+        delete document.body.dataset.sellerOwnerWorkspaceBuilt;
+        delete document.body.dataset.sellerOwnerLikeBuilt;
+        delete document.body.dataset.sellerOwnerShell;
+        root.remove();
+        return !!(leftPanel && rightPanel);
+      }
+
       function hideSalesLegacyLayoutForSeller() {
         removeC20SellerDebugBanner();
         [
@@ -1391,11 +1505,7 @@
           el.setAttribute('aria-hidden', 'true');
           el.classList.add('seller-legacy-hidden');
         });
-        document.querySelectorAll('.sales-right-panel, .sales-live-sidebar').forEach(function (el) {
-          el.hidden = true;
-          el.setAttribute('aria-hidden', 'true');
-          el.classList.add('seller-legacy-hidden', 'seller-shell-hidden-panel');
-        });
+        restoreSellerRightPanelVisible();
         document.querySelectorAll('.sales-owner-nav-actions[data-owner-nav]').forEach(function (el) {
           el.hidden = true;
           el.setAttribute('aria-hidden', 'true');
@@ -1448,11 +1558,10 @@
 
         var rightPanel = document.querySelector('.sales-right-panel');
         if (rightPanel) {
-          rightPanel.hidden = true;
-          rightPanel.setAttribute('aria-hidden', 'true');
-          rightPanel.classList.add('seller-shell-hidden-panel');
+          rightPanel.classList.add('seller-live-sidebar-panel');
           if (!workspace.contains(rightPanel)) workspace.appendChild(rightPanel);
         }
+        restoreSellerRightPanelVisible();
 
         var legacyGrid = document.querySelector('.grid.sales-layout');
         if (legacyGrid) {
@@ -1496,6 +1605,7 @@
         finalizeSellerOrphanCleanup();
         hideSalesLegacyLayoutForSeller();
         hideSellerLegacySalesChrome();
+        restoreSellerRightPanelVisible();
         var dash = document.querySelector('.seller-op-dash[data-seller-owner-layout="true"]');
         if (!dash) return false;
         root.dataset.built = 'true';
@@ -1511,6 +1621,11 @@
         if (window.__mgSellerWorkspaceRootBuilding) {
           var existingRoot = document.getElementById('sellerOwnerWorkspaceRoot');
           return !!(existingRoot && existingRoot.dataset.built === 'true');
+        }
+
+        if (shouldBlockVisibleSellerRootForce()) {
+          cleanupIncompleteSellerRootIfBlocked();
+          return false;
         }
 
         var mayBuild =
@@ -1547,12 +1662,15 @@
       function cleanupIncompleteSellerRootIfBlocked() {
         if (!shouldBlockVisibleSellerRootForce()) return;
         var root = document.getElementById('sellerOwnerWorkspaceRoot');
-        if (root && root.dataset.built !== 'true') {
-          root.remove();
+        if (root) {
+          teardownSellerOwnerWorkspaceRoot();
         }
         if (document.documentElement.dataset.authMode === 'owner') {
           delete document.documentElement.dataset.salesPortal;
           document.body.classList.remove('seller-portal-layout');
+          try {
+            sessionStorage.removeItem('mg_sales_portal_seller');
+          } catch (_storageErr) { /* ignore */ }
         }
       }
 
@@ -1692,6 +1810,18 @@
         return 'visible';
       }
 
+      function isOwnerSnapshotVisibleInSellerPanel() {
+        var snapshot = document.querySelector(
+          '.owner-quote-snapshot, .owner-workspace-side[aria-label="Quote Snapshot"], .owner-financial-snapshot, [data-owner-internal-financial="true"]'
+        );
+        if (!snapshot) return false;
+        if (snapshot.hidden || snapshot.getAttribute('aria-hidden') === 'true') return false;
+        var st = window.getComputedStyle(snapshot);
+        if (st.display === 'none' || st.visibility === 'hidden') return false;
+        var rect = snapshot.getBoundingClientRect();
+        return rect.width > 0 || rect.height > 0;
+      }
+
       function __mgSellerFinalLayoutCheck() {
         function isVisible(el) {
           if (!el) return false;
@@ -1713,6 +1843,7 @@
         var price = document.getElementById('salesPriceControlsSection');
         var commercialHead = document.querySelector('.sales-left-panel .section-head h2');
         var legacyGrid = document.querySelector('.grid.sales-layout');
+        var liveScoreHead = right && right.querySelector('.section-head h2');
         var datesFormInDash =
           dash &&
           dash.querySelector(
@@ -1722,9 +1853,13 @@
           !!(dash && dates && dash.contains(dates)) ||
           !!datesFormInDash ||
           !!(dates && (dates.hidden || !isVisible(dates)));
+        var rightPanelSellerSafe =
+          isVisible(right) &&
+          !!(liveScoreHead && /resultado en vivo/i.test(String(liveScoreHead.textContent || ''))) &&
+          !isOwnerSnapshotVisibleInSellerPanel();
 
         return {
-          c20Version: 'C20-C13',
+          c20Version: 'C20-C14',
           visibleRole: readVisibleSellerRoleLabel(),
           sellerRootExists: !!(root && root.dataset.built === 'true'),
           buildFunctionExists: typeof window.buildSellerOwnerWorkspaceRoot === 'function',
@@ -1742,6 +1877,13 @@
           notesOutsideOperationalPlanVisible: isVisible(notes) && !(dash && dash.contains(notes)),
           laborInsideOperationalPlan: !!(dash && labor && dash.contains(labor)),
           rightPanelVisible: isVisible(right),
+          rightPanelSellerSafe: rightPanelSellerSafe,
+          ownerSnapshotVisibleInSeller: isOwnerSnapshotVisibleInSellerPanel(),
+          sellerLiveScoreVisible:
+            isVisible(liveScoreHead) ||
+            isVisible(document.getElementById('salesTraffic')) ||
+            isVisible(document.getElementById('salesPrimaryPrice')),
+          sellerCommissionVisible: isVisible(document.getElementById('salesPrimaryCommission')),
           priceControlVisible: isVisible(price),
           commercialEstimateVisible: !!(
             commercialHead &&
@@ -1754,13 +1896,15 @@
 
       window.buildSellerOwnerWorkspaceRoot = buildSellerOwnerWorkspaceRoot;
       window.forceBuildSellerOwnerWorkspaceRootNow = forceBuildSellerOwnerWorkspaceRootNow;
+      window.teardownSellerOwnerWorkspaceRoot = teardownSellerOwnerWorkspaceRoot;
+      window.cleanupIncompleteSellerRootIfBlocked = cleanupIncompleteSellerRootIfBlocked;
       window.scheduleSellerWorkspaceRootBoot = scheduleSellerWorkspaceRootBoot;
       window.scheduleVisibleSellerRootForceBoot = scheduleVisibleSellerRootForceBoot;
       window.__mgSellerFinalLayoutCheck = __mgSellerFinalLayoutCheck;
       window.__mgForceBuildSellerRootNow = function forceBuildSellerRootNowManual() {
         return forceBuildSellerOwnerWorkspaceRootNow('manual');
       };
-      window.__mgC20ScriptLoaded = 'C20-C13';
+      window.__mgC20ScriptLoaded = 'C20-C14';
 
       function hideSellerLegacySectionsOutsidePlanHard() {
         if (document.documentElement.dataset.salesPortal !== 'seller') return;
@@ -1782,13 +1926,6 @@
           if (!el) return;
           var dash = document.querySelector('.seller-op-dash[data-seller-owner-layout="true"]');
           if (dash && dash.contains(el)) return;
-          el.hidden = true;
-          el.setAttribute('aria-hidden', 'true');
-          el.classList.add('seller-hard-hidden-orphan');
-          el.style.setProperty('display', 'none', 'important');
-        });
-
-        document.querySelectorAll('.sales-right-panel, .sales-live-sidebar').forEach(function (el) {
           el.hidden = true;
           el.setAttribute('aria-hidden', 'true');
           el.classList.add('seller-hard-hidden-orphan');
@@ -1838,9 +1975,7 @@
         }
 
         if (rightPanel) {
-          rightPanel.classList.add('seller-shell-hidden-panel');
-          rightPanel.setAttribute('hidden', '');
-          rightPanel.setAttribute('aria-hidden', 'true');
+          rightPanel.classList.add('seller-live-sidebar-panel');
           workspace.appendChild(rightPanel);
         }
 
@@ -2320,15 +2455,11 @@
           el.setAttribute('aria-hidden', 'true');
           el.classList.add('seller-owner-like-hidden');
         });
-        document.querySelectorAll('.sales-right-panel, .sales-live-sidebar').forEach(function (el) {
-          el.hidden = true;
-          el.setAttribute('aria-hidden', 'true');
-          el.classList.add('seller-owner-like-hidden-panel');
-        });
         document.querySelectorAll('.sales-owner-nav-actions[data-owner-nav]').forEach(function (el) {
           el.hidden = true;
           el.setAttribute('aria-hidden', 'true');
         });
+        restoreSellerRightPanelVisible();
         var grid = document.querySelector('.grid.sales-layout');
         if (grid) grid.classList.add('seller-owner-like-hidden');
       }
@@ -7978,7 +8109,9 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         bindSalesContactPicker();
         scheduleSellerWorkspaceRootBoot();
         scheduleVisibleSellerRootForceBoot();
-        if (hasExactVisibleSellerTopbarRole() && !shouldDeferVisibleSellerRootForce()) {
+        if (shouldBlockVisibleSellerRootForce()) {
+          cleanupIncompleteSellerRootIfBlocked();
+        } else if (hasExactVisibleSellerTopbarRole() && !shouldDeferVisibleSellerRootForce()) {
           forceBuildSellerOwnerWorkspaceRootNow('boot-immediate-visible-role');
         } else {
           buildSellerOwnerWorkspaceRoot();
