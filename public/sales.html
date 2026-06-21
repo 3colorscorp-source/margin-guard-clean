@@ -2079,6 +2079,93 @@
         return /operational_plan/.test(loadFn) && /sellerScopeLineForDay|sellerResolveDayDescriptionText/.test(buildFn);
       }
 
+      function isSellerLaborDaysMatchOperationalPlan(state, settings) {
+        if (!state) state = loadSalesState();
+        if (!settings) settings = loadSettings();
+        if (!isLaborAutoSyncActive(state)) return false;
+        const api = getOperationalPlanApi();
+        if (!api || !api.planHasDays(state.operational_plan || [])) return false;
+        const syncSettings = isSellerLaborSyncRoute() ? sellerLaborSyncSettings(settings) : settings;
+        const hpd = isSellerLaborSyncRoute()
+          ? resolveSellerLaborHoursPerDay(settings)
+          : api.getHoursPerDay(syncSettings);
+        const plan = api.normalizeOperationalPlan(
+          state.operational_plan || [],
+          readOperationalDaysOverride(state),
+          hpd
+        );
+        if (!plan.length) return false;
+        const expected = api.aggregateLaborWorkersFromOperationalPlan(plan, syncSettings);
+        if (!expected.length) return false;
+        function bucketDays(workers) {
+          const out = { installer: 0, helper: 0 };
+          (workers || []).forEach(function (w) {
+            const key = w && w.type === 'helper' ? 'helper' : 'installer';
+            out[key] += workerDaysAsInteger(w);
+          });
+          return out;
+        }
+        const expectedBuckets = bucketDays(expected);
+        const actualBuckets = bucketDays(state.workers || []);
+        return (
+          expectedBuckets.installer === actualBuckets.installer &&
+          expectedBuckets.helper === actualBuckets.helper
+        );
+      }
+
+      function readSellerLaborSyncSnapshot() {
+        const state = loadSalesState();
+        const settings = loadSettings();
+        const api = getOperationalPlanApi();
+        const hpd = isSellerLaborSyncRoute()
+          ? resolveSellerLaborHoursPerDay(settings)
+          : api
+            ? api.getHoursPerDay(settings)
+            : 8;
+        const normalized = api
+          ? api.normalizeOperationalPlan(
+              state.operational_plan || [],
+              readOperationalDaysOverride(state),
+              hpd
+            )
+          : [];
+        const planDayCount = normalized.length;
+        const opMetrics = getOperationalMetricsForState(state, settings);
+        const workerDayValues = (state.workers || []).map(function (w) {
+          return workerDaysAsInteger(w);
+        });
+        const totalWorkerDays = workerDayValues.reduce(function (sum, days) {
+          return sum + days;
+        }, 0);
+        const laborHours =
+          opMetrics && Number(opMetrics.estimated_hours) > 0
+            ? Number(opMetrics.estimated_hours)
+            : laborHoursFromWorkers(state.workers, hpd);
+        let calendarDayCount = planDayCount;
+        if (opMetrics && Number(opMetrics.estimated_days) > 0) {
+          calendarDayCount = Number(opMetrics.estimated_days);
+        }
+        if (api && typeof api.buildSalesPlanCalendarPreview === 'function' && normalized.length) {
+          const start =
+            state.startDate ||
+            state.targetStartDate ||
+            state.quoteStartDate ||
+            '';
+          const preview = api.buildSalesPlanCalendarPreview(normalized, start);
+          if (preview && Number(preview.planDayCount) > 0) {
+            calendarDayCount = Number(preview.planDayCount);
+          }
+        }
+        return {
+          sellerOperationalPlanDayCount: planDayCount,
+          sellerWorkerDayValues: workerDayValues,
+          sellerTotalWorkerDays: totalWorkerDays,
+          sellerLaborHours: Math.round(laborHours * 100) / 100,
+          sellerCalendarDayCount: calendarDayCount,
+          sellerLaborDaysMatchOperationalPlan: isSellerLaborDaysMatchOperationalPlan(state, settings),
+        };
+      }
+
       function isSellerLaborTableComplete() {
         var labor = document.getElementById('salesLaborSection');
         var table = labor && labor.querySelector('.sales-labor-table');
@@ -2176,9 +2263,10 @@
           !isOwnerSnapshotVisibleInSellerPanel();
         var sellerRightPanelSticky =
           window.matchMedia('(max-width: 960px)').matches || readMgElementStickyState(right);
+        var sellerLaborSync = readSellerLaborSyncSnapshot();
 
         return {
-          c20Version: 'C20-C18',
+          c20Version: 'C20-C19',
           visibleRole: readVisibleSellerRoleLabel(),
           sellerRootExists: !!(root && root.dataset.built === 'true'),
           buildFunctionExists: typeof window.buildSellerOwnerWorkspaceRoot === 'function',
@@ -2214,6 +2302,12 @@
           sellerScopeDraftWritesToMessage: isSellerScopeDraftWritesToMessage(),
           sellerScopeDraftDoesNotTouchInternalNotes: isSellerScopeDraftDoesNotTouchInternalNotes(),
           sellerScopeDraftUsesOperationalDays: isSellerScopeDraftUsesOperationalDays(),
+          sellerOperationalPlanDayCount: sellerLaborSync.sellerOperationalPlanDayCount,
+          sellerWorkerDayValues: sellerLaborSync.sellerWorkerDayValues,
+          sellerTotalWorkerDays: sellerLaborSync.sellerTotalWorkerDays,
+          sellerLaborHours: sellerLaborSync.sellerLaborHours,
+          sellerCalendarDayCount: sellerLaborSync.sellerCalendarDayCount,
+          sellerLaborDaysMatchOperationalPlan: sellerLaborSync.sellerLaborDaysMatchOperationalPlan,
           sellerLaborTableComplete: isSellerLaborTableComplete(),
           sellerLaborActionsAligned: isSellerLaborActionsAligned(),
           sellerLaborTableUsesFullWidth: isSellerLaborTableFullWidth(),
@@ -2239,7 +2333,7 @@
       window.__mgForceBuildSellerRootNow = function forceBuildSellerRootNowManual() {
         return forceBuildSellerOwnerWorkspaceRootNow('manual');
       };
-      window.__mgC20ScriptLoaded = 'C20-C18';
+      window.__mgC20ScriptLoaded = 'C20-C19';
       window.generateSellerScopeDraftFromOperationalPlan = generateSellerScopeDraftFromOperationalPlan;
       window.ensureSellerGenerateScopeDraftButton = ensureSellerGenerateScopeDraftButton;
 
@@ -3531,11 +3625,40 @@
         return Boolean(api && api.planHasDays(state.operational_plan || []));
       }
 
+      function isSellerLaborSyncRoute() {
+        return (
+          isSellerForcedPortalRoute() ||
+          isSellerDeviceSessionActive() ||
+          isDirectSalesSellerDevicePath()
+        );
+      }
+
+      /** Seller settings stub can expose hoursPerDay=0; MgSalesOperationalPlan clamps to 0.25 and inflates worker-days (8h → 32d). */
+      function resolveSellerLaborHoursPerDay(settings) {
+        const n = Number(settings && settings.hoursPerDay);
+        if (Number.isFinite(n) && n >= 1) return n;
+        return 8;
+      }
+
+      function sellerLaborSyncSettings(settings) {
+        const hpd = resolveSellerLaborHoursPerDay(settings);
+        return Object.assign({}, settings || {}, { hoursPerDay: hpd });
+      }
+
       function syncLaborWorkersFromOperationalPlan(state, settings) {
         if (!isLaborAutoSyncActive(state)) return false;
         const api = getOperationalPlanApi();
         if (!api || typeof api.aggregateLaborWorkersFromOperationalPlan !== 'function') return false;
-        const next = api.aggregateLaborWorkersFromOperationalPlan(state.operational_plan || [], settings);
+        const syncSettings = isSellerLaborSyncRoute() ? sellerLaborSyncSettings(settings) : settings;
+        const hpd = isSellerLaborSyncRoute()
+          ? resolveSellerLaborHoursPerDay(settings)
+          : api.getHoursPerDay(syncSettings);
+        const plan = api.normalizeOperationalPlan(
+          state.operational_plan || [],
+          readOperationalDaysOverride(state),
+          hpd
+        );
+        const next = api.aggregateLaborWorkersFromOperationalPlan(plan, syncSettings);
         if (!next.length) return false;
         const prev = JSON.stringify(state.workers || []);
         state.workers = next;
@@ -3575,7 +3698,9 @@
       }
 
       function laborHoursFromWorkers(workers, hoursPerDay) {
-        const hpd = Math.max(Number(hoursPerDay || 8), 0.25);
+        const hpd = isSellerLaborSyncRoute()
+          ? resolveSellerLaborHoursPerDay({ hoursPerDay: hoursPerDay })
+          : Math.max(Number(hoursPerDay || 8), 0.25);
         return (workers || []).reduce(function (sum, worker) {
           return sum + workerDaysAsInteger(worker) * hpd;
         }, 0);
