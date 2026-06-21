@@ -973,6 +973,20 @@
       margin: 0 !important;
       padding: 0 !important;
     }
+    /* C20-C32-G — hard blocked fallback panel (inline styles are primary) */
+    body.mg-hard-seller-blocked-fallback-active,
+    html.mg-hard-seller-blocked-fallback-active {
+      background: #070b14 !important;
+      color: #e8eefc !important;
+    }
+    #mgHardSellerBlockedFallback {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483000;
+      display: flex;
+      background: #070b14;
+      color: #e8eefc;
+    }
   </style>
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
@@ -1096,7 +1110,9 @@
       window.__mgSyncSellerPortalGuardAndLayout = function syncSellerPortalGuardAndLayout() {
         if (window.__mgSellerWorkspaceRootBuilding || window.__mgSellerOwnerLikeBuilding) return;
         if (document.body.classList.contains('mg-seller-portal-blocked')) {
-          if (typeof window.ensureSellerPortalBlockedUiVisible === 'function') {
+          if (typeof window.ensureHardSellerBlockedFallbackVisible === 'function') {
+            window.ensureHardSellerBlockedFallbackVisible();
+          } else if (typeof window.ensureSellerPortalBlockedUiVisible === 'function') {
             window.ensureSellerPortalBlockedUiVisible();
           }
           return;
@@ -1188,6 +1204,13 @@
             window.clearInterval(iv);
             return;
           }
+          if (document.body.classList.contains('mg-seller-portal-blocked')) {
+            if (typeof window.ensureHardSellerBlockedFallbackVisible === 'function') {
+              window.ensureHardSellerBlockedFallbackVisible();
+            }
+            window.clearInterval(iv);
+            return;
+          }
           var topbar = document.querySelector('.mg-topbar__title');
           var visibleRole = topbar ? String(topbar.textContent || '').trim() : '';
           var sellerUrlParam = false;
@@ -1206,6 +1229,198 @@
           }
           if (attempts >= 120) window.clearInterval(iv);
         }, 50);
+      })();
+
+      var HARD_SELLER_BLOCKED_MSG =
+        'Seller portal requires a clean paired seller device session. Open this link from the assigned seller browser/profile.';
+      var HARD_SELLER_BLOCKED_HINT = 'Use a paired seller device profile';
+      var HARD_SELLER_BLOCKED_PANEL_ID = 'mgHardSellerBlockedFallback';
+
+      function isHardSellerBlockedPortalUrl() {
+        var path = String(window.location.pathname || '');
+        if (!/^\/sales(?:\.html)?\/?$/i.test(path)) return false;
+        try {
+          return new URLSearchParams(window.location.search || '').get('portal') === 'seller';
+        } catch (_hardUrlErr) {
+          return false;
+        }
+      }
+
+      function isValidPairedSellerDeviceSessionActive() {
+        if (document.body.classList.contains('mg-seller-portal-blocked')) return false;
+        if (document.documentElement.dataset.authMode === 'blocked') return false;
+        if (window.MG_SALES_PORTAL_MODE === 'seller-blocked') return false;
+        if (document.documentElement.dataset.authMode !== 'device') return false;
+        if (document.documentElement.dataset.portalType !== 'seller') return false;
+        if (
+          window.MGSalesDevicePortal &&
+          typeof window.MGSalesDevicePortal.isSellerMode === 'function' &&
+          !window.MGSalesDevicePortal.isSellerMode()
+        ) {
+          return false;
+        }
+        return true;
+      }
+
+      function shouldShowHardSellerBlockedFallback() {
+        return (
+          isHardSellerBlockedPortalUrl() &&
+          document.body.classList.contains('mg-seller-portal-blocked') &&
+          !isValidPairedSellerDeviceSessionActive()
+        );
+      }
+
+      function removeHardSellerBlockedFallback() {
+        var panel = document.getElementById(HARD_SELLER_BLOCKED_PANEL_ID);
+        if (panel) panel.remove();
+        document.body.classList.remove('mg-hard-seller-blocked-fallback-active');
+        document.documentElement.classList.remove('mg-hard-seller-blocked-fallback-active');
+      }
+
+      function hideHardSellerBlockedLayoutDebris() {
+        [
+          '#sellerOwnerWorkspaceRoot',
+          '.seller-owner-workspace-root',
+          '.grid.sales-layout',
+          '.seller-owner-upper',
+          '#mgSellerPortalBlockedNotice',
+        ].forEach(function (selector) {
+          document.querySelectorAll(selector).forEach(function (el) {
+            if (el && el.id === HARD_SELLER_BLOCKED_PANEL_ID) return;
+            el.hidden = true;
+            el.setAttribute('aria-hidden', 'true');
+            el.style.setProperty('display', 'none', 'important');
+            el.style.setProperty('visibility', 'hidden', 'important');
+            el.style.setProperty('pointer-events', 'none', 'important');
+          });
+        });
+      }
+
+      function ensureHardSellerBlockedFallbackVisible() {
+        if (!shouldShowHardSellerBlockedFallback()) {
+          removeHardSellerBlockedFallback();
+          return false;
+        }
+
+        document.documentElement.classList.add('mg-hard-seller-blocked-fallback-active');
+        document.body.classList.add('mg-hard-seller-blocked-fallback-active');
+        document.documentElement.style.setProperty('background', '#070b14', 'important');
+        document.body.style.setProperty('background', '#070b14', 'important');
+        document.body.style.setProperty('color', '#e8eefc', 'important');
+
+        hideHardSellerBlockedLayoutDebris();
+
+        var panel = document.getElementById(HARD_SELLER_BLOCKED_PANEL_ID);
+        if (!panel) {
+          panel = document.createElement('div');
+          panel.id = HARD_SELLER_BLOCKED_PANEL_ID;
+          panel.setAttribute('role', 'alert');
+          panel.setAttribute('aria-live', 'assertive');
+          panel.setAttribute('aria-label', 'Seller portal blocked');
+          document.body.appendChild(panel);
+        }
+
+        while (panel.firstChild) {
+          panel.removeChild(panel.firstChild);
+        }
+
+        var inner = document.createElement('div');
+        inner.className = 'mg-hard-seller-blocked-fallback__inner';
+
+        var hint = document.createElement('div');
+        hint.className = 'mg-hard-seller-blocked-fallback__hint';
+        hint.textContent = HARD_SELLER_BLOCKED_HINT;
+
+        var msg = document.createElement('p');
+        msg.className = 'mg-hard-seller-blocked-fallback__message';
+        msg.textContent = HARD_SELLER_BLOCKED_MSG;
+
+        inner.appendChild(hint);
+        inner.appendChild(msg);
+        panel.appendChild(inner);
+
+        panel.style.setProperty('position', 'fixed', 'important');
+        panel.style.setProperty('inset', '0', 'important');
+        panel.style.setProperty('z-index', '2147483000', 'important');
+        panel.style.setProperty('display', 'flex', 'important');
+        panel.style.setProperty('visibility', 'visible', 'important');
+        panel.style.setProperty('opacity', '1', 'important');
+        panel.style.setProperty('pointer-events', 'auto', 'important');
+        panel.style.setProperty('overflow', 'auto', 'important');
+        panel.style.setProperty('box-sizing', 'border-box', 'important');
+        panel.style.setProperty(
+          'padding',
+          '24px 24px 24px calc(var(--mg-sidebar-width, 64px) + 24px)',
+          'important'
+        );
+        panel.style.setProperty('background', '#070b14', 'important');
+        panel.style.setProperty('color', '#e8eefc', 'important');
+
+        inner.style.setProperty('max-width', '72ch', 'important');
+        inner.style.setProperty('width', '100%', 'important');
+        inner.style.setProperty('margin', '0', 'important');
+
+        hint.style.setProperty('display', 'inline-flex', 'important');
+        hint.style.setProperty('align-items', 'center', 'important');
+        hint.style.setProperty('margin', '0 0 14px 0', 'important');
+        hint.style.setProperty('padding', '8px 14px', 'important');
+        hint.style.setProperty('border-radius', '999px', 'important');
+        hint.style.setProperty('background', 'rgba(255, 255, 255, 0.045)', 'important');
+        hint.style.setProperty('color', '#e8eefc', 'important');
+        hint.style.setProperty('font-size', '13px', 'important');
+        hint.style.setProperty('line-height', '1.4', 'important');
+
+        msg.style.setProperty('margin', '0', 'important');
+        msg.style.setProperty('padding', '12px 14px', 'important');
+        msg.style.setProperty('border-radius', '12px', 'important');
+        msg.style.setProperty('border', '1px solid rgba(239, 68, 68, 0.35)', 'important');
+        msg.style.setProperty('background', 'rgba(239, 68, 68, 0.10)', 'important');
+        msg.style.setProperty('color', '#e8eefc', 'important');
+        msg.style.setProperty('font-size', '14px', 'important');
+        msg.style.setProperty('line-height', '1.55', 'important');
+
+        panel.hidden = false;
+        panel.removeAttribute('aria-hidden');
+        return true;
+      }
+
+      window.ensureHardSellerBlockedFallbackVisible = ensureHardSellerBlockedFallbackVisible;
+      window.removeHardSellerBlockedFallback = removeHardSellerBlockedFallback;
+      window.shouldShowHardSellerBlockedFallback = shouldShowHardSellerBlockedFallback;
+
+      (function startHardSellerBlockedFallbackWatchEarly() {
+        if (window.__mgHardSellerBlockedFallbackWatchStarted) return;
+        window.__mgHardSellerBlockedFallbackWatchStarted = true;
+
+        function tickHardSellerBlockedFallback() {
+          ensureHardSellerBlockedFallbackVisible();
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', tickHardSellerBlockedFallback, { once: true });
+        } else {
+          tickHardSellerBlockedFallback();
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+          if (typeof MutationObserver === 'undefined') return;
+          var blockedObserver = new MutationObserver(tickHardSellerBlockedFallback);
+          blockedObserver.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['class'],
+          });
+          blockedObserver.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ['data-auth-mode', 'data-portal-type'],
+          });
+        });
+
+        document.addEventListener('device-auth-ready', tickHardSellerBlockedFallback);
+        window.addEventListener('load', tickHardSellerBlockedFallback);
+
+        [0, 50, 150, 400, 1000, 2500, 5000, 8000, 12000, 20000].forEach(function (delayMs) {
+          window.setTimeout(tickHardSellerBlockedFallback, delayMs);
+        });
       })();
     })();
   </script>
@@ -1807,6 +2022,10 @@
             el.style.setProperty('display', 'none', 'important');
           });
         });
+
+        if (typeof window.ensureHardSellerBlockedFallbackVisible === 'function') {
+          window.ensureHardSellerBlockedFallbackVisible();
+        }
 
         return true;
       }
@@ -2695,6 +2914,9 @@
         if (!shouldBlockVisibleSellerRootForce()) return;
         if (isOwnerSellerPreviewLayoutActive()) return;
         if (document.body.classList.contains('mg-seller-portal-blocked')) {
+          if (typeof window.ensureHardSellerBlockedFallbackVisible === 'function') {
+            window.ensureHardSellerBlockedFallbackVisible();
+          }
           ensureSellerPortalBlockedUiVisible();
           return;
         }
@@ -10908,7 +11130,12 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
 
         function runIfBlocked() {
           if (document.body.classList.contains('mg-seller-portal-blocked')) {
+            if (typeof window.ensureHardSellerBlockedFallbackVisible === 'function') {
+              window.ensureHardSellerBlockedFallbackVisible();
+            }
             ensureSellerPortalBlockedUiVisible();
+          } else if (typeof window.removeHardSellerBlockedFallback === 'function') {
+            window.removeHardSellerBlockedFallback();
           }
         }
 
@@ -10920,15 +11147,26 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
             attributes: true,
             attributeFilter: ['class'],
           });
+          blockedObserver.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ['data-auth-mode', 'data-portal-type'],
+          });
         }
 
-        [0, 50, 150, 400, 1000, 2500, 5000].forEach(function (delayMs) {
+        [0, 50, 150, 400, 1000, 2500, 5000, 8000, 12000, 20000].forEach(function (delayMs) {
           window.setTimeout(runIfBlocked, delayMs);
         });
       }
 
       function bootSellerPortalLayout() {
         startSellerPortalBlockedUiWatch();
+        if (
+          document.body.classList.contains('mg-seller-portal-blocked') &&
+          typeof window.ensureHardSellerBlockedFallbackVisible === 'function'
+        ) {
+          window.ensureHardSellerBlockedFallbackVisible();
+          return;
+        }
         if (document.body.classList.contains('mg-seller-portal-blocked')) {
           ensureSellerPortalBlockedUiVisible();
           return;
