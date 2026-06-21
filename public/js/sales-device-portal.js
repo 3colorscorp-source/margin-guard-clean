@@ -10,6 +10,8 @@
     "Create a public quote link before using Firmar.";
   const SELLER_PORTAL_BLOCKED_MSG =
     "Seller portal requires a clean paired seller device session. Open this link from the assigned seller browser/profile.";
+  const SELLER_PORTAL_BLOCKED_PROFILE_HINT = "Use a paired seller device profile";
+  const SELLER_BLOCKED_FALLBACK_SHELL_ID = "mgSellerBlockedFallbackShell";
   const BLOCKED_ENDPOINT_RE = /\/send-quote-zapier/i;
   const BLOCKED_CONTROL_IDS = new Set([
     "btnSendQuote",
@@ -182,6 +184,137 @@
     if (notice) notice.remove();
   }
 
+  function isRealSellerPortalUrl() {
+    const path = String(window.location.pathname || "").toLowerCase();
+    if (!/^\/sales(?:\.html)?\/?$/.test(path)) return false;
+    try {
+      return new URLSearchParams(window.location.search || "").get("portal") === "seller";
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  function isOwnerPreviewPortalUrl() {
+    const path = String(window.location.pathname || "").toLowerCase();
+    if (!/^\/sales(?:\.html)?\/?$/.test(path)) return false;
+    try {
+      return new URLSearchParams(window.location.search || "").get("portal") === "owner";
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  function isValidPairedSellerDeviceSessionActive() {
+    if (!sellerModeActive) return false;
+    if (document.body.classList.contains("mg-seller-portal-blocked")) return false;
+    if (document.documentElement.dataset.authMode === "blocked") return false;
+    if (window.MG_SALES_PORTAL_MODE === "seller-blocked") return false;
+    if (document.documentElement.dataset.authMode !== "device") return false;
+    if (document.documentElement.dataset.portalType !== "seller") return false;
+    return true;
+  }
+
+  function removeSellerBlockedFallbackShell() {
+    const shell = document.getElementById(SELLER_BLOCKED_FALLBACK_SHELL_ID);
+    if (shell) shell.remove();
+    document.body.classList.remove("mg-seller-blocked-fallback-active");
+    document.documentElement.classList.remove("mg-seller-blocked-fallback-active");
+  }
+
+  function ensureSellerBlockedFallbackShell() {
+    if (!isRealSellerPortalUrl() || isOwnerPreviewPortalUrl()) {
+      removeSellerBlockedFallbackShell();
+      return false;
+    }
+    if (isValidPairedSellerDeviceSessionActive()) {
+      removeSellerBlockedFallbackShell();
+      return false;
+    }
+    if (
+      !document.body.classList.contains("mg-seller-portal-blocked") &&
+      document.documentElement.dataset.authMode !== "blocked"
+    ) {
+      return false;
+    }
+
+    document.documentElement.classList.add("mg-seller-blocked-fallback-active");
+    document.body.classList.add("mg-seller-blocked-fallback-active");
+    document.documentElement.style.setProperty("background", "#070b14", "important");
+    document.body.style.setProperty("background", "#070b14", "important");
+    document.body.style.setProperty("color", "#e8eefc", "important");
+
+    let shell = document.getElementById(SELLER_BLOCKED_FALLBACK_SHELL_ID);
+    if (!shell) {
+      shell = document.createElement("div");
+      shell.id = SELLER_BLOCKED_FALLBACK_SHELL_ID;
+      shell.setAttribute("role", "alert");
+      shell.setAttribute("aria-live", "assertive");
+      shell.setAttribute("aria-label", "Seller portal blocked");
+      document.body.appendChild(shell);
+    }
+
+    while (shell.firstChild) {
+      shell.removeChild(shell.firstChild);
+    }
+
+    const inner = document.createElement("div");
+    const hint = document.createElement("div");
+    hint.textContent = SELLER_PORTAL_BLOCKED_PROFILE_HINT;
+    const message = document.createElement("p");
+    message.textContent = SELLER_PORTAL_BLOCKED_MSG;
+    inner.appendChild(hint);
+    inner.appendChild(message);
+    shell.appendChild(inner);
+
+    shell.hidden = false;
+    shell.removeAttribute("aria-hidden");
+
+    shell.style.setProperty("position", "fixed", "important");
+    shell.style.setProperty("inset", "0", "important");
+    shell.style.setProperty("z-index", "2147483000", "important");
+    shell.style.setProperty("display", "flex", "important");
+    shell.style.setProperty("flex-direction", "column", "important");
+    shell.style.setProperty("align-items", "flex-start", "important");
+    shell.style.setProperty("justify-content", "flex-start", "important");
+    shell.style.setProperty("visibility", "visible", "important");
+    shell.style.setProperty("opacity", "1", "important");
+    shell.style.setProperty("pointer-events", "auto", "important");
+    shell.style.setProperty("overflow", "auto", "important");
+    shell.style.setProperty("box-sizing", "border-box", "important");
+    shell.style.setProperty(
+      "padding",
+      "24px 24px 24px calc(var(--mg-sidebar-width, 64px) + 24px)",
+      "important"
+    );
+    shell.style.setProperty("background", "#070b14", "important");
+    shell.style.setProperty("color", "#e8eefc", "important");
+
+    inner.style.setProperty("max-width", "72ch", "important");
+    inner.style.setProperty("width", "100%", "important");
+    inner.style.setProperty("margin", "0", "important");
+
+    hint.style.setProperty("display", "inline-flex", "important");
+    hint.style.setProperty("align-items", "center", "important");
+    hint.style.setProperty("margin", "0 0 14px 0", "important");
+    hint.style.setProperty("padding", "8px 14px", "important");
+    hint.style.setProperty("border-radius", "999px", "important");
+    hint.style.setProperty("background", "rgba(255, 255, 255, 0.045)", "important");
+    hint.style.setProperty("color", "#e8eefc", "important");
+    hint.style.setProperty("font-size", "13px", "important");
+    hint.style.setProperty("line-height", "1.4", "important");
+
+    message.style.setProperty("margin", "0", "important");
+    message.style.setProperty("padding", "12px 14px", "important");
+    message.style.setProperty("border-radius", "12px", "important");
+    message.style.setProperty("border", "1px solid rgba(239, 68, 68, 0.35)", "important");
+    message.style.setProperty("background", "rgba(239, 68, 68, 0.10)", "important");
+    message.style.setProperty("color", "#e8eefc", "important");
+    message.style.setProperty("font-size", "14px", "important");
+    message.style.setProperty("line-height", "1.55", "important");
+
+    return true;
+  }
+
   function applySellerPortalBlockedState() {
     sellerModeActive = false;
     window.MG_SALES_PORTAL_MODE = "seller-blocked";
@@ -228,9 +361,11 @@
 
     document.body.classList.add("auth-ready", "mg-seller-portal-blocked");
     window.MGAppNav?.applyPortalMode?.("seller-device");
+    ensureSellerBlockedFallbackShell();
   }
 
   function applyOwnerMode(ownerData) {
+    removeSellerBlockedFallbackShell();
     sellerModeActive = false;
     window.MG_SALES_PORTAL_MODE = "owner";
     document.documentElement.dataset.authMode = "owner";
@@ -663,6 +798,7 @@
   }
 
   async function applySellerMode(auth) {
+    removeSellerBlockedFallbackShell();
     sellerModeActive = true;
     window.MG_SALES_PORTAL_MODE = "device";
     document.documentElement.dataset.authMode = "device";
