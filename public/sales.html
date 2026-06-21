@@ -417,6 +417,11 @@
     html[data-sales-portal="seller"] #salesDatesSection,
     html[data-sales-portal="seller"] #salesNotesSection,
     html[data-sales-portal="seller"] #salesPriceControlsSection,
+    html[data-sales-portal="seller"] #salesNotes,
+    html[data-sales-portal="seller"] label[for="salesNotes"],
+    html[data-sales-portal="seller"] #salesNotesCount,
+    html[data-sales-portal="seller"] .sales-labor__actions,
+    html[data-sales-portal="seller"] .card-inner > #salesLaborSection,
     html[data-sales-portal="seller"] .seller-operational .sales-op-summary-total,
     html[data-sales-portal="seller"] .seller-operational .sales-labor-th--rate,
     html[data-sales-portal="seller"] .seller-operational .sales-labor-th--labor,
@@ -1336,6 +1341,122 @@
         return true;
       }
 
+      function findSalesMessageFieldWrapper() {
+        var input = document.getElementById('salesMessageToClient');
+        return input ? input.closest('.field') : null;
+      }
+
+      function finalizeSellerOrphanCleanup() {
+        if (!isSellerForcedPortalRoute()) return;
+        var dash = document.querySelector(
+          '#salesOperationalSection .seller-op-dash[data-seller-owner-layout="true"]'
+        );
+        var datesSection = document.getElementById('salesDatesSection');
+        var notesSection = document.getElementById('salesNotesSection');
+        var laborSection = document.getElementById('salesLaborSection');
+        var messageWrap = findSalesMessageFieldWrapper();
+        var scope = dash && dash.querySelector('.seller-op-scope-work, .owner-op-scope-work');
+
+        if (datesSection && dash && dash.querySelector('.seller-op-dash__dates-card, .owner-op-dash__dates-card')) {
+          datesSection.setAttribute('hidden', '');
+          datesSection.setAttribute('aria-hidden', 'true');
+        }
+        if (notesSection && messageWrap && scope && scope.contains(messageWrap)) {
+          notesSection.setAttribute('hidden', '');
+          notesSection.setAttribute('aria-hidden', 'true');
+        }
+        var internalNotes = document.getElementById('salesNotes');
+        if (internalNotes) {
+          var internalWrap = internalNotes.closest('.field');
+          if (internalWrap) {
+            internalWrap.hidden = true;
+            internalWrap.setAttribute('aria-hidden', 'true');
+          }
+        }
+        if (laborSection && dash && dash.contains(laborSection)) {
+          laborSection.removeAttribute('hidden');
+        }
+      }
+
+      function repairSellerOpDashFromOwnerBlueprint() {
+        if (!isSellerForcedPortalRoute()) return false;
+
+        var dash = document.querySelector(
+          '#salesOperationalSection .seller-op-dash[data-seller-owner-layout="true"]'
+        );
+        if (!dash) return false;
+
+        dash.classList.add('owner-op-dash');
+        var stack = dash.querySelector('.seller-op-dash__stack, .owner-op-dash__stack');
+        if (!stack) return false;
+
+        var plan = stack.querySelector('.seller-op-dash__plan, .owner-op-dash__plan');
+        var actionBar = stack.querySelector('.seller-op-dash__action-bar, .owner-op-dash__action-bar');
+        var scope = stack.querySelector('.seller-op-scope-work, .owner-op-scope-work');
+        var labor = document.getElementById('salesLaborSection');
+        var addDayBtn = document.getElementById('btnAddOperationalDay');
+        var addWorkerBtn = document.getElementById('btnAddSalesWorker');
+        var clearLaborBtn = document.getElementById('btnClearSalesWorkers');
+
+        if (!scope) {
+          scope = document.createElement('section');
+          scope.className = 'seller-op-scope-work owner-op-scope-work';
+          scope.setAttribute('aria-labelledby', 'sellerScopeWorkHeading');
+          scope.innerHTML =
+            '<header class="seller-op-scope-work__head owner-op-scope-work__head">' +
+            '<h3 class="seller-op-scope-work__title owner-op-scope-work__title" id="sellerScopeWorkHeading">Scope of Work</h3>' +
+            '<p class="seller-op-scope-work__lead owner-op-scope-work__lead" id="sellerScopeWorkLead">Review and edit before sending to client.</p>' +
+            '</header>';
+          stack.appendChild(scope);
+        }
+
+        var messageWrap = findSalesMessageFieldWrapper();
+        if (messageWrap && !scope.contains(messageWrap)) {
+          scope.appendChild(messageWrap);
+        }
+
+        if (!actionBar) {
+          actionBar = document.createElement('div');
+          actionBar.className = 'seller-op-dash__action-bar owner-op-dash__action-bar';
+          actionBar.setAttribute('role', 'toolbar');
+          actionBar.setAttribute('aria-label', 'Operational plan and labor actions');
+          stack.appendChild(actionBar);
+        }
+        if (addDayBtn && !actionBar.contains(addDayBtn)) {
+          addDayBtn.classList.add('primary');
+          actionBar.insertBefore(addDayBtn, actionBar.firstChild);
+        }
+        var laborBar = actionBar.querySelector('.seller-op-dash__action-bar-labor, .owner-op-dash__action-bar-labor');
+        if (!laborBar) {
+          laborBar = document.createElement('div');
+          laborBar.className = 'seller-op-dash__action-bar-labor owner-op-dash__action-bar-labor';
+          actionBar.appendChild(laborBar);
+        }
+        if (addWorkerBtn && !laborBar.contains(addWorkerBtn)) laborBar.appendChild(addWorkerBtn);
+        if (clearLaborBtn && !laborBar.contains(clearLaborBtn)) laborBar.appendChild(clearLaborBtn);
+
+        if (labor && !stack.contains(labor)) {
+          labor.classList.add('owner-labor');
+          stack.appendChild(labor);
+        }
+
+        var ordered = [plan, actionBar, scope, labor].filter(Boolean);
+        ordered.forEach(function (node) {
+          stack.appendChild(node);
+        });
+
+        var cards = dash.querySelector('.seller-op-dash__cards, .owner-op-dash__cards');
+        var crew = dash.querySelector('.seller-op-dash__crew, .owner-op-dash__crew');
+        var actions = dash.querySelector('.seller-op-dash__actions, .owner-op-dash__actions');
+        var dashOrdered = [stack, cards, crew, actions].filter(Boolean);
+        dashOrdered.forEach(function (node) {
+          dash.appendChild(node);
+        });
+
+        finalizeSellerOrphanCleanup();
+        return true;
+      }
+
       function applySellerOwnerQuoteLayout() {
         if (!isSellerForcedPortalRoute()) return false;
         applySellerOwnerShellLayout();
@@ -1345,7 +1466,9 @@
         var opLayout = opBody && opBody.querySelector('.sales-op-layout:not(.seller-op-dash):not(.owner-op-dash)');
         if (!opBody) return false;
         if (opBody.querySelector('.seller-op-dash[data-seller-owner-layout="true"]')) {
+          repairSellerOpDashFromOwnerBlueprint();
           polishSellerOperationalPlanMatch();
+          finalizeSellerOrphanCleanup();
           return true;
         }
         if (!opLayout) return false;
@@ -1401,7 +1524,7 @@
           '<p class="seller-op-scope-work__lead" id="sellerScopeWorkLead">Review and edit before sending to client.</p>' +
           '</header>';
 
-        var messageField = notesSection && notesSection.querySelector('.field:has(#salesMessageToClient)');
+        var messageField = findSalesMessageFieldWrapper();
         if (!messageField && notesSection) {
           messageField = notesSection.querySelector('#salesMessageToClient');
           messageField = messageField ? messageField.closest('.field') : null;
@@ -1494,6 +1617,7 @@
 
         opLayout.replaceWith(dash);
         dash.dataset.sellerOwnerLayout = 'true';
+        repairSellerOpDashFromOwnerBlueprint();
         polishSellerOperationalPlanMatch();
         return true;
       }
@@ -1509,8 +1633,10 @@
           }
           if (!isSellerForcedPortalRoute()) return false;
           applySellerOwnerQuoteLayout();
+          repairSellerOpDashFromOwnerBlueprint();
           polishSellerOperationalPlanMatch();
           updateSellerShellChrome();
+          finalizeSellerOrphanCleanup();
           return true;
         } finally {
           window.__mgSellerLayoutApplying = false;
@@ -7105,7 +7231,6 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
       }
 
       function bootSellerPortalLayout() {
-        ensureSellerOwnerLayoutApplied();
         startSellerPortalAuthSync();
         bindStandaloneSellerWorkers();
         bindSalesOperationalPlanStandalone();
@@ -7114,6 +7239,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         bindStandaloneSellerSend();
         applyBrandingToSalesPage();
         bindSalesContactPicker();
+        ensureSellerOwnerLayoutApplied();
       }
 
       document.addEventListener('device-auth-ready', function () {
