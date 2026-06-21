@@ -2041,6 +2041,44 @@
         return !!document.getElementById('salesMessageToClient');
       }
 
+      function isSellerScopeDraftHandlerAttached() {
+        var btn = document.getElementById('btnSellerGenerateScopeDraft');
+        return !!(
+          btn &&
+          btn.dataset.sellerScopeDraftBound === 'true' &&
+          typeof generateSellerScopeDraftFromOperationalPlan === 'function'
+        );
+      }
+
+      function isSellerScopeDraftWritesToMessage() {
+        if (typeof syncSalesMessageToClientField !== 'function') return false;
+        if (typeof generateSellerScopeDraftFromOperationalPlan !== 'function') return false;
+        var fn = String(generateSellerScopeDraftFromOperationalPlan);
+        return /salesMessageToClient/.test(fn) && /syncSalesMessageToClientField/.test(fn);
+      }
+
+      function isSellerScopeDraftDoesNotTouchInternalNotes() {
+        var genFn = String(typeof generateSellerScopeDraftFromOperationalPlan === 'function'
+          ? generateSellerScopeDraftFromOperationalPlan
+          : '');
+        var syncFn = String(typeof syncSalesMessageToClientField === 'function'
+          ? syncSalesMessageToClientField
+          : '');
+        var buildFn = String(typeof buildSellerScopeDraftFromPlan === 'function'
+          ? buildSellerScopeDraftFromPlan
+          : '');
+        return !/salesNotes/.test(genFn + syncFn + buildFn);
+      }
+
+      function isSellerScopeDraftUsesOperationalDays() {
+        if (typeof loadSellerOperationalPlanDays !== 'function') return false;
+        var loadFn = String(loadSellerOperationalPlanDays);
+        var buildFn = String(typeof buildSellerScopeDraftFromPlan === 'function'
+          ? buildSellerScopeDraftFromPlan
+          : '');
+        return /operational_plan/.test(loadFn) && /sellerScopeLineForDay|sellerResolveDayDescriptionText/.test(buildFn);
+      }
+
       function isSellerLaborTableComplete() {
         var labor = document.getElementById('salesLaborSection');
         var table = labor && labor.querySelector('.sales-labor-table');
@@ -2140,7 +2178,7 @@
           window.matchMedia('(max-width: 960px)').matches || readMgElementStickyState(right);
 
         return {
-          c20Version: 'C20-C17',
+          c20Version: 'C20-C18',
           visibleRole: readVisibleSellerRoleLabel(),
           sellerRootExists: !!(root && root.dataset.built === 'true'),
           buildFunctionExists: typeof window.buildSellerOwnerWorkspaceRoot === 'function',
@@ -2172,6 +2210,10 @@
           sellerGenerateScopeDraftButtonVisible: isSellerGenerateScopeDraftButtonVisible(),
           sellerGenerateScopeDraftButtonCount: countSellerGenerateScopeDraftButtons(),
           sellerScopeEditorExists: isSellerScopeEditorExists(),
+          sellerScopeDraftHandlerAttached: isSellerScopeDraftHandlerAttached(),
+          sellerScopeDraftWritesToMessage: isSellerScopeDraftWritesToMessage(),
+          sellerScopeDraftDoesNotTouchInternalNotes: isSellerScopeDraftDoesNotTouchInternalNotes(),
+          sellerScopeDraftUsesOperationalDays: isSellerScopeDraftUsesOperationalDays(),
           sellerLaborTableComplete: isSellerLaborTableComplete(),
           sellerLaborActionsAligned: isSellerLaborActionsAligned(),
           sellerLaborTableUsesFullWidth: isSellerLaborTableFullWidth(),
@@ -2197,7 +2239,7 @@
       window.__mgForceBuildSellerRootNow = function forceBuildSellerRootNowManual() {
         return forceBuildSellerOwnerWorkspaceRootNow('manual');
       };
-      window.__mgC20ScriptLoaded = 'C20-C17';
+      window.__mgC20ScriptLoaded = 'C20-C18';
       window.generateSellerScopeDraftFromOperationalPlan = generateSellerScopeDraftFromOperationalPlan;
       window.ensureSellerGenerateScopeDraftButton = ensureSellerGenerateScopeDraftButton;
 
