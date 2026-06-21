@@ -163,8 +163,10 @@
     html[data-sales-portal="seller"], html[data-owner-seller-preview="true"] .seller-operational.owner-operational .owner-op-dash,
     html[data-sales-portal="seller"], html[data-owner-seller-preview="true"] .seller-operational .sales-op-layout.seller-op-dash,
     html[data-sales-portal="seller"], html[data-owner-seller-preview="true"] .seller-operational .sales-op-layout.owner-op-dash,
-    body.seller-portal-layout .seller-operational, body.owner-seller-preview-layout .seller-operational .sales-op-layout.seller-op-dash,
-    body.seller-portal-layout .seller-operational, body.owner-seller-preview-layout .seller-operational .sales-op-layout.owner-op-dash {
+    body.seller-portal-layout .seller-operational .sales-op-layout.seller-op-dash,
+    body.seller-portal-layout .seller-operational .sales-op-layout.owner-op-dash,
+    body.owner-seller-preview-layout .seller-operational .sales-op-layout.seller-op-dash,
+    body.owner-seller-preview-layout .seller-operational .sales-op-layout.owner-op-dash {
       display: flex !important;
       flex-direction: column !important;
       grid-template-columns: minmax(0, 1fr) !important;
@@ -181,8 +183,10 @@
     html[data-sales-portal="seller"], html[data-owner-seller-preview="true"] .seller-operational .owner-op-dash > .owner-op-dash__cards,
     html[data-sales-portal="seller"], html[data-owner-seller-preview="true"] .seller-operational .owner-op-dash > .owner-op-dash__crew,
     html[data-sales-portal="seller"], html[data-owner-seller-preview="true"] .seller-operational .owner-op-dash > .owner-op-dash__actions,
-    body.seller-portal-layout .seller-operational, body.owner-seller-preview-layout .seller-operational .seller-op-dash > *,
-    body.seller-portal-layout .seller-operational, body.owner-seller-preview-layout .seller-operational .owner-op-dash > * {
+    body.seller-portal-layout .seller-operational .seller-op-dash > *,
+    body.seller-portal-layout .seller-operational .owner-op-dash > *,
+    body.owner-seller-preview-layout .seller-operational .seller-op-dash > *,
+    body.owner-seller-preview-layout .seller-operational .owner-op-dash > * {
       width: 100% !important;
       max-width: none !important;
       min-width: 0 !important;
@@ -191,7 +195,8 @@
     }
     html[data-sales-portal="seller"], html[data-owner-seller-preview="true"] .seller-operational .seller-op-dash .sales-op-layout__right,
     html[data-sales-portal="seller"], html[data-owner-seller-preview="true"] .seller-operational .owner-op-dash .sales-op-layout__right,
-    body.seller-portal-layout .seller-operational, body.owner-seller-preview-layout .seller-operational .sales-op-layout__right {
+    body.seller-portal-layout .seller-operational .sales-op-layout__right,
+    body.owner-seller-preview-layout .seller-operational .sales-op-layout__right {
       position: static !important;
       top: auto !important;
     }
@@ -1725,6 +1730,13 @@
         return true;
       }
 
+      function canRunSellerApprovedContentLayout() {
+        if (isOwnerSellerPreviewLayoutActive()) return true;
+        if (isRealOwnerAdminBlock()) return false;
+        if (!isRealSellerRuntime()) return false;
+        return true;
+      }
+
       function isSellerForcedPortalRoute() {
         if (shouldBlockVisibleSellerRootForce()) return false;
         if (hasExactVisibleSellerTopbarRole()) {
@@ -2094,6 +2106,19 @@
             try {
               enforceSellerRightPanelCurrencyConsistency();
             } catch (_currencyEnforceErr) { /* ignore */ }
+          }
+          if (ownerPreview) {
+            try {
+              if (typeof bindSalesOperationalPlanStandalone === 'function') {
+                bindSalesOperationalPlanStandalone();
+              }
+              if (typeof renderSalesOperationalPlanStandalone === 'function') {
+                renderSalesOperationalPlanStandalone();
+              }
+              if (typeof renderSalesOpCrewAvailability === 'function') {
+                renderSalesOpCrewAvailability();
+              }
+            } catch (_ownerPreviewRefreshErr) { /* ignore */ }
           }
           return isSellerLayoutPhysicallyComplete();
         } catch (layoutErr) {
@@ -3180,7 +3205,7 @@
         forceRealSellerOwnerLayout('manual');
         return __mgSellerFinalLayoutCheck();
       };
-      window.__mgC20ScriptLoaded = 'C20-C31-B';
+      window.__mgC20ScriptLoaded = 'C20-C31-C';
       window.generateSellerScopeDraftFromOperationalPlan = generateSellerScopeDraftFromOperationalPlan;
       window.ensureSellerGenerateScopeDraftButton = ensureSellerGenerateScopeDraftButton;
 
@@ -3312,9 +3337,13 @@
       }
 
       function applySellerOwnerShellLayout() {
-        if (!isSellerLayoutPortalActive()) return false;
+        if (!canRunSellerApprovedContentLayout()) return false;
 
-        document.body.classList.add('seller-portal-layout');
+        if (isOwnerSellerPreviewLayoutActive()) {
+          ensureOwnerSellerPreviewLayoutActive();
+        } else {
+          document.body.classList.add('seller-portal-layout');
+        }
         var sellerRoot = document.getElementById('sellerOwnerWorkspaceRoot');
         if (sellerRoot) {
           updateSellerShellChrome();
@@ -3351,7 +3380,7 @@
       }
 
       function polishSellerOperationalPlanMatch() {
-        if (!isSellerLayoutPortalActive()) return false;
+        if (!canRunSellerApprovedContentLayout()) return false;
 
         var opSection = document.getElementById('salesOperationalSection');
         if (opSection) {
@@ -3710,7 +3739,7 @@
       }
 
       function ensureSellerGenerateScopeDraftButton(actionBar) {
-        if (!isSellerLayoutPortalActive()) return null;
+        if (!canRunSellerApprovedContentLayout()) return null;
 
         actionBar =
           actionBar ||
@@ -3944,7 +3973,7 @@
       }
 
       function reorderSellerLaborSectionOwnerLike() {
-        if (!isSellerLayoutPortalActive()) return false;
+        if (!canRunSellerApprovedContentLayout()) return false;
 
         var labor = document.getElementById('salesLaborSection');
         if (!labor) return false;
@@ -4013,7 +4042,7 @@
       }
 
       function finalizeSellerOrphanCleanup() {
-        if (!isSellerLayoutPortalActive()) return;
+        if (!canRunSellerApprovedContentLayout()) return;
         var dash = document.querySelector(
           '#salesOperationalSection .seller-op-dash[data-seller-owner-layout="true"]'
         );
@@ -4045,7 +4074,7 @@
       }
 
       function repairSellerOpDashFromOwnerBlueprint() {
-        if (!isSellerLayoutPortalActive()) return false;
+        if (!canRunSellerApprovedContentLayout()) return false;
 
         var dash = document.querySelector(
           '#salesOperationalSection .seller-op-dash[data-seller-owner-layout="true"]'
@@ -4139,7 +4168,7 @@
       }
 
       function applySellerOwnerQuoteLayout() {
-        if (!isSellerLayoutPortalActive()) return false;
+        if (!canRunSellerApprovedContentLayout()) return false;
         applySellerOwnerShellLayout();
 
         var opSection = document.getElementById('salesOperationalSection');
