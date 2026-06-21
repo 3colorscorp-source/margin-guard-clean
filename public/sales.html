@@ -352,10 +352,33 @@
       font-size: 12px;
       line-height: 1.4;
     }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__plan .inline-actions {
+      display: none !important;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__stack .owner-labor__intro,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__stack .sales-labor__intro {
+      max-width: none;
+      width: 100%;
+    }
+    html[data-sales-portal="seller"] .seller-operational .owner-labor-guide,
     html[data-sales-portal="seller"] .seller-operational .sales-labor-guide {
       margin: 6px 0 8px;
-      padding: 8px 10px;
-      border-radius: 12px;
+      padding: 14px 16px 15px;
+      border-radius: 18px;
+      border: 1px solid rgba(34, 197, 94, 0.2);
+      background:
+        radial-gradient(520px 120px at 0% 0%, rgba(34, 197, 94, 0.1), transparent 60%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(6, 10, 18, 0.38));
+      box-shadow: 0 10px 32px rgba(0, 0, 0, 0.2);
+    }
+    html[data-sales-portal="seller"] .seller-operational .owner-labor-guide__kicker,
+    html[data-sales-portal="seller"] .seller-operational .sales-labor-guide__kicker {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(187, 247, 208, 0.88);
     }
     html[data-sales-portal="seller"] .seller-operational .sales-labor-table-wrap,
     html[data-sales-portal="seller"] .seller-operational .owner-labor-table-wrap {
@@ -1618,6 +1641,10 @@
         if (isSectionVisibleOutsideSellerDash('salesLaborSection')) return false;
         if (!dash.querySelector('#salesMessageToClient')) return false;
         if (!dash.querySelector('#btnSellerGenerateScopeDraft, #btnAddOperationalDay')) return false;
+        var stack = dash.querySelector('.seller-op-dash__stack, .owner-op-dash__stack');
+        if (!verifySellerOpStackChildOrder(stack)) return false;
+        if (!verifySellerOpDashChildOrder(dash)) return false;
+        if (!verifySellerLaborInternalOrder(labor)) return false;
         return true;
       }
 
@@ -2529,7 +2556,12 @@
         );
 
         return {
-          c20Version: window.__mgC20ScriptLoaded || 'C20-C28',
+          c20Version: window.__mgC20ScriptLoaded || 'C20-C29',
+          opStackOrderOk: verifySellerOpStackChildOrder(
+            dash && dash.querySelector('.seller-op-dash__stack, .owner-op-dash__stack')
+          ),
+          opDashOrderOk: verifySellerOpDashChildOrder(dash),
+          laborInternalOrderOk: verifySellerLaborInternalOrder(labor),
           url: String(window.location.href || ''),
           visibleTopbarRole: readVisibleSellerRoleLabel(),
           isRealSellerRuntime: isRealSellerRuntime(),
@@ -2647,7 +2679,7 @@
         );
 
         return {
-          c20Version: 'C20-C28',
+          c20Version: 'C20-C29',
           isRealSellerRuntime: isRealSellerRuntime(),
           directDomLayoutApplied: document.body.dataset.sellerDirectDomLayout === 'true',
           visibleRole: readVisibleSellerRoleLabel(),
@@ -2732,6 +2764,11 @@
           rightPanelDuplicated: visiblePanelCount > 1,
           rightPanelVisibleCount: visiblePanelCount,
           sellerDashExists: !!dash,
+          opStackOrderOk: verifySellerOpStackChildOrder(
+            dash && dash.querySelector('.seller-op-dash__stack, .owner-op-dash__stack')
+          ),
+          opDashOrderOk: verifySellerOpDashChildOrder(dash),
+          laborInternalOrderOk: verifySellerLaborInternalOrder(labor),
           legacySalesLayoutDisplay: readMgElementDisplayState(legacyGrid),
         };
       }
@@ -2751,7 +2788,7 @@
         forceRealSellerOwnerLayout('manual');
         return __mgSellerFinalLayoutCheck();
       };
-      window.__mgC20ScriptLoaded = 'C20-C28';
+      window.__mgC20ScriptLoaded = 'C20-C29';
       window.generateSellerScopeDraftFromOperationalPlan = generateSellerScopeDraftFromOperationalPlan;
       window.ensureSellerGenerateScopeDraftButton = ensureSellerGenerateScopeDraftButton;
 
@@ -2929,27 +2966,27 @@
         var stack = dash.querySelector('.seller-op-dash__stack, .owner-op-dash__stack');
         var labor = document.getElementById('salesLaborSection');
         if (stack && labor) {
+          var scopeAnchor = stack.querySelector('.seller-op-scope-work, .owner-op-scope-work');
           if (!stack.contains(labor)) {
-            var scopeAnchor = stack.querySelector('.seller-op-scope-work, .owner-op-scope-work');
-            if (scopeAnchor) {
+            if (scopeAnchor && scopeAnchor.nextSibling) {
               stack.insertBefore(labor, scopeAnchor.nextSibling);
+            } else if (scopeAnchor) {
+              stack.appendChild(labor);
             } else {
               stack.appendChild(labor);
             }
+          } else if (scopeAnchor && labor.compareDocumentPosition(scopeAnchor) & Node.DOCUMENT_POSITION_PRECEDING) {
+            stack.insertBefore(labor, scopeAnchor.nextSibling);
           }
-          labor.classList.add('owner-labor');
           var laborEyebrow = labor.querySelector('.sales-labor__eyebrow');
           if (laborEyebrow) laborEyebrow.hidden = true;
-          var laborTitle = labor.querySelector('.sales-labor__title');
+          var laborTitle = labor.querySelector('.sales-labor__title, #salesLaborHeading');
           if (laborTitle) laborTitle.textContent = 'Labor';
           var laborLead = labor.querySelector('.sales-labor__lead');
           if (laborLead) {
             laborLead.textContent = 'Plan crew roles and worker-days for this estimate.';
           }
-          var tableWrap = labor.querySelector('.sales-labor-table-wrap');
-          if (tableWrap) tableWrap.classList.add('owner-labor-table-wrap');
-          var laborTable = labor.querySelector('.sales-labor-table');
-          if (laborTable) laborTable.classList.add('owner-labor-table');
+          reorderSellerLaborSectionOwnerLike();
         }
 
         var messageField = dash.querySelector('#salesMessageToClient');
@@ -3007,9 +3044,15 @@
         if (actionsCard) {
           actionsCard.classList.add('owner-op-dash__actions');
           var sendBtn = document.getElementById('btnSalesOpSend');
-          if (sendBtn) sendBtn.classList.add('owner-quote-cta__btn', 'owner-quote-cta__btn--send');
+          if (sendBtn) {
+            sendBtn.classList.add('owner-quote-cta__btn', 'owner-quote-cta__btn--send');
+            sendBtn.textContent = 'Send Quote';
+          }
           var previewBtn = document.getElementById('btnSalesOpPreview');
-          if (previewBtn) previewBtn.classList.add('owner-quote-cta__btn', 'owner-quote-cta__btn--pdf');
+          if (previewBtn) {
+            previewBtn.classList.add('owner-quote-cta__btn', 'owner-quote-cta__btn--pdf');
+            previewBtn.textContent = 'Proposal PDF';
+          }
         }
 
         var quoteCta = document.getElementById('salesQuoteCta');
@@ -3304,6 +3347,118 @@
         return input ? input.closest('.field') : null;
       }
 
+      function verifySellerOpStackChildOrder(stack) {
+        if (!stack) return false;
+        var plan = stack.querySelector(':scope > .seller-op-dash__plan, :scope > .owner-op-dash__plan');
+        var actionBar = stack.querySelector(
+          ':scope > .seller-op-dash__action-bar, :scope > .owner-op-dash__action-bar'
+        );
+        var scope = stack.querySelector(':scope > .seller-op-scope-work, :scope > .owner-op-scope-work');
+        var labor = stack.querySelector(':scope > #salesLaborSection, :scope > .owner-labor');
+        if (!plan || !actionBar || !scope) return false;
+        if (!(plan.compareDocumentPosition(actionBar) & Node.DOCUMENT_POSITION_FOLLOWING)) return false;
+        if (!(actionBar.compareDocumentPosition(scope) & Node.DOCUMENT_POSITION_FOLLOWING)) return false;
+        if (labor && !(scope.compareDocumentPosition(labor) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+          return false;
+        }
+        return true;
+      }
+
+      function verifySellerOpDashChildOrder(dash) {
+        if (!dash) return false;
+        var stack = dash.querySelector(':scope > .seller-op-dash__stack, :scope > .owner-op-dash__stack');
+        var cards = dash.querySelector(':scope > .seller-op-dash__cards, :scope > .owner-op-dash__cards');
+        var crew = dash.querySelector(':scope > .seller-op-dash__crew, :scope > .owner-op-dash__crew');
+        var actions = dash.querySelector(':scope > .seller-op-dash__actions, :scope > .owner-op-dash__actions');
+        if (!stack || !cards) return false;
+        var ordered = [stack, cards, crew, actions].filter(Boolean);
+        for (var i = 0; i < ordered.length - 1; i += 1) {
+          if (!(ordered[i].compareDocumentPosition(ordered[i + 1]) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+            return false;
+          }
+        }
+        return !!cards.querySelector('.seller-op-dash__dates-card, .owner-op-dash__dates-card');
+      }
+
+      function verifySellerLaborInternalOrder(labor) {
+        if (!labor) return true;
+        var head = labor.querySelector('.sales-labor__head, .owner-labor__head');
+        var guide = labor.querySelector('.sales-labor-guide, .owner-labor-guide');
+        var tableWrap = labor.querySelector('.sales-labor-table-wrap, .owner-labor-table-wrap');
+        if (!head || !guide || !tableWrap) return false;
+        if (!(head.compareDocumentPosition(guide) & Node.DOCUMENT_POSITION_FOLLOWING)) return false;
+        return !!(guide.compareDocumentPosition(tableWrap) & Node.DOCUMENT_POSITION_FOLLOWING);
+      }
+
+      function reorderSellerLaborSectionOwnerLike() {
+        if (!isSellerLayoutPortalActive()) return false;
+
+        var labor = document.getElementById('salesLaborSection');
+        if (!labor) return false;
+
+        labor.classList.add('owner-labor', 'sales-labor');
+
+        var head = labor.querySelector('.sales-labor__head, .owner-labor__head');
+        var guide = labor.querySelector('.sales-labor-guide, .owner-labor-guide');
+        var tableWrap = labor.querySelector('.sales-labor-table-wrap, .owner-labor-table-wrap');
+        var actions = labor.querySelector('.sales-labor__actions');
+
+        if (head) {
+          head.classList.add('owner-labor__head');
+          var intro = head.querySelector('.sales-labor__intro, .owner-labor__intro');
+          if (!intro) {
+            intro = document.createElement('div');
+            intro.className = 'sales-labor__intro owner-labor__intro';
+            var movable = [];
+            Array.prototype.forEach.call(head.childNodes, function (node) {
+              if (node === actions) return;
+              movable.push(node);
+            });
+            movable.forEach(function (node) {
+              intro.appendChild(node);
+            });
+            head.insertBefore(intro, head.firstChild);
+          } else {
+            intro.classList.add('owner-labor__intro');
+          }
+          var laborTitle = labor.querySelector('#salesLaborHeading, .sales-labor__title');
+          if (laborTitle) laborTitle.classList.add('owner-labor__title');
+          var laborLead = labor.querySelector('.sales-labor__lead');
+          if (laborLead) laborLead.classList.add('owner-labor__lead');
+        }
+
+        if (actions) {
+          actions.hidden = true;
+          actions.setAttribute('aria-hidden', 'true');
+        }
+
+        if (guide) {
+          guide.classList.add('owner-labor-guide', 'sales-labor-guide');
+          var guideHead = guide.querySelector('.sales-labor-guide__head');
+          if (guideHead) guideHead.classList.add('owner-labor-guide__head');
+          var guideKicker = guide.querySelector('.sales-labor-guide__kicker');
+          if (guideKicker) guideKicker.classList.add('owner-labor-guide__kicker');
+          var guideText = guide.querySelector('.sales-labor-guide__text');
+          if (guideText) guideText.classList.add('owner-labor-guide__text');
+          var guideMeta = guide.querySelector('.sales-labor-guide__meta');
+          if (guideMeta) guideMeta.classList.add('owner-labor-guide__meta');
+          var syncToggle = guide.querySelector('.sales-labor-sync-toggle');
+          if (syncToggle) syncToggle.classList.add('owner-labor-sync-toggle');
+        }
+
+        if (tableWrap) {
+          tableWrap.classList.add('owner-labor-table-wrap');
+          var laborTable = tableWrap.querySelector('.sales-labor-table');
+          if (laborTable) laborTable.classList.add('owner-labor-table');
+        }
+
+        [head, guide, tableWrap].filter(Boolean).forEach(function (node) {
+          labor.appendChild(node);
+        });
+
+        return true;
+      }
+
       function finalizeSellerOrphanCleanup() {
         if (!isSellerLayoutPortalActive()) return;
         var dash = document.querySelector(
@@ -3403,6 +3558,16 @@
         ordered.forEach(function (node) {
           stack.appendChild(node);
         });
+
+        if (plan && addDayBtn && actionBar.contains(addDayBtn)) {
+          var planAddDayWrap = plan.querySelector('.inline-actions');
+          if (planAddDayWrap) {
+            planAddDayWrap.hidden = true;
+            planAddDayWrap.setAttribute('aria-hidden', 'true');
+          }
+        }
+
+        reorderSellerLaborSectionOwnerLike();
 
         var cards = dash.querySelector('.seller-op-dash__cards, .owner-op-dash__cards');
         var crew = dash.querySelector('.seller-op-dash__crew, .owner-op-dash__crew');
