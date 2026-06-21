@@ -61,14 +61,20 @@
       top: 96px;
       align-self: start;
       height: fit-content;
-      max-height: calc(100vh - 110px);
-      overflow-y: auto;
-      overscroll-behavior: contain;
+      max-height: none;
+      overflow: visible;
       z-index: 2;
     }
     html[data-sales-portal="seller"] .seller-workspace-grid .sales-right-panel > .card,
     html[data-sales-portal="seller"] .seller-workspace-grid .sales-live-sidebar > .card {
       margin-top: 0;
+      overflow: visible;
+      max-height: none;
+    }
+    html[data-sales-portal="seller"] .seller-workspace-grid .sales-right-panel .card-inner,
+    html[data-sales-portal="seller"] .seller-workspace-grid .sales-live-sidebar .card-inner {
+      overflow: visible;
+      max-height: none;
     }
     html[data-sales-portal="seller"] .seller-shell-hidden-panel {
       display: none !important;
@@ -2065,6 +2071,36 @@
         return headerSt.display !== 'none' && headerSt.visibility !== 'hidden';
       }
 
+      function isSellerRightPanelInternalScrollbarActive() {
+        var right = document.querySelector('.sales-right-panel');
+        if (!right) return false;
+        var nodes = [right].concat(
+          Array.prototype.slice.call(right.querySelectorAll('.card, .card-inner, .owner-side-card'))
+        );
+        for (var i = 0; i < nodes.length; i += 1) {
+          var el = nodes[i];
+          if (!el) continue;
+          var st = window.getComputedStyle(el);
+          var canScrollY = st.overflowY === 'auto' || st.overflowY === 'scroll';
+          if (!canScrollY) continue;
+          if (el.scrollHeight > el.clientHeight + 2) return true;
+        }
+        return false;
+      }
+
+      function isSellerPageUsesMainScrollbar() {
+        var right = document.querySelector('.sales-right-panel');
+        if (!right) return false;
+        var st = window.getComputedStyle(right);
+        var maxOk = !st.maxHeight || st.maxHeight === 'none' || st.maxHeight === '0px';
+        var overflowOk =
+          st.overflowY === 'visible' ||
+          st.overflowY === 'clip' ||
+          st.overflowY === 'hidden' ||
+          (st.overflowY === 'auto' && right.scrollHeight <= right.clientHeight + 2);
+        return maxOk && overflowOk && !isSellerRightPanelInternalScrollbarActive();
+      }
+
       function __mgSellerFinalLayoutCheck() {
         function isVisible(el) {
           if (!el) return false;
@@ -2104,7 +2140,7 @@
           window.matchMedia('(max-width: 960px)').matches || readMgElementStickyState(right);
 
         return {
-          c20Version: 'C20-C16',
+          c20Version: 'C20-C17',
           visibleRole: readVisibleSellerRoleLabel(),
           sellerRootExists: !!(root && root.dataset.built === 'true'),
           buildFunctionExists: typeof window.buildSellerOwnerWorkspaceRoot === 'function',
@@ -2139,6 +2175,8 @@
           sellerLaborTableComplete: isSellerLaborTableComplete(),
           sellerLaborActionsAligned: isSellerLaborActionsAligned(),
           sellerLaborTableUsesFullWidth: isSellerLaborTableFullWidth(),
+          sellerRightPanelHasInternalScrollbar: isSellerRightPanelInternalScrollbarActive(),
+          sellerPageUsesMainScrollbar: isSellerPageUsesMainScrollbar(),
           priceControlVisible: isVisible(price),
           commercialEstimateVisible: !!(
             commercialHead &&
@@ -2159,7 +2197,7 @@
       window.__mgForceBuildSellerRootNow = function forceBuildSellerRootNowManual() {
         return forceBuildSellerOwnerWorkspaceRootNow('manual');
       };
-      window.__mgC20ScriptLoaded = 'C20-C16';
+      window.__mgC20ScriptLoaded = 'C20-C17';
       window.generateSellerScopeDraftFromOperationalPlan = generateSellerScopeDraftFromOperationalPlan;
       window.ensureSellerGenerateScopeDraftButton = ensureSellerGenerateScopeDraftButton;
 
