@@ -914,6 +914,65 @@
       overflow: visible !important;
       pointer-events: auto !important;
     }
+    /* C20-C32-F — blocked Seller portal must show device-session message (not blank white) */
+    body.mg-seller-portal-blocked,
+    html[data-sales-portal="seller"] body.mg-seller-portal-blocked.seller-portal-layout {
+      background: var(--bg);
+      color: var(--text);
+    }
+    body.mg-seller-portal-blocked .mg-app-main,
+    body.mg-seller-portal-blocked .mg-app-main__body {
+      min-height: calc(100vh - var(--mg-topbar-height, 56px));
+      background: transparent;
+    }
+    body.mg-seller-portal-blocked .container {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      min-height: 40vh;
+      padding-top: 24px;
+    }
+    body.mg-seller-portal-blocked #mgSellerPortalBlockedNotice,
+    body.mg-seller-portal-blocked .mg-seller-portal-blocked-notice {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      height: auto !important;
+      overflow: visible !important;
+      position: relative;
+      z-index: 30;
+      margin: 0 0 16px 0;
+      max-width: 72ch;
+      line-height: 1.5;
+      color: var(--text);
+      pointer-events: auto !important;
+    }
+    body.mg-seller-portal-blocked #accountEmail.account-pill {
+      display: inline-flex !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      height: auto !important;
+      overflow: visible !important;
+      position: relative;
+      z-index: 29;
+      margin-bottom: 14px;
+      color: var(--text);
+      pointer-events: auto !important;
+    }
+    body.mg-seller-portal-blocked #sellerOwnerWorkspaceRoot,
+    body.mg-seller-portal-blocked .seller-owner-workspace-root,
+    body.mg-seller-portal-blocked .container .grid.sales-layout,
+    body.mg-seller-portal-blocked .container > .sales-owner-nav-actions,
+    body.mg-seller-portal-blocked .container > .topbar-actions,
+    body.mg-seller-portal-blocked .seller-owner-upper {
+      display: none !important;
+      visibility: hidden !important;
+      height: 0 !important;
+      overflow: hidden !important;
+      pointer-events: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
   </style>
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
@@ -1036,6 +1095,12 @@
       };
       window.__mgSyncSellerPortalGuardAndLayout = function syncSellerPortalGuardAndLayout() {
         if (window.__mgSellerWorkspaceRootBuilding || window.__mgSellerOwnerLikeBuilding) return;
+        if (document.body.classList.contains('mg-seller-portal-blocked')) {
+          if (typeof window.ensureSellerPortalBlockedUiVisible === 'function') {
+            window.ensureSellerPortalBlockedUiVisible();
+          }
+          return;
+        }
         window.__mgInitSellerPortalGuard();
         var topbar = document.querySelector('.mg-topbar__title');
         var visibleRole = topbar ? String(topbar.textContent || '').trim() : '';
@@ -1675,6 +1740,78 @@
         if (document.body.classList.contains('mg-seller-portal-blocked')) return true;
         return false;
       }
+
+      var SELLER_PORTAL_BLOCKED_UI_MSG =
+        'Seller portal requires a clean paired seller device session. Open this link from the assigned seller browser/profile.';
+      var SELLER_PORTAL_BLOCKED_PROFILE_HINT = 'Use a paired seller device profile';
+
+      function ensureSellerPortalBlockedUiVisible() {
+        if (!document.body.classList.contains('mg-seller-portal-blocked')) return false;
+
+        document.body.classList.add('seller-portal-layout');
+        document.documentElement.dataset.salesPortal = 'seller';
+
+        var container = document.querySelector('.container');
+        var notice = document.getElementById('mgSellerPortalBlockedNotice');
+        if (!notice) {
+          notice = document.createElement('div');
+          notice.id = 'mgSellerPortalBlockedNotice';
+          notice.className = 'notice err mg-seller-portal-blocked-notice';
+          notice.setAttribute('role', 'alert');
+          if (container) {
+            container.insertBefore(notice, container.firstChild);
+          } else {
+            document.body.insertBefore(notice, document.body.firstChild);
+          }
+        }
+        notice.textContent = SELLER_PORTAL_BLOCKED_UI_MSG;
+        notice.classList.add('mg-seller-portal-blocked-notice');
+        notice.hidden = false;
+        notice.removeAttribute('aria-hidden');
+        notice.style.removeProperty('display');
+        notice.style.removeProperty('visibility');
+        notice.style.removeProperty('opacity');
+        notice.style.removeProperty('height');
+
+        var email = document.getElementById('accountEmail');
+        if (email) {
+          if (
+            !String(email.textContent || '').trim() ||
+            email.textContent === 'Cuenta activa'
+          ) {
+            email.textContent = SELLER_PORTAL_BLOCKED_PROFILE_HINT;
+          }
+          email.hidden = false;
+          email.removeAttribute('aria-hidden');
+          email.style.removeProperty('display');
+          email.style.removeProperty('visibility');
+          email.style.removeProperty('opacity');
+          email.style.removeProperty('height');
+          if (container && email.parentNode !== container) {
+            container.insertBefore(email, notice.nextSibling);
+          }
+        }
+
+        [
+          '#sellerOwnerWorkspaceRoot',
+          '.seller-owner-workspace-root',
+          '.container .grid.sales-layout',
+          '.container > .sales-owner-nav-actions',
+          '.container > .topbar-actions',
+          '.seller-owner-upper',
+        ].forEach(function (selector) {
+          document.querySelectorAll(selector).forEach(function (el) {
+            if (el === notice || el === email) return;
+            el.hidden = true;
+            el.setAttribute('aria-hidden', 'true');
+            el.style.setProperty('display', 'none', 'important');
+          });
+        });
+
+        return true;
+      }
+
+      window.ensureSellerPortalBlockedUiVisible = ensureSellerPortalBlockedUiVisible;
 
       function isRealSellerRuntime() {
         if (isProductionVisibleSellerScreen()) {
@@ -2557,6 +2694,10 @@
       function cleanupIncompleteSellerRootIfBlocked() {
         if (!shouldBlockVisibleSellerRootForce()) return;
         if (isOwnerSellerPreviewLayoutActive()) return;
+        if (document.body.classList.contains('mg-seller-portal-blocked')) {
+          ensureSellerPortalBlockedUiVisible();
+          return;
+        }
         var root = document.getElementById('sellerOwnerWorkspaceRoot');
         if (root) {
           teardownSellerOwnerWorkspaceRoot();
@@ -10761,7 +10902,37 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         restoreContactRefFromState();
       }
 
+      function startSellerPortalBlockedUiWatch() {
+        if (window.__mgSellerPortalBlockedUiWatchStarted) return;
+        window.__mgSellerPortalBlockedUiWatchStarted = true;
+
+        function runIfBlocked() {
+          if (document.body.classList.contains('mg-seller-portal-blocked')) {
+            ensureSellerPortalBlockedUiVisible();
+          }
+        }
+
+        runIfBlocked();
+
+        if (typeof MutationObserver !== 'undefined') {
+          var blockedObserver = new MutationObserver(runIfBlocked);
+          blockedObserver.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['class'],
+          });
+        }
+
+        [0, 50, 150, 400, 1000, 2500, 5000].forEach(function (delayMs) {
+          window.setTimeout(runIfBlocked, delayMs);
+        });
+      }
+
       function bootSellerPortalLayout() {
+        startSellerPortalBlockedUiWatch();
+        if (document.body.classList.contains('mg-seller-portal-blocked')) {
+          ensureSellerPortalBlockedUiVisible();
+          return;
+        }
         startSellerPortalAuthSync();
         bindStandaloneSellerWorkers();
         bindSalesOperationalPlanStandalone();
