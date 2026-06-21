@@ -1587,7 +1587,8 @@
         profitPct: 30,
         minimumMarginPct: 15,
         reservePct: 5,
-        salesCommissionPct: 10
+        salesCommissionPct: 10,
+        workdaysEnabled: true
       };
       const DEFAULT_WORKERS = [{ name: 'Worker 1', type: 'installer', days: 0, rate: '' }];
 
@@ -2687,7 +2688,12 @@
             state.targetStartDate ||
             state.quoteStartDate ||
             '';
-          const preview = api.buildSalesPlanCalendarPreview(normalized, start);
+          const preview = buildSellerOperationalCalendarPreview(
+            normalized,
+            start,
+            calendarDayCount,
+            settings
+          );
           if (preview && Number(preview.planDayCount) > 0) {
             calendarDayCount = Number(preview.planDayCount);
           }
@@ -2823,7 +2829,7 @@
         );
 
         return {
-          c20Version: window.__mgC20ScriptLoaded || 'C20-C29-FIX3',
+          c20Version: window.__mgC20ScriptLoaded || 'C20-C30-A',
           isProductionVisibleSellerScreen: isProductionVisibleSellerScreen(),
           opStackOrderOk: verifySellerOpStackChildOrder(
             dash && dash.querySelector('.seller-op-dash__stack, .owner-op-dash__stack')
@@ -2948,7 +2954,7 @@
         );
 
         return {
-          c20Version: 'C20-C29-FIX3',
+          c20Version: 'C20-C30-A',
           isProductionVisibleSellerScreen: isProductionVisibleSellerScreen(),
           isRealSellerRuntime: isRealSellerRuntime(),
           directDomLayoutApplied: document.body.dataset.sellerDirectDomLayout === 'true',
@@ -3059,7 +3065,7 @@
         forceRealSellerOwnerLayout('manual');
         return __mgSellerFinalLayoutCheck();
       };
-      window.__mgC20ScriptLoaded = 'C20-C29-FIX3';
+      window.__mgC20ScriptLoaded = 'C20-C30-A';
       window.generateSellerScopeDraftFromOperationalPlan = generateSellerScopeDraftFromOperationalPlan;
       window.ensureSellerGenerateScopeDraftButton = ensureSellerGenerateScopeDraftButton;
 
@@ -4905,10 +4911,202 @@
         }
       }
 
+      function resolveSellerOperationalWorkdaysEnabled(settings) {
+        if (!settings || typeof settings !== 'object') return true;
+        if (settings.__mgSellerSettingsBlocked) return true;
+        var raw = settings.workdaysEnabled;
+        if (raw === false || raw === 0) return false;
+        if (typeof raw === 'string') {
+          var normalized = raw.trim().toLowerCase();
+          if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off') {
+            return false;
+          }
+          return true;
+        }
+        return true;
+      }
+
+      function sellerOpParseYmd(ymd) {
+        var text = String(ymd || '').trim().slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+        var parts = text.split('-').map(Number);
+        var dt = new Date(parts[0], parts[1] - 1, parts[2]);
+        if (
+          dt.getFullYear() !== parts[0] ||
+          dt.getMonth() !== parts[1] - 1 ||
+          dt.getDate() !== parts[2]
+        ) {
+          return null;
+        }
+        return dt;
+      }
+
+      function sellerOpFormatYmd(dt) {
+        var y = dt.getFullYear();
+        var m = String(dt.getMonth() + 1).padStart(2, '0');
+        var d = String(dt.getDate()).padStart(2, '0');
+        return y + '-' + m + '-' + d;
+      }
+
+      function sellerOpIsWorkday(dt) {
+        var dow = dt.getDay();
+        return dow !== 0 && dow !== 6;
+      }
+
+      function sellerOpAddCalendarDays(fromYmd, days) {
+        var dt = sellerOpParseYmd(fromYmd);
+        if (!dt) return '';
+        dt.setDate(dt.getDate() + Number(days || 0));
+        return sellerOpFormatYmd(dt);
+      }
+
+      function sellerOpBuildWorkdaySequence(startYmd, count, workdaysOnly) {
+        var n = Math.max(0, Math.ceil(Number(count) || 0));
+        var start = String(startYmd || '').trim().slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || n <= 0) return [];
+        var out = [];
+        var cur = start;
+        var guard = 0;
+        while (out.length < n && guard < 4000) {
+          var dt = sellerOpParseYmd(cur);
+          if (!dt) break;
+          if (!workdaysOnly || sellerOpIsWorkday(dt)) out.push(cur);
+          cur = sellerOpAddCalendarDays(cur, 1);
+          guard += 1;
+        }
+        return out;
+      }
+
+      function sellerOpProjectFinishFromStart(startYmd, estimatedDays, workdaysEnabled) {
+        var days = Math.max(1, Math.ceil(Number(estimatedDays) || 0));
+        var start = String(startYmd || '').trim().slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return '';
+        if (!workdaysEnabled) return sellerOpAddCalendarDays(start, days - 1);
+        var sequence = sellerOpBuildWorkdaySequence(start, days, true);
+        return sequence.length ? sequence[sequence.length - 1] : '';
+      }
+
+      function buildSellerOperationalCalendarPreview(plan, startDate, estimatedDays, settings) {
+        var api = getOperationalPlanApi();
+        var workdaysEnabled = resolveSellerOperationalWorkdaysEnabled(settings);
+        var estDays = Math.max(
+          Array.isArray(plan) ? plan.length : 0,
+          Math.ceil(Number(estimatedDays) || 0) || (Array.isArray(plan) ? plan.length : 0) || 1
+        );
+        var start = String(startDate || '').trim().slice(0, 10);
+        var hasStart = /^\d{4}-\d{2}-\d{2}$/.test(start);
+        var preview = null;
+
+        if (api && typeof api.buildSalesPlanCalendarPreview === 'function') {
+          preview = api.buildSalesPlanCalendarPreview({
+            plan: plan,
+            startDate: hasStart ? start : '',
+            estimatedDays: estDays,
+            workdaysEnabled: workdaysEnabled
+          });
+        }
+
+        if (!preview) {
+          preview = {
+            cells: [],
+            startDate: hasStart ? start : '',
+            estimatedDays: estDays,
+            hasStart: hasStart,
+            planDayCount: Array.isArray(plan) ? plan.length : 0
+          };
+        }
+
+        if (hasStart && Array.isArray(preview.cells) && preview.cells.length) {
+          var scheduleDates = sellerOpBuildWorkdaySequence(start, estDays, workdaysEnabled);
+          preview.cells.forEach(function (cell, index) {
+            if (!cell) return;
+            cell.date = scheduleDates[index] || '';
+          });
+        }
+
+        return preview;
+      }
+
+      function syncSellerOperationalTargetFinishDisplay(state, settings, metrics) {
+        if (
+          !isProductionVisibleSellerScreen() &&
+          !isRealSellerRuntime() &&
+          document.documentElement.dataset.salesPortal !== 'seller'
+        ) {
+          return;
+        }
+
+        var startInput = document.getElementById('salesStartDate');
+        var start = String(
+          (startInput && startInput.value) || (state && state.startDate) || ''
+        )
+          .trim()
+          .slice(0, 10);
+        var estDays =
+          metrics && Number(metrics.estimated_days) > 0
+            ? Number(metrics.estimated_days)
+            : 0;
+        var workdaysEnabled = resolveSellerOperationalWorkdaysEnabled(settings);
+        var finishInput = document.getElementById('salesTargetFinishDate');
+        var dueHidden = document.getElementById('salesDueDate');
+        var hint = document.getElementById('salesTargetFinishHint');
+
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !(estDays > 0)) {
+          if (finishInput) finishInput.value = '';
+          if (dueHidden) dueHidden.value = '';
+          if (hint) {
+            hint.textContent =
+              'Target finish will calculate after labor days and safe start date are set.';
+          }
+          return;
+        }
+
+        var cap = window.MarginGuardSalesCapacity;
+        var finish = '';
+        if (cap && typeof cap.updateTargetFinishDisplay === 'function') {
+          var result = cap.updateTargetFinishDisplay(start, estDays, {
+            workdaysEnabled: workdaysEnabled
+          });
+          finish = result && result.finish ? result.finish : '';
+        } else if (cap && typeof cap.projectFinishFromStartLocal === 'function') {
+          finish = cap.projectFinishFromStartLocal(start, estDays, { workdaysEnabled: workdaysEnabled });
+          if (finishInput) finishInput.value = finish;
+          if (dueHidden) dueHidden.value = finish;
+          if (hint) {
+            hint.textContent =
+              'System calculated from approved start (' +
+              formatSalesOpDate(start) +
+              ') + ' +
+              Math.ceil(estDays) +
+              ' ' +
+              (workdaysEnabled ? 'workday' : 'day') +
+              '(s) (Mon–Fri when enabled in Business Settings).';
+          }
+        } else {
+          finish = sellerOpProjectFinishFromStart(start, estDays, workdaysEnabled);
+          if (finishInput) finishInput.value = finish;
+          if (dueHidden) dueHidden.value = finish;
+          if (hint) {
+            hint.textContent =
+              'System calculated from approved start (' +
+              formatSalesOpDate(start) +
+              ') + ' +
+              Math.ceil(estDays) +
+              ' ' +
+              (workdaysEnabled ? 'workday' : 'day') +
+              '(s) (Mon–Fri when enabled in Business Settings).';
+          }
+        }
+
+        if (state && finish) {
+          state.targetFinishDate = finish;
+          state.dueDate = finish;
+        }
+      }
+
       function renderSalesOpCalendarPreview(state, settings, plan, metrics) {
         const host = document.getElementById('salesOpCalendarPreview');
-        if (!host || !getOperationalPlanApi()) return;
-        const api = getOperationalPlanApi();
+        if (!host) return;
         const startInput = document.getElementById('salesStartDate');
         const start = String(startInput && startInput.value ? startInput.value : state.startDate || '').trim().slice(0, 10);
         const hasStart = /^\d{4}-\d{2}-\d{2}$/.test(start);
@@ -4922,12 +5120,7 @@
           ? metrics.estimated_days
           : plan.length;
 
-        const preview = api.buildSalesPlanCalendarPreview({
-          plan: plan,
-          startDate: hasStart ? start : '',
-          estimatedDays: estDays,
-          workdaysEnabled: settings.workdaysEnabled !== false
-        });
+        const preview = buildSellerOperationalCalendarPreview(plan, hasStart ? start : '', estDays, settings);
 
         const planCells = (preview.cells || []).filter(function (cell) {
           return cell.hasPlan;
@@ -5125,6 +5318,7 @@
         if (legacyHost) legacyHost.innerHTML = '';
         renderSalesOpProposalSummary(state, settings, uiMetrics);
         renderSalesOpCalendarPreview(state, settings, plan, metrics);
+        syncSellerOperationalTargetFinishDisplay(state, settings, metrics);
         renderSalesOpCrewAvailability();
       }
 
@@ -7631,11 +7825,11 @@
             const finishDate =
               cap && typeof cap.updateTargetFinishDisplay === 'function'
                 ? cap.updateTargetFinishDisplay(startDate, signedEstimatedDays, {
-                    workdaysEnabled: settings.workdaysEnabled !== false
+                    workdaysEnabled: resolveSellerOperationalWorkdaysEnabled(settings)
                   }).finish
                 : cap && cap.projectFinishFromStartLocal
                   ? cap.projectFinishFromStartLocal(startDate, signedEstimatedDays, {
-                      workdaysEnabled: settings.workdaysEnabled !== false
+                      workdaysEnabled: resolveSellerOperationalWorkdaysEnabled(settings)
                     })
                   : String(document.getElementById('salesTargetFinishDate')?.value || state.targetFinishDate || '').trim().slice(0, 10);
 
