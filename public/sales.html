@@ -7838,6 +7838,51 @@
 
       window.performStandaloneNewQuoteReset = performStandaloneNewQuoteReset;
 
+      var POST_FULL_SEND_RESET_DELAY_MS = 1900;
+
+      function publishDataReadyForPostSendReset(publishData) {
+        return Boolean(
+          publishData &&
+            publishData.quote_id &&
+            publishData.public_token &&
+            publishData.public_url
+        );
+      }
+
+      function runPostFullSendQuoteResetAfterSuccess() {
+        if (window.__mgPostFullSendQuoteResetRunning) return false;
+        var resetFn = window.performStandaloneNewQuoteReset;
+        if (typeof resetFn !== 'function') {
+          console.error('[Sales Send] performStandaloneNewQuoteReset is not available');
+          return false;
+        }
+        window.__mgPostFullSendQuoteResetRunning = true;
+        try {
+          resetFn();
+          if (
+            typeof window.forceRealSellerOwnerLayout === 'function' &&
+            typeof window.isRealSellerRuntime === 'function' &&
+            window.isRealSellerRuntime()
+          ) {
+            window.forceRealSellerOwnerLayout('post-full-send-reset');
+          } else if (
+            typeof window.forceOwnerSellerPreviewLayout === 'function' &&
+            typeof window.isOwnerSellerPreviewLayoutActive === 'function' &&
+            window.isOwnerSellerPreviewLayoutActive()
+          ) {
+            window.forceOwnerSellerPreviewLayout('post-full-send-reset');
+          }
+        } catch (err) {
+          console.error('[Sales Send] post-send reset failed', err);
+          return false;
+        } finally {
+          window.__mgPostFullSendQuoteResetRunning = false;
+        }
+        return true;
+      }
+
+      window.runPostFullSendQuoteResetAfterSuccess = runPostFullSendQuoteResetAfterSuccess;
+
       function isSellerDeviceSalesMode() {
         return (
           document.documentElement.dataset.authMode === 'device' ||
@@ -10204,33 +10249,24 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
       }
 
       successCloseScheduled = true;
-      const POST_SEND_RESET_DELAY_MS = 1900;
-      console.log('[MG SEND] scheduling modal close + New Quote reset');
-      setTimeout(() => {
-        closeSellerSendModal();
-        try {
-          if (
-            !publishData?.quote_id ||
-            !publishData?.public_token ||
-            !publishData?.public_url
-          ) {
+      if (!publishDataReadyForPostSendReset(publishData)) {
+        console.warn('[Sales Send] post-send reset skipped — publish data incomplete');
+      } else {
+        console.log('[MG SEND] scheduling modal close + New Quote reset');
+        window.setTimeout(function () {
+          closeSellerSendModal();
+          if (!publishDataReadyForPostSendReset(publishData)) {
             console.warn('[Sales Send] post-send reset skipped — publish data incomplete');
             return;
           }
-          if (typeof performStandaloneNewQuoteReset !== 'function') {
-            console.error('[Sales Send] performStandaloneNewQuoteReset is not available');
-            return;
+          runPostFullSendQuoteResetAfterSuccess();
+          const sb = document.getElementById('btnSendNow');
+          if (sb) {
+            sb.disabled = false;
+            sb.textContent = 'Confirmar y enviar estimate';
           }
-          performStandaloneNewQuoteReset();
-        } catch (err) {
-          console.error('[Sales Send] post-send reset failed', err);
-        }
-        const sb = document.getElementById('btnSendNow');
-        if (sb) {
-          sb.disabled = false;
-          sb.textContent = 'Confirmar y enviar estimate';
-        }
-      }, POST_SEND_RESET_DELAY_MS);
+        }, POST_FULL_SEND_RESET_DELAY_MS);
+      }
       return true;
     } catch (error) {
       console.error('[seller-send]', error);
