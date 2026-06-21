@@ -1336,17 +1336,9 @@
       function isSellerForcedPortalRoute() {
         if (shouldBlockVisibleSellerRootForce()) return false;
         if (hasExactVisibleSellerTopbarRole()) {
-          if (
-            document.documentElement.dataset.authMode === 'device' ||
-            document.body.classList.contains('mg-portal-mode-seller-device') ||
-            readMgAppNavPortalMode() === 'seller-device' ||
-            document.documentElement.dataset.salesPortal === 'seller'
-          ) {
-            document.documentElement.dataset.salesPortal = 'seller';
-            document.body.classList.add('seller-portal-layout');
-            return true;
-          }
-          return false;
+          document.documentElement.dataset.salesPortal = 'seller';
+          document.body.classList.add('seller-portal-layout');
+          return true;
         }
         if (typeof window.__mgInitSellerPortalGuard === 'function') {
           window.__mgInitSellerPortalGuard();
@@ -1774,7 +1766,11 @@
         window.__mgSellerWorkspaceRootBuilding = true;
         try {
           ensureSellerPortalActiveForWorkspace();
-          if (forced || hasExactVisibleSellerTopbarRole()) {
+          if (
+            forced ||
+            hasExactVisibleSellerTopbarRole() ||
+            shouldBuildSellerOwnerWorkspaceRoot()
+          ) {
             document.documentElement.dataset.salesPortal = 'seller';
             document.body.classList.add('seller-portal-layout');
           }
@@ -2266,10 +2262,24 @@
         var sellerLaborSync = readSellerLaborSyncSnapshot();
         var sellerRecommendedPrice = readSellerRecommendedPriceDebugSnapshot();
 
+        var scopeWrap =
+          dash && dash.querySelector('.seller-op-scope-work, .owner-op-scope-work');
+        var sellerScopeInsideOperationalPlan = !!(
+          dash &&
+          scopeWrap &&
+          scopeWrap.querySelector('#salesMessageToClient')
+        );
+        var priceEstimateNode = document.getElementById('salesPriceDisplay');
+        var sellerPriceEstimateText = priceEstimateNode
+          ? String(priceEstimateNode.textContent || '').trim()
+          : '';
+        var settingsCurrencyFromStorage = readSellerCurrencyFromSettingsStorage() || '';
+
         return {
-          c20Version: 'C20-C22',
+          c20Version: 'C20-C25',
           visibleRole: readVisibleSellerRoleLabel(),
           sellerRootExists: !!(root && root.dataset.built === 'true'),
+          sellerScopeInsideOperationalPlan: sellerScopeInsideOperationalPlan,
           buildFunctionExists: typeof window.buildSellerOwnerWorkspaceRoot === 'function',
           forceBuildFunctionExists: typeof window.__mgForceBuildSellerRootNow === 'function',
           lastRootBuildReason: window.__mgSellerRootLastReason || '',
@@ -2282,8 +2292,12 @@
             (project.compareDocumentPosition(op) & Node.DOCUMENT_POSITION_FOLLOWING)
           ),
           datesInsideOperationalPlan: datesInside,
+          sellerDatesInsideOperationalPlan: datesInside,
           notesOutsideOperationalPlanVisible: isVisible(notes) && !(dash && dash.contains(notes)),
+          sellerNotesOutsideOperationalPlanVisible:
+            isVisible(notes) && !(dash && dash.contains(notes)),
           laborInsideOperationalPlan: !!(dash && labor && dash.contains(labor)),
+          sellerLaborInsideOperationalPlan: !!(dash && labor && dash.contains(labor)),
           rightPanelVisible: isVisible(right),
           rightPanelSellerSafe: rightPanelSellerSafe,
           ownerSnapshotVisibleInSeller: isOwnerSnapshotVisibleInSellerPanel(),
@@ -2319,8 +2333,10 @@
           sellerRecommendedPriceMatchesAfterReload:
             sellerRecommendedPrice.sellerRecommendedPriceMatchesAfterReload,
           sellerCurrency: sellerRecommendedPrice.sellerCurrency,
+          settingsCurrencyFromStorage: settingsCurrencyFromStorage,
           sellerLastValidCurrency: sellerRecommendedPrice.sellerLastValidCurrency,
           sellerPrimaryPriceText: sellerRecommendedPrice.sellerPrimaryPriceText,
+          sellerPriceEstimateText: sellerPriceEstimateText,
           sellerPrimaryPriceUsesUSD: sellerRecommendedPrice.sellerPrimaryPriceUsesUSD,
           sellerPrimaryPriceUsesMXN: sellerRecommendedPrice.sellerPrimaryPriceUsesMXN,
           sellerRightPanelMoneyTexts: sellerRecommendedPrice.sellerRightPanelMoneyTexts,
@@ -2356,12 +2372,18 @@
       window.__mgForceBuildSellerRootNow = function forceBuildSellerRootNowManual() {
         return forceBuildSellerOwnerWorkspaceRootNow('manual');
       };
-      window.__mgC20ScriptLoaded = 'C20-C22';
+      window.__mgC20ScriptLoaded = 'C20-C25';
       window.generateSellerScopeDraftFromOperationalPlan = generateSellerScopeDraftFromOperationalPlan;
       window.ensureSellerGenerateScopeDraftButton = ensureSellerGenerateScopeDraftButton;
 
       function hideSellerLegacySectionsOutsidePlanHard() {
-        if (document.documentElement.dataset.salesPortal !== 'seller') return;
+        if (
+          document.documentElement.dataset.salesPortal !== 'seller' &&
+          !(typeof detectVisibleSellerRuntime === 'function' && detectVisibleSellerRuntime())
+        ) {
+          return;
+        }
+        document.documentElement.dataset.salesPortal = 'seller';
 
         if (typeof hideSellerLegacySalesChrome === 'function') {
           hideSellerLegacySalesChrome();
@@ -3247,6 +3269,9 @@
         var legacyLayout = opBody.querySelector('.sales-op-layout:not(.seller-op-dash):not(.owner-op-dash)');
 
         if (existingDash && !legacyLayout) {
+          repairSellerOpDashFromOwnerBlueprint();
+          finalizeSellerOrphanCleanup();
+          hideSellerLegacySectionsOutsidePlanHard();
           return true;
         }
 
@@ -4426,6 +4451,18 @@
           renderSalesOperationalPlanStandalone();
           bindSalesOperationalPlanStandalone();
           renderStandaloneSellerPanel();
+          if (
+            document.documentElement.dataset.salesPortal === 'seller' ||
+            isSellerForcedPortalRoute()
+          ) {
+            var sellerRoot = document.getElementById('sellerOwnerWorkspaceRoot');
+            if (sellerRoot) {
+              repairSellerOpDashFromOwnerBlueprint();
+              hideSellerLegacySectionsOutsidePlanHard();
+            } else {
+              buildSellerOwnerLikeWorkspace();
+            }
+          }
           if (isSellerPricingSettingsPending(loadSettings())) {
             scheduleSellerPricingRefreshWhenSettingsReady();
           }
@@ -4567,37 +4604,24 @@
 
       function resolveSellerCurrency(settings, state) {
         const storageCode = readSellerCurrencyFromSettingsStorage();
-        const settingsCode = settings
-          ? normalizeSellerCurrencyCode(settings.currency)
-          : '';
+        const settingsCode =
+          settings && !settings.__mgSellerSettingsBlocked
+            ? normalizeSellerCurrencyCode(settings.currency)
+            : '';
         const stateCode = normalizeSellerCurrencyCode(
           state && (state.currency || state.quoteCurrency || state.estimateCurrency)
         );
         const lastValid = readSellerValidCurrency();
         const visibleCode = readSellerCurrencyFromVisiblePanel();
-        let resolved =
-          settingsCode ||
-          storageCode ||
-          lastValid ||
-          visibleCode ||
-          stateCode ||
-          'USD';
+        let resolved = storageCode || settingsCode || lastValid || visibleCode || stateCode || 'USD';
 
-        if (resolved === 'MXN' && !sellerStorageCurrencyExplicitlyMXN()) {
-          if (storageCode === 'USD' || settingsCode === 'USD' || lastValid === 'USD') {
-            resolved = 'USD';
-          } else if (storageCode) {
-            resolved = storageCode;
-          } else if (settingsCode) {
-            resolved = settingsCode;
-          } else {
-            resolved = 'USD';
-          }
-        }
         if (storageCode === 'USD' && resolved === 'MXN') {
           resolved = 'USD';
         }
-        if (lastValid === 'USD' && resolved === 'MXN') {
+        if (lastValid === 'USD' && resolved === 'MXN' && isSellerPricingSettingsPending(settings)) {
+          resolved = 'USD';
+        }
+        if (lastValid === 'USD' && resolved === 'MXN' && storageCode !== 'MXN') {
           resolved = 'USD';
         }
         if (settingsCode === 'USD' && resolved === 'MXN') {
@@ -4910,6 +4934,7 @@
           });
         return {
           sellerCurrency: sellerCurrency,
+          settingsCurrencyFromStorage: readSellerCurrencyFromSettingsStorage() || '',
           sellerLastValidCurrency: readSellerValidCurrency(),
           sellerPrimaryPriceText: priceText,
           sellerPrimaryPriceUsesUSD: usesUSD,
