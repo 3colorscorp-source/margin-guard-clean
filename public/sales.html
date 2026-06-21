@@ -2267,7 +2267,7 @@
         var sellerRecommendedPrice = readSellerRecommendedPriceDebugSnapshot();
 
         return {
-          c20Version: 'C20-C22',
+          c20Version: 'C20-C23',
           visibleRole: readVisibleSellerRoleLabel(),
           sellerRootExists: !!(root && root.dataset.built === 'true'),
           buildFunctionExists: typeof window.buildSellerOwnerWorkspaceRoot === 'function',
@@ -2321,10 +2321,14 @@
           sellerCurrency: sellerRecommendedPrice.sellerCurrency,
           sellerLastValidCurrency: sellerRecommendedPrice.sellerLastValidCurrency,
           sellerPrimaryPriceText: sellerRecommendedPrice.sellerPrimaryPriceText,
+          sellerPriceEstimateText: sellerRecommendedPrice.sellerPriceEstimateText,
           sellerPrimaryPriceUsesUSD: sellerRecommendedPrice.sellerPrimaryPriceUsesUSD,
           sellerPrimaryPriceUsesMXN: sellerRecommendedPrice.sellerPrimaryPriceUsesMXN,
           sellerRightPanelMoneyTexts: sellerRecommendedPrice.sellerRightPanelMoneyTexts,
           sellerRightPanelHasMXN: sellerRecommendedPrice.sellerRightPanelHasMXN,
+          sellerRightPanelMXNTextCount: sellerRecommendedPrice.sellerRightPanelMXNTextCount,
+          sellerAllVisibleMoneyUseStableCurrency: sellerRecommendedPrice.sellerAllVisibleMoneyUseStableCurrency,
+          sellerPhysicalCurrencyEnforcerActive: sellerRecommendedPrice.sellerPhysicalCurrencyEnforcerActive,
           sellerAllRightPanelMoneyUseStableCurrency:
             sellerRecommendedPrice.sellerAllRightPanelMoneyUseStableCurrency,
           sellerRecommendedPriceText: sellerRecommendedPrice.sellerRecommendedPriceText,
@@ -2356,7 +2360,7 @@
       window.__mgForceBuildSellerRootNow = function forceBuildSellerRootNowManual() {
         return forceBuildSellerOwnerWorkspaceRootNow('manual');
       };
-      window.__mgC20ScriptLoaded = 'C20-C22';
+      window.__mgC20ScriptLoaded = 'C20-C23';
       window.generateSellerScopeDraftFromOperationalPlan = generateSellerScopeDraftFromOperationalPlan;
       window.ensureSellerGenerateScopeDraftButton = ensureSellerGenerateScopeDraftButton;
 
@@ -4433,6 +4437,8 @@
             buildSellerOwnerLikeWorkspace();
           }
           enforceSellerRightPanelCurrencyConsistency(loadSalesState(), loadSettings());
+          scheduleSellerPhysicalCurrencyEnforcement('refresh-seller-standalone');
+          startSellerRightPanelCurrencyMutationObserver();
         } finally {
           if (window.__mgForceCloseSalesNewQuoteAfterRefresh && typeof window.forceCloseSalesNewQuoteModal === 'function') {
             window.forceCloseSalesNewQuoteModal();
@@ -4549,6 +4555,34 @@
         return readSellerCurrencyFromSettingsStorage() === 'MXN';
       }
 
+      function resolveSellerPhysicalStableCurrency(settings, state) {
+        const storageCode = readSellerCurrencyFromSettingsStorage();
+        const lastValid = readSellerValidCurrency();
+        const settingsCode =
+          settings && !settings.__mgSellerSettingsBlocked
+            ? normalizeSellerCurrencyCode(settings.currency)
+            : '';
+        const primary = document.getElementById('salesPrimaryPrice');
+        const estimate = document.getElementById('salesPriceDisplay');
+        const primaryText = primary ? String(primary.textContent || '') : '';
+        const estimateText = estimate ? String(estimate.textContent || '') : '';
+        const combinedVisible = primaryText + ' ' + estimateText;
+        const visibleUsd =
+          /USD/i.test(combinedVisible) ||
+          ((/\$/.test(combinedVisible)) && !/MX/i.test(combinedVisible));
+
+        if (storageCode === 'USD') return 'USD';
+        if (lastValid === 'USD') return 'USD';
+        if (storageCode === 'MXN' && lastValid === 'USD') return 'USD';
+        if (visibleUsd) return 'USD';
+        if (storageCode === 'MXN') return 'MXN';
+        if (settingsCode === 'USD') return 'USD';
+        if (settingsCode === 'MXN' && storageCode !== 'MXN' && lastValid !== 'MXN') return 'USD';
+        if (settingsCode) return settingsCode;
+        if (lastValid) return lastValid;
+        return 'USD';
+      }
+
       function readSellerCurrencyFromVisiblePanel() {
         const storageCode = readSellerCurrencyFromSettingsStorage();
         const lastValid = readSellerValidCurrency();
@@ -4566,51 +4600,212 @@
       }
 
       function resolveSellerCurrency(settings, state) {
-        const storageCode = readSellerCurrencyFromSettingsStorage();
-        const settingsCode = settings
-          ? normalizeSellerCurrencyCode(settings.currency)
-          : '';
-        const stateCode = normalizeSellerCurrencyCode(
-          state && (state.currency || state.quoteCurrency || state.estimateCurrency)
-        );
-        const lastValid = readSellerValidCurrency();
-        const visibleCode = readSellerCurrencyFromVisiblePanel();
-        let resolved =
-          settingsCode ||
-          storageCode ||
-          lastValid ||
-          visibleCode ||
-          stateCode ||
-          'USD';
-
-        if (resolved === 'MXN' && !sellerStorageCurrencyExplicitlyMXN()) {
-          if (storageCode === 'USD' || settingsCode === 'USD' || lastValid === 'USD') {
-            resolved = 'USD';
-          } else if (storageCode) {
-            resolved = storageCode;
-          } else if (settingsCode) {
-            resolved = settingsCode;
-          } else {
-            resolved = 'USD';
-          }
-        }
-        if (storageCode === 'USD' && resolved === 'MXN') {
-          resolved = 'USD';
-        }
-        if (lastValid === 'USD' && resolved === 'MXN') {
-          resolved = 'USD';
-        }
-        if (settingsCode === 'USD' && resolved === 'MXN') {
-          resolved = 'USD';
-        }
-
+        if (!settings) settings = loadSettings();
+        const resolved = resolveSellerPhysicalStableCurrency(settings, state);
         rememberSellerValidCurrency(resolved);
         return resolved;
       }
 
       function sellerMoney(amount, settings, state) {
-        return money(amount, resolveSellerCurrency(settings, state));
+        if (!settings) settings = loadSettings();
+        return money(amount, resolveSellerPhysicalStableCurrency(settings, state));
       }
+
+      function replaceMxMoneyInString(str, targetCurrency) {
+        if (targetCurrency !== 'USD' || str == null) return String(str == null ? '' : str);
+        let next = String(str);
+        next = next.replace(/MX\$\s*([\d,]+(?:\.\d{1,2})?)/g, function (_match, numPart) {
+          return money(parseSellerMoneyTextToNumber(numPart), 'USD');
+        });
+        next = next.replace(/MXN\s*([\d,]+(?:\.\d{1,2})?)/gi, function (_match, numPart) {
+          return money(parseSellerMoneyTextToNumber(numPart), 'USD');
+        });
+        return next;
+      }
+
+      function fixElementMoneyCurrency(el, targetCurrency) {
+        if (!el || targetCurrency !== 'USD') return 0;
+        const raw = String(el.textContent || '');
+        if (!sellerRightPanelTextUsesMXN(raw)) return 0;
+        const next = replaceMxMoneyInString(raw, 'USD');
+        if (next !== raw) {
+          el.textContent = next;
+          return 1;
+        }
+        const amount = parseSellerMoneyTextToNumber(raw);
+        if (Number.isFinite(amount)) {
+          el.textContent = money(amount, 'USD');
+          return 1;
+        }
+        return 0;
+      }
+
+      function collectRightPanelMXNTextMatches() {
+        const panel = document.querySelector('.sales-right-panel');
+        const matches = [];
+        if (!panel) return matches;
+        const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
+        let node = null;
+        while ((node = walker.nextNode())) {
+          const text = String(node.textContent || '').trim();
+          if (!text || !sellerRightPanelTextUsesMXN(text)) continue;
+          matches.push({
+            text: text.slice(0, 160),
+            parentId: node.parentElement ? node.parentElement.id || node.parentElement.className : '',
+          });
+        }
+        return matches;
+      }
+
+      function countRightPanelMXNTextNodes() {
+        return collectRightPanelMXNTextMatches().length;
+      }
+
+      function shouldRunPhysicalCurrencyEnforcer() {
+        if (
+          document.documentElement.dataset.salesPortal !== 'seller' &&
+          !isSellerForcedPortalRoute() &&
+          !isSellerPricingControlledByServer()
+        ) {
+          return false;
+        }
+        if (shouldBlockVisibleSellerRootForce() && document.documentElement.dataset.authMode === 'owner') {
+          return false;
+        }
+        return Boolean(document.querySelector('.sales-right-panel'));
+      }
+
+      function enforceSellerRightPanelCurrencyFromVisibleDom(reason) {
+        if (!shouldRunPhysicalCurrencyEnforcer()) return false;
+        window.__mgSellerLastCurrencyEnforceReason = String(reason || 'unknown');
+        window.__mgSellerLastCurrencyEnforceError = null;
+        window.__mgSellerPhysicalCurrencyEnforcing = true;
+        let fixedCount = 0;
+        try {
+          const settings = loadSettings();
+          const state = loadSalesState();
+          const targetCurrency = resolveSellerPhysicalStableCurrency(settings, state);
+          if (targetCurrency !== 'USD') {
+            return true;
+          }
+
+          sellerRightPanelMoneyNodeIds().forEach(function (id) {
+            fixedCount += fixElementMoneyCurrency(document.getElementById(id), 'USD');
+          });
+
+          const panel = document.querySelector('.sales-right-panel');
+          if (panel) {
+            panel.querySelectorAll('#salesKpis strong, .compact-stat strong').forEach(function (el) {
+              fixedCount += fixElementMoneyCurrency(el, 'USD');
+            });
+            panel.querySelectorAll('#negotiationList li').forEach(function (el) {
+              fixedCount += fixElementMoneyCurrency(el, 'USD');
+            });
+            const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
+            let node = null;
+            while ((node = walker.nextNode())) {
+              const raw = String(node.textContent || '');
+              if (!sellerRightPanelTextUsesMXN(raw)) continue;
+              const next = replaceMxMoneyInString(raw, 'USD');
+              if (next !== raw) {
+                node.textContent = next;
+                fixedCount += 1;
+              }
+            }
+          }
+
+          rememberSellerValidCurrency('USD');
+          window.__mgSellerPhysicalCurrencyEnforcerActive = true;
+          return fixedCount >= 0;
+        } catch (enforceErr) {
+          window.__mgSellerLastCurrencyEnforceError = String(
+            enforceErr && enforceErr.message ? enforceErr.message : enforceErr
+          );
+          return false;
+        } finally {
+          window.__mgSellerPhysicalCurrencyEnforcing = false;
+        }
+      }
+
+      const SELLER_PHYSICAL_CURRENCY_ENFORCE_DELAYS = [0, 100, 300, 800, 1500, 3000];
+      function scheduleSellerPhysicalCurrencyEnforcement(reason) {
+        if (!shouldRunPhysicalCurrencyEnforcer()) return;
+        SELLER_PHYSICAL_CURRENCY_ENFORCE_DELAYS.forEach(function (delayMs) {
+          window.setTimeout(function () {
+            enforceSellerRightPanelCurrencyFromVisibleDom(
+              String(reason || 'scheduled') + '+' + delayMs + 'ms'
+            );
+          }, delayMs);
+        });
+      }
+
+      function startSellerRightPanelCurrencyMutationObserver() {
+        if (window.__mgSellerPhysicalCurrencyObserverStarted) return;
+        const panel = document.querySelector('.sales-right-panel');
+        if (!panel) {
+          window.setTimeout(startSellerRightPanelCurrencyMutationObserver, 250);
+          return;
+        }
+        window.__mgSellerPhysicalCurrencyObserverStarted = true;
+        let debounceTimer = null;
+        window.__mgSellerPhysicalCurrencyObserver = new MutationObserver(function () {
+          if (window.__mgSellerPhysicalCurrencyEnforcing) return;
+          if (debounceTimer) window.clearTimeout(debounceTimer);
+          debounceTimer = window.setTimeout(function () {
+            debounceTimer = null;
+            enforceSellerRightPanelCurrencyFromVisibleDom('mutation-observer');
+          }, 20);
+        });
+        window.__mgSellerPhysicalCurrencyObserver.observe(panel, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+        });
+      }
+
+      function __mgSellerCurrencyPhysicalDebug() {
+        const panel = document.querySelector('.sales-right-panel');
+        const panelText = panel ? String(panel.textContent || '') : '';
+        const settings = loadSettings();
+        const state = loadSalesState();
+        const mxnMatches = collectRightPanelMXNTextMatches();
+        return {
+          c20Version: 'C20-C23',
+          url: String(window.location.href || ''),
+          sellerCurrency: resolveSellerCurrency(settings, state),
+          sellerLastValidCurrency: readSellerValidCurrency(),
+          settingsCurrencyFromStorage: readSellerCurrencyFromSettingsStorage(),
+          visiblePrimaryPriceText: String(
+            (document.getElementById('salesPrimaryPrice') || {}).textContent || ''
+          ).trim(),
+          visiblePriceEstimateText: String(
+            (document.getElementById('salesPriceDisplay') || {}).textContent || ''
+          ).trim(),
+          visibleRightPanelMoneyTexts: collectSellerRightPanelMoneyTexts(),
+          rightPanelHasMXN: sellerRightPanelTextUsesMXN(panelText),
+          rightPanelMXNTextMatches: mxnMatches,
+          rightPanelUSDTextMatches: (panelText.match(/USD\s*[\d,]+(?:\.\d{2})?|\$[\d,]+(?:\.\d{2})?/g) || []).slice(
+            0,
+            24
+          ),
+          formatterSources: {
+            sellerMoney: typeof sellerMoney === 'function',
+            resolveSellerPhysicalStableCurrency: typeof resolveSellerPhysicalStableCurrency === 'function',
+            enforceSellerRightPanelCurrencyFromVisibleDom:
+              typeof enforceSellerRightPanelCurrencyFromVisibleDom === 'function',
+            applySellerRightPanelMoneyFromMetrics: typeof applySellerRightPanelMoneyFromMetrics === 'function',
+          },
+          renderSalesPatched: Boolean(window.__mgSellerRenderSalesCurrencyPatch),
+          sellerMoneyFunctionExists: typeof sellerMoney === 'function',
+          lastCurrencyEnforceReason: window.__mgSellerLastCurrencyEnforceReason || null,
+          lastCurrencyEnforceError: window.__mgSellerLastCurrencyEnforceError || null,
+          sellerPhysicalCurrencyEnforcerActive: Boolean(window.__mgSellerPhysicalCurrencyEnforcerActive),
+          sellerPhysicalStableCurrency: resolveSellerPhysicalStableCurrency(settings, state),
+        };
+      }
+
+      window.__mgSellerCurrencyPhysicalDebug = __mgSellerCurrencyPhysicalDebug;
+      window.enforceSellerRightPanelCurrencyFromVisibleDom = enforceSellerRightPanelCurrencyFromVisibleDom;
 
       function sellerRightPanelMoneyNodeIds() {
         return [
@@ -4761,15 +4956,17 @@
           metrics = preserved.metrics;
         }
         applySellerRightPanelMoneyFromMetrics(metrics, state, settings);
-        const sellerCurrency = resolveSellerCurrency(settings, state);
+        enforceSellerRightPanelCurrencyFromVisibleDom('enforce-consistency');
+        const sellerCurrency = resolveSellerPhysicalStableCurrency(settings, state);
         const panel = document.querySelector('.sales-right-panel');
         const panelText = panel ? String(panel.textContent || '') : '';
         if (sellerCurrency === 'USD' && sellerRightPanelTextUsesMXN(panelText)) {
-          applySellerRightPanelMoneyFromMetrics(metrics, state, settings);
+          enforceSellerRightPanelCurrencyFromVisibleDom('enforce-consistency-retry');
         }
         if (metrics.recommended > 0) {
           rememberSellerValidRecommendedPrice(metrics.recommended, sellerCurrency);
         }
+        scheduleSellerPhysicalCurrencyEnforcement('enforce-consistency');
         return sellerCurrency === 'USD' ? !sellerRightPanelTextUsesMXN(panelText) : true;
       }
 
@@ -4892,32 +5089,34 @@
       function readSellerCurrencyDebugSnapshot(settings, state) {
         if (!state) state = loadSalesState();
         if (!settings) settings = loadSettings();
-        const sellerCurrency = resolveSellerCurrency(settings, state);
+        const sellerCurrency = resolveSellerPhysicalStableCurrency(settings, state);
         const priceNode = document.getElementById('salesPrimaryPrice');
+        const estimateNode = document.getElementById('salesPriceDisplay');
         const priceText = priceNode ? String(priceNode.textContent || '').trim() : '';
+        const estimateText = estimateNode ? String(estimateNode.textContent || '').trim() : '';
         const rightPanelMoneyTexts = collectSellerRightPanelMoneyTexts();
         const panelHasMXN = sellerRightPanelTextUsesMXN(rightPanelMoneyTexts._panelText || '');
+        const mxnTextCount = countRightPanelMXNTextNodes();
         const usesUSD =
           sellerCurrency === 'USD' ||
           /USD/i.test(priceText) ||
           (/\$/.test(priceText) && !/MX/i.test(priceText));
-        const usesMXN = sellerCurrency === 'MXN' || sellerRightPanelTextUsesMXN(priceText);
-        const allStable =
-          sellerCurrency !== 'MXN' &&
-          !panelHasMXN &&
-          !sellerRightPanelMoneyNodeIds().some(function (id) {
-            return sellerRightPanelTextUsesMXN(rightPanelMoneyTexts[id]);
-          });
+        const usesMXN = sellerRightPanelTextUsesMXN(priceText) || sellerRightPanelTextUsesMXN(estimateText);
+        const allStable = sellerCurrency === 'USD' && mxnTextCount === 0 && !panelHasMXN;
         return {
           sellerCurrency: sellerCurrency,
           sellerLastValidCurrency: readSellerValidCurrency(),
           sellerPrimaryPriceText: priceText,
+          sellerPriceEstimateText: estimateText,
           sellerPrimaryPriceUsesUSD: usesUSD,
           sellerPrimaryPriceUsesMXN: usesMXN,
           sellerRightPanelMoneyTexts: rightPanelMoneyTexts,
           sellerRightPanelHasMXN: panelHasMXN,
+          sellerRightPanelMXNTextCount: mxnTextCount,
+          sellerAllVisibleMoneyUseStableCurrency: allStable,
+          sellerPhysicalCurrencyEnforcerActive: Boolean(window.__mgSellerPhysicalCurrencyEnforcerActive),
           sellerAllRightPanelMoneyUseStableCurrency: allStable,
-          sellerCurrencyStableAfterPlanRefresh: usesUSD && !usesMXN && !panelHasMXN,
+          sellerCurrencyStableAfterPlanRefresh: allStable,
           sellerRecommendedPriceText: priceText,
           sellerRecommendedPriceUsesUSD: usesUSD,
           sellerRecommendedPriceUsesMXN: usesMXN,
@@ -4961,9 +5160,15 @@
             };
           }
 
+          const priorStorageCurrency = readSellerCurrencyFromSettingsStorage();
           localStorage.setItem(SETTINGS_KEY, JSON.stringify(data.settings));
+          const hydratedCurrency = normalizeSellerCurrencyCode(data.settings && data.settings.currency);
+          if (priorStorageCurrency === 'USD' && hydratedCurrency === 'MXN') {
+            rememberSellerValidCurrency('USD');
+          } else {
+            rememberSellerValidCurrency(data.settings && data.settings.currency);
+          }
           window.__mgSellerBusinessSettingsReady = true;
-          rememberSellerValidCurrency(data.settings && data.settings.currency);
           window.__mgSellerBusinessSettingsSource = String(data.source || 'tenant_snapshot');
           window.__mgSellerBusinessSettingsError = '';
 
@@ -5863,6 +6068,8 @@
           }
         }
         enforceSellerRightPanelCurrencyConsistency(state, settings, metrics);
+        enforceSellerRightPanelCurrencyFromVisibleDom('render-standalone-seller-panel');
+        scheduleSellerPhysicalCurrencyEnforcement('render-standalone-seller-panel');
       }
 
       function patchSellerRenderSalesCurrencyGuard() {
@@ -5878,6 +6085,8 @@
           ) {
             try {
               enforceSellerRightPanelCurrencyConsistency();
+              enforceSellerRightPanelCurrencyFromVisibleDom('render-sales-patch');
+              scheduleSellerPhysicalCurrencyEnforcement('render-sales-patch');
             } catch (_patchErr) { /* ignore */ }
           }
           return result;
@@ -9360,6 +9569,8 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         bindSalesContactPicker();
         scheduleSellerWorkspaceRootBoot();
         scheduleVisibleSellerRootForceBoot();
+        startSellerRightPanelCurrencyMutationObserver();
+        scheduleSellerPhysicalCurrencyEnforcement('boot-seller-portal');
         if (shouldBlockVisibleSellerRootForce()) {
           cleanupIncompleteSellerRootIfBlocked();
         } else if (hasExactVisibleSellerTopbarRole() && !shouldDeferVisibleSellerRootForce()) {
