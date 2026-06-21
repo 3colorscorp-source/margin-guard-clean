@@ -2001,6 +2001,46 @@
         return true;
       }
 
+      function isSellerLayoutReadyToHideLegacy() {
+        if (isDirectSellerDomLayoutComplete()) return true;
+        var root = document.getElementById('sellerOwnerWorkspaceRoot');
+        if (!root || root.dataset.built !== 'true') return false;
+        var dash = document.querySelector('.seller-op-dash[data-seller-owner-layout="true"]');
+        if (!dash) return false;
+        var project = document.getElementById('salesProjectInfoSection');
+        var op = document.getElementById('salesOperationalSection');
+        if (!project || !op) return false;
+        return dash.contains(project) && dash.contains(op);
+      }
+
+      function restoreSalesLegacyLayoutFallbackVisible() {
+        var legacyGrid = document.querySelector('.grid.sales-layout');
+        if (legacyGrid) {
+          legacyGrid.hidden = false;
+          legacyGrid.removeAttribute('aria-hidden');
+          legacyGrid.classList.remove('sales-legacy-layout-hidden');
+          legacyGrid.style.removeProperty('display');
+        }
+        [
+          'salesDatesSection',
+          'salesNotesSection',
+          'salesLaborSection',
+          'salesPriceControlsSection',
+          'salesEstimateSummary',
+          'salesQuoteCta',
+          'salesSignedStatus',
+        ].forEach(function (sectionId) {
+          var el = document.getElementById(sectionId);
+          if (!el) return;
+          var dash = document.querySelector('.seller-op-dash[data-seller-owner-layout="true"]');
+          if (dash && dash.contains(el)) return;
+          el.hidden = false;
+          el.removeAttribute('aria-hidden');
+          el.classList.remove('seller-hard-hidden-orphan', 'seller-legacy-hidden');
+          el.style.removeProperty('display');
+        });
+      }
+
       function isSellerLayoutPhysicallyComplete() {
         var complete = isDirectSellerDomLayoutComplete();
         if (complete) {
@@ -2046,8 +2086,12 @@
               reason || (ownerPreview ? 'owner-preview-screen' : 'visible-seller-screen')
             );
             hideSellerCommercialEstimateLegacy();
-            hideSalesLegacyLayoutForSeller();
-            hideSellerLegacySectionsOutsidePlanHard();
+            if (isSellerLayoutReadyToHideLegacy()) {
+              hideSalesLegacyLayoutForSeller();
+              hideSellerLegacySectionsOutsidePlanHard();
+            } else {
+              restoreSalesLegacyLayoutFallbackVisible();
+            }
             dedupeSellerRightPanelInDom(null);
             restoreSellerRightPanelVisible();
             if (isDirectSellerDomLayoutComplete()) {
@@ -2088,8 +2132,12 @@
           }
 
           hideSellerCommercialEstimateLegacy();
-          hideSalesLegacyLayoutForSeller();
-          hideSellerLegacySectionsOutsidePlanHard();
+          if (isSellerLayoutReadyToHideLegacy()) {
+            hideSalesLegacyLayoutForSeller();
+            hideSellerLegacySectionsOutsidePlanHard();
+          } else {
+            restoreSalesLegacyLayoutFallbackVisible();
+          }
           dedupeSellerRightPanelInDom(root);
           restoreSellerRightPanelVisible();
           dedupeSellerRightPanelInDom(root);
@@ -2191,7 +2239,7 @@
           keep.style.removeProperty('display');
         }
         var legacyGrid = document.querySelector('.grid.sales-layout');
-        if (legacyGrid && (root && root.dataset.built === 'true' || isDirectSellerDomLayoutComplete())) {
+        if (legacyGrid && isSellerLayoutReadyToHideLegacy()) {
           legacyGrid.hidden = true;
           legacyGrid.setAttribute('aria-hidden', 'true');
           legacyGrid.classList.add('sales-legacy-layout-hidden');
@@ -2323,6 +2371,10 @@
 
       function hideSalesLegacyLayoutForSeller() {
         removeC20SellerDebugBanner();
+        if (!isSellerLayoutReadyToHideLegacy()) {
+          restoreSalesLegacyLayoutFallbackVisible();
+          return;
+        }
         [
           'salesEstimateSummary',
           'salesQuoteCta',
@@ -2395,11 +2447,13 @@
         }
         restoreSellerRightPanelVisible();
 
-        var legacyGrid = document.querySelector('.grid.sales-layout');
-        if (legacyGrid) {
-          legacyGrid.classList.add('sales-legacy-layout-hidden');
-          legacyGrid.hidden = true;
-          legacyGrid.setAttribute('aria-hidden', 'true');
+        if (isSellerLayoutReadyToHideLegacy()) {
+          var legacyGrid = document.querySelector('.grid.sales-layout');
+          if (legacyGrid) {
+            legacyGrid.classList.add('sales-legacy-layout-hidden');
+            legacyGrid.hidden = true;
+            legacyGrid.setAttribute('aria-hidden', 'true');
+          }
         }
 
         return true;
@@ -3227,6 +3281,10 @@
 
         if (typeof hideSellerLegacySalesChrome === 'function') {
           hideSellerLegacySalesChrome();
+        }
+
+        if (!isSellerLayoutReadyToHideLegacy()) {
+          return;
         }
 
         [
