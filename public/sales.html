@@ -96,6 +96,12 @@
     html[data-sales-portal="seller"] #salesEstimateSummary {
       display: none !important;
     }
+    html[data-sales-portal="seller"] body.seller-portal-layout .seller-owner-workspace-root[data-built="true"] ~ .grid.sales-layout,
+    html[data-sales-portal="seller"] body.seller-portal-layout #sellerOwnerWorkspaceRoot[data-built="true"] ~ .grid.sales-layout {
+      display: none !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
     html[data-sales-portal="seller"] .seller-quote-card,
     html[data-sales-portal="seller"] .seller-quote-card__inner {
       width: 100%;
@@ -791,12 +797,25 @@
         var isDeviceSellerAuth =
           document.documentElement.dataset.authMode === 'device' ||
           document.body.classList.contains('mg-portal-mode-seller-device');
+        var isSellerUrlParam = false;
+        try {
+          isSellerUrlParam = new URLSearchParams(window.location.search || '').get('portal') === 'seller';
+        } catch (_syncUrlErr) { /* ignore */ }
         if (
-          isDeviceSellerAuth &&
-          /^(Vendedor|Seller)$/i.test(visibleRole) &&
-          typeof window.forceBuildSellerOwnerWorkspaceRootNow === 'function'
+          typeof window.forceBuildSellerOwnerWorkspaceRootNow === 'function' &&
+          (isSellerUrlParam ||
+            (isDeviceSellerAuth && /^(Vendedor|Seller)$/i.test(visibleRole)))
         ) {
-          window.forceBuildSellerOwnerWorkspaceRootNow('auth-sync-visible-role');
+          window.forceBuildSellerOwnerWorkspaceRootNow(
+            isSellerUrlParam ? 'auth-sync-portal-url' : 'auth-sync-visible-role'
+          );
+          return;
+        }
+        if (
+          typeof window.enforceSellerOwnerLikeLayoutFromPortal === 'function' &&
+          isSellerUrlParam
+        ) {
+          window.enforceSellerOwnerLikeLayoutFromPortal('auth-sync-portal-url');
           return;
         }
         if (typeof window.buildSellerOwnerWorkspaceRoot === 'function') {
@@ -811,6 +830,28 @@
         }
       };
       window.__mgInitSellerPortalGuard();
+      try {
+        if (new URLSearchParams(window.location.search || '').get('portal') === 'seller') {
+          window.__mgSellerPortalUrlParamActive = true;
+          (function waitSellerLayoutApi() {
+            var attempts = 0;
+            var iv = window.setInterval(function () {
+              attempts += 1;
+              if (typeof window.enforceSellerOwnerLikeLayoutFromPortal === 'function') {
+                window.clearInterval(iv);
+                window.enforceSellerOwnerLikeLayoutFromPortal('url-param-early-wait');
+                return;
+              }
+              if (typeof window.forceBuildSellerOwnerWorkspaceRootNow === 'function') {
+                window.clearInterval(iv);
+                window.forceBuildSellerOwnerWorkspaceRootNow('url-param-early-wait');
+                return;
+              }
+              if (attempts >= 120) window.clearInterval(iv);
+            }, 50);
+          })();
+        }
+      } catch (_urlParamErr) { /* ignore */ }
     })();
   </script>
   <div class="container">
@@ -1333,6 +1374,27 @@
         );
       }
 
+      function isSellerPortalUrlActive() {
+        try {
+          return new URLSearchParams(window.location.search || '').get('portal') === 'seller';
+        } catch (_portalUrlErr) {
+          return false;
+        }
+      }
+
+      function isSellerLayoutPortalActive() {
+        if (shouldBlockVisibleSellerRootForce()) return false;
+        if (isSellerPortalUrlActive()) {
+          document.documentElement.dataset.salesPortal = 'seller';
+          document.body.classList.add('seller-portal-layout');
+          try {
+            sessionStorage.setItem('mg_sales_portal_seller', '1');
+          } catch (_storageErr) { /* ignore */ }
+          return true;
+        }
+        return isSellerForcedPortalRoute();
+      }
+
       function isSellerForcedPortalRoute() {
         if (shouldBlockVisibleSellerRootForce()) return false;
         if (hasExactVisibleSellerTopbarRole()) {
@@ -1475,6 +1537,8 @@
       }
 
       function shouldDeferVisibleSellerRootForce() {
+        if (isSellerPortalUrlActive()) return false;
+        if (document.documentElement.dataset.salesPortal === 'seller') return false;
         if (document.documentElement.dataset.authMode === 'device') return false;
         if (document.body.classList.contains('mg-portal-mode-seller-device')) return false;
         if (readMgAppNavPortalMode() === 'seller-device') return false;
@@ -1483,17 +1547,38 @@
 
       function shouldBuildSellerOwnerWorkspaceRoot() {
         if (shouldBlockVisibleSellerRootForce()) return false;
+        if (isSellerPortalUrlActive()) return true;
+        if (document.documentElement.dataset.salesPortal === 'seller') return true;
         if (shouldDeferVisibleSellerRootForce()) return false;
         if (hasExactVisibleSellerTopbarRole()) return true;
-        if (document.documentElement.dataset.salesPortal === 'seller') return true;
         if (isRuntimeSellerSessionEarlyMain()) return true;
         if (document.body.classList.contains('mg-portal-mode-seller-device')) return true;
         if (readMgAppNavPortalMode() === 'seller-device') return true;
-        try {
-          var params = new URLSearchParams(window.location.search || '');
-          if (params.get('portal') === 'seller') return true;
-        } catch (_paramsErr) { /* ignore */ }
         return false;
+      }
+
+      function enforceSellerOwnerLikeLayoutFromPortal(reason) {
+        if (shouldBlockVisibleSellerRootForce()) return false;
+        if (!isSellerPortalUrlActive() && document.documentElement.dataset.salesPortal !== 'seller') {
+          return false;
+        }
+        window.__mgSellerRootLastReason = String(reason || 'portal-enforce');
+        ensureSellerPortalActiveForWorkspace();
+        var root = document.getElementById('sellerOwnerWorkspaceRoot');
+        var dash = document.querySelector('.seller-op-dash[data-seller-owner-layout="true"]');
+        if (!root || root.dataset.built !== 'true' || !dash) {
+          forceBuildSellerOwnerWorkspaceRootNow(window.__mgSellerRootLastReason);
+          return true;
+        }
+        mountSellerNodesIntoWorkspaceRoot(root);
+        updateSellerShellChrome();
+        reorderSellerOwnerLikeCardInner();
+        repairSellerOpDashFromOwnerBlueprint();
+        polishSellerOperationalPlanMatch();
+        finalizeSellerOrphanCleanup();
+        hideSalesLegacyLayoutForSeller();
+        hideSellerLegacySectionsOutsidePlanHard();
+        return true;
       }
 
       function ensureSellerPortalActiveForWorkspace() {
@@ -1862,8 +1947,10 @@
         function run() {
           if (shouldBlockVisibleSellerRootForce()) return;
           if (shouldDeferVisibleSellerRootForce()) return;
-          if (hasExactVisibleSellerTopbarRole()) {
-            forceBuildSellerOwnerWorkspaceRootNow('boot-visible-role');
+          if (hasExactVisibleSellerTopbarRole() || isSellerPortalUrlActive()) {
+            forceBuildSellerOwnerWorkspaceRootNow(
+              isSellerPortalUrlActive() ? 'boot-portal-url' : 'boot-visible-role'
+            );
             return;
           }
           buildSellerOwnerWorkspaceRoot();
@@ -1893,7 +1980,7 @@
             return;
           }
           if (shouldDeferVisibleSellerRootForce()) return;
-          if (!hasExactVisibleSellerTopbarRole()) return;
+          if (!hasExactVisibleSellerTopbarRole() && !isSellerPortalUrlActive()) return;
           forceBuildSellerOwnerWorkspaceRootNow(reason || 'visible-role-auto');
         }
 
@@ -2222,6 +2309,96 @@
         return maxOk && overflowOk && !isSellerRightPanelInternalScrollbarActive();
       }
 
+      function readSellerDomParentSummary(el) {
+        if (!el) return null;
+        var parent = el.parentElement;
+        if (!parent) return 'detached';
+        var tag = String(parent.tagName || 'unknown').toLowerCase();
+        var id = parent.id ? '#' + parent.id : '';
+        var cls = parent.className
+          ? '.' +
+            String(parent.className)
+              .trim()
+              .split(/\s+/)
+              .slice(0, 2)
+              .join('.')
+          : '';
+        return tag + id + cls;
+      }
+
+      function __mgSellerLayoutPhysicalDebug() {
+        function isVisible(el) {
+          if (!el) return false;
+          if (el.hidden || el.getAttribute('aria-hidden') === 'true') return false;
+          var st = window.getComputedStyle(el);
+          if (st.display === 'none' || st.visibility === 'hidden') return false;
+          var rect = el.getBoundingClientRect();
+          return rect.width > 0 || rect.height > 0;
+        }
+
+        var root = document.getElementById('sellerOwnerWorkspaceRoot');
+        var project = document.getElementById('salesProjectInfoSection');
+        var op = document.getElementById('salesOperationalSection');
+        var dash = document.querySelector('.seller-op-dash[data-seller-owner-layout="true"]');
+        var dates = document.getElementById('salesDatesSection');
+        var notes = document.getElementById('salesNotesSection');
+        var labor = document.getElementById('salesLaborSection');
+        var legacyGrid = document.querySelector('.grid.sales-layout');
+        var commercialHead = document.querySelector('.sales-left-panel .section-head h2');
+        var datesFormInDash =
+          dash &&
+          dash.querySelector(
+            '.owner-op-dash__dates-card .sales-quote-dates-row, .seller-op-dash__dates-card .sales-quote-dates-row'
+          );
+        var datesInside =
+          !!(dash && dates && dash.contains(dates)) ||
+          !!datesFormInDash ||
+          !!(dates && (dates.hidden || !isVisible(dates)));
+
+        return {
+          c20Version: window.__mgC20ScriptLoaded || 'C20-C26',
+          url: String(window.location.href || ''),
+          salesPortalDataset: document.documentElement.dataset.salesPortal || '',
+          bodySellerBuilt: document.body.dataset.sellerOwnerLikeBuilt || '',
+          sellerRootExists: !!(root && root.dataset.built === 'true'),
+          sellerRootDisplay: readMgElementDisplayState(root),
+          legacySalesLayoutExists: !!legacyGrid,
+          legacySalesLayoutDisplay: readMgElementDisplayState(legacyGrid),
+          commercialEstimateVisible: !!(
+            commercialHead &&
+            isVisible(commercialHead.closest('.section-head')) &&
+            /estimate comercial/i.test(String(commercialHead.textContent || ''))
+          ),
+          datesSectionParent: readSellerDomParentSummary(dates),
+          notesSectionParent: readSellerDomParentSummary(notes),
+          laborSectionParent: readSellerDomParentSummary(labor),
+          datesInsideOperationalPlan: datesInside,
+          notesOutsideOperationalPlanVisible: isVisible(notes) && !(dash && dash.contains(notes)),
+          laborInsideOperationalPlan: !!(dash && labor && dash.contains(labor)),
+          operationalPlanExists: !!op,
+          operationalPlanParent: readSellerDomParentSummary(op),
+          projectInfoBeforeOperationalPlan: !!(
+            project &&
+            op &&
+            (project.compareDocumentPosition(op) & Node.DOCUMENT_POSITION_FOLLOWING)
+          ),
+          sellerRootBuilderExists: typeof window.buildSellerOwnerWorkspaceRoot === 'function',
+          lastSellerRootBuildReason: window.__mgSellerRootLastReason || '',
+          lastSellerRootBuildError: window.__mgSellerRootLastError || null,
+          sellerPortalUrlParam: isSellerPortalUrlActive(),
+          bodySellerPortalLayoutClass: document.body.classList.contains('seller-portal-layout'),
+          functionsPresent: {
+            buildSellerOwnerWorkspaceRoot: typeof window.buildSellerOwnerWorkspaceRoot === 'function',
+            repairSellerOpDashFromOwnerBlueprint:
+              typeof repairSellerOpDashFromOwnerBlueprint === 'function',
+            finalizeSellerOrphanCleanup: typeof finalizeSellerOrphanCleanup === 'function',
+            hideSalesLegacyLayoutForSeller: typeof hideSalesLegacyLayoutForSeller === 'function',
+            enforceSellerOwnerLikeLayoutFromPortal:
+              typeof window.enforceSellerOwnerLikeLayoutFromPortal === 'function',
+          },
+        };
+      }
+
       function __mgSellerFinalLayoutCheck() {
         function isVisible(el) {
           if (!el) return false;
@@ -2276,7 +2453,7 @@
         var settingsCurrencyFromStorage = readSellerCurrencyFromSettingsStorage() || '';
 
         return {
-          c20Version: 'C20-C25',
+          c20Version: 'C20-C26',
           visibleRole: readVisibleSellerRoleLabel(),
           sellerRootExists: !!(root && root.dataset.built === 'true'),
           sellerScopeInsideOperationalPlan: sellerScopeInsideOperationalPlan,
@@ -2359,6 +2536,7 @@
             /estimate comercial/i.test(String(commercialHead.textContent || ''))
           ),
           sellerDashExists: !!dash,
+          legacySalesLayoutDisplay: readMgElementDisplayState(legacyGrid),
         };
       }
 
@@ -2368,11 +2546,13 @@
       window.cleanupIncompleteSellerRootIfBlocked = cleanupIncompleteSellerRootIfBlocked;
       window.scheduleSellerWorkspaceRootBoot = scheduleSellerWorkspaceRootBoot;
       window.scheduleVisibleSellerRootForceBoot = scheduleVisibleSellerRootForceBoot;
+      window.enforceSellerOwnerLikeLayoutFromPortal = enforceSellerOwnerLikeLayoutFromPortal;
+      window.__mgSellerLayoutPhysicalDebug = __mgSellerLayoutPhysicalDebug;
       window.__mgSellerFinalLayoutCheck = __mgSellerFinalLayoutCheck;
       window.__mgForceBuildSellerRootNow = function forceBuildSellerRootNowManual() {
         return forceBuildSellerOwnerWorkspaceRootNow('manual');
       };
-      window.__mgC20ScriptLoaded = 'C20-C25';
+      window.__mgC20ScriptLoaded = 'C20-C26';
       window.generateSellerScopeDraftFromOperationalPlan = generateSellerScopeDraftFromOperationalPlan;
       window.ensureSellerGenerateScopeDraftButton = ensureSellerGenerateScopeDraftButton;
 
@@ -2495,7 +2675,7 @@
       }
 
       function applySellerOwnerShellLayout() {
-        if (!isSellerForcedPortalRoute()) return false;
+        if (!isSellerLayoutPortalActive()) return false;
 
         document.body.classList.add('seller-portal-layout');
         var sellerRoot = document.getElementById('sellerOwnerWorkspaceRoot');
@@ -2534,7 +2714,7 @@
       }
 
       function polishSellerOperationalPlanMatch() {
-        if (!isSellerForcedPortalRoute()) return false;
+        if (!isSellerLayoutPortalActive()) return false;
 
         var opSection = document.getElementById('salesOperationalSection');
         if (opSection) {
@@ -2885,7 +3065,7 @@
       }
 
       function ensureSellerGenerateScopeDraftButton(actionBar) {
-        if (!isSellerForcedPortalRoute()) return null;
+        if (!isSellerLayoutPortalActive()) return null;
 
         actionBar =
           actionBar ||
@@ -2928,7 +3108,7 @@
       }
 
       function finalizeSellerOrphanCleanup() {
-        if (!isSellerForcedPortalRoute()) return;
+        if (!isSellerLayoutPortalActive()) return;
         var dash = document.querySelector(
           '#salesOperationalSection .seller-op-dash[data-seller-owner-layout="true"]'
         );
@@ -2960,7 +3140,7 @@
       }
 
       function repairSellerOpDashFromOwnerBlueprint() {
-        if (!isSellerForcedPortalRoute()) return false;
+        if (!isSellerLayoutPortalActive()) return false;
 
         var dash = document.querySelector(
           '#salesOperationalSection .seller-op-dash[data-seller-owner-layout="true"]'
@@ -3041,7 +3221,7 @@
       }
 
       function applySellerOwnerQuoteLayout() {
-        if (!isSellerForcedPortalRoute()) return false;
+        if (!isSellerLayoutPortalActive()) return false;
         applySellerOwnerShellLayout();
 
         var opSection = document.getElementById('salesOperationalSection');
@@ -3222,7 +3402,7 @@
       }
 
       function hideSellerLegacySalesChrome() {
-        if (!isSellerForcedPortalRoute()) return;
+        if (!isSellerLayoutPortalActive()) return;
         [
           'salesEstimateSummary',
           'salesQuoteCta',
@@ -4453,15 +4633,10 @@
           renderStandaloneSellerPanel();
           if (
             document.documentElement.dataset.salesPortal === 'seller' ||
+            isSellerPortalUrlActive() ||
             isSellerForcedPortalRoute()
           ) {
-            var sellerRoot = document.getElementById('sellerOwnerWorkspaceRoot');
-            if (sellerRoot) {
-              repairSellerOpDashFromOwnerBlueprint();
-              hideSellerLegacySectionsOutsidePlanHard();
-            } else {
-              buildSellerOwnerLikeWorkspace();
-            }
+            enforceSellerOwnerLikeLayoutFromPortal('refresh-seller');
           }
           if (isSellerPricingSettingsPending(loadSettings())) {
             scheduleSellerPricingRefreshWhenSettingsReady();
@@ -5922,7 +6097,52 @@
         }, 100);
       }
 
+      function patchSellerRenderSalesLayoutGuard() {
+        if (window.__mgSellerRenderSalesLayoutPatch) return;
+        if (typeof window.renderSales !== 'function') return;
+        var innerRenderSales = window.renderSales;
+        window.renderSales = function mgSellerPatchedRenderSalesLayout() {
+          var result = innerRenderSales.apply(this, arguments);
+          if (
+            isSellerPortalUrlActive() ||
+            document.documentElement.dataset.salesPortal === 'seller'
+          ) {
+            try {
+              enforceSellerOwnerLikeLayoutFromPortal('post-renderSales');
+            } catch (_layoutPatchErr) { /* ignore */ }
+          }
+          return result;
+        };
+        window.__mgSellerRenderSalesLayoutPatch = true;
+      }
+
+      patchSellerRenderSalesLayoutGuard();
+      if (!window.__mgSellerRenderSalesLayoutPatch) {
+        var layoutPatchTries = 0;
+        var layoutPatchTimer = window.setInterval(function () {
+          layoutPatchTries += 1;
+          patchSellerRenderSalesLayoutGuard();
+          if (window.__mgSellerRenderSalesLayoutPatch || layoutPatchTries > 50) {
+            window.clearInterval(layoutPatchTimer);
+          }
+        }, 100);
+      }
+
       window.enforceSellerRightPanelCurrencyConsistency = enforceSellerRightPanelCurrencyConsistency;
+
+      function scheduleSellerPortalUrlLayoutEnforcement() {
+        if (!isSellerPortalUrlActive()) return;
+        function run() {
+          enforceSellerOwnerLikeLayoutFromPortal('portal-url-schedule');
+        }
+        run();
+        [0, 100, 300, 800, 1500, 3000, 6000].forEach(function (delayMs) {
+          window.setTimeout(run, delayMs);
+        });
+        document.addEventListener('device-auth-ready', run);
+        document.addEventListener('mg-app-nav-ready', run);
+        window.addEventListener('load', run);
+      }
 
       function escapeHtml(value) {
         return String(value || '')
@@ -9383,12 +9603,18 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         bindStandaloneSellerSend();
         applyBrandingToSalesPage();
         bindSalesContactPicker();
+        scheduleSellerPortalUrlLayoutEnforcement();
         scheduleSellerWorkspaceRootBoot();
         scheduleVisibleSellerRootForceBoot();
         if (shouldBlockVisibleSellerRootForce()) {
           cleanupIncompleteSellerRootIfBlocked();
-        } else if (hasExactVisibleSellerTopbarRole() && !shouldDeferVisibleSellerRootForce()) {
-          forceBuildSellerOwnerWorkspaceRootNow('boot-immediate-visible-role');
+        } else if (
+          (hasExactVisibleSellerTopbarRole() || isSellerPortalUrlActive()) &&
+          !shouldDeferVisibleSellerRootForce()
+        ) {
+          forceBuildSellerOwnerWorkspaceRootNow(
+            isSellerPortalUrlActive() ? 'boot-portal-url-immediate' : 'boot-immediate-visible-role'
+          );
         } else {
           buildSellerOwnerWorkspaceRoot();
         }
@@ -9397,10 +9623,15 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
       document.addEventListener('device-auth-ready', function () {
         if (typeof window.__mgSyncSellerPortalGuardAndLayout === 'function') {
           window.__mgSyncSellerPortalGuardAndLayout();
-        } else if (hasExactVisibleSellerTopbarRole()) {
-          forceBuildSellerOwnerWorkspaceRootNow('device-auth-visible-role');
+        } else if (hasExactVisibleSellerTopbarRole() || isSellerPortalUrlActive()) {
+          forceBuildSellerOwnerWorkspaceRootNow(
+            isSellerPortalUrlActive() ? 'device-auth-portal-url' : 'device-auth-visible-role'
+          );
         } else {
           buildSellerOwnerWorkspaceRoot();
+        }
+        if (isSellerPortalUrlActive()) {
+          enforceSellerOwnerLikeLayoutFromPortal('device-auth-portal-url-enforce');
         }
       });
 
