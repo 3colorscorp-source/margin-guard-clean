@@ -1415,6 +1415,14 @@
       }
 
       function isRealSellerRuntime() {
+        if (isProductionVisibleSellerScreen()) {
+          document.documentElement.dataset.salesPortal = 'seller';
+          document.body.classList.add('seller-portal-layout');
+          try {
+            sessionStorage.setItem('mg_sales_portal_seller', '1');
+          } catch (_visibleSellerStorageErr) { /* ignore */ }
+          return true;
+        }
         if (isRealOwnerAdminBlock()) return false;
         var path = String(window.location.pathname || '');
         if (!/^\/sales(?:\.html)?\/?$/i.test(path)) return false;
@@ -1490,7 +1498,14 @@
 
       function readVisibleSellerRoleLabel() {
         var topbar = document.querySelector('.mg-topbar__title');
-        if (topbar) return String(topbar.textContent || '').trim();
+        if (topbar) {
+          var topbarText = String(topbar.textContent || '').trim();
+          if (topbarText) return topbarText;
+        }
+        if (document.body) {
+          var pageTitle = document.body.getAttribute('data-mg-page-title');
+          if (pageTitle) return String(pageTitle).trim();
+        }
         return '';
       }
 
@@ -1505,10 +1520,50 @@
       }
 
       function isVisibleSellerRoleLabel(text) {
-        return /^(Vendedor|Seller)$/i.test(String(text || '').trim());
+        var normalized = String(text || '')
+          .trim()
+          .replace(/\s+/g, ' ');
+        if (/^(Vendedor|Seller)$/i.test(normalized)) return true;
+        return /^(Vendedor|Seller)\b/i.test(normalized);
+      }
+
+      function isOwnerPortalSessionActive() {
+        if (isSalesAdminNormalSession()) return true;
+        if (document.documentElement.dataset.authMode === 'owner') return true;
+        if (document.body.classList.contains('mg-portal-mode-owner')) return true;
+        if (document.body.classList.contains('mg-portal-mode-supervisor-device')) return true;
+        return false;
+      }
+
+      function isProductionVisibleSellerScreen() {
+        var path = String(window.location.pathname || '');
+        if (!/^\/sales(?:\.html)?\/?$/i.test(path)) return false;
+        if (document.body.classList.contains('mg-seller-portal-blocked')) return false;
+        if (isOwnerPortalSessionActive()) return false;
+        if (!isVisibleSellerRoleLabel(readVisibleSellerRoleLabel())) return false;
+        var project = document.getElementById('salesProjectInfoSection');
+        if (project) {
+          var style = window.getComputedStyle(project);
+          if (style.display === 'none' || style.visibility === 'hidden') return false;
+        }
+        var hasSellerDeviceSignal =
+          document.body.classList.contains('mg-portal-mode-seller-device') ||
+          readMgAppNavPortalMode() === 'seller-device' ||
+          document.documentElement.dataset.authMode === 'device' ||
+          document.documentElement.dataset.portalType === 'seller' ||
+          window.MG_SALES_PORTAL_MODE === 'device' ||
+          (window.MGSalesDevicePortal &&
+            typeof window.MGSalesDevicePortal.isSellerMode === 'function' &&
+            window.MGSalesDevicePortal.isSellerMode());
+        if (hasSellerDeviceSignal) return true;
+        return (
+          document.body.classList.contains('auth-ready') &&
+          document.body.classList.contains('mg-app-shell')
+        );
       }
 
       function detectVisibleSellerRuntime() {
+        if (isProductionVisibleSellerScreen()) return true;
         if (isSalesAdminNormalSession()) return false;
 
         if (document.body.classList.contains('mg-portal-mode-seller-device')) {
@@ -1614,6 +1669,7 @@
 
       function shouldBuildSellerOwnerWorkspaceRoot() {
         if (shouldBlockVisibleSellerRootForce()) return false;
+        if (isProductionVisibleSellerScreen()) return true;
         if (isRealSellerRuntime()) return true;
         if (isSellerPortalUrlActive()) return true;
         if (document.documentElement.dataset.salesPortal === 'seller') return true;
@@ -1672,7 +1728,7 @@
       }
 
       function forceRealSellerOwnerLayout(reason) {
-        if (isRealOwnerAdminBlock()) return false;
+        if (!isProductionVisibleSellerScreen() && isRealOwnerAdminBlock()) return false;
         if (!isRealSellerRuntime()) return false;
         if (window.__mgSellerLayoutEnforcing) {
           return isSellerLayoutPhysicallyComplete();
@@ -1684,6 +1740,20 @@
           window.__mgSellerRootLastReason = window.__mgSellerRealLayoutLastReason;
           window.__mgSellerRootLastError = null;
           ensureSellerPortalActiveForWorkspace();
+
+          if (isProductionVisibleSellerScreen()) {
+            applyRealSellerDomLayoutDirect(reason || 'visible-seller-screen');
+            hideSellerCommercialEstimateLegacy();
+            hideSalesLegacyLayoutForSeller();
+            hideSellerLegacySectionsOutsidePlanHard();
+            dedupeSellerRightPanelInDom(null);
+            restoreSellerRightPanelVisible();
+            if (isDirectSellerDomLayoutComplete()) {
+              window.__mgSellerRealLayoutLastError = null;
+              window.__mgSellerRootLastError = null;
+              return true;
+            }
+          }
 
           var root = ensureSellerOwnerWorkspaceRootElementDirect();
           if (root && !isDirectSellerDomLayoutComplete()) {
@@ -2556,7 +2626,8 @@
         );
 
         return {
-          c20Version: window.__mgC20ScriptLoaded || 'C20-C29',
+          c20Version: window.__mgC20ScriptLoaded || 'C20-C29-FIX1',
+          isProductionVisibleSellerScreen: isProductionVisibleSellerScreen(),
           opStackOrderOk: verifySellerOpStackChildOrder(
             dash && dash.querySelector('.seller-op-dash__stack, .owner-op-dash__stack')
           ),
@@ -2564,6 +2635,7 @@
           laborInternalOrderOk: verifySellerLaborInternalOrder(labor),
           url: String(window.location.href || ''),
           visibleTopbarRole: readVisibleSellerRoleLabel(),
+          isProductionVisibleSellerScreen: isProductionVisibleSellerScreen(),
           isRealSellerRuntime: isRealSellerRuntime(),
           salesPortalDataset: document.documentElement.dataset.salesPortal || '',
           sellerRootExists: !!(root && root.dataset.built === 'true'),
@@ -2679,7 +2751,8 @@
         );
 
         return {
-          c20Version: 'C20-C29',
+          c20Version: 'C20-C29-FIX1',
+          isProductionVisibleSellerScreen: isProductionVisibleSellerScreen(),
           isRealSellerRuntime: isRealSellerRuntime(),
           directDomLayoutApplied: document.body.dataset.sellerDirectDomLayout === 'true',
           visibleRole: readVisibleSellerRoleLabel(),
@@ -2781,6 +2854,7 @@
       window.scheduleVisibleSellerRootForceBoot = scheduleVisibleSellerRootForceBoot;
       window.forceRealSellerOwnerLayout = forceRealSellerOwnerLayout;
       window.isRealSellerRuntime = isRealSellerRuntime;
+      window.isProductionVisibleSellerScreen = isProductionVisibleSellerScreen;
       window.enforceSellerOwnerLikeLayoutFromPortal = enforceSellerOwnerLikeLayoutFromPortal;
       window.__mgSellerLayoutPhysicalDebug = __mgSellerLayoutPhysicalDebug;
       window.__mgSellerFinalLayoutCheck = __mgSellerFinalLayoutCheck;
@@ -2788,12 +2862,16 @@
         forceRealSellerOwnerLayout('manual');
         return __mgSellerFinalLayoutCheck();
       };
-      window.__mgC20ScriptLoaded = 'C20-C29';
+      window.__mgC20ScriptLoaded = 'C20-C29-FIX1';
       window.generateSellerScopeDraftFromOperationalPlan = generateSellerScopeDraftFromOperationalPlan;
       window.ensureSellerGenerateScopeDraftButton = ensureSellerGenerateScopeDraftButton;
 
       function hideSellerLegacySectionsOutsidePlanHard() {
-        if (!isRealSellerRuntime() && document.documentElement.dataset.salesPortal !== 'seller') {
+        if (
+          !isProductionVisibleSellerScreen() &&
+          !isRealSellerRuntime() &&
+          document.documentElement.dataset.salesPortal !== 'seller'
+        ) {
           return;
         }
         document.documentElement.dataset.salesPortal = 'seller';
