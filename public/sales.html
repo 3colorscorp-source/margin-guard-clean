@@ -55,6 +55,17 @@
       display: block;
       visibility: visible;
       min-width: 0;
+      position: sticky;
+      top: 96px;
+      align-self: start;
+      height: fit-content;
+      max-height: calc(100vh - 110px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+    html[data-sales-portal="seller"] .seller-workspace-grid .sales-right-panel > .card,
+    html[data-sales-portal="seller"] .seller-workspace-grid .sales-live-sidebar > .card {
+      margin-top: 0;
     }
     html[data-sales-portal="seller"] .seller-shell-hidden-panel {
       display: none !important;
@@ -262,16 +273,29 @@
     html[data-sales-portal="seller"] .card-inner > #salesLaborSection {
       display: none !important;
     }
-    html[data-sales-portal="seller"] .seller-op-dash__stack .sales-labor,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__stack .sales-labor,
     html[data-sales-portal="seller"] .seller-op-dash__stack .owner-labor {
       display: block !important;
+      width: 100%;
+      max-width: none;
+      box-sizing: border-box;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__stack .sales-labor__intro,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__stack .sales-labor__head,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__stack .sales-labor-guide,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__stack .sales-labor-table-wrap,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__stack .owner-labor-table-wrap {
+      width: 100%;
+      max-width: none;
+      box-sizing: border-box;
     }
     html[data-sales-portal="seller"] .seller-operational .seller-op-dash,
     html[data-sales-portal="seller"] .seller-operational .owner-op-dash {
       overflow-x: hidden;
       max-width: 100%;
     }
-    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card.owner-date-section {
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card.owner-date-section,
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash__dates-card.owner-date-section {
       margin: 0;
     }
     html[data-sales-portal="seller"] .seller-operational .seller-op-dash__crew .sales-op-avail-table-wrap {
@@ -282,10 +306,6 @@
     html[data-sales-portal="seller"] .seller-operational .seller-op-dash__crew .sales-op-avail-summary-table td {
       padding: 4px 6px;
       font-size: 11px;
-    }
-    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__actions .btn {
-      flex: 1 1 160px;
-      width: auto;
     }
     html[data-sales-portal="seller"] #salesQuoteCta {
       display: none !important;
@@ -315,10 +335,37 @@
       padding: 8px 10px;
       border-radius: 12px;
     }
-    html[data-sales-portal="seller"] .seller-operational .sales-labor-table-wrap {
+    html[data-sales-portal="seller"] .seller-operational .sales-labor-table-wrap,
+    html[data-sales-portal="seller"] .seller-operational .owner-labor-table-wrap {
       margin-top: 4px;
       width: 100%;
-      overflow-x: auto;
+      max-width: none;
+      padding: 5px;
+      overflow-x: visible;
+      box-sizing: border-box;
+    }
+    html[data-sales-portal="seller"] .seller-operational .sales-labor-table-wrap .table.sales-labor-table,
+    html[data-sales-portal="seller"] .seller-operational .owner-labor-table-wrap .table.owner-labor-table,
+    html[data-sales-portal="seller"] .seller-operational .owner-labor-table-wrap table.sales-labor-table {
+      width: 100%;
+      min-width: 0;
+      table-layout: fixed;
+    }
+    html[data-sales-portal="seller"] .seller-operational .sales-labor-table thead th.sales-labor-th--worker {
+      width: 34%;
+      min-width: 0;
+    }
+    html[data-sales-portal="seller"] .seller-operational .sales-labor-table thead th.sales-labor-th--type {
+      width: 16%;
+      min-width: 0;
+    }
+    html[data-sales-portal="seller"] .seller-operational .sales-labor-table thead th.sales-labor-th--units {
+      width: 14%;
+      min-width: 0;
+    }
+    html[data-sales-portal="seller"] .seller-operational .sales-labor-table thead th.sales-labor-th--actions {
+      width: 36%;
+      min-width: 0;
     }
     html[data-sales-portal="seller"] .seller-operational .sales-labor__actions {
       display: none !important;
@@ -371,24 +418,47 @@
       min-height: 40px;
       padding: 4px;
     }
-    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card .sales-quote-dates-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card .sales-quote-dates-row,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card .owner-date-group,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card .owner-date-group--primary,
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash__dates-card .sales-quote-dates-row,
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash__dates-card .owner-date-group,
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash__dates-card .owner-date-group--primary {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) !important;
       gap: 8px;
       margin: 0;
+      width: 100%;
+      box-sizing: border-box;
     }
-    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card .field {
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card .field,
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash__dates-card .field {
       margin: 0;
+      min-width: 0;
     }
-    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card .field .hint {
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card .field > label,
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash__dates-card .field > label {
+      font-size: 11px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card .field .hint,
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash__dates-card .field .hint {
       margin-top: 3px;
       font-size: 10px;
       line-height: 1.3;
     }
-    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card .field input[type="date"] {
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card .field input[type="date"],
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash__dates-card .field input[type="date"] {
       width: 100%;
       max-width: 100%;
       box-sizing: border-box;
+      padding: 9px 10px;
+      font-size: 13px;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__dates-card .notice,
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash__dates-card .notice {
+      margin-top: 4px !important;
     }
     html[data-sales-portal="seller"] .seller-operational .seller-op-dash__crew {
       width: 100%;
@@ -403,8 +473,12 @@
     }
     html[data-sales-portal="seller"] .seller-operational .seller-op-dash__actions {
       width: 100%;
+      flex: 0 0 auto;
       display: flex;
+      flex-direction: row;
       flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-start;
       gap: 10px;
       padding: 12px 14px;
       border-radius: 14px;
@@ -412,11 +486,19 @@
       background: rgba(0, 0, 0, 0.14);
       box-sizing: border-box;
     }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__actions.sales-op-actions-card {
+      flex-direction: row;
+    }
     html[data-sales-portal="seller"] .seller-operational .seller-op-dash__actions .btn {
-      flex: 1 1 140px;
+      flex: 1 1 160px;
+      width: auto;
+      max-width: none;
       justify-content: center;
       margin: 0;
-      min-height: 36px;
+      min-height: 32px;
+      padding: 6px 14px;
+      font-size: 13px;
+      line-height: 1.2;
     }
     html[data-sales-portal="seller"] body.seller-portal-layout .grid.sales-layout {
       display: none !important;
@@ -473,6 +555,13 @@
     @media (max-width: 960px) {
       html[data-sales-portal="seller"] .seller-workspace-grid {
         grid-template-columns: 1fr;
+      }
+      html[data-sales-portal="seller"] .seller-workspace-grid .sales-right-panel,
+      html[data-sales-portal="seller"] .seller-workspace-grid .sales-live-sidebar {
+        position: static;
+        top: auto;
+        max-height: none;
+        overflow-y: visible;
       }
       html[data-sales-portal="seller"] .seller-operational .seller-op-dash__cards {
         grid-template-columns: 1fr;
@@ -1822,6 +1911,70 @@
         return rect.width > 0 || rect.height > 0;
       }
 
+      function readMgElementStickyState(el) {
+        if (!el) return false;
+        var st = window.getComputedStyle(el);
+        return st.position === 'sticky' || st.position === '-webkit-sticky';
+      }
+
+      function isSellerDatesCardOwnerLike() {
+        var dash = document.querySelector('.seller-op-dash[data-seller-owner-layout="true"]');
+        var datesCard =
+          dash &&
+          dash.querySelector(
+            '.seller-op-dash__dates-card, .owner-op-dash__dates-card, .owner-date-section'
+          );
+        if (!datesCard) return false;
+        var datesForm = datesCard.querySelector('.sales-quote-dates-row, .owner-date-group--primary');
+        if (!datesForm) return false;
+        var formSt = window.getComputedStyle(datesForm);
+        if (formSt.display !== 'grid') return false;
+        var cols = String(formSt.gridTemplateColumns || '')
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean);
+        var fieldCount = datesCard.querySelectorAll('.field').length;
+        return (
+          (datesCard.classList.contains('owner-op-dash__dates-card') ||
+            datesCard.classList.contains('seller-op-dash__dates-card')) &&
+          (datesCard.classList.contains('owner-op-dash__sibling-card') ||
+            datesCard.classList.contains('seller-op-dash__sibling-card')) &&
+          cols.length === 1 &&
+          fieldCount >= 4
+        );
+      }
+
+      function isSellerFinalActionsCompact() {
+        var actions = document.querySelector(
+          '.seller-op-dash[data-seller-owner-layout="true"] .seller-op-dash__actions, .seller-op-dash[data-seller-owner-layout="true"] .owner-op-dash__actions'
+        );
+        if (!actions) return false;
+        var btn = actions.querySelector('.btn');
+        if (!btn) return false;
+        var actionSt = window.getComputedStyle(actions);
+        var btnSt = window.getComputedStyle(btn);
+        var btnHeight = btn.getBoundingClientRect().height;
+        return (
+          actionSt.flexDirection === 'row' &&
+          btnSt.width !== '100%' &&
+          btnHeight > 0 &&
+          btnHeight <= 44
+        );
+      }
+
+      function isSellerLaborTableFullWidth() {
+        var dash = document.querySelector('.seller-op-dash[data-seller-owner-layout="true"]');
+        var labor = document.getElementById('salesLaborSection');
+        if (!dash || !labor || !dash.contains(labor)) return false;
+        var tableWrap =
+          labor.querySelector('.owner-labor-table-wrap') || labor.querySelector('.sales-labor-table-wrap');
+        if (!tableWrap) return false;
+        var laborWidth = labor.getBoundingClientRect().width;
+        var wrapWidth = tableWrap.getBoundingClientRect().width;
+        if (!(laborWidth > 0) || !(wrapWidth > 0)) return false;
+        return wrapWidth >= laborWidth * 0.92;
+      }
+
       function __mgSellerFinalLayoutCheck() {
         function isVisible(el) {
           if (!el) return false;
@@ -1857,9 +2010,11 @@
           isVisible(right) &&
           !!(liveScoreHead && /resultado en vivo/i.test(String(liveScoreHead.textContent || ''))) &&
           !isOwnerSnapshotVisibleInSellerPanel();
+        var sellerRightPanelSticky =
+          window.matchMedia('(max-width: 960px)').matches || readMgElementStickyState(right);
 
         return {
-          c20Version: 'C20-C14',
+          c20Version: 'C20-C15',
           visibleRole: readVisibleSellerRoleLabel(),
           sellerRootExists: !!(root && root.dataset.built === 'true'),
           buildFunctionExists: typeof window.buildSellerOwnerWorkspaceRoot === 'function',
@@ -1884,6 +2039,10 @@
             isVisible(document.getElementById('salesTraffic')) ||
             isVisible(document.getElementById('salesPrimaryPrice')),
           sellerCommissionVisible: isVisible(document.getElementById('salesPrimaryCommission')),
+          sellerDatesCardOwnerLike: isSellerDatesCardOwnerLike(),
+          sellerFinalActionsCompact: isSellerFinalActionsCompact(),
+          sellerLaborTableFullWidth: isSellerLaborTableFullWidth(),
+          sellerRightPanelSticky: sellerRightPanelSticky,
           priceControlVisible: isVisible(price),
           commercialEstimateVisible: !!(
             commercialHead &&
@@ -1904,7 +2063,7 @@
       window.__mgForceBuildSellerRootNow = function forceBuildSellerRootNowManual() {
         return forceBuildSellerOwnerWorkspaceRootNow('manual');
       };
-      window.__mgC20ScriptLoaded = 'C20-C14';
+      window.__mgC20ScriptLoaded = 'C20-C15';
 
       function hideSellerLegacySectionsOutsidePlanHard() {
         if (document.documentElement.dataset.salesPortal !== 'seller') return;
@@ -2140,7 +2299,15 @@
         }
 
         var datesCard = dash.querySelector('.seller-op-dash__dates-card, .owner-op-dash__dates-card');
-        if (datesCard) datesCard.classList.add('owner-date-section');
+        if (datesCard) {
+          datesCard.classList.add('owner-date-section');
+          var datesForm = datesCard.querySelector('.sales-quote-dates-row, .owner-date-group--primary');
+          if (datesForm) {
+            datesForm.classList.add('owner-date-group', 'owner-date-group--primary');
+            datesForm.setAttribute('role', 'group');
+            datesForm.setAttribute('aria-label', 'Quote and production dates');
+          }
+        }
 
         var actionsCard = dash.querySelector('.seller-op-dash__actions, .owner-op-dash__actions');
         if (actionsCard) {
@@ -2396,7 +2563,7 @@
         }
 
         var datesCard = document.createElement('section');
-        datesCard.className = 'sales-op-summary-card seller-op-dash__sibling-card owner-op-dash__sibling-card owner-op-dash__dates-card owner-date-section';
+        datesCard.className = 'sales-op-summary-card seller-op-dash__sibling-card owner-op-dash__sibling-card seller-op-dash__dates-card owner-op-dash__dates-card owner-date-section';
         datesCard.setAttribute('aria-labelledby', 'sellerOpDatesTitle');
         datesCard.innerHTML = '<h4 class="sales-op-summary-card__title" id="sellerOpDatesTitle">Dates</h4>';
         var datesForm = datesSection && datesSection.querySelector('.sales-quote-dates-row');
