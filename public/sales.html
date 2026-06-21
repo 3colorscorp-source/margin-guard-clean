@@ -1266,6 +1266,137 @@
         return true;
       }
 
+      function shouldForceSellerLayoutFromVisibleRole() {
+        if (isSalesAdminNormalSession()) return false;
+        if (document.body.classList.contains('mg-portal-mode-owner')) return false;
+        if (document.body.classList.contains('mg-portal-mode-supervisor-device')) return false;
+        if (document.body.classList.contains('mg-seller-portal-blocked')) return false;
+        var topbar = document.querySelector('.mg-topbar__title');
+        if (!topbar) return false;
+        var visibleRole = readVisibleSellerRoleLabel();
+        if (!isVisibleSellerRoleLabel(visibleRole)) return false;
+        if (!document.body.classList.contains('mg-app-shell')) return false;
+        var ownerNav = document.querySelector('.sales-owner-nav-actions[data-owner-nav]');
+        if (ownerNav) {
+          var ownerNavStyle = window.getComputedStyle(ownerNav);
+          if (
+            !ownerNav.hidden &&
+            ownerNavStyle.display !== 'none' &&
+            ownerNavStyle.visibility !== 'hidden'
+          ) {
+            return false;
+          }
+        }
+        return true;
+      }
+
+      function forceSellerOwnerLikeLayoutFromVisibleRole() {
+        if (!shouldForceSellerLayoutFromVisibleRole()) return false;
+
+        if (
+          document.documentElement.dataset.salesPortal === 'seller' &&
+          document.body.dataset.sellerOwnerLikeBuilt === 'true' &&
+          document.querySelector('.seller-op-dash[data-seller-owner-layout="true"]')
+        ) {
+          return true;
+        }
+
+        if (typeof window.__mgInitSellerPortalGuard === 'function') {
+          window.__mgInitSellerPortalGuard();
+        }
+
+        document.documentElement.dataset.salesPortal = 'seller';
+        document.body.classList.add('seller-portal-layout');
+        try {
+          sessionStorage.setItem('mg_sales_portal_seller', '1');
+        } catch (_storageErr) { /* ignore */ }
+
+        buildSellerOwnerLikeWorkspace();
+        ensureSellerOwnerLayoutApplied();
+        repairSellerOpDashFromOwnerBlueprint();
+        finalizeSellerOrphanCleanup();
+
+        if (document.querySelector('.seller-op-dash[data-seller-owner-layout="true"]')) {
+          document.body.dataset.sellerOwnerLikeBuilt = 'true';
+        }
+
+        return document.body.dataset.sellerOwnerLikeBuilt === 'true';
+      }
+
+      function scheduleForceVisibleSellerLayoutFromRole() {
+        var forceApplied = false;
+
+        function attemptForce() {
+          if (
+            forceApplied &&
+            document.documentElement.dataset.salesPortal === 'seller' &&
+            document.body.dataset.sellerOwnerLikeBuilt === 'true'
+          ) {
+            return;
+          }
+          if (forceSellerOwnerLikeLayoutFromVisibleRole()) {
+            forceApplied = true;
+          }
+        }
+
+        var forceScheduled = false;
+        function scheduleForceAttempt() {
+          if (forceScheduled) return;
+          forceScheduled = true;
+          window.requestAnimationFrame(function () {
+            forceScheduled = false;
+            attemptForce();
+          });
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', attemptForce, { once: true });
+        } else {
+          attemptForce();
+        }
+
+        if (typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(attemptForce);
+        }
+
+        [100, 300, 800, 1500, 3000, 5000, 8000].forEach(function (delayMs) {
+          window.setTimeout(attemptForce, delayMs);
+        });
+
+        document.addEventListener('mg-app-nav-ready', scheduleForceAttempt);
+        document.addEventListener('mg-app-nav-mode', scheduleForceAttempt);
+        document.addEventListener('device-auth-ready', scheduleForceAttempt);
+
+        if (document.body) {
+          var topbarObserver = new MutationObserver(function (mutations) {
+            for (var i = 0; i < mutations.length; i += 1) {
+              var target = mutations[i].target;
+              if (
+                target &&
+                target.classList &&
+                target.classList.contains('mg-topbar__title')
+              ) {
+                scheduleForceAttempt();
+                return;
+              }
+            }
+            if (
+              document.body.classList.contains('mg-app-shell') ||
+              document.body.classList.contains('mg-portal-mode-seller-device')
+            ) {
+              scheduleForceAttempt();
+            }
+          });
+          topbarObserver.observe(document.body, {
+            childList: true,
+            subtree: true,
+            characterData: true,
+            attributes: true,
+            attributeFilter: ['class'],
+          });
+        }
+      }
+
       function activateSellerPortalFromVisibleRuntime() {
         if (isSalesAdminNormalSession()) return false;
         if (!detectVisibleSellerRuntime()) return false;
@@ -1394,6 +1525,8 @@
       }
 
       window.detectVisibleSellerRuntime = detectVisibleSellerRuntime;
+      window.forceSellerOwnerLikeLayoutFromVisibleRole = forceSellerOwnerLikeLayoutFromVisibleRole;
+      window.scheduleForceVisibleSellerLayoutFromRole = scheduleForceVisibleSellerLayoutFromRole;
       window.__mgAttemptVisibleSellerGuard = __mgAttemptVisibleSellerGuard;
       window.__mgSellerLayoutDebug = __mgSellerLayoutDebug;
       window.scheduleVisibleSellerRuntimeGuard = scheduleVisibleSellerRuntimeGuard;
@@ -1992,9 +2125,10 @@
       }
 
       function scheduleSellerOwnerLikeRebuild() {
-        [0, 50, 200, 600, 1500, 3000, 5000].forEach(function (delayMs) {
+        [0, 50, 200, 600, 1500, 3000, 5000, 8000].forEach(function (delayMs) {
           window.setTimeout(function () {
             if (isSalesAdminNormalSession()) return;
+            forceSellerOwnerLikeLayoutFromVisibleRole();
             __mgAttemptVisibleSellerGuard();
             if (isSellerForcedPortalRoute()) buildSellerOwnerLikeWorkspace();
           }, delayMs);
@@ -7605,6 +7739,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         applyBrandingToSalesPage();
         bindSalesContactPicker();
         scheduleVisibleSellerRuntimeGuard();
+        scheduleForceVisibleSellerLayoutFromRole();
         buildSellerOwnerLikeWorkspace();
         scheduleSellerOwnerLikeRebuild();
       }
