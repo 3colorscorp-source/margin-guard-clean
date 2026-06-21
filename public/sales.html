@@ -156,12 +156,41 @@
       justify-content: center;
       min-height: 36px;
     }
-    html[data-sales-portal="seller"] .seller-operational.owner-operational .seller-op-dash {
-      display: flex;
-      flex-direction: column;
+    html[data-sales-portal="seller"] .seller-operational.owner-operational .seller-op-dash,
+    html[data-sales-portal="seller"] .seller-operational.owner-operational .owner-op-dash,
+    html[data-sales-portal="seller"] .seller-operational .sales-op-layout.seller-op-dash,
+    html[data-sales-portal="seller"] .seller-operational .sales-op-layout.owner-op-dash,
+    body.seller-portal-layout .seller-operational .sales-op-layout.seller-op-dash,
+    body.seller-portal-layout .seller-operational .sales-op-layout.owner-op-dash {
+      display: flex !important;
+      flex-direction: column !important;
+      grid-template-columns: minmax(0, 1fr) !important;
+      align-items: stretch !important;
       gap: 14px;
       min-width: 0;
-      grid-template-columns: unset;
+      width: 100%;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash > .seller-op-dash__stack,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash > .seller-op-dash__cards,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash > .seller-op-dash__crew,
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash > .seller-op-dash__actions,
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash > .owner-op-dash__stack,
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash > .owner-op-dash__cards,
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash > .owner-op-dash__crew,
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash > .owner-op-dash__actions,
+    body.seller-portal-layout .seller-operational .seller-op-dash > *,
+    body.seller-portal-layout .seller-operational .owner-op-dash > * {
+      width: 100% !important;
+      max-width: none !important;
+      min-width: 0 !important;
+      position: static !important;
+      top: auto !important;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash .sales-op-layout__right,
+    html[data-sales-portal="seller"] .seller-operational .owner-op-dash .sales-op-layout__right,
+    body.seller-portal-layout .seller-operational .sales-op-layout__right {
+      position: static !important;
+      top: auto !important;
     }
     html[data-sales-portal="seller"] .seller-operational .seller-op-dash__stack {
       display: flex;
@@ -2626,7 +2655,7 @@
         );
 
         return {
-          c20Version: window.__mgC20ScriptLoaded || 'C20-C29-FIX1',
+          c20Version: window.__mgC20ScriptLoaded || 'C20-C29-FIX2',
           isProductionVisibleSellerScreen: isProductionVisibleSellerScreen(),
           opStackOrderOk: verifySellerOpStackChildOrder(
             dash && dash.querySelector('.seller-op-dash__stack, .owner-op-dash__stack')
@@ -2751,7 +2780,7 @@
         );
 
         return {
-          c20Version: 'C20-C29-FIX1',
+          c20Version: 'C20-C29-FIX2',
           isProductionVisibleSellerScreen: isProductionVisibleSellerScreen(),
           isRealSellerRuntime: isRealSellerRuntime(),
           directDomLayoutApplied: document.body.dataset.sellerDirectDomLayout === 'true',
@@ -2862,7 +2891,7 @@
         forceRealSellerOwnerLayout('manual');
         return __mgSellerFinalLayoutCheck();
       };
-      window.__mgC20ScriptLoaded = 'C20-C29-FIX1';
+      window.__mgC20ScriptLoaded = 'C20-C29-FIX2';
       window.generateSellerScopeDraftFromOperationalPlan = generateSellerScopeDraftFromOperationalPlan;
       window.ensureSellerGenerateScopeDraftButton = ensureSellerGenerateScopeDraftButton;
 
@@ -3140,6 +3169,8 @@
         }
 
         ensureSellerGenerateScopeDraftButton();
+        flattenSellerOpDashLegacyColumns(dash);
+        ensureSellerOpDashCardsGrid(dash);
         return true;
       }
 
@@ -3444,11 +3475,19 @@
 
       function verifySellerOpDashChildOrder(dash) {
         if (!dash) return false;
+        if (dash.querySelector(':scope > .sales-op-layout__left, :scope > .sales-op-layout__right')) {
+          return false;
+        }
         var stack = dash.querySelector(':scope > .seller-op-dash__stack, :scope > .owner-op-dash__stack');
         var cards = dash.querySelector(':scope > .seller-op-dash__cards, :scope > .owner-op-dash__cards');
         var crew = dash.querySelector(':scope > .seller-op-dash__crew, :scope > .owner-op-dash__crew');
         var actions = dash.querySelector(':scope > .seller-op-dash__actions, :scope > .owner-op-dash__actions');
         if (!stack || !cards) return false;
+        if (stack.contains(cards)) return false;
+        var labor = document.getElementById('salesLaborSection');
+        if (labor && stack.contains(labor) && !(labor.compareDocumentPosition(cards) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+          return false;
+        }
         var ordered = [stack, cards, crew, actions].filter(Boolean);
         for (var i = 0; i < ordered.length - 1; i += 1) {
           if (!(ordered[i].compareDocumentPosition(ordered[i + 1]) & Node.DOCUMENT_POSITION_FOLLOWING)) {
@@ -3456,6 +3495,146 @@
           }
         }
         return !!cards.querySelector('.seller-op-dash__dates-card, .owner-op-dash__dates-card');
+      }
+
+      function ensureSellerOpDashCardsGrid(dash) {
+        if (!dash) return null;
+
+        var stack = dash.querySelector(':scope > .seller-op-dash__stack, :scope > .owner-op-dash__stack');
+        var cards = dash.querySelector(':scope > .seller-op-dash__cards, :scope > .owner-op-dash__cards');
+        if (!cards) {
+          cards = document.createElement('div');
+          cards.className = 'seller-op-dash__cards owner-op-dash__cards';
+          dash.appendChild(cards);
+        }
+
+        function adoptCard(node, extraClasses) {
+          if (!node || stack && stack.contains(node)) return;
+          if (extraClasses) {
+            extraClasses.forEach(function (cls) {
+              node.classList.add(cls);
+            });
+          }
+          if (!cards.contains(node)) {
+            cards.appendChild(node);
+          }
+        }
+
+        dash.querySelectorAll('.sales-op-summary-card').forEach(function (node) {
+          if (node.classList.contains('seller-op-dash__dates-card') || node.classList.contains('owner-op-dash__dates-card')) {
+            adoptCard(node, ['seller-op-dash__sibling-card', 'owner-op-dash__sibling-card', 'seller-op-dash__dates-card', 'owner-op-dash__dates-card', 'owner-date-section']);
+            return;
+          }
+          if (node.classList.contains('sales-op-availability-card')) return;
+          if (node.closest('.seller-op-dash__crew, .owner-op-dash__crew')) return;
+          adoptCard(node, ['seller-op-dash__sibling-card', 'owner-op-dash__sibling-card', 'seller-op-dash__summary-card', 'owner-op-dash__summary-card']);
+        });
+
+        dash.querySelectorAll('.sales-op-calendar-card').forEach(function (node) {
+          adoptCard(node, ['seller-op-dash__sibling-card', 'owner-op-dash__sibling-card', 'seller-op-dash__calendar-card', 'owner-op-dash__calendar-card']);
+        });
+
+        var summaryCard = cards.querySelector('.sales-op-summary-card:not(.seller-op-dash__dates-card):not(.owner-op-dash__dates-card)');
+        var calendarCard = cards.querySelector('.sales-op-calendar-card');
+        var datesCard = cards.querySelector('.seller-op-dash__dates-card, .owner-op-dash__dates-card');
+        [summaryCard, calendarCard, datesCard].filter(Boolean).forEach(function (node) {
+          cards.appendChild(node);
+        });
+
+        return cards;
+      }
+
+      function flattenSellerOpDashLegacyColumns(dash) {
+        if (!dash) return false;
+
+        var stack = dash.querySelector(':scope > .seller-op-dash__stack, :scope > .owner-op-dash__stack');
+        if (!stack) {
+          stack = document.createElement('div');
+          stack.className = 'seller-op-dash__stack owner-op-dash__stack';
+          dash.insertBefore(stack, dash.firstChild);
+        }
+
+        var plan = stack.querySelector(':scope > .seller-op-dash__plan, :scope > .owner-op-dash__plan');
+        if (!plan) {
+          plan = document.createElement('div');
+          plan.className = 'seller-op-dash__plan owner-op-dash__plan';
+          stack.insertBefore(plan, stack.firstChild);
+        }
+
+        var left = dash.querySelector(':scope > .sales-op-layout__left');
+        if (left) {
+          while (left.firstChild) {
+            var leftNode = left.firstChild;
+            if (
+              leftNode.classList &&
+              (leftNode.classList.contains('seller-op-dash__action-bar') ||
+                leftNode.classList.contains('owner-op-dash__action-bar') ||
+                leftNode.classList.contains('seller-op-scope-work') ||
+                leftNode.classList.contains('owner-op-scope-work') ||
+                leftNode.id === 'salesLaborSection' ||
+                leftNode.classList.contains('owner-labor'))
+            ) {
+              stack.appendChild(leftNode);
+            } else {
+              plan.appendChild(leftNode);
+            }
+          }
+          left.remove();
+        }
+
+        var cards = ensureSellerOpDashCardsGrid(dash);
+        var right = dash.querySelector(':scope > .sales-op-layout__right');
+        if (right) {
+          while (right.firstChild) {
+            var rightNode = right.firstChild;
+            if (rightNode.classList && rightNode.classList.contains('sales-op-summary-card')) {
+              rightNode.classList.add('seller-op-dash__sibling-card', 'owner-op-dash__sibling-card');
+              if (rightNode.classList.contains('seller-op-dash__dates-card') || rightNode.classList.contains('owner-op-dash__dates-card')) {
+                rightNode.classList.add('owner-date-section');
+              } else {
+                rightNode.classList.add('seller-op-dash__summary-card', 'owner-op-dash__summary-card');
+              }
+              cards.appendChild(rightNode);
+            } else if (rightNode.classList && rightNode.classList.contains('sales-op-calendar-card')) {
+              rightNode.classList.add(
+                'seller-op-dash__sibling-card',
+                'owner-op-dash__sibling-card',
+                'seller-op-dash__calendar-card',
+                'owner-op-dash__calendar-card'
+              );
+              cards.appendChild(rightNode);
+            } else if (rightNode.classList && rightNode.classList.contains('sales-op-availability-card')) {
+              rightNode.classList.add('seller-op-dash__crew', 'owner-op-dash__crew');
+              dash.appendChild(rightNode);
+            } else if (rightNode.classList && rightNode.classList.contains('sales-op-actions-card')) {
+              rightNode.classList.add('seller-op-dash__actions', 'owner-op-dash__actions');
+              dash.appendChild(rightNode);
+            } else if (cards) {
+              cards.appendChild(rightNode);
+            } else {
+              dash.appendChild(rightNode);
+            }
+          }
+          right.remove();
+        }
+
+        stack.querySelectorAll(':scope > .sales-op-summary-card, :scope > .sales-op-calendar-card, :scope > .seller-op-dash__cards, :scope > .owner-op-dash__cards').forEach(function (node) {
+          if (node.classList.contains('seller-op-dash__cards') || node.classList.contains('owner-op-dash__cards')) {
+            while (node.firstChild) {
+              cards.appendChild(node.firstChild);
+            }
+            node.remove();
+            return;
+          }
+          cards.appendChild(node);
+        });
+
+        var actionBarInPlan = plan.querySelector('.seller-op-dash__action-bar, .owner-op-dash__action-bar');
+        if (actionBarInPlan && actionBarInPlan.parentNode === plan) {
+          stack.insertBefore(actionBarInPlan, plan.nextSibling);
+        }
+
+        return true;
       }
 
       function verifySellerLaborInternalOrder(labor) {
@@ -3646,6 +3825,9 @@
         }
 
         reorderSellerLaborSectionOwnerLike();
+
+        flattenSellerOpDashLegacyColumns(dash);
+        ensureSellerOpDashCardsGrid(dash);
 
         var cards = dash.querySelector('.seller-op-dash__cards, .owner-op-dash__cards');
         var crew = dash.querySelector('.seller-op-dash__crew, .owner-op-dash__crew');
