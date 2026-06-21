@@ -2264,9 +2264,10 @@
         var sellerRightPanelSticky =
           window.matchMedia('(max-width: 960px)').matches || readMgElementStickyState(right);
         var sellerLaborSync = readSellerLaborSyncSnapshot();
+        var sellerRecommendedPrice = readSellerRecommendedPriceDebugSnapshot();
 
         return {
-          c20Version: 'C20-C19',
+          c20Version: 'C20-C20',
           visibleRole: readVisibleSellerRoleLabel(),
           sellerRootExists: !!(root && root.dataset.built === 'true'),
           buildFunctionExists: typeof window.buildSellerOwnerWorkspaceRoot === 'function',
@@ -2308,6 +2309,15 @@
           sellerLaborHours: sellerLaborSync.sellerLaborHours,
           sellerCalendarDayCount: sellerLaborSync.sellerCalendarDayCount,
           sellerLaborDaysMatchOperationalPlan: sellerLaborSync.sellerLaborDaysMatchOperationalPlan,
+          sellerRecommendedPriceValue: sellerRecommendedPrice.sellerRecommendedPriceValue,
+          sellerRecommendedPriceIsZero: sellerRecommendedPrice.sellerRecommendedPriceIsZero,
+          sellerHasOperationalPlanDays: sellerRecommendedPrice.sellerHasOperationalPlanDays,
+          sellerHasLaborWorkers: sellerRecommendedPrice.sellerHasLaborWorkers,
+          sellerBusinessSettingsReady: sellerRecommendedPrice.sellerBusinessSettingsReady,
+          sellerRecommendedPricePreservedOnSettingsPending:
+            sellerRecommendedPrice.sellerRecommendedPricePreservedOnSettingsPending,
+          sellerRecommendedPriceMatchesAfterReload:
+            sellerRecommendedPrice.sellerRecommendedPriceMatchesAfterReload,
           sellerLaborTableComplete: isSellerLaborTableComplete(),
           sellerLaborActionsAligned: isSellerLaborActionsAligned(),
           sellerLaborTableUsesFullWidth: isSellerLaborTableFullWidth(),
@@ -2333,7 +2343,7 @@
       window.__mgForceBuildSellerRootNow = function forceBuildSellerRootNowManual() {
         return forceBuildSellerOwnerWorkspaceRootNow('manual');
       };
-      window.__mgC20ScriptLoaded = 'C20-C19';
+      window.__mgC20ScriptLoaded = 'C20-C20';
       window.generateSellerScopeDraftFromOperationalPlan = generateSellerScopeDraftFromOperationalPlan;
       window.ensureSellerGenerateScopeDraftButton = ensureSellerGenerateScopeDraftButton;
 
@@ -4387,6 +4397,7 @@
 
       function refreshSellerFromStandalone() {
         try {
+          ensureSellerBusinessSettingsReadyFromCache();
           const state = loadSalesState();
           const settings = loadSettings();
           if (syncLaborWorkersFromOperationalPlan(state, settings)) {
@@ -4402,6 +4413,9 @@
           renderSalesOperationalPlanStandalone();
           bindSalesOperationalPlanStandalone();
           renderStandaloneSellerPanel();
+          if (isSellerPricingSettingsPending(loadSettings())) {
+            scheduleSellerPricingRefreshWhenSettingsReady();
+          }
           if (isSellerForcedPortalRoute()) {
             buildSellerOwnerLikeWorkspace();
           }
@@ -4426,30 +4440,168 @@
       }
 
       function loadSettings() {
+        ensureSellerBusinessSettingsReadyFromCache();
         if (isSellerPricingControlledByServer()) {
+          const cached = readJson(SETTINGS_KEY, {});
           if (!isSellerBusinessSettingsReady()) {
-            return {
-              baseInstaller: 0,
-              baseHelper: 0,
-              currency: 'USD',
-              pricingMode: 'hour',
-              hoursPerDay: 0,
-              wcPct: 0,
-              ficaPct: 0,
-              futaPct: 0,
-              casuiPct: 0,
-              overheadMonthly: 0,
-              stdHours: 0,
-              profitPct: 0,
-              minimumMarginPct: 0,
-              reservePct: 0,
-              salesCommissionPct: 0,
-              __mgSellerSettingsBlocked: true
-            };
+            if (sellerSettingsSnapshotLooksValid(cached)) {
+              return cached;
+            }
+            return sellerBlockedSettingsStub();
           }
-          return readJson(SETTINGS_KEY, {});
+          return cached;
         }
         return readJson(SETTINGS_KEY, SETTINGS_FALLBACK_DEFAULTS);
+      }
+
+      function sellerBlockedSettingsStub() {
+        return {
+          baseInstaller: 0,
+          baseHelper: 0,
+          currency: 'USD',
+          pricingMode: 'hour',
+          hoursPerDay: 0,
+          wcPct: 0,
+          ficaPct: 0,
+          futaPct: 0,
+          casuiPct: 0,
+          overheadMonthly: 0,
+          stdHours: 0,
+          profitPct: 0,
+          minimumMarginPct: 0,
+          reservePct: 0,
+          salesCommissionPct: 0,
+          __mgSellerSettingsBlocked: true
+        };
+      }
+
+      function sellerSettingsSnapshotLooksValid(settings) {
+        if (!settings || typeof settings !== 'object' || settings.__mgSellerSettingsBlocked) return false;
+        const hpd = Number(settings.hoursPerDay);
+        const installer = Number(settings.baseInstaller);
+        const helper = Number(settings.baseHelper);
+        return (Number.isFinite(hpd) && hpd >= 1) || installer > 0 || helper > 0;
+      }
+
+      function ensureSellerBusinessSettingsReadyFromCache() {
+        if (!isSellerPricingControlledByServer()) return false;
+        if (window.__mgSellerBusinessSettingsReady === true) return true;
+        const cached = readJson(SETTINGS_KEY, {});
+        if (!sellerSettingsSnapshotLooksValid(cached)) return false;
+        window.__mgSellerBusinessSettingsReady = true;
+        if (!window.__mgSellerBusinessSettingsSource) {
+          window.__mgSellerBusinessSettingsSource = 'local_cache';
+        }
+        return true;
+      }
+
+      function rememberSellerValidRecommendedPrice(amount, currency) {
+        const value = Number(amount);
+        if (!Number.isFinite(value) || value <= 0) return;
+        window.__mgSellerLastValidRecommendedPrice = value;
+        if (currency) window.__mgSellerLastValidRecommendedCurrency = String(currency);
+      }
+
+      function readSellerValidRecommendedPrice() {
+        const value = Number(window.__mgSellerLastValidRecommendedPrice);
+        return Number.isFinite(value) && value > 0 ? value : 0;
+      }
+
+      function isSellerPricingSettingsPending(settings) {
+        if (!isSellerPricingControlledByServer()) return false;
+        if (sellerSettingsSnapshotLooksValid(settings)) return false;
+        return !isSellerBusinessSettingsReady() || Boolean(settings && settings.__mgSellerSettingsBlocked);
+      }
+
+      function sellerHasOperationalLaborForPricing(state) {
+        const workers = Array.isArray(state && state.workers) ? state.workers : [];
+        let workerDays = 0;
+        for (let i = 0; i < workers.length; i += 1) {
+          workerDays += workerDaysAsInteger(workers[i]);
+        }
+        const api = getOperationalPlanApi();
+        const hasPlan = Boolean(api && api.planHasDays(state && state.operational_plan));
+        return workerDays > 0 || hasPlan;
+      }
+
+      function preserveSellerRecommendedPriceIfSettingsPending(metrics, settings, state) {
+        const pending = isSellerPricingSettingsPending(settings);
+        const recommended = Number(metrics && metrics.recommended);
+        const lastValid = readSellerValidRecommendedPrice();
+        const hasLabor = sellerHasOperationalLaborForPricing(state);
+        window.__mgSellerRecommendedPricePreservedOnSettingsPending = false;
+
+        if (!pending) {
+          if (recommended > 0) rememberSellerValidRecommendedPrice(recommended, settings && settings.currency);
+          return { metrics: metrics, preserved: false, pending: false };
+        }
+
+        if (recommended > 0) {
+          rememberSellerValidRecommendedPrice(recommended, settings && settings.currency);
+          return { metrics: metrics, preserved: false, pending: true };
+        }
+
+        if (lastValid > 0 && hasLabor) {
+          window.__mgSellerRecommendedPricePreservedOnSettingsPending = true;
+          const merged = Object.assign({}, metrics, {
+            recommended: lastValid,
+            pricingSource: 'preserved',
+          });
+          if (!(Number(merged.offered) > 0)) merged.offered = lastValid;
+          if (!(Number(merged.minimum) > 0)) merged.minimum = lastValid;
+          if (!(Number(merged.negotiation) > 0)) {
+            merged.negotiation = negotiationFromBounds(lastValid, merged.minimum || lastValid);
+          }
+          return { metrics: merged, preserved: true, pending: true };
+        }
+
+        return { metrics: metrics, preserved: false, pending: true };
+      }
+
+      let _sellerPricingHydrateRetryTimer = null;
+      function scheduleSellerPricingRefreshWhenSettingsReady() {
+        if (!isSellerPricingControlledByServer() || isSellerBusinessSettingsReady()) return;
+        if (_sellerPricingHydrateRetryTimer) return;
+        _sellerPricingHydrateRetryTimer = setTimeout(function () {
+          _sellerPricingHydrateRetryTimer = null;
+          if (typeof hydrateSellerBusinessSettingsFromServer !== 'function') return;
+          hydrateSellerBusinessSettingsFromServer().then(function (res) {
+            if (res && res.ok && typeof refreshSellerFromStandalone === 'function') {
+              refreshSellerFromStandalone();
+            }
+          });
+        }, 0);
+      }
+
+      function parseSellerMoneyTextToNumber(text) {
+        const raw = String(text == null ? '' : text).replace(/[^0-9.\-]/g, '');
+        const value = Number(raw);
+        return Number.isFinite(value) ? value : 0;
+      }
+
+      function readSellerRecommendedPriceDebugSnapshot() {
+        const state = loadSalesState();
+        const settings = loadSettings();
+        const priceNode = document.getElementById('salesPrimaryPrice');
+        const priceValue = parseSellerMoneyTextToNumber(priceNode && priceNode.textContent);
+        const api = getOperationalPlanApi();
+        const hasPlan = Boolean(api && api.planHasDays(state.operational_plan || []));
+        const workers = Array.isArray(state.workers) ? state.workers : [];
+        const hasLaborWorkers = workers.some(function (worker) {
+          return workerDaysAsInteger(worker) > 0;
+        });
+        const pending = isSellerPricingSettingsPending(settings);
+        return {
+          sellerRecommendedPriceValue: priceValue,
+          sellerRecommendedPriceIsZero: !(priceValue > 0),
+          sellerHasOperationalPlanDays: hasPlan,
+          sellerHasLaborWorkers: hasLaborWorkers,
+          sellerBusinessSettingsReady: isSellerBusinessSettingsReady(),
+          sellerRecommendedPricePreservedOnSettingsPending: Boolean(
+            window.__mgSellerRecommendedPricePreservedOnSettingsPending
+          ),
+          sellerRecommendedPriceMatchesAfterReload: priceValue > 0 && !pending && hasLaborWorkers,
+        };
       }
 
       async function hydrateSellerBusinessSettingsFromServer() {
@@ -5031,6 +5183,7 @@
 
       let _securePricingCache = { fingerprint: null, pricing: null };
       let _securePricingShadowTimer = null;
+      let _securePricingTimer = null;
       let _securePricingLastFailureFp = null;
       let _securePricingAbortController = null;
       let _securePricingWarnInvalidPayloadOnce = false;
@@ -5210,12 +5363,15 @@
       }
 
       function renderStandaloneSellerPanel() {
+        ensureSellerBusinessSettingsReadyFromCache();
         const state = loadSalesState();
         const settings = loadSettings();
-        const settingsBlocked = Boolean(settings.__mgSellerSettingsBlocked);
         const settingsGuard = sellerBusinessSettingsGuardError();
+        const settingsPending = isSellerPricingSettingsPending(settings);
+        const lastValidRecommended = readSellerValidRecommendedPrice();
+        const hasLabor = sellerHasOperationalLaborForPricing(state);
 
-        if (settingsBlocked || settingsGuard) {
+        if (settingsPending && !(lastValidRecommended > 0 && hasLabor)) {
           const blockedMsg = settingsGuard || SELLER_SETTINGS_BLOCKED_MSG;
           setText('salesEstimateSummary', blockedMsg);
           setText('salesTraffic', 'Blocked');
@@ -5237,10 +5393,17 @@
             ruleEl.style.display = '';
             ruleEl.className = 'notice err';
           }
+          scheduleSellerPricingRefreshWhenSettingsReady();
           return;
         }
 
-        const metrics = buildSalesUIMetrics(state, settings);
+        let metrics = buildSalesUIMetrics(state, settings);
+        const preservedPricing = preserveSellerRecommendedPriceIfSettingsPending(metrics, settings, state);
+        metrics = preservedPricing.metrics;
+        const currency = settings.currency || window.__mgSellerLastValidRecommendedCurrency || 'USD';
+        const pricingPendingMessage = preservedPricing.pending
+          ? 'Pricing settings loading... Recalculating with the last valid quote.'
+          : '';
 
         const offered = metrics.offered || metrics.recommended || 0;
         const isReady = metrics.workerDays > 0 && metrics.recommended > 0;
@@ -5258,8 +5421,12 @@
           `Expires ${state.expirationDate || ''}`
         ].join(' | '));
 
-        setText('salesPrimaryPrice', money(metrics.recommended, settings.currency));
-        setText('salesPrimaryMeta', `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${money(metrics.offered, settings.currency)}`);
+        setText('salesPrimaryPrice', money(metrics.recommended, currency));
+        setText(
+          'salesPrimaryMeta',
+          pricingPendingMessage ||
+            `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${money(metrics.offered, currency)}`
+        );
         setText('salesPrimaryCommission', `${metrics.commissionRate.toFixed(2)}%`);
         setText('salesPrimaryCommissionMeta', `${money(metrics.commissionDisplay, settings.currency)} estimado · ${money(metrics.commissionLaborBase != null ? metrics.commissionLaborBase : metrics.laborCost, settings.currency)} mano de obra`);
         setText('salesFlowHeadline', metrics.workerDays <= 0 ? 'Completar datos' : metrics.needsApproval ? 'Bajo recomendado' : 'Listo para enviar');
@@ -5369,6 +5536,9 @@
           const stage = metrics.offered >= metrics.recommended ? 2 : (metrics.offered >= metrics.negotiation ? 1 : 0);
           slider.value = String(stage);
         }
+        if (preservedPricing.pending) {
+          scheduleSellerPricingRefreshWhenSettingsReady();
+        }
         requestSecurePricing(state);
 
         // --- Clean-state visual override ---------------------------------------
@@ -5381,7 +5551,7 @@
         // Este bloque corre despues de window.renderSales() porque
         // renderStandaloneSellerPanel() es el ultimo paso de
         // refreshSellerFromStandalone().
-        if (isCleanDraft) {
+        if (isCleanDraft && !(preservedPricing.preserved && metrics.recommended > 0)) {
           setText('salesPrimaryPrice', money(0, settings.currency));
           setText('salesPrimaryMeta', '0.00 worker-days | 0.00 labor-hours | 0 workers | Current ' + money(0, settings.currency));
           setText('salesPrimaryCommission', `${metrics.commissionRate.toFixed(2)}%`);
