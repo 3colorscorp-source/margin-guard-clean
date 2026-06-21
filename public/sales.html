@@ -49,9 +49,11 @@
       grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr);
       gap: 24px 24px;
       align-items: start;
+      overflow: visible;
     }
     html[data-sales-portal="seller"] .seller-workspace-grid .sales-right-panel,
-    html[data-sales-portal="seller"] .seller-workspace-grid .sales-live-sidebar {
+    html[data-sales-portal="seller"] .seller-workspace-grid .sales-live-sidebar,
+    html[data-sales-portal="seller"] .seller-workspace-grid .sales-right-panel.seller-live-sidebar-panel {
       display: block;
       visibility: visible;
       min-width: 0;
@@ -62,6 +64,7 @@
       max-height: calc(100vh - 110px);
       overflow-y: auto;
       overscroll-behavior: contain;
+      z-index: 2;
     }
     html[data-sales-portal="seller"] .seller-workspace-grid .sales-right-panel > .card,
     html[data-sales-portal="seller"] .seller-workspace-grid .sales-live-sidebar > .card {
@@ -204,6 +207,9 @@
       font-size: 12px;
       line-height: 1.2;
       white-space: nowrap;
+    }
+    html[data-sales-portal="seller"] .seller-operational .seller-op-dash__action-bar > #btnSellerGenerateScopeDraft {
+      flex: 0 1 auto;
     }
     html[data-sales-portal="seller"] .seller-operational .seller-op-scope-work {
       margin: 10px 0 0;
@@ -352,20 +358,52 @@
       table-layout: fixed;
     }
     html[data-sales-portal="seller"] .seller-operational .sales-labor-table thead th.sales-labor-th--worker {
-      width: 34%;
+      width: 38%;
       min-width: 0;
     }
     html[data-sales-portal="seller"] .seller-operational .sales-labor-table thead th.sales-labor-th--type {
-      width: 16%;
+      width: 18%;
       min-width: 0;
     }
     html[data-sales-portal="seller"] .seller-operational .sales-labor-table thead th.sales-labor-th--units {
-      width: 14%;
+      width: 12%;
       min-width: 0;
     }
     html[data-sales-portal="seller"] .seller-operational .sales-labor-table thead th.sales-labor-th--actions {
-      width: 36%;
+      width: 32%;
       min-width: 0;
+    }
+    html[data-sales-portal="seller"] .seller-operational .sales-labor-th--rate,
+    html[data-sales-portal="seller"] .seller-operational .sales-labor-th--labor,
+    html[data-sales-portal="seller"] .seller-operational .sales-labor-td--rate,
+    html[data-sales-portal="seller"] .seller-operational .sales-labor-td--labor {
+      display: none !important;
+      width: 0 !important;
+      max-width: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+      overflow: hidden !important;
+      visibility: collapse !important;
+    }
+    html[data-sales-portal="seller"] .seller-operational .sales-labor-td-actions {
+      text-align: right;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    html[data-sales-portal="seller"] .seller-operational .sales-labor-row-actions {
+      display: inline-flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      width: 100%;
+    }
+    html[data-sales-portal="seller"] .seller-operational .sales-labor-row-actions .btn {
+      min-height: 28px;
+      padding: 4px 8px;
+      font-size: 11px;
+      line-height: 1.2;
+      margin: 0;
     }
     html[data-sales-portal="seller"] .seller-operational .sales-labor__actions {
       display: none !important;
@@ -594,8 +632,12 @@
       display: block;
       width: 100%;
       max-width: 100%;
-      overflow-x: hidden;
+      overflow: visible;
       box-sizing: border-box;
+    }
+    html[data-sales-portal="seller"] .seller-workspace-grid .sales-left-panel,
+    html[data-sales-portal="seller"] .seller-workspace-grid .owner-workspace-main {
+      overflow-x: clip;
     }
     html[data-sales-portal="seller"] .grid.sales-layout.sales-legacy-layout-hidden,
     html[data-sales-portal="seller"] #sellerOwnerWorkspaceRoot[data-built="true"] ~ .grid.sales-layout {
@@ -1975,6 +2017,54 @@
         return wrapWidth >= laborWidth * 0.92;
       }
 
+      function isSellerGenerateScopeDraftButtonVisible() {
+        var btn = document.getElementById('btnSellerGenerateScopeDraft');
+        if (!btn) return false;
+        if (btn.hidden || btn.getAttribute('aria-hidden') === 'true') return false;
+        var st = window.getComputedStyle(btn);
+        if (st.display === 'none' || st.visibility === 'hidden') return false;
+        var rect = btn.getBoundingClientRect();
+        return rect.width > 0 || rect.height > 0;
+      }
+
+      function countSellerGenerateScopeDraftButtons() {
+        return document.querySelectorAll('#btnSellerGenerateScopeDraft').length;
+      }
+
+      function isSellerScopeEditorExists() {
+        return !!document.getElementById('salesMessageToClient');
+      }
+
+      function isSellerLaborTableComplete() {
+        var labor = document.getElementById('salesLaborSection');
+        var table = labor && labor.querySelector('.sales-labor-table');
+        var thead = table && table.querySelector('thead');
+        var body = document.getElementById('salesWorkersBody');
+        if (!table || !thead || !body) return false;
+        var visibleHeaders = Array.prototype.filter.call(thead.querySelectorAll('th'), function (th) {
+          var st = window.getComputedStyle(th);
+          return st.display !== 'none' && st.visibility !== 'hidden';
+        });
+        return visibleHeaders.length >= 4;
+      }
+
+      function isSellerLaborActionsAligned() {
+        var labor = document.getElementById('salesLaborSection');
+        if (!labor) return false;
+        var actionsHeader = labor.querySelector('.sales-labor-th--actions');
+        if (!actionsHeader) return false;
+        var actionsCell = labor.querySelector('.sales-labor-td-actions');
+        if (actionsCell) {
+          var rowActions = actionsCell.querySelector('.sales-labor-row-actions');
+          if (rowActions) {
+            var st = window.getComputedStyle(rowActions);
+            return st.display === 'flex' || st.display === 'inline-flex';
+          }
+        }
+        var headerSt = window.getComputedStyle(actionsHeader);
+        return headerSt.display !== 'none' && headerSt.visibility !== 'hidden';
+      }
+
       function __mgSellerFinalLayoutCheck() {
         function isVisible(el) {
           if (!el) return false;
@@ -2014,7 +2104,7 @@
           window.matchMedia('(max-width: 960px)').matches || readMgElementStickyState(right);
 
         return {
-          c20Version: 'C20-C15',
+          c20Version: 'C20-C16',
           visibleRole: readVisibleSellerRoleLabel(),
           sellerRootExists: !!(root && root.dataset.built === 'true'),
           buildFunctionExists: typeof window.buildSellerOwnerWorkspaceRoot === 'function',
@@ -2043,6 +2133,12 @@
           sellerFinalActionsCompact: isSellerFinalActionsCompact(),
           sellerLaborTableFullWidth: isSellerLaborTableFullWidth(),
           sellerRightPanelSticky: sellerRightPanelSticky,
+          sellerGenerateScopeDraftButtonVisible: isSellerGenerateScopeDraftButtonVisible(),
+          sellerGenerateScopeDraftButtonCount: countSellerGenerateScopeDraftButtons(),
+          sellerScopeEditorExists: isSellerScopeEditorExists(),
+          sellerLaborTableComplete: isSellerLaborTableComplete(),
+          sellerLaborActionsAligned: isSellerLaborActionsAligned(),
+          sellerLaborTableUsesFullWidth: isSellerLaborTableFullWidth(),
           priceControlVisible: isVisible(price),
           commercialEstimateVisible: !!(
             commercialHead &&
@@ -2063,7 +2159,9 @@
       window.__mgForceBuildSellerRootNow = function forceBuildSellerRootNowManual() {
         return forceBuildSellerOwnerWorkspaceRootNow('manual');
       };
-      window.__mgC20ScriptLoaded = 'C20-C15';
+      window.__mgC20ScriptLoaded = 'C20-C16';
+      window.generateSellerScopeDraftFromOperationalPlan = generateSellerScopeDraftFromOperationalPlan;
+      window.ensureSellerGenerateScopeDraftButton = ensureSellerGenerateScopeDraftButton;
 
       function hideSellerLegacySectionsOutsidePlanHard() {
         if (document.documentElement.dataset.salesPortal !== 'seller') return;
@@ -2324,7 +2422,285 @@
           quoteCta.setAttribute('aria-hidden', 'true');
         }
 
+        ensureSellerGenerateScopeDraftButton();
         return true;
+      }
+
+      var SELLER_SCOPE_WORK_TITLE = 'Scope of Work';
+      var SELLER_SCOPE_KEYWORD_LINES = [
+        {
+          test: /\b(cover|protect|mask|tape|protection)\b/i,
+          line: 'Protect and cover work areas before construction begins.',
+        },
+        {
+          test: /\bwork\s+areas?\b/i,
+          line: 'Protect and cover work areas before construction begins.',
+        },
+        {
+          test: /\b(waterproof|water[\s-]?proof)\b/i,
+          line: 'Complete waterproofing preparation as required for wet areas.',
+        },
+        {
+          test: /\b(grout)\b/i,
+          line: 'Complete grout work for the installed areas.',
+        },
+        {
+          test: /\b(install|installation|set[\s-]?tile|lay[\s-]?tile)\b/i,
+          line: 'Complete planned installation work for the assigned areas.',
+        },
+        {
+          test: /\b(clean[\s-]?up|cleanup|final\s+clean|walkthrough|punch|turnover)\b/i,
+          line: 'Complete final cleanup and walkthrough of completed work areas.',
+        },
+      ];
+
+      function sellerScopeSafeTrim(value) {
+        return String(value == null ? '' : value).trim();
+      }
+
+      function sellerScopeNormalizeTypoText(text) {
+        var t = sellerScopeSafeTrim(text);
+        if (!t) return '';
+        t = t.replace(/\bwals\b/gi, 'walls');
+        t = t.replace(/\bvover\b/gi, 'cover');
+        t = t.replace(/\bwork\s*ae\s*a\b/gi, 'work area');
+        t = t.replace(/\bwork\s*aea\b/gi, 'work area');
+        t = t.replace(/\bae\s+a\b/gi, 'area');
+        t = t.replace(/\baea\b/gi, 'area');
+        t = t.replace(/\bclean\s*up\b/gi, 'cleanup');
+        t = t.replace(/\bdemolition\b/gi, 'demolition');
+        t = t.replace(/\bpreparation\b/gi, 'preparation');
+        t = t.replace(/\bwaterproofing\b/gi, 'waterproofing');
+        return t.replace(/\s+/g, ' ').trim();
+      }
+
+      function sellerDayNumberLabel(day, index) {
+        var dayNumber = Number(day && day.day_number);
+        return Number.isFinite(dayNumber) && dayNumber > 0 ? dayNumber : index + 1;
+      }
+
+      function sellerIsGenericDayText(text, dayNumber) {
+        var t = sellerScopeNormalizeTypoText(text);
+        if (!t) return true;
+        var lower = t.toLowerCase();
+        if (/^plan\s+day$/i.test(lower)) return true;
+        if (/^scheduled\s+work$/i.test(lower)) return true;
+        if (/^final$/i.test(lower)) return true;
+        if (/^day\s*\d+$/i.test(lower)) return true;
+        if (/^phase\s+\d+\s*[—–-]\s*project\s+execution$/i.test(lower)) return true;
+        if (Number.isFinite(dayNumber) && dayNumber > 0 && lower === 'day ' + String(dayNumber)) return true;
+        return false;
+      }
+
+      function sellerReadTimelineTaskText(dayIndex) {
+        var host = document.getElementById('salesOperationalTimelineHost');
+        if (!host || dayIndex < 0) return '';
+        var row = host.querySelector('.sales-op-timeline-row[data-day-index="' + dayIndex + '"]');
+        if (!row) return '';
+        var taskEl = row.querySelector('.sales-op-timeline-row__task');
+        return taskEl ? sellerScopeNormalizeTypoText(taskEl.textContent) : '';
+      }
+
+      function sellerReadTimelinePhaseGroupText(dayIndex) {
+        var host = document.getElementById('salesOperationalTimelineHost');
+        if (!host || dayIndex < 0) return '';
+        var row = host.querySelector('.sales-op-timeline-row[data-day-index="' + dayIndex + '"]');
+        if (!row) return '';
+        var block = row.closest('.sales-op-phase-block');
+        if (!block) return '';
+        var titleEl = block.querySelector('.sales-op-phase-block__title');
+        return titleEl ? sellerScopeNormalizeTypoText(titleEl.textContent) : '';
+      }
+
+      function sellerResolveDayDescriptionText(day, dayIndex) {
+        var dayNumber = Number(day && day.day_number);
+        var candidates = [
+          day && day.scope,
+          day && day.title,
+          day && day.description,
+          day && day.name,
+          day && day.phase,
+          sellerReadTimelineTaskText(dayIndex),
+        ];
+        var i;
+        for (i = 0; i < candidates.length; i += 1) {
+          var text = sellerScopeNormalizeTypoText(candidates[i]);
+          if (text && !sellerIsGenericDayText(text, dayNumber)) return text;
+        }
+        for (i = 0; i < candidates.length; i += 1) {
+          text = sellerScopeNormalizeTypoText(candidates[i]);
+          if (text) return text;
+        }
+        return '';
+      }
+
+      function sellerResolveScopeMappingText(day, dayIndex) {
+        var dayNumber = sellerDayNumberLabel(day, dayIndex);
+        var title = sellerResolveDayDescriptionText(day, dayIndex);
+        if (title && !sellerIsGenericDayText(title, dayNumber)) return title;
+        var phaseGroup = sellerReadTimelinePhaseGroupText(dayIndex);
+        if (phaseGroup && !sellerIsGenericDayText(phaseGroup, dayNumber)) return phaseGroup;
+        if (day && day.phase) {
+          var phase = sellerScopeNormalizeTypoText(day.phase);
+          if (phase && !sellerIsGenericDayText(phase, dayNumber)) return phase;
+        }
+        return title || phaseGroup || '';
+      }
+
+      function sellerIsFinalCleanupContext(text) {
+        var normalized = sellerScopeNormalizeTypoText(text);
+        var lower = normalized.toLowerCase();
+        return (
+          /final\s*\/\s*cleanup/i.test(normalized) ||
+          /\b(clean[\s-]?up|cleanup|walkthrough|punch|turnover)\b/i.test(lower) ||
+          (/\bfinal\b/i.test(lower) && !/\b(finish|finishing)\b/i.test(lower))
+        );
+      }
+
+      function sellerScopeLineForDay(day, dayIndex) {
+        var mappingText = sellerResolveScopeMappingText(day, dayIndex);
+        if (!mappingText) return 'Complete planned work for this project phase.';
+        var text = sellerScopeNormalizeTypoText(mappingText);
+
+        if (
+          /\b(cover|protect|mask|tape|protection)\b/i.test(text) ||
+          (/\bwork\s+areas?\b/i.test(text) && /\b(cover|protect)\b/i.test(text))
+        ) {
+          return 'Protect and cover work areas before construction begins.';
+        }
+        if (/\b(demolition|demo|demolish|tear[\s-]?out)\b/i.test(text)) {
+          return 'Perform demolition of existing surfaces as required for the project.';
+        }
+        if (/\b(prep|preparation|prepare|substrate|surface\s+prep)\b/i.test(text)) {
+          return 'Prepare surfaces and work areas for installation.';
+        }
+        if (/\b(waterproof|water[\s-]?proof)\b/i.test(text)) {
+          return 'Complete waterproofing preparation as required for wet areas.';
+        }
+        if (/\b(grout)\b/i.test(text)) {
+          return 'Complete grout work for the installed areas.';
+        }
+        if (/\b(install|installation|set[\s-]?tile|lay[\s-]?tile)\b/i.test(text)) {
+          return 'Complete planned installation work for the assigned areas.';
+        }
+        if (sellerIsFinalCleanupContext(text)) {
+          return 'Complete final cleanup and walkthrough of completed work areas.';
+        }
+        for (var i = 0; i < SELLER_SCOPE_KEYWORD_LINES.length; i += 1) {
+          var entry = SELLER_SCOPE_KEYWORD_LINES[i];
+          if (entry.test.test(text)) return entry.line;
+        }
+        if (sellerIsGenericDayText(text, sellerDayNumberLabel(day, dayIndex))) {
+          return 'Complete planned work for this project phase.';
+        }
+        return 'Complete planned work for this project phase.';
+      }
+
+      function loadSellerOperationalPlanDays() {
+        var state = loadSalesState();
+        var plan = Array.isArray(state.operational_plan) ? state.operational_plan : [];
+        return plan
+          .map(function (day, dayIndex) {
+            return { day: day, dayIndex: dayIndex };
+          })
+          .sort(function (a, b) {
+            return sellerDayNumberLabel(a.day, a.dayIndex) - sellerDayNumberLabel(b.day, b.dayIndex);
+          });
+      }
+
+      function buildSellerScopeDraftFromPlan(planEntries) {
+        var usableDays = planEntries.filter(function (entry) {
+          var day = entry.day;
+          if (!day) return false;
+          var text = sellerResolveDayDescriptionText(day, entry.dayIndex);
+          var mapping = sellerResolveScopeMappingText(day, entry.dayIndex);
+          var hasWorkers = Array.isArray(day.workers) && day.workers.length > 0;
+          return Boolean(text) || Boolean(mapping) || hasWorkers;
+        });
+        if (!usableDays.length) return '';
+
+        var lines = [SELLER_SCOPE_WORK_TITLE, ''];
+        usableDays.forEach(function (entry) {
+          var label = sellerDayNumberLabel(entry.day, entry.dayIndex);
+          lines.push('• Day ' + label + ': ' + sellerScopeLineForDay(entry.day, entry.dayIndex));
+        });
+        return lines.join('\n');
+      }
+
+      function syncSalesMessageToClientField(nextValue) {
+        var el = document.getElementById('salesMessageToClient');
+        if (!el) return false;
+        el.value = nextValue;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        var count = document.getElementById('salesMessageToClientCount');
+        if (count) count.textContent = String(String(nextValue || '').length);
+        return true;
+      }
+
+      function generateSellerScopeDraftFromOperationalPlan() {
+        var draft = buildSellerScopeDraftFromPlan(loadSellerOperationalPlanDays());
+        if (!draft) {
+          window.alert('Add at least one Operational Plan day before generating the Scope of Work.');
+          return false;
+        }
+        var msgEl = document.getElementById('salesMessageToClient');
+        if (!msgEl) return false;
+        var existing = sellerScopeSafeTrim(msgEl.value);
+        if (existing) {
+          var replace = window.confirm(
+            'Scope of Work already has text. Replace existing content with the generated draft?'
+          );
+          if (!replace) return false;
+        }
+        return syncSalesMessageToClientField(draft);
+      }
+
+      function bindSellerGenerateScopeDraftButton(btn) {
+        btn = btn || document.getElementById('btnSellerGenerateScopeDraft');
+        if (!btn || btn.dataset.sellerScopeDraftBound === 'true') return btn;
+        btn.dataset.sellerScopeDraftBound = 'true';
+        btn.addEventListener('click', function () {
+          generateSellerScopeDraftFromOperationalPlan();
+        });
+        return btn;
+      }
+
+      function ensureSellerGenerateScopeDraftButton(actionBar) {
+        if (!isSellerForcedPortalRoute()) return null;
+
+        actionBar =
+          actionBar ||
+          document.querySelector(
+            '.seller-op-dash[data-seller-owner-layout="true"] .seller-op-dash__action-bar, .seller-op-dash[data-seller-owner-layout="true"] .owner-op-dash__action-bar'
+          );
+        if (!actionBar) return null;
+
+        document.querySelectorAll('#btnSellerGenerateScopeDraft').forEach(function (el, idx) {
+          if (idx > 0) el.remove();
+        });
+
+        var btn = document.getElementById('btnSellerGenerateScopeDraft');
+        if (!btn) {
+          btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn';
+          btn.id = 'btnSellerGenerateScopeDraft';
+          btn.textContent = 'Generate Scope Draft';
+        }
+
+        var addDayBtn = document.getElementById('btnAddOperationalDay');
+        if (addDayBtn && actionBar.contains(addDayBtn)) {
+          if (btn.parentNode !== actionBar) {
+            actionBar.insertBefore(btn, addDayBtn.nextSibling);
+          } else if (btn.previousElementSibling !== addDayBtn) {
+            actionBar.insertBefore(btn, addDayBtn.nextSibling);
+          }
+        } else if (!actionBar.contains(btn)) {
+          actionBar.insertBefore(btn, actionBar.firstChild);
+        }
+
+        bindSellerGenerateScopeDraftButton(btn);
+        return btn;
       }
 
       function findSalesMessageFieldWrapper() {
@@ -2412,6 +2788,7 @@
           addDayBtn.classList.add('primary');
           actionBar.insertBefore(addDayBtn, actionBar.firstChild);
         }
+        ensureSellerGenerateScopeDraftButton(actionBar);
         var laborBar = actionBar.querySelector('.seller-op-dash__action-bar-labor, .owner-op-dash__action-bar-labor');
         if (!laborBar) {
           laborBar = document.createElement('div');
@@ -2440,6 +2817,7 @@
         });
 
         finalizeSellerOrphanCleanup();
+        ensureSellerGenerateScopeDraftButton(actionBar);
         return true;
       }
 
@@ -2495,6 +2873,22 @@
           addDayBtn.classList.add('primary');
           actionBar.appendChild(addDayBtn);
         }
+        var scopeDraftBtn = document.getElementById('btnSellerGenerateScopeDraft');
+        if (!scopeDraftBtn) {
+          scopeDraftBtn = document.createElement('button');
+          scopeDraftBtn.type = 'button';
+          scopeDraftBtn.className = 'btn';
+          scopeDraftBtn.id = 'btnSellerGenerateScopeDraft';
+          scopeDraftBtn.textContent = 'Generate Scope Draft';
+        }
+        if (!actionBar.contains(scopeDraftBtn)) {
+          if (addDayBtn && addDayBtn.parentNode === actionBar) {
+            actionBar.insertBefore(scopeDraftBtn, addDayBtn.nextSibling);
+          } else {
+            actionBar.appendChild(scopeDraftBtn);
+          }
+        }
+        bindSellerGenerateScopeDraftButton(scopeDraftBtn);
         var laborBar = document.createElement('div');
         laborBar.className = 'seller-op-dash__action-bar-labor owner-op-dash__action-bar-labor';
         if (addWorkerBtn) laborBar.appendChild(addWorkerBtn);
