@@ -9167,20 +9167,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           console.error("[MG Owner Send] persist after send failed", mgOwnerPersistErr);
         }
         try {
-          if (
-            !publishData?.quote_id ||
-            !publishData?.public_token ||
-            !publishData?.public_url
-          ) {
-            console.warn("[MG Owner Send] post-send reset skipped — publish data incomplete");
-            return;
-          }
           resetOwnerDraftToNewQuote();
-          if (typeof window.performStandaloneNewQuoteReset === "function") {
-            window.performStandaloneNewQuoteReset();
-          } else {
-            resetSalesDraftToNewQuote();
-          }
+          resetSalesDraftToNewQuote();
           const owner = loadOwner();
           owner.workers = [
             { name: "Pro 1", type: "pro", hours: 0, rate: "", cost: 0 },
