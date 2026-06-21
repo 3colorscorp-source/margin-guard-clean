@@ -496,36 +496,101 @@
           return false;
         }
       }
+      function isOwnerSalesSessionEarly() {
+        return (
+          document.documentElement.dataset.authMode === 'owner' ||
+          window.MG_SALES_PORTAL_MODE === 'owner'
+        );
+      }
+      function isRuntimeSellerSessionEarly() {
+        if (isOwnerSalesSessionEarly()) return false;
+        if (document.documentElement.dataset.portalType === 'seller') return true;
+        if (document.documentElement.dataset.authMode === 'device') return true;
+        if (window.MG_SALES_PORTAL_MODE === 'device') return true;
+        if (
+          window.MGSalesDevicePortal &&
+          typeof window.MGSalesDevicePortal.isSellerMode === 'function' &&
+          window.MGSalesDevicePortal.isSellerMode()
+        ) {
+          return true;
+        }
+        try {
+          if (sessionStorage.getItem(SELLER_PORTAL_KEY) === '1') return true;
+        } catch (_storageErr) { /* ignore */ }
+        var path = String(window.location.pathname || '');
+        if (/^\/sales(?:\.html)?\/?$/i.test(path) && hasSellerDeviceSessionCookieEarly()) {
+          return true;
+        }
+        return false;
+      }
+      function clearSellerPortalGuardEarly() {
+        if (document.documentElement.dataset.salesPortal === 'seller') {
+          delete document.documentElement.dataset.salesPortal;
+        }
+        document.body.classList.remove('seller-portal-layout');
+      }
+      function activateSellerPortalGuardEarly() {
+        document.documentElement.dataset.salesPortal = 'seller';
+        document.body.classList.add('seller-portal-layout');
+        try {
+          sessionStorage.setItem(SELLER_PORTAL_KEY, '1');
+        } catch (_storageErr) { /* ignore */ }
+        scheduleSellerPortalUrlSync();
+      }
+      function scheduleSellerPortalUrlSync() {
+        if (window.__mgSellerPortalUrlSyncScheduled) return;
+        window.__mgSellerPortalUrlSyncScheduled = true;
+        function syncSellerPortalUrl() {
+          if (window.__mgSellerPortalUrlSynced) return;
+          if (document.documentElement.dataset.salesPortal !== 'seller') return;
+          var path = String(window.location.pathname || '');
+          var params = new URLSearchParams(window.location.search || '');
+          var isSalesPage = /^\/sales(?:\.html)?\/?$/i.test(path);
+          if (!isSalesPage || params.get('portal') === 'seller') {
+            window.__mgSellerPortalUrlSynced = true;
+            return;
+          }
+          var next = new URL(window.location.href);
+          next.searchParams.set('portal', 'seller');
+          window.history.replaceState(
+            null,
+            '',
+            next.pathname + '?' + next.searchParams.toString() + next.hash
+          );
+          window.__mgSellerPortalUrlSynced = true;
+        }
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', syncSellerPortalUrl, { once: true });
+        } else {
+          syncSellerPortalUrl();
+        }
+      }
       window.__mgInitSellerPortalGuard = function initSellerPortalGuard() {
         var path = String(window.location.pathname || '');
         var params = new URLSearchParams(window.location.search || '');
         var isSellerPath = /\/seller(?:\.html)?\/?$/i.test(path);
         var isSellerParam = params.get('portal') === 'seller';
-        var isSalesPage = /^\/sales(?:\.html)?\/?$/i.test(path);
 
-        if (isSellerPath || isSellerParam) {
+        if (isOwnerSalesSessionEarly()) {
+          clearSellerPortalGuardEarly();
           try {
-            sessionStorage.setItem(SELLER_PORTAL_KEY, '1');
+            sessionStorage.removeItem(SELLER_PORTAL_KEY);
           } catch (_storageErr) { /* ignore */ }
-          document.documentElement.dataset.salesPortal = 'seller';
           return;
         }
 
-        if (isSalesPage && hasSellerDeviceSessionCookieEarly()) {
-          try {
-            if (sessionStorage.getItem(SELLER_PORTAL_KEY) === '1') {
-              document.documentElement.dataset.salesPortal = 'seller';
-              if (!isSellerParam) {
-                var next = new URL(window.location.href);
-                next.searchParams.set('portal', 'seller');
-                window.history.replaceState(
-                  null,
-                  '',
-                  next.pathname + '?' + next.searchParams.toString() + next.hash
-                );
-              }
-            }
-          } catch (_restoreErr) { /* ignore */ }
+        if (isSellerPath || isSellerParam || isRuntimeSellerSessionEarly()) {
+          activateSellerPortalGuardEarly();
+        }
+      };
+      window.__mgSyncSellerPortalGuardAndLayout = function syncSellerPortalGuardAndLayout() {
+        if (window.__mgSellerLayoutApplying) return;
+        window.__mgInitSellerPortalGuard();
+        if (
+          document.documentElement.dataset.salesPortal === 'seller' &&
+          typeof window.ensureSellerOwnerLayoutApplied === 'function'
+        ) {
+          window.ensureSellerOwnerLayoutApplied();
         }
       };
       window.__mgInitSellerPortalGuard();
@@ -1052,6 +1117,9 @@
       }
 
       function isSellerForcedPortalRoute() {
+        if (typeof window.__mgInitSellerPortalGuard === 'function') {
+          window.__mgInitSellerPortalGuard();
+        }
         return document.documentElement.dataset.salesPortal === 'seller';
       }
 
@@ -1431,15 +1499,78 @@
       }
 
       function ensureSellerOwnerLayoutApplied() {
-        if (typeof window.__mgInitSellerPortalGuard === 'function') {
-          window.__mgInitSellerPortalGuard();
+        if (window.__mgSellerLayoutApplying) {
+          return document.documentElement.dataset.salesPortal === 'seller';
         }
-        if (!isSellerForcedPortalRoute()) return false;
-        applySellerOwnerQuoteLayout();
-        polishSellerOperationalPlanMatch();
-        updateSellerShellChrome();
-        return true;
+        window.__mgSellerLayoutApplying = true;
+        try {
+          if (typeof window.__mgInitSellerPortalGuard === 'function') {
+            window.__mgInitSellerPortalGuard();
+          }
+          if (!isSellerForcedPortalRoute()) return false;
+          applySellerOwnerQuoteLayout();
+          polishSellerOperationalPlanMatch();
+          updateSellerShellChrome();
+          return true;
+        } finally {
+          window.__mgSellerLayoutApplying = false;
+        }
       }
+
+      function startSellerPortalAuthSync() {
+        if (window.__mgSellerPortalAuthWatchStarted) return;
+        window.__mgSellerPortalAuthWatchStarted = true;
+
+        var syncing = false;
+        function syncFromAuthState() {
+          if (syncing) return;
+          syncing = true;
+          try {
+            if (typeof window.__mgSyncSellerPortalGuardAndLayout === 'function') {
+              window.__mgSyncSellerPortalGuardAndLayout();
+            } else if (typeof window.__mgInitSellerPortalGuard === 'function') {
+              window.__mgInitSellerPortalGuard();
+            }
+          } finally {
+            syncing = false;
+          }
+        }
+
+        document.addEventListener('device-auth-ready', syncFromAuthState);
+
+        if (document.body.classList.contains('auth-ready')) {
+          syncFromAuthState();
+        } else {
+          var authObserver = new MutationObserver(function () {
+            if (document.body.classList.contains('auth-ready')) {
+              authObserver.disconnect();
+              syncFromAuthState();
+            }
+          });
+          authObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+        }
+
+        var htmlObserver = new MutationObserver(syncFromAuthState);
+        htmlObserver.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ['data-auth-mode', 'data-portal-type'],
+        });
+
+        var tries = 0;
+        var poll = window.setInterval(function () {
+          tries += 1;
+          syncFromAuthState();
+          if (
+            tries >= 48 ||
+            (document.documentElement.dataset.salesPortal === 'seller' &&
+              document.querySelector('.seller-op-dash[data-seller-owner-layout="true"]'))
+          ) {
+            window.clearInterval(poll);
+          }
+        }, 250);
+      }
+
+      window.startSellerPortalAuthSync = startSellerPortalAuthSync;
 
       window.applySellerOwnerQuoteLayout = applySellerOwnerQuoteLayout;
       window.applySellerOwnerShellLayout = applySellerOwnerShellLayout;
@@ -6975,6 +7106,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
 
       function bootSellerPortalLayout() {
         ensureSellerOwnerLayoutApplied();
+        startSellerPortalAuthSync();
         bindStandaloneSellerWorkers();
         bindSalesOperationalPlanStandalone();
         renderSalesOperationalPlanStandalone();
@@ -6985,7 +7117,11 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
       }
 
       document.addEventListener('device-auth-ready', function () {
-        ensureSellerOwnerLayoutApplied();
+        if (typeof window.__mgSyncSellerPortalGuardAndLayout === 'function') {
+          window.__mgSyncSellerPortalGuardAndLayout();
+        } else {
+          ensureSellerOwnerLayoutApplied();
+        }
       });
 
       if (document.readyState === 'loading') {
