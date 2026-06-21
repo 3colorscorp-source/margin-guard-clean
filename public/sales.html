@@ -2267,7 +2267,7 @@
         var sellerRecommendedPrice = readSellerRecommendedPriceDebugSnapshot();
 
         return {
-          c20Version: 'C20-C20',
+          c20Version: 'C20-C21',
           visibleRole: readVisibleSellerRoleLabel(),
           sellerRootExists: !!(root && root.dataset.built === 'true'),
           buildFunctionExists: typeof window.buildSellerOwnerWorkspaceRoot === 'function',
@@ -2318,6 +2318,12 @@
             sellerRecommendedPrice.sellerRecommendedPricePreservedOnSettingsPending,
           sellerRecommendedPriceMatchesAfterReload:
             sellerRecommendedPrice.sellerRecommendedPriceMatchesAfterReload,
+          sellerCurrency: sellerRecommendedPrice.sellerCurrency,
+          sellerLastValidCurrency: sellerRecommendedPrice.sellerLastValidCurrency,
+          sellerRecommendedPriceText: sellerRecommendedPrice.sellerRecommendedPriceText,
+          sellerRecommendedPriceUsesUSD: sellerRecommendedPrice.sellerRecommendedPriceUsesUSD,
+          sellerRecommendedPriceUsesMXN: sellerRecommendedPrice.sellerRecommendedPriceUsesMXN,
+          sellerCurrencyStableAfterPlanRefresh: sellerRecommendedPrice.sellerCurrencyStableAfterPlanRefresh,
           sellerLaborTableComplete: isSellerLaborTableComplete(),
           sellerLaborActionsAligned: isSellerLaborActionsAligned(),
           sellerLaborTableUsesFullWidth: isSellerLaborTableFullWidth(),
@@ -2343,7 +2349,7 @@
       window.__mgForceBuildSellerRootNow = function forceBuildSellerRootNowManual() {
         return forceBuildSellerOwnerWorkspaceRootNow('manual');
       };
-      window.__mgC20ScriptLoaded = 'C20-C20';
+      window.__mgC20ScriptLoaded = 'C20-C21';
       window.generateSellerScopeDraftFromOperationalPlan = generateSellerScopeDraftFromOperationalPlan;
       window.ensureSellerGenerateScopeDraftButton = ensureSellerGenerateScopeDraftButton;
 
@@ -3890,7 +3896,7 @@
           return '<dt>' + escapeHtmlOperational(row[0]) + '</dt><dd>' + row[1] + '</dd>';
         }).join('');
         if (totalEl) {
-          totalEl.textContent = offered > 0 ? money(offered, settings.currency) : '—';
+          totalEl.textContent = offered > 0 ? money(offered, resolveSellerCurrency(settings, state)) : '—';
         }
       }
 
@@ -4499,7 +4505,82 @@
         const value = Number(amount);
         if (!Number.isFinite(value) || value <= 0) return;
         window.__mgSellerLastValidRecommendedPrice = value;
-        if (currency) window.__mgSellerLastValidRecommendedCurrency = String(currency);
+        rememberSellerValidCurrency(currency);
+      }
+
+      function normalizeSellerCurrencyCode(raw) {
+        const text = String(raw == null ? '' : raw).trim();
+        if (!text) return '';
+        const upper = text.toUpperCase();
+        if (upper === 'USD' || upper === 'US$' || text === '$') return 'USD';
+        if (upper === 'MXN' || upper === 'MX$' || upper === 'MEX' || /PESO/i.test(text)) return 'MXN';
+        if (/^[A-Z]{3}$/.test(upper)) return upper;
+        return '';
+      }
+
+      function rememberSellerValidCurrency(currency) {
+        const code = normalizeSellerCurrencyCode(currency);
+        if (!code) return;
+        window.__mgSellerLastValidCurrency = code;
+        window.__mgSellerLastValidRecommendedCurrency = code;
+      }
+
+      function readSellerValidCurrency() {
+        const remembered = normalizeSellerCurrencyCode(window.__mgSellerLastValidCurrency);
+        if (remembered) return remembered;
+        return normalizeSellerCurrencyCode(window.__mgSellerLastValidRecommendedCurrency);
+      }
+
+      function readSellerCurrencyFromSettingsStorage() {
+        const cached = readJson(SETTINGS_KEY, {});
+        if (!sellerSettingsSnapshotLooksValid(cached)) return '';
+        return normalizeSellerCurrencyCode(cached.currency);
+      }
+
+      function readSellerCurrencyFromVisiblePanel() {
+        const priceNode = document.getElementById('salesPrimaryPrice');
+        const priceText = priceNode ? String(priceNode.textContent || '') : '';
+        if (/MX\$|MXN/i.test(priceText)) return 'MXN';
+        if (/USD/i.test(priceText)) return 'USD';
+        if (/\$/.test(priceText) && !/MX/i.test(priceText)) {
+          const last = readSellerValidCurrency();
+          return last || 'USD';
+        }
+        return '';
+      }
+
+      function resolveSellerCurrency(settings, state) {
+        const storageCode = readSellerCurrencyFromSettingsStorage();
+        const settingsCode =
+          settings && !settings.__mgSellerSettingsBlocked
+            ? normalizeSellerCurrencyCode(settings.currency)
+            : '';
+        const stateCode = normalizeSellerCurrencyCode(
+          state && (state.currency || state.quoteCurrency || state.estimateCurrency)
+        );
+        const visibleCode = readSellerCurrencyFromVisiblePanel();
+        const lastValid = readSellerValidCurrency();
+        let resolved = storageCode || settingsCode || lastValid || visibleCode || stateCode || 'USD';
+
+        if (storageCode === 'USD' && resolved === 'MXN') {
+          resolved = 'USD';
+        }
+        if (lastValid === 'USD' && resolved === 'MXN' && isSellerPricingSettingsPending(settings)) {
+          resolved = 'USD';
+        }
+        if (lastValid === 'USD' && resolved === 'MXN' && storageCode !== 'MXN') {
+          resolved = 'USD';
+        }
+        if (lastValid === 'USD' && resolved === 'MXN' && visibleCode === 'USD') {
+          resolved = 'USD';
+        }
+
+        rememberSellerValidCurrency(resolved);
+        return resolved;
+      }
+
+      function sellerMoney(amount, settings, state) {
+        return money(amount, resolveSellerCurrency(settings, state));
       }
 
       function readSellerValidRecommendedPrice() {
@@ -4532,12 +4613,20 @@
         window.__mgSellerRecommendedPricePreservedOnSettingsPending = false;
 
         if (!pending) {
-          if (recommended > 0) rememberSellerValidRecommendedPrice(recommended, settings && settings.currency);
+          if (recommended > 0) {
+            rememberSellerValidRecommendedPrice(
+              recommended,
+              resolveSellerCurrency(settings, state)
+            );
+          }
           return { metrics: metrics, preserved: false, pending: false };
         }
 
         if (recommended > 0) {
-          rememberSellerValidRecommendedPrice(recommended, settings && settings.currency);
+          rememberSellerValidRecommendedPrice(
+            recommended,
+            resolveSellerCurrency(settings, state)
+          );
           return { metrics: metrics, preserved: false, pending: true };
         }
 
@@ -4584,6 +4673,7 @@
         const settings = loadSettings();
         const priceNode = document.getElementById('salesPrimaryPrice');
         const priceValue = parseSellerMoneyTextToNumber(priceNode && priceNode.textContent);
+        const priceText = priceNode ? String(priceNode.textContent || '').trim() : '';
         const api = getOperationalPlanApi();
         const hasPlan = Boolean(api && api.planHasDays(state.operational_plan || []));
         const workers = Array.isArray(state.workers) ? state.workers : [];
@@ -4591,16 +4681,39 @@
           return workerDaysAsInteger(worker) > 0;
         });
         const pending = isSellerPricingSettingsPending(settings);
+        const currencySnapshot = readSellerCurrencyDebugSnapshot(settings, state);
+        return Object.assign(
+          {
+            sellerRecommendedPriceValue: priceValue,
+            sellerRecommendedPriceIsZero: !(priceValue > 0),
+            sellerHasOperationalPlanDays: hasPlan,
+            sellerHasLaborWorkers: hasLaborWorkers,
+            sellerBusinessSettingsReady: isSellerBusinessSettingsReady(),
+            sellerRecommendedPricePreservedOnSettingsPending: Boolean(
+              window.__mgSellerRecommendedPricePreservedOnSettingsPending
+            ),
+            sellerRecommendedPriceMatchesAfterReload: priceValue > 0 && !pending && hasLaborWorkers,
+            sellerRecommendedPriceText: priceText,
+          },
+          currencySnapshot
+        );
+      }
+
+      function readSellerCurrencyDebugSnapshot(settings, state) {
+        if (!state) state = loadSalesState();
+        if (!settings) settings = loadSettings();
+        const sellerCurrency = resolveSellerCurrency(settings, state);
+        const priceNode = document.getElementById('salesPrimaryPrice');
+        const priceText = priceNode ? String(priceNode.textContent || '').trim() : '';
+        const usesUSD =
+          sellerCurrency === 'USD' || /USD/i.test(priceText) || (/\$/.test(priceText) && !/MX/i.test(priceText));
+        const usesMXN = sellerCurrency === 'MXN' || /MX\$|MXN/i.test(priceText);
         return {
-          sellerRecommendedPriceValue: priceValue,
-          sellerRecommendedPriceIsZero: !(priceValue > 0),
-          sellerHasOperationalPlanDays: hasPlan,
-          sellerHasLaborWorkers: hasLaborWorkers,
-          sellerBusinessSettingsReady: isSellerBusinessSettingsReady(),
-          sellerRecommendedPricePreservedOnSettingsPending: Boolean(
-            window.__mgSellerRecommendedPricePreservedOnSettingsPending
-          ),
-          sellerRecommendedPriceMatchesAfterReload: priceValue > 0 && !pending && hasLaborWorkers,
+          sellerCurrency: sellerCurrency,
+          sellerLastValidCurrency: readSellerValidCurrency(),
+          sellerRecommendedPriceUsesUSD: usesUSD,
+          sellerRecommendedPriceUsesMXN: usesMXN,
+          sellerCurrencyStableAfterPlanRefresh: usesUSD && !usesMXN,
         };
       }
 
@@ -4643,6 +4756,7 @@
 
           localStorage.setItem(SETTINGS_KEY, JSON.stringify(data.settings));
           window.__mgSellerBusinessSettingsReady = true;
+          rememberSellerValidCurrency(data.settings && data.settings.currency);
           window.__mgSellerBusinessSettingsSource = String(data.source || 'tenant_snapshot');
           window.__mgSellerBusinessSettingsError = '';
 
@@ -5366,6 +5480,7 @@
         ensureSellerBusinessSettingsReadyFromCache();
         const state = loadSalesState();
         const settings = loadSettings();
+        const sellerCurrency = resolveSellerCurrency(settings, state);
         const settingsGuard = sellerBusinessSettingsGuardError();
         const settingsPending = isSellerPricingSettingsPending(settings);
         const lastValidRecommended = readSellerValidRecommendedPrice();
@@ -5377,16 +5492,16 @@
           setText('salesTraffic', 'Blocked');
           setText('salesHeroState', 'Settings required');
           setText('salesHeroMeta', blockedMsg);
-          setText('salesPrimaryPrice', money(0, settings.currency || 'USD'));
+          setText('salesPrimaryPrice', money(0, sellerCurrency));
           setText('salesPrimaryMeta', 'Business Settings must load before pricing.');
           setText('salesPrimaryCommission', '—');
           setText('salesPrimaryCommissionMeta', blockedMsg);
           setText('salesFlowHeadline', 'Settings required');
           setText('salesFlowCaption', blockedMsg);
           setText('salesPricingGuidance', blockedMsg);
-          setText('salesStageMin', money(0, settings.currency || 'USD'));
-          setText('salesStageNegotiation', money(0, settings.currency || 'USD'));
-          setText('salesStageRecommended', money(0, settings.currency || 'USD'));
+          setText('salesStageMin', money(0, sellerCurrency));
+          setText('salesStageNegotiation', money(0, sellerCurrency));
+          setText('salesStageRecommended', money(0, sellerCurrency));
           setText('salesRule', blockedMsg);
           const ruleEl = document.getElementById('salesRule');
           if (ruleEl) {
@@ -5400,7 +5515,6 @@
         let metrics = buildSalesUIMetrics(state, settings);
         const preservedPricing = preserveSellerRecommendedPriceIfSettingsPending(metrics, settings, state);
         metrics = preservedPricing.metrics;
-        const currency = settings.currency || window.__mgSellerLastValidRecommendedCurrency || 'USD';
         const pricingPendingMessage = preservedPricing.pending
           ? 'Pricing settings loading... Recalculating with the last valid quote.'
           : '';
@@ -5410,7 +5524,7 @@
         const tone = !isReady ? 'amber' : offered >= metrics.recommended ? 'green' : offered >= metrics.minimum ? 'amber' : 'red';
         const toneLabel = tone === 'green' ? 'Healthy' : tone === 'amber' ? 'Needs Review' : 'At Risk';
         const customerLabel = (state.clientName && String(state.clientName).trim()) ? String(state.clientName).trim() : 'Pending';
-        setText('salesEstimateSummary', `Customer ${customerLabel} | ${toneLabel} | Total ${money(offered, settings.currency)}`);
+        setText('salesEstimateSummary', `Customer ${customerLabel} | ${toneLabel} | Total ${money(offered, sellerCurrency)}`);
         setText('salesTraffic', toneLabel);
         setText('salesHeroState', tone === 'green' ? 'Green' : tone === 'amber' ? 'Amber' : 'Red');
         setText('salesHeroMeta', [
@@ -5421,14 +5535,14 @@
           `Expires ${state.expirationDate || ''}`
         ].join(' | '));
 
-        setText('salesPrimaryPrice', money(metrics.recommended, currency));
+        setText('salesPrimaryPrice', money(metrics.recommended, sellerCurrency));
         setText(
           'salesPrimaryMeta',
           pricingPendingMessage ||
-            `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${money(metrics.offered, currency)}`
+            `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${money(metrics.offered, sellerCurrency)}`
         );
         setText('salesPrimaryCommission', `${metrics.commissionRate.toFixed(2)}%`);
-        setText('salesPrimaryCommissionMeta', `${money(metrics.commissionDisplay, settings.currency)} estimado · ${money(metrics.commissionLaborBase != null ? metrics.commissionLaborBase : metrics.laborCost, settings.currency)} mano de obra`);
+        setText('salesPrimaryCommissionMeta', `${money(metrics.commissionDisplay, sellerCurrency)} estimado · ${money(metrics.commissionLaborBase != null ? metrics.commissionLaborBase : metrics.laborCost, sellerCurrency)} mano de obra`);
         setText('salesFlowHeadline', metrics.workerDays <= 0 ? 'Completar datos' : metrics.needsApproval ? 'Bajo recomendado' : 'Listo para enviar');
         setText(
           'salesFlowCaption',
@@ -5444,9 +5558,9 @@
             ? 'Precio bajo la recomendacion: no hay bloqueo; avanza con responsabilidad comercial.'
             : 'Precio alineado con el rango recomendado o superior.'
         );
-        setText('salesStageMin', money(metrics.minimum, settings.currency));
-        setText('salesStageNegotiation', money(metrics.negotiation, settings.currency));
-        setText('salesStageRecommended', money(metrics.recommended, settings.currency));
+        setText('salesStageMin', money(metrics.minimum, sellerCurrency));
+        setText('salesStageNegotiation', money(metrics.negotiation, sellerCurrency));
+        setText('salesStageRecommended', money(metrics.recommended, sellerCurrency));
         const estimateStatusMap = {
           draft: 'Draft',
           pricing_ready: 'Pricing Ready',
@@ -5503,18 +5617,18 @@
         if (salesKpis) {
           const kpiBlocks = isCleanDraft
             ? [
-                { label: 'Subtotal', value: money(0, settings.currency) },
-                { label: 'Recommended', value: money(0, settings.currency) },
-                { label: 'Minimum', value: money(0, settings.currency) },
-                { label: 'Deposit', value: money(0, settings.currency) },
-                { label: 'Commission', value: money(0, settings.currency) }
+                { label: 'Subtotal', value: money(0, sellerCurrency) },
+                { label: 'Recommended', value: money(0, sellerCurrency) },
+                { label: 'Minimum', value: money(0, sellerCurrency) },
+                { label: 'Deposit', value: money(0, sellerCurrency) },
+                { label: 'Commission', value: money(0, sellerCurrency) }
               ]
             : [
-                { label: 'Subtotal', value: money(offered, settings.currency) },
-                { label: 'Recommended', value: money(metrics.recommended, settings.currency) },
-                { label: 'Minimum', value: money(metrics.minimum, settings.currency) },
-                { label: 'Deposit', value: money(metrics.depositRequired, settings.currency) },
-                { label: 'Commission', value: money(metrics.commissionDisplay, settings.currency) }
+                { label: 'Subtotal', value: money(offered, sellerCurrency) },
+                { label: 'Recommended', value: money(metrics.recommended, sellerCurrency) },
+                { label: 'Minimum', value: money(metrics.minimum, sellerCurrency) },
+                { label: 'Deposit', value: money(metrics.depositRequired, sellerCurrency) },
+                { label: 'Commission', value: money(metrics.commissionDisplay, sellerCurrency) }
               ];
           salesKpis.innerHTML = kpiBlocks.map(function (item) {
             return '<article class="compact-stat"><span>' + escapeHtml(item.label) + '</span><strong>' + escapeHtml(item.value) + '</strong></article>';
@@ -5524,7 +5638,7 @@
         if (negotiationList) {
           const guidance = [
             'Estimate status: ' + estimateStatusLabel + '.',
-            'Offer range: ' + money(metrics.minimum, settings.currency) + ' to ' + money(metrics.recommended, settings.currency) + '.',
+            'Offer range: ' + money(metrics.minimum, sellerCurrency) + ' to ' + money(metrics.recommended, sellerCurrency) + '.',
             metrics.needsApproval ? 'Si el precio esta bajo la recomendacion, avanza con responsabilidad y confirma con el dueno antes de firmar.' : 'Estimate can be sent directly to the customer.'
           ];
           negotiationList.innerHTML = guidance.map(function (line) {
@@ -5536,6 +5650,10 @@
           const stage = metrics.offered >= metrics.recommended ? 2 : (metrics.offered >= metrics.negotiation ? 1 : 0);
           slider.value = String(stage);
         }
+        if (metrics.recommended > 0) {
+          rememberSellerValidRecommendedPrice(metrics.recommended, sellerCurrency);
+        }
+
         if (preservedPricing.pending) {
           scheduleSellerPricingRefreshWhenSettingsReady();
         }
@@ -5552,17 +5670,17 @@
         // renderStandaloneSellerPanel() es el ultimo paso de
         // refreshSellerFromStandalone().
         if (isCleanDraft && !(preservedPricing.preserved && metrics.recommended > 0)) {
-          setText('salesPrimaryPrice', money(0, settings.currency));
-          setText('salesPrimaryMeta', '0.00 worker-days | 0.00 labor-hours | 0 workers | Current ' + money(0, settings.currency));
+          setText('salesPrimaryPrice', money(0, sellerCurrency));
+          setText('salesPrimaryMeta', '0.00 worker-days | 0.00 labor-hours | 0 workers | Current ' + money(0, sellerCurrency));
           setText('salesPrimaryCommission', `${metrics.commissionRate.toFixed(2)}%`);
-          setText('salesPrimaryCommissionMeta', money(0, settings.currency) + ' estimado · ' + money(0, settings.currency) + ' mano de obra');
-          setText('salesStageMin', money(0, settings.currency));
-          setText('salesStageNegotiation', money(0, settings.currency));
-          setText('salesStageRecommended', money(0, settings.currency));
+          setText('salesPrimaryCommissionMeta', money(0, sellerCurrency) + ' estimado · ' + money(0, sellerCurrency) + ' mano de obra');
+          setText('salesStageMin', money(0, sellerCurrency));
+          setText('salesStageNegotiation', money(0, sellerCurrency));
+          setText('salesStageRecommended', money(0, sellerCurrency));
           const priceDisplay = document.getElementById('salesPriceDisplay');
           if (priceDisplay) priceDisplay.textContent = '—';
           const depositEl = document.getElementById('deposit');
-          if (depositEl) depositEl.value = money(0, settings.currency);
+          if (depositEl) depositEl.value = money(0, sellerCurrency);
           setText('salesTraffic', 'Draft');
           setText('salesHeroState', 'Base');
           setText('salesFlowHeadline', 'Complete labor'); // no-op si el id no existe
@@ -5570,7 +5688,7 @@
           if (summaryNode) {
             const cleanCustomer = String(state.clientName || '').trim() || 'Pending';
             summaryNode.textContent =
-              `Customer ${cleanCustomer} | Draft | Total ${money(0, settings.currency)}`;
+              `Customer ${cleanCustomer} | Draft | Total ${money(0, sellerCurrency)}`;
           }
           // En clean/new quote state, app.js -> renderSales() pinta
           // "Estimate <num> | Issue <fecha> | Expires <fecha>" en salesHeroMeta usando
@@ -5635,6 +5753,7 @@
         if (!body) return;
         const state = loadSalesState();
         const settings = loadSettings();
+        const sellerCurrency = resolveSellerCurrency(settings, state);
         const autoSync = isLaborAutoSyncActive(state);
         const hpd = Math.max(Number(settings.hoursPerDay || 8), 0.25);
         updateLaborSyncChrome(state);
@@ -5659,8 +5778,8 @@
                 </select>
               </td>
               <td class="sales-labor-td sales-labor-td--units"><input data-key="units" type="number" inputmode="numeric" min="0" step="1" pattern="[0-9]*" value="${daysVal}" ${unitsAttrs} /></td>
-              <td class="sales-labor-td sales-labor-td--rate" data-cell="rate">${money(rateValue, settings.currency)}<span class="small" style="display:block;margin-top:4px;opacity:.72;">Business Settings</span></td>
-              <td class="sales-labor-td sales-labor-td--labor" data-cell="labor">${money(laborCost(worker, settings), settings.currency)}</td>
+              <td class="sales-labor-td sales-labor-td--rate" data-cell="rate">${money(rateValue, sellerCurrency)}<span class="small" style="display:block;margin-top:4px;opacity:.72;">Business Settings</span></td>
+              <td class="sales-labor-td sales-labor-td--labor" data-cell="labor">${money(laborCost(worker, settings), sellerCurrency)}</td>
               <td class="sales-labor-td sales-labor-td-actions">
                 <div class="row-actions sales-labor-row-actions">
                   <button class="btn ghost" type="button" data-action="copy" ${autoSync ? 'disabled title="Disable auto-sync to copy rows"' : ''}>Copy</button>
@@ -5763,10 +5882,11 @@
           const meta = commitWorkerFieldToState(field);
           if (!meta) return;
           const settings = loadSettings();
+          const sellerCurrency = resolveSellerCurrency(settings, meta.state);
           if (isWorkerLaborQtyDataKey(meta.key)) {
             const laborTd = meta.row.querySelector('[data-cell="labor"]');
             if (laborTd) {
-              laborTd.textContent = money(laborCost(meta.state.workers[meta.index], settings), settings.currency);
+              laborTd.textContent = money(laborCost(meta.state.workers[meta.index], settings), sellerCurrency);
             }
             const rateTd = meta.row.querySelector('[data-cell="rate"]');
             if (rateTd && meta.key === 'type') {
@@ -5774,7 +5894,7 @@
               const fr = w.type === 'helper'
                 ? Number(settings.baseHelper || 0)
                 : Number(settings.baseInstaller || 0);
-              rateTd.innerHTML = money(fr, settings.currency) +
+              rateTd.innerHTML = money(fr, sellerCurrency) +
                 '<span class="small" style="display:block;margin-top:4px;opacity:.72;">Business Settings</span>';
             }
           }
