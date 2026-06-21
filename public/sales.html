@@ -2267,7 +2267,7 @@
         var sellerRecommendedPrice = readSellerRecommendedPriceDebugSnapshot();
 
         return {
-          c20Version: 'C20-C21',
+          c20Version: 'C20-C22',
           visibleRole: readVisibleSellerRoleLabel(),
           sellerRootExists: !!(root && root.dataset.built === 'true'),
           buildFunctionExists: typeof window.buildSellerOwnerWorkspaceRoot === 'function',
@@ -2320,6 +2320,13 @@
             sellerRecommendedPrice.sellerRecommendedPriceMatchesAfterReload,
           sellerCurrency: sellerRecommendedPrice.sellerCurrency,
           sellerLastValidCurrency: sellerRecommendedPrice.sellerLastValidCurrency,
+          sellerPrimaryPriceText: sellerRecommendedPrice.sellerPrimaryPriceText,
+          sellerPrimaryPriceUsesUSD: sellerRecommendedPrice.sellerPrimaryPriceUsesUSD,
+          sellerPrimaryPriceUsesMXN: sellerRecommendedPrice.sellerPrimaryPriceUsesMXN,
+          sellerRightPanelMoneyTexts: sellerRecommendedPrice.sellerRightPanelMoneyTexts,
+          sellerRightPanelHasMXN: sellerRecommendedPrice.sellerRightPanelHasMXN,
+          sellerAllRightPanelMoneyUseStableCurrency:
+            sellerRecommendedPrice.sellerAllRightPanelMoneyUseStableCurrency,
           sellerRecommendedPriceText: sellerRecommendedPrice.sellerRecommendedPriceText,
           sellerRecommendedPriceUsesUSD: sellerRecommendedPrice.sellerRecommendedPriceUsesUSD,
           sellerRecommendedPriceUsesMXN: sellerRecommendedPrice.sellerRecommendedPriceUsesMXN,
@@ -2349,7 +2356,7 @@
       window.__mgForceBuildSellerRootNow = function forceBuildSellerRootNowManual() {
         return forceBuildSellerOwnerWorkspaceRootNow('manual');
       };
-      window.__mgC20ScriptLoaded = 'C20-C21';
+      window.__mgC20ScriptLoaded = 'C20-C22';
       window.generateSellerScopeDraftFromOperationalPlan = generateSellerScopeDraftFromOperationalPlan;
       window.ensureSellerGenerateScopeDraftButton = ensureSellerGenerateScopeDraftButton;
 
@@ -3896,7 +3903,7 @@
           return '<dt>' + escapeHtmlOperational(row[0]) + '</dt><dd>' + row[1] + '</dd>';
         }).join('');
         if (totalEl) {
-          totalEl.textContent = offered > 0 ? money(offered, resolveSellerCurrency(settings, state)) : '—';
+          totalEl.textContent = offered > 0 ? sellerMoney(offered, settings, state) : '—';
         }
       }
 
@@ -4425,6 +4432,7 @@
           if (isSellerForcedPortalRoute()) {
             buildSellerOwnerLikeWorkspace();
           }
+          enforceSellerRightPanelCurrencyConsistency(loadSalesState(), loadSettings());
         } finally {
           if (window.__mgForceCloseSalesNewQuoteAfterRefresh && typeof window.forceCloseSalesNewQuoteModal === 'function') {
             window.forceCloseSalesNewQuoteModal();
@@ -4533,45 +4541,66 @@
 
       function readSellerCurrencyFromSettingsStorage() {
         const cached = readJson(SETTINGS_KEY, {});
-        if (!sellerSettingsSnapshotLooksValid(cached)) return '';
+        if (!cached || typeof cached !== 'object') return '';
         return normalizeSellerCurrencyCode(cached.currency);
       }
 
+      function sellerStorageCurrencyExplicitlyMXN() {
+        return readSellerCurrencyFromSettingsStorage() === 'MXN';
+      }
+
       function readSellerCurrencyFromVisiblePanel() {
+        const storageCode = readSellerCurrencyFromSettingsStorage();
+        const lastValid = readSellerValidCurrency();
         const priceNode = document.getElementById('salesPrimaryPrice');
         const priceText = priceNode ? String(priceNode.textContent || '') : '';
-        if (/MX\$|MXN/i.test(priceText)) return 'MXN';
+        if (/MX\$|MXN/i.test(priceText)) {
+          if (storageCode === 'USD' || lastValid === 'USD') return '';
+          return 'MXN';
+        }
         if (/USD/i.test(priceText)) return 'USD';
         if (/\$/.test(priceText) && !/MX/i.test(priceText)) {
-          const last = readSellerValidCurrency();
-          return last || 'USD';
+          return lastValid || storageCode || 'USD';
         }
         return '';
       }
 
       function resolveSellerCurrency(settings, state) {
         const storageCode = readSellerCurrencyFromSettingsStorage();
-        const settingsCode =
-          settings && !settings.__mgSellerSettingsBlocked
-            ? normalizeSellerCurrencyCode(settings.currency)
-            : '';
+        const settingsCode = settings
+          ? normalizeSellerCurrencyCode(settings.currency)
+          : '';
         const stateCode = normalizeSellerCurrencyCode(
           state && (state.currency || state.quoteCurrency || state.estimateCurrency)
         );
-        const visibleCode = readSellerCurrencyFromVisiblePanel();
         const lastValid = readSellerValidCurrency();
-        let resolved = storageCode || settingsCode || lastValid || visibleCode || stateCode || 'USD';
+        const visibleCode = readSellerCurrencyFromVisiblePanel();
+        let resolved =
+          settingsCode ||
+          storageCode ||
+          lastValid ||
+          visibleCode ||
+          stateCode ||
+          'USD';
 
+        if (resolved === 'MXN' && !sellerStorageCurrencyExplicitlyMXN()) {
+          if (storageCode === 'USD' || settingsCode === 'USD' || lastValid === 'USD') {
+            resolved = 'USD';
+          } else if (storageCode) {
+            resolved = storageCode;
+          } else if (settingsCode) {
+            resolved = settingsCode;
+          } else {
+            resolved = 'USD';
+          }
+        }
         if (storageCode === 'USD' && resolved === 'MXN') {
           resolved = 'USD';
         }
-        if (lastValid === 'USD' && resolved === 'MXN' && isSellerPricingSettingsPending(settings)) {
+        if (lastValid === 'USD' && resolved === 'MXN') {
           resolved = 'USD';
         }
-        if (lastValid === 'USD' && resolved === 'MXN' && storageCode !== 'MXN') {
-          resolved = 'USD';
-        }
-        if (lastValid === 'USD' && resolved === 'MXN' && visibleCode === 'USD') {
+        if (settingsCode === 'USD' && resolved === 'MXN') {
           resolved = 'USD';
         }
 
@@ -4581,6 +4610,167 @@
 
       function sellerMoney(amount, settings, state) {
         return money(amount, resolveSellerCurrency(settings, state));
+      }
+
+      function sellerRightPanelMoneyNodeIds() {
+        return [
+          'salesPrimaryPrice',
+          'salesPriceDisplay',
+          'salesPrimaryMeta',
+          'salesPrimaryCommissionMeta',
+          'salesEstimateSummary',
+          'salesStageMin',
+          'salesStageNegotiation',
+          'salesStageRecommended',
+        ];
+      }
+
+      function collectSellerRightPanelMoneyTexts() {
+        const panel = document.querySelector('.sales-right-panel');
+        const texts = {};
+        sellerRightPanelMoneyNodeIds().forEach(function (id) {
+          const node = document.getElementById(id);
+          if (node) texts[id] = String(node.textContent || '').trim();
+        });
+        const kpiNode = document.getElementById('salesKpis');
+        if (kpiNode) texts.salesKpis = String(kpiNode.textContent || '').replace(/\s+/g, ' ').trim();
+        if (panel) texts._panelText = String(panel.textContent || '').replace(/\s+/g, ' ').trim();
+        return texts;
+      }
+
+      function sellerRightPanelTextUsesMXN(text) {
+        return /MX\$|MXN|pesos?\s*mex/i.test(String(text || ''));
+      }
+
+      function applySellerRightPanelMoneyFromMetrics(metrics, state, settings) {
+        if (!metrics || !state || !settings) return;
+        const offered = metrics.offered || metrics.recommended || 0;
+        const isReady = metrics.workerDays > 0 && metrics.recommended > 0;
+        const customerLabel = (state.clientName && String(state.clientName).trim())
+          ? String(state.clientName).trim()
+          : 'Pending';
+        const tone = !isReady
+          ? 'amber'
+          : offered >= metrics.recommended
+            ? 'green'
+            : offered >= metrics.minimum
+              ? 'amber'
+              : 'red';
+        const toneLabel = tone === 'green' ? 'Healthy' : tone === 'amber' ? 'Needs Review' : 'At Risk';
+
+        setText('salesPrimaryPrice', sellerMoney(metrics.recommended, settings, state));
+        const priceDisplay = document.getElementById('salesPriceDisplay');
+        if (priceDisplay) {
+          priceDisplay.textContent = isReady ? sellerMoney(offered, settings, state) : '—';
+        }
+        setText(
+          'salesPrimaryMeta',
+          `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${sellerMoney(offered, settings, state)}`
+        );
+        setText(
+          'salesPrimaryCommissionMeta',
+          `${sellerMoney(metrics.commissionDisplay, settings, state)} estimado · ${sellerMoney(
+            metrics.commissionLaborBase != null ? metrics.commissionLaborBase : metrics.laborCost,
+            settings,
+            state
+          )} mano de obra`
+        );
+        setText(
+          'salesEstimateSummary',
+          `Customer ${customerLabel} | ${toneLabel} | Total ${sellerMoney(offered, settings, state)}`
+        );
+        setText('salesStageMin', sellerMoney(metrics.minimum, settings, state));
+        setText('salesStageNegotiation', sellerMoney(metrics.negotiation, settings, state));
+        setText('salesStageRecommended', sellerMoney(metrics.recommended, settings, state));
+
+        const salesKpis = document.getElementById('salesKpis');
+        if (salesKpis) {
+          const isCleanDraft = !(metrics.workerDays > 0 && metrics.recommended > 0);
+          const kpiBlocks = isCleanDraft
+            ? [
+                { label: 'Subtotal', value: sellerMoney(0, settings, state) },
+                { label: 'Recommended', value: sellerMoney(0, settings, state) },
+                { label: 'Minimum', value: sellerMoney(0, settings, state) },
+                { label: 'Deposit', value: sellerMoney(0, settings, state) },
+                { label: 'Commission', value: sellerMoney(0, settings, state) },
+              ]
+            : [
+                { label: 'Subtotal', value: sellerMoney(offered, settings, state) },
+                { label: 'Recommended', value: sellerMoney(metrics.recommended, settings, state) },
+                { label: 'Minimum', value: sellerMoney(metrics.minimum, settings, state) },
+                { label: 'Deposit', value: sellerMoney(metrics.depositRequired, settings, state) },
+                { label: 'Commission', value: sellerMoney(metrics.commissionDisplay, settings, state) },
+              ];
+          salesKpis.innerHTML = kpiBlocks
+            .map(function (item) {
+              return (
+                '<article class="compact-stat"><span>' +
+                escapeHtml(item.label) +
+                '</span><strong>' +
+                escapeHtml(item.value) +
+                '</strong></article>'
+              );
+            })
+            .join('');
+        }
+
+        const negotiationList = document.getElementById('negotiationList');
+        if (negotiationList) {
+          const estimateStatusMap = {
+            draft: 'Draft',
+            pricing_ready: 'Pricing Ready',
+            approval_requested: 'Bajo recomendado',
+            sent: 'Sent',
+            signed: 'Signed',
+          };
+          const estimateStatusLabel =
+            estimateStatusMap[state.estimateStatus] ||
+            String(state.estimateStatus || 'draft').replace(/_/g, ' ');
+          const guidance = [
+            'Estimate status: ' + estimateStatusLabel + '.',
+            'Offer range: ' +
+              sellerMoney(metrics.minimum, settings, state) +
+              ' to ' +
+              sellerMoney(metrics.recommended, settings, state) +
+              '.',
+            metrics.needsApproval
+              ? 'Si el precio esta bajo la recomendacion, avanza con responsabilidad y confirma con el dueno antes de firmar.'
+              : 'Estimate can be sent directly to the customer.',
+          ];
+          negotiationList.innerHTML = guidance
+            .map(function (line) {
+              return '<li>' + escapeHtml(line) + '</li>';
+            })
+            .join('');
+        }
+      }
+
+      function enforceSellerRightPanelCurrencyConsistency(state, settings, metrics) {
+        if (
+          document.documentElement.dataset.salesPortal !== 'seller' &&
+          !isSellerForcedPortalRoute() &&
+          !isSellerPricingControlledByServer()
+        ) {
+          return false;
+        }
+        state = state || loadSalesState();
+        settings = settings || loadSettings();
+        if (!metrics) {
+          let built = buildSalesUIMetrics(state, settings);
+          const preserved = preserveSellerRecommendedPriceIfSettingsPending(built, settings, state);
+          metrics = preserved.metrics;
+        }
+        applySellerRightPanelMoneyFromMetrics(metrics, state, settings);
+        const sellerCurrency = resolveSellerCurrency(settings, state);
+        const panel = document.querySelector('.sales-right-panel');
+        const panelText = panel ? String(panel.textContent || '') : '';
+        if (sellerCurrency === 'USD' && sellerRightPanelTextUsesMXN(panelText)) {
+          applySellerRightPanelMoneyFromMetrics(metrics, state, settings);
+        }
+        if (metrics.recommended > 0) {
+          rememberSellerValidRecommendedPrice(metrics.recommended, sellerCurrency);
+        }
+        return sellerCurrency === 'USD' ? !sellerRightPanelTextUsesMXN(panelText) : true;
       }
 
       function readSellerValidRecommendedPrice() {
@@ -4705,15 +4895,32 @@
         const sellerCurrency = resolveSellerCurrency(settings, state);
         const priceNode = document.getElementById('salesPrimaryPrice');
         const priceText = priceNode ? String(priceNode.textContent || '').trim() : '';
+        const rightPanelMoneyTexts = collectSellerRightPanelMoneyTexts();
+        const panelHasMXN = sellerRightPanelTextUsesMXN(rightPanelMoneyTexts._panelText || '');
         const usesUSD =
-          sellerCurrency === 'USD' || /USD/i.test(priceText) || (/\$/.test(priceText) && !/MX/i.test(priceText));
-        const usesMXN = sellerCurrency === 'MXN' || /MX\$|MXN/i.test(priceText);
+          sellerCurrency === 'USD' ||
+          /USD/i.test(priceText) ||
+          (/\$/.test(priceText) && !/MX/i.test(priceText));
+        const usesMXN = sellerCurrency === 'MXN' || sellerRightPanelTextUsesMXN(priceText);
+        const allStable =
+          sellerCurrency !== 'MXN' &&
+          !panelHasMXN &&
+          !sellerRightPanelMoneyNodeIds().some(function (id) {
+            return sellerRightPanelTextUsesMXN(rightPanelMoneyTexts[id]);
+          });
         return {
           sellerCurrency: sellerCurrency,
           sellerLastValidCurrency: readSellerValidCurrency(),
+          sellerPrimaryPriceText: priceText,
+          sellerPrimaryPriceUsesUSD: usesUSD,
+          sellerPrimaryPriceUsesMXN: usesMXN,
+          sellerRightPanelMoneyTexts: rightPanelMoneyTexts,
+          sellerRightPanelHasMXN: panelHasMXN,
+          sellerAllRightPanelMoneyUseStableCurrency: allStable,
+          sellerCurrencyStableAfterPlanRefresh: usesUSD && !usesMXN && !panelHasMXN,
+          sellerRecommendedPriceText: priceText,
           sellerRecommendedPriceUsesUSD: usesUSD,
           sellerRecommendedPriceUsesMXN: usesMXN,
-          sellerCurrencyStableAfterPlanRefresh: usesUSD && !usesMXN,
         };
       }
 
@@ -5492,16 +5699,18 @@
           setText('salesTraffic', 'Blocked');
           setText('salesHeroState', 'Settings required');
           setText('salesHeroMeta', blockedMsg);
-          setText('salesPrimaryPrice', money(0, sellerCurrency));
+          setText('salesPrimaryPrice', sellerMoney(0, settings, state));
           setText('salesPrimaryMeta', 'Business Settings must load before pricing.');
           setText('salesPrimaryCommission', '—');
           setText('salesPrimaryCommissionMeta', blockedMsg);
           setText('salesFlowHeadline', 'Settings required');
           setText('salesFlowCaption', blockedMsg);
           setText('salesPricingGuidance', blockedMsg);
-          setText('salesStageMin', money(0, sellerCurrency));
-          setText('salesStageNegotiation', money(0, sellerCurrency));
-          setText('salesStageRecommended', money(0, sellerCurrency));
+          setText('salesStageMin', sellerMoney(0, settings, state));
+          setText('salesStageNegotiation', sellerMoney(0, settings, state));
+          setText('salesStageRecommended', sellerMoney(0, settings, state));
+          const blockedPriceDisplay = document.getElementById('salesPriceDisplay');
+          if (blockedPriceDisplay) blockedPriceDisplay.textContent = '—';
           setText('salesRule', blockedMsg);
           const ruleEl = document.getElementById('salesRule');
           if (ruleEl) {
@@ -5524,7 +5733,6 @@
         const tone = !isReady ? 'amber' : offered >= metrics.recommended ? 'green' : offered >= metrics.minimum ? 'amber' : 'red';
         const toneLabel = tone === 'green' ? 'Healthy' : tone === 'amber' ? 'Needs Review' : 'At Risk';
         const customerLabel = (state.clientName && String(state.clientName).trim()) ? String(state.clientName).trim() : 'Pending';
-        setText('salesEstimateSummary', `Customer ${customerLabel} | ${toneLabel} | Total ${money(offered, sellerCurrency)}`);
         setText('salesTraffic', toneLabel);
         setText('salesHeroState', tone === 'green' ? 'Green' : tone === 'amber' ? 'Amber' : 'Red');
         setText('salesHeroMeta', [
@@ -5535,14 +5743,11 @@
           `Expires ${state.expirationDate || ''}`
         ].join(' | '));
 
-        setText('salesPrimaryPrice', money(metrics.recommended, sellerCurrency));
-        setText(
-          'salesPrimaryMeta',
-          pricingPendingMessage ||
-            `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${money(metrics.offered, sellerCurrency)}`
-        );
+        applySellerRightPanelMoneyFromMetrics(metrics, state, settings);
+        if (pricingPendingMessage) {
+          setText('salesPrimaryMeta', pricingPendingMessage);
+        }
         setText('salesPrimaryCommission', `${metrics.commissionRate.toFixed(2)}%`);
-        setText('salesPrimaryCommissionMeta', `${money(metrics.commissionDisplay, sellerCurrency)} estimado · ${money(metrics.commissionLaborBase != null ? metrics.commissionLaborBase : metrics.laborCost, sellerCurrency)} mano de obra`);
         setText('salesFlowHeadline', metrics.workerDays <= 0 ? 'Completar datos' : metrics.needsApproval ? 'Bajo recomendado' : 'Listo para enviar');
         setText(
           'salesFlowCaption',
@@ -5558,17 +5763,6 @@
             ? 'Precio bajo la recomendacion: no hay bloqueo; avanza con responsabilidad comercial.'
             : 'Precio alineado con el rango recomendado o superior.'
         );
-        setText('salesStageMin', money(metrics.minimum, sellerCurrency));
-        setText('salesStageNegotiation', money(metrics.negotiation, sellerCurrency));
-        setText('salesStageRecommended', money(metrics.recommended, sellerCurrency));
-        const estimateStatusMap = {
-          draft: 'Draft',
-          pricing_ready: 'Pricing Ready',
-          approval_requested: 'Bajo recomendado',
-          sent: 'Sent',
-          signed: 'Signed'
-        };
-        const estimateStatusLabel = estimateStatusMap[state.estimateStatus] || String(state.estimateStatus || 'draft').replace(/_/g, ' ');
         setText('salesRule', (function () {
           const isReady = metrics.workerDays > 0 && metrics.recommended > 0;
           const ruleEl = document.getElementById('salesRule');
@@ -5613,38 +5807,6 @@
         }
         const isCleanDraft = !(metrics.workerDays > 0 && metrics.recommended > 0);
 
-        const salesKpis = document.getElementById('salesKpis');
-        if (salesKpis) {
-          const kpiBlocks = isCleanDraft
-            ? [
-                { label: 'Subtotal', value: money(0, sellerCurrency) },
-                { label: 'Recommended', value: money(0, sellerCurrency) },
-                { label: 'Minimum', value: money(0, sellerCurrency) },
-                { label: 'Deposit', value: money(0, sellerCurrency) },
-                { label: 'Commission', value: money(0, sellerCurrency) }
-              ]
-            : [
-                { label: 'Subtotal', value: money(offered, sellerCurrency) },
-                { label: 'Recommended', value: money(metrics.recommended, sellerCurrency) },
-                { label: 'Minimum', value: money(metrics.minimum, sellerCurrency) },
-                { label: 'Deposit', value: money(metrics.depositRequired, sellerCurrency) },
-                { label: 'Commission', value: money(metrics.commissionDisplay, sellerCurrency) }
-              ];
-          salesKpis.innerHTML = kpiBlocks.map(function (item) {
-            return '<article class="compact-stat"><span>' + escapeHtml(item.label) + '</span><strong>' + escapeHtml(item.value) + '</strong></article>';
-          }).join('');
-        }
-        const negotiationList = document.getElementById('negotiationList');
-        if (negotiationList) {
-          const guidance = [
-            'Estimate status: ' + estimateStatusLabel + '.',
-            'Offer range: ' + money(metrics.minimum, sellerCurrency) + ' to ' + money(metrics.recommended, sellerCurrency) + '.',
-            metrics.needsApproval ? 'Si el precio esta bajo la recomendacion, avanza con responsabilidad y confirma con el dueno antes de firmar.' : 'Estimate can be sent directly to the customer.'
-          ];
-          negotiationList.innerHTML = guidance.map(function (line) {
-            return '<li>' + escapeHtml(line) + '</li>';
-          }).join('');
-        }
         const slider = document.getElementById('salesStageRange');
         if (slider) {
           const stage = metrics.offered >= metrics.recommended ? 2 : (metrics.offered >= metrics.negotiation ? 1 : 0);
@@ -5670,17 +5832,17 @@
         // renderStandaloneSellerPanel() es el ultimo paso de
         // refreshSellerFromStandalone().
         if (isCleanDraft && !(preservedPricing.preserved && metrics.recommended > 0)) {
-          setText('salesPrimaryPrice', money(0, sellerCurrency));
-          setText('salesPrimaryMeta', '0.00 worker-days | 0.00 labor-hours | 0 workers | Current ' + money(0, sellerCurrency));
+          setText('salesPrimaryPrice', sellerMoney(0, settings, state));
+          setText('salesPrimaryMeta', '0.00 worker-days | 0.00 labor-hours | 0 workers | Current ' + sellerMoney(0, settings, state));
           setText('salesPrimaryCommission', `${metrics.commissionRate.toFixed(2)}%`);
-          setText('salesPrimaryCommissionMeta', money(0, sellerCurrency) + ' estimado · ' + money(0, sellerCurrency) + ' mano de obra');
-          setText('salesStageMin', money(0, sellerCurrency));
-          setText('salesStageNegotiation', money(0, sellerCurrency));
-          setText('salesStageRecommended', money(0, sellerCurrency));
+          setText('salesPrimaryCommissionMeta', sellerMoney(0, settings, state) + ' estimado · ' + sellerMoney(0, settings, state) + ' mano de obra');
+          setText('salesStageMin', sellerMoney(0, settings, state));
+          setText('salesStageNegotiation', sellerMoney(0, settings, state));
+          setText('salesStageRecommended', sellerMoney(0, settings, state));
           const priceDisplay = document.getElementById('salesPriceDisplay');
           if (priceDisplay) priceDisplay.textContent = '—';
           const depositEl = document.getElementById('deposit');
-          if (depositEl) depositEl.value = money(0, sellerCurrency);
+          if (depositEl) depositEl.value = sellerMoney(0, settings, state);
           setText('salesTraffic', 'Draft');
           setText('salesHeroState', 'Base');
           setText('salesFlowHeadline', 'Complete labor'); // no-op si el id no existe
@@ -5688,7 +5850,7 @@
           if (summaryNode) {
             const cleanCustomer = String(state.clientName || '').trim() || 'Pending';
             summaryNode.textContent =
-              `Customer ${cleanCustomer} | Draft | Total ${money(0, sellerCurrency)}`;
+              `Customer ${cleanCustomer} | Draft | Total ${sellerMoney(0, settings, state)}`;
           }
           // En clean/new quote state, app.js -> renderSales() pinta
           // "Estimate <num> | Issue <fecha> | Expires <fecha>" en salesHeroMeta usando
@@ -5700,7 +5862,42 @@
             heroMetaNode.textContent = 'Completa el estimate para empezar a negociar.';
           }
         }
+        enforceSellerRightPanelCurrencyConsistency(state, settings, metrics);
       }
+
+      function patchSellerRenderSalesCurrencyGuard() {
+        if (window.__mgSellerRenderSalesCurrencyPatch) return;
+        if (typeof window.renderSales !== 'function') return;
+        const originalRenderSales = window.renderSales;
+        window.renderSales = function mgSellerPatchedRenderSales() {
+          const result = originalRenderSales.apply(this, arguments);
+          if (
+            document.documentElement.dataset.salesPortal === 'seller' ||
+            (typeof isSellerForcedPortalRoute === 'function' && isSellerForcedPortalRoute()) ||
+            (typeof isSellerPricingControlledByServer === 'function' && isSellerPricingControlledByServer())
+          ) {
+            try {
+              enforceSellerRightPanelCurrencyConsistency();
+            } catch (_patchErr) { /* ignore */ }
+          }
+          return result;
+        };
+        window.__mgSellerRenderSalesCurrencyPatch = true;
+      }
+
+      patchSellerRenderSalesCurrencyGuard();
+      if (!window.__mgSellerRenderSalesCurrencyPatch) {
+        let patchTries = 0;
+        const patchTimer = window.setInterval(function () {
+          patchTries += 1;
+          patchSellerRenderSalesCurrencyGuard();
+          if (window.__mgSellerRenderSalesCurrencyPatch || patchTries > 50) {
+            window.clearInterval(patchTimer);
+          }
+        }, 100);
+      }
+
+      window.enforceSellerRightPanelCurrencyConsistency = enforceSellerRightPanelCurrencyConsistency;
 
       function escapeHtml(value) {
         return String(value || '')
@@ -5753,7 +5950,6 @@
         if (!body) return;
         const state = loadSalesState();
         const settings = loadSettings();
-        const sellerCurrency = resolveSellerCurrency(settings, state);
         const autoSync = isLaborAutoSyncActive(state);
         const hpd = Math.max(Number(settings.hoursPerDay || 8), 0.25);
         updateLaborSyncChrome(state);
@@ -5778,8 +5974,8 @@
                 </select>
               </td>
               <td class="sales-labor-td sales-labor-td--units"><input data-key="units" type="number" inputmode="numeric" min="0" step="1" pattern="[0-9]*" value="${daysVal}" ${unitsAttrs} /></td>
-              <td class="sales-labor-td sales-labor-td--rate" data-cell="rate">${money(rateValue, sellerCurrency)}<span class="small" style="display:block;margin-top:4px;opacity:.72;">Business Settings</span></td>
-              <td class="sales-labor-td sales-labor-td--labor" data-cell="labor">${money(laborCost(worker, settings), sellerCurrency)}</td>
+              <td class="sales-labor-td sales-labor-td--rate" data-cell="rate">${sellerMoney(rateValue, settings, state)}<span class="small" style="display:block;margin-top:4px;opacity:.72;">Business Settings</span></td>
+              <td class="sales-labor-td sales-labor-td--labor" data-cell="labor">${sellerMoney(laborCost(worker, settings), settings, state)}</td>
               <td class="sales-labor-td sales-labor-td-actions">
                 <div class="row-actions sales-labor-row-actions">
                   <button class="btn ghost" type="button" data-action="copy" ${autoSync ? 'disabled title="Disable auto-sync to copy rows"' : ''}>Copy</button>
@@ -5882,11 +6078,10 @@
           const meta = commitWorkerFieldToState(field);
           if (!meta) return;
           const settings = loadSettings();
-          const sellerCurrency = resolveSellerCurrency(settings, meta.state);
           if (isWorkerLaborQtyDataKey(meta.key)) {
             const laborTd = meta.row.querySelector('[data-cell="labor"]');
             if (laborTd) {
-              laborTd.textContent = money(laborCost(meta.state.workers[meta.index], settings), sellerCurrency);
+              laborTd.textContent = sellerMoney(laborCost(meta.state.workers[meta.index], settings), settings, meta.state);
             }
             const rateTd = meta.row.querySelector('[data-cell="rate"]');
             if (rateTd && meta.key === 'type') {
@@ -5894,7 +6089,7 @@
               const fr = w.type === 'helper'
                 ? Number(settings.baseHelper || 0)
                 : Number(settings.baseInstaller || 0);
-              rateTd.innerHTML = money(fr, sellerCurrency) +
+              rateTd.innerHTML = sellerMoney(fr, settings, meta.state) +
                 '<span class="small" style="display:block;margin-top:4px;opacity:.72;">Business Settings</span>';
             }
           }
