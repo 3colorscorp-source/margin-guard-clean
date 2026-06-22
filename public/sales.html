@@ -2685,17 +2685,29 @@
         }
 
         applyBodyViewportVisibility(viewport, 'block', {
-          position: 'relative',
-          'z-index': '1000',
-          width: '100%',
-          'max-width': '100%',
+          position: 'fixed',
+          top: '0',
+          right: '0',
+          bottom: '0',
+          left: '0',
+          inset: '0',
+          'z-index': '2147483000',
+          width: '100vw',
+          height: '100vh',
           'min-height': '100vh',
+          'max-width': 'none',
           overflow: 'auto',
-          background: '#0b1220',
+          background: '#070b14',
+          color: '#e5eefc',
           'box-sizing': 'border-box',
-          'padding-top': '16px',
-          'padding-bottom': '24px'
+          padding: '16px 20px 24px',
+          margin: '0',
+          transform: 'none',
+          'clip-path': 'none',
+          filter: 'none'
         });
+        document.documentElement.classList.add('mg-real-seller-fixed-viewport-active');
+        document.body.classList.add('mg-real-seller-fixed-viewport-active');
 
         if (shouldMoveRoot) {
           if (root.parentElement !== viewport) {
@@ -2722,31 +2734,104 @@
             'min-height': '400px',
             'grid-template-columns': 'minmax(0, 1.35fr) minmax(0, 0.65fr)',
             gap: '24px',
-            'align-items': 'start'
+            'align-items': 'start',
+            position: 'relative',
+            'z-index': '1'
           });
           applyBodyViewportVisibility(leftPanel, 'block', {
             'min-height': '200px',
-            width: '100%'
+            width: '100%',
+            position: 'relative',
+            'z-index': '2'
           });
           applyBodyViewportVisibility(rightPanel, 'block', {
             'min-height': '200px',
-            width: '100%'
+            width: '100%',
+            position: 'relative',
+            'z-index': '2'
           });
         }
 
+        var viewportRoot = document.getElementById('sellerOwnerWorkspaceRoot');
+        var viewportWorkspace = viewport.querySelector('.seller-workspace-grid, .owner-workspace-grid');
+        var viewportLeftPanel = viewport.querySelector('.sales-left-panel');
+        var viewportRightPanel = viewport.querySelector('.sales-right-panel');
+        var viewportUpper = viewport.querySelector('.seller-owner-upper[data-seller-outer-shell="true"]');
+
+        applyBodyViewportVisibility(viewportRoot, 'block', {
+          width: '100%',
+          'max-width': '100%',
+          'min-height': '100%',
+          position: 'relative',
+          'z-index': '1',
+          overflow: 'visible'
+        });
+        applyBodyViewportVisibility(viewportWorkspace, 'grid', {
+          width: '100%',
+          'min-height': '400px',
+          'grid-template-columns': 'minmax(0, 1.35fr) minmax(0, 0.65fr)',
+          gap: '24px',
+          'align-items': 'start',
+          position: 'relative',
+          'z-index': '2',
+          overflow: 'visible'
+        });
+        applyBodyViewportVisibility(viewportUpper, 'block', {
+          width: '100%',
+          position: 'relative',
+          'z-index': '2',
+          overflow: 'visible'
+        });
+        applyBodyViewportVisibility(viewportLeftPanel, 'block', {
+          'min-height': '200px',
+          width: '100%',
+          position: 'relative',
+          'z-index': '3',
+          overflow: 'visible'
+        });
+        applyBodyViewportVisibility(viewportRightPanel, 'block', {
+          'min-height': '200px',
+          width: '100%',
+          position: 'relative',
+          'z-index': '3',
+          overflow: 'visible'
+        });
+
+        var legacyGrid = document.querySelector('.grid.sales-layout');
+        if (legacyGrid) {
+          var gridTextLen = trimmedTextLength(legacyGrid);
+          if (gridTextLen < 40) {
+            legacyGrid.classList.add('sales-legacy-layout-hidden');
+            legacyGrid.setAttribute('aria-hidden', 'true');
+            legacyGrid.style.setProperty('display', 'none', 'important');
+            legacyGrid.style.setProperty('visibility', 'hidden', 'important');
+            legacyGrid.style.setProperty('height', '0', 'important');
+            legacyGrid.style.setProperty('overflow', 'hidden', 'important');
+            legacyGrid.style.setProperty('pointer-events', 'none', 'important');
+          }
+        }
+
         var viewportMetrics = readRealSellerElementVisibilityMetrics(viewport);
-        var rootMetrics = readRealSellerElementVisibilityMetrics(root);
+        var rootMetrics = readRealSellerElementVisibilityMetrics(viewportRoot);
+        var viewportCs = null;
+        try {
+          viewportCs = window.getComputedStyle(viewport);
+        } catch (_viewportCsErr) { /* ignore */ }
 
         window.__mgRealSellerBodyViewportRan = true;
         window.__mgRealSellerBodyViewportReason = String(reason || 'unknown');
         window.__mgRealSellerBodyViewportState = {
           viewportExists: true,
-          rootExists: !!root,
-          rootTextLength: rootTextLength,
-          leftTextLength: leftTextLength,
-          rightTextLength: rightTextLength,
+          viewportPosition: viewportCs ? viewportCs.position : null,
+          viewportZIndex: viewportCs ? viewportCs.zIndex : null,
+          viewportWidth: viewportMetrics.width,
           viewportHeight: viewportMetrics.height,
+          rootExists: !!viewportRoot,
+          rootTextLength: trimmedTextLength(viewportRoot),
           rootHeight: rootMetrics.height,
+          leftTextLength: trimmedTextLength(viewportLeftPanel),
+          rightTextLength: trimmedTextLength(viewportRightPanel),
+          fixedViewport: true,
           movedRoot: shouldMoveRoot,
           movedPanelsOnly: shouldMovePanelsOnly
         };
