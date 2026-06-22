@@ -11,6 +11,7 @@
   const SELLER_PORTAL_BLOCKED_MSG =
     "Seller portal requires a clean paired seller device session. Open this link from the assigned seller browser/profile.";
   const BLOCKED_ENDPOINT_RE = /\/send-quote-zapier/i;
+  const POST_AUTH_LAYOUT_RETRY_DELAYS_MS = [0, 100, 300, 700, 1200];
   const BLOCKED_CONTROL_IDS = new Set([
     "btnSendQuote",
     "btnSendQuoteInline",
@@ -24,6 +25,7 @@
   let clickGuardInstalled = false;
   let fetchGuardInstalled = false;
   let initPromise = null;
+  let postAuthLayoutRetryTimerIds = [];
 
   async function api(path, options = {}) {
     const response = await fetch(`${API}${path}`, {
@@ -146,6 +148,64 @@
 
   function redirectSellerDeviceToSafePortal() {
     window.location.replace("/seller");
+  }
+
+  function isRealSellerPortalUrlForLayoutRetry() {
+    const path = String(window.location.pathname || "").toLowerCase();
+    if (!/^\/sales(?:\.html)?\/?$/.test(path)) return false;
+    try {
+      return new URLSearchParams(window.location.search || "").get("portal") === "seller";
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  function isOwnerPreviewOrOwnerRouteForLayoutRetry() {
+    const path = String(window.location.pathname || "").toLowerCase();
+    if (/^\/owner(?:\.html)?\/?$/i.test(path)) return true;
+    try {
+      return new URLSearchParams(window.location.search || "").get("portal") === "owner";
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  function isValidPairedSellerDeviceSessionForLayoutRetry() {
+    if (!sellerModeActive) return false;
+    if (document.body.classList.contains("mg-seller-portal-blocked")) return false;
+    if (document.documentElement.dataset.authMode === "blocked") return false;
+    if (window.MG_SALES_PORTAL_MODE === "seller-blocked") return false;
+    if (document.documentElement.dataset.authMode !== "device") return false;
+    if (document.documentElement.dataset.portalType !== "seller") return false;
+    return true;
+  }
+
+  function runPostAuthLayoutRetryAttempt(auth, label) {
+    try {
+      window.forceRealSellerOwnerLayout?.(`post-device-auth-retry-${label}`);
+      window.__mgSyncSellerPortalGuardAndLayout?.(`post-device-auth-retry-${label}`);
+      document.dispatchEvent(new CustomEvent("device-auth-ready", { detail: { auth } }));
+    } catch (err) {
+      window.__mgSellerPostAuthRetryLastError = String(err?.message || err);
+    }
+  }
+
+  function retryRealSellerLayoutAfterDeviceAuth(auth) {
+    if (!isRealSellerPortalUrlForLayoutRetry()) return;
+    if (isOwnerPreviewOrOwnerRouteForLayoutRetry()) return;
+    if (!isValidPairedSellerDeviceSessionForLayoutRetry()) return;
+
+    postAuthLayoutRetryTimerIds.forEach((timerId) => window.clearTimeout(timerId));
+    postAuthLayoutRetryTimerIds = [];
+    window.__mgSellerPostAuthRetryLastError = undefined;
+    window.__mgSellerPostAuthRetryRan = true;
+
+    POST_AUTH_LAYOUT_RETRY_DELAYS_MS.forEach((delayMs) => {
+      const timerId = window.setTimeout(() => {
+        runPostAuthLayoutRetryAttempt(auth, String(delayMs));
+      }, delayMs);
+      postAuthLayoutRetryTimerIds.push(timerId);
+    });
   }
 
   function sellerSettingsReadyForQuote() {
@@ -729,6 +789,7 @@
     window.dispatchEvent(
       new CustomEvent("device-auth-ready", { detail: { auth } })
     );
+    retryRealSellerLayoutAfterDeviceAuth(auth);
   }
 
   async function initSalesPortalAuth() {
