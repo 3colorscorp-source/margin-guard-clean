@@ -2128,6 +2128,14 @@
           return false;
         } finally {
           window.__mgSellerLayoutEnforcing = false;
+          if (!ownerPreview) {
+            ensureRealSellerLegacyGridVisibleUntilBuilt(
+              'applySellerApprovedContentLayout-finally-' + String(reason || '')
+            );
+            scheduleRealSellerLegacyGridRescue(
+              'applySellerApprovedContentLayout-finally-' + String(reason || '')
+            );
+          }
         }
       }
 
@@ -2320,7 +2328,68 @@
         return !!(leftPanel && rightPanel);
       }
 
+      function isRealSellerLegacyRescueEligible() {
+        if (typeof isRealSellerRuntime !== 'function' || !isRealSellerRuntime()) return false;
+        if (typeof isOwnerSellerPreviewLayoutActive === 'function' && isOwnerSellerPreviewLayoutActive()) {
+          return false;
+        }
+        var path = String(window.location.pathname || '');
+        if (/\/owner(?:\.html)?\/?$/i.test(path)) return false;
+        try {
+          if (new URLSearchParams(window.location.search || '').get('portal') === 'owner') return false;
+        } catch (_ownerRouteErr) { /* ignore */ }
+        return true;
+      }
+
+      function isRealSellerLayoutReadyForLegacyHide() {
+        var sellerRootEl = document.getElementById('sellerOwnerWorkspaceRoot');
+        return (
+          (typeof isDirectSellerDomLayoutComplete === 'function' && isDirectSellerDomLayoutComplete()) ||
+          (sellerRootEl && sellerRootEl.dataset && sellerRootEl.dataset.built === 'true') ||
+          (document.body && document.body.dataset && document.body.dataset.sellerDirectDomLayout === 'true')
+        );
+      }
+
+      function ensureRealSellerLegacyGridVisibleUntilBuilt(reason) {
+        if (!isRealSellerLegacyRescueEligible()) return false;
+        if (isRealSellerLayoutReadyForLegacyHide()) return false;
+
+        var legacyGrid = document.querySelector('.grid.sales-layout');
+        if (!legacyGrid) return false;
+
+        legacyGrid.classList.remove('sales-legacy-layout-hidden');
+        legacyGrid.hidden = false;
+        legacyGrid.removeAttribute('aria-hidden');
+        legacyGrid.style.removeProperty('display');
+        legacyGrid.style.removeProperty('visibility');
+        legacyGrid.style.removeProperty('pointer-events');
+
+        window.__mgRealSellerLegacyRescueRan = true;
+        window.__mgRealSellerLegacyRescueReason = String(reason || 'unknown');
+        return true;
+      }
+
+      var REAL_SELLER_LEGACY_RESCUE_DELAYS_MS = [0, 100, 300, 700, 1200, 2000];
+      var realSellerLegacyRescueTimerIds = [];
+
+      function scheduleRealSellerLegacyGridRescue(reason) {
+        if (!isRealSellerLegacyRescueEligible()) return;
+        realSellerLegacyRescueTimerIds.forEach(function (timerId) {
+          window.clearTimeout(timerId);
+        });
+        realSellerLegacyRescueTimerIds = [];
+        REAL_SELLER_LEGACY_RESCUE_DELAYS_MS.forEach(function (delayMs) {
+          var timerId = window.setTimeout(function () {
+            ensureRealSellerLegacyGridVisibleUntilBuilt(
+              String(reason || 'scheduled') + '-' + String(delayMs)
+            );
+          }, delayMs);
+          realSellerLegacyRescueTimerIds.push(timerId);
+        });
+      }
+
       function hideSalesLegacyLayoutForSeller() {
+        ensureRealSellerLegacyGridVisibleUntilBuilt('hideSalesLegacyLayoutForSeller-enter');
         removeC20SellerDebugBanner();
         [
           'salesEstimateSummary',
@@ -2345,15 +2414,8 @@
         var legacyGrid = document.querySelector('.grid.sales-layout');
         var sellerRootEl = document.getElementById('sellerOwnerWorkspaceRoot');
 
-        var isRealSellerOnly =
-          typeof isRealSellerRuntime === 'function' &&
-          isRealSellerRuntime() &&
-          !(typeof isOwnerSellerPreviewLayoutActive === 'function' && isOwnerSellerPreviewLayoutActive());
-
-        var sellerLayoutReady =
-          (typeof isDirectSellerDomLayoutComplete === 'function' && isDirectSellerDomLayoutComplete()) ||
-          (sellerRootEl && sellerRootEl.dataset && sellerRootEl.dataset.built === 'true') ||
-          (document.body && document.body.dataset && document.body.dataset.sellerDirectDomLayout === 'true');
+        var isRealSellerOnly = isRealSellerLegacyRescueEligible();
+        var sellerLayoutReady = isRealSellerLayoutReadyForLegacyHide();
 
         if (legacyGrid && isRealSellerOnly && !sellerLayoutReady) {
           legacyGrid.classList.remove('sales-legacy-layout-hidden');
@@ -2371,6 +2433,11 @@
       }
 
       function mountSellerNodesIntoWorkspaceRoot(root) {
+        if (isRealSellerLegacyRescueEligible() && !isRealSellerLayoutReadyForLegacyHide()) {
+          ensureRealSellerLegacyGridVisibleUntilBuilt('mountSellerNodesIntoWorkspaceRoot-deferred');
+          return false;
+        }
+
         var container = document.querySelector('.container');
         if (!container || !root) return false;
 
@@ -2414,9 +2481,13 @@
 
         var legacyGrid = document.querySelector('.grid.sales-layout');
         if (legacyGrid) {
-          legacyGrid.classList.add('sales-legacy-layout-hidden');
-          legacyGrid.hidden = true;
-          legacyGrid.setAttribute('aria-hidden', 'true');
+          if (isRealSellerLegacyRescueEligible() && !isRealSellerLayoutReadyForLegacyHide()) {
+            ensureRealSellerLegacyGridVisibleUntilBuilt('mountSellerNodesIntoWorkspaceRoot-hide-skip');
+          } else {
+            legacyGrid.classList.add('sales-legacy-layout-hidden');
+            legacyGrid.hidden = true;
+            legacyGrid.setAttribute('aria-hidden', 'true');
+          }
         }
 
         return true;
@@ -10808,6 +10879,8 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           cleanupIncompleteSellerRootIfBlocked();
         } else if (isRealSellerRuntime()) {
           forceRealSellerOwnerLayout('boot-immediate-real-seller');
+          ensureRealSellerLegacyGridVisibleUntilBuilt('boot-immediate-real-seller');
+          scheduleRealSellerLegacyGridRescue('boot-immediate-real-seller');
         } else {
           buildSellerOwnerWorkspaceRoot();
         }
@@ -10822,6 +10895,10 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           forceRealSellerOwnerLayout('device-auth-real-seller');
         } else {
           buildSellerOwnerWorkspaceRoot();
+        }
+        if (isRealSellerRuntime() && !isOwnerSellerPreviewLayoutActive()) {
+          ensureRealSellerLegacyGridVisibleUntilBuilt('device-auth-ready');
+          scheduleRealSellerLegacyGridRescue('device-auth-ready');
         }
       });
 
