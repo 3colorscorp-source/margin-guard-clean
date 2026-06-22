@@ -2603,6 +2603,99 @@
         return ancestorFixCount;
       }
 
+      function installRealSellerFixedViewportStyle() {
+        if (!isRealSellerVisibleWatchdogEligible()) return false;
+        if (document.getElementById('mgRealSellerFixedViewportStyle')) return true;
+        var styleEl = document.createElement('style');
+        styleEl.id = 'mgRealSellerFixedViewportStyle';
+        styleEl.textContent =
+          'html.mg-real-seller-fixed-viewport-active,' +
+          'body.mg-real-seller-fixed-viewport-active {' +
+          'overflow: hidden !important;' +
+          '}' +
+          'html.mg-real-seller-fixed-viewport-active body.mg-real-seller-fixed-viewport-active #mgRealSellerBodyViewport {' +
+          'position: fixed !important;' +
+          'inset: 0 !important;' +
+          'z-index: 2147483000 !important;' +
+          'display: block !important;' +
+          'visibility: visible !important;' +
+          'opacity: 1 !important;' +
+          'width: 100vw !important;' +
+          'height: 100vh !important;' +
+          'min-height: 100vh !important;' +
+          'overflow: auto !important;' +
+          'background: #070b14 !important;' +
+          'color: #e5eefc !important;' +
+          'pointer-events: auto !important;' +
+          'transform: none !important;' +
+          'clip-path: none !important;' +
+          'filter: none !important;' +
+          'box-sizing: border-box !important;' +
+          'padding: 16px 20px 24px !important;' +
+          'margin: 0 !important;' +
+          '}' +
+          'html.mg-real-seller-fixed-viewport-active body.mg-real-seller-fixed-viewport-active #sellerOwnerWorkspaceRoot {' +
+          'display: block !important;' +
+          'visibility: visible !important;' +
+          'opacity: 1 !important;' +
+          'width: 100% !important;' +
+          'min-height: 100vh !important;' +
+          'overflow: visible !important;' +
+          'position: relative !important;' +
+          'z-index: 5 !important;' +
+          '}' +
+          'html.mg-real-seller-fixed-viewport-active body.mg-real-seller-fixed-viewport-active #sellerOwnerWorkspaceRoot .seller-workspace-grid,' +
+          'html.mg-real-seller-fixed-viewport-active body.mg-real-seller-fixed-viewport-active #mgRealSellerBodyViewport .seller-workspace-grid {' +
+          'display: grid !important;' +
+          'visibility: visible !important;' +
+          'opacity: 1 !important;' +
+          'width: 100% !important;' +
+          'min-height: 400px !important;' +
+          '}' +
+          'html.mg-real-seller-fixed-viewport-active body.mg-real-seller-fixed-viewport-active #sellerOwnerWorkspaceRoot .sales-left-panel,' +
+          'html.mg-real-seller-fixed-viewport-active body.mg-real-seller-fixed-viewport-active #sellerOwnerWorkspaceRoot .sales-right-panel,' +
+          'html.mg-real-seller-fixed-viewport-active body.mg-real-seller-fixed-viewport-active #mgRealSellerBodyViewport .sales-left-panel,' +
+          'html.mg-real-seller-fixed-viewport-active body.mg-real-seller-fixed-viewport-active #mgRealSellerBodyViewport .sales-right-panel {' +
+          'display: block !important;' +
+          'visibility: visible !important;' +
+          'opacity: 1 !important;' +
+          'min-height: 200px !important;' +
+          '}';
+        document.head.appendChild(styleEl);
+        return true;
+      }
+
+      function applyRealSellerFixedViewportInlineStyles(viewport) {
+        if (!viewport) return;
+        viewport.hidden = false;
+        viewport.removeAttribute('hidden');
+        viewport.removeAttribute('aria-hidden');
+        viewport.style.setProperty('position', 'fixed', 'important');
+        viewport.style.setProperty('inset', '0', 'important');
+        viewport.style.setProperty('top', '0', 'important');
+        viewport.style.setProperty('right', '0', 'important');
+        viewport.style.setProperty('bottom', '0', 'important');
+        viewport.style.setProperty('left', '0', 'important');
+        viewport.style.setProperty('z-index', '2147483000', 'important');
+        viewport.style.setProperty('display', 'block', 'important');
+        viewport.style.setProperty('visibility', 'visible', 'important');
+        viewport.style.setProperty('opacity', '1', 'important');
+        viewport.style.setProperty('width', '100vw', 'important');
+        viewport.style.setProperty('height', '100vh', 'important');
+        viewport.style.setProperty('min-height', '100vh', 'important');
+        viewport.style.setProperty('max-width', 'none', 'important');
+        viewport.style.setProperty('overflow', 'auto', 'important');
+        viewport.style.setProperty('background', '#070b14', 'important');
+        viewport.style.setProperty('color', '#e5eefc', 'important');
+        viewport.style.setProperty('pointer-events', 'auto', 'important');
+        viewport.style.setProperty('transform', 'none', 'important');
+        viewport.style.setProperty('clip-path', 'none', 'important');
+        viewport.style.setProperty('filter', 'none', 'important');
+        viewport.style.setProperty('box-sizing', 'border-box', 'important');
+        viewport.style.setProperty('padding', '16px 20px 24px', 'important');
+        viewport.style.setProperty('margin', '0', 'important');
+      }
+
       function ensureRealSellerBodyLevelViewport(reason) {
         if (!isRealSellerVisibleWatchdogEligible()) return false;
 
@@ -2684,30 +2777,10 @@
           document.body.appendChild(viewport);
         }
 
-        applyBodyViewportVisibility(viewport, 'block', {
-          position: 'fixed',
-          top: '0',
-          right: '0',
-          bottom: '0',
-          left: '0',
-          inset: '0',
-          'z-index': '2147483000',
-          width: '100vw',
-          height: '100vh',
-          'min-height': '100vh',
-          'max-width': 'none',
-          overflow: 'auto',
-          background: '#070b14',
-          color: '#e5eefc',
-          'box-sizing': 'border-box',
-          padding: '16px 20px 24px',
-          margin: '0',
-          transform: 'none',
-          'clip-path': 'none',
-          filter: 'none'
-        });
+        installRealSellerFixedViewportStyle();
         document.documentElement.classList.add('mg-real-seller-fixed-viewport-active');
         document.body.classList.add('mg-real-seller-fixed-viewport-active');
+        applyRealSellerFixedViewportInlineStyles(viewport);
 
         if (shouldMoveRoot) {
           if (root.parentElement !== viewport) {
@@ -2814,9 +2887,13 @@
         var viewportMetrics = readRealSellerElementVisibilityMetrics(viewport);
         var rootMetrics = readRealSellerElementVisibilityMetrics(viewportRoot);
         var viewportCs = null;
+        var viewportRect = null;
         try {
           viewportCs = window.getComputedStyle(viewport);
         } catch (_viewportCsErr) { /* ignore */ }
+        try {
+          viewportRect = viewport.getBoundingClientRect();
+        } catch (_viewportRectErr) { /* ignore */ }
 
         window.__mgRealSellerBodyViewportRan = true;
         window.__mgRealSellerBodyViewportReason = String(reason || 'unknown');
@@ -2824,14 +2901,15 @@
           viewportExists: true,
           viewportPosition: viewportCs ? viewportCs.position : null,
           viewportZIndex: viewportCs ? viewportCs.zIndex : null,
-          viewportWidth: viewportMetrics.width,
-          viewportHeight: viewportMetrics.height,
+          viewportWidth: viewportRect ? viewportRect.width : viewportMetrics.width,
+          viewportHeight: viewportRect ? viewportRect.height : viewportMetrics.height,
           rootExists: !!viewportRoot,
           rootTextLength: trimmedTextLength(viewportRoot),
           rootHeight: rootMetrics.height,
           leftTextLength: trimmedTextLength(viewportLeftPanel),
           rightTextLength: trimmedTextLength(viewportRightPanel),
           fixedViewport: true,
+          styleTagInstalled: !!document.getElementById('mgRealSellerFixedViewportStyle'),
           movedRoot: shouldMoveRoot,
           movedPanelsOnly: shouldMovePanelsOnly
         };
@@ -3092,6 +3170,7 @@
       window.ensureRealSellerVisibleContentWatchdog = ensureRealSellerVisibleContentWatchdog;
       window.forceRealSellerRootSurfaceVisible = forceRealSellerRootSurfaceVisible;
       window.ensureRealSellerBodyLevelViewport = ensureRealSellerBodyLevelViewport;
+      window.installRealSellerFixedViewportStyle = installRealSellerFixedViewportStyle;
       window.scheduleRealSellerVisibleContentWatchdog = scheduleRealSellerVisibleContentWatchdog;
       window.scheduleRealSellerBodyLevelViewport = scheduleRealSellerBodyLevelViewport;
 
