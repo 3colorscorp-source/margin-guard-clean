@@ -6670,6 +6670,12 @@
       }
 
       async function fetchBrandingFromTenantApi(settings) {
+        if (
+          typeof window.__mgIsRealSellerDeviceRoute === 'function' &&
+          window.__mgIsRealSellerDeviceRoute()
+        ) {
+          return null;
+        }
         if (!window.MarginGuardTenant?.getTenantBranding) return null;
         try {
           const { response, data } = await window.MarginGuardTenant.getTenantBranding();
@@ -7880,6 +7886,13 @@
             showSellerPublishOrphanNotice(SELLER_PUBLISH_ORPHAN_MSG);
             rehydrateSellerPublishedQuoteUi();
             result = { ok: true, clearedOrphan: true };
+          } else if (
+            typeof window.__mgIsRealSellerDeviceRoute === 'function' &&
+            window.__mgIsRealSellerDeviceRoute()
+          ) {
+            removeSellerPublishOrphanNotice();
+            refreshSellerFromStandalone();
+            result = { ok: true, skippedReset: true };
           } else {
             removeSellerPublishOrphanNotice();
             resetSalesQuoteStateForNewQuote();

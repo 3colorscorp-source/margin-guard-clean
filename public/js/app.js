@@ -141,6 +141,18 @@
     extras: []
   };
 
+  function isRealSellerDeviceRoute() {
+    try {
+      const params = new URLSearchParams(window.location.search || "");
+      const path = window.location.pathname || "";
+      return (path === "/sales" || path === "/sales.html") && params.get("portal") === "seller";
+    } catch (_e) {
+      return false;
+    }
+  }
+
+  window.__mgIsRealSellerDeviceRoute = isRealSellerDeviceRoute;
+
   const tenantSyncState = {
     initialized: false,
     loading: false,
@@ -4540,6 +4552,7 @@ Thank you.`
   }
 
   async function persistTenantSnapshotNow() {
+    if (isRealSellerDeviceRoute()) return;
     if (!tenantSyncState.initialized || tenantSyncState.loading || tenantSyncState.saving || !window.MarginGuardTenant?.saveTenantSnapshot) return;
     const payload = getTenantSnapshotPayload();
     const serialized = JSON.stringify(payload);
@@ -4567,6 +4580,7 @@ Thank you.`
   }
 
   function scheduleTenantSnapshotSync() {
+    if (isRealSellerDeviceRoute()) return;
     if (!tenantSyncState.initialized || tenantSyncState.loading) return;
     if (tenantSyncState.saving) {
       tenantSyncState.pending = true;
@@ -4670,6 +4684,7 @@ Thank you.`
   }
 
   async function initTenantSnapshotBridge() {
+    if (isRealSellerDeviceRoute()) return;
     if (!window.MarginGuardTenant?.bootstrapTenant || !window.MarginGuardTenant?.loadTenantSnapshot) {
       tenantSyncState.initialized = true;
       return;
@@ -4753,6 +4768,7 @@ Thank you.`
   }
 
   async function ensureTenant() {
+    if (isRealSellerDeviceRoute()) return;
     try {
       await fetch("/.netlify/functions/bootstrap-tenant", {
         method: "POST",
