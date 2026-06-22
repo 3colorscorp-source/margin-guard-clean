@@ -2603,6 +2603,157 @@
         return ancestorFixCount;
       }
 
+      function ensureRealSellerBodyLevelViewport(reason) {
+        if (!isRealSellerVisibleWatchdogEligible()) return false;
+
+        function trimmedTextLength(el) {
+          if (!el) return 0;
+          return String(el.innerText || '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .length;
+        }
+
+        function applyBodyViewportVisibility(el, displayValue, extraStyles) {
+          if (!el) return;
+          el.hidden = false;
+          el.removeAttribute('hidden');
+          el.removeAttribute('aria-hidden');
+          el.classList.remove(
+            'sales-legacy-layout-hidden',
+            'seller-legacy-hidden',
+            'seller-hard-hidden-orphan',
+            'seller-owner-like-hidden',
+            'seller-owner-like-hidden-panel',
+            'seller-shell-hidden-panel'
+          );
+          el.style.setProperty('visibility', 'visible', 'important');
+          el.style.setProperty('opacity', '1', 'important');
+          el.style.setProperty('pointer-events', 'auto', 'important');
+          if (displayValue) {
+            el.style.setProperty('display', displayValue, 'important');
+          }
+          if (extraStyles && typeof extraStyles === 'object') {
+            Object.keys(extraStyles).forEach(function (key) {
+              el.style.setProperty(key, extraStyles[key], 'important');
+            });
+          }
+        }
+
+        var root = document.getElementById('sellerOwnerWorkspaceRoot');
+        var leftPanel = document.querySelector('.sales-left-panel');
+        var rightPanel = document.querySelector('.sales-right-panel');
+        var rootTextLength = trimmedTextLength(root);
+        var leftTextLength = trimmedTextLength(leftPanel);
+        var rightTextLength = trimmedTextLength(rightPanel);
+
+        var rootContainsPanels = !!(
+          root &&
+          ((leftPanel && root.contains(leftPanel)) || (rightPanel && root.contains(rightPanel)))
+        );
+        var rootHasMeaningfulContent =
+          rootTextLength > 40 || leftTextLength > 40 || rightTextLength > 40;
+        var shouldMoveRoot = !!(root && (rootHasMeaningfulContent || rootContainsPanels));
+        var shouldMovePanelsOnly = !shouldMoveRoot && !!(leftPanel || rightPanel);
+
+        if (!shouldMoveRoot && !shouldMovePanelsOnly) {
+          window.__mgRealSellerBodyViewportRan = false;
+          window.__mgRealSellerBodyViewportReason = String(reason || 'unknown');
+          window.__mgRealSellerBodyViewportState = {
+            viewportExists: !!document.getElementById('mgRealSellerBodyViewport'),
+            rootExists: !!root,
+            rootTextLength: rootTextLength,
+            leftTextLength: leftTextLength,
+            rightTextLength: rightTextLength,
+            viewportHeight: 0,
+            rootHeight: 0,
+            skipped: true
+          };
+          return false;
+        }
+
+        var viewport = document.getElementById('mgRealSellerBodyViewport');
+        if (!viewport) {
+          viewport = document.createElement('div');
+          viewport.id = 'mgRealSellerBodyViewport';
+          viewport.className = 'mg-real-seller-body-viewport';
+          viewport.setAttribute('role', 'main');
+          viewport.setAttribute('aria-label', 'Seller quote workspace');
+          document.body.appendChild(viewport);
+        } else if (viewport.parentElement !== document.body) {
+          document.body.appendChild(viewport);
+        }
+
+        applyBodyViewportVisibility(viewport, 'block', {
+          position: 'relative',
+          'z-index': '1000',
+          width: '100%',
+          'max-width': '100%',
+          'min-height': '100vh',
+          overflow: 'auto',
+          background: '#0b1220',
+          'box-sizing': 'border-box',
+          'padding-top': '16px',
+          'padding-bottom': '24px'
+        });
+
+        if (shouldMoveRoot) {
+          if (root.parentElement !== viewport) {
+            viewport.appendChild(root);
+          }
+          forceRealSellerRootSurfaceVisible(root, 'body-viewport-' + String(reason || 'unknown'));
+        } else if (shouldMovePanelsOnly) {
+          var workspace = viewport.querySelector('.seller-workspace-grid, .owner-workspace-grid');
+          if (!workspace) {
+            workspace = document.createElement('div');
+            workspace.className = 'owner-workspace-grid seller-workspace-grid';
+            workspace.setAttribute('role', 'region');
+            workspace.setAttribute('aria-label', 'Seller quote workspace');
+            viewport.appendChild(workspace);
+          }
+          if (leftPanel && !workspace.contains(leftPanel)) {
+            workspace.appendChild(leftPanel);
+          }
+          if (rightPanel && !workspace.contains(rightPanel)) {
+            workspace.appendChild(rightPanel);
+          }
+          applyBodyViewportVisibility(workspace, 'grid', {
+            width: '100%',
+            'min-height': '400px',
+            'grid-template-columns': 'minmax(0, 1.35fr) minmax(0, 0.65fr)',
+            gap: '24px',
+            'align-items': 'start'
+          });
+          applyBodyViewportVisibility(leftPanel, 'block', {
+            'min-height': '200px',
+            width: '100%'
+          });
+          applyBodyViewportVisibility(rightPanel, 'block', {
+            'min-height': '200px',
+            width: '100%'
+          });
+        }
+
+        var viewportMetrics = readRealSellerElementVisibilityMetrics(viewport);
+        var rootMetrics = readRealSellerElementVisibilityMetrics(root);
+
+        window.__mgRealSellerBodyViewportRan = true;
+        window.__mgRealSellerBodyViewportReason = String(reason || 'unknown');
+        window.__mgRealSellerBodyViewportState = {
+          viewportExists: true,
+          rootExists: !!root,
+          rootTextLength: rootTextLength,
+          leftTextLength: leftTextLength,
+          rightTextLength: rightTextLength,
+          viewportHeight: viewportMetrics.height,
+          rootHeight: rootMetrics.height,
+          movedRoot: shouldMoveRoot,
+          movedPanelsOnly: shouldMovePanelsOnly
+        };
+        console.info('[MG Seller] body-level viewport', window.__mgRealSellerBodyViewportState);
+        return true;
+      }
+
       function ensureRealSellerVisibleContentWatchdog(reason) {
         if (!isRealSellerVisibleWatchdogEligible()) return false;
 
@@ -2772,6 +2923,7 @@
         }
 
         if (surface === 'root') {
+          ensureRealSellerBodyLevelViewport(reason);
           return true;
         }
 
@@ -2804,6 +2956,24 @@
 
       var REAL_SELLER_VISIBLE_WATCHDOG_DELAYS_MS = [0, 250, 750, 1500, 3000, 5000];
       var realSellerVisibleWatchdogTimerIds = [];
+      var REAL_SELLER_BODY_VIEWPORT_DELAYS_MS = [0, 250, 750, 1500, 3000];
+      var realSellerBodyViewportTimerIds = [];
+
+      function scheduleRealSellerBodyLevelViewport(reason) {
+        if (!isRealSellerVisibleWatchdogEligible()) return;
+        realSellerBodyViewportTimerIds.forEach(function (timerId) {
+          window.clearTimeout(timerId);
+        });
+        realSellerBodyViewportTimerIds = [];
+        REAL_SELLER_BODY_VIEWPORT_DELAYS_MS.forEach(function (delayMs) {
+          var timerId = window.setTimeout(function () {
+            ensureRealSellerBodyLevelViewport(
+              String(reason || 'scheduled') + '-' + String(delayMs)
+            );
+          }, delayMs);
+          realSellerBodyViewportTimerIds.push(timerId);
+        });
+      }
 
       function scheduleRealSellerVisibleContentWatchdog(reason) {
         if (!isRealSellerVisibleWatchdogEligible()) return;
@@ -2825,11 +2995,20 @@
         if (!isRealSellerVisibleWatchdogEligible()) return;
         ensureRealSellerVisibleContentWatchdog(reason);
         scheduleRealSellerVisibleContentWatchdog(reason);
+        if (
+          window.__mgRealSellerVisibleWatchdogLastState &&
+          window.__mgRealSellerVisibleWatchdogLastState.surface === 'root'
+        ) {
+          ensureRealSellerBodyLevelViewport(reason);
+        }
+        scheduleRealSellerBodyLevelViewport(reason);
       }
 
       window.ensureRealSellerVisibleContentWatchdog = ensureRealSellerVisibleContentWatchdog;
       window.forceRealSellerRootSurfaceVisible = forceRealSellerRootSurfaceVisible;
+      window.ensureRealSellerBodyLevelViewport = ensureRealSellerBodyLevelViewport;
       window.scheduleRealSellerVisibleContentWatchdog = scheduleRealSellerVisibleContentWatchdog;
+      window.scheduleRealSellerBodyLevelViewport = scheduleRealSellerBodyLevelViewport;
 
       function hideSalesLegacyLayoutForSeller() {
         ensureRealSellerLegacyGridVisibleUntilBuilt('hideSalesLegacyLayoutForSeller-enter');
