@@ -2072,7 +2072,9 @@
               }
             }
           } else if (root) {
-            mountSellerNodesIntoWorkspaceRoot(root);
+            if (!isRealSellerLegacyGridPrimary()) {
+              mountSellerNodesIntoWorkspaceRoot(root);
+            }
             updateSellerShellChrome();
             reorderSellerOwnerLikeCardInner();
             repairSellerOpDashFromOwnerBlueprint();
@@ -2133,6 +2135,9 @@
               'applySellerApprovedContentLayout-finally-' + String(reason || '')
             );
             scheduleRealSellerLegacyGridRescue(
+              'applySellerApprovedContentLayout-finally-' + String(reason || '')
+            );
+            restoreRealSellerLegacyGridIfMountIncomplete(
               'applySellerApprovedContentLayout-finally-' + String(reason || '')
             );
           }
@@ -2198,6 +2203,9 @@
           keep.style.removeProperty('display');
         }
         var legacyGrid = document.querySelector('.grid.sales-layout');
+        if (legacyGrid && isRealSellerLegacyGridPrimary()) {
+          return;
+        }
         if (legacyGrid && (root && root.dataset.built === 'true' || isDirectSellerDomLayoutComplete())) {
           legacyGrid.hidden = true;
           legacyGrid.setAttribute('aria-hidden', 'true');
@@ -2328,6 +2336,69 @@
         return !!(leftPanel && rightPanel);
       }
 
+      function isRealSellerStrictDeviceRoute() {
+        try {
+          var path = String(window.location.pathname || '');
+          if (path !== '/sales' && path !== '/sales.html') return false;
+          if (/\/owner(?:\.html)?\/?$/i.test(path)) return false;
+          var params = new URLSearchParams(window.location.search || '');
+          if (params.get('portal') === 'owner') return false;
+          if (params.get('portal') !== 'seller') return false;
+          if (
+            typeof isOwnerSellerPreviewLayoutActive === 'function' &&
+            isOwnerSellerPreviewLayoutActive()
+          ) {
+            return false;
+          }
+          return true;
+        } catch (_strictRouteErr) {
+          return false;
+        }
+      }
+
+      function isRealSellerLegacyGridPrimary() {
+        return (
+          isRealSellerStrictDeviceRoute() &&
+          typeof isDirectSellerDomLayoutComplete === 'function' &&
+          !isDirectSellerDomLayoutComplete()
+        );
+      }
+
+      function realSellerWorkspaceHasMountedPanels(root) {
+        root = root || document.getElementById('sellerOwnerWorkspaceRoot');
+        if (!root) return false;
+        return !!(
+          root.querySelector('.sales-left-panel') || root.querySelector('.sales-right-panel')
+        );
+      }
+
+      function restoreRealSellerLegacyGridIfMountIncomplete(reason) {
+        if (!isRealSellerStrictDeviceRoute()) return false;
+        if (typeof isDirectSellerDomLayoutComplete === 'function' && isDirectSellerDomLayoutComplete()) {
+          return false;
+        }
+        var grid = document.querySelector('.grid.sales-layout');
+        var gridTextLen = grid
+          ? String(grid.textContent || '')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .length
+          : 0;
+        if (gridTextLen >= 40) return false;
+        var root = document.getElementById('sellerOwnerWorkspaceRoot');
+        if (!root || !realSellerWorkspaceHasMountedPanels(root)) return false;
+        teardownSellerOwnerWorkspaceRoot();
+        ensureRealSellerLegacyGridVisibleUntilBuilt(
+          'restoreRealSellerLegacyGridIfMountIncomplete-' + String(reason || 'unknown')
+        );
+        if (typeof ensureRealSellerVisibleContentWatchdog === 'function') {
+          ensureRealSellerVisibleContentWatchdog(
+            'restoreRealSellerLegacyGridIfMountIncomplete-' + String(reason || 'unknown')
+          );
+        }
+        return true;
+      }
+
       function isRealSellerLegacyRescueEligible() {
         if (typeof isRealSellerRuntime !== 'function' || !isRealSellerRuntime()) return false;
         if (typeof isOwnerSellerPreviewLayoutActive === 'function' && isOwnerSellerPreviewLayoutActive()) {
@@ -2343,8 +2414,13 @@
 
       function isRealSellerLayoutReadyForLegacyHide() {
         var sellerRootEl = document.getElementById('sellerOwnerWorkspaceRoot');
+        if (typeof isDirectSellerDomLayoutComplete === 'function' && isDirectSellerDomLayoutComplete()) {
+          return true;
+        }
+        if (isRealSellerStrictDeviceRoute()) {
+          return false;
+        }
         return (
-          (typeof isDirectSellerDomLayoutComplete === 'function' && isDirectSellerDomLayoutComplete()) ||
           (sellerRootEl && sellerRootEl.dataset && sellerRootEl.dataset.built === 'true') ||
           (document.body && document.body.dataset && document.body.dataset.sellerDirectDomLayout === 'true')
         );
@@ -2389,23 +2465,7 @@
       }
 
       function isRealSellerVisibleWatchdogEligible() {
-        try {
-          var path = String(window.location.pathname || '');
-          if (path !== '/sales' && path !== '/sales.html') return false;
-          if (/\/owner(?:\.html)?\/?$/i.test(path)) return false;
-          var params = new URLSearchParams(window.location.search || '');
-          if (params.get('portal') === 'owner') return false;
-          if (params.get('portal') !== 'seller') return false;
-          if (
-            typeof isOwnerSellerPreviewLayoutActive === 'function' &&
-            isOwnerSellerPreviewLayoutActive()
-          ) {
-            return false;
-          }
-          return true;
-        } catch (_watchdogRouteErr) {
-          return false;
-        }
+        return isRealSellerStrictDeviceRoute();
       }
 
       function ensureRealSellerVisibleContentWatchdog(reason) {
@@ -2571,6 +2631,17 @@
         var isRealSellerOnly = isRealSellerLegacyRescueEligible();
         var sellerLayoutReady = isRealSellerLayoutReadyForLegacyHide();
 
+        if (legacyGrid && isRealSellerLegacyGridPrimary()) {
+          legacyGrid.classList.remove('sales-legacy-layout-hidden');
+          legacyGrid.hidden = false;
+          legacyGrid.removeAttribute('aria-hidden');
+          legacyGrid.style.removeProperty('display');
+          legacyGrid.style.removeProperty('visibility');
+          legacyGrid.style.removeProperty('pointer-events');
+          hideSellerLegacySectionsOutsidePlanHard();
+          return;
+        }
+
         if (legacyGrid && isRealSellerOnly && !sellerLayoutReady) {
           legacyGrid.classList.remove('sales-legacy-layout-hidden');
           legacyGrid.hidden = false;
@@ -2587,6 +2658,10 @@
       }
 
       function mountSellerNodesIntoWorkspaceRoot(root) {
+        if (isRealSellerLegacyGridPrimary()) {
+          ensureRealSellerLegacyGridVisibleUntilBuilt('mountSellerNodesIntoWorkspaceRoot-strict-defer');
+          return false;
+        }
         if (isRealSellerLegacyRescueEligible() && !isRealSellerLayoutReadyForLegacyHide()) {
           ensureRealSellerLegacyGridVisibleUntilBuilt('mountSellerNodesIntoWorkspaceRoot-deferred');
           return false;
@@ -2594,6 +2669,14 @@
 
         var container = document.querySelector('.container');
         if (!container || !root) return false;
+
+        if (isRealSellerStrictDeviceRoute()) {
+          var gridSource = document.querySelector('.grid.sales-layout');
+          if (!gridSource) return false;
+          if (!gridSource.querySelector('.sales-left-panel') || !gridSource.querySelector('.sales-right-panel')) {
+            return false;
+          }
+        }
 
         var upper = root.querySelector('.seller-owner-upper[data-seller-outer-shell="true"]');
         if (!upper) {
@@ -2670,7 +2753,22 @@
 
       function runSellerOwnerWorkspaceRootBuildPipeline(root) {
         if (!root) return false;
-        mountSellerNodesIntoWorkspaceRoot(root);
+
+        if (isRealSellerLegacyGridPrimary()) {
+          applyRealSellerDomLayoutDirect('pipeline-strict-grid-primary');
+          if (!isDirectSellerDomLayoutComplete()) {
+            delete root.dataset.built;
+            ensureRealSellerLegacyGridVisibleUntilBuilt('pipeline-strict-incomplete');
+            return false;
+          }
+        }
+
+        var mounted = mountSellerNodesIntoWorkspaceRoot(root);
+        if (isRealSellerStrictDeviceRoute() && !mounted && !isDirectSellerDomLayoutComplete()) {
+          delete root.dataset.built;
+          ensureRealSellerLegacyGridVisibleUntilBuilt('pipeline-strict-mount-skipped');
+          return false;
+        }
         updateSellerShellChrome();
         reorderSellerOwnerLikeCardInner();
         buildSellerOwnerLikeOpDashFromNodes();
@@ -2683,7 +2781,17 @@
         hideSellerCommercialEstimateLegacy();
         dedupeSellerRightPanelInDom(root);
         var dash = document.querySelector('.seller-op-dash[data-seller-owner-layout="true"]');
-        if (!dash) return false;
+        if (!dash) {
+          if (isRealSellerStrictDeviceRoute()) {
+            delete root.dataset.built;
+          }
+          return false;
+        }
+        if (isRealSellerStrictDeviceRoute() && !isDirectSellerDomLayoutComplete()) {
+          delete root.dataset.built;
+          ensureRealSellerLegacyGridVisibleUntilBuilt('pipeline-strict-dash-incomplete');
+          return false;
+        }
         root.dataset.built = 'true';
         document.body.dataset.sellerOwnerWorkspaceBuilt = 'true';
         document.body.dataset.sellerOwnerLikeBuilt = 'true';
@@ -3502,6 +3610,9 @@
       window.detectVisibleSellerRuntime = detectVisibleSellerRuntime;
 
       function restructureSellerOuterShell() {
+        if (isRealSellerLegacyGridPrimary()) {
+          return false;
+        }
         if (document.querySelector('.seller-owner-upper[data-seller-outer-shell="true"]')) {
           return true;
         }
