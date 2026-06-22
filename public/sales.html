@@ -2474,11 +2474,33 @@
         var container = document.querySelector('.container');
         var grid = document.querySelector('.grid.sales-layout');
         var root = document.getElementById('sellerOwnerWorkspaceRoot');
+        var leftPanel = document.querySelector('.sales-left-panel');
+        var rightPanel = document.querySelector('.sales-right-panel');
+        var workspace = root
+          ? root.querySelector('.seller-workspace-grid, .owner-workspace-grid')
+          : document.querySelector('.seller-workspace-grid, .owner-workspace-grid');
+
+        function trimmedTextLength(el) {
+          if (!el) return 0;
+          return String(el.innerText || '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .length;
+        }
+
+        function readParentSummary(el) {
+          if (!el || !el.parentElement) return null;
+          return {
+            tag: el.parentElement.tagName,
+            id: el.parentElement.id || null,
+            className: el.parentElement.className || null
+          };
+        }
 
         var gridExists = !!grid;
         var gridHidden = false;
         var gridDisplay = '';
-        var gridContentLength = 0;
+        var gridContentLength = trimmedTextLength(grid);
         var gridRect = null;
 
         if (grid) {
@@ -2499,16 +2521,25 @@
               gridHidden = true;
             }
           } catch (_gridCsErr) { /* ignore */ }
-          gridContentLength = String(grid.innerText || '')
-            .replace(/\s+/g, ' ')
-            .trim()
-            .length;
           try {
             gridRect = grid.getBoundingClientRect();
           } catch (_gridRectErr) {
             gridRect = null;
           }
         }
+
+        var rootExists = !!root;
+        var rootContentLength = trimmedTextLength(root);
+        var rootBuilt = !!(root && root.dataset && root.dataset.built === 'true');
+
+        var leftPanelTextLength = trimmedTextLength(leftPanel);
+        var rightPanelTextLength = trimmedTextLength(rightPanel);
+        var rootHasPanels = !!(
+          root &&
+          ((leftPanel && root.contains(leftPanel) && leftPanelTextLength > 40) ||
+            (rightPanel && root.contains(rightPanel) && rightPanelTextLength > 40))
+        );
+        var gridHasContent = gridContentLength > 40;
 
         var bodyTextLength = 0;
         try {
@@ -2518,22 +2549,76 @@
             .length;
         } catch (_bodyTextErr) { /* ignore */ }
 
-        var rootExists = !!root;
-        var rootBuilt = !!(root && root.dataset && root.dataset.built === 'true');
+        var surface = 'empty';
+        if (rootHasPanels && !gridHasContent) {
+          surface = 'root';
+        } else if (gridHasContent) {
+          surface = 'grid';
+        }
 
         window.__mgRealSellerVisibleWatchdogLastState = {
+          surface: surface,
           gridExists: gridExists,
           gridHidden: gridHidden,
           gridDisplay: gridDisplay,
           bodyTextLength: bodyTextLength,
           gridContentLength: gridContentLength,
           rootExists: rootExists,
-          rootBuilt: rootBuilt
+          rootContentLength: rootContentLength,
+          rootBuilt: rootBuilt,
+          leftPanelParent: readParentSummary(leftPanel),
+          rightPanelParent: readParentSummary(rightPanel),
+          rootHasPanels: rootHasPanels,
+          gridHasContent: gridHasContent,
+          leftPanelTextLength: leftPanelTextLength,
+          rightPanelTextLength: rightPanelTextLength
         };
 
         window.__mgRealSellerVisibleWatchdogRan = true;
         window.__mgRealSellerVisibleWatchdogReason = String(reason || 'unknown');
         console.info('[MG Seller] visible content watchdog', window.__mgRealSellerVisibleWatchdogLastState);
+
+        function revealEl(el, displayValue) {
+          if (!el) return;
+          el.hidden = false;
+          el.removeAttribute('hidden');
+          el.removeAttribute('aria-hidden');
+          el.classList.remove(
+            'sales-legacy-layout-hidden',
+            'seller-legacy-hidden',
+            'seller-hard-hidden-orphan',
+            'seller-owner-like-hidden',
+            'seller-owner-like-hidden-panel',
+            'seller-shell-hidden-panel'
+          );
+          el.style.removeProperty('height');
+          el.style.setProperty('visibility', 'visible', 'important');
+          el.style.setProperty('opacity', '1', 'important');
+          el.style.setProperty('pointer-events', 'auto', 'important');
+          if (displayValue) {
+            el.style.setProperty('display', displayValue, 'important');
+          }
+        }
+
+        if (surface === 'empty') {
+          return false;
+        }
+
+        revealEl(container);
+
+        if (surface === 'root') {
+          revealEl(root, 'block');
+          revealEl(workspace, 'grid');
+          if (leftPanel && root.contains(leftPanel)) {
+            revealEl(leftPanel, 'block');
+          }
+          if (rightPanel && root.contains(rightPanel)) {
+            revealEl(rightPanel, 'block');
+          }
+          var upper = root.querySelector('.seller-owner-upper[data-seller-outer-shell="true"]');
+          revealEl(upper, 'block');
+          return true;
+        }
 
         if (!gridExists) {
           return false;
@@ -2543,29 +2628,15 @@
           gridHidden ||
           !gridRect ||
           gridRect.height < 8 ||
-          gridRect.width < 8 ||
-          gridContentLength < 20;
-        var needsReveal = gridNotVisible || bodyTextLength < 40;
+          gridRect.width < 8;
 
-        if (!needsReveal) {
+        if (!gridNotVisible && gridHasContent) {
           return true;
         }
 
-        function revealEl(el) {
-          if (!el) return;
-          el.hidden = false;
-          el.removeAttribute('hidden');
-          el.removeAttribute('aria-hidden');
-          el.style.setProperty('visibility', 'visible', 'important');
-          el.style.setProperty('opacity', '1', 'important');
-          el.style.setProperty('pointer-events', 'auto', 'important');
-        }
-
         grid.classList.remove('sales-legacy-layout-hidden');
-        revealEl(grid);
-        grid.style.setProperty('display', 'grid', 'important');
+        revealEl(grid, 'grid');
 
-        revealEl(container);
         var parentWrap = grid.parentElement;
         if (parentWrap && parentWrap !== document.body) {
           revealEl(parentWrap);
