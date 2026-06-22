@@ -2468,6 +2468,141 @@
         return isRealSellerStrictDeviceRoute();
       }
 
+      function readRealSellerElementVisibilityMetrics(el) {
+        if (!el) return { exists: false };
+        try {
+          var cs = window.getComputedStyle(el);
+          var rect = el.getBoundingClientRect();
+          return {
+            exists: true,
+            display: cs.display,
+            visibility: cs.visibility,
+            opacity: cs.opacity,
+            width: rect.width,
+            height: rect.height
+          };
+        } catch (_metricsErr) {
+          return { exists: true, error: true };
+        }
+      }
+
+      function forceRealSellerRootSurfaceVisible(root, reason) {
+        if (!isRealSellerVisibleWatchdogEligible() || !root) return 0;
+
+        var ancestorFixCount = 0;
+        var hidingClasses = [
+          'sales-legacy-layout-hidden',
+          'seller-legacy-hidden',
+          'seller-hard-hidden-orphan',
+          'seller-owner-like-hidden',
+          'seller-owner-like-hidden-panel',
+          'seller-shell-hidden-panel'
+        ];
+
+        function elementNeedsVisibilityFix(el) {
+          if (!el) return false;
+          if (el.hidden || el.getAttribute('aria-hidden') === 'true') return true;
+          for (var i = 0; i < hidingClasses.length; i += 1) {
+            if (el.classList.contains(hidingClasses[i])) return true;
+          }
+          try {
+            var cs = window.getComputedStyle(el);
+            var rect = el.getBoundingClientRect();
+            if (!cs) return true;
+            if (cs.display === 'none' || cs.visibility === 'hidden') return true;
+            if (parseFloat(cs.opacity || '1') < 0.05) return true;
+            if (rect.height < 1 && rect.width < 1) return true;
+          } catch (_fixCheckErr) {
+            return true;
+          }
+          return false;
+        }
+
+        function applyRootSurfaceVisibility(el, displayValue, extraStyles) {
+          if (!el) return;
+          el.hidden = false;
+          el.removeAttribute('hidden');
+          el.removeAttribute('aria-hidden');
+          for (var i = 0; i < hidingClasses.length; i += 1) {
+            el.classList.remove(hidingClasses[i]);
+          }
+          el.style.setProperty('visibility', 'visible', 'important');
+          el.style.setProperty('opacity', '1', 'important');
+          el.style.setProperty('pointer-events', 'auto', 'important');
+          if (displayValue) {
+            el.style.setProperty('display', displayValue, 'important');
+          }
+          if (extraStyles && typeof extraStyles === 'object') {
+            Object.keys(extraStyles).forEach(function (key) {
+              el.style.setProperty(key, extraStyles[key], 'important');
+            });
+          }
+        }
+
+        var node = root.parentElement;
+        while (node && node !== document.body) {
+          if (elementNeedsVisibilityFix(node)) {
+            applyRootSurfaceVisibility(node, 'block', {
+              position: 'relative',
+              'z-index': '1',
+              overflow: 'visible'
+            });
+            try {
+              var ancestorRect = node.getBoundingClientRect();
+              if (ancestorRect.height < 8) {
+                node.style.setProperty('min-height', '100vh', 'important');
+              }
+            } catch (_ancestorRectErr) { /* ignore */ }
+            ancestorFixCount += 1;
+          }
+          node = node.parentElement;
+        }
+
+        applyRootSurfaceVisibility(root, 'block', {
+          width: '100%',
+          'max-width': '100%',
+          'min-height': '100vh',
+          overflow: 'visible',
+          position: 'relative',
+          'z-index': '5'
+        });
+
+        var workspace = root.querySelector('.seller-workspace-grid, .owner-workspace-grid');
+        applyRootSurfaceVisibility(workspace, 'grid', {
+          width: '100%',
+          'min-height': '400px',
+          overflow: 'visible',
+          position: 'relative',
+          'z-index': '2'
+        });
+
+        var leftPanel = root.querySelector('.sales-left-panel');
+        var rightPanel = root.querySelector('.sales-right-panel');
+        applyRootSurfaceVisibility(leftPanel, 'block', {
+          'min-height': '200px',
+          overflow: 'visible',
+          position: 'relative',
+          'z-index': '2'
+        });
+        applyRootSurfaceVisibility(rightPanel, 'block', {
+          'min-height': '200px',
+          overflow: 'visible',
+          position: 'relative',
+          'z-index': '2'
+        });
+
+        var upper = root.querySelector('.seller-owner-upper[data-seller-outer-shell="true"]');
+        applyRootSurfaceVisibility(upper, 'block', {
+          overflow: 'visible',
+          position: 'relative',
+          'z-index': '2'
+        });
+
+        window.__mgRealSellerRootSurfaceForced = true;
+        window.__mgRealSellerRootSurfaceForceReason = String(reason || 'unknown');
+        return ancestorFixCount;
+      }
+
       function ensureRealSellerVisibleContentWatchdog(reason) {
         if (!isRealSellerVisibleWatchdogEligible()) return false;
 
@@ -2556,6 +2691,27 @@
           surface = 'grid';
         }
 
+        var ancestorFixCount = 0;
+        if (surface === 'root') {
+          ancestorFixCount = forceRealSellerRootSurfaceVisible(root, reason);
+          if (grid) {
+            grid.classList.add('sales-legacy-layout-hidden');
+            grid.setAttribute('aria-hidden', 'true');
+            grid.style.setProperty('display', 'none', 'important');
+            grid.style.setProperty('visibility', 'hidden', 'important');
+            grid.style.setProperty('height', '0', 'important');
+            grid.style.setProperty('overflow', 'hidden', 'important');
+            grid.style.setProperty('pointer-events', 'none', 'important');
+            grid.style.setProperty('margin', '0', 'important');
+            grid.style.setProperty('padding', '0', 'important');
+          }
+        }
+
+        var rootMetrics = readRealSellerElementVisibilityMetrics(root);
+        var workspaceMetrics = readRealSellerElementVisibilityMetrics(workspace);
+        var leftPanelMetrics = readRealSellerElementVisibilityMetrics(leftPanel);
+        var rightPanelMetrics = readRealSellerElementVisibilityMetrics(rightPanel);
+
         window.__mgRealSellerVisibleWatchdogLastState = {
           surface: surface,
           gridExists: gridExists,
@@ -2571,7 +2727,18 @@
           rootHasPanels: rootHasPanels,
           gridHasContent: gridHasContent,
           leftPanelTextLength: leftPanelTextLength,
-          rightPanelTextLength: rightPanelTextLength
+          rightPanelTextLength: rightPanelTextLength,
+          rootDisplay: rootMetrics.display || null,
+          rootWidth: rootMetrics.width,
+          rootHeight: rootMetrics.height,
+          workspaceGridDisplay: workspaceMetrics.display || null,
+          workspaceGridWidth: workspaceMetrics.width,
+          workspaceGridHeight: workspaceMetrics.height,
+          leftPanelDisplay: leftPanelMetrics.display || null,
+          leftPanelHeight: leftPanelMetrics.height,
+          rightPanelDisplay: rightPanelMetrics.display || null,
+          rightPanelHeight: rightPanelMetrics.height,
+          ancestorFixCount: ancestorFixCount
         };
 
         window.__mgRealSellerVisibleWatchdogRan = true;
@@ -2604,25 +2771,15 @@
           return false;
         }
 
-        revealEl(container);
-
         if (surface === 'root') {
-          revealEl(root, 'block');
-          revealEl(workspace, 'grid');
-          if (leftPanel && root.contains(leftPanel)) {
-            revealEl(leftPanel, 'block');
-          }
-          if (rightPanel && root.contains(rightPanel)) {
-            revealEl(rightPanel, 'block');
-          }
-          var upper = root.querySelector('.seller-owner-upper[data-seller-outer-shell="true"]');
-          revealEl(upper, 'block');
           return true;
         }
 
         if (!gridExists) {
           return false;
         }
+
+        revealEl(container);
 
         var gridNotVisible =
           gridHidden ||
@@ -2671,6 +2828,7 @@
       }
 
       window.ensureRealSellerVisibleContentWatchdog = ensureRealSellerVisibleContentWatchdog;
+      window.forceRealSellerRootSurfaceVisible = forceRealSellerRootSurfaceVisible;
       window.scheduleRealSellerVisibleContentWatchdog = scheduleRealSellerVisibleContentWatchdog;
 
       function hideSalesLegacyLayoutForSeller() {
