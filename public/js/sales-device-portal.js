@@ -12,6 +12,22 @@
     "Seller portal requires a clean paired seller device session. Open this link from the assigned seller browser/profile.";
   const BLOCKED_ENDPOINT_RE = /\/send-quote-zapier/i;
   const POST_AUTH_LAYOUT_RETRY_DELAYS_MS = [0, 100, 300, 700, 1200];
+  const SELLER_DEVICE_ALLOWED_NAV_PATTERNS = [
+    /^\/sales(?:\.html)?(?:\/|$|\?)/i,
+    /^\/seller(?:\.html)?(?:\/|$)/i,
+  ];
+  const OWNER_SHELL_NAV_PATTERNS = [
+    /^\/owner(?:\.html)?(?:\/|$)/i,
+    /^\/dashboard(?:\.html)?(?:\/|$)/i,
+    /^\/project-control/i,
+    /^\/business-settings/i,
+    /^\/sales-admin/i,
+    /^\/estimates-invoices/i,
+    /^\/contacts/i,
+    /^\/team-devices/i,
+    /^\/supervisor/i,
+    /[?&]portal=owner/i,
+  ];
   const BLOCKED_CONTROL_IDS = new Set([
     "btnSendQuote",
     "btnSendQuoteInline",
@@ -26,6 +42,8 @@
   let fetchGuardInstalled = false;
   let initPromise = null;
   let postAuthLayoutRetryTimerIds = [];
+  let sellerDeviceNavGuardInstalled = false;
+  let sellerDeviceShellWatchInstalled = false;
 
   async function api(path, options = {}) {
     const response = await fetch(`${API}${path}`, {
@@ -153,6 +171,7 @@
   function isRealSellerPortalUrlForLayoutRetry() {
     const path = String(window.location.pathname || "").toLowerCase();
     if (!/^\/sales(?:\.html)?\/?$/.test(path)) return false;
+    if (document.documentElement.dataset.salesPortal === "seller") return true;
     try {
       return new URLSearchParams(window.location.search || "").get("portal") === "seller";
     } catch (_err) {
@@ -180,8 +199,137 @@
     return true;
   }
 
+  function normalizeShellNavTarget(href) {
+    try {
+      const url = new URL(href, window.location.origin);
+      return url.pathname + url.search;
+    } catch (_err) {
+      return String(href || "");
+    }
+  }
+
+  function isOwnerShellNavHref(href) {
+    const target = normalizeShellNavTarget(href);
+    if (!target || target === "#") return false;
+    if (SELLER_DEVICE_ALLOWED_NAV_PATTERNS.some((re) => re.test(target))) return false;
+    return OWNER_SHELL_NAV_PATTERNS.some((re) => re.test(target));
+  }
+
+  function shouldApplyRealSellerDeviceShellIsolation() {
+    if (!isRealSellerPortalUrlForLayoutRetry()) return false;
+    if (isOwnerPreviewOrOwnerRouteForLayoutRetry()) return false;
+    if (!isValidPairedSellerDeviceSessionForLayoutRetry()) return false;
+    return true;
+  }
+
+  function hideOwnerShellNavigation() {
+    hideOwnerChrome();
+
+    document
+      .querySelectorAll("#mgAppSidebar [data-owner-nav], .mg-sidebar__group[data-owner-nav]")
+      .forEach((el) => {
+        el.setAttribute("hidden", "");
+        el.setAttribute("aria-hidden", "true");
+        el.style.setProperty("display", "none", "important");
+      });
+
+    document.querySelectorAll("#mgAppSidebar a.mg-sidebar__item").forEach((link) => {
+      const href = link.getAttribute("href") || "";
+      if (!isOwnerShellNavHref(href)) return;
+      link.hidden = true;
+      link.setAttribute("aria-hidden", "true");
+      link.setAttribute("tabindex", "-1");
+      link.style.setProperty("display", "none", "important");
+      link.style.setProperty("pointer-events", "none", "important");
+    });
+
+    document.querySelectorAll("#mgAppSidebar .mg-sidebar__item--btn[data-owner-nav]").forEach((btn) => {
+      btn.hidden = true;
+      btn.setAttribute("aria-hidden", "true");
+      btn.disabled = true;
+      btn.style.setProperty("display", "none", "important");
+    });
+
+    const brand = document.querySelector("#mgAppSidebar a.mg-sidebar__brand");
+    if (brand) {
+      brand.removeAttribute("href");
+      brand.classList.add("mg-sidebar__brand--static");
+    }
+  }
+
+  function installRealSellerDeviceNavClickGuard() {
+    if (sellerDeviceNavGuardInstalled) return;
+    sellerDeviceNavGuardInstalled = true;
+
+    document.addEventListener(
+      "click",
+      (event) => {
+        if (!shouldApplyRealSellerDeviceShellIsolation()) return;
+        const anchor = event.target?.closest?.("a[href]");
+        if (!anchor) return;
+        const href = anchor.getAttribute("href") || "";
+        if (!isOwnerShellNavHref(href)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+      },
+      true
+    );
+  }
+
+  function installSellerDeviceShellIsolationWatchers() {
+    if (sellerDeviceShellWatchInstalled) return;
+    sellerDeviceShellWatchInstalled = true;
+
+    document.addEventListener("mg-app-nav-ready", () => {
+      if (shouldApplyRealSellerDeviceShellIsolation()) {
+        applyRealSellerDeviceShellMode();
+      }
+    });
+
+    document.addEventListener("mg-app-nav-mode", (event) => {
+      if (!shouldApplyRealSellerDeviceShellIsolation()) return;
+      const mode = event?.detail?.mode;
+      if (mode === "owner" || mode === "supervisor-device") {
+        applyRealSellerDeviceShellMode();
+      }
+    });
+  }
+
+  function applyRealSellerDeviceShellMode() {
+    if (!shouldApplyRealSellerDeviceShellIsolation()) return false;
+
+    document.body.classList.remove("mg-portal-mode-owner", "mg-portal-mode-supervisor-device");
+    document.body.classList.add("mg-portal-mode-seller-device");
+
+    try {
+      window.MGAppNav?.applyPortalMode?.("seller-device");
+      hideOwnerShellNavigation();
+      installRealSellerDeviceNavClickGuard();
+      window.__mgSellerDeviceShellIsolationLastError = undefined;
+      return true;
+    } catch (err) {
+      window.__mgSellerDeviceShellIsolationLastError = String(err?.message || err);
+      return false;
+    }
+  }
+
+  function ensureRealSellerDeviceShellIsolation() {
+    if (!shouldApplyRealSellerDeviceShellIsolation()) return;
+    window.__mgSellerDeviceShellIsolationRan = true;
+    applyRealSellerDeviceShellMode();
+    POST_AUTH_LAYOUT_RETRY_DELAYS_MS.forEach((delayMs) => {
+      window.setTimeout(() => {
+        if (shouldApplyRealSellerDeviceShellIsolation()) {
+          applyRealSellerDeviceShellMode();
+        }
+      }, delayMs);
+    });
+  }
+
   function runPostAuthLayoutRetryAttempt(auth, label) {
     try {
+      applyRealSellerDeviceShellMode();
       window.forceRealSellerOwnerLayout?.(`post-device-auth-retry-${label}`);
       window.__mgSyncSellerPortalGuardAndLayout?.(`post-device-auth-retry-${label}`);
       document.dispatchEvent(new CustomEvent("device-auth-ready", { detail: { auth } }));
@@ -728,6 +876,8 @@
     document.documentElement.dataset.authMode = "device";
     document.documentElement.dataset.portalType = "seller";
 
+    applyRealSellerDeviceShellMode();
+
     const plan = document.getElementById("planStatus");
     if (plan) plan.textContent = "Seller device · Vendedor";
 
@@ -785,7 +935,8 @@
     });
 
     document.body.classList.add("auth-ready");
-    window.MGAppNav?.applyPortalMode?.("seller-device");
+    applyRealSellerDeviceShellMode();
+    ensureRealSellerDeviceShellIsolation();
     window.dispatchEvent(
       new CustomEvent("device-auth-ready", { detail: { auth } })
     );
@@ -841,6 +992,7 @@
 
   function boot() {
     if (document.body?.dataset?.salesDualAuth !== "true") return;
+    installSellerDeviceShellIsolationWatchers();
     if (!initPromise) {
       initPromise = initSalesPortalAuth().catch(() => {
         window.location.href = "/portal-pair?portal=seller";
