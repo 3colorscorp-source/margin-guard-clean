@@ -2344,6 +2344,24 @@
         }
         var legacyGrid = document.querySelector('.grid.sales-layout');
         var sellerRootEl = document.getElementById('sellerOwnerWorkspaceRoot');
+
+        var isRealSellerOnly =
+          typeof isRealSellerRuntime === 'function' &&
+          isRealSellerRuntime() &&
+          !(typeof isOwnerSellerPreviewLayoutActive === 'function' && isOwnerSellerPreviewLayoutActive());
+
+        var sellerLayoutReady =
+          (typeof isDirectSellerDomLayoutComplete === 'function' && isDirectSellerDomLayoutComplete()) ||
+          (sellerRootEl && sellerRootEl.dataset && sellerRootEl.dataset.built === 'true') ||
+          (document.body && document.body.dataset && document.body.dataset.sellerDirectDomLayout === 'true');
+
+        if (legacyGrid && isRealSellerOnly && !sellerLayoutReady) {
+          legacyGrid.classList.remove('sales-legacy-layout-hidden');
+          legacyGrid.hidden = false;
+          legacyGrid.removeAttribute('aria-hidden');
+          return;
+        }
+
         if (legacyGrid && !(sellerRootEl && sellerRootEl.contains(legacyGrid))) {
           legacyGrid.classList.add('sales-legacy-layout-hidden');
           legacyGrid.hidden = true;
