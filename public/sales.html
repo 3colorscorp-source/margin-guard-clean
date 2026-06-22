@@ -2388,6 +2388,160 @@
         });
       }
 
+      function isRealSellerVisibleWatchdogEligible() {
+        try {
+          var path = String(window.location.pathname || '');
+          if (path !== '/sales' && path !== '/sales.html') return false;
+          if (/\/owner(?:\.html)?\/?$/i.test(path)) return false;
+          var params = new URLSearchParams(window.location.search || '');
+          if (params.get('portal') === 'owner') return false;
+          if (params.get('portal') !== 'seller') return false;
+          if (
+            typeof isOwnerSellerPreviewLayoutActive === 'function' &&
+            isOwnerSellerPreviewLayoutActive()
+          ) {
+            return false;
+          }
+          return true;
+        } catch (_watchdogRouteErr) {
+          return false;
+        }
+      }
+
+      function ensureRealSellerVisibleContentWatchdog(reason) {
+        if (!isRealSellerVisibleWatchdogEligible()) return false;
+
+        var container = document.querySelector('.container');
+        var grid = document.querySelector('.grid.sales-layout');
+        var root = document.getElementById('sellerOwnerWorkspaceRoot');
+
+        var gridExists = !!grid;
+        var gridHidden = false;
+        var gridDisplay = '';
+        var gridContentLength = 0;
+        var gridRect = null;
+
+        if (grid) {
+          gridHidden =
+            grid.hidden === true ||
+            grid.hasAttribute('hidden') ||
+            grid.getAttribute('aria-hidden') === 'true' ||
+            grid.classList.contains('sales-legacy-layout-hidden');
+          try {
+            var gridCs = window.getComputedStyle(grid);
+            gridDisplay = gridCs ? gridCs.display : '';
+            if (
+              gridCs &&
+              (gridCs.display === 'none' ||
+                gridCs.visibility === 'hidden' ||
+                parseFloat(gridCs.opacity || '1') < 0.05)
+            ) {
+              gridHidden = true;
+            }
+          } catch (_gridCsErr) { /* ignore */ }
+          gridContentLength = String(grid.innerText || '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .length;
+          try {
+            gridRect = grid.getBoundingClientRect();
+          } catch (_gridRectErr) {
+            gridRect = null;
+          }
+        }
+
+        var bodyTextLength = 0;
+        try {
+          bodyTextLength = String((document.body && document.body.innerText) || '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .length;
+        } catch (_bodyTextErr) { /* ignore */ }
+
+        var rootExists = !!root;
+        var rootBuilt = !!(root && root.dataset && root.dataset.built === 'true');
+
+        window.__mgRealSellerVisibleWatchdogLastState = {
+          gridExists: gridExists,
+          gridHidden: gridHidden,
+          gridDisplay: gridDisplay,
+          bodyTextLength: bodyTextLength,
+          gridContentLength: gridContentLength,
+          rootExists: rootExists,
+          rootBuilt: rootBuilt
+        };
+
+        window.__mgRealSellerVisibleWatchdogRan = true;
+        window.__mgRealSellerVisibleWatchdogReason = String(reason || 'unknown');
+        console.info('[MG Seller] visible content watchdog', window.__mgRealSellerVisibleWatchdogLastState);
+
+        if (!gridExists) {
+          return false;
+        }
+
+        var gridNotVisible =
+          gridHidden ||
+          !gridRect ||
+          gridRect.height < 8 ||
+          gridRect.width < 8 ||
+          gridContentLength < 20;
+        var needsReveal = gridNotVisible || bodyTextLength < 40;
+
+        if (!needsReveal) {
+          return true;
+        }
+
+        function revealEl(el) {
+          if (!el) return;
+          el.hidden = false;
+          el.removeAttribute('hidden');
+          el.removeAttribute('aria-hidden');
+          el.style.setProperty('visibility', 'visible', 'important');
+          el.style.setProperty('opacity', '1', 'important');
+          el.style.setProperty('pointer-events', 'auto', 'important');
+        }
+
+        grid.classList.remove('sales-legacy-layout-hidden');
+        revealEl(grid);
+        grid.style.setProperty('display', 'grid', 'important');
+
+        revealEl(container);
+        var parentWrap = grid.parentElement;
+        if (parentWrap && parentWrap !== document.body) {
+          revealEl(parentWrap);
+        }
+
+        return true;
+      }
+
+      var REAL_SELLER_VISIBLE_WATCHDOG_DELAYS_MS = [0, 250, 750, 1500, 3000, 5000];
+      var realSellerVisibleWatchdogTimerIds = [];
+
+      function scheduleRealSellerVisibleContentWatchdog(reason) {
+        if (!isRealSellerVisibleWatchdogEligible()) return;
+        realSellerVisibleWatchdogTimerIds.forEach(function (timerId) {
+          window.clearTimeout(timerId);
+        });
+        realSellerVisibleWatchdogTimerIds = [];
+        REAL_SELLER_VISIBLE_WATCHDOG_DELAYS_MS.forEach(function (delayMs) {
+          var timerId = window.setTimeout(function () {
+            ensureRealSellerVisibleContentWatchdog(
+              String(reason || 'scheduled') + '-' + String(delayMs)
+            );
+          }, delayMs);
+          realSellerVisibleWatchdogTimerIds.push(timerId);
+        });
+      }
+
+      function bootRealSellerVisibleContentWatchdog(reason) {
+        if (!isRealSellerVisibleWatchdogEligible()) return;
+        ensureRealSellerVisibleContentWatchdog(reason);
+        scheduleRealSellerVisibleContentWatchdog(reason);
+      }
+
+      window.ensureRealSellerVisibleContentWatchdog = ensureRealSellerVisibleContentWatchdog;
+      window.scheduleRealSellerVisibleContentWatchdog = scheduleRealSellerVisibleContentWatchdog;
+
       function hideSalesLegacyLayoutForSeller() {
         ensureRealSellerLegacyGridVisibleUntilBuilt('hideSalesLegacyLayoutForSeller-enter');
         removeC20SellerDebugBanner();
@@ -10897,6 +11051,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         } else {
           buildSellerOwnerWorkspaceRoot();
         }
+        bootRealSellerVisibleContentWatchdog('bootSellerPortalLayout');
       }
 
       document.addEventListener('device-auth-ready', function () {
@@ -10913,7 +11068,16 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           ensureRealSellerLegacyGridVisibleUntilBuilt('device-auth-ready');
           scheduleRealSellerLegacyGridRescue('device-auth-ready');
         }
+        bootRealSellerVisibleContentWatchdog('device-auth-ready');
       });
+
+      document.addEventListener('DOMContentLoaded', function () {
+        bootRealSellerVisibleContentWatchdog('DOMContentLoaded');
+      }, { once: true });
+
+      window.addEventListener('load', function () {
+        bootRealSellerVisibleContentWatchdog('window-load');
+      }, { once: true });
 
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', bootSellerPortalLayout);
