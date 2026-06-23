@@ -6135,7 +6135,11 @@
             saveSalesState(state);
           }
           updateLaborSyncChrome(loadSalesState());
-          if (typeof window.renderSales === 'function') {
+          const skipAppRenderSales = window.__mgSellerSkipAppRenderSalesOnce === true;
+          if (skipAppRenderSales) {
+            window.__mgSellerSkipAppRenderSalesOnce = false;
+          }
+          if (!skipAppRenderSales && typeof window.renderSales === 'function') {
             try {
               window.renderSales();
             } catch (_error) {}
@@ -7977,7 +7981,43 @@
        * New Quote: replace persisted sales draft with a clean project slate.
        * Preserves only tenant linkage (businessId / business_id). Does not touch mg_settings_v2 or branding cache.
        */
-      function resetSalesQuoteStateForNewQuote() {
+      function applySellerQuoteFieldValuesToDom(fieldMap, notifyAppJs) {
+        Object.entries(fieldMap).forEach(function (entry) {
+          const node = document.getElementById(entry[0]);
+          if (!node) return;
+          node.value = entry[1];
+          if (!notifyAppJs) return;
+          try {
+            node.dispatchEvent(new Event('input', { bubbles: true }));
+          } catch (_inputErr) { /* ignore */ }
+          try {
+            node.dispatchEvent(new Event('change', { bubbles: true }));
+          } catch (_changeErr) { /* ignore */ }
+        });
+      }
+
+      function clearSellerPostQuoteWorkspaceChrome() {
+        closeSalesOpDayEditor();
+        const templateSelect = document.getElementById('salesOperationalTemplate');
+        if (templateSelect) templateSelect.value = '';
+        const daysOverrideInput = document.getElementById('salesOperationalDaysOverride');
+        if (daysOverrideInput) daysOverrideInput.value = '';
+        const hoursOverrideInput = document.getElementById('salesOperationalHoursOverride');
+        if (hoursOverrideInput) hoursOverrideInput.value = '';
+        window.__mgSalesCapacityCalendar = null;
+        window.__mgSalesCapacityUnverified = false;
+        window.__mgSellerLastValidRecommendedPrice = 0;
+        const crewAvail = document.getElementById('salesOpCrewAvailability');
+        if (crewAvail) {
+          crewAvail.textContent = 'Add schedule days to check crew availability.';
+          crewAvail.className = 'sales-op-avail sales-op-avail--unknown';
+        }
+        const calendarGrid = document.getElementById('salesOpCalendarPreview');
+        if (calendarGrid) calendarGrid.innerHTML = '';
+      }
+
+      function resetSalesQuoteStateForNewQuote(opts) {
+        const resetOpts = opts && typeof opts === 'object' ? opts : {};
         const prev = loadSalesState();
         const preserved = {};
         if (prev && typeof prev === 'object') {
@@ -7993,6 +8033,7 @@
           ...preserved,
           estimateNumber: '',
           estimateStatus: 'draft',
+          status: 'draft',
           issueDate: '',
           expirationDate: '',
           dueDate: '',
@@ -8075,10 +8116,7 @@
           salesMessageToClient: '',
           salesNotes: ''
         };
-        Object.entries(fields).forEach(function (entry) {
-          const node = document.getElementById(entry[0]);
-          if (node) node.value = entry[1];
-        });
+        applySellerQuoteFieldValuesToDom(fields, resetOpts.notifyAppJsInputs === true);
 
         if (typeof window.clearSalesContactPickerSelection === 'function') {
           window.clearSalesContactPickerSelection();
@@ -8135,7 +8173,19 @@
 
         bindStandaloneSellerWorkers();
 
+        if (resetOpts.skipAppRenderSales === true) {
+          window.__mgSellerSkipAppRenderSalesOnce = true;
+        }
         refreshSellerFromStandalone();
+
+        if (resetOpts.sellerPostSend === true) {
+          saveSalesState(fresh);
+          renderSellerWorkersStandalone();
+          renderSalesOperationalPlanStandalone();
+          renderStandaloneSellerPanel();
+          enforceSellerRightPanelCurrencyConsistency(fresh, loadSettings());
+          updateLaborSyncChrome(fresh);
+        }
 
         removeSellerPublishOrphanNotice();
         if (
@@ -8152,6 +8202,29 @@
         }
 
         console.log('[Sales New Quote] reset complete');
+      }
+
+      function shouldUseRealSellerPostSendReset() {
+        if (
+          typeof isOwnerSellerPreviewLayoutActive === 'function' &&
+          isOwnerSellerPreviewLayoutActive()
+        ) {
+          return false;
+        }
+        if (typeof isSellerDeviceSalesMode === 'function' && isSellerDeviceSalesMode()) {
+          return true;
+        }
+        return typeof isRealSellerRuntime === 'function' && isRealSellerRuntime();
+      }
+
+      function resetRealSellerQuoteWorkspaceAfterSend() {
+        clearSellerPostQuoteWorkspaceChrome();
+        resetSalesQuoteStateForNewQuote({
+          sellerPostSend: true,
+          notifyAppJsInputs: false,
+          skipAppRenderSales: true,
+        });
+        console.log('[Sales Send] real seller post-send workspace reset complete');
       }
 
       function initializeSellerPortalQuoteState() {
@@ -10697,9 +10770,8 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
       setTimeout(() => {
         closeSellerSendModal();
         try {
-          if (typeof isSellerDeviceSalesMode === 'function' && isSellerDeviceSalesMode()) {
-            resetSalesQuoteStateForNewQuote();
-            console.log('[Sales Send] real seller post-send reset complete');
+          if (typeof shouldUseRealSellerPostSendReset === 'function' && shouldUseRealSellerPostSendReset()) {
+            resetRealSellerQuoteWorkspaceAfterSend();
             return;
           }
 
