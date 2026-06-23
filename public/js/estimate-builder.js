@@ -736,6 +736,42 @@
     `;
   }
 
+  function buildInitialsBadgeEl(initials, badgeCommon, initialsBg) {
+    const el = document.createElement("div");
+    el.style.cssText =
+      badgeCommon +
+      initialsBg +
+      "display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;letter-spacing:.04em;color:rgba(255,255,255,.95);";
+    el.textContent = initials;
+    return el;
+  }
+
+  function mountPublicEstimateBrandBadge(hostEl, opts) {
+    if (!hostEl) return;
+    hostEl.replaceChildren();
+    const logoUrl = safeHttpUrl(opts.logoUrl || "");
+    if (logoUrl) {
+      const img = document.createElement("img");
+      img.src = logoUrl;
+      img.alt = "";
+      img.width = 44;
+      img.height = 44;
+      img.decoding = "async";
+      img.style.cssText =
+        opts.badgeCommon + "object-fit:contain;background:rgba(255,255,255,.06);";
+      img.addEventListener("error", function () {
+        hostEl.replaceChildren(
+          buildInitialsBadgeEl(opts.initials, opts.badgeCommon, opts.initialsBg)
+        );
+      });
+      hostEl.appendChild(img);
+      return;
+    }
+    hostEl.appendChild(
+      buildInitialsBadgeEl(opts.initials, opts.badgeCommon, opts.initialsBg)
+    );
+  }
+
   function renderBusinessHeader(next) {
     const titleEl = $("publicEstimateTitle");
     const metaEl = $("publicEstimateMeta");
@@ -792,10 +828,6 @@
 
     const projectLine = safe(next.title || next.project_name || "Public Estimate");
 
-    const logoOrInitials = logoUrlResolved
-      ? `<img src="${escapeHtml(logoUrlResolved)}" alt="" width="44" height="44" decoding="async" style="${badgeCommon}object-fit:contain;background:rgba(255,255,255,.06);" />`
-      : `<div style="${badgeCommon}${initialsBg}display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;letter-spacing:.04em;color:rgba(255,255,255,.95);">${escapeHtml(initials)}</div>`;
-
     if (titleEl && isEstimateDebugMode()) {
       logEstimateDebug("before #publicEstimateTitle write", {
         "estimate.logo_url (API raw)": rawLogo,
@@ -809,7 +841,7 @@
     if (titleEl) {
       titleEl.innerHTML = `
         <div style="display:flex;align-items:flex-start;gap:14px;">
-          ${logoOrInitials}
+          <span id="publicEstimateBrandBadge"></span>
           <div style="flex:1;min-width:0;">
             <div style="font-size:30px;font-weight:800;line-height:1.15;margin-bottom:6px;overflow-wrap:break-word;word-break:normal;">
               ${escapeHtml(resolvedDisplayName)}
@@ -820,6 +852,12 @@
           </div>
         </div>
       `;
+      mountPublicEstimateBrandBadge($("publicEstimateBrandBadge"), {
+        logoUrl: rawLogo,
+        initials,
+        badgeCommon,
+        initialsBg,
+      });
     }
 
     if (isEstimateDebugMode()) {

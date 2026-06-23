@@ -134,6 +134,9 @@ exports.handler = async (event) => {
         tenantBrandingBusinessName = pickFirst(td.branding_business_name, td.business_name);
         tenantBrandingCompanyName = pickFirst(td.branding_company_name);
         tenantLogoUrl = normalizePublicLogoUrl(td.logo_url);
+        if (!tenantLogoUrl) {
+          tenantLogoUrl = normalizePublicLogoUrl(await loadTenantLogoFromSnapshot(tenantId));
+        }
       } catch (_e) {
         td = null;
         tenantBrandingBusinessName = "";
@@ -197,4 +200,42 @@ function pickPublicEstimateFields(row) {
     out[k] = v === null || v === undefined ? "" : String(v);
   }
   return out;
+}
+
+async function loadLatestTenantSnapshotPayload(tenantId) {
+  if (!tenantId) return null;
+  try {
+    const rows = await supabaseRequest(
+      `tenant_snapshots?tenant_id=eq.${encodeURIComponent(String(tenantId))}&select=payload&order=created_at.desc&limit=1`,
+      { method: "GET" }
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    return row && typeof row.payload === "object" ? row.payload : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+async function loadTenantLogoFromSnapshot(tenantId) {
+  if (!tenantId) return "";
+  try {
+    const payload = await loadLatestTenantSnapshotPayload(tenantId);
+    const storage = payload && typeof payload.storage === "object" ? payload.storage : {};
+    const brand =
+      storage && typeof storage.mg_business_branding_v1 === "object" ? storage.mg_business_branding_v1 : {};
+    const mg = storage && typeof storage.mg_settings_v2 === "object" ? storage.mg_settings_v2 : {};
+    const settings = payload && typeof payload.settings === "object" ? payload.settings : {};
+    const branding = payload && typeof payload.branding === "object" ? payload.branding : {};
+    return pickFirst(
+      brand.logoUrl,
+      brand.logo_url,
+      mg.publicLogoUrl,
+      mg.logo_url,
+      settings.publicLogoUrl,
+      branding.logoUrl,
+      branding.logo_url
+    );
+  } catch (_err) {
+    return "";
+  }
 }
