@@ -10697,9 +10697,13 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
       setTimeout(() => {
         closeSellerSendModal();
         try {
-          // 1) Construir estado fresco preservando solo identificadores de tenant.
-          //    Mismo patron que usa el boton "+ New Quote" (btnNewSalesQuote) para
-          //    garantizar que post-send y New Quote terminen en estados equivalentes.
+          if (typeof isSellerDeviceSalesMode === 'function' && isSellerDeviceSalesMode()) {
+            resetSalesQuoteStateForNewQuote();
+            console.log('[Sales Send] real seller post-send reset complete');
+            return;
+          }
+
+          // Owner Seller Preview / non-device: legacy post-send slate (unchanged).
           const st = loadSalesState();
           const _today = new Date();
           const _todayIso = _today.toISOString().slice(0, 10);
