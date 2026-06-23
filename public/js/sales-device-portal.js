@@ -3,9 +3,9 @@
 
   const API = "/.netlify/functions";
   const SELLER_NOTICE =
-    "Seller device mode: create a public quote link, then Firmar. Full send, email, and PDF remain disabled.";
+    "Seller device mode: create quotes, send estimates, and public links. Owner billing and settings remain disabled.";
   const SELLER_PUBLISH_RESULT_MSG =
-    "Quote created. Firmar is now available. Full send, email, and PDF remain disabled.";
+    "Quote created. Firmar is now available.";
   const SELLER_FIRMAR_GATE_MSG =
     "Create a public quote link before using Firmar.";
   const SELLER_PORTAL_BLOCKED_MSG =
@@ -13,12 +13,15 @@
   const BLOCKED_ENDPOINT_RE = /\/send-quote-zapier/i;
   const POST_AUTH_LAYOUT_RETRY_DELAYS_MS = [0, 100, 300, 700, 1200];
   const BLOCKED_CONTROL_IDS = new Set([
-    "btnSendQuote",
+    "btnManagePlan",
+  ]);
+  const SELLER_QUOTE_ACTION_CONTROL_IDS = [
+    "btnSalesOpSend",
+    "btnSalesOpPreview",
+    "btnSalesOpSaveExit",
     "btnSendQuoteInline",
     "btnSendNow",
-    "btnManagePlan",
-    "btnSalesOpSend",
-  ]);
+  ];
 
   let sellerModeActive = false;
   let sellerPublishUiBusy = false;
@@ -666,6 +669,18 @@
     });
   }
 
+  function syncSellerQuoteActionControls() {
+    if (!sellerModeActive) return;
+    SELLER_QUOTE_ACTION_CONTROL_IDS.forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.disabled = false;
+      el.removeAttribute("aria-disabled");
+      el.removeAttribute("data-mg-seller-blocked");
+      el.removeAttribute("title");
+    });
+  }
+
   function isBlockedControlTarget(target) {
     if (!target || typeof target.closest !== "function") return false;
     for (const id of BLOCKED_CONTROL_IDS) {
@@ -695,31 +710,6 @@
   function installFetchGuard() {
     if (fetchGuardInstalled || typeof window.fetch !== "function") return;
     fetchGuardInstalled = true;
-    const nativeFetch = window.fetch.bind(window);
-    window.fetch = function salesDeviceGuardedFetch(input, init) {
-      if (sellerModeActive) {
-        const url = String(
-          typeof input === "string" ? input : input && input.url ? input.url : ""
-        );
-        if (BLOCKED_ENDPOINT_RE.test(url)) {
-          // Client-side guard mirrors backend send-quote-zapier hard-deny code.
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({
-                ok: false,
-                error: "Quote email send is not available on seller devices.",
-                code: "seller_device_send_blocked",
-              }),
-              {
-                status: 403,
-                headers: { "Content-Type": "application/json" },
-              }
-            )
-          );
-        }
-      }
-      return nativeFetch(input, init);
-    };
   }
 
   async function applySellerMode(auth) {
@@ -748,6 +738,7 @@
     showSellerAccountPill(auth);
     ensureDeviceLogoutButton();
     disableBlockedControls();
+    syncSellerQuoteActionControls();
 
     let settingsHydration = { ok: true };
     if (typeof window.hydrateSellerBusinessSettingsFromServer === "function") {
@@ -777,9 +768,11 @@
     // Inline sales handlers clone Firmar/send buttons on DOMContentLoaded; re-apply after they run.
     requestAnimationFrame(() => {
       disableBlockedControls();
+    syncSellerQuoteActionControls();
       rebindSellerFirmarControls();
       setTimeout(() => {
         disableBlockedControls();
+    syncSellerQuoteActionControls();
         rebindSellerFirmarControls();
       }, 0);
     });
@@ -862,5 +855,6 @@
     renderPublishResult: renderSellerPublishResult,
     rebindSellerFirmarControls,
     syncSellerFirmarButtonState,
+    syncSellerQuoteActionControls,
   };
 })();

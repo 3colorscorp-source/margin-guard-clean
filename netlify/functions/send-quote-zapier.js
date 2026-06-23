@@ -152,6 +152,7 @@ exports.handler = async (event) => {
 
     const ctx = await resolveOwnerOrSellerContext(event);
     const tenant = ctx.tenant;
+    const isSellerDevice = ctx.auth_mode === "device";
     if (!tenant?.id) {
       logOps({
         req_id,
@@ -164,27 +165,6 @@ exports.handler = async (event) => {
       });
       return guardJson(401, { error: "Unauthorized" });
     }
-
-    if (ctx?.auth_mode === "device") {
-      logOps({
-        req_id,
-        fn: OPS_FN,
-        event: "seller_device_send_blocked",
-        level: "warn",
-        outcome: "fail",
-        tenant_id: tenant?.id || null,
-        http_status: 403,
-        detail: "seller device send hard-denied",
-      });
-
-      return guardJson(403, {
-        ok: false,
-        error: "Quote email send is not available on seller devices.",
-        code: "seller_device_send_blocked",
-      });
-    }
-
-    const isSellerDevice = ctx.auth_mode === "device";
 
     let data = {};
     let bodyParseFailed = false;

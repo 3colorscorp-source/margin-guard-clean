@@ -5947,9 +5947,12 @@
           btnOpSend.dataset.bound = '1';
           btnOpSend.addEventListener('click', function (e) {
             e.preventDefault();
+            if (typeof openSellerSendModal === 'function') {
+              openSellerSendModal(e);
+              return;
+            }
             const inline = document.getElementById('btnSendQuoteInline');
             if (inline) inline.click();
-            else if (typeof openSellerSendModal === 'function') openSellerSendModal(e);
           }, true);
         }
         const btnOpPreview = document.getElementById('btnSalesOpPreview');
@@ -5957,13 +5960,12 @@
           btnOpPreview.dataset.bound = '1';
           btnOpPreview.addEventListener('click', function (e) {
             e.preventDefault();
+            if (typeof runSellerPreview === 'function') {
+              runSellerPreview(e);
+              return;
+            }
             const preview = document.getElementById('btnSendPreview');
             if (preview) preview.click();
-            else if (typeof runSellerPreview === 'function') runSellerPreview(e);
-            else {
-              const inline = document.getElementById('btnSendQuoteInline');
-              if (inline) inline.click();
-            }
           }, true);
         }
         const btnOpSave = document.getElementById('btnSalesOpSaveExit');
@@ -5971,13 +5973,28 @@
           btnOpSave.dataset.bound = '1';
           btnOpSave.addEventListener('click', function (e) {
             e.preventDefault();
-            saveSalesState(loadSalesState());
+            const state = loadSalesState();
+            const settings = loadSettings();
+            if (typeof window.resolveSellerPublishWorkers === 'function') {
+              window.resolveSellerPublishWorkers(state, settings);
+            }
+            saveSalesState(state);
+            try {
+              if (typeof window.__mgScheduleTenantSnapshotSync === 'function') {
+                window.__mgScheduleTenantSnapshotSync();
+              }
+            } catch (_saveSyncErr) { /* ignore */ }
             const avail = document.getElementById('salesOpCrewAvailability');
             if (avail) {
-              const prev = avail.textContent;
               avail.textContent = 'Quote saved.';
               avail.className = 'sales-op-avail sales-op-avail--ok';
               setTimeout(function () { renderSalesOpCrewAvailability(); }, 2000);
+            }
+            if (
+              window.MGSalesDevicePortal &&
+              typeof window.MGSalesDevicePortal.syncSellerQuoteActionControls === 'function'
+            ) {
+              window.MGSalesDevicePortal.syncSellerQuoteActionControls();
             }
           }, true);
         }
@@ -6049,6 +6066,12 @@
           }
           enforceSellerRightPanelCurrencyConsistency(loadSalesState(), loadSettings());
         } finally {
+          if (
+            window.MGSalesDevicePortal &&
+            typeof window.MGSalesDevicePortal.syncSellerQuoteActionControls === 'function'
+          ) {
+            window.MGSalesDevicePortal.syncSellerQuoteActionControls();
+          }
           if (window.__mgForceCloseSalesNewQuoteAfterRefresh && typeof window.forceCloseSalesNewQuoteModal === 'function') {
             window.forceCloseSalesNewQuoteModal();
             window.__mgForceCloseSalesNewQuoteAfterRefresh = false;
@@ -9712,18 +9735,86 @@ async function openSellerSendModal(event) {
       event.stopImmediatePropagation();
     }
 
+    const state = loadSalesState();
+    const settings = loadSettings();
+    if (
+      typeof window.sellerHasEffectiveLaborForPublish === 'function' &&
+      !window.sellerHasEffectiveLaborForPublish(state, settings)
+    ) {
+      window.alert('Add labor before generating a proposal PDF.');
+      return;
+    }
+
     await fillSendModal();
 
-    const toName = document.getElementById('toName')?.value || 'Customer';
-    const toEmail = document.getElementById('toEmail')?.value || 'client@example.com';
-    const subject = document.getElementById('subject')?.value || 'Estimate';
-    const scope = document.getElementById('scope')?.value || '';
+    let publicQuoteUrl = String(state.publicQuoteUrl || '').trim();
+    if (!publicQuoteUrl && document.documentElement.dataset.authMode === 'device') {
+      if (typeof window.runSellerPublishPublicLinkOnly === 'function') {
+        const pub = await window.runSellerPublishPublicLinkOnly();
+        if (!pub || pub.ok !== true) {
+          window.alert((pub && pub.error) || 'Unable to create public quote link for PDF preview.');
+          return;
+        }
+        publicQuoteUrl = pub.public_url || String(loadSalesState().publicQuoteUrl || '').trim();
+      }
+    }
+
+    const payload = JSON.parse(modal.dataset.payload || '{}');
+    const branding = await getBranding(true);
+    const toName = document.getElementById('toName')?.value || state.clientName || 'Customer';
+    const toEmail = document.getElementById('toEmail')?.value || state.customerEmail || '';
     const message = document.getElementById('message')?.value || '';
-    const deposit = document.getElementById('deposit')?.value || '1000';
+    const scope = document.getElementById('scope')?.value || '';
+    const metrics = buildSalesUIMetrics(state, settings);
+    const estimateTotal = Number(payload.totalAmount || metrics.offered || metrics.recommended || 0);
+    const depositRequired = Number(payload.depositRequired || 1000);
+    const tenantForPdf = buildEstimateTenantPayload(branding, settings, payload);
+
+    const pdfPayload = {
+      ...payload,
+      ...tenantForPdf,
+      branding,
+      settings,
+      clientName: toName,
+      customerEmail: toEmail,
+      messageText: message.replace('[PUBLIC_QUOTE_URL]', publicQuoteUrl || '[PUBLIC_QUOTE_URL]'),
+      publicQuoteUrl: publicQuoteUrl || payload.publicQuoteUrl || '',
+      totalAmount: estimateTotal,
+      totalFormatted: formatUsd(estimateTotal),
+      depositRequired,
+      depositFormatted: formatUsd(depositRequired),
+    };
+
+    const pdfDoc = await buildEstimatePdfPayload(pdfPayload);
+    if (pdfDoc && pdfDoc.contentBase64) {
+      try {
+        const bytes = Uint8Array.from(atob(pdfDoc.contentBase64), function (c) {
+          return c.charCodeAt(0);
+        });
+        const blob = new Blob([bytes], { type: pdfDoc.mimeType || 'application/pdf' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = pdfDoc.fileName || 'Proposal.pdf';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(function () {
+          URL.revokeObjectURL(link.href);
+        }, 2000);
+        return;
+      } catch (_pdfDlErr) {
+        /* fall through to public link */
+      }
+    }
+
+    if (publicQuoteUrl) {
+      window.open(publicQuoteUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
 
     window.alert(
-      'Preview\n\nTo: ' + toName + ' <' + toEmail + '>\nSubject: ' + subject +
-      '\nProject start investment: $' + deposit +
+      'Preview\n\nTo: ' + toName + ' <' + toEmail + '>\nSubject: ' +
+      (document.getElementById('subject')?.value || 'Estimate') +
       '\n\nVisible scope:\n' + scope +
       '\n\nMessage:\n' + message
     );
@@ -9889,7 +9980,7 @@ async function openSellerSendModal(event) {
         quote_id: draftCheck.quote_id,
         public_url: draftCheck.public_url,
         quote_number_display: draftCheck.quote_number_display || '',
-        message: 'Quote created. Owner/full send step is still disabled.'
+        message: 'Quote created. Firmar is now available.'
       };
     }
 
@@ -10015,7 +10106,7 @@ async function openSellerSendModal(event) {
         quote_id: publishData.quote_id,
         public_url: publishData.public_url,
         quote_number_display: publishData.quote_number_display || stateFresh.estimateNumber || '',
-        message: 'Quote created. Owner/full send step is still disabled.'
+        message: 'Quote created. Firmar is now available.'
       };
     } catch (err) {
       return { ok: false, error: err.message || 'Unable to create public quote link.' };
@@ -10048,6 +10139,9 @@ async function runSellerSend(event) {
     const sendButton = document.getElementById('btnSendNow');
     const state = loadSalesState();
     const settings = loadSettings();
+    if (typeof window.resolveSellerPublishWorkers === 'function') {
+      window.resolveSellerPublishWorkers(state, settings);
+    }
     const metrics = buildSalesUIMetrics(state, settings);
     if (metrics.marginBlocked) {
       if (sendStatus) {
@@ -10194,21 +10288,44 @@ async function runSellerSend(event) {
         message,
         scope
       });
-      const publishResponse = await fetch('/.netlify/functions/publish-public-quote', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(publishBody)
-      });
 
-      const publishRaw = await publishResponse.text();
-      let publishData = {};
-      try {
-        publishData = publishRaw ? JSON.parse(publishRaw) : {};
-      } catch (_error) {}
+      let publishData = null;
+      const existingSnapshot = getSalesPublishedQuoteSnapshot();
+      const existingToken = String(stateFresh.publicToken || '').trim();
+      if (existingSnapshot && existingSnapshot.quote_id && existingSnapshot.public_url && existingToken) {
+        publishData = {
+          quote_id: existingSnapshot.quote_id,
+          public_token: existingToken,
+          public_url: existingSnapshot.public_url,
+          quote_number_display: existingSnapshot.quote_number_display || stateFresh.estimateNumber || '',
+        };
+      } else {
+        const publishResponse = await fetch('/.netlify/functions/publish-public-quote', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(publishBody)
+        });
 
-      if (!publishResponse.ok || !publishData?.quote_id || !publishData?.public_token || !publishData?.public_url) {
-        throw new Error(publishData.error || publishRaw || 'Unable to create public quote link.');
+        const publishRaw = await publishResponse.text();
+        let publishParsed = {};
+        try {
+          publishParsed = publishRaw ? JSON.parse(publishRaw) : {};
+        } catch (_error) {}
+
+        if (!publishResponse.ok || !publishParsed?.quote_id || !publishParsed?.public_token || !publishParsed?.public_url) {
+          throw new Error(publishParsed.error || publishRaw || 'Unable to create public quote link.');
+        }
+        publishData = publishParsed;
+      }
+
+      if (!(existingSnapshot && existingSnapshot.quote_id && existingSnapshot.public_url && existingToken)) {
+        stateFresh.quoteId = publishData.quote_id;
+        stateFresh.publicToken = publishData.public_token;
+        stateFresh.publicQuoteUrl = publishData.public_url;
+        stateFresh.estimateNumber =
+          publishData.quote_number_display || stateFresh.estimateNumber || '';
+        saveSalesState(stateFresh);
       }
 
       console.info('[seller-publish] publish-public-quote response', {
