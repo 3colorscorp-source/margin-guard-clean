@@ -4762,6 +4762,19 @@
         state._sellerPublishFingerprint = '';
       }
 
+      /** Real Seller drafts created before draft tracking may lack _sellerDraftId until New Quote. */
+      function ensureSellerPublishDraftReady(state) {
+        if (!state || typeof state !== 'object') return false;
+        let mutated = false;
+        let draftId = String(state._sellerDraftId || '').trim();
+        if (!draftId) {
+          const publishedDraftId = String(state._sellerPublishedDraftId || '').trim();
+          state._sellerDraftId = publishedDraftId || createSellerDraftId();
+          mutated = true;
+        }
+        return mutated;
+      }
+
       function showSellerPublishOrphanNotice(message) {
         let notice = document.getElementById('mgSellerPublishOrphanNotice');
         if (!notice) {
@@ -4826,10 +4839,14 @@
           return { ok: false, error: settingsGuard };
         }
 
-        const draftId = String(state._sellerDraftId || '').trim();
-        const publishedDraftId = String(state._sellerPublishedDraftId || '').trim();
-        const quoteId = String(state.quoteId || '').trim();
-        const publicUrl = String(state.publicQuoteUrl || '').trim();
+        if (ensureSellerPublishDraftReady(state)) {
+          saveSalesState(state);
+        }
+
+        let draftId = String(state._sellerDraftId || '').trim();
+        let publishedDraftId = String(state._sellerPublishedDraftId || '').trim();
+        let quoteId = String(state.quoteId || '').trim();
+        let publicUrl = String(state.publicQuoteUrl || '').trim();
         const publishFingerprint = String(state._sellerPublishFingerprint || '').trim();
         const currentFingerprint = sellerDraftFingerprint(state);
 
@@ -4840,7 +4857,7 @@
         const workers = Array.isArray(state.workers) ? state.workers : [];
         let workerDays = 0;
         for (let i = 0; i < workers.length; i++) {
-          workerDays += Math.max(0, Number(workers[i] && workers[i].days != null ? workers[i].days : 0));
+          workerDays += workerDaysAsInteger(workers[i]);
         }
 
         if (action === 'publish') {
@@ -4853,12 +4870,17 @@
               quote_number_display: String(state.estimateNumber || '').trim()
             };
           }
-          if (quoteId || publicUrl) {
-            if (publishedDraftId !== draftId) {
-              return { ok: false, error: SELLER_DRAFT_STALE_MSG };
-            }
+          if (
+            (quoteId || publicUrl || publishedDraftId) &&
+            publishedDraftId !== draftId
+          ) {
+            clearInvalidSellerPublishedFields(state);
+            saveSalesState(state);
+            quoteId = '';
+            publicUrl = '';
+            publishedDraftId = '';
           }
-          if (!workers.length || workerDays <= 0) {
+          if (!sellerHasEffectiveLaborForPublish(state, loadSettings())) {
             return { ok: false, error: 'Add labor lines before creating a public quote link.' };
           }
           return { ok: true };
@@ -5034,6 +5056,65 @@
         }
         return JSON.stringify(state.workers) !== prev;
       }
+
+      function prepareSellerPublishLaborState(state, settings) {
+        if (!state || typeof state !== 'object') return false;
+        const s = settings || loadSettings();
+        if (!syncLaborWorkersFromOperationalPlan(state, s)) return false;
+        saveSalesState(state);
+        return true;
+      }
+
+      /** Same effective labor source as pricing / Proposal Summary before publish validation. */
+      function resolveSellerPublishWorkers(state, settings) {
+        if (!state || typeof state !== 'object') return [];
+        const s = settings || loadSettings();
+        prepareSellerPublishLaborState(state, s);
+        let workers = Array.isArray(state.workers) ? state.workers : [];
+        let workerDays = 0;
+        for (let i = 0; i < workers.length; i++) {
+          workerDays += workerDaysAsInteger(workers[i]);
+        }
+        if (workers.length > 0 && workerDays > 0) return workers;
+
+        const api = getOperationalPlanApi();
+        if (!api || typeof api.aggregateLaborWorkersFromOperationalPlan !== 'function') return workers;
+        if (!api.planHasDays(state.operational_plan || [])) return workers;
+
+        const syncSettings = isSellerLaborSyncRoute() ? sellerLaborSyncSettings(s) : s;
+        const hpd = isSellerLaborSyncRoute()
+          ? resolveSellerLaborHoursPerDay(s)
+          : api.getHoursPerDay(syncSettings);
+        const plan = api.normalizeOperationalPlan(
+          state.operational_plan || [],
+          readOperationalDaysOverride(state),
+          hpd
+        );
+        const aggregated = api.aggregateLaborWorkersFromOperationalPlan(plan, syncSettings);
+        if (!aggregated.length) return workers;
+
+        state.workers = aggregated;
+        saveSalesState(state);
+        return aggregated;
+      }
+
+      function sellerHasEffectiveLaborForPublish(state, settings) {
+        const s = settings || loadSettings();
+        const workers = resolveSellerPublishWorkers(state, s);
+        let workerDays = 0;
+        for (let i = 0; i < workers.length; i++) {
+          workerDays += workerDaysAsInteger(workers[i]);
+        }
+        if (workers.length > 0 && workerDays > 0) return true;
+
+        const opMetrics = getOperationalMetricsForState(state, s);
+        if (opMetrics && Number(opMetrics.estimated_hours) > 0) return true;
+
+        const metrics = buildSalesUIMetrics(state, s);
+        return Number(metrics.workerDays) > 0 || Number(metrics.workerHours) > 0;
+      }
+      window.sellerHasEffectiveLaborForPublish = sellerHasEffectiveLaborForPublish;
+      window.resolveSellerPublishWorkers = resolveSellerPublishWorkers;
 
       function updateLaborSyncChrome(state) {
         const autoSync = document.getElementById('salesLaborAutoSync');
@@ -7989,6 +8070,9 @@
             window.__mgIsRealSellerDeviceRoute()
           ) {
             removeSellerPublishOrphanNotice();
+            if (ensureSellerPublishDraftReady(state)) {
+              saveSalesState(state);
+            }
             refreshSellerFromStandalone();
             result = { ok: true, skippedReset: true };
           } else {
@@ -9815,18 +9899,19 @@ async function openSellerSendModal(event) {
       return { ok: false, error: 'Price too low' };
     }
 
-    const workers = Array.isArray(state.workers) ? state.workers : [];
-    let workerDays = 0;
-    for (const w of workers) {
-      workerDays += Math.max(0, Number(w && w.days != null ? w.days : 0));
-    }
-    if (!workers.length || workerDays <= 0) {
+    if (
+      typeof window.sellerHasEffectiveLaborForPublish === 'function' &&
+      !window.sellerHasEffectiveLaborForPublish(state, settings)
+    ) {
       return { ok: false, error: 'Add labor lines before creating a public quote link.' };
     }
 
     await fillSendModal();
     const payload = JSON.parse(modal.dataset.payload || '{}');
     const stateFresh = loadSalesState();
+    if (typeof window.resolveSellerPublishWorkers === 'function') {
+      window.resolveSellerPublishWorkers(stateFresh, settings);
+    }
     const metricsFresh = buildSalesUIMetrics(stateFresh, settings);
     const estimateTotal = Number(payload.totalAmount || metricsFresh.offered || metricsFresh.recommended || 0);
     const depositRequired = Number(payload.depositRequired || 1000);
