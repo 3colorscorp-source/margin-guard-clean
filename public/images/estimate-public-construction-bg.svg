@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMaxYMin slice">
+  <defs>
+    <linearGradient id="ep-bg-sky" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#060a12"/>
+      <stop offset="55%" stop-color="#0b1220"/>
+      <stop offset="100%" stop-color="#101a2e"/>
+    </linearGradient>
+    <linearGradient id="ep-bg-building" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1c2838" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#0a0f18" stop-opacity="0.98"/>
+    </linearGradient>
+    <linearGradient id="ep-bg-glass" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2a3d58" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#152033" stop-opacity="0.25"/>
+    </linearGradient>
+    <radialGradient id="ep-bg-glow" cx="78%" cy="22%" r="52%">
+      <stop offset="0%" stop-color="#1a3a5c" stop-opacity="0.42"/>
+      <stop offset="45%" stop-color="#0f1a2e" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#060a12" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ep-bg-floor" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0d1524" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#060a12" stop-opacity="0.92"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#ep-bg-sky)"/>
+  <rect width="1920" height="1080" fill="url(#ep-bg-glow)"/>
+  <!-- distant skyline -->
+  <polygon fill="#121c2c" opacity="0.55" points="0,720 0,560 120,540 220,580 340,520 480,560 620,500 760,540 900,490 1040,530 0,720"/>
+  <!-- main tower -->
+  <rect x="1180" y="180" width="220" height="900" fill="url(#ep-bg-building)"/>
+  <rect x="1200" y="210" width="28" height="42" fill="url(#ep-bg-glass)"/>
+  <rect x="1248" y="210" width="28" height="42" fill="url(#ep-bg-glass)"/>
+  <rect x="1296" y="210" width="28" height="42" fill="url(#ep-bg-glass)"/>
+  <rect x="1344" y="210" width="28" height="42" fill="url(#ep-bg-glass)"/>
+  <rect x="1200" y="280" width="28" height="42" fill="url(#ep-bg-glass)"/>
+  <rect x="1248" y="280" width="28" height="42" fill="url(#ep-bg-glass)"/>
+  <rect x="1296" y="280" width="28" height="42" fill="url(#ep-bg-glass)"/>
+  <rect x="1344" y="280" width="28" height="42" fill="url(#ep-bg-glass)"/>
+  <rect x="1200" y="350" width="28" height="42" fill="url(#ep-bg-glass)"/>
+  <rect x="1248" y="350" width="28" height="42" fill="url(#ep-bg-glass)"/>
+  <rect x="1296" y="350" width="28" height="42" fill="url(#ep-bg-glass)"/>
+  <rect x="1344" y="350" width="28" height="42" fill="url(#ep-bg-glass)"/>
+  <!-- secondary building -->
+  <rect x="1440" y="360" width="160" height="720" fill="#141f30" opacity="0.92"/>
+  <rect x="1460" y="390" width="22" height="34" fill="url(#ep-bg-glass)"/>
+  <rect x="1500" y="390" width="22" height="34" fill="url(#ep-bg-glass)"/>
+  <rect x="1540" y="390" width="22" height="34" fill="url(#ep-bg-glass)"/>
+  <rect x="1460" y="450" width="22" height="34" fill="url(#ep-bg-glass)"/>
+  <rect x="1500" y="450" width="22" height="34" fill="url(#ep-bg-glass)"/>
+  <rect x="1540" y="450" width="22" height="34" fill="url(#ep-bg-glass)"/>
+  <!-- crane silhouette -->
+  <g fill="none" stroke="#243247" stroke-width="10" stroke-linecap="round" opacity="0.75">
+    <line x1="1080" y1="920" x2="1080" y2="260"/>
+    <line x1="1080" y1="300" x2="1380" y2="300"/>
+    <line x1="1380" y1="300" x2="1380" y2="420"/>
+    <line x1="1060" y1="920" x2="1100" y2="920"/>
+  </g>
+  <rect x="1040" y="900" width="120" height="18" fill="#1a2535" opacity="0.8" rx="4"/>
+  <!-- scaffold hint -->
+  <g stroke="#1e2d42" stroke-width="4" opacity="0.45">
+    <line x1="1620" y1="500" x2="1620" y2="900"/>
+    <line x1="1680" y1="500" x2="1680" y2="900"/>
+    <line x1="1620" y1="560" x2="1680" y2="560"/>
+    <line x1="1620" y1="640" x2="1680" y2="640"/>
+    <line x1="1620" y1="720" x2="1680" y2="720"/>
+    <line x1="1620" y1="800" x2="1680" y2="800"/>
+  </g>
+  <rect width="1920" height="1080" fill="url(#ep-bg-floor)"/>
+</svg>

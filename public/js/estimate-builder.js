@@ -199,10 +199,12 @@
     const n1 = $("flowNav1");
     const n2 = $("flowNav2");
     const n3 = $("flowNav3");
+    const n4 = $("flowNav4");
     const nOpt = $("flowNavOptionalWork");
     if (n1) n1.href = `${base}&step=1`;
     if (n2) n2.href = `${base}&step=2`;
     if (n3) n3.href = `${base}&step=3`;
+    if (n4) n4.href = `${base}&step=1#mgPublicDepositAnchor`;
     if (nOpt) nOpt.href = `${base}&step=4`;
   }
 
@@ -396,24 +398,100 @@
     return `mg_crq_submitted_${tok || ""}`;
   }
 
-  function updatePublicWorkflowBadges(next) {
-    const b1 = $("flowStepBadge1");
-    const b2 = $("flowStepBadge2");
-    const b3 = $("flowStepBadge3");
-    const b4 = $("flowStepBadge4");
-    const step1 = safe(next.accepted_at) !== "";
-    const step2 =
-      safe(next.exclusions_initials) !== "" &&
-      safe(next.exclusions_acknowledged_at) !== "";
-    const step3 = safe(next.change_order_acknowledged_at) !== "";
-    const tok = getQueryParam("token") || "";
-    const step4 =
-      tok && sessionStorage.getItem(changeRequestSubmittedStorageKey(tok)) === "1";
-    if (b1) b1.textContent = step1 ? "✔" : "";
-    if (b2) b2.textContent = step2 ? "✔" : "";
-    if (b3) b3.textContent = step3 ? "✔" : "";
-    if (b4) b4.textContent = step4 ? "✔" : "";
+  function publicDepositPaidFlag(token) {
+    const tok = String(token || getQueryParam("token") || "").trim();
+    if (!tok) return false;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("deposit") === "paid") return true;
+    try {
+      return localStorage.getItem(`mg_deposit_paid_${tok}`) === "true";
+    } catch (_e) {
+      return false;
+    }
   }
+
+  function updatePublicWorkflowBadges(next) {
+    const bOpt = $("flowStepBadgeOptional");
+    const tok = getQueryParam("token") || "";
+    const optionalDone =
+      tok && sessionStorage.getItem(changeRequestSubmittedStorageKey(tok)) === "1";
+    if (bOpt) bOpt.textContent = optionalDone ? "✔" : "";
+
+    updatePublicWorkflowStepStates(next);
+  }
+
+  function updatePublicWorkflowStepStates(next) {
+    const estimate = next || window.__mgPublicEstimateLast || {};
+    const token = getQueryParam("token") || "";
+    const urlStep = getPublicFlowStep();
+    const visualStep = urlStep === 4 ? 3 : urlStep;
+
+    const step1Done = safe(estimate.accepted_at) !== "";
+    const step2Done =
+      safe(estimate.exclusions_initials) !== "" &&
+      safe(estimate.exclusions_acknowledged_at) !== "";
+    const step3Done = safe(estimate.change_order_acknowledged_at) !== "";
+    const step4Done = publicDepositPaidFlag(token);
+    const doneByStep = [step1Done, step2Done, step3Done, step4Done];
+
+    const statusCopy = {
+      complete: "Completed",
+      current: "Current step",
+      upcoming: "Next",
+      locked: "Locked"
+    };
+
+    const depositCurrent = step1Done && step2Done && step3Done && !step4Done;
+
+    function setStepUi(stepNum, opts) {
+      const item = $(`premiumWorkflowStep${stepNum}`);
+      const badge = $(stepNum === 4 ? "flowStepDepositBadge" : `flowStepBadge${stepNum}`);
+      const statusEl = $(`flowStepStatus${stepNum}`);
+      const link = $(`flowNav${stepNum}`);
+      if (!item) return;
+
+      item.classList.remove("is-complete", "is-current", "is-upcoming", "is-locked");
+      if (opts.state) item.classList.add(`is-${opts.state}`);
+      if (opts.state === "current") item.setAttribute("aria-current", "step");
+      else item.removeAttribute("aria-current");
+
+      if (badge) badge.textContent = opts.done ? "✔" : "";
+      if (statusEl) statusEl.textContent = statusCopy[opts.state] || "";
+      if (link) {
+        if (opts.state === "locked") {
+          link.setAttribute("aria-disabled", "true");
+          link.tabIndex = -1;
+        } else {
+          link.removeAttribute("aria-disabled");
+          link.tabIndex = 0;
+        }
+      }
+    }
+
+    for (let i = 1; i <= 3; i += 1) {
+      const done = doneByStep[i - 1];
+      const prereqMet = i === 1 || doneByStep[i - 2];
+      let state = "upcoming";
+
+      if (!prereqMet) state = "locked";
+      else if (done && visualStep === i) state = "current";
+      else if (done) state = "complete";
+      else if (visualStep === i) state = "current";
+      else state = "upcoming";
+
+      setStepUi(i, { done, state });
+    }
+
+    let depositState = "upcoming";
+    if (step4Done) depositState = "complete";
+    else if (!step3Done || !step2Done || !step1Done) depositState = "locked";
+    else if (depositCurrent) depositState = "current";
+    else depositState = "upcoming";
+
+    setStepUi(4, { done: step4Done, state: depositState });
+  }
+
+  window.updatePublicWorkflowStepStates = updatePublicWorkflowStepStates;
 
   function setupPublicChangeRequestStep(token, estimateSnapshot) {
     const formWrap = $("publicChangeRequestFormWrap");
@@ -754,8 +832,8 @@
       const img = document.createElement("img");
       img.src = logoUrl;
       img.alt = "";
-      img.width = 44;
-      img.height = 44;
+      img.width = 52;
+      img.height = 52;
       img.decoding = "async";
       img.style.cssText =
         opts.badgeCommon + "object-fit:contain;background:rgba(255,255,255,.06);";
@@ -770,6 +848,19 @@
     hostEl.appendChild(
       buildInitialsBadgeEl(opts.initials, opts.badgeCommon, opts.initialsBg)
     );
+  }
+
+  function applyPublicStatusPill(badge, rawStatus) {
+    if (!badge) return;
+    badge.className = "badge estimate-status-pill";
+    const s = String(rawStatus || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "_");
+    if (s === "accepted" || s === "approved") badge.classList.add("is-approved");
+    else if (s === "declined") badge.classList.add("is-declined");
+    else if (s === "ready_to_send") badge.classList.add("is-ready");
+    else badge.classList.add("is-draft");
   }
 
   function renderBusinessHeader(next) {
@@ -805,7 +896,7 @@
 
     const initials = buildInitialsFromBusinessName(resolvedDisplayName);
 
-    const badgePx = "44px";
+    const badgePx = "52px";
     const badgeRadius = "14px";
     const badgeCommon = `width:${badgePx};height:${badgePx};min-width:${badgePx};min-height:${badgePx};flex-shrink:0;border-radius:${badgeRadius};box-sizing:border-box;`;
     const initialsBg =
@@ -840,15 +931,11 @@
 
     if (titleEl) {
       titleEl.innerHTML = `
-        <div style="display:flex;align-items:flex-start;gap:14px;">
-          <span id="publicEstimateBrandBadge"></span>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:30px;font-weight:800;line-height:1.15;margin-bottom:6px;overflow-wrap:break-word;word-break:normal;">
-              ${escapeHtml(resolvedDisplayName)}
-            </div>
-            <div style="font-size:18px;font-weight:700;line-height:1.25;overflow-wrap:break-word;word-break:normal;">
-              ${escapeHtml(projectLine)}
-            </div>
+        <div class="estimate-brand-block">
+          <span id="publicEstimateBrandBadge" class="estimate-brand-block__logo"></span>
+          <div class="estimate-brand-block__text">
+            <h1 class="estimate-brand-block__company">${escapeHtml(resolvedDisplayName)}</h1>
+            <p class="estimate-brand-block__project">${escapeHtml(projectLine)}</p>
           </div>
         </div>
       `;
@@ -901,19 +988,21 @@
     if (metaEl) {
       const lines = [];
 
-      if (businessAddress) lines.push(escapeHtml(businessAddress));
+      if (businessAddress) lines.push(`<div>${escapeHtml(businessAddress)}</div>`);
 
       const contactLine = [businessEmail, businessPhone].filter(Boolean).join(" • ");
-      if (contactLine) lines.push(escapeHtml(contactLine));
+      if (contactLine) lines.push(`<div>${escapeHtml(contactLine)}</div>`);
 
       const expLabel =
         safe(next.expiration_date) ||
         safe(next.expirationDate) ||
         safe(next.valid_through) ||
         "sin fecha";
-      lines.push(`• Expira ${escapeHtml(expLabel)}`);
+      lines.push(
+        `<div class="estimate-expiration-line"><span class="estimate-expiration-line__dot" aria-hidden="true"></span> Expires ${escapeHtml(expLabel)}</div>`
+      );
 
-      metaEl.innerHTML = lines.map((x) => `<div>${x}</div>`).join("");
+      metaEl.innerHTML = lines.join("");
     }
   }
 
@@ -943,25 +1032,25 @@
     if (!wrap) return;
 
     wrap.innerHTML = `
-      <div style="display:grid;gap:10px;">
+      <div class="premium-field-grid">
         <div>
-          <div style="font-size:13px;opacity:.72;text-transform:uppercase;letter-spacing:.06em;">Customer Name</div>
-          <div style="font-size:20px;font-weight:700;">${name}</div>
+          <div class="premium-field__label">Customer Name</div>
+          <div class="premium-field__value is-emphasis">${escapeHtml(name)}</div>
         </div>
 
         <div>
-          <div style="font-size:13px;opacity:.72;text-transform:uppercase;letter-spacing:.06em;">Email</div>
-          <div style="font-size:16px;">${email || "-"}</div>
+          <div class="premium-field__label">Email</div>
+          <div class="premium-field__value">${escapeHtml(email || "-")}</div>
         </div>
 
         <div>
-          <div style="font-size:13px;opacity:.72;text-transform:uppercase;letter-spacing:.06em;">Phone</div>
-          <div style="font-size:16px;">${phone || "-"}</div>
+          <div class="premium-field__label">Phone</div>
+          <div class="premium-field__value">${escapeHtml(phone || "-")}</div>
         </div>
 
         <div>
-          <div style="font-size:13px;opacity:.72;text-transform:uppercase;letter-spacing:.06em;">Project Address</div>
-          <div style="font-size:16px;">${projectAddress || "-"}</div>
+          <div class="premium-field__label">Project Address</div>
+          <div class="premium-field__value">${escapeHtml(projectAddress || "-")}</div>
         </div>
       </div>
     `;
@@ -972,9 +1061,8 @@
     if (!wrap) return;
 
     wrap.innerHTML = `
-      <div style="font-size:22px;font-weight:700;line-height:1.2;">
-        Your project is ready.
-      </div>
+      <p class="premium-message-lead">Your project is ready.</p>
+      <p class="premium-message-support">Review the details below and approve when you're ready to move forward.</p>
     `;
   }
 
@@ -993,7 +1081,7 @@
       }
       if (card) card.style.display = "";
       wrap.innerHTML = `
-        <div style="line-height:1.55;opacity:.9;">
+        <div class="premium-terms-copy">
           Deposits are non-refundable if you cancel the project. Deposit amount and payment options are shown in the
           <strong>Investment</strong> summary and the approval section below — no duplicate instructions here.
         </div>
@@ -1010,7 +1098,7 @@
     }
 
     wrap.innerHTML = `
-      <div style="display:grid;gap:12px;line-height:1.6;">
+      <div class="premium-terms-copy">
         <div>
           The required deposit will be applied toward your final invoice.
         </div>
@@ -1094,6 +1182,7 @@
       const badge = $("publicEstimateStatus");
       badge.dataset.rawStatus = rawStatus.toLowerCase();
       badge.textContent = formatPublicEstimateStatusLabel(rawStatus);
+      applyPublicStatusPill(badge, rawStatus);
     }
 
     setupPublicWorkflow(next);
@@ -1153,6 +1242,7 @@
             const raw = (result && result.status) || "declined";
             badge.dataset.rawStatus = String(raw).trim().toLowerCase();
             badge.textContent = formatPublicEstimateStatusLabel(raw);
+            applyPublicStatusPill(badge, raw);
           }
 
           hideDecisionButtons();

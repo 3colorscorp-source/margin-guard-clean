@@ -124,11 +124,299 @@
 
     .public-flow-nav a {
       color: rgba(255, 255, 255, 0.92);
-      text-decoration: underline;
-      text-underline-offset: 3px;
+      text-decoration: none;
     }
-    .public-flow-nav a:hover {
-      opacity: 1;
+
+    /* Premium construction workflow step bar */
+    .public-flow-nav.premium-workflow {
+      margin: 18px 0 22px;
+      padding: 18px 18px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background:
+        linear-gradient(155deg, rgba(28, 38, 72, 0.55) 0%, rgba(8, 14, 32, 0.88) 100%);
+      box-shadow:
+        0 14px 40px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+
+    .premium-workflow__intro {
+      margin-bottom: 14px;
+    }
+
+    .premium-workflow__eyebrow {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(110, 231, 183, 0.92);
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .premium-workflow__lead {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.45;
+      color: rgba(232, 238, 252, 0.82);
+      max-width: 62ch;
+    }
+
+    .premium-workflow__track {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .premium-workflow__item {
+      position: relative;
+      min-width: 0;
+      z-index: 1;
+    }
+
+    .premium-workflow__item + .premium-workflow__item {
+      margin-left: -11px;
+      z-index: 2;
+    }
+
+    .premium-workflow__item:nth-child(2) { z-index: 3; }
+    .premium-workflow__item:nth-child(3) { z-index: 4; }
+    .premium-workflow__item:nth-child(4) { z-index: 5; }
+
+    .premium-workflow__arrow {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      min-height: 68px;
+      padding: 12px 22px 12px 16px;
+      box-sizing: border-box;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: inherit;
+      text-align: left;
+      font: inherit;
+      cursor: pointer;
+      position: relative;
+      clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%, 12px 50%);
+      background: linear-gradient(180deg, rgba(34, 84, 62, 0.42) 0%, rgba(16, 44, 34, 0.72) 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        transform 0.15s ease;
+    }
+
+    .premium-workflow__item:first-child .premium-workflow__arrow {
+      clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%);
+      padding-left: 14px;
+    }
+
+    .premium-workflow__item:last-child .premium-workflow__arrow {
+      clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 12px 50%);
+      padding-right: 14px;
+    }
+
+    .premium-workflow__item:first-child:last-child .premium-workflow__arrow {
+      clip-path: none;
+      border-radius: 12px;
+    }
+
+    a.premium-workflow__arrow {
+      text-decoration: none;
+    }
+
+    .premium-workflow__arrow:hover:not(:disabled):not(.is-locked) {
+      transform: translateY(-1px);
+      border-color: rgba(110, 231, 183, 0.35);
+      box-shadow:
+        0 8px 22px rgba(0, 0, 0, 0.22),
+        0 0 0 1px rgba(52, 211, 153, 0.12);
+    }
+
+    .premium-workflow__arrow:focus-visible {
+      outline: 2px solid rgba(52, 211, 153, 0.9);
+      outline-offset: 2px;
+    }
+
+    .premium-workflow__num {
+      flex-shrink: 0;
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: rgba(255, 255, 255, 0.95);
+    }
+
+    .premium-workflow__body {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .premium-workflow__label {
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1.2;
+      letter-spacing: 0.01em;
+      color: rgba(255, 255, 255, 0.94);
+    }
+
+    .premium-workflow__status {
+      font-size: 11px;
+      line-height: 1.25;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.62);
+      font-weight: 700;
+    }
+
+    .premium-workflow__mark {
+      flex-shrink: 0;
+      width: 22px;
+      text-align: center;
+      font-size: 15px;
+      font-weight: 800;
+      color: rgba(52, 211, 153, 0.95);
+      line-height: 1;
+    }
+
+    .premium-workflow__item.is-upcoming .premium-workflow__arrow {
+      background: linear-gradient(180deg, rgba(30, 72, 54, 0.34) 0%, rgba(14, 36, 28, 0.58) 100%);
+    }
+
+    .premium-workflow__item.is-current .premium-workflow__arrow {
+      background: linear-gradient(180deg, rgba(248, 250, 252, 0.96) 0%, rgba(226, 232, 240, 0.9) 100%);
+      border-color: rgba(255, 255, 255, 0.55);
+      box-shadow:
+        0 10px 28px rgba(0, 0, 0, 0.28),
+        0 0 24px rgba(52, 211, 153, 0.18);
+    }
+
+    .premium-workflow__item.is-current .premium-workflow__num {
+      background: rgba(15, 23, 42, 0.92);
+      border-color: rgba(15, 23, 42, 0.2);
+      color: #fff;
+    }
+
+    .premium-workflow__item.is-current .premium-workflow__label {
+      color: rgba(15, 23, 42, 0.96);
+    }
+
+    .premium-workflow__item.is-current .premium-workflow__status {
+      color: rgba(30, 41, 59, 0.72);
+    }
+
+    .premium-workflow__item.is-complete .premium-workflow__arrow {
+      background: linear-gradient(180deg, rgba(34, 197, 94, 0.42) 0%, rgba(21, 128, 61, 0.72) 100%);
+      border-color: rgba(74, 222, 128, 0.42);
+      box-shadow:
+        0 8px 20px rgba(16, 185, 129, 0.16),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+
+    .premium-workflow__item.is-complete .premium-workflow__status {
+      color: rgba(209, 250, 229, 0.92);
+    }
+
+    .premium-workflow__item.is-complete.is-current .premium-workflow__arrow {
+      background: linear-gradient(180deg, rgba(248, 250, 252, 0.96) 0%, rgba(220, 252, 231, 0.92) 100%);
+    }
+
+    .premium-workflow__item.is-locked .premium-workflow__arrow {
+      opacity: 0.55;
+      cursor: not-allowed;
+      pointer-events: none;
+      filter: saturate(0.75);
+    }
+
+    .premium-workflow__item--deposit.is-payable .premium-workflow__link {
+      display: none;
+    }
+
+    .premium-workflow__item--deposit .premium-workflow__pay {
+      display: none;
+      width: 100%;
+      border: 0;
+      font: inherit;
+    }
+
+    .premium-workflow__item--deposit.is-payable .premium-workflow__pay {
+      display: flex;
+    }
+
+    .premium-workflow__item--deposit.is-payable.is-current .premium-workflow__arrow,
+    .premium-workflow__item--deposit.is-payable .premium-workflow__pay {
+      background: linear-gradient(180deg, rgba(52, 211, 153, 0.95) 0%, rgba(16, 185, 129, 0.88) 100%);
+      border-color: rgba(167, 243, 208, 0.65);
+      color: rgba(6, 24, 18, 0.96);
+      box-shadow:
+        0 12px 30px rgba(16, 185, 129, 0.28),
+        0 0 28px rgba(52, 211, 153, 0.22);
+    }
+
+    .premium-workflow__item--deposit.is-payable .premium-workflow__label,
+    .premium-workflow__item--deposit.is-payable .premium-workflow__status {
+      color: rgba(6, 24, 18, 0.92);
+    }
+
+    .premium-workflow__item--deposit.is-payable .premium-workflow__num {
+      background: rgba(6, 24, 18, 0.14);
+      border-color: rgba(6, 24, 18, 0.18);
+      color: rgba(6, 24, 18, 0.95);
+    }
+
+    .premium-workflow__item--deposit.is-complete .premium-workflow__arrow {
+      background: linear-gradient(180deg, rgba(22, 163, 74, 0.72) 0%, rgba(21, 128, 61, 0.92) 100%);
+    }
+
+    @media (max-width: 980px) {
+      .premium-workflow__track {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .premium-workflow__item + .premium-workflow__item {
+        margin-left: 0;
+      }
+
+      .premium-workflow__item .premium-workflow__arrow,
+      .premium-workflow__item:first-child .premium-workflow__arrow,
+      .premium-workflow__item:last-child .premium-workflow__arrow {
+        clip-path: none;
+        border-radius: 14px;
+        min-height: 64px;
+        padding: 12px 14px;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .public-flow-nav.premium-workflow {
+        padding: 14px 12px 12px;
+      }
+
+      .premium-workflow__track {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+
+      .premium-workflow__label {
+        font-size: 13px;
+      }
     }
     .flow-step-panel {
       margin-top: 8px;
@@ -173,10 +461,442 @@
       border-radius: 4px;
     }
 
-    /* Public estimate — wider desktop layout (UI only) */
+    /* Premium construction page shell (UI only) */
     body.estimate-public-page {
       overflow-x: hidden;
+      min-height: 100vh;
+      background: #060a12;
+      color: rgba(232, 238, 252, 0.96);
     }
+
+    .estimate-public-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background-color: #060a12;
+      background-image:
+        radial-gradient(ellipse 85% 70% at 50% 45%, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.55) 100%),
+        linear-gradient(180deg, rgba(6, 10, 18, 0.72) 0%, rgba(6, 10, 18, 0.88) 42%, rgba(4, 8, 14, 0.94) 100%),
+        linear-gradient(115deg, rgba(6, 10, 18, 0.82) 0%, rgba(6, 10, 18, 0.35) 48%, rgba(6, 10, 18, 0.62) 100%),
+        url("/images/estimate-public-construction-bg.svg");
+      background-size: cover, cover, cover, cover;
+      background-position: center, center, center, 72% 28%;
+      background-repeat: no-repeat;
+    }
+
+    body.estimate-public-page .estimate-public-wrap {
+      position: relative;
+      z-index: 1;
+    }
+
+    body.estimate-public-page .estimate-public-shell {
+      margin-top: 28px;
+      margin-bottom: 32px;
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background:
+        linear-gradient(165deg, rgba(18, 28, 52, 0.78) 0%, rgba(8, 12, 26, 0.9) 52%, rgba(6, 10, 20, 0.94) 100%);
+      box-shadow:
+        0 28px 90px rgba(0, 0, 0, 0.48),
+        0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+        0 0 80px rgba(52, 211, 153, 0.04);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      overflow: hidden;
+    }
+
+    body.estimate-public-page .estimate-public-shell > .card-inner {
+      padding: 26px 28px 28px;
+    }
+
+    .estimate-hero-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 20px 28px;
+      margin-bottom: 6px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .estimate-hero-header__main {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .estimate-hero-header__status {
+      flex-shrink: 0;
+      padding-top: 4px;
+    }
+
+    #publicEstimateTitle {
+      margin: 0;
+      font: inherit;
+    }
+
+    .estimate-brand-block {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      min-width: 0;
+    }
+
+    .estimate-brand-block__logo,
+    .estimate-brand-block__logo img {
+      width: 52px;
+      height: 52px;
+      min-width: 52px;
+      min-height: 52px;
+      flex-shrink: 0;
+      border-radius: 14px;
+      box-sizing: border-box;
+      object-fit: contain;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .estimate-brand-block__text {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .estimate-brand-block__company {
+      margin: 0 0 6px;
+      font-size: clamp(26px, 3.2vw, 34px);
+      font-weight: 800;
+      line-height: 1.12;
+      letter-spacing: -0.02em;
+      overflow-wrap: break-word;
+      word-break: normal;
+      color: rgba(255, 255, 255, 0.98);
+    }
+
+    .estimate-brand-block__project {
+      margin: 0;
+      font-size: clamp(16px, 2vw, 20px);
+      font-weight: 700;
+      line-height: 1.3;
+      color: rgba(203, 213, 225, 0.88);
+      overflow-wrap: break-word;
+    }
+
+    .estimate-hero-header__meta {
+      margin-top: 12px;
+      font-size: 13px;
+      line-height: 1.55;
+      color: rgba(203, 213, 225, 0.72);
+    }
+
+    .estimate-hero-header__meta > div + div {
+      margin-top: 2px;
+    }
+
+    .estimate-expiration-line {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+      font-weight: 600;
+      color: rgba(167, 243, 208, 0.92);
+    }
+
+    .estimate-expiration-line__dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #34d399;
+      box-shadow: 0 0 10px rgba(52, 211, 153, 0.65);
+      flex-shrink: 0;
+    }
+
+    .estimate-status-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      padding: 8px 16px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.88);
+      white-space: nowrap;
+    }
+
+    .estimate-status-pill.is-ready {
+      border-color: rgba(52, 211, 153, 0.45);
+      background: linear-gradient(180deg, rgba(34, 197, 94, 0.22) 0%, rgba(21, 128, 61, 0.28) 100%);
+      color: rgba(209, 250, 229, 0.98);
+      box-shadow: 0 0 20px rgba(52, 211, 153, 0.12);
+    }
+
+    .estimate-status-pill.is-approved {
+      border-color: rgba(74, 222, 128, 0.5);
+      background: linear-gradient(180deg, rgba(34, 197, 94, 0.32) 0%, rgba(21, 128, 61, 0.38) 100%);
+      color: #ecfdf5;
+    }
+
+    .estimate-status-pill.is-declined {
+      border-color: rgba(248, 113, 113, 0.45);
+      background: rgba(127, 29, 29, 0.35);
+      color: #fecaca;
+    }
+
+    .public-flow-nav.premium-workflow {
+      margin: 20px 0 24px;
+      padding: 20px 20px 18px;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background:
+        linear-gradient(155deg, rgba(22, 32, 58, 0.62) 0%, rgba(8, 14, 30, 0.88) 100%);
+      box-shadow:
+        0 16px 44px rgba(0, 0, 0, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+
+    .premium-workflow__arrow {
+      min-height: 76px;
+      padding: 14px 24px 14px 18px;
+    }
+
+    .premium-workflow__num {
+      width: 34px;
+      height: 34px;
+      font-size: 14px;
+    }
+
+    .premium-workflow__item.is-upcoming .premium-workflow__arrow {
+      background: linear-gradient(180deg, rgba(36, 88, 66, 0.38) 0%, rgba(18, 48, 36, 0.62) 100%);
+      border-color: rgba(52, 211, 153, 0.16);
+    }
+
+    .premium-workflow__item.is-upcoming .premium-workflow__label {
+      color: rgba(209, 250, 229, 0.88);
+    }
+
+    .premium-workflow__item.is-complete .premium-workflow__arrow {
+      background: linear-gradient(180deg, rgba(34, 197, 94, 0.55) 0%, rgba(21, 128, 61, 0.82) 100%);
+      border-color: rgba(74, 222, 128, 0.48);
+      box-shadow:
+        0 10px 24px rgba(16, 185, 129, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    }
+
+    .premium-workflow__item.is-complete .premium-workflow__num {
+      background: rgba(6, 44, 28, 0.35);
+      border-color: rgba(167, 243, 208, 0.35);
+      color: #ecfdf5;
+    }
+
+    .premium-estimate-grid {
+      margin-top: 18px;
+      gap: 16px 18px;
+    }
+
+    body.estimate-public-page .premium-estimate-card {
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background:
+        linear-gradient(165deg, rgba(20, 30, 54, 0.72) 0%, rgba(10, 16, 32, 0.88) 100%);
+      box-shadow:
+        0 12px 32px rgba(0, 0, 0, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    body.estimate-public-page .premium-estimate-card > .card-inner {
+      padding: 18px 20px 20px;
+    }
+
+    .premium-card-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(167, 243, 208, 0.95);
+    }
+
+    .premium-card-head__icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: rgba(52, 211, 153, 0.14);
+      border: 1px solid rgba(52, 211, 153, 0.28);
+      font-size: 14px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .premium-field-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .premium-field__label {
+      font-size: 11px;
+      opacity: 0.68;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .premium-field__value {
+      font-size: 16px;
+      line-height: 1.4;
+      color: rgba(241, 245, 249, 0.94);
+    }
+
+    .premium-field__value.is-emphasis {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+
+    .premium-investment-rows {
+      display: grid;
+      gap: 0;
+    }
+
+    .premium-investment-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    }
+
+    .premium-investment-row:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .premium-investment-row span {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(203, 213, 225, 0.72);
+    }
+
+    .premium-investment-row strong {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: rgba(255, 255, 255, 0.98);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .premium-investment-row.is-deposit strong {
+      color: rgba(110, 231, 183, 0.98);
+    }
+
+    .premium-investment-row.is-balance strong {
+      font-size: 20px;
+      color: rgba(226, 232, 240, 0.92);
+    }
+
+    .premium-message-lead {
+      margin: 0 0 8px;
+      font-size: clamp(20px, 2.4vw, 24px);
+      font-weight: 800;
+      line-height: 1.25;
+      color: rgba(255, 255, 255, 0.98);
+    }
+
+    .premium-message-support {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.55;
+      color: rgba(203, 213, 225, 0.72);
+    }
+
+    .premium-terms-copy {
+      line-height: 1.6;
+      font-size: 14px;
+      color: rgba(226, 232, 240, 0.88);
+    }
+
+    .premium-terms-copy > div + div {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .estimate-public-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 22px;
+      padding-top: 4px;
+    }
+
+    .estimate-public-actions .btn {
+      min-height: 52px;
+      min-width: min(100%, 240px);
+      padding: 14px 28px;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      transition:
+        transform 0.15s ease,
+        box-shadow 0.2s ease,
+        border-color 0.2s ease,
+        background 0.2s ease;
+    }
+
+    .estimate-public-actions .btn.primary {
+      flex: 1 1 220px;
+      border: 1px solid rgba(110, 231, 183, 0.55);
+      background: linear-gradient(180deg, rgba(52, 211, 153, 0.95) 0%, rgba(16, 185, 129, 0.9) 100%);
+      color: rgba(6, 24, 18, 0.96);
+      box-shadow:
+        0 14px 32px rgba(16, 185, 129, 0.28),
+        0 0 24px rgba(52, 211, 153, 0.14);
+    }
+
+    .estimate-public-actions .btn.primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow:
+        0 18px 38px rgba(16, 185, 129, 0.34),
+        0 0 28px rgba(52, 211, 153, 0.18);
+    }
+
+    .estimate-public-actions .btn.danger {
+      flex: 0 1 auto;
+      border: 1px solid rgba(248, 113, 113, 0.55);
+      background: rgba(127, 29, 29, 0.18);
+      color: #fecaca;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .estimate-public-actions .btn.danger:hover:not(:disabled) {
+      transform: translateY(-1px);
+      border-color: rgba(248, 113, 113, 0.75);
+      background: rgba(153, 27, 27, 0.28);
+    }
+
+    .estimate-public-footer {
+      margin-top: 24px;
+      padding-top: 8px;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-align: center;
+      color: rgba(148, 163, 184, 0.72);
+    }
+
     @media (min-width: 981px) {
       body.estimate-public-page .container.narrow {
         width: min(1360px, calc(100vw - 80px));
@@ -185,25 +905,29 @@
         padding-right: 24px;
         box-sizing: border-box;
       }
-      body.estimate-public-page .container.narrow > .card {
-        margin-top: 20px;
+
+      body.estimate-public-page .estimate-public-shell > .card-inner {
+        padding: 28px 32px 32px;
       }
-      body.estimate-public-page .container.narrow > .card > .card-inner {
-        padding: 18px 22px 20px;
-      }
-      body.estimate-public-page .container.narrow .grid {
+
+      body.estimate-public-page .container.narrow .grid,
+      body.estimate-public-page .container.narrow .premium-estimate-grid {
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        gap: 14px 18px;
+        gap: 16px 20px;
       }
-      body.estimate-public-page .container.narrow .estimate-subcard .card-inner {
-        padding: 14px 16px;
-      }
+
       body.estimate-public-page .container.narrow .summary {
-        margin-top: 14px;
+        margin-top: 16px;
       }
+
       body.estimate-public-page .container.narrow .public-flow-nav {
-        justify-content: flex-start;
+        justify-content: stretch;
       }
+
+      body.estimate-public-page .container.narrow .premium-workflow__track {
+        width: 100%;
+      }
+
       body.estimate-public-page .container.narrow #publicEstimateCustomer,
       body.estimate-public-page .container.narrow #publicEstimateMessage,
       body.estimate-public-page .container.narrow #publicEstimateTerms,
@@ -211,11 +935,13 @@
         overflow-wrap: anywhere;
         word-break: break-word;
       }
+
       body.estimate-public-page .approved-panel-inner,
       body.estimate-public-page .paid-panel-inner {
-        padding: 18px 20px;
+        padding: 20px 22px;
       }
     }
+
     @media (max-width: 980px) {
       body.estimate-public-page .container.narrow {
         width: 100%;
@@ -224,59 +950,147 @@
         padding-right: 16px;
         box-sizing: border-box;
       }
+
+      body.estimate-public-page .estimate-public-shell {
+        margin-top: 16px;
+        border-radius: 20px;
+      }
+
+      body.estimate-public-page .estimate-public-shell > .card-inner {
+        padding: 20px 18px 22px;
+      }
+
+      .estimate-hero-header {
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .estimate-hero-header__status {
+        padding-top: 0;
+      }
+
+      .estimate-public-actions .btn {
+        width: 100%;
+        flex: 1 1 100%;
+      }
     }
   </style>
 </head>
 <body class="estimate-public-page">
-  <div class="container narrow">
-    <section class="card" style="margin-top:24px;">
+  <div class="estimate-public-bg" aria-hidden="true"></div>
+  <div class="container narrow estimate-public-wrap">
+    <section class="card estimate-public-shell">
       <div class="card-inner">
-        <div class="section-head">
-          <div>
-            <h2 id="publicEstimateTitle">Estimate preview</h2>
-            <div class="sub" id="publicEstimateMeta">Comparte este link para revisar y aprobar.</div>
+        <header class="estimate-hero-header">
+          <div class="estimate-hero-header__main">
+            <div id="publicEstimateTitle">Estimate preview</div>
+            <div class="estimate-hero-header__meta" id="publicEstimateMeta">Comparte este link para revisar y aprobar.</div>
           </div>
-          <div class="badge amber" id="publicEstimateStatus">draft</div>
-        </div>
+          <div class="estimate-hero-header__status">
+            <div class="badge estimate-status-pill is-draft" id="publicEstimateStatus">draft</div>
+          </div>
+        </header>
 
-        <nav id="publicFlowNav" class="public-flow-nav" style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center;font-size:13px;">
-          <span style="opacity:.75;">Workflow</span>
-          <span style="display:inline-flex;align-items:center;gap:2px;">
-            <a id="flowNav1" href="#">1 · Estimate</a><span id="flowStepBadge1" class="flow-step-mark"></span>
-          </span>
-          <span style="opacity:.35;">|</span>
-          <span style="display:inline-flex;align-items:center;gap:2px;">
-            <a id="flowNav2" href="#">2 · Exclusions</a><span id="flowStepBadge2" class="flow-step-mark"></span>
-          </span>
-          <span style="opacity:.35;">|</span>
-          <span style="display:inline-flex;align-items:center;gap:2px;">
-            <a id="flowNav3" href="#">3 · Change orders</a><span id="flowStepBadge3" class="flow-step-mark"></span>
-          </span>
-          <span style="opacity:.35;">|</span>
-          <button
-            type="button"
-            class="btn primary"
-            id="workflowPayDepositBtn"
-            style="display:none;font-size:13px;padding:8px 16px;border-radius:999px;line-height:1.2;"
-          >
-            Pay Deposit
-          </button>
+        <nav id="publicFlowNav" class="public-flow-nav premium-workflow" aria-label="Project workflow">
+          <div class="premium-workflow__intro">
+            <span class="premium-workflow__eyebrow">Construction workflow</span>
+            <p class="premium-workflow__lead">
+              Follow each step to review your estimate, confirm scope, and secure your project schedule.
+            </p>
+          </div>
+          <ol class="premium-workflow__track" role="list">
+            <li class="premium-workflow__item" id="premiumWorkflowStep1" data-workflow-step="1">
+              <a id="flowNav1" class="premium-workflow__arrow premium-workflow__link" href="#">
+                <span class="premium-workflow__num" aria-hidden="true">1</span>
+                <span class="premium-workflow__body">
+                  <span class="premium-workflow__label">Estimate</span>
+                  <span class="premium-workflow__status" id="flowStepStatus1"></span>
+                </span>
+                <span id="flowStepBadge1" class="premium-workflow__mark" aria-hidden="true"></span>
+              </a>
+            </li>
+            <li class="premium-workflow__item" id="premiumWorkflowStep2" data-workflow-step="2">
+              <a id="flowNav2" class="premium-workflow__arrow premium-workflow__link" href="#">
+                <span class="premium-workflow__num" aria-hidden="true">2</span>
+                <span class="premium-workflow__body">
+                  <span class="premium-workflow__label">Exclusions</span>
+                  <span class="premium-workflow__status" id="flowStepStatus2"></span>
+                </span>
+                <span id="flowStepBadge2" class="premium-workflow__mark" aria-hidden="true"></span>
+              </a>
+            </li>
+            <li class="premium-workflow__item" id="premiumWorkflowStep3" data-workflow-step="3">
+              <a id="flowNav3" class="premium-workflow__arrow premium-workflow__link" href="#">
+                <span class="premium-workflow__num" aria-hidden="true">3</span>
+                <span class="premium-workflow__body">
+                  <span class="premium-workflow__label">Change Orders</span>
+                  <span class="premium-workflow__status" id="flowStepStatus3"></span>
+                </span>
+                <span id="flowStepBadge3" class="premium-workflow__mark" aria-hidden="true"></span>
+              </a>
+            </li>
+            <li
+              class="premium-workflow__item premium-workflow__item--deposit"
+              id="premiumWorkflowStep4"
+              data-workflow-step="4"
+            >
+              <a id="flowNav4" class="premium-workflow__arrow premium-workflow__link" href="#">
+                <span class="premium-workflow__num" aria-hidden="true">4</span>
+                <span class="premium-workflow__body">
+                  <span class="premium-workflow__label">Deposit</span>
+                  <span class="premium-workflow__status" id="flowStepStatus4"></span>
+                </span>
+                <span id="flowStepDepositBadge" class="premium-workflow__mark" aria-hidden="true"></span>
+              </a>
+              <button
+                type="button"
+                class="premium-workflow__arrow premium-workflow__pay"
+                id="workflowPayDepositBtn"
+                style="display:none;"
+                aria-hidden="true"
+              >
+                <span class="premium-workflow__num" aria-hidden="true">4</span>
+                <span class="premium-workflow__body">
+                  <span class="premium-workflow__label">Pay Deposit</span>
+                  <span class="premium-workflow__status">Secure your schedule</span>
+                </span>
+                <span class="premium-workflow__mark" aria-hidden="true">→</span>
+              </button>
+            </li>
+          </ol>
         </nav>
 
         <div id="publicFlowStep1" class="flow-step-panel">
-        <div class="grid" style="margin-top:14px;">
-          <div class="card estimate-subcard">
+        <div class="grid premium-estimate-grid">
+          <div class="card estimate-subcard premium-estimate-card">
             <div class="card-inner">
-              <div class="eyebrow">Customer</div>
+              <div class="premium-card-head">
+                <span class="premium-card-head__icon" aria-hidden="true">👤</span>
+                <span>Customer</span>
+              </div>
               <div id="publicEstimateCustomer"></div>
             </div>
           </div>
-          <div class="card estimate-subcard">
+          <div class="card estimate-subcard premium-estimate-card">
             <div class="card-inner">
-              <div class="eyebrow">Investment</div>
-              <div class="sum-row"><span>Full Amount</span><strong id="publicEstimateTotal">$0.00</strong></div>
-              <div class="sum-row"><span>Deposit</span><strong id="publicEstimateDeposit">$0.00</strong></div>
-              <div class="sum-row"><span>Balance After Deposit</span><strong id="publicEstimateBalanceAfter">$0.00</strong></div>
+              <div class="premium-card-head">
+                <span class="premium-card-head__icon" aria-hidden="true">💰</span>
+                <span>Investment</span>
+              </div>
+              <div class="premium-investment-rows">
+                <div class="premium-investment-row is-total">
+                  <span>Full Amount</span>
+                  <strong id="publicEstimateTotal">$0.00</strong>
+                </div>
+                <div class="premium-investment-row is-deposit">
+                  <span>Deposit</span>
+                  <strong id="publicEstimateDeposit">$0.00</strong>
+                </div>
+                <div class="premium-investment-row is-balance">
+                  <span>Balance After Deposit</span>
+                  <strong id="publicEstimateBalanceAfter">$0.00</strong>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -286,22 +1100,28 @@
           <div class="summary-body" id="publicEstimateItems"></div>
         </div>
 
-        <div class="grid" style="margin-top:16px;">
-          <div class="card estimate-subcard">
+        <div class="grid premium-estimate-grid" style="margin-top:16px;">
+          <div class="card estimate-subcard premium-estimate-card">
             <div class="card-inner">
-              <div class="eyebrow">Message</div>
+              <div class="premium-card-head">
+                <span class="premium-card-head__icon" aria-hidden="true">✉</span>
+                <span>Message</span>
+              </div>
               <div id="publicEstimateMessage"></div>
             </div>
           </div>
-          <div class="card estimate-subcard">
+          <div class="card estimate-subcard premium-estimate-card">
             <div class="card-inner">
-              <div class="eyebrow">Terms</div>
+              <div class="premium-card-head">
+                <span class="premium-card-head__icon" aria-hidden="true">📋</span>
+                <span>Terms</span>
+              </div>
               <div id="publicEstimateTerms"></div>
             </div>
           </div>
         </div>
 
-        <div class="inline-actions" style="margin-top:16px;" id="publicEstimateActions">
+        <div class="inline-actions estimate-public-actions" id="publicEstimateActions">
           <button class="btn primary" type="button" id="btnPublicEstimateApprove">Approve estimate</button>
           <button class="btn danger" type="button" id="btnPublicEstimateDecline">Decline</button>
         </div>
@@ -309,7 +1129,7 @@
         <div class="notice" id="publicEstimateFeedback" style="display:none; margin-top:12px;"></div>
 
         <section class="approved-panel" id="approvedProjectPanel" aria-live="polite">
-          <div class="approved-panel-inner">
+          <div class="approved-panel-inner" id="mgPublicDepositAnchor">
             <div class="approved-kicker">Approved</div>
             <h3 class="approved-title"><span class="approved-check">✅</span>Project approved. Secure your schedule.</h3>
             <p class="approved-copy">
@@ -423,7 +1243,7 @@
           <div class="eyebrow" style="opacity:.72;">Optional</div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;margin-bottom:8px;">
             <span style="font-size:15px;font-weight:700;">Request Additional Work</span>
-            <span id="flowStepBadge4" class="flow-step-mark"></span>
+            <span id="flowStepBadgeOptional" class="flow-step-mark"></span>
           </div>
           <p class="sub" style="margin:0 0 12px;line-height:1.45;opacity:.88;">
             Not required for deposit. Use this form if you want extra work reviewed later.
@@ -491,7 +1311,7 @@
         </div>
         </div>
 
-        <p style="margin-top:20px;font-size:12px;opacity:0.65;text-align:center;">Powered by Margin Guard</p>
+        <p class="estimate-public-footer">Powered by Margin Guard</p>
 
         <!-- TEMPORARY: shown only when ?debug=1 (see estimate-builder.js); remove after confirming header. -->
         <div
@@ -604,9 +1424,21 @@
         const stripeUnavail = $("publicDepositStripeUnavailable");
         const payBtn = $("payDepositBtn");
         const workflowPayBtn = $("workflowPayDepositBtn");
+        const depositStep = $("premiumWorkflowStep4");
 
         const stripeReady = depositPaymentAvailable === true;
         const linkReady = hasDepositPaymentLink === true;
+
+        function setDepositWorkflowPayable(canPay) {
+          if (depositStep) depositStep.classList.toggle("is-payable", !!canPay);
+          if (!workflowPayBtn) return;
+          workflowPayBtn.disabled = !canPay;
+          if (canPay) {
+            workflowPayBtn.removeAttribute("aria-hidden");
+          } else {
+            workflowPayBtn.setAttribute("aria-hidden", "true");
+          }
+        }
 
         if (paid) {
           if (actions) actions.style.display = "none";
@@ -618,11 +1450,7 @@
             payBtn.disabled = true;
             payBtn.style.display = "none";
           }
-          if (workflowPayBtn) {
-            workflowPayBtn.disabled = true;
-            workflowPayBtn.style.display = "none";
-            workflowPayBtn.setAttribute("aria-hidden", "true");
-          }
+          setDepositWorkflowPayable(false);
           return;
         }
 
@@ -649,14 +1477,7 @@
             payBtn.style.opacity = canPay ? "" : "0.45";
             payBtn.style.cursor = canPay ? "" : "not-allowed";
           }
-          if (workflowPayBtn) {
-            workflowPayBtn.style.display = canPay ? "" : "none";
-            workflowPayBtn.disabled = !canPay;
-            workflowPayBtn.style.opacity = canPay ? "" : "0.45";
-            workflowPayBtn.style.cursor = canPay ? "" : "not-allowed";
-            if (canPay) workflowPayBtn.removeAttribute("aria-hidden");
-            else workflowPayBtn.setAttribute("aria-hidden", "true");
-          }
+          setDepositWorkflowPayable(canPay);
           return;
         }
 
@@ -671,13 +1492,7 @@
           payBtn.style.cursor = "";
           payBtn.disabled = false;
         }
-        if (workflowPayBtn) {
-          workflowPayBtn.style.display = "none";
-          workflowPayBtn.disabled = true;
-          workflowPayBtn.style.opacity = "";
-          workflowPayBtn.style.cursor = "";
-          workflowPayBtn.setAttribute("aria-hidden", "true");
-        }
+        setDepositWorkflowPayable(false);
       }
 
       function syncPanels() {
@@ -696,6 +1511,10 @@
           depositPaymentAvailable,
           hasDepositPaymentLink
         });
+
+        if (typeof window.updatePublicWorkflowStepStates === "function") {
+          window.updatePublicWorkflowStepStates(est);
+        }
 
         const params = new URLSearchParams(window.location.search);
         if (params.get("checkout") === "cancelled") {
@@ -771,6 +1590,9 @@
 
         const btn = $("payDepositBtn");
         const workflowBtn = $("workflowPayDepositBtn");
+        const workflowPayLabel = workflowBtn
+          ? workflowBtn.querySelector(".premium-workflow__label")
+          : null;
         const feedback = $("publicEstimateFeedback");
 
         if (btn) {
@@ -779,7 +1601,7 @@
         }
         if (workflowBtn) {
           workflowBtn.disabled = true;
-          workflowBtn.textContent = "Opening secure checkout...";
+          if (workflowPayLabel) workflowPayLabel.textContent = "Opening checkout…";
         }
 
         if (feedback) {
@@ -820,7 +1642,7 @@
           }
           if (workflowBtn) {
             workflowBtn.disabled = false;
-            workflowBtn.textContent = "Pay Deposit";
+            if (workflowPayLabel) workflowPayLabel.textContent = "Pay Deposit";
           }
         }
       }
@@ -831,9 +1653,7 @@
         btn.addEventListener("click", startDepositCheckout);
         const workflowBtn = $("workflowPayDepositBtn");
         if (workflowBtn) {
-          workflowBtn.addEventListener("click", function () {
-            btn.click();
-          });
+          workflowBtn.addEventListener("click", startDepositCheckout);
         }
       }
 
