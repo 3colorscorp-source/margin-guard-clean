@@ -6280,35 +6280,22 @@
       }
 
       function readSellerCurrencyFromVisiblePanel() {
-        const storageCode = readSellerCurrencyFromSettingsStorage();
-        const lastValid = readSellerValidCurrency();
-        const priceNode = document.getElementById('salesPrimaryPrice');
-        const priceText = priceNode ? String(priceNode.textContent || '') : '';
-        if (/MX\$|MXN/i.test(priceText)) {
-          if (storageCode === 'USD' || lastValid === 'USD') return '';
-          return 'MXN';
-        }
-        if (/USD/i.test(priceText)) return 'USD';
-        if (/\$/.test(priceText) && !/MX/i.test(priceText)) {
-          return lastValid || storageCode || 'USD';
-        }
         return '';
       }
 
       function resolveSellerCurrency(settings, state) {
         const storageCode = readSellerCurrencyFromSettingsStorage();
-        const settingsCode =
-          settings && !settings.__mgSellerSettingsBlocked
-            ? normalizeSellerCurrencyCode(settings.currency)
-            : '';
+        const settingsCode = normalizeSellerCurrencyCode(settings && settings.currency);
         const stateCode = normalizeSellerCurrencyCode(
           state && (state.currency || state.quoteCurrency || state.estimateCurrency)
         );
         const lastValid = readSellerValidCurrency();
-        const visibleCode = readSellerCurrencyFromVisiblePanel();
-        let resolved = storageCode || settingsCode || lastValid || visibleCode || stateCode || 'USD';
+        let resolved = storageCode || settingsCode || lastValid || stateCode || 'USD';
 
         if (storageCode === 'USD' && resolved === 'MXN') {
+          resolved = 'USD';
+        }
+        if (settingsCode === 'USD' && resolved === 'MXN') {
           resolved = 'USD';
         }
         if (lastValid === 'USD' && resolved === 'MXN' && isSellerPricingSettingsPending(settings)) {
@@ -6317,8 +6304,9 @@
         if (lastValid === 'USD' && resolved === 'MXN' && storageCode !== 'MXN') {
           resolved = 'USD';
         }
-        if (settingsCode === 'USD' && resolved === 'MXN') {
-          resolved = 'USD';
+        if (resolved === 'MXN' && storageCode !== 'MXN' && settingsCode !== 'MXN') {
+          resolved = storageCode || settingsCode || lastValid || 'USD';
+          if (resolved === 'MXN') resolved = 'USD';
         }
 
         rememberSellerValidCurrency(resolved);
@@ -6481,7 +6469,10 @@
         const sellerCurrency = resolveSellerCurrency(settings, state);
         const panel = document.querySelector('.sales-right-panel');
         const panelText = panel ? String(panel.textContent || '') : '';
-        if (sellerCurrency === 'USD' && sellerRightPanelTextUsesMXN(panelText)) {
+        if (
+          !sellerStorageCurrencyExplicitlyMXN() &&
+          sellerRightPanelTextUsesMXN(panelText)
+        ) {
           applySellerRightPanelMoneyFromMetrics(metrics, state, settings);
         }
         if (metrics.recommended > 0) {
