@@ -35,10 +35,20 @@ const QUOTE_PUBLIC_KEYS = [
   "change_order_acknowledged_at"
 ];
 
-/** Include tenant_id for server-side branding; id for audit logs only (stripped from public JSON). */
-const QUOTE_FETCH_KEYS = [...QUOTE_PUBLIC_KEYS, "tenant_id", "id"];
+/** Optional after SUPABASE_QUOTES_ISSUE_EXPIRATION.sql */
+const QUOTE_DATE_KEYS = ["issue_date", "expiration_date"];
+
+/** Include tenant_id for server-side branding; id + created_at for server-only fallbacks. */
+const QUOTE_FETCH_KEYS = [...QUOTE_PUBLIC_KEYS, "tenant_id", "id", "created_at"];
 
 const QUOTE_SELECT = QUOTE_FETCH_KEYS.join(",");
+const QUOTE_SELECT_WITH_DATES = [...QUOTE_FETCH_KEYS, ...QUOTE_DATE_KEYS].join(",");
+
+function isMissingQuoteDateColumns(text) {
+  const t = String(text || "").toLowerCase();
+  if (!/42703|column|schema cache|could not find/i.test(t)) return false;
+  return /issue_date|expiration_date/i.test(t);
+}
 
 /** Treat generic placeholder stored on quotes so real tenant names can win in pickFirst. */
 function skipHeaderPlaceholderName(value) {
@@ -88,13 +98,23 @@ exports.handler = async (event) => {
       return json(400, { error: "Invalid token" });
     }
 
-    const path = `quotes?public_token=eq.${encodeURIComponent(trimmed)}&tenant_id=not.is.null&select=${QUOTE_SELECT}&limit=2`;
+    const pathWithDates =
+      `quotes?public_token=eq.${encodeURIComponent(trimmed)}&tenant_id=not.is.null&select=${QUOTE_SELECT_WITH_DATES}&limit=2`;
+    const pathBase =
+      `quotes?public_token=eq.${encodeURIComponent(trimmed)}&tenant_id=not.is.null&select=${QUOTE_SELECT}&limit=2`;
 
     let rows;
     try {
-      rows = await supabaseRequest(path, { method: "GET" });
+      rows = await supabaseRequest(pathWithDates, { method: "GET" });
     } catch (err) {
-      return json(502, { error: err.message || "Failed to read quote" });
+      if (!isMissingQuoteDateColumns(err.message)) {
+        return json(502, { error: err.message || "Failed to read quote" });
+      }
+      try {
+        rows = await supabaseRequest(pathBase, { method: "GET" });
+      } catch (err2) {
+        return json(502, { error: err2.message || "Failed to read quote" });
+      }
     }
 
     if (!Array.isArray(rows)) {
@@ -111,6 +131,21 @@ exports.handler = async (event) => {
 
     const row = rows[0];
     const estimate = pickPublicEstimateFields(row);
+
+    let tenantSettings = {};
+    if (row.tenant_id) {
+      tenantSettings = await loadTenantSettingsFromLatestSnapshot(row.tenant_id);
+    }
+    const resolvedDates = resolvePublicQuoteDates(row, tenantSettings);
+    if (resolvedDates.issue_date) {
+      estimate.issue_date = resolvedDates.issue_date;
+      estimate.issueDate = resolvedDates.issue_date;
+    }
+    if (resolvedDates.expiration_date) {
+      estimate.expiration_date = resolvedDates.expiration_date;
+      estimate.expirationDate = resolvedDates.expiration_date;
+      estimate.valid_through = resolvedDates.expiration_date;
+    }
 
     console.log("[MG Public Estimate Financials]", {
       quoteId: row.id,
@@ -183,6 +218,68 @@ exports.handler = async (event) => {
 };
 
 const QUOTE_NUMERIC_KEYS = new Set(["total", "deposit_required"]);
+
+function normIsoDate(raw) {
+  const t = String(raw == null ? "" : raw).trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : "";
+}
+
+function isoFromTimestamp(ts) {
+  if (ts === undefined || ts === null || ts === "") return "";
+  const s = String(ts).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const d = new Date(s);
+  if (!Number.isFinite(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+function addDaysToIsoDate(isoDate, days) {
+  const base = normIsoDate(isoDate);
+  if (!base) return "";
+  const n = Math.max(0, Math.floor(Number(days) || 0));
+  const [y, m, d] = base.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
+
+function quoteExpirationDays(settings) {
+  const n = Number(settings?.salesQuoteExpirationDays);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 15;
+}
+
+async function loadTenantSettingsFromLatestSnapshot(tenantId) {
+  try {
+    const rows = await supabaseRequest(
+      `tenant_snapshots?tenant_id=eq.${encodeURIComponent(String(tenantId))}&select=payload&order=created_at.desc&limit=1`,
+      { method: "GET" }
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    const payload = row && typeof row.payload === "object" ? row.payload : null;
+    const storage = payload && typeof payload.storage === "object" ? payload.storage : {};
+    return storage.mg_settings_v2 && typeof storage.mg_settings_v2 === "object"
+      ? storage.mg_settings_v2
+      : {};
+  } catch (_e) {
+    return {};
+  }
+}
+
+function resolvePublicQuoteDates(row, tenantSettings) {
+  const expDays = quoteExpirationDays(tenantSettings);
+  const issue =
+    normIsoDate(row.issue_date) ||
+    normIsoDate(row.issueDate) ||
+    isoFromTimestamp(row.created_at) ||
+    "";
+  const expiration =
+    normIsoDate(row.expiration_date) ||
+    normIsoDate(row.expirationDate) ||
+    normIsoDate(row.valid_through) ||
+    normIsoDate(row.validThrough) ||
+    (issue ? addDaysToIsoDate(issue, expDays) : "");
+  return { issue_date: issue, expiration_date: expiration };
+}
 
 function pickPublicEstimateFields(row) {
   const keys = QUOTE_PUBLIC_KEYS;

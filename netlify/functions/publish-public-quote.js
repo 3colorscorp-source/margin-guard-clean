@@ -68,6 +68,47 @@ function normIsoDate(raw) {
   return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : null;
 }
 
+function addDaysToIsoDate(isoDate, days) {
+  const base = normIsoDate(isoDate);
+  if (!base) return null;
+  const n = Math.max(0, Math.floor(Number(days) || 0));
+  const [y, m, d] = base.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
+
+function quoteExpirationDays(settings) {
+  const n = Number(settings?.salesQuoteExpirationDays);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 15;
+}
+
+function resolvePublishQuoteDates(body, tenantSettings) {
+  const expDays = quoteExpirationDays(tenantSettings);
+  const issue =
+    normIsoDate(body.issue_date ?? body.issueDate) ||
+    new Date().toISOString().slice(0, 10);
+  const expiration =
+    normIsoDate(
+      body.expiration_date ??
+        body.expirationDate ??
+        body.valid_through ??
+        body.validThrough ??
+        body.expires_at ??
+        body.expiresAt
+    ) || addDaysToIsoDate(issue, expDays);
+  return {
+    issue_date: issue,
+    expiration_date: expiration
+  };
+}
+
+function isMissingQuoteDateColumns(text) {
+  const t = String(text || "").toLowerCase();
+  if (!/42703|column|schema cache|could not find/i.test(t)) return false;
+  return /issue_date|expiration_date/i.test(t);
+}
+
 function pickFiniteNumber(body, keys) {
   for (const key of keys) {
     const v = body[key];
@@ -671,6 +712,7 @@ exports.handler = async (event) => {
     };
 
     const opPublish = parseOperationalPublishFields(body, tenantSettings);
+    const quoteDates = resolvePublishQuoteDates(body, tenantSettings);
 
     const resolvedContactId = await resolveQuoteContactId(body, tenant.id);
     if (pickFirst(body.contact_id, body.contactId) && !resolvedContactId) {
@@ -680,7 +722,7 @@ exports.handler = async (event) => {
       });
     }
 
-    function buildBasePayload(withAudit) {
+    function buildBasePayload(withAudit, withQuoteDates) {
       return {
         tenant_id: tenant.id,
         project_name: projectName,
@@ -702,6 +744,7 @@ exports.handler = async (event) => {
         business_address: businessAddress || "",
         ...quoteNumberFields,
         ...(withAudit ? amountAudit : {}),
+        ...(withQuoteDates ? quoteDates : {}),
         ...(opPublish.include ? opPublish.fields : {}),
         ...sellerAttributionForInsert(ctx),
         ...(resolvedContactId ? { contact_id: resolvedContactId } : {}),
@@ -737,8 +780,8 @@ exports.handler = async (event) => {
     let insertResult = null;
     let lastErrorText = "";
 
-    async function tryInsertAll(withAudit) {
-      const bases = expandPayloadVariants(buildBasePayload(withAudit));
+    async function tryInsertAll(withAudit, withQuoteDates) {
+      const bases = expandPayloadVariants(buildBasePayload(withAudit, withQuoteDates));
       for (const payload of bases) {
         const result = await insertQuote({
           supabaseUrl,
@@ -753,12 +796,26 @@ exports.handler = async (event) => {
       return null;
     }
 
-    insertResult = await tryInsertAll(true);
+    insertResult = await tryInsertAll(true, true);
     if (!insertResult) {
-      insertResult = await tryInsertAll(false);
+      insertResult = await tryInsertAll(true, false);
+    }
+    if (!insertResult) {
+      insertResult = await tryInsertAll(false, true);
+    }
+    if (!insertResult) {
+      insertResult = await tryInsertAll(false, false);
     }
 
     if (!insertResult) {
+      if (isMissingQuoteDateColumns(lastErrorText)) {
+        return json(503, {
+          error:
+            "Quote issue/expiration date columns are missing. Run SUPABASE_QUOTES_ISSUE_EXPIRATION.sql in Supabase SQL editor, then retry Send Estimate.",
+          migration: "SUPABASE_QUOTES_ISSUE_EXPIRATION.sql",
+          missing_columns_hint: lastErrorText
+        });
+      }
       if (opPublish.include && isMissingOperationalQuoteColumns(lastErrorText)) {
         return json(503, {
           error:

@@ -31,6 +31,36 @@
     return String(v || "").trim();
   }
 
+  /** ISO YYYY-MM-DD → localized public estimate expiration label. */
+  function formatPublicExpirationDate(raw) {
+    const iso = String(raw || "").trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return "";
+    const [y, m, d] = iso.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    if (!Number.isFinite(dt.getTime())) return "";
+    try {
+      return dt.toLocaleDateString("es-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric"
+      });
+    } catch (_e) {
+      return iso;
+    }
+  }
+
+  function resolvePublicExpirationDisplay(next) {
+    const raw =
+      safe(next.expiration_date) ||
+      safe(next.expirationDate) ||
+      safe(next.valid_through) ||
+      safe(next.validThrough) ||
+      safe(next.expires_at) ||
+      safe(next.expiresAt) ||
+      "";
+    return formatPublicExpirationDate(raw) || raw;
+  }
+
   /** Skip quote-row placeholder so tenant_branding_* can be used (matches get-public-estimate). */
   function skipHeaderPlaceholderName(value) {
     const t = String(value ?? "").trim();
@@ -993,13 +1023,12 @@
       const contactLine = [businessEmail, businessPhone].filter(Boolean).join(" • ");
       if (contactLine) lines.push(`<div>${escapeHtml(contactLine)}</div>`);
 
-      const expLabel =
-        safe(next.expiration_date) ||
-        safe(next.expirationDate) ||
-        safe(next.valid_through) ||
-        "sin fecha";
+      const expDisplay = resolvePublicExpirationDisplay(next);
+      const expLine = expDisplay
+        ? `Expira ${escapeHtml(expDisplay)}`
+        : "Expira sin fecha";
       lines.push(
-        `<div class="estimate-expiration-line"><span class="estimate-expiration-line__dot" aria-hidden="true"></span> Expires ${escapeHtml(expLabel)}</div>`
+        `<div class="estimate-expiration-line"><span class="estimate-expiration-line__dot" aria-hidden="true"></span> ${expLine}</div>`
       );
 
       metaEl.innerHTML = lines.join("");
