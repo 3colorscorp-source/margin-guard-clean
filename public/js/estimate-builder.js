@@ -461,7 +461,10 @@
       safe(estimate.exclusions_initials) !== "" &&
       safe(estimate.exclusions_acknowledged_at) !== "";
     const step3Done = safe(estimate.change_order_acknowledged_at) !== "";
-    const step4Done = publicDepositPaidFlag(token);
+    const depNum = Number(estimate.deposit_required);
+    const needsDeposit = Number.isFinite(depNum) && depNum > 0;
+    const step4Done =
+      publicDepositPaidFlag(token) || (!needsDeposit && step1Done && step2Done && step3Done);
     const doneByStep = [step1Done, step2Done, step3Done, step4Done];
 
     const statusCopy = {
@@ -471,7 +474,8 @@
       locked: "Locked"
     };
 
-    const depositCurrent = step1Done && step2Done && step3Done && !step4Done;
+    const depositCurrent =
+      needsDeposit && step1Done && step2Done && step3Done && !step4Done;
 
     function setStepUi(stepNum, opts) {
       const item = $(`premiumWorkflowStep${stepNum}`);
@@ -514,7 +518,9 @@
 
     let depositState = "upcoming";
     if (step4Done) depositState = "complete";
-    else if (!step3Done || !step2Done || !step1Done) depositState = "locked";
+    else if (!needsDeposit) {
+      depositState = step3Done && step2Done && step1Done ? "complete" : "upcoming";
+    } else if (!step3Done || !step2Done || !step1Done) depositState = "locked";
     else if (depositCurrent) depositState = "current";
     else depositState = "upcoming";
 

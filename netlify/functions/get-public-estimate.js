@@ -188,7 +188,22 @@ exports.handler = async (event) => {
         ownerSettings = null;
       }
 
-      deposit_payment_available = !!ownerSettings?.deposit_payment_link;
+      let stripeDepositCheckoutAvailable = false;
+      try {
+        const tenantStripeRows = await supabaseRequest(
+          `tenants?id=eq.${encodeURIComponent(String(tenantId))}&select=stripe_account_id,stripe_charges_enabled&limit=1`
+        );
+        const tenantStripe =
+          Array.isArray(tenantStripeRows) && tenantStripeRows[0] ? tenantStripeRows[0] : null;
+        stripeDepositCheckoutAvailable = !!(
+          tenantStripe?.stripe_account_id && tenantStripe?.stripe_charges_enabled
+        );
+      } catch (_e4) {
+        stripeDepositCheckoutAvailable = false;
+      }
+
+      deposit_payment_available =
+        !!ownerSettings?.deposit_payment_link || stripeDepositCheckoutAvailable;
     }
 
     const resolvedBusinessName =
