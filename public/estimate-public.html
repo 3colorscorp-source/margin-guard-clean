@@ -1903,6 +1903,8 @@
         const flowStep = getPublicFlowStepForUi();
         const onDepositStep = flowStep === 4;
         const hideApprovedPanel = flowStep !== 1;
+        const workflowPayIsPrimary = canPay === true;
+        const approvedActions = approvedPanel?.querySelector(".approved-actions");
 
         function setDepositWorkflowPayable(shouldPay) {
           if (depositStep) depositStep.classList.toggle("is-payable", !!shouldPay);
@@ -1964,31 +1966,33 @@
 
         if (approved) {
           if (actions) actions.style.display = "none";
-          if (approvedPanel) approvedPanel.classList.toggle("show", !hideApprovedPanel);
+          const showApprovedPanel =
+            !hideApprovedPanel && !onDepositStep && !workflowPayIsPrimary;
+          if (approvedPanel) approvedPanel.classList.toggle("show", showApprovedPanel);
           if (paidPanel) paidPanel.classList.remove("show");
 
           const stepsDone = workflowComplete === true;
           const showApprovedDeposit = needsDeposit === true;
 
           if (gateNotice) {
-            gateNotice.style.display = stepsDone || !showApprovedDeposit || hideApprovedPanel ? "none" : "block";
+            gateNotice.style.display =
+              stepsDone || !showApprovedDeposit || !showApprovedPanel ? "none" : "block";
             gateNotice.textContent =
               "Complete all steps to proceed with project approval and payment.";
           }
           if (stripeUnavail) {
             stripeUnavail.style.display =
-              !hideApprovedPanel && stepsDone && showApprovedDeposit && !paymentPathReady
+              showApprovedPanel && stepsDone && showApprovedDeposit && !paymentPathReady
                 ? "block"
                 : "none";
           }
           if (payBtn) {
-            const showApprovedPay = canPay && !hideApprovedPanel && !onDepositStep;
-            payBtn.style.display = showApprovedPay ? "" : "none";
-            payBtn.disabled = !showApprovedPay;
-            payBtn.style.opacity = showApprovedPay ? "" : "0.45";
-            payBtn.style.cursor = showApprovedPay ? "" : "not-allowed";
-            if (showApprovedPay) payBtn.removeAttribute("aria-hidden");
-            else payBtn.setAttribute("aria-hidden", "true");
+            payBtn.style.display = "none";
+            payBtn.disabled = true;
+            payBtn.setAttribute("aria-hidden", "true");
+          }
+          if (approvedActions) {
+            approvedActions.style.display = "none";
           }
 
           setDepositFlowPanelUi({
