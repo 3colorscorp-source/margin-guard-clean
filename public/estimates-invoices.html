@@ -867,6 +867,12 @@
             <span class="hub-drawer-v" id="hubDrawerPaymentNext">—</span>
           </div>
         </div>
+        <div id="hubDrawerContactWrap" class="hub-drawer-section hub-drawer-contact-wrap" style="display:none;">
+          <div class="hub-drawer-kv">
+            <span class="hub-drawer-k">Delivery email</span>
+            <span class="hub-drawer-v" id="hubDrawerDeliveryEmail">—</span>
+          </div>
+        </div>
         <div id="hubDrawerChangeOrdersWrap" class="hub-drawer-section">
           <div class="sub" style="margin:0 0 8px;font-size:12px;">Change orders</div>
           <div class="supervisor-table-wrap">
@@ -934,6 +940,7 @@
       </div>
       <div class="modal-footer hub-drawer-footer">
         <button class="btn hub-drawer-action" type="button" id="btnHubDrawerOpenPublic">Open Public</button>
+        <button class="btn ghost hub-drawer-action" type="button" id="btnHubDrawerClientInfo" style="display:none;">Client Info</button>
         <button class="btn ghost hub-drawer-action" type="button" id="btnHubDrawerEditQuote" style="display:none;">Edit Quote</button>
         <button class="btn ghost hub-drawer-action" type="button" id="btnHubDrawerInvoiceSetup">Invoice label</button>
         <button class="btn hub-drawer-action" type="button" id="btnHubDrawerSendInvoice" data-hub-send-invoice="1">Send Invoice</button>
@@ -1049,6 +1056,39 @@
         <button class="btn" id="btnHubClientRequestAll">Request All</button>
         <button class="btn" id="btnHubClientOpenCollections">Open Collections View</button>
         <button class="btn primary" id="btnHubClientOpenHub">Open Hub</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hub-qe-modal" id="hubInvoiceContactModal" aria-hidden="true" role="dialog" aria-labelledby="hubInvoiceContactTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="hubInvoiceContactTitle">Client Contact</div>
+          <div class="hub-qe-subtitle" id="hubInvoiceContactSubtitle">—</div>
+        </div>
+        <button type="button" class="icon-btn" id="btnHubInvoiceContactClose" aria-label="Close">X</button>
+      </div>
+      <div class="modal-body">
+        <p id="hubInvoiceContactFeedback" class="hub-qe-banner" style="display:none;" role="status"></p>
+        <form id="hubInvoiceContactForm" class="hub-qe-form" novalidate>
+          <div class="field">
+            <label for="hubContactClientName">Client name</label>
+            <input type="text" id="hubContactClientName" name="customer_name" maxlength="255" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="hubContactClientEmail">Email</label>
+            <input type="email" id="hubContactClientEmail" name="customer_email" maxlength="255" autocomplete="off" required />
+          </div>
+          <div class="field field--full">
+            <label for="hubContactNotes">Notes</label>
+            <textarea id="hubContactNotes" name="notes" maxlength="5000" rows="3" placeholder="Optional delivery or invoice notes"></textarea>
+          </div>
+        </form>
+        <div class="hub-qe-actions">
+          <button type="button" class="btn" id="btnHubInvoiceContactCancel">Cancel</button>
+          <button type="button" class="btn primary" id="btnHubInvoiceContactSave">Save Changes</button>
+        </div>
       </div>
     </div>
   </div>

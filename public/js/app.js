@@ -11382,6 +11382,7 @@ window.renderSupervisor = renderSupervisor;
       dueDate: inv.due_date || "",
       sentAt: inv.sent_at || "",
       paidAt: inv.paid_at || "",
+      notes: inv.notes != null ? String(inv.notes) : "",
       createdAt: createdRaw,
       updatedAt: inv.updated_at || "",
       tenantProjectId,
@@ -11667,6 +11668,8 @@ window.renderSupervisor = renderSupervisor;
       location: nonEmptyString(norm.clientEmail, customer),
       customerEmail: norm.clientEmail || "",
       customerPhone: "",
+      hubInvoiceNotes: norm.notes || "",
+      hubInvoiceSentAt: norm.sentAt || "",
       report: stubReport,
       project: stubProject,
       hubInvoiceLabel: sanitizeInvoiceLabelInput(nonEmptyString(norm.invoiceLabel)),
@@ -13578,6 +13581,245 @@ window.renderSupervisor = renderSupervisor;
     }
   }
 
+  const HUB_INVOICE_CONTACT_PATCH = "/.netlify/functions/patch-tenant-invoice-contact";
+
+  let hubInvoiceContactState = { invoiceId: "", saving: false };
+
+  function hubInvoiceContactPageReady() {
+    return Boolean($("hubInvoiceContactModal"));
+  }
+
+  function hubInvoiceContactSetFeedback(message, tone) {
+    const el = $("hubInvoiceContactFeedback");
+    if (!el) return;
+    const msg = String(message || "").trim();
+    if (!msg) {
+      el.style.display = "none";
+      el.textContent = "";
+      el.className = "hub-qe-banner";
+      return;
+    }
+    el.style.display = "";
+    el.textContent = msg;
+    el.className = "hub-qe-banner";
+    if (tone === "ok") {
+      el.style.background = "rgba(34, 197, 94, 0.12)";
+      el.style.border = "1px solid rgba(34, 197, 94, 0.28)";
+      el.style.color = "#bbf7d0";
+    } else if (tone === "err") {
+      el.style.background = "rgba(239, 68, 68, 0.12)";
+      el.style.border = "1px solid rgba(239, 68, 68, 0.28)";
+      el.style.color = "#fecaca";
+    } else {
+      el.style.background = "";
+      el.style.border = "";
+      el.style.color = "";
+    }
+  }
+
+  function hubInvoiceContactCloseModal() {
+    const modal = $("hubInvoiceContactModal");
+    if (!modal) return;
+    modal.setAttribute("aria-hidden", "true");
+    hubInvoiceContactState = { invoiceId: "", saving: false };
+    hubInvoiceContactSetFeedback("");
+  }
+
+  function hubInvoiceContactFillForm(row) {
+    const nameEl = $("hubContactClientName");
+    const emailEl = $("hubContactClientEmail");
+    const notesEl = $("hubContactNotes");
+    if (nameEl) nameEl.value = String(row?.customer || row?.project?.clientName || "").trim();
+    if (emailEl) emailEl.value = String(row?.customerEmail || row?.project?.clientEmail || "").trim();
+    if (notesEl) notesEl.value = String(row?.hubInvoiceNotes ?? "").trim();
+  }
+
+  function hubInvoiceContactReadFormBody() {
+    return {
+      invoice_id: hubInvoiceContactState.invoiceId,
+      customer_name: String($("hubContactClientName")?.value || "").trim(),
+      customer_email: String($("hubContactClientEmail")?.value || "").trim(),
+      notes: String($("hubContactNotes")?.value || "").trim()
+    };
+  }
+
+  function hubInvoiceContactMapApiError(data, status) {
+    const code = String(data?.code || "").trim();
+    const err = String(data?.error || "").trim();
+    if (status === 401) return "Sign in required to update invoice contact.";
+    if (status === 403) return err || "Permission denied.";
+    if (code === "invoice_id_required" || code === "invalid_invoice_id") return err || "Invalid invoice.";
+    if (code === "invalid_email") return err || "Enter a valid email address.";
+    if (code === "invalid_name") return err || "Client name is required.";
+    if (code === "unknown_fields") {
+      const fields = Array.isArray(data?.fields) ? data.fields.join(", ") : "";
+      return fields ? `Disallowed fields: ${fields}` : err || "Unknown fields in request.";
+    }
+    if (code === "no_edit_fields") return err || "No contact fields to save.";
+    return err || "Unable to update invoice contact.";
+  }
+
+  function applyInvoiceContactPatchToHubRow(row, invoice) {
+    if (!row || !invoice || typeof invoice !== "object") return row;
+    const name = String(invoice.customer_name ?? "").trim();
+    const email = String(invoice.customer_email ?? "").trim();
+    const notes = invoice.notes != null ? String(invoice.notes) : "";
+    if (name) {
+      row.customer = name;
+      if (row.project) row.project.clientName = name;
+    }
+    if (email) {
+      row.customerEmail = email;
+      row.location = email;
+      if (row.project) row.project.clientEmail = email;
+    }
+    row.hubInvoiceNotes = notes;
+    if (row.searchText) {
+      row.searchText = [
+        row.projectId,
+        row.title,
+        row.customer,
+        email,
+        row.invoiceNo,
+        row.status,
+        "server_invoice"
+      ]
+        .join(" ")
+        .toLowerCase();
+    }
+    window.__MG_ACTIVE_INVOICE_ROW__ = row;
+    return row;
+  }
+
+  function hubDrawerRenderDeliveryEmail(row) {
+    const wrap = $("hubDrawerContactWrap");
+    const el = $("hubDrawerDeliveryEmail");
+    const isServer = row?.hubRowSource === "server_invoice";
+    if (wrap) wrap.style.display = isServer ? "" : "none";
+    if (!el) return;
+    const email = String(row?.customerEmail || row?.project?.clientEmail || "").trim();
+    if (!email || !email.includes("@")) {
+      el.textContent = "—";
+      return;
+    }
+    el.innerHTML = `<a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>`;
+  }
+
+  function hubInvoiceContactOpen(row) {
+    if (!row || row.hubRowSource !== "server_invoice" || !hubInvoiceContactPageReady()) return;
+    const invoiceId = String(row.serverInvoiceId || row.projectId || "").trim();
+    if (!invoiceId || !MG_SERVER_INVOICE_UUID_RE.test(invoiceId)) return;
+    hubInvoiceContactState = { invoiceId, saving: false };
+    hubInvoiceContactSetFeedback("");
+    const subtitle = $("hubInvoiceContactSubtitle");
+    if (subtitle) {
+      const label = hubRowInvoiceDisplayLabel(row) || row.title || "Invoice";
+      subtitle.textContent = `${label} · ${row.customer || "Client"}`;
+    }
+    hubInvoiceContactFillForm(row);
+    const saveBtn = $("btnHubInvoiceContactSave");
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Save Changes";
+    }
+    const modal = $("hubInvoiceContactModal");
+    if (modal) modal.setAttribute("aria-hidden", "false");
+  }
+
+  async function hubInvoiceContactAfterSaveRefresh() {
+    if (typeof window.__mgHubRefetchServerInvoices === "function") {
+      await window.__mgHubRefetchServerInvoices();
+    } else if (typeof window.__mgHubTableRefresh === "function") {
+      window.__mgHubTableRefresh();
+    }
+    if (typeof window.__mgHubRefreshSelectedRow === "function") {
+      window.__mgHubRefreshSelectedRow();
+    }
+  }
+
+  async function hubInvoiceContactSave() {
+    if (hubInvoiceContactState.saving || !hubInvoiceContactState.invoiceId) return;
+    const body = hubInvoiceContactReadFormBody();
+    if (!body.customer_name) {
+      hubInvoiceContactSetFeedback("Client name is required.", "err");
+      return;
+    }
+    if (!body.customer_email || !body.customer_email.includes("@")) {
+      hubInvoiceContactSetFeedback("Enter a valid email address.", "err");
+      return;
+    }
+
+    hubInvoiceContactState.saving = true;
+    hubInvoiceContactSetFeedback("");
+    const saveBtn = $("btnHubInvoiceContactSave");
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving…";
+    }
+
+    try {
+      const response = await fetch(HUB_INVOICE_CONTACT_PATCH, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(body)
+      });
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (_err) {
+        data = {};
+      }
+      if (!response.ok || !data?.ok) {
+        hubInvoiceContactSetFeedback(hubInvoiceContactMapApiError(data, response.status), "err");
+        return;
+      }
+
+      const invoice = data.invoice || {};
+      const activeRow = window.__MG_ACTIVE_INVOICE_ROW__;
+      if (activeRow) applyInvoiceContactPatchToHubRow(activeRow, invoice);
+
+      hubInvoiceContactFillForm(
+        activeRow || {
+          customer: invoice.customer_name,
+          customerEmail: invoice.customer_email,
+          hubInvoiceNotes: invoice.notes
+        }
+      );
+      hubInvoiceContactSetFeedback("Client contact updated. You can resend this invoice now.", "ok");
+      hubDrawerRenderDeliveryEmail(activeRow);
+      setHubFeedback("Client contact updated. You can resend this invoice now.", "ok");
+      await hubInvoiceContactAfterSaveRefresh();
+    } catch (err) {
+      hubInvoiceContactSetFeedback(err?.message || "Network error saving contact.", "err");
+    } finally {
+      hubInvoiceContactState.saving = false;
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Save Changes";
+      }
+    }
+  }
+
+  function bindHubInvoiceContactHandlers() {
+    if (window.__MG_HUB_INVOICE_CONTACT_BOUND__ || !hubInvoiceContactPageReady()) return;
+    window.__MG_HUB_INVOICE_CONTACT_BOUND__ = true;
+    if ($("btnHubInvoiceContactClose")) $("btnHubInvoiceContactClose").onclick = hubInvoiceContactCloseModal;
+    if ($("btnHubInvoiceContactCancel")) $("btnHubInvoiceContactCancel").onclick = hubInvoiceContactCloseModal;
+    if ($("btnHubInvoiceContactSave")) {
+      $("btnHubInvoiceContactSave").onclick = () => {
+        void hubInvoiceContactSave();
+      };
+    }
+    if ($("btnHubDrawerClientInfo")) {
+      $("btnHubDrawerClientInfo").onclick = () => {
+        const row = window.__MG_ACTIVE_INVOICE_ROW__;
+        if (!row) return;
+        hubInvoiceContactOpen(row);
+      };
+    }
+  }
+
   function hubDrawerPaymentProgressPct(paid, total) {
     const t = finiteNumber(total, 0);
     const p = finiteNumber(paid, 0);
@@ -13687,6 +13929,8 @@ window.renderSupervisor = renderSupervisor;
     }
     window.__MG_ACTIVE_INVOICE_ROW__ = row;
     console.log("[Invoice Hub] send invoice button rendered", row);
+
+    hubDrawerRenderDeliveryEmail(row);
 
     const invoiceAmount = finiteNumber(row.amount, 0);
     const contractTotal = Math.max(finiteNumber(row.projectContractTotal, 0), 0);
@@ -14155,6 +14399,19 @@ window.renderSupervisor = renderSupervisor;
         sendBtn.title = sendReady.ready
           ? ""
           : `Missing required fields: ${sendReady.missing.join(", ")}`;
+        const sentAt = nonEmptyString(row?.hubInvoiceSentAt);
+        sendBtn.textContent = sentAt ? "Resend Invoice" : "Send Invoice";
+      }
+
+      const clientInfoBtn = $("btnHubDrawerClientInfo");
+      if (clientInfoBtn) {
+        const showClientInfo =
+          row?.hubRowSource === "server_invoice" &&
+          MG_SERVER_INVOICE_UUID_RE.test(String(row?.serverInvoiceId || row?.projectId || "").trim());
+        clientInfoBtn.style.display = showClientInfo ? "" : "none";
+        clientInfoBtn.disabled = !showClientInfo;
+        clientInfoBtn.classList.toggle("hub-action-disabled", !showClientInfo);
+        clientInfoBtn.title = showClientInfo ? "Edit client name, email, and notes for delivery" : "";
       }
 
       const qid = String(row?.hubQuoteId || "").trim();
@@ -14504,6 +14761,7 @@ window.renderSupervisor = renderSupervisor;
     const closeHubDrawer = () => {
       if ($("hubDrawer")) $("hubDrawer").setAttribute("aria-hidden", "true");
       if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
+      if ($("hubInvoiceContactModal")) hubInvoiceContactCloseModal();
       setNotice("hubRecordPayFeedback", "", "");
       if ($("hubRecordPayOverpayWarn")) {
         $("hubRecordPayOverpayWarn").style.display = "none";
@@ -15748,6 +16006,7 @@ window.renderSupervisor = renderSupervisor;
     window.__mgHubTableRefresh = refresh;
     window.__mgHubRefreshSelectedRow = refreshSelectedRow;
     bindHubQuoteEditHandlers(settings);
+    bindHubInvoiceContactHandlers();
     window.__mgHubRefetchServerInvoices = async () => {
       const { invoices: raw } = await loadTenantInvoicesFromServer({ limit: 100 });
       hubServerNormalizedInvoicesCache = raw.map(normalizeServerInvoiceForHub);
