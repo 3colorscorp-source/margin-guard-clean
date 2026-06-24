@@ -1563,33 +1563,33 @@
           <div class="notice" id="publicChangeOrderFeedback" style="display:none;margin-top:12px;"></div>
           <div class="notice ok" id="publicChangeOrderDone" style="display:none;margin-top:12px;"></div>
 
-          <section
-            id="publicStep3DepositBlock"
-            class="premium-step3-deposit"
-            style="display:none;margin-top:18px;padding:16px 14px;border-radius:14px;border:1px solid rgba(52,211,153,.22);background:linear-gradient(180deg,rgba(16,185,129,.12) 0%,rgba(6,24,18,.28) 100%);"
-            aria-live="polite"
-          >
-            <div class="eyebrow" style="color:rgba(167,243,208,.92);">Step 4 — Deposit</div>
-            <p class="sub" style="margin-top:8px;margin-bottom:0;line-height:1.5;">
-              All acknowledgment steps are complete. Pay your project deposit to secure your start date.
-            </p>
-            <div
-              id="publicStep3DepositUnavail"
-              class="notice warn"
-              style="display:none;margin-top:12px;text-align:left;"
-            >
-              Online deposit payment is not available yet. Your contractor must connect Stripe for
-              project deposits in Business Settings. Please contact them to arrange payment.
-            </div>
-            <div class="inline-actions" style="margin-top:14px;">
-              <button class="btn primary" type="button" id="publicStep3PayDepositBtn">
-                Pay Deposit
-              </button>
-            </div>
-          </section>
-
           <p style="margin-top:14px;margin-bottom:0;">
             <a id="flowNavOptionalWork" href="#">Optional: Request additional work</a>
+          </p>
+        </div>
+
+        <div id="publicFlowStepDeposit" class="flow-step-panel" style="display:none;">
+          <div class="eyebrow">Step 4 — Deposit</div>
+          <p class="sub" style="margin-top:8px;line-height:1.55;">
+            Steps 1–3 are complete. Use <strong>Pay Deposit</strong> in the workflow above to secure your project start date.
+          </p>
+          <div
+            id="publicFlowDepositUnavail"
+            class="notice warn"
+            style="display:none;margin-top:12px;text-align:left;"
+          >
+            Online deposit payment is not available yet. Your contractor must connect Stripe for
+            project deposits in Business Settings. Please contact them to arrange payment.
+          </div>
+          <div
+            id="publicFlowDepositNoDeposit"
+            class="notice ok"
+            style="display:none;margin-top:12px;text-align:left;"
+          >
+            No deposit is required for this project. Your acknowledgments are complete.
+          </div>
+          <p class="sub" style="margin-top:14px;margin-bottom:0;">
+            <a id="flowNavOptionalWorkDeposit" href="#">Optional: Request additional work</a>
           </p>
         </div>
 
@@ -1847,10 +1847,13 @@
         return Number.isFinite(n) && n > 0;
       }
 
-      function isPublicFlowStep3() {
-        const raw = new URLSearchParams(window.location.search).get("step");
-        const n = parseInt(raw || "1", 10);
-        return Number.isFinite(n) && n === 3;
+      function getPublicFlowStepForUi() {
+        const raw = String(new URLSearchParams(window.location.search).get("step") || "1")
+          .trim()
+          .toLowerCase();
+        if (raw === "optional") return "optional";
+        const n = parseInt(raw, 10);
+        return Number.isFinite(n) ? n : 1;
       }
 
       function showUiState({
@@ -1869,12 +1872,15 @@
         const payBtn = $("payDepositBtn");
         const workflowPayBtn = $("workflowPayDepositBtn");
         const depositStep = $("premiumWorkflowStep4");
-        const step3DepositBlock = $("publicStep3DepositBlock");
-        const step3DepositUnavail = $("publicStep3DepositUnavail");
-        const step3PayBtn = $("publicStep3PayDepositBtn");
+        const depositFlowUnavail = $("publicFlowDepositUnavail");
+        const depositFlowNoDeposit = $("publicFlowDepositNoDeposit");
+        const depositFlowPanel = $("publicFlowStepDeposit");
 
         const paymentPathReady = depositPaymentAvailable === true || hasDepositPaymentLink === true;
         const canPay = workflowComplete === true && needsDeposit === true && paymentPathReady;
+        const flowStep = getPublicFlowStepForUi();
+        const onDepositStep = flowStep === 4;
+        const hideApprovedPanel = flowStep !== 1;
 
         function setDepositWorkflowPayable(shouldPay) {
           if (depositStep) depositStep.classList.toggle("is-payable", !!shouldPay);
@@ -1887,20 +1893,17 @@
           }
         }
 
-        function setStep3DepositUi({ showBlock, showPay, showUnavail }) {
-          if (step3DepositBlock) {
-            step3DepositBlock.style.display = showBlock ? "block" : "none";
+        function setDepositFlowPanelUi({ showUnavail, showNoDeposit }) {
+          if (depositFlowUnavail) {
+            depositFlowUnavail.style.display = showUnavail ? "block" : "none";
           }
-          if (step3DepositUnavail) {
-            step3DepositUnavail.style.display = showUnavail ? "block" : "none";
-          }
-          if (step3PayBtn) {
-            step3PayBtn.style.display = showPay ? "" : "none";
-            step3PayBtn.disabled = !showPay;
+          if (depositFlowNoDeposit) {
+            depositFlowNoDeposit.style.display = showNoDeposit ? "block" : "none";
           }
         }
 
         if (paid) {
+          if (depositFlowPanel) depositFlowPanel.style.display = "none";
           if (actions) actions.style.display = "none";
           if (approvedPanel) approvedPanel.classList.remove("show");
           if (paidPanel) paidPanel.classList.add("show");
@@ -1911,41 +1914,42 @@
             payBtn.style.display = "none";
           }
           setDepositWorkflowPayable(false);
-          setStep3DepositUi({ showBlock: false, showPay: false, showUnavail: false });
+          setDepositFlowPanelUi({ showUnavail: false, showNoDeposit: false });
           return;
         }
 
         if (approved) {
           if (actions) actions.style.display = "none";
-          if (approvedPanel) approvedPanel.classList.add("show");
+          if (approvedPanel) approvedPanel.classList.toggle("show", !hideApprovedPanel);
           if (paidPanel) paidPanel.classList.remove("show");
 
           const stepsDone = workflowComplete === true;
           const showApprovedDeposit = needsDeposit === true;
 
           if (gateNotice) {
-            gateNotice.style.display = stepsDone || !showApprovedDeposit ? "none" : "block";
+            gateNotice.style.display = stepsDone || !showApprovedDeposit || hideApprovedPanel ? "none" : "block";
             gateNotice.textContent =
               "Complete all steps to proceed with project approval and payment.";
           }
           if (stripeUnavail) {
             stripeUnavail.style.display =
-              stepsDone && showApprovedDeposit && !paymentPathReady ? "block" : "none";
+              !hideApprovedPanel && stepsDone && showApprovedDeposit && !paymentPathReady
+                ? "block"
+                : "none";
           }
           if (payBtn) {
-            payBtn.style.display = canPay ? "" : "none";
-            payBtn.disabled = !canPay;
-            payBtn.style.opacity = canPay ? "" : "0.45";
-            payBtn.style.cursor = canPay ? "" : "not-allowed";
-            if (canPay) payBtn.removeAttribute("aria-hidden");
+            const showApprovedPay = canPay && !hideApprovedPanel && !onDepositStep;
+            payBtn.style.display = showApprovedPay ? "" : "none";
+            payBtn.disabled = !showApprovedPay;
+            payBtn.style.opacity = showApprovedPay ? "" : "0.45";
+            payBtn.style.cursor = showApprovedPay ? "" : "not-allowed";
+            if (showApprovedPay) payBtn.removeAttribute("aria-hidden");
             else payBtn.setAttribute("aria-hidden", "true");
           }
 
-          const onStep3 = isPublicFlowStep3();
-          setStep3DepositUi({
-            showBlock: onStep3 && stepsDone && showApprovedDeposit,
-            showPay: canPay,
-            showUnavail: stepsDone && showApprovedDeposit && !paymentPathReady
+          setDepositFlowPanelUi({
+            showUnavail: onDepositStep && stepsDone && showApprovedDeposit && !paymentPathReady,
+            showNoDeposit: onDepositStep && stepsDone && !showApprovedDeposit
           });
 
           setDepositWorkflowPayable(canPay);
@@ -1964,7 +1968,7 @@
           payBtn.disabled = false;
         }
         setDepositWorkflowPayable(false);
-        setStep3DepositUi({ showBlock: false, showPay: false, showUnavail: false });
+        setDepositFlowPanelUi({ showUnavail: false, showNoDeposit: false });
       }
 
       function syncPanels() {
@@ -2064,7 +2068,6 @@
 
         const btn = $("payDepositBtn");
         const workflowBtn = $("workflowPayDepositBtn");
-        const step3Btn = $("publicStep3PayDepositBtn");
         const workflowPayLabel = workflowBtn
           ? workflowBtn.querySelector(".premium-workflow__label")
           : null;
@@ -2077,10 +2080,6 @@
         if (workflowBtn) {
           workflowBtn.disabled = true;
           if (workflowPayLabel) workflowPayLabel.textContent = "Opening checkout…";
-        }
-        if (step3Btn) {
-          step3Btn.disabled = true;
-          step3Btn.textContent = "Opening secure checkout...";
         }
 
         if (feedback) {
@@ -2123,10 +2122,6 @@
             workflowBtn.disabled = false;
             if (workflowPayLabel) workflowPayLabel.textContent = "Pay Deposit";
           }
-          if (step3Btn) {
-            step3Btn.disabled = false;
-            step3Btn.textContent = "Pay Deposit";
-          }
         }
       }
 
@@ -2137,10 +2132,6 @@
         const workflowBtn = $("workflowPayDepositBtn");
         if (workflowBtn) {
           workflowBtn.addEventListener("click", startDepositCheckout);
-        }
-        const step3Btn = $("publicStep3PayDepositBtn");
-        if (step3Btn) {
-          step3Btn.addEventListener("click", startDepositCheckout);
         }
       }
 

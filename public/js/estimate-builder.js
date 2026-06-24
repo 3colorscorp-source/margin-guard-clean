@@ -217,10 +217,41 @@
   }
 
   function getPublicFlowStep() {
-    const raw = getQueryParam("step");
-    const n = parseInt(raw || "1", 10);
+    const raw = String(getQueryParam("step") || "1").trim().toLowerCase();
+    if (raw === "optional") return "optional";
+    const n = parseInt(raw, 10);
     if (!Number.isFinite(n)) return 1;
     return Math.min(4, Math.max(1, n));
+  }
+
+  function publicDepositRequired(estimate) {
+    const depNum = Number(estimate?.deposit_required);
+    return Number.isFinite(depNum) && depNum > 0;
+  }
+
+  function goToPublicFlowStep(step, estimateSnapshot) {
+    const token = getQueryParam("token") || "";
+    if (!token) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("step", String(step));
+    window.history.replaceState({}, "", url);
+    applyPublicFlowStep(step);
+    const est = estimateSnapshot || window.__mgPublicEstimateLast || {};
+    updatePublicWorkflowStepStates(est);
+    requestAnimationFrame(() => {
+      const target = $("premiumWorkflowStep4") || $("publicFlowNav");
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  function maybeAdvancePublicFlowAfterAck(next) {
+    const estimate = next || window.__mgPublicEstimateLast || {};
+    const step = getPublicFlowStep();
+    const step3Done = safe(estimate.change_order_acknowledged_at) !== "";
+
+    if (step === 3 && step3Done) {
+      goToPublicFlowStep(4, estimate);
+    }
   }
 
   function setPublicFlowNavHref(token) {
@@ -234,25 +265,33 @@
     if (n1) n1.href = `${base}&step=1`;
     if (n2) n2.href = `${base}&step=2`;
     if (n3) n3.href = `${base}&step=3`;
-    if (n4) n4.href = `${base}&step=1#mgPublicDepositAnchor`;
-    if (nOpt) nOpt.href = `${base}&step=4`;
+    if (n4) n4.href = `${base}&step=4`;
+    if (nOpt) nOpt.href = `${base}&step=optional`;
+    const nOptDep = $("flowNavOptionalWorkDeposit");
+    if (nOptDep) nOptDep.href = `${base}&step=optional`;
   }
 
   function applyPublicFlowStep(step) {
     const s1 = $("publicFlowStep1");
     const s2 = $("publicFlowStep2");
     const s3 = $("publicFlowStep3");
+    const sDeposit = $("publicFlowStepDeposit");
     const optWrap = $("publicFlowOptionalWrap");
     const metaEl = $("publicEstimateMeta");
+    const isOptional = step === "optional";
+    const isDeposit = step === 4;
+
     if (s1) s1.style.display = step === 1 ? "" : "none";
     if (s2) s2.style.display = step === 2 ? "" : "none";
     if (s3) s3.style.display = step === 3 ? "" : "none";
-    if (optWrap) optWrap.style.display = step === 4 ? "" : "none";
+    if (sDeposit) sDeposit.style.display = isDeposit ? "" : "none";
+    if (optWrap) optWrap.style.display = isOptional ? "" : "none";
     if (metaEl && step !== 1) {
       const labels = {
-        2: "Step 2 of 3 — exclusions acknowledgment.",
-        3: "Step 3 of 3 — additional work & change orders.",
-        4: "Optional — request additional work."
+        2: "Step 2 of 4 — exclusions acknowledgment.",
+        3: "Step 3 of 4 — additional work & change orders.",
+        4: "Step 4 of 4 — project deposit.",
+        optional: "Optional — request additional work."
       };
       metaEl.textContent = labels[step] || "";
     }
@@ -454,15 +493,12 @@
     const estimate = next || window.__mgPublicEstimateLast || {};
     const token = getQueryParam("token") || "";
     const urlStep = getPublicFlowStep();
-    const visualStep = urlStep === 4 ? 3 : urlStep;
-
     const step1Done = safe(estimate.accepted_at) !== "";
     const step2Done =
       safe(estimate.exclusions_initials) !== "" &&
       safe(estimate.exclusions_acknowledged_at) !== "";
     const step3Done = safe(estimate.change_order_acknowledged_at) !== "";
-    const depNum = Number(estimate.deposit_required);
-    const needsDeposit = Number.isFinite(depNum) && depNum > 0;
+    const needsDeposit = publicDepositRequired(estimate);
     const step4Done =
       publicDepositPaidFlag(token) || (!needsDeposit && step1Done && step2Done && step3Done);
     const doneByStep = [step1Done, step2Done, step3Done, step4Done];
@@ -508,9 +544,10 @@
       let state = "upcoming";
 
       if (!prereqMet) state = "locked";
-      else if (done && visualStep === i) state = "current";
+      else if (depositCurrent && done) state = "complete";
+      else if (done && urlStep === i) state = "current";
       else if (done) state = "complete";
-      else if (visualStep === i) state = "current";
+      else if (urlStep === i) state = "current";
       else state = "upcoming";
 
       setStepUi(i, { done, state });
@@ -1223,6 +1260,7 @@
     setupPublicWorkflow(next);
 
     window.__mgPublicEstimateLast = next;
+    maybeAdvancePublicFlowAfterAck(next);
     if (typeof window.__mgOnPublicEstimateRefresh === "function") {
       window.__mgOnPublicEstimateRefresh();
     }
