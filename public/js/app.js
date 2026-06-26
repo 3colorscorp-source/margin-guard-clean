@@ -1334,6 +1334,28 @@ Thank you.`
   /** True while assign-supervisor-project request is in flight (survives re-render). */
   let supervisorAssignInProgress = false;
 
+  const SUPERVISOR_DEBUG = false;
+
+  function supervisorDebugLog(...args) {
+    if (!SUPERVISOR_DEBUG) return;
+    if (typeof console !== "undefined" && console.log) console.log(...args);
+  }
+
+  /** Coalesce async fetch completions into one renderSupervisor pass (same tick window). */
+  let supervisorRenderScheduleTimer = null;
+
+  function scheduleSupervisorRender(reason) {
+    if (!$("supProjectPicker")) return;
+    if (supervisorRenderScheduleTimer != null) {
+      clearTimeout(supervisorRenderScheduleTimer);
+    }
+    supervisorRenderScheduleTimer = setTimeout(() => {
+      supervisorRenderScheduleTimer = null;
+      supervisorDebugLog("[Supervisor] scheduled render", reason || "");
+      renderSupervisor();
+    }, 32);
+  }
+
   /** projectId -> { ok: boolean, reports: array } for tenant_project_reports (Supervisor daily entries). */
   const supervisorProjectReportsCache = Object.create(null);
   const supervisorProjectReportsFetchInFlight = new Set();
@@ -1379,14 +1401,12 @@ Thank you.`
     const data = await res.json().catch(() => null);
     if (!data || typeof data !== "object") return { ok: false, reports: [] };
     const raw = Array.isArray(data.reports) ? data.reports : [];
-    if (typeof console !== "undefined" && console.log) {
-      console.log("[MG FETCH]", {
+    supervisorDebugLog("[MG FETCH]", {
         resource: "reports",
         projectIdRequested: id,
         rowsReturned: raw.length,
         sampleRowProjectId: raw[0]?.project_id,
       });
-    }
     const reports = filterFetchedTenantRowsForProjectId(raw, id, "reports");
     return { ...data, reports };
   }
@@ -4075,14 +4095,12 @@ Thank you.`
     const data = await res.json().catch(() => null);
     if (!data || typeof data !== "object") return { ok: false, expenses: [] };
     const raw = Array.isArray(data.expenses) ? data.expenses : [];
-    if (typeof console !== "undefined" && console.log) {
-      console.log("[MG FETCH]", {
+    supervisorDebugLog("[MG FETCH]", {
         resource: "expenses",
         projectIdRequested: id,
         rowsReturned: raw.length,
         sampleRowProjectId: raw[0]?.project_id,
       });
-    }
     const expenses = filterFetchedTenantRowsForProjectId(raw, id, "expenses");
     return { ...data, expenses };
   }
@@ -4397,14 +4415,12 @@ Thank you.`
     const data = await res.json().catch(() => null);
     if (!data || typeof data !== "object") return { ok: false, changeOrders: [] };
     const raw = Array.isArray(data.changeOrders) ? data.changeOrders : [];
-    if (typeof console !== "undefined" && console.log) {
-      console.log("[MG FETCH]", {
+    supervisorDebugLog("[MG FETCH]", {
         resource: "changeOrders",
         projectIdRequested: id,
         rowsReturned: raw.length,
         sampleRowProjectId: raw[0]?.project_id,
       });
-    }
     const changeOrders = filterFetchedTenantRowsForProjectId(raw, id, "changeOrders");
     return { ...data, changeOrders };
   }
@@ -4532,7 +4548,7 @@ Thank you.`
     if (pid && isServerListedSupervisorProject(pid)) {
       await loadSupervisorOperationalSnapshot(pid, { force: true });
     }
-    renderSupervisor();
+    scheduleSupervisorRender("projects-api");
   }
 
   if (typeof window !== "undefined") {
@@ -5083,31 +5099,29 @@ Thank you.`
     const cached = supervisorProjectReportsCache[pkey];
     const cachedExp = supervisorProjectExpensesCache[pkey];
     const cachedCo = supervisorProjectChangeOrdersCache[pkey];
-    if (typeof console !== "undefined" && console.log) {
-      if (cached && cached.ok === true && Array.isArray(cached.reports) && cached.reports.length) {
-        console.log("[MG CACHE HIT]", {
-          kind: "reports",
-          pid: pkey,
-          cachedLength: cached.reports.length,
-          firstRowProjectId: cached.reports[0]?.project_id,
-        });
-      }
-      if (cachedExp && cachedExp.ok === true && Array.isArray(cachedExp.expenses) && cachedExp.expenses.length) {
-        console.log("[MG CACHE HIT]", {
-          kind: "expenses",
-          pid: pkey,
-          cachedLength: cachedExp.expenses.length,
-          firstRowProjectId: cachedExp.expenses[0]?.project_id,
-        });
-      }
-      if (cachedCo && cachedCo.ok === true && Array.isArray(cachedCo.changeOrders) && cachedCo.changeOrders.length) {
-        console.log("[MG CACHE HIT]", {
-          kind: "changeOrders",
-          pid: pkey,
-          cachedLength: cachedCo.changeOrders.length,
-          firstRowProjectId: cachedCo.changeOrders[0]?.project_id,
-        });
-      }
+    if (cached && cached.ok === true && Array.isArray(cached.reports) && cached.reports.length) {
+      supervisorDebugLog("[MG CACHE HIT]", {
+        kind: "reports",
+        pid: pkey,
+        cachedLength: cached.reports.length,
+        firstRowProjectId: cached.reports[0]?.project_id,
+      });
+    }
+    if (cachedExp && cachedExp.ok === true && Array.isArray(cachedExp.expenses) && cachedExp.expenses.length) {
+      supervisorDebugLog("[MG CACHE HIT]", {
+        kind: "expenses",
+        pid: pkey,
+        cachedLength: cachedExp.expenses.length,
+        firstRowProjectId: cachedExp.expenses[0]?.project_id,
+      });
+    }
+    if (cachedCo && cachedCo.ok === true && Array.isArray(cachedCo.changeOrders) && cachedCo.changeOrders.length) {
+      supervisorDebugLog("[MG CACHE HIT]", {
+        kind: "changeOrders",
+        pid: pkey,
+        cachedLength: cachedCo.changeOrders.length,
+        firstRowProjectId: cachedCo.changeOrders[0]?.project_id,
+      });
     }
     const listed = isServerListedSupervisorProject(pkey);
     const hadRepKey = Object.prototype.hasOwnProperty.call(supervisorProjectReportsCache, pkey);
@@ -5136,8 +5150,7 @@ Thank you.`
               .map(mapTenantProjectChangeOrderRowToRow)
               .filter(Boolean)
           : [];
-      if (typeof console !== "undefined" && console.info) {
-        console.info("[MG Supervisor trace]", "loadSupervisorReport", "listed branch", {
+      supervisorDebugLog("[MG Supervisor trace]", "loadSupervisorReport", "listed branch", {
           incomingProjectId: project.id,
           pkey,
           listed,
@@ -5150,7 +5163,6 @@ Thank you.`
           },
           outLens: { entries: entries.length, extras: extras.length, changeOrders: changeOrders.length },
         });
-      }
     } else {
       const apiEntries =
         cached && cached.ok === true
@@ -5179,8 +5191,7 @@ Thank you.`
           changeOrders: apiChangeOrders != null ? apiChangeOrders : (hadCoKey ? [] : base.changeOrders),
           changeOrderDraft: { ...base.changeOrderDraft },
         };
-        if (typeof console !== "undefined" && console.info) {
-          console.info("[MG Supervisor trace]", "loadSupervisorReport", "non-listed no-saved", {
+        supervisorDebugLog("[MG Supervisor trace]", "loadSupervisorReport", "non-listed no-saved", {
             incomingProjectId: project.id,
             pkey,
             listed,
@@ -5197,7 +5208,6 @@ Thank you.`
               changeOrders: out.changeOrders.length,
             },
           });
-        }
         return finalizeSupervisorRowArraysInReport(out, pkey);
       }
       const repServerBackedNonListed = hadRepKey || (cached && cached.ok === true);
@@ -5252,8 +5262,7 @@ Thank you.`
             : base.changeOrderDraft.workers,
         },
       };
-      if (typeof console !== "undefined" && console.info) {
-        console.info("[MG Supervisor trace]", "loadSupervisorReport", "non-listed merged", {
+      supervisorDebugLog("[MG Supervisor trace]", "loadSupervisorReport", "non-listed merged", {
           incomingProjectId: project.id,
           pkey,
           listed,
@@ -5270,15 +5279,14 @@ Thank you.`
             changeOrders: outMerged.changeOrders.length,
           },
         });
-      }
       return finalizeSupervisorRowArraysInReport(outMerged, pkey);
     }
 
-    if (typeof console !== "undefined" && console.log) {
+    {
       const se = saved && Array.isArray(saved.entries) ? saved.entries.length : 0;
       const sx = saved && Array.isArray(saved.extras) ? saved.extras.length : 0;
       const sco = saved && Array.isArray(saved.changeOrders) ? saved.changeOrders.length : 0;
-      console.log("[MG LISTED ROW SOURCE]", {
+      supervisorDebugLog("[MG LISTED ROW SOURCE]", {
         projectId: project.id,
         listed: true,
         entriesLength: entries.length,
@@ -5298,8 +5306,7 @@ Thank you.`
         changeOrders,
         changeOrderDraft: { ...base.changeOrderDraft },
       };
-      if (typeof console !== "undefined" && console.info) {
-        console.info("[MG Supervisor trace]", "loadSupervisorReport", "listed no-saved", {
+      supervisorDebugLog("[MG Supervisor trace]", "loadSupervisorReport", "listed no-saved", {
           incomingProjectId: project.id,
           pkey,
           listed,
@@ -5316,7 +5323,6 @@ Thank you.`
             changeOrders: outListed.changeOrders.length,
           },
         });
-      }
       return finalizeSupervisorRowArraysInReport(outListed, pkey);
     }
     /** Listed projects: row arrays come only from server caches above — never merge saved.entries/extras/changeOrders. */
@@ -5340,8 +5346,7 @@ Thank you.`
           : base.changeOrderDraft.workers,
       },
     };
-    if (typeof console !== "undefined" && console.info) {
-      console.info("[MG Supervisor trace]", "loadSupervisorReport", "listed+saved", {
+    supervisorDebugLog("[MG Supervisor trace]", "loadSupervisorReport", "listed+saved", {
         incomingProjectId: project.id,
         pkey,
         listed,
@@ -5358,7 +5363,6 @@ Thank you.`
           changeOrders: outListedSaved.changeOrders.length,
         },
       });
-    }
     return finalizeSupervisorRowArraysInReport(outListedSaved, pkey);
   }
 
@@ -10829,9 +10833,7 @@ function renderSupervisor() {
     const settings = loadSettings();
     const picker = $("supProjectPicker");
     const projects = getSupervisorProjectsForUi();
-    if (typeof console !== "undefined" && console.log) {
-      console.log("[supervisor-filter] api count", projects.length);
-    }
+    supervisorDebugLog("[supervisor-filter] api count", projects.length);
     const selectedProjectId = supervisorProjectKey(loadSupervisorSelectedProjectId());
     const selectedProject =
       projects.find((project) => supervisorProjectKey(project.id) === selectedProjectId) || projects[0] || null;
@@ -10896,7 +10898,7 @@ function renderSupervisor() {
               supervisorProjectExpensesFetchInFlight.delete(nextId);
             }
             if (supervisorProjectKey(loadSupervisorSelectedProjectId()) !== nextId) return;
-            renderSupervisor();
+            scheduleSupervisorRender("project-switch-fetch");
           })();
         } else {
           renderSupervisor();
@@ -10972,23 +10974,19 @@ function renderSupervisor() {
           picker.value = "";
           clearSupervisorSelectedProjectId();
         }
-        if (typeof console !== "undefined" && console.log) {
-          console.log("[supervisor-filter] picker count", uiList.length);
-        }
+        supervisorDebugLog("[supervisor-filter] picker count", uiList.length);
       }
 
       const lsSel = supervisorProjectKey(loadSupervisorSelectedProjectId());
       const pickerVal = supervisorProjectKey($("supProjectPicker")?.value || "");
       const wantId = lsSel || pickerVal;
-      if (typeof console !== "undefined" && console.info) {
-        console.info("[MG Supervisor trace]", "refresh start", {
+      supervisorDebugLog("[MG Supervisor trace]", "refresh start", {
           pickerValueRaw: $("supProjectPicker")?.value,
           pickerVal,
           lsSel,
           wantIdPreResolve: wantId,
           selectedProjectId: selectedProject?.id,
         });
-      }
       let currentProject = null;
       if (wantId) {
         currentProject = uiList.find((project) => supervisorProjectKey(project.id) === wantId) || null;
@@ -11031,8 +11029,7 @@ function renderSupervisor() {
         currentProject = uiList[0] || null;
       }
 
-      if (typeof console !== "undefined" && console.info) {
-        console.info("[MG Supervisor trace]", "refresh resolved", {
+      supervisorDebugLog("[MG Supervisor trace]", "refresh resolved", {
           pickerValueRaw: $("supProjectPicker")?.value,
           pickerVal,
           lsSel,
@@ -11040,7 +11037,6 @@ function renderSupervisor() {
           selectedProjectId: selectedProject?.id,
           currentProjectId: currentProject?.id,
         });
-      }
 
       if (!currentProject) {
         supervisorLastRefreshedProjectId = null;
@@ -11048,9 +11044,7 @@ function renderSupervisor() {
         if ($("supTodayTarget")) $("supTodayTarget").style.display = "none";
         if ($("supPortfolioCount")) $("supPortfolioCount").textContent = "0";
         syncSupervisorConsoleSidebar();
-        if (typeof console !== "undefined" && console.log) {
-          console.log("[supervisor-filter] kpi count", 0);
-        }
+        supervisorDebugLog("[supervisor-filter] kpi count", 0);
         $("supervisorKpis").innerHTML = [
           ["Proyectos firmados", "0", "Firma o aprueba proyectos para empezar a reportar"],
           ["Dias estimados", "0.00", "Esperando proyecto firmado"],
@@ -11070,9 +11064,7 @@ function renderSupervisor() {
         }
         if ($("supExecCalendarChrome")) $("supExecCalendarChrome").hidden = true;
         renderSupervisorOperationalPanel({});
-        if (typeof console !== "undefined" && console.log) {
-          console.log("[supervisor-filter] kpi count", 0);
-        }
+        supervisorDebugLog("[supervisor-filter] kpi count", 0);
         return;
       }
 
@@ -11105,7 +11097,7 @@ function renderSupervisor() {
               supervisorProjectReportsCache[pid] = { ok: false, reports: [] };
             }
             if ($("supervisorKpis") && supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
-              renderSupervisor();
+              scheduleSupervisorRender("reports-fetch");
             }
           });
         }
@@ -11119,7 +11111,7 @@ function renderSupervisor() {
               supervisorProjectExpensesCache[pid] = { ok: false, expenses: [] };
             }
             if ($("supervisorKpis") && supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
-              renderSupervisor();
+              scheduleSupervisorRender("expenses-fetch");
             }
           });
         }
@@ -11129,7 +11121,7 @@ function renderSupervisor() {
         ) {
           void loadSupervisorOperationalSnapshot(pid).then(() => {
             if (supervisorProjectKey(loadSupervisorSelectedProjectId()) === pid) {
-              renderSupervisor();
+              scheduleSupervisorRender("operational-snapshot");
             }
           });
         }
@@ -11147,8 +11139,8 @@ function renderSupervisor() {
             wantId,
           });
         }
-        if (supervisorRowStateSwitched && typeof console !== "undefined" && console.log) {
-          console.log("[MG FIX] State reset due to project switch", {
+        if (supervisorRowStateSwitched) {
+          supervisorDebugLog("[MG FIX] State reset due to project switch", {
             from: lastSupervisorProjectId,
             to: pid,
           });
@@ -11180,8 +11172,7 @@ function renderSupervisor() {
           ? state.changeOrderDraft.workers
           : buildDefaultChangeOrderWorkers(currentProject)
       };
-      if (typeof console !== "undefined" && console.info) {
-        console.info("[MG Supervisor trace]", "refresh before save/render", {
+      supervisorDebugLog("[MG Supervisor trace]", "refresh before save/render", {
           wantId,
           currentProjectId: pid,
           stateProjectId: supervisorProjectKey(state.projectId),
@@ -11189,10 +11180,9 @@ function renderSupervisor() {
           extrasCount: state.extras.length,
           changeOrdersCount: state.changeOrders.length,
         });
-      }
       supervisorIsolateProjectRowArrays(state, pid);
-      if (switchedProject && typeof console !== "undefined" && console.info) {
-        console.info("[MG Supervisor isolation]", {
+      if (switchedProject) {
+        supervisorDebugLog("[MG Supervisor isolation]", {
           selectedProjectId: loadSupervisorSelectedProjectId(),
           currentProjectId: currentProject.id,
           normalizedProjectId: pid,
@@ -11403,19 +11393,15 @@ function renderSupervisor() {
 
       if ($("supervisorKpis")) $("supervisorKpis").innerHTML = "";
 
-      if (typeof console !== "undefined" && console.log) {
-        console.log("[supervisor-filter] kpi count", uiList.length);
-      }
+      supervisorDebugLog("[supervisor-filter] kpi count", uiList.length);
 
-      if (typeof console !== "undefined" && console.info) {
-        console.info("[MG Supervisor trace]", "refresh render tables", {
+      supervisorDebugLog("[MG Supervisor trace]", "refresh render tables", {
           currentProjectId: pid,
           stateProjectId: supervisorProjectKey(state.projectId),
           entriesCount: state.entries.length,
           extrasCount: state.extras.length,
           changeOrdersCount: state.changeOrders.length,
         });
-      }
 
       if ($("supEntriesBody")) {
         $("supEntriesBody").innerHTML = state.entries.map((row, index) => {
