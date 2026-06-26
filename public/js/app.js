@@ -6244,7 +6244,92 @@ Thank you.`
     return map[reason] || msg || `Payment reminder failed (HTTP ${status}).`;
   }
 
-  async function sendHubPaymentReminder(row) {
+  function hubReminderBusinessName(row, settings) {
+    const invoice = getProjectInvoiceState(row?.project);
+    return (
+      nonEmptyString(invoice.businessName, row?.project?.business_name, settings?.bizName, settings?.businessName) ||
+      "our team"
+    );
+  }
+
+  function buildHubPaymentReminderCopy(row, settings) {
+    const customerName = nonEmptyString(row?.customer, row?.project?.clientName) || "there";
+    const businessName = hubReminderBusinessName(row, settings);
+    const invoiceNo = nonEmptyString(row?.invoiceNo) || "your invoice";
+    const balanceLabel = money(finiteNumber(row?.balance, 0), settings?.currency || "USD");
+    const publicUrl = hubRowPublicUrl(row);
+    const customerEmail = String(row?.customerEmail || row?.project?.clientEmail || "").trim();
+    const subject = "Friendly reminder: Invoice payment pending";
+    const messageText = [
+      `Hi ${customerName},`,
+      "",
+      `I hope you're doing well. I wanted to send a friendly reminder that invoice ${invoiceNo} still has an outstanding balance of ${balanceLabel}.`,
+      "",
+      "We understand that things get busy, and we truly appreciate your business. When you have a chance, please review and take care of the remaining balance using the link below:",
+      "",
+      publicUrl,
+      "",
+      "If you already sent the payment, please disregard this message and thank you.",
+      "",
+      "Thank you again,",
+      businessName
+    ].join("\n");
+    return { subject, messageText, customerEmail, businessName, publicUrl };
+  }
+
+  let hubPaymentReminderState = { row: null, sending: false };
+
+  function hubPaymentReminderSetFeedback(message, tone) {
+    const el = $("hubPaymentReminderFeedback");
+    if (!el) return;
+    if (!message) {
+      el.style.display = "none";
+      el.textContent = "";
+      el.className = "notice";
+      return;
+    }
+    el.style.display = "block";
+    el.textContent = message;
+    el.className = `notice ${tone === "err" ? "err" : tone === "warn" ? "warn" : "ok"}`;
+  }
+
+  function hubPaymentReminderCloseModal() {
+    const modal = $("hubPaymentReminderModal");
+    if (modal) modal.setAttribute("aria-hidden", "true");
+    hubPaymentReminderState = { row: null, sending: false };
+    hubPaymentReminderSetFeedback("");
+    const sendBtn = $("btnHubPaymentReminderSend");
+    if (sendBtn) {
+      sendBtn.disabled = false;
+      sendBtn.textContent = "Send reminder";
+    }
+  }
+
+  function openHubPaymentReminderModal(row, settings) {
+    if (!$("hubPaymentReminderModal")) return false;
+    const menuState = getHubOverflowMenuState(row);
+    if (!menuState.canSendPaymentReminder) {
+      setHubFeedback("This invoice cannot receive a payment reminder right now.", "warn");
+      return false;
+    }
+    const copy = buildHubPaymentReminderCopy(row, settings || loadSettings());
+    hubPaymentReminderState = { row, sending: false };
+    hubPaymentReminderSetFeedback("");
+    if ($("hubPaymentReminderSubtitle")) {
+      $("hubPaymentReminderSubtitle").textContent = `This message will be sent to ${copy.customerEmail}.`;
+    }
+    if ($("hubPaymentReminderSubject")) $("hubPaymentReminderSubject").textContent = copy.subject;
+    if ($("hubPaymentReminderMessage")) $("hubPaymentReminderMessage").textContent = copy.messageText;
+    const sendBtn = $("btnHubPaymentReminderSend");
+    if (sendBtn) {
+      sendBtn.disabled = false;
+      sendBtn.textContent = "Send reminder";
+    }
+    $("hubPaymentReminderModal").setAttribute("aria-hidden", "false");
+    return true;
+  }
+
+  async function executeHubPaymentReminderSend(row) {
     const iid = hubRowServerInvoiceUuid(row);
     if (!MG_SERVER_INVOICE_UUID_RE.test(iid)) {
       setHubFeedback("Payment reminder is only available for server-backed invoices.", "warn");
@@ -6256,9 +6341,6 @@ Thank you.`
       return { ok: false };
     }
     const email = String(row?.customerEmail || row?.project?.clientEmail || "").trim();
-    if (!window.confirm(`Send payment reminder to ${email}?`)) {
-      return { ok: false, cancelled: true };
-    }
     try {
       const res = await fetch(HUB_PAYMENT_REMINDER_ENDPOINT, {
         method: "POST",
@@ -6268,7 +6350,9 @@ Thank you.`
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.ok !== true) {
-        setHubFeedback(formatHubPaymentReminderError(data, res.status), "err");
+        const msg = formatHubPaymentReminderError(data, res.status);
+        hubPaymentReminderSetFeedback(msg, "err");
+        setHubFeedback(msg, "err");
         return { ok: false };
       }
       if (data.last_reminder_at) {
@@ -6276,12 +6360,173 @@ Thank you.`
       }
       await refreshHubServerInvoicesCacheQuietly();
       const when = data.last_reminder_at ? formatDisplayDate(data.last_reminder_at) : "just now";
+      hubPaymentReminderCloseModal();
       setHubFeedback(`Payment reminder sent to ${email} (${when}).`, "ok");
       return { ok: true, last_reminder_at: data.last_reminder_at };
     } catch (err) {
-      setHubFeedback(String(err?.message || err || "Network error sending reminder."), "err");
+      const msg = String(err?.message || err || "Network error sending reminder.");
+      hubPaymentReminderSetFeedback(msg, "err");
+      setHubFeedback(msg, "err");
       return { ok: false };
     }
+  }
+
+  async function sendHubPaymentReminder(row, settings) {
+    if (!openHubPaymentReminderModal(row, settings)) {
+      return { ok: false };
+    }
+    return { ok: false, preview: true };
+  }
+
+  function closeHubDrawerActionsMenu() {
+    const menu = $("hubDrawerActionsMenu");
+    const toggle = $("btnHubDrawerActionsMenu");
+    if (menu) menu.setAttribute("hidden", "");
+    if (toggle) toggle.setAttribute("aria-expanded", "false");
+  }
+
+  function positionHubDrawerActionsMenu() {
+    const menu = $("hubDrawerActionsMenu");
+    const toggle = $("btnHubDrawerActionsMenu");
+    if (!menu || !toggle || menu.hasAttribute("hidden")) return;
+    const rect = toggle.getBoundingClientRect();
+    const menuWidth = Math.min(300, window.innerWidth - 16);
+    const margin = 8;
+    let left = rect.right - menuWidth;
+    if (left < margin) left = margin;
+    if (left + menuWidth > window.innerWidth - margin) {
+      left = Math.max(margin, window.innerWidth - menuWidth - margin);
+    }
+    let top = rect.bottom + 6;
+    const maxH = Math.min(480, window.innerHeight - margin * 2);
+    menu.style.maxHeight = `${maxH}px`;
+    const estimatedH = Math.min(menu.scrollHeight || 360, maxH);
+    if (top + estimatedH > window.innerHeight - margin) {
+      top = Math.max(margin, rect.top - estimatedH - 6);
+    }
+    menu.style.position = "fixed";
+    menu.style.top = `${top}px`;
+    menu.style.left = `${left}px`;
+    menu.style.width = `${menuWidth}px`;
+  }
+
+  function renderHubDrawerActionsMenu(row) {
+    const menu = $("hubDrawerActionsMenu");
+    if (!menu || !row) return;
+    const menuState = getHubOverflowMenuState(row);
+    const sentAt = nonEmptyString(row?.hubInvoiceSentAt);
+    const sendLabel =
+      menuState.canSendInvoice ? "Send invoice" : sentAt || menuState.canResendInvoice ? "Resend invoice" : "Send / Resend invoice";
+    const sendEnabled = menuState.canSendInvoice || menuState.canResendInvoice;
+    const section = (label, itemsHtml) =>
+      `<div class="hub-drawer-menu-section"><div class="hub-drawer-menu-label">${escapeHtml(label)}</div>${itemsHtml}</div>`;
+    const item = (action, label, enabled) => {
+      const dis = enabled ? "" : " disabled";
+      return `<button type="button" role="menuitem" class="hub-drawer-menu-item${dis}" data-hub-drawer-action="${action}"${enabled ? "" : " disabled"}>${escapeHtml(label)}</button>`;
+    };
+    menu.innerHTML = [
+      section(
+        "Payment",
+        [
+          item("send-invoice", sendLabel, sendEnabled),
+          item("record-payment", "Record payment", menuState.canRecordPayment),
+          item("send-reminder", "Send payment reminder", menuState.canSendPaymentReminder)
+        ].join("")
+      ),
+      section(
+        "Links",
+        [
+          item("open-public", "Open public link", menuState.canOpenPublic),
+          item("copy-link", "Copy public link", menuState.canCopyLink),
+          item("share", "Share", menuState.canCopyLink)
+        ].join("")
+      ),
+      section(
+        "Document",
+        [
+          item("download-pdf", "Download PDF", menuState.canDownloadPdf),
+          item("print", "Print", menuState.canDownloadPdf)
+        ].join("")
+      ),
+      section(
+        "Manage",
+        [
+          item("edit-client", "Edit client info", menuState.canEditClientInfo),
+          item("archive", "Archive", menuState.canArchive),
+          item("duplicate", "Duplicate as invoice — coming soon", false),
+          item("cancel", "Cancel — coming soon", false)
+        ].join("")
+      )
+    ].join("");
+  }
+
+  async function hubDrawerSharePublicLink(row) {
+    const url = hubRowPublicUrl(row);
+    if (!url) {
+      setHubFeedback("No public link to share.", "warn");
+      return;
+    }
+    const title = hubRowInvoiceDisplayLabel(row) || row?.title || "Invoice";
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, text: `Invoice: ${title}`, url });
+        setHubFeedback("Share opened.", "ok");
+        return;
+      } catch (err) {
+        if (err?.name === "AbortError") return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setHubFeedback("Public invoice link copied (share unavailable).", "ok");
+    } catch (_e) {
+      setHubFeedback("Could not share or copy link.", "err");
+    }
+  }
+
+  function hubDrawerPrintInvoice(row, settings) {
+    const url = hubRowPublicUrl(row);
+    if (row?.hubRowSource === "server_invoice" && url) {
+      const w = window.open(url, "_blank", "noopener");
+      if (w) {
+        const tryPrint = () => {
+          try {
+            w.print();
+          } catch (_e) {
+            /* cross-origin or not ready */
+          }
+        };
+        try {
+          w.addEventListener("load", tryPrint, { once: true });
+        } catch (_e2) {
+          setTimeout(tryPrint, 1500);
+        }
+      }
+      return;
+    }
+    if (!menuStateGuardDownload(row)) return;
+    void exportInvoicePdf("hub", row.project, row.report, settings, getProjectInvoiceState(row.project));
+  }
+
+  function menuStateGuardDownload(row) {
+    const menuState = getHubOverflowMenuState(row);
+    if (menuState.canDownloadPdf) return true;
+    setHubFeedback("Download is not available for this invoice.", "warn");
+    return false;
+  }
+
+  function hubDrawerDownloadPdf(row, settings) {
+    if (row?.hubRowSource === "server_invoice") {
+      const url = hubRowPublicUrl(row);
+      if (!url) {
+        setHubFeedback("Publish the invoice first to get a public link.", "warn");
+        return;
+      }
+      window.open(url, "_blank", "noopener");
+      return;
+    }
+    if (!menuStateGuardDownload(row)) return;
+    void exportInvoicePdf("hub", row.project, row.report, settings, getProjectInvoiceState(row.project));
   }
 
   function hubRowPublicUrl(row) {
@@ -14330,6 +14575,8 @@ window.renderSupervisor = renderSupervisor;
     }
 
     if (applyDrawerButtons) applyDrawerButtons(row);
+    renderHubDrawerActionsMenu(row);
+    closeHubDrawerActionsMenu();
 
     const changeOrders = Array.isArray(row.report?.changeOrders) ? row.report.changeOrders : [];
     const changeWrap = $("hubDrawerChangeOrdersWrap");
@@ -14445,10 +14692,7 @@ window.renderSupervisor = renderSupervisor;
           return;
         }
         if (action === "send-reminder") {
-          const result = await sendHubPaymentReminder(row);
-          if (result.ok && typeof menuConfig.onAfterReminder === "function") {
-            menuConfig.onAfterReminder(row, result);
-          }
+          openHubPaymentReminderModal(row, loadSettings());
           return;
         }
         if (action === "edit-client") {
@@ -14711,10 +14955,18 @@ window.renderSupervisor = renderSupervisor;
       window.__MG_HUB_OVERFLOW_CLOSE_BOUND__ = true;
       document.addEventListener("click", (ev) => {
         if (ev.target.closest(".hub-overflow-wrap")) return;
+        if (ev.target.closest(".hub-drawer-actions-wrap")) return;
         closeAllHubOverflowMenus();
+        closeHubDrawerActionsMenu();
       });
-      window.addEventListener("resize", closeAllHubOverflowMenus);
-      window.addEventListener("scroll", closeAllHubOverflowMenus, true);
+      window.addEventListener("resize", () => {
+        closeAllHubOverflowMenus();
+        closeHubDrawerActionsMenu();
+      });
+      window.addEventListener("scroll", () => {
+        closeAllHubOverflowMenus();
+        closeHubDrawerActionsMenu();
+      }, true);
     }
 
     const settings = loadSettings();
@@ -14776,126 +15028,7 @@ window.renderSupervisor = renderSupervisor;
     };
 
     const applyHubActionButtonState = (row) => {
-      const actionState = getHubRowActionState(row);
-      const openBtn = $("btnHubDrawerOpenPublic");
-      if (openBtn) {
-        openBtn.style.display = "";
-        openBtn.disabled = !actionState.canOpenPublic;
-        openBtn.classList.toggle("hub-action-disabled", !actionState.canOpenPublic);
-        openBtn.title = actionState.canOpenPublic ? "" : "Aun no existe link publico para este invoice.";
-      }
-
-      const pdfBtn = $("btnHubDrawerPdf");
-      if (pdfBtn) {
-        pdfBtn.style.display = "";
-        pdfBtn.disabled = !actionState.canExportPdf;
-        pdfBtn.classList.toggle("hub-action-disabled", !actionState.canExportPdf);
-        pdfBtn.title = actionState.canExportPdf ? "" : "El PDF del invoice requiere un invoice valido con monto.";
-      }
-
-      const recordPay = $("btnHubDrawerRecordPayment");
-      if (recordPay) {
-        const canLedger = hubRowCanRecordLedgerPayment(row);
-        recordPay.disabled = !canLedger;
-        recordPay.style.display = "";
-        recordPay.classList.toggle("hub-action-disabled", !canLedger);
-        recordPay.title = canLedger
-          ? ""
-          : "Requires a linked server invoice, quote, or tenant project UUID to post to the ledger.";
-      }
-
-      const sendBtn = $("btnHubDrawerSendInvoice");
-      if (sendBtn) {
-        const sendReady = getHubDrawerSendInvoiceReadiness(row);
-        sendBtn.style.display = "";
-        sendBtn.disabled = false;
-        sendBtn.classList.remove("hub-action-disabled");
-        sendBtn.title = sendReady.ready
-          ? ""
-          : `Missing required fields: ${sendReady.missing.join(", ")}`;
-        const sentAt = nonEmptyString(row?.hubInvoiceSentAt);
-        sendBtn.textContent = sentAt ? "Resend Invoice" : "Send Invoice";
-      }
-
-      const reminderBtn = $("btnHubDrawerSendReminder");
-      if (reminderBtn) {
-        const menuState = getHubOverflowMenuState(row);
-        const canRemind = menuState.canSendPaymentReminder;
-        reminderBtn.style.display = row?.hubRowSource === "server_invoice" ? "" : "none";
-        reminderBtn.disabled = !canRemind;
-        reminderBtn.classList.toggle("hub-action-disabled", !canRemind);
-        reminderBtn.title = canRemind
-          ? ""
-          : "Requires unpaid server invoice with balance, email, and public link.";
-      }
-
-      const clientInfoBtn = $("btnHubDrawerClientInfo");
-      if (clientInfoBtn) {
-        const showClientInfo =
-          row?.hubRowSource === "server_invoice" &&
-          MG_SERVER_INVOICE_UUID_RE.test(String(row?.serverInvoiceId || row?.projectId || "").trim());
-        clientInfoBtn.style.display = showClientInfo ? "" : "none";
-        clientInfoBtn.disabled = !showClientInfo;
-        clientInfoBtn.classList.toggle("hub-action-disabled", !showClientInfo);
-        clientInfoBtn.title = showClientInfo ? "Edit client name, email, and notes for delivery" : "";
-      }
-
-      const qid = String(row?.hubQuoteId || "").trim();
-      const serverQuoteRow =
-        row?.hubRowSource === "server_invoice" && qid && MG_SERVER_INVOICE_UUID_RE.test(qid);
-      const canMarkQuoteAccept =
-        serverQuoteRow && !hubServerQuoteIsAccepted(row);
-      const psLower = String(row?.hubInvoicePaymentStatus || "").toLowerCase();
-      const canMarkCheckPending =
-        serverQuoteRow &&
-        hubServerQuoteIsAccepted(row) &&
-        !hubServerDepositRecorded(row) &&
-        psLower !== "check_pending";
-      const paidApprox = hubRowPaidToDateApprox(row);
-      const canMarkDepositReceived =
-        serverQuoteRow &&
-        !hubServerDepositRecorded(row) &&
-        (hubServerQuoteIsAccepted(row) || psLower === "check_pending") &&
-        paidApprox <= 0;
-
-      const qa = $("btnHubDrawerQuoteAccept");
-      if (qa) {
-        const show = Boolean(canMarkQuoteAccept);
-        qa.style.display = show ? "" : "none";
-        qa.disabled = !show;
-        qa.classList.toggle("hub-action-disabled", !show);
-        qa.title = show ? "" : "Quote already accepted or row is not server-backed.";
-      }
-      const cp = $("btnHubDrawerCheckPending");
-      if (cp) {
-        const show = Boolean(canMarkCheckPending);
-        cp.style.display = show ? "" : "none";
-        cp.disabled = !show;
-        cp.classList.toggle("hub-action-disabled", !show);
-        cp.title = show ? "" : "Accept the quote first, or deposit is already on file.";
-      }
-      const dr = $("btnHubDrawerDepositReceived");
-      if (dr) {
-        const show = Boolean(canMarkDepositReceived);
-        dr.style.display = show ? "" : "none";
-        dr.disabled = !show;
-        dr.classList.toggle("hub-action-disabled", !show);
-        dr.title = show
-          ? ""
-          : paidApprox > 0
-            ? "Paid-to-date must be zero before marking deposit received."
-            : "Accept the quote or mark check pending first, or deposit already recorded.";
-      }
-
-      const editQuoteBtn = $("btnHubDrawerEditQuote");
-      if (editQuoteBtn) {
-        const quoteId = hubLedgerTargetIds(row).quoteId;
-        const show = Boolean(quoteId);
-        editQuoteBtn.style.display = show ? "" : "none";
-        editQuoteBtn.disabled = !show;
-        editQuoteBtn.classList.toggle("hub-action-disabled", !show);
-        editQuoteBtn.title = show ? "Edit quote metadata" : "No linked quote on this row.";
-      }
+      renderHubDrawerActionsMenu(row);
     };
 
     const refreshBulkBar = () => {
@@ -15188,12 +15321,124 @@ window.renderSupervisor = renderSupervisor;
       if ($("hubDrawer")) $("hubDrawer").setAttribute("aria-hidden", "true");
       if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
       if ($("hubInvoiceContactModal")) hubInvoiceContactCloseModal();
+      closeHubDrawerActionsMenu();
       setNotice("hubRecordPayFeedback", "", "");
       if ($("hubRecordPayOverpayWarn")) {
         $("hubRecordPayOverpayWarn").style.display = "none";
         $("hubRecordPayOverpayWarn").textContent = "";
       }
       clearHubFeedbackOkIfShown();
+    };
+
+    const dispatchHubDrawerAction = async (action) => {
+      if (!selectedRow) return;
+      const row = selectedRow;
+      closeHubDrawerActionsMenu();
+      const menuState = getHubOverflowMenuState(row);
+      if (action === "send-invoice") {
+        if (menuState.canSendInvoice) {
+          if (row.hubRowSource === "server_invoice") {
+            await sendHubServerInvoiceRow(row);
+          } else {
+            await sendHubInvoice(row.projectId);
+            setHubFeedback(`Invoice email draft prepared for ${row.customer}.`, "ok");
+          }
+          refresh();
+          refreshSelectedRow();
+          return;
+        }
+        if (!menuState.canResendInvoice) {
+          setHubFeedback("Invoice is not ready to send.", "warn");
+          return;
+        }
+        const ready = getHubDrawerSendInvoiceReadiness(row);
+        if (!ready.ready) {
+          setHubFeedback(`Missing required fields: ${ready.missing.join(", ")}`, "warn");
+          return;
+        }
+        if (row.hubRowSource === "server_invoice") {
+          await sendHubServerInvoiceRow(row);
+        } else {
+          await sendHubInvoice(row.projectId);
+          setHubFeedback(`Invoice resent for ${row.customer}.`, "ok");
+        }
+        refresh();
+        refreshSelectedRow();
+        return;
+      }
+      if (action === "record-payment") {
+        void openHubRecordPaymentModal();
+        return;
+      }
+      if (action === "send-reminder") {
+        openHubPaymentReminderModal(row, settings);
+        return;
+      }
+      if (action === "open-public") {
+        const url = hubRowPublicUrl(row);
+        if (!url) {
+          setHubFeedback("No public link for this invoice.", "warn");
+          return;
+        }
+        window.open(url, "_blank", "noopener");
+        return;
+      }
+      if (action === "copy-link") {
+        const url = hubRowPublicUrl(row);
+        if (!url) {
+          setHubFeedback("No public link to copy.", "warn");
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(url);
+          setHubFeedback("Public invoice link copied.", "ok");
+        } catch (_e) {
+          setHubFeedback("Could not copy link to clipboard.", "err");
+        }
+        return;
+      }
+      if (action === "share") {
+        void hubDrawerSharePublicLink(row);
+        return;
+      }
+      if (action === "download-pdf") {
+        hubDrawerDownloadPdf(row, settings);
+        return;
+      }
+      if (action === "print") {
+        hubDrawerPrintInvoice(row, settings);
+        return;
+      }
+      if (action === "edit-client") {
+        hubInvoiceContactOpen(row);
+        return;
+      }
+      if (action === "archive") {
+        const iid = String(row.serverInvoiceId || "").trim();
+        if (!MG_SERVER_INVOICE_UUID_RE.test(iid)) {
+          setHubFeedback("No valid invoice to archive.", "warn");
+          return;
+        }
+        const { ok, data } = await postHubInvoiceArchiveDelete(iid, "archive");
+        if (!ok) {
+          setHubFeedback(data?.error || "Could not archive invoice.", "err");
+          return;
+        }
+        if (typeof window.__mgHubRefetchServerInvoices === "function") {
+          await window.__mgHubRefetchServerInvoices();
+        }
+        if (selectedRow && String(selectedRow.serverInvoiceId || "") === iid) {
+          const sf = val("hubStatusFilter") || "all";
+          if (sf === "all") closeHubDrawer();
+          else {
+            const next = lastMergedHubRows.find((r) => String(r.serverInvoiceId || "") === iid);
+            if (next) openHubDrawer(next);
+            else closeHubDrawer();
+          }
+        }
+        setHubFeedback("Invoice archived.", "ok");
+        refresh();
+      }
     };
 
     const openPaymentForm = (row, existingPayment, onSubmit) => {
@@ -16252,6 +16497,63 @@ window.renderSupervisor = renderSupervisor;
     }
 
     if ($("btnHubDrawerClose")) $("btnHubDrawerClose").onclick = closeHubDrawer;
+    if ($("btnHubDrawerActionsMenu")) {
+      $("btnHubDrawerActionsMenu").onclick = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const menu = $("hubDrawerActionsMenu");
+        if (!menu) return;
+        const isOpen = !menu.hasAttribute("hidden");
+        closeHubDrawerActionsMenu();
+        closeAllHubOverflowMenus();
+        if (!isOpen) {
+          menu.removeAttribute("hidden");
+          $("btnHubDrawerActionsMenu").setAttribute("aria-expanded", "true");
+          positionHubDrawerActionsMenu();
+        }
+      };
+    }
+    if ($("hubDrawerActionsMenu") && !window.__MG_HUB_DRAWER_MENU_BOUND__) {
+      window.__MG_HUB_DRAWER_MENU_BOUND__ = true;
+      $("hubDrawerActionsMenu").addEventListener("click", (ev) => {
+        const btn = ev.target.closest("[data-hub-drawer-action]");
+        if (!btn || btn.disabled) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        const action = String(btn.dataset.hubDrawerAction || "").trim();
+        if (!action) return;
+        void dispatchHubDrawerAction(action);
+      });
+    }
+    if ($("hubPaymentReminderModal") && !window.__MG_HUB_REMINDER_MODAL_BOUND__) {
+      window.__MG_HUB_REMINDER_MODAL_BOUND__ = true;
+      if ($("btnHubPaymentReminderClose")) $("btnHubPaymentReminderClose").onclick = hubPaymentReminderCloseModal;
+      if ($("btnHubPaymentReminderCancel")) $("btnHubPaymentReminderCancel").onclick = hubPaymentReminderCloseModal;
+      if ($("btnHubPaymentReminderSend")) {
+        $("btnHubPaymentReminderSend").onclick = () => {
+          if (hubPaymentReminderState.sending || !hubPaymentReminderState.row) return;
+          const row = hubPaymentReminderState.row;
+          hubPaymentReminderState.sending = true;
+          const sendBtn = $("btnHubPaymentReminderSend");
+          if (sendBtn) {
+            sendBtn.disabled = true;
+            sendBtn.textContent = "Sending…";
+          }
+          void (async () => {
+            const result = await executeHubPaymentReminderSend(row);
+            hubPaymentReminderState.sending = false;
+            if (result.ok) {
+              refresh();
+              refreshSelectedRow();
+              hubDrawerRenderLastReminder(row);
+            } else if (sendBtn) {
+              sendBtn.disabled = false;
+              sendBtn.textContent = "Send reminder";
+            }
+          })();
+        };
+      }
+    }
     if ($("hubRecordPayType")) {
       $("hubRecordPayType").onchange = () => syncHubRecordPayAmountDefault();
     }

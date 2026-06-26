@@ -124,6 +124,44 @@ function buildPublicInvoiceUrl(publicToken, event) {
     : `/invoice-public.html?token=${encodeURIComponent(token)}`;
 }
 
+function formatMoney(value, currency) {
+  const cur = String(currency || "USD").trim() || "USD";
+  const n = Number(value);
+  const safe = Number.isFinite(n) ? n : 0;
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: cur }).format(safe);
+  } catch (_err) {
+    return `$${safe.toFixed(2)}`;
+  }
+}
+
+function buildReminderMessageContent(inv, tenantName, publicInvoiceUrl) {
+  const customerName = pickFirstStr(inv.customer_name, inv.project_name) || "there";
+  const businessName = pickFirstStr(inv.business_name, tenantName) || "our team";
+  const invoiceNo = pickFirstStr(inv.invoice_no) || "your invoice";
+  const balanceLabel = formatMoney(remainingBalance(inv), inv.currency);
+  const subject = "Friendly reminder: Invoice payment pending";
+  const messageText = [
+    `Hi ${customerName},`,
+    "",
+    `I hope you're doing well. I wanted to send a friendly reminder that invoice ${invoiceNo} still has an outstanding balance of ${balanceLabel}.`,
+    "",
+    "We understand that things get busy, and we truly appreciate your business. When you have a chance, please review and take care of the remaining balance using the link below:",
+    "",
+    publicInvoiceUrl,
+    "",
+    "If you already sent the payment, please disregard this message and thank you.",
+    "",
+    "Thank you again,",
+    businessName
+  ].join("\n");
+  return {
+    reminder_subject: subject,
+    reminder_message: messageText,
+    reminder_message_text: messageText
+  };
+}
+
 function buildReminderPayload(inv, tenantName, event, manualTriggeredAt, idempotencyNonce) {
   const tenant_id = String(inv.tenant_id || "").trim();
   const invoice_id = String(inv.id || "").trim();
@@ -132,6 +170,7 @@ function buildReminderPayload(inv, tenantName, event, manualTriggeredAt, idempot
   const public_invoice_url = buildPublicInvoiceUrl(inv.public_token, event);
   const balanceDue = remainingBalance(inv);
   const idempotency_key = `${tenant_id}:${invoice_id}:${REMINDER_STAGE}:${manualTriggeredAt}:${idempotencyNonce}`;
+  const reminderCopy = buildReminderMessageContent(inv, tenantName, public_invoice_url);
 
   return {
     client_email: pickFirstStr(inv.customer_email),
@@ -162,7 +201,10 @@ function buildReminderPayload(inv, tenantName, event, manualTriggeredAt, idempot
     is_paid: false,
     is_archived: false,
     reminder_stage: REMINDER_STAGE,
-    manual_triggered_at: manualTriggeredAt
+    manual_triggered_at: manualTriggeredAt,
+    reminder_subject: reminderCopy.reminder_subject,
+    reminder_message: reminderCopy.reminder_message,
+    reminder_message_text: reminderCopy.reminder_message_text
   };
 }
 
