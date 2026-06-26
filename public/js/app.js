@@ -10230,6 +10230,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   }
 
   function renderSales() {
+    if (
+      !$("salesKpis") &&
+      !$("salesProjectName") &&
+      !document.body?.matches?.("[data-mg-page-title='Vendedor']")
+    ) {
+      return;
+    }
   const state = loadSales();
   const settings = loadSettings();
   const metrics = calculateSalesMetrics(state, settings);
@@ -11812,8 +11819,14 @@ window.renderSupervisor = renderSupervisor;
     });
   }
 
+  const HUB_DEBUG = false;
+
+  function hubDebugLog(...args) {
+    if (HUB_DEBUG) console.log(...args);
+  }
+
   async function loadTenantInvoicesFromServer(filters = {}) {
-    console.log("[HUB] fetching server invoices...");
+    hubDebugLog("[HUB] fetching server invoices...");
     try {
       const params = new URLSearchParams();
       if (filters.status) params.set("status", filters.status);
@@ -11831,7 +11844,7 @@ window.renderSupervisor = renderSupervisor;
       } catch (_parseErr) {
         data = {};
       }
-      console.log("[HUB] server response:", data);
+      hubDebugLog("[HUB] server response:", data);
 
       if (!res.ok) {
         console.warn("[Invoice Hub] list-tenant-invoices failed", res.status);
@@ -12276,22 +12289,62 @@ window.renderSupervisor = renderSupervisor;
   function mergeHubRows(existingRows, normalizedServerRows) {
     const existingLen = Array.isArray(existingRows) ? existingRows.length : 0;
     const normalizedLen = Array.isArray(normalizedServerRows) ? normalizedServerRows.length : 0;
-    console.log("[HUB] merging rows:", existingLen, normalizedLen);
+    hubDebugLog("[HUB] merging rows:", existingLen, normalizedLen);
     const out = Array.isArray(existingRows) ? existingRows.slice() : [];
     const seenToken = new Set();
     const seenId = new Set();
     const seenNo = new Set();
-    out.forEach((r) => {
+    const byPublicToken = new Map();
+    const byInvoiceNo = new Map();
+    const byServerInvoiceId = new Map();
+    const rowIndex = new Map();
+
+    out.forEach((r, idx) => {
+      rowIndex.set(r, idx);
       const t = nonEmptyString(r?.project?.invoice?.publicToken);
-      if (t) seenToken.add(t);
-      if (r?.serverInvoiceId) seenId.add(r.serverInvoiceId);
+      if (t) {
+        seenToken.add(t);
+        if (!byPublicToken.has(t)) byPublicToken.set(t, r);
+      }
+      if (r?.serverInvoiceId) {
+        seenId.add(r.serverInvoiceId);
+        const sid = String(r.serverInvoiceId).trim();
+        if (sid && !byServerInvoiceId.has(sid)) byServerInvoiceId.set(sid, r);
+      }
       const no = String(r?.project?.invoice?.invoiceNo || r?.invoiceNo || "").trim().toLowerCase();
-      if (no && no !== "no invoice") seenNo.add(no);
+      if (no && no !== "no invoice") {
+        seenNo.add(no);
+        if (!byInvoiceNo.has(no)) byInvoiceNo.set(no, r);
+      }
     });
+
+    const findDupForNorm = (norm) => {
+      const candidates = [];
+      const addCandidate = (row) => {
+        if (row && candidates.indexOf(row) < 0) candidates.push(row);
+      };
+      if (norm.publicToken) addCandidate(byPublicToken.get(norm.publicToken));
+      const serverNo = String(norm.invoiceNo || "").trim().toLowerCase();
+      if (serverNo && serverNo !== "no invoice") addCandidate(byInvoiceNo.get(serverNo));
+      if (norm.invoiceId) addCandidate(byServerInvoiceId.get(String(norm.invoiceId).trim()));
+      if (!candidates.length) return null;
+      let dup = null;
+      let bestIdx = Infinity;
+      for (const row of candidates) {
+        if (!hubRowMatchesNormalizedServerInvoice(row, norm)) continue;
+        const idx = rowIndex.has(row) ? rowIndex.get(row) : out.indexOf(row);
+        if (idx >= 0 && idx < bestIdx) {
+          bestIdx = idx;
+          dup = row;
+        }
+      }
+      return dup;
+    };
+
     const normalizedList = Array.isArray(normalizedServerRows) ? normalizedServerRows : [];
     normalizedList.forEach((norm) => {
       if (!norm?.invoiceId) return;
-      const dup = out.find((e) => hubRowMatchesNormalizedServerInvoice(e, norm));
+      const dup = findDupForNorm(norm);
       if (dup) {
         syncHubRowFromServerInvoiceNorm(dup, norm);
         if (norm.publicToken) seenToken.add(norm.publicToken);
@@ -14678,7 +14731,7 @@ window.renderSupervisor = renderSupervisor;
         : `${row.customer} · ${row.status}`;
     }
     window.__MG_ACTIVE_INVOICE_ROW__ = row;
-    console.log("[Invoice Hub] send invoice button rendered", row);
+    hubDebugLog("[Invoice Hub] send invoice button rendered", row);
 
     hubDrawerRenderDeliveryEmail(row);
     hubDrawerRenderLastReminder(row);
@@ -16684,16 +16737,16 @@ window.renderSupervisor = renderSupervisor;
     }
     if (!window.__MG_SEND_INVOICE_HANDLER_BOUND__) {
       window.__MG_SEND_INVOICE_HANDLER_BOUND__ = true;
-      console.log("[Invoice Hub] send invoice listener attached");
+      hubDebugLog("[Invoice Hub] send invoice listener attached");
       document.addEventListener("click", async function (event) {
         const btn = event.target.closest("[data-hub-send-invoice]");
         if (!btn) return;
         event.preventDefault();
         event.stopPropagation();
-        console.log("[Invoice Hub] Send Invoice clicked");
+        hubDebugLog("[Invoice Hub] Send Invoice clicked");
 
         const row = window.__MG_ACTIVE_INVOICE_ROW__ || window.activeInvoiceRow || window.selectedInvoiceRow || null;
-        console.log("[DEBUG ROW]", row);
+        hubDebugLog("[DEBUG ROW]", row);
 
         if (!row) {
           alert("No invoice selected.");
@@ -16755,7 +16808,7 @@ window.renderSupervisor = renderSupervisor;
             remaining_balance: row.remaining_balance || row.balance_due || row.balance || ""
           };
 
-          console.log("[Invoice Hub] Send Invoice payload", body);
+          hubDebugLog("[Invoice Hub] Send Invoice payload", body);
 
           const res = await fetch("/.netlify/functions/send-invoice-zapier", {
             method: "POST",
@@ -16776,7 +16829,7 @@ window.renderSupervisor = renderSupervisor;
 
           btn.textContent = "Sent";
           alert("Invoice sent successfully.");
-          console.log("[Invoice Hub] Invoice sent successfully", data);
+          hubDebugLog("[Invoice Hub] Invoice sent successfully", data);
           if (row?.projectId) {
             applyHubSendSuccessToLocalProject(row.projectId, data.invoice || null);
           }
@@ -16844,7 +16897,7 @@ window.renderSupervisor = renderSupervisor;
       void (async () => {
         const { invoices: raw } = await loadTenantInvoicesFromServer({ limit: 100 });
         const normalized = raw.map(normalizeServerInvoiceForHub);
-        console.log("[HUB] normalized invoices:", normalized);
+        hubDebugLog("[HUB] normalized invoices:", normalized);
         hubServerNormalizedInvoicesCache = normalized;
         if ($("hubTableBody")) refresh();
       })();
