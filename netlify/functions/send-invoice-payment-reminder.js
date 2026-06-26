@@ -135,7 +135,7 @@ function formatMoney(value, currency) {
   }
 }
 
-function buildReminderMessageContent(inv, tenantName, publicInvoiceUrl) {
+function buildReminderMessageContent(inv, tenantName) {
   const customerName = pickFirstStr(inv.customer_name, inv.project_name) || "there";
   const businessName = pickFirstStr(inv.business_name, tenantName) || "our team";
   const invoiceNo = pickFirstStr(inv.invoice_no) || "your invoice";
@@ -146,9 +146,7 @@ function buildReminderMessageContent(inv, tenantName, publicInvoiceUrl) {
     "",
     `I hope you're doing well. I wanted to send a friendly reminder that invoice ${invoiceNo} still has an outstanding balance of ${balanceLabel}.`,
     "",
-    "We understand that things get busy, and we truly appreciate your business. When you have a chance, please review and take care of the remaining balance using the link below:",
-    "",
-    publicInvoiceUrl,
+    "We understand that things get busy, and we truly appreciate your business. When you have a chance, please take care of the remaining balance for this invoice.",
     "",
     "If you already sent the payment, please disregard this message and thank you.",
     "",
@@ -167,10 +165,9 @@ function buildReminderPayload(inv, tenantName, event, manualTriggeredAt, idempot
   const invoice_id = String(inv.id || "").trim();
   const quote_id = String(inv.quote_id || "").trim();
   const project_id = String(inv.project_id || "").trim();
-  const public_invoice_url = buildPublicInvoiceUrl(inv.public_token, event);
   const balanceDue = remainingBalance(inv);
   const idempotency_key = `${tenant_id}:${invoice_id}:${REMINDER_STAGE}:${manualTriggeredAt}:${idempotencyNonce}`;
-  const reminderCopy = buildReminderMessageContent(inv, tenantName, public_invoice_url);
+  const reminderCopy = buildReminderMessageContent(inv, tenantName);
 
   return {
     client_email: pickFirstStr(inv.customer_email),
@@ -183,8 +180,8 @@ function buildReminderPayload(inv, tenantName, event, manualTriggeredAt, idempot
     invoice_label: pickFirstStr(inv.invoice_label),
     invoice_number: pickFirstStr(inv.invoice_no),
     invoice_no: pickFirstStr(inv.invoice_no),
-    public_invoice_url,
-    "Public Invoice Url": public_invoice_url,
+    public_invoice_url: "",
+    "Public Invoice Url": "",
     tenant_id,
     invoice_id,
     quote_id,
@@ -300,11 +297,6 @@ exports.handler = async (event) => {
     const customerEmail = pickFirstStr(invoice.customer_email);
     if (!isValidEmail(customerEmail)) {
       return jsonError(422, "missing_customer_email", "Invoice is missing a valid customer_email.");
-    }
-
-    const publicToken = pickFirstStr(invoice.public_token);
-    if (!publicToken) {
-      return jsonError(422, "missing_public_token", "Invoice is missing public_token.");
     }
 
     const webhookUrl = String(process.env.ZAPIER_INVOICE_REMINDER_WEBHOOK || "").trim();

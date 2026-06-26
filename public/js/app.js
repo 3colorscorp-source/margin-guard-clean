@@ -6134,7 +6134,6 @@ Thank you.`
     const sid = hubRowServerInvoiceUuid(row);
     const hasValidSid = Boolean(sid && MG_SERVER_INVOICE_UUID_RE.test(sid));
     const hasEmail = hubRowValidCustomerEmail(row);
-    const hasToken = Boolean(hubRowPublicToken(row));
     const hasBalance = finiteNumber(row?.balance, 0) > 0.005;
     const archived = hubRowIsArchivedInvoice(row);
     const paid = hubRowIsPaidForReminder(row);
@@ -6143,7 +6142,7 @@ Thank you.`
     const canResendInvoice = Boolean(sendReady.ready && !archived);
     const canSendInvoice = Boolean(base.canSendInvoice);
     const canSendPaymentReminder = Boolean(
-      isServer && hasValidSid && hasBalance && !paid && !archived && hasEmail && hasToken
+      isServer && hasValidSid && hasBalance && !paid && !archived && hasEmail
     );
     const canEditClientInfo = Boolean(isServer && hasValidSid && !archived);
     const canRecordPayment = Boolean((hubRowCanRecordLedgerPayment(row) || base.canTakePayment) && !archived && hasBalance);
@@ -6197,7 +6196,6 @@ Thank you.`
     const businessName = hubReminderBusinessName(row, settings);
     const invoiceNo = nonEmptyString(row?.invoiceNo) || "your invoice";
     const balanceLabel = money(finiteNumber(row?.balance, 0), settings?.currency || "USD");
-    const publicUrl = hubRowPublicUrl(row);
     const customerEmail = String(row?.customerEmail || row?.project?.clientEmail || "").trim();
     const subject = "Friendly reminder: Invoice payment pending";
     const messageText = [
@@ -6205,16 +6203,14 @@ Thank you.`
       "",
       `I hope you're doing well. I wanted to send a friendly reminder that invoice ${invoiceNo} still has an outstanding balance of ${balanceLabel}.`,
       "",
-      "We understand that things get busy, and we truly appreciate your business. When you have a chance, please review and take care of the remaining balance using the link below:",
-      "",
-      publicUrl,
+      "We understand that things get busy, and we truly appreciate your business. When you have a chance, please take care of the remaining balance for this invoice.",
       "",
       "If you already sent the payment, please disregard this message and thank you.",
       "",
       "Thank you again,",
       businessName
     ].join("\n");
-    return { subject, messageText, customerEmail, businessName, publicUrl };
+    return { subject, messageText, customerEmail, businessName };
   }
 
   let hubPaymentReminderState = { row: null, sending: false };
