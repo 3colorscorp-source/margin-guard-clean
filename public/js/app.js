@@ -15810,7 +15810,7 @@ window.renderSupervisor = renderSupervisor;
         }
       }
       if ($("hubKpiSecondaryRow")) {
-        $("hubKpiSecondaryRow").style.display = showWaitingKpi || showPaidKpi ? "grid" : "none";
+        $("hubKpiSecondaryRow").style.display = showWaitingKpi || showPaidKpi ? "contents" : "none";
       }
 
       if ($("hubHeroStartWith")) {

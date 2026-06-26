@@ -875,83 +875,229 @@
         width: calc(100vw - var(--mg-sidebar-width, 64px));
       }
     }
+
+    /* Invoice Hub — compact Square-inspired overview (layout only) */
+    body[data-role="estimates-hub"] .hub-console-stack--compact {
+      gap: 8px;
+    }
+    body[data-role="estimates-hub"] .hub-console-kpis-card--compact {
+      margin-top: 0;
+    }
+    body[data-role="estimates-hub"] .hub-console-kpis-card--compact > .card-inner {
+      padding: 10px 12px 8px;
+      position: relative;
+    }
+    body[data-role="estimates-hub"] .hub-kpi-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+      gap: 8px;
+      align-items: stretch;
+    }
+    body[data-role="estimates-hub"] .hub-kpi-tile {
+      min-height: 0;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      background: rgba(255, 255, 255, 0.025);
+    }
+    body[data-role="estimates-hub"] .hub-kpi-tile--accent {
+      border-color: rgba(34, 197, 94, 0.22);
+      background: linear-gradient(165deg, rgba(34, 197, 94, 0.07), rgba(255, 255, 255, 0.02));
+    }
+    body[data-role="estimates-hub"] .hub-kpi-tile--action {
+      border-color: rgba(245, 158, 11, 0.2);
+      background: linear-gradient(165deg, rgba(245, 158, 11, 0.07), rgba(255, 255, 255, 0.02));
+    }
+    body[data-role="estimates-hub"] .hub-kpi-tile-label {
+      font-size: 10px;
+      font-weight: 750;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.95);
+      line-height: 1.2;
+    }
+    body[data-role="estimates-hub"] .hub-kpi-tile-value,
+    body[data-role="estimates-hub"] .hub-kpi-tile .big {
+      margin-top: 4px;
+      font-size: clamp(17px, 2vw, 22px);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    body[data-role="estimates-hub"] .hub-kpi-tile-meta,
+    body[data-role="estimates-hub"] .hub-kpi-tile .small {
+      margin-top: 3px;
+      font-size: 11px;
+      line-height: 1.35;
+      color: rgba(148, 163, 184, 0.92);
+    }
+    body[data-role="estimates-hub"] .hub-kpi-start-line {
+      margin: 8px 0 0;
+      padding: 0;
+      font-size: 12px;
+      line-height: 1.4;
+      font-weight: 600;
+      color: rgba(232, 238, 252, 0.78);
+    }
+    body[data-role="estimates-hub"] .hub-kpi-strip-secondary {
+      display: contents;
+    }
+    body[data-role="estimates-hub"] .hub-console-filters-card--compact > .card-inner {
+      padding: 10px 12px;
+    }
+    body[data-role="estimates-hub"] .hub-console-filters-card--compact .hub-filters-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    body[data-role="estimates-hub"] .hub-console-filters-card--compact .hub-filters-head h2 {
+      margin: 0;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.88);
+    }
+    body[data-role="estimates-hub"] .hub-console-filters-card--compact .hub-filters-sub {
+      display: none;
+    }
+    body[data-role="estimates-hub"] .hub-console-filters-card--compact .hub-tabs {
+      margin: 0;
+      gap: 6px;
+    }
+    body[data-role="estimates-hub"] .hub-console-filters-card--compact #hubModeFilter .btn {
+      min-height: 32px;
+      padding: 5px 10px;
+      font-size: 0.75rem;
+      border-radius: 10px;
+    }
+    body[data-role="estimates-hub"] .hub-console-filters-card--compact .hub-filters-form {
+      margin-top: 8px;
+    }
+    body[data-role="estimates-hub"] .hub-console-filters-card--compact .form.hub-filters-form {
+      display: grid;
+      gap: 8px 10px;
+    }
+    body[data-role="estimates-hub"] .hub-console-filters-card--compact .hub-filters-form .field label {
+      font-size: 10px;
+      margin-bottom: 4px;
+    }
+    body[data-role="estimates-hub"] .hub-console-filters-card--compact .hub-filters-form input,
+    body[data-role="estimates-hub"] .hub-console-filters-card--compact .hub-filters-form select {
+      min-height: 34px;
+      padding: 6px 10px;
+      font-size: 0.8125rem;
+    }
+    body[data-role="estimates-hub"] .hub-console-table-card > .card-inner {
+      padding-top: 12px;
+    }
+    body[data-role="estimates-hub"] .hub-console-table-card .section-head {
+      margin-bottom: 8px;
+      gap: 8px;
+    }
+    body[data-role="estimates-hub"] .hub-console-table-card .section-head .sub {
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    body[data-role="estimates-hub"] .hub-console-table-card .section-head h2 {
+      font-size: 15px;
+      font-weight: 750;
+      letter-spacing: -0.01em;
+      text-transform: none;
+    }
+    body[data-role="estimates-hub"] .account-pill {
+      margin-bottom: 6px;
+    }
+    @media (min-width: 900px) {
+      body[data-role="estimates-hub"] .hub-kpi-strip {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+      }
+      body[data-role="estimates-hub"] .hub-console-filters-card--compact .hub-filters-form {
+        grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 0.85fr) minmax(0, 1fr);
+      }
+      body[data-role="estimates-hub"] .hub-console-filters-card--compact .hub-filters-head {
+        margin-bottom: 6px;
+      }
+      body[data-role="estimates-hub"] .hub-console-filters-card--compact .hub-tabs {
+        flex: 1 1 auto;
+        justify-content: flex-end;
+      }
+    }
+    @media (max-width: 899px) {
+      body[data-role="estimates-hub"] .hub-kpi-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      body[data-role="estimates-hub"] .hub-console-filters-card--compact .hub-filters-head {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      body[data-role="estimates-hub"] .hub-console-filters-card--compact .hub-tabs {
+        width: 100%;
+      }
+    }
   </style>
 </head>
 <body data-role="estimates-hub" data-requires-auth="true" class="invoice-hub-page" data-mg-app-nav data-mg-page-title="Invoices Hub">
   <div class="container invoice-hub-console">
     <div class="account-pill" id="accountEmail">Cuenta activa</div>
 
-    <section class="card owner-hero hub-console-intro">
-      <div class="card-inner">
-        <div class="owner-hero-inner">
-          <div>
-            <span class="eyebrow">Invoice Hub</span>
-            <h2 class="hero-title">Money to Collect</h2>
-            <div class="sub" style="margin:0;">Invoices ready to send, pending payments, and completed jobs.</div>
-            <p class="hub-hero-start" id="hubHeroStartWith">No invoices need action right now.</p>
-          </div>
-          <div class="hero-score">
-            <div class="hero-score-label">Open balance (this view)</div>
-            <div class="hero-score-value" id="hubHeroTotal">$0.00</div>
-            <div class="hero-score-meta" id="hubHeroMeta">No invoices yet.</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <div class="hub-console-stack">
-      <div class="hub-console-ops">
-      <section class="card hub-console-kpis-card">
+    <div class="hub-console-stack hub-console-stack--compact">
+      <section class="card hub-console-kpis-card hub-console-kpis-card--compact">
         <div class="card-inner">
-          <div class="section-head">
-            <div>
-              <h2>Get paid faster</h2>
-              <div class="sub">Start with your highest-value invoice.</div>
+          <div class="hub-kpi-strip">
+            <div class="hub-kpi-tile hub-kpi-tile--accent">
+              <div class="hub-kpi-tile-label">Open balance</div>
+              <div class="hub-kpi-tile-value" id="hubHeroTotal">$0.00</div>
+              <div class="hub-kpi-tile-meta" id="hubHeroMeta">No invoices yet.</div>
             </div>
-            <div class="badge green" id="hubPortfolioBadge">0 jobs</div>
-          </div>
-
-          <div class="hub-paid-faster-grid">
-            <div class="strip-card hub-paid-faster-primary">
-              <div class="title">Total to collect</div>
-              <div class="big hub-paid-faster-primary-value" id="hubKpiTotalCollect">$0.00</div>
-              <div class="small" id="hubKpiTotalCollectMeta">0 jobs still open</div>
+            <div class="hub-kpi-tile">
+              <div class="hub-kpi-tile-label">Total to collect</div>
+              <div class="hub-kpi-tile-value" id="hubKpiTotalCollect">$0.00</div>
+              <div class="hub-kpi-tile-meta" id="hubKpiTotalCollectMeta">0 jobs with an outstanding invoice balance</div>
             </div>
-            <div class="strip-card hub-paid-faster-action">
-              <div class="title">Start with</div>
-              <div class="big hub-paid-faster-action-value" id="hubKpiStartWithValue">—</div>
-              <div class="small" id="hubKpiStartWithMeta">You're all caught up 🎉</div>
+            <div class="hub-kpi-tile hub-kpi-tile--action">
+              <div class="hub-kpi-tile-label">Start with</div>
+              <div class="hub-kpi-tile-value hub-paid-faster-action-value" id="hubKpiStartWithValue">—</div>
+              <div class="hub-kpi-tile-meta" id="hubKpiStartWithMeta">You're all caught up 🎉</div>
             </div>
-          </div>
-          <div id="hubKpiSecondaryRow" class="hub-paid-faster-secondary" style="display:none;">
-            <div class="strip-card hub-paid-faster-mini" id="hubKpiWaitingCard" hidden>
-              <div class="title">Outstanding invoice balance</div>
-              <div class="big" id="hubKpiWaitingAmount">$0.00</div>
-              <div class="small" id="hubKpiWaitingMeta">0 with outstanding invoice balance</div>
-            </div>
-            <div class="strip-card hub-paid-faster-mini" id="hubKpiPaidCard" hidden>
-              <div class="title">Paid</div>
-              <div class="big" id="hubKpiPaidAmount">$0.00</div>
-              <div class="small" id="hubKpiPaidMeta">0 paid in this view</div>
+            <div id="hubKpiSecondaryRow" class="hub-kpi-strip-secondary" style="display:none;">
+              <div class="hub-kpi-tile" id="hubKpiWaitingCard" hidden>
+                <div class="hub-kpi-tile-label">Outstanding balance</div>
+                <div class="hub-kpi-tile-value" id="hubKpiWaitingAmount">$0.00</div>
+                <div class="hub-kpi-tile-meta" id="hubKpiWaitingMeta">0 with outstanding invoice balance</div>
+              </div>
+              <div class="hub-kpi-tile" id="hubKpiPaidCard" hidden>
+                <div class="hub-kpi-tile-label">Paid</div>
+                <div class="hub-kpi-tile-value" id="hubKpiPaidAmount">$0.00</div>
+                <div class="hub-kpi-tile-meta" id="hubKpiPaidMeta">0 paid in this view</div>
+              </div>
             </div>
           </div>
+          <p class="hub-kpi-start-line" id="hubHeroStartWith">No invoices need action right now.</p>
+          <span class="badge green" id="hubPortfolioBadge" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">0 jobs</span>
         </div>
       </section>
 
-      <section class="card owner-side-card hub-console-filters-card">
+      <section class="card owner-side-card hub-console-filters-card hub-console-filters-card--compact">
         <div class="card-inner">
-          <h2>Filters</h2>
-          <div class="sub">Pick a view, then narrow with search or status.</div>
-
-          <div class="hub-tabs" id="hubModeFilter" style="margin-top:10px;">
-            <button class="btn active" type="button" data-hub-mode="all">All</button>
-            <button class="btn" type="button" data-hub-mode="ready_to_bill">Ready To Bill</button>
-            <button class="btn" type="button" data-hub-mode="sent">Sent</button>
-            <button class="btn" type="button" data-hub-mode="paid">Paid</button>
-            <button class="btn" type="button" data-hub-mode="needs_action">Needs Action</button>
+          <div class="hub-filters-head">
+            <h2>Filters</h2>
+            <div class="hub-tabs" id="hubModeFilter">
+              <button class="btn active" type="button" data-hub-mode="all">All</button>
+              <button class="btn" type="button" data-hub-mode="ready_to_bill">Ready To Bill</button>
+              <button class="btn" type="button" data-hub-mode="sent">Sent</button>
+              <button class="btn" type="button" data-hub-mode="paid">Paid</button>
+              <button class="btn" type="button" data-hub-mode="needs_action">Needs Action</button>
+            </div>
           </div>
+          <div class="sub hub-filters-sub">Pick a view, then narrow with search or status.</div>
 
-          <div class="form" style="margin-top:14px;">
+          <div class="form hub-filters-form">
             <div class="field">
               <label>Search</label>
               <input id="hubSearch" placeholder="Job, client, invoice, or ID" />
@@ -981,10 +1127,9 @@
             </div>
           </div>
 
-          <div class="notice" id="hubFeedback" style="display:none; margin-top:12px;"></div>
+          <div class="notice" id="hubFeedback" style="display:none; margin-top:8px;"></div>
         </div>
       </section>
-      </div>
 
     <section class="card hub-console-table-card">
       <div class="card-inner">
