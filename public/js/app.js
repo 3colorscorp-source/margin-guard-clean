@@ -6128,6 +6128,32 @@ Thank you.`
     return false;
   }
 
+  function hubRowServerInvoiceSentLike(row) {
+    if (nonEmptyString(row?.hubInvoiceSentAt)) return true;
+    const rawStatus = String(row?.hubInvoiceRawStatus || row?.invoiceStatus || row?.status || "")
+      .trim()
+      .toLowerCase();
+    if (["sent", "issued", "partial", "overdue", "deposit_paid"].includes(rawStatus)) return true;
+    if (hubServerDepositRecorded(row)) return true;
+    return false;
+  }
+
+  /** Same prerequisites as sendHubServerInvoiceRow (Zapier loads invoice details server-side). */
+  function hubRowServerCanSendInvoiceZapier(row) {
+    if (row?.hubRowSource !== "server_invoice") return false;
+    if (hubRowIsArchivedInvoice(row)) return false;
+    if (hubRowIsPaidForReminder(row)) return false;
+    const sid = hubRowServerInvoiceUuid(row);
+    const token = hubRowPublicToken(row);
+    const canTryServer = Boolean(
+      (sid && MG_SERVER_INVOICE_UUID_RE.test(sid)) || (token && token.length >= 8)
+    );
+    if (!canTryServer) return false;
+    if (!hubRowValidCustomerEmail(row)) return false;
+    if (!(finiteNumber(row?.amount, 0) > 0)) return false;
+    return true;
+  }
+
   function getHubOverflowMenuState(row) {
     const base = getHubRowActionState(row);
     const isServer = row?.hubRowSource === "server_invoice";
@@ -6139,8 +6165,14 @@ Thank you.`
     const paid = hubRowIsPaidForReminder(row);
     const sendReady = getHubDrawerSendInvoiceReadiness(row);
     const sentAt = nonEmptyString(row?.hubInvoiceSentAt);
-    const canResendInvoice = Boolean(sendReady.ready && !archived);
-    const canSendInvoice = Boolean(base.canSendInvoice);
+    const sentLike = hubRowServerInvoiceSentLike(row);
+    let canResendInvoice = Boolean(sendReady.ready && !archived);
+    let canSendInvoice = Boolean(base.canSendInvoice);
+    if (isServer) {
+      const serverCanSend = hubRowServerCanSendInvoiceZapier(row);
+      canResendInvoice = Boolean(serverCanSend && sentLike);
+      canSendInvoice = Boolean(serverCanSend && !sentLike && base.canSendInvoice);
+    }
     const canSendPaymentReminder = Boolean(
       isServer && hasValidSid && hasBalance && !paid && !archived && hasEmail
     );
@@ -6162,7 +6194,7 @@ Thank you.`
       canDownloadPdf: base.canExportPdf,
       canArchive: base.canArchiveServerInvoice,
       canDelete: base.canDeleteServerInvoice,
-      resendLabel: sentAt || (!canSendInvoice && canResendInvoice) ? "Resend invoice" : "Send invoice"
+      resendLabel: sentLike || sentAt || (!canSendInvoice && canResendInvoice) ? "Resend invoice" : "Send invoice"
     };
   }
 
@@ -6388,7 +6420,7 @@ Thank you.`
     const menuState = getHubOverflowMenuState(row);
     const sentAt = nonEmptyString(row?.hubInvoiceSentAt);
     const sendLabel =
-      menuState.canSendInvoice ? "Send invoice" : sentAt || menuState.canResendInvoice ? "Resend invoice" : "Send / Resend invoice";
+      menuState.canSendInvoice ? "Send invoice" : menuState.resendLabel === "Resend invoice" || sentAt || menuState.canResendInvoice ? "Resend invoice" : "Send / Resend invoice";
     const sendEnabled = menuState.canSendInvoice || menuState.canResendInvoice;
     const section = (label, itemsHtml) =>
       `<div class="hub-drawer-menu-section"><div class="hub-drawer-menu-label">${escapeHtml(label)}</div>${itemsHtml}</div>`;
@@ -15175,10 +15207,12 @@ window.renderSupervisor = renderSupervisor;
           setHubFeedback("Invoice is not ready to send.", "warn");
           return;
         }
-        const ready = getHubDrawerSendInvoiceReadiness(row);
-        if (!ready.ready) {
-          setHubFeedback(`Missing required fields: ${ready.missing.join(", ")}`, "warn");
-          return;
+        if (row.hubRowSource !== "server_invoice") {
+          const ready = getHubDrawerSendInvoiceReadiness(row);
+          if (!ready.ready) {
+            setHubFeedback(`Missing required fields: ${ready.missing.join(", ")}`, "warn");
+            return;
+          }
         }
         if (row.hubRowSource === "server_invoice") {
           await sendHubServerInvoiceRow(row);
