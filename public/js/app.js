@@ -3636,6 +3636,16 @@ Thank you.`
     });
   }
 
+  function syncSupervisorStatusStrip() {
+    const strip = $("supStatusStrip");
+    if (!strip) return;
+    const hero = $("supExecHero");
+    const today = $("supTodayTarget");
+    const heroVis = hero && hero.style.display !== "none";
+    const todayVis = today && today.style.display !== "none";
+    strip.style.display = heroVis || todayVis ? "" : "none";
+  }
+
   function syncSupervisorConsoleSidebar() {
     const copyText = (srcId, dstId) => {
       const src = $(srcId);
@@ -3690,6 +3700,7 @@ Thank you.`
     if (!hero) return;
     if (!ctx || !ctx.projectName) {
       hero.style.display = "none";
+      syncSupervisorStatusStrip();
       return;
     }
     hero.style.display = "";
@@ -3748,6 +3759,7 @@ Thank you.`
       }
     }
     syncSupervisorConsoleSidebar();
+    syncSupervisorStatusStrip();
   }
 
   function renderSupervisorTodayTarget(plan, startIso, actualDays, migratedCtx, opts) {
@@ -3765,6 +3777,7 @@ Thank you.`
       if ($("supTodayAction")) {
         $("supTodayAction").textContent = "No remaining scheduled work on this project.";
       }
+      syncSupervisorStatusStrip();
       return;
     }
     const dayIndex = Math.max(
@@ -3795,6 +3808,7 @@ Thank you.`
         $("supTodayAction").textContent =
           "Recommended action: Mark this day completed when finished.";
       }
+      syncSupervisorStatusStrip();
       return;
     }
     if (!Array.isArray(plan) || !plan.length) {
@@ -3812,11 +3826,13 @@ Thank you.`
       } else {
         wrap.style.display = "none";
       }
+      syncSupervisorStatusStrip();
       return;
     }
     const day = findOperationalPlanDay(plan, dayIndex);
     if (!day) {
       wrap.style.display = "none";
+      syncSupervisorStatusStrip();
       return;
     }
     wrap.style.display = "";
@@ -3830,6 +3846,7 @@ Thank you.`
       $("supTodayAction").textContent =
         "Recommended action: Mark this day completed when finished.";
     }
+    syncSupervisorStatusStrip();
   }
 
   async function fetchSupervisorOperationalSnapshot(projectId) {
@@ -11042,6 +11059,7 @@ function renderSupervisor() {
         supervisorLastRefreshedProjectId = null;
         renderSupervisorHero(null);
         if ($("supTodayTarget")) $("supTodayTarget").style.display = "none";
+        syncSupervisorStatusStrip();
         if ($("supPortfolioCount")) $("supPortfolioCount").textContent = "0";
         syncSupervisorConsoleSidebar();
         supervisorDebugLog("[supervisor-filter] kpi count", 0);
