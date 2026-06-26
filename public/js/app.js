@@ -6094,6 +6094,204 @@ Thank you.`
     return false;
   }
 
+  const HUB_PAYMENT_REMINDER_ENDPOINT = "/.netlify/functions/send-invoice-payment-reminder";
+
+  function hubRowValidCustomerEmail(row) {
+    const email = String(row?.customerEmail || row?.project?.clientEmail || "").trim();
+    return email.includes("@") && email.includes(".") && email.length >= 5 && email.length < 320;
+  }
+
+  function hubRowPublicToken(row) {
+    return nonEmptyString(row?.project?.invoice?.publicToken);
+  }
+
+  function hubRowServerInvoiceUuid(row) {
+    return nonEmptyString(row?.serverInvoiceId);
+  }
+
+  function hubRowIsArchivedInvoice(row) {
+    return String(row?.hubInvoiceRawStatus || row?.status || "")
+      .trim()
+      .toLowerCase() === "archived";
+  }
+
+  function hubRowIsPaidForReminder(row) {
+    const raw = String(row?.hubInvoiceRawStatus || row?.invoiceStatus || row?.status || "")
+      .trim()
+      .toLowerCase();
+    if (raw === "paid") return true;
+    const bal = finiteNumber(row?.balance, 0);
+    if (bal <= 0.005) return true;
+    const amt = finiteNumber(row?.amount, 0);
+    const paid = finiteNumber(row?.depositApplied, 0) + finiteNumber(row?.receivedApplied, 0);
+    if (amt > 0 && paid + 0.005 >= amt) return true;
+    return false;
+  }
+
+  function getHubOverflowMenuState(row) {
+    const base = getHubRowActionState(row);
+    const isServer = row?.hubRowSource === "server_invoice";
+    const sid = hubRowServerInvoiceUuid(row);
+    const hasValidSid = Boolean(sid && MG_SERVER_INVOICE_UUID_RE.test(sid));
+    const hasEmail = hubRowValidCustomerEmail(row);
+    const hasToken = Boolean(hubRowPublicToken(row));
+    const hasBalance = finiteNumber(row?.balance, 0) > 0.005;
+    const archived = hubRowIsArchivedInvoice(row);
+    const paid = hubRowIsPaidForReminder(row);
+    const sendReady = getHubDrawerSendInvoiceReadiness(row);
+    const sentAt = nonEmptyString(row?.hubInvoiceSentAt);
+    const canResendInvoice = Boolean(sendReady.ready && !archived);
+    const canSendInvoice = Boolean(base.canSendInvoice);
+    const canSendPaymentReminder = Boolean(
+      isServer && hasValidSid && hasBalance && !paid && !archived && hasEmail && hasToken
+    );
+    const canEditClientInfo = Boolean(isServer && hasValidSid && !archived);
+    const canRecordPayment = Boolean((hubRowCanRecordLedgerPayment(row) || base.canTakePayment) && !archived && hasBalance);
+    const canMarkPaid = Boolean(
+      (!archived && hasBalance && !paid && (hubRowCanRecordLedgerPayment(row) || base.canMarkPaid))
+    );
+    return {
+      canView: true,
+      canOpenPublic: base.canOpenPublic,
+      canCopyLink: base.canOpenPublic,
+      canResendInvoice,
+      canSendInvoice,
+      canSendPaymentReminder,
+      canEditClientInfo,
+      canRecordPayment,
+      canMarkPaid,
+      canDownloadPdf: base.canExportPdf,
+      canArchive: base.canArchiveServerInvoice,
+      canDelete: base.canDeleteServerInvoice,
+      resendLabel: sentAt || (!canSendInvoice && canResendInvoice) ? "Resend invoice" : "Send invoice"
+    };
+  }
+
+  function closeAllHubOverflowMenus() {
+    document.querySelectorAll(".hub-overflow-menu:not([hidden])").forEach((menu) => {
+      menu.setAttribute("hidden", "");
+    });
+    document.querySelectorAll(".hub-overflow-toggle[aria-expanded='true']").forEach((btn) => {
+      btn.setAttribute("aria-expanded", "false");
+    });
+  }
+
+  function positionHubOverflowMenu(menuEl, toggleEl) {
+    if (!menuEl || !toggleEl) return;
+    const rect = toggleEl.getBoundingClientRect();
+    const menuWidth = 220;
+    const margin = 8;
+    let left = rect.right - menuWidth;
+    if (left < margin) left = margin;
+    if (left + menuWidth > window.innerWidth - margin) {
+      left = Math.max(margin, window.innerWidth - menuWidth - margin);
+    }
+    let top = rect.bottom + 4;
+    const maxH = Math.min(360, window.innerHeight - margin * 2);
+    menuEl.style.maxHeight = `${maxH}px`;
+    const estimatedH = Math.min(menuEl.scrollHeight || 280, maxH);
+    if (top + estimatedH > window.innerHeight - margin) {
+      top = Math.max(margin, rect.top - estimatedH - 4);
+    }
+    menuEl.style.position = "fixed";
+    menuEl.style.top = `${top}px`;
+    menuEl.style.left = `${left}px`;
+    menuEl.style.width = `${menuWidth}px`;
+    menuEl.style.zIndex = "1200";
+  }
+
+  function buildHubOverflowMenuItems(row, rowDomId, menuState) {
+    const key = escapeHtml(rowDomId);
+    const item = (action, label, enabled, extraClass) => {
+      const dis = enabled ? "" : " disabled";
+      const cls = `hub-overflow-item${extraClass ? ` ${extraClass}` : ""}${dis}`;
+      return `<button type="button" role="menuitem" class="${cls}" data-hub-menu-action="${action}" data-hub-row-key="${key}"${enabled ? "" : " disabled"}>${escapeHtml(label)}</button>`;
+    };
+    const items = [];
+    items.push(item("view", "View details", menuState.canView));
+    items.push(item("open-public", "Open public link", menuState.canOpenPublic));
+    items.push(item("copy-link", "Copy public link", menuState.canCopyLink));
+    if (menuState.canSendInvoice) {
+      items.push(item("resend", "Send invoice", true));
+    } else if (menuState.canResendInvoice) {
+      items.push(item("resend", menuState.resendLabel, true));
+    } else {
+      items.push(item("resend", "Resend invoice", false));
+    }
+    items.push(item("send-reminder", "Send payment reminder", menuState.canSendPaymentReminder));
+    items.push(item("edit-client", "Edit client info", menuState.canEditClientInfo));
+    items.push(item("record-payment", "Record payment", menuState.canRecordPayment));
+    items.push(item("mark-paid", "Mark as paid", menuState.canMarkPaid));
+    items.push(item("download-pdf", "Download PDF", menuState.canDownloadPdf));
+    items.push(item("archive", "Archive", menuState.canArchive));
+    return items.join("");
+  }
+
+  function formatHubPaymentReminderError(data, status) {
+    const reason = String(data?.reason || "").trim();
+    const msg = String(data?.message || data?.error || "").trim();
+    const map = {
+      invoice_paid: "This invoice is already paid.",
+      no_balance_due: "No balance due on this invoice.",
+      invoice_archived: "Cannot send a reminder for an archived invoice.",
+      missing_customer_email: "Add a valid customer email before sending a reminder.",
+      missing_public_token: "This invoice has no public link yet.",
+      invoice_not_found: "Invoice not found.",
+      reminder_webhook_not_configured: "Payment reminder service is not configured.",
+      zapier_error: "Reminder could not be delivered. Try again later.",
+      webhook_unreachable: "Could not reach the reminder service."
+    };
+    return map[reason] || msg || `Payment reminder failed (HTTP ${status}).`;
+  }
+
+  async function sendHubPaymentReminder(row) {
+    const iid = hubRowServerInvoiceUuid(row);
+    if (!MG_SERVER_INVOICE_UUID_RE.test(iid)) {
+      setHubFeedback("Payment reminder is only available for server-backed invoices.", "warn");
+      return { ok: false };
+    }
+    const menuState = getHubOverflowMenuState(row);
+    if (!menuState.canSendPaymentReminder) {
+      setHubFeedback("This invoice cannot receive a payment reminder right now.", "warn");
+      return { ok: false };
+    }
+    const email = String(row?.customerEmail || row?.project?.clientEmail || "").trim();
+    if (!window.confirm(`Send payment reminder to ${email}?`)) {
+      return { ok: false, cancelled: true };
+    }
+    try {
+      const res = await fetch(HUB_PAYMENT_REMINDER_ENDPOINT, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ invoice_id: iid })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok !== true) {
+        setHubFeedback(formatHubPaymentReminderError(data, res.status), "err");
+        return { ok: false };
+      }
+      if (data.last_reminder_at) {
+        row.hubInvoiceLastReminderAt = data.last_reminder_at;
+      }
+      await refreshHubServerInvoicesCacheQuietly();
+      const when = data.last_reminder_at ? formatDisplayDate(data.last_reminder_at) : "just now";
+      setHubFeedback(`Payment reminder sent to ${email} (${when}).`, "ok");
+      return { ok: true, last_reminder_at: data.last_reminder_at };
+    } catch (err) {
+      setHubFeedback(String(err?.message || err || "Network error sending reminder."), "err");
+      return { ok: false };
+    }
+  }
+
+  function hubRowPublicUrl(row) {
+    const invoice = getProjectInvoiceState(row?.project);
+    const token = hubRowPublicToken(row) || nonEmptyString(invoice.publicToken);
+    const url = nonEmptyString(invoice.publicUrl) || (token ? `/invoice-public.html?token=${encodeURIComponent(token)}` : "");
+    if (!url) return "";
+    return url.startsWith("http") ? url : `${location.origin}${url.startsWith("/") ? "" : "/"}${url}`;
+  }
+
   function inferInvoiceStatus(total, depositApplied, receivedApplied, currentStatus) {
     const safeTotal = Math.max(finiteNumber(total, 0), 0);
     const paidAmount = Math.max(finiteNumber(depositApplied, 0), 0) + Math.max(finiteNumber(receivedApplied, 0), 0);
@@ -11476,6 +11674,7 @@ window.renderSupervisor = renderSupervisor;
       dueDate: inv.due_date || "",
       sentAt: inv.sent_at || "",
       paidAt: inv.paid_at || "",
+      lastReminderAt: inv.last_reminder_at || "",
       notes: inv.notes != null ? String(inv.notes) : "",
       createdAt: createdRaw,
       updatedAt: inv.updated_at || "",
@@ -11764,6 +11963,7 @@ window.renderSupervisor = renderSupervisor;
       customerPhone: "",
       hubInvoiceNotes: norm.notes || "",
       hubInvoiceSentAt: norm.sentAt || "",
+      hubInvoiceLastReminderAt: norm.lastReminderAt || "",
       report: stubReport,
       project: stubProject,
       hubInvoiceLabel: sanitizeInvoiceLabelInput(nonEmptyString(norm.invoiceLabel)),
@@ -13799,6 +13999,16 @@ window.renderSupervisor = renderSupervisor;
     el.innerHTML = `<a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>`;
   }
 
+  function hubDrawerRenderLastReminder(row) {
+    const el = $("hubDrawerLastReminder");
+    const wrap = $("hubDrawerLastReminderWrap");
+    const isServer = row?.hubRowSource === "server_invoice";
+    if (wrap) wrap.style.display = isServer ? "" : "none";
+    if (!el) return;
+    const raw = nonEmptyString(row?.hubInvoiceLastReminderAt);
+    el.textContent = raw ? formatDisplayDate(raw) : "—";
+  }
+
   function hubInvoiceContactOpen(row) {
     if (!row || row.hubRowSource !== "server_invoice" || !hubInvoiceContactPageReady()) return;
     const invoiceId = String(row.serverInvoiceId || row.projectId || "").trim();
@@ -14025,6 +14235,7 @@ window.renderSupervisor = renderSupervisor;
     console.log("[Invoice Hub] send invoice button rendered", row);
 
     hubDrawerRenderDeliveryEmail(row);
+    hubDrawerRenderLastReminder(row);
 
     const invoiceAmount = finiteNumber(row.amount, 0);
     const contractTotal = Math.max(finiteNumber(row.projectContractTotal, 0), 0);
@@ -14159,6 +14370,110 @@ window.renderSupervisor = renderSupervisor;
     }
   }
 
+  function bindHubOverflowMenus(findHubRowByKey, menuConfig) {
+    const table = $("hubTableBody");
+    if (!table) return;
+
+    table.querySelectorAll("[data-hub-menu-toggle]").forEach((toggle) => {
+      toggle.onclick = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const key = String(toggle.dataset.hubMenuToggle || "").trim();
+        const menu = table.querySelector(`[data-hub-menu="${key}"]`);
+        if (!menu) return;
+        const isOpen = !menu.hasAttribute("hidden");
+        closeAllHubOverflowMenus();
+        if (!isOpen) {
+          menu.removeAttribute("hidden");
+          toggle.setAttribute("aria-expanded", "true");
+          positionHubOverflowMenu(menu, toggle);
+        }
+      };
+    });
+
+    table.querySelectorAll("[data-hub-menu-action]").forEach((btn) => {
+      btn.onclick = async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (btn.disabled) return;
+        const action = String(btn.dataset.hubMenuAction || "").trim();
+        const key = String(btn.dataset.hubRowKey || "").trim();
+        const row = findHubRowByKey(key);
+        if (!row) return;
+        closeAllHubOverflowMenus();
+        const menuState = getHubOverflowMenuState(row);
+
+        if (action === "view") {
+          menuConfig.onOpenRow(row);
+          return;
+        }
+        if (action === "open-public") {
+          const url = hubRowPublicUrl(row);
+          if (!url) {
+            setHubFeedback("No public link for this invoice.", "warn");
+            return;
+          }
+          window.open(url, "_blank", "noopener");
+          return;
+        }
+        if (action === "copy-link") {
+          const url = hubRowPublicUrl(row);
+          if (!url) {
+            setHubFeedback("No public link to copy.", "warn");
+            return;
+          }
+          try {
+            await navigator.clipboard.writeText(url);
+            setHubFeedback("Public invoice link copied.", "ok");
+          } catch (_e) {
+            setHubFeedback("Could not copy link to clipboard.", "err");
+          }
+          return;
+        }
+        if (action === "resend") {
+          if (menuState.canSendInvoice && typeof menuConfig.onSendInvoice === "function") {
+            menuConfig.onSendInvoice(row);
+            return;
+          }
+          if (!menuState.canResendInvoice) {
+            setHubFeedback("Invoice is not ready to send.", "warn");
+            return;
+          }
+          if (typeof menuConfig.onResendInvoice === "function") {
+            menuConfig.onResendInvoice(row);
+          }
+          return;
+        }
+        if (action === "send-reminder") {
+          const result = await sendHubPaymentReminder(row);
+          if (result.ok && typeof menuConfig.onAfterReminder === "function") {
+            menuConfig.onAfterReminder(row, result);
+          }
+          return;
+        }
+        if (action === "edit-client") {
+          if (typeof menuConfig.onEditClientInfo === "function") menuConfig.onEditClientInfo(row);
+          return;
+        }
+        if (action === "record-payment") {
+          if (typeof menuConfig.onRecordPayment === "function") menuConfig.onRecordPayment(row);
+          return;
+        }
+        if (action === "mark-paid") {
+          if (typeof menuConfig.onMarkPaidMenu === "function") menuConfig.onMarkPaidMenu(row);
+          return;
+        }
+        if (action === "download-pdf") {
+          if (typeof menuConfig.onDownloadPdf === "function") menuConfig.onDownloadPdf(row);
+          return;
+        }
+        if (action === "archive") {
+          if (typeof menuConfig.onArchiveServerInvoice === "function") menuConfig.onArchiveServerInvoice(row);
+        }
+      };
+    });
+  }
+
   function renderHubTableSection(config) {
     const {
       filteredRows,
@@ -14172,6 +14487,12 @@ window.renderSupervisor = renderSupervisor;
       onPay,
       onMarkPaid,
       onSendInvoice,
+      onResendInvoice,
+      onEditClientInfo,
+      onRecordPayment,
+      onMarkPaidMenu,
+      onDownloadPdf,
+      onAfterReminder,
       onArchiveServerInvoice,
       onDeleteServerInvoice
     } = config;
@@ -14191,26 +14512,11 @@ window.renderSupervisor = renderSupervisor;
     $("hubTableBody").closest(".supervisor-table-wrap").style.display = "block";
     $("hubTableBody").innerHTML = tableRows.length
       ? tableRows.map((row, rankIndex) => {
-          const actionState = getHubRowActionState(row);
+          const menuState = getHubOverflowMenuState(row);
           const isServerRow = row.hubRowSource === "server_invoice";
           const rowDomId = escapeHtml(String(row.id != null ? row.id : row.projectId));
           const nextLabel = hubTableNextActionDisplay(row, rankIndex);
-          const sendBtn = actionState.canSendInvoice
-            ? `<button type="button" class="btn hub-cta-send" data-hub-send-invoice="${rowDomId}">Send now</button>`
-            : "";
-          const payBtn = actionState.canTakePayment
-            ? `<button type="button" class="btn ghost hub-cta-secondary" data-hub-pay="${rowDomId}" title="Record a payment">Pay</button>`
-            : actionState.canMarkPaid
-              ? `<button type="button" class="btn ghost hub-cta-secondary" data-hub-mark-paid="${rowDomId}" title="Mark invoice paid">Mark Paid</button>`
-              : "";
-          const archiveBtn =
-            isServerRow && actionState.canArchiveServerInvoice
-              ? `<button type="button" class="btn ghost hub-cta-secondary" data-hub-archive="${rowDomId}" title="Archive invoice">Archive</button>`
-              : "";
-          const deleteBtn =
-            isServerRow && actionState.canDeleteServerInvoice
-              ? `<button type="button" class="btn ghost hub-cta-secondary" data-hub-delete="${rowDomId}" title="Delete invoice">Delete</button>`
-              : "";
+          const menuItems = buildHubOverflowMenuItems(row, rowDomId, menuState);
           const rankClass =
             rankIndex === 0 ? "hub-row--priority-1" : rankIndex === 1 ? "hub-row--priority-2" : rankIndex === 2 ? "hub-row--priority-3" : "";
           let rankBadge = "";
@@ -14241,12 +14547,14 @@ window.renderSupervisor = renderSupervisor;
             <td>${money(row.balance, settings.currency)}</td>
             <td class="hub-next-action-cell">${escapeHtml(nextLabel)}</td>
             <td>
-              <div class="row-actions wrap">
+              <div class="row-actions wrap hub-row-actions">
                 <button type="button" class="btn hub-cta-view" data-hub-view="${rowDomId}">View</button>
-                ${sendBtn}
-                ${payBtn}
-                ${archiveBtn}
-                ${deleteBtn}
+                <div class="hub-overflow-wrap">
+                  <button type="button" class="btn ghost hub-overflow-toggle" data-hub-menu-toggle="${rowDomId}" aria-label="More invoice actions" aria-haspopup="menu" aria-expanded="false">&#8943;</button>
+                  <div class="hub-overflow-menu" data-hub-menu="${rowDomId}" role="menu" hidden>
+                    ${menuItems}
+                  </div>
+                </div>
               </div>
             </td>
           </tr>
@@ -14288,7 +14596,7 @@ window.renderSupervisor = renderSupervisor;
     $("hubTableBody").querySelectorAll("tr[data-hub-row]").forEach((tr) => {
       tr.addEventListener("click", (ev) => {
         const t = ev.target;
-        if (t && t.closest && t.closest("button, input, select, textarea, a, label")) return;
+        if (t && t.closest && t.closest("button, input, select, textarea, a, label, .hub-overflow-menu")) return;
         const key = String(tr.dataset.hubRow || "").trim();
         const row = findHubRowByKey(key);
         if (row && typeof onOpenRow === "function") onOpenRow(row);
@@ -14296,15 +14604,17 @@ window.renderSupervisor = renderSupervisor;
     });
 
     bindButton("button[data-hub-view]", (row) => onOpenRow(row));
-    bindButton("button[data-hub-pay]", (row, projectId) => onPay(row, projectId));
-    bindButton("button[data-hub-mark-paid]", (row) => onMarkPaid(row));
-    bindButton("button[data-hub-send-invoice]", (row) => onSendInvoice(row));
-    if (typeof onArchiveServerInvoice === "function") {
-      bindButton("button[data-hub-archive]", (row) => onArchiveServerInvoice(row));
-    }
-    if (typeof onDeleteServerInvoice === "function") {
-      bindButton("button[data-hub-delete]", (row) => onDeleteServerInvoice(row));
-    }
+    bindHubOverflowMenus(findHubRowByKey, {
+      onOpenRow,
+      onSendInvoice,
+      onResendInvoice,
+      onEditClientInfo,
+      onRecordPayment,
+      onMarkPaidMenu,
+      onDownloadPdf,
+      onAfterReminder,
+      onArchiveServerInvoice
+    });
     refreshBulkBar();
   }
 
@@ -14396,6 +14706,16 @@ window.renderSupervisor = renderSupervisor;
 
   function renderEstimatesHub() {
     if (!$("hubTableBody")) return;
+
+    if (!window.__MG_HUB_OVERFLOW_CLOSE_BOUND__) {
+      window.__MG_HUB_OVERFLOW_CLOSE_BOUND__ = true;
+      document.addEventListener("click", (ev) => {
+        if (ev.target.closest(".hub-overflow-wrap")) return;
+        closeAllHubOverflowMenus();
+      });
+      window.addEventListener("resize", closeAllHubOverflowMenus);
+      window.addEventListener("scroll", closeAllHubOverflowMenus, true);
+    }
 
     const settings = loadSettings();
     const hubViewState = loadHubViewState();
@@ -14495,6 +14815,18 @@ window.renderSupervisor = renderSupervisor;
           : `Missing required fields: ${sendReady.missing.join(", ")}`;
         const sentAt = nonEmptyString(row?.hubInvoiceSentAt);
         sendBtn.textContent = sentAt ? "Resend Invoice" : "Send Invoice";
+      }
+
+      const reminderBtn = $("btnHubDrawerSendReminder");
+      if (reminderBtn) {
+        const menuState = getHubOverflowMenuState(row);
+        const canRemind = menuState.canSendPaymentReminder;
+        reminderBtn.style.display = row?.hubRowSource === "server_invoice" ? "" : "none";
+        reminderBtn.disabled = !canRemind;
+        reminderBtn.classList.toggle("hub-action-disabled", !canRemind);
+        reminderBtn.title = canRemind
+          ? ""
+          : "Requires unpaid server invoice with balance, email, and public link.";
       }
 
       const clientInfoBtn = $("btnHubDrawerClientInfo");
@@ -15418,6 +15750,64 @@ window.renderSupervisor = renderSupervisor;
             refresh();
           })();
         },
+        onResendInvoice: (row) => {
+          const ready = getHubDrawerSendInvoiceReadiness(row);
+          if (!ready.ready) {
+            setHubFeedback(`Missing required fields: ${ready.missing.join(", ")}`, "warn");
+            return;
+          }
+          void (async () => {
+            if (row.hubRowSource === "server_invoice") {
+              await sendHubServerInvoiceRow(row);
+            } else {
+              await sendHubInvoice(row.projectId);
+              setHubFeedback(`Invoice resent for ${row.customer}.`, "ok");
+            }
+            refresh();
+            refreshSelectedRow();
+          })();
+        },
+        onEditClientInfo: (row) => {
+          hubInvoiceContactOpen(row);
+        },
+        onRecordPayment: (row) => {
+          selectedRow = row;
+          window.__MG_ACTIVE_INVOICE_ROW__ = row;
+          void openHubRecordPaymentModal();
+        },
+        onMarkPaidMenu: (row) => {
+          if (row?.hubRowSource === "server_invoice") {
+            selectedRow = row;
+            window.__MG_ACTIVE_INVOICE_ROW__ = row;
+            void openHubRecordPaymentModal();
+            setHubFeedback("Record the full remaining balance to mark this invoice paid.", "ok");
+            return;
+          }
+          if (!guardHubAction(row, "canMarkPaid", "Mark Paid solo aplica cuando existe invoice con saldo pendiente.")) return;
+          markHubInvoicePaid(row.projectId);
+          refresh();
+          setHubFeedback(`Invoice marcado como paid para ${row.title}.`, "ok");
+        },
+        onDownloadPdf: (row) => {
+          if (row?.hubRowSource === "server_invoice") {
+            const url = hubRowPublicUrl(row);
+            if (!url) {
+              setHubFeedback("Primero publica el invoice para generar el link publico.", "warn");
+              return;
+            }
+            window.open(url, "_blank", "noopener");
+            return;
+          }
+          void exportInvoicePdf("hub", row.project, row.report, settings, getProjectInvoiceState(row.project));
+        },
+        onAfterReminder: (row, result) => {
+          refresh();
+          if (selectedRow && String(selectedRow.serverInvoiceId || "") === String(row.serverInvoiceId || "")) {
+            selectedRow.hubInvoiceLastReminderAt = result?.last_reminder_at || row.hubInvoiceLastReminderAt || "";
+            hubDrawerRenderLastReminder(selectedRow);
+          }
+          refreshSelectedRow();
+        },
         onArchiveServerInvoice: async (row) => {
           const iid = String(row.serverInvoiceId || "").trim();
           if (!MG_SERVER_INVOICE_UUID_RE.test(iid)) {
@@ -15937,6 +16327,19 @@ window.renderSupervisor = renderSupervisor;
     if ($("btnHubDrawerRecordPayment")) {
       $("btnHubDrawerRecordPayment").onclick = () => {
         void openHubRecordPaymentModal();
+      };
+    }
+    if ($("btnHubDrawerSendReminder")) {
+      $("btnHubDrawerSendReminder").onclick = () => {
+        if (!selectedRow) return;
+        void (async () => {
+          const result = await sendHubPaymentReminder(selectedRow);
+          if (result.ok) {
+            refresh();
+            refreshSelectedRow();
+            hubDrawerRenderLastReminder(selectedRow);
+          }
+        })();
       };
     }
     if ($("btnHubDrawerOpenPublic")) {
