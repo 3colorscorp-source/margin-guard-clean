@@ -197,6 +197,108 @@
       font-size: 0.75rem;
       padding: 4px 8px;
     }
+    .sa-console-compact > .card-inner {
+      padding: 10px 12px;
+    }
+    .sa-console-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px 12px;
+      margin-bottom: 8px;
+    }
+    .sa-console-head h2 {
+      margin: 0 0 2px;
+      font-size: clamp(1.05rem, 2vw, 1.35rem);
+    }
+    .sa-console-head .sub {
+      margin: 0;
+      font-size: 0.8125rem;
+      max-width: 48ch;
+      line-height: 1.4;
+    }
+    .sa-kpis--compact {
+      margin-bottom: 8px;
+    }
+    .sa-view-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .sa-view-tabs .btn {
+      font-size: 0.75rem;
+      padding: 5px 10px;
+      min-height: 32px;
+    }
+    .sa-view-tabs .btn.active {
+      border-color: rgba(34, 197, 94, 0.45);
+      background: rgba(34, 197, 94, 0.12);
+    }
+    .sa-view-desc {
+      margin: 0 0 8px;
+      font-size: 0.8125rem;
+      color: rgba(232, 238, 252, 0.72);
+      line-height: 1.4;
+    }
+    .sa-actions-wrap {
+      position: relative;
+      display: inline-flex;
+    }
+    .sa-actions-toggle {
+      font-size: 0.75rem;
+      padding: 4px 8px;
+      min-height: 30px;
+      white-space: nowrap;
+    }
+    .sa-actions-menu {
+      position: fixed;
+      z-index: 1300;
+      min-width: 168px;
+      max-width: min(280px, calc(100vw - 16px));
+      padding: 6px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: #121a2b;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    }
+    .sa-actions-menu[hidden] {
+      display: none !important;
+    }
+    .sa-actions-menu__item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      margin: 0;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: #e8eefc;
+      font: inherit;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .sa-actions-menu__item:hover,
+    .sa-actions-menu__item:focus-visible {
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .sa-actions-menu__item--danger {
+      color: #fca5a5;
+    }
+    .sa-actions-menu__item:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .sa-secondary-sections {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 10px;
+    }
     .sa-uncertain {
       font-size: 0.68rem;
       color: rgba(232, 238, 252, 0.55);
@@ -741,154 +843,150 @@
   <div class="container">
     <div class="account-pill" id="accountEmail">Cuenta activa</div>
 
-    <section class="card sa-hero">
+    <section class="card sa-section sa-console-compact" id="saMainConsole">
       <div class="card-inner">
-        <h2>Sales Admin</h2>
-        <p class="sub">Manage seller activity, quote approvals, pipeline, and commissions.</p>
-      </div>
-    </section>
-
-    <section class="sa-kpis" id="saKpiStrip" aria-label="Sales KPIs">
-      <div class="sa-kpi">
-        <div class="sa-kpi__label">Pending Approvals</div>
-        <div class="sa-kpi__value" id="saKpiPending">—</div>
-      </div>
-      <div class="sa-kpi">
-        <div class="sa-kpi__label" id="saKpiSentLabel">Published This Month</div>
-        <div class="sa-kpi__value" id="saKpiSent" title="Quotes published (created) this UTC month — not email sent">—</div>
-      </div>
-      <div class="sa-kpi">
-        <div class="sa-kpi__label">Approved Requests</div>
-        <div class="sa-kpi__value" id="saKpiApproved">—</div>
-      </div>
-      <div class="sa-kpi">
-        <div class="sa-kpi__label">Converted Projects</div>
-        <div class="sa-kpi__value" id="saKpiConverted">—</div>
-      </div>
-      <div class="sa-kpi">
-        <div class="sa-kpi__label">Estimated Labor Sold</div>
-        <div class="sa-kpi__value" id="saKpiLabor">—</div>
-      </div>
-      <div class="sa-kpi">
-        <div class="sa-kpi__label">Est. Commission</div>
-        <div class="sa-kpi__value" id="saKpiCommission">—</div>
-      </div>
-    </section>
-
-    <section class="card sa-section" id="saQuotePipelineSection">
-      <div class="card-inner">
-        <div class="sa-section__head">
-          <div class="sa-section__head-main">
-            <h2>Quote Pipeline</h2>
-            <p class="sub">Published quotes by status, seller attribution, and project link.</p>
+        <div class="sa-console-head">
+          <div>
+            <h2>Sales Admin</h2>
+            <p class="sub">Approved production projects first — supervisor handling, approvals, and quotes in secondary views.</p>
           </div>
-          <button type="button" class="btn ghost" id="saQuotePipelineRefresh">Refresh</button>
+          <button type="button" class="btn ghost" id="saMainRefresh">Refresh</button>
         </div>
-        <p id="saQuotePipelineLoading" class="sa-loading-note" hidden>Loading quote pipeline…</p>
-        <div id="saQuotePipelineError" class="sa-empty" hidden>
-          <p class="sa-empty__title">Could not load quote pipeline.</p>
-          <p class="sa-empty__sub" id="saQuotePipelineErrorMsg">Try refreshing the page.</p>
-        </div>
-        <div id="saQuotePipelineEmpty" class="sa-empty" hidden>
-          <p class="sa-empty__title">No quotes found.</p>
-          <p class="sa-empty__sub">Published quotes for this tenant will appear here.</p>
-        </div>
-        <div id="saQuotePipelineTableWrap" class="sa-table-wrap" hidden>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Estimate #</th>
-                <th>Project</th>
-                <th>Client</th>
-                <th>Status</th>
-                <th>Seller / Owner</th>
-                <th>Total</th>
-                <th>Created</th>
-                <th>Accepted</th>
-                <th>Project Linked</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="saQuotePipelineBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
 
-    <section class="card sa-section">
-      <div class="card-inner">
-        <div class="sa-section__head">
-          <div class="sa-section__head-main">
-            <h2>Approval Queue</h2>
-            <p class="sub">Discount and below-target margin requests from sellers.</p>
+        <section class="sa-kpis sa-kpis--compact" id="saKpiStrip" aria-label="Sales KPIs">
+          <div class="sa-kpi">
+            <div class="sa-kpi__label">Approved projects</div>
+            <div class="sa-kpi__value" id="saKpiConverted">—</div>
           </div>
-          <button type="button" class="btn ghost" id="saBtnRefresh">Refresh</button>
-        </div>
-        <div id="saQueueEmpty" class="sa-empty" hidden>
-          <p class="sa-empty__title">No approval requests right now.</p>
-          <p class="sa-empty__sub">When a seller submits a quote that needs owner review, it will appear here.</p>
-        </div>
-        <div id="saQueueTableWrap" class="sa-table-wrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Quote / Project</th>
-                <th>Client</th>
-                <th>Seller</th>
-                <th>Final Price</th>
-                <th>Real Margin</th>
-                <th>Target Margin</th>
-                <th>Minimum Margin</th>
-                <th>Review Reason</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="adminQueueBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
+          <div class="sa-kpi">
+            <div class="sa-kpi__label">Needs supervisor</div>
+            <div class="sa-kpi__value" id="saKpiNeedsSupervisor">—</div>
+          </div>
+          <div class="sa-kpi">
+            <div class="sa-kpi__label">Pending approvals</div>
+            <div class="sa-kpi__value" id="saKpiPending">—</div>
+          </div>
+          <div class="sa-kpi">
+            <div class="sa-kpi__label" id="saKpiSentLabel">Published this month</div>
+            <div class="sa-kpi__value" id="saKpiSent" title="Quotes published (created) this UTC month — not email sent">—</div>
+          </div>
+          <div class="sa-kpi">
+            <div class="sa-kpi__label">Est. labor sold</div>
+            <div class="sa-kpi__value" id="saKpiLabor">—</div>
+          </div>
+          <div class="sa-kpi">
+            <div class="sa-kpi__label">Est. commission</div>
+            <div class="sa-kpi__value" id="saKpiCommission">—</div>
+          </div>
+          <span id="saKpiApproved" hidden aria-hidden="true">—</span>
+        </section>
 
-    <section class="card sa-section" id="saPipelineSection">
-      <div class="card-inner">
-        <div class="sa-section__head">
-          <div class="sa-section__head-main">
-            <h3>Accepted / Converted Projects</h3>
-            <p class="sub">Production projects with accepted quotes (Project Control list).</p>
+        <div class="sa-view-tabs" role="tablist" aria-label="Sales Admin views">
+          <button type="button" class="btn active" role="tab" data-sa-view="approved-projects" aria-selected="true">Approved projects</button>
+          <button type="button" class="btn" role="tab" data-sa-view="needs-supervisor" aria-selected="false">Needs supervisor</button>
+          <button type="button" class="btn" role="tab" data-sa-view="pending-approval" aria-selected="false">Pending approval</button>
+          <button type="button" class="btn" role="tab" data-sa-view="sent-quotes" aria-selected="false">Sent quotes</button>
+          <button type="button" class="btn" role="tab" data-sa-view="archived-test" aria-selected="false">Archived / test</button>
+          <button type="button" class="btn" role="tab" data-sa-view="all-quotes" aria-selected="false">All quotes</button>
+        </div>
+        <p class="sa-view-desc" id="saViewDesc">Production projects with accepted quotes — same list as Project Control.</p>
+
+        <div id="saProjectsViewWrap">
+          <p id="saConvertedLoading" class="sa-loading-note" hidden>Loading approved projects…</p>
+          <div id="saConvertedError" class="sa-empty" hidden>
+            <p class="sa-empty__title">Could not load approved projects.</p>
+            <p class="sa-empty__sub" id="saConvertedErrorMsg">Try refreshing the page.</p>
+          </div>
+          <div id="saMainProjectsEmpty" class="sa-empty" hidden>
+            <p class="sa-empty__title">No approved projects in this view.</p>
+            <p class="sa-empty__sub" id="saMainProjectsEmptySub">Accepted quotes linked to production projects will appear here.</p>
+          </div>
+          <div id="saMainProjectsTableWrap" class="sa-table-wrap" hidden>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>Client</th>
+                  <th>Quote status</th>
+                  <th>Project status</th>
+                  <th>Supervisor</th>
+                  <th>Sale price</th>
+                  <th>Labor budget</th>
+                  <th>Invoice</th>
+                  <th>Balance due</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="saMainProjectsBody"></tbody>
+            </table>
           </div>
         </div>
-        <p id="saConvertedLoading" class="sa-loading-note" hidden>Loading converted projects…</p>
-        <div id="saConvertedError" class="sa-empty" hidden>
-          <p class="sa-empty__title">Could not load converted projects.</p>
-          <p class="sa-empty__sub" id="saConvertedErrorMsg">Try refreshing the page.</p>
+
+        <div id="saQuotesViewWrap" hidden>
+          <p id="saQuotePipelineLoading" class="sa-loading-note" hidden>Loading quotes…</p>
+          <div id="saQuotePipelineError" class="sa-empty" hidden>
+            <p class="sa-empty__title">Could not load quotes.</p>
+            <p class="sa-empty__sub" id="saQuotePipelineErrorMsg">Try refreshing the page.</p>
+          </div>
+          <div id="saQuotePipelineEmpty" class="sa-empty" hidden>
+            <p class="sa-empty__title">No quotes found.</p>
+            <p class="sa-empty__sub" id="saQuotePipelineEmptySub">Quotes for this view will appear here.</p>
+          </div>
+          <div id="saQuotePipelineTableWrap" class="sa-table-wrap" hidden>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Estimate #</th>
+                  <th>Project</th>
+                  <th>Client</th>
+                  <th>Status</th>
+                  <th>Seller / Owner</th>
+                  <th>Total</th>
+                  <th>Created</th>
+                  <th>Accepted</th>
+                  <th>Project linked</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="saQuotePipelineBody"></tbody>
+            </table>
+          </div>
         </div>
-        <div id="saConvertedEmpty" class="sa-empty" hidden>
-          <p class="sa-empty__title">No converted projects yet.</p>
-          <p class="sa-empty__sub">Accepted quotes that bridge to tenant projects will appear here.</p>
-        </div>
-        <div id="saConvertedTableWrap" class="sa-table-wrap" hidden>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Project</th>
-                <th>Client</th>
-                <th>Quote Status</th>
-                <th>Project Status</th>
-                <th>Sale Price</th>
-                <th>Labor Budget</th>
-                <th>Est. Commission</th>
-                <th>Invoice Status</th>
-                <th>Balance Due</th>
-                <th>Links</th>
-              </tr>
-            </thead>
-            <tbody id="saConvertedBody"></tbody>
-          </table>
+
+        <div id="saApprovalViewWrap" hidden>
+          <div id="saQueueEmpty" class="sa-empty" hidden>
+            <p class="sa-empty__title">No pending approval requests.</p>
+            <p class="sa-empty__sub">When a seller submits a quote that needs owner review, it will appear here.</p>
+          </div>
+          <div id="saQueueTableWrap" class="sa-table-wrap" hidden>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Quote / Project</th>
+                  <th>Client</th>
+                  <th>Seller</th>
+                  <th>Final price</th>
+                  <th>Real margin</th>
+                  <th>Target margin</th>
+                  <th>Minimum margin</th>
+                  <th>Review reason</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="adminQueueBody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
 
+    <section class="card sa-section" id="saQuotePipelineSection" hidden aria-hidden="true" style="display:none"></section>
+    <section class="card sa-section" id="saPipelineSection" hidden aria-hidden="true" style="display:none">
+      <tbody id="saConvertedBody"></tbody>
+    </section>
+
+    <div class="sa-secondary-sections">
     <section class="card sa-section" id="saSellerSection">
       <div class="card-inner">
         <div class="sa-section__head">
@@ -980,6 +1078,7 @@
         <div id="saActivityList" class="sa-detail-rows" hidden></div>
       </div>
     </section>
+    </div>
   </div>
 
   <div id="saQuoteEditModal" class="sa-modal" hidden aria-hidden="true" role="dialog" aria-labelledby="saQuoteEditTitle">

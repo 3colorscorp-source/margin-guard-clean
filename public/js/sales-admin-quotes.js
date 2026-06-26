@@ -8,7 +8,13 @@
   const REPRICE_QUOTE_API = "/.netlify/functions/reprice-tenant-quote";
   const CALC_PRICING_API = "/.netlify/functions/calc-secure-pricing";
   const RESEND_QUOTE_API = "/.netlify/functions/resend-tenant-quote";
-  const LIST_QUERY = "?limit=25&offset=0";
+  const DEFAULT_LIST_LIMIT = 100;
+
+  const VIEW_EMPTY_SUB = {
+    "sent-quotes": "Sent and ready-to-send quotes appear here — not mixed with approved projects.",
+    "archived-test": "Archived quotes only. Active production projects stay in Approved projects.",
+    "all-quotes": "Recent tenant quotes across all statuses (secondary view)."
+  };
 
   const RESEND_DEFAULT_MESSAGE_NOTE =
     "We updated your estimate as requested. Please review the corrected version using the same link.";
@@ -147,6 +153,56 @@
     if (quote?.has_tenant_project) return true;
     if (String(quote?.accepted_at || "").trim()) return true;
     return false;
+  }
+
+  function buildListQuery(opts) {
+    const o = opts && typeof opts === "object" ? opts : {};
+    const params = new URLSearchParams();
+    params.set("limit", String(o.limit != null ? o.limit : DEFAULT_LIST_LIMIT));
+    params.set("offset", "0");
+    if (o.status) params.set("status", String(o.status));
+    return `?${params.toString()}`;
+  }
+
+  function quoteActionsMenuHtml(qid, likelyLocked) {
+    const editTitle = likelyLocked
+      ? "View lock status — this quote may not be editable"
+      : "Edit quote metadata";
+    return (
+      `<div class="sa-actions-wrap">` +
+      `<button type="button" class="btn ghost sa-actions-toggle" aria-haspopup="menu" aria-expanded="false">&#9776; Actions</button>` +
+      `<div class="sa-actions-menu" role="menu" hidden>` +
+      `<button type="button" class="sa-actions-menu__item" role="menuitem" data-sa-quote-edit="${escapeHtml(qid)}" title="${escapeHtml(editTitle)}">Open / edit quote</button>` +
+      `</div></div>`
+    );
+  }
+
+  async function fetchQuotesList(query) {
+    const response = await fetch(`${API}${query}`, {
+      method: "GET",
+      credentials: "include",
+    });
+    let data = {};
+    try {
+      data = await response.json();
+    } catch (_err) {
+      data = {};
+    }
+    return { response, data };
+  }
+
+  function mergeQuotesById(lists) {
+    const byId = new Map();
+    for (const list of lists) {
+      for (const quote of Array.isArray(list) ? list : []) {
+        const id = String(quote?.id || "").trim();
+        if (!id) continue;
+        byId.set(id, quote);
+      }
+    }
+    return Array.from(byId.values()).sort((a, b) =>
+      String(b.created_at || "").localeCompare(String(a.created_at || ""))
+    );
   }
 
   function lockReasonLabel(code) {
@@ -1570,10 +1626,6 @@
         const linked = quote.has_tenant_project ? "Yes" : "No";
         const qid = String(quote.id || "").trim();
         const likelyLocked = isLikelyLockedRow(quote);
-        const editBtnClass = likelyLocked ? "btn ghost sa-edit-btn-locked" : "btn ghost";
-        const editTitle = likelyLocked
-          ? "View lock status — this quote may not be editable"
-          : "Edit quote metadata";
         return (
           "<tr>" +
           `<td>${escapeHtml(estimate)}</td>` +
@@ -1585,9 +1637,7 @@
           `<td>${escapeHtml(formatDate(quote.created_at))}</td>` +
           `<td>${escapeHtml(formatDate(quote.accepted_at))}</td>` +
           `<td>${escapeHtml(linked)}</td>` +
-          `<td><div class="sa-row-actions">` +
-          `<button type="button" class="${editBtnClass}" data-sa-quote-edit="${escapeHtml(qid)}" title="${escapeHtml(editTitle)}">Edit</button>` +
-          `</div></td>` +
+          `<td>${quoteActionsMenuHtml(qid, likelyLocked)}</td>` +
           "</tr>"
         );
       })
@@ -1596,44 +1646,77 @@
     setPipelineState("ready");
   }
 
-  async function loadQuotePipeline() {
-    if (!$("saQuotePipelineSection")) return;
+  async function loadQuotePipelineForView(viewId) {
+    if (!$("saQuotePipelineBody")) return;
+
+    const emptySub = $("saQuotePipelineEmptySub");
+    if (emptySub && VIEW_EMPTY_SUB[viewId]) emptySub.textContent = VIEW_EMPTY_SUB[viewId];
 
     setPipelineState("loading");
 
     try {
-      const response = await fetch(`${API}${LIST_QUERY}`, {
-        method: "GET",
-        credentials: "include",
-      });
-      let data = {};
-      try {
-        data = await response.json();
-      } catch (_err) {
-        data = {};
-      }
+      let quotes = [];
+      let summary = null;
 
-      if (response.status === 401 || response.status === 403) {
-        setPipelineState("error", "Owner sign-in required to view quote pipeline.");
+      if (viewId === "sent-quotes") {
+        const [sentRes, readyRes] = await Promise.all([
+          fetchQuotesList(buildListQuery({ status: "sent" })),
+          fetchQuotesList(buildListQuery({ status: "ready_to_send" })),
+        ]);
+        const okSent = sentRes.response.ok && sentRes.data?.ok === true;
+        const okReady = readyRes.response.ok && readyRes.data?.ok === true;
+        if (!okSent && !okReady) {
+          const msg = String(sentRes.data?.error || readyRes.data?.error || "Unable to load quotes.").trim();
+          setPipelineState("error", msg);
+          return;
+        }
+        quotes = mergeQuotesById([
+          okSent ? sentRes.data.quotes : [],
+          okReady ? readyRes.data.quotes : [],
+        ]);
+        summary = okSent ? sentRes.data.summary : readyRes.data.summary;
+      } else if (viewId === "archived-test") {
+        const { response, data } = await fetchQuotesList(buildListQuery({ status: "archived" }));
+        if (response.status === 401 || response.status === 403) {
+          setPipelineState("error", "Owner sign-in required to view quotes.");
+          return;
+        }
+        if (!response.ok || data.ok !== true) {
+          setPipelineState("error", String(data.error || "Unable to load quotes.").trim());
+          return;
+        }
+        quotes = data.quotes;
+        summary = data.summary;
+      } else if (viewId === "all-quotes") {
+        const { response, data } = await fetchQuotesList(buildListQuery({}));
+        if (response.status === 401 || response.status === 403) {
+          setPipelineState("error", "Owner sign-in required to view quotes.");
+          return;
+        }
+        if (!response.ok || data.ok !== true) {
+          setPipelineState("error", String(data.error || "Unable to load quotes.").trim());
+          return;
+        }
+        quotes = data.quotes;
+        summary = data.summary;
+      } else {
         return;
       }
 
-      if (!response.ok || data.ok !== true) {
-        const msg = String(data.error || "Unable to load quotes.").trim();
-        setPipelineState("error", msg);
-        return;
-      }
-
-      if (data.summary && typeof data.summary.published_this_month === "number") {
-        publishedThisMonth = data.summary.published_this_month;
+      if (summary && typeof summary.published_this_month === "number") {
+        publishedThisMonth = summary.published_this_month;
         applyPublishedKpi();
         installKpiOverwriteGuard();
       }
 
-      renderQuotePipeline(data.quotes);
+      renderQuotePipeline(quotes);
     } catch (err) {
       setPipelineState("error", err?.message || "Unexpected error loading quotes.");
     }
+  }
+
+  async function loadQuotePipeline() {
+    await loadQuotePipelineForView("all-quotes");
   }
 
   function installEditModalHandlers() {
@@ -1725,7 +1808,8 @@
     }
     if (body) {
       body.addEventListener("click", (ev) => {
-        const btn = ev.target.closest("[data-sa-quote-edit]");
+        const menuItem = ev.target.closest("[data-sa-quote-edit]");
+        const btn = menuItem || ev.target.closest("[data-sa-quote-edit]");
         if (!btn) return;
         const qid = String(btn.getAttribute("data-sa-quote-edit") || "").trim();
         if (qid) void openQuoteEdit(qid);
@@ -1738,18 +1822,13 @@
   }
 
   function boot() {
-    if (!$("saQuotePipelineSection")) return;
+    if (!$("saQuotePipelineBody")) return;
 
     installEditModalHandlers();
 
-    const refreshBtn = $("saQuotePipelineRefresh");
-    if (refreshBtn) {
-      refreshBtn.addEventListener("click", () => {
-        void loadQuotePipeline();
-      });
-    }
-
-    void loadQuotePipeline();
+    window.__mgSaQuotesLoadForView = (viewId) => {
+      void loadQuotePipelineForView(viewId);
+    };
 
     window.setTimeout(applyPublishedKpi, 0);
     window.setTimeout(applyPublishedKpi, 250);

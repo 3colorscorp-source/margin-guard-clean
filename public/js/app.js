@@ -17032,6 +17032,15 @@ window.renderSupervisor = renderSupervisor;
     const converted = Array.isArray(convertedRows) ? convertedRows : [];
     if (convertedEl) convertedEl.textContent = converted.length ? String(converted.length) : "—";
 
+    const needsSupervisorEl = $("saKpiNeedsSupervisor");
+    if (needsSupervisorEl) {
+      const needsCount = converted.filter((row) => {
+        const uid = String(row?.supervisorUserId ?? row?.project?.supervisorUserId ?? "").trim();
+        return !uid;
+      }).length;
+      needsSupervisorEl.textContent = converted.length ? String(needsCount) : "—";
+    }
+
     let laborSum = 0;
     let commissionSum = 0;
     const rate = finiteNumber(settings?.salesCommissionPct, DEFAULTS.salesCommissionPct);
@@ -17121,9 +17130,201 @@ window.renderSupervisor = renderSupervisor;
         sellerPct: rate,
         invoiceStatus: saFormatInvoiceStatus(invoice),
         balanceDue,
-        signedAt: project.signedAt || project.signed_at || ""
+        signedAt: project.signedAt || project.signed_at || "",
+        supervisorUserId:
+          project.supervisorUserId ?? project.supervisor_user_id ?? null
       };
     });
+  }
+
+  const SA_VIEW_META = {
+    "approved-projects": {
+      kind: "projects",
+      mode: "all",
+      desc: "Production projects with accepted quotes — same list as Project Control.",
+      emptySub: "Accepted quotes linked to production projects will appear here."
+    },
+    "needs-supervisor": {
+      kind: "projects",
+      mode: "needs-supervisor",
+      desc: "Approved projects with no supervisor assigned yet.",
+      emptySub: "Assign a supervisor from Project Control or the Supervisor page when ready."
+    },
+    "pending-approval": {
+      kind: "approval",
+      desc: "Discount and below-target margin requests awaiting owner decision."
+    },
+    "sent-quotes": {
+      kind: "quotes",
+      desc: "Quotes marked sent or ready to send — not mixed with approved projects."
+    },
+    "archived-test": {
+      kind: "quotes",
+      desc: "Archived quotes only. Nothing is deleted; use Project Control for active projects."
+    },
+    "all-quotes": {
+      kind: "quotes",
+      desc: "All recent tenant quotes (secondary view)."
+    }
+  };
+
+  function saSupervisorBadgeHtml(row) {
+    const uid = String(row?.supervisorUserId ?? row?.project?.supervisorUserId ?? "").trim();
+    if (uid) return '<span class="badge green">Assigned</span>';
+    return '<span class="badge amber">Needs supervisor</span>';
+  }
+
+  function saFilterMainProjectRows(convertedRows, mode) {
+    const list = Array.isArray(convertedRows) ? convertedRows : [];
+    if (mode === "needs-supervisor") {
+      return list.filter((row) => {
+        const uid = String(row?.supervisorUserId ?? row?.project?.supervisorUserId ?? "").trim();
+        return !uid;
+      });
+    }
+    return list;
+  }
+
+  function saProjectActionsMenuHtml(row) {
+    const pid = row.project?.id;
+    const pccHref = saProjectControlHref(pid);
+    const hubHref = saInvoiceHubHref(row.project, row.invoice);
+    return (
+      `<div class="sa-actions-wrap">` +
+      `<button type="button" class="btn ghost sa-actions-toggle" aria-haspopup="menu" aria-expanded="false">&#9776; Actions</button>` +
+      `<div class="sa-actions-menu" role="menu" hidden>` +
+      `<a class="sa-actions-menu__item" role="menuitem" href="${escapeHtml(pccHref)}">Open project</a>` +
+      `<a class="sa-actions-menu__item" role="menuitem" href="${escapeHtml(hubHref)}">Invoice Hub</a>` +
+      `</div></div>`
+    );
+  }
+
+  function saApprovalActionsMenuHtml(index) {
+    return (
+      `<div class="sa-actions-wrap">` +
+      `<button type="button" class="btn ghost sa-actions-toggle" aria-haspopup="menu" aria-expanded="false">&#9776; Actions</button>` +
+      `<div class="sa-actions-menu" role="menu" hidden>` +
+      `<button type="button" class="sa-actions-menu__item" role="menuitem" data-admin-details="${index}">View details</button>` +
+      `<button type="button" class="sa-actions-menu__item" role="menuitem" data-admin-approve="${index}">Approve</button>` +
+      `<button type="button" class="sa-actions-menu__item sa-actions-menu__item--danger" role="menuitem" data-admin-reject="${index}">Reject</button>` +
+      `</div></div>`
+    );
+  }
+
+  function saCloseSalesAdminActionsMenu() {
+    document.querySelectorAll(".sa-actions-menu:not([hidden])").forEach((menu) => {
+      menu.setAttribute("hidden", "");
+    });
+    document.querySelectorAll(".sa-actions-toggle[aria-expanded='true']").forEach((btn) => {
+      btn.setAttribute("aria-expanded", "false");
+    });
+  }
+
+  function saPositionSalesAdminActionsMenu(menu, toggle) {
+    if (!menu || !toggle || menu.hasAttribute("hidden")) return;
+    const rect = toggle.getBoundingClientRect();
+    const menuWidth = Math.min(220, window.innerWidth - 16);
+    let left = rect.right - menuWidth;
+    if (left < 8) left = 8;
+    const maxH = Math.min(360, window.innerHeight - 16);
+    menu.style.maxHeight = `${maxH}px`;
+    menu.style.overflowY = "auto";
+    const estimatedH = Math.min(menu.scrollHeight || 200, maxH);
+    let top = rect.bottom + 4;
+    if (top + estimatedH > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - estimatedH - 4);
+    }
+    menu.style.position = "fixed";
+    menu.style.top = `${top}px`;
+    menu.style.left = `${left}px`;
+    menu.style.width = `${menuWidth}px`;
+    menu.style.zIndex = "1300";
+  }
+
+  function saBindSalesAdminActionsMenusOnce() {
+    if (window.__MG_SA_ACTIONS_MENU_BOUND__) return;
+    window.__MG_SA_ACTIONS_MENU_BOUND__ = true;
+
+    document.addEventListener("click", (ev) => {
+      const toggle = ev.target.closest(".sa-actions-toggle");
+      if (toggle) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const wrap = toggle.closest(".sa-actions-wrap");
+        const menu = wrap?.querySelector(".sa-actions-menu");
+        if (!menu) return;
+        const wasOpen = !menu.hasAttribute("hidden");
+        saCloseSalesAdminActionsMenu();
+        if (!wasOpen) {
+          menu.removeAttribute("hidden");
+          toggle.setAttribute("aria-expanded", "true");
+          saPositionSalesAdminActionsMenu(menu, toggle);
+        }
+        return;
+      }
+      if (!ev.target.closest(".sa-actions-menu")) {
+        saCloseSalesAdminActionsMenu();
+      }
+    });
+
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") saCloseSalesAdminActionsMenu();
+    });
+
+    window.addEventListener("resize", () => saCloseSalesAdminActionsMenu());
+  }
+
+  function saRenderMainProjectsTable(convertedRows, settings, mode) {
+    const body = $("saMainProjectsBody");
+    const wrap = $("saMainProjectsTableWrap");
+    const empty = $("saMainProjectsEmpty");
+    const emptySub = $("saMainProjectsEmptySub");
+    const loading = $("saConvertedLoading");
+    const err = $("saConvertedError");
+    if (!body) return;
+
+    if (loading) loading.hidden = true;
+    if (err) err.hidden = true;
+
+    const filtered = saFilterMainProjectRows(convertedRows, mode);
+    const meta = SA_VIEW_META[mode === "needs-supervisor" ? "needs-supervisor" : "approved-projects"];
+    if (emptySub && meta?.emptySub) emptySub.textContent = meta.emptySub;
+
+    if (!filtered.length) {
+      body.innerHTML = "";
+      if (wrap) wrap.hidden = true;
+      if (empty) empty.hidden = false;
+      return;
+    }
+
+    if (empty) empty.hidden = true;
+    if (wrap) wrap.hidden = false;
+
+    const currency = settings?.currency || DEFAULTS.currency;
+    body.innerHTML = filtered
+      .map((row) => {
+        const uncertain =
+          row.matchKind === "name"
+            ? ' <span class="sa-uncertain" title="Invoice matched by project name only">uncertain</span>'
+            : "";
+        const balanceLabel =
+          row.balanceDue != null ? money(row.balanceDue, currency) : "—";
+        return (
+          `<tr>` +
+          `<td>${escapeHtml(row.projectName)}</td>` +
+          `<td>${escapeHtml(row.clientName)}</td>` +
+          `<td>${escapeHtml(row.quoteStatus)}${uncertain}</td>` +
+          `<td>${escapeHtml(row.projectStatus)}</td>` +
+          `<td>${saSupervisorBadgeHtml(row)}</td>` +
+          `<td>${money(row.salePrice, currency)}</td>` +
+          `<td>${money(row.laborBudget, currency)}</td>` +
+          `<td>${escapeHtml(row.invoiceStatus)}</td>` +
+          `<td>${balanceLabel}</td>` +
+          `<td>${saProjectActionsMenuHtml(row)}</td>` +
+          `</tr>`
+        );
+      })
+      .join("");
   }
 
   function saProjectControlHref(projectId) {
@@ -17265,6 +17466,8 @@ window.renderSupervisor = renderSupervisor;
     const err = $("saConvertedError");
     const errMsg = $("saConvertedErrorMsg");
     const wrap = $("saConvertedTableWrap");
+    const mainWrap = $("saMainProjectsTableWrap");
+    const mainEmpty = $("saMainProjectsEmpty");
     const empty = $("saConvertedEmpty");
     if (loading) loading.hidden = state !== "loading";
     if (err) err.hidden = state !== "error";
@@ -17272,6 +17475,8 @@ window.renderSupervisor = renderSupervisor;
     if (state === "loading") {
       if (wrap) wrap.hidden = true;
       if (empty) empty.hidden = true;
+      if (mainWrap) mainWrap.hidden = true;
+      if (mainEmpty) mainEmpty.hidden = true;
     }
   }
 
@@ -17298,7 +17503,7 @@ window.renderSupervisor = renderSupervisor;
             : [];
         if (!pccRes.ok && !invRes.ok) {
           saSetConvertedProjectsLoadState("error", "Could not reach project or invoice APIs.");
-          saRenderConvertedProjectsTable([], settings);
+          if (!$("saMainProjectsBody")) saRenderConvertedProjectsTable([], settings);
           saRenderCommissionTable([], settings);
           saRenderRecentActivity([], settings);
           if (typeof onRows === "function") onRows([]);
@@ -17306,7 +17511,11 @@ window.renderSupervisor = renderSupervisor;
         }
         const rows = saJoinConvertedProjectRows(projects, invoices, settings);
         saSetConvertedProjectsLoadState("idle");
-        saRenderConvertedProjectsTable(rows, settings);
+        if ($("saMainProjectsBody")) {
+          /* Main console renders via onRows callback */
+        } else {
+          saRenderConvertedProjectsTable(rows, settings);
+        }
         saRenderCommissionTable(rows, settings);
         saRenderRecentActivity(rows, settings);
         if (typeof onRows === "function") onRows(rows);
@@ -17314,7 +17523,7 @@ window.renderSupervisor = renderSupervisor;
       })
       .catch((err) => {
         saSetConvertedProjectsLoadState("error", err?.message || "Unexpected error loading converted projects.");
-        saRenderConvertedProjectsTable([], settings);
+        if (!$("saMainProjectsBody")) saRenderConvertedProjectsTable([], settings);
         saRenderCommissionTable([], settings);
         saRenderRecentActivity([], settings);
         if (typeof onRows === "function") onRows([]);
@@ -17327,6 +17536,11 @@ window.renderSupervisor = renderSupervisor;
     const wrap = $("saQueueTableWrap");
     if (empty) empty.hidden = !showEmpty;
     if (wrap) wrap.hidden = showEmpty;
+  }
+
+  function saFilterPendingApprovalRows(list) {
+    const arr = Array.isArray(list) ? list : [];
+    return arr.filter((row) => String(row?.status || "").toLowerCase() === "requested");
   }
 
   function saCloseSalesAdminDetailModal() {
@@ -17371,10 +17585,12 @@ window.renderSupervisor = renderSupervisor;
 
   function renderSalesAdmin() {
     if (!$("adminQueueBody")) return;
+    saBindSalesAdminActionsMenusOnce();
     const settings = loadSettings();
     let rows = [];
     let lastMapped = null;
     let convertedRows = [];
+    let currentView = "approved-projects";
 
     const activateApprovedProject = (row) => {
       const project = {
@@ -17400,7 +17616,7 @@ window.renderSupervisor = renderSupervisor;
       saveSupervisorReport(project.id, buildDefaultSupervisorReport(project));
     };
 
-    const refresh = () => {
+    const refreshApprovalTable = () => {
       saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
       saSetSalesAdminQueueEmpty(rows.length === 0);
 
@@ -17420,13 +17636,7 @@ window.renderSupervisor = renderSupervisor;
             <td>${escapeHtml(String(mg.minimumMarginPct))}%</td>
             <td>${saMarginReviewBadge(mg)}</td>
             <td><span class="badge ${row.status === "approved" ? "green" : (row.status === "rejected" ? "red" : "amber")}">${escapeHtml(row.status)}</span></td>
-            <td>
-              <div class="row-actions sa-row-actions">
-                <button type="button" class="btn ghost" data-admin-details="${index}">View Details</button>
-                <button class="btn primary" data-admin-approve="${index}">Approve</button>
-                <button class="btn danger" data-admin-reject="${index}">Reject</button>
-              </div>
-            </td>
+            <td>${saApprovalActionsMenuHtml(index)}</td>
           </tr>
         `;
       }).join("");
@@ -17434,13 +17644,14 @@ window.renderSupervisor = renderSupervisor;
         button.onclick = () => {
           const index = Number(button.dataset.adminApprove || -1);
           if (index < 0 || !rows[index]) return;
+          saCloseSalesAdminActionsMenu();
           const row = rows[index];
 
           const applyLocalApprove = () => {
             rows[index].status = "approved";
             activateApprovedProject(rows[index]);
             saveApprovals(rows);
-            refresh();
+            refreshApprovalTable();
           };
 
           if (!isServerBackedApprovalRow(row)) {
@@ -17460,7 +17671,7 @@ window.renderSupervisor = renderSupervisor;
                 rows[index] = mapServerApprovalsToAdminRows([data.approval])[0];
                 activateApprovedProject(rows[index]);
                 saveApprovals(rows);
-                refresh();
+                refreshApprovalTable();
                 return;
               }
               applyLocalApprove();
@@ -17474,12 +17685,13 @@ window.renderSupervisor = renderSupervisor;
         button.onclick = () => {
           const index = Number(button.dataset.adminReject || -1);
           if (index < 0 || !rows[index]) return;
+          saCloseSalesAdminActionsMenu();
           const row = rows[index];
 
           const applyLocalReject = () => {
             rows[index].status = "rejected";
             saveApprovals(rows);
-            refresh();
+            refreshApprovalTable();
           };
 
           if (!isServerBackedApprovalRow(row)) {
@@ -17498,7 +17710,7 @@ window.renderSupervisor = renderSupervisor;
               if (ok && data && data.ok === true && data.approval) {
                 rows[index] = mapServerApprovalsToAdminRows([data.approval])[0];
                 saveApprovals(rows);
-                refresh();
+                refreshApprovalTable();
                 return;
               }
               applyLocalReject();
@@ -17512,10 +17724,73 @@ window.renderSupervisor = renderSupervisor;
         button.onclick = () => {
           const index = Number(button.dataset.adminDetails || -1);
           if (index < 0 || !rows[index]) return;
+          saCloseSalesAdminActionsMenu();
           saOpenSalesAdminDetailModal(rows[index], settings);
         };
       });
     };
+
+    const saSetMainView = (viewId) => {
+      const next = SA_VIEW_META[viewId] ? viewId : "approved-projects";
+      currentView = next;
+      const meta = SA_VIEW_META[next];
+
+      document.querySelectorAll("[data-sa-view]").forEach((btn) => {
+        const active = btn.getAttribute("data-sa-view") === next;
+        btn.classList.toggle("active", active);
+        btn.setAttribute("aria-selected", active ? "true" : "false");
+      });
+
+      const desc = $("saViewDesc");
+      if (desc && meta?.desc) desc.textContent = meta.desc;
+
+      const projectsWrap = $("saProjectsViewWrap");
+      const quotesWrap = $("saQuotesViewWrap");
+      const approvalWrap = $("saApprovalViewWrap");
+      if (projectsWrap) projectsWrap.hidden = meta.kind !== "projects";
+      if (quotesWrap) quotesWrap.hidden = meta.kind !== "quotes";
+      if (approvalWrap) approvalWrap.hidden = meta.kind !== "approval";
+
+      saCloseSalesAdminActionsMenu();
+
+      if (meta.kind === "projects") {
+        saRenderMainProjectsTable(
+          convertedRows,
+          settings,
+          meta.mode === "needs-supervisor" ? "needs-supervisor" : "all"
+        );
+      } else if (meta.kind === "approval") {
+        refreshApprovalTable();
+      } else if (meta.kind === "quotes" && typeof window.__mgSaQuotesLoadForView === "function") {
+        window.__mgSaQuotesLoadForView(next);
+      }
+    };
+
+    window.__mgSaSetMainView = saSetMainView;
+    window.__mgSaGetMainView = () => currentView;
+    window.__mgSaRefreshMainView = () => {
+      if (currentView === "pending-approval") loadQueue();
+      else if (SA_VIEW_META[currentView]?.kind === "quotes" && typeof window.__mgSaQuotesLoadForView === "function") {
+        window.__mgSaQuotesLoadForView(currentView);
+      } else if (SA_VIEW_META[currentView]?.kind === "projects") {
+        void saLoadConvertedProjectsData(settings, (joined) => {
+          convertedRows = joined;
+          saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
+          saRenderMainProjectsTable(
+            convertedRows,
+            settings,
+            currentView === "needs-supervisor" ? "needs-supervisor" : "all"
+          );
+        });
+      }
+    };
+
+    document.querySelectorAll("[data-sa-view]").forEach((btn) => {
+      btn.onclick = () => {
+        const viewId = String(btn.getAttribute("data-sa-view") || "").trim();
+        if (viewId) saSetMainView(viewId);
+      };
+    });
 
     const loadQueue = () => {
       fetch("/.netlify/functions/get-sales-approvals", { method: "GET", credentials: "include" })
@@ -17525,23 +17800,31 @@ window.renderSupervisor = renderSupervisor;
             const mapped = mapServerApprovalsToAdminRows(data.approvals);
             saveApprovals(mapped);
             lastMapped = mapped;
-            rows = filterSalesAdminYellowMarginQueue(mapped);
-            refresh();
+            rows = saFilterPendingApprovalRows(mapped);
+            if (currentView === "pending-approval") refreshApprovalTable();
+            else saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
             return;
           }
           lastMapped = loadApprovals();
-          rows = filterSalesAdminYellowMarginQueue(lastMapped);
-          refresh();
+          rows = saFilterPendingApprovalRows(lastMapped);
+          if (currentView === "pending-approval") refreshApprovalTable();
+          else saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
         })
         .catch(() => {
           lastMapped = loadApprovals();
-          rows = filterSalesAdminYellowMarginQueue(lastMapped);
-          refresh();
+          rows = saFilterPendingApprovalRows(lastMapped);
+          if (currentView === "pending-approval") refreshApprovalTable();
+          else saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
         });
     };
 
-    const refreshBtn = $("saBtnRefresh");
-    if (refreshBtn) refreshBtn.onclick = loadQueue;
+    const mainRefresh = $("saMainRefresh");
+    if (mainRefresh) {
+      mainRefresh.onclick = () => {
+        loadQueue();
+        if (typeof window.__mgSaRefreshMainView === "function") window.__mgSaRefreshMainView();
+      };
+    }
 
     const detailClose = $("saDetailClose");
     if (detailClose) detailClose.onclick = saCloseSalesAdminDetailModal;
@@ -17553,11 +17836,11 @@ window.renderSupervisor = renderSupervisor;
       };
     }
 
-    refresh();
     loadQueue();
     void saLoadConvertedProjectsData(settings, (joined) => {
       convertedRows = joined;
       saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
+      saSetMainView("approved-projects");
     });
   }
 
