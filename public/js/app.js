@@ -1749,8 +1749,85 @@ Thank you.`
   }
 
   /** Build day cards when quoted_labor_plan rows include day_number (legacy shapes). */
+  function supervisorDayLabelFromRow(row) {
+    if (!row || typeof row !== "object") return "";
+    const candidates = [row.title, row.description, row.scope, row.name, row.phase];
+    for (const c of candidates) {
+      const s = String(c ?? "").trim();
+      if (s && !supervisorIsMissingPlanPhase(s)) return s;
+    }
+    for (const c of candidates) {
+      const s = String(c ?? "").trim();
+      if (s) return s;
+    }
+    return "";
+  }
+
+  function quotedLaborLooksLikeDayObjects(raw) {
+    const first = raw[0];
+    if (!first || typeof first !== "object") return false;
+    if (Array.isArray(first.workers) || Array.isArray(first.crew)) return true;
+    if (
+      (first.title || first.description || first.scope) &&
+      !first.role &&
+      !first.type &&
+      first.budget_days == null &&
+      first.days == null
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  function supervisorExecutionPlanLooksGeneric(plan) {
+    if (!Array.isArray(plan) || !plan.length) return true;
+    let generic = 0;
+    for (const day of plan) {
+      const label = supervisorResolveDayPhaseLabel(
+        day,
+        Math.max(1, Math.floor(finiteNumber(day?.day_number, 1))),
+        plan.length
+      );
+      if (
+        !label ||
+        /continue planned field work|project start\s*\/\s*site protection|final walkthrough\s*\/\s*cleanup/i.test(
+          label
+        )
+      ) {
+        generic += 1;
+      }
+    }
+    return generic >= Math.ceil(plan.length * 0.5);
+  }
+
   function buildSupervisorPlanFromQuotedLaborDays(project) {
     const workers = Array.isArray(project?.workers) ? project.workers : [];
+    if (!workers.length) return [];
+
+    if (quotedLaborLooksLikeDayObjects(workers)) {
+      return workers
+        .map((dayRow, idx) => {
+          const dn = Math.max(1, Math.floor(finiteNumber(dayRow?.day_number, idx + 1)));
+          const phase =
+            supervisorDayLabelFromRow(dayRow) ||
+            supervisorFallbackPhaseLabel(dn, workers.length);
+          const dayWorkers = Array.isArray(dayRow.workers)
+            ? dayRow.workers
+            : Array.isArray(dayRow.crew)
+              ? dayRow.crew
+              : [];
+          return {
+            day_number: dn,
+            phase,
+            workers: dayWorkers,
+            plan_from_quoted_labor: true,
+            ...(dayRow.title ? { title: String(dayRow.title).trim() } : {}),
+            ...(dayRow.description ? { description: String(dayRow.description).trim() } : {}),
+          };
+        })
+        .filter((day) => day.phase || (day.workers && day.workers.length));
+    }
+
     const byDay = Object.create(null);
     for (const w of workers) {
       const dn = Math.floor(finiteNumber(w?.day_number, 0));
@@ -1759,11 +1836,13 @@ Thank you.`
       if (!byDay[key]) {
         byDay[key] = {
           day_number: dn,
-          phase: String(w?.phase || "").trim(),
+          phase: "",
           workers: [],
         };
       }
       byDay[key].workers.push(w);
+      const rowLabel = supervisorDayLabelFromRow(w);
+      if (rowLabel && !byDay[key].phase) byDay[key].phase = rowLabel;
     }
     const keys = Object.keys(byDay)
       .map((k) => Number(k))
@@ -1772,10 +1851,11 @@ Thank you.`
     if (!keys.length) return [];
     return keys.map((dn) => {
       const row = byDay[String(dn)];
-      const phase = String(row.phase || "").trim();
+      const phase =
+        String(row.phase || "").trim() || supervisorFallbackPhaseLabel(dn, keys.length);
       return {
         day_number: dn,
-        phase: phase || supervisorFallbackPhaseLabel(dn, keys.length),
+        phase,
         workers: row.workers,
         plan_from_quoted_labor: true,
       };
@@ -1992,16 +2072,20 @@ Thank you.`
 
   function resolveSupervisorExecutionPlan(opCache, project, estimatedDays) {
     const est = inferSupervisorExecutionEstimatedDays(project, opCache, estimatedDays);
+    const fromQuoted = buildSupervisorPlanFromQuotedLaborDays(project);
+    const fromApi =
+      opCache?.ok === true && Array.isArray(opCache.operational_plan)
+        ? opCache.operational_plan
+        : [];
 
-    if (
-      opCache?.ok === true &&
-      Array.isArray(opCache.operational_plan) &&
-      opCache.operational_plan.length
-    ) {
-      return opCache.operational_plan;
+    if (fromQuoted.length && (!fromApi.length || supervisorExecutionPlanLooksGeneric(fromApi))) {
+      return fromQuoted;
     }
 
-    const fromQuoted = buildSupervisorPlanFromQuotedLaborDays(project);
+    if (fromApi.length) {
+      return fromApi;
+    }
+
     if (fromQuoted.length) return fromQuoted;
 
     if (resolveShowMigratedExecution(opCache)) {
@@ -2820,6 +2904,7 @@ Thank you.`
     const crewFromSchedule = String(sched.crew_summary || "").trim();
     const startRaw =
       sched.start_date ||
+      sched.startDate ||
       (project?.signedAt ? String(project.signedAt).slice(0, 10) : "") ||
       "";
     const targetRaw =
@@ -3193,8 +3278,17 @@ Thank you.`
   }
 
   function supervisorResolveDayPhaseLabel(day, dayNum, totalDays) {
+    const title = String(day?.title ?? "").trim();
+    const desc = String(day?.description ?? "").trim();
+    const scope = String(day?.scope ?? "").trim();
+    for (const candidate of [title, desc, scope]) {
+      if (candidate && !supervisorIsMissingPlanPhase(candidate)) return candidate;
+    }
     const raw = String(day?.phase || "").trim();
     if (!supervisorIsMissingPlanPhase(raw)) return raw;
+    for (const candidate of [title, desc, scope, raw]) {
+      if (candidate) return candidate;
+    }
     return supervisorFallbackPhaseLabel(dayNum, totalDays);
   }
 

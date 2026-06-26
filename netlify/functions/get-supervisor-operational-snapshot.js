@@ -170,14 +170,92 @@ async function loadSupervisorInvoiceStatusLabel(tenantId, projectId) {
   }
 }
 
-function buildScheduleFields(project, opRow) {
+function buildScheduleFields(project, opRow, quoteRow) {
+  const quoteStart = normDate(quoteRow?.start_date ?? quoteRow?.startDate);
   const signedAt = normDate(project?.signed_at);
-  const due = normDate(opRow?.commitment_date || project?.due_date);
+  const due = normDate(
+    opRow?.commitment_date || project?.due_date || quoteRow?.due_date || quoteRow?.dueDate
+  );
   return {
-    start_date: signedAt,
+    start_date: quoteStart || signedAt,
     commitment_date: due,
     target_finish_date: due,
   };
+}
+
+function strDayLabel(v, max = 500) {
+  return String(v == null ? "" : v)
+    .trim()
+    .slice(0, max);
+}
+
+function enrichSupervisorPlanDayLabels(planRaw) {
+  if (!Array.isArray(planRaw)) return [];
+  return planRaw.map((day) => {
+    if (!day || typeof day !== "object") return day;
+    const title = strDayLabel(day.title, 240);
+    const desc = strDayLabel(day.description, 500);
+    const scope = strDayLabel(day.scope, 500);
+    const phase = strDayLabel(day.phase, 240);
+    const best = title || desc || scope;
+    if (!best) return day;
+    const generic =
+      !phase ||
+      /continue planned field work|project start\s*\/\s*site protection|final walkthrough\s*\/\s*cleanup/i.test(
+        phase
+      );
+    if (generic) {
+      return { ...day, phase: best };
+    }
+    return day;
+  });
+}
+
+function planFromQuotedLaborDayObjects(quotedLaborPlan) {
+  const raw = Array.isArray(quotedLaborPlan) ? quotedLaborPlan : [];
+  if (!raw.length) return [];
+  const first = raw[0];
+  if (!first || typeof first !== "object") return [];
+  if (!Array.isArray(first.workers) && !Array.isArray(first.crew)) return [];
+  return raw
+    .map((day, idx) => {
+      const dn = Math.max(1, Math.floor(num(day?.day_number, idx + 1)));
+      const title = strDayLabel(day.title, 240);
+      const desc = strDayLabel(day.description, 500);
+      const phase =
+        title || desc || strDayLabel(day.phase, 240) || strDayLabel(day.scope, 500) || `Day ${dn}`;
+      const workers = Array.isArray(day.workers)
+        ? day.workers
+        : Array.isArray(day.crew)
+          ? day.crew
+          : [];
+      if (!workers.length && !phase) return null;
+      return {
+        day_number: dn,
+        phase,
+        workers,
+        ...(title ? { title } : {}),
+        ...(desc ? { description: desc } : {}),
+      };
+    })
+    .filter(Boolean);
+}
+
+function planLooksGenericSupervisor(plan) {
+  if (!Array.isArray(plan) || !plan.length) return true;
+  let generic = 0;
+  for (const day of plan) {
+    const p = strDayLabel(day?.phase, 240).toLowerCase();
+    if (
+      !p ||
+      p.includes("continue planned field work") ||
+      p.includes("project start / site protection") ||
+      p.includes("final walkthrough / cleanup")
+    ) {
+      generic += 1;
+    }
+  }
+  return generic >= Math.ceil(plan.length * 0.5);
 }
 
 /** Blend labor reports with marked-complete plan days (supervisor-safe). */
@@ -258,25 +336,37 @@ exports.handler = async (event) => {
       supervisorBonusPctPoints: bonusPct,
     });
 
-    let planRaw = parseOperationalPlanJsonb(opRow?.operational_plan);
-    if (!planRaw.length && project.quote_id) {
+    let quoteRow = null;
+    if (project.quote_id) {
       try {
         const qRows = await supabaseRequest(
           `quotes?id=eq.${encodeURIComponent(project.quote_id)}&tenant_id=eq.${tid}&select=*&limit=1`
         );
-        const quoteRow = Array.isArray(qRows) ? qRows[0] : null;
-        if (quoteRow) {
-          const resolved = await resolveOperationalPlanForQuote(
-            quoteRow,
-            () => loadLatestTenantSnapshotPayload(tenant.id)
-          );
-          if (resolved?.plan?.length) {
-            planRaw = resolved.plan;
-          }
+        quoteRow = Array.isArray(qRows) ? qRows[0] : null;
+      } catch (_e) {
+        quoteRow = null;
+      }
+    }
+
+    let planRaw = parseOperationalPlanJsonb(opRow?.operational_plan);
+    if (!planRaw.length && quoteRow) {
+      try {
+        const resolved = await resolveOperationalPlanForQuote(
+          quoteRow,
+          () => loadLatestTenantSnapshotPayload(tenant.id)
+        );
+        if (resolved?.plan?.length) {
+          planRaw = resolved.plan;
         }
       } catch (_e) {
         /* fallback optional */
       }
+    }
+
+    planRaw = enrichSupervisorPlanDayLabels(planRaw);
+    const fromQuotedDays = planFromQuotedLaborDayObjects(project.quoted_labor_plan);
+    if (fromQuotedDays.length && (!planRaw.length || planLooksGenericSupervisor(planRaw))) {
+      planRaw = fromQuotedDays;
     }
 
     const operational_plan = operationalPlanForSupervisorVisibility(planRaw);
@@ -332,7 +422,7 @@ exports.handler = async (event) => {
       };
     } else {
       schedule = {
-        ...buildScheduleFields(project, metricsRow || opRow),
+        ...buildScheduleFields(project, metricsRow || opRow, quoteRow),
         crew_summary: crewSummaryFromOperationalPlan(operational_plan),
       };
     }
