@@ -75,6 +75,10 @@ function isArchived(inv) {
   return statusLower(inv) === "archived";
 }
 
+function isVoid(inv) {
+  return statusLower(inv) === "void";
+}
+
 /** True if invoice should be treated as paid (do not remind). */
 function isPaid(inv) {
   if (statusLower(inv) === "paid") return true;
@@ -207,7 +211,7 @@ exports.handler = async (event) => {
       stats.skipped += 1;
       continue;
     }
-    if (isArchived(inv) || isPaid(inv)) {
+    if (isArchived(inv) || isVoid(inv) || isPaid(inv)) {
       stats.skipped += 1;
       continue;
     }

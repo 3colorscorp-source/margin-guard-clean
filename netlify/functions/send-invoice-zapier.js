@@ -202,6 +202,13 @@ exports.handler = async (event) => {
       return json(404, { ok: false, error: "Invoice not found." });
     }
 
+    const invoiceStatus = String(invoice.status || "")
+      .trim()
+      .toLowerCase();
+    if (invoiceStatus === "void") {
+      return jsonError(422, "invoice_void", "Cannot send a void invoice.");
+    }
+
     const tenantRows = await supabaseRequest(
       `tenants?id=eq.${encodeURIComponent(tenantId)}&select=id,name,owner_email`
     );

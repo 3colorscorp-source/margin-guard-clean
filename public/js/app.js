@@ -6115,6 +6115,12 @@ Thank you.`
       .toLowerCase() === "archived";
   }
 
+  function hubRowIsVoidInvoice(row) {
+    return String(row?.hubInvoiceRawStatus || row?.invoiceStatus || row?.status || "")
+      .trim()
+      .toLowerCase() === "void";
+  }
+
   function hubRowIsPaidForReminder(row) {
     const raw = String(row?.hubInvoiceRawStatus || row?.invoiceStatus || row?.status || "")
       .trim()
@@ -6142,6 +6148,7 @@ Thank you.`
   function hubRowServerCanSendInvoiceZapier(row) {
     if (row?.hubRowSource !== "server_invoice") return false;
     if (hubRowIsArchivedInvoice(row)) return false;
+    if (hubRowIsVoidInvoice(row)) return false;
     if (hubRowIsPaidForReminder(row)) return false;
     const sid = hubRowServerInvoiceUuid(row);
     const token = hubRowPublicToken(row);
@@ -6162,7 +6169,9 @@ Thank you.`
     const hasEmail = hubRowValidCustomerEmail(row);
     const hasBalance = finiteNumber(row?.balance, 0) > 0.005;
     const archived = hubRowIsArchivedInvoice(row);
+    const voided = hubRowIsVoidInvoice(row);
     const paid = hubRowIsPaidForReminder(row);
+    const paidApplied = finiteNumber(row?.depositApplied, 0) + finiteNumber(row?.receivedApplied, 0);
     const sendReady = getHubDrawerSendInvoiceReadiness(row);
     const sentAt = nonEmptyString(row?.hubInvoiceSentAt);
     const sentLike = hubRowServerInvoiceSentLike(row);
@@ -6174,10 +6183,13 @@ Thank you.`
       canSendInvoice = Boolean(serverCanSend && !sentLike && base.canSendInvoice);
     }
     const canSendPaymentReminder = Boolean(
-      isServer && hasValidSid && hasBalance && !paid && !archived && hasEmail
+      isServer && hasValidSid && hasBalance && !paid && !archived && !voided && hasEmail
     );
     const canEditClientInfo = Boolean(isServer && hasValidSid && !archived);
     const canDuplicateInvoice = Boolean(isServer && hasValidSid && !archived);
+    const canCancelInvoice = Boolean(
+      isServer && hasValidSid && !archived && !voided && !paid && hasBalance && paidApplied <= 0.005
+    );
     const canRecordPayment = Boolean((hubRowCanRecordLedgerPayment(row) || base.canTakePayment) && !archived && hasBalance);
     const canMarkPaid = Boolean(
       (!archived && hasBalance && !paid && (hubRowCanRecordLedgerPayment(row) || base.canMarkPaid))
@@ -6195,6 +6207,7 @@ Thank you.`
       canDownloadPdf: base.canExportPdf,
       canArchive: base.canArchiveServerInvoice,
       canDuplicateInvoice,
+      canCancelInvoice,
       canDelete: base.canDeleteServerInvoice,
       resendLabel: sentLike || sentAt || (!canSendInvoice && canResendInvoice) ? "Resend invoice" : "Send invoice"
     };
@@ -6207,6 +6220,7 @@ Thank you.`
       invoice_paid: "This invoice is already paid.",
       no_balance_due: "No balance due on this invoice.",
       invoice_archived: "Cannot send a reminder for an archived invoice.",
+      invoice_void: "Cannot send a reminder for a void invoice.",
       missing_customer_email: "Add a valid customer email before sending a reminder.",
       missing_public_token: "This invoice has no public link yet.",
       invoice_not_found: "Invoice not found.",
@@ -6460,7 +6474,7 @@ Thank you.`
           item("edit-client", "Edit client info", menuState.canEditClientInfo),
           item("archive", "Archive", menuState.canArchive),
           item("duplicate", "Duplicate as invoice", menuState.canDuplicateInvoice),
-          item("cancel", "Cancel — coming soon", false)
+          item("cancel", "Cancel invoice", menuState.canCancelInvoice)
         ].join("")
       )
     ].join("");
@@ -11882,6 +11896,39 @@ window.renderSupervisor = renderSupervisor;
     return { ok: res.ok && data?.ok === true, status: res.status, data };
   }
 
+  async function postHubInvoiceCancel(invoiceId) {
+    const res = await fetch("/.netlify/functions/cancel-tenant-invoice", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ invoice_id: invoiceId })
+    });
+    let data = {};
+    try {
+      data = await res.json();
+    } catch (_e) {
+      data = {};
+    }
+    return { ok: res.ok && data?.ok === true, status: res.status, data };
+  }
+
+  function formatHubCancelInvoiceError(data, status) {
+    const reason = String(data?.reason || "").trim();
+    const msg = String(data?.message || data?.error || "").trim();
+    const map = {
+      invoice_archived: "Cannot cancel an archived invoice.",
+      invoice_void: "This invoice is already void.",
+      invoice_paid: "Cannot cancel a paid invoice.",
+      invoice_has_payments: "Cannot cancel an invoice with recorded payments.",
+      no_balance_due: "Cannot cancel when there is no balance due.",
+      invoice_stripe_payment: "Cannot cancel an invoice with Stripe payment activity.",
+      invoice_has_ledger_payments: "Cannot cancel an invoice with ledger payments.",
+      invoice_not_found: "Invoice not found.",
+      invalid_invoice_id: "Invalid invoice id."
+    };
+    return map[reason] || msg || `Cancel invoice failed (HTTP ${status}).`;
+  }
+
   let hubDuplicateInvoiceState = { row: null, duplicating: false };
 
   function hubDuplicateInvoiceSetFeedback(message, tone) {
@@ -11944,6 +11991,74 @@ window.renderSupervisor = renderSupervisor;
       return { ok: false, message: msg };
     }
     return { ok: true, invoice: data.invoice, sourceInvoiceId: data.source_invoice_id };
+  }
+
+  let hubCancelInvoiceState = { row: null, cancelling: false };
+
+  function hubCancelInvoiceSetFeedback(message, tone) {
+    const el = $("hubCancelInvoiceFeedback");
+    if (!el) return;
+    if (!message) {
+      el.style.display = "none";
+      el.textContent = "";
+      el.className = "notice";
+      return;
+    }
+    el.style.display = "";
+    el.textContent = message;
+    el.className = `notice ${tone === "err" ? "err" : tone === "warn" ? "warn" : "ok"}`;
+  }
+
+  function hubCancelInvoiceCloseModal() {
+    const modal = $("hubCancelInvoiceModal");
+    if (modal) modal.setAttribute("aria-hidden", "true");
+    hubCancelInvoiceState = { row: null, cancelling: false };
+    hubCancelInvoiceSetFeedback("");
+    const btn = $("btnHubCancelInvoiceConfirm");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Cancel invoice";
+    }
+  }
+
+  function openHubCancelInvoiceModal(row) {
+    if (!$("hubCancelInvoiceModal")) return false;
+    closeHubDrawerActionsMenu();
+    const menuState = getHubOverflowMenuState(row);
+    if (!menuState.canCancelInvoice) {
+      setHubFeedback("This invoice cannot be cancelled right now.", "warn");
+      return false;
+    }
+    hubCancelInvoiceState = { row, cancelling: false };
+    hubCancelInvoiceSetFeedback("");
+    const confirmBtn = $("btnHubCancelInvoiceConfirm");
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "Cancel invoice";
+    }
+    $("hubCancelInvoiceModal").setAttribute("aria-hidden", "false");
+    return true;
+  }
+
+  async function executeHubCancelInvoice(row) {
+    const iid = hubRowServerInvoiceUuid(row);
+    if (!iid || !MG_SERVER_INVOICE_UUID_RE.test(iid)) {
+      return { ok: false, message: "No valid server invoice to cancel." };
+    }
+    const menuState = getHubOverflowMenuState(row);
+    if (!menuState.canCancelInvoice) {
+      return { ok: false, message: "This invoice cannot be cancelled right now." };
+    }
+    const { ok, data, status } = await postHubInvoiceCancel(iid);
+    if (!ok) {
+      return { ok: false, message: formatHubCancelInvoiceError(data, status) };
+    }
+    return {
+      ok: true,
+      invoiceId: data.invoice_id || iid,
+      status: data.status || "void",
+      voidedAt: data.voided_at
+    };
   }
 
   function normalizeServerInvoiceForHub(invoice) {
@@ -15384,6 +15499,10 @@ window.renderSupervisor = renderSupervisor;
         openHubDuplicateInvoiceModal(row);
         return;
       }
+      if (action === "cancel") {
+        openHubCancelInvoiceModal(row);
+        return;
+      }
     };
 
     const openPaymentForm = (row, existingPayment, onSubmit) => {
@@ -16412,6 +16531,51 @@ window.renderSupervisor = renderSupervisor;
             }
             const label = nonEmptyString(result.invoice?.invoice_no) || "draft duplicate";
             setHubFeedback(`Invoice duplicated as ${label}.`, "ok");
+          })();
+        };
+      }
+    }
+    if ($("hubCancelInvoiceModal") && !window.__MG_HUB_CANCEL_MODAL_BOUND__) {
+      window.__MG_HUB_CANCEL_MODAL_BOUND__ = true;
+      if ($("btnHubCancelInvoiceClose")) $("btnHubCancelInvoiceClose").onclick = hubCancelInvoiceCloseModal;
+      if ($("btnHubCancelInvoiceKeep")) $("btnHubCancelInvoiceKeep").onclick = hubCancelInvoiceCloseModal;
+      if ($("btnHubCancelInvoiceConfirm")) {
+        $("btnHubCancelInvoiceConfirm").onclick = () => {
+          if (hubCancelInvoiceState.cancelling || !hubCancelInvoiceState.row) return;
+          const row = hubCancelInvoiceState.row;
+          hubCancelInvoiceState.cancelling = true;
+          const confirmBtn = $("btnHubCancelInvoiceConfirm");
+          if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = "Cancelling…";
+          }
+          hubCancelInvoiceSetFeedback("");
+          void (async () => {
+            const result = await executeHubCancelInvoice(row);
+            hubCancelInvoiceState.cancelling = false;
+            if (!result.ok) {
+              hubCancelInvoiceSetFeedback(result.message || "Could not cancel invoice.", "err");
+              if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = "Cancel invoice";
+              }
+              return;
+            }
+            const iid = String(result.invoiceId || hubRowServerInvoiceUuid(row) || "").trim();
+            hubCancelInvoiceCloseModal();
+            if (typeof window.__mgHubRefetchServerInvoices === "function") {
+              await window.__mgHubRefetchServerInvoices();
+            } else {
+              refresh();
+            }
+            if (iid && selectedRow && String(selectedRow.serverInvoiceId || "") === iid) {
+              const next = lastMergedHubRows.find((r) => String(r.serverInvoiceId || "") === iid);
+              if (next) openHubDrawer(next);
+              else refreshSelectedRow();
+            } else {
+              refreshSelectedRow();
+            }
+            setHubFeedback("Invoice cancelled (void).", "ok");
           })();
         };
       }

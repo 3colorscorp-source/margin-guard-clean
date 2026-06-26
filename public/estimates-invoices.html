@@ -436,6 +436,9 @@
   #hubDuplicateInvoiceModal.hub-duplicate-modal {
     z-index: 10060;
   }
+  #hubCancelInvoiceModal.hub-cancel-modal {
+    z-index: 10060;
+  }
   #hubPaymentReminderModal .modal-card {
     width: min(640px, calc(100vw - 32px));
     max-height: min(90vh, 720px);
@@ -1574,6 +1577,25 @@
       <div class="modal-footer hub-reminder-actions">
         <button type="button" class="btn" id="btnHubDuplicateInvoiceCancel">Cancel</button>
         <button type="button" class="btn primary" id="btnHubDuplicateInvoiceConfirm">Create duplicate</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hub-cancel-modal" id="hubCancelInvoiceModal" aria-hidden="true">
+    <div class="modal-card" style="width:min(520px, calc(100vw - 32px));">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Cancel invoice?</div>
+          <div class="modal-subtitle">This will mark the invoice as void. It will not delete the invoice, and it will not change any recorded payments. This action cannot be used if payments are already recorded.</div>
+        </div>
+        <button type="button" class="icon-btn" id="btnHubCancelInvoiceClose" aria-label="Close">X</button>
+      </div>
+      <div class="modal-body">
+        <div class="notice" id="hubCancelInvoiceFeedback" style="display:none;"></div>
+      </div>
+      <div class="modal-footer hub-reminder-actions">
+        <button type="button" class="btn" id="btnHubCancelInvoiceKeep">Keep invoice</button>
+        <button type="button" class="btn primary" id="btnHubCancelInvoiceConfirm">Cancel invoice</button>
       </div>
     </div>
   </div>

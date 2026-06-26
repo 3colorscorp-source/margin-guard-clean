@@ -70,6 +70,10 @@ function isArchived(inv) {
   return statusLower(inv) === "archived";
 }
 
+function isVoid(inv) {
+  return statusLower(inv) === "void";
+}
+
 function isPaid(inv) {
   if (statusLower(inv) === "paid") return true;
   const bal = remainingBalance(inv);
@@ -283,6 +287,10 @@ exports.handler = async (event) => {
 
     if (isArchived(invoice)) {
       return jsonError(422, "invoice_archived", "Cannot send reminder for an archived invoice.");
+    }
+
+    if (isVoid(invoice)) {
+      return jsonError(422, "invoice_void", "Cannot send reminder for a void invoice.");
     }
 
     if (isPaid(invoice)) {
