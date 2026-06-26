@@ -6243,6 +6243,7 @@ Thank you.`
 
   function openHubPaymentReminderModal(row, settings) {
     if (!$("hubPaymentReminderModal")) return false;
+    closeHubDrawerActionsMenu();
     const menuState = getHubOverflowMenuState(row);
     if (!menuState.canSendPaymentReminder) {
       setHubFeedback("This invoice cannot receive a payment reminder right now.", "warn");
