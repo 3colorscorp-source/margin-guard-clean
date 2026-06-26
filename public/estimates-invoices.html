@@ -433,6 +433,9 @@
   #hubPaymentReminderModal.hub-reminder-modal {
     z-index: 10060;
   }
+  #hubDuplicateInvoiceModal.hub-duplicate-modal {
+    z-index: 10060;
+  }
   #hubPaymentReminderModal .modal-card {
     width: min(640px, calc(100vw - 32px));
     max-height: min(90vh, 720px);
@@ -1552,6 +1555,25 @@
       <div class="modal-footer hub-reminder-actions">
         <button type="button" class="btn" id="btnHubPaymentReminderCancel">Cancel</button>
         <button type="button" class="btn primary" id="btnHubPaymentReminderSend">Send reminder</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hub-duplicate-modal" id="hubDuplicateInvoiceModal" aria-hidden="true">
+    <div class="modal-card" style="width:min(480px, calc(100vw - 32px));">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Duplicate invoice?</div>
+          <div class="modal-subtitle">This will create a new draft copy of this invoice. Payments and sent history will not be copied.</div>
+        </div>
+        <button type="button" class="icon-btn" id="btnHubDuplicateInvoiceClose" aria-label="Close">X</button>
+      </div>
+      <div class="modal-body">
+        <div class="notice" id="hubDuplicateInvoiceFeedback" style="display:none;"></div>
+      </div>
+      <div class="modal-footer hub-reminder-actions">
+        <button type="button" class="btn" id="btnHubDuplicateInvoiceCancel">Cancel</button>
+        <button type="button" class="btn primary" id="btnHubDuplicateInvoiceConfirm">Create duplicate</button>
       </div>
     </div>
   </div>

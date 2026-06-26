@@ -6177,6 +6177,7 @@ Thank you.`
       isServer && hasValidSid && hasBalance && !paid && !archived && hasEmail
     );
     const canEditClientInfo = Boolean(isServer && hasValidSid && !archived);
+    const canDuplicateInvoice = Boolean(isServer && hasValidSid && !archived);
     const canRecordPayment = Boolean((hubRowCanRecordLedgerPayment(row) || base.canTakePayment) && !archived && hasBalance);
     const canMarkPaid = Boolean(
       (!archived && hasBalance && !paid && (hubRowCanRecordLedgerPayment(row) || base.canMarkPaid))
@@ -6193,6 +6194,7 @@ Thank you.`
       canMarkPaid,
       canDownloadPdf: base.canExportPdf,
       canArchive: base.canArchiveServerInvoice,
+      canDuplicateInvoice,
       canDelete: base.canDeleteServerInvoice,
       resendLabel: sentLike || sentAt || (!canSendInvoice && canResendInvoice) ? "Resend invoice" : "Send invoice"
     };
@@ -6457,7 +6459,7 @@ Thank you.`
         [
           item("edit-client", "Edit client info", menuState.canEditClientInfo),
           item("archive", "Archive", menuState.canArchive),
-          item("duplicate", "Duplicate as invoice — coming soon", false),
+          item("duplicate", "Duplicate as invoice", menuState.canDuplicateInvoice),
           item("cancel", "Cancel — coming soon", false)
         ].join("")
       )
@@ -11864,6 +11866,86 @@ window.renderSupervisor = renderSupervisor;
     return { ok: res.ok, status: res.status, data };
   }
 
+  async function postHubInvoiceDuplicate(invoiceId) {
+    const res = await fetch("/.netlify/functions/duplicate-tenant-invoice", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ invoice_id: invoiceId })
+    });
+    let data = {};
+    try {
+      data = await res.json();
+    } catch (_e) {
+      data = {};
+    }
+    return { ok: res.ok && data?.ok === true, status: res.status, data };
+  }
+
+  let hubDuplicateInvoiceState = { row: null, duplicating: false };
+
+  function hubDuplicateInvoiceSetFeedback(message, tone) {
+    const el = $("hubDuplicateInvoiceFeedback");
+    if (!el) return;
+    if (!message) {
+      el.style.display = "none";
+      el.textContent = "";
+      el.className = "notice";
+      return;
+    }
+    el.style.display = "";
+    el.textContent = message;
+    el.className = `notice ${tone === "err" ? "err" : tone === "warn" ? "warn" : "ok"}`;
+  }
+
+  function hubDuplicateInvoiceCloseModal() {
+    const modal = $("hubDuplicateInvoiceModal");
+    if (modal) modal.setAttribute("aria-hidden", "true");
+    hubDuplicateInvoiceState = { row: null, duplicating: false };
+    hubDuplicateInvoiceSetFeedback("");
+    const btn = $("btnHubDuplicateInvoiceConfirm");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Create duplicate";
+    }
+  }
+
+  function openHubDuplicateInvoiceModal(row) {
+    if (!$("hubDuplicateInvoiceModal")) return false;
+    closeHubDrawerActionsMenu();
+    const menuState = getHubOverflowMenuState(row);
+    if (!menuState.canDuplicateInvoice) {
+      setHubFeedback("This invoice cannot be duplicated right now.", "warn");
+      return false;
+    }
+    hubDuplicateInvoiceState = { row, duplicating: false };
+    hubDuplicateInvoiceSetFeedback("");
+    const confirmBtn = $("btnHubDuplicateInvoiceConfirm");
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "Create duplicate";
+    }
+    $("hubDuplicateInvoiceModal").setAttribute("aria-hidden", "false");
+    return true;
+  }
+
+  async function executeHubDuplicateInvoice(row) {
+    const iid = hubRowServerInvoiceUuid(row);
+    if (!iid || !MG_SERVER_INVOICE_UUID_RE.test(iid)) {
+      return { ok: false, message: "No valid server invoice to duplicate." };
+    }
+    const menuState = getHubOverflowMenuState(row);
+    if (!menuState.canDuplicateInvoice) {
+      return { ok: false, message: "This invoice cannot be duplicated right now." };
+    }
+    const { ok, data, status } = await postHubInvoiceDuplicate(iid);
+    if (!ok) {
+      const msg = String(data?.error || data?.message || "").trim() || `Duplicate failed (HTTP ${status}).`;
+      return { ok: false, message: msg };
+    }
+    return { ok: true, invoice: data.invoice, sourceInvoiceId: data.source_invoice_id };
+  }
+
   function normalizeServerInvoiceForHub(invoice) {
     const inv = invoice && typeof invoice === "object" ? invoice : {};
     const customerName = nonEmptyString(inv.customer_name, inv.client_name);
@@ -15296,6 +15378,11 @@ window.renderSupervisor = renderSupervisor;
         }
         setHubFeedback("Invoice archived.", "ok");
         refresh();
+        return;
+      }
+      if (action === "duplicate") {
+        openHubDuplicateInvoiceModal(row);
+        return;
       }
     };
 
@@ -16282,6 +16369,49 @@ window.renderSupervisor = renderSupervisor;
               sendBtn.disabled = false;
               sendBtn.textContent = "Send reminder";
             }
+          })();
+        };
+      }
+    }
+    if ($("hubDuplicateInvoiceModal") && !window.__MG_HUB_DUPLICATE_MODAL_BOUND__) {
+      window.__MG_HUB_DUPLICATE_MODAL_BOUND__ = true;
+      if ($("btnHubDuplicateInvoiceClose")) $("btnHubDuplicateInvoiceClose").onclick = hubDuplicateInvoiceCloseModal;
+      if ($("btnHubDuplicateInvoiceCancel")) $("btnHubDuplicateInvoiceCancel").onclick = hubDuplicateInvoiceCloseModal;
+      if ($("btnHubDuplicateInvoiceConfirm")) {
+        $("btnHubDuplicateInvoiceConfirm").onclick = () => {
+          if (hubDuplicateInvoiceState.duplicating || !hubDuplicateInvoiceState.row) return;
+          const row = hubDuplicateInvoiceState.row;
+          hubDuplicateInvoiceState.duplicating = true;
+          const confirmBtn = $("btnHubDuplicateInvoiceConfirm");
+          if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = "Creating…";
+          }
+          hubDuplicateInvoiceSetFeedback("");
+          void (async () => {
+            const result = await executeHubDuplicateInvoice(row);
+            hubDuplicateInvoiceState.duplicating = false;
+            if (!result.ok) {
+              hubDuplicateInvoiceSetFeedback(result.message || "Could not duplicate invoice.", "err");
+              if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = "Create duplicate";
+              }
+              return;
+            }
+            const newId = String(result.invoice?.id || "").trim();
+            hubDuplicateInvoiceCloseModal();
+            if (typeof window.__mgHubRefetchServerInvoices === "function") {
+              await window.__mgHubRefetchServerInvoices();
+            } else {
+              refresh();
+            }
+            if (newId && MG_SERVER_INVOICE_UUID_RE.test(newId)) {
+              const dupRow = lastMergedHubRows.find((r) => String(r.serverInvoiceId || "") === newId);
+              if (dupRow) openHubDrawer(dupRow);
+            }
+            const label = nonEmptyString(result.invoice?.invoice_no) || "draft duplicate";
+            setHubFeedback(`Invoice duplicated as ${label}.`, "ok");
           })();
         };
       }
