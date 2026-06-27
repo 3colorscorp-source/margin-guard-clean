@@ -17141,32 +17141,185 @@ window.renderSupervisor = renderSupervisor;
     "approved-projects": {
       kind: "projects",
       mode: "all",
+      title: "Approved projects",
       desc: "Production projects with accepted quotes — same list as Project Control.",
       emptySub: "Accepted quotes linked to production projects will appear here."
     },
     "needs-supervisor": {
       kind: "projects",
       mode: "needs-supervisor",
+      title: "Needs supervisor",
       desc: "Approved projects with no supervisor assigned yet.",
       emptySub: "Assign a supervisor from Project Control or the Supervisor page when ready."
     },
     "pending-approval": {
       kind: "approval",
+      title: "Pending approvals",
       desc: "Discount and below-target margin requests awaiting owner decision."
     },
     "sent-quotes": {
       kind: "quotes",
+      title: "Sent quotes",
       desc: "Quotes marked sent or ready to send — not mixed with approved projects."
     },
     "archived-test": {
       kind: "quotes",
+      title: "Archived / test",
       desc: "Archived quotes only. Nothing is deleted; use Project Control for active projects."
     },
     "all-quotes": {
       kind: "quotes",
+      title: "All quotes",
       desc: "All recent tenant quotes (secondary view)."
+    },
+    "seller-performance": {
+      kind: "seller",
+      title: "Seller performance",
+      desc: "Quote activity and conversions by seller attribution — estimate-based, not email-sent or paid commission."
+    },
+    "estimated-commission": {
+      kind: "commission",
+      title: "Estimated commission",
+      desc: "Labor-budget commission estimates for converted projects."
+    },
+    "recent-activity": {
+      kind: "activity",
+      title: "Recent activity",
+      desc: "Latest converted production projects."
     }
   };
+
+  const SA_VIEWS_MENU_SECTIONS = [
+    {
+      label: "Projects",
+      items: [
+        { id: "approved-projects", label: "Approved projects" },
+        { id: "needs-supervisor", label: "Needs supervisor" },
+        { id: "pending-approval", label: "Pending approvals" }
+      ]
+    },
+    {
+      label: "Quotes",
+      items: [
+        { id: "sent-quotes", label: "Sent quotes" },
+        { id: "archived-test", label: "Archived / test" },
+        { id: "all-quotes", label: "All quotes" }
+      ]
+    },
+    {
+      label: "Analytics",
+      items: [
+        { id: "seller-performance", label: "Seller performance" },
+        { id: "estimated-commission", label: "Estimated commission" },
+        { id: "recent-activity", label: "Recent activity" }
+      ]
+    },
+    {
+      label: "Actions",
+      items: [{ id: "__refresh__", label: "Refresh current view" }]
+    }
+  ];
+
+  function saCloseSaViewsMenu() {
+    const menu = $("saViewsMenu");
+    const toggle = $("btnSaViewsMenu");
+    if (menu) menu.setAttribute("hidden", "");
+    if (toggle) toggle.setAttribute("aria-expanded", "false");
+  }
+
+  function saPositionSaViewsMenu() {
+    const menu = $("saViewsMenu");
+    const toggle = $("btnSaViewsMenu");
+    if (!menu || !toggle || menu.hasAttribute("hidden")) return;
+    const rect = toggle.getBoundingClientRect();
+    const menuWidth = Math.min(280, window.innerWidth - 16);
+    let left = rect.right - menuWidth;
+    if (left < 8) left = 8;
+    const maxH = Math.min(480, window.innerHeight - 16);
+    menu.style.maxHeight = `${maxH}px`;
+    const estimatedH = Math.min(menu.scrollHeight || 360, maxH);
+    let top = rect.bottom + 4;
+    if (top + estimatedH > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - estimatedH - 4);
+    }
+    menu.style.position = "fixed";
+    menu.style.top = `${top}px`;
+    menu.style.left = `${left}px`;
+    menu.style.width = `${menuWidth}px`;
+  }
+
+  function saRenderSaViewsMenu(activeViewId) {
+    const menu = $("saViewsMenu");
+    if (!menu) return;
+    menu.innerHTML = SA_VIEWS_MENU_SECTIONS.map((section) => {
+      const items = section.items
+        .map((item) => {
+          const active = item.id === activeViewId ? " sa-views-menu__item--active" : "";
+          return `<button type="button" role="menuitem" class="sa-views-menu__item${active}" data-sa-view="${escapeHtml(item.id)}">${escapeHtml(item.label)}</button>`;
+        })
+        .join("");
+      return `<div class="sa-views-menu__section"><div class="sa-views-menu__label">${escapeHtml(section.label)}</div>${items}</div>`;
+    }).join("");
+  }
+
+  function saBindSaViewsMenuOnce(onSelectView, onRefresh) {
+    if (window.__MG_SA_VIEWS_MENU_BOUND__) return;
+    window.__MG_SA_VIEWS_MENU_BOUND__ = true;
+
+    const toggle = $("btnSaViewsMenu");
+    const menu = $("saViewsMenu");
+
+    if (toggle) {
+      toggle.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (!menu) return;
+        const wasOpen = !menu.hasAttribute("hidden");
+        saCloseSaViewsMenu();
+        if (!wasOpen) {
+          menu.removeAttribute("hidden");
+          toggle.setAttribute("aria-expanded", "true");
+          saPositionSaViewsMenu();
+        }
+      });
+    }
+
+    if (menu) {
+      menu.addEventListener("click", (ev) => {
+        const btn = ev.target.closest("[data-sa-view]");
+        if (!btn) return;
+        ev.preventDefault();
+        const viewId = String(btn.getAttribute("data-sa-view") || "").trim();
+        saCloseSaViewsMenu();
+        if (viewId === "__refresh__") {
+          if (typeof onRefresh === "function") onRefresh();
+          return;
+        }
+        if (viewId && typeof onSelectView === "function") onSelectView(viewId);
+      });
+    }
+
+    document.addEventListener("click", (ev) => {
+      if (!menu || menu.hasAttribute("hidden")) return;
+      if (ev.target.closest(".sa-views-wrap")) return;
+      saCloseSaViewsMenu();
+    });
+
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") saCloseSaViewsMenu();
+    });
+
+    window.addEventListener("resize", () => saCloseSaViewsMenu());
+  }
+
+  function saUpdateKpiShortcutHighlight(activeViewId) {
+    document.querySelectorAll("[data-sa-kpi-view]").forEach((el) => {
+      el.classList.toggle(
+        "sa-kpi--active",
+        el.getAttribute("data-sa-kpi-view") === activeViewId
+      );
+    });
+  }
 
   function saSupervisorBadgeHtml(row) {
     const uid = String(row?.supervisorUserId ?? row?.project?.supervisorUserId ?? "").trim();
@@ -17504,8 +17657,6 @@ window.renderSupervisor = renderSupervisor;
         if (!pccRes.ok && !invRes.ok) {
           saSetConvertedProjectsLoadState("error", "Could not reach project or invoice APIs.");
           if (!$("saMainProjectsBody")) saRenderConvertedProjectsTable([], settings);
-          saRenderCommissionTable([], settings);
-          saRenderRecentActivity([], settings);
           if (typeof onRows === "function") onRows([]);
           return [];
         }
@@ -17516,16 +17667,12 @@ window.renderSupervisor = renderSupervisor;
         } else {
           saRenderConvertedProjectsTable(rows, settings);
         }
-        saRenderCommissionTable(rows, settings);
-        saRenderRecentActivity(rows, settings);
         if (typeof onRows === "function") onRows(rows);
         return rows;
       })
       .catch((err) => {
         saSetConvertedProjectsLoadState("error", err?.message || "Unexpected error loading converted projects.");
         if (!$("saMainProjectsBody")) saRenderConvertedProjectsTable([], settings);
-        saRenderCommissionTable([], settings);
-        saRenderRecentActivity([], settings);
         if (typeof onRows === "function") onRows([]);
         return [];
       });
@@ -17735,40 +17882,59 @@ window.renderSupervisor = renderSupervisor;
       currentView = next;
       const meta = SA_VIEW_META[next];
 
-      document.querySelectorAll("[data-sa-view]").forEach((btn) => {
-        const active = btn.getAttribute("data-sa-view") === next;
-        btn.classList.toggle("active", active);
-        btn.setAttribute("aria-selected", active ? "true" : "false");
-      });
+      saRenderSaViewsMenu(next);
+      saUpdateKpiShortcutHighlight(next);
 
+      const title = $("saViewTitle");
+      if (title && meta?.title) title.textContent = meta.title;
       const desc = $("saViewDesc");
       if (desc && meta?.desc) desc.textContent = meta.desc;
 
-      const projectsWrap = $("saProjectsViewWrap");
-      const quotesWrap = $("saQuotesViewWrap");
-      const approvalWrap = $("saApprovalViewWrap");
-      if (projectsWrap) projectsWrap.hidden = meta.kind !== "projects";
-      if (quotesWrap) quotesWrap.hidden = meta.kind !== "quotes";
-      if (approvalWrap) approvalWrap.hidden = meta.kind !== "approval";
+      const panels = {
+        projects: $("saProjectsViewWrap"),
+        quotes: $("saQuotesViewWrap"),
+        approval: $("saApprovalViewWrap"),
+        seller: $("saSellerViewWrap"),
+        commission: $("saCommissionViewWrap"),
+        activity: $("saActivityViewWrap")
+      };
+      Object.values(panels).forEach((el) => {
+        if (el) el.hidden = true;
+      });
 
       saCloseSalesAdminActionsMenu();
+      saCloseSaViewsMenu();
 
-      if (meta.kind === "projects") {
+      if (meta.kind === "projects" && panels.projects) {
+        panels.projects.hidden = false;
         saRenderMainProjectsTable(
           convertedRows,
           settings,
           meta.mode === "needs-supervisor" ? "needs-supervisor" : "all"
         );
-      } else if (meta.kind === "approval") {
+      } else if (meta.kind === "approval" && panels.approval) {
+        panels.approval.hidden = false;
         refreshApprovalTable();
-      } else if (meta.kind === "quotes" && typeof window.__mgSaQuotesLoadForView === "function") {
-        window.__mgSaQuotesLoadForView(next);
+      } else if (meta.kind === "quotes" && panels.quotes) {
+        panels.quotes.hidden = false;
+        if (typeof window.__mgSaQuotesLoadForView === "function") {
+          window.__mgSaQuotesLoadForView(next);
+        }
+      } else if (meta.kind === "seller" && panels.seller) {
+        panels.seller.hidden = false;
+        if (typeof window.__mgSaLoadSellerPerformance === "function") {
+          window.__mgSaLoadSellerPerformance();
+        }
+      } else if (meta.kind === "commission" && panels.commission) {
+        panels.commission.hidden = false;
+        saRenderCommissionTable(convertedRows, settings);
+      } else if (meta.kind === "activity" && panels.activity) {
+        panels.activity.hidden = false;
+        saRenderRecentActivity(convertedRows, settings);
       }
     };
 
-    window.__mgSaSetMainView = saSetMainView;
-    window.__mgSaGetMainView = () => currentView;
-    window.__mgSaRefreshMainView = () => {
+    const saRefreshCurrentView = () => {
       if (currentView === "pending-approval") loadQueue();
       else if (SA_VIEW_META[currentView]?.kind === "quotes" && typeof window.__mgSaQuotesLoadForView === "function") {
         window.__mgSaQuotesLoadForView(currentView);
@@ -17782,13 +17948,40 @@ window.renderSupervisor = renderSupervisor;
             currentView === "needs-supervisor" ? "needs-supervisor" : "all"
           );
         });
+      } else if (currentView === "seller-performance" && typeof window.__mgSaLoadSellerPerformance === "function") {
+        window.__mgSaLoadSellerPerformance();
+      } else if (currentView === "estimated-commission") {
+        void saLoadConvertedProjectsData(settings, (joined) => {
+          convertedRows = joined;
+          saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
+          saRenderCommissionTable(convertedRows, settings);
+        });
+      } else if (currentView === "recent-activity") {
+        void saLoadConvertedProjectsData(settings, (joined) => {
+          convertedRows = joined;
+          saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
+          saRenderRecentActivity(convertedRows, settings);
+        });
       }
     };
 
-    document.querySelectorAll("[data-sa-view]").forEach((btn) => {
-      btn.onclick = () => {
-        const viewId = String(btn.getAttribute("data-sa-view") || "").trim();
+    window.__mgSaSetMainView = saSetMainView;
+    window.__mgSaGetMainView = () => currentView;
+    window.__mgSaRefreshMainView = saRefreshCurrentView;
+
+    saBindSaViewsMenuOnce(saSetMainView, saRefreshCurrentView);
+
+    document.querySelectorAll("[data-sa-kpi-view]").forEach((el) => {
+      el.onclick = () => {
+        const viewId = String(el.getAttribute("data-sa-kpi-view") || "").trim();
         if (viewId) saSetMainView(viewId);
+      };
+      el.onkeydown = (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          const viewId = String(el.getAttribute("data-sa-kpi-view") || "").trim();
+          if (viewId) saSetMainView(viewId);
+        }
       };
     });
 
@@ -17822,7 +18015,7 @@ window.renderSupervisor = renderSupervisor;
     if (mainRefresh) {
       mainRefresh.onclick = () => {
         loadQueue();
-        if (typeof window.__mgSaRefreshMainView === "function") window.__mgSaRefreshMainView();
+        saRefreshCurrentView();
       };
     }
 
@@ -17837,6 +18030,7 @@ window.renderSupervisor = renderSupervisor;
     }
 
     loadQueue();
+    saRenderSaViewsMenu("approved-projects");
     void saLoadConvertedProjectsData(settings, (joined) => {
       convertedRows = joined;
       saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);

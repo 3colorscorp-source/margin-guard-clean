@@ -460,7 +460,7 @@
   }
 
   async function loadSellerPerformance() {
-    if (!$("saSellerSection")) return;
+    if (!$("saSellerViewWrap") && !$("saSellerBody")) return;
 
     setSectionState("loading");
 
@@ -532,7 +532,11 @@
   }
 
   function boot() {
-    if (!$("saSellerSection")) return;
+    if (!$("saSellerViewWrap") && !$("saSellerBody")) return;
+
+    window.__mgSaLoadSellerPerformance = () => {
+      void loadSellerPerformance();
+    };
 
     const refreshBtn = $("saSellerRefresh");
     if (refreshBtn) {
@@ -540,8 +544,6 @@
         void loadSellerPerformance();
       });
     }
-
-    void loadSellerPerformance();
   }
 
   if (document.readyState === "loading") {

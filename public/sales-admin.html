@@ -221,26 +221,117 @@
     .sa-kpis--compact {
       margin-bottom: 8px;
     }
-    .sa-view-tabs {
+    .sa-kpi--shortcut {
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    .sa-kpi--shortcut:hover,
+    .sa-kpi--shortcut:focus-visible {
+      border-color: rgba(34, 197, 94, 0.35);
+      background: rgba(34, 197, 94, 0.06);
+    }
+    .sa-kpi--shortcut.sa-kpi--active {
+      border-color: rgba(34, 197, 94, 0.45);
+      background: rgba(34, 197, 94, 0.1);
+    }
+    .sa-console-head__actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .sa-views-wrap {
+      position: relative;
+    }
+    .sa-views-toggle {
+      font-size: 0.8125rem;
+      white-space: nowrap;
+    }
+    .sa-views-menu {
+      position: fixed;
+      z-index: 1400;
+      min-width: 220px;
+      max-width: min(300px, calc(100vw - 16px));
+      max-height: min(480px, calc(100vh - 16px));
+      overflow-y: auto;
+      padding: 6px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: #121a2b;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    }
+    .sa-views-menu[hidden] {
+      display: none !important;
+    }
+    .sa-views-menu__section {
+      padding: 4px 0 6px;
+    }
+    .sa-views-menu__section + .sa-views-menu__section {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      margin-top: 4px;
+      padding-top: 8px;
+    }
+    .sa-views-menu__label {
+      padding: 4px 10px 6px;
+      font-size: 0.625rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.5);
+    }
+    .sa-views-menu__item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      margin: 0;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: #e8eefc;
+      font: inherit;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .sa-views-menu__item:hover,
+    .sa-views-menu__item:focus-visible {
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .sa-views-menu__item--active {
+      background: rgba(34, 197, 94, 0.12);
+      color: #ecfdf5;
+    }
+    .sa-view-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 6px 12px;
       margin-bottom: 8px;
     }
-    .sa-view-tabs .btn {
-      font-size: 0.75rem;
-      padding: 5px 10px;
-      min-height: 32px;
-    }
-    .sa-view-tabs .btn.active {
-      border-color: rgba(34, 197, 94, 0.45);
-      background: rgba(34, 197, 94, 0.12);
+    .sa-view-head__title {
+      margin: 0;
+      font-size: 0.9375rem;
+      font-weight: 800;
     }
     .sa-view-desc {
-      margin: 0 0 8px;
+      margin: 0;
       font-size: 0.8125rem;
       color: rgba(232, 238, 252, 0.72);
       line-height: 1.4;
+      flex: 1 1 100%;
+    }
+    .sa-workspace-panel {
+      min-width: 0;
+    }
+    .sa-workspace-panel .sa-section__head {
+      margin-bottom: 6px;
+    }
+    .sa-workspace-panel .sa-section__head h3 {
+      margin: 0;
+      font-size: 0.9375rem;
     }
     .sa-actions-wrap {
       position: relative;
@@ -848,25 +939,31 @@
         <div class="sa-console-head">
           <div>
             <h2>Sales Admin</h2>
-            <p class="sub">Approved production projects first — supervisor handling, approvals, and quotes in secondary views.</p>
+            <p class="sub">Single workspace — one view at a time. Use ☰ Views or KPI shortcuts to switch.</p>
           </div>
-          <button type="button" class="btn ghost" id="saMainRefresh">Refresh</button>
+          <div class="sa-console-head__actions">
+            <div class="sa-views-wrap">
+              <button type="button" class="btn ghost sa-views-toggle" id="btnSaViewsMenu" aria-haspopup="menu" aria-expanded="false" aria-controls="saViewsMenu">&#9776; Views</button>
+              <div class="sa-views-menu" id="saViewsMenu" role="menu" hidden></div>
+            </div>
+            <button type="button" class="btn ghost" id="saMainRefresh">Refresh</button>
+          </div>
         </div>
 
         <section class="sa-kpis sa-kpis--compact" id="saKpiStrip" aria-label="Sales KPIs">
-          <div class="sa-kpi">
+          <div class="sa-kpi sa-kpi--shortcut sa-kpi--active" data-sa-kpi-view="approved-projects" role="button" tabindex="0" title="Open Approved projects">
             <div class="sa-kpi__label">Approved projects</div>
             <div class="sa-kpi__value" id="saKpiConverted">—</div>
           </div>
-          <div class="sa-kpi">
+          <div class="sa-kpi sa-kpi--shortcut" data-sa-kpi-view="needs-supervisor" role="button" tabindex="0" title="Open Needs supervisor">
             <div class="sa-kpi__label">Needs supervisor</div>
             <div class="sa-kpi__value" id="saKpiNeedsSupervisor">—</div>
           </div>
-          <div class="sa-kpi">
+          <div class="sa-kpi sa-kpi--shortcut" data-sa-kpi-view="pending-approval" role="button" tabindex="0" title="Open Pending approvals">
             <div class="sa-kpi__label">Pending approvals</div>
             <div class="sa-kpi__value" id="saKpiPending">—</div>
           </div>
-          <div class="sa-kpi">
+          <div class="sa-kpi sa-kpi--shortcut" data-sa-kpi-view="all-quotes" role="button" tabindex="0" title="Open All quotes">
             <div class="sa-kpi__label" id="saKpiSentLabel">Published this month</div>
             <div class="sa-kpi__value" id="saKpiSent" title="Quotes published (created) this UTC month — not email sent">—</div>
           </div>
@@ -874,24 +971,19 @@
             <div class="sa-kpi__label">Est. labor sold</div>
             <div class="sa-kpi__value" id="saKpiLabor">—</div>
           </div>
-          <div class="sa-kpi">
+          <div class="sa-kpi sa-kpi--shortcut" data-sa-kpi-view="estimated-commission" role="button" tabindex="0" title="Open Estimated commission">
             <div class="sa-kpi__label">Est. commission</div>
             <div class="sa-kpi__value" id="saKpiCommission">—</div>
           </div>
           <span id="saKpiApproved" hidden aria-hidden="true">—</span>
         </section>
 
-        <div class="sa-view-tabs" role="tablist" aria-label="Sales Admin views">
-          <button type="button" class="btn active" role="tab" data-sa-view="approved-projects" aria-selected="true">Approved projects</button>
-          <button type="button" class="btn" role="tab" data-sa-view="needs-supervisor" aria-selected="false">Needs supervisor</button>
-          <button type="button" class="btn" role="tab" data-sa-view="pending-approval" aria-selected="false">Pending approval</button>
-          <button type="button" class="btn" role="tab" data-sa-view="sent-quotes" aria-selected="false">Sent quotes</button>
-          <button type="button" class="btn" role="tab" data-sa-view="archived-test" aria-selected="false">Archived / test</button>
-          <button type="button" class="btn" role="tab" data-sa-view="all-quotes" aria-selected="false">All quotes</button>
+        <div class="sa-view-head">
+          <h3 class="sa-view-head__title" id="saViewTitle">Approved projects</h3>
+          <p class="sa-view-desc" id="saViewDesc">Production projects with accepted quotes — same list as Project Control.</p>
         </div>
-        <p class="sa-view-desc" id="saViewDesc">Production projects with accepted quotes — same list as Project Control.</p>
 
-        <div id="saProjectsViewWrap">
+        <div id="saProjectsViewWrap" class="sa-workspace-panel">
           <p id="saConvertedLoading" class="sa-loading-note" hidden>Loading approved projects…</p>
           <div id="saConvertedError" class="sa-empty" hidden>
             <p class="sa-empty__title">Could not load approved projects.</p>
@@ -978,6 +1070,78 @@
             </table>
           </div>
         </div>
+
+        <div id="saSellerViewWrap" class="sa-workspace-panel" hidden>
+          <div class="sa-section__head">
+            <div class="sa-section__head-main">
+              <p class="sa-rule-note" style="margin-top:0;">Published quotes are counted by created date. Labor sold and estimated commission use converted project labor budgets only — not a paid commission ledger.</p>
+            </div>
+            <button type="button" class="btn ghost" id="saSellerRefresh">Refresh</button>
+          </div>
+          <p id="saSellerStatus" class="sa-loading-note" hidden>Loading seller performance…</p>
+          <div id="saSellerError" class="sa-empty" hidden>
+            <p class="sa-empty__title">Could not load seller performance.</p>
+            <p class="sa-empty__sub" id="saSellerErrorMsg">Try refreshing the page.</p>
+          </div>
+          <div id="saSellerEmpty" class="sa-empty" hidden>
+            <p class="sa-empty__title">No published quotes yet.</p>
+            <p class="sa-empty__sub">Seller performance will appear when quotes exist for this tenant.</p>
+          </div>
+          <div id="saSellerSummary" class="sa-kpis" hidden aria-label="Seller performance summary"></div>
+          <p id="saSellerPartialNote" class="sa-queue-note" hidden></p>
+          <div id="saSellerTableWrap" class="sa-table-wrap" hidden>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Seller / Source</th>
+                  <th>Published quotes</th>
+                  <th>Ready to send</th>
+                  <th>Accepted / approved</th>
+                  <th>Archived</th>
+                  <th>Linked to project</th>
+                  <th>Device quotes</th>
+                  <th>Total quoted</th>
+                  <th>Labor sold est.</th>
+                  <th>Est. commission</th>
+                  <th>Approval requests</th>
+                  <th>Approved</th>
+                  <th>Rejected</th>
+                </tr>
+              </thead>
+              <tbody id="saSellerBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="saCommissionViewWrap" class="sa-workspace-panel" hidden>
+          <p class="sa-rule-note" style="margin-top:0;">Estimate only. Commission is labor budget × seller commission %, never contract total. Does not represent a paid/pending commission ledger.</p>
+          <div id="saCommissionEmpty" class="sa-empty" hidden>
+            <p class="sa-empty__title">No commission estimates yet.</p>
+            <p class="sa-empty__sub">Converted projects with a labor budget will appear here.</p>
+          </div>
+          <div id="saCommissionTableWrap" class="sa-table-wrap" hidden>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>Labor Budget</th>
+                  <th>Seller %</th>
+                  <th>Estimated Commission</th>
+                  <th>Invoice Status</th>
+                  <th>Balance Due</th>
+                </tr>
+              </thead>
+              <tbody id="saCommissionBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="saActivityViewWrap" class="sa-workspace-panel" hidden>
+          <div id="saActivityEmpty" class="sa-empty" hidden>
+            <p class="sa-empty__title">No recent converted projects.</p>
+          </div>
+          <div id="saActivityList" class="sa-detail-rows" hidden></div>
+        </div>
       </div>
     </section>
 
@@ -985,100 +1149,9 @@
     <section class="card sa-section" id="saPipelineSection" hidden aria-hidden="true" style="display:none">
       <tbody id="saConvertedBody"></tbody>
     </section>
-
-    <div class="sa-secondary-sections">
-    <section class="card sa-section" id="saSellerSection">
-      <div class="card-inner">
-        <div class="sa-section__head">
-          <div class="sa-section__head-main">
-            <h3>Seller Performance</h3>
-            <p class="sub">Quote activity and conversions by seller attribution — estimate-based, not email-sent or paid commission.</p>
-          </div>
-          <button type="button" class="btn ghost" id="saSellerRefresh">Refresh</button>
-        </div>
-        <p class="sa-rule-note">Published quotes are counted by created date. Labor sold and estimated commission use converted project labor budgets only — not a paid commission ledger.</p>
-        <p id="saSellerStatus" class="sa-loading-note" hidden>Loading seller performance…</p>
-        <div id="saSellerError" class="sa-empty" hidden>
-          <p class="sa-empty__title">Could not load seller performance.</p>
-          <p class="sa-empty__sub" id="saSellerErrorMsg">Try refreshing the page.</p>
-        </div>
-        <div id="saSellerEmpty" class="sa-empty" hidden>
-          <p class="sa-empty__title">No published quotes yet.</p>
-          <p class="sa-empty__sub">Seller performance will appear when quotes exist for this tenant.</p>
-        </div>
-        <div id="saSellerSummary" class="sa-kpis" hidden aria-label="Seller performance summary"></div>
-        <p id="saSellerPartialNote" class="sa-queue-note" hidden></p>
-        <div id="saSellerTableWrap" class="sa-table-wrap" hidden>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Seller / Source</th>
-                <th>Published quotes</th>
-                <th>Ready to send</th>
-                <th>Accepted / approved</th>
-                <th>Archived</th>
-                <th>Linked to project</th>
-                <th>Device quotes</th>
-                <th>Total quoted</th>
-                <th>Labor sold est.</th>
-                <th>Est. commission</th>
-                <th>Approval requests</th>
-                <th>Approved</th>
-                <th>Rejected</th>
-              </tr>
-            </thead>
-            <tbody id="saSellerBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <section class="card sa-section" id="saCommissionSection">
-      <div class="card-inner">
-        <div class="sa-section__head">
-          <div class="sa-section__head-main">
-            <h3>Estimated Commission Tracking</h3>
-            <p class="sub">Labor-budget commission estimates for converted projects.</p>
-          </div>
-        </div>
-        <p class="sa-rule-note">Estimate only. Commission is labor budget × seller commission %, never contract total. Does not represent a paid/pending commission ledger.</p>
-        <div id="saCommissionEmpty" class="sa-empty" hidden>
-          <p class="sa-empty__title">No commission estimates yet.</p>
-          <p class="sa-empty__sub">Converted projects with a labor budget will appear here.</p>
-        </div>
-        <div id="saCommissionTableWrap" class="sa-table-wrap" hidden>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Project</th>
-                <th>Labor Budget</th>
-                <th>Seller %</th>
-                <th>Estimated Commission</th>
-                <th>Invoice Status</th>
-                <th>Balance Due</th>
-              </tr>
-            </thead>
-            <tbody id="saCommissionBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <section class="card sa-section" id="saActivitySection">
-      <div class="card-inner">
-        <div class="sa-section__head">
-          <div class="sa-section__head-main">
-            <h3>Recent Sales Activity</h3>
-            <p class="sub">Latest converted production projects.</p>
-          </div>
-        </div>
-        <div id="saActivityEmpty" class="sa-empty" hidden>
-          <p class="sa-empty__title">No recent converted projects.</p>
-        </div>
-        <div id="saActivityList" class="sa-detail-rows" hidden></div>
-      </div>
-    </section>
-    </div>
+    <section class="card sa-section" id="saSellerSection" hidden aria-hidden="true" style="display:none"></section>
+    <section class="card sa-section" id="saCommissionSection" hidden aria-hidden="true" style="display:none"></section>
+    <section class="card sa-section" id="saActivitySection" hidden aria-hidden="true" style="display:none"></section>
   </div>
 
   <div id="saQuoteEditModal" class="sa-modal" hidden aria-hidden="true" role="dialog" aria-labelledby="saQuoteEditTitle">
