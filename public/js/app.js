@@ -17343,6 +17343,9 @@ window.renderSupervisor = renderSupervisor;
   }
 
   function saSupervisorBadgeHtml(row) {
+    if (saIsSaProjectCompleted(row)) {
+      return '<span class="badge completed">Completed</span>';
+    }
     const uid = String(row?.supervisorUserId ?? row?.project?.supervisorUserId ?? "").trim();
     if (uid) return '<span class="badge green">Assigned</span>';
     return '<span class="badge amber">Needs supervisor</span>';
