@@ -13,6 +13,12 @@
 
   const BUCKET_OWNER = "__owner_legacy__";
   const BUCKET_SELLER_UNKNOWN = "__seller_unattributed__";
+  const TEST_SELLER_MARKER = "@marginguard.test";
+
+  let cachedSellerRows = [];
+  let cachedPrimaryCurrency = DEFAULT_CURRENCY;
+  let cachedCommissionPct = DEFAULT_COMMISSION_PCT;
+  let showTestSellers = false;
 
   function $(id) {
     return document.getElementById(id);
@@ -273,6 +279,40 @@
     return formatted;
   }
 
+  function isTestSellerLabel(label) {
+    return String(label || "")
+      .toLowerCase()
+      .includes(TEST_SELLER_MARKER);
+  }
+
+  function filterSellerRowsForDisplay(rows) {
+    const list = Array.isArray(rows) ? rows : [];
+    if (showTestSellers) return list;
+    return list.filter((row) => !isTestSellerLabel(row.label));
+  }
+
+  function updateSellerTestNote(allRows) {
+    const el = $("saSellerTestNote");
+    if (!el) return;
+    const hiddenCount = showTestSellers
+      ? 0
+      : (Array.isArray(allRows) ? allRows : []).filter((row) => isTestSellerLabel(row.label)).length;
+    if (hiddenCount > 0) {
+      el.hidden = false;
+      el.textContent =
+        "Test sellers hidden from table view. Summary totals still include all seller data.";
+    } else {
+      el.hidden = true;
+      el.textContent = "";
+    }
+  }
+
+  function renderSellerTableView() {
+    const visibleRows = filterSellerRowsForDisplay(cachedSellerRows);
+    renderSellerTable(visibleRows, cachedPrimaryCurrency, cachedCommissionPct);
+    updateSellerTestNote(cachedSellerRows);
+  }
+
   function setSectionState(state, message) {
     const loading = $("saSellerStatus");
     const err = $("saSellerError");
@@ -281,6 +321,7 @@
     const summary = $("saSellerSummary");
     const partial = $("saSellerPartialNote");
     const wrap = $("saSellerTableWrap");
+    const testNote = $("saSellerTestNote");
 
     if (loading) loading.hidden = state !== "loading";
     if (err) err.hidden = state !== "error";
@@ -289,6 +330,7 @@
     if (summary) summary.hidden = state === "loading" || state === "error" || state === "empty";
     if (wrap) wrap.hidden = state !== "ready";
     if (partial) partial.hidden = state !== "ready";
+    if (testNote && state !== "ready") testNote.hidden = true;
     if (state === "loading") {
       if (empty) empty.hidden = true;
       if (err) err.hidden = true;
@@ -522,8 +564,11 @@
       );
 
       const rows = sortBucketRows(buckets);
+      cachedSellerRows = rows;
+      cachedPrimaryCurrency = primaryCurrency;
+      cachedCommissionPct = commissionPct;
       renderSummaryCards(summary, primaryCurrency);
-      renderSellerTable(rows, primaryCurrency, commissionPct);
+      renderSellerTableView();
       renderPartialNote(summary);
       setSectionState("ready");
     } catch (err) {
@@ -537,6 +582,15 @@
     window.__mgSaLoadSellerPerformance = () => {
       void loadSellerPerformance();
     };
+
+    const testToggle = $("saSellerShowTest");
+    if (testToggle) {
+      testToggle.checked = showTestSellers;
+      testToggle.addEventListener("change", () => {
+        showTestSellers = Boolean(testToggle.checked);
+        if (cachedSellerRows.length) renderSellerTableView();
+      });
+    }
 
     const refreshBtn = $("saSellerRefresh");
     if (refreshBtn) {

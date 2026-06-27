@@ -17034,10 +17034,7 @@ window.renderSupervisor = renderSupervisor;
 
     const needsSupervisorEl = $("saKpiNeedsSupervisor");
     if (needsSupervisorEl) {
-      const needsCount = converted.filter((row) => {
-        const uid = String(row?.supervisorUserId ?? row?.project?.supervisorUserId ?? "").trim();
-        return !uid;
-      }).length;
+      const needsCount = saFilterMainProjectRows(converted, "needs-supervisor").length;
       needsSupervisorEl.textContent = converted.length ? String(needsCount) : "—";
     }
 
@@ -17321,6 +17318,30 @@ window.renderSupervisor = renderSupervisor;
     });
   }
 
+  function saUpdateSalesAdminViewChrome(activeViewId) {
+    const meta = SA_VIEW_META[activeViewId] || SA_VIEW_META["approved-projects"];
+    const titleLabel = $("saViewTitleLabel");
+    if (titleLabel && meta?.title) titleLabel.textContent = meta.title;
+    const desc = $("saViewDesc");
+    if (desc && meta?.desc) desc.textContent = meta.desc;
+    const viewsLabel = $("saViewsCurrentLabel");
+    if (viewsLabel && meta?.title) viewsLabel.textContent = meta.title;
+    const viewsBtn = $("btnSaViewsMenu");
+    if (viewsBtn && meta?.title) {
+      viewsBtn.setAttribute("aria-label", `Views menu — current view: ${meta.title}`);
+    }
+  }
+
+  function saProjectStatusNorm(row) {
+    return String(row?.projectStatus ?? row?.project?.status ?? "")
+      .trim()
+      .toLowerCase();
+  }
+
+  function saIsSaProjectCompleted(row) {
+    return saProjectStatusNorm(row) === "completed";
+  }
+
   function saSupervisorBadgeHtml(row) {
     const uid = String(row?.supervisorUserId ?? row?.project?.supervisorUserId ?? "").trim();
     if (uid) return '<span class="badge green">Assigned</span>';
@@ -17332,7 +17353,7 @@ window.renderSupervisor = renderSupervisor;
     if (mode === "needs-supervisor") {
       return list.filter((row) => {
         const uid = String(row?.supervisorUserId ?? row?.project?.supervisorUserId ?? "").trim();
-        return !uid;
+        return !uid && !saIsSaProjectCompleted(row);
       });
     }
     return list;
@@ -17884,11 +17905,7 @@ window.renderSupervisor = renderSupervisor;
 
       saRenderSaViewsMenu(next);
       saUpdateKpiShortcutHighlight(next);
-
-      const title = $("saViewTitle");
-      if (title && meta?.title) title.textContent = meta.title;
-      const desc = $("saViewDesc");
-      if (desc && meta?.desc) desc.textContent = meta.desc;
+      saUpdateSalesAdminViewChrome(next);
 
       const panels = {
         projects: $("saProjectsViewWrap"),
@@ -18031,6 +18048,7 @@ window.renderSupervisor = renderSupervisor;
 
     loadQueue();
     saRenderSaViewsMenu("approved-projects");
+    saUpdateSalesAdminViewChrome("approved-projects");
     void saLoadConvertedProjectsData(settings, (joined) => {
       convertedRows = joined;
       saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);

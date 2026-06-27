@@ -247,6 +247,19 @@
     .sa-views-toggle {
       font-size: 0.8125rem;
       white-space: nowrap;
+      max-width: min(240px, 52vw);
+      line-height: 1.25;
+      text-align: right;
+    }
+    .sa-views-toggle__current {
+      color: rgba(236, 253, 245, 0.92);
+      font-weight: 700;
+    }
+    @media (max-width: 520px) {
+      .sa-views-toggle {
+        white-space: normal;
+        max-width: min(200px, 46vw);
+      }
     }
     .sa-views-menu {
       position: fixed;
@@ -315,6 +328,37 @@
       margin: 0;
       font-size: 0.9375rem;
       font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: #ecfdf5;
+    }
+    .sa-view-head__dot {
+      color: #22c55e;
+      font-size: 0.625rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .sa-seller-test-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: rgba(232, 238, 252, 0.78);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .sa-seller-test-toggle input {
+      margin: 0;
+      accent-color: #22c55e;
+    }
+    .sa-seller-test-note {
+      margin: 0 0 6px;
+      font-size: 0.75rem;
+      color: rgba(232, 238, 252, 0.62);
     }
     .sa-view-desc {
       margin: 0;
@@ -943,7 +987,7 @@
           </div>
           <div class="sa-console-head__actions">
             <div class="sa-views-wrap">
-              <button type="button" class="btn ghost sa-views-toggle" id="btnSaViewsMenu" aria-haspopup="menu" aria-expanded="false" aria-controls="saViewsMenu">&#9776; Views</button>
+              <button type="button" class="btn ghost sa-views-toggle" id="btnSaViewsMenu" aria-haspopup="menu" aria-expanded="false" aria-controls="saViewsMenu"><span class="sa-views-toggle__icon">&#9776; Views</span><span class="sa-views-toggle__sep"> · </span><span class="sa-views-toggle__current" id="saViewsCurrentLabel">Approved projects</span></button>
               <div class="sa-views-menu" id="saViewsMenu" role="menu" hidden></div>
             </div>
             <button type="button" class="btn ghost" id="saMainRefresh">Refresh</button>
@@ -979,7 +1023,7 @@
         </section>
 
         <div class="sa-view-head">
-          <h3 class="sa-view-head__title" id="saViewTitle">Approved projects</h3>
+          <h3 class="sa-view-head__title" id="saViewTitle"><span class="sa-view-head__dot" aria-hidden="true">●</span><span id="saViewTitleLabel">Approved projects</span></h3>
           <p class="sa-view-desc" id="saViewDesc">Production projects with accepted quotes — same list as Project Control.</p>
         </div>
 
@@ -1076,8 +1120,15 @@
             <div class="sa-section__head-main">
               <p class="sa-rule-note" style="margin-top:0;">Published quotes are counted by created date. Labor sold and estimated commission use converted project labor budgets only — not a paid commission ledger.</p>
             </div>
-            <button type="button" class="btn ghost" id="saSellerRefresh">Refresh</button>
+            <div class="sa-section__head-actions" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;">
+              <label class="sa-seller-test-toggle" for="saSellerShowTest">
+                <input type="checkbox" id="saSellerShowTest" />
+                <span>Show test sellers</span>
+              </label>
+              <button type="button" class="btn ghost" id="saSellerRefresh">Refresh</button>
+            </div>
           </div>
+          <p id="saSellerTestNote" class="sa-seller-test-note" hidden>Test sellers hidden from table view. Summary totals still include all seller data.</p>
           <p id="saSellerStatus" class="sa-loading-note" hidden>Loading seller performance…</p>
           <div id="saSellerError" class="sa-empty" hidden>
             <p class="sa-empty__title">Could not load seller performance.</p>
