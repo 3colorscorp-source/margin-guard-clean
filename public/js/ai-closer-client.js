@@ -19,6 +19,7 @@
     zoomSlot: "",
     zoomRequested: false,
     quoteSent: false,
+    contact: { name: "", email: "", phone: "" },
   };
 
   function $(id) {
@@ -66,6 +67,56 @@
   function unitLabel(unitType) {
     const map = { sq_ft: "sq ft", fixture: "fixtures", room: "rooms", linear_ft: "linear ft" };
     return map[unitType] || unitType;
+  }
+
+  function getBusinessName() {
+    const preset = settings?.tradePreset || "tile_contractor";
+    if (preset === "custom") {
+      const custom = String(settings?.customTradeName || "").trim();
+      if (custom) return custom;
+    }
+    const presets = window.__mgAiCloserLab?.TRADE_PRESETS;
+    if (presets?.[preset]?.label) return presets[preset].label;
+    return "Margin Guard Lab Contractor";
+  }
+
+  function getContactFromForm() {
+    return {
+      name: String($("aclContactName")?.value || state.contact?.name || "").trim(),
+      email: String($("aclContactEmail")?.value || state.contact?.email || "").trim(),
+      phone: String($("aclContactPhone")?.value || state.contact?.phone || "").trim(),
+    };
+  }
+
+  function hasContact() {
+    const contact = getContactFromForm();
+    return Boolean(contact.name && contact.email);
+  }
+
+  function syncContactToState(contact) {
+    state.contact = {
+      name: contact.name || "",
+      email: contact.email || "",
+      phone: contact.phone || "",
+    };
+    if ($("aclContactName")) $("aclContactName").value = state.contact.name;
+    if ($("aclContactEmail")) $("aclContactEmail").value = state.contact.email;
+    if ($("aclContactPhone")) $("aclContactPhone").value = state.contact.phone;
+  }
+
+  function readZoomSlotFromDom() {
+    const selected = document.querySelector('input[name="aclZoomSlot"]:checked');
+    if (selected) state.zoomSlot = selected.value;
+  }
+
+  function syncWizardStateFromForm() {
+    state.projectName = String($("aclClientProject")?.value || state.projectName || "").trim();
+    state.area = String($("aclClientArea")?.value || state.area || "").trim();
+    state.scopeNotes = String($("aclClientNotes")?.value || state.scopeNotes || "").trim();
+    state.serviceId = $("aclClientService")?.value || state.serviceId;
+    state.budgetMin = String($("aclClientBudgetMin")?.value || state.budgetMin || "").trim();
+    state.budgetMax = String($("aclClientBudgetMax")?.value || state.budgetMax || "").trim();
+    readZoomSlotFromDom();
   }
 
   function findService(serviceId) {
@@ -215,6 +266,7 @@
       id: `lab_${Date.now()}`,
       createdAt: new Date().toISOString(),
       labOnly: true,
+      businessName: getBusinessName(),
       projectName: state.projectName,
       clientName: contact?.name || "",
       clientEmail: contact?.email || "",
@@ -236,12 +288,236 @@
     };
   }
 
+  function buildPrintableHtml(record) {
+    const range =
+      record.rangeLow != null && record.rangeHigh != null
+        ? `${formatMoney(record.rangeLow)} – ${formatMoney(record.rangeHigh)}`
+        : "—";
+    const scope =
+      record.area != null
+        ? `${record.area} ${unitLabel(record.unitType)}`
+        : "—";
+    const budget =
+      record.budgetMin != null && record.budgetMax != null
+        ? `${formatMoney(record.budgetMin)} – ${formatMoney(record.budgetMax)}`
+        : "—";
+    const zoomLine = record.zoomSlot
+      ? escapeHtml(record.zoomSlot)
+      : record.zoomRequested
+        ? "Requested — time pending"
+        : "Not selected";
+    const contactLines = [
+      record.clientName ? `<tr><th>Contact</th><td>${escapeHtml(record.clientName)}</td></tr>` : "",
+      record.clientEmail ? `<tr><th>Email</th><td>${escapeHtml(record.clientEmail)}</td></tr>` : "",
+      record.clientPhone ? `<tr><th>Phone</th><td>${escapeHtml(record.clientPhone)}</td></tr>` : "",
+    ]
+      .filter(Boolean)
+      .join("");
+    const notesBlock = record.scopeNotes
+      ? `<section class="block"><h2>Notes</h2><p>${escapeHtml(record.scopeNotes)}</p></section>`
+      : "";
+
+    return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Starter Pre-Quote — ${escapeHtml(record.projectName || "Project")}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 32px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      color: #111827;
+      line-height: 1.45;
+    }
+    .banner {
+      margin-bottom: 20px;
+      padding: 12px 14px;
+      border: 2px solid #b45309;
+      background: #fffbeb;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #92400e;
+    }
+    .banner p { margin: 6px 0 0; font-weight: 500; text-transform: none; letter-spacing: 0; }
+    h1 { margin: 0 0 4px; font-size: 24px; }
+    .business { margin: 0 0 18px; color: #4b5563; font-size: 14px; }
+    .range {
+      margin: 18px 0;
+      font-size: 30px;
+      font-weight: 800;
+      color: #065f46;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid #e5e7eb;
+      vertical-align: top;
+    }
+    th {
+      width: 34%;
+      color: #6b7280;
+      font-weight: 600;
+    }
+    .block { margin-top: 18px; }
+    .block h2 { margin: 0 0 8px; font-size: 15px; }
+    .footer {
+      margin-top: 28px;
+      padding-top: 14px;
+      border-top: 1px solid #e5e7eb;
+      font-size: 12px;
+      color: #6b7280;
+    }
+    @media print {
+      body { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="banner">
+    STARTER PRE-QUOTE — NOT FINAL
+    <p>Not a contract, invoice, final quote, or promised start date. Final quote requires owner review.</p>
+  </div>
+  <h1>Starter Pre-Quote</h1>
+  <p class="business">${escapeHtml(record.businessName || getBusinessName())}</p>
+  <div class="range">${range}</div>
+  <table>
+    <tbody>
+      <tr><th>Project</th><td>${escapeHtml(record.projectName || "—")}</td></tr>
+      <tr><th>Work type</th><td>${escapeHtml(record.serviceName || "—")}</td></tr>
+      <tr><th>Scope size</th><td>${escapeHtml(scope)}</td></tr>
+      <tr><th>Estimated crew days</th><td>${escapeHtml(record.estimatedDays != null ? String(record.estimatedDays) : "—")}</td></tr>
+      <tr><th>Client budget (planning)</th><td>${escapeHtml(budget)}</td></tr>
+      <tr><th>Zoom slot</th><td>${zoomLine}</td></tr>
+      ${contactLines}
+    </tbody>
+  </table>
+  ${notesBlock}
+  <div class="footer">
+    Margin Guard AI Closer Lab — mock starter pre-quote for planning only.
+    Generated ${escapeHtml(String(record.createdAt || new Date().toISOString()).slice(0, 19).replace("T", " "))}.
+  </div>
+</body>
+</html>`;
+  }
+
+  function downloadStarterQuoteHtml(html) {
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "starter-pre-quote.html";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function showClientToast(message) {
+    const toast = $("aclClientToast");
+    if (!toast) return;
+    toast.textContent = message;
+    toast.hidden = false;
+    setTimeout(() => {
+      toast.hidden = true;
+    }, 5000);
+  }
+
+  function openPrintWindow(record) {
+    const html = buildPrintableHtml(record);
+    let win = null;
+    try {
+      win = window.open("", "_blank");
+    } catch (_err) {
+      win = null;
+    }
+
+    if (win) {
+      try {
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+        const triggerPrint = () => {
+          try {
+            win.focus();
+            win.print();
+          } catch (_err) {
+            downloadStarterQuoteHtml(html);
+            showClientToast("Print window could not open — downloaded starter-pre-quote.html instead.");
+          }
+        };
+        if (win.document.readyState === "complete") {
+          setTimeout(triggerPrint, 200);
+        } else {
+          win.addEventListener("load", () => setTimeout(triggerPrint, 150));
+          setTimeout(triggerPrint, 500);
+        }
+        return;
+      } catch (_err) {
+        try {
+          win.close();
+        } catch (_closeErr) {
+          /* ignore */
+        }
+      }
+    }
+
+    downloadStarterQuoteHtml(html);
+    showClientToast("Popup blocked — downloaded starter-pre-quote.html. Open it to print or save as PDF.");
+  }
+
+  function requestPrintStarterQuote() {
+    syncWizardStateFromForm();
+    const quote = state.quote || computeQuote();
+    if (!quote || quote.error) {
+      const err = $("aclClientError");
+      if (err) {
+        err.textContent = quote?.error || "Complete scope and budget before printing.";
+        err.hidden = false;
+      }
+      return;
+    }
+    state.quote = quote;
+    $("aclClientError").hidden = true;
+
+    if (!hasContact()) {
+      openContactModal("print");
+      return;
+    }
+
+    const contact = getContactFromForm();
+    syncContactToState(contact);
+    const record = buildQuoteRecord(contact);
+    saveQuote(record);
+    openPrintWindow(record);
+  }
+
   function openContactModal(mode) {
     const modal = $("aclContactModal");
     if (!modal) return;
     modal.dataset.mode = mode;
-    $("aclContactTitle").textContent =
-      mode === "zoom" ? "Book your 15-minute Zoom" : mode === "send" ? "Send starter quote" : "Your details";
+    const title = $("aclContactTitle");
+    if (title) {
+      title.textContent =
+        mode === "zoom"
+          ? "Book your 15-minute Zoom"
+          : mode === "send"
+            ? "Send starter quote"
+            : mode === "print"
+              ? "Your details for starter pre-quote"
+              : "Your details";
+    }
     modal.hidden = false;
     modal.setAttribute("aria-hidden", "false");
   }
@@ -255,17 +531,15 @@
 
   function handleContactSubmit() {
     const mode = $("aclContactModal")?.dataset.mode || "send";
-    const contact = {
-      name: String($("aclContactName")?.value || "").trim(),
-      email: String($("aclContactEmail")?.value || "").trim(),
-      phone: String($("aclContactPhone")?.value || "").trim(),
-    };
+    const contact = getContactFromForm();
     if (!contact.name || !contact.email) {
       $("aclContactError").textContent = "Name and email are required.";
       $("aclContactError").hidden = false;
       return;
     }
     $("aclContactError").hidden = true;
+    syncContactToState(contact);
+    syncWizardStateFromForm();
     const record = buildQuoteRecord(contact);
     if (mode === "zoom") {
       state.zoomRequested = true;
@@ -277,6 +551,12 @@
     }
     saveQuote(record);
     closeContactModal();
+
+    if (mode === "print") {
+      openPrintWindow(record);
+      return;
+    }
+
     const toast = $("aclClientToast");
     if (toast) {
       toast.textContent =
@@ -290,27 +570,6 @@
     }
     if (state.step === 3 && mode === "zoom") setStep(4);
     if (state.step === 4) renderSendStep();
-  }
-
-  function printStarterQuote() {
-    const quote = state.quote || computeQuote();
-    if (!quote || quote.error) return;
-    const service = findService(state.serviceId);
-    const html = `<!doctype html><html><head><title>Starter Quote — ${escapeHtml(state.projectName)}</title>
-      <style>body{font-family:system-ui,sans-serif;padding:32px;color:#111}h1{margin:0 0 8px} .range{font-size:28px;font-weight:800;margin:16px 0}</style></head><body>
-      <h1>Starter Quote</h1>
-      <p>${escapeHtml(state.projectName)} · ${escapeHtml(service?.name || "")}</p>
-      <div class="range">${formatMoney(quote.rangeLow)} – ${formatMoney(quote.rangeHigh)}</div>
-      <p>Scope: ${escapeHtml(state.area)} ${escapeHtml(unitLabel(service?.unitType))}</p>
-      <p>Estimated schedule: ~${quote.estimatedDays} crew day(s)</p>
-      <p><small>Lab mock — not a binding contract. Margin Guard AI Closer Lab.</small></p>
-      </body></html>`;
-    const win = window.open("", "_blank", "noopener,noreferrer");
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    win.print();
   }
 
   function bindEvents() {
@@ -333,7 +592,7 @@
       openContactModal("zoom");
     });
     $("aclSendQuote")?.addEventListener("click", () => openContactModal("send"));
-    $("aclPrintQuote")?.addEventListener("click", printStarterQuote);
+    $("aclPrintQuote")?.addEventListener("click", requestPrintStarterQuote);
     $("aclContactClose")?.addEventListener("click", closeContactModal);
     $("aclContactSubmit")?.addEventListener("click", handleContactSubmit);
     $("aclContactModal")?.addEventListener("click", (ev) => {
