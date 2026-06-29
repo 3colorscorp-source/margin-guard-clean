@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | AI Closer Lab — Settings</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .acl-lab-banner {
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.08);
+      font-size: 0.8125rem;
+      line-height: 1.45;
+    }
+    .acl-lab-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+      font-size: 0.75rem;
+    }
+    .acl-lab-links a { color: rgba(134, 239, 172, 0.95); text-decoration: underline; }
+    .acl-form-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .acl-form-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    @media (max-width: 900px) {
+      .acl-form-grid--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 640px) {
+      .acl-form-grid, .acl-form-grid--3 { grid-template-columns: 1fr; }
+    }
+    .acl-form-grid label {
+      display: grid;
+      gap: 6px;
+      font-size: 0.8125rem;
+      font-weight: 600;
+    }
+    .acl-form-grid input,
+    .acl-form-grid select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.04);
+      color: inherit;
+      font: inherit;
+    }
+    .acl-form-grid .full { grid-column: 1 / -1; }
+    .acl-service-card {
+      padding: 12px;
+      margin-bottom: 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .acl-service-card__head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .acl-preview {
+      margin: 12px 0 0;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(34, 197, 94, 0.2);
+      background: rgba(34, 197, 94, 0.06);
+      font-size: 0.8125rem;
+      line-height: 1.5;
+    }
+    .acl-save-status {
+      margin-top: 8px;
+      font-size: 0.8125rem;
+      color: #86efac;
+    }
+    .acl-save-status[hidden] { display: none !important; }
+    .acl-section { margin-bottom: 14px; }
+    .acl-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container" id="aclSettingsRoot">
+    <div class="acl-lab-links">
+      <a href="/ai-closer-client.html">Client flow</a>
+      <span>·</span>
+      <a href="/ai-closer-owner.html">Owner briefing</a>
+    </div>
+
+    <div class="acl-lab-banner" role="status">
+      <strong>AI Closer Lab — Settings.</strong> Mock tenant config in <code>localStorage</code> only. Does not change production Margin Guard settings.
+    </div>
+
+    <section class="card acl-section">
+      <div class="card-inner">
+        <h2>Trade &amp; closing</h2>
+        <div class="acl-form-grid">
+          <label>Trade preset
+            <select id="aclTradePreset">
+              <option value="tile_contractor">Tile Contractor</option>
+              <option value="painter">Painter</option>
+              <option value="plumber">Plumber</option>
+              <option value="custom">Custom Trade</option>
+            </select>
+          </label>
+          <label id="aclCustomTradeWrap" class="full" hidden>Custom trade name
+            <input type="text" id="aclCustomTradeName" placeholder="e.g. Epoxy floors" />
+          </label>
+          <label class="full">Closing style
+            <select id="aclClosingStyle">
+              <option value="consultative">Consultative — educate, then close</option>
+              <option value="direct">Direct — confirm fit and book</option>
+              <option value="educational">Educational — scope clarity first</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <section class="card acl-section">
+      <div class="card-inner">
+        <h2>Services / work types</h2>
+        <p class="sub">Crew capacity and protected public crew day price drive the client starter range. Internal cost never shown to clients.</p>
+        <div id="aclServicesList"></div>
+        <div class="acl-preview" id="aclPricingPreview">Loading preview…</div>
+      </div>
+    </section>
+
+    <section class="card acl-section">
+      <div class="card-inner">
+        <h2>Guardrails</h2>
+        <div class="acl-form-grid">
+          <label>Min scope quantity<input type="number" id="aclMinArea" min="1" /></label>
+          <label>Max scope quantity<input type="number" id="aclMaxArea" min="1" /></label>
+          <label class="full">
+            <span style="display:flex;align-items:center;gap:8px;font-weight:600;">
+              <input type="checkbox" id="aclRequireBudget" /> Require budget before starter quote
+            </span>
+          </label>
+          <label>Max starter range spread %<input type="number" id="aclMaxSpread" min="1" max="30" step="0.5" /></label>
+        </div>
+        <div class="acl-actions">
+          <button type="button" class="btn primary" id="aclSaveSettings">Save lab settings</button>
+          <button type="button" class="btn ghost" id="aclResetSettings">Reset defaults</button>
+        </div>
+        <p id="aclSaveStatus" class="acl-save-status" hidden></p>
+      </div>
+    </section>
+  </div>
+
+  <script src="/js/ai-closer-settings.js"></script>
+</body>
+</html>

@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | AI Closer Lab — Client</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .acl-lab-banner {
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.08);
+      font-size: 0.8125rem;
+      line-height: 1.45;
+    }
+    .acl-steps {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .acl-step-pill {
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: rgba(232, 238, 252, 0.65);
+    }
+    .acl-step-pill--active {
+      border-color: rgba(34, 197, 94, 0.45);
+      background: rgba(34, 197, 94, 0.12);
+      color: #ecfdf5;
+    }
+    .acl-step-pill--done {
+      border-color: rgba(34, 197, 94, 0.25);
+      color: rgba(236, 253, 245, 0.85);
+    }
+    .acl-panel { min-height: 200px; }
+    .acl-form-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    @media (max-width: 640px) {
+      .acl-form-grid { grid-template-columns: 1fr; }
+    }
+    .acl-form-grid label {
+      display: grid;
+      gap: 6px;
+      font-size: 0.8125rem;
+      font-weight: 600;
+    }
+    .acl-form-grid input,
+    .acl-form-grid select,
+    .acl-form-grid textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.04);
+      color: inherit;
+      font: inherit;
+    }
+    .acl-form-grid textarea { min-height: 88px; resize: vertical; }
+    .acl-form-grid .full { grid-column: 1 / -1; }
+    .acl-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+      align-items: center;
+    }
+    .acl-error {
+      margin: 8px 0 0;
+      color: #fca5a5;
+      font-size: 0.8125rem;
+    }
+    .acl-quote-hero {
+      padding: 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(34, 197, 94, 0.25);
+      background: rgba(34, 197, 94, 0.08);
+      margin-bottom: 12px;
+    }
+    .acl-quote-hero__label {
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(236, 253, 245, 0.75);
+    }
+    .acl-quote-hero__value {
+      font-size: clamp(1.5rem, 4vw, 2rem);
+      font-weight: 800;
+      margin: 6px 0;
+    }
+    .acl-quote-hero__sub { margin: 0; font-size: 0.8125rem; color: var(--muted); }
+    .acl-quote-facts {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 8px;
+    }
+    .acl-quote-facts li {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      font-size: 0.875rem;
+    }
+    .acl-safe-note {
+      margin: 12px 0 0;
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .acl-zoom-slots { display: grid; gap: 8px; }
+    .acl-zoom-slot {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      cursor: pointer;
+    }
+    .acl-cta-stack {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .btn.primary { background: rgba(34, 197, 94, 0.18); border-color: rgba(34, 197, 94, 0.4); }
+    .btn.secondary { background: rgba(59, 130, 246, 0.12); border-color: rgba(59, 130, 246, 0.35); }
+    .acl-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      background: rgba(0, 0, 0, 0.65);
+    }
+    .acl-modal[hidden] { display: none !important; }
+    .acl-modal__panel {
+      width: min(440px, 100%);
+      padding: 18px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: #121a2b;
+    }
+    .acl-toast {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      z-index: 2100;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(34, 197, 94, 0.35);
+      background: #0f172a;
+      font-size: 0.8125rem;
+      max-width: min(360px, calc(100vw - 32px));
+    }
+    .acl-toast[hidden] { display: none !important; }
+    .acl-lab-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+      font-size: 0.75rem;
+    }
+    .acl-lab-links a {
+      color: rgba(134, 239, 172, 0.95);
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="aclClientRoot">
+    <div class="acl-lab-links">
+      <a href="/ai-closer-settings.html">Lab settings</a>
+      <span>·</span>
+      <a href="/ai-closer-owner.html">Owner briefing</a>
+    </div>
+
+    <div class="acl-lab-banner" role="status">
+      <strong>AI Closer Lab only.</strong> Mock localStorage — no real quotes, calendar, or Supabase. Isolated from production.
+    </div>
+
+    <section class="card">
+      <div class="card-inner">
+        <h2>Get your starter quote</h2>
+        <p class="sub">Answer a few questions — see a planning range, then book a quick Zoom or request your quote.</p>
+
+        <nav class="acl-steps" aria-label="Progress">
+          <span class="acl-step-pill acl-step-pill--active" data-step-pill="scope">1 Scope</span>
+          <span class="acl-step-pill" data-step-pill="budget">2 Budget</span>
+          <span class="acl-step-pill" data-step-pill="quote">3 Starter quote</span>
+          <span class="acl-step-pill" data-step-pill="zoom">4 Zoom</span>
+          <span class="acl-step-pill" data-step-pill="send">5 Send / print</span>
+        </nav>
+
+        <div id="aclStep_scope" class="acl-panel">
+          <div class="acl-form-grid">
+            <label class="full">Project name<input type="text" id="aclClientProject" placeholder="e.g. Master bath floor tile" /></label>
+            <label>Work type<select id="aclClientService"></select></label>
+            <label>Scope size<input type="number" id="aclClientArea" min="1" step="1" placeholder="395" /></label>
+            <p class="full sub" id="aclClientUnitHint" style="margin:0;">Enter quantity in sq ft.</p>
+            <label class="full">Notes (optional)<textarea id="aclClientNotes" placeholder="Subfloor condition, tile type, access…"></textarea></label>
+          </div>
+        </div>
+
+        <div id="aclStep_budget" class="acl-panel" hidden>
+          <div class="acl-form-grid">
+            <label>Budget from ($)<input type="number" id="aclClientBudgetMin" min="0" step="100" placeholder="7500" /></label>
+            <label>Budget to ($)<input type="number" id="aclClientBudgetMax" min="0" step="100" placeholder="9500" /></label>
+          </div>
+          <p class="sub" style="margin-top:10px;">Helps us confirm fit — you only share contact details at the end.</p>
+        </div>
+
+        <div id="aclStep_quote" class="acl-panel" hidden>
+          <div id="aclQuoteBody"></div>
+        </div>
+
+        <div id="aclStep_zoom" class="acl-panel" hidden>
+          <h3>Book a 15-minute Zoom</h3>
+          <p class="sub">Pick a mock slot — real calendar integration is not connected in Step 1.</p>
+          <div class="acl-zoom-slots" id="aclZoomSlots"></div>
+          <div class="acl-cta-stack">
+            <button type="button" class="btn primary" id="aclBookZoom">Book 15-minute Zoom</button>
+          </div>
+        </div>
+
+        <div id="aclStep_send" class="acl-panel" hidden>
+          <h3>Your starter quote</h3>
+          <div id="aclSendSummary"></div>
+          <div class="acl-cta-stack">
+            <button type="button" class="btn secondary" id="aclSendQuote">Send starter quote</button>
+            <button type="button" class="btn ghost" id="aclPrintQuote">Download / print starter quote</button>
+          </div>
+        </div>
+
+        <p id="aclClientError" class="acl-error" hidden></p>
+
+        <div class="acl-actions">
+          <button type="button" class="btn ghost" id="aclClientBack" hidden>Back</button>
+          <button type="button" class="btn primary" id="aclClientNext">Continue</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="aclContactModal" class="acl-modal" hidden aria-hidden="true" role="dialog" aria-labelledby="aclContactTitle">
+    <div class="acl-modal__panel">
+      <h3 id="aclContactTitle">Your details</h3>
+      <p class="sub">Contact info is collected only at the end — lab mock only.</p>
+      <div class="acl-form-grid" style="margin-top:12px;">
+        <label class="full">Name<input type="text" id="aclContactName" autocomplete="name" /></label>
+        <label class="full">Email<input type="email" id="aclContactEmail" autocomplete="email" /></label>
+        <label class="full">Phone (optional)<input type="tel" id="aclContactPhone" autocomplete="tel" /></label>
+      </div>
+      <p id="aclContactError" class="acl-error" hidden></p>
+      <div class="acl-actions">
+        <button type="button" class="btn ghost" id="aclContactClose">Cancel</button>
+        <button type="button" class="btn primary" id="aclContactSubmit">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="aclClientToast" class="acl-toast" hidden role="status"></div>
+
+  <script src="/js/ai-closer-settings.js"></script>
+  <script src="/js/ai-closer-client.js"></script>
+</body>
+</html>

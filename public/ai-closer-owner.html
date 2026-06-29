@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | AI Closer Lab — Owner Briefing</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .acl-lab-banner {
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.08);
+      font-size: 0.8125rem;
+      line-height: 1.45;
+    }
+    .acl-lab-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+      font-size: 0.75rem;
+    }
+    .acl-lab-links a { color: rgba(134, 239, 172, 0.95); text-decoration: underline; }
+    .acl-brief-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    @media (max-width: 640px) {
+      .acl-brief-grid { grid-template-columns: 1fr; }
+    }
+    .acl-brief-item {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .acl-brief-item span {
+      display: block;
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: rgba(232, 238, 252, 0.55);
+      margin-bottom: 4px;
+    }
+    .acl-brief-item strong {
+      font-size: 0.9375rem;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+    .acl-brief-item--full { grid-column: 1 / -1; }
+    .acl-reco {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      background: rgba(59, 130, 246, 0.08);
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+    .acl-empty {
+      padding: 24px;
+      text-align: center;
+      color: var(--muted);
+    }
+    .acl-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container" id="aclOwnerRoot">
+    <div class="acl-lab-links">
+      <a href="/ai-closer-client.html">Client flow</a>
+      <span>·</span>
+      <a href="/ai-closer-settings.html">Lab settings</a>
+    </div>
+
+    <div class="acl-lab-banner" role="status">
+      <strong>AI Closer Lab — Owner briefing.</strong> Mock AI seller summary from the latest client starter quote in lab <code>localStorage</code>. Not connected to production Sales Admin or Supabase.
+    </div>
+
+    <section class="card">
+      <div class="card-inner">
+        <h2>AI Seller briefing</h2>
+        <p class="sub">Latest lab quote only — use after a client completes the mock flow.</p>
+
+        <div id="aclOwnerEmpty" class="acl-empty" hidden>
+          <p>No lab quotes yet. Complete the <a href="/ai-closer-client.html">client flow</a> and submit contact details.</p>
+        </div>
+
+        <div id="aclOwnerBriefing" hidden>
+          <div class="acl-brief-grid">
+            <div class="acl-brief-item"><span>Project</span><strong id="aclBriefProject">—</strong></div>
+            <div class="acl-brief-item"><span>Client</span><strong id="aclBriefClient">—</strong></div>
+            <div class="acl-brief-item acl-brief-item--full"><span>Scope</span><strong id="aclBriefScope">—</strong></div>
+            <div class="acl-brief-item"><span>Client budget</span><strong id="aclBriefBudget">—</strong></div>
+            <div class="acl-brief-item"><span>Starter range</span><strong id="aclBriefRange">—</strong></div>
+            <div class="acl-brief-item"><span>Est. crew days</span><strong id="aclBriefDays">—</strong></div>
+            <div class="acl-brief-item"><span>Budget gap</span><strong id="aclBriefGap">—</strong></div>
+            <div class="acl-brief-item"><span>Zoom</span><strong id="aclBriefZoom">—</strong></div>
+            <div class="acl-brief-item"><span>Captured</span><strong id="aclBriefWhen">—</strong></div>
+          </div>
+          <div class="acl-reco">
+            <strong>Recommendation</strong>
+            <p id="aclBriefReco" style="margin:8px 0 0;"></p>
+          </div>
+        </div>
+
+        <div class="acl-actions">
+          <button type="button" class="btn ghost" id="aclOwnerRefresh">Refresh</button>
+          <button type="button" class="btn ghost" id="aclOwnerClear">Clear lab quotes</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="/js/ai-closer-owner.js"></script>
+</body>
+</html>
