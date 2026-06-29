@@ -15,6 +15,7 @@
 
   let inboxRows = [];
   let activeFilter = "all";
+  let openDetailId = null;
 
   function $(id) {
     return document.getElementById(id);
@@ -84,6 +85,184 @@
       archived: "Archived",
     };
     return map[key] || "New";
+  }
+
+  function formatDateOnly(iso) {
+    if (!iso) return "—";
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch (_err) {
+      return String(iso).slice(0, 10);
+    }
+  }
+
+  function preferredContactLabel(value) {
+    const key = String(value || "").trim().toLowerCase();
+    const map = {
+      email: "Email",
+      phone: "Phone",
+      text: "Text",
+      call: "Phone call",
+    };
+    return map[key] || (value ? String(value) : "—");
+  }
+
+  function fileListHtml(row) {
+    const items = [
+      row.plan_file_name ? { label: "Plan", name: row.plan_file_name } : null,
+      row.current_photo_name ? { label: "Current photo", name: row.current_photo_name } : null,
+      row.inspiration_photo_name
+        ? { label: "Inspiration photo", name: row.inspiration_photo_name }
+        : null,
+    ].filter(Boolean);
+    if (!items.length) return "—";
+    return items.map((item) => `${escapeHtml(item.label)}: ${escapeHtml(item.name)}`).join("<br>");
+  }
+
+  function planningRange(row) {
+    if (row.range_low != null && row.range_high != null) {
+      return `${formatMoney(row.range_low)} – ${formatMoney(row.range_high)}`;
+    }
+    return "—";
+  }
+
+  function scopeLine(row) {
+    return row.scope_size != null
+      ? `${row.scope_size} ${unitLabel(row.unit_type)}`
+      : "—";
+  }
+
+  function buildOwnerReviewSummary(row) {
+    const lines = [
+      "AI Closer Starter Pre-Quote — Not Final",
+      "",
+      `Project: ${row.project_name || "—"}`,
+      `Work type: ${row.work_type || "—"}`,
+      `Scope: ${scopeLine(row)}`,
+      `Estimated crew days: ${row.estimated_crew_days != null ? row.estimated_crew_days : "—"}`,
+      `Planning range: ${planningRange(row)}`,
+      `Client budget: ${row.client_budget || "—"}`,
+      `Budget signal: ${budgetSignalLabel(row.budget_signal)}`,
+      "",
+      `Client: ${row.client_name || "—"}`,
+      `Email: ${row.client_email || "—"}`,
+      `Phone: ${row.client_phone || "—"}`,
+      `Preferred contact: ${preferredContactLabel(row.preferred_contact)}`,
+      "",
+      `Zoom slot: ${row.zoom_slot || "—"}`,
+      `Target date: ${formatDateOnly(row.target_date)}`,
+    ];
+    if (row.scope_notes) lines.push("", `Scope notes: ${row.scope_notes}`);
+    if (row.plan_file_name || row.current_photo_name || row.inspiration_photo_name) {
+      lines.push("", "Attachments (filenames only):");
+      if (row.plan_file_name) lines.push(`  Plan: ${row.plan_file_name}`);
+      if (row.current_photo_name) lines.push(`  Current photo: ${row.current_photo_name}`);
+      if (row.inspiration_photo_name) lines.push(`  Inspiration: ${row.inspiration_photo_name}`);
+    }
+    if (row.client_notes) lines.push("", `Client notes: ${row.client_notes}`);
+    lines.push(
+      "",
+      `Status: ${statusLabel(row.status)}`,
+      `Submitted: ${formatDate(row.created_at)}`
+    );
+    return lines.join("\n");
+  }
+
+  async function copyText(text, successMessage) {
+    const value = String(text || "").trim();
+    if (!value) {
+      setStatus("Nothing to copy.", true);
+      return false;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      setStatus(successMessage, false);
+      setTimeout(() => setStatus("", false), 2500);
+      return true;
+    } catch (_err) {
+      setStatus("Could not copy to clipboard.", true);
+      return false;
+    }
+  }
+
+  function closeDetailModal() {
+    const modal = $("aclDetailModal");
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("acl-modal-open");
+    openDetailId = null;
+    const body = $("aclDetailBody");
+    if (body) body.innerHTML = "";
+  }
+
+  function renderDetailModal(row) {
+    const body = $("aclDetailBody");
+    const title = $("aclDetailTitle");
+    if (!body || !row) return;
+
+    const st = statusKey(row.status);
+    if (title) {
+      title.textContent = row.project_name || "Pre-quote details";
+    }
+
+    body.innerHTML = `
+      <span class="acl-detail-pill">Starter Pre-Quote — Not Final</span>
+      <p class="acl-detail-warning">
+        Review manually before creating an official quote. This screen does not create or modify official quotes.
+      </p>
+      <div class="acl-detail-copy-row">
+        <button type="button" class="btn ghost" data-copy-email="${escapeHtml(row.client_email || "")}"${row.client_email ? "" : " disabled"}>Copy client email</button>
+        <button type="button" class="btn ghost" data-copy-summary="1" data-prequote-id="${escapeHtml(row.id)}">Copy owner review summary</button>
+      </div>
+      <p class="acl-detail-range">${escapeHtml(planningRange(row))}</p>
+      <dl class="acl-detail-meta">
+        <div><dt>Status</dt><dd><span class="acl-status-badge acl-status-badge--${escapeHtml(st)}">${escapeHtml(statusLabel(row.status))}</span></dd></div>
+        <div><dt>Submitted</dt><dd>${escapeHtml(formatDate(row.created_at))}</dd></div>
+        <div><dt>Client name</dt><dd>${escapeHtml(row.client_name || "—")}</dd></div>
+        <div><dt>Client email</dt><dd>${escapeHtml(row.client_email || "—")}</dd></div>
+        <div><dt>Client phone</dt><dd>${escapeHtml(row.client_phone || "—")}</dd></div>
+        <div><dt>Preferred contact</dt><dd>${escapeHtml(preferredContactLabel(row.preferred_contact))}</dd></div>
+        <div><dt>Project name</dt><dd>${escapeHtml(row.project_name || "—")}</dd></div>
+        <div><dt>Work type</dt><dd>${escapeHtml(row.work_type || "—")}</dd></div>
+        <div><dt>Scope size</dt><dd>${escapeHtml(scopeLine(row))}</dd></div>
+        <div><dt>Unit type</dt><dd>${escapeHtml(unitLabel(row.unit_type))}</dd></div>
+        <div><dt>Estimated crew days</dt><dd>${escapeHtml(row.estimated_crew_days != null ? String(row.estimated_crew_days) : "—")}</dd></div>
+        <div><dt>Client budget</dt><dd>${escapeHtml(row.client_budget || "—")}</dd></div>
+        <div><dt>Budget signal</dt><dd>${escapeHtml(budgetSignalLabel(row.budget_signal))}</dd></div>
+        <div><dt>Zoom slot</dt><dd>${escapeHtml(row.zoom_slot || "—")}</dd></div>
+        <div><dt>Target date</dt><dd>${escapeHtml(formatDateOnly(row.target_date))}</dd></div>
+        <div class="acl-detail-meta__full"><dt>Plan / photo filenames</dt><dd>${fileListHtml(row)}</dd></div>
+      </dl>
+      ${
+        row.scope_notes
+          ? `<div class="acl-detail-meta__full"><dt style="font-size:0.625rem;text-transform:uppercase;letter-spacing:0.06em;color:rgba(232,238,252,0.55);margin:0 0 4px;">Scope notes</dt><div class="acl-detail-notes">${escapeHtml(row.scope_notes)}</div></div>`
+          : ""
+      }
+      ${
+        row.client_notes
+          ? `<div class="acl-detail-meta__full" style="margin-top:10px;"><dt style="font-size:0.625rem;text-transform:uppercase;letter-spacing:0.06em;color:rgba(232,238,252,0.55);margin:0 0 4px;">Client notes</dt><div class="acl-detail-notes">${escapeHtml(row.client_notes)}</div></div>`
+          : ""
+      }`;
+
+    body.dataset.prequoteId = row.id;
+  }
+
+  function openDetailModal(prequoteId) {
+    const row = inboxRows.find((r) => r.id === prequoteId);
+    const modal = $("aclDetailModal");
+    if (!row || !modal) return;
+    openDetailId = prequoteId;
+    renderDetailModal(row);
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("acl-modal-open");
+    modal.querySelector(".acl-detail-modal__close")?.focus();
   }
 
   function loadLatestLocalQuote() {
@@ -192,7 +371,10 @@
             ? `<p class="sub" style="margin:8px 0 0;">${escapeHtml(row.scope_notes)}</p>`
             : ""
         }
-        <div class="acl-card-actions">${actionButtons}</div>
+        <div class="acl-card-actions">
+          <button type="button" class="btn" data-prequote-view="${escapeHtml(row.id)}">View Details</button>
+          ${actionButtons}
+        </div>
         <p class="acl-inbox-card__action">Official quote conversion will come in a later step after owner review.</p>
       </article>`;
   }
@@ -262,6 +444,10 @@
     }
     const row = inboxRows.find((r) => r.id === prequoteId);
     if (row) row.status = data.status || status;
+    if (openDetailId === prequoteId) {
+      const updated = inboxRows.find((r) => r.id === prequoteId);
+      if (updated) renderDetailModal(updated);
+    }
     return { ok: true, status: data.status || status };
   }
 
@@ -322,6 +508,13 @@
     });
 
     $("aclInboxList")?.addEventListener("click", (ev) => {
+      const viewBtn = ev.target.closest("[data-prequote-view]");
+      if (viewBtn) {
+        const prequoteId = viewBtn.getAttribute("data-prequote-view");
+        if (prequoteId) openDetailModal(prequoteId);
+        return;
+      }
+
       const btn = ev.target.closest("[data-prequote-action]");
       if (!btn || btn.disabled) return;
       const prequoteId = btn.getAttribute("data-prequote-id");
@@ -338,6 +531,28 @@
           btn.disabled = false;
         }
       });
+    });
+
+    $("aclDetailModal")?.addEventListener("click", (ev) => {
+      if (ev.target.closest("[data-detail-close]")) {
+        closeDetailModal();
+        return;
+      }
+      const emailBtn = ev.target.closest("[data-copy-email]");
+      if (emailBtn && !emailBtn.disabled) {
+        void copyText(emailBtn.getAttribute("data-copy-email"), "Client email copied.");
+        return;
+      }
+      const summaryBtn = ev.target.closest("[data-copy-summary]");
+      if (summaryBtn) {
+        const prequoteId = summaryBtn.getAttribute("data-prequote-id");
+        const row = inboxRows.find((r) => r.id === prequoteId);
+        if (row) void copyText(buildOwnerReviewSummary(row), "Owner review summary copied.");
+      }
+    });
+
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && openDetailId) closeDetailModal();
     });
   }
 

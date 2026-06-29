@@ -190,6 +190,138 @@
     }
     .acl-lab-fallback[hidden] { display: none !important; }
     .acl-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .acl-detail-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .acl-detail-modal[hidden] { display: none !important; }
+    .acl-detail-modal__backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      border: none;
+      cursor: pointer;
+    }
+    .acl-detail-modal__panel {
+      position: relative;
+      width: min(520px, 100%);
+      max-height: 100%;
+      overflow-y: auto;
+      background: #0f172a;
+      border-left: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: -8px 0 32px rgba(0, 0, 0, 0.35);
+      padding: 0;
+    }
+    .acl-detail-modal__head {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 16px 16px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      background: #0f172a;
+    }
+    .acl-detail-modal__title {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 800;
+    }
+    .acl-detail-modal__close {
+      flex-shrink: 0;
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: transparent;
+      color: rgba(232, 238, 252, 0.85);
+      font: inherit;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .acl-detail-modal__close:hover,
+    .acl-detail-modal__close:focus-visible {
+      border-color: rgba(34, 197, 94, 0.35);
+      background: rgba(34, 197, 94, 0.08);
+    }
+    .acl-detail-modal__body {
+      padding: 14px 16px 20px;
+    }
+    .acl-detail-pill {
+      display: inline-block;
+      margin-bottom: 12px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      background: rgba(245, 158, 11, 0.1);
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #fcd34d;
+    }
+    .acl-detail-warning {
+      margin: 0 0 14px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(239, 68, 68, 0.28);
+      background: rgba(239, 68, 68, 0.08);
+      font-size: 0.8125rem;
+      line-height: 1.45;
+      color: rgba(252, 165, 165, 0.95);
+    }
+    .acl-detail-meta {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      font-size: 0.8125rem;
+      margin-bottom: 14px;
+    }
+    @media (max-width: 480px) {
+      .acl-detail-meta { grid-template-columns: 1fr; }
+    }
+    .acl-detail-meta dt {
+      margin: 0;
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: rgba(232, 238, 252, 0.55);
+    }
+    .acl-detail-meta dd {
+      margin: 0;
+      font-weight: 600;
+      color: rgba(232, 238, 252, 0.92);
+      word-break: break-word;
+    }
+    .acl-detail-meta__full { grid-column: 1 / -1; }
+    .acl-detail-notes {
+      margin: 0 0 14px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+      font-size: 0.8125rem;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .acl-detail-copy-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .acl-detail-copy-row .btn { font-size: 0.75rem; }
+    .acl-detail-range {
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: #86efac;
+      margin: 0 0 14px;
+    }
+    body.acl-modal-open { overflow: hidden; }
   </style>
 </head>
 <body data-requires-auth="true" data-mg-page-title="AI Closer Owner Inbox">
@@ -238,6 +370,17 @@
 
         <div class="acl-actions">
           <button type="button" class="btn ghost" id="aclOwnerRefresh">Refresh</button>
+        </div>
+
+        <div id="aclDetailModal" class="acl-detail-modal" hidden aria-hidden="true">
+          <button type="button" class="acl-detail-modal__backdrop" data-detail-close aria-label="Close detail view"></button>
+          <aside class="acl-detail-modal__panel" role="dialog" aria-modal="true" aria-labelledby="aclDetailTitle">
+            <header class="acl-detail-modal__head">
+              <h3 id="aclDetailTitle" class="acl-detail-modal__title">Pre-quote details</h3>
+              <button type="button" class="acl-detail-modal__close" data-detail-close>Close</button>
+            </header>
+            <div id="aclDetailBody" class="acl-detail-modal__body"></div>
+          </aside>
         </div>
 
         <div id="aclLabFallback" class="acl-lab-fallback" hidden>
