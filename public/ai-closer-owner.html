@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Margin Guard | AI Closer Lab — Owner Briefing</title>
+  <title>Margin Guard | AI Closer Owner Inbox</title>
   <link rel="stylesheet" href="/styles.css" />
   <style>
     .acl-lab-banner {
@@ -23,52 +23,115 @@
       font-size: 0.75rem;
     }
     .acl-lab-links a { color: rgba(134, 239, 172, 0.95); text-decoration: underline; }
-    .acl-brief-grid {
+    .acl-inbox-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .acl-inbox-pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      background: rgba(245, 158, 11, 0.1);
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #fcd34d;
+    }
+    .acl-owner-note {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(59, 130, 246, 0.28);
+      background: rgba(59, 130, 246, 0.08);
+      font-size: 0.8125rem;
+      color: rgba(232, 238, 252, 0.88);
+    }
+    .acl-status {
+      margin: 0 0 12px;
+      font-size: 0.8125rem;
+      color: var(--muted);
+    }
+    .acl-status--error { color: #fca5a5; }
+    .acl-empty {
+      padding: 28px 16px;
+      text-align: center;
+      color: var(--muted);
+      border: 1px dashed rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+    }
+    .acl-inbox-list {
       display: grid;
       gap: 10px;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-    @media (max-width: 640px) {
-      .acl-brief-grid { grid-template-columns: 1fr; }
-    }
-    .acl-brief-item {
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
+    .acl-inbox-card {
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
       background: rgba(255, 255, 255, 0.03);
     }
-    .acl-brief-item span {
-      display: block;
+    .acl-inbox-card__head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .acl-inbox-card__title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 800;
+    }
+    .acl-inbox-card__range {
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: #86efac;
+    }
+    .acl-inbox-meta {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      font-size: 0.8125rem;
+    }
+    @media (max-width: 640px) {
+      .acl-inbox-meta { grid-template-columns: 1fr; }
+    }
+    .acl-inbox-meta dt {
+      margin: 0;
       font-size: 0.625rem;
       text-transform: uppercase;
       letter-spacing: 0.06em;
       color: rgba(232, 238, 252, 0.55);
-      margin-bottom: 4px;
     }
-    .acl-brief-item strong {
-      font-size: 0.9375rem;
-      font-weight: 700;
-      line-height: 1.35;
+    .acl-inbox-meta dd {
+      margin: 0 0 4px;
+      font-weight: 600;
+      color: rgba(232, 238, 252, 0.92);
     }
-    .acl-brief-item--full { grid-column: 1 / -1; }
-    .acl-reco {
-      margin-top: 12px;
-      padding: 12px;
-      border-radius: 10px;
-      border: 1px solid rgba(59, 130, 246, 0.3);
-      background: rgba(59, 130, 246, 0.08);
-      font-size: 0.875rem;
-      line-height: 1.5;
+    .acl-inbox-card__action {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.75rem;
+      color: rgba(232, 238, 252, 0.65);
+      font-style: italic;
     }
-    .acl-empty {
-      padding: 24px;
-      text-align: center;
-      color: var(--muted);
+    .acl-lab-fallback {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
     }
+    .acl-lab-fallback[hidden] { display: none !important; }
     .acl-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   </style>
 </head>
-<body>
+<body data-requires-auth="true" data-mg-page-title="AI Closer Owner Inbox">
   <div class="container" id="aclOwnerRoot">
     <div class="acl-lab-links">
       <a href="/ai-closer-client.html">Client flow</a>
@@ -77,44 +140,45 @@
     </div>
 
     <div class="acl-lab-banner" role="status">
-      <strong>AI Closer Lab — Owner briefing.</strong> Mock AI seller summary from the latest client starter quote in lab <code>localStorage</code>. Not connected to production Sales Admin or Supabase.
+      <strong>AI Closer Owner Inbox.</strong> Read-only review of starter pre-quotes — not official quotes. Owner sign-in required.
     </div>
 
     <section class="card">
       <div class="card-inner">
-        <h2>AI Seller briefing</h2>
-        <p class="sub">Latest lab quote only — use after a client completes the mock flow.</p>
-
-        <div id="aclOwnerEmpty" class="acl-empty" hidden>
-          <p>No lab quotes yet. Complete the <a href="/ai-closer-client.html">client flow</a> and submit contact details.</p>
+        <div class="acl-inbox-head">
+          <div>
+            <h2>AI Closer Owner Inbox</h2>
+            <p class="sub">New starter pre-quotes submitted from the AI Closer client flow.</p>
+          </div>
+          <span class="acl-inbox-pill">Starter Pre-Quote — Not Final</span>
         </div>
 
-        <div id="aclOwnerBriefing" hidden>
-          <div class="acl-brief-grid">
-            <div class="acl-brief-item"><span>Project</span><strong id="aclBriefProject">—</strong></div>
-            <div class="acl-brief-item"><span>Client</span><strong id="aclBriefClient">—</strong></div>
-            <div class="acl-brief-item acl-brief-item--full"><span>Scope</span><strong id="aclBriefScope">—</strong></div>
-            <div class="acl-brief-item"><span>Client budget</span><strong id="aclBriefBudget">—</strong></div>
-            <div class="acl-brief-item"><span>Starter range</span><strong id="aclBriefRange">—</strong></div>
-            <div class="acl-brief-item"><span>Est. crew days</span><strong id="aclBriefDays">—</strong></div>
-            <div class="acl-brief-item"><span>Budget gap</span><strong id="aclBriefGap">—</strong></div>
-            <div class="acl-brief-item"><span>Zoom</span><strong id="aclBriefZoom">—</strong></div>
-            <div class="acl-brief-item"><span>Captured</span><strong id="aclBriefWhen">—</strong></div>
-          </div>
-          <div class="acl-reco">
-            <strong>Recommendation</strong>
-            <p id="aclBriefReco" style="margin:8px 0 0;"></p>
-          </div>
+        <p class="acl-owner-note">
+          Review manually before creating an official quote. This inbox does not create quotes or change lead status.
+        </p>
+
+        <p id="aclInboxStatus" class="acl-status" hidden></p>
+
+        <div id="aclInboxEmpty" class="acl-empty" hidden>
+          <p>No AI Closer pre-quotes yet.</p>
         </div>
+
+        <div id="aclInboxList" class="acl-inbox-list" hidden></div>
 
         <div class="acl-actions">
           <button type="button" class="btn ghost" id="aclOwnerRefresh">Refresh</button>
-          <button type="button" class="btn ghost" id="aclOwnerClear">Clear lab quotes</button>
+        </div>
+
+        <div id="aclLabFallback" class="acl-lab-fallback" hidden>
+          <h3 style="margin:0 0 8px;font-size:0.9375rem;">Lab local fallback</h3>
+          <p class="sub" style="margin:0 0 8px;">Latest quote saved in this browser only (not synced).</p>
+          <div id="aclLabFallbackBody"></div>
         </div>
       </div>
     </section>
   </div>
 
+  <script src="/js/auth.js"></script>
   <script src="/js/ai-closer-owner.js"></script>
 </body>
 </html>
