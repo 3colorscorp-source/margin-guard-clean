@@ -315,6 +315,22 @@
       margin-bottom: 14px;
     }
     .acl-detail-copy-row .btn { font-size: 0.75rem; }
+    .acl-detail-copy-toast {
+      margin: 0;
+      padding: 10px 16px;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      line-height: 1.4;
+      border-bottom: 1px solid rgba(34, 197, 94, 0.25);
+      background: rgba(34, 197, 94, 0.12);
+      color: #bbf7d0;
+    }
+    .acl-detail-copy-toast[hidden] { display: none !important; }
+    .acl-detail-copy-toast--error {
+      border-bottom-color: rgba(239, 68, 68, 0.28);
+      background: rgba(239, 68, 68, 0.1);
+      color: #fecaca;
+    }
     .acl-detail-range {
       font-size: 1.15rem;
       font-weight: 800;
@@ -379,6 +395,7 @@
               <h3 id="aclDetailTitle" class="acl-detail-modal__title">Pre-quote details</h3>
               <button type="button" class="acl-detail-modal__close" data-detail-close>Close</button>
             </header>
+            <p id="aclDetailCopyToast" class="acl-detail-copy-toast" hidden role="status" aria-live="polite"></p>
             <div id="aclDetailBody" class="acl-detail-modal__body"></div>
           </aside>
         </div>

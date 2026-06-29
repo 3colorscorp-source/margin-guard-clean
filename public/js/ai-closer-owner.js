@@ -16,6 +16,7 @@
   let inboxRows = [];
   let activeFilter = "all";
   let openDetailId = null;
+  let copyToastTimer = null;
 
   function $(id) {
     return document.getElementById(id);
@@ -173,21 +174,86 @@
     return lines.join("\n");
   }
 
-  async function copyText(text, successMessage) {
+  function copyViaTextarea(value) {
+    const ta = document.createElement("textarea");
+    ta.value = value;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    ta.style.top = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, value.length);
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch (_err) {
+      ok = false;
+    }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  async function writeClipboard(value) {
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(value);
+        return true;
+      } catch (_err) {
+        // Fall through to textarea fallback.
+      }
+    }
+    return copyViaTextarea(value);
+  }
+
+  function showDetailCopyToast(message, isError) {
+    const el = $("aclDetailCopyToast");
+    if (!el) return;
+    if (copyToastTimer) {
+      clearTimeout(copyToastTimer);
+      copyToastTimer = null;
+    }
+    if (!message) {
+      el.hidden = true;
+      el.textContent = "";
+      el.classList.remove("acl-detail-copy-toast--error");
+      return;
+    }
+    el.hidden = false;
+    el.textContent = message;
+    el.classList.toggle("acl-detail-copy-toast--error", Boolean(isError));
+    if (!isError) {
+      copyToastTimer = setTimeout(() => showDetailCopyToast("", false), 3000);
+    }
+  }
+
+  function flashCopiedButton(btn) {
+    if (!btn) return;
+    const label = btn.getAttribute("data-copy-label") || btn.textContent;
+    if (!btn.getAttribute("data-copy-label")) {
+      btn.setAttribute("data-copy-label", label);
+    }
+    btn.textContent = "Copied";
+    setTimeout(() => {
+      btn.textContent = btn.getAttribute("data-copy-label") || label;
+    }, 1500);
+  }
+
+  async function handleCopyAction(btn, text, successMessage) {
     const value = String(text || "").trim();
     if (!value) {
-      setStatus("Nothing to copy.", true);
+      showDetailCopyToast("Nothing to copy.", true);
       return false;
     }
-    try {
-      await navigator.clipboard.writeText(value);
-      setStatus(successMessage, false);
-      setTimeout(() => setStatus("", false), 2500);
+    const ok = await writeClipboard(value);
+    if (ok) {
+      showDetailCopyToast(successMessage, false);
+      flashCopiedButton(btn);
       return true;
-    } catch (_err) {
-      setStatus("Could not copy to clipboard.", true);
-      return false;
     }
+    showDetailCopyToast("Copy failed. Please select and copy manually.", true);
+    return false;
   }
 
   function closeDetailModal() {
@@ -197,6 +263,7 @@
     modal.setAttribute("aria-hidden", "true");
     document.body.classList.remove("acl-modal-open");
     openDetailId = null;
+    showDetailCopyToast("", false);
     const body = $("aclDetailBody");
     if (body) body.innerHTML = "";
   }
@@ -217,8 +284,8 @@
         Review manually before creating an official quote. This screen does not create or modify official quotes.
       </p>
       <div class="acl-detail-copy-row">
-        <button type="button" class="btn ghost" data-copy-email="${escapeHtml(row.client_email || "")}"${row.client_email ? "" : " disabled"}>Copy client email</button>
-        <button type="button" class="btn ghost" data-copy-summary="1" data-prequote-id="${escapeHtml(row.id)}">Copy owner review summary</button>
+        <button type="button" class="btn ghost" data-copy-label="Copy client email" data-copy-email="${escapeHtml(row.client_email || "")}"${row.client_email ? "" : " disabled"}>Copy client email</button>
+        <button type="button" class="btn ghost" data-copy-label="Copy owner review summary" data-copy-summary="1" data-prequote-id="${escapeHtml(row.id)}">Copy owner review summary</button>
       </div>
       <p class="acl-detail-range">${escapeHtml(planningRange(row))}</p>
       <dl class="acl-detail-meta">
@@ -258,6 +325,7 @@
     const modal = $("aclDetailModal");
     if (!row || !modal) return;
     openDetailId = prequoteId;
+    showDetailCopyToast("", false);
     renderDetailModal(row);
     modal.hidden = false;
     modal.setAttribute("aria-hidden", "false");
@@ -540,14 +608,20 @@
       }
       const emailBtn = ev.target.closest("[data-copy-email]");
       if (emailBtn && !emailBtn.disabled) {
-        void copyText(emailBtn.getAttribute("data-copy-email"), "Client email copied.");
+        void handleCopyAction(emailBtn, emailBtn.getAttribute("data-copy-email"), "Client email copied.");
         return;
       }
       const summaryBtn = ev.target.closest("[data-copy-summary]");
       if (summaryBtn) {
         const prequoteId = summaryBtn.getAttribute("data-prequote-id");
         const row = inboxRows.find((r) => r.id === prequoteId);
-        if (row) void copyText(buildOwnerReviewSummary(row), "Owner review summary copied.");
+        if (row) {
+          void handleCopyAction(
+            summaryBtn,
+            buildOwnerReviewSummary(row),
+            "Owner review summary copied."
+          );
+        }
       }
     });
 
