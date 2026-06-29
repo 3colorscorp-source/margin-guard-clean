@@ -16,7 +16,17 @@
   let inboxRows = [];
   let activeFilter = "all";
   let openDetailId = null;
+  let openPreviewId = null;
   let copyToastTimer = null;
+
+  const CONVERSION_CHECKLIST = [
+    "Owner reviewed lead",
+    "Scope confirmed",
+    "Measurements confirmed",
+    "Materials/tile status confirmed",
+    "Start date reviewed",
+    "Final price to be set by owner",
+  ];
 
   function $(id) {
     return document.getElementById(id);
@@ -256,6 +266,66 @@
     return false;
   }
 
+  function closeConversionPreview() {
+    const modal = $("aclConversionPreview");
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+    openPreviewId = null;
+    const body = $("aclConversionPreviewBody");
+    if (body) body.innerHTML = "";
+  }
+
+  function renderConversionPreview(row) {
+    const body = $("aclConversionPreviewBody");
+    if (!body || !row) return;
+
+    const st = statusKey(row.status);
+    const checklist = CONVERSION_CHECKLIST.map(
+      (item) =>
+        `<li><span class="acl-conversion-check" aria-hidden="true"></span>${escapeHtml(item)}</li>`
+    ).join("");
+
+    body.innerHTML = `
+      <p class="acl-conversion-preview__warning">
+        This preview does not create an official quote. A later owner-approved step will map this pre-quote into the real Margin Guard quote workflow.
+      </p>
+      <dl class="acl-detail-meta">
+        <div><dt>Client name</dt><dd>${escapeHtml(row.client_name || "—")}</dd></div>
+        <div><dt>Client email</dt><dd>${escapeHtml(row.client_email || "—")}</dd></div>
+        <div><dt>Phone</dt><dd>${escapeHtml(row.client_phone || "—")}</dd></div>
+        <div><dt>Project name</dt><dd>${escapeHtml(row.project_name || "—")}</dd></div>
+        <div><dt>Work type</dt><dd>${escapeHtml(row.work_type || "—")}</dd></div>
+        <div><dt>Scope size</dt><dd>${escapeHtml(scopeLine(row))}</dd></div>
+        <div><dt>Estimated crew days</dt><dd>${escapeHtml(row.estimated_crew_days != null ? String(row.estimated_crew_days) : "—")}</dd></div>
+        <div><dt>Planning range</dt><dd>${escapeHtml(planningRange(row))}</dd></div>
+        <div><dt>Budget signal</dt><dd>${escapeHtml(budgetSignalLabel(row.budget_signal))}</dd></div>
+        <div><dt>Zoom slot</dt><dd>${escapeHtml(row.zoom_slot || "—")}</dd></div>
+        <div class="acl-detail-meta__full"><dt>Current prequote status</dt><dd><span class="acl-status-badge acl-status-badge--${escapeHtml(st)}">${escapeHtml(statusLabel(row.status))}</span></dd></div>
+        ${
+          row.scope_notes
+            ? `<div class="acl-detail-meta__full"><dt>Scope notes</dt><dd>${escapeHtml(row.scope_notes)}</dd></div>`
+            : ""
+        }
+      </dl>
+      <h4 style="margin:0 0 8px;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:rgba(232,238,252,0.55);">Before conversion</h4>
+      <ul class="acl-conversion-checklist" aria-label="Conversion readiness checklist">${checklist}</ul>
+      <div class="acl-conversion-preview__actions">
+        <button type="button" class="btn" disabled title="Official quote creation is not available in this preview step">Create Quote — Disabled</button>
+      </div>`;
+  }
+
+  function openConversionPreview(prequoteId) {
+    const row = inboxRows.find((r) => r.id === prequoteId);
+    const modal = $("aclConversionPreview");
+    if (!row || !modal) return;
+    openPreviewId = prequoteId;
+    renderConversionPreview(row);
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+    modal.querySelector(".acl-conversion-preview__close")?.focus();
+  }
+
   function closeDetailModal() {
     const modal = $("aclDetailModal");
     if (!modal) return;
@@ -263,6 +333,7 @@
     modal.setAttribute("aria-hidden", "true");
     document.body.classList.remove("acl-modal-open");
     openDetailId = null;
+    closeConversionPreview();
     showDetailCopyToast("", false);
     const body = $("aclDetailBody");
     if (body) body.innerHTML = "";
@@ -315,7 +386,13 @@
         row.client_notes
           ? `<div class="acl-detail-meta__full" style="margin-top:10px;"><dt style="font-size:0.625rem;text-transform:uppercase;letter-spacing:0.06em;color:rgba(232,238,252,0.55);margin:0 0 4px;">Client notes</dt><div class="acl-detail-notes">${escapeHtml(row.client_notes)}</div></div>`
           : ""
-      }`;
+      }
+      <div class="acl-detail-convert-row">
+        <button type="button" class="btn acl-convert-btn" data-prequote-preview="${escapeHtml(row.id)}">
+          Create Official Quote
+          <span class="acl-convert-btn__badge">Preview only</span>
+        </button>
+      </div>`;
 
     body.dataset.prequoteId = row.id;
   }
@@ -514,7 +591,10 @@
     if (row) row.status = data.status || status;
     if (openDetailId === prequoteId) {
       const updated = inboxRows.find((r) => r.id === prequoteId);
-      if (updated) renderDetailModal(updated);
+      if (updated) {
+        renderDetailModal(updated);
+        if (openPreviewId === prequoteId) renderConversionPreview(updated);
+      }
     }
     return { ok: true, status: data.status || status };
   }
@@ -606,6 +686,12 @@
         closeDetailModal();
         return;
       }
+      const previewBtn = ev.target.closest("[data-prequote-preview]");
+      if (previewBtn) {
+        const prequoteId = previewBtn.getAttribute("data-prequote-preview");
+        if (prequoteId) openConversionPreview(prequoteId);
+        return;
+      }
       const emailBtn = ev.target.closest("[data-copy-email]");
       if (emailBtn && !emailBtn.disabled) {
         void handleCopyAction(emailBtn, emailBtn.getAttribute("data-copy-email"), "Client email copied.");
@@ -625,8 +711,19 @@
       }
     });
 
+    $("aclConversionPreview")?.addEventListener("click", (ev) => {
+      if (ev.target.closest("[data-preview-close]")) {
+        closeConversionPreview();
+      }
+    });
+
     document.addEventListener("keydown", (ev) => {
-      if (ev.key === "Escape" && openDetailId) closeDetailModal();
+      if (ev.key !== "Escape") return;
+      if (openPreviewId) {
+        closeConversionPreview();
+        return;
+      }
+      if (openDetailId) closeDetailModal();
     });
   }
 
