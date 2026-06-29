@@ -79,6 +79,23 @@
     return LAB_BUSINESS_FALLBACK;
   }
 
+  function formatBusinessNameForDisplay(raw) {
+    const trimmed = String(raw ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!trimmed) return trimmed;
+    const hasUpperCase = /[A-Z]/.test(trimmed);
+    const hasLowerCase = /[a-z]/.test(trimmed);
+    if (hasLowerCase && !hasUpperCase) {
+      return trimmed.replace(/\b\w+/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+    }
+    return trimmed;
+  }
+
+  function displayBusinessName(record) {
+    return formatBusinessNameForDisplay(getBusinessName(record));
+  }
+
   function getContactFromForm() {
     return {
       name: String($("aclContactName")?.value || state.contact?.name || "").trim(),
@@ -288,6 +305,7 @@
   }
 
   function buildPrintableHtml(record) {
+    const businessName = displayBusinessName(record);
     const range =
       record.rangeLow != null && record.rangeHigh != null
         ? `${formatMoney(record.rangeLow)} – ${formatMoney(record.rangeHigh)}`
@@ -313,84 +331,167 @@
       .filter(Boolean)
       .join("");
     const notesBlock = record.scopeNotes
-      ? `<section class="block"><h2>Notes</h2><p>${escapeHtml(record.scopeNotes)}</p></section>`
+      ? `<section class="notes"><h2>Notes</h2><p>${escapeHtml(record.scopeNotes)}</p></section>`
       : "";
+    const generatedAt = escapeHtml(
+      String(record.createdAt || new Date().toISOString()).slice(0, 19).replace("T", " ")
+    );
 
     return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Starter Pre-Quote — ${escapeHtml(record.projectName || "Project")}</title>
+  <title>${escapeHtml(businessName)} — Starter Pre-Quote</title>
   <style>
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 32px;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      color: #111827;
+      padding: 28px 32px 24px;
+      font-family: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+      color: #0f172a;
       line-height: 1.45;
-    }
-    .banner {
-      margin-bottom: 20px;
-      padding: 12px 14px;
-      border: 2px solid #b45309;
-      background: #fffbeb;
-      border-radius: 8px;
       font-size: 13px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: #92400e;
+      max-width: 780px;
     }
-    .banner p { margin: 6px 0 0; font-weight: 500; text-transform: none; letter-spacing: 0; }
-    h1 { margin: 0 0 4px; font-size: 24px; }
-    .business { margin: 0 0 18px; color: #4b5563; font-size: 14px; }
-    .range {
-      margin: 18px 0;
-      font-size: 30px;
+    .letterhead {
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+      border-bottom: 2px solid #0f766e;
+    }
+    .business-name {
+      margin: 0 0 6px;
+      font-size: 28px;
       font-weight: 800;
-      color: #065f46;
+      letter-spacing: -0.02em;
+      color: #0f172a;
+      line-height: 1.15;
+    }
+    .doc-title {
+      margin: 0 0 4px;
+      font-size: 15px;
+      font-weight: 700;
+      color: #334155;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    .doc-date {
+      margin: 0;
+      font-size: 12px;
+      color: #64748b;
+    }
+    .disclaimer {
+      margin-bottom: 18px;
+      padding: 10px 12px;
+      border: 1px solid #f59e0b;
+      border-left-width: 4px;
+      border-radius: 6px;
+      background: #fffbeb;
+      color: #92400e;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .disclaimer strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .range-card {
+      margin-bottom: 18px;
+      padding: 16px 18px;
+      border-radius: 10px;
+      border: 1px solid #99f6e4;
+      background: linear-gradient(180deg, #f0fdfa 0%, #ecfeff 100%);
+    }
+    .range-card__label {
+      margin: 0 0 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #0f766e;
+    }
+    .range-card__value {
+      margin: 0;
+      font-size: 32px;
+      font-weight: 800;
+      color: #115e59;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+    }
+    .range-card__sub {
+      margin: 6px 0 0;
+      font-size: 12px;
+      color: #475569;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin: 16px 0;
-      font-size: 14px;
+      margin: 0 0 14px;
+      font-size: 13px;
     }
     th, td {
       text-align: left;
-      padding: 8px 10px;
-      border-bottom: 1px solid #e5e7eb;
+      padding: 9px 12px;
+      border-bottom: 1px solid #e2e8f0;
       vertical-align: top;
     }
+    tbody tr:nth-child(even) td { background: #f8fafc; }
     th {
-      width: 34%;
-      color: #6b7280;
+      width: 36%;
+      color: #475569;
       font-weight: 600;
-    }
-    .block { margin-top: 18px; }
-    .block h2 { margin: 0 0 8px; font-size: 15px; }
-    .footer {
-      margin-top: 28px;
-      padding-top: 14px;
-      border-top: 1px solid #e5e7eb;
       font-size: 12px;
-      color: #6b7280;
+    }
+    td { color: #0f172a; font-weight: 500; }
+    .notes {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+    }
+    .notes h2 {
+      margin: 0 0 6px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+    .notes p { margin: 0; color: #334155; }
+    .footer {
+      margin-top: 20px;
+      padding-top: 12px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 11px;
+      color: #94a3b8;
+      line-height: 1.5;
     }
     @media print {
-      body { padding: 16px; }
+      body { padding: 12mm 14mm; max-width: none; }
+      .range-card { break-inside: avoid; }
+      table { break-inside: avoid; }
     }
   </style>
 </head>
 <body>
-  <div class="banner">
-    STARTER PRE-QUOTE — NOT FINAL
-    <p>Not a contract, invoice, final quote, or promised start date. Final quote requires owner review.</p>
+  <header class="letterhead">
+    <h1 class="business-name">${escapeHtml(businessName)}</h1>
+    <p class="doc-title">Starter Pre-Quote — Not Final</p>
+    <p class="doc-date">Created for review today</p>
+  </header>
+  <div class="disclaimer">
+    <strong>Important</strong>
+    Not a contract, invoice, final quote, or promised start date. Final quote requires owner review.
   </div>
-  <h1>Starter Pre-Quote</h1>
-  <p class="business">${escapeHtml(getBusinessName(record))}</p>
-  <div class="range">${range}</div>
+  <section class="range-card" aria-label="Starter quote range">
+    <p class="range-card__label">Planning range</p>
+    <p class="range-card__value">${range}</p>
+    <p class="range-card__sub">Final price confirmed after scope review with your contractor.</p>
+  </section>
   <table>
     <tbody>
       <tr><th>Project</th><td>${escapeHtml(record.projectName || "—")}</td></tr>
@@ -403,10 +504,10 @@
     </tbody>
   </table>
   ${notesBlock}
-  <div class="footer">
-    Margin Guard AI Closer Lab — mock starter pre-quote for planning only.
-    Generated ${escapeHtml(String(record.createdAt || new Date().toISOString()).slice(0, 19).replace("T", " "))}.
-  </div>
+  <footer class="footer">
+    ${escapeHtml(businessName)} · Starter pre-quote for planning only · Margin Guard AI Closer Lab<br />
+    Generated ${generatedAt}
+  </footer>
 </body>
 </html>`;
   }
