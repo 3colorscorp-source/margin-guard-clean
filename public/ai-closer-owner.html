@@ -88,10 +88,71 @@
       font-size: 1rem;
       font-weight: 800;
     }
+    .acl-inbox-card__range-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
     .acl-inbox-card__range {
       font-size: 1.05rem;
       font-weight: 800;
       color: #86efac;
+    }
+    .acl-status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.625rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(232, 238, 252, 0.85);
+    }
+    .acl-status-badge--new { border-color: rgba(59, 130, 246, 0.4); color: #93c5fd; }
+    .acl-status-badge--reviewed { border-color: rgba(148, 163, 184, 0.4); color: #cbd5e1; }
+    .acl-status-badge--good_lead { border-color: rgba(34, 197, 94, 0.4); color: #86efac; }
+    .acl-status-badge--needs_site_visit { border-color: rgba(245, 158, 11, 0.4); color: #fcd34d; }
+    .acl-status-badge--bad_budget { border-color: rgba(239, 68, 68, 0.35); color: #fca5a5; }
+    .acl-status-badge--archived { border-color: rgba(100, 116, 139, 0.4); color: #94a3b8; }
+    .acl-filter-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .acl-filter-tab {
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: transparent;
+      color: rgba(232, 238, 252, 0.78);
+      font: inherit;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .acl-filter-tab:hover,
+    .acl-filter-tab:focus-visible {
+      border-color: rgba(34, 197, 94, 0.35);
+      background: rgba(34, 197, 94, 0.06);
+    }
+    .acl-filter-tab--active {
+      border-color: rgba(34, 197, 94, 0.45);
+      background: rgba(34, 197, 94, 0.12);
+      color: #ecfdf5;
+    }
+    .acl-card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .acl-card-actions .btn {
+      font-size: 0.6875rem;
+      padding: 6px 10px;
     }
     .acl-inbox-meta {
       display: grid;
@@ -154,8 +215,18 @@
         </div>
 
         <p class="acl-owner-note">
-          Review manually before creating an official quote. This inbox does not create quotes or change lead status.
+          Organize leads with status actions below. Official quote conversion will come in a later step after owner review.
         </p>
+
+        <nav class="acl-filter-tabs" id="aclFilterTabs" aria-label="Filter by status" hidden>
+          <button type="button" class="acl-filter-tab acl-filter-tab--active" data-filter="all">All</button>
+          <button type="button" class="acl-filter-tab" data-filter="new">New</button>
+          <button type="button" class="acl-filter-tab" data-filter="reviewed">Reviewed</button>
+          <button type="button" class="acl-filter-tab" data-filter="good_lead">Good Lead</button>
+          <button type="button" class="acl-filter-tab" data-filter="needs_site_visit">Needs Site Visit</button>
+          <button type="button" class="acl-filter-tab" data-filter="bad_budget">Bad Budget</button>
+          <button type="button" class="acl-filter-tab" data-filter="archived">Archived</button>
+        </nav>
 
         <p id="aclInboxStatus" class="acl-status" hidden></p>
 
