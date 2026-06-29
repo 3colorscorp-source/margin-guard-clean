@@ -603,6 +603,54 @@
     openPrintWindow(record);
   }
 
+  function buildPrequoteApiPayload(record) {
+    const params = new URLSearchParams(window.location.search);
+    const tenantSlug = String(params.get("tenant") || params.get("tenantSlug") || "").trim();
+    return {
+      tenantSlug: tenantSlug || undefined,
+      projectName: record.projectName,
+      workType: record.serviceName,
+      unitType: record.unitType,
+      scopeSize: record.area,
+      estimatedCrewDays: record.estimatedDays,
+      rangeLow: record.rangeLow,
+      rangeHigh: record.rangeHigh,
+      budgetMin: record.budgetMin,
+      budgetMax: record.budgetMax,
+      clientName: record.clientName,
+      clientEmail: record.clientEmail,
+      clientPhone: record.clientPhone || "",
+      scopeNotes: record.scopeNotes || "",
+      zoomSlot: record.zoomSlot || "",
+      zoomRequested: Boolean(record.zoomRequested),
+      businessName: record.businessName || "",
+      source: "ai_closer_client",
+    };
+  }
+
+  async function submitPrequoteToServer(record) {
+    try {
+      const response = await fetch("/.netlify/functions/ai-closer-submit-prequote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify(buildPrequoteApiPayload(record)),
+      });
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (_err) {
+        data = {};
+      }
+      if (response.ok && data.ok === true) {
+        return { ok: true, prequoteId: data.prequoteId };
+      }
+      return { ok: false };
+    } catch (_err) {
+      return { ok: false };
+    }
+  }
+
   function openContactModal(mode) {
     const modal = $("aclContactModal");
     if (!modal) return;
@@ -629,7 +677,7 @@
     modal.setAttribute("aria-hidden", "true");
   }
 
-  function handleContactSubmit() {
+  async function handleContactSubmit() {
     const mode = $("aclContactModal")?.dataset.mode || "send";
     const contact = getContactFromForm();
     if (!contact.name || !contact.email) {
@@ -652,22 +700,23 @@
     saveQuote(record);
     closeContactModal();
 
+    const remote = await submitPrequoteToServer(record);
+
     if (mode === "print") {
       openPrintWindow(record);
+      showClientToast(
+        remote.ok
+          ? "Starter quote sent for owner review."
+          : "Starter quote saved locally; online save needs review."
+      );
       return;
     }
 
-    const toast = $("aclClientToast");
-    if (toast) {
-      toast.textContent =
-        mode === "zoom"
-          ? "Zoom request saved (lab mock). Owner briefing updated."
-          : "Starter quote saved (lab mock). No real email sent.";
-      toast.hidden = false;
-      setTimeout(() => {
-        toast.hidden = true;
-      }, 4000);
-    }
+    showClientToast(
+      remote.ok
+        ? "Starter quote sent for owner review."
+        : "Starter quote saved locally; online save needs review."
+    );
     if (state.step === 3 && mode === "zoom") setStep(4);
     if (state.step === 4) renderSendStep();
   }
