@@ -69,15 +69,14 @@
     return map[unitType] || unitType;
   }
 
-  function getBusinessName() {
-    const preset = settings?.tradePreset || "tile_contractor";
-    if (preset === "custom") {
-      const custom = String(settings?.customTradeName || "").trim();
-      if (custom) return custom;
-    }
-    const presets = window.__mgAiCloserLab?.TRADE_PRESETS;
-    if (presets?.[preset]?.label) return presets[preset].label;
-    return "Margin Guard Lab Contractor";
+  const LAB_BUSINESS_FALLBACK = "Three Colors Corp";
+
+  function getBusinessName(record) {
+    const fromRecord = String(record?.businessName || "").trim();
+    if (fromRecord) return fromRecord;
+    const fromSettings = String(settings?.businessName || settings?.tenantName || "").trim();
+    if (fromSettings) return fromSettings;
+    return LAB_BUSINESS_FALLBACK;
   }
 
   function getContactFromForm() {
@@ -390,7 +389,7 @@
     <p>Not a contract, invoice, final quote, or promised start date. Final quote requires owner review.</p>
   </div>
   <h1>Starter Pre-Quote</h1>
-  <p class="business">${escapeHtml(record.businessName || getBusinessName())}</p>
+  <p class="business">${escapeHtml(getBusinessName(record))}</p>
   <div class="range">${range}</div>
   <table>
     <tbody>

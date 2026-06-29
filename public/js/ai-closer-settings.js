@@ -99,6 +99,7 @@
     return {
       tradePreset: "tile_contractor",
       customTradeName: "",
+      businessName: "",
       services: preset.services.map((s) => ({ ...s })),
       guardrails: {
         minArea: 50,
@@ -169,6 +170,7 @@
     const next = { ...settings };
     next.tradePreset = $("aclTradePreset")?.value || "tile_contractor";
     next.customTradeName = String($("aclCustomTradeName")?.value || "").trim();
+    next.businessName = String($("aclBusinessName")?.value || "").trim();
     next.closingStyle = $("aclClosingStyle")?.value || "consultative";
     next.guardrails = {
       minArea: Number($("aclMinArea")?.value) || 50,
@@ -206,6 +208,8 @@
     const custom = $("aclCustomTradeName");
     if (customWrap) customWrap.hidden = settings.tradePreset !== "custom";
     if (custom) custom.value = settings.customTradeName || "";
+    const business = $("aclBusinessName");
+    if (business) business.value = settings.businessName || "";
     const closing = $("aclClosingStyle");
     if (closing) closing.value = settings.closingStyle || "consultative";
     $("aclMinArea").value = settings.guardrails.minArea;
