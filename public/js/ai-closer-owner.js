@@ -4,6 +4,7 @@
   const LS_QUOTES = "mg_ai_closer_lab_quotes_v1";
   const LIST_API = "/.netlify/functions/ai-closer-list-prequotes";
   const UPDATE_API = "/.netlify/functions/ai-closer-update-prequote-status";
+  const CREATE_DRAFT_API = "/.netlify/functions/ai-closer-create-draft-quote";
 
   const STATUS_ACTIONS = [
     { status: "reviewed", label: "Mark Reviewed" },
@@ -18,14 +19,18 @@
   let openDetailId = null;
   let openPreviewId = null;
   let copyToastTimer = null;
+  let createSubmitting = false;
+  const convertedByPrequoteId = new Map();
 
-  const CONVERSION_CHECKLIST = [
-    "Owner reviewed lead",
-    "Scope confirmed",
-    "Measurements confirmed",
-    "Materials/tile status confirmed",
-    "Start date reviewed",
-    "Final price to be set by owner",
+  const ELIGIBLE_CREATE_STATUSES = new Set(["reviewed", "good_lead", "needs_site_visit"]);
+
+  const OWNER_CONFIRMATION_ITEMS = [
+    { key: "owner_reviewed_lead", label: "Owner reviewed lead" },
+    { key: "scope_confirmed", label: "Scope confirmed" },
+    { key: "measurements_confirmed", label: "Measurements confirmed" },
+    { key: "materials_status_confirmed", label: "Materials/tile status confirmed" },
+    { key: "start_date_reviewed", label: "Start date reviewed" },
+    { key: "final_price_approved", label: "Final price approved" },
   ];
 
   function $(id) {
@@ -266,14 +271,240 @@
     return false;
   }
 
+  function isEligibleCreateStatus(raw) {
+    return ELIGIBLE_CREATE_STATUSES.has(statusKey(raw));
+  }
+
+  function getConvertedState(prequoteId) {
+    return convertedByPrequoteId.get(String(prequoteId || "")) || null;
+  }
+
+  function markPrequoteConverted(prequoteId, info) {
+    convertedByPrequoteId.set(String(prequoteId), { ...info, converted: true });
+  }
+
+  function parseFinalPriceInput() {
+    const input = $("aclConversionFinalPrice");
+    if (!input) return null;
+    const n = Number(input.value);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return n;
+  }
+
+  function gatherOwnerConfirmations() {
+    const out = {};
+    let allTrue = true;
+    for (const item of OWNER_CONFIRMATION_ITEMS) {
+      const cb = document.querySelector(`[data-confirm-key="${item.key}"]`);
+      const checked = Boolean(cb?.checked);
+      out[item.key] = checked;
+      if (!checked) allTrue = false;
+    }
+    return { confirmations: out, allTrue };
+  }
+
+  function showPreviewFeedback(message, tone) {
+    const el = $("aclConversionPreviewFeedback");
+    if (!el) return;
+    if (!message) {
+      el.hidden = true;
+      el.textContent = "";
+      el.className = "acl-conversion-preview__feedback";
+      return;
+    }
+    el.hidden = false;
+    el.textContent = message;
+    el.className = "acl-conversion-preview__feedback";
+    if (tone === "success") el.classList.add("acl-conversion-preview__feedback--success");
+    else if (tone === "error") el.classList.add("acl-conversion-preview__feedback--error");
+    else el.classList.add("acl-conversion-preview__feedback--info");
+  }
+
+  function updateCreateButtonState() {
+    const btn = $("aclConversionCreateBtn");
+    if (!btn || !openPreviewId) return;
+
+    const row = inboxRows.find((r) => r.id === openPreviewId);
+    const converted = getConvertedState(openPreviewId);
+    const footNote = $("aclConversionFootNote");
+
+    if (converted?.converted) {
+      btn.disabled = true;
+      btn.textContent = converted.duplicate
+        ? "Draft quote already created"
+        : "Draft quote created";
+      if (footNote) {
+        footNote.textContent =
+          "DRAFT only · Not sent · Not published · No invoice · No payment · No email";
+      }
+      return;
+    }
+
+    btn.textContent = "Create Draft Quote Only";
+
+    const price = parseFinalPriceInput();
+    const { allTrue } = gatherOwnerConfirmations();
+    const eligible = row ? isEligibleCreateStatus(row.status) : false;
+    const canCreate =
+      Boolean(price) && allTrue && eligible && !createSubmitting;
+
+    btn.disabled = !canCreate;
+
+    if (footNote) {
+      if (!eligible && row) {
+        footNote.textContent =
+          "Pre-quote status must be Reviewed, Good Lead, or Needs Site Visit to create a draft quote.";
+      } else {
+        footNote.textContent =
+          "DRAFT only · Not sent · Not published · No invoice · No payment · No email";
+      }
+    }
+  }
+
+  function closeCreateConfirm() {
+    const modal = $("aclConversionConfirm");
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+  }
+
+  function openCreateConfirm() {
+    if (createSubmitting || !openPreviewId) return;
+    const converted = getConvertedState(openPreviewId);
+    if (converted?.converted) return;
+
+    const price = parseFinalPriceInput();
+    const { allTrue } = gatherOwnerConfirmations();
+    const row = inboxRows.find((r) => r.id === openPreviewId);
+    if (!price || !allTrue || !row || !isEligibleCreateStatus(row.status)) {
+      showPreviewFeedback("Complete the final price and all confirmations first.", "error");
+      updateCreateButtonState();
+      return;
+    }
+
+    const modal = $("aclConversionConfirm");
+    if (!modal) return;
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+    $("aclConversionConfirmSubmit")?.focus();
+  }
+
+  function buildCreateDraftPayload(row) {
+    const price = parseFinalPriceInput();
+    const { confirmations } = gatherOwnerConfirmations();
+    const startDateInput = $("aclConversionStartDate");
+    const ownerNoteInput = $("aclConversionOwnerNote");
+    const payload = {
+      dry_run: false,
+      create_draft_quote: true,
+      prequote_id: row.id,
+      final_price_owner_approved: price,
+      owner_confirmations: confirmations,
+    };
+    const startDate = String(startDateInput?.value || "").trim();
+    if (startDate) payload.start_date = startDate;
+    const ownerNote = String(ownerNoteInput?.value || "").trim();
+    if (ownerNote) payload.owner_note = ownerNote;
+    return payload;
+  }
+
+  function renderConvertedSuccessBlock(info, price) {
+    const lines = [
+      "Draft quote created. It was not sent, published, invoiced, or emailed.",
+      "",
+      info.draftQuoteId ? `Draft quote ID: ${info.draftQuoteId}` : "",
+      info.status ? `Status: ${info.status}` : "",
+      price != null ? `Final owner-approved amount: ${formatMoney(price)}` : "",
+      "",
+      "Side effects: No invoice · No payment · No publish · No email",
+    ].filter(Boolean);
+    return lines.join("\n");
+  }
+
+  async function submitCreateDraftQuote() {
+    if (createSubmitting || !openPreviewId) return;
+    const row = inboxRows.find((r) => r.id === openPreviewId);
+    if (!row) return;
+
+    closeCreateConfirm();
+    createSubmitting = true;
+    updateCreateButtonState();
+    showPreviewFeedback("Creating draft quote…", "info");
+
+    try {
+      const response = await fetch(CREATE_DRAFT_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(buildCreateDraftPayload(row)),
+      });
+
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (_err) {
+        data = {};
+      }
+
+      if (response.status === 409) {
+        markPrequoteConverted(openPreviewId, { duplicate: true });
+        showPreviewFeedback("Draft quote already created for this prequote.", "info");
+        disablePreviewForm(true);
+        updateCreateButtonState();
+        return;
+      }
+
+      if (!response.ok || data.ok !== true) {
+        const msg =
+          response.status === 401 || response.status === 403
+            ? "Owner sign-in required to create a draft quote."
+            : String(data.error || "Could not create draft quote. Check the form and try again.");
+        showPreviewFeedback(msg, "error");
+        return;
+      }
+
+      const draft = data.draft_quote || {};
+      const price = parseFinalPriceInput();
+      markPrequoteConverted(openPreviewId, {
+        draftQuoteId: draft.id ? String(draft.id) : "",
+        status: draft.status ? String(draft.status) : "DRAFT",
+        estimatedAmount: draft.estimated_amount ?? price,
+      });
+      showPreviewFeedback(renderConvertedSuccessBlock(getConvertedState(openPreviewId), price), "success");
+      disablePreviewForm(true);
+      updateCreateButtonState();
+    } catch (_err) {
+      showPreviewFeedback("Could not reach the server. Check your connection and try again.", "error");
+    } finally {
+      createSubmitting = false;
+      updateCreateButtonState();
+    }
+  }
+
+  function disablePreviewForm(disabled) {
+    const body = $("aclConversionPreviewBody");
+    if (!body) return;
+    body.querySelectorAll("input, textarea").forEach((el) => {
+      el.disabled = disabled;
+    });
+  }
+
   function closeConversionPreview() {
     const modal = $("aclConversionPreview");
     if (!modal) return;
     modal.hidden = true;
     modal.setAttribute("aria-hidden", "true");
     openPreviewId = null;
+    createSubmitting = false;
+    closeCreateConfirm();
+    showPreviewFeedback("", "");
     const body = $("aclConversionPreviewBody");
     if (body) body.innerHTML = "";
+    const btn = $("aclConversionCreateBtn");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Create Draft Quote Only";
+    }
   }
 
   function renderConversionPreview(row) {
@@ -281,15 +512,40 @@
     if (!body || !row) return;
 
     const st = statusKey(row.status);
-    const checklist = CONVERSION_CHECKLIST.map(
+    const converted = getConvertedState(row.id);
+    const eligible = isEligibleCreateStatus(row.status);
+
+    const checklist = OWNER_CONFIRMATION_ITEMS.map(
       (item) =>
-        `<li><span class="acl-conversion-check" aria-hidden="true"></span>${escapeHtml(item)}</li>`
+        `<li>
+          <input type="checkbox" id="aclConfirm_${escapeHtml(item.key)}" data-confirm-key="${escapeHtml(item.key)}"${converted?.converted ? " disabled" : ""} />
+          <label for="aclConfirm_${escapeHtml(item.key)}">${escapeHtml(item.label)}</label>
+        </li>`
     ).join("");
+
+    const convertedBanner = converted?.converted
+      ? `<p class="acl-conversion-converted-banner" role="status">${
+          converted.duplicate
+            ? "Draft quote already created for this prequote."
+            : `Draft quote already created${converted.draftQuoteId ? ` (ID: ${escapeHtml(converted.draftQuoteId)})` : ""}.`
+        }</p>`
+      : "";
+
+    const formDisabled = converted?.converted ? " disabled" : "";
 
     body.innerHTML = `
       <p class="acl-conversion-preview__warning">
-        This preview does not create an official quote. A later owner-approved step will map this pre-quote into the real Margin Guard quote workflow.
+        Create a DRAFT quote only after owner review. This does not send, publish, invoice, request payment, or email the client.
       </p>
+      <div class="acl-conversion-safety-pills" aria-label="Safety labels">
+        <span class="acl-conversion-safety-pill">DRAFT only</span>
+        <span class="acl-conversion-safety-pill">Not sent</span>
+        <span class="acl-conversion-safety-pill">Not published</span>
+        <span class="acl-conversion-safety-pill">No invoice</span>
+        <span class="acl-conversion-safety-pill">No payment</span>
+        <span class="acl-conversion-safety-pill">No email</span>
+      </div>
+      ${convertedBanner}
       <dl class="acl-detail-meta acl-detail-meta--preview">
         <div><dt>Client name</dt><dd>${escapeHtml(row.client_name || "—")}</dd></div>
         <div><dt>Client email</dt><dd>${escapeHtml(row.client_email || "—")}</dd></div>
@@ -309,9 +565,40 @@
         }
       </dl>
       <div class="acl-conversion-section">
-        <h4 class="acl-conversion-section__title">Before conversion</h4>
-        <ul class="acl-conversion-checklist" aria-label="Conversion readiness checklist">${checklist}</ul>
+        <h4 class="acl-conversion-section__title">Owner approvals required</h4>
+        <div class="acl-conversion-form">
+          <div class="acl-conversion-field">
+            <label for="aclConversionFinalPrice">Final owner-approved price</label>
+            <input type="number" id="aclConversionFinalPrice" min="1" step="0.01" placeholder="12000"${formDisabled} />
+            <p class="acl-conversion-field__help">This is the final DRAFT quote amount approved by the owner. It is not auto-calculated by AI.</p>
+          </div>
+          <ul class="acl-conversion-checklist acl-conversion-checklist--interactive" aria-label="Owner confirmation checklist">${checklist}</ul>
+          <div class="acl-conversion-field">
+            <label for="aclConversionStartDate">Start date (optional)</label>
+            <input type="date" id="aclConversionStartDate"${formDisabled} />
+          </div>
+          <div class="acl-conversion-field">
+            <label for="aclConversionOwnerNote">Owner note (optional)</label>
+            <textarea id="aclConversionOwnerNote" maxlength="5000" placeholder="Optional note for the draft quote"${formDisabled}></textarea>
+          </div>
+        </div>
+        ${
+          !eligible && !converted?.converted
+            ? `<p class="acl-conversion-field__help" style="margin-top:12px;">Status must be Reviewed, Good Lead, or Needs Site Visit before creating a draft quote.</p>`
+            : ""
+        }
       </div>`;
+
+    if (converted?.converted && converted.draftQuoteId) {
+      showPreviewFeedback(
+        renderConvertedSuccessBlock(converted, converted.estimatedAmount),
+        "success"
+      );
+    } else {
+      showPreviewFeedback("", "");
+    }
+
+    updateCreateButtonState();
   }
 
   function openConversionPreview(prequoteId) {
@@ -727,11 +1014,41 @@
     $("aclConversionPreview")?.addEventListener("click", (ev) => {
       if (ev.target.closest("[data-preview-close]")) {
         closeConversionPreview();
+        return;
+      }
+      if (ev.target.closest("#aclConversionCreateBtn")) {
+        const btn = $("aclConversionCreateBtn");
+        if (!btn || btn.disabled) return;
+        openCreateConfirm();
+        return;
+      }
+    });
+
+    $("aclConversionPreview")?.addEventListener("input", () => {
+      if (openPreviewId) updateCreateButtonState();
+    });
+
+    $("aclConversionPreview")?.addEventListener("change", () => {
+      if (openPreviewId) updateCreateButtonState();
+    });
+
+    $("aclConversionConfirm")?.addEventListener("click", (ev) => {
+      if (ev.target.closest("[data-confirm-cancel]")) {
+        closeCreateConfirm();
+        return;
+      }
+      if (ev.target.closest("#aclConversionConfirmSubmit")) {
+        void submitCreateDraftQuote();
       }
     });
 
     document.addEventListener("keydown", (ev) => {
       if (ev.key !== "Escape") return;
+      const confirmOpen = $("aclConversionConfirm") && !$("aclConversionConfirm").hidden;
+      if (confirmOpen) {
+        closeCreateConfirm();
+        return;
+      }
       if (openPreviewId) {
         closeConversionPreview();
         return;

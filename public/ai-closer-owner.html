@@ -704,12 +704,158 @@
       opacity: 0.5;
       cursor: not-allowed;
     }
+    .acl-conversion-preview__cta:not(:disabled) {
+      opacity: 1;
+      cursor: pointer;
+      border-color: rgba(34, 197, 94, 0.45);
+      background: rgba(34, 197, 94, 0.14);
+      color: #ecfdf5;
+    }
     .acl-conversion-preview__foot-note {
       margin: 10px 0 0;
       text-align: center;
       font-size: 0.6875rem;
       color: rgba(148, 163, 184, 0.85);
       line-height: 1.4;
+    }
+    .acl-conversion-safety-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 0 0 18px;
+    }
+    .acl-conversion-safety-pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      background: rgba(15, 23, 42, 0.55);
+      font-size: 0.625rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(203, 213, 225, 0.92);
+    }
+    .acl-conversion-form {
+      display: grid;
+      gap: 16px;
+    }
+    .acl-conversion-field label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: rgba(226, 232, 240, 0.92);
+    }
+    .acl-conversion-field input[type="number"],
+    .acl-conversion-field input[type="date"],
+    .acl-conversion-field textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(15, 23, 42, 0.65);
+      color: #f8fafc;
+      font: inherit;
+      font-size: 0.875rem;
+    }
+    .acl-conversion-field textarea {
+      min-height: 72px;
+      resize: vertical;
+    }
+    .acl-conversion-field__help {
+      margin: 6px 0 0;
+      font-size: 0.75rem;
+      line-height: 1.45;
+      color: rgba(148, 163, 184, 0.9);
+    }
+    .acl-conversion-checklist--interactive li {
+      cursor: pointer;
+    }
+    .acl-conversion-checklist--interactive input[type="checkbox"] {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: #22c55e;
+    }
+    .acl-conversion-preview__feedback {
+      margin: 0 0 12px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 0.8125rem;
+      line-height: 1.5;
+    }
+    .acl-conversion-preview__feedback[hidden] { display: none !important; }
+    .acl-conversion-preview__feedback--success {
+      border: 1px solid rgba(34, 197, 94, 0.35);
+      background: rgba(34, 197, 94, 0.1);
+      color: #bbf7d0;
+    }
+    .acl-conversion-preview__feedback--error {
+      border: 1px solid rgba(239, 68, 68, 0.32);
+      background: rgba(239, 68, 68, 0.1);
+      color: #fecaca;
+    }
+    .acl-conversion-preview__feedback--info {
+      border: 1px solid rgba(59, 130, 246, 0.32);
+      background: rgba(59, 130, 246, 0.1);
+      color: #bfdbfe;
+    }
+    .acl-conversion-converted-banner {
+      margin: 0 0 16px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(34, 197, 94, 0.32);
+      background: rgba(34, 197, 94, 0.08);
+      font-size: 0.8125rem;
+      color: #bbf7d0;
+    }
+    .acl-conversion-confirm {
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+    .acl-conversion-confirm[hidden] { display: none !important; }
+    .acl-conversion-confirm__backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.88);
+      border: none;
+      cursor: pointer;
+    }
+    .acl-conversion-confirm__panel {
+      position: relative;
+      width: min(520px, calc(100vw - 32px));
+      padding: 22px 24px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+    }
+    .acl-conversion-confirm__title {
+      margin: 0 0 12px;
+      font-size: 1.0625rem;
+      font-weight: 800;
+      color: #f8fafc;
+    }
+    .acl-conversion-confirm__warning {
+      margin: 0 0 18px;
+      font-size: 0.8125rem;
+      line-height: 1.55;
+      color: #fde68a;
+    }
+    .acl-conversion-confirm__actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
     }
   </style>
 </head>
@@ -782,9 +928,22 @@
             </header>
             <div id="aclConversionPreviewBody" class="acl-conversion-preview__body"></div>
             <footer class="acl-conversion-preview__foot">
-              <button type="button" class="btn acl-conversion-preview__cta" disabled title="Official quote creation is not available in this preview step">Create Quote — Disabled</button>
-              <p class="acl-conversion-preview__foot-note">Preview only — official quote creation comes in a later owner-approved step.</p>
+              <p id="aclConversionPreviewFeedback" class="acl-conversion-preview__feedback" hidden role="status" aria-live="polite"></p>
+              <button type="button" class="btn acl-conversion-preview__cta" id="aclConversionCreateBtn" disabled>Create Draft Quote Only</button>
+              <p class="acl-conversion-preview__foot-note" id="aclConversionFootNote">DRAFT only · Not sent · Not published · No invoice · No payment · No email</p>
             </footer>
+          </div>
+        </div>
+
+        <div id="aclConversionConfirm" class="acl-conversion-confirm" hidden aria-hidden="true">
+          <button type="button" class="acl-conversion-confirm__backdrop" data-confirm-cancel aria-label="Cancel"></button>
+          <div class="acl-conversion-confirm__panel" role="dialog" aria-modal="true" aria-labelledby="aclConversionConfirmTitle">
+            <h4 id="aclConversionConfirmTitle" class="acl-conversion-confirm__title">Create Draft Quote Only</h4>
+            <p class="acl-conversion-confirm__warning">This will create a DRAFT quote only. It will not send, publish, invoice, request payment, or email the client.</p>
+            <div class="acl-conversion-confirm__actions">
+              <button type="button" class="btn ghost" data-confirm-cancel>Cancel</button>
+              <button type="button" class="btn" id="aclConversionConfirmSubmit">Create Draft Quote</button>
+            </div>
           </div>
         </div>
 
