@@ -686,8 +686,8 @@
             </dl>
             <div class="acl-detail-convert-row">
               <button type="button" class="btn acl-convert-btn" data-prequote-preview="${escapeHtml(row.id)}">
-                Create Official Quote
-                <span class="acl-convert-btn__badge">Preview only</span>
+                Create Draft Quote Only
+                <span class="acl-convert-btn__badge">DRAFT ONLY</span>
               </button>
             </div>
           </section>
