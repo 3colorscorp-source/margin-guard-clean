@@ -290,7 +290,7 @@
       <p class="acl-conversion-preview__warning">
         This preview does not create an official quote. A later owner-approved step will map this pre-quote into the real Margin Guard quote workflow.
       </p>
-      <dl class="acl-detail-meta">
+      <dl class="acl-detail-meta acl-detail-meta--preview">
         <div><dt>Client name</dt><dd>${escapeHtml(row.client_name || "—")}</dd></div>
         <div><dt>Client email</dt><dd>${escapeHtml(row.client_email || "—")}</dd></div>
         <div><dt>Phone</dt><dd>${escapeHtml(row.client_phone || "—")}</dd></div>
@@ -301,17 +301,16 @@
         <div><dt>Planning range</dt><dd>${escapeHtml(planningRange(row))}</dd></div>
         <div><dt>Budget signal</dt><dd>${escapeHtml(budgetSignalLabel(row.budget_signal))}</dd></div>
         <div><dt>Zoom slot</dt><dd>${escapeHtml(row.zoom_slot || "—")}</dd></div>
-        <div class="acl-detail-meta__full"><dt>Current prequote status</dt><dd><span class="acl-status-badge acl-status-badge--${escapeHtml(st)}">${escapeHtml(statusLabel(row.status))}</span></dd></div>
+        <div><dt>Current prequote status</dt><dd><span class="acl-status-badge acl-status-badge--${escapeHtml(st)}">${escapeHtml(statusLabel(row.status))}</span></dd></div>
         ${
           row.scope_notes
             ? `<div class="acl-detail-meta__full"><dt>Scope notes</dt><dd>${escapeHtml(row.scope_notes)}</dd></div>`
             : ""
         }
       </dl>
-      <h4 style="margin:0 0 8px;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:rgba(232,238,252,0.55);">Before conversion</h4>
-      <ul class="acl-conversion-checklist" aria-label="Conversion readiness checklist">${checklist}</ul>
-      <div class="acl-conversion-preview__actions">
-        <button type="button" class="btn" disabled title="Official quote creation is not available in this preview step">Create Quote — Disabled</button>
+      <div class="acl-conversion-section">
+        <h4 class="acl-conversion-section__title">Before conversion</h4>
+        <ul class="acl-conversion-checklist" aria-label="Conversion readiness checklist">${checklist}</ul>
       </div>`;
   }
 
