@@ -748,7 +748,6 @@
       color: rgba(226, 232, 240, 0.92);
     }
     .acl-conversion-field input[type="number"],
-    .acl-conversion-field input[type="date"],
     .acl-conversion-field textarea {
       width: 100%;
       box-sizing: border-box;
@@ -763,6 +762,109 @@
     .acl-conversion-field textarea {
       min-height: 72px;
       resize: vertical;
+    }
+    .acl-conversion-field__label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: rgba(226, 232, 240, 0.92);
+    }
+    .acl-month-picker {
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(15, 23, 42, 0.55);
+    }
+    .acl-month-picker__head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .acl-month-picker__month {
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+    .acl-month-picker__clear {
+      padding: 4px 8px;
+      border: none;
+      background: transparent;
+      color: rgba(148, 163, 184, 0.95);
+      font: inherit;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .acl-month-picker__clear:hover:not(:disabled),
+    .acl-month-picker__clear:focus-visible:not(:disabled) {
+      color: #e2e8f0;
+    }
+    .acl-month-picker__clear:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      text-decoration: none;
+    }
+    .acl-month-picker__weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+    .acl-month-picker__weekday {
+      text-align: center;
+      font-size: 0.625rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: rgba(148, 163, 184, 0.85);
+    }
+    .acl-month-picker__grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+    }
+    .acl-month-picker__pad {
+      display: block;
+      min-height: 32px;
+    }
+    .acl-month-picker__day {
+      min-height: 32px;
+      padding: 0;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.04);
+      color: #f8fafc;
+      font: inherit;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.12s ease, background 0.12s ease;
+    }
+    .acl-month-picker__day:hover:not(:disabled),
+    .acl-month-picker__day:focus-visible:not(:disabled) {
+      border-color: rgba(34, 197, 94, 0.4);
+      background: rgba(34, 197, 94, 0.1);
+    }
+    .acl-month-picker__day--today {
+      border-color: rgba(59, 130, 246, 0.45);
+      box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.25);
+    }
+    .acl-month-picker__day--selected {
+      border-color: rgba(34, 197, 94, 0.55);
+      background: rgba(34, 197, 94, 0.22);
+      color: #ecfdf5;
+    }
+    .acl-month-picker__day:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .acl-month-picker__selected {
+      margin-top: 10px;
+      margin-bottom: 0;
     }
     .acl-conversion-field__help {
       margin: 6px 0 0;

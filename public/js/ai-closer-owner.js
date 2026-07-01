@@ -117,6 +117,111 @@
     }
   }
 
+  function pad2(n) {
+    return String(n).padStart(2, "0");
+  }
+
+  function getCurrentMonthPickerMeta() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    return {
+      year,
+      month,
+      monthLabel: now.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+      daysInMonth: new Date(year, month + 1, 0).getDate(),
+      firstWeekday: new Date(year, month, 1).getDay(),
+      todayDay: now.getDate(),
+    };
+  }
+
+  function isoFromPickerDay(year, month, day) {
+    return `${year}-${pad2(month + 1)}-${pad2(day)}`;
+  }
+
+  function formatFriendlyStartDate(iso) {
+    if (!iso) return "";
+    try {
+      const d = new Date(`${iso}T12:00:00`);
+      return d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    } catch (_err) {
+      return iso;
+    }
+  }
+
+  function buildMonthDayPickerHtml(disabled) {
+    const meta = getCurrentMonthPickerMeta();
+    const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const weekdayHtml = weekdays
+      .map((w) => `<span class="acl-month-picker__weekday">${escapeHtml(w)}</span>`)
+      .join("");
+
+    let cells = "";
+    for (let i = 0; i < meta.firstWeekday; i++) {
+      cells += `<span class="acl-month-picker__pad" aria-hidden="true"></span>`;
+    }
+    for (let day = 1; day <= meta.daysInMonth; day++) {
+      const todayClass = day === meta.todayDay ? " acl-month-picker__day--today" : "";
+      cells += `<button type="button" class="acl-month-picker__day${todayClass}" data-pick-day="${day}"${disabled ? " disabled" : ""}>${day}</button>`;
+    }
+
+    return `
+      <div class="acl-month-picker" data-picker-year="${meta.year}" data-picker-month="${meta.month}">
+        <div class="acl-month-picker__head">
+          <span class="acl-month-picker__month">${escapeHtml(meta.monthLabel)}</span>
+          <button type="button" class="acl-month-picker__clear" id="aclConversionClearDate"${disabled ? " disabled" : ""}>Clear date</button>
+        </div>
+        <div class="acl-month-picker__weekdays">${weekdayHtml}</div>
+        <div class="acl-month-picker__grid" id="aclConversionDayGrid">${cells}</div>
+        <p class="acl-conversion-field__help acl-month-picker__selected" id="aclConversionSelectedDateHelp">No start day selected.</p>
+        <input type="hidden" id="aclConversionStartDate" value="" />
+      </div>`;
+  }
+
+  function setStartDateFromDay(day) {
+    const picker = document.querySelector("#aclConversionPreviewBody .acl-month-picker");
+    if (!picker) return;
+    const year = Number(picker.dataset.pickerYear);
+    const month = Number(picker.dataset.pickerMonth);
+    const dayNum = Number(day);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(dayNum)) return;
+
+    const iso = isoFromPickerDay(year, month, dayNum);
+    const hidden = $("aclConversionStartDate");
+    if (hidden) hidden.value = iso;
+
+    const grid = $("aclConversionDayGrid");
+    if (grid) {
+      grid.querySelectorAll(".acl-month-picker__day").forEach((btn) => {
+        btn.classList.toggle(
+          "acl-month-picker__day--selected",
+          Number(btn.getAttribute("data-pick-day")) === dayNum
+        );
+      });
+    }
+
+    const help = $("aclConversionSelectedDateHelp");
+    if (help) help.textContent = `Selected: ${formatFriendlyStartDate(iso)}`;
+  }
+
+  function clearStartDatePicker() {
+    const hidden = $("aclConversionStartDate");
+    if (hidden) hidden.value = "";
+    $("aclConversionDayGrid")?.querySelectorAll(".acl-month-picker__day").forEach((btn) => {
+      btn.classList.remove("acl-month-picker__day--selected");
+    });
+    const help = $("aclConversionSelectedDateHelp");
+    if (help) help.textContent = "No start day selected.";
+  }
+
+  function getSelectedStartDateIso() {
+    return String($("aclConversionStartDate")?.value || "").trim();
+  }
+
   function preferredContactLabel(value) {
     const key = String(value || "").trim().toLowerCase();
     const map = {
@@ -392,7 +497,6 @@
   function buildCreateDraftPayload(row) {
     const price = parseFinalPriceInput();
     const { confirmations } = gatherOwnerConfirmations();
-    const startDateInput = $("aclConversionStartDate");
     const ownerNoteInput = $("aclConversionOwnerNote");
     const payload = {
       dry_run: false,
@@ -401,7 +505,7 @@
       final_price_owner_approved: price,
       owner_confirmations: confirmations,
     };
-    const startDate = String(startDateInput?.value || "").trim();
+    const startDate = getSelectedStartDateIso();
     if (startDate) payload.start_date = startDate;
     const ownerNote = String(ownerNoteInput?.value || "").trim();
     if (ownerNote) payload.owner_note = ownerNote;
@@ -484,7 +588,7 @@
   function disablePreviewForm(disabled) {
     const body = $("aclConversionPreviewBody");
     if (!body) return;
-    body.querySelectorAll("input, textarea").forEach((el) => {
+    body.querySelectorAll("input, textarea, .acl-month-picker__day, .acl-month-picker__clear").forEach((el) => {
       el.disabled = disabled;
     });
   }
@@ -574,8 +678,8 @@
           </div>
           <ul class="acl-conversion-checklist acl-conversion-checklist--interactive" aria-label="Owner confirmation checklist">${checklist}</ul>
           <div class="acl-conversion-field">
-            <label for="aclConversionStartDate">Start date (optional)</label>
-            <input type="date" id="aclConversionStartDate"${formDisabled} />
+            <span class="acl-conversion-field__label" id="aclConversionStartDayLabel">Start day (optional)</span>
+            ${buildMonthDayPickerHtml(Boolean(converted?.converted))}
           </div>
           <div class="acl-conversion-field">
             <label for="aclConversionOwnerNote">Owner note (optional)</label>
@@ -1021,6 +1125,16 @@
         if (!btn || btn.disabled) return;
         openCreateConfirm();
         return;
+      }
+      const dayBtn = ev.target.closest("[data-pick-day]");
+      if (dayBtn && !dayBtn.disabled) {
+        setStartDateFromDay(dayBtn.getAttribute("data-pick-day"));
+        return;
+      }
+      if (ev.target.closest("#aclConversionClearDate")) {
+        const clearBtn = $("aclConversionClearDate");
+        if (!clearBtn || clearBtn.disabled) return;
+        clearStartDatePicker();
       }
     });
 
