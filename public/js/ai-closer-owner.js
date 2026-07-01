@@ -349,48 +349,62 @@
     }
 
     body.innerHTML = `
-      <span class="acl-detail-pill">Starter Pre-Quote — Not Final</span>
-      <p class="acl-detail-warning">
-        Review manually before creating an official quote. This screen does not create or modify official quotes.
-      </p>
-      <div class="acl-detail-copy-row">
-        <button type="button" class="btn ghost" data-copy-label="Copy client email" data-copy-email="${escapeHtml(row.client_email || "")}"${row.client_email ? "" : " disabled"}>Copy client email</button>
-        <button type="button" class="btn ghost" data-copy-label="Copy owner review summary" data-copy-summary="1" data-prequote-id="${escapeHtml(row.id)}">Copy owner review summary</button>
-      </div>
-      <p class="acl-detail-range">${escapeHtml(planningRange(row))}</p>
-      <dl class="acl-detail-meta">
-        <div><dt>Status</dt><dd><span class="acl-status-badge acl-status-badge--${escapeHtml(st)}">${escapeHtml(statusLabel(row.status))}</span></dd></div>
-        <div><dt>Submitted</dt><dd>${escapeHtml(formatDate(row.created_at))}</dd></div>
-        <div><dt>Client name</dt><dd>${escapeHtml(row.client_name || "—")}</dd></div>
-        <div><dt>Client email</dt><dd>${escapeHtml(row.client_email || "—")}</dd></div>
-        <div><dt>Client phone</dt><dd>${escapeHtml(row.client_phone || "—")}</dd></div>
-        <div><dt>Preferred contact</dt><dd>${escapeHtml(preferredContactLabel(row.preferred_contact))}</dd></div>
-        <div><dt>Project name</dt><dd>${escapeHtml(row.project_name || "—")}</dd></div>
-        <div><dt>Work type</dt><dd>${escapeHtml(row.work_type || "—")}</dd></div>
-        <div><dt>Scope size</dt><dd>${escapeHtml(scopeLine(row))}</dd></div>
-        <div><dt>Unit type</dt><dd>${escapeHtml(unitLabel(row.unit_type))}</dd></div>
-        <div><dt>Estimated crew days</dt><dd>${escapeHtml(row.estimated_crew_days != null ? String(row.estimated_crew_days) : "—")}</dd></div>
-        <div><dt>Client budget</dt><dd>${escapeHtml(row.client_budget || "—")}</dd></div>
-        <div><dt>Budget signal</dt><dd>${escapeHtml(budgetSignalLabel(row.budget_signal))}</dd></div>
-        <div><dt>Zoom slot</dt><dd>${escapeHtml(row.zoom_slot || "—")}</dd></div>
-        <div><dt>Target date</dt><dd>${escapeHtml(formatDateOnly(row.target_date))}</dd></div>
-        <div class="acl-detail-meta__full"><dt>Plan / photo filenames</dt><dd>${fileListHtml(row)}</dd></div>
-      </dl>
-      ${
-        row.scope_notes
-          ? `<div class="acl-detail-meta__full"><dt style="font-size:0.625rem;text-transform:uppercase;letter-spacing:0.06em;color:rgba(232,238,252,0.55);margin:0 0 4px;">Scope notes</dt><div class="acl-detail-notes">${escapeHtml(row.scope_notes)}</div></div>`
-          : ""
-      }
-      ${
-        row.client_notes
-          ? `<div class="acl-detail-meta__full" style="margin-top:10px;"><dt style="font-size:0.625rem;text-transform:uppercase;letter-spacing:0.06em;color:rgba(232,238,252,0.55);margin:0 0 4px;">Client notes</dt><div class="acl-detail-notes">${escapeHtml(row.client_notes)}</div></div>`
-          : ""
-      }
-      <div class="acl-detail-convert-row">
-        <button type="button" class="btn acl-convert-btn" data-prequote-preview="${escapeHtml(row.id)}">
-          Create Official Quote
-          <span class="acl-convert-btn__badge">Preview only</span>
-        </button>
+      <div class="acl-detail-workspace">
+        <div class="acl-detail-workspace__banner">
+          <span class="acl-detail-pill">Starter Pre-Quote — Not Final</span>
+          <p class="acl-detail-warning">
+            Review manually before creating an official quote. This screen does not create or modify official quotes.
+          </p>
+          <div class="acl-detail-copy-row">
+            <button type="button" class="btn ghost" data-copy-label="Copy client email" data-copy-email="${escapeHtml(row.client_email || "")}"${row.client_email ? "" : " disabled"}>Copy client email</button>
+            <button type="button" class="btn ghost" data-copy-label="Copy owner review summary" data-copy-summary="1" data-prequote-id="${escapeHtml(row.id)}">Copy owner review summary</button>
+          </div>
+        </div>
+        <div class="acl-detail-workspace__cols">
+          <section class="acl-detail-workspace__panel">
+            <h4 class="acl-detail-section__title">Lead &amp; project</h4>
+            <dl class="acl-detail-meta acl-detail-meta--stack">
+              <div><dt>Client name</dt><dd>${escapeHtml(row.client_name || "—")}</dd></div>
+              <div><dt>Client email</dt><dd>${escapeHtml(row.client_email || "—")}</dd></div>
+              <div><dt>Client phone</dt><dd>${escapeHtml(row.client_phone || "—")}</dd></div>
+              <div><dt>Preferred contact</dt><dd>${escapeHtml(preferredContactLabel(row.preferred_contact))}</dd></div>
+              <div><dt>Project name</dt><dd>${escapeHtml(row.project_name || "—")}</dd></div>
+              <div><dt>Work type</dt><dd>${escapeHtml(row.work_type || "—")}</dd></div>
+              <div><dt>Scope size</dt><dd>${escapeHtml(scopeLine(row))}</dd></div>
+              <div><dt>Unit type</dt><dd>${escapeHtml(unitLabel(row.unit_type))}</dd></div>
+              <div class="acl-detail-meta__full"><dt>Plan / photo filenames</dt><dd>${fileListHtml(row)}</dd></div>
+            </dl>
+            ${
+              row.scope_notes
+                ? `<div class="acl-detail-meta__full" style="margin-top:14px;"><dt class="acl-detail-section__title" style="margin-bottom:8px;">Scope notes</dt><div class="acl-detail-notes">${escapeHtml(row.scope_notes)}</div></div>`
+                : ""
+            }
+            ${
+              row.client_notes
+                ? `<div class="acl-detail-meta__full" style="margin-top:14px;"><dt class="acl-detail-section__title" style="margin-bottom:8px;">Client notes</dt><div class="acl-detail-notes">${escapeHtml(row.client_notes)}</div></div>`
+                : ""
+            }
+          </section>
+          <section class="acl-detail-workspace__panel acl-detail-workspace__panel--accent">
+            <h4 class="acl-detail-section__title">Planning &amp; status</h4>
+            <p class="acl-detail-range">${escapeHtml(planningRange(row))}</p>
+            <dl class="acl-detail-meta acl-detail-meta--stack">
+              <div><dt>Status</dt><dd><span class="acl-status-badge acl-status-badge--${escapeHtml(st)}">${escapeHtml(statusLabel(row.status))}</span></dd></div>
+              <div><dt>Submitted</dt><dd>${escapeHtml(formatDate(row.created_at))}</dd></div>
+              <div><dt>Estimated crew days</dt><dd>${escapeHtml(row.estimated_crew_days != null ? String(row.estimated_crew_days) : "—")}</dd></div>
+              <div><dt>Client budget</dt><dd>${escapeHtml(row.client_budget || "—")}</dd></div>
+              <div><dt>Budget signal</dt><dd>${escapeHtml(budgetSignalLabel(row.budget_signal))}</dd></div>
+              <div><dt>Zoom slot</dt><dd>${escapeHtml(row.zoom_slot || "—")}</dd></div>
+              <div><dt>Target date</dt><dd>${escapeHtml(formatDateOnly(row.target_date))}</dd></div>
+            </dl>
+            <div class="acl-detail-convert-row">
+              <button type="button" class="btn acl-convert-btn" data-prequote-preview="${escapeHtml(row.id)}">
+                Create Official Quote
+                <span class="acl-convert-btn__badge">Preview only</span>
+              </button>
+            </div>
+          </section>
+        </div>
       </div>`;
 
     body.dataset.prequoteId = row.id;
