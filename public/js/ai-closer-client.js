@@ -3,10 +3,19 @@
 
   const LS_SETTINGS = "mg_ai_closer_lab_settings_v1";
   const LS_QUOTES = "mg_ai_closer_lab_quotes_v1";
+  const SUBMIT_FINGERPRINT_KEY = "mg_ai_closer_last_submit_fingerprint_v1";
+  const SUBMIT_FINGERPRINT_TIME_KEY = "mg_ai_closer_last_submit_fingerprint_time_v1";
+  const SUBMIT_COOLDOWN_MS = 10 * 60 * 1000;
+  const CONTACT_SUBMIT_DEFAULT_LABEL = "Continue";
+  const PREQUOTE_SUCCESS_MESSAGE = "Pre-quote submitted. The owner can review it now.";
+  const PREQUOTE_DUPLICATE_MESSAGE =
+    "This pre-quote was already submitted. Please wait or change the details before submitting again.";
 
   const STEPS = ["scope", "budget", "quote", "zoom", "send"];
 
   let settings = null;
+  let isSubmittingPrequote = false;
+  let prequoteSubmitted = false;
   let state = {
     step: 0,
     projectName: "",
@@ -242,9 +251,15 @@
     const quote = state.quote || computeQuote();
     const summary = $("aclSendSummary");
     if (!summary || !quote || quote.error) return;
+    const quoteStatus = prequoteSubmitted
+      ? "Submitted"
+      : state.quoteSent
+        ? "Sent (lab mock)"
+        : "Ready";
     summary.innerHTML = `
       <p><strong>${escapeHtml(state.projectName || "Your project")}</strong> · ${formatMoney(quote.rangeLow)} – ${formatMoney(quote.rangeHigh)}</p>
-      <p class="sub">Zoom: ${escapeHtml(state.zoomRequested ? state.zoomSlot || "Requested" : "Not booked yet")} · Quote: ${state.quoteSent ? "Sent (lab mock)" : "Ready"}</p>`;
+      <p class="sub">Zoom: ${escapeHtml(state.zoomRequested ? state.zoomSlot || "Requested" : "Not booked yet")} · Quote: ${quoteStatus}</p>
+      ${prequoteSubmitted ? `<p class="acl-success">${escapeHtml(PREQUOTE_SUCCESS_MESSAGE)}</p>` : ""}`;
   }
 
   function validateStep() {
@@ -651,7 +666,80 @@
     }
   }
 
+  function getTenantSlugFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    return String(params.get("tenant") || params.get("tenantSlug") || "")
+      .trim()
+      .toLowerCase();
+  }
+
+  function buildSubmitFingerprint(record) {
+    const parts = [
+      getTenantSlugFromUrl(),
+      String(record.projectName || "").trim().toLowerCase(),
+      String(record.clientEmail || "").trim().toLowerCase(),
+      String(record.serviceName || "").trim().toLowerCase(),
+      String(record.area ?? "").trim(),
+      String(record.budgetMin ?? "").trim(),
+      String(record.budgetMax ?? "").trim(),
+      String(record.clientPhone || "").trim(),
+    ];
+    return parts.join("|");
+  }
+
+  function isDuplicateFingerprintBlocked(fingerprint) {
+    if (!fingerprint) return false;
+    try {
+      const stored = sessionStorage.getItem(SUBMIT_FINGERPRINT_KEY);
+      const storedTime = Number(sessionStorage.getItem(SUBMIT_FINGERPRINT_TIME_KEY));
+      if (stored !== fingerprint || !Number.isFinite(storedTime)) return false;
+      return Date.now() - storedTime < SUBMIT_COOLDOWN_MS;
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  function rememberSubmitFingerprint(fingerprint) {
+    try {
+      sessionStorage.setItem(SUBMIT_FINGERPRINT_KEY, fingerprint);
+      sessionStorage.setItem(SUBMIT_FINGERPRINT_TIME_KEY, String(Date.now()));
+    } catch (_err) {
+      /* ignore */
+    }
+  }
+
+  function setContactSubmitUi({ disabled, label }) {
+    const btn = $("aclContactSubmit");
+    if (!btn) return;
+    if (disabled != null) btn.disabled = disabled;
+    if (label) btn.textContent = label;
+  }
+
+  function showContactSuccess(message) {
+    const el = $("aclContactSuccess");
+    if (!el) return;
+    el.textContent = message;
+    el.hidden = false;
+  }
+
+  function lockClientSubmitActions() {
+    prequoteSubmitted = true;
+    const sendBtn = $("aclSendQuote");
+    const zoomBtn = $("aclBookZoom");
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      sendBtn.textContent = "Submitted";
+    }
+    if (zoomBtn) {
+      zoomBtn.disabled = true;
+    }
+  }
+
   function openContactModal(mode) {
+    if (prequoteSubmitted && (mode === "send" || mode === "zoom")) {
+      showClientToast(PREQUOTE_SUCCESS_MESSAGE);
+      return;
+    }
     const modal = $("aclContactModal");
     if (!modal) return;
     modal.dataset.mode = mode;
@@ -666,6 +754,11 @@
               ? "Your details for starter pre-quote"
               : "Your details";
     }
+    $("aclContactError").hidden = true;
+    $("aclContactSuccess").hidden = true;
+    if (!prequoteSubmitted && !isSubmittingPrequote) {
+      setContactSubmitUi({ disabled: false, label: CONTACT_SUBMIT_DEFAULT_LABEL });
+    }
     modal.hidden = false;
     modal.setAttribute("aria-hidden", "false");
   }
@@ -678,6 +771,8 @@
   }
 
   async function handleContactSubmit() {
+    if (isSubmittingPrequote || prequoteSubmitted) return;
+
     const mode = $("aclContactModal")?.dataset.mode || "send";
     const contact = getContactFromForm();
     if (!contact.name || !contact.email) {
@@ -686,37 +781,56 @@
       return;
     }
     $("aclContactError").hidden = true;
+    $("aclContactSuccess").hidden = true;
     syncContactToState(contact);
     syncWizardStateFromForm();
     const record = buildQuoteRecord(contact);
+    const fingerprint = buildSubmitFingerprint(record);
+    if (isDuplicateFingerprintBlocked(fingerprint)) {
+      $("aclContactError").textContent = PREQUOTE_DUPLICATE_MESSAGE;
+      $("aclContactError").hidden = false;
+      return;
+    }
+
+    isSubmittingPrequote = true;
+    setContactSubmitUi({ disabled: true, label: "Submitting..." });
+
+    if (mode === "zoom") {
+      record.zoomRequested = true;
+    }
+
+    const remote = await submitPrequoteToServer(record);
+
+    if (!remote.ok) {
+      isSubmittingPrequote = false;
+      setContactSubmitUi({ disabled: false, label: CONTACT_SUBMIT_DEFAULT_LABEL });
+      $("aclContactError").textContent = "Could not submit your pre-quote online. Please try again.";
+      $("aclContactError").hidden = false;
+      return;
+    }
+
+    isSubmittingPrequote = false;
+    rememberSubmitFingerprint(fingerprint);
     if (mode === "zoom") {
       state.zoomRequested = true;
-      record.zoomRequested = true;
     }
     if (mode === "send") {
       state.quoteSent = true;
       record.quoteSent = true;
     }
     saveQuote(record);
-    closeContactModal();
-
-    const remote = await submitPrequoteToServer(record);
+    setContactSubmitUi({ disabled: true, label: "Submitted" });
+    showContactSuccess(PREQUOTE_SUCCESS_MESSAGE);
+    lockClientSubmitActions();
+    showClientToast(PREQUOTE_SUCCESS_MESSAGE);
 
     if (mode === "print") {
+      closeContactModal();
       openPrintWindow(record);
-      showClientToast(
-        remote.ok
-          ? "Starter quote sent for owner review."
-          : "Starter quote saved locally; online save needs review."
-      );
       return;
     }
 
-    showClientToast(
-      remote.ok
-        ? "Starter quote sent for owner review."
-        : "Starter quote saved locally; online save needs review."
-    );
+    closeContactModal();
     if (state.step === 3 && mode === "zoom") setStep(4);
     if (state.step === 4) renderSendStep();
   }
