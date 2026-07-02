@@ -1,5 +1,6 @@
 /**
- * AI Closer Step 3 — read-only owner/admin inbox for starter pre-quotes.
+ * AI Closer Step 3 / 10G — read-only owner/admin inbox for starter pre-quotes.
+ * Step 10G: attaches read-only draft conversion status from ai_closer_quote_conversions.
  * Isolated from official quotes, invoices, and payments.
  */
 
@@ -102,6 +103,57 @@ async function resolveOwnerAdminContext(event) {
   };
 }
 
+const CONVERSION_SELECT = "ai_closer_prequote_id,status,official_quote_id";
+
+async function loadConversionMapForPrequotes(tenantId, prequotes) {
+  const ids = prequotes.map((p) => String(p?.id || "").trim()).filter(Boolean);
+  if (!ids.length) return new Map();
+
+  const inList = ids.map((id) => encodeURIComponent(id)).join(",");
+  const path =
+    `ai_closer_quote_conversions?tenant_id=eq.${encodeURIComponent(tenantId)}` +
+    `&ai_closer_prequote_id=in.(${inList})` +
+    `&select=${CONVERSION_SELECT}`;
+
+  let rows;
+  try {
+    rows = await supabaseRequest(path, { method: "GET" });
+  } catch (_err) {
+    return new Map();
+  }
+
+  const map = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const pid = String(row?.ai_closer_prequote_id || "").trim();
+    if (pid) map.set(pid, row);
+  }
+  return map;
+}
+
+function attachConversionStatus(prequotes, conversionMap) {
+  return prequotes.map((p) => {
+    const conv = conversionMap.get(String(p.id));
+    if (!conv) {
+      return {
+        ...p,
+        conversion: {
+          is_converted: false,
+          conversion_status: null,
+          draft_quote_id: null,
+        },
+      };
+    }
+    return {
+      ...p,
+      conversion: {
+        is_converted: true,
+        conversion_status: String(conv.status || ""),
+        draft_quote_id: conv.official_quote_id ? String(conv.official_quote_id) : null,
+      },
+    };
+  });
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "GET") {
@@ -124,7 +176,9 @@ exports.handler = async (event) => {
       return json(502, { ok: false, error: "Unable to load AI Closer pre-quotes" });
     }
 
-    const prequotes = Array.isArray(rows) ? rows : [];
+    const prequotesRaw = Array.isArray(rows) ? rows : [];
+    const conversionMap = await loadConversionMapForPrequotes(tenantId, prequotesRaw);
+    const prequotes = attachConversionStatus(prequotesRaw, conversionMap);
 
     return json(200, { ok: true, prequotes, count: prequotes.length });
   } catch (err) {

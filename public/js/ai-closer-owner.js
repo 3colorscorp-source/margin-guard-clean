@@ -384,6 +384,27 @@
     return convertedByPrequoteId.get(String(prequoteId || "")) || null;
   }
 
+  function getConversionInfoForPrequote(prequoteId) {
+    const local = getConvertedState(prequoteId);
+    if (local?.converted) return local;
+
+    const row = inboxRows.find((r) => r.id === prequoteId);
+    if (row?.conversion?.is_converted) {
+      return {
+        converted: true,
+        duplicate: true,
+        preloaded: true,
+        draftQuoteId: row.conversion.draft_quote_id
+          ? String(row.conversion.draft_quote_id)
+          : "",
+        status: row.conversion.conversion_status
+          ? String(row.conversion.conversion_status)
+          : "draft_created",
+      };
+    }
+    return null;
+  }
+
   function markPrequoteConverted(prequoteId, info) {
     convertedByPrequoteId.set(String(prequoteId), { ...info, converted: true });
   }
@@ -430,7 +451,7 @@
     if (!btn || !openPreviewId) return;
 
     const row = inboxRows.find((r) => r.id === openPreviewId);
-    const converted = getConvertedState(openPreviewId);
+    const converted = getConversionInfoForPrequote(openPreviewId);
     const footNote = $("aclConversionFootNote");
 
     if (converted?.converted) {
@@ -475,7 +496,7 @@
 
   function openCreateConfirm() {
     if (createSubmitting || !openPreviewId) return;
-    const converted = getConvertedState(openPreviewId);
+    const converted = getConversionInfoForPrequote(openPreviewId);
     if (converted?.converted) return;
 
     const price = parseFinalPriceInput();
@@ -616,7 +637,7 @@
     if (!body || !row) return;
 
     const st = statusKey(row.status);
-    const converted = getConvertedState(row.id);
+    const converted = getConversionInfoForPrequote(row.id);
     const eligible = isEligibleCreateStatus(row.status);
 
     const checklist = OWNER_CONFIRMATION_ITEMS.map(
@@ -628,11 +649,7 @@
     ).join("");
 
     const convertedBanner = converted?.converted
-      ? `<p class="acl-conversion-converted-banner" role="status">${
-          converted.duplicate
-            ? "Draft quote already created for this prequote."
-            : `Draft quote already created${converted.draftQuoteId ? ` (ID: ${escapeHtml(converted.draftQuoteId)})` : ""}.`
-        }</p>`
+      ? `<p class="acl-conversion-converted-banner" role="status">Draft quote already created for this prequote.</p>`
       : "";
 
     const formDisabled = converted?.converted ? " disabled" : "";
@@ -693,11 +710,18 @@
         }
       </div>`;
 
-    if (converted?.converted && converted.draftQuoteId) {
-      showPreviewFeedback(
-        renderConvertedSuccessBlock(converted, converted.estimatedAmount),
-        "success"
-      );
+    if (converted?.converted) {
+      if (converted.preloaded || converted.duplicate) {
+        showPreviewFeedback("Draft quote already created for this prequote.", "info");
+      } else if (converted.draftQuoteId) {
+        showPreviewFeedback(
+          renderConvertedSuccessBlock(converted, converted.estimatedAmount),
+          "success"
+        );
+      } else {
+        showPreviewFeedback("Draft quote already created for this prequote.", "info");
+      }
+      disablePreviewForm(true);
     } else {
       showPreviewFeedback("", "");
     }
@@ -735,6 +759,7 @@
     if (!body || !row) return;
 
     const st = statusKey(row.status);
+    const converted = getConversionInfoForPrequote(row.id);
     if (title) {
       title.textContent = row.project_name || "Pre-quote details";
     }
@@ -743,9 +768,13 @@
       <div class="acl-detail-workspace">
         <div class="acl-detail-workspace__banner">
           <span class="acl-detail-pill">Starter Pre-Quote — Not Final</span>
-          <p class="acl-detail-warning">
+          ${
+            converted?.converted
+              ? `<p class="acl-conversion-converted-banner" role="status">Draft quote already created</p>`
+              : `<p class="acl-detail-warning">
             Review manually before creating an official quote. This screen does not create or modify official quotes.
-          </p>
+          </p>`
+          }
           <div class="acl-detail-copy-row">
             <button type="button" class="btn ghost" data-copy-label="Copy client email" data-copy-email="${escapeHtml(row.client_email || "")}"${row.client_email ? "" : " disabled"}>Copy client email</button>
             <button type="button" class="btn ghost" data-copy-label="Copy owner review summary" data-copy-summary="1" data-prequote-id="${escapeHtml(row.id)}">Copy owner review summary</button>
@@ -889,6 +918,7 @@
       .map((v) => escapeHtml(v))
       .join(" · ");
     const st = statusKey(row.status);
+    const converted = getConversionInfoForPrequote(row.id);
     const actionButtons = STATUS_ACTIONS.map(
       (action) =>
         `<button type="button" class="btn ghost" data-prequote-action="${escapeHtml(action.status)}" data-prequote-id="${escapeHtml(row.id)}"${st === action.status ? " disabled" : ""}>${escapeHtml(action.label)}</button>`
@@ -900,6 +930,11 @@
           <h3 class="acl-inbox-card__title">${escapeHtml(row.project_name || "Untitled project")}</h3>
           <div class="acl-inbox-card__range-wrap">
             <span class="acl-status-badge acl-status-badge--${escapeHtml(st)}">${escapeHtml(statusLabel(row.status))}</span>
+            ${
+              converted?.converted
+                ? `<span class="acl-status-badge acl-status-badge--draft_created">DRAFT CREATED</span>`
+                : ""
+            }
             <div class="acl-inbox-card__range">${escapeHtml(range)}</div>
           </div>
         </div>
@@ -924,7 +959,11 @@
           <button type="button" class="btn" data-prequote-view="${escapeHtml(row.id)}">View Details</button>
           ${actionButtons}
         </div>
-        <p class="acl-inbox-card__action">Official quote conversion will come in a later step after owner review.</p>
+        <p class="acl-inbox-card__action">${
+          converted?.converted
+            ? "Draft quote already created for this pre-quote."
+            : "Review in View Details to create a DRAFT quote when ready."
+        }</p>
       </article>`;
   }
 
