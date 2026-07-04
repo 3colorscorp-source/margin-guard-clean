@@ -15,10 +15,6 @@
 
   const DEBT_KEY = "mg_owner_advisor_debt_v1";
 
-  const MISSING_DATA_FALLBACK =
-    "Not enough financial data to recommend an extra debt payment today. " +
-    "Complete operating cash target, debt balance, APR, and invoice collection status first.";
-
   /* ------------------------------------------------------------------ */
   /* Utilities                                                           */
   /* ------------------------------------------------------------------ */
@@ -95,6 +91,88 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Missing-data fallback copy (Phase 2A — dynamic, owner-focused)      */
+  /* ------------------------------------------------------------------ */
+
+  function isLiquidityHealthy(operatingCash, operatingMinTarget, operatingMonthly, runwayMonths) {
+    if (operatingMonthly <= 0 && !(operatingMinTarget > 0)) return false;
+    return operatingCash >= operatingMinTarget && (runwayMonths >= 3 || operatingMonthly <= 0);
+  }
+
+  function buildFallbackRecommendation(ctx) {
+    const {
+      balanceMissing,
+      aprMissing,
+      operatingTargetMissing,
+      invoiceDataAvailable,
+      openBalance,
+      operatingCash,
+      operatingMinTarget,
+      operatingMonthly,
+      runwayMonths,
+    } = ctx;
+
+    const hasOpenReceivables = invoiceDataAvailable && openBalance > 0;
+    const liquidityHealthy = isLiquidityHealthy(operatingCash, operatingMinTarget, operatingMonthly, runwayMonths);
+
+    if (hasOpenReceivables && (balanceMissing || aprMissing)) {
+      return "Collect open invoices first; debt guidance waits on balance and APR.";
+    }
+    if (operatingTargetMissing && !balanceMissing && !aprMissing) {
+      return "Set operating cash target before evaluating extra debt payments.";
+    }
+    if (balanceMissing && aprMissing) {
+      if (liquidityHealthy && invoiceDataAvailable && openBalance <= 0) {
+        return "Cash looks stable, but debt pressure cannot be measured yet.";
+      }
+      return "Hold extra debt payments until debt details are entered.";
+    }
+    if (balanceMissing) {
+      return "Enter credit card balance before paying extra debt.";
+    }
+    if (aprMissing) {
+      return "Enter APR to judge whether extra debt payments make sense.";
+    }
+    if (operatingTargetMissing) {
+      return "Set operating cash target before evaluating extra debt payments.";
+    }
+    return "Hold extra debt payments until required details are entered.";
+  }
+
+  function buildFallbackWhy(missing, invoiceDataAvailable, openBalance) {
+    const why = [];
+    if (missing.length) {
+      why.push(`Missing inputs: ${missing.join(", ")}.`);
+    }
+    if (!invoiceDataAvailable) {
+      why.push("Invoice data unavailable — collection status could not be confirmed.");
+    } else if (openBalance > 0) {
+      why.push(`${formatMoney(openBalance)} is outstanding in the Invoice Hub (not cash until collected).`);
+    }
+    why.push("Tax reserve must stay protected.");
+    return why;
+  }
+
+  function buildFallbackNextAction(missing, invoiceDataAvailable, openBalance) {
+    const needsDebt = missing.some((item) => item === "credit card balance" || item === "APR");
+    const parts = [];
+    if (needsDebt) {
+      parts.push("Enter the missing debt details in Manual debt inputs below.");
+    }
+    if (missing.includes("operating cash target")) {
+      parts.push("Set your operating cash minimum target.");
+    }
+    if (!invoiceDataAvailable) {
+      parts.push("Open Invoice Hub when available to confirm collection status.");
+    } else if (openBalance > 0) {
+      parts.push("Prioritize collecting open invoices, then complete debt inputs.");
+    }
+    return parts.length
+      ? parts.join(" ")
+      : "Complete the manual debt inputs below, then review again.";
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Recommendation engine — conservative, deterministic                */
   /* ------------------------------------------------------------------ */
 
@@ -112,6 +190,7 @@
    * @param {number} snapshot.readyToBillCount
    * @param {number} snapshot.healthScore
    * @param {string} snapshot.healthTone      green|amber|red
+   * @param {boolean} snapshot.invoiceDataAvailable Hub rows were loaded on Dashboard
    * @param {object} debt                     Manual debt inputs (parsed numbers)
    */
   function computeAdvisorRecommendation(snapshot, debt) {
@@ -126,12 +205,16 @@
     const openBalance = num(s.openBalance, 0);
     const overdueCount = num(s.overdueCount, 0);
     const healthTone = String(s.healthTone || "").toLowerCase();
+    const invoiceDataAvailable = s.invoiceDataAvailable !== false;
 
     const creditCardBalance = num(d.creditCardBalance, NaN);
     const apr = num(d.apr, NaN);
     const monthlyMinimum = num(d.monthlyMinimum, NaN);
+    const balanceMissing = !Number.isFinite(creditCardBalance) || creditCardBalance <= 0;
+    const aprMissing = !Number.isFinite(apr) || apr <= 0;
     // Operating minimum target: prefer manual input, else fall back to monthly operating cost.
     const operatingMinTargetManual = num(d.operatingCashMinTarget, NaN);
+    const operatingTargetMissing = operatingMonthly <= 0 && !Number.isFinite(operatingMinTargetManual);
     const operatingMinTarget = Number.isFinite(operatingMinTargetManual)
       ? operatingMinTargetManual
       : operatingMonthly;
@@ -146,9 +229,9 @@
 
     /* ---- Missing data checks ---- */
     const missing = [];
-    if (!Number.isFinite(creditCardBalance) || creditCardBalance <= 0) missing.push("credit card balance");
-    if (!Number.isFinite(apr) || apr <= 0) missing.push("APR");
-    if (operatingMonthly <= 0 && !Number.isFinite(operatingMinTargetManual)) missing.push("operating cash target");
+    if (balanceMissing) missing.push("credit card balance");
+    if (aprMissing) missing.push("APR");
+    if (operatingTargetMissing) missing.push("operating cash target");
 
     /* ---- Decision Signals (always computed from safe aggregates) ---- */
     const signals = buildDecisionSignals({
@@ -161,7 +244,9 @@
       overdueCount,
       healthTone,
       creditCardBalance,
+      apr,
       monthlyMinimum,
+      invoiceDataAvailable,
     });
 
     /* ---- Safe available cash (conservative) ----
@@ -174,16 +259,19 @@
     if (missing.length > 0) {
       return {
         toneClass: "neutral",
-        recommendation: MISSING_DATA_FALLBACK,
-        why: [
-          missing.length
-            ? `Missing inputs: ${missing.join(", ")}.`
-            : "Some required inputs are incomplete.",
-          "Pending invoices are not cash until collected.",
-          "Tax reserve must stay protected.",
-        ],
-        nextAction:
-          "Complete the manual debt inputs below and confirm your operating cash target, then review again.",
+        recommendation: buildFallbackRecommendation({
+          balanceMissing,
+          aprMissing,
+          operatingTargetMissing,
+          invoiceDataAvailable,
+          openBalance,
+          operatingCash,
+          operatingMinTarget,
+          operatingMonthly,
+          runwayMonths,
+        }),
+        why: buildFallbackWhy(missing, invoiceDataAvailable, openBalance),
+        nextAction: buildFallbackNextAction(missing, invoiceDataAvailable, openBalance),
         risk: "Acting without complete data could drain working capital or reserves.",
         impact:
           monthlyInterestEstimate != null
@@ -281,12 +369,16 @@
       taxReserve,
       openBalance,
       overdueCount,
-      healthTone,
       creditCardBalance,
+      apr,
       monthlyMinimum,
+      invoiceDataAvailable,
     } = ctx;
 
     const signals = [];
+    const debtInputMissing =
+      !Number.isFinite(creditCardBalance) || creditCardBalance <= 0 ||
+      !Number.isFinite(apr) || apr <= 0;
 
     /* Liquidity Status */
     if (operatingMonthly <= 0 && !(operatingMinTarget > 0)) {
@@ -298,8 +390,8 @@
     }
 
     /* Debt Pressure */
-    if (!Number.isFinite(creditCardBalance) || creditCardBalance <= 0) {
-      signals.push({ label: "Debt Pressure", tone: "neutral", value: "No data", note: "Enter credit card balance." });
+    if (debtInputMissing) {
+      signals.push({ label: "Debt Pressure", tone: "neutral", value: "Needs debt input", note: "Enter credit card balance and APR." });
     } else if (Number.isFinite(monthlyMinimum) && monthlyMinimum > 0) {
       signals.push({ label: "Debt Pressure", tone: "warn", value: "Active", note: `Minimum due tracked (${formatMoney(monthlyMinimum)}/mo).` });
     } else {
@@ -307,7 +399,9 @@
     }
 
     /* Invoice Collection Priority */
-    if (openBalance > 0 && overdueCount > 0) {
+    if (!invoiceDataAvailable) {
+      signals.push({ label: "Invoice Collection Priority", tone: "neutral", value: "Unknown", note: "Invoice data unavailable." });
+    } else if (openBalance > 0 && overdueCount > 0) {
       signals.push({ label: "Invoice Collection Priority", tone: "warn", value: "High", note: `${formatMoney(openBalance)} open · ${overdueCount} overdue.` });
     } else if (openBalance > 0) {
       signals.push({ label: "Invoice Collection Priority", tone: "amber", value: "Moderate", note: `${formatMoney(openBalance)} open (not cash yet).` });
@@ -492,6 +586,7 @@
         readyToBillCount: num(i.readyToBillCount, 0),
         healthScore: num(i.healthScore, 0),
         healthTone: String(i.healthTone || "neutral"),
+        invoiceDataAvailable: i.invoiceDataAvailable !== false,
       };
 
       renderInto(root, snapshot);

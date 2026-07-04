@@ -7426,7 +7426,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             savingsPct,
             savingsTarget,
             openBalance: advisorOpenBalance,
-            overdueCount: advisorOverdueCount
+            overdueCount: advisorOverdueCount,
+            invoiceDataAvailable: hubRowsSnapshot != null
           });
         } catch (_advisorErr) {
           /* Advisor is read-only and must never break the Dashboard. */
