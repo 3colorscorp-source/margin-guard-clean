@@ -106,14 +106,10 @@
       operatingTargetMissing,
       invoiceDataAvailable,
       openBalance,
-      operatingCash,
-      operatingMinTarget,
-      operatingMonthly,
-      runwayMonths,
+      safeAvailableCash,
     } = ctx;
 
     const hasOpenReceivables = invoiceDataAvailable && openBalance > 0;
-    const liquidityHealthy = isLiquidityHealthy(operatingCash, operatingMinTarget, operatingMonthly, runwayMonths);
 
     if (hasOpenReceivables && (balanceMissing || aprMissing)) {
       return "Collect open invoices first; debt guidance waits on balance and APR.";
@@ -122,16 +118,10 @@
       return "Set operating cash target before evaluating extra debt payments.";
     }
     if (balanceMissing && aprMissing) {
-      if (liquidityHealthy && invoiceDataAvailable && openBalance <= 0) {
-        return "Cash looks stable, but debt pressure cannot be measured yet.";
-      }
-      return "Hold extra debt payments until debt details are entered.";
+      return `Safe cash available: ${formatMoney(safeAvailableCash)}. Enter debt balance and APR to estimate a payment range.`;
     }
-    if (balanceMissing) {
-      return "Enter credit card balance before paying extra debt.";
-    }
-    if (aprMissing) {
-      return "Enter APR to judge whether extra debt payments make sense.";
+    if (balanceMissing || aprMissing) {
+      return `Safe cash available: ${formatMoney(safeAvailableCash)}. Enter missing debt details to estimate a payment range.`;
     }
     if (operatingTargetMissing) {
       return "Set operating cash target before evaluating extra debt payments.";
@@ -170,6 +160,155 @@
     return parts.length
       ? parts.join(" ")
       : "Complete the manual debt inputs below, then review again.";
+  }
+
+  function formatRunway(runwayMonths) {
+    return runwayMonths > 0 ? `${runwayMonths.toFixed(1)} months` : "unknown";
+  }
+
+  function computeSafeCashBreakdown(snapshot, debt) {
+    const s = snapshot || {};
+    const d = debt || {};
+    const operatingCash = num(s.operatingCash, 0);
+    const profitCash = num(s.profitCash, 0);
+    const operatingMonthly = num(s.operatingMonthly, 0);
+    const manualTarget = num(d.operatingCashMinTarget, NaN);
+    const manualTargetKnown = Number.isFinite(manualTarget) && manualTarget > 0;
+    const dashboardTargetKnown = Number.isFinite(operatingMonthly) && operatingMonthly > 0;
+    const operatingTargetKnown = manualTargetKnown || dashboardTargetKnown;
+    const operatingMinTarget = manualTargetKnown
+      ? manualTarget
+      : dashboardTargetKnown
+        ? operatingMonthly
+        : 0;
+    const operatingSurplus = operatingTargetKnown
+      ? Math.max(0, operatingCash - operatingMinTarget)
+      : 0;
+    const profitAvailable = Math.max(0, profitCash);
+
+    return {
+      operatingMinTarget,
+      operatingSurplus,
+      profitAvailable,
+      safeAvailableCash: profitAvailable + operatingSurplus,
+      debtPaymentCapacity: profitAvailable,
+      operatingTargetKnown,
+    };
+  }
+
+  function buildSafeCashSummary(breakdown) {
+    const { safeAvailableCash, operatingTargetKnown } = breakdown;
+    if (!operatingTargetKnown) {
+      return `Safe cash available: ${formatMoney(safeAvailableCash)} (profit only). Set operating cash target to include operating surplus. Payment range uses profit cash only.`;
+    }
+    return `Safe cash available: ${formatMoney(safeAvailableCash)}. Payment range uses profit cash only.`;
+  }
+
+  function computeDebtPaymentRange(ctx) {
+    const {
+      creditCardBalance,
+      apr,
+      debtPaymentCapacity,
+      operatingBelowTarget,
+      runwayThin,
+      healthTone,
+      openBalance,
+      overdueCount,
+    } = ctx;
+
+    if (!Number.isFinite(creditCardBalance) || creditCardBalance <= 0 || !Number.isFinite(apr) || apr <= 0) {
+      return { allowed: false, reason: "missing-debt" };
+    }
+    if (operatingBelowTarget || runwayThin || healthTone === "red") {
+      return { allowed: false, reason: "cash-protection" };
+    }
+    if (openBalance > 0 && overdueCount > 0) {
+      return { allowed: false, reason: "collect-overdue" };
+    }
+
+    const capacity = Math.max(0, Math.min(debtPaymentCapacity, creditCardBalance));
+    if (capacity <= 0) {
+      return { allowed: false, reason: "no-profit-capacity" };
+    }
+
+    if (openBalance > 0) {
+      const high = Math.min(Math.round(capacity * 0.5), creditCardBalance);
+      return high > 0
+        ? { allowed: true, contingent: true, low: 0, high, label: `Consider up to ${formatMoney(high)} only after invoice collection clears.` }
+        : { allowed: false, reason: "no-profit-capacity" };
+    }
+
+    const low = Math.max(0, Math.min(Math.round(capacity * 0.5), creditCardBalance));
+    const high = Math.max(low, Math.min(Math.round(capacity), creditCardBalance));
+    return high > 0
+      ? { allowed: true, contingent: false, low, high, label: `Safe payment range: ${formatMoneyRange(low, high)} from profit cash only.` }
+      : { allowed: false, reason: "no-profit-capacity" };
+  }
+
+  function buildOwnerWhy(ctx) {
+    const {
+      missing,
+      operatingCash,
+      operatingMinTarget,
+      operatingTargetKnown,
+      profitAvailable,
+      safeAvailableCash,
+      taxReserve,
+      invoiceDataAvailable,
+      openBalance,
+      monthlyInterestEstimate,
+      dailyInterestEstimate,
+      runwayMonths,
+    } = ctx;
+
+    const why = [];
+    if (Array.isArray(missing) && missing.length) {
+      why.push(`Missing inputs: ${missing.join(", ")}.`);
+    }
+
+    if (!operatingTargetKnown) {
+      why.push(`Operating cash: ${formatMoney(operatingCash)} — target not set.`);
+      why.push("Operating target is not set; operating cash is protected.");
+    } else {
+      const status = operatingCash >= operatingMinTarget ? "above" : "below";
+      why.push(`Operating cash: ${formatMoney(operatingCash)} — ${status} target ${formatMoney(operatingMinTarget)}.`);
+    }
+
+    why.push(`Profit cash available: ${formatMoney(profitAvailable)}.`);
+    why.push(`Safe available cash: ${formatMoney(safeAvailableCash)} — excludes tax reserve, savings, and invoices.`);
+    why.push(`Tax reserve: ${formatMoney(taxReserve)} — protected.`);
+
+    if (!invoiceDataAvailable) {
+      why.push("Open invoices: invoice data unavailable.");
+    } else if (openBalance > 0) {
+      why.push(`Open invoices: ${formatMoney(openBalance)} outstanding, not cash yet.`);
+    } else {
+      why.push("Open invoices: none.");
+    }
+
+    if (monthlyInterestEstimate != null) {
+      why.push(`Debt interest estimate: ~${formatMoney(monthlyInterestEstimate)}/mo (~${formatMoney(dailyInterestEstimate)}/day).`);
+    }
+
+    const runwayTone = runwayMonths > 0 ? (runwayMonths < 3 ? "thin" : "healthy") : "unknown";
+    why.push(`Runway: ${formatRunway(runwayMonths)} — ${runwayTone}.`);
+    return why;
+  }
+
+  function buildEstimatedImpact(paymentRange, monthlyInterestEstimate, dailyInterestEstimate) {
+    if (paymentRange.reason === "missing-debt") {
+      return "Enter balance and APR to estimate interest and payment range.";
+    }
+
+    const interestCopy = monthlyInterestEstimate != null
+      ? `Estimated interest: ~${formatMoney(monthlyInterestEstimate)}/mo (~${formatMoney(dailyInterestEstimate)}/day). Estimate only.`
+      : "Interest estimate unavailable until balance and APR are entered.";
+
+    if (!paymentRange.allowed) {
+      return `No extra payment recommended today. ${interestCopy}`;
+    }
+
+    return `${paymentRange.label} ${interestCopy}`;
   }
 
   /* ------------------------------------------------------------------ */
@@ -212,12 +351,6 @@
     const monthlyMinimum = num(d.monthlyMinimum, NaN);
     const balanceMissing = !Number.isFinite(creditCardBalance) || creditCardBalance <= 0;
     const aprMissing = !Number.isFinite(apr) || apr <= 0;
-    // Operating minimum target: prefer manual input, else fall back to monthly operating cost.
-    const operatingMinTargetManual = num(d.operatingCashMinTarget, NaN);
-    const operatingTargetMissing = operatingMonthly <= 0 && !Number.isFinite(operatingMinTargetManual);
-    const operatingMinTarget = Number.isFinite(operatingMinTargetManual)
-      ? operatingMinTargetManual
-      : operatingMonthly;
 
     /* ---- Interest estimates (labeled, display-only) ---- */
     let monthlyInterestEstimate = null;
@@ -228,10 +361,35 @@
     }
 
     /* ---- Missing data checks ---- */
+    const safeCashBreakdown = computeSafeCashBreakdown(
+      { operatingCash, profitCash, operatingMonthly },
+      { operatingCashMinTarget: d.operatingCashMinTarget }
+    );
+    const {
+      operatingMinTarget,
+      operatingTargetKnown,
+      safeAvailableCash: safeAvailableCashAmount,
+    } = safeCashBreakdown;
+    const operatingTargetMissing = !operatingTargetKnown;
+    const operatingBelowTarget = operatingTargetKnown && operatingCash < operatingMinTarget;
+    const runwayThin = operatingMonthly > 0 && runwayMonths < 3;
+
     const missing = [];
     if (balanceMissing) missing.push("credit card balance");
     if (aprMissing) missing.push("APR");
     if (operatingTargetMissing) missing.push("operating cash target");
+
+    const hasOpenReceivables = invoiceDataAvailable && openBalance > 0;
+    const paymentRange = computeDebtPaymentRange({
+      creditCardBalance,
+      apr,
+      debtPaymentCapacity: safeCashBreakdown.debtPaymentCapacity,
+      operatingBelowTarget,
+      runwayThin,
+      healthTone,
+      openBalance,
+      overdueCount,
+    });
 
     /* ---- Decision Signals (always computed from safe aggregates) ---- */
     const signals = buildDecisionSignals({
@@ -247,13 +405,9 @@
       apr,
       monthlyMinimum,
       invoiceDataAvailable,
+      operatingTargetKnown,
+      safeAvailableCash: safeAvailableCashAmount,
     });
-
-    /* ---- Safe available cash (conservative) ----
-       Excludes: tax reserve, operating minimum target, pending invoices, unconfirmed project revenue.
-       Only PROFIT bucket surplus + operating cash ABOVE the minimum target counts. */
-    const operatingSurplus = Math.max(0, operatingCash - Math.max(0, operatingMinTarget));
-    const safeAvailableCash = Math.max(0, profitCash) + operatingSurplus;
 
     /* ---- Fallback when core debt data is missing ---- */
     if (missing.length > 0) {
@@ -265,87 +419,91 @@
           operatingTargetMissing,
           invoiceDataAvailable,
           openBalance,
+          safeAvailableCash: safeCashBreakdown.safeAvailableCash,
+        }),
+        why: buildOwnerWhy({
+          missing,
           operatingCash,
           operatingMinTarget,
-          operatingMonthly,
+          operatingTargetKnown,
+          profitAvailable: safeCashBreakdown.profitAvailable,
+          safeAvailableCash: safeCashBreakdown.safeAvailableCash,
+          taxReserve,
+          invoiceDataAvailable,
+          openBalance,
+          monthlyInterestEstimate,
+          dailyInterestEstimate,
           runwayMonths,
         }),
-        why: buildFallbackWhy(missing, invoiceDataAvailable, openBalance),
         nextAction: buildFallbackNextAction(missing, invoiceDataAvailable, openBalance),
         risk: "Acting without complete data could drain working capital or reserves.",
-        impact:
-          monthlyInterestEstimate != null
-            ? `Estimated interest at current balance: ~${formatMoney(monthlyInterestEstimate)}/month (~${formatMoney(dailyInterestEstimate)}/day). Estimate only.`
-            : "Interest impact unavailable until debt balance and APR are entered.",
+        impact: buildEstimatedImpact(paymentRange, monthlyInterestEstimate, dailyInterestEstimate),
         signals,
         interest: { monthly: monthlyInterestEstimate, daily: dailyInterestEstimate },
-        safeAvailableCash: null,
+        safeAvailableCash: safeCashBreakdown.safeAvailableCash,
+        safeCashSummary: buildSafeCashSummary(safeCashBreakdown),
+        paymentRange,
       };
     }
 
-    const why = [];
+    const why = buildOwnerWhy({
+      missing,
+      operatingCash,
+      operatingMinTarget,
+      operatingTargetKnown,
+      profitAvailable: safeCashBreakdown.profitAvailable,
+      safeAvailableCash: safeCashBreakdown.safeAvailableCash,
+      taxReserve,
+      invoiceDataAvailable,
+      openBalance,
+      monthlyInterestEstimate,
+      dailyInterestEstimate,
+      runwayMonths,
+    });
     let recommendation;
     let toneClass;
     let nextAction;
     let risk;
 
-    const operatingBelowTarget = operatingCash < operatingMinTarget;
-    const runwayThin = operatingMonthly > 0 && runwayMonths < 3;
-    const hasOpenReceivables = openBalance > 0;
-
     if (operatingBelowTarget || runwayThin || healthTone === "red") {
       /* Do NOT recommend extra debt payment: liquidity is stressed. */
       toneClass = "warn";
-      recommendation = "Do not make an extra credit card payment today.";
-      if (operatingBelowTarget) {
-        why.push(`Operating cash (${formatMoney(operatingCash)}) is below your target (${formatMoney(operatingMinTarget)}).`);
-      }
-      if (runwayThin) {
-        why.push(`Runway is thin (~${runwayMonths.toFixed(1)} months); protect working capital.`);
-      }
-      if (hasOpenReceivables) {
-        why.push(`${formatMoney(openBalance)} is still outstanding in the Invoice Hub (not cash until collected).`);
-      }
-      why.push("Tax reserve must stay protected.");
+      recommendation = operatingBelowTarget
+        ? "Do not pay extra debt today. Operating cash is below target."
+        : apr >= 18
+        ? "Debt pressure is high, but cash protection comes first."
+        : "No extra payment recommended today. Protect runway first.";
       nextAction = hasOpenReceivables
         ? "Collect open invoices first and rebuild operating cash to target before any extra debt payment."
         : "Rebuild operating cash to target before any extra debt payment. Keep paying the monthly minimum only.";
       risk = "Reducing cash now could push operations below a safe working-capital floor.";
-    } else if (safeAvailableCash <= 0) {
-      /* Liquidity acceptable but no clearly-safe surplus. */
+    } else if (hasOpenReceivables && overdueCount > 0) {
+      toneClass = "warn";
+      recommendation = "Collect open invoices before reducing cash.";
+      nextAction = "Work overdue invoices first, then re-check profit cash before any extra debt payment.";
+      risk = "Paying extra debt before overdue collections clear can tighten working capital.";
+    } else if (!paymentRange.allowed) {
+      /* Liquidity acceptable but no clearly-safe profit capacity for extra debt. */
       toneClass = "neutral";
-      recommendation = "Safe surplus is not confirmed yet. Hold extra credit card payments for now.";
-      why.push("No confirmed safe surplus above your operating minimum and protected profit.");
-      if (hasOpenReceivables) {
-        why.push(`${formatMoney(openBalance)} in open invoices is not cash until collected.`);
-      }
-      why.push("Total cash is not spendable cash; tax reserve stays protected.");
+      recommendation = "No extra payment recommended today.";
       nextAction = hasOpenReceivables
-        ? "Collect open invoices, then re-check for a confirmed safe surplus before an extra payment."
-        : "Wait until a confirmed safe surplus appears in profit or operating cash above target.";
+        ? "Collect open invoices, then re-check profit cash before an extra payment."
+        : "Wait until confirmed profit cash is available for an extra payment.";
       risk = "Paying from unconfirmed surplus could drain operating cash or reserves.";
+    } else if (paymentRange.contingent) {
+      toneClass = "neutral";
+      recommendation = "Collect open invoices before reducing cash.";
+      nextAction = paymentRange.label;
+      risk = "Pending invoices are not cash; do not reduce cash until collections clear.";
     } else {
-      /* Liquidity healthy AND a conservative safe surplus exists. */
+      /* Liquidity healthy AND conservative profit-only payment capacity exists. */
       toneClass = "ok";
-      const suggestLow = Math.max(0, Math.min(safeAvailableCash, Math.round(safeAvailableCash * 0.5)));
-      const suggestHigh = Math.max(suggestLow, Math.round(safeAvailableCash));
-      recommendation = `A controlled extra credit card payment of ${formatMoneyRange(suggestLow, suggestHigh)} may be supportable after protecting reserves.`;
-      why.push(`Safe available cash (profit surplus + operating above target) is ~${formatMoney(safeAvailableCash)}.`);
-      why.push("Tax reserve and operating minimum target are excluded from this amount.");
-      if (hasOpenReceivables) {
-        why.push(`${formatMoney(openBalance)} in open invoices is excluded (not counted as cash).`);
-      }
-      why.push("This is not automated — you decide and execute the payment manually.");
-      nextAction = `Review a controlled ${formatMoneyRange(suggestLow, suggestHigh)} payment while keeping the operating minimum and tax reserve intact.`;
-      risk = "Even with surplus, keep the operating floor and tax reserve untouched.";
+      recommendation = "No collection priority today. Review a controlled debt payment from profit cash only.";
+      nextAction = paymentRange.label;
+      risk = "Do not pay from tax reserve, savings, invoices, or operating cash below target.";
     }
 
-    let impact;
-    if (monthlyInterestEstimate != null) {
-      impact = `Current interest is roughly ${formatMoney(monthlyInterestEstimate)}/month (~${formatMoney(dailyInterestEstimate)}/day). Reducing the balance lowers this proportionally. Estimate only — not accounting, tax, legal, or banking advice.`;
-    } else {
-      impact = "Interest impact unavailable until debt balance and APR are entered.";
-    }
+    const impact = buildEstimatedImpact(paymentRange, monthlyInterestEstimate, dailyInterestEstimate);
 
     return {
       toneClass,
@@ -356,7 +514,9 @@
       impact,
       signals,
       interest: { monthly: monthlyInterestEstimate, daily: dailyInterestEstimate },
-      safeAvailableCash,
+      safeAvailableCash: safeCashBreakdown.safeAvailableCash,
+      safeCashSummary: buildSafeCashSummary(safeCashBreakdown),
+      paymentRange,
     };
   }
 
@@ -364,7 +524,6 @@
     const {
       operatingCash,
       operatingMinTarget,
-      operatingMonthly,
       runwayMonths,
       taxReserve,
       openBalance,
@@ -373,6 +532,8 @@
       apr,
       monthlyMinimum,
       invoiceDataAvailable,
+      operatingTargetKnown,
+      safeAvailableCash,
     } = ctx;
 
     const signals = [];
@@ -381,9 +542,9 @@
       !Number.isFinite(apr) || apr <= 0;
 
     /* Liquidity Status */
-    if (operatingMonthly <= 0 && !(operatingMinTarget > 0)) {
+    if (!operatingTargetKnown) {
       signals.push({ label: "Liquidity Status", tone: "neutral", value: "Unknown", note: "Set operating cash target." });
-    } else if (operatingCash >= operatingMinTarget && (runwayMonths >= 3 || operatingMonthly <= 0)) {
+    } else if (operatingCash >= operatingMinTarget && runwayMonths >= 3) {
       signals.push({ label: "Liquidity Status", tone: "ok", value: "Healthy", note: "Operating cash at or above target." });
     } else {
       signals.push({ label: "Liquidity Status", tone: "warn", value: "Under pressure", note: "Operating cash below target or thin runway." });
@@ -416,11 +577,18 @@
       signals.push({ label: "Reserve Protection", tone: "warn", value: "Low / unset", note: "Tax reserve is low or not entered." });
     }
 
-    /* Upcoming Project Cash Need */
-    if (openBalance > 0) {
-      signals.push({ label: "Upcoming Project Cash Need", tone: "amber", value: "Watch", note: "Open work may require working capital." });
+    /* Safe Cash Available */
+    if (!operatingTargetKnown) {
+      signals.push({
+        label: "Safe Cash Available",
+        tone: safeAvailableCash > 0 ? "neutral" : "neutral",
+        value: formatMoney(safeAvailableCash),
+        note: "Set operating cash target to include operating surplus.",
+      });
+    } else if (safeAvailableCash > 0) {
+      signals.push({ label: "Safe Cash Available", tone: "ok", value: formatMoney(safeAvailableCash), note: "Excludes tax, savings, and invoices." });
     } else {
-      signals.push({ label: "Upcoming Project Cash Need", tone: "neutral", value: "None flagged", note: "No open receivables to fund." });
+      signals.push({ label: "Safe Cash Available", tone: "neutral", value: formatMoney(0), note: "No protected surplus confirmed." });
     }
 
     return signals;
@@ -507,6 +675,7 @@
           <div class="ofa-rec ofa-rec--${escapeHtml(result.toneClass)}">
             <div class="ofa-rec__label">Today’s Recommendation</div>
             <div class="ofa-rec__text">${escapeHtml(result.recommendation)}</div>
+            <p class="ofa-block__text">${escapeHtml(result.safeCashSummary || "")}</p>
           </div>
 
           <div class="ofa-grid">
