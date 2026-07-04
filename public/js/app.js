@@ -7407,6 +7407,31 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           savingsBalance: state.savingsBalance
         });
       }
+
+      if ($("ownerFinancialAdvisorRoot") && window.__mgRenderOwnerFinancialAdvisor) {
+        try {
+          const advisorRows = hubRowsSnapshot || [];
+          const advisorOpenBalance = advisorRows.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
+          const advisorOverdueCount = advisorRows.filter((row) => ["overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0).length;
+          window.__mgRenderOwnerFinancialAdvisor({
+            operatingCash: state.expensesBalance,
+            profitCash: state.profitBalance,
+            savingsCash: state.savingsBalance,
+            taxReserve: state.taxBalance,
+            totalCash,
+            operatingMonthly: state.operatingMonthly,
+            runwayMonths,
+            healthScore,
+            healthTone,
+            savingsPct,
+            savingsTarget,
+            openBalance: advisorOpenBalance,
+            overdueCount: advisorOverdueCount
+          });
+        } catch (_advisorErr) {
+          /* Advisor is read-only and must never break the Dashboard. */
+        }
+      }
     };
 
     ["expensesBalance", "profitBalance", "savingsBalance", "taxBalance", "operatingMonthly"].forEach((id) => {
