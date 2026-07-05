@@ -333,6 +333,39 @@
     return "";
   }
 
+  function buildCashProtectionNextAction(ctx) {
+    const {
+      operatingBelowTarget,
+      runwayThin,
+      healthTone,
+      hasOpenReceivables,
+    } = ctx || {};
+
+    const prefix = hasOpenReceivables
+      ? "Collect open invoices first. "
+      : "";
+
+    if (operatingBelowTarget) {
+      return hasOpenReceivables
+        ? "Collect open invoices first and rebuild operating cash to target before any extra debt payment."
+        : "Rebuild operating cash to target before any extra debt payment. Keep paying the monthly minimum only.";
+    }
+
+    if (runwayThin && healthTone === "red") {
+      return `${prefix}Protect runway and business health before any extra debt payment. Keep paying the monthly minimum only.`;
+    }
+
+    if (runwayThin) {
+      return `${prefix}Protect runway before any extra debt payment. Keep paying the monthly minimum only.`;
+    }
+
+    if (healthTone === "red") {
+      return `${prefix}Business health is still under pressure. Keep paying the monthly minimum until the Advisor clears an extra payment range.`;
+    }
+
+    return `${prefix}Keep operating cash protected before any extra debt payment. Keep paying the monthly minimum only.`;
+  }
+
   function refinePrimaryRecommendation(ctx, baseRecommendation) {
     const {
       operatingTargetMissing,
@@ -352,8 +385,14 @@
     if (operatingBelowTarget) {
       return "Do not make an extra debt payment today. Operating cash is below target.";
     }
-    if (runwayThin || healthTone === "red") {
+    if (runwayThin && healthTone === "red") {
+      return "Do not make an extra debt payment today. Protect runway and business health first.";
+    }
+    if (runwayThin) {
       return "Do not make an extra debt payment today. Protect runway first.";
+    }
+    if (healthTone === "red") {
+      return "Debt pressure is active, but business health protection comes first.";
     }
     if (invoiceDataAvailable && overdueCount > 0) {
       const name = collectionSubject(topCollectionAction);
@@ -797,12 +836,17 @@
       toneClass = "warn";
       recommendation = operatingBelowTarget
         ? "Do not pay extra debt today. Operating cash is below target."
-        : apr >= 18
-        ? "Debt pressure is high, but cash protection comes first."
+        : runwayThin
+        ? "No extra payment recommended today. Protect runway first."
+        : healthTone === "red"
+        ? "Debt pressure is active, but business health protection comes first."
         : "No extra payment recommended today. Protect runway first.";
-      nextAction = hasOpenReceivables
-        ? "Collect open invoices first and rebuild operating cash to target before any extra debt payment."
-        : "Rebuild operating cash to target before any extra debt payment. Keep paying the monthly minimum only.";
+      nextAction = buildCashProtectionNextAction({
+        operatingBelowTarget,
+        runwayThin,
+        healthTone,
+        hasOpenReceivables,
+      });
       risk = "Reducing cash now could push operations below a safe working-capital floor.";
     } else if (hasOpenReceivables && overdueCount > 0) {
       toneClass = "warn";
