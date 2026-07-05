@@ -987,7 +987,7 @@
 
     if (balanceMissing && aprMissing) {
       return `
-          <details class="ofa-debt">
+          <details class="ofa-debt" data-ofa-details="debt-analysis">
             <summary class="ofa-debt__summary">Debt Analysis</summary>
             ${disclaimer}
             <p class="ofa-block__text">Debt details incomplete.<br>Enter credit card balance and APR to estimate interest cost and payment savings.</p>
@@ -995,7 +995,7 @@
     }
     if (balanceMissing) {
       return `
-          <details class="ofa-debt">
+          <details class="ofa-debt" data-ofa-details="debt-analysis">
             <summary class="ofa-debt__summary">Debt Analysis</summary>
             ${disclaimer}
             <p class="ofa-block__text">Credit card balance is required to estimate interest cost.</p>
@@ -1003,7 +1003,7 @@
     }
     if (aprMissing) {
       return `
-          <details class="ofa-debt">
+          <details class="ofa-debt" data-ofa-details="debt-analysis">
             <summary class="ofa-debt__summary">Debt Analysis</summary>
             ${disclaimer}
             <p class="ofa-block__text">APR is required to estimate interest cost.</p>
@@ -1056,11 +1056,29 @@
     }
 
     return `
-          <details class="ofa-debt">
+          <details class="ofa-debt" data-ofa-details="debt-analysis">
             <summary class="ofa-debt__summary">Debt Analysis</summary>
             ${disclaimer}
             <p class="ofa-block__text">${lines.map((line) => escapeHtml(line)).join("<br>")}</p>
           </details>`;
+  }
+
+  function captureDetailsOpenState(root) {
+    const state = {};
+    if (!root) return state;
+    root.querySelectorAll("details[data-ofa-details]").forEach((el) => {
+      const key = el.getAttribute("data-ofa-details");
+      if (key) state[key] = el.open;
+    });
+    return state;
+  }
+
+  function restoreDetailsOpenState(root, state) {
+    if (!root || !state) return;
+    root.querySelectorAll("details[data-ofa-details]").forEach((el) => {
+      const key = el.getAttribute("data-ofa-details");
+      if (key && state[key]) el.open = true;
+    });
   }
 
   function bindDebtInputs(root) {
@@ -1104,6 +1122,8 @@
     };
 
     const result = computeAdvisorRecommendation(snapshot, debtNumbers);
+
+    const detailsOpenState = captureDetailsOpenState(root);
 
     root.innerHTML = `
       <section class="card ofa-card" aria-label="Owner Financial Advisor">
@@ -1150,7 +1170,7 @@
 
           ${buildDebtAnalysisPanel(result, debtRaw)}
 
-          <details class="ofa-debt">
+          <details class="ofa-debt" data-ofa-details="manual-debt-inputs">
             <summary class="ofa-debt__summary">Manual debt inputs (v1)</summary>
             <p class="ofa-debt__hint">Stored only in your browser. No bank connection, no payment, no app data is written.</p>
             <div class="ofa-debt__grid">
@@ -1174,6 +1194,8 @@
           </details>
         </div>
       </section>`;
+
+    restoreDetailsOpenState(root, detailsOpenState);
 
     // Re-bind after innerHTML replace (dataset flag lives on root, reset it here).
     root.dataset.ofaBound = "";
