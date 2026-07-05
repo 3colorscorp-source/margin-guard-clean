@@ -645,9 +645,11 @@
     /* ---- Interest estimates (labeled, display-only) ---- */
     let monthlyInterestEstimate = null;
     let dailyInterestEstimate = null;
+    let annualInterestEstimate = null;
     if (Number.isFinite(creditCardBalance) && Number.isFinite(apr) && creditCardBalance > 0 && apr > 0) {
       monthlyInterestEstimate = creditCardBalance * (apr / 100 / 12);
       dailyInterestEstimate = creditCardBalance * (apr / 100 / 365);
+      annualInterestEstimate = creditCardBalance * (apr / 100);
     }
 
     /* ---- Missing data checks ---- */
@@ -750,7 +752,11 @@
         impact: buildEstimatedImpact(paymentRange, monthlyInterestEstimate, dailyInterestEstimate),
         signals,
         topActions,
-        interest: { monthly: monthlyInterestEstimate, daily: dailyInterestEstimate },
+        interest: {
+          monthly: monthlyInterestEstimate,
+          daily: dailyInterestEstimate,
+          annual: annualInterestEstimate,
+        },
         safeAvailableCash: safeCashBreakdown.safeAvailableCash,
         safeCashSummary: buildSafeCashSummary(safeCashBreakdown),
         paymentRange,
@@ -825,7 +831,11 @@
       impact,
       signals,
       topActions,
-      interest: { monthly: monthlyInterestEstimate, daily: dailyInterestEstimate },
+      interest: {
+        monthly: monthlyInterestEstimate,
+        daily: dailyInterestEstimate,
+        annual: annualInterestEstimate,
+      },
       safeAvailableCash: safeCashBreakdown.safeAvailableCash,
       safeCashSummary: buildSafeCashSummary(safeCashBreakdown),
       paymentRange,
@@ -931,6 +941,128 @@
     return `<ul class="ofa-why">${why.map((w) => `<li>${escapeHtml(w)}</li>`).join("")}</ul>`;
   }
 
+  function formatAprPercent(apr) {
+    const n = num(apr, NaN);
+    if (!Number.isFinite(n)) return "";
+    return n % 1 === 0 ? `${Math.round(n)}%` : `${n.toFixed(2).replace(/\.?0+$/, "")}%`;
+  }
+
+  function mapPaymentSafetyStatus(paymentRange) {
+    const reason = String(paymentRange?.reason || "");
+    if (reason === "cash-protection") {
+      return "Blocked — Protect operating cash, runway, or business health first.";
+    }
+    if (reason === "collect-overdue") {
+      return "Blocked — Collect overdue invoices before reducing cash.";
+    }
+    if (reason === "no-profit-capacity") {
+      return "Blocked — No confirmed profit cash available for extra payment.";
+    }
+    return "";
+  }
+
+  function formatMonthlyInterestSavings(apr, low, high) {
+    const rateMonthly = apr / 100 / 12;
+    const savingsLow = low > 0 ? low * rateMonthly : null;
+    const savingsHigh = high > 0 ? high * rateMonthly : null;
+    if (savingsLow != null && savingsHigh != null && savingsLow !== savingsHigh) {
+      return `~${formatMoney(savingsLow)}–${formatMoney(savingsHigh)}`;
+    }
+    if (savingsHigh != null) {
+      return `~${formatMoney(savingsHigh)}`;
+    }
+    if (savingsLow != null) {
+      return `~${formatMoney(savingsLow)}`;
+    }
+    return null;
+  }
+
+  function buildDebtAnalysisPanel(result, debtRaw) {
+    const balance = num(debtRaw?.creditCardBalance, NaN);
+    const apr = num(debtRaw?.apr, NaN);
+    const balanceMissing = !Number.isFinite(balance) || balance <= 0;
+    const aprMissing = !Number.isFinite(apr) || apr <= 0;
+    const disclaimer =
+      '<p class="ofa-debt__hint">Estimate only. Not tax, accounting, legal, or banking advice.</p>';
+
+    if (balanceMissing && aprMissing) {
+      return `
+          <details class="ofa-debt">
+            <summary class="ofa-debt__summary">Debt Analysis</summary>
+            ${disclaimer}
+            <p class="ofa-block__text">Debt details incomplete.<br>Enter credit card balance and APR to estimate interest cost and payment savings.</p>
+          </details>`;
+    }
+    if (balanceMissing) {
+      return `
+          <details class="ofa-debt">
+            <summary class="ofa-debt__summary">Debt Analysis</summary>
+            ${disclaimer}
+            <p class="ofa-block__text">Credit card balance is required to estimate interest cost.</p>
+          </details>`;
+    }
+    if (aprMissing) {
+      return `
+          <details class="ofa-debt">
+            <summary class="ofa-debt__summary">Debt Analysis</summary>
+            ${disclaimer}
+            <p class="ofa-block__text">APR is required to estimate interest cost.</p>
+          </details>`;
+    }
+
+    const daily = result?.interest?.daily;
+    const monthly = result?.interest?.monthly;
+    const annual =
+      result?.interest?.annual != null ? result.interest.annual : balance * (apr / 100);
+    const paymentRange = result?.paymentRange || {};
+    const lines = [
+      `Current Debt: ${formatMoney(balance)}`,
+      `APR: ${formatAprPercent(apr)}`,
+      `Estimated Daily Interest: ~${formatMoney(daily)}`,
+      `Estimated Monthly Interest: ~${formatMoney(monthly)}`,
+      `Estimated Annual Interest: ~${formatMoney(annual)}`,
+    ];
+
+    if (paymentRange.allowed && paymentRange.contingent) {
+      lines.push(paymentRange.label || "Consider payment only after invoice collection clears.");
+      const high = num(paymentRange.high, 0);
+      const savingsHigh = high > 0 ? high * (apr / 100 / 12) : null;
+      if (savingsHigh != null) {
+        lines.push(
+          `Estimated Monthly Interest Savings: Up to ~${formatMoney(savingsHigh)} after collection clears. Estimate only.`
+        );
+      }
+      lines.push("Payment Safety Status: Conditional — pending invoices are not cash.");
+    } else if (paymentRange.allowed) {
+      lines.push(paymentRange.label || "Safe payment range: review profit cash only.");
+      const savingsRange = formatMonthlyInterestSavings(
+        apr,
+        num(paymentRange.low, 0),
+        num(paymentRange.high, 0)
+      );
+      if (savingsRange) {
+        lines.push(`Estimated Monthly Interest Savings: ${savingsRange}. Estimate only.`);
+      }
+      lines.push(
+        "Payment Safety Status: Approved for review from profit cash only. Operating cash, tax reserve, savings, and invoices must stay protected."
+      );
+    } else {
+      lines.push("Safe Payment Range: Not recommended today.");
+      lines.push("Estimated Interest Savings: Not estimated — extra payment is blocked today.");
+      const safetyStatus = mapPaymentSafetyStatus(paymentRange);
+      if (safetyStatus) {
+        lines.push(`Payment Safety Status: ${safetyStatus}`);
+      }
+    }
+
+    return `
+          <details class="ofa-debt">
+            <summary class="ofa-debt__summary">Debt Analysis</summary>
+            ${disclaimer}
+            <p class="ofa-block__text">${lines.map((line) => escapeHtml(line)).join("<br>")}</p>
+          </details>`;
+  }
+
   function bindDebtInputs(root) {
     if (!root || root.dataset.ofaBound === "1") return;
     root.dataset.ofaBound = "1";
@@ -1015,6 +1147,8 @@
             <h3 class="ofa-block__title">Decision Signals</h3>
             <div class="ofa-signals">${renderSignals(result.signals)}</div>
           </div>
+
+          ${buildDebtAnalysisPanel(result, debtRaw)}
 
           <details class="ofa-debt">
             <summary class="ofa-debt__summary">Manual debt inputs (v1)</summary>
