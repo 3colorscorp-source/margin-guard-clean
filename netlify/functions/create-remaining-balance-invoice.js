@@ -1,0 +1,384 @@
+/**
+ * POST — create a linked DRAFT invoice for project remaining balance (owner session).
+ * Does not send email, record payments, or modify the source invoice.
+ */
+const { readSessionFromEvent } = require("./_lib/session");
+const { supabaseRequest } = require("./_lib/supabase-admin");
+const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { makePublicToken } = require("./_lib/public-token");
+const { pickFirst } = require("./_lib/tenant-display");
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const REMAINING_BALANCE_LABEL = "Remaining Balance";
+const ACTIVE_DUPLICATE_STATUSES = new Set(["draft", "open", "sent", "partial", "overdue", "issued"]);
+const TERMINAL_STATUSES = new Set(["paid", "void", "archived", "cancelled", "canceled"]);
+
+function json(statusCode, body) {
+  return {
+    statusCode,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  };
+}
+
+function finiteMoney(value, fallback = 0) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.round(n * 100) / 100;
+}
+
+function pickStr(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      return String(value).trim();
+    }
+  }
+  return "";
+}
+
+function normStatus(raw) {
+  return String(raw || "")
+    .trim()
+    .toLowerCase();
+}
+
+function sourceInvoiceMarker(sourceId) {
+  return `[source_invoice:${String(sourceId).trim()}]`;
+}
+
+function notesContainSourceMarker(notes, sourceId) {
+  const marker = sourceInvoiceMarker(sourceId);
+  return String(notes || "").includes(marker);
+}
+
+function appendSourceMarker(notes, sourceId) {
+  const base = String(notes || "").trim();
+  const marker = sourceInvoiceMarker(sourceId);
+  if (base.includes(marker)) return base;
+  return base ? `${base}\n\n${marker}` : marker;
+}
+
+function normalizeDueDate(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+function resolveContractTotal(source, quoteEmbed) {
+  const quoteTotal = finiteMoney(quoteEmbed?.total, 0);
+  if (quoteTotal > 0) return quoteTotal;
+  return Math.max(finiteMoney(source?.amount, 0), 0);
+}
+
+async function sumLedgerPayments(tenantId, { invoiceId, projectId, quoteId }) {
+  const tidEnc = encodeURIComponent(String(tenantId));
+  const params = new URLSearchParams();
+  params.set("tenant_id", `eq.${tidEnc}`);
+  params.set("select", "amount");
+  params.set("limit", "500");
+
+  if (invoiceId && UUID_RE.test(invoiceId)) {
+    params.set("invoice_id", `eq.${encodeURIComponent(invoiceId)}`);
+  } else if (projectId && UUID_RE.test(projectId)) {
+    params.set("project_id", `eq.${encodeURIComponent(projectId)}`);
+  } else if (quoteId && UUID_RE.test(quoteId)) {
+    params.set("quote_id", `eq.${encodeURIComponent(quoteId)}`);
+  } else {
+    return 0;
+  }
+
+  const rows = await supabaseRequest(`tenant_project_payments?${params.toString()}`, { method: "GET" });
+  const list = Array.isArray(rows) ? rows : [];
+  let sum = 0;
+  for (const p of list) {
+    sum += finiteMoney(p?.amount, 0);
+  }
+  return finiteMoney(sum, 0);
+}
+
+function normalizeAmountMode(raw) {
+  const s = String(raw || "")
+    .trim()
+    .toLowerCase();
+  if (s === "manual" || s === "enter_manual_amount") return "manual";
+  return "remaining_balance";
+}
+
+async function findDuplicateRemainingBalanceDraft({ tenantId, sourceId, selectedAmount }) {
+  const tidEnc = encodeURIComponent(String(tenantId));
+  const marker = sourceInvoiceMarker(sourceId);
+  const path =
+    `invoices?tenant_id=eq.${tidEnc}` +
+    `&invoice_label=eq.${encodeURIComponent(REMAINING_BALANCE_LABEL)}` +
+    `&select=id,status,amount,notes,invoice_no` +
+    `&limit=50` +
+    `&order=created_at.desc`;
+
+  let rows;
+  try {
+    rows = await supabaseRequest(path, { method: "GET" });
+  } catch (_err) {
+    return null;
+  }
+  const list = Array.isArray(rows) ? rows : [];
+  const targetCents = Math.round(selectedAmount * 100);
+
+  for (const inv of list) {
+    const st = normStatus(inv?.status);
+    if (TERMINAL_STATUSES.has(st)) continue;
+    if (!ACTIVE_DUPLICATE_STATUSES.has(st) && st !== "") continue;
+    if (!notesContainSourceMarker(inv?.notes, sourceId)) continue;
+    const amtCents = Math.round(finiteMoney(inv?.amount, 0) * 100);
+    if (Math.abs(amtCents - targetCents) <= 1) {
+      return inv;
+    }
+  }
+  return null;
+}
+
+function buildRemainingBalanceInsert({ source, tenantId, selectedAmount, notesFinal, quoteId }) {
+  const now = new Date().toISOString();
+  const today = now.slice(0, 10);
+  const payload = {
+    tenant_id: tenantId,
+    public_token: makePublicToken("inv"),
+    invoice_no: `INV-${Date.now()}`,
+    customer_name: pickStr(source.customer_name),
+    customer_email: pickStr(source.customer_email),
+    project_name: pickStr(source.project_name),
+    invoice_label: REMAINING_BALANCE_LABEL,
+    notes: notesFinal,
+    amount: selectedAmount,
+    paid_amount: 0,
+    balance_due: selectedAmount,
+    issue_date: today,
+    due_date: normalizeDueDate(source.due_date),
+    type: "PROGRESS",
+    business_name: pickStr(source.business_name),
+    currency: pickStr(source.currency) || "USD",
+    status: "draft",
+    created_at: now,
+    updated_at: now
+  };
+  const projectId = pickStr(source.project_id);
+  if (projectId && UUID_RE.test(projectId)) {
+    payload.project_id = projectId;
+  }
+  if (quoteId && UUID_RE.test(quoteId)) {
+    payload.quote_id = quoteId;
+  }
+  return payload;
+}
+
+/**
+ * POST body:
+ * {
+ *   source_invoice_id,
+ *   amount_mode: "remaining_balance" | "manual",
+ *   manual_amount?,
+ *   notes?
+ * }
+ */
+exports.handler = async (event) => {
+  try {
+    if (event.httpMethod !== "POST") {
+      return json(405, { ok: false, error: "Method Not Allowed" });
+    }
+
+    const session = readSessionFromEvent(event);
+    if (!session?.e || !session?.c) {
+      return json(401, { ok: false, error: "Unauthorized" });
+    }
+
+    const tenant = await resolveTenantFromSession(session);
+    if (!tenant?.id) {
+      return json(422, {
+        ok: false,
+        error: "Tenant not found for this session. Run bootstrap-tenant first."
+      });
+    }
+
+    const tenantId = String(tenant.id);
+
+    let body = {};
+    try {
+      body = JSON.parse(event.body || "{}");
+    } catch (_err) {
+      return json(400, { ok: false, error: "Invalid JSON body." });
+    }
+
+    const clientTenantId = pickFirst(body.tenant_id, body.tenantId);
+    if (
+      clientTenantId != null &&
+      clientTenantId !== "" &&
+      String(clientTenantId) !== tenantId
+    ) {
+      return json(403, { ok: false, error: "tenant_id does not match the signed-in account." });
+    }
+
+    const rawSourceId = pickFirst(
+      body.source_invoice_id,
+      body.sourceInvoiceId,
+      body.invoice_id,
+      body.invoiceId
+    );
+    const sourceInvoiceId = rawSourceId ? String(rawSourceId).trim() : "";
+    if (!sourceInvoiceId) {
+      return json(400, { ok: false, error: "source_invoice_id is required." });
+    }
+    if (!UUID_RE.test(sourceInvoiceId)) {
+      return json(400, { ok: false, error: "Invalid source_invoice_id (expected UUID)." });
+    }
+
+    const amountMode = normalizeAmountMode(body.amount_mode || body.amountMode);
+    const manualAmountRaw = body.manual_amount ?? body.manualAmount;
+
+    const iidEnc = encodeURIComponent(sourceInvoiceId);
+    const tidEnc = encodeURIComponent(tenantId);
+    const rows = await supabaseRequest(
+      `invoices?id=eq.${iidEnc}&tenant_id=eq.${tidEnc}&select=*,quotes(id,total)&limit=1`,
+      { method: "GET" }
+    );
+    const source = Array.isArray(rows) && rows[0] ? rows[0] : null;
+    if (!source?.id) {
+      return json(404, { ok: false, error: "Source invoice not found." });
+    }
+
+    const sourceStatus = normStatus(source.status);
+    if (sourceStatus === "archived") {
+      return json(422, { ok: false, reason: "invoice_archived", error: "Cannot create from an archived invoice." });
+    }
+    if (sourceStatus === "void") {
+      return json(422, { ok: false, reason: "invoice_void", error: "Cannot create from a void invoice." });
+    }
+
+    let quoteWrap = source.quotes;
+    if (Array.isArray(quoteWrap)) quoteWrap = quoteWrap[0];
+    const quoteEmbed = quoteWrap && typeof quoteWrap === "object" ? quoteWrap : null;
+    const quoteId =
+      quoteEmbed?.id != null
+        ? String(quoteEmbed.id).trim()
+        : source.quote_id != null
+          ? String(source.quote_id).trim()
+          : "";
+
+    const contractTotal = resolveContractTotal(source, quoteEmbed);
+    if (!(contractTotal > 0)) {
+      return json(422, { ok: false, reason: "no_contract_total", error: "Could not resolve a contract total." });
+    }
+
+    const invoiceId = String(source.id).trim();
+    const projectId = pickStr(source.project_id);
+    const paidToDate = await sumLedgerPayments(tenantId, {
+      invoiceId,
+      projectId: UUID_RE.test(projectId) ? projectId : "",
+      quoteId: UUID_RE.test(quoteId) ? quoteId : ""
+    });
+
+    const remainingBalance = Math.max(0, finiteMoney(contractTotal - paidToDate, 0));
+    if (!(remainingBalance > 0)) {
+      return json(422, {
+        ok: false,
+        reason: "no_remaining_balance",
+        error: "No remaining balance on this project."
+      });
+    }
+
+    let selectedAmount = remainingBalance;
+    if (amountMode === "manual") {
+      selectedAmount = finiteMoney(manualAmountRaw, NaN);
+      if (!Number.isFinite(selectedAmount) || selectedAmount <= 0) {
+        return json(400, { ok: false, error: "manual_amount must be greater than 0." });
+      }
+      if (selectedAmount > remainingBalance + 0.001) {
+        return json(422, {
+          ok: false,
+          reason: "manual_amount_exceeds_remaining",
+          error: `Manual amount cannot exceed remaining balance (${remainingBalance.toFixed(2)}).`
+        });
+      }
+      selectedAmount = finiteMoney(selectedAmount, 0);
+    }
+
+    const duplicate = await findDuplicateRemainingBalanceDraft({
+      tenantId,
+      sourceId: sourceInvoiceId,
+      selectedAmount
+    });
+    if (duplicate?.id) {
+      return json(409, {
+        ok: false,
+        reason: "duplicate_remaining_balance_draft",
+        error: "An active remaining balance draft invoice already exists for this source and amount.",
+        existing_invoice_id: String(duplicate.id),
+        existing_invoice_no: pickStr(duplicate.invoice_no)
+      });
+    }
+
+    const clientNotes = body.notes != null ? String(body.notes).trim().slice(0, 7900) : "";
+    const notesFinal = appendSourceMarker(clientNotes, sourceInvoiceId);
+
+    const insertPayload = buildRemainingBalanceInsert({
+      source,
+      tenantId,
+      selectedAmount,
+      notesFinal,
+      quoteId
+    });
+
+    let created;
+    try {
+      created = await supabaseRequest("invoices", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: insertPayload
+      });
+    } catch (insertErr) {
+      const msg = String(insertErr?.message || insertErr || "");
+      const projectColumnMissing = /column .*project_id.* does not exist/i.test(msg);
+      const quoteColumnMissing = /column .*quote_id.* does not exist/i.test(msg);
+      if ((projectColumnMissing || quoteColumnMissing) && (insertPayload.project_id || insertPayload.quote_id)) {
+        const fallbackPayload = { ...insertPayload };
+        if (projectColumnMissing) delete fallbackPayload.project_id;
+        if (quoteColumnMissing) delete fallbackPayload.quote_id;
+        created = await supabaseRequest("invoices", {
+          method: "POST",
+          headers: { Prefer: "return=representation" },
+          body: fallbackPayload
+        });
+      } else {
+        throw insertErr;
+      }
+    }
+
+    const invoice = Array.isArray(created) ? created[0] : created;
+    if (!invoice?.id) {
+      return json(500, { ok: false, error: "Insert did not return an invoice row." });
+    }
+    if (String(invoice.tenant_id || "") !== tenantId) {
+      return json(500, { ok: false, error: "Invoice was stored without valid tenant scope." });
+    }
+
+    return json(200, {
+      ok: true,
+      invoice_id: String(invoice.id),
+      status: normStatus(invoice.status) || "draft",
+      amount: finiteMoney(invoice.amount, selectedAmount),
+      source_invoice_id: sourceInvoiceId,
+      remaining_balance: remainingBalance,
+      contract_total: contractTotal,
+      paid_to_date: paidToDate,
+      invoice,
+      message:
+        "Remaining balance draft invoice created. No email was sent and no payment was recorded."
+    });
+  } catch (err) {
+    console.error("[create-remaining-balance-invoice]", err);
+    return json(500, { ok: false, error: err.message || "Server error" });
+  }
+};

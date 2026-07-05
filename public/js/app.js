@@ -6215,6 +6215,10 @@ Thank you.`
     const canMarkPaid = Boolean(
       (!archived && hasBalance && !paid && (hubRowCanRecordLedgerPayment(row) || base.canMarkPaid))
     );
+    const projectRemaining = hubRowProjectRemainingBalance(row);
+    const canCreateRemainingBalanceInvoice = Boolean(
+      isServer && hasValidSid && !archived && !voided && hasEmail && projectRemaining > 0.005
+    );
     return {
       canView: true,
       canOpenPublic: base.canOpenPublic,
@@ -6229,6 +6233,7 @@ Thank you.`
       canArchive: base.canArchiveServerInvoice,
       canDuplicateInvoice,
       canCancelInvoice,
+      canCreateRemainingBalanceInvoice,
       canDelete: base.canDeleteServerInvoice,
       resendLabel: sentLike || sentAt || (!canSendInvoice && canResendInvoice) ? "Resend invoice" : "Send invoice"
     };
@@ -6471,7 +6476,12 @@ Thank you.`
         [
           item("send-invoice", sendLabel, sendEnabled),
           item("record-payment", "Record payment", menuState.canRecordPayment),
-          item("send-reminder", "Send payment reminder", menuState.canSendPaymentReminder)
+          item("send-reminder", "Send payment reminder", menuState.canSendPaymentReminder),
+          item(
+            "create-remaining-balance-invoice",
+            "Create Remaining Balance Invoice",
+            menuState.canCreateRemainingBalanceInvoice
+          )
         ].join("")
       ),
       section(
@@ -12108,6 +12118,219 @@ window.renderSupervisor = renderSupervisor;
     return { ok: true, invoice: data.invoice, sourceInvoiceId: data.source_invoice_id };
   }
 
+  const HUB_REMAINING_BALANCE_INVOICE_ENDPOINT = "/.netlify/functions/create-remaining-balance-invoice";
+
+  function buildHubRemainingBalanceInvoiceMessage(row, settings) {
+    const customerName = nonEmptyString(row?.customer, row?.project?.clientName) || "there";
+    const projectName = nonEmptyString(row?.title, row?.project?.projectName) || "your project";
+    const businessName = hubReminderBusinessName(row, settings);
+    return (
+      `Hi ${customerName}, here is the remaining balance invoice for ${projectName}. ` +
+      "This invoice reflects the payments recorded to date. Please review the balance due and let us know if you have any questions. " +
+      `Thank you for choosing ${businessName}.`
+    );
+  }
+
+  function formatHubRemainingBalanceInvoiceError(data, status) {
+    const reason = String(data?.reason || "").trim();
+    const msg = String(data?.message || data?.error || "").trim();
+    const map = {
+      no_remaining_balance: "No remaining balance on this project.",
+      manual_amount_exceeds_remaining: msg || "Manual amount exceeds remaining balance.",
+      duplicate_remaining_balance_draft:
+        msg || "An active remaining balance draft invoice already exists for this source and amount.",
+      invoice_archived: "Cannot create from an archived invoice.",
+      invoice_void: "Cannot create from a void invoice.",
+      no_contract_total: "Could not resolve a contract total for this project."
+    };
+    return map[reason] || msg || `Could not create remaining balance invoice (HTTP ${status}).`;
+  }
+
+  let hubRemainingBalanceInvoiceState = {
+    row: null,
+    creating: false,
+    contractTotal: 0,
+    paidToDate: 0,
+    remainingBalance: 0
+  };
+
+  function hubRemainingBalanceInvoiceSetFeedback(message, tone) {
+    const el = $("hubRemainingBalanceInvoiceFeedback");
+    if (!el) return;
+    if (!message) {
+      el.style.display = "none";
+      el.textContent = "";
+      el.className = "notice";
+      return;
+    }
+    el.style.display = "";
+    el.textContent = message;
+    el.className = `notice ${tone === "err" ? "err" : tone === "warn" ? "warn" : "ok"}`;
+  }
+
+  function hubRemainingBalanceInvoiceSyncManualWrap() {
+    const manualMode = $("hubRbAmountModeManual");
+    const wrap = $("hubRbManualWrap");
+    if (!wrap) return;
+    wrap.style.display = manualMode && manualMode.checked ? "" : "none";
+  }
+
+  function hubRemainingBalanceInvoiceCloseModal() {
+    const modal = $("hubRemainingBalanceInvoiceModal");
+    if (modal) modal.setAttribute("aria-hidden", "true");
+    hubRemainingBalanceInvoiceState = {
+      row: null,
+      creating: false,
+      contractTotal: 0,
+      paidToDate: 0,
+      remainingBalance: 0
+    };
+    hubRemainingBalanceInvoiceSetFeedback("");
+    const btn = $("btnHubRemainingBalanceInvoiceConfirm");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Create Draft Invoice";
+    }
+  }
+
+  async function openHubRemainingBalanceInvoiceModal(row, settings) {
+    if (!$("hubRemainingBalanceInvoiceModal")) return false;
+    closeHubDrawerActionsMenu();
+    const menuState = getHubOverflowMenuState(row);
+    if (!menuState.canCreateRemainingBalanceInvoice) {
+      setHubFeedback("Remaining balance invoice cannot be created for this project right now.", "warn");
+      return false;
+    }
+    hubRemainingBalanceInvoiceSetFeedback("");
+    const confirmBtn = $("btnHubRemainingBalanceInvoiceConfirm");
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = "Loading…";
+    }
+    if ($("hubRbCustomer")) $("hubRbCustomer").textContent = nonEmptyString(row?.customer, row?.project?.clientName) || "—";
+    if ($("hubRbEmail")) {
+      $("hubRbEmail").textContent = String(row?.customerEmail || row?.project?.clientEmail || "").trim() || "—";
+    }
+    if ($("hubRbProject")) $("hubRbProject").textContent = nonEmptyString(row?.title, row?.project?.projectName) || "—";
+    if ($("hubRbContractTotal")) $("hubRbContractTotal").textContent = "…";
+    if ($("hubRbPaidToDate")) $("hubRbPaidToDate").textContent = "…";
+    if ($("hubRbRemaining")) $("hubRbRemaining").textContent = "…";
+    $("hubRemainingBalanceInvoiceModal").setAttribute("aria-hidden", "false");
+
+    const cur = settings || loadSettings();
+    const totals = await hubRowResolveProjectPaymentTotals(row);
+    if (!(totals.remainingBalance > 0)) {
+      hubRemainingBalanceInvoiceCloseModal();
+      setHubFeedback("No remaining balance on this project.", "warn");
+      return false;
+    }
+    hubRemainingBalanceInvoiceState = {
+      row,
+      creating: false,
+      contractTotal: totals.contractTotal,
+      paidToDate: totals.paidToDate,
+      remainingBalance: totals.remainingBalance
+    };
+    if ($("hubRbContractTotal")) {
+      $("hubRbContractTotal").textContent = money(totals.contractTotal, cur.currency);
+    }
+    if ($("hubRbPaidToDate")) {
+      $("hubRbPaidToDate").textContent = money(totals.paidToDate, cur.currency);
+    }
+    if ($("hubRbRemaining")) {
+      $("hubRbRemaining").textContent = money(totals.remainingBalance, cur.currency);
+    }
+    if ($("hubRbAmountModeRemaining")) $("hubRbAmountModeRemaining").checked = true;
+    if ($("hubRbAmountModeManual")) $("hubRbAmountModeManual").checked = false;
+    if ($("hubRbManualAmount")) {
+      $("hubRbManualAmount").value = totals.remainingBalance.toFixed(2);
+      $("hubRbManualAmount").max = String(totals.remainingBalance);
+    }
+    if ($("hubRbMessage")) {
+      $("hubRbMessage").value = buildHubRemainingBalanceInvoiceMessage(row, cur);
+    }
+    hubRemainingBalanceInvoiceSyncManualWrap();
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "Create Draft Invoice";
+    }
+    return true;
+  }
+
+  function hubRemainingBalanceInvoiceSelectedAmount() {
+    const remaining = finiteNumber(hubRemainingBalanceInvoiceState.remainingBalance, 0);
+    const manualMode = $("hubRbAmountModeManual");
+    if (manualMode && manualMode.checked) {
+      const raw = finiteNumber($("hubRbManualAmount")?.value, NaN);
+      return Math.round(raw * 100) / 100;
+    }
+    return Math.round(remaining * 100) / 100;
+  }
+
+  function hubRemainingBalanceInvoiceValidateClientAmount() {
+    const remaining = finiteNumber(hubRemainingBalanceInvoiceState.remainingBalance, 0);
+    const amt = hubRemainingBalanceInvoiceSelectedAmount();
+    if (!Number.isFinite(amt) || amt <= 0) {
+      return { ok: false, message: "Amount must be greater than 0." };
+    }
+    if (amt > remaining + 0.001) {
+      return { ok: false, message: `Amount cannot exceed remaining balance (${money(remaining, loadSettings().currency)}).` };
+    }
+    return { ok: true, amount: Math.round(amt * 100) / 100 };
+  }
+
+  async function postHubRemainingBalanceInvoice(payload) {
+    const res = await fetch(HUB_REMAINING_BALANCE_INVOICE_ENDPOINT, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload)
+    });
+    let data = {};
+    try {
+      data = await res.json();
+    } catch (_e) {
+      data = {};
+    }
+    return { ok: res.ok && data?.ok === true, status: res.status, data };
+  }
+
+  async function executeHubRemainingBalanceInvoice(row, options) {
+    const iid = hubRowServerInvoiceUuid(row);
+    if (!iid || !MG_SERVER_INVOICE_UUID_RE.test(iid)) {
+      return { ok: false, message: "No valid server invoice for remaining balance draft." };
+    }
+    const menuState = getHubOverflowMenuState(row);
+    if (!menuState.canCreateRemainingBalanceInvoice) {
+      return { ok: false, message: "Remaining balance invoice cannot be created for this project right now." };
+    }
+    const validation = hubRemainingBalanceInvoiceValidateClientAmount();
+    if (!validation.ok) {
+      return { ok: false, message: validation.message };
+    }
+    const amountMode = $("hubRbAmountModeManual")?.checked ? "manual" : "remaining_balance";
+    const notes = String($("hubRbMessage")?.value || options?.notes || "").trim();
+    const { ok, data, status } = await postHubRemainingBalanceInvoice({
+      source_invoice_id: iid,
+      amount_mode: amountMode,
+      manual_amount: amountMode === "manual" ? validation.amount : undefined,
+      notes
+    });
+    if (!ok) {
+      return {
+        ok: false,
+        message: formatHubRemainingBalanceInvoiceError(data, status)
+      };
+    }
+    return {
+      ok: true,
+      invoice: data.invoice,
+      invoiceId: data.invoice_id,
+      message: data.message,
+      amount: data.amount
+    };
+  }
+
   let hubCancelInvoiceState = { row: null, cancelling: false };
 
   function hubCancelInvoiceSetFeedback(message, tone) {
@@ -14062,6 +14285,26 @@ window.renderSupervisor = renderSupervisor;
     return finiteNumber(row?.depositApplied, 0) + finiteNumber(row?.receivedApplied, 0);
   }
 
+  /** Project remaining balance from hub row (contract total minus paid applied). */
+  function hubRowProjectRemainingBalance(row) {
+    const contractTotal = Math.max(finiteNumber(row?.projectContractTotal, 0), 0);
+    const paid = hubRowPaidToDateApprox(row);
+    return Math.max(0, Math.round((contractTotal - paid) * 100) / 100);
+  }
+
+  async function hubRowResolveProjectPaymentTotals(row) {
+    const contractTotal = Math.max(finiteNumber(row?.projectContractTotal, 0), 0);
+    let paidToDate = hubRowPaidToDateApprox(row);
+    if (hubRowCanRecordLedgerPayment(row)) {
+      const pack = await fetchHubDrawerLedgerPayments(row);
+      if (pack && Number.isFinite(pack.netSum)) {
+        paidToDate = finiteNumber(pack.netSum, paidToDate);
+      }
+    }
+    const remainingBalance = Math.max(0, Math.round((contractTotal - paidToDate) * 100) / 100);
+    return { contractTotal, paidToDate, remainingBalance };
+  }
+
   async function fetchHubDrawerLedgerPayments(row) {
     const { invoiceId, quoteId, projectId } = hubLedgerTargetIds(row);
     const params = new URLSearchParams({ limit: "500" });
@@ -15584,6 +15827,10 @@ window.renderSupervisor = renderSupervisor;
         openHubPaymentReminderModal(row, settings);
         return;
       }
+      if (action === "create-remaining-balance-invoice") {
+        void openHubRemainingBalanceInvoiceModal(row, settings);
+        return;
+      }
       if (action === "open-public") {
         const url = hubRowPublicUrl(row);
         if (!url) {
@@ -16686,6 +16933,67 @@ window.renderSupervisor = renderSupervisor;
             }
             const label = nonEmptyString(result.invoice?.invoice_no) || "draft duplicate";
             setHubFeedback(`Invoice duplicated as ${label}.`, "ok");
+          })();
+        };
+      }
+    }
+    if ($("hubRemainingBalanceInvoiceModal") && !window.__MG_HUB_RB_INVOICE_MODAL_BOUND__) {
+      window.__MG_HUB_RB_INVOICE_MODAL_BOUND__ = true;
+      if ($("btnHubRemainingBalanceInvoiceClose")) {
+        $("btnHubRemainingBalanceInvoiceClose").onclick = hubRemainingBalanceInvoiceCloseModal;
+      }
+      if ($("btnHubRemainingBalanceInvoiceCancel")) {
+        $("btnHubRemainingBalanceInvoiceCancel").onclick = hubRemainingBalanceInvoiceCloseModal;
+      }
+      if ($("hubRbAmountModeRemaining")) {
+        $("hubRbAmountModeRemaining").onchange = hubRemainingBalanceInvoiceSyncManualWrap;
+      }
+      if ($("hubRbAmountModeManual")) {
+        $("hubRbAmountModeManual").onchange = hubRemainingBalanceInvoiceSyncManualWrap;
+      }
+      if ($("btnHubRemainingBalanceInvoiceConfirm")) {
+        $("btnHubRemainingBalanceInvoiceConfirm").onclick = () => {
+          if (hubRemainingBalanceInvoiceState.creating || !hubRemainingBalanceInvoiceState.row) return;
+          const row = hubRemainingBalanceInvoiceState.row;
+          const validation = hubRemainingBalanceInvoiceValidateClientAmount();
+          if (!validation.ok) {
+            hubRemainingBalanceInvoiceSetFeedback(validation.message, "err");
+            return;
+          }
+          hubRemainingBalanceInvoiceState.creating = true;
+          const confirmBtn = $("btnHubRemainingBalanceInvoiceConfirm");
+          if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = "Creating…";
+          }
+          hubRemainingBalanceInvoiceSetFeedback("");
+          void (async () => {
+            const result = await executeHubRemainingBalanceInvoice(row);
+            hubRemainingBalanceInvoiceState.creating = false;
+            if (!result.ok) {
+              hubRemainingBalanceInvoiceSetFeedback(result.message || "Could not create draft invoice.", "err");
+              if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = "Create Draft Invoice";
+              }
+              return;
+            }
+            const newId = String(result.invoice?.id || result.invoiceId || "").trim();
+            hubRemainingBalanceInvoiceCloseModal();
+            if (typeof window.__mgHubRefetchServerInvoices === "function") {
+              await window.__mgHubRefetchServerInvoices();
+            } else {
+              refresh();
+            }
+            if (newId && MG_SERVER_INVOICE_UUID_RE.test(newId)) {
+              const newRow = lastMergedHubRows.find((r) => String(r.serverInvoiceId || "") === newId);
+              if (newRow) openHubDrawer(newRow);
+            }
+            const label = nonEmptyString(result.invoice?.invoice_no) || "draft";
+            setHubFeedback(
+              result.message || `Remaining balance draft invoice created (${label}). No email was sent.`,
+              "ok"
+            );
           })();
         };
       }
