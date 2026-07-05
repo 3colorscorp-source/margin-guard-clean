@@ -14984,21 +14984,50 @@ window.renderSupervisor = renderSupervisor;
     return Math.min(100, Math.max(0, (p / t) * 100));
   }
 
-  function hubDrawerPaymentNextActionFromTotals(paid, total) {
+  const HUB_REMAINING_BALANCE_INVOICE_LABEL = "Remaining Balance";
+  const HUB_SOURCE_INVOICE_MARKER_RE =
+    /\[source_invoice:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\]/i;
+
+  /** Display-only: Step 17C remaining balance draft invoices (label or notes marker). */
+  function hubRowIsRemainingBalanceInvoice(row) {
+    if (!row) return false;
+    const label = sanitizeInvoiceLabelInput(nonEmptyString(row.hubInvoiceLabel));
+    if (label.toLowerCase() === HUB_REMAINING_BALANCE_INVOICE_LABEL.toLowerCase()) return true;
+    const inv = row.project?.invoice && typeof row.project.invoice === "object" ? row.project.invoice : {};
+    const labelFromInv = sanitizeInvoiceLabelInput(nonEmptyString(inv.invoiceLabel, inv.invoice_label));
+    if (labelFromInv.toLowerCase() === HUB_REMAINING_BALANCE_INVOICE_LABEL.toLowerCase()) return true;
+    const notes = String(row.hubInvoiceNotes || inv.notes || "").trim();
+    return HUB_SOURCE_INVOICE_MARKER_RE.test(notes);
+  }
+
+  function hubDrawerPaymentNextActionFromTotals(paid, total, row) {
+    const isRemainingBalanceInvoice = hubRowIsRemainingBalanceInvoice(row);
     const t = finiteNumber(total, 0);
     const p = finiteNumber(paid, 0);
-    if (t <= 0) return "Initial deposit due";
     const pCents = Math.round(p * 100);
     const tCents = Math.round(t * 100);
+    if (isRemainingBalanceInvoice) {
+      if (t <= 0) return "Remaining balance due";
+      if (pCents >= tCents) return "Paid in full";
+      return "Remaining balance due";
+    }
+    if (t <= 0) return "Initial deposit due";
     if (pCents <= 0) return "Initial deposit due";
     if (pCents >= tCents) return "Paid in full";
     return "Remaining balance due";
   }
 
-  function hubDrawerNextPaymentPlaceholderText(paid, total) {
-    const na = hubDrawerPaymentNextActionFromTotals(paid, total);
-    if (na === "Paid in full") return "No further balance — project invoice is settled.";
+  function hubDrawerNextPaymentPlaceholderText(paid, total, row) {
+    const na = hubDrawerPaymentNextActionFromTotals(paid, total, row);
+    if (na === "Paid in full") {
+      return hubRowIsRemainingBalanceInvoice(row)
+        ? "No further balance — remaining balance invoice is settled."
+        : "No further balance — project invoice is settled.";
+    }
     if (na === "Initial deposit due") return "Await initial deposit or first project payment.";
+    if (hubRowIsRemainingBalanceInvoice(row)) {
+      return "This invoice bills the remaining project balance.";
+    }
     return "Record payments until the remaining invoice balance is zero.";
   }
 
@@ -15026,11 +15055,11 @@ window.renderSupervisor = renderSupervisor;
     if (wrap) wrap.style.display = showEmpty ? "none" : "";
   }
 
-  function updateHubDrawerPaymentDerivedUi(paid, total, settings, lastPaymentLine) {
+  function updateHubDrawerPaymentDerivedUi(paid, total, settings, lastPaymentLine, row) {
     const t = finiteNumber(total, 0);
     const p = finiteNumber(paid, 0);
     if ($("hubDrawerNextAction")) {
-      $("hubDrawerNextAction").textContent = hubDrawerPaymentNextActionFromTotals(p, t);
+      $("hubDrawerNextAction").textContent = hubDrawerPaymentNextActionFromTotals(p, t, row);
     }
     const pct = hubDrawerPaymentProgressPct(p, t);
     const fill = $("hubDrawerProgressFill");
@@ -15053,7 +15082,7 @@ window.renderSupervisor = renderSupervisor;
     }
     const nextEl = $("hubDrawerPaymentNext");
     if (nextEl) {
-      nextEl.textContent = hubDrawerNextPaymentPlaceholderText(p, t);
+      nextEl.textContent = hubDrawerNextPaymentPlaceholderText(p, t, row);
     }
   }
 
@@ -15125,7 +15154,7 @@ window.renderSupervisor = renderSupervisor;
       `;
     }
 
-    updateHubDrawerPaymentDerivedUi(localPaid, contractTotal, settings, "");
+    updateHubDrawerPaymentDerivedUi(localPaid, contractTotal, settings, "", row);
 
     const ledgerWrap = $("hubDrawerLedgerWrap");
     const ledgerBody = $("hubDrawerLedgerPaymentsBody");
@@ -15170,7 +15199,7 @@ window.renderSupervisor = renderSupervisor;
           }
           const sub = $("hubDrawerLedgerPaidSub");
           if (sub) sub.textContent = "Ledger unavailable — showing local totals";
-          updateHubDrawerPaymentDerivedUi(localPaid, contractTotal, settings, "");
+          updateHubDrawerPaymentDerivedUi(localPaid, contractTotal, settings, "", row);
           return;
         }
         paidEl.textContent = money(pack.netSum, settings.currency);
@@ -15178,7 +15207,7 @@ window.renderSupervisor = renderSupervisor;
         const subPaid = $("hubDrawerLedgerPaidSub");
         if (subPaid) subPaid.textContent = "Ledger net (tenant_project_payments)";
         const lastLine = formatHubDrawerLastLedgerPaymentLine(pack.payments, settings);
-        updateHubDrawerPaymentDerivedUi(pack.netSum, contractTotal, settings, lastLine);
+        updateHubDrawerPaymentDerivedUi(pack.netSum, contractTotal, settings, lastLine, row);
       })();
     }
 
