@@ -12138,12 +12138,21 @@ window.renderSupervisor = renderSupervisor;
       no_remaining_balance: "No remaining balance on this project.",
       manual_amount_exceeds_remaining: msg || "Manual amount exceeds remaining balance.",
       duplicate_remaining_balance_draft:
-        msg || "An active remaining balance draft invoice already exists for this source and amount.",
+        "A remaining balance draft invoice already exists for this project/invoice.",
+      quote_id_unique_violation:
+        "Could not create the remaining balance draft invoice. Please refresh and try again.",
+      insert_unique_violation:
+        "Could not create the remaining balance draft invoice. Please refresh and try again.",
+      insert_failed: "Could not create the remaining balance draft invoice. Please refresh and try again.",
       invoice_archived: "Cannot create from an archived invoice.",
       invoice_void: "Cannot create from a void invoice.",
       no_contract_total: "Could not resolve a contract total for this project."
     };
-    return map[reason] || msg || `Could not create remaining balance invoice (HTTP ${status}).`;
+    if (map[reason]) return map[reason];
+    if (/supabase|constraint|duplicate key|violates unique|23505/i.test(msg)) {
+      return "Could not create the remaining balance draft invoice. Please refresh and try again.";
+    }
+    return msg || "Could not create the remaining balance draft invoice. Please refresh and try again.";
   }
 
   let hubRemainingBalanceInvoiceState = {

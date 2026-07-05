@@ -141,7 +141,7 @@ async function findDuplicateRemainingBalanceDraft({ tenantId, sourceId, selected
   return null;
 }
 
-function buildRemainingBalanceInsert({ source, tenantId, selectedAmount, notesFinal, quoteId }) {
+function buildRemainingBalanceInsert({ source, tenantId, selectedAmount, notesFinal }) {
   const now = new Date().toISOString();
   const today = now.slice(0, 10);
   const payload = {
@@ -169,10 +169,32 @@ function buildRemainingBalanceInsert({ source, tenantId, selectedAmount, notesFi
   if (projectId && UUID_RE.test(projectId)) {
     payload.project_id = projectId;
   }
-  if (quoteId && UUID_RE.test(quoteId)) {
-    payload.quote_id = quoteId;
-  }
+  // Do not set quote_id — invoices_tenant_quote_unique allows one invoice per quote per tenant.
+  // Source linkage is preserved via notes marker [source_invoice:<uuid>].
   return payload;
+}
+
+function ownerSafeInsertError(rawMessage) {
+  const msg = String(rawMessage || "").trim();
+  if (/invoices_tenant_quote_unique|tenant_id.*quote_id|duplicate key.*quote/i.test(msg)) {
+    return {
+      status: 409,
+      reason: "quote_id_unique_violation",
+      error: "Could not create the remaining balance draft invoice. Please refresh and try again."
+    };
+  }
+  if (/duplicate key|violates unique constraint|23505/i.test(msg)) {
+    return {
+      status: 409,
+      reason: "insert_unique_violation",
+      error: "Could not create the remaining balance draft invoice. Please refresh and try again."
+    };
+  }
+  return {
+    status: 500,
+    reason: "insert_failed",
+    error: "Could not create the remaining balance draft invoice. Please refresh and try again."
+  };
 }
 
 /**
@@ -314,9 +336,7 @@ exports.handler = async (event) => {
       return json(409, {
         ok: false,
         reason: "duplicate_remaining_balance_draft",
-        error: "An active remaining balance draft invoice already exists for this source and amount.",
-        existing_invoice_id: String(duplicate.id),
-        existing_invoice_no: pickStr(duplicate.invoice_no)
+        error: "A remaining balance draft invoice already exists for this project/invoice."
       });
     }
 
@@ -327,8 +347,7 @@ exports.handler = async (event) => {
       source,
       tenantId,
       selectedAmount,
-      notesFinal,
-      quoteId
+      notesFinal
     });
 
     let created;
@@ -341,18 +360,22 @@ exports.handler = async (event) => {
     } catch (insertErr) {
       const msg = String(insertErr?.message || insertErr || "");
       const projectColumnMissing = /column .*project_id.* does not exist/i.test(msg);
-      const quoteColumnMissing = /column .*quote_id.* does not exist/i.test(msg);
-      if ((projectColumnMissing || quoteColumnMissing) && (insertPayload.project_id || insertPayload.quote_id)) {
+      if (projectColumnMissing && insertPayload.project_id) {
         const fallbackPayload = { ...insertPayload };
-        if (projectColumnMissing) delete fallbackPayload.project_id;
-        if (quoteColumnMissing) delete fallbackPayload.quote_id;
-        created = await supabaseRequest("invoices", {
-          method: "POST",
-          headers: { Prefer: "return=representation" },
-          body: fallbackPayload
-        });
+        delete fallbackPayload.project_id;
+        try {
+          created = await supabaseRequest("invoices", {
+            method: "POST",
+            headers: { Prefer: "return=representation" },
+            body: fallbackPayload
+          });
+        } catch (retryErr) {
+          const safe = ownerSafeInsertError(retryErr?.message || retryErr);
+          return json(safe.status, { ok: false, reason: safe.reason, error: safe.error });
+        }
       } else {
-        throw insertErr;
+        const safe = ownerSafeInsertError(msg);
+        return json(safe.status, { ok: false, reason: safe.reason, error: safe.error });
       }
     }
 
@@ -379,6 +402,7 @@ exports.handler = async (event) => {
     });
   } catch (err) {
     console.error("[create-remaining-balance-invoice]", err);
-    return json(500, { ok: false, error: err.message || "Server error" });
+    const safe = ownerSafeInsertError(err?.message || err);
+    return json(safe.status, { ok: false, reason: safe.reason, error: safe.error });
   }
 };
