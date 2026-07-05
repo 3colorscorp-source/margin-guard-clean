@@ -24,6 +24,16 @@
     return Number.isFinite(n) ? n : fallback;
   }
 
+  /** Parse manual debt input strings — strips $, %, commas, spaces; rejects letters. */
+  function parseDebtInputNumber(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) return NaN;
+    const cleaned = raw.replace(/[$,%\s]/g, "").replace(/,/g, "");
+    if (!cleaned || !/^\d+(\.\d+)?$/.test(cleaned)) return NaN;
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : NaN;
+  }
+
   function escapeHtml(value) {
     return String(value ?? "")
       .replace(/&/g, "&amp;")
@@ -172,7 +182,7 @@
     const operatingCash = num(s.operatingCash, 0);
     const profitCash = num(s.profitCash, 0);
     const operatingMonthly = num(s.operatingMonthly, 0);
-    const manualTarget = num(d.operatingCashMinTarget, NaN);
+    const manualTarget = parseDebtInputNumber(d.operatingCashMinTarget);
     const manualTargetKnown = Number.isFinite(manualTarget) && manualTarget > 0;
     const dashboardTargetKnown = Number.isFinite(operatingMonthly) && operatingMonthly > 0;
     const operatingTargetKnown = manualTargetKnown || dashboardTargetKnown;
@@ -636,9 +646,9 @@
     const brokenPromiseCount = num(s.brokenPromiseCount, 0);
     const overdueBalance = num(s.overdueBalance, 0);
 
-    const creditCardBalance = num(d.creditCardBalance, NaN);
-    const apr = num(d.apr, NaN);
-    const monthlyMinimum = num(d.monthlyMinimum, NaN);
+    const creditCardBalance = parseDebtInputNumber(d.creditCardBalance);
+    const apr = parseDebtInputNumber(d.apr);
+    const monthlyMinimum = parseDebtInputNumber(d.monthlyMinimum);
     const balanceMissing = !Number.isFinite(creditCardBalance) || creditCardBalance <= 0;
     const aprMissing = !Number.isFinite(apr) || apr <= 0;
 
@@ -978,8 +988,8 @@
   }
 
   function buildDebtAnalysisPanel(result, debtRaw) {
-    const balance = num(debtRaw?.creditCardBalance, NaN);
-    const apr = num(debtRaw?.apr, NaN);
+    const balance = parseDebtInputNumber(debtRaw?.creditCardBalance);
+    const apr = parseDebtInputNumber(debtRaw?.apr);
     const balanceMissing = !Number.isFinite(balance) || balance <= 0;
     const aprMissing = !Number.isFinite(apr) || apr <= 0;
     const disclaimer =
@@ -1063,6 +1073,64 @@
           </details>`;
   }
 
+  function captureAdvisorFocusState(root) {
+    if (!root || typeof document === "undefined") return null;
+    const active = document.activeElement;
+    if (!active || !root.contains(active)) return null;
+    const inputId = String(active.id || "");
+    if (!["ofaDebtBalance", "ofaDebtApr", "ofaDebtMinimum", "ofaOperatingTarget"].includes(inputId)) {
+      return null;
+    }
+    const focus = { inputId };
+    if (typeof active.selectionStart === "number" && typeof active.selectionEnd === "number") {
+      focus.selectionStart = active.selectionStart;
+      focus.selectionEnd = active.selectionEnd;
+      if (active.selectionDirection) focus.selectionDirection = active.selectionDirection;
+    } else {
+      const len = String(active.value ?? "").length;
+      focus.selectionStart = len;
+      focus.selectionEnd = len;
+    }
+    return focus;
+  }
+
+  function restoreAdvisorFocusState(root, focus) {
+    if (!root || !focus?.inputId) return;
+    const el = document.getElementById(focus.inputId);
+    if (!el || !root.contains(el)) return;
+    try {
+      el.focus({ preventScroll: true });
+    } catch (_e) {
+      el.focus();
+    }
+    if (
+      typeof focus.selectionStart === "number" &&
+      typeof focus.selectionEnd === "number" &&
+      typeof el.setSelectionRange === "function"
+    ) {
+      try {
+        const len = String(el.value ?? "").length;
+        const start = Math.min(Math.max(0, focus.selectionStart), len);
+        const end = Math.min(Math.max(0, focus.selectionEnd), len);
+        el.setSelectionRange(start, end, focus.selectionDirection || "none");
+      } catch (_e) {
+        /* focus alone is sufficient if selection restore is unsupported */
+      }
+    }
+  }
+
+  function captureAdvisorUiState(root) {
+    return {
+      details: captureDetailsOpenState(root),
+      focus: captureAdvisorFocusState(root),
+    };
+  }
+
+  function restoreAdvisorUiState(root, state) {
+    if (!state) return;
+    restoreDetailsOpenState(root, state.details);
+  }
+
   function captureDetailsOpenState(root) {
     const state = {};
     if (!root) return state;
@@ -1123,7 +1191,7 @@
 
     const result = computeAdvisorRecommendation(snapshot, debtNumbers);
 
-    const detailsOpenState = captureDetailsOpenState(root);
+    const uiState = captureAdvisorUiState(root);
 
     root.innerHTML = `
       <section class="card ofa-card" aria-label="Owner Financial Advisor">
@@ -1176,30 +1244,31 @@
             <div class="ofa-debt__grid">
               <label class="ofa-field">
                 <span>Credit card balance</span>
-                <input type="number" step="0.01" min="0" id="ofaDebtBalance" value="${escapeHtml(debtRaw.creditCardBalance)}" placeholder="0" />
+                <input type="text" inputmode="decimal" autocomplete="off" id="ofaDebtBalance" value="${escapeHtml(debtRaw.creditCardBalance)}" placeholder="0" />
               </label>
               <label class="ofa-field">
                 <span>APR (%)</span>
-                <input type="number" step="0.01" min="0" id="ofaDebtApr" value="${escapeHtml(debtRaw.apr)}" placeholder="0" />
+                <input type="text" inputmode="decimal" autocomplete="off" id="ofaDebtApr" value="${escapeHtml(debtRaw.apr)}" placeholder="0" />
               </label>
               <label class="ofa-field">
                 <span>Monthly minimum</span>
-                <input type="number" step="0.01" min="0" id="ofaDebtMinimum" value="${escapeHtml(debtRaw.monthlyMinimum)}" placeholder="0" />
+                <input type="text" inputmode="decimal" autocomplete="off" id="ofaDebtMinimum" value="${escapeHtml(debtRaw.monthlyMinimum)}" placeholder="0" />
               </label>
               <label class="ofa-field">
                 <span>Operating cash min target</span>
-                <input type="number" step="0.01" min="0" id="ofaOperatingTarget" value="${escapeHtml(debtRaw.operatingCashMinTarget)}" placeholder="Defaults to monthly operating cost" />
+                <input type="text" inputmode="decimal" autocomplete="off" id="ofaOperatingTarget" value="${escapeHtml(debtRaw.operatingCashMinTarget)}" placeholder="Defaults to monthly operating cost" />
               </label>
             </div>
           </details>
         </div>
       </section>`;
 
-    restoreDetailsOpenState(root, detailsOpenState);
+    restoreAdvisorUiState(root, uiState);
 
     // Re-bind after innerHTML replace (dataset flag lives on root, reset it here).
     root.dataset.ofaBound = "";
     bindDebtInputs(root);
+    restoreAdvisorFocusState(root, uiState.focus);
   }
 
   /**
