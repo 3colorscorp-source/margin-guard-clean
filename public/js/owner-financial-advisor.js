@@ -311,6 +311,289 @@
     return `${paymentRange.label} ${interestCopy}`;
   }
 
+  function collectionSubject(action) {
+    if (!action || typeof action !== "object") return "";
+    return nonEmptyString(action.customerName, action.projectTitle, "");
+  }
+
+  function nonEmptyString(...values) {
+    for (const value of values) {
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    return "";
+  }
+
+  function refinePrimaryRecommendation(ctx, baseRecommendation) {
+    const {
+      operatingTargetMissing,
+      operatingBelowTarget,
+      runwayThin,
+      healthTone,
+      topCollectionAction,
+      overdueCount,
+      invoiceDataAvailable,
+      openBalance,
+      paymentRange,
+    } = ctx;
+
+    if (operatingTargetMissing) {
+      return "Set operating cash target before making optional debt decisions.";
+    }
+    if (operatingBelowTarget) {
+      return "Do not make an extra debt payment today. Operating cash is below target.";
+    }
+    if (runwayThin || healthTone === "red") {
+      return "Do not make an extra debt payment today. Protect runway first.";
+    }
+    if (invoiceDataAvailable && overdueCount > 0) {
+      const name = collectionSubject(topCollectionAction);
+      if (name) return `Collect ${name}'s invoice before reducing cash.`;
+      return "Collect open invoices before reducing cash.";
+    }
+    if (invoiceDataAvailable && openBalance > 0 && (!paymentRange?.allowed || paymentRange?.contingent)) {
+      return "Collect open invoices before reducing cash.";
+    }
+    if (paymentRange?.allowed && !paymentRange?.contingent) {
+      return "Safe to review a controlled debt payment from profit cash only.";
+    }
+    return baseRecommendation;
+  }
+
+  /**
+   * Deterministic Top 3 owner actions — priority stack, no LLM.
+   */
+  function buildTopOwnerActions(ctx) {
+    const candidates = [];
+    const seen = new Set();
+    const add = (title, detail, tone, order) => {
+      const key = String(title || "").trim();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      candidates.push({ title: key, detail: String(detail || ""), tone: tone || "neutral", order });
+    };
+
+    /* 1. Operating protection */
+    if (ctx.operatingTargetMissing) {
+      add(
+        "Set operating cash target",
+        "Set operating cash target before making optional debt decisions.",
+        "warn",
+        10
+      );
+    }
+    if (ctx.operatingBelowTarget) {
+      add(
+        "Rebuild operating cash",
+        "Rebuild operating cash before paying extra debt.",
+        "danger",
+        11
+      );
+    }
+
+    /* 2. Collections */
+    if (ctx.invoiceDataAvailable && ctx.overdueCount > 0) {
+      const top = ctx.topCollectionAction;
+      const name = collectionSubject(top);
+      if (name) {
+        add(
+          `Collect ${name}'s invoice`,
+          top && top.balance > 0
+            ? `${formatMoney(top.balance)} is still open.`
+            : "Overdue balance needs collection before cash moves.",
+          "danger",
+          20
+        );
+      } else {
+        add(
+          "Collect overdue invoices first",
+          ctx.overdueBalance > 0
+            ? `${formatMoney(ctx.overdueBalance)} overdue — not cash until collected.`
+            : "Work overdue invoices before reducing cash.",
+          "danger",
+          21
+        );
+      }
+    } else if (ctx.invoiceDataAvailable && ctx.openBalance > 0) {
+      add(
+        "Follow up on open invoices",
+        `${formatMoney(ctx.openBalance)} outstanding — not cash until collected.`,
+        "amber",
+        22
+      );
+    }
+
+    if (ctx.brokenPromiseCount > 0) {
+      add(
+        "Follow up broken payment promises",
+        `${ctx.brokenPromiseCount} promised date(s) passed with balance still open.`,
+        "danger",
+        23
+      );
+    }
+
+    const invoiceActions = Array.isArray(ctx.topInvoiceActions) ? ctx.topInvoiceActions : [];
+    invoiceActions.forEach((action, index) => {
+      const name = collectionSubject(action);
+      if (!name) return;
+      const tone = ["overdue", "expired"].includes(String(action.status || "")) ? "danger" : "amber";
+      add(
+        `${action.nextAction || "Invoice follow-up"}: ${name}`,
+        `${formatMoney(action.balance)} open.`,
+        tone,
+        24 + index
+      );
+    });
+
+    /* 3. Billing */
+    if (ctx.readyToBillCount > 0) {
+      add(
+        "Send or review ready-to-bill invoices",
+        `${ctx.readyToBillCount} estimate(s) ready to convert.`,
+        "amber",
+        30
+      );
+    }
+
+    /* 4. Debt inputs */
+    if (ctx.balanceMissing && ctx.aprMissing) {
+      add(
+        "Enter credit card balance and APR",
+        "Debt pressure cannot be measured yet.",
+        "neutral",
+        40
+      );
+    } else if (ctx.balanceMissing || ctx.aprMissing) {
+      add(
+        "Enter missing debt details",
+        ctx.balanceMissing ? "Credit card balance is required." : "APR is required.",
+        "neutral",
+        41
+      );
+    }
+
+    /* 5. Debt payment */
+    if (ctx.paymentRange?.allowed && !ctx.paymentRange?.contingent) {
+      const low = num(ctx.paymentRange.low, 0);
+      const high = num(ctx.paymentRange.high, 0);
+      add(
+        "Review controlled debt payment",
+        high > 0
+          ? `Consider ${formatMoneyRange(low, high)} from profit cash only.`
+          : "Review a controlled payment from profit cash only.",
+        "ok",
+        50
+      );
+    } else if (ctx.paymentRange?.allowed && ctx.paymentRange?.contingent) {
+      add(
+        "Wait for invoice collection",
+        ctx.paymentRange.label || "Collect open invoices before any extra debt payment.",
+        "amber",
+        51
+      );
+    }
+
+    /* 6. Cash protection */
+    if (ctx.runwayThin) {
+      add(
+        "Hold extra debt payment",
+        "Runway is below 3 months.",
+        "warn",
+        60
+      );
+    }
+    if (ctx.healthTone === "red" && !ctx.runwayThin) {
+      add(
+        "Protect cash first",
+        "Business health is under pressure — optional payments wait.",
+        "warn",
+        61
+      );
+    }
+
+    const hasTitleMatching = (pattern) =>
+      candidates.some((c) => pattern.test(String(c.title || "")));
+
+    const contextualFallbacks = [
+      {
+        order: 70,
+        title: "Update debt details before making optional payments",
+        detail: "Enter credit card balance and APR in Manual debt inputs below.",
+        tone: "neutral",
+        when: (c) =>
+          (c.balanceMissing || c.aprMissing) &&
+          !hasTitleMatching(/Enter credit card balance|Enter missing debt details/i),
+      },
+      {
+        order: 71,
+        title: "Recheck Advisor after invoice payments are received",
+        detail: "Open invoices are not cash until money is in the bank.",
+        tone: "neutral",
+        when: (c) => c.invoiceDataAvailable && c.openBalance > 0,
+      },
+      {
+        order: 72,
+        title: "Set operating cash target",
+        detail: "Set your operating cash minimum before optional cash decisions.",
+        tone: "warn",
+        when: (c) => c.operatingTargetMissing,
+      },
+    ];
+
+    contextualFallbacks.forEach((fb) => {
+      if (candidates.length >= 3) return;
+      if (fb.when && !fb.when(ctx)) return;
+      add(fb.title, fb.detail, fb.tone, fb.order);
+    });
+
+    const unconditionalFallbacks = [
+      {
+        title: "Review Dashboard after payments clear",
+        detail: "Recheck when new cash hits the bank.",
+        tone: "neutral",
+      },
+      {
+        title: "Keep tax reserve and savings protected",
+        detail: "Do not use tax reserve, savings, or pending invoices for optional payments.",
+        tone: "neutral",
+      },
+      {
+        title: "Recheck Advisor when cash data changes",
+        detail: "Update balances after deposits, payroll, or invoice collections.",
+        tone: "neutral",
+      },
+    ];
+
+    let fallbackIdx = 0;
+    while (candidates.length < 3 && fallbackIdx < unconditionalFallbacks.length * 3) {
+      const fb = unconditionalFallbacks[fallbackIdx % unconditionalFallbacks.length];
+      fallbackIdx += 1;
+      add(fb.title, fb.detail, fb.tone, 90 + fallbackIdx);
+    }
+
+    return candidates
+      .sort((left, right) => left.order - right.order)
+      .slice(0, 3)
+      .map(({ title, detail, tone }) => ({ title, detail, tone }));
+  }
+
+  function renderTopActions(topActions) {
+    if (!Array.isArray(topActions) || !topActions.length) {
+      return "";
+    }
+    return `
+      <div class="ofa-block" style="margin-bottom:12px;">
+        <h3 class="ofa-block__title">Today’s Top 3 Actions</h3>
+        <ul class="ofa-why">
+          ${topActions
+            .map(
+              (action, index) =>
+                `<li><strong>${index + 1}. ${escapeHtml(action.title)}</strong> — ${escapeHtml(action.detail)}</li>`
+            )
+            .join("")}
+        </ul>
+      </div>`;
+  }
+
   /* ------------------------------------------------------------------ */
   /* Recommendation engine — conservative, deterministic                */
   /* ------------------------------------------------------------------ */
@@ -345,6 +628,13 @@
     const overdueCount = num(s.overdueCount, 0);
     const healthTone = String(s.healthTone || "").toLowerCase();
     const invoiceDataAvailable = s.invoiceDataAvailable !== false;
+    const topCollectionAction = s.topCollectionAction && typeof s.topCollectionAction === "object"
+      ? s.topCollectionAction
+      : null;
+    const topInvoiceActions = Array.isArray(s.topInvoiceActions) ? s.topInvoiceActions.slice(0, 3) : [];
+    const readyToBillCount = num(s.readyToBillCount, 0);
+    const brokenPromiseCount = num(s.brokenPromiseCount, 0);
+    const overdueBalance = num(s.overdueBalance, 0);
 
     const creditCardBalance = num(d.creditCardBalance, NaN);
     const apr = num(d.apr, NaN);
@@ -391,6 +681,25 @@
       overdueCount,
     });
 
+    const actionCtx = {
+      operatingTargetMissing,
+      operatingBelowTarget,
+      runwayThin,
+      healthTone,
+      topCollectionAction,
+      topInvoiceActions,
+      readyToBillCount,
+      brokenPromiseCount,
+      overdueBalance,
+      overdueCount,
+      invoiceDataAvailable,
+      openBalance,
+      balanceMissing,
+      aprMissing,
+      paymentRange,
+    };
+    const topActions = buildTopOwnerActions(actionCtx);
+
     /* ---- Decision Signals (always computed from safe aggregates) ---- */
     const signals = buildDecisionSignals({
       operatingCash,
@@ -411,16 +720,17 @@
 
     /* ---- Fallback when core debt data is missing ---- */
     if (missing.length > 0) {
-      return {
-        toneClass: "neutral",
-        recommendation: buildFallbackRecommendation({
+      const fallbackRec = buildFallbackRecommendation({
           balanceMissing,
           aprMissing,
           operatingTargetMissing,
           invoiceDataAvailable,
           openBalance,
           safeAvailableCash: safeCashBreakdown.safeAvailableCash,
-        }),
+        });
+      return {
+        toneClass: "neutral",
+        recommendation: refinePrimaryRecommendation(actionCtx, fallbackRec),
         why: buildOwnerWhy({
           missing,
           operatingCash,
@@ -439,6 +749,7 @@
         risk: "Acting without complete data could drain working capital or reserves.",
         impact: buildEstimatedImpact(paymentRange, monthlyInterestEstimate, dailyInterestEstimate),
         signals,
+        topActions,
         interest: { monthly: monthlyInterestEstimate, daily: dailyInterestEstimate },
         safeAvailableCash: safeCashBreakdown.safeAvailableCash,
         safeCashSummary: buildSafeCashSummary(safeCashBreakdown),
@@ -507,12 +818,13 @@
 
     return {
       toneClass,
-      recommendation,
+      recommendation: refinePrimaryRecommendation(actionCtx, recommendation),
       why,
       nextAction,
       risk,
       impact,
       signals,
+      topActions,
       interest: { monthly: monthlyInterestEstimate, daily: dailyInterestEstimate },
       safeAvailableCash: safeCashBreakdown.safeAvailableCash,
       safeCashSummary: buildSafeCashSummary(safeCashBreakdown),
@@ -678,6 +990,8 @@
             <p class="ofa-block__text">${escapeHtml(result.safeCashSummary || "")}</p>
           </div>
 
+          ${renderTopActions(result.topActions)}
+
           <div class="ofa-grid">
             <div class="ofa-block">
               <h3 class="ofa-block__title">Why</h3>
@@ -752,7 +1066,11 @@
         runwayMonths: num(i.runwayMonths, 0),
         openBalance: num(i.openBalance, 0),
         overdueCount: num(i.overdueCount, 0),
+        overdueBalance: num(i.overdueBalance, 0),
+        brokenPromiseCount: num(i.brokenPromiseCount, 0),
         readyToBillCount: num(i.readyToBillCount, 0),
+        topCollectionAction: i.topCollectionAction && typeof i.topCollectionAction === "object" ? i.topCollectionAction : null,
+        topInvoiceActions: Array.isArray(i.topInvoiceActions) ? i.topInvoiceActions.slice(0, 3) : [],
         healthScore: num(i.healthScore, 0),
         healthTone: String(i.healthTone || "neutral"),
         invoiceDataAvailable: i.invoiceDataAvailable !== false,

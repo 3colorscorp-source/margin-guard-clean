@@ -7411,8 +7411,75 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       if ($("ownerFinancialAdvisorRoot") && window.__mgRenderOwnerFinancialAdvisor) {
         try {
           const advisorRows = hubRowsSnapshot || [];
+          const advisorTodayIso = new Date().toISOString().slice(0, 10);
           const advisorOpenBalance = advisorRows.reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
           const advisorOverdueCount = advisorRows.filter((row) => ["overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0).length;
+          const advisorOverdueBalance = advisorRows
+            .filter((row) => ["overdue", "expired"].includes(row.status) && finiteNumber(row.balance, 0) > 0)
+            .reduce((sum, row) => sum + finiteNumber(row.balance, 0), 0);
+          const advisorBrokenPromiseCount = advisorRows.filter(
+            (row) => row.promisedDateRaw && row.promisedDateRaw < advisorTodayIso && finiteNumber(row.balance, 0) > 0 && row.status !== "paid"
+          ).length;
+          const advisorReadyToBillCount = advisorRows.filter(
+            (row) => row.rowType === "estimate" && finiteNumber(row.amount, 0) > 0 && row.projectStatus !== "completed"
+          ).length;
+
+          let advisorTopCollectionAction = null;
+          const advisorCollectionRanked = advisorRows
+            .filter((row) => finiteNumber(row.balance, 0) > 0 && row.status !== "paid")
+            .map((row) => {
+              let rank = finiteNumber(row.priorityScore, 0);
+              if (row.promisedDateRaw && row.promisedDateRaw < advisorTodayIso) rank += 200;
+              else if (["overdue", "expired"].includes(row.status)) rank += 150;
+              else if (row.status === "partial") rank += 80;
+              return { row, rank };
+            })
+            .sort((left, right) => right.rank - left.rank);
+          if (advisorCollectionRanked.length) {
+            const topRow = advisorCollectionRanked[0].row;
+            advisorTopCollectionAction = {
+              customerName: nonEmptyString(topRow.customer, ""),
+              projectTitle: nonEmptyString(topRow.title, ""),
+              balance: finiteNumber(topRow.balance, 0),
+              status: String(topRow.status || ""),
+              nextAction: nonEmptyString(topRow.nextAction, ""),
+              promisedDateRaw: topRow.promisedDateRaw || null,
+            };
+          }
+
+          const advisorInvoiceActionCandidates = [];
+          advisorRows.forEach((row) => {
+            const balance = finiteNumber(row.balance, 0);
+            const amount = finiteNumber(row.amount, 0);
+            const base = {
+              customerName: nonEmptyString(row.customer, ""),
+              projectTitle: nonEmptyString(row.title, ""),
+              balance: balance > 0 ? balance : amount,
+              status: String(row.status || ""),
+              promisedDateRaw: row.promisedDateRaw || null,
+            };
+            if (row.promisedDateRaw && row.promisedDateRaw < advisorTodayIso && balance > 0 && row.status !== "paid") {
+              advisorInvoiceActionCandidates.push({ ...base, priority: 100, nextAction: "Follow up account" });
+            } else if (["overdue", "expired"].includes(row.status) && balance > 0) {
+              advisorInvoiceActionCandidates.push({
+                ...base,
+                priority: 90,
+                nextAction: nonEmptyString(row.nextAction, "Send balance reminder"),
+              });
+            } else if (row.rowType === "estimate" && amount > 0 && row.projectStatus !== "completed") {
+              advisorInvoiceActionCandidates.push({ ...base, priority: 70, nextAction: "Convert to invoice" });
+            } else if (row.status === "partial" && balance > 0) {
+              advisorInvoiceActionCandidates.push({
+                ...base,
+                priority: 60,
+                nextAction: nonEmptyString(row.nextAction, "Follow up partial payment"),
+              });
+            }
+          });
+          const advisorTopInvoiceActions = advisorInvoiceActionCandidates
+            .sort((left, right) => right.priority - left.priority)
+            .slice(0, 3);
+
           window.__mgRenderOwnerFinancialAdvisor({
             operatingCash: state.expensesBalance,
             profitCash: state.profitBalance,
@@ -7427,6 +7494,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             savingsTarget,
             openBalance: advisorOpenBalance,
             overdueCount: advisorOverdueCount,
+            overdueBalance: advisorOverdueBalance,
+            brokenPromiseCount: advisorBrokenPromiseCount,
+            readyToBillCount: advisorReadyToBillCount,
+            topCollectionAction: advisorTopCollectionAction,
+            topInvoiceActions: advisorTopInvoiceActions,
             invoiceDataAvailable: hubRowsSnapshot != null
           });
         } catch (_advisorErr) {
