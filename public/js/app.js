@@ -12138,7 +12138,7 @@ window.renderSupervisor = renderSupervisor;
       no_remaining_balance: "No remaining balance on this project.",
       manual_amount_exceeds_remaining: msg || "Manual amount exceeds remaining balance.",
       duplicate_remaining_balance_draft:
-        "A remaining balance draft invoice already exists for this project/invoice.",
+        "A remaining balance draft invoice already exists for this project/invoice. Review or cancel the existing draft before creating another.",
       quote_id_unique_violation:
         "Could not create the remaining balance draft invoice. Please refresh and try again.",
       insert_unique_violation:

@@ -12,7 +12,15 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const REMAINING_BALANCE_LABEL = "Remaining Balance";
-const ACTIVE_DUPLICATE_STATUSES = new Set(["draft", "open", "sent", "partial", "overdue", "issued"]);
+const ACTIVE_DUPLICATE_STATUSES = new Set([
+  "draft",
+  "open",
+  "sent",
+  "partial",
+  "overdue",
+  "issued",
+  "pending"
+]);
 const TERMINAL_STATUSES = new Set(["paid", "void", "archived", "cancelled", "canceled"]);
 
 function json(statusCode, body) {
@@ -109,9 +117,11 @@ function normalizeAmountMode(raw) {
   return "remaining_balance";
 }
 
-async function findDuplicateRemainingBalanceDraft({ tenantId, sourceId, selectedAmount }) {
+const DUPLICATE_REMAINING_BALANCE_MESSAGE =
+  "A remaining balance draft invoice already exists for this project/invoice. Review or cancel the existing draft before creating another.";
+
+async function findDuplicateRemainingBalanceDraft({ tenantId, sourceId }) {
   const tidEnc = encodeURIComponent(String(tenantId));
-  const marker = sourceInvoiceMarker(sourceId);
   const path =
     `invoices?tenant_id=eq.${tidEnc}` +
     `&invoice_label=eq.${encodeURIComponent(REMAINING_BALANCE_LABEL)}` +
@@ -126,17 +136,13 @@ async function findDuplicateRemainingBalanceDraft({ tenantId, sourceId, selected
     return null;
   }
   const list = Array.isArray(rows) ? rows : [];
-  const targetCents = Math.round(selectedAmount * 100);
 
   for (const inv of list) {
     const st = normStatus(inv?.status);
     if (TERMINAL_STATUSES.has(st)) continue;
     if (!ACTIVE_DUPLICATE_STATUSES.has(st) && st !== "") continue;
     if (!notesContainSourceMarker(inv?.notes, sourceId)) continue;
-    const amtCents = Math.round(finiteMoney(inv?.amount, 0) * 100);
-    if (Math.abs(amtCents - targetCents) <= 1) {
-      return inv;
-    }
+    return inv;
   }
   return null;
 }
@@ -329,14 +335,13 @@ exports.handler = async (event) => {
 
     const duplicate = await findDuplicateRemainingBalanceDraft({
       tenantId,
-      sourceId: sourceInvoiceId,
-      selectedAmount
+      sourceId: sourceInvoiceId
     });
     if (duplicate?.id) {
       return json(409, {
         ok: false,
         reason: "duplicate_remaining_balance_draft",
-        error: "A remaining balance draft invoice already exists for this project/invoice."
+        error: DUPLICATE_REMAINING_BALANCE_MESSAGE
       });
     }
 
