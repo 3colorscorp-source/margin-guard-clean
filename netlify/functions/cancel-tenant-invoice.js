@@ -1,5 +1,5 @@
 /**
- * POST — tenant-scoped soft void (cancel) for a server invoice.
+ * POST — tenant-scoped soft cancel for a server invoice (archived + voided_at, no delete).
  */
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
@@ -66,7 +66,7 @@ function hasStripePaymentTrace(inv) {
 }
 
 /**
- * POST — void one tenant invoice (no delete, no ledger changes).
+ * POST — cancel one tenant invoice: status archived + voided_at (no delete, no ledger changes).
  * Body: { invoice_id }
  */
 exports.handler = async (event) => {
@@ -168,15 +168,29 @@ exports.handler = async (event) => {
     }
 
     const voidedAt = new Date().toISOString();
-    const patched = await supabaseRequest(`invoices?id=eq.${iidEnc}&tenant_id=eq.${tidEnc}`, {
-      method: "PATCH",
-      headers: { Prefer: "return=representation" },
-      body: {
-        status: "void",
-        voided_at: voidedAt,
-        updated_at: voidedAt
+    const patchBody = {
+      status: "archived",
+      voided_at: voidedAt,
+      updated_at: voidedAt
+    };
+    let patched;
+    try {
+      patched = await supabaseRequest(`invoices?id=eq.${iidEnc}&tenant_id=eq.${tidEnc}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: patchBody
+      });
+    } catch (patchErr) {
+      const msg = String(patchErr?.message || patchErr || "");
+      if (/invoice_status_check|check constraint/i.test(msg)) {
+        return jsonError(
+          422,
+          "invoice_status_constraint",
+          "Could not cancel this invoice. Please refresh and try again."
+        );
       }
-    });
+      throw patchErr;
+    }
 
     const out = Array.isArray(patched) ? patched[0] : patched;
     const storedVoidedAt = out?.voided_at || voidedAt;
@@ -184,8 +198,9 @@ exports.handler = async (event) => {
     return json(200, {
       ok: true,
       invoice_id: invoiceId,
-      status: "void",
-      voided_at: storedVoidedAt
+      status: "archived",
+      voided_at: storedVoidedAt,
+      message: "Invoice cancelled and archived."
     });
   } catch (err) {
     console.error("[cancel-tenant-invoice]", err);

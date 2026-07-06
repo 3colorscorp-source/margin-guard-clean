@@ -12042,16 +12042,21 @@ window.renderSupervisor = renderSupervisor;
     const msg = String(data?.message || data?.error || "").trim();
     const map = {
       invoice_archived: "Cannot cancel an archived invoice.",
-      invoice_void: "This invoice is already void.",
+      invoice_void: "This invoice is already cancelled.",
       invoice_paid: "Cannot cancel a paid invoice.",
       invoice_has_payments: "Cannot cancel an invoice with recorded payments.",
       no_balance_due: "Cannot cancel when there is no balance due.",
       invoice_stripe_payment: "Cannot cancel an invoice with Stripe payment activity.",
       invoice_has_ledger_payments: "Cannot cancel an invoice with ledger payments.",
       invoice_not_found: "Invoice not found.",
-      invalid_invoice_id: "Invalid invoice id."
+      invalid_invoice_id: "Invalid invoice id.",
+      invoice_status_constraint: "Could not cancel this invoice. Please refresh and try again."
     };
-    return map[reason] || msg || `Cancel invoice failed (HTTP ${status}).`;
+    if (map[reason]) return map[reason];
+    if (/supabase|constraint|check constraint|violates|23514|23505/i.test(msg)) {
+      return "Could not cancel this invoice. Please refresh and try again.";
+    }
+    return msg || "Could not cancel this invoice. Please refresh and try again.";
   }
 
   let hubDuplicateInvoiceState = { row: null, duplicating: false };
@@ -12403,8 +12408,9 @@ window.renderSupervisor = renderSupervisor;
     return {
       ok: true,
       invoiceId: data.invoice_id || iid,
-      status: data.status || "void",
-      voidedAt: data.voided_at
+      status: data.status || "archived",
+      voidedAt: data.voided_at,
+      message: data.message || "Invoice cancelled and archived."
     };
   }
 
@@ -17076,7 +17082,7 @@ window.renderSupervisor = renderSupervisor;
             } else {
               refreshSelectedRow();
             }
-            setHubFeedback("Invoice cancelled (void).", "ok");
+            setHubFeedback(result.message || "Invoice cancelled and archived.", "ok");
           })();
         };
       }
