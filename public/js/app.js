@@ -13090,7 +13090,32 @@ window.renderSupervisor = renderSupervisor;
     return labels[mode] || "All";
   }
 
+  function getHubMaterialCostCollectNextActionLabel(row) {
+    const rawSt = String(row?.hubInvoiceRawStatus || row?.status || "").toLowerCase();
+    const bal = finiteNumber(row?.balance, finiteNumber(row?.amount, 0));
+    if (rawSt === "archived" || rawSt === "void" || rawSt === "cancelled" || rawSt === "canceled") {
+      return "Material cost archived";
+    }
+    if (rawSt === "paid" || rawSt === "completed" || bal <= 0.005) {
+      return "Material cost paid";
+    }
+    if (rawSt === "draft" || rawSt === "ready_to_bill" || rawSt === "ready_to_send") {
+      return "Send material cost invoice";
+    }
+    if (
+      ["sent", "open", "unpaid", "issued", "partial", "overdue", "expired"].includes(rawSt) &&
+      bal > 0
+    ) {
+      return "Material cost balance pending";
+    }
+    if (bal > 0) return "Material cost balance pending";
+    return "Material cost paid";
+  }
+
   function getHubRowCollectNextActionLabel(row) {
+    if (hubRowIsMaterialCostInvoice(row)) {
+      return getHubMaterialCostCollectNextActionLabel(row);
+    }
     const st = String(row?.status || "").toLowerCase();
     const bal = finiteNumber(row?.balance, 0);
     if (st === "paid" || st === "completed" || st === "void") return "Completed";
@@ -13146,6 +13171,22 @@ window.renderSupervisor = renderSupervisor;
     const row = rows[0];
     const name = nonEmptyString(row.title, row.customer) || "This job";
     const balStr = money(finiteNumber(row.balance, 0), settings.currency);
+    if (hubRowIsMaterialCostInvoice(row)) {
+      const na = getHubRowCollectNextActionLabel(row);
+      if (na === "Send material cost invoice") {
+        return `Material cost due: ${name} — ${balStr} material invoice pending`;
+      }
+      if (na === "Material cost balance pending") {
+        return `Material cost due: ${name} — ${balStr} material cost balance pending`;
+      }
+      if (na === "Material cost paid") {
+        return `Material cost due: ${name} — ${balStr} (paid)`;
+      }
+      if (na === "Material cost archived") {
+        return `Material cost due: ${name} — ${balStr} (archived)`;
+      }
+      return `Material cost due: ${name} — ${balStr}`;
+    }
     if (hubRowIsSendNowCollectPriority(row)) {
       return `Start with: ${name} — ${balStr} ready to send`;
     }
@@ -13160,6 +13201,13 @@ window.renderSupervisor = renderSupervisor;
 
   function hubTableNextActionDisplay(row, rankIndex) {
     const raw = getHubRowCollectNextActionLabel(row);
+    if (hubRowIsMaterialCostInvoice(row)) {
+      if (raw === "Send material cost invoice") {
+        if (rankIndex === 0) return "Send material cost invoice • High priority";
+        return "Send material cost invoice";
+      }
+      return raw;
+    }
     if (raw === "Send Invoice") {
       if (rankIndex === 0) return "Send now • High priority";
       return "Send now";
@@ -15213,8 +15261,8 @@ window.renderSupervisor = renderSupervisor;
     }
     if (isMaterialCostInvoice) {
       if (t <= 0) return "Material cost due";
-      if (pCents >= tCents) return "Paid in full";
-      return "Material cost due";
+      if (pCents >= tCents) return "Material cost paid";
+      return "Material cost balance pending";
     }
     if (t <= 0) return "Initial deposit due";
     if (pCents <= 0) return "Initial deposit due";
@@ -15233,12 +15281,15 @@ window.renderSupervisor = renderSupervisor;
       }
       return "No further balance — project invoice is settled.";
     }
+    if (na === "Material cost paid") {
+      return "No further balance — material cost invoice is settled.";
+    }
+    if (na === "Material cost balance pending") {
+      return "This invoice bills unexpected material costs for this project.";
+    }
     if (na === "Initial deposit due") return "Await initial deposit or first project payment.";
     if (hubRowIsRemainingBalanceInvoice(row)) {
       return "This invoice bills the remaining project balance.";
-    }
-    if (hubRowIsMaterialCostInvoice(row)) {
-      return "This invoice bills unexpected material costs for this project.";
     }
     return "Record payments until the remaining invoice balance is zero.";
   }
@@ -15271,7 +15322,10 @@ window.renderSupervisor = renderSupervisor;
     const t = finiteNumber(total, 0);
     const p = finiteNumber(paid, 0);
     if ($("hubDrawerNextAction")) {
-      $("hubDrawerNextAction").textContent = hubDrawerPaymentNextActionFromTotals(p, t, row);
+      const nextText = hubRowIsMaterialCostInvoice(row)
+        ? getHubMaterialCostCollectNextActionLabel(row)
+        : hubDrawerPaymentNextActionFromTotals(p, t, row);
+      $("hubDrawerNextAction").textContent = nextText;
     }
     const pct = hubDrawerPaymentProgressPct(p, t);
     const fill = $("hubDrawerProgressFill");
@@ -16645,9 +16699,17 @@ window.renderSupervisor = renderSupervisor;
           ? hubKpiStartWithValueLine(hubTableDisplayRows, settings)
           : "—";
       }
+      if ($("hubKpiStartWithLabel")) {
+        const topRow = hubTableDisplayRows[0];
+        $("hubKpiStartWithLabel").textContent =
+          topRow && hubRowIsMaterialCostInvoice(topRow) ? "Material cost due" : "Start with";
+      }
       if ($("hubKpiStartWithMeta")) {
+        const topRow = hubTableDisplayRows[0];
         $("hubKpiStartWithMeta").textContent = hubTableDisplayRows.length
-          ? `${readySendCount} invoice${readySendCount === 1 ? "" : "s"} ready to send`
+          ? topRow && hubRowIsMaterialCostInvoice(topRow)
+            ? "Material invoice pending"
+            : `${readySendCount} invoice${readySendCount === 1 ? "" : "s"} ready to send`
           : "You're all caught up 🎉";
       }
 
