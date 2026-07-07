@@ -511,6 +511,67 @@
     opacity: 0.75;
     margin-top: 12px;
   }
+  #hubMaterialCostInvoiceModal.hub-material-cost-modal {
+    z-index: 10060;
+  }
+  #hubMaterialCostInvoiceModal .modal-card {
+    width: min(640px, calc(100vw - 32px));
+    max-height: min(92vh, 780px);
+    display: flex;
+    flex-direction: column;
+  }
+  #hubMaterialCostInvoiceModal .modal-body {
+    overflow-y: auto;
+  }
+  #hubMaterialCostInvoiceModal .hub-mc-summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 16px;
+    margin-bottom: 16px;
+    font-size: 0.875rem;
+  }
+  #hubMaterialCostInvoiceModal .hub-mc-summary-grid .hub-mc-k {
+    opacity: 0.65;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  #hubMaterialCostInvoiceModal .hub-mc-summary-grid .hub-mc-v {
+    font-weight: 600;
+  }
+  #hubMaterialCostInvoiceModal .hub-mc-helper {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    margin-bottom: 16px;
+    opacity: 0.85;
+  }
+  #hubMaterialCostInvoiceModal .hub-mc-field {
+    margin-bottom: 14px;
+  }
+  #hubMaterialCostInvoiceModal .hub-mc-field label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  #hubMaterialCostInvoiceModal .hub-mc-field input,
+  #hubMaterialCostInvoiceModal .hub-mc-field textarea {
+    width: 100%;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+  #hubMaterialCostInvoiceModal .hub-mc-field input[type="number"] {
+    max-width: 200px;
+  }
+  #hubMaterialCostInvoiceModal .hub-mc-field textarea {
+    min-height: 100px;
+    resize: vertical;
+  }
+  #hubMaterialCostInvoiceModal .hub-mc-safety-line {
+    font-size: 0.8125rem;
+    opacity: 0.75;
+    margin-top: 12px;
+  }
   #hubPaymentReminderModal .modal-card {
     width: min(640px, calc(100vw - 32px));
     max-height: min(90vh, 720px);
@@ -1690,6 +1751,49 @@
       <div class="modal-footer hub-reminder-actions">
         <button type="button" class="btn" id="btnHubRemainingBalanceInvoiceCancel">Cancel</button>
         <button type="button" class="btn primary" id="btnHubRemainingBalanceInvoiceConfirm">Create Draft Invoice</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hub-material-cost-modal" id="hubMaterialCostInvoiceModal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Create Material Cost Invoice</div>
+          <div class="modal-subtitle">Review and create a linked draft invoice for unexpected materials on this project.</div>
+        </div>
+        <button type="button" class="icon-btn" id="btnHubMaterialCostInvoiceClose" aria-label="Close">X</button>
+      </div>
+      <div class="modal-body">
+        <p class="hub-mc-helper">Use this when unexpected materials need to be billed to this project. This creates a draft invoice only. You can review and send it later.</p>
+        <div class="hub-mc-summary-grid">
+          <div><div class="hub-mc-k">Customer</div><div class="hub-mc-v" id="hubMcCustomer">—</div></div>
+          <div><div class="hub-mc-k">Delivery email</div><div class="hub-mc-v" id="hubMcEmail">—</div></div>
+          <div><div class="hub-mc-k">Project</div><div class="hub-mc-v" id="hubMcProject">—</div></div>
+          <div><div class="hub-mc-k">Invoice label</div><div class="hub-mc-v">Material Cost</div></div>
+        </div>
+        <div class="hub-mc-field">
+          <label for="hubMcMaterialDescription">Material description</label>
+          <input type="text" id="hubMcMaterialDescription" placeholder="e.g. Tile, grout, supplies" />
+        </div>
+        <div class="hub-mc-field">
+          <label for="hubMcMaterialCost">Material cost</label>
+          <input type="number" id="hubMcMaterialCost" step="0.01" min="0.01" placeholder="0.00" />
+        </div>
+        <div class="hub-mc-field">
+          <label for="hubMcDueDate">Due date</label>
+          <input type="date" id="hubMcDueDate" />
+        </div>
+        <div class="hub-mc-field">
+          <label for="hubMcMessage">Message to client</label>
+          <textarea id="hubMcMessage" rows="4" placeholder="Optional message for the client"></textarea>
+        </div>
+        <p class="hub-mc-safety-line">Draft only · No email will be sent · No payment will be recorded</p>
+        <div class="notice" id="hubMaterialCostInvoiceFeedback" style="display:none;"></div>
+      </div>
+      <div class="modal-footer hub-reminder-actions">
+        <button type="button" class="btn" id="btnHubMaterialCostInvoiceCancel">Cancel</button>
+        <button type="button" class="btn primary" id="btnHubMaterialCostInvoiceConfirm">Create Draft Invoice</button>
       </div>
     </div>
   </div>

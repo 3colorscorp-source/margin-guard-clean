@@ -6219,6 +6219,9 @@ Thank you.`
     const canCreateRemainingBalanceInvoice = Boolean(
       isServer && hasValidSid && !archived && !voided && hasEmail && projectRemaining > 0.005
     );
+    const canCreateMaterialCostInvoice = Boolean(
+      isServer && hasValidSid && !archived && !voided && hasEmail
+    );
     return {
       canView: true,
       canOpenPublic: base.canOpenPublic,
@@ -6234,6 +6237,7 @@ Thank you.`
       canDuplicateInvoice,
       canCancelInvoice,
       canCreateRemainingBalanceInvoice,
+      canCreateMaterialCostInvoice,
       canDelete: base.canDeleteServerInvoice,
       resendLabel: sentLike || sentAt || (!canSendInvoice && canResendInvoice) ? "Resend invoice" : "Send invoice"
     };
@@ -6481,6 +6485,11 @@ Thank you.`
             "create-remaining-balance-invoice",
             "Create Remaining Balance Invoice",
             menuState.canCreateRemainingBalanceInvoice
+          ),
+          item(
+            "create-material-cost-invoice",
+            "Create Material Cost Invoice",
+            menuState.canCreateMaterialCostInvoice
           )
         ].join("")
       ),
@@ -12345,6 +12354,176 @@ window.renderSupervisor = renderSupervisor;
     };
   }
 
+  const HUB_MATERIAL_COST_INVOICE_ENDPOINT = "/.netlify/functions/create-material-cost-invoice";
+
+  function hubMaterialCostDefaultDueDate() {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function buildHubMaterialCostInvoiceMessage(row, settings) {
+    const customerName = nonEmptyString(row?.customer, row?.project?.clientName) || "there";
+    const projectName = nonEmptyString(row?.title, row?.project?.projectName) || "your project";
+    const businessName = hubReminderBusinessName(row, settings);
+    return (
+      `Hi ${customerName}, this invoice covers unexpected material costs for ${projectName}. ` +
+      "Please review the amount and let us know if you have any questions. " +
+      `Thank you for choosing ${businessName}.`
+    );
+  }
+
+  function formatHubMaterialCostInvoiceError(data, status) {
+    const reason = String(data?.reason || "").trim();
+    const msg = String(data?.message || data?.error || "").trim();
+    const map = {
+      material_cost_invalid: "Enter a material cost greater than zero.",
+      duplicate_material_cost_draft:
+        "An active material cost draft already exists for this project/invoice. Review or cancel the existing draft before creating another.",
+      quote_id_unique_violation:
+        "Could not create the material cost draft invoice. Please refresh and try again.",
+      insert_unique_violation:
+        "Could not create the material cost draft invoice. Please refresh and try again.",
+      insert_failed: "Could not create the material cost draft invoice. Please refresh and try again.",
+      invoice_archived: "Cannot create from an archived invoice.",
+      invoice_void: "Cannot create from a void invoice."
+    };
+    if (map[reason]) return map[reason];
+    if (/supabase|constraint|duplicate key|violates unique|23505/i.test(msg)) {
+      return "Could not create the material cost draft invoice. Please refresh and try again.";
+    }
+    return msg || "Could not create the material cost draft invoice. Please refresh and try again.";
+  }
+
+  let hubMaterialCostInvoiceState = { row: null, creating: false };
+
+  function hubMaterialCostInvoiceSetFeedback(message, tone) {
+    const el = $("hubMaterialCostInvoiceFeedback");
+    if (!el) return;
+    if (!message) {
+      el.style.display = "none";
+      el.textContent = "";
+      el.className = "notice";
+      return;
+    }
+    el.style.display = "";
+    el.textContent = message;
+    el.className = `notice ${tone === "err" ? "err" : tone === "warn" ? "warn" : "ok"}`;
+  }
+
+  function hubMaterialCostInvoiceCloseModal() {
+    const modal = $("hubMaterialCostInvoiceModal");
+    if (modal) modal.setAttribute("aria-hidden", "true");
+    hubMaterialCostInvoiceState = { row: null, creating: false };
+    hubMaterialCostInvoiceSetFeedback("");
+    const btn = $("btnHubMaterialCostInvoiceConfirm");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Create Draft Invoice";
+    }
+  }
+
+  function openHubMaterialCostInvoiceModal(row, settings) {
+    if (!$("hubMaterialCostInvoiceModal")) return false;
+    closeHubDrawerActionsMenu();
+    const menuState = getHubOverflowMenuState(row);
+    if (!menuState.canCreateMaterialCostInvoice) {
+      setHubFeedback("Material cost invoice cannot be created for this project right now.", "warn");
+      return false;
+    }
+    hubMaterialCostInvoiceSetFeedback("");
+    const cur = settings || loadSettings();
+    hubMaterialCostInvoiceState = { row, creating: false };
+    if ($("hubMcCustomer")) $("hubMcCustomer").textContent = nonEmptyString(row?.customer, row?.project?.clientName) || "—";
+    if ($("hubMcEmail")) {
+      $("hubMcEmail").textContent = String(row?.customerEmail || row?.project?.clientEmail || "").trim() || "—";
+    }
+    if ($("hubMcProject")) $("hubMcProject").textContent = nonEmptyString(row?.title, row?.project?.projectName) || "—";
+    if ($("hubMcMaterialDescription")) $("hubMcMaterialDescription").value = "";
+    if ($("hubMcMaterialCost")) $("hubMcMaterialCost").value = "";
+    if ($("hubMcDueDate")) $("hubMcDueDate").value = hubMaterialCostDefaultDueDate();
+    if ($("hubMcMessage")) {
+      $("hubMcMessage").value = buildHubMaterialCostInvoiceMessage(row, cur);
+    }
+    const confirmBtn = $("btnHubMaterialCostInvoiceConfirm");
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "Create Draft Invoice";
+    }
+    $("hubMaterialCostInvoiceModal").setAttribute("aria-hidden", "false");
+    return true;
+  }
+
+  function hubMaterialCostInvoiceValidateClient() {
+    const materialCost = finiteNumber($("hubMcMaterialCost")?.value, NaN);
+    if (!Number.isFinite(materialCost) || materialCost <= 0) {
+      return { ok: false, message: "Enter a material cost greater than zero." };
+    }
+    const dueDate = String($("hubMcDueDate")?.value || "").trim();
+    if (!normalizeDateInput(dueDate)) {
+      return { ok: false, message: "Due date is required." };
+    }
+    const materialDescription = String($("hubMcMaterialDescription")?.value || "").trim();
+    return {
+      ok: true,
+      materialCost: Math.round(materialCost * 100) / 100,
+      materialDescription,
+      dueDate,
+      notes: String($("hubMcMessage")?.value || "").trim()
+    };
+  }
+
+  async function postHubMaterialCostInvoice(payload) {
+    const res = await fetch(HUB_MATERIAL_COST_INVOICE_ENDPOINT, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload)
+    });
+    let data = {};
+    try {
+      data = await res.json();
+    } catch (_e) {
+      data = {};
+    }
+    return { ok: res.ok && data?.ok === true, status: res.status, data };
+  }
+
+  async function executeHubMaterialCostInvoice(row) {
+    const iid = hubRowServerInvoiceUuid(row);
+    if (!iid || !MG_SERVER_INVOICE_UUID_RE.test(iid)) {
+      return { ok: false, message: "No valid server invoice for material cost draft." };
+    }
+    const menuState = getHubOverflowMenuState(row);
+    if (!menuState.canCreateMaterialCostInvoice) {
+      return { ok: false, message: "Material cost invoice cannot be created for this project right now." };
+    }
+    const validation = hubMaterialCostInvoiceValidateClient();
+    if (!validation.ok) {
+      return { ok: false, message: validation.message };
+    }
+    const { ok, data, status } = await postHubMaterialCostInvoice({
+      source_invoice_id: iid,
+      material_description: validation.materialDescription,
+      material_cost: validation.materialCost,
+      due_date: validation.dueDate,
+      notes: validation.notes
+    });
+    if (!ok) {
+      return {
+        ok: false,
+        message: formatHubMaterialCostInvoiceError(data, status)
+      };
+    }
+    return {
+      ok: true,
+      invoice: data.invoice,
+      invoiceId: data.invoice_id,
+      message: data.message || "Material cost draft invoice created. Review and send it when ready.",
+      amount: data.amount
+    };
+  }
+
   let hubCancelInvoiceState = { row: null, cancelling: false };
 
   function hubCancelInvoiceSetFeedback(message, tone) {
@@ -14991,6 +15170,8 @@ window.renderSupervisor = renderSupervisor;
   }
 
   const HUB_REMAINING_BALANCE_INVOICE_LABEL = "Remaining Balance";
+  const HUB_MATERIAL_COST_INVOICE_LABEL = "Material Cost";
+  const HUB_INVOICE_TYPE_UNEXPECTED_MATERIAL_RE = /\[invoice_type:unexpected_material_cost\]/i;
   const HUB_SOURCE_INVOICE_MARKER_RE =
     /\[source_invoice:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\]/i;
 
@@ -15006,8 +15187,21 @@ window.renderSupervisor = renderSupervisor;
     return HUB_SOURCE_INVOICE_MARKER_RE.test(notes);
   }
 
+  /** Display-only: material cost draft invoices (label + type marker). */
+  function hubRowIsMaterialCostInvoice(row) {
+    if (!row) return false;
+    const label = sanitizeInvoiceLabelInput(nonEmptyString(row.hubInvoiceLabel));
+    if (label.toLowerCase() === HUB_MATERIAL_COST_INVOICE_LABEL.toLowerCase()) return true;
+    const inv = row.project?.invoice && typeof row.project.invoice === "object" ? row.project.invoice : {};
+    const labelFromInv = sanitizeInvoiceLabelInput(nonEmptyString(inv.invoiceLabel, inv.invoice_label));
+    if (labelFromInv.toLowerCase() === HUB_MATERIAL_COST_INVOICE_LABEL.toLowerCase()) return true;
+    const notes = String(row.hubInvoiceNotes || inv.notes || "").trim();
+    return HUB_INVOICE_TYPE_UNEXPECTED_MATERIAL_RE.test(notes);
+  }
+
   function hubDrawerPaymentNextActionFromTotals(paid, total, row) {
     const isRemainingBalanceInvoice = hubRowIsRemainingBalanceInvoice(row);
+    const isMaterialCostInvoice = hubRowIsMaterialCostInvoice(row);
     const t = finiteNumber(total, 0);
     const p = finiteNumber(paid, 0);
     const pCents = Math.round(p * 100);
@@ -15016,6 +15210,11 @@ window.renderSupervisor = renderSupervisor;
       if (t <= 0) return "Remaining balance due";
       if (pCents >= tCents) return "Paid in full";
       return "Remaining balance due";
+    }
+    if (isMaterialCostInvoice) {
+      if (t <= 0) return "Material cost due";
+      if (pCents >= tCents) return "Paid in full";
+      return "Material cost due";
     }
     if (t <= 0) return "Initial deposit due";
     if (pCents <= 0) return "Initial deposit due";
@@ -15026,13 +15225,20 @@ window.renderSupervisor = renderSupervisor;
   function hubDrawerNextPaymentPlaceholderText(paid, total, row) {
     const na = hubDrawerPaymentNextActionFromTotals(paid, total, row);
     if (na === "Paid in full") {
-      return hubRowIsRemainingBalanceInvoice(row)
-        ? "No further balance — remaining balance invoice is settled."
-        : "No further balance — project invoice is settled.";
+      if (hubRowIsRemainingBalanceInvoice(row)) {
+        return "No further balance — remaining balance invoice is settled.";
+      }
+      if (hubRowIsMaterialCostInvoice(row)) {
+        return "No further balance — material cost invoice is settled.";
+      }
+      return "No further balance — project invoice is settled.";
     }
     if (na === "Initial deposit due") return "Await initial deposit or first project payment.";
     if (hubRowIsRemainingBalanceInvoice(row)) {
       return "This invoice bills the remaining project balance.";
+    }
+    if (hubRowIsMaterialCostInvoice(row)) {
+      return "This invoice bills unexpected material costs for this project.";
     }
     return "Record payments until the remaining invoice balance is zero.";
   }
@@ -15873,6 +16079,10 @@ window.renderSupervisor = renderSupervisor;
       }
       if (action === "create-remaining-balance-invoice") {
         void openHubRemainingBalanceInvoiceModal(row, settings);
+        return;
+      }
+      if (action === "create-material-cost-invoice") {
+        openHubMaterialCostInvoiceModal(row, settings);
         return;
       }
       if (action === "open-public") {
@@ -17036,6 +17246,60 @@ window.renderSupervisor = renderSupervisor;
             const label = nonEmptyString(result.invoice?.invoice_no) || "draft";
             setHubFeedback(
               result.message || `Remaining balance draft invoice created (${label}). No email was sent.`,
+              "ok"
+            );
+          })();
+        };
+      }
+    }
+    if ($("hubMaterialCostInvoiceModal") && !window.__MG_HUB_MC_INVOICE_MODAL_BOUND__) {
+      window.__MG_HUB_MC_INVOICE_MODAL_BOUND__ = true;
+      if ($("btnHubMaterialCostInvoiceClose")) {
+        $("btnHubMaterialCostInvoiceClose").onclick = hubMaterialCostInvoiceCloseModal;
+      }
+      if ($("btnHubMaterialCostInvoiceCancel")) {
+        $("btnHubMaterialCostInvoiceCancel").onclick = hubMaterialCostInvoiceCloseModal;
+      }
+      if ($("btnHubMaterialCostInvoiceConfirm")) {
+        $("btnHubMaterialCostInvoiceConfirm").onclick = () => {
+          if (hubMaterialCostInvoiceState.creating || !hubMaterialCostInvoiceState.row) return;
+          const row = hubMaterialCostInvoiceState.row;
+          const validation = hubMaterialCostInvoiceValidateClient();
+          if (!validation.ok) {
+            hubMaterialCostInvoiceSetFeedback(validation.message, "err");
+            return;
+          }
+          hubMaterialCostInvoiceState.creating = true;
+          const confirmBtn = $("btnHubMaterialCostInvoiceConfirm");
+          if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = "Creating…";
+          }
+          hubMaterialCostInvoiceSetFeedback("");
+          void (async () => {
+            const result = await executeHubMaterialCostInvoice(row);
+            hubMaterialCostInvoiceState.creating = false;
+            if (!result.ok) {
+              hubMaterialCostInvoiceSetFeedback(result.message || "Could not create draft invoice.", "err");
+              if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = "Create Draft Invoice";
+              }
+              return;
+            }
+            const newId = String(result.invoice?.id || result.invoiceId || "").trim();
+            hubMaterialCostInvoiceCloseModal();
+            if (typeof window.__mgHubRefetchServerInvoices === "function") {
+              await window.__mgHubRefetchServerInvoices();
+            } else {
+              refresh();
+            }
+            if (newId && MG_SERVER_INVOICE_UUID_RE.test(newId)) {
+              const newRow = lastMergedHubRows.find((r) => String(r.serverInvoiceId || "") === newId);
+              if (newRow) openHubDrawer(newRow);
+            }
+            setHubFeedback(
+              result.message || "Material cost draft invoice created. Review and send it when ready.",
               "ok"
             );
           })();
