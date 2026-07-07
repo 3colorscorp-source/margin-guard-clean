@@ -574,6 +574,17 @@
   }
 
   function invoiceFacts(inv) {
+    if (isMaterialCostInvoice(inv)) {
+      const invoiceAmountNum = Number(inv.invoice_amount != null ? inv.invoice_amount : inv.amount);
+      const paidNum = Number(inv.paid_amount);
+      const balanceNum = Number(inv.balance_due);
+      const invoiceAmount = Number.isFinite(invoiceAmountNum) ? invoiceAmountNum : 0;
+      const paid = Number.isFinite(paidNum) ? paidNum : 0;
+      const balance = Number.isFinite(balanceNum)
+        ? balanceNum
+        : Math.max(invoiceAmount - paid, 0);
+      return { contractTotal: invoiceAmount, invoiceAmount, paid, balance };
+    }
     const contractNum = Number(inv.contract_total);
     const invoiceAmountNum = Number(inv.invoice_amount != null ? inv.invoice_amount : inv.amount);
     const paidNum = Number(inv.paid_to_date != null ? inv.paid_to_date : inv.paid_amount);
@@ -598,6 +609,12 @@
       if (due.getTime() < today && facts.balance > 0) return "Overdue";
     }
     return "Open";
+  }
+
+  function isMaterialCostInvoice(inv) {
+    const label = String(inv?.invoice_label || "").trim();
+    if (label.toLowerCase() === "material cost") return true;
+    return String(inv?.notes || "").includes("[invoice_type:unexpected_material_cost]");
   }
 
   function statusClassFromLabel(label) {
@@ -769,6 +786,14 @@
       const invoiceAmount = money(facts.invoiceAmount, currency);
       const paidAmount = money(facts.paid, currency);
       const balanceDue = money(facts.balance, currency);
+      const materialCostInvoice = isMaterialCostInvoice(data);
+      const summaryContractLabel = materialCostInvoice ? "Material cost invoice" : "Contract total";
+      const summaryPaidLabel = materialCostInvoice
+        ? "Paid to date on this invoice"
+        : "Paid to date";
+      const summaryBalanceLabel = materialCostInvoice
+        ? "Amount due on this invoice"
+        : "Remaining balance";
 
       const accent = safeAccentColor(data.accent_color);
       const invLabelRaw = String(data.invoice_label || "").trim();
@@ -860,25 +885,27 @@
             '<div class="summary-head">Summary</div>' +
             '<div class="summary-body">' +
               '<div class="sum-row">' +
-                "<span>Contract total</span>" +
+                "<span>" + escapeHtml(summaryContractLabel) + "</span>" +
                 "<strong>" +
                 contractTotal +
                 "</strong>" +
               "</div>" +
+              (materialCostInvoice
+                ? ""
+                : '<div class="sum-row">' +
+                  "<span>Invoice amount</span>" +
+                  "<strong>" +
+                  invoiceAmount +
+                  "</strong>" +
+                  "</div>") +
               '<div class="sum-row">' +
-                "<span>Invoice amount</span>" +
-                "<strong>" +
-                invoiceAmount +
-                "</strong>" +
-              "</div>" +
-              '<div class="sum-row">' +
-                "<span>Paid to date</span>" +
+                "<span>" + escapeHtml(summaryPaidLabel) + "</span>" +
                 "<strong>" +
                 paidAmount +
                 "</strong>" +
               "</div>" +
               '<div class="sum-row total">' +
-                "<span>Remaining balance</span>" +
+                "<span>" + escapeHtml(summaryBalanceLabel) + "</span>" +
                 "<span>" +
                 balanceDue +
                 "</span>" +
@@ -894,7 +921,9 @@
                 '<div class="last-payment">' +
                   "Last payment summary: " +
                   (facts.paid > 0
-                    ? "Paid to date " + paidAmount + " on a contract total of " + contractTotal + "."
+                    ? materialCostInvoice
+                      ? "Paid to date " + paidAmount + " on this material cost invoice."
+                      : "Paid to date " + paidAmount + " on a contract total of " + contractTotal + "."
                     : "No payments recorded yet.") +
                 "</div>" +
               "</div>" +

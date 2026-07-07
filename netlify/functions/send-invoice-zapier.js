@@ -11,6 +11,50 @@ const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const MATERIAL_COST_LABEL = "Material Cost";
+const INVOICE_TYPE_UNEXPECTED_MATERIAL = "[invoice_type:unexpected_material_cost]";
+
+function isMaterialCostInvoice(invoice) {
+  const label = String(invoice?.invoice_label || "").trim();
+  if (label.toLowerCase() === MATERIAL_COST_LABEL.toLowerCase()) return true;
+  return String(invoice?.notes || "").includes(INVOICE_TYPE_UNEXPECTED_MATERIAL);
+}
+
+function buildMaterialCostEmailCopy({
+  customerName,
+  projectName,
+  publicUrl,
+  invoiceAmount,
+  paidAmount,
+  balanceDue,
+  businessName
+}) {
+  const subject = `Material cost invoice ready — ${projectName}`;
+  const body = [
+    `Hi ${customerName},`,
+    "",
+    "I hope you're doing well.",
+    "",
+    `A material cost invoice for the ${projectName} project is ready. This invoice covers additional materials connected to this project.`,
+    "",
+    "You can view it here:",
+    "",
+    publicUrl,
+    "",
+    "Here's a quick summary:",
+    `• Material cost invoice: ${invoiceAmount}`,
+    `• Paid to date on this invoice: ${paidAmount}`,
+    `• Amount due on this invoice: ${balanceDue}`,
+    "",
+    "If anything isn’t clear or you’d like to go over the details, I’m happy to help.",
+    "",
+    "Thank you again — I truly appreciate the opportunity to work on your project.",
+    "",
+    `— ${businessName}`
+  ].join("\n");
+  return { subject, body };
+}
+
 function json(statusCode, body) {
   return {
     statusCode,
@@ -246,18 +290,28 @@ exports.handler = async (event) => {
     const schema_version = "invoice_webhook_v1";
     const idempotency_key = `${tenantId}:${invoice_id || token}:invoice_sent`;
     const project_name = pickFirstStr(body.project_name, body.projectName, invoice.project_name);
-    const amount = formatMoney(
-      pickFirstStr(body.contract_total, body.amount, invoice.amount),
+    const isMaterialCost = isMaterialCostInvoice(invoice);
+    const invoiceAmountFormatted = formatMoney(
+      pickFirstStr(body.invoice_amount, invoice.amount),
       invoice.currency
     );
-    const paid_to_date = formatMoney(
+    const paidOnInvoiceFormatted = formatMoney(
       pickFirstStr(body.paid_to_date, body.paidAmount, invoice.paid_amount),
       invoice.currency
     );
-    const balance_due = formatMoney(
+    const balanceOnInvoiceFormatted = formatMoney(
       pickFirstStr(body.balance_due, body.remaining_balance, invoice.balance_due),
       invoice.currency
     );
+    const amount = isMaterialCost
+      ? invoiceAmountFormatted
+      : formatMoney(pickFirstStr(body.contract_total, body.amount, invoice.amount), invoice.currency);
+    const paid_to_date = isMaterialCost
+      ? paidOnInvoiceFormatted
+      : formatMoney(pickFirstStr(body.paid_to_date, body.paidAmount, invoice.paid_amount), invoice.currency);
+    const balance_due = isMaterialCost
+      ? balanceOnInvoiceFormatted
+      : formatMoney(pickFirstStr(body.balance_due, body.remaining_balance, invoice.balance_due), invoice.currency);
 
     /** Zapier Catch Hook field names (exact keys with spaces). */
     const payload = {
@@ -271,6 +325,8 @@ exports.handler = async (event) => {
       amount,
       paid_to_date,
       balance_due,
+      invoice_label: pickFirstStr(invoice.invoice_label),
+      invoice_copy_variant: isMaterialCost ? "material_cost" : "standard",
       tenant_id: tenantId,
       invoice_id,
       quote_id,
@@ -279,6 +335,28 @@ exports.handler = async (event) => {
       schema_version,
       idempotency_key
     };
+
+    if (isMaterialCost) {
+      const emailCopy = buildMaterialCostEmailCopy({
+        customerName: client_name,
+        projectName: project_name,
+        publicUrl: public_invoice_url,
+        invoiceAmount: invoiceAmountFormatted,
+        paidAmount: paidOnInvoiceFormatted,
+        balanceDue: balanceOnInvoiceFormatted,
+        businessName: business_name || "Three Colors Corp"
+      });
+      payload.email_subject = emailCopy.subject;
+      payload.email_body = emailCopy.body;
+      payload["Email Subject"] = emailCopy.subject;
+      payload["Email Body"] = emailCopy.body;
+      payload.summary_line_1_label = "Material cost invoice";
+      payload.summary_line_1_value = invoiceAmountFormatted;
+      payload.summary_line_2_label = "Paid to date on this invoice";
+      payload.summary_line_2_value = paidOnInvoiceFormatted;
+      payload.summary_line_3_label = "Amount due on this invoice";
+      payload.summary_line_3_value = balanceOnInvoiceFormatted;
+    }
     console.log("[zapier-signature] running...");
     console.log(
       "[zapier-signature] secret exists:",
