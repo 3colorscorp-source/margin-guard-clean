@@ -14251,6 +14251,27 @@ window.renderSupervisor = renderSupervisor;
     }
   }
 
+  async function hubRowRemainingBalanceSendFields(row) {
+    const totals = await hubRowResolveProjectPaymentTotals(row);
+    const invoiceAmount = Math.max(finiteNumber(row?.amount, 0), 0);
+    const invoiceBalanceDue = Math.max(
+      finiteNumber(row?.balance_due, row?.balance, invoiceAmount),
+      0
+    );
+    return {
+      project_contract_total: totals.contractTotal,
+      contract_total: totals.contractTotal,
+      project_paid_to_date: totals.paidToDate,
+      paid_to_date: totals.paidToDate,
+      remaining_project_balance: totals.remainingBalance,
+      remaining_balance: totals.remainingBalance,
+      invoice_amount: invoiceAmount,
+      invoice_balance_due: invoiceBalanceDue,
+      balance_due: invoiceBalanceDue,
+      amount: invoiceAmount
+    };
+  }
+
   async function sendHubInvoiceFromDrawerRow(row) {
     if (!row) return { ok: false, message: "No invoice selected." };
     const invoice = getProjectInvoiceState(row.project);
@@ -14277,6 +14298,9 @@ window.renderSupervisor = renderSupervisor;
       "Client Email": nonEmptyString(row.customerEmail, row.project?.clientEmail),
       "Public Invoice Url": publicUrl
     };
+    if (hubRowIsRemainingBalanceInvoice(row)) {
+      Object.assign(payload, await hubRowRemainingBalanceSendFields(row));
+    }
     if (!payload.id && !payload.public_token) {
       return { ok: false, message: "Missing invoice_id/public_token for server send." };
     }
@@ -15226,13 +15250,16 @@ window.renderSupervisor = renderSupervisor;
   /** Display-only: Step 17C remaining balance draft invoices (label or notes marker). */
   function hubRowIsRemainingBalanceInvoice(row) {
     if (!row) return false;
+    if (hubRowIsMaterialCostInvoice(row)) return false;
     const label = sanitizeInvoiceLabelInput(nonEmptyString(row.hubInvoiceLabel));
     if (label.toLowerCase() === HUB_REMAINING_BALANCE_INVOICE_LABEL.toLowerCase()) return true;
     const inv = row.project?.invoice && typeof row.project.invoice === "object" ? row.project.invoice : {};
     const labelFromInv = sanitizeInvoiceLabelInput(nonEmptyString(inv.invoiceLabel, inv.invoice_label));
     if (labelFromInv.toLowerCase() === HUB_REMAINING_BALANCE_INVOICE_LABEL.toLowerCase()) return true;
     const notes = String(row.hubInvoiceNotes || inv.notes || "").trim();
-    return HUB_SOURCE_INVOICE_MARKER_RE.test(notes);
+    if (!HUB_SOURCE_INVOICE_MARKER_RE.test(notes)) return false;
+    if (HUB_INVOICE_TYPE_UNEXPECTED_MATERIAL_RE.test(notes)) return false;
+    return true;
   }
 
   /** Display-only: material cost draft invoices (label + type marker). */
@@ -17587,6 +17614,9 @@ window.renderSupervisor = renderSupervisor;
             balance_due: row.remaining_balance || row.balance_due || row.balance || "",
             remaining_balance: row.remaining_balance || row.balance_due || row.balance || ""
           };
+          if (hubRowIsRemainingBalanceInvoice(row)) {
+            Object.assign(body, await hubRowRemainingBalanceSendFields(row));
+          }
 
           hubDebugLog("[Invoice Hub] Send Invoice payload", body);
 

@@ -573,6 +573,55 @@
     return escapeHtml(String(value));
   }
 
+  function isMaterialCostInvoice(inv) {
+    const label = String(inv?.invoice_label || "").trim();
+    if (label.toLowerCase() === "material cost") return true;
+    return String(inv?.notes || "").includes("[invoice_type:unexpected_material_cost]");
+  }
+
+  function isRemainingBalanceInvoice(inv) {
+    if (isMaterialCostInvoice(inv)) return false;
+    const label = String(inv?.invoice_label || "").trim();
+    if (label.toLowerCase() === "remaining balance") return true;
+    const notes = String(inv?.notes || "");
+    if (
+      !/\[source_invoice:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\]/i.test(
+        notes
+      )
+    ) {
+      return false;
+    }
+    if (notes.includes("[invoice_type:unexpected_material_cost]")) return false;
+    return true;
+  }
+
+  function remainingBalanceInvoiceFacts(inv) {
+    const projectContractTotalNum = Number(inv.contract_total);
+    const invoiceAmountNum = Number(inv.invoice_amount != null ? inv.invoice_amount : inv.amount);
+    const invoiceBalanceDueNum = Number(inv.balance_due);
+    const projectContractTotal = Number.isFinite(projectContractTotalNum) ? projectContractTotalNum : 0;
+    const invoiceAmount = Number.isFinite(invoiceAmountNum) ? invoiceAmountNum : 0;
+    let invoiceBalanceDue = Number.isFinite(invoiceBalanceDueNum)
+      ? Math.max(invoiceBalanceDueNum, 0)
+      : Math.max(invoiceAmount - Number(inv.paid_amount || 0), 0);
+    let projectPaidToDate = Number(inv.paid_to_date != null ? inv.paid_to_date : inv.paid_amount);
+    if (!Number.isFinite(projectPaidToDate)) projectPaidToDate = 0;
+    if (projectContractTotal > invoiceAmount + 0.005 && projectPaidToDate <= 0.005) {
+      projectPaidToDate = Math.round((projectContractTotal - invoiceAmount) * 100) / 100;
+    }
+    const remainingProjectBalance = Math.max(
+      Math.round((projectContractTotal - projectPaidToDate) * 100) / 100,
+      0
+    );
+    return {
+      projectContractTotal,
+      projectPaidToDate,
+      remainingProjectBalance,
+      invoiceAmount,
+      invoiceBalanceDue
+    };
+  }
+
   function invoiceFacts(inv) {
     if (isMaterialCostInvoice(inv)) {
       const invoiceAmountNum = Number(inv.invoice_amount != null ? inv.invoice_amount : inv.amount);
@@ -583,7 +632,26 @@
       const balance = Number.isFinite(balanceNum)
         ? balanceNum
         : Math.max(invoiceAmount - paid, 0);
-      return { contractTotal: invoiceAmount, invoiceAmount, paid, balance };
+      return {
+        variant: "material_cost",
+        contractTotal: invoiceAmount,
+        invoiceAmount,
+        paid,
+        balance
+      };
+    }
+    if (isRemainingBalanceInvoice(inv)) {
+      const rb = remainingBalanceInvoiceFacts(inv);
+      return {
+        variant: "remaining_balance",
+        contractTotal: rb.projectContractTotal,
+        invoiceAmount: rb.invoiceAmount,
+        paid: rb.projectPaidToDate,
+        balance: rb.invoiceBalanceDue,
+        projectContractTotal: rb.projectContractTotal,
+        projectPaidToDate: rb.projectPaidToDate,
+        remainingProjectBalance: rb.remainingProjectBalance
+      };
     }
     const contractNum = Number(inv.contract_total);
     const invoiceAmountNum = Number(inv.invoice_amount != null ? inv.invoice_amount : inv.amount);
@@ -593,7 +661,7 @@
     const invoiceAmount = Number.isFinite(invoiceAmountNum) ? invoiceAmountNum : 0;
     const paid = Number.isFinite(paidNum) ? paidNum : 0;
     const balance = Number.isFinite(balanceNum) ? balanceNum : Math.max(contractTotal - paid, 0);
-    return { contractTotal, invoiceAmount, paid, balance };
+    return { variant: "standard", contractTotal, invoiceAmount, paid, balance };
   }
 
   function normalizedStatus(inv) {
@@ -609,12 +677,6 @@
       if (due.getTime() < today && facts.balance > 0) return "Overdue";
     }
     return "Open";
-  }
-
-  function isMaterialCostInvoice(inv) {
-    const label = String(inv?.invoice_label || "").trim();
-    if (label.toLowerCase() === "material cost") return true;
-    return String(inv?.notes || "").includes("[invoice_type:unexpected_material_cost]");
   }
 
   function statusClassFromLabel(label) {
@@ -786,14 +848,70 @@
       const invoiceAmount = money(facts.invoiceAmount, currency);
       const paidAmount = money(facts.paid, currency);
       const balanceDue = money(facts.balance, currency);
-      const materialCostInvoice = isMaterialCostInvoice(data);
-      const summaryContractLabel = materialCostInvoice ? "Material cost invoice" : "Contract total";
-      const summaryPaidLabel = materialCostInvoice
-        ? "Paid to date on this invoice"
-        : "Paid to date";
-      const summaryBalanceLabel = materialCostInvoice
-        ? "Amount due on this invoice"
-        : "Remaining balance";
+      const materialCostInvoice = facts.variant === "material_cost";
+      const remainingBalanceInvoice = facts.variant === "remaining_balance";
+      const projectContractTotal = money(facts.projectContractTotal, currency);
+      const projectPaidToDate = money(facts.projectPaidToDate, currency);
+      const remainingProjectBalance = money(facts.remainingProjectBalance, currency);
+      let summaryRowsHtml = "";
+      if (remainingBalanceInvoice) {
+        summaryRowsHtml =
+          '<div class="sum-row">' +
+            "<span>Project contract total</span>" +
+            "<strong>" + projectContractTotal + "</strong>" +
+          "</div>" +
+          '<div class="sum-row">' +
+            "<span>Project paid to date</span>" +
+            "<strong>" + projectPaidToDate + "</strong>" +
+          "</div>" +
+          '<div class="sum-row">' +
+            "<span>Remaining project balance</span>" +
+            "<strong>" + remainingProjectBalance + "</strong>" +
+          "</div>" +
+          '<div class="sum-row">' +
+            "<span>This invoice amount</span>" +
+            "<strong>" + invoiceAmount + "</strong>" +
+          "</div>" +
+          '<div class="sum-row total">' +
+            "<span>Amount due on this invoice</span>" +
+            "<span>" + balanceDue + "</span>" +
+          "</div>";
+      } else {
+        const summaryContractLabel = materialCostInvoice ? "Material cost invoice" : "Contract total";
+        const summaryPaidLabel = materialCostInvoice
+          ? "Paid to date on this invoice"
+          : "Paid to date";
+        const summaryBalanceLabel = materialCostInvoice
+          ? "Amount due on this invoice"
+          : "Remaining balance";
+        summaryRowsHtml =
+          '<div class="sum-row">' +
+            "<span>" + escapeHtml(summaryContractLabel) + "</span>" +
+            "<strong>" + contractTotal + "</strong>" +
+          "</div>" +
+          (materialCostInvoice
+            ? ""
+            : '<div class="sum-row">' +
+              "<span>Invoice amount</span>" +
+              "<strong>" + invoiceAmount + "</strong>" +
+              "</div>") +
+          '<div class="sum-row">' +
+            "<span>" + escapeHtml(summaryPaidLabel) + "</span>" +
+            "<strong>" + paidAmount + "</strong>" +
+          "</div>" +
+          '<div class="sum-row total">' +
+            "<span>" + escapeHtml(summaryBalanceLabel) + "</span>" +
+            "<span>" + balanceDue + "</span>" +
+          "</div>";
+      }
+      const progressSummaryText =
+        facts.paid > 0
+          ? materialCostInvoice
+            ? "Paid to date " + paidAmount + " on this material cost invoice."
+            : remainingBalanceInvoice
+              ? "Project paid to date " + projectPaidToDate + " on a project contract total of " + projectContractTotal + "."
+              : "Paid to date " + paidAmount + " on a contract total of " + contractTotal + "."
+          : "No payments recorded yet.";
 
       const accent = safeAccentColor(data.accent_color);
       const invLabelRaw = String(data.invoice_label || "").trim();
@@ -884,32 +1002,7 @@
           '<div class="summary">' +
             '<div class="summary-head">Summary</div>' +
             '<div class="summary-body">' +
-              '<div class="sum-row">' +
-                "<span>" + escapeHtml(summaryContractLabel) + "</span>" +
-                "<strong>" +
-                contractTotal +
-                "</strong>" +
-              "</div>" +
-              (materialCostInvoice
-                ? ""
-                : '<div class="sum-row">' +
-                  "<span>Invoice amount</span>" +
-                  "<strong>" +
-                  invoiceAmount +
-                  "</strong>" +
-                  "</div>") +
-              '<div class="sum-row">' +
-                "<span>" + escapeHtml(summaryPaidLabel) + "</span>" +
-                "<strong>" +
-                paidAmount +
-                "</strong>" +
-              "</div>" +
-              '<div class="sum-row total">' +
-                "<span>" + escapeHtml(summaryBalanceLabel) + "</span>" +
-                "<span>" +
-                balanceDue +
-                "</span>" +
-              "</div>" +
+              summaryRowsHtml +
               '<div class="progress-wrap">' +
                 '<div class="progress-meta">' +
                   "<span>Payment progress</span>" +
@@ -920,11 +1013,7 @@
                 '%;"></div></div>' +
                 '<div class="last-payment">' +
                   "Last payment summary: " +
-                  (facts.paid > 0
-                    ? materialCostInvoice
-                      ? "Paid to date " + paidAmount + " on this material cost invoice."
-                      : "Paid to date " + paidAmount + " on a contract total of " + contractTotal + "."
-                    : "No payments recorded yet.") +
+                  progressSummaryText +
                 "</div>" +
               "</div>" +
             "</div>" +

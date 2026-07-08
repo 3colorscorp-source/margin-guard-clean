@@ -13,11 +13,63 @@ const UUID_RE =
 
 const MATERIAL_COST_LABEL = "Material Cost";
 const INVOICE_TYPE_UNEXPECTED_MATERIAL = "[invoice_type:unexpected_material_cost]";
+const REMAINING_BALANCE_LABEL = "Remaining Balance";
+const SOURCE_INVOICE_MARKER_RE =
+  /\[source_invoice:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\]/i;
 
 function isMaterialCostInvoice(invoice) {
   const label = String(invoice?.invoice_label || "").trim();
   if (label.toLowerCase() === MATERIAL_COST_LABEL.toLowerCase()) return true;
   return String(invoice?.notes || "").includes(INVOICE_TYPE_UNEXPECTED_MATERIAL);
+}
+
+function isRemainingBalanceInvoice(invoice) {
+  if (isMaterialCostInvoice(invoice)) return false;
+  const label = String(invoice?.invoice_label || "").trim();
+  if (label.toLowerCase() === REMAINING_BALANCE_LABEL.toLowerCase()) return true;
+  const notes = String(invoice?.notes || "");
+  if (!SOURCE_INVOICE_MARKER_RE.test(notes)) return false;
+  if (notes.includes(INVOICE_TYPE_UNEXPECTED_MATERIAL)) return false;
+  return true;
+}
+
+function buildRemainingBalanceEmailCopy({
+  customerName,
+  projectName,
+  publicUrl,
+  projectContractTotal,
+  projectPaidToDate,
+  remainingProjectBalance,
+  invoiceAmount,
+  invoiceBalanceDue,
+  businessName
+}) {
+  const subject = `Remaining balance invoice ready — ${projectName}`;
+  const body = [
+    `Hi ${customerName},`,
+    "",
+    "I hope you're doing well.",
+    "",
+    `A remaining balance invoice for the ${projectName} project is ready. This invoice reflects the balance currently due after payments already recorded on this project.`,
+    "",
+    "You can view it here:",
+    "",
+    publicUrl,
+    "",
+    "Here's a quick summary:",
+    `• Project contract total: ${projectContractTotal}`,
+    `• Project paid to date: ${projectPaidToDate}`,
+    `• Remaining project balance: ${remainingProjectBalance}`,
+    `• This invoice amount: ${invoiceAmount}`,
+    `• Amount due on this invoice: ${invoiceBalanceDue}`,
+    "",
+    "If anything isn’t clear or you’d like to go over the details, I’m happy to help.",
+    "",
+    "Thank you again — I truly appreciate the opportunity to work on your project.",
+    "",
+    `— ${businessName}`
+  ].join("\n");
+  return { subject, body };
 }
 
 function buildMaterialCostEmailCopy({
@@ -110,6 +162,93 @@ function formatMoney(value, currency) {
   } catch (_err) {
     return `$${n.toFixed(2)}`;
   }
+}
+
+async function loadQuoteTotal(tenantId, quoteId) {
+  if (!tenantId || !quoteId) return 0;
+  try {
+    const rows = await supabaseRequest(
+      `quotes?id=eq.${encodeURIComponent(quoteId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&select=total&limit=1`,
+      { method: "GET" }
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    const n = Number(row?.total);
+    return Number.isFinite(n) ? Math.max(n, 0) : 0;
+  } catch (_err) {
+    return 0;
+  }
+}
+
+async function loadProjectTotal(tenantId, projectId) {
+  if (!tenantId || !projectId) return 0;
+  try {
+    const rows = await supabaseRequest(
+      `tenant_projects?id=eq.${encodeURIComponent(projectId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&select=sale_price&limit=1`,
+      { method: "GET" }
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    const n = Number(row?.sale_price);
+    return Number.isFinite(n) ? Math.max(n, 0) : 0;
+  } catch (_err) {
+    return 0;
+  }
+}
+
+async function loadProjectPaidToDate(tenantId, projectId, quoteId) {
+  if (!tenantId) return 0;
+  const params = new URLSearchParams();
+  params.set("tenant_id", `eq.${tenantId}`);
+  params.set("select", "amount");
+  params.set("limit", "500");
+  if (projectId) params.set("project_id", `eq.${projectId}`);
+  else if (quoteId) params.set("quote_id", `eq.${quoteId}`);
+  else return 0;
+  try {
+    const rows = await supabaseRequest(`tenant_project_payments?${params.toString()}`, { method: "GET" });
+    const list = Array.isArray(rows) ? rows : [];
+    return list.reduce((sum, row) => {
+      const n = Number(row?.amount);
+      return sum + (Number.isFinite(n) ? n : 0);
+    }, 0);
+  } catch (_err) {
+    return 0;
+  }
+}
+
+async function resolveRemainingBalanceEmailContext(invoice, body) {
+  const tenantId = String(invoice.tenant_id || "").trim();
+  const projectId = String(invoice.project_id || pickFirstStr(body.project_id, body.projectId) || "").trim();
+  const quoteId = String(invoice.quote_id || pickFirstStr(body.quote_id, body.quoteId) || "").trim();
+  const quoteTotal = await loadQuoteTotal(tenantId, quoteId);
+  const projectTotal = await loadProjectTotal(tenantId, projectId);
+  const bodyContract = toNumber(pickFirstStr(body.project_contract_total, body.contract_total), NaN);
+  const projectContractTotal =
+    Number.isFinite(bodyContract) && bodyContract > 0
+      ? bodyContract
+      : quoteTotal > 0
+        ? quoteTotal
+        : projectTotal > 0
+          ? projectTotal
+          : Math.max(toNumber(invoice.amount, 0), 0);
+  const bodyPaid = toNumber(pickFirstStr(body.project_paid_to_date, body.paid_to_date, body.paidAmount), NaN);
+  let projectPaidToDate = Number.isFinite(bodyPaid) && bodyPaid >= 0 ? bodyPaid : await loadProjectPaidToDate(tenantId, projectId, quoteId);
+  projectPaidToDate = Math.max(projectPaidToDate, 0);
+  const invoiceAmount = Math.max(toNumber(pickFirstStr(body.invoice_amount, invoice.amount), 0), 0);
+  const bodyInvoiceDue = toNumber(pickFirstStr(body.invoice_balance_due, body.balance_due, body.remaining_balance), NaN);
+  const invoiceBalanceDue = Number.isFinite(bodyInvoiceDue)
+    ? Math.max(bodyInvoiceDue, 0)
+    : Math.max(toNumber(invoice.balance_due, invoiceAmount), 0);
+  const remainingProjectBalance = Math.max(
+    toNumber(pickFirstStr(body.remaining_project_balance), projectContractTotal - projectPaidToDate),
+    0
+  );
+  return {
+    projectContractTotal,
+    projectPaidToDate,
+    remainingProjectBalance,
+    invoiceAmount,
+    invoiceBalanceDue
+  };
 }
 
 function buildZapierSignatureMeta(payload) {
@@ -291,6 +430,7 @@ exports.handler = async (event) => {
     const idempotency_key = `${tenantId}:${invoice_id || token}:invoice_sent`;
     const project_name = pickFirstStr(body.project_name, body.projectName, invoice.project_name);
     const isMaterialCost = isMaterialCostInvoice(invoice);
+    const isRemainingBalance = !isMaterialCost && isRemainingBalanceInvoice(invoice);
     const invoiceAmountFormatted = formatMoney(
       pickFirstStr(body.invoice_amount, invoice.amount),
       invoice.currency
@@ -300,18 +440,31 @@ exports.handler = async (event) => {
       invoice.currency
     );
     const balanceOnInvoiceFormatted = formatMoney(
-      pickFirstStr(body.balance_due, body.remaining_balance, invoice.balance_due),
+      pickFirstStr(body.invoice_balance_due, body.balance_due, body.remaining_balance, invoice.balance_due),
       invoice.currency
     );
-    const amount = isMaterialCost
-      ? invoiceAmountFormatted
-      : formatMoney(pickFirstStr(body.contract_total, body.amount, invoice.amount), invoice.currency);
-    const paid_to_date = isMaterialCost
-      ? paidOnInvoiceFormatted
-      : formatMoney(pickFirstStr(body.paid_to_date, body.paidAmount, invoice.paid_amount), invoice.currency);
-    const balance_due = isMaterialCost
-      ? balanceOnInvoiceFormatted
-      : formatMoney(pickFirstStr(body.balance_due, body.remaining_balance, invoice.balance_due), invoice.currency);
+    let amount;
+    let paid_to_date;
+    let balance_due;
+    let invoice_copy_variant = "standard";
+    let remainingBalanceContext = null;
+
+    if (isMaterialCost) {
+      amount = invoiceAmountFormatted;
+      paid_to_date = paidOnInvoiceFormatted;
+      balance_due = balanceOnInvoiceFormatted;
+      invoice_copy_variant = "material_cost";
+    } else if (isRemainingBalance) {
+      remainingBalanceContext = await resolveRemainingBalanceEmailContext(invoice, body);
+      amount = formatMoney(remainingBalanceContext.invoiceBalanceDue, invoice.currency);
+      paid_to_date = formatMoney(remainingBalanceContext.projectPaidToDate, invoice.currency);
+      balance_due = formatMoney(remainingBalanceContext.invoiceBalanceDue, invoice.currency);
+      invoice_copy_variant = "remaining_balance";
+    } else {
+      amount = formatMoney(pickFirstStr(body.contract_total, body.amount, invoice.amount), invoice.currency);
+      paid_to_date = formatMoney(pickFirstStr(body.paid_to_date, body.paidAmount, invoice.paid_amount), invoice.currency);
+      balance_due = formatMoney(pickFirstStr(body.balance_due, body.remaining_balance, invoice.balance_due), invoice.currency);
+    }
 
     /** Zapier Catch Hook field names (exact keys with spaces). */
     const payload = {
@@ -326,7 +479,7 @@ exports.handler = async (event) => {
       paid_to_date,
       balance_due,
       invoice_label: pickFirstStr(invoice.invoice_label),
-      invoice_copy_variant: isMaterialCost ? "material_cost" : "standard",
+      invoice_copy_variant,
       tenant_id: tenantId,
       invoice_id,
       quote_id,
@@ -335,6 +488,51 @@ exports.handler = async (event) => {
       schema_version,
       idempotency_key
     };
+
+    if (isRemainingBalance && remainingBalanceContext) {
+      const projectContractTotalFormatted = formatMoney(
+        remainingBalanceContext.projectContractTotal,
+        invoice.currency
+      );
+      const projectPaidToDateFormatted = formatMoney(
+        remainingBalanceContext.projectPaidToDate,
+        invoice.currency
+      );
+      const remainingProjectBalanceFormatted = formatMoney(
+        remainingBalanceContext.remainingProjectBalance,
+        invoice.currency
+      );
+      const emailCopy = buildRemainingBalanceEmailCopy({
+        customerName: client_name,
+        projectName: project_name,
+        publicUrl: public_invoice_url,
+        projectContractTotal: projectContractTotalFormatted,
+        projectPaidToDate: projectPaidToDateFormatted,
+        remainingProjectBalance: remainingProjectBalanceFormatted,
+        invoiceAmount: invoiceAmountFormatted,
+        invoiceBalanceDue: balanceOnInvoiceFormatted,
+        businessName: business_name || "Three Colors Corp"
+      });
+      payload.project_contract_total = projectContractTotalFormatted;
+      payload.project_paid_to_date = projectPaidToDateFormatted;
+      payload.remaining_project_balance = remainingProjectBalanceFormatted;
+      payload.invoice_amount = invoiceAmountFormatted;
+      payload.invoice_balance_due = balanceOnInvoiceFormatted;
+      payload.email_subject = emailCopy.subject;
+      payload.email_body = emailCopy.body;
+      payload["Email Subject"] = emailCopy.subject;
+      payload["Email Body"] = emailCopy.body;
+      payload.summary_line_1_label = "Project contract total";
+      payload.summary_line_1_value = projectContractTotalFormatted;
+      payload.summary_line_2_label = "Project paid to date";
+      payload.summary_line_2_value = projectPaidToDateFormatted;
+      payload.summary_line_3_label = "Remaining project balance";
+      payload.summary_line_3_value = remainingProjectBalanceFormatted;
+      payload.summary_line_4_label = "This invoice amount";
+      payload.summary_line_4_value = invoiceAmountFormatted;
+      payload.summary_line_5_label = "Amount due on this invoice";
+      payload.summary_line_5_value = balanceOnInvoiceFormatted;
+    }
 
     if (isMaterialCost) {
       const emailCopy = buildMaterialCostEmailCopy({
