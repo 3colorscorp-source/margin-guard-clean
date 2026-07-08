@@ -928,7 +928,7 @@
           "</div>" +
           '<div class="sum-subhead">Payment summary</div>' +
           '<div class="sum-row">' +
-            "<span>Invoice / contract total</span>" +
+            "<span>Invoice total</span>" +
             "<strong>" + contractTotal + "</strong>" +
           "</div>" +
           '<div class="sum-row">' +
@@ -974,7 +974,7 @@
             : remainingBalanceInvoice
               ? "Project paid to date " + projectPaidToDate + " on a project contract total of " + projectContractTotal + "."
               : partialBalanceDueInvoice
-                ? "Paid to date " + paidAmount + " on an invoice / contract total of " + contractTotal + "."
+                ? "Payment summary: " + paidAmount + " has been paid toward this " + contractTotal + " invoice."
                 : "Paid to date " + paidAmount + " on a contract total of " + contractTotal + "."
           : "No payments recorded yet.";
 

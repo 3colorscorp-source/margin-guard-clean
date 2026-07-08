@@ -155,7 +155,7 @@ function buildPartialBalanceDueEmailCopy({
     `• Amount due on this invoice: ${balanceDue}`,
     "",
     "Payment summary:",
-    `• Invoice / contract total: ${contractOrInvoiceTotal}`,
+    `• Invoice total: ${contractOrInvoiceTotal}`,
     `• Paid to date: ${paidToDate}`,
     `• Remaining balance: ${balanceDue}`,
     "",
@@ -646,7 +646,7 @@ exports.handler = async (event) => {
       payload["Email Body"] = emailCopy.body;
       payload.summary_line_1_label = "Amount due on this invoice";
       payload.summary_line_1_value = balanceOnInvoiceFormatted;
-      payload.summary_line_2_label = "Invoice / contract total";
+      payload.summary_line_2_label = "Invoice total";
       payload.summary_line_2_value = contractOrInvoiceTotalFormatted;
       payload.summary_line_3_label = "Paid to date";
       payload.summary_line_3_value = paidOnInvoiceFormatted;
