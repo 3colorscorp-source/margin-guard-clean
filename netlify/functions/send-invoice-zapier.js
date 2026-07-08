@@ -57,11 +57,14 @@ function buildRemainingBalanceEmailCopy({
     publicUrl,
     "",
     "Here's a quick summary:",
+    `• Invoice type: Remaining Balance`,
+    `• This invoice amount: ${invoiceAmount}`,
+    `• Amount due on this invoice: ${invoiceBalanceDue}`,
+    "",
+    "Project payment summary:",
     `• Project contract total: ${projectContractTotal}`,
     `• Project paid to date: ${projectPaidToDate}`,
     `• Remaining project balance: ${remainingProjectBalance}`,
-    `• This invoice amount: ${invoiceAmount}`,
-    `• Amount due on this invoice: ${invoiceBalanceDue}`,
     "",
     "If anything isn’t clear or you’d like to go over the details, I’m happy to help.",
     "",
@@ -522,16 +525,18 @@ exports.handler = async (event) => {
       payload.email_body = emailCopy.body;
       payload["Email Subject"] = emailCopy.subject;
       payload["Email Body"] = emailCopy.body;
-      payload.summary_line_1_label = "Project contract total";
-      payload.summary_line_1_value = projectContractTotalFormatted;
-      payload.summary_line_2_label = "Project paid to date";
-      payload.summary_line_2_value = projectPaidToDateFormatted;
-      payload.summary_line_3_label = "Remaining project balance";
-      payload.summary_line_3_value = remainingProjectBalanceFormatted;
-      payload.summary_line_4_label = "This invoice amount";
-      payload.summary_line_4_value = invoiceAmountFormatted;
-      payload.summary_line_5_label = "Amount due on this invoice";
-      payload.summary_line_5_value = balanceOnInvoiceFormatted;
+      payload.summary_line_1_label = "Invoice type";
+      payload.summary_line_1_value = "Remaining Balance";
+      payload.summary_line_2_label = "This invoice amount";
+      payload.summary_line_2_value = invoiceAmountFormatted;
+      payload.summary_line_3_label = "Amount due on this invoice";
+      payload.summary_line_3_value = balanceOnInvoiceFormatted;
+      payload.summary_line_4_label = "Project contract total";
+      payload.summary_line_4_value = projectContractTotalFormatted;
+      payload.summary_line_5_label = "Project paid to date";
+      payload.summary_line_5_value = projectPaidToDateFormatted;
+      payload.summary_line_6_label = "Remaining project balance";
+      payload.summary_line_6_value = remainingProjectBalanceFormatted;
     }
 
     if (isMaterialCost) {

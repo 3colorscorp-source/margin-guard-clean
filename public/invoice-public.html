@@ -292,6 +292,17 @@
       font-weight:800;
     }
 
+    .sum-subhead{
+      margin-top:10px;
+      padding-top:12px;
+      border-top:1px dashed var(--line);
+      font-size:12px;
+      font-weight:800;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      color:var(--muted);
+    }
+
     .progress-wrap{
       margin-top:14px;
       padding-top:12px;
@@ -857,6 +868,19 @@
       if (remainingBalanceInvoice) {
         summaryRowsHtml =
           '<div class="sum-row">' +
+            "<span>Invoice type</span>" +
+            "<strong>Remaining Balance</strong>" +
+          "</div>" +
+          '<div class="sum-row">' +
+            "<span>This invoice amount</span>" +
+            "<strong>" + invoiceAmount + "</strong>" +
+          "</div>" +
+          '<div class="sum-row total">' +
+            "<span>Amount due on this invoice</span>" +
+            "<span>" + balanceDue + "</span>" +
+          "</div>" +
+          '<div class="sum-subhead">Project payment summary</div>' +
+          '<div class="sum-row">' +
             "<span>Project contract total</span>" +
             "<strong>" + projectContractTotal + "</strong>" +
           "</div>" +
@@ -867,14 +891,6 @@
           '<div class="sum-row">' +
             "<span>Remaining project balance</span>" +
             "<strong>" + remainingProjectBalance + "</strong>" +
-          "</div>" +
-          '<div class="sum-row">' +
-            "<span>This invoice amount</span>" +
-            "<strong>" + invoiceAmount + "</strong>" +
-          "</div>" +
-          '<div class="sum-row total">' +
-            "<span>Amount due on this invoice</span>" +
-            "<span>" + balanceDue + "</span>" +
           "</div>";
       } else {
         const summaryContractLabel = materialCostInvoice ? "Material cost invoice" : "Contract total";
