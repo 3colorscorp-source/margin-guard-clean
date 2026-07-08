@@ -606,6 +606,24 @@
     return true;
   }
 
+  function isPartialBalanceDueInvoice(inv) {
+    if (isMaterialCostInvoice(inv)) return false;
+    if (isRemainingBalanceInvoice(inv)) return false;
+    const contractNum = Number(inv.contract_total);
+    const invoiceAmountNum = Number(inv.invoice_amount != null ? inv.invoice_amount : inv.amount);
+    const paidNum = Number(inv.paid_to_date != null ? inv.paid_to_date : inv.paid_amount);
+    const balanceNum = Number(inv.remaining_balance != null ? inv.remaining_balance : inv.balance_due);
+    const contractTotal = Number.isFinite(contractNum) ? contractNum : Number.isFinite(invoiceAmountNum) ? invoiceAmountNum : 0;
+    const invoiceAmount = Number.isFinite(invoiceAmountNum) ? invoiceAmountNum : 0;
+    const paid = Number.isFinite(paidNum) ? paidNum : 0;
+    const balance = Number.isFinite(balanceNum) ? balanceNum : Math.max(contractTotal - paid, 0);
+    if (paid <= 0.005) return false;
+    if (balance <= 0.005) return false;
+    const totalRef = Math.max(contractTotal, invoiceAmount);
+    if (totalRef <= balance + 0.005) return false;
+    return true;
+  }
+
   function remainingBalanceInvoiceFacts(inv) {
     const projectContractTotalNum = Number(inv.contract_total);
     const invoiceAmountNum = Number(inv.invoice_amount != null ? inv.invoice_amount : inv.amount);
@@ -672,6 +690,15 @@
     const invoiceAmount = Number.isFinite(invoiceAmountNum) ? invoiceAmountNum : 0;
     const paid = Number.isFinite(paidNum) ? paidNum : 0;
     const balance = Number.isFinite(balanceNum) ? balanceNum : Math.max(contractTotal - paid, 0);
+    if (isPartialBalanceDueInvoice(inv)) {
+      return {
+        variant: "partial_balance_due",
+        contractTotal,
+        invoiceAmount,
+        paid,
+        balance
+      };
+    }
     return { variant: "standard", contractTotal, invoiceAmount, paid, balance };
   }
 
@@ -861,6 +888,7 @@
       const balanceDue = money(facts.balance, currency);
       const materialCostInvoice = facts.variant === "material_cost";
       const remainingBalanceInvoice = facts.variant === "remaining_balance";
+      const partialBalanceDueInvoice = facts.variant === "partial_balance_due";
       const projectContractTotal = money(facts.projectContractTotal, currency);
       const projectPaidToDate = money(facts.projectPaidToDate, currency);
       const remainingProjectBalance = money(facts.remainingProjectBalance, currency);
@@ -891,6 +919,25 @@
           '<div class="sum-row">' +
             "<span>Remaining project balance</span>" +
             "<strong>" + remainingProjectBalance + "</strong>" +
+          "</div>";
+      } else if (partialBalanceDueInvoice) {
+        summaryRowsHtml =
+          '<div class="sum-row total">' +
+            "<span>Amount due on this invoice</span>" +
+            "<span>" + balanceDue + "</span>" +
+          "</div>" +
+          '<div class="sum-subhead">Payment summary</div>' +
+          '<div class="sum-row">' +
+            "<span>Invoice / contract total</span>" +
+            "<strong>" + contractTotal + "</strong>" +
+          "</div>" +
+          '<div class="sum-row">' +
+            "<span>Paid to date</span>" +
+            "<strong>" + paidAmount + "</strong>" +
+          "</div>" +
+          '<div class="sum-row">' +
+            "<span>Remaining balance</span>" +
+            "<strong>" + balanceDue + "</strong>" +
           "</div>";
       } else {
         const summaryContractLabel = materialCostInvoice ? "Material cost invoice" : "Contract total";
@@ -926,7 +973,9 @@
             ? "Paid to date " + paidAmount + " on this material cost invoice."
             : remainingBalanceInvoice
               ? "Project paid to date " + projectPaidToDate + " on a project contract total of " + projectContractTotal + "."
-              : "Paid to date " + paidAmount + " on a contract total of " + contractTotal + "."
+              : partialBalanceDueInvoice
+                ? "Paid to date " + paidAmount + " on an invoice / contract total of " + contractTotal + "."
+                : "Paid to date " + paidAmount + " on a contract total of " + contractTotal + "."
           : "No payments recorded yet.";
 
       const accent = safeAccentColor(data.accent_color);

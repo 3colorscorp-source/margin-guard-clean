@@ -110,6 +110,64 @@ function buildMaterialCostEmailCopy({
   return { subject, body };
 }
 
+function isPartialBalanceDueInvoice(invoice, body) {
+  if (isMaterialCostInvoice(invoice)) return false;
+  if (isRemainingBalanceInvoice(invoice)) return false;
+  const paid = toNumber(pickFirstStr(body?.paid_to_date, body?.paidAmount, invoice.paid_amount), 0);
+  const balanceDue = toNumber(
+    pickFirstStr(body?.invoice_balance_due, body?.balance_due, body?.remaining_balance, invoice.balance_due),
+    0
+  );
+  const invoiceAmount = toNumber(pickFirstStr(body?.invoice_amount, invoice.amount), 0);
+  const contractTotal = toNumber(
+    pickFirstStr(body?.contract_total, body?.project_contract_total, invoice.amount),
+    invoiceAmount
+  );
+  if (paid <= 0.005) return false;
+  if (balanceDue <= 0.005) return false;
+  const totalRef = Math.max(contractTotal, invoiceAmount);
+  if (totalRef <= balanceDue + 0.005) return false;
+  return true;
+}
+
+function buildPartialBalanceDueEmailCopy({
+  customerName,
+  projectName,
+  publicUrl,
+  contractOrInvoiceTotal,
+  paidToDate,
+  balanceDue,
+  businessName
+}) {
+  const subject = `Invoice balance ready — ${projectName}`;
+  const body = [
+    `Hi ${customerName},`,
+    "",
+    "I hope you're doing well.",
+    "",
+    `Your invoice for the ${projectName} project has a remaining balance due. Payments already recorded on this invoice are reflected below.`,
+    "",
+    "You can view it here:",
+    "",
+    publicUrl,
+    "",
+    "Here's a quick summary:",
+    `• Amount due on this invoice: ${balanceDue}`,
+    "",
+    "Payment summary:",
+    `• Invoice / contract total: ${contractOrInvoiceTotal}`,
+    `• Paid to date: ${paidToDate}`,
+    `• Remaining balance: ${balanceDue}`,
+    "",
+    "If anything isn’t clear or you’d like to go over the details, I’m happy to help.",
+    "",
+    "Thank you again — I truly appreciate the opportunity to work on your project.",
+    "",
+    `— ${businessName}`
+  ].join("\n");
+  return { subject, body };
+}
+
 function json(statusCode, body) {
   return {
     statusCode,
@@ -434,6 +492,8 @@ exports.handler = async (event) => {
     const project_name = pickFirstStr(body.project_name, body.projectName, invoice.project_name);
     const isMaterialCost = isMaterialCostInvoice(invoice);
     const isRemainingBalance = !isMaterialCost && isRemainingBalanceInvoice(invoice);
+    const isPartialBalanceDue =
+      !isMaterialCost && !isRemainingBalance && isPartialBalanceDueInvoice(invoice, body);
     const invoiceAmountFormatted = formatMoney(
       pickFirstStr(body.invoice_amount, invoice.amount),
       invoice.currency
@@ -444,6 +504,10 @@ exports.handler = async (event) => {
     );
     const balanceOnInvoiceFormatted = formatMoney(
       pickFirstStr(body.invoice_balance_due, body.balance_due, body.remaining_balance, invoice.balance_due),
+      invoice.currency
+    );
+    const contractOrInvoiceTotalFormatted = formatMoney(
+      pickFirstStr(body.contract_total, body.project_contract_total, body.invoice_amount, invoice.amount),
       invoice.currency
     );
     let amount;
@@ -463,6 +527,11 @@ exports.handler = async (event) => {
       paid_to_date = formatMoney(remainingBalanceContext.projectPaidToDate, invoice.currency);
       balance_due = formatMoney(remainingBalanceContext.invoiceBalanceDue, invoice.currency);
       invoice_copy_variant = "remaining_balance";
+    } else if (isPartialBalanceDue) {
+      amount = balanceOnInvoiceFormatted;
+      paid_to_date = paidOnInvoiceFormatted;
+      balance_due = balanceOnInvoiceFormatted;
+      invoice_copy_variant = "partial_balance_due";
     } else {
       amount = formatMoney(pickFirstStr(body.contract_total, body.amount, invoice.amount), invoice.currency);
       paid_to_date = formatMoney(pickFirstStr(body.paid_to_date, body.paidAmount, invoice.paid_amount), invoice.currency);
@@ -559,6 +628,30 @@ exports.handler = async (event) => {
       payload.summary_line_2_value = paidOnInvoiceFormatted;
       payload.summary_line_3_label = "Amount due on this invoice";
       payload.summary_line_3_value = balanceOnInvoiceFormatted;
+    }
+
+    if (isPartialBalanceDue) {
+      const emailCopy = buildPartialBalanceDueEmailCopy({
+        customerName: client_name,
+        projectName: project_name,
+        publicUrl: public_invoice_url,
+        contractOrInvoiceTotal: contractOrInvoiceTotalFormatted,
+        paidToDate: paidOnInvoiceFormatted,
+        balanceDue: balanceOnInvoiceFormatted,
+        businessName: business_name || "Three Colors Corp"
+      });
+      payload.email_subject = emailCopy.subject;
+      payload.email_body = emailCopy.body;
+      payload["Email Subject"] = emailCopy.subject;
+      payload["Email Body"] = emailCopy.body;
+      payload.summary_line_1_label = "Amount due on this invoice";
+      payload.summary_line_1_value = balanceOnInvoiceFormatted;
+      payload.summary_line_2_label = "Invoice / contract total";
+      payload.summary_line_2_value = contractOrInvoiceTotalFormatted;
+      payload.summary_line_3_label = "Paid to date";
+      payload.summary_line_3_value = paidOnInvoiceFormatted;
+      payload.summary_line_4_label = "Remaining balance";
+      payload.summary_line_4_value = balanceOnInvoiceFormatted;
     }
     console.log("[zapier-signature] running...");
     console.log(
