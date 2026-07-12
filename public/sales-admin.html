@@ -433,6 +433,111 @@
       opacity: 0.45;
       cursor: not-allowed;
     }
+    .sa-actions-menu__section + .sa-actions-menu__section {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      margin-top: 4px;
+      padding-top: 6px;
+    }
+    .sa-actions-menu__label {
+      padding: 2px 10px 4px;
+      font-size: 0.625rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.5);
+      pointer-events: none;
+    }
+    #saContractHubModal .sa-modal__panel {
+      width: min(560px, 96vw);
+      max-height: min(90vh, 100dvh);
+    }
+    #saContractHubModal .sa-contract-hub__subtitle {
+      margin: 4px 0 0;
+      font-size: 0.8125rem;
+      color: rgba(232, 238, 252, 0.68);
+      line-height: 1.45;
+    }
+    #saContractHubModal .sa-contract-hub__grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 14px;
+      margin: 14px 0 16px;
+    }
+    #saContractHubModal .sa-contract-hub__field {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+    #saContractHubModal .sa-contract-hub__k {
+      font-size: 0.6875rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.52);
+    }
+    #saContractHubModal .sa-contract-hub__v {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #e8eefc;
+      word-break: break-word;
+    }
+    #saContractHubModal .sa-contract-hub__empty {
+      margin: 0 0 14px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px dashed rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.03);
+      font-size: 0.8125rem;
+      line-height: 1.5;
+      color: rgba(232, 238, 252, 0.82);
+    }
+    #saContractHubModal .sa-contract-hub__actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    #saContractHubModal .sa-contract-hub__hint {
+      margin: 0;
+      font-size: 0.75rem;
+      color: rgba(232, 238, 252, 0.55);
+      line-height: 1.4;
+    }
+    #saContractHubModal .sa-contract-hub__footer {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    #saWorkspaceFeedback {
+      margin: 0 0 10px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      line-height: 1.4;
+      display: none;
+    }
+    #saWorkspaceFeedback.is-visible {
+      display: block;
+    }
+    #saWorkspaceFeedback.is-warn {
+      background: rgba(251, 191, 36, 0.12);
+      border: 1px solid rgba(251, 191, 36, 0.35);
+      color: #fde68a;
+    }
+    #saWorkspaceFeedback.is-err {
+      background: rgba(248, 113, 113, 0.12);
+      border: 1px solid rgba(248, 113, 113, 0.35);
+      color: #fecaca;
+    }
+    @media (max-width: 560px) {
+      #saContractHubModal .sa-contract-hub__grid {
+        grid-template-columns: 1fr;
+      }
+    }
     .sa-secondary-sections {
       display: flex;
       flex-direction: column;
@@ -1032,6 +1137,8 @@
           <p class="sa-view-desc" id="saViewDesc">Production projects with accepted quotes — same list as Project Control.</p>
         </div>
 
+        <p id="saWorkspaceFeedback" role="status" aria-live="polite"></p>
+
         <div id="saProjectsViewWrap" class="sa-workspace-panel">
           <p id="saConvertedLoading" class="sa-loading-note" hidden>Loading approved projects…</p>
           <div id="saConvertedError" class="sa-empty" hidden>
@@ -1406,6 +1513,57 @@
         <button type="button" class="btn ghost" id="saDetailClose">Close</button>
       </header>
       <div class="sa-modal__body" id="saDetailBody"></div>
+    </div>
+  </div>
+
+  <div id="saContractHubModal" class="sa-modal" hidden aria-hidden="true" role="dialog" aria-labelledby="saContractHubTitle">
+    <div class="sa-modal__panel">
+      <header class="sa-modal__head">
+        <div>
+          <h3 id="saContractHubTitle">Contract Hub™</h3>
+          <p class="sa-contract-hub__subtitle">Create and manage the service contract for this approved project.</p>
+        </div>
+        <button type="button" class="btn ghost" id="saContractHubClose" aria-label="Close">Close</button>
+      </header>
+      <div class="sa-modal__body">
+        <div class="sa-contract-hub__grid">
+          <div class="sa-contract-hub__field">
+            <div class="sa-contract-hub__k">Project</div>
+            <div class="sa-contract-hub__v" id="saContractHubProject">—</div>
+          </div>
+          <div class="sa-contract-hub__field">
+            <div class="sa-contract-hub__k">Customer</div>
+            <div class="sa-contract-hub__v" id="saContractHubCustomer">—</div>
+          </div>
+          <div class="sa-contract-hub__field">
+            <div class="sa-contract-hub__k">Approved Quote</div>
+            <div class="sa-contract-hub__v" id="saContractHubQuote">—</div>
+          </div>
+          <div class="sa-contract-hub__field">
+            <div class="sa-contract-hub__k">Contract Total</div>
+            <div class="sa-contract-hub__v" id="saContractHubTotal">—</div>
+          </div>
+          <div class="sa-contract-hub__field">
+            <div class="sa-contract-hub__k">Project Status</div>
+            <div class="sa-contract-hub__v" id="saContractHubProjectStatus">—</div>
+          </div>
+          <div class="sa-contract-hub__field">
+            <div class="sa-contract-hub__k">Contract Status</div>
+            <div class="sa-contract-hub__v" id="saContractHubContractStatus">No Contract Created</div>
+          </div>
+        </div>
+        <div class="sa-contract-hub__empty">
+          No contract has been created for this project.<br />
+          The contract will be generated from the approved quote and will preserve the approved project scope and contract total.
+        </div>
+        <div class="sa-contract-hub__actions">
+          <button type="button" class="btn primary" id="saContractHubCreate" disabled>Create Contract</button>
+          <p class="sa-contract-hub__hint">Contract creation will be enabled in the next Contract Hub phase.</p>
+        </div>
+        <div class="sa-contract-hub__footer">
+          <button type="button" class="btn ghost" id="saContractHubCloseFooter">Close</button>
+        </div>
+      </div>
     </div>
   </div>
 

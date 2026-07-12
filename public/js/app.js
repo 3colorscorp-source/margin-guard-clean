@@ -18169,17 +18169,130 @@ window.renderSupervisor = renderSupervisor;
   }
 
   function saProjectActionsMenuHtml(row) {
-    const pid = row.project?.id;
+    const pid = String(row.project?.id || "").trim();
+    const qid = String(row.project?.quoteId || row.project?.quote_id || "").trim();
     const pccHref = saProjectControlHref(pid);
     const hubHref = saInvoiceHubHref(row.project, row.invoice);
     return (
       `<div class="sa-actions-wrap">` +
       `<button type="button" class="btn ghost sa-actions-toggle" aria-haspopup="menu" aria-expanded="false">&#9776; Actions</button>` +
       `<div class="sa-actions-menu" role="menu" hidden>` +
+      `<div class="sa-actions-menu__section">` +
+      `<div class="sa-actions-menu__label">Project</div>` +
       `<a class="sa-actions-menu__item" role="menuitem" href="${escapeHtml(pccHref)}">Open project</a>` +
+      `</div>` +
+      `<div class="sa-actions-menu__section">` +
+      `<div class="sa-actions-menu__label">Financial</div>` +
       `<a class="sa-actions-menu__item" role="menuitem" href="${escapeHtml(hubHref)}">Invoice Hub</a>` +
+      `</div>` +
+      `<div class="sa-actions-menu__section">` +
+      `<div class="sa-actions-menu__label">Legal</div>` +
+      `<button type="button" class="sa-actions-menu__item" role="menuitem" data-sa-contract-hub data-project-id="${escapeHtml(pid)}" data-quote-id="${escapeHtml(qid)}">Contract Hub</button>` +
+      `</div>` +
       `</div></div>`
     );
+  }
+
+  function saShowWorkspaceFeedback(message, tone) {
+    const el = $("saWorkspaceFeedback");
+    if (!el) return;
+    const msg = String(message || "").trim();
+    if (!msg) {
+      el.textContent = "";
+      el.className = "";
+      el.style.display = "none";
+      return;
+    }
+    const t = tone === "err" ? "err" : "warn";
+    el.textContent = msg;
+    el.className = `is-visible is-${t}`;
+    el.style.display = "block";
+    window.clearTimeout(saShowWorkspaceFeedback._timer);
+    saShowWorkspaceFeedback._timer = window.setTimeout(() => {
+      el.textContent = "";
+      el.className = "";
+      el.style.display = "none";
+    }, 5000);
+  }
+
+  function saContractHubQuoteLabel(row) {
+    const qid = String(row?.project?.quoteId || row?.project?.quote_id || "").trim();
+    return qid || "Not available";
+  }
+
+  function saContractHubSalePriceLabel(row, settings) {
+    const raw = row?.salePrice ?? row?.project?.salePrice ?? row?.project?.sale_price;
+    if (raw == null || raw === "") return "Not available";
+    const n = finiteNumber(raw, NaN);
+    if (!Number.isFinite(n)) return "Not available";
+    return money(n, settings?.currency || DEFAULTS.currency);
+  }
+
+  function saCloseContractHubModal() {
+    const modal = $("saContractHubModal");
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+  }
+
+  function saOpenContractHubModal(row, settings) {
+    const modal = $("saContractHubModal");
+    if (!modal || !row) return false;
+    const projectName = String(row.projectName || row.project?.projectName || row.project?.project_name || "").trim() || "—";
+    const clientName = String(row.clientName || row.project?.clientName || row.project?.client_name || "").trim() || "—";
+    const projectStatus = String(row.projectStatus || row.project?.status || "").trim() || "—";
+    const set = (id, value) => {
+      const node = $(id);
+      if (node) node.textContent = String(value ?? "—");
+    };
+    set("saContractHubProject", projectName);
+    set("saContractHubCustomer", clientName);
+    set("saContractHubQuote", saContractHubQuoteLabel(row));
+    set("saContractHubTotal", saContractHubSalePriceLabel(row, settings));
+    set("saContractHubProjectStatus", projectStatus);
+    set("saContractHubContractStatus", "No Contract Created");
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+    return true;
+  }
+
+  function saBindContractHubModalOnce() {
+    if (window.__MG_SA_CONTRACT_HUB_MODAL_BOUND__) return;
+    window.__MG_SA_CONTRACT_HUB_MODAL_BOUND__ = true;
+
+    const modal = $("saContractHubModal");
+    const closeHeader = $("saContractHubClose");
+    const closeFooter = $("saContractHubCloseFooter");
+
+    if (closeHeader) closeHeader.onclick = saCloseContractHubModal;
+    if (closeFooter) closeFooter.onclick = saCloseContractHubModal;
+
+    if (modal) {
+      modal.onclick = (event) => {
+        if (event.target === modal) saCloseContractHubModal();
+      };
+    }
+
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Escape") return;
+      const hubModal = $("saContractHubModal");
+      if (hubModal && !hubModal.hidden) saCloseContractHubModal();
+    });
+  }
+
+  function saResolveConvertedRowFromIds(rows, projectId, quoteId) {
+    const list = Array.isArray(rows) ? rows : [];
+    const pid = String(projectId || "").trim();
+    const qid = String(quoteId || "").trim();
+    if (pid) {
+      const byProject = list.find((row) => String(row?.project?.id || "").trim() === pid);
+      if (byProject) return byProject;
+    }
+    if (qid) {
+      const byQuote = list.find((row) => String(row?.project?.quoteId || row?.project?.quote_id || "").trim() === qid);
+      if (byQuote) return byQuote;
+    }
+    return null;
   }
 
   function saApprovalActionsMenuHtml(index) {
@@ -18229,6 +18342,28 @@ window.renderSupervisor = renderSupervisor;
     window.__MG_SA_ACTIONS_MENU_BOUND__ = true;
 
     document.addEventListener("click", (ev) => {
+      const contractHubBtn = ev.target.closest("[data-sa-contract-hub]");
+      if (contractHubBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        saCloseSalesAdminActionsMenu();
+        const projectId = String(contractHubBtn.getAttribute("data-project-id") || "").trim();
+        const quoteId = String(contractHubBtn.getAttribute("data-quote-id") || "").trim();
+        const resolver =
+          typeof window.__mgSaResolveConvertedRow === "function" ? window.__mgSaResolveConvertedRow : null;
+        const settings =
+          typeof window.__mgSaContractHubSettings === "function"
+            ? window.__mgSaContractHubSettings()
+            : loadSettings();
+        const row = resolver ? resolver(projectId, quoteId) : null;
+        if (!row) {
+          saShowWorkspaceFeedback("Unable to open Contract Hub for this project.", "err");
+          return;
+        }
+        saOpenContractHubModal(row, settings);
+        return;
+      }
+
       const toggle = ev.target.closest(".sa-actions-toggle");
       if (toggle) {
         ev.preventDefault();
@@ -18563,10 +18698,19 @@ window.renderSupervisor = renderSupervisor;
   function renderSalesAdmin() {
     if (!$("adminQueueBody")) return;
     saBindSalesAdminActionsMenusOnce();
+    saBindContractHubModalOnce();
     const settings = loadSettings();
     let rows = [];
     let lastMapped = null;
     let convertedRows = [];
+
+    const syncContractHubRowResolver = () => {
+      window.__mgSaResolveConvertedRow = (projectId, quoteId) =>
+        saResolveConvertedRowFromIds(convertedRows, projectId, quoteId);
+      window.__mgSaContractHubSettings = () => settings;
+    };
+    syncContractHubRowResolver();
+
     let currentView = "approved-projects";
 
     const activateApprovedProject = (row) => {
@@ -18767,6 +18911,7 @@ window.renderSupervisor = renderSupervisor;
       } else if (SA_VIEW_META[currentView]?.kind === "projects") {
         void saLoadConvertedProjectsData(settings, (joined) => {
           convertedRows = joined;
+          syncContractHubRowResolver();
           saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
           saRenderMainProjectsTable(
             convertedRows,
@@ -18779,12 +18924,14 @@ window.renderSupervisor = renderSupervisor;
       } else if (currentView === "estimated-commission") {
         void saLoadConvertedProjectsData(settings, (joined) => {
           convertedRows = joined;
+          syncContractHubRowResolver();
           saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
           saRenderCommissionTable(convertedRows, settings);
         });
       } else if (currentView === "recent-activity") {
         void saLoadConvertedProjectsData(settings, (joined) => {
           convertedRows = joined;
+          syncContractHubRowResolver();
           saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
           saRenderRecentActivity(convertedRows, settings);
         });
@@ -18860,6 +19007,7 @@ window.renderSupervisor = renderSupervisor;
     saUpdateSalesAdminViewChrome("approved-projects");
     void saLoadConvertedProjectsData(settings, (joined) => {
       convertedRows = joined;
+      syncContractHubRowResolver();
       saUpdateSalesAdminKpis(lastMapped, convertedRows, settings);
       saSetMainView("approved-projects");
     });
