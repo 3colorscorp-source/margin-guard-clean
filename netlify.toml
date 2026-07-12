@@ -81,6 +81,11 @@
   status = 200
 
 [[redirects]]
+  from = "/contract-hub"
+  to = "/contract-hub.html"
+  status = 200
+
+[[redirects]]
   from = "/success"
   to = "/success.html"
   status = 200

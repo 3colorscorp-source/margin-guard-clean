@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Contract Hub</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .ch-page {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+    .ch-hero {
+      margin-bottom: 12px;
+    }
+    .ch-hero .card-inner {
+      padding-top: 12px;
+      padding-bottom: 12px;
+    }
+    .ch-hero-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px 16px;
+    }
+    .ch-hero-head h2 {
+      margin: 0 0 4px;
+      font-size: clamp(1.25rem, 2.2vw, 1.55rem);
+    }
+    .ch-hero-head .sub {
+      margin: 0;
+      max-width: 52ch;
+      line-height: 1.45;
+    }
+    .ch-summary {
+      margin-bottom: 12px;
+    }
+    .ch-summary__grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px 14px;
+    }
+    @media (max-width: 900px) {
+      .ch-summary__grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 560px) {
+      .ch-summary__grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+    .ch-field {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+    .ch-field__k {
+      font-size: 0.6875rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.52);
+    }
+    .ch-field__v {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #e8eefc;
+      word-break: break-word;
+    }
+    .ch-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+    @media (max-width: 960px) {
+      .ch-layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+    .ch-card h3 {
+      margin: 0 0 4px;
+      font-size: 1rem;
+    }
+    .ch-card .sub {
+      margin: 0 0 12px;
+      font-size: 0.8125rem;
+    }
+    .ch-empty {
+      margin: 0 0 14px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px dashed rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.03);
+      font-size: 0.8125rem;
+      line-height: 1.5;
+      color: rgba(232, 238, 252, 0.82);
+    }
+    .ch-checklist {
+      margin: 0 0 14px;
+      padding: 0;
+      list-style: none;
+    }
+    .ch-checklist li {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 6px 0;
+      font-size: 0.8125rem;
+      line-height: 1.4;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .ch-checklist li:last-child {
+      border-bottom: none;
+    }
+    .ch-checklist__mark {
+      flex: 0 0 auto;
+      width: 1.1rem;
+      text-align: center;
+      font-weight: 800;
+    }
+    .ch-checklist__mark.is-ok {
+      color: #86efac;
+    }
+    .ch-checklist__mark.is-miss {
+      color: rgba(232, 238, 252, 0.35);
+    }
+    .ch-hint {
+      margin: 8px 0 0;
+      font-size: 0.75rem;
+      color: rgba(232, 238, 252, 0.55);
+      line-height: 1.4;
+    }
+    .ch-workflow {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .ch-workflow li {
+      position: relative;
+      padding: 8px 0 8px 22px;
+      font-size: 0.8125rem;
+      line-height: 1.35;
+      border-left: 2px solid rgba(255, 255, 255, 0.1);
+      margin-left: 6px;
+    }
+    .ch-workflow li::before {
+      content: "";
+      position: absolute;
+      left: -7px;
+      top: 12px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.18);
+      border: 2px solid rgba(13, 20, 34, 0.9);
+    }
+    .ch-workflow li.is-done {
+      color: rgba(232, 238, 252, 0.88);
+    }
+    .ch-workflow li.is-done::before {
+      background: #22c55e;
+    }
+    .ch-workflow li.is-next {
+      color: #fde68a;
+      font-weight: 700;
+    }
+    .ch-workflow li.is-next::before {
+      background: #f59e0b;
+    }
+    .ch-workflow li.is-future {
+      color: rgba(232, 238, 252, 0.5);
+    }
+    .ch-docs {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .ch-docs h4 {
+      margin: 0 0 6px;
+      font-size: 0.8125rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: rgba(232, 238, 252, 0.58);
+    }
+    .ch-docs p {
+      margin: 0;
+      font-size: 0.8125rem;
+      color: rgba(232, 238, 252, 0.72);
+    }
+    .ch-state {
+      padding: 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .ch-state h3 {
+      margin: 0 0 6px;
+      font-size: 1rem;
+    }
+    .ch-state p {
+      margin: 0 0 12px;
+      font-size: 0.875rem;
+      line-height: 1.45;
+      color: rgba(232, 238, 252, 0.78);
+      max-width: 52ch;
+    }
+    .ch-loading {
+      font-size: 0.875rem;
+      color: rgba(232, 238, 252, 0.7);
+      padding: 8px 0;
+    }
+    #chMain[hidden],
+    #chError[hidden],
+    #chLoading[hidden] {
+      display: none !important;
+    }
+  </style>
+</head>
+<body data-requires-auth="true" data-mg-app-nav data-mg-page-title="Contract Hub">
+  <div class="container ch-page">
+    <div class="account-pill" id="accountEmail">Cuenta activa</div>
+
+    <section class="card ch-hero">
+      <div class="card-inner">
+        <div class="ch-hero-head">
+          <div>
+            <h2>Contract Hub™</h2>
+            <p class="sub">Create and manage the service agreement for this approved project.</p>
+          </div>
+          <a class="btn ghost" href="/sales-admin" id="chBackTop">Back to Sales Admin</a>
+        </div>
+      </div>
+    </section>
+
+    <div id="chLoading" class="ch-loading" aria-live="polite">Loading project context…</div>
+
+    <div id="chError" class="ch-state" hidden role="alert">
+      <h3 id="chErrorTitle">Contract Hub</h3>
+      <p id="chErrorMessage"></p>
+      <a class="btn ghost" href="/sales-admin">Back to Sales Admin</a>
+    </div>
+
+    <div id="chMain" hidden>
+      <section class="card ch-summary">
+        <div class="card-inner">
+          <div class="ch-summary__grid">
+            <div class="ch-field">
+              <div class="ch-field__k">Project</div>
+              <div class="ch-field__v" id="chProject">—</div>
+            </div>
+            <div class="ch-field">
+              <div class="ch-field__k">Customer</div>
+              <div class="ch-field__v" id="chCustomer">—</div>
+            </div>
+            <div class="ch-field">
+              <div class="ch-field__k">Customer Email</div>
+              <div class="ch-field__v" id="chCustomerEmail">—</div>
+            </div>
+            <div class="ch-field">
+              <div class="ch-field__k">Approved Quote</div>
+              <div class="ch-field__v" id="chQuote">—</div>
+            </div>
+            <div class="ch-field">
+              <div class="ch-field__k">Contract Total</div>
+              <div class="ch-field__v" id="chTotal">—</div>
+            </div>
+            <div class="ch-field">
+              <div class="ch-field__k">Project Status</div>
+              <div class="ch-field__v" id="chProjectStatus">—</div>
+            </div>
+            <div class="ch-field">
+              <div class="ch-field__k">Contract Status</div>
+              <div class="ch-field__v"><span class="badge amber" id="chContractStatus">Ready to Create</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="ch-layout">
+        <section class="card ch-card">
+          <div class="card-inner">
+            <h3>Contract Builder</h3>
+            <p class="sub">Prepare the service agreement from the approved quote.</p>
+            <div class="ch-empty">
+              Create a professional service agreement using the approved quote.
+              The contract will preserve the approved project scope, pricing, and customer information before signatures are requested.
+            </div>
+            <ul class="ch-checklist" id="chChecklist" aria-label="Builder preparation checklist"></ul>
+            <button type="button" class="btn primary" id="chLaunchBuilder" disabled>Launch Contract Builder</button>
+            <p class="ch-hint">Contract generation will be enabled in the next phase.</p>
+          </div>
+        </section>
+
+        <section class="card ch-card">
+          <div class="card-inner">
+            <h3>Contract Workflow</h3>
+            <p class="sub">Track progress from approved quote to signed contract.</p>
+            <ol class="ch-workflow" id="chWorkflow" aria-label="Contract workflow stages"></ol>
+            <div class="ch-docs">
+              <h4>Contract documents</h4>
+              <p id="chDocuments">No contract documents yet.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/mg-app-nav.js"></script>
+  <script src="/js/tenant.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/contract-hub.js" defer></script>
+</body>
+</html>

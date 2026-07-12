@@ -18187,7 +18187,7 @@ window.renderSupervisor = renderSupervisor;
       `</div>` +
       `<div class="sa-actions-menu__section">` +
       `<div class="sa-actions-menu__label">Legal</div>` +
-      `<button type="button" class="sa-actions-menu__item" role="menuitem" data-sa-contract-hub data-project-id="${escapeHtml(pid)}" data-quote-id="${escapeHtml(qid)}">Contract Hub</button>` +
+      `<a class="sa-actions-menu__item" role="menuitem" href="${escapeHtml(saContractHubHref(pid, qid))}">Contract Hub</a>` +
       `</div>` +
       `</div></div>`
     );
@@ -18456,6 +18456,15 @@ window.renderSupervisor = renderSupervisor;
     if (qid) return `/estimates-invoices?quote_id=${encodeURIComponent(qid)}`;
     if (pid) return `/estimates-invoices?project_id=${encodeURIComponent(pid)}`;
     return "/estimates-invoices";
+  }
+
+  function saContractHubHref(projectId, quoteId) {
+    const pid = String(projectId || "").trim();
+    if (!pid) return "/sales-admin";
+    const params = new URLSearchParams({ project_id: pid });
+    const qid = String(quoteId || "").trim();
+    if (qid) params.set("quote_id", qid);
+    return `/contract-hub?${params.toString()}`;
   }
 
   function saRenderConvertedProjectsTable(convertedRows, settings) {
