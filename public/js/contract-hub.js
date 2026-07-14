@@ -84,6 +84,45 @@
     return Boolean(qid);
   }
 
+  function isBuilderEligible(project, quote) {
+    const clientName = String(project?.clientName || project?.client_name || "").trim();
+    const salePrice = finiteNumber(project?.salePrice ?? project?.sale_price, 0);
+    const quoteId = String(project?.quoteId || project?.quote_id || "").trim();
+    if (!quoteId || !clientName || !(salePrice > 0)) return false;
+    if (!quote) return true;
+    const st = normStatus(quote.status);
+    return !st || APPROVED_QUOTE_STATUSES.has(st);
+  }
+
+  function builderHref(projectId, quoteId) {
+    const pid = String(projectId || "").trim();
+    if (!pid) return "/contract-hub";
+    const params = new URLSearchParams({ project_id: pid });
+    const qid = String(quoteId || "").trim();
+    if (qid) params.set("quote_id", qid);
+    return `/contract-builder?${params.toString()}`;
+  }
+
+  function setLaunchBuilderState(eligible, projectId, quoteId) {
+    const link = $("chLaunchBuilder");
+    const disabledBtn = $("chLaunchBuilderDisabled");
+    if (eligible) {
+      if (link) {
+        link.href = builderHref(projectId, quoteId);
+        link.hidden = false;
+        link.removeAttribute("aria-disabled");
+      }
+      if (disabledBtn) disabledBtn.hidden = true;
+    } else {
+      if (link) {
+        link.hidden = true;
+        link.setAttribute("aria-disabled", "true");
+        link.href = "#";
+      }
+      if (disabledBtn) disabledBtn.hidden = false;
+    }
+  }
+
   function showLoading() {
     $("chLoading")?.removeAttribute("hidden");
     $("chError")?.setAttribute("hidden", "");
@@ -206,8 +245,8 @@
 
     renderWorkflow();
 
-    const launch = $("chLaunchBuilder");
-    if (launch) launch.disabled = true;
+    const eligible = isBuilderEligible(project, quote);
+    setLaunchBuilderState(eligible, String(project.id || "").trim(), quoteId);
 
     if (!projectHasApprovedQuote(project) || (quote && !APPROVED_QUOTE_STATUSES.has(quoteStatus))) {
       showError(

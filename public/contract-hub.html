@@ -290,8 +290,9 @@
               The contract will preserve the approved project scope, pricing, and customer information before signatures are requested.
             </div>
             <ul class="ch-checklist" id="chChecklist" aria-label="Builder preparation checklist"></ul>
-            <button type="button" class="btn primary" id="chLaunchBuilder" disabled>Launch Contract Builder</button>
-            <p class="ch-hint">Contract generation will be enabled in the next phase.</p>
+            <a class="btn primary" id="chLaunchBuilder" href="#" hidden aria-disabled="true">Launch Contract Builder</a>
+            <button type="button" class="btn primary" id="chLaunchBuilderDisabled" disabled>Launch Contract Builder</button>
+            <p class="ch-hint" id="chLaunchHint">Create a review draft from the approved quote. Missing information must be confirmed before signature.</p>
           </div>
         </section>
 

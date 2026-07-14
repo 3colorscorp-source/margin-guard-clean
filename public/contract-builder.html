@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Contract Builder</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .cb-page { max-width: 920px; margin: 0 auto; }
+    .cb-hero .card-inner { padding-top: 12px; padding-bottom: 12px; }
+    .cb-hero-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px 16px;
+    }
+    .cb-hero-head h2 { margin: 0 0 6px; font-size: clamp(1.25rem, 2.2vw, 1.55rem); }
+    .cb-hero-head .sub { margin: 0; max-width: 52ch; line-height: 1.45; }
+    .cb-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .cb-badge-draft {
+      display: inline-block;
+      margin: 0 0 8px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #451a03;
+      background: #fbbf24;
+    }
+    .cb-warn {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(251, 191, 36, 0.35);
+      background: rgba(251, 191, 36, 0.1);
+      color: rgba(254, 243, 199, 0.95);
+      font-size: 0.8125rem;
+      line-height: 1.45;
+    }
+    .cb-loading { font-size: 0.875rem; color: rgba(232, 238, 252, 0.7); padding: 8px 0; }
+    .cb-state h3 { margin: 0 0 6px; font-size: 1rem; }
+    .cb-state p { margin: 0 0 12px; font-size: 0.875rem; line-height: 1.45; color: rgba(232, 238, 252, 0.78); max-width: 52ch; }
+    #cbMain[hidden], #cbError[hidden], #cbLoading[hidden] { display: none !important; }
+
+    .cb-checklist { margin: 0; padding: 0; list-style: none; }
+    .cb-checklist li {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 7px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 0.8125rem;
+      line-height: 1.4;
+    }
+    .cb-checklist li:last-child { border-bottom: none; }
+    .cb-check-status {
+      flex: 0 0 auto;
+      min-width: 7.5rem;
+      font-weight: 700;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .cb-check-status.is-available { color: #86efac; }
+    .cb-check-status.is-missing { color: #fca5a5; }
+    .cb-check-status.is-needs { color: #fcd34d; }
+
+    .cb-doc {
+      background: #ffffff;
+      color: #111827;
+      border-radius: 10px;
+      padding: 28px 24px 36px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.25);
+    }
+    .cb-doc h1 {
+      margin: 0 0 4px;
+      font-size: 1.45rem;
+      color: #111827;
+      letter-spacing: -0.02em;
+    }
+    .cb-doc .cb-doc-sub {
+      margin: 0 0 18px;
+      color: #4b5563;
+      font-size: 0.875rem;
+      line-height: 1.45;
+    }
+    .cb-doc-watermark {
+      display: inline-block;
+      margin-bottom: 12px;
+      padding: 3px 8px;
+      border: 2px solid #b45309;
+      color: #92400e;
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .cb-doc section { margin: 0 0 18px; page-break-inside: avoid; }
+    .cb-doc h3 {
+      margin: 0 0 8px;
+      font-size: 0.95rem;
+      color: #111827;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 4px;
+    }
+    .cb-doc p, .cb-doc li {
+      margin: 0 0 6px;
+      font-size: 0.875rem;
+      line-height: 1.5;
+      color: #1f2937;
+    }
+    .cb-doc ul { margin: 0 0 8px; padding-left: 1.15rem; }
+    .cb-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 16px;
+    }
+    @media (max-width: 640px) {
+      .cb-grid { grid-template-columns: 1fr; }
+      .cb-doc { padding: 18px 14px 24px; }
+    }
+    .cb-field-label {
+      display: block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #6b7280;
+      margin-bottom: 2px;
+    }
+    .cb-field-value { font-size: 0.875rem; color: #111827; white-space: pre-wrap; }
+    .cb-missing {
+      display: inline-block;
+      margin-top: 2px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: #fef3c7;
+      color: #92400e;
+      font-size: 0.72rem;
+      font-weight: 700;
+    }
+    .cb-edit-grid {
+      display: grid;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .cb-edit-grid label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #374151;
+      margin-bottom: 4px;
+    }
+    .cb-edit-grid input,
+    .cb-edit-grid textarea {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font: inherit;
+      font-size: 0.875rem;
+      color: #111827;
+      background: #fff;
+    }
+    .cb-edit-grid textarea { min-height: 88px; resize: vertical; }
+    .cb-edit-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .cb-sign-box {
+      border: 1px dashed #9ca3af;
+      border-radius: 8px;
+      padding: 14px;
+      min-height: 72px;
+      background: #f9fafb;
+      color: #6b7280;
+      font-size: 0.8125rem;
+    }
+    .cb-sign-box strong { display: block; color: #374151; margin-bottom: 6px; }
+    .cb-footer-note {
+      margin-top: 20px;
+      padding-top: 12px;
+      border-top: 1px solid #e5e7eb;
+      font-size: 0.75rem;
+      color: #6b7280;
+      line-height: 1.4;
+    }
+    .cb-no-print { }
+    @media print {
+      body { background: #fff !important; }
+      .account-pill,
+      .mg-app-nav,
+      nav,
+      .cb-no-print,
+      #cbLoading,
+      #cbError { display: none !important; }
+      .container { max-width: none; margin: 0; padding: 0; }
+      .cb-doc {
+        box-shadow: none;
+        border-radius: 0;
+        padding: 0;
+      }
+      .cb-print-banner {
+        display: block !important;
+        text-align: center;
+        font-weight: 800;
+        color: #92400e;
+        border: 2px solid #b45309;
+        padding: 6px;
+        margin-bottom: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-size: 0.8rem;
+      }
+      .cb-print-footer {
+        display: block !important;
+        margin-top: 18px;
+        font-size: 0.7rem;
+        color: #6b7280;
+        text-align: center;
+      }
+      .cb-edit-grid input,
+      .cb-edit-grid textarea {
+        border: none;
+        padding: 0;
+        background: transparent;
+      }
+      .cb-edit-actions { display: none !important; }
+      a[href]::after { content: "" !important; }
+    }
+    .cb-print-banner,
+    .cb-print-footer { display: none; }
+  </style>
+</head>
+<body data-requires-auth="true" data-mg-app-nav data-mg-page-title="Contract Builder">
+  <div class="container cb-page">
+    <div class="account-pill" id="accountEmail">Cuenta activa</div>
+
+    <section class="card cb-hero cb-no-print">
+      <div class="card-inner">
+        <div class="cb-hero-head">
+          <div>
+            <div class="cb-badge-draft">Draft — Not Ready for Signature</div>
+            <h2>Contract Builder</h2>
+            <p class="sub">Review all project, business, property, payment, and legal information before using this agreement.</p>
+          </div>
+          <div class="cb-actions">
+            <a class="btn ghost" href="/contract-hub" id="cbBackHub">Back to Contract Hub</a>
+            <button type="button" class="btn primary" id="cbPrintDraft">Print Draft</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div id="cbLoading" class="cb-loading" aria-live="polite">Loading approved project draft…</div>
+
+    <div id="cbError" class="cb-state" hidden role="alert">
+      <h3 id="cbErrorTitle">Contract Builder</h3>
+      <p id="cbErrorMessage"></p>
+      <a class="btn ghost" href="/sales-admin">Back to Sales Admin</a>
+    </div>
+
+    <div id="cbMain" hidden>
+      <div class="cb-warn cb-no-print" id="cbUnsavedWarn">
+        Unsaved meeting draft. Changes will be lost when this page is closed.
+      </div>
+
+      <section class="card cb-no-print" style="margin-bottom:12px;">
+        <div class="card-inner">
+          <h3 style="margin:0 0 8px;font-size:1rem;">Draft readiness checklist</h3>
+          <p class="sub" style="margin:0 0 10px;">This checklist confirms available source data. It does not certify legal compliance.</p>
+          <ul class="cb-checklist" id="cbReadiness" aria-label="Draft readiness checklist"></ul>
+        </div>
+      </section>
+
+      <article class="cb-doc" id="cbDocument" aria-label="Contract draft preview">
+        <div class="cb-print-banner">DRAFT — NOT READY FOR SIGNATURE</div>
+        <div class="cb-doc-watermark">DRAFT — NOT READY FOR SIGNATURE</div>
+        <h1>Service Agreement (Draft Preview)</h1>
+        <p class="cb-doc-sub">Review draft generated from an approved quote. Missing information must be confirmed before signature. This is not an executed contract.</p>
+
+        <section>
+          <h3>1. Draft notice</h3>
+          <p>This document is a meeting review draft only. It is not ready for signature and does not create a binding contract until required information, legal notices, payment schedule, and signature workflow are completed in a later phase.</p>
+        </section>
+
+        <section>
+          <h3>2. Contractor information</h3>
+          <div class="cb-grid">
+            <div>
+              <span class="cb-field-label">Business display name</span>
+              <div class="cb-field-value" id="cbBizName">—</div>
+            </div>
+            <div>
+              <span class="cb-field-label">Business phone</span>
+              <div class="cb-field-value" id="cbBizPhone">—</div>
+            </div>
+            <div>
+              <span class="cb-field-label">Business email</span>
+              <div class="cb-field-value" id="cbBizEmail">—</div>
+            </div>
+            <div>
+              <span class="cb-field-label">Business address</span>
+              <div class="cb-field-value" id="cbBizAddress">—</div>
+            </div>
+          </div>
+          <p id="cbContractorMissing" style="margin-top:8px;"></p>
+        </section>
+
+        <section>
+          <h3>3. Customer information</h3>
+          <div class="cb-grid">
+            <div>
+              <span class="cb-field-label">Customer name</span>
+              <div class="cb-field-value" id="cbCustomerName">—</div>
+            </div>
+            <div>
+              <span class="cb-field-label">Customer email</span>
+              <div class="cb-field-value" id="cbCustomerEmail">—</div>
+            </div>
+            <div>
+              <span class="cb-field-label">Customer phone</span>
+              <div class="cb-field-value" id="cbCustomerPhone">—</div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h3>4. Project / property information</h3>
+          <div class="cb-grid">
+            <div>
+              <span class="cb-field-label">Project</span>
+              <div class="cb-field-value" id="cbProjectName">—</div>
+            </div>
+            <div>
+              <span class="cb-field-label">Property address</span>
+              <div class="cb-field-value" id="cbPropertyDisplay">—</div>
+            </div>
+          </div>
+          <div class="cb-edit-grid cb-no-print">
+            <div>
+              <label for="cbEditAddress">Project address (meeting edit)</label>
+              <input id="cbEditAddress" type="text" maxlength="255" autocomplete="off" />
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h3>5. Approved quote reference</h3>
+          <div class="cb-grid">
+            <div>
+              <span class="cb-field-label">Quote number</span>
+              <div class="cb-field-value" id="cbQuoteNumber">—</div>
+            </div>
+            <div>
+              <span class="cb-field-label">Quote status</span>
+              <div class="cb-field-value" id="cbQuoteStatus">—</div>
+            </div>
+            <div>
+              <span class="cb-field-label">Accepted date</span>
+              <div class="cb-field-value" id="cbAcceptedAt">—</div>
+            </div>
+            <div>
+              <span class="cb-field-label">Contract total</span>
+              <div class="cb-field-value" id="cbContractTotal">—</div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h3>6. Scope of work</h3>
+          <div class="cb-field-value" id="cbScopeDisplay">—</div>
+          <div class="cb-edit-grid cb-no-print">
+            <div>
+              <label for="cbEditScope">Scope of work (meeting edit)</label>
+              <textarea id="cbEditScope" maxlength="8000"></textarea>
+            </div>
+            <div>
+              <label for="cbEditExclusions">Exclusions (meeting edit)</label>
+              <textarea id="cbEditExclusions" maxlength="4000"></textarea>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h3>7. Contract price</h3>
+          <p><strong id="cbPriceLine">Contract Total: —</strong></p>
+          <p>The approved contract total comes from the accepted quote / project sale price. Invoice amounts are not used.</p>
+        </section>
+
+        <section>
+          <h3>8. Payment schedule</h3>
+          <p><strong id="cbPayTotalLine">Contract Total: —</strong></p>
+          <p>Payment Schedule: <em>Not yet configured</em></p>
+          <p class="cb-missing">Payment stages and amounts must be confirmed and must total the approved contract price before signature.</p>
+          <div class="cb-edit-grid cb-no-print">
+            <div>
+              <label for="cbEditPaymentNotes">Payment schedule notes (meeting edit)</label>
+              <textarea id="cbEditPaymentNotes" maxlength="2000"></textarea>
+            </div>
+          </div>
+          <p id="cbPaymentNotesDisplay" class="cb-field-value" style="margin-top:8px;"></p>
+        </section>
+
+        <section>
+          <h3>9. Estimated schedule</h3>
+          <div class="cb-grid">
+            <div>
+              <span class="cb-field-label">Estimated start</span>
+              <div class="cb-field-value" id="cbStartDisplay">—</div>
+            </div>
+            <div>
+              <span class="cb-field-label">Estimated completion</span>
+              <div class="cb-field-value" id="cbDueDisplay">—</div>
+            </div>
+          </div>
+          <div class="cb-edit-grid cb-no-print">
+            <div>
+              <label for="cbEditStart">Estimated start date</label>
+              <input id="cbEditStart" type="date" />
+            </div>
+            <div>
+              <label for="cbEditDue">Estimated completion date</label>
+              <input id="cbEditDue" type="date" />
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h3>10. Customer responsibilities</h3>
+          <ul>
+            <li>Provide timely access to the property for scheduled work.</li>
+            <li>Make selections and decisions required to keep the project on schedule.</li>
+            <li>Disclose known site conditions relevant to the work.</li>
+            <li>Pay according to the confirmed payment schedule once configured.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3>11. Contractor responsibilities</h3>
+          <ul>
+            <li>Perform work consistent with the approved scope of work.</li>
+            <li>Communicate material delays or scope questions promptly.</li>
+            <li>Maintain professional jobsite conduct and cleanup standards for work performed.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3>12. Changes and additional work</h3>
+          <p>Changes to the approved scope, price, or schedule must be documented and confirmed before additional work proceeds. Formal change-order workflow will be attached before signature.</p>
+        </section>
+
+        <section>
+          <h3>13. Delays and concealed conditions</h3>
+          <p>Hidden or unforeseen conditions may affect schedule and price. Material delays outside either party’s control may require schedule adjustment. Final delay language will follow the applicable state module later.</p>
+        </section>
+
+        <section>
+          <h3>14. Warranty</h3>
+          <p id="cbWarrantyDisplay">Warranty terms are not yet configured.</p>
+          <p class="cb-missing">State-required terms and notices must be added before signature.</p>
+          <div class="cb-edit-grid cb-no-print">
+            <div>
+              <label for="cbEditWarranty">Warranty notes (meeting edit)</label>
+              <textarea id="cbEditWarranty" maxlength="2000"></textarea>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h3>15. General terms</h3>
+          <p id="cbTermsDisplay">—</p>
+          <p class="cb-missing">State-required terms and notices must be added before signature.</p>
+          <div class="cb-edit-grid cb-no-print">
+            <div>
+              <label for="cbEditTerms">Additional terms (meeting edit)</label>
+              <textarea id="cbEditTerms" maxlength="4000"></textarea>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h3>16. Required-information checklist</h3>
+          <ul id="cbRequiredList"></ul>
+        </section>
+
+        <section>
+          <h3>17. Signature placeholders</h3>
+          <div class="cb-grid">
+            <div class="cb-sign-box">
+              <strong>Customer Signature</strong>
+              Signature unavailable in draft preview
+            </div>
+            <div class="cb-sign-box">
+              <strong>Contractor Signature</strong>
+              Signature unavailable in draft preview
+            </div>
+          </div>
+        </section>
+
+        <div class="cb-footer-note">
+          Generated by Margin Guard for review only. Not an executed contract.
+        </div>
+        <div class="cb-print-footer">Generated by Margin Guard for review only. Not an executed contract. DRAFT — NOT READY FOR SIGNATURE</div>
+      </article>
+
+      <div class="cb-edit-actions cb-no-print" style="margin:12px 0 24px;">
+        <button type="button" class="btn ghost" id="cbResetDraft">Reset from Approved Quote</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/mg-app-nav.js"></script>
+  <script src="/js/tenant.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/contract-builder.js" defer></script>
+</body>
+</html>
