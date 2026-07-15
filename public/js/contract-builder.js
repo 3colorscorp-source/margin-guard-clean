@@ -10,6 +10,8 @@
   /** Browser-memory-only draft edits. Never persist. */
   let sourceSnapshot = null;
   let draftEdits = null;
+  const undoStacks = Object.create(null);
+  const redoStacks = Object.create(null);
 
   function $(id) {
     return document.getElementById(id);
@@ -27,6 +29,10 @@
     const el = $(id);
     if (!el) return;
     el.textContent = value == null || value === "" ? "—" : String(value);
+  }
+
+  function setTextMany(ids, value) {
+    for (const id of ids) setText(id, value);
   }
 
   function finiteNumber(value, fallback) {
@@ -143,6 +149,16 @@
     return null;
   }
 
+  function initialsFromName(name) {
+    const parts = String(name || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!parts.length) return "MG";
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+
   function buildSource(project, quote, branding) {
     const currency = String(quote?.currency || DEFAULT_CURRENCY).trim() || DEFAULT_CURRENCY;
     const contractTotal = resolveContractTotal(project, quote);
@@ -150,6 +166,7 @@
     const notes = String(quote?.notes || "").trim();
     const terms = String(quote?.terms || "").trim();
     const scope = notes || terms || "";
+    const deposit = finiteNumber(quote?.deposit_required, NaN);
     return {
       projectId: String(project.id || "").trim(),
       quoteId: String(quote?.id || project.quoteId || project.quote_id || "").trim(),
@@ -161,6 +178,7 @@
       quoteStatus: String(quote?.status || "").trim(),
       acceptedAt: quote?.accepted_at || null,
       contractTotal,
+      depositRequired: Number.isFinite(deposit) && deposit > 0 ? deposit : null,
       currency,
       address,
       scope,
@@ -176,6 +194,7 @@
         businessPhone: String(branding?.business_phone || "").trim(),
         businessEmail: String(branding?.business_email || "").trim(),
         businessAddress: String(branding?.business_address || "").trim(),
+        logoUrl: String(branding?.logo_url || "").trim(),
       },
     };
   }
@@ -203,15 +222,9 @@
         label: "Contract total",
         status: source.contractTotal != null && source.contractTotal > 0 ? "available" : "missing",
       },
-      {
-        label: "Existing scope",
-        status: scope ? "available" : "missing",
-      },
+      { label: "Existing scope", status: scope ? "available" : "missing" },
       { label: "Legal contractor profile", status: "missing" },
-      {
-        label: "Project address",
-        status: address ? "needs_confirmation" : "missing",
-      },
+      { label: "Project address", status: address ? "needs_confirmation" : "missing" },
       { label: "Authorized signer", status: "missing" },
       { label: "Payment schedule", status: "missing" },
       { label: "State-required legal notices", status: "missing" },
@@ -236,25 +249,93 @@
   }
 
   function renderReadiness(source, edits) {
+    const items = readinessItems(source, edits);
     const list = $("cbReadiness");
-    if (!list) return;
-    list.innerHTML = readinessItems(source, edits)
-      .map((item) => {
-        return (
-          `<li><span class="cb-check-status ${statusClass(item.status)}">${escapeHtml(statusLabel(item.status))}</span>` +
-          `<span>${escapeHtml(item.label)}</span></li>`
-        );
-      })
-      .join("");
+    if (list) {
+      list.innerHTML = items
+        .map((item) => {
+          return (
+            `<li><span class="cb-check-status ${statusClass(item.status)}">${escapeHtml(statusLabel(item.status))}</span>` +
+            `<span>${escapeHtml(item.label)}</span></li>`
+          );
+        })
+        .join("");
+    }
+
+    const ul = $("cbRequiredList");
+    if (ul) {
+      ul.innerHTML = items
+        .map((item) => `<li>${escapeHtml(item.label)} — ${escapeHtml(statusLabel(item.status))}</li>`)
+        .join("");
+    }
+
+    const available = items.filter((i) => i.status === "available").length;
+    const pct = Math.round((available / items.length) * 100);
+    setText("cbReadyPct", `${pct}%`);
+
+    const missingEl = $("cbMissingList");
+    if (missingEl) {
+      const missing = items.filter((i) => i.status === "missing");
+      missingEl.innerHTML = missing.length
+        ? missing.map((i) => `<li><span class="cb-check-status is-missing">Missing</span><span>${escapeHtml(i.label)}</span></li>`).join("")
+        : `<li><span class="cb-check-status is-available">Clear</span><span>No critical gaps listed</span></li>`;
+    }
+
+    const warnEl = $("cbWarningsList");
+    if (warnEl) {
+      const warns = items.filter((i) => i.status === "needs_confirmation");
+      warnEl.innerHTML = warns.length
+        ? warns.map((i) => `<li><span class="cb-check-status is-needs">Confirm</span><span>${escapeHtml(i.label)}</span></li>`).join("")
+        : `<li><span class="cb-check-status is-available">Clear</span><span>No confirmation warnings</span></li>`;
+    }
+
+    const printReady = pct >= 35;
+    const reviewReady = Boolean(source.customerName && source.contractTotal > 0 && source.quoteId);
+    const signReady = false;
+
+    const setGate = (id, ok) => {
+      const el = $(id);
+      if (!el) return;
+      el.textContent = ok ? "Yes" : "No";
+      el.setAttribute("data-ok", ok ? "1" : "0");
+    };
+    setGate("cbPrintReady", printReady);
+    setGate("cbReviewReady", reviewReady);
+    setGate("cbSignReady", signReady);
+
+    const next = $("cbNextStep");
+    if (next) {
+      if (!reviewReady) {
+        next.textContent = "Confirm customer and approved total before sharing this draft.";
+      } else if (!String(edits.address || "").trim()) {
+        next.textContent = "Confirm the project address, then review price and payment notes.";
+      } else {
+        next.textContent =
+          "Review missing legal profile, payment schedule, and warranty before considering signature.";
+      }
+    }
   }
 
-  function renderRequiredList(source, edits) {
-    const ul = $("cbRequiredList");
-    if (!ul) return;
-    const items = readinessItems(source, edits).map((item) => {
-      return `<li>${escapeHtml(item.label)} — ${escapeHtml(statusLabel(item.status))}</li>`;
-    });
-    ul.innerHTML = items.join("");
+  function renderLogo(branding) {
+    const img = $("cbLogoImg");
+    const fallback = $("cbLogoFallback");
+    const url = String(branding?.logoUrl || "").trim();
+    const name = String(branding?.businessName || "").trim();
+    if (img && url) {
+      img.src = url;
+      img.alt = name ? `${name} logo` : "Business logo";
+      img.hidden = false;
+      if (fallback) fallback.hidden = true;
+    } else {
+      if (img) {
+        img.removeAttribute("src");
+        img.hidden = true;
+      }
+      if (fallback) {
+        fallback.hidden = false;
+        fallback.textContent = initialsFromName(name || "MG");
+      }
+    }
   }
 
   function syncInputsFromEdits(edits) {
@@ -280,40 +361,48 @@
     draftEdits.additionalTerms = String($("cbEditTerms")?.value || "").trim();
   }
 
+  function pushUndo(id, value) {
+    if (!id) return;
+    if (!undoStacks[id]) undoStacks[id] = [];
+    undoStacks[id].push(String(value ?? ""));
+    if (undoStacks[id].length > 40) undoStacks[id].shift();
+    redoStacks[id] = [];
+  }
+
   function renderDocument(source, edits) {
     const money = formatMoney(source.contractTotal, source.currency);
     const b = source.branding || {};
 
-    setText("cbBizName", b.businessName || "—");
-    setText("cbBizPhone", b.businessPhone || "—");
-    setText("cbBizEmail", b.businessEmail || "—");
-    setText("cbBizAddress", b.businessAddress || "—");
+    setTextMany(["cbBizName", "cbBizNameBody"], b.businessName || "—");
+    setTextMany(["cbBizPhone", "cbBizPhoneBody"], b.businessPhone || "—");
+    setTextMany(["cbBizEmail", "cbBizEmailBody"], b.businessEmail || "—");
+    setTextMany(["cbBizAddress", "cbBizAddressBody"], b.businessAddress || "—");
+    renderLogo(b);
 
     const contractorMissing = $("cbContractorMissing");
     if (contractorMissing) {
       contractorMissing.innerHTML =
-        `<span class="cb-missing">Missing: Legal business name</span> ` +
-        `<span class="cb-missing">Missing: License number</span> ` +
-        `<span class="cb-missing">Missing: Authorized signer</span> ` +
+        `<span class="cb-missing">Missing: Legal business name</span>` +
+        `<span class="cb-missing">Missing: License number</span>` +
+        `<span class="cb-missing">Missing: Authorized signer</span>` +
         `<span class="cb-missing">Missing: Insurance disclosures</span>`;
     }
 
     setText("cbCustomerName", source.customerName || "—");
+    setText("cbCoverCustomer", source.customerName || "—");
     setText("cbCustomerEmail", source.customerEmail || "—");
     setText("cbCustomerPhone", source.customerPhone || "—");
     setText("cbProjectName", source.projectName || "—");
+    setTextMany(["cbQuoteNumber", "cbQuoteNumberBody"], source.quoteNumber || "—");
+    setText("cbCoverDate", formatDate(source.acceptedAt) || formatDate(new Date().toISOString()) || "—");
 
     const address = String(edits.address || "").trim();
     const propEl = $("cbPropertyDisplay");
     if (propEl) {
-      if (address) {
-        propEl.textContent = address;
-      } else {
-        propEl.innerHTML = `— <span class="cb-missing">Needs confirmation</span>`;
-      }
+      if (address) propEl.textContent = address;
+      else propEl.innerHTML = `— <span class="cb-missing">Needs confirmation</span>`;
     }
 
-    setText("cbQuoteNumber", source.quoteNumber || "—");
     setText("cbQuoteStatus", source.quoteStatus || "—");
     setText("cbAcceptedAt", formatDate(source.acceptedAt) || "—");
     setText("cbContractTotal", money);
@@ -323,19 +412,37 @@
     const scopeEl = $("cbScopeDisplay");
     if (scopeEl) {
       if (scope) {
-        scopeEl.textContent = exclusions
-          ? `${scope}\n\nExclusions:\n${exclusions}`
-          : scope;
+        scopeEl.textContent = exclusions ? `${scope}\n\nExclusions:\n${exclusions}` : scope;
       } else {
-        scopeEl.innerHTML = `Scope is not available from the approved quote. <span class="cb-missing">Needs confirmation</span>`;
+        scopeEl.innerHTML =
+          `Scope is not available from the approved quote. <span class="cb-missing">Needs confirmation</span>`;
       }
     }
 
-    setText("cbPriceLine", `Contract Total: ${money}`);
+    setText("cbPriceLine", money);
     setText("cbPayTotalLine", `Contract Total: ${money}`);
 
+    const depositEl = $("cbSumDeposit");
+    if (depositEl) {
+      depositEl.textContent =
+        source.depositRequired != null
+          ? formatMoney(source.depositRequired, source.currency)
+          : "Not configured";
+    }
+    setText("cbSumProgress", "Not configured");
+    setText("cbSumFinal", "Not configured");
+    setText("cbSumChangeOrders", "Not configured");
+    setText("cbSumTaxes", "Not configured");
+    setText(
+      "cbSumBalance",
+      source.depositRequired != null && source.contractTotal != null
+        ? formatMoney(Math.max(0, source.contractTotal - source.depositRequired), source.currency)
+        : "Not configured"
+    );
+
     const payNotes = String(edits.paymentNotes || "").trim();
-    setText("cbPaymentNotesDisplay", payNotes ? `Notes: ${payNotes}` : "");
+    const payNotesEl = $("cbPaymentNotesDisplay");
+    if (payNotesEl) payNotesEl.textContent = payNotes ? `Notes: ${payNotes}` : "";
 
     setText("cbStartDisplay", edits.startDate ? formatDate(edits.startDate) : "—");
     setText("cbDueDisplay", edits.dueDate ? formatDate(edits.dueDate) : "—");
@@ -347,13 +454,147 @@
     setText("cbTermsDisplay", terms || "Additional general terms are not yet configured.");
 
     renderReadiness(source, edits);
-    renderRequiredList(source, edits);
   }
 
   function renderAll() {
     if (!sourceSnapshot || !draftEdits) return;
     syncInputsFromEdits(draftEdits);
     renderDocument(sourceSnapshot, draftEdits);
+  }
+
+  function wrapSelection(el, before, after) {
+    if (!el) return;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    const value = String(el.value || "");
+    pushUndo(el.id, value);
+    const selected = value.slice(start, end) || "text";
+    const next = value.slice(0, start) + before + selected + after + value.slice(end);
+    el.value = next;
+    const cursor = start + before.length + selected.length + after.length;
+    el.focus();
+    el.setSelectionRange(cursor, cursor);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function prefixLines(el, prefixFn) {
+    if (!el) return;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    const value = String(el.value || "");
+    pushUndo(el.id, value);
+    const blockStart = value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+    const blockEnd = (() => {
+      const i = value.indexOf("\n", end);
+      return i === -1 ? value.length : i;
+    })();
+    const block = value.slice(blockStart, blockEnd);
+    const lines = block.split("\n");
+    const nextBlock = lines.map((line, idx) => prefixFn(line, idx)).join("\n");
+    const next = value.slice(0, blockStart) + nextBlock + value.slice(blockEnd);
+    el.value = next;
+    el.focus();
+    el.setSelectionRange(blockStart, blockStart + nextBlock.length);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function undoField(el) {
+    if (!el?.id || !undoStacks[el.id]?.length) return;
+    if (!redoStacks[el.id]) redoStacks[el.id] = [];
+    redoStacks[el.id].push(String(el.value || ""));
+    el.value = undoStacks[el.id].pop();
+    el.focus();
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function redoField(el) {
+    if (!el?.id || !redoStacks[el.id]?.length) return;
+    if (!undoStacks[el.id]) undoStacks[el.id] = [];
+    undoStacks[el.id].push(String(el.value || ""));
+    el.value = redoStacks[el.id].pop();
+    el.focus();
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function buildToolbar(bar) {
+    const targetId = bar.getAttribute("data-target");
+    const actions = [
+      { label: "B", title: "Bold", run: (el) => wrapSelection(el, "**", "**") },
+      { label: "I", title: "Italic", run: (el) => wrapSelection(el, "*", "*") },
+      { label: "•", title: "Bullets", run: (el) => prefixLines(el, (line) => (line ? `• ${line.replace(/^([•\-]|\d+\.)\s+/, "")}` : "• ")) },
+      {
+        label: "1.",
+        title: "Numbering",
+        run: (el) => prefixLines(el, (line, idx) => `${idx + 1}. ${line.replace(/^([•\-]|\d+\.)\s+/, "")}`),
+      },
+      { label: "↶", title: "Undo", run: (el) => undoField(el) },
+      { label: "↷", title: "Redo", run: (el) => redoField(el) },
+    ];
+    bar.innerHTML = "";
+    for (const action of actions) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = action.label;
+      btn.title = action.title;
+      btn.addEventListener("click", () => {
+        const el = $(targetId);
+        if (!el) return;
+        action.run(el);
+      });
+      bar.appendChild(btn);
+    }
+  }
+
+  function bindCollapsibleArticles() {
+    document.querySelectorAll("[data-article]").forEach((article) => {
+      const head = article.querySelector("[data-collapse]");
+      if (!head) return;
+      head.addEventListener("click", () => {
+        article.classList.toggle("is-collapsed");
+      });
+    });
+  }
+
+  function bindIndexNav() {
+    const links = [...document.querySelectorAll("#cbIndexNav a")];
+    if (!links.length) return;
+
+    links.forEach((link) => {
+      link.addEventListener("click", (ev) => {
+        const id = link.getAttribute("data-section");
+        const target = id ? document.getElementById(id) : null;
+        if (!target) return;
+        ev.preventDefault();
+        target.classList.remove("is-collapsed");
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        links.forEach((l) => l.classList.toggle("is-active", l === link));
+      });
+    });
+
+    const sections = links
+      .map((link) => document.getElementById(link.getAttribute("data-section") || ""))
+      .filter(Boolean);
+
+    if (!("IntersectionObserver" in window) || !sections.length) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (!visible?.target?.id) return;
+        links.forEach((l) =>
+          l.classList.toggle("is-active", l.getAttribute("data-section") === visible.target.id)
+        );
+      },
+      { rootMargin: "-30% 0px -55% 0px", threshold: [0.15, 0.35, 0.6] }
+    );
+    sections.forEach((section) => observer.observe(section));
+  }
+
+  function expandAllArticlesForPrint() {
+    document.querySelectorAll("[data-article].is-collapsed").forEach((el) => {
+      el.classList.remove("is-collapsed");
+    });
   }
 
   function bindEditors() {
@@ -374,7 +615,12 @@
         readEditsFromInputs();
         renderDocument(sourceSnapshot, draftEdits);
       });
+      el.addEventListener("focus", () => {
+        if (!undoStacks[id]?.length) pushUndo(id, el.value);
+      });
     }
+
+    document.querySelectorAll("[data-rich-toolbar]").forEach(buildToolbar);
 
     $("cbResetDraft")?.addEventListener("click", () => {
       if (!sourceSnapshot) return;
@@ -383,8 +629,19 @@
     });
 
     $("cbPrintDraft")?.addEventListener("click", () => {
+      expandAllArticlesForPrint();
       window.print();
     });
+
+    $("cbPreviewToggle")?.addEventListener("click", () => {
+      const main = $("cbMain");
+      if (!main) return;
+      const on = main.classList.toggle("is-preview");
+      const btn = $("cbPreviewToggle");
+      if (btn) btn.textContent = on ? "Edit" : "Preview";
+    });
+
+    window.addEventListener("beforeprint", expandAllArticlesForPrint);
   }
 
   async function init() {
@@ -398,6 +655,8 @@
     }
 
     showLoading();
+    bindCollapsibleArticles();
+    bindIndexNav();
 
     const params = new URLSearchParams(window.location.search);
     const projectId = String(params.get("project_id") || "").trim();
@@ -476,7 +735,9 @@
         : {};
 
     const contractTotal = resolveContractTotal(project, quote);
-    const customerName = String(project.clientName || project.client_name || quote.client_name || "").trim();
+    const customerName = String(
+      project.clientName || project.client_name || quote.client_name || ""
+    ).trim();
     if (!(contractTotal > 0) || !customerName) {
       showError(
         "Contract Builder",
