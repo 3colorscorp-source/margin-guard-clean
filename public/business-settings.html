@@ -112,6 +112,54 @@
     .business-settings-page .bs-card-head-row .bs-card-sub{
       margin:0;
     }
+    .business-settings-page .bs-legal-section{
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+    }
+    .business-settings-page .bs-legal-group{
+      border:1px solid rgba(255,255,255,0.08);
+      border-radius:12px;
+      padding:14px 14px 6px;
+      background:rgba(255,255,255,0.02);
+    }
+    .business-settings-page .bs-legal-group h3{
+      margin:0 0 10px;
+      font-size:0.92rem;
+      font-weight:700;
+      letter-spacing:0.02em;
+    }
+    .business-settings-page .bs-legal-actions{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      align-items:center;
+      margin-top:4px;
+    }
+    .business-settings-page .bs-legal-readiness{
+      margin:0;
+      font-size:0.8125rem;
+      line-height:1.45;
+      color:rgba(232,238,252,0.72);
+    }
+    .business-settings-page .bs-legal-readiness.is-ready{
+      color:#86efac;
+    }
+    .business-settings-page .bs-legal-readiness.is-incomplete{
+      color:#fde68a;
+    }
+    .business-settings-page .bs-legal-field-error{
+      border-color:rgba(248,113,113,0.65) !important;
+    }
+    .business-settings-page .bs-legal-hint-error{
+      color:#fca5a5;
+      font-size:0.75rem;
+      margin-top:4px;
+    }
+    .business-settings-page #bsLegalMailingFields[hidden],
+    .business-settings-page #bsLegalLicenseDetails[hidden]{
+      display:none !important;
+    }
     .business-settings-page .bs-layout-pair{
       display:grid;
       grid-template-columns:minmax(0,1fr) minmax(0,1fr);
@@ -637,6 +685,241 @@
           </div>
         </div>
 
+        <div class="card bs-dash-card bs-order-legal bs-layout-full" id="bsLegalProfileCard">
+          <div class="card-inner bs-card-inner-tight" id="legal-contract-profile">
+            <div class="bs-card-head-row">
+              <div>
+                <h2 class="bs-card-title">Legal &amp; Contract Profile</h2>
+                <p class="sub bs-card-sub">Legal identity for contracts. Separate from public branding. Owner/Admin only.</p>
+              </div>
+              <p class="bs-legal-readiness" id="bsLegalReadiness" aria-live="polite">Loading legal profile…</p>
+            </div>
+
+            <div class="bs-legal-section" id="bsLegalProfileForm">
+              <div class="bs-legal-group">
+                <h3>Business Identity</h3>
+                <div class="form bs-form-dense">
+                  <div class="field">
+                    <label for="legalBusinessName">Legal Business Name</label>
+                    <input id="legalBusinessName" maxlength="200" autocomplete="organization" />
+                  </div>
+                  <div class="field">
+                    <label for="legalDbaName">DBA</label>
+                    <input id="legalDbaName" maxlength="200" />
+                  </div>
+                  <div class="field">
+                    <label for="legalEntityType">Entity Type</label>
+                    <select id="legalEntityType">
+                      <option value="">—</option>
+                      <option value="sole_proprietor">Sole Proprietor</option>
+                      <option value="llc">LLC</option>
+                      <option value="corporation">Corporation</option>
+                      <option value="partnership">Partnership</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bs-legal-group">
+                <h3>Business Address</h3>
+                <div class="form bs-form-dense">
+                  <div class="field field--full">
+                    <label for="legalBizAddr1">Address 1</label>
+                    <input id="legalBizAddr1" maxlength="200" autocomplete="address-line1" />
+                  </div>
+                  <div class="field field--full">
+                    <label for="legalBizAddr2">Address 2</label>
+                    <input id="legalBizAddr2" maxlength="200" autocomplete="address-line2" />
+                  </div>
+                  <div class="field">
+                    <label for="legalBizCity">City</label>
+                    <input id="legalBizCity" maxlength="120" autocomplete="address-level2" />
+                  </div>
+                  <div class="field">
+                    <label for="legalBizState">State</label>
+                    <input id="legalBizState" maxlength="80" autocomplete="address-level1" />
+                  </div>
+                  <div class="field">
+                    <label for="legalBizZip">ZIP</label>
+                    <input id="legalBizZip" maxlength="32" autocomplete="postal-code" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="bs-legal-group">
+                <h3>Mailing Address</h3>
+                <div class="form bs-form-dense">
+                  <div class="field field--full">
+                    <label for="legalMailingSame" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                      <input id="legalMailingSame" type="checkbox" checked />
+                      <span>Same as business address</span>
+                    </label>
+                  </div>
+                  <div id="bsLegalMailingFields" hidden>
+                    <div class="field field--full">
+                      <label for="legalMailAddr1">Address 1</label>
+                      <input id="legalMailAddr1" maxlength="200" />
+                    </div>
+                    <div class="field field--full">
+                      <label for="legalMailAddr2">Address 2</label>
+                      <input id="legalMailAddr2" maxlength="200" />
+                    </div>
+                    <div class="field">
+                      <label for="legalMailCity">City</label>
+                      <input id="legalMailCity" maxlength="120" />
+                    </div>
+                    <div class="field">
+                      <label for="legalMailState">State</label>
+                      <input id="legalMailState" maxlength="80" />
+                    </div>
+                    <div class="field">
+                      <label for="legalMailZip">ZIP</label>
+                      <input id="legalMailZip" maxlength="32" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bs-legal-group">
+                <h3>Contact</h3>
+                <div class="form bs-form-dense">
+                  <div class="field">
+                    <label for="legalPhone">Phone</label>
+                    <input id="legalPhone" maxlength="120" autocomplete="tel" />
+                  </div>
+                  <div class="field">
+                    <label for="legalEmail">Email</label>
+                    <input id="legalEmail" type="email" maxlength="200" autocomplete="email" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="bs-legal-group">
+                <h3>Contractor License</h3>
+                <div class="form bs-form-dense">
+                  <div class="field">
+                    <label for="legalLicenseStatus">Status</label>
+                    <select id="legalLicenseStatus">
+                      <option value="unknown">Unknown</option>
+                      <option value="licensed">Licensed</option>
+                      <option value="not_required">Not required</option>
+                      <option value="exempt">Exempt</option>
+                    </select>
+                  </div>
+                  <div id="bsLegalLicenseDetails" class="field--full">
+                    <div class="form bs-form-dense">
+                      <div class="field">
+                        <label for="legalLicenseNumber">License Number</label>
+                        <input id="legalLicenseNumber" maxlength="100" />
+                        <div class="hint bs-legal-hint-error" id="legalLicenseNumberHint" hidden></div>
+                      </div>
+                      <div class="field">
+                        <label for="legalLicenseClass">Classification</label>
+                        <input id="legalLicenseClass" maxlength="120" />
+                      </div>
+                      <div class="field">
+                        <label for="legalLicenseState">License State</label>
+                        <input id="legalLicenseState" maxlength="80" />
+                        <div class="hint bs-legal-hint-error" id="legalLicenseStateHint" hidden></div>
+                      </div>
+                      <div class="field">
+                        <label for="legalLicenseExp">Expiration</label>
+                        <input id="legalLicenseExp" type="date" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bs-legal-group">
+                <h3>Insurance</h3>
+                <div class="form bs-form-dense">
+                  <div class="field">
+                    <label for="legalBondCompany">Bond Company</label>
+                    <input id="legalBondCompany" maxlength="200" />
+                  </div>
+                  <div class="field">
+                    <label for="legalBondNumber">Bond Number</label>
+                    <input id="legalBondNumber" maxlength="100" />
+                  </div>
+                  <div class="field">
+                    <label for="legalGlCarrier">General Liability Carrier</label>
+                    <input id="legalGlCarrier" maxlength="200" />
+                  </div>
+                  <div class="field">
+                    <label for="legalGlPolicy">General Liability Policy #</label>
+                    <input id="legalGlPolicy" maxlength="100" />
+                  </div>
+                  <div class="field">
+                    <label for="legalWcStatus">Workers Comp Status</label>
+                    <input id="legalWcStatus" maxlength="80" placeholder="e.g. covered, exempt" />
+                  </div>
+                  <div class="field">
+                    <label for="legalWcCarrier">Workers Comp Carrier</label>
+                    <input id="legalWcCarrier" maxlength="200" />
+                  </div>
+                  <div class="field">
+                    <label for="legalWcPolicy">Workers Comp Policy #</label>
+                    <input id="legalWcPolicy" maxlength="100" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="bs-legal-group">
+                <h3>Authorized Signer</h3>
+                <div class="form bs-form-dense">
+                  <div class="field">
+                    <label for="legalSignerName">Name</label>
+                    <input id="legalSignerName" maxlength="200" />
+                  </div>
+                  <div class="field">
+                    <label for="legalSignerTitle">Title</label>
+                    <input id="legalSignerTitle" maxlength="120" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="bs-legal-group">
+                <h3>Defaults</h3>
+                <div class="form bs-form-dense">
+                  <div class="field">
+                    <label for="legalServiceState">Primary Service State</label>
+                    <input id="legalServiceState" maxlength="80" />
+                  </div>
+                  <div class="field">
+                    <label for="legalTimezone">Time Zone</label>
+                    <select id="legalTimezone">
+                      <option value="">—</option>
+                      <option value="America/Los_Angeles">Pacific (America/Los_Angeles)</option>
+                      <option value="America/Denver">Mountain (America/Denver)</option>
+                      <option value="America/Chicago">Central (America/Chicago)</option>
+                      <option value="America/New_York">Eastern (America/New_York)</option>
+                      <option value="America/Phoenix">Arizona (America/Phoenix)</option>
+                      <option value="America/Anchorage">Alaska (America/Anchorage)</option>
+                      <option value="Pacific/Honolulu">Hawaii (Pacific/Honolulu)</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="legalContractLanguage">Default Contract Language</label>
+                    <select id="legalContractLanguage">
+                      <option value="en">English</option>
+                      <option value="es">Spanish</option>
+                      <option value="bilingual">Bilingual</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bs-legal-actions">
+                <button type="button" class="btn primary" id="btnSaveLegalProfile">Save Legal Profile</button>
+                <button type="button" class="btn" id="btnReloadLegalProfile">Reload Legal Profile</button>
+                <span class="sub" id="bsLegalStatus" aria-live="polite"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="card bs-dash-card bs-order-financial bs-layout-full">
           <div class="card-inner bs-card-inner-tight">
             <h2 class="bs-card-title">Financial Protection</h2>
@@ -998,6 +1281,7 @@
 <script src="/js/auth.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/bank-connection.js"></script>
+<script src="/js/business-legal-profile.js"></script>
 <script>
 (function () {
   const SETTINGS_KEY = 'mg_settings_v2';
