@@ -611,6 +611,56 @@
     .is-preview .cb-editor,
     .is-preview .cb-warn-banner { display: none !important; }
 
+    .cb-legal-banner {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(180, 83, 9, 0.35);
+      background: var(--cb-warn-bg);
+      color: #92400e;
+      font-size: 0.8125rem;
+      line-height: 1.45;
+    }
+    .cb-legal-banner a {
+      color: #0f766e;
+      font-weight: 700;
+    }
+    .cb-legal-banner[hidden] { display: none !important; }
+    .cb-subhead {
+      margin: 14px 0 8px;
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--cb-muted);
+      font-weight: 700;
+    }
+    .cb-masked {
+      font-family: ui-monospace, Consolas, monospace;
+      letter-spacing: 0.02em;
+    }
+    .cb-show-secret {
+      margin-left: 8px;
+      border: 1px solid var(--cb-line);
+      background: #fff;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      padding: 2px 8px;
+      cursor: pointer;
+      color: var(--cb-ink);
+    }
+    .cb-dba-line {
+      margin: 2px 0 0;
+      font-size: 0.9rem;
+      color: var(--cb-muted);
+    }
+    .cb-dba-line[hidden] { display: none !important; }
+    .cb-signer-ref {
+      margin: 8px 0 0;
+      font-size: 0.8125rem;
+      color: var(--cb-muted);
+    }
+    .cb-signer-ref[hidden] { display: none !important; }
+
     .cb-print-banner,
     .cb-print-footer { display: none; }
 
@@ -648,6 +698,8 @@
       .cb-aside,
       .cb-warn-banner,
       .cb-editor,
+      .cb-show-secret,
+      .cb-legal-banner,
       #cbLoading,
       #cbError { display: none !important; }
       body.mg-app-shell .mg-app-main { margin-left: 0 !important; }
@@ -760,12 +812,14 @@
                 <div class="cb-logo-fallback" id="cbLogoFallback" aria-hidden="true">MG</div>
                 <div class="cb-brand-meta">
                   <h2 class="name" id="cbBizName">—</h2>
+                  <p class="cb-dba-line" id="cbBizDba" hidden></p>
                   <p class="contact">
                     <span id="cbBizPhone">—</span>
                     ·
                     <span id="cbBizEmail">—</span><br />
                     <span id="cbBizAddress">—</span>
                   </p>
+                  <p class="cb-signer-ref" id="cbHeaderSigner" hidden></p>
                 </div>
               </div>
               <h1 class="cb-doc-title">Service Agreement</h1>
@@ -810,12 +864,52 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
+                  <div class="cb-legal-banner" id="cbLegalBanner" hidden></div>
+
+                  <div class="cb-subhead">Identity</div>
                   <div class="cb-meta-grid">
-                    <div class="cb-field"><span class="k">Business display name</span><div class="v" id="cbBizNameBody">—</div></div>
-                    <div class="cb-field"><span class="k">Business phone</span><div class="v" id="cbBizPhoneBody">—</div></div>
-                    <div class="cb-field"><span class="k">Business email</span><div class="v" id="cbBizEmailBody">—</div></div>
-                    <div class="cb-field"><span class="k">Business address</span><div class="v" id="cbBizAddressBody">—</div></div>
+                    <div class="cb-field"><span class="k">Legal Business Name</span><div class="v" id="cbLegalName">—</div></div>
+                    <div class="cb-field"><span class="k">DBA</span><div class="v" id="cbLegalDba">—</div></div>
+                    <div class="cb-field"><span class="k">Entity Type</span><div class="v" id="cbLegalEntity">—</div></div>
+                    <div class="cb-field"><span class="k">Business Phone</span><div class="v" id="cbBizPhoneBody">—</div></div>
+                    <div class="cb-field"><span class="k">Business Email</span><div class="v" id="cbBizEmailBody">—</div></div>
+                    <div class="cb-field"><span class="k">Business Address</span><div class="v" id="cbBizAddressBody">—</div></div>
+                    <div class="cb-field"><span class="k">Mailing Address</span><div class="v" id="cbMailingAddress">—</div></div>
                   </div>
+
+                  <div class="cb-subhead">License</div>
+                  <div class="cb-meta-grid">
+                    <div class="cb-field"><span class="k">License Status</span><div class="v" id="cbLicenseStatus">—</div></div>
+                    <div class="cb-field"><span class="k">License Number</span><div class="v" id="cbLicenseNumber">—</div></div>
+                    <div class="cb-field"><span class="k">Classification</span><div class="v" id="cbLicenseClass">—</div></div>
+                    <div class="cb-field"><span class="k">License State</span><div class="v" id="cbLicenseState">—</div></div>
+                    <div class="cb-field"><span class="k">Expiration</span><div class="v" id="cbLicenseExp">—</div></div>
+                  </div>
+
+                  <div class="cb-subhead">Insurance &amp; Bond</div>
+                  <div class="cb-meta-grid">
+                    <div class="cb-field"><span class="k">Bond Company</span><div class="v" id="cbBondCompany">—</div></div>
+                    <div class="cb-field"><span class="k">Bond Number</span><div class="v" id="cbBondNumber">—</div></div>
+                    <div class="cb-field"><span class="k">General Liability Carrier</span><div class="v" id="cbGlCarrier">—</div></div>
+                    <div class="cb-field"><span class="k">General Liability Policy</span><div class="v" id="cbGlPolicy">—</div></div>
+                    <div class="cb-field"><span class="k">Workers Comp Status</span><div class="v" id="cbWcStatus">—</div></div>
+                    <div class="cb-field"><span class="k">Workers Comp Carrier</span><div class="v" id="cbWcCarrier">—</div></div>
+                    <div class="cb-field"><span class="k">Workers Comp Policy</span><div class="v" id="cbWcPolicy">—</div></div>
+                  </div>
+
+                  <div class="cb-subhead">Authorized Signer</div>
+                  <div class="cb-meta-grid">
+                    <div class="cb-field"><span class="k">Name</span><div class="v" id="cbSignerName">—</div></div>
+                    <div class="cb-field"><span class="k">Title</span><div class="v" id="cbSignerTitle">—</div></div>
+                  </div>
+
+                  <div class="cb-subhead">Jurisdiction Defaults</div>
+                  <div class="cb-meta-grid">
+                    <div class="cb-field"><span class="k">Primary Service State</span><div class="v" id="cbServiceState">—</div></div>
+                    <div class="cb-field"><span class="k">Time Zone</span><div class="v" id="cbTimezone">—</div></div>
+                    <div class="cb-field"><span class="k">Default Contract Language</span><div class="v" id="cbContractLang">—</div></div>
+                  </div>
+
                   <p id="cbContractorMissing"></p>
                 </div>
               </section>

@@ -4,6 +4,7 @@
   const PROJECTS_API = "/.netlify/functions/get-project-control-projects";
   const QUOTE_EDIT_API = "/.netlify/functions/get-tenant-quote-edit";
   const BRANDING_API = "/.netlify/functions/get-tenant-branding";
+  const LEGAL_PROFILE_API = "/.netlify/functions/tenant-legal-profile";
   const DEFAULT_CURRENCY = "USD";
   const APPROVED_QUOTE_STATUSES = new Set(["accepted", "approved"]);
 
@@ -12,6 +13,7 @@
   let draftEdits = null;
   const undoStacks = Object.create(null);
   const redoStacks = Object.create(null);
+  const revealSecrets = Object.create(null);
 
   function $(id) {
     return document.getElementById(id);
@@ -159,7 +161,7 @@
     return (parts[0][0] + parts[1][0]).toUpperCase();
   }
 
-  function buildSource(project, quote, branding) {
+  function buildSource(project, quote, branding, legalBundle) {
     const currency = String(quote?.currency || DEFAULT_CURRENCY).trim() || DEFAULT_CURRENCY;
     const contractTotal = resolveContractTotal(project, quote);
     const address = String(quote?.project_address || quote?.job_site || "").trim();
@@ -196,7 +198,159 @@
         businessAddress: String(branding?.business_address || "").trim(),
         logoUrl: String(branding?.logo_url || "").trim(),
       },
+      legal: legalBundle || {
+        available: false,
+        loadError: null,
+        forbidden: false,
+        readiness: null,
+        profile: null,
+      },
     };
+  }
+
+  function normalizeLegalProfile(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    return {
+      legalBusinessName: String(raw.legal_business_name || "").trim(),
+      dbaName: String(raw.dba_name || "").trim(),
+      entityType: String(raw.entity_type || "").trim(),
+      businessAddressLine1: String(raw.business_address_line1 || "").trim(),
+      businessAddressLine2: String(raw.business_address_line2 || "").trim(),
+      businessCity: String(raw.business_city || "").trim(),
+      businessState: String(raw.business_state || "").trim(),
+      businessPostalCode: String(raw.business_postal_code || "").trim(),
+      mailingSameAsBusiness: raw.mailing_same_as_business !== false,
+      mailingAddressLine1: String(raw.mailing_address_line1 || "").trim(),
+      mailingAddressLine2: String(raw.mailing_address_line2 || "").trim(),
+      mailingCity: String(raw.mailing_city || "").trim(),
+      mailingState: String(raw.mailing_state || "").trim(),
+      mailingPostalCode: String(raw.mailing_postal_code || "").trim(),
+      businessPhone: String(raw.business_phone || "").trim(),
+      businessEmail: String(raw.business_email || "").trim(),
+      contractorLicenseStatus: String(raw.contractor_license_status || "unknown").trim().toLowerCase() || "unknown",
+      contractorLicenseNumber: String(raw.contractor_license_number || "").trim(),
+      contractorLicenseClassification: String(raw.contractor_license_classification || "").trim(),
+      contractorLicenseState: String(raw.contractor_license_state || "").trim(),
+      contractorLicenseExpiration: raw.contractor_license_expiration
+        ? String(raw.contractor_license_expiration).slice(0, 10)
+        : "",
+      bondCompany: String(raw.bond_company || "").trim(),
+      bondNumber: String(raw.bond_number || "").trim(),
+      generalLiabilityCarrier: String(raw.general_liability_carrier || "").trim(),
+      generalLiabilityPolicyNumber: String(raw.general_liability_policy_number || "").trim(),
+      workersCompStatus: String(raw.workers_comp_status || "").trim(),
+      workersCompCarrier: String(raw.workers_comp_carrier || "").trim(),
+      workersCompPolicyNumber: String(raw.workers_comp_policy_number || "").trim(),
+      authorizedSignerName: String(raw.authorized_signer_name || "").trim(),
+      authorizedSignerTitle: String(raw.authorized_signer_title || "").trim(),
+      primaryServiceState: String(raw.primary_service_state || "").trim(),
+      timezone: String(raw.timezone || "").trim(),
+      defaultContractLanguage: String(raw.default_contract_language || "en").trim().toLowerCase() || "en",
+    };
+  }
+
+  function formatStructuredAddress(parts) {
+    const line1 = [parts.line1, parts.line2].filter(Boolean).join(", ");
+    const cityLine = [parts.city, parts.state, parts.zip].filter(Boolean).join(", ");
+    return [line1, cityLine].filter(Boolean).join("\n");
+  }
+
+  function pickDisplay(legalValue, brandingValue) {
+    const legal = String(legalValue || "").trim();
+    if (legal) return { text: legal, source: "legal" };
+    const brand = String(brandingValue || "").trim();
+    if (brand) return { text: brand, source: "branding" };
+    return { text: "", source: "missing" };
+  }
+
+  function entityTypeLabel(code) {
+    const map = {
+      sole_proprietor: "Sole Proprietor",
+      llc: "LLC",
+      corporation: "Corporation",
+      partnership: "Partnership",
+      other: "Other",
+    };
+    const key = String(code || "").trim().toLowerCase();
+    if (!key) return "";
+    return map[key] || code;
+  }
+
+  function licenseStatusLabel(status) {
+    const map = {
+      licensed: "Licensed",
+      not_required: "Not required",
+      exempt: "Exempt",
+      unknown: "Unknown",
+    };
+    return map[status] || status || "Unknown";
+  }
+
+  function languageLabel(code) {
+    const map = { en: "English", es: "Spanish", bilingual: "Bilingual" };
+    return map[code] || code || "";
+  }
+
+  function maskSecret(value) {
+    const s = String(value || "").trim();
+    if (!s) return "";
+    if (s.length <= 4) return "••••";
+    return `${"•".repeat(Math.min(8, s.length - 4))}${s.slice(-4)}`;
+  }
+
+  function setMaskedField(id, rawValue) {
+    const el = $(id);
+    if (!el) return;
+    const raw = String(rawValue || "").trim();
+    if (!raw) {
+      el.textContent = "—";
+      el.removeAttribute("data-secret");
+      return;
+    }
+    el.setAttribute("data-secret", raw);
+    const revealed = Boolean(revealSecrets[id]);
+    const shown = revealed ? raw : maskSecret(raw);
+    el.innerHTML =
+      `<span class="cb-masked">${escapeHtml(shown)}</span>` +
+      `<button type="button" class="cb-show-secret" data-reveal="${escapeHtml(id)}">${
+        revealed ? "Hide" : "Show"
+      }</button>`;
+  }
+
+  function legalAddressComplete(profile) {
+    if (!profile) return false;
+    return Boolean(
+      profile.businessAddressLine1 &&
+        profile.businessCity &&
+        profile.businessState &&
+        profile.businessPostalCode
+    );
+  }
+
+  function licenseCheckStatus(profile) {
+    if (!profile) return "missing";
+    const st = profile.contractorLicenseStatus;
+    if (st === "not_required" || st === "exempt") return "available";
+    if (st === "unknown") return "needs_confirmation";
+    if (st === "licensed") {
+      return profile.contractorLicenseNumber && profile.contractorLicenseState
+        ? "available"
+        : "missing";
+    }
+    return "needs_confirmation";
+  }
+
+  function insuranceCheckStatus(profile) {
+    if (!profile) return "needs_confirmation";
+    const has =
+      profile.bondCompany ||
+      profile.bondNumber ||
+      profile.generalLiabilityCarrier ||
+      profile.generalLiabilityPolicyNumber ||
+      profile.workersCompStatus ||
+      profile.workersCompCarrier ||
+      profile.workersCompPolicyNumber;
+    return has ? "available" : "needs_confirmation";
   }
 
   function cloneEdits(source) {
@@ -215,6 +369,22 @@
   function readinessItems(source, edits) {
     const address = String(edits.address || "").trim();
     const scope = String(edits.scope || "").trim();
+    const legal = source.legal || {};
+    const profile = legal.profile;
+
+    const legalIdentity = profile?.legalBusinessName ? "available" : "missing";
+    const bizAddress = legalAddressComplete(profile) ? "available" : "missing";
+    const bizContact =
+      profile && (profile.businessPhone || profile.businessEmail)
+        ? "available"
+        : profile
+          ? "missing"
+          : "missing";
+    const signer =
+      profile?.authorizedSignerName && profile?.authorizedSignerTitle
+        ? "available"
+        : "missing";
+
     return [
       { label: "Approved quote", status: source.quoteId ? "available" : "missing" },
       { label: "Customer identity", status: source.customerName ? "available" : "missing" },
@@ -223,9 +393,13 @@
         status: source.contractTotal != null && source.contractTotal > 0 ? "available" : "missing",
       },
       { label: "Existing scope", status: scope ? "available" : "missing" },
-      { label: "Legal contractor profile", status: "missing" },
+      { label: "Legal business identity", status: legalIdentity },
+      { label: "Business address", status: bizAddress },
+      { label: "Business contact", status: bizContact },
+      { label: "License status", status: licenseCheckStatus(profile) },
+      { label: "Authorized signer", status: signer },
+      { label: "Insurance / bond information", status: insuranceCheckStatus(profile) },
       { label: "Project address", status: address ? "needs_confirmation" : "missing" },
-      { label: "Authorized signer", status: "missing" },
       { label: "Payment schedule", status: "missing" },
       { label: "State-required legal notices", status: "missing" },
       {
@@ -305,22 +479,25 @@
 
     const next = $("cbNextStep");
     if (next) {
+      const profile = source.legal?.profile;
       if (!reviewReady) {
         next.textContent = "Confirm customer and approved total before sharing this draft.";
+      } else if (!profile?.legalBusinessName) {
+        next.textContent = "Complete Legal & Contract Profile in Business Settings, then continue draft review.";
       } else if (!String(edits.address || "").trim()) {
         next.textContent = "Confirm the project address, then review price and payment notes.";
       } else {
         next.textContent =
-          "Review missing legal profile, payment schedule, and warranty before considering signature.";
+          "Review payment schedule, warranty, and remaining missing items before considering signature.";
       }
     }
   }
 
-  function renderLogo(branding) {
+  function renderLogo(branding, displayName) {
     const img = $("cbLogoImg");
     const fallback = $("cbLogoFallback");
     const url = String(branding?.logoUrl || "").trim();
-    const name = String(branding?.businessName || "").trim();
+    const name = String(displayName || branding?.businessName || "").trim();
     if (img && url) {
       img.src = url;
       img.alt = name ? `${name} logo` : "Business logo";
@@ -335,6 +512,199 @@
         fallback.hidden = false;
         fallback.textContent = initialsFromName(name || "MG");
       }
+    }
+  }
+
+  function renderLegalBanner(legal) {
+    const banner = $("cbLegalBanner");
+    if (!banner) return;
+    if (legal?.forbidden) {
+      banner.hidden = false;
+      banner.innerHTML =
+        `Legal &amp; Contract Profile is unavailable for this account.`;
+      return;
+    }
+    if (legal?.loadError) {
+      banner.hidden = false;
+      banner.innerHTML =
+        `Legal profile could not be loaded right now. Draft review continues with available quote data. ` +
+        `<a href="/business-settings#legal-contract-profile">Open Legal Profile</a>`;
+      return;
+    }
+    if (!legal?.profile) {
+      banner.hidden = false;
+      banner.innerHTML =
+        `Legal &amp; Contract Profile not completed. ` +
+        `<a href="/business-settings#legal-contract-profile">Complete Legal Profile</a>`;
+      return;
+    }
+    const missing = [];
+    const p = legal.profile;
+    if (!p.legalBusinessName) missing.push("Legal business name");
+    if (!legalAddressComplete(p)) missing.push("Business address");
+    if (!p.businessPhone && !p.businessEmail) missing.push("Business contact");
+    if (licenseCheckStatus(p) === "missing") missing.push("License details");
+    if (!(p.authorizedSignerName && p.authorizedSignerTitle)) missing.push("Authorized signer");
+    if (missing.length) {
+      banner.hidden = false;
+      banner.innerHTML =
+        `Legal &amp; Contract Profile needs attention: ${escapeHtml(missing.join(", "))}. ` +
+        `<a href="/business-settings#legal-contract-profile">Update Legal Profile</a>`;
+      return;
+    }
+    banner.hidden = true;
+    banner.innerHTML = "";
+  }
+
+  function renderContractorArticle(source) {
+    const b = source.branding || {};
+    const legal = source.legal || {};
+    const p = legal.profile;
+
+    renderLegalBanner(legal);
+
+    const namePick = pickDisplay(p?.legalBusinessName || p?.dbaName, b.businessName);
+    const phonePick = pickDisplay(p?.businessPhone, b.businessPhone);
+    const emailPick = pickDisplay(p?.businessEmail, b.businessEmail);
+    const structured = p
+      ? formatStructuredAddress({
+          line1: p.businessAddressLine1,
+          line2: p.businessAddressLine2,
+          city: p.businessCity,
+          state: p.businessState,
+          zip: p.businessPostalCode,
+        })
+      : "";
+    const addressPick = pickDisplay(structured, b.businessAddress);
+
+    setText("cbBizName", namePick.text || "—");
+    setText("cbLegalName", p?.legalBusinessName || (namePick.source === "branding" ? namePick.text : "") || "—");
+    if (!p?.legalBusinessName && namePick.source === "branding" && namePick.text) {
+      const el = $("cbLegalName");
+      if (el) el.textContent = `${namePick.text} (from branding)`;
+    }
+
+    const dba = p?.dbaName || "";
+    setText("cbLegalDba", dba || "—");
+    const dbaLine = $("cbBizDba");
+    if (dbaLine) {
+      if (dba && dba !== namePick.text) {
+        dbaLine.hidden = false;
+        dbaLine.textContent = `DBA: ${dba}`;
+      } else {
+        dbaLine.hidden = true;
+        dbaLine.textContent = "";
+      }
+    }
+
+    setText("cbLegalEntity", entityTypeLabel(p?.entityType) || "—");
+    setTextMany(["cbBizPhone", "cbBizPhoneBody"], phonePick.text || "—");
+    setTextMany(["cbBizEmail", "cbBizEmailBody"], emailPick.text || "—");
+    setText("cbBizAddress", addressPick.text ? addressPick.text.replace(/\n/g, ", ") : "—");
+    setText("cbBizAddressBody", addressPick.text || "—");
+
+    let mailing = "—";
+    if (p) {
+      if (p.mailingSameAsBusiness) {
+        mailing = addressPick.text ? `${addressPick.text}\n(Same as business)` : "Same as business";
+      } else {
+        mailing =
+          formatStructuredAddress({
+            line1: p.mailingAddressLine1,
+            line2: p.mailingAddressLine2,
+            city: p.mailingCity,
+            state: p.mailingState,
+            zip: p.mailingPostalCode,
+          }) || "—";
+      }
+    }
+    setText("cbMailingAddress", mailing);
+
+    setText("cbLicenseStatus", p ? licenseStatusLabel(p.contractorLicenseStatus) : "—");
+    const hideLicenseDetails =
+      p &&
+      (p.contractorLicenseStatus === "exempt" || p.contractorLicenseStatus === "not_required");
+    setText(
+      "cbLicenseNumber",
+      hideLicenseDetails ? "Not applicable" : p?.contractorLicenseNumber || "—"
+    );
+    setText(
+      "cbLicenseClass",
+      hideLicenseDetails ? "Not applicable" : p?.contractorLicenseClassification || "—"
+    );
+    setText(
+      "cbLicenseState",
+      hideLicenseDetails ? "Not applicable" : p?.contractorLicenseState || "—"
+    );
+    setText(
+      "cbLicenseExp",
+      hideLicenseDetails
+        ? "Not applicable"
+        : p?.contractorLicenseExpiration
+          ? formatDate(p.contractorLicenseExpiration)
+          : "—"
+    );
+
+    setText("cbBondCompany", p?.bondCompany || "—");
+    setMaskedField("cbBondNumber", p?.bondNumber || "");
+    setText("cbGlCarrier", p?.generalLiabilityCarrier || "—");
+    setMaskedField("cbGlPolicy", p?.generalLiabilityPolicyNumber || "");
+    setText("cbWcStatus", p?.workersCompStatus || "—");
+    setText("cbWcCarrier", p?.workersCompCarrier || "—");
+    setMaskedField("cbWcPolicy", p?.workersCompPolicyNumber || "");
+
+    setText("cbSignerName", p?.authorizedSignerName || "—");
+    setText("cbSignerTitle", p?.authorizedSignerTitle || "—");
+    setText("cbServiceState", p?.primaryServiceState || "—");
+    setText("cbTimezone", p?.timezone || "—");
+    setText("cbContractLang", p ? languageLabel(p.defaultContractLanguage) : "—");
+
+    const signerRef = $("cbHeaderSigner");
+    if (signerRef) {
+      if (p?.authorizedSignerName) {
+        signerRef.hidden = false;
+        signerRef.textContent = p.authorizedSignerTitle
+          ? `Authorized signer: ${p.authorizedSignerName}, ${p.authorizedSignerTitle}`
+          : `Authorized signer: ${p.authorizedSignerName}`;
+      } else {
+        signerRef.hidden = true;
+        signerRef.textContent = "";
+      }
+    }
+
+    renderLogo(b, namePick.text);
+
+    const badges = [];
+    const pushBadge = (label, status) => {
+      if (status === "available" || status === "not_applicable") return;
+      const text =
+        status === "needs_confirmation"
+          ? `Needs confirmation: ${label}`
+          : `Missing: ${label}`;
+      badges.push(`<span class="cb-missing">${escapeHtml(text)}</span>`);
+    };
+
+    pushBadge("Legal business name", p?.legalBusinessName ? "available" : "missing");
+    pushBadge("Business address", legalAddressComplete(p) ? "available" : "missing");
+    pushBadge(
+      "License",
+      (() => {
+        const st = licenseCheckStatus(p);
+        if (p && (p.contractorLicenseStatus === "exempt" || p.contractorLicenseStatus === "not_required")) {
+          return "not_applicable";
+        }
+        return st;
+      })()
+    );
+    pushBadge(
+      "Authorized signer",
+      p?.authorizedSignerName && p?.authorizedSignerTitle ? "available" : "missing"
+    );
+    pushBadge("Insurance / bond", insuranceCheckStatus(p));
+
+    const missingEl = $("cbContractorMissing");
+    if (missingEl) {
+      missingEl.innerHTML = badges.join(" ");
     }
   }
 
@@ -371,22 +741,8 @@
 
   function renderDocument(source, edits) {
     const money = formatMoney(source.contractTotal, source.currency);
-    const b = source.branding || {};
 
-    setTextMany(["cbBizName", "cbBizNameBody"], b.businessName || "—");
-    setTextMany(["cbBizPhone", "cbBizPhoneBody"], b.businessPhone || "—");
-    setTextMany(["cbBizEmail", "cbBizEmailBody"], b.businessEmail || "—");
-    setTextMany(["cbBizAddress", "cbBizAddressBody"], b.businessAddress || "—");
-    renderLogo(b);
-
-    const contractorMissing = $("cbContractorMissing");
-    if (contractorMissing) {
-      contractorMissing.innerHTML =
-        `<span class="cb-missing">Missing: Legal business name</span>` +
-        `<span class="cb-missing">Missing: License number</span>` +
-        `<span class="cb-missing">Missing: Authorized signer</span>` +
-        `<span class="cb-missing">Missing: Insurance disclosures</span>`;
-    }
+    renderContractorArticle(source);
 
     setText("cbCustomerName", source.customerName || "—");
     setText("cbCoverCustomer", source.customerName || "—");
@@ -622,6 +978,16 @@
 
     document.querySelectorAll("[data-rich-toolbar]").forEach(buildToolbar);
 
+    document.getElementById("cbDocument")?.addEventListener("click", (ev) => {
+      const btn = ev.target?.closest?.("[data-reveal]");
+      if (!btn) return;
+      ev.preventDefault();
+      const id = btn.getAttribute("data-reveal");
+      if (!id) return;
+      revealSecrets[id] = !revealSecrets[id];
+      if (sourceSnapshot && draftEdits) renderDocument(sourceSnapshot, draftEdits);
+    });
+
     $("cbResetDraft")?.addEventListener("click", () => {
       if (!sourceSnapshot) return;
       draftEdits = cloneEdits(sourceSnapshot);
@@ -734,6 +1100,38 @@
         ? brandingRes.data.branding
         : {};
 
+    let legalBundle = {
+      available: false,
+      loadError: null,
+      forbidden: false,
+      readiness: null,
+      profile: null,
+    };
+    try {
+      const legalRes = await fetchJson(LEGAL_PROFILE_API);
+      if (legalRes.status === 403) {
+        legalBundle = {
+          available: false,
+          loadError: null,
+          forbidden: true,
+          readiness: null,
+          profile: null,
+        };
+      } else if (legalRes.ok && legalRes.data?.ok === true) {
+        legalBundle = {
+          available: true,
+          loadError: null,
+          forbidden: false,
+          readiness: legalRes.data.readiness || null,
+          profile: normalizeLegalProfile(legalRes.data.profile),
+        };
+      } else if (legalRes.status !== 401) {
+        legalBundle.loadError = "unavailable";
+      }
+    } catch (_err) {
+      legalBundle.loadError = "unavailable";
+    }
+
     const contractTotal = resolveContractTotal(project, quote);
     const customerName = String(
       project.clientName || project.client_name || quote.client_name || ""
@@ -746,7 +1144,7 @@
       return;
     }
 
-    sourceSnapshot = buildSource(project, quote, branding);
+    sourceSnapshot = buildSource(project, quote, branding, legalBundle);
     draftEdits = cloneEdits(sourceSnapshot);
     bindEditors();
     renderAll();
