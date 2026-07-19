@@ -5,6 +5,8 @@
   const QUOTE_EDIT_API = "/.netlify/functions/get-tenant-quote-edit";
   const BRANDING_API = "/.netlify/functions/get-tenant-branding";
   const LEGAL_PROFILE_API = "/.netlify/functions/tenant-legal-profile";
+  const CONTRACT_SETUP_API = "/.netlify/functions/project-contract-setup";
+  const PAYMENT_SCHEDULE_API = "/.netlify/functions/project-contract-payment-schedule";
   const DEFAULT_CURRENCY = "USD";
   const APPROVED_QUOTE_STATUSES = new Set(["accepted", "approved"]);
 
@@ -161,7 +163,7 @@
     return (parts[0][0] + parts[1][0]).toUpperCase();
   }
 
-  function buildSource(project, quote, branding, legalBundle) {
+  function buildSource(project, quote, branding, legalBundle, setupBundle, scheduleBundle) {
     const currency = String(quote?.currency || DEFAULT_CURRENCY).trim() || DEFAULT_CURRENCY;
     const contractTotal = resolveContractTotal(project, quote);
     const address = String(quote?.project_address || quote?.job_site || "").trim();
@@ -205,7 +207,119 @@
         readiness: null,
         profile: null,
       },
+      contractSetup: setupBundle || {
+        available: false,
+        loadError: null,
+        forbidden: false,
+        setup: null,
+        readiness: null,
+      },
+      paymentSchedule: scheduleBundle || {
+        available: false,
+        loadError: null,
+        forbidden: false,
+        schedule: null,
+        items: [],
+        readiness: null,
+        source: null,
+      },
     };
+  }
+
+  function formatPropertyLine(setup) {
+    if (!setup) return "";
+    const line1 = String(setup.property_address_line1 || "").trim();
+    const line2 = String(setup.property_address_line2 || "").trim();
+    const city = String(setup.property_city || "").trim();
+    const state = String(setup.property_state || "").trim();
+    const zip = String(setup.property_postal_code || "").trim();
+    const cityState = [city, state].filter(Boolean).join(", ");
+    const locality = [cityState, zip].filter(Boolean).join(" ");
+    return [line1, line2, locality].filter(Boolean).join(", ");
+  }
+
+  function propertyConfigured(setupBundle) {
+    return String(setupBundle?.readiness?.project_address || "").toLowerCase() === "confirmed";
+  }
+
+  function warrantyConfigured(setupBundle) {
+    return String(setupBundle?.readiness?.warranty || "").toLowerCase() === "configured";
+  }
+
+  function paymentConfigured(scheduleBundle) {
+    return String(scheduleBundle?.readiness?.status || "").toLowerCase() === "configured";
+  }
+
+  function signatureConfigured(setupBundle) {
+    return String(setupBundle?.readiness?.signature_method || "").toLowerCase() === "configured";
+  }
+
+  function sectionStatusLabel(configured) {
+    return configured ? "Configured" : "Missing";
+  }
+
+  function paymentStatusLabel(scheduleBundle) {
+    const status = String(scheduleBundle?.readiness?.status || "missing").toLowerCase();
+    if (status === "configured") return "Configured ✓";
+    if (status === "draft") return "Draft";
+    return "Missing";
+  }
+
+  function signatureMethodLabel(setupBundle) {
+    return signatureConfigured(setupBundle) ? "Configured" : "Missing";
+  }
+
+  function signatureRequestLabel(setupBundle) {
+    if (!signatureConfigured(setupBundle)) return "—";
+    const actual = String(setupBundle?.readiness?.actual_signature_status || "not_requested").toLowerCase();
+    if (actual === "not_requested") return "Not Requested";
+    return actual || "Not Requested";
+  }
+
+  function overallContractReadiness(source) {
+    const setup = source?.contractSetup;
+    const schedule = source?.paymentSchedule;
+    const propOk = propertyConfigured(setup);
+    const warOk = warrantyConfigured(setup);
+    const payOk = paymentConfigured(schedule);
+    const sigOk = signatureConfigured(setup);
+    if (propOk && warOk && payOk && sigOk) return "configured";
+
+    const propRaw = String(setup?.readiness?.project_address || "missing").toLowerCase();
+    const warRaw = String(setup?.readiness?.warranty || "missing").toLowerCase();
+    const payRaw = String(schedule?.readiness?.status || "missing").toLowerCase();
+    const sigRaw = String(setup?.readiness?.signature_method || "missing").toLowerCase();
+    const anyPartial =
+      propRaw === "needs_confirmation" ||
+      warRaw === "needs_confirmation" ||
+      payRaw === "draft" ||
+      propOk ||
+      warOk ||
+      payOk ||
+      sigOk;
+    return anyPartial ? "draft" : "missing";
+  }
+
+  function readinessMapStatus(kind, source) {
+    if (kind === "property") {
+      return propertyConfigured(source.contractSetup) ? "available" : "missing";
+    }
+    if (kind === "warranty") {
+      return warrantyConfigured(source.contractSetup) ? "available" : "missing";
+    }
+    if (kind === "payment") {
+      const st = String(source.paymentSchedule?.readiness?.status || "missing").toLowerCase();
+      if (st === "configured") return "available";
+      if (st === "draft") return "needs_confirmation";
+      return "missing";
+    }
+    if (kind === "signature") {
+      return signatureConfigured(source.contractSetup) ? "available" : "missing";
+    }
+    if (kind === "legal_notices") {
+      return "missing";
+    }
+    return "missing";
   }
 
   function normalizeLegalProfile(raw) {
@@ -385,6 +499,12 @@
         ? "available"
         : "missing";
 
+    const propertyStatus = readinessMapStatus("property", source);
+    const warrantyStatus = readinessMapStatus("warranty", source);
+    const paymentStatus = readinessMapStatus("payment", source);
+    const signatureStatus = readinessMapStatus("signature", source);
+    const overall = overallContractReadiness(source);
+
     return [
       { label: "Approved quote", status: source.quoteId ? "available" : "missing" },
       { label: "Customer identity", status: source.customerName ? "available" : "missing" },
@@ -399,14 +519,23 @@
       { label: "License status", status: licenseCheckStatus(profile) },
       { label: "Authorized signer", status: signer },
       { label: "Insurance / bond information", status: insuranceCheckStatus(profile) },
-      { label: "Project address", status: address ? "needs_confirmation" : "missing" },
-      { label: "Payment schedule", status: "missing" },
-      { label: "State-required legal notices", status: "missing" },
       {
-        label: "Warranty terms",
-        status: String(edits.warrantyNotes || "").trim() ? "needs_confirmation" : "missing",
+        label: "Project address",
+        status: propertyStatus === "available" ? "available" : address ? "needs_confirmation" : "missing",
       },
-      { label: "Signature method", status: "missing" },
+      { label: "Payment schedule", status: paymentStatus },
+      { label: "State-required legal notices", status: "missing", note: "Unsupported" },
+      { label: "Warranty terms", status: warrantyStatus },
+      { label: "Signature method", status: signatureStatus },
+      {
+        label: "Contract Builder readiness",
+        status:
+          overall === "configured"
+            ? "available"
+            : overall === "draft"
+              ? "needs_confirmation"
+              : "missing",
+      },
     ];
   }
 
@@ -424,13 +553,15 @@
 
   function renderReadiness(source, edits) {
     const items = readinessItems(source, edits);
+    const overall = overallContractReadiness(source);
     const list = $("cbReadiness");
     if (list) {
       list.innerHTML = items
         .map((item) => {
+          const extra = item.note ? ` (${escapeHtml(item.note)})` : "";
           return (
             `<li><span class="cb-check-status ${statusClass(item.status)}">${escapeHtml(statusLabel(item.status))}</span>` +
-            `<span>${escapeHtml(item.label)}</span></li>`
+            `<span>${escapeHtml(item.label)}${extra}</span></li>`
           );
         })
         .join("");
@@ -439,19 +570,24 @@
     const ul = $("cbRequiredList");
     if (ul) {
       ul.innerHTML = items
-        .map((item) => `<li>${escapeHtml(item.label)} — ${escapeHtml(statusLabel(item.status))}</li>`)
+        .map((item) => {
+          const extra = item.note ? ` (${item.note})` : "";
+          return `<li>${escapeHtml(item.label)} — ${escapeHtml(statusLabel(item.status))}${escapeHtml(extra)}</li>`;
+        })
         .join("");
     }
 
     const available = items.filter((i) => i.status === "available").length;
     const pct = Math.round((available / items.length) * 100);
-    setText("cbReadyPct", `${pct}%`);
+    const overallLabel =
+      overall === "configured" ? "Configured" : overall === "draft" ? "Draft" : "Missing";
+    setText("cbReadyPct", `${overallLabel} · ${pct}%`);
 
     const missingEl = $("cbMissingList");
     if (missingEl) {
       const missing = items.filter((i) => i.status === "missing");
       missingEl.innerHTML = missing.length
-        ? missing.map((i) => `<li><span class="cb-check-status is-missing">Missing</span><span>${escapeHtml(i.label)}</span></li>`).join("")
+        ? missing.map((i) => `<li><span class="cb-check-status is-missing">Missing</span><span>${escapeHtml(i.label)}${i.note ? ` (${escapeHtml(i.note)})` : ""}</span></li>`).join("")
         : `<li><span class="cb-check-status is-available">Clear</span><span>No critical gaps listed</span></li>`;
     }
 
@@ -465,7 +601,7 @@
 
     const printReady = pct >= 35;
     const reviewReady = Boolean(source.customerName && source.contractTotal > 0 && source.quoteId);
-    const signReady = false;
+    const signReady = overall === "configured";
 
     const setGate = (id, ok) => {
       const el = $(id);
@@ -484,11 +620,17 @@
         next.textContent = "Confirm customer and approved total before sharing this draft.";
       } else if (!profile?.legalBusinessName) {
         next.textContent = "Complete Legal & Contract Profile in Business Settings, then continue draft review.";
-      } else if (!String(edits.address || "").trim()) {
-        next.textContent = "Confirm the project address, then review price and payment notes.";
+      } else if (!propertyConfigured(source.contractSetup)) {
+        next.textContent = "Confirm the project address in contract setup, then continue draft review.";
+      } else if (!paymentConfigured(source.paymentSchedule)) {
+        next.textContent = "Confirm the payment schedule so stages exactly total the approved contract price.";
+      } else if (!warrantyConfigured(source.contractSetup)) {
+        next.textContent = "Confirm warranty terms in contract setup before signature readiness.";
+      } else if (!signatureConfigured(source.contractSetup)) {
+        next.textContent = "Configure the signature method in contract setup before signature readiness.";
       } else {
         next.textContent =
-          "Review payment schedule, warranty, and remaining missing items before considering signature.";
+          "Core setup sections are configured. State legal notices remain unsupported until a later phase.";
       }
     }
   }
@@ -752,11 +894,22 @@
     setTextMany(["cbQuoteNumber", "cbQuoteNumberBody"], source.quoteNumber || "—");
     setText("cbCoverDate", formatDate(source.acceptedAt) || formatDate(new Date().toISOString()) || "—");
 
-    const address = String(edits.address || "").trim();
+    const setup = source.contractSetup?.setup || null;
+    const propConfigured = propertyConfigured(source.contractSetup);
+    setText("cbPropStatus", sectionStatusLabel(propConfigured));
+    setText("cbPropLine1", setup?.property_address_line1 || "—");
+    setText("cbPropLine2", setup?.property_address_line2 || "—");
+    setText("cbPropCity", setup?.property_city || "—");
+    setText("cbPropState", setup?.property_state || "—");
+    setText("cbPropZip", setup?.property_postal_code || "—");
+
+    const livePropertyLine = formatPropertyLine(setup);
+    const address = String(edits.address || livePropertyLine || "").trim();
     const propEl = $("cbPropertyDisplay");
     if (propEl) {
-      if (address) propEl.textContent = address;
-      else propEl.innerHTML = `— <span class="cb-missing">Needs confirmation</span>`;
+      if (livePropertyLine) propEl.textContent = livePropertyLine;
+      else if (address) propEl.textContent = address;
+      else propEl.innerHTML = `— <span class="cb-missing">Missing</span>`;
     }
 
     setText("cbQuoteStatus", source.quoteStatus || "—");
@@ -796,6 +949,11 @@
         : "Not configured"
     );
 
+    renderPaymentScheduleSection(source);
+    renderWarrantySection(source, edits);
+    renderSignatureSection(source);
+    setText("cbLegalNoticesStatus", "Unsupported");
+
     const payNotes = String(edits.paymentNotes || "").trim();
     const payNotesEl = $("cbPaymentNotesDisplay");
     if (payNotesEl) payNotesEl.textContent = payNotes ? `Notes: ${payNotes}` : "";
@@ -803,13 +961,144 @@
     setText("cbStartDisplay", edits.startDate ? formatDate(edits.startDate) : "—");
     setText("cbDueDisplay", edits.dueDate ? formatDate(edits.dueDate) : "—");
 
-    const warranty = String(edits.warrantyNotes || "").trim();
-    setText("cbWarrantyDisplay", warranty || "Warranty terms are not yet configured.");
-
     const terms = String(edits.additionalTerms || "").trim();
     setText("cbTermsDisplay", terms || "Additional general terms are not yet configured.");
 
     renderReadiness(source, edits);
+  }
+
+  function renderPaymentScheduleSection(source) {
+    const bundle = source.paymentSchedule || {};
+    const readiness = bundle.readiness || {};
+    const status = String(readiness.status || "missing").toLowerCase();
+    const currency = source.currency || DEFAULT_CURRENCY;
+    const statusEl = $("cbPayScheduleStatus");
+    if (statusEl) statusEl.textContent = paymentStatusLabel(bundle);
+
+    const hint = $("cbPayScheduleHint");
+    const meta = $("cbPayScheduleMeta");
+    const stagesEl = $("cbPayScheduleStages");
+
+    if (status === "missing" || bundle.loadError || bundle.forbidden) {
+      if (meta) {
+        meta.hidden = true;
+        meta.innerHTML = "";
+      }
+      if (stagesEl) stagesEl.innerHTML = "";
+      if (hint) hint.hidden = false;
+      if (status === "missing") {
+        setText("cbSumProgress", "Missing");
+        setText("cbSumFinal", "Missing");
+      }
+      return;
+    }
+
+    if (hint) hint.hidden = status === "configured";
+
+    const items = Array.isArray(bundle.items) ? bundle.items : [];
+    if (stagesEl) {
+      if (!items.length) {
+        stagesEl.innerHTML = `<p><em>No payment stages saved yet.</em></p>`;
+      } else {
+        const rows = items
+          .map((item) => {
+            const seq = item.sequence_number ?? "—";
+            const label = escapeHtml(item.label || "—");
+            const amount = escapeHtml(formatMoney(item.amount, currency));
+            const due = escapeHtml(item.due_rule || "—");
+            const milestone = escapeHtml(item.milestone_description || "—");
+            return (
+              `<div class="cb-meta-grid" style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--cb-line);">` +
+              `<div class="cb-field"><span class="k">Sequence</span><div class="v">${escapeHtml(String(seq))}</div></div>` +
+              `<div class="cb-field"><span class="k">Label</span><div class="v">${label}</div></div>` +
+              `<div class="cb-field"><span class="k">Amount</span><div class="v">${amount}</div></div>` +
+              `<div class="cb-field"><span class="k">Due Rule</span><div class="v">${due}</div></div>` +
+              `<div class="cb-field"><span class="k">Milestone</span><div class="v">${milestone}</div></div>` +
+              `</div>`
+            );
+          })
+          .join("");
+        stagesEl.innerHTML = rows;
+      }
+    }
+
+    if (meta) {
+      meta.hidden = false;
+      const contractTotal = readiness.contract_total ?? source.contractTotal;
+      const scheduled = readiness.scheduled_total;
+      const remaining = readiness.remaining_difference;
+      const confirmedAt = bundle.schedule?.confirmed_at || readiness.confirmed_at;
+      let html =
+        `<div class="cb-field"><span class="k">Contract Total</span><div class="v">${escapeHtml(formatMoney(contractTotal, currency))}</div></div>` +
+        `<div class="cb-field"><span class="k">Total Scheduled</span><div class="v">${escapeHtml(formatMoney(scheduled, currency))}</div></div>` +
+        `<div class="cb-field"><span class="k">Remaining Difference</span><div class="v">${escapeHtml(formatMoney(remaining, currency))}</div></div>`;
+      if (status === "configured") {
+        html +=
+          `<div class="cb-field"><span class="k">Confirmed Date</span><div class="v">${escapeHtml(formatDate(confirmedAt) || "—")}</div></div>`;
+      }
+      meta.innerHTML = html;
+    }
+
+    const depositItem = items.find((i) => String(i.payment_type || "").toLowerCase() === "deposit");
+    const finalItem = items.find((i) =>
+      ["final", "completion"].includes(String(i.payment_type || "").toLowerCase())
+    );
+    const progressItems = items.filter((i) =>
+      ["progress", "start", "material", "custom"].includes(String(i.payment_type || "").toLowerCase())
+    );
+    if (depositItem) setText("cbSumDeposit", formatMoney(depositItem.amount, currency));
+    setText(
+      "cbSumProgress",
+      progressItems.length
+        ? formatMoney(
+            progressItems.reduce((sum, i) => sum + finiteNumber(i.amount, 0), 0),
+            currency
+          )
+        : status === "draft"
+          ? "Draft"
+          : "Not configured"
+    );
+    setText(
+      "cbSumFinal",
+      finalItem ? formatMoney(finalItem.amount, currency) : status === "draft" ? "Draft" : "Not configured"
+    );
+  }
+
+  function renderWarrantySection(source, edits) {
+    const setup = source.contractSetup?.setup || null;
+    const configured = warrantyConfigured(source.contractSetup);
+    setText("cbWarrantyStatus", sectionStatusLabel(configured));
+
+    const durationValue = setup?.warranty_duration_value;
+    const durationUnit = String(setup?.warranty_duration_unit || "").trim();
+    const summary = String(setup?.warranty_summary || "").trim();
+    const exclusions = String(setup?.warranty_exclusions || "").trim();
+    const length =
+      durationValue != null && durationUnit
+        ? `${durationValue} ${durationUnit}`
+        : "";
+
+    setText("cbWarrantyName", configured ? "Project warranty" : "—");
+    setText("cbWarrantyLength", length || "—");
+    const descriptionParts = [];
+    if (summary) descriptionParts.push(summary);
+    if (exclusions) descriptionParts.push(`Exclusions:\n${exclusions}`);
+    const description = descriptionParts.join("\n\n");
+    setText("cbWarrantyDescription", description || "—");
+
+    const meetingNotes = String(edits.warrantyNotes || "").trim();
+    if (configured && description) {
+      setText("cbWarrantyDisplay", description);
+    } else if (meetingNotes) {
+      setText("cbWarrantyDisplay", meetingNotes);
+    } else {
+      setText("cbWarrantyDisplay", "Warranty terms are not yet configured.");
+    }
+  }
+
+  function renderSignatureSection(source) {
+    setText("cbSignatureMethodStatus", signatureMethodLabel(source.contractSetup));
+    setText("cbSignatureRequestStatus", signatureRequestLabel(source.contractSetup));
   }
 
   function renderAll() {
@@ -1010,6 +1299,88 @@
     window.addEventListener("beforeprint", expandAllArticlesForPrint);
   }
 
+  /**
+   * Early Owner/Admin fail-closed gate.
+   * Uses existing tenant-legal-profile (Owner/Admin membership check) before any
+   * project/quote/branding/setup/schedule fetches. No new backend endpoint.
+   */
+  async function assertOwnerOrAdminAccess() {
+    let legalRes;
+    try {
+      legalRes = await fetchJson(LEGAL_PROFILE_API);
+    } catch (_err) {
+      return {
+        ok: false,
+        legalBundle: {
+          available: false,
+          loadError: "unavailable",
+          forbidden: false,
+          readiness: null,
+          profile: null,
+        },
+        errorTitle: "Contract Builder",
+        errorMessage: "Contract Builder access could not be verified. Try again.",
+      };
+    }
+
+    if (legalRes.status === 401) {
+      return {
+        ok: false,
+        legalBundle: {
+          available: false,
+          loadError: null,
+          forbidden: false,
+          readiness: null,
+          profile: null,
+        },
+        errorTitle: "Contract Builder",
+        errorMessage: "Sign in to open Contract Builder.",
+      };
+    }
+
+    if (legalRes.status === 403) {
+      return {
+        ok: false,
+        legalBundle: {
+          available: false,
+          loadError: null,
+          forbidden: true,
+          readiness: null,
+          profile: null,
+        },
+        errorTitle: "Contract Builder",
+        errorMessage:
+          "Owner or admin membership is required to open Contract Builder.",
+      };
+    }
+
+    if (!(legalRes.ok && legalRes.data?.ok === true)) {
+      return {
+        ok: false,
+        legalBundle: {
+          available: false,
+          loadError: "unavailable",
+          forbidden: false,
+          readiness: null,
+          profile: null,
+        },
+        errorTitle: "Contract Builder",
+        errorMessage: "Contract Builder access could not be verified. Try again.",
+      };
+    }
+
+    return {
+      ok: true,
+      legalBundle: {
+        available: true,
+        loadError: null,
+        forbidden: false,
+        readiness: legalRes.data.readiness || null,
+        profile: normalizeLegalProfile(legalRes.data.profile),
+      },
+    };
+  }
+
   async function init() {
     if (document.body?.dataset?.requiresAuth === "true" && !document.body.classList.contains("auth-ready")) {
       if (window.location.pathname.includes("index.html")) return;
@@ -1034,6 +1405,14 @@
       if (quoteIdParam) hubParams.set("quote_id", quoteIdParam);
       back.href = `/contract-hub?${hubParams.toString()}`;
     }
+
+    // Early Owner/Admin gate — before projects/quote/branding/setup/schedule.
+    const access = await assertOwnerOrAdminAccess();
+    if (!access.ok) {
+      showError(access.errorTitle, access.errorMessage);
+      return;
+    }
+    const legalBundle = access.legalBundle;
 
     if (!isPlausibleId(projectId)) {
       showError(
@@ -1100,36 +1479,66 @@
         ? brandingRes.data.branding
         : {};
 
-    let legalBundle = {
+    const setupQs =
+      `project_id=${encodeURIComponent(projectId)}&quote_id=${encodeURIComponent(quoteId)}`;
+    const [setupRes, scheduleRes] = await Promise.all([
+      fetchJson(`${CONTRACT_SETUP_API}?${setupQs}`),
+      fetchJson(`${PAYMENT_SCHEDULE_API}?${setupQs}`),
+    ]);
+
+    if (setupRes.status === 403 || scheduleRes.status === 403) {
+      showError(
+        "Contract Builder",
+        "Owner or admin membership is required to open Contract Builder readiness data."
+      );
+      return;
+    }
+    if (setupRes.status === 401 || scheduleRes.status === 401) {
+      showError("Contract Builder", "Sign in to open Contract Builder.");
+      return;
+    }
+
+    let setupBundle = {
       available: false,
       loadError: null,
       forbidden: false,
+      setup: null,
       readiness: null,
-      profile: null,
     };
-    try {
-      const legalRes = await fetchJson(LEGAL_PROFILE_API);
-      if (legalRes.status === 403) {
-        legalBundle = {
-          available: false,
-          loadError: null,
-          forbidden: true,
-          readiness: null,
-          profile: null,
-        };
-      } else if (legalRes.ok && legalRes.data?.ok === true) {
-        legalBundle = {
-          available: true,
-          loadError: null,
-          forbidden: false,
-          readiness: legalRes.data.readiness || null,
-          profile: normalizeLegalProfile(legalRes.data.profile),
-        };
-      } else if (legalRes.status !== 401) {
-        legalBundle.loadError = "unavailable";
-      }
-    } catch (_err) {
-      legalBundle.loadError = "unavailable";
+    if (setupRes.ok && setupRes.data?.ok === true) {
+      setupBundle = {
+        available: true,
+        loadError: null,
+        forbidden: false,
+        setup: setupRes.data.setup || null,
+        readiness: setupRes.data.readiness || null,
+      };
+    } else if (setupRes.status !== 404) {
+      setupBundle.loadError = "unavailable";
+    }
+
+    let scheduleBundle = {
+      available: false,
+      loadError: null,
+      forbidden: false,
+      schedule: null,
+      items: [],
+      readiness: { status: "missing" },
+      source: null,
+    };
+    if (scheduleRes.ok && scheduleRes.data?.ok === true) {
+      scheduleBundle = {
+        available: true,
+        loadError: null,
+        forbidden: false,
+        schedule: scheduleRes.data.schedule || null,
+        items: Array.isArray(scheduleRes.data.items) ? scheduleRes.data.items : [],
+        readiness: scheduleRes.data.readiness || { status: "missing" },
+        source: scheduleRes.data.source || null,
+      };
+    } else if (scheduleRes.status !== 404) {
+      scheduleBundle.loadError = "unavailable";
+      scheduleBundle.readiness = { status: "missing" };
     }
 
     const contractTotal = resolveContractTotal(project, quote);
@@ -1144,8 +1553,19 @@
       return;
     }
 
-    sourceSnapshot = buildSource(project, quote, branding, legalBundle);
+    sourceSnapshot = buildSource(
+      project,
+      quote,
+      branding,
+      legalBundle,
+      setupBundle,
+      scheduleBundle
+    );
     draftEdits = cloneEdits(sourceSnapshot);
+    const liveAddress = formatPropertyLine(setupBundle.setup);
+    if (liveAddress && !String(draftEdits.address || "").trim()) {
+      draftEdits.address = liveAddress;
+    }
     bindEditors();
     renderAll();
     showMain();

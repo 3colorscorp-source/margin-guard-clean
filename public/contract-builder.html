@@ -942,6 +942,12 @@
                 <div class="cb-article__body">
                   <div class="cb-meta-grid">
                     <div class="cb-field"><span class="k">Project</span><div class="v" id="cbProjectName">—</div></div>
+                    <div class="cb-field"><span class="k">Status</span><div class="v" id="cbPropStatus">Missing</div></div>
+                    <div class="cb-field"><span class="k">Property Address</span><div class="v" id="cbPropLine1">—</div></div>
+                    <div class="cb-field"><span class="k">Address line 2</span><div class="v" id="cbPropLine2">—</div></div>
+                    <div class="cb-field"><span class="k">City</span><div class="v" id="cbPropCity">—</div></div>
+                    <div class="cb-field"><span class="k">State</span><div class="v" id="cbPropState">—</div></div>
+                    <div class="cb-field"><span class="k">Zip</span><div class="v" id="cbPropZip">—</div></div>
                     <div class="cb-field"><span class="k">Property address</span><div class="v" id="cbPropertyDisplay">—</div></div>
                   </div>
                   <div class="cb-editor">
@@ -1028,8 +1034,10 @@
                 </button>
                 <div class="cb-article__body">
                   <p><strong id="cbPayTotalLine">Contract Total: —</strong></p>
-                  <p>Payment Schedule: <em>Not yet configured</em></p>
-                  <p><span class="cb-missing">Payment stages and amounts must be confirmed and must total the approved contract price before signature.</span></p>
+                  <p>Payment Schedule: <em id="cbPayScheduleStatus">Missing</em></p>
+                  <div id="cbPayScheduleMeta" class="cb-meta-grid" hidden></div>
+                  <div id="cbPayScheduleStages" style="margin:10px 0;"></div>
+                  <p id="cbPayScheduleHint"><span class="cb-missing">Payment stages and amounts must be confirmed and must total the approved contract price before signature.</span></p>
                   <div class="cb-editor">
                     <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditPaymentNotes"></div>
                     <label for="cbEditPaymentNotes">Payment schedule notes (meeting edit)</label>
@@ -1100,6 +1108,12 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
+                  <div class="cb-meta-grid">
+                    <div class="cb-field"><span class="k">Status</span><div class="v" id="cbWarrantyStatus">Missing</div></div>
+                    <div class="cb-field"><span class="k">Warranty Type</span><div class="v" id="cbWarrantyName">—</div></div>
+                    <div class="cb-field"><span class="k">Warranty Length</span><div class="v" id="cbWarrantyLength">—</div></div>
+                    <div class="cb-field"><span class="k">Warranty Description</span><div class="v" id="cbWarrantyDescription">—</div></div>
+                  </div>
                   <p id="cbWarrantyDisplay">Warranty terms are not yet configured.</p>
                   <p><span class="cb-missing">State-required terms and notices must be added before signature.</span></p>
                   <div class="cb-editor">
@@ -1119,6 +1133,9 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
+                  <div class="cb-meta-grid">
+                    <div class="cb-field"><span class="k">State legal notices</span><div class="v" id="cbLegalNoticesStatus">Unsupported</div></div>
+                  </div>
                   <p id="cbTermsDisplay">—</p>
                   <p><span class="cb-missing">State-required terms and notices must be added before signature.</span></p>
                   <div class="cb-editor">
@@ -1142,6 +1159,10 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
+                  <div class="cb-meta-grid">
+                    <div class="cb-field"><span class="k">Signature method</span><div class="v" id="cbSignatureMethodStatus">Missing</div></div>
+                    <div class="cb-field"><span class="k">Signature request</span><div class="v" id="cbSignatureRequestStatus">Not Requested</div></div>
+                  </div>
                   <div class="cb-sign-grid">
                     <div class="cb-sign-box">
                       <strong>Customer Signature</strong>
