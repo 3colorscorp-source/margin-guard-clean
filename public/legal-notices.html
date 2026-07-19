@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Legal Notices</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .ln-page .ln-hero { margin-bottom: 12px; }
+    .ln-page .ln-hero h2 { margin: 0 0 6px; font-size: clamp(1.25rem, 2.2vw, 1.55rem); }
+    .ln-page .ln-hero .sub { margin: 0; max-width: 68ch; line-height: 1.45; color: rgba(232, 238, 252, 0.78); }
+    .ln-status-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    @media (max-width: 720px) {
+      .ln-status-grid { grid-template-columns: 1fr; }
+    }
+    .ln-kpi {
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .ln-kpi .label {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.65);
+    }
+    .ln-kpi .value {
+      margin-top: 6px;
+      font-size: clamp(16px, 2.2vw, 20px);
+      font-weight: 800;
+      color: #f8fafc;
+      word-break: break-word;
+    }
+    .ln-notice {
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .ln-notice.ok { border: 1px solid rgba(34, 197, 94, 0.35); background: rgba(34, 197, 94, 0.08); }
+    .ln-notice.warn { border: 1px solid rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.08); }
+    .ln-notice.err { border: 1px solid rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.08); }
+    .ln-notice[hidden],
+    .ln-access-denied[hidden],
+    .ln-workspace[hidden],
+    .ln-loading[hidden] { display: none !important; }
+    .ln-access-denied { padding: 28px 18px; text-align: center; }
+    .ln-section {
+      margin-bottom: 14px;
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .ln-section h3 {
+      margin: 0 0 4px;
+      font-size: 0.95rem;
+      font-weight: 750;
+    }
+    .ln-section .ln-desc {
+      margin: 0 0 10px;
+      font-size: 12px;
+      line-height: 1.45;
+      color: rgba(232, 238, 252, 0.68);
+      max-width: 72ch;
+    }
+    .ln-section textarea {
+      width: 100%;
+      min-height: 120px;
+      resize: vertical;
+      white-space: pre-wrap;
+      line-height: 1.45;
+      padding: 11px 12px;
+      border-radius: 12px;
+      box-sizing: border-box;
+    }
+    .ln-counter {
+      margin-top: 6px;
+      font-size: 12px;
+      color: rgba(232, 238, 252, 0.62);
+      text-align: right;
+    }
+    .ln-counter.is-over { color: #fca5a5; }
+    .ln-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-top: 8px;
+      margin-bottom: 28px;
+    }
+    .ln-loading { padding: 18px; color: rgba(232, 238, 252, 0.75); }
+  </style>
+</head>
+<body data-role="owner" data-requires-auth="true" class="ln-page" data-mg-app-nav data-mg-page-title="Legal Notices">
+  <div class="container">
+    <div class="card ln-hero">
+      <div class="card-inner">
+        <h2>Legal Notices</h2>
+        <p class="sub">Configure the standard legal language that will automatically be available for future customer contracts.</p>
+      </div>
+    </div>
+
+    <div id="lnNotice" class="ln-notice" hidden role="status" aria-live="polite"></div>
+
+    <div id="lnAccessDenied" class="card ln-access-denied" hidden>
+      <div class="card-inner">
+        <h3>Access restricted</h3>
+        <p id="lnAccessDeniedMessage">Owner or admin membership is required to manage legal notices.</p>
+      </div>
+    </div>
+
+    <div id="lnLoading" class="card ln-loading">
+      <div class="card-inner">Loading legal notices…</div>
+    </div>
+
+    <div id="lnWorkspace" hidden>
+      <div class="ln-status-grid" aria-label="Legal notices status">
+        <div class="ln-kpi">
+          <div class="label">Status</div>
+          <div class="value" id="lnStatusValue">—</div>
+        </div>
+        <div class="ln-kpi">
+          <div class="label">Last updated</div>
+          <div class="value" id="lnUpdatedAt">—</div>
+        </div>
+        <div class="ln-kpi">
+          <div class="label">Confirmed at</div>
+          <div class="value" id="lnConfirmedAt">—</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-inner" id="lnSections">
+          <!-- sections injected by JS (plain text titles/descriptions only) -->
+        </div>
+      </div>
+
+      <div class="ln-actions">
+        <button type="button" class="btn" id="lnSaveDraft">Save Draft</button>
+        <button type="button" class="btn primary" id="lnConfirm">Confirm Legal Notices</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/mg-app-nav.js"></script>
+  <script src="/js/tenant.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/legal-notices.js" defer></script>
+</body>
+</html>

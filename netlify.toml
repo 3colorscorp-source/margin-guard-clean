@@ -51,6 +51,11 @@
   status = 200
 
 [[redirects]]
+  from = "/legal-notices"
+  to = "/legal-notices.html"
+  status = 200
+
+[[redirects]]
   from = "/sales"
   to = "/sales.html"
   status = 200
