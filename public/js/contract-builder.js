@@ -316,10 +316,10 @@
    */
   function resolveLegalNoticesEffective(legalNoticesBundle) {
     const bundle = legalNoticesBundle || {};
-    const missingCopy = "No legal notices have been configured.";
+    const missingCopy = "No legal notices have been added yet.";
     const draftCopy = "Legal notices are still being prepared.";
     const reviewCopy =
-      "Legal notices require review before they can be considered configured.";
+      "Legal notices require review before they can be considered ready.";
 
     if (bundle.loadError || bundle.forbidden) {
       return {
@@ -398,9 +398,72 @@
 
   function paymentStatusLabel(scheduleBundle) {
     const status = String(scheduleBundle?.readiness?.status || "missing").toLowerCase();
-    if (status === "configured") return "Configured ✓";
-    if (status === "draft") return "Draft";
-    return "Missing";
+    if (status === "configured") return "Confirmed";
+    if (status === "draft") return "Payment schedule awaiting confirmation";
+    return "Not yet defined";
+  }
+
+  function dueRuleLabel(raw) {
+    const key = String(raw || "").trim().toLowerCase();
+    const map = {
+      custom: "Custom milestone",
+      on_acceptance: "Upon acceptance",
+      before_start: "Before work begins",
+      on_start: "At project start",
+      on_completion: "Upon completion",
+      net_7: "Within 7 days",
+      net_15: "Within 15 days",
+      net_30: "Within 30 days",
+    };
+    if (!key) return "—";
+    if (map[key]) return map[key];
+    return "Custom payment timing";
+  }
+
+  function quoteStatusDisplay(raw) {
+    const status = String(raw || "").trim().toLowerCase();
+    if (!status) return "—";
+    if (status === "accepted" || status === "approved") return "Approved";
+    return String(raw || "").trim();
+  }
+
+  function looksLikeEstimateEmail(text) {
+    const t = String(text || "");
+    if (!t.trim()) return false;
+
+    // Strong email cues only. "please find/review/see" never triggers alone.
+    if (/^(hi\b|hello\b|dear\b|good (morning|afternoon|evening)\b)/im.test(t)) return true;
+    if (
+      /\b(best regards|kind regards|sincerely|thank you for (your )?interest|looking forward to hearing from you)\b/i.test(
+        t
+      )
+    ) {
+      return true;
+    }
+    if (/\bsubject\s*:/i.test(t) || /\b(sent from|mailto:|unsubscribe)\b/i.test(t)) return true;
+    if (/https?:\/\//i.test(t) && /\b(estimate|quote|proposal)\b/i.test(t)) return true;
+    return false;
+  }
+
+  function looksLikeTechnicalQaLabel(text) {
+    const t = String(text || "");
+    if (!t.trim()) return false;
+
+    if (/\bCH[-_ ]?004\b/i.test(t)) return true;
+    if (/\btechnical draft\b/i.test(t)) return true;
+    if (/\bsmoke test\b/i.test(t)) return true;
+    if (/\btest stage\b/i.test(t)) return true;
+    if (/\btest payment\b/i.test(t)) return true;
+    if (/\bQA\s+(technical|smoke|test)\b/i.test(t)) return true;
+
+    // Standalone "QA" only when paired with another technical/test cue.
+    if (!/\bQA\b/i.test(t)) return false;
+    return /\b(CH[-_ ]?004|technical|smoke|test|draft)\b/i.test(t);
+  }
+
+  function undefinedMoneyLabel(scheduleStatus) {
+    if (String(scheduleStatus || "").toLowerCase() === "draft") return "Draft payment schedule";
+    return "Not yet defined";
   }
 
   function legalNoticesStatusLabel(legalNoticesBundle) {
@@ -787,7 +850,7 @@
             : "Configure and confirm tenant legal notices before signature readiness.";
       } else {
         next.textContent =
-          "All required sections are configured. Contract generation remains unavailable in this phase.";
+          "All required sections are configured. Signature sending is not available from this draft yet.";
       }
     }
   }
@@ -878,10 +941,7 @@
 
     setText("cbBizName", namePick.text || "—");
     setText("cbLegalName", p?.legalBusinessName || (namePick.source === "branding" ? namePick.text : "") || "—");
-    if (!p?.legalBusinessName && namePick.source === "branding" && namePick.text) {
-      const el = $("cbLegalName");
-      if (el) el.textContent = `${namePick.text} (from branding)`;
-    }
+    // Branding fallback still supplies the value; do not expose source labels to the customer.
 
     const dba = p?.dbaName || "";
     setText("cbLegalDba", dba || "—");
@@ -1061,49 +1121,70 @@
     setText("cbPropZip", setup?.property_postal_code || "—");
 
     const livePropertyLine = formatPropertyLine(setup);
-    const address = String(edits.address || livePropertyLine || "").trim();
+    const proposedAddress = String(edits.address || "").trim();
     const propEl = $("cbPropertyDisplay");
-    if (propEl) {
-      if (livePropertyLine) propEl.textContent = livePropertyLine;
-      else if (address) propEl.textContent = address;
-      else propEl.innerHTML = `— <span class="cb-missing">Missing</span>`;
+    const proposedWrap = $("cbPropProposedWrap");
+    const proposedEl = $("cbPropProposed");
+
+    if (propConfigured && livePropertyLine) {
+      if (propEl) propEl.textContent = livePropertyLine;
+      if (proposedWrap) proposedWrap.hidden = true;
+      if (proposedEl) proposedEl.textContent = "—";
+    } else if (!propConfigured && proposedAddress) {
+      if (propEl) propEl.textContent = "Property address pending confirmation";
+      if (proposedWrap) proposedWrap.hidden = false;
+      if (proposedEl) proposedEl.textContent = proposedAddress;
+    } else if (livePropertyLine) {
+      if (propEl) propEl.textContent = livePropertyLine;
+      if (proposedWrap) proposedWrap.hidden = true;
+    } else {
+      if (propEl) propEl.textContent = "—";
+      if (proposedWrap) proposedWrap.hidden = true;
     }
 
-    setText("cbQuoteStatus", source.quoteStatus || "—");
+    setText("cbQuoteStatus", quoteStatusDisplay(source.quoteStatus));
     setText("cbAcceptedAt", formatDate(source.acceptedAt) || "—");
     setText("cbContractTotal", money);
 
     const scope = String(edits.scope || "").trim();
     const exclusions = String(edits.exclusions || "").trim();
     const scopeEl = $("cbScopeDisplay");
+    const scopeWarn = $("cbScopeEmailWarn");
     if (scopeEl) {
       if (scope) {
         scopeEl.textContent = exclusions ? `${scope}\n\nExclusions:\n${exclusions}` : scope;
       } else {
-        scopeEl.innerHTML =
-          `Scope is not available from the approved quote. <span class="cb-missing">Needs confirmation</span>`;
+        scopeEl.textContent =
+          "A clear description of the work has not been provided yet.";
       }
+    }
+    if (scopeWarn) {
+      const showWarn = Boolean(scope && looksLikeEstimateEmail(scope));
+      scopeWarn.hidden = !showWarn;
     }
 
     setText("cbPriceLine", money);
     setText("cbPayTotalLine", `Contract Total: ${money}`);
+
+    const payStatus = String(source.paymentSchedule?.readiness?.status || "missing").toLowerCase();
+    const undefinedLabel = undefinedMoneyLabel(payStatus);
 
     const depositEl = $("cbSumDeposit");
     if (depositEl) {
       depositEl.textContent =
         source.depositRequired != null
           ? formatMoney(source.depositRequired, source.currency)
-          : "Not configured";
+          : undefinedLabel;
     }
-    setText("cbSumProgress", "Not configured");
-    setText("cbSumFinal", "Not configured");
-    setText("cbSumChangeOrders", "Not configured");
-    setText("cbSumTaxes", "Not configured");
+    setText("cbSumProgress", undefinedLabel);
+    setText("cbSumFinal", undefinedLabel);
+    setText("cbSumChangeOrders", "Not yet defined");
+    setText("cbSumTaxes", "Not yet defined");
     setText(
       "cbSumBalance",
       source.depositRequired != null && source.contractTotal != null
         ? formatMoney(Math.max(0, source.contractTotal - source.depositRequired), source.currency)
-        : "Not configured"
+        : "Not yet defined"
     );
 
     renderPaymentScheduleSection(source);
@@ -1113,13 +1194,28 @@
 
     const payNotes = String(edits.paymentNotes || "").trim();
     const payNotesEl = $("cbPaymentNotesDisplay");
-    if (payNotesEl) payNotesEl.textContent = payNotes ? `Notes: ${payNotes}` : "";
+    if (payNotesEl) payNotesEl.textContent = payNotes ? `Draft payment notes: ${payNotes}` : "";
 
-    setText("cbStartDisplay", edits.startDate ? formatDate(edits.startDate) : "—");
-    setText("cbDueDisplay", edits.dueDate ? formatDate(edits.dueDate) : "—");
+    setText(
+      "cbStartDisplay",
+      edits.startDate ? formatDate(edits.startDate) : "To be confirmed"
+    );
+    setText(
+      "cbDueDisplay",
+      edits.dueDate ? formatDate(edits.dueDate) : "To be confirmed"
+    );
 
     const terms = String(edits.additionalTerms || "").trim();
-    setText("cbTermsDisplay", terms || "Additional general terms are not yet configured.");
+    const termsEl = $("cbTermsDisplay");
+    if (termsEl) {
+      if (terms) {
+        termsEl.hidden = false;
+        termsEl.textContent = terms;
+      } else {
+        termsEl.hidden = true;
+        termsEl.textContent = "";
+      }
+    }
 
     renderReadiness(source, edits);
   }
@@ -1164,12 +1260,14 @@
     const readiness = bundle.readiness || {};
     const status = String(readiness.status || "missing").toLowerCase();
     const currency = source.currency || DEFAULT_CURRENCY;
+    const undefinedLabel = undefinedMoneyLabel(status);
     const statusEl = $("cbPayScheduleStatus");
     if (statusEl) statusEl.textContent = paymentStatusLabel(bundle);
 
     const hint = $("cbPayScheduleHint");
     const meta = $("cbPayScheduleMeta");
     const stagesEl = $("cbPayScheduleStages");
+    const qaWarn = $("cbPayQaWarn");
 
     if (status === "missing" || bundle.loadError || bundle.forbidden) {
       if (meta) {
@@ -1177,35 +1275,66 @@
         meta.innerHTML = "";
       }
       if (stagesEl) stagesEl.innerHTML = "";
+      if (qaWarn) {
+        qaWarn.hidden = true;
+        qaWarn.textContent = "";
+      }
       if (hint) hint.hidden = false;
       if (status === "missing") {
-        setText("cbSumProgress", "Missing");
-        setText("cbSumFinal", "Missing");
+        setText("cbSumProgress", "Not yet defined");
+        setText("cbSumFinal", "Not yet defined");
       }
       return;
     }
 
-    if (hint) hint.hidden = status === "configured";
+    if (hint) {
+      if (status === "configured") {
+        hint.hidden = true;
+      } else {
+        hint.hidden = false;
+        hint.innerHTML =
+          status === "draft"
+            ? `<span class="cb-missing">Payment schedule awaiting confirmation</span>`
+            : `<span class="cb-missing">Payment stages and amounts must be confirmed and must total the approved contract price before signature.</span>`;
+      }
+    }
 
     const items = Array.isArray(bundle.items) ? bundle.items : [];
+    const qaLabels = items.filter((item) => looksLikeTechnicalQaLabel(item.label));
+    if (qaWarn) {
+      if (qaLabels.length) {
+        qaWarn.hidden = false;
+        qaWarn.textContent =
+          "This payment stage appears to contain test or technical wording and should be replaced before the contract is sent to the customer.";
+      } else {
+        qaWarn.hidden = true;
+        qaWarn.textContent = "";
+      }
+    }
+
     if (stagesEl) {
       if (!items.length) {
-        stagesEl.innerHTML = `<p><em>No payment stages saved yet.</em></p>`;
+        stagesEl.innerHTML = `<p><em>No payment stages have been defined yet.</em></p>`;
       } else {
         const rows = items
           .map((item) => {
             const seq = item.sequence_number ?? "—";
             const label = escapeHtml(item.label || "—");
             const amount = escapeHtml(formatMoney(item.amount, currency));
-            const due = escapeHtml(item.due_rule || "—");
+            const due = escapeHtml(dueRuleLabel(item.due_rule));
             const milestone = escapeHtml(item.milestone_description || "—");
+            const amountNote =
+              status === "draft"
+                ? `<div class="cb-field"><span class="k">Status</span><div class="v">Draft payment schedule</div></div>`
+                : "";
             return (
               `<div class="cb-meta-grid" style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--cb-line);">` +
               `<div class="cb-field"><span class="k">Sequence</span><div class="v">${escapeHtml(String(seq))}</div></div>` +
               `<div class="cb-field"><span class="k">Label</span><div class="v">${label}</div></div>` +
               `<div class="cb-field"><span class="k">Amount</span><div class="v">${amount}</div></div>` +
-              `<div class="cb-field"><span class="k">Due Rule</span><div class="v">${due}</div></div>` +
+              `<div class="cb-field"><span class="k">Due</span><div class="v">${due}</div></div>` +
               `<div class="cb-field"><span class="k">Milestone</span><div class="v">${milestone}</div></div>` +
+              amountNote +
               `</div>`
             );
           })
@@ -1238,21 +1367,33 @@
     const progressItems = items.filter((i) =>
       ["progress", "start", "material", "custom"].includes(String(i.payment_type || "").toLowerCase())
     );
-    if (depositItem) setText("cbSumDeposit", formatMoney(depositItem.amount, currency));
+    if (depositItem) {
+      const depositAmt = formatMoney(depositItem.amount, currency);
+      setText(
+        "cbSumDeposit",
+        status === "draft" ? `${depositAmt} (draft payment schedule)` : depositAmt
+      );
+    }
     setText(
       "cbSumProgress",
       progressItems.length
-        ? formatMoney(
-            progressItems.reduce((sum, i) => sum + finiteNumber(i.amount, 0), 0),
-            currency
-          )
-        : status === "draft"
-          ? "Draft"
-          : "Not configured"
+        ? (() => {
+            const amt = formatMoney(
+              progressItems.reduce((sum, i) => sum + finiteNumber(i.amount, 0), 0),
+              currency
+            );
+            return status === "draft" ? `${amt} (draft payment schedule)` : amt;
+          })()
+        : undefinedLabel
     );
     setText(
       "cbSumFinal",
-      finalItem ? formatMoney(finalItem.amount, currency) : status === "draft" ? "Draft" : "Not configured"
+      finalItem
+        ? (() => {
+            const amt = formatMoney(finalItem.amount, currency);
+            return status === "draft" ? `${amt} (draft payment schedule)` : amt;
+          })()
+        : undefinedLabel
     );
   }
 
@@ -1278,13 +1419,10 @@
     const description = descriptionParts.join("\n\n");
     setText("cbWarrantyDescription", description || "—");
 
-    const meetingNotes = String(edits.warrantyNotes || "").trim();
     if (configured && description) {
       setText("cbWarrantyDisplay", description);
-    } else if (meetingNotes) {
-      setText("cbWarrantyDisplay", meetingNotes);
     } else {
-      setText("cbWarrantyDisplay", "Warranty terms are not yet configured.");
+      setText("cbWarrantyDisplay", "Warranty terms have not yet been confirmed.");
     }
   }
 
@@ -1484,6 +1622,7 @@
       const main = $("cbMain");
       if (!main) return;
       const on = main.classList.toggle("is-preview");
+      document.body.classList.toggle("cb-customer-preview", on);
       const btn = $("cbPreviewToggle");
       if (btn) btn.textContent = on ? "Edit" : "Preview";
     });

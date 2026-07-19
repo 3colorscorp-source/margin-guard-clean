@@ -608,8 +608,77 @@
       box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.2);
     }
 
+    .owner-only { }
+    .cb-draft-note {
+      margin: 4px 0 0;
+      font-size: 0.75rem;
+      line-height: 1.4;
+      color: var(--cb-muted);
+    }
+    .cb-owner-warn {
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(180, 83, 9, 0.35);
+      background: var(--cb-warn-bg);
+      color: #92400e;
+      font-size: 0.8125rem;
+      line-height: 1.45;
+    }
+    .cb-owner-warn[hidden] { display: none !important; }
+    .cb-sign-box.is-placeholder {
+      opacity: 0.92;
+      border-style: dashed;
+      pointer-events: none;
+      user-select: none;
+    }
+    .cb-proposed-block {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--cb-line);
+    }
+    .cb-proposed-block[hidden] { display: none !important; }
+
     .is-preview .cb-editor,
-    .is-preview .cb-warn-banner { display: none !important; }
+    .is-preview .cb-warn-banner,
+    .is-preview .owner-only,
+    .is-preview .no-print { display: none !important; }
+
+    /* Customer preview: collapse Owner shell/gutters; document uses full available width. */
+    body.cb-customer-preview .mg-app-nav,
+    body.cb-customer-preview nav.mg-app-nav,
+    body.cb-customer-preview .mg-sidebar,
+    body.cb-customer-preview .mg-sidebar-overlay,
+    body.cb-customer-preview .mg-topbar,
+    body.cb-customer-preview .mg-mobile-menu-button,
+    body.cb-customer-preview .cb-index,
+    body.cb-customer-preview .cb-aside,
+    body.cb-customer-preview #cbResetDraft,
+    body.cb-customer-preview .owner-only,
+    body.cb-customer-preview .no-print,
+    body.cb-customer-preview .cb-editor,
+    body.cb-customer-preview .cb-warn-banner {
+      display: none !important;
+    }
+    body.cb-customer-preview.mg-app-shell .mg-app-main {
+      margin-left: 0 !important;
+    }
+    body.cb-customer-preview {
+      --mg-sidebar-width: 0px;
+    }
+    body.cb-customer-preview .cb-toolbar {
+      left: 0 !important;
+    }
+    body.cb-customer-preview .cb-layout {
+      display: block;
+    }
+    body.cb-customer-preview .cb-stage {
+      max-width: 920px;
+      margin: 0 auto;
+    }
+    body.cb-customer-preview .cb-shell {
+      max-width: 1100px;
+    }
 
     .cb-legal-banner {
       margin: 0 0 12px;
@@ -700,6 +769,8 @@
       .cb-editor,
       .cb-show-secret,
       .cb-legal-banner,
+      .owner-only,
+      .no-print,
       #cbLoading,
       #cbError { display: none !important; }
       body.mg-app-shell .mg-app-main { margin-left: 0 !important; }
@@ -803,7 +874,7 @@
         </aside>
 
         <main class="cb-stage">
-          <article class="cb-doc" id="cbDocument" aria-label="Contract draft preview">
+          <article class="cb-doc customer-document" id="cbDocument" aria-label="Contract draft preview">
             <div class="cb-print-banner">DRAFT — NOT READY FOR SIGNATURE</div>
 
             <header class="cb-doc-cover" id="art-cover">
@@ -850,7 +921,7 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
-                  <p>This document is a meeting review draft only. It is not ready for signature and does not create a binding contract until required information, legal notices, payment schedule, and signature workflow are completed in a later phase.</p>
+                  <p>This document is a review draft and is not ready for signature. It will become eligible for signature only after all required project information, payment terms, warranty terms, legal notices, and signature settings have been completed and confirmed.</p>
                   <p><span class="cb-missing">DRAFT — NOT READY FOR SIGNATURE</span></p>
                 </div>
               </section>
@@ -864,7 +935,7 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
-                  <div class="cb-legal-banner" id="cbLegalBanner" hidden></div>
+                  <div class="cb-legal-banner owner-only no-print" id="cbLegalBanner" hidden></div>
 
                   <div class="cb-subhead">Identity</div>
                   <div class="cb-meta-grid">
@@ -910,7 +981,7 @@
                     <div class="cb-field"><span class="k">Default Contract Language</span><div class="v" id="cbContractLang">—</div></div>
                   </div>
 
-                  <p id="cbContractorMissing"></p>
+                  <p id="cbContractorMissing" class="owner-only no-print"></p>
                 </div>
               </section>
 
@@ -950,9 +1021,16 @@
                     <div class="cb-field"><span class="k">Zip</span><div class="v" id="cbPropZip">—</div></div>
                     <div class="cb-field"><span class="k">Property address</span><div class="v" id="cbPropertyDisplay">—</div></div>
                   </div>
-                  <div class="cb-editor">
+                  <div class="cb-proposed-block" id="cbPropProposedWrap" hidden>
+                    <div class="cb-field">
+                      <span class="k">Proposed property address</span>
+                      <div class="v" id="cbPropProposed">—</div>
+                    </div>
+                  </div>
+                  <div class="cb-editor owner-only">
                     <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditAddress"></div>
-                    <label for="cbEditAddress">Project address (meeting edit)</label>
+                    <label for="cbEditAddress">Proposed property address</label>
+                    <p class="cb-draft-note">Local draft only — not saved to the property record.</p>
                     <input id="cbEditAddress" type="text" maxlength="255" autocomplete="off" />
                   </div>
                 </div>
@@ -985,15 +1063,20 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
-                  <div class="cb-field"><div class="v" id="cbScopeDisplay">—</div></div>
-                  <div class="cb-editor">
+                  <div id="cbScopeEmailWarn" class="cb-owner-warn owner-only no-print" hidden>
+                    The current quote text appears to contain estimate or email language and should be replaced with a clear description of the work included, exclusions, materials, allowances, and assumptions before signature.
+                  </div>
+                  <div class="cb-field"><div class="v" id="cbScopeDisplay" style="white-space:pre-wrap;">—</div></div>
+                  <div class="cb-editor owner-only">
                     <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditScope"></div>
-                    <label for="cbEditScope">Scope of work (meeting edit)</label>
+                    <label for="cbEditScope">Proposed scope revisions</label>
+                    <p class="cb-draft-note">Draft notes — not saved to the contract record</p>
                     <textarea id="cbEditScope" maxlength="8000"></textarea>
                   </div>
-                  <div class="cb-editor">
+                  <div class="cb-editor owner-only">
                     <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditExclusions"></div>
-                    <label for="cbEditExclusions">Exclusions (meeting edit)</label>
+                    <label for="cbEditExclusions">Proposed exclusions</label>
+                    <p class="cb-draft-note">Draft notes — not saved to the contract record</p>
                     <textarea id="cbEditExclusions" maxlength="4000"></textarea>
                   </div>
                 </div>
@@ -1013,14 +1096,14 @@
                       <div class="k">Contract Total</div>
                       <div class="v" id="cbPriceLine">—</div>
                     </div>
-                    <div class="cb-summary__item"><div class="k">Deposit</div><div class="v" id="cbSumDeposit">Not configured</div></div>
-                    <div class="cb-summary__item"><div class="k">Progress Payments</div><div class="v" id="cbSumProgress">Not configured</div></div>
-                    <div class="cb-summary__item"><div class="k">Final Payment</div><div class="v" id="cbSumFinal">Not configured</div></div>
-                    <div class="cb-summary__item"><div class="k">Change Orders</div><div class="v" id="cbSumChangeOrders">Not configured</div></div>
-                    <div class="cb-summary__item"><div class="k">Taxes</div><div class="v" id="cbSumTaxes">Not configured</div></div>
-                    <div class="cb-summary__item"><div class="k">Balance</div><div class="v" id="cbSumBalance">Not configured</div></div>
+                    <div class="cb-summary__item"><div class="k">Deposit</div><div class="v" id="cbSumDeposit">Not yet defined</div></div>
+                    <div class="cb-summary__item"><div class="k">Progress Payments</div><div class="v" id="cbSumProgress">Not yet defined</div></div>
+                    <div class="cb-summary__item"><div class="k">Final Payment</div><div class="v" id="cbSumFinal">Not yet defined</div></div>
+                    <div class="cb-summary__item"><div class="k">Change Orders</div><div class="v" id="cbSumChangeOrders">Not yet defined</div></div>
+                    <div class="cb-summary__item"><div class="k">Taxes</div><div class="v" id="cbSumTaxes">Not yet defined</div></div>
+                    <div class="cb-summary__item"><div class="k">Balance</div><div class="v" id="cbSumBalance">Not yet defined</div></div>
                   </div>
-                  <p>The approved contract total comes from the accepted quote / project sale price. Invoice amounts are not used.</p>
+                  <p>The contract total is based on the approved project price.</p>
                 </div>
               </section>
 
@@ -1036,14 +1119,16 @@
                   <p><strong id="cbPayTotalLine">Contract Total: —</strong></p>
                   <p>Payment Schedule: <em id="cbPayScheduleStatus">Missing</em></p>
                   <div id="cbPayScheduleMeta" class="cb-meta-grid" hidden></div>
+                  <div id="cbPayQaWarn" class="cb-owner-warn owner-only no-print" hidden></div>
                   <div id="cbPayScheduleStages" style="margin:10px 0;"></div>
                   <p id="cbPayScheduleHint"><span class="cb-missing">Payment stages and amounts must be confirmed and must total the approved contract price before signature.</span></p>
-                  <div class="cb-editor">
+                  <div class="cb-editor owner-only">
                     <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditPaymentNotes"></div>
-                    <label for="cbEditPaymentNotes">Payment schedule notes (meeting edit)</label>
+                    <label for="cbEditPaymentNotes">Draft payment notes</label>
+                    <p class="cb-draft-note">Local draft only — not saved to the payment schedule.</p>
                     <textarea id="cbEditPaymentNotes" maxlength="2000"></textarea>
                   </div>
-                  <p id="cbPaymentNotesDisplay" class="cb-field" style="margin-top:10px;"></p>
+                  <p id="cbPaymentNotesDisplay" class="cb-field owner-only no-print" style="margin-top:10px;"></p>
                 </div>
               </section>
 
@@ -1057,14 +1142,15 @@
                 </button>
                 <div class="cb-article__body">
                   <div class="cb-meta-grid">
-                    <div class="cb-field"><span class="k">Estimated start</span><div class="v" id="cbStartDisplay">—</div></div>
-                    <div class="cb-field"><span class="k">Estimated completion</span><div class="v" id="cbDueDisplay">—</div></div>
+                    <div class="cb-field"><span class="k">Estimated start date</span><div class="v" id="cbStartDisplay">To be confirmed</div></div>
+                    <div class="cb-field"><span class="k">Estimated completion date</span><div class="v" id="cbDueDisplay">To be confirmed</div></div>
                   </div>
-                  <div class="cb-editor">
+                  <p>Dates are estimates and may be adjusted by mutual agreement, site conditions, material availability, approved changes, or events outside either party's reasonable control.</p>
+                  <div class="cb-editor owner-only">
                     <label for="cbEditStart">Estimated start date</label>
                     <input id="cbEditStart" type="date" />
                   </div>
-                  <div class="cb-editor">
+                  <div class="cb-editor owner-only">
                     <label for="cbEditDue">Estimated completion date</label>
                     <input id="cbEditDue" type="date" />
                   </div>
@@ -1080,13 +1166,13 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
-                  <p>Changes to the approved scope, price, or schedule must be documented and confirmed before additional work proceeds. Formal change-order workflow will be attached before signature.</p>
+                  <p>Any work outside the approved scope must be documented and approved before the additional work begins. Approved changes may affect the contract price and project schedule.</p>
                   <p><strong>Customer responsibilities</strong></p>
                   <ul>
                     <li>Provide timely access to the property for scheduled work.</li>
                     <li>Make selections and decisions required to keep the project on schedule.</li>
                     <li>Disclose known site conditions relevant to the work.</li>
-                    <li>Pay according to the confirmed payment schedule once configured.</li>
+                    <li>Pay according to the confirmed payment schedule.</li>
                   </ul>
                   <p><strong>Contractor responsibilities</strong></p>
                   <ul>
@@ -1095,7 +1181,7 @@
                     <li>Maintain professional jobsite conduct and cleanup standards for work performed.</li>
                   </ul>
                   <p><strong>Delays and concealed conditions</strong></p>
-                  <p>Hidden or unforeseen conditions may affect schedule and price. Material delays outside either party’s control may require schedule adjustment. Final delay language will follow the applicable state module later.</p>
+                  <p>Hidden or unforeseen conditions may affect schedule and price. Material delays outside either party’s control may require schedule adjustment.</p>
                 </div>
               </section>
 
@@ -1114,11 +1200,11 @@
                     <div class="cb-field"><span class="k">Warranty Length</span><div class="v" id="cbWarrantyLength">—</div></div>
                     <div class="cb-field"><span class="k">Warranty Description</span><div class="v" id="cbWarrantyDescription">—</div></div>
                   </div>
-                  <p id="cbWarrantyDisplay">Warranty terms are not yet configured.</p>
-                  <p><span class="cb-missing">State-required terms and notices must be added before signature.</span></p>
-                  <div class="cb-editor">
+                  <p id="cbWarrantyDisplay">Warranty terms have not yet been confirmed.</p>
+                  <div class="cb-editor owner-only">
                     <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditWarranty"></div>
-                    <label for="cbEditWarranty">Warranty notes (meeting edit)</label>
+                    <label for="cbEditWarranty">Draft warranty notes</label>
+                    <p class="cb-draft-note">Local draft only — not saved to the warranty record.</p>
                     <textarea id="cbEditWarranty" maxlength="2000"></textarea>
                   </div>
                 </div>
@@ -1136,17 +1222,13 @@
                   <div class="cb-meta-grid">
                     <div class="cb-field"><span class="k">State legal notices</span><div class="v" id="cbLegalNoticesStatus">Missing</div></div>
                   </div>
-                  <p id="cbLegalNoticesHint"><span class="cb-missing">No legal notices have been configured.</span></p>
+                  <p id="cbLegalNoticesHint"><span class="cb-missing">No legal notices have been added yet.</span></p>
                   <div id="cbLegalNoticesList" style="margin:10px 0;"></div>
-                  <p id="cbTermsDisplay">—</p>
-                  <div class="cb-editor">
+                  <p id="cbTermsDisplay" class="owner-only no-print" hidden>—</p>
+                  <div class="cb-editor owner-only">
                     <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditTerms"></div>
                     <label for="cbEditTerms">Meeting notes (local only — not legal notices)</label>
                     <textarea id="cbEditTerms" maxlength="4000"></textarea>
-                  </div>
-                  <div style="margin-top:14px;">
-                    <p><strong>Required-information checklist</strong></p>
-                    <ul id="cbRequiredList"></ul>
                   </div>
                 </div>
               </section>
@@ -1165,13 +1247,13 @@
                     <div class="cb-field"><span class="k">Signature request</span><div class="v" id="cbSignatureRequestStatus">Not Requested</div></div>
                   </div>
                   <div class="cb-sign-grid">
-                    <div class="cb-sign-box">
-                      <strong>Customer Signature</strong>
-                      Signature unavailable in draft preview
+                    <div class="cb-sign-box is-placeholder">
+                      <strong>Customer signature</strong>
+                      Available after the contract is finalized for signature.
                     </div>
-                    <div class="cb-sign-box">
-                      <strong>Contractor Signature</strong>
-                      Signature unavailable in draft preview
+                    <div class="cb-sign-box is-placeholder">
+                      <strong>Contractor signature</strong>
+                      Available after the contract is finalized for signature.
                     </div>
                   </div>
                 </div>
