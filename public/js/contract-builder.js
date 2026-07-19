@@ -5,10 +5,29 @@
   const QUOTE_EDIT_API = "/.netlify/functions/get-tenant-quote-edit";
   const BRANDING_API = "/.netlify/functions/get-tenant-branding";
   const LEGAL_PROFILE_API = "/.netlify/functions/tenant-legal-profile";
+  const LEGAL_NOTICES_API = "/.netlify/functions/tenant-contract-legal-notices";
   const CONTRACT_SETUP_API = "/.netlify/functions/project-contract-setup";
   const PAYMENT_SCHEDULE_API = "/.netlify/functions/project-contract-payment-schedule";
   const DEFAULT_CURRENCY = "USD";
   const APPROVED_QUOTE_STATUSES = new Set(["accepted", "approved"]);
+
+  /** Display order for tenant legal notice fields (read-only). */
+  const LEGAL_NOTICE_FIELDS = [
+    { key: "contract_notice", label: "Contract Notice" },
+    { key: "payment_notice", label: "Payment Notice" },
+    { key: "change_order_notice", label: "Change Order Notice" },
+    { key: "cancellation_notice", label: "Cancellation Notice" },
+    { key: "warranty_notice", label: "Warranty Notice" },
+    { key: "limitation_of_liability", label: "Limitation of Liability" },
+    { key: "permit_notice", label: "Permit Notice" },
+    { key: "site_conditions_notice", label: "Site Conditions Notice" },
+    { key: "cleanup_notice", label: "Cleanup Notice" },
+    { key: "material_notice", label: "Material Notice" },
+    { key: "dispute_notice", label: "Dispute Notice" },
+    { key: "force_majeure_notice", label: "Force Majeure" },
+    { key: "governing_law_notice", label: "Governing Law" },
+    { key: "additional_terms", label: "Additional Terms" },
+  ];
 
   /** Browser-memory-only draft edits. Never persist. */
   let sourceSnapshot = null;
@@ -163,7 +182,15 @@
     return (parts[0][0] + parts[1][0]).toUpperCase();
   }
 
-  function buildSource(project, quote, branding, legalBundle, setupBundle, scheduleBundle) {
+  function buildSource(
+    project,
+    quote,
+    branding,
+    legalBundle,
+    setupBundle,
+    scheduleBundle,
+    legalNoticesBundle
+  ) {
     const currency = String(quote?.currency || DEFAULT_CURRENCY).trim() || DEFAULT_CURRENCY;
     const contractTotal = resolveContractTotal(project, quote);
     const address = String(quote?.project_address || quote?.job_site || "").trim();
@@ -223,6 +250,13 @@
         readiness: null,
         source: null,
       },
+      legalNotices: legalNoticesBundle || {
+        available: false,
+        loadError: null,
+        forbidden: false,
+        notices: null,
+        readiness: { status: "missing" },
+      },
     };
   }
 
@@ -254,6 +288,110 @@
     return String(setupBundle?.readiness?.signature_method || "").toLowerCase() === "configured";
   }
 
+  function isPlainNoticesObject(value) {
+    return value != null && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function normalizeLegalNoticeText(raw) {
+    if (raw == null) return "";
+    if (typeof raw !== "string") return "";
+    return raw.trim();
+  }
+
+  /** Ordered populated notices from the 14 approved fields only. */
+  function normalizeLegalNoticesPopulated(notices) {
+    if (!isPlainNoticesObject(notices)) return [];
+    const rows = [];
+    for (const field of LEGAL_NOTICE_FIELDS) {
+      const text = normalizeLegalNoticeText(notices[field.key]);
+      if (!text) continue;
+      rows.push({ label: field.label, text });
+    }
+    return rows;
+  }
+
+  /**
+   * Defensive Contract Builder legal status (display + readiness contribution).
+   * Does not change CH-004A4 backend semantics.
+   */
+  function resolveLegalNoticesEffective(legalNoticesBundle) {
+    const bundle = legalNoticesBundle || {};
+    const missingCopy = "No legal notices have been configured.";
+    const draftCopy = "Legal notices are still being prepared.";
+    const reviewCopy =
+      "Legal notices require review before they can be considered configured.";
+
+    if (bundle.loadError || bundle.forbidden) {
+      return {
+        effectiveStatus: "missing",
+        contribution: "missing",
+        label: "Missing",
+        hint: missingCopy,
+        rows: [],
+      };
+    }
+
+    const apiStatus = String(bundle.readiness?.status ?? "missing")
+      .trim()
+      .toLowerCase();
+    const noticesOk = isPlainNoticesObject(bundle.notices);
+    const rows = normalizeLegalNoticesPopulated(bundle.notices);
+    const hasPopulated = rows.length > 0;
+
+    if (apiStatus !== "missing" && apiStatus !== "draft" && apiStatus !== "configured") {
+      return {
+        effectiveStatus: "missing",
+        contribution: "missing",
+        label: "Missing",
+        hint: missingCopy,
+        rows: [],
+      };
+    }
+
+    if (apiStatus === "missing") {
+      return {
+        effectiveStatus: "missing",
+        contribution: "missing",
+        label: "Missing",
+        hint: missingCopy,
+        rows: [],
+      };
+    }
+
+    if (apiStatus === "draft") {
+      return {
+        effectiveStatus: "draft",
+        contribution: "draft",
+        label: "Draft",
+        hint: draftCopy,
+        rows,
+      };
+    }
+
+    // apiStatus === "configured"
+    if (!noticesOk || !hasPopulated) {
+      return {
+        effectiveStatus: "draft",
+        contribution: "draft",
+        label: "Draft",
+        hint: reviewCopy,
+        rows: noticesOk ? rows : [],
+      };
+    }
+
+    return {
+      effectiveStatus: "configured",
+      contribution: "configured",
+      label: "Configured ✓",
+      hint: null,
+      rows,
+    };
+  }
+
+  function legalNoticesConfigured(legalNoticesBundle) {
+    return resolveLegalNoticesEffective(legalNoticesBundle).contribution === "configured";
+  }
+
   function sectionStatusLabel(configured) {
     return configured ? "Configured" : "Missing";
   }
@@ -263,6 +401,10 @@
     if (status === "configured") return "Configured ✓";
     if (status === "draft") return "Draft";
     return "Missing";
+  }
+
+  function legalNoticesStatusLabel(legalNoticesBundle) {
+    return resolveLegalNoticesEffective(legalNoticesBundle).label;
   }
 
   function signatureMethodLabel(setupBundle) {
@@ -279,24 +421,29 @@
   function overallContractReadiness(source) {
     const setup = source?.contractSetup;
     const schedule = source?.paymentSchedule;
+    const legalNotices = source?.legalNotices;
     const propOk = propertyConfigured(setup);
     const warOk = warrantyConfigured(setup);
     const payOk = paymentConfigured(schedule);
     const sigOk = signatureConfigured(setup);
-    if (propOk && warOk && payOk && sigOk) return "configured";
+    const legalEffective = resolveLegalNoticesEffective(legalNotices);
+    const legalOk = legalEffective.contribution === "configured";
+    if (propOk && warOk && payOk && sigOk && legalOk) return "configured";
 
     const propRaw = String(setup?.readiness?.project_address || "missing").toLowerCase();
     const warRaw = String(setup?.readiness?.warranty || "missing").toLowerCase();
     const payRaw = String(schedule?.readiness?.status || "missing").toLowerCase();
-    const sigRaw = String(setup?.readiness?.signature_method || "missing").toLowerCase();
+    const legalRaw = legalEffective.contribution;
     const anyPartial =
       propRaw === "needs_confirmation" ||
       warRaw === "needs_confirmation" ||
       payRaw === "draft" ||
+      legalRaw === "draft" ||
       propOk ||
       warOk ||
       payOk ||
-      sigOk;
+      sigOk ||
+      legalOk;
     return anyPartial ? "draft" : "missing";
   }
 
@@ -317,6 +464,9 @@
       return signatureConfigured(source.contractSetup) ? "available" : "missing";
     }
     if (kind === "legal_notices") {
+      const st = resolveLegalNoticesEffective(source.legalNotices).contribution;
+      if (st === "configured") return "available";
+      if (st === "draft") return "needs_confirmation";
       return "missing";
     }
     return "missing";
@@ -503,6 +653,7 @@
     const warrantyStatus = readinessMapStatus("warranty", source);
     const paymentStatus = readinessMapStatus("payment", source);
     const signatureStatus = readinessMapStatus("signature", source);
+    const legalNoticesStatus = readinessMapStatus("legal_notices", source);
     const overall = overallContractReadiness(source);
 
     return [
@@ -524,7 +675,7 @@
         status: propertyStatus === "available" ? "available" : address ? "needs_confirmation" : "missing",
       },
       { label: "Payment schedule", status: paymentStatus },
-      { label: "State-required legal notices", status: "missing", note: "Unsupported" },
+      { label: "State-required legal notices", status: legalNoticesStatus },
       { label: "Warranty terms", status: warrantyStatus },
       { label: "Signature method", status: signatureStatus },
       {
@@ -628,9 +779,15 @@
         next.textContent = "Confirm warranty terms in contract setup before signature readiness.";
       } else if (!signatureConfigured(source.contractSetup)) {
         next.textContent = "Configure the signature method in contract setup before signature readiness.";
+      } else if (!legalNoticesConfigured(source.legalNotices)) {
+        const legalSt = resolveLegalNoticesEffective(source.legalNotices).contribution;
+        next.textContent =
+          legalSt === "draft"
+            ? "Confirm tenant legal notices before signature readiness."
+            : "Configure and confirm tenant legal notices before signature readiness.";
       } else {
         next.textContent =
-          "Core setup sections are configured. State legal notices remain unsupported until a later phase.";
+          "All required sections are configured. Contract generation remains unavailable in this phase.";
       }
     }
   }
@@ -952,7 +1109,7 @@
     renderPaymentScheduleSection(source);
     renderWarrantySection(source, edits);
     renderSignatureSection(source);
-    setText("cbLegalNoticesStatus", "Unsupported");
+    renderLegalNoticesSection(source);
 
     const payNotes = String(edits.paymentNotes || "").trim();
     const payNotesEl = $("cbPaymentNotesDisplay");
@@ -965,6 +1122,41 @@
     setText("cbTermsDisplay", terms || "Additional general terms are not yet configured.");
 
     renderReadiness(source, edits);
+  }
+
+  function renderLegalNoticesSection(source) {
+    const effective = resolveLegalNoticesEffective(source.legalNotices);
+    const statusEl = $("cbLegalNoticesStatus");
+    if (statusEl) statusEl.textContent = effective.label;
+
+    const hint = $("cbLegalNoticesHint");
+    const listEl = $("cbLegalNoticesList");
+
+    if (hint) {
+      if (effective.hint) {
+        hint.hidden = false;
+        hint.innerHTML = `<span class="cb-missing">${escapeHtml(effective.hint)}</span>`;
+      } else {
+        hint.hidden = true;
+        hint.innerHTML = "";
+      }
+    }
+
+    if (listEl) {
+      if (!effective.rows.length) {
+        listEl.innerHTML = "";
+      } else {
+        listEl.innerHTML = effective.rows
+          .map(
+            (row) =>
+              `<div class="cb-field" style="margin-bottom:10px;">` +
+              `<span class="k">${escapeHtml(row.label)}</span>` +
+              `<div class="v" style="white-space:pre-wrap;">${escapeHtml(row.text)}</div>` +
+              `</div>`
+          )
+          .join("");
+      }
+    }
   }
 
   function renderPaymentScheduleSection(source) {
@@ -1481,19 +1673,28 @@
 
     const setupQs =
       `project_id=${encodeURIComponent(projectId)}&quote_id=${encodeURIComponent(quoteId)}`;
-    const [setupRes, scheduleRes] = await Promise.all([
+    const [setupRes, scheduleRes, legalNoticesRes] = await Promise.all([
       fetchJson(`${CONTRACT_SETUP_API}?${setupQs}`),
       fetchJson(`${PAYMENT_SCHEDULE_API}?${setupQs}`),
+      fetchJson(LEGAL_NOTICES_API),
     ]);
 
-    if (setupRes.status === 403 || scheduleRes.status === 403) {
+    if (
+      setupRes.status === 403 ||
+      scheduleRes.status === 403 ||
+      legalNoticesRes.status === 403
+    ) {
       showError(
         "Contract Builder",
         "Owner or admin membership is required to open Contract Builder readiness data."
       );
       return;
     }
-    if (setupRes.status === 401 || scheduleRes.status === 401) {
+    if (
+      setupRes.status === 401 ||
+      scheduleRes.status === 401 ||
+      legalNoticesRes.status === 401
+    ) {
       showError("Contract Builder", "Sign in to open Contract Builder.");
       return;
     }
@@ -1541,6 +1742,26 @@
       scheduleBundle.readiness = { status: "missing" };
     }
 
+    let legalNoticesBundle = {
+      available: false,
+      loadError: null,
+      forbidden: false,
+      notices: null,
+      readiness: { status: "missing" },
+    };
+    if (legalNoticesRes.ok && legalNoticesRes.data?.ok === true) {
+      legalNoticesBundle = {
+        available: true,
+        loadError: null,
+        forbidden: false,
+        notices: legalNoticesRes.data.notices || null,
+        readiness: legalNoticesRes.data.readiness || { status: "missing" },
+      };
+    } else if (legalNoticesRes.status !== 404) {
+      legalNoticesBundle.loadError = "unavailable";
+      legalNoticesBundle.readiness = { status: "missing" };
+    }
+
     const contractTotal = resolveContractTotal(project, quote);
     const customerName = String(
       project.clientName || project.client_name || quote.client_name || ""
@@ -1559,7 +1780,8 @@
       branding,
       legalBundle,
       setupBundle,
-      scheduleBundle
+      scheduleBundle,
+      legalNoticesBundle
     );
     draftEdits = cloneEdits(sourceSnapshot);
     const liveAddress = formatPropertyLine(setupBundle.setup);

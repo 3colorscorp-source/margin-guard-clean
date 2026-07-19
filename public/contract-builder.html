@@ -1134,13 +1134,14 @@
                 </button>
                 <div class="cb-article__body">
                   <div class="cb-meta-grid">
-                    <div class="cb-field"><span class="k">State legal notices</span><div class="v" id="cbLegalNoticesStatus">Unsupported</div></div>
+                    <div class="cb-field"><span class="k">State legal notices</span><div class="v" id="cbLegalNoticesStatus">Missing</div></div>
                   </div>
+                  <p id="cbLegalNoticesHint"><span class="cb-missing">No legal notices have been configured.</span></p>
+                  <div id="cbLegalNoticesList" style="margin:10px 0;"></div>
                   <p id="cbTermsDisplay">—</p>
-                  <p><span class="cb-missing">State-required terms and notices must be added before signature.</span></p>
                   <div class="cb-editor">
                     <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditTerms"></div>
-                    <label for="cbEditTerms">Additional terms (meeting edit)</label>
+                    <label for="cbEditTerms">Meeting notes (local only — not legal notices)</label>
                     <textarea id="cbEditTerms" maxlength="4000"></textarea>
                   </div>
                   <div style="margin-top:14px;">
