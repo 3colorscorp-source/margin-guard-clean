@@ -357,6 +357,18 @@ async function resolveRemainingBalanceEmailContext(invoice, body) {
     remainingProjectBalance = invoiceBalanceDue;
   }
 
+  // Remaining Balance invoices are the project remainder. If the payment ledger sum
+  // disagrees with this invoice's due amount, anchor the project summary to the invoice
+  // so email matches the public Remaining Balance page (contract - invoice = paid).
+  if (
+    invoiceBalanceDue > 0.005 &&
+    projectContractTotal > invoiceBalanceDue + 0.005 &&
+    Math.abs(remainingProjectBalance - invoiceBalanceDue) > 0.02
+  ) {
+    remainingProjectBalance = invoiceBalanceDue;
+    projectPaidToDate = Math.max(roundMoney(projectContractTotal - remainingProjectBalance), 0);
+  }
+
   return {
     projectContractTotal: roundMoney(projectContractTotal),
     projectPaidToDate: roundMoney(projectPaidToDate),
@@ -646,6 +658,13 @@ function validateCanonicalInvoiceEmail(canonical) {
     if (!(canonical.remaining_balance > 0.005)) return fail("remaining_balance_remaining_balance");
     if (moneyLooksZero(canonical.paid_to_date) && canonical.project_paid_to_date > 0.005) {
       return fail("remaining_balance_legacy_paid_zero");
+    }
+    // Email project remaining must agree with this Remaining Balance invoice amount.
+    if (
+      Math.abs(Number(canonical.remaining_project_balance) - Number(canonical.invoice_amount)) > 0.02 &&
+      Math.abs(Number(canonical.remaining_project_balance) - Number(canonical.balance_due)) > 0.02
+    ) {
+      return fail("remaining_balance_project_remaining_mismatch");
     }
     const invoiceAmountF = formatMoney(canonical.invoice_amount);
     const dueF = formatMoney(canonical.amount_due_on_this_invoice);
