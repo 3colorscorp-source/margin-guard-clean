@@ -9,6 +9,17 @@
     .ln-page .ln-hero { margin-bottom: 12px; }
     .ln-page .ln-hero h2 { margin: 0 0 6px; font-size: clamp(1.25rem, 2.2vw, 1.55rem); }
     .ln-page .ln-hero .sub { margin: 0; max-width: 68ch; line-height: 1.45; color: rgba(232, 238, 252, 0.78); }
+    .ln-disclaimer {
+      margin: 12px 0 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      background: rgba(148, 163, 184, 0.08);
+      font-size: 12px;
+      line-height: 1.45;
+      color: rgba(226, 232, 240, 0.88);
+      max-width: 78ch;
+    }
     .ln-status-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -47,11 +58,42 @@
     .ln-notice.ok { border: 1px solid rgba(34, 197, 94, 0.35); background: rgba(34, 197, 94, 0.08); }
     .ln-notice.warn { border: 1px solid rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.08); }
     .ln-notice.err { border: 1px solid rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.08); }
+    .ln-notice.info { border: 1px solid rgba(96, 165, 250, 0.35); background: rgba(96, 165, 250, 0.08); }
     .ln-notice[hidden],
     .ln-access-denied[hidden],
     .ln-workspace[hidden],
-    .ln-loading[hidden] { display: none !important; }
+    .ln-loading[hidden],
+    .ln-unpublished[hidden],
+    .ln-bulk[hidden] { display: none !important; }
+    .ln-unpublished {
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      background: rgba(245, 158, 11, 0.1);
+      font-size: 13px;
+      line-height: 1.45;
+      color: #fde68a;
+    }
     .ln-access-denied { padding: 28px 18px; text-align: center; }
+    .ln-bulk {
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .ln-bulk .ln-bulk-hint {
+      flex: 1 1 220px;
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.4;
+      color: rgba(232, 238, 252, 0.7);
+    }
     .ln-section {
       margin-bottom: 14px;
       padding: 14px;
@@ -59,17 +101,56 @@
       border: 1px solid rgba(255, 255, 255, 0.08);
       background: rgba(255, 255, 255, 0.02);
     }
+    .ln-section.is-editing {
+      border-color: rgba(96, 165, 250, 0.45);
+      background: rgba(96, 165, 250, 0.06);
+    }
+    .ln-section-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
     .ln-section h3 {
-      margin: 0 0 4px;
+      margin: 0;
       font-size: 0.95rem;
       font-weight: 750;
     }
+    .ln-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .ln-badge.default { color: #bbf7d0; border-color: rgba(34, 197, 94, 0.35); background: rgba(34, 197, 94, 0.12); }
+    .ln-badge.customized { color: #bfdbfe; border-color: rgba(96, 165, 250, 0.35); background: rgba(96, 165, 250, 0.12); }
+    .ln-badge.disabled { color: #cbd5e1; border-color: rgba(148, 163, 184, 0.35); background: rgba(148, 163, 184, 0.12); }
+    .ln-badge.empty { color: #fde68a; border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.12); }
     .ln-section .ln-desc {
       margin: 0 0 10px;
       font-size: 12px;
       line-height: 1.45;
       color: rgba(232, 238, 252, 0.68);
       max-width: 72ch;
+    }
+    .ln-enable-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin: 0 0 10px;
+      font-size: 13px;
+      line-height: 1.35;
+      color: rgba(241, 245, 249, 0.92);
+    }
+    .ln-enable-row input {
+      margin-top: 2px;
+      flex: 0 0 auto;
     }
     .ln-section textarea {
       width: 100%;
@@ -81,6 +162,10 @@
       border-radius: 12px;
       box-sizing: border-box;
     }
+    .ln-section textarea[readonly] {
+      opacity: 0.92;
+      cursor: default;
+    }
     .ln-counter {
       margin-top: 6px;
       font-size: 12px;
@@ -88,6 +173,14 @@
       text-align: right;
     }
     .ln-counter.is-over { color: #fca5a5; }
+    .ln-counter[hidden] { display: none !important; }
+    .ln-card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .ln-card-actions .btn[hidden] { display: none !important; }
     .ln-actions {
       display: flex;
       flex-wrap: wrap;
@@ -105,6 +198,9 @@
       <div class="card-inner">
         <h2>Legal Notices</h2>
         <p class="sub">Configure the standard legal language that will automatically be available for future customer contracts.</p>
+        <p class="ln-disclaimer" id="lnOwnerDisclaimer">
+          Margin Guard provides editable starting templates for operational convenience. Each business is responsible for reviewing and adapting the language to its services, policies, jurisdiction, and professional legal advice.
+        </p>
       </div>
     </div>
 
@@ -135,6 +231,15 @@
           <div class="label">Confirmed at</div>
           <div class="value" id="lnConfirmedAt">—</div>
         </div>
+      </div>
+
+      <div id="lnUnpublished" class="ln-unpublished" hidden role="status">
+        Draft changes have not been published to contracts.
+      </div>
+
+      <div id="lnBulk" class="ln-bulk" hidden>
+        <p class="ln-bulk-hint" id="lnBulkHint"></p>
+        <button type="button" class="btn" id="lnBulkDefaults"></button>
       </div>
 
       <div class="card">

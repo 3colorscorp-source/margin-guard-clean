@@ -312,12 +312,13 @@
 
   /**
    * Defensive Contract Builder legal status (display + readiness contribution).
-   * Does not change CH-004A4 backend semantics.
+   * CH-004A7B: consumes confirmed snapshot (effective_for_contracts) only.
    */
   function resolveLegalNoticesEffective(legalNoticesBundle) {
     const bundle = legalNoticesBundle || {};
     const missingCopy = "No legal notices have been added yet.";
-    const draftCopy = "Legal notices are still being prepared.";
+    const draftCopy =
+      "Legal notices are still being prepared. Draft changes are not published to contracts.";
     const reviewCopy =
       "Legal notices require review before they can be considered ready.";
 
@@ -331,60 +332,60 @@
       };
     }
 
-    const apiStatus = String(bundle.readiness?.status ?? "missing")
-      .trim()
-      .toLowerCase();
-    const noticesOk = isPlainNoticesObject(bundle.notices);
-    const rows = normalizeLegalNoticesPopulated(bundle.notices);
-    const hasPopulated = rows.length > 0;
-
-    if (apiStatus !== "missing" && apiStatus !== "draft" && apiStatus !== "configured") {
+    const effective = bundle.effective_for_contracts;
+    if (
+      effective &&
+      effective.notices &&
+      typeof effective.notices === "object" &&
+      !Array.isArray(effective.notices) &&
+      effective.enabled &&
+      typeof effective.enabled === "object" &&
+      !Array.isArray(effective.enabled)
+    ) {
+      const rows = [];
+      for (const field of LEGAL_NOTICE_FIELDS) {
+        const enabled = effective.enabled[field.key] === true;
+        const text = normalizeLegalNoticeText(effective.notices[field.key]);
+        if (!enabled || !text) continue;
+        rows.push({ label: field.label, text });
+      }
+      if (!rows.length) {
+        return {
+          effectiveStatus: "draft",
+          contribution: "draft",
+          label: "Draft",
+          hint: reviewCopy,
+          rows: [],
+        };
+      }
       return {
-        effectiveStatus: "missing",
-        contribution: "missing",
-        label: "Missing",
-        hint: missingCopy,
-        rows: [],
-      };
-    }
-
-    if (apiStatus === "missing") {
-      return {
-        effectiveStatus: "missing",
-        contribution: "missing",
-        label: "Missing",
-        hint: missingCopy,
-        rows: [],
-      };
-    }
-
-    if (apiStatus === "draft") {
-      return {
-        effectiveStatus: "draft",
-        contribution: "draft",
-        label: "Draft",
-        hint: draftCopy,
+        effectiveStatus: "configured",
+        contribution: "configured",
+        label: "Configured ✓",
+        hint: null,
         rows,
       };
     }
 
-    // apiStatus === "configured"
-    if (!noticesOk || !hasPopulated) {
+    // No usable confirmed snapshot
+    const apiStatus = String(bundle.readiness?.status ?? "missing")
+      .trim()
+      .toLowerCase();
+    if (apiStatus === "missing" && !bundle.notices) {
       return {
-        effectiveStatus: "draft",
-        contribution: "draft",
-        label: "Draft",
-        hint: reviewCopy,
-        rows: noticesOk ? rows : [],
+        effectiveStatus: "missing",
+        contribution: "missing",
+        label: "Missing",
+        hint: missingCopy,
+        rows: [],
       };
     }
-
     return {
-      effectiveStatus: "configured",
-      contribution: "configured",
-      label: "Configured ✓",
-      hint: null,
-      rows,
+      effectiveStatus: "draft",
+      contribution: "draft",
+      label: "Draft",
+      hint: draftCopy,
+      rows: [],
     };
   }
 
@@ -1887,6 +1888,8 @@
       forbidden: false,
       notices: null,
       readiness: { status: "missing" },
+      effective_for_contracts: null,
+      has_unconfirmed_changes: false,
     };
     if (legalNoticesRes.ok && legalNoticesRes.data?.ok === true) {
       legalNoticesBundle = {
@@ -1895,6 +1898,10 @@
         forbidden: false,
         notices: legalNoticesRes.data.notices || null,
         readiness: legalNoticesRes.data.readiness || { status: "missing" },
+        effective_for_contracts:
+          legalNoticesRes.data.effective_for_contracts || null,
+        has_unconfirmed_changes:
+          legalNoticesRes.data.has_unconfirmed_changes === true,
       };
     } else if (legalNoticesRes.status !== 404) {
       legalNoticesBundle.loadError = "unavailable";
