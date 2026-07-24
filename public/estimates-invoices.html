@@ -450,6 +450,21 @@
   }
   #hubRemainingBalanceInvoiceModal .modal-body {
     overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  #hubRemainingBalanceInvoiceModal .hub-rb-feedback {
+    flex: 0 0 auto;
+    margin: 0 18px 10px;
+    padding: 10px 12px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.45;
+    max-height: none;
+  }
+  #hubRemainingBalanceInvoiceModal .modal-footer {
+    flex: 0 0 auto;
   }
   #hubRemainingBalanceInvoiceModal .hub-rb-summary-grid {
     display: grid;
@@ -1755,8 +1770,8 @@
           <textarea id="hubRbMessage" rows="5"></textarea>
         </div>
         <p class="hub-rb-safety-line">Draft only · No email will be sent · No payment will be recorded</p>
-        <div class="notice" id="hubRemainingBalanceInvoiceFeedback" style="display:none;"></div>
       </div>
+      <div class="notice hub-rb-feedback" id="hubRemainingBalanceInvoiceFeedback" style="display:none;" role="alert" aria-live="assertive"></div>
       <div class="modal-footer hub-reminder-actions">
         <button type="button" class="btn" id="btnHubRemainingBalanceInvoiceCancel">Cancel</button>
         <button type="button" class="btn primary" id="btnHubRemainingBalanceInvoiceConfirm">Create Draft Invoice</button>

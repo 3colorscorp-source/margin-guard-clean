@@ -146,7 +146,7 @@ function normalizeInvoiceLabel(raw, { selectedAmount, remainingBalance }) {
 }
 
 const DUPLICATE_PROJECT_PAYMENT_MESSAGE =
-  "A project payment draft invoice already exists for this project/invoice. Review or cancel the existing draft before creating another.";
+  "A project payment invoice already exists for this project. Open or resend the existing invoice, or cancel it before creating another.";
 
 async function findDuplicateProjectPaymentDraft({ tenantId, sourceId }) {
   const tidEnc = encodeURIComponent(String(tenantId));
@@ -176,6 +176,17 @@ async function findDuplicateProjectPaymentDraft({ tenantId, sourceId }) {
     return inv;
   }
   return null;
+}
+
+function formatExistingInvoiceDetail(inv) {
+  if (!inv || typeof inv !== "object") return "";
+  const no = pickStr(inv.invoice_no) || "invoice";
+  const status = normStatus(inv.status) || "draft";
+  const label = pickStr(inv.invoice_label);
+  const amt = finiteMoney(inv.amount, NaN);
+  const amtPart = Number.isFinite(amt) ? ` · $${amt.toFixed(2)}` : "";
+  const labelPart = label ? ` · ${label}` : "";
+  return ` Existing: ${no} · ${status}${labelPart}${amtPart}.`;
 }
 
 function buildProjectPaymentInsert({ source, tenantId, selectedAmount, notesFinal, invoiceLabel }) {
@@ -389,10 +400,19 @@ exports.handler = async (event) => {
       sourceId: sourceInvoiceId
     });
     if (duplicate?.id) {
+      const detail = formatExistingInvoiceDetail(duplicate);
       return json(409, {
         ok: false,
         reason: "duplicate_remaining_balance_draft",
-        error: DUPLICATE_PROJECT_PAYMENT_MESSAGE
+        error: DUPLICATE_PROJECT_PAYMENT_MESSAGE + detail,
+        message: DUPLICATE_PROJECT_PAYMENT_MESSAGE + detail,
+        existing_invoice: {
+          id: String(duplicate.id),
+          invoice_no: pickStr(duplicate.invoice_no),
+          status: normStatus(duplicate.status) || "draft",
+          amount: finiteMoney(duplicate.amount, 0),
+          invoice_label: pickStr(duplicate.invoice_label)
+        }
       });
     }
 

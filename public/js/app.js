@@ -12161,12 +12161,23 @@ window.renderSupervisor = renderSupervisor;
   function formatHubRemainingBalanceInvoiceError(data, status) {
     const reason = String(data?.reason || "").trim();
     const msg = String(data?.message || data?.error || "").trim();
+    const existing = data?.existing_invoice && typeof data.existing_invoice === "object" ? data.existing_invoice : null;
+    if (reason === "duplicate_remaining_balance_draft") {
+      const base =
+        "A project payment invoice already exists for this project. Open or resend the existing invoice, or cancel it before creating another.";
+      if (!existing) return msg || base;
+      const no = String(existing.invoice_no || "").trim() || "invoice";
+      const st = String(existing.status || "draft").trim();
+      const label = String(existing.invoice_label || "").trim();
+      const amt = finiteNumber(existing.amount, NaN);
+      const amtPart = Number.isFinite(amt) ? ` · ${money(amt, loadSettings().currency)}` : "";
+      const labelPart = label ? ` · ${label}` : "";
+      return `${base} Existing: ${no} · ${st}${labelPart}${amtPart}.`;
+    }
     const map = {
       no_remaining_balance: "No remaining balance on this project.",
       manual_amount_exceeds_remaining: msg || "Manual amount exceeds remaining balance.",
       invalid_invoice_label: msg || "Select a valid Payment Stage / Invoice Type.",
-      duplicate_remaining_balance_draft:
-        "A project payment draft invoice already exists for this project/invoice. Review or cancel the existing draft before creating another.",
       quote_id_unique_violation:
         "Could not create the project payment draft invoice. Please refresh and try again.",
       insert_unique_violation:
@@ -12197,12 +12208,17 @@ window.renderSupervisor = renderSupervisor;
     if (!message) {
       el.style.display = "none";
       el.textContent = "";
-      el.className = "notice";
+      el.className = "notice hub-rb-feedback";
       return;
     }
     el.style.display = "";
     el.textContent = message;
-    el.className = `notice ${tone === "err" ? "err" : tone === "warn" ? "warn" : "ok"}`;
+    el.className = `notice hub-rb-feedback ${tone === "err" ? "err" : tone === "warn" ? "warn" : "ok"}`;
+    try {
+      el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    } catch (_e) {
+      /* ignore */
+    }
   }
 
   function hubRemainingBalanceInvoiceSyncManualWrap() {
@@ -12390,6 +12406,7 @@ window.renderSupervisor = renderSupervisor;
     if (!ok) {
       return {
         ok: false,
+        error_code: String(data?.reason || data?.error_code || "").trim(),
         message: formatHubRemainingBalanceInvoiceError(data, status)
       };
     }
@@ -13179,8 +13196,8 @@ window.renderSupervisor = renderSupervisor;
     if (row?.rowType === "estimate" && finiteNumber(row?.amount, 0) > 0 && row?.projectStatus !== "completed") return "Send Invoice";
     if (row?.rowType === "invoice" && st === "draft" && finiteNumber(row?.amount, 0) > 0) return "Send Invoice";
     if (["sent", "partial"].includes(st) && bal > 0) return "Invoice balance pending";
-    if (["overdue", "expired"].includes(st) && bal > 0) return "Remaining balance due";
-    if (bal > 0) return "Remaining balance due";
+    if (["overdue", "expired"].includes(st) && bal > 0) return "Project balance due";
+    if (bal > 0) return "Project balance due";
     return "Completed";
   }
 
@@ -13241,7 +13258,9 @@ window.renderSupervisor = renderSupervisor;
     }
     const na = getHubRowCollectNextActionLabel(row);
     if (na === "Invoice balance pending") return `Start with: ${name} — ${balStr} invoice balance pending`;
-    if (na === "Remaining balance due") return `Start with: ${name} — ${balStr} remaining balance due`;
+    if (na === "Project balance due" || na === "Remaining balance due") {
+      return `Start with: ${name} — ${balStr} project balance due`;
+    }
     if (na === "Check deposit pending") return `Start with: ${name} — ${balStr} check deposit pending`;
     if (na === "Start project") return `Start with: ${name} — ${balStr} start project`;
     if (na === "Completed") return `Start with: ${name} — ${balStr} (completed)`;
@@ -15356,15 +15375,14 @@ window.renderSupervisor = renderSupervisor;
       return "Remaining balance due";
     }
     if (isProjectPayment) {
-      const label = hubRowInvoiceLabelNormalized(row) || "Progress Payment";
-      if (t <= 0) return `${label} due`;
+      if (t <= 0) return "Project balance due";
       if (pCents >= tCents) return "Paid in full";
-      return `${label} due`;
+      return "Project balance due";
     }
     if (t <= 0) return "Initial deposit due";
     if (pCents <= 0) return "Initial deposit due";
     if (pCents >= tCents) return "Paid in full";
-    return "Remaining balance due";
+    return "Project balance due";
   }
 
   function hubDrawerNextPaymentPlaceholderText(paid, total, row) {
@@ -15394,6 +15412,9 @@ window.renderSupervisor = renderSupervisor;
     if (hubRowIsProjectPaymentInvoice(row)) {
       const label = hubRowInvoiceLabelNormalized(row) || "Progress Payment";
       return `This invoice is a ${label.toLowerCase()} for this project.`;
+    }
+    if (na === "Project balance due") {
+      return "Project balance remains after payments recorded to date.";
     }
     return "Record payments until the remaining invoice balance is zero.";
   }
@@ -17419,7 +17440,10 @@ window.renderSupervisor = renderSupervisor;
             if (!result.ok) {
               hubRemainingBalanceInvoiceSetFeedback(result.message || "Could not create draft invoice.", "err");
               if (confirmBtn) {
-                confirmBtn.disabled = false;
+                const isDuplicate =
+                  result.error_code === "duplicate_remaining_balance_draft" ||
+                  /already exists for this project/i.test(String(result.message || ""));
+                confirmBtn.disabled = !!isDuplicate;
                 confirmBtn.textContent = "Create Draft Invoice";
               }
               return;
