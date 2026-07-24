@@ -466,6 +466,18 @@
   #hubRemainingBalanceInvoiceModal .modal-footer {
     flex: 0 0 auto;
   }
+  #hubRemainingBalanceInvoiceModal #btnHubRemainingBalanceInvoiceConfirm:disabled,
+  #hubRemainingBalanceInvoiceModal #btnHubRemainingBalanceInvoiceConfirm.is-dup-blocked {
+    opacity: 0.48;
+    cursor: not-allowed;
+    filter: grayscale(0.4);
+    box-shadow: none;
+  }
+  #hubRemainingBalanceInvoiceModal #btnHubRemainingBalanceInvoiceConfirm.is-dup-blocked {
+    background: #9aa3ad;
+    border-color: #8a939c;
+    color: #fff;
+  }
   #hubRemainingBalanceInvoiceModal .hub-rb-summary-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;

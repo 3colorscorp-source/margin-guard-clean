@@ -12158,6 +12158,62 @@ window.renderSupervisor = renderSupervisor;
     );
   }
 
+  function hubRemainingBalanceInvoiceMessageIsPristine() {
+    const el = $("hubRbMessage");
+    if (!el) return false;
+    const current = String(el.value || "");
+    const last = String(hubRemainingBalanceInvoiceState.lastGeneratedMessage || "");
+    return !current.trim() || current === last;
+  }
+
+  function hubRemainingBalanceInvoiceApplyGeneratedMessage(row, settings, force) {
+    const el = $("hubRbMessage");
+    if (!el) return;
+    if (!force && !hubRemainingBalanceInvoiceMessageIsPristine()) return;
+    const msg = buildHubRemainingBalanceInvoiceMessage(
+      row || hubRemainingBalanceInvoiceState.row,
+      settings || loadSettings()
+    );
+    el.value = msg;
+    hubRemainingBalanceInvoiceState.lastGeneratedMessage = msg;
+  }
+
+  function hubRemainingBalanceExistingInvoiceStatusLabel(existing) {
+    const raw = String(existing?.status || "draft").trim().toLowerCase() || "draft";
+    const sentAt = String(existing?.sent_at || existing?.sentAt || "").trim();
+    const id = String(existing?.id || "").trim();
+    const no = String(existing?.invoice_no || "").trim().toLowerCase();
+    let hubStatus = "";
+    try {
+      const rows = Array.isArray(lastMergedHubRows) ? lastMergedHubRows : [];
+      const hit = rows.find((r) => {
+        if (id && String(r.serverInvoiceId || "") === id) return true;
+        const rowNo = String(
+          r.invoiceNo || r?.project?.invoice?.invoiceNo || r.hubInvoiceNo || ""
+        )
+          .trim()
+          .toLowerCase();
+        return !!(no && rowNo === no);
+      });
+      if (hit) hubStatus = String(hit.status || "").trim().toLowerCase();
+    } catch (_e) {
+      hubStatus = "";
+    }
+    if (hubStatus === "sent" || hubStatus === "overdue" || hubStatus === "partial") return hubStatus;
+    if (sentAt && (raw === "draft" || raw === "open" || raw === "")) return "sent/draft";
+    return raw;
+  }
+
+  function hubRemainingBalanceExistingInvoiceAmountLabel(amount) {
+    const n = finiteNumber(amount, NaN);
+    if (!Number.isFinite(n)) return "";
+    const cur = String(loadSettings().currency || "USD").trim().toUpperCase();
+    if (cur === "USD" || cur === "$") {
+      return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    return money(n, loadSettings().currency);
+  }
+
   function formatHubRemainingBalanceInvoiceError(data, status) {
     const reason = String(data?.reason || "").trim();
     const msg = String(data?.message || data?.error || "").trim();
@@ -12167,10 +12223,12 @@ window.renderSupervisor = renderSupervisor;
         "A project payment invoice already exists for this project. Open or resend the existing invoice, or cancel it before creating another.";
       if (!existing) return msg || base;
       const no = String(existing.invoice_no || "").trim() || "invoice";
-      const st = String(existing.status || "draft").trim();
+      const st = hubRemainingBalanceExistingInvoiceStatusLabel(existing);
       const label = String(existing.invoice_label || "").trim();
-      const amt = finiteNumber(existing.amount, NaN);
-      const amtPart = Number.isFinite(amt) ? ` · ${money(amt, loadSettings().currency)}` : "";
+      const amtPart = (() => {
+        const formatted = hubRemainingBalanceExistingInvoiceAmountLabel(existing.amount);
+        return formatted ? ` · ${formatted}` : "";
+      })();
       const labelPart = label ? ` · ${label}` : "";
       return `${base} Existing: ${no} · ${st}${labelPart}${amtPart}.`;
     }
@@ -12199,8 +12257,27 @@ window.renderSupervisor = renderSupervisor;
     creating: false,
     contractTotal: 0,
     paidToDate: 0,
-    remainingBalance: 0
+    remainingBalance: 0,
+    lastGeneratedMessage: ""
   };
+
+  function hubRemainingBalanceInvoiceResetConfirmButton() {
+    const btn = $("btnHubRemainingBalanceInvoiceConfirm");
+    if (!btn) return;
+    btn.disabled = false;
+    btn.textContent = "Create Draft Invoice";
+    btn.removeAttribute("title");
+    btn.classList.remove("is-dup-blocked");
+  }
+
+  function hubRemainingBalanceInvoiceBlockConfirmForDuplicate() {
+    const btn = $("btnHubRemainingBalanceInvoiceConfirm");
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = "Already exists";
+    btn.title = "A project payment invoice already exists for this project.";
+    btn.classList.add("is-dup-blocked");
+  }
 
   function hubRemainingBalanceInvoiceSetFeedback(message, tone) {
     const el = $("hubRemainingBalanceInvoiceFeedback");
@@ -12236,14 +12313,11 @@ window.renderSupervisor = renderSupervisor;
       creating: false,
       contractTotal: 0,
       paidToDate: 0,
-      remainingBalance: 0
+      remainingBalance: 0,
+      lastGeneratedMessage: ""
     };
     hubRemainingBalanceInvoiceSetFeedback("");
-    const btn = $("btnHubRemainingBalanceInvoiceConfirm");
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = "Create Draft Invoice";
-    }
+    hubRemainingBalanceInvoiceResetConfirmButton();
   }
 
   async function openHubRemainingBalanceInvoiceModal(row, settings) {
@@ -12282,7 +12356,8 @@ window.renderSupervisor = renderSupervisor;
       creating: false,
       contractTotal: totals.contractTotal,
       paidToDate: totals.paidToDate,
-      remainingBalance: totals.remainingBalance
+      remainingBalance: totals.remainingBalance,
+      lastGeneratedMessage: ""
     };
     if ($("hubRbContractTotal")) {
       $("hubRbContractTotal").textContent = money(totals.contractTotal, cur.currency);
@@ -12301,13 +12376,8 @@ window.renderSupervisor = renderSupervisor;
     }
     hubRemainingBalanceInvoiceSyncManualWrap();
     hubRemainingBalanceInvoiceSyncPaymentStageDefault();
-    if ($("hubRbMessage")) {
-      $("hubRbMessage").value = buildHubRemainingBalanceInvoiceMessage(row, cur);
-    }
-    if (confirmBtn) {
-      confirmBtn.disabled = false;
-      confirmBtn.textContent = "Create Draft Invoice";
-    }
+    hubRemainingBalanceInvoiceApplyGeneratedMessage(row, cur, true);
+    hubRemainingBalanceInvoiceResetConfirmButton();
     return true;
   }
 
@@ -12334,7 +12404,11 @@ window.renderSupervisor = renderSupervisor;
     const amt = hubRemainingBalanceInvoiceSelectedAmount();
     const suggested =
       Number.isFinite(amt) && Math.abs(amt - remaining) <= 0.01 ? "Remaining Balance" : "Progress Payment";
+    const prev = String(select.value || "");
     select.value = suggested;
+    if (prev !== String(select.value || "")) {
+      hubRemainingBalanceInvoiceApplyGeneratedMessage();
+    }
   }
 
   function hubRemainingBalanceInvoiceStageWarning() {
@@ -17406,17 +17480,14 @@ window.renderSupervisor = renderSupervisor;
           const warn = hubRemainingBalanceInvoiceStageWarning();
           if (warn) hubRemainingBalanceInvoiceSetFeedback(warn, "warn");
           else hubRemainingBalanceInvoiceSetFeedback("");
-          if ($("hubRbMessage") && hubRemainingBalanceInvoiceState.row) {
-            $("hubRbMessage").value = buildHubRemainingBalanceInvoiceMessage(
-              hubRemainingBalanceInvoiceState.row,
-              loadSettings()
-            );
-          }
+          hubRemainingBalanceInvoiceApplyGeneratedMessage();
         };
       }
       if ($("btnHubRemainingBalanceInvoiceConfirm")) {
         $("btnHubRemainingBalanceInvoiceConfirm").onclick = () => {
           if (hubRemainingBalanceInvoiceState.creating || !hubRemainingBalanceInvoiceState.row) return;
+          const confirmBtn = $("btnHubRemainingBalanceInvoiceConfirm");
+          if (confirmBtn?.disabled && confirmBtn.classList.contains("is-dup-blocked")) return;
           const row = hubRemainingBalanceInvoiceState.row;
           const validation = hubRemainingBalanceInvoiceValidateClientAmount();
           if (!validation.ok) {
@@ -17428,10 +17499,10 @@ window.renderSupervisor = renderSupervisor;
             hubRemainingBalanceInvoiceSetFeedback(stageWarn, "warn");
           }
           hubRemainingBalanceInvoiceState.creating = true;
-          const confirmBtn = $("btnHubRemainingBalanceInvoiceConfirm");
           if (confirmBtn) {
             confirmBtn.disabled = true;
             confirmBtn.textContent = "Creating…";
+            confirmBtn.classList.remove("is-dup-blocked");
           }
           if (!stageWarn) hubRemainingBalanceInvoiceSetFeedback("");
           void (async () => {
@@ -17439,13 +17510,11 @@ window.renderSupervisor = renderSupervisor;
             hubRemainingBalanceInvoiceState.creating = false;
             if (!result.ok) {
               hubRemainingBalanceInvoiceSetFeedback(result.message || "Could not create draft invoice.", "err");
-              if (confirmBtn) {
-                const isDuplicate =
-                  result.error_code === "duplicate_remaining_balance_draft" ||
-                  /already exists for this project/i.test(String(result.message || ""));
-                confirmBtn.disabled = !!isDuplicate;
-                confirmBtn.textContent = "Create Draft Invoice";
-              }
+              const isDuplicate =
+                result.error_code === "duplicate_remaining_balance_draft" ||
+                /already exists for this project/i.test(String(result.message || ""));
+              if (isDuplicate) hubRemainingBalanceInvoiceBlockConfirmForDuplicate();
+              else hubRemainingBalanceInvoiceResetConfirmButton();
               return;
             }
             const newId = String(result.invoice?.id || result.invoiceId || "").trim();

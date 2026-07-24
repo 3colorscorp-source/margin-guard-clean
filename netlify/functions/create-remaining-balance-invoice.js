@@ -152,7 +152,7 @@ async function findDuplicateProjectPaymentDraft({ tenantId, sourceId }) {
   const tidEnc = encodeURIComponent(String(tenantId));
   const path =
     `invoices?tenant_id=eq.${tidEnc}` +
-    `&select=id,status,amount,notes,invoice_no,invoice_label` +
+    `&select=id,status,amount,notes,invoice_no,invoice_label,sent_at` +
     `&limit=80` +
     `&order=created_at.desc`;
 
@@ -178,13 +178,24 @@ async function findDuplicateProjectPaymentDraft({ tenantId, sourceId }) {
   return null;
 }
 
+function displayStatusForDuplicate(inv) {
+  const status = normStatus(inv?.status) || "draft";
+  const sentAt = pickStr(inv?.sent_at);
+  if (sentAt && (status === "draft" || status === "open" || status === "")) {
+    return "sent/draft";
+  }
+  return status;
+}
+
 function formatExistingInvoiceDetail(inv) {
   if (!inv || typeof inv !== "object") return "";
   const no = pickStr(inv.invoice_no) || "invoice";
-  const status = normStatus(inv.status) || "draft";
+  const status = displayStatusForDuplicate(inv);
   const label = pickStr(inv.invoice_label);
   const amt = finiteMoney(inv.amount, NaN);
-  const amtPart = Number.isFinite(amt) ? ` · $${amt.toFixed(2)}` : "";
+  const amtPart = Number.isFinite(amt)
+    ? ` · $${amt.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : "";
   const labelPart = label ? ` · ${label}` : "";
   return ` Existing: ${no} · ${status}${labelPart}${amtPart}.`;
 }
@@ -410,6 +421,7 @@ exports.handler = async (event) => {
           id: String(duplicate.id),
           invoice_no: pickStr(duplicate.invoice_no),
           status: normStatus(duplicate.status) || "draft",
+          sent_at: pickStr(duplicate.sent_at) || "",
           amount: finiteMoney(duplicate.amount, 0),
           invoice_label: pickStr(duplicate.invoice_label)
         }
