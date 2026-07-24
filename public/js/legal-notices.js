@@ -176,9 +176,10 @@
     const st = String(readiness?.status || "missing")
       .trim()
       .toLowerCase();
-    if (st === "configured") return "Configured ✓";
+    // Display-only labels; API readiness.status values stay configured|draft|missing.
+    if (st === "configured") return "Ready for Contracts";
     if (st === "draft") return "Draft";
-    return "Missing";
+    return "Not set up";
   }
 
   function setDirty(next) {
@@ -283,10 +284,11 @@
   }
 
   function badgeLabel(kind) {
-    if (kind === "disabled") return "Disabled";
-    if (kind === "empty") return "Empty";
-    if (kind === "default") return "Default";
-    return "Customized";
+    // Display-only labels; badge kind keys stay disabled|empty|default|customized.
+    if (kind === "disabled") return "Off for contracts";
+    if (kind === "empty") return "Needs text";
+    if (kind === "default") return "Starting template";
+    return "Custom";
   }
 
   function refreshBadge(key) {
@@ -500,7 +502,7 @@
       const badge = document.createElement("span");
       badge.className = "ln-badge empty";
       badge.id = `ln_badge_${field.key}`;
-      badge.textContent = "Empty";
+      badge.textContent = "Needs text";
       head.appendChild(badge);
       section.appendChild(head);
 
@@ -521,7 +523,7 @@
       });
       enableRow.appendChild(checkbox);
       enableRow.appendChild(
-        document.createTextNode("Include this notice in future contracts")
+        document.createTextNode("Include in contracts")
       );
       section.appendChild(enableRow);
 
