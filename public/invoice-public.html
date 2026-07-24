@@ -817,6 +817,17 @@
       const instrRaw = String(tenantPayment.payment_instructions || "").trim();
       const instrClean = instrRaw
         .split(/\r?\n/)
+        .map((line) => {
+          const t = String(line || "").trim();
+          if (
+            /Payments for labor, materials, approved change orders, deposits, or remaining project balances can be submitting Checks payable to:/i.test(
+              t
+            )
+          ) {
+            return "Payments for labor, materials, approved change orders, deposits, or remaining project balances can be submitted by check payable to Three Colors Corp.";
+          }
+          return line;
+        })
         .filter((line) => {
           const t = String(line || "").trim();
           return (
