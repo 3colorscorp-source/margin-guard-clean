@@ -584,6 +584,20 @@
     return escapeHtml(String(value));
   }
 
+  /**
+   * Strip internal linkage/metadata markers from client-facing Work Details.
+   * Markers remain stored in DB; this is display-only.
+   */
+  function sanitizeClientFacingNotes(raw) {
+    let s = String(raw == null ? "" : raw);
+    s = s.replace(/\[source_invoice:[^\]]*\]/gi, "");
+    s = s.replace(/\[invoice_type:[^\]]*\]/gi, "");
+    s = s.replace(/\[mg_[a-z0-9_]+:[^\]]*\]/gi, "");
+    s = s.replace(/[ \t]+\r?\n/g, "\n");
+    s = s.replace(/\n{3,}/g, "\n\n");
+    return s.trim();
+  }
+
   const PROJECT_PAYMENT_LABELS = {
     "start payment": "Start Payment",
     "progress payment": "Progress Payment",
@@ -864,8 +878,8 @@
       const businessAddressRaw = String(data.business_address || "").trim();
       const businessEmailRaw = String(data.business_email || "").trim();
       const businessPhoneRaw = String(data.business_phone || "").trim();
-      const notesRaw = String(data.notes == null ? "" : data.notes);
-      const hasWorkDetails = String(data.notes || "").trim().length > 0;
+      const notesRaw = sanitizeClientFacingNotes(data.notes == null ? "" : data.notes);
+      const hasWorkDetails = notesRaw.length > 0;
 
       const businessNameRaw = String(data.business_name || "").trim();
       const brandName = businessNameRaw || TENANT_NAME_FALLBACK;
