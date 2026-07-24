@@ -1,6 +1,7 @@
 /**
- * POST — create a linked DRAFT invoice for project remaining balance (owner session).
+ * POST — create a linked DRAFT project payment invoice (owner session).
  * Does not send email, record payments, or modify the source invoice.
+ * Accepts owner-selected invoice_label (payment stage).
  */
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
@@ -11,7 +12,16 @@ const { pickFirst } = require("./_lib/tenant-display");
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const REMAINING_BALANCE_LABEL = "Remaining Balance";
+const ALLOWED_PAYMENT_STAGE_LABELS = [
+  "Start Payment",
+  "Progress Payment",
+  "Final Payment",
+  "Remaining Balance",
+  "Change Order"
+];
+const ALLOWED_LABEL_SET = new Set(ALLOWED_PAYMENT_STAGE_LABELS.map((s) => s.toLowerCase()));
+const FULL_REMAINING_LABELS = new Set(["remaining balance", "final payment"]);
+
 const ACTIVE_DUPLICATE_STATUSES = new Set([
   "draft",
   "open",
@@ -83,19 +93,20 @@ function resolveContractTotal(source, quoteEmbed) {
   return Math.max(finiteMoney(source?.amount, 0), 0);
 }
 
-async function sumLedgerPayments(tenantId, { invoiceId, projectId, quoteId }) {
+/** Prefer project ledger, then quote, then invoice — never invent paid from invoice amount. */
+async function sumLedgerPayments(tenantId, { projectId, quoteId, invoiceId }) {
   const tidEnc = encodeURIComponent(String(tenantId));
   const params = new URLSearchParams();
   params.set("tenant_id", `eq.${tidEnc}`);
   params.set("select", "amount");
   params.set("limit", "500");
 
-  if (invoiceId && UUID_RE.test(invoiceId)) {
-    params.set("invoice_id", `eq.${encodeURIComponent(invoiceId)}`);
-  } else if (projectId && UUID_RE.test(projectId)) {
+  if (projectId && UUID_RE.test(projectId)) {
     params.set("project_id", `eq.${encodeURIComponent(projectId)}`);
   } else if (quoteId && UUID_RE.test(quoteId)) {
     params.set("quote_id", `eq.${encodeURIComponent(quoteId)}`);
+  } else if (invoiceId && UUID_RE.test(invoiceId)) {
+    params.set("invoice_id", `eq.${encodeURIComponent(invoiceId)}`);
   } else {
     return 0;
   }
@@ -117,16 +128,32 @@ function normalizeAmountMode(raw) {
   return "remaining_balance";
 }
 
-const DUPLICATE_REMAINING_BALANCE_MESSAGE =
-  "A remaining balance draft invoice already exists for this project/invoice. Review or cancel the existing draft before creating another.";
+function normalizeInvoiceLabel(raw, { selectedAmount, remainingBalance }) {
+  const s = String(raw || "").trim();
+  if (s && ALLOWED_LABEL_SET.has(s.toLowerCase())) {
+    const exact = ALLOWED_PAYMENT_STAGE_LABELS.find((l) => l.toLowerCase() === s.toLowerCase());
+    return exact || s;
+  }
+  // Default from amount vs ledger remaining.
+  if (
+    Number.isFinite(selectedAmount) &&
+    Number.isFinite(remainingBalance) &&
+    Math.abs(selectedAmount - remainingBalance) <= 0.01
+  ) {
+    return "Remaining Balance";
+  }
+  return "Progress Payment";
+}
 
-async function findDuplicateRemainingBalanceDraft({ tenantId, sourceId }) {
+const DUPLICATE_PROJECT_PAYMENT_MESSAGE =
+  "A project payment draft invoice already exists for this project/invoice. Review or cancel the existing draft before creating another.";
+
+async function findDuplicateProjectPaymentDraft({ tenantId, sourceId }) {
   const tidEnc = encodeURIComponent(String(tenantId));
   const path =
     `invoices?tenant_id=eq.${tidEnc}` +
-    `&invoice_label=eq.${encodeURIComponent(REMAINING_BALANCE_LABEL)}` +
-    `&select=id,status,amount,notes,invoice_no` +
-    `&limit=50` +
+    `&select=id,status,amount,notes,invoice_no,invoice_label` +
+    `&limit=80` +
     `&order=created_at.desc`;
 
   let rows;
@@ -142,12 +169,16 @@ async function findDuplicateRemainingBalanceDraft({ tenantId, sourceId }) {
     if (TERMINAL_STATUSES.has(st)) continue;
     if (!ACTIVE_DUPLICATE_STATUSES.has(st) && st !== "") continue;
     if (!notesContainSourceMarker(inv?.notes, sourceId)) continue;
+    const label = String(inv?.invoice_label || "").trim().toLowerCase();
+    // Material Cost stays out of this flow; skip those drafts.
+    if (label === "material cost") continue;
+    if (label && !ALLOWED_LABEL_SET.has(label) && label !== "remaining balance") continue;
     return inv;
   }
   return null;
 }
 
-function buildRemainingBalanceInsert({ source, tenantId, selectedAmount, notesFinal }) {
+function buildProjectPaymentInsert({ source, tenantId, selectedAmount, notesFinal, invoiceLabel }) {
   const now = new Date().toISOString();
   const today = now.slice(0, 10);
   const payload = {
@@ -157,7 +188,7 @@ function buildRemainingBalanceInsert({ source, tenantId, selectedAmount, notesFi
     customer_name: pickStr(source.customer_name),
     customer_email: pickStr(source.customer_email),
     project_name: pickStr(source.project_name),
-    invoice_label: REMAINING_BALANCE_LABEL,
+    invoice_label: invoiceLabel,
     notes: notesFinal,
     amount: selectedAmount,
     paid_amount: 0,
@@ -186,20 +217,20 @@ function ownerSafeInsertError(rawMessage) {
     return {
       status: 409,
       reason: "quote_id_unique_violation",
-      error: "Could not create the remaining balance draft invoice. Please refresh and try again."
+      error: "Could not create the project payment draft invoice. Please refresh and try again."
     };
   }
   if (/duplicate key|violates unique constraint|23505/i.test(msg)) {
     return {
       status: 409,
       reason: "insert_unique_violation",
-      error: "Could not create the remaining balance draft invoice. Please refresh and try again."
+      error: "Could not create the project payment draft invoice. Please refresh and try again."
     };
   }
   return {
     status: 500,
     reason: "insert_failed",
-    error: "Could not create the remaining balance draft invoice. Please refresh and try again."
+    error: "Could not create the project payment draft invoice. Please refresh and try again."
   };
 }
 
@@ -209,6 +240,7 @@ function ownerSafeInsertError(rawMessage) {
  *   source_invoice_id,
  *   amount_mode: "remaining_balance" | "manual",
  *   manual_amount?,
+ *   invoice_label?,
  *   notes?
  * }
  */
@@ -230,7 +262,6 @@ exports.handler = async (event) => {
         error: "Tenant not found for this session. Run bootstrap-tenant first."
       });
     }
-
     const tenantId = String(tenant.id);
 
     let body = {};
@@ -303,9 +334,9 @@ exports.handler = async (event) => {
     const invoiceId = String(source.id).trim();
     const projectId = pickStr(source.project_id);
     const paidToDate = await sumLedgerPayments(tenantId, {
-      invoiceId,
       projectId: UUID_RE.test(projectId) ? projectId : "",
-      quoteId: UUID_RE.test(quoteId) ? quoteId : ""
+      quoteId: UUID_RE.test(quoteId) ? quoteId : "",
+      invoiceId
     });
 
     const remainingBalance = Math.max(0, finiteMoney(contractTotal - paidToDate, 0));
@@ -333,7 +364,27 @@ exports.handler = async (event) => {
       selectedAmount = finiteMoney(selectedAmount, 0);
     }
 
-    const duplicate = await findDuplicateRemainingBalanceDraft({
+    const invoiceLabel = normalizeInvoiceLabel(body.invoice_label || body.invoiceLabel, {
+      selectedAmount,
+      remainingBalance
+    });
+    if (!ALLOWED_LABEL_SET.has(invoiceLabel.toLowerCase())) {
+      return json(400, {
+        ok: false,
+        reason: "invalid_invoice_label",
+        error: `invoice_label must be one of: ${ALLOWED_PAYMENT_STAGE_LABELS.join(", ")}.`
+      });
+    }
+
+    const isFullRemainingLabel = FULL_REMAINING_LABELS.has(invoiceLabel.toLowerCase());
+    const amountMatchesRemaining = Math.abs(selectedAmount - remainingBalance) <= 0.01;
+    let labelWarning = "";
+    if (isFullRemainingLabel && !amountMatchesRemaining) {
+      labelWarning =
+        "This amount is less than the actual remaining project balance. Consider using Progress Payment instead.";
+    }
+
+    const duplicate = await findDuplicateProjectPaymentDraft({
       tenantId,
       sourceId: sourceInvoiceId
     });
@@ -341,18 +392,19 @@ exports.handler = async (event) => {
       return json(409, {
         ok: false,
         reason: "duplicate_remaining_balance_draft",
-        error: DUPLICATE_REMAINING_BALANCE_MESSAGE
+        error: DUPLICATE_PROJECT_PAYMENT_MESSAGE
       });
     }
 
     const clientNotes = body.notes != null ? String(body.notes).trim().slice(0, 7900) : "";
     const notesFinal = appendSourceMarker(clientNotes, sourceInvoiceId);
 
-    const insertPayload = buildRemainingBalanceInsert({
+    const insertPayload = buildProjectPaymentInsert({
       source,
       tenantId,
       selectedAmount,
-      notesFinal
+      notesFinal,
+      invoiceLabel
     });
 
     let created;
@@ -397,13 +449,15 @@ exports.handler = async (event) => {
       invoice_id: String(invoice.id),
       status: normStatus(invoice.status) || "draft",
       amount: finiteMoney(invoice.amount, selectedAmount),
+      invoice_label: pickStr(invoice.invoice_label, invoiceLabel),
       source_invoice_id: sourceInvoiceId,
       remaining_balance: remainingBalance,
       contract_total: contractTotal,
       paid_to_date: paidToDate,
+      warning: labelWarning || undefined,
       invoice,
       message:
-        "Remaining balance draft invoice created. No email was sent and no payment was recorded."
+        "Project payment draft invoice created. No email was sent and no payment was recorded."
     });
   } catch (err) {
     console.error("[create-remaining-balance-invoice]", err);

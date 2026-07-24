@@ -120,7 +120,29 @@ exports.handler = async (event) => {
     const projectTotal = await loadProjectTotal(tenantId, projectId);
     const contractTotal =
       quoteTotal > 0 ? quoteTotal : projectTotal > 0 ? projectTotal : Math.max(invoiceAmount, 0);
-    const paidToDate = await loadPaidToDate({ tenantId, invoiceId, projectId, quoteId });
+
+    const labelLower = String(rawRow.invoice_label || "").trim().toLowerCase();
+    const notes = String(rawRow.notes || "");
+    const isMaterialCost =
+      labelLower === "material cost" || notes.includes("[invoice_type:unexpected_material_cost]");
+    const isProjectPaymentInvoice =
+      !isMaterialCost &&
+      (["start payment", "progress payment", "final payment", "remaining balance", "change order"].includes(
+        labelLower
+      ) ||
+        /\[source_invoice:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\]/i.test(
+          notes
+        ));
+
+    // Project payment invoices: ledger paid must be project-scoped (never invent from invoice amount).
+    const paidToDate = isProjectPaymentInvoice
+      ? await loadPaidToDate({
+          tenantId,
+          projectId,
+          quoteId,
+          preferProject: true
+        })
+      : await loadPaidToDate({ tenantId, invoiceId, projectId, quoteId, preferProject: false });
     const remainingBalance = Math.max(contractTotal - paidToDate, 0);
 
     if (tenantId) {
@@ -240,16 +262,26 @@ async function loadTenantPublicPaymentSettings(tenantId) {
   }
 }
 
-async function loadPaidToDate({ tenantId, invoiceId, projectId, quoteId }) {
+async function loadPaidToDate({ tenantId, invoiceId, projectId, quoteId, preferProject = false }) {
   if (!tenantId) return 0;
   const params = new URLSearchParams();
   params.set("tenant_id", `eq.${tenantId}`);
   params.set("select", "amount");
   params.set("limit", "500");
-  if (invoiceId) params.set("invoice_id", `eq.${invoiceId}`);
-  else if (projectId) params.set("project_id", `eq.${projectId}`);
-  else if (quoteId) params.set("quote_id", `eq.${quoteId}`);
-  else return 0;
+  if (preferProject) {
+    if (projectId) params.set("project_id", `eq.${projectId}`);
+    else if (quoteId) params.set("quote_id", `eq.${quoteId}`);
+    else if (invoiceId) params.set("invoice_id", `eq.${invoiceId}`);
+    else return 0;
+  } else if (invoiceId) {
+    params.set("invoice_id", `eq.${invoiceId}`);
+  } else if (projectId) {
+    params.set("project_id", `eq.${projectId}`);
+  } else if (quoteId) {
+    params.set("quote_id", `eq.${quoteId}`);
+  } else {
+    return 0;
+  }
   try {
     const rows = await supabaseRequest(`tenant_project_payments?${params.toString()}`, { method: "GET" });
     const list = Array.isArray(rows) ? rows : [];

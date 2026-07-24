@@ -13,9 +13,25 @@ const UUID_RE =
 
 const MATERIAL_COST_LABEL = "Material Cost";
 const INVOICE_TYPE_UNEXPECTED_MATERIAL = "[invoice_type:unexpected_material_cost]";
-const REMAINING_BALANCE_LABEL = "Remaining Balance";
 const SOURCE_INVOICE_MARKER_RE =
   /\[source_invoice:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\]/i;
+
+const PROJECT_PAYMENT_LABELS = [
+  "Start Payment",
+  "Progress Payment",
+  "Final Payment",
+  "Remaining Balance",
+  "Change Order"
+];
+const PROJECT_PAYMENT_LABEL_SET = new Set(PROJECT_PAYMENT_LABELS.map((s) => s.toLowerCase()));
+const FULL_REMAINING_LABEL_SET = new Set(["remaining balance", "final payment"]);
+
+function normalizeProjectPaymentLabel(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "Progress Payment";
+  const hit = PROJECT_PAYMENT_LABELS.find((l) => l.toLowerCase() === s.toLowerCase());
+  return hit || s;
+}
 
 function isMaterialCostInvoice(invoice) {
   const label = String(invoice?.invoice_label || "").trim();
@@ -23,48 +39,57 @@ function isMaterialCostInvoice(invoice) {
   return String(invoice?.notes || "").includes(INVOICE_TYPE_UNEXPECTED_MATERIAL);
 }
 
-function isRemainingBalanceInvoice(invoice) {
+/** Project-linked payment invoices (owner-selected stage label, or legacy source marker). */
+function isProjectPaymentInvoice(invoice) {
   if (isMaterialCostInvoice(invoice)) return false;
-  const label = String(invoice?.invoice_label || "").trim();
-  if (label.toLowerCase() === REMAINING_BALANCE_LABEL.toLowerCase()) return true;
+  const label = String(invoice?.invoice_label || "").trim().toLowerCase();
+  if (PROJECT_PAYMENT_LABEL_SET.has(label)) return true;
   const notes = String(invoice?.notes || "");
   if (!SOURCE_INVOICE_MARKER_RE.test(notes)) return false;
   if (notes.includes(INVOICE_TYPE_UNEXPECTED_MATERIAL)) return false;
   return true;
 }
 
-function buildRemainingBalanceEmailCopy({
+function isFullRemainingStageLabel(label) {
+  return FULL_REMAINING_LABEL_SET.has(String(label || "").trim().toLowerCase());
+}
+
+function buildProjectPaymentEmailCopy({
   customerName,
   projectName,
   publicUrl,
+  invoiceLabel,
   projectContractTotal,
   projectPaidToDate,
-  remainingProjectBalance,
+  remainingBeforeInvoice,
+  projectedRemainingAfter,
   invoiceAmount,
   invoiceBalanceDue,
   businessName
 }) {
-  const subject = `Remaining balance invoice ready — ${projectName}`;
+  const stage = normalizeProjectPaymentLabel(invoiceLabel);
+  const subject = `${stage} invoice ready — ${projectName}`;
   const body = [
     `Hi ${customerName},`,
     "",
     "I hope you're doing well.",
     "",
-    `A remaining balance invoice for the ${projectName} project is ready. This invoice reflects the balance currently due after payments already recorded on this project.`,
+    `A ${stage.toLowerCase()} invoice for the ${projectName} project is ready.`,
     "",
     "You can view it here:",
     "",
     publicUrl,
     "",
     "Here's a quick summary:",
-    `• Invoice type: Remaining Balance`,
+    `• Invoice type: ${stage}`,
     `• This invoice amount: ${invoiceAmount}`,
     `• Amount due on this invoice: ${invoiceBalanceDue}`,
     "",
     "Project payment summary:",
     `• Project contract total: ${projectContractTotal}`,
     `• Project paid to date: ${projectPaidToDate}`,
-    `• Remaining project balance: ${remainingProjectBalance}`,
+    `• Remaining project balance before this invoice: ${remainingBeforeInvoice}`,
+    `• Projected remaining balance after this invoice if paid: ${projectedRemainingAfter}`,
     "",
     "If anything isn’t clear or you’d like to go over the details, I’m happy to help.",
     "",
@@ -112,7 +137,7 @@ function buildMaterialCostEmailCopy({
 
 function isPartialBalanceDueInvoice(invoice, body) {
   if (isMaterialCostInvoice(invoice)) return false;
-  if (isRemainingBalanceInvoice(invoice)) return false;
+  if (isProjectPaymentInvoice(invoice)) return false;
   const paid = toNumber(pickFirstStr(body?.paid_to_date, body?.paidAmount, invoice.paid_amount), 0);
   const balanceDue = toNumber(
     pickFirstStr(body?.invoice_balance_due, body?.balance_due, body?.remaining_balance, invoice.balance_due),
@@ -298,10 +323,10 @@ function nonNegativeMoney(...values) {
 }
 
 /**
- * Server-authoritative Remaining Balance amounts (aligned with public invoice truth).
- * Body hints may raise values; they must not zero-out real project ledger figures.
+ * Server-authoritative project payment amounts.
+ * Paid-to-date comes from the project payment ledger only — never inferred from invoice amount.
  */
-async function resolveRemainingBalanceEmailContext(invoice, body) {
+async function resolveProjectPaymentEmailContext(invoice, body) {
   const tenantId = String(invoice.tenant_id || "").trim();
   const projectId = String(invoice.project_id || pickFirstStr(body.project_id, body.projectId) || "").trim();
   const quoteId = String(invoice.quote_id || pickFirstStr(body.quote_id, body.quoteId) || "").trim();
@@ -315,14 +340,11 @@ async function resolveRemainingBalanceEmailContext(invoice, body) {
     (projectTotal > 0 ? roundMoney(projectTotal) : null) ??
     Math.max(roundMoney(toNumber(invoice.amount, 0)), 0);
 
+  // Prefer explicit project_paid_to_date only when it does not zero-out a positive ledger total.
   const bodyProjectPaid = nonNegativeMoney(body.project_paid_to_date);
-  const bodyPaidHint = positiveMoney(body.paid_to_date, body.paidAmount);
   let projectPaidToDate = dbPaid;
   if (bodyProjectPaid != null) {
-    // Explicit project_paid_to_date: accept, but never replace a positive DB total with 0.
     if (bodyProjectPaid > 0.005 || dbPaid <= 0.005) projectPaidToDate = bodyProjectPaid;
-  } else if (bodyPaidHint != null && bodyPaidHint > dbPaid) {
-    projectPaidToDate = bodyPaidHint;
   }
   projectPaidToDate = Math.max(roundMoney(projectPaidToDate), 0);
 
@@ -330,49 +352,23 @@ async function resolveRemainingBalanceEmailContext(invoice, body) {
     positiveMoney(body.invoice_amount, body.amount, invoice.amount) ??
     Math.max(roundMoney(toNumber(invoice.amount, 0)), 0);
 
-  // Do not use body.remaining_balance here — that field is ambiguous (project vs invoice).
   const invoiceBalanceDue =
     positiveMoney(body.invoice_balance_due, body.balance_due, invoice.balance_due) ??
     invoiceAmount;
 
-  // Public-page safety: if project paid looks missing but invoice is a partial remainder, derive paid.
-  if (projectContractTotal > invoiceAmount + 0.005 && projectPaidToDate <= 0.005) {
-    projectPaidToDate = roundMoney(projectContractTotal - invoiceAmount);
-  }
-
-  const bodyRemaining = nonNegativeMoney(body.remaining_project_balance);
-  let remainingProjectBalance = Math.max(roundMoney(projectContractTotal - projectPaidToDate), 0);
-  if (bodyRemaining != null && bodyRemaining > 0.005) {
-    remainingProjectBalance = bodyRemaining;
-  }
-  if (remainingProjectBalance <= 0.005 && invoiceBalanceDue > 0.005) {
-    remainingProjectBalance = invoiceBalanceDue;
-  }
-  // If paid still looks missing, prefer this invoice's due over a full-contract "remaining".
-  if (
-    invoiceBalanceDue > 0.005 &&
-    projectContractTotal > invoiceBalanceDue + 0.005 &&
-    Math.abs(remainingProjectBalance - projectContractTotal) < 0.02
-  ) {
-    remainingProjectBalance = invoiceBalanceDue;
-  }
-
-  // Remaining Balance invoices are the project remainder. If the payment ledger sum
-  // disagrees with this invoice's due amount, anchor the project summary to the invoice
-  // so email matches the public Remaining Balance page (contract - invoice = paid).
-  if (
-    invoiceBalanceDue > 0.005 &&
-    projectContractTotal > invoiceBalanceDue + 0.005 &&
-    Math.abs(remainingProjectBalance - invoiceBalanceDue) > 0.02
-  ) {
-    remainingProjectBalance = invoiceBalanceDue;
-    projectPaidToDate = Math.max(roundMoney(projectContractTotal - remainingProjectBalance), 0);
-  }
+  const remainingBeforeInvoice = Math.max(roundMoney(projectContractTotal - projectPaidToDate), 0);
+  const projectedRemainingAfter = Math.max(roundMoney(remainingBeforeInvoice - invoiceAmount), 0);
+  const invoiceLabel = normalizeProjectPaymentLabel(
+    pickFirstStr(body.invoice_label, invoice.invoice_label) || "Progress Payment"
+  );
 
   return {
+    invoiceLabel,
     projectContractTotal: roundMoney(projectContractTotal),
     projectPaidToDate: roundMoney(projectPaidToDate),
-    remainingProjectBalance: roundMoney(remainingProjectBalance),
+    remainingBeforeInvoice: roundMoney(remainingBeforeInvoice),
+    remainingProjectBalance: roundMoney(remainingBeforeInvoice),
+    projectedRemainingAfter: roundMoney(projectedRemainingAfter),
     invoiceAmount: roundMoney(invoiceAmount),
     invoiceBalanceDue: roundMoney(invoiceBalanceDue)
   };
@@ -500,30 +496,42 @@ function buildCanonicalInvoiceEmail({
     };
   }
 
-  if (invoice_copy_variant === "remaining_balance") {
+  if (invoice_copy_variant === "remaining_balance" || invoice_copy_variant === "project_payment") {
     const invoice_amount = roundMoney(nums.invoice_amount);
     const balance_due = roundMoney(nums.balance_due);
     const project_contract_total = roundMoney(nums.project_contract_total);
     const project_paid_to_date = roundMoney(nums.project_paid_to_date);
-    const remaining_project_balance = roundMoney(nums.remaining_project_balance);
+    const remaining_before = roundMoney(
+      nums.remaining_before_invoice != null ? nums.remaining_before_invoice : nums.remaining_project_balance
+    );
+    const projected_after = roundMoney(
+      nums.projected_remaining_after != null
+        ? nums.projected_remaining_after
+        : Math.max(remaining_before - invoice_amount, 0)
+    );
+    const invoiceLabel = normalizeProjectPaymentLabel(nums.invoice_label || "Progress Payment");
     const invoiceAmountF = fmt(invoice_amount);
     const dueF = fmt(balance_due);
     const contractF = fmt(project_contract_total);
     const paidF = fmt(project_paid_to_date);
-    const remainingF = fmt(remaining_project_balance);
-    const emailCopy = buildRemainingBalanceEmailCopy({
+    const remainingF = fmt(remaining_before);
+    const projectedF = fmt(projected_after);
+    const emailCopy = buildProjectPaymentEmailCopy({
       customerName,
       projectName,
       publicUrl,
+      invoiceLabel,
       projectContractTotal: contractF,
       projectPaidToDate: paidF,
-      remainingProjectBalance: remainingF,
+      remainingBeforeInvoice: remainingF,
+      projectedRemainingAfter: projectedF,
       invoiceAmount: invoiceAmountF,
       invoiceBalanceDue: dueF,
       businessName: brand
     });
     return {
-      invoice_copy_variant,
+      invoice_copy_variant: "project_payment",
+      invoice_label: invoiceLabel,
       email_subject: emailCopy.subject,
       email_body: emailCopy.body,
       email_html: emailBodyToHtml(emailCopy.body),
@@ -534,11 +542,13 @@ function buildCanonicalInvoiceEmail({
       contract_total: project_contract_total,
       project_contract_total,
       project_paid_to_date,
-      remaining_project_balance,
-      remaining_balance: remaining_project_balance,
+      remaining_project_balance: remaining_before,
+      remaining_balance_before_invoice: remaining_before,
+      projected_remaining_after_invoice: projected_after,
+      remaining_balance: remaining_before,
       amount: invoice_amount,
       summary_line_1_label: "Invoice type",
-      summary_line_1_value: "Remaining Balance",
+      summary_line_1_value: invoiceLabel,
       summary_line_2_label: "This invoice amount",
       summary_line_2_value: invoiceAmountF,
       summary_line_3_label: "Amount due on this invoice",
@@ -547,8 +557,10 @@ function buildCanonicalInvoiceEmail({
       summary_line_4_value: contractF,
       summary_line_5_label: "Project paid to date",
       summary_line_5_value: paidF,
-      summary_line_6_label: "Remaining project balance",
-      summary_line_6_value: remainingF
+      summary_line_6_label: "Remaining project balance before this invoice",
+      summary_line_6_value: remainingF,
+      summary_line_7_label: "Projected remaining balance after this invoice if paid",
+      summary_line_7_value: projectedF
     };
   }
 
@@ -648,23 +660,29 @@ function validateCanonicalInvoiceEmail(canonical) {
     return fail("missing_email_copy");
   }
 
-  if (variant === "remaining_balance") {
-    if (!(canonical.invoice_amount > 0.005)) return fail("remaining_balance_invoice_amount");
-    if (!(canonical.balance_due > 0.005)) return fail("remaining_balance_balance_due");
-    if (!(canonical.amount_due_on_this_invoice > 0.005)) return fail("remaining_balance_amount_due");
-    if (!(canonical.project_contract_total > 0.005)) return fail("remaining_balance_project_contract_total");
-    if (!(canonical.project_paid_to_date >= -0.005)) return fail("remaining_balance_project_paid_to_date");
-    if (!(canonical.contract_total > 0.005)) return fail("remaining_balance_contract_total");
-    if (!(canonical.remaining_balance > 0.005)) return fail("remaining_balance_remaining_balance");
-    if (moneyLooksZero(canonical.paid_to_date) && canonical.project_paid_to_date > 0.005) {
-      return fail("remaining_balance_legacy_paid_zero");
-    }
-    // Email project remaining must agree with this Remaining Balance invoice amount.
-    if (
-      Math.abs(Number(canonical.remaining_project_balance) - Number(canonical.invoice_amount)) > 0.02 &&
-      Math.abs(Number(canonical.remaining_project_balance) - Number(canonical.balance_due)) > 0.02
-    ) {
-      return fail("remaining_balance_project_remaining_mismatch");
+  if (variant === "remaining_balance" || variant === "project_payment") {
+    if (!(canonical.invoice_amount > 0.005)) return fail("project_payment_invoice_amount");
+    if (!(canonical.balance_due > 0.005)) return fail("project_payment_balance_due");
+    if (!(canonical.amount_due_on_this_invoice > 0.005)) return fail("project_payment_amount_due");
+    if (!(canonical.project_contract_total > 0.005)) return fail("project_payment_project_contract_total");
+    if (!(canonical.project_paid_to_date >= -0.005)) return fail("project_payment_project_paid_to_date");
+    if (!(canonical.contract_total > 0.005)) return fail("project_payment_contract_total");
+    const remainingBefore = Number(
+      canonical.remaining_balance_before_invoice != null
+        ? canonical.remaining_balance_before_invoice
+        : canonical.remaining_project_balance
+    );
+    if (!(remainingBefore >= -0.005)) return fail("project_payment_remaining_before");
+    // Do not require remaining === invoice_amount (Progress Payment can be partial).
+    // For Remaining Balance / Final Payment, warn via body amounts only — still require positive remaining when label is full-stage.
+    if (isFullRemainingStageLabel(canonical.invoice_label)) {
+      if (Math.abs(remainingBefore - Number(canonical.invoice_amount)) > 0.02) {
+        // Soft: still send if ledger remaining differs, but body must not show fake zeros.
+        // Hard-block only if remaining is zero while charging a positive amount that claims to be remaining.
+        if (remainingBefore <= 0.005 && canonical.invoice_amount > 0.005) {
+          return fail("full_remaining_label_zero_project_remaining");
+        }
+      }
     }
     const invoiceAmountF = formatMoney(canonical.invoice_amount);
     const dueF = formatMoney(canonical.amount_due_on_this_invoice);
@@ -673,7 +691,7 @@ function validateCanonicalInvoiceEmail(canonical) {
       !String(canonical.email_body).includes(invoiceAmountF) ||
       !String(canonical.email_body).includes(dueF)
     ) {
-      return fail("remaining_balance_email_body_amounts");
+      return fail("project_payment_email_body_amounts");
     }
     return { ok: true };
   }
@@ -727,6 +745,8 @@ function applyCanonicalToZapierPayload(basePayload, canonical) {
     project_contract_total: canonical.project_contract_total,
     project_paid_to_date: canonical.project_paid_to_date,
     remaining_project_balance: canonical.remaining_project_balance,
+    remaining_balance_before_invoice: canonical.remaining_balance_before_invoice,
+    projected_remaining_after_invoice: canonical.projected_remaining_after_invoice,
     remaining_balance: canonical.remaining_balance,
     amount: canonical.amount
   };
@@ -736,6 +756,7 @@ function applyCanonicalToZapierPayload(basePayload, canonical) {
     "Email Body": canonical.email_body,
     "Email Html": canonical.email_html,
     "Invoice Copy Variant": canonical.invoice_copy_variant,
+    "Invoice Label": canonical.invoice_label,
     "Invoice Amount": canonical.invoice_amount,
     "Balance Due": canonical.balance_due,
     "Amount Due On This Invoice": canonical.amount_due_on_this_invoice,
@@ -744,6 +765,8 @@ function applyCanonicalToZapierPayload(basePayload, canonical) {
     "Project Contract Total": canonical.project_contract_total,
     "Project Paid To Date": canonical.project_paid_to_date,
     "Remaining Project Balance": canonical.remaining_project_balance,
+    "Remaining Balance Before Invoice": canonical.remaining_balance_before_invoice,
+    "Projected Remaining After Invoice": canonical.projected_remaining_after_invoice,
     "Remaining Balance": canonical.remaining_balance
   };
 
@@ -751,6 +774,7 @@ function applyCanonicalToZapierPayload(basePayload, canonical) {
     ...basePayload,
     ...moneyFields,
     invoice_copy_variant: canonical.invoice_copy_variant,
+    invoice_label: canonical.invoice_label || pickFirstStr(basePayload.invoice_label),
     email_subject: canonical.email_subject,
     email_body: canonical.email_body,
     email_html: canonical.email_html,
@@ -766,6 +790,8 @@ function applyCanonicalToZapierPayload(basePayload, canonical) {
     summary_line_5_value: canonical.summary_line_5_value,
     summary_line_6_label: canonical.summary_line_6_label,
     summary_line_6_value: canonical.summary_line_6_value,
+    summary_line_7_label: canonical.summary_line_7_label,
+    summary_line_7_value: canonical.summary_line_7_value,
     ...titleCase
   };
 }
@@ -943,9 +969,9 @@ exports.handler = async (event) => {
     const idempotency_key = `${tenantId}:${invoice_id || token}:invoice_sent`;
     const project_name = pickFirstStr(body.project_name, body.projectName, invoice.project_name);
     const isMaterialCost = isMaterialCostInvoice(invoice);
-    const isRemainingBalance = !isMaterialCost && isRemainingBalanceInvoice(invoice);
+    const isProjectPayment = !isMaterialCost && isProjectPaymentInvoice(invoice);
     const isPartialBalanceDue =
-      !isMaterialCost && !isRemainingBalance && isPartialBalanceDueInvoice(invoice, body);
+      !isMaterialCost && !isProjectPayment && isPartialBalanceDueInvoice(invoice, body);
 
     const invoiceAmountNum =
       positiveMoney(body.invoice_amount, body.amount, invoice.amount) ??
@@ -972,17 +998,20 @@ exports.handler = async (event) => {
 
     if (isMaterialCost) {
       invoice_copy_variant = "material_cost";
-    } else if (isRemainingBalance) {
-      invoice_copy_variant = "remaining_balance";
-      const remainingBalanceContext = await resolveRemainingBalanceEmailContext(invoice, body);
+    } else if (isProjectPayment) {
+      invoice_copy_variant = "project_payment";
+      const projectPaymentContext = await resolveProjectPaymentEmailContext(invoice, body);
       canonicalNums = {
-        invoice_amount: remainingBalanceContext.invoiceAmount,
-        paid_to_date: remainingBalanceContext.projectPaidToDate,
-        balance_due: remainingBalanceContext.invoiceBalanceDue,
-        contract_total: remainingBalanceContext.projectContractTotal,
-        project_contract_total: remainingBalanceContext.projectContractTotal,
-        project_paid_to_date: remainingBalanceContext.projectPaidToDate,
-        remaining_project_balance: remainingBalanceContext.remainingProjectBalance
+        invoice_label: projectPaymentContext.invoiceLabel,
+        invoice_amount: projectPaymentContext.invoiceAmount,
+        paid_to_date: projectPaymentContext.projectPaidToDate,
+        balance_due: projectPaymentContext.invoiceBalanceDue,
+        contract_total: projectPaymentContext.projectContractTotal,
+        project_contract_total: projectPaymentContext.projectContractTotal,
+        project_paid_to_date: projectPaymentContext.projectPaidToDate,
+        remaining_project_balance: projectPaymentContext.remainingBeforeInvoice,
+        remaining_before_invoice: projectPaymentContext.remainingBeforeInvoice,
+        projected_remaining_after: projectPaymentContext.projectedRemainingAfter
       };
     } else if (isPartialBalanceDue) {
       invoice_copy_variant = "partial_balance_due";

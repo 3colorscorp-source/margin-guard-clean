@@ -1718,8 +1718,8 @@
     <div class="modal-card">
       <div class="modal-header">
         <div>
-          <div class="modal-title">Create Remaining Balance Draft Invoice</div>
-          <div class="modal-subtitle">Review and create a linked draft invoice for the remaining project balance.</div>
+          <div class="modal-title">Create Project Payment Draft Invoice</div>
+          <div class="modal-subtitle">Create a linked draft invoice for a project payment stage. Draft only — no email and no payment recorded.</div>
         </div>
         <button type="button" class="icon-btn" id="btnHubRemainingBalanceInvoiceClose" aria-label="Close">X</button>
       </div>
@@ -1728,10 +1728,19 @@
           <div><div class="hub-rb-k">Customer</div><div class="hub-rb-v" id="hubRbCustomer">—</div></div>
           <div><div class="hub-rb-k">Delivery email</div><div class="hub-rb-v" id="hubRbEmail">—</div></div>
           <div><div class="hub-rb-k">Project</div><div class="hub-rb-v" id="hubRbProject">—</div></div>
-          <div><div class="hub-rb-k">Invoice label</div><div class="hub-rb-v">Remaining Balance</div></div>
           <div><div class="hub-rb-k">Contract total</div><div class="hub-rb-v" id="hubRbContractTotal">—</div></div>
-          <div><div class="hub-rb-k">Paid to date</div><div class="hub-rb-v" id="hubRbPaidToDate">—</div></div>
-          <div><div class="hub-rb-k">Remaining balance</div><div class="hub-rb-v" id="hubRbRemaining">—</div></div>
+          <div><div class="hub-rb-k">Paid to date (ledger)</div><div class="hub-rb-v" id="hubRbPaidToDate">—</div></div>
+          <div><div class="hub-rb-k">Remaining project balance</div><div class="hub-rb-v" id="hubRbRemaining">—</div></div>
+        </div>
+        <div class="hub-rb-message-wrap" style="margin-top:12px;">
+          <label for="hubRbPaymentStage">Payment Stage / Invoice Type <span aria-hidden="true">*</span></label>
+          <select id="hubRbPaymentStage" required>
+            <option value="Start Payment">Start Payment</option>
+            <option value="Progress Payment" selected>Progress Payment</option>
+            <option value="Final Payment">Final Payment</option>
+            <option value="Remaining Balance">Remaining Balance</option>
+            <option value="Change Order">Change Order</option>
+          </select>
         </div>
         <div class="hub-rb-amount-options">
           <label><input type="radio" name="hubRbAmountMode" id="hubRbAmountModeRemaining" value="remaining_balance" checked> Use remaining balance</label>
