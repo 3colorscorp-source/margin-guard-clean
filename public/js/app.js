@@ -14347,15 +14347,57 @@ window.renderSupervisor = renderSupervisor;
   }
 
   /** Tenant invoice row from list-tenant-invoices (no local project id). */
+  let hubInvoiceSendInFlight = false;
+  const HUB_INVOICE_SEND_SUCCESS_HOLD_MS = 1800;
+
+  function hubInvoiceSendCustomerEmail(row) {
+    return String(
+      row?.customerEmail ||
+        row?.customer_email ||
+        row?.client_email ||
+        row?.email ||
+        row?.["Client Email"] ||
+        row?.project?.clientEmail ||
+        ""
+    ).trim();
+  }
+
+  function hubDrawerSendInvoiceButtonLabel(row) {
+    if (!row) return "Send Invoice";
+    const menuState = getHubOverflowMenuState(row);
+    if (menuState.canSendInvoice) return "Send Invoice";
+    if (menuState.canResendInvoice || menuState.resendLabel === "Resend invoice") return "Resend Invoice";
+    return "Send Invoice";
+  }
+
+  function hubInvoiceSendSetDrawerButtonBusy(busy, row) {
+    const btn = $("btnHubDrawerSendInvoice");
+    if (!btn) return;
+    if (busy) {
+      btn.disabled = true;
+      btn.textContent = "Sending...";
+      return;
+    }
+    btn.disabled = false;
+    btn.textContent = hubDrawerSendInvoiceButtonLabel(row || window.__MG_ACTIVE_INVOICE_ROW__);
+  }
+
+  function hubInvoiceSendSuccessMessage(row, emailOverride) {
+    const email = String(emailOverride || hubInvoiceSendCustomerEmail(row) || "").trim();
+    if (email) return `Invoice send request sent to ${email}.`;
+    return "Invoice send request sent.";
+  }
+
   async function sendHubServerInvoiceRow(row) {
-    if (row?.hubRowSource !== "server_invoice") return;
+    if (row?.hubRowSource !== "server_invoice") {
+      return { ok: false, message: "Send is only available for server invoices." };
+    }
     const sid = nonEmptyString(row.serverInvoiceId);
     const token = nonEmptyString(row.project?.invoice?.publicToken);
     const canTryServer =
       (sid && MG_SERVER_INVOICE_UUID_RE.test(sid)) || (token && token.length >= 8);
     if (!canTryServer) {
-      setHubFeedback("Este invoice no tiene id o token de servidor para enviar.", "warn");
-      return;
+      return { ok: false, message: "Este invoice no tiene id o token de servidor para enviar." };
     }
     const body = {};
     if (sid && MG_SERVER_INVOICE_UUID_RE.test(sid)) {
@@ -14381,15 +14423,67 @@ window.renderSupervisor = renderSupervisor;
       console.info("[InvoiceHub] Send invoice response", { httpStatus: res.status, body: data });
       if (res.ok && data.ok === true && data.forwarded === true) {
         console.log("[Invoice Send] Zapier completed (server row)");
-        void refreshHubServerInvoicesCacheQuietly();
-        setHubFeedback("Invoice enviado.", "ok");
-        return;
+        return {
+          ok: true,
+          email: hubInvoiceSendCustomerEmail(row),
+          invoice: data.invoice || null
+        };
       }
       console.error("[InvoiceHub] Send invoice failed", { httpStatus: res.status, body: data });
-      setHubFeedback(formatSendInvoiceHubFailureMessage(res.status, data), "err");
+      return { ok: false, message: formatSendInvoiceHubFailureMessage(res.status, data) };
     } catch (err) {
       console.error("[InvoiceHub] Send invoice failed", err);
-      setHubFeedback(`Send invoice failed: ${String(err?.message || err || "network error")}`, "err");
+      return {
+        ok: false,
+        message: `Send invoice failed: ${String(err?.message || err || "network error")}`
+      };
+    }
+  }
+
+  async function runHubInvoiceSendWithFeedback(row, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    if (!row) return { ok: false };
+    if (hubInvoiceSendInFlight) return { ok: false, blocked: true };
+    hubInvoiceSendInFlight = true;
+    closeHubDrawerActionsMenu();
+    hubInvoiceSendSetDrawerButtonBusy(true, row);
+    try {
+      let result;
+      if (typeof opts.sendFn === "function") {
+        result = await opts.sendFn(row);
+      } else if (row.hubRowSource === "server_invoice") {
+        result = await sendHubServerInvoiceRow(row);
+      } else {
+        await sendHubInvoice(row.projectId);
+        result = { ok: true, email: hubInvoiceSendCustomerEmail(row), local: true };
+      }
+      if (!result?.ok) {
+        setHubFeedback(result?.message || "Could not send invoice.", "err");
+        hubInvoiceSendSetDrawerButtonBusy(false, row);
+        return { ok: false };
+      }
+      setHubFeedback(hubInvoiceSendSuccessMessage(row, result.email), "ok");
+      if (typeof opts.afterSuccess === "function") {
+        await opts.afterSuccess(result);
+      } else {
+        if (typeof window.__mgHubRefetchServerInvoices === "function") {
+          await window.__mgHubRefetchServerInvoices();
+        } else {
+          void refreshHubServerInvoicesCacheQuietly();
+        }
+      }
+      // Refresh may re-render the drawer button; keep it locked through the success hold.
+      hubInvoiceSendSetDrawerButtonBusy(true, window.__MG_ACTIVE_INVOICE_ROW__ || row);
+      await new Promise((resolve) => setTimeout(resolve, HUB_INVOICE_SEND_SUCCESS_HOLD_MS));
+      const active = window.__MG_ACTIVE_INVOICE_ROW__ || row;
+      hubInvoiceSendSetDrawerButtonBusy(false, active);
+      return { ok: true };
+    } catch (err) {
+      setHubFeedback(String(err?.message || err || "Could not send invoice."), "err");
+      hubInvoiceSendSetDrawerButtonBusy(false, row);
+      return { ok: false };
+    } finally {
+      hubInvoiceSendInFlight = false;
     }
   }
 
@@ -15311,9 +15405,10 @@ window.renderSupervisor = renderSupervisor;
     const saveBtn = $("btnHubInvoiceContactSave");
     if (saveBtn) {
       saveBtn.disabled = true;
-      saveBtn.textContent = "Saving…";
+      saveBtn.textContent = "Saving...";
     }
 
+    let succeeded = false;
     try {
       const response = await fetch(HUB_INVOICE_CONTACT_PATCH, {
         method: "POST",
@@ -15343,15 +15438,18 @@ window.renderSupervisor = renderSupervisor;
           hubInvoiceNotes: invoice.notes
         }
       );
-      hubInvoiceContactSetFeedback("Client contact updated. You can resend this invoice now.", "ok");
+      hubInvoiceContactSetFeedback("Changes saved.", "ok");
       hubDrawerRenderDeliveryEmail(activeRow);
-      setHubFeedback("Client contact updated. You can resend this invoice now.", "ok");
+      setHubFeedback("Changes saved.", "ok");
       await hubInvoiceContactAfterSaveRefresh();
+      succeeded = true;
+      await new Promise((resolve) => setTimeout(resolve, 1800));
+      hubInvoiceContactCloseModal();
     } catch (err) {
       hubInvoiceContactSetFeedback(err?.message || "Network error saving contact.", "err");
     } finally {
       hubInvoiceContactState.saving = false;
-      if (saveBtn) {
+      if (!succeeded && saveBtn) {
         saveBtn.disabled = false;
         saveBtn.textContent = "Save Changes";
       }
@@ -16290,15 +16388,27 @@ window.renderSupervisor = renderSupervisor;
       closeHubDrawerActionsMenu();
       const menuState = getHubOverflowMenuState(row);
       if (action === "send-invoice") {
+        if (hubInvoiceSendInFlight) return;
         if (menuState.canSendInvoice) {
           if (row.hubRowSource === "server_invoice") {
-            await sendHubServerInvoiceRow(row);
+            await runHubInvoiceSendWithFeedback(row, {
+              afterSuccess: async () => {
+                refresh();
+                refreshSelectedRow();
+              }
+            });
           } else {
-            await sendHubInvoice(row.projectId);
-            setHubFeedback(`Invoice email draft prepared for ${row.customer}.`, "ok");
+            await runHubInvoiceSendWithFeedback(row, {
+              sendFn: async (r) => {
+                await sendHubInvoice(r.projectId);
+                return { ok: true, email: hubInvoiceSendCustomerEmail(r), local: true };
+              },
+              afterSuccess: async () => {
+                refresh();
+                refreshSelectedRow();
+              }
+            });
           }
-          refresh();
-          refreshSelectedRow();
           return;
         }
         if (!menuState.canResendInvoice) {
@@ -16313,13 +16423,24 @@ window.renderSupervisor = renderSupervisor;
           }
         }
         if (row.hubRowSource === "server_invoice") {
-          await sendHubServerInvoiceRow(row);
+          await runHubInvoiceSendWithFeedback(row, {
+            afterSuccess: async () => {
+              refresh();
+              refreshSelectedRow();
+            }
+          });
         } else {
-          await sendHubInvoice(row.projectId);
-          setHubFeedback(`Invoice resent for ${row.customer}.`, "ok");
+          await runHubInvoiceSendWithFeedback(row, {
+            sendFn: async (r) => {
+              await sendHubInvoice(r.projectId);
+              return { ok: true, email: hubInvoiceSendCustomerEmail(r), local: true };
+            },
+            afterSuccess: async () => {
+              refresh();
+              refreshSelectedRow();
+            }
+          });
         }
-        refresh();
-        refreshSelectedRow();
         return;
       }
       if (action === "record-payment") {
@@ -17749,11 +17870,13 @@ window.renderSupervisor = renderSupervisor;
         event.stopPropagation();
         hubDebugLog("[Invoice Hub] Send Invoice clicked");
 
+        if (hubInvoiceSendInFlight || btn.disabled) return;
+
         const row = window.__MG_ACTIVE_INVOICE_ROW__ || window.activeInvoiceRow || window.selectedInvoiceRow || null;
         hubDebugLog("[DEBUG ROW]", row);
 
         if (!row) {
-          alert("No invoice selected.");
+          setHubFeedback("No invoice selected.", "err");
           console.error("[Invoice Hub] No active invoice row found");
           return;
         }
@@ -17784,72 +17907,90 @@ window.renderSupervisor = renderSupervisor;
           "Three Colors Corp";
         if (!clientEmail || !publicUrl || !businessName) {
           console.error("Missing fields", { clientEmail, publicUrl, businessName, row });
-          alert("Missing required invoice data. Check console.");
+          setHubFeedback("Missing required invoice data to send.", "err");
           return;
         }
 
-        const originalText = btn.textContent;
-        btn.textContent = "Sending...";
-        btn.disabled = true;
+        await runHubInvoiceSendWithFeedback(row, {
+          sendFn: async (activeRow) => {
+            const body = {
+              invoice_id: activeRow.invoice_id || activeRow.id || activeRow.invoice_number || "",
+              invoice_number: activeRow.invoice_number || activeRow.invoice_id || activeRow.invoiceNo || "",
+              tenant_id: activeRow.tenant_id || activeRow.project?.tenant_id || "",
+              client_name:
+                activeRow.client_name ||
+                activeRow.customer_name ||
+                activeRow.customer ||
+                activeRow.name ||
+                "",
+              client_email: clientEmail,
+              "Client Email": clientEmail,
+              business_name: businessName,
+              project_name:
+                activeRow.project_name || activeRow.project?.projectName || activeRow.project || "",
+              public_invoice_url: publicUrl,
+              "Public Invoice Url": publicUrl,
+              contract_total:
+                activeRow.contract_total ||
+                activeRow.project_contract_total ||
+                activeRow.projectContractTotal ||
+                "",
+              amount:
+                activeRow.contract_total ||
+                activeRow.project_contract_total ||
+                activeRow.projectContractTotal ||
+                activeRow.invoice_amount ||
+                activeRow.amount ||
+                activeRow.base_amount ||
+                "",
+              paid_to_date:
+                activeRow.paid_to_date || activeRow.depositApplied || activeRow.receivedApplied || "",
+              balance_due:
+                activeRow.remaining_balance || activeRow.balance_due || activeRow.balance || "",
+              remaining_balance:
+                activeRow.remaining_balance || activeRow.balance_due || activeRow.balance || ""
+            };
+            if (hubRowIsProjectPaymentInvoice(activeRow)) {
+              Object.assign(body, await hubRowRemainingBalanceSendFields(activeRow));
+            }
 
-        try {
-          const invoice = getProjectInvoiceState(row.project);
-          const body = {
-            invoice_id: row.invoice_id || row.id || row.invoice_number || "",
-            invoice_number: row.invoice_number || row.invoice_id || row.invoiceNo || "",
-            tenant_id: row.tenant_id || row.project?.tenant_id || "",
-            client_name: row.client_name || row.customer_name || row.customer || row.name || "",
-            client_email: clientEmail,
-            "Client Email": clientEmail,
-            business_name: businessName,
-            project_name: row.project_name || row.project?.projectName || row.project || "",
-            public_invoice_url: publicUrl,
-            "Public Invoice Url": publicUrl,
-            contract_total: row.contract_total || row.project_contract_total || row.projectContractTotal || "",
-            amount: row.contract_total || row.project_contract_total || row.projectContractTotal || row.invoice_amount || row.amount || row.base_amount || "",
-            paid_to_date: row.paid_to_date || row.depositApplied || row.receivedApplied || "",
-            balance_due: row.remaining_balance || row.balance_due || row.balance || "",
-            remaining_balance: row.remaining_balance || row.balance_due || row.balance || ""
-          };
-          if (hubRowIsProjectPaymentInvoice(row)) {
-            Object.assign(body, await hubRowRemainingBalanceSendFields(row));
+            hubDebugLog("[Invoice Hub] Send Invoice payload", body);
+
+            const res = await fetch("/.netlify/functions/send-invoice-zapier", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify(body)
+            });
+
+            const text = await res.text();
+            let data = {};
+            try {
+              data = JSON.parse(text);
+            } catch (_err) {}
+
+            if (!res.ok || data.ok === false) {
+              return {
+                ok: false,
+                message: formatSendInvoiceHubFailureMessage(res.status, data) ||
+                  data.error ||
+                  data.message ||
+                  text ||
+                  "Send invoice failed"
+              };
+            }
+
+            hubDebugLog("[Invoice Hub] Invoice send request accepted", data);
+            if (activeRow?.projectId) {
+              applyHubSendSuccessToLocalProject(activeRow.projectId, data.invoice || null);
+            }
+            return { ok: true, email: clientEmail, invoice: data.invoice || null };
+          },
+          afterSuccess: async () => {
+            await refreshHubServerInvoicesCacheQuietly();
+            refreshSelectedRow();
           }
-
-          hubDebugLog("[Invoice Hub] Send Invoice payload", body);
-
-          const res = await fetch("/.netlify/functions/send-invoice-zapier", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify(body)
-          });
-
-          const text = await res.text();
-          let data = {};
-          try {
-            data = JSON.parse(text);
-          } catch (_err) {}
-
-          if (!res.ok || data.ok === false) {
-            throw new Error(data.error || data.message || text || "Send invoice failed");
-          }
-
-          btn.textContent = "Sent";
-          alert("Invoice sent successfully.");
-          hubDebugLog("[Invoice Hub] Invoice sent successfully", data);
-          if (row?.projectId) {
-            applyHubSendSuccessToLocalProject(row.projectId, data.invoice || null);
-          }
-          await refreshHubServerInvoicesCacheQuietly();
-          refreshSelectedRow();
-          setHubFeedback("Invoice sent successfully", "ok");
-        } catch (err) {
-          console.error("[Invoice Hub] Send Invoice failed", err);
-          alert(err.message || "Could not send invoice.");
-          setHubFeedback(String(err?.message || err || "Could not send invoice."), "err");
-          btn.disabled = false;
-          btn.textContent = originalText || "Send Invoice";
-        }
+        });
       });
     }
 
