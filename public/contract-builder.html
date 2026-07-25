@@ -133,7 +133,10 @@
       gap: 2px;
     }
     .cb-index a {
-      display: block;
+      display: grid;
+      grid-template-columns: 1.1rem 1.25rem minmax(0, 1fr);
+      align-items: start;
+      gap: 6px;
       padding: 8px 10px;
       border-radius: 8px;
       color: rgba(255,255,255,0.72);
@@ -148,6 +151,121 @@
       border-left-color: #2dd4bf;
       color: #99f6e4;
       font-weight: 600;
+    }
+    .cb-nav-status {
+      font-size: 0.78rem;
+      line-height: 1.35;
+      text-align: center;
+      color: rgba(255,255,255,0.45);
+    }
+    .cb-nav-status[data-status="available"] { color: #5eead4; }
+    .cb-nav-status[data-status="needs_confirmation"] { color: #fbbf24; }
+    .cb-nav-status[data-status="missing"] { color: #f87171; }
+    .cb-nav-status[data-status="unvisited"] { color: rgba(255,255,255,0.35); }
+    .cb-nav-num {
+      font-variant-numeric: tabular-nums;
+      color: rgba(255,255,255,0.45);
+      font-size: 0.75rem;
+      line-height: 1.35;
+    }
+    .cb-index a.is-active .cb-nav-num { color: #99f6e4; }
+    .cb-nav-title {
+      min-width: 0;
+      word-break: break-word;
+    }
+
+    /* Phase 1B: Builder shows empty state or one article; Preview/Print show full contract. */
+    #cbMain:not(.is-preview):not(.is-printing) .cb-doc-cover,
+    #cbMain:not(.is-preview):not(.is-printing) .cb-doc-footer,
+    #cbMain:not(.is-preview):not(.is-printing) .cb-print-footer {
+      display: none !important;
+    }
+    #cbMain:not(.is-preview):not(.is-printing) .cb-article:not(.is-active-article) {
+      display: none !important;
+    }
+    #cbMain:not(.is-preview):not(.is-printing) .cb-article.is-active-article {
+      display: block;
+      margin-top: 0;
+    }
+    #cbMain:not(.is-preview):not(.is-printing) .cb-article.is-active-article .cb-article__body {
+      display: block !important;
+    }
+    #cbMain:not(.is-preview):not(.is-printing) .cb-article__chevron {
+      display: none;
+    }
+    #cbMain:not(.is-preview):not(.is-printing) .cb-article__head {
+      cursor: default;
+    }
+    /* No open article: hide the entire contract paper so collapsed shells never appear. */
+    #cbMain.cb-no-article:not(.is-preview):not(.is-printing) #cbDocument {
+      display: none !important;
+    }
+    .cb-empty-workspace {
+      display: none;
+      margin: 0;
+      padding: 36px 28px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      text-align: left;
+      max-width: 520px;
+    }
+    #cbMain.cb-no-article:not(.is-preview):not(.is-printing) .cb-empty-workspace {
+      display: block;
+    }
+    #cbMain.is-preview .cb-empty-workspace,
+    #cbMain.is-printing .cb-empty-workspace {
+      display: none !important;
+    }
+    .cb-empty-workspace__title {
+      margin: 0 0 10px;
+      font-family: "Source Sans 3", sans-serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: rgba(255,255,255,0.92);
+    }
+    .cb-empty-workspace__body {
+      margin: 0 0 8px;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      color: rgba(255,255,255,0.72);
+    }
+    .cb-empty-workspace__hint {
+      margin: 0;
+      font-size: 0.78rem;
+      line-height: 1.45;
+      color: rgba(255,255,255,0.48);
+    }
+    .cb-step-footer {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .cb-step-footer__actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-left: auto;
+    }
+    .cb-step-footer .btn { min-height: 36px; }
+    .cb-step-hint {
+      margin: 0;
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.55);
+      max-width: 280px;
+      line-height: 1.4;
+    }
+    #cbMain.is-preview .cb-step-footer,
+    #cbMain.is-printing .cb-step-footer,
+    #cbMain.cb-no-article:not(.is-preview) .cb-step-footer {
+      display: none !important;
     }
 
     .cb-stage {
@@ -657,7 +775,9 @@
     body.cb-customer-preview .owner-only,
     body.cb-customer-preview .no-print,
     body.cb-customer-preview .cb-editor,
-    body.cb-customer-preview .cb-warn-banner {
+    body.cb-customer-preview .cb-warn-banner,
+    body.cb-customer-preview .cb-step-footer,
+    body.cb-customer-preview .cb-empty-workspace {
       display: none !important;
     }
     body.cb-customer-preview.mg-app-shell .mg-app-main {
@@ -781,6 +901,14 @@
         border-radius: 0;
         background: #fff;
       }
+      .cb-doc-cover,
+      .cb-doc-footer,
+      .cb-print-footer,
+      .cb-article {
+        display: block !important;
+      }
+      .cb-step-footer,
+      .cb-empty-workspace { display: none !important; }
       .cb-article {
         break-inside: avoid;
         border: 0;
@@ -848,7 +976,7 @@
       <a class="btn ghost" href="/sales-admin">Back to Sales Admin</a>
     </div>
 
-    <div id="cbMain" hidden>
+    <div id="cbMain" class="cb-no-article" hidden>
       <div class="cb-warn-banner" id="cbUnsavedWarn">
         Unsaved meeting draft. Changes will be lost when this page is closed. This preview is not ready for signature.
       </div>
@@ -856,24 +984,30 @@
       <div class="cb-layout">
         <aside class="cb-index cb-no-print" aria-label="Document sections">
           <h4>Contents</h4>
-          <nav id="cbIndexNav">
-            <a href="#art-notice" data-section="art-notice">Draft Notice</a>
-            <a href="#art-contractor" data-section="art-contractor">Contractor</a>
-            <a href="#art-customer" data-section="art-customer">Customer</a>
-            <a href="#art-property" data-section="art-property">Property</a>
-            <a href="#art-quote" data-section="art-quote">Quote</a>
-            <a href="#art-scope" data-section="art-scope">Scope</a>
-            <a href="#art-price" data-section="art-price">Price</a>
-            <a href="#art-payment" data-section="art-payment">Payment</a>
-            <a href="#art-schedule" data-section="art-schedule">Schedule</a>
-            <a href="#art-changes" data-section="art-changes">Change Orders</a>
-            <a href="#art-warranty" data-section="art-warranty">Warranty</a>
-            <a href="#art-terms" data-section="art-terms">Terms</a>
-            <a href="#art-signatures" data-section="art-signatures">Signatures</a>
+          <nav id="cbIndexNav" aria-label="Contract articles">
+            <a href="#art-notice" data-section="art-notice"><span class="cb-nav-status" data-status="unvisited" aria-hidden="true">○</span><span class="cb-nav-num">0</span><span class="cb-nav-title">Draft Notice</span></a>
+            <a href="#art-contractor" data-section="art-contractor"><span class="cb-nav-status" data-status="unvisited" aria-hidden="true">○</span><span class="cb-nav-num">1</span><span class="cb-nav-title">Contractor</span></a>
+            <a href="#art-customer" data-section="art-customer"><span class="cb-nav-status" data-status="unvisited" aria-hidden="true">○</span><span class="cb-nav-num">2</span><span class="cb-nav-title">Customer</span></a>
+            <a href="#art-property" data-section="art-property"><span class="cb-nav-status" data-status="unvisited" aria-hidden="true">○</span><span class="cb-nav-num">3</span><span class="cb-nav-title">Property</span></a>
+            <a href="#art-quote" data-section="art-quote"><span class="cb-nav-status" data-status="unvisited" aria-hidden="true">○</span><span class="cb-nav-num">4</span><span class="cb-nav-title">Quote</span></a>
+            <a href="#art-scope" data-section="art-scope"><span class="cb-nav-status" data-status="unvisited" aria-hidden="true">○</span><span class="cb-nav-num">5</span><span class="cb-nav-title">Scope</span></a>
+            <a href="#art-price" data-section="art-price"><span class="cb-nav-status" data-status="unvisited" aria-hidden="true">○</span><span class="cb-nav-num">6</span><span class="cb-nav-title">Price</span></a>
+            <a href="#art-payment" data-section="art-payment"><span class="cb-nav-status" data-status="unvisited" aria-hidden="true">○</span><span class="cb-nav-num">7</span><span class="cb-nav-title">Payment</span></a>
+            <a href="#art-schedule" data-section="art-schedule"><span class="cb-nav-status" data-status="unvisited" aria-hidden="true">○</span><span class="cb-nav-num">8</span><span class="cb-nav-title">Schedule</span></a>
+            <a href="#art-changes" data-section="art-changes"><span class="cb-nav-status" data-status="unvisited" aria-hidden="true">○</span><span class="cb-nav-num">9</span><span class="cb-nav-title">Change Orders</span></a>
+            <a href="#art-warranty" data-section="art-warranty"><span class="cb-nav-status" data-status="unvisited" aria-hidden="true">○</span><span class="cb-nav-num">10</span><span class="cb-nav-title">Warranty</span></a>
+            <a href="#art-terms" data-section="art-terms"><span class="cb-nav-status" data-status="unvisited" aria-hidden="true">○</span><span class="cb-nav-num">11</span><span class="cb-nav-title">Terms</span></a>
+            <a href="#art-signatures" data-section="art-signatures"><span class="cb-nav-status" data-status="unvisited" aria-hidden="true">○</span><span class="cb-nav-num">12</span><span class="cb-nav-title">Signatures</span></a>
           </nav>
         </aside>
 
         <main class="cb-stage">
+          <div class="cb-empty-workspace no-print owner-only" id="cbEmptyWorkspace" role="status">
+            <h2 class="cb-empty-workspace__title">Select an article</h2>
+            <p class="cb-empty-workspace__body">Choose an article from the left menu to review or complete its contract information.</p>
+            <p class="cb-empty-workspace__hint">Only one article will open at a time.</p>
+          </div>
+
           <article class="cb-doc customer-document" id="cbDocument" aria-label="Contract draft preview">
             <div class="cb-print-banner">DRAFT — NOT READY FOR SIGNATURE</div>
 
@@ -1265,6 +1399,15 @@
               <div class="cb-print-footer">Generated by Margin Guard for review only. Not an executed contract. DRAFT — NOT READY FOR SIGNATURE</div>
             </div>
           </article>
+
+          <div class="cb-step-footer no-print owner-only" id="cbStepFooter" hidden>
+            <p class="cb-step-hint" id="cbStepHint">Local draft only — nothing here is saved to the database.</p>
+            <div class="cb-step-footer__actions">
+              <button type="button" class="btn ghost" id="cbStepBack">Back</button>
+              <button type="button" class="btn primary" id="cbStepContinue">Continue</button>
+              <a class="btn primary" id="cbStepSetupLink" hidden href="/contract-hub">Complete Required Setup</a>
+            </div>
+          </div>
         </main>
 
         <aside class="cb-aside cb-no-print" aria-label="Contract readiness">

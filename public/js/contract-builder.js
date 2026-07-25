@@ -36,6 +36,30 @@
   const redoStacks = Object.create(null);
   const revealSecrets = Object.create(null);
 
+  /** Phase 1 sequential Builder workspace (UI only — no persistence). */
+  const ARTICLE_FLOW = [
+    { id: "art-notice", num: "0", title: "Draft Notice", cta: "continue", label: "Continue" },
+    { id: "art-contractor", num: "1", title: "Contractor", cta: "review", label: "Review & Continue" },
+    { id: "art-customer", num: "2", title: "Customer", cta: "continue", label: "Continue" },
+    { id: "art-property", num: "3", title: "Property", cta: "continue", label: "Continue" },
+    { id: "art-quote", num: "4", title: "Quote", cta: "review", label: "Review & Continue" },
+    { id: "art-scope", num: "5", title: "Scope", cta: "continue", label: "Continue" },
+    { id: "art-price", num: "6", title: "Price", cta: "review", label: "Review & Continue" },
+    { id: "art-payment", num: "7", title: "Payment", cta: "continue", label: "Continue" },
+    { id: "art-schedule", num: "8", title: "Schedule", cta: "continue", label: "Continue" },
+    { id: "art-changes", num: "9", title: "Change Orders", cta: "continue", label: "Continue" },
+    { id: "art-warranty", num: "10", title: "Warranty", cta: "continue", label: "Continue" },
+    { id: "art-terms", num: "11", title: "Terms", cta: "review", label: "Review & Continue" },
+    { id: "art-signatures", num: "12", title: "Signatures", cta: "signatures", label: "Preview Contract" },
+  ];
+
+  let activeArticleId = null;
+  const visitedArticleIds = new Set();
+  let articleBeforePreview = null;
+  let suppressUnloadGuard = false;
+  /** Baseline for local dirty detection (memory-only; includes init prefill). */
+  let draftBaseline = null;
+
   function $(id) {
     return document.getElementById(id);
   }
@@ -692,6 +716,314 @@
       warrantyNotes: source.warrantyNotes,
       additionalTerms: source.additionalTerms || source.terms || "",
     };
+  }
+
+  function editsEqual(a, b) {
+    if (!a || !b) return a === b;
+    const keys = [
+      "address",
+      "scope",
+      "exclusions",
+      "startDate",
+      "dueDate",
+      "paymentNotes",
+      "warrantyNotes",
+      "additionalTerms",
+    ];
+    return keys.every((k) => String(a[k] || "").trim() === String(b[k] || "").trim());
+  }
+
+  function hasLocalDraftChanges() {
+    if (!draftEdits || !draftBaseline) return false;
+    readEditsFromInputs();
+    return !editsEqual(draftEdits, draftBaseline);
+  }
+
+  const LOCAL_DRAFT_LEAVE_MSG =
+    "You have local draft changes that are not saved to the database. Leave this step anyway?";
+
+  function confirmLeaveLocalDraft(actionLabel) {
+    if (!hasLocalDraftChanges()) return true;
+    return window.confirm(
+      actionLabel
+        ? `${LOCAL_DRAFT_LEAVE_MSG}\n\n(${actionLabel})`
+        : LOCAL_DRAFT_LEAVE_MSG
+    );
+  }
+
+  function articleIndex(id) {
+    return ARTICLE_FLOW.findIndex((a) => a.id === id);
+  }
+
+  function articleMeta(id) {
+    return ARTICLE_FLOW.find((a) => a.id === id) || ARTICLE_FLOW[0];
+  }
+
+  function isPreviewMode() {
+    return Boolean($("cbMain")?.classList.contains("is-preview"));
+  }
+
+  /**
+   * Nav status from existing source/readiness only.
+   * Continue never mutates readiness; visited is UI-only.
+   */
+  function articleReadinessStatus(articleId, source, edits) {
+    if (!source) return "missing";
+    const e = edits || draftEdits || {};
+    switch (articleId) {
+      case "art-notice":
+        return "available";
+      case "art-contractor": {
+        const p = source.legal?.profile;
+        if (!p?.legalBusinessName) return "missing";
+        if (!legalAddressComplete(p)) return "missing";
+        if (!(p.businessPhone || p.businessEmail)) return "missing";
+        if (licenseCheckStatus(p) === "missing") return "needs_confirmation";
+        if (!(p.authorizedSignerName && p.authorizedSignerTitle)) return "missing";
+        if (insuranceCheckStatus(p) === "missing") return "needs_confirmation";
+        if (insuranceCheckStatus(p) === "needs_confirmation") return "needs_confirmation";
+        return "available";
+      }
+      case "art-customer":
+        return source.customerName ? "available" : "missing";
+      case "art-property": {
+        const st = readinessMapStatus("property", source);
+        if (st === "available") return "available";
+        return String(e.address || "").trim() ? "needs_confirmation" : "missing";
+      }
+      case "art-quote":
+        return source.quoteId ? "available" : "missing";
+      case "art-scope":
+        return String(e.scope || "").trim() ? "available" : "missing";
+      case "art-price":
+        return source.contractTotal != null && source.contractTotal > 0 ? "available" : "missing";
+      case "art-payment":
+        return readinessMapStatus("payment", source);
+      case "art-schedule":
+        return String(e.startDate || "").trim() || String(e.dueDate || "").trim()
+          ? "needs_confirmation"
+          : "missing";
+      case "art-changes":
+        return "available";
+      case "art-warranty":
+        return readinessMapStatus("warranty", source);
+      case "art-terms":
+        return readinessMapStatus("legal_notices", source);
+      case "art-signatures":
+        return readinessMapStatus("signature", source);
+      default:
+        return "missing";
+    }
+  }
+
+  function navStatusGlyph(status, visited) {
+    if (status === "available") return "✓";
+    if (status === "needs_confirmation") return "!";
+    if (status === "missing") return "○";
+    if (!visited) return "○";
+    return "○";
+  }
+
+  function navStatusAttr(status, visited, isActive) {
+    if (isActive) return status;
+    if (status === "available" || status === "needs_confirmation" || status === "missing") {
+      if (!visited && status === "available") return "unvisited";
+      return status;
+    }
+    return visited ? status : "unvisited";
+  }
+
+  function contractHubHref() {
+    const params = new URLSearchParams(window.location.search);
+    const projectId = String(params.get("project_id") || "").trim();
+    const quoteId = String(params.get("quote_id") || "").trim();
+    const hub = new URLSearchParams();
+    if (isPlausibleId(projectId)) hub.set("project_id", projectId);
+    if (isPlausibleId(quoteId)) hub.set("quote_id", quoteId);
+    const qs = hub.toString();
+    return qs ? `/contract-hub?${qs}` : "/contract-hub";
+  }
+
+  function updateIndexNavStatus() {
+    const links = document.querySelectorAll("#cbIndexNav a[data-section]");
+    links.forEach((link) => {
+      const id = link.getAttribute("data-section");
+      const statusEl = link.querySelector(".cb-nav-status");
+      const isActive = id === activeArticleId;
+      link.classList.toggle("is-active", isActive);
+      if (!statusEl || !sourceSnapshot) return;
+      const status = articleReadinessStatus(id, sourceSnapshot, draftEdits);
+      const visited = visitedArticleIds.has(id);
+      const attr = navStatusAttr(status, visited, isActive);
+      statusEl.setAttribute("data-status", attr);
+      statusEl.textContent =
+        isActive && status !== "missing" && status !== "needs_confirmation"
+          ? "●"
+          : navStatusGlyph(status, visited);
+      if (isActive && (status === "missing" || status === "needs_confirmation")) {
+        statusEl.textContent = navStatusGlyph(status, visited);
+      }
+      if (isActive && status === "available") statusEl.textContent = "●";
+    });
+  }
+
+  function updateStepFooter() {
+    const footer = $("cbStepFooter");
+    const backBtn = $("cbStepBack");
+    const continueBtn = $("cbStepContinue");
+    const setupLink = $("cbStepSetupLink");
+    const hint = $("cbStepHint");
+    if (!footer) return;
+
+    if (isPreviewMode() || !activeArticleId) {
+      footer.hidden = true;
+      return;
+    }
+
+    footer.hidden = false;
+    const idx = articleIndex(activeArticleId);
+    const meta = articleMeta(activeArticleId);
+    // Back is always available when an article is open; first article returns to empty workspace.
+    if (backBtn) backBtn.hidden = false;
+
+    const sigMissing =
+      activeArticleId === "art-signatures" &&
+      sourceSnapshot &&
+      readinessMapStatus("signature", sourceSnapshot) === "missing";
+
+    if (setupLink) {
+      if (sigMissing) {
+        setupLink.hidden = false;
+        setupLink.href = contractHubHref();
+        setupLink.textContent = "Complete Required Setup";
+        if (continueBtn) continueBtn.hidden = true;
+      } else {
+        setupLink.hidden = true;
+        if (continueBtn) continueBtn.hidden = false;
+      }
+    }
+
+    if (continueBtn && !continueBtn.hidden) {
+      if (activeArticleId === "art-signatures") {
+        continueBtn.textContent = "Preview Contract";
+      } else {
+        continueBtn.textContent = meta.label || "Continue";
+      }
+    }
+
+    if (hint) {
+      hint.textContent =
+        "Local draft only — Continue does not save to the database or change readiness.";
+    }
+  }
+
+  function syncEmptyWorkspace() {
+    const main = $("cbMain");
+    const empty = $("cbEmptyWorkspace");
+    const noArticle = !activeArticleId && !isPreviewMode();
+    if (main) main.classList.toggle("cb-no-article", noArticle);
+    if (empty) empty.hidden = !noArticle;
+  }
+
+  function applyActiveArticle({ focus = true } = {}) {
+    const main = $("cbMain");
+    if (!main) return;
+
+    document.querySelectorAll("[data-article]").forEach((article) => {
+      const on = Boolean(activeArticleId) && article.id === activeArticleId;
+      article.classList.toggle("is-active-article", on);
+      if (on) article.classList.remove("is-collapsed");
+    });
+
+    if (activeArticleId) visitedArticleIds.add(activeArticleId);
+    syncEmptyWorkspace();
+    updateIndexNavStatus();
+    updateStepFooter();
+
+    if (!focus || isPreviewMode() || !activeArticleId) return;
+    const active = document.getElementById(activeArticleId);
+    const title = active?.querySelector(".cb-article__title");
+    if (title) {
+      if (!title.hasAttribute("tabindex")) title.setAttribute("tabindex", "-1");
+      try {
+        title.focus({ preventScroll: true });
+      } catch (_err) {
+        title.focus();
+      }
+    }
+    const stage = document.querySelector(".cb-stage");
+    if (stage) {
+      try {
+        stage.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (_err2) {
+        /* ignore */
+      }
+    }
+  }
+
+  function setActiveArticle(nextId, { confirmIfDirty = true, focus = true } = {}) {
+    const normalized = nextId || null;
+    if (normalized === activeArticleId) {
+      applyActiveArticle({ focus: Boolean(normalized) && focus });
+      return true;
+    }
+    if (normalized != null && !ARTICLE_FLOW.some((a) => a.id === normalized)) return false;
+    if (confirmIfDirty && !confirmLeaveLocalDraft(normalized ? "Switch article" : "Close article")) {
+      return false;
+    }
+    activeArticleId = normalized;
+    applyActiveArticle({ focus: Boolean(normalized) && focus });
+    return true;
+  }
+
+  function enterPreviewMode() {
+    const main = $("cbMain");
+    if (!main || isPreviewMode()) return;
+    if (!confirmLeaveLocalDraft("Open Preview")) return;
+    articleBeforePreview = activeArticleId;
+    main.classList.add("is-preview");
+    main.classList.remove("cb-no-article");
+    document.body.classList.add("cb-customer-preview");
+    const btn = $("cbPreviewToggle");
+    if (btn) btn.textContent = "Edit";
+    const empty = $("cbEmptyWorkspace");
+    if (empty) empty.hidden = true;
+    updateStepFooter();
+  }
+
+  function exitPreviewMode() {
+    const main = $("cbMain");
+    if (!main || !isPreviewMode()) return;
+    main.classList.remove("is-preview");
+    document.body.classList.remove("cb-customer-preview");
+    const btn = $("cbPreviewToggle");
+    if (btn) btn.textContent = "Preview";
+    if (articleBeforePreview && ARTICLE_FLOW.some((a) => a.id === articleBeforePreview)) {
+      activeArticleId = articleBeforePreview;
+    } else {
+      activeArticleId = null;
+    }
+    articleBeforePreview = null;
+    applyActiveArticle({ focus: Boolean(activeArticleId) });
+  }
+
+  function prepareFullDocumentForPrint() {
+    const main = $("cbMain");
+    if (main) {
+      main.classList.add("is-printing");
+      main.classList.remove("cb-no-article");
+    }
+    const empty = $("cbEmptyWorkspace");
+    if (empty) empty.hidden = true;
+    document.querySelectorAll("[data-article].is-collapsed").forEach((el) => {
+      el.classList.remove("is-collapsed");
+    });
+  }
+
+  function restoreAfterPrint() {
+    const main = $("cbMain");
+    if (main) main.classList.remove("is-printing");
+    if (!isPreviewMode()) applyActiveArticle({ focus: false });
   }
 
   function readinessItems(source, edits) {
@@ -1436,6 +1768,8 @@
     if (!sourceSnapshot || !draftEdits) return;
     syncInputsFromEdits(draftEdits);
     renderDocument(sourceSnapshot, draftEdits);
+    updateIndexNavStatus();
+    updateStepFooter();
   }
 
   function wrapSelection(el, before, after) {
@@ -1525,7 +1859,12 @@
     document.querySelectorAll("[data-article]").forEach((article) => {
       const head = article.querySelector("[data-collapse]");
       if (!head) return;
-      head.addEventListener("click", () => {
+      head.addEventListener("click", (ev) => {
+        // Builder sequential mode: collapse is disabled; Preview/Print show full doc.
+        if (!isPreviewMode()) {
+          ev.preventDefault();
+          return;
+        }
         article.classList.toggle("is-collapsed");
       });
     });
@@ -1538,39 +1877,46 @@
     links.forEach((link) => {
       link.addEventListener("click", (ev) => {
         const id = link.getAttribute("data-section");
-        const target = id ? document.getElementById(id) : null;
-        if (!target) return;
+        if (!id) return;
         ev.preventDefault();
-        target.classList.remove("is-collapsed");
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-        links.forEach((l) => l.classList.toggle("is-active", l === link));
+        if (isPreviewMode()) {
+          exitPreviewMode();
+        }
+        setActiveArticle(id, { confirmIfDirty: true, focus: true });
       });
     });
+  }
 
-    const sections = links
-      .map((link) => document.getElementById(link.getAttribute("data-section") || ""))
-      .filter(Boolean);
+  function bindStepFooter() {
+    $("cbStepBack")?.addEventListener("click", () => {
+      if (!activeArticleId) return;
+      const idx = articleIndex(activeArticleId);
+      if (idx <= 0) {
+        setActiveArticle(null, { confirmIfDirty: true, focus: false });
+        return;
+      }
+      const prev = ARTICLE_FLOW[idx - 1];
+      if (!prev) return;
+      setActiveArticle(prev.id, { confirmIfDirty: true, focus: true });
+    });
 
-    if (!("IntersectionObserver" in window) || !sections.length) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-        if (!visible?.target?.id) return;
-        links.forEach((l) =>
-          l.classList.toggle("is-active", l.getAttribute("data-section") === visible.target.id)
-        );
-      },
-      { rootMargin: "-30% 0px -55% 0px", threshold: [0.15, 0.35, 0.6] }
-    );
-    sections.forEach((section) => observer.observe(section));
+    $("cbStepContinue")?.addEventListener("click", () => {
+      if (!activeArticleId) return;
+      readEditsFromInputs();
+      // Continue preserves local draftEdits; does not call backend or change readiness.
+      if (activeArticleId === "art-signatures") {
+        enterPreviewMode();
+        return;
+      }
+      const idx = articleIndex(activeArticleId);
+      const next = ARTICLE_FLOW[idx + 1];
+      if (!next) return;
+      setActiveArticle(next.id, { confirmIfDirty: false, focus: true });
+    });
   }
 
   function expandAllArticlesForPrint() {
-    document.querySelectorAll("[data-article].is-collapsed").forEach((el) => {
-      el.classList.remove("is-collapsed");
-    });
+    prepareFullDocumentForPrint();
   }
 
   function bindEditors() {
@@ -1590,6 +1936,7 @@
       el.addEventListener("input", () => {
         readEditsFromInputs();
         renderDocument(sourceSnapshot, draftEdits);
+        updateIndexNavStatus();
       });
       el.addEventListener("focus", () => {
         if (!undoStacks[id]?.length) pushUndo(id, el.value);
@@ -1610,25 +1957,44 @@
 
     $("cbResetDraft")?.addEventListener("click", () => {
       if (!sourceSnapshot) return;
+      if (!confirmLeaveLocalDraft("Reset local draft")) return;
       draftEdits = cloneEdits(sourceSnapshot);
+      draftBaseline = cloneEdits(sourceSnapshot);
       renderAll();
+      applyActiveArticle({ focus: false });
     });
 
     $("cbPrintDraft")?.addEventListener("click", () => {
-      expandAllArticlesForPrint();
+      prepareFullDocumentForPrint();
       window.print();
     });
 
     $("cbPreviewToggle")?.addEventListener("click", () => {
-      const main = $("cbMain");
-      if (!main) return;
-      const on = main.classList.toggle("is-preview");
-      document.body.classList.toggle("cb-customer-preview", on);
-      const btn = $("cbPreviewToggle");
-      if (btn) btn.textContent = on ? "Edit" : "Preview";
+      if (isPreviewMode()) {
+        exitPreviewMode();
+      } else {
+        enterPreviewMode();
+      }
     });
 
-    window.addEventListener("beforeprint", expandAllArticlesForPrint);
+    window.addEventListener("beforeprint", prepareFullDocumentForPrint);
+    window.addEventListener("afterprint", restoreAfterPrint);
+
+    window.addEventListener("beforeunload", (ev) => {
+      if (suppressUnloadGuard) return;
+      if (!hasLocalDraftChanges()) return;
+      ev.preventDefault();
+      ev.returnValue = "";
+    });
+
+    $("cbBackHub")?.addEventListener("click", (ev) => {
+      if (!hasLocalDraftChanges()) return;
+      if (!confirmLeaveLocalDraft("Leave Contract Builder")) {
+        ev.preventDefault();
+        return;
+      }
+      suppressUnloadGuard = true;
+    });
   }
 
   /**
@@ -1726,6 +2092,7 @@
     showLoading();
     bindCollapsibleArticles();
     bindIndexNav();
+    bindStepFooter();
 
     const params = new URLSearchParams(window.location.search);
     const projectId = String(params.get("project_id") || "").trim();
@@ -1934,8 +2301,12 @@
     if (liveAddress && !String(draftEdits.address || "").trim()) {
       draftEdits.address = liveAddress;
     }
+    draftBaseline = cloneEdits({ ...sourceSnapshot, ...draftEdits });
+    activeArticleId = null;
+    visitedArticleIds.clear();
     bindEditors();
     renderAll();
+    applyActiveArticle({ focus: false });
     showMain();
   }
 
