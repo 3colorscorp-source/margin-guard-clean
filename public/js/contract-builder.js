@@ -68,6 +68,7 @@
     PREVIEW: "preview",
     EDIT: "edit",
     SAVING: "saving",
+    SAVED: "saved",
   });
 
   /** @type {Record<string, string>} */
@@ -177,18 +178,25 @@
     }),
     "art-property": defaultWorkspaceCaps({
       supportsEdit: true,
-      supportsSave: false,
+      supportsSave: true,
       supportsValidation: true,
       supportsFutureMap: true,
       continueLabel: "Continue",
-      validate: () => {
-        const st = articleReadinessStatus("art-property", sourceSnapshot, draftEdits);
-        return readinessValidation(
-          st,
-          "Property address is confirmed.",
-          "Property address needs confirmation.",
-          "Property address is missing."
-        );
+      saveLabel: "Save",
+      validate: () => validatePropertyWorkspace(),
+      syncEditFromModel: () => syncPropertyInputsFromModel(),
+      onEnterEdit: () => {
+        updatePropertyLiveHint();
+      },
+      onBeforeSave: () => {
+        const check = validatePropertyWorkspace({ forSave: true });
+        updatePropertyLiveHint(check);
+        renderWorkspaceChrome();
+        if (check.blocking) return false;
+        return true;
+      },
+      onSave: async () => {
+        await savePropertyWorkspace();
       },
     }),
     "art-quote": defaultWorkspaceCaps({
@@ -361,6 +369,7 @@
     if (!el) return;
     el.setAttribute("data-ws-mode", mode);
     el.classList.toggle("is-ws-saving", mode === WS_MODE.SAVING);
+    el.classList.toggle("is-ws-saved", mode === WS_MODE.SAVED);
     el.classList.toggle("is-ws-edit", mode === WS_MODE.EDIT);
     el.classList.toggle("is-ws-preview", mode === WS_MODE.PREVIEW);
   }
@@ -469,6 +478,9 @@
     try {
       await caps.onSave(workspaceContext(articleId));
       workspaceEditBaseline = null;
+      setArticleMode(articleId, WS_MODE.SAVED);
+      renderWorkspaceChrome();
+      await new Promise((resolve) => setTimeout(resolve, 700));
       if (typeof caps.onAfterSave === "function") {
         await caps.onAfterSave(workspaceContext(articleId));
       }
@@ -550,7 +562,7 @@
     actions.innerHTML = "";
     const caps = getWorkspace(activeArticleId);
     const mode = getArticleMode(activeArticleId);
-    const busy = workspaceBusy || mode === WS_MODE.SAVING;
+    const busy = workspaceBusy || mode === WS_MODE.SAVING || mode === WS_MODE.SAVED;
 
     actions.appendChild(
       createFooterButton({
@@ -574,6 +586,19 @@
         })
       );
       if (hint) hint.textContent = "Saving article changes…";
+      return;
+    }
+
+    if (mode === WS_MODE.SAVED) {
+      actions.appendChild(
+        createFooterButton({
+          id: "cbStepSaved",
+          label: "Saved",
+          className: "btn primary",
+          disabled: true,
+        })
+      );
+      if (hint) hint.textContent = "Saved — returning to Preview.";
       return;
     }
 
@@ -680,8 +705,9 @@
     }
 
     if (hint && mode === WS_MODE.PREVIEW) {
-      hint.textContent =
-        "Local draft only — Continue does not save to the database or change readiness.";
+      hint.textContent = caps.supportsSave
+        ? "This article supports Save. Continue only moves to the next article."
+        : "Local draft only — Continue does not save to the database or change readiness.";
     }
   }
 
@@ -845,6 +871,22 @@
     return { ok: res.ok, status: res.status, data };
   }
 
+  async function postJson(url, body) {
+    const res = await fetch(url, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+    let data = {};
+    try {
+      data = await res.json();
+    } catch (_err) {
+      data = {};
+    }
+    return { ok: res.ok, status: res.status, data };
+  }
+
   function quoteLabel(quote) {
     const display = String(quote?.quote_number_display || "").trim();
     if (display) return display;
@@ -959,6 +1001,222 @@
     const cityState = [city, state].filter(Boolean).join(", ");
     const locality = [cityState, zip].filter(Boolean).join(" ");
     return [line1, line2, locality].filter(Boolean).join(", ");
+  }
+
+  function formatPropertyLocality(city, state, zip) {
+    const cityState = [String(city || "").trim(), String(state || "").trim()]
+      .filter(Boolean)
+      .join(", ");
+    return [cityState, String(zip || "").trim()].filter(Boolean).join(" ");
+  }
+
+  function formatPropertyFieldsLine(fields) {
+    if (!fields) return "";
+    const locality = formatPropertyLocality(fields.city, fields.state, fields.zip);
+    return [fields.line1, fields.line2, locality].filter(Boolean).join(", ");
+  }
+
+  function readPropertyFieldsFromDom() {
+    return {
+      line1: String($("cbPropEditLine1")?.value || "").trim(),
+      line2: String($("cbPropEditLine2")?.value || "").trim(),
+      city: String($("cbPropEditCity")?.value || "").trim(),
+      state: String($("cbPropEditState")?.value || "").trim(),
+      zip: String($("cbPropEditZip")?.value || "").trim(),
+    };
+  }
+
+  function propertyFieldsFromSetup(setup) {
+    return {
+      line1: String(setup?.property_address_line1 || "").trim(),
+      line2: String(setup?.property_address_line2 || "").trim(),
+      city: String(setup?.property_city || "").trim(),
+      state: String(setup?.property_state || "").trim(),
+      zip: String(setup?.property_postal_code || "").trim(),
+    };
+  }
+
+  function propertyFieldsFromEdits(edits) {
+    return {
+      line1: String(edits?.propLine1 || "").trim(),
+      line2: String(edits?.propLine2 || "").trim(),
+      city: String(edits?.propCity || "").trim(),
+      state: String(edits?.propState || "").trim(),
+      zip: String(edits?.propZip || "").trim(),
+    };
+  }
+
+  function propertyMissingLabels(fields) {
+    const missing = [];
+    if (!fields.line1) missing.push("Address Line 1");
+    if (!fields.city) missing.push("City");
+    if (!fields.state) missing.push("State");
+    if (!fields.zip) missing.push("ZIP Code");
+    return missing;
+  }
+
+  function propertyFieldsComplete(fields) {
+    return propertyMissingLabels(fields).length === 0;
+  }
+
+  function applyPropertyFieldsToEdits(edits, fields) {
+    if (!edits || !fields) return;
+    edits.propLine1 = fields.line1;
+    edits.propLine2 = fields.line2;
+    edits.propCity = fields.city;
+    edits.propState = fields.state;
+    edits.propZip = fields.zip;
+    edits.address = formatPropertyFieldsLine(fields);
+  }
+
+  function syncPropertyInputsFromModel() {
+    const setupFields = propertyFieldsFromSetup(sourceSnapshot?.contractSetup?.setup);
+    const editFields = propertyFieldsFromEdits(draftEdits);
+    const fields = propertyFieldsComplete(editFields)
+      ? editFields
+      : propertyFieldsComplete(setupFields)
+        ? setupFields
+        : {
+            line1: editFields.line1 || setupFields.line1 || String(draftEdits?.address || "").trim(),
+            line2: editFields.line2 || setupFields.line2,
+            city: editFields.city || setupFields.city,
+            state: editFields.state || setupFields.state,
+            zip: editFields.zip || setupFields.zip,
+          };
+    if ($("cbPropEditLine1")) $("cbPropEditLine1").value = fields.line1;
+    if ($("cbPropEditLine2")) $("cbPropEditLine2").value = fields.line2;
+    if ($("cbPropEditCity")) $("cbPropEditCity").value = fields.city;
+    if ($("cbPropEditState")) $("cbPropEditState").value = fields.state;
+    if ($("cbPropEditZip")) $("cbPropEditZip").value = fields.zip;
+    markPropertyFieldValidity(fields);
+  }
+
+  function markPropertyFieldValidity(fields) {
+    const map = [
+      ["cbPropEditLine1", fields.line1],
+      ["cbPropEditCity", fields.city],
+      ["cbPropEditState", fields.state],
+      ["cbPropEditZip", fields.zip],
+    ];
+    for (const [id, value] of map) {
+      const el = $(id);
+      if (!el) continue;
+      el.classList.toggle("is-invalid", !String(value || "").trim());
+    }
+    const line2 = $("cbPropEditLine2");
+    if (line2) line2.classList.remove("is-invalid");
+  }
+
+  function validatePropertyWorkspace(options = {}) {
+    const forSave = options.forSave === true;
+    if (propertyConfigured(sourceSnapshot?.contractSetup) && !forSave && getArticleMode("art-property") === WS_MODE.PREVIEW) {
+      return {
+        level: "ok",
+        badge: "Confirmed",
+        message: "✓ Address complete",
+        blocking: false,
+      };
+    }
+
+    const fields =
+      getArticleMode("art-property") === WS_MODE.EDIT || forSave
+        ? readPropertyFieldsFromDom()
+        : propertyFieldsFromSetup(sourceSnapshot?.contractSetup?.setup);
+    const missing = propertyMissingLabels(fields);
+
+    if (!missing.length) {
+      if (propertyConfigured(sourceSnapshot?.contractSetup) && !forSave) {
+        return {
+          level: "ok",
+          badge: "Confirmed",
+          message: "✓ Address complete",
+          blocking: false,
+        };
+      }
+      return {
+        level: forSave ? "ok" : "warn",
+        badge: forSave ? "Ready" : "Ready to save",
+        message: forSave
+          ? "✓ Address complete"
+          : "Address looks complete — Save to confirm it on the contract.",
+        blocking: false,
+      };
+    }
+
+    if (missing.length === 4 && !fields.line1 && !fields.city && !fields.state && !fields.zip) {
+      return {
+        level: "block",
+        badge: "Missing",
+        message: "Add the project address to continue.",
+        blocking: true,
+      };
+    }
+
+    const needs = missing.length === 1 ? missing[0] : missing.slice(0, -1).join(", ") + " and " + missing[missing.length - 1];
+    return {
+      level: "block",
+      badge: "Incomplete",
+      message: `Property address still needs ${needs} before it can be confirmed.`,
+      blocking: true,
+    };
+  }
+
+  function updatePropertyLiveHint(result) {
+    const hint = $("cbPropLiveHint");
+    if (!hint) return;
+    const check = result || validatePropertyWorkspace({ forSave: false });
+    hint.hidden = false;
+    hint.classList.remove("is-ok", "is-warn", "is-block");
+    if (check.level === "ok") hint.classList.add("is-ok");
+    else if (check.level === "warn") hint.classList.add("is-warn");
+    else hint.classList.add("is-block");
+    hint.textContent = check.message || "";
+    markPropertyFieldValidity(readPropertyFieldsFromDom());
+  }
+
+  async function savePropertyWorkspace() {
+    if (!sourceSnapshot?.projectId || !sourceSnapshot?.quoteId) {
+      throw new Error("Project and quote are required to save the property address.");
+    }
+    const fields = readPropertyFieldsFromDom();
+    const missing = propertyMissingLabels(fields);
+    if (missing.length) {
+      throw new Error(
+        `Property address still needs ${missing.join(", ")} before it can be confirmed.`
+      );
+    }
+
+    const res = await postJson(CONTRACT_SETUP_API, {
+      project_id: sourceSnapshot.projectId,
+      quote_id: sourceSnapshot.quoteId,
+      property_address_line1: fields.line1,
+      property_address_line2: fields.line2,
+      property_city: fields.city,
+      property_state: fields.state,
+      property_postal_code: fields.zip,
+      confirm_property_address: true,
+    });
+
+    if (!res.ok || res.data?.ok !== true || !res.data.setup) {
+      const msg = String(res.data?.error || "").trim();
+      throw new Error(msg || "Property address could not be saved.");
+    }
+
+    sourceSnapshot.contractSetup = {
+      available: true,
+      loadError: null,
+      forbidden: false,
+      setup: res.data.setup,
+      readiness: res.data.readiness || null,
+    };
+    applyPropertyFieldsToEdits(draftEdits, propertyFieldsFromSetup(res.data.setup));
+    draftBaseline = cloneEdits({
+      ...sourceSnapshot,
+      ...draftEdits,
+    });
+    renderDocument(sourceSnapshot, draftEdits);
+    updateIndexNavStatus();
+    renderWorkspaceChrome();
   }
 
   function propertyConfigured(setupBundle) {
@@ -1373,6 +1631,11 @@
   function cloneEdits(source) {
     return {
       address: source.address,
+      propLine1: source.propLine1 || "",
+      propLine2: source.propLine2 || "",
+      propCity: source.propCity || "",
+      propState: source.propState || "",
+      propZip: source.propZip || "",
       scope: source.scope,
       exclusions: source.exclusions,
       startDate: source.startDate,
@@ -1387,6 +1650,11 @@
     if (!a || !b) return a === b;
     const keys = [
       "address",
+      "propLine1",
+      "propLine2",
+      "propCity",
+      "propState",
+      "propZip",
       "scope",
       "exclusions",
       "startDate",
@@ -2057,7 +2325,11 @@
   }
 
   function syncInputsFromEdits(edits) {
-    if ($("cbEditAddress")) $("cbEditAddress").value = edits.address || "";
+    if ($("cbPropEditLine1")) $("cbPropEditLine1").value = edits.propLine1 || "";
+    if ($("cbPropEditLine2")) $("cbPropEditLine2").value = edits.propLine2 || "";
+    if ($("cbPropEditCity")) $("cbPropEditCity").value = edits.propCity || "";
+    if ($("cbPropEditState")) $("cbPropEditState").value = edits.propState || "";
+    if ($("cbPropEditZip")) $("cbPropEditZip").value = edits.propZip || "";
     if ($("cbEditScope")) $("cbEditScope").value = edits.scope || "";
     if ($("cbEditExclusions")) $("cbEditExclusions").value = edits.exclusions || "";
     if ($("cbEditStart")) $("cbEditStart").value = edits.startDate || "";
@@ -2069,7 +2341,15 @@
 
   function readEditsFromInputs() {
     if (!draftEdits) return;
-    draftEdits.address = String($("cbEditAddress")?.value || "").trim();
+    const propFields = readPropertyFieldsFromDom();
+    if (
+      $("cbPropEditLine1") ||
+      $("cbPropEditCity") ||
+      $("cbPropEditState") ||
+      $("cbPropEditZip")
+    ) {
+      applyPropertyFieldsToEdits(draftEdits, propFields);
+    }
     draftEdits.scope = String($("cbEditScope")?.value || "").trim();
     draftEdits.exclusions = String($("cbEditExclusions")?.value || "").trim();
     draftEdits.startDate = String($("cbEditStart")?.value || "").trim();
@@ -2102,33 +2382,75 @@
 
     const setup = source.contractSetup?.setup || null;
     const propConfigured = propertyConfigured(source.contractSetup);
-    setText("cbPropStatus", sectionStatusLabel(propConfigured));
-    setText("cbPropLine1", setup?.property_address_line1 || "—");
-    setText("cbPropLine2", setup?.property_address_line2 || "—");
-    setText("cbPropCity", setup?.property_city || "—");
-    setText("cbPropState", setup?.property_state || "—");
-    setText("cbPropZip", setup?.property_postal_code || "—");
-
+    let line1 = String(setup?.property_address_line1 || "").trim();
+    let line2 = String(setup?.property_address_line2 || "").trim();
+    let city = String(setup?.property_city || "").trim();
+    let state = String(setup?.property_state || "").trim();
+    let zip = String(setup?.property_postal_code || "").trim();
     const livePropertyLine = formatPropertyLine(setup);
-    const proposedAddress = String(edits.address || "").trim();
+    const draftFields = propertyFieldsFromEdits(edits);
+    if (!livePropertyLine && (draftFields.line1 || draftFields.city || String(edits.address || "").trim())) {
+      if (draftFields.line1 || draftFields.city) {
+        line1 = draftFields.line1 || line1;
+        line2 = draftFields.line2 || line2;
+        city = draftFields.city || city;
+        state = draftFields.state || state;
+        zip = draftFields.zip || zip;
+      } else if (String(edits.address || "").trim()) {
+        line1 = String(edits.address || "").trim();
+      }
+    }
+    const locality = formatPropertyLocality(city, state, zip);
+
+    setText("cbPropStatus", sectionStatusLabel(propConfigured));
+    setText("cbPropLine1", line1 || "—");
+    const line2El = $("cbPropLine2");
+    if (line2El) {
+      if (line2) {
+        line2El.hidden = false;
+        line2El.textContent = line2;
+      } else {
+        line2El.hidden = true;
+        line2El.textContent = "—";
+      }
+    }
+    setText("cbPropCity", city || "—");
+    setText("cbPropState", state || "—");
+    setText("cbPropZip", zip || "—");
+    setText("cbPropLocality", locality || "");
+    const localityEl = $("cbPropLocality");
+    if (localityEl) localityEl.hidden = !locality;
+
+    const badge = $("cbPropConfirmBadge");
+    const badgeText = $("cbPropConfirmText");
+    const badgeMark = badge?.querySelector?.(".cb-prop-workspace__confirm-mark");
+    const visibleAddress = Boolean(line1 || locality || livePropertyLine);
+    if (badge) {
+      badge.classList.remove("is-confirmed", "is-pending", "is-missing");
+      if (propConfigured && livePropertyLine) {
+        badge.classList.add("is-confirmed");
+        if (badgeMark) badgeMark.textContent = "✓";
+        if (badgeText) badgeText.textContent = "Property Address Confirmed";
+      } else if (visibleAddress) {
+        badge.classList.add("is-pending");
+        if (badgeMark) badgeMark.textContent = "!";
+        if (badgeText) badgeText.textContent = "Property address needs confirmation";
+      } else {
+        badge.classList.add("is-missing");
+        if (badgeMark) badgeMark.textContent = "○";
+        if (badgeText) badgeText.textContent = "Property address not set";
+      }
+    }
+
     const propEl = $("cbPropertyDisplay");
     const proposedWrap = $("cbPropProposedWrap");
     const proposedEl = $("cbPropProposed");
+    if (propEl) propEl.textContent = livePropertyLine || formatPropertyFieldsLine({ line1, line2, city, state, zip }) || "—";
+    if (proposedWrap) proposedWrap.hidden = true;
+    if (proposedEl) proposedEl.textContent = "—";
 
-    if (propConfigured && livePropertyLine) {
-      if (propEl) propEl.textContent = livePropertyLine;
-      if (proposedWrap) proposedWrap.hidden = true;
-      if (proposedEl) proposedEl.textContent = "—";
-    } else if (!propConfigured && proposedAddress) {
-      if (propEl) propEl.textContent = "Property address pending confirmation";
-      if (proposedWrap) proposedWrap.hidden = false;
-      if (proposedEl) proposedEl.textContent = proposedAddress;
-    } else if (livePropertyLine) {
-      if (propEl) propEl.textContent = livePropertyLine;
-      if (proposedWrap) proposedWrap.hidden = true;
-    } else {
-      if (propEl) propEl.textContent = "—";
-      if (proposedWrap) proposedWrap.hidden = true;
+    if (!line1) {
+      setText("cbPropLine1", "—");
     }
 
     setText("cbQuoteStatus", quoteStatusDisplay(source.quoteStatus));
@@ -2554,7 +2876,11 @@
 
   function bindEditors() {
     const ids = [
-      "cbEditAddress",
+      "cbPropEditLine1",
+      "cbPropEditLine2",
+      "cbPropEditCity",
+      "cbPropEditState",
+      "cbPropEditZip",
       "cbEditScope",
       "cbEditExclusions",
       "cbEditStart",
@@ -2568,8 +2894,13 @@
       if (!el) continue;
       el.addEventListener("input", () => {
         readEditsFromInputs();
-        renderDocument(sourceSnapshot, draftEdits);
-        updateIndexNavStatus();
+        if (id.startsWith("cbPropEdit")) {
+          updatePropertyLiveHint();
+          renderWorkspaceChrome();
+        } else if (sourceSnapshot && draftEdits) {
+          renderDocument(sourceSnapshot, draftEdits);
+          updateIndexNavStatus();
+        }
       });
       el.addEventListener("focus", () => {
         if (!undoStacks[id]?.length) pushUndo(id, el.value);
@@ -2930,9 +3261,15 @@
       legalNoticesBundle
     );
     draftEdits = cloneEdits(sourceSnapshot);
-    const liveAddress = formatPropertyLine(setupBundle.setup);
-    if (liveAddress && !String(draftEdits.address || "").trim()) {
-      draftEdits.address = liveAddress;
+    const setupFields = propertyFieldsFromSetup(setupBundle.setup);
+    if (propertyFieldsComplete(setupFields) || setupFields.line1) {
+      applyPropertyFieldsToEdits(draftEdits, setupFields);
+    } else {
+      const legacy = String(sourceSnapshot.address || "").trim();
+      if (legacy) {
+        draftEdits.propLine1 = legacy;
+        draftEdits.address = legacy;
+      }
     }
     draftBaseline = cloneEdits({ ...sourceSnapshot, ...draftEdits });
     activeArticleId = null;

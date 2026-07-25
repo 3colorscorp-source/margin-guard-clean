@@ -274,11 +274,13 @@
       display: none !important;
     }
     #cbMain:not(.is-preview):not(.is-printing) .cb-article[data-ws-mode="edit"] [data-ws-preview],
-    #cbMain:not(.is-preview):not(.is-printing) .cb-article[data-ws-mode="saving"] [data-ws-preview] {
+    #cbMain:not(.is-preview):not(.is-printing) .cb-article[data-ws-mode="saving"] [data-ws-preview],
+    #cbMain:not(.is-preview):not(.is-printing) .cb-article[data-ws-mode="saved"] [data-ws-preview] {
       display: none !important;
     }
     #cbMain:not(.is-preview):not(.is-printing) .cb-article[data-ws-mode="edit"] .cb-editor,
-    #cbMain:not(.is-preview):not(.is-printing) .cb-article[data-ws-mode="saving"] .cb-editor {
+    #cbMain:not(.is-preview):not(.is-printing) .cb-article[data-ws-mode="saving"] .cb-editor,
+    #cbMain:not(.is-preview):not(.is-printing) .cb-article[data-ws-mode="saved"] .cb-editor {
       margin-top: 0;
     }
 
@@ -287,15 +289,19 @@
     #cbMain.is-preview .cb-editor,
     #cbMain.is-preview .cb-draft-note,
     #cbMain.is-preview #cbWsValidation,
+    #cbMain.is-preview .cb-prop-secondary,
+    #cbMain.is-preview .cb-prop-editor__intro,
     #cbMain.is-printing [data-ws-edit],
     #cbMain.is-printing .cb-editor,
     #cbMain.is-printing .cb-draft-note,
     #cbMain.is-printing #cbWsValidation,
     #cbMain.is-printing .cb-step-footer,
+    #cbMain.is-printing .cb-prop-secondary,
     body.cb-customer-preview [data-ws-edit],
     body.cb-customer-preview .cb-editor,
     body.cb-customer-preview .cb-draft-note,
-    body.cb-customer-preview #cbWsValidation {
+    body.cb-customer-preview #cbWsValidation,
+    body.cb-customer-preview .cb-prop-secondary {
       display: none !important;
     }
     .cb-article.is-ws-saving {
@@ -353,6 +359,218 @@
       text-transform: uppercase;
       background: rgba(255,255,255,0.08);
     }
+    .cb-article.is-ws-saved {
+      position: relative;
+      pointer-events: none;
+    }
+    .cb-article.is-ws-saved::after {
+      content: "Saved";
+      position: absolute;
+      inset: auto 16px 16px auto;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: rgba(15, 118, 110, 0.16);
+      border: 1px solid rgba(15, 118, 110, 0.45);
+      color: #0f766e;
+      font-size: 0.75rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    /* CH-007B — Premium Property workspace */
+    .cb-prop-workspace {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin: 4px 0 2px;
+      max-width: 34rem;
+    }
+    .cb-prop-workspace__eyebrow {
+      margin: 0 0 6px;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--cb-accent);
+    }
+    .cb-prop-workspace__project {
+      margin: 0 0 18px;
+      font-size: 0.84rem;
+      color: var(--cb-muted);
+      line-height: 1.35;
+    }
+    .cb-prop-workspace__project strong {
+      font-weight: 700;
+      color: #44403c;
+    }
+    .cb-prop-workspace__section {
+      margin: 0 0 16px;
+    }
+    .cb-prop-workspace__section-label {
+      margin: 0 0 8px;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #a8a29e;
+    }
+    .cb-prop-workspace__line1 {
+      margin: 0;
+      font-size: 1.28rem;
+      font-weight: 700;
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+      color: var(--cb-ink);
+    }
+    .cb-prop-workspace__line2 {
+      margin: 4px 0 0;
+      font-size: 0.98rem;
+      line-height: 1.35;
+      color: #44403c;
+    }
+    .cb-prop-workspace__line2[hidden],
+    .cb-prop-workspace__locality[hidden] {
+      display: none !important;
+    }
+    .cb-prop-workspace__locality {
+      margin: 6px 0 0;
+      font-size: 1.02rem;
+      line-height: 1.35;
+      color: #44403c;
+    }
+    .cb-prop-workspace__confirm {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 14px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+    .cb-prop-workspace__confirm.is-confirmed {
+      background: var(--cb-accent-soft);
+      color: #115e59;
+      border: 1px solid rgba(15, 118, 110, 0.28);
+    }
+    .cb-prop-workspace__confirm.is-pending {
+      background: var(--cb-warn-bg);
+      color: var(--cb-warn);
+      border: 1px solid #fdba74;
+    }
+    .cb-prop-workspace__confirm.is-missing {
+      background: #fafaf9;
+      color: #78716c;
+      border: 1px solid var(--cb-line);
+    }
+    .cb-prop-workspace__confirm-mark {
+      font-size: 0.95rem;
+      line-height: 1;
+    }
+    .cb-prop-secondary {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid var(--cb-line);
+    }
+    .cb-prop-secondary__title {
+      margin: 0 0 8px;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #a8a29e;
+    }
+    .cb-prop-secondary__list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 6px;
+    }
+    .cb-prop-secondary__list li {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 0.84rem;
+      color: #57534e;
+      padding: 6px 0;
+    }
+    .cb-prop-secondary__list li span:last-child {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #a8a29e;
+      white-space: nowrap;
+    }
+    .cb-prop-editor {
+      margin: 0;
+      max-width: 34rem;
+    }
+    .cb-prop-editor__intro {
+      margin: 0 0 14px;
+      font-size: 0.84rem;
+      line-height: 1.45;
+      color: #57534e;
+    }
+    .cb-prop-form {
+      display: grid;
+      gap: 12px;
+    }
+    .cb-prop-form__row {
+      display: grid;
+      gap: 12px;
+    }
+    .cb-prop-form__row--split {
+      grid-template-columns: 1.4fr 0.7fr 0.9fr;
+    }
+    @media (max-width: 640px) {
+      .cb-prop-form__row--split {
+        grid-template-columns: 1fr;
+      }
+    }
+    .cb-prop-field label {
+      display: block;
+      margin: 0 0 5px;
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #78716c;
+    }
+    .cb-prop-field input {
+      width: 100%;
+      box-sizing: border-box;
+      min-height: 42px;
+      padding: 10px 12px;
+      border: 1px solid var(--cb-line);
+      border-radius: 10px;
+      background: #fff;
+      color: var(--cb-ink);
+      font: inherit;
+      font-size: 0.95rem;
+    }
+    .cb-prop-field input:focus {
+      outline: 2px solid rgba(15, 118, 110, 0.35);
+      outline-offset: 1px;
+      border-color: rgba(15, 118, 110, 0.55);
+    }
+    .cb-prop-field input.is-invalid {
+      border-color: #f87171;
+      background: #fff7f7;
+    }
+    .cb-prop-live-hint {
+      margin: 12px 0 0;
+      font-size: 0.8rem;
+      line-height: 1.4;
+      color: #57534e;
+    }
+    .cb-prop-live-hint.is-ok { color: #0f766e; font-weight: 700; }
+    .cb-prop-live-hint.is-warn { color: var(--cb-warn); }
+    .cb-prop-live-hint.is-block { color: var(--cb-danger); }
 
     .cb-stage {
       min-width: 0;
@@ -1243,28 +1461,70 @@
                 </button>
                 <div class="cb-article__body">
                   <div data-ws-preview>
-                  <div class="cb-meta-grid">
-                    <div class="cb-field"><span class="k">Project</span><div class="v" id="cbProjectName">—</div></div>
-                    <div class="cb-field"><span class="k">Status</span><div class="v" id="cbPropStatus">Missing</div></div>
-                    <div class="cb-field"><span class="k">Property Address</span><div class="v" id="cbPropLine1">—</div></div>
-                    <div class="cb-field"><span class="k">Address line 2</span><div class="v" id="cbPropLine2">—</div></div>
-                    <div class="cb-field"><span class="k">City</span><div class="v" id="cbPropCity">—</div></div>
-                    <div class="cb-field"><span class="k">State</span><div class="v" id="cbPropState">—</div></div>
-                    <div class="cb-field"><span class="k">Zip</span><div class="v" id="cbPropZip">—</div></div>
-                    <div class="cb-field"><span class="k">Property address</span><div class="v" id="cbPropertyDisplay">—</div></div>
-                  </div>
-                  <div class="cb-proposed-block" id="cbPropProposedWrap" hidden>
-                    <div class="cb-field">
-                      <span class="k">Proposed property address</span>
-                      <div class="v" id="cbPropProposed">—</div>
+                    <div class="cb-prop-workspace">
+                      <p class="cb-prop-workspace__eyebrow">Property</p>
+                      <p class="cb-prop-workspace__project">
+                        Project · <strong id="cbProjectName">—</strong>
+                      </p>
+                      <div class="cb-prop-workspace__section">
+                        <p class="cb-prop-workspace__section-label">Project Address</p>
+                        <p class="cb-prop-workspace__line1" id="cbPropLine1">—</p>
+                        <p class="cb-prop-workspace__line2" id="cbPropLine2" hidden>—</p>
+                        <p class="cb-prop-workspace__locality" id="cbPropLocality">—</p>
+                        <div class="cb-prop-workspace__confirm is-missing" id="cbPropConfirmBadge" role="status">
+                          <span class="cb-prop-workspace__confirm-mark" aria-hidden="true">○</span>
+                          <span id="cbPropConfirmText">Property address not set</span>
+                        </div>
+                      </div>
+                      <div class="cb-prop-secondary" aria-label="Future property details">
+                        <p class="cb-prop-secondary__title">Optional details</p>
+                        <ul class="cb-prop-secondary__list">
+                          <li><span>Site notes</span><span>Coming soon</span></li>
+                          <li><span>Access notes</span><span>Coming soon</span></li>
+                          <li><span>GPS location</span><span>Coming soon</span></li>
+                          <li><span>Photos</span><span>Coming soon</span></li>
+                        </ul>
+                      </div>
+                      <!-- Hidden compatibility mirrors for print/readiness consumers -->
+                      <span id="cbPropCity" hidden>—</span>
+                      <span id="cbPropState" hidden>—</span>
+                      <span id="cbPropZip" hidden>—</span>
+                      <span id="cbPropStatus" hidden>Missing</span>
+                      <span id="cbPropertyDisplay" hidden>—</span>
+                      <div id="cbPropProposedWrap" hidden>
+                        <span id="cbPropProposed">—</span>
+                      </div>
                     </div>
                   </div>
-                  </div>
-                  <div class="cb-editor owner-only" data-ws-edit>
-                    <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditAddress"></div>
-                    <label for="cbEditAddress">Proposed property address</label>
-                    <p class="cb-draft-note">Local draft only — not saved to the property record.</p>
-                    <input id="cbEditAddress" type="text" maxlength="255" autocomplete="off" />
+                  <div class="cb-prop-editor owner-only" data-ws-edit>
+                    <p class="cb-prop-editor__intro">
+                      Confirm the project address used on the contract. Save writes it to the project record.
+                    </p>
+                    <div class="cb-prop-form">
+                      <div class="cb-prop-field">
+                        <label for="cbPropEditLine1">Address Line 1</label>
+                        <input id="cbPropEditLine1" type="text" maxlength="200" autocomplete="street-address" />
+                      </div>
+                      <div class="cb-prop-field">
+                        <label for="cbPropEditLine2">Address Line 2</label>
+                        <input id="cbPropEditLine2" type="text" maxlength="200" autocomplete="address-line2" placeholder="Apt, suite, unit (optional)" />
+                      </div>
+                      <div class="cb-prop-form__row cb-prop-form__row--split">
+                        <div class="cb-prop-field">
+                          <label for="cbPropEditCity">City</label>
+                          <input id="cbPropEditCity" type="text" maxlength="120" autocomplete="address-level2" />
+                        </div>
+                        <div class="cb-prop-field">
+                          <label for="cbPropEditState">State</label>
+                          <input id="cbPropEditState" type="text" maxlength="80" autocomplete="address-level1" />
+                        </div>
+                        <div class="cb-prop-field">
+                          <label for="cbPropEditZip">ZIP</label>
+                          <input id="cbPropEditZip" type="text" maxlength="32" autocomplete="postal-code" />
+                        </div>
+                      </div>
+                    </div>
+                    <p class="cb-prop-live-hint" id="cbPropLiveHint" hidden></p>
                   </div>
                 </div>
               </section>
