@@ -60,6 +60,671 @@
   /** Baseline for local dirty detection (memory-only; includes init prefill). */
   let draftBaseline = null;
 
+  /**
+   * CH-007A — Article Workspace Engine (generic; article-agnostic core).
+   * Consumers declare capabilities + optional hooks. Engine owns mode/footer/validation chrome.
+   */
+  const WS_MODE = Object.freeze({
+    PREVIEW: "preview",
+    EDIT: "edit",
+    SAVING: "saving",
+  });
+
+  /** @type {Record<string, string>} */
+  const articleModes = Object.create(null);
+  /** Snapshot of draftEdits when entering Edit (for Cancel restore). */
+  let workspaceEditBaseline = null;
+  let workspaceBusy = false;
+
+  function defaultWorkspaceCaps(overrides) {
+    return {
+      supportsPreview: true,
+      supportsEdit: false,
+      supportsSave: false,
+      supportsValidation: false,
+      supportsContinue: true,
+      supportsExternalSource: false,
+      supportsFutureMap: false,
+      supportsAttachments: false,
+      supportsTimeline: false,
+      continueLabel: "Continue",
+      editLabel: "Edit",
+      saveLabel: "Save",
+      doneLabel: "Done",
+      cancelLabel: "Cancel",
+      externalSourceLabel: "Open Source Record",
+      externalSourceHref: null,
+      continueAction: "next",
+      validate: null,
+      onEnterPreview: null,
+      onEnterEdit: null,
+      onCancelEdit: null,
+      onBeforeSave: null,
+      onSave: null,
+      onAfterSave: null,
+      syncEditFromModel: null,
+      renderPreviewHook: null,
+      renderEditHook: null,
+      ...overrides,
+    };
+  }
+
+  function readinessValidation(status, okMessage, warnMessage, blockMessage) {
+    if (status === "available") {
+      return { level: "ok", badge: "Ready", message: okMessage || "Looks complete." };
+    }
+    if (status === "needs_confirmation") {
+      return {
+        level: "warn",
+        badge: "Needs confirmation",
+        message: warnMessage || "Review and confirm before signature.",
+      };
+    }
+    return {
+      level: "block",
+      badge: "Missing",
+      message: blockMessage || "Required information is missing.",
+      blocking: true,
+    };
+  }
+
+  /**
+   * Workspace capability registry — engine does not hardcode Property/Payment save logic.
+   * CH-007B+ consumers enrich hooks (onSave, structured edit) without rewriting the engine.
+   */
+  const WORKSPACE_REGISTRY = {
+    "art-notice": defaultWorkspaceCaps({
+      supportsValidation: true,
+      continueLabel: "Continue",
+      validate: () =>
+        readinessValidation(
+          overallContractReadiness(sourceSnapshot) === "configured"
+            ? "available"
+            : "needs_confirmation",
+          "Draft notice reviewed.",
+          "Contract is still a draft — continue reviewing articles.",
+          "Contract readiness is incomplete."
+        ),
+    }),
+    "art-contractor": defaultWorkspaceCaps({
+      supportsValidation: true,
+      supportsExternalSource: true,
+      externalSourceLabel: "Open Legal Profile",
+      externalSourceHref: "/business-settings#legal-contract-profile",
+      continueLabel: "Review & Continue",
+      validate: () => {
+        const st = articleReadinessStatus("art-contractor", sourceSnapshot, draftEdits);
+        return readinessValidation(
+          st,
+          "Contractor identity is available.",
+          "Contractor details need confirmation.",
+          "Complete Legal Profile."
+        );
+      },
+    }),
+    "art-customer": defaultWorkspaceCaps({
+      supportsValidation: true,
+      continueLabel: "Continue",
+      validate: () => {
+        const st = articleReadinessStatus("art-customer", sourceSnapshot, draftEdits);
+        return readinessValidation(
+          st,
+          "Customer identity is available.",
+          "Customer details need review.",
+          "Customer name is required."
+        );
+      },
+    }),
+    "art-property": defaultWorkspaceCaps({
+      supportsEdit: true,
+      supportsSave: false,
+      supportsValidation: true,
+      supportsFutureMap: true,
+      continueLabel: "Continue",
+      validate: () => {
+        const st = articleReadinessStatus("art-property", sourceSnapshot, draftEdits);
+        return readinessValidation(
+          st,
+          "Property address is confirmed.",
+          "Property address needs confirmation.",
+          "Property address is missing."
+        );
+      },
+    }),
+    "art-quote": defaultWorkspaceCaps({
+      supportsValidation: true,
+      continueLabel: "Review & Continue",
+      validate: () => {
+        const st = articleReadinessStatus("art-quote", sourceSnapshot, draftEdits);
+        return readinessValidation(
+          st,
+          "Approved quote is linked.",
+          "Quote needs review.",
+          "Approved quote is missing."
+        );
+      },
+    }),
+    "art-scope": defaultWorkspaceCaps({
+      supportsEdit: true,
+      supportsSave: false,
+      supportsValidation: true,
+      continueLabel: "Continue",
+      validate: () => {
+        const st = articleReadinessStatus("art-scope", sourceSnapshot, draftEdits);
+        return readinessValidation(
+          st,
+          "Scope is present.",
+          "Scope should be reviewed.",
+          "Scope of work is missing."
+        );
+      },
+    }),
+    "art-price": defaultWorkspaceCaps({
+      supportsValidation: true,
+      continueLabel: "Review & Continue",
+      validate: () => {
+        const st = articleReadinessStatus("art-price", sourceSnapshot, draftEdits);
+        return readinessValidation(
+          st,
+          "Contract total is set.",
+          "Price needs review.",
+          "Contract total is missing."
+        );
+      },
+    }),
+    "art-payment": defaultWorkspaceCaps({
+      supportsEdit: true,
+      supportsSave: false,
+      supportsValidation: true,
+      supportsTimeline: true,
+      continueLabel: "Continue",
+      validate: () => {
+        const st = articleReadinessStatus("art-payment", sourceSnapshot, draftEdits);
+        return readinessValidation(
+          st,
+          "Payment schedule is configured.",
+          "Payment schedule needs confirmation.",
+          "Payment schedule is missing."
+        );
+      },
+    }),
+    "art-schedule": defaultWorkspaceCaps({
+      supportsEdit: true,
+      supportsSave: false,
+      supportsValidation: true,
+      continueLabel: "Continue",
+      validate: () => {
+        const st = articleReadinessStatus("art-schedule", sourceSnapshot, draftEdits);
+        return readinessValidation(
+          st,
+          "Schedule dates are set.",
+          "Schedule dates are draft-only.",
+          "Schedule dates are not set."
+        );
+      },
+    }),
+    "art-changes": defaultWorkspaceCaps({
+      continueLabel: "Continue",
+    }),
+    "art-warranty": defaultWorkspaceCaps({
+      supportsEdit: true,
+      supportsSave: false,
+      supportsValidation: true,
+      continueLabel: "Continue",
+      validate: () => {
+        const st = articleReadinessStatus("art-warranty", sourceSnapshot, draftEdits);
+        return readinessValidation(
+          st,
+          "Warranty is configured.",
+          "Warranty needs confirmation.",
+          "Warranty terms are missing."
+        );
+      },
+    }),
+    "art-terms": defaultWorkspaceCaps({
+      supportsEdit: true,
+      supportsSave: false,
+      supportsValidation: true,
+      supportsExternalSource: true,
+      externalSourceLabel: "Open Contract Hub",
+      externalSourceHref: null,
+      continueLabel: "Review & Continue",
+      validate: () => {
+        const st = articleReadinessStatus("art-terms", sourceSnapshot, draftEdits);
+        return readinessValidation(
+          st,
+          "Legal notices are confirmed for contracts.",
+          "Legal notices still need confirmation.",
+          "Legal notices are missing."
+        );
+      },
+    }),
+    "art-signatures": defaultWorkspaceCaps({
+      supportsValidation: true,
+      supportsExternalSource: true,
+      externalSourceLabel: "Complete Required Setup",
+      externalSourceHref: null,
+      continueLabel: "Preview Contract",
+      continueAction: "previewContract",
+      validate: () => {
+        const st = articleReadinessStatus("art-signatures", sourceSnapshot, draftEdits);
+        return readinessValidation(
+          st,
+          "Signature method is configured.",
+          "Signature setup needs confirmation.",
+          "Signature method is missing."
+        );
+      },
+    }),
+  };
+
+  function getWorkspace(articleId) {
+    return WORKSPACE_REGISTRY[articleId] || defaultWorkspaceCaps({ continueLabel: "Continue" });
+  }
+
+  function getArticleMode(articleId) {
+    if (!articleId) return WS_MODE.PREVIEW;
+    return articleModes[articleId] || WS_MODE.PREVIEW;
+  }
+
+  function workspaceContext(articleId) {
+    return {
+      articleId,
+      mode: getArticleMode(articleId),
+      source: sourceSnapshot,
+      edits: draftEdits,
+      caps: getWorkspace(articleId),
+      el: articleId ? document.getElementById(articleId) : null,
+    };
+  }
+
+  function runWorkspaceValidation(articleId) {
+    const caps = getWorkspace(articleId);
+    if (!caps.supportsValidation || typeof caps.validate !== "function") {
+      return { level: "ok", badge: "", message: "", blocking: false };
+    }
+    try {
+      const result = caps.validate(workspaceContext(articleId)) || {};
+      return {
+        level: result.level || "ok",
+        badge: result.badge || "",
+        message: result.message || "",
+        blocking: result.blocking === true,
+      };
+    } catch (_err) {
+      return { level: "warn", badge: "Check", message: "Validation unavailable.", blocking: false };
+    }
+  }
+
+  function applyWorkspaceModeToDom(articleId, mode) {
+    const el = articleId ? document.getElementById(articleId) : null;
+    if (!el) return;
+    el.setAttribute("data-ws-mode", mode);
+    el.classList.toggle("is-ws-saving", mode === WS_MODE.SAVING);
+    el.classList.toggle("is-ws-edit", mode === WS_MODE.EDIT);
+    el.classList.toggle("is-ws-preview", mode === WS_MODE.PREVIEW);
+  }
+
+  function syncAllWorkspaceModes() {
+    document.querySelectorAll("[data-article]").forEach((article) => {
+      const mode =
+        isPreviewMode() || !activeArticleId || article.id !== activeArticleId
+          ? WS_MODE.PREVIEW
+          : getArticleMode(article.id);
+      applyWorkspaceModeToDom(article.id, mode);
+    });
+  }
+
+  function setArticleMode(articleId, mode) {
+    if (!articleId) return;
+    articleModes[articleId] = mode;
+    applyWorkspaceModeToDom(articleId, mode);
+  }
+
+  async function workspaceEnterPreview(articleId) {
+    if (!articleId) return;
+    workspaceEditBaseline = null;
+    setArticleMode(articleId, WS_MODE.PREVIEW);
+    const caps = getWorkspace(articleId);
+    if (typeof caps.onEnterPreview === "function") {
+      await caps.onEnterPreview(workspaceContext(articleId));
+    }
+    if (typeof caps.renderPreviewHook === "function") {
+      caps.renderPreviewHook(workspaceContext(articleId));
+    }
+    renderWorkspaceChrome();
+  }
+
+  async function workspaceEnterEdit(articleId) {
+    if (!articleId || workspaceBusy) return false;
+    const caps = getWorkspace(articleId);
+    if (!caps.supportsEdit) return false;
+    readEditsFromInputs();
+    workspaceEditBaseline = draftEdits ? { ...draftEdits } : null;
+    setArticleMode(articleId, WS_MODE.EDIT);
+    if (typeof caps.syncEditFromModel === "function") {
+      caps.syncEditFromModel(workspaceContext(articleId));
+    } else {
+      syncInputsFromEdits(draftEdits);
+    }
+    if (typeof caps.onEnterEdit === "function") {
+      await caps.onEnterEdit(workspaceContext(articleId));
+    }
+    if (typeof caps.renderEditHook === "function") {
+      caps.renderEditHook(workspaceContext(articleId));
+    }
+    const firstInput = document.querySelector(
+      `#${CSS.escape(articleId)} [data-ws-edit] input, #${CSS.escape(articleId)} [data-ws-edit] textarea`
+    );
+    if (firstInput) {
+      try {
+        firstInput.focus({ preventScroll: true });
+      } catch (_err) {
+        firstInput.focus();
+      }
+    }
+    renderWorkspaceChrome();
+    return true;
+  }
+
+  async function workspaceCancelEdit(articleId) {
+    if (!articleId) return;
+    const caps = getWorkspace(articleId);
+    if (workspaceEditBaseline && draftEdits) {
+      Object.assign(draftEdits, workspaceEditBaseline);
+      syncInputsFromEdits(draftEdits);
+      if (sourceSnapshot) renderDocument(sourceSnapshot, draftEdits);
+      updateIndexNavStatus();
+    }
+    workspaceEditBaseline = null;
+    if (typeof caps.onCancelEdit === "function") {
+      await caps.onCancelEdit(workspaceContext(articleId));
+    }
+    await workspaceEnterPreview(articleId);
+  }
+
+  async function workspaceDoneEdit(articleId) {
+    if (!articleId) return;
+    readEditsFromInputs();
+    if (sourceSnapshot && draftEdits) {
+      renderDocument(sourceSnapshot, draftEdits);
+      updateIndexNavStatus();
+    }
+    workspaceEditBaseline = null;
+    await workspaceEnterPreview(articleId);
+  }
+
+  async function workspaceSave(articleId) {
+    if (!articleId || workspaceBusy) return false;
+    const caps = getWorkspace(articleId);
+    if (!caps.supportsSave || typeof caps.onSave !== "function") return false;
+    readEditsFromInputs();
+    if (typeof caps.onBeforeSave === "function") {
+      const ok = await caps.onBeforeSave(workspaceContext(articleId));
+      if (ok === false) return false;
+    }
+    workspaceBusy = true;
+    setArticleMode(articleId, WS_MODE.SAVING);
+    renderWorkspaceChrome();
+    try {
+      await caps.onSave(workspaceContext(articleId));
+      workspaceEditBaseline = null;
+      if (typeof caps.onAfterSave === "function") {
+        await caps.onAfterSave(workspaceContext(articleId));
+      }
+      await workspaceEnterPreview(articleId);
+      return true;
+    } catch (err) {
+      setArticleMode(articleId, WS_MODE.EDIT);
+      renderWorkspaceChrome();
+      window.alert(err?.message || "Save failed. Changes were not written.");
+      return false;
+    } finally {
+      workspaceBusy = false;
+      renderWorkspaceChrome();
+    }
+  }
+
+  function isWorkspaceEditing() {
+    return Boolean(activeArticleId && getArticleMode(activeArticleId) === WS_MODE.EDIT);
+  }
+
+  function createFooterButton({ id, label, className, disabled, href, onClick }) {
+    if (href) {
+      const a = document.createElement("a");
+      a.className = className || "btn ghost";
+      a.id = id;
+      a.href = href;
+      a.textContent = label;
+      if (disabled) a.setAttribute("aria-disabled", "true");
+      return a;
+    }
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = className || "btn ghost";
+    btn.id = id;
+    btn.textContent = label;
+    btn.disabled = Boolean(disabled);
+    if (onClick) btn.addEventListener("click", onClick);
+    return btn;
+  }
+
+  function renderWorkspaceValidation(articleId) {
+    const box = $("cbWsValidation");
+    if (!box) return;
+    if (!articleId || isPreviewMode()) {
+      box.hidden = true;
+      box.textContent = "";
+      return;
+    }
+    const result = runWorkspaceValidation(articleId);
+    if (!result.badge && !result.message) {
+      box.hidden = true;
+      box.textContent = "";
+      return;
+    }
+    box.hidden = false;
+    box.className = "cb-ws-validation";
+    if (result.level === "warn") box.classList.add("is-warn");
+    else if (result.level === "block") box.classList.add("is-block");
+    else box.classList.add("is-ok");
+    const badge = result.badge
+      ? `<span class="cb-ws-badge">${escapeHtml(result.badge)}</span>`
+      : "";
+    box.innerHTML = `${badge}${escapeHtml(result.message || "")}`;
+  }
+
+  function renderWorkspaceFooter() {
+    const footer = $("cbStepFooter");
+    const actions = $("cbStepFooterActions");
+    const hint = $("cbStepHint");
+    if (!footer || !actions) return;
+
+    if (isPreviewMode() || !activeArticleId) {
+      footer.hidden = true;
+      actions.innerHTML = "";
+      return;
+    }
+
+    footer.hidden = false;
+    actions.innerHTML = "";
+    const caps = getWorkspace(activeArticleId);
+    const mode = getArticleMode(activeArticleId);
+    const busy = workspaceBusy || mode === WS_MODE.SAVING;
+
+    actions.appendChild(
+      createFooterButton({
+        id: "cbStepBack",
+        label: "Back",
+        className: "btn ghost",
+        disabled: busy,
+        onClick: () => {
+          void handleWorkspaceBack();
+        },
+      })
+    );
+
+    if (mode === WS_MODE.SAVING) {
+      actions.appendChild(
+        createFooterButton({
+          id: "cbStepSaving",
+          label: "Saving…",
+          className: "btn primary",
+          disabled: true,
+        })
+      );
+      if (hint) hint.textContent = "Saving article changes…";
+      return;
+    }
+
+    if (mode === WS_MODE.EDIT) {
+      actions.appendChild(
+        createFooterButton({
+          id: "cbWsCancel",
+          label: caps.cancelLabel || "Cancel",
+          className: "btn ghost",
+          disabled: busy,
+          onClick: () => {
+            void workspaceCancelEdit(activeArticleId);
+          },
+        })
+      );
+      if (caps.supportsSave) {
+        actions.appendChild(
+          createFooterButton({
+            id: "cbWsSave",
+            label: caps.saveLabel || "Save",
+            className: "btn primary",
+            disabled: busy,
+            onClick: () => {
+              void workspaceSave(activeArticleId);
+            },
+          })
+        );
+        if (hint) hint.textContent = "Save writes this article, then returns to Preview.";
+      } else {
+        actions.appendChild(
+          createFooterButton({
+            id: "cbWsDone",
+            label: caps.doneLabel || "Done",
+            className: "btn primary",
+            disabled: busy,
+            onClick: () => {
+              void workspaceDoneEdit(activeArticleId);
+            },
+          })
+        );
+        if (hint) {
+          hint.textContent =
+            "Local draft only — Done returns to Preview. Nothing is saved to the database yet.";
+        }
+      }
+      return;
+    }
+
+    if (caps.supportsEdit) {
+      actions.appendChild(
+        createFooterButton({
+          id: "cbWsEdit",
+          label: caps.editLabel || "Edit",
+          className: "btn ghost",
+          disabled: busy,
+          onClick: () => {
+            void workspaceEnterEdit(activeArticleId);
+          },
+        })
+      );
+    }
+
+    const sigMissing =
+      activeArticleId === "art-signatures" &&
+      sourceSnapshot &&
+      readinessMapStatus("signature", sourceSnapshot) === "missing";
+
+    if (sigMissing) {
+      actions.appendChild(
+        createFooterButton({
+          id: "cbStepSetupLink",
+          label: caps.externalSourceLabel || "Complete Required Setup",
+          className: "btn primary",
+          href: caps.externalSourceHref || contractHubHref(),
+        })
+      );
+    } else if (caps.supportsExternalSource && activeArticleId === "art-contractor") {
+      actions.appendChild(
+        createFooterButton({
+          id: "cbWsExternal",
+          label: caps.externalSourceLabel,
+          className: "btn ghost",
+          href: caps.externalSourceHref || "/business-settings#legal-contract-profile",
+        })
+      );
+    }
+
+    if (caps.supportsContinue && !sigMissing) {
+      const label =
+        activeArticleId === "art-signatures"
+          ? "Preview Contract"
+          : caps.continueLabel || articleMeta(activeArticleId).label || "Continue";
+      actions.appendChild(
+        createFooterButton({
+          id: "cbStepContinue",
+          label,
+          className: "btn primary",
+          disabled: busy,
+          onClick: () => {
+            void handleWorkspaceContinue();
+          },
+        })
+      );
+    }
+
+    if (hint && mode === WS_MODE.PREVIEW) {
+      hint.textContent =
+        "Local draft only — Continue does not save to the database or change readiness.";
+    }
+  }
+
+  function renderWorkspaceChrome() {
+    syncAllWorkspaceModes();
+    updateIndexNavStatus();
+    renderWorkspaceValidation(activeArticleId);
+    renderWorkspaceFooter();
+  }
+
+  async function handleWorkspaceBack() {
+    if (!activeArticleId || workspaceBusy) return;
+    if (isWorkspaceEditing()) {
+      if (!window.confirm("Discard edits and leave this article?")) return;
+      await workspaceCancelEdit(activeArticleId);
+    }
+    const idx = articleIndex(activeArticleId);
+    if (idx <= 0) {
+      setActiveArticle(null, { confirmIfDirty: true, focus: false });
+      return;
+    }
+    const prev = ARTICLE_FLOW[idx - 1];
+    if (!prev) return;
+    setActiveArticle(prev.id, { confirmIfDirty: true, focus: true });
+  }
+
+  async function handleWorkspaceContinue() {
+    if (!activeArticleId || workspaceBusy) return;
+    if (isWorkspaceEditing()) {
+      await workspaceDoneEdit(activeArticleId);
+    }
+    readEditsFromInputs();
+    const caps = getWorkspace(activeArticleId);
+    if (caps.continueAction === "previewContract" || activeArticleId === "art-signatures") {
+      enterPreviewMode();
+      return;
+    }
+    const idx = articleIndex(activeArticleId);
+    const next = ARTICLE_FLOW[idx + 1];
+    if (!next) return;
+    setActiveArticle(next.id, { confirmIfDirty: false, focus: true });
+  }
+
   function $(id) {
     return document.getElementById(id);
   }
@@ -868,53 +1533,7 @@
   }
 
   function updateStepFooter() {
-    const footer = $("cbStepFooter");
-    const backBtn = $("cbStepBack");
-    const continueBtn = $("cbStepContinue");
-    const setupLink = $("cbStepSetupLink");
-    const hint = $("cbStepHint");
-    if (!footer) return;
-
-    if (isPreviewMode() || !activeArticleId) {
-      footer.hidden = true;
-      return;
-    }
-
-    footer.hidden = false;
-    const idx = articleIndex(activeArticleId);
-    const meta = articleMeta(activeArticleId);
-    // Back is always available when an article is open; first article returns to empty workspace.
-    if (backBtn) backBtn.hidden = false;
-
-    const sigMissing =
-      activeArticleId === "art-signatures" &&
-      sourceSnapshot &&
-      readinessMapStatus("signature", sourceSnapshot) === "missing";
-
-    if (setupLink) {
-      if (sigMissing) {
-        setupLink.hidden = false;
-        setupLink.href = contractHubHref();
-        setupLink.textContent = "Complete Required Setup";
-        if (continueBtn) continueBtn.hidden = true;
-      } else {
-        setupLink.hidden = true;
-        if (continueBtn) continueBtn.hidden = false;
-      }
-    }
-
-    if (continueBtn && !continueBtn.hidden) {
-      if (activeArticleId === "art-signatures") {
-        continueBtn.textContent = "Preview Contract";
-      } else {
-        continueBtn.textContent = meta.label || "Continue";
-      }
-    }
-
-    if (hint) {
-      hint.textContent =
-        "Local draft only — Continue does not save to the database or change readiness.";
-    }
+    renderWorkspaceChrome();
   }
 
   function syncEmptyWorkspace() {
@@ -933,12 +1552,22 @@
       const on = Boolean(activeArticleId) && article.id === activeArticleId;
       article.classList.toggle("is-active-article", on);
       if (on) article.classList.remove("is-collapsed");
+      if (!on) {
+        articleModes[article.id] = WS_MODE.PREVIEW;
+      }
     });
 
-    if (activeArticleId) visitedArticleIds.add(activeArticleId);
+    if (activeArticleId) {
+      visitedArticleIds.add(activeArticleId);
+      if (!articleModes[activeArticleId]) {
+        articleModes[activeArticleId] = WS_MODE.PREVIEW;
+      }
+    } else {
+      workspaceEditBaseline = null;
+    }
+
     syncEmptyWorkspace();
-    updateIndexNavStatus();
-    updateStepFooter();
+    renderWorkspaceChrome();
 
     if (!focus || isPreviewMode() || !activeArticleId) return;
     const active = document.getElementById(activeArticleId);
@@ -968,10 +1597,25 @@
       return true;
     }
     if (normalized != null && !ARTICLE_FLOW.some((a) => a.id === normalized)) return false;
-    if (confirmIfDirty && !confirmLeaveLocalDraft(normalized ? "Switch article" : "Close article")) {
+
+    if (isWorkspaceEditing() && confirmIfDirty) {
+      if (!window.confirm("You are editing this article. Discard edits and switch?")) {
+        return false;
+      }
+      if (workspaceEditBaseline && draftEdits) {
+        Object.assign(draftEdits, workspaceEditBaseline);
+        syncInputsFromEdits(draftEdits);
+        if (sourceSnapshot) renderDocument(sourceSnapshot, draftEdits);
+      }
+      workspaceEditBaseline = null;
+      if (activeArticleId) articleModes[activeArticleId] = WS_MODE.PREVIEW;
+    } else if (confirmIfDirty && !confirmLeaveLocalDraft(normalized ? "Switch article" : "Close article")) {
       return false;
     }
+
+    if (activeArticleId) articleModes[activeArticleId] = WS_MODE.PREVIEW;
     activeArticleId = normalized;
+    if (activeArticleId) articleModes[activeArticleId] = WS_MODE.PREVIEW;
     applyActiveArticle({ focus: Boolean(normalized) && focus });
     return true;
   }
@@ -979,7 +1623,18 @@
   function enterPreviewMode() {
     const main = $("cbMain");
     if (!main || isPreviewMode()) return;
-    if (!confirmLeaveLocalDraft("Open Preview")) return;
+    if (isWorkspaceEditing()) {
+      if (!window.confirm("You are editing an article. Discard edits and open Preview?")) return;
+      if (workspaceEditBaseline && draftEdits) {
+        Object.assign(draftEdits, workspaceEditBaseline);
+        syncInputsFromEdits(draftEdits);
+        if (sourceSnapshot) renderDocument(sourceSnapshot, draftEdits);
+      }
+      workspaceEditBaseline = null;
+      if (activeArticleId) articleModes[activeArticleId] = WS_MODE.PREVIEW;
+    } else if (!confirmLeaveLocalDraft("Open Preview")) {
+      return;
+    }
     articleBeforePreview = activeArticleId;
     main.classList.add("is-preview");
     main.classList.remove("cb-no-article");
@@ -988,6 +1643,7 @@
     if (btn) btn.textContent = "Edit";
     const empty = $("cbEmptyWorkspace");
     if (empty) empty.hidden = true;
+    syncAllWorkspaceModes();
     updateStepFooter();
   }
 
@@ -1888,31 +2544,8 @@
   }
 
   function bindStepFooter() {
-    $("cbStepBack")?.addEventListener("click", () => {
-      if (!activeArticleId) return;
-      const idx = articleIndex(activeArticleId);
-      if (idx <= 0) {
-        setActiveArticle(null, { confirmIfDirty: true, focus: false });
-        return;
-      }
-      const prev = ARTICLE_FLOW[idx - 1];
-      if (!prev) return;
-      setActiveArticle(prev.id, { confirmIfDirty: true, focus: true });
-    });
-
-    $("cbStepContinue")?.addEventListener("click", () => {
-      if (!activeArticleId) return;
-      readEditsFromInputs();
-      // Continue preserves local draftEdits; does not call backend or change readiness.
-      if (activeArticleId === "art-signatures") {
-        enterPreviewMode();
-        return;
-      }
-      const idx = articleIndex(activeArticleId);
-      const next = ARTICLE_FLOW[idx + 1];
-      if (!next) return;
-      setActiveArticle(next.id, { confirmIfDirty: false, focus: true });
-    });
+    // CH-007A: footer actions are rendered by the workspace engine (event delegation not required;
+    // buttons are recreated with listeners in renderWorkspaceFooter).
   }
 
   function expandAllArticlesForPrint() {

@@ -268,6 +268,92 @@
       display: none !important;
     }
 
+    /* CH-007A — Article Workspace Engine surfaces (Builder only). */
+    #cbMain:not(.is-preview):not(.is-printing) .cb-article[data-ws-mode="preview"] [data-ws-edit],
+    #cbMain:not(.is-preview):not(.is-printing) .cb-article[data-ws-mode="preview"] .cb-editor {
+      display: none !important;
+    }
+    #cbMain:not(.is-preview):not(.is-printing) .cb-article[data-ws-mode="edit"] [data-ws-preview],
+    #cbMain:not(.is-preview):not(.is-printing) .cb-article[data-ws-mode="saving"] [data-ws-preview] {
+      display: none !important;
+    }
+    #cbMain:not(.is-preview):not(.is-printing) .cb-article[data-ws-mode="edit"] .cb-editor,
+    #cbMain:not(.is-preview):not(.is-printing) .cb-article[data-ws-mode="saving"] .cb-editor {
+      margin-top: 0;
+    }
+
+    /* CH-007A-P1 — Hide all workspace edit surfaces in Customer Preview + Print prep. */
+    #cbMain.is-preview [data-ws-edit],
+    #cbMain.is-preview .cb-editor,
+    #cbMain.is-preview .cb-draft-note,
+    #cbMain.is-preview #cbWsValidation,
+    #cbMain.is-printing [data-ws-edit],
+    #cbMain.is-printing .cb-editor,
+    #cbMain.is-printing .cb-draft-note,
+    #cbMain.is-printing #cbWsValidation,
+    #cbMain.is-printing .cb-step-footer,
+    body.cb-customer-preview [data-ws-edit],
+    body.cb-customer-preview .cb-editor,
+    body.cb-customer-preview .cb-draft-note,
+    body.cb-customer-preview #cbWsValidation {
+      display: none !important;
+    }
+    .cb-article.is-ws-saving {
+      position: relative;
+      pointer-events: none;
+      opacity: 0.92;
+    }
+    .cb-article.is-ws-saving::after {
+      content: "Saving…";
+      position: absolute;
+      inset: auto 16px 16px auto;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: rgba(15, 118, 110, 0.12);
+      border: 1px solid rgba(15, 118, 110, 0.35);
+      color: #0f766e;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .cb-ws-validation {
+      margin: 0 0 10px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 0.78rem;
+      line-height: 1.4;
+      border: 1px solid transparent;
+    }
+    .cb-ws-validation[hidden] { display: none !important; }
+    .cb-ws-validation.is-ok {
+      background: rgba(15, 118, 110, 0.1);
+      border-color: rgba(45, 212, 191, 0.35);
+      color: #99f6e4;
+    }
+    .cb-ws-validation.is-warn {
+      background: rgba(251, 191, 36, 0.1);
+      border-color: rgba(251, 191, 36, 0.35);
+      color: #fde68a;
+    }
+    .cb-ws-validation.is-block {
+      background: rgba(248, 113, 113, 0.1);
+      border-color: rgba(248, 113, 113, 0.35);
+      color: #fecaca;
+    }
+    .cb-ws-badge {
+      display: inline-flex;
+      align-items: center;
+      margin-right: 6px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: rgba(255,255,255,0.08);
+    }
+
     .cb-stage {
       min-width: 0;
     }
@@ -758,6 +844,9 @@
     .cb-proposed-block[hidden] { display: none !important; }
 
     .is-preview .cb-editor,
+    .is-preview [data-ws-edit],
+    .is-preview .cb-draft-note,
+    .is-preview #cbWsValidation,
     .is-preview .cb-warn-banner,
     .is-preview .owner-only,
     .is-preview .no-print { display: none !important; }
@@ -775,6 +864,9 @@
     body.cb-customer-preview .owner-only,
     body.cb-customer-preview .no-print,
     body.cb-customer-preview .cb-editor,
+    body.cb-customer-preview [data-ws-edit],
+    body.cb-customer-preview .cb-draft-note,
+    body.cb-customer-preview #cbWsValidation,
     body.cb-customer-preview .cb-warn-banner,
     body.cb-customer-preview .cb-step-footer,
     body.cb-customer-preview .cb-empty-workspace {
@@ -887,6 +979,11 @@
       .cb-aside,
       .cb-warn-banner,
       .cb-editor,
+      [data-ws-edit],
+      .cb-draft-note,
+      .cb-step-footer,
+      .cb-empty-workspace,
+      #cbWsValidation,
       .cb-show-secret,
       .cb-legal-banner,
       .owner-only,
@@ -1145,6 +1242,7 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
+                  <div data-ws-preview>
                   <div class="cb-meta-grid">
                     <div class="cb-field"><span class="k">Project</span><div class="v" id="cbProjectName">—</div></div>
                     <div class="cb-field"><span class="k">Status</span><div class="v" id="cbPropStatus">Missing</div></div>
@@ -1161,7 +1259,8 @@
                       <div class="v" id="cbPropProposed">—</div>
                     </div>
                   </div>
-                  <div class="cb-editor owner-only">
+                  </div>
+                  <div class="cb-editor owner-only" data-ws-edit>
                     <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditAddress"></div>
                     <label for="cbEditAddress">Proposed property address</label>
                     <p class="cb-draft-note">Local draft only — not saved to the property record.</p>
@@ -1197,10 +1296,13 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
+                  <div data-ws-preview>
                   <div id="cbScopeEmailWarn" class="cb-owner-warn owner-only no-print" hidden>
                     The current quote text appears to contain estimate or email language and should be replaced with a clear description of the work included, exclusions, materials, allowances, and assumptions before signature.
                   </div>
                   <div class="cb-field"><div class="v" id="cbScopeDisplay" style="white-space:pre-wrap;">—</div></div>
+                  </div>
+                  <div data-ws-edit>
                   <div class="cb-editor owner-only">
                     <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditScope"></div>
                     <label for="cbEditScope">Proposed scope revisions</label>
@@ -1212,6 +1314,7 @@
                     <label for="cbEditExclusions">Proposed exclusions</label>
                     <p class="cb-draft-note">Draft notes — not saved to the contract record</p>
                     <textarea id="cbEditExclusions" maxlength="4000"></textarea>
+                  </div>
                   </div>
                 </div>
               </section>
@@ -1250,19 +1353,21 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
+                  <div data-ws-preview>
                   <p><strong id="cbPayTotalLine">Contract Total: —</strong></p>
                   <p>Payment Schedule: <em id="cbPayScheduleStatus">Missing</em></p>
                   <div id="cbPayScheduleMeta" class="cb-meta-grid" hidden></div>
                   <div id="cbPayQaWarn" class="cb-owner-warn owner-only no-print" hidden></div>
                   <div id="cbPayScheduleStages" style="margin:10px 0;"></div>
                   <p id="cbPayScheduleHint"><span class="cb-missing">Payment stages and amounts must be confirmed and must total the approved contract price before signature.</span></p>
-                  <div class="cb-editor owner-only">
+                  <p id="cbPaymentNotesDisplay" class="cb-field owner-only no-print" style="margin-top:10px;"></p>
+                  </div>
+                  <div class="cb-editor owner-only" data-ws-edit>
                     <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditPaymentNotes"></div>
                     <label for="cbEditPaymentNotes">Draft payment notes</label>
                     <p class="cb-draft-note">Local draft only — not saved to the payment schedule.</p>
                     <textarea id="cbEditPaymentNotes" maxlength="2000"></textarea>
                   </div>
-                  <p id="cbPaymentNotesDisplay" class="cb-field owner-only no-print" style="margin-top:10px;"></p>
                 </div>
               </section>
 
@@ -1275,11 +1380,14 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
+                  <div data-ws-preview>
                   <div class="cb-meta-grid">
                     <div class="cb-field"><span class="k">Estimated start date</span><div class="v" id="cbStartDisplay">To be confirmed</div></div>
                     <div class="cb-field"><span class="k">Estimated completion date</span><div class="v" id="cbDueDisplay">To be confirmed</div></div>
                   </div>
                   <p>Dates are estimates and may be adjusted by mutual agreement, site conditions, material availability, approved changes, or events outside either party's reasonable control.</p>
+                  </div>
+                  <div data-ws-edit>
                   <div class="cb-editor owner-only">
                     <label for="cbEditStart">Estimated start date</label>
                     <input id="cbEditStart" type="date" />
@@ -1287,6 +1395,7 @@
                   <div class="cb-editor owner-only">
                     <label for="cbEditDue">Estimated completion date</label>
                     <input id="cbEditDue" type="date" />
+                  </div>
                   </div>
                 </div>
               </section>
@@ -1328,6 +1437,7 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
+                  <div data-ws-preview>
                   <div class="cb-meta-grid">
                     <div class="cb-field"><span class="k">Status</span><div class="v" id="cbWarrantyStatus">Missing</div></div>
                     <div class="cb-field"><span class="k">Warranty Type</span><div class="v" id="cbWarrantyName">—</div></div>
@@ -1335,7 +1445,8 @@
                     <div class="cb-field"><span class="k">Warranty Description</span><div class="v" id="cbWarrantyDescription">—</div></div>
                   </div>
                   <p id="cbWarrantyDisplay">Warranty terms have not yet been confirmed.</p>
-                  <div class="cb-editor owner-only">
+                  </div>
+                  <div class="cb-editor owner-only" data-ws-edit>
                     <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditWarranty"></div>
                     <label for="cbEditWarranty">Draft warranty notes</label>
                     <p class="cb-draft-note">Local draft only — not saved to the warranty record.</p>
@@ -1353,13 +1464,15 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
+                  <div data-ws-shared>
                   <div class="cb-meta-grid">
                     <div class="cb-field"><span class="k">State legal notices</span><div class="v" id="cbLegalNoticesStatus">Missing</div></div>
                   </div>
                   <p id="cbLegalNoticesHint"><span class="cb-missing">No legal notices have been added yet.</span></p>
                   <div id="cbLegalNoticesList" style="margin:10px 0;"></div>
-                  <p id="cbTermsDisplay" class="owner-only no-print" hidden>—</p>
-                  <div class="cb-editor owner-only">
+                  </div>
+                  <p id="cbTermsDisplay" class="owner-only no-print" data-ws-preview hidden>—</p>
+                  <div class="cb-editor owner-only" data-ws-edit>
                     <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditTerms"></div>
                     <label for="cbEditTerms">Meeting notes (local only — not legal notices)</label>
                     <textarea id="cbEditTerms" maxlength="4000"></textarea>
@@ -1401,12 +1514,11 @@
           </article>
 
           <div class="cb-step-footer no-print owner-only" id="cbStepFooter" hidden>
-            <p class="cb-step-hint" id="cbStepHint">Local draft only — nothing here is saved to the database.</p>
-            <div class="cb-step-footer__actions">
-              <button type="button" class="btn ghost" id="cbStepBack">Back</button>
-              <button type="button" class="btn primary" id="cbStepContinue">Continue</button>
-              <a class="btn primary" id="cbStepSetupLink" hidden href="/contract-hub">Complete Required Setup</a>
+            <div>
+              <div class="cb-ws-validation" id="cbWsValidation" hidden></div>
+              <p class="cb-step-hint" id="cbStepHint">Local draft only — nothing here is saved to the database.</p>
             </div>
+            <div class="cb-step-footer__actions" id="cbStepFooterActions"></div>
           </div>
         </main>
 
