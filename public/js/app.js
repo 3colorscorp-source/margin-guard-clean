@@ -12305,6 +12305,16 @@ window.renderSupervisor = renderSupervisor;
     wrap.style.display = manualMode && manualMode.checked ? "" : "none";
   }
 
+  function hubRemainingBalanceInvoiceDefaultDueDate() {
+    return hubQuickDateResolveValue("today_plus", 7);
+  }
+
+  function hubRemainingBalanceInvoiceSetDueDate(value) {
+    const el = $("hubRbDueDate");
+    if (!el) return;
+    el.value = String(value || "").trim();
+  }
+
   function hubRemainingBalanceInvoiceCloseModal() {
     const modal = $("hubRemainingBalanceInvoiceModal");
     if (modal) modal.setAttribute("aria-hidden", "true");
@@ -12374,6 +12384,7 @@ window.renderSupervisor = renderSupervisor;
       $("hubRbManualAmount").value = totals.remainingBalance.toFixed(2);
       $("hubRbManualAmount").max = String(totals.remainingBalance);
     }
+    hubRemainingBalanceInvoiceSetDueDate(hubRemainingBalanceInvoiceDefaultDueDate());
     hubRemainingBalanceInvoiceSyncManualWrap();
     hubRemainingBalanceInvoiceSyncPaymentStageDefault();
     hubRemainingBalanceInvoiceApplyGeneratedMessage(row, cur, true);
@@ -12436,7 +12447,16 @@ window.renderSupervisor = renderSupervisor;
     if (!label || !HUB_PROJECT_PAYMENT_STAGE_SET.has(label.toLowerCase())) {
       return { ok: false, message: "Select a Payment Stage / Invoice Type." };
     }
-    return { ok: true, amount: Math.round(amt * 100) / 100, invoice_label: label };
+    const dueDate = String($("hubRbDueDate")?.value || "").trim();
+    if (!normalizeDateInput(dueDate)) {
+      return { ok: false, message: "Due date is required." };
+    }
+    return {
+      ok: true,
+      amount: Math.round(amt * 100) / 100,
+      invoice_label: label,
+      due_date: normalizeDateInput(dueDate)
+    };
   }
 
   async function postHubRemainingBalanceInvoice(payload) {
@@ -12475,6 +12495,7 @@ window.renderSupervisor = renderSupervisor;
       amount_mode: amountMode,
       manual_amount: amountMode === "manual" ? validation.amount : undefined,
       invoice_label: validation.invoice_label,
+      due_date: validation.due_date,
       notes
     });
     if (!ok) {
@@ -15440,11 +15461,22 @@ window.renderSupervisor = renderSupervisor;
       );
       hubInvoiceContactSetFeedback("Changes saved.", "ok");
       hubDrawerRenderDeliveryEmail(activeRow);
-      setHubFeedback("Changes saved.", "ok");
+      // Keep the main invoice View drawer open; only the contact modal auto-closes.
+      const keepInvoiceDrawerOpen = () => {
+        if ($("hubDrawer")) $("hubDrawer").setAttribute("aria-hidden", "false");
+      };
+      keepInvoiceDrawerOpen();
       await hubInvoiceContactAfterSaveRefresh();
+      const refreshedRow = window.__MG_ACTIVE_INVOICE_ROW__ || activeRow;
+      hubDrawerRenderDeliveryEmail(refreshedRow);
+      keepInvoiceDrawerOpen();
       succeeded = true;
       await new Promise((resolve) => setTimeout(resolve, 1800));
       hubInvoiceContactCloseModal();
+      keepInvoiceDrawerOpen();
+      hubDrawerRenderDeliveryEmail(window.__MG_ACTIVE_INVOICE_ROW__ || refreshedRow);
+      // Hub feedback after modal close so the owner can confirm while the drawer stays open.
+      setHubFeedback("Changes saved.", "ok");
     } catch (err) {
       hubInvoiceContactSetFeedback(err?.message || "Network error saving contact.", "err");
     } finally {
@@ -17595,6 +17627,23 @@ window.renderSupervisor = renderSupervisor;
       }
       if ($("hubRbManualAmount")) {
         $("hubRbManualAmount").oninput = () => hubRemainingBalanceInvoiceSyncPaymentStageDefault();
+      }
+      const dueQuickWrap = $("hubRemainingBalanceInvoiceModal")?.querySelector(".hub-rb-due-quick");
+      if (dueQuickWrap) {
+        dueQuickWrap.addEventListener("click", (ev) => {
+          const btn = ev.target?.closest?.("[data-hub-rb-due-quick]");
+          if (!btn) return;
+          ev.preventDefault();
+          const raw = String(btn.getAttribute("data-hub-rb-due-quick") || "").trim();
+          if (raw === "today") {
+            hubRemainingBalanceInvoiceSetDueDate(hubQuickDateResolveValue("today"));
+            return;
+          }
+          const days = Number(raw);
+          if (Number.isFinite(days) && days >= 0) {
+            hubRemainingBalanceInvoiceSetDueDate(hubQuickDateResolveValue("today_plus", days));
+          }
+        });
       }
       if ($("hubRbPaymentStage")) {
         $("hubRbPaymentStage").onchange = () => {

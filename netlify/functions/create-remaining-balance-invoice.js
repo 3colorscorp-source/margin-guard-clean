@@ -87,6 +87,26 @@ function normalizeDueDate(raw) {
   return d.toISOString().slice(0, 10);
 }
 
+/** Local-calendar YYYY-MM-DD (noon anchor avoids UTC day skew). */
+function defaultDueDatePlusDays(days) {
+  const d = new Date();
+  d.setHours(12, 0, 0, 0);
+  d.setDate(d.getDate() + Number(days || 0));
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Prefer body.due_date; if missing/invalid, use today + 7 (do not copy source due_date).
+ */
+function resolveProjectPaymentDueDate(body) {
+  const fromBody = normalizeDueDate(body?.due_date ?? body?.dueDate);
+  if (fromBody) return fromBody;
+  return defaultDueDatePlusDays(7);
+}
+
 function resolveContractTotal(source, quoteEmbed) {
   const quoteTotal = finiteMoney(quoteEmbed?.total, 0);
   if (quoteTotal > 0) return quoteTotal;
@@ -200,7 +220,7 @@ function formatExistingInvoiceDetail(inv) {
   return ` Existing: ${no} · ${status}${labelPart}${amtPart}.`;
 }
 
-function buildProjectPaymentInsert({ source, tenantId, selectedAmount, notesFinal, invoiceLabel }) {
+function buildProjectPaymentInsert({ source, tenantId, selectedAmount, notesFinal, invoiceLabel, dueDate }) {
   const now = new Date().toISOString();
   const today = now.slice(0, 10);
   const payload = {
@@ -216,7 +236,7 @@ function buildProjectPaymentInsert({ source, tenantId, selectedAmount, notesFina
     paid_amount: 0,
     balance_due: selectedAmount,
     issue_date: today,
-    due_date: normalizeDueDate(source.due_date),
+    due_date: dueDate || defaultDueDatePlusDays(7),
     type: "PROGRESS",
     business_name: pickStr(source.business_name),
     currency: pickStr(source.currency) || "USD",
@@ -430,13 +450,15 @@ exports.handler = async (event) => {
 
     const clientNotes = body.notes != null ? String(body.notes).trim().slice(0, 7900) : "";
     const notesFinal = appendSourceMarker(clientNotes, sourceInvoiceId);
+    const dueDate = resolveProjectPaymentDueDate(body);
 
     const insertPayload = buildProjectPaymentInsert({
       source,
       tenantId,
       selectedAmount,
       notesFinal,
-      invoiceLabel
+      invoiceLabel,
+      dueDate
     });
 
     let created;
