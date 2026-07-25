@@ -291,6 +291,7 @@
     #cbMain.is-preview #cbWsValidation,
     #cbMain.is-preview .cb-prop-secondary,
     #cbMain.is-preview .cb-prop-editor__intro,
+    #cbMain.is-preview .cb-war-editor__intro,
     #cbMain.is-printing [data-ws-edit],
     #cbMain.is-printing .cb-editor,
     #cbMain.is-printing .cb-draft-note,
@@ -571,6 +572,167 @@
     .cb-prop-live-hint.is-ok { color: #0f766e; font-weight: 700; }
     .cb-prop-live-hint.is-warn { color: var(--cb-warn); }
     .cb-prop-live-hint.is-block { color: var(--cb-danger); }
+
+    /* CH-007C — Premium Warranty workspace */
+    .cb-war-workspace {
+      display: flex;
+      flex-direction: column;
+      margin: 4px 0 2px;
+      max-width: 36rem;
+    }
+    .cb-war-workspace__eyebrow {
+      margin: 0 0 8px;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--cb-accent);
+    }
+    .cb-war-workspace__title {
+      margin: 0 0 12px;
+      font-size: 1.28rem;
+      font-weight: 700;
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+      color: var(--cb-ink);
+    }
+    .cb-war-workspace__confirm {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 18px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      line-height: 1.3;
+      width: fit-content;
+    }
+    .cb-war-workspace__confirm.is-confirmed {
+      background: var(--cb-accent-soft);
+      color: #115e59;
+      border: 1px solid rgba(15, 118, 110, 0.28);
+    }
+    .cb-war-workspace__confirm.is-pending {
+      background: var(--cb-warn-bg);
+      color: var(--cb-warn);
+      border: 1px solid #fdba74;
+    }
+    .cb-war-workspace__confirm.is-missing {
+      background: #fafaf9;
+      color: #78716c;
+      border: 1px solid var(--cb-line);
+    }
+    .cb-war-workspace__confirm-mark { font-size: 0.95rem; line-height: 1; }
+    .cb-war-workspace__section { margin: 0 0 16px; }
+    .cb-war-workspace__section-label {
+      margin: 0 0 8px;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #a8a29e;
+    }
+    .cb-war-workspace__body {
+      margin: 0;
+      font-size: 0.98rem;
+      line-height: 1.55;
+      color: #292524;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .cb-war-workspace__list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 6px;
+    }
+    .cb-war-workspace__list li {
+      position: relative;
+      padding-left: 1rem;
+      font-size: 0.95rem;
+      line-height: 1.45;
+      color: #292524;
+    }
+    .cb-war-workspace__list li:not(.is-empty)::before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: var(--cb-accent);
+      font-weight: 700;
+    }
+    .cb-war-workspace__list li.is-empty {
+      padding-left: 0;
+      color: #a8a29e;
+      font-style: italic;
+    }
+    .cb-war-editor { margin: 0; max-width: 36rem; }
+    .cb-war-editor__intro {
+      margin: 0 0 14px;
+      font-size: 0.84rem;
+      line-height: 1.45;
+      color: #57534e;
+    }
+    .cb-war-form { display: grid; gap: 12px; }
+    .cb-war-form__row--duration {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 640px) {
+      .cb-war-form__row--duration { grid-template-columns: 1fr; }
+    }
+    .cb-war-field label {
+      display: block;
+      margin: 0 0 5px;
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #78716c;
+    }
+    .cb-war-field input,
+    .cb-war-field select,
+    .cb-war-field textarea {
+      width: 100%;
+      box-sizing: border-box;
+      min-height: 42px;
+      padding: 10px 12px;
+      border: 1px solid var(--cb-line);
+      border-radius: 10px;
+      background: #fff;
+      color: var(--cb-ink);
+      font: inherit;
+      font-size: 0.95rem;
+    }
+    .cb-war-field textarea {
+      min-height: 96px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+    .cb-war-field input:focus,
+    .cb-war-field select:focus,
+    .cb-war-field textarea:focus {
+      outline: 2px solid rgba(15, 118, 110, 0.35);
+      outline-offset: 1px;
+      border-color: rgba(15, 118, 110, 0.55);
+    }
+    .cb-war-field input.is-invalid,
+    .cb-war-field select.is-invalid,
+    .cb-war-field textarea.is-invalid {
+      border-color: #f87171;
+      background: #fff7f7;
+    }
+    .cb-war-live-hint {
+      margin: 12px 0 0;
+      font-size: 0.8rem;
+      line-height: 1.4;
+      color: #57534e;
+    }
+    .cb-war-live-hint.is-ok { color: #0f766e; font-weight: 700; }
+    .cb-war-live-hint.is-warn { color: var(--cb-warn); }
+    .cb-war-live-hint.is-block { color: var(--cb-danger); }
 
     .cb-stage {
       min-width: 0;
@@ -1698,19 +1860,60 @@
                 </button>
                 <div class="cb-article__body">
                   <div data-ws-preview>
-                  <div class="cb-meta-grid">
-                    <div class="cb-field"><span class="k">Status</span><div class="v" id="cbWarrantyStatus">Missing</div></div>
-                    <div class="cb-field"><span class="k">Warranty Type</span><div class="v" id="cbWarrantyName">—</div></div>
-                    <div class="cb-field"><span class="k">Warranty Length</span><div class="v" id="cbWarrantyLength">—</div></div>
-                    <div class="cb-field"><span class="k">Warranty Description</span><div class="v" id="cbWarrantyDescription">—</div></div>
+                    <div class="cb-war-workspace">
+                      <p class="cb-war-workspace__eyebrow">Warranty</p>
+                      <h4 class="cb-war-workspace__title" id="cbWarrantyTitle">Warranty terms not set</h4>
+                      <div class="cb-war-workspace__confirm is-missing" id="cbWarrantyConfirmBadge" role="status">
+                        <span class="cb-war-workspace__confirm-mark" aria-hidden="true">○</span>
+                        <span id="cbWarrantyConfirmText">Warranty not configured</span>
+                      </div>
+                      <div class="cb-war-workspace__section">
+                        <p class="cb-war-workspace__section-label">Summary</p>
+                        <p class="cb-war-workspace__body" id="cbWarrantySummaryPreview">—</p>
+                      </div>
+                      <div class="cb-war-workspace__section">
+                        <p class="cb-war-workspace__section-label">Exclusions</p>
+                        <ul class="cb-war-workspace__list" id="cbWarrantyExclusionsList">
+                          <li class="is-empty">No exclusions listed</li>
+                        </ul>
+                      </div>
+                      <!-- Hidden compatibility mirrors -->
+                      <span id="cbWarrantyStatus" hidden>Missing</span>
+                      <span id="cbWarrantyName" hidden>—</span>
+                      <span id="cbWarrantyLength" hidden>—</span>
+                      <span id="cbWarrantyDescription" hidden>—</span>
+                      <span id="cbWarrantyDisplay" hidden>Warranty terms have not yet been confirmed.</span>
+                    </div>
                   </div>
-                  <p id="cbWarrantyDisplay">Warranty terms have not yet been confirmed.</p>
-                  </div>
-                  <div class="cb-editor owner-only" data-ws-edit>
-                    <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditWarranty"></div>
-                    <label for="cbEditWarranty">Draft warranty notes</label>
-                    <p class="cb-draft-note">Local draft only — not saved to the warranty record.</p>
-                    <textarea id="cbEditWarranty" maxlength="2000"></textarea>
+                  <div class="cb-war-editor owner-only" data-ws-edit>
+                    <p class="cb-war-editor__intro">
+                      Confirm the warranty terms used on the contract. Save writes them to the project record.
+                    </p>
+                    <div class="cb-war-form">
+                      <div class="cb-war-form__row cb-war-form__row--duration">
+                        <div class="cb-war-field">
+                          <label for="cbWarEditDurationValue">Warranty Duration</label>
+                          <input id="cbWarEditDurationValue" type="number" min="0" step="1" inputmode="numeric" />
+                        </div>
+                        <div class="cb-war-field">
+                          <label for="cbWarEditDurationUnit">Unit</label>
+                          <select id="cbWarEditDurationUnit">
+                            <option value="years">Years</option>
+                            <option value="months">Months</option>
+                            <option value="days">Days</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="cb-war-field">
+                        <label for="cbWarEditSummary">Warranty Summary</label>
+                        <textarea id="cbWarEditSummary" maxlength="4000" rows="4" placeholder="Describe what the warranty covers"></textarea>
+                      </div>
+                      <div class="cb-war-field">
+                        <label for="cbWarEditExclusions">Exclusions</label>
+                        <textarea id="cbWarEditExclusions" maxlength="4000" rows="5" placeholder="One exclusion per line"></textarea>
+                      </div>
+                    </div>
+                    <p class="cb-war-live-hint" id="cbWarLiveHint" hidden></p>
                   </div>
                 </div>
               </section>
