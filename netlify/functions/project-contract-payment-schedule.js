@@ -37,6 +37,9 @@ const DUE_RULES = new Set([
   "fixed_date",
   "custom",
 ]);
+/** CH-007D-INFRA-001 — durable item classification. */
+const ITEM_ROLES = new Set(["future_obligation", "applied_payment"]);
+const DEFAULT_ITEM_ROLE = "future_obligation";
 
 const ALLOWED_QUERY_KEYS = new Set(["project_id", "quote_id"]);
 const ALLOWED_BODY_KEYS = new Set([
@@ -54,6 +57,7 @@ const ALLOWED_ITEM_KEYS = new Set([
   "due_rule",
   "milestone_description",
   "fixed_due_date",
+  "item_role",
 ]);
 const FORBIDDEN_BODY_KEYS = new Set([
   "tenant_id",
@@ -405,6 +409,18 @@ function normalizeItem(raw, index) {
     };
   }
 
+  // Missing/blank item_role defaults to future_obligation (backward compatible).
+  let itemRole = DEFAULT_ITEM_ROLE;
+  if (Object.prototype.hasOwnProperty.call(raw, "item_role")) {
+    const rawRole = trimField(raw.item_role).toLowerCase();
+    if (rawRole) {
+      if (!ITEM_ROLES.has(rawRole)) {
+        return { error: "Invalid item_role", code: "invalid_enum" };
+      }
+      itemRole = rawRole;
+    }
+  }
+
   return {
     item: {
       sequence_number: sequence,
@@ -414,6 +430,7 @@ function normalizeItem(raw, index) {
       due_rule: dueRule,
       milestone_description: milestone,
       fixed_due_date: fixedDueDate,
+      item_role: itemRole,
     },
   };
 }
@@ -464,6 +481,8 @@ function serializeSchedule(row) {
 
 function serializeItem(row, contractTotalCents) {
   const amountCents = itemCents(row);
+  const roleRaw = trimField(row.item_role).toLowerCase();
+  const itemRole = ITEM_ROLES.has(roleRaw) ? roleRaw : DEFAULT_ITEM_ROLE;
   return {
     id: row.id || null,
     sequence_number: Number(row.sequence_number) || 0,
@@ -477,6 +496,7 @@ function serializeItem(row, contractTotalCents) {
     due_rule: trimField(row.due_rule),
     milestone_description: trimField(row.milestone_description),
     fixed_due_date: row.fixed_due_date || null,
+    item_role: itemRole,
   };
 }
 
@@ -839,4 +859,15 @@ exports.handler = async (event) => {
       code: "server_error",
     });
   }
+};
+
+exports._test = {
+  ITEM_ROLES,
+  DEFAULT_ITEM_ROLE,
+  ALLOWED_ITEM_KEYS,
+  normalizeItem,
+  normalizeItems,
+  serializeItem,
+  evaluateReadiness,
+  totalItemsCents,
 };
