@@ -292,17 +292,23 @@
     #cbMain.is-preview .cb-prop-secondary,
     #cbMain.is-preview .cb-prop-editor__intro,
     #cbMain.is-preview .cb-war-editor__intro,
+    #cbMain.is-preview .cb-pay-hub-note,
+    #cbMain.is-preview .cb-pay-empty__future,
     #cbMain.is-printing [data-ws-edit],
     #cbMain.is-printing .cb-editor,
     #cbMain.is-printing .cb-draft-note,
     #cbMain.is-printing #cbWsValidation,
     #cbMain.is-printing .cb-step-footer,
     #cbMain.is-printing .cb-prop-secondary,
+    #cbMain.is-printing .cb-pay-hub-note,
+    #cbMain.is-printing .cb-pay-empty__future,
     body.cb-customer-preview [data-ws-edit],
     body.cb-customer-preview .cb-editor,
     body.cb-customer-preview .cb-draft-note,
     body.cb-customer-preview #cbWsValidation,
-    body.cb-customer-preview .cb-prop-secondary {
+    body.cb-customer-preview .cb-prop-secondary,
+    body.cb-customer-preview .cb-pay-hub-note,
+    body.cb-customer-preview .cb-pay-empty__future {
       display: none !important;
     }
     .cb-article.is-ws-saving {
@@ -733,6 +739,207 @@
     .cb-war-live-hint.is-ok { color: #0f766e; font-weight: 700; }
     .cb-war-live-hint.is-warn { color: var(--cb-warn); }
     .cb-war-live-hint.is-block { color: var(--cb-danger); }
+
+    /* CH-007D-P1 — Premium Payment Plan Preview */
+    .cb-pay-workspace {
+      display: flex;
+      flex-direction: column;
+      margin: 4px 0 2px;
+      max-width: 38rem;
+    }
+    .cb-pay-workspace__eyebrow {
+      margin: 0 0 6px;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--cb-accent);
+    }
+    .cb-pay-workspace__lead {
+      margin: 0 0 12px;
+      font-size: 0.92rem;
+      line-height: 1.45;
+      color: #57534e;
+    }
+    .cb-pay-workspace__badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 12px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      line-height: 1.3;
+      width: fit-content;
+    }
+    .cb-pay-workspace__badge.is-configured {
+      background: var(--cb-accent-soft);
+      color: #115e59;
+      border: 1px solid rgba(15, 118, 110, 0.28);
+    }
+    .cb-pay-workspace__badge.is-draft {
+      background: var(--cb-warn-bg);
+      color: var(--cb-warn);
+      border: 1px solid #fdba74;
+    }
+    .cb-pay-workspace__badge.is-missing {
+      background: #fafaf9;
+      color: #78716c;
+      border: 1px solid var(--cb-line);
+    }
+    .cb-pay-workspace__badge-mark { font-size: 0.95rem; line-height: 1; }
+    .cb-pay-workspace__note {
+      margin: 0 0 16px;
+      font-size: 0.84rem;
+      line-height: 1.45;
+      color: #57534e;
+    }
+    .cb-pay-workspace__note:empty { display: none; }
+    .cb-pay-summary {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 14px;
+      margin: 0 0 14px;
+      padding: 12px 14px;
+      border: 1px solid var(--cb-line);
+      border-radius: 12px;
+      background: #fafaf9;
+    }
+    @media (max-width: 640px) {
+      .cb-pay-summary { grid-template-columns: 1fr; }
+    }
+    .cb-pay-summary__item .k {
+      display: block;
+      margin: 0 0 3px;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #a8a29e;
+    }
+    .cb-pay-summary__item .v {
+      font-size: 0.98rem;
+      font-weight: 700;
+      color: var(--cb-ink);
+      word-break: break-word;
+    }
+    .cb-pay-sum-warn {
+      margin: 0 0 14px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid #fdba74;
+      background: var(--cb-warn-bg);
+      color: var(--cb-warn);
+      font-size: 0.84rem;
+      line-height: 1.4;
+      font-weight: 600;
+    }
+    .cb-pay-sum-warn[hidden] { display: none !important; }
+    .cb-pay-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin: 4px 0 12px;
+    }
+    .cb-pay-stage {
+      position: relative;
+      padding: 0 0 0 1.15rem;
+    }
+    .cb-pay-stage::before {
+      content: "";
+      position: absolute;
+      left: 0.2rem;
+      top: 0.45rem;
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 50%;
+      background: var(--cb-accent);
+      box-sizing: border-box;
+    }
+    .cb-pay-stage:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      left: 0.42rem;
+      top: 1.15rem;
+      bottom: -0.15rem;
+      width: 2px;
+      background: rgba(15, 118, 110, 0.25);
+    }
+    .cb-pay-stage__body {
+      padding: 0 0 18px;
+    }
+    .cb-pay-stage:last-child .cb-pay-stage__body { padding-bottom: 4px; }
+    .cb-pay-stage__type {
+      margin: 0 0 2px;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #a8a29e;
+    }
+    .cb-pay-stage__label {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 700;
+      line-height: 1.3;
+      color: var(--cb-ink);
+      word-break: break-word;
+    }
+    .cb-pay-stage__amount {
+      margin: 4px 0 0;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #44403c;
+      word-break: break-word;
+    }
+    .cb-pay-stage__due {
+      margin: 4px 0 0;
+      font-size: 0.86rem;
+      line-height: 1.4;
+      color: #57534e;
+    }
+    .cb-pay-stage__meta {
+      margin: 4px 0 0;
+      font-size: 0.8rem;
+      line-height: 1.4;
+      color: #78716c;
+    }
+    .cb-pay-empty {
+      margin: 4px 0 8px;
+      padding: 14px 0 4px;
+    }
+    .cb-pay-empty__copy {
+      margin: 0 0 10px;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      color: #44403c;
+    }
+    .cb-pay-empty__total {
+      margin: 0 0 10px;
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--cb-ink);
+    }
+    .cb-pay-empty__arch {
+      margin: 0 0 10px;
+      font-size: 0.84rem;
+      line-height: 1.45;
+      color: #57534e;
+    }
+    .cb-pay-empty__future {
+      margin: 0;
+      font-size: 0.78rem;
+      line-height: 1.4;
+      color: #a8a29e;
+      font-style: italic;
+    }
+    .cb-pay-hub-note {
+      margin: 8px 0 0;
+      font-size: 0.8rem;
+      line-height: 1.45;
+      color: #78716c;
+    }
 
     .cb-stage {
       min-width: 0;
@@ -1776,19 +1983,65 @@
                 </button>
                 <div class="cb-article__body">
                   <div data-ws-preview>
-                  <p><strong id="cbPayTotalLine">Contract Total: —</strong></p>
-                  <p>Payment Schedule: <em id="cbPayScheduleStatus">Missing</em></p>
-                  <div id="cbPayScheduleMeta" class="cb-meta-grid" hidden></div>
-                  <div id="cbPayQaWarn" class="cb-owner-warn owner-only no-print" hidden></div>
-                  <div id="cbPayScheduleStages" style="margin:10px 0;"></div>
-                  <p id="cbPayScheduleHint"><span class="cb-missing">Payment stages and amounts must be confirmed and must total the approved contract price before signature.</span></p>
-                  <p id="cbPaymentNotesDisplay" class="cb-field owner-only no-print" style="margin-top:10px;"></p>
-                  </div>
-                  <div class="cb-editor owner-only" data-ws-edit>
-                    <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditPaymentNotes"></div>
-                    <label for="cbEditPaymentNotes">Draft payment notes</label>
-                    <p class="cb-draft-note">Local draft only — not saved to the payment schedule.</p>
-                    <textarea id="cbEditPaymentNotes" maxlength="2000"></textarea>
+                    <div class="cb-pay-workspace" id="cbPayWorkspace">
+                      <p class="cb-pay-workspace__eyebrow">Payment Plan</p>
+                      <p class="cb-pay-workspace__lead" id="cbPayLead">
+                        The contractual payment stages agreed for this project.
+                      </p>
+                      <div class="cb-pay-workspace__badge is-missing" id="cbPayStatusBadge" role="status">
+                        <span class="cb-pay-workspace__badge-mark" aria-hidden="true">○</span>
+                        <span id="cbPayStatusText">Not configured</span>
+                      </div>
+                      <p class="cb-pay-workspace__note" id="cbPayStateNote"></p>
+
+                      <div class="cb-pay-summary" id="cbPaySummary" hidden>
+                        <div class="cb-pay-summary__item">
+                          <span class="k">Contract total</span>
+                          <span class="v" id="cbPayContractTotal">—</span>
+                        </div>
+                        <div class="cb-pay-summary__item">
+                          <span class="k">Payment stages</span>
+                          <span class="v" id="cbPayStageCount">—</span>
+                        </div>
+                        <div class="cb-pay-summary__item">
+                          <span class="k">Scheduled</span>
+                          <span class="v" id="cbPayScheduled">—</span>
+                        </div>
+                        <div class="cb-pay-summary__item">
+                          <span class="k">Plan check</span>
+                          <span class="v" id="cbPayPlanCheck">—</span>
+                        </div>
+                      </div>
+                      <p class="cb-pay-sum-warn" id="cbPaySumWarn" hidden role="status"></p>
+
+                      <div class="cb-pay-timeline" id="cbPayTimeline" hidden></div>
+
+                      <div class="cb-pay-empty" id="cbPayEmpty" hidden>
+                        <p class="cb-pay-empty__copy" id="cbPayEmptyCopy">
+                          No contractual payment schedule has been created for this project yet.
+                        </p>
+                        <p class="cb-pay-empty__total" id="cbPayEmptyTotal" hidden></p>
+                        <p class="cb-pay-empty__arch">
+                          This section will define the payment terms in the contract. Billing and payment collection remain in Invoice Hub.
+                        </p>
+                        <p class="cb-pay-empty__future owner-only no-print" aria-disabled="true">
+                          Payment-plan editing will be added in a later phase.
+                        </p>
+                      </div>
+
+                      <p class="cb-pay-hub-note owner-only no-print" id="cbPayHubNote" hidden>
+                        This plan describes when each contractual payment becomes due. Invoice creation and payment collection are managed separately in Invoice Hub.
+                      </p>
+                      <div id="cbPayQaWarn" class="cb-owner-warn owner-only no-print" hidden></div>
+
+                      <!-- Compatibility mirrors for existing render helpers -->
+                      <span id="cbPayTotalLine" hidden>Contract Total: —</span>
+                      <span id="cbPayScheduleStatus" hidden>Missing</span>
+                      <div id="cbPayScheduleMeta" hidden></div>
+                      <div id="cbPayScheduleStages" hidden></div>
+                      <p id="cbPayScheduleHint" hidden></p>
+                      <p id="cbPaymentNotesDisplay" hidden></p>
+                    </div>
                   </div>
                 </div>
               </section>

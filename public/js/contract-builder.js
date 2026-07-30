@@ -241,7 +241,7 @@
       },
     }),
     "art-payment": defaultWorkspaceCaps({
-      supportsEdit: true,
+      supportsEdit: false,
       supportsSave: false,
       supportsValidation: true,
       supportsTimeline: true,
@@ -1621,11 +1621,14 @@
   function dueRuleLabel(raw) {
     const key = String(raw || "").trim().toLowerCase();
     const map = {
-      custom: "Custom milestone",
-      on_acceptance: "Upon acceptance",
-      before_start: "Before work begins",
-      on_start: "At project start",
-      on_completion: "Upon completion",
+      on_signature: "Due upon acceptance",
+      on_acceptance: "Due upon acceptance",
+      before_start: "Due before work begins",
+      on_start: "Due at project start",
+      milestone: "Due at the configured milestone",
+      on_completion: "Due upon completion",
+      fixed_date: "Due on a fixed date",
+      custom: "Custom payment timing",
       net_7: "Within 7 days",
       net_15: "Within 15 days",
       net_30: "Within 30 days",
@@ -1633,6 +1636,95 @@
     if (!key) return "—";
     if (map[key]) return map[key];
     return "Custom payment timing";
+  }
+
+  function paymentTypeLabel(raw) {
+    const key = String(raw || "").trim().toLowerCase();
+    const map = {
+      deposit: "Deposit",
+      start: "Project Start",
+      progress: "Progress Payment",
+      material: "Material",
+      completion: "Completion",
+      final: "Final Payment",
+      custom: "Custom",
+    };
+    if (!key) return "Stage";
+    return map[key] || key;
+  }
+
+  function formatPercentDisplay(pct) {
+    const n = Number(pct);
+    if (!Number.isFinite(n)) return "";
+    const rounded = Math.round(n * 100) / 100;
+    return `${rounded}%`;
+  }
+
+  function safeStagePercent(item, contractTotal) {
+    if (item?.percentage != null && Number.isFinite(Number(item.percentage))) {
+      return Number(item.percentage);
+    }
+    const amount = Number(item?.amount);
+    const total = Number(contractTotal);
+    if (!Number.isFinite(amount) || !Number.isFinite(total) || total <= 0) return null;
+    return Math.round((amount / total) * 10000) / 100;
+  }
+
+  /**
+   * Payment Plan Preview only — format schedule fixed_due_date without timezone shift.
+   * Exact YYYY-MM-DD values are formatted from calendar components (never new Date("YYYY-MM-DD")).
+   * Timestamps fall back to shared formatDate. Null/empty/malformed never yield "Invalid Date".
+   */
+  function formatPaymentDateOnly(raw) {
+    if (raw == null) return "";
+    const s = String(raw).trim();
+    if (!s) return "";
+
+    const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (dateOnly) {
+      const year = Number(dateOnly[1]);
+      const month = Number(dateOnly[2]);
+      const day = Number(dateOnly[3]);
+      if (
+        !Number.isInteger(year) ||
+        !Number.isInteger(month) ||
+        !Number.isInteger(day) ||
+        month < 1 ||
+        month > 12 ||
+        day < 1 ||
+        day > 31
+      ) {
+        return s;
+      }
+      const months = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+      // Construct local calendar date from components only (no UTC midnight parse).
+      const local = new Date(year, month - 1, day);
+      if (
+        local.getFullYear() !== year ||
+        local.getMonth() !== month - 1 ||
+        local.getDate() !== day
+      ) {
+        return s;
+      }
+      return `${months[month - 1]} ${day}, ${year}`;
+    }
+
+    const viaShared = formatDate(s);
+    if (!viaShared || /invalid date/i.test(viaShared)) return s;
+    return viaShared;
   }
 
   function quoteStatusDisplay(raw) {
@@ -2615,7 +2707,6 @@
     if ($("cbEditExclusions")) $("cbEditExclusions").value = edits.exclusions || "";
     if ($("cbEditStart")) $("cbEditStart").value = edits.startDate || "";
     if ($("cbEditDue")) $("cbEditDue").value = edits.dueDate || "";
-    if ($("cbEditPaymentNotes")) $("cbEditPaymentNotes").value = edits.paymentNotes || "";
     if ($("cbEditTerms")) $("cbEditTerms").value = edits.additionalTerms || "";
   }
 
@@ -2633,7 +2724,6 @@
     draftEdits.exclusions = String($("cbEditExclusions")?.value || "").trim();
     draftEdits.startDate = String($("cbEditStart")?.value || "").trim();
     draftEdits.dueDate = String($("cbEditDue")?.value || "").trim();
-    draftEdits.paymentNotes = String($("cbEditPaymentNotes")?.value || "").trim();
     draftEdits.additionalTerms = String($("cbEditTerms")?.value || "").trim();
   }
 
@@ -2781,10 +2871,6 @@
     renderSignatureSection(source);
     renderLegalNoticesSection(source);
 
-    const payNotes = String(edits.paymentNotes || "").trim();
-    const payNotesEl = $("cbPaymentNotesDisplay");
-    if (payNotesEl) payNotesEl.textContent = payNotes ? `Draft payment notes: ${payNotes}` : "";
-
     setText(
       "cbStartDisplay",
       edits.startDate ? formatDate(edits.startDate) : "To be confirmed"
@@ -2850,45 +2936,161 @@
     const status = String(readiness.status || "missing").toLowerCase();
     const currency = source.currency || DEFAULT_CURRENCY;
     const undefinedLabel = undefinedMoneyLabel(status);
-    const statusEl = $("cbPayScheduleStatus");
-    if (statusEl) statusEl.textContent = paymentStatusLabel(bundle);
+    const items = Array.isArray(bundle.items) ? [...bundle.items] : [];
+    items.sort((a, b) => (Number(a.sequence_number) || 0) - (Number(b.sequence_number) || 0));
 
-    const hint = $("cbPayScheduleHint");
-    const meta = $("cbPayScheduleMeta");
-    const stagesEl = $("cbPayScheduleStages");
+    const contractTotal =
+      readiness.contract_total != null && Number.isFinite(Number(readiness.contract_total))
+        ? Number(readiness.contract_total)
+        : source.contractTotal != null && Number.isFinite(Number(source.contractTotal))
+          ? Number(source.contractTotal)
+          : null;
+    const scheduledTotal =
+      readiness.scheduled_total != null && Number.isFinite(Number(readiness.scheduled_total))
+        ? Number(readiness.scheduled_total)
+        : null;
+    const itemCount =
+      readiness.item_count != null ? Number(readiness.item_count) : items.length;
+    const sumsMatch =
+      contractTotal != null &&
+      scheduledTotal != null &&
+      Math.round(contractTotal * 100) === Math.round(scheduledTotal * 100);
+
+    setText("cbPayTotalLine", `Contract Total: ${formatMoney(contractTotal, currency)}`);
+    setText("cbPayScheduleStatus", paymentStatusLabel(bundle));
+
+    const badge = $("cbPayStatusBadge");
+    const badgeText = $("cbPayStatusText");
+    const badgeMark = badge?.querySelector?.(".cb-pay-workspace__badge-mark");
+    const stateNote = $("cbPayStateNote");
+    const lead = $("cbPayLead");
+    const summary = $("cbPaySummary");
+    const timeline = $("cbPayTimeline");
+    const empty = $("cbPayEmpty");
+    const hubNote = $("cbPayHubNote");
+    const sumWarn = $("cbPaySumWarn");
     const qaWarn = $("cbPayQaWarn");
 
-    if (status === "missing" || bundle.loadError || bundle.forbidden) {
-      if (meta) {
-        meta.hidden = true;
-        meta.innerHTML = "";
+    if (badge) {
+      badge.classList.remove("is-configured", "is-draft", "is-missing");
+      if (status === "configured") {
+        badge.classList.add("is-configured");
+        if (badgeMark) badgeMark.textContent = "✓";
+        if (badgeText) badgeText.textContent = "Configured";
+      } else if (status === "draft") {
+        badge.classList.add("is-draft");
+        if (badgeMark) badgeMark.textContent = "!";
+        if (badgeText) badgeText.textContent = "Draft";
+      } else {
+        badge.classList.add("is-missing");
+        if (badgeMark) badgeMark.textContent = "○";
+        if (badgeText) badgeText.textContent = "Not configured";
       }
-      if (stagesEl) stagesEl.innerHTML = "";
+    }
+
+    if (lead) {
+      lead.textContent = "The contractual payment stages agreed for this project.";
+    }
+
+    const isUnavailable = Boolean(bundle.loadError || bundle.forbidden);
+    const isMissing = status === "missing" || (!bundle.available && !items.length && status !== "draft" && status !== "configured");
+
+    if (stateNote) {
+      if (status === "configured") {
+        stateNote.textContent =
+          "This plan describes when each contractual payment becomes due.";
+      } else if (status === "draft") {
+        stateNote.textContent =
+          "This payment plan has not been confirmed as the final contractual schedule.";
+      } else if (isUnavailable) {
+        stateNote.textContent = "Payment schedule data is temporarily unavailable.";
+      } else {
+        stateNote.textContent = "";
+      }
+    }
+
+    if (hubNote) {
+      hubNote.hidden = !(status === "configured" || status === "draft");
+    }
+
+    if ((isMissing || isUnavailable) && status !== "draft" && status !== "configured") {
+      if (summary) summary.hidden = true;
+      if (timeline) {
+        timeline.hidden = true;
+        timeline.innerHTML = "";
+      }
+      if (sumWarn) {
+        sumWarn.hidden = true;
+        sumWarn.textContent = "";
+      }
+      if (empty) {
+        empty.hidden = false;
+        const emptyTotal = $("cbPayEmptyTotal");
+        if (emptyTotal) {
+          if (contractTotal != null) {
+            emptyTotal.hidden = false;
+            emptyTotal.textContent = `Contract total ${formatMoney(contractTotal, currency)}`;
+          } else {
+            emptyTotal.hidden = true;
+            emptyTotal.textContent = "";
+          }
+        }
+      }
       if (qaWarn) {
         qaWarn.hidden = true;
         qaWarn.textContent = "";
       }
-      if (hint) hint.hidden = false;
-      if (status === "missing") {
-        setText("cbSumProgress", "Not yet defined");
-        setText("cbSumFinal", "Not yet defined");
-      }
+      setText("cbSumProgress", "Not yet defined");
+      setText("cbSumFinal", "Not yet defined");
       return;
     }
 
-    if (hint) {
-      if (status === "configured") {
-        hint.hidden = true;
+    if (empty) empty.hidden = true;
+
+    if (summary) {
+      summary.hidden = false;
+      setText(
+        "cbPayContractTotal",
+        contractTotal != null ? formatMoney(contractTotal, currency) : "—"
+      );
+      setText("cbPayStageCount", Number.isFinite(itemCount) ? String(itemCount) : "—");
+      if (scheduledTotal != null) {
+        const pctOfTotal =
+          contractTotal != null && contractTotal > 0
+            ? formatPercentDisplay(Math.round((scheduledTotal / contractTotal) * 10000) / 100)
+            : "";
+        setText(
+          "cbPayScheduled",
+          pctOfTotal
+            ? `${formatMoney(scheduledTotal, currency)} · ${pctOfTotal}`
+            : formatMoney(scheduledTotal, currency)
+        );
       } else {
-        hint.hidden = false;
-        hint.innerHTML =
-          status === "draft"
-            ? `<span class="cb-missing">Payment schedule awaiting confirmation</span>`
-            : `<span class="cb-missing">Payment stages and amounts must be confirmed and must total the approved contract price before signature.</span>`;
+        setText("cbPayScheduled", "—");
+      }
+      const checkEl = $("cbPayPlanCheck");
+      if (checkEl) {
+        if (sumsMatch) {
+          checkEl.textContent = "✓ Matches contract total";
+        } else if (contractTotal != null && scheduledTotal != null) {
+          checkEl.textContent = "Does not match contract total";
+        } else {
+          checkEl.textContent = "—";
+        }
       }
     }
 
-    const items = Array.isArray(bundle.items) ? bundle.items : [];
+    if (sumWarn) {
+      if (contractTotal != null && scheduledTotal != null && !sumsMatch) {
+        sumWarn.hidden = false;
+        sumWarn.textContent =
+          "Payment stages do not currently equal the contract total.";
+      } else {
+        sumWarn.hidden = true;
+        sumWarn.textContent = "";
+      }
+    }
+
     const qaLabels = items.filter((item) => looksLikeTechnicalQaLabel(item.label));
     if (qaWarn) {
       if (qaLabels.length) {
@@ -2901,52 +3103,52 @@
       }
     }
 
-    if (stagesEl) {
+    if (timeline) {
       if (!items.length) {
-        stagesEl.innerHTML = `<p><em>No payment stages have been defined yet.</em></p>`;
+        timeline.hidden = false;
+        timeline.innerHTML =
+          `<p class="cb-pay-workspace__note">No payment stages have been defined yet.</p>`;
       } else {
-        const rows = items
+        timeline.hidden = false;
+        timeline.innerHTML = items
           .map((item) => {
-            const seq = item.sequence_number ?? "—";
-            const label = escapeHtml(item.label || "—");
-            const amount = escapeHtml(formatMoney(item.amount, currency));
-            const due = escapeHtml(dueRuleLabel(item.due_rule));
-            const milestone = escapeHtml(item.milestone_description || "—");
-            const amountNote =
-              status === "draft"
-                ? `<div class="cb-field"><span class="k">Status</span><div class="v">Draft payment schedule</div></div>`
-                : "";
+            const typeKey = String(item.payment_type || "").toLowerCase();
+            const typeLabel = escapeHtml(paymentTypeLabel(typeKey));
+            const label = escapeHtml(item.label || paymentTypeLabel(typeKey));
+            const amount = formatMoney(item.amount, currency);
+            const pct = safeStagePercent(item, contractTotal);
+            const pctText = pct != null ? formatPercentDisplay(pct) : "";
+            const amountLine = pctText
+              ? `${escapeHtml(amount)} · ${escapeHtml(pctText)}`
+              : escapeHtml(amount);
+            let due = dueRuleLabel(item.due_rule);
+            const dueKey = String(item.due_rule || "").toLowerCase();
+            if (dueKey === "fixed_date" && item.fixed_due_date) {
+              const fixedLabel = formatPaymentDateOnly(item.fixed_due_date);
+              due = fixedLabel ? `Due ${fixedLabel}` : "Due on a fixed date";
+            } else if (dueKey === "milestone" && item.milestone_description) {
+              due = `Due at milestone: ${item.milestone_description}`;
+            }
+            const metaParts = [];
+            if (item.sequence_number != null) metaParts.push(`Stage ${item.sequence_number}`);
+            if (typeKey === "custom") metaParts.push("Custom stage");
+            if (typeKey === "material") metaParts.push("Material stage");
+            const meta = metaParts.length
+              ? `<p class="cb-pay-stage__meta">${escapeHtml(metaParts.join(" · "))}</p>`
+              : "";
             return (
-              `<div class="cb-meta-grid" style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--cb-line);">` +
-              `<div class="cb-field"><span class="k">Sequence</span><div class="v">${escapeHtml(String(seq))}</div></div>` +
-              `<div class="cb-field"><span class="k">Label</span><div class="v">${label}</div></div>` +
-              `<div class="cb-field"><span class="k">Amount</span><div class="v">${amount}</div></div>` +
-              `<div class="cb-field"><span class="k">Due</span><div class="v">${due}</div></div>` +
-              `<div class="cb-field"><span class="k">Milestone</span><div class="v">${milestone}</div></div>` +
-              amountNote +
-              `</div>`
+              `<article class="cb-pay-stage" data-payment-type="${escapeHtml(typeKey)}">` +
+              `<div class="cb-pay-stage__body">` +
+              `<p class="cb-pay-stage__type">${typeLabel}</p>` +
+              `<h4 class="cb-pay-stage__label">${label}</h4>` +
+              `<p class="cb-pay-stage__amount">${amountLine}</p>` +
+              `<p class="cb-pay-stage__due">${escapeHtml(due)}</p>` +
+              meta +
+              `</div></article>`
             );
           })
           .join("");
-        stagesEl.innerHTML = rows;
       }
-    }
-
-    if (meta) {
-      meta.hidden = false;
-      const contractTotal = readiness.contract_total ?? source.contractTotal;
-      const scheduled = readiness.scheduled_total;
-      const remaining = readiness.remaining_difference;
-      const confirmedAt = bundle.schedule?.confirmed_at || readiness.confirmed_at;
-      let html =
-        `<div class="cb-field"><span class="k">Contract Total</span><div class="v">${escapeHtml(formatMoney(contractTotal, currency))}</div></div>` +
-        `<div class="cb-field"><span class="k">Total Scheduled</span><div class="v">${escapeHtml(formatMoney(scheduled, currency))}</div></div>` +
-        `<div class="cb-field"><span class="k">Remaining Difference</span><div class="v">${escapeHtml(formatMoney(remaining, currency))}</div></div>`;
-      if (status === "configured") {
-        html +=
-          `<div class="cb-field"><span class="k">Confirmed Date</span><div class="v">${escapeHtml(formatDate(confirmedAt) || "—")}</div></div>`;
-      }
-      meta.innerHTML = html;
     }
 
     const depositItem = items.find((i) => String(i.payment_type || "").toLowerCase() === "deposit");
@@ -2985,6 +3187,7 @@
         : undefinedLabel
     );
   }
+
 
   function renderWarrantySection(source, edits) {
     const setup = source.contractSetup?.setup || null;
@@ -3219,7 +3422,6 @@
       "cbEditExclusions",
       "cbEditStart",
       "cbEditDue",
-      "cbEditPaymentNotes",
       "cbEditTerms",
     ];
     for (const id of ids) {
