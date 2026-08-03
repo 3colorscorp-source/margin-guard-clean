@@ -290,7 +290,7 @@
       const labels = {
         2: "Step 2 of 4 — exclusions acknowledgment.",
         3: "Step 3 of 4 — additional work & change orders.",
-        4: "Step 4 of 4 — project deposit.",
+        4: "Step 4 of 4 — Initial Scheduling Payment.",
         optional: "Optional — request additional work."
       };
       metaEl.textContent = labels[step] || "";
@@ -1172,7 +1172,7 @@
     wrap.innerHTML = `
       <div class="premium-terms-copy">
         <div>
-          The required deposit will be applied toward your final invoice.
+          The Initial Scheduling Payment will be applied toward your final invoice.
         </div>
         <div>
           Deposits are non-refundable in the event of project cancellation by the client.

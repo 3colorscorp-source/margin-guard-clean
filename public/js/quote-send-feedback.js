@@ -184,8 +184,8 @@
     var detailLines = [];
     detailLines.push(
       emailOk
-        ? "Your client received the proposal with the approval and deposit link."
-        : "Use the public link below so your client can review, approve, and pay the deposit."
+        ? "Your client received the proposal with the approval and Initial Scheduling Payment link."
+        : "Use the public link below so your client can review, approve, and pay the Initial Scheduling Payment."
     );
     if (pdfOk) detailLines.push("PDF proposal attached.");
     if (emailOk) detailLines.push("Email delivery confirmed.");
@@ -196,8 +196,8 @@
       var toastMessage =
         ctx.successToastMessage ||
         (emailOk
-          ? "Client received the proposal with the approval and deposit link."
-          : "Use the public link so your client can review, approve, and pay the deposit.");
+          ? "Client received the proposal with the approval and Initial Scheduling Payment link."
+          : "Use the public link so your client can review, approve, and pay the Initial Scheduling Payment.");
       showQuoteSendToast({
         title: toastTitle,
         message: toastMessage,

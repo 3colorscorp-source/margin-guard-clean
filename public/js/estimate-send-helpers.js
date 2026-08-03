@@ -583,7 +583,7 @@
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(...textMuted);
-  doc.text('DEPOSIT', invLx, invTop + 44);
+  doc.text('INITIAL SCHEDULING PAYMENT', invLx, invTop + 44);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(12);
@@ -596,7 +596,7 @@
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(...textMuted);
-  doc.text('BALANCE AFTER DEPOSIT', invLx, invTop + 84);
+  doc.text('REMAINING CONTRACT BALANCE', invLx, invTop + 84);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(12);
@@ -607,14 +607,14 @@
 
   drawSectionTitle('Next Step');
   drawWrapped(
-    'To secure your project schedule, approve this proposal and complete the initial deposit.',
+    'To reserve your project on our schedule, approve this proposal and complete the Initial Scheduling Payment. This is not your Start Payment.',
     left,
     contentWidth
   );
   y += 14;
 
   if (approvePayUrl) {
-    const btnLabel = 'APPROVE PROJECT & PAY DEPOSIT';
+    const btnLabel = 'APPROVE & PAY SCHEDULING PAYMENT';
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     const textW = doc.getTextWidth(btnLabel);

@@ -1464,7 +1464,7 @@
               <a id="flowNav4" class="premium-workflow__arrow premium-workflow__link" href="#">
                 <span class="premium-workflow__num" aria-hidden="true">4</span>
                 <span class="premium-workflow__body">
-                  <span class="premium-workflow__label">Deposit</span>
+                  <span class="premium-workflow__label">Initial Scheduling Payment</span>
                   <span class="premium-workflow__status" id="flowStepStatus4"></span>
                 </span>
                 <span id="flowStepDepositBadge" class="premium-workflow__mark" aria-hidden="true"></span>
@@ -1478,8 +1478,8 @@
               >
                 <span class="premium-workflow__num" aria-hidden="true">4</span>
                 <span class="premium-workflow__body">
-                  <span class="premium-workflow__label">Pay Deposit</span>
-                  <span class="premium-workflow__status">Secure your schedule</span>
+                  <span class="premium-workflow__label">Pay Initial Scheduling Payment</span>
+                  <span class="premium-workflow__status">Reserve your schedule</span>
                 </span>
                 <span class="premium-workflow__mark" aria-hidden="true">→</span>
               </button>
@@ -1502,7 +1502,7 @@
             <div class="card-inner">
               <div class="premium-card-head">
                 <span class="premium-card-head__icon" aria-hidden="true">💰</span>
-                <span>Investment</span>
+                <span>Project Investment</span>
               </div>
               <div class="premium-investment-rows">
                 <div class="premium-investment-row is-total">
@@ -1510,11 +1510,11 @@
                   <strong id="publicEstimateTotal">$0.00</strong>
                 </div>
                 <div class="premium-investment-row is-deposit">
-                  <span>Deposit</span>
+                  <span>Initial Scheduling Payment</span>
                   <strong id="publicEstimateDeposit">$0.00</strong>
                 </div>
                 <div class="premium-investment-row is-balance">
-                  <span>Balance After Deposit</span>
+                  <span>Remaining Contract Balance</span>
                   <strong id="publicEstimateBalanceAfter">$0.00</strong>
                 </div>
               </div>
@@ -1590,24 +1590,24 @@
         </div>
 
         <div id="publicFlowStepDeposit" class="flow-step-panel" style="display:none;">
-          <div class="eyebrow">Step 4 — Deposit</div>
+          <div class="eyebrow">Step 4 — Initial Scheduling Payment</div>
           <p id="publicFlowDepositLead" class="sub" style="margin-top:8px;line-height:1.55;">
-            All review steps are complete. Please secure your project start date by completing the deposit.
+            All review steps are complete. Please reserve your project on our schedule by completing the Initial Scheduling Payment.
           </p>
           <div
             id="publicFlowDepositUnavail"
             class="notice warn"
             style="display:none;margin-top:12px;text-align:left;"
           >
-            Online deposit payment is not available yet. Your contractor must connect Stripe for
-            project deposits in Business Settings. Please contact them to arrange payment.
+            Online Initial Scheduling Payment is not available yet. Your contractor must connect Stripe in
+            Business Settings. Please contact them to arrange payment.
           </div>
           <div
             id="publicFlowDepositNoDeposit"
             class="notice ok"
             style="display:none;margin-top:12px;text-align:left;"
           >
-            No deposit is required for this project. Your acknowledgments are complete.
+            No Initial Scheduling Payment is required for this project. Your acknowledgments are complete.
           </div>
           <p class="sub flow-optional-link-wrap">
             <a id="flowNavOptionalWorkDeposit" class="flow-optional-link" href="#">Optional: Request additional work</a>
@@ -1619,9 +1619,9 @@
         <section class="approved-panel" id="approvedProjectPanel" aria-live="polite">
           <div class="approved-panel-inner" id="mgPublicDepositAnchor">
             <div class="approved-kicker">Approved</div>
-            <h3 class="approved-title"><span class="approved-check">✅</span>Project approved. Secure your schedule.</h3>
+            <h3 class="approved-title"><span class="approved-check">✅</span>Estimate approved. Reserve your schedule.</h3>
             <p class="approved-copy">
-              Your approval has been received. Complete the deposit to reserve your project start date.
+              Your approval has been received. Complete the Initial Scheduling Payment to reserve your project on our schedule.
             </p>
 
             <div
@@ -1629,7 +1629,7 @@
               class="notice"
               style="display:none;margin-top:12px;text-align:left;"
             >
-              Complete all steps to proceed with project approval and payment.
+              Complete all steps to proceed with estimate approval and payment.
             </div>
 
             <div
@@ -1637,18 +1637,18 @@
               class="notice warn"
               style="display:none;margin-top:12px;text-align:left;"
             >
-              Online deposit payment is not available yet. Your contractor must connect Stripe for
-              project deposits in Business Settings. Please contact them to arrange payment.
+              Online Initial Scheduling Payment is not available yet. Your contractor must connect Stripe in
+              Business Settings. Please contact them to arrange payment.
             </div>
 
             <div class="approved-actions">
               <button class="btn primary" type="button" id="payDepositBtn" style="display:none;" aria-hidden="true">
-                Pay Project Deposit
+                Pay Initial Scheduling Payment
               </button>
             </div>
 
             <div class="deposit-note">
-              Your deposit reserves your project start date and is applied toward the final invoice.
+              This payment reserves your project on our schedule. It is not your Start Payment. Your contractual payment schedule begins after contract approval. The Initial Scheduling Payment is applied toward the final invoice.
             </div>
 
             <div class="deposit-secure">
@@ -1662,9 +1662,9 @@
 
         <section class="paid-panel" id="paidProjectPanel" aria-live="polite">
           <div class="paid-panel-inner">
-            <h3 class="paid-title"><span class="paid-check">🔒</span>Project secured. Deposit received.</h3>
+            <h3 class="paid-title"><span class="paid-check">🔒</span>Project scheduling reserved. Initial Scheduling Payment received.</h3>
             <p class="paid-copy">
-              Your deposit has been confirmed and your project is now reserved for the next step.
+              Your Initial Scheduling Payment has been confirmed. Your project is reserved on our schedule — it has not started yet.
             </p>
 
             <div class="paid-whats-next">
@@ -1699,7 +1699,7 @@
             <span id="flowStepBadgeOptional" class="flow-step-mark"></span>
           </div>
           <p class="sub" style="margin:0 0 12px;line-height:1.45;opacity:.88;">
-            Not required for deposit. Use this form if you want extra work reviewed later.
+            Not required for the Initial Scheduling Payment. Use this form if you want extra work reviewed later.
           </p>
 
         <div id="publicFlowStep4" class="flow-step-panel">
@@ -1940,10 +1940,10 @@
             depositFlowLead.style.display = "";
             if (showUnavail) {
               depositFlowLead.textContent =
-                "All review steps are complete. Online deposit payment is not available yet — please see the notice below.";
+                "All review steps are complete. Online Initial Scheduling Payment is not available yet — please see the notice below.";
             } else {
               depositFlowLead.textContent =
-                "All review steps are complete. Please secure your project start date by completing the deposit.";
+                "All review steps are complete. Please reserve your project on our schedule by completing the Initial Scheduling Payment.";
             }
           }
         }
@@ -2049,7 +2049,7 @@
           if (feedback) {
             feedback.style.display = "block";
             feedback.className = "notice warn";
-            feedback.textContent = "Deposit checkout was cancelled. You can continue whenever you are ready.";
+            feedback.textContent = "Initial Scheduling Payment checkout was cancelled. You can continue whenever you are ready.";
           }
         }
 
@@ -2058,7 +2058,7 @@
           if (feedback) {
             feedback.style.display = "block";
             feedback.className = "notice ok";
-            feedback.textContent = "Deposit paid successfully. Your project is now secured.";
+            feedback.textContent = "Initial Scheduling Payment received. Project scheduling reserved.";
           }
         }
       }
@@ -2134,7 +2134,7 @@
         if (feedback) {
           feedback.style.display = "block";
           feedback.className = "notice";
-          feedback.textContent = "Creating secure deposit checkout...";
+          feedback.textContent = "Creating secure checkout for your Initial Scheduling Payment...";
         }
 
         try {
@@ -2153,7 +2153,7 @@
           const data = await res.json();
 
           if (!res.ok || !data.ok || !data.url) {
-            throw new Error(data.error || "Unable to create deposit checkout");
+            throw new Error(data.error || "Unable to create Initial Scheduling Payment checkout");
           }
 
           window.location.href = data.url;
@@ -2161,15 +2161,15 @@
           if (feedback) {
             feedback.style.display = "block";
             feedback.className = "notice err";
-            feedback.textContent = err.message || "Unable to start deposit checkout";
+            feedback.textContent = err.message || "Unable to start Initial Scheduling Payment checkout";
           }
           if (btn) {
             btn.disabled = false;
-            btn.textContent = "Pay Project Deposit";
+            btn.textContent = "Pay Initial Scheduling Payment";
           }
           if (workflowBtn) {
             workflowBtn.disabled = false;
-            if (workflowPayLabel) workflowPayLabel.textContent = "Pay Deposit";
+            if (workflowPayLabel) workflowPayLabel.textContent = "Pay Initial Scheduling Payment";
           }
         }
       }

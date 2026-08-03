@@ -28,28 +28,28 @@ function assertPublicDepositAllowed(row) {
     return {
       ok: false,
       error:
-        "Deposit is available only after the estimate is approved and all workflow steps are complete."
+        "Initial Scheduling Payment is available only after the estimate is approved and all workflow steps are complete."
     };
   }
 
   if (!isNonEmptyInitials(row.exclusions_initials)) {
     return {
       ok: false,
-      error: "Complete the exclusions acknowledgment (step 2) before paying the deposit."
+      error: "Complete the exclusions acknowledgment (step 2) before paying the Initial Scheduling Payment."
     };
   }
 
   if (!isNonEmptyTs(row.exclusions_acknowledged_at)) {
     return {
       ok: false,
-      error: "Complete the exclusions acknowledgment (step 2) before paying the deposit."
+      error: "Complete the exclusions acknowledgment (step 2) before paying the Initial Scheduling Payment."
     };
   }
 
   if (!isNonEmptyTs(row.change_order_acknowledged_at)) {
     return {
       ok: false,
-      error: "Complete the change-order acknowledgment (step 3) before paying the deposit."
+      error: "Complete the change-order acknowledgment (step 3) before paying the Initial Scheduling Payment."
     };
   }
 

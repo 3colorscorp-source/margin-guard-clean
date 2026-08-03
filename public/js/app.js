@@ -9846,7 +9846,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             publicQuoteUrl: publishData.public_url,
             renderSuccessMode: "toast",
             successToastTitle: "Quote sent successfully",
-            successToastMessage: "Client received the proposal with the approval and deposit link."
+            successToastMessage: "Client received the proposal with the approval and Initial Scheduling Payment link."
           });
           if (zapierOutcome && zapierOutcome.variant === "warning") {
             closeDelayMs = 2600;
@@ -9859,7 +9859,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           if (fbToast && typeof fbToast.showQuoteSendToast === "function") {
             fbToast.showQuoteSendToast({
               title: "Quote sent successfully",
-              message: "Client received the proposal with the approval and deposit link.",
+              message: "Client received the proposal with the approval and Initial Scheduling Payment link.",
               publicUrl: publishData.public_url,
               dismissMs: 4500
             });

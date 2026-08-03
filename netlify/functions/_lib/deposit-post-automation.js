@@ -294,9 +294,10 @@ async function runDepositPostAutomation(params) {
         "client-webhook"
       );
     } else if (clientEmail) {
-      const subj = "Deposit received — your project is secured";
+      const subj = "Initial Scheduling Payment received — project scheduling reserved";
       const html = `<p>Hi ${escapeHtml(clientName)},</p>
-<p>Your deposit has been received successfully. <strong>Your project is secured.</strong></p>
+<p>Your Initial Scheduling Payment has been received successfully. <strong>Project scheduling reserved.</strong></p>
+<p>This payment reserves your project on our schedule. It is not your Start Payment.</p>
 <p>We will contact you within <strong>24 hours</strong> with next steps.</p>
 <p style="margin-top:16px;color:#666;font-size:13px;">${escapeHtml(displayBusiness)}</p>`;
       await tryResendEmail({
@@ -323,12 +324,12 @@ async function runDepositPostAutomation(params) {
         "internal-webhook"
       );
     } else if (tenantNotifyEmail) {
-      const internalSubj = `Deposit received — ${projectName}`;
-      const html = `<p><strong>Deposit received</strong></p>
+      const internalSubj = `Initial Scheduling Payment received — ${projectName}`;
+      const html = `<p><strong>Initial Scheduling Payment received</strong></p>
 <ul>
 <li><strong>Client:</strong> ${escapeHtml(clientName)}</li>
 <li><strong>Project:</strong> ${escapeHtml(projectName)}</li>
-<li><strong>Deposit amount:</strong> ${escapeHtml(String(paidAmount))} ${escapeHtml(currency)}</li>
+<li><strong>Scheduling payment amount:</strong> ${escapeHtml(String(paidAmount))} ${escapeHtml(currency)}</li>
 <li><strong>Timestamp:</strong> ${escapeHtml(paidAtIso)}</li>
 </ul>`;
       await tryResendEmail({

@@ -114,7 +114,7 @@ exports.handler = async (event) => {
     if (!connectAccountId || !chargesOk) {
       return json(403, {
         error:
-          "Deposit checkout is not available for this business yet. The contractor must connect Stripe for deposits in Business Settings."
+          "Initial Scheduling Payment checkout is not available for this business yet. The contractor must connect Stripe in Business Settings."
       });
     }
 
@@ -142,7 +142,7 @@ exports.handler = async (event) => {
     if (!Number.isFinite(dollars) || dollars <= 0) {
       return json(400, {
         error:
-          "Deposit must be greater than zero on the estimate before starting checkout."
+          "Initial Scheduling Payment must be greater than zero on the estimate before starting checkout."
       });
     }
 
@@ -150,7 +150,7 @@ exports.handler = async (event) => {
     if (depositCents == null) {
       return json(400, {
         error:
-          "Deposit amount is below the minimum allowed for card checkout ($0.50). Increase deposit_required on the quote."
+          "Initial Scheduling Payment is below the minimum allowed for card checkout ($0.50)."
       });
     }
 
@@ -210,10 +210,10 @@ exports.handler = async (event) => {
     form.set("line_items[0][quantity]", "1");
     form.set("line_items[0][price_data][currency]", "usd");
     form.set("line_items[0][price_data][unit_amount]", String(depositCents));
-    form.set("line_items[0][price_data][product_data][name]", "Project Deposit");
+    form.set("line_items[0][price_data][product_data][name]", "Initial Scheduling Payment");
     form.set(
       "line_items[0][price_data][product_data][description]",
-      "Required deposit to reserve your project start date. Applied toward final invoice."
+      "This payment reserves your project on our schedule. It is not your Start Payment."
     );
 
     form.set("client_reference_id", publicToken);

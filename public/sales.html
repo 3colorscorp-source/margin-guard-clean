@@ -9304,7 +9304,7 @@
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(...textMuted);
-  doc.text('DEPOSIT', invLx, invTop + 44);
+  doc.text('INITIAL SCHEDULING PAYMENT', invLx, invTop + 44);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(12);
@@ -9317,7 +9317,7 @@
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(...textMuted);
-  doc.text('BALANCE AFTER DEPOSIT', invLx, invTop + 84);
+  doc.text('REMAINING CONTRACT BALANCE', invLx, invTop + 84);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(12);
@@ -9328,14 +9328,14 @@
 
   drawSectionTitle('Next Step');
   drawWrapped(
-    'To secure your project schedule, approve this proposal and complete the initial deposit.',
+    'To reserve your project on our schedule, approve this proposal and complete the Initial Scheduling Payment. This is not your Start Payment.',
     left,
     contentWidth
   );
   y += 14;
 
   if (approvePayUrl) {
-    const btnLabel = 'APPROVE PROJECT & PAY DEPOSIT';
+    const btnLabel = 'APPROVE & PAY SCHEDULING PAYMENT';
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     const textW = doc.getTextWidth(btnLabel);
@@ -9714,7 +9714,7 @@ async function fillSendModal() {
       '',
       '[PUBLIC_QUOTE_URL]',
       '',
-      'Once approved, you’ll be able to complete your project start investment online.',
+      'Once approved, you’ll be able to complete your Initial Scheduling Payment online to reserve your project on our schedule.',
       '',
       'Thank you,',
       tenantPdf.businessName || '\u2014',
@@ -10730,7 +10730,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
             publicQuoteUrl: publishData.public_url,
             renderSuccessMode: 'toast',
             successToastTitle: 'Quote sent successfully',
-            successToastMessage: 'Client received the proposal with the approval and deposit link.'
+            successToastMessage: 'Client received the proposal with the approval and Initial Scheduling Payment link.'
           });
         } else if (sendStatus) {
           sendStatus.innerHTML = '';
@@ -10740,7 +10740,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           if (fbToast && typeof fbToast.showQuoteSendToast === 'function') {
             fbToast.showQuoteSendToast({
               title: 'Quote sent successfully',
-              message: 'Client received the proposal with the approval and deposit link.',
+              message: 'Client received the proposal with the approval and Initial Scheduling Payment link.',
               publicUrl: publishData.public_url,
               dismissMs: 4500
             });
