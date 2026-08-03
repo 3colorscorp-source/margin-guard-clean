@@ -89,7 +89,7 @@ async function loadEnvelopeRow(tenantId, envelopeId) {
   const rows = await supabaseRequest(
     `tenant_contract_envelopes?tenant_id=eq.${encodeURIComponent(tenantId)}` +
       `&id=eq.${encodeURIComponent(envelopeId)}` +
-      `&select=id,package_id,status,expires_at,sent_at,completed_at,cancelled_at,declined_at` +
+      `&select=id,package_id,status,expires_at,sent_at,completed_at,cancelled_at,declined_at,updated_at` +
       `&limit=1`,
     { method: "GET" }
   );
@@ -295,6 +295,8 @@ async function loadPublicContractByToken(rawToken) {
         status: trimField(envelope.status),
         expires_at: envelope.expires_at || null,
         sent_at: envelope.sent_at || null,
+        updated_at: envelope.updated_at || null,
+        completed_at: envelope.completed_at || null,
       },
       signer: {
         role: trimField(signer.role),
