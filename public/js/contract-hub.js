@@ -103,9 +103,20 @@
     return `/contract-builder?${params.toString()}`;
   }
 
+  function signingHref(projectId) {
+    const pid = String(projectId || "").trim();
+    if (!pid) return "/signature-workspace";
+    return `/signature-workspace?project_id=${encodeURIComponent(pid)}`;
+  }
+
   function setLaunchBuilderState(eligible, projectId, quoteId) {
     const link = $("chLaunchBuilder");
     const disabledBtn = $("chLaunchBuilderDisabled");
+    const signing = $("chLaunchSigning");
+    if (signing && projectId) {
+      signing.href = signingHref(projectId);
+      signing.hidden = false;
+    }
     if (eligible) {
       if (link) {
         link.href = builderHref(projectId, quoteId);

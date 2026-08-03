@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Contract Signing</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .sw-page { max-width: 1180px; margin: 0 auto; }
+    .sw-hero .card-inner { padding-top: 12px; padding-bottom: 12px; }
+    .sw-hero h2 { margin: 0 0 4px; font-size: clamp(1.25rem, 2.2vw, 1.55rem); }
+    .sw-hero .sub { margin: 0; max-width: 64ch; line-height: 1.45; }
+    .sw-header-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px 14px;
+      margin-top: 12px;
+    }
+    @media (max-width: 900px) {
+      .sw-header-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 520px) {
+      .sw-header-grid { grid-template-columns: 1fr; }
+    }
+    .sw-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .sw-field__k {
+      font-size: 0.6875rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.52);
+    }
+    .sw-field__v {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #e8eefc;
+      word-break: break-word;
+    }
+    .sw-section { margin-top: 12px; }
+    .sw-section h3 { margin: 0 0 4px; font-size: 1rem; }
+    .sw-section .sub { margin: 0 0 12px; font-size: 0.8125rem; }
+    .sw-meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px 12px;
+      margin-bottom: 12px;
+    }
+    @media (max-width: 720px) {
+      .sw-meta { grid-template-columns: 1fr 1fr; }
+    }
+    .sw-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .sw-status-pills { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+    .sw-pill {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: rgba(232, 238, 252, 0.55);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .sw-pill.is-active {
+      color: #0b1220;
+      background: #fde68a;
+      border-color: #f59e0b;
+    }
+    .sw-pill.is-done {
+      color: #052e16;
+      background: #86efac;
+      border-color: #22c55e;
+    }
+    .sw-table-wrap { overflow-x: auto; }
+    .sw-table-wrap .table { min-width: 760px; }
+    .sw-row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .sw-empty {
+      padding: 14px;
+      border-radius: 10px;
+      border: 1px dashed rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.02);
+      font-size: 0.8125rem;
+      color: rgba(232, 238, 252, 0.78);
+    }
+    .sw-blockers {
+      margin: 0 0 10px;
+      padding: 0;
+      list-style: none;
+    }
+    .sw-blockers li {
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      font-size: 0.8125rem;
+      color: #fecaca;
+    }
+    .sw-blockers li.is-ok { color: #86efac; }
+    .sw-timeline { margin: 0; padding: 0; list-style: none; }
+    .sw-timeline li {
+      position: relative;
+      padding: 10px 0 10px 22px;
+      border-left: 2px solid rgba(255, 255, 255, 0.1);
+      margin-left: 6px;
+      font-size: 0.8125rem;
+    }
+    .sw-timeline li::before {
+      content: "";
+      position: absolute;
+      left: -7px;
+      top: 14px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      border: 2px solid rgba(13, 20, 34, 0.9);
+    }
+    .sw-timeline li.is-signed::before { background: #22c55e; }
+    .sw-timeline li.is-opened::before { background: #60a5fa; }
+    .sw-timeline li.is-pending::before { background: #f59e0b; }
+    .sw-timeline .sw-steps {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .sw-step {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: rgba(232, 238, 252, 0.45);
+    }
+    .sw-step.is-on {
+      color: #0b1220;
+      background: #fde68a;
+      border-color: #f59e0b;
+    }
+    .sw-step.is-done {
+      color: #052e16;
+      background: #86efac;
+      border-color: #22c55e;
+    }
+    .sw-dev summary {
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 0.875rem;
+      color: rgba(232, 238, 252, 0.7);
+    }
+    .sw-dev pre {
+      margin: 10px 0 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.28);
+      font-size: 0.75rem;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .sw-toast {
+      margin: 10px 0 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 0.8125rem;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .sw-toast.is-error {
+      border-color: rgba(248, 113, 113, 0.45);
+      color: #fecaca;
+    }
+    .sw-toast.is-ok {
+      border-color: rgba(134, 239, 172, 0.4);
+      color: #bbf7d0;
+    }
+    .sw-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: rgba(5, 10, 20, 0.72);
+    }
+    .sw-modal[hidden] { display: none !important; }
+    .sw-modal__panel {
+      width: min(560px, 100%);
+      max-height: min(86vh, 720px);
+      overflow: auto;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: #0f172a;
+      padding: 16px;
+    }
+    .sw-modal__panel h3 { margin: 0 0 8px; }
+    .sw-modal .field { margin-bottom: 10px; }
+    .sw-modal label { display: block; font-size: 0.75rem; margin-bottom: 4px; color: rgba(232, 238, 252, 0.65); }
+    .sw-modal input, .sw-modal select {
+      width: 100%;
+      padding: 9px 11px;
+      border-radius: 10px;
+    }
+    .sw-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: end;
+      margin-bottom: 12px;
+    }
+    .sw-toolbar .field { margin: 0; flex: 1 1 220px; }
+    #swMain[hidden], #swError[hidden], #swLoading[hidden] { display: none !important; }
+    .sw-loading { font-size: 0.875rem; color: rgba(232, 238, 252, 0.7); padding: 8px 0; }
+    .sw-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem; }
+  </style>
+</head>
+<body data-requires-auth="true" data-mg-app-nav data-mg-page-title="Contract Signing">
+  <div class="container sw-page">
+    <div class="account-pill" id="accountEmail">Cuenta activa</div>
+
+    <section class="card sw-hero">
+      <div class="card-inner">
+        <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:flex-start;">
+          <div>
+            <h2>Contract Signing</h2>
+            <p class="sub">Owner Signature Workspace — manage packages, envelopes, signers, send, certificates, and signed PDFs for one project.</p>
+          </div>
+          <a class="btn ghost" href="/contract-hub" id="swBackHub">Contract Hub</a>
+        </div>
+        <div class="sw-toolbar" id="swProjectToolbar">
+          <div class="field">
+            <label for="swProjectSelect">Project</label>
+            <select id="swProjectSelect"><option value="">Select project…</option></select>
+          </div>
+          <button type="button" class="btn primary" id="swReloadBtn">Reload</button>
+        </div>
+        <div id="swToast" class="sw-toast" hidden role="status"></div>
+      </div>
+    </section>
+
+    <div id="swLoading" class="sw-loading" aria-live="polite">Loading signature workspace…</div>
+
+    <div id="swError" class="card" hidden role="alert">
+      <div class="card-inner">
+        <h3 id="swErrorTitle">Contract Signing</h3>
+        <p id="swErrorMessage" class="sub"></p>
+      </div>
+    </div>
+
+    <div id="swMain" hidden>
+      <section class="card">
+        <div class="card-inner">
+          <div class="sw-header-grid" id="swHeader">
+            <div class="sw-field"><div class="sw-field__k">Project</div><div class="sw-field__v" id="swHProject">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v" id="swHCustomer">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Package Version</div><div class="sw-field__v" id="swHPackage">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Envelope Status</div><div class="sw-field__v" id="swHEnvelope">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Progress</div><div class="sw-field__v" id="swHProgress">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Certificate</div><div class="sw-field__v" id="swHCert">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">PDF</div><div class="sw-field__v" id="swHPdf">—</div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card sw-section" id="swSecPackage">
+        <div class="card-inner">
+          <h3>1. Package</h3>
+          <p class="sub">Frozen contract package for this project.</p>
+          <div class="sw-meta">
+            <div class="sw-field"><div class="sw-field__k">Version</div><div class="sw-field__v" id="swPkgVersion">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Status</div><div class="sw-field__v" id="swPkgStatus">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Frozen</div><div class="sw-field__v" id="swPkgFrozen">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Created</div><div class="sw-field__v" id="swPkgCreated">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Executed</div><div class="sw-field__v" id="swPkgExecuted">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Content hash</div><div class="sw-field__v sw-mono" id="swPkgHash">—</div></div>
+          </div>
+          <div class="sw-actions">
+            <button type="button" class="btn ghost" id="swViewFrozenBtn">View Frozen Contract</button>
+            <label class="field" style="margin:0;min-width:180px;">
+              <span class="sw-field__k">Active package</span>
+              <select id="swPackageSelect"></select>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="card sw-section" id="swSecEnvelope">
+        <div class="card-inner">
+          <h3>2. Envelope</h3>
+          <p class="sub">Signing envelope lifecycle for the selected package.</p>
+          <div class="sw-status-pills" id="swEnvPills" aria-label="Envelope status"></div>
+          <div class="sw-meta">
+            <div class="sw-field"><div class="sw-field__k">Status</div><div class="sw-field__v" id="swEnvStatus">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Completed</div><div class="sw-field__v" id="swEnvCompleted">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Sent</div><div class="sw-field__v" id="swEnvSent">—</div></div>
+          </div>
+          <div class="sw-actions">
+            <button type="button" class="btn primary" id="swCreateEnvelopeBtn">Create Envelope</button>
+            <label class="field" style="margin:0;min-width:220px;">
+              <span class="sw-field__k">Open Envelope</span>
+              <select id="swEnvelopeSelect"></select>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="card sw-section" id="swSecSigners">
+        <div class="card-inner">
+          <h3>3. Signers</h3>
+          <p class="sub">Draft roster only editable before send.</p>
+          <div class="sw-actions" style="margin-top:0;margin-bottom:10px;">
+            <button type="button" class="btn primary" id="swAddSignerBtn">Add</button>
+          </div>
+          <div class="sw-table-wrap">
+            <table class="table" id="swSignersTable">
+              <thead>
+                <tr>
+                  <th>Role</th>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Order</th>
+                  <th>Method</th>
+                  <th>Status</th>
+                  <th>Signed At</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="swSignersBody"></tbody>
+            </table>
+          </div>
+          <div class="sw-empty" id="swSignersEmpty" hidden>No signers yet.</div>
+        </div>
+      </section>
+
+      <section class="card sw-section" id="swSecSend">
+        <div class="card-inner">
+          <h3>4. Send</h3>
+          <p class="sub">Prepare signing tokens (no email). delivery_status = prepared.</p>
+          <div class="sw-field" style="margin-bottom:8px;">
+            <div class="sw-field__k">Ready</div>
+            <div class="sw-field__v" id="swSendReady">—</div>
+          </div>
+          <ul class="sw-blockers" id="swSendBlockers"></ul>
+          <div class="sw-actions">
+            <button type="button" class="btn primary" id="swSendBtn">Send For Signature</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card sw-section" id="swSecProgress">
+        <div class="card-inner">
+          <h3>5. Signing Progress</h3>
+          <p class="sub">Timeline by signer order.</p>
+          <ol class="sw-timeline" id="swTimeline"></ol>
+          <div class="sw-empty" id="swTimelineEmpty" hidden>No signers on this envelope.</div>
+        </div>
+      </section>
+
+      <section class="card sw-section" id="swSecCert">
+        <div class="card-inner">
+          <h3>6. Certificate</h3>
+          <p class="sub">Immutable audit certificate after envelope completion.</p>
+          <div class="sw-meta">
+            <div class="sw-field"><div class="sw-field__k">Certificate Number</div><div class="sw-field__v" id="swCertNumber">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Issued</div><div class="sw-field__v" id="swCertIssued">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Verification Hash</div><div class="sw-field__v sw-mono" id="swCertHash">—</div></div>
+          </div>
+          <div class="sw-actions">
+            <button type="button" class="btn primary" id="swIssueCertBtn">Issue Certificate</button>
+            <button type="button" class="btn ghost" id="swViewCertBtn">View Certificate</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card sw-section" id="swSecPdf">
+        <div class="card-inner">
+          <h3>7. Signed PDF</h3>
+          <p class="sub">Private signed contract PDF for the completed envelope.</p>
+          <div class="sw-meta">
+            <div class="sw-field"><div class="sw-field__k">Artifact</div><div class="sw-field__v" id="swPdfStatus">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">SHA-256</div><div class="sw-field__v sw-mono" id="swPdfHash">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Size</div><div class="sw-field__v" id="swPdfSize">—</div></div>
+          </div>
+          <div class="sw-actions">
+            <button type="button" class="btn primary" id="swGeneratePdfBtn">Generate Signed PDF</button>
+            <button type="button" class="btn ghost" id="swOpenPdfBtn">Open PDF</button>
+            <a class="btn ghost" id="swDownloadPdfBtn" href="#" target="_blank" rel="noopener">Download PDF</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="card sw-section" id="swSecDev">
+        <div class="card-inner">
+          <details class="sw-dev">
+            <summary>8. Developer (Owner only — never shown to customers)</summary>
+            <pre id="swDevIds">—</pre>
+          </details>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="sw-modal" id="swModal" hidden>
+    <div class="sw-modal__panel" role="dialog" aria-modal="true" aria-labelledby="swModalTitle">
+      <h3 id="swModalTitle">Dialog</h3>
+      <div id="swModalBody"></div>
+      <div class="sw-actions" id="swModalActions"></div>
+    </div>
+  </div>
+
+  <script src="/js/mg-app-nav.js"></script>
+  <script src="/js/tenant.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/signature-workspace.js" defer></script>
+</body>
+</html>

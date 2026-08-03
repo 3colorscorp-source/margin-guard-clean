@@ -23,7 +23,8 @@
         { type: 'link', href: '/sales?portal=owner', label: 'Vendedor', icon: 'VE', ownerNav: true, activePaths: ['/sales'] },
         { type: 'link', href: '/supervisor', label: 'Supervisor', icon: 'SU', ownerNav: true },
         { type: 'link', href: '/project-control', label: 'Project Control', icon: 'PC', ownerNav: true },
-        { type: 'link', href: '/sales-admin', label: 'Sales Admin', icon: 'SA', ownerNav: true }
+        { type: 'link', href: '/sales-admin', label: 'Sales Admin', icon: 'SA', ownerNav: true },
+        { type: 'link', href: '/signature-workspace', label: 'Contract Signing', icon: 'CS', ownerNav: true, activePaths: ['/signature-workspace', '/signature-workspace.html'] }
       ]
     },
     {
