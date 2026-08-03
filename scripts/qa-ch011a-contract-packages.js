@@ -210,6 +210,14 @@ test("9-10. content_hash deterministic + idempotent policy A", () => {
   assert.match(h1, /^[a-f0-9]{64}$/);
   assert.ok(libSrc.includes("idempotent"));
   assert.ok(libSrc.includes("loadLatestReadyPackage"));
+  assert.ok(libSrc.includes("authoritativeContentForHash"));
+  assert.ok(libSrc.includes("evaluateFreezeHashDecision"));
+  const withFrozen = { ...base, frozen_at: "2026-01-01T00:00:00.000Z" };
+  const withOtherFrozen = { ...base, frozen_at: "2099-01-01T00:00:00.000Z" };
+  assert.strictEqual(
+    lib.contentHashForSnapshot(withFrozen),
+    lib.contentHashForSnapshot(withOtherFrozen)
+  );
 });
 
 test("11-12. Business Settings snapshot frozen (no second profile schema)", () => {

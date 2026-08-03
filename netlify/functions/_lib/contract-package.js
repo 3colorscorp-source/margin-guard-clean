@@ -96,8 +96,74 @@ function sha256Hex(text) {
   return crypto.createHash("sha256").update(String(text), "utf8").digest("hex");
 }
 
+/**
+ * Hash input = authoritative contract content only.
+ * Excludes freeze-time / package metadata (frozen_at, package ids, versions, etc.).
+ */
+function authoritativeContentForHash(snapshot) {
+  const raw = snapshot && typeof snapshot === "object" ? snapshot : {};
+  const {
+    frozen_at: _frozenAt,
+    package_id: _packageId,
+    package_version: _packageVersion,
+    package_status: _packageStatus,
+    created_at: _createdAt,
+    updated_at: _updatedAt,
+    created_by: _createdBy,
+    supersedes_package_id: _supersedes,
+    ...rest
+  } = raw;
+
+  let content = rest;
+  const payment = content.payment_schedule;
+  if (payment && Array.isArray(payment.items)) {
+    content = {
+      ...content,
+      payment_schedule: {
+        ...payment,
+        items: [...payment.items].sort((a, b) => {
+          const seqA = Number(a?.sequence_number) || 0;
+          const seqB = Number(b?.sequence_number) || 0;
+          if (seqA !== seqB) return seqA - seqB;
+          return trimField(a?.id).localeCompare(trimField(b?.id));
+        }),
+      },
+    };
+  }
+
+  return content;
+}
+
 function contentHashForSnapshot(snapshot) {
-  return sha256Hex(canonicalJson(snapshot));
+  return sha256Hex(canonicalJson(authoritativeContentForHash(snapshot)));
+}
+
+function evaluateFreezeHashDecision(latestReady, contentHash) {
+  const hash = trimField(contentHash);
+  if (!latestReady?.id || !hash) {
+    return {
+      idempotent: false,
+      createVersion: true,
+      supersedeId: latestReady?.id || null,
+    };
+  }
+  // Recompute from stored snapshot so legacy hashes that included frozen_at still match.
+  const fromSnapshot = latestReady.snapshot_json
+    ? contentHashForSnapshot(latestReady.snapshot_json)
+    : "";
+  const fromColumn = trimField(latestReady.content_hash);
+  if (fromSnapshot === hash || fromColumn === hash) {
+    return {
+      idempotent: true,
+      createVersion: false,
+      supersedeId: null,
+    };
+  }
+  return {
+    idempotent: false,
+    createVersion: true,
+    supersedeId: latestReady.id,
+  };
 }
 
 function toMoneyCents(value) {
@@ -446,9 +512,14 @@ function buildSnapshot({
     },
     payment_schedule: {
       schedule,
-      items: (items || []).map((row) =>
-        serializeScheduleItem(row, toMoneyCents(contractTotal) || 0)
-      ),
+      items: (items || [])
+        .map((row) => serializeScheduleItem(row, toMoneyCents(contractTotal) || 0))
+        .sort((a, b) => {
+          const seqA = Number(a?.sequence_number) || 0;
+          const seqB = Number(b?.sequence_number) || 0;
+          if (seqA !== seqB) return seqA - seqB;
+          return trimField(a?.id).localeCompare(trimField(b?.id));
+        }),
       readiness: paymentReadiness,
     },
     warranty: {
@@ -655,7 +726,8 @@ async function freezeContractPackage({
   const sourceReadiness = snapshot.readiness;
 
   const latestReady = await loadLatestReadyPackage(tenantId, projectId);
-  if (latestReady && trimField(latestReady.content_hash) === contentHash) {
+  const decision = evaluateFreezeHashDecision(latestReady, contentHash);
+  if (decision.idempotent) {
     return {
       ok: true,
       idempotent: true,
@@ -683,7 +755,7 @@ async function freezeContractPackage({
           snapshot_json: snapshot,
           content_hash: contentHash,
           source_readiness: sourceReadiness,
-          supersedes_package_id: latestReady?.id || null,
+          supersedes_package_id: decision.supersedeId || null,
           created_by: createdBy || null,
         },
       });
@@ -692,7 +764,8 @@ async function freezeContractPackage({
       const text = String(err?.message || err?.supabaseRaw || "");
       if (/duplicate|unique|23505/i.test(text)) {
         const again = await loadLatestReadyPackage(tenantId, projectId);
-        if (again && trimField(again.content_hash) === contentHash) {
+        const againDecision = evaluateFreezeHashDecision(again, contentHash);
+        if (againDecision.idempotent) {
           return {
             ok: true,
             idempotent: true,
@@ -717,9 +790,9 @@ async function freezeContractPackage({
     };
   }
 
-  if (latestReady?.id) {
+  if (decision.supersedeId) {
     try {
-      await markPackageSuperseded(tenantId, latestReady.id);
+      await markPackageSuperseded(tenantId, decision.supersedeId);
     } catch (_err) {
       /* new package exists; supersede best-effort */
     }
@@ -744,7 +817,9 @@ module.exports = {
   unknownKeys,
   canonicalize,
   canonicalJson,
+  authoritativeContentForHash,
   contentHashForSnapshot,
+  evaluateFreezeHashDecision,
   sha256Hex,
   serializePackageRow,
   verifyProjectAndQuote,
