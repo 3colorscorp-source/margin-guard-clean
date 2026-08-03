@@ -140,6 +140,7 @@ async function createSigningToken({
   tenantId,
   signerId,
   expiresInDays = DEFAULT_EXPIRES_DAYS,
+  expiresAt = null,
 }) {
   const signer = await loadSignerForTenant(tenantId, signerId);
   if (!signer?.id) {
@@ -162,14 +163,29 @@ async function createSigningToken({
     };
   }
 
-  const days = Number(expiresInDays);
-  if (!Number.isSafeInteger(days) || days < 1 || days > 365) {
-    return {
-      ok: false,
-      status: 400,
-      error: "expires_in_days must be an integer from 1 to 365",
-      code: "invalid_expires_in_days",
-    };
+  let expiresIso = null;
+  if (expiresAt != null && String(expiresAt).trim() !== "") {
+    const d = new Date(expiresAt);
+    if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) {
+      return {
+        ok: false,
+        status: 400,
+        error: "expires_at must be a future timestamp",
+        code: "invalid_expires_at",
+      };
+    }
+    expiresIso = d.toISOString();
+  } else {
+    const days = Number(expiresInDays);
+    if (!Number.isSafeInteger(days) || days < 1 || days > 365) {
+      return {
+        ok: false,
+        status: 400,
+        error: "expires_in_days must be an integer from 1 to 365",
+        code: "invalid_expires_in_days",
+      };
+    }
+    expiresIso = defaultExpiresAt(new Date(), days);
   }
 
   const rawToken = generateRawToken();
@@ -185,7 +201,7 @@ async function createSigningToken({
         signer_id: signerId,
         token_hash: tokenHash,
         status: "active",
-        expires_at: defaultExpiresAt(new Date(), days),
+        expires_at: expiresIso,
       },
     });
     inserted = Array.isArray(rows) ? rows[0] : rows;
@@ -214,6 +230,51 @@ async function createSigningToken({
   return {
     ok: true,
     token: serializeToken(inserted, { includeRaw: true, rawToken }),
+  };
+}
+
+/**
+ * Reuse a still-valid active token, or create a new one.
+ * Raw token returned only when newly created.
+ */
+async function ensureSigningTokenForSigner({
+  tenantId,
+  signerId,
+  expiresAt = null,
+}) {
+  const existing = await loadActiveTokenForSigner(tenantId, signerId);
+  if (existing?.id) {
+    const validity = evaluateTokenValidity(existing);
+    if (validity.ok) {
+      return {
+        ok: true,
+        reused: true,
+        token: serializeToken(existing),
+      };
+    }
+    // Clear expired/invalid active row so a replacement can be created.
+    await supabaseRequest(
+      `tenant_contract_signing_tokens?tenant_id=eq.${encodeURIComponent(tenantId)}` +
+        `&id=eq.${encodeURIComponent(existing.id)}`,
+      {
+        method: "PATCH",
+        body: {
+          status: "expired",
+        },
+      }
+    );
+  }
+
+  const created = await createSigningToken({
+    tenantId,
+    signerId,
+    expiresAt,
+  });
+  if (!created.ok) return created;
+  return {
+    ok: true,
+    reused: false,
+    token: created.token,
   };
 }
 
@@ -326,6 +387,7 @@ module.exports = {
   evaluateTokenValidity,
   serializeToken,
   createSigningToken,
+  ensureSigningTokenForSigner,
   lookupSigningToken,
   revokeSigningToken,
   loadSignerForTenant,

@@ -56,6 +56,8 @@ function serializeEnvelope(row) {
     created_at: row.created_at || null,
     updated_at: row.updated_at || null,
     expires_at: row.expires_at || null,
+    sent_at: row.sent_at || null,
+    sent_by: row.sent_by || null,
     completed_at: row.completed_at || null,
     cancelled_at: row.cancelled_at || null,
     declined_at: row.declined_at || null,
@@ -105,7 +107,7 @@ async function listEnvelopesForPackage(tenantId, packageId) {
   const rows = await supabaseRequest(
     `tenant_contract_envelopes?tenant_id=eq.${encodeURIComponent(tenantId)}` +
       `&package_id=eq.${encodeURIComponent(packageId)}` +
-      `&select=id,tenant_id,package_id,project_id,quote_id,status,created_by,created_at,updated_at,expires_at,completed_at,cancelled_at,declined_at,metadata` +
+      `&select=id,tenant_id,package_id,project_id,quote_id,status,created_by,created_at,updated_at,expires_at,sent_at,sent_by,completed_at,cancelled_at,declined_at,metadata` +
       `&order=created_at.desc`,
     { method: "GET" }
   );
