@@ -392,4 +392,5 @@ module.exports = {
   revokeSigningToken,
   loadSignerForTenant,
   loadActiveTokenForSigner,
+  loadTokenByHash,
 };
