@@ -76,6 +76,31 @@
   /** Snapshot of draftEdits when entering Edit (for Cancel restore). */
   let workspaceEditBaseline = null;
   let workspaceBusy = false;
+  /** Footer busy label while payment POST is in flight. */
+  let workspaceBusyLabel = "Saving…";
+
+  /** CH-007D-P2 — payment schedule local draft (Save Draft / Confirm → existing POST). */
+  let paymentDraftItems = [];
+  let paymentDraftBaseline = null;
+  let paymentDraftKeySeq = 1;
+  const PAYMENT_TYPES_ALLOWED = new Set([
+    "deposit",
+    "start",
+    "progress",
+    "material",
+    "completion",
+    "final",
+    "custom",
+  ]);
+  const DUE_RULES_ALLOWED = new Set([
+    "on_signature",
+    "before_start",
+    "on_start",
+    "milestone",
+    "on_completion",
+    "fixed_date",
+    "custom",
+  ]);
 
   function defaultWorkspaceCaps(overrides) {
     return {
@@ -241,19 +266,38 @@
       },
     }),
     "art-payment": defaultWorkspaceCaps({
-      supportsEdit: false,
-      supportsSave: false,
+      supportsEdit: true,
+      supportsSave: true,
       supportsValidation: true,
       supportsTimeline: true,
       continueLabel: "Continue",
-      validate: () => {
-        const st = articleReadinessStatus("art-payment", sourceSnapshot, draftEdits);
-        return readinessValidation(
-          st,
-          "Payment schedule is configured.",
-          "Payment schedule needs confirmation.",
-          "Payment schedule is missing."
-        );
+      editLabel: "Edit Payment Schedule",
+      saveLabel: "Save Draft",
+      validate: () => validatePaymentWorkspace(),
+      syncEditFromModel: () => {
+        hydratePaymentDraftFromSource(sourceSnapshot);
+        renderPaymentEditGrid();
+      },
+      onEnterEdit: () => {
+        bindPaymentEditHandlersOnce();
+        renderPaymentEditGrid();
+      },
+      onCancelEdit: () => {
+        if (paymentDraftBaseline) {
+          paymentDraftItems = clonePaymentDraftItems(paymentDraftBaseline);
+        } else {
+          hydratePaymentDraftFromSource(sourceSnapshot);
+        }
+      },
+      onBeforeSave: () => {
+        const check = validatePaymentDraftForSave();
+        updatePaymentEditHint(check);
+        renderWorkspaceChrome();
+        if (check.blocking) return false;
+        return true;
+      },
+      onSave: async () => {
+        await savePaymentScheduleDraft(false);
       },
     }),
     "art-schedule": defaultWorkspaceCaps({
@@ -415,8 +459,15 @@
     if (!articleId || workspaceBusy) return false;
     const caps = getWorkspace(articleId);
     if (!caps.supportsEdit) return false;
+    if (articleId === "art-payment" && !paymentScheduleAllowsOwnerEdit()) {
+      showError("Payment Schedule", "Confirmed payment schedules are read-only.");
+      return false;
+    }
     readEditsFromInputs();
     workspaceEditBaseline = draftEdits ? { ...draftEdits } : null;
+    if (articleId === "art-payment") {
+      paymentDraftBaseline = clonePaymentDraftItems(paymentDraftItems);
+    }
     setArticleMode(articleId, WS_MODE.EDIT);
     if (typeof caps.syncEditFromModel === "function") {
       caps.syncEditFromModel(workspaceContext(articleId));
@@ -430,7 +481,7 @@
       caps.renderEditHook(workspaceContext(articleId));
     }
     const firstInput = document.querySelector(
-      `#${CSS.escape(articleId)} [data-ws-edit] input, #${CSS.escape(articleId)} [data-ws-edit] textarea`
+      `#${CSS.escape(articleId)} [data-ws-edit] input, #${CSS.escape(articleId)} [data-ws-edit] textarea, #${CSS.escape(articleId)} [data-ws-edit] select`
     );
     if (firstInput) {
       try {
@@ -480,11 +531,13 @@
       if (ok === false) return false;
     }
     workspaceBusy = true;
+    workspaceBusyLabel = articleId === "art-payment" ? "Saving Draft…" : "Saving…";
     setArticleMode(articleId, WS_MODE.SAVING);
     renderWorkspaceChrome();
     try {
       await caps.onSave(workspaceContext(articleId));
       workspaceEditBaseline = null;
+      paymentDraftBaseline = null;
       setArticleMode(articleId, WS_MODE.SAVED);
       renderWorkspaceChrome();
       await new Promise((resolve) => setTimeout(resolve, 700));
@@ -500,6 +553,50 @@
       return false;
     } finally {
       workspaceBusy = false;
+      workspaceBusyLabel = "Saving…";
+      renderWorkspaceChrome();
+    }
+  }
+
+  async function workspaceConfirmPayment() {
+    if (workspaceBusy) return false;
+    if (!paymentScheduleAllowsOwnerEdit()) {
+      window.alert("Confirmed payment schedules are read-only.");
+      return false;
+    }
+    if (getArticleMode("art-payment") !== WS_MODE.EDIT) {
+      const entered = await workspaceEnterEdit("art-payment");
+      if (!entered) return false;
+    }
+    readPaymentDraftFromGrid();
+    const check = validatePaymentDraftForConfirm();
+    updatePaymentEditHint(check);
+    if (check.blocking) {
+      window.alert(check.message || "Schedule total must equal the contract total before confirmation.");
+      renderWorkspaceChrome();
+      return false;
+    }
+    workspaceBusy = true;
+    workspaceBusyLabel = "Confirming…";
+    setArticleMode("art-payment", WS_MODE.SAVING);
+    renderWorkspaceChrome();
+    try {
+      await savePaymentScheduleDraft(true);
+      workspaceEditBaseline = null;
+      paymentDraftBaseline = null;
+      setArticleMode("art-payment", WS_MODE.SAVED);
+      renderWorkspaceChrome();
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      await workspaceEnterPreview("art-payment");
+      return true;
+    } catch (err) {
+      setArticleMode("art-payment", WS_MODE.EDIT);
+      renderWorkspaceChrome();
+      window.alert(err?.message || "Confirm failed. Schedule was not confirmed.");
+      return false;
+    } finally {
+      workspaceBusy = false;
+      workspaceBusyLabel = "Saving…";
       renderWorkspaceChrome();
     }
   }
@@ -587,12 +684,12 @@
       actions.appendChild(
         createFooterButton({
           id: "cbStepSaving",
-          label: "Saving…",
+          label: workspaceBusyLabel || "Saving…",
           className: "btn primary",
           disabled: true,
         })
       );
-      if (hint) hint.textContent = "Saving article changes…";
+      if (hint) hint.textContent = workspaceBusyLabel || "Saving article changes…";
       return;
     }
 
@@ -633,7 +730,25 @@
             },
           })
         );
-        if (hint) hint.textContent = "Save writes this article, then returns to Preview.";
+        if (activeArticleId === "art-payment" && paymentScheduleAllowsOwnerEdit()) {
+          actions.appendChild(
+            createFooterButton({
+              id: "cbWsConfirmPay",
+              label: "Confirm Schedule",
+              className: "btn primary",
+              disabled: busy,
+              onClick: () => {
+                void workspaceConfirmPayment();
+              },
+            })
+          );
+          if (hint) {
+            hint.textContent =
+              "Save Draft anytime. Confirm Schedule only when Scheduled equals Contract Total.";
+          }
+        } else if (hint) {
+          hint.textContent = "Save writes this article, then returns to Preview.";
+        }
       } else {
         actions.appendChild(
           createFooterButton({
@@ -654,7 +769,7 @@
       return;
     }
 
-    if (caps.supportsEdit) {
+    if (caps.supportsEdit && !(activeArticleId === "art-payment" && !paymentScheduleAllowsOwnerEdit())) {
       actions.appendChild(
         createFooterButton({
           id: "cbWsEdit",
@@ -663,6 +778,25 @@
           disabled: busy,
           onClick: () => {
             void workspaceEnterEdit(activeArticleId);
+          },
+        })
+      );
+    }
+
+    if (
+      activeArticleId === "art-payment" &&
+      paymentScheduleAllowsOwnerEdit() &&
+      mode === WS_MODE.PREVIEW &&
+      !busy
+    ) {
+      actions.appendChild(
+        createFooterButton({
+          id: "cbWsConfirmPayPreview",
+          label: "Confirm Schedule",
+          className: "btn primary",
+          disabled: busy,
+          onClick: () => {
+            void workspaceConfirmPayment();
           },
         })
       );
@@ -1496,6 +1630,555 @@
 
   function paymentConfigured(scheduleBundle) {
     return String(scheduleBundle?.readiness?.status || "").toLowerCase() === "configured";
+  }
+
+  /** Confirmed schedules are read-only in the Owner workspace. */
+  function paymentScheduleAllowsOwnerEdit() {
+    return !paymentConfigured(sourceSnapshot?.paymentSchedule);
+  }
+
+  function normalizePaymentItemRole(raw) {
+    const role = String(raw == null ? "" : raw).trim().toLowerCase();
+    if (role === "applied_payment") return "applied_payment";
+    return "future_obligation";
+  }
+
+  function moneyToCents(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.round(n * 100);
+  }
+
+  function centsToMoneyNumber(cents) {
+    return Math.round(Number(cents) || 0) / 100;
+  }
+
+  function clonePaymentDraftItems(items) {
+    return (Array.isArray(items) ? items : []).map((row) => ({ ...row }));
+  }
+
+  function nextPaymentClientId() {
+    paymentDraftKeySeq += 1;
+    return `tmp_${String(paymentDraftKeySeq).padStart(4, "0")}`;
+  }
+
+  function createBlankPaymentDraftRow() {
+    return {
+      client_id: nextPaymentClientId(),
+      sequence_number: paymentDraftItems.length + 1,
+      label: "",
+      payment_type: "custom",
+      amount: 0,
+      due_rule: "custom",
+      milestone_description: "",
+      fixed_due_date: "",
+      item_role: "future_obligation",
+    };
+  }
+
+  function mapScheduleItemToDraft(item, index) {
+    return {
+      client_id: nextPaymentClientId(),
+      sequence_number: Number(item?.sequence_number) || index + 1,
+      label: String(item?.label || "").trim(),
+      payment_type: normalizePaymentType(item?.payment_type),
+      amount: Number(item?.amount) || 0,
+      due_rule: normalizeDueRule(item?.due_rule),
+      milestone_description: String(item?.milestone_description || "").trim(),
+      fixed_due_date: String(item?.fixed_due_date || "").trim().slice(0, 10),
+      item_role: normalizePaymentItemRole(item?.item_role),
+    };
+  }
+
+  function renumberPaymentDraftSequences() {
+    paymentDraftItems.forEach((row, i) => {
+      row.sequence_number = i + 1;
+    });
+  }
+
+  function hydratePaymentDraftFromSource(source) {
+    const items = Array.isArray(source?.paymentSchedule?.items)
+      ? [...source.paymentSchedule.items]
+      : [];
+    items.sort((a, b) => (Number(a.sequence_number) || 0) - (Number(b.sequence_number) || 0));
+    paymentDraftItems = items.map((item, i) => mapScheduleItemToDraft(item, i));
+    renumberPaymentDraftSequences();
+    paymentDraftBaseline = clonePaymentDraftItems(paymentDraftItems);
+  }
+
+  function paymentDraftContractTotal(source) {
+    const readiness = source?.paymentSchedule?.readiness || {};
+    if (readiness.contract_total != null && Number.isFinite(Number(readiness.contract_total))) {
+      return Number(readiness.contract_total);
+    }
+    if (source?.contractTotal != null && Number.isFinite(Number(source.contractTotal))) {
+      return Number(source.contractTotal);
+    }
+    return null;
+  }
+
+  function computePaymentDraftTotals(items, contractTotal) {
+    const scheduledCents = (Array.isArray(items) ? items : []).reduce(
+      (sum, row) => sum + moneyToCents(row.amount),
+      0
+    );
+    const contractCents = contractTotal == null ? null : moneyToCents(contractTotal);
+    const differenceCents = contractCents == null ? null : contractCents - scheduledCents;
+    return {
+      scheduled: centsToMoneyNumber(scheduledCents),
+      scheduledCents,
+      contract: contractTotal,
+      contractCents,
+      difference: differenceCents == null ? null : centsToMoneyNumber(differenceCents),
+      differenceCents,
+      balanced: differenceCents === 0,
+    };
+  }
+
+  function findPaymentDraftIndexByClientId(clientId) {
+    const id = String(clientId || "");
+    return paymentDraftItems.findIndex((row) => String(row.client_id) === id);
+  }
+
+  function readPaymentDraftFromGrid() {
+    const grid = $("cbPayEditGrid");
+    if (!grid) return;
+    const rows = Array.from(grid.querySelectorAll("[data-pay-client-id]"));
+    const next = [];
+    rows.forEach((rowEl, index) => {
+      const clientId = rowEl.getAttribute("data-pay-client-id");
+      const existing = paymentDraftItems.find((r) => String(r.client_id) === String(clientId)) || {};
+      const label = String(rowEl.querySelector("[data-pay-field='label']")?.value || "").trim();
+      const amountRaw = String(rowEl.querySelector("[data-pay-field='amount']")?.value || "").trim();
+      const amount = amountRaw === "" ? 0 : Number(amountRaw);
+      next.push({
+        ...existing,
+        client_id: clientId || nextPaymentClientId(),
+        sequence_number: index + 1,
+        label,
+        payment_type: normalizePaymentType(
+          rowEl.querySelector("[data-pay-field='payment_type']")?.value
+        ),
+        amount: Number.isFinite(amount) ? amount : 0,
+        due_rule: normalizeDueRule(rowEl.querySelector("[data-pay-field='due_rule']")?.value),
+        milestone_description: String(
+          rowEl.querySelector("[data-pay-field='milestone_description']")?.value || ""
+        ).trim(),
+        fixed_due_date: String(
+          rowEl.querySelector("[data-pay-field='fixed_due_date']")?.value || ""
+        )
+          .trim()
+          .slice(0, 10),
+        item_role: normalizePaymentItemRole(
+          rowEl.querySelector("[data-pay-field='item_role']")?.value
+        ),
+      });
+    });
+    paymentDraftItems = next;
+  }
+
+  function normalizePaymentType(raw) {
+    const v = String(raw == null ? "" : raw).trim().toLowerCase();
+    return PAYMENT_TYPES_ALLOWED.has(v) ? v : "custom";
+  }
+
+  function normalizeDueRule(raw) {
+    const v = String(raw == null ? "" : raw).trim().toLowerCase();
+    return DUE_RULES_ALLOWED.has(v) ? v : "custom";
+  }
+
+  function formatPaymentAmountForApi(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) return null;
+    const rounded = Math.round(n * 100) / 100;
+    if (Math.abs(n - rounded) > 1e-9) return null;
+    return rounded.toFixed(2);
+  }
+
+  function updatePaymentEditTotalsDisplay(source) {
+    const currency = source?.currency || DEFAULT_CURRENCY;
+    const totals = computePaymentDraftTotals(
+      paymentDraftItems,
+      paymentDraftContractTotal(source)
+    );
+    setText(
+      "cbPayEditContractTotal",
+      totals.contract != null ? formatMoney(totals.contract, currency) : "—"
+    );
+    setText("cbPayEditScheduled", formatMoney(totals.scheduled, currency));
+    const diffEl = $("cbPayEditDifference");
+    if (diffEl) {
+      diffEl.classList.remove("is-ok", "is-bad");
+      if (totals.difference == null) {
+        diffEl.textContent = "—";
+      } else {
+        diffEl.textContent = formatMoney(totals.difference, currency);
+        diffEl.classList.add(totals.balanced ? "is-ok" : "is-bad");
+      }
+    }
+  }
+
+  function updatePaymentEditHint(result) {
+    const hint = $("cbPayEditHint");
+    if (!hint) return;
+    const check = result || validatePaymentDraftForSave();
+    hint.classList.remove("is-ok", "is-warn", "is-block");
+    if (check.level === "ok") hint.classList.add("is-ok");
+    else if (check.level === "warn") hint.classList.add("is-warn");
+    else hint.classList.add("is-block");
+    hint.textContent = check.message || "";
+  }
+
+  function validatePaymentWorkspace() {
+    if (paymentConfigured(sourceSnapshot?.paymentSchedule)) {
+      return readinessValidation("available", "Payment schedule is confirmed.", "", "");
+    }
+    const totals = computePaymentDraftTotals(
+      paymentDraftItems,
+      paymentDraftContractTotal(sourceSnapshot)
+    );
+    if (!paymentDraftItems.length) {
+      return readinessValidation("missing", "", "", "Payment schedule is missing.");
+    }
+    if (totals.balanced) {
+      return readinessValidation(
+        "needs_confirmation",
+        "",
+        "Payment schedule totals match — confirm when ready.",
+        ""
+      );
+    }
+    return readinessValidation(
+      "needs_confirmation",
+      "",
+      "Payment schedule needs confirmation (total must equal contract price).",
+      ""
+    );
+  }
+
+  function validatePaymentDraftForSave() {
+    readPaymentDraftFromGrid();
+    for (const row of paymentDraftItems) {
+      if (formatPaymentAmountForApi(row.amount) == null) {
+        return {
+          level: "block",
+          blocking: true,
+          message: "Each amount must be a non-negative number with up to 2 decimals.",
+        };
+      }
+      if (String(row.label || "").trim().length > 160) {
+        return {
+          level: "block",
+          blocking: true,
+          message: "Stage description must be 160 characters or fewer.",
+        };
+      }
+    }
+    const totals = computePaymentDraftTotals(
+      paymentDraftItems,
+      paymentDraftContractTotal(sourceSnapshot)
+    );
+    if (totals.balanced) {
+      return {
+        level: "ok",
+        blocking: false,
+        message: "Balanced — you can Confirm Schedule when ready.",
+      };
+    }
+    return {
+      level: "warn",
+      blocking: false,
+      message: "Draft can be saved while unbalanced. Confirm requires Scheduled = Contract Total.",
+    };
+  }
+
+  function validatePaymentDraftForConfirm() {
+    readPaymentDraftFromGrid();
+    if (!paymentDraftItems.length) {
+      return {
+        level: "block",
+        blocking: true,
+        message: "Add at least one payment stage before confirming.",
+      };
+    }
+    for (const row of paymentDraftItems) {
+      if (!String(row.label || "").trim()) {
+        return {
+          level: "block",
+          blocking: true,
+          message: "Every payment needs a description before confirm.",
+        };
+      }
+      if (formatPaymentAmountForApi(row.amount) == null) {
+        return {
+          level: "block",
+          blocking: true,
+          message: "Each amount must be a non-negative number with up to 2 decimals.",
+        };
+      }
+    }
+    const totals = computePaymentDraftTotals(
+      paymentDraftItems,
+      paymentDraftContractTotal(sourceSnapshot)
+    );
+    if (totals.contract == null) {
+      return {
+        level: "block",
+        blocking: true,
+        message: "Contract total is unavailable — cannot confirm.",
+      };
+    }
+    if (!totals.balanced) {
+      return {
+        level: "block",
+        blocking: true,
+        message: `Scheduled must equal contract total (difference ${formatMoney(
+          totals.difference,
+          sourceSnapshot?.currency || DEFAULT_CURRENCY
+        )}).`,
+      };
+    }
+    return {
+      level: "ok",
+      blocking: false,
+      message: "Ready to confirm — totals match the contract price.",
+    };
+  }
+
+  function mapPaymentDraftItemsToApiPayload() {
+    readPaymentDraftFromGrid();
+    renumberPaymentDraftSequences();
+    return paymentDraftItems.map((row, index) => {
+      const amount = formatPaymentAmountForApi(row.amount);
+      const item = {
+        sequence_number: index + 1,
+        label: String(row.label || "").trim(),
+        payment_type: normalizePaymentType(row.payment_type),
+        amount,
+        due_rule: normalizeDueRule(row.due_rule),
+        item_role: normalizePaymentItemRole(row.item_role),
+      };
+      const milestone = String(row.milestone_description || "").trim();
+      if (milestone) item.milestone_description = milestone;
+      const fixed = String(row.fixed_due_date || "").trim().slice(0, 10);
+      if (fixed) item.fixed_due_date = fixed;
+      return item;
+    });
+  }
+
+  function applyPaymentScheduleResponse(data) {
+    sourceSnapshot.paymentSchedule = {
+      available: true,
+      loadError: null,
+      forbidden: false,
+      schedule: data.schedule || null,
+      items: Array.isArray(data.items) ? data.items : [],
+      readiness: data.readiness || null,
+      source: data.source || null,
+    };
+    hydratePaymentDraftFromSource(sourceSnapshot);
+    if (draftEdits) {
+      draftBaseline = cloneEdits({
+        ...sourceSnapshot,
+        ...draftEdits,
+      });
+    }
+    renderDocument(sourceSnapshot, draftEdits);
+    updateIndexNavStatus();
+    renderWorkspaceChrome();
+  }
+
+  function isPaymentScheduleVersionConflict(res) {
+    return res?.status === 409 || res?.data?.code === "schedule_version_conflict";
+  }
+
+  async function reloadPaymentScheduleFromServer() {
+    if (!sourceSnapshot?.projectId || !sourceSnapshot?.quoteId) return;
+    const qs =
+      `project_id=${encodeURIComponent(sourceSnapshot.projectId)}` +
+      `&quote_id=${encodeURIComponent(sourceSnapshot.quoteId)}`;
+    const res = await fetchJson(`${PAYMENT_SCHEDULE_API}?${qs}`);
+    if (!res.ok || res.data?.ok !== true) {
+      throw new Error(String(res.data?.error || "Could not reload payment schedule."));
+    }
+    applyPaymentScheduleResponse(res.data);
+  }
+
+  async function offerPaymentScheduleConflictReload(keepMessage) {
+    const reload = window.confirm(
+      `${keepMessage || "This payment schedule changed in another session."}\n\nReload the latest schedule now?`
+    );
+    if (reload) await reloadPaymentScheduleFromServer();
+  }
+
+  async function savePaymentScheduleDraft(confirmSchedule) {
+    if (!sourceSnapshot?.projectId || !sourceSnapshot?.quoteId) {
+      throw new Error("Project and quote are required to save the payment schedule.");
+    }
+    const items = mapPaymentDraftItemsToApiPayload();
+    for (const item of items) {
+      if (item.amount == null) {
+        throw new Error("Each amount must be a non-negative number with up to 2 decimals.");
+      }
+    }
+    const expectedUpdatedAt = sourceSnapshot.paymentSchedule?.schedule?.updated_at || null;
+    const body = {
+      project_id: sourceSnapshot.projectId,
+      quote_id: sourceSnapshot.quoteId,
+      items,
+      confirm_schedule: confirmSchedule === true,
+    };
+    if (expectedUpdatedAt) body.expected_updated_at = expectedUpdatedAt;
+
+    const res = await postJson(PAYMENT_SCHEDULE_API, body);
+    if (isPaymentScheduleVersionConflict(res)) {
+      await offerPaymentScheduleConflictReload(res.data?.error);
+      throw new Error(res.data?.error || "Schedule version conflict — reload and retry.");
+    }
+    if (!res.ok || res.data?.ok !== true) {
+      const msg = String(res.data?.error || "").trim();
+      throw new Error(msg || "Payment schedule could not be saved.");
+    }
+    applyPaymentScheduleResponse(res.data);
+  }
+
+  function paymentTypeOptionsHtml(selected) {
+    return Array.from(PAYMENT_TYPES_ALLOWED)
+      .map(
+        (t) =>
+          `<option value="${escapeHtml(t)}"${t === selected ? " selected" : ""}>${escapeHtml(t)}</option>`
+      )
+      .join("");
+  }
+
+  function paymentRoleOptionsHtml(selected) {
+    const roles = [
+      ["future_obligation", "Future"],
+      ["applied_payment", "Applied"],
+    ];
+    return roles
+      .map(
+        ([v, label]) =>
+          `<option value="${escapeHtml(v)}"${v === selected ? " selected" : ""}>${escapeHtml(label)}</option>`
+      )
+      .join("");
+  }
+
+  function renderPaymentEditGrid() {
+    const grid = $("cbPayEditGrid");
+    if (!grid) return;
+    updatePaymentEditTotalsDisplay(sourceSnapshot);
+    updatePaymentEditHint(validatePaymentDraftForSave());
+    if (!paymentDraftItems.length) {
+      grid.innerHTML =
+        `<p class="cb-pay-edit-hint">No payments yet. Click Add payment to begin.</p>`;
+      return;
+    }
+    grid.innerHTML = paymentDraftItems
+      .map((row, index) => {
+        const id = escapeHtml(row.client_id);
+        return (
+          `<div class="cb-pay-edit-row" role="listitem" data-pay-client-id="${id}">` +
+          `<div class="cb-pay-edit-row__seq"><label>Seq</label><div>${index + 1}</div></div>` +
+          `<div><label>Description</label>` +
+          `<input type="text" maxlength="160" data-pay-field="label" value="${escapeHtml(row.label || "")}" /></div>` +
+          `<div><label>Type</label>` +
+          `<select data-pay-field="payment_type">${paymentTypeOptionsHtml(
+            normalizePaymentType(row.payment_type)
+          )}</select></div>` +
+          `<div><label>Amount</label>` +
+          `<input type="number" min="0" step="0.01" data-pay-field="amount" value="${escapeHtml(
+            String(Number(row.amount) || 0)
+          )}" /></div>` +
+          `<div class="cb-pay-edit-row__actions">` +
+          `<select data-pay-field="item_role" title="Role">${paymentRoleOptionsHtml(
+            normalizePaymentItemRole(row.item_role)
+          )}</select>` +
+          `<button type="button" class="btn ghost" data-pay-action="up" ${
+            index === 0 ? "disabled" : ""
+          }>↑</button>` +
+          `<button type="button" class="btn ghost" data-pay-action="down" ${
+            index === paymentDraftItems.length - 1 ? "disabled" : ""
+          }>↓</button>` +
+          `<button type="button" class="btn ghost" data-pay-action="insert">Insert</button>` +
+          `<button type="button" class="btn ghost" data-pay-action="delete">Delete</button>` +
+          `</div>` +
+          `<input type="hidden" data-pay-field="due_rule" value="${escapeHtml(
+            normalizeDueRule(row.due_rule)
+          )}" />` +
+          `<input type="hidden" data-pay-field="milestone_description" value="${escapeHtml(
+            row.milestone_description || ""
+          )}" />` +
+          `<input type="hidden" data-pay-field="fixed_due_date" value="${escapeHtml(
+            row.fixed_due_date || ""
+          )}" />` +
+          `</div>`
+        );
+      })
+      .join("");
+  }
+
+  function paymentDraftApplyMutation(mutator) {
+    readPaymentDraftFromGrid();
+    mutator();
+    renumberPaymentDraftSequences();
+    renderPaymentEditGrid();
+  }
+
+  function bindPaymentEditHandlersOnce() {
+    const toolbar = $("cbPayEditToolbar");
+    const grid = $("cbPayEditGrid");
+    if (toolbar && toolbar.dataset.payBound !== "1") {
+      toolbar.dataset.payBound = "1";
+      toolbar.addEventListener("click", (ev) => {
+        const btn = ev.target.closest("#cbPayAddStage");
+        if (!btn) return;
+        ev.preventDefault();
+        paymentDraftApplyMutation(() => {
+          paymentDraftItems.push(createBlankPaymentDraftRow());
+        });
+      });
+    }
+    if (grid && grid.dataset.payBound !== "1") {
+      grid.dataset.payBound = "1";
+      grid.addEventListener("click", (ev) => {
+        const btn = ev.target.closest("[data-pay-action]");
+        if (!btn) return;
+        ev.preventDefault();
+        const rowEl = btn.closest("[data-pay-client-id]");
+        const clientId = rowEl?.getAttribute("data-pay-client-id");
+        const action = btn.getAttribute("data-pay-action");
+        paymentDraftApplyMutation(() => {
+          const idx = findPaymentDraftIndexByClientId(clientId);
+          if (idx < 0) return;
+          if (action === "delete") {
+            paymentDraftItems.splice(idx, 1);
+          } else if (action === "insert") {
+            paymentDraftItems.splice(idx + 1, 0, createBlankPaymentDraftRow());
+          } else if (action === "up" && idx > 0) {
+            const tmp = paymentDraftItems[idx - 1];
+            paymentDraftItems[idx - 1] = paymentDraftItems[idx];
+            paymentDraftItems[idx] = tmp;
+          } else if (action === "down" && idx < paymentDraftItems.length - 1) {
+            const tmp = paymentDraftItems[idx + 1];
+            paymentDraftItems[idx + 1] = paymentDraftItems[idx];
+            paymentDraftItems[idx] = tmp;
+          }
+        });
+      });
+      grid.addEventListener("input", (ev) => {
+        if (!ev.target.closest("[data-pay-field]")) return;
+        readPaymentDraftFromGrid();
+        updatePaymentEditTotalsDisplay(sourceSnapshot);
+        updatePaymentEditHint(validatePaymentDraftForSave());
+      });
+      grid.addEventListener("change", (ev) => {
+        if (!ev.target.closest("[data-pay-field]")) return;
+        readPaymentDraftFromGrid();
+        updatePaymentEditTotalsDisplay(sourceSnapshot);
+        updatePaymentEditHint(validatePaymentDraftForSave());
+      });
+    }
   }
 
   function signatureConfigured(setupBundle) {
@@ -3799,6 +4482,7 @@
       scheduleBundle,
       legalNoticesBundle
     );
+    hydratePaymentDraftFromSource(sourceSnapshot);
     draftEdits = cloneEdits(sourceSnapshot);
     const setupFields = propertyFieldsFromSetup(setupBundle.setup);
     if (propertyFieldsComplete(setupFields) || setupFields.line1) {

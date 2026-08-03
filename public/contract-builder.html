@@ -836,6 +836,101 @@
       font-weight: 600;
     }
     .cb-pay-sum-warn[hidden] { display: none !important; }
+
+    /* CH-007D-P2 — Payment Schedule editor */
+    .cb-pay-edit-totals {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px 14px;
+      margin: 0 0 14px;
+      padding: 12px 14px;
+      border: 1px solid var(--cb-line);
+      border-radius: 12px;
+      background: #fafaf9;
+    }
+    @media (max-width: 720px) {
+      .cb-pay-edit-totals { grid-template-columns: 1fr; }
+    }
+    .cb-pay-edit-totals .k {
+      display: block;
+      margin: 0 0 3px;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #a8a29e;
+    }
+    .cb-pay-edit-totals .v {
+      font-size: 0.98rem;
+      font-weight: 700;
+      color: var(--cb-ink, #1c1917);
+    }
+    .cb-pay-edit-totals .v.is-bad { color: #b91c1c; }
+    .cb-pay-edit-totals .v.is-ok { color: #15803d; }
+    .cb-pay-edit-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 0 0 12px;
+    }
+    .cb-pay-edit-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin: 0 0 12px;
+    }
+    .cb-pay-edit-row {
+      display: grid;
+      grid-template-columns: 40px minmax(0, 1.4fr) minmax(110px, 0.7fr) minmax(100px, 0.6fr) auto;
+      gap: 8px;
+      align-items: start;
+      padding: 10px;
+      border: 1px solid var(--cb-line);
+      border-radius: 10px;
+      background: #fff;
+    }
+    @media (max-width: 900px) {
+      .cb-pay-edit-row {
+        grid-template-columns: 1fr 1fr;
+      }
+      .cb-pay-edit-row__seq { grid-column: 1 / -1; }
+      .cb-pay-edit-row__actions { grid-column: 1 / -1; }
+    }
+    .cb-pay-edit-row label {
+      display: block;
+      margin: 0 0 4px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #78716c;
+    }
+    .cb-pay-edit-row input,
+    .cb-pay-edit-row select {
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .cb-pay-edit-row__actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      padding-top: 18px;
+    }
+    .cb-pay-edit-row__actions .btn {
+      padding: 4px 8px;
+      font-size: 0.75rem;
+    }
+    .cb-pay-edit-hint {
+      margin: 0 0 8px;
+      font-size: 0.8125rem;
+      line-height: 1.4;
+      color: #57534e;
+    }
+    .cb-pay-edit-hint.is-block { color: #b91c1c; font-weight: 600; }
+    .cb-pay-edit-hint.is-ok { color: #15803d; }
+    .cb-pay-edit-hint.is-warn { color: #a16207; }
+
     .cb-pay-timeline {
       display: flex;
       flex-direction: column;
@@ -2022,10 +2117,10 @@
                         </p>
                         <p class="cb-pay-empty__total" id="cbPayEmptyTotal" hidden></p>
                         <p class="cb-pay-empty__arch">
-                          This section will define the payment terms in the contract. Billing and payment collection remain in Invoice Hub.
+                          This section defines the contractual payment stages. Billing and collection remain in Invoice Hub.
                         </p>
-                        <p class="cb-pay-empty__future owner-only no-print" aria-disabled="true">
-                          Payment-plan editing will be added in a later phase.
+                        <p class="cb-pay-empty__future owner-only no-print">
+                          Use Edit to add stages, Save Draft to persist, then Confirm Schedule when the plan totals match the contract price.
                         </p>
                       </div>
 
@@ -2041,6 +2136,29 @@
                       <div id="cbPayScheduleStages" hidden></div>
                       <p id="cbPayScheduleHint" hidden></p>
                       <p id="cbPaymentNotesDisplay" hidden></p>
+                    </div>
+                  </div>
+                  <div data-ws-edit class="owner-only no-print">
+                    <div class="cb-editor" id="cbPayEditWorkspace">
+                      <p class="cb-pay-edit-hint" id="cbPayEditHint">Add payment stages. Save Draft anytime. Confirm only when Scheduled equals Contract Total.</p>
+                      <div class="cb-pay-edit-totals" id="cbPayEditTotals" aria-live="polite">
+                        <div>
+                          <span class="k">Contract total</span>
+                          <span class="v" id="cbPayEditContractTotal">—</span>
+                        </div>
+                        <div>
+                          <span class="k">Scheduled</span>
+                          <span class="v" id="cbPayEditScheduled">—</span>
+                        </div>
+                        <div>
+                          <span class="k">Difference</span>
+                          <span class="v" id="cbPayEditDifference">—</span>
+                        </div>
+                      </div>
+                      <div class="cb-pay-edit-toolbar" id="cbPayEditToolbar">
+                        <button type="button" class="btn ghost" id="cbPayAddStage">Add payment</button>
+                      </div>
+                      <div class="cb-pay-edit-grid" id="cbPayEditGrid" role="list"></div>
                     </div>
                   </div>
                 </div>
