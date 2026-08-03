@@ -7248,11 +7248,12 @@
         if (!(workerDays > 0) && !(recommended > 0)) {
           return 0;
         }
-        let d = Number(state.depositRequired);
-        if (Number.isFinite(d) && d > 0) return d;
-        const offered = Math.max(Number(local.offered) || 0, 0);
-        if (offered <= 0) return 0;
-        return Math.max(1000, round2(offered * 0.1));
+        // CH-008A — fixed scheduling payment; preserve explicit 0; never 10% of total.
+        if (state && Object.prototype.hasOwnProperty.call(state, "depositRequired")) {
+          const d = Number(state.depositRequired);
+          if (Number.isFinite(d) && d >= 0) return d;
+        }
+        return 1000;
       }
 
       /**
@@ -7273,7 +7274,7 @@
           const commissionDisplay = round2(Math.max(commissionLaborBase, 0) * (commissionRate / 100));
           const needsApproval = offered < negotiation;
           let depositRequired = Number(p.deposit_required);
-          if (!Number.isFinite(depositRequired) || depositRequired <= 0) {
+          if (!Number.isFinite(depositRequired) || depositRequired < 0) {
             depositRequired = depositFromStateOrHeuristic(state, local);
           }
           return applyMarginGateToSalesMetrics({

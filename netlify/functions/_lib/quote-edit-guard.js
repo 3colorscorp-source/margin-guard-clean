@@ -38,6 +38,7 @@ const EDITABLE_FIELD_NAMES = [
   "terms",
   "start_date",
   "due_date",
+  "deposit_required",
 ];
 
 const QUOTE_GUARD_SELECT = [

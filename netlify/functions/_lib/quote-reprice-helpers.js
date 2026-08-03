@@ -14,6 +14,7 @@ const { throwGuard } = require("./tenant-device-guard");
 const {
   calculateQuotePublishFinancials,
   sanitizeWorkersForTenantPricing,
+  resolveSchedulingPaymentAmount,
 } = require("./pricing-engine");
 
 const OWNER_ADMIN_ROLES = new Set(["owner", "admin"]);
@@ -365,13 +366,59 @@ function applyOwnerManualPrice(financials, manualPrice) {
     };
   }
   const total = price;
-  const deposit_required = round2(Math.max(1000, total * 0.1));
+  // CH-008A — do not recompute deposit_required from % of total; preserve prior fixed amount.
   return {
     ok: true,
     financials: {
       ...financials,
       total,
-      deposit_required,
+    },
+  };
+}
+
+/**
+ * Keep existing quotes.deposit_required through reprice (F).
+ * Only replaces when caller supplies an explicit new fixed amount.
+ */
+function preserveOrResolveSchedulingPayment(financials, previousDeposit, explicitRaw) {
+  if (explicitRaw !== undefined && explicitRaw !== null && explicitRaw !== "") {
+    const resolved = resolveSchedulingPaymentAmount(explicitRaw, {
+      total: financials?.total,
+    });
+    if (!resolved.ok) {
+      return { ok: false, error: resolved.error, code: resolved.code };
+    }
+    return {
+      ok: true,
+      financials: {
+        ...financials,
+        deposit_required: resolved.amount,
+      },
+    };
+  }
+  if (previousDeposit !== undefined && previousDeposit !== null && previousDeposit !== "") {
+    const prev = Number(previousDeposit);
+    if (Number.isFinite(prev) && prev >= 0) {
+      return {
+        ok: true,
+        financials: {
+          ...financials,
+          deposit_required: round2(prev),
+        },
+      };
+    }
+  }
+  const resolved = resolveSchedulingPaymentAmount(undefined, {
+    total: financials?.total,
+  });
+  if (!resolved.ok) {
+    return { ok: false, error: resolved.error, code: resolved.code };
+  }
+  return {
+    ok: true,
+    financials: {
+      ...financials,
+      deposit_required: resolved.amount,
     },
   };
 }
@@ -422,6 +469,7 @@ module.exports = {
   computeRepriceFinancials,
   parseManualRepriceInput,
   applyOwnerManualPrice,
+  preserveOrResolveSchedulingPayment,
   requireOwnerOrAdmin,
   sanitizeWorkersForTenantPricing,
 };

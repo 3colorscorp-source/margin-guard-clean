@@ -3,7 +3,7 @@ const { buildSellerAttribution } = require("./_lib/attribution-context");
 const { loadTenantDisplayForTenantId } = require("./_lib/tenant-display");
 const { resolveOwnerOrSellerContext } = require("./_lib/tenant-device-guard");
 const { makePublicToken } = require("./_lib/public-token");
-const { calculateQuotePublishFinancials, sanitizeWorkersForTenantPricing } = require("./_lib/pricing-engine");
+const { calculateQuotePublishFinancials, sanitizeWorkersForTenantPricing, resolveSchedulingPaymentAmount } = require("./_lib/pricing-engine");
 const {
   normalizeOperationalPlan,
   computeOperationalPlanMetrics,
@@ -314,9 +314,10 @@ function buildPublicUrl(siteUrl, publicToken) {
 
 /**
  * Single resolver for persisted commercial amounts on publish.
+ * CH-008A — deposit_required is a fixed Initial Scheduling Payment (never 10% floor).
  * @param {object} args
  * @param {number} args.clientTotalReported - NaN when absent
- * @param {number} args.clientDepositReported - NaN when absent
+ * @param {number} args.clientDepositReported - NaN when absent; finite includes explicit 0
  * @param {{ total: number, deposit_required: number, minimum_price: number }} args.serverFinancials
  * @param {number} args.minimumPrice
  * @returns {object}
@@ -346,7 +347,6 @@ function resolveCanonicalPublishAmounts({
   }
 
   let total = round2(serverTotal);
-  let depositRequired = round2(serverDeposit);
   let publish_amounts_source = "server_snapshot";
   let publish_amounts_reason = "default_server_financials";
 
@@ -359,13 +359,32 @@ function resolveCanonicalPublishAmounts({
     } else {
       publish_amounts_reason = "client_total_ignored_use_server";
     }
-    const depFloor = round2(Math.max(1000, total * 0.1));
-    if (Number.isFinite(clientD) && clientD > 0 && clientD <= total + 1e-6) {
-      depositRequired = round2(Math.min(total, Math.max(depFloor, clientD)));
-    } else {
-      depositRequired = depFloor;
-      publish_amounts_reason = "client_total_meets_minimum_floor_deposit_derived";
-    }
+  }
+
+  // CH-008A — fixed scheduling payment: explicit client amount (incl. 0), else server/default.
+  // Never max($1000, 10% × total). Never re-floor Owner amount.
+  const depositRaw = Number.isFinite(clientD)
+    ? clientD
+    : Number.isFinite(serverDeposit)
+      ? serverDeposit
+      : undefined;
+  const depositResolved = resolveSchedulingPaymentAmount(depositRaw, { total });
+  if (!depositResolved.ok) {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: depositResolved.error,
+      code: depositResolved.code,
+    };
+  }
+  const depositRequired = depositResolved.amount;
+  if (Number.isFinite(clientD)) {
+    publish_amounts_reason =
+      clientD === 0
+        ? "client_explicit_zero_scheduling_payment"
+        : "client_fixed_scheduling_payment";
+  } else {
+    publish_amounts_reason = "server_fixed_scheduling_payment";
   }
 
   const balance_after_deposit = round2(Math.max(0, total - depositRequired));
@@ -476,7 +495,7 @@ exports.handler = async (event) => {
       !Number.isFinite(financials.total) ||
       financials.total <= 0 ||
       !Number.isFinite(financials.deposit_required) ||
-      financials.deposit_required <= 0
+      financials.deposit_required < 0
     ) {
       return json(400, { error: "Computed total or deposit is invalid." });
     }
@@ -499,7 +518,11 @@ exports.handler = async (event) => {
           ? body.depositRequired
           : body.deposit;
     const clientDepositReported =
-      rawClientDep === undefined || rawClientDep === null || rawClientDep === "" ? NaN : Number(rawClientDep);
+      rawClientDep === undefined ||
+      rawClientDep === null ||
+      (typeof rawClientDep === "string" && rawClientDep.trim() === "")
+        ? NaN
+        : Number(rawClientDep);
 
     const canonical = resolveCanonicalPublishAmounts({
       clientTotalReported,
@@ -894,4 +917,9 @@ exports.handler = async (event) => {
     }
     return json(500, { error: err.message || "Server error" });
   }
+};
+
+exports._test = {
+  resolveCanonicalPublishAmounts,
+  round2,
 };

@@ -664,6 +664,12 @@
       min-height: 72px;
       resize: vertical;
     }
+    .sa-edit-scheduling__hint {
+      margin: 6px 0 0;
+      font-size: 0.78rem;
+      line-height: 1.4;
+      color: rgba(226, 232, 240, 0.72);
+    }
     .sa-edit-form input:disabled,
     .sa-edit-form textarea:disabled {
       opacity: 0.55;
@@ -1343,7 +1349,7 @@
         <div class="sa-edit-meta" id="saQuoteEditMeta" hidden>
           <span>Status: <strong id="saQuoteEditMetaStatus">—</strong></span>
           <span>Total: <strong id="saQuoteEditMetaTotal">—</strong></span>
-          <span>Deposit: <strong id="saQuoteEditMetaDeposit">—</strong></span>
+          <span>Scheduling payment: <strong id="saQuoteEditMetaDeposit">—</strong></span>
         </div>
         <section id="saQuoteEditPricing" class="sa-edit-pricing" hidden aria-labelledby="saQuoteEditPricingTitle">
           <h4 id="saQuoteEditPricingTitle" class="sa-edit-pricing__title">Pricing adjustment</h4>
@@ -1356,7 +1362,7 @@
           <div id="saQuoteEditPricingBody">
             <div class="sa-edit-pricing__totals">
               <span>Total: <strong id="saQuoteEditPricingTotal">—</strong></span>
-              <span>Deposit: <strong id="saQuoteEditPricingDeposit">—</strong></span>
+              <span>Scheduling payment: <strong id="saQuoteEditPricingDeposit">—</strong></span>
             </div>
             <p id="saQuoteEditPricingLast" class="sa-edit-pricing__last" hidden></p>
             <div id="saQuoteEditWorkers" class="sa-edit-workers" aria-label="Worker lines"></div>
@@ -1429,7 +1435,7 @@
                 <dd id="saRepricePrevTotal">—</dd>
                 <dt>New total</dt>
                 <dd id="saRepriceNewTotal">—</dd>
-                <dt>Deposit required</dt>
+                <dt>Scheduling payment</dt>
                 <dd id="saRepriceDeposit">—</dd>
                 <dt>Minimum price</dt>
                 <dd id="saRepriceMin">—</dd>
@@ -1447,6 +1453,22 @@
           </div>
         </section>
         <form id="saQuoteEditForm" class="sa-edit-form" novalidate>
+          <div class="field field--full sa-edit-scheduling">
+            <label for="saEditDepositRequired">Initial Scheduling Payment</label>
+            <input
+              type="number"
+              id="saEditDepositRequired"
+              name="deposit_required"
+              min="0"
+              step="0.01"
+              inputmode="decimal"
+              autocomplete="off"
+            />
+            <p class="sa-edit-scheduling__hint">
+              Fixed reservation / scheduling amount for this quote. Not the Start Payment.
+              Not an automatic percentage of the quote total. May be $0.
+            </p>
+          </div>
           <div class="field">
             <label for="saEditClientName">Client name</label>
             <input type="text" id="saEditClientName" name="client_name" maxlength="255" autocomplete="off" />

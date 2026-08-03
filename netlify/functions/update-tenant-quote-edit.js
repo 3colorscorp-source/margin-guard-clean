@@ -1,5 +1,6 @@
 /**
  * Step 3E-C18-C — owner/admin safe quote metadata update (metadata only; no pricing/status).
+ * CH-008A-M1B — also allows explicit deposit_required (Initial Scheduling Payment) patch.
  */
 
 const { supabaseRequest } = require("./_lib/supabase-admin");
@@ -16,6 +17,7 @@ const {
   EDITABLE_FIELD_NAMES,
   evaluateQuoteEditGuard,
 } = require("./_lib/quote-edit-guard");
+const { resolveSchedulingPaymentAmount } = require("./_lib/pricing-engine");
 
 const OWNER_ADMIN_ROLES = new Set(["owner", "admin"]);
 
@@ -76,6 +78,36 @@ function normalizeLongText(raw) {
   return s || null;
 }
 
+/**
+ * CH-008A-M1B — patch semantics for deposit_required (not create/default semantics).
+ * Absent field is handled by caller (skip). Explicit empty/null/whitespace rejected.
+ * Explicit 0 preserved. Never value || 1000.
+ */
+function normalizeDepositRequiredForEdit(raw, quoteTotal) {
+  if (raw === null) {
+    return {
+      ok: false,
+      error: "Initial Scheduling Payment cannot be null.",
+      code: "invalid_deposit",
+    };
+  }
+  if (typeof raw === "string" && raw.trim() === "") {
+    return {
+      ok: false,
+      error: "Initial Scheduling Payment cannot be empty.",
+      code: "invalid_deposit",
+    };
+  }
+  if (raw === undefined) {
+    return {
+      ok: false,
+      error: "Initial Scheduling Payment is invalid.",
+      code: "invalid_deposit",
+    };
+  }
+  return resolveSchedulingPaymentAmount(raw, { total: quoteTotal });
+}
+
 function findUnknownBodyKeys(body) {
   const unknown = [];
   for (const key of Object.keys(body)) {
@@ -112,12 +144,26 @@ async function requireOwnerOrAdmin(event) {
   return { tenant, membership };
 }
 
-function buildEditablePatch(body) {
+function buildEditablePatch(body, quoteTotal) {
   const patch = {};
   const updatedFields = [];
 
   for (const key of EDITABLE_FIELD_NAMES) {
     if (!Object.prototype.hasOwnProperty.call(body, key)) continue;
+
+    if (key === "deposit_required") {
+      const normalized = normalizeDepositRequiredForEdit(body[key], quoteTotal);
+      if (!normalized.ok) {
+        return {
+          error: normalized.code || "invalid_deposit",
+          message: normalized.error,
+          field: "deposit_required",
+        };
+      }
+      patch.deposit_required = normalized.amount;
+      updatedFields.push(key);
+      continue;
+    }
 
     if (DATE_FIELDS.has(key)) {
       const normalized = normIsoDate(body[key]);
@@ -226,13 +272,26 @@ exports.handler = async (event) => {
       });
     }
 
-    const built = buildEditablePatch(body);
+    const quoteTotal =
+      guardBefore.quote?.total != null && Number.isFinite(Number(guardBefore.quote.total))
+        ? Number(guardBefore.quote.total)
+        : null;
+
+    const built = buildEditablePatch(body, quoteTotal);
     if (built.error === "invalid_date") {
       return json(400, {
         ok: false,
         error: `Invalid date format for ${built.field}. Use YYYY-MM-DD or null.`,
         code: "invalid_date",
         field: built.field,
+      });
+    }
+    if (built.error === "invalid_deposit" || built.error === "deposit_exceeds_total") {
+      return json(400, {
+        ok: false,
+        error: built.message || "Invalid Initial Scheduling Payment.",
+        code: built.error,
+        field: "deposit_required",
       });
     }
 
@@ -276,4 +335,12 @@ exports.handler = async (event) => {
     console.error("[update-tenant-quote-edit]", err);
     return json(500, { ok: false, error: err.message || "Server error" });
   }
+};
+
+exports._test = {
+  normalizeDepositRequiredForEdit,
+  buildEditablePatch,
+  ALLOWED_BODY_KEYS,
+  EDITABLE_FIELD_NAMES,
+  OWNER_ADMIN_ROLES,
 };

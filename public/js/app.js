@@ -9231,7 +9231,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       location: nonEmptyString(ownerState.location),
       messageToClient,
       workers: salesWorkers.length ? salesWorkers : existing.workers,
-      depositRequired: parseNumber(document.getElementById("deposit")?.value) || 1000,
+      depositRequired: (() => {
+        const raw = document.getElementById("deposit")?.value;
+        if (raw === undefined || raw === null || String(raw).trim() === "") return 1000;
+        const n = parseNumber(raw);
+        return Number.isFinite(n) && n >= 0 ? n : 1000;
+      })(),
       price: "",
       _manualPriceTouched: false,
       offeredPrice: round2(metrics.recommended || 0)
@@ -9600,9 +9605,16 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       state = loadSales();
       const smPublish = calculateSalesMetrics(state, freshSettings);
       const estimateTotal = Number(smPublish.offered || smPublish.recommended || 0);
-      const depositRequired = Number(
-        parseNumber(document.getElementById("deposit")?.value) || state.depositRequired || 1000
-      );
+      const depositRequired = (() => {
+        const raw = document.getElementById("deposit")?.value;
+        if (raw !== undefined && raw !== null && String(raw).trim() !== "") {
+          const n = parseNumber(raw);
+          if (Number.isFinite(n) && n >= 0) return n;
+        }
+        const fromState = Number(state.depositRequired);
+        if (Number.isFinite(fromState) && fromState >= 0) return fromState;
+        return 1000;
+      })();
 
       const publishResponse = await fetch("/.netlify/functions/publish-public-quote", {
         method: "POST",

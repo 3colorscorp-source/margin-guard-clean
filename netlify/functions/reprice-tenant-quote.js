@@ -24,6 +24,7 @@ const {
   computeRepriceFinancials,
   parseManualRepriceInput,
   applyOwnerManualPrice,
+  preserveOrResolveSchedulingPayment,
   requireOwnerOrAdmin,
   sanitizeWorkersForTenantPricing,
 } = require("./_lib/quote-reprice-helpers");
@@ -183,6 +184,21 @@ exports.handler = async (event) => {
       financials = manualApplied.financials;
     }
 
+    // CH-008A — preserve stored fixed scheduling payment; never recompute 10%.
+    const depositKept = preserveOrResolveSchedulingPayment(
+      financials,
+      guardBefore.quote?.deposit_required,
+      undefined
+    );
+    if (!depositKept.ok) {
+      return json(400, {
+        ok: false,
+        error: depositKept.error,
+        code: depositKept.code || "invalid_deposit",
+      });
+    }
+    financials = depositKept.financials;
+
     const minPrice = Number(financials.minimum_price);
     const newTotal = Number(financials.total);
     const newDeposit = Number(financials.deposit_required);
@@ -200,7 +216,7 @@ exports.handler = async (event) => {
       !Number.isFinite(newTotal) ||
       newTotal <= 0 ||
       !Number.isFinite(newDeposit) ||
-      newDeposit <= 0
+      newDeposit < 0
     ) {
       return json(500, {
         ok: false,

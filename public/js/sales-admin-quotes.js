@@ -43,6 +43,7 @@
   };
 
   const EDIT_FIELD_IDS = {
+    deposit_required: "saEditDepositRequired",
     client_name: "saEditClientName",
     client_email: "saEditClientEmail",
     client_phone: "saEditClientPhone",
@@ -368,6 +369,9 @@
       const raw = q[key];
       if (key === "start_date" || key === "due_date") {
         el.value = isoDateForInput(raw);
+      } else if (key === "deposit_required") {
+        const n = Number(raw);
+        el.value = Number.isFinite(n) && n >= 0 ? String(n) : "";
       } else {
         el.value = raw == null ? "" : String(raw);
       }
@@ -379,6 +383,16 @@
     for (const key of Object.keys(EDIT_FIELD_IDS)) {
       const el = $(EDIT_FIELD_IDS[key]);
       if (!el) continue;
+      if (key === "deposit_required") {
+        const raw = String(el.value ?? "");
+        if (raw.trim() === "") {
+          body[key] = "";
+        } else {
+          const n = Number(raw);
+          body[key] = Number.isFinite(n) ? n : raw;
+        }
+        continue;
+      }
       body[key] = el.value;
     }
     if (editState.requiresSentConfirm && $("saQuoteEditSentConfirm")?.checked) {
@@ -409,6 +423,9 @@
     }
     if (code === "no_edit_fields") return "No editable fields were provided.";
     if (code === "invalid_date") return err || "Invalid date format. Use YYYY-MM-DD.";
+    if (code === "invalid_deposit" || code === "deposit_exceeds_total") {
+      return err || "Invalid Initial Scheduling Payment.";
+    }
     return err || "Unable to complete request.";
   }
 

@@ -279,7 +279,20 @@ exports.handler = async (event) => {
       });
     }
 
-    data.depositRequired = Number(data.depositRequired) || 1000;
+    // CH-008A — preserve explicit 0; only default when missing/invalid.
+    {
+      const rawDep = data.depositRequired;
+      if (rawDep === undefined || rawDep === null || rawDep === "") {
+        data.depositRequired = 1000;
+      } else {
+        const n = Number(rawDep);
+        if (!Number.isFinite(n) || n < 0) {
+          data.depositRequired = 1000;
+        } else {
+          data.depositRequired = n;
+        }
+      }
+    }
     if (typeof data.salesRepInitials === "string") {
       data.salesRepInitials = data.salesRepInitials.trim().slice(0, 6);
     }

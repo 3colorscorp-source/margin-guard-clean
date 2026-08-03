@@ -165,7 +165,7 @@ exports.handler = async (event) => {
       !Number.isFinite(financials.total) ||
       financials.total <= 0 ||
       !Number.isFinite(financials.deposit_required) ||
-      financials.deposit_required <= 0
+      financials.deposit_required < 0
     ) {
       return badRequest(
         "invalid_totals",

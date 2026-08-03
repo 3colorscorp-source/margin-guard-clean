@@ -105,10 +105,79 @@ function calculateSecurePricing(input, tenantSettings) {
   };
 }
 
+/** CH-008A — default Initial Scheduling Payment when amount is omitted (not when explicit 0). */
+const DEFAULT_SCHEDULING_PAYMENT = 1000;
+
+/**
+ * Resolve quotes.deposit_required as a fixed Initial Scheduling Payment.
+ * Missing/null/undefined/blank → default $1,000.
+ * Explicit 0 → 0 (never coerce with `value || 1000`).
+ * Never derives from a percentage of total.
+ *
+ * @param {unknown} raw
+ * @param {{ total?: number|null }} [options]
+ * @returns {{ ok: true, amount: number, source: string } | { ok: false, error: string, code: string }}
+ */
+function resolveSchedulingPaymentAmount(raw, options = {}) {
+  const totalRaw = options?.total;
+  const total =
+    totalRaw === undefined || totalRaw === null || totalRaw === ""
+      ? null
+      : Number(totalRaw);
+
+  // Absent / blank / whitespace → default (not the same as explicit 0).
+  if (raw === undefined || raw === null) {
+    return {
+      ok: true,
+      amount: DEFAULT_SCHEDULING_PAYMENT,
+      source: "default",
+    };
+  }
+  if (typeof raw === "string" && raw.trim() === "") {
+    return {
+      ok: true,
+      amount: DEFAULT_SCHEDULING_PAYMENT,
+      source: "default",
+    };
+  }
+
+  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
+  if (!Number.isFinite(n)) {
+    return {
+      ok: false,
+      error: "Scheduling payment must be a valid non-negative amount.",
+      code: "invalid_deposit",
+    };
+  }
+  if (n < 0) {
+    return {
+      ok: false,
+      error: "Scheduling payment cannot be negative.",
+      code: "invalid_deposit",
+    };
+  }
+
+  const amount = round2(n);
+  if (Number.isFinite(total) && total >= 0 && amount > total + 1e-6) {
+    return {
+      ok: false,
+      error: "Scheduling payment cannot exceed the quote total.",
+      code: "deposit_exceeds_total",
+    };
+  }
+
+  return {
+    ok: true,
+    amount,
+    source: amount === 0 ? "explicit_zero" : "explicit",
+  };
+}
+
 /**
  * Full publish-quote financials (aligned with public/js/app.js calcSales + offered branch).
  * total = offered (manual price when _manualPriceTouched + valid price, else recommended).
- * deposit_required = max($1000, 10% of total) unless extended later via settings.
+ * deposit_required = fixed Initial Scheduling Payment (CH-008A); never max($1000, 10% of total).
+ * Optional input.deposit_required / depositRequired / deposit; omitted → $1,000; explicit 0 → 0.
  */
 function calculateQuotePublishFinancials(input, tenantSettings) {
   const settings = tenantSettings && typeof tenantSettings === "object" ? tenantSettings : {};
@@ -166,7 +235,21 @@ function calculateQuotePublishFinancials(input, tenantSettings) {
   });
 
   const total = round2(offered);
-  const deposit_required = round2(Math.max(1000, total * 0.1));
+  const depositRaw =
+    input?.deposit_required !== undefined && input?.deposit_required !== null
+      ? input.deposit_required
+      : input?.depositRequired !== undefined && input?.depositRequired !== null
+        ? input.depositRequired
+        : input?.deposit !== undefined && input?.deposit !== null
+          ? input.deposit
+          : undefined;
+  const depositResolved = resolveSchedulingPaymentAmount(depositRaw, { total });
+  if (!depositResolved.ok) {
+    const err = new Error(depositResolved.error);
+    err.code = depositResolved.code;
+    throw err;
+  }
+  const deposit_required = depositResolved.amount;
 
   return {
     recommended_price: round2(recommended),
@@ -274,8 +357,10 @@ function computeManualInvoiceSystemSellRates(tenantSettings) {
 }
 
 module.exports = {
+  DEFAULT_SCHEDULING_PAYMENT,
   calculateSecurePricing,
   calculateQuotePublishFinancials,
+  resolveSchedulingPaymentAmount,
   computeSalesMarginDecisionFromEconomics,
   marginLevelForSalesApproval,
   computeManualInvoiceSystemSellRates,
