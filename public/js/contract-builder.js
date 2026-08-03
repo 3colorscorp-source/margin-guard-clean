@@ -207,7 +207,8 @@
       supportsValidation: true,
       supportsFutureMap: true,
       continueLabel: "Continue",
-      saveLabel: "Save",
+      editLabel: "Edit Property",
+      saveLabel: "Confirm Property",
       validate: () => validatePropertyWorkspace(),
       syncEditFromModel: () => syncPropertyInputsFromModel(),
       onEnterEdit: () => {
@@ -238,7 +239,7 @@
       },
     }),
     "art-scope": defaultWorkspaceCaps({
-      supportsEdit: true,
+      supportsEdit: false,
       supportsSave: false,
       supportsValidation: true,
       continueLabel: "Continue",
@@ -246,20 +247,22 @@
         const st = articleReadinessStatus("art-scope", sourceSnapshot, draftEdits);
         return readinessValidation(
           st,
-          "Scope is present.",
-          "Scope should be reviewed.",
-          "Scope of work is missing."
+          "Scope is present from the approved quote.",
+          "Scope should be reviewed against the approved quote.",
+          "Scope of work is missing on the approved quote."
         );
       },
     }),
     "art-price": defaultWorkspaceCaps({
+      supportsEdit: false,
+      supportsSave: false,
       supportsValidation: true,
       continueLabel: "Review & Continue",
       validate: () => {
         const st = articleReadinessStatus("art-price", sourceSnapshot, draftEdits);
         return readinessValidation(
           st,
-          "Contract total is set.",
+          "Contract total is set from the approved quote.",
           "Price needs review.",
           "Contract total is missing."
         );
@@ -323,7 +326,8 @@
       supportsSave: true,
       supportsValidation: true,
       continueLabel: "Continue",
-      saveLabel: "Save",
+      editLabel: "Edit Warranty",
+      saveLabel: "Confirm Warranty",
       validate: () => validateWarrantyWorkspace(),
       syncEditFromModel: () => syncWarrantyInputsFromModel(),
       onEnterEdit: () => {
@@ -341,28 +345,26 @@
       },
     }),
     "art-terms": defaultWorkspaceCaps({
-      supportsEdit: true,
+      supportsEdit: false,
       supportsSave: false,
       supportsValidation: true,
       supportsExternalSource: true,
-      externalSourceLabel: "Open Contract Hub",
-      externalSourceHref: null,
+      externalSourceLabel: "Open Legal Notices",
+      externalSourceHref: "/legal-notices",
       continueLabel: "Review & Continue",
       validate: () => {
         const st = articleReadinessStatus("art-terms", sourceSnapshot, draftEdits);
         return readinessValidation(
           st,
           "Legal notices are confirmed for contracts.",
-          "Legal notices still need confirmation.",
-          "Legal notices are missing."
+          "Legal notices still need confirmation in Legal Notices.",
+          "Legal notices are missing. Open Legal Notices to confirm."
         );
       },
     }),
     "art-signatures": defaultWorkspaceCaps({
       supportsValidation: true,
-      supportsExternalSource: true,
-      externalSourceLabel: "Complete Required Setup",
-      externalSourceHref: null,
+      supportsExternalSource: false,
       continueLabel: "Preview Contract",
       continueAction: "previewContract",
       validate: () => {
@@ -370,8 +372,8 @@
         return readinessValidation(
           st,
           "Signature method is configured.",
-          "Signature setup needs confirmation.",
-          "Signature method is missing."
+          "Signature setup is deferred to a later phase.",
+          "Signature method is not configured yet (later phase)."
         );
       },
     }),
@@ -769,7 +771,7 @@
       return;
     }
 
-    if (caps.supportsEdit && !(activeArticleId === "art-payment" && !paymentScheduleAllowsOwnerEdit())) {
+    if (caps.supportsEdit && articleAllowsOwnerEdit(activeArticleId)) {
       actions.appendChild(
         createFooterButton({
           id: "cbWsEdit",
@@ -802,32 +804,22 @@
       );
     }
 
-    const sigMissing =
-      activeArticleId === "art-signatures" &&
-      sourceSnapshot &&
-      readinessMapStatus("signature", sourceSnapshot) === "missing";
-
-    if (sigMissing) {
-      actions.appendChild(
-        createFooterButton({
-          id: "cbStepSetupLink",
-          label: caps.externalSourceLabel || "Complete Required Setup",
-          className: "btn primary",
-          href: caps.externalSourceHref || contractHubHref(),
-        })
-      );
-    } else if (caps.supportsExternalSource && activeArticleId === "art-contractor") {
+    if (caps.supportsExternalSource && (activeArticleId === "art-contractor" || activeArticleId === "art-terms")) {
       actions.appendChild(
         createFooterButton({
           id: "cbWsExternal",
           label: caps.externalSourceLabel,
           className: "btn ghost",
-          href: caps.externalSourceHref || "/business-settings#legal-contract-profile",
+          href:
+            caps.externalSourceHref ||
+            (activeArticleId === "art-terms"
+              ? "/legal-notices"
+              : "/business-settings#legal-contract-profile"),
         })
       );
     }
 
-    if (caps.supportsContinue && !sigMissing) {
+    if (caps.supportsContinue) {
       const label =
         activeArticleId === "art-signatures"
           ? "Preview Contract"
@@ -846,10 +838,25 @@
     }
 
     if (hint && mode === WS_MODE.PREVIEW) {
-      hint.textContent = caps.supportsSave
-        ? "This article supports Save. Continue only moves to the next article."
-        : "Local draft only — Continue does not save to the database or change readiness.";
+      if (activeArticleId === "art-scope") {
+        hint.textContent = "Review only — scope comes from the approved quote.";
+      } else if (activeArticleId === "art-price") {
+        hint.textContent = "Review only — contract total comes from the approved quote.";
+      } else if (activeArticleId === "art-terms") {
+        hint.textContent = "Review only — confirm legal notices on the Legal Notices page.";
+      } else if (activeArticleId === "art-payment" && !paymentScheduleAllowsOwnerEdit()) {
+        hint.textContent = "Payment Schedule is confirmed and read-only.";
+      } else if (caps.supportsSave) {
+        hint.textContent = "Confirm writes this article. Continue only moves to the next article.";
+      } else {
+        hint.textContent = "Review this article, then Continue. Continue does not change readiness.";
+      }
     }
+  }
+
+  function articleAllowsOwnerEdit(articleId) {
+    if (articleId === "art-payment") return paymentScheduleAllowsOwnerEdit();
+    return true;
   }
 
   function renderWorkspaceChrome() {
@@ -1527,7 +1534,7 @@
         badge: forSave ? "Ready" : "Ready to save",
         message: forSave
           ? "✓ Warranty complete"
-          : "Warranty looks complete — Save to confirm it on the contract.",
+          : "Warranty looks complete — Confirm Warranty to lock it on the contract.",
         blocking: false,
       };
     }
@@ -3386,11 +3393,8 @@
     }
     if ($("cbWarEditSummary")) $("cbWarEditSummary").value = edits.warSummary || "";
     if ($("cbWarEditExclusions")) $("cbWarEditExclusions").value = edits.warExclusions || "";
-    if ($("cbEditScope")) $("cbEditScope").value = edits.scope || "";
-    if ($("cbEditExclusions")) $("cbEditExclusions").value = edits.exclusions || "";
     if ($("cbEditStart")) $("cbEditStart").value = edits.startDate || "";
     if ($("cbEditDue")) $("cbEditDue").value = edits.dueDate || "";
-    if ($("cbEditTerms")) $("cbEditTerms").value = edits.additionalTerms || "";
   }
 
   function readEditsFromInputs() {
@@ -3403,11 +3407,9 @@
     if (getArticleMode("art-warranty") === WS_MODE.EDIT) {
       applyWarrantyFieldsToEdits(draftEdits, readWarrantyFieldsFromDom());
     }
-    draftEdits.scope = String($("cbEditScope")?.value || "").trim();
-    draftEdits.exclusions = String($("cbEditExclusions")?.value || "").trim();
-    draftEdits.startDate = String($("cbEditStart")?.value || "").trim();
-    draftEdits.dueDate = String($("cbEditDue")?.value || "").trim();
-    draftEdits.additionalTerms = String($("cbEditTerms")?.value || "").trim();
+    // Scope / Terms are quote / Legal Notices sourced — no local editors.
+    if ($("cbEditStart")) draftEdits.startDate = String($("cbEditStart").value || "").trim();
+    if ($("cbEditDue")) draftEdits.dueDate = String($("cbEditDue").value || "").trim();
   }
 
   function pushUndo(id, value) {
@@ -3562,18 +3564,6 @@
       "cbDueDisplay",
       edits.dueDate ? formatDate(edits.dueDate) : "To be confirmed"
     );
-
-    const terms = String(edits.additionalTerms || "").trim();
-    const termsEl = $("cbTermsDisplay");
-    if (termsEl) {
-      if (terms) {
-        termsEl.hidden = false;
-        termsEl.textContent = terms;
-      } else {
-        termsEl.hidden = true;
-        termsEl.textContent = "";
-      }
-    }
 
     renderReadiness(source, edits);
   }
@@ -4101,11 +4091,8 @@
       "cbWarEditDurationUnit",
       "cbWarEditSummary",
       "cbWarEditExclusions",
-      "cbEditScope",
-      "cbEditExclusions",
       "cbEditStart",
       "cbEditDue",
-      "cbEditTerms",
     ];
     for (const id of ids) {
       const el = $(id);

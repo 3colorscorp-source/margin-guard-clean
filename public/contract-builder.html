@@ -1962,7 +1962,7 @@
                   </div>
                   <div class="cb-prop-editor owner-only" data-ws-edit>
                     <p class="cb-prop-editor__intro">
-                      Confirm the project address used on the contract. Save writes it to the project record.
+                      Confirm the project address used on the contract. Confirm Property writes it to the project record.
                     </p>
                     <div class="cb-prop-form">
                       <div class="cb-prop-field">
@@ -2021,24 +2021,13 @@
                 </button>
                 <div class="cb-article__body">
                   <div data-ws-preview>
-                  <div id="cbScopeEmailWarn" class="cb-owner-warn owner-only no-print" hidden>
-                    The current quote text appears to contain estimate or email language and should be replaced with a clear description of the work included, exclusions, materials, allowances, and assumptions before signature.
-                  </div>
-                  <div class="cb-field"><div class="v" id="cbScopeDisplay" style="white-space:pre-wrap;">—</div></div>
-                  </div>
-                  <div data-ws-edit>
-                  <div class="cb-editor owner-only">
-                    <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditScope"></div>
-                    <label for="cbEditScope">Proposed scope revisions</label>
-                    <p class="cb-draft-note">Draft notes — not saved to the contract record</p>
-                    <textarea id="cbEditScope" maxlength="8000"></textarea>
-                  </div>
-                  <div class="cb-editor owner-only">
-                    <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditExclusions"></div>
-                    <label for="cbEditExclusions">Proposed exclusions</label>
-                    <p class="cb-draft-note">Draft notes — not saved to the contract record</p>
-                    <textarea id="cbEditExclusions" maxlength="4000"></textarea>
-                  </div>
+                    <p class="cb-draft-note owner-only no-print">
+                      Scope of work is taken from the approved quote. Edit the quote to change it; this article is review-only.
+                    </p>
+                    <div id="cbScopeEmailWarn" class="cb-owner-warn owner-only no-print" hidden>
+                      The current quote text appears to contain estimate or email language and should be replaced with a clear description of the work included, exclusions, materials, allowances, and assumptions before signature.
+                    </div>
+                    <div class="cb-field"><div class="v" id="cbScopeDisplay" style="white-space:pre-wrap;">—</div></div>
                   </div>
                 </div>
               </section>
@@ -2052,6 +2041,9 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
+                  <p class="cb-draft-note owner-only no-print">
+                    Contract total is locked to the approved quote. Payment stages are configured in Payment Schedule.
+                  </p>
                   <div class="cb-summary" id="cbPriceSummary">
                     <div class="cb-summary__item is-total">
                       <div class="k">Contract Total</div>
@@ -2258,7 +2250,7 @@
                   </div>
                   <div class="cb-war-editor owner-only" data-ws-edit>
                     <p class="cb-war-editor__intro">
-                      Confirm the warranty terms used on the contract. Save writes them to the project record.
+                      Confirm the warranty terms used on the contract. Confirm Warranty writes them to the project record.
                     </p>
                     <div class="cb-war-form">
                       <div class="cb-war-form__row cb-war-form__row--duration">
@@ -2299,17 +2291,14 @@
                 </button>
                 <div class="cb-article__body">
                   <div data-ws-shared>
-                  <div class="cb-meta-grid">
-                    <div class="cb-field"><span class="k">State legal notices</span><div class="v" id="cbLegalNoticesStatus">Missing</div></div>
-                  </div>
-                  <p id="cbLegalNoticesHint"><span class="cb-missing">No legal notices have been added yet.</span></p>
-                  <div id="cbLegalNoticesList" style="margin:10px 0;"></div>
-                  </div>
-                  <p id="cbTermsDisplay" class="owner-only no-print" data-ws-preview hidden>—</p>
-                  <div class="cb-editor owner-only" data-ws-edit>
-                    <div class="cb-editor__bar" data-rich-toolbar data-target="cbEditTerms"></div>
-                    <label for="cbEditTerms">Meeting notes (local only — not legal notices)</label>
-                    <textarea id="cbEditTerms" maxlength="4000"></textarea>
+                    <p class="cb-draft-note owner-only no-print">
+                      Legal notices are confirmed on the Legal Notices page. This article shows the confirmed snapshot for the contract.
+                    </p>
+                    <div class="cb-meta-grid">
+                      <div class="cb-field"><span class="k">State legal notices</span><div class="v" id="cbLegalNoticesStatus">Missing</div></div>
+                    </div>
+                    <p id="cbLegalNoticesHint"><span class="cb-missing">No legal notices have been added yet.</span></p>
+                    <div id="cbLegalNoticesList" style="margin:10px 0;"></div>
                   </div>
                 </div>
               </section>
