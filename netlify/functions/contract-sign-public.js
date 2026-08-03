@@ -56,7 +56,12 @@ exports.handler = async (event) => {
       contract: result.contract,
     });
   } catch (err) {
-    console.error("contract-sign-public", err?.message || err);
+    console.error(
+      "contract-sign-public",
+      err?.message || err,
+      err?.supabaseStatus || "",
+      String(err?.supabaseRaw || "").slice(0, 200)
+    );
     return json(500, {
       ok: false,
       error: "Server error",

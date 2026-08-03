@@ -100,7 +100,7 @@ async function loadPackageRow(tenantId, packageId) {
   const rows = await supabaseRequest(
     `tenant_contract_packages?tenant_id=eq.${encodeURIComponent(tenantId)}` +
       `&id=eq.${encodeURIComponent(packageId)}` +
-      `&select=id,version,status,snapshot_json,content_hash,frozen_at,superseded_at` +
+      `&select=id,version,status,snapshot_json,content_hash,created_at` +
       `&limit=1`,
     { method: "GET" }
   );
@@ -186,7 +186,17 @@ async function loadPublicContractByToken(rawToken) {
     };
   }
 
-  const row = await loadTokenByHash(hashRawToken(token));
+  let row;
+  try {
+    row = await loadTokenByHash(hashRawToken(token));
+  } catch (_err) {
+    return {
+      ok: false,
+      status: 500,
+      code: "token_lookup_failed",
+      error: "Could not validate signing link",
+    };
+  }
   if (!row?.id) {
     return {
       ok: false,
@@ -220,29 +230,24 @@ async function loadPublicContractByToken(rawToken) {
   }
 
   const tenantId = row.tenant_id;
-  const signer = await loadSignerRow(tenantId, row.signer_id);
-  if (!signer?.id) {
+  let signer;
+  let envelope;
+  let pkg;
+  try {
+    signer = await loadSignerRow(tenantId, row.signer_id);
+    envelope = await loadEnvelopeRow(tenantId, row.envelope_id);
+    const packageId = envelope?.package_id || signer?.package_id;
+    pkg = packageId ? await loadPackageRow(tenantId, packageId) : null;
+  } catch (_err) {
     return {
       ok: false,
-      status: 404,
-      code: "invalid_token",
-      error: "This signing link is invalid or unavailable",
+      status: 500,
+      code: "contract_load_failed",
+      error: "Could not load contract for this signing link",
     };
   }
 
-  const envelope = await loadEnvelopeRow(tenantId, row.envelope_id);
-  if (!envelope?.id) {
-    return {
-      ok: false,
-      status: 404,
-      code: "invalid_token",
-      error: "This signing link is invalid or unavailable",
-    };
-  }
-
-  const packageId = envelope.package_id || signer.package_id;
-  const pkg = await loadPackageRow(tenantId, packageId);
-  if (!pkg?.id) {
+  if (!signer?.id || !envelope?.id || !pkg?.id) {
     return {
       ok: false,
       status: 404,
@@ -254,10 +259,29 @@ async function loadPublicContractByToken(rawToken) {
   const gate = gateEnvelopePackage(envelope, pkg);
   if (!gate.ok) return gate;
 
-  const snapshot =
-    pkg.snapshot_json && typeof pkg.snapshot_json === "object"
-      ? pkg.snapshot_json
-      : {};
+  let snapshotRaw = pkg.snapshot_json;
+  if (typeof snapshotRaw === "string") {
+    try {
+      snapshotRaw = JSON.parse(snapshotRaw);
+    } catch (_e) {
+      snapshotRaw = {};
+    }
+  }
+  if (!snapshotRaw || typeof snapshotRaw !== "object") {
+    snapshotRaw = {};
+  }
+
+  let snapshot;
+  try {
+    snapshot = publicSnapshot(snapshotRaw);
+  } catch (_err) {
+    return {
+      ok: false,
+      status: 500,
+      code: "snapshot_prepare_failed",
+      error: "Could not prepare contract content",
+    };
+  }
 
   return {
     ok: true,
@@ -265,7 +289,7 @@ async function loadPublicContractByToken(rawToken) {
       package: {
         version: pkg.version,
         status: trimField(pkg.status),
-        frozen_at: pkg.frozen_at || snapshot.frozen_at || null,
+        frozen_at: snapshot.frozen_at || pkg.created_at || null,
       },
       envelope: {
         status: trimField(envelope.status),
@@ -283,7 +307,7 @@ async function loadPublicContractByToken(rawToken) {
         status: trimField(row.status),
         expires_at: row.expires_at || null,
       },
-      snapshot: publicSnapshot(snapshot),
+      snapshot,
     },
   };
 }
