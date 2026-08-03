@@ -18572,6 +18572,9 @@ window.renderSupervisor = renderSupervisor;
     const qid = String(row.project?.quoteId || row.project?.quote_id || "").trim();
     const pccHref = saProjectControlHref(pid);
     const hubHref = saInvoiceHubHref(row.project, row.invoice);
+    const copyPidBtn = pid
+      ? `<button type="button" class="sa-actions-menu__item" role="menuitem" data-sa-copy-project-id="${escapeHtml(pid)}" title="Copy tenant_projects.id for Owner QA">Copy Project ID</button>`
+      : "";
     return (
       `<div class="sa-actions-wrap">` +
       `<button type="button" class="btn ghost sa-actions-toggle" aria-haspopup="menu" aria-expanded="false">&#9776; Actions</button>` +
@@ -18579,6 +18582,7 @@ window.renderSupervisor = renderSupervisor;
       `<div class="sa-actions-menu__section">` +
       `<div class="sa-actions-menu__label">Project</div>` +
       `<a class="sa-actions-menu__item" role="menuitem" href="${escapeHtml(pccHref)}">Open project</a>` +
+      copyPidBtn +
       `</div>` +
       `<div class="sa-actions-menu__section">` +
       `<div class="sa-actions-menu__label">Financial</div>` +
@@ -18602,7 +18606,7 @@ window.renderSupervisor = renderSupervisor;
       el.style.display = "none";
       return;
     }
-    const t = tone === "err" ? "err" : "warn";
+    const t = tone === "err" ? "err" : tone === "ok" ? "ok" : "warn";
     el.textContent = msg;
     el.className = `is-visible is-${t}`;
     el.style.display = "block";
@@ -18613,6 +18617,87 @@ window.renderSupervisor = renderSupervisor;
       el.style.display = "none";
     }, 5000);
   }
+
+  async function saCopyTextToClipboard(text) {
+    const value = String(text || "").trim();
+    if (!value) return false;
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        await navigator.clipboard.writeText(value);
+        return true;
+      }
+    } catch (_err) {
+      /* fall through */
+    }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = value;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return !!ok;
+    } catch (_err2) {
+      return false;
+    }
+  }
+
+  async function saCopyProjectIdToClipboard(projectId) {
+    const pid = String(projectId || "").trim();
+    if (!pid) {
+      saShowWorkspaceFeedback("No project ID available for this row.", "err");
+      return false;
+    }
+    const ok = await saCopyTextToClipboard(pid);
+    if (ok) {
+      saShowWorkspaceFeedback(`Project ID copied: ${pid}`, "ok");
+      return true;
+    }
+    saShowWorkspaceFeedback(`Copy failed. Project ID: ${pid}`, "warn");
+    return false;
+  }
+
+  async function saFindProjectIdByQuoteId(quoteId) {
+    const qid = String(quoteId || "").trim();
+    if (!qid) return "";
+    const resolver =
+      typeof window.__mgSaResolveConvertedRow === "function" ? window.__mgSaResolveConvertedRow : null;
+    const cached = resolver ? resolver("", qid) : null;
+    const fromCache = String(cached?.project?.id || "").trim();
+    if (fromCache) return fromCache;
+
+    try {
+      const res = await fetch("/.netlify/functions/get-project-control-projects", {
+        method: "GET",
+        credentials: "include"
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok !== true || !Array.isArray(data.projects)) return "";
+      const match = data.projects.find((p) => {
+        const pq = String(p?.quoteId || p?.quote_id || "").trim();
+        return pq === qid;
+      });
+      return String(match?.id || "").trim();
+    } catch (_err) {
+      return "";
+    }
+  }
+
+  window.__mgSaCopyProjectId = (projectId) => saCopyProjectIdToClipboard(projectId);
+  window.__mgSaCopyProjectIdByQuote = async (quoteId) => {
+    const pid = await saFindProjectIdByQuoteId(quoteId);
+    if (!pid) {
+      saShowWorkspaceFeedback(
+        "Could not resolve project ID for this quote. Open Approved projects and use Copy Project ID there.",
+        "err"
+      );
+      return false;
+    }
+    return saCopyProjectIdToClipboard(pid);
+  };
 
   function saContractHubQuoteLabel(row) {
     const qid = String(row?.project?.quoteId || row?.project?.quote_id || "").trim();
@@ -18760,6 +18845,16 @@ window.renderSupervisor = renderSupervisor;
           return;
         }
         saOpenContractHubModal(row, settings);
+        return;
+      }
+
+      const copyPidBtn = ev.target.closest("[data-sa-copy-project-id]");
+      if (copyPidBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        saCloseSalesAdminActionsMenu();
+        const projectId = String(copyPidBtn.getAttribute("data-sa-copy-project-id") || "").trim();
+        void saCopyProjectIdToClipboard(projectId);
         return;
       }
 

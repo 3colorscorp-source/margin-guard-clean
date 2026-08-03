@@ -1640,9 +1640,12 @@
       .map((quote) => {
         const estimate = String(quote.quote_number_display || "").trim() || "—";
         const status = formatStatusLabel(quote.status);
-        const linked = quote.has_tenant_project ? "Yes" : "No";
         const qid = String(quote.id || "").trim();
         const likelyLocked = isLikelyLockedRow(quote);
+        /* Owner/Admin QA only (Sales Admin): expose tenant_projects.id when linked — no API/DB changes. */
+        const linkedCell = quote.has_tenant_project
+          ? `Yes <button type="button" class="btn ghost sa-copy-project-id" data-sa-copy-project-id-by-quote="${escapeHtml(qid)}" title="Copy tenant_projects.id for Owner QA">Copy Project ID</button>`
+          : "No";
         return (
           "<tr>" +
           `<td>${escapeHtml(estimate)}</td>` +
@@ -1653,7 +1656,7 @@
           `<td>${escapeHtml(formatMoney(quote.total, quote.currency))}</td>` +
           `<td>${escapeHtml(formatDate(quote.created_at))}</td>` +
           `<td>${escapeHtml(formatDate(quote.accepted_at))}</td>` +
-          `<td>${escapeHtml(linked)}</td>` +
+          `<td>${linkedCell}</td>` +
           `<td>${quoteActionsMenuHtml(qid, likelyLocked)}</td>` +
           "</tr>"
         );
@@ -1825,6 +1828,16 @@
     }
     if (body) {
       body.addEventListener("click", (ev) => {
+        const copyBtn = ev.target.closest("[data-sa-copy-project-id-by-quote]");
+        if (copyBtn) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const qid = String(copyBtn.getAttribute("data-sa-copy-project-id-by-quote") || "").trim();
+          if (qid && typeof window.__mgSaCopyProjectIdByQuote === "function") {
+            void window.__mgSaCopyProjectIdByQuote(qid);
+          }
+          return;
+        }
         const menuItem = ev.target.closest("[data-sa-quote-edit]");
         const btn = menuItem || ev.target.closest("[data-sa-quote-edit]");
         if (!btn) return;
