@@ -18076,7 +18076,7 @@ window.renderSupervisor = renderSupervisor;
 
     if ($("btnHubDrawerQuoteAccept")) {
       $("btnHubDrawerQuoteAccept").onclick = () => {
-        void runHubQuoteManualStep("accept", "Quote marcado como aceptado; proyecto e invoice actualizados.");
+        void runHubQuoteManualStep("accept", "Quote marcado como aceptado; proyecto actualizado.");
       };
     }
     if ($("btnHubDrawerCheckPending")) {

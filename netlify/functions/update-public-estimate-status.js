@@ -5,7 +5,7 @@ if (!fetch) {
 const crypto = require("crypto");
 
 const { getSupabaseConfig } = require("./_lib/supabase-admin");
-const { bridgeAcceptedQuoteToProjectAndInvoice } = require("./_lib/quote-accept-bridge");
+const { bridgeAcceptedQuoteToProject } = require("./_lib/quote-accept-bridge");
 
 function json(statusCode, body) {
   return {
@@ -19,6 +19,45 @@ function pickStr(v, maxLen) {
   const s = v == null || v === undefined ? "" : String(v).trim();
   if (!maxLen || maxLen < 1) return s;
   return s.length > maxLen ? s.slice(0, maxLen) : s;
+}
+
+function quoteAlreadyAccepted(row) {
+  if (!row || typeof row !== "object") return false;
+  if (String(row.status || "").trim().toLowerCase() === "accepted") return true;
+  return String(row.accepted_at || "").trim() !== "";
+}
+
+async function fetchQuoteByPublicToken(supabaseUrl, serviceRoleKey, publicToken) {
+  const res = await fetch(
+    `${supabaseUrl}/rest/v1/quotes?public_token=eq.${encodeURIComponent(publicToken)}&tenant_id=not.is.null&select=*&limit=2`,
+    {
+      method: "GET",
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+        Accept: "application/json"
+      }
+    }
+  );
+  const text = await res.text();
+  if (!res.ok) {
+    const err = new Error(text || "Failed to load estimate");
+    err.statusCode = 502;
+    throw err;
+  }
+  let rows = [];
+  try {
+    rows = JSON.parse(text);
+  } catch {
+    rows = [];
+  }
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  if (rows.length > 1) {
+    const err = new Error("Invalid estimate reference");
+    err.statusCode = 500;
+    throw err;
+  }
+  return rows[0];
 }
 
 async function fetchTenantZapierWebhookSecret(supabaseUrl, serviceRoleKey, tenantId) {
@@ -125,6 +164,32 @@ exports.handler = async (event) => {
       return json(400, { error: "Invalid status" });
     }
 
+    let existingRow = null;
+    try {
+      existingRow = await fetchQuoteByPublicToken(supabaseUrl, serviceRoleKey, trimmed);
+    } catch (loadErr) {
+      return json(loadErr.statusCode || 502, { error: loadErr.message || "Failed to load estimate" });
+    }
+    if (!existingRow) {
+      return json(404, { error: "Estimate not found" });
+    }
+
+    // CH-009-P2B — already accepted: do not rewrite accepted_at; do not re-fire Zapier.
+    // Still ensure project link (idempotent) so partial prior failures can heal.
+    if (status === "accepted" && quoteAlreadyAccepted(existingRow)) {
+      try {
+        await bridgeAcceptedQuoteToProject(existingRow);
+      } catch (bridgeErr) {
+        console.error("[accept-bridge] tenant_projects bridge failed", bridgeErr?.message || bridgeErr);
+      }
+      return json(200, {
+        ok: true,
+        status: "accepted",
+        already_accepted: true,
+        row: existingRow
+      });
+    }
+
     const nowIso = new Date().toISOString();
 
     const patch = {
@@ -185,9 +250,9 @@ exports.handler = async (event) => {
       );
 
       try {
-        await bridgeAcceptedQuoteToProjectAndInvoice(row);
+        await bridgeAcceptedQuoteToProject(row);
       } catch (bridgeErr) {
-        console.error("[accept-bridge] tenant_projects / invoices bridge failed", bridgeErr?.message || bridgeErr);
+        console.error("[accept-bridge] tenant_projects bridge failed", bridgeErr?.message || bridgeErr);
       }
 
       const acceptedWebhookUrl = String(process.env.ZAPIER_ESTIMATE_ACCEPTED_WEBHOOK_URL || "").trim();

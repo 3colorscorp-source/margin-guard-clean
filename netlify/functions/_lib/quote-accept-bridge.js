@@ -1,11 +1,12 @@
 /**
- * Idempotent bridge: accepted quote → tenant_projects row + invoices draft.
+ * Idempotent bridge: accepted quote → tenant_projects row (+ operational snapshot when plan exists).
+ * CH-009-P2B — acceptance is a sales/project lifecycle event, not an invoice-generation event.
+ * Invoice Hub owns invoice creation; this bridge must not INSERT/PATCH invoices.
  * Used by public estimate accept and Invoice Hub manual accept.
  * tenant_id / quote_id must come only from the quote row passed in (never from untrusted client-only paths without prior quote fetch).
  */
 
 const { supabaseRequest } = require("./supabase-admin");
-const { makePublicToken } = require("./public-token");
 const {
   buildEstimateEconomics,
   extractWorkersFromQuoteRow,
@@ -242,14 +243,28 @@ async function applyOperationalSnapshotForProject(quoteRow, projectId) {
   });
 }
 
-async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
-  if (!quoteRow || typeof quoteRow !== "object") return;
+/**
+ * CH-009-P2C — Existing-project field policy (accept bridge):
+ *
+ * INSERT_ONLY: tenant_id, status=signed (create path only), deposit_paid=false (create), notes=""
+ * SAFE_IF_NULL: project_name, client_name, client_email, contact_id, due_date, signed_at, quote_id
+ * NEVER_OVERWRITE_ON_EXISTING: status, deposit_paid, sale_price, recommended_price, minimum_price,
+ *   supervisor/assignment, labor/schedule/execution fields, completed/closed states
+ *
+ * On existing projects: hydrate only SAFE_IF_NULL blanks; never force status=signed;
+ * never re-run full labor/snapshot sync (would overwrite newer operational state).
+ */
+
+async function bridgeAcceptedQuoteToProject(quoteRow) {
+  if (!quoteRow || typeof quoteRow !== "object") {
+    return { ok: false, project_id: null, action: "skip" };
+  }
 
   const tenantId = String(quoteRow.tenant_id || "").trim();
   const quoteId = String(quoteRow.id || "").trim();
   if (!UUID_RE.test(tenantId) || !UUID_RE.test(quoteId)) {
     console.warn("[accept-bridge] skip: invalid tenant_id or quote id on row");
-    return;
+    return { ok: false, project_id: null, action: "skip" };
   }
 
   const tidEnc = encodeURIComponent(tenantId);
@@ -261,107 +276,90 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
   const clientEmail = pickStr(quoteRow.client_email, 320);
   const salePrice = Math.max(finiteMoney(quoteRow.total, 0), 0);
   const signedAt = pickStr(quoteRow.accepted_at, 64) || nowIso;
-  const currency = pickStr(quoteRow.currency, 8) || "USD";
   const quoteSchedule = scheduleFieldsFromQuoteRow(quoteRow);
   const quoteDueDate = quoteSchedule.due_date;
   const quoteStartDate = quoteSchedule.start_date;
+  const quoteContactId = contactIdFromQuoteRow(quoteRow);
+  const signedAtFromStart = quoteStartDate ? `${quoteStartDate}T12:00:00.000Z` : "";
 
-  const laborContext = await resolveLaborContextForQuote(quoteRow);
-  const hoursPerDay = Number(laborContext.settings?.hoursPerDay) || 8;
-  const opResolved = await resolveOperationalPlanForQuote(
-    quoteRow,
-    loadLatestTenantSnapshotPayload
-  );
-  const opNormalized = opResolved?.plan?.length
-    ? normalizeOperationalPlan(opResolved.plan, opResolved.override, hoursPerDay)
-    : null;
+  const quoteDerived = {
+    project_name: projectName,
+    client_name: clientName,
+    client_email: clientEmail,
+    contact_id: quoteContactId || "",
+    due_date: quoteDueDate || "",
+    signed_at: signedAtFromStart || signedAt,
+    quote_id: quoteId,
+    nowIso,
+  };
 
-  const insertEconomics = buildEstimateEconomics({
-    workers: laborContext.workers,
-    settings: laborContext.settings,
-    salePrice,
-    hoursPerDay,
-    operationalPlan: opResolved?.plan,
-    operationalPlanNormalized: opNormalized,
-  });
-
-  const insertLaborFields = {};
-  const hasLaborPlan =
-    (laborContext.workers.length && !isPlanEffectivelyEmpty(insertEconomics.quotedLaborPlan)) ||
-    planHasDays(opNormalized);
-  if (hasLaborPlan) {
-    insertLaborFields.quoted_labor_plan = insertEconomics.quotedLaborPlan;
-    insertLaborFields.estimated_labor_cost = insertEconomics.estimatedLaborCost;
-    insertLaborFields.estimated_material_cost = insertEconomics.estimatedMaterialCost;
-    insertLaborFields.estimated_profit = insertEconomics.estimatedProfit;
-    insertLaborFields.estimated_profit_margin = insertEconomics.estimatedProfitMargin;
-    insertLaborFields.labor_budget = insertEconomics.estimatedLaborCost;
-    if (shouldLockLaborPlan(null, insertEconomics.quotedLaborPlan)) {
-      insertLaborFields.quoted_labor_plan_locked_at = nowIso;
-    }
-  } else {
-    insertLaborFields.quoted_labor_plan = [];
-  }
+  const EXISTING_SELECT =
+    "id,quote_id,project_name,client_name,client_email,contact_id,due_date,signed_at," +
+    "status,sale_price,recommended_price,minimum_price,deposit_paid," +
+    "quoted_labor_plan,quoted_labor_plan_locked_at";
 
   let resolvedProjectId = null;
-
-  function resolveInvoiceProjectIdLink(existingInvoiceProjectId) {
-    if (!resolvedProjectId || !UUID_RE.test(resolvedProjectId)) return null;
-    const existing = String(existingInvoiceProjectId == null ? "" : existingInvoiceProjectId).trim();
-    if (!existing) return resolvedProjectId;
-    const same =
-      existing.replace(/-/g, "").toLowerCase() ===
-      resolvedProjectId.replace(/-/g, "").toLowerCase();
-    if (same) return resolvedProjectId;
-    console.warn("[accept-bridge] invoice project_id mismatch; skip overwrite", {
-      invoice_project_id: existing,
-      resolved_project_id: resolvedProjectId,
-      quote_id: quoteId,
-    });
-    return null;
-  }
+  let action = "none";
 
   try {
     const tpRows = await supabaseRequest(
-      `tenant_projects?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id,quote_id,quoted_labor_plan,quoted_labor_plan_locked_at`,
+      `tenant_projects?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=${EXISTING_SELECT}`,
       { method: "GET" }
     );
     const tpHit = Array.isArray(tpRows) ? tpRows[0] : null;
 
-    const quoteContactId = contactIdFromQuoteRow(quoteRow);
-
-    const basePatch = {
-      project_name: projectName,
-      client_name: clientName,
-      client_email: clientEmail,
-      sale_price: salePrice,
-      recommended_price: salePrice,
-      minimum_price: salePrice,
-      status: "signed",
-      quote_id: quoteId,
-      updated_at: nowIso,
-    };
-    if (quoteContactId) basePatch.contact_id = quoteContactId;
-    if (quoteDueDate) basePatch.due_date = quoteDueDate;
-    if (quoteStartDate) basePatch.signed_at = `${quoteStartDate}T12:00:00.000Z`;
-
     if (tpHit?.id && UUID_RE.test(String(tpHit.id))) {
       resolvedProjectId = String(tpHit.id);
       const pidEnc = encodeURIComponent(resolvedProjectId);
-      await supabaseRequest(`tenant_projects?id=eq.${pidEnc}&tenant_id=eq.${tidEnc}`, {
-        method: "PATCH",
-        body: basePatch,
-      });
-
-      const laborPatch = await buildLaborSnapshotFields(quoteRow, tpHit);
-      if (laborPatch && Object.keys(laborPatch).length) {
+      const hydrate = buildExistingProjectSafeHydration(tpHit, quoteDerived);
+      if (Object.keys(hydrate).length) {
         await supabaseRequest(`tenant_projects?id=eq.${pidEnc}&tenant_id=eq.${tidEnc}`, {
           method: "PATCH",
-          body: { ...laborPatch, updated_at: nowIso },
+          body: hydrate,
         });
+        action = "hydrate";
+      } else {
+        action = "reuse";
       }
-      await applyOperationalSnapshotForProject(quoteRow, tpHit.id);
+      // CH-009-P2C — do not re-sync labor/snapshot on existing projects.
     } else {
+      const laborContext = await resolveLaborContextForQuote(quoteRow);
+      const hoursPerDay = Number(laborContext.settings?.hoursPerDay) || 8;
+      const opResolved = await resolveOperationalPlanForQuote(
+        quoteRow,
+        loadLatestTenantSnapshotPayload
+      );
+      const opNormalized = opResolved?.plan?.length
+        ? normalizeOperationalPlan(opResolved.plan, opResolved.override, hoursPerDay)
+        : null;
+
+      const insertEconomics = buildEstimateEconomics({
+        workers: laborContext.workers,
+        settings: laborContext.settings,
+        salePrice,
+        hoursPerDay,
+        operationalPlan: opResolved?.plan,
+        operationalPlanNormalized: opNormalized,
+      });
+
+      const insertLaborFields = {};
+      const hasLaborPlan =
+        (laborContext.workers.length && !isPlanEffectivelyEmpty(insertEconomics.quotedLaborPlan)) ||
+        planHasDays(opNormalized);
+      if (hasLaborPlan) {
+        insertLaborFields.quoted_labor_plan = insertEconomics.quotedLaborPlan;
+        insertLaborFields.estimated_labor_cost = insertEconomics.estimatedLaborCost;
+        insertLaborFields.estimated_material_cost = insertEconomics.estimatedMaterialCost;
+        insertLaborFields.estimated_profit = insertEconomics.estimatedProfit;
+        insertLaborFields.estimated_profit_margin = insertEconomics.estimatedProfitMargin;
+        insertLaborFields.labor_budget = insertEconomics.estimatedLaborCost;
+        if (shouldLockLaborPlan(null, insertEconomics.quotedLaborPlan)) {
+          insertLaborFields.quoted_labor_plan_locked_at = nowIso;
+        }
+      } else {
+        insertLaborFields.quoted_labor_plan = [];
+      }
+
       let newProjectId = null;
       try {
         const inserted = await supabaseRequest("tenant_projects", {
@@ -375,7 +373,7 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
             client_name: clientName,
             client_email: clientEmail,
             status: "signed",
-            signed_at: quoteStartDate ? `${quoteStartDate}T12:00:00.000Z` : signedAt,
+            signed_at: signedAtFromStart || signedAt,
             deposit_paid: false,
             estimated_days: Math.max(0, Number(quoteRow.estimated_days) || 0),
             ...(quoteDueDate ? { due_date: quoteDueDate } : {}),
@@ -391,28 +389,28 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
         const ins = Array.isArray(inserted) ? inserted[0] : inserted;
         if (ins?.id && UUID_RE.test(String(ins.id))) {
           newProjectId = String(ins.id);
+          action = "create";
         }
       } catch (e) {
         const raw = String(e?.supabaseRaw || e?.message || "");
         if (!/23505|duplicate key/i.test(raw)) throw e;
         const again = await supabaseRequest(
-          `tenant_projects?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id,quoted_labor_plan,quoted_labor_plan_locked_at`,
+          `tenant_projects?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=${EXISTING_SELECT}`,
           { method: "GET" }
         );
         const againHit = Array.isArray(again) ? again[0] : null;
         if (!againHit?.id || !UUID_RE.test(String(againHit.id))) throw e;
         newProjectId = String(againHit.id);
         const pidEnc2 = encodeURIComponent(newProjectId);
-        await supabaseRequest(`tenant_projects?id=eq.${pidEnc2}&tenant_id=eq.${tidEnc}`, {
-          method: "PATCH",
-          body: basePatch,
-        });
-        const laborPatch = await buildLaborSnapshotFields(quoteRow, againHit);
-        if (laborPatch && Object.keys(laborPatch).length) {
+        const hydrate = buildExistingProjectSafeHydration(againHit, quoteDerived);
+        if (Object.keys(hydrate).length) {
           await supabaseRequest(`tenant_projects?id=eq.${pidEnc2}&tenant_id=eq.${tidEnc}`, {
             method: "PATCH",
-            body: { ...laborPatch, updated_at: nowIso },
+            body: hydrate,
           });
+          action = "race_hydrate";
+        } else {
+          action = "race_reuse";
         }
       }
 
@@ -424,16 +422,19 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
         const createdHit = Array.isArray(created) ? created[0] : null;
         if (createdHit?.id && UUID_RE.test(String(createdHit.id))) {
           newProjectId = String(createdHit.id);
+          if (action === "none") action = "reselect";
         }
       }
 
       if (newProjectId) {
         resolvedProjectId = newProjectId;
-        await applyOperationalSnapshotForProject(quoteRow, newProjectId);
+        if (action === "create") {
+          await applyOperationalSnapshotForProject(quoteRow, newProjectId);
+        }
       }
     }
   } catch (tpErr) {
-    console.error("[accept-bridge] tenant_projects step failed (invoice step will still run)", tpErr);
+    console.error("[accept-bridge] tenant_projects step failed", tpErr);
   }
 
   if (!resolvedProjectId) {
@@ -445,103 +446,75 @@ async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
       const fallbackHit = Array.isArray(fallbackRows) ? fallbackRows[0] : null;
       if (fallbackHit?.id && UUID_RE.test(String(fallbackHit.id))) {
         resolvedProjectId = String(fallbackHit.id);
+        if (action === "none") action = "fallback";
       }
     } catch (_fallbackErr) {
       /* non-blocking */
     }
   }
 
-  console.log("[accept-bridge] project bridge done, starting invoice", {
+  console.log("[accept-bridge] project bridge done", {
     resolved_project_id: resolvedProjectId || null,
+    action,
   });
 
-  const existingInvoices = await supabaseRequest(
-    `invoices?tenant_id=eq.${tidEnc}&quote_id=eq.${qidEnc}&select=id,public_token,quote_id,project_id`,
-    { method: "GET" }
-  );
-  console.log("[accept-bridge] existing invoices", existingInvoices);
+  return { ok: Boolean(resolvedProjectId), project_id: resolvedProjectId, action };
+}
 
-  const invList = Array.isArray(existingInvoices)
-    ? existingInvoices
-    : existingInvoices && typeof existingInvoices === "object"
-      ? [existingInvoices]
-      : [];
-  const invHit =
-    invList.find(
-      (r) =>
-        r &&
-        r.id &&
-        UUID_RE.test(String(r.id)) &&
-        String(r.quote_id || "").replace(/-/g, "").toLowerCase() ===
-          String(quoteId).replace(/-/g, "").toLowerCase()
-    ) || null;
+function isBlankField(value) {
+  if (value === null || value === undefined) return true;
+  if (typeof value === "string" && value.trim() === "") return true;
+  return false;
+}
 
-  if (invHit?.id && UUID_RE.test(String(invHit.id))) {
-    const invoiceProjectId = resolveInvoiceProjectIdLink(invHit.project_id);
-    console.log("[accept-bridge] invoice path: PATCH existing", {
-      id: invHit.id,
-      quote_id: quoteId,
-      project_id: invoiceProjectId || invHit.project_id || null,
-    });
-    const iidEnc = encodeURIComponent(String(invHit.id));
-    const invoicePatch = {
-      quote_id: quoteId,
-      customer_name: clientName,
-      customer_email: clientEmail,
-      project_name: projectName,
-      amount: salePrice,
-      paid_amount: 0,
-      balance_due: salePrice,
-      currency,
-    };
-    if (invoiceProjectId) invoicePatch.project_id = invoiceProjectId;
-    await supabaseRequest(`invoices?id=eq.${iidEnc}&tenant_id=eq.${tidEnc}`, {
-      method: "PATCH",
-      body: invoicePatch,
-    });
-  } else {
-    const rawTotal = Number(quoteRow.total || 0);
-    const insertAmount = Number.isFinite(rawTotal) ? rawTotal : 0;
-    const invoiceInsertPayload = {
-      tenant_id: tenantId,
-      quote_id: quoteId,
-      public_token: makePublicToken("inv"),
-      invoice_no: `INV-${Date.now()}`,
-      customer_name: quoteRow.client_name || "",
-      customer_email: quoteRow.client_email || "",
-      project_name: quoteRow.project_name || "",
-      amount: insertAmount,
-      paid_amount: 0,
-      balance_due: insertAmount,
-      currency: pickStr(quoteRow.currency, 8) || "USD",
-      status: "DRAFT",
-      type: "FINAL",
-    };
-    const insertProjectId = resolveInvoiceProjectIdLink(null);
-    if (insertProjectId) invoiceInsertPayload.project_id = insertProjectId;
+/**
+ * SAFE_IF_NULL hydration for an existing tenant_projects row.
+ * Never includes status, prices, deposit_paid, or labor/execution fields.
+ * @returns {object} patch (may be empty); includes updated_at only when changing fields
+ */
+function buildExistingProjectSafeHydration(existing, quoteDerived) {
+  const row = existing && typeof existing === "object" ? existing : {};
+  const src = quoteDerived && typeof quoteDerived === "object" ? quoteDerived : {};
+  const patch = {};
 
-    console.log("[accept-bridge] inserting invoice", invoiceInsertPayload);
-
-    try {
-      const created = await supabaseRequest("invoices", {
-        method: "POST",
-        headers: { Prefer: "return=representation" },
-        body: invoiceInsertPayload,
-      });
-      const invoiceRow = Array.isArray(created) ? created[0] : created;
-      console.log("[accept-bridge] invoice created", invoiceRow);
-    } catch (err) {
-      console.error("[accept-bridge] invoice insert failed", err);
-      if (err?.supabaseRaw) {
-        console.error("[accept-bridge] invoice insert supabaseRaw", err.supabaseRaw);
-      }
-      throw err;
-    }
+  if (isBlankField(row.project_name) && !isBlankField(src.project_name)) {
+    patch.project_name = String(src.project_name).trim();
   }
+  if (isBlankField(row.client_name) && !isBlankField(src.client_name)) {
+    patch.client_name = String(src.client_name).trim();
+  }
+  if (isBlankField(row.client_email) && !isBlankField(src.client_email)) {
+    patch.client_email = String(src.client_email).trim();
+  }
+  if (isBlankField(row.contact_id) && !isBlankField(src.contact_id) && UUID_RE.test(String(src.contact_id))) {
+    patch.contact_id = String(src.contact_id).trim();
+  }
+  if (isBlankField(row.due_date) && !isBlankField(src.due_date)) {
+    patch.due_date = String(src.due_date).trim();
+  }
+  if (isBlankField(row.signed_at) && !isBlankField(src.signed_at)) {
+    patch.signed_at = String(src.signed_at).trim();
+  }
+  if (isBlankField(row.quote_id) && !isBlankField(src.quote_id) && UUID_RE.test(String(src.quote_id))) {
+    patch.quote_id = String(src.quote_id).trim();
+  }
+
+  if (Object.keys(patch).length) {
+    patch.updated_at = src.nowIso || new Date().toISOString();
+  }
+  return patch;
+}
+
+/** @deprecated CH-009-P2B — use bridgeAcceptedQuoteToProject (no invoice side effects). */
+async function bridgeAcceptedQuoteToProjectAndInvoice(quoteRow) {
+  return bridgeAcceptedQuoteToProject(quoteRow);
 }
 
 module.exports = {
+  bridgeAcceptedQuoteToProject,
   bridgeAcceptedQuoteToProjectAndInvoice,
+  buildExistingProjectSafeHydration,
+  isBlankField,
   UUID_RE,
   resolveLaborContextForQuote,
   buildLaborSnapshotFields,
