@@ -50,7 +50,8 @@ const QUOTE_SELECT = [
   "updated_at",
 ].join(",");
 
-const PROJECT_SELECT = "id,tenant_id,quote_id,project_name,name,status,updated_at,created_at";
+const PROJECT_SELECT =
+  "id,tenant_id,quote_id,project_name,status,updated_at,created_at";
 
 function trimField(value) {
   return String(value ?? "").trim();
@@ -408,7 +409,7 @@ function buildSnapshot({
     },
     project: {
       id: project.id,
-      name: trimField(project.project_name || project.name || quote.project_name),
+      name: trimField(project.project_name || quote.project_name),
       status: trimField(project.status),
     },
     property: {
@@ -738,6 +739,7 @@ module.exports = {
   API_VERSION,
   SNAPSHOT_SCHEMA,
   PACKAGE_STATUSES,
+  PROJECT_SELECT,
   validUuid,
   unknownKeys,
   canonicalize,

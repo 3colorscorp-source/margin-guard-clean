@@ -292,6 +292,17 @@ test("handlers export", () => {
   assert.strictEqual(lib.API_VERSION, "ch-011a-v1");
 });
 
+test("hotfix: project select uses project_name only (no nonexistent name)", () => {
+  const select = String(lib.PROJECT_SELECT || "");
+  assert.ok(select.includes("project_name"), "must select project_name");
+  assert.ok(!/(^|,)name(,|$)/.test(select), "must not select nonexistent tenant_projects.name");
+  assert.ok(
+    !/tenant_projects\?[^`"'\n]*select=[^`"'\n]*\bname\b/.test(libSrc),
+    "freeze must not request tenant_projects.name"
+  );
+  assert.ok(libSrc.includes("select=${PROJECT_SELECT}"));
+});
+
 test("no Contract Builder UI / CH-010 / Invoice Hub file touches in this module", () => {
   assert.ok(!freezeSrc.includes("contract-builder"));
   assert.ok(!listSrc.includes("estimates-invoices"));
