@@ -2312,19 +2312,38 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
-                  <div class="cb-meta-grid">
-                    <div class="cb-field"><span class="k">Signature method</span><div class="v" id="cbSignatureMethodStatus">Missing</div></div>
-                    <div class="cb-field"><span class="k">Signature request</span><div class="v" id="cbSignatureRequestStatus">Not Requested</div></div>
+                  <div data-ws-preview>
+                    <div class="cb-meta-grid">
+                      <div class="cb-field"><span class="k">Signature method</span><div class="v" id="cbSignatureMethodStatus">Missing</div></div>
+                      <div class="cb-field"><span class="k">Signature request</span><div class="v" id="cbSignatureRequestStatus">Not Requested</div></div>
+                    </div>
+                    <div class="cb-sign-grid">
+                      <div class="cb-sign-box is-placeholder">
+                        <strong>Customer signature</strong>
+                        Available after the contract is finalized for signature.
+                      </div>
+                      <div class="cb-sign-box is-placeholder">
+                        <strong>Contractor signature</strong>
+                        Available after the contract is finalized for signature.
+                      </div>
+                    </div>
                   </div>
-                  <div class="cb-sign-grid">
-                    <div class="cb-sign-box is-placeholder">
-                      <strong>Customer signature</strong>
-                      Available after the contract is finalized for signature.
+                  <div class="cb-prop-editor owner-only" data-ws-edit>
+                    <p class="cb-prop-editor__intro">
+                      Choose how this contract will be signed. Save Draft stores the preference; Confirm Method locks readiness for freeze.
+                    </p>
+                    <div class="cb-prop-form">
+                      <div class="cb-prop-field">
+                        <label for="cbSigEditMethod">Signature method</label>
+                        <select id="cbSigEditMethod">
+                          <option value="">Choose signature method…</option>
+                          <option value="email_link">Email link</option>
+                          <option value="sign_on_device">Sign on device</option>
+                          <option value="both">Both</option>
+                        </select>
+                      </div>
                     </div>
-                    <div class="cb-sign-box is-placeholder">
-                      <strong>Contractor signature</strong>
-                      Available after the contract is finalized for signature.
-                    </div>
+                    <p class="cb-prop-live-hint" id="cbSigLiveHint" hidden></p>
                   </div>
                 </div>
               </section>

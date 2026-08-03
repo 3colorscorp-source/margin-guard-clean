@@ -363,18 +363,28 @@
       },
     }),
     "art-signatures": defaultWorkspaceCaps({
+      supportsEdit: true,
+      supportsSave: true,
       supportsValidation: true,
       supportsExternalSource: false,
       continueLabel: "Preview Contract",
       continueAction: "previewContract",
-      validate: () => {
-        const st = articleReadinessStatus("art-signatures", sourceSnapshot, draftEdits);
-        return readinessValidation(
-          st,
-          "Signature method is configured.",
-          "Signature setup is deferred to a later phase.",
-          "Signature method is not configured yet (later phase)."
-        );
+      editLabel: "Edit Signature Method",
+      saveLabel: "Save Draft",
+      validate: () => validateSignatureWorkspace(),
+      syncEditFromModel: () => syncSignatureInputsFromModel(),
+      onEnterEdit: () => {
+        updateSignatureLiveHint();
+      },
+      onBeforeSave: () => {
+        const check = validateSignatureWorkspace({ forSave: true });
+        updateSignatureLiveHint(check);
+        renderWorkspaceChrome();
+        if (check.blocking) return false;
+        return true;
+      },
+      onSave: async () => {
+        await saveSignatureWorkspace({ confirm: false });
       },
     }),
   };
@@ -603,6 +613,43 @@
     }
   }
 
+  async function workspaceConfirmSignature() {
+    if (workspaceBusy) return false;
+    if (getArticleMode("art-signatures") !== WS_MODE.EDIT) {
+      const entered = await workspaceEnterEdit("art-signatures");
+      if (!entered) return false;
+    }
+    const check = validateSignatureWorkspace({ forSave: true, forConfirm: true });
+    updateSignatureLiveHint(check);
+    if (check.blocking) {
+      window.alert(check.message || "Choose a signature method before confirming.");
+      renderWorkspaceChrome();
+      return false;
+    }
+    workspaceBusy = true;
+    workspaceBusyLabel = "Confirming…";
+    setArticleMode("art-signatures", WS_MODE.SAVING);
+    renderWorkspaceChrome();
+    try {
+      await saveSignatureWorkspace({ confirm: true });
+      workspaceEditBaseline = null;
+      setArticleMode("art-signatures", WS_MODE.SAVED);
+      renderWorkspaceChrome();
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      await workspaceEnterPreview("art-signatures");
+      return true;
+    } catch (err) {
+      setArticleMode("art-signatures", WS_MODE.EDIT);
+      renderWorkspaceChrome();
+      window.alert(err?.message || "Confirm failed. Signature method was not saved.");
+      return false;
+    } finally {
+      workspaceBusy = false;
+      workspaceBusyLabel = "Saving…";
+      renderWorkspaceChrome();
+    }
+  }
+
   function isWorkspaceEditing() {
     return Boolean(activeArticleId && getArticleMode(activeArticleId) === WS_MODE.EDIT);
   }
@@ -747,6 +794,22 @@
           if (hint) {
             hint.textContent =
               "Save Draft anytime. Confirm Schedule only when Scheduled equals Contract Total.";
+          }
+        } else if (activeArticleId === "art-signatures") {
+          actions.appendChild(
+            createFooterButton({
+              id: "cbWsConfirmSig",
+              label: "Confirm Method",
+              className: "btn primary",
+              disabled: busy,
+              onClick: () => {
+                void workspaceConfirmSignature();
+              },
+            })
+          );
+          if (hint) {
+            hint.textContent =
+              "Save Draft stores the method. Confirm Method sets signature readiness.";
           }
         } else if (hint) {
           hint.textContent = "Save writes this article, then returns to Preview.";
@@ -2192,6 +2255,131 @@
     return String(setupBundle?.readiness?.signature_method || "").toLowerCase() === "configured";
   }
 
+  const SIGNATURE_METHOD_OPTIONS = new Set(["sign_on_device", "email_link", "both"]);
+
+  function normalizeSignatureMethod(value) {
+    const method = String(value || "").trim().toLowerCase();
+    if (SIGNATURE_METHOD_OPTIONS.has(method)) return method;
+    if (method === "not_configured") return "";
+    return "";
+  }
+
+  function signatureMethodDisplayLabel(method) {
+    const key = normalizeSignatureMethod(method);
+    if (key === "email_link") return "Email link";
+    if (key === "sign_on_device") return "Sign on device";
+    if (key === "both") return "Both";
+    return "Missing";
+  }
+
+  function signatureMethodFromSetup(setup) {
+    return normalizeSignatureMethod(setup?.signature_method);
+  }
+
+  function readSignatureMethodFromDom() {
+    return normalizeSignatureMethod($("cbSigEditMethod")?.value);
+  }
+
+  function syncSignatureInputsFromModel() {
+    const fromSetup = signatureMethodFromSetup(sourceSnapshot?.contractSetup?.setup);
+    const fromEdits = normalizeSignatureMethod(draftEdits?.sigMethod);
+    const method = fromEdits || fromSetup;
+    if ($("cbSigEditMethod")) $("cbSigEditMethod").value = method;
+  }
+
+  function validateSignatureWorkspace(opts = {}) {
+    const forSave = opts.forSave === true;
+    const forConfirm = opts.forConfirm === true;
+    const method =
+      getArticleMode("art-signatures") === WS_MODE.EDIT || forSave
+        ? readSignatureMethodFromDom()
+        : signatureMethodFromSetup(sourceSnapshot?.contractSetup?.setup) ||
+          normalizeSignatureMethod(draftEdits?.sigMethod);
+
+    if (!method) {
+      return {
+        level: "block",
+        badge: "Missing",
+        message: forConfirm || forSave
+          ? "Choose a signature method before saving."
+          : "Signature method is not configured yet.",
+        blocking: true,
+      };
+    }
+
+    if (signatureConfigured(sourceSnapshot?.contractSetup) && !forSave) {
+      return {
+        level: "ok",
+        badge: "Ready",
+        message: `Signature method is configured (${signatureMethodDisplayLabel(method)}).`,
+        blocking: false,
+      };
+    }
+
+    return {
+      level: forSave ? "ok" : "warn",
+      badge: forSave ? "Ready" : "Ready to save",
+      message: forConfirm
+        ? `Confirm ${signatureMethodDisplayLabel(method)} for contract freeze readiness.`
+        : forSave
+          ? `Save ${signatureMethodDisplayLabel(method)} to project setup.`
+          : `${signatureMethodDisplayLabel(method)} selected — Save Draft, then Confirm Method.`,
+      blocking: false,
+    };
+  }
+
+  function updateSignatureLiveHint(result) {
+    const hint = $("cbSigLiveHint");
+    if (!hint) return;
+    const check = result || validateSignatureWorkspace({ forSave: false });
+    hint.hidden = false;
+    hint.classList.remove("is-ok", "is-warn", "is-block");
+    if (check.level === "ok") hint.classList.add("is-ok");
+    else if (check.level === "warn") hint.classList.add("is-warn");
+    else hint.classList.add("is-block");
+    hint.textContent = check.message || "";
+  }
+
+  async function saveSignatureWorkspace({ confirm } = {}) {
+    if (!sourceSnapshot?.projectId || !sourceSnapshot?.quoteId) {
+      throw new Error("Project and quote are required to save the signature method.");
+    }
+    const method = readSignatureMethodFromDom();
+    if (!method) {
+      throw new Error("Choose a signature method before saving.");
+    }
+
+    const res = await postJson(CONTRACT_SETUP_API, {
+      project_id: sourceSnapshot.projectId,
+      quote_id: sourceSnapshot.quoteId,
+      signature_method: method,
+    });
+
+    if (!res.ok || res.data?.ok !== true || !res.data.setup) {
+      const msg = String(res.data?.error || "").trim();
+      throw new Error(msg || "Signature method could not be saved.");
+    }
+
+    sourceSnapshot.contractSetup = {
+      available: true,
+      loadError: null,
+      forbidden: false,
+      setup: res.data.setup,
+      readiness: res.data.readiness || null,
+    };
+    if (draftEdits) draftEdits.sigMethod = method;
+    draftBaseline = cloneEdits({
+      ...sourceSnapshot,
+      ...draftEdits,
+    });
+    renderDocument(sourceSnapshot, draftEdits);
+    updateIndexNavStatus();
+    renderWorkspaceChrome();
+    if (confirm && !signatureConfigured(sourceSnapshot.contractSetup)) {
+      throw new Error("Signature method saved but readiness is still incomplete.");
+    }
+  }
+
   function isPlainNoticesObject(value) {
     return value != null && typeof value === "object" && !Array.isArray(value);
   }
@@ -2468,7 +2656,8 @@
   }
 
   function signatureMethodLabel(setupBundle) {
-    return signatureConfigured(setupBundle) ? "Configured" : "Missing";
+    if (!signatureConfigured(setupBundle)) return "Missing";
+    return signatureMethodDisplayLabel(setupBundle?.setup?.signature_method);
   }
 
   function signatureRequestLabel(setupBundle) {
@@ -2689,6 +2878,7 @@
       warDurationUnit: source.warDurationUnit || "years",
       warSummary: source.warSummary || "",
       warExclusions: source.warExclusions || "",
+      sigMethod: source.sigMethod || "",
       scope: source.scope,
       exclusions: source.exclusions,
       startDate: source.startDate,
@@ -2712,6 +2902,7 @@
       "warDurationUnit",
       "warSummary",
       "warExclusions",
+      "sigMethod",
       "scope",
       "exclusions",
       "startDate",
@@ -3393,6 +3584,7 @@
     }
     if ($("cbWarEditSummary")) $("cbWarEditSummary").value = edits.warSummary || "";
     if ($("cbWarEditExclusions")) $("cbWarEditExclusions").value = edits.warExclusions || "";
+    if ($("cbSigEditMethod")) $("cbSigEditMethod").value = normalizeSignatureMethod(edits.sigMethod);
     if ($("cbEditStart")) $("cbEditStart").value = edits.startDate || "";
     if ($("cbEditDue")) $("cbEditDue").value = edits.dueDate || "";
   }
@@ -3406,6 +3598,9 @@
     }
     if (getArticleMode("art-warranty") === WS_MODE.EDIT) {
       applyWarrantyFieldsToEdits(draftEdits, readWarrantyFieldsFromDom());
+    }
+    if (getArticleMode("art-signatures") === WS_MODE.EDIT) {
+      draftEdits.sigMethod = readSignatureMethodFromDom();
     }
     // Scope / Terms are quote / Legal Notices sourced — no local editors.
     if ($("cbEditStart")) draftEdits.startDate = String($("cbEditStart").value || "").trim();
@@ -4091,6 +4286,7 @@
       "cbWarEditDurationUnit",
       "cbWarEditSummary",
       "cbWarEditExclusions",
+      "cbSigEditMethod",
       "cbEditStart",
       "cbEditDue",
     ];
@@ -4105,6 +4301,9 @@
           renderWorkspaceChrome();
         } else if (id.startsWith("cbWarEdit")) {
           updateWarrantyLiveHint();
+          renderWorkspaceChrome();
+        } else if (id === "cbSigEditMethod") {
+          updateSignatureLiveHint();
           renderWorkspaceChrome();
         } else if (sourceSnapshot && draftEdits) {
           renderDocument(sourceSnapshot, draftEdits);
@@ -4485,6 +4684,7 @@
     if (warrantyFieldsComplete(warSetupFields) || warSetupFields.summary || warSetupFields.durationValue) {
       applyWarrantyFieldsToEdits(draftEdits, warSetupFields);
     }
+    draftEdits.sigMethod = signatureMethodFromSetup(setupBundle.setup);
     draftBaseline = cloneEdits({ ...sourceSnapshot, ...draftEdits });
     activeArticleId = null;
     visitedArticleIds.clear();
