@@ -1,7 +1,8 @@
 /**
- * CH-013A.2.1 — Email channel adapter (Resend via provider abstraction).
- * Does not call Resend HTTP directly. Does not build URLs itself.
+ * CH-013A.2.1Z — Email channel adapter (Zapier webhook via provider abstraction).
+ * Does not call Zapier HTTP directly beyond ZapierProvider. Does not build URLs itself.
  * Does not persist raw tokens. Does not log template bodies.
+ * Resend is not the active provider for beta.
  */
 
 "use strict";
@@ -10,11 +11,11 @@ const { buildSigningLink } = require("../signing-link-builder");
 const { renderTemplate } = require("../template-renderer");
 const { resolveTenantBranding } = require("../tenant-branding");
 const { renderContractInvitationEmail } = require("../templates/email-contract-invitation");
-const resendProvider = require("../providers/resend-provider");
+const zapierProvider = require("../providers/zapier-provider");
 
 const CHANNEL = "email";
-const API_VERSION = "ch-013a21-v1";
-const PROVIDER = "resend";
+const API_VERSION = "ch-013a21z-v1";
+const PROVIDER = "zapier";
 
 function trim(v) {
   return v == null ? "" : String(v).trim();
@@ -29,11 +30,11 @@ function provider() {
 }
 
 function isAvailable() {
-  return resendProvider.health().available === true;
+  return zapierProvider.health().available === true;
 }
 
 function health() {
-  const h = resendProvider.health();
+  const h = zapierProvider.health();
   return {
     ok: h.available,
     channel: CHANNEL,
@@ -96,10 +97,10 @@ async function prepare(ctx = {}, ephemeral = {}) {
   if (!to) {
     return { ok: false, error: "Recipient email required", code: "missing_recipient" };
   }
-  if (!resendProvider.isValidEmail(to)) {
+  if (!zapierProvider.isValidEmail(to)) {
     return { ok: false, error: "Invalid recipient email", code: "invalid_recipient" };
   }
-  if (!resendProvider.isRecipientAllowlisted(to)) {
+  if (!zapierProvider.isRecipientAllowlisted(to)) {
     return {
       ok: false,
       error: "Recipient is outside the internal allowlist",
@@ -110,7 +111,7 @@ async function prepare(ctx = {}, ephemeral = {}) {
 }
 
 /**
- * Deliver via ResendProvider. Signing URL built only by SigningLinkBuilder.
+ * Deliver via ZapierProvider. Signing URL built only by SigningLinkBuilder.
  *
  * @param {object} ctx — persistent DeliveryContext (no raw token)
  * @param {{
@@ -119,6 +120,16 @@ async function prepare(ctx = {}, ephemeral = {}) {
  *   public_origin?: string,
  *   idempotency_key?: string,
  *   fetchImpl?: Function,
+ *   tenant_id?: string,
+ *   project_id?: string,
+ *   quote_id?: string,
+ *   package_id?: string,
+ *   envelope_id?: string,
+ *   invitation_id?: string,
+ *   generation_id?: string,
+ *   generation_number?: number,
+ *   attempt_id?: string,
+ *   correlation_id?: string,
  * }} [ephemeral]
  */
 async function deliver(ctx = {}, ephemeral = {}) {
@@ -134,7 +145,7 @@ async function deliver(ctx = {}, ephemeral = {}) {
   });
   if (!built.ok) return built;
 
-  const tenantId = ctx.tenant_id || ctx.tenant?.id || null;
+  const tenantId = ctx.tenant_id || ctx.tenant?.id || ephemeral.tenant_id || null;
   let branding = ctx.branding;
   if (!branding || typeof branding !== "object") {
     const resolved = await resolveTenantBranding(tenantId);
@@ -156,28 +167,76 @@ async function deliver(ctx = {}, ephemeral = {}) {
   if (!normalized.ok) return normalized;
 
   const to = trim(ephemeral.recipient_email || ephemeral.to || ctx.recipient_email);
+  const replyTo =
+    trim(branding.reply_to) ||
+    zapierProvider.getReplyToFallback() ||
+    "";
+  const fromName =
+    trim(process.env.CONTRACT_EMAIL_FROM_NAME) ||
+    trim(branding.from_name) ||
+    trim(branding.business_name) ||
+    zapierProvider.getFromNameFallback();
+
   const rendered = renderContractInvitationEmail({
     branding,
     project_name: ctx.project?.project_name || ctx.project?.name || "",
     signer_name: ctx.recipient?.party_name || "",
     signing_url: built.signing_link.url,
     expires_at: ctx.generation?.expires_at || ctx.expires_at || null,
-    reply_to: branding.reply_to || resendProvider.getReplyToFallback() || "",
+    reply_to: replyTo,
   });
   if (!rendered.ok) return rendered;
 
-  const sendResult = await resendProvider.send({
+  const sendResult = await zapierProvider.send({
     to,
+    recipient_email: to,
+    recipient_name: trim(ctx.recipient?.party_name),
     subject: rendered.subject,
     html: rendered.html,
     text: rendered.text,
-    from_name: branding.from_name || branding.business_name || "",
-    reply_to: branding.reply_to || resendProvider.getReplyToFallback() || "",
+    from_name: fromName,
+    reply_to: replyTo,
     idempotency_key: trim(ephemeral.idempotency_key),
     fetchImpl: ephemeral.fetchImpl,
+    tenant_id: tenantId,
+    project_id:
+      trim(ephemeral.project_id) ||
+      trim(ctx.project?.project_id) ||
+      trim(ctx.project?.id) ||
+      null,
+    quote_id: trim(ephemeral.quote_id) || trim(ctx.metadata?.quote_id) || null,
+    package_id: trim(ephemeral.package_id) || trim(ctx.metadata?.package_id) || null,
+    envelope_id: trim(ephemeral.envelope_id) || trim(ctx.metadata?.envelope_id) || null,
+    invitation_id:
+      trim(ephemeral.invitation_id) || trim(ctx.invitation?.id) || null,
+    generation_id:
+      trim(ephemeral.generation_id) || trim(ctx.generation?.id) || null,
+    generation_number:
+      ephemeral.generation_number ?? ctx.generation?.generation_number ?? null,
+    attempt_id:
+      trim(ephemeral.attempt_id) || trim(ctx.attempt?.attempt_id) || null,
+    expires_at: ctx.generation?.expires_at || ctx.expires_at || null,
+    correlation_id: trim(ephemeral.correlation_id) || null,
   });
 
   if (!sendResult.accepted) {
+    if (sendResult.awaiting_callback === true) {
+      return {
+        ok: true,
+        api_version: API_VERSION,
+        channel: CHANNEL,
+        provider: PROVIDER,
+        accepted: false,
+        awaiting_callback: true,
+        retryable: false,
+        code: sendResult.error_code || "awaiting_zapier_callback",
+        error: sendResult.error_message || "awaiting callback",
+        provider_result: sendResult,
+        has_signing_url: true,
+        render_model: normalized.payload,
+        tracking: supportsTracking(),
+      };
+    }
     return {
       ok: false,
       api_version: API_VERSION,
@@ -199,7 +258,7 @@ async function deliver(ctx = {}, ephemeral = {}) {
     accepted: true,
     provider_message_id: sendResult.provider_message_id,
     provider_result: sendResult,
-    // Never return signing_url to callers of network deliver — URL was sent to provider only.
+    // Never return signing_url to callers of network deliver — URL was sent in body only.
     has_signing_url: true,
     render_model: normalized.payload,
     tracking: supportsTracking(),

@@ -1,6 +1,7 @@
 /**
- * CH-013A.2.1 — Resend email provider.
- * Sole module allowed to call Resend HTTP for contract invitation delivery.
+ * CH-013A.2.1 — Resend email provider (INACTIVE for beta / CH-013A.2.1Z).
+ * Kept for future compatibility only. Not registered by EmailChannelAdapter.
+ * Not required in environment. Active transport is ZapierProvider.
  * Never logs API keys, Authorization headers, raw tokens, signing URLs, or HTML bodies.
  */
 

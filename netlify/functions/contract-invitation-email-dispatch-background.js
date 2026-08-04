@@ -128,6 +128,7 @@ exports.handler = async (event) => {
       version: API_VERSION,
       attempt_id: result.attempt_id || body.attempt_id || null,
       accepted: Boolean(result.accepted),
+      awaiting_callback: Boolean(result.awaiting_callback),
       idempotent: Boolean(result.idempotent),
       retryable: Boolean(result.retryable),
       code: result.code || null,

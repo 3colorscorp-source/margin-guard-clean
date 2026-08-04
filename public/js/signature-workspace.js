@@ -353,6 +353,12 @@
         if (ui === "queued" || ui === "sending" || ui === "sent" || ui === "failed" || ui === "accepted_db_pending") {
           state.emailUiStatus = ui;
           state.emailAttemptId = res.data.attempt_id || attemptId || state.emailAttemptId;
+          if (res.data.provider) {
+            state.emailDelivery = {
+              ...(state.emailDelivery || {}),
+              provider: res.data.provider,
+            };
+          }
           renderSend();
         }
         if (ui === "sent" || ui === "failed") {
@@ -936,6 +942,7 @@
       `package_id: ${state.package?.id || "—"}`,
       `envelope_id: ${state.envelope?.id || "—"}`,
       `delivery_status: ${state.delivery?.delivery_status || (isLinkReady() ? "prepared" : "—")}`,
+      `email_provider: ${state.emailDelivery?.provider || "—"}`,
       `invitation_ids: ${(state.delivery?.invitations || [])
         .map((i) => i.invitation_id)
         .filter(Boolean)

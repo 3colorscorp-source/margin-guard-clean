@@ -359,7 +359,13 @@ test("Events catalog + scrub", () => {
 test("Signing link builder + engine gate", async () => {
   assert.ok(!builder.buildSigningLink({ token_hash: "a".repeat(64) }).ok);
   await withEnv(
-    { CONTRACT_EMAIL_DELIVERY_ENABLED: null, RESEND_API_KEY: null, CONTRACT_EMAIL_FROM: null },
+    {
+      CONTRACT_EMAIL_DELIVERY_ENABLED: null,
+      RESEND_API_KEY: null,
+      CONTRACT_EMAIL_FROM: null,
+      CONTRACT_EMAIL_ZAPIER_WEBHOOK_URL: null,
+      CONTRACT_EMAIL_ZAPIER_HMAC_SECRET: null,
+    },
     () => {
       assert.ok(!engine.resolve("email", { activeOnly: true }).ok);
     }
@@ -409,6 +415,8 @@ test("429 retryable classification", () => {
         RESEND_API_KEY: "",
         CONTRACT_EMAIL_FROM: "",
         CONTRACT_EMAIL_INTERNAL_ALLOWLIST: "",
+        CONTRACT_EMAIL_ZAPIER_WEBHOOK_URL: "",
+        CONTRACT_EMAIL_ZAPIER_HMAC_SECRET: "",
       },
     });
     if (r.status === 0) {

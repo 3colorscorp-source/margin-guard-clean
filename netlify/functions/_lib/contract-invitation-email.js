@@ -16,7 +16,8 @@
  * - Netlify retries failed background invocations (body replayed) — plaintext body is unsafe.
  *
  * Delivery truth: queue HTTP 200 => Email queued only.
- * Sent only after Resend accepted + provider_message_id.
+ * Sent only after Zapier accepted + provider_message_id (CH-013A.2.1Z).
+ * Active provider: Zapier webhook → Gmail. Resend is inactive for beta.
  */
 
 "use strict";
@@ -43,7 +44,7 @@ const {
   maskEmail: engineMaskEmail,
 } = require("./delivery-channel-engine");
 const emailChannel = require("./channels/email");
-const resendProvider = require("./providers/resend-provider");
+const zapierProvider = require("./providers/zapier-provider");
 const { publishDomainEvent, beginCorrelation } = require("./platform-bus");
 const {
   scrubForbiddenKeys,
@@ -69,8 +70,8 @@ const {
   HANDOFF_TTL_MS,
 } = require("./email-delivery-handoff");
 
-const API_VERSION = "ch-013a21-v1";
-const PROVIDER = "resend";
+const API_VERSION = "ch-013a21z-v1";
+const PROVIDER = "zapier";
 const CHANNEL = "email";
 const ACTIVATION_REASON = "email_delivery_activation";
 const GENERATION_REASON_DB = "security_rotation";
@@ -83,10 +84,10 @@ function normalizeEmail(email) {
 }
 
 function emailCapability(recipientEmail) {
-  const health = resendProvider.health();
+  const health = zapierProvider.health();
   const email = normalizeEmail(recipientEmail);
-  const valid = email ? resendProvider.isValidEmail(email) : false;
-  const allowed = valid ? resendProvider.isRecipientAllowlisted(email) : false;
+  const valid = email ? zapierProvider.isValidEmail(email) : false;
+  const allowed = valid ? zapierProvider.isRecipientAllowlisted(email) : false;
   let unavailable_reason = "";
   if (!health.available) unavailable_reason = health.reason || "unavailable";
   else if (email && !valid) unavailable_reason = "invalid_recipient";
@@ -393,7 +394,7 @@ async function queueInvitationEmail({
   }
 
   const recipient = normalizeEmail(signer.email);
-  if (!resendProvider.isValidEmail(recipient)) {
+  if (!zapierProvider.isValidEmail(recipient)) {
     return {
       ok: false,
       status: 422,
@@ -789,6 +790,7 @@ async function getEmailDeliveryStatus({ tenantId, attemptId, envelopeId, signerI
     status: attempt.status,
     stuck: mapped.stuck,
     recoverable,
+    provider: PROVIDER,
     provider_message_id:
       attempt.provider_message_id || acceptance?.provider_message_id || null,
     error_code: attempt.error_code || null,
@@ -872,6 +874,19 @@ async function recoverEmailDispatch({ tenantId, attemptId, publicOrigin }) {
 
   const handoff = await peekHandoff(tenantId, attempt.invitation_id, attemptId);
   if (!handoff.ok || !handoff.present) {
+    // After Catch Hook ack, handoff is consumed while waiting for Zapier callback.
+    if (attempt.status === "sending" && !providerMessageId) {
+      return {
+        ok: true,
+        recovered: false,
+        awaiting_callback: true,
+        ui_status: "sending",
+        attempt_id: attemptId,
+        invitation_id: attempt.invitation_id,
+        code: "awaiting_zapier_callback",
+        error: "Awaiting Zapier/Gmail callback — do not re-dispatch",
+      };
+    }
     return {
       ok: false,
       status: 422,
@@ -1272,8 +1287,18 @@ async function dispatchInvitationEmail(dispatchInput = {}, options = {}) {
       oneShotSecret: secret,
       recipient_email: recipientEmail,
       public_origin: dispatchInput.public_origin,
-      idempotency_key: `resend:attempt:${attemptId}`,
+      idempotency_key: `zapier:attempt:${attemptId}`,
       fetchImpl: options.fetchImpl,
+      tenant_id: tenantId,
+      project_id: invitation.project_id || project?.id || null,
+      quote_id: invitation.quote_id || project?.quote_id || null,
+      package_id: invitation.package_id || envelope?.package_id || null,
+      envelope_id: invitation.envelope_id || envelope?.id || null,
+      invitation_id: invitationId,
+      generation_id: generation?.id || attempt.generation_id || null,
+      generation_number: generation?.generation_number ?? null,
+      attempt_id: attemptId,
+      correlation_id: dispatchInput.correlation_id || null,
     });
   } catch (err) {
     const scrubbed = scrubSecretsDeep({
@@ -1291,6 +1316,23 @@ async function dispatchInvitationEmail(dispatchInput = {}, options = {}) {
   }
 
   if (!delivered.ok || !delivered.accepted) {
+    // Catch Hook ack only — Gmail outcome arrives via signed callback. Do not fail
+    // the attempt and do not Netlify-retry (would duplicate webhook posts).
+    if (delivered.awaiting_callback === true || delivered.code === "awaiting_zapier_callback") {
+      // Payload (incl. ephemeral signing URL) already handed to Zapier. Consume handoff
+      // so Netlify background retries cannot rebuild/resend a second webhook body.
+      await markHandoffConsumed(tenantId, invitationId, attemptId);
+      return {
+        ok: true,
+        awaiting_callback: true,
+        code: "awaiting_zapier_callback",
+        attempt_id: attemptId,
+        invitation_id: invitationId,
+        generation_id: generation?.id || attempt.generation_id || null,
+        api_version: API_VERSION,
+      };
+    }
+
     if (delivered.retryable) {
       // Keep handoff for Netlify retry / manual recover. Same attempt idempotency key.
       return {
@@ -1452,6 +1494,268 @@ async function invokeBackgroundDispatch(dispatchIds, options = {}) {
   };
 }
 
+/**
+ * CH-013A.2.1Z — Zapier → Margin Guard signed callback after Gmail outcome.
+ * Tenant is resolved from attempt row (never trusted from payload alone).
+ */
+async function handleZapierEmailCallback({
+  rawBody,
+  timestamp,
+  signature,
+  payload,
+}) {
+  const callbackSecret = trimField(process.env.CONTRACT_EMAIL_ZAPIER_CALLBACK_SECRET);
+  const outboundSecret = trimField(process.env.CONTRACT_EMAIL_ZAPIER_HMAC_SECRET);
+  const secret = callbackSecret || outboundSecret;
+  // Dedicated callback secret signs exact rawBody. Shared outbound secret uses
+  // direction binding: HMAC over `v1.callback.${rawBody}` (not outbound bytes).
+  const signedMaterial = callbackSecret
+    ? String(rawBody || "")
+    : `v1.callback.${String(rawBody || "")}`;
+
+  const verified = zapierProvider.verifySignedRequest({
+    rawBody: signedMaterial,
+    timestamp,
+    signature,
+    secret,
+  });
+  if (!verified.ok) {
+    return {
+      ok: false,
+      status: 401,
+      error: verified.error || "HMAC verification failed",
+      code: verified.code || "signature_mismatch",
+    };
+  }
+
+  let body =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? payload
+      : null;
+  if (!body) {
+    try {
+      const parsed = JSON.parse(String(rawBody || ""));
+      body =
+        parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+    } catch (_e) {
+      body = null;
+    }
+  }
+  if (!body) {
+    return { ok: false, status: 400, error: "Invalid JSON", code: "invalid_json" };
+  }
+
+  const attemptId = trimField(body.attempt_id);
+  const invitationId = trimField(body.invitation_id);
+  const generationId = trimField(body.generation_id);
+  const status = trimField(body.status).toLowerCase();
+  const providerMessageId = trimField(body.provider_message_id);
+  const idempotencyKey = trimField(body.idempotency_key);
+
+  if (!validUuid(attemptId) || !validUuid(invitationId)) {
+    return { ok: false, status: 400, error: "Invalid ids", code: "invalid_id" };
+  }
+  if (status !== "sent" && status !== "failed") {
+    return {
+      ok: false,
+      status: 400,
+      error: "status must be sent|failed",
+      code: "invalid_status",
+    };
+  }
+  if (status === "sent" && !providerMessageId) {
+    return {
+      ok: false,
+      status: 400,
+      error: "provider_message_id required for sent",
+      code: "provider_missing_message_id",
+    };
+  }
+
+  // Load attempt without trusting payload tenant_id.
+  const rows = await supabaseRequest(
+    `${ATTEMPTS_TABLE}?attempt_id=eq.${encodeURIComponent(attemptId)}` +
+      `&select=*&limit=1`,
+    { method: "GET" }
+  );
+  const attempt = Array.isArray(rows) ? rows[0] : rows;
+  if (!attempt?.attempt_id) {
+    return { ok: false, status: 404, error: "Attempt not found", code: "not_found" };
+  }
+  const tenantId = attempt.tenant_id;
+  if (trimField(body.tenant_id) && trimField(body.tenant_id) !== trimField(tenantId)) {
+    return { ok: false, status: 403, error: "Forbidden", code: "cross_tenant_blocked" };
+  }
+  if (trimField(attempt.invitation_id) !== invitationId) {
+    return {
+      ok: false,
+      status: 409,
+      error: "invitation_id mismatch",
+      code: "relationship_mismatch",
+    };
+  }
+  if (
+    generationId &&
+    attempt.generation_id &&
+    trimField(attempt.generation_id) !== generationId
+  ) {
+    return {
+      ok: false,
+      status: 409,
+      error: "generation_id mismatch",
+      code: "relationship_mismatch",
+    };
+  }
+  if (trimField(attempt.provider) !== PROVIDER) {
+    return { ok: false, status: 409, error: "provider mismatch", code: "provider_mismatch" };
+  }
+
+  const invitation = await loadInvitationById(tenantId, invitationId);
+  if (!invitation?.id) {
+    return { ok: false, status: 404, error: "Invitation not found", code: "not_found" };
+  }
+
+  // Idempotent success replay
+  if (attempt.status === "sent" && attempt.provider_message_id) {
+    if (
+      status === "sent" &&
+      providerMessageId &&
+      trimField(attempt.provider_message_id) !== providerMessageId
+    ) {
+      return {
+        ok: false,
+        status: 409,
+        error: "provider_message_id immutable",
+        code: "provider_message_id_immutable",
+      };
+    }
+    return {
+      ok: true,
+      idempotent: true,
+      status: 200,
+      attempt_id: attemptId,
+      ui_status: "sent",
+      provider_message_id: attempt.provider_message_id,
+    };
+  }
+
+  if (["failed", "cancelled", "bounced"].includes(attempt.status)) {
+    if (status === "failed") {
+      return {
+        ok: true,
+        idempotent: true,
+        status: 200,
+        attempt_id: attemptId,
+        ui_status: "failed",
+      };
+    }
+    return {
+      ok: false,
+      status: 422,
+      error: "Terminal attempt cannot become sent",
+      code: "terminal_attempt_replay_blocked",
+    };
+  }
+
+  const signer = await loadSigner(tenantId, invitation.signer_id);
+  const envelope = await loadEnvelope(tenantId, invitation.envelope_id);
+  let generationRow = null;
+  if (attempt.generation_id) {
+    try {
+      const active = await getActiveGeneration(tenantId, invitationId);
+      generationRow =
+        active && active.id === attempt.generation_id
+          ? active
+          : {
+              id: attempt.generation_id,
+              generation_number: invitation.current_generation,
+            };
+    } catch (_e) {
+      generationRow = {
+        id: attempt.generation_id,
+        generation_number: invitation.current_generation,
+      };
+    }
+  }
+
+  if (status === "failed") {
+    await transitionDeliveryAttempt(tenantId, attemptId, "failed", {
+      error_code: trimField(body.error_code) || "zapier_gmail_failed",
+      error_message: trimField(body.error_message) || "Zapier reported Gmail failure",
+    });
+    await emitTransportEvent({
+      type: "delivery.channel.failed",
+      tenantId,
+      invitation,
+      generation: generationRow,
+      attempt: { attempt_id: attemptId },
+      signer,
+      envelope,
+      correlationId: beginCorrelation(),
+      idempotencyKey:
+        idempotencyKey || `delivery:failed:${tenantId}:${attemptId}`,
+      notify: true,
+      notifyPriority: "critical",
+      activityTitle: "Signing invitation email failed",
+      activitySummary: `Signing invitation email failed for ${maskEmail(signer?.email)}`,
+    });
+    try {
+      await markInvitationFailed(tenantId, invitationId, {
+        error_code: trimField(body.error_code) || "zapier_gmail_failed",
+        error_message: trimField(body.error_message) || "Zapier reported Gmail failure",
+        idempotency_key: `invitation:failed:${tenantId}:${invitationId}:${attemptId}`,
+      });
+    } catch (_e) {
+      /* ignore */
+    }
+    return {
+      ok: true,
+      status: 200,
+      attempt_id: attemptId,
+      ui_status: "failed",
+      retryable: body.retryable === true,
+    };
+  }
+
+  // status === sent
+  await persistProviderAcceptance(
+    tenantId,
+    invitationId,
+    attemptId,
+    providerMessageId,
+    invitation.metadata
+  );
+  const finalized = await finalizeAcceptedAttempt({
+    tenantId,
+    invitation,
+    attempt: { ...attempt, status: "sending", attempt_id: attemptId },
+    providerMessageId,
+    correlationId: beginCorrelation(),
+    signer,
+    envelope,
+    generation: generationRow,
+  });
+  if (!finalized.ok) {
+    return {
+      ok: true,
+      status: 202,
+      attempt_id: attemptId,
+      ui_status: "accepted_db_pending",
+      provider_message_id: providerMessageId,
+      code: "accepted_db_pending",
+      error: finalized.error || "DB finalization pending",
+    };
+  }
+  return {
+    ok: true,
+    status: 200,
+    attempt_id: attemptId,
+    ui_status: "sent",
+    provider_message_id: providerMessageId,
+    idempotent: Boolean(finalized.idempotent),
+  };
+}
+
 module.exports = {
   API_VERSION,
   PROVIDER,
@@ -1465,6 +1769,7 @@ module.exports = {
   invokeBackgroundDispatch,
   getEmailDeliveryStatus,
   recoverEmailDispatch,
+  handleZapierEmailCallback,
   findActiveEmailAttempt,
   normalizeEmail,
   scrubSecretsDeep,
