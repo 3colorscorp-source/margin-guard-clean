@@ -5067,7 +5067,6 @@
         const daysOv = readOperationalDaysOverride(state);
         const hoursOv = readOperationalHoursOverride(state);
         const plan = api.normalizeOperationalPlan(state.operational_plan || [], daysOv, hpd);
-        if (!api.planHasDays(plan)) return {};
         const metrics = getOperationalMetricsForState(state, s);
         const normDate = function (d) {
           const t = String(d == null ? '' : d).trim().slice(0, 10);
@@ -5075,15 +5074,19 @@
         };
         const start = normDate(state.startDate);
         const finish = normDate(state.targetFinishDate || state.dueDate);
+        // CH-012F — schedule dates persist even when operational plan has no days.
+        const scheduleOut = {};
+        if (start) scheduleOut.start_date = start;
+        if (finish) {
+          scheduleOut.due_date = finish;
+          scheduleOut.target_finish_date = finish;
+        }
+        if (!api.planHasDays(plan)) return scheduleOut;
         const out = {
           operational_plan: plan,
-          hours_per_day: hpd
+          hours_per_day: hpd,
+          ...scheduleOut
         };
-        if (start) out.start_date = start;
-        if (finish) {
-          out.due_date = finish;
-          out.target_finish_date = finish;
-        }
         if (daysOv != null) out.operational_estimated_days_override = daysOv;
         if (hoursOv != null) out.operational_estimated_hours_override = hoursOv;
         if (metrics) {

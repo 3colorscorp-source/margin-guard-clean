@@ -335,6 +335,28 @@ function buildSignedContractLines({
   }
   lines.push(blank(6));
 
+  lines.push(heading("Estimated Schedule"));
+  const estStart =
+    trimField(snap?.contract_schedule?.estimated_start_date) ||
+    trimField(snap?.quote?.start_date) ||
+    "";
+  const estDue =
+    trimField(snap?.contract_schedule?.estimated_completion_date) ||
+    trimField(snap?.quote?.due_date) ||
+    "";
+  function fmtContractDate(ymd) {
+    const s = String(ymd || "").trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "—";
+    // Display-only; keep calendar day (noon local).
+    return s;
+  }
+  lines.push(body(`Estimated Start Date: ${fmtContractDate(estStart)}`));
+  lines.push(body(`Estimated Completion Date: ${fmtContractDate(estDue)}`));
+  if (trimField(snap?.contract_schedule?.source)) {
+    lines.push(body(`Schedule source: ${trimField(snap.contract_schedule.source)}`));
+  }
+  lines.push(blank(6));
+
   lines.push(heading("Payment Schedule"));
   const items = Array.isArray(snap?.payment_schedule?.items)
     ? snap.payment_schedule.items

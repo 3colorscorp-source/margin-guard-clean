@@ -8,6 +8,7 @@ const {
   resolveContractScope,
   isMissingScopeOfWorkColumn,
 } = require("./contract-scope");
+const { resolveCanonicalContractSchedule } = require("./contract-schedule");
 
 const SOURCE_VERSION = 1;
 
@@ -477,12 +478,17 @@ async function assembleContractSource({ tenantId, projectId, quoteId, supabaseRe
       }
     : null;
 
-  out.schedule = quoteRow
-    ? {
-        start_date: quoteRow.start_date || null,
-        due_date: quoteRow.due_date || null,
-      }
-    : null;
+  out.schedule = (() => {
+    const resolved = resolveCanonicalContractSchedule({
+      quote: quoteRow,
+      project: projectRow,
+    });
+    return {
+      start_date: resolved.start_date,
+      due_date: resolved.due_date,
+      source: resolved.source,
+    };
+  })();
 
   out.property = null;
 

@@ -213,6 +213,37 @@
     );
   }
 
+  function renderContractSchedule(snap) {
+    var cs = (snap && snap.contract_schedule) || {};
+    var start =
+      cs.estimated_start_date ||
+      (snap && snap.quote && snap.quote.start_date) ||
+      "";
+    var due =
+      cs.estimated_completion_date ||
+      (snap && snap.quote && snap.quote.due_date) ||
+      "";
+    function fmt(ymd) {
+      var s = String(ymd || "").trim().slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "—";
+      try {
+        var d = new Date(s + "T12:00:00");
+        return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+      } catch (_e) {
+        return s;
+      }
+    }
+    return (
+      '<div class="cs-grid">' +
+      '<div class="cs-kv"><span class="k">Estimated Start Date</span><span class="v">' +
+      text(fmt(start)) +
+      "</span></div>" +
+      '<div class="cs-kv"><span class="k">Estimated Completion Date</span><span class="v">' +
+      text(fmt(due)) +
+      "</span></div></div>"
+    );
+  }
+
   function errorCopy(code) {
     var map = {
       invalid_token: {
@@ -575,6 +606,10 @@
       '<div class="cs-kv"><span class="k">Deposit required</span><span class="v">' +
       escapeHtml(money(price.deposit_required, price.currency)) +
       "</span></div></div></div>" +
+      '<div id="sec-contract-schedule" style="margin-top:18px">' +
+      '<p class="cs-section-label">Estimated Schedule</p>' +
+      renderContractSchedule(snap) +
+      "</div>" +
       '<div id="sec-schedule" style="margin-top:18px">' +
       '<p class="cs-section-label">Payment Schedule</p>' +
       renderSchedule(snap.payment_schedule) +

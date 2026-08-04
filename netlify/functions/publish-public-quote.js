@@ -146,23 +146,30 @@ function parseOperationalPublishFields(body, tenantSettings) {
     hpd
   );
 
-  if (!planHasDays(opNormalized)) {
-    return { include: false, fields: {} };
-  }
-
-  const metrics = computeOperationalPlanMetrics(opNormalized, daysOv, hoursOv, hpd);
+  // CH-012F — schedule dates persist independently of operational plan days.
   const startDate = normIsoDate(body.start_date ?? body.startDate);
   const dueDate = normIsoDate(
     body.due_date ?? body.target_finish_date ?? body.targetFinishDate ?? body.dueDate
   );
+  const scheduleFields = {};
+  if (startDate) scheduleFields.start_date = startDate;
+  if (dueDate) scheduleFields.due_date = dueDate;
+
+  if (!planHasDays(opNormalized)) {
+    return {
+      include: Object.keys(scheduleFields).length > 0,
+      fields: scheduleFields,
+    };
+  }
+
+  const metrics = computeOperationalPlanMetrics(opNormalized, daysOv, hoursOv, hpd);
 
   const fields = {
     operational_plan: opNormalized,
     estimated_days: metrics.estimated_days,
     estimated_hours: metrics.estimated_hours,
+    ...scheduleFields,
   };
-  if (startDate) fields.start_date = startDate;
-  if (dueDate) fields.due_date = dueDate;
   if (daysOv != null) fields.operational_estimated_days_override = daysOv;
   if (hoursOv != null) fields.operational_estimated_hours_override = hoursOv;
 

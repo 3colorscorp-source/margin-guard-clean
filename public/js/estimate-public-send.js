@@ -32,7 +32,6 @@
   function buildOperationalPublishFields(state, settings) {
     const op = window.MgSalesOperationalPlan;
     const planRaw = Array.isArray(state?.operational_plan) ? state.operational_plan : [];
-    if (!planRaw.length) return {};
     const s = settings && typeof settings === "object" ? settings : {};
     const hpd = op && typeof op.getHoursPerDay === "function" ? op.getHoursPerDay(s) : Number(s.hoursPerDay || 8);
     const daysOv = readOperationalDaysOverride(state);
@@ -41,22 +40,27 @@
       op && typeof op.normalizeOperationalPlan === "function"
         ? op.normalizeOperationalPlan(planRaw, daysOv, hpd)
         : planRaw;
-    if (op && typeof op.planHasDays === "function" && !op.planHasDays(plan)) return {};
     const normDate = function (d) {
       const t = String(d == null ? "" : d).trim().slice(0, 10);
       return t && /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : "";
     };
     const start = normDate(state.startDate);
     const finish = normDate(state.targetFinishDate || state.dueDate);
+    // CH-012F — schedule dates always eligible to persist (not gated on plan days).
+    const scheduleOut = {};
+    if (start) scheduleOut.start_date = start;
+    if (finish) {
+      scheduleOut.due_date = finish;
+      scheduleOut.target_finish_date = finish;
+    }
+    if (!planRaw.length || (op && typeof op.planHasDays === "function" && !op.planHasDays(plan))) {
+      return scheduleOut;
+    }
     const out = {
       operational_plan: plan,
-      hours_per_day: hpd
+      hours_per_day: hpd,
+      ...scheduleOut
     };
-    if (start) out.start_date = start;
-    if (finish) {
-      out.due_date = finish;
-      out.target_finish_date = finish;
-    }
     if (daysOv != null) out.operational_estimated_days_override = daysOv;
     if (hoursOv != null) out.operational_estimated_hours_override = hoursOv;
     if (op && typeof op.computeOperationalPlanMetrics === "function") {

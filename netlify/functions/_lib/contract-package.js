@@ -19,6 +19,11 @@ const {
   resolveContractScope,
   isMissingScopeOfWorkColumn,
 } = require("./contract-scope");
+const {
+  resolveCanonicalContractSchedule,
+  validateContractSchedule,
+  normIsoDate,
+} = require("./contract-schedule");
 
 const API_VERSION = "ch-011a-v1";
 const SNAPSHOT_SCHEMA = "ch-011a-v1";
@@ -400,6 +405,7 @@ function buildFreezeGate({
   legalEffective,
   legalProfile,
   legalProfileReadiness,
+  contractSchedule,
 }) {
   const missing = [];
   const status = trimField(quote?.status).toLowerCase();
@@ -418,6 +424,14 @@ function buildFreezeGate({
   if (!resolveContractScope(quote).ok) {
     missing.push("scope_of_work");
   }
+  // CH-012F — estimated start/completion required to freeze.
+  const scheduleCheck = validateContractSchedule(
+    contractSchedule?.start_date,
+    contractSchedule?.due_date
+  );
+  if (!scheduleCheck.complete) {
+    missing.push("contract_schedule");
+  }
 
   return {
     ok: missing.length === 0,
@@ -425,6 +439,7 @@ function buildFreezeGate({
     setup,
     paymentReadiness,
     legalEffective,
+    scheduleCheck,
   };
 }
 
@@ -441,11 +456,17 @@ function buildSnapshot({
   legalProfile,
   brandingRow,
   frozenAt,
+  contractSchedule,
 }) {
   const contractTotal = moneyNumber(quote.total);
   const scopeResolved = resolveContractScope(quote);
   const scopeText = scopeResolved.ok ? scopeResolved.text : "";
   const termsText = trimField(quote.terms);
+  const resolvedSchedule =
+    contractSchedule ||
+    resolveCanonicalContractSchedule({ quote, project });
+  const startDate = normIsoDate(resolvedSchedule.start_date);
+  const dueDate = normIsoDate(resolvedSchedule.due_date);
 
   // Business Settings SoT: freeze legal profile (+ branding columns as currently stored).
   // Do not invent a second business identity schema.
@@ -516,8 +537,14 @@ function buildSnapshot({
       issue_date: quote.issue_date || null,
       accepted_at: quote.accepted_at || null,
       expiration_date: quote.expiration_date || null,
-      start_date: quote.start_date || null,
-      due_date: quote.due_date || null,
+      // CH-012F — frozen estimated schedule (confirmed at freeze; not reread later).
+      start_date: startDate,
+      due_date: dueDate,
+    },
+    contract_schedule: {
+      estimated_start_date: startDate,
+      estimated_completion_date: dueDate,
+      source: resolvedSchedule.source || "approved_quote",
     },
     scope: {
       text: scopeText,
@@ -654,6 +681,8 @@ async function freezeContractPackage({
   createdBy,
   expectedSetupUpdatedAt,
   expectedScheduleUpdatedAt,
+  confirmedStartDate,
+  confirmedDueDate,
 }) {
   const verified = await verifyProjectAndQuote(tenantId, projectId, quoteId);
   if (verified.unavailable) {
@@ -706,6 +735,38 @@ async function freezeContractPackage({
     };
   }
 
+  const canonical = resolveCanonicalContractSchedule({ quote, project });
+  const hasConfirmed =
+    normIsoDate(confirmedStartDate) || normIsoDate(confirmedDueDate);
+  let contractSchedule = {
+    start_date: canonical.start_date,
+    due_date: canonical.due_date,
+    source: canonical.source,
+  };
+  if (hasConfirmed) {
+    const confirmed = validateContractSchedule(
+      confirmedStartDate ?? canonical.start_date,
+      confirmedDueDate ?? canonical.due_date
+    );
+    if (!confirmed.ok) {
+      return {
+        error: confirmed.errors[0]?.message || "Invalid contract schedule",
+        code: confirmed.errors[0]?.code || "invalid_contract_schedule",
+        status: 400,
+        missing: ["contract_schedule"],
+      };
+    }
+    contractSchedule = {
+      start_date: confirmed.start_date,
+      due_date: confirmed.due_date,
+      source:
+        confirmed.start_date === canonical.start_date &&
+        confirmed.due_date === canonical.due_date
+          ? canonical.source
+          : "contract_builder_confirmed",
+    };
+  }
+
   const gate = buildFreezeGate({
     project,
     quote,
@@ -715,6 +776,7 @@ async function freezeContractPackage({
     legalEffective,
     legalProfile,
     legalProfileReadiness,
+    contractSchedule,
   });
   if (!gate.ok) {
     return {
@@ -739,6 +801,7 @@ async function freezeContractPackage({
     legalProfile,
     brandingRow: sources.brandingRow,
     frozenAt,
+    contractSchedule,
   });
   const contentHash = contentHashForSnapshot(snapshot);
   const sourceReadiness = snapshot.readiness;

@@ -153,6 +153,7 @@ test("2. different object key order → same hash", () => {
     schema: snap.schema,
     frozen_at: snap.frozen_at,
     payment_schedule: snap.payment_schedule,
+    contract_schedule: snap.contract_schedule,
     business_settings: snap.business_settings,
     quote: snap.quote,
     property: snap.property,

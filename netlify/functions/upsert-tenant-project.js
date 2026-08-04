@@ -25,6 +25,27 @@ const {
   planHasDays,
 } = require("./_lib/operational-plan");
 const { persistOperationalSnapshot } = require("./_lib/persist-operational-snapshot");
+const { buildQuoteScheduleFillPatch } = require("./_lib/contract-schedule");
+
+async function fillQuoteScheduleIfNull(quoteRow, startDate, dueDate) {
+  const built = buildQuoteScheduleFillPatch(quoteRow, startDate, dueDate);
+  if (!built.ok || !built.patch || !quoteRow?.id || !quoteRow?.tenant_id) {
+    return { filled: false, reason: built.reason || "skip" };
+  }
+  try {
+    await supabaseRequest(
+      `quotes?id=eq.${encodeURIComponent(quoteRow.id)}&tenant_id=eq.${encodeURIComponent(quoteRow.tenant_id)}`,
+      {
+        method: "PATCH",
+        body: built.patch,
+        headers: { Prefer: "return=minimal" },
+      }
+    );
+    return { filled: true };
+  } catch (_err) {
+    return { filled: false, reason: "patch_failed" };
+  }
+}
 
 const ALLOWED_STATUS = new Set([
   "signed",
@@ -391,6 +412,11 @@ exports.handler = async (event) => {
         hoursPerDay,
         dueDate: row.due_date,
       });
+      const scheduleFill = await fillQuoteScheduleIfNull(
+        quoteOk,
+        startDate,
+        row.due_date
+      );
       return json(200, {
         ok: true,
         id: existing.id,
@@ -401,6 +427,7 @@ exports.handler = async (event) => {
         quote_status: quoteAccept.status || null,
         quote_already_accepted: Boolean(quoteAccept.already_accepted),
         quote_accept_ok: quoteAccept.ok !== false,
+        quote_schedule_filled: Boolean(scheduleFill.filled),
       });
     }
 
@@ -427,6 +454,11 @@ exports.handler = async (event) => {
       hoursPerDay,
       dueDate: row.due_date,
     });
+    const scheduleFill = await fillQuoteScheduleIfNull(
+      quoteOk,
+      startDate,
+      row.due_date
+    );
     return json(200, {
       ok: true,
       id: ins?.id,
@@ -437,6 +469,7 @@ exports.handler = async (event) => {
       quote_status: quoteAccept.status || null,
       quote_already_accepted: Boolean(quoteAccept.already_accepted),
       quote_accept_ok: quoteAccept.ok !== false,
+      quote_schedule_filled: Boolean(scheduleFill.filled),
     });
   } catch (err) {
     if (err.isGuardError) {

@@ -165,7 +165,7 @@
       continueLabel: "Continue",
       validate: () =>
         readinessValidation(
-          overallContractReadiness(sourceSnapshot) === "configured"
+          overallContractReadiness(sourceSnapshot, draftEdits) === "configured"
             ? "available"
             : "needs_confirmation",
           "Draft notice reviewed.",
@@ -310,12 +310,43 @@
       supportsValidation: true,
       continueLabel: "Continue",
       validate: () => {
-        const st = articleReadinessStatus("art-schedule", sourceSnapshot, draftEdits);
+        const check = validateScheduleDatesClient(
+          draftEdits?.startDate,
+          draftEdits?.dueDate
+        );
+        if (check.complete) {
+          const srcLabel = scheduleSourceDisplayLabel(
+            sourceSnapshot?.scheduleSource
+          );
+          const fromQuote =
+            String(sourceSnapshot?.scheduleSource || "") === "approved_quote";
+          const fromLegacy =
+            String(sourceSnapshot?.scheduleSource || "") ===
+            "project_legacy_due_date";
+          return readinessValidation(
+            "available",
+            fromQuote
+              ? "READY — Schedule dates are available from the approved quote."
+              : fromLegacy
+                ? "READY — Completion date from project legacy fallback; confirm start date if needed."
+                : `READY — Schedule dates set (${srcLabel}).`,
+            "",
+            ""
+          );
+        }
+        if (check.errors.some((m) => /cannot be before/i.test(m))) {
+          return readinessValidation(
+            "missing",
+            "",
+            "",
+            check.errors.find((m) => /cannot be before/i.test(m))
+          );
+        }
         return readinessValidation(
-          st,
-          "Schedule dates are set.",
-          "Schedule dates are draft-only.",
-          "Schedule dates are not set."
+          "missing",
+          "",
+          "",
+          check.errors[0] || "Schedule dates are not set."
         );
       },
     }),
@@ -1002,24 +1033,97 @@
   }
 
   function formatDate(raw) {
-    const s = String(raw || "").trim();
-    if (!s) return "";
-    const d = new Date(s);
-    if (Number.isNaN(d.getTime())) return s.slice(0, 10);
+    const ymd = toDateInput(raw) || String(raw || "").trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return String(raw || "").trim() || "";
+    // Noon local parse avoids UTC midnight shifting the calendar day in US timezones.
+    const d = new Date(`${ymd}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return ymd;
     try {
       return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(d);
     } catch (_err) {
-      return s.slice(0, 10);
+      return ymd;
     }
   }
 
   function toDateInput(raw) {
     const s = String(raw || "").trim();
     if (!s) return "";
+    // Date-only contractual values — never Date#toISOString (UTC day shift).
     if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-    const d = new Date(s);
-    if (Number.isNaN(d.getTime())) return "";
-    return d.toISOString().slice(0, 10);
+    return "";
+  }
+
+  /** CH-012F — mirror server canonical schedule precedence (quote → project due only). */
+  function resolveCanonicalScheduleClient(quote, project) {
+    const qStart = toDateInput(quote?.start_date ?? quote?.startDate);
+    const qDue = toDateInput(
+      quote?.due_date ??
+        quote?.target_finish_date ??
+        quote?.targetFinishDate ??
+        quote?.dueDate
+    );
+    if (qStart && qDue) {
+      return {
+        start_date: qStart,
+        due_date: qDue,
+        source: "approved_quote",
+      };
+    }
+    if (qStart || qDue) {
+      return {
+        start_date: qStart || null,
+        due_date: qDue || null,
+        source: "approved_quote_partial",
+      };
+    }
+    const pDue = toDateInput(project?.dueDate ?? project?.due_date);
+    if (pDue) {
+      return {
+        start_date: null,
+        due_date: pDue,
+        source: "project_legacy_due_date",
+      };
+    }
+    return { start_date: null, due_date: null, source: "missing" };
+  }
+
+  function scheduleSourceDisplayLabel(source) {
+    const s = String(source || "");
+    if (s === "approved_quote") return "Approved Quote";
+    if (s === "approved_quote_partial") return "Approved Quote (incomplete)";
+    if (s === "project_legacy_due_date") return "Project legacy fallback";
+    if (s === "contract_builder_confirmed") return "Contract Builder confirmation";
+    return "Missing";
+  }
+
+  function validateScheduleDatesClient(startRaw, dueRaw) {
+    const start = toDateInput(startRaw);
+    const due = toDateInput(dueRaw);
+    const errors = [];
+    if (!start) errors.push("Estimated start date is required.");
+    if (!due) errors.push("Estimated completion date is required.");
+    if (start && due && due < start) {
+      errors.push(
+        "Estimated completion date cannot be before the estimated start date."
+      );
+    }
+    return {
+      ok: errors.length === 0,
+      complete: Boolean(start && due && due >= start),
+      start,
+      due,
+      errors,
+    };
+  }
+
+  function contractScheduleComplete(source, edits) {
+    const e = edits || draftEdits || {};
+    return validateScheduleDatesClient(
+      e.startDate != null && e.startDate !== ""
+        ? e.startDate
+        : source?.startDate,
+      e.dueDate != null && e.dueDate !== "" ? e.dueDate : source?.dueDate
+    ).complete;
   }
 
   function isPlausibleId(raw) {
@@ -1145,6 +1249,7 @@
         : { ok: false, text: "", source: "missing", reason: "resolver_missing" };
     const scope = scopeResolved.ok ? scopeResolved.text : "";
     const deposit = finiteNumber(quote?.deposit_required, NaN);
+    const scheduleResolved = resolveCanonicalScheduleClient(quote, project);
     return {
       projectId: String(project.id || "").trim(),
       quoteId: String(quote?.id || project.quoteId || project.quote_id || "").trim(),
@@ -1165,8 +1270,9 @@
       notesEmail: String(quote?.notes || ""),
       terms,
       exclusions: "",
-      startDate: toDateInput(quote?.start_date),
-      dueDate: toDateInput(quote?.due_date),
+      startDate: toDateInput(scheduleResolved.start_date),
+      dueDate: toDateInput(scheduleResolved.due_date),
+      scheduleSource: scheduleResolved.source || "missing",
       paymentNotes: "",
       warrantyNotes: "",
       additionalTerms: "",
@@ -2709,7 +2815,7 @@
     return actual || "Not Requested";
   }
 
-  function overallContractReadiness(source) {
+  function overallContractReadiness(source, edits) {
     const setup = source?.contractSetup;
     const schedule = source?.paymentSchedule;
     const legalNotices = source?.legalNotices;
@@ -2720,7 +2826,11 @@
     const legalEffective = resolveLegalNoticesEffective(legalNotices);
     const legalOk = legalEffective.contribution === "configured";
     const scopeOk = extractApprovedScopeText(source?.scope).ok;
-    if (propOk && warOk && payOk && sigOk && legalOk && scopeOk) return "configured";
+    // CH-012F — estimated schedule is required for freeze readiness.
+    const schedOk = contractScheduleComplete(source, edits || draftEdits);
+    if (propOk && warOk && payOk && sigOk && legalOk && scopeOk && schedOk) {
+      return "configured";
+    }
 
     const propRaw = String(setup?.readiness?.project_address || "missing").toLowerCase();
     const warRaw = String(setup?.readiness?.warranty || "missing").toLowerCase();
@@ -2736,7 +2846,8 @@
       payOk ||
       sigOk ||
       legalOk ||
-      scopeOk;
+      scopeOk ||
+      schedOk;
     return anyPartial ? "draft" : "missing";
   }
 
@@ -3024,10 +3135,14 @@
         return source.contractTotal != null && source.contractTotal > 0 ? "available" : "missing";
       case "art-payment":
         return readinessMapStatus("payment", source);
-      case "art-schedule":
-        return String(e.startDate || "").trim() || String(e.dueDate || "").trim()
-          ? "needs_confirmation"
-          : "missing";
+      case "art-schedule": {
+        const check = validateScheduleDatesClient(e.startDate, e.dueDate);
+        if (check.complete) return "available";
+        if (String(e.startDate || "").trim() || String(e.dueDate || "").trim()) {
+          return "needs_confirmation";
+        }
+        return "missing";
+      }
       case "art-changes":
         return "available";
       case "art-warranty":
@@ -3266,7 +3381,7 @@
     const paymentStatus = readinessMapStatus("payment", source);
     const signatureStatus = readinessMapStatus("signature", source);
     const legalNoticesStatus = readinessMapStatus("legal_notices", source);
-    const overall = overallContractReadiness(source);
+    const overall = overallContractReadiness(source, edits);
 
     return [
       { label: "Approved quote", status: source.quoteId ? "available" : "missing" },
@@ -3290,6 +3405,18 @@
         status: propertyStatus === "available" ? "available" : address ? "needs_confirmation" : "missing",
       },
       { label: "Payment schedule", status: paymentStatus },
+      {
+        label: "Estimated schedule",
+        status: contractScheduleComplete(source, edits)
+          ? "available"
+          : String(edits?.startDate || source?.startDate || "").trim() ||
+              String(edits?.dueDate || source?.dueDate || "").trim()
+            ? "needs_confirmation"
+            : "missing",
+        note: scheduleSourceDisplayLabel(
+          edits?.scheduleSourceOverride || source?.scheduleSource
+        ),
+      },
       { label: "State-required legal notices", status: legalNoticesStatus },
       { label: "Warranty terms", status: warrantyStatus },
       { label: "Signature method", status: signatureStatus },
@@ -3344,6 +3471,7 @@
     const commercialStatuses = [
       byLabel("Contract total"),
       byLabel("Payment schedule"),
+      byLabel("Estimated schedule"),
     ];
     const legalStatuses = [
       byLabel("State-required legal notices"),
@@ -3425,6 +3553,13 @@
         cta: "Configure Signature Method",
       };
     }
+    if (!contractScheduleComplete(source, edits)) {
+      return {
+        label: "Set Estimated Start and Completion dates",
+        article: "art-schedule",
+        cta: "Open Schedule",
+      };
+    }
     return {
       label: "Freeze Contract",
       article: null,
@@ -3440,7 +3575,7 @@
     if (!sourceSnapshot?.projectId || !sourceSnapshot?.quoteId) {
       throw new Error("Project and quote are required to freeze.");
     }
-    if (overallContractReadiness(sourceSnapshot) !== "configured") {
+    if (overallContractReadiness(sourceSnapshot, draftEdits) !== "configured") {
       throw new Error("Contract readiness must be 100% before freezing.");
     }
     if (!extractApprovedScopeText(sourceSnapshot.scope).ok) {
@@ -3456,6 +3591,21 @@
     const scheduleAt = sourceSnapshot.paymentSchedule?.schedule?.updated_at;
     if (setupAt) body.expected_setup_updated_at = setupAt;
     if (scheduleAt) body.expected_schedule_updated_at = scheduleAt;
+    // CH-012F — freeze confirmed Article 8 dates into immutable snapshot.
+    const scheduleCheck = validateScheduleDatesClient(
+      draftEdits?.startDate,
+      draftEdits?.dueDate
+    );
+    if (!scheduleCheck.complete) {
+      throw new Error(
+        scheduleCheck.errors[0] ||
+          "Estimated start and completion dates are required before freezing."
+      );
+    }
+    body.confirmed_start_date = scheduleCheck.start;
+    body.confirmed_due_date = scheduleCheck.due;
+    // Live fixture / repair policy: quote fill-once is Sales/Create Schedule only.
+    // Article 8 confirmed dates go to freeze snapshot only — never rewrite accepted quote here.
 
     const res = await postJson("/.netlify/functions/contract-package-freeze", body);
     if (!res.ok || res.data?.ok !== true) {
@@ -3509,7 +3659,7 @@
   function renderReadiness(source, edits) {
     const items = readinessItems(source, edits);
     const groups = readinessGroups(source, edits);
-    const overall = overallContractReadiness(source);
+    const overall = overallContractReadiness(source, edits);
     const list = $("cbReadiness");
     if (list) {
       list.innerHTML = groups
@@ -4068,6 +4218,10 @@
     setText(
       "cbDueDisplay",
       edits.dueDate ? formatDate(edits.dueDate) : "To be confirmed"
+    );
+    setText(
+      "cbScheduleSourceDisplay",
+      scheduleSourceDisplayLabel(source.scheduleSource)
     );
 
     renderReadiness(source, edits);

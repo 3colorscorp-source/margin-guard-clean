@@ -30,6 +30,8 @@ const ALLOWED_BODY_KEYS = new Set([
   "quote_id",
   "expected_setup_updated_at",
   "expected_schedule_updated_at",
+  "confirmed_start_date",
+  "confirmed_due_date",
 ]);
 
 function json(statusCode, body) {
@@ -138,6 +140,12 @@ exports.handler = async (event) => {
         : null,
       expectedScheduleUpdatedAt: body.expected_schedule_updated_at
         ? trimField(body.expected_schedule_updated_at)
+        : null,
+      confirmedStartDate: body.confirmed_start_date
+        ? trimField(body.confirmed_start_date)
+        : null,
+      confirmedDueDate: body.confirmed_due_date
+        ? trimField(body.confirmed_due_date)
         : null,
     });
 

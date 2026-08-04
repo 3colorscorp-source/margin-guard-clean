@@ -10757,6 +10757,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     startDateInput.dataset.capacityBound = "true";
     startDateInput.addEventListener("change", () => {
       refreshSalesCapacityCalendar(startDateInput.value);
+      // CH-012F — one-time fill of quotes.start_date/due_date when accepted quote is null.
+      void syncApprovedQuoteScheduleFillOnce(state);
     });
     startDateInput.addEventListener("input", () => {
       const cached = window.__mgSalesCapacityCalendar;
@@ -10766,6 +10768,27 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         cap.applyCapacityGuidance(cached);
       }
     });
+  }
+
+  async function syncApprovedQuoteScheduleFillOnce(st) {
+    const qid = String(st?.quoteId || "").trim();
+    const start = normalizeDateInput(st?.startDate || "");
+    const due = normalizeDateInput(st?.targetFinishDate || st?.dueDate || "");
+    if (!qid || !/^[0-9a-f-]{36}$/i.test(qid) || !start || !due || due < start) return;
+    try {
+      await fetch("/.netlify/functions/update-tenant-quote-edit", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quote_id: qid,
+          start_date: start,
+          due_date: due,
+        }),
+      });
+    } catch (_err) {
+      /* fill-once best effort; locked/non-null quotes are rejected server-side */
+    }
   }
 
   if (stageRange) {

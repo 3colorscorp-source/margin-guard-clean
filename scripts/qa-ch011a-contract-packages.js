@@ -98,6 +98,7 @@ test("5. incomplete readiness blocked", () => {
   assert.ok(gate.missing.includes("payment_schedule"));
   assert.ok(gate.missing.includes("legal_notices"));
   assert.ok(gate.missing.includes("business_settings"));
+  assert.ok(gate.missing.includes("contract_schedule"));
 });
 
 test("6-8. valid freeze snapshot + version semantics helpers", () => {
@@ -119,6 +120,9 @@ test("6-8. valid freeze snapshot + version semantics helpers", () => {
       title: "T",
       notes: "Scope text",
       terms: "Terms text",
+      start_date: "2026-08-10",
+      due_date: "2026-08-14",
+      scope_of_work: "Install porcelain tile.",
       updated_at: "2026-01-01T00:00:00.000Z",
     },
     setup: {
@@ -194,6 +198,13 @@ test("6-8. valid freeze snapshot + version semantics helpers", () => {
   assert.ok(snapshotA.payment_schedule.items.length === 1);
   assert.ok(snapshotA.legal_notices.notices.contract_notice);
   assert.strictEqual(snapshotA.signature_method_preference, "email_link");
+  assert.strictEqual(snapshotA.quote.start_date, "2026-08-10");
+  assert.strictEqual(snapshotA.quote.due_date, "2026-08-14");
+  assert.strictEqual(snapshotA.contract_schedule.estimated_start_date, "2026-08-10");
+  assert.strictEqual(
+    snapshotA.contract_schedule.estimated_completion_date,
+    "2026-08-14"
+  );
   assert.ok(!("invoice" in snapshotA));
   assert.ok(!JSON.stringify(snapshotA).includes("payment_intent"));
 });

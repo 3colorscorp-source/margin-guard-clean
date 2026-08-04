@@ -22,6 +22,10 @@ const {
   normalizeScopeOfWorkForWrite,
   isAuthorizedLockedScopeOnlyPatch,
 } = require("./_lib/contract-scope");
+const {
+  isAuthorizedLockedScheduleFillPatch,
+  validateContractSchedule,
+} = require("./_lib/contract-schedule");
 
 const OWNER_ADMIN_ROLES = new Set(["owner", "admin"]);
 
@@ -175,6 +179,10 @@ function buildEditablePatch(body, quoteTotal) {
       if (normalized === undefined) {
         return { error: "invalid_date", field: key };
       }
+      // CH-012F — blank/null schedule fields omit from patch (never erase existing dates).
+      if (normalized === null) {
+        continue;
+      }
       patch[key] = normalized;
       updatedFields.push(key);
       continue;
@@ -300,10 +308,30 @@ exports.handler = async (event) => {
     // CH-012E.1 — allow Owner/Admin to correct canonical Scope even on locked
     // (accepted) quotes so Contract Builder freeze can proceed. Scope-only patch.
     const scopeOnlyCorrection = isAuthorizedLockedScopeOnlyPatch(updatedFields);
+    // CH-012F — one-time schedule fill when accepted quote has null start/due.
+    const scheduleFillCorrection = isAuthorizedLockedScheduleFillPatch(
+      updatedFields,
+      guardBefore.quote
+    );
+
+    if (scheduleFillCorrection) {
+      const scheduleCheck = validateContractSchedule(
+        patch.start_date,
+        patch.due_date
+      );
+      if (!scheduleCheck.ok) {
+        return json(400, {
+          ok: false,
+          error: scheduleCheck.errors[0]?.message || "Invalid schedule dates.",
+          code: scheduleCheck.errors[0]?.code || "invalid_schedule",
+        });
+      }
+    }
 
     if (
       (guardBefore.edit?.locked || !guardBefore.edit?.is_editable) &&
-      !scopeOnlyCorrection
+      !scopeOnlyCorrection &&
+      !scheduleFillCorrection
     ) {
       return json(422, {
         ok: false,
@@ -316,6 +344,7 @@ exports.handler = async (event) => {
     const warnings = guardBefore.edit?.warnings || [];
     if (
       !scopeOnlyCorrection &&
+      !scheduleFillCorrection &&
       warnings.includes("quote_viewed_or_sent") &&
       body.confirm_sent_update !== true
     ) {
