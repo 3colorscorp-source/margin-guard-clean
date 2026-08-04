@@ -128,13 +128,17 @@ test("signer CRUD + send + cert + pdf actions", () => {
   assert.ok(html.includes("Download PDF"));
 });
 
-test("no email send claim", () => {
-  assert.ok(html.includes("no email") || js.includes("no email"));
+test("no automatic email send claim in main UI", () => {
+  assert.ok(
+    html.includes("copy and send") || html.includes("secure signing link"),
+    "owner copy should explain link is for copy/send"
+  );
   assert.ok(js.includes('delivery_mode: "prepared"'));
+  assert.ok(!/delivery_status\s*=\s*prepared/.test(html));
 });
 
 test("hub deep-link", () => {
-  assert.ok(hubH.includes("chLaunchSigning") || hubH.includes("Signature Workspace"));
+  assert.ok(hubH.includes("Signature Workspace") || hubH.includes("chPrimaryCta"));
   assert.ok(hubJ.includes("signature-workspace"));
 });
 

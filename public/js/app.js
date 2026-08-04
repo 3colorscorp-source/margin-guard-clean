@@ -18734,7 +18734,18 @@ window.renderSupervisor = renderSupervisor;
     set("saContractHubQuote", saContractHubQuoteLabel(row));
     set("saContractHubTotal", saContractHubSalePriceLabel(row, settings));
     set("saContractHubProjectStatus", projectStatus);
-    set("saContractHubContractStatus", "No Contract Created");
+    set("saContractHubContractStatus", "Approved — next: Contract Hub");
+    const create = $("saContractHubCreate");
+    if (create) {
+      const pid = String(row.project?.id || row.projectId || "").trim();
+      const qid = String(row.project?.quoteId || row.project?.quote_id || row.quoteId || "").trim();
+      const params = new URLSearchParams();
+      if (pid) params.set("project_id", pid);
+      if (qid) params.set("quote_id", qid);
+      create.href = params.toString() ? `/contract-hub?${params.toString()}` : "/contract-hub";
+      create.removeAttribute("disabled");
+      create.textContent = "Open Contract Hub";
+    }
     modal.hidden = false;
     modal.setAttribute("aria-hidden", "false");
     return true;

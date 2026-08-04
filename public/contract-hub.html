@@ -218,6 +218,43 @@
     #chLoading[hidden] {
       display: none !important;
     }
+    .ch-guide {
+      margin-bottom: 12px;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.08);
+    }
+    .ch-guide__grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px 14px;
+    }
+    @media (max-width: 720px) {
+      .ch-guide__grid { grid-template-columns: 1fr; }
+    }
+    .ch-guide__label {
+      font-size: 0.6875rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(253, 230, 138, 0.75);
+      margin-bottom: 3px;
+    }
+    .ch-guide__value {
+      font-size: 0.9375rem;
+      font-weight: 700;
+      color: #fde68a;
+      line-height: 1.35;
+    }
+    .ch-guide__blocker {
+      color: #fecaca;
+      font-weight: 600;
+    }
+    .ch-cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
   </style>
 </head>
 <body data-requires-auth="true" data-mg-app-nav data-mg-page-title="Contract Hub">
@@ -280,31 +317,52 @@
         </div>
       </section>
 
+      <section class="card ch-guide" id="chGuideBanner" aria-label="Current contract stage">
+        <div class="card-inner">
+          <div class="ch-guide__grid">
+            <div>
+              <div class="ch-guide__label">Current stage</div>
+              <div class="ch-guide__value" id="chStageCurrent">Complete Contract</div>
+            </div>
+            <div>
+              <div class="ch-guide__label">Status</div>
+              <div class="ch-guide__value" id="chStageStatus">—</div>
+            </div>
+            <div>
+              <div class="ch-guide__label">Blocker</div>
+              <div class="ch-guide__value ch-guide__blocker" id="chBlocker">—</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <div class="ch-layout">
         <section class="card ch-card">
           <div class="card-inner">
-            <h3>Contract Builder</h3>
-            <p class="sub">Prepare the service agreement from the approved quote.</p>
-            <div class="ch-empty">
-              Create a professional service agreement using the approved quote.
-              The contract will preserve the approved project scope, pricing, and customer information before signatures are requested.
+            <h3>Next Action</h3>
+            <p class="sub">One clear step — complete this before moving on.</p>
+            <div class="ch-empty" id="chMissingWrap" hidden>
+              <strong>Missing before freeze</strong>
+              <ul class="ch-checklist" id="chMissingList" aria-label="Missing readiness items"></ul>
             </div>
-            <ul class="ch-checklist" id="chChecklist" aria-label="Builder preparation checklist"></ul>
-            <a class="btn primary" id="chLaunchBuilder" href="#" hidden aria-disabled="true">Launch Contract Builder</a>
-            <button type="button" class="btn primary" id="chLaunchBuilderDisabled" disabled>Launch Contract Builder</button>
-            <a class="btn ghost" id="chLaunchSigning" href="/signature-workspace" hidden>Open Signature Workspace</a>
-            <p class="ch-hint" id="chLaunchHint">Create a review draft from the approved quote. Missing information must be confirmed before signature.</p>
+            <ul class="ch-checklist" id="chChecklist" aria-label="Contract progress checklist"></ul>
+            <div class="ch-cta-row">
+              <a class="btn primary" id="chPrimaryCta" href="#">Open Contract Builder</a>
+              <button type="button" class="btn primary" id="chPrimaryCtaDisabled" hidden disabled>Action unavailable</button>
+              <a class="btn ghost" id="chSecondaryCta" href="#" hidden>Open Contract Builder</a>
+            </div>
+            <p class="ch-hint" id="chLaunchHint">Follow the current stage action above.</p>
           </div>
         </section>
 
         <section class="card ch-card">
           <div class="card-inner">
             <h3>Contract Workflow</h3>
-            <p class="sub">Track progress from approved quote to signed contract.</p>
+            <p class="sub">Approved Quote → Complete → Freeze → Signing → Signed.</p>
             <ol class="ch-workflow" id="chWorkflow" aria-label="Contract workflow stages"></ol>
             <div class="ch-docs">
               <h4>Contract documents</h4>
-              <p id="chDocuments">No contract documents yet.</p>
+              <p id="chDocuments">No frozen contract version yet.</p>
             </div>
           </div>
         </section>

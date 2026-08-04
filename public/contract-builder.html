@@ -1757,7 +1757,9 @@
 
     <div id="cbMain" class="cb-no-article" hidden>
       <div class="cb-warn-banner" id="cbUnsavedWarn">
-        Unsaved meeting draft. Changes will be lost when this page is closed. This preview is not ready for signature.
+        <strong>Draft Contract</strong> — This contract is not ready for signature yet.
+        Complete and confirm the required sections, then freeze the contract before sending for signature.
+        Unsaved changes on this page are lost when you close it.
       </div>
 
       <div class="cb-layout">
@@ -2369,9 +2371,20 @@
             <h4>Contract Readiness</h4>
             <div class="cb-pct">
               <strong id="cbReadyPct">0%</strong>
-              <span>information complete</span>
+              <span>complete</span>
             </div>
-            <ul class="cb-checklist" id="cbReadiness" aria-label="Draft readiness checklist"></ul>
+            <ul class="cb-checklist" id="cbReadiness" aria-label="Grouped contract readiness"></ul>
+          </div>
+
+          <div class="cb-aside-block" id="cbNextActionBlock">
+            <h4>Next Action</h4>
+            <p class="cb-next" id="cbNextStep">Review missing sections before freezing.</p>
+            <div class="cb-cta-row" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;">
+              <button type="button" class="btn primary" id="cbNextActionBtn">Open required section</button>
+              <button type="button" class="btn primary" id="cbFreezeBtn" hidden>Freeze Contract</button>
+              <a class="btn primary" id="cbContinueSigning" href="/signature-workspace" hidden>Continue to Signature Workspace</a>
+            </div>
+            <p class="cb-draft-note" id="cbFreezeStatus" hidden></p>
           </div>
 
           <div class="cb-aside-block">
@@ -2385,11 +2398,6 @@
           </div>
 
           <div class="cb-aside-block">
-            <h4>Next Step</h4>
-            <p class="cb-next" id="cbNextStep">Review missing legal and payment information before sharing this draft.</p>
-          </div>
-
-          <div class="cb-aside-block">
             <h4>Status Gates</h4>
             <div class="cb-gate"><span>Print Ready</span><span id="cbPrintReady" data-ok="0">No</span></div>
             <div class="cb-gate"><span>Review Ready</span><span id="cbReviewReady" data-ok="0">No</span></div>
@@ -2399,13 +2407,12 @@
           <div class="cb-aside-block">
             <h4>Workflow</h4>
             <ol class="cb-timeline" id="cbTimeline">
-              <li class="is-done">Quote Created</li>
               <li class="is-done">Quote Approved</li>
-              <li class="is-current">Draft Generated</li>
-              <li>Customer Review</li>
-              <li>Signature</li>
-              <li>Executed Contract</li>
-              <li>Invoices</li>
+              <li class="is-current">Draft Contract</li>
+              <li>Freeze Contract</li>
+              <li>Configure Signing</li>
+              <li>Customer Signs</li>
+              <li>Fully Signed</li>
             </ol>
           </div>
         </aside>

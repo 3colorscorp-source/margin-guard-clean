@@ -211,6 +211,27 @@
     #swMain[hidden], #swError[hidden], #swLoading[hidden] { display: none !important; }
     .sw-loading { font-size: 0.875rem; color: rgba(232, 238, 252, 0.7); padding: 8px 0; }
     .sw-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem; }
+    .sw-guide {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.08);
+    }
+    .sw-guide h3 { margin: 0 0 4px; font-size: 1rem; color: #fde68a; }
+    .sw-guide p { margin: 0 0 10px; font-size: 0.8125rem; line-height: 1.45; color: rgba(232, 238, 252, 0.85); }
+    .sw-guide .sw-actions { margin-top: 0; }
+    .sw-blocked-reason {
+      margin: 6px 0 0;
+      font-size: 0.75rem;
+      color: #fecaca;
+      line-height: 1.35;
+    }
+    .sw-action-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+    @media (max-width: 390px) {
+      .sw-header-grid { grid-template-columns: 1fr; }
+      .sw-meta { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body data-requires-auth="true" data-mg-app-nav data-mg-page-title="Contract Signing">
@@ -222,7 +243,7 @@
         <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:flex-start;">
           <div>
             <h2>Contract Signing</h2>
-            <p class="sub">Owner Signature Workspace — manage packages, envelopes, signers, send, certificates, and signed PDFs for one project.</p>
+            <p class="sub">Signature Workspace — freeze is done in Contract Builder. Here you create the signing request, add signers, send the secure link, then generate the certificate and signed PDF.</p>
           </div>
           <a class="btn ghost" href="/contract-hub" id="swBackHub">Contract Hub</a>
         </div>
@@ -247,13 +268,23 @@
     </div>
 
     <div id="swMain" hidden>
+      <section class="card" id="swGuideCard">
+        <div class="card-inner">
+          <div class="sw-guide" id="swGuide">
+            <h3 id="swGuideTitle">Next step</h3>
+            <p id="swGuideBody">Loading guidance…</p>
+            <div class="sw-actions" id="swGuideActions"></div>
+          </div>
+        </div>
+      </section>
+
       <section class="card">
         <div class="card-inner">
           <div class="sw-header-grid" id="swHeader">
             <div class="sw-field"><div class="sw-field__k">Project</div><div class="sw-field__v" id="swHProject">—</div></div>
             <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v" id="swHCustomer">—</div></div>
-            <div class="sw-field"><div class="sw-field__k">Package Version</div><div class="sw-field__v" id="swHPackage">—</div></div>
-            <div class="sw-field"><div class="sw-field__k">Envelope Status</div><div class="sw-field__v" id="swHEnvelope">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Frozen Contract Version</div><div class="sw-field__v" id="swHPackage">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Signing Request</div><div class="sw-field__v" id="swHEnvelope">—</div></div>
             <div class="sw-field"><div class="sw-field__k">Progress</div><div class="sw-field__v" id="swHProgress">—</div></div>
             <div class="sw-field"><div class="sw-field__k">Certificate</div><div class="sw-field__v" id="swHCert">—</div></div>
             <div class="sw-field"><div class="sw-field__k">PDF</div><div class="sw-field__v" id="swHPdf">—</div></div>
@@ -263,20 +294,20 @@
 
       <section class="card sw-section" id="swSecPackage">
         <div class="card-inner">
-          <h3>1. Package</h3>
-          <p class="sub">Frozen contract package for this project.</p>
+          <h3>1. Frozen Contract Version</h3>
+          <p class="sub">Immutable frozen contract for this project.</p>
           <div class="sw-meta">
             <div class="sw-field"><div class="sw-field__k">Version</div><div class="sw-field__v" id="swPkgVersion">—</div></div>
             <div class="sw-field"><div class="sw-field__k">Status</div><div class="sw-field__v" id="swPkgStatus">—</div></div>
             <div class="sw-field"><div class="sw-field__k">Frozen</div><div class="sw-field__v" id="swPkgFrozen">—</div></div>
             <div class="sw-field"><div class="sw-field__k">Created</div><div class="sw-field__v" id="swPkgCreated">—</div></div>
-            <div class="sw-field"><div class="sw-field__k">Executed</div><div class="sw-field__v" id="swPkgExecuted">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Fully Signed</div><div class="sw-field__v" id="swPkgExecuted">—</div></div>
             <div class="sw-field"><div class="sw-field__k">Content hash</div><div class="sw-field__v sw-mono" id="swPkgHash">—</div></div>
           </div>
           <div class="sw-actions">
             <button type="button" class="btn ghost" id="swViewFrozenBtn">View Frozen Contract</button>
             <label class="field" style="margin:0;min-width:180px;">
-              <span class="sw-field__k">Active package</span>
+              <span class="sw-field__k">Active frozen version</span>
               <select id="swPackageSelect"></select>
             </label>
           </div>
@@ -285,18 +316,21 @@
 
       <section class="card sw-section" id="swSecEnvelope">
         <div class="card-inner">
-          <h3>2. Envelope</h3>
-          <p class="sub">Signing envelope lifecycle for the selected package.</p>
-          <div class="sw-status-pills" id="swEnvPills" aria-label="Envelope status"></div>
+          <h3>2. Signing Request</h3>
+          <p class="sub">Signing request lifecycle for the selected frozen contract version.</p>
+          <div class="sw-status-pills" id="swEnvPills" aria-label="Signing request status"></div>
           <div class="sw-meta">
             <div class="sw-field"><div class="sw-field__k">Status</div><div class="sw-field__v" id="swEnvStatus">—</div></div>
             <div class="sw-field"><div class="sw-field__k">Completed</div><div class="sw-field__v" id="swEnvCompleted">—</div></div>
             <div class="sw-field"><div class="sw-field__k">Sent</div><div class="sw-field__v" id="swEnvSent">—</div></div>
           </div>
           <div class="sw-actions">
-            <button type="button" class="btn primary" id="swCreateEnvelopeBtn">Create Envelope</button>
+            <div class="sw-action-wrap">
+              <button type="button" class="btn primary" id="swCreateEnvelopeBtn">Create Signing Request</button>
+              <p class="sw-blocked-reason" id="swCreateEnvelopeReason" hidden></p>
+            </div>
             <label class="field" style="margin:0;min-width:220px;">
-              <span class="sw-field__k">Open Envelope</span>
+              <span class="sw-field__k">Open Signing Request</span>
               <select id="swEnvelopeSelect"></select>
             </label>
           </div>
@@ -308,7 +342,10 @@
           <h3>3. Signers</h3>
           <p class="sub">Draft roster only editable before send.</p>
           <div class="sw-actions" style="margin-top:0;margin-bottom:10px;">
-            <button type="button" class="btn primary" id="swAddSignerBtn">Add</button>
+            <div class="sw-action-wrap">
+              <button type="button" class="btn primary" id="swAddSignerBtn">Add Customer Signer</button>
+              <p class="sw-blocked-reason" id="swAddSignerReason" hidden></p>
+            </div>
           </div>
           <div class="sw-table-wrap">
             <table class="table" id="swSignersTable">
@@ -334,14 +371,17 @@
       <section class="card sw-section" id="swSecSend">
         <div class="card-inner">
           <h3>4. Send</h3>
-          <p class="sub">Prepare signing tokens (no email). delivery_status = prepared.</p>
+          <p class="sub">Create a secure signing link for the customer. The secure link will be generated for you to copy and send.</p>
           <div class="sw-field" style="margin-bottom:8px;">
             <div class="sw-field__k">Ready</div>
             <div class="sw-field__v" id="swSendReady">—</div>
           </div>
           <ul class="sw-blockers" id="swSendBlockers"></ul>
           <div class="sw-actions">
-            <button type="button" class="btn primary" id="swSendBtn">Send For Signature</button>
+            <div class="sw-action-wrap">
+              <button type="button" class="btn primary" id="swSendBtn">Send For Signature</button>
+              <p class="sw-blocked-reason" id="swSendReason" hidden></p>
+            </div>
           </div>
         </div>
       </section>
@@ -358,14 +398,14 @@
       <section class="card sw-section" id="swSecCert">
         <div class="card-inner">
           <h3>6. Certificate</h3>
-          <p class="sub">Immutable audit certificate after envelope completion.</p>
+          <p class="sub">Immutable audit certificate after signing is complete.</p>
           <div class="sw-meta">
             <div class="sw-field"><div class="sw-field__k">Certificate Number</div><div class="sw-field__v" id="swCertNumber">—</div></div>
             <div class="sw-field"><div class="sw-field__k">Issued</div><div class="sw-field__v" id="swCertIssued">—</div></div>
             <div class="sw-field"><div class="sw-field__k">Verification Hash</div><div class="sw-field__v sw-mono" id="swCertHash">—</div></div>
           </div>
           <div class="sw-actions">
-            <button type="button" class="btn primary" id="swIssueCertBtn">Issue Certificate</button>
+            <button type="button" class="btn primary" id="swIssueCertBtn">Generate Certificate</button>
             <button type="button" class="btn ghost" id="swViewCertBtn">View Certificate</button>
           </div>
         </div>

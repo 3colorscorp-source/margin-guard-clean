@@ -182,30 +182,33 @@
     const signers = state.signers || [];
 
     if (!env?.id) {
-      blockers.push({ ok: false, text: "No envelope selected" });
+      blockers.push({ ok: false, text: "No signing request selected" });
       return { ready: false, blockers };
     }
     const est = String(env.status || "").toLowerCase();
     if (est === "sent" || est === "opened" || est === "completed") {
       blockers.push({
         ok: true,
-        text: `Envelope already ${est} (send is idempotent if re-posted)`,
+        text: `Signing request already ${ownerStatusLabel(est)}`,
       });
       return { ready: est === "sent" || est === "opened", blockers };
     }
     if (est !== "draft") {
-      blockers.push({ ok: false, text: `Envelope status must be draft (now ${est})` });
+      blockers.push({
+        ok: false,
+        text: `Signing request must be Draft (now ${ownerStatusLabel(est)})`,
+      });
     }
     const pst = String(pkg?.status || "").toLowerCase();
     if (!pkg?.id) {
-      blockers.push({ ok: false, text: "Package missing" });
+      blockers.push({ ok: false, text: "Frozen contract version missing" });
     } else if (pst !== "ready" && pst !== "executed") {
       blockers.push({
         ok: false,
-        text: `Package must be ready (now ${pst || "—"})`,
+        text: `Frozen contract must be Ready (now ${ownerStatusLabel(pst) || "—"})`,
       });
     } else {
-      blockers.push({ ok: true, text: `Package ${pst}` });
+      blockers.push({ ok: true, text: `Frozen contract ${ownerStatusLabel(pst)}` });
     }
     if (!signers.length) {
       blockers.push({ ok: false, text: "At least one signer is required" });
@@ -246,6 +249,150 @@
     return { ready: hard.length === 0 && est === "draft", blockers };
   }
 
+  function builderHref(project) {
+    const pid = String(project?.id || "").trim();
+    const qid = String(project?.quoteId || project?.quote_id || "").trim();
+    if (!pid) return "/contract-builder";
+    const params = new URLSearchParams({ project_id: pid });
+    if (qid) params.set("quote_id", qid);
+    return `/contract-builder?${params.toString()}`;
+  }
+
+  function ownerStatusLabel(raw) {
+    const st = String(raw || "").toLowerCase();
+    if (st === "prepared") return "Link Ready";
+    if (st === "executed") return "Fully Signed";
+    if (st === "ready") return "Ready";
+    if (st === "draft") return "Draft";
+    if (st === "sent") return "Sent";
+    if (st === "opened") return "Opened";
+    if (st === "completed") return "Completed";
+    return raw || "—";
+  }
+
+  function setBlockedReason(id, text) {
+    const el = $(id);
+    if (!el) return;
+    if (!text) {
+      el.hidden = true;
+      el.textContent = "";
+      return;
+    }
+    el.hidden = false;
+    el.textContent = text;
+  }
+
+  function resolveWorkspaceGuidance() {
+    const pkg = state.package;
+    const env = state.envelope;
+    const envSt = String(env?.status || "").toLowerCase();
+    const signers = state.signers || [];
+    const cert = state.certificates[0];
+    const art = state.artifacts[0];
+    const send = computeSendReadiness();
+
+    if (!pkg?.id) {
+      return {
+        title: "Contract setup is not complete.",
+        body: "Complete and freeze the contract before adding signers.",
+        ctaLabel: "Open Contract Builder",
+        ctaHref: builderHref(state.project),
+        ctaAction: null,
+      };
+    }
+    if (!env?.id) {
+      return {
+        title: "Create a Signing Request",
+        body: "A frozen contract version is ready. Create a signing request to add the customer signer.",
+        ctaLabel: "Create Signing Request",
+        ctaHref: null,
+        ctaAction: "create-envelope",
+      };
+    }
+    if (envSt === "draft" && !signers.length) {
+      return {
+        title: "Add Customer Signer",
+        body: "Add the customer as a signer before sending the secure signing link.",
+        ctaLabel: "Add Customer Signer",
+        ctaHref: null,
+        ctaAction: "add-signer",
+      };
+    }
+    if (envSt === "draft" && send.ready) {
+      return {
+        title: "Send For Signature",
+        body: "Create a secure signing link for the customer. The secure link will be generated for you to copy and send.",
+        ctaLabel: "Send For Signature",
+        ctaHref: null,
+        ctaAction: "send",
+      };
+    }
+    if (envSt === "sent" || envSt === "opened") {
+      return {
+        title: "Waiting for signatures",
+        body: "The signing request was sent. Monitor progress below until the customer finishes signing.",
+        ctaLabel: null,
+        ctaHref: null,
+        ctaAction: null,
+      };
+    }
+    if (envSt === "completed") {
+      return {
+        title: "Signing complete",
+        body: !cert?.id
+          ? "Generate the audit certificate, then generate the signed PDF."
+          : !art?.id
+            ? "Generate the signed PDF for this completed signing request."
+            : "Certificate and signed PDF are ready.",
+        ctaLabel: !cert?.id
+          ? "Generate Certificate"
+          : !art?.id
+            ? "Generate Signed PDF"
+            : null,
+        ctaHref: null,
+        ctaAction: !cert?.id ? "cert" : !art?.id ? "pdf" : null,
+      };
+    }
+    return {
+      title: "Continue signing setup",
+      body: "Review the sections below and complete the next required action.",
+      ctaLabel: null,
+      ctaHref: null,
+      ctaAction: null,
+    };
+  }
+
+  function renderGuidance() {
+    const g = resolveWorkspaceGuidance();
+    setText("swGuideTitle", g.title);
+    setText("swGuideBody", g.body);
+    const actions = $("swGuideActions");
+    if (!actions) return;
+    actions.innerHTML = "";
+    if (g.ctaHref) {
+      const a = document.createElement("a");
+      a.className = "btn primary";
+      a.href = g.ctaHref;
+      a.textContent = g.ctaLabel || "Continue";
+      actions.appendChild(a);
+      return;
+    }
+    if (g.ctaAction && g.ctaLabel) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn primary";
+      b.textContent = g.ctaLabel;
+      b.addEventListener("click", () => {
+        if (g.ctaAction === "create-envelope") $("swCreateEnvelopeBtn")?.click();
+        if (g.ctaAction === "add-signer") $("swAddSignerBtn")?.click();
+        if (g.ctaAction === "send") $("swSendBtn")?.click();
+        if (g.ctaAction === "cert") $("swIssueCertBtn")?.click();
+        if (g.ctaAction === "pdf") $("swGeneratePdfBtn")?.click();
+      });
+      actions.appendChild(b);
+    }
+  }
+
   function progressLabel() {
     const signers = state.signers || [];
     if (!signers.length) return "—";
@@ -269,7 +416,7 @@
       "swHPackage",
       state.package?.version != null ? `v${state.package.version}` : "—"
     );
-    setText("swHEnvelope", state.envelope?.status || "—");
+    setText("swHEnvelope", ownerStatusLabel(state.envelope?.status));
     setText("swHProgress", progressLabel());
     const cert = state.certificates[0];
     setText("swHCert", cert?.certificate_number || "None");
@@ -280,7 +427,7 @@
   function renderPackage() {
     const pkg = state.package;
     setText("swPkgVersion", pkg?.version != null ? `v${pkg.version}` : "—");
-    setText("swPkgStatus", pkg?.status || "—");
+    setText("swPkgStatus", ownerStatusLabel(pkg?.status));
     const frozen =
       pkg &&
       (String(pkg.status).toLowerCase() === "ready" ||
@@ -302,11 +449,11 @@
       sel.innerHTML = (state.packages || [])
         .map((row) => {
           const selected = row.id === cur ? " selected" : "";
-          return `<option value="${escapeHtml(row.id)}"${selected}>v${escapeHtml(row.version)} — ${escapeHtml(row.status)}</option>`;
+          return `<option value="${escapeHtml(row.id)}"${selected}>v${escapeHtml(row.version)} — ${escapeHtml(ownerStatusLabel(row.status))}</option>`;
         })
         .join("");
       if (!state.packages.length) {
-        sel.innerHTML = `<option value="">No packages</option>`;
+        sel.innerHTML = `<option value="">No frozen contract versions</option>`;
       }
     }
   }
@@ -327,10 +474,10 @@
           cls += " is-done";
         }
         if (status === "completed" && s === "completed") cls += " is-done";
-        return `<span class="${cls}">${escapeHtml(s)}</span>`;
+        return `<span class="${cls}">${escapeHtml(ownerStatusLabel(s))}</span>`;
       }).join("");
     }
-    setText("swEnvStatus", env?.status || "—");
+    setText("swEnvStatus", ownerStatusLabel(env?.status));
     setText("swEnvCompleted", fmtWhen(env?.completed_at));
     setText("swEnvSent", fmtWhen(env?.sent_at));
 
@@ -340,21 +487,35 @@
       sel.innerHTML = (state.envelopes || [])
         .map((row) => {
           const selected = row.id === cur ? " selected" : "";
-          const label = `${String(row.status || "").toUpperCase()} — ${String(row.id).slice(0, 8)}…`;
+          const label = `${ownerStatusLabel(row.status)} — request ${String(row.id).slice(0, 8)}…`;
           return `<option value="${escapeHtml(row.id)}"${selected}>${escapeHtml(label)}</option>`;
         })
         .join("");
       if (!state.envelopes.length) {
-        sel.innerHTML = `<option value="">No envelopes</option>`;
+        sel.innerHTML = `<option value="">No signing requests</option>`;
       }
     }
     const createBtn = $("swCreateEnvelopeBtn");
+    const noPackage = !state.package?.id;
+    const pkgOk =
+      state.package?.id &&
+      ["ready", "executed"].includes(String(state.package.status || "").toLowerCase());
     if (createBtn) {
-      createBtn.disabled =
-        !state.package?.id ||
-        !["ready", "executed"].includes(
-          String(state.package.status || "").toLowerCase()
-        );
+      createBtn.disabled = noPackage || !pkgOk;
+      createBtn.textContent = "Create Signing Request";
+    }
+    if (noPackage) {
+      setBlockedReason(
+        "swCreateEnvelopeReason",
+        "Blocked: freeze the contract in Contract Builder first."
+      );
+    } else if (!pkgOk) {
+      setBlockedReason(
+        "swCreateEnvelopeReason",
+        "Blocked: frozen contract version is not ready."
+      );
+    } else {
+      setBlockedReason("swCreateEnvelopeReason", "");
     }
   }
 
@@ -363,7 +524,30 @@
     const empty = $("swSignersEmpty");
     const addBtn = $("swAddSignerBtn");
     const editable = envelopeEditable();
-    if (addBtn) addBtn.disabled = !editable || !state.envelope?.id;
+    const noPackage = !state.package?.id;
+    const noEnvelope = !state.envelope?.id;
+    if (addBtn) {
+      addBtn.disabled = noPackage || noEnvelope || !editable;
+      addBtn.textContent = "Add Customer Signer";
+    }
+    if (noPackage) {
+      setBlockedReason(
+        "swAddSignerReason",
+        "Blocked: complete and freeze the contract first."
+      );
+    } else if (noEnvelope) {
+      setBlockedReason(
+        "swAddSignerReason",
+        "Blocked: create a signing request first."
+      );
+    } else if (!editable) {
+      setBlockedReason(
+        "swAddSignerReason",
+        "Blocked: signers are locked after send."
+      );
+    } else {
+      setBlockedReason("swAddSignerReason", "");
+    }
 
     if (!state.signers.length) {
       if (body) body.innerHTML = "";
@@ -386,7 +570,7 @@
           <td>${escapeHtml(s.email)}</td>
           <td>${escapeHtml(s.sign_order)}</td>
           <td>${escapeHtml(s.auth_method)}</td>
-          <td>${escapeHtml(s.status)}</td>
+          <td>${escapeHtml(ownerStatusLabel(s.status))}</td>
           <td>${escapeHtml(fmtWhen(s.signed_at))}</td>
           <td>${actions}</td>
         </tr>`;
@@ -407,15 +591,32 @@
         .join("");
     }
     const sendBtn = $("swSendBtn");
+    const noPackage = !state.package?.id;
+    const st = String(state.envelope?.status || "").toLowerCase();
     if (sendBtn) {
-      const st = String(state.envelope?.status || "").toLowerCase();
-      sendBtn.disabled = !state.envelope?.id || (!ready && st === "draft");
+      sendBtn.disabled =
+        noPackage || !state.envelope?.id || (!ready && st === "draft");
       if (st === "sent" || st === "opened" || st === "completed") {
         sendBtn.disabled = false;
-        sendBtn.textContent = "Send For Signature (idempotent)";
+        sendBtn.textContent = "Resend Signing Link";
       } else {
         sendBtn.textContent = "Send For Signature";
       }
+    }
+    if (noPackage) {
+      setBlockedReason(
+        "swSendReason",
+        "Blocked: freeze the contract before sending."
+      );
+    } else if (!state.envelope?.id) {
+      setBlockedReason(
+        "swSendReason",
+        "Blocked: create a signing request and add a signer first."
+      );
+    } else if (!ready && st === "draft") {
+      setBlockedReason("swSendReason", "Blocked: fix the items listed above.");
+    } else {
+      setBlockedReason("swSendReason", "");
     }
   }
 
@@ -472,7 +673,7 @@
     const viewBtn = $("swViewCertBtn");
     if (issueBtn) {
       issueBtn.disabled = !completed || !state.envelope?.id;
-      issueBtn.textContent = cert?.id ? "Refresh Certificate (idempotent)" : "Issue Certificate";
+      issueBtn.textContent = cert?.id ? "Refresh Certificate" : "Generate Certificate";
     }
     if (viewBtn) viewBtn.disabled = !cert?.id;
   }
@@ -536,6 +737,7 @@
     renderCertificate();
     renderPdf();
     renderDev();
+    renderGuidance();
     showMain();
   }
 
@@ -781,13 +983,13 @@
         if (!res.ok || res.data?.ok !== true) {
           throw new Error(res.data?.error || "Create envelope failed");
         }
-        toast("Envelope created", "ok");
+        toast("Signing request created", "ok");
         await loadEnvelopes(state.package.id);
         state.envelope = res.data.envelope || state.envelope;
         await refreshEnvelopeChain();
         renderAll();
       } catch (err) {
-        toast(err?.message || "Create envelope failed", "error");
+        toast(err?.message || "Create signing request failed", "error");
       }
     });
 
@@ -846,8 +1048,8 @@
         }
         toast(
           res.data.idempotent
-            ? "Already sent (idempotent)"
-            : "Sent for signature (tokens prepared — no email)",
+            ? "Signing link already ready — copy and send to the customer"
+            : "Secure signing link ready — copy and send to the customer",
           "ok"
         );
         await loadEnvelopes(state.package.id);
@@ -862,7 +1064,7 @@
     $("swViewFrozenBtn")?.addEventListener("click", () => {
       const pkg = state.package;
       if (!pkg) {
-        toast("No package selected", "error");
+        toast("No frozen contract version selected", "error");
         return;
       }
       const readiness = pkg.source_readiness

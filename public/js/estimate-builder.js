@@ -544,8 +544,6 @@
       let state = "upcoming";
 
       if (!prereqMet) state = "locked";
-      else if (depositCurrent && done) state = "complete";
-      else if (done && urlStep === i) state = "current";
       else if (done) state = "complete";
       else if (urlStep === i) state = "current";
       else state = "upcoming";
@@ -1154,8 +1152,9 @@
       if (card) card.style.display = "";
       wrap.innerHTML = `
         <div class="premium-terms-copy">
-          Deposits are non-refundable if you cancel the project. Deposit amount and payment options are shown in the
+          The Initial Scheduling Payment amount and payment options are shown in the
           <strong>Investment</strong> summary and the approval section below — no duplicate instructions here.
+          Initial Scheduling Payments are non-refundable if you cancel the project.
         </div>
       `;
       return;

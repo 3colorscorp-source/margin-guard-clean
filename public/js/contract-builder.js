@@ -3265,22 +3265,199 @@
   }
 
   function statusLabel(status) {
-    if (status === "available") return "Available";
+    if (status === "available") return "Complete";
     if (status === "needs_confirmation") return "Needs confirmation";
     return "Missing";
   }
 
+  function worstStatus(statuses) {
+    if (statuses.includes("missing")) return "missing";
+    if (statuses.includes("needs_confirmation")) return "needs_confirmation";
+    return "available";
+  }
+
+  function readinessGroups(source, edits) {
+    const items = readinessItems(source, edits);
+    const byLabel = (label) => items.find((i) => i.label === label)?.status || "missing";
+    const profile = source.legal?.profile;
+    const businessStatuses = [
+      byLabel("Legal business identity"),
+      byLabel("Business address"),
+      byLabel("Business contact"),
+      byLabel("License status"),
+      byLabel("Authorized signer"),
+      byLabel("Insurance / bond information"),
+    ];
+    const customerStatuses = [byLabel("Customer identity")];
+    const projectStatuses = [
+      byLabel("Project address"),
+      byLabel("Existing scope"),
+      byLabel("Approved quote"),
+    ];
+    const commercialStatuses = [
+      byLabel("Contract total"),
+      byLabel("Payment schedule"),
+    ];
+    const legalStatuses = [
+      byLabel("State-required legal notices"),
+      byLabel("Warranty terms"),
+    ];
+    const signatureStatuses = [byLabel("Signature method")];
+
+    // Soften insurance to needs_confirmation when profile exists but insurance empty
+    if (!profile) {
+      /* keep missing */
+    }
+
+    return [
+      { id: "BUSINESS", label: "BUSINESS", status: worstStatus(businessStatuses), article: "art-contractor" },
+      { id: "CUSTOMER", label: "CUSTOMER", status: worstStatus(customerStatuses), article: "art-customer" },
+      { id: "PROJECT", label: "PROJECT", status: worstStatus(projectStatuses), article: "art-property" },
+      { id: "COMMERCIAL", label: "COMMERCIAL", status: worstStatus(commercialStatuses), article: "art-payment" },
+      { id: "LEGAL", label: "LEGAL", status: worstStatus(legalStatuses), article: "art-warranty" },
+      { id: "SIGNATURE", label: "SIGNATURE", status: worstStatus(signatureStatuses), article: "art-signatures" },
+    ];
+  }
+
+  function resolveNextBlocker(source, edits) {
+    const profile = source.legal?.profile;
+    if (!(source.customerName && source.contractTotal > 0 && source.quoteId)) {
+      return {
+        label: "Confirm customer and approved total",
+        article: "art-customer",
+        cta: "Open Customer",
+      };
+    }
+    if (!profile?.legalBusinessName) {
+      return {
+        label: "Complete Legal Business Profile",
+        article: "art-contractor",
+        cta: "Open Contractor",
+        external: "/business-settings#legal-contract-profile",
+      };
+    }
+    if (!propertyConfigured(source.contractSetup)) {
+      return {
+        label: "Confirm Project Address",
+        article: "art-property",
+        cta: "Confirm Project Address",
+      };
+    }
+    if (!paymentConfigured(source.paymentSchedule)) {
+      return {
+        label: "Complete Payment Schedule",
+        article: "art-payment",
+        cta: "Complete Payment Schedule",
+      };
+    }
+    if (!warrantyConfigured(source.contractSetup)) {
+      return {
+        label: "Confirm Warranty",
+        article: "art-warranty",
+        cta: "Confirm Warranty",
+      };
+    }
+    if (!legalNoticesConfigured(source.legalNotices)) {
+      return {
+        label: "Confirm Legal Notices",
+        article: "art-terms",
+        cta: "Open Legal Notices",
+      };
+    }
+    if (!signatureConfigured(source.contractSetup)) {
+      return {
+        label: "Configure Signature Method",
+        article: "art-signatures",
+        cta: "Configure Signature Method",
+      };
+    }
+    return {
+      label: "Freeze Contract",
+      article: null,
+      cta: "Freeze Contract",
+      freeze: true,
+    };
+  }
+
+  let lastFrozenPackage = null;
+  let freezeBusy = false;
+
+  async function freezeContractFromBuilder() {
+    if (!sourceSnapshot?.projectId || !sourceSnapshot?.quoteId) {
+      throw new Error("Project and quote are required to freeze.");
+    }
+    if (overallContractReadiness(sourceSnapshot) !== "configured") {
+      throw new Error("Contract readiness must be 100% before freezing.");
+    }
+    const body = {
+      project_id: sourceSnapshot.projectId,
+      quote_id: sourceSnapshot.quoteId,
+    };
+    const setupAt = sourceSnapshot.contractSetup?.setup?.updated_at;
+    const scheduleAt = sourceSnapshot.paymentSchedule?.schedule?.updated_at;
+    if (setupAt) body.expected_setup_updated_at = setupAt;
+    if (scheduleAt) body.expected_schedule_updated_at = scheduleAt;
+
+    const res = await postJson("/.netlify/functions/contract-package-freeze", body);
+    if (!res.ok || res.data?.ok !== true) {
+      const missing = Array.isArray(res.data?.missing) ? res.data.missing.join(", ") : "";
+      throw new Error(
+        (res.data?.error || "Freeze failed") + (missing ? `: ${missing}` : "")
+      );
+    }
+    lastFrozenPackage = res.data.package || null;
+    return res.data;
+  }
+
+  function renderFreezeSuccess(pkg, idempotent) {
+    const status = $("cbFreezeStatus");
+    const freezeBtn = $("cbFreezeBtn");
+    const nextBtn = $("cbNextActionBtn");
+    const continueLink = $("cbContinueSigning");
+    const next = $("cbNextStep");
+    const version = pkg?.version != null ? `Version ${pkg.version}` : "Version ready";
+    if (next) {
+      next.textContent = `Contract Frozen · ${version} · Ready for Signature`;
+    }
+    if (status) {
+      status.hidden = false;
+      status.textContent = idempotent
+        ? "Identical content already frozen — reusing the existing frozen contract version."
+        : "Contract frozen successfully.";
+    }
+    if (freezeBtn) freezeBtn.hidden = true;
+    if (nextBtn) nextBtn.hidden = true;
+    if (continueLink) {
+      continueLink.hidden = false;
+      continueLink.textContent = "Continue to Signature Workspace";
+      const pid = sourceSnapshot?.projectId || "";
+      continueLink.href = pid
+        ? `/signature-workspace?project_id=${encodeURIComponent(pid)}`
+        : "/signature-workspace";
+    }
+    const timeline = $("cbTimeline");
+    if (timeline) {
+      timeline.innerHTML = `
+        <li class="is-done">Quote Approved</li>
+        <li class="is-done">Draft Contract</li>
+        <li class="is-done">Freeze Contract</li>
+        <li class="is-current">Configure Signing</li>
+        <li>Customer Signs</li>
+        <li>Fully Signed</li>`;
+    }
+  }
+
   function renderReadiness(source, edits) {
     const items = readinessItems(source, edits);
+    const groups = readinessGroups(source, edits);
     const overall = overallContractReadiness(source);
     const list = $("cbReadiness");
     if (list) {
-      list.innerHTML = items
-        .map((item) => {
-          const extra = item.note ? ` (${escapeHtml(item.note)})` : "";
+      list.innerHTML = groups
+        .map((g) => {
           return (
-            `<li><span class="cb-check-status ${statusClass(item.status)}">${escapeHtml(statusLabel(item.status))}</span>` +
-            `<span>${escapeHtml(item.label)}${extra}</span></li>`
+            `<li><span class="cb-check-status ${statusClass(g.status)}">${escapeHtml(statusLabel(g.status))}</span>` +
+            `<span><strong>${escapeHtml(g.label)}</strong></span></li>`
           );
         })
         .join("");
@@ -3296,11 +3473,12 @@
         .join("");
     }
 
-    const available = items.filter((i) => i.status === "available").length;
-    const pct = Math.round((available / items.length) * 100);
-    const overallLabel =
-      overall === "configured" ? "Configured" : overall === "draft" ? "Draft" : "Missing";
-    setText("cbReadyPct", `${overallLabel} · ${pct}%`);
+    const configuredGroups = groups.filter((g) => g.status === "available").length;
+    const pct =
+      overall === "configured"
+        ? 100
+        : Math.round((configuredGroups / Math.max(groups.length, 1)) * 100);
+    setText("cbReadyPct", `${pct}%`);
 
     const missingEl = $("cbMissingList");
     if (missingEl) {
@@ -3314,7 +3492,7 @@
     if (warnEl) {
       const warns = items.filter((i) => i.status === "needs_confirmation");
       warnEl.innerHTML = warns.length
-        ? warns.map((i) => `<li><span class="cb-check-status is-needs">Confirm</span><span>${escapeHtml(i.label)}</span></li>`).join("")
+        ? warns.map((i) => `<li><span class="cb-check-status is-needs">Needs confirmation</span><span>${escapeHtml(i.label)}</span></li>`).join("")
         : `<li><span class="cb-check-status is-available">Clear</span><span>No confirmation warnings</span></li>`;
     }
 
@@ -3332,31 +3510,54 @@
     setGate("cbReviewReady", reviewReady);
     setGate("cbSignReady", signReady);
 
+    const blocker = resolveNextBlocker(source, edits);
     const next = $("cbNextStep");
-    if (next) {
-      const profile = source.legal?.profile;
-      if (!reviewReady) {
-        next.textContent = "Confirm customer and approved total before sharing this draft.";
-      } else if (!profile?.legalBusinessName) {
-        next.textContent = "Complete Legal & Contract Profile in Business Settings, then continue draft review.";
-      } else if (!propertyConfigured(source.contractSetup)) {
-        next.textContent = "Confirm the project address in contract setup, then continue draft review.";
-      } else if (!paymentConfigured(source.paymentSchedule)) {
-        next.textContent = "Confirm the payment schedule so stages exactly total the approved contract price.";
-      } else if (!warrantyConfigured(source.contractSetup)) {
-        next.textContent = "Confirm warranty terms in contract setup before signature readiness.";
-      } else if (!signatureConfigured(source.contractSetup)) {
-        next.textContent = "Configure the signature method in contract setup before signature readiness.";
-      } else if (!legalNoticesConfigured(source.legalNotices)) {
-        const legalSt = resolveLegalNoticesEffective(source.legalNotices).contribution;
+    const nextBtn = $("cbNextActionBtn");
+    const freezeBtn = $("cbFreezeBtn");
+    const continueLink = $("cbContinueSigning");
+    const freezeStatus = $("cbFreezeStatus");
+
+    if (lastFrozenPackage) {
+      renderFreezeSuccess(lastFrozenPackage, true);
+      return;
+    }
+
+    if (freezeStatus) freezeStatus.hidden = true;
+    if (continueLink) continueLink.hidden = true;
+
+    if (blocker.freeze) {
+      if (next) {
         next.textContent =
-          legalSt === "draft"
-            ? "Confirm tenant legal notices before signature readiness."
-            : "Configure and confirm tenant legal notices before signature readiness.";
-      } else {
-        next.textContent =
-          "All required sections are configured. Signature sending is not available from this draft yet.";
+          "All required sections are complete. Freeze the contract to create an immutable version for signature.";
       }
+      if (nextBtn) nextBtn.hidden = true;
+      if (freezeBtn) {
+        freezeBtn.hidden = false;
+        freezeBtn.disabled = freezeBusy;
+        freezeBtn.textContent = freezeBusy ? "Freezing…" : "Freeze Contract";
+      }
+    } else {
+      if (next) next.textContent = blocker.label;
+      if (freezeBtn) freezeBtn.hidden = true;
+      if (nextBtn) {
+        nextBtn.hidden = false;
+        nextBtn.textContent = blocker.cta || "Open required section";
+        nextBtn.dataset.article = blocker.article || "";
+        nextBtn.dataset.external = blocker.external || "";
+      }
+    }
+
+    const timeline = $("cbTimeline");
+    if (timeline && !lastFrozenPackage) {
+      const freezeDone = false;
+      timeline.innerHTML = `
+        <li class="is-done">Quote Approved</li>
+        <li class="${signReady ? "is-done" : "is-current"}">Draft Contract</li>
+        <li class="${signReady ? "is-current" : ""}">Freeze Contract</li>
+        <li>Configure Signing</li>
+        <li>Customer Signs</li>
+        <li>Fully Signed</li>`;
+      void freezeDone;
     }
   }
 
@@ -4367,6 +4568,37 @@
       }
       suppressUnloadGuard = true;
     });
+
+    $("cbNextActionBtn")?.addEventListener("click", () => {
+      const btn = $("cbNextActionBtn");
+      const external = String(btn?.dataset?.external || "").trim();
+      if (external) {
+        window.location.href = external;
+        return;
+      }
+      const article = String(btn?.dataset?.article || "").trim();
+      if (article) setActiveArticle(article, { confirmIfDirty: true, focus: true });
+    });
+
+    $("cbFreezeBtn")?.addEventListener("click", async () => {
+      if (freezeBusy) return;
+      freezeBusy = true;
+      renderReadiness(sourceSnapshot, draftEdits);
+      try {
+        const data = await freezeContractFromBuilder();
+        lastFrozenPackage = data.package || lastFrozenPackage;
+        renderFreezeSuccess(lastFrozenPackage, Boolean(data.idempotent));
+      } catch (err) {
+        const status = $("cbFreezeStatus");
+        if (status) {
+          status.hidden = false;
+          status.textContent = err?.message || "Freeze failed";
+        }
+      } finally {
+        freezeBusy = false;
+        if (!lastFrozenPackage) renderReadiness(sourceSnapshot, draftEdits);
+      }
+    });
   }
 
   /**
@@ -4692,6 +4924,14 @@
     renderAll();
     applyActiveArticle({ focus: false });
     showMain();
+
+    if (String(window.location.hash || "").toLowerCase() === "#freeze") {
+      const freezeBtn = $("cbFreezeBtn");
+      if (freezeBtn && !freezeBtn.hidden) {
+        freezeBtn.scrollIntoView({ behavior: "smooth", block: "center" });
+        freezeBtn.focus();
+      }
+    }
   }
 
   document.addEventListener("DOMContentLoaded", () => {
