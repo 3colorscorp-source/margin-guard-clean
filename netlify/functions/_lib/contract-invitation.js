@@ -11,6 +11,7 @@
 
 "use strict";
 
+const crypto = require("crypto");
 const { supabaseRequest } = require("./supabase-admin");
 const {
   scrubForbiddenKeys,
@@ -29,6 +30,8 @@ const {
   ensureSigningTokenForSigner,
   revokeSigningToken,
   lookupSigningToken,
+  generateRawToken,
+  hashRawToken,
 } = require("./contract-signing-token");
 
 const API_VERSION = "ch-013a1-v1";
@@ -915,13 +918,87 @@ async function queueInvitation(tenantId, invitationId, options = {}) {
 }
 
 /**
- * Explicit Resend:
- * 1) revoke generation N + token
- * 2) create token N+1
- * 3) create generation N+1
- * 4) update invitation.current_generation
- * 5) emit resent once (after safe create)
- * Failure after revoke but before new gen leaves zero active generations (retryable).
+ * CH-013A.2.1 Preferred A — atomic generation rotation via SQL RPC.
+ * Mint raw token in app memory; bind hash/id inside one DB transaction.
+ * On any SQL failure the entire rotation rolls back (Gen N stays active).
+ * Never uses revoke-first sequential compensation.
+ */
+async function rotateInvitationGenerationAtomic({
+  tenantId,
+  invitationId,
+  expiresAt,
+  reason = "security_rotation",
+  idempotencyKey = null,
+  expectedPriorGeneration = null,
+}) {
+  const rawToken = generateRawToken();
+  const tokenHash = hashRawToken(rawToken);
+  const newTokenId = crypto.randomUUID();
+
+  let row;
+  try {
+    const result = await supabaseRequest("rpc/rotate_contract_invitation_generation", {
+      method: "POST",
+      body: {
+        p_tenant_id: tenantId,
+        p_invitation_id: invitationId,
+        p_new_token_id: newTokenId,
+        p_token_hash: tokenHash,
+        p_expires_at: expiresAt,
+        p_reason: reason,
+        p_idempotency_key: idempotencyKey,
+        p_expected_prior_generation: expectedPriorGeneration,
+      },
+    });
+    row = Array.isArray(result) ? result[0] : result;
+  } catch (err) {
+    const msg = String(err?.message || err || "");
+    if (/Could not find the function|PGRST202|404|does not exist/i.test(msg)) {
+      return {
+        ok: false,
+        code: "atomic_rotation_rpc_missing",
+        error:
+          "rotate_contract_invitation_generation RPC not applied — apply SUPABASE_CH013A21_ATOMIC_GENERATION_ROTATION.sql",
+      };
+    }
+    return {
+      ok: false,
+      code: "atomic_rotation_failed",
+      error: msg.slice(0, 500),
+      prior_generation_revoked: false,
+    };
+  }
+
+  if (!row || row.ok !== true) {
+    return {
+      ok: false,
+      code: "atomic_rotation_failed",
+      error: "atomic rotation returned non-ok",
+      prior_generation_revoked: false,
+    };
+  }
+
+  return {
+    ok: true,
+    idempotent: Boolean(row.idempotent),
+    invitation_id: row.invitation_id,
+    generation_id: row.generation_id,
+    generation_number: row.generation_number,
+    token_id: row.token_id,
+    prior_generation_number: row.prior_generation_number ?? null,
+    prior_generation_id: row.prior_generation_id ?? null,
+    prior_token_id: row.prior_token_id ?? null,
+    expires_at: row.expires_at,
+    reason: row.reason,
+    current_generation: row.current_generation,
+    raw_token_once: row.idempotent ? null : rawToken,
+  };
+}
+
+/**
+ * Explicit Resend / security rotation (atomic).
+ * Generation+token swap is transactional (RPC). Attempt + events are post-commit.
+ * Post-commit attempt failure leaves Gen N+1 active (invariant B) — never zero gens.
  */
 async function resendInvitation(tenantId, invitationId, options = {}) {
   const loaded = await getInvitation(tenantId, invitationId);
@@ -959,72 +1036,42 @@ async function resendInvitation(tenantId, invitationId, options = {}) {
   });
   if (!expires.ok) return expires;
 
-  // Revoke prior generation + token first (ensures at most one active pair)
-  if (prior && prior.status === "active") {
-    try {
-      await supabaseRequest(
-        `${GENERATIONS_TABLE}?tenant_id=eq.${encodeURIComponent(tenantId)}&id=eq.${encodeURIComponent(prior.id)}`,
-        {
-          method: "PATCH",
-          body: { status: "revoked", revoked_at: utcNowIso() },
-          headers: { Prefer: "return=representation" },
-        }
-      );
-    } catch (err) {
-      return { ok: false, error: err.message || String(err), code: "prior_generation_revoke_failed" };
-    }
-    const revokedTok = await revokeSigningToken({
-      tenantId,
-      tokenId: prior.token_id,
-    });
-    if (!revokedTok.ok && revokedTok.code !== "not_found") {
-      // Continue — generation already revoked; token revoke best-effort
-    }
-  }
+  const idempotencyKey =
+    options.idempotency_key ||
+    `invitation:rotate:${invitationId}:from:${priorGenNum}:${options.reason || "owner_resend"}`;
 
-  const nextNum = priorGenNum + 1 || 1;
-  const tokenCreated = await createSigningToken({
+  const rotated = await rotateInvitationGenerationAtomic({
     tenantId,
-    signerId: invitation.signer_id,
+    invitationId,
     expiresAt: expires.expires_at,
+    reason: options.reason || "owner_resend",
+    idempotencyKey,
+    expectedPriorGeneration: priorGenNum || null,
   });
-  if (!tokenCreated.ok) {
+  if (!rotated.ok) {
     return {
       ok: false,
-      error: tokenCreated.error || "token create failed",
-      code: tokenCreated.code || "token_create_failed",
-      prior_generation_revoked: Boolean(prior),
+      error: rotated.error,
+      code: rotated.code,
+      prior_generation_revoked: false,
     };
   }
 
-  const newTokenId = tokenCreated.token.id;
-  let generation;
-  try {
-    const inserted = await supabaseRequest(GENERATIONS_TABLE, {
-      method: "POST",
-      body: {
-        tenant_id: tenantId,
-        invitation_id: invitationId,
-        generation_number: nextNum,
-        token_id: newTokenId,
-        status: "active",
-        expires_at: expires.expires_at,
-        reason: options.reason || "owner_resend",
-      },
-      headers: { Prefer: "return=representation" },
-    });
-    generation = Array.isArray(inserted) ? inserted[0] : inserted;
-  } catch (err) {
-    await revokeSigningToken({ tenantId, tokenId: newTokenId });
-    return {
-      ok: false,
-      error: err.message || String(err),
-      code: "generation_create_failed",
-      prior_generation_revoked: Boolean(prior),
-    };
-  }
+  const nextNum = Number(rotated.generation_number);
+  const generation = {
+    id: rotated.generation_id,
+    tenant_id: tenantId,
+    invitation_id: invitationId,
+    generation_number: nextNum,
+    token_id: rotated.token_id,
+    status: "active",
+    expires_at: rotated.expires_at,
+    reason: rotated.reason || options.reason || "owner_resend",
+  };
 
-  // Move invitation to queued for new delivery cycle
+  const reloaded = await getInvitation(tenantId, invitationId);
+  if (reloaded.ok) invitation = reloaded.invitation;
+
   const queued = await transitionInvitation(tenantId, invitationId, "queued", {
     causation_id: options.causation_id,
     idempotency_key:
@@ -1032,39 +1079,22 @@ async function resendInvitation(tenantId, invitationId, options = {}) {
       `invitation:resend-queue:${invitationId}:${generation.id}`,
     payload: {
       generation_number: nextNum,
-      prior_generation_number: priorGenNum || null,
+      prior_generation_number: rotated.prior_generation_number,
     },
   });
-  if (!queued.ok) {
-    // Best-effort: revoke new generation so we don't leave orphan active
-    try {
-      await supabaseRequest(
-        `${GENERATIONS_TABLE}?tenant_id=eq.${encodeURIComponent(tenantId)}&id=eq.${encodeURIComponent(generation.id)}`,
-        { method: "PATCH", body: { status: "revoked", revoked_at: utcNowIso() } }
-      );
-      await revokeSigningToken({ tenantId, tokenId: newTokenId });
-    } catch (_e) {
-      /* ignore */
-    }
-    return queued;
+  if (queued.ok) {
+    invitation = {
+      ...queued.invitation,
+      current_generation: nextNum,
+    };
+  } else {
+    invitation = { ...invitation, current_generation: nextNum };
   }
-
-  invitation = {
-    ...queued.invitation,
-    current_generation: nextNum,
-  };
-  await supabaseRequest(
-    `${INVITATIONS_TABLE}?tenant_id=eq.${encodeURIComponent(tenantId)}&id=eq.${encodeURIComponent(invitationId)}`,
-    {
-      method: "PATCH",
-      body: { current_generation: nextNum, updated_at: utcNowIso() },
-    }
-  );
 
   const attempt = await createDeliveryAttempt(invitation, {
     generation_id: generation.id,
     provider: options.provider || "none",
-    retry_number: nextNum - 1,
+    retry_number: Math.max(0, nextNum - 1),
   });
 
   const resent = await emitInvitationEvent({
@@ -1073,16 +1103,21 @@ async function resendInvitation(tenantId, invitationId, options = {}) {
     activityKey: "resent",
     causationId: options.causation_id || null,
     idempotencyKey:
-      options.idempotency_key ||
+      options.event_idempotency_key ||
       `invitation:resent:${invitationId}:gen:${nextNum}`,
     notify: true,
     notifyPriority: "normal",
     extraPayload: {
       generation_number: nextNum,
-      prior_generation_number: priorGenNum || null,
+      prior_generation_number: rotated.prior_generation_number,
       generation_id: generation.id,
-      prior_generation_id: prior?.id || null,
+      prior_generation_id: rotated.prior_generation_id,
       reason: options.reason || "owner_resend",
+      atomic_rotation: true,
+      rotation_idempotent: Boolean(rotated.idempotent),
+      ...(options.extraPayload && typeof options.extraPayload === "object"
+        ? options.extraPayload
+        : {}),
     },
   });
 
@@ -1093,11 +1128,12 @@ async function resendInvitation(tenantId, invitationId, options = {}) {
     prior_generation: prior,
     attempt: attempt.ok ? attempt.attempt : null,
     event: resent.event || null,
-    // Raw token once — never in event payload
-    raw_token_once: tokenCreated.token.token || null,
+    rotation_idempotent: Boolean(rotated.idempotent),
+    raw_token_once: rotated.raw_token_once || null,
     api_version: API_VERSION,
   };
 }
+
 
 async function recordInvitationOpen(tenantId, invitationId, openInfo = {}, options = {}) {
   const loaded = await getInvitation(tenantId, invitationId);
@@ -1243,6 +1279,7 @@ module.exports = {
   createDeliveryAttempt,
   transitionDeliveryAttempt,
   resendInvitation,
+  rotateInvitationGenerationAtomic,
   recordInvitationOpen,
   markInvitationSending,
   markInvitationSent,

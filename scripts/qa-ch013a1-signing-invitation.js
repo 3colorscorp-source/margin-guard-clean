@@ -80,14 +80,22 @@ test("3 duplicate ordinary prepare is idempotent (unique + code path)", () => {
 test("4-6 resend creates generation N+1; revokes N; activates N+1 token", () => {
   assert.ok(libSrc.includes("resendInvitation"));
   assert.ok(libSrc.includes("prior_generation"));
-  assert.ok(libSrc.includes("status: \"revoked\""));
-  assert.ok(libSrc.includes("revokeSigningToken"));
-  assert.ok(libSrc.includes("createSigningToken"));
-  assert.ok(libSrc.includes("nextNum = priorGenNum + 1"));
-  // Order: revoke prior before create new token
-  const revokeIdx = libSrc.indexOf("prior.token_id");
-  const createIdx = libSrc.indexOf("createSigningToken({", revokeIdx);
-  assert.ok(revokeIdx > 0 && createIdx > revokeIdx, "revoke before create");
+  // CH-013A.2.1 Preferred A: revoke+create+advance inside transactional RPC (never revoke-first in app).
+  assert.ok(libSrc.includes("rotateInvitationGenerationAtomic"));
+  assert.ok(libSrc.includes("rpc/rotate_contract_invitation_generation"));
+  assert.ok(libSrc.includes("generateRawToken"));
+  assert.ok(libSrc.includes("hashRawToken"));
+  const atomicSqlPath = path.join(__dirname, "..", "SUPABASE_CH013A21_ATOMIC_GENERATION_ROTATION.sql");
+  assert.ok(fs.existsSync(atomicSqlPath), "atomic rotation SQL must exist");
+  const atomicSql = fs.readFileSync(atomicSqlPath, "utf8");
+  assert.ok(atomicSql.includes("status = 'revoked'"));
+  assert.ok(atomicSql.includes("insert into public.tenant_contract_invitation_generations"));
+  assert.ok(atomicSql.includes("current_generation = v_next_num"));
+  const revokeAt = atomicSql.indexOf("set status = 'revoked'");
+  const insertGenAt = atomicSql.indexOf(
+    "insert into public.tenant_contract_invitation_generations"
+  );
+  assert.ok(revokeAt > 0 && insertGenAt > revokeAt, "SQL revoke before insert Gen N+1 in same txn");
 });
 
 test("7-8 exactly one active generation + token pair", () => {

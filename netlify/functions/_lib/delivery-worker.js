@@ -1,39 +1,57 @@
 /**
- * CH-013A.2.0 — Delivery Worker skeleton.
- * No scheduler. No loops. No provider calls. No automatic registration.
- * TODO(A.2.1): poll queued network-channel attempts and dispatch EmailChannelAdapter.
- *
- * This module is a library only. It must not process production attempts on load.
+ * CH-013A.2.1 — Delivery Worker (controlled dispatch helper).
+ * No scheduler. No loops. No automatic registration on load.
+ * Email network dispatch is driven by contract-invitation-email-dispatch-background
+ * with Design B encrypted handoff (attempt IDs only in background body).
  */
 
 "use strict";
 
 const engine = require("./delivery-channel-engine");
+const {
+  dispatchInvitationEmail,
+} = require("./contract-invitation-email");
 
-const API_VERSION = "ch-013a20-v1";
+const API_VERSION = "ch-013a21-v1";
 
 /**
- * Claim a queued attempt for processing.
- * TODO(A.2.1): lease TTL + durable attempt table claim.
+ * Claim a queued in-memory attempt (copy_link foundation / tests).
  */
 async function claim(attemptId) {
   return engine.claimDelivery(attemptId);
 }
 
 /**
- * Dispatch a claimed attempt to its channel adapter.
- * Expects attempt already claimed (status=sending) OR still queued (will claim).
- * TODO(A.2.1): resolve adapter, call prepare/deliver for email/sms/whatsapp.
- * Copy Link is handled synchronously via engine.deliverCopyLink today.
+ * Dispatch a claimed attempt.
+ * - copy_link: in-memory engine path (sync)
+ * - email: requires durable attempt + encrypted handoff (IDs only)
  */
 async function dispatch(attemptId, ephemeral = {}) {
+  const channelHint = String(ephemeral.channel || "").toLowerCase();
+
+  if (
+    channelHint === "email" ||
+    ephemeral.attempt_id ||
+    ephemeral.invitation_id
+  ) {
+    return dispatchInvitationEmail(
+      {
+        tenant_id: ephemeral.tenant_id,
+        attempt_id: ephemeral.attempt_id || attemptId,
+        invitation_id: ephemeral.invitation_id,
+        public_origin: ephemeral.public_origin,
+        correlation_id: ephemeral.correlation_id,
+      },
+      { fetchImpl: ephemeral.fetchImpl }
+    );
+  }
+
   let row = await engine.claimDelivery(attemptId);
   if (!row.ok && row.code === "illegal_claim") {
     return {
       ok: false,
       error: row.error,
       code: row.code,
-      note: "TODO(A.2.1): support re-entrant dispatch for leased sending attempts",
     };
   }
   if (!row.ok) return row;
@@ -43,20 +61,26 @@ async function dispatch(attemptId, ephemeral = {}) {
   if (!resolved.ok) {
     return {
       ok: false,
-      error: resolved.error || "NOT_IMPLEMENTED",
-      code: resolved.code || "not_implemented",
-      note: "TODO(A.2.1): stubs are not active delivery channels",
+      error: resolved.error || "channel_unavailable",
+      code: resolved.code || "channel_unavailable",
       channel,
     };
   }
 
-  // TODO(A.2.1): network adapters — EmailChannelAdapter.deliver(ctx)
+  if (channel === "email") {
+    return {
+      ok: false,
+      error: "Email dispatch requires durable attempt + encrypted handoff (Design B)",
+      code: "email_handoff_required",
+      channel,
+    };
+  }
+
   if (channel !== "copy_link") {
     return {
       ok: false,
       error: "NOT_IMPLEMENTED",
       code: "not_implemented",
-      note: "TODO(A.2.1): dispatch network channels via provider adapters",
       channel,
     };
   }
@@ -84,10 +108,6 @@ async function dispatch(attemptId, ephemeral = {}) {
   };
 }
 
-/**
- * Mark attempt complete (success path helper).
- * TODO(A.2.1): persist provider_message_id; emit delivery.channel.sent.
- */
 async function complete(attemptId, result = {}) {
   return engine.completeDelivery(attemptId, result);
 }
@@ -99,11 +119,10 @@ module.exports = {
   complete,
 };
 
-// Fail closed if executed as a script — no automatic processing.
 if (require.main === module) {
   // eslint-disable-next-line no-console
   console.error(
-    "delivery-worker is a library skeleton (CH-013A.2.0); it cannot run automatically."
+    "delivery-worker is a library (CH-013A.2.1); it cannot run automatically."
   );
   process.exit(1);
 }

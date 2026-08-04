@@ -148,6 +148,10 @@ test("catalog has exact canonical event names once", () => {
     "contract.certificate.created",
     "contract.signed_pdf.created",
     "contract.reminder.sent",
+    "delivery.channel.queued",
+    "delivery.channel.sending",
+    "delivery.channel.sent",
+    "delivery.channel.failed",
   ];
   assert.strictEqual(events.DOMAIN_EVENT_TYPES.length, required.length);
   required.forEach((t) => {

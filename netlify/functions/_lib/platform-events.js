@@ -29,6 +29,11 @@ const DOMAIN_EVENT_TYPES = Object.freeze([
   "contract.certificate.created",
   "contract.signed_pdf.created",
   "contract.reminder.sent",
+  // CH-013A.2.1 — transport lifecycle (email / future network channels)
+  "delivery.channel.queued",
+  "delivery.channel.sending",
+  "delivery.channel.sent",
+  "delivery.channel.failed",
 ]);
 
 const DOMAIN_EVENT_TYPE_SET = new Set(DOMAIN_EVENT_TYPES);

@@ -196,11 +196,14 @@ test("AUDIT 16 No raw token in logs/events/activity/notifications", () => {
   assert.ok(invLib.includes("masked_email"));
 });
 
-test("AUDIT 17 Workspace never says Email Sent", () => {
+test("AUDIT 17 Workspace Copy Link never claims Email Sent", () => {
+  // CH-013A.2.1 adds Email Signing Link states; Copy Link path must stay distinct.
+  assert.ok(swHtml.includes("swCopyLinkBtn"));
   assert.ok(swJs.includes("Secure Link Ready"));
   assert.ok(swJs.includes("No email has been sent yet") || swHtml.includes("No email has been sent yet"));
-  assert.ok(!/Email Sent|Provider Accepted|Delivered/.test(swHtml));
-  assert.ok(!swJs.includes("Email Sent"));
+  assert.ok(!/Provider Accepted/.test(swHtml));
+  assert.ok(!swJs.includes("Provider Accepted"));
+  assert.ok(swJs.includes("Link copied") || swJs.includes("No email has been sent"));
   assert.ok(sendLib.includes('delivery_status: "prepared"'));
 });
 

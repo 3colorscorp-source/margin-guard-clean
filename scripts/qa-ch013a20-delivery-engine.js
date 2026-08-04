@@ -221,14 +221,27 @@ test("10. COPY_LINK performs zero network calls", async () => {
 test("11. COPY_LINK never claims email sent", () => {
   assert.ok(swJs.includes("Secure Link Ready"));
   assert.ok(swJs.includes("Link copied") || swJs.includes("No email has been sent"));
-  assert.ok(!/Email sent|Provider accepted|Delivered to provider/i.test(swJs));
+  assert.ok(swJs.includes("swCopyLinkBtn"));
+  // Copy Link action itself must not claim provider delivery.
+  assert.ok(!/Provider accepted|Delivered to provider/i.test(swJs));
   const copySrc = read("netlify/functions/_lib/channels/copy-link.js");
   assert.ok(/provider:\s*["']none["']/.test(copySrc));
   assert.ok(!/toast\(["']Email sent|ui_copy:\s*["']Email sent|["']Delivered["']/.test(copySrc));
 });
 
 test("12. Stub adapters fail closed", async () => {
-  for (const stub of [email, sms, whatsapp, esignHost]) {
+  // CH-013A.2.1: email is a real adapter — fail-closed when delivery disabled.
+  assert.strictEqual(email.isAvailable(), false);
+  assert.ok(!email.health().ok);
+  const emailDeliver = await email.deliver({}, {});
+  assert.ok(!emailDeliver.ok);
+  assert.ok(
+    emailDeliver.code === "channel_unavailable" ||
+      emailDeliver.code === "link_unavailable" ||
+      /unavailable|NOT_IMPLEMENTED/i.test(String(emailDeliver.error || ""))
+  );
+
+  for (const stub of [sms, whatsapp, esignHost]) {
     const d = await stub.deliver();
     assert.ok(!d.ok);
     assert.ok(/NOT_IMPLEMENTED/i.test(d.error) || d.code === "not_implemented");
@@ -282,7 +295,7 @@ test("16. Worker skeleton cannot run automatically", () => {
   assert.strictEqual(typeof worker.dispatch, "function");
   assert.strictEqual(typeof worker.complete, "function");
   const src = read("netlify/functions/_lib/delivery-worker.js");
-  assert.ok(src.includes("TODO(A.2.1)"));
+  assert.ok(src.includes("cannot run automatically") || src.includes("CH-013A.2.1"));
   assert.ok(!/setInterval|while\s*\(true\)|cron|setTimeout\s*\(\s*dispatch/i.test(src));
   assert.ok(src.includes("require.main === module"));
   const run = spawnSync(process.execPath, [path.join(ROOT, "netlify/functions/_lib/delivery-worker.js")], {

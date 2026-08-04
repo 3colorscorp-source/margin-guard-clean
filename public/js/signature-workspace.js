@@ -18,6 +18,7 @@
   const CERT_CREATE_API = "/.netlify/functions/contract-certificate-create";
   const PDFS_API = "/.netlify/functions/contract-signed-pdfs";
   const PDF_CREATE_API = "/.netlify/functions/contract-signed-pdf-create";
+  const EMAIL_QUEUE_API = "/.netlify/functions/contract-invitation-email-queue";
 
   const ENV_STATUSES = [
     "draft",
@@ -41,6 +42,10 @@
     artifacts: [],
     delivery: null,
     signingLink: null,
+    emailDelivery: null,
+    emailUiStatus: null, // ready | queued | sending | sent | failed
+    emailAttemptId: null,
+    emailBusy: false,
     busy: false,
   };
 
@@ -300,6 +305,122 @@
 
   function hasCopyableLink() {
     return Boolean(state.signingLink);
+  }
+
+  function primarySigner() {
+    const list = Array.isArray(state.signers) ? state.signers.slice() : [];
+    list.sort((a, b) => Number(a.sign_order || 0) - Number(b.sign_order || 0));
+    return list[0] || null;
+  }
+
+  function emailStatusLabel(status) {
+    const st = String(status || "").toLowerCase();
+    if (st === "queued") return "Email queued";
+    if (st === "sending") return "Sending email";
+    if (st === "accepted_db_pending") return "Email accepted — finalizing status";
+    if (st === "sent") return "Email sent";
+    if (st === "failed") return "Email delivery failed";
+    return "Email Signing Link";
+  }
+
+  let emailStatusPollTimer = null;
+
+  function stopEmailStatusPoll() {
+    if (emailStatusPollTimer) {
+      window.clearTimeout(emailStatusPollTimer);
+      emailStatusPollTimer = null;
+    }
+  }
+
+  /**
+   * Delivery truth: never infer "Email sent" from queue HTTP 200.
+   * Poll attempt-status until sent|failed (or give up after max ticks).
+   */
+  async function pollEmailDeliveryStatus(attemptId, ticksLeft) {
+    const envId = state.envelope?.id;
+    const signer = primarySigner();
+    if (!envId || !signer?.id) return;
+    const remaining = typeof ticksLeft === "number" ? ticksLeft : 40;
+    try {
+      const qs =
+        `status=1` +
+        `&envelope_id=${encodeURIComponent(envId)}` +
+        `&signer_id=${encodeURIComponent(signer.id)}` +
+        (attemptId ? `&attempt_id=${encodeURIComponent(attemptId)}` : "");
+      const res = await api(`${EMAIL_QUEUE_API}?${qs}`, { method: "GET" });
+      if (res.ok && res.data?.ok) {
+        const ui = String(res.data.ui_status || "").toLowerCase();
+        if (ui === "queued" || ui === "sending" || ui === "sent" || ui === "failed" || ui === "accepted_db_pending") {
+          state.emailUiStatus = ui;
+          state.emailAttemptId = res.data.attempt_id || attemptId || state.emailAttemptId;
+          renderSend();
+        }
+        if (ui === "sent" || ui === "failed") {
+          stopEmailStatusPoll();
+          return;
+        }
+      }
+    } catch (_e) {
+      /* soft-fail; keep polling */
+    }
+    if (remaining <= 0) {
+      stopEmailStatusPoll();
+      return;
+    }
+    emailStatusPollTimer = window.setTimeout(() => {
+      pollEmailDeliveryStatus(attemptId || state.emailAttemptId, remaining - 1);
+    }, 2000);
+  }
+
+  async function refreshEmailCapability() {
+    const envId = state.envelope?.id;
+    const signer = primarySigner();
+    if (!envId || !signer?.id) {
+      state.emailDelivery = null;
+      return null;
+    }
+    try {
+      const qs =
+        `envelope_id=${encodeURIComponent(envId)}` +
+        `&signer_id=${encodeURIComponent(signer.id)}`;
+      const res = await api(`${EMAIL_QUEUE_API}?${qs}`, { method: "GET" });
+      if (res.ok && res.data?.ok) {
+        state.emailDelivery = res.data.email_delivery || null;
+        return state.emailDelivery;
+      }
+    } catch (_e) {
+      /* ignore */
+    }
+    state.emailDelivery = null;
+    return null;
+  }
+
+  async function hydrateEmailDeliveryStatus() {
+    const envId = state.envelope?.id;
+    const signer = primarySigner();
+    if (!envId || !signer?.id) return;
+    try {
+      const qs =
+        `status=1` +
+        `&envelope_id=${encodeURIComponent(envId)}` +
+        `&signer_id=${encodeURIComponent(signer.id)}` +
+        (state.emailAttemptId
+          ? `&attempt_id=${encodeURIComponent(state.emailAttemptId)}`
+          : "");
+      const res = await api(`${EMAIL_QUEUE_API}?${qs}`, { method: "GET" });
+      if (res.ok && res.data?.ok && res.data.ui_status) {
+        const ui = String(res.data.ui_status).toLowerCase();
+        if (ui === "queued" || ui === "sending" || ui === "sent" || ui === "failed" || ui === "accepted_db_pending") {
+          state.emailUiStatus = ui;
+          state.emailAttemptId = res.data.attempt_id || state.emailAttemptId;
+          if (ui === "queued" || ui === "sending" || ui === "accepted_db_pending") {
+            pollEmailDeliveryStatus(state.emailAttemptId, 40);
+          }
+        }
+      }
+    } catch (_e) {
+      /* soft-fail */
+    }
   }
 
   function setBlockedReason(id, text) {
@@ -638,12 +759,26 @@
     const sendBtn = $("swSendBtn");
     const linkReadyEl = $("swLinkReady");
     const copyBtn = $("swCopyLinkBtn");
+    const emailBtn = $("swEmailLinkBtn");
+    const emailNotice = $("swEmailInternalNotice");
+    const emailStatusWrap = $("swEmailStatusWrap");
+    const emailStatus = $("swEmailStatus");
     const copyWrap = copyBtn?.parentElement;
     const linkCopy = $("swLinkReadyCopy");
     const noPackage = !state.package?.id;
     const st = String(state.envelope?.status || "").toLowerCase();
     const linkReady = isLinkReady();
     const canCopy = hasCopyableLink();
+    const signer = primarySigner();
+    const cap = state.emailDelivery;
+    const emailEnabled =
+      linkReady &&
+      Boolean(signer?.id) &&
+      Boolean(signer?.email) &&
+      cap &&
+      cap.enabled === true &&
+      cap.recipient_allowed === true &&
+      !state.emailBusy;
     if (linkReadyEl) {
       linkReadyEl.hidden = !linkReady;
     }
@@ -656,8 +791,22 @@
       copyBtn.hidden = !canCopy;
       copyBtn.disabled = !canCopy;
     }
+    if (emailBtn) {
+      emailBtn.hidden = !linkReady;
+      emailBtn.disabled = !emailEnabled;
+      emailBtn.textContent = emailStatusLabel(state.emailUiStatus || "ready");
+    }
+    if (emailNotice) {
+      emailNotice.hidden = !linkReady;
+    }
+    if (emailStatusWrap) {
+      emailStatusWrap.hidden = !linkReady || !state.emailUiStatus;
+    }
+    if (emailStatus && state.emailUiStatus) {
+      emailStatus.textContent = emailStatusLabel(state.emailUiStatus);
+    }
     if (copyWrap && copyWrap.classList.contains("sw-actions")) {
-      copyWrap.hidden = !canCopy;
+      copyWrap.hidden = !linkReady;
     }
     if (sendBtn) {
       if (linkReady && st !== "completed") {
@@ -832,6 +981,8 @@
       state.envelope = null;
       state.signingLink = null;
       state.delivery = null;
+      state.emailDelivery = null;
+      state.emailUiStatus = null;
       return;
     }
     const prevEnvelopeId = state.envelope?.id || null;
@@ -860,11 +1011,15 @@
     if (!state.envelope?.id || String(state.envelope.id) !== String(prevEnvelopeId)) {
       if (String(state.envelope?.id || "") !== String(prevEnvelopeId)) {
         state.signingLink = null;
+        state.emailUiStatus = null;
+        state.emailDelivery = null;
       }
     }
     if (!state.envelope?.id) {
       state.signingLink = null;
       state.delivery = null;
+      state.emailUiStatus = null;
+      state.emailDelivery = null;
     }
   }
 
@@ -916,6 +1071,15 @@
     await loadSigners(state.envelope?.id);
     await loadCertificates(state.envelope?.id);
     await loadPdfs(state.envelope?.id);
+    if (isLinkReady()) {
+      await refreshEmailCapability();
+      await hydrateEmailDeliveryStatus();
+    } else {
+      state.emailDelivery = null;
+      state.emailUiStatus = null;
+      state.emailAttemptId = null;
+      stopEmailStatusPoll();
+    }
   }
 
   async function loadProjectWorkspace(projectId) {
@@ -1163,6 +1327,75 @@
         toast("Link copied", "ok");
       } catch (_err) {
         toast("Could not copy link", "error");
+      }
+    });
+
+    $("swEmailLinkBtn")?.addEventListener("click", async () => {
+      const signer = primarySigner();
+      if (!state.envelope?.id || !signer?.id) {
+        toast("Signer required before emailing a signing link", "error");
+        return;
+      }
+      if (state.emailBusy) return;
+      state.emailBusy = true;
+      state.emailUiStatus = "queued";
+      renderSend();
+      try {
+        const res = await api(EMAIL_QUEUE_API, {
+          method: "POST",
+          body: JSON.stringify({
+            envelope_id: state.envelope.id,
+            signer_id: signer.id,
+          }),
+        });
+        if (!res.ok || res.data?.ok !== true) {
+          state.emailUiStatus = "failed";
+          throw new Error(
+            res.data?.error || "Could not queue signing invitation email"
+          );
+        }
+        // Never accept token/url from response (server must not return them).
+        if (res.data.signing_url || res.data.signing_token || res.data.raw_token) {
+          state.emailUiStatus = "failed";
+          throw new Error("Unexpected secure fields in email queue response");
+        }
+        // Queue HTTP 200 => Email queued only. Never claim sent from queue success.
+        const ui = String(res.data.ui_status || "queued").toLowerCase();
+        state.emailUiStatus =
+          ui === "sent" ||
+          ui === "sending" ||
+          ui === "failed" ||
+          ui === "queued" ||
+          ui === "accepted_db_pending"
+            ? ui
+            : "queued";
+        state.emailAttemptId = res.data.attempt_id || state.emailAttemptId;
+        if (res.data.email_delivery) {
+          state.emailDelivery = res.data.email_delivery;
+        }
+        toast(
+          state.emailUiStatus === "sent"
+            ? "Email sent"
+            : state.emailUiStatus === "sending"
+              ? "Sending email"
+              : state.emailUiStatus === "accepted_db_pending"
+                ? "Email accepted — finalizing status"
+                : "Email queued",
+          "ok"
+        );
+        if (
+          state.emailUiStatus === "queued" ||
+          state.emailUiStatus === "sending" ||
+          state.emailUiStatus === "accepted_db_pending"
+        ) {
+          pollEmailDeliveryStatus(state.emailAttemptId, 40);
+        }
+      } catch (err) {
+        state.emailUiStatus = "failed";
+        toast(err?.message || "Email delivery failed", "error");
+      } finally {
+        state.emailBusy = false;
+        renderSend();
       }
     });
 
