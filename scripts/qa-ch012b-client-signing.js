@@ -45,6 +45,8 @@ test("page wires CSS + JS", () => {
   assert.ok(html.includes("contract-sign-portal.css"));
   assert.ok(html.includes("contract-sign-portal.js"));
   assert.ok(html.includes('name="viewport"'));
+  assert.ok(html.includes('rel="icon"'));
+  assert.ok(html.includes("/favicon.svg"));
 });
 
 test("identity + contract reader + sticky nav", () => {
