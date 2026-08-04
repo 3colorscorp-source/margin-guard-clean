@@ -272,19 +272,11 @@
     return raw || "—";
   }
 
-  function buildSigningUrl(rawToken) {
-    const token = String(rawToken || "").trim();
-    if (!token) return null;
-    const shape =
-      state.delivery?.public_signing_url_shape || "/contract-sign?token={token}";
-    const path = shape.replace("{token}", encodeURIComponent(token));
-    if (/^https?:\/\//i.test(path)) return path;
-    return `${window.location.origin}${path.startsWith("/") ? "" : "/"}${path}`;
-  }
-
   /**
-   * CH-013B Policy A: raw link exists only in the immediate Send response memory.
-   * Never persist to browser storage or DB. Never reconstruct from hash.
+   * CH-013B Policy A + CH-013A.2.0:
+   * Prefer server-built signing_url from Delivery Channel Engine / SigningLinkBuilder.
+   * Never reconstruct from hash. Never persist to browser storage.
+   * UI does not build signing URLs when the engine supplied signing_url.
    */
   function captureDeliveryLink(delivery, { fromSendResponse = false } = {}) {
     state.delivery = delivery || null;
@@ -292,13 +284,13 @@
       return;
     }
     const signers = Array.isArray(delivery?.signers) ? delivery.signers : [];
-    const withToken = signers.find((s) => s && s.signing_token);
-    if (withToken?.signing_token) {
-      state.signingLink = buildSigningUrl(withToken.signing_token);
-    } else {
-      // Idempotent / already-sent: no raw token in response — do not invent one.
-      state.signingLink = null;
+    const withUrl = signers.find((s) => s && s.signing_url);
+    if (withUrl?.signing_url) {
+      state.signingLink = String(withUrl.signing_url);
+      return;
     }
+    // No engine URL and no client-side URL construction — Policy A / A.2.0.
+    state.signingLink = null;
   }
 
   function isLinkReady() {
@@ -1168,7 +1160,7 @@
       }
       try {
         await navigator.clipboard.writeText(state.signingLink);
-        toast("Signing link copied", "ok");
+        toast("Link copied", "ok");
       } catch (_err) {
         toast("Could not copy link", "error");
       }

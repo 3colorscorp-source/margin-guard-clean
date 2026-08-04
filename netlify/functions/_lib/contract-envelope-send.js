@@ -30,6 +30,7 @@ const {
   prepareInvitation,
 } = require("./contract-invitation");
 const { beginCorrelation } = require("./platform-bus");
+const { deliverCopyLink } = require("./delivery-channel-engine");
 
 const API_VERSION = "ch-011e-v1";
 
@@ -39,6 +40,7 @@ const DELIVERY_MODES = new Set(["prepared", "email_link"]);
 /**
  * CH-013B Policy A — raw signing_token is returned only when newly minted in this response.
  * It is never reconstructed from hash. Idempotent / already-sent responses omit it.
+ * CH-013A.2.0 — signing_url is built only via Delivery Channel Engine / SigningLinkBuilder.
  */
 
 function blocker(code, message, extra = {}) {
@@ -106,6 +108,9 @@ function buildDeliveryManifest({
       };
       if (entry.raw_token) {
         out.signing_token = entry.raw_token;
+      }
+      if (entry.signing_url) {
+        out.signing_url = entry.signing_url;
       }
       return out;
     }),
@@ -376,10 +381,34 @@ async function prepareSignersForSend({
         signer_id: s.id,
         duplicate: !!prep.duplicate,
       });
+
+      let signingUrl = null;
+      if (prep.raw_token_once) {
+        // Ephemeral oneShotSecret only — never placed on persistent DeliveryContext.
+        const copy = await deliverCopyLink(
+          {
+            tenant_id: tenantId,
+            channel: "copy_link",
+            invitation: prep.invitation,
+            generation: prep.generation,
+            signer: s,
+            project: {
+              project_id: envelope.project_id,
+            },
+            expires_at: prep.generation?.expires_at || expiresIso,
+          },
+          prep.raw_token_once
+        );
+        if (copy.ok && copy.signing_url) {
+          signingUrl = copy.signing_url;
+        }
+      }
+
       signerTokenEntries.set(s.id, {
         token_id: tokenId,
         reused: !!prep.duplicate || !prep.raw_token_once,
         raw_token: prep.raw_token_once || null,
+        signing_url: signingUrl,
         invitation_id: prep.invitation?.id || null,
         generation_id: prep.generation?.id || null,
       });
@@ -400,10 +429,26 @@ async function prepareSignersForSend({
         signer_id: s.id,
       };
     }
+    let signingUrl = null;
+    const rawTok = ensured.reused ? null : ensured.token?.token || null;
+    if (rawTok) {
+      const copy = await deliverCopyLink(
+        {
+          tenant_id: tenantId,
+          channel: "copy_link",
+          signer: s,
+          project: { project_id: envelope.project_id },
+          expires_at: expiresIso,
+        },
+        rawTok
+      );
+      if (copy.ok && copy.signing_url) signingUrl = copy.signing_url;
+    }
     signerTokenEntries.set(s.id, {
       token_id: ensured.token?.id || null,
       reused: !!ensured.reused,
-      raw_token: ensured.reused ? null : ensured.token?.token || null,
+      raw_token: rawTok,
+      signing_url: signingUrl,
     });
   }
 
