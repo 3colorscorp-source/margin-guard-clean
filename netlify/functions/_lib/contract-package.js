@@ -15,6 +15,10 @@ const {
 const {
   buildEffectiveForContracts,
 } = require("../tenant-contract-legal-notices")._test;
+const {
+  resolveContractScope,
+  isMissingScopeOfWorkColumn,
+} = require("./contract-scope");
 
 const API_VERSION = "ch-011a-v1";
 const SNAPSHOT_SCHEMA = "ch-011a-v1";
@@ -25,7 +29,7 @@ const UUID_RE =
 const APPROVED_QUOTE_STATUSES = new Set(["accepted", "approved"]);
 const PACKAGE_STATUSES = new Set(["ready", "superseded", "executed", "void"]);
 
-const QUOTE_SELECT = [
+const QUOTE_SELECT_BASE = [
   "id",
   "tenant_id",
   "project_name",
@@ -48,7 +52,10 @@ const QUOTE_SELECT = [
   "terms",
   "quote_number_display",
   "updated_at",
-].join(",");
+];
+
+const QUOTE_SELECT = [...QUOTE_SELECT_BASE, "scope_of_work"].join(",");
+const QUOTE_SELECT_LEGACY = QUOTE_SELECT_BASE.join(",");
 
 const PROJECT_SELECT =
   "id,tenant_id,quote_id,project_name,status,updated_at,created_at";
@@ -312,7 +319,13 @@ async function verifyProjectAndQuote(tenantId, projectId, quoteId) {
   const quotes = await supabaseRequest(
     `quotes?id=eq.${qid}&tenant_id=eq.${tid}&select=${QUOTE_SELECT}&limit=1`,
     { method: "GET" }
-  );
+  ).catch(async (err) => {
+    if (!isMissingScopeOfWorkColumn(err?.message || err)) throw err;
+    return supabaseRequest(
+      `quotes?id=eq.${qid}&tenant_id=eq.${tid}&select=${QUOTE_SELECT_LEGACY}&limit=1`,
+      { method: "GET" }
+    );
+  });
   const quote = Array.isArray(quotes) && quotes[0] ? quotes[0] : null;
   if (!quote?.id) return { unavailable: true };
 
@@ -402,6 +415,9 @@ function buildFreezeGate({
   if (!legalProfile || legalProfileReadiness.status !== "ready") {
     missing.push("business_settings");
   }
+  if (!resolveContractScope(quote).ok) {
+    missing.push("scope_of_work");
+  }
 
   return {
     ok: missing.length === 0,
@@ -427,7 +443,8 @@ function buildSnapshot({
   frozenAt,
 }) {
   const contractTotal = moneyNumber(quote.total);
-  const scopeText = trimField(quote.notes);
+  const scopeResolved = resolveContractScope(quote);
+  const scopeText = scopeResolved.ok ? scopeResolved.text : "";
   const termsText = trimField(quote.terms);
 
   // Business Settings SoT: freeze legal profile (+ branding columns as currently stored).
@@ -504,6 +521,7 @@ function buildSnapshot({
     },
     scope: {
       text: scopeText,
+      source: scopeResolved.source,
     },
     price: {
       contract_total: contractTotal,

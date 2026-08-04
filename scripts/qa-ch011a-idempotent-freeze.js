@@ -50,7 +50,8 @@ function baseSnapshotArgs(overrides = {}) {
       deposit_required: 100,
       quote_number_display: "2026-1",
       title: "T",
-      notes: "Scope text",
+      notes: "Hi — estimate email only",
+      scope_of_work: "Scope text",
       terms: "Terms text",
       updated_at: "2026-01-01T00:00:00.000Z",
     },
@@ -238,7 +239,7 @@ test("6. real scope/payment/legal change → different hash", () => {
     baseSnapshotArgs({
       quote: {
         ...baseSnapshotArgs().quote,
-        notes: "Scope text CHANGED",
+        scope_of_work: "Scope text CHANGED",
       },
     })
   );
@@ -313,7 +314,7 @@ test("9. changed freeze → version increments once", () => {
   const a = lib.buildSnapshot(baseSnapshotArgs());
   const b = lib.buildSnapshot(
     baseSnapshotArgs({
-      quote: { ...baseSnapshotArgs().quote, notes: "New scope" },
+      quote: { ...baseSnapshotArgs().quote, scope_of_work: "New scope" },
     })
   );
   const latest = {

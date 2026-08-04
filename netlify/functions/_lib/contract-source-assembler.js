@@ -4,6 +4,10 @@
  */
 
 const { getTradeModule } = require("./contract-trade-modules");
+const {
+  resolveContractScope,
+  isMissingScopeOfWorkColumn,
+} = require("./contract-scope");
 
 const SOURCE_VERSION = 1;
 
@@ -35,7 +39,7 @@ const PREFERENCES_READINESS_REQUIRED = [
   "default_signature_order",
 ];
 
-const QUOTE_SOURCE_SELECT = [
+const QUOTE_SOURCE_SELECT_BASE = [
   "id",
   "tenant_id",
   "project_name",
@@ -57,7 +61,10 @@ const QUOTE_SOURCE_SELECT = [
   "notes",
   "terms",
   "quote_number_display",
-].join(",");
+];
+
+const QUOTE_SOURCE_SELECT = [...QUOTE_SOURCE_SELECT_BASE, "scope_of_work"].join(",");
+const QUOTE_SOURCE_SELECT_LEGACY = QUOTE_SOURCE_SELECT_BASE.join(",");
 
 function trimField(value, maxLen) {
   const s = String(value ?? "").trim();
@@ -217,6 +224,7 @@ function serializeQuoteForSource(row) {
     project_address: trimField(row.project_address, 255) || trimField(row.job_site, 255),
     job_site: trimField(row.job_site, 255),
     notes: trimField(row.notes, 8000),
+    scope_of_work: trimField(row.scope_of_work, 16000),
     terms: trimField(row.terms, 8000),
     project_name: trimField(row.project_name, 255),
     title: trimField(row.title, 255),
@@ -304,7 +312,8 @@ function buildReadinessChecks({
   });
   missing.push("property_state");
 
-  const scopeText = trimField(quoteRow?.notes) || trimField(quoteRow?.terms);
+  const scopeResolved = resolveContractScope(quoteRow || {});
+  const scopeText = scopeResolved.ok ? scopeResolved.text : "";
   checks.push({
     key: "scope_availability",
     status: scopeText ? "ready" : "missing",
@@ -343,11 +352,20 @@ async function loadQuoteForTenant(supabaseRequest, tenantId, quoteId) {
   if (!UUID_RE.test(String(quoteId || ""))) return null;
   const tid = encodeURIComponent(tenantId);
   const qid = encodeURIComponent(quoteId);
-  const rows = await supabaseRequest(
-    `quotes?id=eq.${qid}&tenant_id=eq.${tid}&select=${QUOTE_SOURCE_SELECT}&limit=1`,
-    { method: "GET" }
-  );
-  return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  try {
+    const rows = await supabaseRequest(
+      `quotes?id=eq.${qid}&tenant_id=eq.${tid}&select=${QUOTE_SOURCE_SELECT}&limit=1`,
+      { method: "GET" }
+    );
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } catch (err) {
+    if (!isMissingScopeOfWorkColumn(err?.message || err)) throw err;
+    const rows = await supabaseRequest(
+      `quotes?id=eq.${qid}&tenant_id=eq.${tid}&select=${QUOTE_SOURCE_SELECT_LEGACY}&limit=1`,
+      { method: "GET" }
+    );
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  }
 }
 
 /**
@@ -437,10 +455,13 @@ async function assembleContractSource({ tenantId, projectId, quoteId, supabaseRe
   }
 
   out.quote = serializeQuoteForSource(quoteRow);
+  const scopeResolved = resolveContractScope(quoteRow || {});
   out.scope = quoteRow
     ? {
+        text: scopeResolved.ok ? scopeResolved.text : "",
+        source: scopeResolved.source,
+        scope_of_work: trimField(quoteRow.scope_of_work, 16000),
         notes: trimField(quoteRow.notes, 8000),
-        terms: trimField(quoteRow.terms, 8000),
         legacy_project_address:
           trimField(quoteRow.project_address, 255) || trimField(quoteRow.job_site, 255) || null,
       }

@@ -94,12 +94,8 @@ function isMissingColumnError(err, columnHint) {
 }
 
 function buildSafeNotes(prequote, ownerNote) {
-  const parts = [];
-  const scope = trimStr(prequote?.scope_notes, 8000);
-  const note = trimStr(ownerNote, 5000);
-  if (scope) parts.push(scope);
-  if (note) parts.push(note);
-  return parts.join("\n\n").trim();
+  // Internal/owner note only — never merge Scope into notes.
+  return trimStr(ownerNote, 5000);
 }
 
 function buildConversionMetadata({ finalPrice, startDate, ownerNote }) {
@@ -124,6 +120,9 @@ function buildQuoteInsertPayload({ tenantId, prequote, finalPrice, startDate, ow
     status: "DRAFT",
   };
 
+  const scope = trimStr(prequote?.scope_notes, 8000);
+  if (scope) payload.scope_of_work = scope;
+
   const safeNotes = buildSafeNotes(prequote, ownerNote);
   if (safeNotes) payload.notes = safeNotes;
   if (startDate) payload.start_date = startDate;
@@ -133,10 +132,14 @@ function buildQuoteInsertPayload({ tenantId, prequote, finalPrice, startDate, ow
 
 function quotePayloadVariants(base) {
   const variants = [base];
+  if (base.scope_of_work) variants.push({ ...base, scope_of_work: undefined });
   if (base.notes) variants.push({ ...base, notes: undefined });
   if (base.start_date) variants.push({ ...base, start_date: undefined });
   if (base.notes && base.start_date) {
     variants.push({ ...base, notes: undefined, start_date: undefined });
+  }
+  if (base.scope_of_work && base.notes) {
+    variants.push({ ...base, scope_of_work: undefined, notes: undefined });
   }
   return variants;
 }

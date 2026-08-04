@@ -27,6 +27,7 @@ const QUOTE_PUBLIC_KEYS = [
   "currency",
   "deposit_required",
   "notes",
+  "scope_of_work",
   "terms",
   "status",
   "accepted_at",
@@ -48,6 +49,12 @@ function isMissingQuoteDateColumns(text) {
   const t = String(text || "").toLowerCase();
   if (!/42703|column|schema cache|could not find/i.test(t)) return false;
   return /issue_date|expiration_date/i.test(t);
+}
+
+function isMissingScopeOfWorkColumn(text) {
+  const t = String(text || "").toLowerCase();
+  if (!/42703|column|schema cache|could not find/i.test(t)) return false;
+  return /scope_of_work/i.test(t);
 }
 
 /** Treat generic placeholder stored on quotes so real tenant names can win in pickFirst. */
@@ -102,18 +109,34 @@ exports.handler = async (event) => {
       `quotes?public_token=eq.${encodeURIComponent(trimmed)}&tenant_id=not.is.null&select=${QUOTE_SELECT_WITH_DATES}&limit=2`;
     const pathBase =
       `quotes?public_token=eq.${encodeURIComponent(trimmed)}&tenant_id=not.is.null&select=${QUOTE_SELECT}&limit=2`;
+    const pathLegacy = pathBase.replace(",scope_of_work", "").replace("scope_of_work,", "");
 
     let rows;
     try {
       rows = await supabaseRequest(pathWithDates, { method: "GET" });
     } catch (err) {
-      if (!isMissingQuoteDateColumns(err.message)) {
+      if (isMissingScopeOfWorkColumn(err.message)) {
+        try {
+          rows = await supabaseRequest(pathLegacy, { method: "GET" });
+        } catch (errScope) {
+          return json(502, { error: errScope.message || "Failed to read quote" });
+        }
+      } else if (!isMissingQuoteDateColumns(err.message)) {
         return json(502, { error: err.message || "Failed to read quote" });
-      }
-      try {
-        rows = await supabaseRequest(pathBase, { method: "GET" });
-      } catch (err2) {
-        return json(502, { error: err2.message || "Failed to read quote" });
+      } else {
+        try {
+          rows = await supabaseRequest(pathBase, { method: "GET" });
+        } catch (err2) {
+          if (isMissingScopeOfWorkColumn(err2.message)) {
+            try {
+              rows = await supabaseRequest(pathLegacy, { method: "GET" });
+            } catch (err3) {
+              return json(502, { error: err3.message || "Failed to read quote" });
+            }
+          } else {
+            return json(502, { error: err2.message || "Failed to read quote" });
+          }
+        }
       }
     }
 

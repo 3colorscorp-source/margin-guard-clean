@@ -3,6 +3,7 @@
 
   const PROJECTS_API = "/.netlify/functions/get-project-control-projects";
   const QUOTE_EDIT_API = "/.netlify/functions/get-tenant-quote-edit";
+  const QUOTE_UPDATE_API = "/.netlify/functions/update-tenant-quote-edit";
   const BRANDING_API = "/.netlify/functions/get-tenant-branding";
   const LEGAL_PROFILE_API = "/.netlify/functions/tenant-legal-profile";
   const LEGAL_NOTICES_API = "/.netlify/functions/tenant-contract-legal-notices";
@@ -1136,9 +1137,13 @@
     const currency = String(quote?.currency || DEFAULT_CURRENCY).trim() || DEFAULT_CURRENCY;
     const contractTotal = resolveContractTotal(project, quote);
     const address = String(quote?.project_address || quote?.job_site || "").trim();
-    const notes = String(quote?.notes || "").trim();
     const terms = String(quote?.terms || "").trim();
-    const scope = notes || terms || "";
+    const scopeResolved =
+      window.MarginGuardContractScope &&
+      typeof window.MarginGuardContractScope.resolveContractScope === "function"
+        ? window.MarginGuardContractScope.resolveContractScope(quote || {})
+        : { ok: false, text: "", source: "missing", reason: "resolver_missing" };
+    const scope = scopeResolved.ok ? scopeResolved.text : "";
     const deposit = finiteNumber(quote?.deposit_required, NaN);
     return {
       projectId: String(project.id || "").trim(),
@@ -1155,6 +1160,9 @@
       currency,
       address,
       scope,
+      scopeSource: scopeResolved.source || "missing",
+      scopeOfWorkCanonical: String(quote?.scope_of_work || "").trim() ? String(quote.scope_of_work) : "",
+      notesEmail: String(quote?.notes || ""),
       terms,
       exclusions: "",
       startDate: toDateInput(quote?.start_date),
@@ -2612,22 +2620,56 @@
     return String(raw || "").trim();
   }
 
-  function looksLikeEstimateEmail(text) {
-    const t = String(text || "");
-    if (!t.trim()) return false;
-
-    // Strong email cues only. "please find/review/see" never triggers alone.
-    if (/^(hi\b|hello\b|dear\b|good (morning|afternoon|evening)\b)/im.test(t)) return true;
-    if (
-      /\b(best regards|kind regards|sincerely|thank you for (your )?interest|looking forward to hearing from you)\b/i.test(
-        t
-      )
-    ) {
-      return true;
+  /**
+   * CH-012E.1 — canonical Scope via MarginGuardContractScope.
+   * Accepts resolved scope text string OR a quote-like object.
+   */
+  function extractApprovedScopeText(rawOrQuote) {
+    const api = window.MarginGuardContractScope;
+    if (api && typeof api.resolveContractScope === "function") {
+      if (rawOrQuote && typeof rawOrQuote === "object") {
+        return api.resolveContractScope(rawOrQuote);
+      }
+      const asCanonical = api.resolveContractScope({
+        scope_of_work: String(rawOrQuote ?? ""),
+      });
+      return asCanonical;
     }
-    if (/\bsubject\s*:/i.test(t) || /\b(sent from|mailto:|unsubscribe)\b/i.test(t)) return true;
-    if (/https?:\/\//i.test(t) && /\b(estimate|quote|proposal)\b/i.test(t)) return true;
-    return false;
+    const text = String(rawOrQuote ?? "").trim();
+    return text
+      ? { ok: true, text: String(rawOrQuote), source: "scope_of_work", reason: "" }
+      : { ok: false, text: "", source: "missing", reason: "resolver_missing" };
+  }
+
+  const SCOPE_MISSING_MESSAGE =
+    (window.MarginGuardContractScope &&
+      window.MarginGuardContractScope.SCOPE_MISSING_MESSAGE) ||
+    "Scope of Work is missing.\n\nThis contract cannot be frozen until the approved quote contains a Scope of Work.";
+
+  async function saveCanonicalScopeOfWork(nextText) {
+    const quoteId = String(sourceSnapshot?.quoteId || "").trim();
+    if (!quoteId) {
+      throw new Error("Quote id is required to save Scope of Work.");
+    }
+    const response = await fetch(QUOTE_UPDATE_API, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        quote_id: quoteId,
+        scope_of_work: nextText,
+        confirm_sent_update: true,
+      }),
+    });
+    const raw = await response.text();
+    let data = {};
+    try {
+      data = raw ? JSON.parse(raw) : {};
+    } catch (_e) {}
+    if (!response.ok || !data?.ok) {
+      throw new Error(data.error || raw || "Unable to save Scope of Work.");
+    }
+    return data;
   }
 
   function looksLikeTechnicalQaLabel(text) {
@@ -2677,7 +2719,8 @@
     const sigOk = signatureConfigured(setup);
     const legalEffective = resolveLegalNoticesEffective(legalNotices);
     const legalOk = legalEffective.contribution === "configured";
-    if (propOk && warOk && payOk && sigOk && legalOk) return "configured";
+    const scopeOk = extractApprovedScopeText(source?.scope).ok;
+    if (propOk && warOk && payOk && sigOk && legalOk && scopeOk) return "configured";
 
     const propRaw = String(setup?.readiness?.project_address || "missing").toLowerCase();
     const warRaw = String(setup?.readiness?.warranty || "missing").toLowerCase();
@@ -2692,7 +2735,8 @@
       warOk ||
       payOk ||
       sigOk ||
-      legalOk;
+      legalOk ||
+      scopeOk;
     return anyPartial ? "draft" : "missing";
   }
 
@@ -2975,7 +3019,7 @@
       case "art-quote":
         return source.quoteId ? "available" : "missing";
       case "art-scope":
-        return String(e.scope || "").trim() ? "available" : "missing";
+        return extractApprovedScopeText(e.scope).ok ? "available" : "missing";
       case "art-price":
         return source.contractTotal != null && source.contractTotal > 0 ? "available" : "missing";
       case "art-payment":
@@ -3200,7 +3244,7 @@
 
   function readinessItems(source, edits) {
     const address = String(edits.address || "").trim();
-    const scope = String(edits.scope || "").trim();
+    const scopeExtract = extractApprovedScopeText(edits.scope);
     const legal = source.legal || {};
     const profile = legal.profile;
 
@@ -3231,7 +3275,10 @@
         label: "Contract total",
         status: source.contractTotal != null && source.contractTotal > 0 ? "available" : "missing",
       },
-      { label: "Existing scope", status: scope ? "available" : "missing" },
+      {
+        label: "Existing scope",
+        status: scopeExtract.ok ? "available" : "missing",
+      },
       { label: "Legal business identity", status: legalIdentity },
       { label: "Business address", status: bizAddress },
       { label: "Business contact", status: bizContact },
@@ -3328,6 +3375,13 @@
         cta: "Open Customer",
       };
     }
+    if (!extractApprovedScopeText(edits?.scope ?? source?.scope).ok) {
+      return {
+        label: "Add Scope of Work on the approved quote",
+        article: "art-scope",
+        cta: "Open Scope",
+      };
+    }
     if (!profile?.legalBusinessName) {
       return {
         label: "Complete Legal Business Profile",
@@ -3388,6 +3442,11 @@
     }
     if (overallContractReadiness(sourceSnapshot) !== "configured") {
       throw new Error("Contract readiness must be 100% before freezing.");
+    }
+    if (!extractApprovedScopeText(sourceSnapshot.scope).ok) {
+      throw new Error(
+        "Scope of Work is missing. This contract cannot be frozen until the approved quote contains a Scope of Work."
+      );
     }
     const body = {
       project_id: sourceSnapshot.projectId,
@@ -3906,21 +3965,71 @@
     setText("cbAcceptedAt", formatDate(source.acceptedAt) || "—");
     setText("cbContractTotal", money);
 
-    const scope = String(edits.scope || "").trim();
+    const scopeExtract = extractApprovedScopeText(edits.scope);
     const exclusions = String(edits.exclusions || "").trim();
     const scopeEl = $("cbScopeDisplay");
     const scopeWarn = $("cbScopeEmailWarn");
+    const scopeMissing = $("cbScopeMissing");
+    const scopeEditorWrap = $("cbScopeEditorWrap");
+    const scopeEditor = $("cbScopeEditor");
+    const scopeSaveBtn = $("cbScopeSaveBtn");
+    const scopeSaveStatus = $("cbScopeSaveStatus");
     if (scopeEl) {
-      if (scope) {
-        scopeEl.textContent = exclusions ? `${scope}\n\nExclusions:\n${exclusions}` : scope;
+      if (scopeExtract.ok) {
+        // Exact approved text — preserve line breaks; never invent Day 1…Day 5 copy.
+        scopeEl.textContent = exclusions
+          ? `${scopeExtract.text}\n\nExclusions:\n${exclusions}`
+          : scopeExtract.text;
       } else {
-        scopeEl.textContent =
-          "A clear description of the work has not been provided yet.";
+        scopeEl.textContent = SCOPE_MISSING_MESSAGE;
       }
     }
+    if (scopeMissing) {
+      scopeMissing.hidden = scopeExtract.ok;
+    }
     if (scopeWarn) {
-      const showWarn = Boolean(scope && looksLikeEstimateEmail(scope));
-      scopeWarn.hidden = !showWarn;
+      // Informational only: email remains in quotes.notes when Scope is missing.
+      const emailCopy = String(source.notesEmail || "").trim();
+      scopeWarn.hidden = scopeExtract.ok || !emailCopy;
+    }
+    if (scopeEditorWrap) {
+      scopeEditorWrap.hidden = scopeExtract.ok;
+    }
+    if (scopeSaveBtn && !scopeSaveBtn.dataset.bound) {
+      scopeSaveBtn.dataset.bound = "1";
+      scopeSaveBtn.addEventListener("click", async () => {
+        try {
+          scopeSaveBtn.disabled = true;
+          if (scopeSaveStatus) {
+            scopeSaveStatus.hidden = false;
+            scopeSaveStatus.textContent = "Saving Scope of Work…";
+          }
+          const next = String(scopeEditor?.value || "");
+          const saved = await saveCanonicalScopeOfWork(next);
+          const quote = saved.quote || {};
+          const resolved = extractApprovedScopeText(quote);
+          if (!resolved.ok) {
+            throw new Error("Saved Scope of Work is still empty.");
+          }
+          if (sourceSnapshot) {
+            sourceSnapshot.scope = resolved.text;
+            sourceSnapshot.scopeSource = resolved.source;
+            sourceSnapshot.scopeOfWorkCanonical = String(quote.scope_of_work || resolved.text);
+            sourceSnapshot.notesEmail = String(quote.notes || sourceSnapshot.notesEmail || "");
+          }
+          draftEdits.scope = resolved.text;
+          if (scopeSaveStatus) scopeSaveStatus.textContent = "Scope of Work saved.";
+          renderDocument(sourceSnapshot, draftEdits);
+          renderWorkspaceChrome();
+        } catch (err) {
+          if (scopeSaveStatus) {
+            scopeSaveStatus.hidden = false;
+            scopeSaveStatus.textContent = err?.message || "Save failed.";
+          }
+        } finally {
+          scopeSaveBtn.disabled = false;
+        }
+      });
     }
 
     setText("cbPriceLine", money);

@@ -18,6 +18,10 @@ const {
   evaluateQuoteEditGuard,
 } = require("./_lib/quote-edit-guard");
 const { resolveSchedulingPaymentAmount } = require("./_lib/pricing-engine");
+const {
+  normalizeScopeOfWorkForWrite,
+  isAuthorizedLockedScopeOnlyPatch,
+} = require("./_lib/contract-scope");
 
 const OWNER_ADMIN_ROLES = new Set(["owner", "admin"]);
 
@@ -29,6 +33,7 @@ const ALLOWED_BODY_KEYS = new Set([
 
 const SHORT_TEXT_MAX = 255;
 const LONG_TEXT_MAX = 5000;
+const SCOPE_TEXT_MAX = 16000;
 
 const DATE_FIELDS = new Set(["start_date", "due_date"]);
 
@@ -187,6 +192,14 @@ function buildEditablePatch(body, quoteTotal) {
       continue;
     }
 
+    if (key === "scope_of_work") {
+      const normalized = normalizeScopeOfWorkForWrite(body[key], SCOPE_TEXT_MAX);
+      // undefined means absent; normalizeScopeOfWorkForWrite returns null for blank.
+      patch[key] = normalized === undefined ? null : normalized;
+      updatedFields.push(key);
+      continue;
+    }
+
     patch[key] = normalizeShortText(body[key]);
     updatedFields.push(key);
   }
@@ -252,26 +265,6 @@ exports.handler = async (event) => {
       });
     }
 
-    if (guardBefore.edit?.locked || !guardBefore.edit?.is_editable) {
-      return json(422, {
-        ok: false,
-        error: "Quote is locked and cannot be edited.",
-        code: "quote_locked",
-        lock_reasons: guardBefore.edit?.lock_reasons || [],
-      });
-    }
-
-    const warnings = guardBefore.edit?.warnings || [];
-    if (warnings.includes("quote_viewed_or_sent") && body.confirm_sent_update !== true) {
-      return json(409, {
-        ok: false,
-        error:
-          "This quote was already sent or viewed. Set confirm_sent_update to true to proceed.",
-        code: "sent_quote_confirmation_required",
-        warnings,
-      });
-    }
-
     const quoteTotal =
       guardBefore.quote?.total != null && Number.isFinite(Number(guardBefore.quote.total))
         ? Number(guardBefore.quote.total)
@@ -301,6 +294,37 @@ exports.handler = async (event) => {
         ok: false,
         error: "No editable fields provided.",
         code: "no_edit_fields",
+      });
+    }
+
+    // CH-012E.1 — allow Owner/Admin to correct canonical Scope even on locked
+    // (accepted) quotes so Contract Builder freeze can proceed. Scope-only patch.
+    const scopeOnlyCorrection = isAuthorizedLockedScopeOnlyPatch(updatedFields);
+
+    if (
+      (guardBefore.edit?.locked || !guardBefore.edit?.is_editable) &&
+      !scopeOnlyCorrection
+    ) {
+      return json(422, {
+        ok: false,
+        error: "Quote is locked and cannot be edited.",
+        code: "quote_locked",
+        lock_reasons: guardBefore.edit?.lock_reasons || [],
+      });
+    }
+
+    const warnings = guardBefore.edit?.warnings || [];
+    if (
+      !scopeOnlyCorrection &&
+      warnings.includes("quote_viewed_or_sent") &&
+      body.confirm_sent_update !== true
+    ) {
+      return json(409, {
+        ok: false,
+        error:
+          "This quote was already sent or viewed. Set confirm_sent_update to true to proceed.",
+        code: "sent_quote_confirmation_required",
+        warnings,
       });
     }
 
@@ -343,4 +367,6 @@ exports._test = {
   ALLOWED_BODY_KEYS,
   EDITABLE_FIELD_NAMES,
   OWNER_ADMIN_ROLES,
+  isAuthorizedLockedScopeOnlyPatch,
+  findUnknownBodyKeys,
 };

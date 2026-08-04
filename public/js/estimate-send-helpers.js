@@ -335,16 +335,13 @@
 
   const scopeItems = (() => {
     const raw =
-      data.scopeItems ||
       data.scope_of_work ||
       data.scopeOfWork ||
+      data.scopeItems ||
       data.scopeSummary ||
       data.scope_summary ||
       data.projectNotes ||
       data.quoteNotes ||
-      data.notes ||
-      data.messageText ||
-      data.message_to_client ||
       '';
 
     if (Array.isArray(raw)) {

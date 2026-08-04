@@ -35,13 +35,14 @@ const EDITABLE_FIELD_NAMES = [
   "project_address",
   "job_site",
   "notes",
+  "scope_of_work",
   "terms",
   "start_date",
   "due_date",
   "deposit_required",
 ];
 
-const QUOTE_GUARD_SELECT = [
+const QUOTE_GUARD_SELECT_BASE = [
   "id",
   "tenant_id",
   "quote_number_display",
@@ -69,7 +70,10 @@ const QUOTE_GUARD_SELECT = [
   "exclusions_acknowledged_at",
   "change_order_acknowledged_at",
   "first_view_tracked_at",
-].join(",");
+];
+
+const QUOTE_GUARD_SELECT = [...QUOTE_GUARD_SELECT_BASE, "scope_of_work"].join(",");
+const QUOTE_GUARD_SELECT_LEGACY = QUOTE_GUARD_SELECT_BASE.join(",");
 
 function normStatus(s) {
   return String(s || "")
@@ -119,6 +123,7 @@ function serializeSafeQuote(row) {
     deposit_required: row.deposit_required ?? null,
     currency: row.currency ?? "USD",
     notes: row.notes ?? null,
+    scope_of_work: row.scope_of_work ?? null,
     terms: row.terms ?? null,
     start_date: row.start_date ?? null,
     due_date: row.due_date ?? null,
@@ -132,11 +137,23 @@ function serializeSafeQuote(row) {
 async function fetchQuoteForTenant(tenantId, quoteId) {
   const tid = encodeURIComponent(String(tenantId));
   const qid = encodeURIComponent(String(quoteId));
-  const rows = await supabaseRequest(
-    `quotes?id=eq.${qid}&tenant_id=eq.${tid}&select=${QUOTE_GUARD_SELECT}&limit=1`,
-    { method: "GET" }
-  );
-  return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  try {
+    const rows = await supabaseRequest(
+      `quotes?id=eq.${qid}&tenant_id=eq.${tid}&select=${QUOTE_GUARD_SELECT}&limit=1`,
+      { method: "GET" }
+    );
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } catch (err) {
+    const msg = String(err?.message || err || "");
+    if (!/scope_of_work/i.test(msg) || !/42703|column|schema cache|could not find/i.test(msg)) {
+      throw err;
+    }
+    const rows = await supabaseRequest(
+      `quotes?id=eq.${qid}&tenant_id=eq.${tid}&select=${QUOTE_GUARD_SELECT_LEGACY}&limit=1`,
+      { method: "GET" }
+    );
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  }
 }
 
 async function hasTenantProjectForQuote(tenantId, quoteId) {

@@ -9,6 +9,10 @@ const {
   computeOperationalPlanMetrics,
   planHasDays,
 } = require("./_lib/operational-plan");
+const {
+  isMissingScopeOfWorkColumn,
+  resolveScopeOfWorkWriteFromBody,
+} = require("./_lib/contract-scope");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -662,13 +666,22 @@ exports.handler = async (event) => {
       body.serviceAddress
     );
 
+    // Outbound estimate email / send message only — never contractual Scope.
     const notes = pickFirst(
       body.notes,
       body.messageText,
       body.message,
-      body.public_message,
-      body.publicMessage
+      body.email_body,
+      body.emailBody,
+      body.send_message,
+      body.sendMessage
     );
+
+    // Canonical contractual Scope — never from email/notes/public_message.
+    // Only write when the client explicitly sends scope_of_work / scopeOfWork.
+    const scopeWrite = resolveScopeOfWorkWriteFromBody(body, 16000);
+    const hasExplicitScope = scopeWrite.include;
+    const scopeOfWork = hasExplicitScope ? scopeWrite.value : undefined;
 
     const terms = pickFirst(
       body.terms,
@@ -771,6 +784,7 @@ exports.handler = async (event) => {
         ...(opPublish.include ? opPublish.fields : {}),
         ...sellerAttributionForInsert(ctx),
         ...(resolvedContactId ? { contact_id: resolvedContactId } : {}),
+        ...(hasExplicitScope ? { scope_of_work: scopeOfWork } : {}),
       };
     }
 
@@ -815,6 +829,18 @@ exports.handler = async (event) => {
           return { ...result, payloadUsed: payload };
         }
         lastErrorText = result.text || `Supabase write failed with status ${result.status}`;
+        if (isMissingScopeOfWorkColumn(lastErrorText) && payload.scope_of_work !== undefined) {
+          const { scope_of_work: _drop, ...rest } = payload;
+          const retry = await insertQuote({
+            supabaseUrl,
+            serviceRoleKey,
+            payload: rest
+          });
+          if (retry.ok) {
+            return { ...retry, payloadUsed: rest, scopeColumnMissing: true };
+          }
+          lastErrorText = retry.text || lastErrorText;
+        }
       }
       return null;
     }
@@ -831,6 +857,14 @@ exports.handler = async (event) => {
     }
 
     if (!insertResult) {
+      if (isMissingScopeOfWorkColumn(lastErrorText)) {
+        return json(503, {
+          error:
+            "Quote scope_of_work column is missing. Run SUPABASE_CH012E_CANONICAL_SCOPE.sql in Supabase SQL editor, then retry Send Estimate.",
+          migration: "SUPABASE_CH012E_CANONICAL_SCOPE.sql",
+          missing_columns_hint: lastErrorText
+        });
+      }
       if (isMissingQuoteDateColumns(lastErrorText)) {
         return json(503, {
           error:
@@ -922,4 +956,5 @@ exports.handler = async (event) => {
 exports._test = {
   resolveCanonicalPublishAmounts,
   round2,
+  resolveScopeOfWorkWriteFromBody,
 };

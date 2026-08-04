@@ -9474,6 +9474,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       depositRequired: rowDeposit,
       projectNotes,
       quoteNotes: projectNotes,
+      scope_of_work: projectNotes,
       scopeSummary: nonEmptyString(projectNotes, scope, state.messageToClient, "-"),
       messageText: messageWithLink,
       publicQuoteUrl
@@ -9642,7 +9643,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           recommended_total: estimateTotal,
           deposit_required: depositRequired,
           notes: message,
-          public_message: scope || "",
+          scope_of_work: scope || "",
           currency: "USD",
           status: "READY_TO_SEND",
           business_name: bn,

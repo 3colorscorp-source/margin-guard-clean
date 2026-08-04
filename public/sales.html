@@ -9059,13 +9059,11 @@
 
   const scopeItems = (() => {
     const raw =
-      data.scopeItems ||
       data.scope_of_work ||
       data.scopeOfWork ||
+      data.scopeItems ||
       data.scopeSummary ||
       data.scope_summary ||
-      data.messageText ||
-      data.message_to_client ||
       '';
 
     if (Array.isArray(raw)) {
@@ -9747,6 +9745,7 @@ async function fillSendModal() {
       depositFormatted,
       depositRequired,
       scopeSummary: messageToClient || '-',
+      scope_of_work: messageToClient || '',
       messageText: defaultMessage,
       publicQuoteUrl: String(state.publicQuoteUrl || '').trim()
     };
@@ -10092,7 +10091,7 @@ async function openSellerSendModal(event) {
       recommended_total: estimateTotal,
       deposit_required: depositRequired,
       notes: message,
-      public_message: payload.scopeSummary || scope || '',
+      scope_of_work: payload.scopeSummary || scope || '',
       currency: 'USD',
       status: 'READY_TO_SEND',
       business_name: bn,
@@ -10646,6 +10645,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
         messageLanguage: 'bilingual',
         messageText: messageWithLink,
         scopeOfWork: payload.scopeSummary || scope,
+        scope_of_work: payload.scopeSummary || scope,
         depositRequired: rowDeposit,
         clientName: clientName,
         location: projectAddress,

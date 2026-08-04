@@ -2024,10 +2024,25 @@
                 <div class="cb-article__body">
                   <div data-ws-preview>
                     <p class="cb-draft-note owner-only no-print">
-                      Scope of work is taken from the approved quote. Edit the quote to change it; this article is review-only.
+                      Scope of Work comes from the approved quote field <code>scope_of_work</code>.
+                      Outbound estimate email stays in <code>notes</code> and is never used as contractual Scope.
+                      Demo Day 1…Day 5 text is never invented here.
                     </p>
                     <div id="cbScopeEmailWarn" class="cb-owner-warn owner-only no-print" hidden>
-                      The current quote text appears to contain estimate or email language and should be replaced with a clear description of the work included, exclusions, materials, allowances, and assumptions before signature.
+                      Quote email/send copy is stored separately in notes. Enter the customer-approved Scope of Work below, then save before freezing.
+                    </div>
+                    <div id="cbScopeMissing" class="cb-owner-warn owner-only no-print" hidden>
+                      Scope of Work is missing. This contract cannot be frozen until the approved quote contains a Scope of Work.
+                    </div>
+                    <div id="cbScopeEditorWrap" class="owner-only no-print" hidden style="margin:10px 0 14px;">
+                      <label for="cbScopeEditor" class="cb-draft-note" style="display:block;margin-bottom:6px;">
+                        Enter approved Scope of Work (saved to the quote)
+                      </label>
+                      <textarea id="cbScopeEditor" rows="10" maxlength="16000" style="width:100%;white-space:pre-wrap;font:inherit;line-height:1.45;padding:10px;" placeholder="Install porcelain tile.&#10;&#10;Bathroom:&#10;• Demo&#10;• Waterproof&#10;• Install tile"></textarea>
+                      <div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+                        <button type="button" class="btn primary" id="cbScopeSaveBtn">Save Scope of Work</button>
+                        <span id="cbScopeSaveStatus" class="cb-draft-note" hidden></span>
+                      </div>
                     </div>
                     <div class="cb-field"><div class="v" id="cbScopeDisplay" style="white-space:pre-wrap;">—</div></div>
                   </div>
@@ -2423,6 +2438,7 @@
   <script src="/js/mg-app-nav.js"></script>
   <script src="/js/tenant.js"></script>
   <script src="/js/auth.js"></script>
+  <script src="/js/contract-scope.js"></script>
   <script src="/js/contract-builder.js" defer></script>
 </body>
 </html>

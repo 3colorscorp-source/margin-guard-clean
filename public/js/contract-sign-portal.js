@@ -35,6 +35,44 @@
     governing_law_notice: "Governing Law",
   };
 
+  function extractApprovedScopeText(rawNotes) {
+    if (
+      window.MarginGuardContractScope &&
+      typeof window.MarginGuardContractScope.resolveContractScope === "function"
+    ) {
+      return window.MarginGuardContractScope.resolveContractScope({
+        scope_of_work: rawNotes,
+      });
+    }
+    var text = String(rawNotes == null ? "" : rawNotes);
+    if (!String(text).trim()) {
+      return { ok: false, text: "" };
+    }
+    text = text.replace(/^\uFEFF?\s*Scope of Work(?:\s+Draft)?\s*(?:\r?\n)+/i, "");
+    var lines = text.split(/\r?\n/);
+    if (lines.length && /^Scope of Work(?:\s+Draft)?\s*$/i.test(String(lines[0] || "").trim())) {
+      lines.shift();
+      while (lines.length && String(lines[0] || "").trim() === "") lines.shift();
+      text = lines.join("\n");
+    }
+    if (!String(text).trim()) {
+      return { ok: false, text: "" };
+    }
+    return { ok: true, text: text };
+  }
+
+  function renderApprovedScope(el, raw) {
+    if (!el) return;
+    var extracted = extractApprovedScopeText(raw);
+    el.style.whiteSpace = "pre-wrap";
+    if (extracted.ok) {
+      el.textContent = extracted.text;
+      return;
+    }
+    el.textContent =
+      "Scope of Work is missing.\n\nThis contract cannot be completed until the approved quote contains a Scope of Work.";
+  }
+
   var state = {
     token: "",
     payload: null,
@@ -526,8 +564,8 @@
       propertyLines(property) +
       "</span></div></div></div>" +
       '<div id="sec-scope" style="margin-top:18px">' +
-      '<p class="cs-section-label">Scope</p>' +
-      '<div class="cs-prose" id="scopeText"></div></div>' +
+      '<p class="cs-section-label">SCOPE OF WORK</p>' +
+      '<div class="cs-prose" id="scopeText" style="white-space:pre-wrap;"></div></div>' +
       '<div id="sec-price" style="margin-top:18px">' +
       '<p class="cs-section-label">Price</p>' +
       '<div class="cs-grid">' +
@@ -595,7 +633,7 @@
       "</div>" +
       "</div></div></div>";
 
-    document.getElementById("scopeText").textContent = scope.text ? String(scope.text) : "—";
+    renderApprovedScope(document.getElementById("scopeText"), scope.text);
     document.getElementById("warrantyText").textContent = warrantyText.length
       ? warrantyText.join("\n")
       : "—";

@@ -313,7 +313,7 @@ function buildSignedContractLines({
   lines.push(body(`Property: ${propertyLine(snap) || "—"}`));
   lines.push(blank(6));
 
-  lines.push(heading("Scope"));
+  lines.push(heading("SCOPE OF WORK"));
   lines.push(body(trimField(snap?.scope?.text) || "—"));
   lines.push(blank(6));
 

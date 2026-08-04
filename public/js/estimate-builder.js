@@ -1126,6 +1126,27 @@
     `;
   }
 
+  function renderScopeOfWork(next) {
+    const section = $("publicEstimateScopeSection");
+    const wrap = $("publicEstimateScope");
+    if (!section || !wrap) return;
+
+    const resolved =
+      window.MarginGuardContractScope &&
+      typeof window.MarginGuardContractScope.resolveContractScope === "function"
+        ? window.MarginGuardContractScope.resolveContractScope(next || {})
+        : { ok: false, text: "" };
+
+    if (!resolved.ok) {
+      section.style.display = "none";
+      wrap.textContent = "";
+      return;
+    }
+    section.style.display = "";
+    wrap.style.whiteSpace = "pre-wrap";
+    wrap.textContent = resolved.text;
+  }
+
   function renderMessage(next) {
     const wrap = $("publicEstimateMessage");
     if (!wrap) return;
@@ -1242,6 +1263,7 @@
     renderCustomer(next);
     renderTotals(next);
     renderItems(next);
+    renderScopeOfWork(next);
     renderMessage(next);
     renderTerms(next);
 
