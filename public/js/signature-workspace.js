@@ -39,6 +39,8 @@
     signers: [],
     certificates: [],
     artifacts: [],
+    delivery: null,
+    signingLink: null,
     busy: false,
   };
 
@@ -260,14 +262,52 @@
 
   function ownerStatusLabel(raw) {
     const st = String(raw || "").toLowerCase();
-    if (st === "prepared") return "Link Ready";
+    if (st === "prepared") return "Secure Link Ready";
     if (st === "executed") return "Fully Signed";
     if (st === "ready") return "Ready";
     if (st === "draft") return "Draft";
-    if (st === "sent") return "Sent";
-    if (st === "opened") return "Opened";
+    if (st === "sent") return "Secure Link Ready";
+    if (st === "opened") return "Waiting for Customer Signature";
     if (st === "completed") return "Completed";
     return raw || "—";
+  }
+
+  function buildSigningUrl(rawToken) {
+    const token = String(rawToken || "").trim();
+    if (!token) return null;
+    const shape =
+      state.delivery?.public_signing_url_shape || "/contract-sign?token={token}";
+    const path = shape.replace("{token}", encodeURIComponent(token));
+    if (/^https?:\/\//i.test(path)) return path;
+    return `${window.location.origin}${path.startsWith("/") ? "" : "/"}${path}`;
+  }
+
+  /**
+   * CH-013B Policy A: raw link exists only in the immediate Send response memory.
+   * Never persist to browser storage or DB. Never reconstruct from hash.
+   */
+  function captureDeliveryLink(delivery, { fromSendResponse = false } = {}) {
+    state.delivery = delivery || null;
+    if (!fromSendResponse) {
+      return;
+    }
+    const signers = Array.isArray(delivery?.signers) ? delivery.signers : [];
+    const withToken = signers.find((s) => s && s.signing_token);
+    if (withToken?.signing_token) {
+      state.signingLink = buildSigningUrl(withToken.signing_token);
+    } else {
+      // Idempotent / already-sent: no raw token in response — do not invent one.
+      state.signingLink = null;
+    }
+  }
+
+  function isLinkReady() {
+    const st = String(state.envelope?.status || "").toLowerCase();
+    return st === "sent" || st === "opened" || Boolean(state.delivery?.link_ready);
+  }
+
+  function hasCopyableLink() {
+    return Boolean(state.signingLink);
   }
 
   function setBlockedReason(id, text) {
@@ -327,10 +367,22 @@
         ctaAction: "send",
       };
     }
-    if (envSt === "sent" || envSt === "opened") {
+    if (envSt === "sent") {
+      const canCopy = hasCopyableLink();
       return {
-        title: "Waiting for signatures",
-        body: "The signing request was sent. Monitor progress below until the customer finishes signing.",
+        title: "Secure Link Ready",
+        body: canCopy
+          ? "The signing request is prepared. No email has been sent yet. Copy the secure signing link for the customer."
+          : "The secure link was generated previously. Explicit link regeneration is not available in this phase.",
+        ctaLabel: canCopy ? "Copy Signing Link" : null,
+        ctaHref: null,
+        ctaAction: canCopy ? "copy-link" : null,
+      };
+    }
+    if (envSt === "opened") {
+      return {
+        title: "Waiting for Customer Signature",
+        body: "The customer opened the secure signing link. Monitor progress below until signing is complete.",
         ctaLabel: null,
         ctaHref: null,
         ctaAction: null,
@@ -386,6 +438,7 @@
         if (g.ctaAction === "create-envelope") $("swCreateEnvelopeBtn")?.click();
         if (g.ctaAction === "add-signer") $("swAddSignerBtn")?.click();
         if (g.ctaAction === "send") $("swSendBtn")?.click();
+        if (g.ctaAction === "copy-link") $("swCopyLinkBtn")?.click();
         if (g.ctaAction === "cert") $("swIssueCertBtn")?.click();
         if (g.ctaAction === "pdf") $("swGeneratePdfBtn")?.click();
       });
@@ -591,15 +644,36 @@
         .join("");
     }
     const sendBtn = $("swSendBtn");
+    const linkReadyEl = $("swLinkReady");
+    const copyBtn = $("swCopyLinkBtn");
+    const copyWrap = copyBtn?.parentElement;
+    const linkCopy = $("swLinkReadyCopy");
     const noPackage = !state.package?.id;
     const st = String(state.envelope?.status || "").toLowerCase();
+    const linkReady = isLinkReady();
+    const canCopy = hasCopyableLink();
+    if (linkReadyEl) {
+      linkReadyEl.hidden = !linkReady;
+    }
+    if (linkCopy) {
+      linkCopy.textContent = canCopy
+        ? "The signing request is prepared. No email has been sent yet."
+        : "The secure link was generated previously.";
+    }
+    if (copyBtn) {
+      copyBtn.hidden = !canCopy;
+      copyBtn.disabled = !canCopy;
+    }
+    if (copyWrap && copyWrap.classList.contains("sw-actions")) {
+      copyWrap.hidden = !canCopy;
+    }
     if (sendBtn) {
-      sendBtn.disabled =
-        noPackage || !state.envelope?.id || (!ready && st === "draft");
-      if (st === "sent" || st === "opened" || st === "completed") {
-        sendBtn.disabled = false;
-        sendBtn.textContent = "Resend Signing Link";
+      if (linkReady && st !== "completed") {
+        sendBtn.hidden = true;
       } else {
+        sendBtn.hidden = false;
+        sendBtn.disabled =
+          noPackage || !state.envelope?.id || (!ready && st === "draft");
         sendBtn.textContent = "Send For Signature";
       }
     }
@@ -720,6 +794,11 @@
       `project_id: ${state.project?.id || "—"}`,
       `package_id: ${state.package?.id || "—"}`,
       `envelope_id: ${state.envelope?.id || "—"}`,
+      `delivery_status: ${state.delivery?.delivery_status || (isLinkReady() ? "prepared" : "—")}`,
+      `invitation_ids: ${(state.delivery?.invitations || [])
+        .map((i) => i.invitation_id)
+        .filter(Boolean)
+        .join(", ") || "—"}`,
       `certificate_id: ${cert?.id || "—"}`,
       `artifact_id: ${art?.id || "—"}`,
       `storage_ref: ${art?.storage_ref || "—"}`,
@@ -759,8 +838,11 @@
     if (!packageId) {
       state.envelopes = [];
       state.envelope = null;
+      state.signingLink = null;
+      state.delivery = null;
       return;
     }
+    const prevEnvelopeId = state.envelope?.id || null;
     const res = await api(
       `${ENVELOPES_API}?package_id=${encodeURIComponent(packageId)}`
     );
@@ -782,6 +864,16 @@
       completed ||
       state.envelopes[0] ||
       null;
+    // Policy A: never reconstruct raw link after reload; clear only on envelope change.
+    if (!state.envelope?.id || String(state.envelope.id) !== String(prevEnvelopeId)) {
+      if (String(state.envelope?.id || "") !== String(prevEnvelopeId)) {
+        state.signingLink = null;
+      }
+    }
+    if (!state.envelope?.id) {
+      state.signingLink = null;
+      state.delivery = null;
+    }
   }
 
   async function loadSigners(envelopeId) {
@@ -1046,10 +1138,15 @@
             blockers || res.data?.error || "Send for signature failed"
           );
         }
+        captureDeliveryLink(res.data.delivery, { fromSendResponse: true });
         toast(
           res.data.idempotent
-            ? "Signing link already ready — copy and send to the customer"
-            : "Secure signing link ready — copy and send to the customer",
+            ? hasCopyableLink()
+              ? "Secure Link Ready"
+              : "Secure Link Ready — the secure link was generated previously"
+            : hasCopyableLink()
+              ? "Secure Link Ready — the signing request is prepared. No email has been sent yet."
+              : "Secure Link Ready — the secure link was generated previously",
           "ok"
         );
         await loadEnvelopes(state.package.id);
@@ -1058,6 +1155,22 @@
         renderAll();
       } catch (err) {
         toast(err?.message || "Send failed", "error");
+      }
+    });
+
+    $("swCopyLinkBtn")?.addEventListener("click", async () => {
+      if (!state.signingLink) {
+        toast(
+          "The secure link was generated previously and is not available to copy in this session.",
+          "error"
+        );
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(state.signingLink);
+        toast("Signing link copied", "ok");
+      } catch (_err) {
+        toast("Could not copy link", "error");
       }
     });
 

@@ -70,7 +70,11 @@ test("2 generations table + initial generation = 1", () => {
 test("3 duplicate ordinary prepare is idempotent (unique + code path)", () => {
   assert.ok(libSrc.includes("duplicate = true"));
   assert.ok(libSrc.includes("isUniqueViolation"));
-  assert.ok(libSrc.includes("skipIfDuplicate") || libSrc.includes("skipped: duplicate"));
+  assert.ok(
+    libSrc.includes("published.duplicate") ||
+      libSrc.includes("skipped: duplicate") ||
+      libSrc.includes("duplicate: true")
+  );
 });
 
 test("4-6 resend creates generation N+1; revokes N; activates N+1 token", () => {
@@ -182,11 +186,12 @@ test("events describe Invitation aggregate with generation context", () => {
   ].forEach((t) => assert.ok(events.DOMAIN_EVENT_TYPE_SET.has(t), t));
 });
 
-test("notifications priorities: failed/bounced critical; opened silent; prepared/queued none", () => {
+test("notifications priorities: failed/bounced critical; opened silent; queued none; prepared notifies Owner", () => {
   assert.ok(libSrc.includes('? "critical"'));
   assert.ok(libSrc.includes('"silent"'));
   assert.ok(libSrc.includes("skipNotify") || libSrc.includes('toStatus === "queued"'));
-  assert.ok(libSrc.includes("notify: false") || libSrc.includes("notify: false,"));
+  assert.ok(libSrc.includes("Contract ready to send"));
+  assert.ok(libSrc.includes("Signing request prepared for"));
 });
 
 test("activity copy includes resend / revoke / masked email / opened", () => {
@@ -205,10 +210,10 @@ test("VERIFY SQL covers generations + attempt terminal/delete/immutable", () => 
   assert.ok(sqlVerify.includes("rollback"));
 });
 
-test("no wire-up into envelope-send / freeze / sign / cert / PDF", () => {
+test("CH-013B may wire prepareInvitation into envelope-send; freeze/sign/cert stay unwired", () => {
+  const sendLib = read("netlify/functions/_lib/contract-envelope-send.js");
+  assert.ok(sendLib.includes("prepareInvitation") || sendLib.includes("contract-invitation"));
   [
-    "netlify/functions/contract-envelope-send.js",
-    "netlify/functions/_lib/contract-envelope-send.js",
     "netlify/functions/contract-package-freeze.js",
     "netlify/functions/contract-sign.js",
     "netlify/functions/contract-certificates.js",

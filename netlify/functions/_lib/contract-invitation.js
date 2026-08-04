@@ -6,7 +6,7 @@
  * Delivery attempt = controlled status transitions (DELETE forbidden)
  *
  * Events describe the Invitation aggregate with generation context in payload.
- * No email providers. No UI. No envelope-send wire-up.
+ * No email providers. No UI. Envelope-send wire-up lives in CH-013B.
  */
 
 "use strict";
@@ -26,6 +26,7 @@ const { createNotification } = require("./platform-notifications");
 const { isUniqueViolation } = require("./platform-outbox");
 const {
   createSigningToken,
+  ensureSigningTokenForSigner,
   revokeSigningToken,
   lookupSigningToken,
 } = require("./contract-signing-token");
@@ -265,10 +266,13 @@ async function getGenerationByNumber(tenantId, invitationId, generationNumber) {
 
 function activityFor(status, extras = {}) {
   const masked = extras.masked_email ? ` to ${extras.masked_email}` : "";
+  const preparedFor = extras.masked_email
+    ? `Signing request prepared for ${extras.masked_email}`
+    : "Signing request prepared";
   const map = {
     prepared: {
-      title: "Signing request prepared",
-      summary: "A signing invitation was prepared for delivery.",
+      title: preparedFor,
+      summary: preparedFor,
     },
     queued: {
       title: "Signing request queued",
@@ -364,35 +368,115 @@ async function emitInvitationEvent({
   );
   if (!published.ok) return published;
 
+  // Prefer outbox row on idempotent replay so projections use the canonical event_id.
+  const eventForProjections =
+    published.duplicate && published.outbox
+      ? {
+          event_id: published.outbox.event_id,
+          event_version: published.outbox.event_version,
+          tenant_id: published.outbox.tenant_id,
+          project_id: published.outbox.project_id,
+          quote_id: published.outbox.quote_id,
+          aggregate: published.outbox.aggregate,
+          aggregate_id: published.outbox.aggregate_id,
+          type: published.outbox.type,
+          occurred_at: published.outbox.occurred_at,
+          correlation_id: published.outbox.correlation_id,
+          causation_id: published.outbox.causation_id,
+          payload:
+            published.outbox.payload && typeof published.outbox.payload === "object"
+              ? published.outbox.payload
+              : payloadScrub.value,
+        }
+      : published.event;
+
   const copy = activityFor(activityKey, { masked_email: maskedEmail });
-  await projectActivityFromEvent(published.event, {
+  // Always (re)project — activity is unique on (tenant_id, source_event_id).
+  const activity = await projectActivityFromEvent(eventForProjections, {
     title: copy.title,
     summary: copy.summary,
     payload: payloadScrub.value,
   });
+  if (!activity.ok) {
+    return {
+      ok: false,
+      error: activity.error || "activity projection failed",
+      code: activity.code || "activity_project_failed",
+      event: eventForProjections,
+      outbox: published.outbox,
+      duplicate: Boolean(published.duplicate),
+    };
+  }
 
-  if (notify) {
-    await createNotification({
+  const notifyEnabled = Boolean(notify);
+  const customNotify = notify && typeof notify === "object" ? notify : null;
+  if (notifyEnabled) {
+    const notified = await ensureNotificationForEvent({
       tenant_id: invitation.tenant_id,
       project_id: invitation.project_id,
       quote_id: invitation.quote_id,
-      source_event_id: published.event.event_id,
+      source_event_id: eventForProjections.event_id,
       event_type: eventType,
       priority: notifyPriority || "normal",
-      title: copy.title,
-      body: copy.summary,
-      correlation_id: published.event.correlation_id,
-      occurred_at: published.event.occurred_at,
+      title: (customNotify && customNotify.title) || copy.title,
+      body: (customNotify && customNotify.body) || copy.summary,
+      correlation_id: eventForProjections.correlation_id,
+      occurred_at: eventForProjections.occurred_at,
       payload: payloadScrub.value,
     });
+    if (!notified.ok) {
+      return {
+        ok: false,
+        error: notified.error || "notification projection failed",
+        code: notified.code || "notification_project_failed",
+        event: eventForProjections,
+        outbox: published.outbox,
+        duplicate: Boolean(published.duplicate),
+      };
+    }
   }
 
-  return published;
+  return {
+    ok: true,
+    event: eventForProjections,
+    outbox: published.outbox,
+    duplicate: Boolean(published.duplicate),
+  };
+}
+
+/**
+ * Notification projection: one row per source_event_id (app-level; table has no unique).
+ * Retries look up existing before insert to avoid duplicates.
+ */
+async function ensureNotificationForEvent(input = {}) {
+  const tenantId = trimField(input.tenant_id);
+  const sourceEventId = trimField(input.source_event_id);
+  if (validUuid(tenantId) && validUuid(sourceEventId)) {
+    try {
+      const existing = await supabaseRequest(
+        `platform_notifications?tenant_id=eq.${encodeURIComponent(tenantId)}` +
+          `&source_event_id=eq.${encodeURIComponent(sourceEventId)}&select=*&limit=1`,
+        { method: "GET" }
+      );
+      const row = Array.isArray(existing) ? existing[0] : existing;
+      if (row?.id) {
+        return { ok: true, row, duplicate: true };
+      }
+    } catch (_err) {
+      /* fall through to create */
+    }
+  }
+  const created = await createNotification(input);
+  if (!created.ok) return created;
+  return { ok: true, row: created.row, duplicate: false };
 }
 
 /**
  * Prepare invitation (idempotent on tenant+envelope+signer). Does not create generation/token yet
  * unless options.create_initial_generation === true.
+ *
+ * When create_initial_generation is true: generation is ensured before the prepared event so the
+ * payload can include generation_id / expires_at. Duplicate invitation rows reuse gen 1 + event.
  */
 async function prepareInvitation(input = {}) {
   const tenantId = trimField(input.tenant_id);
@@ -468,21 +552,9 @@ async function prepareInvitation(input = {}) {
     }
   }
 
-  let emitted = { ok: true, skipped: duplicate };
-  if (!duplicate) {
-    emitted = await emitInvitationEvent({
-      invitation,
-      eventType: "contract.invitation.prepared",
-      activityKey: "prepared",
-      causationId: input.causation_id || null,
-      idempotencyKey:
-        input.idempotency_key || `invitation:prepared:${invitation.tenant_id}:${invitation.id}`,
-      notify: false,
-    });
-  }
-
   let generation = null;
-  if (!duplicate && input.create_initial_generation === true) {
+  let rawTokenOnce = null;
+  if (input.create_initial_generation === true) {
     const created = await createInitialGeneration(invitation, {
       expires_at: input.expires_at,
       reason: "initial_send",
@@ -490,21 +562,78 @@ async function prepareInvitation(input = {}) {
     if (!created.ok) return { ...created, invitation };
     invitation = created.invitation;
     generation = created.generation;
+    rawTokenOnce = created.raw_token_once || null;
+  }
+
+  const signer = await loadSigner(tenantId, signerId);
+  const masked = maskEmail(signer?.email);
+  const projectName =
+    trimField(input.project_name) ||
+    (await loadProjectName(tenantId, invitation.project_id)) ||
+    "this project";
+
+  let emitted = { ok: true, skipped: false, duplicate: false };
+  // Always publish with deterministic key — outbox + projections are idempotent.
+  emitted = await emitInvitationEvent({
+    invitation,
+    eventType: "contract.invitation.prepared",
+    activityKey: "prepared",
+    causationId: input.causation_id || null,
+    idempotencyKey:
+      input.idempotency_key || `invitation:prepared:${invitation.tenant_id}:${invitation.id}`,
+    notify: {
+      title: "Contract ready to send",
+      body: `The secure signing request for ${projectName} is ready.`,
+    },
+    notifyPriority: "normal",
+    maskedEmail: masked,
+    extraPayload: {
+      invitation_id: invitation.id,
+      generation_id: generation?.id || null,
+      generation_number: generation?.generation_number != null ? Number(generation.generation_number) : invitation.current_generation || null,
+      envelope_id: invitation.envelope_id,
+      signer_id: invitation.signer_id,
+      package_id: invitation.package_id,
+      project_id: invitation.project_id,
+      quote_id: invitation.quote_id,
+      channel: invitation.channel,
+      expires_at: generation?.expires_at || null,
+      masked_email: masked,
+    },
+  });
+  if (!emitted.ok) {
+    return { ok: false, error: emitted.error, code: emitted.code || "event_emit_failed", invitation, generation };
   }
 
   return {
     ok: true,
     invitation,
     generation,
-    duplicate,
+    duplicate: duplicate || Boolean(emitted.duplicate),
     api_version: API_VERSION,
     event: emitted.event || null,
+    raw_token_once: rawTokenOnce,
   };
+}
+
+async function loadProjectName(tenantId, projectId) {
+  if (!validUuid(tenantId) || !validUuid(projectId)) return null;
+  try {
+    const rows = await supabaseRequest(
+      `tenant_projects?tenant_id=eq.${encodeURIComponent(tenantId)}&id=eq.${encodeURIComponent(projectId)}&select=project_name&limit=1`,
+      { method: "GET" }
+    );
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    return trimField(row?.project_name) || null;
+  } catch (_err) {
+    return null;
+  }
 }
 
 /**
  * Create generation 1 + signing token. Fails if invitation already has a generation.
  * Token expires_at === generation.expires_at <= envelope.expires_at.
+ * Reuses a still-valid active signing token when present (no rotation on ordinary prepare).
  */
 async function createInitialGeneration(invitation, options = {}) {
   if (Number(invitation.current_generation) > 0) {
@@ -539,20 +668,46 @@ async function createInitialGeneration(invitation, options = {}) {
   });
   if (!expires.ok) return expires;
 
-  const tokenCreated = await createSigningToken({
+  const ensured = await ensureSigningTokenForSigner({
     tenantId: invitation.tenant_id,
     signerId: invitation.signer_id,
     expiresAt: expires.expires_at,
   });
-  if (!tokenCreated.ok) {
+  if (!ensured.ok) {
     return {
       ok: false,
-      error: tokenCreated.error || "token create failed",
-      code: tokenCreated.code || "token_create_failed",
+      error: ensured.error || "token create failed",
+      code: ensured.code || "token_create_failed",
     };
   }
 
-  const tokenId = tokenCreated.token.id;
+  const tokenId = ensured.token.id;
+  // Align token expiry with generation (must be equal).
+  const tokenExpiresMs = ensured.token.expires_at
+    ? new Date(ensured.token.expires_at).getTime()
+    : NaN;
+  const genExpiresMs = new Date(expires.expires_at).getTime();
+  if (!Number.isFinite(tokenExpiresMs) || tokenExpiresMs !== genExpiresMs) {
+    try {
+      await supabaseRequest(
+        `tenant_contract_signing_tokens?tenant_id=eq.${encodeURIComponent(invitation.tenant_id)}&id=eq.${encodeURIComponent(tokenId)}`,
+        {
+          method: "PATCH",
+          body: { expires_at: expires.expires_at, updated_at: utcNowIso() },
+        }
+      );
+    } catch (err) {
+      if (!ensured.reused) {
+        await revokeSigningToken({ tenantId: invitation.tenant_id, tokenId });
+      }
+      return {
+        ok: false,
+        error: err.message || String(err),
+        code: "token_expires_align_failed",
+      };
+    }
+  }
+
   // Never persist raw token on invitation/generation
   const genRow = {
     tenant_id: invitation.tenant_id,
@@ -573,7 +728,9 @@ async function createInitialGeneration(invitation, options = {}) {
     });
     generation = Array.isArray(inserted) ? inserted[0] : inserted;
   } catch (err) {
-    await revokeSigningToken({ tenantId: invitation.tenant_id, tokenId });
+    if (!ensured.reused) {
+      await revokeSigningToken({ tenantId: invitation.tenant_id, tokenId });
+    }
     return {
       ok: false,
       error: err.message || String(err),
@@ -596,7 +753,7 @@ async function createInitialGeneration(invitation, options = {}) {
     invitation: invitationOut || { ...invitation, current_generation: 1 },
     generation,
     // Raw token returned once to caller only — never stored / never in events
-    raw_token_once: tokenCreated.token.token || null,
+    raw_token_once: ensured.reused ? null : ensured.token?.token || null,
     duplicate: false,
   };
 }

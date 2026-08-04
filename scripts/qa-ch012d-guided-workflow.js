@@ -99,7 +99,10 @@ test("11-15 package/envelope/signer/send/completed guidance", () => {
   assert.ok(swJs.includes("Create a Signing Request") || swJs.includes("Create Signing Request"));
   assert.ok(swJs.includes("Add Customer Signer"));
   assert.ok(swJs.includes("Send For Signature"));
-  assert.ok(swJs.includes("Waiting for signatures"));
+  assert.ok(
+    swJs.includes("Secure Link Ready") || swJs.includes("Waiting for signatures")
+  );
+  assert.ok(swJs.includes("No email has been sent yet"));
   assert.ok(swJs.includes("Generate Certificate"));
   assert.ok(swHtml.includes("Generate Signed PDF"));
 });

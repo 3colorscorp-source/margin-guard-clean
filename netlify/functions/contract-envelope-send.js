@@ -1,7 +1,7 @@
 /**
- * CH-011E — Send Contract Envelope (Owner/Admin).
+ * CH-011E / CH-013B — Send Contract Envelope (Owner/Admin).
  * POST /.netlify/functions/contract-envelope-send
- * Provider-agnostic: prepares tokens + transitions draft → sent.
+ * Provider-agnostic: prepares invitations + tokens, transitions draft → sent.
  * Does not send email. delivery_status = prepared.
  */
 

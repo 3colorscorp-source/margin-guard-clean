@@ -1,6 +1,6 @@
 /**
- * CH-011E — Envelope send pipeline (provider-agnostic).
- * Pre-send validation, token ensure/reuse, draft → sent, delivery manifest.
+ * CH-011E / CH-013B — Envelope send pipeline (provider-agnostic).
+ * Pre-send validation, invitation prep + token ensure/reuse, draft → sent, delivery manifest.
  * Does not send email. delivery_status = prepared.
  */
 
@@ -26,11 +26,20 @@ const {
   loadActiveTokenForSigner,
   evaluateTokenValidity,
 } = require("./contract-signing-token");
+const {
+  prepareInvitation,
+} = require("./contract-invitation");
+const { beginCorrelation } = require("./platform-bus");
 
 const API_VERSION = "ch-011e-v1";
 
 const PUBLIC_SIGNING_URL_SHAPE = "/contract-sign?token={token}";
 const DELIVERY_MODES = new Set(["prepared", "email_link"]);
+
+/**
+ * CH-013B Policy A — raw signing_token is returned only when newly minted in this response.
+ * It is never reconstructed from hash. Idempotent / already-sent responses omit it.
+ */
 
 function blocker(code, message, extra = {}) {
   return { code, message, ...extra };
@@ -316,6 +325,134 @@ async function buildIdempotentDelivery({
 }
 
 /**
+ * Prepare invitations (email_link) or ensure tokens (other auth methods).
+ * Ordinary retries are idempotent: same invitation, generation 1, active token.
+ */
+async function prepareSignersForSend({
+  tenantId,
+  envelope,
+  signers,
+  expiresIso,
+  deliveryMode,
+}) {
+  const tokenTargets = signersNeedingTokens(signers);
+  const signerTokenEntries = new Map();
+  const invitations = [];
+  const correlationId = beginCorrelation();
+  const channel = deliveryMode === "email_link" ? "email" : "copy_link";
+
+  for (const s of tokenTargets) {
+    const method = trimField(s.auth_method).toLowerCase();
+
+    if (method === "email_link") {
+      const prep = await prepareInvitation({
+        tenant_id: tenantId,
+        envelope_id: envelope.id,
+        signer_id: s.id,
+        package_id: envelope.package_id,
+        project_id: envelope.project_id,
+        quote_id: envelope.quote_id,
+        channel,
+        correlation_id: correlationId,
+        expires_at: expiresIso,
+        create_initial_generation: true,
+        idempotency_key: `invitation:prepared:${tenantId}:${envelope.id}:${s.id}`,
+      });
+      if (!prep.ok) {
+        return {
+          ok: false,
+          status: prep.status || 500,
+          error: prep.error || "Invitation prepare failed",
+          code: prep.code || "invitation_prepare_failed",
+          signer_id: s.id,
+        };
+      }
+
+      const tokenId = prep.generation?.token_id || null;
+      invitations.push({
+        invitation_id: prep.invitation?.id || null,
+        generation_id: prep.generation?.id || null,
+        generation_number: prep.generation?.generation_number ?? null,
+        signer_id: s.id,
+        duplicate: !!prep.duplicate,
+      });
+      signerTokenEntries.set(s.id, {
+        token_id: tokenId,
+        reused: !!prep.duplicate || !prep.raw_token_once,
+        raw_token: prep.raw_token_once || null,
+        invitation_id: prep.invitation?.id || null,
+        generation_id: prep.generation?.id || null,
+      });
+      continue;
+    }
+
+    const ensured = await ensureSigningTokenForSigner({
+      tenantId,
+      signerId: s.id,
+      expiresAt: expiresIso,
+    });
+    if (!ensured.ok) {
+      return {
+        ok: false,
+        status: ensured.status || 500,
+        error: ensured.error || "Token ensure failed",
+        code: ensured.code || "token_ensure_failed",
+        signer_id: s.id,
+      };
+    }
+    signerTokenEntries.set(s.id, {
+      token_id: ensured.token?.id || null,
+      reused: !!ensured.reused,
+      raw_token: ensured.reused ? null : ensured.token?.token || null,
+    });
+  }
+
+  return { ok: true, signerTokenEntries, invitations, correlation_id: correlationId };
+}
+
+/**
+ * Envelope must not become signing-ready without an active invitation generation
+ * for every email_link signer that needs a token.
+ */
+function assertInvitationsReadyForSend({ signers, invitations, signerTokenEntries }) {
+  const emailLinkTargets = signersNeedingTokens(signers).filter(
+    (s) => trimField(s.auth_method).toLowerCase() === "email_link"
+  );
+  for (const s of emailLinkTargets) {
+    const inv = (invitations || []).find((i) => String(i.signer_id) === String(s.id));
+    if (!inv?.invitation_id || !inv?.generation_id) {
+      return {
+        ok: false,
+        status: 500,
+        error: "Invitation generation incomplete; envelope not activated",
+        code: "invitation_incomplete",
+        signer_id: s.id,
+      };
+    }
+    if (!(Number(inv.generation_number) >= 1)) {
+      return {
+        ok: false,
+        status: 500,
+        error: "Active invitation generation missing",
+        code: "invitation_generation_missing",
+        signer_id: s.id,
+      };
+    }
+    const entry = signerTokenEntries.get(s.id);
+    if (!entry?.token_id) {
+      return {
+        ok: false,
+        status: 500,
+        error: "Signing token missing for invitation generation",
+        code: "invitation_token_missing",
+        signer_id: s.id,
+      };
+    }
+  }
+  return { ok: true };
+}
+
+/**
  * Send (or idempotently re-read) a contract envelope.
  */
 async function sendContractEnvelope({
@@ -384,6 +521,11 @@ async function sendContractEnvelope({
       signers,
       deliveryMode: priorMode,
     });
+    delivery.link_ready = true;
+    delivery.raw_link_available = false;
+    delivery.invitations = Array.isArray(meta.send_invitation_ids)
+      ? meta.send_invitation_ids.map((id) => ({ invitation_id: id }))
+      : [];
     return {
       ok: true,
       idempotent: true,
@@ -443,29 +585,25 @@ async function sendContractEnvelope({
     expiresIso = parsed.iso;
   }
 
-  const tokenTargets = signersNeedingTokens(signers);
-  const signerTokenEntries = new Map();
+  const prepared = await prepareSignersForSend({
+    tenantId,
+    envelope,
+    signers,
+    expiresIso,
+    deliveryMode: mode,
+  });
+  if (!prepared.ok) {
+    return prepared;
+  }
+  const { signerTokenEntries, invitations } = prepared;
 
-  for (const s of tokenTargets) {
-    const ensured = await ensureSigningTokenForSigner({
-      tenantId,
-      signerId: s.id,
-      expiresAt: expiresIso,
-    });
-    if (!ensured.ok) {
-      return {
-        ok: false,
-        status: ensured.status || 500,
-        error: ensured.error || "Token ensure failed",
-        code: ensured.code || "token_ensure_failed",
-        signer_id: s.id,
-      };
-    }
-    signerTokenEntries.set(s.id, {
-      token_id: ensured.token?.id || null,
-      reused: !!ensured.reused,
-      raw_token: ensured.reused ? null : ensured.token?.token || null,
-    });
+  const readyGate = assertInvitationsReadyForSend({
+    signers,
+    invitations,
+    signerTokenEntries,
+  });
+  if (!readyGate.ok) {
+    return readyGate;
   }
 
   const nowIso = new Date().toISOString();
@@ -480,6 +618,8 @@ async function sendContractEnvelope({
     send_token_ids: [...signerTokenEntries.values()]
       .map((e) => e.token_id)
       .filter(Boolean),
+    send_invitation_ids: invitations.map((i) => i.invitation_id).filter(Boolean),
+    link_ready: true,
   };
 
   const patchRows = await supabaseRequest(
@@ -509,6 +649,8 @@ async function sendContractEnvelope({
         signers,
         deliveryMode: mode,
       });
+      delivery.link_ready = true;
+      delivery.raw_link_available = false;
       return {
         ok: true,
         idempotent: true,
@@ -532,6 +674,9 @@ async function sendContractEnvelope({
     signerTokenEntries,
     deliveryMode: mode,
   });
+  delivery.invitations = invitations;
+  delivery.link_ready = true;
+  delivery.raw_link_available = [...signerTokenEntries.values()].some((e) => e.raw_token);
 
   return {
     ok: true,
@@ -552,4 +697,6 @@ module.exports = {
   sendContractEnvelope,
   buildDeliveryManifest,
   signersNeedingTokens,
+  prepareSignersForSend,
+  assertInvitationsReadyForSend,
 };

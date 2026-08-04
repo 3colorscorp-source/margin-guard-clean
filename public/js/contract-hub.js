@@ -270,16 +270,28 @@
       return {
         stageIndex: 4,
         stageLabel: "Customer Signs",
-        statusLabel: "Waiting for signatures",
-        blocker: "Waiting for the customer to sign.",
+        statusLabel:
+          envSt === "opened"
+            ? "Waiting for Customer Signature"
+            : "Secure Link Ready",
+        blocker:
+          envSt === "opened"
+            ? "Waiting for the customer to sign."
+            : "Signing request is prepared. No email has been sent yet.",
         primary: {
           label: "Open Signature Workspace",
           href: signingHref(projectId),
           kind: "link",
         },
         docs: pkg?.version != null
-          ? `Frozen Contract Version v${pkg.version} — Signing Request ${envSt}`
-          : "Signing request sent.",
+          ? `Frozen Contract Version v${pkg.version} — ${
+              envSt === "opened"
+                ? "Waiting for Customer Signature"
+                : "Secure Link Ready"
+            }`
+          : envSt === "opened"
+            ? "Waiting for customer signature."
+            : "Secure signing link is ready.",
       };
     }
 
@@ -287,9 +299,12 @@
       return {
         stageIndex: 3,
         stageLabel: "Configure Signing",
-        statusLabel: "Frozen — ready for signing",
+        statusLabel:
+          envSt === "draft"
+            ? "Signing Request Ready"
+            : "Frozen Contract Ready",
         blocker: envSt === "draft"
-          ? "Add signers and send the signing request."
+          ? "Add signers and prepare the secure signing link."
           : "Create a signing request and add the customer signer.",
         primary: {
           label: "Open Signature Workspace",
