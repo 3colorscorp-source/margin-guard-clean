@@ -133,11 +133,13 @@ test("catalog has exact canonical event names once", () => {
   const required = [
     "contract.package.frozen",
     "contract.envelope.prepared",
+    "contract.invitation.prepared",
     "contract.invitation.queued",
     "contract.invitation.sent",
     "contract.invitation.delivered",
     "contract.invitation.failed",
     "contract.invitation.opened",
+    "contract.invitation.bounced",
     "contract.invitation.resent",
     "contract.invitation.revoked",
     "contract.invitation.expired",

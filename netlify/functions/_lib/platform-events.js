@@ -14,11 +14,13 @@ const FABRIC_VERSION = "ch-013a0-v1";
 const DOMAIN_EVENT_TYPES = Object.freeze([
   "contract.package.frozen",
   "contract.envelope.prepared",
+  "contract.invitation.prepared",
   "contract.invitation.queued",
   "contract.invitation.sent",
   "contract.invitation.delivered",
   "contract.invitation.failed",
   "contract.invitation.opened",
+  "contract.invitation.bounced",
   "contract.invitation.resent",
   "contract.invitation.revoked",
   "contract.invitation.expired",
