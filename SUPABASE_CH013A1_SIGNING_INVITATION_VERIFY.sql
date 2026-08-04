@@ -1,7 +1,3 @@
--- =============================================================================
--- Margin Guard | CH-013A.1 VERIFY (transactional + structural)
--- =============================================================================
-
 begin;
 
 do $$
@@ -88,6 +84,18 @@ begin
     when unique_violation then
       null;
   end;
+
+  -- Live DBs may already have an active signing token for this signer
+  -- (partial unique: tenant_contract_signing_tokens_one_active_per_signer_uidx).
+  -- Revoke inside this transaction so VERIFY can insert controlled tokens.
+  -- ROLLBACK restores prior token rows (no durable side effects).
+  update public.tenant_contract_signing_tokens
+    set status = 'revoked',
+        revoked_at = timezone('utc', now()),
+        updated_at = timezone('utc', now())
+  where tenant_id = v_tenant
+    and signer_id = v_signer
+    and status = 'active';
 
   -- create token 1 matching generation expires
   insert into public.tenant_contract_signing_tokens (
