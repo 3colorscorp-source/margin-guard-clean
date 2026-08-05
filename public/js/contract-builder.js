@@ -2248,6 +2248,12 @@
       .join("");
   }
 
+  function addPaymentDraftRow() {
+    paymentDraftApplyMutation(() => {
+      paymentDraftItems.push(createBlankPaymentDraftRow());
+    });
+  }
+
   function renderPaymentEditGrid() {
     const grid = $("cbPayEditGrid");
     if (!grid) return;
@@ -2255,7 +2261,8 @@
     updatePaymentEditHint(validatePaymentDraftForSave());
     if (!paymentDraftItems.length) {
       grid.innerHTML =
-        `<p class="cb-pay-edit-hint">No payments yet. Click Add payment to begin.</p>`;
+        `<p class="cb-pay-edit-hint">No payments yet. Click Add payment to begin.</p>` +
+        `<button type="button" class="btn ghost" id="cbPayAddFirst">Add first payment</button>`;
       return;
     }
     grid.innerHTML = paymentDraftItems
@@ -2315,19 +2322,25 @@
     if (toolbar && toolbar.dataset.payBound !== "1") {
       toolbar.dataset.payBound = "1";
       toolbar.addEventListener("click", (ev) => {
-        const btn = ev.target.closest("#cbPayAddStage");
-        if (!btn) return;
+        const el = ev.target instanceof Element ? ev.target : ev.target?.parentElement;
+        const btn = el?.closest?.("#cbPayAddStage");
+        if (!btn || btn.disabled) return;
         ev.preventDefault();
-        paymentDraftApplyMutation(() => {
-          paymentDraftItems.push(createBlankPaymentDraftRow());
-        });
+        addPaymentDraftRow();
       });
     }
     if (grid && grid.dataset.payBound !== "1") {
       grid.dataset.payBound = "1";
       grid.addEventListener("click", (ev) => {
-        const btn = ev.target.closest("[data-pay-action]");
-        if (!btn) return;
+        const el = ev.target instanceof Element ? ev.target : ev.target?.parentElement;
+        const addFirst = el?.closest?.("#cbPayAddFirst");
+        if (addFirst && !addFirst.disabled) {
+          ev.preventDefault();
+          addPaymentDraftRow();
+          return;
+        }
+        const btn = el?.closest?.("[data-pay-action]");
+        if (!btn || btn.disabled) return;
         ev.preventDefault();
         const rowEl = btn.closest("[data-pay-client-id]");
         const clientId = rowEl?.getAttribute("data-pay-client-id");

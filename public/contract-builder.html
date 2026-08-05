@@ -873,6 +873,43 @@
       gap: 8px;
       margin: 0 0 12px;
     }
+    /* CH-012G — paper-safe payment editor buttons (shell .btn.ghost is light-on-dark). */
+    #cbPayEditToolbar .btn,
+    #cbPayAddStage,
+    #cbPayAddFirst,
+    .cb-pay-edit-row__actions .btn {
+      color: var(--cb-ink, #1c1917);
+      background: #fff;
+      border: 1px solid #a8a29e;
+      box-shadow: none;
+      transform: none;
+    }
+    #cbPayEditToolbar .btn:hover,
+    #cbPayAddStage:hover,
+    #cbPayAddFirst:hover,
+    .cb-pay-edit-row__actions .btn:hover {
+      color: var(--cb-ink, #1c1917);
+      background: #f5f5f4;
+      border-color: #0f766e;
+    }
+    #cbPayEditToolbar .btn:focus-visible,
+    #cbPayAddStage:focus-visible,
+    #cbPayAddFirst:focus-visible,
+    .cb-pay-edit-row__actions .btn:focus-visible {
+      outline: 2px solid #0f766e;
+      outline-offset: 2px;
+    }
+    #cbPayEditToolbar .btn:disabled,
+    #cbPayAddStage:disabled,
+    #cbPayAddFirst:disabled,
+    .cb-pay-edit-row__actions .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      color: #78716c;
+      background: #f5f5f4;
+      border-color: #d6d3d1;
+      pointer-events: none;
+    }
     .cb-pay-edit-grid {
       display: flex;
       flex-direction: column;
