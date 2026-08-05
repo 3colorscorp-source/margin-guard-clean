@@ -7790,10 +7790,14 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const start = normalizeDateInput(startYmd || state.startDate || "");
     const estimatedDays = resolveOwnerEstimatedProjectDays(state, settings);
     const calendar = window.__mgOwnerCapacityCalendar || null;
-    if (!ownerCap || typeof ownerCap.updateTargetFinishDisplay !== "function") {
+    const inputsMissing = !start || !(estimatedDays > 0);
+    const clearOwnerFinish = () => {
       if ($("ownerTargetFinishDate")) $("ownerTargetFinishDate").value = "";
       state.targetFinishDate = "";
       return "";
+    };
+    if (!ownerCap || typeof ownerCap.updateTargetFinishDisplay !== "function") {
+      return inputsMissing ? clearOwnerFinish() : normalizeDateInput(state.targetFinishDate || "");
     }
     const result = ownerCap.updateTargetFinishDisplay(start, estimatedDays, {
       workdaysEnabled: settings.workdaysEnabled !== false,
@@ -7801,8 +7805,16 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       calendar
     });
     if (result.start) state.startDate = result.start;
-    state.targetFinishDate = result.finish || "";
-    return result.finish || "";
+    if (result.finish) {
+      state.targetFinishDate = result.finish;
+      return result.finish;
+    }
+    if (inputsMissing) return clearOwnerFinish();
+    const preservedOwnerFinish = normalizeDateInput(state.targetFinishDate || "");
+    if (preservedOwnerFinish && $("ownerTargetFinishDate")) {
+      $("ownerTargetFinishDate").value = preservedOwnerFinish;
+    }
+    return preservedOwnerFinish;
   }
 
   function showOwnerScheduleWarning(ownerState, calendarOverride) {
@@ -7825,15 +7837,23 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if (!salesCap || typeof salesCap.fetchCapacityCalendar !== "function") return;
     const state = stateOverride || loadOwner();
     const settings = settingsOverride || loadOwnerPricingSettings();
-    const days = resolveOwnerEstimatedProjectDays(state, settings);
     const desired = normalizeDateInput(desiredStart || state.startDate || val("ownerStartDate") || "");
     const ownerProject = getSelectedProject();
     const projectId = String(ownerProject?.id || ownerProject?.projectId || state.projectId || "").trim();
     clearTimeout(ownerCapacityRefreshTimer);
+    const generation =
+      typeof salesCap.nextCapacityGeneration === "function"
+        ? salesCap.nextCapacityGeneration("owner")
+        : 0;
+    const isLatestCapacityResponse = () =>
+      typeof salesCap.isCurrentCapacityGeneration !== "function" ||
+      salesCap.isCurrentCapacityGeneration("owner", generation);
     ownerCapacityRefreshTimer = setTimeout(() => {
+      const days = resolveOwnerEstimatedProjectDays(state, settings);
       salesCap
         .fetchCapacityCalendar(days, desired, projectId)
         .then((data) => {
+          if (!isLatestCapacityResponse()) return;
           window.__mgOwnerCapacityUnverified = false;
           window.__mgOwnerCapacityCalendar = data;
           const startInput = $("ownerStartDate");
@@ -7854,6 +7874,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           saveOwner(state, calcOwner(state, settings));
         })
         .catch(() => {
+          if (!isLatestCapacityResponse()) return;
           window.__mgOwnerCapacityUnverified = true;
           const guidance = $("ownerCapacityGuidance");
           if (guidance) guidance.textContent = "Production schedule unavailable right now.";
@@ -10577,45 +10598,82 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     }
     const override = finiteNumber(salesState.operational_estimated_days_override, NaN);
     if (override > 0) return override;
-    return salesMetrics.workerDays > 0 ? salesMetrics.workerDays : 0;
+    if (salesMetrics && finiteNumber(salesMetrics.workerDays, 0) > 0) {
+      return finiteNumber(salesMetrics.workerDays, 0);
+    }
+    const plan = Array.isArray(salesState.operational_plan) ? salesState.operational_plan : [];
+    return plan.length > 0 ? plan.length : 0;
   };
 
-  const estimatedProjectDays = resolveSalesEstimatedProjectDays(state, settings, metrics);
+  /** CH-015 — duration is resolved from live state on every call, never from a render snapshot. */
+  const resolveCurrentSalesProjectDays = () => {
+    let liveSettings = settings;
+    let liveMetrics = metrics;
+    try {
+      liveSettings = loadSettings();
+      liveMetrics = calculateSalesMetrics(state, liveSettings);
+    } catch (_error) {}
+    return resolveSalesEstimatedProjectDays(state, liveSettings, liveMetrics);
+  };
+
+  const clearSalesTargetFinish = () => {
+    if (targetFinishInput) targetFinishInput.value = "";
+    if (dueDateInput) dueDateInput.value = "";
+    state.targetFinishDate = "";
+    state.dueDate = "";
+    return "";
+  };
 
   const syncSalesTargetFinish = (startYmd, projectedFinishDate) => {
     const cap = window.MarginGuardSalesCapacity;
     const start = normalizeDateInput(startYmd || startDateInput?.value || state.startDate || "");
+    const days = resolveCurrentSalesProjectDays();
+    const inputsMissing = !start || !(days > 0);
     const finishOpts = {
       workdaysEnabled: settings.workdaysEnabled !== false,
       projectedFinishDate: projectedFinishDate || null,
       calendar: window.__mgSalesCapacityCalendar || null,
     };
     if (!cap || typeof cap.updateTargetFinishDisplay !== "function") {
-      if (targetFinishInput) targetFinishInput.value = "";
-      if (dueDateInput) dueDateInput.value = "";
-      state.targetFinishDate = "";
-      state.dueDate = "";
-      return "";
+      return inputsMissing ? clearSalesTargetFinish() : normalizeDateInput(state.targetFinishDate || "");
     }
-    const result = cap.updateTargetFinishDisplay(start, estimatedProjectDays, finishOpts);
+    const result = cap.updateTargetFinishDisplay(start, days, finishOpts);
     if (result.start) state.startDate = result.start;
-    state.targetFinishDate = result.finish || "";
-    state.dueDate = result.finish || "";
-    return result.finish || "";
+    if (result.finish) {
+      state.targetFinishDate = result.finish;
+      state.dueDate = result.finish;
+      return result.finish;
+    }
+    if (inputsMissing) return clearSalesTargetFinish();
+    // Start and duration are valid: keep the authoritative finish instead of blanking it.
+    const preserved = normalizeDateInput(state.targetFinishDate || state.dueDate || "");
+    if (preserved) {
+      if (targetFinishInput) targetFinishInput.value = preserved;
+      if (dueDateInput) dueDateInput.value = preserved;
+      state.targetFinishDate = preserved;
+      state.dueDate = preserved;
+    }
+    return preserved;
   };
 
   let salesCapacityRefreshTimer = null;
   const refreshSalesCapacityCalendar = (desiredStart) => {
     const cap = window.MarginGuardSalesCapacity;
     if (!cap || typeof cap.fetchCapacityCalendar !== "function") return;
-    const days = estimatedProjectDays;
     const desired = normalizeDateInput(desiredStart || startDateInput?.value || state.startDate || "");
     const projectId = String(state.tenantProjectId || state.projectId || "").trim();
     clearTimeout(salesCapacityRefreshTimer);
+    const generation =
+      typeof cap.nextCapacityGeneration === "function" ? cap.nextCapacityGeneration("sales") : 0;
+    const isLatestCapacityResponse = () =>
+      typeof cap.isCurrentCapacityGeneration !== "function" ||
+      cap.isCurrentCapacityGeneration("sales", generation);
     salesCapacityRefreshTimer = setTimeout(() => {
+      const days = resolveCurrentSalesProjectDays();
       cap
         .fetchCapacityCalendar(days, desired, projectId)
         .then((data) => {
+          if (!isLatestCapacityResponse()) return;
           window.__mgSalesCapacityUnverified = false;
           window.__mgSalesCapacityCalendar = data;
           const reconciled = cap.reconcileStartDateWithCapacity(data, startDateInput, state);
@@ -10630,10 +10688,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             syncSalesTargetFinish(reconciled.value, data.projected_finish_date);
             saveSales(state);
           } else {
-            syncSalesTargetFinish("");
+            syncSalesTargetFinish(desired || "", data.projected_finish_date);
           }
         })
         .catch(() => {
+          if (!isLatestCapacityResponse()) return;
           window.__mgSalesCapacityUnverified = true;
           const guidance = document.getElementById("salesCapacityGuidance");
           if (guidance) {

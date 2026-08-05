@@ -277,6 +277,24 @@
     return updateTargetFinishDisplay(startYmd, estimatedDays, options);
   }
 
+  /**
+   * CH-015 — capacity requests are versioned per scope ("sales" / "owner").
+   * Cancelling the debounce timer does not stop an already in-flight fetch, so a
+   * response may only write schedule state while it is still the newest request.
+   */
+  const capacityGenerations = Object.create(null);
+
+  function nextCapacityGeneration(scope) {
+    const key = String(scope || "sales");
+    capacityGenerations[key] = (capacityGenerations[key] || 0) + 1;
+    return capacityGenerations[key];
+  }
+
+  function isCurrentCapacityGeneration(scope, generation) {
+    const key = String(scope || "sales");
+    return Number(generation) === Number(capacityGenerations[key] || 0);
+  }
+
   function blockedStartMessage(calendar) {
     const min = effectiveStartMin(calendar);
     const nextLabel = formatDateUS(min || (calendar && calendar.next_available_start_date));
@@ -298,6 +316,8 @@
     applyCapacityGuidance,
     reconcileStartDateWithCapacity,
     syncTargetFinishFromStart,
+    nextCapacityGeneration,
+    isCurrentCapacityGeneration,
     isStartBlocked,
     blockedStartMessage,
     buildGuidanceReason,

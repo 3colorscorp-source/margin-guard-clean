@@ -5538,6 +5538,30 @@
         return preview;
       }
 
+      /**
+       * CH-015 — authoritative seller duration at call time: operational metrics,
+       * then existing days override, worker days, and plan length fallbacks.
+       */
+      function resolveSellerTargetFinishDays(state, settings, metrics) {
+        var fromMetrics = metrics && Number(metrics.estimated_days);
+        if (Number.isFinite(fromMetrics) && fromMetrics > 0) return fromMetrics;
+        try {
+          var opMetrics = getOperationalMetricsForState(state, settings);
+          var fromOp = opMetrics && Number(opMetrics.estimated_days);
+          if (Number.isFinite(fromOp) && fromOp > 0) return fromOp;
+        } catch (_opError) {}
+        var override = readOperationalDaysOverride(state);
+        if (Number.isFinite(Number(override)) && Number(override) > 0) return Number(override);
+        var workers = Array.isArray(state && state.workers) ? state.workers : [];
+        var workerDays = 0;
+        for (var i = 0; i < workers.length; i += 1) {
+          workerDays += workerDaysAsInteger(workers[i]);
+        }
+        if (workerDays > 0) return workerDays;
+        var plan = Array.isArray(state && state.operational_plan) ? state.operational_plan : [];
+        return plan.length > 0 ? plan.length : 0;
+      }
+
       function syncSellerOperationalTargetFinishDisplay(state, settings, metrics) {
         if (
           !isProductionVisibleSellerScreen() &&
@@ -5554,18 +5578,20 @@
         )
           .trim()
           .slice(0, 10);
-        var estDays =
-          metrics && Number(metrics.estimated_days) > 0
-            ? Number(metrics.estimated_days)
-            : 0;
+        var estDays = resolveSellerTargetFinishDays(state, settings, metrics);
         var workdaysEnabled = resolveSellerOperationalWorkdaysEnabled(settings);
         var finishInput = document.getElementById('salesTargetFinishDate');
         var dueHidden = document.getElementById('salesDueDate');
         var hint = document.getElementById('salesTargetFinishHint');
 
+        // CH-015 — only genuinely missing start/duration may clear the calculated finish.
         if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !(estDays > 0)) {
           if (finishInput) finishInput.value = '';
           if (dueHidden) dueHidden.value = '';
+          if (state) {
+            state.targetFinishDate = '';
+            state.dueDate = '';
+          }
           if (hint) {
             hint.textContent =
               'Target finish will calculate after labor days and safe start date are set.';
@@ -5613,6 +5639,20 @@
         if (state && finish) {
           state.targetFinishDate = finish;
           state.dueDate = finish;
+          return;
+        }
+
+        // Start and duration are valid: restore the authoritative finish instead of leaving it blank.
+        var preserved = String((state && (state.targetFinishDate || state.dueDate)) || '')
+          .trim()
+          .slice(0, 10);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(preserved)) {
+          if (finishInput) finishInput.value = preserved;
+          if (dueHidden) dueHidden.value = preserved;
+          if (state) {
+            state.targetFinishDate = preserved;
+            state.dueDate = preserved;
+          }
         }
       }
 
