@@ -2040,8 +2040,12 @@
     );
   }
 
-  function validatePaymentDraftForSave() {
-    readPaymentDraftFromGrid();
+  function validatePaymentDraftForSave(options = {}) {
+    // CH-012G.1 — Do not sync from DOM when the grid still shows the previous
+    // empty-state markup; that would wipe in-memory rows pushed before rerender.
+    if (options.syncFromDom !== false) {
+      readPaymentDraftFromGrid();
+    }
     for (const row of paymentDraftItems) {
       if (formatPaymentAmountForApi(row.amount) == null) {
         return {
@@ -2252,13 +2256,28 @@
     paymentDraftApplyMutation(() => {
       paymentDraftItems.push(createBlankPaymentDraftRow());
     });
+    // Focus amount on the newest row when safe (edit mode, one useful field).
+    try {
+      const grid = $("cbPayEditGrid");
+      const rows = grid ? grid.querySelectorAll("[data-pay-client-id]") : [];
+      const last = rows.length ? rows[rows.length - 1] : null;
+      const amountInput = last?.querySelector?.("[data-pay-field='amount']");
+      if (amountInput && typeof amountInput.focus === "function") {
+        amountInput.focus({ preventScroll: true });
+        if (typeof amountInput.select === "function") amountInput.select();
+      }
+    } catch (_err) {
+      /* ignore focus failures */
+    }
   }
 
   function renderPaymentEditGrid() {
     const grid = $("cbPayEditGrid");
     if (!grid) return;
+    // Totals/hints must use in-memory draft state. Reading the DOM here would
+    // wipe rows that were just pushed while the empty-state markup is still mounted.
     updatePaymentEditTotalsDisplay(sourceSnapshot);
-    updatePaymentEditHint(validatePaymentDraftForSave());
+    updatePaymentEditHint(validatePaymentDraftForSave({ syncFromDom: false }));
     if (!paymentDraftItems.length) {
       grid.innerHTML =
         `<p class="cb-pay-edit-hint">No payments yet. Click Add payment to begin.</p>` +
@@ -2310,41 +2329,43 @@
   }
 
   function paymentDraftApplyMutation(mutator) {
-    readPaymentDraftFromGrid();
+    const grid = $("cbPayEditGrid");
+    // Only sync DOM → memory when editable rows are mounted. Empty-state markup
+    // has no [data-pay-client-id] nodes and must not clear in-memory drafts.
+    if (grid && grid.querySelector("[data-pay-client-id]")) {
+      readPaymentDraftFromGrid();
+    }
     mutator();
     renumberPaymentDraftSequences();
     renderPaymentEditGrid();
   }
 
   function bindPaymentEditHandlersOnce() {
+    // Delegate from the stable Article 7 edit workspace so listeners survive
+    // empty-state ↔ row-grid innerHTML swaps on the grid child.
+    const workspace = $("cbPayEditWorkspace") || $("cbPayEditToolbar")?.parentElement;
     const toolbar = $("cbPayEditToolbar");
     const grid = $("cbPayEditGrid");
-    if (toolbar && toolbar.dataset.payBound !== "1") {
-      toolbar.dataset.payBound = "1";
-      toolbar.addEventListener("click", (ev) => {
+    if (workspace && workspace.dataset.payBound !== "1") {
+      workspace.dataset.payBound = "1";
+      workspace.addEventListener("click", (ev) => {
         const el = ev.target instanceof Element ? ev.target : ev.target?.parentElement;
-        const btn = el?.closest?.("#cbPayAddStage");
-        if (!btn || btn.disabled) return;
-        ev.preventDefault();
-        addPaymentDraftRow();
-      });
-    }
-    if (grid && grid.dataset.payBound !== "1") {
-      grid.dataset.payBound = "1";
-      grid.addEventListener("click", (ev) => {
-        const el = ev.target instanceof Element ? ev.target : ev.target?.parentElement;
-        const addFirst = el?.closest?.("#cbPayAddFirst");
-        if (addFirst && !addFirst.disabled) {
+        if (!el || typeof el.closest !== "function") return;
+        const addBtn = el.closest("#cbPayAddStage, #cbPayAddFirst");
+        if (addBtn) {
+          if (addBtn.disabled) return;
           ev.preventDefault();
+          ev.stopPropagation();
           addPaymentDraftRow();
           return;
         }
-        const btn = el?.closest?.("[data-pay-action]");
-        if (!btn || btn.disabled) return;
+        const actionBtn = el.closest("[data-pay-action]");
+        if (!actionBtn || actionBtn.disabled) return;
         ev.preventDefault();
-        const rowEl = btn.closest("[data-pay-client-id]");
+        ev.stopPropagation();
+        const rowEl = actionBtn.closest("[data-pay-client-id]");
         const clientId = rowEl?.getAttribute("data-pay-client-id");
-        const action = btn.getAttribute("data-pay-action");
+        const action = actionBtn.getAttribute("data-pay-action");
         paymentDraftApplyMutation(() => {
           const idx = findPaymentDraftIndexByClientId(clientId);
           if (idx < 0) return;
@@ -2363,17 +2384,25 @@
           }
         });
       });
+    }
+    // Keep legacy flags so repeated enter-edit does not double-bind old paths.
+    if (toolbar) toolbar.dataset.payBound = "1";
+    if (grid && grid.dataset.payInputBound !== "1") {
+      grid.dataset.payBound = "1";
+      grid.dataset.payInputBound = "1";
       grid.addEventListener("input", (ev) => {
-        if (!ev.target.closest("[data-pay-field]")) return;
+        const el = ev.target instanceof Element ? ev.target : null;
+        if (!el || !el.closest("[data-pay-field]")) return;
         readPaymentDraftFromGrid();
         updatePaymentEditTotalsDisplay(sourceSnapshot);
-        updatePaymentEditHint(validatePaymentDraftForSave());
+        updatePaymentEditHint(validatePaymentDraftForSave({ syncFromDom: false }));
       });
       grid.addEventListener("change", (ev) => {
-        if (!ev.target.closest("[data-pay-field]")) return;
+        const el = ev.target instanceof Element ? ev.target : null;
+        if (!el || !el.closest("[data-pay-field]")) return;
         readPaymentDraftFromGrid();
         updatePaymentEditTotalsDisplay(sourceSnapshot);
-        updatePaymentEditHint(validatePaymentDraftForSave());
+        updatePaymentEditHint(validatePaymentDraftForSave({ syncFromDom: false }));
       });
     }
   }
