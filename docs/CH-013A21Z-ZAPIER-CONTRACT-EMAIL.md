@@ -198,6 +198,10 @@ Netlify background must **not** treat Catch Hook 200 as failure-retryable in a w
 | Gmail success, callback fail | Attempt sending / accepted_db_pending after pmid write; callback replay recovers |
 | Netlify provider timeout before Catch Hook ack | Retryable dispatch may repost **only while handoff present**; after ack handoff consumed |
 | Same attempt twice | MG attempt uniqueness + callback idempotency + write-once `provider_message_id` |
+| Attempt `queued` + handoff missing/expired | Terminal `failed` with `handoff_missing` / `handoff_expired` (never dispatched) |
+| Attempt `sending` + handoff missing/expired | **Not** failed — `handoff_already_consumed`, stays `sending` awaiting callback (CH-013A.2.4) |
+| Duplicate / late dispatch after Catch Hook ack | Harmless: no attempt transition, no `delivery.channel.failed`, no invitation failure |
+| Idempotent Email re-click while `sending` with no handoff | Queue returns the in-flight attempt and does **not** re-invoke background dispatch |
 
 ---
 

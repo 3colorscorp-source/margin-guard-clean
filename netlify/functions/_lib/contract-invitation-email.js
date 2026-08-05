@@ -311,6 +311,23 @@ function dispatchRef(ids) {
   };
 }
 
+/**
+ * CH-013A.2.4 — re-kick guard for idempotent Email clicks.
+ * A sending attempt with no provider_message_id and no handoff is already in flight
+ * awaiting the signed Zapier callback; dispatch cannot rebuild the payload, so it
+ * must not be invoked again. Returns null when re-dispatch is unsafe.
+ */
+async function idempotentDispatchRef(tenantId, invitationId, existingAttempt, ids) {
+  if (
+    trimField(existingAttempt?.status) === "sending" &&
+    !existingAttempt.provider_message_id
+  ) {
+    const handoff = await peekHandoff(tenantId, invitationId, existingAttempt.attempt_id);
+    if (!handoff.ok || !handoff.present) return null;
+  }
+  return dispatchRef(ids);
+}
+
 async function sealAndPersistHandoff({
   tenantId,
   invitation,
@@ -507,7 +524,7 @@ async function queueInvitationEmail({
       recipient_masked: maskEmail(recipient),
       email_delivery: capability,
       api_version: API_VERSION,
-      _dispatch: dispatchRef({
+      _dispatch: await idempotentDispatchRef(tenantId, invitation.id, existing, {
         tenant_id: tenantId,
         attempt_id: existing.attempt_id,
         invitation_id: invitation.id,
@@ -572,7 +589,7 @@ async function queueInvitationEmail({
           recipient_masked: maskEmail(recipient),
           email_delivery: capability,
           api_version: API_VERSION,
-          _dispatch: dispatchRef({
+          _dispatch: await idempotentDispatchRef(tenantId, invitation.id, existingAfter, {
             tenant_id: tenantId,
             attempt_id: existingAfter.attempt_id,
             invitation_id: invitation.id,
@@ -1145,6 +1162,11 @@ async function dispatchInvitationEmail(dispatchInput = {}, options = {}) {
     };
   }
 
+  // CH-013A.2.4 — true when this dispatch owns the queued→sending claim. Only the owning
+  // dispatch may treat a missing handoff as a never-delivered failure; a dispatch arriving
+  // at an already-sending attempt is a duplicate/late invocation.
+  let claimedByThisDispatch = false;
+
   if (attempt.status === "queued") {
     const claimed = await transitionDeliveryAttempt(tenantId, attemptId, "sending");
     if (!claimed.ok) {
@@ -1173,6 +1195,7 @@ async function dispatchInvitationEmail(dispatchInput = {}, options = {}) {
       }
     } else {
       attempt = claimed.attempt;
+      claimedByThisDispatch = true;
     }
 
     await emitTransportEvent({
@@ -1207,6 +1230,42 @@ async function dispatchInvitationEmail(dispatchInput = {}, options = {}) {
   );
   if (!opened.ok) {
     if (opened.code === "handoff_expired" || opened.code === "handoff_missing") {
+      // CH-013A.2.4 — a missing/expired handoff means different things per attempt state.
+      // Re-read the authoritative row: once the attempt is sending, the handoff was already
+      // consumed by a Zapier ack, so a duplicate or late dispatch must not fail it.
+      const currentAttempt = (await loadAttempt(tenantId, attemptId)) || attempt;
+      const currentStatus = trimField(currentAttempt.status);
+      const currentMessageId =
+        currentAttempt.provider_message_id ||
+        readAcceptance(invitation.metadata, attemptId)?.provider_message_id ||
+        null;
+
+      if (currentStatus === "sent" && currentMessageId) {
+        return {
+          ok: true,
+          accepted: true,
+          idempotent: true,
+          attempt_id: attemptId,
+          provider_message_id: currentMessageId,
+          api_version: API_VERSION,
+        };
+      }
+
+      if (currentStatus === "sending" && !claimedByThisDispatch) {
+        return {
+          ok: true,
+          idempotent: true,
+          awaiting_callback: true,
+          code: "handoff_already_consumed",
+          handoff_code: opened.code,
+          attempt_id: attemptId,
+          invitation_id: invitationId,
+          generation_id: generation?.id || currentAttempt.generation_id || null,
+          provider_message_id: currentMessageId,
+          api_version: API_VERSION,
+        };
+      }
+
       await transitionDeliveryAttempt(tenantId, attemptId, "failed", {
         error_code: opened.code,
         error_message: opened.error || "handoff unavailable",
