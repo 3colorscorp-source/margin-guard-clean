@@ -796,7 +796,9 @@ async function getEmailDeliveryStatus({ tenantId, attemptId, envelopeId, signerI
     (["queued", "sending"].includes(attempt.status) &&
       !attempt.provider_message_id &&
       Boolean(handoff && handoff.present)) ||
-    mapped.ui_status === "accepted_db_pending";
+    mapped.ui_status === "accepted_db_pending" ||
+    (trimField(attempt.status) === "failed" &&
+      trimField(attempt.error_code) === "upstream_validation_failed");
 
   return {
     ok: true,
@@ -842,6 +844,23 @@ async function recoverEmailDispatch({ tenantId, attemptId, publicOrigin }) {
     };
   }
   if (["failed", "cancelled", "bounced"].includes(attempt.status)) {
+    if (
+      attempt.status === "failed" &&
+      trimField(attempt.error_code) === "upstream_validation_failed"
+    ) {
+      return {
+        ok: true,
+        recovered: true,
+        idempotent: true,
+        abandoned: true,
+        ui_status: "failed",
+        attempt_id: attemptId,
+        invitation_id: attempt.invitation_id,
+        error_code: "upstream_validation_failed",
+        recoverable: true,
+        code: "upstream_validation_failed",
+      };
+    }
     return {
       ok: false,
       status: 422,
@@ -893,15 +912,58 @@ async function recoverEmailDispatch({ tenantId, attemptId, publicOrigin }) {
   if (!handoff.ok || !handoff.present) {
     // After Catch Hook ack, handoff is consumed while waiting for Zapier callback.
     if (attempt.status === "sending" && !providerMessageId) {
+      const started = attempt.started_at ? new Date(attempt.started_at).getTime() : 0;
+      const isStuck =
+        Number.isFinite(started) && Date.now() - started > STUCK_ATTEMPT_MS;
+
+      // CH-013A.2.7 — not stuck yet: keep awaiting callback (do not abandon).
+      if (!isStuck) {
+        return {
+          ok: true,
+          recovered: false,
+          awaiting_callback: true,
+          ui_status: "sending",
+          attempt_id: attemptId,
+          invitation_id: attempt.invitation_id,
+          stuck: false,
+          recoverable: false,
+          code: "awaiting_zapier_callback",
+          error: "Awaiting Zapier/Gmail callback — do not re-dispatch",
+        };
+      }
+
+      // Stuck sending with no provider_message_id and no handoff: confirmed abandoned
+      // upstream (e.g. Zap validation stopped before Gmail). Fail only this attempt so
+      // Owner Email Signing Link can mint Gen N+1 on the same envelope.
+      await transitionDeliveryAttempt(tenantId, attemptId, "failed", {
+        error_code: "upstream_validation_failed",
+        error_message:
+          "Upstream email validation failed before Gmail; attempt abandoned for fresh delivery",
+      });
+      // Invitation must leave sending so the next Email click can legally re-queue.
+      try {
+        await markInvitationFailed(tenantId, invitation.id, {
+          error_code: "upstream_validation_failed",
+          error_message:
+            "Upstream email validation failed; ready for a fresh Email Signing Link",
+          idempotency_key: `invitation:failed:stuck:${tenantId}:${invitation.id}:${attemptId}`,
+        });
+      } catch (_e) {
+        /* invitation transition best-effort; attempt is already failed */
+      }
       return {
         ok: true,
-        recovered: false,
-        awaiting_callback: true,
-        ui_status: "sending",
+        recovered: true,
+        abandoned: true,
+        ui_status: "failed",
         attempt_id: attemptId,
         invitation_id: attempt.invitation_id,
-        code: "awaiting_zapier_callback",
-        error: "Awaiting Zapier/Gmail callback — do not re-dispatch",
+        error_code: "upstream_validation_failed",
+        stuck: false,
+        recoverable: true,
+        code: "upstream_validation_failed",
+        error:
+          "Stuck sending attempt abandoned. Click Email Signing Link once for a fresh delivery.",
       };
     }
     return {
@@ -1822,6 +1884,7 @@ module.exports = {
   ACTIVATION_REASON,
   GENERATION_REASON_DB,
   HANDOFF_TTL_MS,
+  STUCK_ATTEMPT_MS,
   emailCapability,
   queueInvitationEmail,
   dispatchInvitationEmail,

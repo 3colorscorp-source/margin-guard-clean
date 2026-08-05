@@ -43,9 +43,11 @@
     delivery: null,
     signingLink: null,
     emailDelivery: null,
-    emailUiStatus: null, // ready | queued | sending | sent | failed
+    emailUiStatus: null, // ready | queued | sending | sent | failed | stalled
     emailAttemptId: null,
     emailBusy: false,
+    emailStuck: false,
+    emailRecoverable: false,
     busy: false,
   };
 
@@ -316,14 +318,23 @@
   function emailStatusLabel(status) {
     const st = String(status || "").toLowerCase();
     if (st === "queued") return "Email queued";
-    if (st === "sending") return "Sending email";
+    if (st === "sending") return state.emailStuck ? "Email attempt stalled" : "Sending email";
     if (st === "accepted_db_pending") return "Email accepted — finalizing status";
     if (st === "sent") return "Email sent";
-    if (st === "failed") return "Email delivery failed";
+    if (st === "failed") {
+      return state.emailRecoverable
+        ? "Email attempt stalled — retry available"
+        : "Email delivery failed";
+    }
+    if (st === "stalled") return "Email attempt stalled";
     return "Email Signing Link";
   }
 
   let emailStatusPollTimer = null;
+  const EMAIL_POLL_FAST_MS = 2000;
+  const EMAIL_POLL_SLOW_MS = 30000;
+  const EMAIL_POLL_FAST_TICKS = 40; // ~80s
+  const EMAIL_POLL_SLOW_TICKS = 20; // ~10 more minutes of slow checks
 
   function stopEmailStatusPoll() {
     if (emailStatusPollTimer) {
@@ -332,15 +343,45 @@
     }
   }
 
+  function applyEmailStatusPayload(data, attemptId) {
+    const ui = String(data.ui_status || "").toLowerCase();
+    if (
+      ui === "queued" ||
+      ui === "sending" ||
+      ui === "sent" ||
+      ui === "failed" ||
+      ui === "accepted_db_pending"
+    ) {
+      state.emailUiStatus = ui;
+      state.emailAttemptId = data.attempt_id || attemptId || state.emailAttemptId;
+    }
+    if (data.provider) {
+      state.emailDelivery = {
+        ...(state.emailDelivery || {}),
+        provider: data.provider,
+      };
+    }
+    state.emailStuck = data.stuck === true;
+    state.emailRecoverable =
+      data.recoverable === true ||
+      String(data.error_code || "").toLowerCase() === "upstream_validation_failed";
+    return ui;
+  }
+
   /**
    * Delivery truth: never infer "Email sent" from queue HTTP 200.
-   * Poll attempt-status until sent|failed (or give up after max ticks).
+   * Poll until sent|failed|stuck, with a bounded slow tail — never forever.
    */
-  async function pollEmailDeliveryStatus(attemptId, ticksLeft) {
+  async function pollEmailDeliveryStatus(attemptId, ticksLeft, slowMode) {
     const envId = state.envelope?.id;
     const signer = primarySigner();
     if (!envId || !signer?.id) return;
-    const remaining = typeof ticksLeft === "number" ? ticksLeft : 40;
+    const remaining =
+      typeof ticksLeft === "number"
+        ? ticksLeft
+        : slowMode
+          ? EMAIL_POLL_SLOW_TICKS
+          : EMAIL_POLL_FAST_TICKS;
     try {
       const qs =
         `status=1` +
@@ -349,20 +390,16 @@
         (attemptId ? `&attempt_id=${encodeURIComponent(attemptId)}` : "");
       const res = await api(`${EMAIL_QUEUE_API}?${qs}`, { method: "GET" });
       if (res.ok && res.data?.ok) {
-        const ui = String(res.data.ui_status || "").toLowerCase();
-        if (ui === "queued" || ui === "sending" || ui === "sent" || ui === "failed" || ui === "accepted_db_pending") {
-          state.emailUiStatus = ui;
-          state.emailAttemptId = res.data.attempt_id || attemptId || state.emailAttemptId;
-          if (res.data.provider) {
-            state.emailDelivery = {
-              ...(state.emailDelivery || {}),
-              provider: res.data.provider,
-            };
-          }
-          renderSend();
-        }
+        const ui = applyEmailStatusPayload(res.data, attemptId);
+        renderSend();
         if (ui === "sent" || ui === "failed") {
           stopEmailStatusPoll();
+          return;
+        }
+        if (res.data.stuck === true) {
+          state.emailStuck = true;
+          stopEmailStatusPoll();
+          renderSend();
           return;
         }
       }
@@ -370,12 +407,26 @@
       /* soft-fail; keep polling */
     }
     if (remaining <= 0) {
+      if (!slowMode) {
+        // Fast window exhausted — keep a bounded slow poll until server stuck or timeout.
+        emailStatusPollTimer = window.setTimeout(() => {
+          pollEmailDeliveryStatus(attemptId || state.emailAttemptId, EMAIL_POLL_SLOW_TICKS, true);
+        }, EMAIL_POLL_SLOW_MS);
+        return;
+      }
+      // Bounded timeout: treat as stalled so Owner can recover without infinite polling.
+      state.emailStuck = true;
       stopEmailStatusPoll();
+      renderSend();
       return;
     }
     emailStatusPollTimer = window.setTimeout(() => {
-      pollEmailDeliveryStatus(attemptId || state.emailAttemptId, remaining - 1);
-    }, 2000);
+      pollEmailDeliveryStatus(
+        attemptId || state.emailAttemptId,
+        remaining - 1,
+        Boolean(slowMode)
+      );
+    }, slowMode ? EMAIL_POLL_SLOW_MS : EMAIL_POLL_FAST_MS);
   }
 
   async function refreshEmailCapability() {
@@ -415,12 +466,13 @@
           : "");
       const res = await api(`${EMAIL_QUEUE_API}?${qs}`, { method: "GET" });
       if (res.ok && res.data?.ok && res.data.ui_status) {
-        const ui = String(res.data.ui_status).toLowerCase();
-        if (ui === "queued" || ui === "sending" || ui === "sent" || ui === "failed" || ui === "accepted_db_pending") {
-          state.emailUiStatus = ui;
-          state.emailAttemptId = res.data.attempt_id || state.emailAttemptId;
-          if (ui === "queued" || ui === "sending" || ui === "accepted_db_pending") {
-            pollEmailDeliveryStatus(state.emailAttemptId, 40);
+        const ui = applyEmailStatusPayload(res.data, state.emailAttemptId);
+        if (ui === "queued" || ui === "sending" || ui === "accepted_db_pending") {
+          if (res.data.stuck === true) {
+            state.emailStuck = true;
+            stopEmailStatusPoll();
+          } else {
+            pollEmailDeliveryStatus(state.emailAttemptId, EMAIL_POLL_FAST_TICKS, false);
           }
         }
       }
@@ -766,6 +818,7 @@
     const linkReadyEl = $("swLinkReady");
     const copyBtn = $("swCopyLinkBtn");
     const emailBtn = $("swEmailLinkBtn");
+    const emailRetryBtn = $("swEmailRetryBtn");
     const emailNotice = $("swEmailInternalNotice");
     const emailStatusWrap = $("swEmailStatusWrap");
     const emailStatus = $("swEmailStatus");
@@ -777,6 +830,14 @@
     const canCopy = hasCopyableLink();
     const signer = primarySigner();
     const cap = state.emailDelivery;
+    const inFlight =
+      state.emailUiStatus === "queued" ||
+      state.emailUiStatus === "sending" ||
+      state.emailUiStatus === "accepted_db_pending";
+    // Retry abandons a stalled in-flight attempt. After recover (failed + recoverable),
+    // show Email Signing Link again for the fresh Gen N+1 click.
+    const showRetry =
+      linkReady && Boolean(state.emailAttemptId) && inFlight && state.emailStuck;
     const emailEnabled =
       linkReady &&
       Boolean(signer?.id) &&
@@ -784,7 +845,9 @@
       cap &&
       cap.enabled === true &&
       cap.recipient_allowed === true &&
-      !state.emailBusy;
+      !state.emailBusy &&
+      !showRetry &&
+      !(inFlight && !state.emailStuck);
     if (linkReadyEl) {
       linkReadyEl.hidden = !linkReady;
     }
@@ -798,9 +861,19 @@
       copyBtn.disabled = !canCopy;
     }
     if (emailBtn) {
-      emailBtn.hidden = !linkReady;
+      emailBtn.hidden = !linkReady || showRetry;
       emailBtn.disabled = !emailEnabled;
-      emailBtn.textContent = emailStatusLabel(state.emailUiStatus || "ready");
+      emailBtn.textContent = emailStatusLabel(
+        showRetry ? "ready" : state.emailUiStatus || "ready"
+      );
+      if (!showRetry && (!state.emailUiStatus || state.emailUiStatus === "ready" || state.emailUiStatus === "failed")) {
+        emailBtn.textContent = "Email Signing Link";
+      }
+    }
+    if (emailRetryBtn) {
+      emailRetryBtn.hidden = !showRetry;
+      emailRetryBtn.disabled = !showRetry || state.emailBusy;
+      emailRetryBtn.textContent = "Retry Email Delivery";
     }
     if (emailNotice) {
       emailNotice.hidden = !linkReady;
@@ -1085,6 +1158,8 @@
       state.emailDelivery = null;
       state.emailUiStatus = null;
       state.emailAttemptId = null;
+      state.emailStuck = false;
+      state.emailRecoverable = false;
       stopEmailStatusPoll();
     }
   }
@@ -1345,6 +1420,8 @@
       }
       if (state.emailBusy) return;
       state.emailBusy = true;
+      state.emailStuck = false;
+      state.emailRecoverable = false;
       state.emailUiStatus = "queued";
       renderSend();
       try {
@@ -1395,11 +1472,51 @@
           state.emailUiStatus === "sending" ||
           state.emailUiStatus === "accepted_db_pending"
         ) {
-          pollEmailDeliveryStatus(state.emailAttemptId, 40);
+          pollEmailDeliveryStatus(state.emailAttemptId, EMAIL_POLL_FAST_TICKS, false);
         }
       } catch (err) {
         state.emailUiStatus = "failed";
         toast(err?.message || "Email delivery failed", "error");
+      } finally {
+        state.emailBusy = false;
+        renderSend();
+      }
+    });
+
+    $("swEmailRetryBtn")?.addEventListener("click", async () => {
+      if (!state.emailAttemptId) {
+        toast("No stalled email attempt to recover", "error");
+        return;
+      }
+      if (state.emailBusy) return;
+      state.emailBusy = true;
+      renderSend();
+      try {
+        stopEmailStatusPoll();
+        const res = await api(EMAIL_QUEUE_API, {
+          method: "POST",
+          body: JSON.stringify({
+            recover: true,
+            attempt_id: state.emailAttemptId,
+          }),
+        });
+        if (!res.ok || res.data?.ok !== true) {
+          throw new Error(res.data?.error || "Could not recover stalled email attempt");
+        }
+        const ui = String(res.data.ui_status || "failed").toLowerCase();
+        state.emailUiStatus = ui === "failed" || ui === "sent" ? ui : "failed";
+        state.emailStuck = false;
+        state.emailRecoverable =
+          res.data.recoverable === true ||
+          String(res.data.error_code || "").toLowerCase() === "upstream_validation_failed";
+        toast(
+          state.emailRecoverable
+            ? "Stalled attempt cleared. Click Email Signing Link once for a fresh delivery."
+            : res.data.error || "Email attempt recovered",
+          "ok"
+        );
+      } catch (err) {
+        toast(err?.message || "Retry Email Delivery failed", "error");
       } finally {
         state.emailBusy = false;
         renderSend();

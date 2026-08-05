@@ -228,12 +228,16 @@ exports.handler = async (event) => {
         ok: true,
         version: API_VERSION,
         recovered: Boolean(recovered.recovered),
+        abandoned: Boolean(recovered.abandoned),
         idempotent: Boolean(recovered.idempotent),
         queued: recovered.ui_status === "queued",
         ui_status: recovered.ui_status,
         attempt_id: recovered.attempt_id,
         invitation_id: recovered.invitation_id || null,
         provider_message_id: recovered.provider_message_id || null,
+        error_code: recovered.error_code || recovered.code || null,
+        recoverable: recovered.recoverable === true,
+        stuck: recovered.stuck === true,
       });
     }
 
