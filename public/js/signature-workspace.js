@@ -48,6 +48,7 @@
     emailBusy: false,
     emailStuck: false,
     emailRecoverable: false,
+    emailRecoveredAttemptId: null,
     busy: false,
   };
 
@@ -353,7 +354,9 @@
       ui === "accepted_db_pending"
     ) {
       state.emailUiStatus = ui;
-      state.emailAttemptId = data.attempt_id || attemptId || state.emailAttemptId;
+      const reported = String(data.attempt_id || attemptId || state.emailAttemptId || "");
+      state.emailAttemptId =
+        reported && reported === state.emailRecoveredAttemptId ? null : reported || null;
     }
     if (data.provider) {
       state.emailDelivery = {
@@ -1160,6 +1163,7 @@
       state.emailAttemptId = null;
       state.emailStuck = false;
       state.emailRecoverable = false;
+      state.emailRecoveredAttemptId = null;
       stopEmailStatusPoll();
     }
   }
@@ -1453,7 +1457,13 @@
           ui === "accepted_db_pending"
             ? ui
             : "queued";
-        state.emailAttemptId = res.data.attempt_id || state.emailAttemptId;
+        const newAttemptId = String(res.data.attempt_id || "");
+        if (!newAttemptId || newAttemptId === state.emailRecoveredAttemptId) {
+          state.emailUiStatus = "failed";
+          throw new Error("Email queue returned a stale delivery attempt");
+        }
+        state.emailAttemptId = newAttemptId;
+        state.emailRecoveredAttemptId = null;
         if (res.data.email_delivery) {
           state.emailDelivery = res.data.email_delivery;
         }
@@ -1509,6 +1519,11 @@
         state.emailRecoverable =
           res.data.recoverable === true ||
           String(res.data.error_code || "").toLowerCase() === "upstream_validation_failed";
+        if (state.emailRecoverable) {
+          // Abandoned attempt must never be polled or re-sent by the next click.
+          state.emailRecoveredAttemptId = String(res.data.attempt_id || state.emailAttemptId || "");
+          state.emailAttemptId = null;
+        }
         toast(
           state.emailRecoverable
             ? "Stalled attempt cleared. Click Email Signing Link once for a fresh delivery."

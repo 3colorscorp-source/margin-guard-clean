@@ -77,6 +77,7 @@ const ACTIVATION_REASON = "email_delivery_activation";
 const GENERATION_REASON_DB = "security_rotation";
 
 const ACTIVE_ATTEMPT_STATUSES = new Set(["queued", "sending", "sent"]);
+const TERMINAL_ATTEMPT_STATUSES = new Set(["failed", "cancelled", "bounced"]);
 const STUCK_ATTEMPT_MS = 10 * 60 * 1000;
 
 function normalizeEmail(email) {
@@ -168,6 +169,70 @@ async function findActiveEmailAttempt(tenantId, invitationId, generationId) {
   const rows = await supabaseRequest(path, { method: "GET" });
   const list = Array.isArray(rows) ? rows : rows ? [rows] : [];
   return list.find((a) => ACTIVE_ATTEMPT_STATUSES.has(a.status)) || null;
+}
+
+async function listInvitationAttempts(tenantId, invitationId) {
+  const rows = await supabaseRequest(
+    `${ATTEMPTS_TABLE}?tenant_id=eq.${encodeURIComponent(tenantId)}` +
+      `&invitation_id=eq.${encodeURIComponent(invitationId)}` +
+      `&select=attempt_id,status,generation_id,started_at,error_code&order=started_at.desc&limit=50`,
+    { method: "GET" }
+  );
+  const list = Array.isArray(rows) ? rows : rows ? [rows] : [];
+  return list.filter((a) => a && validUuid(trimField(a.attempt_id)));
+}
+
+/**
+ * CH-013A.2.8 — hard invariant for a non-idempotent queue result.
+ * A fresh Email click must return a brand-new attempt row. A recovered/terminal
+ * attempt id must never be re-returned or re-dispatched, so the authoritative row
+ * is re-read after creation and compared against every attempt that existed before.
+ */
+async function assertFreshQueuedAttempt({ tenantId, attempt, generation, priorAttemptIds }) {
+  const attemptId = trimField(attempt?.attempt_id);
+  if (!validUuid(attemptId)) {
+    return {
+      ok: false,
+      status: 500,
+      error: "Queue produced no delivery attempt id",
+      code: "attempt_create_failed",
+    };
+  }
+  if (priorAttemptIds.has(attemptId)) {
+    return {
+      ok: false,
+      status: 500,
+      error: "Queue returned a pre-existing delivery attempt; refusing to dispatch",
+      code: "stale_attempt_reuse",
+    };
+  }
+  const fresh = await loadAttempt(tenantId, attemptId);
+  if (!fresh) {
+    return {
+      ok: false,
+      status: 500,
+      error: "New delivery attempt was not persisted",
+      code: "attempt_not_persisted",
+    };
+  }
+  if (trimField(fresh.status) !== "queued") {
+    return {
+      ok: false,
+      status: 500,
+      error: `New delivery attempt is ${fresh.status}, expected queued`,
+      code: "stale_attempt_reuse",
+    };
+  }
+  const genId = trimField(generation?.id);
+  if (genId && trimField(fresh.generation_id) && trimField(fresh.generation_id) !== genId) {
+    return {
+      ok: false,
+      status: 500,
+      error: "New delivery attempt is bound to a different generation",
+      code: "stale_attempt_reuse",
+    };
+  }
+  return { ok: true, attempt: fresh };
 }
 
 function uiStatusFromAttempt(attempt, handoff, acceptance) {
@@ -503,6 +568,15 @@ async function queueInvitationEmail({
     };
   }
 
+  // CH-013A.2.8 — authoritative attempt snapshot taken before anything is created.
+  // Any id present here can never be returned as the new attempt of a fresh click.
+  const priorAttempts = await listInvitationAttempts(tenantId, invitation.id);
+  const priorAttemptIds = new Set(priorAttempts.map((a) => trimField(a.attempt_id)));
+  const lastTerminalAttemptId =
+    trimField(
+      priorAttempts.find((a) => TERMINAL_ATTEMPT_STATUSES.has(trimField(a.status)))?.attempt_id
+    ) || "";
+
   // Ordinary duplicate Email while queued/sending/sent: no Gen bump.
   const existing = await findActiveEmailAttempt(tenantId, invitation.id, generation.id);
   if (existing) {
@@ -537,13 +611,17 @@ async function queueInvitationEmail({
   let attempt = null;
 
   if (!rawTokenOnce) {
+    // A recovered attempt must not replay the rotation that produced it: binding the
+    // key to the last terminal attempt guarantees Gen N+1 with a fresh secret, while
+    // repeated clicks after the same recovery stay idempotent.
+    const rotationScope = lastTerminalAttemptId ? `:after:${lastTerminalAttemptId}` : "";
     // Gen N raw unavailable (CH-013B) — create Gen N+1 atomically; never swap token_id on Gen N.
     const rotated = await resendInvitation(tenantId, invitation.id, {
       reason: GENERATION_REASON_DB,
       provider: PROVIDER,
       causation_id: membershipId || null,
-      idempotency_key: `invitation:rotate:${invitation.id}:from:${generation.generation_number}:email_delivery_activation`,
-      event_idempotency_key: `invitation:resent:email-activation:${invitation.id}:from:${generation.generation_number}`,
+      idempotency_key: `invitation:rotate:${invitation.id}:from:${generation.generation_number}:email_delivery_activation${rotationScope}`,
+      event_idempotency_key: `invitation:resent:email-activation:${invitation.id}:from:${generation.generation_number}${rotationScope}`,
       extraPayload: {
         activation_reason: ACTIVATION_REASON,
       },
@@ -616,6 +694,7 @@ async function queueInvitationEmail({
     };
   }
 
+  const attemptExisted = Boolean(attempt);
   if (!attempt) {
     const attemptRes = await createDeliveryAttempt(invitation, {
       generation_id: generation.id,
@@ -631,7 +710,18 @@ async function queueInvitationEmail({
       };
     }
     attempt = attemptRes.attempt;
+  }
 
+  const freshness = await assertFreshQueuedAttempt({
+    tenantId,
+    attempt,
+    generation,
+    priorAttemptIds,
+  });
+  if (!freshness.ok) return freshness;
+  attempt = { ...attempt, ...freshness.attempt };
+
+  if (!attemptExisted) {
     if (trimField(invitation.status) === "prepared") {
       await transitionInvitation(tenantId, invitation.id, "queued", {
         idempotency_key: `invitation:queued:${tenantId}:${invitation.id}:${attempt.attempt_id}`,
@@ -935,11 +1025,23 @@ async function recoverEmailDispatch({ tenantId, attemptId, publicOrigin }) {
       // Stuck sending with no provider_message_id and no handoff: confirmed abandoned
       // upstream (e.g. Zap validation stopped before Gmail). Fail only this attempt so
       // Owner Email Signing Link can mint Gen N+1 on the same envelope.
-      await transitionDeliveryAttempt(tenantId, attemptId, "failed", {
+      const abandoned = await transitionDeliveryAttempt(tenantId, attemptId, "failed", {
         error_code: "upstream_validation_failed",
         error_message:
           "Upstream email validation failed before Gmail; attempt abandoned for fresh delivery",
       });
+      // CH-013A.2.8 — never report a cleared attempt unless the row is really failed;
+      // a silently ignored transition let the old attempt stay active for the next click.
+      const afterAbandon = abandoned.ok ? abandoned.attempt : await loadAttempt(tenantId, attemptId);
+      if (trimField(afterAbandon?.status) !== "failed") {
+        return {
+          ok: false,
+          status: 500,
+          error: abandoned.error || "Could not abandon the stalled attempt",
+          code: abandoned.code || "recovery_transition_failed",
+          ui_status: "sending",
+        };
+      }
       // Invitation must leave sending so the next Email click can legally re-queue.
       try {
         await markInvitationFailed(tenantId, invitation.id, {
@@ -1893,6 +1995,8 @@ module.exports = {
   recoverEmailDispatch,
   handleZapierEmailCallback,
   findActiveEmailAttempt,
+  listInvitationAttempts,
+  assertFreshQueuedAttempt,
   normalizeEmail,
   scrubSecretsDeep,
 };
