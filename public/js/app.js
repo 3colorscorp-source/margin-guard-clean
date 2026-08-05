@@ -9043,8 +9043,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   function openSendModal(state, settings, metrics) {
   const modal = document.getElementById("sendModal");
   if (!modal) return;
-  if (metrics?.marginBlocked) {
-    window.alert("Price too low");
+  const priceGuard = evaluateSendQuotePriceGuard(resolveVisibleSendQuoteMetrics(state, settings, metrics), {
+    formatCurrency: (value) => money(value, settings?.currency)
+  });
+  if (!priceGuard.ok) {
+    window.alert(priceGuard.message);
     return;
   }
   if ($("projectName")) {
@@ -9941,13 +9944,16 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     await runOwnerSellerPublicSend();
     return;
   }
-  if (metrics?.marginBlocked) {
-    window.alert("Price too low");
+  const priceGuard = evaluateSendQuotePriceGuard(resolveVisibleSendQuoteMetrics(state, settings, metrics), {
+    formatCurrency: (value) => money(value, settings?.currency)
+  });
+  if (!priceGuard.ok) {
+    window.alert(priceGuard.message);
     const sendStatusBlock = document.getElementById("sendStatus");
     if (sendStatusBlock) {
       sendStatusBlock.style.display = "block";
       sendStatusBlock.className = "notice error";
-      sendStatusBlock.textContent = "Price too low";
+      sendStatusBlock.textContent = priceGuard.message;
     }
     return;
   }
@@ -10122,6 +10128,90 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 }
 
   /**
+   * CH-014 — Single hard-block rule for Send Quote / publish.
+   * The visible "Minimum" KPI dollar amount is the no-sell floor; percentage margin stays advisory.
+   */
+  const SEND_QUOTE_PRICE_INVALID_MESSAGE = "Quote price is missing or invalid.";
+
+  function evaluateSendQuotePriceGuard(metrics, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const formatCurrency =
+      typeof opts.formatCurrency === "function"
+        ? opts.formatCurrency
+        : (value) => "$" + (Number.isFinite(Number(value)) ? Number(value) : 0).toFixed(2);
+    const toCents = (value) => Math.round(Number(value) * 100) / 100;
+
+    const offered = Number(metrics && metrics.offered);
+    const recommended = Number(metrics && metrics.recommended);
+    const rawPrice =
+      Number.isFinite(offered) && offered > 0
+        ? offered
+        : Number.isFinite(recommended) && recommended > 0
+          ? recommended
+          : NaN;
+
+    if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
+      return {
+        ok: false,
+        code: "missing_price",
+        message: SEND_QUOTE_PRICE_INVALID_MESSAGE,
+        effectivePrice: null,
+        minimumFloor: null,
+        difference: null
+      };
+    }
+
+    const effectivePrice = toCents(rawPrice);
+    const rawFloor = Number(metrics && metrics.minimum);
+    const minimumFloor = Number.isFinite(rawFloor) && rawFloor > 0 ? toCents(rawFloor) : 0;
+
+    if (minimumFloor > 0 && effectivePrice + 1e-9 < minimumFloor) {
+      const difference = toCents(minimumFloor - effectivePrice);
+      return {
+        ok: false,
+        code: "below_minimum",
+        message: [
+          "Quote price is below the minimum.",
+          "",
+          "Current: " + formatCurrency(effectivePrice),
+          "Minimum: " + formatCurrency(minimumFloor),
+          "Difference: " + formatCurrency(difference)
+        ].join("\n"),
+        effectivePrice,
+        minimumFloor,
+        difference
+      };
+    }
+
+    return {
+      ok: true,
+      code: "allowed",
+      message: "",
+      effectivePrice,
+      minimumFloor,
+      difference: 0
+    };
+  }
+
+  /**
+   * CH-014 — metrics for the guard come from the builder that paints the visible KPI panel,
+   * rebuilt at click time so labor recalculations are never validated from a stale snapshot.
+   */
+  function resolveVisibleSendQuoteMetrics(state, settings, fallbackMetrics) {
+    try {
+      if (typeof window.__mgBuildVisibleSalesMetrics === "function") {
+        return window.__mgBuildVisibleSalesMetrics(state, settings) || fallbackMetrics;
+      }
+      if ($("ownerKpis")) return calcOwner(state, settings) || fallbackMetrics;
+      if ($("salesKpis")) return calculateSalesMetrics(state, settings) || fallbackMetrics;
+    } catch (_error) {}
+    return fallbackMetrics;
+  }
+
+  window.__mgEvaluateSendQuotePriceGuard = evaluateSendQuotePriceGuard;
+  window.__mgSendQuotePriceInvalidMessage = SEND_QUOTE_PRICE_INVALID_MESSAGE;
+
+  /**
    * real_margin_pct = ((price - internalCost) / price) * 100
    * internalCost = loaded cost before target profit: beforeProfit + reserve (same basis as recommended build).
    */
@@ -10143,7 +10233,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         profitPct: targetPct,
         minimumMarginPct: minPct,
         internalCost,
-        message: "❌ Not allowed — price too low",
+        message: "⚠ Margin unavailable — quote price is missing or invalid",
       };
     }
     const realMarginPct = ((price - internalCost) / price) * 100;
@@ -10161,7 +10251,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     } else {
       decision = "blocked";
       level = "red";
-      message = "❌ Not allowed — price too low";
+      message = "⚠ Below the minimum margin rule — review before sending";
     }
     return {
       realMarginPct,
@@ -10193,7 +10283,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   function salesPricingRuleCopy(state, metrics, isReady) {
     if (!isReady) return "Completa la mano de obra para calcular el precio.";
     if (metrics.marginBlocked && Boolean(state?._sliderTouched)) {
-      return "Precio por debajo del minimo permitido.";
+      return "Margen por debajo del minimo objetivo: revisa antes de enviar.";
     }
     if (metrics.needsApproval && Boolean(state?._sliderTouched)) {
       return "Margen bajo el objetivo: no hay bloqueo, solo responsabilidad comercial.";
@@ -10932,9 +11022,16 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     if (btnMarkSold) {
       btnMarkSold.onclick = () => {
         persistSalesDraft("signed");
-        const currentMetrics = calculateSalesMetrics(state, settings);
-        if (currentMetrics.marginBlocked) {
-          window.alert("Price too low");
+        const currentMetrics = resolveVisibleSendQuoteMetrics(
+          state,
+          settings,
+          calculateSalesMetrics(state, settings)
+        );
+        const soldPriceGuard = evaluateSendQuotePriceGuard(currentMetrics, {
+          formatCurrency: (value) => money(value, settings?.currency)
+        });
+        if (!soldPriceGuard.ok) {
+          window.alert(soldPriceGuard.message);
           return;
         }
         if (!state.projectName || !state.clientName || !(state.startDate || state.dueDate) || currentMetrics.workerDays <= 0) {

@@ -7299,6 +7299,62 @@
         }, settings);
       }
 
+      // CH-014 — app.js rebuilds send-time metrics through the same builder that paints the KPI panel.
+      window.__mgBuildVisibleSalesMetrics = function (state, settings) {
+        return buildSalesUIMetrics(state, settings || loadSettings());
+      };
+
+      /**
+       * CH-014 — hard block for send/publish/sign uses the visible numeric Minimum floor.
+       * Shared rule lives in app.js; the inline branch only covers app.js not being loaded yet.
+       */
+      function evaluateSellerSendPriceGuard(metrics, settings, state) {
+        const format = function (value) { return sellerMoney(value, settings, state); };
+        const shared = typeof window.__mgEvaluateSendQuotePriceGuard === 'function'
+          ? window.__mgEvaluateSendQuotePriceGuard
+          : null;
+        if (shared) return shared(metrics, { formatCurrency: format });
+
+        const offered = Number(metrics && metrics.offered);
+        const recommended = Number(metrics && metrics.recommended);
+        const rawPrice = Number.isFinite(offered) && offered > 0
+          ? offered
+          : Number.isFinite(recommended) && recommended > 0
+            ? recommended
+            : NaN;
+        if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
+          return {
+            ok: false,
+            code: 'missing_price',
+            message: 'Quote price is missing or invalid.',
+            effectivePrice: null,
+            minimumFloor: null,
+            difference: null
+          };
+        }
+        const effectivePrice = round2(rawPrice);
+        const rawFloor = Number(metrics && metrics.minimum);
+        const minimumFloor = Number.isFinite(rawFloor) && rawFloor > 0 ? round2(rawFloor) : 0;
+        if (minimumFloor > 0 && effectivePrice + 1e-9 < minimumFloor) {
+          const difference = round2(minimumFloor - effectivePrice);
+          return {
+            ok: false,
+            code: 'below_minimum',
+            message: [
+              'Quote price is below the minimum.',
+              '',
+              'Current: ' + format(effectivePrice),
+              'Minimum: ' + format(minimumFloor),
+              'Difference: ' + format(difference)
+            ].join('\n'),
+            effectivePrice,
+            minimumFloor,
+            difference
+          };
+        }
+        return { ok: true, code: 'allowed', message: '', effectivePrice, minimumFloor, difference: 0 };
+      }
+
       function isSecurePricingPayloadValid(state, settings) {
         if (!document.body.classList.contains('auth-ready')) {
           if (!_securePricingWarnAuthOnce) {
@@ -7495,7 +7551,7 @@
           if (ruleEl) ruleEl.style.display = '';
           if (metrics.marginBlocked && Boolean(state._sliderTouched || state._manualPriceTouched)) {
             if (ruleEl) ruleEl.className = 'notice err';
-            return 'Precio por debajo del minimo permitido.';
+            return 'Margen por debajo del minimo objetivo: revisa antes de enviar.';
           }
           if (metrics.needsApproval && Boolean(state._sliderTouched || state._manualPriceTouched)) {
             if (ruleEl) ruleEl.className = 'notice amber';
@@ -8421,9 +8477,10 @@
             const state = loadSalesState();
             const settings = loadSettings();
             const metrics = buildSalesUIMetrics(state, settings);
-            if (metrics.marginBlocked) {
-              showFirmarSignedStatus(signedStatus, 'Price too low to sign this project.', 'error');
-              window.alert('Price too low');
+            const signPriceGuard = evaluateSellerSendPriceGuard(metrics, settings, state);
+            if (!signPriceGuard.ok) {
+              showFirmarSignedStatus(signedStatus, signPriceGuard.message, 'error');
+              window.alert(signPriceGuard.message);
               return;
             }
             if (sellerDevice) {
@@ -9843,8 +9900,9 @@ async function openSellerSendModal(event) {
     const preState = loadSalesState();
     const preSettings = loadSettings();
     const preMetrics = buildSalesUIMetrics(preState, preSettings);
-    if (preMetrics.marginBlocked) {
-      window.alert('Price too low');
+    const prePriceGuard = evaluateSellerSendPriceGuard(preMetrics, preSettings, preState);
+    if (!prePriceGuard.ok) {
+      window.alert(prePriceGuard.message);
       return;
     }
 
@@ -10141,8 +10199,9 @@ async function openSellerSendModal(event) {
 
     const settings = loadSettings();
     const metrics = buildSalesUIMetrics(state, settings);
-    if (metrics.marginBlocked) {
-      return { ok: false, error: 'Price too low' };
+    const publishPriceGuard = evaluateSellerSendPriceGuard(metrics, settings, state);
+    if (!publishPriceGuard.ok) {
+      return { ok: false, error: publishPriceGuard.message, code: publishPriceGuard.code };
     }
 
     if (
@@ -10298,11 +10357,12 @@ async function runSellerSend(event) {
       window.resolveSellerPublishWorkers(state, settings);
     }
     const metrics = buildSalesUIMetrics(state, settings);
-    if (metrics.marginBlocked) {
+    const sendPriceGuard = evaluateSellerSendPriceGuard(metrics, settings, state);
+    if (!sendPriceGuard.ok) {
       if (sendStatus) {
         sendStatus.style.display = 'block';
         sendStatus.className = 'notice error';
-        sendStatus.textContent = 'Price too low';
+        sendStatus.textContent = sendPriceGuard.message;
       }
       return false;
     }
