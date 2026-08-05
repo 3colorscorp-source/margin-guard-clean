@@ -129,7 +129,12 @@ test("2 Async callback architecture chosen (Catch Hook cannot sync-respond)", ()
 
 test("3 Gmail message ID semantics documented (not Zap run id as Gmail)", () => {
   assert.ok(docsSrc.includes("Gmail message ID"));
-  assert.ok(docsSrc.includes("Do **not** store Zap run id") || docsSrc.includes("not store Zap run"));
+  assert.ok(
+    docsSrc.includes("Do **not** treat Zap run id") ||
+      docsSrc.includes("not treat Zap run") ||
+      docsSrc.includes("Do **not** store Zap run id") ||
+      docsSrc.includes("not store Zap run")
+  );
 });
 
 test("4-8 HMAC verify: invalid / stale / future / mutate / constant-time", () => {
@@ -190,11 +195,27 @@ test("4-8 HMAC verify: invalid / stale / future / mutate / constant-time", () =>
   assert.ok(!z.timingSafeEqualHex(sig, "0".repeat(sig.length)));
 });
 
-test("9-10 Duplicate / Storage secondary SoT policy in docs+code", () => {
-  assert.ok(docsSrc.includes("secondary"));
-  assert.ok(docsSrc.includes("Margin Guard"));
+test("9-10 CH-013A.2.1Z-A zero Zapier Tables/Storage; MG-only SoT", () => {
+  const zapierBlob = [docsSrc, zapierSrc, emailLibSrc, emailChannelSrc].join("\n");
+  assert.ok(!/Zapier Tables/i.test(zapierBlob));
+  assert.ok(!/Storage by Zapier/i.test(zapierBlob));
+  assert.ok(!/Zapier Storage/i.test(zapierBlob));
+  assert.ok(!/Find Records/i.test(zapierBlob));
+  assert.ok(!/Create Record/i.test(zapierBlob));
+  assert.ok(!/secondary (dedupe|persistence|duplicate|idempotency)/i.test(zapierBlob));
+  assert.ok(!/secondary persistence/i.test(zapierBlob));
+  assert.ok(docsSrc.includes("Margin Guard is the only source of truth"));
+  assert.ok(docsSrc.includes("tenant_contract_invitation_delivery_attempts"));
+  assert.ok(docsSrc.includes("Never rely on Zapier for idempotency"));
+  assert.ok(docsSrc.includes("Catch Raw Hook"));
+  assert.ok(docsSrc.includes("Gmail — Send Email"));
+  assert.ok(docsSrc.includes("Custom Request POST"));
+  assert.ok(!docsSrc.includes("Storage by Zapier"));
+  assert.ok(!docsSrc.includes("Filter — continue only if valid"));
   assert.ok(emailLibSrc.includes("zapier:attempt:"));
   assert.ok(!emailLibSrc.includes("resend:attempt:"));
+  assert.ok(emailLibSrc.includes("handleZapierEmailCallback"));
+  assert.ok(emailLibSrc.includes("awaiting_zapier_callback"));
 });
 
 test("11-13 Callback replay / cross-tenant / pmid write-once guards present", () => {

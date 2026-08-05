@@ -4,6 +4,8 @@ Active beta email transport for Margin Guard contract signing invitations.
 
 **Margin Guard does not call Gmail API.**
 
+**Margin Guard is the only source of truth** for invitation, generation, delivery attempt, `provider_message_id`, delivery status, events, and idempotency. Zapier only transports email and reports the final Gmail outcome via signed callback. Zapier must not persist delivery state.
+
 ## Architecture decision: ASYNCHRONOUS ACK ONLY (Model B)
 
 Zapier **Catch Hook / Catch Raw Hook** returns an immediate generic HTTP 200 and **cannot**:
@@ -32,7 +34,7 @@ Do **not** mark Owner UI **Email sent** from a generic Catch Hook 200.
 3. Background decrypts handoff, builds ephemeral signing URL + template
 4. `ZapierProvider.send` POSTs canonical HMAC-signed JSON to Catch **Raw** Hook
 5. Zapier returns generic 200 → attempt stays `sending`, handoff consumed, **no sent**
-6. Zap verifies HMAC → Storage dedupe → Gmail Send Email
+6. Zap verifies HMAC + timestamp + schema → Gmail Send Email
 7. Zap POSTs signed callback to Margin Guard with Gmail outcome
 8. Callback finalizes `sent|failed` (write-once `provider_message_id`)
 
@@ -136,7 +138,7 @@ Security:
 
 **Required:** Gmail message ID from the Gmail Send Email step.
 
-Do **not** store Zap run id / webhook request id as if it were a Gmail message ID.
+Do **not** treat Zap run id / webhook request id as if it were a Gmail message ID.
 
 If Gmail message ID is only available after Send Email, that is why the **callback** exists.
 
@@ -144,29 +146,32 @@ If Gmail message ID is only available after Send Email, that is why the **callba
 
 ## Exact Zap steps (async)
 
+Official Zap contains **only** these steps. Do not add any Zapier-side database, key-value store, record lookup, record create, Filter-on-lookup, or delivery ledger steps.
+
 1. **Webhooks by Zapier — Catch Raw Hook** (raw body + headers for HMAC)
 2. **Code by Zapier** — verify HMAC + timestamp + schema; parse JSON after verify
-3. **Storage by Zapier** — lookup `idempotency_key` / `attempt_id` (secondary dedupe only)
-4. **Filter** — continue only if valid and not already sent
-5. **Gmail — Send Email** (To=`recipient_email`, Subject=`subject`, Body HTML=`html_body`, Reply-To=`reply_to`)
-6. **Storage** — save attempt outcome + **Gmail message id**
-7. **Webhooks by Zapier — Custom Request POST** signed callback to Margin Guard
-8. Stop
+3. **Gmail — Send Email** (To=`recipient_email`, Subject=`subject`, Body HTML=`html_body`, Reply-To=`reply_to`)
+4. **Webhooks by Zapier — Custom Request POST** signed callback to Margin Guard
+5. **Stop**
 
-Duplicate path: skip Gmail; callback same `provider_message_id` with `idempotent` semantics on MG side.
+Invalid HMAC: no Gmail, no sent callback.
 
-Invalid HMAC: no Gmail, no success storage, no sent callback.
+Duplicate / retry outcomes are finalized only inside Margin Guard (callback replay + write-once `provider_message_id`). Zapier must not keep a parallel delivery ledger.
 
 ---
 
 ## Source of truth / idempotency
 
+**Margin Guard is the only system of record.**
+
 | Concern | Authority |
 |---|---|
-| invitation / generation / attempt / queued→sending→sent|failed | **Margin Guard** |
-| duplicate Gmail prevention | Zapier Storage (secondary) + MG attempt uniqueness |
+| invitation / generation / attempt / queued→sending→sent\|failed | **Margin Guard** (`tenant_contract_invitation_delivery_attempts`, invitation, generation) |
+| duplicate prevention | **Margin Guard only**: `attempt_id`, write-once `provider_message_id`, callback verification, backend idempotency keys (`zapier:attempt:{attempt_id}`) |
 | retry | same `attempt_id` + `zapier:attempt:{attempt_id}`; **no Gen N+2** |
 | Zap History | **not** canonical |
+
+Never rely on Zapier for idempotency or delivery history.
 
 Netlify background must **not** treat Catch Hook 200 as failure-retryable in a way that spam-posts webhooks after handoff consume; after ack, wait for callback.
 
@@ -189,11 +194,10 @@ Netlify background must **not** treat Catch Hook 200 as failure-retryable in a w
 | Case | Outcome |
 |---|---|
 | Catch Hook 200, Code HMAC fail | No Gmail; attempt stays sending until timeout/ops; no sent |
-| Storage outage | Prefer fail closed (no Gmail) or controlled retry; MG remains SoT |
-| Gmail temp fail | Callback `failed` retryable or Zap retry; no duplicate if Storage marks |
+| Gmail temp fail | Callback `failed` retryable or Zap retry; MG finalizes once via callback |
 | Gmail success, callback fail | Attempt sending / accepted_db_pending after pmid write; callback replay recovers |
 | Netlify provider timeout before Catch Hook ack | Retryable dispatch may repost **only while handoff present**; after ack handoff consumed |
-| Same attempt twice | Storage + MG idempotency; one Gmail |
+| Same attempt twice | MG attempt uniqueness + callback idempotency + write-once `provider_message_id` |
 
 ---
 
