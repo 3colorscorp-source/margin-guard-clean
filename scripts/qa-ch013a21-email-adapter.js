@@ -267,7 +267,9 @@ test("QA19-21 accepted_db_pending finalize-only; no second send; events once", (
   assert.ok(emailLibSrc.includes("finalize_only"));
   assert.ok(emailLibSrc.includes("delivery:sent:"));
   assert.ok(atomicSql.includes("v_pmid_only") || atomicSql.includes("provider_message_id"));
-  assert.ok(swJs.includes("Email accepted — finalizing status"));
+  // CH-013A.30 — UI shows production "Sending..." while accepted_db_pending finalizes.
+  assert.ok(swJs.includes("accepted_db_pending"));
+  assert.ok(swJs.includes('return "Sending..."'));
 });
 
 test("QA22-23 Cross-tenant recovery blocked; terminal replay blocked", () => {
@@ -302,7 +304,8 @@ test("Allowlist + feature off + header injection", async () => {
       CONTRACT_EMAIL_INTERNAL_ALLOWLIST: "",
     },
     () => {
-      assert.strictEqual(resend.isRecipientAllowlisted("a@b.com"), false);
+      assert.strictEqual(resend.isRecipientAllowlisted("a@b.com"), true);
+      assert.strictEqual(resend.isRecipientAllowlisted("not-an-email"), false);
     }
   );
   await withEnv(

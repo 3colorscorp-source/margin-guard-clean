@@ -88,16 +88,15 @@ function emailCapability(recipientEmail) {
   const health = zapierProvider.health();
   const email = normalizeEmail(recipientEmail);
   const valid = email ? zapierProvider.isValidEmail(email) : false;
-  const allowed = valid ? zapierProvider.isRecipientAllowlisted(email) : false;
+  // CH-013A.30 — production: valid recipient email is deliverable; no internal-testing gate.
   let unavailable_reason = "";
   if (!health.available) unavailable_reason = health.reason || "unavailable";
   else if (email && !valid) unavailable_reason = "invalid_recipient";
-  else if (email && !allowed) unavailable_reason = "internal_recipient_only";
   return {
     enabled: health.available,
     provider: PROVIDER,
-    internal_testing: true,
-    recipient_allowed: allowed,
+    internal_testing: false,
+    recipient_allowed: Boolean(email && valid),
     unavailable_reason,
   };
 }
@@ -498,9 +497,9 @@ async function queueInvitationEmail({
   if (!capability.recipient_allowed) {
     return {
       ok: false,
-      status: 403,
-      error: "Internal email testing only — recipient is not allowlisted",
-      code: "internal_recipient_only",
+      status: 422,
+      error: "Signer email is invalid",
+      code: "invalid_recipient",
       email_delivery: capability,
     };
   }
@@ -1313,14 +1312,14 @@ async function dispatchInvitationEmail(dispatchInput = {}, options = {}) {
   const capability = emailCapability(recipientEmail);
   if (!capability.enabled || !capability.recipient_allowed) {
     await transitionDeliveryAttempt(tenantId, attemptId, "failed", {
-      error_code: capability.unavailable_reason || "internal_recipient_only",
-      error_message: "Recipient not deliverable under internal allowlist policy",
+      error_code: capability.unavailable_reason || "invalid_recipient",
+      error_message: "Recipient email is not deliverable",
     });
     await clearHandoff(tenantId, invitationId, attemptId);
     return {
       ok: false,
       retryable: false,
-      code: capability.unavailable_reason || "internal_recipient_only",
+      code: capability.unavailable_reason || "invalid_recipient",
       attempt_id: attemptId,
       api_version: API_VERSION,
     };

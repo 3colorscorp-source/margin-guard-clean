@@ -314,12 +314,14 @@ test("Delivery disabled unavailable", async () => {
   );
 });
 
-test("Allowlist blocked", async () => {
+test("Allowlist open in production (CH-013A.30)", async () => {
   await withEnv(
     { ...ZAPIER_ENV_ON, CONTRACT_EMAIL_INTERNAL_ALLOWLIST: "" },
     () => {
       const z = reload("netlify/functions/_lib/providers/zapier-provider.js");
-      assert.strictEqual(z.isRecipientAllowlisted("owner@test.example"), false);
+      assert.strictEqual(z.isRecipientAllowlisted("owner@test.example"), true);
+      assert.strictEqual(z.isRecipientAllowlisted("customer@example.com"), true);
+      assert.strictEqual(z.isRecipientAllowlisted("not-an-email"), false);
     }
   );
 });

@@ -50,7 +50,7 @@ Do **not** mark Owner UI **Email sent** from a generic Catch Hook 200.
 | `CONTRACT_EMAIL_ZAPIER_CALLBACK_SECRET` | **Preferred** inbound callback HMAC secret (separate) |
 | `CONTRACT_EMAIL_FROM_NAME` | Display name in payload |
 | `CONTRACT_EMAIL_REPLY_TO` | Reply-To |
-| `CONTRACT_EMAIL_INTERNAL_ALLOWLIST` | Internal recipients only |
+| `CONTRACT_EMAIL_INTERNAL_ALLOWLIST` | Deprecated (CH-013A.30). No longer gates delivery. |
 | `CONTRACT_EMAIL_DISPATCH_SECRET` | Background dispatch auth |
 | `CONTRACT_EMAIL_HANDOFF_KEY` | 32-byte AES handoff key |
 

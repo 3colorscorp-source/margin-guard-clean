@@ -100,13 +100,6 @@ async function prepare(ctx = {}, ephemeral = {}) {
   if (!zapierProvider.isValidEmail(to)) {
     return { ok: false, error: "Invalid recipient email", code: "invalid_recipient" };
   }
-  if (!zapierProvider.isRecipientAllowlisted(to)) {
-    return {
-      ok: false,
-      error: "Recipient is outside the internal allowlist",
-      code: "internal_recipient_only",
-    };
-  }
   return { ok: true, prepared: true, api_version: API_VERSION };
 }
 

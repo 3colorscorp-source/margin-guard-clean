@@ -318,16 +318,11 @@
 
   function emailStatusLabel(status) {
     const st = String(status || "").toLowerCase();
-    if (st === "queued") return "Email queued";
-    if (st === "sending") return state.emailStuck ? "Email attempt stalled" : "Sending email";
-    if (st === "accepted_db_pending") return "Email accepted — finalizing status";
-    if (st === "sent") return "Email sent";
-    if (st === "failed") {
-      return state.emailRecoverable
-        ? "Email attempt stalled — retry available"
-        : "Email delivery failed";
+    if (st === "queued" || st === "sending" || st === "accepted_db_pending") {
+      return "Sending...";
     }
-    if (st === "stalled") return "Email attempt stalled";
+    if (st === "sent") return "Email sent";
+    if (st === "failed" || st === "stalled") return "Delivery failed";
     return "Email Signing Link";
   }
 
@@ -822,7 +817,6 @@
     const copyBtn = $("swCopyLinkBtn");
     const emailBtn = $("swEmailLinkBtn");
     const emailRetryBtn = $("swEmailRetryBtn");
-    const emailNotice = $("swEmailInternalNotice");
     const emailStatusWrap = $("swEmailStatusWrap");
     const emailStatus = $("swEmailStatus");
     const copyWrap = copyBtn?.parentElement;
@@ -877,9 +871,6 @@
       emailRetryBtn.hidden = !showRetry;
       emailRetryBtn.disabled = !showRetry || state.emailBusy;
       emailRetryBtn.textContent = "Retry Email Delivery";
-    }
-    if (emailNotice) {
-      emailNotice.hidden = !linkReady;
     }
     if (emailStatusWrap) {
       emailStatusWrap.hidden = !linkReady || !state.emailUiStatus;
@@ -1470,12 +1461,10 @@
         toast(
           state.emailUiStatus === "sent"
             ? "Email sent"
-            : state.emailUiStatus === "sending"
-              ? "Sending email"
-              : state.emailUiStatus === "accepted_db_pending"
-                ? "Email accepted — finalizing status"
-                : "Email queued",
-          "ok"
+            : state.emailUiStatus === "failed"
+              ? "Delivery failed"
+              : "Sending...",
+          state.emailUiStatus === "failed" ? "error" : "ok"
         );
         if (
           state.emailUiStatus === "queued" ||
@@ -1526,8 +1515,8 @@
         }
         toast(
           state.emailRecoverable
-            ? "Stalled attempt cleared. Click Email Signing Link once for a fresh delivery."
-            : res.data.error || "Email attempt recovered",
+            ? "Delivery cleared. Click Email Signing Link once to send again."
+            : res.data.error || "Email delivery recovered",
           "ok"
         );
       } catch (err) {

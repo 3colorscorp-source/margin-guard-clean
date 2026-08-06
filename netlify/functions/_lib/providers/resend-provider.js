@@ -63,12 +63,12 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
 
-function isRecipientAllowlisted(email, allowlistOverride) {
-  const list = Array.isArray(allowlistOverride)
-    ? allowlistOverride.map((e) => normalizeEmail(e)).filter(Boolean)
-    : parseAllowlist();
-  if (!list.length) return false;
-  return list.includes(normalizeEmail(email));
+/**
+ * CH-013A.30 — production delivery: any syntactically valid recipient is allowed.
+ * The former internal allowlist is no longer a send gate.
+ */
+function isRecipientAllowlisted(email, _allowlistOverride) {
+  return isValidEmail(email);
 }
 
 function health() {
@@ -149,16 +149,6 @@ async function send(input = {}) {
       provider: PROVIDER,
       error_code: "invalid_recipient",
       error_message: "Invalid recipient email",
-    });
-  }
-
-  if (!isRecipientAllowlisted(to)) {
-    return normalizeSendResult({
-      accepted: false,
-      retryable: false,
-      provider: PROVIDER,
-      error_code: "internal_recipient_only",
-      error_message: "Recipient is outside the internal allowlist",
     });
   }
 

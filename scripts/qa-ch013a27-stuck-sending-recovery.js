@@ -274,7 +274,7 @@ test("11 polling stops after stuck timeout / server stuck", () => {
   assert.ok(swJs.includes("if (res.data.stuck === true)"));
   assert.ok(swJs.includes("state.emailStuck = true"));
   assert.ok(swJs.includes("stopEmailStatusPoll()"));
-  assert.ok(swJs.includes("Email attempt stalled"));
+  assert.ok(swJs.includes("Delivery failed") || swJs.includes("Sending..."));
   assert.ok(swHtml.includes('id="swEmailRetryBtn"'));
 });
 
