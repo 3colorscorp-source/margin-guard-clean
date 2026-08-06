@@ -365,8 +365,13 @@ test("Canonical payload deterministic + HMAC headers", async () => {
     });
     assert.ok(captured.headers[z.TIMESTAMP_HEADER]);
     assert.ok(captured.headers[z.SIGNATURE_HEADER]);
+    // CH-013A.2.9 — HMAC covers signed_body inside the wire envelope, not the outer JSON.
+    const outer = JSON.parse(captured.body);
+    assert.strictEqual(typeof outer.signed_body, "string");
+    assert.strictEqual(captured.headers[z.TIMESTAMP_HEADER], outer.timestamp);
+    assert.strictEqual(captured.headers[z.SIGNATURE_HEADER], outer.signature);
     const sig = z.signCanonicalBody(
-      captured.body,
+      outer.signed_body,
       captured.headers[z.TIMESTAMP_HEADER],
       ZAPIER_ENV_ON.CONTRACT_EMAIL_ZAPIER_HMAC_SECRET
     );

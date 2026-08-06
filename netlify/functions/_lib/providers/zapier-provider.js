@@ -20,6 +20,8 @@ const API_VERSION = "ch-013a21z-v1";
 const PROVIDER = "zapier";
 const SCHEMA_VERSION = "1";
 const EVENT_TYPE = "contract_signing_invitation";
+/** CH-013A.2.9 — outer wire envelope that carries timestamp+signature in the body. */
+const ENVELOPE_SCHEMA_VERSION = "1";
 const DEFAULT_TIMEOUT_MS = 20000;
 const TIMESTAMP_HEADER = "X-Margin-Guard-Timestamp";
 const SIGNATURE_HEADER = "X-Margin-Guard-Signature";
@@ -198,7 +200,8 @@ function assertTimestampFresh(timestampIso, nowMs = Date.now()) {
 }
 
 /**
- * Verify HMAC over exact UTF-8 body bytes: HMAC-SHA256(secret, `${timestamp}.${rawBody}`) → hex.
+ * Verify HMAC over exact UTF-8 bytes: HMAC-SHA256(secret, `${timestamp}.${rawBody}`) → hex.
+ * Used for callbacks (raw callback JSON) and as the primitive for body-envelope verify.
  * @param {{
  *   rawBody: string,
  *   timestamp: string,
@@ -228,6 +231,104 @@ function verifySignedRequest(input = {}) {
     return { ok: false, code: "signature_mismatch", error: "HMAC verification failed" };
   }
   return { ok: true };
+}
+
+/**
+ * CH-013A.2.9 — build the outer webhook wire envelope.
+ * HMAC is over `timestamp + "." + signed_body` (invitation canonical JSON string).
+ * Headers mirror body timestamp/signature for diagnostics; Zapier Step 2 reads the body.
+ * @param {{ signedBody: string, timestamp?: string, secret: string }} input
+ */
+function buildSignedWireEnvelope(input = {}) {
+  const signedBody = input.signedBody == null ? "" : String(input.signedBody);
+  const secret = trimField(input.secret);
+  const timestamp = trimField(input.timestamp) || new Date().toISOString();
+  if (!signedBody) {
+    return { ok: false, code: "signed_body_missing", error: "signed_body required" };
+  }
+  if (!secret) {
+    return { ok: false, code: "hmac_secret_missing", error: "HMAC secret missing" };
+  }
+  const signature = signCanonicalBody(signedBody, timestamp, secret).toLowerCase();
+  const envelope = {
+    envelope_schema_version: ENVELOPE_SCHEMA_VERSION,
+    timestamp,
+    signature,
+    signed_body: signedBody,
+  };
+  return {
+    ok: true,
+    envelope,
+    timestamp,
+    signature,
+    signed_body: signedBody,
+    wire_body: canonicalizeJson(envelope),
+  };
+}
+
+/**
+ * CH-013A.2.9 — verify an outer body envelope, then expose signed_body only if HMAC passes.
+ * Does NOT parse signed_body into the invitation object (caller does that after verify).
+ * @param {{
+ *   rawBody?: string,
+ *   envelope?: object,
+ *   secret: string,
+ *   nowMs?: number,
+ * }} input
+ */
+function verifySignedEnvelope(input = {}) {
+  const secret = trimField(input.secret);
+  if (!secret) {
+    return { ok: false, code: "hmac_secret_missing", error: "HMAC secret missing" };
+  }
+
+  let envelope = input.envelope;
+  if (!envelope) {
+    const raw = input.rawBody == null ? "" : String(input.rawBody);
+    if (!raw) {
+      return { ok: false, code: "envelope_missing", error: "Outer envelope body missing" };
+    }
+    try {
+      envelope = JSON.parse(raw);
+    } catch (_e) {
+      return { ok: false, code: "envelope_not_json", error: "Outer envelope is not JSON" };
+    }
+  }
+  if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
+    return { ok: false, code: "envelope_invalid", error: "Outer envelope must be an object" };
+  }
+
+  const timestamp = trimField(envelope.timestamp);
+  const signature = trimField(envelope.signature).toLowerCase();
+  // signed_body must be the exact string used for HMAC — never rebuild before verify.
+  if (envelope.signed_body == null || envelope.signed_body === "") {
+    return { ok: false, code: "signed_body_missing", error: "signed_body required" };
+  }
+  if (typeof envelope.signed_body !== "string") {
+    return {
+      ok: false,
+      code: "signed_body_invalid",
+      error: "signed_body must be a JSON string",
+    };
+  }
+  const signedBody = envelope.signed_body;
+
+  const verified = verifySignedRequest({
+    rawBody: signedBody,
+    timestamp,
+    signature,
+    secret,
+    nowMs: input.nowMs,
+  });
+  if (!verified.ok) return verified;
+
+  return {
+    ok: true,
+    timestamp,
+    signature,
+    signed_body: signedBody,
+    envelope_schema_version: trimField(envelope.envelope_schema_version) || ENVELOPE_SCHEMA_VERSION,
+  };
 }
 
 /**
@@ -457,14 +558,30 @@ async function send(input = {}) {
     }
   }
 
+  // CH-013A.2.9 — sign the invitation payload string, wrap it in a body envelope so
+  // Zapier Step 2 can verify HMAC from raw_body alone (no header-field mapping).
+  const signedBody = canonicalizeJson(payload);
   const timestamp = new Date().toISOString();
-  const canonicalBody = canonicalizeJson(payload);
-  const signature = signCanonicalBody(canonicalBody, timestamp, getHmacSecret());
+  const sealed = buildSignedWireEnvelope({
+    signedBody,
+    timestamp,
+    secret: getHmacSecret(),
+  });
+  if (!sealed.ok) {
+    return normalizeSendResult({
+      accepted: false,
+      retryable: false,
+      provider: PROVIDER,
+      error_code: sealed.code || "envelope_build_failed",
+      error_message: sealed.error || "Could not build signed wire envelope",
+    });
+  }
 
   const headers = {
     "Content-Type": "application/json",
-    [TIMESTAMP_HEADER]: timestamp,
-    [SIGNATURE_HEADER]: signature,
+    // Headers kept for diagnostics / backward compatibility; must equal body fields.
+    [TIMESTAMP_HEADER]: sealed.timestamp,
+    [SIGNATURE_HEADER]: sealed.signature,
     [IDEMPOTENCY_HEADER]: idem.slice(0, 256),
   };
 
@@ -481,7 +598,7 @@ async function send(input = {}) {
     const res = await fetchImpl(getWebhookUrl(), {
       method: "POST",
       headers,
-      body: canonicalBody,
+      body: sealed.wire_body,
       signal: controller ? controller.signal : undefined,
     });
     if (timer) clearTimeout(timer);
@@ -522,6 +639,7 @@ module.exports = {
   PROVIDER,
   SCHEMA_VERSION,
   EVENT_TYPE,
+  ENVELOPE_SCHEMA_VERSION,
   TIMESTAMP_HEADER,
   SIGNATURE_HEADER,
   IDEMPOTENCY_HEADER,
@@ -547,6 +665,8 @@ module.exports = {
   timingSafeEqualHex,
   assertTimestampFresh,
   verifySignedRequest,
+  buildSignedWireEnvelope,
+  verifySignedEnvelope,
   buildCanonicalPayload,
   parseZapierResponse,
   defaultCapabilities: () =>

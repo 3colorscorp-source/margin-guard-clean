@@ -62,28 +62,48 @@ If `CONTRACT_EMAIL_ZAPIER_CALLBACK_SECRET` is unset, callback verification uses 
 
 ## HMAC contract (byte-exact)
 
-### Outbound (Netlify → Zapier)
+### Outbound (Netlify → Zapier) — CH-013A.2.9 body-signed envelope
 
-1. Build payload object (see fields below).
-2. `canonicalBody = JSON.stringify(recursivelyKeySorted(payload))` (UTF-8).
+Zapier Catch Raw Hook receives HTTP headers, but Code-by-Zapier Step 2 runtime
+`inputData` does **not** reliably materialize mapped header fields. Therefore the
+authoritative HMAC material lives **inside the JSON body**. Headers are kept for
+diagnostics and must equal the body fields.
+
+1. Build the invitation payload object (see fields below).
+2. `signed_body = JSON.stringify(recursivelyKeySorted(payload))` (UTF-8).
 3. `timestamp = ISO-8601 UTC` (e.g. `2026-08-04T20:00:00.000Z`).
-4. `signature = hex(HMAC-SHA256(HMAC_SECRET, timestamp + "." + canonicalBody))`.
-5. POST `canonicalBody` as the raw HTTP body.
-6. Headers:
+4. `signature = lowercase hex(HMAC-SHA256(HMAC_SECRET, timestamp + "." + signed_body))`.
+5. Outer wire body (also recursively key-sorted JSON):
+
+```json
+{
+  "envelope_schema_version": "1",
+  "timestamp": "<ISO timestamp>",
+  "signature": "<lowercase hex HMAC>",
+  "signed_body": "<exact canonical JSON string of invitation payload>"
+}
+```
+
+6. POST the outer wire body as the raw HTTP body.
+7. Headers (mirror body; do not rely on them in Step 2):
    - `Content-Type: application/json`
-   - `X-Margin-Guard-Timestamp: <timestamp>`
-   - `X-Margin-Guard-Signature: <hex>`
+   - `X-Margin-Guard-Timestamp: <same timestamp>`
+   - `X-Margin-Guard-Signature: <same signature>`
    - `X-Margin-Guard-Idempotency-Key: zapier:attempt:{attempt_id}`
 
 **Freshness window:** ±5 minutes (`TIMESTAMP_MAX_SKEW_MS`).
 
-**Zapier Code step (Catch Raw Hook):**
+**Zapier Code step (Catch Raw Hook) — inputs: `raw_body`, `hmac_secret` only:**
 
-1. Read **exact raw request body string** (do not rebuild JSON before verify).
-2. Read timestamp + signature headers.
-3. Reject missing/duplicate/invalid signature; reject stale/future timestamps.
-4. Recompute hex HMAC over `timestamp + "." + rawBody` with constant-time compare.
-5. Only then `JSON.parse(rawBody)`.
+1. Read **exact raw request body string** from `inputData.raw_body`.
+2. `JSON.parse(raw_body)` → outer envelope (`timestamp`, `signature`, `signed_body`).
+3. Reject missing/malformed envelope fields; reject stale/future timestamps.
+4. Recompute hex HMAC over `timestamp + "." + signed_body` with constant-time compare.
+5. Only after HMAC passes: `JSON.parse(signed_body)` → invitation payload.
+6. Apply invitation schema validation; return flat string Data Out fields.
+
+Do **not** map `signature_header` / `timestamp_header` / `headers_json` into Step 2.
+Do **not** reconstruct `signed_body` before verification.
 
 ### Inbound callback (Zapier → Netlify)
 
@@ -92,6 +112,8 @@ If `CONTRACT_EMAIL_ZAPIER_CALLBACK_SECRET` is unset, callback verification uses 
 Same header scheme. Prefer dedicated `CONTRACT_EMAIL_ZAPIER_CALLBACK_SECRET` signing the **exact callback JSON string**.
 
 Fallback (shared outbound secret): sign/verify `timestamp + "." + "v1.callback." + rawBody`.
+
+Callback signing is **unchanged** by CH-013A.2.9 (no body envelope on the callback).
 
 ---
 
