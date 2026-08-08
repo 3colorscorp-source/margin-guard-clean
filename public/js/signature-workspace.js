@@ -1689,7 +1689,200 @@
     }
   }
 
+  function projectDisplayName(p) {
+    return (
+      String(p?.projectName || p?.project_name || p?.id || "").trim() || "Project"
+    );
+  }
+
+  function projectCustomerName(p) {
+    return String(p?.clientName || p?.client_name || "").trim();
+  }
+
+  function isProjectPickerOpen() {
+    const menu = $("swProjectPickerMenu");
+    return Boolean(menu && !menu.hidden);
+  }
+
+  function closeProjectPicker() {
+    const menu = $("swProjectPickerMenu");
+    const trigger = $("swProjectPickerTrigger");
+    if (menu) menu.hidden = true;
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+    document
+      .querySelectorAll(".sw-project-picker__option.is-active")
+      .forEach((el) => el.classList.remove("is-active"));
+  }
+
+  function syncProjectPickerUi() {
+    const sel = $("swProjectSelect");
+    const valueEl = $("swProjectPickerValue");
+    const list = $("swProjectPickerList");
+    if (!sel || !valueEl || !list) return;
+
+    const selectedId = String(sel.value || "").trim();
+    if (!selectedId) {
+      valueEl.textContent = "Select project…";
+    } else {
+      const selected =
+        state.projects.find(
+          (p) => String(p.id).toLowerCase() === selectedId.toLowerCase()
+        ) || null;
+      valueEl.textContent = selected
+        ? projectDisplayName(selected)
+        : selectedId;
+    }
+
+    if (!Array.isArray(state.projects) || !state.projects.length) {
+      list.innerHTML =
+        `<div class="sw-project-picker__empty">No projects available.</div>`;
+      return;
+    }
+
+    list.innerHTML = state.projects
+      .map((p) => {
+        const id = String(p.id || "");
+        const name = projectDisplayName(p);
+        const customer = projectCustomerName(p);
+        const isSelected =
+          selectedId && id.toLowerCase() === selectedId.toLowerCase();
+        const meta = customer
+          ? `<span class="sw-project-picker__option-meta">Customer: ${escapeHtml(
+              customer
+            )}</span>`
+          : "";
+        return `<button type="button" class="sw-project-picker__option${
+          isSelected ? " is-selected" : ""
+        }" role="option" data-project-id="${escapeHtml(id)}" aria-selected="${
+          isSelected ? "true" : "false"
+        }">
+          <span class="sw-project-picker__option-main">
+            <span class="sw-project-picker__option-name">${escapeHtml(name)}</span>
+            ${meta}
+          </span>
+          <span class="sw-project-picker__check" aria-hidden="true">✓</span>
+        </button>`;
+      })
+      .join("");
+  }
+
+  function openProjectPicker() {
+    const menu = $("swProjectPickerMenu");
+    const trigger = $("swProjectPickerTrigger");
+    if (!menu || !trigger) return;
+    syncProjectPickerUi();
+    menu.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    const selected =
+      menu.querySelector(".sw-project-picker__option.is-selected") ||
+      menu.querySelector(".sw-project-picker__option");
+    if (selected) {
+      selected.classList.add("is-active");
+      selected.focus();
+    }
+  }
+
+  function chooseProjectFromPicker(projectId) {
+    const sel = $("swProjectSelect");
+    const id = String(projectId || "").trim();
+    if (!sel || !id) {
+      closeProjectPicker();
+      return;
+    }
+    if (String(sel.value || "") === id) {
+      closeProjectPicker();
+      syncProjectPickerUi();
+      return;
+    }
+    sel.value = id;
+    closeProjectPicker();
+    // Preserve existing change-handler path exactly.
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+    syncProjectPickerUi();
+  }
+
+  function bindProjectPickerPresentation() {
+    const picker = $("swProjectPicker");
+    const trigger = $("swProjectPickerTrigger");
+    const menu = $("swProjectPickerMenu");
+    const list = $("swProjectPickerList");
+    if (!picker || !trigger || !menu || !list) return;
+
+    trigger.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      if (isProjectPickerOpen()) closeProjectPicker();
+      else openProjectPicker();
+    });
+
+    trigger.addEventListener("keydown", (ev) => {
+      if (ev.key === "ArrowDown" || ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        if (!isProjectPickerOpen()) openProjectPicker();
+      }
+    });
+
+    list.addEventListener("click", (ev) => {
+      const opt = ev.target.closest(".sw-project-picker__option");
+      if (!opt || !list.contains(opt)) return;
+      ev.preventDefault();
+      chooseProjectFromPicker(opt.getAttribute("data-project-id"));
+    });
+
+    list.addEventListener("keydown", (ev) => {
+      const options = Array.from(
+        list.querySelectorAll(".sw-project-picker__option")
+      );
+      if (!options.length) return;
+      const active = list.querySelector(".sw-project-picker__option.is-active");
+      let idx = Math.max(0, options.indexOf(active));
+      if (ev.key === "ArrowDown") {
+        ev.preventDefault();
+        idx = Math.min(options.length - 1, idx + 1);
+      } else if (ev.key === "ArrowUp") {
+        ev.preventDefault();
+        idx = Math.max(0, idx - 1);
+      } else if (ev.key === "Home") {
+        ev.preventDefault();
+        idx = 0;
+      } else if (ev.key === "End") {
+        ev.preventDefault();
+        idx = options.length - 1;
+      } else if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        const target = options[idx];
+        if (target) chooseProjectFromPicker(target.getAttribute("data-project-id"));
+        return;
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        closeProjectPicker();
+        trigger.focus();
+        return;
+      } else {
+        return;
+      }
+      options.forEach((el) => el.classList.remove("is-active"));
+      const next = options[idx];
+      next.classList.add("is-active");
+      next.focus();
+    });
+
+    document.addEventListener("click", (ev) => {
+      if (!isProjectPickerOpen()) return;
+      if (picker.contains(ev.target)) return;
+      closeProjectPicker();
+    });
+
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && isProjectPickerOpen()) {
+        closeProjectPicker();
+        trigger.focus();
+      }
+    });
+  }
+
   function bindEvents() {
+    bindProjectPickerPresentation();
+
     $("swReloadBtn")?.addEventListener("click", () => {
       const id = $("swProjectSelect")?.value;
       if (id) void loadProjectWorkspace(id);
@@ -1699,6 +1892,7 @@
       const id = ev.target.value;
       const project = state.projects.find((p) => p.id === id) || null;
       state.project = project;
+      syncProjectPickerUi();
       if (!id) {
         showError("Contract Signing", "Select a project to open the Signature Workspace.");
         return;
@@ -2239,6 +2433,7 @@
           })
           .join("");
     }
+    syncProjectPickerUi();
 
     const params = new URLSearchParams(window.location.search);
     const projectId = String(params.get("project_id") || "").trim();
@@ -2248,6 +2443,7 @@
         state.projects.find(
           (p) => String(p.id).toLowerCase() === projectId.toLowerCase()
         ) || null;
+      syncProjectPickerUi();
       if (!state.project) {
         showError(
           "Contract Signing",
