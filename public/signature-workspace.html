@@ -232,6 +232,291 @@
       .sw-header-grid { grid-template-columns: 1fr; }
       .sw-meta { grid-template-columns: 1fr; }
     }
+
+    /* CH-013A.31 — Public Estimate–aligned presentation shell (visual only) */
+    .sw-summary-card {
+      margin-top: 12px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: linear-gradient(155deg, rgba(28, 38, 72, 0.55) 0%, rgba(8, 14, 32, 0.88) 100%);
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+    .sw-summary-card .card-inner { padding: 16px 18px; }
+    .sw-summary-title {
+      margin: 0 0 4px;
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: rgba(255, 255, 255, 0.96);
+    }
+    .sw-summary-sub {
+      margin: 0 0 12px;
+      font-size: 0.8125rem;
+      color: rgba(232, 238, 252, 0.72);
+    }
+    .sw-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px 14px;
+    }
+    @media (max-width: 720px) {
+      .sw-summary-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 480px) {
+      .sw-summary-grid { grid-template-columns: 1fr; }
+    }
+
+    .public-flow-nav.premium-workflow.sw-workflow {
+      margin: 14px 0 16px;
+      padding: 18px 18px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: linear-gradient(155deg, rgba(28, 38, 72, 0.55) 0%, rgba(8, 14, 32, 0.88) 100%);
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+    .premium-workflow__intro { margin-bottom: 14px; }
+    .premium-workflow__eyebrow {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(110, 231, 183, 0.92);
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .premium-workflow__lead {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.45;
+      color: rgba(232, 238, 252, 0.82);
+      max-width: 62ch;
+    }
+    .premium-workflow__track {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 0;
+      width: 100%;
+      min-width: 0;
+    }
+    .premium-workflow__item {
+      position: relative;
+      min-width: 0;
+      z-index: 1;
+    }
+    .premium-workflow__item + .premium-workflow__item {
+      margin-left: -11px;
+      z-index: 2;
+    }
+    .premium-workflow__item:nth-child(2) { z-index: 3; }
+    .premium-workflow__item:nth-child(3) { z-index: 4; }
+    .premium-workflow__item:nth-child(4) { z-index: 5; }
+    .premium-workflow__item:nth-child(5) { z-index: 6; }
+    .premium-workflow__item:nth-child(6) { z-index: 7; }
+    .premium-workflow__arrow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 68px;
+      padding: 10px 18px 10px 12px;
+      box-sizing: border-box;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: inherit;
+      text-align: left;
+      font: inherit;
+      cursor: pointer;
+      position: relative;
+      clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%, 10px 50%);
+      background: linear-gradient(180deg, rgba(34, 84, 62, 0.42) 0%, rgba(16, 44, 34, 0.72) 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+    }
+    .premium-workflow__item:first-child .premium-workflow__arrow {
+      clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%);
+      padding-left: 12px;
+    }
+    .premium-workflow__item:last-child .premium-workflow__arrow {
+      clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 10px 50%);
+      padding-right: 12px;
+    }
+    .premium-workflow__num {
+      flex-shrink: 0;
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 800;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: rgba(255, 255, 255, 0.95);
+    }
+    .premium-workflow__body {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .premium-workflow__label {
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.2;
+      color: rgba(255, 255, 255, 0.94);
+    }
+    .premium-workflow__status {
+      font-size: 10px;
+      line-height: 1.25;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.62);
+      font-weight: 700;
+    }
+    .premium-workflow__mark {
+      flex-shrink: 0;
+      width: 18px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 800;
+      color: rgba(52, 211, 153, 0.95);
+      line-height: 1;
+    }
+    .premium-workflow__item.is-upcoming .premium-workflow__arrow {
+      background: linear-gradient(180deg, rgba(30, 72, 54, 0.34) 0%, rgba(14, 36, 28, 0.58) 100%);
+    }
+    .premium-workflow__item.is-current .premium-workflow__arrow {
+      background: linear-gradient(180deg, rgba(248, 250, 252, 0.96) 0%, rgba(226, 232, 240, 0.9) 100%);
+      border-color: rgba(255, 255, 255, 0.55);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28), 0 0 24px rgba(52, 211, 153, 0.18);
+    }
+    .premium-workflow__item.is-current .premium-workflow__num {
+      background: rgba(15, 23, 42, 0.92);
+      border-color: rgba(15, 23, 42, 0.2);
+      color: #fff;
+    }
+    .premium-workflow__item.is-current .premium-workflow__label { color: rgba(15, 23, 42, 0.96); }
+    .premium-workflow__item.is-current .premium-workflow__status { color: rgba(30, 41, 59, 0.72); }
+    .premium-workflow__item.is-complete .premium-workflow__arrow {
+      background: linear-gradient(180deg, rgba(34, 197, 94, 0.42) 0%, rgba(21, 128, 61, 0.72) 100%);
+      border-color: rgba(74, 222, 128, 0.42);
+    }
+    .premium-workflow__item.is-complete .premium-workflow__status { color: rgba(209, 250, 229, 0.92); }
+    .premium-workflow__item.is-locked .premium-workflow__arrow {
+      opacity: 0.55;
+      cursor: not-allowed;
+      pointer-events: none;
+      filter: saturate(0.75);
+    }
+    @media (max-width: 980px) {
+      .premium-workflow__track { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+      .premium-workflow__item + .premium-workflow__item { margin-left: 0; }
+      .premium-workflow__item .premium-workflow__arrow,
+      .premium-workflow__item:first-child .premium-workflow__arrow,
+      .premium-workflow__item:last-child .premium-workflow__arrow {
+        clip-path: none;
+        border-radius: 12px;
+      }
+    }
+    @media (max-width: 560px) {
+      .premium-workflow__track { grid-template-columns: 1fr 1fr; }
+      .premium-workflow__label { font-size: 11px; }
+    }
+
+    .sw-vis-step {
+      margin-top: 0;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: linear-gradient(180deg, rgba(20, 28, 48, 0.92) 0%, rgba(10, 16, 32, 0.96) 100%);
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.25);
+    }
+    .sw-vis-step[hidden] { display: none !important; }
+    .sw-vis-step .card-inner { padding: 20px 18px; }
+    .sw-vis-step h3 {
+      margin: 0 0 6px;
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: rgba(255, 255, 255, 0.96);
+    }
+    .sw-vis-step .sw-vis-lead {
+      margin: 0 0 16px;
+      font-size: 0.9375rem;
+      line-height: 1.45;
+      color: rgba(232, 238, 252, 0.78);
+      max-width: 54ch;
+    }
+    .sw-vis-meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px 14px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 640px) {
+      .sw-vis-meta { grid-template-columns: 1fr; }
+    }
+    .sw-vis-progress {
+      list-style: none;
+      margin: 0 0 16px;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .sw-vis-progress li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: rgba(232, 238, 252, 0.78);
+    }
+    .sw-vis-progress .sw-vis-mark {
+      width: 22px;
+      text-align: center;
+      font-weight: 800;
+      color: rgba(232, 238, 252, 0.4);
+    }
+    .sw-vis-progress li.is-complete { color: #bbf7d0; }
+    .sw-vis-progress li.is-complete .sw-vis-mark { color: #34d399; }
+    .sw-vis-progress li.is-current { color: #fde68a; }
+    .sw-vis-progress li.is-current .sw-vis-mark { color: #fbbf24; }
+    .sw-vis-complete-list {
+      list-style: none;
+      margin: 0 0 16px;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .sw-vis-complete-list li {
+      font-size: 0.9375rem;
+      font-weight: 700;
+      color: #bbf7d0;
+    }
+    .sw-advanced {
+      margin-top: 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.02);
+      padding: 0 12px 12px;
+    }
+    .sw-advanced > summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 12px 4px;
+      font-weight: 700;
+      font-size: 0.875rem;
+      color: rgba(232, 238, 252, 0.62);
+    }
+    .sw-advanced > summary::-webkit-details-marker { display: none; }
+    .sw-advanced[open] > summary { color: rgba(232, 238, 252, 0.85); }
+    .sw-advanced .sw-section { margin-top: 10px; }
+    .sw-legacy-stack[hidden] { display: none !important; }
+    #swGuideCard { display: none !important; }
+    #swMain .sw-legacy-header { display: none !important; }
   </style>
 </head>
 <body data-requires-auth="true" data-mg-app-nav data-mg-page-title="Contract Signing">
@@ -243,7 +528,7 @@
         <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:flex-start;">
           <div>
             <h2>Contract Signing</h2>
-            <p class="sub">Signature Workspace — freeze is done in Contract Builder. Here you create the signing request, add signers, send the secure link, then generate the certificate and signed PDF.</p>
+            <p class="sub">Send your contract, track the customer signature, then download the certificate and signed PDF.</p>
           </div>
           <a class="btn ghost" href="/contract-hub" id="swBackHub">Contract Hub</a>
         </div>
@@ -278,7 +563,184 @@
         </div>
       </section>
 
-      <section class="card">
+      <section class="sw-summary-card" id="swVisSummary">
+        <div class="card-inner">
+          <h3 class="sw-summary-title" id="swVisProjectName">Project</h3>
+          <p class="sw-summary-sub" id="swVisProjectSub">Margin Guard will guide you through each remaining step.</p>
+          <div class="sw-summary-grid">
+            <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v" id="swVisCustomer">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Contract</div><div class="sw-field__v" id="swVisContractVer">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Contract Status</div><div class="sw-field__v" id="swVisOverall">—</div></div>
+          </div>
+        </div>
+      </section>
+
+      <nav class="public-flow-nav premium-workflow sw-workflow" id="swVisWorkflow" aria-label="Contract signing workflow">
+        <div class="premium-workflow__intro">
+          <span class="premium-workflow__eyebrow">Contract Status</span>
+          <p class="premium-workflow__lead">Margin Guard will guide you through each remaining step.</p>
+        </div>
+        <ol class="premium-workflow__track" id="swVisRail">
+          <li class="premium-workflow__item" data-sw-step="1">
+            <button type="button" class="premium-workflow__arrow" data-sw-goto="1">
+              <span class="premium-workflow__num">1</span>
+              <span class="premium-workflow__body">
+                <span class="premium-workflow__label">Review Contract</span>
+                <span class="premium-workflow__status" data-sw-rail-status>Upcoming</span>
+              </span>
+              <span class="premium-workflow__mark" aria-hidden="true"></span>
+            </button>
+          </li>
+          <li class="premium-workflow__item" data-sw-step="2">
+            <button type="button" class="premium-workflow__arrow" data-sw-goto="2">
+              <span class="premium-workflow__num">2</span>
+              <span class="premium-workflow__body">
+                <span class="premium-workflow__label">Send to Customer</span>
+                <span class="premium-workflow__status" data-sw-rail-status>Upcoming</span>
+              </span>
+              <span class="premium-workflow__mark" aria-hidden="true"></span>
+            </button>
+          </li>
+          <li class="premium-workflow__item" data-sw-step="3">
+            <button type="button" class="premium-workflow__arrow" data-sw-goto="3">
+              <span class="premium-workflow__num">3</span>
+              <span class="premium-workflow__body">
+                <span class="premium-workflow__label">Waiting for Signature</span>
+                <span class="premium-workflow__status" data-sw-rail-status>Upcoming</span>
+              </span>
+              <span class="premium-workflow__mark" aria-hidden="true"></span>
+            </button>
+          </li>
+          <li class="premium-workflow__item" data-sw-step="4">
+            <button type="button" class="premium-workflow__arrow" data-sw-goto="4">
+              <span class="premium-workflow__num">4</span>
+              <span class="premium-workflow__body">
+                <span class="premium-workflow__label">Legal Certificate</span>
+                <span class="premium-workflow__status" data-sw-rail-status>Upcoming</span>
+              </span>
+              <span class="premium-workflow__mark" aria-hidden="true"></span>
+            </button>
+          </li>
+          <li class="premium-workflow__item" data-sw-step="5">
+            <button type="button" class="premium-workflow__arrow" data-sw-goto="5">
+              <span class="premium-workflow__num">5</span>
+              <span class="premium-workflow__body">
+                <span class="premium-workflow__label">Signed Documents</span>
+                <span class="premium-workflow__status" data-sw-rail-status>Upcoming</span>
+              </span>
+              <span class="premium-workflow__mark" aria-hidden="true"></span>
+            </button>
+          </li>
+          <li class="premium-workflow__item" data-sw-step="6">
+            <button type="button" class="premium-workflow__arrow" data-sw-goto="6">
+              <span class="premium-workflow__num">6</span>
+              <span class="premium-workflow__body">
+                <span class="premium-workflow__label">Complete</span>
+                <span class="premium-workflow__status" data-sw-rail-status>Upcoming</span>
+              </span>
+              <span class="premium-workflow__mark" aria-hidden="true"></span>
+            </button>
+          </li>
+        </ol>
+      </nav>
+
+      <section class="sw-vis-step" id="swVisStep1" data-sw-panel="1" hidden>
+        <div class="card-inner">
+          <h3>Review Contract</h3>
+          <p class="sw-vis-lead">Review the final contract before sending it to your customer.</p>
+          <div class="sw-vis-meta">
+            <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v" id="swVis1Customer">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Contract Version</div><div class="sw-field__v" id="swVis1Version">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Created</div><div class="sw-field__v" id="swVis1Created">—</div></div>
+          </div>
+          <div class="sw-actions">
+            <button type="button" class="btn primary" id="swVisContinueBtn">Continue</button>
+            <button type="button" class="btn ghost" id="swVisViewContractBtn">View Contract</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="sw-vis-step" id="swVisStep2" data-sw-panel="2" hidden>
+        <div class="card-inner">
+          <h3>Send to Customer</h3>
+          <p class="sw-vis-lead" id="swVis2Lead">Your contract is ready. Send a secure signing link to your customer.</p>
+          <div class="sw-vis-meta">
+            <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v" id="swVis2Customer">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Email</div><div class="sw-field__v" id="swVis2Email">—</div></div>
+            <div class="sw-field"><div class="sw-field__k">Link Expires</div><div class="sw-field__v" id="swVis2Expires">—</div></div>
+          </div>
+          <div class="sw-actions">
+            <button type="button" class="btn primary" id="swVisSendContractBtn">Send Contract</button>
+            <button type="button" class="btn ghost" id="swVisCopyLinkBtn">Copy Signing Link</button>
+            <button type="button" class="btn" id="swVisRetryEmailBtn" hidden disabled>Retry Sending Email</button>
+          </div>
+          <div class="sw-field" id="swVisEmailStatusWrap" hidden style="margin-top:12px;">
+            <div class="sw-field__k">Email</div>
+            <div class="sw-field__v" id="swVisEmailStatus">—</div>
+          </div>
+          <p class="sw-vis-lead" id="swVis2Helper" hidden style="margin-top:10px;">Your customer can now review and sign the contract.</p>
+        </div>
+      </section>
+
+      <section class="sw-vis-step" id="swVisStep3" data-sw-panel="3" hidden>
+        <div class="card-inner">
+          <h3>Waiting for Signature</h3>
+          <p class="sw-vis-lead" id="swVis3Lead">The contract has been sent. We’re waiting for your customer to review and sign it.</p>
+          <ul class="sw-vis-progress" id="swVisSigProgress">
+            <li id="swVisProgEmail"><span class="sw-vis-mark" aria-hidden="true">○</span><span>Email sent</span></li>
+            <li id="swVisProgOpened"><span class="sw-vis-mark" aria-hidden="true">○</span><span>Contract opened</span></li>
+            <li id="swVisProgSigned"><span class="sw-vis-mark" aria-hidden="true">○</span><span>Customer signed</span></li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="sw-vis-step" id="swVisStep4" data-sw-panel="4" hidden>
+        <div class="card-inner">
+          <h3 id="swVis4Title">Legal Certificate</h3>
+          <p class="sw-vis-lead" id="swVis4Lead">The legal signing certificate will be created after the customer signs.</p>
+          <div class="sw-actions">
+            <button type="button" class="btn primary" id="swVisIssueCertBtn">Create Certificate</button>
+            <button type="button" class="btn ghost" id="swVisViewCertBtn">View Certificate</button>
+            <button type="button" class="btn ghost" id="swVisDownloadCertBtn">Download Certificate</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="sw-vis-step" id="swVisStep5" data-sw-panel="5" hidden>
+        <div class="card-inner">
+          <h3 id="swVis5Title">Signed Documents</h3>
+          <p class="sw-vis-lead" id="swVis5Lead">The final signed contract will be available after signing is complete.</p>
+          <div class="sw-actions">
+            <button type="button" class="btn primary" id="swVisGeneratePdfBtn">Create Signed PDF</button>
+            <button type="button" class="btn ghost" id="swVisOpenPdfBtn">View Signed Contract</button>
+            <a class="btn ghost" id="swVisDownloadPdfBtn" href="#" target="_blank" rel="noopener">Download PDF</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="sw-vis-step" id="swVisStep6" data-sw-panel="6" hidden>
+        <div class="card-inner">
+          <h3>Contract Complete</h3>
+          <p class="sw-vis-lead">Your contract has been signed successfully.</p>
+          <ul class="sw-vis-complete-list">
+            <li>✓ Customer signed</li>
+            <li>✓ Legal certificate ready</li>
+            <li>✓ Signed contract ready</li>
+          </ul>
+          <div class="sw-actions">
+            <a class="btn primary" id="swVisReturnProjectBtn" href="/contract-hub">Return to Project</a>
+            <a class="btn ghost" id="swVisCompletePdfBtn" href="#" target="_blank" rel="noopener">Download Signed Contract</a>
+            <button type="button" class="btn ghost" id="swVisCompleteCertBtn">Download Certificate</button>
+          </div>
+        </div>
+      </section>
+
+      <details class="sw-advanced" id="swAdvancedDetails">
+        <summary>Support Information</summary>
+        <p class="sw-vis-lead" style="margin:0 0 12px;">Technical details for support and troubleshooting.</p>
+        <div class="sw-legacy-stack" id="swLegacyStack">
+
+      <section class="card sw-legacy-header">
         <div class="card-inner">
           <div class="sw-header-grid" id="swHeader">
             <div class="sw-field"><div class="sw-field__k">Project</div><div class="sw-field__v" id="swHProject">—</div></div>
@@ -386,7 +848,7 @@
             <div class="sw-actions">
               <button type="button" class="btn primary" id="swCopyLinkBtn">Copy Signing Link</button>
               <button type="button" class="btn" id="swEmailLinkBtn" hidden disabled>Email Signing Link</button>
-              <button type="button" class="btn" id="swEmailRetryBtn" hidden disabled>Retry Email Delivery</button>
+              <button type="button" class="btn" id="swEmailRetryBtn" hidden disabled>Retry Sending Email</button>
             </div>
             <div class="sw-field" id="swEmailStatusWrap" hidden style="margin-top:8px;">
               <div class="sw-field__k">Email</div>
@@ -452,6 +914,9 @@
           </details>
         </div>
       </section>
+
+        </div>
+      </details>
     </div>
   </div>
 

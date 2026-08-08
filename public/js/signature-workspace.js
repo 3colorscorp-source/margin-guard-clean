@@ -49,6 +49,8 @@
     emailStuck: false,
     emailRecoverable: false,
     emailRecoveredAttemptId: null,
+    visualStep: 1,
+    visualStepOverride: null,
     busy: false,
   };
 
@@ -322,7 +324,7 @@
       return "Sending...";
     }
     if (st === "sent") return "Email sent";
-    if (st === "failed" || st === "stalled") return "Delivery failed";
+    if (st === "failed" || st === "stalled") return "Email delivery needs attention";
     return "Email Signing Link";
   }
 
@@ -870,7 +872,7 @@
     if (emailRetryBtn) {
       emailRetryBtn.hidden = !showRetry;
       emailRetryBtn.disabled = !showRetry || state.emailBusy;
-      emailRetryBtn.textContent = "Retry Email Delivery";
+      emailRetryBtn.textContent = "Retry Sending Email";
     }
     if (emailStatusWrap) {
       emailStatusWrap.hidden = !linkReady || !state.emailUiStatus;
@@ -905,6 +907,10 @@
       setBlockedReason("swSendReason", "Blocked: fix the items listed above.");
     } else {
       setBlockedReason("swSendReason", "");
+    }
+    // Keep presentation shell in sync when only send/email status re-renders.
+    if (typeof renderVisualWorkflow === "function" && $("swVisWorkflow")) {
+      renderVisualWorkflow();
     }
   }
 
@@ -1021,6 +1027,333 @@
     setText("swDevIds", lines.join("\n"));
   }
 
+  /**
+   * CH-013A.31 — presentation-only step mapping from existing workspace state.
+   * Does not invent backend states or change handlers.
+   */
+  function computeVisualStep() {
+    const envSt = String(state.envelope?.status || "").toLowerCase();
+    const cert = state.certificates[0];
+    const art = state.artifacts[0];
+    const emailUi = String(state.emailUiStatus || "").toLowerCase();
+    const completed = envSt === "completed";
+    const emailInFlight =
+      emailUi === "queued" ||
+      emailUi === "sending" ||
+      emailUi === "accepted_db_pending";
+    const emailSent =
+      emailUi === "sent" ||
+      envSt === "opened" ||
+      completed ||
+      (envSt === "sent" && Boolean(state.delivery?.invitations?.length));
+
+    if (completed && cert?.id && art?.id) return 6;
+    if (completed && cert?.id) return 5;
+    if (completed) return 4;
+    if (emailSent || emailInFlight) return 3;
+    if (isLinkReady()) return 2;
+    return 1;
+  }
+
+  function setProgRow(id, mode, labelComplete, labelWaiting, labelCurrent) {
+    const li = $(id);
+    if (!li) return;
+    li.classList.remove("is-complete", "is-current", "is-waiting");
+    const mark = li.querySelector(".sw-vis-mark");
+    const text = li.querySelector("span:last-child");
+    if (mode === "complete") {
+      li.classList.add("is-complete");
+      if (mark) mark.textContent = "✓";
+      if (text) text.textContent = labelComplete;
+    } else if (mode === "current") {
+      li.classList.add("is-current");
+      if (mark) mark.textContent = "●";
+      if (text) text.textContent = labelCurrent;
+    } else {
+      li.classList.add("is-waiting");
+      if (mark) mark.textContent = "○";
+      if (text) text.textContent = labelWaiting;
+    }
+  }
+
+  function syncVisAction(visId, sourceId, opts = {}) {
+    const vis = $(visId);
+    const src = $(sourceId);
+    if (!vis || !src) return;
+    const forceHidden = opts.forceHidden === true;
+    const label = opts.label;
+    if (forceHidden) {
+      vis.hidden = true;
+      return;
+    }
+    vis.hidden = Boolean(src.hidden);
+    if ("disabled" in vis) {
+      vis.disabled = Boolean(src.disabled) || Boolean(opts.forceDisabled);
+    }
+    if (label && "textContent" in vis && vis.tagName === "BUTTON") {
+      vis.textContent = label;
+    }
+    if (vis.tagName === "A" && src.tagName === "A") {
+      vis.href = src.getAttribute("href") || "#";
+      if (src.getAttribute("aria-disabled") === "true") {
+        vis.setAttribute("aria-disabled", "true");
+        vis.style.pointerEvents = "none";
+        vis.style.opacity = "0.5";
+      } else {
+        vis.removeAttribute("aria-disabled");
+        vis.style.pointerEvents = "";
+        vis.style.opacity = "";
+      }
+    }
+  }
+
+  function renderVisualWorkflow() {
+    const active = computeVisualStep();
+    if (state.visualStepOverride != null && state.visualStepOverride > active) {
+      state.visualStepOverride = null;
+    }
+    const step =
+      state.visualStepOverride != null && state.visualStepOverride <= active
+        ? state.visualStepOverride
+        : active;
+    state.visualStep = step;
+    const envSt = String(state.envelope?.status || "").toLowerCase();
+    const cert = state.certificates[0];
+    const art = state.artifacts[0];
+    const signer = primarySigner();
+    const customer =
+      String(
+        state.project?.clientName ||
+          state.project?.client_name ||
+          signer?.party_name ||
+          ""
+      ).trim() || "—";
+    const version =
+      state.package?.version != null ? `v${state.package.version}` : "—";
+
+    setText(
+      "swVisProjectName",
+      String(state.project?.projectName || state.project?.project_name || "").trim() ||
+        "Contract Signing"
+    );
+    setText(
+      "swVisProjectSub",
+      "Margin Guard will guide you through each remaining step."
+    );
+    setText("swVisCustomer", customer);
+    setText("swVisContractVer", version);
+    setText(
+      "swVisOverall",
+      active === 6
+        ? "Contract Complete"
+        : active === 5
+          ? art?.id
+            ? "Signed Contract Ready"
+            : "Certificate Ready"
+          : active === 4
+            ? "Customer Signed"
+            : active === 3
+              ? "Waiting for Customer Signature"
+              : "Ready to Send"
+    );
+
+    const railItems = document.querySelectorAll("#swVisRail [data-sw-step]");
+    railItems.forEach((item) => {
+      const n = Number(item.getAttribute("data-sw-step"));
+      item.classList.remove("is-current", "is-complete", "is-upcoming", "is-locked");
+      const statusEl = item.querySelector("[data-sw-rail-status]");
+      const mark = item.querySelector(".premium-workflow__mark");
+      const btn = item.querySelector(".premium-workflow__arrow");
+      if (n < active) {
+        item.classList.add("is-complete");
+        if (n === step) item.classList.add("is-current");
+        if (statusEl) statusEl.textContent = n === step ? "Current" : "Complete";
+        if (mark) mark.textContent = "✓";
+        if (btn) btn.classList.remove("is-locked");
+      } else if (n === active) {
+        item.classList.add("is-current");
+        if (statusEl) statusEl.textContent = "Current";
+        if (mark) mark.textContent = active === 6 ? "✓" : "→";
+        if (btn) btn.classList.remove("is-locked");
+      } else {
+        item.classList.add("is-upcoming", "is-locked");
+        if (statusEl) statusEl.textContent = "Locked";
+        if (mark) mark.textContent = "";
+        if (btn) btn.classList.add("is-locked");
+      }
+    });
+
+    for (let i = 1; i <= 6; i += 1) {
+      const panel = document.querySelector(`[data-sw-panel="${i}"]`);
+      if (panel) panel.hidden = i !== step;
+    }
+
+    // Step 1
+    setText("swVis1Customer", customer);
+    setText("swVis1Version", version);
+    setText("swVis1Created", fmtWhen(state.package?.created_at));
+
+    // Step 2
+    setText("swVis2Customer", customer);
+    setText("swVis2Email", signer?.email || "—");
+    setText(
+      "swVis2Expires",
+      fmtWhen(state.envelope?.expires_at || state.package?.expires_at)
+    );
+    syncVisAction("swVisSendContractBtn", "swEmailLinkBtn", {
+      label: "Send Contract",
+      forceDisabled: state.emailBusy,
+    });
+    syncVisAction("swVisCopyLinkBtn", "swCopyLinkBtn");
+    syncVisAction("swVisRetryEmailBtn", "swEmailRetryBtn", {
+      label: "Retry Sending Email",
+    });
+    const emailStatusWrap = $("swVisEmailStatusWrap");
+    const emailStatus = $("swVisEmailStatus");
+    const srcStatusWrap = $("swEmailStatusWrap");
+    const srcStatus = $("swEmailStatus");
+    if (emailStatusWrap && srcStatusWrap) {
+      emailStatusWrap.hidden = srcStatusWrap.hidden;
+    }
+    if (emailStatus && srcStatus) {
+      emailStatus.textContent = srcStatus.textContent || "—";
+    }
+    const emailUiEarly = String(state.emailUiStatus || "").toLowerCase();
+    const emailAlreadySent =
+      emailUiEarly === "sent" ||
+      envSt === "opened" ||
+      envSt === "completed" ||
+      (envSt === "sent" && Boolean(state.delivery?.invitations?.length));
+    const helper2 = $("swVis2Helper");
+    if (helper2) helper2.hidden = !emailAlreadySent;
+    if (emailAlreadySent) {
+      setText(
+        "swVis2Lead",
+        "Email sent. Your customer can now review and sign the contract."
+      );
+    } else {
+      setText(
+        "swVis2Lead",
+        "Your contract is ready. Send a secure signing link to your customer."
+      );
+    }
+
+    // Step 3 progress
+    const emailUi = emailUiEarly;
+    const emailDone = emailAlreadySent;
+    const emailCurrent =
+      emailUi === "queued" ||
+      emailUi === "sending" ||
+      emailUi === "accepted_db_pending";
+    const opened = envSt === "opened" || envSt === "completed";
+    const signed = envSt === "completed";
+    if (signed) {
+      setText(
+        "swVis3Lead",
+        "The contract has been sent. We’re waiting for your customer to review and sign it."
+      );
+    } else if (opened) {
+      setText(
+        "swVis3Lead",
+        "Your customer opened the contract. Waiting for signature."
+      );
+    } else if (emailDone) {
+      setText(
+        "swVis3Lead",
+        "The contract was delivered. Waiting for your customer."
+      );
+    } else {
+      setText(
+        "swVis3Lead",
+        "The contract has been sent. We’re waiting for your customer to review and sign it."
+      );
+    }
+    setProgRow(
+      "swVisProgEmail",
+      emailDone ? "complete" : emailCurrent ? "current" : "waiting",
+      "Email sent",
+      "Waiting",
+      "Sending email"
+    );
+    setProgRow(
+      "swVisProgOpened",
+      opened ? "complete" : emailDone ? "current" : "waiting",
+      "Contract opened",
+      "Waiting for customer to open",
+      "Waiting for customer to open"
+    );
+    setProgRow(
+      "swVisProgSigned",
+      signed ? "complete" : opened ? "current" : "waiting",
+      "Customer signed",
+      "Waiting for signature",
+      "Waiting for signature"
+    );
+
+    // Step 4 certificate
+    const certReady = Boolean(cert?.id);
+    setText(
+      "swVis4Title",
+      certReady ? "Legal Certificate Ready" : "Legal Certificate"
+    );
+    setText(
+      "swVis4Lead",
+      certReady
+        ? "The signing certificate is ready for your records."
+        : envSt === "completed"
+          ? "Create the legal signing certificate for your records."
+          : "The legal signing certificate will be created after the customer signs. Waiting for signature."
+    );
+    syncVisAction("swVisIssueCertBtn", "swIssueCertBtn", {
+      forceHidden: certReady,
+      label: "Create Certificate",
+    });
+    syncVisAction("swVisViewCertBtn", "swViewCertBtn", {
+      forceDisabled: !certReady,
+      label: "View Certificate",
+    });
+    const dlCert = $("swVisDownloadCertBtn");
+    if (dlCert) {
+      dlCert.disabled = !certReady;
+      dlCert.hidden = false;
+    }
+
+    // Step 5 signed PDF
+    const pdfReady = Boolean(art?.id);
+    setText(
+      "swVis5Title",
+      pdfReady ? "Signed Contract Ready" : "Signed Documents"
+    );
+    setText(
+      "swVis5Lead",
+      pdfReady
+        ? "Your final signed contract is ready."
+        : certReady
+          ? "Create the final signed contract for download."
+          : "The final signed contract will be available after signing is complete."
+    );
+    syncVisAction("swVisGeneratePdfBtn", "swGeneratePdfBtn", {
+      forceHidden: pdfReady,
+      label: "Create Signed PDF",
+    });
+    syncVisAction("swVisOpenPdfBtn", "swOpenPdfBtn", {
+      forceDisabled: !pdfReady,
+      label: "View Signed Contract",
+    });
+    syncVisAction("swVisDownloadPdfBtn", "swDownloadPdfBtn");
+
+    // Step 6 complete
+    const ret = $("swVisReturnProjectBtn");
+    if (ret && state.project?.id) {
+      ret.href = `/contract-hub?project_id=${encodeURIComponent(state.project.id)}`;
+    } else if (ret) {
+      ret.href = "/contract-hub";
+    }
+    syncVisAction("swVisCompletePdfBtn", "swDownloadPdfBtn");
+    const completeCert = $("swVisCompleteCertBtn");
+    if (completeCert) completeCert.disabled = !certReady;
+  }
+
   function renderAll() {
     renderHeader();
     renderPackage();
@@ -1032,6 +1365,7 @@
     renderPdf();
     renderDev();
     renderGuidance();
+    renderVisualWorkflow();
     showMain();
   }
 
@@ -1451,7 +1785,7 @@
         const newAttemptId = String(res.data.attempt_id || "");
         if (!newAttemptId || newAttemptId === state.emailRecoveredAttemptId) {
           state.emailUiStatus = "failed";
-          throw new Error("Email queue returned a stale delivery attempt");
+          throw new Error("Email delivery needs attention. Please try again.");
         }
         state.emailAttemptId = newAttemptId;
         state.emailRecoveredAttemptId = null;
@@ -1462,7 +1796,7 @@
           state.emailUiStatus === "sent"
             ? "Email sent"
             : state.emailUiStatus === "failed"
-              ? "Delivery failed"
+              ? "Email delivery needs attention"
               : "Sending...",
           state.emailUiStatus === "failed" ? "error" : "ok"
         );
@@ -1484,7 +1818,7 @@
 
     $("swEmailRetryBtn")?.addEventListener("click", async () => {
       if (!state.emailAttemptId) {
-        toast("No stalled email attempt to recover", "error");
+        toast("Email delivery needs attention", "error");
         return;
       }
       if (state.emailBusy) return;
@@ -1500,7 +1834,7 @@
           }),
         });
         if (!res.ok || res.data?.ok !== true) {
-          throw new Error(res.data?.error || "Could not recover stalled email attempt");
+          throw new Error(res.data?.error || "Email delivery needs attention");
         }
         const ui = String(res.data.ui_status || "failed").toLowerCase();
         state.emailUiStatus = ui === "failed" || ui === "sent" ? ui : "failed";
@@ -1515,12 +1849,12 @@
         }
         toast(
           state.emailRecoverable
-            ? "Delivery cleared. Click Email Signing Link once to send again."
-            : res.data.error || "Email delivery recovered",
+            ? "Email delivery reset. You can send the contract again."
+            : res.data.error || "Email delivery reset. You can send the contract again.",
           "ok"
         );
       } catch (err) {
-        toast(err?.message || "Retry Email Delivery failed", "error");
+        toast(err?.message || "Retry sending email failed", "error");
       } finally {
         state.emailBusy = false;
         renderSend();
@@ -1633,6 +1967,56 @@
 
     $("swModal")?.addEventListener("click", (ev) => {
       if (ev.target === $("swModal")) closeModal();
+    });
+
+    // CH-013A.31 — presentation proxies; always invoke existing controls.
+    const proxyClick = (visId, srcId) => {
+      $(visId)?.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        const src = $(srcId);
+        if (!src || src.disabled || src.hidden) return;
+        src.click();
+      });
+    };
+    proxyClick("swVisViewContractBtn", "swViewFrozenBtn");
+    proxyClick("swVisSendContractBtn", "swEmailLinkBtn");
+    proxyClick("swVisCopyLinkBtn", "swCopyLinkBtn");
+    proxyClick("swVisRetryEmailBtn", "swEmailRetryBtn");
+    proxyClick("swVisIssueCertBtn", "swIssueCertBtn");
+    proxyClick("swVisViewCertBtn", "swViewCertBtn");
+    proxyClick("swVisDownloadCertBtn", "swViewCertBtn");
+    proxyClick("swVisGeneratePdfBtn", "swGeneratePdfBtn");
+    proxyClick("swVisOpenPdfBtn", "swOpenPdfBtn");
+    proxyClick("swVisCompleteCertBtn", "swViewCertBtn");
+
+    $("swVisContinueBtn")?.addEventListener("click", () => {
+      const g = resolveWorkspaceGuidance();
+      if (g.ctaHref) {
+        window.location.href = g.ctaHref;
+        return;
+      }
+      if (g.ctaAction === "create-envelope") $("swCreateEnvelopeBtn")?.click();
+      else if (g.ctaAction === "add-signer") $("swAddSignerBtn")?.click();
+      else if (g.ctaAction === "send") $("swSendBtn")?.click();
+      else if (g.ctaAction === "copy-link") $("swCopyLinkBtn")?.click();
+      else if (isLinkReady()) {
+        // Presentation-only: reveal Send Contract step when link already exists.
+        state.visualStepOverride = 2;
+        renderVisualWorkflow();
+      } else {
+        const adv = $("swAdvancedDetails");
+        if (adv) adv.open = true;
+      }
+    });
+
+    document.querySelectorAll("#swVisRail [data-sw-goto]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const n = Number(btn.getAttribute("data-sw-goto"));
+        const active = computeVisualStep();
+        if (!Number.isFinite(n) || n > active) return;
+        state.visualStepOverride = n;
+        renderVisualWorkflow();
+      });
     });
   }
 
