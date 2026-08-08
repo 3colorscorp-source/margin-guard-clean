@@ -1164,13 +1164,13 @@
         ? "Contract Complete"
         : active === 5
           ? art?.id
-            ? "Signed Contract Ready"
-            : "Certificate Ready"
+            ? "Download Signed Contract"
+            : "Create Signed PDF"
           : active === 4
-            ? "Customer Signed"
+            ? "Create Certificate"
             : active === 3
               ? "Waiting for Customer Signature"
-              : "Ready to Send"
+              : "Ready to Review"
     );
 
     const railItems = document.querySelectorAll("#swVisRail [data-sw-step]");
@@ -1232,7 +1232,14 @@
       emailStatusWrap.hidden = srcStatusWrap.hidden;
     }
     if (emailStatus && srcStatus) {
-      emailStatus.textContent = srcStatus.textContent || "—";
+      const raw = String(srcStatus.textContent || "").trim();
+      const nextMap = {
+        "Sending...": "Sending the contract email…",
+        "Email sent": "Wait for your customer to open and sign",
+        "Email delivery needs attention": "Retry sending the contract email",
+        "Email Signing Link": "Send the contract email",
+      };
+      emailStatus.textContent = nextMap[raw] || raw || "—";
     }
     const emailUiEarly = String(state.emailUiStatus || "").toLowerCase();
     const emailAlreadySent =
@@ -1245,12 +1252,12 @@
     if (emailAlreadySent) {
       setText(
         "swVis2Lead",
-        "Email sent. Your customer can now review and sign the contract."
+        "Contract sent. Next: wait for your customer to open and sign."
       );
     } else {
       setText(
         "swVis2Lead",
-        "Your contract is ready. Send a secure signing link to your customer."
+        "Your contract is ready to review. Send a secure signing link to your customer."
       );
     }
 
@@ -1266,29 +1273,29 @@
     if (signed) {
       setText(
         "swVis3Lead",
-        "The contract has been sent. We’re waiting for your customer to review and sign it."
+        "Your customer signed. Next: create the legal certificate."
       );
     } else if (opened) {
       setText(
         "swVis3Lead",
-        "Your customer opened the contract. Waiting for signature."
+        "Your customer opened the contract. Wait for them to finish signing."
       );
     } else if (emailDone) {
       setText(
         "swVis3Lead",
-        "The contract was delivered. Waiting for your customer."
+        "The contract was delivered. Wait for your customer to open and sign."
       );
     } else {
       setText(
         "swVis3Lead",
-        "The contract has been sent. We’re waiting for your customer to review and sign it."
+        "The contract was sent. Wait for your customer to review and sign — then create the certificate."
       );
     }
     setProgRow(
       "swVisProgEmail",
       emailDone ? "complete" : emailCurrent ? "current" : "waiting",
       "Email sent",
-      "Waiting",
+      "Send the contract email",
       "Sending email"
     );
     setProgRow(
@@ -1302,23 +1309,20 @@
       "swVisProgSigned",
       signed ? "complete" : opened ? "current" : "waiting",
       "Customer signed",
-      "Waiting for signature",
-      "Waiting for signature"
+      "Waiting for customer signature",
+      "Waiting for customer signature"
     );
 
     // Step 4 certificate
     const certReady = Boolean(cert?.id);
-    setText(
-      "swVis4Title",
-      certReady ? "Legal Certificate Ready" : "Legal Certificate"
-    );
+    setText("swVis4Title", "Legal Certificate");
     setText(
       "swVis4Lead",
       certReady
-        ? "The signing certificate is ready for your records."
+        ? "Your certificate is ready. View or download it for your records."
         : envSt === "completed"
-          ? "Create the legal signing certificate for your records."
-          : "The legal signing certificate will be created after the customer signs. Waiting for signature."
+          ? "Your customer has completed signing. Create the legal certificate that finalizes this contract."
+          : "After your customer signs, create the legal certificate that finalizes this contract."
     );
     syncVisAction("swVisIssueCertBtn", "swIssueCertBtn", {
       forceHidden: certReady,
@@ -1336,17 +1340,14 @@
 
     // Step 5 signed PDF
     const pdfReady = Boolean(art?.id);
-    setText(
-      "swVis5Title",
-      pdfReady ? "Signed Contract Ready" : "Signed Documents"
-    );
+    setText("swVis5Title", "Signed Documents");
     setText(
       "swVis5Lead",
       pdfReady
-        ? "Your final signed contract is ready."
+        ? "Your signed contract is ready. View or download the PDF."
         : certReady
-          ? "Create the final signed contract for download."
-          : "The final signed contract will be available after signing is complete."
+          ? "Create the signed contract PDF for your records and your customer."
+          : "After the certificate is created, create the signed contract PDF."
     );
     syncVisAction("swVisGeneratePdfBtn", "swGeneratePdfBtn", {
       forceHidden: pdfReady,
@@ -1957,7 +1958,7 @@
           <pre>${escapeHtml(readiness)}</pre>
         </details>`,
         [
-          btn("Continue", "btn primary", () => {
+          btn("Continue to Send", "btn primary", () => {
             closeModal();
             $("swVisContinueBtn")?.click();
           }),
