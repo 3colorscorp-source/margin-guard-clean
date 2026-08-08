@@ -1110,6 +1110,54 @@
     }
   }
 
+  let visualPanelTransitionGen = 0;
+
+  function prefersReducedMotion() {
+    return (
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
+  }
+
+  function setVisualPanels(step) {
+    const gen = (visualPanelTransitionGen += 1);
+    const reduceMotion = prefersReducedMotion();
+    document.querySelectorAll("[data-sw-panel]").forEach((panel) => {
+      const n = Number(panel.getAttribute("data-sw-panel"));
+      const shouldShow = n === step;
+      if (shouldShow) {
+        panel.classList.remove("sw-vis-step--exit");
+        if (panel.hidden) {
+          panel.hidden = false;
+          if (!reduceMotion) {
+            panel.classList.remove("sw-vis-step--enter");
+            // Force reflow so enter animation restarts on each reveal.
+            void panel.offsetWidth;
+            panel.classList.add("sw-vis-step--enter");
+          }
+        }
+        return;
+      }
+      if (panel.hidden) {
+        panel.classList.remove("sw-vis-step--enter", "sw-vis-step--exit");
+        return;
+      }
+      if (reduceMotion) {
+        panel.hidden = true;
+        panel.classList.remove("sw-vis-step--enter", "sw-vis-step--exit");
+        return;
+      }
+      panel.classList.remove("sw-vis-step--enter");
+      panel.classList.add("sw-vis-step--exit");
+      window.setTimeout(() => {
+        if (gen !== visualPanelTransitionGen) return;
+        if (Number(panel.getAttribute("data-sw-panel")) === state.visualStep) return;
+        panel.hidden = true;
+        panel.classList.remove("sw-vis-step--exit");
+      }, 200);
+    });
+  }
+
   function renderVisualWorkflow() {
     const active = computeVisualStep();
     if (state.visualStepOverride != null && state.visualStepOverride > active) {
@@ -1199,10 +1247,8 @@
       }
     });
 
-    for (let i = 1; i <= 6; i += 1) {
-      const panel = document.querySelector(`[data-sw-panel="${i}"]`);
-      if (panel) panel.hidden = i !== step;
-    }
+    // One active panel (presentation transitions): panel.hidden = i !== step
+    setVisualPanels(step);
 
     // Step 1
     setText("swVis1Customer", customer);
@@ -1252,12 +1298,20 @@
     if (emailAlreadySent) {
       setText(
         "swVis2Lead",
-        "Contract sent. Next: wait for your customer to open and sign."
+        "Contract sent. Wait for your customer to open and sign."
+      );
+      setText(
+        "swVis2Why",
+        "No more action needed here. After they sign, create the legal certificate."
       );
     } else {
       setText(
         "swVis2Lead",
-        "Your contract is ready to review. Send a secure signing link to your customer."
+        "Send a secure signing link so your customer can review and sign."
+      );
+      setText(
+        "swVis2Why",
+        "This starts the signature process. After sending, wait for your customer to open and sign."
       );
     }
 
@@ -1271,24 +1325,37 @@
     const opened = envSt === "opened" || envSt === "completed";
     const signed = envSt === "completed";
     if (signed) {
+      setText("swVis3Lead", "Your customer signed. Create the legal certificate next.");
       setText(
-        "swVis3Lead",
-        "Your customer signed. Next: create the legal certificate."
+        "swVis3Why",
+        "Signature is complete. Open Legal Certificate to finalize the contract."
       );
     } else if (opened) {
       setText(
         "swVis3Lead",
         "Your customer opened the contract. Wait for them to finish signing."
       );
+      setText(
+        "swVis3Why",
+        "You do not need to take action yet. After they sign, create the legal certificate."
+      );
     } else if (emailDone) {
       setText(
         "swVis3Lead",
         "The contract was delivered. Wait for your customer to open and sign."
       );
+      setText(
+        "swVis3Why",
+        "You do not need to take action yet. After they sign, create the legal certificate."
+      );
     } else {
       setText(
         "swVis3Lead",
-        "The contract was sent. Wait for your customer to review and sign — then create the certificate."
+        "Wait while your customer reviews and signs the contract."
+      );
+      setText(
+        "swVis3Why",
+        "You do not need to take action yet. After they sign, create the legal certificate."
       );
     }
     setProgRow(
@@ -1320,9 +1387,13 @@
       "swVis4Lead",
       certReady
         ? "Your certificate is ready. View or download it for your records."
-        : envSt === "completed"
-          ? "Your customer has completed signing. Create the legal certificate that finalizes this contract."
-          : "After your customer signs, create the legal certificate that finalizes this contract."
+        : "Create the legal certificate that finalizes this signed contract."
+    );
+    setText(
+      "swVis4Why",
+      certReady
+        ? "Keep this for your records. Next, create the signed contract PDF."
+        : "This protects both parties with an official signing record. Next you will create the signed PDF."
     );
     syncVisAction("swVisIssueCertBtn", "swIssueCertBtn", {
       forceHidden: certReady,
@@ -1345,9 +1416,13 @@
       "swVis5Lead",
       pdfReady
         ? "Your signed contract is ready. View or download the PDF."
-        : certReady
-          ? "Create the signed contract PDF for your records and your customer."
-          : "After the certificate is created, create the signed contract PDF."
+        : "Create the signed contract PDF for your records and your customer."
+    );
+    setText(
+      "swVis5Why",
+      pdfReady
+        ? "This is the final signed agreement. You can return to the project when ready."
+        : "This is the final signed agreement file. After this, your project workflow is complete."
     );
     syncVisAction("swVisGeneratePdfBtn", "swGeneratePdfBtn", {
       forceHidden: pdfReady,
@@ -2078,6 +2153,19 @@
     proxyClick("swVisOpenPdfBtn", "swOpenPdfBtn");
     proxyClick("swVisCompleteCertBtn", "swViewCertBtn");
 
+    function scrollActiveWorkspaceIntoView() {
+      const step = state.visualStep;
+      const panel = document.querySelector(`[data-sw-panel="${step}"]`);
+      if (!panel || panel.hidden) return;
+      const reduceMotion = prefersReducedMotion();
+      window.requestAnimationFrame(() => {
+        panel.scrollIntoView({
+          behavior: reduceMotion ? "auto" : "smooth",
+          block: "start",
+        });
+      });
+    }
+
     $("swVisContinueBtn")?.addEventListener("click", () => {
       const g = resolveWorkspaceGuidance();
       if (g.ctaHref) {
@@ -2092,6 +2180,7 @@
         // Presentation-only: reveal Send Contract step when link already exists.
         state.visualStepOverride = 2;
         renderVisualWorkflow();
+        scrollActiveWorkspaceIntoView();
       } else {
         const adv = $("swAdvancedDetails");
         if (adv) adv.open = true;
@@ -2105,6 +2194,8 @@
         if (!Number.isFinite(n) || n > active) return;
         state.visualStepOverride = n;
         renderVisualWorkflow();
+        // Presentation-only: bring the activated workspace into view.
+        scrollActiveWorkspaceIntoView();
       });
     });
   }

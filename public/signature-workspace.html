@@ -6,7 +6,7 @@
   <title>Margin Guard | Contract Workflow</title>
   <link rel="stylesheet" href="/styles.css" />
   <style>
-    /* CH-013A.35 tokens + CH-013A.36 hierarchy polish */
+    /* CH-013A.38A — sticky workflow, premium transitions, guided workspace */
     .sw-page {
       max-width: var(--mg-shell-workflow);
       margin: 0 auto;
@@ -15,82 +15,110 @@
       padding-right: var(--mg-space-md);
     }
     .sw-page > .account-pill {
-      opacity: 0.55;
-      margin-bottom: var(--mg-space-sm);
+      opacity: 0.35;
+      margin-bottom: 4px;
+      font-size: 10px;
     }
     .sw-hero {
       border: none !important;
       background: transparent !important;
       box-shadow: none !important;
-      margin-bottom: var(--mg-space-lg);
+      margin-bottom: var(--mg-space-sm);
     }
-    .sw-hero .card-inner { padding: var(--mg-space-sm) 0 0; }
+    .sw-hero .card-inner { padding: 0; }
     .sw-hero h2 {
-      margin: 0 0 var(--mg-space-xs);
-      font-size: var(--mg-type-hero);
+      margin: 0;
+      font-size: var(--mg-type-section);
       font-weight: 800;
       letter-spacing: -0.02em;
       line-height: var(--mg-line-height-title);
       color: rgba(255, 255, 255, 0.97);
+      flex: 0 1 auto;
     }
     .sw-hero .sub {
-      margin: 0;
-      max-width: 42ch;
-      line-height: 1.45;
-      font-size: var(--mg-type-body);
-      color: rgba(232, 238, 252, 0.62);
+      display: none;
     }
     .sw-hero-top {
       display: flex;
       flex-wrap: wrap;
       justify-content: space-between;
-      gap: var(--mg-space-md);
-      align-items: flex-start;
-      margin-bottom: var(--mg-space-md);
+      gap: var(--mg-space-xs) var(--mg-space-md);
+      align-items: center;
+      margin-bottom: 0;
+    }
+    .sw-hero-utils {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--mg-space-xs) var(--mg-space-sm);
+      margin-left: auto;
     }
     .sw-hero #swBackHub {
-      opacity: 0.5;
+      opacity: 0.42;
       border-radius: var(--mg-radius-control);
       font-size: var(--mg-type-caption);
       font-weight: 600;
       min-height: auto;
-      padding: 6px 10px;
+      padding: 4px 8px;
       transition: opacity var(--mg-duration-fast) var(--mg-ease);
+      order: 2;
     }
     .sw-hero #swBackHub:hover { opacity: 0.85; }
+
+    /* Change project — compact utility in header row */
+    .sw-project-context {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      box-shadow: none;
+      flex: 1 1 200px;
+      max-width: 280px;
+      order: 1;
+    }
     .sw-toolbar {
       display: flex;
-      flex-wrap: wrap;
-      gap: var(--mg-space-xs) var(--mg-space-sm);
-      align-items: end;
+      flex-wrap: nowrap;
+      gap: 6px;
+      align-items: center;
       margin: 0;
       padding: 0;
       border: none;
-      border-radius: 0;
       background: transparent;
-      max-width: 420px;
+      width: 100%;
     }
-    .sw-toolbar .field { margin: 0; flex: 1 1 220px; }
+    .sw-toolbar .field { margin: 0; flex: 1 1 auto; min-width: 0; position: relative; }
     .sw-toolbar label {
-      font-size: var(--mg-type-caption);
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: rgba(232, 238, 252, 0.38);
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
     .sw-toolbar select {
-      opacity: 0.88;
-      min-height: 40px;
+      opacity: 0.65;
+      min-height: 30px;
+      width: 100%;
+      padding: 3px 8px;
       border-radius: var(--mg-radius-control);
       background: rgba(255, 255, 255, 0.03);
       border-color: rgba(255, 255, 255, 0.08);
+      font-size: var(--mg-type-caption);
+    }
+    .sw-toolbar select:hover,
+    .sw-toolbar select:focus {
+      opacity: 0.95;
     }
     .sw-toolbar #swReloadBtn {
-      opacity: 0.55;
-      min-height: 36px;
-      padding: 6px 12px;
+      opacity: 0.38;
+      min-height: 30px;
+      padding: 3px 8px;
       font-size: var(--mg-type-caption);
       font-weight: 600;
+      flex: 0 0 auto;
     }
     .sw-toolbar #swReloadBtn:hover { opacity: 0.85; }
 
@@ -388,7 +416,7 @@
     }
     #swMain[hidden], #swError[hidden], #swLoading[hidden] { display: none !important; }
     .sw-loading {
-      padding: var(--mg-space-xl) 4px;
+      padding: var(--mg-space-md) 4px;
       font-size: var(--mg-type-body);
       color: rgba(232, 238, 252, 0.55);
     }
@@ -423,56 +451,62 @@
       .sw-meta { grid-template-columns: 1fr; }
     }
 
-    /* Project summary — primary visual anchor */
+    /* Compact info strip — never a hero */
     .sw-summary-card {
-      margin-top: var(--mg-space-md);
-      margin-bottom: var(--mg-space-xl);
-      border-radius: var(--mg-radius-hero);
+      margin: 0 0 var(--mg-space-md);
+      border-radius: 0;
       border: none;
-      background:
-        radial-gradient(120% 90% at 0% 0%, rgba(52, 211, 153, 0.14) 0%, transparent 48%),
-        linear-gradient(155deg, rgba(24, 34, 64, 0.78) 0%, rgba(8, 14, 28, 0.96) 100%);
-      box-shadow: 0 22px 56px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-      transition: box-shadow var(--mg-duration) var(--mg-ease);
+      background: transparent;
+      box-shadow: none;
     }
     .sw-summary-card .card-inner {
-      padding: var(--mg-space-xl) var(--mg-card-pad-hero) var(--mg-card-pad-hero);
+      padding: 0;
+      border: none;
     }
-    .sw-project-kicker {
-      margin: 0 0 var(--mg-space-xs);
+    .sw-project-kicker,
+    .sw-summary-sub { display: none; }
+    .sw-summary-strip {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 10px;
+      padding: 8px 0;
       font-size: var(--mg-type-caption);
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: rgba(110, 231, 183, 0.75);
+      line-height: 1.35;
+      color: rgba(232, 238, 252, 0.55);
     }
     .sw-summary-title {
-      margin: 0 0 var(--mg-space-xl);
-      font-size: clamp(1.85rem, 3.6vw, 2.35rem);
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      line-height: 1.1;
-      color: rgba(255, 255, 255, 0.98);
-    }
-    .sw-summary-sub { display: none; }
-    .sw-summary-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: var(--mg-space-lg) var(--mg-space-xl);
-      margin-bottom: var(--mg-space-lg);
-    }
-    .sw-summary-grid .sw-field__k {
-      color: rgba(232, 238, 252, 0.42);
+      margin: 0;
+      display: inline;
+      font-size: inherit;
       font-weight: 700;
+      letter-spacing: -0.01em;
+      color: rgba(255, 255, 255, 0.82);
     }
+    .sw-summary-sep {
+      opacity: 0.35;
+      user-select: none;
+    }
+    .sw-summary-item {
+      display: inline;
+      font-weight: 600;
+      color: rgba(232, 238, 252, 0.62);
+    }
+    .sw-summary-grid { display: contents; }
+    .sw-summary-grid .sw-field { display: contents; }
+    .sw-summary-grid .sw-field__k { display: none; }
     .sw-summary-grid .sw-field__v {
-      font-size: var(--mg-type-section);
-      font-weight: 750;
-      color: rgba(255, 255, 255, 0.94);
+      display: inline;
+      font-size: inherit;
+      font-weight: 600;
+      color: rgba(232, 238, 252, 0.62);
     }
-    .sw-progress-wrap { margin-top: var(--mg-space-xs); }
+    .sw-progress-wrap {
+      margin-top: 4px;
+      max-width: 220px;
+    }
     .sw-progress-track {
-      height: 5px;
+      height: 2px;
       border-radius: var(--mg-radius-pill);
       background: rgba(255, 255, 255, 0.07);
       overflow: hidden;
@@ -485,35 +519,59 @@
       transition: width var(--mg-duration-slow) var(--mg-ease);
     }
     @media (max-width: 720px) {
-      .sw-summary-grid { grid-template-columns: 1fr 1fr; gap: var(--mg-space-md); }
-      .sw-summary-card .card-inner { padding: var(--mg-card-pad-hero) var(--mg-card-pad); }
-    }
-    @media (max-width: 480px) {
-      .sw-summary-grid { grid-template-columns: 1fr; }
+      .sw-hero-utils { width: 100%; margin-left: 0; }
+      .sw-project-context { max-width: none; flex: 1 1 100%; }
+      .sw-hero #swBackHub { margin-left: auto; }
     }
 
-    /* Workflow rail — journey, not a bordered card stack */
+    /* Workflow rail — sticky visual anchor */
     .public-flow-nav.premium-workflow.sw-workflow {
-      margin: 0 0 var(--mg-space-xl);
+      position: sticky;
+      top: 12px;
+      z-index: 40;
+      margin: 0 0 var(--mg-space-lg);
       padding: var(--mg-space-sm) 0 var(--mg-space-md);
       border-radius: 0;
       border: none;
-      background: transparent;
-      box-shadow: none;
+      background:
+        linear-gradient(180deg, rgba(7, 11, 20, 0.94) 0%, rgba(7, 11, 20, 0.88) 100%);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+    }
+    .public-flow-nav.premium-workflow.sw-workflow::before {
+      content: "";
+      display: block;
+      height: 1px;
+      margin-bottom: var(--mg-space-sm);
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+    }
+    .public-flow-nav.premium-workflow.sw-workflow::after {
+      content: "";
+      display: block;
+      height: 1px;
+      margin-top: var(--mg-space-sm);
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+    }
+    @media (min-width: 900px) {
+      .public-flow-nav.premium-workflow.sw-workflow {
+        top: 56px;
+      }
     }
     .premium-workflow__intro {
       display: flex;
-      justify-content: flex-end;
-      margin-bottom: var(--mg-space-md);
+      justify-content: flex-start;
+      margin-bottom: var(--mg-space-sm);
     }
     .premium-workflow__eyebrow { display: none; }
     .premium-workflow__lead {
       margin: 0;
       font-size: var(--mg-type-caption);
       line-height: 1.4;
-      color: rgba(232, 238, 252, 0.42);
-      font-weight: 600;
-      letter-spacing: 0.02em;
+      color: rgba(232, 238, 252, 0.48);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
     .premium-workflow__track {
       list-style: none;
@@ -684,39 +742,72 @@
       .sw-page { padding-left: var(--mg-space-sm); padding-right: var(--mg-space-sm); }
     }
 
-    /* Active step hero — strongest section after summary */
+    /* Active workspace shell — page inside the workflow */
+    .sw-vis-workspace {
+      position: relative;
+      margin-bottom: var(--mg-space-xl);
+      min-height: min(48vh, 480px);
+    }
     .sw-vis-step {
       margin-top: 0;
-      margin-bottom: var(--mg-space-xl);
+      margin-bottom: 0;
+      scroll-margin-top: 150px;
       border-radius: var(--mg-radius-hero);
       border: none;
       background:
         radial-gradient(90% 70% at 100% 0%, var(--mg-status-current-bg) 0%, transparent 52%),
-        linear-gradient(180deg, rgba(18, 26, 46, 0.92) 0%, rgba(8, 14, 28, 0.97) 100%);
-      box-shadow: 0 26px 60px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-      animation: swStepIn var(--mg-duration) var(--mg-ease);
+        linear-gradient(180deg, rgba(18, 26, 46, 0.96) 0%, rgba(8, 14, 28, 0.99) 100%);
+      box-shadow:
+        0 32px 72px rgba(0, 0, 0, 0.42),
+        0 0 0 1px rgba(96, 165, 250, 0.16),
+        inset 0 1px 0 rgba(255, 255, 255, 0.07);
+      min-height: min(48vh, 480px);
+    }
+    .sw-vis-step.sw-vis-step--enter {
+      animation: swStepIn var(--mg-duration-slow) var(--mg-ease);
+    }
+    .sw-vis-step.sw-vis-step--exit {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      z-index: 1;
+      pointer-events: none;
+      animation: swStepOut var(--mg-duration) var(--mg-ease) forwards;
     }
     @keyframes swStepIn {
-      from { opacity: 0; transform: translateY(8px); }
+      from { opacity: 0; transform: translateY(12px); }
       to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes swStepOut {
+      from { opacity: 1; transform: translateY(0); }
+      to { opacity: 0; transform: translateY(-8px); }
     }
     .sw-vis-step[hidden] { display: none !important; animation: none; }
     .sw-vis-step .card-inner {
-      padding: calc(var(--mg-space-xl) + 4px) var(--mg-card-pad-hero) var(--mg-space-xl);
+      padding: calc(var(--mg-space-xl) + 10px) var(--mg-card-pad-hero) calc(var(--mg-space-xl) + 8px);
     }
     .sw-vis-step h3 {
-      margin: 0 0 var(--mg-space-sm);
-      font-size: clamp(1.7rem, 3vw, 2.1rem);
+      margin: 0 0 var(--mg-space-md);
+      font-size: clamp(1.9rem, 3.5vw, 2.4rem);
       font-weight: 800;
-      letter-spacing: -0.025em;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
       color: rgba(255, 255, 255, 0.98);
     }
     .sw-vis-step .sw-vis-lead {
-      margin: 0 0 var(--mg-space-xl);
-      font-size: var(--mg-type-body);
+      margin: 0 0 var(--mg-space-sm);
+      font-size: clamp(1rem, 1.4vw, 1.12rem);
       line-height: 1.55;
-      color: rgba(232, 238, 252, 0.72);
-      max-width: 42ch;
+      color: rgba(232, 238, 252, 0.76);
+      max-width: 48ch;
+    }
+    .sw-vis-step .sw-vis-why {
+      margin: 0 0 var(--mg-space-xl);
+      font-size: var(--mg-type-caption);
+      line-height: 1.45;
+      color: rgba(232, 238, 252, 0.48);
+      max-width: 48ch;
     }
     .sw-vis-meta {
       display: grid;
@@ -743,12 +834,16 @@
     .sw-vis-step .btn.primary,
     .sw-vis-step a.btn.primary,
     .sw-modal__panel .btn.primary {
-      min-height: var(--mg-button-height-hero);
-      padding: 14px var(--mg-button-pad-x-hero);
-      font-size: 1.02rem;
+      min-height: 56px;
+      padding: 16px calc(var(--mg-button-pad-x-hero) + 4px);
+      font-size: 1.08rem;
       font-weight: 800;
+      letter-spacing: 0.01em;
       border-radius: var(--mg-radius-control);
-      box-shadow: 0 12px 32px rgba(52, 211, 153, 0.28);
+      border: 1px solid rgba(167, 243, 208, 0.35);
+      background: linear-gradient(180deg, rgba(52, 211, 153, 0.95) 0%, rgba(16, 185, 129, 0.92) 100%);
+      color: #052e16;
+      box-shadow: 0 14px 36px rgba(52, 211, 153, 0.32);
       transition:
         transform var(--mg-duration-fast) var(--mg-ease),
         box-shadow var(--mg-duration-fast) var(--mg-ease);
@@ -756,7 +851,7 @@
     .sw-vis-step .btn.primary:hover:not(:disabled),
     .sw-vis-step a.btn.primary:hover {
       transform: translateY(-1px);
-      box-shadow: 0 16px 36px rgba(52, 211, 153, 0.34);
+      box-shadow: 0 18px 40px rgba(52, 211, 153, 0.4);
     }
     .sw-vis-step .btn.primary:active:not(:disabled) {
       transform: translateY(0);
@@ -766,15 +861,19 @@
     .sw-vis-step .btn:not(.primary),
     .sw-vis-step .sw-actions-secondary .btn,
     .sw-vis-step .sw-actions-secondary a.btn {
-      min-height: 38px;
-      padding: 8px 12px;
-      border-radius: var(--mg-radius-control);
+      min-height: auto;
+      padding: 4px 0;
+      border-radius: 0;
       font-size: var(--mg-type-caption);
       font-weight: 600;
-      opacity: 0.62;
-      background: transparent;
-      border-color: transparent;
-      box-shadow: none;
+      opacity: 0.55;
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      text-decoration: underline;
+      text-decoration-color: rgba(232, 238, 252, 0.2);
+      text-underline-offset: 3px;
+      color: rgba(232, 238, 252, 0.72);
       transition: opacity var(--mg-duration-fast) var(--mg-ease), color var(--mg-duration-fast) var(--mg-ease);
     }
     .sw-vis-step .btn.ghost:hover,
@@ -782,14 +881,55 @@
     .sw-vis-step .sw-actions-secondary .btn:hover,
     .sw-vis-step .sw-actions-secondary a.btn:hover {
       opacity: 0.95;
-      background: rgba(255, 255, 255, 0.04);
-      border-color: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.92);
+      background: transparent !important;
+      border: none !important;
+      text-decoration-color: rgba(255, 255, 255, 0.45);
+    }
+    .sw-vis-success {
+      width: 64px;
+      height: 64px;
+      margin: 0 0 var(--mg-space-md);
+      border-radius: var(--mg-radius-pill);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.75rem;
+      font-weight: 800;
+      color: #052e16;
+      background: linear-gradient(180deg, var(--mg-status-complete) 0%, #10b981 100%);
+      box-shadow: 0 12px 32px rgba(52, 211, 153, 0.28);
+      animation: swStepIn var(--mg-duration-slow) var(--mg-ease);
+    }
+    .sw-vis-step[data-sw-panel="6"] {
+      background:
+        radial-gradient(90% 70% at 0% 0%, var(--mg-status-complete-bg) 0%, transparent 55%),
+        linear-gradient(180deg, rgba(14, 28, 24, 0.96) 0%, rgba(8, 14, 28, 0.99) 100%);
+      box-shadow:
+        0 32px 72px rgba(0, 0, 0, 0.4),
+        0 0 0 1px rgba(52, 211, 153, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
     }
     @media (max-width: 640px) {
       .sw-vis-meta { grid-template-columns: 1fr; }
+      .sw-vis-workspace,
+      .sw-vis-step { min-height: 0; }
+      .sw-vis-step { scroll-margin-top: 180px; }
       .sw-vis-step .card-inner { padding: var(--mg-card-pad-hero) var(--mg-card-pad); }
       .sw-vis-step .btn.primary,
       .sw-vis-step a.btn.primary { width: 100%; justify-content: center; text-align: center; }
+      .public-flow-nav.premium-workflow.sw-workflow {
+        top: 8px;
+        padding-left: 2px;
+        padding-right: 2px;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .sw-vis-step.sw-vis-step--enter,
+      .sw-vis-step.sw-vis-step--exit,
+      .sw-vis-success {
+        animation: none !important;
+      }
     }
     .sw-vis-progress {
       list-style: none;
@@ -846,23 +986,24 @@
       color: #bbf7d0;
     }
 
-    /* Support Information — quiet utility disclosure */
+    /* Support Information — collapsed, never competes */
     .sw-advanced {
-      margin-top: var(--mg-space-lg);
+      margin-top: var(--mg-space-2xl);
       margin-bottom: var(--mg-space-md);
       border-radius: 0;
       border: none;
       background: transparent;
       padding: 0;
+      opacity: 0.85;
     }
     .sw-advanced > summary {
       cursor: pointer;
       list-style: none;
-      padding: var(--mg-space-xs) 0;
+      padding: 4px 0;
       font-weight: 500;
-      font-size: 0.72rem;
-      letter-spacing: 0.01em;
-      color: rgba(232, 238, 252, 0.28);
+      font-size: 0.68rem;
+      letter-spacing: 0.02em;
+      color: rgba(232, 238, 252, 0.22);
       transition: color var(--mg-duration-fast) var(--mg-ease);
     }
     .sw-advanced > summary::-webkit-details-marker { display: none; }
@@ -930,18 +1071,22 @@
     <section class="card sw-hero">
       <div class="card-inner">
         <div class="sw-hero-top">
-          <div>
-            <h2>Contract Workflow</h2>
-            <p class="sub">Manage your contract from start to finish.</p>
+          <h2>Contract Workflow</h2>
+          <p class="sub">Manage your contract from start to finish.</p>
+          <div class="sw-hero-utils">
+            <div class="sw-project-context" id="swProjectContext">
+              <div class="sw-toolbar" id="swProjectToolbar">
+                <div class="field">
+                  <label for="swProjectSelect">Change project</label>
+                  <select id="swProjectSelect" aria-label="Change project">
+                    <option value="">Select project…</option>
+                  </select>
+                </div>
+                <button type="button" class="btn ghost" id="swReloadBtn">Refresh</button>
+              </div>
+            </div>
+            <a class="btn ghost" href="/contract-hub" id="swBackHub">Back to projects</a>
           </div>
-          <a class="btn ghost" href="/contract-hub" id="swBackHub">Back to projects</a>
-        </div>
-        <div class="sw-toolbar" id="swProjectToolbar">
-          <div class="field">
-            <label for="swProjectSelect">Project</label>
-            <select id="swProjectSelect"><option value="">Select project…</option></select>
-          </div>
-          <button type="button" class="btn ghost" id="swReloadBtn">Refresh</button>
         </div>
         <div id="swToast" class="sw-toast" hidden role="status"></div>
       </div>
@@ -964,25 +1109,6 @@
             <p id="swGuideBody">Loading guidance…</p>
             <div class="sw-actions" id="swGuideActions"></div>
           </div>
-        </div>
-      </section>
-
-      <section class="sw-summary-card" id="swVisSummary">
-        <div class="card-inner">
-          <p class="sw-project-kicker">Project</p>
-          <h3 class="sw-summary-title" id="swVisProjectName">Project</h3>
-          <p class="sw-summary-sub" id="swVisProjectSub" hidden>Manage your contract from start to finish.</p>
-          <div class="sw-summary-grid">
-            <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v" id="swVisCustomer">—</div></div>
-            <div class="sw-field"><div class="sw-field__k">Current Step</div><div class="sw-field__v" id="swVisCurrentStep">—</div></div>
-            <div class="sw-field"><div class="sw-field__k">Progress</div><div class="sw-field__v" id="swVisProgressText">Step 1 of 6</div></div>
-          </div>
-          <div class="sw-progress-wrap" aria-hidden="true">
-            <div class="sw-progress-track"><div class="sw-progress-fill" id="swVisProgressBar"></div></div>
-          </div>
-          <!-- Compatibility mirrors (not shown in primary layout) -->
-          <span id="swVisContractVer" hidden>—</span>
-          <span id="swVisOverall" hidden>—</span>
         </div>
       </section>
 
@@ -1055,10 +1181,45 @@
         </ol>
       </nav>
 
+      <section class="sw-summary-card" id="swVisSummary" aria-label="Project summary">
+        <div class="card-inner">
+          <p class="sw-project-kicker">Project</p>
+          <p class="sw-summary-sub" id="swVisProjectSub" hidden>Manage your contract from start to finish.</p>
+          <div class="sw-summary-strip">
+            <h3 class="sw-summary-title" id="swVisProjectName">Project</h3>
+            <span class="sw-summary-sep" aria-hidden="true">•</span>
+            <div class="sw-summary-grid">
+              <div class="sw-field">
+                <div class="sw-field__k">Customer</div>
+                <div class="sw-field__v" id="swVisCustomer">—</div>
+              </div>
+              <span class="sw-summary-sep" aria-hidden="true">•</span>
+              <div class="sw-field">
+                <div class="sw-field__k">Current Step</div>
+                <div class="sw-field__v" id="swVisCurrentStep">—</div>
+              </div>
+              <span class="sw-summary-sep" aria-hidden="true">•</span>
+              <div class="sw-field">
+                <div class="sw-field__k">Progress</div>
+                <div class="sw-field__v" id="swVisProgressText">Step 1 of 6</div>
+              </div>
+            </div>
+          </div>
+          <div class="sw-progress-wrap" aria-hidden="true">
+            <div class="sw-progress-track"><div class="sw-progress-fill" id="swVisProgressBar"></div></div>
+          </div>
+          <!-- Compatibility mirrors (not shown in primary layout) -->
+          <span id="swVisContractVer" hidden>—</span>
+          <span id="swVisOverall" hidden>—</span>
+        </div>
+      </section>
+
+      <div class="sw-vis-workspace" id="swVisWorkspace">
       <section class="sw-vis-step" id="swVisStep1" data-sw-panel="1" hidden>
         <div class="card-inner">
           <h3>Review Contract</h3>
-          <p class="sw-vis-lead">Review the final contract before sending it to your customer.</p>
+          <p class="sw-vis-lead">Confirm the final contract looks right before your customer sees it.</p>
+          <p class="sw-vis-why">This locks the agreement you will send. After you continue, you will send the signing link.</p>
           <div class="sw-vis-meta">
             <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v" id="swVis1Customer">—</div></div>
             <div class="sw-field"><div class="sw-field__k">Contract Version</div><div class="sw-field__v" id="swVis1Version">—</div></div>
@@ -1076,7 +1237,8 @@
       <section class="sw-vis-step" id="swVisStep2" data-sw-panel="2" hidden>
         <div class="card-inner">
           <h3>Send to Customer</h3>
-          <p class="sw-vis-lead" id="swVis2Lead">Your contract is ready to review. Send a secure signing link to your customer.</p>
+          <p class="sw-vis-lead" id="swVis2Lead">Send a secure signing link so your customer can review and sign.</p>
+          <p class="sw-vis-why" id="swVis2Why">This starts the signature process. After sending, wait for your customer to open and sign.</p>
           <div class="sw-vis-meta">
             <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v" id="swVis2Customer">—</div></div>
             <div class="sw-field"><div class="sw-field__k">Email</div><div class="sw-field__v" id="swVis2Email">—</div></div>
@@ -1100,7 +1262,8 @@
       <section class="sw-vis-step" id="swVisStep3" data-sw-panel="3" hidden>
         <div class="card-inner">
           <h3>Waiting for Signature</h3>
-          <p class="sw-vis-lead" id="swVis3Lead">The contract was sent. Wait for your customer to review and sign — then create the certificate.</p>
+          <p class="sw-vis-lead" id="swVis3Lead">Wait while your customer reviews and signs the contract.</p>
+          <p class="sw-vis-why" id="swVis3Why">You do not need to take action yet. After they sign, create the legal certificate.</p>
           <ul class="sw-vis-progress" id="swVisSigProgress">
             <li id="swVisProgEmail"><span class="sw-vis-mark" aria-hidden="true">○</span><span>Email sent</span></li>
             <li id="swVisProgOpened"><span class="sw-vis-mark" aria-hidden="true">○</span><span>Contract opened</span></li>
@@ -1112,7 +1275,8 @@
       <section class="sw-vis-step" id="swVisStep4" data-sw-panel="4" hidden>
         <div class="card-inner">
           <h3 id="swVis4Title">Legal Certificate</h3>
-          <p class="sw-vis-lead" id="swVis4Lead">Your customer has completed signing. Create the legal certificate that finalizes this contract.</p>
+          <p class="sw-vis-lead" id="swVis4Lead">Create the legal certificate that finalizes this signed contract.</p>
+          <p class="sw-vis-why" id="swVis4Why">This protects both parties with an official signing record. Next you will create the signed PDF.</p>
           <div class="sw-actions">
             <button type="button" class="btn primary" id="swVisIssueCertBtn">Create Certificate</button>
             <div class="sw-actions-secondary">
@@ -1127,6 +1291,7 @@
         <div class="card-inner">
           <h3 id="swVis5Title">Signed Documents</h3>
           <p class="sw-vis-lead" id="swVis5Lead">Create the signed contract PDF for your records and your customer.</p>
+          <p class="sw-vis-why" id="swVis5Why">This is the final signed agreement file. After this, your project workflow is complete.</p>
           <div class="sw-actions">
             <button type="button" class="btn primary" id="swVisGeneratePdfBtn">Create Signed PDF</button>
             <div class="sw-actions-secondary">
@@ -1139,8 +1304,10 @@
 
       <section class="sw-vis-step" id="swVisStep6" data-sw-panel="6" hidden>
         <div class="card-inner">
-          <h3>Contract Complete</h3>
-          <p class="sw-vis-lead">Everything is finished. Return to the project or download your documents.</p>
+          <div class="sw-vis-success" aria-hidden="true">✓</div>
+          <h3>Project completed</h3>
+          <p class="sw-vis-lead">Your contract is signed and ready.</p>
+          <p class="sw-vis-why">Everything required for this workflow is finished. Return to the project or download your documents.</p>
           <ul class="sw-vis-complete-list">
             <li>✓ Customer signature received</li>
             <li>✓ Legal certificate created</li>
@@ -1155,6 +1322,7 @@
           </div>
         </div>
       </section>
+      </div>
 
       <details class="sw-advanced" id="swAdvancedDetails">
         <summary>Support Information</summary>
