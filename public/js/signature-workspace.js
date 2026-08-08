@@ -1311,7 +1311,7 @@
       );
       setText(
         "swVis2Why",
-        "This starts the signature process. After sending, wait for your customer to open and sign."
+        "After sending, wait for your customer to open and sign."
       );
     }
 
@@ -1328,7 +1328,7 @@
       setText("swVis3Lead", "Your customer signed. Create the legal certificate next.");
       setText(
         "swVis3Why",
-        "Signature is complete. Open Legal Certificate to finalize the contract."
+        "Signature is complete. Continue to Legal Certificate."
       );
     } else if (opened) {
       setText(
@@ -1337,25 +1337,25 @@
       );
       setText(
         "swVis3Why",
-        "You do not need to take action yet. After they sign, create the legal certificate."
+        "No action needed from you yet. After they sign, create the legal certificate."
       );
     } else if (emailDone) {
       setText(
         "swVis3Lead",
-        "The contract was delivered. Wait for your customer to open and sign."
+        "Your customer has the contract. Wait while they review and sign."
       );
       setText(
         "swVis3Why",
-        "You do not need to take action yet. After they sign, create the legal certificate."
+        "No action needed from you yet. After they sign, create the legal certificate."
       );
     } else {
       setText(
         "swVis3Lead",
-        "Wait while your customer reviews and signs the contract."
+        "Your customer has the contract. Wait while they review and sign."
       );
       setText(
         "swVis3Why",
-        "You do not need to take action yet. After they sign, create the legal certificate."
+        "No action needed from you yet. After they sign, create the legal certificate."
       );
     }
     setProgRow(
@@ -1387,13 +1387,13 @@
       "swVis4Lead",
       certReady
         ? "Your certificate is ready. View or download it for your records."
-        : "Create the legal certificate that finalizes this signed contract."
+        : "Your customer signed. Create the legal certificate that finalizes this contract."
     );
     setText(
       "swVis4Why",
       certReady
-        ? "Keep this for your records. Next, create the signed contract PDF."
-        : "This protects both parties with an official signing record. Next you will create the signed PDF."
+        ? "Next, create the signed contract PDF for your records."
+        : "Next, you will create the signed contract PDF for your records."
     );
     syncVisAction("swVisIssueCertBtn", "swIssueCertBtn", {
       forceHidden: certReady,
@@ -1421,8 +1421,8 @@
     setText(
       "swVis5Why",
       pdfReady
-        ? "This is the final signed agreement. You can return to the project when ready."
-        : "This is the final signed agreement file. After this, your project workflow is complete."
+        ? "Your documents are ready. Continue when you want to finish the workflow."
+        : "After this, your contract workflow is complete."
     );
     syncVisAction("swVisGeneratePdfBtn", "swGeneratePdfBtn", {
       forceHidden: pdfReady,
@@ -1441,6 +1441,10 @@
     } else if (ret) {
       ret.href = "/contract-hub";
     }
+    syncVisAction("swVisCompleteViewPdfBtn", "swOpenPdfBtn", {
+      forceDisabled: !pdfReady,
+      label: "View Signed Contract",
+    });
     syncVisAction("swVisCompletePdfBtn", "swDownloadPdfBtn");
     const completeCert = $("swVisCompleteCertBtn");
     if (completeCert) completeCert.disabled = !certReady;
@@ -2151,6 +2155,7 @@
     proxyClick("swVisDownloadCertBtn", "swViewCertBtn");
     proxyClick("swVisGeneratePdfBtn", "swGeneratePdfBtn");
     proxyClick("swVisOpenPdfBtn", "swOpenPdfBtn");
+    proxyClick("swVisCompleteViewPdfBtn", "swOpenPdfBtn");
     proxyClick("swVisCompleteCertBtn", "swViewCertBtn");
 
     function scrollActiveWorkspaceIntoView() {

@@ -742,11 +742,11 @@
       .sw-page { padding-left: var(--mg-space-sm); padding-right: var(--mg-space-sm); }
     }
 
-    /* Active workspace shell — page inside the workflow */
+    /* CH-013A.39 — active workspace + completion polish (rail/header untouched) */
     .sw-vis-workspace {
       position: relative;
-      margin-bottom: var(--mg-space-xl);
-      min-height: min(48vh, 480px);
+      margin-bottom: var(--mg-space-lg);
+      min-height: 0;
     }
     .sw-vis-step {
       margin-top: 0;
@@ -758,10 +758,10 @@
         radial-gradient(90% 70% at 100% 0%, var(--mg-status-current-bg) 0%, transparent 52%),
         linear-gradient(180deg, rgba(18, 26, 46, 0.96) 0%, rgba(8, 14, 28, 0.99) 100%);
       box-shadow:
-        0 32px 72px rgba(0, 0, 0, 0.42),
-        0 0 0 1px rgba(96, 165, 250, 0.16),
-        inset 0 1px 0 rgba(255, 255, 255, 0.07);
-      min-height: min(48vh, 480px);
+        0 24px 56px rgba(0, 0, 0, 0.36),
+        0 0 0 1px rgba(96, 165, 250, 0.14),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      min-height: 0;
     }
     .sw-vis-step.sw-vis-step--enter {
       animation: swStepIn var(--mg-duration-slow) var(--mg-ease);
@@ -776,54 +776,62 @@
       animation: swStepOut var(--mg-duration) var(--mg-ease) forwards;
     }
     @keyframes swStepIn {
-      from { opacity: 0; transform: translateY(12px); }
+      from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
     }
     @keyframes swStepOut {
       from { opacity: 1; transform: translateY(0); }
-      to { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 0; transform: translateY(-6px); }
     }
     .sw-vis-step[hidden] { display: none !important; animation: none; }
     .sw-vis-step .card-inner {
-      padding: calc(var(--mg-space-xl) + 10px) var(--mg-card-pad-hero) calc(var(--mg-space-xl) + 8px);
+      padding: var(--mg-space-xl) var(--mg-card-pad-hero) var(--mg-space-lg);
+    }
+    .sw-vis-step-id {
+      margin: 0 0 var(--mg-space-xs);
+      font-size: var(--mg-type-caption);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(147, 197, 253, 0.78);
     }
     .sw-vis-step h3 {
-      margin: 0 0 var(--mg-space-md);
-      font-size: clamp(1.9rem, 3.5vw, 2.4rem);
+      margin: 0 0 var(--mg-space-sm);
+      font-size: clamp(1.65rem, 3vw, 2.1rem);
       font-weight: 800;
       letter-spacing: -0.03em;
-      line-height: 1.1;
+      line-height: 1.12;
       color: rgba(255, 255, 255, 0.98);
     }
     .sw-vis-step .sw-vis-lead {
-      margin: 0 0 var(--mg-space-sm);
-      font-size: clamp(1rem, 1.4vw, 1.12rem);
-      line-height: 1.55;
-      color: rgba(232, 238, 252, 0.76);
-      max-width: 48ch;
+      margin: 0 0 var(--mg-space-md);
+      font-size: var(--mg-type-body);
+      line-height: 1.5;
+      color: rgba(232, 238, 252, 0.78);
+      max-width: 46ch;
     }
     .sw-vis-step .sw-vis-why {
-      margin: 0 0 var(--mg-space-xl);
+      margin: var(--mg-space-md) 0 0;
       font-size: var(--mg-type-caption);
       line-height: 1.45;
-      color: rgba(232, 238, 252, 0.48);
-      max-width: 48ch;
+      color: rgba(232, 238, 252, 0.52);
+      max-width: 46ch;
     }
     .sw-vis-meta {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: var(--mg-space-md) var(--mg-space-lg);
-      margin-bottom: var(--mg-space-xl);
-      padding: var(--mg-space-md) 0;
-      border-top: 1px solid rgba(255, 255, 255, 0.05);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      gap: var(--mg-space-sm) var(--mg-space-md);
+      margin: 0 0 var(--mg-space-lg);
+      padding: var(--mg-space-sm) 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     }
     .sw-vis-step .sw-actions {
       display: flex;
       flex-direction: column;
       align-items: flex-start;
-      gap: var(--mg-space-md);
-      margin-top: var(--mg-space-sm);
+      gap: var(--mg-space-sm);
+      margin-top: 0;
     }
     .sw-vis-step .sw-actions-secondary {
       display: flex;
@@ -834,16 +842,16 @@
     .sw-vis-step .btn.primary,
     .sw-vis-step a.btn.primary,
     .sw-modal__panel .btn.primary {
-      min-height: 56px;
-      padding: 16px calc(var(--mg-button-pad-x-hero) + 4px);
-      font-size: 1.08rem;
+      min-height: var(--mg-button-height-hero);
+      padding: 14px var(--mg-button-pad-x-hero);
+      font-size: 1.05rem;
       font-weight: 800;
       letter-spacing: 0.01em;
       border-radius: var(--mg-radius-control);
       border: 1px solid rgba(167, 243, 208, 0.35);
       background: linear-gradient(180deg, rgba(52, 211, 153, 0.95) 0%, rgba(16, 185, 129, 0.92) 100%);
       color: #052e16;
-      box-shadow: 0 14px 36px rgba(52, 211, 153, 0.32);
+      box-shadow: 0 12px 32px rgba(52, 211, 153, 0.3);
       transition:
         transform var(--mg-duration-fast) var(--mg-ease),
         box-shadow var(--mg-duration-fast) var(--mg-ease);
@@ -851,78 +859,113 @@
     .sw-vis-step .btn.primary:hover:not(:disabled),
     .sw-vis-step a.btn.primary:hover {
       transform: translateY(-1px);
-      box-shadow: 0 18px 40px rgba(52, 211, 153, 0.4);
+      box-shadow: 0 16px 36px rgba(52, 211, 153, 0.38);
     }
     .sw-vis-step .btn.primary:active:not(:disabled) {
       transform: translateY(0);
     }
+    /* Quiet secondary — readable, never competes with primary */
     .sw-vis-step .btn.ghost,
     .sw-vis-step a.btn.ghost,
     .sw-vis-step .btn:not(.primary),
     .sw-vis-step .sw-actions-secondary .btn,
     .sw-vis-step .sw-actions-secondary a.btn {
-      min-height: auto;
-      padding: 4px 0;
-      border-radius: 0;
+      min-height: 36px;
+      padding: 7px 12px;
+      border-radius: var(--mg-radius-control);
       font-size: var(--mg-type-caption);
-      font-weight: 600;
-      opacity: 0.55;
-      background: transparent !important;
-      border: none !important;
+      font-weight: 650;
+      opacity: 1;
+      color: rgba(226, 232, 240, 0.88);
+      background: rgba(255, 255, 255, 0.04) !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
       box-shadow: none !important;
-      text-decoration: underline;
-      text-decoration-color: rgba(232, 238, 252, 0.2);
-      text-underline-offset: 3px;
-      color: rgba(232, 238, 252, 0.72);
-      transition: opacity var(--mg-duration-fast) var(--mg-ease), color var(--mg-duration-fast) var(--mg-ease);
+      text-decoration: none;
+      transition:
+        opacity var(--mg-duration-fast) var(--mg-ease),
+        color var(--mg-duration-fast) var(--mg-ease),
+        background var(--mg-duration-fast) var(--mg-ease),
+        border-color var(--mg-duration-fast) var(--mg-ease);
     }
     .sw-vis-step .btn.ghost:hover,
     .sw-vis-step a.btn.ghost:hover,
     .sw-vis-step .sw-actions-secondary .btn:hover,
     .sw-vis-step .sw-actions-secondary a.btn:hover {
-      opacity: 0.95;
-      color: rgba(255, 255, 255, 0.92);
-      background: transparent !important;
-      border: none !important;
-      text-decoration-color: rgba(255, 255, 255, 0.45);
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08) !important;
+      border-color: rgba(255, 255, 255, 0.22) !important;
+    }
+    .sw-vis-step .sw-actions-secondary .btn:focus-visible,
+    .sw-vis-step .sw-actions-secondary a.btn:focus-visible {
+      outline: 2px solid var(--mg-status-current);
+      outline-offset: 2px;
+    }
+    .sw-vis-docs-label {
+      margin: 0 0 6px;
+      width: 100%;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.42);
     }
     .sw-vis-success {
-      width: 64px;
-      height: 64px;
+      width: 72px;
+      height: 72px;
       margin: 0 0 var(--mg-space-md);
       border-radius: var(--mg-radius-pill);
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.75rem;
+      font-size: 2rem;
       font-weight: 800;
       color: #052e16;
-      background: linear-gradient(180deg, var(--mg-status-complete) 0%, #10b981 100%);
-      box-shadow: 0 12px 32px rgba(52, 211, 153, 0.28);
+      background: linear-gradient(180deg, #6ee7b7 0%, var(--mg-status-complete) 55%, #059669 100%);
+      box-shadow:
+        0 14px 36px rgba(52, 211, 153, 0.32),
+        0 0 40px rgba(52, 211, 153, 0.16);
       animation: swStepIn var(--mg-duration-slow) var(--mg-ease);
     }
     .sw-vis-step[data-sw-panel="6"] {
       background:
-        radial-gradient(90% 70% at 0% 0%, var(--mg-status-complete-bg) 0%, transparent 55%),
-        linear-gradient(180deg, rgba(14, 28, 24, 0.96) 0%, rgba(8, 14, 28, 0.99) 100%);
+        radial-gradient(100% 80% at 0% 0%, rgba(52, 211, 153, 0.18) 0%, transparent 55%),
+        linear-gradient(180deg, rgba(12, 28, 24, 0.97) 0%, rgba(8, 14, 28, 0.99) 100%);
       box-shadow:
-        0 32px 72px rgba(0, 0, 0, 0.4),
-        0 0 0 1px rgba(52, 211, 153, 0.2),
+        0 28px 64px rgba(0, 0, 0, 0.38),
+        0 0 0 1px rgba(52, 211, 153, 0.24),
         inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+    .sw-vis-step[data-sw-panel="6"] .sw-vis-step-id {
+      color: rgba(167, 243, 208, 0.8);
+    }
+    .sw-vis-step[data-sw-panel="6"] h3 {
+      font-size: clamp(1.85rem, 3.4vw, 2.35rem);
+      letter-spacing: -0.035em;
+    }
+    .sw-vis-step[data-sw-panel="6"] .sw-vis-lead {
+      font-size: clamp(1.02rem, 1.5vw, 1.15rem);
+      color: rgba(236, 253, 245, 0.9);
+      margin-bottom: var(--mg-space-xs);
+    }
+    .sw-vis-step[data-sw-panel="6"] .sw-vis-why {
+      margin: 0 0 var(--mg-space-lg);
+      color: rgba(209, 250, 229, 0.72);
+    }
+    .sw-vis-step[data-sw-panel="6"] .sw-actions-secondary {
+      padding: var(--mg-space-sm);
+      border-radius: var(--mg-radius-control);
+      background: rgba(0, 0, 0, 0.18);
+      border: 1px solid rgba(52, 211, 153, 0.14);
     }
     @media (max-width: 640px) {
       .sw-vis-meta { grid-template-columns: 1fr; }
-      .sw-vis-workspace,
-      .sw-vis-step { min-height: 0; }
       .sw-vis-step { scroll-margin-top: 180px; }
-      .sw-vis-step .card-inner { padding: var(--mg-card-pad-hero) var(--mg-card-pad); }
+      .sw-vis-step .card-inner { padding: var(--mg-card-pad) var(--mg-space-md) var(--mg-space-md); }
       .sw-vis-step .btn.primary,
       .sw-vis-step a.btn.primary { width: 100%; justify-content: center; text-align: center; }
-      .public-flow-nav.premium-workflow.sw-workflow {
-        top: 8px;
-        padding-left: 2px;
-        padding-right: 2px;
-      }
+      .sw-vis-step .sw-actions-secondary { width: 100%; }
+      .sw-vis-step .sw-actions-secondary .btn,
+      .sw-vis-step .sw-actions-secondary a.btn { flex: 1 1 auto; justify-content: center; text-align: center; }
     }
     @media (prefers-reduced-motion: reduce) {
       .sw-vis-step.sw-vis-step--enter,
@@ -933,11 +976,11 @@
     }
     .sw-vis-progress {
       list-style: none;
-      margin: 0 0 var(--mg-space-xs);
+      margin: 0 0 var(--mg-space-md);
       padding: 0;
       display: flex;
       flex-direction: column;
-      gap: var(--mg-space-md);
+      gap: var(--mg-space-sm);
     }
     .sw-vis-progress li {
       display: flex;
@@ -975,10 +1018,12 @@
     .sw-vis-complete-list {
       list-style: none;
       margin: 0 0 var(--mg-space-lg);
-      padding: 0;
+      padding: var(--mg-space-sm) 0;
       display: flex;
       flex-direction: column;
-      gap: var(--mg-space-sm);
+      gap: 8px;
+      border-top: 1px solid rgba(52, 211, 153, 0.16);
+      border-bottom: 1px solid rgba(52, 211, 153, 0.16);
     }
     .sw-vis-complete-list li {
       font-size: var(--mg-type-body);
@@ -1217,9 +1262,9 @@
       <div class="sw-vis-workspace" id="swVisWorkspace">
       <section class="sw-vis-step" id="swVisStep1" data-sw-panel="1" hidden>
         <div class="card-inner">
+          <p class="sw-vis-step-id">Step 1</p>
           <h3>Review Contract</h3>
           <p class="sw-vis-lead">Confirm the final contract looks right before your customer sees it.</p>
-          <p class="sw-vis-why">This locks the agreement you will send. After you continue, you will send the signing link.</p>
           <div class="sw-vis-meta">
             <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v" id="swVis1Customer">—</div></div>
             <div class="sw-field"><div class="sw-field__k">Contract Version</div><div class="sw-field__v" id="swVis1Version">—</div></div>
@@ -1231,14 +1276,15 @@
               <button type="button" class="btn ghost" id="swVisViewContractBtn">View Contract</button>
             </div>
           </div>
+          <p class="sw-vis-why">After you continue, you will send the signing link to your customer.</p>
         </div>
       </section>
 
       <section class="sw-vis-step" id="swVisStep2" data-sw-panel="2" hidden>
         <div class="card-inner">
+          <p class="sw-vis-step-id">Step 2</p>
           <h3>Send to Customer</h3>
           <p class="sw-vis-lead" id="swVis2Lead">Send a secure signing link so your customer can review and sign.</p>
-          <p class="sw-vis-why" id="swVis2Why">This starts the signature process. After sending, wait for your customer to open and sign.</p>
           <div class="sw-vis-meta">
             <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v" id="swVis2Customer">—</div></div>
             <div class="sw-field"><div class="sw-field__k">Email</div><div class="sw-field__v" id="swVis2Email">—</div></div>
@@ -1255,28 +1301,30 @@
             <div class="sw-field__k">Next</div>
             <div class="sw-field__v" id="swVisEmailStatus">—</div>
           </div>
+          <p class="sw-vis-why" id="swVis2Why">After sending, wait for your customer to open and sign.</p>
           <p class="sw-vis-lead" id="swVis2Helper" hidden style="margin-top:10px;">Next: wait for your customer to open and sign the contract.</p>
         </div>
       </section>
 
       <section class="sw-vis-step" id="swVisStep3" data-sw-panel="3" hidden>
         <div class="card-inner">
+          <p class="sw-vis-step-id">Step 3</p>
           <h3>Waiting for Signature</h3>
-          <p class="sw-vis-lead" id="swVis3Lead">Wait while your customer reviews and signs the contract.</p>
-          <p class="sw-vis-why" id="swVis3Why">You do not need to take action yet. After they sign, create the legal certificate.</p>
+          <p class="sw-vis-lead" id="swVis3Lead">Your customer has the contract. Wait while they review and sign.</p>
           <ul class="sw-vis-progress" id="swVisSigProgress">
             <li id="swVisProgEmail"><span class="sw-vis-mark" aria-hidden="true">○</span><span>Email sent</span></li>
             <li id="swVisProgOpened"><span class="sw-vis-mark" aria-hidden="true">○</span><span>Contract opened</span></li>
             <li id="swVisProgSigned"><span class="sw-vis-mark" aria-hidden="true">○</span><span>Customer signed</span></li>
           </ul>
+          <p class="sw-vis-why" id="swVis3Why">No action needed from you yet. After they sign, create the legal certificate.</p>
         </div>
       </section>
 
       <section class="sw-vis-step" id="swVisStep4" data-sw-panel="4" hidden>
         <div class="card-inner">
+          <p class="sw-vis-step-id">Step 4</p>
           <h3 id="swVis4Title">Legal Certificate</h3>
-          <p class="sw-vis-lead" id="swVis4Lead">Create the legal certificate that finalizes this signed contract.</p>
-          <p class="sw-vis-why" id="swVis4Why">This protects both parties with an official signing record. Next you will create the signed PDF.</p>
+          <p class="sw-vis-lead" id="swVis4Lead">Your customer signed. Create the legal certificate that finalizes this contract.</p>
           <div class="sw-actions">
             <button type="button" class="btn primary" id="swVisIssueCertBtn">Create Certificate</button>
             <div class="sw-actions-secondary">
@@ -1284,14 +1332,15 @@
               <button type="button" class="btn ghost" id="swVisDownloadCertBtn">Download Certificate</button>
             </div>
           </div>
+          <p class="sw-vis-why" id="swVis4Why">Next, you will create the signed contract PDF for your records.</p>
         </div>
       </section>
 
       <section class="sw-vis-step" id="swVisStep5" data-sw-panel="5" hidden>
         <div class="card-inner">
+          <p class="sw-vis-step-id">Step 5</p>
           <h3 id="swVis5Title">Signed Documents</h3>
           <p class="sw-vis-lead" id="swVis5Lead">Create the signed contract PDF for your records and your customer.</p>
-          <p class="sw-vis-why" id="swVis5Why">This is the final signed agreement file. After this, your project workflow is complete.</p>
           <div class="sw-actions">
             <button type="button" class="btn primary" id="swVisGeneratePdfBtn">Create Signed PDF</button>
             <div class="sw-actions-secondary">
@@ -1299,15 +1348,17 @@
               <a class="btn ghost" id="swVisDownloadPdfBtn" href="#" target="_blank" rel="noopener">Download PDF</a>
             </div>
           </div>
+          <p class="sw-vis-why" id="swVis5Why">After this, your contract workflow is complete.</p>
         </div>
       </section>
 
       <section class="sw-vis-step" id="swVisStep6" data-sw-panel="6" hidden>
         <div class="card-inner">
           <div class="sw-vis-success" aria-hidden="true">✓</div>
-          <h3>Project completed</h3>
-          <p class="sw-vis-lead">Your contract is signed and ready.</p>
-          <p class="sw-vis-why">Everything required for this workflow is finished. Return to the project or download your documents.</p>
+          <p class="sw-vis-step-id">Complete</p>
+          <h3>Project Completed</h3>
+          <p class="sw-vis-lead">Everything is finished.</p>
+          <p class="sw-vis-why">Your customer signed the contract and your final documents are ready.</p>
           <ul class="sw-vis-complete-list">
             <li>✓ Customer signature received</li>
             <li>✓ Legal certificate created</li>
@@ -1316,6 +1367,8 @@
           <div class="sw-actions">
             <a class="btn primary" id="swVisReturnProjectBtn" href="/contract-hub">Return to Project</a>
             <div class="sw-actions-secondary">
+              <p class="sw-vis-docs-label">Final documents</p>
+              <button type="button" class="btn ghost" id="swVisCompleteViewPdfBtn">View Signed Contract</button>
               <a class="btn ghost" id="swVisCompletePdfBtn" href="#" target="_blank" rel="noopener">Download Signed Contract</a>
               <button type="button" class="btn ghost" id="swVisCompleteCertBtn">Download Certificate</button>
             </div>
