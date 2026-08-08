@@ -30,6 +30,61 @@
   --mg-line-height-title:1.15;
   --mg-label-tracking:0.08em;
   --mg-touch-min:44px;
+
+  /* CH-013A.34 — Margin Guard Experience System (tokens only; adopt incrementally) */
+  /* Spacing */
+  --mg-space-xs:8px;
+  --mg-space-sm:12px;
+  --mg-space-md:16px;
+  --mg-space-lg:24px;
+  --mg-space-xl:32px;
+  --mg-space-2xl:40px;
+  /* Radius tiers */
+  --mg-radius-compact:12px;
+  --mg-radius-control:14px;
+  --mg-radius-card:18px;
+  --mg-radius-hero:22px;
+  --mg-radius-pill:999px;
+  /* Type hierarchy (4 levels) */
+  --mg-type-hero:clamp(1.65rem, 3vw, 2.05rem);
+  --mg-type-section:clamp(1.05rem, 1.6vw, 1.25rem);
+  --mg-type-body:clamp(0.9rem, 1.2vw, 1rem);
+  --mg-type-caption:clamp(0.7rem, 1vw, 0.78rem);
+  /* Buttons */
+  --mg-btn-height:44px;
+  --mg-btn-height-hero:52px;
+  --mg-btn-pad-x:18px;
+  --mg-btn-pad-x-hero:24px;
+  --mg-button-height-hero:var(--mg-btn-height-hero);
+  --mg-button-pad-x-hero:var(--mg-btn-pad-x-hero);
+  /* Shells */
+  --mg-shell-app:1180px;
+  --mg-shell-workflow:1040px;
+  --mg-shell-public:1200px;
+  --mg-shell-wide:1680px;
+  /* Cards / workflow / modal */
+  --mg-card-pad:20px;
+  --mg-card-pad-hero:28px;
+  --mg-section-gap:24px;
+  --mg-grid-gap:16px;
+  --mg-workflow-step-min-h:80px;
+  --mg-modal-width:560px;
+  --mg-modal-width-lg:860px;
+  --mg-modal-pad:20px;
+  /* Status (Rule 5) */
+  --mg-status-complete:#34d399;
+  --mg-status-complete-bg:rgba(52,211,153,.16);
+  --mg-status-current:#60a5fa;
+  --mg-status-current-bg:rgba(96,165,250,.16);
+  --mg-status-upcoming:rgba(232,238,252,.45);
+  --mg-status-upcoming-bg:rgba(255,255,255,.04);
+  --mg-status-attention:#f87171;
+  --mg-status-attention-bg:rgba(248,113,113,.14);
+  /* Motion */
+  --mg-ease:cubic-bezier(.2,.8,.2,1);
+  --mg-duration-fast:140ms;
+  --mg-duration:220ms;
+  --mg-duration-slow:320ms;
 }
 *{ box-sizing:border-box; }
 html,body{ height:100%; }

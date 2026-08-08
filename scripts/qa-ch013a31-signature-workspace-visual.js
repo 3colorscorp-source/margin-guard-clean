@@ -127,12 +127,23 @@ test("9 only UI files changed in working tree for this task", () => {
   const allowed = new Set([
     "public/signature-workspace.html",
     "public/js/signature-workspace.js",
+    "public/styles.css", // CH-013A.34/35 Experience tokens (additive)
+    "scripts/qa-ch013a31-signature-workspace-visual.js",
   ]);
   diff.stdout
     .split(/\r?\n/)
     .map((s) => s.trim())
     .filter(Boolean)
     .forEach((file) => assert.ok(allowed.has(file), "unexpected modified file: " + file));
+});
+
+test("10 Contract Workflow adopts MG shell/status tokens", () => {
+  assert.ok(html.includes("var(--mg-shell-workflow)"));
+  assert.ok(html.includes("var(--mg-status-current)"));
+  assert.ok(html.includes("var(--mg-status-complete)"));
+  assert.ok(html.includes("var(--mg-button-height-hero)") || html.includes("var(--mg-btn-height-hero)"));
+  assert.ok(html.includes("var(--mg-radius-hero)"));
+  assert.ok(html.includes("var(--mg-modal-width)"));
 });
 
 console.log("\nCH-013A.31 signature workspace visual:", passed, "passed,", failed, "failed");

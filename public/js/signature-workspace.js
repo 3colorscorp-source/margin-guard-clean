@@ -213,17 +213,17 @@
     }
     const pst = String(pkg?.status || "").toLowerCase();
     if (!pkg?.id) {
-      blockers.push({ ok: false, text: "Frozen contract version missing" });
+      blockers.push({ ok: false, text: "Final contract missing" });
     } else if (pst !== "ready" && pst !== "executed") {
       blockers.push({
         ok: false,
-        text: `Frozen contract must be Ready (now ${ownerStatusLabel(pst) || "—"})`,
+        text: `Final contract must be Ready (now ${ownerStatusLabel(pst) || "—"})`,
       });
     } else {
-      blockers.push({ ok: true, text: `Frozen contract ${ownerStatusLabel(pst)}` });
+      blockers.push({ ok: true, text: `Final contract ${ownerStatusLabel(pst)}` });
     }
     if (!signers.length) {
-      blockers.push({ ok: false, text: "At least one signer is required" });
+      blockers.push({ ok: false, text: "At least one customer is required" });
     }
     const emails = new Set();
     for (const s of signers) {
@@ -677,7 +677,7 @@
         })
         .join("");
       if (!state.packages.length) {
-        sel.innerHTML = `<option value="">No frozen contract versions</option>`;
+        sel.innerHTML = `<option value="">No final contract versions</option>`;
       }
     }
   }
@@ -967,7 +967,7 @@
     const viewBtn = $("swViewCertBtn");
     if (issueBtn) {
       issueBtn.disabled = !completed || !state.envelope?.id;
-      issueBtn.textContent = cert?.id ? "Refresh Certificate" : "Generate Certificate";
+      issueBtn.textContent = cert?.id ? "Refresh Certificate" : "Create Certificate";
     }
     if (viewBtn) viewBtn.disabled = !cert?.id;
   }
@@ -976,7 +976,7 @@
     const art = state.artifacts[0];
     const completed =
       String(state.envelope?.status || "").toLowerCase() === "completed";
-    setText("swPdfStatus", art?.id ? "signed_pdf ready" : "None");
+    setText("swPdfStatus", art?.id ? "Ready" : "None");
     setText("swPdfHash", shortHash(art?.sha256));
     setText(
       "swPdfSize",
@@ -988,10 +988,13 @@
     if (gen) {
       gen.disabled = !completed || !state.envelope?.id;
       gen.textContent = art?.id
-        ? "Generate Signed PDF (idempotent)"
-        : "Generate Signed PDF";
+        ? "Signed PDF Ready"
+        : "Create Signed PDF";
     }
-    if (openBtn) openBtn.disabled = !art?.download_url;
+    if (openBtn) {
+      openBtn.disabled = !art?.download_url;
+      openBtn.textContent = "View Signed Contract";
+    }
     if (dl) {
       if (art?.download_url) {
         dl.href = art.download_url;
@@ -1131,17 +1134,30 @@
     const version =
       state.package?.version != null ? `v${state.package.version}` : "—";
 
+    const stepLabels = [
+      "",
+      "Review Contract",
+      "Send to Customer",
+      "Waiting for Signature",
+      "Legal Certificate",
+      "Signed Documents",
+      "Complete",
+    ];
     setText(
       "swVisProjectName",
       String(state.project?.projectName || state.project?.project_name || "").trim() ||
-        "Contract Signing"
+        "Contract Workflow"
     );
-    setText(
-      "swVisProjectSub",
-      "Margin Guard will guide you through each remaining step."
-    );
+    setText("swVisProjectSub", "Manage your contract from start to finish.");
     setText("swVisCustomer", customer);
     setText("swVisContractVer", version);
+    setText("swVisCurrentStep", stepLabels[active] || "—");
+    setText("swVisProgressText", `Step ${active} of 6`);
+    setText("swVisJourneyLead", `Step ${active} of 6`);
+    const progressBar = $("swVisProgressBar");
+    if (progressBar) {
+      progressBar.style.width = `${Math.round((active / 6) * 100)}%`;
+    }
     setText(
       "swVisOverall",
       active === 6
@@ -1512,30 +1528,34 @@
 
   function openSignerModal(existing) {
     if (!envelopeEditable()) {
-      toast("Signers are locked after send", "error");
+      toast("Customer details are locked after the contract is sent", "error");
       return;
     }
     const isEdit = !!existing?.id;
     openModal(
-      isEdit ? "Edit Signer" : "Add Signer",
-      `<div class="field"><label>Role</label>
-        <select id="swFormRole">
-          <option value="customer">customer</option>
-          <option value="owner">owner</option>
-          <option value="additional">additional</option>
-        </select></div>
-       <div class="field"><label>Name</label><input id="swFormName" /></div>
-       <div class="field"><label>Email</label><input id="swFormEmail" type="email" /></div>
-       <div class="field"><label>Phone</label><input id="swFormPhone" /></div>
-       <div class="field"><label>Order</label><input id="swFormOrder" type="number" min="1" value="1" /></div>
-       <div class="field"><label>Auth method</label>
-        <select id="swFormMethod">
-          <option value="email_link">email_link</option>
-          <option value="in_app">in_app</option>
-        </select></div>`,
+      isEdit ? "Edit Customer" : "Add Customer",
+      `<p class="sw-modal-sub">Add the person who will sign this contract.</p>
+       <div class="sw-modal-card">
+         <div class="sw-modal-card__title">Customer details</div>
+         <div class="field"><label>Role</label>
+          <select id="swFormRole">
+            <option value="customer">Customer</option>
+            <option value="owner">Owner</option>
+            <option value="additional">Additional signer</option>
+          </select></div>
+         <div class="field"><label>Name</label><input id="swFormName" /></div>
+         <div class="field"><label>Email</label><input id="swFormEmail" type="email" /></div>
+         <div class="field"><label>Phone</label><input id="swFormPhone" /></div>
+         <div class="field"><label>Sign order</label><input id="swFormOrder" type="number" min="1" value="1" /></div>
+         <div class="field"><label>How they sign</label>
+          <select id="swFormMethod">
+            <option value="email_link">Email link</option>
+            <option value="in_app">In app</option>
+          </select></div>
+       </div>`,
       [
         btn("Cancel", "btn ghost", closeModal),
-        btn(isEdit ? "Save" : "Create", "btn primary", async () => {
+        btn(isEdit ? "Save" : "Continue", "btn primary", async () => {
           const payload = {
             role: $("swFormRole")?.value,
             party_name: $("swFormName")?.value,
@@ -1864,25 +1884,85 @@
     $("swViewFrozenBtn")?.addEventListener("click", () => {
       const pkg = state.package;
       if (!pkg) {
-        toast("No frozen contract version selected", "error");
+        toast("No final contract selected", "error");
         return;
       }
       const readiness = pkg.source_readiness
         ? JSON.stringify(pkg.source_readiness, null, 2)
         : "—";
+      const projectName =
+        String(
+          state.project?.projectName || state.project?.project_name || ""
+        ).trim() || "—";
+      const customer =
+        String(
+          state.project?.clientName ||
+            state.project?.client_name ||
+            primarySigner()?.party_name ||
+            ""
+        ).trim() || "—";
+      const ready = pkg.source_readiness || {};
+      const isConfigured = (value) => {
+        const v = String(value || "").toLowerCase();
+        return !v || v === "configured" || v === "ready" || v === "complete" || v === "yes";
+      };
+      // Frozen packages already passed readiness; show business checklist for contractors.
+      const included = [
+        ["Scope of Work", true],
+        ["Project Address", true],
+        [
+          "Payment Schedule",
+          isConfigured(ready.payment_schedule || ready.payment),
+        ],
+        ["Warranty", isConfigured(ready.warranty)],
+        [
+          "Signature Method",
+          isConfigured(ready.signature_method || ready.signature),
+        ],
+      ]
+        .map(
+          ([label, ok]) =>
+            `<li>${ok ? "✔" : "○"} ${escapeHtml(label)}</li>`
+        )
+        .join("");
+
       openModal(
-        "Frozen Contract Package",
-        `<div class="sw-meta">
-          <div class="sw-field"><div class="sw-field__k">Version</div><div class="sw-field__v">v${escapeHtml(pkg.version)}</div></div>
-          <div class="sw-field"><div class="sw-field__k">Status</div><div class="sw-field__v">${escapeHtml(pkg.status)}</div></div>
-          <div class="sw-field"><div class="sw-field__k">Created</div><div class="sw-field__v">${escapeHtml(fmtWhen(pkg.created_at))}</div></div>
+        "Review Contract",
+        `<p class="sw-modal-sub">Review the final contract before sending it to your customer.</p>
+        <div class="sw-modal-card">
+          <div class="sw-modal-card__title">Project</div>
+          <div class="sw-meta">
+            <div class="sw-field"><div class="sw-field__k">Project</div><div class="sw-field__v">${escapeHtml(projectName)}</div></div>
+            <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v">${escapeHtml(customer)}</div></div>
+            <div class="sw-field"><div class="sw-field__k">Version</div><div class="sw-field__v">v${escapeHtml(pkg.version)}</div></div>
+            <div class="sw-field"><div class="sw-field__k">Created</div><div class="sw-field__v">${escapeHtml(fmtWhen(pkg.created_at))}</div></div>
+          </div>
         </div>
-        <p class="sub">Content hash (immutable fingerprint of frozen snapshot):</p>
-        <pre class="sw-mono">${escapeHtml(pkg.content_hash || "—")}</pre>
-        <p class="sub">Source readiness (from package metadata — full snapshot_json is not returned by list API):</p>
-        <pre>${escapeHtml(readiness)}</pre>
-        <p class="sub">After completion, use Certificate + Signed PDF for the authoritative rendered contract.</p>`,
-        [btn("Close", "btn primary", closeModal)]
+        <div class="sw-modal-card">
+          <div class="sw-modal-card__title">Included</div>
+          <ul class="sw-modal-list">${included}</ul>
+        </div>
+        <div class="sw-modal-card">
+          <div class="sw-modal-card__title">Before you continue</div>
+          <p class="sw-modal-note">Once this contract is sent, this version becomes the official agreement for your customer. You won’t be able to edit its contents.</p>
+        </div>
+        <details class="sw-modal-support">
+          <summary>Support Information</summary>
+          <p class="sw-modal-support-help">Technical details for support and troubleshooting.</p>
+          <div class="sw-meta" style="margin-bottom:10px;">
+            <div class="sw-field"><div class="sw-field__k">Status</div><div class="sw-field__v">${escapeHtml(pkg.status || "—")}</div></div>
+            <div class="sw-field"><div class="sw-field__k">Technical Verification</div><div class="sw-field__v sw-mono">${escapeHtml(pkg.content_hash || "—")}</div></div>
+          </div>
+          <p class="sub">Source readiness</p>
+          <pre>${escapeHtml(readiness)}</pre>
+        </details>`,
+        [
+          btn("Continue", "btn primary", () => {
+            closeModal();
+            $("swVisContinueBtn")?.click();
+          }),
+          btn("View Contract", "btn ghost", closeModal),
+        ]
       );
     });
 
@@ -1911,16 +1991,24 @@
       const cert = state.certificates[0];
       if (!cert) return;
       openModal(
-        "Audit Certificate",
-        `<div class="sw-meta">
-          <div class="sw-field"><div class="sw-field__k">Number</div><div class="sw-field__v">${escapeHtml(cert.certificate_number)}</div></div>
-          <div class="sw-field"><div class="sw-field__k">Issued</div><div class="sw-field__v">${escapeHtml(fmtWhen(cert.issued_at))}</div></div>
-          <div class="sw-field"><div class="sw-field__k">Status</div><div class="sw-field__v">${escapeHtml(cert.status)}</div></div>
+        "Legal Certificate",
+        `<p class="sw-modal-sub">The signing certificate is ready for your records.</p>
+        <div class="sw-modal-card">
+          <div class="sw-modal-card__title">Certificate</div>
+          <div class="sw-meta">
+            <div class="sw-field"><div class="sw-field__k">Number</div><div class="sw-field__v">${escapeHtml(cert.certificate_number)}</div></div>
+            <div class="sw-field"><div class="sw-field__k">Issued</div><div class="sw-field__v">${escapeHtml(fmtWhen(cert.issued_at))}</div></div>
+            <div class="sw-field"><div class="sw-field__k">Status</div><div class="sw-field__v">${escapeHtml(cert.status)}</div></div>
+          </div>
         </div>
-        <p class="sub">Verification hash</p>
-        <pre class="sw-mono">${escapeHtml(cert.content_hash || "—")}</pre>
-        <p class="sub">Certificate JSON (evidence)</p>
-        <pre>${escapeHtml(JSON.stringify(cert.certificate_json || {}, null, 2))}</pre>`,
+        <details class="sw-modal-support">
+          <summary>Support Information</summary>
+          <p class="sw-modal-support-help">Technical details for support and troubleshooting.</p>
+          <p class="sub">Technical Verification</p>
+          <pre class="sw-mono">${escapeHtml(cert.content_hash || "—")}</pre>
+          <p class="sub">Certificate details</p>
+          <pre>${escapeHtml(JSON.stringify(cert.certificate_json || {}, null, 2))}</pre>
+        </details>`,
         [btn("Close", "btn primary", closeModal)]
       );
     });
@@ -1959,7 +2047,7 @@
     $("swOpenPdfBtn")?.addEventListener("click", () => {
       const url = state.artifacts[0]?.download_url;
       if (!url) {
-        toast("No signed URL — generate PDF first", "error");
+        toast("Signed contract is not ready yet", "error");
         return;
       }
       window.open(url, "_blank", "noopener");
