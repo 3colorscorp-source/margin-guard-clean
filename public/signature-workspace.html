@@ -6,6 +6,38 @@
   <title>Margin Guard | Contract Workflow</title>
   <link rel="stylesheet" href="/styles.css" />
   <style>
+    /* CH-013A.41 — Contract Workflow: single document scrollport (no inner app-panel scroll) */
+    html:has(body[data-mg-page-title="Contract Workflow"]) {
+      height: auto;
+      min-height: 100%;
+      /* clip avoids the hidden+visible => auto overflow quirk on the other axis */
+      overflow-x: clip;
+      overflow-y: auto;
+    }
+    body[data-mg-page-title="Contract Workflow"].mg-app-shell,
+    body[data-mg-page-title="Contract Workflow"] {
+      height: auto !important;
+      min-height: 100%;
+      min-height: 100dvh;
+      overflow: visible !important;
+    }
+    body[data-mg-page-title="Contract Workflow"] #mgAppMain.mg-app-main,
+    body[data-mg-page-title="Contract Workflow"] .mg-app-main__body,
+    body[data-mg-page-title="Contract Workflow"] .container.sw-page,
+    body[data-mg-page-title="Contract Workflow"] .sw-vis-workspace,
+    body[data-mg-page-title="Contract Workflow"] #swMain {
+      overflow: visible !important;
+      max-height: none !important;
+      height: auto !important;
+    }
+    /* Keep premium project-list scrollbar (do not weaken) */
+    body[data-mg-page-title="Contract Workflow"] .sw-project-picker__menu {
+      max-height: min(360px, 60vh);
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
     /* CH-013A.38A — sticky workflow, premium transitions, guided workspace */
     .sw-page {
       max-width: var(--mg-shell-workflow);
