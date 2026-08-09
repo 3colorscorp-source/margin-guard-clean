@@ -1248,12 +1248,12 @@
       .sw-vis-step .sw-actions-secondary a.btn { flex: 1 1 auto; justify-content: center; text-align: center; }
       .sw-vis-side-panel { padding: var(--mg-space-sm) var(--mg-space-md); }
     }
-    /* Support stays quiet below workspace; on wide screens sit under secondary feel */
-    @media (min-width: 980px) {
-      .sw-vis-workspace + .sw-advanced {
-        max-width: min(360px, 100%);
-        margin-left: auto;
-      }
+    /* CH-013A.44 — Support Information uses full shell width (not a narrow right rail) */
+    .sw-vis-workspace + .sw-advanced {
+      width: 100%;
+      max-width: none;
+      margin-left: 0;
+      margin-right: 0;
     }
     @media (prefers-reduced-motion: reduce) {
       .sw-vis-step.sw-vis-step--enter,
@@ -1319,7 +1319,7 @@
       color: #bbf7d0;
     }
 
-    /* Support Information — collapsed, never competes */
+    /* Support Information — collapsed quiet; expanded = full-width workspace */
     .sw-advanced {
       margin-top: var(--mg-space-2xl);
       margin-bottom: var(--mg-space-md);
@@ -1327,8 +1327,11 @@
       border: none;
       background: transparent;
       padding: 0;
+      width: 100%;
+      max-width: none;
       opacity: 0.85;
     }
+    .sw-advanced[open] { opacity: 1; }
     .sw-advanced > summary {
       cursor: pointer;
       list-style: none;
@@ -1366,18 +1369,73 @@
       font-size: var(--mg-type-caption);
       color: rgba(232, 238, 252, 0.4);
     }
+    /* CH-013A.44 — responsive support grid; natural card heights; page-flow scroll */
     .sw-advanced .sw-legacy-stack {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--mg-space-md);
+      align-items: start;
+      width: 100%;
+      max-width: none;
+      overflow: visible;
       border-radius: var(--mg-radius-control);
       border: 1px solid rgba(255, 255, 255, 0.06);
       background: rgba(0, 0, 0, 0.18);
-      padding: var(--mg-space-sm);
+      padding: var(--mg-space-md);
       animation: swSupportIn var(--mg-duration) var(--mg-ease);
+    }
+    @media (min-width: 980px) {
+      .sw-advanced .sw-legacy-stack {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-areas:
+          "pkg env"
+          "signers signers"
+          "send cert"
+          "progress progress"
+          "pdf pdf"
+          "dev dev";
+      }
+      .sw-advanced .sw-support-area--pkg { grid-area: pkg; }
+      .sw-advanced .sw-support-area--env { grid-area: env; }
+      .sw-advanced .sw-support-area--signers { grid-area: signers; }
+      .sw-advanced .sw-support-area--send { grid-area: send; }
+      .sw-advanced .sw-support-area--progress { grid-area: progress; }
+      .sw-advanced .sw-support-area--cert { grid-area: cert; }
+      .sw-advanced .sw-support-area--pdf { grid-area: pdf; }
+      .sw-advanced .sw-support-area--dev { grid-area: dev; }
+    }
+    @media (min-width: 1280px) {
+      .sw-advanced .sw-legacy-stack {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-areas:
+          "pkg env cert"
+          "signers signers signers"
+          "send progress progress"
+          "pdf pdf dev";
+      }
     }
     @keyframes swSupportIn {
       from { opacity: 0; transform: translateY(-4px); }
       to { opacity: 1; transform: translateY(0); }
     }
-    .sw-advanced .sw-section { margin-top: var(--mg-space-sm); opacity: 0.9; }
+    .sw-advanced .sw-section {
+      margin-top: 0;
+      opacity: 0.95;
+      min-width: 0;
+      height: auto;
+      align-self: start;
+    }
+    .sw-advanced .sw-section > .card-inner {
+      height: auto;
+    }
+    .sw-advanced .sw-support-area--dev {
+      opacity: 0.72;
+    }
+    .sw-advanced .sw-support-area--dev .sw-dev summary {
+      font-size: var(--mg-type-caption);
+      font-weight: 600;
+      color: rgba(232, 238, 252, 0.42);
+    }
     .sw-legacy-stack[hidden] { display: none !important; }
     #swGuideCard { display: none !important; }
     #swMain .sw-legacy-header { display: none !important; }
@@ -1745,7 +1803,7 @@
         </div>
       </section>
 
-      <section class="card sw-section" id="swSecPackage">
+      <section class="card sw-section sw-support-area--pkg" id="swSecPackage">
         <div class="card-inner">
           <h3>1. Final Contract</h3>
           <p class="sub">Official contract version prepared for this project.</p>
@@ -1767,7 +1825,7 @@
         </div>
       </section>
 
-      <section class="card sw-section" id="swSecEnvelope">
+      <section class="card sw-section sw-support-area--env" id="swSecEnvelope">
         <div class="card-inner">
           <h3>2. Contract Send Status</h3>
           <p class="sub">Send and signature status for the selected final contract.</p>
@@ -1790,7 +1848,7 @@
         </div>
       </section>
 
-      <section class="card sw-section" id="swSecSigners">
+      <section class="card sw-section sw-support-area--signers" id="swSecSigners">
         <div class="card-inner">
           <h3>3. Signers</h3>
           <p class="sub">Draft roster only editable before send.</p>
@@ -1821,7 +1879,7 @@
         </div>
       </section>
 
-      <section class="card sw-section" id="swSecSend">
+      <section class="card sw-section sw-support-area--send" id="swSecSend">
         <div class="card-inner">
           <h3>4. Send</h3>
           <p class="sub">Create a secure signing link for the customer. The secure link will be generated for you to copy and send.</p>
@@ -1855,7 +1913,7 @@
         </div>
       </section>
 
-      <section class="card sw-section" id="swSecProgress">
+      <section class="card sw-section sw-support-area--progress" id="swSecProgress">
         <div class="card-inner">
           <h3>5. Signing Progress</h3>
           <p class="sub">Timeline by signer order.</p>
@@ -1864,7 +1922,7 @@
         </div>
       </section>
 
-      <section class="card sw-section" id="swSecCert">
+      <section class="card sw-section sw-support-area--cert" id="swSecCert">
         <div class="card-inner">
           <h3>6. Legal Certificate</h3>
           <p class="sub">Official signing certificate after the customer signs.</p>
@@ -1880,7 +1938,7 @@
         </div>
       </section>
 
-      <section class="card sw-section" id="swSecPdf">
+      <section class="card sw-section sw-support-area--pdf" id="swSecPdf">
         <div class="card-inner">
           <h3>7. Signed Contract</h3>
           <p class="sub">Final signed contract PDF for your records.</p>
@@ -1897,7 +1955,7 @@
         </div>
       </section>
 
-      <section class="card sw-section" id="swSecDev">
+      <section class="card sw-section sw-support-area--dev" id="swSecDev">
         <div class="card-inner">
           <details class="sw-dev">
             <summary>8. Internal IDs (support only)</summary>
