@@ -1249,6 +1249,8 @@
 
     // One active panel (presentation transitions): panel.hidden = i !== step
     setVisualPanels(step);
+    // CH-013A.48 — one active workspace: close Step 1 review surfaces when leaving Step 1
+    syncReviewSurfacesWithVisualStep(step);
 
     // Step 1
     setText("swVis1Customer", customer);
@@ -1538,11 +1540,56 @@
     });
   }
 
+  function scrollActiveWorkspaceIntoView() {
+    const step = state.visualStep;
+    const panel = document.querySelector(`[data-sw-panel="${step}"]`);
+    if (!panel || panel.hidden) return;
+    const reduceMotion = prefersReducedMotion();
+    window.requestAnimationFrame(() => {
+      panel.scrollIntoView({
+        behavior: reduceMotion ? "auto" : "smooth",
+        block: "start",
+      });
+    });
+  }
+
   function openContractReviewWorkspace(sectionNum = 1) {
     const adv = $("swAdvancedDetails");
     if (adv) adv.open = true;
     setContractReviewSection(sectionNum);
     scrollContractReviewWorkspaceIntoView();
+  }
+
+  // CH-013A.48 — presentation only: hide Step 1 review surfaces
+  let lastVisualStepForReviewSync = null;
+
+  function closeContractReviewWorkspace() {
+    const adv = $("swAdvancedDetails");
+    if (adv) adv.open = false;
+  }
+
+  function closeReviewContractModal() {
+    if ($("swModalBody")?.querySelector(".sw-modal-review")) closeModal();
+  }
+
+  function closeStep1ReviewSurfaces() {
+    closeContractReviewWorkspace();
+    closeReviewContractModal();
+  }
+
+  function syncReviewSurfacesWithVisualStep(step) {
+    const n = Number(step);
+    if (!Number.isFinite(n)) return;
+    const prev = lastVisualStepForReviewSync;
+    if (prev === n) return;
+    lastVisualStepForReviewSync = n;
+    // Close review workspace/modal whenever leaving for another workflow step.
+    if (n !== 1) closeStep1ReviewSurfaces();
+  }
+
+  function backToWorkflowFromReview() {
+    closeStep1ReviewSurfaces();
+    scrollActiveWorkspaceIntoView();
   }
 
   function bindContractReviewWorkspace() {
@@ -1574,6 +1621,9 @@
         const active = document.querySelector("#swCrwNav [aria-selected='true']");
         setContractReviewSection(active?.getAttribute("data-sw-crw-sec") || 1);
       }
+    });
+    $("swCrwBackBtn")?.addEventListener("click", () => {
+      backToWorkflowFromReview();
     });
     setContractReviewSection(1);
   }
@@ -2357,6 +2407,9 @@
             $("swVisContinueBtn")?.click();
           }),
           btn("View Contract", "btn ghost", closeModal),
+          btn("Back to Workflow", "btn ghost sw-modal-back", () => {
+            backToWorkflowFromReview();
+          }),
         ]
       );
     });
@@ -2472,19 +2525,6 @@
     proxyClick("swVisOpenPdfBtn", "swOpenPdfBtn");
     proxyClick("swVisCompleteViewPdfBtn", "swOpenPdfBtn");
     proxyClick("swVisCompleteCertBtn", "swViewCertBtn");
-
-    function scrollActiveWorkspaceIntoView() {
-      const step = state.visualStep;
-      const panel = document.querySelector(`[data-sw-panel="${step}"]`);
-      if (!panel || panel.hidden) return;
-      const reduceMotion = prefersReducedMotion();
-      window.requestAnimationFrame(() => {
-        panel.scrollIntoView({
-          behavior: reduceMotion ? "auto" : "smooth",
-          block: "start",
-        });
-      });
-    }
 
     $("swVisContinueBtn")?.addEventListener("click", () => {
       const g = resolveWorkspaceGuidance();

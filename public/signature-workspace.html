@@ -1541,6 +1541,19 @@
       gap: 4px;
       margin-bottom: var(--mg-space-md);
     }
+    .sw-crw__header-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--mg-space-sm) var(--mg-space-md);
+    }
+    .sw-crw__header-copy {
+      min-width: 0;
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
     .sw-crw__eyebrow {
       margin: 0;
       font-size: var(--mg-type-caption);
@@ -1561,6 +1574,42 @@
       max-width: 62ch;
       font-size: var(--mg-type-caption);
       color: rgba(232, 238, 252, 0.48);
+    }
+    /* CH-013A.48 — quiet exit from Contract Review Workspace */
+    .sw-crw__back {
+      flex: 0 0 auto;
+      align-self: flex-start;
+      min-height: 36px;
+      padding: 6px 12px;
+      font-size: var(--mg-type-caption);
+      font-weight: 650;
+      letter-spacing: 0.01em;
+      color: rgba(232, 238, 252, 0.58);
+      border-color: rgba(255, 255, 255, 0.1);
+      background: transparent;
+      box-shadow: none;
+    }
+    .sw-crw__back:hover {
+      color: rgba(232, 238, 252, 0.82);
+      border-color: rgba(255, 255, 255, 0.16);
+    }
+    .sw-modal__panel:has(.sw-modal-review) > #swModalActions .btn.sw-modal-back {
+      font-weight: 600;
+      color: rgba(232, 238, 252, 0.5);
+      border-color: transparent;
+      background: transparent;
+      box-shadow: none;
+      min-width: 0;
+    }
+    @media (max-width: 560px) {
+      .sw-crw__header-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .sw-crw__back {
+        width: 100%;
+        justify-content: center;
+      }
     }
 
     .sw-crw__nav {
@@ -2148,8 +2197,13 @@
         <summary>Support Information</summary>
         <div class="sw-crw__shell" id="swContractReviewWorkspace">
           <header class="sw-crw__header">
-            <p class="sw-crw__eyebrow">Contract record</p>
-            <h2 class="sw-crw__title">Contract Review Workspace</h2>
+            <div class="sw-crw__header-row">
+              <div class="sw-crw__header-copy">
+                <p class="sw-crw__eyebrow">Contract record</p>
+                <h2 class="sw-crw__title">Contract Review Workspace</h2>
+              </div>
+              <button type="button" class="btn ghost sw-crw__back" id="swCrwBackBtn">Back to Workflow</button>
+            </div>
             <p class="sw-crw__lead">Review one contract section at a time. Existing delivery and signing controls stay in place.</p>
           </header>
 
