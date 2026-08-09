@@ -1248,7 +1248,7 @@
       .sw-vis-step .sw-actions-secondary a.btn { flex: 1 1 auto; justify-content: center; text-align: center; }
       .sw-vis-side-panel { padding: var(--mg-space-sm) var(--mg-space-md); }
     }
-    /* CH-013A.44 — Support Information uses full shell width (not a narrow right rail) */
+    /* CH-013A.44/45 — Support Information uses full shell width (not a narrow right rail) */
     .sw-vis-workspace + .sw-advanced {
       width: 100%;
       max-width: none;
@@ -1368,8 +1368,9 @@
       margin: 0 0 var(--mg-space-sm);
       font-size: var(--mg-type-caption);
       color: rgba(232, 238, 252, 0.4);
+      max-width: 62ch;
     }
-    /* CH-013A.44 — responsive support grid; natural card heights; page-flow scroll */
+    /* CH-013A.45 — chronological 12-col Support record; visual order 1→8 only */
     .sw-advanced .sw-legacy-stack {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
@@ -1384,16 +1385,26 @@
       padding: var(--mg-space-md);
       animation: swSupportIn var(--mg-duration) var(--mg-ease);
     }
+    .sw-advanced .sw-support-area--pkg,
+    .sw-advanced .sw-support-area--env,
+    .sw-advanced .sw-support-area--signers,
+    .sw-advanced .sw-support-area--send,
+    .sw-advanced .sw-support-area--progress,
+    .sw-advanced .sw-support-area--cert,
+    .sw-advanced .sw-support-area--pdf,
+    .sw-advanced .sw-support-area--dev {
+      grid-area: auto;
+    }
     @media (min-width: 980px) {
       .sw-advanced .sw-legacy-stack {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        /* Chronological L→R / T→B — never place 6 before 5 */
         grid-template-areas:
-          "pkg env"
-          "signers signers"
-          "send cert"
-          "progress progress"
-          "pdf pdf"
-          "dev dev";
+          "pkg pkg pkg pkg pkg pkg env env env env env env"
+          "signers signers signers signers signers signers signers signers signers signers signers signers"
+          "send send send send progress progress progress progress progress progress progress progress"
+          "cert cert cert cert cert cert cert cert cert cert cert cert"
+          "pdf pdf pdf pdf pdf pdf pdf pdf pdf dev dev dev";
       }
       .sw-advanced .sw-support-area--pkg { grid-area: pkg; }
       .sw-advanced .sw-support-area--env { grid-area: env; }
@@ -1406,12 +1417,11 @@
     }
     @media (min-width: 1280px) {
       .sw-advanced .sw-legacy-stack {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(12, minmax(0, 1fr));
         grid-template-areas:
-          "pkg env cert"
-          "signers signers signers"
-          "send progress progress"
-          "pdf pdf dev";
+          "pkg pkg pkg env env env signers signers signers signers signers signers"
+          "send send send progress progress progress progress progress progress cert cert cert"
+          "pdf pdf pdf pdf pdf pdf pdf pdf pdf dev dev dev";
       }
     }
     @keyframes swSupportIn {
@@ -1426,7 +1436,52 @@
       align-self: start;
     }
     .sw-advanced .sw-section > .card-inner {
+      display: flex;
+      flex-direction: column;
+      gap: var(--mg-space-xs);
       height: auto;
+      min-height: 0;
+      padding: var(--mg-space-md);
+    }
+    .sw-advanced .sw-section h3 {
+      margin: 0;
+      font-size: var(--mg-type-section);
+      line-height: 1.25;
+    }
+    .sw-advanced .sw-section .sub {
+      margin: 0;
+    }
+    .sw-advanced .sw-section .sw-meta,
+    .sw-advanced .sw-section .sw-status-pills,
+    .sw-advanced .sw-section .sw-table-wrap,
+    .sw-advanced .sw-section .sw-timeline,
+    .sw-advanced .sw-section .sw-blockers,
+    .sw-advanced .sw-section .sw-link-ready,
+    .sw-advanced .sw-section .sw-empty,
+    .sw-advanced .sw-section > .card-inner > .sw-field {
+      margin-bottom: 0;
+    }
+    .sw-advanced .sw-section .sw-actions {
+      margin-top: var(--mg-space-sm);
+      padding-top: 0;
+    }
+    .sw-advanced .sw-section > .card-inner > .sw-actions:last-child {
+      margin-top: auto;
+      padding-top: var(--mg-space-sm);
+    }
+    .sw-advanced .sw-support-area--pkg .sw-meta,
+    .sw-advanced .sw-support-area--env .sw-meta,
+    .sw-advanced .sw-support-area--cert .sw-meta {
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 1280px) {
+      .sw-advanced .sw-support-area--pdf .sw-meta {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .sw-advanced .sw-support-area--signers .sw-table-wrap .table {
+        min-width: 0;
+        width: 100%;
+      }
     }
     .sw-advanced .sw-support-area--dev {
       opacity: 0.72;
@@ -1786,7 +1841,7 @@
 
       <details class="sw-advanced" id="swAdvancedDetails">
         <summary>Support Information</summary>
-        <p class="sw-vis-lead">Technical details for support and troubleshooting.</p>
+        <p class="sw-vis-lead">Contract record and delivery details for this project.</p>
         <div class="sw-legacy-stack" id="swLegacyStack">
 
       <section class="card sw-legacy-header">
