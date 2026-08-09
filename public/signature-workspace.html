@@ -626,6 +626,167 @@
       padding: 12px var(--mg-btn-pad-x-hero);
       border-radius: var(--mg-radius-control);
     }
+
+    /* CH-013A.47 — Review Contract modal: wide workspace (presentation only) */
+    .sw-modal__panel:has(.sw-modal-review) {
+      width: min(92vw, 1440px);
+      max-width: 100%;
+      max-height: min(88vh, 920px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: var(--mg-space-lg) var(--mg-space-lg) var(--mg-space-md);
+    }
+    .sw-modal__panel:has(.sw-modal-review) > h3 {
+      flex: 0 0 auto;
+      margin-bottom: 2px;
+      font-size: clamp(1.2rem, 1.6vw, 1.45rem);
+    }
+    .sw-modal__panel:has(.sw-modal-review) > #swModalBody {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-right: 2px;
+    }
+    .sw-modal__panel:has(.sw-modal-review) > #swModalActions {
+      flex: 0 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--mg-space-sm) var(--mg-space-md);
+      margin-top: var(--mg-space-md);
+      padding-top: var(--mg-space-md);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .sw-modal__panel:has(.sw-modal-review) > #swModalActions .btn.primary {
+      min-width: min(16rem, 100%);
+      box-shadow: 0 12px 32px rgba(52, 211, 153, 0.28);
+    }
+    .sw-modal__panel:has(.sw-modal-review) > #swModalActions .btn.ghost {
+      font-weight: 650;
+      color: rgba(232, 238, 252, 0.72);
+      border-color: rgba(255, 255, 255, 0.1);
+      background: transparent;
+      box-shadow: none;
+    }
+    .sw-modal-review .sw-modal-sub {
+      max-width: 62ch;
+      margin-bottom: var(--mg-space-md);
+    }
+    .sw-modal-review__layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.95fr) minmax(15.5rem, 0.9fr);
+      gap: var(--mg-space-md);
+      align-items: start;
+    }
+    .sw-modal-review__main {
+      display: flex;
+      flex-direction: column;
+      gap: var(--mg-space-sm);
+      min-width: 0;
+    }
+    .sw-modal-review__aside {
+      min-width: 0;
+    }
+    .sw-modal-review .sw-modal-card {
+      margin-bottom: 0;
+    }
+    .sw-modal-review .sw-modal-card--info .sw-meta {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: var(--mg-space-sm) var(--mg-space-md);
+    }
+    .sw-modal-review .sw-modal-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--mg-space-xs) var(--mg-space-md);
+    }
+    .sw-modal-card--continue {
+      height: 100%;
+      border-color: rgba(52, 211, 153, 0.18);
+      background:
+        linear-gradient(165deg, rgba(52, 211, 153, 0.08) 0%, rgba(255, 255, 255, 0.03) 55%);
+    }
+    .sw-modal-card--continue .sw-modal-card__title {
+      color: rgba(167, 243, 208, 0.78);
+    }
+    .sw-modal-card--continue .sw-modal-note {
+      color: rgba(232, 238, 252, 0.88);
+      font-weight: 550;
+    }
+    .sw-modal-review__support {
+      margin-top: var(--mg-space-md);
+      width: 100%;
+    }
+    .sw-modal-review__support[open] {
+      padding-bottom: var(--mg-space-sm);
+    }
+    .sw-modal-review__support pre {
+      margin: 0;
+      max-width: 100%;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: var(--mg-type-caption);
+      color: rgba(232, 238, 252, 0.55);
+    }
+    @media (max-width: 1279px) {
+      .sw-modal__panel:has(.sw-modal-review) {
+        width: min(94vw, 1180px);
+      }
+      .sw-modal-review__layout {
+        grid-template-columns: minmax(0, 1.7fr) minmax(14rem, 1fr);
+      }
+      .sw-modal-review .sw-modal-card--info .sw-meta {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .sw-modal-review .sw-modal-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 979px) {
+      .sw-modal__panel:has(.sw-modal-review) {
+        width: min(96vw, 100%);
+        max-height: min(92vh, 900px);
+        padding: var(--mg-space-md);
+      }
+      .sw-modal-review__layout {
+        grid-template-columns: 1fr;
+      }
+      .sw-modal-review .sw-modal-card--info .sw-meta {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .sw-modal-review .sw-modal-list {
+        grid-template-columns: 1fr;
+      }
+      .sw-modal__panel:has(.sw-modal-review) > #swModalActions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .sw-modal__panel:has(.sw-modal-review) > #swModalActions .btn.primary,
+      .sw-modal__panel:has(.sw-modal-review) > #swModalActions .btn.ghost {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+    @media (max-width: 560px) {
+      .sw-modal {
+        padding: var(--mg-space-sm);
+        align-items: flex-end;
+      }
+      .sw-modal__panel:has(.sw-modal-review) {
+        width: 100%;
+        max-height: min(94vh, 100%);
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+      }
+      .sw-modal-review .sw-modal-card--info .sw-meta {
+        grid-template-columns: 1fr;
+      }
+    }
+
     #swMain[hidden], #swError[hidden], #swLoading[hidden] { display: none !important; }
     .sw-loading {
       padding: var(--mg-space-md) 4px;

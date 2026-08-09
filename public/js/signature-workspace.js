@@ -2315,34 +2315,42 @@
 
       openModal(
         "Review Contract",
-        `<p class="sw-modal-sub">Review the final contract before sending it to your customer.</p>
-        <div class="sw-modal-card">
-          <div class="sw-modal-card__title">Project</div>
-          <div class="sw-meta">
-            <div class="sw-field"><div class="sw-field__k">Project</div><div class="sw-field__v">${escapeHtml(projectName)}</div></div>
-            <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v">${escapeHtml(customer)}</div></div>
-            <div class="sw-field"><div class="sw-field__k">Version</div><div class="sw-field__v">v${escapeHtml(pkg.version)}</div></div>
-            <div class="sw-field"><div class="sw-field__k">Created</div><div class="sw-field__v">${escapeHtml(fmtWhen(pkg.created_at))}</div></div>
+        `<div class="sw-modal-review">
+          <p class="sw-modal-sub">Review the final contract before sending it to your customer.</p>
+          <div class="sw-modal-review__layout">
+            <div class="sw-modal-review__main">
+              <div class="sw-modal-card sw-modal-card--info">
+                <div class="sw-modal-card__title">Project Information</div>
+                <div class="sw-meta">
+                  <div class="sw-field"><div class="sw-field__k">Project</div><div class="sw-field__v">${escapeHtml(projectName)}</div></div>
+                  <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v">${escapeHtml(customer)}</div></div>
+                  <div class="sw-field"><div class="sw-field__k">Version</div><div class="sw-field__v">v${escapeHtml(pkg.version)}</div></div>
+                  <div class="sw-field"><div class="sw-field__k">Created</div><div class="sw-field__v">${escapeHtml(fmtWhen(pkg.created_at))}</div></div>
+                </div>
+              </div>
+              <div class="sw-modal-card">
+                <div class="sw-modal-card__title">Included</div>
+                <ul class="sw-modal-list">${included}</ul>
+              </div>
+            </div>
+            <aside class="sw-modal-review__aside">
+              <div class="sw-modal-card sw-modal-card--continue">
+                <div class="sw-modal-card__title">Before you continue</div>
+                <p class="sw-modal-note">Once this contract is sent, this version becomes the official agreement for your customer. You won’t be able to edit its contents.</p>
+              </div>
+            </aside>
           </div>
-        </div>
-        <div class="sw-modal-card">
-          <div class="sw-modal-card__title">Included</div>
-          <ul class="sw-modal-list">${included}</ul>
-        </div>
-        <div class="sw-modal-card">
-          <div class="sw-modal-card__title">Before you continue</div>
-          <p class="sw-modal-note">Once this contract is sent, this version becomes the official agreement for your customer. You won’t be able to edit its contents.</p>
-        </div>
-        <details class="sw-modal-support">
-          <summary>Support Information</summary>
-          <p class="sw-modal-support-help">Technical details for support and troubleshooting.</p>
-          <div class="sw-meta" style="margin-bottom:10px;">
-            <div class="sw-field"><div class="sw-field__k">Status</div><div class="sw-field__v">${escapeHtml(pkg.status || "—")}</div></div>
-            <div class="sw-field"><div class="sw-field__k">Technical Verification</div><div class="sw-field__v sw-mono">${escapeHtml(pkg.content_hash || "—")}</div></div>
-          </div>
-          <p class="sub">Source readiness</p>
-          <pre>${escapeHtml(readiness)}</pre>
-        </details>`,
+          <details class="sw-modal-support sw-modal-review__support">
+            <summary>Support Information</summary>
+            <p class="sw-modal-support-help">Technical details for support and troubleshooting.</p>
+            <div class="sw-meta" style="margin-bottom:10px;">
+              <div class="sw-field"><div class="sw-field__k">Status</div><div class="sw-field__v">${escapeHtml(pkg.status || "—")}</div></div>
+              <div class="sw-field"><div class="sw-field__k">Technical Verification</div><div class="sw-field__v sw-mono">${escapeHtml(pkg.content_hash || "—")}</div></div>
+            </div>
+            <p class="sub">Source readiness</p>
+            <pre>${escapeHtml(readiness)}</pre>
+          </details>
+        </div>`,
         [
           btn("Continue to Send", "btn primary", () => {
             closeModal();
