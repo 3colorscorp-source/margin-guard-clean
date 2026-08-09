@@ -1319,8 +1319,8 @@
       color: #bbf7d0;
     }
 
-    /* Support Information — collapsed quiet; expanded = full-width workspace */
-    .sw-advanced {
+    /* CH-013A.46 — Contract Review Workspace: one navigator + one active panel */
+    .sw-advanced.sw-crw {
       margin-top: var(--mg-space-2xl);
       margin-bottom: var(--mg-space-md);
       border-radius: 0;
@@ -1331,8 +1331,8 @@
       max-width: none;
       opacity: 0.85;
     }
-    .sw-advanced[open] { opacity: 1; }
-    .sw-advanced > summary {
+    .sw-advanced.sw-crw[open] { opacity: 1; }
+    .sw-advanced.sw-crw > summary {
       cursor: pointer;
       list-style: none;
       padding: 4px 0;
@@ -1342,8 +1342,8 @@
       color: rgba(232, 238, 252, 0.22);
       transition: color var(--mg-duration-fast) var(--mg-ease);
     }
-    .sw-advanced > summary::-webkit-details-marker { display: none; }
-    .sw-advanced > summary::before {
+    .sw-advanced.sw-crw > summary::-webkit-details-marker { display: none; }
+    .sw-advanced.sw-crw > summary::before {
       content: "";
       display: inline-block;
       width: 0;
@@ -1354,142 +1354,286 @@
       border-bottom: 3px solid transparent;
       vertical-align: middle;
     }
-    .sw-advanced[open] > summary::before {
-      transform: rotate(90deg);
-    }
-    .sw-advanced > summary:hover { color: rgba(232, 238, 252, 0.48); }
-    .sw-advanced[open] > summary {
+    .sw-advanced.sw-crw[open] > summary::before { transform: rotate(90deg); }
+    .sw-advanced.sw-crw > summary:hover { color: rgba(232, 238, 252, 0.48); }
+    .sw-advanced.sw-crw[open] > summary {
       color: rgba(232, 238, 252, 0.48);
-      margin-bottom: var(--mg-space-xs);
+      margin-bottom: var(--mg-space-sm);
     }
-    .sw-advanced > .sw-vis-lead { display: none; }
-    .sw-advanced[open] > .sw-vis-lead {
-      display: block;
-      margin: 0 0 var(--mg-space-sm);
-      font-size: var(--mg-type-caption);
-      color: rgba(232, 238, 252, 0.4);
-      max-width: 62ch;
-    }
-    /* CH-013A.45 — chronological 12-col Support record; visual order 1→8 only */
-    .sw-advanced .sw-legacy-stack {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      gap: var(--mg-space-md);
-      align-items: start;
+
+    .sw-crw__shell {
       width: 100%;
       max-width: none;
-      overflow: visible;
-      border-radius: var(--mg-radius-control);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      background: rgba(0, 0, 0, 0.18);
-      padding: var(--mg-space-md);
+      border-radius: var(--mg-radius-hero);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012)),
+        rgba(0, 0, 0, 0.22);
+      padding: var(--mg-space-md) var(--mg-space-lg) var(--mg-space-lg);
+      scroll-margin-top: var(--sw-sticky-clearance);
       animation: swSupportIn var(--mg-duration) var(--mg-ease);
+      overflow: visible;
     }
-    .sw-advanced .sw-support-area--pkg,
-    .sw-advanced .sw-support-area--env,
-    .sw-advanced .sw-support-area--signers,
-    .sw-advanced .sw-support-area--send,
-    .sw-advanced .sw-support-area--progress,
-    .sw-advanced .sw-support-area--cert,
-    .sw-advanced .sw-support-area--pdf,
-    .sw-advanced .sw-support-area--dev {
-      grid-area: auto;
-    }
-    @media (min-width: 980px) {
-      .sw-advanced .sw-legacy-stack {
-        grid-template-columns: repeat(12, minmax(0, 1fr));
-        /* Chronological L→R / T→B — never place 6 before 5 */
-        grid-template-areas:
-          "pkg pkg pkg pkg pkg pkg env env env env env env"
-          "signers signers signers signers signers signers signers signers signers signers signers signers"
-          "send send send send progress progress progress progress progress progress progress progress"
-          "cert cert cert cert cert cert cert cert cert cert cert cert"
-          "pdf pdf pdf pdf pdf pdf pdf pdf pdf dev dev dev";
-      }
-      .sw-advanced .sw-support-area--pkg { grid-area: pkg; }
-      .sw-advanced .sw-support-area--env { grid-area: env; }
-      .sw-advanced .sw-support-area--signers { grid-area: signers; }
-      .sw-advanced .sw-support-area--send { grid-area: send; }
-      .sw-advanced .sw-support-area--progress { grid-area: progress; }
-      .sw-advanced .sw-support-area--cert { grid-area: cert; }
-      .sw-advanced .sw-support-area--pdf { grid-area: pdf; }
-      .sw-advanced .sw-support-area--dev { grid-area: dev; }
-    }
-    @media (min-width: 1280px) {
-      .sw-advanced .sw-legacy-stack {
-        grid-template-columns: repeat(12, minmax(0, 1fr));
-        grid-template-areas:
-          "pkg pkg pkg env env env signers signers signers signers signers signers"
-          "send send send progress progress progress progress progress progress cert cert cert"
-          "pdf pdf pdf pdf pdf pdf pdf pdf pdf dev dev dev";
-      }
-    }
-    @keyframes swSupportIn {
-      from { opacity: 0; transform: translateY(-4px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .sw-advanced .sw-section {
-      margin-top: 0;
-      opacity: 0.95;
-      min-width: 0;
-      height: auto;
-      align-self: start;
-    }
-    .sw-advanced .sw-section > .card-inner {
+    .sw-crw__header {
       display: flex;
       flex-direction: column;
-      gap: var(--mg-space-xs);
-      height: auto;
-      min-height: 0;
-      padding: var(--mg-space-md);
+      gap: 4px;
+      margin-bottom: var(--mg-space-md);
     }
-    .sw-advanced .sw-section h3 {
+    .sw-crw__eyebrow {
+      margin: 0;
+      font-size: var(--mg-type-caption);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.42);
+    }
+    .sw-crw__title {
       margin: 0;
       font-size: var(--mg-type-section);
-      line-height: 1.25;
+      font-weight: 750;
+      color: var(--text);
+      line-height: 1.2;
     }
-    .sw-advanced .sw-section .sub {
+    .sw-crw__lead {
       margin: 0;
+      max-width: 62ch;
+      font-size: var(--mg-type-caption);
+      color: rgba(232, 238, 252, 0.48);
     }
-    .sw-advanced .sw-section .sw-meta,
-    .sw-advanced .sw-section .sw-status-pills,
-    .sw-advanced .sw-section .sw-table-wrap,
-    .sw-advanced .sw-section .sw-timeline,
-    .sw-advanced .sw-section .sw-blockers,
-    .sw-advanced .sw-section .sw-link-ready,
-    .sw-advanced .sw-section .sw-empty,
-    .sw-advanced .sw-section > .card-inner > .sw-field {
-      margin-bottom: 0;
+
+    .sw-crw__nav {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: var(--mg-space-xs);
+      margin-bottom: var(--mg-space-md);
+      width: 100%;
     }
-    .sw-advanced .sw-section .sw-actions {
-      margin-top: var(--mg-space-sm);
+    .sw-crw__tab {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.22);
+      color: rgba(232, 238, 252, 0.62);
+      border-radius: var(--mg-radius-control);
+      padding: 10px 8px;
+      min-height: 52px;
+      cursor: pointer;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      transition:
+        border-color var(--mg-duration-fast) var(--mg-ease),
+        background var(--mg-duration-fast) var(--mg-ease),
+        color var(--mg-duration-fast) var(--mg-ease);
+    }
+    .sw-crw__tab:hover {
+      border-color: rgba(255, 255, 255, 0.18);
+      color: rgba(232, 238, 252, 0.88);
+    }
+    .sw-crw__tab:focus-visible {
+      outline: 2px solid var(--mg-status-current);
+      outline-offset: 2px;
+    }
+    .sw-crw__tab-num {
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: rgba(232, 238, 252, 0.4);
+    }
+    .sw-crw__tab-label {
+      font-size: var(--mg-type-caption);
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .sw-crw__tab[aria-selected="true"] {
+      border-color: rgba(96, 165, 250, 0.45);
+      background: rgba(59, 130, 246, 0.16);
+      color: #dbeafe;
+      box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.18);
+    }
+    .sw-crw__tab[aria-selected="true"] .sw-crw__tab-num { color: #93c5fd; }
+    .sw-crw__tab.is-ready:not([aria-selected="true"]) {
+      border-color: rgba(52, 211, 153, 0.22);
+    }
+    .sw-crw__tab.is-ready:not([aria-selected="true"]) .sw-crw__tab-num {
+      color: rgba(167, 243, 208, 0.7);
+    }
+    @media (max-width: 1100px) {
+      .sw-crw__nav { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+    @media (max-width: 640px) {
+      .sw-crw__nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .sw-crw__shell { padding: var(--mg-space-md); }
+    }
+
+    .sw-crw__stage {
+      position: relative;
+      width: 100%;
+      /* CH-013A.46A — soft floor only; content drives height (no empty 28rem box) */
+      min-height: 12rem;
+      border-radius: var(--mg-radius-control);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(0, 0, 0, 0.18);
+      padding: var(--mg-space-lg);
+      overflow: visible;
+    }
+    .sw-crw__stage > .sw-legacy-header { display: none !important; }
+    .sw-crw__panel {
+      display: none;
+      min-width: 0;
+      border: none;
+      background: transparent;
+      box-shadow: none;
+      margin: 0;
+      opacity: 1;
+    }
+    .sw-crw__panel.is-active {
+      display: block;
+      animation: swSupportIn var(--mg-duration) var(--mg-ease);
+    }
+    .sw-crw__panel > .card-inner {
+      display: flex;
+      flex-direction: column;
+      gap: var(--mg-space-md);
+      min-height: 0;
+      height: auto;
+      padding: 0;
+    }
+    .sw-crw__panel-status {
+      margin: 0;
+      font-size: var(--mg-type-caption);
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(147, 197, 253, 0.72);
+    }
+    .sw-crw__panel h3 {
+      margin: 0;
+      font-size: clamp(1.25rem, 1.1rem + 0.6vw, 1.65rem);
+      line-height: 1.2;
+    }
+    .sw-crw__panel .sub { margin: 0; max-width: 68ch; }
+    .sw-crw__panel .sw-meta {
+      margin: 0;
+      gap: var(--mg-space-sm);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .sw-crw__panel .sw-meta .sw-field {
+      padding: var(--mg-space-sm) var(--mg-space-md);
+      border-radius: var(--mg-radius-control);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+      gap: 6px;
+    }
+    .sw-crw__panel .sw-meta .sw-field__v {
+      font-size: var(--mg-type-body);
+      font-weight: 700;
+    }
+    .sw-crw__split {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--mg-space-lg);
+      align-items: start;
+    }
+    .sw-crw__split-main,
+    .sw-crw__split-side {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--mg-space-sm);
+    }
+    .sw-crw__split-side {
+      padding: var(--mg-space-md);
+      border-radius: var(--mg-radius-control);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(0, 0, 0, 0.2);
+    }
+    .sw-crw__split-side .sw-actions {
+      margin-top: 0;
       padding-top: 0;
+      border-top: none;
     }
-    .sw-advanced .sw-section > .card-inner > .sw-actions:last-child {
-      margin-top: auto;
-      padding-top: var(--mg-space-sm);
-    }
-    .sw-advanced .sw-support-area--pkg .sw-meta,
-    .sw-advanced .sw-support-area--env .sw-meta,
-    .sw-advanced .sw-support-area--cert .sw-meta {
-      grid-template-columns: 1fr;
-    }
-    @media (min-width: 1280px) {
-      .sw-advanced .sw-support-area--pdf .sw-meta {
+    @media (min-width: 980px) {
+      .sw-crw__panel .sw-meta {
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
-      .sw-advanced .sw-support-area--signers .sw-table-wrap .table {
+      .sw-crw__panel[data-sw-crw-panel="1"].is-active .sw-meta {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .sw-crw__split {
+        grid-template-columns: minmax(0, 1.35fr) minmax(240px, 0.85fr);
+      }
+      .sw-crw__panel[data-sw-crw-panel="4"].is-active .sw-crw__split,
+      .sw-crw__panel[data-sw-crw-panel="6"].is-active .sw-crw__split {
+        grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.9fr);
+      }
+      .sw-crw__panel[data-sw-crw-panel="2"].is-active .sw-crw__split,
+      .sw-crw__panel[data-sw-crw-panel="7"].is-active .sw-crw__split {
+        grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.8fr);
+      }
+      .sw-crw__panel .sw-timeline {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (min-width: 1280px) {
+      .sw-crw__panel[data-sw-crw-panel="1"].is-active .sw-meta {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+      }
+      .sw-crw__panel[data-sw-crw-panel="2"].is-active .sw-meta,
+      .sw-crw__panel[data-sw-crw-panel="6"].is-active .sw-meta,
+      .sw-crw__panel[data-sw-crw-panel="7"].is-active .sw-meta {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .sw-crw__panel[data-sw-crw-panel="3"].is-active .sw-table-wrap .table {
         min-width: 0;
         width: 100%;
       }
     }
-    .sw-advanced .sw-support-area--dev {
+    .sw-crw__panel .sw-actions {
+      margin-top: var(--mg-space-sm);
+      padding-top: var(--mg-space-md);
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .sw-crw__panel[data-sw-crw-panel="3"].is-active > .card-inner > .sw-actions:first-of-type {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: none;
+    }
+    .sw-crw__panel .sw-status-pills {
+      margin: 0;
+    }
+    .sw-crw__panel .sw-timeline {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--mg-space-sm);
+    }
+    .sw-crw__panel .sw-timeline > li {
+      padding: var(--mg-space-sm) var(--mg-space-md) var(--mg-space-sm) 22px;
+      border-radius: var(--mg-radius-control);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.025);
+      border-left-width: 2px;
+    }
+
+    .sw-crw__tech {
+      margin-top: var(--mg-space-md);
+      border: none;
+      background: transparent;
       opacity: 0.72;
     }
-    .sw-advanced .sw-support-area--dev .sw-dev summary {
+    .sw-crw__tech > .card-inner {
+      padding: var(--mg-space-sm) 0 0;
+    }
+    .sw-crw__tech .sw-dev summary {
       font-size: var(--mg-type-caption);
       font-weight: 600;
       color: rgba(232, 238, 252, 0.42);
+    }
+
+    @keyframes swSupportIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
     }
     .sw-legacy-stack[hidden] { display: none !important; }
     #swGuideCard { display: none !important; }
@@ -1839,10 +1983,47 @@
       </section>
       </div>
 
-      <details class="sw-advanced" id="swAdvancedDetails">
+      <details class="sw-advanced sw-crw" id="swAdvancedDetails">
         <summary>Support Information</summary>
-        <p class="sw-vis-lead">Contract record and delivery details for this project.</p>
-        <div class="sw-legacy-stack" id="swLegacyStack">
+        <div class="sw-crw__shell" id="swContractReviewWorkspace">
+          <header class="sw-crw__header">
+            <p class="sw-crw__eyebrow">Contract record</p>
+            <h2 class="sw-crw__title">Contract Review Workspace</h2>
+            <p class="sw-crw__lead">Review one contract section at a time. Existing delivery and signing controls stay in place.</p>
+          </header>
+
+          <div class="sw-crw__nav" id="swCrwNav" role="tablist" aria-label="Contract review sections">
+            <button type="button" class="sw-crw__tab" role="tab" id="swCrwTab1" data-sw-crw-sec="1" aria-controls="swSecPackage" aria-selected="true">
+              <span class="sw-crw__tab-num">1</span>
+              <span class="sw-crw__tab-label">Final Contract</span>
+            </button>
+            <button type="button" class="sw-crw__tab" role="tab" id="swCrwTab2" data-sw-crw-sec="2" aria-controls="swSecEnvelope" aria-selected="false" tabindex="-1">
+              <span class="sw-crw__tab-num">2</span>
+              <span class="sw-crw__tab-label">Send Status</span>
+            </button>
+            <button type="button" class="sw-crw__tab" role="tab" id="swCrwTab3" data-sw-crw-sec="3" aria-controls="swSecSigners" aria-selected="false" tabindex="-1">
+              <span class="sw-crw__tab-num">3</span>
+              <span class="sw-crw__tab-label">Signers</span>
+            </button>
+            <button type="button" class="sw-crw__tab" role="tab" id="swCrwTab4" data-sw-crw-sec="4" aria-controls="swSecSend" aria-selected="false" tabindex="-1">
+              <span class="sw-crw__tab-num">4</span>
+              <span class="sw-crw__tab-label">Send</span>
+            </button>
+            <button type="button" class="sw-crw__tab" role="tab" id="swCrwTab5" data-sw-crw-sec="5" aria-controls="swSecProgress" aria-selected="false" tabindex="-1">
+              <span class="sw-crw__tab-num">5</span>
+              <span class="sw-crw__tab-label">Signing Progress</span>
+            </button>
+            <button type="button" class="sw-crw__tab" role="tab" id="swCrwTab6" data-sw-crw-sec="6" aria-controls="swSecCert" aria-selected="false" tabindex="-1">
+              <span class="sw-crw__tab-num">6</span>
+              <span class="sw-crw__tab-label">Certificate</span>
+            </button>
+            <button type="button" class="sw-crw__tab" role="tab" id="swCrwTab7" data-sw-crw-sec="7" aria-controls="swSecPdf" aria-selected="false" tabindex="-1">
+              <span class="sw-crw__tab-num">7</span>
+              <span class="sw-crw__tab-label">Signed Contract</span>
+            </button>
+          </div>
+
+          <div class="sw-crw__stage" id="swLegacyStack">
 
       <section class="card sw-legacy-header">
         <div class="card-inner">
@@ -1858,9 +2039,10 @@
         </div>
       </section>
 
-      <section class="card sw-section sw-support-area--pkg" id="swSecPackage">
+      <section class="card sw-section sw-crw__panel is-active" id="swSecPackage" role="tabpanel" aria-labelledby="swCrwTab1" data-sw-crw-panel="1">
         <div class="card-inner">
-          <h3>1. Final Contract</h3>
+          <p class="sw-crw__panel-status">Section 1 · Final Contract</p>
+          <h3>Final Contract</h3>
           <p class="sub">Official contract version prepared for this project.</p>
           <div class="sw-meta">
             <div class="sw-field"><div class="sw-field__k">Version</div><div class="sw-field__v" id="swPkgVersion">—</div></div>
@@ -1880,32 +2062,40 @@
         </div>
       </section>
 
-      <section class="card sw-section sw-support-area--env" id="swSecEnvelope">
+      <section class="card sw-section sw-crw__panel" id="swSecEnvelope" role="tabpanel" aria-labelledby="swCrwTab2" data-sw-crw-panel="2" hidden>
         <div class="card-inner">
-          <h3>2. Contract Send Status</h3>
+          <p class="sw-crw__panel-status">Section 2 · Send Status</p>
+          <h3>Contract Send Status</h3>
           <p class="sub">Send and signature status for the selected final contract.</p>
-          <div class="sw-status-pills" id="swEnvPills" aria-label="Signing request status"></div>
-          <div class="sw-meta">
-            <div class="sw-field"><div class="sw-field__k">Status</div><div class="sw-field__v" id="swEnvStatus">—</div></div>
-            <div class="sw-field"><div class="sw-field__k">Completed</div><div class="sw-field__v" id="swEnvCompleted">—</div></div>
-            <div class="sw-field"><div class="sw-field__k">Sent</div><div class="sw-field__v" id="swEnvSent">—</div></div>
-          </div>
-          <div class="sw-actions">
-            <div class="sw-action-wrap">
-              <button type="button" class="btn primary" id="swCreateEnvelopeBtn">Create Signing Request</button>
-              <p class="sw-blocked-reason" id="swCreateEnvelopeReason" hidden></p>
+          <div class="sw-crw__split">
+            <div class="sw-crw__split-main">
+              <div class="sw-status-pills" id="swEnvPills" aria-label="Signing request status"></div>
+              <div class="sw-meta">
+                <div class="sw-field"><div class="sw-field__k">Status</div><div class="sw-field__v" id="swEnvStatus">—</div></div>
+                <div class="sw-field"><div class="sw-field__k">Completed</div><div class="sw-field__v" id="swEnvCompleted">—</div></div>
+                <div class="sw-field"><div class="sw-field__k">Sent</div><div class="sw-field__v" id="swEnvSent">—</div></div>
+              </div>
             </div>
-            <label class="field" style="margin:0;min-width:220px;">
-              <span class="sw-field__k">Open Signing Request</span>
-              <select id="swEnvelopeSelect"></select>
-            </label>
+            <div class="sw-crw__split-side">
+              <div class="sw-actions">
+                <div class="sw-action-wrap">
+                  <button type="button" class="btn primary" id="swCreateEnvelopeBtn">Create Signing Request</button>
+                  <p class="sw-blocked-reason" id="swCreateEnvelopeReason" hidden></p>
+                </div>
+                <label class="field" style="margin:0;min-width:220px;">
+                  <span class="sw-field__k">Open Signing Request</span>
+                  <select id="swEnvelopeSelect"></select>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section class="card sw-section sw-support-area--signers" id="swSecSigners">
+      <section class="card sw-section sw-crw__panel" id="swSecSigners" role="tabpanel" aria-labelledby="swCrwTab3" data-sw-crw-panel="3" hidden>
         <div class="card-inner">
-          <h3>3. Signers</h3>
+          <p class="sw-crw__panel-status">Section 3 · Signers</p>
+          <h3>Signers</h3>
           <p class="sub">Draft roster only editable before send.</p>
           <div class="sw-actions" style="margin-top:0;margin-bottom:10px;">
             <div class="sw-action-wrap">
@@ -1934,86 +2124,110 @@
         </div>
       </section>
 
-      <section class="card sw-section sw-support-area--send" id="swSecSend">
+      <section class="card sw-section sw-crw__panel" id="swSecSend" role="tabpanel" aria-labelledby="swCrwTab4" data-sw-crw-panel="4" hidden>
         <div class="card-inner">
-          <h3>4. Send</h3>
-          <p class="sub">Create a secure signing link for the customer. The secure link will be generated for you to copy and send.</p>
-          <div class="sw-field" style="margin-bottom:8px;">
-            <div class="sw-field__k">Ready</div>
-            <div class="sw-field__v" id="swSendReady">—</div>
-          </div>
-          <ul class="sw-blockers" id="swSendBlockers"></ul>
-          <div class="sw-link-ready" id="swLinkReady" hidden>
-            <div class="sw-field" style="margin-bottom:8px;">
-              <div class="sw-field__k">Status</div>
-              <div class="sw-field__v" id="swLinkReadyStatus">Secure Link Ready</div>
+          <p class="sw-crw__panel-status">Section 4 · Send</p>
+          <h3>Send</h3>
+          <div class="sw-crw__split">
+            <div class="sw-crw__split-main">
+              <p class="sub">Create a secure signing link for the customer. The secure link will be generated for you to copy and send.</p>
+              <div class="sw-field" style="margin-bottom:8px;">
+                <div class="sw-field__k">Ready</div>
+                <div class="sw-field__v" id="swSendReady">—</div>
+              </div>
+              <ul class="sw-blockers" id="swSendBlockers"></ul>
+              <div class="sw-link-ready" id="swLinkReady" hidden>
+                <div class="sw-field" style="margin-bottom:8px;">
+                  <div class="sw-field__k">Status</div>
+                  <div class="sw-field__v" id="swLinkReadyStatus">Secure Link Ready</div>
+                </div>
+                <p class="sub" id="swLinkReadyCopy">The signing request is prepared. No email has been sent yet.</p>
+                <div class="sw-actions">
+                  <button type="button" class="btn primary" id="swCopyLinkBtn">Copy Signing Link</button>
+                  <button type="button" class="btn" id="swEmailLinkBtn" hidden disabled>Email Signing Link</button>
+                  <button type="button" class="btn" id="swEmailRetryBtn" hidden disabled>Retry Sending Email</button>
+                </div>
+                <div class="sw-field" id="swEmailStatusWrap" hidden style="margin-top:8px;">
+                  <div class="sw-field__k">Email</div>
+                  <div class="sw-field__v" id="swEmailStatus">—</div>
+                </div>
+              </div>
             </div>
-            <p class="sub" id="swLinkReadyCopy">The signing request is prepared. No email has been sent yet.</p>
-            <div class="sw-actions">
-              <button type="button" class="btn primary" id="swCopyLinkBtn">Copy Signing Link</button>
-              <button type="button" class="btn" id="swEmailLinkBtn" hidden disabled>Email Signing Link</button>
-              <button type="button" class="btn" id="swEmailRetryBtn" hidden disabled>Retry Sending Email</button>
-            </div>
-            <div class="sw-field" id="swEmailStatusWrap" hidden style="margin-top:8px;">
-              <div class="sw-field__k">Email</div>
-              <div class="sw-field__v" id="swEmailStatus">—</div>
-            </div>
-          </div>
-          <div class="sw-actions">
-            <div class="sw-action-wrap">
-              <button type="button" class="btn primary" id="swSendBtn">Send For Signature</button>
-              <p class="sw-blocked-reason" id="swSendReason" hidden></p>
+            <div class="sw-crw__split-side">
+              <div class="sw-actions">
+                <div class="sw-action-wrap">
+                  <button type="button" class="btn primary" id="swSendBtn">Send For Signature</button>
+                  <p class="sw-blocked-reason" id="swSendReason" hidden></p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section class="card sw-section sw-support-area--progress" id="swSecProgress">
+      <section class="card sw-section sw-crw__panel" id="swSecProgress" role="tabpanel" aria-labelledby="swCrwTab5" data-sw-crw-panel="5" hidden>
         <div class="card-inner">
-          <h3>5. Signing Progress</h3>
+          <p class="sw-crw__panel-status">Section 5 · Signing Progress</p>
+          <h3>Signing Progress</h3>
           <p class="sub">Timeline by signer order.</p>
           <ol class="sw-timeline" id="swTimeline"></ol>
           <div class="sw-empty" id="swTimelineEmpty" hidden>No customers added yet.</div>
         </div>
       </section>
 
-      <section class="card sw-section sw-support-area--cert" id="swSecCert">
+      <section class="card sw-section sw-crw__panel" id="swSecCert" role="tabpanel" aria-labelledby="swCrwTab6" data-sw-crw-panel="6" hidden>
         <div class="card-inner">
-          <h3>6. Legal Certificate</h3>
-          <p class="sub">Official signing certificate after the customer signs.</p>
-          <div class="sw-meta">
-            <div class="sw-field"><div class="sw-field__k">Certificate Number</div><div class="sw-field__v" id="swCertNumber">—</div></div>
-            <div class="sw-field"><div class="sw-field__k">Issued</div><div class="sw-field__v" id="swCertIssued">—</div></div>
-            <div class="sw-field"><div class="sw-field__k">Technical Verification</div><div class="sw-field__v sw-mono" id="swCertHash">—</div></div>
-          </div>
-          <div class="sw-actions">
-            <button type="button" class="btn primary" id="swIssueCertBtn">Create Certificate</button>
-            <button type="button" class="btn ghost" id="swViewCertBtn">View Certificate</button>
+          <p class="sw-crw__panel-status">Section 6 · Legal Certificate</p>
+          <h3>Legal Certificate</h3>
+          <div class="sw-crw__split">
+            <div class="sw-crw__split-main">
+              <p class="sub">Official signing certificate after the customer signs.</p>
+              <div class="sw-meta">
+                <div class="sw-field"><div class="sw-field__k">Certificate Number</div><div class="sw-field__v" id="swCertNumber">—</div></div>
+                <div class="sw-field"><div class="sw-field__k">Issued</div><div class="sw-field__v" id="swCertIssued">—</div></div>
+                <div class="sw-field"><div class="sw-field__k">Technical Verification</div><div class="sw-field__v sw-mono" id="swCertHash">—</div></div>
+              </div>
+            </div>
+            <div class="sw-crw__split-side">
+              <div class="sw-actions">
+                <button type="button" class="btn primary" id="swIssueCertBtn">Create Certificate</button>
+                <button type="button" class="btn ghost" id="swViewCertBtn">View Certificate</button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section class="card sw-section sw-support-area--pdf" id="swSecPdf">
+      <section class="card sw-section sw-crw__panel" id="swSecPdf" role="tabpanel" aria-labelledby="swCrwTab7" data-sw-crw-panel="7" hidden>
         <div class="card-inner">
-          <h3>7. Signed Contract</h3>
-          <p class="sub">Final signed contract PDF for your records.</p>
-          <div class="sw-meta">
-            <div class="sw-field"><div class="sw-field__k">Signed Contract</div><div class="sw-field__v" id="swPdfStatus">—</div></div>
-            <div class="sw-field"><div class="sw-field__k">Technical Verification</div><div class="sw-field__v sw-mono" id="swPdfHash">—</div></div>
-            <div class="sw-field"><div class="sw-field__k">Size</div><div class="sw-field__v" id="swPdfSize">—</div></div>
-          </div>
-          <div class="sw-actions">
-            <button type="button" class="btn primary" id="swGeneratePdfBtn">Create Signed PDF</button>
-            <button type="button" class="btn ghost" id="swOpenPdfBtn">View Signed Contract</button>
-            <a class="btn ghost" id="swDownloadPdfBtn" href="#" target="_blank" rel="noopener">Download PDF</a>
+          <p class="sw-crw__panel-status">Section 7 · Signed Contract</p>
+          <h3>Signed Contract</h3>
+          <div class="sw-crw__split">
+            <div class="sw-crw__split-main">
+              <p class="sub">Final signed contract PDF for your records.</p>
+              <div class="sw-meta">
+                <div class="sw-field"><div class="sw-field__k">Signed Contract</div><div class="sw-field__v" id="swPdfStatus">—</div></div>
+                <div class="sw-field"><div class="sw-field__k">Technical Verification</div><div class="sw-field__v sw-mono" id="swPdfHash">—</div></div>
+                <div class="sw-field"><div class="sw-field__k">Size</div><div class="sw-field__v" id="swPdfSize">—</div></div>
+              </div>
+            </div>
+            <div class="sw-crw__split-side">
+              <div class="sw-actions">
+                <button type="button" class="btn primary" id="swGeneratePdfBtn">Create Signed PDF</button>
+                <button type="button" class="btn ghost" id="swOpenPdfBtn">View Signed Contract</button>
+                <a class="btn ghost" id="swDownloadPdfBtn" href="#" target="_blank" rel="noopener">Download PDF</a>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section class="card sw-section sw-support-area--dev" id="swSecDev">
+          </div>
+
+      <section class="card sw-section sw-crw__tech" id="swSecDev">
         <div class="card-inner">
           <details class="sw-dev">
-            <summary>8. Internal IDs (support only)</summary>
+            <summary>Internal IDs (support only)</summary>
             <pre id="swDevIds">—</pre>
           </details>
         </div>

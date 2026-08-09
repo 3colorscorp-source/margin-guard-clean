@@ -1462,7 +1462,120 @@
     renderDev();
     renderGuidance();
     renderVisualWorkflow();
+    syncContractReviewNavHints();
     showMain();
+  }
+
+  // CH-013A.46 — Contract Review Workspace (presentation only; proxies existing sections)
+  const CRW_PANEL_IDS = [
+    "swSecPackage",
+    "swSecEnvelope",
+    "swSecSigners",
+    "swSecSend",
+    "swSecProgress",
+    "swSecCert",
+    "swSecPdf",
+  ];
+
+  function crwTextReady(id) {
+    const t = String($(id)?.textContent || "").trim();
+    if (!t || t === "—") return false;
+    const low = t.toLowerCase();
+    return low !== "none" && low !== "not created";
+  }
+
+  function syncContractReviewNavHints() {
+    const checks = [
+      () => crwTextReady("swPkgStatus") || crwTextReady("swPkgVersion"),
+      () => crwTextReady("swEnvStatus"),
+      () => ($("swSignersBody")?.children?.length || 0) > 0,
+      () => {
+        const ready = String($("swSendReady")?.textContent || "").toLowerCase();
+        const linkReady = $("swLinkReady");
+        return ready.includes("ready") || !!(linkReady && !linkReady.hidden);
+      },
+      () => ($("swTimeline")?.children?.length || 0) > 0,
+      () => crwTextReady("swCertNumber"),
+      () => {
+        const st = String($("swPdfStatus")?.textContent || "").toLowerCase();
+        return st === "ready" || st.includes("signed pdf");
+      },
+    ];
+    document.querySelectorAll("#swCrwNav [data-sw-crw-sec]").forEach((tab) => {
+      const n = Number(tab.getAttribute("data-sw-crw-sec"));
+      const ready = typeof checks[n - 1] === "function" ? !!checks[n - 1]() : false;
+      tab.classList.toggle("is-ready", ready);
+    });
+  }
+
+  function setContractReviewSection(sectionNum) {
+    const n = Math.max(1, Math.min(7, Number(sectionNum) || 1));
+    CRW_PANEL_IDS.forEach((id, idx) => {
+      const panel = $(id);
+      if (!panel) return;
+      const active = idx + 1 === n;
+      panel.classList.toggle("is-active", active);
+      panel.hidden = !active;
+      panel.setAttribute("aria-hidden", active ? "false" : "true");
+    });
+    document.querySelectorAll("#swCrwNav [data-sw-crw-sec]").forEach((tab) => {
+      const active = Number(tab.getAttribute("data-sw-crw-sec")) === n;
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+      tab.tabIndex = active ? 0 : -1;
+    });
+    syncContractReviewNavHints();
+  }
+
+  function scrollContractReviewWorkspaceIntoView() {
+    const shell = $("swContractReviewWorkspace") || $("swAdvancedDetails");
+    if (!shell) return;
+    const reduceMotion = prefersReducedMotion();
+    window.requestAnimationFrame(() => {
+      shell.scrollIntoView({
+        behavior: reduceMotion ? "auto" : "smooth",
+        block: "start",
+      });
+    });
+  }
+
+  function openContractReviewWorkspace(sectionNum = 1) {
+    const adv = $("swAdvancedDetails");
+    if (adv) adv.open = true;
+    setContractReviewSection(sectionNum);
+    scrollContractReviewWorkspaceIntoView();
+  }
+
+  function bindContractReviewWorkspace() {
+    const nav = $("swCrwNav");
+    if (!nav) return;
+    nav.querySelectorAll("[data-sw-crw-sec]").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        openContractReviewWorkspace(tab.getAttribute("data-sw-crw-sec"));
+      });
+    });
+    nav.addEventListener("keydown", (ev) => {
+      const tabs = Array.from(nav.querySelectorAll("[data-sw-crw-sec]"));
+      if (!tabs.length) return;
+      const current = tabs.findIndex((t) => t.getAttribute("aria-selected") === "true");
+      let next = current;
+      if (ev.key === "ArrowRight" || ev.key === "ArrowDown") next = (current + 1) % tabs.length;
+      else if (ev.key === "ArrowLeft" || ev.key === "ArrowUp") next = (current - 1 + tabs.length) % tabs.length;
+      else if (ev.key === "Home") next = 0;
+      else if (ev.key === "End") next = tabs.length - 1;
+      else return;
+      ev.preventDefault();
+      const target = tabs[next];
+      target?.focus();
+      openContractReviewWorkspace(target.getAttribute("data-sw-crw-sec"));
+    });
+    $("swAdvancedDetails")?.addEventListener("toggle", () => {
+      const adv = $("swAdvancedDetails");
+      if (adv?.open) {
+        const active = document.querySelector("#swCrwNav [aria-selected='true']");
+        setContractReviewSection(active?.getAttribute("data-sw-crw-sec") || 1);
+      }
+    });
+    setContractReviewSection(1);
   }
 
   async function loadPackages(projectId) {
@@ -2381,8 +2494,8 @@
         renderVisualWorkflow();
         scrollActiveWorkspaceIntoView();
       } else {
-        const adv = $("swAdvancedDetails");
-        if (adv) adv.open = true;
+        // Presentation-only: open one-panel Contract Review Workspace.
+        openContractReviewWorkspace(1);
       }
     });
 
@@ -2397,6 +2510,8 @@
         scrollActiveWorkspaceIntoView();
       });
     });
+
+    bindContractReviewWorkspace();
   }
 
   async function init() {
