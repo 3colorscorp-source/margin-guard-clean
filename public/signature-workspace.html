@@ -38,9 +38,22 @@
       -webkit-overflow-scrolling: touch;
     }
 
+    /* CH-013A.43 — use available shell width on desktop */
+    :root {
+      --sw-sticky-clearance: calc(56px + 9.75rem);
+    }
+    @media (max-width: 980px) {
+      :root { --sw-sticky-clearance: calc(12px + 15.5rem); }
+    }
+    @media (max-width: 560px) {
+      :root { --sw-sticky-clearance: calc(12px + 19rem); }
+    }
+
     /* CH-013A.38A — sticky workflow, premium transitions, guided workspace */
     .sw-page {
-      max-width: var(--mg-shell-workflow);
+      /* Wide shell on desktop; workflow token retained for MGDS family alignment */
+      --sw-shell-floor: var(--mg-shell-workflow);
+      max-width: min(var(--mg-shell-wide), 100%);
       margin: 0 auto;
       padding-bottom: var(--mg-space-2xl);
       padding-left: var(--mg-space-md);
@@ -942,6 +955,7 @@
     }
 
     /* CH-013A.39 — active workspace + completion polish (rail/header untouched) */
+    /* CH-013A.43 — responsive 2-column workspace + sticky clearance */
     .sw-vis-workspace {
       position: relative;
       margin-bottom: var(--mg-space-lg);
@@ -950,7 +964,7 @@
     .sw-vis-step {
       margin-top: 0;
       margin-bottom: 0;
-      scroll-margin-top: 150px;
+      scroll-margin-top: var(--sw-sticky-clearance);
       border-radius: var(--mg-radius-hero);
       border: none;
       background:
@@ -985,6 +999,68 @@
     .sw-vis-step[hidden] { display: none !important; animation: none; }
     .sw-vis-step .card-inner {
       padding: var(--mg-space-xl) var(--mg-card-pad-hero) var(--mg-space-lg);
+    }
+    .sw-vis-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--mg-space-lg);
+      align-items: start;
+    }
+    .sw-vis-col-main,
+    .sw-vis-col-side {
+      min-width: 0;
+    }
+    .sw-vis-col-side {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--mg-space-md);
+    }
+    .sw-vis-side-panel {
+      padding: var(--mg-space-md);
+      border-radius: var(--mg-radius-control);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(0, 0, 0, 0.16);
+    }
+    .sw-vis-step[data-sw-panel="6"] .sw-vis-side-panel {
+      border-color: rgba(52, 211, 153, 0.16);
+      background: rgba(0, 0, 0, 0.2);
+    }
+    .sw-vis-col-side .sw-vis-why {
+      margin: 0;
+    }
+    .sw-vis-col-side .sw-actions-secondary {
+      width: 100%;
+      flex-direction: column;
+      align-items: stretch;
+      padding-top: 0;
+    }
+    .sw-vis-col-side .sw-actions-secondary .btn,
+    .sw-vis-col-side .sw-actions-secondary a.btn {
+      width: 100%;
+      justify-content: flex-start;
+    }
+    @media (min-width: 980px) {
+      .sw-vis-layout {
+        grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+        gap: var(--mg-space-xl);
+      }
+      .sw-vis-step .sw-vis-lead,
+      .sw-vis-step .sw-vis-why {
+        max-width: 52ch;
+      }
+      .sw-vis-col-main .sw-vis-meta {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .sw-vis-step[data-sw-span="wide"] .sw-vis-layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+    @media (min-width: 1280px) {
+      .sw-vis-layout {
+        grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.6fr);
+        column-gap: calc(var(--mg-space-xl) + var(--mg-space-sm));
+      }
     }
     .sw-vis-step-id {
       margin: 0 0 var(--mg-space-xs);
@@ -1151,20 +1227,33 @@
       color: rgba(209, 250, 229, 0.72);
     }
     .sw-vis-step[data-sw-panel="6"] .sw-actions-secondary {
-      padding: var(--mg-space-sm);
-      border-radius: var(--mg-radius-control);
-      background: rgba(0, 0, 0, 0.18);
-      border: 1px solid rgba(52, 211, 153, 0.14);
+      padding: 0;
+      border-radius: 0;
+      background: transparent;
+      border: none;
+    }
+    .sw-vis-step[data-sw-panel="6"] .sw-vis-col-main .sw-actions {
+      margin-top: var(--mg-space-md);
     }
     @media (max-width: 640px) {
       .sw-vis-meta { grid-template-columns: 1fr; }
-      .sw-vis-step { scroll-margin-top: 180px; }
+      .sw-vis-step { scroll-margin-top: var(--sw-sticky-clearance); }
       .sw-vis-step .card-inner { padding: var(--mg-card-pad) var(--mg-space-md) var(--mg-space-md); }
       .sw-vis-step .btn.primary,
       .sw-vis-step a.btn.primary { width: 100%; justify-content: center; text-align: center; }
       .sw-vis-step .sw-actions-secondary { width: 100%; }
+      .sw-vis-col-side .sw-actions-secondary .btn,
+      .sw-vis-col-side .sw-actions-secondary a.btn,
       .sw-vis-step .sw-actions-secondary .btn,
       .sw-vis-step .sw-actions-secondary a.btn { flex: 1 1 auto; justify-content: center; text-align: center; }
+      .sw-vis-side-panel { padding: var(--mg-space-sm) var(--mg-space-md); }
+    }
+    /* Support stays quiet below workspace; on wide screens sit under secondary feel */
+    @media (min-width: 980px) {
+      .sw-vis-workspace + .sw-advanced {
+        max-width: min(360px, 100%);
+        margin-left: auto;
+      }
     }
     @media (prefers-reduced-motion: reduce) {
       .sw-vis-step.sw-vis-step--enter,
@@ -1485,116 +1574,152 @@
 
       <div class="sw-vis-workspace" id="swVisWorkspace">
       <section class="sw-vis-step" id="swVisStep1" data-sw-panel="1" hidden>
-        <div class="card-inner">
-          <p class="sw-vis-step-id">Step 1</p>
-          <h3>Review Contract</h3>
-          <p class="sw-vis-lead">Confirm the final contract looks right before your customer sees it.</p>
-          <div class="sw-vis-meta">
-            <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v" id="swVis1Customer">—</div></div>
-            <div class="sw-field"><div class="sw-field__k">Contract Version</div><div class="sw-field__v" id="swVis1Version">—</div></div>
-            <div class="sw-field"><div class="sw-field__k">Created</div><div class="sw-field__v" id="swVis1Created">—</div></div>
-          </div>
-          <div class="sw-actions">
-            <button type="button" class="btn primary" id="swVisContinueBtn">Review Contract</button>
-            <div class="sw-actions-secondary">
-              <button type="button" class="btn ghost" id="swVisViewContractBtn">View Contract</button>
+        <div class="card-inner sw-vis-layout">
+          <div class="sw-vis-col-main">
+            <p class="sw-vis-step-id">Step 1</p>
+            <h3>Review Contract</h3>
+            <p class="sw-vis-lead">Confirm the final contract looks right before your customer sees it.</p>
+            <div class="sw-vis-meta">
+              <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v" id="swVis1Customer">—</div></div>
+              <div class="sw-field"><div class="sw-field__k">Contract Version</div><div class="sw-field__v" id="swVis1Version">—</div></div>
+              <div class="sw-field"><div class="sw-field__k">Created</div><div class="sw-field__v" id="swVis1Created">—</div></div>
+            </div>
+            <div class="sw-actions">
+              <button type="button" class="btn primary" id="swVisContinueBtn">Review Contract</button>
             </div>
           </div>
-          <p class="sw-vis-why">After you continue, you will send the signing link to your customer.</p>
+          <div class="sw-vis-col-side">
+            <div class="sw-vis-side-panel">
+              <div class="sw-actions-secondary">
+                <button type="button" class="btn ghost" id="swVisViewContractBtn">View Contract</button>
+              </div>
+              <p class="sw-vis-why">After you continue, you will send the signing link to your customer.</p>
+            </div>
+          </div>
         </div>
       </section>
 
       <section class="sw-vis-step" id="swVisStep2" data-sw-panel="2" hidden>
-        <div class="card-inner">
-          <p class="sw-vis-step-id">Step 2</p>
-          <h3>Send to Customer</h3>
-          <p class="sw-vis-lead" id="swVis2Lead">Send a secure signing link so your customer can review and sign.</p>
-          <div class="sw-vis-meta">
-            <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v" id="swVis2Customer">—</div></div>
-            <div class="sw-field"><div class="sw-field__k">Email</div><div class="sw-field__v" id="swVis2Email">—</div></div>
-            <div class="sw-field"><div class="sw-field__k">Link Expires</div><div class="sw-field__v" id="swVis2Expires">—</div></div>
-          </div>
-          <div class="sw-actions">
-            <button type="button" class="btn primary" id="swVisSendContractBtn">Send Contract</button>
-            <div class="sw-actions-secondary">
-              <button type="button" class="btn ghost" id="swVisCopyLinkBtn">Copy Signing Link</button>
-              <button type="button" class="btn" id="swVisRetryEmailBtn" hidden disabled>Retry Sending Email</button>
+        <div class="card-inner sw-vis-layout">
+          <div class="sw-vis-col-main">
+            <p class="sw-vis-step-id">Step 2</p>
+            <h3>Send to Customer</h3>
+            <p class="sw-vis-lead" id="swVis2Lead">Send a secure signing link so your customer can review and sign.</p>
+            <div class="sw-vis-meta">
+              <div class="sw-field"><div class="sw-field__k">Customer</div><div class="sw-field__v" id="swVis2Customer">—</div></div>
+              <div class="sw-field"><div class="sw-field__k">Email</div><div class="sw-field__v" id="swVis2Email">—</div></div>
+              <div class="sw-field"><div class="sw-field__k">Link Expires</div><div class="sw-field__v" id="swVis2Expires">—</div></div>
+            </div>
+            <div class="sw-actions">
+              <button type="button" class="btn primary" id="swVisSendContractBtn">Send Contract</button>
             </div>
           </div>
-          <div class="sw-field" id="swVisEmailStatusWrap" hidden style="margin-top:12px;">
-            <div class="sw-field__k">Next</div>
-            <div class="sw-field__v" id="swVisEmailStatus">—</div>
+          <div class="sw-vis-col-side">
+            <div class="sw-vis-side-panel">
+              <div class="sw-actions-secondary">
+                <button type="button" class="btn ghost" id="swVisCopyLinkBtn">Copy Signing Link</button>
+                <button type="button" class="btn" id="swVisRetryEmailBtn" hidden disabled>Retry Sending Email</button>
+              </div>
+              <div class="sw-field" id="swVisEmailStatusWrap" hidden>
+                <div class="sw-field__k">Next</div>
+                <div class="sw-field__v" id="swVisEmailStatus">—</div>
+              </div>
+              <p class="sw-vis-why" id="swVis2Why">After sending, wait for your customer to open and sign.</p>
+              <p class="sw-vis-lead" id="swVis2Helper" hidden>Next: wait for your customer to open and sign the contract.</p>
+            </div>
           </div>
-          <p class="sw-vis-why" id="swVis2Why">After sending, wait for your customer to open and sign.</p>
-          <p class="sw-vis-lead" id="swVis2Helper" hidden style="margin-top:10px;">Next: wait for your customer to open and sign the contract.</p>
         </div>
       </section>
 
       <section class="sw-vis-step" id="swVisStep3" data-sw-panel="3" hidden>
-        <div class="card-inner">
-          <p class="sw-vis-step-id">Step 3</p>
-          <h3>Waiting for Signature</h3>
-          <p class="sw-vis-lead" id="swVis3Lead">Your customer has the contract. Wait while they review and sign.</p>
-          <ul class="sw-vis-progress" id="swVisSigProgress">
-            <li id="swVisProgEmail"><span class="sw-vis-mark" aria-hidden="true">○</span><span>Email sent</span></li>
-            <li id="swVisProgOpened"><span class="sw-vis-mark" aria-hidden="true">○</span><span>Contract opened</span></li>
-            <li id="swVisProgSigned"><span class="sw-vis-mark" aria-hidden="true">○</span><span>Customer signed</span></li>
-          </ul>
-          <p class="sw-vis-why" id="swVis3Why">No action needed from you yet. After they sign, create the legal certificate.</p>
+        <div class="card-inner sw-vis-layout">
+          <div class="sw-vis-col-main">
+            <p class="sw-vis-step-id">Step 3</p>
+            <h3>Waiting for Signature</h3>
+            <p class="sw-vis-lead" id="swVis3Lead">Your customer has the contract. Wait while they review and sign.</p>
+            <ul class="sw-vis-progress" id="swVisSigProgress">
+              <li id="swVisProgEmail"><span class="sw-vis-mark" aria-hidden="true">○</span><span>Email sent</span></li>
+              <li id="swVisProgOpened"><span class="sw-vis-mark" aria-hidden="true">○</span><span>Contract opened</span></li>
+              <li id="swVisProgSigned"><span class="sw-vis-mark" aria-hidden="true">○</span><span>Customer signed</span></li>
+            </ul>
+          </div>
+          <div class="sw-vis-col-side">
+            <div class="sw-vis-side-panel">
+              <p class="sw-vis-why" id="swVis3Why">No action needed from you yet. After they sign, create the legal certificate.</p>
+            </div>
+          </div>
         </div>
       </section>
 
       <section class="sw-vis-step" id="swVisStep4" data-sw-panel="4" hidden>
-        <div class="card-inner">
-          <p class="sw-vis-step-id">Step 4</p>
-          <h3 id="swVis4Title">Legal Certificate</h3>
-          <p class="sw-vis-lead" id="swVis4Lead">Your customer signed. Create the legal certificate that finalizes this contract.</p>
-          <div class="sw-actions">
-            <button type="button" class="btn primary" id="swVisIssueCertBtn">Create Certificate</button>
-            <div class="sw-actions-secondary">
-              <button type="button" class="btn ghost" id="swVisViewCertBtn">View Certificate</button>
-              <button type="button" class="btn ghost" id="swVisDownloadCertBtn">Download Certificate</button>
+        <div class="card-inner sw-vis-layout">
+          <div class="sw-vis-col-main">
+            <p class="sw-vis-step-id">Step 4</p>
+            <h3 id="swVis4Title">Legal Certificate</h3>
+            <p class="sw-vis-lead" id="swVis4Lead">Your customer signed. Create the legal certificate that finalizes this contract.</p>
+            <div class="sw-actions">
+              <button type="button" class="btn primary" id="swVisIssueCertBtn">Create Certificate</button>
             </div>
           </div>
-          <p class="sw-vis-why" id="swVis4Why">Next, you will create the signed contract PDF for your records.</p>
+          <div class="sw-vis-col-side">
+            <div class="sw-vis-side-panel">
+              <div class="sw-actions-secondary">
+                <button type="button" class="btn ghost" id="swVisViewCertBtn">View Certificate</button>
+                <button type="button" class="btn ghost" id="swVisDownloadCertBtn">Download Certificate</button>
+              </div>
+              <p class="sw-vis-why" id="swVis4Why">Next, you will create the signed contract PDF for your records.</p>
+            </div>
+          </div>
         </div>
       </section>
 
       <section class="sw-vis-step" id="swVisStep5" data-sw-panel="5" hidden>
-        <div class="card-inner">
-          <p class="sw-vis-step-id">Step 5</p>
-          <h3 id="swVis5Title">Signed Documents</h3>
-          <p class="sw-vis-lead" id="swVis5Lead">Create the signed contract PDF for your records and your customer.</p>
-          <div class="sw-actions">
-            <button type="button" class="btn primary" id="swVisGeneratePdfBtn">Create Signed PDF</button>
-            <div class="sw-actions-secondary">
-              <button type="button" class="btn ghost" id="swVisOpenPdfBtn">View Signed Contract</button>
-              <a class="btn ghost" id="swVisDownloadPdfBtn" href="#" target="_blank" rel="noopener">Download PDF</a>
+        <div class="card-inner sw-vis-layout">
+          <div class="sw-vis-col-main">
+            <p class="sw-vis-step-id">Step 5</p>
+            <h3 id="swVis5Title">Signed Documents</h3>
+            <p class="sw-vis-lead" id="swVis5Lead">Create the signed contract PDF for your records and your customer.</p>
+            <div class="sw-actions">
+              <button type="button" class="btn primary" id="swVisGeneratePdfBtn">Create Signed PDF</button>
             </div>
           </div>
-          <p class="sw-vis-why" id="swVis5Why">After this, your contract workflow is complete.</p>
+          <div class="sw-vis-col-side">
+            <div class="sw-vis-side-panel">
+              <div class="sw-actions-secondary">
+                <button type="button" class="btn ghost" id="swVisOpenPdfBtn">View Signed Contract</button>
+                <a class="btn ghost" id="swVisDownloadPdfBtn" href="#" target="_blank" rel="noopener">Download PDF</a>
+              </div>
+              <p class="sw-vis-why" id="swVis5Why">After this, your contract workflow is complete.</p>
+            </div>
+          </div>
         </div>
       </section>
 
       <section class="sw-vis-step" id="swVisStep6" data-sw-panel="6" hidden>
-        <div class="card-inner">
-          <div class="sw-vis-success" aria-hidden="true">✓</div>
-          <p class="sw-vis-step-id">Complete</p>
-          <h3>Project Completed</h3>
-          <p class="sw-vis-lead">Everything is finished.</p>
-          <p class="sw-vis-why">Your customer signed the contract and your final documents are ready.</p>
-          <ul class="sw-vis-complete-list">
-            <li>✓ Customer signature received</li>
-            <li>✓ Legal certificate created</li>
-            <li>✓ Signed contract created</li>
-          </ul>
-          <div class="sw-actions">
-            <a class="btn primary" id="swVisReturnProjectBtn" href="/contract-hub">Return to Project</a>
-            <div class="sw-actions-secondary">
-              <p class="sw-vis-docs-label">Final documents</p>
-              <button type="button" class="btn ghost" id="swVisCompleteViewPdfBtn">View Signed Contract</button>
-              <a class="btn ghost" id="swVisCompletePdfBtn" href="#" target="_blank" rel="noopener">Download Signed Contract</a>
-              <button type="button" class="btn ghost" id="swVisCompleteCertBtn">Download Certificate</button>
+        <div class="card-inner sw-vis-layout">
+          <div class="sw-vis-col-main">
+            <div class="sw-vis-success" aria-hidden="true">✓</div>
+            <p class="sw-vis-step-id">Complete</p>
+            <h3>Project Completed</h3>
+            <p class="sw-vis-lead">Everything is finished.</p>
+            <p class="sw-vis-why">Your customer signed the contract and your final documents are ready.</p>
+            <ul class="sw-vis-complete-list">
+              <li>✓ Customer signature received</li>
+              <li>✓ Legal certificate created</li>
+              <li>✓ Signed contract created</li>
+            </ul>
+            <div class="sw-actions">
+              <a class="btn primary" id="swVisReturnProjectBtn" href="/contract-hub">Return to Project</a>
+            </div>
+          </div>
+          <div class="sw-vis-col-side">
+            <div class="sw-vis-side-panel">
+              <div class="sw-actions-secondary">
+                <p class="sw-vis-docs-label">Final documents</p>
+                <button type="button" class="btn ghost" id="swVisCompleteViewPdfBtn">View Signed Contract</button>
+                <a class="btn ghost" id="swVisCompletePdfBtn" href="#" target="_blank" rel="noopener">Download Signed Contract</a>
+                <button type="button" class="btn ghost" id="swVisCompleteCertBtn">Download Certificate</button>
+              </div>
             </div>
           </div>
         </div>
