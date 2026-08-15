@@ -15991,6 +15991,54 @@ window.renderSupervisor = renderSupervisor;
     return best;
   }
 
+  function hubDrawerResolveBillingGroup(row) {
+    const pool = Array.isArray(hubMergedRowsForProjectBilling) ? hubMergedRowsForProjectBilling : [];
+    return hubCollectProjectBillingGroup(row, pool);
+  }
+
+  /**
+   * Parent/root project-folder drawers use unique Project Billing group ledger.
+   * Child invoices and standalone/manual invoices stay invoice-scoped.
+   */
+  function hubDrawerRowUsesProjectFolderLedger(row) {
+    if (!row) return false;
+    if (hubRowIsBillingChildInvoice(row)) return false;
+    const group = hubDrawerResolveBillingGroup(row);
+    if (!group || group.currentIsChild) return false;
+    if (!hubBillingGroupShouldShow(group)) return false;
+    return Array.isArray(group.members) && group.members.length >= 2;
+  }
+
+  function hubBillingExcludedContractInvoiceIds(members) {
+    return new Set(
+      (members || [])
+        .filter((r) => hubRowIsMaterialCostInvoice(r) || hubBillingInvoiceKind(r) === "change")
+        .map((r) => hubRowBillingInvoiceUuid(r))
+        .filter(Boolean)
+    );
+  }
+
+  function sortHubLedgerPaymentsByPaidAtDesc(payments) {
+    return (Array.isArray(payments) ? payments.slice() : []).sort((a, b) => {
+      const da = Date.parse(String(a?.paid_at || a?.created_at || "")) || 0;
+      const db = Date.parse(String(b?.paid_at || b?.created_at || "")) || 0;
+      return db - da;
+    });
+  }
+
+  async function fetchHubDrawerFolderLedgerPack(row) {
+    const group = hubDrawerResolveBillingGroup(row);
+    const payments = sortHubLedgerPaymentsByPaidAtDesc(
+      await fetchUniqueLedgerPaymentsForBillingGroup(group.members)
+    );
+    const excluded = hubBillingExcludedContractInvoiceIds(group.members);
+    const netSum = hubBillingContractPaidFromPayments(payments, excluded);
+    const fromGroup = hubBillingContractTotalForGroup(group);
+    const contractTotal =
+      fromGroup > 0 ? fromGroup : Math.max(finiteNumber(row?.projectContractTotal, 0), 0);
+    return { payments, netSum, contractTotal, folder: true };
+  }
+
   function renderHubProjectBillingTotalsHtml(contractTotal, paidToDate, remaining, settings, loading) {
     const paidLabel = loading ? "…" : money(paidToDate, settings.currency);
     const remLabel = loading ? "…" : money(remaining, settings.currency);
@@ -16353,9 +16401,14 @@ window.renderSupervisor = renderSupervisor;
     hubDrawerRenderLastReminder(row);
 
     const invoiceAmount = finiteNumber(row.amount, 0);
-    const contractTotal = Math.max(finiteNumber(row.projectContractTotal, 0), 0);
+    const useFolderLedger = hubDrawerRowUsesProjectFolderLedger(row);
+    let contractTotal = Math.max(finiteNumber(row.projectContractTotal, 0), 0);
+    if (useFolderLedger) {
+      const fromGroup = hubBillingContractTotalForGroup(hubDrawerResolveBillingGroup(row));
+      if (fromGroup > 0) contractTotal = fromGroup;
+    }
     const localPaid = finiteNumber(row.depositApplied, 0) + finiteNumber(row.receivedApplied, 0);
-    const ledgerApiOk = hubRowCanRecordLedgerPayment(row);
+    const ledgerApiOk = hubRowCanRecordLedgerPayment(row) || useFolderLedger;
     const paidLabel = ledgerApiOk ? "…" : money(localPaid, settings.currency);
     const remainingLabel = ledgerApiOk ? "…" : money(Math.max(0, contractTotal - localPaid), settings.currency);
 
@@ -16371,13 +16424,21 @@ window.renderSupervisor = renderSupervisor;
           <div class="title">Paid to date</div>
           <div class="big" id="hubDrawerLedgerPaidBig">${escapeHtml(paidLabel)}</div>
           <div class="small" id="hubDrawerLedgerPaidSub">${
-            ledgerApiOk ? "Ledger (loading…)" : "Local invoice payments + deposits"
+            ledgerApiOk
+              ? useFolderLedger
+                ? "Project billing ledger (loading…)"
+                : "Ledger (loading…)"
+              : "Local invoice payments + deposits"
           }</div>
         </div>
         <div class="supervisor-summary-card hub-drawer-stat-primary">
           <div class="title">Remaining balance</div>
           <div class="big" id="hubDrawerLedgerRemainingBig">${escapeHtml(remainingLabel)}</div>
-          <div class="small">Project contract total minus payments recorded</div>
+          <div class="small" id="hubDrawerLedgerRemainingSub">${
+            useFolderLedger
+              ? "Project contract total minus unique billing-group ledger"
+              : "Project contract total minus payments recorded"
+          }</div>
         </div>
         <div class="supervisor-summary-card hub-drawer-stat-secondary">
           <div class="title">Invoice amount</div>
@@ -16396,6 +16457,12 @@ window.renderSupervisor = renderSupervisor;
         ledgerWrap.style.display = "";
         hubDrawerSetLedgerEmptyState(false);
         ledgerBody.innerHTML = `<tr><td colspan="5">Loading ledger…</td></tr>`;
+        const histTitle = ledgerWrap.querySelector(".sub");
+        if (histTitle) {
+          histTitle.textContent = useFolderLedger
+            ? "Project ledger payment history"
+            : "Ledger payment history";
+        }
       } else {
         ledgerWrap.style.display = "none";
         hubDrawerSetLedgerEmptyState(false);
@@ -16406,7 +16473,9 @@ window.renderSupervisor = renderSupervisor;
     if (ledgerApiOk && drawerEl) {
       const rowKey = drawerEl.dataset.hubDrawerRowKey || "";
       void (async () => {
-        const pack = await fetchHubDrawerLedgerPayments(row);
+        const pack = useFolderLedger
+          ? await fetchHubDrawerFolderLedgerPack(row)
+          : await fetchHubDrawerLedgerPayments(row);
         const d = $("hubDrawer");
         if (!d || d.dataset.hubDrawerRowKey !== rowKey) return;
         const paidEl = $("hubDrawerLedgerPaidBig");
@@ -16435,12 +16504,17 @@ window.renderSupervisor = renderSupervisor;
           updateHubDrawerPaymentDerivedUi(localPaid, contractTotal, settings, "", row);
           return;
         }
-        paidEl.textContent = money(pack.netSum, settings.currency);
-        remEl.textContent = money(Math.max(0, contractTotal - pack.netSum), settings.currency);
+        const paidForCards = pack.netSum;
+        paidEl.textContent = money(paidForCards, settings.currency);
+        remEl.textContent = money(Math.max(0, contractTotal - paidForCards), settings.currency);
         const subPaid = $("hubDrawerLedgerPaidSub");
-        if (subPaid) subPaid.textContent = "Ledger net (tenant_project_payments)";
+        if (subPaid) {
+          subPaid.textContent = useFolderLedger
+            ? "Unique project billing ledger (excludes Material Cost and Change Order)"
+            : "Ledger net (tenant_project_payments)";
+        }
         const lastLine = formatHubDrawerLastLedgerPaymentLine(pack.payments, settings);
-        updateHubDrawerPaymentDerivedUi(pack.netSum, contractTotal, settings, lastLine, row);
+        updateHubDrawerPaymentDerivedUi(paidForCards, contractTotal, settings, lastLine, row);
       })();
     }
 
