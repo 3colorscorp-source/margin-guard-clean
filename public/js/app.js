@@ -16013,63 +16013,108 @@ window.renderSupervisor = renderSupervisor;
     `;
   }
 
+  function hubRowIsArchivedOrVoidBilling(row) {
+    if (hubRowIsArchivedInvoice(row) || hubRowIsVoidInvoice(row)) return true;
+    const st = String(row?.status || row?.hubInvoiceRawStatus || "")
+      .trim()
+      .toLowerCase();
+    return st === "archived" || st === "void";
+  }
+
+  function hubBillingRowLooksAccepted(row) {
+    const st = String(row?.status || "").trim().toLowerCase();
+    if (st === "accepted") return true;
+    return hubServerQuoteIsAccepted(row);
+  }
+
+  function hubBillingActiveContractRows(activeMembers) {
+    const contracts = (activeMembers || []).filter((r) => hubBillingInvoiceKind(r) === "contract");
+    const accepted = contracts.filter((r) => hubBillingRowLooksAccepted(r));
+    if (accepted.length) return accepted;
+    return contracts;
+  }
+
+  function renderHubProjectBillingInvoiceTable(rows, currentRow, settings) {
+    const currentId = hubRowBillingInvoiceUuid(currentRow) || String(currentRow?.projectId || currentRow?.id || "");
+    const body = (rows || [])
+      .map((r) => {
+        const rid = hubRowBillingInvoiceUuid(r) || String(r.projectId || r.id || "");
+        const isCurrent = Boolean(rid && currentId && String(rid) === String(currentId));
+        const kind = hubBillingInvoiceKind(r);
+        const openAttr = rid ? ` data-hub-billing-open="${escapeHtml(rid)}"` : "";
+        const openBtn = isCurrent
+          ? `<span class="hub-drawer-k">Viewing</span>`
+          : `<button type="button" class="btn ghost hub-billing-open-btn"${openAttr}>Open</button>`;
+        let extraKind = "";
+        if (kind === "material" || kind === "change") {
+          extraKind = `<span class="hub-billing-kind">${escapeHtml(kind === "material" ? "Extra billing" : "Invoice record")}</span>`;
+        } else if (hubRowIsArchivedOrVoidBilling(r)) {
+          extraKind = `<span class="hub-billing-kind">Archived</span>`;
+        }
+        return `<tr class="${isCurrent ? "hub-billing-row-current" : ""}"${openAttr} style="cursor:pointer">
+          <td>${extraKind}<strong>${escapeHtml(hubBillingDisplayLabel(r))}</strong></td>
+          <td>${money(finiteNumber(r.amount, 0), settings.currency)}</td>
+          <td>${money(hubRowInvoiceScopedBalance(r), settings.currency)}</td>
+          <td><span class="hub-status ${escapeHtml(String(r.status || ""))}">${escapeHtml(String(r.status || "—"))}</span></td>
+          <td>${escapeHtml(r.dueDate || "—")}</td>
+          <td>${escapeHtml(hubBillingRowSentLabel(r))}</td>
+          <td>${openBtn}</td>
+        </tr>`;
+      })
+      .join("");
+    return `
+      <div class="supervisor-table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Invoice</th>
+              <th>Amount</th>
+              <th>Balance</th>
+              <th>Status</th>
+              <th>Due</th>
+              <th>Sent</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
   function renderHubProjectBillingGroupTables(members, currentRow, settings) {
+    const list = Array.isArray(members) ? members : [];
+    const archivedRows = list.filter((r) => hubRowIsArchivedOrVoidBilling(r));
+    const activeRows = list.filter((r) => !hubRowIsArchivedOrVoidBilling(r));
     const groups = [
       { kinds: ["contract"], label: hubBillingKindGroupLabel("contract") },
       { kinds: ["start", "progress", "final", "remaining", "other"], label: hubBillingKindGroupLabel("progress") },
       { kinds: ["change"], label: hubBillingKindGroupLabel("change") },
       { kinds: ["material"], label: hubBillingKindGroupLabel("material") }
     ];
-    const currentId = hubRowBillingInvoiceUuid(currentRow) || String(currentRow?.projectId || currentRow?.id || "");
-    return groups
+    const mainHtml = groups
       .map((g) => {
-        const rows = (members || []).filter((r) => g.kinds.includes(hubBillingInvoiceKind(r)));
+        let rows = activeRows.filter((r) => g.kinds.includes(hubBillingInvoiceKind(r)));
+        if (g.kinds.length === 1 && g.kinds[0] === "contract") {
+          rows = hubBillingActiveContractRows(activeRows);
+        }
         if (!rows.length) return "";
-        const body = rows
-          .map((r) => {
-            const rid = hubRowBillingInvoiceUuid(r) || String(r.projectId || r.id || "");
-            const isCurrent = Boolean(rid && currentId && String(rid) === String(currentId));
-            const kind = hubBillingInvoiceKind(r);
-            const openAttr = rid ? ` data-hub-billing-open="${escapeHtml(rid)}"` : "";
-            const openBtn = isCurrent
-              ? `<span class="hub-drawer-k">Viewing</span>`
-              : `<button type="button" class="btn ghost hub-billing-open-btn"${openAttr}>Open</button>`;
-            const extraKind =
-              kind === "material" || kind === "change"
-                ? `<span class="hub-billing-kind">${escapeHtml(kind === "material" ? "Extra billing" : "Invoice record")}</span>`
-                : "";
-            return `<tr class="${isCurrent ? "hub-billing-row-current" : ""}"${openAttr} style="cursor:pointer">
-              <td>${extraKind}<strong>${escapeHtml(hubBillingDisplayLabel(r))}</strong></td>
-              <td>${money(finiteNumber(r.amount, 0), settings.currency)}</td>
-              <td>${money(hubRowInvoiceScopedBalance(r), settings.currency)}</td>
-              <td><span class="hub-status ${escapeHtml(String(r.status || ""))}">${escapeHtml(String(r.status || "—"))}</span></td>
-              <td>${escapeHtml(r.dueDate || "—")}</td>
-              <td>${escapeHtml(hubBillingRowSentLabel(r))}</td>
-              <td>${openBtn}</td>
-            </tr>`;
-          })
-          .join("");
         return `
           <div class="hub-drawer-billing-group-label">${escapeHtml(g.label)}</div>
-          <div class="supervisor-table-wrap">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Invoice</th>
-                  <th>Amount</th>
-                  <th>Balance</th>
-                  <th>Status</th>
-                  <th>Due</th>
-                  <th>Sent</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>${body}</tbody>
-            </table>
-          </div>
+          ${renderHubProjectBillingInvoiceTable(rows, currentRow, settings)}
         `;
       })
       .join("");
+    let archivedHtml = "";
+    if (archivedRows.length) {
+      archivedHtml = `
+        <details class="hub-drawer-billing-archived">
+          <summary>Archived invoices (${archivedRows.length})</summary>
+          ${renderHubProjectBillingInvoiceTable(archivedRows, currentRow, settings)}
+        </details>
+      `;
+    }
+    return `${mainHtml}${archivedHtml}`;
   }
 
   function bindHubProjectBillingOpenHandlers(wrap, members, handlers) {

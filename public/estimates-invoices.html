@@ -315,6 +315,27 @@
       color: rgba(148, 163, 184, 0.95);
       margin-bottom: 2px;
     }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-archived {
+      margin-top: 12px;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-archived > summary {
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.95);
+      list-style: none;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-archived > summary::-webkit-details-marker {
+      display: none;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-archived > summary::before {
+      content: "▸ ";
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-archived[open] > summary::before {
+      content: "▾ ";
+    }
     @media (max-width: 720px) {
       body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-totals {
         grid-template-columns: 1fr;
