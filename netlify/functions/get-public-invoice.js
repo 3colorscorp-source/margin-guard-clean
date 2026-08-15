@@ -33,6 +33,47 @@ const INVOICE_SELECT = [
 const INVOICE_INTERNAL_SELECT = "id,tenant_id,quote_id,project_id";
 
 const INVOICE_NUMERIC_KEYS = new Set(["amount", "paid_amount", "balance_due"]);
+const SOURCE_INVOICE_RE =
+  /\[source_invoice:([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\]/i;
+const PROJECT_PAYMENT_CHILD_LABELS = new Set([
+  "start payment",
+  "progress payment",
+  "final payment",
+  "remaining balance",
+  "change order"
+]);
+
+function invoiceLabelLower(row) {
+  return String(row?.invoice_label || "").trim().toLowerCase();
+}
+
+function invoiceNotesText(row) {
+  return String(row?.notes || "");
+}
+
+function isMaterialCostInvoiceRow(row) {
+  const label = invoiceLabelLower(row);
+  const notes = invoiceNotesText(row);
+  return label === "material cost" || notes.includes("[invoice_type:unexpected_material_cost]");
+}
+
+function isChangeOrderInvoiceRow(row) {
+  return invoiceLabelLower(row) === "change order";
+}
+
+function isProjectPaymentChildRow(row) {
+  if (!row || isMaterialCostInvoiceRow(row)) return false;
+  if (PROJECT_PAYMENT_CHILD_LABELS.has(invoiceLabelLower(row))) return true;
+  return SOURCE_INVOICE_RE.test(invoiceNotesText(row));
+}
+
+function isPublicParentFolderCandidate(row) {
+  if (!row) return false;
+  if (isMaterialCostInvoiceRow(row)) return false;
+  if (isChangeOrderInvoiceRow(row)) return false;
+  if (isProjectPaymentChildRow(row)) return false;
+  return true;
+}
 
 /** Normalize tenant branding logo for public clients (absolute http(s), never scheme-relative). */
 function normalizePublicLogoUrl(value) {
@@ -121,28 +162,33 @@ exports.handler = async (event) => {
     const contractTotal =
       quoteTotal > 0 ? quoteTotal : projectTotal > 0 ? projectTotal : Math.max(invoiceAmount, 0);
 
-    const labelLower = String(rawRow.invoice_label || "").trim().toLowerCase();
-    const notes = String(rawRow.notes || "");
-    const isMaterialCost =
-      labelLower === "material cost" || notes.includes("[invoice_type:unexpected_material_cost]");
-    const isProjectPaymentInvoice =
-      !isMaterialCost &&
-      (["start payment", "progress payment", "final payment", "remaining balance", "change order"].includes(
-        labelLower
-      ) ||
-        /\[source_invoice:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\]/i.test(
-          notes
-        ));
+    const isProjectPaymentInvoice = isProjectPaymentChildRow(rawRow);
 
-    // Project payment invoices: ledger paid must be project-scoped (never invent from invoice amount).
-    const paidToDate = isProjectPaymentInvoice
-      ? await loadPaidToDate({
-          tenantId,
-          projectId,
-          quoteId,
-          preferProject: true
-        })
-      : await loadPaidToDate({ tenantId, invoiceId, projectId, quoteId, preferProject: false });
+    // Project payment children stay on the existing invoice/project-payment path.
+    // Parent/root accepted project invoices with a billing group use unique folder paid.
+    let paidToDate;
+    if (isProjectPaymentInvoice) {
+      paidToDate = await loadPaidToDate({
+        tenantId,
+        projectId,
+        quoteId,
+        preferProject: true
+      });
+    } else if (isPublicParentFolderCandidate(rawRow)) {
+      const members = await loadPublicBillingGroupMembers({
+        tenantId,
+        current: rawRow,
+        projectId,
+        quoteId
+      });
+      if (Array.isArray(members) && members.length >= 2) {
+        paidToDate = await loadUniqueFolderPaidToDate(tenantId, members);
+      } else {
+        paidToDate = await loadPaidToDate({ tenantId, invoiceId, projectId, quoteId, preferProject: false });
+      }
+    } else {
+      paidToDate = await loadPaidToDate({ tenantId, invoiceId, projectId, quoteId, preferProject: false });
+    }
     const remainingBalance = Math.max(contractTotal - paidToDate, 0);
 
     if (tenantId) {
@@ -201,6 +247,116 @@ exports.handler = async (event) => {
     return json(500, { error: err.message || "Server error" });
   }
 };
+
+async function loadInvoicesByField(tenantId, field, value) {
+  const tid = String(tenantId || "").trim();
+  const val = String(value || "").trim();
+  if (!tid || !val || (field !== "project_id" && field !== "quote_id")) return [];
+  try {
+    const rows = await supabaseRequest(
+      `invoices?tenant_id=eq.${encodeURIComponent(tid)}&${field}=eq.${encodeURIComponent(val)}&select=id,invoice_label,notes,project_id,quote_id&limit=100`,
+      { method: "GET" }
+    );
+    return Array.isArray(rows) ? rows : [];
+  } catch (_err) {
+    return [];
+  }
+}
+
+async function loadPublicBillingGroupMembers({ tenantId, current, projectId, quoteId }) {
+  const members = [];
+  const seen = new Set();
+  const add = (row) => {
+    if (!row) return;
+    const id = String(row.id || "").trim().toLowerCase();
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    members.push(row);
+  };
+  add(current);
+  const batches = await Promise.all([
+    projectId ? loadInvoicesByField(tenantId, "project_id", projectId) : Promise.resolve([]),
+    quoteId ? loadInvoicesByField(tenantId, "quote_id", quoteId) : Promise.resolve([])
+  ]);
+  batches.forEach((rows) => (rows || []).forEach(add));
+  return members;
+}
+
+async function loadPaymentsForFilter(tenantId, filterKey, filterValue) {
+  const tid = String(tenantId || "").trim();
+  const val = String(filterValue || "").trim();
+  if (!tid || !val) return [];
+  if (!["invoice_id", "project_id", "quote_id"].includes(filterKey)) return [];
+  try {
+    const params = new URLSearchParams();
+    params.set("tenant_id", `eq.${tid}`);
+    params.set(filterKey, `eq.${val}`);
+    params.set("select", "id,amount,invoice_id,paid_at,created_at");
+    params.set("limit", "500");
+    const rows = await supabaseRequest(`tenant_project_payments?${params.toString()}`, { method: "GET" });
+    return Array.isArray(rows) ? rows : [];
+  } catch (_err) {
+    return [];
+  }
+}
+
+function uniquePaymentsById(batches) {
+  const seen = new Set();
+  const out = [];
+  (batches || []).forEach((pays) => {
+    (pays || []).forEach((p) => {
+      const id = p?.id != null ? String(p.id).trim() : "";
+      const key = id || [p?.invoice_id, p?.paid_at, p?.amount, p?.created_at].join("|");
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push(p);
+    });
+  });
+  return out;
+}
+
+function excludedContractInvoiceIds(members) {
+  const out = new Set();
+  (members || []).forEach((row) => {
+    if (!isMaterialCostInvoiceRow(row) && !isChangeOrderInvoiceRow(row)) return;
+    const id = String(row?.id || "").trim().toLowerCase();
+    if (id) out.add(id);
+  });
+  return out;
+}
+
+function sumContractPaidFromPayments(payments, excludedInvoiceIds) {
+  const excluded = excludedInvoiceIds instanceof Set ? excludedInvoiceIds : new Set();
+  let sum = 0;
+  (payments || []).forEach((p) => {
+    const iid = String(p?.invoice_id || "").trim().toLowerCase();
+    if (iid && excluded.has(iid)) return;
+    const n = Number(p?.amount);
+    if (Number.isFinite(n)) sum += n;
+  });
+  return Math.round(sum * 100) / 100;
+}
+
+async function loadUniqueFolderPaidToDate(tenantId, members) {
+  const list = Array.isArray(members) ? members : [];
+  const jobs = [];
+  const invoiceIds = Array.from(
+    new Set(list.map((row) => String(row?.id || "").trim()).filter(Boolean))
+  );
+  invoiceIds.forEach((iid) => jobs.push(loadPaymentsForFilter(tenantId, "invoice_id", iid)));
+  const projectIds = Array.from(
+    new Set(list.map((row) => String(row?.project_id || "").trim()).filter(Boolean))
+  );
+  projectIds.forEach((pid) => jobs.push(loadPaymentsForFilter(tenantId, "project_id", pid)));
+  const quoteIds = Array.from(
+    new Set(list.map((row) => String(row?.quote_id || "").trim()).filter(Boolean))
+  );
+  quoteIds.forEach((qid) => jobs.push(loadPaymentsForFilter(tenantId, "quote_id", qid)));
+  if (!jobs.length) return 0;
+  const batches = await Promise.all(jobs);
+  const payments = uniquePaymentsById(batches);
+  return sumContractPaidFromPayments(payments, excludedContractInvoiceIds(list));
+}
 
 async function loadQuoteTotal(tenantId, quoteId) {
   if (!tenantId || !quoteId) return 0;
