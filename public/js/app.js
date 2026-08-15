@@ -13478,7 +13478,14 @@ window.renderSupervisor = renderSupervisor;
       const ps = String(row.hubInvoicePaymentStatus || row?.project?.invoice?.paymentStatus || "").toLowerCase();
       const qDep = nonEmptyString(row.hubQuoteDepositPaidAt);
       if (ps === "deposit_paid" || qDep) return "Start project";
-      if (hubServerQuoteIsAccepted(row)) return "Check deposit pending";
+      if (hubServerQuoteIsAccepted(row)) {
+        const collected = Math.max(
+          hubRowPaidToDateApprox(row),
+          finiteNumber(row?.cashCollected, 0),
+          finiteNumber(row?.depositApplied, 0) + finiteNumber(row?.receivedApplied, 0)
+        );
+        if (collected <= 0.005) return "Check deposit pending";
+      }
     }
     if (row?.rowType === "estimate" && finiteNumber(row?.amount, 0) > 0 && row?.projectStatus !== "completed") return "Send Invoice";
     if (row?.rowType === "invoice" && st === "draft" && finiteNumber(row?.amount, 0) > 0) return "Send Invoice";
