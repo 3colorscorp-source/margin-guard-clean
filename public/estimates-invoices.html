@@ -265,35 +265,7 @@
       color: rgba(148, 163, 184, 0.95);
     }
     body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-totals {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-      margin-bottom: 10px;
-    }
-    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-total {
-      padding: 8px 10px;
-      border: 1px solid rgba(255, 255, 255, 0.09);
-      background: rgba(255, 255, 255, 0.025);
-      border-radius: 10px;
-    }
-    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-total-k {
-      font-size: 10px;
-      font-weight: 750;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: rgba(148, 163, 184, 0.95);
-    }
-    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-total-v {
-      margin-top: 4px;
-      font-size: 14px;
-      font-weight: 700;
-      line-height: 1.25;
-    }
-    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-total-s {
-      margin-top: 2px;
-      font-size: 11px;
-      line-height: 1.35;
-      color: rgba(148, 163, 184, 0.92);
+      display: none;
     }
     body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-group-label {
       margin: 10px 0 6px;
@@ -302,6 +274,134 @@
       letter-spacing: 0.04em;
       text-transform: uppercase;
       color: rgba(148, 163, 184, 0.95);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-extra-note {
+      margin: 0 0 8px;
+      font-size: 11px;
+      line-height: 1.35;
+      color: rgba(148, 163, 184, 0.92);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-contract-line {
+      padding: 8px 10px;
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 10px;
+      margin-bottom: 8px;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-contract-k {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.95);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-contract-v {
+      margin-top: 4px;
+      font-size: 14px;
+      font-weight: 650;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-card-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-card {
+      padding: 10px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      background: rgba(255, 255, 255, 0.025);
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-card-current {
+      border-color: rgba(34, 197, 94, 0.35);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-card-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 750;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: rgba(226, 232, 240, 0.95);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-badge.paid {
+      background: rgba(34, 197, 94, 0.16);
+      border-color: rgba(34, 197, 94, 0.35);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-badge.sent {
+      background: rgba(59, 130, 246, 0.16);
+      border-color: rgba(59, 130, 246, 0.35);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-badge.pending {
+      background: rgba(148, 163, 184, 0.14);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-badge.accepted {
+      background: rgba(234, 179, 8, 0.14);
+      border-color: rgba(234, 179, 8, 0.35);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-badge.archived {
+      background: rgba(148, 163, 184, 0.1);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-badge.overdue {
+      background: rgba(239, 68, 68, 0.16);
+      border-color: rgba(239, 68, 68, 0.35);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-card-mid {
+      margin-top: 6px;
+      font-size: 13px;
+      font-weight: 650;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-card-bot {
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: rgba(148, 163, 184, 0.95);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-archived {
+      margin-top: 12px;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-archived > summary,
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-ledger-details > summary {
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.95);
+      list-style: none;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-archived > summary::-webkit-details-marker,
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-ledger-details > summary::-webkit-details-marker {
+      display: none;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-archived > summary::before,
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-ledger-details > summary::before {
+      content: "▸ ";
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-archived[open] > summary::before,
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-ledger-details[open] > summary::before {
+      content: "▾ ";
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-ledger-details {
+      margin-top: 4px;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-ledger-light td {
+      font-size: 12px;
+      color: rgba(226, 232, 240, 0.9);
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     }
     body[data-role="estimates-hub"] #hubDrawer tr.hub-billing-row-current td {
       font-weight: 650;
@@ -314,32 +414,6 @@
       text-transform: uppercase;
       color: rgba(148, 163, 184, 0.95);
       margin-bottom: 2px;
-    }
-    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-archived {
-      margin-top: 12px;
-    }
-    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-archived > summary {
-      cursor: pointer;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: rgba(148, 163, 184, 0.95);
-      list-style: none;
-    }
-    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-archived > summary::-webkit-details-marker {
-      display: none;
-    }
-    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-archived > summary::before {
-      content: "▸ ";
-    }
-    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-archived[open] > summary::before {
-      content: "▾ ";
-    }
-    @media (max-width: 720px) {
-      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-totals {
-        grid-template-columns: 1fr;
-      }
     }
 
     /* C20-A1 — Remaining Balance drawer action bar */
@@ -1513,7 +1587,7 @@
         </div>
         <div id="hubDrawerProjectBillingWrap" class="hub-drawer-section hub-drawer-project-billing" style="display:none;">
           <div class="sub" style="margin:0 0 8px;font-size:12px;">Project Billing</div>
-          <p class="hub-drawer-billing-note" id="hubDrawerProjectBillingNote">Related invoices for this project. Open a row to view that invoice. All Invoices still lists each bill separately.</p>
+          <p class="hub-drawer-billing-note" id="hubDrawerProjectBillingNote">Invoices and payments for this project.</p>
           <div class="hub-drawer-billing-totals" id="hubDrawerProjectBillingTotals"></div>
           <div id="hubDrawerProjectBillingGroups"></div>
         </div>
@@ -1533,25 +1607,18 @@
           </div>
         </div>
         <div id="hubDrawerLedgerWrap" class="hub-drawer-section" style="display:none;">
-          <div class="sub" style="margin:14px 0 8px;font-size:12px;">Ledger payment history</div>
-          <div id="hubDrawerLedgerEmpty" class="hub-drawer-ledger-empty" style="display:none;">
-            <p class="hub-drawer-ledger-empty-title">No ledger payments yet.</p>
-            <p class="hub-drawer-ledger-empty-cta">Use <strong>Actions</strong> &rarr; <strong>Record payment</strong> to log what you collected—totals update here automatically.</p>
-          </div>
-          <div id="hubDrawerLedgerTableWrap" class="supervisor-table-wrap">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Paid</th>
-                  <th>Type</th>
-                  <th>Method</th>
-                  <th>Amount</th>
-                  <th>Notes</th>
-                </tr>
-              </thead>
-              <tbody id="hubDrawerLedgerPaymentsBody"></tbody>
-            </table>
-          </div>
+          <details class="hub-drawer-ledger-details">
+            <summary class="sub" id="hubDrawerLedgerHistoryTitle">Payment History</summary>
+            <div id="hubDrawerLedgerEmpty" class="hub-drawer-ledger-empty" style="display:none;">
+              <p class="hub-drawer-ledger-empty-title">No payments recorded yet.</p>
+              <p class="hub-drawer-ledger-empty-cta">Use <strong>Actions</strong> &rarr; <strong>Record payment</strong> to log what you collected.</p>
+            </div>
+            <div id="hubDrawerLedgerTableWrap" class="supervisor-table-wrap">
+              <table class="table hub-drawer-ledger-light">
+                <tbody id="hubDrawerLedgerPaymentsBody"></tbody>
+              </table>
+            </div>
+          </details>
         </div>
         <div id="hubDrawerCollectionsWrap" class="hub-drawer-section" style="display:none;">
           <div class="sub" style="margin:14px 0 8px;font-size:12px;">Collections history</div>

@@ -15052,22 +15052,15 @@ window.renderSupervisor = renderSupervisor;
 
   function renderHubDrawerLedgerPaymentsRows(payments, settings) {
     if (!Array.isArray(payments) || !payments.length) {
-      return `<tr><td colspan="5">No ledger payments yet.</td></tr>`;
+      return `<tr><td>No payments recorded yet.</td></tr>`;
     }
     return payments
       .map((p) => {
-        const at = p.paid_at || p.created_at || "";
-        const typ = escapeHtml(String(p.payment_type || p.paymentType || ""));
-        const meth = escapeHtml(String(p.payment_method || p.paymentMethod || ""));
-        const amt = finiteNumber(p.amount, 0);
-        const note = escapeHtml(String(p.notes || p.note || "").slice(0, 400));
-        return `<tr>
-          <td>${escapeHtml(formatDisplayDate(at))}</td>
-          <td>${typ}</td>
-          <td>${meth}</td>
-          <td>${escapeHtml(money(amt, settings.currency))}</td>
-          <td>${note || "—"}</td>
-        </tr>`;
+        const at = escapeHtml(formatDisplayDate(p.paid_at || p.created_at || ""));
+        const typ = escapeHtml(String(p.payment_type || p.paymentType || "").trim() || "payment");
+        const meth = escapeHtml(String(p.payment_method || p.paymentMethod || "").trim() || "—");
+        const amt = escapeHtml(money(finiteNumber(p.amount, 0), settings.currency));
+        return `<tr><td>${at} · ${typ} · ${meth} · ${amt}</td></tr>`;
       })
       .join("");
   }
@@ -15819,10 +15812,9 @@ window.renderSupervisor = renderSupervisor;
   }
 
   function hubBillingKindGroupLabel(kind) {
-    if (kind === "material") return "Material Cost invoices (extra billing)";
-    if (kind === "change") return "Change Order invoices";
-    if (kind === "contract") return "Contract / accepted quote";
-    return "Project payment invoices";
+    if (kind === "material" || kind === "change") return "Extra billing";
+    if (kind === "contract") return "Contract";
+    return "Project payments";
   }
 
   function hubBillingDisplayLabel(row) {
@@ -16046,26 +16038,102 @@ window.renderSupervisor = renderSupervisor;
     return { payments, netSum, contractTotal, folder: true };
   }
 
-  function renderHubProjectBillingTotalsHtml(contractTotal, paidToDate, remaining, settings, loading) {
-    const paidLabel = loading ? "…" : money(paidToDate, settings.currency);
-    const remLabel = loading ? "…" : money(remaining, settings.currency);
-    return `
-      <div class="hub-drawer-billing-total">
-        <div class="hub-drawer-billing-total-k">Contract total</div>
-        <div class="hub-drawer-billing-total-v">${escapeHtml(money(contractTotal, settings.currency))}</div>
-        <div class="hub-drawer-billing-total-s">Approved project / quote total</div>
-      </div>
-      <div class="hub-drawer-billing-total">
-        <div class="hub-drawer-billing-total-k">Project paid to date</div>
-        <div class="hub-drawer-billing-total-v">${escapeHtml(paidLabel)}</div>
-        <div class="hub-drawer-billing-total-s">Unique ledger rows · excludes Material Cost and Change Order invoices</div>
-      </div>
-      <div class="hub-drawer-billing-total">
-        <div class="hub-drawer-billing-total-k">Project remaining</div>
-        <div class="hub-drawer-billing-total-v">${escapeHtml(remLabel)}</div>
-        <div class="hub-drawer-billing-total-s">Contract minus unique ledger · Material Cost and Change Order invoices excluded</div>
-      </div>
-    `;
+  function hubBillingOwnerStatusBadge(row) {
+    const raw = String(row?.status || row?.hubInvoiceRawStatus || "")
+      .trim()
+      .toLowerCase();
+    if (raw === "paid" || raw === "completed") return { label: "Paid", cls: "paid" };
+    if (raw === "overdue") return { label: "Overdue", cls: "overdue" };
+    if (raw === "sent" || raw === "partial" || raw === "issued") return { label: "Sent", cls: "sent" };
+    if (raw === "accepted") return { label: "Accepted", cls: "accepted" };
+    if (raw === "archived" || raw === "void") return { label: "Archived", cls: "archived" };
+    return { label: "Pending", cls: "pending" };
+  }
+
+  function renderHubProjectBillingContractLine(rows, settings) {
+    return (rows || [])
+      .map((r) => {
+        const contractAmt = Math.max(finiteNumber(r?.projectContractTotal, 0), finiteNumber(r?.amount, 0), 0);
+        const st = hubBillingRowLooksAccepted(r) ? "Accepted" : hubBillingOwnerStatusBadge(r).label;
+        return `<div class="hub-billing-contract-line">
+          <div class="hub-billing-contract-k">Contract</div>
+          <div class="hub-billing-contract-v">${escapeHtml(money(contractAmt, settings.currency))} · ${escapeHtml(st)}</div>
+        </div>`;
+      })
+      .join("");
+  }
+
+  function renderHubProjectBillingInvoiceCards(rows, currentRow, settings) {
+    const currentId = hubRowBillingInvoiceUuid(currentRow) || String(currentRow?.projectId || currentRow?.id || "");
+    const cards = (rows || [])
+      .map((r) => {
+        const rid = hubRowBillingInvoiceUuid(r) || String(r.projectId || r.id || "");
+        const isCurrent = Boolean(rid && currentId && String(rid) === String(currentId));
+        const openAttr = rid ? ` data-hub-billing-open="${escapeHtml(rid)}"` : "";
+        const badge = hubBillingOwnerStatusBadge(r);
+        const dueRaw = String(r.dueDate || "").trim();
+        const duePart = dueRaw && dueRaw !== "—" ? ` · Due ${escapeHtml(dueRaw)}` : "";
+        const openBtn = isCurrent
+          ? `<span class="hub-drawer-k">Viewing</span>`
+          : `<button type="button" class="btn ghost hub-billing-open-btn"${openAttr}>Open</button>`;
+        return `<div class="hub-billing-card${isCurrent ? " hub-billing-card-current" : ""}"${openAttr}>
+          <div class="hub-billing-card-top">
+            <span class="hub-billing-badge ${escapeHtml(badge.cls)}">${escapeHtml(badge.label)}</span>
+            <strong>${escapeHtml(hubBillingDisplayLabel(r))}</strong>
+          </div>
+          <div class="hub-billing-card-mid">${escapeHtml(money(finiteNumber(r.amount, 0), settings.currency))} · Balance ${escapeHtml(money(hubRowInvoiceScopedBalance(r), settings.currency))}${duePart}</div>
+          <div class="hub-billing-card-bot">
+            <span>${escapeHtml(hubBillingRowSentLabel(r))}</span>
+            ${openBtn}
+          </div>
+        </div>`;
+      })
+      .join("");
+    return `<div class="hub-billing-card-list">${cards}</div>`;
+  }
+
+  function renderHubProjectBillingGroupTables(members, currentRow, settings) {
+    const list = Array.isArray(members) ? members : [];
+    const archivedRows = list.filter((r) => hubRowIsArchivedOrVoidBilling(r));
+    const activeRows = list.filter((r) => !hubRowIsArchivedOrVoidBilling(r));
+    const contractRows = hubBillingActiveContractRows(activeRows);
+    const paymentRows = activeRows.filter((r) =>
+      ["start", "progress", "final", "remaining", "other"].includes(hubBillingInvoiceKind(r))
+    );
+    const extraRows = activeRows.filter((r) => {
+      const kind = hubBillingInvoiceKind(r);
+      return kind === "change" || kind === "material";
+    });
+    let html = "";
+    if (contractRows.length) {
+      html += `
+          <div class="hub-drawer-billing-group-label">${escapeHtml(hubBillingKindGroupLabel("contract"))}</div>
+          ${renderHubProjectBillingContractLine(contractRows, settings)}
+        `;
+    }
+    if (paymentRows.length) {
+      html += `
+          <div class="hub-drawer-billing-group-label">${escapeHtml(hubBillingKindGroupLabel("progress"))}</div>
+          ${renderHubProjectBillingInvoiceCards(paymentRows, currentRow, settings)}
+        `;
+    }
+    if (extraRows.length) {
+      html += `
+          <div class="hub-drawer-billing-group-label">${escapeHtml(hubBillingKindGroupLabel("material"))}</div>
+          <p class="hub-billing-extra-note">Extra billing not included in contract balance.</p>
+          ${renderHubProjectBillingInvoiceCards(extraRows, currentRow, settings)}
+        `;
+    }
+    let archivedHtml = "";
+    if (archivedRows.length) {
+      archivedHtml = `
+        <details class="hub-drawer-billing-archived">
+          <summary>Archived invoices (${archivedRows.length})</summary>
+          ${renderHubProjectBillingInvoiceCards(archivedRows, currentRow, settings)}
+        </details>
+      `;
+    }
+    return `${html}${archivedHtml}`;
   }
 
   function hubRowIsArchivedOrVoidBilling(row) {
@@ -16087,89 +16155,6 @@ window.renderSupervisor = renderSupervisor;
     const accepted = contracts.filter((r) => hubBillingRowLooksAccepted(r));
     if (accepted.length) return accepted;
     return contracts;
-  }
-
-  function renderHubProjectBillingInvoiceTable(rows, currentRow, settings) {
-    const currentId = hubRowBillingInvoiceUuid(currentRow) || String(currentRow?.projectId || currentRow?.id || "");
-    const body = (rows || [])
-      .map((r) => {
-        const rid = hubRowBillingInvoiceUuid(r) || String(r.projectId || r.id || "");
-        const isCurrent = Boolean(rid && currentId && String(rid) === String(currentId));
-        const kind = hubBillingInvoiceKind(r);
-        const openAttr = rid ? ` data-hub-billing-open="${escapeHtml(rid)}"` : "";
-        const openBtn = isCurrent
-          ? `<span class="hub-drawer-k">Viewing</span>`
-          : `<button type="button" class="btn ghost hub-billing-open-btn"${openAttr}>Open</button>`;
-        let extraKind = "";
-        if (kind === "material" || kind === "change") {
-          extraKind = `<span class="hub-billing-kind">${escapeHtml(kind === "material" ? "Extra billing" : "Invoice record")}</span>`;
-        } else if (hubRowIsArchivedOrVoidBilling(r)) {
-          extraKind = `<span class="hub-billing-kind">Archived</span>`;
-        }
-        return `<tr class="${isCurrent ? "hub-billing-row-current" : ""}"${openAttr} style="cursor:pointer">
-          <td>${extraKind}<strong>${escapeHtml(hubBillingDisplayLabel(r))}</strong></td>
-          <td>${money(finiteNumber(r.amount, 0), settings.currency)}</td>
-          <td>${money(hubRowInvoiceScopedBalance(r), settings.currency)}</td>
-          <td><span class="hub-status ${escapeHtml(String(r.status || ""))}">${escapeHtml(String(r.status || "—"))}</span></td>
-          <td>${escapeHtml(r.dueDate || "—")}</td>
-          <td>${escapeHtml(hubBillingRowSentLabel(r))}</td>
-          <td>${openBtn}</td>
-        </tr>`;
-      })
-      .join("");
-    return `
-      <div class="supervisor-table-wrap">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Invoice</th>
-              <th>Amount</th>
-              <th>Balance</th>
-              <th>Status</th>
-              <th>Due</th>
-              <th>Sent</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>${body}</tbody>
-        </table>
-      </div>
-    `;
-  }
-
-  function renderHubProjectBillingGroupTables(members, currentRow, settings) {
-    const list = Array.isArray(members) ? members : [];
-    const archivedRows = list.filter((r) => hubRowIsArchivedOrVoidBilling(r));
-    const activeRows = list.filter((r) => !hubRowIsArchivedOrVoidBilling(r));
-    const groups = [
-      { kinds: ["contract"], label: hubBillingKindGroupLabel("contract") },
-      { kinds: ["start", "progress", "final", "remaining", "other"], label: hubBillingKindGroupLabel("progress") },
-      { kinds: ["change"], label: hubBillingKindGroupLabel("change") },
-      { kinds: ["material"], label: hubBillingKindGroupLabel("material") }
-    ];
-    const mainHtml = groups
-      .map((g) => {
-        let rows = activeRows.filter((r) => g.kinds.includes(hubBillingInvoiceKind(r)));
-        if (g.kinds.length === 1 && g.kinds[0] === "contract") {
-          rows = hubBillingActiveContractRows(activeRows);
-        }
-        if (!rows.length) return "";
-        return `
-          <div class="hub-drawer-billing-group-label">${escapeHtml(g.label)}</div>
-          ${renderHubProjectBillingInvoiceTable(rows, currentRow, settings)}
-        `;
-      })
-      .join("");
-    let archivedHtml = "";
-    if (archivedRows.length) {
-      archivedHtml = `
-        <details class="hub-drawer-billing-archived">
-          <summary>Archived invoices (${archivedRows.length})</summary>
-          ${renderHubProjectBillingInvoiceTable(archivedRows, currentRow, settings)}
-        </details>
-      `;
-    }
-    return `${mainHtml}${archivedHtml}`;
   }
 
   function bindHubProjectBillingOpenHandlers(wrap, members, handlers) {
@@ -16208,49 +16193,19 @@ window.renderSupervisor = renderSupervisor;
     const wrap = $("hubDrawerProjectBillingWrap");
     const totalsEl = $("hubDrawerProjectBillingTotals");
     const groupsEl = $("hubDrawerProjectBillingGroups");
-    if (!wrap || !totalsEl || !groupsEl) return;
+    if (!wrap || !groupsEl) return;
     const pool = Array.isArray(hubMergedRowsForProjectBilling) ? hubMergedRowsForProjectBilling : [];
     const group = hubCollectProjectBillingGroup(row, pool);
     if (!hubBillingGroupShouldShow(group)) {
       wrap.style.display = "none";
-      totalsEl.innerHTML = "";
+      if (totalsEl) totalsEl.innerHTML = "";
       groupsEl.innerHTML = "";
       return;
     }
     wrap.style.display = "";
-    const contractTotal = hubBillingContractTotalForGroup(group);
-    const excludedFromContractIds = new Set(
-      (group.members || [])
-        .filter((r) => hubRowIsMaterialCostInvoice(r) || hubBillingInvoiceKind(r) === "change")
-        .map((r) => hubRowBillingInvoiceUuid(r))
-        .filter(Boolean)
-    );
-    let approxPaid = 0;
-    (group.members || []).forEach((r) => {
-      if (hubRowIsMaterialCostInvoice(r) || hubBillingInvoiceKind(r) === "change") return;
-      approxPaid += Math.max(finiteNumber(r.depositApplied, 0), 0) + Math.max(finiteNumber(r.receivedApplied, 0), 0);
-    });
-    approxPaid = Math.round(approxPaid * 100) / 100;
-    const approxRemaining = Math.max(0, Math.round((contractTotal - approxPaid) * 100) / 100);
-    totalsEl.innerHTML = renderHubProjectBillingTotalsHtml(contractTotal, approxPaid, approxRemaining, settings, true);
+    if (totalsEl) totalsEl.innerHTML = "";
     groupsEl.innerHTML = renderHubProjectBillingGroupTables(group.members, row, settings);
     bindHubProjectBillingOpenHandlers(wrap, group.members, handlers);
-
-    const drawerEl = $("hubDrawer");
-    const rowKey = drawerEl ? String(drawerEl.dataset.hubDrawerRowKey || "") : "";
-    const billingKey = `${rowKey}::${group.members.map((m) => hubRowBillingInvoiceUuid(m)).filter(Boolean).sort().join(",")}`;
-    wrap.dataset.hubBillingKey = billingKey;
-    void (async () => {
-      const payments = await fetchUniqueLedgerPaymentsForBillingGroup(group.members);
-      const d = $("hubDrawer");
-      const w = $("hubDrawerProjectBillingWrap");
-      if (!d || !w || w.dataset.hubBillingKey !== billingKey) return;
-      if (d.dataset.hubDrawerRowKey !== rowKey) return;
-      const paid = hubBillingContractPaidFromPayments(payments, excludedFromContractIds);
-      const remaining = Math.max(0, Math.round((contractTotal - paid) * 100) / 100);
-      const t = $("hubDrawerProjectBillingTotals");
-      if (t) t.innerHTML = renderHubProjectBillingTotalsHtml(contractTotal, paid, remaining, settings, false);
-    })();
   }
 
   function hubDrawerPaymentNextActionFromTotals(paid, total, row) {
@@ -16433,8 +16388,8 @@ window.renderSupervisor = renderSupervisor;
           <div class="small" id="hubDrawerLedgerPaidSub">${
             ledgerApiOk
               ? useFolderLedger
-                ? "Project billing ledger (loading…)"
-                : "Ledger (loading…)"
+                ? "Payments recorded for this project"
+                : "Payments recorded on this invoice"
               : "Local invoice payments + deposits"
           }</div>
         </div>
@@ -16443,7 +16398,7 @@ window.renderSupervisor = renderSupervisor;
           <div class="big" id="hubDrawerLedgerRemainingBig">${escapeHtml(remainingLabel)}</div>
           <div class="small" id="hubDrawerLedgerRemainingSub">${
             useFolderLedger
-              ? "Project contract total minus unique billing-group ledger"
+              ? "Original contract balance"
               : "Project contract total minus payments recorded"
           }</div>
         </div>
@@ -16463,13 +16418,11 @@ window.renderSupervisor = renderSupervisor;
       if (ledgerApiOk) {
         ledgerWrap.style.display = "";
         hubDrawerSetLedgerEmptyState(false);
-        ledgerBody.innerHTML = `<tr><td colspan="5">Loading ledger…</td></tr>`;
-        const histTitle = ledgerWrap.querySelector(".sub");
-        if (histTitle) {
-          histTitle.textContent = useFolderLedger
-            ? "Project ledger payment history"
-            : "Ledger payment history";
-        }
+        ledgerBody.innerHTML = `<tr><td>Loading payments…</td></tr>`;
+        const histTitle = $("hubDrawerLedgerHistoryTitle") || ledgerWrap.querySelector(".sub");
+        if (histTitle) histTitle.textContent = "Payment History";
+        const detailsEl = ledgerWrap.querySelector("details.hub-drawer-ledger-details");
+        if (detailsEl) detailsEl.open = false;
       } else {
         ledgerWrap.style.display = "none";
         hubDrawerSetLedgerEmptyState(false);
@@ -16504,10 +16457,10 @@ window.renderSupervisor = renderSupervisor;
           remEl.textContent = money(Math.max(0, contractTotal - localPaid), settings.currency);
           if (lb) {
             hubDrawerSetLedgerEmptyState(false);
-            lb.innerHTML = `<tr><td colspan="5">Could not load ledger.</td></tr>`;
+            lb.innerHTML = `<tr><td>Could not load payments.</td></tr>`;
           }
           const sub = $("hubDrawerLedgerPaidSub");
-          if (sub) sub.textContent = "Ledger unavailable — showing local totals";
+          if (sub) sub.textContent = "Could not load payments — showing local totals";
           updateHubDrawerPaymentDerivedUi(localPaid, contractTotal, settings, "", row);
           return;
         }
@@ -16517,8 +16470,8 @@ window.renderSupervisor = renderSupervisor;
         const subPaid = $("hubDrawerLedgerPaidSub");
         if (subPaid) {
           subPaid.textContent = useFolderLedger
-            ? "Unique project billing ledger (excludes Material Cost and Change Order)"
-            : "Ledger net (tenant_project_payments)";
+            ? "Payments recorded for this project"
+            : "Payments recorded on this invoice";
         }
         const lastLine = formatHubDrawerLastLedgerPaymentLine(pack.payments, settings);
         updateHubDrawerPaymentDerivedUi(paidForCards, contractTotal, settings, lastLine, row);
