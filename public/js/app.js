@@ -15752,6 +15752,407 @@ window.renderSupervisor = renderSupervisor;
     return HUB_INVOICE_TYPE_UNEXPECTED_MATERIAL_RE.test(notes);
   }
 
+  const HUB_SOURCE_INVOICE_ID_RE =
+    /\[source_invoice:([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\]/i;
+  const HUB_BILLING_KIND_ORDER = {
+    contract: 0,
+    start: 1,
+    progress: 2,
+    final: 3,
+    remaining: 4,
+    change: 5,
+    material: 6,
+    other: 7
+  };
+
+  function hubRowNotesText(row) {
+    const inv = row?.project?.invoice && typeof row.project.invoice === "object" ? row.project.invoice : {};
+    return String(row?.hubInvoiceNotes || inv.notes || "").trim();
+  }
+
+  function hubRowSourceInvoiceIdFromNotes(row) {
+    const m = hubRowNotesText(row).match(HUB_SOURCE_INVOICE_ID_RE);
+    return m && m[1] ? String(m[1]).trim().toLowerCase() : "";
+  }
+
+  function hubRowBillingInvoiceUuid(row) {
+    const fromLedger = hubLedgerInvoiceUuidForRow(row);
+    if (fromLedger) return fromLedger.toLowerCase();
+    const sid = String(hubRowServerInvoiceUuid(row) || "").trim();
+    return MG_SERVER_INVOICE_UUID_RE.test(sid) ? sid.toLowerCase() : "";
+  }
+
+  function hubRowInvoiceScopedBalance(row) {
+    const amt = Math.max(finiteNumber(row?.amount, 0), 0);
+    const paid = Math.max(finiteNumber(row?.depositApplied, 0), 0) + Math.max(finiteNumber(row?.receivedApplied, 0), 0);
+    return Math.max(0, Math.round((amt - paid) * 100) / 100);
+  }
+
+  function hubRowIsBillingChildInvoice(row) {
+    if (!row) return false;
+    if (hubRowSourceInvoiceIdFromNotes(row)) return true;
+    if (hubRowIsMaterialCostInvoice(row)) return true;
+    const label = hubRowInvoiceLabelNormalized(row);
+    if (label && HUB_PROJECT_PAYMENT_STAGE_SET.has(label.toLowerCase()) && !hubLedgerTargetIds(row).quoteId) {
+      return true;
+    }
+    return false;
+  }
+
+  function hubBillingInvoiceKind(row) {
+    if (hubRowIsMaterialCostInvoice(row)) return "material";
+    const label = hubRowInvoiceLabelNormalized(row).toLowerCase();
+    if (label === "change order") return "change";
+    if (label === "start payment") return "start";
+    if (label === "progress payment") return "progress";
+    if (label === "final payment") return "final";
+    if (label === "remaining balance") return "remaining";
+    if (hubRowSourceInvoiceIdFromNotes(row)) return "progress";
+    return "contract";
+  }
+
+  function hubBillingKindGroupLabel(kind) {
+    if (kind === "material") return "Material Cost invoices (extra billing)";
+    if (kind === "change") return "Change Order invoices";
+    if (kind === "contract") return "Contract / accepted quote";
+    return "Project payment invoices";
+  }
+
+  function hubBillingDisplayLabel(row) {
+    const kind = hubBillingInvoiceKind(row);
+    const label = hubRowInvoiceDisplayLabel(row);
+    if (kind === "contract") return label || "Contract / accepted quote";
+    if (kind === "material") return label || "Material Cost";
+    if (kind === "change") return label || "Change Order";
+    return label || "Project payment";
+  }
+
+  function hubBillingRowSentLabel(row) {
+    if (hubRowServerInvoiceSentLike(row) || nonEmptyString(row?.hubInvoiceSentAt)) return "Sent";
+    return "Not sent";
+  }
+
+  function hubCollectProjectBillingGroup(row, allRows) {
+    const rows = Array.isArray(allRows) ? allRows : [];
+    const empty = { root: row, members: [], currentIsChild: false };
+    if (!row) return empty;
+    const currentIsChild = hubRowIsBillingChildInvoice(row);
+    const byInvId = new Map();
+    rows.forEach((r) => {
+      const id = hubRowBillingInvoiceUuid(r);
+      if (id && !byInvId.has(id)) byInvId.set(id, r);
+    });
+
+    let root = row;
+    let sourceId = hubRowSourceInvoiceIdFromNotes(row);
+    let guard = 0;
+    while (sourceId && byInvId.has(sourceId) && guard < 8) {
+      root = byInvId.get(sourceId);
+      sourceId = hubRowSourceInvoiceIdFromNotes(root);
+      guard += 1;
+    }
+
+    const members = [];
+    const seen = new Set();
+    const addMember = (r) => {
+      if (!r) return false;
+      const key = hubRowBillingInvoiceUuid(r) || String(r.serverInvoiceId || r.projectId || r.id || "");
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      members.push(r);
+      return true;
+    };
+    addMember(root);
+    addMember(row);
+
+    let changed = true;
+    let loops = 0;
+    while (changed && loops < 12) {
+      changed = false;
+      loops += 1;
+      const memberIds = new Set(members.map((m) => hubRowBillingInvoiceUuid(m)).filter(Boolean));
+      const memberPids = new Set(
+        members.map((m) => String(hubLedgerTargetIds(m).projectId || "").toLowerCase()).filter(Boolean)
+      );
+      const memberQids = new Set(
+        members.map((m) => String(hubLedgerTargetIds(m).quoteId || "").toLowerCase()).filter(Boolean)
+      );
+      for (const r of rows) {
+        const rid = hubRowBillingInvoiceUuid(r);
+        if (rid && seen.has(rid)) continue;
+        const rsrc = hubRowSourceInvoiceIdFromNotes(r);
+        const rpid = String(hubLedgerTargetIds(r).projectId || "").toLowerCase();
+        const rqid = String(hubLedgerTargetIds(r).quoteId || "").toLowerCase();
+        if (rsrc && memberIds.has(rsrc)) {
+          if (addMember(r)) changed = true;
+          continue;
+        }
+        if (rpid && memberPids.has(rpid)) {
+          if (addMember(r)) changed = true;
+          continue;
+        }
+        if (rqid && memberQids.has(rqid)) {
+          if (addMember(r)) changed = true;
+        }
+      }
+    }
+
+    members.sort((a, b) => {
+      const ka = HUB_BILLING_KIND_ORDER[hubBillingInvoiceKind(a)] ?? 7;
+      const kb = HUB_BILLING_KIND_ORDER[hubBillingInvoiceKind(b)] ?? 7;
+      if (ka !== kb) return ka - kb;
+      return String(a?.dateRaw || "").localeCompare(String(b?.dateRaw || ""));
+    });
+
+    return { root, members, currentIsChild };
+  }
+
+  function hubBillingGroupShouldShow(group) {
+    if (!group || !Array.isArray(group.members)) return false;
+    if (group.members.length >= 2) return true;
+    return Boolean(group.currentIsChild);
+  }
+
+  async function fetchHubPaymentsByQuery(params) {
+    try {
+      const res = await fetch(`/.netlify/functions/list-tenant-payments?${params.toString()}`, {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok || !Array.isArray(data.payments)) return [];
+      return data.payments;
+    } catch (_e) {
+      return [];
+    }
+  }
+
+  async function fetchUniqueLedgerPaymentsForBillingGroup(members) {
+    const list = Array.isArray(members) ? members : [];
+    const jobs = [];
+    const invoiceIds = Array.from(new Set(list.map((r) => hubRowBillingInvoiceUuid(r)).filter(Boolean)));
+    invoiceIds.forEach((iid) => {
+      const params = new URLSearchParams({ limit: "500", invoice_id: iid });
+      jobs.push(fetchHubPaymentsByQuery(params));
+    });
+    const projectIds = Array.from(
+      new Set(list.map((r) => String(hubLedgerTargetIds(r).projectId || "").trim()).filter(Boolean))
+    );
+    projectIds.forEach((pid) => {
+      const params = new URLSearchParams({ limit: "500", project_id: pid });
+      jobs.push(fetchHubPaymentsByQuery(params));
+    });
+    const quoteIds = Array.from(
+      new Set(list.map((r) => String(hubLedgerTargetIds(r).quoteId || "").trim()).filter(Boolean))
+    );
+    quoteIds.forEach((qid) => {
+      const params = new URLSearchParams({ limit: "500", quote_id: qid });
+      jobs.push(fetchHubPaymentsByQuery(params));
+    });
+    if (!jobs.length) return [];
+    const batches = await Promise.all(jobs);
+    const seen = new Set();
+    const out = [];
+    batches.forEach((pays) => {
+      (pays || []).forEach((p) => {
+        const id = p?.id != null ? String(p.id).trim() : "";
+        const key = id || [p?.invoice_id, p?.paid_at, p?.amount, p?.created_at].join("|");
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        out.push(p);
+      });
+    });
+    return out;
+  }
+
+  function hubBillingContractPaidFromPayments(payments, excludedInvoiceIds) {
+    const excluded = new Set(
+      Array.from(excludedInvoiceIds || []).map((id) => String(id || "").trim().toLowerCase()).filter(Boolean)
+    );
+    let sum = 0;
+    (payments || []).forEach((p) => {
+      const iid = String(p?.invoice_id || "").trim().toLowerCase();
+      if (iid && excluded.has(iid)) return;
+      sum += finiteNumber(p?.amount, 0);
+    });
+    return Math.round(sum * 100) / 100;
+  }
+
+  function hubBillingContractTotalForGroup(group) {
+    const root = group?.root;
+    const fromRoot = Math.max(finiteNumber(root?.projectContractTotal, 0), 0);
+    if (fromRoot > 0) return fromRoot;
+    let best = 0;
+    (group?.members || []).forEach((r) => {
+      if (hubRowIsMaterialCostInvoice(r) || hubBillingInvoiceKind(r) === "change") return;
+      const n = Math.max(finiteNumber(r?.projectContractTotal, 0), 0);
+      if (n > best) best = n;
+    });
+    return best;
+  }
+
+  function renderHubProjectBillingTotalsHtml(contractTotal, paidToDate, remaining, settings, loading) {
+    const paidLabel = loading ? "…" : money(paidToDate, settings.currency);
+    const remLabel = loading ? "…" : money(remaining, settings.currency);
+    return `
+      <div class="hub-drawer-billing-total">
+        <div class="hub-drawer-billing-total-k">Contract total</div>
+        <div class="hub-drawer-billing-total-v">${escapeHtml(money(contractTotal, settings.currency))}</div>
+        <div class="hub-drawer-billing-total-s">Approved project / quote total</div>
+      </div>
+      <div class="hub-drawer-billing-total">
+        <div class="hub-drawer-billing-total-k">Project paid to date</div>
+        <div class="hub-drawer-billing-total-v">${escapeHtml(paidLabel)}</div>
+        <div class="hub-drawer-billing-total-s">Unique ledger rows · excludes Material Cost and Change Order invoices</div>
+      </div>
+      <div class="hub-drawer-billing-total">
+        <div class="hub-drawer-billing-total-k">Project remaining</div>
+        <div class="hub-drawer-billing-total-v">${escapeHtml(remLabel)}</div>
+        <div class="hub-drawer-billing-total-s">Contract minus unique ledger · Material Cost and Change Order invoices excluded</div>
+      </div>
+    `;
+  }
+
+  function renderHubProjectBillingGroupTables(members, currentRow, settings) {
+    const groups = [
+      { kinds: ["contract"], label: hubBillingKindGroupLabel("contract") },
+      { kinds: ["start", "progress", "final", "remaining", "other"], label: hubBillingKindGroupLabel("progress") },
+      { kinds: ["change"], label: hubBillingKindGroupLabel("change") },
+      { kinds: ["material"], label: hubBillingKindGroupLabel("material") }
+    ];
+    const currentId = hubRowBillingInvoiceUuid(currentRow) || String(currentRow?.projectId || currentRow?.id || "");
+    return groups
+      .map((g) => {
+        const rows = (members || []).filter((r) => g.kinds.includes(hubBillingInvoiceKind(r)));
+        if (!rows.length) return "";
+        const body = rows
+          .map((r) => {
+            const rid = hubRowBillingInvoiceUuid(r) || String(r.projectId || r.id || "");
+            const isCurrent = Boolean(rid && currentId && String(rid) === String(currentId));
+            const kind = hubBillingInvoiceKind(r);
+            const openAttr = rid ? ` data-hub-billing-open="${escapeHtml(rid)}"` : "";
+            const openBtn = isCurrent
+              ? `<span class="hub-drawer-k">Viewing</span>`
+              : `<button type="button" class="btn ghost hub-billing-open-btn"${openAttr}>Open</button>`;
+            const extraKind =
+              kind === "material" || kind === "change"
+                ? `<span class="hub-billing-kind">${escapeHtml(kind === "material" ? "Extra billing" : "Invoice record")}</span>`
+                : "";
+            return `<tr class="${isCurrent ? "hub-billing-row-current" : ""}"${openAttr} style="cursor:pointer">
+              <td>${extraKind}<strong>${escapeHtml(hubBillingDisplayLabel(r))}</strong></td>
+              <td>${money(finiteNumber(r.amount, 0), settings.currency)}</td>
+              <td>${money(hubRowInvoiceScopedBalance(r), settings.currency)}</td>
+              <td><span class="hub-status ${escapeHtml(String(r.status || ""))}">${escapeHtml(String(r.status || "—"))}</span></td>
+              <td>${escapeHtml(r.dueDate || "—")}</td>
+              <td>${escapeHtml(hubBillingRowSentLabel(r))}</td>
+              <td>${openBtn}</td>
+            </tr>`;
+          })
+          .join("");
+        return `
+          <div class="hub-drawer-billing-group-label">${escapeHtml(g.label)}</div>
+          <div class="supervisor-table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Invoice</th>
+                  <th>Amount</th>
+                  <th>Balance</th>
+                  <th>Status</th>
+                  <th>Due</th>
+                  <th>Sent</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>${body}</tbody>
+            </table>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
+  function bindHubProjectBillingOpenHandlers(wrap, members, handlers) {
+    if (!wrap) return;
+    const openRow = typeof handlers?.onOpenHubRow === "function" ? handlers.onOpenHubRow : null;
+    if (!openRow) return;
+    const findMember = (key) => {
+      const k = String(key || "").trim().toLowerCase();
+      if (!k) return null;
+      return (members || []).find((r) => {
+        const id = hubRowBillingInvoiceUuid(r);
+        return (
+          (id && id === k) ||
+          String(r.serverInvoiceId || "").toLowerCase() === k ||
+          String(r.projectId || "").toLowerCase() === k ||
+          String(r.id || "").toLowerCase() === k
+        );
+      });
+    };
+    wrap.querySelectorAll("[data-hub-billing-open]").forEach((node) => {
+      node.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const key = String(node.getAttribute("data-hub-billing-open") || "").trim();
+        const next = findMember(key);
+        if (!next) return;
+        const curId = hubRowBillingInvoiceUuid(window.__MG_ACTIVE_INVOICE_ROW__);
+        const nextId = hubRowBillingInvoiceUuid(next);
+        if (curId && nextId && curId === nextId) return;
+        openRow(next);
+      });
+    });
+  }
+
+  function renderHubProjectBillingSection(row, settings, handlers) {
+    const wrap = $("hubDrawerProjectBillingWrap");
+    const totalsEl = $("hubDrawerProjectBillingTotals");
+    const groupsEl = $("hubDrawerProjectBillingGroups");
+    if (!wrap || !totalsEl || !groupsEl) return;
+    const pool = Array.isArray(hubMergedRowsForProjectBilling) ? hubMergedRowsForProjectBilling : [];
+    const group = hubCollectProjectBillingGroup(row, pool);
+    if (!hubBillingGroupShouldShow(group)) {
+      wrap.style.display = "none";
+      totalsEl.innerHTML = "";
+      groupsEl.innerHTML = "";
+      return;
+    }
+    wrap.style.display = "";
+    const contractTotal = hubBillingContractTotalForGroup(group);
+    const excludedFromContractIds = new Set(
+      (group.members || [])
+        .filter((r) => hubRowIsMaterialCostInvoice(r) || hubBillingInvoiceKind(r) === "change")
+        .map((r) => hubRowBillingInvoiceUuid(r))
+        .filter(Boolean)
+    );
+    let approxPaid = 0;
+    (group.members || []).forEach((r) => {
+      if (hubRowIsMaterialCostInvoice(r) || hubBillingInvoiceKind(r) === "change") return;
+      approxPaid += Math.max(finiteNumber(r.depositApplied, 0), 0) + Math.max(finiteNumber(r.receivedApplied, 0), 0);
+    });
+    approxPaid = Math.round(approxPaid * 100) / 100;
+    const approxRemaining = Math.max(0, Math.round((contractTotal - approxPaid) * 100) / 100);
+    totalsEl.innerHTML = renderHubProjectBillingTotalsHtml(contractTotal, approxPaid, approxRemaining, settings, true);
+    groupsEl.innerHTML = renderHubProjectBillingGroupTables(group.members, row, settings);
+    bindHubProjectBillingOpenHandlers(wrap, group.members, handlers);
+
+    const drawerEl = $("hubDrawer");
+    const rowKey = drawerEl ? String(drawerEl.dataset.hubDrawerRowKey || "") : "";
+    const billingKey = `${rowKey}::${group.members.map((m) => hubRowBillingInvoiceUuid(m)).filter(Boolean).sort().join(",")}`;
+    wrap.dataset.hubBillingKey = billingKey;
+    void (async () => {
+      const payments = await fetchUniqueLedgerPaymentsForBillingGroup(group.members);
+      const d = $("hubDrawer");
+      const w = $("hubDrawerProjectBillingWrap");
+      if (!d || !w || w.dataset.hubBillingKey !== billingKey) return;
+      if (d.dataset.hubDrawerRowKey !== rowKey) return;
+      const paid = hubBillingContractPaidFromPayments(payments, excludedFromContractIds);
+      const remaining = Math.max(0, Math.round((contractTotal - paid) * 100) / 100);
+      const t = $("hubDrawerProjectBillingTotals");
+      if (t) t.innerHTML = renderHubProjectBillingTotalsHtml(contractTotal, paid, remaining, settings, false);
+    })();
+  }
+
   function hubDrawerPaymentNextActionFromTotals(paid, total, row) {
     const isProjectPayment = hubRowIsProjectPaymentInvoice(row);
     const isRemainingBalanceInvoice = hubRowIsRemainingBalanceInvoice(row);
@@ -16039,6 +16440,8 @@ window.renderSupervisor = renderSupervisor;
     if ($("hubDrawerActivityBody")) {
       $("hubDrawerActivityBody").innerHTML = renderActivityRows(activityList, "No activity recorded yet.");
     }
+
+    renderHubProjectBillingSection(row, settings, handlers);
   }
 
   function renderHubTableSection(config) {
@@ -16239,6 +16642,7 @@ window.renderSupervisor = renderSupervisor;
   /** Normalized tenant invoices from list-tenant-invoices; undefined until first fetch completes. */
   let hubServerNormalizedInvoicesCache = undefined;
   let hubServerInvoicesFetchStarted = false;
+  let hubMergedRowsForProjectBilling = [];
 
   function renderEstimatesHub() {
     if (!$("hubTableBody")) return;
@@ -16589,7 +16993,8 @@ window.renderSupervisor = renderSupervisor;
       if (!row) return;
       selectedRow = row;
       renderHubDrawerDetails(row, settings, {
-        applyHubActionButtonState
+        applyHubActionButtonState,
+        onOpenHubRow: openHubDrawer
       });
     };
 
@@ -17135,6 +17540,7 @@ window.renderSupervisor = renderSupervisor;
       const normalizedServer =
         hubServerNormalizedInvoicesCache === undefined ? [] : hubServerNormalizedInvoicesCache;
       lastMergedHubRows = mergeHubRows(localRows, normalizedServer);
+      hubMergedRowsForProjectBilling = lastMergedHubRows;
       const allRows = lastMergedHubRows;
       const search = val("hubSearch").trim().toLowerCase();
       const statusFilter = val("hubStatusFilter") || "all";

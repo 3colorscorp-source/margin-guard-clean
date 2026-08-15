@@ -252,6 +252,75 @@
       }
     }
 
+    /* Phase 1 — read-only Project Billing folder inside the invoice drawer */
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-project-billing {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-note {
+      margin: 0 0 10px;
+      font-size: 12px;
+      line-height: 1.4;
+      color: rgba(148, 163, 184, 0.95);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-totals {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-total {
+      padding: 8px 10px;
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      background: rgba(255, 255, 255, 0.025);
+      border-radius: 10px;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-total-k {
+      font-size: 10px;
+      font-weight: 750;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.95);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-total-v {
+      margin-top: 4px;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-total-s {
+      margin-top: 2px;
+      font-size: 11px;
+      line-height: 1.35;
+      color: rgba(148, 163, 184, 0.92);
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-group-label {
+      margin: 10px 0 6px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.95);
+    }
+    body[data-role="estimates-hub"] #hubDrawer tr.hub-billing-row-current td {
+      font-weight: 650;
+    }
+    body[data-role="estimates-hub"] #hubDrawer .hub-billing-kind {
+      display: block;
+      font-size: 10px;
+      font-weight: 650;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.95);
+      margin-bottom: 2px;
+    }
+    @media (max-width: 720px) {
+      body[data-role="estimates-hub"] #hubDrawer .hub-drawer-billing-totals {
+        grid-template-columns: 1fr;
+      }
+    }
+
     /* C20-A1 — Remaining Balance drawer action bar */
     body[data-role="estimates-hub"] #hubDrawer .hub-drawer-footer {
       display: flex;
@@ -1421,8 +1490,14 @@
             <span class="hub-drawer-v" id="hubDrawerLastReminder">—</span>
           </div>
         </div>
+        <div id="hubDrawerProjectBillingWrap" class="hub-drawer-section hub-drawer-project-billing" style="display:none;">
+          <div class="sub" style="margin:0 0 8px;font-size:12px;">Project Billing</div>
+          <p class="hub-drawer-billing-note" id="hubDrawerProjectBillingNote">Related invoices for this project. Open a row to view that invoice. All Invoices still lists each bill separately.</p>
+          <div class="hub-drawer-billing-totals" id="hubDrawerProjectBillingTotals"></div>
+          <div id="hubDrawerProjectBillingGroups"></div>
+        </div>
         <div id="hubDrawerChangeOrdersWrap" class="hub-drawer-section">
-          <div class="sub" style="margin:0 0 8px;font-size:12px;">Change orders</div>
+          <div class="sub" style="margin:0 0 8px;font-size:12px;">Supervisor change orders</div>
           <div class="supervisor-table-wrap">
             <table class="table">
               <thead>
