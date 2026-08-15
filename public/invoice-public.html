@@ -937,6 +937,7 @@
       const materialCostInvoice = facts.variant === "material_cost";
       const projectPaymentInvoice = facts.variant === "project_payment";
       const partialBalanceDueInvoice = facts.variant === "partial_balance_due";
+      const parentProjectDisplay = String(data.public_display_kind || "").trim() === "parent_project";
       const projectContractTotal = money(facts.projectContractTotal, currency);
       const projectPaidToDate = money(facts.projectPaidToDate, currency);
       const remainingProjectBalance = money(facts.remainingProjectBalance, currency);
@@ -1028,22 +1029,29 @@
             : projectPaymentInvoice
               ? "Project paid to date " + projectPaidToDate + " on a project contract total of " + projectContractTotal + "."
               : partialBalanceDueInvoice
-                ? "Payment summary: " + paidAmount + " has been paid toward this " + contractTotal + " invoice."
+                ? parentProjectDisplay
+                  ? "Payment summary: " + paidAmount + " has been paid toward this " + contractTotal + " project."
+                  : "Payment summary: " + paidAmount + " has been paid toward this " + contractTotal + " invoice."
                 : "Paid to date " + paidAmount + " on a contract total of " + contractTotal + "."
           : "No payments recorded yet.";
 
       const accent = safeAccentColor(data.accent_color);
       const invLabelRaw = String(data.invoice_label || "").trim();
       const invoiceTitleBlock = invLabelRaw ? `<div class="header-title">${escapeHtml(invLabelRaw)}</div>` : "";
+      const projectNameRaw = String(data.project_name || "").trim();
+      const emptyWorkDetails = parentProjectDisplay
+        ? "Project balance for " + (projectNameRaw || "this project") + "."
+        : "Work details were not provided for this invoice.";
       const workDetailsHtml =
         '<div class="notes">' +
         '<div class="notes-title">WORK DETAILS</div>' +
         '<div class="notes-text">' +
         (hasWorkDetails
           ? displayText(notesRaw)
-          : escapeHtml("Work details were not provided for this invoice.")) +
+          : escapeHtml(emptyWorkDetails)) +
         "</div>" +
         "</div>";
+      const typeDisplay = parentProjectDisplay ? "PROJECT BALANCE" : data.type;
 
       document.documentElement.style.setProperty("--accent", accent);
       document.documentElement.style.setProperty("--accent-dark", accent);
@@ -1111,7 +1119,7 @@
                 '<div class="info-row">' +
                   '<div class="label">Type</div>' +
                   '<div class="value">' +
-                  displayText(data.type, "service") +
+                  displayText(typeDisplay, "service") +
                   "</div>" +
                 "</div>" +
               "</div>" +
@@ -1131,8 +1139,7 @@
                 escapeHtml(String(progressPct)) +
                 '%;"></div></div>' +
                 '<div class="last-payment">' +
-                  "Last payment summary: " +
-                  progressSummaryText +
+                  escapeHtml(progressSummaryText) +
                 "</div>" +
               "</div>" +
             "</div>" +

@@ -167,6 +167,7 @@ exports.handler = async (event) => {
     // Project payment children stay on the existing invoice/project-payment path.
     // Parent/root accepted project invoices with a billing group use unique folder paid.
     let paidToDate;
+    let publicDisplayKind = "";
     if (isProjectPaymentInvoice) {
       paidToDate = await loadPaidToDate({
         tenantId,
@@ -183,6 +184,7 @@ exports.handler = async (event) => {
       });
       if (Array.isArray(members) && members.length >= 2) {
         paidToDate = await loadUniqueFolderPaidToDate(tenantId, members);
+        publicDisplayKind = "parent_project";
       } else {
         paidToDate = await loadPaidToDate({ tenantId, invoiceId, projectId, quoteId, preferProject: false });
       }
@@ -235,6 +237,7 @@ exports.handler = async (event) => {
     invoice.contract_total = contractTotal;
     invoice.paid_to_date = paidToDate;
     invoice.remaining_balance = remainingBalance;
+    if (publicDisplayKind) invoice.public_display_kind = publicDisplayKind;
 
     const tenantPayment = await loadTenantPublicPaymentSettings(tenantId);
 
