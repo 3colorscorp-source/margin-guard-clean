@@ -19,6 +19,27 @@ function isValidEmail(value) {
   return s.includes("@") && s.includes(".") && s.length < 320;
 }
 
+/**
+ * Stamp invoices.project_id only from a unique tenant_projects row for this quote.
+ * 0 or 2+ matches → leave empty (do not guess or mix folders).
+ */
+async function resolveProjectIdForQuote(tenantId, quoteId) {
+  const tid = String(tenantId || "").trim();
+  const qid = String(quoteId || "").trim();
+  if (!tid || !UUID_RE.test(qid)) return "";
+  try {
+    const rows = await supabaseRequest(
+      `tenant_projects?tenant_id=eq.${encodeURIComponent(tid)}` +
+        `&quote_id=eq.${encodeURIComponent(qid)}&select=id&limit=2`
+    );
+    if (!Array.isArray(rows) || rows.length !== 1) return "";
+    const id = String(rows[0]?.id || "").trim();
+    return UUID_RE.test(id) ? id : "";
+  } catch (_err) {
+    return "";
+  }
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -203,6 +224,10 @@ exports.handler = async (event) => {
 
     if (resolvedQuoteId) {
       payload.quote_id = resolvedQuoteId;
+      const resolvedProjectId = await resolveProjectIdForQuote(tenant.id, resolvedQuoteId);
+      if (resolvedProjectId) {
+        payload.project_id = resolvedProjectId;
+      }
     }
 
     let inserted;

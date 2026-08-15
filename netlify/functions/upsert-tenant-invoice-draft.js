@@ -120,6 +120,28 @@ function sanitizePayloadKeys(body) {
 }
 
 /**
+ * Stamp invoices.project_id only from a unique tenant_projects row for this quote.
+ * 0 or 2+ matches → leave empty (do not guess or mix folders).
+ * Client-supplied project_id is ignored.
+ */
+async function resolveProjectIdForQuote(tenantId, quoteId) {
+  const tid = String(tenantId || "").trim();
+  const qid = String(quoteId || "").trim();
+  if (!tid || !UUID_RE.test(qid)) return "";
+  try {
+    const rows = await supabaseRequest(
+      `tenant_projects?tenant_id=eq.${encodeURIComponent(tid)}` +
+        `&quote_id=eq.${encodeURIComponent(qid)}&select=id&limit=2`
+    );
+    if (!Array.isArray(rows) || rows.length !== 1) return "";
+    const id = String(rows[0]?.id || "").trim();
+    return UUID_RE.test(id) ? id : "";
+  } catch (_err) {
+    return "";
+  }
+}
+
+/**
  * POST — create draft (no id / no id in body) or update draft (body.id UUID).
  * tenant_id always from session on create; updates require id + tenant_id match.
  */
@@ -199,6 +221,28 @@ exports.handler = async (event) => {
         });
       }
 
+      if (patch.quote_id) {
+        const resolvedProjectId = await resolveProjectIdForQuote(tenantId, patch.quote_id);
+        if (resolvedProjectId) {
+          let existingPid = "";
+          try {
+            const existingRows = await supabaseRequest(
+              `invoices?id=eq.${encodeURIComponent(id)}` +
+                `&tenant_id=eq.${encodeURIComponent(tenantId)}` +
+                `&select=project_id&limit=1`
+            );
+            existingPid = String(
+              Array.isArray(existingRows) ? existingRows[0]?.project_id : ""
+            ).trim();
+          } catch (_err) {
+            existingPid = "";
+          }
+          if (!existingPid) {
+            patch.project_id = resolvedProjectId;
+          }
+        }
+      }
+
       const filter = `id=eq.${encodeURIComponent(id)}&tenant_id=eq.${encodeURIComponent(tenantId)}`;
       let updated;
       try {
@@ -247,6 +291,13 @@ exports.handler = async (event) => {
       insert.balance_due !== undefined && insert.balance_due !== null
         ? finiteMoney(insert.balance_due, 0)
         : finiteMoney(insert.amount - insert.paid_amount, 0);
+
+    if (insert.quote_id) {
+      const resolvedProjectId = await resolveProjectIdForQuote(tenantId, insert.quote_id);
+      if (resolvedProjectId) {
+        insert.project_id = resolvedProjectId;
+      }
+    }
 
     let created;
     try {
