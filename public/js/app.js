@@ -6474,13 +6474,21 @@ Thank you.`
       const dis = enabled ? "" : " disabled";
       return `<button type="button" role="menuitem" class="hub-drawer-menu-item${dis}" data-hub-drawer-action="${action}"${enabled ? "" : " disabled"}>${escapeHtml(label)}</button>`;
     };
+    const paymentItems = [
+      item("send-invoice", sendLabel, sendEnabled),
+      item("record-payment", "Record payment", menuState.canRecordPayment)
+    ];
+    if (hubDrawerRowUsesProjectFolderLedger(row)) {
+      paymentItems.push(item("view-payment-history", "Payment History", true));
+    }
+    paymentItems.push(
+      item("send-reminder", "Send payment reminder", menuState.canSendPaymentReminder),
+    );
     menu.innerHTML = [
       section(
         "Payment",
         [
-          item("send-invoice", sendLabel, sendEnabled),
-          item("record-payment", "Record payment", menuState.canRecordPayment),
-          item("send-reminder", "Send payment reminder", menuState.canSendPaymentReminder),
+          ...paymentItems,
           item(
             "create-remaining-balance-invoice",
             "Create Project Payment Invoice",
@@ -16038,6 +16046,69 @@ window.renderSupervisor = renderSupervisor;
     return { payments, netSum, contractTotal, folder: true };
   }
 
+  let hubDrawerFolderLedgerPackCache = { rowKey: "", pack: null };
+
+  function hubPaymentHistoryCloseModal() {
+    const modal = $("hubPaymentHistoryModal");
+    if (modal) modal.setAttribute("aria-hidden", "true");
+  }
+
+  function hubPaymentHistoryPageReady() {
+    return Boolean($("hubPaymentHistoryModal") && $("hubPaymentHistoryBody"));
+  }
+
+  async function openHubPaymentHistoryModal(row, settings) {
+    if (!hubPaymentHistoryPageReady() || !hubDrawerRowUsesProjectFolderLedger(row)) return;
+    closeHubDrawerActionsMenu();
+    const modal = $("hubPaymentHistoryModal");
+    const body = $("hubPaymentHistoryBody");
+    const subtitle = $("hubPaymentHistorySubtitle");
+    if (subtitle) {
+      const title = String(row?.title || "").trim();
+      const customer = String(row?.customer || "").trim();
+      subtitle.textContent = [title, customer].filter(Boolean).join(" · ");
+    }
+    body.innerHTML = `<tr><td>Loading payments…</td></tr>`;
+    modal.setAttribute("aria-hidden", "false");
+    const rowKey = $("hubDrawer")?.dataset.hubDrawerRowKey || "";
+    let pack =
+      hubDrawerFolderLedgerPackCache.rowKey === rowKey && hubDrawerFolderLedgerPackCache.pack
+        ? hubDrawerFolderLedgerPackCache.pack
+        : null;
+    if (!pack) {
+      pack = await fetchHubDrawerFolderLedgerPack(row);
+      if (rowKey && $("hubDrawer")?.dataset.hubDrawerRowKey === rowKey) {
+        hubDrawerFolderLedgerPackCache = { rowKey, pack };
+      }
+    }
+    if (modal.getAttribute("aria-hidden") !== "false") return;
+    if (!pack) {
+      body.innerHTML = `<tr><td>Could not load payments.</td></tr>`;
+      return;
+    }
+    const rows = Array.isArray(pack.payments) ? pack.payments : [];
+    body.innerHTML = rows.length
+      ? renderHubDrawerLedgerPaymentsRows(rows, settings || loadSettings())
+      : `<tr><td>No payments recorded yet.</td></tr>`;
+  }
+
+  function bindHubPaymentHistoryModal() {
+    if (window.__MG_HUB_PAYMENT_HISTORY_BOUND__ || !hubPaymentHistoryPageReady()) return;
+    window.__MG_HUB_PAYMENT_HISTORY_BOUND__ = true;
+    const modal = $("hubPaymentHistoryModal");
+    if ($("btnHubPaymentHistoryClose")) $("btnHubPaymentHistoryClose").onclick = hubPaymentHistoryCloseModal;
+    if ($("btnHubPaymentHistoryDone")) $("btnHubPaymentHistoryDone").onclick = hubPaymentHistoryCloseModal;
+    modal.addEventListener("click", (ev) => {
+      if (ev.target === modal) hubPaymentHistoryCloseModal();
+    });
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Escape") return;
+      if (modal.getAttribute("aria-hidden") !== "false") return;
+      ev.preventDefault();
+      hubPaymentHistoryCloseModal();
+    });
+  }
+
   function hubBillingOwnerStatusBadge(row) {
     const raw = String(row?.status || row?.hubInvoiceRawStatus || "")
       .trim()
@@ -16350,6 +16421,12 @@ window.renderSupervisor = renderSupervisor;
       drawerEl.setAttribute("aria-hidden", "false");
     }
     const useFolderLedger = hubDrawerRowUsesProjectFolderLedger(row);
+    if (useFolderLedger) {
+      const rk = drawerEl?.dataset.hubDrawerRowKey || "";
+      if (hubDrawerFolderLedgerPackCache.rowKey !== rk) {
+        hubDrawerFolderLedgerPackCache = { rowKey: rk, pack: null };
+      }
+    }
     const drawerLabel = hubRowInvoiceDisplayLabel(row);
     if ($("hubDrawerTitle")) $("hubDrawerTitle").textContent = drawerLabel || row.title;
     if ($("hubDrawerSubtitle")) {
@@ -16445,6 +16522,7 @@ window.renderSupervisor = renderSupervisor;
           : await fetchHubDrawerLedgerPayments(row);
         const d = $("hubDrawer");
         if (!d || d.dataset.hubDrawerRowKey !== rowKey) return;
+        if (useFolderLedger) hubDrawerFolderLedgerPackCache = { rowKey, pack };
         const paidEl = $("hubDrawerLedgerPaidBig");
         const remEl = $("hubDrawerLedgerRemainingBig");
         const lb = $("hubDrawerLedgerPaymentsBody");
@@ -16753,6 +16831,7 @@ window.renderSupervisor = renderSupervisor;
     if (!$("hubTableBody")) return;
 
     bindHubDrawerActionsMenuDismiss();
+    bindHubPaymentHistoryModal();
 
     const settings = loadSettings();
     const hubViewState = loadHubViewState();
@@ -17107,6 +17186,7 @@ window.renderSupervisor = renderSupervisor;
       if ($("hubDrawer")) $("hubDrawer").setAttribute("aria-hidden", "true");
       if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
       if ($("hubInvoiceContactModal")) hubInvoiceContactCloseModal();
+      hubPaymentHistoryCloseModal();
       closeHubDrawerActionsMenu();
       setNotice("hubRecordPayFeedback", "", "");
       if ($("hubRecordPayOverpayWarn")) {
@@ -17179,6 +17259,10 @@ window.renderSupervisor = renderSupervisor;
       }
       if (action === "record-payment") {
         void openHubRecordPaymentModal();
+        return;
+      }
+      if (action === "view-payment-history") {
+        void openHubPaymentHistoryModal(row, settings);
         return;
       }
       if (action === "send-reminder") {

@@ -597,6 +597,25 @@
   #hubPaymentReminderModal.hub-reminder-modal {
     z-index: 10060;
   }
+  #hubPaymentHistoryModal.hub-payment-history-modal {
+    z-index: 10060;
+  }
+  #hubPaymentHistoryModal .modal-card {
+    width: min(520px, calc(100vw - 32px));
+    max-height: min(80vh, 640px);
+  }
+  #hubPaymentHistoryModal .modal-body {
+    overflow-y: auto;
+  }
+  #hubPaymentHistoryModal .hub-payment-history-list td {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+    font-size: 0.875rem;
+    line-height: 1.4;
+  }
+  #hubPaymentHistoryModal .hub-payment-history-list tr:last-child td {
+    border-bottom: 0;
+  }
   #hubDuplicateInvoiceModal.hub-duplicate-modal {
     z-index: 10060;
   }
@@ -1768,6 +1787,28 @@
         <button class="btn" id="btnHubClientRequestAll">Request All</button>
         <button class="btn" id="btnHubClientOpenCollections">Open Collections View</button>
         <button class="btn primary" id="btnHubClientOpenHub">Open Hub</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hub-payment-history-modal" id="hubPaymentHistoryModal" aria-hidden="true" role="dialog" aria-labelledby="hubPaymentHistoryTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="hubPaymentHistoryTitle">Payment History</div>
+          <div class="modal-subtitle" id="hubPaymentHistorySubtitle"></div>
+        </div>
+        <button type="button" class="icon-btn" id="btnHubPaymentHistoryClose" aria-label="Close">X</button>
+      </div>
+      <div class="modal-body">
+        <div class="supervisor-table-wrap">
+          <table class="table hub-payment-history-list">
+            <tbody id="hubPaymentHistoryBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" id="btnHubPaymentHistoryDone">Close</button>
       </div>
     </div>
   </div>
