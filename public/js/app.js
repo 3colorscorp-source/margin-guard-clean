@@ -16349,12 +16349,20 @@ window.renderSupervisor = renderSupervisor;
           : String(row.projectId || "");
       drawerEl.setAttribute("aria-hidden", "false");
     }
+    const useFolderLedger = hubDrawerRowUsesProjectFolderLedger(row);
     const drawerLabel = hubRowInvoiceDisplayLabel(row);
     if ($("hubDrawerTitle")) $("hubDrawerTitle").textContent = drawerLabel || row.title;
     if ($("hubDrawerSubtitle")) {
-      $("hubDrawerSubtitle").textContent = drawerLabel
-        ? `${row.title} · ${row.customer} · ${row.status}`
-        : `${row.customer} · ${row.status}`;
+      if (useFolderLedger) {
+        const email = String(row?.customerEmail || row?.project?.clientEmail || "").trim();
+        $("hubDrawerSubtitle").textContent = email
+          ? `${row.customer} · ${email} · ${row.status}`
+          : `${row.customer} · ${row.status}`;
+      } else {
+        $("hubDrawerSubtitle").textContent = drawerLabel
+          ? `${row.title} · ${row.customer} · ${row.status}`
+          : `${row.customer} · ${row.status}`;
+      }
     }
     window.__MG_ACTIVE_INVOICE_ROW__ = row;
     hubDebugLog("[Invoice Hub] send invoice button rendered", row);
@@ -16363,7 +16371,6 @@ window.renderSupervisor = renderSupervisor;
     hubDrawerRenderLastReminder(row);
 
     const invoiceAmount = finiteNumber(row.amount, 0);
-    const useFolderLedger = hubDrawerRowUsesProjectFolderLedger(row);
     let contractTotal = Math.max(finiteNumber(row.projectContractTotal, 0), 0);
     if (useFolderLedger) {
       const fromGroup = hubBillingContractTotalForGroup(hubDrawerResolveBillingGroup(row));
@@ -16521,6 +16528,25 @@ window.renderSupervisor = renderSupervisor;
     }
 
     renderHubProjectBillingSection(row, settings, handlers);
+
+    const hubDrawerLowerBodyIds = [
+      "hubDrawerPaymentContext",
+      "hubDrawerContactWrap",
+      "hubDrawerProjectBillingWrap",
+      "hubDrawerChangeOrdersWrap",
+      "hubDrawerLedgerWrap",
+      "hubDrawerCollectionsWrap",
+      "hubDrawerActivityWrap"
+    ];
+    if (useFolderLedger) {
+      hubDrawerLowerBodyIds.forEach((id) => {
+        const el = $(id);
+        if (el) el.style.display = "none";
+      });
+    } else {
+      const payCtx = $("hubDrawerPaymentContext");
+      if (payCtx) payCtx.style.display = "";
+    }
   }
 
   function renderHubTableSection(config) {
