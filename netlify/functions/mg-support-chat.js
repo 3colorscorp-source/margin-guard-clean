@@ -27,6 +27,7 @@ const {
   INVOICE_NOT_FOUND_GUIDANCE,
   INVOICE_AMBIGUOUS_GUIDANCE,
   INVOICE_NEEDS_IDENTIFIER_GUIDANCE,
+  INVOICE_STATUS_UNVERIFIED_GUIDANCE,
   NO_TENANT_DIAGNOSTIC_GUIDANCE,
   TENANT_OVERRIDE_GUIDANCE,
 } = require("./_lib/mg-support/config");
@@ -76,6 +77,7 @@ function guidanceForIntent(intent, diagnosticOutcome) {
     if (diagnosticOutcome === "not_found") return INVOICE_NOT_FOUND_GUIDANCE;
     if (diagnosticOutcome === "ambiguous") return INVOICE_AMBIGUOUS_GUIDANCE;
     if (diagnosticOutcome === "needs_identifier") return INVOICE_NEEDS_IDENTIFIER_GUIDANCE;
+    if (diagnosticOutcome === "status_unverified") return INVOICE_STATUS_UNVERIFIED_GUIDANCE;
     if (diagnosticOutcome === "no_tenant_context") return NO_TENANT_DIAGNOSTIC_GUIDANCE;
     return INVOICE_NEEDS_IDENTIFIER_GUIDANCE;
   }

@@ -3,10 +3,11 @@
  * Fixed table, fixed select, GET only, trusted tenant_id filter, max 2 rows.
  * Never send raw rows or restricted fields to OpenAI.
  *
- * Owner-visible `status` matches Invoice Hub's derived lifecycle overlay using
- * non-financial fields only (archived/void/explicit paid, deposit_paid, quote
- * accepted, sent_at, else raw invoice status). It does not reproduce
- * amount/ledger paid or overdue calculations.
+ * Owner-visible `status` matches Invoice Hub's derived lifecycle overlay:
+ * archived / void / fully-paid / deposit_paid / accepted / sent / raw fallback.
+ * Fully-paid uses invoices.amount, invoices.paid_amount, quotes.total, and a
+ * closed tenant_project_payments amount sum. Money is discarded before OpenAI.
+ * Does not reproduce overdue or browser project salePrice fallback.
  */
 "use strict";
 
@@ -30,13 +31,18 @@ const INVOICE_DIAGNOSTIC_SELECT_FIELDS = [
   "quote_id",
   "project_id",
   "payment_status",
+  "amount",
+  "paid_amount",
 ];
 
-/** Nested quote lifecycle flags only — never totals, client fields, notes, or ids. */
-const INVOICE_DIAGNOSTIC_QUOTE_EMBED = "quotes(status,accepted_at,deposit_paid_at)";
+/** Nested quote lifecycle flags plus total for server-side paid math only. */
+const INVOICE_DIAGNOSTIC_QUOTE_EMBED = "quotes(status,accepted_at,deposit_paid_at,total)";
 
 const INVOICE_DIAGNOSTIC_SELECT =
   INVOICE_DIAGNOSTIC_SELECT_FIELDS.join(",") + "," + INVOICE_DIAGNOSTIC_QUOTE_EMBED;
+
+const INVOICE_DIAGNOSTIC_PAYMENT_SELECT = "amount";
+const PAID_TOLERANCE = 0.005;
 
 const IDENTIFIER_STOPWORDS = new Set([
   "hub",
@@ -200,24 +206,59 @@ function unwrapQuoteEmbed(row) {
   return quoteWrap && typeof quoteWrap === "object" ? quoteWrap : null;
 }
 
+function finiteMoney(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function sumLedgerAmounts(rows) {
+  if (!Array.isArray(rows)) return 0;
+  let sum = 0;
+  for (const row of rows) {
+    sum += finiteMoney(row?.amount);
+  }
+  return sum;
+}
+
 /**
- * Invoice Hub owner-visible Status, using approved non-financial fields only.
- * Does not claim amount/ledger paid or overdue parity.
+ * Hub-equivalent paid math. Does not use invoices.balance_due or project salePrice.
+ * Overdue is intentionally not derived in this slice.
+ */
+function computePaidFacts(row, ledgerPaid) {
+  const invoiceAmount = finiteMoney(row?.amount);
+  const dbPaid = finiteMoney(row?.paid_amount);
+  const ledger = finiteMoney(ledgerPaid);
+  const paidAmount = Math.max(dbPaid, ledger);
+  const quote = unwrapQuoteEmbed(row);
+  const quoteTotal = finiteMoney(quote?.total);
+  const contractTotal = quoteTotal > 0 ? quoteTotal : invoiceAmount;
+  const balanceDue = Math.max(0, contractTotal - paidAmount);
+  const isFullyPaid =
+    balanceDue <= PAID_TOLERANCE || (contractTotal > 0 && paidAmount + PAID_TOLERANCE >= contractTotal);
+  return { isFullyPaid };
+}
+
+/**
+ * Invoice Hub owner-visible Status.
  *
  * Priority:
  * 1. archived
  * 2. void
- * 3. explicit persisted invoices.status = paid
+ * 3. isFullyPaid → paid
  * 4. deposit_paid (invoice payment_status or quote.deposit_paid_at)
  * 5. accepted (quote.accepted_at or quote.status = accepted)
  * 6. sent when sent_at exists
  * 7. otherwise normalized raw invoice status
+ *
+ * Does not derive overdue in this slice.
  */
-function deriveOwnerVisibleInvoiceStatus(row) {
+function deriveOwnerVisibleInvoiceStatus(row, paidFacts) {
   const rawInv = normalizeRawInvoiceStatus(row?.status);
   if (rawInv === "archived") return "archived";
   if (rawInv === "void") return "void";
-  if (rawInv === "paid") return "paid";
+
+  const computed = paidFacts && typeof paidFacts === "object" ? paidFacts : computePaidFacts(row, 0);
+  if (computed.isFullyPaid) return "paid";
 
   const paymentStatus = String(row?.payment_status || "").trim().toLowerCase();
   const quote = unwrapQuoteEmbed(row);
@@ -232,11 +273,12 @@ function deriveOwnerVisibleInvoiceStatus(row) {
   return rawInv;
 }
 
-function toModelFacts(row) {
+function toModelFacts(row, paidFacts) {
   const sentAt = isNonEmpty(row?.sent_at) ? String(row.sent_at).trim() : null;
+  const computed = paidFacts && typeof paidFacts === "object" ? paidFacts : computePaidFacts(row, 0);
   return {
     invoice_no: isNonEmpty(row?.invoice_no) ? String(row.invoice_no).trim() : null,
-    status: deriveOwnerVisibleInvoiceStatus(row),
+    status: deriveOwnerVisibleInvoiceStatus(row, computed),
     type: isNonEmpty(row?.type) ? String(row.type).trim() : null,
     invoice_label: isNonEmpty(row?.invoice_label) ? String(row.invoice_label).trim() : null,
     created_at: isNonEmpty(row?.created_at) ? String(row.created_at).trim() : null,
@@ -268,12 +310,22 @@ function buildInvoiceQueryPath(tenantId, identifier) {
   return `invoices?${params.toString()}`;
 }
 
+function buildPaymentQueryPath(tenantId, invoiceId) {
+  const tid = String(tenantId || "").trim();
+  const iid = String(invoiceId || "").trim();
+  const params = new URLSearchParams();
+  params.set("tenant_id", `eq.${tid}`);
+  params.set("invoice_id", `eq.${iid}`);
+  params.set("select", INVOICE_DIAGNOSTIC_PAYMENT_SELECT);
+  return `tenant_project_payments?${params.toString()}`;
+}
+
 async function defaultInvoiceGet(path) {
   return supabaseRequest(path, { method: "GET" });
 }
 
 /**
- * @returns {Promise<{ outcome: "ok"|"not_found"|"ambiguous", facts?: object, queryPath: string }>}
+ * @returns {Promise<{ outcome: "ok"|"not_found"|"ambiguous"|"status_unverified", facts?: object, queryPath: string }>}
  */
 async function readInvoiceDiagnostic(tenantId, identifier, deps = {}) {
   const tid = String(tenantId || "").trim();
@@ -297,25 +349,49 @@ async function readInvoiceDiagnostic(tenantId, identifier, deps = {}) {
   if (list.length > 1) {
     return { outcome: "ambiguous", queryPath };
   }
+
+  const row = list[0];
+  const invoiceId = String(row?.id || "").trim();
+  if (!isUuid(invoiceId)) {
+    return { outcome: "status_unverified", queryPath };
+  }
+
+  const paymentQueryPath = buildPaymentQueryPath(tid, invoiceId);
+  let payRows;
+  try {
+    payRows = await get(paymentQueryPath);
+  } catch (_err) {
+    return { outcome: "status_unverified", queryPath, paymentQueryPath };
+  }
+  if (!Array.isArray(payRows)) {
+    return { outcome: "status_unverified", queryPath, paymentQueryPath };
+  }
+
+  const paidFacts = computePaidFacts(row, sumLedgerAmounts(payRows));
   return {
     outcome: "ok",
-    facts: toModelFacts(list[0]),
+    facts: toModelFacts(row, paidFacts),
     queryPath,
+    paymentQueryPath,
   };
 }
 
 module.exports = {
   UUID_RE,
+  PAID_TOLERANCE,
   INVOICE_DIAGNOSTIC_SELECT,
   INVOICE_DIAGNOSTIC_SELECT_FIELDS,
   INVOICE_DIAGNOSTIC_QUOTE_EMBED,
+  INVOICE_DIAGNOSTIC_PAYMENT_SELECT,
   extractInvoiceIdentifier,
   isInvoiceDiagnosticQuestion,
   isSqlOrListAllProbe,
   isTenantOverrideAttempt,
   unwrapQuoteEmbed,
+  computePaidFacts,
   deriveOwnerVisibleInvoiceStatus,
   toModelFacts,
   buildInvoiceQueryPath,
+  buildPaymentQueryPath,
   readInvoiceDiagnostic,
 };

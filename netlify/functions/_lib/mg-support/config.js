@@ -51,9 +51,10 @@ const INVOICE_FACTS_GUIDANCE = [
   "facts.status is the owner-visible Invoice Hub status for this invoice.",
   "Lead with facts.status when the owner asks what status the invoice is. Do not invent amounts, customer details, or other records.",
   "If facts.status is accepted, say the invoice is shown as accepted in Invoice Hub because its linked quote has been accepted. Do not say the invoice itself was emailed because it is accepted.",
+  "If facts.status is paid, say the invoice is shown as paid in Invoice Hub. Do not mention payment calculations. Do not invent or reveal payment amounts.",
   "If facts.status is deposit_paid, say Invoice Hub shows it as deposit paid. Do not invent payment amounts.",
   "If facts.status is draft, say Invoice Hub shows it as a draft.",
-  "Delivery is independent of facts.status. Accepted and not-sent can both be true at the same time. Do not treat accepted as sent.",
+  "Delivery is independent of facts.status. Paid, accepted, and not-sent can be true in combination with delivery facts. Do not treat accepted or paid as proof the customer received email. Do not treat accepted as sent.",
   "If delivery.submitted_to_email_bridge is true, say Margin Guard recorded that this invoice was submitted through the email bridge on the submitted_at time.",
   "If delivery.submitted_to_email_bridge is false or sent_at is empty, say Margin Guard has not recorded this invoice as submitted through the email bridge.",
   "Never say the customer received the invoice. Never say the email was delivered. can_prove_recipient_received is always false.",
@@ -69,6 +70,12 @@ const INVOICE_NOT_FOUND_GUIDANCE = [
 const INVOICE_AMBIGUOUS_GUIDANCE = [
   "More than one invoice matched that exact identifier.",
   "Do not guess. Ask the owner to identify the invoice more precisely using the Invoice Hub number.",
+].join(" ");
+
+const INVOICE_STATUS_UNVERIFIED_GUIDANCE = [
+  "The invoice was found, but Margin Guard could not fully verify its owner-visible status because a required payment lookup failed.",
+  "Say: I couldn't fully verify this invoice status right now. Please check Invoice Hub and try again.",
+  "Do not guess paid, deposit_paid, accepted, or sent. Do not invent amounts. Do not mention other tenants.",
 ].join(" ");
 
 const INVOICE_NEEDS_IDENTIFIER_GUIDANCE = [
@@ -105,6 +112,7 @@ module.exports = {
   INVOICE_NOT_FOUND_GUIDANCE,
   INVOICE_AMBIGUOUS_GUIDANCE,
   INVOICE_NEEDS_IDENTIFIER_GUIDANCE,
+  INVOICE_STATUS_UNVERIFIED_GUIDANCE,
   NO_TENANT_DIAGNOSTIC_GUIDANCE,
   TENANT_OVERRIDE_GUIDANCE,
 };

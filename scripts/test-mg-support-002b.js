@@ -13,9 +13,13 @@ const { classifySupportIntent } = require("../netlify/functions/_lib/mg-support/
 const {
   INVOICE_DIAGNOSTIC_SELECT,
   INVOICE_DIAGNOSTIC_QUOTE_EMBED,
+  INVOICE_DIAGNOSTIC_PAYMENT_SELECT,
+  PAID_TOLERANCE,
   extractInvoiceIdentifier,
   deriveOwnerVisibleInvoiceStatus,
+  computePaidFacts,
   toModelFacts,
+  buildPaymentQueryPath,
   readInvoiceDiagnostic,
 } = require("../netlify/functions/_lib/mg-support/invoice-diagnostic");
 const { createHandler } = require("../netlify/functions/mg-support-chat");
@@ -24,6 +28,7 @@ const {
   INVOICE_NOT_FOUND_GUIDANCE,
   INVOICE_AMBIGUOUS_GUIDANCE,
   INVOICE_NEEDS_IDENTIFIER_GUIDANCE,
+  INVOICE_STATUS_UNVERIFIED_GUIDANCE,
   NO_TENANT_DIAGNOSTIC_GUIDANCE,
   CROSS_TENANT_GUIDANCE,
   TENANT_OVERRIDE_GUIDANCE,
@@ -101,6 +106,7 @@ function ownInvoiceRow(overrides) {
     quote_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     project_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
     payment_status: null,
+    paid_amount: 0,
     customer_email: "should-not-leak@example.com",
     notes: "secret notes",
     amount: 9999,
@@ -127,6 +133,39 @@ function liveAcceptedDraftRow(overrides) {
     },
     ...overrides,
   });
+}
+
+function livePaidProgressRow(overrides) {
+  return ownInvoiceRow({
+    invoice_no: "INV-1777240297762",
+    status: "issued",
+    type: "PROGRESS",
+    invoice_label: "FINAL PAYMENT",
+    sent_at: "2026-08-17T15:00:00.000Z",
+    due_date: "2026-08-20",
+    payment_status: "deposit_paid",
+    amount: 2500,
+    paid_amount: 4321.5,
+    quotes: {
+      status: "accepted",
+      accepted_at: "2026-07-15T18:22:00.000Z",
+      deposit_paid_at: "2026-07-20T00:00:00.000Z",
+      total: 4321.5,
+      id: "should-not-leak-quote-id",
+      client_name: "Secret Client",
+      notes: "quote secret notes",
+    },
+    ...overrides,
+  });
+}
+
+function mockSupabaseGet({ invoices = [], payments = [], onPath } = {}) {
+  return async (path) => {
+    const p = String(path || "");
+    if (onPath) onPath(p);
+    if (p.startsWith("tenant_project_payments?")) return payments;
+    return invoices;
+  };
 }
 
 async function main() {
@@ -190,19 +229,21 @@ async function main() {
       readSessionFromEvent: sessionOk,
       resolveTenantFromSession: resolveOwnTenant,
       getOpenAiKey: () => "test-key",
-      supabaseGet: async (path) => {
-        tenantCapture.paths.push(path);
-        return [ownInvoiceRow()];
-      },
+      supabaseGet: mockSupabaseGet({
+        invoices: [ownInvoiceRow()],
+        onPath: (p) => tenantCapture.paths.push(p),
+      }),
       fetch: openaiOkFetch(),
     }
   );
   assert(
     "browser body.tenant_id is ignored; query uses trusted tenant",
     browserTenant.statusCode === 200 &&
-      tenantCapture.paths.length === 1 &&
-      tenantCapture.paths[0].includes("tenant_id=eq." + encodeURIComponent(OWN_TENANT)) &&
-      !tenantCapture.paths[0].includes(OTHER_TENANT)
+      tenantCapture.paths.length === 2 &&
+      tenantCapture.paths[0].startsWith("invoices?") &&
+      tenantCapture.paths[1].startsWith("tenant_project_payments?") &&
+      tenantCapture.paths.every((p) => p.includes("tenant_id=eq." + encodeURIComponent(OWN_TENANT))) &&
+      tenantCapture.paths.every((p) => !p.includes(OTHER_TENANT))
   );
 
   const uuidCapture = {};
@@ -212,7 +253,7 @@ async function main() {
       readSessionFromEvent: sessionOk,
       resolveTenantFromSession: resolveOwnTenant,
       getOpenAiKey: () => "test-key",
-      supabaseGet: async () => [ownInvoiceRow()],
+      supabaseGet: mockSupabaseGet({ invoices: [ownInvoiceRow()] }),
       fetch: openaiOkFetch(uuidCapture),
     }
   );
@@ -232,7 +273,7 @@ async function main() {
     readSessionFromEvent: sessionOk,
     resolveTenantFromSession: resolveOwnTenant,
     getOpenAiKey: () => "test-key",
-    supabaseGet: async () => [ownInvoiceRow()],
+    supabaseGet: mockSupabaseGet({ invoices: [ownInvoiceRow()] }),
     fetch: openaiOkFetch(noCapture),
   });
   const noInput = String((noCapture.payload || {}).input || "");
@@ -380,6 +421,7 @@ async function main() {
     getOpenAiKey: () => "test-key",
     supabaseGet: async (path) => {
       pathCapture.push(path);
+      if (String(path).startsWith("tenant_project_payments?")) return [];
       return [ownInvoiceRow()];
     },
     fetch: openaiOkFetch(),
@@ -393,12 +435,25 @@ async function main() {
     "closed select includes payment_status and quote lifecycle embed only",
     diagSelect.includes("payment_status") &&
       diagSelect.endsWith("," + INVOICE_DIAGNOSTIC_QUOTE_EMBED) &&
-      INVOICE_DIAGNOSTIC_QUOTE_EMBED === "quotes(status,accepted_at,deposit_paid_at)" &&
+      INVOICE_DIAGNOSTIC_QUOTE_EMBED === "quotes(status,accepted_at,deposit_paid_at,total)" &&
       !/quotes\([^)]*\bid\b/.test(INVOICE_DIAGNOSTIC_QUOTE_EMBED) &&
-      !/quotes\([^)]*total/.test(INVOICE_DIAGNOSTIC_QUOTE_EMBED) &&
       !/quotes\([^)]*client/.test(INVOICE_DIAGNOSTIC_QUOTE_EMBED)
   );
 
+  const payPath = pathCapture[1] || "";
+  const paySelect = new URLSearchParams(String(payPath).split("?")[1] || "").get("select") || "";
+  assert(
+    "ledger GET uses trusted tenant_id, server invoice UUID, select=amount",
+    pathCapture.length === 2 &&
+      payPath.startsWith("tenant_project_payments?") &&
+      payPath.includes("tenant_id=eq." + encodeURIComponent(OWN_TENANT)) &&
+      payPath.includes("invoice_id=eq." + encodeURIComponent(OWN_INVOICE_ID)) &&
+      paySelect === INVOICE_DIAGNOSTIC_PAYMENT_SELECT &&
+      paySelect === "amount" &&
+      !/select=\*/.test(payPath) &&
+      !/project_id=/.test(payPath) &&
+      !/quote_id=/.test(payPath)
+  );
   const diagSrc = fs.readFileSync(path.join(ROOT, "netlify/functions/_lib/mg-support/invoice-diagnostic.js"), "utf8");
   const chatSrc = fs.readFileSync(path.join(ROOT, "netlify/functions/mg-support-chat.js"), "utf8");
   assert(
@@ -446,16 +501,18 @@ async function main() {
     readSessionFromEvent: sessionOk,
     resolveTenantFromSession: resolveOwnTenant,
     getOpenAiKey: () => "test-key",
-    supabaseGet: async () => [
-      ownInvoiceRow({
-        invoice_no: "INV-TEST-101",
-        status: "draft",
-        sent_at: null,
-        public_token: "",
-        quote_id: null,
-        project_id: null,
-      }),
-    ],
+    supabaseGet: mockSupabaseGet({
+      invoices: [
+        ownInvoiceRow({
+          invoice_no: "INV-TEST-101",
+          status: "draft",
+          sent_at: null,
+          public_token: "",
+          quote_id: null,
+          project_id: null,
+        }),
+      ],
+    }),
     fetch: openaiOkFetch(draftCapture),
   });
   const draftInput = String((draftCapture.payload || {}).input || "");
@@ -496,6 +553,7 @@ async function main() {
       getOpenAiKey: () => "test-key",
       supabaseGet: async (path) => {
         injectNoTenantCapture.paths.push(path);
+        if (String(path).startsWith("tenant_project_payments?")) return [];
         return [ownInvoiceRow()];
       },
       fetch: openaiOkFetch(),
@@ -503,9 +561,10 @@ async function main() {
   );
   assert(
     "prompt injection cannot widen diagnostic",
-    injectNoTenantCapture.paths.length === 1 &&
+    injectNoTenantCapture.paths.length === 2 &&
       injectNoTenantCapture.paths[0].startsWith("invoices?") &&
-      !/quotes\?/.test(injectNoTenantCapture.paths[0]) &&
+      injectNoTenantCapture.paths[1].startsWith("tenant_project_payments?") &&
+      !/quotes\?/.test(injectNoTenantCapture.paths.join("\n")) &&
       injectNoTenantCapture.paths[0].includes(OWN_TENANT)
   );
   assert(
@@ -644,15 +703,16 @@ async function main() {
     readSessionFromEvent: sessionOk,
     resolveTenantFromSession: resolveOwnTenant,
     getOpenAiKey: () => "test-key",
-    supabaseGet: async () => {
+    supabaseGet: async (path) => {
       dbCalls += 1;
+      if (String(path).startsWith("tenant_project_payments?")) return [];
       return [ownInvoiceRow()];
     },
     fetch: openaiOkFetch(),
   });
   assert(
     "normal Was invoice INV-TEST-100 sent? still runs diagnostic",
-    normalStillRuns.statusCode === 200 && dbCalls === 1
+    normalStillRuns.statusCode === 200 && dbCalls === 2
   );
 
   dbCalls = 0;
@@ -740,8 +800,12 @@ async function main() {
     ).status === "draft"
   );
   assert(
-    "raw paid + quote accepted → paid",
-    toModelFacts(liveAcceptedDraftRow({ status: "paid" })).status === "paid"
+    "raw paid row without covering amounts + quote accepted is not treated as paid",
+    toModelFacts(liveAcceptedDraftRow({ status: "paid" })).status === "accepted"
+  );
+  assert(
+    "fully paid + quote accepted → paid",
+    toModelFacts(liveAcceptedDraftRow({ paid_amount: 8888, quotes: { status: "accepted", accepted_at: "2026-07-15T18:22:00.000Z", deposit_paid_at: null, total: 8888 } })).status === "paid"
   );
   assert(
     "raw void + quote accepted → void",
@@ -775,7 +839,7 @@ async function main() {
       readSessionFromEvent: sessionOk,
       resolveTenantFromSession: resolveOwnTenant,
       getOpenAiKey: () => "test-key",
-      supabaseGet: async () => [liveAcceptedDraftRow()],
+      supabaseGet: mockSupabaseGet({ invoices: [liveAcceptedDraftRow()] }),
       fetch: openaiOkFetch(smoke1Capture),
     }
   );
@@ -799,7 +863,7 @@ async function main() {
       readSessionFromEvent: sessionOk,
       resolveTenantFromSession: resolveOwnTenant,
       getOpenAiKey: () => "test-key",
-      supabaseGet: async () => [liveAcceptedDraftRow()],
+      supabaseGet: mockSupabaseGet({ invoices: [liveAcceptedDraftRow()] }),
       fetch: openaiOkFetch(smoke2Capture),
     }
   );
@@ -837,6 +901,152 @@ async function main() {
       !smoke1Input.includes("quote secret notes") &&
       !/"total"\s*:/.test(smoke1Input) &&
       !/"client_name"\s*:/.test(smoke1Input)
+  );
+
+  const paidByAmount = computePaidFacts(
+    livePaidProgressRow({ paid_amount: 4321.5, quotes: { status: "accepted", accepted_at: "2026-07-15T18:22:00.000Z", deposit_paid_at: "2026-07-20T00:00:00.000Z", total: 4321.5 } }),
+    0
+  );
+  assert("fully paid by invoices.paid_amount → paid", paidByAmount.isFullyPaid === true && toModelFacts(livePaidProgressRow(), paidByAmount).status === "paid");
+
+  const ledgerOnlyRow = livePaidProgressRow({ paid_amount: 0 });
+  const paidByLedger = computePaidFacts(ledgerOnlyRow, 4321.5);
+  assert("fully paid by ledger amount → paid", paidByLedger.isFullyPaid === true && deriveOwnerVisibleInvoiceStatus(ledgerOnlyRow, paidByLedger) === "paid");
+
+  const ledgerWins = computePaidFacts(livePaidProgressRow({ paid_amount: 10 }), 4321.5);
+  assert("ledger amount > paid_amount → ledger wins", ledgerWins.isFullyPaid === true);
+
+  const dbWins = computePaidFacts(livePaidProgressRow({ paid_amount: 4321.5 }), 10);
+  assert("paid_amount > ledger → paid_amount wins", dbWins.isFullyPaid === true);
+
+  const atTolerance = computePaidFacts({ amount: 100, paid_amount: 99.995, quotes: { total: 100 } }, 0);
+  const overTolerance = computePaidFacts({ amount: 100, paid_amount: 99.994, quotes: { total: 100 } }, 0);
+  assert(
+    "$0.005 tolerance exactly matches Hub",
+    PAID_TOLERANCE === 0.005 && atTolerance.isFullyPaid === true && overTolerance.isFullyPaid === false
+  );
+
+  assert(
+    "deposit flag + fully paid → paid",
+    toModelFacts(livePaidProgressRow()).status === "paid"
+  );
+  assert(
+    "deposit flag + not fully paid → deposit_paid",
+    toModelFacts(livePaidProgressRow({ paid_amount: 1, quotes: { status: "accepted", accepted_at: "2026-07-15T18:22:00.000Z", deposit_paid_at: "2026-07-20T00:00:00.000Z", total: 4321.5 } })).status === "deposit_paid"
+  );
+
+  const livePaidCapture = {};
+  const livePaidLedgerCalls = [];
+  const livePaidRes = await runHandler(
+    fakeEvent("POST", { message: "What status is invoice INV-1777240297762?" }),
+    {
+      readSessionFromEvent: sessionOk,
+      resolveTenantFromSession: resolveOwnTenant,
+      getOpenAiKey: () => "test-key",
+      supabaseGet: mockSupabaseGet({
+        invoices: [livePaidProgressRow()],
+        payments: [{ amount: 50 }],
+        onPath: (p) => livePaidLedgerCalls.push(p),
+      }),
+      fetch: openaiOkFetch(livePaidCapture),
+    }
+  );
+  const livePaidInput = String((livePaidCapture.payload || {}).input || "");
+  const livePaidFacts = extractFacts(livePaidInput);
+  assert(
+    "INV-1777240297762 → paid, not deposit_paid",
+    livePaidRes.statusCode === 200 &&
+      livePaidFacts &&
+      livePaidFacts.invoice_no === "INV-1777240297762" &&
+      livePaidFacts.status === "paid" &&
+      livePaidFacts.status !== "deposit_paid" &&
+      livePaidFacts.type === "PROGRESS" &&
+      livePaidFacts.invoice_label === "FINAL PAYMENT" &&
+      livePaidFacts.delivery.submitted_to_email_bridge === true &&
+      livePaidFacts.delivery.can_prove_recipient_received === false &&
+      /shown as paid in Invoice Hub/i.test(INVOICE_FACTS_GUIDANCE) &&
+      !livePaidInput.includes("4321.5") &&
+      !livePaidInput.includes("2500") &&
+      !("amount" in livePaidFacts) &&
+      !("paid_amount" in livePaidFacts) &&
+      !("balanceDue" in livePaidFacts) &&
+      !("contractTotal" in livePaidFacts) &&
+      !("paidAmount" in livePaidFacts) &&
+      !("is_fully_paid" in livePaidFacts)
+  );
+  assert(
+    "fully paid + sent_at → paid + delivery true",
+    livePaidFacts.delivery.submitted_to_email_bridge === true &&
+      livePaidFacts.delivery.submitted_at === "2026-08-17T15:00:00.000Z" &&
+      /Never say the customer received/i.test(INVOICE_FACTS_GUIDANCE)
+  );
+
+  const acceptedStill = await runHandler(
+    fakeEvent("POST", { message: "What status is invoice INV-1783961864371?" }),
+    {
+      readSessionFromEvent: sessionOk,
+      resolveTenantFromSession: resolveOwnTenant,
+      getOpenAiKey: () => "test-key",
+      supabaseGet: mockSupabaseGet({ invoices: [liveAcceptedDraftRow()], payments: [] }),
+      fetch: openaiOkFetch(),
+    }
+  );
+  assert("INV-1783961864371 remains accepted after paid overlay", acceptedStill.statusCode === 200);
+
+  dbCalls = 0;
+  const notFoundLedger = await readInvoiceDiagnostic(OWN_TENANT, { type: "invoice_no", value: "INV-MISSING" }, {
+    supabaseGet: async (path) => {
+      dbCalls += 1;
+      if (String(path).startsWith("tenant_project_payments?")) throw new Error("ledger should not run");
+      return [];
+    },
+  });
+  assert("not_found → zero ledger query", notFoundLedger.outcome === "not_found" && dbCalls === 1);
+
+  dbCalls = 0;
+  const ambLedger = await readInvoiceDiagnostic(OWN_TENANT, { type: "invoice_no", value: "INV-DUP" }, {
+    supabaseGet: async (path) => {
+      dbCalls += 1;
+      if (String(path).startsWith("tenant_project_payments?")) throw new Error("ledger should not run");
+      return [ownInvoiceRow({ invoice_no: "INV-DUP" }), ownInvoiceRow({ id: OTHER_INVOICE_ID, invoice_no: "INV-DUP" })];
+    },
+  });
+  assert("ambiguous → zero ledger query", ambLedger.outcome === "ambiguous" && dbCalls === 1);
+
+  const unverified = await readInvoiceDiagnostic(OWN_TENANT, { type: "invoice_no", value: "INV-TEST-100" }, {
+    supabaseGet: async (path) => {
+      if (String(path).startsWith("tenant_project_payments?")) throw new Error("ledger down");
+      return [ownInvoiceRow()];
+    },
+  });
+  assert("ledger GET failure → status_unverified, not deposit_paid", unverified.outcome === "status_unverified" && !unverified.facts);
+
+  const failCapture = {};
+  const failRes = await runHandler(fakeEvent("POST", { message: "What status is invoice INV-TEST-100?" }), {
+    readSessionFromEvent: sessionOk,
+    resolveTenantFromSession: resolveOwnTenant,
+    getOpenAiKey: () => "test-key",
+    supabaseGet: async (path) => {
+      if (String(path).startsWith("tenant_project_payments?")) throw new Error("ledger down");
+      return [ownInvoiceRow({ payment_status: "deposit_paid" })];
+    },
+    fetch: openaiOkFetch(failCapture),
+  });
+  const failInput = String((failCapture.payload || {}).input || "");
+  assert(
+    "ledger failure does not silently return deposit_paid",
+    failRes.statusCode === 200 &&
+      failInput.includes(INVOICE_STATUS_UNVERIFIED_GUIDANCE) &&
+      !failInput.includes("MARGIN_GUARD_VERIFIED_DIAGNOSTIC_FACTS") &&
+      /couldn't fully verify this invoice status/i.test(INVOICE_STATUS_UNVERIFIED_GUIDANCE)
+  );
+
+  const payPathBuilt = buildPaymentQueryPath(OWN_TENANT, OWN_INVOICE_ID);
+  assert(
+    "closed payment path has no select=*",
+    payPathBuilt.startsWith("tenant_project_payments?") &&
+      !/select=\*/.test(payPathBuilt) &&
+      new URLSearchParams(payPathBuilt.split("?")[1]).get("select") === "amount"
   );
 
   let openaiInPublic = false;
