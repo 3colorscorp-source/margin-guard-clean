@@ -5,7 +5,7 @@
  * Auth: HMAC-valid mg_session via assertOwnerSupportSession.
  * Paying owners: session.e + session.c (same as bootstrap-tenant / owner APIs).
  * Platform admins: auth-status is_admin bypass (session.c not required) for docs only.
- * Invoice diagnostics require session.e + session.c and resolveTenantFromSession.
+ * Invoice and quote diagnostics require session.e + session.c and resolveTenantFromSession.
  * Does not trust browser tenant_id. Does not read mg_device_session.
  * OpenAI key stays server-side. OpenAI never chooses tables, SQL, or filters.
  */
@@ -30,6 +30,11 @@ const {
   INVOICE_STATUS_UNVERIFIED_GUIDANCE,
   NO_TENANT_DIAGNOSTIC_GUIDANCE,
   TENANT_OVERRIDE_GUIDANCE,
+  QUOTE_FACTS_GUIDANCE,
+  QUOTE_NOT_FOUND_GUIDANCE,
+  QUOTE_AMBIGUOUS_GUIDANCE,
+  QUOTE_STATUS_UNVERIFIED_GUIDANCE,
+  QUOTE_NEEDS_IDENTIFIER_GUIDANCE,
 } = require("./_lib/mg-support/config");
 const { routeSupportKnowledge, classifySupportIntent } = require("./_lib/mg-support/router");
 const { loadRoutedKnowledge } = require("./_lib/mg-support/loader");
@@ -39,6 +44,10 @@ const {
   extractInvoiceIdentifier,
   readInvoiceDiagnostic,
 } = require("./_lib/mg-support/invoice-diagnostic");
+const {
+  extractQuoteIdentifier,
+  readQuoteDiagnostic,
+} = require("./_lib/mg-support/quote-diagnostic");
 
 function json(statusCode, body) {
   return {
@@ -81,15 +90,33 @@ function guidanceForIntent(intent, diagnosticOutcome) {
     if (diagnosticOutcome === "no_tenant_context") return NO_TENANT_DIAGNOSTIC_GUIDANCE;
     return INVOICE_NEEDS_IDENTIFIER_GUIDANCE;
   }
+  if (intent === "quote_diagnostic") {
+    if (diagnosticOutcome === "ok") return QUOTE_FACTS_GUIDANCE;
+    if (diagnosticOutcome === "not_found") return QUOTE_NOT_FOUND_GUIDANCE;
+    if (diagnosticOutcome === "ambiguous") return QUOTE_AMBIGUOUS_GUIDANCE;
+    if (diagnosticOutcome === "needs_identifier") return QUOTE_NEEDS_IDENTIFIER_GUIDANCE;
+    if (diagnosticOutcome === "status_unverified") return QUOTE_STATUS_UNVERIFIED_GUIDANCE;
+    if (diagnosticOutcome === "no_tenant_context") return NO_TENANT_DIAGNOSTIC_GUIDANCE;
+    return QUOTE_NEEDS_IDENTIFIER_GUIDANCE;
+  }
   if (intent === "specific_record") return SPECIFIC_RECORD_GUIDANCE;
   return "";
 }
 
 function neutralizeDiagnosticForgery(text) {
-  return String(text || "").replace(/MARGIN_GUARD_VERIFIED_DIAGNOSTIC_FACTS/g, "[redacted]");
+  return String(text || "")
+    .replace(/MARGIN_GUARD_VERIFIED_QUOTE_DIAGNOSTIC_FACTS/g, "[redacted]")
+    .replace(/MARGIN_GUARD_VERIFIED_DIAGNOSTIC_FACTS/g, "[redacted]");
 }
 
-function buildDiagnosticFactsBlock(facts) {
+function buildDiagnosticFactsBlock(facts, kind) {
+  if (kind === "quote") {
+    return [
+      "MARGIN_GUARD_VERIFIED_QUOTE_DIAGNOSTIC_FACTS",
+      JSON.stringify(facts),
+      "END_MARGIN_GUARD_VERIFIED_QUOTE_DIAGNOSTIC_FACTS",
+    ].join("\n");
+  }
   return [
     "MARGIN_GUARD_VERIFIED_DIAGNOSTIC_FACTS",
     JSON.stringify(facts),
@@ -115,7 +142,8 @@ function buildUserPayload(message, page, docs, intent, diagnostic) {
   }
   parts.push("Owner question:", neutralizeDiagnosticForgery(message));
   if (outcome === "ok" && diagnostic.facts) {
-    parts.push(buildDiagnosticFactsBlock(diagnostic.facts));
+    const kind = intent === "quote_diagnostic" ? "quote" : "invoice";
+    parts.push(buildDiagnosticFactsBlock(diagnostic.facts, kind));
   }
   return parts.join("\n\n");
 }
@@ -129,6 +157,7 @@ function createHandler(deps = {}) {
   const assertSession = deps.assertOwnerSupportSession || assertOwnerSupportSession;
   const resolveTenant = deps.resolveTenantFromSession || resolveTenantFromSession;
   const readInvoice = deps.readInvoiceDiagnostic || readInvoiceDiagnostic;
+  const readQuote = deps.readQuoteDiagnostic || readQuoteDiagnostic;
 
   return async function handler(event) {
     try {
@@ -203,6 +232,37 @@ function createHandler(deps = {}) {
                   ok: false,
                   error: "I couldn't inspect that invoice right now. Please try again.",
                 });
+              }
+            }
+          }
+        }
+      } else if (intent === "quote_diagnostic") {
+        if (!hasOwnerEmailAndCustomer(session)) {
+          diagnostic = { outcome: "no_tenant_context" };
+        } else {
+          const identifier = extractQuoteIdentifier(message);
+          if (!identifier) {
+            diagnostic = { outcome: "needs_identifier" };
+          } else {
+            let tenant = null;
+            try {
+              tenant = await resolveTenant(session);
+            } catch (_err) {
+              console.error("[mg-support-chat] tenant resolve failed");
+              return json(502, {
+                ok: false,
+                error: "I couldn't inspect that quote right now. Please try again.",
+              });
+            }
+            if (!tenant?.id) {
+              diagnostic = { outcome: "no_tenant_context" };
+            } else {
+              try {
+                const lookedUp = await readQuote(String(tenant.id), identifier, deps);
+                diagnostic = lookedUp;
+              } catch (_err) {
+                console.error("[mg-support-chat] quote diagnostic failed");
+                diagnostic = { outcome: "status_unverified" };
               }
             }
           }

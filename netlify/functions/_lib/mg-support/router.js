@@ -7,6 +7,11 @@ const {
   isSqlOrListAllProbe,
   isTenantOverrideAttempt,
 } = require("./invoice-diagnostic");
+const {
+  extractQuoteIdentifier,
+  isQuoteDiagnosticQuestion,
+  isQuoteSqlOrListAllProbe,
+} = require("./quote-diagnostic");
 
 const MODULES = [
   {
@@ -184,11 +189,14 @@ function classifySupportIntent(message) {
   if (isTenantOverrideAttempt(message)) {
     return "tenant_override_attempt";
   }
-  if (isSqlOrListAllProbe(text)) {
+  if (isSqlOrListAllProbe(text) || isQuoteSqlOrListAllProbe(text)) {
     return "docs_only";
   }
   if (isInvoiceDiagnosticQuestion(message)) {
     return "invoice_diagnostic";
+  }
+  if (isQuoteDiagnosticQuestion(message)) {
+    return "quote_diagnostic";
   }
   if (
     /\b(quote|estimate|project|payment|customer)\s*#?\s*\d+\b/.test(text) ||
@@ -255,5 +263,6 @@ module.exports = {
   classifySupportIntent,
   routeSupportKnowledge,
   extractInvoiceIdentifier,
+  extractQuoteIdentifier,
   isTenantOverrideAttempt,
 };

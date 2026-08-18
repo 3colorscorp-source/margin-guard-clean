@@ -17,8 +17,8 @@ const {
   OPENAI_MODEL,
   OPENAI_RESPONSES_URL,
   SYSTEM_INSTRUCTIONS,
-  SPECIFIC_RECORD_GUIDANCE,
   CROSS_TENANT_GUIDANCE,
+  QUOTE_NEEDS_IDENTIFIER_GUIDANCE,
 } = require("../netlify/functions/_lib/mg-support/config");
 const {
   createHandler,
@@ -165,7 +165,7 @@ async function main() {
   const supportLibDir = path.join(ROOT, "netlify/functions/_lib/mg-support");
   const libFiles = fs
     .readdirSync(supportLibDir)
-    .filter((f) => f !== "invoice-diagnostic.js")
+    .filter((f) => f !== "invoice-diagnostic.js" && f !== "quote-diagnostic.js")
     .map((f) => fs.readFileSync(path.join(supportLibDir, f), "utf8"))
     .join("\n");
   const supportSrc = supportFn + "\n" + libFiles;
@@ -432,8 +432,8 @@ async function main() {
   );
 
   assert(
-    "specific quote status is classified as specific_record",
-    classifySupportIntent("Can you tell me if quote 103 was sent?") === "specific_record"
+    "specific quote 103 is classified as quote_diagnostic",
+    classifySupportIntent("Can you tell me if quote 103 was sent?") === "quote_diagnostic"
   );
   assert(
     "cross-tenant invoice question is classified as cross_tenant",
@@ -455,11 +455,12 @@ async function main() {
   const specificInput = String((specificCapture.payload || {}).input || "");
   const specificInstructions = String((specificCapture.payload || {}).instructions || "");
   assert(
-    "specific quote status receives explicit no-account-diagnostics guidance",
+    "quote 103 receives needs_identifier guidance and does not inspect a record",
     specificRes.statusCode === 200 &&
-      specificInput.includes(SPECIFIC_RECORD_GUIDANCE) &&
+      specificInput.includes(QUOTE_NEEDS_IDENTIFIER_GUIDANCE) &&
       /cannot inspect individual account records/i.test(SYSTEM_INSTRUCTIONS) &&
-      /cannot inspect the status of that specific record/i.test(specificInput) &&
+      /exact Estimate # shown in Sales Admin/i.test(specificInput) &&
+      !specificInput.includes("MARGIN_GUARD_VERIFIED_QUOTE_DIAGNOSTIC_FACTS") &&
       specificInstructions === SYSTEM_INSTRUCTIONS
   );
 
@@ -532,7 +533,7 @@ async function main() {
     "\n" +
     fs
       .readdirSync(supportLibDir)
-      .filter((f) => f !== "invoice-diagnostic.js")
+      .filter((f) => f !== "invoice-diagnostic.js" && f !== "quote-diagnostic.js")
       .map((f) => fs.readFileSync(path.join(supportLibDir, f), "utf8"))
       .join("\n");
   assert(

@@ -36,4 +36,4 @@ Server-side secure pricing (`calc-secure-pricing` / publish path) uses the same 
 
 ## Sending estimates
 
-From the owner/seller builders, sending/publishing creates a **public estimate** the client can open (`/estimate-public`). Support AI Stage 1 can explain that workflow. It **cannot** confirm whether a specific estimate was viewed, accepted, or paid.
+From the owner/seller builders, sending/publishing creates a **public estimate** the client can open (`/estimate-public`). Ask Margin Guard can report compact Sales Admin lifecycle status for an **exact Estimate #** (for example `2026-0001`). It cannot prove that a customer received email, viewed the estimate, signed a contract, or paid. It cannot inspect quote pricing or Minimum Floor for a specific quote.
