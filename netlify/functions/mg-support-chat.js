@@ -21,8 +21,10 @@ const {
   MAX_OUTPUT_TOKENS,
   MAX_PAGE_CHARS,
   SYSTEM_INSTRUCTIONS,
+  SPECIFIC_RECORD_GUIDANCE,
+  CROSS_TENANT_GUIDANCE,
 } = require("./_lib/mg-support/config");
-const { routeSupportKnowledge } = require("./_lib/mg-support/router");
+const { routeSupportKnowledge, classifySupportIntent } = require("./_lib/mg-support/router");
 const { loadRoutedKnowledge } = require("./_lib/mg-support/loader");
 const { assertOwnerSupportSession } = require("./_lib/mg-support/require-owner-session");
 
@@ -55,18 +57,29 @@ function extractOutputText(data) {
   return parts.join("\n\n").trim();
 }
 
-function buildUserPayload(message, page, docs) {
+function guidanceForIntent(intent) {
+  if (intent === "cross_tenant") return CROSS_TENANT_GUIDANCE;
+  if (intent === "specific_record") return SPECIFIC_RECORD_GUIDANCE;
+  return "";
+}
+
+function buildUserPayload(message, page, docs, intent) {
   const pageLine = page ? `Current owner page: ${page}` : "Current owner page: (not provided)";
   const docBlocks = docs
     .map((d) => `### ${d.title}\n${d.content}`)
     .join("\n\n");
-  return [
+  const guidance = guidanceForIntent(intent);
+  const parts = [
     pageLine,
+    "The current page is weak context only. Follow the owner's question.",
     "Verified documentation:",
     docBlocks || "(no matching module text loaded)",
-    "Owner question:",
-    message,
-  ].join("\n\n");
+  ];
+  if (guidance) {
+    parts.push("Question-specific guidance:", guidance);
+  }
+  parts.push("Owner question:", message);
+  return parts.join("\n\n");
 }
 
 function createHandler(deps = {}) {
@@ -117,6 +130,7 @@ function createHandler(deps = {}) {
       const docs = loadFn(routed);
       const sources = (docs.length ? docs : routed).map((d) => d.title).filter(Boolean);
       const uniqueSources = [...new Set(sources)];
+      const intent = classifySupportIntent(message);
 
       const apiKey = getKey();
       if (!apiKey) {
@@ -145,7 +159,7 @@ function createHandler(deps = {}) {
           body: JSON.stringify({
             model: OPENAI_MODEL,
             instructions: SYSTEM_INSTRUCTIONS,
-            input: buildUserPayload(message, page, docs),
+            input: buildUserPayload(message, page, docs, intent),
             max_output_tokens: MAX_OUTPUT_TOKENS,
             store: false,
           }),

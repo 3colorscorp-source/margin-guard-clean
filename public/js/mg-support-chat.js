@@ -2,8 +2,86 @@
  * Ask Margin Guard — owner-only Stage 1 support drawer.
  * Loaded by mg-app-nav.js on authenticated owner shell pages.
  */
+
+function mgSupportEscapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function mgSupportRenderInlineMarkdown(escapedLine) {
+  return String(escapedLine || "")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+}
+
+/**
+ * Safe limited markdown: escape first, then insert only our tags.
+ * Never treats model HTML as markup.
+ */
+function mgSupportRenderAssistantMarkdown(raw) {
+  const text = String(raw ?? "").replace(/\r\n/g, "\n");
+  if (!text) return "";
+  const lines = text.split("\n");
+  const html = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+    if (heading) {
+      html.push("<h3>" + mgSupportRenderInlineMarkdown(mgSupportEscapeHtml(heading[2])) + "</h3>");
+      i += 1;
+      continue;
+    }
+    if (/^\s*[-*]\s+/.test(line)) {
+      html.push("<ul>");
+      while (i < lines.length) {
+        const item = /^\s*[-*]\s+(.+)$/.exec(lines[i]);
+        if (!item) break;
+        html.push("<li>" + mgSupportRenderInlineMarkdown(mgSupportEscapeHtml(item[1])) + "</li>");
+        i += 1;
+      }
+      html.push("</ul>");
+      continue;
+    }
+    if (/^\s*\d+[.)]\s+/.test(line)) {
+      html.push("<ol>");
+      while (i < lines.length) {
+        const item = /^\s*\d+[.)]\s+(.+)$/.exec(lines[i]);
+        if (!item) break;
+        html.push("<li>" + mgSupportRenderInlineMarkdown(mgSupportEscapeHtml(item[1])) + "</li>");
+        i += 1;
+      }
+      html.push("</ol>");
+      continue;
+    }
+    if (!line.trim()) {
+      i += 1;
+      continue;
+    }
+    const para = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() &&
+      !/^(#{1,3})\s+/.test(lines[i]) &&
+      !/^\s*[-*]\s+/.test(lines[i]) &&
+      !/^\s*\d+[.)]\s+/.test(lines[i])
+    ) {
+      para.push(mgSupportRenderInlineMarkdown(mgSupportEscapeHtml(lines[i])));
+      i += 1;
+    }
+    html.push("<p>" + para.join("<br>") + "</p>");
+  }
+  return html.join("");
+}
+
 (function () {
   "use strict";
+
+  if (typeof window === "undefined" || typeof document === "undefined") return;
 
   const API = "/.netlify/functions/mg-support-chat";
   const SUGGESTIONS = [
@@ -40,11 +118,7 @@
   }
 
   function escapeHtml(value) {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+    return mgSupportEscapeHtml(value);
   }
 
   function actionsHost() {
@@ -228,7 +302,7 @@
               "</div>";
         return (
           '<div class="mg-support-msg mg-support-msg--assistant">' +
-          (msg.text ? "<p>" + escapeHtml(msg.text).replace(/\n/g, "<br>") + "</p>" : "") +
+          (msg.text ? '<div class="mg-support-md">' + mgSupportRenderAssistantMarkdown(msg.text) + "</div>" : "") +
           loading +
           sources +
           fb +
@@ -340,3 +414,10 @@
     boot();
   }
 })();
+
+if (typeof module === "object" && module.exports) {
+  module.exports = {
+    escapeHtml: mgSupportEscapeHtml,
+    renderAssistantMarkdown: mgSupportRenderAssistantMarkdown,
+  };
+}

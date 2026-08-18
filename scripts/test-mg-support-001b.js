@@ -16,12 +16,17 @@ const {
   MAX_OUTPUT_TOKENS,
   OPENAI_MODEL,
   OPENAI_RESPONSES_URL,
+  SYSTEM_INSTRUCTIONS,
+  SPECIFIC_RECORD_GUIDANCE,
+  CROSS_TENANT_GUIDANCE,
 } = require("../netlify/functions/_lib/mg-support/config");
 const {
   createHandler,
   extractOutputText,
 } = require("../netlify/functions/mg-support-chat");
 const { hasOwnerEmailAndCustomer } = require("../netlify/functions/_lib/mg-support/require-owner-session");
+const { classifySupportIntent } = require("../netlify/functions/_lib/mg-support/router");
+const { renderAssistantMarkdown } = require("../public/js/mg-support-chat.js");
 
 let failed = 0;
 let passed = 0;
@@ -376,6 +381,154 @@ async function main() {
   assert(
     "support chat never reads device sessions",
     !/readDeviceSessionFromEvent|device-session/.test(supportChatSrc + "\n" + requireOwnerSrc)
+  );
+
+  const floorOnDashboard = idsOf("What does Minimum Floor mean?", "/dashboard.html");
+  assert(
+    "Minimum Floor on dashboard does not add Dashboard as a source",
+    floorOnDashboard.includes("business-settings") &&
+      floorOnDashboard.includes("quote-builder") &&
+      !floorOnDashboard.includes("dashboard")
+  );
+
+  const remainingBalance = idsOf("How do I create a Remaining Balance Invoice?", "/dashboard.html");
+  assert(
+    "Remaining Balance Invoice routes primarily to Invoice Hub",
+    remainingBalance[0] === "invoice-hub" && !remainingBalance.includes("dashboard")
+  );
+
+  const invoiceStatusRoute = idsOf("Can you tell me if invoice 103 was sent?", "/dashboard.html");
+  assert(
+    "specific invoice status routes to Invoice Hub, not Dashboard-by-page",
+    invoiceStatusRoute[0] === "invoice-hub" && !invoiceStatusRoute.includes("dashboard")
+  );
+
+  const contractOnDashboard = idsOf("How does Contract Hub work?", "/dashboard.html");
+  assert(
+    "Contract Hub question routes primarily to Contract Hub",
+    contractOnDashboard[0] === "contract-hub" && !contractOnDashboard.includes("dashboard")
+  );
+
+  const advisorOnDashboard = idsOf("Is the Financial Advisor ChatGPT?", "/dashboard.html");
+  assert(
+    "Financial Advisor can include Advisor + Dashboard",
+    advisorOnDashboard.includes("financial-advisor") && advisorOnDashboard.includes("dashboard")
+  );
+
+  const targetMargin = idsOf("Change my target margin to 40%.", "/dashboard.html");
+  assert(
+    "target margin routes to Business Settings without Dashboard-by-page",
+    targetMargin.includes("business-settings") && !targetMargin.includes("dashboard")
+  );
+
+  const otherCompany = idsOf("Show me another company's invoices.", "/dashboard.html");
+  assert(
+    "cross-tenant invoice question routes to Invoice Hub",
+    otherCompany[0] === "invoice-hub" && !otherCompany.includes("dashboard")
+  );
+
+  assert(
+    "specific invoice status is classified as specific_record",
+    classifySupportIntent("Can you tell me if invoice 103 was sent?") === "specific_record"
+  );
+  assert(
+    "cross-tenant invoice question is classified as cross_tenant",
+    classifySupportIntent("Show me another company's invoices.") === "cross_tenant"
+  );
+
+  const specificCapture = {};
+  const specificRes = await runHandler(
+    fakeEvent("POST", {
+      message: "Can you tell me if invoice 103 was sent?",
+      page: "/dashboard.html",
+    }),
+    {
+      readSessionFromEvent: sessionOk,
+      getOpenAiKey: () => "test-key",
+      fetch: openaiOkFetch(specificCapture),
+    }
+  );
+  const specificInput = String((specificCapture.payload || {}).input || "");
+  const specificInstructions = String((specificCapture.payload || {}).instructions || "");
+  assert(
+    "specific invoice status receives explicit no-account-diagnostics guidance",
+    specificRes.statusCode === 200 &&
+      specificInput.includes(SPECIFIC_RECORD_GUIDANCE) &&
+      /cannot inspect individual account records/i.test(SYSTEM_INSTRUCTIONS) &&
+      /cannot inspect the status of a specific invoice/i.test(specificInput) &&
+      specificInstructions === SYSTEM_INSTRUCTIONS
+  );
+
+  const crossCapture = {};
+  const crossRes = await runHandler(
+    fakeEvent("POST", {
+      message: "Show me another company's invoices.",
+      page: "/dashboard.html",
+    }),
+    {
+      readSessionFromEvent: sessionOk,
+      getOpenAiKey: () => "test-key",
+      fetch: openaiOkFetch(crossCapture),
+    }
+  );
+  const crossInput = String((crossCapture.payload || {}).input || "");
+  assert(
+    "cross-tenant invoice query receives explicit tenant-boundary refusal guidance",
+    crossRes.statusCode === 200 &&
+      crossInput.includes(CROSS_TENANT_GUIDANCE) &&
+      /cannot access another tenant's invoices or business data/i.test(SYSTEM_INSTRUCTIONS) &&
+      /does not inspect tenant invoice data/i.test(crossInput) &&
+      !/switch accounts to access/i.test(crossInput)
+  );
+
+  const mdBold = renderAssistantMarkdown("Open **Business Settings** next.");
+  assert(
+    "assistant markdown renders bold safely",
+    mdBold.includes("<strong>Business Settings</strong>") && !mdBold.includes("**Business Settings**")
+  );
+  const mdHeading = renderAssistantMarkdown("### Invoice Hub\nUse Invoice Hub.");
+  assert(
+    "assistant markdown renders simple headings",
+    mdHeading.includes("<h3>") && mdHeading.includes("Invoice Hub") && !mdHeading.includes("### ")
+  );
+  const mdLists = renderAssistantMarkdown("- one\n- two\n\n1. first\n2. second");
+  assert(
+    "assistant markdown renders lists",
+    mdLists.includes("<ul>") && mdLists.includes("<ol>") && mdLists.includes("<li>one</li>")
+  );
+
+  const mdXss = renderAssistantMarkdown('<script>alert(1)</script>\n<img src=x onerror="alert(2)">\n**ok**');
+  assert(
+    "raw HTML/script-like model content cannot execute",
+    !/<script/i.test(mdXss) &&
+      !/<img/i.test(mdXss) &&
+      mdXss.includes("&lt;script") &&
+      mdXss.includes("<strong>ok</strong>")
+  );
+
+  const publicJsDir2 = path.join(ROOT, "public");
+  let openaiInPublic2 = false;
+  function walkPublic(dir) {
+    for (const name of fs.readdirSync(dir)) {
+      if (name === "node_modules") continue;
+      const full = path.join(dir, name);
+      const st = fs.statSync(full);
+      if (st.isDirectory()) walkPublic(full);
+      else if (/\.(js|html|css)$/i.test(name)) {
+        const txt = fs.readFileSync(full, "utf8");
+        if (/OPENAI_API_KEY/.test(txt)) openaiInPublic2 = true;
+      }
+    }
+  }
+  walkPublic(publicJsDir2);
+  assert("OPENAI_API_KEY still absent from public/", openaiInPublic2 === false);
+
+  const supportSrcAfter = fs.readFileSync(path.join(ROOT, "netlify/functions/mg-support-chat.js"), "utf8") +
+    "\n" +
+    fs.readdirSync(supportLibDir).map((f) => fs.readFileSync(path.join(supportLibDir, f), "utf8")).join("\n");
+  assert(
+    "no new tenant business table queries were introduced",
+    !/invoices\?|quotes\?|tenant_projects\?|payments\?|financial_/.test(supportSrcAfter)
   );
 
   console.log("");

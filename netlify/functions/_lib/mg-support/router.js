@@ -150,33 +150,64 @@ function normalizePath(page) {
 }
 
 function scoreModule(mod, text, pagePath) {
-  let score = 0;
-  if (pagePath && mod.pages.some((p) => pagePath === p || pagePath.startsWith(`${p}/`))) {
-    score += 4;
-  }
+  let keywordScore = 0;
   for (const kw of mod.keywords) {
-    if (text.includes(kw)) score += kw.length >= 12 ? 5 : 3;
+    if (text.includes(kw)) keywordScore += kw.length >= 12 ? 5 : 3;
   }
-  return score;
+  let pageScore = 0;
+  if (pagePath && mod.pages.some((p) => pagePath === p || pagePath.startsWith(`${p}/`))) {
+    pageScore = 1;
+  }
+  return {
+    keywordScore,
+    pageScore,
+    total: keywordScore * 10 + pageScore,
+  };
+}
+
+function classifySupportIntent(message) {
+  const text = String(message || "").toLowerCase();
+  if (
+    /\b(another|other)\s+(company|companies|tenant|business|account)s?\b/.test(text) ||
+    /\banother company'?s\b/.test(text) ||
+    /\bother company'?s\b/.test(text) ||
+    /\bsomeone else'?s\b/.test(text)
+  ) {
+    return "cross_tenant";
+  }
+  if (
+    /\b(invoice|quote|estimate|project|payment|customer)\s*#?\s*\d+\b/.test(text) ||
+    /\bstatus of\b[\s\S]{0,40}\b(invoice|quote|project|payment|customer)\b/.test(text) ||
+    /\b(was|has|did)\b[\s\S]{0,60}\b(invoice|quote|project|payment)\b[\s\S]{0,40}\b(sent|paid|signed|open|overdue)\b/.test(
+      text
+    ) ||
+    /\bif invoice\b/.test(text)
+  ) {
+    return "specific_record";
+  }
+  return "general";
 }
 
 /**
- * Pick 1–2 knowledge modules from page path + question keywords.
- * Deterministic. No embeddings.
+ * Pick 1–2 knowledge modules. Question keywords outrank current page.
+ * Page is a tie-breaker / fallback, not dominant evidence.
  */
 function routeSupportKnowledge(message, page) {
   const text = String(message || "").toLowerCase();
   const pagePath = normalizePath(page);
 
-  const ranked = MODULES.map((mod) => ({
-    mod,
-    score: scoreModule(mod, text, pagePath),
-  }))
-    .filter((row) => row.score > 0)
-    .sort((a, b) => b.score - a.score || a.mod.id.localeCompare(b.mod.id));
+  const ranked = MODULES.map((mod) => {
+    const scored = scoreModule(mod, text, pagePath);
+    return { mod, ...scored };
+  });
+
+  const anyKeyword = ranked.some((row) => row.keywordScore > 0);
+  const eligible = ranked
+    .filter((row) => (anyKeyword ? row.keywordScore > 0 : row.pageScore > 0))
+    .sort((a, b) => b.total - a.total || a.mod.id.localeCompare(b.mod.id));
 
   const picked = [];
-  for (const row of ranked) {
+  for (const row of eligible) {
     if (picked.length >= MAX_MODULES) break;
     picked.push(row.mod);
   }
@@ -207,5 +238,6 @@ function routeSupportKnowledge(message, page) {
 module.exports = {
   MODULES,
   normalizePath,
+  classifySupportIntent,
   routeSupportKnowledge,
 };
