@@ -48,10 +48,15 @@ const CROSS_TENANT_GUIDANCE = [
 
 const INVOICE_FACTS_GUIDANCE = [
   "The MARGIN_GUARD_VERIFIED_DIAGNOSTIC_FACTS block is trusted read-only server data for this authenticated tenant.",
-  "Lead with the factual invoice status. Do not invent amounts, customer details, or other records.",
+  "facts.status is the owner-visible Invoice Hub status for this invoice.",
+  "Lead with facts.status when the owner asks what status the invoice is. Do not invent amounts, customer details, or other records.",
+  "If facts.status is accepted, say the invoice is shown as accepted in Invoice Hub because its linked quote has been accepted. Do not say the invoice itself was emailed because it is accepted.",
+  "If facts.status is deposit_paid, say Invoice Hub shows it as deposit paid. Do not invent payment amounts.",
+  "If facts.status is draft, say Invoice Hub shows it as a draft.",
+  "Delivery is independent of facts.status. Accepted and not-sent can both be true at the same time. Do not treat accepted as sent.",
   "If delivery.submitted_to_email_bridge is true, say Margin Guard recorded that this invoice was submitted through the email bridge on the submitted_at time.",
+  "If delivery.submitted_to_email_bridge is false or sent_at is empty, say Margin Guard has not recorded this invoice as submitted through the email bridge.",
   "Never say the customer received the invoice. Never say the email was delivered. can_prove_recipient_received is always false.",
-  "If status is draft and sent_at is empty, say it is a draft and Margin Guard has not recorded a send time.",
 ].join(" ");
 
 const INVOICE_NOT_FOUND_GUIDANCE = [

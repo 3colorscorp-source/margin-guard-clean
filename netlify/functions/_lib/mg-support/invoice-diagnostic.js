@@ -2,6 +2,11 @@
  * Closed read-only invoice diagnostic for Support AI Stage 2.
  * Fixed table, fixed select, GET only, trusted tenant_id filter, max 2 rows.
  * Never send raw rows or restricted fields to OpenAI.
+ *
+ * Owner-visible `status` matches Invoice Hub's derived lifecycle overlay using
+ * non-financial fields only (archived/void/explicit paid, deposit_paid, quote
+ * accepted, sent_at, else raw invoice status). It does not reproduce
+ * amount/ledger paid or overdue calculations.
  */
 "use strict";
 
@@ -24,9 +29,14 @@ const INVOICE_DIAGNOSTIC_SELECT_FIELDS = [
   "public_token",
   "quote_id",
   "project_id",
+  "payment_status",
 ];
 
-const INVOICE_DIAGNOSTIC_SELECT = INVOICE_DIAGNOSTIC_SELECT_FIELDS.join(",");
+/** Nested quote lifecycle flags only — never totals, client fields, notes, or ids. */
+const INVOICE_DIAGNOSTIC_QUOTE_EMBED = "quotes(status,accepted_at,deposit_paid_at)";
+
+const INVOICE_DIAGNOSTIC_SELECT =
+  INVOICE_DIAGNOSTIC_SELECT_FIELDS.join(",") + "," + INVOICE_DIAGNOSTIC_QUOTE_EMBED;
 
 const IDENTIFIER_STOPWORDS = new Set([
   "hub",
@@ -177,11 +187,56 @@ function isNonEmpty(value) {
   return String(value ?? "").trim() !== "";
 }
 
+function normalizeRawInvoiceStatus(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw || raw === "open") return "draft";
+  return raw;
+}
+
+/** PostgREST many-to-one embed may be an object or a one-element array. */
+function unwrapQuoteEmbed(row) {
+  let quoteWrap = row?.quotes;
+  if (Array.isArray(quoteWrap)) quoteWrap = quoteWrap[0];
+  return quoteWrap && typeof quoteWrap === "object" ? quoteWrap : null;
+}
+
+/**
+ * Invoice Hub owner-visible Status, using approved non-financial fields only.
+ * Does not claim amount/ledger paid or overdue parity.
+ *
+ * Priority:
+ * 1. archived
+ * 2. void
+ * 3. explicit persisted invoices.status = paid
+ * 4. deposit_paid (invoice payment_status or quote.deposit_paid_at)
+ * 5. accepted (quote.accepted_at or quote.status = accepted)
+ * 6. sent when sent_at exists
+ * 7. otherwise normalized raw invoice status
+ */
+function deriveOwnerVisibleInvoiceStatus(row) {
+  const rawInv = normalizeRawInvoiceStatus(row?.status);
+  if (rawInv === "archived") return "archived";
+  if (rawInv === "void") return "void";
+  if (rawInv === "paid") return "paid";
+
+  const paymentStatus = String(row?.payment_status || "").trim().toLowerCase();
+  const quote = unwrapQuoteEmbed(row);
+  const quoteDepositAt = isNonEmpty(quote?.deposit_paid_at);
+  if (paymentStatus === "deposit_paid" || quoteDepositAt) return "deposit_paid";
+
+  const quoteAcceptedAt = isNonEmpty(quote?.accepted_at);
+  const quoteStatus = String(quote?.status || "").trim().toLowerCase();
+  if (quoteAcceptedAt || quoteStatus === "accepted") return "accepted";
+
+  if (isNonEmpty(row?.sent_at)) return "sent";
+  return rawInv;
+}
+
 function toModelFacts(row) {
   const sentAt = isNonEmpty(row?.sent_at) ? String(row.sent_at).trim() : null;
   return {
     invoice_no: isNonEmpty(row?.invoice_no) ? String(row.invoice_no).trim() : null,
-    status: isNonEmpty(row?.status) ? String(row.status).trim() : null,
+    status: deriveOwnerVisibleInvoiceStatus(row),
     type: isNonEmpty(row?.type) ? String(row.type).trim() : null,
     invoice_label: isNonEmpty(row?.invoice_label) ? String(row.invoice_label).trim() : null,
     created_at: isNonEmpty(row?.created_at) ? String(row.created_at).trim() : null,
@@ -253,10 +308,13 @@ module.exports = {
   UUID_RE,
   INVOICE_DIAGNOSTIC_SELECT,
   INVOICE_DIAGNOSTIC_SELECT_FIELDS,
+  INVOICE_DIAGNOSTIC_QUOTE_EMBED,
   extractInvoiceIdentifier,
   isInvoiceDiagnosticQuestion,
   isSqlOrListAllProbe,
   isTenantOverrideAttempt,
+  unwrapQuoteEmbed,
+  deriveOwnerVisibleInvoiceStatus,
   toModelFacts,
   buildInvoiceQueryPath,
   readInvoiceDiagnostic,

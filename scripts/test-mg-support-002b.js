@@ -12,7 +12,9 @@ const ROOT = path.resolve(__dirname, "..");
 const { classifySupportIntent } = require("../netlify/functions/_lib/mg-support/router");
 const {
   INVOICE_DIAGNOSTIC_SELECT,
+  INVOICE_DIAGNOSTIC_QUOTE_EMBED,
   extractInvoiceIdentifier,
+  deriveOwnerVisibleInvoiceStatus,
   toModelFacts,
   readInvoiceDiagnostic,
 } = require("../netlify/functions/_lib/mg-support/invoice-diagnostic");
@@ -98,11 +100,33 @@ function ownInvoiceRow(overrides) {
     public_token: "inv_secret_token_value",
     quote_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     project_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    payment_status: null,
     customer_email: "should-not-leak@example.com",
     notes: "secret notes",
     amount: 9999,
     ...overrides,
   };
+}
+
+function liveAcceptedDraftRow(overrides) {
+  return ownInvoiceRow({
+    invoice_no: "INV-1783961864371",
+    status: "draft",
+    type: "FINAL",
+    sent_at: null,
+    due_date: null,
+    payment_status: null,
+    quotes: {
+      status: "accepted",
+      accepted_at: "2026-07-15T18:22:00.000Z",
+      deposit_paid_at: null,
+      id: "should-not-leak-quote-id",
+      total: 8888,
+      client_name: "Secret Client",
+      notes: "quote secret notes",
+    },
+    ...overrides,
+  });
 }
 
 async function main() {
@@ -215,7 +239,7 @@ async function main() {
   const noFacts = extractFacts(noInput);
   assert(
     "valid owner + exact own invoice_no returns compact facts",
-    noRes.statusCode === 200 && noFacts.invoice_no === "INV-TEST-100" && noFacts.status === "issued"
+    noRes.statusCode === 200 && noFacts.invoice_no === "INV-TEST-100" && noFacts.status === "sent"
   );
 
   dbCalls = 0;
@@ -361,9 +385,19 @@ async function main() {
     fetch: openaiOkFetch(),
   });
   const diagPath = pathCapture[0] || "";
-  assert("fixed select only", diagPath.includes("select=" + encodeURIComponent(INVOICE_DIAGNOSTIC_SELECT)) || diagPath.includes("select=" + INVOICE_DIAGNOSTIC_SELECT));
+  const diagSelect = new URLSearchParams(String(diagPath).split("?")[1] || "").get("select") || "";
+  assert("fixed select only", diagSelect === INVOICE_DIAGNOSTIC_SELECT);
   assert("query always includes trusted tenant_id", /tenant_id=eq\./.test(diagPath) && diagPath.includes(OWN_TENANT));
-  assert("no select=*", !/select=\*/.test(diagPath));
+  assert("no select=*", !/select=\*/.test(diagPath) && diagSelect !== "*");
+  assert(
+    "closed select includes payment_status and quote lifecycle embed only",
+    diagSelect.includes("payment_status") &&
+      diagSelect.endsWith("," + INVOICE_DIAGNOSTIC_QUOTE_EMBED) &&
+      INVOICE_DIAGNOSTIC_QUOTE_EMBED === "quotes(status,accepted_at,deposit_paid_at)" &&
+      !/quotes\([^)]*\bid\b/.test(INVOICE_DIAGNOSTIC_QUOTE_EMBED) &&
+      !/quotes\([^)]*total/.test(INVOICE_DIAGNOSTIC_QUOTE_EMBED) &&
+      !/quotes\([^)]*client/.test(INVOICE_DIAGNOSTIC_QUOTE_EMBED)
+  );
 
   const diagSrc = fs.readFileSync(path.join(ROOT, "netlify/functions/_lib/mg-support/invoice-diagnostic.js"), "utf8");
   const chatSrc = fs.readFileSync(path.join(ROOT, "netlify/functions/mg-support-chat.js"), "utf8");
@@ -399,6 +433,13 @@ async function main() {
       /submitted through the email bridge/i.test(INVOICE_FACTS_GUIDANCE) &&
       /Never say the customer received/i.test(INVOICE_FACTS_GUIDANCE)
   );
+  assert(
+    "guidance uses owner-visible status and does not force draft from empty sent_at",
+    /owner-visible Invoice Hub status/i.test(INVOICE_FACTS_GUIDANCE) &&
+      /shown as accepted in Invoice Hub because its linked quote has been accepted/i.test(INVOICE_FACTS_GUIDANCE) &&
+      !/If status is draft and sent_at is empty, say it is a draft/i.test(INVOICE_FACTS_GUIDANCE) &&
+      /Do not treat accepted as sent/i.test(INVOICE_FACTS_GUIDANCE)
+  );
 
   const draftCapture = {};
   await runHandler(fakeEvent("POST", { message: "What status is invoice INV-TEST-101?" }), {
@@ -424,7 +465,7 @@ async function main() {
     draftFacts.status === "draft" &&
       draftFacts.sent_at === null &&
       draftFacts.delivery.submitted_to_email_bridge === false &&
-      /has not recorded a send time/i.test(INVOICE_FACTS_GUIDANCE)
+      /has not recorded this invoice as submitted through the email bridge/i.test(INVOICE_FACTS_GUIDANCE)
   );
 
   dbCalls = 0;
@@ -662,6 +703,141 @@ async function main() {
     supabaseGet: async () => [ownInvoiceRow({ id: OTHER_INVOICE_ID, tenant_id: OTHER_TENANT })],
   });
   assert("ownership re-check drops other-tenant row", lookupForeign.outcome === "not_found");
+
+  const liveDraftAccepted = liveAcceptedDraftRow();
+  assert(
+    "raw draft + quote accepted → facts.status = accepted",
+    deriveOwnerVisibleInvoiceStatus(liveDraftAccepted) === "accepted" &&
+      toModelFacts(liveDraftAccepted).status === "accepted"
+  );
+  const liveFacts = toModelFacts(liveDraftAccepted);
+  assert(
+    "raw draft + quote accepted + sent_at null → accepted and delivery false",
+    liveFacts.status === "accepted" &&
+      liveFacts.invoice_no === "INV-1783961864371" &&
+      liveFacts.sent_at === null &&
+      liveFacts.delivery.submitted_to_email_bridge === false &&
+      liveFacts.delivery.submitted_at === null &&
+      liveFacts.delivery.can_prove_recipient_received === false
+  );
+  const liveSentFacts = toModelFacts(liveAcceptedDraftRow({ sent_at: "2026-08-17T12:00:00.000Z" }));
+  assert(
+    "raw draft + quote accepted + sent_at exists → status accepted and delivery true",
+    liveSentFacts.status === "accepted" &&
+      liveSentFacts.delivery.submitted_to_email_bridge === true &&
+      liveSentFacts.delivery.submitted_at === "2026-08-17T12:00:00.000Z" &&
+      liveSentFacts.delivery.can_prove_recipient_received === false
+  );
+  assert(
+    "raw draft + quote not accepted → draft",
+    toModelFacts(
+      ownInvoiceRow({
+        status: "draft",
+        sent_at: null,
+        payment_status: null,
+        quotes: { status: "sent", accepted_at: null, deposit_paid_at: null },
+      })
+    ).status === "draft"
+  );
+  assert(
+    "raw paid + quote accepted → paid",
+    toModelFacts(liveAcceptedDraftRow({ status: "paid" })).status === "paid"
+  );
+  assert(
+    "raw void + quote accepted → void",
+    toModelFacts(liveAcceptedDraftRow({ status: "void" })).status === "void"
+  );
+  assert(
+    "raw archived + quote accepted → archived",
+    toModelFacts(liveAcceptedDraftRow({ status: "archived" })).status === "archived"
+  );
+  assert(
+    "payment_status deposit_paid + quote accepted → deposit_paid",
+    toModelFacts(liveAcceptedDraftRow({ payment_status: "deposit_paid" })).status === "deposit_paid"
+  );
+  assert(
+    "quote deposit_paid_at + quote accepted → deposit_paid",
+    toModelFacts(
+      liveAcceptedDraftRow({
+        quotes: {
+          status: "accepted",
+          accepted_at: "2026-07-15T18:22:00.000Z",
+          deposit_paid_at: "2026-08-02T00:00:00.000Z",
+        },
+      })
+    ).status === "deposit_paid"
+  );
+
+  const smoke1Capture = {};
+  const smoke1 = await runHandler(
+    fakeEvent("POST", { message: "What status is invoice INV-1783961864371?" }),
+    {
+      readSessionFromEvent: sessionOk,
+      resolveTenantFromSession: resolveOwnTenant,
+      getOpenAiKey: () => "test-key",
+      supabaseGet: async () => [liveAcceptedDraftRow()],
+      fetch: openaiOkFetch(smoke1Capture),
+    }
+  );
+  const smoke1Input = String((smoke1Capture.payload || {}).input || "");
+  const smoke1Facts = extractFacts(smoke1Input);
+  assert(
+    "SMOKE 1 status question leads with accepted, not draft",
+    smoke1.statusCode === 200 &&
+      smoke1Facts &&
+      smoke1Facts.status === "accepted" &&
+      smoke1Facts.status !== "draft" &&
+      smoke1Facts.invoice_no === "INV-1783961864371" &&
+      smoke1Input.includes(INVOICE_FACTS_GUIDANCE) &&
+      /shown as accepted in Invoice Hub because its linked quote has been accepted/i.test(INVOICE_FACTS_GUIDANCE)
+  );
+
+  const smoke2Capture = {};
+  const smoke2 = await runHandler(
+    fakeEvent("POST", { message: "Was invoice INV-1783961864371 sent?" }),
+    {
+      readSessionFromEvent: sessionOk,
+      resolveTenantFromSession: resolveOwnTenant,
+      getOpenAiKey: () => "test-key",
+      supabaseGet: async () => [liveAcceptedDraftRow()],
+      fetch: openaiOkFetch(smoke2Capture),
+    }
+  );
+  const smoke2Input = String((smoke2Capture.payload || {}).input || "");
+  const smoke2Facts = extractFacts(smoke2Input);
+  assert(
+    "SMOKE 2 sent question keeps accepted and independent unsent delivery",
+    smoke2.statusCode === 200 &&
+      smoke2Facts &&
+      smoke2Facts.status === "accepted" &&
+      smoke2Facts.delivery.submitted_to_email_bridge === false &&
+      smoke2Facts.delivery.submitted_at === null &&
+      smoke2Facts.delivery.can_prove_recipient_received === false &&
+      /Do not treat accepted as sent/i.test(INVOICE_FACTS_GUIDANCE) &&
+      /Never say the customer received/i.test(INVOICE_FACTS_GUIDANCE)
+  );
+
+  assert(
+    "nested quote lifecycle fields stripped before OpenAI",
+    smoke1Facts &&
+      !("quotes" in smoke1Facts) &&
+      !("accepted_at" in smoke1Facts) &&
+      !("deposit_paid_at" in smoke1Facts) &&
+      !("invoice_row_status" in smoke1Facts) &&
+      !("quote_accepted" in smoke1Facts) &&
+      !("payment_status" in smoke1Facts) &&
+      !("quote_id" in smoke1Facts) &&
+      !smoke1Input.includes("should-not-leak-quote-id") &&
+      !smoke1Input.includes("2026-07-15T18:22:00.000Z")
+  );
+  assert(
+    "quote total/customer/notes absent from model payload",
+    !smoke1Input.includes("8888") &&
+      !smoke1Input.includes("Secret Client") &&
+      !smoke1Input.includes("quote secret notes") &&
+      !/"total"\s*:/.test(smoke1Input) &&
+      !/"client_name"\s*:/.test(smoke1Input)
+  );
 
   let openaiInPublic = false;
   function walk(dir) {
