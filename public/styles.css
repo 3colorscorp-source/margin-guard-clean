@@ -6365,12 +6365,21 @@ body.mg-app-shell.mg-nav-drawer-open .mg-sidebar__plan{
   background:rgba(2,6,23,.72);
   backdrop-filter:blur(2px);
 }
+.mg-app-workspace{
+  min-width:0;
+  min-height:100vh;
+  min-height:100dvh;
+  display:grid;
+  grid-template-columns:minmax(0, 1fr);
+  transition:margin-left .18s ease;
+}
 .mg-app-main{
   min-height:100vh;
   min-height:100dvh;
   display:flex;
   flex-direction:column;
   min-width:0;
+  max-width:100%;
   transition:margin-left .18s ease;
 }
 .mg-topbar{
@@ -6430,8 +6439,11 @@ body.mg-app-shell .mg-app-main .container{
   max-width:1680px;
 }
 @media (min-width:1200px){
-  body.mg-app-shell .mg-app-main{
+  body.mg-app-shell .mg-app-workspace{
     margin-left:var(--mg-sidebar-width);
+  }
+  body.mg-app-shell .mg-app-main{
+    margin-left:0;
   }
   body.mg-app-shell .mg-sidebar{
     transform:none;
@@ -8645,6 +8657,21 @@ body[data-role="sales"] .sales-contact-picker__notice--err{
   border-color:rgba(34,197,94,.5);
   background:rgba(34,197,94,.16);
 }
+.mg-support-dock-host{
+  min-width:0;
+}
+.mg-support-dock-host[hidden]{
+  display:none !important;
+}
+.mg-support-dock-host:not([hidden]){
+  position:fixed;
+  inset:0;
+  z-index:360;
+  pointer-events:none;
+}
+.mg-support-dock-host:not([hidden]) > *{
+  pointer-events:auto;
+}
 .mg-support-overlay{
   position:fixed;
   inset:0;
@@ -8661,7 +8688,8 @@ body[data-role="sales"] .sales-contact-picker__notice--err{
   height:100dvh;
   display:flex;
   flex-direction:column;
-  background:linear-gradient(180deg, rgba(8,12,22,.98), rgba(6,10,18,.96));
+  background-color:#080c16;
+  background-image:linear-gradient(180deg, #080c16, #060a12);
   border-left:1px solid var(--stroke);
   color:inherit;
 }
@@ -8827,17 +8855,17 @@ body[data-role="sales"] .sales-contact-picker__notice--err{
   flex:0 0 auto;
 }
 @media (min-width:1100px){
+  body.mg-app-shell.mg-support-open .mg-app-workspace{
+    grid-template-columns:minmax(0, 1fr) var(--mg-support-drawer-width, 380px);
+  }
   body.mg-app-shell.mg-support-open .mg-app-main{
-    margin-right:var(--mg-support-drawer-width, 380px);
     min-width:0;
-    isolation:isolate;
-    overflow-x:hidden;
-    overflow-x:clip;
+    max-width:100%;
+    contain:inline-size;
   }
   body.mg-app-shell.mg-support-open .mg-app-main__body{
     min-width:0;
     max-width:100%;
-    overflow-x:auto;
   }
   body.mg-app-shell.mg-support-open .mg-app-main .container{
     min-width:0;
@@ -8863,12 +8891,35 @@ body[data-role="sales"] .sales-contact-picker__notice--err{
   body.mg-app-shell.mg-support-open .hub-console-table-card .hub-table{
     overflow:visible;
   }
+  body.mg-app-shell.mg-support-open .mg-support-dock-host:not([hidden]){
+    position:sticky;
+    inset:auto;
+    top:0;
+    z-index:2;
+    width:var(--mg-support-drawer-width, 380px);
+    max-width:var(--mg-support-drawer-width, 380px);
+    height:100vh;
+    height:100dvh;
+    align-self:start;
+    pointer-events:auto;
+  }
   body.mg-app-shell.mg-support-open .mg-support-overlay{
     display:none !important;
     pointer-events:none;
   }
   body.mg-app-shell.mg-support-open .mg-support-drawer{
-    width:var(--mg-support-drawer-width, 380px);
+    position:relative;
+    top:auto;
+    right:auto;
+    z-index:auto;
+    width:100%;
+    max-width:none;
+    height:100%;
+  }
+}
+@media print{
+  body.mg-app-shell .mg-app-workspace{
+    margin-left:0;
   }
 }
 @media (max-width:720px){

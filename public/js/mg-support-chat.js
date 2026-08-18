@@ -106,12 +106,46 @@ function mgSupportRenderAssistantMarkdown(raw) {
     }
   }
 
+  function ensureWorkspace() {
+    let workspace = document.getElementById("mgAppWorkspace");
+    if (workspace) return workspace;
+    const main = document.getElementById("mgAppMain");
+    if (!main || !main.parentNode) return null;
+    workspace = document.createElement("div");
+    workspace.id = "mgAppWorkspace";
+    workspace.className = "mg-app-workspace";
+    main.parentNode.insertBefore(workspace, main);
+    workspace.appendChild(main);
+    return workspace;
+  }
+
+  function ensureDockHost() {
+    let host = document.getElementById("mgSupportDockHost");
+    if (host) return host;
+    host = document.createElement("aside");
+    host.id = "mgSupportDockHost";
+    host.className = "mg-support-dock-host";
+    host.hidden = true;
+    host.setAttribute("aria-hidden", "true");
+    const workspace = ensureWorkspace();
+    if (workspace) workspace.appendChild(host);
+    else document.body.appendChild(host);
+    return host;
+  }
+
   function syncDockLayout() {
     const drawer = document.getElementById("mgSupportDrawer");
     const overlay = document.getElementById("mgSupportOverlay");
+    const host = document.getElementById("mgSupportDockHost");
     if (!drawer || !overlay) return;
     const docked = open && isDesktopDock();
+    drawer.hidden = !open;
     overlay.hidden = !open || docked;
+    if (host) {
+      host.hidden = !open;
+      host.setAttribute("aria-hidden", open ? "false" : "true");
+    }
+    document.body.classList.toggle("mg-support-docked", docked);
     drawer.setAttribute("aria-modal", docked ? "false" : "true");
   }
 
@@ -155,8 +189,8 @@ function mgSupportRenderAssistantMarkdown(raw) {
       return;
     }
 
-    const host = actionsHost();
-    if (!host) return;
+    const actions = actionsHost();
+    if (!actions) return;
 
     const btn = document.createElement("button");
     btn.type = "button";
@@ -166,14 +200,13 @@ function mgSupportRenderAssistantMarkdown(raw) {
     btn.setAttribute("aria-controls", "mgSupportDrawer");
     btn.setAttribute("aria-expanded", "false");
     btn.textContent = "Ask Margin Guard";
-    host.appendChild(btn);
+    actions.appendChild(btn);
     btn.addEventListener("click", function () {
       setOpen(true);
     });
 
-    const root = document.createElement("div");
-    root.id = "mgSupportRoot";
-    root.innerHTML =
+    const dockHost = ensureDockHost();
+    dockHost.innerHTML =
       '<div class="mg-support-overlay" id="mgSupportOverlay" hidden></div>' +
       '<aside class="mg-support-drawer" id="mgSupportDrawer" role="dialog" aria-modal="true" aria-labelledby="mgSupportTitle" hidden>' +
       '  <header class="mg-support-header">' +
@@ -190,7 +223,6 @@ function mgSupportRenderAssistantMarkdown(raw) {
       '    <button type="submit" class="btn primary mg-support-send" id="mgSupportSendBtn">Send</button>' +
       "  </form>" +
       "</aside>";
-    document.body.appendChild(root);
 
     document.getElementById("mgSupportOverlay").addEventListener("click", function () {
       setOpen(false);

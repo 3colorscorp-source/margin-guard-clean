@@ -424,6 +424,10 @@
     overlay.id = 'mgSidebarOverlay';
     overlay.setAttribute('aria-hidden', 'true');
 
+    const workspace = document.createElement('div');
+    workspace.className = 'mg-app-workspace';
+    workspace.id = 'mgAppWorkspace';
+
     const main = document.createElement('div');
     main.className = 'mg-app-main';
     main.id = 'mgAppMain';
@@ -455,10 +459,19 @@
     main.appendChild(topbar);
     main.appendChild(mainBody);
 
+    const dockHost = document.createElement('aside');
+    dockHost.className = 'mg-support-dock-host';
+    dockHost.id = 'mgSupportDockHost';
+    dockHost.hidden = true;
+    dockHost.setAttribute('aria-hidden', 'true');
+
+    workspace.appendChild(main);
+    workspace.appendChild(dockHost);
+
     body.classList.add('mg-app-shell');
     body.insertBefore(sidebar, body.firstChild);
     body.insertBefore(overlay, body.firstChild.nextSibling);
-    body.insertBefore(main, overlay.nextSibling);
+    body.insertBefore(workspace, overlay.nextSibling);
 
     shellBuilt = true;
     shellBody = body;
