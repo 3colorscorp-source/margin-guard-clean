@@ -90,11 +90,30 @@ function mgSupportRenderAssistantMarkdown(raw) {
     "How does Contract Hub work?",
   ];
 
+  const SUPPORT_DOCK_MQ = "(min-width: 1100px)";
+
   let open = false;
   let sending = false;
   let messages = [];
   let lastFocus = null;
   let mounted = false;
+
+  function isDesktopDock() {
+    try {
+      return window.matchMedia(SUPPORT_DOCK_MQ).matches;
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  function syncDockLayout() {
+    const drawer = document.getElementById("mgSupportDrawer");
+    const overlay = document.getElementById("mgSupportOverlay");
+    if (!drawer || !overlay) return;
+    const docked = open && isDesktopDock();
+    overlay.hidden = !open || docked;
+    drawer.setAttribute("aria-modal", docked ? "false" : "true");
+  }
 
   function isOwnerShell() {
     const mode =
@@ -190,6 +209,14 @@ function mgSupportRenderAssistantMarkdown(raw) {
       }
     });
     document.addEventListener("keydown", onGlobalKey);
+    if (window.matchMedia) {
+      const mq = window.matchMedia(SUPPORT_DOCK_MQ);
+      const onMq = function () {
+        if (open) syncDockLayout();
+      };
+      if (typeof mq.addEventListener === "function") mq.addEventListener("change", onMq);
+      else if (typeof mq.addListener === "function") mq.addListener(onMq);
+    }
 
     mounted = true;
     renderThread();
@@ -217,8 +244,8 @@ function mgSupportRenderAssistantMarkdown(raw) {
     const btn = document.getElementById("mgSupportOpenBtn");
     if (!drawer || !overlay) return;
     drawer.hidden = !open;
-    overlay.hidden = !open;
     document.body.classList.toggle("mg-support-open", open);
+    syncDockLayout();
     if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
     if (open) {
       lastFocus = document.activeElement;

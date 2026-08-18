@@ -6147,6 +6147,7 @@ body[data-role="owner"] input[type="date"] {
   --mg-sidebar-expanded-width:240px;
   --mg-topbar-height:56px;
   --mg-sidebar-width:var(--mg-sidebar-collapsed-width);
+  --mg-support-drawer-width:380px;
 }
 body.mg-app-shell{
   --mg-sidebar-width:var(--mg-sidebar-collapsed-width);
@@ -6369,6 +6370,7 @@ body.mg-app-shell.mg-nav-drawer-open .mg-sidebar__plan{
   min-height:100dvh;
   display:flex;
   flex-direction:column;
+  min-width:0;
   transition:margin-left .18s ease;
 }
 .mg-topbar{
@@ -8654,7 +8656,7 @@ body[data-role="sales"] .sales-contact-picker__notice--err{
   z-index:380;
   top:0;
   right:0;
-  width:min(420px, 100vw);
+  width:min(var(--mg-support-drawer-width, 380px), 100vw);
   height:100vh;
   height:100dvh;
   display:flex;
@@ -8823,6 +8825,23 @@ body[data-role="sales"] .sales-contact-picker__notice--err{
 }
 .mg-support-send{
   flex:0 0 auto;
+}
+@media (min-width:1100px){
+  body.mg-app-shell.mg-support-open .mg-app-main{
+    margin-right:var(--mg-support-drawer-width, 380px);
+    min-width:0;
+  }
+  body.mg-app-shell.mg-support-open .mg-app-main__body{
+    min-width:0;
+    overflow-x:auto;
+  }
+  body.mg-app-shell.mg-support-open .mg-support-overlay{
+    display:none !important;
+    pointer-events:none;
+  }
+  body.mg-app-shell.mg-support-open .mg-support-drawer{
+    width:var(--mg-support-drawer-width, 380px);
+  }
 }
 @media (max-width:720px){
   .mg-support-drawer{
