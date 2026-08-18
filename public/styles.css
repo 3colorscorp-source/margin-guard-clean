@@ -8830,10 +8830,38 @@ body[data-role="sales"] .sales-contact-picker__notice--err{
   body.mg-app-shell.mg-support-open .mg-app-main{
     margin-right:var(--mg-support-drawer-width, 380px);
     min-width:0;
+    isolation:isolate;
+    overflow-x:hidden;
+    overflow-x:clip;
   }
   body.mg-app-shell.mg-support-open .mg-app-main__body{
     min-width:0;
+    max-width:100%;
     overflow-x:auto;
+  }
+  body.mg-app-shell.mg-support-open .mg-app-main .container{
+    min-width:0;
+    max-width:min(1680px, 100%);
+    width:100%;
+    box-sizing:border-box;
+  }
+  body.mg-app-shell.mg-support-open .sa-table-wrap,
+  body.mg-app-shell.mg-support-open .supervisor-table-wrap,
+  body.mg-app-shell.mg-support-open .pcc-table-wrap,
+  body.mg-app-shell.mg-support-open .td-table-wrap,
+  body.mg-app-shell.mg-support-open .sw-table-wrap{
+    min-width:0;
+    max-width:100%;
+    overflow-x:auto;
+    overflow-y:hidden;
+  }
+  body.mg-app-shell.mg-support-open .sa-table-wrap .table,
+  body.mg-app-shell.mg-support-open .supervisor-table-wrap .table,
+  body.mg-app-shell.mg-support-open .pcc-table-wrap .table,
+  body.mg-app-shell.mg-support-open .td-table-wrap .table,
+  body.mg-app-shell.mg-support-open .sw-table-wrap .table,
+  body.mg-app-shell.mg-support-open .hub-console-table-card .hub-table{
+    overflow:visible;
   }
   body.mg-app-shell.mg-support-open .mg-support-overlay{
     display:none !important;
