@@ -1,6 +1,12 @@
 "use strict";
 
 const { MAX_MODULES } = require("./config");
+const {
+  extractInvoiceIdentifier,
+  isInvoiceDiagnosticQuestion,
+  isSqlOrListAllProbe,
+  isTenantOverrideAttempt,
+} = require("./invoice-diagnostic");
 
 const MODULES = [
   {
@@ -175,17 +181,25 @@ function classifySupportIntent(message) {
   ) {
     return "cross_tenant";
   }
+  if (isTenantOverrideAttempt(message)) {
+    return "tenant_override_attempt";
+  }
+  if (isSqlOrListAllProbe(text)) {
+    return "docs_only";
+  }
+  if (isInvoiceDiagnosticQuestion(message)) {
+    return "invoice_diagnostic";
+  }
   if (
-    /\b(invoice|quote|estimate|project|payment|customer)\s*#?\s*\d+\b/.test(text) ||
-    /\bstatus of\b[\s\S]{0,40}\b(invoice|quote|project|payment|customer)\b/.test(text) ||
-    /\b(was|has|did)\b[\s\S]{0,60}\b(invoice|quote|project|payment)\b[\s\S]{0,40}\b(sent|paid|signed|open|overdue)\b/.test(
+    /\b(quote|estimate|project|payment|customer)\s*#?\s*\d+\b/.test(text) ||
+    /\bstatus of\b[\s\S]{0,40}\b(quote|project|payment|customer)\b/.test(text) ||
+    /\b(was|has|did)\b[\s\S]{0,60}\b(quote|project|payment)\b[\s\S]{0,40}\b(sent|paid|signed|open|overdue)\b/.test(
       text
-    ) ||
-    /\bif invoice\b/.test(text)
+    )
   ) {
     return "specific_record";
   }
-  return "general";
+  return "docs_only";
 }
 
 /**
@@ -240,4 +254,6 @@ module.exports = {
   normalizePath,
   classifySupportIntent,
   routeSupportKnowledge,
+  extractInvoiceIdentifier,
+  isTenantOverrideAttempt,
 };

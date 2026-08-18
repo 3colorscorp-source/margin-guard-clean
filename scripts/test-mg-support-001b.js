@@ -163,10 +163,14 @@ async function main() {
 
   const supportFn = fs.readFileSync(path.join(ROOT, "netlify/functions/mg-support-chat.js"), "utf8");
   const supportLibDir = path.join(ROOT, "netlify/functions/_lib/mg-support");
-  const libFiles = fs.readdirSync(supportLibDir).map((f) => fs.readFileSync(path.join(supportLibDir, f), "utf8")).join("\n");
+  const libFiles = fs
+    .readdirSync(supportLibDir)
+    .filter((f) => f !== "invoice-diagnostic.js")
+    .map((f) => fs.readFileSync(path.join(supportLibDir, f), "utf8"))
+    .join("\n");
   const supportSrc = supportFn + "\n" + libFiles;
   assert(
-    "support function does not query tenant business tables",
+    "support function does not query tenant business tables outside invoice diagnostic",
     !/invoices\?|quotes\?|tenant_projects\?|payments\?|financial_/.test(supportSrc)
   );
 
@@ -428,8 +432,8 @@ async function main() {
   );
 
   assert(
-    "specific invoice status is classified as specific_record",
-    classifySupportIntent("Can you tell me if invoice 103 was sent?") === "specific_record"
+    "specific quote status is classified as specific_record",
+    classifySupportIntent("Can you tell me if quote 103 was sent?") === "specific_record"
   );
   assert(
     "cross-tenant invoice question is classified as cross_tenant",
@@ -439,7 +443,7 @@ async function main() {
   const specificCapture = {};
   const specificRes = await runHandler(
     fakeEvent("POST", {
-      message: "Can you tell me if invoice 103 was sent?",
+      message: "Can you tell me if quote 103 was sent?",
       page: "/dashboard.html",
     }),
     {
@@ -451,11 +455,11 @@ async function main() {
   const specificInput = String((specificCapture.payload || {}).input || "");
   const specificInstructions = String((specificCapture.payload || {}).instructions || "");
   assert(
-    "specific invoice status receives explicit no-account-diagnostics guidance",
+    "specific quote status receives explicit no-account-diagnostics guidance",
     specificRes.statusCode === 200 &&
       specificInput.includes(SPECIFIC_RECORD_GUIDANCE) &&
       /cannot inspect individual account records/i.test(SYSTEM_INSTRUCTIONS) &&
-      /cannot inspect the status of a specific invoice/i.test(specificInput) &&
+      /cannot inspect the status of that specific record/i.test(specificInput) &&
       specificInstructions === SYSTEM_INSTRUCTIONS
   );
 
@@ -523,11 +527,16 @@ async function main() {
   walkPublic(publicJsDir2);
   assert("OPENAI_API_KEY still absent from public/", openaiInPublic2 === false);
 
-  const supportSrcAfter = fs.readFileSync(path.join(ROOT, "netlify/functions/mg-support-chat.js"), "utf8") +
+  const supportSrcAfter =
+    fs.readFileSync(path.join(ROOT, "netlify/functions/mg-support-chat.js"), "utf8") +
     "\n" +
-    fs.readdirSync(supportLibDir).map((f) => fs.readFileSync(path.join(supportLibDir, f), "utf8")).join("\n");
+    fs
+      .readdirSync(supportLibDir)
+      .filter((f) => f !== "invoice-diagnostic.js")
+      .map((f) => fs.readFileSync(path.join(supportLibDir, f), "utf8"))
+      .join("\n");
   assert(
-    "no new tenant business table queries were introduced",
+    "no new tenant business table queries were introduced outside invoice diagnostic",
     !/invoices\?|quotes\?|tenant_projects\?|payments\?|financial_/.test(supportSrcAfter)
   );
 

@@ -4,10 +4,10 @@
  *
  * Auth: HMAC-valid mg_session via assertOwnerSupportSession.
  * Paying owners: session.e + session.c (same as bootstrap-tenant / owner APIs).
- * Platform admins: auth-status is_admin bypass (session.c not required).
- * Does not query invoices, quotes, payments, projects, or financial tables.
+ * Platform admins: auth-status is_admin bypass (session.c not required) for docs only.
+ * Invoice diagnostics require session.e + session.c and resolveTenantFromSession.
  * Does not trust browser tenant_id. Does not read mg_device_session.
- * OpenAI key stays server-side.
+ * OpenAI key stays server-side. OpenAI never chooses tables, SQL, or filters.
  */
 
 "use strict";
@@ -23,10 +23,21 @@ const {
   SYSTEM_INSTRUCTIONS,
   SPECIFIC_RECORD_GUIDANCE,
   CROSS_TENANT_GUIDANCE,
+  INVOICE_FACTS_GUIDANCE,
+  INVOICE_NOT_FOUND_GUIDANCE,
+  INVOICE_AMBIGUOUS_GUIDANCE,
+  INVOICE_NEEDS_IDENTIFIER_GUIDANCE,
+  NO_TENANT_DIAGNOSTIC_GUIDANCE,
+  TENANT_OVERRIDE_GUIDANCE,
 } = require("./_lib/mg-support/config");
 const { routeSupportKnowledge, classifySupportIntent } = require("./_lib/mg-support/router");
 const { loadRoutedKnowledge } = require("./_lib/mg-support/loader");
-const { assertOwnerSupportSession } = require("./_lib/mg-support/require-owner-session");
+const { assertOwnerSupportSession, hasOwnerEmailAndCustomer } = require("./_lib/mg-support/require-owner-session");
+const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const {
+  extractInvoiceIdentifier,
+  readInvoiceDiagnostic,
+} = require("./_lib/mg-support/invoice-diagnostic");
 
 function json(statusCode, body) {
   return {
@@ -57,18 +68,40 @@ function extractOutputText(data) {
   return parts.join("\n\n").trim();
 }
 
-function guidanceForIntent(intent) {
+function guidanceForIntent(intent, diagnosticOutcome) {
   if (intent === "cross_tenant") return CROSS_TENANT_GUIDANCE;
+  if (intent === "tenant_override_attempt") return TENANT_OVERRIDE_GUIDANCE;
+  if (intent === "invoice_diagnostic") {
+    if (diagnosticOutcome === "ok") return INVOICE_FACTS_GUIDANCE;
+    if (diagnosticOutcome === "not_found") return INVOICE_NOT_FOUND_GUIDANCE;
+    if (diagnosticOutcome === "ambiguous") return INVOICE_AMBIGUOUS_GUIDANCE;
+    if (diagnosticOutcome === "needs_identifier") return INVOICE_NEEDS_IDENTIFIER_GUIDANCE;
+    if (diagnosticOutcome === "no_tenant_context") return NO_TENANT_DIAGNOSTIC_GUIDANCE;
+    return INVOICE_NEEDS_IDENTIFIER_GUIDANCE;
+  }
   if (intent === "specific_record") return SPECIFIC_RECORD_GUIDANCE;
   return "";
 }
 
-function buildUserPayload(message, page, docs, intent) {
+function neutralizeDiagnosticForgery(text) {
+  return String(text || "").replace(/MARGIN_GUARD_VERIFIED_DIAGNOSTIC_FACTS/g, "[redacted]");
+}
+
+function buildDiagnosticFactsBlock(facts) {
+  return [
+    "MARGIN_GUARD_VERIFIED_DIAGNOSTIC_FACTS",
+    JSON.stringify(facts),
+    "END_MARGIN_GUARD_VERIFIED_DIAGNOSTIC_FACTS",
+  ].join("\n");
+}
+
+function buildUserPayload(message, page, docs, intent, diagnostic) {
   const pageLine = page ? `Current owner page: ${page}` : "Current owner page: (not provided)";
   const docBlocks = docs
     .map((d) => `### ${d.title}\n${d.content}`)
     .join("\n\n");
-  const guidance = guidanceForIntent(intent);
+  const outcome = diagnostic && diagnostic.outcome;
+  const guidance = guidanceForIntent(intent, outcome);
   const parts = [
     pageLine,
     "The current page is weak context only. Follow the owner's question.",
@@ -78,7 +111,10 @@ function buildUserPayload(message, page, docs, intent) {
   if (guidance) {
     parts.push("Question-specific guidance:", guidance);
   }
-  parts.push("Owner question:", message);
+  parts.push("Owner question:", neutralizeDiagnosticForgery(message));
+  if (outcome === "ok" && diagnostic.facts) {
+    parts.push(buildDiagnosticFactsBlock(diagnostic.facts));
+  }
   return parts.join("\n\n");
 }
 
@@ -89,6 +125,8 @@ function createHandler(deps = {}) {
   const routeFn = deps.routeSupportKnowledge || routeSupportKnowledge;
   const loadFn = deps.loadRoutedKnowledge || loadRoutedKnowledge;
   const assertSession = deps.assertOwnerSupportSession || assertOwnerSupportSession;
+  const resolveTenant = deps.resolveTenantFromSession || resolveTenantFromSession;
+  const readInvoice = deps.readInvoiceDiagnostic || readInvoiceDiagnostic;
 
   return async function handler(event) {
     try {
@@ -132,6 +170,43 @@ function createHandler(deps = {}) {
       const uniqueSources = [...new Set(sources)];
       const intent = classifySupportIntent(message);
 
+      let diagnostic = null;
+      if (intent === "invoice_diagnostic") {
+        if (!hasOwnerEmailAndCustomer(session)) {
+          diagnostic = { outcome: "no_tenant_context" };
+        } else {
+          const identifier = extractInvoiceIdentifier(message);
+          if (!identifier) {
+            diagnostic = { outcome: "needs_identifier" };
+          } else {
+            let tenant = null;
+            try {
+              tenant = await resolveTenant(session);
+            } catch (_err) {
+              console.error("[mg-support-chat] tenant resolve failed");
+              return json(502, {
+                ok: false,
+                error: "I couldn't inspect that invoice right now. Please try again.",
+              });
+            }
+            if (!tenant?.id) {
+              diagnostic = { outcome: "no_tenant_context" };
+            } else {
+              try {
+                const lookedUp = await readInvoice(String(tenant.id), identifier, deps);
+                diagnostic = lookedUp;
+              } catch (_err) {
+                console.error("[mg-support-chat] invoice diagnostic failed");
+                return json(502, {
+                  ok: false,
+                  error: "I couldn't inspect that invoice right now. Please try again.",
+                });
+              }
+            }
+          }
+        }
+      }
+
       const apiKey = getKey();
       if (!apiKey) {
         console.error("[mg-support-chat] missing OpenAI configuration");
@@ -159,7 +234,7 @@ function createHandler(deps = {}) {
           body: JSON.stringify({
             model: OPENAI_MODEL,
             instructions: SYSTEM_INSTRUCTIONS,
-            input: buildUserPayload(message, page, docs, intent),
+            input: buildUserPayload(message, page, docs, intent, diagnostic),
             max_output_tokens: MAX_OUTPUT_TOKENS,
             store: false,
           }),
