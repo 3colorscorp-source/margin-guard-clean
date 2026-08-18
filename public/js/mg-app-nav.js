@@ -440,6 +440,7 @@
       '  <h1 class="mg-topbar__title">' +
       escapeHtml(pageTitle) +
       '</h1>' +
+      '  <div class="mg-topbar__actions" id="mgTopbarActions"></div>' +
       '  <div class="mg-device-logout-anchor" id="mgDeviceLogoutAnchor" hidden aria-hidden="true"></div>' +
       '</div>';
 
@@ -477,6 +478,17 @@
     window.dispatchEvent(
       new CustomEvent('mg-app-nav-ready', { detail: { mode: portalMode } })
     );
+    loadOwnerSupportChat(portalMode);
+  }
+
+  function loadOwnerSupportChat(mode) {
+    if (isDevicePortalMode(mode)) return;
+    if (document.querySelector('script[data-mg-support-chat]')) return;
+    const script = document.createElement('script');
+    script.src = '/js/mg-support-chat.js';
+    script.defer = true;
+    script.setAttribute('data-mg-support-chat', 'true');
+    document.head.appendChild(script);
   }
 
   function applyPortalMode(mode) {
@@ -503,6 +515,7 @@
     window.dispatchEvent(
       new CustomEvent('mg-app-nav-mode', { detail: { mode: normalized } })
     );
+    loadOwnerSupportChat(normalized);
     return true;
   }
 

@@ -8,6 +8,10 @@
 [functions."upsert-tenant-project"]
   timeout = 26
 
+# Support AI Stage 1 — bundle verified markdown into the function zip
+[functions."mg-support-chat"]
+  included_files = ["docs/margin-guard-support/**"]
+
 # Invoice past-due reminders (D1/D3/D7/D14 after due_date); see invoice-followups-due.js + ZAPIER_INVOICE_REMINDER_WEBHOOK
 
 [[redirects]]
