@@ -187,6 +187,7 @@ async function main() {
   const createSrc = read("netlify/functions/mg-support-create-case.js");
   const chatSrc = read("netlify/functions/mg-support-chat.js");
   const uiSrc = read("public/js/mg-support-chat.js");
+  const navSrc = read("public/js/mg-app-nav.js");
   const docsSrc = read("docs/margin-guard-support/support-escalation.md");
   const configSrc = read("netlify/functions/_lib/mg-support/config.js");
 
@@ -1004,6 +1005,50 @@ async function main() {
 
   assert("max duplicate GET on happy path is 1", counters.gets.length === 1);
   assert("max insert count on happy path is 1", counters.inserts.length === 1);
+
+  const supportLoader = navSrc.match(/function loadOwnerSupportChat\([\s\S]*?\n  \}/);
+  const versionConst = navSrc.match(/const SUPPORT_CHAT_ASSET_VERSION = ['"]([^'"]+)['"]/);
+  assert("nav loads mg-support-chat.js", Boolean(supportLoader && /mg-support-chat\.js/.test(supportLoader[0])));
+  assert(
+    "support chat asset URL has deterministic version query",
+    Boolean(
+      versionConst &&
+        /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(versionConst[1]) &&
+        /script\.src = '\/js\/mg-support-chat\.js\?v=' \+ encodeURIComponent\(SUPPORT_CHAT_ASSET_VERSION\)/.test(
+          supportLoader && supportLoader[0]
+        )
+    )
+  );
+  assert(
+    "support chat cache-bust is not Date.now or random",
+    Boolean(
+      supportLoader &&
+        !/Date\.now\(/.test(supportLoader[0]) &&
+        !/Math\.random\(/.test(supportLoader[0]) &&
+        !/crypto\.random/.test(supportLoader[0]) &&
+        !/new Date\(/.test(supportLoader[0])
+    )
+  );
+  assert(
+    "support chat asset URL has no auth or session data",
+    Boolean(
+      supportLoader &&
+        !/session|cookie|token|tenant|email|customer|mg_session/i.test(
+          supportLoader[0].replace(/data-mg-support-chat/g, "")
+        )
+    )
+  );
+  assert(
+    "support chat boot behavior unchanged",
+    Boolean(
+      supportLoader &&
+        /isDevicePortalMode\(mode\)/.test(supportLoader[0]) &&
+        /script\[data-mg-support-chat\]/.test(supportLoader[0]) &&
+        /script\.defer = true/.test(supportLoader[0]) &&
+        /setAttribute\('data-mg-support-chat'/.test(supportLoader[0]) &&
+        /document\.head\.appendChild\(script\)/.test(supportLoader[0])
+    )
+  );
 
   console.log("");
   console.log(passed + " passed, " + failed + " failed");

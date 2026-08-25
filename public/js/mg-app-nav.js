@@ -6,6 +6,7 @@
 (function () {
   const PIN_KEY = 'mg_nav_pinned_v1';
   const PORTAL_MODES = ['owner', 'seller-device', 'supervisor-device'];
+  const SUPPORT_CHAT_ASSET_VERSION = '003b-1';
 
   const NAV_GROUPS_OWNER = [
     {
@@ -498,7 +499,7 @@
     if (isDevicePortalMode(mode)) return;
     if (document.querySelector('script[data-mg-support-chat]')) return;
     const script = document.createElement('script');
-    script.src = '/js/mg-support-chat.js';
+    script.src = '/js/mg-support-chat.js?v=' + encodeURIComponent(SUPPORT_CHAT_ASSET_VERSION);
     script.defer = true;
     script.setAttribute('data-mg-support-chat', 'true');
     document.head.appendChild(script);
