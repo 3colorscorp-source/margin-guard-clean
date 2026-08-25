@@ -5,7 +5,7 @@
  * Auth: HMAC-valid mg_session via assertOwnerSupportSession.
  * Paying owners: session.e + session.c (same as bootstrap-tenant / owner APIs).
  * Platform admins: auth-status is_admin bypass (session.c not required) for docs only.
- * Invoice and quote diagnostics require session.e + session.c and resolveTenantFromSession.
+ * Invoice, quote, and project-lifecycle diagnostics require session.e + session.c and resolveTenantFromSession.
  * Does not trust browser tenant_id. Does not read mg_device_session.
  * OpenAI key stays server-side. OpenAI never chooses tables, SQL, or filters.
  */
@@ -35,6 +35,11 @@ const {
   QUOTE_AMBIGUOUS_GUIDANCE,
   QUOTE_STATUS_UNVERIFIED_GUIDANCE,
   QUOTE_NEEDS_IDENTIFIER_GUIDANCE,
+  PROJECT_FACTS_GUIDANCE,
+  PROJECT_NOT_FOUND_GUIDANCE,
+  PROJECT_AMBIGUOUS_GUIDANCE,
+  PROJECT_STATUS_UNVERIFIED_GUIDANCE,
+  PROJECT_NEEDS_IDENTIFIER_GUIDANCE,
 } = require("./_lib/mg-support/config");
 const { routeSupportKnowledge, classifySupportIntent } = require("./_lib/mg-support/router");
 const { loadRoutedKnowledge } = require("./_lib/mg-support/loader");
@@ -48,6 +53,10 @@ const {
   extractQuoteIdentifier,
   readQuoteDiagnostic,
 } = require("./_lib/mg-support/quote-diagnostic");
+const {
+  extractProjectIdentifier,
+  readProjectDiagnostic,
+} = require("./_lib/mg-support/project-diagnostic");
 
 function json(statusCode, body) {
   return {
@@ -99,12 +108,22 @@ function guidanceForIntent(intent, diagnosticOutcome) {
     if (diagnosticOutcome === "no_tenant_context") return NO_TENANT_DIAGNOSTIC_GUIDANCE;
     return QUOTE_NEEDS_IDENTIFIER_GUIDANCE;
   }
+  if (intent === "project_diagnostic") {
+    if (diagnosticOutcome === "ok") return PROJECT_FACTS_GUIDANCE;
+    if (diagnosticOutcome === "not_found") return PROJECT_NOT_FOUND_GUIDANCE;
+    if (diagnosticOutcome === "ambiguous") return PROJECT_AMBIGUOUS_GUIDANCE;
+    if (diagnosticOutcome === "needs_identifier") return PROJECT_NEEDS_IDENTIFIER_GUIDANCE;
+    if (diagnosticOutcome === "status_unverified") return PROJECT_STATUS_UNVERIFIED_GUIDANCE;
+    if (diagnosticOutcome === "no_tenant_context") return NO_TENANT_DIAGNOSTIC_GUIDANCE;
+    return PROJECT_NEEDS_IDENTIFIER_GUIDANCE;
+  }
   if (intent === "specific_record") return SPECIFIC_RECORD_GUIDANCE;
   return "";
 }
 
 function neutralizeDiagnosticForgery(text) {
   return String(text || "")
+    .replace(/MARGIN_GUARD_VERIFIED_PROJECT_DIAGNOSTIC_FACTS/g, "[redacted]")
     .replace(/MARGIN_GUARD_VERIFIED_QUOTE_DIAGNOSTIC_FACTS/g, "[redacted]")
     .replace(/MARGIN_GUARD_VERIFIED_DIAGNOSTIC_FACTS/g, "[redacted]");
 }
@@ -115,6 +134,13 @@ function buildDiagnosticFactsBlock(facts, kind) {
       "MARGIN_GUARD_VERIFIED_QUOTE_DIAGNOSTIC_FACTS",
       JSON.stringify(facts),
       "END_MARGIN_GUARD_VERIFIED_QUOTE_DIAGNOSTIC_FACTS",
+    ].join("\n");
+  }
+  if (kind === "project") {
+    return [
+      "MARGIN_GUARD_VERIFIED_PROJECT_DIAGNOSTIC_FACTS",
+      JSON.stringify(facts),
+      "END_MARGIN_GUARD_VERIFIED_PROJECT_DIAGNOSTIC_FACTS",
     ].join("\n");
   }
   return [
@@ -142,7 +168,12 @@ function buildUserPayload(message, page, docs, intent, diagnostic) {
   }
   parts.push("Owner question:", neutralizeDiagnosticForgery(message));
   if (outcome === "ok" && diagnostic.facts) {
-    const kind = intent === "quote_diagnostic" ? "quote" : "invoice";
+    const kind =
+      intent === "quote_diagnostic"
+        ? "quote"
+        : intent === "project_diagnostic"
+          ? "project"
+          : "invoice";
     parts.push(buildDiagnosticFactsBlock(diagnostic.facts, kind));
   }
   return parts.join("\n\n");
@@ -158,6 +189,7 @@ function createHandler(deps = {}) {
   const resolveTenant = deps.resolveTenantFromSession || resolveTenantFromSession;
   const readInvoice = deps.readInvoiceDiagnostic || readInvoiceDiagnostic;
   const readQuote = deps.readQuoteDiagnostic || readQuoteDiagnostic;
+  const readProject = deps.readProjectDiagnostic || readProjectDiagnostic;
 
   return async function handler(event) {
     try {
@@ -262,6 +294,37 @@ function createHandler(deps = {}) {
                 diagnostic = lookedUp;
               } catch (_err) {
                 console.error("[mg-support-chat] quote diagnostic failed");
+                diagnostic = { outcome: "status_unverified" };
+              }
+            }
+          }
+        }
+      } else if (intent === "project_diagnostic") {
+        if (!hasOwnerEmailAndCustomer(session)) {
+          diagnostic = { outcome: "no_tenant_context" };
+        } else {
+          const identifier = extractProjectIdentifier(message);
+          if (!identifier) {
+            diagnostic = { outcome: "needs_identifier" };
+          } else {
+            let tenant = null;
+            try {
+              tenant = await resolveTenant(session);
+            } catch (_err) {
+              console.error("[mg-support-chat] tenant resolve failed");
+              return json(502, {
+                ok: false,
+                error: "I couldn't inspect that project right now. Please try again.",
+              });
+            }
+            if (!tenant?.id) {
+              diagnostic = { outcome: "no_tenant_context" };
+            } else {
+              try {
+                const lookedUp = await readProject(String(tenant.id), identifier, deps);
+                diagnostic = lookedUp;
+              } catch (_err) {
+                console.error("[mg-support-chat] project diagnostic failed");
                 diagnostic = { outcome: "status_unverified" };
               }
             }

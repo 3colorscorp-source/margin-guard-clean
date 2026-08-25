@@ -12,6 +12,11 @@ const {
   isQuoteDiagnosticQuestion,
   isQuoteSqlOrListAllProbe,
 } = require("./quote-diagnostic");
+const {
+  extractProjectIdentifier,
+  isProjectDiagnosticQuestion,
+  isProjectSqlOrListAllProbe,
+} = require("./project-diagnostic");
 
 const MODULES = [
   {
@@ -140,6 +145,20 @@ const MODULES = [
     pages: ["/sales-admin"],
     keywords: ["sales admin", "seller", "sellers", "owner review", "commission"],
   },
+  {
+    id: "project-control",
+    title: "Project Control",
+    file: "project-control.md",
+    pages: ["/project-control"],
+    keywords: [
+      "project control",
+      "project status",
+      "archived project",
+      "completed project",
+      "project lifecycle",
+      "supervisor assigned",
+    ],
+  },
 ];
 
 function normalizePath(page) {
@@ -189,7 +208,7 @@ function classifySupportIntent(message) {
   if (isTenantOverrideAttempt(message)) {
     return "tenant_override_attempt";
   }
-  if (isSqlOrListAllProbe(text) || isQuoteSqlOrListAllProbe(text)) {
+  if (isSqlOrListAllProbe(text) || isQuoteSqlOrListAllProbe(text) || isProjectSqlOrListAllProbe(text)) {
     return "docs_only";
   }
   if (isInvoiceDiagnosticQuestion(message)) {
@@ -197,6 +216,9 @@ function classifySupportIntent(message) {
   }
   if (isQuoteDiagnosticQuestion(message)) {
     return "quote_diagnostic";
+  }
+  if (isProjectDiagnosticQuestion(message)) {
+    return "project_diagnostic";
   }
   if (
     /\b(quote|estimate|project|payment|customer)\s*#?\s*\d+\b/.test(text) ||
@@ -264,5 +286,6 @@ module.exports = {
   routeSupportKnowledge,
   extractInvoiceIdentifier,
   extractQuoteIdentifier,
+  extractProjectIdentifier,
   isTenantOverrideAttempt,
 };
