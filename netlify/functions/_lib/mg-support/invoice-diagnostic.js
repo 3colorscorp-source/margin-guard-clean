@@ -4,10 +4,12 @@
  * Never send raw rows or restricted fields to OpenAI.
  *
  * Owner-visible `status` matches Invoice Hub's derived lifecycle overlay:
- * archived / void / fully-paid / deposit_paid / accepted / sent / raw fallback.
+ * archived / void / fully-paid / deposit_paid / accepted, then Hub remainder
+ * (open→draft, sent_at→sent, overdue overlay, raw fallback).
  * Fully-paid uses invoices.amount, invoices.paid_amount, quotes.total, and a
  * closed tenant_project_payments amount sum. Money is discarded before OpenAI.
- * Does not reproduce overdue or browser project salePrice fallback.
+ * Overdue uses Hub UTC `toISOString().slice(0, 10)` and derived balanceDue > 0.
+ * Does not reproduce browser project salePrice fallback.
  */
 "use strict";
 
@@ -199,6 +201,26 @@ function normalizeRawInvoiceStatus(value) {
   return raw;
 }
 
+/** Hub `new Date().toISOString().slice(0, 10)`. Injectable for tests. */
+function utcTodayIsoDate(raw) {
+  const text = String(raw || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+  return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Hub date-only due_date. Exact YYYY-MM-DD kept. ISO datetime prefix sliced.
+ * Empty / malformed → "" (no overdue overlay). Does not parse local/US dates.
+ */
+function normalizeInvoiceDueDate(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const prefixed = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (prefixed) return prefixed[1];
+  return "";
+}
+
 /** PostgREST many-to-one embed may be an object or a one-element array. */
 function unwrapQuoteEmbed(row) {
   let quoteWrap = row?.quotes;
@@ -222,7 +244,7 @@ function sumLedgerAmounts(rows) {
 
 /**
  * Hub-equivalent paid math. Does not use invoices.balance_due or project salePrice.
- * Overdue is intentionally not derived in this slice.
+ * balanceDue is for overdue overlay only and must never reach OpenAI.
  */
 function computePaidFacts(row, ledgerPaid) {
   const invoiceAmount = finiteMoney(row?.amount);
@@ -235,11 +257,19 @@ function computePaidFacts(row, ledgerPaid) {
   const balanceDue = Math.max(0, contractTotal - paidAmount);
   const isFullyPaid =
     balanceDue <= PAID_TOLERANCE || (contractTotal > 0 && paidAmount + PAID_TOLERANCE >= contractTotal);
-  return { isFullyPaid };
+  return { isFullyPaid, balanceDue };
+}
+
+function resolvePaidFacts(row, paidFacts) {
+  if (paidFacts && typeof paidFacts === "object" && typeof paidFacts.isFullyPaid === "boolean") {
+    if (typeof paidFacts.balanceDue === "number") return paidFacts;
+    return { ...paidFacts, ...computePaidFacts(row, 0), isFullyPaid: paidFacts.isFullyPaid };
+  }
+  return computePaidFacts(row, 0);
 }
 
 /**
- * Invoice Hub owner-visible Status.
+ * Invoice Hub owner-visible Status (`hubServerInvoiceLifecycleDisplayStatus`).
  *
  * Priority:
  * 1. archived
@@ -247,17 +277,16 @@ function computePaidFacts(row, ledgerPaid) {
  * 3. isFullyPaid → paid
  * 4. deposit_paid (invoice payment_status or quote.deposit_paid_at)
  * 5. accepted (quote.accepted_at or quote.status = accepted)
- * 6. sent when sent_at exists
- * 7. otherwise normalized raw invoice status
- *
- * Does not derive overdue in this slice.
+ * 6. remainder (`hubServerInvoiceStatusForDisplay`):
+ *    open → draft, sent_at → sent, then overdue overlay may overwrite sent,
+ *    else raw fallback
  */
-function deriveOwnerVisibleInvoiceStatus(row, paidFacts) {
+function deriveOwnerVisibleInvoiceStatus(row, paidFacts, options = {}) {
   const rawInv = normalizeRawInvoiceStatus(row?.status);
   if (rawInv === "archived") return "archived";
   if (rawInv === "void") return "void";
 
-  const computed = paidFacts && typeof paidFacts === "object" ? paidFacts : computePaidFacts(row, 0);
+  const computed = resolvePaidFacts(row, paidFacts);
   if (computed.isFullyPaid) return "paid";
 
   const paymentStatus = String(row?.payment_status || "").trim().toLowerCase();
@@ -269,20 +298,33 @@ function deriveOwnerVisibleInvoiceStatus(row, paidFacts) {
   const quoteStatus = String(quote?.status || "").trim().toLowerCase();
   if (quoteAcceptedAt || quoteStatus === "accepted") return "accepted";
 
-  if (isNonEmpty(row?.sent_at)) return "sent";
-  return rawInv;
+  let raw = rawInv;
+  const sentAtRaw = String(row?.sent_at || "").trim();
+  if (sentAtRaw && raw !== "paid" && raw !== "void") {
+    raw = "sent";
+  }
+  const dueRaw = normalizeInvoiceDueDate(row?.due_date);
+  const today = utcTodayIsoDate(options.today || options.utcToday);
+  const bal = Math.max(finiteMoney(computed.balanceDue), 0);
+  if (raw !== "paid" && raw !== "void" && dueRaw && dueRaw < today && bal > 0) {
+    raw = "overdue";
+  }
+  return raw;
 }
 
-function toModelFacts(row, paidFacts) {
+function toModelFacts(row, paidFacts, options = {}) {
   const sentAt = isNonEmpty(row?.sent_at) ? String(row.sent_at).trim() : null;
-  const computed = paidFacts && typeof paidFacts === "object" ? paidFacts : computePaidFacts(row, 0);
+  const computed = resolvePaidFacts(row, paidFacts);
+  const status = deriveOwnerVisibleInvoiceStatus(row, computed, options);
+  const dueRaw = normalizeInvoiceDueDate(row?.due_date);
   return {
     invoice_no: isNonEmpty(row?.invoice_no) ? String(row.invoice_no).trim() : null,
-    status: deriveOwnerVisibleInvoiceStatus(row, computed),
+    status,
+    is_overdue: status === "overdue",
     type: isNonEmpty(row?.type) ? String(row.type).trim() : null,
     invoice_label: isNonEmpty(row?.invoice_label) ? String(row.invoice_label).trim() : null,
     created_at: isNonEmpty(row?.created_at) ? String(row.created_at).trim() : null,
-    due_date: isNonEmpty(row?.due_date) ? String(row.due_date).trim() : null,
+    due_date: dueRaw || null,
     sent_at: sentAt,
     voided_at: isNonEmpty(row?.voided_at) ? String(row.voided_at).trim() : null,
     has_public_token: isNonEmpty(row?.public_token),
@@ -370,7 +412,10 @@ async function readInvoiceDiagnostic(tenantId, identifier, deps = {}) {
   const paidFacts = computePaidFacts(row, sumLedgerAmounts(payRows));
   return {
     outcome: "ok",
-    facts: toModelFacts(row, paidFacts),
+    facts: toModelFacts(row, paidFacts, {
+      utcToday: deps.utcToday,
+      today: deps.today,
+    }),
     queryPath,
     paymentQueryPath,
   };
@@ -388,6 +433,8 @@ module.exports = {
   isSqlOrListAllProbe,
   isTenantOverrideAttempt,
   unwrapQuoteEmbed,
+  utcTodayIsoDate,
+  normalizeInvoiceDueDate,
   computePaidFacts,
   deriveOwnerVisibleInvoiceStatus,
   toModelFacts,
