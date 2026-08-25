@@ -24,6 +24,7 @@ const {
   isContractLegalQuestion,
   isContractSqlOrListAllProbe,
 } = require("./contract-diagnostic");
+const { isExplicitInvoiceResendIntent } = require("./invoice-resend-intent");
 
 const MODULES = [
   {
@@ -250,7 +251,7 @@ function classifySupportIntent(message) {
   ) {
     return "docs_only";
   }
-  if (isInvoiceDiagnosticQuestion(message)) {
+  if (isInvoiceDiagnosticQuestion(message) || isExplicitInvoiceResendIntent(message)) {
     return "invoice_diagnostic";
   }
   if (isQuoteDiagnosticQuestion(message)) {
@@ -333,6 +334,7 @@ module.exports = {
   classifySupportIntent,
   routeSupportKnowledge,
   extractInvoiceIdentifier,
+  isExplicitInvoiceResendIntent,
   extractQuoteIdentifier,
   extractProjectIdentifier,
   extractContractProjectUuid,

@@ -686,7 +686,7 @@ async function main() {
   assert("207. quote diagnostic unchanged", fs.existsSync(path.join(ROOT, "netlify/functions/_lib/mg-support/quote-diagnostic.js")));
   assert("208. project diagnostic unchanged", fs.existsSync(path.join(ROOT, "netlify/functions/_lib/mg-support/project-diagnostic.js")));
   assert("209. contract diagnostic unchanged", fs.existsSync(path.join(ROOT, "netlify/functions/_lib/mg-support/contract-diagnostic.js")));
-  assert("210. SUPPORT_CHAT_ASSET_VERSION remains 003b-1", /SUPPORT_CHAT_ASSET_VERSION = '003b-1'/.test(navSrc));
+  assert("210. SUPPORT_CHAT_ASSET_VERSION is 003d-c2-1", /SUPPORT_CHAT_ASSET_VERSION = '003d-c2-1'/.test(navSrc));
   assert("211. cache-bust loader unchanged", /mg-support-chat\.js\?v=' \+ encodeURIComponent\(SUPPORT_CHAT_ASSET_VERSION\)/.test(navSrc));
   assert("212. no existing owner nav regression", /href: '\/sales-admin'/.test(navSrc) && !/support-admin/.test(navSrc));
   assert("213. existing 678 tests remain passing", true);
@@ -973,7 +973,7 @@ async function main() {
   assert("003C.1-39. no OpenAI", !/openai/i.test(uiSrc));
   assert("003C.1-40. no Zapier", !/zapier/i.test(uiSrc));
   assert("003C.1-41. no owner Support history", !/my tickets|owner history/.test(uiSrc + htmlSrc));
-  assert("003C.1-42. cache-bust 003b-1 unchanged", /SUPPORT_CHAT_ASSET_VERSION = '003b-1'/.test(navSrc));
+  assert("003C.1-42. cache-bust token present", /SUPPORT_CHAT_ASSET_VERSION = '003d-c2-1'/.test(navSrc));
   assert("003C.1-43. existing Support chat/create-case untouched", /This function is read-only/.test(chatSrc) && /confirmation_token/.test(createSrc));
 
   console.log("");

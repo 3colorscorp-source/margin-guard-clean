@@ -759,8 +759,8 @@ async function main() {
   assert("58. business denial does not mint case", !parse(paidRes).escalation && !parse(voidRes).escalation);
 
   assert("54. no model call in endpoint source", !/api\.openai\.com|OPENAI_RESPONSES_URL|OPENAI_MODEL|OPENAI_API/.test(endpointSrc + actionSrc));
-  assert("51b. chat action not exposed", !/mintInvoiceResendToken|invoice_resend/.test(chatSrc));
-  assert("52b. UI button not exposed", !/Resend invoice|mg-support-invoice-resend/.test(uiSrc));
+  assert("51b. chat does not execute resend", !/executeInvoiceResend/.test(chatSrc));
+  assert("52b. chat and UI do not call Hub send-invoice-zapier", !/send-invoice-zapier/.test(chatSrc) && !/send-invoice-zapier/.test(uiSrc));
 
   assert("60. Hub still accepts client amount hints", /body\.invoice_amount/.test(hubSrc) && /body\.paid_to_date/.test(hubSrc));
   assert("61. Hub auth unchanged", /session\?\.e \|\| !session\?\.c/.test(hubSrc) || /session\?\.e && session\?\.c/.test(hubSrc) || /if \(!session\?\.e \|\| !session\?\.c\)/.test(hubSrc));
@@ -778,7 +778,7 @@ async function main() {
   assert("no PII columns", !/customer_email|amount|email_body|public_token/.test(migration.split("create table")[1].split(";")[0]));
   assert("verify file read-only", /does not insert, update, or delete rows/i.test(verifySql) && /VERIFY PASS/.test(verifySql));
   assert("status check claimed/bridge_accepted/unknown", /claimed.*bridge_accepted.*submission_unknown/s.test(migration));
-  assert("C1 does not mint from chat", !/mintInvoiceResendToken/.test(chatSrc));
+  assert("C1 endpoint remains the mutation path", /executeInvoiceResend/.test(endpointSrc) && /executeInvoiceResend/.test(actionSrc));
   assert("create-case still closed body", /ALLOWED_KEYS = new Set\(\[\"confirmation_token\", \"confirmed\"\]\)/.test(createCaseSrc));
 
   const extraDenied = evaluateInvoiceResendEligibility(baseInvoice({ status: "unknown_status" }), {
@@ -886,7 +886,7 @@ async function main() {
   assert("no contacts/users/device/quote mutation paths", !/contacts\?|users\?|device_sessions\?|financial_/.test(actionImplSrc));
   assert("ACTIONS_TABLE is tenant_support_actions", /ACTIONS_TABLE = "tenant_support_actions"/.test(actionSrc));
   assert("no request-selected table", !/body\.(table|path)|req\.table/.test(actionImplSrc));
-  assert("no chat mint in this phase", !/mintInvoiceResendToken/.test(chatSrc) && !/mg-support-invoice-resend/.test(uiSrc));
+  assert("C1 endpoint still has no OpenAI", !/api\.openai\.com|OPENAI_RESPONSES_URL|OPENAI_MODEL|OPENAI_API/.test(endpointSrc + actionSrc));
 
   console.log(passed + " passed, " + failed + " failed");
   process.exit(failed ? 1 : 0);

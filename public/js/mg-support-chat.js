@@ -18,10 +18,6 @@ function mgSupportRenderInlineMarkdown(escapedLine) {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
 
-/**
- * Safe limited markdown: escape first, then insert only our tags.
- * Never treats model HTML as markup.
- */
 function mgSupportRenderAssistantMarkdown(raw) {
   const text = String(raw ?? "").replace(/\r\n/g, "\n");
   if (!text) return "";
@@ -78,6 +74,72 @@ function mgSupportRenderAssistantMarkdown(raw) {
   return html.join("");
 }
 
+const MG_SUPPORT_INVOICE_RESEND_TYPE = "invoice_resend";
+const MG_SUPPORT_INVOICE_RESEND_LABEL = "Resend invoice";
+const MG_SUPPORT_INVOICE_RESEND_API = "/.netlify/functions/mg-support-invoice-resend";
+const MG_SUPPORT_INVOICE_RESEND_PENDING = "Submitting resend...";
+const MG_SUPPORT_INVOICE_RESEND_SUCCESS =
+  "Invoice resend was submitted to the email delivery bridge.";
+const MG_SUPPORT_INVOICE_RESEND_UNKNOWN =
+  "Margin Guard could not confirm whether the resend submission was accepted. It was not automatically retried to avoid sending a duplicate.";
+const MG_SUPPORT_INVOICE_RESEND_CLAIMED =
+  "Another resend is already in progress or awaiting verification. Margin Guard will not submit another copy automatically.";
+const MG_SUPPORT_INVOICE_RESEND_EXPIRED =
+  "This confirmation expired. Ask Margin Guard again if you still want to resend the invoice.";
+const MG_SUPPORT_INVOICE_RESEND_CHANGED =
+  "The invoice changed after this confirmation was created. Ask Margin Guard again before resending it.";
+const MG_SUPPORT_INVOICE_RESEND_TRANSPORT =
+  "Margin Guard could not confirm the result of the resend request. It will not retry automatically.";
+
+function mgSupportApprovedInvoiceResendAction(action) {
+  if (!action || typeof action !== "object" || Array.isArray(action)) return null;
+  if (action.type !== MG_SUPPORT_INVOICE_RESEND_TYPE) return null;
+  const token = String(action.confirmation_token || "").trim();
+  if (!token) return null;
+  return {
+    type: MG_SUPPORT_INVOICE_RESEND_TYPE,
+    label: MG_SUPPORT_INVOICE_RESEND_LABEL,
+    confirmation_token: token,
+    expires_at: String(action.expires_at || ""),
+  };
+}
+
+function mgSupportInvoiceResendPostBody(action) {
+  return {
+    confirmation_token: String(action && action.confirmation_token ? action.confirmation_token : ""),
+    confirmed: true,
+  };
+}
+
+function mgSupportMapInvoiceResendClientResult(data, transportError) {
+  if (transportError) {
+    return { kind: "transport_unknown", text: MG_SUPPORT_INVOICE_RESEND_TRANSPORT, showCase: false };
+  }
+  const status = String(data && data.action_status ? data.action_status : "");
+  const code = String(data && data.result_code ? data.result_code : "");
+  if (status === "bridge_accepted") {
+    return { kind: "success", text: MG_SUPPORT_INVOICE_RESEND_SUCCESS, showCase: false };
+  }
+  if (status === "submission_unknown") {
+    return {
+      kind: "unknown",
+      text: MG_SUPPORT_INVOICE_RESEND_UNKNOWN,
+      showCase: Boolean(data && data.escalation && data.escalation.eligible && data.escalation.confirmation_token),
+      escalation: data && data.escalation,
+    };
+  }
+  if (status === "already_claimed" || code === "already_claimed") {
+    return { kind: "claimed", text: MG_SUPPORT_INVOICE_RESEND_CLAIMED, showCase: false };
+  }
+  if (status === "expired" || code === "expired") {
+    return { kind: "expired", text: MG_SUPPORT_INVOICE_RESEND_EXPIRED, showCase: false };
+  }
+  if (code === "invoice_state_changed") {
+    return { kind: "changed", text: MG_SUPPORT_INVOICE_RESEND_CHANGED, showCase: false };
+  }
+  return { kind: "transport_unknown", text: MG_SUPPORT_INVOICE_RESEND_TRANSPORT, showCase: false };
+}
+
 (function () {
   "use strict";
 
@@ -85,6 +147,7 @@ function mgSupportRenderAssistantMarkdown(raw) {
 
   const API = "/.netlify/functions/mg-support-chat";
   const CREATE_CASE_API = "/.netlify/functions/mg-support-create-case";
+  const INVOICE_RESEND_API = MG_SUPPORT_INVOICE_RESEND_API;
   const SUGGESTIONS = [
     "What does Minimum Floor mean?",
     "How do I create an invoice?",
@@ -385,6 +448,31 @@ function mgSupportRenderAssistantMarkdown(raw) {
             caseBlock += '<p class="mg-support-needs" role="alert">' + escapeHtml(msg.caseError) + "</p>";
           }
         }
+        let resendBlock = "";
+        const approvedResend = mgSupportApprovedInvoiceResendAction(msg.resendAction);
+        const showResendButton = Boolean(approvedResend && !msg.resendConsumed);
+        if (showResendButton) {
+          resendBlock =
+            '<p>' +
+            '<button type="button" class="btn primary mg-support-resend" data-resend-invoice="' +
+            idx +
+            '"' +
+            (msg.resendPending || msg.resendLocked ? " disabled" : "") +
+            ">" +
+            MG_SUPPORT_INVOICE_RESEND_LABEL +
+            "</button>" +
+            "</p>";
+          if (msg.resendPending) {
+            resendBlock +=
+              '<p class="mg-support-loading" aria-live="polite">' +
+              MG_SUPPORT_INVOICE_RESEND_PENDING +
+              "</p>";
+          }
+        }
+        if (msg.resendResultText) {
+          resendBlock +=
+            '<p class="mg-support-needs" role="status">' + escapeHtml(msg.resendResultText) + "</p>";
+        }
         return (
           '<div class="mg-support-msg mg-support-msg--assistant">' +
           (msg.text ? '<div class="mg-support-md">' + mgSupportRenderAssistantMarkdown(msg.text) + "</div>" : "") +
@@ -392,6 +480,7 @@ function mgSupportRenderAssistantMarkdown(raw) {
           sources +
           fb +
           needs +
+          resendBlock +
           caseBlock +
           "</div>"
         );
@@ -411,6 +500,12 @@ function mgSupportRenderAssistantMarkdown(raw) {
       el.addEventListener("click", function () {
         const i = Number(el.getAttribute("data-create-case"));
         void submitSupportCase(i);
+      });
+    });
+    thread.querySelectorAll("[data-resend-invoice]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        const i = Number(el.getAttribute("data-resend-invoice"));
+        void submitInvoiceResend(i);
       });
     });
     thread.querySelectorAll("[data-retry-index]").forEach(function (el) {
@@ -466,6 +561,49 @@ function mgSupportRenderAssistantMarkdown(raw) {
     renderThread();
   }
 
+  async function submitInvoiceResend(idx) {
+    const msg = messages[idx];
+    if (!msg || msg.role !== "assistant") return;
+    if (msg.resendPending || msg.resendLocked || msg.resendConsumed) return;
+    const approved = mgSupportApprovedInvoiceResendAction(msg.resendAction);
+    if (!approved) return;
+    msg.resendPending = true;
+    msg.resendLocked = true;
+    msg.resendResultText = "";
+    renderThread();
+    let mapped;
+    try {
+      const res = await fetch(INVOICE_RESEND_API, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(mgSupportInvoiceResendPostBody(approved)),
+      });
+      const data = await res.json().catch(function () {
+        return null;
+      });
+      if (!data) {
+        mapped = mgSupportMapInvoiceResendClientResult(null, true);
+      } else {
+        mapped = mgSupportMapInvoiceResendClientResult(data, false);
+      }
+    } catch (_err) {
+      mapped = mgSupportMapInvoiceResendClientResult(null, true);
+    }
+    msg.resendPending = false;
+    msg.resendLocked = true;
+    msg.resendResultText = mapped.text;
+    if (mapped.kind === "success") {
+      msg.resendConsumed = true;
+      msg.resendAction = null;
+    }
+    if (mapped.showCase && mapped.escalation && mapped.escalation.confirmation_token) {
+      msg.escalationEligible = true;
+      msg.confirmationToken = String(mapped.escalation.confirmation_token);
+    }
+    renderThread();
+  }
+
   async function submitQuestion() {
     if (sending) return;
     const input = document.getElementById("mgSupportInput");
@@ -510,6 +648,11 @@ function mgSupportRenderAssistantMarkdown(raw) {
             data.escalation && data.escalation.eligible
               ? String(data.escalation.confirmation_token || "")
               : "",
+          resendAction: mgSupportApprovedInvoiceResendAction(data.action),
+          resendPending: false,
+          resendLocked: false,
+          resendConsumed: false,
+          resendResultText: "",
         });
       }
     } catch (_err) {
@@ -554,5 +697,17 @@ if (typeof module === "object" && module.exports) {
   module.exports = {
     escapeHtml: mgSupportEscapeHtml,
     renderAssistantMarkdown: mgSupportRenderAssistantMarkdown,
+    approvedInvoiceResendAction: mgSupportApprovedInvoiceResendAction,
+    invoiceResendPostBody: mgSupportInvoiceResendPostBody,
+    mapInvoiceResendClientResult: mgSupportMapInvoiceResendClientResult,
+    INVOICE_RESEND_TYPE: MG_SUPPORT_INVOICE_RESEND_TYPE,
+    INVOICE_RESEND_LABEL: MG_SUPPORT_INVOICE_RESEND_LABEL,
+    INVOICE_RESEND_API: MG_SUPPORT_INVOICE_RESEND_API,
+    INVOICE_RESEND_SUCCESS: MG_SUPPORT_INVOICE_RESEND_SUCCESS,
+    INVOICE_RESEND_UNKNOWN: MG_SUPPORT_INVOICE_RESEND_UNKNOWN,
+    INVOICE_RESEND_CLAIMED: MG_SUPPORT_INVOICE_RESEND_CLAIMED,
+    INVOICE_RESEND_EXPIRED: MG_SUPPORT_INVOICE_RESEND_EXPIRED,
+    INVOICE_RESEND_CHANGED: MG_SUPPORT_INVOICE_RESEND_CHANGED,
+    INVOICE_RESEND_TRANSPORT: MG_SUPPORT_INVOICE_RESEND_TRANSPORT,
   };
 }

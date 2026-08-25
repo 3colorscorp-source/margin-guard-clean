@@ -8740,7 +8740,8 @@ body[data-role="sales"] .sales-contact-picker__notice--err{
   gap:8px;
 }
 .mg-support-chip,
-.mg-support-retry{
+.mg-support-retry,
+.mg-support-resend{
   text-align:left;
 }
 .mg-support-chip{

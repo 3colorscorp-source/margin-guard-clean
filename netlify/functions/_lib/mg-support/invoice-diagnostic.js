@@ -412,6 +412,7 @@ async function readInvoiceDiagnostic(tenantId, identifier, deps = {}) {
   const paidFacts = computePaidFacts(row, sumLedgerAmounts(payRows));
   return {
     outcome: "ok",
+    invoice_id: invoiceId,
     facts: toModelFacts(row, paidFacts, {
       utcToday: deps.utcToday,
       today: deps.today,

@@ -9,6 +9,7 @@
  * Does not trust browser tenant_id. Does not read mg_device_session.
  * OpenAI key stays server-side. OpenAI never chooses tables, SQL, or filters.
  * This function is read-only. Support-case INSERT is mg-support-create-case only.
+ * Invoice resend confirmation may be offered here; ledger INSERT is mg-support-invoice-resend only.
  */
 
 "use strict";
@@ -73,6 +74,7 @@ const {
   mapModule,
   mintEscalationToken,
 } = require("./_lib/mg-support/case-intake");
+const { maybeOfferInvoiceResend } = require("./_lib/mg-support/invoice-resend-offer");
 
 function json(statusCode, body) {
   return {
@@ -496,9 +498,39 @@ function createHandler(deps = {}) {
         });
       }
 
+      let resendOffer = { action: null, copy: "", skipEscalation: false };
+      try {
+        const offerFn = deps.maybeOfferInvoiceResend || maybeOfferInvoiceResend;
+        resendOffer = await offerFn({
+          message,
+          intent,
+          diagnostic,
+          session,
+          trustedTenantId,
+          deps,
+        });
+      } catch (_err) {
+        resendOffer = { action: null, copy: "", skipEscalation: false };
+      }
+      if (resendOffer && resendOffer.copy) {
+        answer = String(answer).trim() + "\n\n" + String(resendOffer.copy).trim();
+      }
+      const approvedAction =
+        resendOffer &&
+        resendOffer.action &&
+        resendOffer.action.type === "invoice_resend" &&
+        String(resendOffer.action.confirmation_token || "").trim()
+          ? {
+              type: "invoice_resend",
+              label: "Resend invoice",
+              confirmation_token: String(resendOffer.action.confirmation_token),
+              expires_at: String(resendOffer.action.expires_at || ""),
+            }
+          : null;
+
       let escalation = null;
       try {
-        if (hasOwnerEmailAndCustomer(session)) {
+        if (!approvedAction && hasOwnerEmailAndCustomer(session)) {
           const eligibility = determineEscalationEligibility({
             intent,
             diagnostic,
@@ -550,6 +582,7 @@ function createHandler(deps = {}) {
         answer,
         sources: uniqueSources,
         ...(escalation ? { escalation } : {}),
+        ...(approvedAction ? { action: approvedAction } : {}),
       });
     } catch (_err) {
       console.error("[mg-support-chat] unhandled");
