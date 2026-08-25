@@ -93,22 +93,43 @@
     return LIST_API + "?" + params.toString();
   }
 
+  function syncSelectedFromRefreshedList() {
+    if (!state.selected) {
+      renderDrawer();
+      return;
+    }
+    const selectedId = state.selected.case_id;
+    const fresh = state.cases.find(function (row) {
+      return row.case_id === selectedId;
+    });
+    state.selected = fresh || null;
+    renderDrawer();
+  }
+
   async function loadList() {
     setNotice("");
     const list = $("siList");
     if (list) list.innerHTML = '<div class="si-loading">Loading support cases…</div>';
-    const res = await fetch(buildListUrl(), { credentials: "include" });
+    let res;
     let data = {};
     try {
-      data = await res.json();
+      res = await fetch(buildListUrl(), { credentials: "include" });
+      try {
+        data = await res.json();
+      } catch (_err) {
+        data = {};
+      }
     } catch (_err) {
+      res = { ok: false };
       data = {};
     }
     if (!res.ok || !data.ok) {
       state.cases = [];
+      state.selected = null;
       if (list) list.innerHTML = "";
       setNotice(String(data.error || "Support cases could not be loaded."));
-      return;
+      renderDrawer();
+      return false;
     }
     state.cases = Array.isArray(data.cases) ? data.cases : [];
     const counts = data.counts || {};
@@ -116,15 +137,8 @@
     if ($("siCountResolved")) $("siCountResolved").textContent = String(counts.resolved ?? "—");
     if ($("siCountTotal")) $("siCountTotal").textContent = String(counts.total ?? "—");
     renderList();
-    if (state.selected) {
-      const fresh = state.cases.find(function (row) {
-        return row.case_id === state.selected.case_id;
-      });
-      if (fresh) {
-        state.selected = fresh;
-        renderDrawer();
-      }
-    }
+    syncSelectedFromRefreshedList();
+    return true;
   }
 
   function renderList() {

@@ -910,6 +910,72 @@ async function main() {
     /sanitizeExcerpt\(row\?\.question_excerpt/.test(helperSrc)
   );
 
+  const updateFn = uiSrc.slice(uiSrc.indexOf("async function updateCase"), uiSrc.indexOf("function syncFilterButtons"));
+  const loadFn = uiSrc.slice(uiSrc.indexOf("async function loadList"), uiSrc.indexOf("function renderList"));
+  const syncFn = uiSrc.slice(uiSrc.indexOf("function syncSelectedFromRefreshedList"), uiSrc.indexOf("async function loadList"));
+  const uiApis = [];
+  const apiRe = /\/\.netlify\/functions\/[a-z0-9-]+/g;
+  let apiMatch;
+  while ((apiMatch = apiRe.exec(uiSrc))) uiApis.push(apiMatch[0]);
+  const uniqueApis = Array.from(new Set(uiApis));
+
+  assert("003C.1-1. resolve waits for server success", /okResults/.test(updateFn) && /await loadList\(\)/.test(updateFn) && updateFn.indexOf("okResults") < updateFn.indexOf("await loadList()"));
+  assert("003C.1-2. reopen waits for server success", /action: action/.test(updateFn) && /siReopen/.test(uiSrc) && /updateCase\("reopen"\)/.test(uiSrc));
+  assert("003C.1-3. resolve does not fabricate client timestamp", !/resolved_at\s*=\s*new Date/.test(uiSrc) && !/updated_at\s*=\s*new Date/.test(uiSrc) && !/state\.selected\.status\s*=/.test(uiSrc));
+  assert("003C.1-4. reopen does not fabricate client timestamp", !/resolved_at\s*=\s*null/.test(updateFn) && !/state\.selected\.resolved_at/.test(updateFn));
+  assert("003C.1-5. selected case is matched by case_id", /row\.case_id === selectedId/.test(syncFn) && /state\.selected\.case_id/.test(syncFn) && !/subject|tenant_business_name|case_ref/.test(syncFn));
+  assert("003C.1-6. stale selected object is not preserved after successful resolve", /state\.selected = fresh \|\| null/.test(syncFn) && /await loadList\(\)/.test(updateFn));
+  assert("003C.1-7. stale selected object is not preserved after successful reopen", /state\.selected = fresh \|\| null/.test(syncFn) && /updateCase\("reopen"\)/.test(uiSrc));
+  assert("003C.1-8. open case resolve refreshes list", /await loadList\(\)/.test(updateFn) && /status: "open"/.test(uiSrc));
+  assert("003C.1-9. resolved case disappears from Open list", /params\.set\("status", state\.status\)/.test(uiSrc) && /status: "open"/.test(uiSrc));
+  assert("003C.1-10. drawer closes when selected case no longer exists in refreshed Open list", /state\.selected = fresh \|\| null/.test(syncFn) && /if \(!row\)/.test(uiSrc));
+  assert("003C.1-11. counters refresh from server counts", /siCountOpen/.test(loadFn) && /counts\.open/.test(loadFn) && /counts\.resolved/.test(loadFn) && /counts\.total/.test(loadFn));
+  assert("003C.1-12. resolved case reopen refreshes list", /await loadList\(\)/.test(updateFn) && /siFilterResolved/.test(uiSrc));
+  assert("003C.1-13. reopened case disappears from Resolved list", /params\.set\("status", state\.status\)/.test(uiSrc) && /siFilterResolved/.test(uiSrc));
+  assert("003C.1-14. drawer closes when selected case no longer exists in refreshed Resolved list", /state\.selected = fresh \|\| null/.test(syncFn));
+  assert("003C.1-15. counters refresh after reopen from same server counts path", /siCountOpen/.test(loadFn) && /await loadList\(\)/.test(updateFn));
+  assert("003C.1-16. resolve keeps case in All list via refreshed rows", /siFilterAll/.test(uiSrc) && /state\.cases = Array\.isArray\(data\.cases\)/.test(loadFn));
+  assert("003C.1-17. drawer remains open when refreshed case_id still present", /state\.selected = fresh \|\| null/.test(syncFn) && /drawer\.hidden = false/.test(uiSrc));
+  assert("003C.1-18. selected object replaced with refreshed case object", /state\.selected = fresh \|\| null/.test(syncFn) && !/if \(fresh\) \{\s*state\.selected = fresh;/.test(uiSrc));
+  assert("003C.1-19. drawer shows resolved from refreshed row.status", /dl\("Status", escapeHtml\(row\.status\)\)/.test(uiSrc));
+  assert("003C.1-20. drawer shows refreshed resolved_at", /dl\("Resolved", escapeHtml\(formatWhen\(row\.resolved_at\)\)\)/.test(uiSrc));
+  assert("003C.1-21. drawer button becomes Reopen case from row.status", /reopenBtn\.hidden = row\.status !== "resolved"/.test(uiSrc));
+  assert("003C.1-22. reopen keeps case in All list via refreshed rows", /siFilterAll/.test(uiSrc) && /await loadList\(\)/.test(updateFn));
+  assert("003C.1-23. selected object replaced again after reopen refresh", /syncSelectedFromRefreshedList\(\)/.test(loadFn));
+  assert("003C.1-24. drawer shows open from refreshed row.status", /dl\("Status", escapeHtml\(row\.status\)\)/.test(uiSrc) && /resolveBtn\.hidden = row\.status !== "open"/.test(uiSrc));
+  assert("003C.1-25. resolved_at displays empty/— when falsy", /function formatWhen/.test(uiSrc) && /if \(!value\) return "—"/.test(uiSrc));
+  assert("003C.1-26. drawer button becomes Mark resolved from row.status", /resolveBtn\.hidden = row\.status !== "open"/.test(uiSrc));
+  assert(
+    "003C.1-27. failed update preserves old drawer state",
+    /if \(!okResults\[data\.result\]\)/.test(updateFn) &&
+      updateFn.indexOf("return;", updateFn.indexOf("if (!okResults[data.result])")) <
+        updateFn.indexOf("await loadList()")
+  );
+  assert("003C.1-28. failed update does not reload/claim transition", !/state\.selected\.status/.test(updateFn) && /The support case could not be updated/.test(updateFn));
+  assert("003C.1-29. successful update + failed list refresh does not leave stale drawer", /state\.selected = null/.test(loadFn) && /Support cases could not be loaded/.test(loadFn));
+  assert("003C.1-30. no extra write request is made", (updateFn.match(/fetch\(UPDATE_API/g) || []).length === 1);
+  assert(
+    "003C.1-31. no new endpoint is called",
+    uniqueApis.sort().join(",") === [
+      "/.netlify/functions/auth-status",
+      "/.netlify/functions/logout",
+      "/.netlify/functions/mg-support-admin-list-cases",
+      "/.netlify/functions/mg-support-admin-update-case",
+    ].sort().join(",")
+  );
+  assert("003C.1-32. no browser Supabase introduced", !/supabaseRequest|createClient|mg-supabase-init/.test(uiSrc + htmlSrc));
+  assert("003C.1-33. platform-admin auth flow unchanged", /assertPlatformAdminSession/.test(adminAuthSrc) && /is_admin !== true/.test(uiSrc));
+  assert("003C.1-34. list endpoint unchanged", /method !== "GET"/.test(listSrc) && /listAdminCases/.test(listSrc) && /assertPlatformAdminSession/.test(listSrc));
+  assert("003C.1-35. update endpoint unchanged", /parseUpdateBody/.test(updateSrc) && /updateAdminCase/.test(updateSrc));
+  assert("003C.1-36. exact count mechanism unchanged", /Prefer:\s*["']count=exact["']/.test(helperSrc) && COUNT_METHOD === "HEAD");
+  assert("003C.1-37. migration unchanged", /add column if not exists resolved_at timestamptz null/.test(migration) && !/\bupdate public\./i.test(migration));
+  assert("003C.1-38. RLS unchanged", !/enable row level|disable row level|create policy/i.test(migration));
+  assert("003C.1-39. no OpenAI", !/openai/i.test(uiSrc));
+  assert("003C.1-40. no Zapier", !/zapier/i.test(uiSrc));
+  assert("003C.1-41. no owner Support history", !/my tickets|owner history/.test(uiSrc + htmlSrc));
+  assert("003C.1-42. cache-bust 003b-1 unchanged", /SUPPORT_CHAT_ASSET_VERSION = '003b-1'/.test(navSrc));
+  assert("003C.1-43. existing Support chat/create-case untouched", /This function is read-only/.test(chatSrc) && /confirmation_token/.test(createSrc));
+
   console.log("");
   console.log(passed + " passed, " + failed + " failed");
   process.exit(failed ? 1 : 0);
