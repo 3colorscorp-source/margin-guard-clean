@@ -12,10 +12,14 @@ const ROOT = path.resolve(__dirname, "..");
 const { classifySupportIntent, routeSupportKnowledge } = require("../netlify/functions/_lib/mg-support/router");
 const {
   PROJECT_DIAGNOSTIC_SELECT,
+  LINKED_QUOTE_STATUS_SELECT,
   extractProjectIdentifier,
+  isProjectDiagnosticQuestion,
   toModelFacts,
+  deriveSupervisorVisibility,
   readProjectDiagnostic,
   buildProjectQueryPath,
+  buildLinkedQuoteStatusQueryPath,
 } = require("../netlify/functions/_lib/mg-support/project-diagnostic");
 const { createHandler } = require("../netlify/functions/mg-support-chat");
 const {
@@ -118,12 +122,27 @@ function ownProjectRow(overrides) {
   };
 }
 
-function mockProjectGet({ rows = [], onPath } = {}) {
+function mockProjectGet({ rows = [], quoteRows, onPath } = {}) {
   return async (path) => {
     const p = String(path || "");
     if (onPath) onPath(p);
+    if (p.startsWith("quotes?")) {
+      if (quoteRows !== undefined) return quoteRows;
+      const project = Array.isArray(rows) && rows[0] ? rows[0] : null;
+      const qid = project && project.quote_id != null ? String(project.quote_id).trim() : "";
+      if (!qid) return [];
+      return [{ id: qid, status: "approved" }];
+    }
     return rows;
   };
+}
+
+function projectGets(paths) {
+  return (paths || []).filter((p) => String(p).startsWith("tenant_projects?"));
+}
+
+function quoteGets(paths) {
+  return (paths || []).filter((p) => String(p).startsWith("quotes?"));
 }
 
 async function main() {
@@ -228,11 +247,12 @@ async function main() {
       uuidFacts.result === "found" &&
       uuidFacts.project_ref === OWN_PROJECT_ID &&
       uuidFacts.status === "in_progress" &&
-      uuidPaths.length === 1 &&
+      projectGets(uuidPaths).length === 1 &&
+      uuidPaths.length <= 2 &&
       uuidPaths[0].startsWith("tenant_projects?") &&
       uuidPaths[0].includes("id=eq." + encodeURIComponent(OWN_PROJECT_ID))
   );
-  assert("exactly one tenant_projects GET for valid UUID diagnostic", uuidPaths.length === 1);
+  assert("exactly one tenant_projects GET for valid UUID diagnostic", projectGets(uuidPaths).length === 1);
 
   const namePaths = [];
   const nameCapture = {};
@@ -259,7 +279,8 @@ async function main() {
       nameFacts.result === "found" &&
       nameFacts.project_ref === OWN_PROJECT_NAME &&
       nameFacts.status === "in_progress" &&
-      namePaths.length === 1 &&
+      projectGets(namePaths).length === 1 &&
+      namePaths.length <= 2 &&
       nameQuery.get("project_name") === "eq." + OWN_PROJECT_NAME
   );
 
@@ -667,7 +688,7 @@ async function main() {
       archivedFound &&
       archivedFound.archived === true &&
       archivedFound.status === "archived" &&
-      archivedPaths.length === 1 &&
+      projectGets(archivedPaths).length === 1 &&
       !/status=/.test(archivedPaths[0])
   );
 
@@ -950,8 +971,9 @@ async function main() {
   const startInput = String((startCapture.payload || {}).input || "");
   assert(
     "start-date UUID question uses project diagnostic without inventing start_date",
-    startRes.statusCode === 200 &&
-      startPaths.length === 1 &&
+      startRes.statusCode === 200 &&
+      projectGets(startPaths).length === 1 &&
+      startPaths.length <= 2 &&
       startFacts &&
       !("start_date" in startFacts) &&
       !("signed_at" in startFacts) &&
@@ -1008,6 +1030,350 @@ async function main() {
   assert(
     "quote expiration/date intent still wins",
     classifySupportIntent("When does estimate 2026-0126 expire?") === "quote_diagnostic"
+  );
+
+  const visId = { type: "id", value: OWN_PROJECT_ID };
+  const visEligible = deriveSupervisorVisibility(ownProjectRow({ status: "signed" }), {
+    allowed: true,
+  });
+  assert(
+    "eligible lifecycle signed + approved quote + assigned → visible",
+    visEligible.lifecycle_allows_supervisor_visibility === true &&
+      visEligible.approved_or_accepted_quote_present === true &&
+      visEligible.supervisor_assigned === true &&
+      visEligible.eligible_for_assigned_supervisor === true &&
+      visEligible.visibility_reason === "eligible_for_assigned_supervisor"
+  );
+  const visDeposit = deriveSupervisorVisibility(ownProjectRow({ status: "deposit_paid" }), {
+    allowed: true,
+  });
+  const visAssigned = deriveSupervisorVisibility(ownProjectRow({ status: "assigned" }), {
+    allowed: true,
+  });
+  const visProgress = deriveSupervisorVisibility(ownProjectRow({ status: "in_progress" }), {
+    allowed: true,
+  });
+  const visCompleted = deriveSupervisorVisibility(ownProjectRow({ status: "completed" }), {
+    allowed: true,
+  });
+  assert(
+    "eligible lifecycle statuses recognized",
+    visDeposit.lifecycle_allows_supervisor_visibility === true &&
+      visAssigned.lifecycle_allows_supervisor_visibility === true &&
+      visProgress.lifecycle_allows_supervisor_visibility === true &&
+      visCompleted.lifecycle_allows_supervisor_visibility === true
+  );
+  const visArchived = deriveSupervisorVisibility(ownProjectRow({ status: "archived" }), {
+    allowed: true,
+  });
+  const visDraft = deriveSupervisorVisibility(ownProjectRow({ status: "draft" }), { allowed: true });
+  const visSent = deriveSupervisorVisibility(ownProjectRow({ status: "sent" }), { allowed: true });
+  const visCancelled = deriveSupervisorVisibility(ownProjectRow({ status: "cancelled" }), {
+    allowed: true,
+  });
+  assert(
+    "ineligible lifecycle recognized",
+    visArchived.lifecycle_allows_supervisor_visibility === false &&
+      visDraft.lifecycle_allows_supervisor_visibility === false &&
+      visSent.lifecycle_allows_supervisor_visibility === false &&
+      visCancelled.lifecycle_allows_supervisor_visibility === false &&
+      visArchived.visibility_reason === "lifecycle_not_eligible"
+  );
+  const visApprovedQuote = deriveSupervisorVisibility(ownProjectRow(), { allowed: true });
+  const visAcceptedQuote = deriveSupervisorVisibility(ownProjectRow(), { allowed: true });
+  assert(
+    "approved quote gate recognized",
+    visApprovedQuote.approved_or_accepted_quote_present === true
+  );
+  assert(
+    "accepted quote gate recognized",
+    visAcceptedQuote.approved_or_accepted_quote_present === true
+  );
+  const visSentQuote = deriveSupervisorVisibility(ownProjectRow(), { allowed: false });
+  assert(
+    "non-approved quote recognized",
+    visSentQuote.approved_or_accepted_quote_present === false &&
+      visSentQuote.visibility_reason === "quote_not_approved_or_accepted" &&
+      visSentQuote.eligible_for_assigned_supervisor === false
+  );
+  const visNoSup = deriveSupervisorVisibility(ownProjectRow({ supervisor_user_id: null }), {
+    allowed: true,
+  });
+  assert(
+    "supervisor assigned false → supervisor_not_assigned",
+    visNoSup.supervisor_assigned === false &&
+      visNoSup.visibility_reason === "supervisor_not_assigned" &&
+      visNoSup.eligible_for_assigned_supervisor === false
+  );
+  const visMulti = deriveSupervisorVisibility(
+    ownProjectRow({ status: "archived", supervisor_user_id: null }),
+    { allowed: false }
+  );
+  assert(
+    "missing multiple requirements deterministic",
+    visMulti.visibility_reason === "multiple_requirements_missing" &&
+      visMulti.eligible_for_assigned_supervisor === false
+  );
+  const visUnverified = deriveSupervisorVisibility(ownProjectRow(), { unverified: true });
+  assert(
+    "quote status_unverified remains safe",
+    visUnverified.approved_or_accepted_quote_present === null &&
+      visUnverified.visibility_reason === "status_unverified" &&
+      visUnverified.eligible_for_assigned_supervisor === false
+  );
+
+  const visPaths = [];
+  const visCapture = {};
+  const visRes = await runHandler(
+    fakeEvent("POST", { message: "Why can't my supervisor see project " + OWN_PROJECT_ID + "?" }),
+    {
+      readSessionFromEvent: sessionOk,
+      resolveTenantFromSession: resolveOwnTenant,
+      getOpenAiKey: () => "test-key",
+      supabaseGet: mockProjectGet({
+        rows: [ownProjectRow()],
+        quoteRows: [{ id: "quote-secret-id", status: "accepted" }],
+        onPath: (p) => visPaths.push(p),
+      }),
+      fetch: openaiOkFetch(visCapture),
+    }
+  );
+  const visInput = String((visCapture.payload || {}).input || "");
+  const visFacts = extractProjectFacts(visInput);
+  assert(
+    "supervisor visibility intent routes to project diagnostic",
+    isProjectDiagnosticQuestion("Why can't my supervisor see project " + OWN_PROJECT_ID + "?") ===
+      true &&
+      classifySupportIntent("Why can't my supervisor see project " + OWN_PROJECT_ID + "?") ===
+        "project_diagnostic" &&
+      visRes.statusCode === 200 &&
+      visFacts &&
+      visFacts.supervisor_visibility &&
+      visFacts.supervisor_visibility.eligible_for_assigned_supervisor === true &&
+      visFacts.supervisor_visibility.visibility_reason === "eligible_for_assigned_supervisor"
+  );
+  assert(
+    "combined visibility result uses linked quote status only",
+    visFacts.supervisor_visibility.approved_or_accepted_quote_present === true &&
+      visFacts.supervisor_visibility.lifecycle_allows_supervisor_visibility === true &&
+      visFacts.supervisor_visibility.supervisor_assigned === true
+  );
+  assert(
+    "no supervisor_user_id in safe facts",
+    !("supervisor_user_id" in visFacts) &&
+      !("supervisor_user_id" in visFacts.supervisor_visibility) &&
+      !visInput.includes(SUPERVISOR_ID)
+  );
+  assert(
+    "no supervisor identity in facts",
+    !/John|supervisor@|sup-secret/i.test(JSON.stringify(visFacts))
+  );
+  assert(
+    "no client identity in project visibility facts",
+    !("client_name" in visFacts) &&
+      !("client_email" in visFacts) &&
+      !/Secret Client/.test(visInput)
+  );
+  assert(
+    "no quote/project amounts in visibility facts",
+    !("sale_price" in visFacts) &&
+      !("total" in visFacts) &&
+      !visInput.includes("9999") &&
+      !visInput.includes("8888")
+  );
+  assert(
+    "no notes in visibility facts",
+    !("notes" in visFacts) && !/secret notes/.test(JSON.stringify(visFacts))
+  );
+  assert(
+    "maximum project diagnostic DB reads <=2",
+    visRes.statusCode === 200 &&
+      visPaths.length <= 2 &&
+      projectGets(visPaths).length === 1 &&
+      quoteGets(visPaths).length === 1
+  );
+  assert("no N+1 quote lookup", quoteGets(visPaths).length <= 1);
+  const quoteStatusPath = quoteGets(visPaths)[0] || "";
+  const quoteSelect = new URLSearchParams(String(quoteStatusPath).split("?")[1] || "").get(
+    "select"
+  );
+  assert(
+    "linked quote GET is id,status only",
+    quoteSelect === LINKED_QUOTE_STATUS_SELECT &&
+      !/select=\*/.test(quoteStatusPath) &&
+      !/total|client|token|notes/.test(quoteStatusPath)
+  );
+  assert(
+    "no quote_id value in model payload",
+    !("quote_id" in visFacts) && !/quote-secret-id/.test(visInput)
+  );
+
+  const noQuoteIdPaths = [];
+  const noQuoteId = await readProjectDiagnostic(OWN_TENANT, visId, {
+    supabaseGet: mockProjectGet({
+      rows: [ownProjectRow({ quote_id: null })],
+      onPath: (p) => noQuoteIdPaths.push(p),
+    }),
+  });
+  assert(
+    "missing linked quote_id skips second read and is not eligible",
+    noQuoteId.outcome === "ok" &&
+      noQuoteId.facts.supervisor_visibility.approved_or_accepted_quote_present === false &&
+      noQuoteId.facts.supervisor_visibility.visibility_reason === "quote_not_approved_or_accepted" &&
+      projectGets(noQuoteIdPaths).length === 1 &&
+      quoteGets(noQuoteIdPaths).length === 0
+  );
+
+  const acceptedQuoteRead = await readProjectDiagnostic(OWN_TENANT, visId, {
+    supabaseGet: mockProjectGet({
+      rows: [ownProjectRow()],
+      quoteRows: [{ id: "quote-secret-id", status: "ACCEPTED" }],
+    }),
+  });
+  assert(
+    "canonical accepted quote status is eligible",
+    acceptedQuoteRead.outcome === "ok" &&
+      acceptedQuoteRead.facts.supervisor_visibility.approved_or_accepted_quote_present === true
+  );
+  const draftQuoteRead = await readProjectDiagnostic(OWN_TENANT, visId, {
+    supabaseGet: mockProjectGet({
+      rows: [ownProjectRow()],
+      quoteRows: [{ id: "quote-secret-id", status: "ready_to_send" }],
+    }),
+  });
+  assert(
+    "non-approved linked quote is not eligible",
+    draftQuoteRead.outcome === "ok" &&
+      draftQuoteRead.facts.supervisor_visibility.approved_or_accepted_quote_present === false &&
+      draftQuoteRead.facts.supervisor_visibility.eligible_for_assigned_supervisor === false
+  );
+
+  const failQuoteRead = await readProjectDiagnostic(OWN_TENANT, visId, {
+    supabaseGet: async (p) => {
+      if (String(p).startsWith("quotes?")) throw new Error("quote lookup failed");
+      return [ownProjectRow()];
+    },
+  });
+  assert(
+    "failed quote GET → ok outcome with status_unverified visibility, not diagnostic failure",
+    failQuoteRead.outcome === "ok" &&
+      failQuoteRead.facts.supervisor_visibility.visibility_reason === "status_unverified" &&
+      failQuoteRead.facts.supervisor_visibility.approved_or_accepted_quote_present === null
+  );
+
+  const noWriteSrc = fs.readFileSync(
+    path.join(ROOT, "netlify/functions/_lib/mg-support/project-diagnostic.js"),
+    "utf8"
+  );
+  assert(
+    "no write in project diagnostic",
+    !/method:\s*"POST"/.test(noWriteSrc) &&
+      !/method:\s*"PATCH"/.test(noWriteSrc) &&
+      !/method:\s*"PUT"/.test(noWriteSrc) &&
+      !/method:\s*"DELETE"/.test(noWriteSrc)
+  );
+  assert(
+    "no assignment endpoint called",
+    !/assign-supervisor|get-supervisor-projects/.test(noWriteSrc)
+  );
+  assert(
+    "no device/session table read",
+    !/device_sessions|supervisor_devices|membership/.test(noWriteSrc)
+  );
+  const quotePathShape = buildLinkedQuoteStatusQueryPath(OWN_TENANT, "quote-secret-id");
+  assert(
+    "linked quote path is tenant-scoped GET by id",
+    quotePathShape.startsWith("quotes?") &&
+      quotePathShape.includes("tenant_id=eq.") &&
+      quotePathShape.includes("id=eq.") &&
+      quotePathShape.includes("limit=1")
+  );
+  assert(
+    "ordinary project status question still works",
+    classifySupportIntent("What status is project " + OWN_PROJECT_ID + "?") ===
+      "project_diagnostic" &&
+      uuidFacts &&
+      uuidFacts.supervisor_visibility &&
+      uuidFacts.supervisor_visibility.eligible_for_assigned_supervisor === true
+  );
+
+  assert(
+    "no can_appear_in_supervisor_portal overclaim fact",
+    visFacts.supervisor_visibility &&
+      !("can_appear_in_supervisor_portal" in visFacts) &&
+      !("can_appear_in_supervisor_portal" in visFacts.supervisor_visibility) &&
+      !/can_appear_in_supervisor_portal/.test(noWriteSrc)
+  );
+  assert(
+    "positive reason is assigned-supervisor scoped",
+    visFacts.supervisor_visibility.visibility_reason === "eligible_for_assigned_supervisor" &&
+      visFacts.supervisor_visibility.eligible_for_assigned_supervisor === true
+  );
+  assert(
+    "guidance contains currently assigned",
+    /currently assigned/i.test(PROJECT_FACTS_GUIDANCE) && /currently assigned/i.test(SYSTEM_INSTRUCTIONS)
+  );
+  assert(
+    "guidance forbids claiming your supervisor can see",
+    /Never say your supervisor can see this project/i.test(PROJECT_FACTS_GUIDANCE) &&
+      /Never say the supervisor can see it/i.test(PROJECT_FACTS_GUIDANCE) &&
+      /Never say this project is visible to your supervisor/i.test(PROJECT_FACTS_GUIDANCE)
+  );
+
+  const namedCapture = {};
+  const namedRes = await runHandler(
+    fakeEvent("POST", { message: "Can John see project " + OWN_PROJECT_ID + "?" }),
+    {
+      readSessionFromEvent: sessionOk,
+      resolveTenantFromSession: resolveOwnTenant,
+      getOpenAiKey: () => "test-key",
+      supabaseGet: mockProjectGet({
+        rows: [ownProjectRow()],
+        quoteRows: [{ id: "quote-secret-id", status: "approved" }],
+      }),
+      fetch: openaiOkFetch(namedCapture),
+    }
+  );
+  const namedInput = String((namedCapture.payload || {}).input || "");
+  const namedFacts = extractProjectFacts(namedInput);
+  assert(
+    "named supervisor question does not gain identity matching",
+    namedRes.statusCode === 200 &&
+      namedFacts &&
+      !("supervisor_name" in namedFacts) &&
+      !("supervisor_email" in namedFacts) &&
+      !("supervisor_user_id" in namedFacts) &&
+      !/John/.test(JSON.stringify(namedFacts)) &&
+      /cannot verify that the person the owner has in mind/i.test(namedInput)
+  );
+
+  const mySupCapture = {};
+  const mySupRes = await runHandler(
+    fakeEvent("POST", {
+      message: "My supervisor says he can't see project " + OWN_PROJECT_ID,
+    }),
+    {
+      readSessionFromEvent: sessionOk,
+      resolveTenantFromSession: resolveOwnTenant,
+      getOpenAiKey: () => "test-key",
+      supabaseGet: mockProjectGet({
+        rows: [ownProjectRow()],
+        quoteRows: [{ id: "quote-secret-id", status: "approved" }],
+      }),
+      fetch: openaiOkFetch(mySupCapture),
+    }
+  );
+  const mySupInput = String((mySupCapture.payload || {}).input || "");
+  const mySupFacts = extractProjectFacts(mySupInput);
+  assert(
+    "my supervisor question does not gain identity matching",
+    mySupRes.statusCode === 200 &&
+      classifySupportIntent("My supervisor says he can't see project " + OWN_PROJECT_ID) ===
+        "project_diagnostic" &&
+      mySupFacts &&
+      !("matched_supervisor" in mySupFacts) &&
+      mySupFacts.supervisor_visibility.eligible_for_assigned_supervisor === true &&
+      /currently assigned/i.test(mySupInput)
   );
 
   console.log("");

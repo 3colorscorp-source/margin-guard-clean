@@ -11,20 +11,22 @@ Margin Guard Support answers **how to use Margin Guard** as it exists in this pr
 - how pricing settings relate to quotes
 - how Invoice Hub, Contract Hub, and Dashboard actually work
 
-It is **product support**, not:
+It is **product support**. It is not:
 
 - a general accountant
 - an attorney
 - a contractor consultant
 - a financial planner
-- a diagnostic tool for one tenant’s live data
+- a general-purpose database inspector
+
+For **approved modules**, Support can perform limited, authenticated, **read-only diagnostics**. That is not arbitrary account or database access.
 
 ## Source-of-truth policy
 
 1. Document **actual repository behavior** only.
 2. Never invent buttons, screens, settings, calculations, statuses, or features.
 3. If a workflow is not verified here, Support AI must say it could not verify the answer from current Margin Guard documentation.
-4. Stage 1 **cannot inspect** a tenant’s invoices, quotes, payments, customers, or projects. Do not claim that it checked a specific account.
+4. Support can perform limited, authenticated, read-only diagnostics for approved modules (invoice, quote, one exact project, one exact contract). It cannot perform arbitrary account or database access. Do not claim that it inspected records outside those compact diagnostics.
 
 ## How to update these files
 

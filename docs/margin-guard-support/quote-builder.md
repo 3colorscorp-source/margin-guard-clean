@@ -37,3 +37,28 @@ Server-side secure pricing (`calc-secure-pricing` / publish path) uses the same 
 ## Sending estimates
 
 From the owner/seller builders, sending/publishing creates a **public estimate** the client can open (`/estimate-public`). Ask Margin Guard can report compact Sales Admin lifecycle status for an **exact Estimate #** (for example `2026-0001`). It cannot prove that a customer received email, viewed the estimate, signed a contract, or paid. It cannot inspect quote pricing or Minimum Floor for a specific quote.
+
+## Public estimate page
+
+Support can check whether an **exact Estimate #** or quote UUID currently has a **configured public estimate reference**.
+
+That check is read-only. It does not open the public link, reveal the public token or URL, publish a quote, or regenerate a link. It does **not** prove that the public endpoint successfully loaded.
+
+Current public estimate behavior:
+
+- A public estimate reference is configured only when Margin Guard has stored a public token for that quote.
+- Support may say whether that stored reference has the expected format. Format validity does not prove uniqueness and does not prove a successful public load.
+- Expiration by itself does **not** disable the public estimate endpoint. An expired quote can still have a configured public estimate reference.
+- Quote status (including accepted or approved) does not by itself remove that configured reference.
+- After the quote is accepted or approved, the quote state would no longer allow the client accept/decline action. That is not a page-load failure.
+
+Support should distinguish:
+
+1. no public estimate reference is currently configured
+2. a public estimate reference is configured
+3. the stored reference has (or does not have) the expected format
+4. the quote state would no longer allow accept/decline
+5. the expiration date has passed, but a reference may still be configured
+6. Support cannot verify the state
+
+Do not say “the link definitely works,” “the page successfully loads,” “I verified the customer can open it,” or “I tested the public page.” Prefer: “This quote has a public estimate reference configured.” or “This quote does not currently have a public estimate reference configured.”

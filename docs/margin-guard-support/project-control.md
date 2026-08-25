@@ -58,9 +58,32 @@ Project Control can store a **due date**. If present, it is the stored due date 
 
 This Support diagnostic does not have a stored project **start date**.
 
+## Supervisor portal visibility
+
+A project listed in Project Control does not automatically appear in the Supervisor portal.
+
+The Supervisor portal (device session) shows a project to **the supervisor currently assigned to that project** only when **all** of these stored conditions are true:
+
+1. The project lifecycle status is one of: `signed`, `deposit_paid`, `assigned`, `in_progress`, `completed`.
+2. The project has a linked quote whose stored status is `accepted` or `approved`.
+3. A supervisor is assigned to the project.
+
+Draft, sent, archived, and cancelled projects are not eligible. A missing linked quote, or a linked quote that is not accepted/approved, is not eligible.
+
+Support can explain those stored conditions for one exact Project ID / UUID or exact project name. It cannot name the supervisor, assign a supervisor, or change project or quote state. It cannot verify that a named person, or the person the owner means by “my supervisor,” is the supervisor currently assigned to the project.
+
+Typical explanations:
+
+- The project exists, but it is not currently eligible to appear in the Supervisor portal for an assigned supervisor.
+- The project is eligible but no supervisor is assigned.
+- The project has a supervisor assigned, but the project/quote state does not currently satisfy the Supervisor portal requirements for that assigned supervisor.
+- This project meets the requirements to appear in the Supervisor portal for the supervisor currently assigned to this project. Support cannot verify that the person the owner has in mind is that assigned supervisor.
+
+Do not say “your supervisor can see this project,” “the supervisor can see it,” or “this project is visible to your supervisor.”
+
 ## What Support can check
 
-When the owner gives an **exact Project ID / UUID** or the **exact project name**, Support can explain that one project’s stored lifecycle facts: status, completed/archived flags, whether a supervisor is assigned, created date, and stored due date if present.
+When the owner gives an **exact Project ID / UUID** or the **exact project name**, Support can explain that one project’s stored lifecycle facts: status, completed/archived flags, whether a supervisor is assigned, Supervisor portal visibility conditions, created date, and stored due date if present.
 
 If more than one project has that exact name, Support asks for the exact Project ID / UUID and does not list matching names or IDs.
 

@@ -150,6 +150,48 @@ function isPastExpirationDate(expirationDate, utcToday) {
   return String(utcToday).slice(0, 10) > exp;
 }
 
+function isValidPublicReferenceFormat(token) {
+  const trimmed = String(token == null ? "" : token).trim();
+  if (trimmed === "") return false;
+  if (trimmed.length < 10 || trimmed.length > 256) return false;
+  return /^[a-zA-Z0-9_]+$/.test(trimmed);
+}
+
+const PUBLIC_ACCEPT_ACTION_BLOCKING_STATUSES = new Set(["accepted", "approved"]);
+
+/**
+ * Public estimate CONFIGURATION facts from stored quote state only.
+ * Does not probe the public endpoint. Does not prove HTTP 200 or uniqueness.
+ * Canonical public GET does not filter by quote status or expiration.
+ * Accept/decline UI hides those actions when status is accepted or approved.
+ */
+function derivePublicEstimateFacts(row, opts = {}) {
+  const status = normalizeOwnerVisibleQuoteStatus(row?.status);
+  const expirationDate = isNonEmpty(row?.expiration_date)
+    ? String(row.expiration_date).trim().slice(0, 10)
+    : null;
+  const utcToday = utcTodayIsoDate(opts.utcToday);
+  const expired = isPastExpirationDate(expirationDate, utcToday);
+  const configured = isNonEmpty(row?.public_token);
+  const formatValid = configured ? isValidPublicReferenceFormat(row?.public_token) : null;
+  const responseActionAllowed = !PUBLIC_ACCEPT_ACTION_BLOCKING_STATUSES.has(status);
+
+  let publicPageReason = "not_published";
+  if (!configured) publicPageReason = "not_published";
+  else if (formatValid !== true) publicPageReason = "invalid_public_reference_format";
+  else if (expired) publicPageReason = "expired_but_configured";
+  else if (!responseActionAllowed) publicPageReason = "response_action_unavailable";
+  else publicPageReason = "configured";
+
+  return {
+    public_page_configured: configured,
+    public_reference_format_valid: formatValid,
+    expired,
+    response_action_allowed_by_quote_state: responseActionAllowed,
+    public_page_reason: publicPageReason,
+  };
+}
+
 function toModelFacts(row, opts = {}) {
   const status = normalizeOwnerVisibleQuoteStatus(row?.status);
   const acceptedAt = isNonEmpty(row?.accepted_at) ? String(row.accepted_at).trim() : null;
@@ -173,6 +215,7 @@ function toModelFacts(row, opts = {}) {
       has_persisted_send_confirmation: false,
       can_prove_recipient_received: false,
     },
+    public_estimate: derivePublicEstimateFacts(row, opts),
   };
 }
 
@@ -250,6 +293,8 @@ module.exports = {
   normalizeOwnerVisibleQuoteStatus,
   isPastExpirationDate,
   toModelFacts,
+  derivePublicEstimateFacts,
+  isValidPublicReferenceFormat,
   buildQuoteQueryPath,
   readQuoteDiagnostic,
 };

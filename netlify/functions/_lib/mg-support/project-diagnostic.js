@@ -19,9 +19,26 @@ const PROJECT_DIAGNOSTIC_SELECT_FIELDS = [
   "supervisor_user_id",
   "created_at",
   "due_date",
+  "quote_id",
 ];
 
 const PROJECT_DIAGNOSTIC_SELECT = PROJECT_DIAGNOSTIC_SELECT_FIELDS.join(",");
+
+/** Canonical supervisor portal list — tenant_projects.status allow-list. */
+const SUPERVISOR_PORTAL_PROJECT_STATUSES = [
+  "signed",
+  "deposit_paid",
+  "assigned",
+  "in_progress",
+  "completed",
+];
+const SUPERVISOR_PORTAL_PROJECT_STATUS_SET = new Set(SUPERVISOR_PORTAL_PROJECT_STATUSES);
+
+/** Canonical supervisor portal list — linked quote status allow-list. */
+const SUPERVISOR_PORTAL_QUOTE_STATUSES = ["accepted", "approved"];
+const SUPERVISOR_PORTAL_QUOTE_STATUS_SET = new Set(SUPERVISOR_PORTAL_QUOTE_STATUSES);
+
+const LINKED_QUOTE_STATUS_SELECT = "id,status";
 
 const IDENTIFIER_STOPWORDS = new Set([
   "hub",
@@ -175,7 +192,54 @@ function isoDateOnly(value) {
   return day;
 }
 
-function toModelFacts(row, identifier) {
+function isSupervisorPortalLifecycleStatus(status) {
+  return SUPERVISOR_PORTAL_PROJECT_STATUS_SET.has(normalizeProjectLifecycleStatus(status));
+}
+
+function isSupervisorPortalQuoteStatus(status) {
+  return SUPERVISOR_PORTAL_QUOTE_STATUS_SET.has(normalizeProjectLifecycleStatus(status));
+}
+
+/**
+ * Device-mode supervisor portal eligibility from the current supervisor project list:
+ * 1) project status in signed|deposit_paid|assigned|in_progress|completed
+ * 2) linked quote_id present and that quote status in accepted|approved
+ * 3) supervisor_user_id assigned (device list additionally matches the signed-in supervisor)
+ * Owner-mode list omits (3). Support has no trusted supervisor identity. Positive
+ * facts mean eligible for THE SUPERVISOR CURRENTLY ASSIGNED TO THIS PROJECT.
+ */
+function deriveSupervisorVisibility(row, quoteGate = {}) {
+  const lifecycleAllows = isSupervisorPortalLifecycleStatus(row?.status);
+  const supervisorAssigned = isNonEmpty(row?.supervisor_user_id);
+  const quoteUnverified = quoteGate.unverified === true;
+  const quotePresent = quoteUnverified ? null : quoteGate.allowed === true;
+  const eligibleForAssigned =
+    quoteUnverified === false && lifecycleAllows && quotePresent === true && supervisorAssigned;
+
+  let visibilityReason = "eligible_for_assigned_supervisor";
+  if (quoteUnverified) {
+    visibilityReason = "status_unverified";
+  } else {
+    const missingCount = [!lifecycleAllows, quotePresent !== true, !supervisorAssigned].filter(
+      Boolean
+    ).length;
+    if (missingCount === 0) visibilityReason = "eligible_for_assigned_supervisor";
+    else if (missingCount > 1) visibilityReason = "multiple_requirements_missing";
+    else if (!lifecycleAllows) visibilityReason = "lifecycle_not_eligible";
+    else if (quotePresent !== true) visibilityReason = "quote_not_approved_or_accepted";
+    else visibilityReason = "supervisor_not_assigned";
+  }
+
+  return {
+    eligible_for_assigned_supervisor: eligibleForAssigned,
+    lifecycle_allows_supervisor_visibility: lifecycleAllows,
+    approved_or_accepted_quote_present: quotePresent,
+    supervisor_assigned: supervisorAssigned,
+    visibility_reason: visibilityReason,
+  };
+}
+
+function toModelFacts(row, identifier, quoteGate = {}) {
   const status = normalizeProjectLifecycleStatus(row?.status);
   const createdAt = isNonEmpty(row?.created_at) ? String(row.created_at).trim() : null;
   const dueDate = isoDateOnly(row?.due_date);
@@ -187,6 +251,7 @@ function toModelFacts(row, identifier) {
     archived: isArchivedStatus(status),
     completed: status === "completed",
     supervisor_assigned: isNonEmpty(row?.supervisor_user_id),
+    supervisor_visibility: deriveSupervisorVisibility(row, quoteGate),
   };
   if (createdAt) facts.created_at = createdAt;
   if (dueDate) facts.due_date = dueDate;
@@ -207,8 +272,42 @@ function buildProjectQueryPath(tenantId, identifier) {
   return `tenant_projects?${params.toString()}`;
 }
 
+function buildLinkedQuoteStatusQueryPath(tenantId, quoteId) {
+  const tid = String(tenantId || "").trim();
+  const qid = String(quoteId || "").trim();
+  const params = new URLSearchParams();
+  params.set("tenant_id", `eq.${tid}`);
+  params.set("id", `eq.${qid}`);
+  params.set("select", LINKED_QUOTE_STATUS_SELECT);
+  params.set("limit", "1");
+  return `quotes?${params.toString()}`;
+}
+
 async function defaultProjectGet(path) {
   return supabaseRequest(path, { method: "GET" });
+}
+
+async function readLinkedQuoteGate(tenantId, quoteId, get) {
+  const qid = String(quoteId || "").trim();
+  if (!qid) {
+    return { allowed: false, unverified: false };
+  }
+  const quoteQueryPath = buildLinkedQuoteStatusQueryPath(tenantId, qid);
+  try {
+    const qRows = await get(quoteQueryPath);
+    if (!Array.isArray(qRows)) {
+      return { allowed: false, unverified: true };
+    }
+    if (qRows.length === 0) {
+      return { allowed: false, unverified: false };
+    }
+    return {
+      allowed: isSupervisorPortalQuoteStatus(qRows[0] && qRows[0].status),
+      unverified: false,
+    };
+  } catch (_err) {
+    return { allowed: false, unverified: true };
+  }
 }
 
 /**
@@ -246,9 +345,12 @@ async function readProjectDiagnostic(tenantId, identifier, deps = {}) {
     return { outcome: "ambiguous", queryPath };
   }
 
+  const quoteId = list[0] && list[0].quote_id != null ? String(list[0].quote_id).trim() : "";
+  const quoteGate = await readLinkedQuoteGate(tid, quoteId, get);
+
   return {
     outcome: "ok",
-    facts: toModelFacts(list[0], identifier),
+    facts: toModelFacts(list[0], identifier, quoteGate),
     queryPath,
   };
 }
@@ -257,12 +359,19 @@ module.exports = {
   UUID_RE,
   PROJECT_DIAGNOSTIC_SELECT,
   PROJECT_DIAGNOSTIC_SELECT_FIELDS,
+  SUPERVISOR_PORTAL_PROJECT_STATUSES,
+  SUPERVISOR_PORTAL_QUOTE_STATUSES,
+  LINKED_QUOTE_STATUS_SELECT,
   extractProjectIdentifier,
   isProjectDiagnosticQuestion,
   isProjectSqlOrListAllProbe,
   normalizeProjectLifecycleStatus,
   isArchivedStatus,
+  isSupervisorPortalLifecycleStatus,
+  isSupervisorPortalQuoteStatus,
+  deriveSupervisorVisibility,
   toModelFacts,
   buildProjectQueryPath,
+  buildLinkedQuoteStatusQueryPath,
   readProjectDiagnostic,
 };

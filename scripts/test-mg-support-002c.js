@@ -13,7 +13,10 @@ const { classifySupportIntent } = require("../netlify/functions/_lib/mg-support/
 const {
   QUOTE_DIAGNOSTIC_SELECT,
   extractQuoteIdentifier,
+  isQuoteDiagnosticQuestion,
   toModelFacts,
+  derivePublicEstimateFacts,
+  isValidPublicReferenceFormat,
   readQuoteDiagnostic,
 } = require("../netlify/functions/_lib/mg-support/quote-diagnostic");
 const { createHandler } = require("../netlify/functions/mg-support-chat");
@@ -858,6 +861,203 @@ async function main() {
     "guidance never says customer received quote",
     /Never say the customer received it/i.test(QUOTE_FACTS_GUIDANCE) &&
       /Never say the customer received the quote/i.test(SYSTEM_INSTRUCTIONS)
+  );
+
+  const pubNone = derivePublicEstimateFacts(ownQuoteRow({ public_token: null }), {
+    utcToday: UTC_TODAY,
+  });
+  assert(
+    "token absent maps to unpublished/no-page state",
+    pubNone.public_page_configured === false &&
+      pubNone.public_reference_format_valid === null &&
+      pubNone.response_action_allowed_by_quote_state === true &&
+      pubNone.public_page_reason === "not_published" &&
+      !("can_load_public_page" in pubNone) &&
+      !("public_action_available" in pubNone) &&
+      !("has_public_page" in pubNone)
+  );
+  const pubHas = derivePublicEstimateFacts(ownQuoteRow({ public_token: "qt_secret_token_value" }), {
+    utcToday: UTC_TODAY,
+  });
+  assert(
+    "configured token maps to public_page_configured=true",
+    pubHas.public_page_configured === true &&
+      pubHas.public_reference_format_valid === true &&
+      pubHas.public_page_reason === "configured" &&
+      pubHas.response_action_allowed_by_quote_state === true
+  );
+  const pubExpired = derivePublicEstimateFacts(
+    ownQuoteRow({
+      public_token: "qt_secret_token_value",
+      status: "READY_TO_SEND",
+      expiration_date: "2026-08-01",
+    }),
+    { utcToday: UTC_TODAY }
+  );
+  assert(
+    "expiration separately represented",
+    pubExpired.expired === true && pubExpired.public_page_configured === true
+  );
+  assert(
+    "expired + configured remains possible",
+    pubExpired.public_page_configured === true &&
+      pubExpired.public_page_reason === "expired_but_configured"
+  );
+  const pubAccepted = derivePublicEstimateFacts(
+    ownQuoteRow({ public_token: "qt_secret_token_value", status: "accepted" }),
+    { utcToday: UTC_TODAY }
+  );
+  const pubApproved = derivePublicEstimateFacts(
+    ownQuoteRow({ public_token: "qt_secret_token_value", status: "approved" }),
+    { utcToday: UTC_TODAY }
+  );
+  assert(
+    "accepted/approved disables accept/decline without claiming page failure",
+    pubAccepted.public_page_configured === true &&
+      pubAccepted.response_action_allowed_by_quote_state === false &&
+      pubAccepted.public_page_reason === "response_action_unavailable" &&
+      pubApproved.response_action_allowed_by_quote_state === false
+  );
+  assert(
+    "response action state is separate from page configuration",
+    pubAccepted.public_page_configured === true &&
+      pubAccepted.response_action_allowed_by_quote_state === false
+  );
+  const pubShort = derivePublicEstimateFacts(ownQuoteRow({ public_token: "qt_ok" }), {
+    utcToday: UTC_TODAY,
+  });
+  assert(
+    "malformed stored format maps safely",
+    isValidPublicReferenceFormat("qt_ok") === false &&
+      pubShort.public_page_configured === true &&
+      pubShort.public_reference_format_valid === false &&
+      pubShort.public_page_reason === "invalid_public_reference_format"
+  );
+
+  const linkQ = "Why doesn't estimate 2026-0001 link work?";
+  const publicLinkQ = "Why doesn't quote " + OWN_QUOTE_ID + " public link work?";
+  assert(
+    "estimate link question is quote diagnostic",
+    isQuoteDiagnosticQuestion(linkQ) === true && classifySupportIntent(linkQ) === "quote_diagnostic"
+  );
+  assert(
+    "quote public link question is quote diagnostic",
+    isQuoteDiagnosticQuestion(publicLinkQ) === true &&
+      classifySupportIntent(publicLinkQ) === "quote_diagnostic"
+  );
+
+  const pubCapture = {};
+  const pubRes = await runHandler(fakeEvent("POST", { message: linkQ }), {
+    readSessionFromEvent: sessionOk,
+    resolveTenantFromSession: resolveOwnTenant,
+    utcToday: UTC_TODAY,
+    getOpenAiKey: () => "test-key",
+    supabaseGet: mockQuoteGet({ quotes: [ownQuoteRow()] }),
+    fetch: openaiOkFetch(pubCapture),
+  });
+  const pubInput = String((pubCapture.payload || {}).input || "");
+  const pubFacts = extractQuoteFacts(pubInput);
+  assert(
+    "public token never returned",
+    pubRes.statusCode === 200 &&
+      pubFacts &&
+      !("public_token" in pubFacts) &&
+      !/qt_secret_token_value/.test(pubInput)
+  );
+  assert(
+    "public URL never returned",
+    !("public_url" in pubFacts) &&
+      !("public_estimate_url" in pubFacts) &&
+      !/estimate-public\.html/.test(pubInput) &&
+      !/https?:\/\//.test(JSON.stringify(pubFacts.public_estimate || {}))
+  );
+  assert(
+    "no customer email/name",
+    !("client_name" in pubFacts) &&
+      !("client_email" in pubFacts) &&
+      !/Secret Client/.test(pubInput) &&
+      !/should-not-leak@example.com/.test(pubInput)
+  );
+  assert(
+    "no quote money",
+    !("total" in pubFacts) &&
+      !("deposit_required" in pubFacts) &&
+      !pubInput.includes("9999") &&
+      !pubInput.includes("1000")
+  );
+  assert(
+    "no Stripe/deposit data",
+    !("deposit_payment_available" in pubFacts) &&
+      !("deposit_payment_link" in pubFacts) &&
+      !("stripe_account_id" in pubFacts) &&
+      !/stripe/i.test(JSON.stringify(pubFacts.public_estimate || {}))
+  );
+  assert(
+    "send history semantics remain UNKNOWN",
+    pubFacts.delivery.submitted_to_email_bridge === null &&
+      pubFacts.delivery.submitted_at === null &&
+      pubFacts.delivery.has_persisted_send_confirmation === false &&
+      pubFacts.delivery.can_prove_recipient_received === false
+  );
+  assert("no sent_at invented", !("sent_at" in pubFacts) && pubFacts.delivery.submitted_at === null);
+  assert(
+    "public_estimate nested facts present",
+    pubFacts.public_estimate &&
+      pubFacts.public_estimate.public_page_configured === true &&
+      pubFacts.public_estimate.public_reference_format_valid === true &&
+      pubFacts.public_estimate.expired === false &&
+      pubFacts.has_public_estimate_page === true &&
+      !("can_load_public_page" in pubFacts) &&
+      !("can_load_public_page" in pubFacts.public_estimate)
+  );
+  assert(
+    "no uniqueness assumption in quote facts/guidance",
+    !/unique|duplicate token/i.test(JSON.stringify(pubFacts.public_estimate || {})) &&
+      !/unique constraint|duplicate public_token/i.test(QUOTE_FACTS_GUIDANCE)
+  );
+  assert(
+    "no successful-load guidance",
+    !/can_load_public_page/.test(QUOTE_FACTS_GUIDANCE) &&
+      /Never say you opened, tested, or successfully loaded/.test(QUOTE_FACTS_GUIDANCE) &&
+      /public estimate reference configured/i.test(QUOTE_FACTS_GUIDANCE)
+  );
+
+  const unpublishedRead = await readQuoteDiagnostic(
+    OWN_TENANT,
+    { type: "quote_number_display", value: "2026-0001" },
+    {
+      supabaseGet: async () => [ownQuoteRow({ public_token: "" })],
+      utcToday: UTC_TODAY,
+    }
+  );
+  assert(
+    "unpublished quote is found without escalating outcome",
+    unpublishedRead.outcome === "ok" &&
+      unpublishedRead.facts.public_estimate.public_page_reason === "not_published"
+  );
+
+  const quoteDiagSrc = fs.readFileSync(
+    path.join(ROOT, "netlify/functions/_lib/mg-support/quote-diagnostic.js"),
+    "utf8"
+  );
+  assert(
+    "no publish-public-quote call",
+    !/publish-public-quote/.test(quoteDiagSrc) && !/publishPublicQuote/.test(quoteDiagSrc)
+  );
+  assert(
+    "no public-token network probe",
+    !/get-public-estimate/.test(quoteDiagSrc) && !/public_token=eq/.test(quoteDiagSrc)
+  );
+  assert(
+    "no write in quote diagnostic",
+    !/method:\s*"POST"/.test(quoteDiagSrc) &&
+      !/method:\s*"PATCH"/.test(quoteDiagSrc) &&
+      !/method:\s*"PUT"/.test(quoteDiagSrc) &&
+      !/method:\s*"DELETE"/.test(quoteDiagSrc)
+  );
+  assert(
+    "ordinary quote status question still works",
+    classifySupportIntent("What status is estimate 2026-0001?") === "quote_diagnostic"
   );
 
   console.log("");
