@@ -157,6 +157,10 @@ const MODULES = [
       "completed project",
       "project lifecycle",
       "supervisor assigned",
+      "when is project",
+      "when does project",
+      "due date for project",
+      "project due date",
     ],
   },
 ];
@@ -195,6 +199,19 @@ function scoreModule(mod, text, pagePath) {
   };
 }
 
+function isProjectFinancialQuestion(message) {
+  const text = String(message || "").toLowerCase();
+  if (!/\bprojects?\b/.test(text)) return false;
+  return (
+    /\bbalance due\b/.test(text) ||
+    /\bremaining balance\b/.test(text) ||
+    /\bhow much\b/.test(text) && /\bdue\b/.test(text) ||
+    /\bamount due\b/.test(text) ||
+    /\b(owe|owes|owed)\b/.test(text) ||
+    /\b(profit|sale price|labor budget)\b/.test(text)
+  );
+}
+
 function classifySupportIntent(message) {
   const text = String(message || "").toLowerCase();
   if (
@@ -216,6 +233,9 @@ function classifySupportIntent(message) {
   }
   if (isQuoteDiagnosticQuestion(message)) {
     return "quote_diagnostic";
+  }
+  if (isProjectFinancialQuestion(message)) {
+    return "docs_only";
   }
   if (isProjectDiagnosticQuestion(message)) {
     return "project_diagnostic";

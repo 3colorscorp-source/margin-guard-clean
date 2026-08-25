@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
-const { classifySupportIntent } = require("../netlify/functions/_lib/mg-support/router");
+const { classifySupportIntent, routeSupportKnowledge } = require("../netlify/functions/_lib/mg-support/router");
 const {
   PROJECT_DIAGNOSTIC_SELECT,
   extractProjectIdentifier,
@@ -777,7 +777,7 @@ async function main() {
   assert("fixed tenant_projects table", selectPath.startsWith("tenant_projects?"));
   assert(
     "project intent after quote in router",
-    /if \(isQuoteDiagnosticQuestion\(message\)\) \{\s*return "quote_diagnostic";\s*\}\s*if \(isProjectDiagnosticQuestion\(message\)\) \{\s*return "project_diagnostic";/s.test(
+    /if \(isQuoteDiagnosticQuestion\(message\)\) \{\s*return "quote_diagnostic";\s*\}\s*if \(isProjectFinancialQuestion\(message\)\) \{\s*return "docs_only";\s*\}\s*if \(isProjectDiagnosticQuestion\(message\)\) \{\s*return "project_diagnostic";/s.test(
       routerSrc
     )
   );
@@ -893,6 +893,121 @@ async function main() {
     /lifecycle/i.test(docsText) &&
       /health/i.test(docsText) &&
       /different concepts/i.test(docsText)
+  );
+
+  const dueUuidQ = "When is project " + OWN_PROJECT_ID + " due?";
+  const dueDateForQ = "What is the due date for project " + OWN_PROJECT_ID + "?";
+  const endQ = "When does project " + OWN_PROJECT_ID + " end?";
+  const startQ = "When does project " + OWN_PROJECT_ID + " start?";
+  assert('"When is project <UUID> due?" → project_diagnostic', classifySupportIntent(dueUuidQ) === "project_diagnostic");
+  assert(
+    '"What is the due date for project <UUID>?" → project_diagnostic',
+    classifySupportIntent(dueDateForQ) === "project_diagnostic"
+  );
+  assert('"When does project <UUID> end?" → project_diagnostic', classifySupportIntent(endQ) === "project_diagnostic");
+  assert('"When does project <UUID> start?" → project_diagnostic', classifySupportIntent(startQ) === "project_diagnostic");
+  assert(
+    "due-date UUID question loads Project Control knowledge",
+    routeSupportKnowledge(dueUuidQ, "").some((m) => m.id === "project-control")
+  );
+
+  const missingDuePaths = [];
+  const missingDueCapture = {};
+  const missingDue = await runHandler(fakeEvent("POST", { message: dueUuidQ }), {
+    readSessionFromEvent: sessionOk,
+    resolveTenantFromSession: resolveOwnTenant,
+    getOpenAiKey: () => "test-key",
+    supabaseGet: mockProjectGet({
+      rows: [],
+      onPath: (p) => missingDuePaths.push(p),
+    }),
+    fetch: openaiOkFetch(missingDueCapture),
+  });
+  const missingDueInput = String((missingDueCapture.payload || {}).input || "");
+  assert(
+    "valid UUID due-date + no matching row → not_found, not docs fallback",
+    missingDue.statusCode === 200 &&
+      missingDuePaths.length === 1 &&
+      String(missingDuePaths[0]).startsWith("tenant_projects?") &&
+      extractProjectFacts(missingDueInput) === null &&
+      missingDueInput.includes(PROJECT_NOT_FOUND_GUIDANCE) &&
+      !/I couldn't verify that from the current Margin Guard documentation/i.test(missingDueInput)
+  );
+
+  const startCapture = {};
+  const startPaths = [];
+  const startRes = await runHandler(fakeEvent("POST", { message: startQ }), {
+    readSessionFromEvent: sessionOk,
+    resolveTenantFromSession: resolveOwnTenant,
+    getOpenAiKey: () => "test-key",
+    supabaseGet: mockProjectGet({
+      rows: [ownProjectRow()],
+      onPath: (p) => startPaths.push(p),
+    }),
+    fetch: openaiOkFetch(startCapture),
+  });
+  const startFacts = extractProjectFacts(String((startCapture.payload || {}).input || ""));
+  const startInput = String((startCapture.payload || {}).input || "");
+  assert(
+    "start-date UUID question uses project diagnostic without inventing start_date",
+    startRes.statusCode === 200 &&
+      startPaths.length === 1 &&
+      startFacts &&
+      !("start_date" in startFacts) &&
+      !("signed_at" in startFacts) &&
+      /does not have a stored project start date/i.test(startInput)
+  );
+
+  const balanceDueQ = "What is the balance due on project " + OWN_PROJECT_ID + "?";
+  const howMuchDueQ = "How much is due on project " + OWN_PROJECT_ID + "?";
+  assert(
+    '"What is the balance due on project <UUID>?" → NOT project_diagnostic',
+    classifySupportIntent(balanceDueQ) !== "project_diagnostic"
+  );
+  assert(
+    '"How much is due on project <UUID>?" → NOT project_diagnostic',
+    classifySupportIntent(howMuchDueQ) !== "project_diagnostic"
+  );
+
+  let balanceGets = 0;
+  const balanceRes = await runHandler(fakeEvent("POST", { message: balanceDueQ }), {
+    readSessionFromEvent: sessionOk,
+    resolveTenantFromSession: resolveOwnTenant,
+    getOpenAiKey: () => "test-key",
+    supabaseGet: async (p) => {
+      if (String(p || "").startsWith("tenant_projects?")) balanceGets += 1;
+      return [ownProjectRow()];
+    },
+    fetch: openaiOkFetch(),
+  });
+  assert(
+    "balance due on project UUID → zero tenant_projects GET",
+    balanceRes.statusCode === 200 && balanceGets === 0
+  );
+
+  let howMuchGets = 0;
+  const howMuchRes = await runHandler(fakeEvent("POST", { message: howMuchDueQ }), {
+    readSessionFromEvent: sessionOk,
+    resolveTenantFromSession: resolveOwnTenant,
+    getOpenAiKey: () => "test-key",
+    supabaseGet: async (p) => {
+      if (String(p || "").startsWith("tenant_projects?")) howMuchGets += 1;
+      return [ownProjectRow()];
+    },
+    fetch: openaiOkFetch(),
+  });
+  assert(
+    "how much is due on project UUID → zero tenant_projects GET",
+    howMuchRes.statusCode === 200 && howMuchGets === 0
+  );
+
+  assert(
+    "invoice due-date intent still wins",
+    classifySupportIntent("When is invoice INV-1777240297762 due?") === "invoice_diagnostic"
+  );
+  assert(
+    "quote expiration/date intent still wins",
+    classifySupportIntent("When does estimate 2026-0126 expire?") === "quote_diagnostic"
   );
 
   console.log("");
