@@ -74,7 +74,7 @@ const {
   mapModule,
   mintEscalationToken,
 } = require("./_lib/mg-support/case-intake");
-const { maybeOfferInvoiceResend } = require("./_lib/mg-support/invoice-resend-offer");
+const { maybeOfferInvoiceResend, INVOICE_RESEND_UNVERIFIED_COPY } = require("./_lib/mg-support/invoice-resend-offer");
 
 function json(statusCode, body) {
   return {
@@ -410,6 +410,106 @@ function createHandler(deps = {}) {
         }
       }
 
+      let resendOffer = { action: null, copy: "", skipEscalation: false, explicit: false };
+      try {
+        const offerFn = deps.maybeOfferInvoiceResend || maybeOfferInvoiceResend;
+        resendOffer = await offerFn({
+          message,
+          intent,
+          diagnostic,
+          session,
+          trustedTenantId,
+          deps,
+        });
+      } catch (_err) {
+        resendOffer = { action: null, copy: "", skipEscalation: false, explicit: false };
+      }
+
+      const approvedActionFromOffer = function (offer) {
+        if (
+          offer &&
+          offer.action &&
+          offer.action.type === "invoice_resend" &&
+          String(offer.action.confirmation_token || "").trim()
+        ) {
+          return {
+            type: "invoice_resend",
+            label: "Resend invoice",
+            confirmation_token: String(offer.action.confirmation_token),
+            expires_at: String(offer.action.expires_at || ""),
+          };
+        }
+        return null;
+      };
+
+      async function mintEscalationIfNeeded(approvedAction) {
+        let escalation = null;
+        try {
+          if (!approvedAction && hasOwnerEmailAndCustomer(session)) {
+            const eligibility = determineEscalationEligibility({
+              intent,
+              diagnostic,
+              message,
+              hasOwnerTenant: true,
+            });
+            if (eligibility) {
+              let tenantId = trustedTenantId;
+              if (!tenantId) {
+                try {
+                  const tenant = await resolveTenant(session);
+                  tenantId = tenant?.id ? String(tenant.id) : "";
+                } catch (_err) {
+                  tenantId = "";
+                }
+              }
+              if (tenantId) {
+                const mintFn = deps.mintEscalationToken || mintEscalationToken;
+                const entity = bindRelatedEntity(intent, diagnostic, diagnosticIdentifier);
+                const minted = mintFn(
+                  {
+                    tenant_id: tenantId,
+                    category: eligibility.category,
+                    support_module: mapModule(routed),
+                    related_entity_type: entity.type,
+                    related_entity_ref: entity.ref,
+                    page_path: page,
+                    question_excerpt: message,
+                  },
+                  deps
+                );
+                if (minted && minted.token) {
+                  escalation = {
+                    eligible: true,
+                    label: "Create support case",
+                    confirmation_token: minted.token,
+                    expires_at: minted.expires_at,
+                  };
+                }
+              }
+            }
+          }
+        } catch (_err) {
+          escalation = null;
+        }
+        return escalation;
+      }
+
+      if (resendOffer && resendOffer.explicit) {
+        const answer = String(resendOffer.copy || INVOICE_RESEND_UNVERIFIED_COPY).trim();
+        const approvedAction = approvedActionFromOffer(resendOffer);
+        const escalation = await mintEscalationIfNeeded(approvedAction);
+        const resendSources = uniqueSources.includes("Invoice Hub")
+          ? uniqueSources
+          : ["Invoice Hub"].concat(uniqueSources);
+        return json(200, {
+          ok: true,
+          answer,
+          sources: resendSources,
+          ...(escalation ? { escalation } : {}),
+          ...(approvedAction ? { action: approvedAction } : {}),
+        });
+      }
+
       const apiKey = getKey();
       if (!apiKey) {
         console.error("[mg-support-chat] missing OpenAI configuration");
@@ -498,91 +598,12 @@ function createHandler(deps = {}) {
         });
       }
 
-      let resendOffer = { action: null, copy: "", skipEscalation: false };
-      try {
-        const offerFn = deps.maybeOfferInvoiceResend || maybeOfferInvoiceResend;
-        resendOffer = await offerFn({
-          message,
-          intent,
-          diagnostic,
-          session,
-          trustedTenantId,
-          deps,
-        });
-      } catch (_err) {
-        resendOffer = { action: null, copy: "", skipEscalation: false };
-      }
-      if (resendOffer && resendOffer.copy) {
-        answer = String(answer).trim() + "\n\n" + String(resendOffer.copy).trim();
-      }
-      const approvedAction =
-        resendOffer &&
-        resendOffer.action &&
-        resendOffer.action.type === "invoice_resend" &&
-        String(resendOffer.action.confirmation_token || "").trim()
-          ? {
-              type: "invoice_resend",
-              label: "Resend invoice",
-              confirmation_token: String(resendOffer.action.confirmation_token),
-              expires_at: String(resendOffer.action.expires_at || ""),
-            }
-          : null;
-
-      let escalation = null;
-      try {
-        if (!approvedAction && hasOwnerEmailAndCustomer(session)) {
-          const eligibility = determineEscalationEligibility({
-            intent,
-            diagnostic,
-            message,
-            hasOwnerTenant: true,
-          });
-          if (eligibility) {
-            let tenantId = trustedTenantId;
-            if (!tenantId) {
-              try {
-                const tenant = await resolveTenant(session);
-                tenantId = tenant?.id ? String(tenant.id) : "";
-              } catch (_err) {
-                tenantId = "";
-              }
-            }
-            if (tenantId) {
-              const mintFn = deps.mintEscalationToken || mintEscalationToken;
-              const entity = bindRelatedEntity(intent, diagnostic, diagnosticIdentifier);
-              const minted = mintFn(
-                {
-                  tenant_id: tenantId,
-                  category: eligibility.category,
-                  support_module: mapModule(routed),
-                  related_entity_type: entity.type,
-                  related_entity_ref: entity.ref,
-                  page_path: page,
-                  question_excerpt: message,
-                },
-                deps
-              );
-              if (minted && minted.token) {
-                escalation = {
-                  eligible: true,
-                  label: "Create support case",
-                  confirmation_token: minted.token,
-                  expires_at: minted.expires_at,
-                };
-              }
-            }
-          }
-        }
-      } catch (_err) {
-        escalation = null;
-      }
-
+      const escalation = await mintEscalationIfNeeded(null);
       return json(200, {
         ok: true,
         answer,
         sources: uniqueSources,
         ...(escalation ? { escalation } : {}),
-        ...(approvedAction ? { action: approvedAction } : {}),
       });
     } catch (_err) {
       console.error("[mg-support-chat] unhandled");

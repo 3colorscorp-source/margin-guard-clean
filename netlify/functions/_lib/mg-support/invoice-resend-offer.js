@@ -29,14 +29,33 @@ const INVOICE_RESEND_MISSING_EMAIL_COPY =
 const INVOICE_RESEND_MISSING_PUBLIC_COPY =
   "This invoice is not currently ready for resend because its public invoice reference is missing.";
 
-const INVOICE_RESEND_NEEDS_IDENTIFIER_COPY =
-  "Please provide the exact invoice number, such as INV-123, if you want to resend it.";
+const INVOICE_RESEND_NEEDS_IDENTIFIER_COPY = "Please provide the invoice number you want to resend.";
+
+const INVOICE_RESEND_NOT_FOUND_COPY =
+  "Margin Guard could not find an invoice matching that exact invoice number.";
+
+const INVOICE_RESEND_AMBIGUOUS_COPY =
+  "More than one invoice matched that exact identifier. Please identify the invoice more precisely using the Invoice Hub number.";
+
+const INVOICE_RESEND_UNVERIFIED_COPY =
+  "Margin Guard could not verify that this invoice is currently eligible for resend.";
+
+const INVOICE_RESEND_SOURCE = "Invoice Hub";
 
 function emptyOffer(explicit) {
   return {
     explicit: Boolean(explicit),
     action: null,
     copy: "",
+    skipEscalation: false,
+  };
+}
+
+function closedCopy(copy) {
+  return {
+    explicit: true,
+    action: null,
+    copy: String(copy || INVOICE_RESEND_UNVERIFIED_COPY).trim(),
     skipEscalation: false,
   };
 }
@@ -49,7 +68,10 @@ function invoiceResendDenialCopy(reason) {
   if (code === "missing_email") return INVOICE_RESEND_MISSING_EMAIL_COPY;
   if (code === "missing_public_token") return INVOICE_RESEND_MISSING_PUBLIC_COPY;
   if (code === "ineligible_amount" || code === "ineligible_status") return INVOICE_RESEND_VOID_COPY;
-  return "";
+  if (code === "not_found") return INVOICE_RESEND_NOT_FOUND_COPY;
+  if (code === "ambiguous") return INVOICE_RESEND_AMBIGUOUS_COPY;
+  if (code === "needs_identifier") return INVOICE_RESEND_NEEDS_IDENTIFIER_COPY;
+  return INVOICE_RESEND_UNVERIFIED_COPY;
 }
 
 function closedInvoiceResendAction(minted) {
@@ -73,51 +95,43 @@ async function maybeOfferInvoiceResend({
   const detect = deps.isExplicitInvoiceResendIntent || isExplicitInvoiceResendIntent;
   const explicit = detect(message);
   if (!explicit) return emptyOffer(false);
-  if (intent !== "invoice_diagnostic") return emptyOffer(true);
+  if (intent !== "invoice_diagnostic") return emptyOffer(false);
 
-  if (!hasOwnerEmailAndCustomer(session)) return emptyOffer(true);
+  if (!hasOwnerEmailAndCustomer(session)) return closedCopy(INVOICE_RESEND_UNVERIFIED_COPY);
 
   const outcome = diagnostic && diagnostic.outcome;
-  if (outcome === "needs_identifier") {
-    return {
-      explicit: true,
-      action: null,
-      copy: INVOICE_RESEND_NEEDS_IDENTIFIER_COPY,
-      skipEscalation: false,
-    };
-  }
+  if (outcome === "needs_identifier") return closedCopy(INVOICE_RESEND_NEEDS_IDENTIFIER_COPY);
+  if (outcome === "not_found") return closedCopy(INVOICE_RESEND_NOT_FOUND_COPY);
+  if (outcome === "ambiguous") return closedCopy(INVOICE_RESEND_AMBIGUOUS_COPY);
+  if (outcome === "no_tenant_context") return closedCopy(INVOICE_RESEND_UNVERIFIED_COPY);
+  if (outcome === "status_unverified") return closedCopy(INVOICE_RESEND_UNVERIFIED_COPY);
 
   const tenantId = String(trustedTenantId || "").trim();
-  if (!isUuid(tenantId)) return emptyOffer(true);
+  if (!isUuid(tenantId)) return closedCopy(INVOICE_RESEND_UNVERIFIED_COPY);
 
-  if (outcome !== "ok") return emptyOffer(true);
+  if (outcome !== "ok") return closedCopy(INVOICE_RESEND_UNVERIFIED_COPY);
 
   const invoiceId = String(diagnostic.invoice_id || "").trim();
-  if (!isUuid(invoiceId)) return emptyOffer(true);
+  if (!isUuid(invoiceId)) return closedCopy(INVOICE_RESEND_UNVERIFIED_COPY);
 
   const reload = deps.reloadInvoiceForResend || reloadInvoiceForResend;
   let loaded;
   try {
     loaded = await reload(tenantId, invoiceId, deps);
   } catch (_err) {
-    return emptyOffer(true);
+    return closedCopy(INVOICE_RESEND_UNVERIFIED_COPY);
   }
 
   const eligibility = loaded && loaded.eligibility;
   if (!eligibility || eligibility.ok !== true) {
     const reason = (eligibility && eligibility.reason) || (loaded && loaded.outcome) || "";
-    return {
-      explicit: true,
-      action: null,
-      copy: invoiceResendDenialCopy(reason),
-      skipEscalation: false,
-    };
+    return closedCopy(invoiceResendDenialCopy(reason));
   }
 
   const mint = deps.mintInvoiceResendToken || mintInvoiceResendToken;
   const minted = mint({ session, tenantId, invoice: loaded.invoice }, deps);
   const action = closedInvoiceResendAction(minted);
-  if (!action) return emptyOffer(true);
+  if (!action) return closedCopy(INVOICE_RESEND_UNVERIFIED_COPY);
 
   return {
     explicit: true,
@@ -137,6 +151,10 @@ module.exports = {
   INVOICE_RESEND_MISSING_EMAIL_COPY,
   INVOICE_RESEND_MISSING_PUBLIC_COPY,
   INVOICE_RESEND_NEEDS_IDENTIFIER_COPY,
+  INVOICE_RESEND_NOT_FOUND_COPY,
+  INVOICE_RESEND_AMBIGUOUS_COPY,
+  INVOICE_RESEND_UNVERIFIED_COPY,
+  INVOICE_RESEND_SOURCE,
   invoiceResendDenialCopy,
   maybeOfferInvoiceResend,
 };

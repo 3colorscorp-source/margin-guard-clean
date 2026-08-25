@@ -23,6 +23,9 @@ const {
   INVOICE_RESEND_MISSING_EMAIL_COPY,
   INVOICE_RESEND_MISSING_PUBLIC_COPY,
   INVOICE_RESEND_NEEDS_IDENTIFIER_COPY,
+  INVOICE_RESEND_NOT_FOUND_COPY,
+  INVOICE_RESEND_AMBIGUOUS_COPY,
+  INVOICE_RESEND_UNVERIFIED_COPY,
 } = require("../netlify/functions/_lib/mg-support/invoice-resend-offer");
 const {
   TOKEN_TYPE,
@@ -238,7 +241,7 @@ async function main() {
   assert("9c. confirmation token present", typeof eligibleBody.action.confirmation_token === "string" && eligibleBody.action.confirmation_token.includes("."));
   assert("9d. expires_at present", typeof eligibleBody.action.expires_at === "string" && eligibleBody.action.expires_at.length > 0);
   assert("9e. no actions array framework", !Object.prototype.hasOwnProperty.call(eligibleBody, "actions"));
-  assert("9f. eligible confirmation copy appended", String(eligibleBody.answer).includes(INVOICE_RESEND_CONFIRMATION_COPY));
+  assert("9f. eligible confirmation copy is the entire answer", String(eligibleBody.answer).trim() === INVOICE_RESEND_CONFIRMATION_COPY);
   assert("9g. copy does not display recipient email", !/client@example.com/.test(eligibleBody.answer));
   assert("9h. Invoice Hub source", Array.isArray(eligibleBody.sources) && eligibleBody.sources.includes("Invoice Hub"));
   assert("9i. eligible resend does not attach case button", !eligibleBody.escalation);
@@ -253,52 +256,92 @@ async function main() {
   assert("26. token fields absent from model payload", !/state_fp|actor_fp|confirmation_token/.test(openaiInput));
   assert("27. no email/money/public token in token payload", !JSON.stringify(payload).includes("client@example.com") && !JSON.stringify(payload).includes("1000") && !JSON.stringify(payload).includes("pubtok"));
   assert("25b. invoice UUID not added to OpenAI facts", !/"invoice_id"/.test(openaiInput) && !openaiInput.includes(INVOICE_ID));
-  assert("51. no extra OpenAI call solely to create action", eligibleCapture.calls === 1);
+  assert("51. eligible explicit resend does not call OpenAI", eligibleCapture.calls === 0 && !eligibleCapture.payload);
   assert("28. chat action offer causes zero ledger INSERT", eligibleWrites.ledger === 0);
   assert("29. action token mint causes zero invoice PATCH", eligibleWrites.patch === 0);
   assert("29b. reload used server diagnostic UUID", eligibleWrites.reload === 1);
 
+  const diagOnlyCapture = { calls: 0 };
   const diagOnlyWrites = { ledger: 0, patch: 0, openai: 0, reload: 0, mint: 0 };
-  const diagOnly = await runChat("Did invoice INV-123 send?", { writes: diagOnlyWrites });
+  const diagOnly = await runChat("Did invoice INV-123 send?", {
+    writes: diagOnlyWrites,
+    capture: diagOnlyCapture,
+    fetch: openaiOkFetch(diagOnlyCapture),
+  });
   assert("4b. diagnostic-only has no action", parse(diagOnly).action == null && diagOnlyWrites.reload === 0);
+  assert("4c. generic diagnostic still calls OpenAI", diagOnlyCapture.calls === 1);
 
-  const why = await runChat("Why didn't invoice INV-123 send?");
+  const whyCapture = { calls: 0 };
+  const why = await runChat("Why didn't invoice INV-123 send?", {
+    capture: whyCapture,
+    fetch: openaiOkFetch(whyCapture),
+  });
   assert("5b. why-didn't-send has no action", parse(why).action == null);
+  assert("5c. why-didn't-send still calls OpenAI", whyCapture.calls === 1);
 
-  const statusQ = await runChat("Invoice INV-123 status");
+  const statusCapture = { calls: 0 };
+  const statusQ = await runChat("Invoice INV-123 status", {
+    capture: statusCapture,
+    fetch: openaiOkFetch(statusCapture),
+  });
   assert("6b. status question has no action", parse(statusQ).action == null);
+  assert("6c. status question still calls OpenAI", statusCapture.calls === 1);
 
+  const noIdCapture = { calls: 0 };
   const noId = await runChat("Please resend the invoice", {
+    capture: noIdCapture,
+    fetch: openaiOkFetch(noIdCapture),
     readInvoiceDiagnostic: async () => ({ outcome: "needs_identifier" }),
   });
   const noIdBody = parse(noId);
   assert("7b. no identifier => no action", noIdBody.action == null);
-  assert("7c. asks for invoice number", String(noIdBody.answer).includes(INVOICE_RESEND_NEEDS_IDENTIFIER_COPY));
+  assert("7c. asks for invoice number", String(noIdBody.answer).trim() === INVOICE_RESEND_NEEDS_IDENTIFIER_COPY);
+  assert("7d. missing identifier does not call OpenAI", noIdCapture.calls === 0);
 
   const fuzzy = await runChat("Please resend the invoice for the Smith project", {
     readInvoiceDiagnostic: async () => ({ outcome: "needs_identifier" }),
   });
   assert("8b. fuzzy reference => no action", parse(fuzzy).action == null);
 
+  const ambCapture = { calls: 0 };
   const amb = await runChat("Resend invoice INV-123", {
+    capture: ambCapture,
+    fetch: openaiOkFetch(ambCapture),
     readInvoiceDiagnostic: async () => ({ outcome: "ambiguous" }),
   });
   assert("10. exact invoice + ambiguous => no action", parse(amb).action == null);
+  assert("10b. ambiguous copy is deterministic", String(parse(amb).answer).trim() === INVOICE_RESEND_AMBIGUOUS_COPY);
+  assert("10c. ambiguous does not call OpenAI", ambCapture.calls === 0);
 
+  const missingCapture = { calls: 0 };
   const missing = await runChat("Resend invoice INV-123", {
+    capture: missingCapture,
+    fetch: openaiOkFetch(missingCapture),
     readInvoiceDiagnostic: async () => ({ outcome: "not_found" }),
   });
   assert("11. exact invoice + not_found => no action", parse(missing).action == null);
+  assert("11b. not-found copy is deterministic", String(parse(missing).answer).trim() === INVOICE_RESEND_NOT_FOUND_COPY);
+  assert("11c. not-found does not call OpenAI", missingCapture.calls === 0);
 
+  const unverifiedCapture = { calls: 0 };
   const unverified = await runChat("Resend invoice INV-123", {
+    capture: unverifiedCapture,
+    fetch: openaiOkFetch(unverifiedCapture),
     readInvoiceDiagnostic: async () => ({ outcome: "status_unverified" }),
   });
   const unverifiedBody = parse(unverified);
   assert("12. status_unverified => no action", unverifiedBody.action == null);
   assert("12b. existing escalation may remain", Boolean(unverifiedBody.escalation && unverifiedBody.escalation.confirmation_token));
+  assert("12c. unverified copy is deterministic", String(unverifiedBody.answer).trim() === INVOICE_RESEND_UNVERIFIED_COPY);
+  assert("12d. unverified does not call OpenAI", unverifiedCapture.calls === 0);
 
   async function denialCase(reason, copy) {
+    const capture = { calls: 0 };
+    const writes = { ledger: 0, patch: 0, reload: 0, mint: 0 };
     const res = await runChat("Resend invoice INV-123", {
+      writes,
+      capture,
+      fetch: openaiOkFetch(capture),
       reloadInvoiceForResend: async () => ({
         outcome: reason,
         invoice: eligibleInvoice(),
@@ -306,13 +349,57 @@ async function main() {
       }),
     });
     const body = parse(res);
-    return body.action == null && String(body.answer).includes(copy);
+    return (
+      body.action == null &&
+      String(body.answer).trim() === copy &&
+      capture.calls === 0 &&
+      writes.ledger === 0 &&
+      writes.patch === 0 &&
+      Array.isArray(body.sources) &&
+      body.sources.includes("Invoice Hub") &&
+      !/navigate to the Invoice Hub/i.test(body.answer) &&
+      !/you can resend/i.test(body.answer) &&
+      !/sent_at|19:50|submitted on /i.test(body.answer)
+    );
   }
   assert("13. paid => no action + denial copy", await denialCase("paid", INVOICE_RESEND_PAID_COPY));
   assert("14. void => no action + denial copy", await denialCase("void", INVOICE_RESEND_VOID_COPY));
   assert("15. archived => no action + denial copy", await denialCase("archived", INVOICE_RESEND_ARCHIVED_COPY));
   assert("16. missing email => no action + denial copy", await denialCase("missing_email", INVOICE_RESEND_MISSING_EMAIL_COPY));
   assert("17. missing public token => no action + denial copy", await denialCase("missing_public_token", INVOICE_RESEND_MISSING_PUBLIC_COPY));
+
+  const livePaidNo = "INV-1784404146783";
+  const liveCapture = { calls: 0 };
+  const liveWrites = { ledger: 0, patch: 0, reload: 0, mint: 0 };
+  const livePaid = await runChat("Resend invoice " + livePaidNo, {
+    writes: liveWrites,
+    capture: liveCapture,
+    fetch: openaiOkFetch(liveCapture),
+    reloadInvoiceForResend: async () => ({
+      outcome: "paid",
+      invoice: eligibleInvoice({ invoice_no: livePaidNo, status: "paid", sent_at: "2026-07-12T19:50:00.000Z" }),
+      eligibility: { ok: false, reason: "paid" },
+    }),
+  });
+  const liveBody = parse(livePaid);
+  assert(
+    "C2.1 live paid smoke: deterministic paid denial",
+    livePaid.statusCode === 200 && String(liveBody.answer).trim() === INVOICE_RESEND_PAID_COPY
+  );
+  assert("C2.1 live paid smoke: Invoice Hub source", Array.isArray(liveBody.sources) && liveBody.sources.includes("Invoice Hub"));
+  assert("C2.1 live paid smoke: no action / no button", liveBody.action == null);
+  assert("C2.1 live paid smoke: no OpenAI", liveCapture.calls === 0);
+  assert(
+    "C2.1 live paid smoke: no Hub resend instructions",
+    !/navigate to the Invoice Hub/i.test(liveBody.answer) &&
+      !/to resend the invoice, you would/i.test(liveBody.answer) &&
+      !/cannot confirm whether this resend succeeds/i.test(liveBody.answer)
+  );
+  assert("C2.1 live paid smoke: no sent_at timestamp", !/2026-07-12|19:50|July/i.test(liveBody.answer));
+  assert("C2.1 live paid smoke: zero ledger/invoice writes", liveWrites.ledger === 0 && liveWrites.patch === 0);
+
+  assert("C2.1 eligible answer has no sent_at", !/sent_at|19:50|submitted on /i.test(eligibleBody.answer));
+  assert("C2.1 eligible Invoice Hub source", Array.isArray(eligibleBody.sources) && eligibleBody.sources.includes("Invoice Hub"));
 
   const unauth = await createChatHandler({
     readSessionFromEvent: () => null,
@@ -352,6 +439,7 @@ async function main() {
     readInvoiceDiagnostic: async () => ({ outcome: "needs_identifier" }),
   });
   assert("50. model cannot select invoice", parse(modelPick).action == null);
+  assert("50b. missing identifier ignores model invoice choice", String(parse(modelPick).answer).trim() === INVOICE_RESEND_NEEDS_IDENTIFIER_COPY && modelPickCapture.calls === 0);
 
   assert("52. C1 endpoint remains 0 OpenAI calls", !/api\.openai\.com|OPENAI_RESPONSES_URL|OPENAI_MODEL/.test(endpointSrc));
   assert("chat does not execute C1 mutation", !/executeInvoiceResend/.test(chatSrc) && !/executeInvoiceResend/.test(offerSrc));
@@ -436,6 +524,40 @@ async function main() {
 
   const yesNl = await runChat("yes go ahead send it");
   assert("natural language yes does not offer action", parse(yesNl).action == null && isExplicitInvoiceResendIntent("yes go ahead send it") === false);
+  assert("natural language do it does not offer action", isExplicitInvoiceResendIntent("do it") === false && isExplicitInvoiceResendIntent("okay") === false);
+
+  const cancelledCapture = { calls: 0 };
+  const cancelled = await runChat("Resend invoice INV-123", {
+    capture: cancelledCapture,
+    fetch: openaiOkFetch(cancelledCapture),
+    reloadInvoiceForResend: async () => ({
+      outcome: "cancelled",
+      invoice: eligibleInvoice({ status: "cancelled" }),
+      eligibility: { ok: false, reason: "cancelled" },
+    }),
+  });
+  assert(
+    "C2.1 cancelled uses void copy and no OpenAI",
+    parse(cancelled).action == null &&
+      String(parse(cancelled).answer).trim() === INVOICE_RESEND_VOID_COPY &&
+      cancelledCapture.calls === 0
+  );
+
+  const noKeyPaid = await runChat("Resend invoice INV-123", {
+    getOpenAiKey: () => "",
+    fetch: async () => {
+      throw new Error("OpenAI must not be called for explicit resend");
+    },
+    reloadInvoiceForResend: async () => ({
+      outcome: "paid",
+      invoice: eligibleInvoice({ status: "paid" }),
+      eligibility: { ok: false, reason: "paid" },
+    }),
+  });
+  assert(
+    "C2.1 paid resend works without OpenAI key",
+    noKeyPaid.statusCode === 200 && String(parse(noKeyPaid).answer).trim() === INVOICE_RESEND_PAID_COPY && parse(noKeyPaid).action == null
+  );
 
   console.log("");
   console.log(passed + " passed, " + failed + " failed");
