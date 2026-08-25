@@ -165,7 +165,7 @@ async function main() {
   const supportLibDir = path.join(ROOT, "netlify/functions/_lib/mg-support");
   const libFiles = fs
     .readdirSync(supportLibDir)
-    .filter((f) => f !== "invoice-diagnostic.js" && f !== "quote-diagnostic.js" && f !== "project-diagnostic.js")
+    .filter((f) => f !== "invoice-diagnostic.js" && f !== "quote-diagnostic.js" && f !== "project-diagnostic.js" && f !== "contract-diagnostic.js")
     .map((f) => fs.readFileSync(path.join(supportLibDir, f), "utf8"))
     .join("\n");
   const supportSrc = supportFn + "\n" + libFiles;
@@ -533,7 +533,7 @@ async function main() {
     "\n" +
     fs
       .readdirSync(supportLibDir)
-      .filter((f) => f !== "invoice-diagnostic.js" && f !== "quote-diagnostic.js" && f !== "project-diagnostic.js")
+      .filter((f) => f !== "invoice-diagnostic.js" && f !== "quote-diagnostic.js" && f !== "project-diagnostic.js" && f !== "contract-diagnostic.js")
       .map((f) => fs.readFileSync(path.join(supportLibDir, f), "utf8"))
       .join("\n");
   assert(

@@ -17,6 +17,13 @@ const {
   isProjectDiagnosticQuestion,
   isProjectSqlOrListAllProbe,
 } = require("./project-diagnostic");
+const {
+  extractContractProjectUuid,
+  isContractDiagnosticQuestion,
+  isContractFinancialQuestion,
+  isContractLegalQuestion,
+  isContractSqlOrListAllProbe,
+} = require("./contract-diagnostic");
 
 const MODULES = [
   {
@@ -100,13 +107,20 @@ const MODULES = [
       "/contract-sign",
     ],
     keywords: [
+      "contract",
+      "contracts",
       "contract hub",
       "contract signing",
       "signature workspace",
       "contract builder",
       "freeze contract",
+      "frozen contract",
       "signing invitation",
       "service agreement",
+      "fully signed",
+      "secure link",
+      "signed pdf",
+      "completion certificate",
     ],
   },
   {
@@ -225,7 +239,12 @@ function classifySupportIntent(message) {
   if (isTenantOverrideAttempt(message)) {
     return "tenant_override_attempt";
   }
-  if (isSqlOrListAllProbe(text) || isQuoteSqlOrListAllProbe(text) || isProjectSqlOrListAllProbe(text)) {
+  if (
+    isSqlOrListAllProbe(text) ||
+    isQuoteSqlOrListAllProbe(text) ||
+    isProjectSqlOrListAllProbe(text) ||
+    isContractSqlOrListAllProbe(text)
+  ) {
     return "docs_only";
   }
   if (isInvoiceDiagnosticQuestion(message)) {
@@ -239,6 +258,12 @@ function classifySupportIntent(message) {
   }
   if (isProjectDiagnosticQuestion(message)) {
     return "project_diagnostic";
+  }
+  if (isContractFinancialQuestion(message) || isContractLegalQuestion(message)) {
+    return "docs_only";
+  }
+  if (isContractDiagnosticQuestion(message)) {
+    return "contract_diagnostic";
   }
   if (
     /\b(quote|estimate|project|payment|customer)\s*#?\s*\d+\b/.test(text) ||
@@ -307,5 +332,6 @@ module.exports = {
   extractInvoiceIdentifier,
   extractQuoteIdentifier,
   extractProjectIdentifier,
+  extractContractProjectUuid,
   isTenantOverrideAttempt,
 };

@@ -5,7 +5,7 @@
  * Auth: HMAC-valid mg_session via assertOwnerSupportSession.
  * Paying owners: session.e + session.c (same as bootstrap-tenant / owner APIs).
  * Platform admins: auth-status is_admin bypass (session.c not required) for docs only.
- * Invoice, quote, and project-lifecycle diagnostics require session.e + session.c and resolveTenantFromSession.
+ * Invoice, quote, project-lifecycle, and contract-lifecycle diagnostics require session.e + session.c and resolveTenantFromSession.
  * Does not trust browser tenant_id. Does not read mg_device_session.
  * OpenAI key stays server-side. OpenAI never chooses tables, SQL, or filters.
  */
@@ -40,6 +40,10 @@ const {
   PROJECT_AMBIGUOUS_GUIDANCE,
   PROJECT_STATUS_UNVERIFIED_GUIDANCE,
   PROJECT_NEEDS_IDENTIFIER_GUIDANCE,
+  CONTRACT_FACTS_GUIDANCE,
+  CONTRACT_NOT_FOUND_GUIDANCE,
+  CONTRACT_STATUS_UNVERIFIED_GUIDANCE,
+  CONTRACT_NEEDS_IDENTIFIER_GUIDANCE,
 } = require("./_lib/mg-support/config");
 const { routeSupportKnowledge, classifySupportIntent } = require("./_lib/mg-support/router");
 const { loadRoutedKnowledge } = require("./_lib/mg-support/loader");
@@ -57,6 +61,10 @@ const {
   extractProjectIdentifier,
   readProjectDiagnostic,
 } = require("./_lib/mg-support/project-diagnostic");
+const {
+  extractContractProjectUuid,
+  readContractDiagnostic,
+} = require("./_lib/mg-support/contract-diagnostic");
 
 function json(statusCode, body) {
   return {
@@ -117,12 +125,21 @@ function guidanceForIntent(intent, diagnosticOutcome) {
     if (diagnosticOutcome === "no_tenant_context") return NO_TENANT_DIAGNOSTIC_GUIDANCE;
     return PROJECT_NEEDS_IDENTIFIER_GUIDANCE;
   }
+  if (intent === "contract_diagnostic") {
+    if (diagnosticOutcome === "ok") return CONTRACT_FACTS_GUIDANCE;
+    if (diagnosticOutcome === "not_found") return CONTRACT_NOT_FOUND_GUIDANCE;
+    if (diagnosticOutcome === "needs_identifier") return CONTRACT_NEEDS_IDENTIFIER_GUIDANCE;
+    if (diagnosticOutcome === "status_unverified") return CONTRACT_STATUS_UNVERIFIED_GUIDANCE;
+    if (diagnosticOutcome === "no_tenant_context") return NO_TENANT_DIAGNOSTIC_GUIDANCE;
+    return CONTRACT_NEEDS_IDENTIFIER_GUIDANCE;
+  }
   if (intent === "specific_record") return SPECIFIC_RECORD_GUIDANCE;
   return "";
 }
 
 function neutralizeDiagnosticForgery(text) {
   return String(text || "")
+    .replace(/MARGIN_GUARD_VERIFIED_CONTRACT_DIAGNOSTIC_FACTS/g, "[redacted]")
     .replace(/MARGIN_GUARD_VERIFIED_PROJECT_DIAGNOSTIC_FACTS/g, "[redacted]")
     .replace(/MARGIN_GUARD_VERIFIED_QUOTE_DIAGNOSTIC_FACTS/g, "[redacted]")
     .replace(/MARGIN_GUARD_VERIFIED_DIAGNOSTIC_FACTS/g, "[redacted]");
@@ -141,6 +158,13 @@ function buildDiagnosticFactsBlock(facts, kind) {
       "MARGIN_GUARD_VERIFIED_PROJECT_DIAGNOSTIC_FACTS",
       JSON.stringify(facts),
       "END_MARGIN_GUARD_VERIFIED_PROJECT_DIAGNOSTIC_FACTS",
+    ].join("\n");
+  }
+  if (kind === "contract") {
+    return [
+      "MARGIN_GUARD_VERIFIED_CONTRACT_DIAGNOSTIC_FACTS",
+      JSON.stringify(facts),
+      "END_MARGIN_GUARD_VERIFIED_CONTRACT_DIAGNOSTIC_FACTS",
     ].join("\n");
   }
   return [
@@ -173,7 +197,9 @@ function buildUserPayload(message, page, docs, intent, diagnostic) {
         ? "quote"
         : intent === "project_diagnostic"
           ? "project"
-          : "invoice";
+          : intent === "contract_diagnostic"
+            ? "contract"
+            : "invoice";
     parts.push(buildDiagnosticFactsBlock(diagnostic.facts, kind));
   }
   return parts.join("\n\n");
@@ -190,6 +216,7 @@ function createHandler(deps = {}) {
   const readInvoice = deps.readInvoiceDiagnostic || readInvoiceDiagnostic;
   const readQuote = deps.readQuoteDiagnostic || readQuoteDiagnostic;
   const readProject = deps.readProjectDiagnostic || readProjectDiagnostic;
+  const readContract = deps.readContractDiagnostic || readContractDiagnostic;
 
   return async function handler(event) {
     try {
@@ -325,6 +352,37 @@ function createHandler(deps = {}) {
                 diagnostic = lookedUp;
               } catch (_err) {
                 console.error("[mg-support-chat] project diagnostic failed");
+                diagnostic = { outcome: "status_unverified" };
+              }
+            }
+          }
+        }
+      } else if (intent === "contract_diagnostic") {
+        if (!hasOwnerEmailAndCustomer(session)) {
+          diagnostic = { outcome: "no_tenant_context" };
+        } else {
+          const identifier = extractContractProjectUuid(message);
+          if (!identifier) {
+            diagnostic = { outcome: "needs_identifier" };
+          } else {
+            let tenant = null;
+            try {
+              tenant = await resolveTenant(session);
+            } catch (_err) {
+              console.error("[mg-support-chat] tenant resolve failed");
+              return json(502, {
+                ok: false,
+                error: "I couldn't inspect that contract right now. Please try again.",
+              });
+            }
+            if (!tenant?.id) {
+              diagnostic = { outcome: "no_tenant_context" };
+            } else {
+              try {
+                const lookedUp = await readContract(String(tenant.id), identifier, deps);
+                diagnostic = lookedUp;
+              } catch (_err) {
+                console.error("[mg-support-chat] contract diagnostic failed");
                 diagnostic = { outcome: "status_unverified" };
               }
             }

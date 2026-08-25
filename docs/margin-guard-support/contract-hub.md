@@ -9,6 +9,12 @@ The owner sidebar **does not** list a link labeled “Contract Hub”.
 
 Do not tell owners that Contract Hub is a sidebar item named Contract Hub. Tell them the URL/workflow above.
 
+## What a contract is in Support
+
+In Margin Guard, a contract belongs to an **approved project**. Support diagnostics use the **exact Project ID** (UUID) as the contract identifier. There is no separate contract number.
+
+The owner-visible contract is the project’s **current frozen contract package** plus the signing envelope Contract Hub would show. A project row, quote, package, or envelope alone is not the complete contract.
+
 ## Contract Hub (`/contract-hub`)
 
 Purpose copy on the page: create and manage the **service agreement for an approved project**.
@@ -31,6 +37,23 @@ Sidebar **Contract Signing** → this page. It is the owner **Contract Workflow*
 
 Client signing uses a separate public signing route (`contract-sign.html`). Stage 1 Support is for **owners**, not the public signer.
 
+## Owner-visible contract statuses Support can explain
+
+When the owner supplies the exact Project ID, Support can report the current Contract Hub lifecycle overlay:
+
+- **Not Frozen** — no current frozen (ready/executed) contract package
+- **Frozen Contract Ready** — a frozen package exists, but a preferred signing envelope is not in draft/sent/opened/completed
+- **Signing Request Ready** — frozen package with a draft signing envelope
+- **Secure Link Ready** — the secure signing request/link has been prepared (`envelope` sent)
+- **Waiting for Customer Signature** — the signing envelope has been opened
+- **Fully Signed** — the envelope is completed or the frozen package is executed
+
+**Envelope sent does not mean email was delivered.** Contract Hub can show a secure signing request as prepared even when no invitation email has been sent. Support must not say the customer received, opened, or was emailed the contract.
+
+A **completion certificate** and a **signed PDF** may exist as separate final artifacts after signing. Support may not always verify those artifacts in chat. If Support did not verify an artifact, do not claim it does not exist.
+
 ## What Support AI cannot do
 
-It cannot send a signing invitation, freeze a contract, or inspect whether a customer signed. It can only explain these owner workflows.
+Support does not freeze a contract, send a signing invitation, or change signing settings.
+
+Support does not inspect signer identities, signing tokens, contract legal text, payment schedules, or contract money. Use Contract Hub, Contract Builder, and Signature Workspace to review those details.
