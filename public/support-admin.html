@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | Support Inbox</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .si-page .container { max-width: 1100px; }
+    .si-hero h2 { margin: 0 0 6px; font-size: clamp(1.25rem, 2.2vw, 1.55rem); }
+    .si-hero .sub { margin: 0; max-width: 68ch; line-height: 1.45; color: rgba(232, 238, 252, 0.78); }
+    .si-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .si-kpis {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin: 14px 0;
+    }
+    @media (max-width: 640px) { .si-kpis { grid-template-columns: 1fr; } }
+    .si-kpi {
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .si-kpi .label {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.58);
+    }
+    .si-kpi .value { font-size: 1.25rem; font-weight: 800; margin-top: 4px; }
+    .si-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .si-filters[hidden], .si-denied[hidden], .si-main[hidden] { display: none; }
+    .si-row {
+      width: 100%;
+      text-align: left;
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+      color: inherit;
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin: 0 0 8px;
+    }
+    .si-row:hover, .si-row:focus { border-color: rgba(96, 165, 250, 0.45); }
+    .si-row__top { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    .si-row__meta { font-size: 0.8125rem; color: rgba(232, 238, 252, 0.7); margin-top: 4px; }
+    .si-badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .si-empty, .si-error, .si-loading { padding: 16px; color: rgba(232, 238, 252, 0.8); }
+    .si-drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.62);
+      z-index: 40;
+    }
+    .si-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      height: 100%;
+      width: min(420px, 100%);
+      background: #0b1220;
+      border-left: 1px solid rgba(255, 255, 255, 0.1);
+      z-index: 41;
+      overflow: auto;
+      padding: 18px;
+    }
+    .si-dl { margin: 0; }
+    .si-dl div { margin: 0 0 10px; }
+    .si-dl dt { font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(232, 238, 252, 0.55); }
+    .si-dl dd { margin: 2px 0 0; }
+    .si-excerpt { white-space: pre-wrap; word-break: break-word; }
+  </style>
+</head>
+<body class="si-page">
+  <div class="container">
+    <div class="card si-hero">
+      <div class="card-inner si-top">
+        <div>
+          <h2>Support Inbox</h2>
+          <p class="sub">Platform-admin review of confirmed Margin Guard Support cases. Limited operational context only.</p>
+        </div>
+        <button type="button" class="btn ghost" id="siLogout">Log out</button>
+      </div>
+    </div>
+
+    <div id="siDenied" class="card si-denied" hidden>
+      <div class="card-inner">
+        <h3>Access restricted</h3>
+        <p>This inbox is for Margin Guard platform administrators.</p>
+        <p><a href="/dashboard">Return to Dashboard</a></p>
+      </div>
+    </div>
+
+    <div id="siMain" hidden>
+      <div class="si-kpis">
+        <div class="si-kpi"><div class="label">Open</div><div class="value" id="siCountOpen">—</div></div>
+        <div class="si-kpi"><div class="label">Resolved</div><div class="value" id="siCountResolved">—</div></div>
+        <div class="si-kpi"><div class="label">Total</div><div class="value" id="siCountTotal">—</div></div>
+      </div>
+      <div class="si-filters">
+        <button type="button" class="btn" data-status="open" id="siFilterOpen">Open</button>
+        <button type="button" class="btn ghost" data-status="resolved" id="siFilterResolved">Resolved</button>
+        <button type="button" class="btn ghost" data-status="all" id="siFilterAll">All</button>
+        <label>
+          Category
+          <select id="siCategory">
+            <option value="">All categories</option>
+            <option value="unresolved_question">Unresolved question</option>
+            <option value="diagnostic_unavailable">Diagnostic unavailable</option>
+            <option value="possible_bug">Possible bug</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+      </div>
+      <div id="siNotice" class="si-error" hidden role="alert"></div>
+      <div id="siList"></div>
+    </div>
+  </div>
+
+  <div id="siBackdrop" class="si-drawer-backdrop" hidden></div>
+  <aside id="siDrawer" class="si-drawer" hidden>
+    <button type="button" class="btn ghost" id="siDrawerClose">Close</button>
+    <h3 id="siDrawerTitle">Case</h3>
+    <dl class="si-dl" id="siDrawerBody"></dl>
+    <p>
+      <button type="button" class="btn" id="siResolve" hidden>Mark resolved</button>
+      <button type="button" class="btn ghost" id="siReopen" hidden>Reopen case</button>
+    </p>
+  </aside>
+
+  <script src="/js/support-admin.js" defer></script>
+</body>
+</html>
