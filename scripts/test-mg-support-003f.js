@@ -26,6 +26,7 @@ const {
   INVOICE_RESEND_NOT_FOUND_COPY,
   INVOICE_RESEND_AMBIGUOUS_COPY,
   INVOICE_RESEND_UNVERIFIED_COPY,
+  knownIneligibleFromDiagnosticFacts,
 } = require("../netlify/functions/_lib/mg-support/invoice-resend-offer");
 const {
   TOKEN_TYPE,
@@ -143,6 +144,25 @@ function okDiagnostic() {
       invoice_no: "INV-123",
       status: "sent",
       delivery: { submitted_to_email_bridge: false, can_prove_recipient_received: false },
+    },
+  };
+}
+
+function diagnosticFacts(status, extra) {
+  const more = extra || {};
+  return {
+    outcome: "ok",
+    invoice_id: INVOICE_ID,
+    facts: {
+      invoice_no: more.invoice_no || "INV-123",
+      status,
+      voided_at: more.voided_at === undefined ? null : more.voided_at,
+      has_public_token: more.has_public_token === undefined ? true : more.has_public_token,
+      delivery: more.delivery || {
+        submitted_to_email_bridge: true,
+        submitted_at: "2026-07-12T19:50:00.000Z",
+        can_prove_recipient_received: false,
+      },
     },
   };
 }
@@ -371,32 +391,47 @@ async function main() {
   const livePaidNo = "INV-1784404146783";
   const liveCapture = { calls: 0 };
   const liveWrites = { ledger: 0, patch: 0, reload: 0, mint: 0 };
+  let liveReloadCalls = 0;
   const livePaid = await runChat("Resend invoice " + livePaidNo, {
     writes: liveWrites,
     capture: liveCapture,
     fetch: openaiOkFetch(liveCapture),
-    reloadInvoiceForResend: async () => ({
-      outcome: "paid",
-      invoice: eligibleInvoice({ invoice_no: livePaidNo, status: "paid", sent_at: "2026-07-12T19:50:00.000Z" }),
-      eligibility: { ok: false, reason: "paid" },
-    }),
+    readInvoiceDiagnostic: async () =>
+      diagnosticFacts("paid", {
+        invoice_no: livePaidNo,
+        voided_at: null,
+        has_public_token: true,
+        delivery: {
+          submitted_to_email_bridge: true,
+          submitted_at: "2026-07-12T19:50:00.000Z",
+          can_prove_recipient_received: false,
+        },
+      }),
+    reloadInvoiceForResend: async () => {
+      liveReloadCalls += 1;
+      liveWrites.reload += 1;
+      throw new Error("known paid must not reload");
+    },
   });
   const liveBody = parse(livePaid);
   assert(
-    "C2.1 live paid smoke: deterministic paid denial",
+    "C2.2 live paid smoke: deterministic paid denial",
     livePaid.statusCode === 200 && String(liveBody.answer).trim() === INVOICE_RESEND_PAID_COPY
   );
-  assert("C2.1 live paid smoke: Invoice Hub source", Array.isArray(liveBody.sources) && liveBody.sources.includes("Invoice Hub"));
-  assert("C2.1 live paid smoke: no action / no button", liveBody.action == null);
-  assert("C2.1 live paid smoke: no OpenAI", liveCapture.calls === 0);
+  assert("C2.2 live paid smoke: Invoice Hub source", Array.isArray(liveBody.sources) && liveBody.sources.includes("Invoice Hub"));
+  assert("C2.2 live paid smoke: no action / no button", liveBody.action == null);
+  assert("C2.2 live paid smoke: no OpenAI", liveCapture.calls === 0);
   assert(
-    "C2.1 live paid smoke: no Hub resend instructions",
+    "C2.2 live paid smoke: no Hub resend instructions",
     !/navigate to the Invoice Hub/i.test(liveBody.answer) &&
       !/to resend the invoice, you would/i.test(liveBody.answer) &&
       !/cannot confirm whether this resend succeeds/i.test(liveBody.answer)
   );
-  assert("C2.1 live paid smoke: no sent_at timestamp", !/2026-07-12|19:50|July/i.test(liveBody.answer));
-  assert("C2.1 live paid smoke: zero ledger/invoice writes", liveWrites.ledger === 0 && liveWrites.patch === 0);
+  assert("C2.2 live paid smoke: no sent_at timestamp", !/2026-07-12|19:50|July/i.test(liveBody.answer));
+  assert("C2.2 live paid smoke: no customer email or money", !/@/.test(liveBody.answer) && !/\$|amount|balance/i.test(liveBody.answer));
+  assert("C2.2 live paid smoke: zero ledger/invoice writes", liveWrites.ledger === 0 && liveWrites.patch === 0);
+  assert("C2.2 live paid smoke: known paid does not reload", liveReloadCalls === 0 && liveWrites.reload === 0);
+  assert("C2.2 live paid smoke: answer is not unverified", liveBody.answer !== INVOICE_RESEND_UNVERIFIED_COPY);
 
   assert("C2.1 eligible answer has no sent_at", !/sent_at|19:50|submitted on /i.test(eligibleBody.answer));
   assert("C2.1 eligible Invoice Hub source", Array.isArray(eligibleBody.sources) && eligibleBody.sources.includes("Invoice Hub"));
@@ -557,6 +592,132 @@ async function main() {
   assert(
     "C2.1 paid resend works without OpenAI key",
     noKeyPaid.statusCode === 200 && String(parse(noKeyPaid).answer).trim() === INVOICE_RESEND_PAID_COPY && parse(noKeyPaid).action == null
+  );
+
+  assert("C2.2 canonical paid signal is diagnostic.facts.status", knownIneligibleFromDiagnosticFacts({ status: "paid" }) === "paid");
+  assert("C2.2 void signal is diagnostic.facts.status", knownIneligibleFromDiagnosticFacts({ status: "void" }) === "void");
+  assert("C2.2 cancelled signal is diagnostic.facts.status", knownIneligibleFromDiagnosticFacts({ status: "cancelled" }) === "cancelled");
+  assert("C2.2 archived signal is diagnostic.facts.status", knownIneligibleFromDiagnosticFacts({ status: "archived" }) === "archived");
+  assert("C2.2 sent is not a known-negative", knownIneligibleFromDiagnosticFacts({ status: "sent" }) === "");
+  assert("C2.2 draft/partial/overdue/accepted/deposit_paid are not known-negatives",
+    knownIneligibleFromDiagnosticFacts({ status: "draft" }) === "" &&
+      knownIneligibleFromDiagnosticFacts({ status: "partial" }) === "" &&
+      knownIneligibleFromDiagnosticFacts({ status: "overdue" }) === "" &&
+      knownIneligibleFromDiagnosticFacts({ status: "accepted" }) === "" &&
+      knownIneligibleFromDiagnosticFacts({ status: "deposit_paid" }) === ""
+  );
+  assert("C2.2 offer does not invent paid math", !/computePaidFacts|isFullyPaid|balanceDue|paid_amount/.test(offerSrc));
+  assert("C2.2 known-negative short-circuit runs before reload", offerSrc.indexOf("knownIneligibleFromDiagnosticFacts") < offerSrc.indexOf("const reload = deps.reloadInvoiceForResend"));
+
+  async function knownNegativeInject(status, expectedCopy) {
+    const capture = { calls: 0 };
+    const writes = { ledger: 0, patch: 0, reload: 0 };
+    let reloadCalls = 0;
+    const res = await runChat("Resend invoice INV-123", {
+      writes,
+      capture,
+      fetch: openaiOkFetch(capture),
+      readInvoiceDiagnostic: async () => diagnosticFacts(status),
+      reloadInvoiceForResend: async () => {
+        reloadCalls += 1;
+        writes.reload += 1;
+        throw new Error("known " + status + " must not reload");
+      },
+    });
+    const body = parse(res);
+    return (
+      res.statusCode === 200 &&
+      body.action == null &&
+      String(body.answer).trim() === expectedCopy &&
+      body.answer !== INVOICE_RESEND_UNVERIFIED_COPY &&
+      capture.calls === 0 &&
+      reloadCalls === 0 &&
+      writes.ledger === 0 &&
+      writes.patch === 0 &&
+      Array.isArray(body.sources) &&
+      body.sources.includes("Invoice Hub")
+    );
+  }
+
+  assert("C2.2 failure-injection: diagnostic paid + reload throws => paid, not unverified", await knownNegativeInject("paid", INVOICE_RESEND_PAID_COPY));
+  assert("C2.2 failure-injection: diagnostic void + reload throws => void copy", await knownNegativeInject("void", INVOICE_RESEND_VOID_COPY));
+  assert("C2.2 failure-injection: diagnostic cancelled + reload throws => void copy", await knownNegativeInject("cancelled", INVOICE_RESEND_VOID_COPY));
+  assert("C2.2 failure-injection: diagnostic archived + reload throws => archived copy", await knownNegativeInject("archived", INVOICE_RESEND_ARCHIVED_COPY));
+
+  const sentReloadFailCapture = { calls: 0 };
+  let sentReloadFailCalls = 0;
+  const sentReloadFail = await runChat("Resend invoice INV-123", {
+    capture: sentReloadFailCapture,
+    fetch: openaiOkFetch(sentReloadFailCapture),
+    readInvoiceDiagnostic: async () => diagnosticFacts("sent"),
+    reloadInvoiceForResend: async () => {
+      sentReloadFailCalls += 1;
+      throw new Error("deeper reload failed");
+    },
+  });
+  assert(
+    "C2.2 potentially eligible + reload throw => unverified, not an action",
+    parse(sentReloadFail).action == null &&
+      String(parse(sentReloadFail).answer).trim() === INVOICE_RESEND_UNVERIFIED_COPY &&
+      sentReloadFailCalls === 1 &&
+      sentReloadFailCapture.calls === 0
+  );
+
+  const missingEmailCapture = { calls: 0 };
+  let missingEmailReload = 0;
+  const missingEmail = await runChat("Resend invoice INV-123", {
+    capture: missingEmailCapture,
+    fetch: openaiOkFetch(missingEmailCapture),
+    readInvoiceDiagnostic: async () => diagnosticFacts("sent"),
+    reloadInvoiceForResend: async () => {
+      missingEmailReload += 1;
+      return { outcome: "missing_email", invoice: eligibleInvoice(), eligibility: { ok: false, reason: "missing_email" } };
+    },
+  });
+  assert(
+    "C2.2 missing-email still uses C1 eligibility",
+    parse(missingEmail).action == null &&
+      String(parse(missingEmail).answer).trim() === INVOICE_RESEND_MISSING_EMAIL_COPY &&
+      missingEmailReload === 1 &&
+      missingEmailCapture.calls === 0
+  );
+
+  const missingPublicCapture = { calls: 0 };
+  let missingPublicReload = 0;
+  const missingPublic = await runChat("Resend invoice INV-123", {
+    capture: missingPublicCapture,
+    fetch: openaiOkFetch(missingPublicCapture),
+    readInvoiceDiagnostic: async () => diagnosticFacts("sent"),
+    reloadInvoiceForResend: async () => {
+      missingPublicReload += 1;
+      return { outcome: "missing_public_token", invoice: eligibleInvoice(), eligibility: { ok: false, reason: "missing_public_token" } };
+    },
+  });
+  assert(
+    "C2.2 missing-public-reference still uses C1 eligibility",
+    parse(missingPublic).action == null &&
+      String(parse(missingPublic).answer).trim() === INVOICE_RESEND_MISSING_PUBLIC_COPY &&
+      missingPublicReload === 1 &&
+      missingPublicCapture.calls === 0
+  );
+
+  const sentMintCapture = { calls: 0 };
+  const sentMintWrites = { ledger: 0, patch: 0, reload: 0 };
+  const sentMint = await runChat("Resend invoice INV-123", {
+    writes: sentMintWrites,
+    capture: sentMintCapture,
+    fetch: openaiOkFetch(sentMintCapture),
+    readInvoiceDiagnostic: async () => diagnosticFacts("sent"),
+  });
+  assert(
+    "C2.2 eligible sent still uses C1 reload and mints invoice_resend",
+    parse(sentMint).action &&
+      parse(sentMint).action.type === "invoice_resend" &&
+      String(parse(sentMint).answer).trim() === INVOICE_RESEND_CONFIRMATION_COPY &&
+      sentMintWrites.reload === 1 &&
+      sentMintCapture.calls === 0 &&
+      sentMintWrites.ledger === 0 &&
+      sentMintWrites.patch === 0
   );
 
   console.log("");

@@ -9,6 +9,7 @@ const { hasOwnerEmailAndCustomer } = require("./require-owner-session");
 const { isUuid, mintInvoiceResendToken } = require("./action-token");
 const { reloadInvoiceForResend } = require("./invoice-resend-eligibility");
 const { isExplicitInvoiceResendIntent } = require("./invoice-resend-intent");
+const { supabaseRequest } = require("../supabase-admin");
 
 const INVOICE_RESEND_ACTION_TYPE = "invoice_resend";
 const INVOICE_RESEND_BUTTON_LABEL = "Resend invoice";
@@ -74,6 +75,24 @@ function invoiceResendDenialCopy(reason) {
   return INVOICE_RESEND_UNVERIFIED_COPY;
 }
 
+function knownIneligibleFromDiagnosticFacts(facts) {
+  if (!facts || typeof facts !== "object" || Array.isArray(facts)) return "";
+  const status = String(facts.status || "").trim().toLowerCase();
+  if (status === "paid") return "paid";
+  if (status === "void") return "void";
+  if (status === "cancelled" || status === "canceled") return "cancelled";
+  if (status === "archived") return "archived";
+  if (String(facts.voided_at || "").trim()) return "void";
+  return "";
+}
+
+function withResendReloadClient(deps) {
+  if (typeof deps.supabaseGet === "function" || typeof deps.supabaseRequest === "function") {
+    return deps;
+  }
+  return { ...deps, supabaseRequest };
+}
+
 function closedInvoiceResendAction(minted) {
   if (!minted || typeof minted !== "object" || !minted.token) return null;
   return {
@@ -111,13 +130,16 @@ async function maybeOfferInvoiceResend({
 
   if (outcome !== "ok") return closedCopy(INVOICE_RESEND_UNVERIFIED_COPY);
 
+  const knownNegative = knownIneligibleFromDiagnosticFacts(diagnostic.facts);
+  if (knownNegative) return closedCopy(invoiceResendDenialCopy(knownNegative));
+
   const invoiceId = String(diagnostic.invoice_id || "").trim();
   if (!isUuid(invoiceId)) return closedCopy(INVOICE_RESEND_UNVERIFIED_COPY);
 
   const reload = deps.reloadInvoiceForResend || reloadInvoiceForResend;
   let loaded;
   try {
-    loaded = await reload(tenantId, invoiceId, deps);
+    loaded = await reload(tenantId, invoiceId, withResendReloadClient(deps));
   } catch (_err) {
     return closedCopy(INVOICE_RESEND_UNVERIFIED_COPY);
   }
@@ -155,6 +177,7 @@ module.exports = {
   INVOICE_RESEND_AMBIGUOUS_COPY,
   INVOICE_RESEND_UNVERIFIED_COPY,
   INVOICE_RESEND_SOURCE,
+  knownIneligibleFromDiagnosticFacts,
   invoiceResendDenialCopy,
   maybeOfferInvoiceResend,
 };
