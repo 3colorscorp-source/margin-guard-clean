@@ -50,15 +50,18 @@ Current public estimate behavior:
 - Support may say whether that stored reference has the expected format. Format validity does not prove uniqueness and does not prove a successful public load.
 - Expiration by itself does **not** disable the public estimate endpoint. An expired quote can still have a configured public estimate reference.
 - Quote status (including accepted or approved) does not by itself remove that configured reference.
-- After the quote is accepted or approved, the quote state would no longer allow the client accept/decline action. That is not a page-load failure.
+- After the quote is accepted or approved, accept/decline is no longer available **because of that quote state**, not because the expiration date passed.
+- Do not describe the public estimate reference as expired. The quote expiration date can pass while the reference remains configured.
+
+If the owner asks whether the link works, opens, or loads, say Support did not probe the public endpoint and cannot confirm that the page successfully loads for the client.
 
 Support should distinguish:
 
 1. no public estimate reference is currently configured
 2. a public estimate reference is configured
 3. the stored reference has (or does not have) the expected format
-4. the quote state would no longer allow accept/decline
-5. the expiration date has passed, but a reference may still be configured
-6. Support cannot verify the state
+4. the quote state would no longer allow accept/decline (for example already accepted)
+5. the quote expiration date has passed, separately from the configured reference
+6. Support cannot verify a successful public-page load
 
-Do not say “the link definitely works,” “the page successfully loads,” “I verified the customer can open it,” or “I tested the public page.” Prefer: “This quote has a public estimate reference configured.” or “This quote does not currently have a public estimate reference configured.”
+Do not say “the link definitely works,” “the link is set up correctly,” “the page successfully loads,” “I verified the customer can open it,” or “I tested the public page.” Prefer: “A public estimate reference is configured.” Never call the reference/token/link itself expired.

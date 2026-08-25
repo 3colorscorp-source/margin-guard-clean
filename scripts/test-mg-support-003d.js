@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
-const { classifySupportIntent } = require("../netlify/functions/_lib/mg-support/router");
+const { classifySupportIntent, routeSupportKnowledge } = require("../netlify/functions/_lib/mg-support/router");
 const { createHandler } = require("../netlify/functions/mg-support-chat");
 const { determineEscalationEligibility } = require("../netlify/functions/_lib/mg-support/case-intake");
 const {
@@ -46,6 +46,22 @@ function fakeEvent(method, bodyObj) {
     headers: {},
     body: bodyObj == null ? "" : JSON.stringify(bodyObj),
   };
+}
+
+function extractProjectFacts(input) {
+  const match = String(input || "").match(
+    /MARGIN_GUARD_VERIFIED_PROJECT_DIAGNOSTIC_FACTS\n(\{[\s\S]*?\})\nEND_MARGIN_GUARD_VERIFIED_PROJECT_DIAGNOSTIC_FACTS/
+  );
+  if (!match) return null;
+  return JSON.parse(match[1]);
+}
+
+function extractQuoteFacts(input) {
+  const match = String(input || "").match(
+    /MARGIN_GUARD_VERIFIED_QUOTE_DIAGNOSTIC_FACTS\n(\{[\s\S]*?\})\nEND_MARGIN_GUARD_VERIFIED_QUOTE_DIAGNOSTIC_FACTS/
+  );
+  if (!match) return null;
+  return JSON.parse(match[1]);
 }
 
 function openaiOkFetch(capture) {
@@ -169,8 +185,11 @@ async function main() {
     classifySupportIntent("Show me another company's project " + OWN_PROJECT_ID) === "cross_tenant"
   );
   assert(
-    "router.js unchanged for 003D.B (existing families sufficient)",
-    !/supervisor_visibility|public_estimate/.test(routerSrc)
+    "no new intent families in router; 003D.B3 adds Project Control source keywords only",
+    !/supervisor_visibility|public_estimate/.test(routerSrc) &&
+      /"my supervisor"/.test(routerSrc) &&
+      /"supervisor see"/.test(routerSrc) &&
+      /"supervisor portal"/.test(routerSrc)
   );
 
   const visFalse = determineEscalationEligibility({
@@ -344,9 +363,24 @@ async function main() {
   );
   assert("project docs cover supervisor portal visibility", /Supervisor portal visibility/i.test(projectDocs));
   assert(
+    "project docs require person-in-mind identity caveat and forbid permission/admin diagnosis",
+    /cannot verify that the person you have in mind is the same supervisor currently assigned/i.test(
+      projectDocs
+    ) &&
+      /Do not diagnose permission settings, administrative settings, or device\/session state/.test(
+        projectDocs
+      )
+  );
+  assert(
     "quote docs distinguish configured reference vs expired vs action",
     /Public estimate page/i.test(quoteDocs) &&
       /expiration by itself does \*\*not\*\* disable the public estimate endpoint/i.test(quoteDocs)
+  );
+  assert(
+    "quote docs require endpoint-probe boundary and accepted-state causality",
+    /did not probe the public endpoint/i.test(quoteDocs) &&
+      /because of that quote state/i.test(quoteDocs) &&
+      /Do not describe the public estimate reference as expired/.test(quoteDocs)
   );
 
   const configSrc = read("netlify/functions/_lib/mg-support/config.js");
@@ -407,6 +441,216 @@ async function main() {
     { supabaseGet: async () => [] }
   );
   assert("quote not_found unchanged", missingQuote.outcome === "not_found");
+
+  const smoke1Q = "Why can't my supervisor see project Master & Downstairs Bathroom?";
+  const smoke1FromOwner = routeSupportKnowledge(smoke1Q, "/owner");
+  const smoke1FromSales = routeSupportKnowledge(smoke1Q, "/sales");
+  const smoke1Empty = routeSupportKnowledge(smoke1Q, "");
+  assert(
+    "26. supervisor visibility from owner page sources Project Control",
+    classifySupportIntent(smoke1Q) === "project_diagnostic" &&
+      smoke1FromOwner.some((m) => m.id === "project-control") &&
+      smoke1FromOwner[0].title === "Project Control"
+  );
+  assert(
+    "26b. supervisor visibility from sales page still sources Project Control",
+    smoke1FromSales.some((m) => m.id === "project-control") &&
+      smoke1FromSales[0].title === "Project Control"
+  );
+  assert(
+    "26c. supervisor visibility with no page sources Project Control",
+    smoke1Empty.some((m) => m.id === "project-control")
+  );
+  assert(
+    "28. ordinary project diagnostic source unchanged",
+    routeSupportKnowledge("What status is project " + OWN_PROJECT_ID + "?", "").some(
+      (m) => m.id === "project-control"
+    ) ||
+      routeSupportKnowledge("When is project " + OWN_PROJECT_ID + " due?", "").some(
+        (m) => m.id === "project-control"
+      )
+  );
+
+  const smoke2Q = "Does the public estimate link work for quote 2026-0141?";
+  const smoke2Mods = routeSupportKnowledge(smoke2Q, "/project-control");
+  assert(
+    "27. quote link response remains Quote Builder",
+    classifySupportIntent(smoke2Q) === "quote_diagnostic" &&
+      smoke2Mods.some((m) => m.id === "quote-builder") &&
+      smoke2Mods[0].title === "Quote Builder"
+  );
+  assert(
+    "29. ordinary quote diagnostic source unchanged",
+    routeSupportKnowledge("What status is estimate 2026-0001?", "").some((m) => m.id === "quote-builder")
+  );
+
+  assert(
+    "2. positive guidance says currently assigned supervisor",
+    /currently assigned supervisor/i.test(configSrc) ||
+      /supervisor currently assigned to this project/i.test(configSrc)
+  );
+  assert(
+    "3. guidance says Support cannot verify person-in-mind identity match",
+    /cannot verify that the person you have in mind is the same supervisor currently assigned/i.test(
+      configSrc
+    )
+  );
+  assert(
+    "4. guidance forbids your supervisor can see",
+    /Never say your supervisor can see this project/.test(configSrc)
+  );
+  assert(
+    "5. no permission-setting diagnosis",
+    /Never say check their permissions/.test(configSrc) &&
+      /does not inspect permissions/.test(configSrc)
+  );
+  assert(
+    "6. no administrative-settings diagnosis",
+    /Never say administrative settings may be wrong/.test(configSrc)
+  );
+  assert(
+    "7. no device diagnosis",
+    /Never invent permission settings, administrative settings, device sessions/.test(configSrc)
+  );
+
+  const smoke1Capture = {};
+  const smoke1Res = await createHandler({
+    readSessionFromEvent: sessionOk,
+    resolveTenantFromSession: async () => ({ id: OWN_TENANT }),
+    getOpenAiKey: () => "test-key",
+    supabaseGet: async (p) => {
+      if (String(p).startsWith("quotes?")) return [{ id: "q1", status: "accepted" }];
+      return [
+        {
+          id: OWN_PROJECT_ID,
+          tenant_id: OWN_TENANT,
+          project_name: "Master & Downstairs Bathroom",
+          status: "in_progress",
+          supervisor_user_id: "assigned-but-secret",
+          created_at: "2026-07-01T12:00:00.000Z",
+          due_date: "2026-08-30",
+          quote_id: "q1",
+        },
+      ];
+    },
+    fetch: openaiOkFetch(smoke1Capture),
+  })(
+    fakeEvent("POST", {
+      message: smoke1Q,
+      page: "/owner",
+    })
+  );
+  const smoke1Body = JSON.parse(smoke1Res.body || "{}");
+  const smoke1Input = String((smoke1Capture.payload || {}).input || "");
+  assert(
+    "1. live smoke supervisor question is project diagnostic with Project Control source",
+    smoke1Res.statusCode === 200 &&
+      Array.isArray(smoke1Body.sources) &&
+      smoke1Body.sources[0] === "Project Control" &&
+      /cannot verify that the person you have in mind/i.test(smoke1Input) &&
+      /Never invent permission settings, administrative settings, device sessions/.test(smoke1Input) &&
+      !/assigned-but-secret/.test(smoke1Input)
+  );
+  const smoke1Facts = extractProjectFacts(smoke1Input);
+  assert(
+    "8. no supervisor identity in live smoke facts",
+    smoke1Facts &&
+      smoke1Facts.supervisor_visibility &&
+      smoke1Facts.supervisor_visibility.eligible_for_assigned_supervisor === true &&
+      !Object.prototype.hasOwnProperty.call(smoke1Facts, "supervisor_user_id") &&
+      !/assigned-but-secret/.test(JSON.stringify(smoke1Facts)) &&
+      !/assigned-but-secret/.test(JSON.stringify(smoke1Body))
+  );
+  assert(
+    "9-10. live smoke supervisor uses existing reads only, no write",
+    /MARGIN_GUARD_VERIFIED_PROJECT_DIAGNOSTIC_FACTS/.test(smoke1Input) &&
+      !/method:\s*"POST"/.test(projectSrc)
+  );
+
+  const smoke2Capture = {};
+  const smoke2Res = await createHandler({
+    readSessionFromEvent: sessionOk,
+    resolveTenantFromSession: async () => ({ id: OWN_TENANT }),
+    utcToday: "2026-08-25",
+    getOpenAiKey: () => "test-key",
+    supabaseGet: async () => [
+      {
+        id: OWN_QUOTE_ID,
+        tenant_id: OWN_TENANT,
+        quote_number_display: "2026-0141",
+        status: "accepted",
+        created_at: "2026-07-01T00:00:00.000Z",
+        accepted_at: "2026-07-15T00:00:00.000Z",
+        expiration_date: "2026-08-01",
+        public_token: "qt_secret_token_value",
+        client_name: "Secret Client",
+        client_email: "should-not-leak@example.com",
+        total: 9999,
+        deposit_required: 1000,
+      },
+    ],
+    fetch: openaiOkFetch(smoke2Capture),
+  })(fakeEvent("POST", { message: smoke2Q, page: "/owner" }));
+  const smoke2Body = JSON.parse(smoke2Res.body || "{}");
+  const smoke2Input = String((smoke2Capture.payload || {}).input || "");
+  assert(
+    "11. live smoke public-link question is quote diagnostic with Quote Builder source",
+    smoke2Res.statusCode === 200 &&
+      Array.isArray(smoke2Body.sources) &&
+      smoke2Body.sources[0] === "Quote Builder" &&
+      classifySupportIntent(smoke2Q) === "quote_diagnostic"
+  );
+  assert(
+    "12-13. answer guidance explicitly states no endpoint probe / cannot confirm load",
+    /did not probe the public endpoint/i.test(smoke2Input) &&
+      /cannot confirm that the page successfully loads/i.test(smoke2Input)
+  );
+  assert(
+    "14-16. public reference configured is separate from expiration; reference never expired",
+    /Keep Public Estimate Reference as Configured separate from Quote Expiration as Passed/.test(
+      smoke2Input
+    ) &&
+      /Never describe the public estimate reference, token, or link as expired/.test(smoke2Input) &&
+      /Expiration by itself does not disable the public estimate endpoint/.test(smoke2Input)
+  );
+  assert(
+    "17-18. accept/decline false due to accepted quote state, not expiration",
+    /The quote is already accepted, so accept\/decline is no longer available/.test(smoke2Input) &&
+      /Do not attribute accept\/decline unavailability to expiration/.test(smoke2Input) &&
+      /expired_but_configured, that means the quote expiration date has passed/.test(smoke2Input)
+  );
+  assert(
+    "19-20. no verified-success wording",
+    /Never say the link definitely works/.test(smoke2Input) &&
+      /Never say the link is set up correctly/.test(smoke2Input)
+  );
+  assert(
+    "21-24. no token, URL, PII, or money in smoke 2 facts",
+    !/qt_secret_token_value/.test(smoke2Input) &&
+      !/estimate-public\.html/.test(smoke2Input) &&
+      !/Secret Client/.test(smoke2Input) &&
+      !/should-not-leak@example.com/.test(smoke2Input) &&
+      !smoke2Input.includes("9999")
+  );
+  assert("25. no public network probe in quote diagnostic", !/get-public-estimate/.test(quoteSrc));
+  const smoke2Facts = extractQuoteFacts(smoke2Input);
+  assert(
+    "smoke 2 facts keep configured reference, expiration, and quote-state action separate",
+    smoke2Facts &&
+      smoke2Facts.status === "accepted" &&
+      smoke2Facts.public_estimate &&
+      smoke2Facts.public_estimate.public_page_configured === true &&
+      smoke2Facts.public_estimate.public_reference_format_valid === true &&
+      smoke2Facts.public_estimate.expired === true &&
+      smoke2Facts.public_estimate.response_action_allowed_by_quote_state === false &&
+      !Object.prototype.hasOwnProperty.call(smoke2Facts, "can_load_public_page") &&
+      !Object.prototype.hasOwnProperty.call(smoke2Facts.public_estimate, "can_load_public_page")
+  );
+  assert(
+    "30. router classify chain unchanged",
+    /if \(isQuoteDiagnosticQuestion\(message\)\) \{\s*return "quote_diagnostic";/.test(routerSrc) &&
+      /if \(isProjectDiagnosticQuestion\(message\)\) \{\s*return "project_diagnostic";/.test(routerSrc)
+  );
 
   console.log("");
   console.log(passed + " passed, " + failed + " failed");

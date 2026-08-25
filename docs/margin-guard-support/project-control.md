@@ -77,9 +77,11 @@ Typical explanations:
 - The project exists, but it is not currently eligible to appear in the Supervisor portal for an assigned supervisor.
 - The project is eligible but no supervisor is assigned.
 - The project has a supervisor assigned, but the project/quote state does not currently satisfy the Supervisor portal requirements for that assigned supervisor.
-- This project meets the requirements to appear in the Supervisor portal for the supervisor currently assigned to this project. Support cannot verify that the person the owner has in mind is that assigned supervisor.
+- This project meets the requirements to appear in the Supervisor portal for the supervisor currently assigned to this project. Margin Guard Support cannot verify that the person you have in mind is the same supervisor currently assigned to the project. If that person still cannot see it, verify the assignment in Project Control or create a support case.
 
 Do not say “your supervisor can see this project,” “the supervisor can see it,” or “this project is visible to your supervisor.”
+
+Do not diagnose permission settings, administrative settings, or device/session state. This check does not inspect those.
 
 ## What Support can check
 

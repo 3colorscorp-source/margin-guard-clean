@@ -1344,7 +1344,7 @@ async function main() {
       !("supervisor_email" in namedFacts) &&
       !("supervisor_user_id" in namedFacts) &&
       !/John/.test(JSON.stringify(namedFacts)) &&
-      /cannot verify that the person the owner has in mind/i.test(namedInput)
+      /cannot verify that the person you have in mind/i.test(namedInput)
   );
 
   const mySupCapture = {};
