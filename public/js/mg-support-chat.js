@@ -84,6 +84,7 @@ function mgSupportRenderAssistantMarkdown(raw) {
   if (typeof window === "undefined" || typeof document === "undefined") return;
 
   const API = "/.netlify/functions/mg-support-chat";
+  const CREATE_CASE_API = "/.netlify/functions/mg-support-create-case";
   const SUGGESTIONS = [
     "What does Minimum Floor mean?",
     "How do I create an invoice?",
@@ -359,6 +360,31 @@ function mgSupportRenderAssistantMarkdown(raw) {
               (msg.feedback === "down" ? "true" : "false") +
               '">👎</button>' +
               "</div>";
+        let caseBlock = "";
+        if (msg.caseRef && msg.caseResult === "created") {
+          caseBlock =
+            '<p class="mg-support-source">Support case created: ' + escapeHtml(msg.caseRef) + "</p>";
+        } else if (msg.caseRef && msg.caseResult === "existing_case") {
+          caseBlock =
+            '<p class="mg-support-source">An open support case already exists: ' +
+            escapeHtml(msg.caseRef) +
+            "</p>";
+        } else if (msg.escalationEligible) {
+          caseBlock =
+            '<p>' +
+            '<button type="button" class="btn ghost mg-support-retry" data-create-case="' +
+            idx +
+            '"' +
+            (msg.casePending ? " disabled" : "") +
+            ">Create support case</button>" +
+            "</p>";
+          if (msg.casePending) {
+            caseBlock += '<p class="mg-support-loading" aria-live="polite">Creating support case…</p>';
+          }
+          if (msg.caseError) {
+            caseBlock += '<p class="mg-support-needs" role="alert">' + escapeHtml(msg.caseError) + "</p>";
+          }
+        }
         return (
           '<div class="mg-support-msg mg-support-msg--assistant">' +
           (msg.text ? '<div class="mg-support-md">' + mgSupportRenderAssistantMarkdown(msg.text) + "</div>" : "") +
@@ -366,6 +392,7 @@ function mgSupportRenderAssistantMarkdown(raw) {
           sources +
           fb +
           needs +
+          caseBlock +
           "</div>"
         );
       })
@@ -378,6 +405,12 @@ function mgSupportRenderAssistantMarkdown(raw) {
         if (!messages[i] || messages[i].role !== "assistant") return;
         messages[i].feedback = kind;
         renderThread();
+      });
+    });
+    thread.querySelectorAll("[data-create-case]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        const i = Number(el.getAttribute("data-create-case"));
+        void submitSupportCase(i);
       });
     });
     thread.querySelectorAll("[data-retry-index]").forEach(function (el) {
@@ -395,6 +428,42 @@ function mgSupportRenderAssistantMarkdown(raw) {
       });
     });
     thread.scrollTop = thread.scrollHeight;
+  }
+
+  async function submitSupportCase(idx) {
+    const msg = messages[idx];
+    if (!msg || msg.role !== "assistant" || msg.casePending || msg.caseResult) return;
+    const token = String(msg.confirmationToken || "");
+    if (!token) return;
+    msg.casePending = true;
+    msg.caseError = "";
+    renderThread();
+    try {
+      const res = await fetch(CREATE_CASE_API, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ confirmation_token: token, confirmed: true }),
+      });
+      const data = await res.json().catch(function () {
+        return {};
+      });
+      if (data && (data.result === "created" || data.result === "existing_case") && data.case_ref) {
+        msg.caseResult = data.result;
+        msg.caseRef = String(data.case_ref);
+        msg.escalationEligible = false;
+        msg.confirmationToken = "";
+        msg.casePending = false;
+        msg.caseError = "";
+      } else {
+        msg.casePending = false;
+        msg.caseError = String(data.error || "I couldn't create that support case right now.");
+      }
+    } catch (_err) {
+      msg.casePending = false;
+      msg.caseError = "I couldn't create that support case right now.";
+    }
+    renderThread();
   }
 
   async function submitQuestion() {
@@ -434,6 +503,13 @@ function mgSupportRenderAssistantMarkdown(raw) {
           text: String(data.answer || ""),
           sources: Array.isArray(data.sources) ? data.sources : [],
           feedback: "",
+          escalationEligible: Boolean(
+            data.escalation && data.escalation.eligible && data.escalation.confirmation_token
+          ),
+          confirmationToken:
+            data.escalation && data.escalation.eligible
+              ? String(data.escalation.confirmation_token || "")
+              : "",
         });
       }
     } catch (_err) {

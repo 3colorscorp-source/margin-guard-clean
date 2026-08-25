@@ -8,6 +8,7 @@
  * Invoice, quote, project-lifecycle, and contract-lifecycle diagnostics require session.e + session.c and resolveTenantFromSession.
  * Does not trust browser tenant_id. Does not read mg_device_session.
  * OpenAI key stays server-side. OpenAI never chooses tables, SQL, or filters.
+ * This function is read-only. Support-case INSERT is mg-support-create-case only.
  */
 
 "use strict";
@@ -65,6 +66,12 @@ const {
   extractContractProjectUuid,
   readContractDiagnostic,
 } = require("./_lib/mg-support/contract-diagnostic");
+const {
+  determineEscalationEligibility,
+  bindRelatedEntity,
+  mapModule,
+  mintEscalationToken,
+} = require("./_lib/mg-support/case-intake");
 
 function json(statusCode, body) {
   return {
@@ -261,6 +268,8 @@ function createHandler(deps = {}) {
       const intent = classifySupportIntent(message);
 
       let diagnostic = null;
+      let diagnosticIdentifier = null;
+      let trustedTenantId = null;
       if (intent === "invoice_diagnostic") {
         if (!hasOwnerEmailAndCustomer(session)) {
           diagnostic = { outcome: "no_tenant_context" };
@@ -282,6 +291,8 @@ function createHandler(deps = {}) {
             if (!tenant?.id) {
               diagnostic = { outcome: "no_tenant_context" };
             } else {
+              trustedTenantId = String(tenant.id);
+              diagnosticIdentifier = identifier;
               try {
                 const lookedUp = await readInvoice(String(tenant.id), identifier, deps);
                 diagnostic = lookedUp;
@@ -316,6 +327,8 @@ function createHandler(deps = {}) {
             if (!tenant?.id) {
               diagnostic = { outcome: "no_tenant_context" };
             } else {
+              trustedTenantId = String(tenant.id);
+              diagnosticIdentifier = identifier;
               try {
                 const lookedUp = await readQuote(String(tenant.id), identifier, deps);
                 diagnostic = lookedUp;
@@ -347,6 +360,8 @@ function createHandler(deps = {}) {
             if (!tenant?.id) {
               diagnostic = { outcome: "no_tenant_context" };
             } else {
+              trustedTenantId = String(tenant.id);
+              diagnosticIdentifier = identifier;
               try {
                 const lookedUp = await readProject(String(tenant.id), identifier, deps);
                 diagnostic = lookedUp;
@@ -378,6 +393,8 @@ function createHandler(deps = {}) {
             if (!tenant?.id) {
               diagnostic = { outcome: "no_tenant_context" };
             } else {
+              trustedTenantId = String(tenant.id);
+              diagnosticIdentifier = identifier;
               try {
                 const lookedUp = await readContract(String(tenant.id), identifier, deps);
                 diagnostic = lookedUp;
@@ -471,10 +488,60 @@ function createHandler(deps = {}) {
         });
       }
 
+      let escalation = null;
+      try {
+        if (hasOwnerEmailAndCustomer(session)) {
+          const eligibility = determineEscalationEligibility({
+            intent,
+            diagnostic,
+            message,
+            hasOwnerTenant: true,
+          });
+          if (eligibility) {
+            let tenantId = trustedTenantId;
+            if (!tenantId) {
+              try {
+                const tenant = await resolveTenant(session);
+                tenantId = tenant?.id ? String(tenant.id) : "";
+              } catch (_err) {
+                tenantId = "";
+              }
+            }
+            if (tenantId) {
+              const mintFn = deps.mintEscalationToken || mintEscalationToken;
+              const entity = bindRelatedEntity(intent, diagnostic, diagnosticIdentifier);
+              const minted = mintFn(
+                {
+                  tenant_id: tenantId,
+                  category: eligibility.category,
+                  support_module: mapModule(routed),
+                  related_entity_type: entity.type,
+                  related_entity_ref: entity.ref,
+                  page_path: page,
+                  question_excerpt: message,
+                },
+                deps
+              );
+              if (minted && minted.token) {
+                escalation = {
+                  eligible: true,
+                  label: "Create support case",
+                  confirmation_token: minted.token,
+                  expires_at: minted.expires_at,
+                };
+              }
+            }
+          }
+        }
+      } catch (_err) {
+        escalation = null;
+      }
+
       return json(200, {
         ok: true,
         answer,
         sources: uniqueSources,
+        ...(escalation ? { escalation } : {}),
       });
     } catch (_err) {
       console.error("[mg-support-chat] unhandled");
