@@ -62,6 +62,7 @@ const {
   extractProjectIdentifier,
   readProjectDiagnostic,
 } = require("./_lib/mg-support/project-diagnostic");
+const { supervisorVisibilityAnswer } = require("./_lib/mg-support/supervisor-visibility-conclusion");
 const {
   extractContractProjectUuid,
   readContractDiagnostic,
@@ -416,75 +417,82 @@ function createHandler(deps = {}) {
         });
       }
 
-      if (typeof fetchImpl !== "function") {
-        return json(500, { ok: false, error: "Support AI is temporarily unavailable." });
-      }
-
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
-      let openaiRes;
-      let openaiRaw = "";
-      try {
-        openaiRes = await fetchImpl(OPENAI_RESPONSES_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: OPENAI_MODEL,
-            instructions: SYSTEM_INSTRUCTIONS,
-            input: buildUserPayload(message, page, docs, intent, diagnostic),
-            max_output_tokens: MAX_OUTPUT_TOKENS,
-            store: false,
-          }),
-          signal: controller.signal,
-        });
-        openaiRaw = await openaiRes.text();
-      } catch (err) {
-        const aborted = err && (err.name === "AbortError" || /aborted/i.test(String(err.message || "")));
-        console.error("[mg-support-chat] openai request failed", aborted ? "timeout" : "network");
-        return json(502, {
-          ok: false,
-          error: aborted
-            ? "Support AI timed out. Please try again."
-            : "Support AI is temporarily unavailable. Please try again.",
-        });
-      } finally {
-        clearTimeout(timer);
-      }
-
+      const closedSupervisorAnswer = supervisorVisibilityAnswer(intent, diagnostic, message);
+      let answer = "";
       let openaiJson = {};
-      try {
-        openaiJson = openaiRaw ? JSON.parse(openaiRaw) : {};
-      } catch (_err) {
-        openaiJson = {};
+
+      if (closedSupervisorAnswer) {
+        answer = closedSupervisorAnswer;
+      } else {
+        if (typeof fetchImpl !== "function") {
+          return json(500, { ok: false, error: "Support AI is temporarily unavailable." });
+        }
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+        let openaiRes;
+        let openaiRaw = "";
+        try {
+          openaiRes = await fetchImpl(OPENAI_RESPONSES_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: OPENAI_MODEL,
+              instructions: SYSTEM_INSTRUCTIONS,
+              input: buildUserPayload(message, page, docs, intent, diagnostic),
+              max_output_tokens: MAX_OUTPUT_TOKENS,
+              store: false,
+            }),
+            signal: controller.signal,
+          });
+          openaiRaw = await openaiRes.text();
+        } catch (err) {
+          const aborted = err && (err.name === "AbortError" || /aborted/i.test(String(err.message || "")));
+          console.error("[mg-support-chat] openai request failed", aborted ? "timeout" : "network");
+          return json(502, {
+            ok: false,
+            error: aborted
+              ? "Support AI timed out. Please try again."
+              : "Support AI is temporarily unavailable. Please try again.",
+          });
+        } finally {
+          clearTimeout(timer);
+        }
+
+        try {
+          openaiJson = openaiRaw ? JSON.parse(openaiRaw) : {};
+        } catch (_err) {
+          openaiJson = {};
+        }
+
+        if (!openaiRes.ok) {
+          console.error("[mg-support-chat] openai http", openaiRes.status);
+          return json(502, {
+            ok: false,
+            error: "Support AI is temporarily unavailable. Please try again.",
+          });
+        }
+
+        answer = extractOutputText(openaiJson);
+        const usage = openaiJson.usage && typeof openaiJson.usage === "object" ? openaiJson.usage : null;
+        if (usage) {
+          const inTok = Number(usage.input_tokens || usage.prompt_tokens || 0);
+          const outTok = Number(usage.output_tokens || usage.completion_tokens || 0);
+          console.log("[mg-support-chat] usage", {
+            model: OPENAI_MODEL,
+            input_tokens: Number.isFinite(inTok) ? inTok : 0,
+            output_tokens: Number.isFinite(outTok) ? outTok : 0,
+          });
+        }
       }
 
-      if (!openaiRes.ok) {
-        console.error("[mg-support-chat] openai http", openaiRes.status);
-        return json(502, {
-          ok: false,
-          error: "Support AI is temporarily unavailable. Please try again.",
-        });
-      }
-
-      const answer = extractOutputText(openaiJson);
       if (!answer) {
         return json(502, {
           ok: false,
           error: "Support AI returned an empty answer. Please try again.",
-        });
-      }
-
-      const usage = openaiJson.usage && typeof openaiJson.usage === "object" ? openaiJson.usage : null;
-      if (usage) {
-        const inTok = Number(usage.input_tokens || usage.prompt_tokens || 0);
-        const outTok = Number(usage.output_tokens || usage.completion_tokens || 0);
-        console.log("[mg-support-chat] usage", {
-          model: OPENAI_MODEL,
-          input_tokens: Number.isFinite(inTok) ? inTok : 0,
-          output_tokens: Number.isFinite(outTok) ? outTok : 0,
         });
       }
 

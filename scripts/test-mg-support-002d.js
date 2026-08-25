@@ -1138,8 +1138,14 @@ async function main() {
       fetch: openaiOkFetch(visCapture),
     }
   );
-  const visInput = String((visCapture.payload || {}).input || "");
-  const visFacts = extractProjectFacts(visInput);
+  const visBody = JSON.parse(visRes.body || "{}");
+  const visLookedUp = await readProjectDiagnostic(OWN_TENANT, visId, {
+    supabaseGet: mockProjectGet({
+      rows: [ownProjectRow()],
+      quoteRows: [{ id: "quote-secret-id", status: "accepted" }],
+    }),
+  });
+  const visFacts = visLookedUp.facts;
   assert(
     "supervisor visibility intent routes to project diagnostic",
     isProjectDiagnosticQuestion("Why can't my supervisor see project " + OWN_PROJECT_ID + "?") ===
@@ -1162,24 +1168,25 @@ async function main() {
     "no supervisor_user_id in safe facts",
     !("supervisor_user_id" in visFacts) &&
       !("supervisor_user_id" in visFacts.supervisor_visibility) &&
-      !visInput.includes(SUPERVISOR_ID)
+      !String(visBody.answer || "").includes(SUPERVISOR_ID)
   );
   assert(
     "no supervisor identity in facts",
-    !/John|supervisor@|sup-secret/i.test(JSON.stringify(visFacts))
+    !/John|supervisor@|sup-secret/i.test(JSON.stringify(visFacts)) &&
+      !/John|supervisor@|sup-secret/i.test(String(visBody.answer || ""))
   );
   assert(
     "no client identity in project visibility facts",
     !("client_name" in visFacts) &&
       !("client_email" in visFacts) &&
-      !/Secret Client/.test(visInput)
+      !/Secret Client/.test(String(visBody.answer || ""))
   );
   assert(
     "no quote/project amounts in visibility facts",
     !("sale_price" in visFacts) &&
       !("total" in visFacts) &&
-      !visInput.includes("9999") &&
-      !visInput.includes("8888")
+      !String(visBody.answer || "").includes("9999") &&
+      !String(visBody.answer || "").includes("8888")
   );
   assert(
     "no notes in visibility facts",
@@ -1205,7 +1212,7 @@ async function main() {
   );
   assert(
     "no quote_id value in model payload",
-    !("quote_id" in visFacts) && !/quote-secret-id/.test(visInput)
+    !("quote_id" in visFacts) && !visCapture.url && !/quote-secret-id/.test(String(visBody.answer || ""))
   );
 
   const noQuoteIdPaths = [];
@@ -1334,8 +1341,14 @@ async function main() {
       fetch: openaiOkFetch(namedCapture),
     }
   );
-  const namedInput = String((namedCapture.payload || {}).input || "");
-  const namedFacts = extractProjectFacts(namedInput);
+  const namedBody = JSON.parse(namedRes.body || "{}");
+  const namedLookedUp = await readProjectDiagnostic(OWN_TENANT, visId, {
+    supabaseGet: mockProjectGet({
+      rows: [ownProjectRow()],
+      quoteRows: [{ id: "quote-secret-id", status: "approved" }],
+    }),
+  });
+  const namedFacts = namedLookedUp.facts;
   assert(
     "named supervisor question does not gain identity matching",
     namedRes.statusCode === 200 &&
@@ -1344,7 +1357,9 @@ async function main() {
       !("supervisor_email" in namedFacts) &&
       !("supervisor_user_id" in namedFacts) &&
       !/John/.test(JSON.stringify(namedFacts)) &&
-      /cannot verify that the person you have in mind/i.test(namedInput)
+      !/John/.test(String(namedBody.answer || "")) &&
+      /cannot verify that the person you have in mind/i.test(String(namedBody.answer || "")) &&
+      !namedCapture.url
   );
 
   const mySupCapture = {};
@@ -1363,8 +1378,14 @@ async function main() {
       fetch: openaiOkFetch(mySupCapture),
     }
   );
-  const mySupInput = String((mySupCapture.payload || {}).input || "");
-  const mySupFacts = extractProjectFacts(mySupInput);
+  const mySupBody = JSON.parse(mySupRes.body || "{}");
+  const mySupLookedUp = await readProjectDiagnostic(OWN_TENANT, visId, {
+    supabaseGet: mockProjectGet({
+      rows: [ownProjectRow()],
+      quoteRows: [{ id: "quote-secret-id", status: "approved" }],
+    }),
+  });
+  const mySupFacts = mySupLookedUp.facts;
   assert(
     "my supervisor question does not gain identity matching",
     mySupRes.statusCode === 200 &&
@@ -1373,7 +1394,8 @@ async function main() {
       mySupFacts &&
       !("matched_supervisor" in mySupFacts) &&
       mySupFacts.supervisor_visibility.eligible_for_assigned_supervisor === true &&
-      /currently assigned/i.test(mySupInput)
+      /currently assigned/i.test(String(mySupBody.answer || "")) &&
+      !mySupCapture.url
   );
 
   console.log("");

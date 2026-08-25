@@ -72,12 +72,15 @@ Draft, sent, archived, and cancelled projects are not eligible. A missing linked
 
 Support can explain those stored conditions for one exact Project ID / UUID or exact project name. It cannot name the supervisor, assign a supervisor, or change project or quote state. It cannot verify that a named person, or the person the owner means by “my supervisor,” is the supervisor currently assigned to the project.
 
-Typical explanations:
+Typical explanations (closed Support conclusions for supervisor-visibility questions):
 
-- The project exists, but it is not currently eligible to appear in the Supervisor portal for an assigned supervisor.
-- The project is eligible but no supervisor is assigned.
-- The project has a supervisor assigned, but the project/quote state does not currently satisfy the Supervisor portal requirements for that assigned supervisor.
-- This project meets the requirements to appear in the Supervisor portal for the supervisor currently assigned to this project. Margin Guard Support cannot verify that the person you have in mind is the same supervisor currently assigned to the project. If that person still cannot see it, verify the assignment in Project Control or create a support case.
+- The project meets the requirements to appear in the Supervisor portal for the supervisor currently assigned to this project. Margin Guard Support cannot verify that the person you have in mind is the same supervisor currently assigned to the project. Based on the facts available to Support, the reason that person cannot see the project is not verified. Verify the project assignment in Project Control or create a support case.
+- The project does not currently have a supervisor assigned, so it does not meet the requirements to appear for a supervisor in the Supervisor portal.
+- The project lifecycle state does not currently meet the Supervisor portal visibility requirements.
+- The project's linked quote does not currently meet the accepted/approved quote requirement for Supervisor portal visibility.
+- The project is missing more than one requirement needed for Supervisor portal visibility.
+
+Positive eligibility does not prove that a specific person can currently see the project. Do not say the Supervisor portal display is broken.
 
 Do not say “your supervisor can see this project,” “the supervisor can see it,” or “this project is visible to your supervisor.”
 

@@ -22,6 +22,18 @@ const {
   isQuoteDiagnosticQuestion,
   readQuoteDiagnostic,
 } = require("../netlify/functions/_lib/mg-support/quote-diagnostic");
+const {
+  CASE_A,
+  CASE_A_PERSON_UNVERIFIED,
+  CASE_A_NEXT_STEP,
+  CASE_B,
+  CASE_C,
+  CASE_D,
+  CASE_E,
+  CASE_F,
+  isSupervisorVisibilityQuestion,
+  supervisorVisibilityAnswer,
+} = require("../netlify/functions/_lib/mg-support/supervisor-visibility-conclusion");
 
 let failed = 0;
 let passed = 0;
@@ -541,30 +553,26 @@ async function main() {
     })
   );
   const smoke1Body = JSON.parse(smoke1Res.body || "{}");
-  const smoke1Input = String((smoke1Capture.payload || {}).input || "");
+  const smoke1Answer = String(smoke1Body.answer || "");
   assert(
     "1. live smoke supervisor question is project diagnostic with Project Control source",
     smoke1Res.statusCode === 200 &&
       Array.isArray(smoke1Body.sources) &&
       smoke1Body.sources[0] === "Project Control" &&
-      /cannot verify that the person you have in mind/i.test(smoke1Input) &&
-      /Never invent permission settings, administrative settings, device sessions/.test(smoke1Input) &&
-      !/assigned-but-secret/.test(smoke1Input)
-  );
-  const smoke1Facts = extractProjectFacts(smoke1Input);
-  assert(
-    "8. no supervisor identity in live smoke facts",
-    smoke1Facts &&
-      smoke1Facts.supervisor_visibility &&
-      smoke1Facts.supervisor_visibility.eligible_for_assigned_supervisor === true &&
-      !Object.prototype.hasOwnProperty.call(smoke1Facts, "supervisor_user_id") &&
-      !/assigned-but-secret/.test(JSON.stringify(smoke1Facts)) &&
-      !/assigned-but-secret/.test(JSON.stringify(smoke1Body))
+      smoke1Answer.includes(CASE_A) &&
+      smoke1Answer.includes(CASE_A_PERSON_UNVERIFIED) &&
+      smoke1Answer.includes(CASE_A_NEXT_STEP) &&
+      !smoke1Capture.url
   );
   assert(
-    "9-10. live smoke supervisor uses existing reads only, no write",
-    /MARGIN_GUARD_VERIFIED_PROJECT_DIAGNOSTIC_FACTS/.test(smoke1Input) &&
-      !/method:\s*"POST"/.test(projectSrc)
+    "8. no supervisor identity in live smoke answer",
+    !/assigned-but-secret/.test(smoke1Answer) &&
+      !/assigned-but-secret/.test(JSON.stringify(smoke1Body)) &&
+      !/supervisor_user_id/.test(smoke1Answer)
+  );
+  assert(
+    "9-10. live smoke supervisor uses existing reads only, no write, no OpenAI",
+    !/method:\s*"POST"/.test(projectSrc) && !smoke1Capture.url
   );
 
   const smoke2Capture = {};
@@ -650,6 +658,297 @@ async function main() {
     "30. router classify chain unchanged",
     /if \(isQuoteDiagnosticQuestion\(message\)\) \{\s*return "quote_diagnostic";/.test(routerSrc) &&
       /if \(isProjectDiagnosticQuestion\(message\)\) \{\s*return "project_diagnostic";/.test(routerSrc)
+  );
+
+  function unsafeSupervisorSpeculation(text) {
+    const t = String(text || "");
+    return (
+      /your supervisor can see/i.test(t) ||
+      /your supervisor cannot see[\s\S]{0,80}because/i.test(t) ||
+      /display(?:ing)? it/i.test(t) ||
+      /permissions? issue/i.test(t) ||
+      /administrative settings/i.test(t) ||
+      /device\/session/i.test(t) ||
+      /portal is displaying/i.test(t)
+    );
+  }
+
+  assert(
+    "detector treats production supervisor smoke as visibility",
+    isSupervisorVisibilityQuestion(smoke1Q) === true
+  );
+  assert(
+    "detector does not take ordinary assigned-boolean questions",
+    isSupervisorVisibilityQuestion("Does project " + OWN_PROJECT_ID + " have a supervisor assigned?") ===
+      false
+  );
+
+  const eligibleVis = {
+    eligible_for_assigned_supervisor: true,
+    lifecycle_allows_supervisor_visibility: true,
+    approved_or_accepted_quote_present: true,
+    supervisor_assigned: true,
+    visibility_reason: "eligible_for_assigned_supervisor",
+  };
+  const caseA = supervisorVisibilityAnswer(
+    "project_diagnostic",
+    { outcome: "ok", facts: { supervisor_visibility: eligibleVis } },
+    smoke1Q
+  );
+  assert(
+    "B4-1 eligible+assigned produces deterministic assigned-supervisor conclusion",
+    typeof caseA === "string" &&
+      caseA.includes(CASE_A) &&
+      caseA.includes(CASE_A_PERSON_UNVERIFIED) &&
+      caseA.includes(CASE_A_NEXT_STEP)
+  );
+  assert("B4-2 conclusion does not say your supervisor can see", !/your supervisor can see/i.test(caseA));
+  assert(
+    "B4-3 conclusion does not say your supervisor cannot see because",
+    !/your supervisor cannot see[\s\S]{0,80}because/i.test(caseA)
+  );
+  assert(
+    "B4-4 specific person's visibility reason is not verified",
+    caseA.includes(CASE_A_PERSON_UNVERIFIED)
+  );
+  assert("B4-5 no display-issue speculation", !unsafeSupervisorSpeculation(caseA));
+  assert("B4-6 no permission speculation in conclusion", !/permission/i.test(caseA));
+  assert("B4-7 no admin-settings speculation in conclusion", !/administrative/i.test(caseA));
+  assert("B4-8 no device/session speculation in conclusion", !/device|session/i.test(caseA));
+
+  const caseB = supervisorVisibilityAnswer(
+    "project_diagnostic",
+    {
+      outcome: "ok",
+      facts: {
+        supervisor_visibility: {
+          eligible_for_assigned_supervisor: false,
+          lifecycle_allows_supervisor_visibility: true,
+          approved_or_accepted_quote_present: true,
+          supervisor_assigned: false,
+          visibility_reason: "supervisor_not_assigned",
+        },
+      },
+    },
+    smoke1Q
+  );
+  assert("B4-11 unassigned produces deterministic supervisor-not-assigned explanation", caseB === CASE_B);
+
+  const caseC = supervisorVisibilityAnswer(
+    "project_diagnostic",
+    {
+      outcome: "ok",
+      facts: {
+        supervisor_visibility: {
+          eligible_for_assigned_supervisor: false,
+          lifecycle_allows_supervisor_visibility: false,
+          approved_or_accepted_quote_present: true,
+          supervisor_assigned: true,
+          visibility_reason: "lifecycle_not_eligible",
+        },
+      },
+    },
+    smoke1Q
+  );
+  assert("B4-12 lifecycle failure produces deterministic lifecycle explanation", caseC === CASE_C);
+
+  const caseD = supervisorVisibilityAnswer(
+    "project_diagnostic",
+    {
+      outcome: "ok",
+      facts: {
+        supervisor_visibility: {
+          eligible_for_assigned_supervisor: false,
+          lifecycle_allows_supervisor_visibility: true,
+          approved_or_accepted_quote_present: false,
+          supervisor_assigned: true,
+          visibility_reason: "quote_not_approved_or_accepted",
+        },
+      },
+    },
+    smoke1Q
+  );
+  assert("B4-13 quote eligibility failure produces deterministic quote explanation", caseD === CASE_D);
+
+  const caseE = supervisorVisibilityAnswer(
+    "project_diagnostic",
+    {
+      outcome: "ok",
+      facts: {
+        supervisor_visibility: {
+          eligible_for_assigned_supervisor: false,
+          lifecycle_allows_supervisor_visibility: false,
+          approved_or_accepted_quote_present: false,
+          supervisor_assigned: false,
+          visibility_reason: "multiple_requirements_missing",
+        },
+      },
+    },
+    smoke1Q
+  );
+  assert(
+    "B4-14 multiple failures produce bounded safe explanation",
+    caseE.indexOf(CASE_E) === 0 &&
+      /lifecycle eligibility is not met/.test(caseE) &&
+      /accepted or approved linked quote is not present/.test(caseE) &&
+      /no supervisor is assigned/.test(caseE) &&
+      !unsafeSupervisorSpeculation(caseE)
+  );
+
+  const caseFFacts = supervisorVisibilityAnswer(
+    "project_diagnostic",
+    {
+      outcome: "ok",
+      facts: {
+        supervisor_visibility: {
+          eligible_for_assigned_supervisor: false,
+          lifecycle_allows_supervisor_visibility: true,
+          approved_or_accepted_quote_present: null,
+          supervisor_assigned: true,
+          visibility_reason: "status_unverified",
+        },
+      },
+    },
+    smoke1Q
+  );
+  const caseFOutcome = supervisorVisibilityAnswer(
+    "project_diagnostic",
+    { outcome: "status_unverified" },
+    smoke1Q
+  );
+  assert(
+    "B4-15 status_unverified stays unverified",
+    caseFFacts === CASE_F && caseFOutcome === CASE_F
+  );
+  assert(
+    "B4-16 existing support-case escalation semantics unchanged",
+    visFalse === null && unverified && unverified.category === "diagnostic_unavailable"
+  );
+
+  async function liveSupervisorAnswer(message, projectRow, quoteResult) {
+    const capture = {};
+    const res = await createHandler({
+      readSessionFromEvent: sessionOk,
+      resolveTenantFromSession: async () => ({ id: OWN_TENANT }),
+      getOpenAiKey: () => "test-key",
+      getSessionSecret: () => "test-secret-value-32chars-minimum!!",
+      supabaseGet: async (p) => {
+        if (String(p).startsWith("quotes?")) {
+          if (quoteResult === "throw") throw new Error("quote boom");
+          return Array.isArray(quoteResult) ? quoteResult : [{ id: "q1", status: "accepted" }];
+        }
+        return [projectRow];
+      },
+      fetch: openaiOkFetch(capture),
+    })(fakeEvent("POST", { message: message, page: "/owner" }));
+    return { res: res, body: JSON.parse(res.body || "{}"), capture: capture };
+  }
+
+  const eligibleRow = {
+    id: OWN_PROJECT_ID,
+    tenant_id: OWN_TENANT,
+    project_name: "Master & Downstairs Bathroom",
+    status: "in_progress",
+    supervisor_user_id: "assigned-but-secret",
+    created_at: "2026-07-01T12:00:00.000Z",
+    due_date: "2026-08-30",
+    quote_id: "q1",
+  };
+  const liveA = await liveSupervisorAnswer(smoke1Q, eligibleRow, [{ id: "q1", status: "accepted" }]);
+  assert(
+    "B4 live CASE A answer is server conclusion with Project Control source",
+    liveA.res.statusCode === 200 &&
+      liveA.body.sources[0] === "Project Control" &&
+      liveA.body.answer === caseA &&
+      !liveA.capture.url &&
+      !/assigned-but-secret/.test(liveA.body.answer)
+  );
+  assert("B4-9 no supervisor identity in live CASE A", !/assigned-but-secret/.test(liveA.body.answer));
+  assert("B4-10 Source Project Control preserved", liveA.body.sources[0] === "Project Control");
+  assert("B4-17 no new DB reads in conclusion module", !/supabaseGet|tenant_projects\?/.test(read("netlify/functions/_lib/mg-support/supervisor-visibility-conclusion.js")));
+  assert("B4-18 no new DB tables", !/from\("[a-z_]+"\)/.test(chatSrc));
+  assert(
+    "B4-19 no write in conclusion or chat diagnostic branch",
+    !/method:\s*"POST"/.test(read("netlify/functions/_lib/mg-support/supervisor-visibility-conclusion.js"))
+  );
+  assert("B4-20 no OpenAI tool calling", !/"tools"\s*:/.test(chatSrc) && !/tool_choice/.test(chatSrc));
+  assert("B4-21 no extra OpenAI round trip", !liveA.capture.url && Boolean(smoke2Capture.url));
+
+  const liveB = await liveSupervisorAnswer(smoke1Q, { ...eligibleRow, supervisor_user_id: null }, [
+    { id: "q1", status: "accepted" },
+  ]);
+  assert("B4 live CASE B", liveB.body.answer === CASE_B && !liveB.capture.url);
+
+  const liveC = await liveSupervisorAnswer(smoke1Q, { ...eligibleRow, status: "draft" }, [
+    { id: "q1", status: "accepted" },
+  ]);
+  assert("B4 live CASE C", liveC.body.answer === CASE_C && !liveC.capture.url);
+
+  const liveD = await liveSupervisorAnswer(smoke1Q, eligibleRow, [{ id: "q1", status: "ready_to_send" }]);
+  assert("B4 live CASE D", liveD.body.answer === CASE_D && !liveD.capture.url);
+
+  const liveE = await liveSupervisorAnswer(
+    smoke1Q,
+    { ...eligibleRow, status: "archived", supervisor_user_id: null },
+    [{ id: "q1", status: "draft" }]
+  );
+  assert("B4 live CASE E", liveE.body.answer.indexOf(CASE_E) === 0 && !liveE.capture.url);
+
+  const liveFQuote = await liveSupervisorAnswer(smoke1Q, eligibleRow, "throw");
+  assert("B4 live CASE F quote unverified does not escalate", liveFQuote.body.answer === CASE_F && !liveFQuote.body.escalation);
+
+  const liveFProjectCapture = {};
+  const liveFProject = await createHandler({
+    readSessionFromEvent: sessionOk,
+    resolveTenantFromSession: async () => ({ id: OWN_TENANT }),
+    getOpenAiKey: () => "test-key",
+    getSessionSecret: () => "test-secret-value-32chars-minimum!!",
+    supabaseGet: async () => {
+      throw new Error("project boom");
+    },
+    fetch: openaiOkFetch(liveFProjectCapture),
+  })(fakeEvent("POST", { message: smoke1Q, page: "/owner" }));
+  const liveFProjectBody = JSON.parse(liveFProject.body || "{}");
+  assert(
+    "B4 live CASE F project unverified stays unverified and keeps escalation",
+    liveFProject.statusCode === 200 &&
+      liveFProjectBody.answer === CASE_F &&
+      liveFProjectBody.escalation &&
+      liveFProjectBody.escalation.eligible === true &&
+      !liveFProjectCapture.url
+  );
+
+  const ordinaryCapture = {};
+  const ordinaryRes = await createHandler({
+    readSessionFromEvent: sessionOk,
+    resolveTenantFromSession: async () => ({ id: OWN_TENANT }),
+    getOpenAiKey: () => "test-key",
+    supabaseGet: async (p) => {
+      if (String(p).startsWith("quotes?")) return [{ id: "q1", status: "accepted" }];
+      return [eligibleRow];
+    },
+    fetch: openaiOkFetch(ordinaryCapture),
+  })(fakeEvent("POST", { message: "What status is project " + OWN_PROJECT_ID + "?", page: "/owner" }));
+  assert(
+    "ordinary project diagnostic still uses OpenAI",
+    ordinaryRes.statusCode === 200 && Boolean(ordinaryCapture.url)
+  );
+
+  assert(
+    "B4-22 tenant session boundary unchanged",
+    /Does not trust browser tenant_id/.test(chatSrc)
+  );
+  assert(
+    "B4-23 public estimate production-safe response semantics remain covered",
+    /did not probe the public endpoint/i.test(smoke2Input) &&
+      smoke2Facts.public_estimate.response_action_allowed_by_quote_state === false
+  );
+  assert("B4-24 public estimate source remains Quote Builder", smoke2Body.sources[0] === "Quote Builder");
+  assert(
+    "B4 conclusion module does not add identity lookup",
+    !/supervisor_user_id|membership|device_sessions/.test(
+      read("netlify/functions/_lib/mg-support/supervisor-visibility-conclusion.js")
+    )
   );
 
   console.log("");
