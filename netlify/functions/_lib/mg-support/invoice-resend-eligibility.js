@@ -8,17 +8,15 @@ const {
   computePaidFacts,
   deriveOwnerVisibleInvoiceStatus,
   PAID_TOLERANCE,
+  INVOICE_DIAGNOSTIC_PAYMENT_SELECT,
+  sumScopedLedgerAmounts,
 } = require("./invoice-diagnostic");
 const { isUuid } = require("./action-token");
+const { supabaseRequest } = require("../supabase-admin");
 
-function sumLedgerAmounts(rows) {
-  if (!Array.isArray(rows)) return 0;
-  let sum = 0;
-  for (const row of rows) {
-    const n = Number(row?.amount);
-    sum += Number.isFinite(n) ? n : 0;
-  }
-  return sum;
+function isValidHubDeliveryEmail(email) {
+  const text = String(email || "").trim();
+  return text.includes("@") && text.includes(".") && text.length >= 5 && text.length < 320;
 }
 
 const INVOICE_RESEND_SELECT_FIELDS = [
@@ -60,11 +58,6 @@ const ALLOWED_VISIBLE_STATUSES = new Set([
   "deposit_paid",
 ]);
 
-function isValidHubDeliveryEmail(email) {
-  const text = String(email || "").trim();
-  return text.includes("@") && text.includes(".") && text.length >= 5 && text.length < 320;
-}
-
 function buildInvoiceReloadPath(tenantId, invoiceId) {
   const params = new URLSearchParams();
   params.set("tenant_id", `eq.${tenantId}`);
@@ -78,7 +71,7 @@ function buildPaymentQueryPath(tenantId, invoiceId) {
   const params = new URLSearchParams();
   params.set("tenant_id", `eq.${tenantId}`);
   params.set("invoice_id", `eq.${invoiceId}`);
-  params.set("select", "amount");
+  params.set("select", INVOICE_DIAGNOSTIC_PAYMENT_SELECT);
   return `tenant_project_payments?${params.toString()}`;
 }
 
@@ -90,7 +83,6 @@ function evaluateInvoiceResendEligibility(invoice, paidFacts) {
   if (raw === "archived") return { ok: false, reason: "archived" };
   if (raw === "void") return { ok: false, reason: "void" };
   if (raw === "cancelled" || raw === "canceled") return { ok: false, reason: "cancelled" };
-  if (raw === "paid") return { ok: false, reason: "paid" };
   if (String(invoice.voided_at || "").trim()) return { ok: false, reason: "void" };
 
   const email = String(invoice.customer_email || "").trim();
@@ -117,13 +109,19 @@ function evaluateInvoiceResendEligibility(invoice, paidFacts) {
   }
 
   const visible = deriveOwnerVisibleInvoiceStatus(invoice, computed);
-  if (visible === "paid") return { ok: false, reason: "paid" };
   if (visible === "archived") return { ok: false, reason: "archived" };
   if (visible === "void") return { ok: false, reason: "void" };
+  if (visible === "paid") {
+    return { ok: true, reason: "eligible", visible_status: visible };
+  }
   if (!ALLOWED_VISIBLE_STATUSES.has(visible)) {
     return { ok: false, reason: "ineligible_status" };
   }
   return { ok: true, reason: "eligible", visible_status: visible };
+}
+
+function defaultResendGet(path, opts) {
+  return supabaseRequest(path, opts || { method: "GET" });
 }
 
 async function reloadInvoiceForResend(tenantId, invoiceId, deps = {}) {
@@ -132,7 +130,7 @@ async function reloadInvoiceForResend(tenantId, invoiceId, deps = {}) {
   if (!isUuid(tid) || !isUuid(iid)) {
     return { outcome: "not_found", invoice: null, queryPath: "" };
   }
-  const get = deps.supabaseGet || deps.supabaseRequest;
+  const get = deps.supabaseGet || deps.supabaseRequest || defaultResendGet;
   if (typeof get !== "function") {
     return { outcome: "status_unverified", invoice: null, queryPath: "" };
   }
@@ -141,7 +139,7 @@ async function reloadInvoiceForResend(tenantId, invoiceId, deps = {}) {
   try {
     rows = deps.supabaseGet
       ? await deps.supabaseGet(queryPath)
-      : await deps.supabaseRequest(queryPath, { method: "GET" });
+      : await (deps.supabaseRequest || defaultResendGet)(queryPath, { method: "GET" });
   } catch (_err) {
     return { outcome: "status_unverified", invoice: null, queryPath };
   }
@@ -159,14 +157,14 @@ async function reloadInvoiceForResend(tenantId, invoiceId, deps = {}) {
   try {
     payRows = deps.supabaseGet
       ? await deps.supabaseGet(paymentQueryPath)
-      : await deps.supabaseRequest(paymentQueryPath, { method: "GET" });
+      : await (deps.supabaseRequest || defaultResendGet)(paymentQueryPath, { method: "GET" });
   } catch (_err) {
     return { outcome: "status_unverified", invoice, queryPath, paymentQueryPath };
   }
   if (!Array.isArray(payRows)) {
     return { outcome: "status_unverified", invoice, queryPath, paymentQueryPath };
   }
-  const paidFacts = computePaidFacts(invoice, sumLedgerAmounts(payRows));
+  const paidFacts = computePaidFacts(invoice, sumScopedLedgerAmounts(payRows, tid, iid));
   const eligibility = evaluateInvoiceResendEligibility(invoice, paidFacts);
   return {
     outcome: eligibility.ok ? "ok" : eligibility.reason,

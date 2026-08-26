@@ -18,6 +18,7 @@ const {
   extractInvoiceIdentifier,
   deriveOwnerVisibleInvoiceStatus,
   computePaidFacts,
+  isCanonicalInvoiceFullyPaid,
   toModelFacts,
   buildPaymentQueryPath,
   readInvoiceDiagnostic,
@@ -443,16 +444,18 @@ async function main() {
   const payPath = pathCapture[1] || "";
   const paySelect = new URLSearchParams(String(payPath).split("?")[1] || "").get("select") || "";
   assert(
-    "ledger GET uses trusted tenant_id, server invoice UUID, select=amount",
+    "ledger GET uses trusted tenant_id, server invoice UUID, closed payment select",
     pathCapture.length === 2 &&
       payPath.startsWith("tenant_project_payments?") &&
       payPath.includes("tenant_id=eq." + encodeURIComponent(OWN_TENANT)) &&
       payPath.includes("invoice_id=eq." + encodeURIComponent(OWN_INVOICE_ID)) &&
       paySelect === INVOICE_DIAGNOSTIC_PAYMENT_SELECT &&
-      paySelect === "amount" &&
+      paySelect === "amount,tenant_id,invoice_id" &&
       !/select=\*/.test(payPath) &&
       !/project_id=/.test(payPath) &&
-      !/quote_id=/.test(payPath)
+      !/quote_id=/.test(payPath) &&
+      !/business_id/.test(payPath) &&
+      !/business_id/.test(diagPath)
   );
   const diagSrc = fs.readFileSync(path.join(ROOT, "netlify/functions/_lib/mg-support/invoice-diagnostic.js"), "utf8");
   const chatSrc = fs.readFileSync(path.join(ROOT, "netlify/functions/mg-support-chat.js"), "utf8");
@@ -805,7 +808,7 @@ async function main() {
   );
   assert(
     "fully paid + quote accepted → paid",
-    toModelFacts(liveAcceptedDraftRow({ paid_amount: 8888, quotes: { status: "accepted", accepted_at: "2026-07-15T18:22:00.000Z", deposit_paid_at: null, total: 8888 } })).status === "paid"
+    toModelFacts(liveAcceptedDraftRow({ amount: 8888, paid_amount: 8888, quotes: { status: "accepted", accepted_at: "2026-07-15T18:22:00.000Z", deposit_paid_at: null, total: 8888 } })).status === "paid"
   );
   assert(
     "raw void + quote accepted → void",
@@ -1046,7 +1049,8 @@ async function main() {
     "closed payment path has no select=*",
     payPathBuilt.startsWith("tenant_project_payments?") &&
       !/select=\*/.test(payPathBuilt) &&
-      new URLSearchParams(payPathBuilt.split("?")[1]).get("select") === "amount"
+      new URLSearchParams(payPathBuilt.split("?")[1]).get("select") === INVOICE_DIAGNOSTIC_PAYMENT_SELECT &&
+      INVOICE_DIAGNOSTIC_PAYMENT_SELECT === "amount,tenant_id,invoice_id"
   );
 
   const TEST_TODAY = "2026-08-24";
@@ -1547,6 +1551,207 @@ async function main() {
       /stored invoice due date/i.test(INVOICE_FACTS_GUIDANCE) &&
       /Project Control due date/i.test(INVOICE_FACTS_GUIDANCE) &&
       /Do not say what amount is past due/i.test(INVOICE_FACTS_GUIDANCE)
+  );
+
+  const PARTIAL_LIVE_NO = "INV-1778183157905";
+  const LEGACY_LIVE_NO = "INV-20260307-100846-P";
+  const partialLiveRow = ownInvoiceRow({
+    invoice_no: PARTIAL_LIVE_NO,
+    status: "draft",
+    sent_at: "2026-08-17T12:00:00.000Z",
+    voided_at: null,
+    paid_at: null,
+    amount: 10000,
+    paid_amount: 2500,
+    balance_due: 7500,
+    quotes: { status: "sent", accepted_at: null, deposit_paid_at: null, total: 2500 },
+  });
+  const partialCoveringQuote = computePaidFacts(partialLiveRow, 2500);
+  const partialLiveFacts = toModelFacts(partialLiveRow, partialCoveringQuote);
+  assert(
+    "C2.3 partial linked payment covering smaller quote.total is NOT paid",
+    partialCoveringQuote.isFullyPaid === false && partialLiveFacts.status !== "paid"
+  );
+  assert("C2.3 partial diagnostic status is sent", partialLiveFacts.status === "sent");
+  assert(
+    "C2.3 partial facts omit money",
+    !("amount" in partialLiveFacts) &&
+      !("paid_amount" in partialLiveFacts) &&
+      !("balance_due" in partialLiveFacts) &&
+      !("balanceDue" in partialLiveFacts)
+  );
+
+  const rawPaidCovering = toModelFacts(
+    ownInvoiceRow({ status: "paid", amount: 1000, paid_amount: 1000, balance_due: 0, paid_at: "2026-08-01T00:00:00.000Z", quotes: null })
+  );
+  assert("C2.3 raw status paid + covering invoice amount → paid", rawPaidCovering.status === "paid");
+
+  const paidAtCovering = computePaidFacts(
+    ownInvoiceRow({ status: "draft", amount: 1000, paid_amount: 1000, balance_due: 0, paid_at: "2026-08-01T00:00:00.000Z" }),
+    0
+  );
+  assert("C2.3 paid_at present + covering invoice amount → paid", paidAtCovering.isFullyPaid === true);
+
+  const paidAtPartial = computePaidFacts(
+    ownInvoiceRow({ status: "draft", amount: 1000, paid_amount: 250, balance_due: 750, paid_at: "2026-08-01T00:00:00.000Z" }),
+    250
+  );
+  assert("C2.3 paid_at present without covering invoice amount is NOT paid", paidAtPartial.isFullyPaid === false);
+
+  const staleRawPaidRemainder = ownInvoiceRow({
+    status: "paid",
+    amount: 1000,
+    paid_amount: 200,
+    balance_due: 800,
+    paid_at: "2026-08-01T00:00:00.000Z",
+    sent_at: "2026-08-17T12:00:00.000Z",
+    payment_status: null,
+    quotes: { status: "sent", accepted_at: null, deposit_paid_at: null, total: 200 },
+  });
+  const staleRawPaidRemainderFacts = toModelFacts(
+    staleRawPaidRemainder,
+    computePaidFacts(staleRawPaidRemainder, 200)
+  );
+  assert(
+    "C2.3A stale raw status paid without covering amounts is Hub remainder paid, not invented partial",
+    computePaidFacts(staleRawPaidRemainder, 200).isFullyPaid === false &&
+      isCanonicalInvoiceFullyPaid(computePaidFacts(staleRawPaidRemainder, 200)) === false &&
+      staleRawPaidRemainderFacts.status === "paid" &&
+      !("is_fully_paid" in staleRawPaidRemainderFacts)
+  );
+
+  const staleRawPaidAccepted = liveAcceptedDraftRow({
+    status: "paid",
+    amount: 1000,
+    paid_amount: 200,
+    balance_due: 800,
+    quotes: {
+      status: "accepted",
+      accepted_at: "2026-07-15T18:22:00.000Z",
+      deposit_paid_at: null,
+      total: 200,
+    },
+  });
+  const staleRawPaidAcceptedFacts = toModelFacts(
+    staleRawPaidAccepted,
+    computePaidFacts(staleRawPaidAccepted, 200)
+  );
+  assert(
+    "C2.3A stale raw paid without covering amounts + accepted quote is accepted, not paid",
+    staleRawPaidAcceptedFacts.status === "accepted"
+  );
+
+  const stalePaidAtUncovered = ownInvoiceRow({
+    status: "draft",
+    paid_at: "2026-08-01T00:00:00.000Z",
+    sent_at: "2026-08-17T12:00:00.000Z",
+    amount: 1000,
+    paid_amount: 200,
+    balance_due: 800,
+    quotes: { status: "sent", accepted_at: null, deposit_paid_at: null, total: 0 },
+  });
+  const stalePaidAtUncoveredFacts = toModelFacts(
+    stalePaidAtUncovered,
+    computePaidFacts(stalePaidAtUncovered, 200)
+  );
+  assert(
+    "C2.3A stale paid_at without covering amounts is sent, not paid",
+    computePaidFacts(stalePaidAtUncovered, 200).isFullyPaid === false &&
+      stalePaidAtUncoveredFacts.status === "sent"
+  );
+
+  const rowFullyPaid = computePaidFacts(ownInvoiceRow({ amount: 1000, paid_amount: 1000, balance_due: 0, quotes: { total: 200 } }), 0);
+  assert("C2.3 invoice-row paid_amount covering invoice amount → paid", rowFullyPaid.isFullyPaid === true);
+
+  const ledgerCovers = computePaidFacts(ownInvoiceRow({ amount: 1000, paid_amount: 0, balance_due: 1000, quotes: { total: 200 } }), 1000);
+  assert("C2.3 same-tenant linked payments covering invoice amount → paid", ledgerCovers.isFullyPaid === true);
+
+  const ledgerOver = computePaidFacts(ownInvoiceRow({ amount: 1000, paid_amount: 0, balance_due: 0 }), 1200);
+  assert("C2.3 linked payments over invoice amount → paid", ledgerOver.isFullyPaid === true);
+
+  const partialDiag = await readInvoiceDiagnostic(
+    OWN_TENANT,
+    { type: "invoice_no", value: PARTIAL_LIVE_NO },
+    {
+      supabaseGet: mockSupabaseGet({
+        invoices: [partialLiveRow],
+        payments: [
+          { amount: 2500, tenant_id: OWN_TENANT, invoice_id: OWN_INVOICE_ID },
+          { amount: 99999, tenant_id: OTHER_TENANT, invoice_id: OWN_INVOICE_ID },
+          { amount: 88888, tenant_id: OWN_TENANT, invoice_id: OTHER_INVOICE_ID },
+          { amount: 77777, tenant_id: null, invoice_id: OWN_INVOICE_ID },
+        ],
+      }),
+    }
+  );
+  assert(
+    "C2.3 other-tenant / null-tenant / other-invoice payments ignored",
+    partialDiag.outcome === "ok" &&
+      partialDiag.facts.status !== "paid" &&
+      partialDiag.facts.status === "sent" &&
+      partialDiag.is_fully_paid === false &&
+      !("is_fully_paid" in partialDiag.facts)
+  );
+
+  const unrelatedPay = await readInvoiceDiagnostic(
+    OWN_TENANT,
+    { type: "invoice_no", value: PARTIAL_LIVE_NO },
+    {
+      supabaseGet: mockSupabaseGet({
+        invoices: [partialLiveRow],
+        payments: [{ amount: 10000, tenant_id: OWN_TENANT, invoice_id: OTHER_INVOICE_ID }],
+      }),
+    }
+  );
+  assert("C2.3 unrelated invoice payment does not mark paid", unrelatedPay.outcome === "ok" && unrelatedPay.facts.status !== "paid");
+
+  const fullLedgerDiag = await readInvoiceDiagnostic(
+    OWN_TENANT,
+    { type: "invoice_no", value: PARTIAL_LIVE_NO },
+    {
+      supabaseGet: mockSupabaseGet({
+        invoices: [ownInvoiceRow({ invoice_no: PARTIAL_LIVE_NO, amount: 10000, paid_amount: 0, balance_due: 10000, status: "draft", sent_at: "2026-08-17T12:00:00.000Z" })],
+        payments: [{ amount: 10000, tenant_id: OWN_TENANT, invoice_id: OWN_INVOICE_ID }],
+      }),
+    }
+  );
+  assert(
+    "C2.3 cumulative same-tenant ledger covering invoice → paid",
+    fullLedgerDiag.outcome === "ok" &&
+      fullLedgerDiag.facts.status === "paid" &&
+      fullLedgerDiag.is_fully_paid === true &&
+      !("is_fully_paid" in fullLedgerDiag.facts)
+  );
+
+  let legacyPaths = [];
+  const legacyNullTenant = await readInvoiceDiagnostic(
+    OWN_TENANT,
+    { type: "invoice_no", value: LEGACY_LIVE_NO },
+    {
+      supabaseGet: async (path) => {
+        legacyPaths.push(String(path || ""));
+        if (String(path).startsWith("tenant_project_payments?")) return [];
+        return [
+          ownInvoiceRow({
+            invoice_no: LEGACY_LIVE_NO,
+            tenant_id: null,
+            business_id: "legacy-business",
+            status: "SENT",
+          }),
+        ];
+      },
+    }
+  );
+  assert(
+    "C2.3 legacy tenant_id-null invoice is not_found",
+    legacyNullTenant.outcome === "not_found" && legacyPaths.length === 1
+  );
+  assert(
+    "C2.3 legacy lookup stays tenant_id scoped with no business_id fallback",
+    /tenant_id=eq\./.test(legacyPaths[0]) &&
+      legacyPaths[0].includes("invoice_no=eq." + encodeURIComponent(LEGACY_LIVE_NO)) &&
+      !/business_id/.test(legacyPaths.join("\n")) &&
+      !/business_id/.test(diagSrc)
   );
 
   let openaiInPublic = false;

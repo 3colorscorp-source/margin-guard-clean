@@ -6,8 +6,9 @@
  * Owner-visible `status` matches Invoice Hub's derived lifecycle overlay:
  * archived / void / fully-paid / deposit_paid / accepted, then Hub remainder
  * (open→draft, sent_at→sent, overdue overlay, raw fallback).
- * Fully-paid uses invoices.amount, invoices.paid_amount, quotes.total, and a
- * closed tenant_project_payments amount sum. Money is discarded before OpenAI.
+ * Fully-paid uses this invoice's amount vs max(invoices.paid_amount, ledger sum).
+ * Stored balance_due above tolerance blocks paid. quotes.total is Hub contract
+ * display, not this invoice's remaining due. Money is discarded before OpenAI.
  * Overdue uses Hub UTC `toISOString().slice(0, 10)` and derived balanceDue > 0.
  * Does not reproduce browser project salePrice fallback.
  */
@@ -35,6 +36,7 @@ const INVOICE_DIAGNOSTIC_SELECT_FIELDS = [
   "payment_status",
   "amount",
   "paid_amount",
+  "balance_due",
 ];
 
 /** Nested quote lifecycle flags plus total for server-side paid math only. */
@@ -43,7 +45,7 @@ const INVOICE_DIAGNOSTIC_QUOTE_EMBED = "quotes(status,accepted_at,deposit_paid_a
 const INVOICE_DIAGNOSTIC_SELECT =
   INVOICE_DIAGNOSTIC_SELECT_FIELDS.join(",") + "," + INVOICE_DIAGNOSTIC_QUOTE_EMBED;
 
-const INVOICE_DIAGNOSTIC_PAYMENT_SELECT = "amount";
+const INVOICE_DIAGNOSTIC_PAYMENT_SELECT = "amount,tenant_id,invoice_id";
 const PAID_TOLERANCE = 0.005;
 
 const IDENTIFIER_STOPWORDS = new Set([
@@ -242,8 +244,41 @@ function sumLedgerAmounts(rows) {
   return sum;
 }
 
+function paymentRowInScope(row, tenantId, invoiceId) {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return false;
+  const tid = String(tenantId || "").trim();
+  const iid = String(invoiceId || "").trim();
+  if (Object.prototype.hasOwnProperty.call(row, "tenant_id")) {
+    if (String(row.tenant_id || "").trim() !== tid) return false;
+  }
+  if (Object.prototype.hasOwnProperty.call(row, "invoice_id")) {
+    if (String(row.invoice_id || "").trim() !== iid) return false;
+  }
+  return true;
+}
+
+function filterScopedPaymentRows(rows, tenantId, invoiceId) {
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((row) => paymentRowInScope(row, tenantId, invoiceId));
+}
+
+function sumScopedLedgerAmounts(rows, tenantId, invoiceId) {
+  return sumLedgerAmounts(filterScopedPaymentRows(rows, tenantId, invoiceId));
+}
+
+function storedBalanceDue(row) {
+  if (row?.balance_due === null || row?.balance_due === undefined || row?.balance_due === "") {
+    return null;
+  }
+  const n = Number(row.balance_due);
+  return Number.isFinite(n) ? n : null;
+}
+
 /**
- * Hub-equivalent paid math. Does not use invoices.balance_due or project salePrice.
+ * Invoice-level paid math. Matches record-tenant-payment rollup:
+ * remaining = invoices.amount - max(paid_amount, ledger sum).
+ * Does not treat covering quotes.total as this invoice being paid.
+ * Stored balance_due > tolerance is authoritative remaining.
  * balanceDue is for overdue overlay only and must never reach OpenAI.
  */
 function computePaidFacts(row, ledgerPaid) {
@@ -251,13 +286,19 @@ function computePaidFacts(row, ledgerPaid) {
   const dbPaid = finiteMoney(row?.paid_amount);
   const ledger = finiteMoney(ledgerPaid);
   const paidAmount = Math.max(dbPaid, ledger);
-  const quote = unwrapQuoteEmbed(row);
-  const quoteTotal = finiteMoney(quote?.total);
-  const contractTotal = quoteTotal > 0 ? quoteTotal : invoiceAmount;
-  const balanceDue = Math.max(0, contractTotal - paidAmount);
-  const isFullyPaid =
-    balanceDue <= PAID_TOLERANCE || (contractTotal > 0 && paidAmount + PAID_TOLERANCE >= contractTotal);
+  const derivedBalance = Math.max(0, invoiceAmount - paidAmount);
+  const stored = storedBalanceDue(row);
+  const balanceDue = stored != null ? Math.max(derivedBalance, Math.max(0, stored)) : derivedBalance;
+  const coversInvoice = invoiceAmount > 0 && paidAmount + PAID_TOLERANCE >= invoiceAmount;
+  let isFullyPaid = balanceDue <= PAID_TOLERANCE || coversInvoice;
+  if (!coversInvoice && stored != null && stored > PAID_TOLERANCE) {
+    isFullyPaid = false;
+  }
   return { isFullyPaid, balanceDue };
+}
+
+function isCanonicalInvoiceFullyPaid(paidFacts) {
+  return Boolean(paidFacts && paidFacts.isFullyPaid === true);
 }
 
 function resolvePaidFacts(row, paidFacts) {
@@ -317,6 +358,8 @@ function toModelFacts(row, paidFacts, options = {}) {
   const computed = resolvePaidFacts(row, paidFacts);
   const status = deriveOwnerVisibleInvoiceStatus(row, computed, options);
   const dueRaw = normalizeInvoiceDueDate(row?.due_date);
+  // Canonical is_fully_paid stays on the diagnostic envelope, not model facts,
+  // so generic Hub/OpenAI status semantics remain display-only.
   return {
     invoice_no: isNonEmpty(row?.invoice_no) ? String(row.invoice_no).trim() : null,
     status,
@@ -409,10 +452,11 @@ async function readInvoiceDiagnostic(tenantId, identifier, deps = {}) {
     return { outcome: "status_unverified", queryPath, paymentQueryPath };
   }
 
-  const paidFacts = computePaidFacts(row, sumLedgerAmounts(payRows));
+  const paidFacts = computePaidFacts(row, sumScopedLedgerAmounts(payRows, tid, invoiceId));
   return {
     outcome: "ok",
     invoice_id: invoiceId,
+    is_fully_paid: isCanonicalInvoiceFullyPaid(paidFacts),
     facts: toModelFacts(row, paidFacts, {
       utcToday: deps.utcToday,
       today: deps.today,
@@ -437,6 +481,9 @@ module.exports = {
   utcTodayIsoDate,
   normalizeInvoiceDueDate,
   computePaidFacts,
+  isCanonicalInvoiceFullyPaid,
+  sumScopedLedgerAmounts,
+  filterScopedPaymentRows,
   deriveOwnerVisibleInvoiceStatus,
   toModelFacts,
   buildInvoiceQueryPath,

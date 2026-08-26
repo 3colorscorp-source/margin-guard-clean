@@ -75,15 +75,21 @@ function invoiceResendDenialCopy(reason) {
   return INVOICE_RESEND_UNVERIFIED_COPY;
 }
 
-function knownIneligibleFromDiagnosticFacts(facts) {
+function knownIneligibleFromDiagnosticFacts(facts, diagnostic) {
   if (!facts || typeof facts !== "object" || Array.isArray(facts)) return "";
   const status = String(facts.status || "").trim().toLowerCase();
-  if (status === "paid") return "paid";
   if (status === "void") return "void";
   if (status === "cancelled" || status === "canceled") return "cancelled";
   if (status === "archived") return "archived";
   if (String(facts.voided_at || "").trim()) return "void";
+  if (canonicalFullyPaidFromDiagnostic(facts, diagnostic)) return "paid";
   return "";
+}
+
+function canonicalFullyPaidFromDiagnostic(facts, diagnostic) {
+  if (diagnostic && diagnostic.is_fully_paid === true) return true;
+  if (facts && facts.is_fully_paid === true) return true;
+  return false;
 }
 
 function withResendReloadClient(deps) {
@@ -130,7 +136,7 @@ async function maybeOfferInvoiceResend({
 
   if (outcome !== "ok") return closedCopy(INVOICE_RESEND_UNVERIFIED_COPY);
 
-  const knownNegative = knownIneligibleFromDiagnosticFacts(diagnostic.facts);
+  const knownNegative = knownIneligibleFromDiagnosticFacts(diagnostic.facts, diagnostic);
   if (knownNegative) return closedCopy(invoiceResendDenialCopy(knownNegative));
 
   const invoiceId = String(diagnostic.invoice_id || "").trim();
@@ -178,6 +184,7 @@ module.exports = {
   INVOICE_RESEND_UNVERIFIED_COPY,
   INVOICE_RESEND_SOURCE,
   knownIneligibleFromDiagnosticFacts,
+  canonicalFullyPaidFromDiagnostic,
   invoiceResendDenialCopy,
   maybeOfferInvoiceResend,
 };

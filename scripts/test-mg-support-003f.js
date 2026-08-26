@@ -13,7 +13,7 @@ const ROOT = path.resolve(__dirname, "..");
 const { createHandler: createChatHandler } = require("../netlify/functions/mg-support-chat");
 const { createHandler: createCaseHandler } = require("../netlify/functions/mg-support-create-case");
 const { classifySupportIntent } = require("../netlify/functions/_lib/mg-support/router");
-const { extractInvoiceIdentifier } = require("../netlify/functions/_lib/mg-support/invoice-diagnostic");
+const { extractInvoiceIdentifier, computePaidFacts, toModelFacts, isCanonicalInvoiceFullyPaid, readInvoiceDiagnostic } = require("../netlify/functions/_lib/mg-support/invoice-diagnostic");
 const { isExplicitInvoiceResendIntent } = require("../netlify/functions/_lib/mg-support/invoice-resend-intent");
 const {
   INVOICE_RESEND_CONFIRMATION_COPY,
@@ -27,6 +27,7 @@ const {
   INVOICE_RESEND_AMBIGUOUS_COPY,
   INVOICE_RESEND_UNVERIFIED_COPY,
   knownIneligibleFromDiagnosticFacts,
+  canonicalFullyPaidFromDiagnostic,
 } = require("../netlify/functions/_lib/mg-support/invoice-resend-offer");
 const {
   TOKEN_TYPE,
@@ -35,6 +36,10 @@ const {
   computeActorFingerprint,
 } = require("../netlify/functions/_lib/mg-support/action-token");
 const { SUCCESS_MESSAGE, UNKNOWN_MESSAGE } = require("../netlify/functions/_lib/mg-support/invoice-resend-action");
+const {
+  evaluateInvoiceResendEligibility,
+  reloadInvoiceForResend,
+} = require("../netlify/functions/_lib/mg-support/invoice-resend-eligibility");
 const ui = require("../public/js/mg-support-chat.js");
 const { supervisorVisibilityAnswer } = require("../netlify/functions/_lib/mg-support/supervisor-visibility-conclusion");
 
@@ -52,6 +57,7 @@ function assert(name, cond) {
 }
 
 const OWN_TENANT = "11111111-1111-4111-8111-111111111111";
+const OTHER_TENANT = "22222222-2222-4222-8222-222222222222";
 const OWN_USER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const INVOICE_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const SECRET = "test-session-secret-mg-support-003f";
@@ -140,6 +146,7 @@ function okDiagnostic() {
   return {
     outcome: "ok",
     invoice_id: INVOICE_ID,
+    is_fully_paid: false,
     facts: {
       invoice_no: "INV-123",
       status: "sent",
@@ -150,9 +157,14 @@ function okDiagnostic() {
 
 function diagnosticFacts(status, extra) {
   const more = extra || {};
+  const isFullyPaid =
+    more.is_fully_paid !== undefined
+      ? more.is_fully_paid === true
+      : String(status || "").trim().toLowerCase() === "paid";
   return {
     outcome: "ok",
     invoice_id: INVOICE_ID,
+    is_fully_paid: isFullyPaid,
     facts: {
       invoice_no: more.invoice_no || "INV-123",
       status,
@@ -208,12 +220,48 @@ async function runChat(message, extra) {
   return createChatHandler(deps)(fakeEvent("POST", { message, page: "/estimates-invoices" }));
 }
 
+async function runProductionShapedChat(message, extra) {
+  const cfg = extra || {};
+  const writes = cfg.writes || { ledger: 0, patch: 0, zapier: 0 };
+  if (writes.zapier == null) writes.zapier = 0;
+  const paths = cfg.paths || [];
+  const capture = cfg.capture || { calls: 0 };
+  const handler = createChatHandler({
+    readSessionFromEvent: cfg.readSessionFromEvent || (() => ownerSession()),
+    isPlatformAdmin: cfg.isPlatformAdmin || (async () => false),
+    resolveTenantFromSession: cfg.resolveTenantFromSession || (async () => ({ id: OWN_TENANT })),
+    getOpenAiKey: cfg.getOpenAiKey || (() => "test-key"),
+    getSessionSecret: () => SECRET,
+    nowSeconds: () => NOW,
+    fetch: cfg.fetch || (async () => {
+      capture.calls += 1;
+      throw new Error("OpenAI must not be called for explicit resend");
+    }),
+    supabaseGet: async (path) => {
+      paths.push(String(path || ""));
+      return cfg.supabaseGet(String(path || ""));
+    },
+    supabaseRequest: async (path, opts) => {
+      const method = String(opts?.method || "GET").toUpperCase();
+      if (method === "POST" && String(path).includes("tenant_support_actions")) writes.ledger += 1;
+      if (method === "PATCH" && String(path).startsWith("invoices?")) writes.patch += 1;
+      if (method === "GET") return cfg.supabaseGet(String(path || ""));
+      return [];
+    },
+  });
+  return handler(fakeEvent("POST", { message, page: "/estimates-invoices" }));
+}
+
 function intentYes(message) {
   return isExplicitInvoiceResendIntent(message) === true && classifySupportIntent(message) === "invoice_diagnostic";
 }
 
 function intentNo(message) {
   return isExplicitInvoiceResendIntent(message) === false;
+}
+
+function isInvoiceIdQueryPath(path) {
+  return /(?:^|[?&])id=eq\./.test(String(path || ""));
 }
 
 async function main() {
@@ -228,6 +276,7 @@ async function main() {
   const quoteSrc = read("netlify/functions/_lib/mg-support/quote-diagnostic.js");
   const createCaseSrc = read("netlify/functions/mg-support-create-case.js");
   const adminJs = read("public/js/support-admin.js");
+  const eligibilitySrc = read("netlify/functions/_lib/mg-support/invoice-resend-eligibility.js");
 
   assert("1. Resend invoice INV-123 => explicit resend intent", intentYes("Resend invoice INV-123"));
   assert("2. Please resend invoice INV-123 => yes", intentYes("Please resend invoice INV-123"));
@@ -594,7 +643,13 @@ async function main() {
     noKeyPaid.statusCode === 200 && String(parse(noKeyPaid).answer).trim() === INVOICE_RESEND_PAID_COPY && parse(noKeyPaid).action == null
   );
 
-  assert("C2.2 canonical paid signal is diagnostic.facts.status", knownIneligibleFromDiagnosticFacts({ status: "paid" }) === "paid");
+  assert(
+    "C2.3B canonical paid signal is diagnostic.is_fully_paid, not status text",
+    knownIneligibleFromDiagnosticFacts({ status: "paid" }) === "" &&
+      knownIneligibleFromDiagnosticFacts({ status: "paid" }, { is_fully_paid: false }) === "" &&
+      knownIneligibleFromDiagnosticFacts({ status: "paid" }, { is_fully_paid: true }) === "paid" &&
+      knownIneligibleFromDiagnosticFacts({ status: "sent" }, { is_fully_paid: true }) === "paid"
+  );
   assert("C2.2 void signal is diagnostic.facts.status", knownIneligibleFromDiagnosticFacts({ status: "void" }) === "void");
   assert("C2.2 cancelled signal is diagnostic.facts.status", knownIneligibleFromDiagnosticFacts({ status: "cancelled" }) === "cancelled");
   assert("C2.2 archived signal is diagnostic.facts.status", knownIneligibleFromDiagnosticFacts({ status: "archived" }) === "archived");
@@ -607,6 +662,7 @@ async function main() {
       knownIneligibleFromDiagnosticFacts({ status: "deposit_paid" }) === ""
   );
   assert("C2.2 offer does not invent paid math", !/computePaidFacts|isFullyPaid|balanceDue|paid_amount/.test(offerSrc));
+  assert("C2.3B offer paid short-circuit reads is_fully_paid", /is_fully_paid/.test(offerSrc) && /canonicalFullyPaidFromDiagnostic/.test(offerSrc));
   assert("C2.2 known-negative short-circuit runs before reload", offerSrc.indexOf("knownIneligibleFromDiagnosticFacts") < offerSrc.indexOf("const reload = deps.reloadInvoiceForResend"));
 
   async function knownNegativeInject(status, expectedCopy) {
@@ -719,6 +775,618 @@ async function main() {
       sentMintWrites.ledger === 0 &&
       sentMintWrites.patch === 0
   );
+
+  const PARTIAL_LIVE_NO = "INV-1778183157905";
+  const partialRow = {
+    status: "draft",
+    sent_at: "2026-08-17T12:00:00.000Z",
+    voided_at: null,
+    paid_at: null,
+    amount: 10000,
+    paid_amount: 2500,
+    balance_due: 7500,
+    invoice_no: PARTIAL_LIVE_NO,
+    public_token: "pubtok",
+    quotes: { status: "sent", accepted_at: null, deposit_paid_at: null, total: 2500 },
+  };
+  const partialPaidFacts = computePaidFacts(partialRow, 2500);
+  const partialModelFacts = toModelFacts(partialRow, partialPaidFacts);
+  assert("C2.3 live partial facts.status is not paid", partialModelFacts.status !== "paid" && partialModelFacts.status === "sent");
+  assert("C2.3 live partial is not a known-paid short-circuit", knownIneligibleFromDiagnosticFacts(partialModelFacts, { is_fully_paid: false }) === "");
+
+  const partialCapture = { calls: 0 };
+  const partialWrites = { ledger: 0, patch: 0, reload: 0 };
+  let partialReloadCalls = 0;
+  const partialRes = await runChat("Resend invoice " + PARTIAL_LIVE_NO, {
+    writes: partialWrites,
+    capture: partialCapture,
+    fetch: openaiOkFetch(partialCapture),
+    readInvoiceDiagnostic: async () => ({
+      outcome: "ok",
+      invoice_id: INVOICE_ID,
+      is_fully_paid: false,
+      facts: partialModelFacts,
+    }),
+    reloadInvoiceForResend: async () => {
+      partialReloadCalls += 1;
+      partialWrites.reload += 1;
+      return {
+        outcome: "ok",
+        invoice: eligibleInvoice({ invoice_no: PARTIAL_LIVE_NO, status: "sent", amount: 10000, paid_amount: 2500, balance_due: 7500 }),
+        eligibility: { ok: true, reason: "eligible", visible_status: "sent" },
+      };
+    },
+  });
+  const partialBody = parse(partialRes);
+  assert(
+    "C2.3 live partial resend does not use paid denial",
+    String(partialBody.answer).trim() !== INVOICE_RESEND_PAID_COPY &&
+      !/currently paid/i.test(partialBody.answer)
+  );
+  assert("C2.3 live partial continues to C1 reload", partialReloadCalls === 1);
+  assert("C2.3 live partial explicit resend has zero OpenAI", partialCapture.calls === 0);
+  assert("C2.3 live partial zero ledger/invoice writes", partialWrites.ledger === 0 && partialWrites.patch === 0);
+  assert(
+    "C2.3 live partial eligible C1 still mints invoice_resend",
+    partialBody.action && partialBody.action.type === "invoice_resend" && String(partialBody.answer).trim() === INVOICE_RESEND_CONFIRMATION_COPY
+  );
+  assert(
+    "C2.3 live partial answer has no money or email",
+    !/@/.test(partialBody.answer) && !/\$|amount|balance/i.test(partialBody.answer)
+  );
+
+  const stillPaidCapture = { calls: 0 };
+  let stillPaidReload = 0;
+  const stillPaid = await runChat("Resend invoice INV-1784404146783", {
+    capture: stillPaidCapture,
+    fetch: openaiOkFetch(stillPaidCapture),
+    readInvoiceDiagnostic: async () => diagnosticFacts("paid", { invoice_no: "INV-1784404146783" }),
+    reloadInvoiceForResend: async () => {
+      stillPaidReload += 1;
+      throw new Error("truly paid must not reload");
+    },
+  });
+  assert(
+    "C2.3 truly paid still short-circuits",
+    String(parse(stillPaid).answer).trim() === INVOICE_RESEND_PAID_COPY &&
+      parse(stillPaid).action == null &&
+      stillPaidReload === 0 &&
+      stillPaidCapture.calls === 0
+  );
+
+  const legacyCapture = { calls: 0 };
+  const legacyRes = await runChat("Resend invoice INV-20260307-100846-P", {
+    capture: legacyCapture,
+    fetch: openaiOkFetch(legacyCapture),
+    readInvoiceDiagnostic: async () => ({ outcome: "not_found" }),
+  });
+  assert(
+    "C2.3 legacy tenant_id-null invoice remains not_found",
+    String(parse(legacyRes).answer).trim() === INVOICE_RESEND_NOT_FOUND_COPY &&
+      parse(legacyRes).action == null &&
+      legacyCapture.calls === 0
+  );
+
+  assert(
+    "C2.3A reload defaults to server supabaseRequest",
+    /function defaultResendGet/.test(eligibilitySrc) &&
+      /deps\.supabaseGet \|\| deps\.supabaseRequest \|\| defaultResendGet/.test(eligibilitySrc)
+  );
+  assert(
+    "C2.3A production handler does not inject reloadInvoiceForResend",
+    /exports\.handler = createHandler\(\)/.test(chatSrc) && !/reloadInvoiceForResend:/.test(chatSrc)
+  );
+  assert(
+    "C2.3A production-shaped helper does not inject reloadInvoiceForResend",
+    !/reloadInvoiceForResend/.test(Function.prototype.toString.call(runProductionShapedChat))
+  );
+  assert(
+    "C2.3A positive path still reloads then mints from loaded invoice, not diagnostic facts",
+    /loaded = await reload\(/.test(offerSrc) &&
+      /mint\(\{ session, tenantId, invoice: loaded\.invoice \}/.test(offerSrc)
+  );
+
+  const prodWrites = { ledger: 0, patch: 0, zapier: 0 };
+  const prodPaths = [];
+  const prodCapture = { calls: 0 };
+  const prodRow = eligibleInvoice({
+    status: "sent",
+    sent_at: "2026-08-17T12:00:00.000Z",
+    amount: 1000,
+    paid_amount: 0,
+    balance_due: 1000,
+  });
+  const prodRes = await runProductionShapedChat("Resend invoice INV-123", {
+    writes: prodWrites,
+    paths: prodPaths,
+    capture: prodCapture,
+    supabaseGet: async (path) => {
+      if (String(path).startsWith("tenant_project_payments?")) return [];
+      return [prodRow];
+    },
+  });
+  const prodBody = parse(prodRes);
+  assert(
+    "C2.3A production-shaped eligible uses real reload GETs",
+    prodPaths.some((p) => p.startsWith("invoices?") && p.includes("invoice_no=eq.")) &&
+      prodPaths.some((p) => p.startsWith("invoices?") && p.includes("id=eq." + encodeURIComponent(INVOICE_ID))) &&
+      prodPaths.some((p) => p.startsWith("tenant_project_payments?") && p.includes("invoice_id=eq." + encodeURIComponent(INVOICE_ID)))
+  );
+  assert(
+    "C2.3A production-shaped eligible confirmation copy",
+    prodRes.statusCode === 200 && String(prodBody.answer).trim() === INVOICE_RESEND_CONFIRMATION_COPY
+  );
+  assert(
+    "C2.3A production-shaped eligible action object",
+    prodBody.action &&
+      prodBody.action.type === "invoice_resend" &&
+      prodBody.action.label === "Resend invoice" &&
+      typeof prodBody.action.confirmation_token === "string"
+  );
+  assert("C2.3A production-shaped eligible OpenAI calls are 0", prodCapture.calls === 0);
+  assert("C2.3A production-shaped eligible ledger writes are 0", prodWrites.ledger === 0);
+  assert("C2.3A production-shaped eligible invoice writes are 0", prodWrites.patch === 0);
+  assert("C2.3A production-shaped eligible Zapier calls are 0", prodWrites.zapier === 0);
+  assert(
+    "C2.3A production-shaped eligible is not unverified",
+    String(prodBody.answer).trim() !== INVOICE_RESEND_UNVERIFIED_COPY
+  );
+
+  const livePartialNo = "INV-1778183157905";
+  const livePartialRow = eligibleInvoice({
+    invoice_no: livePartialNo,
+    status: "draft",
+    sent_at: "2026-08-17T12:00:00.000Z",
+    paid_at: null,
+    voided_at: null,
+    amount: 10000,
+    paid_amount: 2500,
+    balance_due: 7500,
+    quotes: { status: "sent", accepted_at: null, deposit_paid_at: null, total: 2500 },
+  });
+  const livePartialFacts = toModelFacts(livePartialRow, computePaidFacts(livePartialRow, 2500));
+  assert("C2.3A INV-1778183157905 diagnostic status is sent", livePartialFacts.status === "sent" && livePartialFacts.status !== "paid");
+  const livePartialWrites = { ledger: 0, patch: 0, zapier: 0 };
+  const livePartialPaths = [];
+  const livePartialCapture = { calls: 0 };
+  const livePartialRes = await runProductionShapedChat("Resend invoice " + livePartialNo, {
+    writes: livePartialWrites,
+    paths: livePartialPaths,
+    capture: livePartialCapture,
+    supabaseGet: async (path) => {
+      if (String(path).startsWith("tenant_project_payments?")) {
+        return [{ amount: 2500, tenant_id: OWN_TENANT, invoice_id: INVOICE_ID }];
+      }
+      return [livePartialRow];
+    },
+  });
+  const livePartialBody = parse(livePartialRes);
+  assert(
+    "C2.3A INV-1778183157905 reaches positive reload",
+    livePartialPaths.some((p) => p.startsWith("invoices?") && isInvoiceIdQueryPath(p))
+  );
+  assert(
+    "C2.3A INV-1778183157905 is not paid and not unverified",
+    String(livePartialBody.answer).trim() !== INVOICE_RESEND_PAID_COPY &&
+      String(livePartialBody.answer).trim() !== INVOICE_RESEND_UNVERIFIED_COPY
+  );
+  assert(
+    "C2.3A INV-1778183157905 eligible confirmation + action",
+    String(livePartialBody.answer).trim() === INVOICE_RESEND_CONFIRMATION_COPY &&
+      livePartialBody.action &&
+      livePartialBody.action.type === "invoice_resend"
+  );
+  assert(
+    "C2.3A INV-1778183157905 zero OpenAI/ledger/invoice/Zapier writes",
+    livePartialCapture.calls === 0 &&
+      livePartialWrites.ledger === 0 &&
+      livePartialWrites.patch === 0 &&
+      livePartialWrites.zapier === 0
+  );
+
+  const directReloadPaths = [];
+  const directLoaded = await reloadInvoiceForResend(OWN_TENANT, INVOICE_ID, {
+    supabaseGet: async (path) => {
+      directReloadPaths.push(String(path || ""));
+      if (String(path).startsWith("tenant_project_payments?")) return [];
+      return [prodRow];
+    },
+  });
+  assert(
+    "C2.3A reloadInvoiceForResend itself performs tenant-scoped C1 GET",
+    directLoaded.outcome === "ok" &&
+      directLoaded.eligibility &&
+      directLoaded.eligibility.ok === true &&
+      directReloadPaths.some(
+        (p) =>
+          p.startsWith("invoices?") &&
+          p.includes("tenant_id=eq." + OWN_TENANT) &&
+          p.includes("id=eq." + INVOICE_ID)
+      )
+  );
+
+  const reloadFailCapture = { calls: 0 };
+  const reloadFail = await runProductionShapedChat("Resend invoice INV-123", {
+    capture: reloadFailCapture,
+    supabaseGet: async (path) => {
+      if (isInvoiceIdQueryPath(path)) throw new Error("reload failed");
+      if (String(path).startsWith("tenant_project_payments?")) return [];
+      return [prodRow];
+    },
+  });
+  assert(
+    "C2.3A genuine reload failure returns unverified with no action",
+    String(parse(reloadFail).answer).trim() === INVOICE_RESEND_UNVERIFIED_COPY &&
+      parse(reloadFail).action == null &&
+      reloadFailCapture.calls === 0
+  );
+
+  const missingEmailProd = await runProductionShapedChat("Resend invoice INV-123", {
+    supabaseGet: async (path) => {
+      if (String(path).startsWith("tenant_project_payments?")) return [];
+      return [eligibleInvoice({ customer_email: "" })];
+    },
+  });
+  assert(
+    "C2.3A missing-email denial from real reload",
+    String(parse(missingEmailProd).answer).trim() === INVOICE_RESEND_MISSING_EMAIL_COPY && parse(missingEmailProd).action == null
+  );
+
+  const missingPublicProd = await runProductionShapedChat("Resend invoice INV-123", {
+    supabaseGet: async (path) => {
+      if (String(path).startsWith("tenant_project_payments?")) return [];
+      return [eligibleInvoice({ public_token: "" })];
+    },
+  });
+  assert(
+    "C2.3A missing-public-reference denial from real reload",
+    String(parse(missingPublicProd).answer).trim() === INVOICE_RESEND_MISSING_PUBLIC_COPY && parse(missingPublicProd).action == null
+  );
+
+  const becamePaid = await runProductionShapedChat("Resend invoice INV-123", {
+    supabaseGet: async (path) => {
+      if (String(path).startsWith("tenant_project_payments?")) return [];
+      if (isInvoiceIdQueryPath(path)) {
+        return [eligibleInvoice({ status: "sent", amount: 1000, paid_amount: 1000, balance_due: 0 })];
+      }
+      return [prodRow];
+    },
+  });
+  assert(
+    "C2.3A state-becomes-paid during reload is paid denial, no token",
+    String(parse(becamePaid).answer).trim() === INVOICE_RESEND_PAID_COPY && parse(becamePaid).action == null
+  );
+
+  const otherTenantDiag = await runProductionShapedChat("Resend invoice INV-123", {
+    supabaseGet: async (path) => {
+      if (String(path).startsWith("tenant_project_payments?")) return [];
+      return [eligibleInvoice({ tenant_id: OTHER_TENANT, invoice_no: "INV-123" })];
+    },
+  });
+  assert(
+    "C2.3A other-tenant invoice_no cannot load at diagnostic",
+    String(parse(otherTenantDiag).answer).trim() === INVOICE_RESEND_NOT_FOUND_COPY && parse(otherTenantDiag).action == null
+  );
+
+  const otherTenantReload = await runProductionShapedChat("Resend invoice INV-123", {
+    supabaseGet: async (path) => {
+      if (String(path).startsWith("tenant_project_payments?")) return [];
+      if (isInvoiceIdQueryPath(path)) {
+        return [eligibleInvoice({ tenant_id: OTHER_TENANT, invoice_no: "INV-123" })];
+      }
+      return [eligibleInvoice({ invoice_no: "INV-123" })];
+    },
+  });
+  assert(
+    "C2.3A other-tenant invoice cannot load through positive resend reload",
+    String(parse(otherTenantReload).answer).trim() === INVOICE_RESEND_NOT_FOUND_COPY && parse(otherTenantReload).action == null
+  );
+
+  const legacyProd = await runProductionShapedChat("Resend invoice INV-20260307-100846-P", {
+    supabaseGet: async (path) => {
+      if (String(path).startsWith("tenant_project_payments?")) return [];
+      return [
+        eligibleInvoice({
+          invoice_no: "INV-20260307-100846-P",
+          tenant_id: null,
+          business_id: "legacy-business",
+          status: "SENT",
+        }),
+      ];
+    },
+  });
+  assert(
+    "C2.3A production-shaped legacy tenant_id-null remains not_found",
+    String(parse(legacyProd).answer).trim() === INVOICE_RESEND_NOT_FOUND_COPY && parse(legacyProd).action == null
+  );
+
+  const stalePaidRow = eligibleInvoice({
+    status: "paid",
+    amount: 1000,
+    paid_amount: 200,
+    balance_due: 800,
+    paid_at: "2026-08-01T00:00:00.000Z",
+    sent_at: "2026-08-17T12:00:00.000Z",
+    quotes: { status: "accepted", accepted_at: "2026-07-15T18:22:00.000Z", deposit_paid_at: null, total: 200 },
+  });
+  const stalePaidFacts = toModelFacts(stalePaidRow, computePaidFacts(stalePaidRow, 200));
+  assert(
+    "C2.3A stale raw status paid without covering amounts is accepted, not paid",
+    stalePaidFacts.status === "accepted" && stalePaidFacts.status !== "paid"
+  );
+  const stalePaidElig = evaluateInvoiceResendEligibility(stalePaidRow, computePaidFacts(stalePaidRow, 200));
+  assert("C2.3A stale raw paid does not fail-closed as paid in C1", stalePaidElig.ok === true && stalePaidElig.visible_status === "accepted");
+  const stalePaidChat = await runProductionShapedChat("Resend invoice INV-123", {
+    supabaseGet: async (path) => {
+      if (String(path).startsWith("tenant_project_payments?")) {
+        return [{ amount: 200, tenant_id: OWN_TENANT, invoice_id: INVOICE_ID }];
+      }
+      return [stalePaidRow];
+    },
+  });
+  assert(
+    "C2.3A stale raw paid resend is not paid denial",
+    String(parse(stalePaidChat).answer).trim() !== INVOICE_RESEND_PAID_COPY &&
+      parse(stalePaidChat).action &&
+      parse(stalePaidChat).action.type === "invoice_resend"
+  );
+
+  const stalePaidAtRow = eligibleInvoice({
+    status: "draft",
+    paid_at: "2026-08-01T00:00:00.000Z",
+    sent_at: "2026-08-17T12:00:00.000Z",
+    amount: 1000,
+    paid_amount: 200,
+    balance_due: 800,
+  });
+  const stalePaidAtFacts = toModelFacts(stalePaidAtRow, computePaidFacts(stalePaidAtRow, 200));
+  assert("C2.3A stale paid_at without covering amounts is sent, not paid", stalePaidAtFacts.status === "sent" && stalePaidAtFacts.status !== "paid");
+  const stalePaidAtChat = await runProductionShapedChat("Resend invoice INV-123", {
+    supabaseGet: async (path) => {
+      if (String(path).startsWith("tenant_project_payments?")) {
+        return [{ amount: 200, tenant_id: OWN_TENANT, invoice_id: INVOICE_ID }];
+      }
+      return [stalePaidAtRow];
+    },
+  });
+  assert(
+    "C2.3A stale paid_at resend is not paid denial",
+    String(parse(stalePaidAtChat).answer).trim() !== INVOICE_RESEND_PAID_COPY &&
+      parse(stalePaidAtChat).action &&
+      parse(stalePaidAtChat).action.type === "invoice_resend"
+  );
+
+  const STALE_PAID_NO = "INV-STALE-PAID";
+  const staleRawNoQuote = eligibleInvoice({
+    invoice_no: STALE_PAID_NO,
+    status: "paid",
+    paid_at: null,
+    sent_at: "2026-08-17T12:00:00.000Z",
+    amount: 1000,
+    paid_amount: 200,
+    balance_due: 800,
+    quotes: { status: "sent", accepted_at: null, deposit_paid_at: null, total: 200 },
+  });
+  const staleRawNoQuotePaid = computePaidFacts(staleRawNoQuote, 200);
+  const staleRawNoQuoteFacts = toModelFacts(staleRawNoQuote, staleRawNoQuotePaid);
+  assert(
+    "C2.3B stale raw paid display may remain paid while canonical proof is false",
+    staleRawNoQuoteFacts.status === "paid" &&
+      isCanonicalInvoiceFullyPaid(staleRawNoQuotePaid) === false &&
+      !("is_fully_paid" in staleRawNoQuoteFacts)
+  );
+  assert(
+    "C2.3B stale raw paid is not a known-paid short-circuit",
+    knownIneligibleFromDiagnosticFacts(staleRawNoQuoteFacts, { is_fully_paid: false }) === ""
+  );
+  const staleRawElig = evaluateInvoiceResendEligibility(staleRawNoQuote, staleRawNoQuotePaid);
+  assert("C2.3B C1 treats stale raw paid without coverage as eligible", staleRawElig.ok === true);
+  const staleRawWrites = { ledger: 0, patch: 0, zapier: 0 };
+  const staleRawPaths = [];
+  const staleRawCapture = { calls: 0 };
+  const staleRawRes = await runProductionShapedChat("Resend invoice " + STALE_PAID_NO, {
+    writes: staleRawWrites,
+    paths: staleRawPaths,
+    capture: staleRawCapture,
+    supabaseGet: async (path) => {
+      if (String(path).startsWith("tenant_project_payments?")) {
+        return [{ amount: 200, tenant_id: OWN_TENANT, invoice_id: INVOICE_ID }];
+      }
+      return [staleRawNoQuote];
+    },
+  });
+  const staleRawBody = parse(staleRawRes);
+  assert(
+    "C2.3B stale raw paid does not return paid denial",
+    String(staleRawBody.answer).trim() !== INVOICE_RESEND_PAID_COPY
+  );
+  assert(
+    "C2.3B stale raw paid reaches C1 reload",
+    staleRawPaths.some((p) => p.startsWith("invoices?") && isInvoiceIdQueryPath(p))
+  );
+  assert(
+    "C2.3B stale raw paid eligible confirmation + action",
+    String(staleRawBody.answer).trim() === INVOICE_RESEND_CONFIRMATION_COPY &&
+      staleRawBody.action &&
+      staleRawBody.action.type === "invoice_resend" &&
+      staleRawBody.action.label === "Resend invoice"
+  );
+  assert(
+    "C2.3B stale raw paid zero OpenAI/ledger/invoice/Zapier",
+    staleRawCapture.calls === 0 &&
+      staleRawWrites.ledger === 0 &&
+      staleRawWrites.patch === 0 &&
+      staleRawWrites.zapier === 0
+  );
+
+  const stalePaidAtPaths = [];
+  const stalePaidAtReload = await runProductionShapedChat("Resend invoice INV-123", {
+    paths: stalePaidAtPaths,
+    supabaseGet: async (path) => {
+      if (String(path).startsWith("tenant_project_payments?")) {
+        return [{ amount: 200, tenant_id: OWN_TENANT, invoice_id: INVOICE_ID }];
+      }
+      return [stalePaidAtRow];
+    },
+  });
+  assert(
+    "C2.3B stale paid_at canonical fully paid is false",
+    isCanonicalInvoiceFullyPaid(computePaidFacts(stalePaidAtRow, 200)) === false
+  );
+  assert(
+    "C2.3B stale paid_at reaches C1 reload",
+    String(parse(stalePaidAtReload).answer).trim() !== INVOICE_RESEND_PAID_COPY &&
+      stalePaidAtPaths.some((p) => p.startsWith("invoices?") && isInvoiceIdQueryPath(p)) &&
+      parse(stalePaidAtReload).action &&
+      parse(stalePaidAtReload).action.type === "invoice_resend"
+  );
+
+  async function coverageResend(row, payments, message) {
+    const paths = [];
+    const capture = { calls: 0 };
+    const writes = { ledger: 0, patch: 0, zapier: 0 };
+    const res = await runProductionShapedChat(message || "Resend invoice INV-123", {
+      paths,
+      capture,
+      writes,
+      supabaseGet: async (path) => {
+        if (String(path).startsWith("tenant_project_payments?")) return payments;
+        return [row];
+      },
+    });
+    return { res, body: parse(res), paths, capture, writes };
+  }
+
+  const coveringAmount = await coverageResend(
+    eligibleInvoice({ status: "sent", amount: 1000, paid_amount: 1000, balance_due: 0 }),
+    []
+  );
+  assert(
+    "C2.3B invoice paid_amount covering amount is paid denial",
+    String(coveringAmount.body.answer).trim() === INVOICE_RESEND_PAID_COPY &&
+      coveringAmount.body.action == null &&
+      !coveringAmount.paths.some((p) => p.startsWith("invoices?") && isInvoiceIdQueryPath(p))
+  );
+
+  const coveringLedger = await coverageResend(
+    eligibleInvoice({ status: "sent", amount: 1000, paid_amount: 0, balance_due: 1000 }),
+    [{ amount: 1000, tenant_id: OWN_TENANT, invoice_id: INVOICE_ID }]
+  );
+  assert(
+    "C2.3B ledger covering invoice amount is paid denial",
+    String(coveringLedger.body.answer).trim() === INVOICE_RESEND_PAID_COPY && coveringLedger.body.action == null
+  );
+
+  const overLedger = await coverageResend(
+    eligibleInvoice({ status: "sent", amount: 1000, paid_amount: 0, balance_due: 0 }),
+    [{ amount: 1200, tenant_id: OWN_TENANT, invoice_id: INVOICE_ID }]
+  );
+  assert(
+    "C2.3B ledger over-cover is paid denial",
+    String(overLedger.body.answer).trim() === INVOICE_RESEND_PAID_COPY && overLedger.body.action == null
+  );
+
+  const partialAmount = await coverageResend(
+    eligibleInvoice({ status: "sent", amount: 1000, paid_amount: 250, balance_due: 750 }),
+    []
+  );
+  assert(
+    "C2.3B partial paid_amount is not paid denial and reloads",
+    String(partialAmount.body.answer).trim() !== INVOICE_RESEND_PAID_COPY &&
+      partialAmount.paths.some((p) => p.startsWith("invoices?") && isInvoiceIdQueryPath(p)) &&
+      partialAmount.body.action &&
+      partialAmount.body.action.type === "invoice_resend"
+  );
+
+  const partialLedger = await coverageResend(
+    eligibleInvoice({ status: "sent", amount: 1000, paid_amount: 0, balance_due: 1000 }),
+    [{ amount: 250, tenant_id: OWN_TENANT, invoice_id: INVOICE_ID }]
+  );
+  assert(
+    "C2.3B partial ledger is not paid denial and reloads",
+    String(partialLedger.body.answer).trim() !== INVOICE_RESEND_PAID_COPY &&
+      partialLedger.paths.some((p) => p.startsWith("invoices?") && isInvoiceIdQueryPath(p)) &&
+      partialLedger.body.action &&
+      partialLedger.body.action.type === "invoice_resend"
+  );
+
+  const quoteOnlyRow = eligibleInvoice({
+    status: "draft",
+    sent_at: "2026-08-17T12:00:00.000Z",
+    amount: 10000,
+    paid_amount: 2500,
+    balance_due: 7500,
+    quotes: { status: "sent", accepted_at: null, deposit_paid_at: null, total: 2500 },
+  });
+  const quoteOnly = await coverageResend(quoteOnlyRow, [
+    { amount: 2500, tenant_id: OWN_TENANT, invoice_id: INVOICE_ID },
+  ]);
+  assert(
+    "C2.3B quotes.total-only coverage is not canonical paid",
+    isCanonicalInvoiceFullyPaid(computePaidFacts(quoteOnlyRow, 2500)) === false
+  );
+  assert(
+    "C2.3B quotes.total-only coverage is not paid denial and reloads",
+    String(quoteOnly.body.answer).trim() !== INVOICE_RESEND_PAID_COPY &&
+      quoteOnly.paths.some((p) => p.startsWith("invoices?") && isInvoiceIdQueryPath(p)) &&
+      quoteOnly.body.action &&
+      quoteOnly.body.action.type === "invoice_resend"
+  );
+
+  const livePaidCovering = await coverageResend(
+    eligibleInvoice({
+      invoice_no: "INV-1784404146783",
+      status: "paid",
+      amount: 1000,
+      paid_amount: 1000,
+      balance_due: 0,
+    }),
+    [{ amount: 1000, tenant_id: OWN_TENANT, invoice_id: INVOICE_ID }],
+    "Resend invoice INV-1784404146783"
+  );
+  assert(
+    "C2.3B INV-1784404146783 canonical fully paid remains paid denial",
+    String(livePaidCovering.body.answer).trim() === INVOICE_RESEND_PAID_COPY &&
+      livePaidCovering.body.action == null &&
+      livePaidCovering.capture.calls === 0 &&
+      !livePaidCovering.paths.some((p) => p.startsWith("invoices?") && isInvoiceIdQueryPath(p))
+  );
+
+  const livePartialEnv = await readInvoiceDiagnostic(
+    OWN_TENANT,
+    { type: "invoice_no", value: "INV-1778183157905" },
+    {
+      supabaseGet: async (path) => {
+        if (String(path).startsWith("tenant_project_payments?")) {
+          return [{ amount: 2500, tenant_id: OWN_TENANT, invoice_id: INVOICE_ID }];
+        }
+        return [livePartialRow];
+      },
+    }
+  );
+  assert(
+    "C2.3B INV-1778183157905 diagnostic envelope is_fully_paid false and status sent",
+    livePartialEnv.outcome === "ok" &&
+      livePartialEnv.is_fully_paid === false &&
+      livePartialEnv.facts.status === "sent" &&
+      !("is_fully_paid" in livePartialEnv.facts)
+  );
+
+  assert(
+    "C2.3B C1 paid proof uses computePaidFacts isFullyPaid",
+    /if \(computed\.isFullyPaid\) return \{ ok: false, reason: "paid" \}/.test(eligibilitySrc)
+  );
+  assert(
+    "C2.3B C1 and diagnostic share computePaidFacts / isCanonicalInvoiceFullyPaid",
+    /isCanonicalInvoiceFullyPaid\(paidFacts\)/.test(read("netlify/functions/_lib/mg-support/invoice-diagnostic.js")) &&
+      /computePaidFacts\(invoice, sumScopedLedgerAmounts/.test(eligibilitySrc)
+  );
+  assert(
+    "C2.3B production default GET wiring preserved",
+    /function defaultResendGet/.test(eligibilitySrc) &&
+      /deps\.supabaseGet \|\| deps\.supabaseRequest \|\| defaultResendGet/.test(eligibilitySrc)
+  );
+  assert("C2.3B unused canonicalFullyPaid helper stays exported", typeof canonicalFullyPaidFromDiagnostic === "function");
 
   console.log("");
   console.log(passed + " passed, " + failed + " failed");
