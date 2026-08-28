@@ -91,6 +91,42 @@ const MG_SUPPORT_INVOICE_RESEND_CHANGED =
 const MG_SUPPORT_INVOICE_RESEND_TRANSPORT =
   "Margin Guard could not confirm the result of the resend request. It will not retry automatically.";
 
+const MG_SUPPORT_MY_CASES_API = "/.netlify/functions/mg-support-my-cases";
+const MG_SUPPORT_MY_CASES_ZERO = "You don't have any support cases yet.";
+const MG_SUPPORT_CASE_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function mgSupportFormatCaseDate(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const ms = Date.parse(text);
+  if (!Number.isFinite(ms)) return "";
+  try {
+    return new Date(ms).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch (_err) {
+    return "";
+  }
+}
+
+function mgSupportRelatedItemLabel(type, ref) {
+  const kind = String(type || "").trim().toLowerCase();
+  if (!kind || kind === "none") return "";
+  const labels = {
+    invoice: "Invoice",
+    quote: "Quote",
+    project: "Project",
+    contract: "Contract",
+  };
+  const label = labels[kind] || "Related item";
+  const raw = String(ref || "").trim();
+  if (!raw || MG_SUPPORT_CASE_UUID_RE.test(raw)) return label;
+  return label + " " + raw;
+}
+
 function mgSupportApprovedInvoiceResendAction(action) {
   if (!action || typeof action !== "object" || Array.isArray(action)) return null;
   if (action.type !== MG_SUPPORT_INVOICE_RESEND_TYPE) return null;
@@ -148,6 +184,7 @@ function mgSupportMapInvoiceResendClientResult(data, transportError) {
   const API = "/.netlify/functions/mg-support-chat";
   const CREATE_CASE_API = "/.netlify/functions/mg-support-create-case";
   const INVOICE_RESEND_API = MG_SUPPORT_INVOICE_RESEND_API;
+  const MY_CASES_API = MG_SUPPORT_MY_CASES_API;
   const SUGGESTIONS = [
     "What does Minimum Floor mean?",
     "How do I create an invoice?",
@@ -161,6 +198,13 @@ function mgSupportMapInvoiceResendClientResult(data, transportError) {
   let messages = [];
   let lastFocus = null;
   let mounted = false;
+  let supportPanel = "ask";
+  let casesLoading = false;
+  let casesError = "";
+  let casesList = [];
+  let casesDetail = null;
+  let casesView = "list";
+  let casesRequestSeq = 0;
 
   function isDesktopDock() {
     try {
@@ -280,12 +324,21 @@ function mgSupportMapInvoiceResendClientResult(data, transportError) {
       "    </div>" +
       '    <button type="button" class="mg-support-close" id="mgSupportCloseBtn" aria-label="Close Ask Margin Guard">Close</button>' +
       "  </header>" +
-      '  <div class="mg-support-thread" id="mgSupportThread" aria-live="polite"></div>' +
-      '  <form class="mg-support-composer" id="mgSupportForm">' +
-      '    <label class="visually-hidden" for="mgSupportInput">Ask Margin Guard</label>' +
-      '    <textarea id="mgSupportInput" name="message" rows="2" maxlength="1200" placeholder="Ask how to use Margin Guard"></textarea>' +
-      '    <button type="submit" class="btn primary mg-support-send" id="mgSupportSendBtn">Send</button>' +
-      "  </form>" +
+      '  <div class="mg-support-tabs" role="tablist" aria-label="Support views" style="display:flex;gap:8px;padding:8px 16px 0;">' +
+      '    <button type="button" class="mg-support-chip" id="mgSupportTabAsk" role="tab" aria-selected="true" aria-controls="mgSupportAskPanel">Ask</button>' +
+      '    <button type="button" class="mg-support-chip" id="mgSupportTabCases" role="tab" aria-selected="false" aria-controls="mgSupportCasesPanel">My Cases</button>' +
+      "  </div>" +
+      '  <div id="mgSupportAskPanel" role="tabpanel">' +
+      '    <div class="mg-support-thread" id="mgSupportThread" aria-live="polite"></div>' +
+      '    <form class="mg-support-composer" id="mgSupportForm">' +
+      '      <label class="visually-hidden" for="mgSupportInput">Ask Margin Guard</label>' +
+      '      <textarea id="mgSupportInput" name="message" rows="2" maxlength="1200" placeholder="Ask how to use Margin Guard"></textarea>' +
+      '      <button type="submit" class="btn primary mg-support-send" id="mgSupportSendBtn">Send</button>' +
+      "    </form>" +
+      "  </div>" +
+      '  <div id="mgSupportCasesPanel" role="tabpanel" hidden>' +
+      '    <div class="mg-support-thread" id="mgSupportCasesBody" aria-live="polite"></div>' +
+      "  </div>" +
       "</aside>";
 
     document.getElementById("mgSupportOverlay").addEventListener("click", function () {
@@ -303,6 +356,12 @@ function mgSupportMapInvoiceResendClientResult(data, transportError) {
         event.preventDefault();
         void submitQuestion();
       }
+    });
+    document.getElementById("mgSupportTabAsk").addEventListener("click", function () {
+      setSupportPanel("ask");
+    });
+    document.getElementById("mgSupportTabCases").addEventListener("click", function () {
+      setSupportPanel("cases");
     });
     document.addEventListener("keydown", onGlobalKey);
     if (window.matchMedia) {
@@ -345,8 +404,12 @@ function mgSupportMapInvoiceResendClientResult(data, transportError) {
     if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
     if (open) {
       lastFocus = document.activeElement;
-      const input = document.getElementById("mgSupportInput");
-      if (input) input.focus();
+      if (supportPanel === "cases") {
+        void loadMyCasesList();
+      } else {
+        const input = document.getElementById("mgSupportInput");
+        if (input) input.focus();
+      }
     } else if (lastFocus && typeof lastFocus.focus === "function") {
       lastFocus.focus();
     } else if (btn) {
@@ -523,6 +586,231 @@ function mgSupportMapInvoiceResendClientResult(data, transportError) {
       });
     });
     thread.scrollTop = thread.scrollHeight;
+  }
+
+  function setSupportPanel(next) {
+    supportPanel = next === "cases" ? "cases" : "ask";
+    const askPanel = document.getElementById("mgSupportAskPanel");
+    const casesPanel = document.getElementById("mgSupportCasesPanel");
+    const tabAsk = document.getElementById("mgSupportTabAsk");
+    const tabCases = document.getElementById("mgSupportTabCases");
+    if (askPanel) askPanel.hidden = supportPanel !== "ask";
+    if (casesPanel) casesPanel.hidden = supportPanel !== "cases";
+    if (tabAsk) tabAsk.setAttribute("aria-selected", supportPanel === "ask" ? "true" : "false");
+    if (tabCases) tabCases.setAttribute("aria-selected", supportPanel === "cases" ? "true" : "false");
+    if (supportPanel === "cases") {
+      void loadMyCasesList();
+    } else {
+      renderThread();
+      const input = document.getElementById("mgSupportInput");
+      if (input && open) input.focus();
+    }
+  }
+
+  function casesFetchHeaders() {
+    return { Accept: "application/json" };
+  }
+
+  async function fetchMyCases(caseRef) {
+    const qs = caseRef ? "?case_ref=" + encodeURIComponent(String(caseRef)) : "";
+    const res = await fetch(MY_CASES_API + qs, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+      headers: casesFetchHeaders(),
+    });
+    const data = await res.json().catch(function () {
+      return {};
+    });
+    return { res: res, data: data };
+  }
+
+  async function loadMyCasesList() {
+    casesView = "list";
+    casesDetail = null;
+    casesError = "";
+    casesLoading = true;
+    const seq = (casesRequestSeq += 1);
+    renderCasesPanel();
+    try {
+      const got = await fetchMyCases("");
+      if (seq !== casesRequestSeq) return;
+      if (!got.res.ok || !got.data || got.data.ok !== true) {
+        casesList = [];
+        casesError = String(got.data && got.data.error ? got.data.error : "Support cases could not be loaded.");
+      } else {
+        casesList = Array.isArray(got.data.cases) ? got.data.cases : [];
+        casesError = "";
+      }
+    } catch (_err) {
+      if (seq !== casesRequestSeq) return;
+      casesList = [];
+      casesError = "Support cases could not be loaded.";
+    }
+    casesLoading = false;
+    renderCasesPanel();
+  }
+
+  async function loadMyCasesDetail(caseRef) {
+    const ref = String(caseRef || "").trim();
+    if (!ref) return;
+    casesView = "detail";
+    casesDetail = null;
+    casesError = "";
+    casesLoading = true;
+    const seq = (casesRequestSeq += 1);
+    renderCasesPanel();
+    try {
+      const got = await fetchMyCases(ref);
+      if (seq !== casesRequestSeq) return;
+      if (!got.res.ok || !got.data || got.data.ok !== true || !got.data.case) {
+        casesDetail = null;
+        casesError = String(
+          got.data && got.data.error
+            ? got.data.error
+            : "No support case matching that reference was found in your account."
+        );
+      } else {
+        casesDetail = got.data.case;
+        casesError = "";
+      }
+    } catch (_err) {
+      if (seq !== casesRequestSeq) return;
+      casesDetail = null;
+      casesError = "Support cases could not be loaded.";
+    }
+    casesLoading = false;
+    renderCasesPanel();
+  }
+
+  function appendLabeled(parent, label, value) {
+    const text = String(value == null ? "" : value);
+    if (!text) return;
+    const p = document.createElement("p");
+    const strong = document.createElement("strong");
+    strong.textContent = label;
+    p.appendChild(strong);
+    p.appendChild(document.createElement("br"));
+    p.appendChild(document.createTextNode(text));
+    parent.appendChild(p);
+  }
+
+  function renderCaseCard(row) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "mg-support-chip";
+    btn.style.display = "block";
+    btn.style.width = "100%";
+    btn.style.textAlign = "left";
+    btn.style.margin = "0 0 8px";
+    btn.setAttribute("data-mg-case-ref", String(row && row.case_ref ? row.case_ref : ""));
+    appendLabeled(btn, "Case", row && row.case_ref ? row.case_ref : "");
+    appendLabeled(btn, "Issue", row && row.subject ? row.subject : "Support case");
+    appendLabeled(btn, "Status", row && row.status_label ? row.status_label : "Unavailable");
+    appendLabeled(btn, "Created", mgSupportFormatCaseDate(row && row.created_at) || "—");
+    appendLabeled(btn, "Last updated", mgSupportFormatCaseDate(row && row.updated_at) || "—");
+    return btn;
+  }
+
+  function renderCaseDetail(row) {
+    const wrap = document.createElement("div");
+    wrap.className = "mg-support-msg mg-support-msg--assistant";
+    appendLabeled(wrap, "Case reference", row && row.case_ref ? row.case_ref : "");
+    appendLabeled(wrap, "Issue", row && row.subject ? row.subject : "Support case");
+    appendLabeled(wrap, "Status", row && row.status_label ? row.status_label : "Unavailable");
+    appendLabeled(wrap, "Status explanation", row && row.status_copy ? row.status_copy : "");
+    appendLabeled(wrap, "Created", mgSupportFormatCaseDate(row && row.created_at) || "—");
+    appendLabeled(wrap, "Last updated", mgSupportFormatCaseDate(row && row.updated_at) || "—");
+    appendLabeled(
+      wrap,
+      "Related item",
+      mgSupportRelatedItemLabel(row && row.related_entity_type, row && row.related_entity_ref)
+    );
+    appendLabeled(wrap, "Original issue excerpt", row && row.question_excerpt ? row.question_excerpt : "");
+    if (row && row.status === "resolved") {
+      appendLabeled(wrap, "Resolved", mgSupportFormatCaseDate(row.resolved_at) || "—");
+    }
+    return wrap;
+  }
+
+  function renderCasesPanel() {
+    const body = document.getElementById("mgSupportCasesBody");
+    if (!body) return;
+    while (body.firstChild) body.removeChild(body.firstChild);
+
+    const header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.alignItems = "center";
+    header.style.justifyContent = "space-between";
+    header.style.gap = "8px";
+    header.style.margin = "0 0 12px";
+    const title = document.createElement("h3");
+    title.style.margin = "0";
+    title.style.fontSize = "1rem";
+    title.textContent = "My Cases";
+    const refresh = document.createElement("button");
+    refresh.type = "button";
+    refresh.className = "btn ghost mg-support-retry";
+    refresh.id = "mgSupportCasesRefresh";
+    refresh.textContent = "Refresh";
+    header.appendChild(title);
+    header.appendChild(refresh);
+    body.appendChild(header);
+
+    if (casesView === "detail") {
+      const backWrap = document.createElement("p");
+      const back = document.createElement("button");
+      back.type = "button";
+      back.className = "btn ghost mg-support-retry";
+      back.id = "mgSupportCasesBack";
+      back.textContent = "Back";
+      backWrap.appendChild(back);
+      body.appendChild(backWrap);
+    }
+
+    if (casesLoading) {
+      const loading = document.createElement("p");
+      loading.className = "mg-support-loading";
+      loading.setAttribute("aria-live", "polite");
+      loading.textContent = "Loading support cases…";
+      body.appendChild(loading);
+    } else if (casesError) {
+      const err = document.createElement("p");
+      err.className = "mg-support-needs";
+      err.setAttribute("role", "alert");
+      err.textContent = casesError;
+      body.appendChild(err);
+    } else if (casesView === "detail" && casesDetail) {
+      body.appendChild(renderCaseDetail(casesDetail));
+    } else if (!casesList.length) {
+      const zero = document.createElement("p");
+      zero.textContent = MG_SUPPORT_MY_CASES_ZERO;
+      body.appendChild(zero);
+    } else {
+      casesList.forEach(function (row) {
+        body.appendChild(renderCaseCard(row));
+      });
+    }
+
+    refresh.addEventListener("click", function () {
+      if (casesView === "detail" && casesDetail && casesDetail.case_ref) {
+        void loadMyCasesDetail(casesDetail.case_ref);
+      } else {
+        void loadMyCasesList();
+      }
+    });
+    const back = document.getElementById("mgSupportCasesBack");
+    if (back) {
+      back.addEventListener("click", function () {
+        void loadMyCasesList();
+      });
+    }
+    body.querySelectorAll("[data-mg-case-ref]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        const ref = el.getAttribute("data-mg-case-ref") || "";
+        void loadMyCasesDetail(ref);
+      });
+    });
   }
 
   async function submitSupportCase(idx) {
@@ -709,5 +997,9 @@ if (typeof module === "object" && module.exports) {
     INVOICE_RESEND_EXPIRED: MG_SUPPORT_INVOICE_RESEND_EXPIRED,
     INVOICE_RESEND_CHANGED: MG_SUPPORT_INVOICE_RESEND_CHANGED,
     INVOICE_RESEND_TRANSPORT: MG_SUPPORT_INVOICE_RESEND_TRANSPORT,
+    MY_CASES_API: MG_SUPPORT_MY_CASES_API,
+    MY_CASES_ZERO: MG_SUPPORT_MY_CASES_ZERO,
+    formatCaseDate: mgSupportFormatCaseDate,
+    relatedItemLabel: mgSupportRelatedItemLabel,
   };
 }

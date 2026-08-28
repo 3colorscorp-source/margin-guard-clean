@@ -11,6 +11,7 @@
  * This function is read-only. Support-case INSERT is mg-support-create-case only.
  * Invoice resend confirmation may be offered here; ledger INSERT is mg-support-invoice-resend only.
  * Device pairing and deposit CTA diagnostics are read-only; they do not reset devices, mint pairing codes, or write payments.
+ * Owner My Cases list/detail is read-only; tenant_id comes from the signed session only.
  */
 
 "use strict";
@@ -73,6 +74,12 @@ const { readDevicePairingDiagnostic } = require("./_lib/mg-support/device-pairin
 const { devicePairingAnswer } = require("./_lib/mg-support/device-pairing-conclusion");
 const { readDepositCtaDiagnostic } = require("./_lib/mg-support/deposit-cta-diagnostic");
 const { depositCtaAnswer } = require("./_lib/mg-support/deposit-cta-conclusion");
+const {
+  extractSupportCaseRef,
+  readMyCasesList,
+  readMyCasesDetail,
+  myCasesChatAnswer,
+} = require("./_lib/mg-support/my-cases");
 const {
   determineEscalationEligibility,
   bindRelatedEntity,
@@ -234,6 +241,8 @@ function createHandler(deps = {}) {
   const readContract = deps.readContractDiagnostic || readContractDiagnostic;
   const readDevice = deps.readDevicePairingDiagnostic || readDevicePairingDiagnostic;
   const readDeposit = deps.readDepositCtaDiagnostic || readDepositCtaDiagnostic;
+  const readCasesList = deps.readMyCasesList || readMyCasesList;
+  const readCasesDetail = deps.readMyCasesDetail || readMyCasesDetail;
 
   return async function handler(event) {
     try {
@@ -475,6 +484,36 @@ function createHandler(deps = {}) {
             }
           }
         }
+      } else if (intent === "my_cases") {
+        if (!hasOwnerEmailAndCustomer(session)) {
+          diagnostic = { outcome: "no_tenant_context", myCases: { result: "no_tenant_context" } };
+        } else {
+          let tenant = null;
+          try {
+            tenant = await resolveTenant(session);
+          } catch (_err) {
+            console.error("[mg-support-chat] tenant resolve failed");
+            return json(502, {
+              ok: false,
+              error: "Support cases could not be loaded.",
+            });
+          }
+          if (!tenant?.id) {
+            diagnostic = { outcome: "no_tenant_context", myCases: { result: "no_tenant_context" } };
+          } else {
+            trustedTenantId = String(tenant.id);
+            try {
+              const exactRef = extractSupportCaseRef(message);
+              const lookedUp = exactRef
+                ? await readCasesDetail(String(tenant.id), exactRef, deps)
+                : await readCasesList(String(tenant.id), deps);
+              diagnostic = { outcome: "ok", myCases: lookedUp };
+            } catch (_err) {
+              console.error("[mg-support-chat] my cases read failed");
+              diagnostic = { outcome: "ok", myCases: { result: "read_failed" } };
+            }
+          }
+        }
       }
 
       let resendOffer = { action: null, copy: "", skipEscalation: false, explicit: false };
@@ -602,6 +641,18 @@ function createHandler(deps = {}) {
           answer: closedDepositAnswer,
           sources: depositSources,
           ...(escalation ? { escalation } : {}),
+        });
+      }
+
+      if (intent === "my_cases") {
+        const answer = myCasesChatAnswer((diagnostic && diagnostic.myCases) || { result: "read_failed" });
+        const caseSources = uniqueSources.includes("My Cases")
+          ? uniqueSources
+          : ["My Cases"].concat(uniqueSources);
+        return json(200, {
+          ok: true,
+          answer,
+          sources: caseSources,
         });
       }
 

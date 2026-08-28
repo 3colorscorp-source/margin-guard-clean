@@ -27,6 +27,7 @@ const {
 const { isExplicitInvoiceResendIntent } = require("./invoice-resend-intent");
 const { isDevicePairingDiagnosticQuestion } = require("./device-pairing-intent");
 const { isDepositCtaDiagnosticQuestion } = require("./deposit-cta-intent");
+const { isMyCasesQuestion } = require("./my-cases-intent");
 
 const MODULES = [
   {
@@ -277,6 +278,9 @@ function classifySupportIntent(message) {
   if (isContractDiagnosticQuestion(message)) {
     return "contract_diagnostic";
   }
+  if (isMyCasesQuestion(message)) {
+    return "my_cases";
+  }
   if (
     /\b(quote|estimate|project|payment|customer)\s*#?\s*\d+\b/.test(text) ||
     /\bstatus of\b[\s\S]{0,40}\b(quote|project|payment|customer)\b/.test(text) ||
@@ -349,4 +353,5 @@ module.exports = {
   isTenantOverrideAttempt,
   isDevicePairingDiagnosticQuestion,
   isDepositCtaDiagnosticQuestion,
+  isMyCasesQuestion,
 };

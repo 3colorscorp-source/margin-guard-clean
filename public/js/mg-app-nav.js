@@ -6,7 +6,7 @@
 (function () {
   const PIN_KEY = 'mg_nav_pinned_v1';
   const PORTAL_MODES = ['owner', 'seller-device', 'supervisor-device'];
-  const SUPPORT_CHAT_ASSET_VERSION = '003d-c2-1';
+  const SUPPORT_CHAT_ASSET_VERSION = '003e-1';
 
   const NAV_GROUPS_OWNER = [
     {
