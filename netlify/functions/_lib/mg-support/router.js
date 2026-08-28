@@ -25,6 +25,8 @@ const {
   isContractSqlOrListAllProbe,
 } = require("./contract-diagnostic");
 const { isExplicitInvoiceResendIntent } = require("./invoice-resend-intent");
+const { isDevicePairingDiagnosticQuestion } = require("./device-pairing-intent");
+const { isDepositCtaDiagnosticQuestion } = require("./deposit-cta-intent");
 
 const MODULES = [
   {
@@ -254,6 +256,12 @@ function classifySupportIntent(message) {
   if (isInvoiceDiagnosticQuestion(message) || isExplicitInvoiceResendIntent(message)) {
     return "invoice_diagnostic";
   }
+  if (isDevicePairingDiagnosticQuestion(message)) {
+    return "device_pairing_diagnostic";
+  }
+  if (isDepositCtaDiagnosticQuestion(message)) {
+    return "deposit_cta_diagnostic";
+  }
   if (isQuoteDiagnosticQuestion(message)) {
     return "quote_diagnostic";
   }
@@ -339,4 +347,6 @@ module.exports = {
   extractProjectIdentifier,
   extractContractProjectUuid,
   isTenantOverrideAttempt,
+  isDevicePairingDiagnosticQuestion,
+  isDepositCtaDiagnosticQuestion,
 };

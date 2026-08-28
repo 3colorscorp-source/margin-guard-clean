@@ -218,7 +218,10 @@ function bindRelatedEntity(intent, diagnostic, identifier) {
   if (intent === "invoice_diagnostic" && identifier.type === "invoice_no") {
     return { type: "invoice", ref: value };
   }
-  if (intent === "quote_diagnostic" && identifier.type === "quote_number_display") {
+  if (
+    (intent === "quote_diagnostic" || intent === "deposit_cta_diagnostic") &&
+    identifier.type === "quote_number_display"
+  ) {
     return { type: "quote", ref: value };
   }
   if (intent === "project_diagnostic" && identifier.type === "id" && isUuid(value)) {

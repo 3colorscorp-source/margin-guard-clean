@@ -5,11 +5,12 @@
  * Auth: HMAC-valid mg_session via assertOwnerSupportSession.
  * Paying owners: session.e + session.c (same as bootstrap-tenant / owner APIs).
  * Platform admins: auth-status is_admin bypass (session.c not required) for docs only.
- * Invoice, quote, project-lifecycle, and contract-lifecycle diagnostics require session.e + session.c and resolveTenantFromSession.
+ * Invoice, quote, project-lifecycle, contract-lifecycle, device-pairing, and deposit-CTA diagnostics require session.e + session.c and resolveTenantFromSession.
  * Does not trust browser tenant_id. Does not read mg_device_session.
  * OpenAI key stays server-side. OpenAI never chooses tables, SQL, or filters.
  * This function is read-only. Support-case INSERT is mg-support-create-case only.
  * Invoice resend confirmation may be offered here; ledger INSERT is mg-support-invoice-resend only.
+ * Device pairing and deposit CTA diagnostics are read-only; they do not reset devices, mint pairing codes, or write payments.
  */
 
 "use strict";
@@ -68,6 +69,10 @@ const {
   extractContractProjectUuid,
   readContractDiagnostic,
 } = require("./_lib/mg-support/contract-diagnostic");
+const { readDevicePairingDiagnostic } = require("./_lib/mg-support/device-pairing-diagnostic");
+const { devicePairingAnswer } = require("./_lib/mg-support/device-pairing-conclusion");
+const { readDepositCtaDiagnostic } = require("./_lib/mg-support/deposit-cta-diagnostic");
+const { depositCtaAnswer } = require("./_lib/mg-support/deposit-cta-conclusion");
 const {
   determineEscalationEligibility,
   bindRelatedEntity,
@@ -227,6 +232,8 @@ function createHandler(deps = {}) {
   const readQuote = deps.readQuoteDiagnostic || readQuoteDiagnostic;
   const readProject = deps.readProjectDiagnostic || readProjectDiagnostic;
   const readContract = deps.readContractDiagnostic || readContractDiagnostic;
+  const readDevice = deps.readDevicePairingDiagnostic || readDevicePairingDiagnostic;
+  const readDeposit = deps.readDepositCtaDiagnostic || readDepositCtaDiagnostic;
 
   return async function handler(event) {
     try {
@@ -408,6 +415,66 @@ function createHandler(deps = {}) {
             }
           }
         }
+      } else if (intent === "device_pairing_diagnostic") {
+        if (!hasOwnerEmailAndCustomer(session)) {
+          diagnostic = { outcome: "no_tenant_context" };
+        } else {
+          let tenant = null;
+          try {
+            tenant = await resolveTenant(session);
+          } catch (_err) {
+            console.error("[mg-support-chat] tenant resolve failed");
+            return json(502, {
+              ok: false,
+              error: "I couldn't inspect that device right now. Please try again.",
+            });
+          }
+          if (!tenant?.id) {
+            diagnostic = { outcome: "no_tenant_context" };
+          } else {
+            trustedTenantId = String(tenant.id);
+            try {
+              const lookedUp = await readDevice(String(tenant.id), message, deps);
+              diagnostic = lookedUp;
+            } catch (_err) {
+              console.error("[mg-support-chat] device pairing diagnostic failed");
+              diagnostic = { outcome: "status_unverified" };
+            }
+          }
+        }
+      } else if (intent === "deposit_cta_diagnostic") {
+        if (!hasOwnerEmailAndCustomer(session)) {
+          diagnostic = { outcome: "no_tenant_context" };
+        } else {
+          const identifier = extractQuoteIdentifier(message);
+          if (!identifier) {
+            diagnostic = { outcome: "needs_identifier" };
+          } else {
+            let tenant = null;
+            try {
+              tenant = await resolveTenant(session);
+            } catch (_err) {
+              console.error("[mg-support-chat] tenant resolve failed");
+              return json(502, {
+                ok: false,
+                error: "I couldn't inspect that estimate right now. Please try again.",
+              });
+            }
+            if (!tenant?.id) {
+              diagnostic = { outcome: "no_tenant_context" };
+            } else {
+              trustedTenantId = String(tenant.id);
+              diagnosticIdentifier = identifier;
+              try {
+                const lookedUp = await readDeposit(String(tenant.id), identifier, deps);
+                diagnostic = lookedUp;
+              } catch (_err) {
+                console.error("[mg-support-chat] deposit CTA diagnostic failed");
+                diagnostic = { outcome: "status_unverified" };
+              }
+            }
+          }
+        }
       }
 
       let resendOffer = { action: null, copy: "", skipEscalation: false, explicit: false };
@@ -507,6 +574,34 @@ function createHandler(deps = {}) {
           sources: resendSources,
           ...(escalation ? { escalation } : {}),
           ...(approvedAction ? { action: approvedAction } : {}),
+        });
+      }
+
+      const closedDeviceAnswer = devicePairingAnswer(intent, diagnostic);
+      if (closedDeviceAnswer) {
+        const escalation = await mintEscalationIfNeeded(null);
+        const deviceSources = uniqueSources.includes("Team & Devices")
+          ? uniqueSources
+          : ["Team & Devices"].concat(uniqueSources);
+        return json(200, {
+          ok: true,
+          answer: closedDeviceAnswer,
+          sources: deviceSources,
+          ...(escalation ? { escalation } : {}),
+        });
+      }
+
+      const closedDepositAnswer = depositCtaAnswer(intent, diagnostic);
+      if (closedDepositAnswer) {
+        const escalation = await mintEscalationIfNeeded(null);
+        const depositSources = uniqueSources.includes("Public Estimate")
+          ? uniqueSources
+          : ["Public Estimate"].concat(uniqueSources);
+        return json(200, {
+          ok: true,
+          answer: closedDepositAnswer,
+          sources: depositSources,
+          ...(escalation ? { escalation } : {}),
         });
       }
 

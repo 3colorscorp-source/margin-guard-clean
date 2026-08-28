@@ -171,6 +171,8 @@ async function main() {
         f !== "quote-diagnostic.js" &&
         f !== "project-diagnostic.js" &&
         f !== "contract-diagnostic.js" &&
+        f !== "device-pairing-diagnostic.js" &&
+        f !== "deposit-cta-diagnostic.js" &&
         // C1 exact filenames only. No wildcard. Future action files are not exempt.
         f !== "invoice-resend-eligibility.js" &&
         f !== "invoice-resend-canonical.js" &&
@@ -549,6 +551,8 @@ async function main() {
           f !== "quote-diagnostic.js" &&
           f !== "project-diagnostic.js" &&
           f !== "contract-diagnostic.js" &&
+          f !== "device-pairing-diagnostic.js" &&
+          f !== "deposit-cta-diagnostic.js" &&
           // C1 exact filenames only. No wildcard. Future action files are not exempt.
           f !== "invoice-resend-eligibility.js" &&
           f !== "invoice-resend-canonical.js" &&
