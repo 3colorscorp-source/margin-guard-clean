@@ -16,6 +16,7 @@
       gap: 10px;
       margin: 14px 0;
     }
+    @media (max-width: 900px) { .si-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
     @media (max-width: 640px) { .si-kpis { grid-template-columns: 1fr; } }
     .si-kpi {
       padding: 12px 14px;
@@ -79,6 +80,24 @@
     .si-dl dt { font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(232, 238, 252, 0.55); }
     .si-dl dd { margin: 2px 0 0; }
     .si-excerpt { white-space: pre-wrap; word-break: break-word; }
+    .si-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+    .si-compose { margin: 12px 0 0; }
+    .si-compose label { display: block; font-size: 0.8125rem; margin: 0 0 8px; }
+    .si-compose textarea {
+      width: 100%;
+      min-height: 88px;
+      margin-top: 6px;
+      resize: vertical;
+    }
+    .si-compose .hint { margin: 4px 0 0; font-size: 0.75rem; color: rgba(232, 238, 252, 0.7); }
+    .si-snapshot { margin: 12px 0 0; }
+    .si-snapshot[hidden], .si-compose[hidden], .si-actions [hidden] { display: none; }
+    .si-snapshot .label {
+      font-size: 0.7rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.55);
+    }
   </style>
 </head>
 <body class="si-page">
@@ -103,12 +122,18 @@
 
     <div id="siMain" hidden>
       <div class="si-kpis">
+        <div class="si-kpi"><div class="label">Active</div><div class="value" id="siCountActive">—</div></div>
         <div class="si-kpi"><div class="label">Open</div><div class="value" id="siCountOpen">—</div></div>
+        <div class="si-kpi"><div class="label">In Review</div><div class="value" id="siCountInReview">—</div></div>
+        <div class="si-kpi"><div class="label">Waiting on You</div><div class="value" id="siCountWaiting">—</div></div>
         <div class="si-kpi"><div class="label">Resolved</div><div class="value" id="siCountResolved">—</div></div>
         <div class="si-kpi"><div class="label">Total</div><div class="value" id="siCountTotal">—</div></div>
       </div>
       <div class="si-filters">
-        <button type="button" class="btn" data-status="open" id="siFilterOpen">Open</button>
+        <button type="button" class="btn" data-status="active" id="siFilterActive">Active</button>
+        <button type="button" class="btn ghost" data-status="open" id="siFilterOpen">Open</button>
+        <button type="button" class="btn ghost" data-status="in_review" id="siFilterInReview">In Review</button>
+        <button type="button" class="btn ghost" data-status="waiting_on_customer" id="siFilterWaiting">Waiting on You</button>
         <button type="button" class="btn ghost" data-status="resolved" id="siFilterResolved">Resolved</button>
         <button type="button" class="btn ghost" data-status="all" id="siFilterAll">All</button>
         <label>
@@ -132,12 +157,35 @@
     <button type="button" class="btn ghost" id="siDrawerClose">Close</button>
     <h3 id="siDrawerTitle">Case</h3>
     <dl class="si-dl" id="siDrawerBody"></dl>
-    <p>
+    <div id="siSnapshot" class="si-snapshot" hidden>
+      <div id="siActionMessageBlock" hidden>
+        <div class="label">Waiting on You message</div>
+        <div id="siActionMessageText" class="si-excerpt"></div>
+      </div>
+      <div id="siResolutionBlock" hidden>
+        <div class="label">Customer-visible resolution</div>
+        <div id="siResolutionText" class="si-excerpt"></div>
+      </div>
+    </div>
+    <div id="siActionCompose" class="si-compose" hidden>
+      <label for="siActionMessageInput">What the tenant needs to do (required)</label>
+      <textarea id="siActionMessageInput" maxlength="400"></textarea>
+      <p class="hint">This text will be visible to the tenant. 1–400 characters.</p>
+    </div>
+    <div id="siResolutionCompose" class="si-compose" hidden>
+      <label for="siResolutionInput">Customer-visible resolution (optional, recommended)</label>
+      <textarea id="siResolutionInput" maxlength="400"></textarea>
+      <p class="hint">This text will be visible to the tenant.</p>
+    </div>
+    <p class="si-actions">
+      <button type="button" class="btn ghost" id="siMarkInReview" hidden>Mark In Review</button>
+      <button type="button" class="btn ghost" id="siReturnToOpen" hidden>Return to Open</button>
+      <button type="button" class="btn" id="siRequestAction" hidden>Request Customer Action</button>
       <button type="button" class="btn" id="siResolve" hidden>Mark resolved</button>
       <button type="button" class="btn ghost" id="siReopen" hidden>Reopen case</button>
     </p>
   </aside>
 
-  <script src="/js/support-admin.js" defer></script>
+  <script src="/js/support-admin.js?v=003e-2" defer></script>
 </body>
 </html>

@@ -646,13 +646,10 @@ function createHandler(deps = {}) {
 
       if (intent === "my_cases") {
         const answer = myCasesChatAnswer((diagnostic && diagnostic.myCases) || { result: "read_failed" });
-        const caseSources = uniqueSources.includes("My Cases")
-          ? uniqueSources
-          : ["My Cases"].concat(uniqueSources);
         return json(200, {
           ok: true,
           answer,
-          sources: caseSources,
+          sources: ["My Cases"],
         });
       }
 

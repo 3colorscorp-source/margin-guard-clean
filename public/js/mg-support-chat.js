@@ -93,6 +93,8 @@ const MG_SUPPORT_INVOICE_RESEND_TRANSPORT =
 
 const MG_SUPPORT_MY_CASES_API = "/.netlify/functions/mg-support-my-cases";
 const MG_SUPPORT_MY_CASES_ZERO = "You don't have any support cases yet.";
+const MG_SUPPORT_WAITING_COPY =
+  "Support needs something from you before this case can continue.";
 const MG_SUPPORT_CASE_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -707,6 +709,11 @@ function mgSupportMapInvoiceResendClientResult(data, transportError) {
     appendLabeled(btn, "Case", row && row.case_ref ? row.case_ref : "");
     appendLabeled(btn, "Issue", row && row.subject ? row.subject : "Support case");
     appendLabeled(btn, "Status", row && row.status_label ? row.status_label : "Unavailable");
+    if (row && row.status === "waiting_on_customer") {
+      const need = document.createElement("p");
+      need.textContent = MG_SUPPORT_WAITING_COPY;
+      btn.appendChild(need);
+    }
     appendLabeled(btn, "Created", mgSupportFormatCaseDate(row && row.created_at) || "—");
     appendLabeled(btn, "Last updated", mgSupportFormatCaseDate(row && row.updated_at) || "—");
     return btn;
@@ -727,7 +734,13 @@ function mgSupportMapInvoiceResendClientResult(data, transportError) {
       mgSupportRelatedItemLabel(row && row.related_entity_type, row && row.related_entity_ref)
     );
     appendLabeled(wrap, "Original issue excerpt", row && row.question_excerpt ? row.question_excerpt : "");
+    if (row && row.status === "waiting_on_customer" && row.tenant_action_message) {
+      appendLabeled(wrap, "What we need from you", row.tenant_action_message);
+    }
     if (row && row.status === "resolved") {
+      if (row.customer_resolution) {
+        appendLabeled(wrap, "Resolution", row.customer_resolution);
+      }
       appendLabeled(wrap, "Resolved", mgSupportFormatCaseDate(row.resolved_at) || "—");
     }
     return wrap;
@@ -999,6 +1012,7 @@ if (typeof module === "object" && module.exports) {
     INVOICE_RESEND_TRANSPORT: MG_SUPPORT_INVOICE_RESEND_TRANSPORT,
     MY_CASES_API: MG_SUPPORT_MY_CASES_API,
     MY_CASES_ZERO: MG_SUPPORT_MY_CASES_ZERO,
+    WAITING_COPY: MG_SUPPORT_WAITING_COPY,
     formatCaseDate: mgSupportFormatCaseDate,
     relatedItemLabel: mgSupportRelatedItemLabel,
   };

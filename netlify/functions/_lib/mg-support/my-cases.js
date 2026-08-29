@@ -1,5 +1,5 @@
 /**
- * Closed tenant-owner My Cases reads for MG-SUPPORT-003E.1.
+ * Closed tenant-owner My Cases reads for MG-SUPPORT-003E.1 / 003E.2C.
  * GET only. Trusted tenant_id from the signed owner session.
  * Does not reuse the platform-admin list. No writes. No OpenAI.
  */
@@ -23,6 +23,8 @@ const CASE_SELECT_FIELDS = [
   "created_at",
   "updated_at",
   "resolved_at",
+  "customer_resolution",
+  "tenant_action_message",
 ];
 const CASE_SELECT = CASE_SELECT_FIELDS.join(",");
 
@@ -46,6 +48,8 @@ const MODULE_LABELS = {
 };
 
 const OPEN_COPY = "Your support case is open and has been received.";
+const IN_REVIEW_COPY = "Your support case is currently being reviewed.";
+const WAITING_COPY = "Support needs something from you before this case can continue.";
 const RESOLVED_COPY = "This case has been resolved.";
 const UNVERIFIED_COPY = "Margin Guard could not verify the current support case status.";
 const ZERO_CASES_COPY = "There are no support cases in your account yet.";
@@ -92,12 +96,27 @@ function extractSupportCaseRef(message) {
   return parseCaseRef("MG-SUP-" + match[1]);
 }
 
+function serializeVisibleText(raw) {
+  const text = sanitizeExcerpt(raw || "");
+  return text ? text : null;
+}
+
 function mapStatus(raw) {
   const status = String(raw || "")
     .trim()
     .toLowerCase();
   if (status === "open") {
     return { status: "open", status_label: "Open", status_copy: OPEN_COPY };
+  }
+  if (status === "in_review") {
+    return { status: "in_review", status_label: "In Review", status_copy: IN_REVIEW_COPY };
+  }
+  if (status === "waiting_on_customer") {
+    return {
+      status: "waiting_on_customer",
+      status_label: "Waiting on You",
+      status_copy: WAITING_COPY,
+    };
   }
   if (status === "resolved") {
     return { status: "resolved", status_label: "Resolved", status_copy: RESOLVED_COPY };
@@ -128,6 +147,8 @@ function toListItem(row) {
 
 function toDetail(row) {
   const mapped = mapStatus(row?.status);
+  const waiting = mapped.status === "waiting_on_customer";
+  const resolved = mapped.status === "resolved";
   const entityType = String(row?.related_entity_type || "none");
   return {
     case_ref: formatCaseRef(row?.id),
@@ -143,8 +164,9 @@ function toDetail(row) {
     support_module_label: moduleLabel(row?.support_module),
     related_entity_type: entityType,
     related_entity_ref: row?.related_entity_ref == null ? null : String(row.related_entity_ref),
-    customer_resolution: null,
-    tenant_action_required: false,
+    customer_resolution: resolved ? serializeVisibleText(row?.customer_resolution) : null,
+    tenant_action_required: waiting,
+    tenant_action_message: waiting ? serializeVisibleText(row?.tenant_action_message) : null,
   };
 }
 
@@ -266,7 +288,17 @@ function myCasesChatAnswer(lookedUp) {
   if (lookedUp.result === "read_failed") return UNVERIFIED_COPY;
   if (lookedUp.result === "invalid_request") return NOT_FOUND_COPY;
   if (lookedUp.result === "not_found") return NOT_FOUND_COPY;
-  if (lookedUp.case && lookedUp.case.status_copy) return lookedUp.case.status_copy;
+  if (lookedUp.case && lookedUp.case.status_copy) {
+    const row = lookedUp.case;
+    const lines = [row.status_copy];
+    if (row.status === "waiting_on_customer" && row.tenant_action_message) {
+      lines.push("What we need from you: " + row.tenant_action_message);
+    }
+    if (row.status === "resolved" && row.customer_resolution) {
+      lines.push("Resolution: " + row.customer_resolution);
+    }
+    return lines.join("\n");
+  }
   if (Array.isArray(lookedUp.cases)) return buildListChatAnswer(lookedUp.cases);
   return UNVERIFIED_COPY;
 }
@@ -276,6 +308,8 @@ module.exports = {
   CASE_SELECT,
   LIST_LIMIT,
   OPEN_COPY,
+  IN_REVIEW_COPY,
+  WAITING_COPY,
   RESOLVED_COPY,
   UNVERIFIED_COPY,
   ZERO_CASES_COPY,

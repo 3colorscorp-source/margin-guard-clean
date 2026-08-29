@@ -1,6 +1,7 @@
 /**
- * Closed Support Admin case reads/writes for MG-SUPPORT-003C.
+ * Closed Support Admin case reads/writes for MG-SUPPORT-003C / 003E.2B.
  * Fixed table, select, filters, and PATCH fields. No OpenAI. No DELETE.
+ * No email. No outbound notification delivery in E2.B.
  */
 "use strict";
 
@@ -10,15 +11,25 @@ const { formatCaseRef, sanitizeExcerpt } = require("./case-intake");
 const CASE_TABLE = "tenant_support_cases";
 const TENANT_TABLE = "tenants";
 const CASE_LIST_SELECT =
-  "id,tenant_id,status,category,subject,question_excerpt,page_path,support_module,related_entity_type,related_entity_ref,created_at,updated_at,resolved_at";
-const CASE_GET_SELECT = "id,status";
+  "id,tenant_id,status,category,subject,question_excerpt,page_path,support_module,related_entity_type,related_entity_ref,created_at,updated_at,resolved_at,customer_resolution,tenant_action_message,status_version";
+const CASE_GET_SELECT =
+  "id,status,customer_resolution,tenant_action_message,status_version,resolved_at";
 const TENANT_SELECT = "id,name";
 const COUNT_SELECT = "id";
 const COUNT_METHOD = "HEAD";
-const COUNT_KINDS = new Set(["open", "resolved"]);
+const COUNT_KINDS = new Set([
+  "open",
+  "in_review",
+  "waiting_on_customer",
+  "resolved",
+  "all",
+]);
+const ACTIVE_STATUSES = ["open", "in_review", "waiting_on_customer"];
+const CASE_STATUSES = new Set(["open", "in_review", "waiting_on_customer", "resolved"]);
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 50;
+const VISIBLE_TEXT_MAX = 400;
 const UNKNOWN_BUSINESS = "Unknown business";
 
 const UUID_RE =
@@ -32,20 +43,77 @@ const LIST_QUERY_KEYS = new Set([
   "before_created_at",
   "before_id",
 ]);
-const UPDATE_BODY_KEYS = new Set(["case_id", "action"]);
-const STATUS_FILTERS = new Set(["open", "resolved", "all"]);
+const UPDATE_BODY_KEYS = new Set([
+  "case_id",
+  "action",
+  "customer_resolution",
+  "tenant_action_message",
+]);
+const STATUS_FILTERS = new Set([
+  "active",
+  "open",
+  "in_review",
+  "waiting_on_customer",
+  "resolved",
+  "all",
+]);
 const CATEGORIES = new Set([
   "unresolved_question",
   "diagnostic_unavailable",
   "possible_bug",
   "other",
 ]);
-const ACTIONS = new Set(["resolve", "reopen"]);
+const ACTIONS = new Set([
+  "mark_in_review",
+  "request_customer_action",
+  "resolve",
+  "reopen",
+  "return_to_open",
+]);
 const CATEGORY_LABELS = {
   unresolved_question: "Unresolved question",
   diagnostic_unavailable: "Diagnostic unavailable",
   possible_bug: "Possible bug",
   other: "Other",
+};
+const STATUS_LABELS = {
+  open: "Open",
+  in_review: "In Review",
+  waiting_on_customer: "Waiting on You",
+  resolved: "Resolved",
+};
+
+const ACTION_PLAN = {
+  mark_in_review: {
+    to: "in_review",
+    from: new Set(["open", "waiting_on_customer", "resolved"]),
+    already: "already_in_review",
+    success: "in_review",
+  },
+  request_customer_action: {
+    to: "waiting_on_customer",
+    from: new Set(["open", "in_review"]),
+    already: "already_waiting_on_customer",
+    success: "waiting_on_customer",
+  },
+  resolve: {
+    to: "resolved",
+    from: new Set(["open", "in_review", "waiting_on_customer"]),
+    already: "already_resolved",
+    success: "resolved",
+  },
+  reopen: {
+    to: "open",
+    from: new Set(["resolved"]),
+    already: "already_open",
+    success: "reopened",
+  },
+  return_to_open: {
+    to: "open",
+    from: new Set(["in_review"]),
+    already: "already_open",
+    success: "returned_to_open",
+  },
 };
 
 function isUuid(value) {
@@ -61,6 +129,10 @@ function isIsoTimestamp(value) {
 
 function categoryLabel(category) {
   return CATEGORY_LABELS[category] || "Other";
+}
+
+function statusLabel(status) {
+  return STATUS_LABELS[status] || "Unknown";
 }
 
 function nowIso(deps = {}) {
@@ -97,6 +169,14 @@ function parseLimit(raw) {
   return { ok: true, value };
 }
 
+function sanitizeVisibleText(raw) {
+  if (raw == null) return { omitted: true };
+  if (typeof raw !== "string") return { ok: false };
+  if (raw.trim().length > VISIBLE_TEXT_MAX) return { ok: false };
+  const value = sanitizeExcerpt(raw);
+  return { omitted: false, value };
+}
+
 function parseListQuery(query) {
   const raw = query && typeof query === "object" && !Array.isArray(query) ? query : {};
   const keys = Object.keys(raw);
@@ -104,7 +184,7 @@ function parseListQuery(query) {
     return { ok: false, result: "invalid_request" };
   }
 
-  const statusRaw = raw.status == null || raw.status === "" ? "open" : String(raw.status).trim();
+  const statusRaw = raw.status == null || raw.status === "" ? "active" : String(raw.status).trim();
   if (!STATUS_FILTERS.has(statusRaw)) {
     return { ok: false, result: "invalid_request" };
   }
@@ -152,15 +232,59 @@ function parseUpdateBody(body) {
     return { ok: false, result: "invalid_request" };
   }
   const keys = Object.keys(body);
-  if (keys.length !== 2 || keys.some((k) => !UPDATE_BODY_KEYS.has(k))) {
+  if (!keys.includes("case_id") || !keys.includes("action")) {
     return { ok: false, result: "invalid_request" };
   }
+  if (keys.some((k) => !UPDATE_BODY_KEYS.has(k))) {
+    return { ok: false, result: "invalid_request" };
+  }
+
   const caseId = String(body.case_id || "").trim();
   const action = String(body.action || "").trim();
   if (!isUuid(caseId) || !ACTIONS.has(action)) {
     return { ok: false, result: "invalid_request" };
   }
-  return { ok: true, case_id: caseId, action };
+
+  const hasResolution = Object.prototype.hasOwnProperty.call(body, "customer_resolution");
+  const hasActionMsg = Object.prototype.hasOwnProperty.call(body, "tenant_action_message");
+  if (hasResolution && action !== "resolve") {
+    return { ok: false, result: "invalid_request" };
+  }
+  if (hasActionMsg && action !== "request_customer_action") {
+    return { ok: false, result: "invalid_request" };
+  }
+  if (action === "request_customer_action" && !hasActionMsg) {
+    return { ok: false, result: "invalid_request" };
+  }
+
+  let has_customer_resolution = false;
+  let customer_resolution;
+  if (hasResolution) {
+    const parsed = sanitizeVisibleText(body.customer_resolution);
+    if (parsed.ok === false) return { ok: false, result: "invalid_request" };
+    if (!parsed.omitted && parsed.value && parsed.value.length >= 1) {
+      has_customer_resolution = true;
+      customer_resolution = parsed.value;
+    }
+  }
+
+  let tenant_action_message;
+  if (action === "request_customer_action") {
+    const parsed = sanitizeVisibleText(body.tenant_action_message);
+    if (parsed.ok === false || parsed.omitted || !parsed.value || parsed.value.length < 1) {
+      return { ok: false, result: "invalid_request" };
+    }
+    tenant_action_message = parsed.value;
+  }
+
+  return {
+    ok: true,
+    case_id: caseId,
+    action,
+    has_customer_resolution,
+    customer_resolution,
+    tenant_action_message,
+  };
 }
 
 function parseContentRangeTotal(header) {
@@ -176,13 +300,15 @@ function parseContentRangeTotal(header) {
 function buildCountPath(kind) {
   if (!COUNT_KINDS.has(kind)) return null;
   const params = new URLSearchParams();
-  params.set("status", `eq.${kind}`);
+  if (kind !== "all") {
+    params.set("status", `eq.${kind}`);
+  }
   params.set("select", COUNT_SELECT);
   return `${CASE_TABLE}?${params.toString()}`;
 }
 
 /**
- * Exact open/resolved Support Inbox counts via PostgREST Prefer: count=exact
+ * Exact Support Inbox counts via PostgREST Prefer: count=exact
  * and Content-Range. Isolated fetch: supabaseRequest does not expose headers.
  * Caller cannot supply table, select, or filter. Fail closed on bad totals.
  */
@@ -235,7 +361,9 @@ function buildListCasesPath(filters) {
   params.set("select", CASE_LIST_SELECT);
   params.set("order", "created_at.desc,id.desc");
   params.set("limit", String(filters.limit + 1));
-  if (filters.status === "open" || filters.status === "resolved") {
+  if (filters.status === "active") {
+    params.set("status", `in.(${ACTIVE_STATUSES.join(",")})`);
+  } else if (CASE_STATUSES.has(filters.status)) {
     params.set("status", `eq.${filters.status}`);
   }
   if (filters.category) {
@@ -278,20 +406,32 @@ function buildExactCasePath(caseId) {
   return `${CASE_TABLE}?${params.toString()}`;
 }
 
-function buildPatchPath(caseId) {
+function buildPatchPath(caseId, guards) {
   const params = new URLSearchParams();
   params.set("id", `eq.${caseId}`);
+  if (guards && CASE_STATUSES.has(String(guards.status || ""))) {
+    params.set("status", `eq.${guards.status}`);
+  }
+  if (guards && Number.isInteger(guards.status_version) && guards.status_version >= 1) {
+    params.set("status_version", `eq.${guards.status_version}`);
+  }
   params.set("select", CASE_GET_SELECT);
   return `${CASE_TABLE}?${params.toString()}`;
 }
 
 function mapSafeCase(row, tenantName) {
   const id = String(row?.id || "").trim();
+  const status = String(row?.status || "");
+  const versionRaw = Number(row?.status_version);
+  const statusVersion = Number.isInteger(versionRaw) && versionRaw >= 1 ? versionRaw : 1;
+  const resolutionRaw = row?.customer_resolution;
+  const actionRaw = row?.tenant_action_message;
   return {
     case_id: id,
     case_ref: formatCaseRef(id),
     tenant_business_name: tenantName || UNKNOWN_BUSINESS,
-    status: String(row?.status || ""),
+    status,
+    status_label: statusLabel(status),
     category: String(row?.category || ""),
     subject: String(row?.subject || ""),
     question_excerpt: sanitizeExcerpt(row?.question_excerpt || ""),
@@ -302,6 +442,15 @@ function mapSafeCase(row, tenantName) {
     created_at: row?.created_at == null ? null : String(row.created_at),
     updated_at: row?.updated_at == null ? null : String(row.updated_at),
     resolved_at: row?.resolved_at == null ? null : String(row.resolved_at),
+    customer_resolution:
+      resolutionRaw == null || String(resolutionRaw).trim() === ""
+        ? null
+        : sanitizeExcerpt(resolutionRaw),
+    tenant_action_message:
+      actionRaw == null || String(actionRaw).trim() === ""
+        ? null
+        : sanitizeExcerpt(actionRaw),
+    status_version: statusVersion,
   };
 }
 
@@ -309,19 +458,35 @@ async function listAdminCases(filters, deps = {}) {
   const get = queryGetter(deps);
   const listPath = buildListCasesPath(filters);
   const openCountPath = buildCountPath("open");
+  const inReviewCountPath = buildCountPath("in_review");
+  const waitingCountPath = buildCountPath("waiting_on_customer");
   const resolvedCountPath = buildCountPath("resolved");
+  const totalCountPath = buildCountPath("all");
 
   let rows;
   let openCount;
+  let inReviewCount;
+  let waitingCount;
   let resolvedCount;
+  let totalCount;
   try {
     rows = await get(listPath);
     openCount = await getExactSupportCaseCount("open", deps);
+    inReviewCount = await getExactSupportCaseCount("in_review", deps);
+    waitingCount = await getExactSupportCaseCount("waiting_on_customer", deps);
     resolvedCount = await getExactSupportCaseCount("resolved", deps);
+    totalCount = await getExactSupportCaseCount("all", deps);
   } catch (_err) {
     return { ok: false, result: "read_failed" };
   }
-  if (!Array.isArray(rows) || openCount == null || resolvedCount == null) {
+  if (
+    !Array.isArray(rows) ||
+    openCount == null ||
+    inReviewCount == null ||
+    waitingCount == null ||
+    resolvedCount == null ||
+    totalCount == null
+  ) {
     return { ok: false, result: "read_failed" };
   }
 
@@ -362,9 +527,12 @@ async function listAdminCases(filters, deps = {}) {
       category: filters.category,
     },
     counts: {
+      active: openCount + inReviewCount + waitingCount,
       open: openCount,
+      in_review: inReviewCount,
+      waiting_on_customer: waitingCount,
       resolved: resolvedCount,
-      total: openCount + resolvedCount,
+      total: totalCount,
     },
     cases,
     page: {
@@ -378,12 +546,127 @@ async function listAdminCases(filters, deps = {}) {
       list: listPath,
       tenants: tenantPath,
       openCount: openCountPath,
+      inReviewCount: inReviewCountPath,
+      waitingCount: waitingCountPath,
       resolvedCount: resolvedCountPath,
+      totalCount: totalCountPath,
     },
   };
 }
 
-async function updateAdminCase({ case_id: caseId, action }, deps = {}) {
+function currentVersion(row) {
+  const n = Number(row?.status_version);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return n;
+}
+
+function alreadyResult(result, row, caseId) {
+  const id = String(row?.id || caseId);
+  return {
+    ok: true,
+    result,
+    case_id: id,
+    case_ref: formatCaseRef(id),
+    status: String(row?.status || ""),
+    resolved_at: row?.resolved_at == null ? null : String(row.resolved_at),
+    updated_at: row?.updated_at == null ? null : String(row.updated_at),
+    customer_resolution: row?.customer_resolution == null ? null : String(row.customer_resolution),
+    tenant_action_message: row?.tenant_action_message == null ? null : String(row.tenant_action_message),
+    status_version: currentVersion(row),
+  };
+}
+
+function representationRows(patched) {
+  if (Array.isArray(patched)) return patched;
+  if (patched && typeof patched === "object") return [patched];
+  return [];
+}
+
+async function conflictFromReload(get, getPath, loaded, caseId) {
+  let rows;
+  try {
+    rows = await get(getPath);
+  } catch (_err) {
+    return { ok: false, result: "write_failed" };
+  }
+  if (!Array.isArray(rows) || !rows.length || !rows[0]?.id) {
+    return { ok: true, result: "not_found" };
+  }
+  const fresh = rows[0];
+  const loadedStatus = String(loaded?.status || "");
+  const loadedVersion = currentVersion(loaded);
+  const freshStatus = String(fresh.status || "");
+  const freshVersion = currentVersion(fresh);
+  if (freshStatus === loadedStatus && freshVersion === loadedVersion) {
+    return { ok: false, result: "write_failed" };
+  }
+  return {
+    ok: false,
+    result: "stale_state",
+    case_id: String(fresh.id || caseId),
+    case_ref: formatCaseRef(String(fresh.id || caseId)),
+    status: freshStatus,
+    resolved_at: fresh.resolved_at == null ? null : String(fresh.resolved_at),
+    updated_at: fresh.updated_at == null ? null : String(fresh.updated_at),
+    customer_resolution: fresh.customer_resolution == null ? null : String(fresh.customer_resolution),
+    tenant_action_message: fresh.tenant_action_message == null ? null : String(fresh.tenant_action_message),
+    status_version: freshVersion,
+  };
+}
+
+function buildPatchBody(action, parsed, stamp, version) {
+  const nextVersion = version + 1;
+  if (action === "mark_in_review") {
+    return {
+      status: "in_review",
+      tenant_action_message: null,
+      resolved_at: null,
+      status_version: nextVersion,
+      updated_at: stamp,
+    };
+  }
+  if (action === "request_customer_action") {
+    return {
+      status: "waiting_on_customer",
+      tenant_action_message: parsed.tenant_action_message,
+      resolved_at: null,
+      status_version: nextVersion,
+      updated_at: stamp,
+    };
+  }
+  if (action === "resolve") {
+    const body = {
+      status: "resolved",
+      tenant_action_message: null,
+      resolved_at: stamp,
+      status_version: nextVersion,
+      updated_at: stamp,
+    };
+    if (parsed.has_customer_resolution) {
+      body.customer_resolution = parsed.customer_resolution;
+    }
+    return body;
+  }
+  if (action === "reopen" || action === "return_to_open") {
+    return {
+      status: "open",
+      tenant_action_message: null,
+      resolved_at: null,
+      status_version: nextVersion,
+      updated_at: stamp,
+    };
+  }
+  return null;
+}
+
+async function updateAdminCase(parsed, deps = {}) {
+  const caseId = parsed && parsed.case_id;
+  const action = parsed && parsed.action;
+  const plan = ACTION_PLAN[action];
+  if (!caseId || !plan) {
+    return { ok: false, result: "invalid_request" };
+  }
+
   const get = queryGetter(deps);
   const patch = queryPatcher(deps);
   const getPath = buildExactCasePath(caseId);
@@ -398,26 +681,33 @@ async function updateAdminCase({ case_id: caseId, action }, deps = {}) {
     return { ok: true, result: "not_found" };
   }
 
-  const current = String(rows[0].status || "");
-  if (action === "resolve" && current === "resolved") {
-    return { ok: true, result: "already_resolved" };
-  }
-  if (action === "reopen" && current === "open") {
-    return { ok: true, result: "already_open" };
-  }
-  if (action === "resolve" && current !== "open") {
-    return { ok: false, result: "write_failed" };
-  }
-  if (action === "reopen" && current !== "resolved") {
+  const row = rows[0];
+  const current = String(row.status || "");
+  const version = currentVersion(row);
+  if (!CASE_STATUSES.has(current) || version == null) {
     return { ok: false, result: "write_failed" };
   }
 
+  if (current === plan.to) {
+    return alreadyResult(plan.already, row, caseId);
+  }
+  if (!plan.from.has(current)) {
+    return { ok: false, result: "invalid_transition" };
+  }
+
+  if (action === "request_customer_action") {
+    const msg = String(parsed.tenant_action_message || "").trim();
+    if (!msg || msg.length > VISIBLE_TEXT_MAX) {
+      return { ok: false, result: "invalid_request" };
+    }
+  }
+
   const stamp = nowIso(deps);
-  const body =
-    action === "resolve"
-      ? { status: "resolved", resolved_at: stamp, updated_at: stamp }
-      : { status: "open", resolved_at: null, updated_at: stamp };
-  const patchPath = buildPatchPath(caseId);
+  const body = buildPatchBody(action, parsed, stamp, version);
+  if (!body) {
+    return { ok: false, result: "invalid_request" };
+  }
+  const patchPath = buildPatchPath(caseId, { status: current, status_version: version });
 
   let patched;
   try {
@@ -425,23 +715,35 @@ async function updateAdminCase({ case_id: caseId, action }, deps = {}) {
   } catch (_err) {
     return { ok: false, result: "write_failed" };
   }
-  const row = Array.isArray(patched) ? patched[0] : patched;
-  const nextStatus = String(row?.status || "");
-  if (action === "resolve" && nextStatus !== "resolved") {
+  const rowsOut = representationRows(patched);
+  if (rowsOut.length === 0) {
+    return conflictFromReload(get, getPath, row, caseId);
+  }
+  if (rowsOut.length !== 1) {
     return { ok: false, result: "write_failed" };
   }
-  if (action === "reopen" && nextStatus !== "open") {
+  const next = rowsOut[0];
+  const nextStatus = String(next?.status || "");
+  if (nextStatus !== plan.to) {
     return { ok: false, result: "write_failed" };
   }
 
   return {
     ok: true,
-    result: action === "resolve" ? "resolved" : "reopened",
-    case_id: String(row?.id || caseId),
-    case_ref: formatCaseRef(String(row?.id || caseId)),
+    result: plan.success,
+    case_id: String(next.id || caseId),
+    case_ref: formatCaseRef(String(next.id || caseId)),
     status: nextStatus,
     resolved_at: action === "resolve" ? stamp : null,
     updated_at: stamp,
+    customer_resolution:
+      body.customer_resolution !== undefined
+        ? body.customer_resolution
+        : row.customer_resolution == null
+          ? null
+          : String(row.customer_resolution),
+    tenant_action_message: body.tenant_action_message == null ? null : String(body.tenant_action_message),
+    status_version: version + 1,
   };
 }
 
@@ -454,14 +756,20 @@ module.exports = {
   COUNT_SELECT,
   COUNT_METHOD,
   COUNT_KINDS,
+  ACTIVE_STATUSES,
   DEFAULT_LIMIT,
   MAX_LIMIT,
+  VISIBLE_TEXT_MAX,
   LIST_QUERY_KEYS,
   UPDATE_BODY_KEYS,
+  STATUS_FILTERS,
+  ACTIONS,
   UNKNOWN_BUSINESS,
   isUuid,
   isIsoTimestamp,
   categoryLabel,
+  statusLabel,
+  sanitizeVisibleText,
   parseListQuery,
   parseUpdateBody,
   parseContentRangeTotal,

@@ -1,9 +1,10 @@
 /**
- * MG-SUPPORT-003C — platform-admin Support case resolve/reopen.
+ * MG-SUPPORT-003C / 003E.2B — platform-admin Support case lifecycle.
  * POST /.netlify/functions/mg-support-admin-update-case
  *
  * Auth: HMAC mg_session + public.users.is_admin. session.c not required.
  * Closed PATCH only. No OpenAI. No DELETE. Browser never sets status.
+ * No email. No outbound notification delivery in E2.B.
  */
 "use strict";
 
@@ -73,7 +74,13 @@ function createHandler(deps = {}) {
       }
 
       const updated = await updateAdminCase(
-        { case_id: parsed.case_id, action: parsed.action },
+        {
+          case_id: parsed.case_id,
+          action: parsed.action,
+          has_customer_resolution: parsed.has_customer_resolution,
+          customer_resolution: parsed.customer_resolution,
+          tenant_action_message: parsed.tenant_action_message,
+        },
         deps
       );
       if (!updated.ok) {
@@ -82,6 +89,17 @@ function createHandler(deps = {}) {
           action: parsed.action,
           case_id: parsed.case_id,
         });
+        if (updated.result === "stale_state") {
+          return json(409, {
+            ok: false,
+            result: "stale_state",
+            error: "This support case was updated by another administrator.",
+            case_id: updated.case_id || parsed.case_id,
+            case_ref: updated.case_ref || null,
+            status: updated.status || null,
+            status_version: updated.status_version == null ? null : updated.status_version,
+          });
+        }
         return json(updated.result === "write_failed" ? 502 : 400, {
           ok: false,
           result: updated.result,
@@ -107,6 +125,10 @@ function createHandler(deps = {}) {
         status: updated.status || null,
         resolved_at: updated.resolved_at === undefined ? null : updated.resolved_at,
         updated_at: updated.updated_at || null,
+        customer_resolution: updated.customer_resolution === undefined ? null : updated.customer_resolution,
+        tenant_action_message:
+          updated.tenant_action_message === undefined ? null : updated.tenant_action_message,
+        status_version: updated.status_version == null ? null : updated.status_version,
       });
     } catch (_err) {
       console.error("[mg-support-admin]", { result: "write_failed" });

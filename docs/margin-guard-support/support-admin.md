@@ -8,10 +8,14 @@ Only Margin Guard platform administrators can open `/support-admin`. Normal owne
 
 ## What you can do
 
-- Review open, resolved, or all cases
-- See limited operational context: case reference, business name, subject, category, module, page, and a sanitized question excerpt
-- **Mark resolved** on an open case
-- **Reopen case** on a resolved case
+- Review **Active** cases by default (Open, In Review, and Waiting on You)
+- Filter Open, In Review, Waiting on You, Resolved, or All
+- See limited operational context: case reference, business name, subject, category, module, page, sanitized question excerpt, customer-visible resolution, and Waiting on You message
+- **Mark In Review** from Open, Waiting on You, or Resolved
+- **Request Customer Action** from Open or In Review (requires a tenant-visible message)
+- **Mark resolved** from Open, In Review, or Waiting on You (optional customer-visible resolution)
+- **Return to Open** from In Review
+- **Reopen case** from Resolved
 
 ## What this inbox does not include
 

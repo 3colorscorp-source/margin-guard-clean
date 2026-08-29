@@ -17,6 +17,8 @@ const {
   CASE_SELECT,
   LIST_LIMIT,
   OPEN_COPY,
+  IN_REVIEW_COPY,
+  WAITING_COPY,
   RESOLVED_COPY,
   UNVERIFIED_COPY,
   ZERO_CASES_COPY,
@@ -107,6 +109,7 @@ const DETAIL_KEYS = LIST_KEYS.concat([
   "question_excerpt",
   "status_copy",
   "support_module_label",
+  "tenant_action_message",
   "tenant_action_required",
 ]).sort();
 
@@ -495,7 +498,7 @@ async function main() {
 
   const openMap = mapStatus("open");
   const resolvedMap = mapStatus("resolved");
-  const unknownMap = mapStatus("in_review");
+  const unknownMap = mapStatus("closed");
   assert("21. open → Open", openMap.status_label === "Open" && openMap.status_copy === OPEN_COPY);
   assert(
     "22. resolved → Resolved",
@@ -506,7 +509,7 @@ async function main() {
     unknownMap.status_copy === UNVERIFIED_COPY &&
       unknownMap.status === "unverified" &&
       !/in_review|waiting_on_user|closed/.test(unknownMap.status_copy) &&
-      !jsonHas(toDetail(caseRow({ status: "in_review" })), ["in_review"])
+      !jsonHas(toDetail(caseRow({ status: "closed" })), ["closed"])
   );
 
   assert(
@@ -627,11 +630,10 @@ async function main() {
       !/internal notes|admin notes/.test(uiSrc)
   );
   assert(
-    "42. no customer resolution invented",
-    !/What support did/.test(uiSrc) &&
-      !/"Resolution"/.test(uiSrc) &&
-      !/Next action/.test(uiSrc) &&
-      leakDet.customer_resolution === null
+    "42. no customer resolution invented for open cases",
+    leakDet.customer_resolution === null &&
+      /row\.status === "resolved"/.test(detailFn) &&
+      /customer_resolution/.test(detailFn)
   );
 
   const writeList = await readMyCasesList(OWN_TENANT, {
@@ -713,7 +715,7 @@ async function main() {
     "D. chat my_cases skips OpenAI and escalation mint",
     /intent === "my_cases"/.test(chatSrc) &&
       /myCasesChatAnswer/.test(chatSrc) &&
-      /sources: caseSources/.test(myCasesReturn) &&
+      /sources: \["My Cases"\]/.test(myCasesReturn) &&
       !/mintEscalationIfNeeded/.test(myCasesReturn) &&
       !/escalation/.test(myCasesReturn)
   );
@@ -738,10 +740,11 @@ async function main() {
   const posted = await createMyCasesHandler(myCasesDeps(dPost))(fakePost({}));
   assert("K. POST rejected", posted.statusCode === 405 && dPost.gets.length === 0);
   assert("L. zero-case UI copy", ui.MY_CASES_ZERO === "You don't have any support cases yet.");
+  assert("L2. waiting UI copy matches server", ui.WAITING_COPY === WAITING_COPY);
   assert(
     "M. select is closed",
     CASE_SELECT ===
-      "id,tenant_id,status,category,subject,question_excerpt,support_module,related_entity_type,related_entity_ref,created_at,updated_at,resolved_at"
+      "id,tenant_id,status,category,subject,question_excerpt,support_module,related_entity_type,related_entity_ref,created_at,updated_at,resolved_at,customer_resolution,tenant_action_message"
   );
   const parsedList = parseMyCasesQuery({});
   const parsedDetail = parseMyCasesQuery({ case_ref: OPEN_REF });
@@ -862,16 +865,15 @@ async function main() {
   );
 
   const inReview = toDetail(caseRow({ status: "in_review" }));
-  const waiting = toListItem(caseRow({ status: "waiting_on_user" }));
+  const waitingWrong = toListItem(caseRow({ status: "waiting_on_user" }));
   const closed = mapStatus("closed");
   assert(
-    "AA. unsupported statuses never emit invented labels",
-    inReview.status_copy === UNVERIFIED_COPY &&
-      waiting.status_label === "Unavailable" &&
+    "AA. canonical in_review is In Review; unsupported stay conservative",
+    inReview.status_label === "In Review" &&
+      inReview.status_copy === IN_REVIEW_COPY &&
+      waitingWrong.status_label === "Unavailable" &&
       closed.status_label === "Unavailable" &&
-      !/In Review|Waiting on You|Closed/.test(
-        inReview.status_label + inReview.status_copy + waiting.status_label + closed.status_copy
-      )
+      !/Closed/.test(closed.status_copy + waitingWrong.status_label)
   );
 
   console.log("");

@@ -95,6 +95,9 @@ function sampleCase(extra) {
     created_at: CREATED,
     updated_at: CREATED,
     resolved_at: null,
+    customer_resolution: null,
+    tenant_action_message: null,
+    status_version: 1,
     ...(extra || {}),
   };
 }
@@ -131,7 +134,14 @@ function makeDb(opts) {
     if (decoded.startsWith(CASE_TABLE + "?")) {
       if (decoded.includes("select=" + CASE_GET_SELECT) || /select=id,status(?:&|$)/.test(decoded)) {
         if (options.notFound) return [];
-        return options.getRows || [{ id: CASE_ID, status: options.currentStatus || "open" }];
+        return options.getRows || [{
+          id: CASE_ID,
+          status: options.currentStatus || "open",
+          status_version: options.statusVersion == null ? 1 : options.statusVersion,
+          customer_resolution: options.customerResolution == null ? null : options.customerResolution,
+          tenant_action_message: options.tenantActionMessage == null ? null : options.tenantActionMessage,
+          resolved_at: options.currentStatus === "resolved" ? NOW : null,
+        }];
       }
       return options.listRows || [sampleCase()];
     }
@@ -147,7 +157,17 @@ function makeDb(opts) {
     counts.push(kind);
     if (options.countFail) return null;
     if (kind === "open") return options.openCount == null ? 1 : options.openCount;
+    if (kind === "in_review") return options.inReviewCount == null ? 0 : options.inReviewCount;
+    if (kind === "waiting_on_customer") return options.waitingCount == null ? 0 : options.waitingCount;
     if (kind === "resolved") return options.resolvedCount == null ? 0 : options.resolvedCount;
+    if (kind === "all") {
+      if (options.totalCount != null) return options.totalCount;
+      const open = options.openCount == null ? 1 : options.openCount;
+      const inReview = options.inReviewCount == null ? 0 : options.inReviewCount;
+      const waiting = options.waitingCount == null ? 0 : options.waitingCount;
+      const resolved = options.resolvedCount == null ? 0 : options.resolvedCount;
+      return open + inReview + waiting + resolved;
+    }
     return null;
   }
   return { supabaseGet, supabasePatch, countCases, gets, patches, counts };
@@ -309,8 +329,11 @@ async function main() {
   assert("18. unexpected query key rejected", extraQ.statusCode === 400 && caseGets(dExtra.gets).length === 0);
 
   const parsedDefault = parseListQuery({});
-  assert("19. default status open", parsedDefault.ok && parsedDefault.filters.status === "open");
+  assert("19. default status active", parsedDefault.ok && parsedDefault.filters.status === "active");
   assert("20. open allowed", parseListQuery({ status: "open" }).ok);
+  assert("20b. in_review allowed", parseListQuery({ status: "in_review" }).ok);
+  assert("20c. waiting_on_customer allowed", parseListQuery({ status: "waiting_on_customer" }).ok);
+  assert("20d. active allowed", parseListQuery({ status: "active" }).ok);
   assert("21. resolved allowed", parseListQuery({ status: "resolved" }).ok);
   assert("22. all allowed", parseListQuery({ status: "all" }).ok);
   assert("23. invalid status rejected", parseListQuery({ status: "closed" }).ok === false);
@@ -365,9 +388,15 @@ async function main() {
   const openPath = decodePath(buildListCasesPath({ status: "open", category: null, limit: 1, cursor: null }));
   const resolvedPath = decodePath(buildListCasesPath({ status: "resolved", category: null, limit: 1, cursor: null }));
   const allPath = decodePath(buildListCasesPath({ status: "all", category: null, limit: 1, cursor: null }));
+  const activePath = decodePath(buildListCasesPath({ status: "active", category: null, limit: 1, cursor: null }));
+  const inReviewPath = decodePath(buildListCasesPath({ status: "in_review", category: null, limit: 1, cursor: null }));
+  const waitingPath = decodePath(buildListCasesPath({ status: "waiting_on_customer", category: null, limit: 1, cursor: null }));
   assert("49. open filter exact", openPath.includes("status=eq.open"));
   assert("50. resolved filter exact", resolvedPath.includes("status=eq.resolved"));
-  assert("51. all omits status filter", !/status=eq\./.test(allPath));
+  assert("51. all omits status filter", !/status=eq\./.test(allPath) && !/status=in\./.test(allPath));
+  assert("51b. active uses in-filter", activePath.includes("status=in.(open,in_review,waiting_on_customer)"));
+  assert("51c. in_review filter exact", inReviewPath.includes("status=eq.in_review"));
+  assert("51d. waiting_on_customer filter exact", waitingPath.includes("status=eq.waiting_on_customer"));
   const catPath = decodePath(
     buildListCasesPath({ status: "open", category: "possible_bug", limit: 1, cursor: null })
   );
@@ -427,11 +456,11 @@ async function main() {
 
   assert("66. open_count exact", happyBody.counts.open === 1);
   assert("67. resolved_count exact", happyBody.counts.resolved === 0);
-  assert("68. total=open+resolved", happyBody.counts.total === happyBody.counts.open + happyBody.counts.resolved);
+  assert("68. total is actual total not open+resolved assumption", happyBody.counts.total === 1 && happyBody.counts.active === 1 && happyBody.counts.in_review === 0 && happyBody.counts.waiting_on_customer === 0);
   assert("69. no unlimited rows loaded for count", COUNT_SELECT === "id" && COUNT_METHOD === "HEAD" && /count=exact/.test(helperSrc));
   assert(
-    "70. list max DB read count <=4 after valid admin auth",
-    db.gets.length + db.counts.length <= 4 && db.gets.length + db.counts.length >= 3
+    "70. list max DB read count <=8 after valid admin auth",
+    db.gets.length + db.counts.length <= 8 && db.gets.length + db.counts.length >= 6 && db.counts.length === 5
   );
 
   const c0 = happyBody.cases[0];
@@ -445,6 +474,9 @@ async function main() {
   assert("78. created_at returned", c0.created_at === CREATED);
   assert("79. updated_at returned", c0.updated_at === CREATED);
   assert("80. resolved_at returned", c0.resolved_at === null);
+  assert("80b. customer_resolution exposed", c0.customer_resolution === null);
+  assert("80c. tenant_action_message exposed", c0.tenant_action_message === null);
+  assert("80d. status_version exposed", c0.status_version === 1);
 
   const blob = JSON.stringify(happyBody);
   assert("81. tenant_id not returned", !/tenant_id/.test(blob));
@@ -463,7 +495,7 @@ async function main() {
   const getUpd = await runUpdate(fakeEvent("GET", { case_id: CASE_ID, action: "resolve" }), listDeps(dGetUpd));
   assert("92. POST only", getUpd.statusCode === 405 && caseGets(dGetUpd.gets).length === 0);
 
-  assert("93. exact two body keys only", parseUpdateBody({ case_id: CASE_ID, action: "resolve" }).ok);
+  assert("93. case_id and action accepted", parseUpdateBody({ case_id: CASE_ID, action: "resolve" }).ok);
   assert("94. missing case_id rejected", parseUpdateBody({ action: "resolve" }).ok === false);
   assert("95. missing action rejected", parseUpdateBody({ case_id: CASE_ID }).ok === false);
   assert("96. malformed UUID rejected", parseUpdateBody({ case_id: "bad", action: "resolve" }).ok === false);
@@ -522,7 +554,7 @@ async function main() {
   const getPath = decodePath(buildExactCasePath(CASE_ID));
   assert("116. fixed tenant_support_cases table", getPath.startsWith(CASE_TABLE + "?"));
   assert("117. exact validated UUID filter", getPath.includes("id=eq." + CASE_ID));
-  assert("118. select=id,status only", getPath.includes("select=" + CASE_GET_SELECT));
+  assert("118. select is closed GET select", getPath.includes("select=" + CASE_GET_SELECT));
   assert("119. limit 1", getPath.includes("limit=1"));
 
   const dNf = makeDb({ notFound: true });
@@ -583,7 +615,8 @@ async function main() {
   const patchBody = dOpen.patches[0].body;
   assert(
     "137. fixed fields only",
-    JSON.stringify(Object.keys(patchBody).sort()) === JSON.stringify(["resolved_at", "status", "updated_at"].sort())
+    JSON.stringify(Object.keys(patchBody).sort()) ===
+      JSON.stringify(["resolved_at", "status", "status_version", "tenant_action_message", "updated_at"].sort())
   );
   assert("138. no arbitrary PATCH", !/priority|assigned_to|notes/.test(updateSrc));
   assert("139. no DELETE", !/method:\s*[\"']DELETE[\"']/.test(adminApiSrc));
@@ -641,8 +674,10 @@ async function main() {
   assert("171. safe error message only", /The support case could not be updated/.test(uiSrc));
 
   assert("172. Open/Resolved/Total counters", /siCountOpen/.test(htmlSrc) && /siCountResolved/.test(htmlSrc) && /siCountTotal/.test(htmlSrc));
+  assert("172b. Active/In Review/Waiting counters", /siCountActive/.test(htmlSrc) && /siCountInReview/.test(htmlSrc) && /siCountWaiting/.test(htmlSrc));
   assert("173. Open/Resolved/All filters", /data-status="open"/.test(htmlSrc) && /data-status="resolved"/.test(htmlSrc) && /data-status="all"/.test(htmlSrc));
-  assert("174. default Open", /status: "open"/.test(uiSrc));
+  assert("173b. Active/In Review/Waiting filters", /data-status="active"/.test(htmlSrc) && /data-status="in_review"/.test(htmlSrc) && /data-status="waiting_on_customer"/.test(htmlSrc));
+  assert("174. default Active", /status: "active"/.test(uiSrc));
   assert("175. row contains case ref", /case_ref/.test(uiSrc));
   assert("176. row contains business name", /tenant_business_name/.test(uiSrc));
   assert("177. row contains subject", /row.subject/.test(uiSrc));
@@ -651,7 +686,7 @@ async function main() {
   assert("180. row contains created time", /created_at/.test(uiSrc));
   assert("181. row contains status", /row.status/.test(uiSrc));
   assert("182. detail drawer uses existing safe payload", /state.selected/.test(uiSrc) && !/mg-support-admin-get-case/.test(impl));
-  assert("183. Mark resolved only when open", /row.status !== "open"/.test(uiSrc));
+  assert("183. Mark resolved when unresolved", /canResolve\(row\.status\)/.test(uiSrc) && /resolveBtn\.hidden = !canResolve\(row\.status\)/.test(uiSrc));
   assert("184. Reopen only when resolved", /row.status !== "resolved"/.test(uiSrc));
   assert(
     "185. category labels correct",
@@ -660,7 +695,7 @@ async function main() {
       categoryLabel("possible_bug") === "Possible bug" &&
       categoryLabel("other") === "Other"
   );
-  assert("186. no notes", !/textarea|internal notes|admin notes/i.test(htmlSrc + uiSrc));
+  assert("186. no internal notes", !/internal notes|admin notes/i.test(htmlSrc + uiSrc) && !/internal_note/.test(htmlSrc + uiSrc));
   assert("187. no assignment", !/assigned_to|assignee/.test(htmlSrc + uiSrc));
   assert("188. no priority", !/priority|severity/.test(htmlSrc + uiSrc));
   assert("189. no SLA", !/\bSLA\b/.test(htmlSrc + uiSrc + docsSrc));
@@ -686,7 +721,7 @@ async function main() {
   assert("207. quote diagnostic unchanged", fs.existsSync(path.join(ROOT, "netlify/functions/_lib/mg-support/quote-diagnostic.js")));
   assert("208. project diagnostic unchanged", fs.existsSync(path.join(ROOT, "netlify/functions/_lib/mg-support/project-diagnostic.js")));
   assert("209. contract diagnostic unchanged", fs.existsSync(path.join(ROOT, "netlify/functions/_lib/mg-support/contract-diagnostic.js")));
-  assert("210. SUPPORT_CHAT_ASSET_VERSION is 003e-1", /SUPPORT_CHAT_ASSET_VERSION = '003e-1'/.test(navSrc));
+  assert("210. SUPPORT_CHAT_ASSET_VERSION is 003e-2", /SUPPORT_CHAT_ASSET_VERSION = '003e-2'/.test(navSrc));
   assert("211. cache-bust loader unchanged", /mg-support-chat\.js\?v=' \+ encodeURIComponent\(SUPPORT_CHAT_ASSET_VERSION\)/.test(navSrc));
   assert("212. no existing owner nav regression", /href: '\/sales-admin'/.test(navSrc) && !/support-admin/.test(navSrc));
   assert("213. existing 678 tests remain passing", true);
@@ -859,12 +894,12 @@ async function main() {
   const dMax = makeDb();
   await runList(fakeEvent("GET", null, {}), listDeps(dMax));
   assert(
-    "B1-22. max valid list DB reads remains <=4",
-    dMax.gets.length + dMax.counts.length <= 4 &&
-      dMax.gets.length + dMax.counts.length >= 3 &&
-      dMax.counts.length === 2
+    "B1-22. max valid list DB reads remains bounded",
+    dMax.gets.length + dMax.counts.length <= 8 &&
+      dMax.gets.length + dMax.counts.length >= 6 &&
+      dMax.counts.length === 5
   );
-  assert("B1-23. total = open + resolved", happyBody.counts.total === happyBody.counts.open + happyBody.counts.resolved);
+  assert("B1-23. total is actual all-rows count", happyBody.counts.total === 1 && happyBody.counts.total === happyBody.counts.active + happyBody.counts.resolved);
 
   const dCountFail = makeDb({ countFail: true });
   const countFailRes = await runList(fakeEvent("GET", null, {}), listDeps(dCountFail));
@@ -919,15 +954,15 @@ async function main() {
   while ((apiMatch = apiRe.exec(uiSrc))) uiApis.push(apiMatch[0]);
   const uniqueApis = Array.from(new Set(uiApis));
 
-  assert("003C.1-1. resolve waits for server success", /okResults/.test(updateFn) && /await loadList\(\)/.test(updateFn) && updateFn.indexOf("okResults") < updateFn.indexOf("await loadList()"));
+  assert("003C.1-1. resolve waits for server success", /okResults/.test(updateFn) && /await loadList\(\)/.test(updateFn) && updateFn.lastIndexOf("await loadList()") > updateFn.indexOf("if (!okResults[data.result])"));
   assert("003C.1-2. reopen waits for server success", /action: action/.test(updateFn) && /siReopen/.test(uiSrc) && /updateCase\("reopen"\)/.test(uiSrc));
   assert("003C.1-3. resolve does not fabricate client timestamp", !/resolved_at\s*=\s*new Date/.test(uiSrc) && !/updated_at\s*=\s*new Date/.test(uiSrc) && !/state\.selected\.status\s*=/.test(uiSrc));
   assert("003C.1-4. reopen does not fabricate client timestamp", !/resolved_at\s*=\s*null/.test(updateFn) && !/state\.selected\.resolved_at/.test(updateFn));
   assert("003C.1-5. selected case is matched by case_id", /row\.case_id === selectedId/.test(syncFn) && /state\.selected\.case_id/.test(syncFn) && !/subject|tenant_business_name|case_ref/.test(syncFn));
   assert("003C.1-6. stale selected object is not preserved after successful resolve", /state\.selected = fresh \|\| null/.test(syncFn) && /await loadList\(\)/.test(updateFn));
   assert("003C.1-7. stale selected object is not preserved after successful reopen", /state\.selected = fresh \|\| null/.test(syncFn) && /updateCase\("reopen"\)/.test(uiSrc));
-  assert("003C.1-8. open case resolve refreshes list", /await loadList\(\)/.test(updateFn) && /status: "open"/.test(uiSrc));
-  assert("003C.1-9. resolved case disappears from Open list", /params\.set\("status", state\.status\)/.test(uiSrc) && /status: "open"/.test(uiSrc));
+  assert("003C.1-8. open case resolve refreshes list", /await loadList\(\)/.test(updateFn) && /status: "active"/.test(uiSrc));
+  assert("003C.1-9. resolved case disappears from Active list", /params\.set\("status", state\.status\)/.test(uiSrc) && /status: "active"/.test(uiSrc));
   assert("003C.1-10. drawer closes when selected case no longer exists in refreshed Open list", /state\.selected = fresh \|\| null/.test(syncFn) && /if \(!row\)/.test(uiSrc));
   assert("003C.1-11. counters refresh from server counts", /siCountOpen/.test(loadFn) && /counts\.open/.test(loadFn) && /counts\.resolved/.test(loadFn) && /counts\.total/.test(loadFn));
   assert("003C.1-12. resolved case reopen refreshes list", /await loadList\(\)/.test(updateFn) && /siFilterResolved/.test(uiSrc));
@@ -937,19 +972,19 @@ async function main() {
   assert("003C.1-16. resolve keeps case in All list via refreshed rows", /siFilterAll/.test(uiSrc) && /state\.cases = Array\.isArray\(data\.cases\)/.test(loadFn));
   assert("003C.1-17. drawer remains open when refreshed case_id still present", /state\.selected = fresh \|\| null/.test(syncFn) && /drawer\.hidden = false/.test(uiSrc));
   assert("003C.1-18. selected object replaced with refreshed case object", /state\.selected = fresh \|\| null/.test(syncFn) && !/if \(fresh\) \{\s*state\.selected = fresh;/.test(uiSrc));
-  assert("003C.1-19. drawer shows resolved from refreshed row.status", /dl\("Status", escapeHtml\(row\.status\)\)/.test(uiSrc));
-  assert("003C.1-20. drawer shows refreshed resolved_at", /dl\("Resolved", escapeHtml\(formatWhen\(row\.resolved_at\)\)\)/.test(uiSrc));
+  assert("003C.1-19. drawer shows resolved from refreshed row.status", /appendDl\(body, "Status", statusLabel\(row\.status\)\)/.test(uiSrc));
+  assert("003C.1-20. drawer shows refreshed resolved_at", /appendDl\(body, "Resolved", formatWhen\(row\.resolved_at\)\)/.test(uiSrc));
   assert("003C.1-21. drawer button becomes Reopen case from row.status", /reopenBtn\.hidden = row\.status !== "resolved"/.test(uiSrc));
   assert("003C.1-22. reopen keeps case in All list via refreshed rows", /siFilterAll/.test(uiSrc) && /await loadList\(\)/.test(updateFn));
   assert("003C.1-23. selected object replaced again after reopen refresh", /syncSelectedFromRefreshedList\(\)/.test(loadFn));
-  assert("003C.1-24. drawer shows open from refreshed row.status", /dl\("Status", escapeHtml\(row\.status\)\)/.test(uiSrc) && /resolveBtn\.hidden = row\.status !== "open"/.test(uiSrc));
+  assert("003C.1-24. drawer shows open from refreshed row.status", /appendDl\(body, "Status", statusLabel\(row\.status\)\)/.test(uiSrc) && /resolveBtn\.hidden = !canResolve\(row\.status\)/.test(uiSrc));
   assert("003C.1-25. resolved_at displays empty/— when falsy", /function formatWhen/.test(uiSrc) && /if \(!value\) return "—"/.test(uiSrc));
-  assert("003C.1-26. drawer button becomes Mark resolved from row.status", /resolveBtn\.hidden = row\.status !== "open"/.test(uiSrc));
+  assert("003C.1-26. drawer button becomes Mark resolved from row.status", /resolveBtn\.hidden = !canResolve\(row\.status\)/.test(uiSrc));
   assert(
     "003C.1-27. failed update preserves old drawer state",
     /if \(!okResults\[data\.result\]\)/.test(updateFn) &&
-      updateFn.indexOf("return;", updateFn.indexOf("if (!okResults[data.result])")) <
-        updateFn.indexOf("await loadList()")
+      /stale_state/.test(updateFn) &&
+      updateFn.lastIndexOf("await loadList()") > updateFn.indexOf("if (!okResults[data.result])")
   );
   assert("003C.1-28. failed update does not reload/claim transition", !/state\.selected\.status/.test(updateFn) && /The support case could not be updated/.test(updateFn));
   assert("003C.1-29. successful update + failed list refresh does not leave stale drawer", /state\.selected = null/.test(loadFn) && /Support cases could not be loaded/.test(loadFn));
@@ -973,7 +1008,7 @@ async function main() {
   assert("003C.1-39. no OpenAI", !/openai/i.test(uiSrc));
   assert("003C.1-40. no Zapier", !/zapier/i.test(uiSrc));
   assert("003C.1-41. no owner Support history", !/my tickets|owner history/.test(uiSrc + htmlSrc));
-  assert("003C.1-42. cache-bust token present", /SUPPORT_CHAT_ASSET_VERSION = '003e-1'/.test(navSrc));
+  assert("003C.1-42. cache-bust token present", /SUPPORT_CHAT_ASSET_VERSION = '003e-2'/.test(navSrc));
   assert("003C.1-43. existing Support chat/create-case untouched", /This function is read-only/.test(chatSrc) && /confirmation_token/.test(createSrc));
 
   console.log("");

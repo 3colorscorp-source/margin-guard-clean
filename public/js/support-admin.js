@@ -19,9 +19,34 @@
     documentation: "Documentation",
     unknown: "Unknown",
   };
+  const STATUS_LABELS = {
+    open: "Open",
+    in_review: "In Review",
+    waiting_on_customer: "Waiting on You",
+    resolved: "Resolved",
+  };
+  const FILTER_BUTTON_IDS = {
+    active: "siFilterActive",
+    open: "siFilterOpen",
+    in_review: "siFilterInReview",
+    waiting_on_customer: "siFilterWaiting",
+    resolved: "siFilterResolved",
+    all: "siFilterAll",
+  };
+  const okResults = {
+    resolved: true,
+    reopened: true,
+    in_review: true,
+    waiting_on_customer: true,
+    returned_to_open: true,
+    already_resolved: true,
+    already_open: true,
+    already_in_review: true,
+    already_waiting_on_customer: true,
+  };
 
   const state = {
-    status: "open",
+    status: "active",
     category: "",
     cases: [],
     selected: null,
@@ -32,21 +57,28 @@
     return document.getElementById(id);
   }
 
-  function escapeHtml(value) {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
-
   function categoryLabel(value) {
     return CATEGORY_LABELS[value] || "Other";
   }
 
   function moduleLabel(value) {
     return MODULE_LABELS[value] || String(value || "Unknown");
+  }
+
+  function statusLabel(value) {
+    return STATUS_LABELS[value] || String(value || "Unknown");
+  }
+
+  function canResolve(status) {
+    return status === "open" || status === "in_review" || status === "waiting_on_customer";
+  }
+
+  function canMarkInReview(status) {
+    return status === "open" || status === "waiting_on_customer" || status === "resolved";
+  }
+
+  function canRequestAction(status) {
+    return status === "open" || status === "in_review";
   }
 
   function formatWhen(value) {
@@ -106,10 +138,20 @@
     renderDrawer();
   }
 
+  function setCount(id, value) {
+    if ($(id)) $(id).textContent = String(value ?? "—");
+  }
+
   async function loadList() {
     setNotice("");
     const list = $("siList");
-    if (list) list.innerHTML = '<div class="si-loading">Loading support cases…</div>';
+    if (list) {
+      list.textContent = "";
+      const loading = document.createElement("div");
+      loading.className = "si-loading";
+      loading.textContent = "Loading support cases…";
+      list.appendChild(loading);
+    }
     let res;
     let data = {};
     try {
@@ -126,69 +168,82 @@
     if (!res.ok || !data.ok) {
       state.cases = [];
       state.selected = null;
-      if (list) list.innerHTML = "";
+      if (list) list.textContent = "";
       setNotice(String(data.error || "Support cases could not be loaded."));
       renderDrawer();
       return false;
     }
     state.cases = Array.isArray(data.cases) ? data.cases : [];
     const counts = data.counts || {};
-    if ($("siCountOpen")) $("siCountOpen").textContent = String(counts.open ?? "—");
-    if ($("siCountResolved")) $("siCountResolved").textContent = String(counts.resolved ?? "—");
-    if ($("siCountTotal")) $("siCountTotal").textContent = String(counts.total ?? "—");
+    setCount("siCountActive", counts.active);
+    setCount("siCountOpen", counts.open);
+    setCount("siCountInReview", counts.in_review);
+    setCount("siCountWaiting", counts.waiting_on_customer);
+    setCount("siCountResolved", counts.resolved);
+    setCount("siCountTotal", counts.total);
     renderList();
     syncSelectedFromRefreshedList();
     return true;
   }
 
+  function appendText(parent, tag, className, text) {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    el.textContent = text == null ? "" : String(text);
+    parent.appendChild(el);
+    return el;
+  }
+
   function renderList() {
     const list = $("siList");
     if (!list) return;
+    list.textContent = "";
     if (!state.cases.length) {
-      list.innerHTML = '<div class="si-empty">No support cases in this view.</div>';
+      appendText(list, "div", "si-empty", "No support cases in this view.");
       return;
     }
-    list.innerHTML = state.cases
-      .map(function (row) {
-        return (
-          '<button type="button" class="si-row" data-case-id="' +
-          escapeHtml(row.case_id) +
-          '">' +
-          '<div class="si-row__top">' +
-          "<strong>" +
-          escapeHtml(row.case_ref) +
-          "</strong>" +
-          '<span class="si-badge">' +
-          escapeHtml(row.status) +
-          "</span>" +
-          "</div>" +
-          "<div>" +
-          escapeHtml(row.tenant_business_name) +
-          "</div>" +
-          "<div>" +
-          escapeHtml(row.subject) +
-          "</div>" +
-          '<div class="si-row__meta">' +
-          escapeHtml(categoryLabel(row.category)) +
+    state.cases.forEach(function (row) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "si-row";
+      btn.setAttribute("data-case-id", String(row && row.case_id ? row.case_id : ""));
+      const top = document.createElement("div");
+      top.className = "si-row__top";
+      appendText(top, "strong", "", row && row.case_ref ? row.case_ref : "");
+      appendText(top, "span", "si-badge", row && row.status_label ? row.status_label : statusLabel(row && row.status));
+      btn.appendChild(top);
+      appendText(btn, "div", "", row && row.tenant_business_name ? row.tenant_business_name : "");
+      appendText(btn, "div", "", row && row.subject ? row.subject : "");
+      appendText(
+        btn,
+        "div",
+        "si-row__meta",
+        categoryLabel(row && row.category) +
           " · " +
-          escapeHtml(moduleLabel(row.support_module)) +
+          moduleLabel(row && row.support_module) +
           " · " +
-          escapeHtml(formatWhen(row.created_at)) +
-          "</div>" +
-          "</button>"
-        );
-      })
-      .join("");
+          formatWhen(row && row.created_at)
+      );
+      list.appendChild(btn);
+    });
   }
 
-  function dl(label, value) {
-    return (
-      "<div><dt>" +
-      escapeHtml(label) +
-      "</dt><dd>" +
-      value +
-      "</dd></div>"
-    );
+  function appendDl(parent, label, value) {
+    const wrap = document.createElement("div");
+    const dt = document.createElement("dt");
+    dt.textContent = String(label || "");
+    const dd = document.createElement("dd");
+    dd.textContent = value == null ? "" : String(value);
+    wrap.appendChild(dt);
+    wrap.appendChild(dd);
+    parent.appendChild(wrap);
+    return dd;
+  }
+
+  function setText(id, text) {
+    const el = $(id);
+    if (!el) return;
+    el.textContent = text == null ? "" : String(text);
   }
 
   function renderDrawer() {
@@ -197,6 +252,9 @@
     const backdrop = $("siBackdrop");
     const resolveBtn = $("siResolve");
     const reopenBtn = $("siReopen");
+    const reviewBtn = $("siMarkInReview");
+    const returnBtn = $("siReturnToOpen");
+    const requestBtn = $("siRequestAction");
     if (!row) {
       if (drawer) drawer.hidden = true;
       if (backdrop) backdrop.hidden = true;
@@ -205,26 +263,55 @@
     if ($("siDrawerTitle")) $("siDrawerTitle").textContent = row.case_ref;
     const related =
       row.related_entity_type && row.related_entity_type !== "none"
-        ? escapeHtml(row.related_entity_type) +
-          (row.related_entity_ref ? " · " + escapeHtml(row.related_entity_ref) : "")
+        ? row.related_entity_type + (row.related_entity_ref ? " · " + row.related_entity_ref : "")
         : "None";
-    if ($("siDrawerBody")) {
-      $("siDrawerBody").innerHTML =
-        dl("Case ref", escapeHtml(row.case_ref)) +
-        dl("Tenant business", escapeHtml(row.tenant_business_name)) +
-        dl("Status", escapeHtml(row.status)) +
-        dl("Category", escapeHtml(categoryLabel(row.category))) +
-        dl("Subject", escapeHtml(row.subject)) +
-        dl("Question", '<span class="si-excerpt">' + escapeHtml(row.question_excerpt || "") + "</span>") +
-        dl("Module", escapeHtml(moduleLabel(row.support_module))) +
-        dl("Page", escapeHtml(row.page_path || "—")) +
-        dl("Related entity", related) +
-        dl("Created", escapeHtml(formatWhen(row.created_at))) +
-        dl("Updated", escapeHtml(formatWhen(row.updated_at))) +
-        dl("Resolved", escapeHtml(formatWhen(row.resolved_at)));
+    const body = $("siDrawerBody");
+    if (body) {
+      body.textContent = "";
+      appendDl(body, "Case ref", row.case_ref);
+      appendDl(body, "Tenant business", row.tenant_business_name);
+      appendDl(body, "Status", statusLabel(row.status));
+      appendDl(body, "Category", categoryLabel(row.category));
+      appendDl(body, "Subject", row.subject);
+      const excerptDd = appendDl(body, "Question", row.question_excerpt || "");
+      excerptDd.className = "si-excerpt";
+      appendDl(body, "Module", moduleLabel(row.support_module));
+      appendDl(body, "Page", row.page_path || "—");
+      appendDl(body, "Related entity", related);
+      appendDl(body, "Created", formatWhen(row.created_at));
+      appendDl(body, "Updated", formatWhen(row.updated_at));
+      appendDl(body, "Resolved", formatWhen(row.resolved_at));
+    }
+
+    const hasAction = !!(row.tenant_action_message && String(row.tenant_action_message).trim());
+    const hasResolution = !!(row.customer_resolution && String(row.customer_resolution).trim());
+    if ($("siSnapshot")) $("siSnapshot").hidden = !(hasAction || hasResolution);
+    if ($("siActionMessageBlock")) $("siActionMessageBlock").hidden = !hasAction;
+    if ($("siResolutionBlock")) $("siResolutionBlock").hidden = !hasResolution;
+    setText("siActionMessageText", hasAction ? row.tenant_action_message : "");
+    setText("siResolutionText", hasResolution ? row.customer_resolution : "");
+
+    if ($("siActionCompose")) $("siActionCompose").hidden = !canRequestAction(row.status);
+    if ($("siResolutionCompose")) $("siResolutionCompose").hidden = !canResolve(row.status);
+    if ($("siActionMessageInput") && !state.writing) $("siActionMessageInput").value = "";
+    if ($("siResolutionInput") && !state.writing && !canResolve(row.status)) {
+      $("siResolutionInput").value = "";
+    }
+
+    if (reviewBtn) {
+      reviewBtn.hidden = !canMarkInReview(row.status);
+      reviewBtn.disabled = state.writing;
+    }
+    if (returnBtn) {
+      returnBtn.hidden = row.status !== "in_review";
+      returnBtn.disabled = state.writing;
+    }
+    if (requestBtn) {
+      requestBtn.hidden = !canRequestAction(row.status);
+      requestBtn.disabled = state.writing;
     }
     if (resolveBtn) {
-      resolveBtn.hidden = row.status !== "open";
+      resolveBtn.hidden = !canResolve(row.status);
       resolveBtn.disabled = state.writing;
     }
     if (reopenBtn) {
@@ -235,8 +322,26 @@
     if (backdrop) backdrop.hidden = false;
   }
 
+  function readTrimmed(id) {
+    const el = $(id);
+    return el ? String(el.value || "").trim() : "";
+  }
+
   async function updateCase(action) {
     if (!state.selected || state.writing) return;
+    const body = { case_id: state.selected.case_id, action: action };
+    if (action === "request_customer_action") {
+      const message = readTrimmed("siActionMessageInput");
+      if (!message) {
+        setNotice("Enter what the tenant needs to do before requesting customer action.");
+        return;
+      }
+      body.tenant_action_message = message;
+    }
+    if (action === "resolve") {
+      const resolution = readTrimmed("siResolutionInput");
+      if (resolution) body.customer_resolution = resolution;
+    }
     state.writing = true;
     renderDrawer();
     setNotice("");
@@ -245,7 +350,7 @@
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ case_id: state.selected.case_id, action: action }),
+        body: JSON.stringify(body),
       });
       let data = {};
       try {
@@ -253,7 +358,11 @@
       } catch (_err) {
         data = {};
       }
-      const okResults = { resolved: true, reopened: true, already_resolved: true, already_open: true };
+      if (data.result === "stale_state") {
+        setNotice(String(data.error || "This support case was updated by another administrator. Showing the latest status."));
+        await loadList();
+        return;
+      }
       if (!okResults[data.result]) {
         setNotice(String(data.error || "The support case could not be updated."));
         return;
@@ -266,9 +375,8 @@
   }
 
   function syncFilterButtons() {
-    ["open", "resolved", "all"].forEach(function (status) {
-      const id = status === "open" ? "siFilterOpen" : status === "resolved" ? "siFilterResolved" : "siFilterAll";
-      const btn = $(id);
+    Object.keys(FILTER_BUTTON_IDS).forEach(function (status) {
+      const btn = $(FILTER_BUTTON_IDS[status]) || document.querySelector('.si-filters [data-status="' + status + '"]');
       if (!btn) return;
       btn.className = state.status === status ? "btn" : "btn ghost";
     });
@@ -287,31 +395,34 @@
         renderDrawer();
       });
     }
-    if ($("siFilterOpen")) {
-      $("siFilterOpen").addEventListener("click", function () {
-        state.status = "open";
+    Object.keys(FILTER_BUTTON_IDS).forEach(function (status) {
+      const btn = $(FILTER_BUTTON_IDS[status]) || document.querySelector('.si-filters [data-status="' + status + '"]');
+      if (!btn) return;
+      btn.addEventListener("click", function () {
+        state.status = status;
         syncFilterButtons();
         loadList();
       });
-    }
-    if ($("siFilterResolved")) {
-      $("siFilterResolved").addEventListener("click", function () {
-        state.status = "resolved";
-        syncFilterButtons();
-        loadList();
-      });
-    }
-    if ($("siFilterAll")) {
-      $("siFilterAll").addEventListener("click", function () {
-        state.status = "all";
-        syncFilterButtons();
-        loadList();
-      });
-    }
+    });
     if ($("siCategory")) {
       $("siCategory").addEventListener("change", function (ev) {
         state.category = String(ev.target.value || "");
         loadList();
+      });
+    }
+    if ($("siMarkInReview")) {
+      $("siMarkInReview").addEventListener("click", function () {
+        updateCase("mark_in_review");
+      });
+    }
+    if ($("siReturnToOpen")) {
+      $("siReturnToOpen").addEventListener("click", function () {
+        updateCase("return_to_open");
+      });
+    }
+    if ($("siRequestAction")) {
+      $("siRequestAction").addEventListener("click", function () {
+        updateCase("request_customer_action");
       });
     }
     if ($("siResolve")) {
