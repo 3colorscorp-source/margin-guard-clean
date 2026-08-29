@@ -18,9 +18,9 @@ const {
 } = require("../netlify/functions/_lib/mg-support/my-cases");
 const {
   ACTIVE_STATUSES,
-  buildPatchPath,
   parseUpdateBody,
   UPDATE_BODY_KEYS,
+  TRANSITION_RPC,
 } = require("../netlify/functions/_lib/mg-support/admin-cases");
 
 let failed = 0;
@@ -82,17 +82,16 @@ function main() {
   const sqlSrc = read("SUPABASE_MG_SUPPORT_003E_2A_CASE_LIFECYCLE_OUTBOX.sql");
   const sqlVerify = read("SUPABASE_MG_SUPPORT_003E_2A_CASE_LIFECYCLE_OUTBOX_VERIFY.sql");
 
-  const cas = decodePath(buildPatchPath("cccccccc-cccc-4ccc-8ccc-cccccccccccc", { status: "open", status_version: 4 }));
   assert(
-    "1. PATCH CAS includes id, loaded status, loaded status_version",
-    cas.includes("id=eq.cccccccc-cccc-4ccc-8ccc-cccccccccccc") &&
-      cas.includes("status=eq.open") &&
-      cas.includes("status_version=eq.4")
+    "1. RPC CAS uses loaded status and status_version",
+    /p_expected_status: current/.test(helperSrc) &&
+      /p_expected_status_version: version/.test(helperSrc) &&
+      TRANSITION_RPC === "mg_support_transition_case"
   );
   assert("2. browser cannot supply status_version", !UPDATE_BODY_KEYS.has("status_version") && parseUpdateBody({ case_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", action: "resolve", status_version: 9 }).ok === false);
-  assert("3. empty representation reloads then stale_state", /conflictFromReload/.test(helperSrc) && /stale_state/.test(helperSrc + updateSrc + adminUiSrc));
-  assert("4. conflict does not retry PATCH", !/while\s*\(/.test(helperSrc) && (helperSrc.match(/await patch\(/g) || []).length === 1);
-  assert("5. waiting validation before PATCH", /action === "request_customer_action"/.test(helperSrc) && /invalid_request/.test(helperSrc));
+  assert("3. RPC stale_state does not retry mutation", /code === "stale_state"/.test(helperSrc) && /stale_state/.test(helperSrc + updateSrc + adminUiSrc) && !/conflictFromReload/.test(helperSrc));
+  assert("4. conflict does not retry RPC", !/while\s*\(/.test(helperSrc) && (helperSrc.match(/await rpc\(/g) || []).length === 1 && (helperSrc.match(/await patch\(/g) || []).length === 0);
+  assert("5. waiting validation before RPC", /action === "request_customer_action"/.test(helperSrc) && helperSrc.indexOf('action === "request_customer_action"') < helperSrc.indexOf("const rpc = queryRpc"));
 
   const open = toDetail(caseRow({ status: "open" }));
   const review = toDetail(caseRow({ status: "in_review" }));

@@ -18,10 +18,14 @@ const {
   parseListQuery,
   buildListCasesPath,
   buildCountPath,
-  buildPatchPath,
   updateAdminCase,
   VISIBLE_TEXT_MAX,
+  TRANSITION_RPC,
 } = require("../netlify/functions/_lib/mg-support/admin-cases");
+const {
+  createStatelessRpc,
+  createTransactionalStore,
+} = require("./_lib/mg-support-transition-rpc-sim");
 
 let failed = 0;
 let passed = 0;
@@ -119,12 +123,17 @@ function makeDb(opts) {
     }
     return [];
   }
-  async function supabasePatch(path, body) {
-    patches.push({ path, body });
-    if (options.patchThrow) throw new Error("db");
-    if (options.patchEmpty) return [];
-    return [{ id: CASE_ID, status: body.status, status_version: body.status_version }];
-  }
+  const rpc = createStatelessRpc({
+    currentStatus: options.currentStatus,
+    statusVersion: options.statusVersion,
+    customerResolution: options.customerResolution,
+    tenantActionMessage: options.tenantActionMessage,
+    resolvedAt: options.resolvedAt == null ? (options.currentStatus === "resolved" ? NOW : null) : options.resolvedAt,
+    tenantId: TENANT_ID,
+    nowIso: () => NOW,
+    rpcThrow: options.patchThrow || options.rpcThrow,
+    rpcStale: options.patchEmpty || options.rpcStale,
+  });
   async function countCases(kind) {
     counts.push(kind);
     if (kind === "open") return options.openCount == null ? 1 : options.openCount;
@@ -134,7 +143,15 @@ function makeDb(opts) {
     if (kind === "all") return options.totalCount == null ? 10 : options.totalCount;
     return null;
   }
-  return { supabaseGet, supabasePatch, countCases, gets, patches, counts };
+  return {
+    supabaseGet,
+    supabaseRpc: rpc.supabaseRpc,
+    countCases,
+    gets,
+    patches,
+    rpcs: rpc.calls,
+    counts,
+  };
 }
 
 function deps(db, extra) {
@@ -142,7 +159,7 @@ function deps(db, extra) {
     readSessionFromEvent: (extra && extra.readSessionFromEvent) || (() => ({ e: "admin@example.com", u: ADMIN })),
     isPlatformAdmin: (extra && extra.isPlatformAdmin) || (async () => true),
     supabaseGet: db.supabaseGet,
-    supabasePatch: db.supabasePatch,
+    supabaseRpc: db.supabaseRpc,
     countCases: db.countCases,
     nowIso: () => NOW,
     ...(extra || {}),
@@ -158,7 +175,7 @@ async function runAction(action, status, extraBody, dbOpts) {
   const body = { case_id: CASE_ID, action, ...(extraBody || {}) };
   const res = await updateAdminCase(parseUpdateBody(body), {
     supabaseGet: db.supabaseGet,
-    supabasePatch: db.supabasePatch,
+    supabaseRpc: db.supabaseRpc,
     nowIso: () => NOW,
   });
   return { res, db, body };
@@ -199,26 +216,26 @@ async function main() {
 
   const openReview = await runAction("mark_in_review", "open");
   assert("5. open → in_review", openReview.res.result === "in_review" && openReview.res.status === "in_review");
-  assert("6. in_review clears action message and resolved_at", openReview.db.patches[0].body.tenant_action_message === null && openReview.db.patches[0].body.resolved_at === null);
-  assert("7. in_review increments status_version once", openReview.db.patches[0].body.status_version === 2 && openReview.res.status_version === 2);
-  assert("8. in_review does not patch customer_resolution", !("customer_resolution" in openReview.db.patches[0].body));
+  assert("6. in_review clears action message and resolved_at", openReview.res.tenant_action_message === null && openReview.res.resolved_at === null);
+  assert("7. in_review increments status_version once", openReview.res.status_version === 2 && openReview.db.rpcs.length === 1);
+  assert("8. in_review does not patch customer_resolution", openReview.db.rpcs[0].args.p_has_customer_resolution === false);
 
   const waitingReview = await runAction("mark_in_review", "waiting_on_customer", null, { tenantActionMessage: "Please send the photo." });
   assert("9. waiting → in_review", waitingReview.res.result === "in_review");
-  assert("10. leaving waiting clears tenant_action_message", waitingReview.db.patches[0].body.tenant_action_message === null);
+  assert("10. leaving waiting clears tenant_action_message", waitingReview.res.tenant_action_message === null);
 
   const resolvedReview = await runAction("mark_in_review", "resolved", null, { customerResolution: "Fixed on our side." });
   assert("11. resolved → in_review", resolvedReview.res.result === "in_review");
-  assert("12. in_review preserves customer_resolution", !("customer_resolution" in resolvedReview.db.patches[0].body));
+  assert("12. in_review preserves customer_resolution", resolvedReview.res.customer_resolution === "Fixed on our side." && resolvedReview.db.rpcs[0].args.p_has_customer_resolution === false);
 
   const alreadyReview = await runAction("mark_in_review", "in_review", null, { statusVersion: 4 });
-  assert("13. same-state in_review is already_in_review", alreadyReview.res.result === "already_in_review" && alreadyReview.db.patches.length === 0);
+  assert("13. same-state in_review is already_in_review", alreadyReview.res.result === "already_in_review" && alreadyReview.db.rpcs.length === 0);
   assert("14. no-op does not increment", alreadyReview.res.status_version === 4);
 
   const openWait = await runAction("request_customer_action", "open", { tenant_action_message: "Upload the signed page." });
   assert("15. open → waiting", openWait.res.result === "waiting_on_customer" && openWait.res.status === "waiting_on_customer");
-  assert("16. waiting stores sanitized message", openWait.db.patches[0].body.tenant_action_message === "Upload the signed page.");
-  assert("17. waiting increments version", openWait.db.patches[0].body.status_version === 2);
+  assert("16. waiting stores sanitized message", openWait.res.tenant_action_message === "Upload the signed page.");
+  assert("17. waiting increments version", openWait.res.status_version === 2);
 
   const reviewWait = await runAction("request_customer_action", "in_review", { tenant_action_message: "Reply with the invoice number." });
   assert("18. in_review → waiting", reviewWait.res.result === "waiting_on_customer");
@@ -235,7 +252,7 @@ async function main() {
   assert("23. waiting message 400 allowed", parseUpdateBody({ case_id: CASE_ID, action: "request_customer_action", tenant_action_message: "x".repeat(VISIBLE_TEXT_MAX) }).ok);
 
   const alreadyWait = await runAction("request_customer_action", "waiting_on_customer", { tenant_action_message: "Another note." }, { tenantActionMessage: "Existing." });
-  assert("24. same-state waiting is already_waiting_on_customer", alreadyWait.res.result === "already_waiting_on_customer" && alreadyWait.db.patches.length === 0);
+  assert("24. same-state waiting is already_waiting_on_customer", alreadyWait.res.result === "already_waiting_on_customer" && alreadyWait.db.rpcs.length === 0);
 
   const openResolve = await runAction("resolve", "open");
   assert("25. open → resolved", openResolve.res.result === "resolved" && openResolve.res.status === "resolved");
@@ -243,9 +260,9 @@ async function main() {
   assert("26. in_review → resolved", reviewResolve.res.result === "resolved");
   const waitingResolve = await runAction("resolve", "waiting_on_customer", null, { tenantActionMessage: "Need photo." });
   assert("27. waiting → resolved", waitingResolve.res.result === "resolved");
-  assert("28. resolve clears waiting message", waitingResolve.db.patches[0].body.tenant_action_message === null);
-  assert("29. resolve sets resolved_at", waitingResolve.db.patches[0].body.resolved_at === NOW);
-  assert("30. resolve increments version", waitingResolve.db.patches[0].body.status_version === 2);
+  assert("28. resolve clears waiting message", waitingResolve.res.tenant_action_message === null);
+  assert("29. resolve sets resolved_at", waitingResolve.res.resolved_at === NOW);
+  assert("30. resolve increments version", waitingResolve.res.status_version === 2);
 
   const withResolution = parseUpdateBody({
     case_id: CASE_ID,
@@ -255,35 +272,35 @@ async function main() {
   const dResText = makeDb({ currentStatus: "open" });
   const resolvedText = await updateAdminCase(withResolution, {
     supabaseGet: dResText.supabaseGet,
-    supabasePatch: dResText.supabasePatch,
+    supabaseRpc: dResText.supabaseRpc,
     nowIso: () => NOW,
   });
   assert("31. resolution sanitization", withResolution.ok && withResolution.customer_resolution.includes("[redacted-email]"));
-  assert("32. resolve stores sanitized resolution", resolvedText.result === "resolved" && dResText.patches[0].body.customer_resolution.includes("[redacted-email]"));
+  assert("32. resolve stores sanitized resolution", resolvedText.result === "resolved" && String(dResText.rpcs[0].args.p_customer_resolution).includes("[redacted-email]"));
   assert("33. resolution max length", parseUpdateBody({ case_id: CASE_ID, action: "resolve", customer_resolution: "y".repeat(401) }).ok === false);
-  assert("34. resolve without resolution omits column", !("customer_resolution" in openResolve.db.patches[0].body));
+  assert("34. resolve without resolution omits column", openResolve.db.rpcs[0].args.p_has_customer_resolution === false);
 
   const dReopen = makeDb({ currentStatus: "resolved", customerResolution: "Last known fix.", statusVersion: 3 });
   const reopened = await updateAdminCase(
     { case_id: CASE_ID, action: "reopen" },
-    { supabaseGet: dReopen.supabaseGet, supabasePatch: dReopen.supabasePatch, nowIso: () => NOW }
+    { supabaseGet: dReopen.supabaseGet, supabaseRpc: dReopen.supabaseRpc, nowIso: () => NOW }
   );
   assert("35. resolved → reopen/open", reopened.result === "reopened" && reopened.status === "open");
-  assert("36. reopen clears resolved_at and waiting message", dReopen.patches[0].body.resolved_at === null && dReopen.patches[0].body.tenant_action_message === null);
-  assert("37. reopen preserves customer_resolution", !("customer_resolution" in dReopen.patches[0].body) && reopened.customer_resolution === "Last known fix.");
-  assert("38. reopen increments version", dReopen.patches[0].body.status_version === 4);
+  assert("36. reopen clears resolved_at and waiting message", reopened.resolved_at === null && reopened.tenant_action_message === null);
+  assert("37. reopen preserves customer_resolution", dReopen.rpcs[0].args.p_has_customer_resolution === false && reopened.customer_resolution === "Last known fix.");
+  assert("38. reopen increments version", reopened.status_version === 4);
 
   const dReturn = makeDb({ currentStatus: "in_review", tenantActionMessage: "old", statusVersion: 5 });
   const returned = await updateAdminCase(
     { case_id: CASE_ID, action: "return_to_open" },
-    { supabaseGet: dReturn.supabaseGet, supabasePatch: dReturn.supabasePatch, nowIso: () => NOW }
+    { supabaseGet: dReturn.supabaseGet, supabaseRpc: dReturn.supabaseRpc, nowIso: () => NOW }
   );
   assert("39. in_review → return_to_open", returned.result === "returned_to_open" && returned.status === "open");
-  assert("40. return_to_open clears waiting message and resolved_at", dReturn.patches[0].body.tenant_action_message === null && dReturn.patches[0].body.resolved_at === null);
-  assert("41. return_to_open increments version", dReturn.patches[0].body.status_version === 6);
+  assert("40. return_to_open clears waiting message and resolved_at", returned.tenant_action_message === null && returned.resolved_at === null);
+  assert("41. return_to_open increments version", returned.status_version === 6);
 
   const invalidWaitResolveReopen = await runAction("reopen", "waiting_on_customer");
-  assert("42. invalid transition denied", invalidWaitResolveReopen.res.result === "invalid_transition" && invalidWaitResolveReopen.db.patches.length === 0);
+  assert("42. invalid transition denied", invalidWaitResolveReopen.res.result === "invalid_transition" && invalidWaitResolveReopen.db.rpcs.length === 0);
   const invalidReturn = await runAction("return_to_open", "waiting_on_customer");
   assert("43. return_to_open from waiting denied", invalidReturn.res.result === "invalid_transition");
   const invalidResolvedWait = await runAction("request_customer_action", "resolved", { tenant_action_message: "Please act." });
@@ -304,14 +321,14 @@ async function main() {
     }
   );
   const ownerParsed = parse(ownerRes);
-  assert("49. non-admin denied", ownerRes.statusCode === 401 && ownerParsed.result === "not_authorized" && dOwner.patches.length === 0);
+  assert("49. non-admin denied", ownerRes.statusCode === 401 && ownerParsed.result === "not_authorized" && dOwner.rpcs.length === 0);
 
   const alreadyOpen = await runAction("reopen", "open");
-  assert("50. same-state reopen is already_open", alreadyOpen.res.result === "already_open" && alreadyOpen.db.patches.length === 0);
+  assert("50. same-state reopen is already_open", alreadyOpen.res.result === "already_open" && alreadyOpen.db.rpcs.length === 0);
   const alreadyResolved = await runAction("resolve", "resolved");
-  assert("51. same-state resolve is already_resolved", alreadyResolved.res.result === "already_resolved" && alreadyResolved.db.patches.length === 0);
+  assert("51. same-state resolve is already_resolved", alreadyResolved.res.result === "already_resolved" && alreadyResolved.db.rpcs.length === 0);
   const alreadyReturn = await runAction("return_to_open", "open");
-  assert("52. same-state return_to_open is already_open", alreadyReturn.res.result === "already_open" && alreadyReturn.db.patches.length === 0);
+  assert("52. same-state return_to_open is already_open", alreadyReturn.res.result === "already_open" && alreadyReturn.db.rpcs.length === 0);
 
   assert("53. no OpenAI", !/openai\.com|OPENAI_API_KEY|getOpenAiKey/i.test(adminApiSrc));
   assert("54. no email", !/nodemailer|sendgrid|mailto|recipient_email|owner_email/i.test(adminApiSrc));
@@ -328,60 +345,62 @@ async function main() {
   assert("65. no tenant_action_required column write", !/tenant_action_required/.test(helperSrc));
   assert("66. browser cannot set status_version", parseUpdateBody({ case_id: CASE_ID, action: "resolve", status_version: 9 }).ok === false);
 
-  const casPath = decodePath(buildPatchPath(CASE_ID, { status: "open", status_version: 1 }));
   assert(
-    "67. PATCH compare-and-swap filters id+status+version",
-    casPath.includes("id=eq." + CASE_ID) &&
-      casPath.includes("status=eq.open") &&
-      casPath.includes("status_version=eq.1")
+    "67. RPC compare-and-swap uses loaded status+version",
+    helperSrc.includes('p_expected_status: current') &&
+      helperSrc.includes("p_expected_status_version: version") &&
+      /TRANSITION_RPC = "mg_support_transition_case"/.test(helperSrc) &&
+      TRANSITION_RPC === "mg_support_transition_case"
   );
 
   function makeCasDb(initial, freezeGets) {
     const start = {
       id: CASE_ID,
+      tenant_id: TENANT_ID,
       status: initial.status || "open",
       status_version: initial.statusVersion == null ? 1 : initial.statusVersion,
       customer_resolution: initial.customerResolution == null ? null : initial.customerResolution,
       tenant_action_message: initial.tenantActionMessage == null ? null : initial.tenantActionMessage,
       resolved_at: initial.resolvedAt == null ? null : initial.resolvedAt,
     };
-    let stored = { ...start };
     const snapshot = { ...start };
     let getCount = 0;
-    const patches = [];
+    const store = createTransactionalStore(start, { nowIso: () => NOW });
     async function supabaseGet() {
       getCount += 1;
-      if (freezeGets && getCount <= freezeGets) return [{ ...snapshot }];
-      return [{ ...stored }];
+      const row = freezeGets && getCount <= freezeGets ? snapshot : store.getStored();
+      return [
+        {
+          id: row.id,
+          status: row.status,
+          status_version: row.status_version,
+          customer_resolution: row.customer_resolution,
+          tenant_action_message: row.tenant_action_message,
+          resolved_at: row.resolved_at,
+        },
+      ];
     }
-    async function supabasePatch(path, body) {
-      patches.push({ path, body });
-      const decoded = decodePath(path);
-      if (
-        !decoded.includes("id=eq." + CASE_ID) ||
-        !decoded.includes("status=eq." + stored.status) ||
-        !decoded.includes("status_version=eq." + String(stored.status_version))
-      ) {
-        return [];
-      }
-      stored = { ...stored, ...body };
-      return [{ ...stored }];
-    }
-    return { supabaseGet, supabasePatch, patches, getStored: () => stored };
+    return {
+      supabaseGet,
+      supabaseRpc: store.supabaseRpc,
+      rpcs: store.calls,
+      patches: store.patches,
+      getStored: store.getStored,
+    };
   }
 
   const raceDb = makeCasDb({ status: "open", statusVersion: 1, tenantActionMessage: "old" }, 2);
   const raceFirst = await updateAdminCase(
     { case_id: CASE_ID, action: "mark_in_review" },
-    { supabaseGet: raceDb.supabaseGet, supabasePatch: raceDb.supabasePatch, nowIso: () => NOW }
+    { supabaseGet: raceDb.supabaseGet, supabaseRpc: raceDb.supabaseRpc, nowIso: () => NOW }
   );
   const raceSecond = await updateAdminCase(
     parseUpdateBody({ case_id: CASE_ID, action: "request_customer_action", tenant_action_message: "Please send the photo." }),
-    { supabaseGet: raceDb.supabaseGet, supabasePatch: raceDb.supabasePatch, nowIso: () => NOW }
+    { supabaseGet: raceDb.supabaseGet, supabaseRpc: raceDb.supabaseRpc, nowIso: () => NOW }
   );
   assert("68. concurrent first request succeeds", raceFirst.result === "in_review" && raceFirst.status_version === 2);
   assert("69. concurrent second request is stale_state", raceSecond.result === "stale_state" && raceSecond.ok === false);
-  assert("70. version increments exactly once under race", raceDb.getStored().status_version === 2 && raceDb.patches.length === 2);
+  assert("70. version increments exactly once under race", raceDb.getStored().status_version === 2 && raceDb.rpcs.length === 2);
   assert(
     "71. competing action does not overwrite newer status/message",
     raceDb.getStored().status === "in_review" &&
@@ -392,49 +411,49 @@ async function main() {
   const clickDb = makeCasDb({ status: "open", statusVersion: 3 }, 0);
   const click1 = await updateAdminCase(
     { case_id: CASE_ID, action: "mark_in_review" },
-    { supabaseGet: clickDb.supabaseGet, supabasePatch: clickDb.supabasePatch, nowIso: () => NOW }
+    { supabaseGet: clickDb.supabaseGet, supabaseRpc: clickDb.supabaseRpc, nowIso: () => NOW }
   );
   const click2 = await updateAdminCase(
     { case_id: CASE_ID, action: "mark_in_review" },
-    { supabaseGet: clickDb.supabaseGet, supabasePatch: clickDb.supabasePatch, nowIso: () => NOW }
+    { supabaseGet: clickDb.supabaseGet, supabaseRpc: clickDb.supabaseRpc, nowIso: () => NOW }
   );
   assert(
     "72. sequential double-click is already_in_review",
     click1.result === "in_review" &&
       click2.result === "already_in_review" &&
-      clickDb.patches.length === 1 &&
+      clickDb.rpcs.length === 1 &&
       clickDb.getStored().status_version === 4
   );
 
   const sameRace = makeCasDb({ status: "open", statusVersion: 1 }, 2);
   const same1 = await updateAdminCase(
     { case_id: CASE_ID, action: "resolve" },
-    { supabaseGet: sameRace.supabaseGet, supabasePatch: sameRace.supabasePatch, nowIso: () => NOW }
+    { supabaseGet: sameRace.supabaseGet, supabaseRpc: sameRace.supabaseRpc, nowIso: () => NOW }
   );
   const same2 = await updateAdminCase(
     { case_id: CASE_ID, action: "resolve", has_customer_resolution: true, customer_resolution: "Should not win." },
-    { supabaseGet: sameRace.supabaseGet, supabasePatch: sameRace.supabasePatch, nowIso: () => NOW }
+    { supabaseGet: sameRace.supabaseGet, supabaseRpc: sameRace.supabaseRpc, nowIso: () => NOW }
   );
   assert(
     "73. concurrent same-action second is stale and does not write resolution",
     same1.result === "resolved" &&
       same2.result === "stale_state" &&
       sameRace.getStored().status_version === 2 &&
-      !("customer_resolution" in sameRace.patches[0].body) &&
+      sameRace.rpcs[0].args.p_has_customer_resolution !== true &&
       sameRace.getStored().customer_resolution == null
   );
 
   const dBlankWait = makeDb({ currentStatus: "open" });
   const noWait = await updateAdminCase(
     { case_id: CASE_ID, action: "request_customer_action", tenant_action_message: "   " },
-    { supabaseGet: dBlankWait.supabaseGet, supabasePatch: dBlankWait.supabasePatch, nowIso: () => NOW }
+    { supabaseGet: dBlankWait.supabaseGet, supabaseRpc: dBlankWait.supabaseRpc, nowIso: () => NOW }
   );
-  assert("74. waiting without valid message is zero PATCH", noWait.result === "invalid_request" && dBlankWait.patches.length === 0);
+  assert("74. waiting without valid message is zero RPC", noWait.result === "invalid_request" && dBlankWait.rpcs.length === 0);
 
   const staleHttpDb = makeCasDb({ status: "open", statusVersion: 1 }, 2);
   await updateAdminCase(
     { case_id: CASE_ID, action: "mark_in_review" },
-    { supabaseGet: staleHttpDb.supabaseGet, supabasePatch: staleHttpDb.supabasePatch, nowIso: () => NOW }
+    { supabaseGet: staleHttpDb.supabaseGet, supabaseRpc: staleHttpDb.supabaseRpc, nowIso: () => NOW }
   );
   const staleHttp = await runUpdate(
     fakeEvent("POST", { case_id: CASE_ID, action: "resolve", customer_resolution: "Lost update?" }),

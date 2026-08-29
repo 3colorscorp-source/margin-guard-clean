@@ -3,8 +3,8 @@
  * POST /.netlify/functions/mg-support-admin-update-case
  *
  * Auth: HMAC mg_session + public.users.is_admin. session.c not required.
- * Closed PATCH only. No OpenAI. No DELETE. Browser never sets status.
- * No email. No outbound notification delivery in E2.B.
+ * Closed PATCH via atomic RPC. No OpenAI. No DELETE. Browser never sets status.
+ * Best-effort background kick after queued events. Admin never waits on delivery.
  */
 "use strict";
 

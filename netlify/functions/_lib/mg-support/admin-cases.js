@@ -1,12 +1,13 @@
 /**
- * Closed Support Admin case reads/writes for MG-SUPPORT-003C / 003E.2B.
- * Fixed table, select, filters, and PATCH fields. No OpenAI. No DELETE.
- * No email. No outbound notification delivery in E2.B.
+ * Closed Support Admin case reads/writes for MG-SUPPORT-003C / 003E.2B / 003E.2D1.
+ * Real transitions use atomic RPC mg_support_transition_case. No OpenAI. No DELETE.
+ * No email. No outbound notification delivery in D1.
  */
 "use strict";
 
 const { supabaseRequest, getSupabaseConfig } = require("../supabase-admin");
 const { formatCaseRef, sanitizeExcerpt } = require("./case-intake");
+const { kickSupportCaseNotificationDispatch } = require("./notification-delivery");
 
 const CASE_TABLE = "tenant_support_cases";
 const TENANT_TABLE = "tenants";
@@ -83,6 +84,15 @@ const STATUS_LABELS = {
   resolved: "Resolved",
 };
 
+const TRANSITION_RPC = "mg_support_transition_case";
+const EVENT_TYPE_BY_ACTION = {
+  mark_in_review: "case_in_review",
+  request_customer_action: "case_waiting_on_customer",
+  resolve: "case_resolved",
+  reopen: "case_reopened",
+  return_to_open: null,
+};
+
 const ACTION_PLAN = {
   mark_in_review: {
     to: "in_review",
@@ -135,29 +145,25 @@ function statusLabel(status) {
   return STATUS_LABELS[status] || "Unknown";
 }
 
-function nowIso(deps = {}) {
-  if (typeof deps.nowIso === "function") return String(deps.nowIso());
-  return new Date().toISOString();
-}
-
 function defaultGet(path) {
   return supabaseRequest(path, { method: "GET" });
-}
-
-function defaultPatch(path, body) {
-  return supabaseRequest(path, {
-    method: "PATCH",
-    body,
-    headers: { Prefer: "return=representation" },
-  });
 }
 
 function queryGetter(deps = {}) {
   return deps.supabaseGet || defaultGet;
 }
 
-function queryPatcher(deps = {}) {
-  return deps.supabasePatch || defaultPatch;
+function queryRpc(deps = {}) {
+  if (typeof deps.supabaseRpc === "function") return deps.supabaseRpc;
+  return function defaultRpc(name, args) {
+    return supabaseRequest("rpc/" + name, { method: "POST", body: args });
+  };
+}
+
+function rpcResultRow(raw) {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw;
+  if (Array.isArray(raw) && raw[0] && typeof raw[0] === "object") return raw[0];
+  return null;
 }
 
 function parseLimit(raw) {
@@ -576,89 +582,6 @@ function alreadyResult(result, row, caseId) {
   };
 }
 
-function representationRows(patched) {
-  if (Array.isArray(patched)) return patched;
-  if (patched && typeof patched === "object") return [patched];
-  return [];
-}
-
-async function conflictFromReload(get, getPath, loaded, caseId) {
-  let rows;
-  try {
-    rows = await get(getPath);
-  } catch (_err) {
-    return { ok: false, result: "write_failed" };
-  }
-  if (!Array.isArray(rows) || !rows.length || !rows[0]?.id) {
-    return { ok: true, result: "not_found" };
-  }
-  const fresh = rows[0];
-  const loadedStatus = String(loaded?.status || "");
-  const loadedVersion = currentVersion(loaded);
-  const freshStatus = String(fresh.status || "");
-  const freshVersion = currentVersion(fresh);
-  if (freshStatus === loadedStatus && freshVersion === loadedVersion) {
-    return { ok: false, result: "write_failed" };
-  }
-  return {
-    ok: false,
-    result: "stale_state",
-    case_id: String(fresh.id || caseId),
-    case_ref: formatCaseRef(String(fresh.id || caseId)),
-    status: freshStatus,
-    resolved_at: fresh.resolved_at == null ? null : String(fresh.resolved_at),
-    updated_at: fresh.updated_at == null ? null : String(fresh.updated_at),
-    customer_resolution: fresh.customer_resolution == null ? null : String(fresh.customer_resolution),
-    tenant_action_message: fresh.tenant_action_message == null ? null : String(fresh.tenant_action_message),
-    status_version: freshVersion,
-  };
-}
-
-function buildPatchBody(action, parsed, stamp, version) {
-  const nextVersion = version + 1;
-  if (action === "mark_in_review") {
-    return {
-      status: "in_review",
-      tenant_action_message: null,
-      resolved_at: null,
-      status_version: nextVersion,
-      updated_at: stamp,
-    };
-  }
-  if (action === "request_customer_action") {
-    return {
-      status: "waiting_on_customer",
-      tenant_action_message: parsed.tenant_action_message,
-      resolved_at: null,
-      status_version: nextVersion,
-      updated_at: stamp,
-    };
-  }
-  if (action === "resolve") {
-    const body = {
-      status: "resolved",
-      tenant_action_message: null,
-      resolved_at: stamp,
-      status_version: nextVersion,
-      updated_at: stamp,
-    };
-    if (parsed.has_customer_resolution) {
-      body.customer_resolution = parsed.customer_resolution;
-    }
-    return body;
-  }
-  if (action === "reopen" || action === "return_to_open") {
-    return {
-      status: "open",
-      tenant_action_message: null,
-      resolved_at: null,
-      status_version: nextVersion,
-      updated_at: stamp,
-    };
-  }
-  return null;
-}
-
 async function updateAdminCase(parsed, deps = {}) {
   const caseId = parsed && parsed.case_id;
   const action = parsed && parsed.action;
@@ -668,7 +591,6 @@ async function updateAdminCase(parsed, deps = {}) {
   }
 
   const get = queryGetter(deps);
-  const patch = queryPatcher(deps);
   const getPath = buildExactCasePath(caseId);
 
   let rows;
@@ -702,48 +624,92 @@ async function updateAdminCase(parsed, deps = {}) {
     }
   }
 
-  const stamp = nowIso(deps);
-  const body = buildPatchBody(action, parsed, stamp, version);
-  if (!body) {
-    return { ok: false, result: "invalid_request" };
-  }
-  const patchPath = buildPatchPath(caseId, { status: current, status_version: version });
-
-  let patched;
+  const rpc = queryRpc(deps);
+  let rpcRaw;
   try {
-    patched = await patch(patchPath, body);
+    rpcRaw = await rpc(TRANSITION_RPC, {
+      p_case_id: caseId,
+      p_expected_status: current,
+      p_expected_status_version: version,
+      p_action: action,
+      p_customer_resolution: parsed.has_customer_resolution ? parsed.customer_resolution : null,
+      p_has_customer_resolution: parsed.has_customer_resolution === true,
+      p_tenant_action_message: action === "request_customer_action" ? parsed.tenant_action_message : null,
+    });
   } catch (_err) {
     return { ok: false, result: "write_failed" };
   }
-  const rowsOut = representationRows(patched);
-  if (rowsOut.length === 0) {
-    return conflictFromReload(get, getPath, row, caseId);
+
+  const rpcRow = rpcResultRow(rpcRaw);
+  const code = String(rpcRow?.result_code || "");
+  if (code === "stale_state") {
+    return {
+      ok: false,
+      result: "stale_state",
+      case_id: String(rpcRow.case_id || caseId),
+      case_ref: formatCaseRef(String(rpcRow.case_id || caseId)),
+      status: rpcRow.status == null ? null : String(rpcRow.status),
+      resolved_at: rpcRow.resolved_at == null ? null : String(rpcRow.resolved_at),
+      updated_at: rpcRow.updated_at == null ? null : String(rpcRow.updated_at),
+      customer_resolution: rpcRow.customer_resolution == null ? null : String(rpcRow.customer_resolution),
+      tenant_action_message: rpcRow.tenant_action_message == null ? null : String(rpcRow.tenant_action_message),
+      status_version: currentVersion({ status_version: rpcRow.status_version }),
+    };
   }
-  if (rowsOut.length !== 1) {
+  if (code === "invalid_transition") {
+    return { ok: false, result: "invalid_transition" };
+  }
+  if (code === "already_target_state") {
+    return alreadyResult(plan.already, {
+      id: rpcRow.case_id || caseId,
+      status: rpcRow.status || plan.to,
+      status_version: rpcRow.status_version,
+      resolved_at: rpcRow.resolved_at,
+      updated_at: rpcRow.updated_at,
+      customer_resolution: rpcRow.customer_resolution,
+      tenant_action_message: rpcRow.tenant_action_message,
+    }, caseId);
+  }
+  if (code === "invalid_request") {
+    return { ok: false, result: "invalid_request" };
+  }
+  if (code !== "transitioned") {
     return { ok: false, result: "write_failed" };
   }
-  const next = rowsOut[0];
-  const nextStatus = String(next?.status || "");
-  if (nextStatus !== plan.to) {
+
+  const nextStatus = String(rpcRow.status || "");
+  const nextVersion = currentVersion({ status_version: rpcRow.status_version });
+  if (nextStatus !== plan.to || nextVersion == null) {
     return { ok: false, result: "write_failed" };
+  }
+  const expectsEvent = EVENT_TYPE_BY_ACTION[action] != null;
+  if (expectsEvent && rpcRow.event_queued !== true) {
+    return { ok: false, result: "write_failed" };
+  }
+  if (!expectsEvent && rpcRow.event_queued === true) {
+    return { ok: false, result: "write_failed" };
+  }
+
+  if (expectsEvent && rpcRow.event_id) {
+    try {
+      const kick = deps.kickSupportCaseNotificationDispatch || kickSupportCaseNotificationDispatch;
+      await kick(String(rpcRow.event_id), deps);
+    } catch (_err) {
+      // Best-effort only. Case transition already committed.
+    }
   }
 
   return {
     ok: true,
     result: plan.success,
-    case_id: String(next.id || caseId),
-    case_ref: formatCaseRef(String(next.id || caseId)),
+    case_id: String(rpcRow.case_id || caseId),
+    case_ref: formatCaseRef(String(rpcRow.case_id || caseId)),
     status: nextStatus,
-    resolved_at: action === "resolve" ? stamp : null,
-    updated_at: stamp,
-    customer_resolution:
-      body.customer_resolution !== undefined
-        ? body.customer_resolution
-        : row.customer_resolution == null
-          ? null
-          : String(row.customer_resolution),
-    tenant_action_message: body.tenant_action_message == null ? null : String(body.tenant_action_message),
-    status_version: version + 1,
+    resolved_at: action === "resolve" ? (rpcRow.resolved_at == null ? null : String(rpcRow.resolved_at)) : null,
+    updated_at: rpcRow.updated_at == null ? null : String(rpcRow.updated_at),
+    customer_resolution: rpcRow.customer_resolution == null ? null : String(rpcRow.customer_resolution),
+    tenant_action_message: rpcRow.tenant_action_message == null ? null : String(rpcRow.tenant_action_message),
+    status_version: nextVersion,
   };
 }
 
@@ -764,6 +730,9 @@ module.exports = {
   UPDATE_BODY_KEYS,
   STATUS_FILTERS,
   ACTIONS,
+  TRANSITION_RPC,
+  ACTION_PLAN,
+  EVENT_TYPE_BY_ACTION,
   UNKNOWN_BUSINESS,
   isUuid,
   isIsoTimestamp,

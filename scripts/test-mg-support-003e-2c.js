@@ -25,6 +25,7 @@ const {
   parseCaseRef,
 } = require("../netlify/functions/_lib/mg-support/my-cases");
 const { parseUpdateBody, updateAdminCase } = require("../netlify/functions/_lib/mg-support/admin-cases");
+const { createStatelessRpc } = require("./_lib/mg-support-transition-rpc-sim");
 const { sanitizeExcerpt } = require("../netlify/functions/_lib/mg-support/case-intake");
 const ui = require("../public/js/mg-support-chat.js");
 
@@ -359,14 +360,11 @@ async function main() {
       },
     ],
     patches: [],
-    supabasePatch: async (_path, body) => {
-      adminDb.patches.push(body);
-      return [{ id: OPEN_ID, status: body.status, status_version: body.status_version }];
-    },
+    ...createStatelessRpc({ currentStatus: "open", statusVersion: 1, nowIso: () => "2026-08-28T23:00:00.000Z" }),
   };
   const marked = await updateAdminCase(parseUpdateBody({ case_id: OPEN_ID, action: "mark_in_review" }), {
     supabaseGet: adminDb.supabaseGet,
-    supabasePatch: adminDb.supabasePatch,
+    supabaseRpc: adminDb.supabaseRpc,
     nowIso: () => "2026-08-28T23:00:00.000Z",
   });
   const tenantAfterReview = toDetail(caseRow({ status: marked.status }));
@@ -384,10 +382,12 @@ async function main() {
       },
     ],
     patches: [],
-    supabasePatch: async (_path, body) => {
-      waitAdmin.patches.push(body);
-      return [{ id: OPEN_ID, status: body.status, status_version: body.status_version }];
-    },
+    ...createStatelessRpc({
+      currentStatus: "in_review",
+      statusVersion: 2,
+      customerResolution: RESOLUTION,
+      nowIso: () => "2026-08-28T23:01:00.000Z",
+    }),
   };
   const requested = await updateAdminCase(
     parseUpdateBody({
@@ -397,14 +397,14 @@ async function main() {
     }),
     {
       supabaseGet: waitAdmin.supabaseGet,
-      supabasePatch: waitAdmin.supabasePatch,
+      supabaseRpc: waitAdmin.supabaseRpc,
       nowIso: () => "2026-08-28T23:01:00.000Z",
     }
   );
   const tenantWaiting = toDetail(
     caseRow({
       status: requested.status,
-      tenant_action_message: waitAdmin.patches[0].tenant_action_message,
+      tenant_action_message: requested.tenant_action_message,
       customer_resolution: RESOLUTION,
     })
   );
@@ -428,10 +428,12 @@ async function main() {
       },
     ],
     patches: [],
-    supabasePatch: async (_path, body) => {
-      resolveAdmin.patches.push(body);
-      return [{ id: OPEN_ID, status: body.status, status_version: body.status_version }];
-    },
+    ...createStatelessRpc({
+      currentStatus: "waiting_on_customer",
+      statusVersion: 3,
+      tenantActionMessage: ACTION_MSG,
+      nowIso: () => "2026-08-28T23:02:00.000Z",
+    }),
   };
   const adminResolved = await updateAdminCase(
     parseUpdateBody({
@@ -441,14 +443,14 @@ async function main() {
     }),
     {
       supabaseGet: resolveAdmin.supabaseGet,
-      supabasePatch: resolveAdmin.supabasePatch,
+      supabaseRpc: resolveAdmin.supabaseRpc,
       nowIso: () => "2026-08-28T23:02:00.000Z",
     }
   );
   const tenantResolved = toDetail(
     caseRow({
       status: adminResolved.status,
-      customer_resolution: resolveAdmin.patches[0].customer_resolution,
+      customer_resolution: adminResolved.customer_resolution,
       tenant_action_message: ACTION_MSG,
     })
   );
@@ -471,14 +473,16 @@ async function main() {
       },
     ],
     patches: [],
-    supabasePatch: async (_path, body) => {
-      reopenAdmin.patches.push(body);
-      return [{ id: OPEN_ID, status: body.status, status_version: body.status_version }];
-    },
+    ...createStatelessRpc({
+      currentStatus: "resolved",
+      statusVersion: 4,
+      customerResolution: RESOLUTION,
+      nowIso: () => "2026-08-28T23:03:00.000Z",
+    }),
   };
   const adminReopened = await updateAdminCase({ case_id: OPEN_ID, action: "reopen" }, {
     supabaseGet: reopenAdmin.supabaseGet,
-    supabasePatch: reopenAdmin.supabasePatch,
+    supabaseRpc: reopenAdmin.supabaseRpc,
     nowIso: () => "2026-08-28T23:03:00.000Z",
   });
   const tenantReopened = toDetail(
@@ -490,7 +494,7 @@ async function main() {
   assert(
     "43d. Admin reopen tenant sees Open and hides old resolution",
     adminReopened.status === "open" &&
-      !("customer_resolution" in reopenAdmin.patches[0]) &&
+      reopenAdmin.rpcs[0].args.p_has_customer_resolution === false &&
       tenantReopened.status_label === "Open" &&
       tenantReopened.customer_resolution === null
   );

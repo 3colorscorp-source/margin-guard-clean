@@ -31,12 +31,12 @@ const {
   buildListCasesPath,
   buildTenantNamesPath,
   buildExactCasePath,
-  buildPatchPath,
   buildCountPath,
   categoryLabel,
   listAdminCases,
   updateAdminCase,
 } = require("../netlify/functions/_lib/mg-support/admin-cases");
+const { createStatelessRpc } = require("./_lib/mg-support-transition-rpc-sim");
 
 let failed = 0;
 let passed = 0;
@@ -147,12 +147,16 @@ function makeDb(opts) {
     }
     return [];
   }
-  async function supabasePatch(path, body) {
-    patches.push({ path, body });
-    if (options.patchThrow) throw new Error("db");
-    if (options.patchEmpty) return [];
-    return [{ id: CASE_ID, status: body.status }];
-  }
+  const rpc = createStatelessRpc({
+    currentStatus: options.currentStatus,
+    statusVersion: options.statusVersion,
+    customerResolution: options.customerResolution,
+    tenantActionMessage: options.tenantActionMessage,
+    tenantId: TENANT_ID,
+    nowIso: () => NOW,
+    rpcThrow: options.patchThrow || options.rpcThrow,
+    rpcStale: options.patchEmpty || options.rpcStale,
+  });
   async function countCases(kind) {
     counts.push(kind);
     if (options.countFail) return null;
@@ -170,7 +174,7 @@ function makeDb(opts) {
     }
     return null;
   }
-  return { supabaseGet, supabasePatch, countCases, gets, patches, counts };
+  return { supabaseGet, supabaseRpc: rpc.supabaseRpc, countCases, gets, patches, rpcs: rpc.calls, counts };
 }
 
 function listDeps(db, extra) {
@@ -178,7 +182,7 @@ function listDeps(db, extra) {
     readSessionFromEvent: (extra && extra.readSessionFromEvent) || (() => adminSession()),
     isPlatformAdmin: (extra && extra.isPlatformAdmin) || (async () => true),
     supabaseGet: db.supabaseGet,
-    supabasePatch: db.supabasePatch,
+    supabaseRpc: db.supabaseRpc,
     countCases: db.countCases,
     nowIso: () => NOW,
     ...(extra || {}),
@@ -565,40 +569,40 @@ async function main() {
   const dOpen = makeDb({ currentStatus: "open" });
   const openResolve = await updateAdminCase({ case_id: CASE_ID, action: "resolve" }, {
     supabaseGet: dOpen.supabaseGet,
-    supabasePatch: dOpen.supabasePatch,
+    supabaseRpc: dOpen.supabaseRpc,
     nowIso: () => NOW,
   });
   assert("122. open resolve → resolved", openResolve.result === "resolved" && openResolve.status === "resolved");
   assert("123. resolved_at set server-side", openResolve.resolved_at === NOW);
-  assert("124. updated_at set server-side", openResolve.updated_at === NOW && dOpen.patches[0].body.updated_at === NOW);
+  assert("124. updated_at set server-side", openResolve.updated_at === NOW);
 
   const dAlreadyR = makeDb({ currentStatus: "resolved" });
   const alreadyR = await updateAdminCase({ case_id: CASE_ID, action: "resolve" }, {
     supabaseGet: dAlreadyR.supabaseGet,
-    supabasePatch: dAlreadyR.supabasePatch,
+    supabaseRpc: dAlreadyR.supabaseRpc,
     nowIso: () => NOW,
   });
   assert("125. resolved resolve → already_resolved", alreadyR.result === "already_resolved");
-  assert("126. already_resolved zero PATCH", dAlreadyR.patches.length === 0);
+  assert("126. already_resolved zero RPC", dAlreadyR.rpcs.length === 0);
 
   const dReopen = makeDb({ currentStatus: "resolved" });
   const didReopen = await updateAdminCase({ case_id: CASE_ID, action: "reopen" }, {
     supabaseGet: dReopen.supabaseGet,
-    supabasePatch: dReopen.supabasePatch,
+    supabaseRpc: dReopen.supabaseRpc,
     nowIso: () => NOW,
   });
   assert("127. resolved reopen → open", didReopen.result === "reopened" && didReopen.status === "open");
-  assert("128. reopen clears resolved_at", didReopen.resolved_at === null && dReopen.patches[0].body.resolved_at === null);
-  assert("129. reopen updates updated_at", dReopen.patches[0].body.updated_at === NOW);
+  assert("128. reopen clears resolved_at", didReopen.resolved_at === null);
+  assert("129. reopen updates updated_at", didReopen.updated_at === NOW);
 
   const dAlreadyO = makeDb({ currentStatus: "open" });
   const alreadyO = await updateAdminCase({ case_id: CASE_ID, action: "reopen" }, {
     supabaseGet: dAlreadyO.supabaseGet,
-    supabasePatch: dAlreadyO.supabasePatch,
+    supabaseRpc: dAlreadyO.supabaseRpc,
     nowIso: () => NOW,
   });
   assert("130. open reopen → already_open", alreadyO.result === "already_open");
-  assert("131. already_open zero PATCH", dAlreadyO.patches.length === 0);
+  assert("131. already_open zero RPC", dAlreadyO.rpcs.length === 0);
   assert("132. no other status transition", parseUpdateBody({ case_id: CASE_ID, action: "archive" }).ok === false);
   assert(
     "133. browser cannot set timestamps",
@@ -609,26 +613,34 @@ async function main() {
     parseUpdateBody({ case_id: CASE_ID, action: "resolve", status: "resolved" }).ok === false
   );
 
-  const patchPath = decodePath(buildPatchPath(CASE_ID));
-  assert("135. fixed table", patchPath.startsWith(CASE_TABLE + "?"));
-  assert("136. fixed UUID filter", patchPath.includes("id=eq." + CASE_ID));
-  const patchBody = dOpen.patches[0].body;
+  const rpcArgs = dOpen.rpcs[0].args;
+  const rpcKeys = Object.keys(rpcArgs).sort();
+  assert("135. RPC name is mg_support_transition_case", dOpen.rpcs[0].name === "mg_support_transition_case");
+  assert("136. RPC uses server-loaded case id", rpcArgs.p_case_id === CASE_ID);
   assert(
-    "137. fixed fields only",
-    JSON.stringify(Object.keys(patchBody).sort()) ===
-      JSON.stringify(["resolved_at", "status", "status_version", "tenant_action_message", "updated_at"].sort())
+    "137. fixed RPC fields only",
+    JSON.stringify(rpcKeys) ===
+      JSON.stringify([
+        "p_action",
+        "p_case_id",
+        "p_customer_resolution",
+        "p_expected_status",
+        "p_expected_status_version",
+        "p_has_customer_resolution",
+        "p_tenant_action_message",
+      ].sort())
   );
   assert("138. no arbitrary PATCH", !/priority|assigned_to|notes/.test(updateSrc));
   assert("139. no DELETE", !/method:\s*[\"']DELETE[\"']/.test(adminApiSrc));
   assert("140. no archive", !/archive/.test(helperSrc));
-  assert("141. no edit subject", !patchBody.subject);
-  assert("142. no edit excerpt", !patchBody.question_excerpt);
-  assert("143. no tenant reassignment", !patchBody.tenant_id);
+  assert("141. no edit subject", rpcArgs.p_action === "resolve" && !("subject" in rpcArgs));
+  assert("142. no edit excerpt", !("question_excerpt" in rpcArgs) && !("p_question_excerpt" in rpcArgs));
+  assert("143. no tenant reassignment", !("p_tenant_id" in rpcArgs) && !("tenant_id" in rpcArgs));
 
   const dFailPatch = makeDb({ currentStatus: "open", patchThrow: true });
   const failPatch = await updateAdminCase({ case_id: CASE_ID, action: "resolve" }, {
     supabaseGet: dFailPatch.supabaseGet,
-    supabasePatch: dFailPatch.supabasePatch,
+    supabaseRpc: dFailPatch.supabaseRpc,
     nowIso: () => NOW,
   });
   assert("144. DB error does not claim success", failPatch.result === "write_failed");
@@ -743,10 +755,10 @@ async function main() {
   const emptyPatch = makeDb({ currentStatus: "open", patchEmpty: true });
   const emptyPatchRes = await updateAdminCase({ case_id: CASE_ID, action: "resolve" }, {
     supabaseGet: emptyPatch.supabaseGet,
-    supabasePatch: emptyPatch.supabasePatch,
+    supabaseRpc: emptyPatch.supabaseRpc,
     nowIso: () => NOW,
   });
-  assert("empty PATCH representation is write_failed", emptyPatchRes.result === "write_failed");
+  assert("empty CAS is stale_state", emptyPatchRes.result === "stale_state");
 
   function mockRangeHeaders(header) {
     return {
