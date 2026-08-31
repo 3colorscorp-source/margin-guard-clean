@@ -595,7 +595,7 @@ async function main() {
   );
   assert("44. recipient absent from logs", !new RegExp(OWNER_EMAIL).test(sweepLogs));
   assert("45. webhook absent from logs", !sweepLogs.includes(SUPPORT_WEBHOOK));
-  assert("46. signature absent from logs", !/"signature"|signed_body/.test(sweepLogs));
+  assert("46. signature absent from logs", !/"signature"|signed_body|payload_b64/.test(sweepLogs));
   assert("47. body absent from logs", !/currently being reviewed/.test(sweepLogs) && !/text_body/.test(sweepLogs));
 
   assert(

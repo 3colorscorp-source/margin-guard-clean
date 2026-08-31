@@ -25,6 +25,7 @@ const {
   TEMPLATES,
   buildTemplate,
   buildCanonicalPayload,
+  encodePayloadB64,
   signSupportPayload,
   signCanonicalBody,
   canonicalizeJson,
@@ -488,10 +489,26 @@ async function main() {
     caseStatusVersion: 2,
   });
   const sealed = signSupportPayload(payload, SUPPORT_HMAC, NOW);
-  const expectedSig = signCanonicalBody(canonicalizeJson(payload), NOW, SUPPORT_HMAC).toLowerCase();
-  assert("P1. HMAC algorithm timestamp.canonical_json", sealed.ok && sealed.signature === expectedSig && /^[0-9a-f]{64}$/.test(sealed.signature));
-  assert("P2. invoice secret not used", signCanonicalBody(canonicalizeJson(payload), NOW, INVOICE_SECRET).toLowerCase() !== sealed.signature);
-  assert("P3. contract secret not used", signCanonicalBody(canonicalizeJson(payload), NOW, CONTRACT_SECRET).toLowerCase() !== sealed.signature);
+  const freezeB64 = encodePayloadB64(canonicalizeJson(payload));
+  const expectedSig = crypto
+    .createHmac("sha256", SUPPORT_HMAC)
+    .update(NOW + "." + freezeB64, "utf8")
+    .digest("hex");
+  assert(
+    "P1. HMAC algorithm timestamp.payload_b64",
+    sealed.ok &&
+      sealed.signature === expectedSig &&
+      /^[0-9a-f]{64}$/.test(sealed.signature) &&
+      signCanonicalBody(canonicalizeJson(payload), NOW, SUPPORT_HMAC).toLowerCase() !== sealed.signature
+  );
+  assert(
+    "P2. invoice secret not used",
+    crypto.createHmac("sha256", INVOICE_SECRET).update(NOW + "." + freezeB64, "utf8").digest("hex") !== sealed.signature
+  );
+  assert(
+    "P3. contract secret not used",
+    crypto.createHmac("sha256", CONTRACT_SECRET).update(NOW + "." + freezeB64, "utf8").digest("hex") !== sealed.signature
+  );
   assert(
     "Q1. payload exact keys",
     Object.keys(payload).sort().join(",") ===

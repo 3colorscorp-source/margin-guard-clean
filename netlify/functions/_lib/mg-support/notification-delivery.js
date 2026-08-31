@@ -1,19 +1,25 @@
 /**
- * MG-SUPPORT-003E.2D2 — Support case notification claim + Zapier delivery.
+ * MG-SUPPORT-003E.2D2 / MG-SUPPORT-EMAIL-V2 — Support case notification claim
+ * + Zapier delivery.
  *
  * Claimed means: local validation passed and this worker is about to POST.
  * If the process dies after claim, the row may remain claimed. D3 MUST NOT
  * automatically replay claimed rows (potentially attempted / unsafe to retry).
  * Duplicate prevention is preferred over guaranteed delivery.
  *
+ * Wire transport is support_case_email_bridge_v2: flat JSON with opaque
+ * base64url payload_b64. HMAC is timestamp + "." + payload_b64.
+ * No nested JSON. Inner content is opaque base64url only.
+ * Contract/invoice Zapier envelopes are unused.
+ *
  * No OpenAI. No invoice/contract secrets. No recipient persistence.
  */
 "use strict";
 
+const crypto = require("crypto");
 const {
   canonicalizeJson,
   signCanonicalBody,
-  buildSignedWireEnvelope,
   isValidEmail,
 } = require("../providers/zapier-provider");
 const { timingSafeEqualString } = require("../email-delivery-handoff");
@@ -25,6 +31,7 @@ const CASE_TABLE = "tenant_support_cases";
 const TENANT_TABLE = "tenants";
 const DISPATCH_FUNCTION = "mg-support-case-notification-dispatch-background";
 const SCHEMA_VERSION = "support_case_notification_v1";
+const BRIDGE_SCHEMA_VERSION = "support_case_email_bridge_v2";
 const CTA_URL = "https://marginguardsystem.netlify.app/owner.html";
 const POST_TIMEOUT_MS = 20000;
 const KICK_TIMEOUT_MS = 2500;
@@ -187,13 +194,50 @@ function buildCanonicalPayload({
   };
 }
 
+function encodePayloadB64(canonicalPayload) {
+  return Buffer.from(canonicalPayload, "utf8").toString("base64url");
+}
+
+function signSupportV2Message(payloadB64, timestamp, secret) {
+  const message = `${String(timestamp)}.${String(payloadB64)}`;
+  return crypto.createHmac("sha256", secret).update(message, "utf8").digest("hex").toLowerCase();
+}
+
 function signSupportPayload(payload, secret, timestamp) {
-  const signedBody = canonicalizeJson(payload);
-  return buildSignedWireEnvelope({
-    signedBody,
-    timestamp,
-    secret,
-  });
+  const hmacSecret = secret == null ? "" : String(secret).trim();
+  const ts = timestamp == null ? "" : String(timestamp).trim();
+  if (!hmacSecret) {
+    return { ok: false, code: "hmac_secret_missing", error: "HMAC secret missing" };
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { ok: false, code: "payload_invalid", error: "payload required" };
+  }
+  if (!ts) {
+    return { ok: false, code: "timestamp_missing", error: "timestamp required" };
+  }
+  const canonicalPayload = canonicalizeJson(payload);
+  if (!canonicalPayload) {
+    return { ok: false, code: "canonical_payload_missing", error: "canonical payload required" };
+  }
+  const payloadB64 = encodePayloadB64(canonicalPayload);
+  if (!payloadB64 || !/^[A-Za-z0-9_-]+$/.test(payloadB64)) {
+    return { ok: false, code: "payload_b64_invalid", error: "payload_b64 required" };
+  }
+  const signature = signSupportV2Message(payloadB64, ts, hmacSecret);
+  const envelope = {
+    schema_version: BRIDGE_SCHEMA_VERSION,
+    timestamp: ts,
+    signature,
+    payload_b64: payloadB64,
+  };
+  return {
+    ok: true,
+    envelope,
+    timestamp: ts,
+    signature,
+    payload_b64: payloadB64,
+    wire_body: JSON.stringify(envelope),
+  };
 }
 
 function buildEventGetPath(eventId) {
@@ -781,6 +825,7 @@ module.exports = {
   OUTBOX_TABLE,
   DISPATCH_FUNCTION,
   SCHEMA_VERSION,
+  BRIDGE_SCHEMA_VERSION,
   CTA_URL,
   POST_TIMEOUT_MS,
   ENV,
@@ -791,6 +836,8 @@ module.exports = {
   isDeliveryEnabled,
   buildTemplate,
   buildCanonicalPayload,
+  encodePayloadB64,
+  signSupportV2Message,
   signSupportPayload,
   canonicalizeJson,
   signCanonicalBody,

@@ -9,6 +9,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const ROOT = path.resolve(__dirname, "..");
 const { createHandler: createUpdateHandler } = require("../netlify/functions/mg-support-admin-update-case");
@@ -25,6 +26,7 @@ const {
   TEMPLATES,
   buildTemplate,
   buildCanonicalPayload,
+  encodePayloadB64,
   signSupportPayload,
   signCanonicalBody,
   canonicalizeJson,
@@ -267,7 +269,8 @@ async function main() {
 
   const derived = createWorld();
   await dispatchPendingEvent(EVENT_ID, derived.deps);
-  const signed = JSON.parse(JSON.parse(derived.posts[0].init.body).signed_body);
+  const derivedWire = JSON.parse(derived.posts[0].init.body);
+  const signed = JSON.parse(Buffer.from(derivedWire.payload_b64, "base64url").toString("utf8"));
   assert("16. recipient derived from tenants.owner_email", signed.recipient_email === OWNER_EMAIL);
 
   assert("17. admin/session email never used", !/session\.e|assertPlatformAdminSession/.test(deliverySrc));
@@ -380,10 +383,21 @@ async function main() {
   const sigA = signSupportPayload(samplePayload, SUPPORT_HMAC, NOW);
   const sigB = signSupportPayload(samplePayload, SUPPORT_HMAC, NOW);
   assert("33. HMAC deterministic", sigA.ok && sigA.signature === sigB.signature && sigA.signature.length === 64);
-  const expectedSig = signCanonicalBody(canonicalizeJson(samplePayload), NOW, SUPPORT_HMAC).toLowerCase();
-  assert("34. HMAC uses Support secret", sigA.signature === expectedSig);
-  assert("35. invoice secret not used", signCanonicalBody(canonicalizeJson(samplePayload), NOW, INVOICE_SECRET).toLowerCase() !== sigA.signature);
-  assert("36. contract secret not used", signCanonicalBody(canonicalizeJson(samplePayload), NOW, CONTRACT_SECRET).toLowerCase() !== sigA.signature);
+  const sampleB64 = encodePayloadB64(canonicalizeJson(samplePayload));
+  const expectedSig = crypto
+    .createHmac("sha256", SUPPORT_HMAC)
+    .update(NOW + "." + sampleB64, "utf8")
+    .digest("hex");
+  assert("34. HMAC uses Support secret over timestamp.payload_b64", sigA.signature === expectedSig && sigA.payload_b64 === sampleB64);
+  assert(
+    "35. invoice secret not used",
+    crypto.createHmac("sha256", INVOICE_SECRET).update(NOW + "." + sampleB64, "utf8").digest("hex") !== sigA.signature &&
+      signCanonicalBody(canonicalizeJson(samplePayload), NOW, SUPPORT_HMAC).toLowerCase() !== sigA.signature
+  );
+  assert(
+    "36. contract secret not used",
+    crypto.createHmac("sha256", CONTRACT_SECRET).update(NOW + "." + sampleB64, "utf8").digest("hex") !== sigA.signature
+  );
 
   const race = createWorld();
   const firstClaim = dispatchPendingEvent(EVENT_ID, race.deps);
