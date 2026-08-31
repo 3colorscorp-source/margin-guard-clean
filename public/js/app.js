@@ -15024,6 +15024,19 @@ window.renderSupervisor = renderSupervisor;
   }
 
   async function hubRowResolveProjectPaymentTotals(row) {
+    if (hubDrawerRowUsesProjectFolderLedger(row)) {
+      const pack = await fetchHubDrawerFolderLedgerPack(row);
+      if (pack && Number.isFinite(pack.netSum)) {
+        const contractTotal = Math.max(
+          finiteNumber(pack.contractTotal, 0),
+          finiteNumber(row?.projectContractTotal, 0),
+          0
+        );
+        const paidToDate = finiteNumber(pack.netSum, 0);
+        const remainingBalance = Math.max(0, Math.round((contractTotal - paidToDate) * 100) / 100);
+        return { contractTotal, paidToDate, remainingBalance };
+      }
+    }
     const contractTotal = Math.max(finiteNumber(row?.projectContractTotal, 0), 0);
     let paidToDate = hubRowPaidToDateApprox(row);
     if (hubRowCanRecordLedgerPayment(row)) {

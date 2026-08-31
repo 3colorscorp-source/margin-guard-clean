@@ -21,6 +21,15 @@ const ALLOWED_PAYMENT_STAGE_LABELS = [
 ];
 const ALLOWED_LABEL_SET = new Set(ALLOWED_PAYMENT_STAGE_LABELS.map((s) => s.toLowerCase()));
 const FULL_REMAINING_LABELS = new Set(["remaining balance", "final payment"]);
+const SOURCE_INVOICE_RE =
+  /\[source_invoice:([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\]/i;
+const PROJECT_PAYMENT_CHILD_LABELS = new Set([
+  "start payment",
+  "progress payment",
+  "final payment",
+  "remaining balance",
+  "change order"
+]);
 
 const ACTIVE_DUPLICATE_STATUSES = new Set([
   "draft",
@@ -111,6 +120,171 @@ function resolveContractTotal(source, quoteEmbed) {
   const quoteTotal = finiteMoney(quoteEmbed?.total, 0);
   if (quoteTotal > 0) return quoteTotal;
   return Math.max(finiteMoney(source?.amount, 0), 0);
+}
+
+function invoiceLabelLower(row) {
+  return String(row?.invoice_label || "").trim().toLowerCase();
+}
+
+function invoiceNotesText(row) {
+  return String(row?.notes || "");
+}
+
+function isMaterialCostInvoiceRow(row) {
+  const label = invoiceLabelLower(row);
+  const notes = invoiceNotesText(row);
+  return label === "material cost" || notes.includes("[invoice_type:unexpected_material_cost]");
+}
+
+function isChangeOrderInvoiceRow(row) {
+  return invoiceLabelLower(row) === "change order";
+}
+
+function isProjectPaymentChildRow(row) {
+  if (!row || isMaterialCostInvoiceRow(row)) return false;
+  if (PROJECT_PAYMENT_CHILD_LABELS.has(invoiceLabelLower(row))) return true;
+  return SOURCE_INVOICE_RE.test(invoiceNotesText(row));
+}
+
+function isParentFolderCandidate(row) {
+  if (!row) return false;
+  if (isMaterialCostInvoiceRow(row)) return false;
+  if (isChangeOrderInvoiceRow(row)) return false;
+  if (isProjectPaymentChildRow(row)) return false;
+  return true;
+}
+
+async function loadInvoicesByField(tenantId, field, value) {
+  const tid = String(tenantId || "").trim();
+  const val = String(value || "").trim();
+  if (!tid || !val || (field !== "project_id" && field !== "quote_id")) return [];
+  try {
+    const rows = await supabaseRequest(
+      `invoices?tenant_id=eq.${encodeURIComponent(tid)}&${field}=eq.${encodeURIComponent(val)}&select=id,invoice_label,notes,project_id,quote_id&limit=100`,
+      { method: "GET" }
+    );
+    return Array.isArray(rows) ? rows : [];
+  } catch (_err) {
+    return [];
+  }
+}
+
+async function loadBillingGroupMembers({ tenantId, current, projectId, quoteId }) {
+  const members = [];
+  const seen = new Set();
+  const add = (row) => {
+    if (!row) return;
+    const id = String(row.id || "").trim().toLowerCase();
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    members.push(row);
+  };
+  add(current);
+  const batches = await Promise.all([
+    projectId ? loadInvoicesByField(tenantId, "project_id", projectId) : Promise.resolve([]),
+    quoteId ? loadInvoicesByField(tenantId, "quote_id", quoteId) : Promise.resolve([])
+  ]);
+  batches.forEach((rows) => (rows || []).forEach(add));
+  return members;
+}
+
+async function loadPaymentsForFilter(tenantId, filterKey, filterValue) {
+  const tid = String(tenantId || "").trim();
+  const val = String(filterValue || "").trim();
+  if (!tid || !val) return [];
+  if (!["invoice_id", "project_id", "quote_id"].includes(filterKey)) return [];
+  try {
+    const params = new URLSearchParams();
+    params.set("tenant_id", `eq.${tid}`);
+    params.set(filterKey, `eq.${val}`);
+    params.set("select", "id,amount,invoice_id,paid_at,created_at");
+    params.set("limit", "500");
+    const rows = await supabaseRequest(`tenant_project_payments?${params.toString()}`, { method: "GET" });
+    return Array.isArray(rows) ? rows : [];
+  } catch (_err) {
+    return [];
+  }
+}
+
+function uniquePaymentsById(batches) {
+  const seen = new Set();
+  const out = [];
+  (batches || []).forEach((pays) => {
+    (pays || []).forEach((p) => {
+      const id = p?.id != null ? String(p.id).trim() : "";
+      const key = id || [p?.invoice_id, p?.paid_at, p?.amount, p?.created_at].join("|");
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push(p);
+    });
+  });
+  return out;
+}
+
+function excludedContractInvoiceIds(members) {
+  const out = new Set();
+  (members || []).forEach((row) => {
+    if (!isMaterialCostInvoiceRow(row) && !isChangeOrderInvoiceRow(row)) return;
+    const id = String(row?.id || "").trim().toLowerCase();
+    if (id) out.add(id);
+  });
+  return out;
+}
+
+function sumContractPaidFromPayments(payments, excludedInvoiceIds) {
+  const excluded = excludedInvoiceIds instanceof Set ? excludedInvoiceIds : new Set();
+  let sum = 0;
+  (payments || []).forEach((p) => {
+    const iid = String(p?.invoice_id || "").trim().toLowerCase();
+    if (iid && excluded.has(iid)) return;
+    sum += finiteMoney(p?.amount, 0);
+  });
+  return finiteMoney(sum, 0);
+}
+
+async function loadUniqueFolderPaidToDate(tenantId, members) {
+  const list = Array.isArray(members) ? members : [];
+  const jobs = [];
+  const invoiceIds = Array.from(new Set(list.map((row) => String(row?.id || "").trim()).filter(Boolean)));
+  invoiceIds.forEach((iid) => jobs.push(loadPaymentsForFilter(tenantId, "invoice_id", iid)));
+  const projectIds = Array.from(
+    new Set(list.map((row) => String(row?.project_id || "").trim()).filter(Boolean))
+  );
+  projectIds.forEach((pid) => jobs.push(loadPaymentsForFilter(tenantId, "project_id", pid)));
+  const quoteIds = Array.from(
+    new Set(list.map((row) => String(row?.quote_id || "").trim()).filter(Boolean))
+  );
+  quoteIds.forEach((qid) => jobs.push(loadPaymentsForFilter(tenantId, "quote_id", qid)));
+  if (!jobs.length) return 0;
+  const batches = await Promise.all(jobs);
+  const payments = uniquePaymentsById(batches);
+  return sumContractPaidFromPayments(payments, excludedContractInvoiceIds(list));
+}
+
+async function resolveCreatePaidToDate(tenantId, source, { projectId, quoteId, invoiceId }) {
+  if (isProjectPaymentChildRow(source)) {
+    return sumLedgerPayments(tenantId, {
+      projectId: "",
+      quoteId: "",
+      invoiceId
+    });
+  }
+  if (isParentFolderCandidate(source)) {
+    const members = await loadBillingGroupMembers({
+      tenantId,
+      current: source,
+      projectId: UUID_RE.test(projectId) ? projectId : "",
+      quoteId: UUID_RE.test(quoteId) ? quoteId : ""
+    });
+    if (Array.isArray(members) && members.length >= 2) {
+      return loadUniqueFolderPaidToDate(tenantId, members);
+    }
+  }
+  return sumLedgerPayments(tenantId, {
+    projectId: UUID_RE.test(projectId) ? projectId : "",
+    quoteId: UUID_RE.test(quoteId) ? quoteId : "",
+    invoiceId
+  });
 }
 
 /** Prefer project ledger, then quote, then invoice — never invent paid from invoice amount. */
@@ -375,7 +549,7 @@ exports.handler = async (event) => {
 
     const invoiceId = String(source.id).trim();
     const projectId = pickStr(source.project_id);
-    const paidToDate = await sumLedgerPayments(tenantId, {
+    const paidToDate = await resolveCreatePaidToDate(tenantId, source, {
       projectId: UUID_RE.test(projectId) ? projectId : "",
       quoteId: UUID_RE.test(quoteId) ? quoteId : "",
       invoiceId
