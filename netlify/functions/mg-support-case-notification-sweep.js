@@ -4,17 +4,17 @@
  * Netlify Functions v2 in-source config. Cron must be a string literal so
  * zip-it-and-ship-it static analysis can register the schedule.
  * No path / excludedPath. Production does not accept public URL invocation.
+ *
+ * Import the CJS helper with a static ESM import. Zip-it compiles this
+ * Functions v2 entry to CommonJS (*.cjs). The previous node:module interop
+ * helper received an undefined filename after that compile and crashed
+ * before any sweep logic ran.
  */
-import { createRequire } from "node:module";
-
-const require = createRequire(import.meta.url);
-const { createHandler } = require("./_lib/mg-support/notification-sweep");
+import { createHandler } from "./_lib/mg-support/notification-sweep.js";
 
 export const config = {
   schedule: "*/5 * * * *",
 };
-
-const v1Handler = createHandler();
 
 function headersToObject(headers) {
   const out = {};
@@ -25,21 +25,26 @@ function headersToObject(headers) {
   return out;
 }
 
-export default async function scheduledSweep(request) {
-  const method = String(request && request.method ? request.method : "POST").toUpperCase();
-  let body = "";
-  try {
-    body = request && typeof request.text === "function" ? await request.text() : "";
-  } catch (_err) {
-    body = "";
-  }
-  const result = await v1Handler({
-    httpMethod: method,
-    headers: headersToObject(request && request.headers),
-    body,
-  });
-  return new Response(result.body, {
-    status: result.statusCode,
-    headers: result.headers,
-  });
+export function createScheduledHandler(deps = {}) {
+  const v1Handler = createHandler(deps);
+  return async function scheduledSweep(request) {
+    const method = String(request && request.method ? request.method : "POST").toUpperCase();
+    let body = "";
+    try {
+      body = request && typeof request.text === "function" ? await request.text() : "";
+    } catch (_err) {
+      body = "";
+    }
+    const result = await v1Handler({
+      httpMethod: method,
+      headers: headersToObject(request && request.headers),
+      body,
+    });
+    return new Response(result.body, {
+      status: result.statusCode,
+      headers: result.headers,
+    });
+  };
 }
+
+export default createScheduledHandler();

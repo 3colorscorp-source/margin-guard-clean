@@ -527,7 +527,7 @@ async function main() {
   assert("U1. claimed is unsafe to auto-retry", /unsafe to automatically retry/.test(CLAIM_PROCESS_DEATH_NOTE));
   assert("U2. no claimed reset in D2/D3", !/claimed_at=lte/.test(sweepLibSrc) && !/delivery_status:\s*"pending"/.test(sweepLibSrc + sweepFnSrc) && !/delivery_status:\s*"pending"/.test(deliverySrc.slice(deliverySrc.indexOf("async function casClaim"), deliverySrc.indexOf("async function casFinalize"))));
   assert("V1. sweeper pending only + 30s + batch 10", ELIGIBLE_FROM_PATH());
-  assert("V2. schedule syntax", SWEEP_SCHEDULE === "*/5 * * * *" && /export const config/.test(sweepFnSrc) && sweepFnSrc.includes('schedule: "*/5 * * * *"') && /export default/.test(sweepFnSrc) && !/exports\.handler/.test(sweepFnSrc));
+  assert("V2. schedule syntax", SWEEP_SCHEDULE === "*/5 * * * *" && /export const config/.test(sweepFnSrc) && sweepFnSrc.includes('schedule: "*/5 * * * *"') && /export default/.test(sweepFnSrc) && !/exports\.handler/.test(sweepFnSrc) && !/\bcreateRequire\b/.test(sweepFnSrc) && !/import\.meta/.test(sweepFnSrc));
   assert("Z1. pending accumulation rule documented", /inspect[\s\S]{0,40}every pending/.test(sweepLibSrc) && /inspect every pending/.test(sqlSrc));
   assert("Z2. no automatic pending delete/mark-delivered", !/delivery_status:\s*"bridge_accepted"/.test(sweepLibSrc) && !/delete from/.test(sweepLibSrc + deliverySrc));
 

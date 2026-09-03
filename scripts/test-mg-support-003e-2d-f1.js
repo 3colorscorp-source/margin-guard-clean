@@ -123,6 +123,13 @@ async function main() {
   );
   assert("4c. V2 ESM input format", parsed && parsed.inputModuleFormat === "esm" && listed && listed.inputModuleFormat === "esm");
   assert("4d. no V1 handler export", !/exports\.handler/.test(sweepFnSrc) && /export default/.test(sweepFnSrc));
+  assert(
+    "4e. no createRequire / import.meta interop in scheduled entry",
+    !/\bcreateRequire\b/.test(sweepFnSrc) &&
+      !/from\s+["']node:module["']/.test(sweepFnSrc) &&
+      !/import\.meta/.test(sweepFnSrc) &&
+      /import\s+\{\s*createHandler\s*\}\s+from\s+["']\.\/_lib\/mg-support\/notification-sweep\.js["']/.test(sweepFnSrc)
+  );
 
   assert(
     "5. no caller filters",
