@@ -1,7 +1,8 @@
 ﻿const { clearSessionCookie, readSessionFromEvent } = require("./_lib/session");
-const { stripeRequest } = require("./_lib/stripe");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveAuthUserIdByEmail } = require("./_lib/auth-resolve-user-id");
+const { resolveUniqueActiveOwnerAccess, planIsActive } = require("./_lib/owner-access");
+const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 
 function json(statusCode, payload, extraHeaders) {
   return {
@@ -12,10 +13,6 @@ function json(statusCode, payload, extraHeaders) {
     },
     body: JSON.stringify(payload),
   };
-}
-
-function subscriptionIsActive(status) {
-  return ["active", "trialing", "past_due"].includes(status);
 }
 
 /** Set MG_DEBUG_AUTH=1 in Netlify env to log access-check diagnostics (off by default). */
@@ -48,170 +45,110 @@ async function loadPublicUserAdminFlags(sessionUserId) {
   }
 }
 
-/**
- * When Stripe subscription id in the cookie is stale/missing or Stripe disagrees with DB,
- * allow access if public.tenants shows an active plan for this customer + owner email.
- * Lookup by stripe_customer_id first; if no row (encoding/ drift), fallback owner_email and verify customer id.
- */
-async function dbTenantAllowsAccess(stripeCustomerId, ownerEmailNorm) {
-  const cid = String(stripeCustomerId || "").trim();
-  const em = String(ownerEmailNorm || "").trim().toLowerCase();
-  if (!cid || !em) {
-    return { ok: false, name: null };
-  }
-  try {
-    let rows = await supabaseRequest(
-      `tenants?stripe_customer_id=eq.${encodeURIComponent(
-        cid
-      )}&select=plan_status,owner_email,name,stripe_customer_id`
-    );
-    let row = Array.isArray(rows) && rows.length ? rows[0] : null;
+function createHandler(deps = {}) {
+  const readSession = deps.readSessionFromEvent || readSessionFromEvent;
+  const resolveTenant = deps.resolveTenantFromSession || resolveTenantFromSession;
+  const resolveOwner = deps.resolveUniqueActiveOwnerAccess || resolveUniqueActiveOwnerAccess;
+  const loadAdmin = deps.loadPublicUserAdminFlags || loadPublicUserAdminFlags;
+  const resolveUserId = deps.resolveAuthUserIdByEmail || resolveAuthUserIdByEmail;
 
-    if (!row) {
-      rows = await supabaseRequest(
-        `tenants?owner_email=eq.${encodeURIComponent(em)}&select=plan_status,owner_email,name,stripe_customer_id`
-      );
-      row = Array.isArray(rows) && rows.length ? rows[0] : null;
-      if (row && String(row.stripe_customer_id || "").trim() !== cid) {
-        return { ok: false, name: null };
+  return async function handler(event) {
+    let userId = null;
+    let is_admin = false;
+
+    try {
+      const session = readSession(event);
+      if (!session) {
+        debugAuth("ACCESS CHECK", {
+          userId: null,
+          is_admin: false,
+          allowAccess: false,
+        });
+        return json(200, { active: false, reason: "no_session" });
       }
-    }
 
-    if (!row) {
-      return { ok: false, name: null };
-    }
-    const rowEmail = String(row.owner_email || "").trim().toLowerCase();
-    if (rowEmail !== em) {
-      return { ok: false, name: null };
-    }
-    const ps = String(row.plan_status || "").trim().toLowerCase();
-    if (ps !== "active") {
-      return { ok: false, name: null };
-    }
-    return { ok: true, name: row.name ? String(row.name) : null };
-  } catch (err) {
-    if (AUTH_DEBUG) {
-      console.warn("[auth-status] tenants lookup failed:", err?.message || err);
-    }
-    return { ok: false, name: null };
-  }
-}
+      const email = String(session.e || "").trim().toLowerCase();
 
-exports.handler = async (event) => {
-  let userId = null;
-  let is_admin = false;
-
-  try {
-    const session = readSessionFromEvent(event);
-    if (!session) {
-      debugAuth("ACCESS CHECK", {
-        userId: null,
-        subscription_status: null,
-        is_admin: false,
-        allowAccess: false,
-      });
-      return json(200, { active: false, reason: "no_session" });
-    }
-
-    const email = String(session.e || "").trim().toLowerCase();
-
-    let sessionUserId = session.u ? String(session.u).trim() : "";
-    if (!sessionUserId && email) {
-      try {
-        sessionUserId = (await resolveAuthUserIdByEmail(email)) || "";
-      } catch (_err) {
-        sessionUserId = "";
+      let sessionUserId = session.u ? String(session.u).trim() : "";
+      if (!sessionUserId && email) {
+        try {
+          sessionUserId = (await resolveUserId(email)) || "";
+        } catch (_err) {
+          sessionUserId = "";
+        }
       }
-    }
 
-    const flags = await loadPublicUserAdminFlags(sessionUserId || null);
-    userId = flags.userId;
-    is_admin = flags.is_admin;
+      const flags = await loadAdmin(sessionUserId || null);
+      userId = flags.userId;
+      is_admin = flags.is_admin;
 
-    debugAuth("ADMIN LOOKUP", {
-      sessionUserId: sessionUserId || null,
-      is_admin,
-      allowAccess: is_admin,
-    });
-
-    if (is_admin) {
-      debugAuth("ACCESS CHECK", {
-        userId,
-        subscription_status: null,
-        is_admin: true,
-        allowAccess: true,
+      debugAuth("ADMIN LOOKUP", {
+        sessionUserId: sessionUserId || null,
+        is_admin,
+        allowAccess: is_admin,
       });
-      return json(200, {
-        active: true,
-        email: session.e || "",
-        is_admin: true,
-        userId,
-        subscription_status: null,
-        plan: "Admin",
-        renewsAt: null,
-      });
-    }
 
-    if (!session.c || !email) {
-      debugAuth("ACCESS CHECK", {
-        userId,
-        subscription_status: null,
-        is_admin: false,
-        allowAccess: false,
-      });
-      return json(200, {
-        active: false,
-        reason: "session_missing_customer_or_email",
-        userId,
-        is_admin: false,
-      });
-    }
-
-    let subscription = null;
-    let subscription_status = null;
-    let stripeAccess = false;
-
-    if (session.s) {
-      try {
-        subscription = await stripeRequest(
-          `/subscriptions/${encodeURIComponent(session.s)}`,
-          { method: "GET" }
-        );
-        subscription_status = subscription?.status ?? null;
-        stripeAccess = subscriptionIsActive(subscription?.status);
-      } catch (stripeErr) {
-        debugAuth("STRIPE SUBSCRIPTION LOOKUP FAILED", {
-          subscriptionId: session.s,
-          message: stripeErr?.message || String(stripeErr),
+      if (is_admin) {
+        debugAuth("ACCESS CHECK", {
+          userId,
+          is_admin: true,
+          allowAccess: true,
+        });
+        return json(200, {
+          active: true,
+          email: session.e || "",
+          is_admin: true,
+          userId,
+          subscription_status: null,
+          plan: "Admin",
+          renewsAt: null,
         });
       }
-    }
 
-    if (stripeAccess && subscription) {
+      if (!email) {
+        debugAuth("ACCESS CHECK", {
+          userId,
+          is_admin: false,
+          allowAccess: false,
+        });
+        return json(200, {
+          active: false,
+          reason: "not_entitled",
+          userId,
+          is_admin: false,
+        });
+      }
+
+      let tenant = await resolveTenant(session, deps);
+      if (!tenant?.id) {
+        const ownerAccess = await resolveOwner(email, deps);
+        tenant = ownerAccess.ok ? ownerAccess.tenant : null;
+      }
+
+      if (!tenant?.id || !planIsActive(tenant)) {
+        debugAuth("ACCESS CHECK", {
+          userId,
+          is_admin: false,
+          allowAccess: false,
+          source: "tenant_plan_status",
+        });
+        return json(
+          200,
+          {
+            active: false,
+            reason: "not_entitled",
+            userId,
+            is_admin: false,
+            subscription_status: null,
+          },
+          {
+            "Set-Cookie": clearSessionCookie(),
+          }
+        );
+      }
+
       debugAuth("ACCESS CHECK", {
         userId,
-        subscription_status,
-        is_admin: false,
-        allowAccess: true,
-      });
-      return json(200, {
-        active: true,
-        email: session.e || "",
-        is_admin: false,
-        userId,
-        subscription_status,
-        plan: subscription.items?.data?.[0]?.price?.nickname || "Annual",
-        renewsAt: subscription.current_period_end
-          ? new Date(subscription.current_period_end * 1000).toISOString()
-          : null,
-      });
-    }
-
-    const dbAccess = await dbTenantAllowsAccess(session.c, email);
-    if (dbAccess.ok) {
-      debugAuth("ACCESS CHECK", {
-        userId,
-        subscription_status,
         is_admin: false,
         allowAccess: true,
         source: "tenant_plan_status",
@@ -221,46 +158,27 @@ exports.handler = async (event) => {
         email: session.e || "",
         is_admin: false,
         userId,
-        subscription_status,
+        subscription_status: null,
         plan: "Annual",
-        renewsAt: subscription?.current_period_end
-          ? new Date(subscription.current_period_end * 1000).toISOString()
-          : null,
-        tenantName: dbAccess.name || undefined,
+        renewsAt: null,
+        tenantName: tenant.name ? String(tenant.name) : undefined,
+        tenant_id: tenant.id,
+      });
+    } catch (err) {
+      debugAuth("ACCESS CHECK", {
+        userId,
+        is_admin,
+        allowAccess: false,
+      });
+      return json(200, {
+        active: false,
+        reason: "validation_error",
+        error: err.message || "Unexpected error",
       });
     }
+  };
+}
 
-    debugAuth("ACCESS CHECK", {
-      userId,
-      subscription_status,
-      is_admin: false,
-      allowAccess: false,
-    });
-
-    return json(
-      200,
-      {
-        active: false,
-        reason: stripeAccess === false && session.s ? "subscription_inactive" : "not_entitled",
-        userId,
-        is_admin: false,
-        subscription_status,
-      },
-      {
-        "Set-Cookie": clearSessionCookie(),
-      }
-    );
-  } catch (err) {
-    debugAuth("ACCESS CHECK", {
-      userId,
-      subscription_status: null,
-      is_admin,
-      allowAccess: false,
-    });
-    return json(200, {
-      active: false,
-      reason: "validation_error",
-      error: err.message || "Unexpected error",
-    });
-  }
-};
+exports.handler = createHandler();
+exports.createHandler = createHandler;
+exports.loadPublicUserAdminFlags = loadPublicUserAdminFlags;

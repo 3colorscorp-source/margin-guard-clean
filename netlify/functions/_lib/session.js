@@ -95,17 +95,20 @@ function readSessionFromEvent(event) {
   return verify(token);
 }
 
-function buildSessionPayload({ customerId, subscriptionId, email, userId }) {
+function buildSessionPayload({ customerId, subscriptionId, email, userId, tenantId }) {
   const now = Math.floor(Date.now() / 1000);
   const payload = {
-    c: customerId,
-    s: subscriptionId,
+    c: customerId || "",
+    s: subscriptionId || "",
     e: email || "",
     iat: now,
     exp: now + SESSION_TTL_SECONDS,
   };
   if (userId) {
     payload.u = String(userId);
+  }
+  if (tenantId) {
+    payload.t = String(tenantId);
   }
   return payload;
 }
@@ -124,14 +127,14 @@ function signSessionCookie(payload) {
  */
 function buildRefreshedSessionCookie(session, tenant) {
   if (!session || !tenant) return null;
-  const dbId =
-    tenant.stripe_customer_id != null ? String(tenant.stripe_customer_id).trim() : "";
-  if (!dbId) return null;
-  const sessionC = session.c != null ? String(session.c).trim() : "";
-  if (sessionC === dbId) return null;
+  const tenantId = tenant.id != null ? String(tenant.id).trim() : "";
+  const sessionT = session.t != null ? String(session.t).trim() : "";
+  if (tenantId && sessionT === tenantId) return null;
+  if (!tenantId) return null;
   const payload = buildSessionPayload({
-    customerId: dbId,
-    subscriptionId: session.s,
+    tenantId,
+    customerId: session.c || "",
+    subscriptionId: "",
     email: session.e,
     userId: session.u,
   });

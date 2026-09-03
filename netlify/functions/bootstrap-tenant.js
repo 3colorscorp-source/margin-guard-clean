@@ -1,6 +1,13 @@
 const { linkProfileAuthUserOnLogin } = require("./_lib/profile-auth-link");
 const { readSessionFromEvent } = require("./_lib/session");
-const { supabaseRequest, toSlug } = require("./_lib/supabase-admin");
+const { supabaseRequest } = require("./_lib/supabase-admin");
+const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { hasOwnerSessionIdentity } = require("./_lib/owner-access");
+const {
+  membershipIsActive,
+  membershipRole,
+  resolveMembershipByEmail,
+} = require("./_lib/membership-resolve");
 
 function json(statusCode, payload) {
   return {
@@ -8,11 +15,6 @@ function json(statusCode, payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   };
-}
-
-async function fetchTenantById(id) {
-  const rows = await supabaseRequest(`tenants?id=eq.${encodeURIComponent(id)}&select=*`);
-  return Array.isArray(rows) ? rows[0] : null;
 }
 
 function buildResponse(tenant, profile, email) {
@@ -37,20 +39,6 @@ function buildResponse(tenant, profile, email) {
   };
 }
 
-function normEmail(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function tenantOwnerEmailMatches(tenant, email) {
-  return normEmail(tenant?.owner_email) === normEmail(email);
-}
-
-const ALLOWED_BOOTSTRAP_STATUSES = new Set(["active", "invited"]);
-
-function membershipStatusAllowed(status) {
-  return ALLOWED_BOOTSTRAP_STATUSES.has(normEmail(status));
-}
-
 exports.handler = async (event) => {
   try {
     if (!["GET", "POST"].includes(event.httpMethod)) {
@@ -58,146 +46,28 @@ exports.handler = async (event) => {
     }
 
     const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
+    if (!hasOwnerSessionIdentity(session)) {
       return json(401, { error: "Unauthorized" });
     }
 
     const email = String(session.e || "").trim().toLowerCase();
-    if (!email) {
-      return json(401, { error: "Unauthorized" });
-    }
-
-    // 1) Existing profile → resolve tenant (idempotent fast path; no duplicate tenants)
-    let profileRows = await supabaseRequest(
-      `profiles?email=eq.${encodeURIComponent(email)}&select=*&limit=2`
-    );
-    let profile = Array.isArray(profileRows) && profileRows.length ? profileRows[0] : null;
-
-    let tenant = null;
-    if (profile?.tenant_id) {
-      tenant = await fetchTenantById(profile.tenant_id);
-    }
-
-    // 2) Tenant by Stripe customer id
+    const tenant = await resolveTenantFromSession(session);
     if (!tenant?.id) {
-      let tenantRows = await supabaseRequest(
-        `tenants?stripe_customer_id=eq.${encodeURIComponent(session.c)}&select=*`
-      );
-      tenant = Array.isArray(tenantRows) ? tenantRows[0] : null;
+      return json(403, {
+        error: "No membership found for this account.",
+        code: "membership_not_found",
+      });
     }
 
-    // 3) Tenant by owner email (single row; avoid creating a second tenant)
-    if (!tenant?.id) {
-      let tenantRows = await supabaseRequest(
-        `tenants?owner_email=eq.${encodeURIComponent(email)}&select=*&limit=2`
-      );
-      tenant = Array.isArray(tenantRows) ? tenantRows[0] : null;
-    }
-
-    // 4) Link Stripe + owner_email on existing tenant when needed (no throw on success path)
-    if (tenant?.id) {
-      const body = {};
-      if (!tenant.stripe_customer_id || String(tenant.stripe_customer_id) !== String(session.c)) {
-        body.stripe_customer_id = session.c;
-      }
-      if (!tenant.owner_email || String(tenant.owner_email).toLowerCase() !== email) {
-        body.owner_email = email;
-      }
-      if (Object.keys(body).length) {
-        try {
-          await supabaseRequest(`tenants?id=eq.${encodeURIComponent(tenant.id)}`, {
-            method: "PATCH",
-            body
-          });
-          tenant = await fetchTenantById(tenant.id);
-        } catch (_err) {
-          const again = await supabaseRequest(
-            `tenants?stripe_customer_id=eq.${encodeURIComponent(session.c)}&select=*`
-          );
-          tenant = Array.isArray(again) ? again[0] : tenant;
-        }
-      }
-    }
-
-    // 5) Create tenant only when none exists for this user / Stripe id
-    if (!tenant?.id) {
-      const domainKey = email.split("@")[1]?.split(".")[0]?.replace(/[-_]/g, " ").trim() || "";
-      const localKey = email.split("@")[0]?.replace(/[._+-]/g, " ").trim() || "";
-      const guessedName = (domainKey || localKey || "business").replace(/\s+/g, " ");
-      const slugBase = `${guessedName}-${String(session.c).slice(-8)}`;
-      try {
-        const createdRows = await supabaseRequest("tenants", {
-          method: "POST",
-          headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-          body: {
-            slug: toSlug(slugBase),
-            name: guessedName.replace(/\b\w/g, (m) => m.toUpperCase()),
-            stripe_customer_id: session.c,
-            owner_email: email,
-            plan_status: "active"
-          }
-        });
-        tenant = Array.isArray(createdRows) ? createdRows[0] : createdRows;
-      } catch (_err) {
-        const again = await supabaseRequest(
-          `tenants?stripe_customer_id=eq.${encodeURIComponent(session.c)}&select=*`
-        );
-        tenant = Array.isArray(again) ? again[0] : null;
-        if (!tenant?.id) {
-          const againEmail = await supabaseRequest(
-            `tenants?owner_email=eq.${encodeURIComponent(email)}&select=*&limit=1`
-          );
-          tenant = Array.isArray(againEmail) ? againEmail[0] : null;
-        }
-      }
-    }
-
-    if (!tenant?.id) {
-      return json(500, { error: "Unable to resolve tenant" });
-    }
-
-    // 6) Resolve profile for this tenant + email (no auto-owner for non-owner emails)
-    profileRows = await supabaseRequest(
-      `profiles?tenant_id=eq.${encodeURIComponent(tenant.id)}&email=eq.${encodeURIComponent(email)}&select=*`
-    );
-    profile = Array.isArray(profileRows) ? profileRows[0] : null;
-
-    const ownerEmailMatches = tenantOwnerEmailMatches(tenant, email);
-
-    if (!profile) {
-      if (!ownerEmailMatches) {
-        return json(403, {
-          error:
-            "No membership found for this account. Ask your company owner to invite you before signing in.",
-          code: "membership_not_found",
-        });
-      }
-
-      try {
-        const createdProfiles = await supabaseRequest("profiles", {
-          method: "POST",
-          headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-          body: {
-            tenant_id: tenant.id,
-            email,
-            role: "owner",
-            status: "active"
-          }
-        });
-        profile = Array.isArray(createdProfiles) ? createdProfiles[0] : createdProfiles;
-      } catch (_err) {
-        profileRows = await supabaseRequest(
-          `profiles?tenant_id=eq.${encodeURIComponent(tenant.id)}&email=eq.${encodeURIComponent(email)}&select=*`
-        );
-        profile = Array.isArray(profileRows) ? profileRows[0] : null;
-      }
-    }
-
+    const profile = await resolveMembershipByEmail(supabaseRequest, tenant.id, email);
     if (!profile?.id) {
-      return json(500, { error: "Unable to resolve profile" });
+      return json(403, {
+        error: "No membership found for this account.",
+        code: "membership_not_found",
+      });
     }
 
-    if (!membershipStatusAllowed(profile.status)) {
+    if (membershipRole(profile) !== "owner" || !membershipIsActive(profile)) {
       return json(403, {
         error: "This membership is not active. Contact your company owner for access.",
         code: "membership_not_active",
@@ -211,10 +81,10 @@ exports.handler = async (event) => {
       sessionAuthUserId,
       profile,
     });
-    profile = authLink.profile || profile;
+    const linkedProfile = authLink.profile || profile;
 
     return json(200, {
-      ...buildResponse(tenant, profile, email),
+      ...buildResponse(tenant, linkedProfile, email),
       profileAuthLinked: authLink.profileAuthLinked === true,
       profileAuthLinkStatus: authLink.profileAuthLinkStatus,
     });

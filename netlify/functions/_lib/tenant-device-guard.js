@@ -66,7 +66,7 @@ function isOwnerRole(role) {
  */
 async function requireOwnerMembership(event) {
   const session = readSessionFromEvent(event);
-  if (!session?.e || !session?.c) {
+  if (!session?.e || (!session?.t && !session?.c)) {
     throwGuard(401, "Unauthorized", "no_owner_session");
   }
 

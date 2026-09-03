@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Margin Guard | Suscripcion anual</title>
+  <title>Margin Guard | Acceso</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body data-public="true">
@@ -17,8 +17,7 @@
         </div>
       </div>
       <div class="actions">
-        <a class="btn" href="dashboard.html">Entrar</a>
-        <button class="btn" id="btnOpenPortal" type="button">Ya soy cliente</button>
+        <a class="btn" href="#owner-login">Entrar</a>
       </div>
     </div>
   </div>
@@ -31,44 +30,34 @@
           <h2>Vende con margen real, no con suposiciones.</h2>
           <p class="sub hero-copy">Margin Guard calcula costos laborales, impuestos, overhead, margen objetivo y precio recomendado en tiempo real. Incluye exportacion PDF y envio de cotizacion.</p>
           <ul class="hero-list">
-            <li>Plan anual para uso comercial.</li>
-            <li>Checkout seguro con Stripe.</li>
-            <li>Acceso web inmediato al completar pago.</li>
+            <li>Plan anual $2,000 USD para uso comercial.</li>
+            <li>Facturacion manual (QuickBooks o Square) confirmada por Margin Guard.</li>
+            <li>Acceso con cuenta verificada despues de la activacion.</li>
           </ul>
         </div>
 
-        <form id="checkoutForm" class="card pricing-card" novalidate>
+        <form id="ownerLoginForm" class="card pricing-card" novalidate>
           <div class="card-inner">
-            <h3>Plan Annual</h3>
-            <p class="price">Suscripcion anual</p>
-            <p class="sub">El precio y cobro final se muestran en Stripe Checkout.</p>
+            <h3 id="owner-login">Entrar</h3>
+            <p class="sub">Usa el correo y contrasena de tu cuenta Margin Guard. El correo solo no abre sesion.</p>
             <div class="field">
-              <label>Email de acceso</label>
-              <input id="email" type="email" maxlength="120" placeholder="tu@empresa.com" required />
+              <label for="loginEmail">Email</label>
+              <input id="loginEmail" type="email" maxlength="120" required autocomplete="username" placeholder="tu@empresa.com" />
             </div>
-            <button id="btnCheckout" class="btn primary btn-block" type="submit">Suscribirme anual</button>
-            <div id="checkoutStatus" class="notice" style="display:none;"></div>
-            <p class="small-note">Al continuar aceptas terminos comerciales y renovacion anual.</p>
+            <div class="field">
+              <label for="loginPassword">Contrasena</label>
+              <input id="loginPassword" type="password" maxlength="120" required autocomplete="current-password" />
+            </div>
+            <button id="btnOwnerLogin" class="btn primary btn-block" type="submit">Entrar</button>
+            <div id="loginStatus" class="notice" style="display:none;"></div>
+            <p class="small-note">Si tu pago anual ya fue confirmado y no tienes contrasena, pide la invitacion de acceso a Margin Guard.</p>
           </div>
         </form>
-
-        <div class="card-inner" style="margin-top:16px;border-top:1px solid rgba(255,255,255,0.08);padding-top:16px;">
-          <h3 style="margin-top:0;">Ya tienes cuenta</h3>
-          <p class="sub" style="margin-bottom:10px;">Si ya pagaste el plan anual, entra con el correo del dueno (el mismo de tu cuenta Margin Guard).</p>
-          <form id="restoreSessionForm" class="form" novalidate>
-            <div class="field">
-              <label for="restoreEmail">Email del dueno</label>
-              <input id="restoreEmail" type="email" maxlength="120" required autocomplete="email" placeholder="tu@empresa.com" />
-            </div>
-            <button id="btnRestoreSession" class="btn btn-block" type="submit">Entrar con mi correo</button>
-            <div id="restoreSessionStatus" class="notice" style="display:none;margin-top:10px;"></div>
-          </form>
-        </div>
       </div>
     </section>
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="/js/billing.js"></script>
 </body>
 </html>
-

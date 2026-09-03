@@ -1,85 +1,18 @@
-﻿const { buildSessionPayload, createSessionCookie } = require("./_lib/session");
-const { stripeRequest } = require("./_lib/stripe");
-const { resolveAuthUserIdByEmail } = require("./_lib/auth-resolve-user-id");
-
-function json(statusCode, payload, extraHeaders) {
+﻿function json(statusCode, payload) {
   return {
     statusCode,
-    headers: {
-      "Content-Type": "application/json",
-      ...(extraHeaders || {}),
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   };
 }
 
-function subscriptionIsActive(status) {
-  return ["active", "trialing", "past_due"].includes(status);
-}
-
+/**
+ * SaaS access is not granted from Stripe Checkout.
+ * Owners authenticate with verified Supabase Auth via restore-owner-session.
+ */
 exports.handler = async (event) => {
-  try {
-    if (event.httpMethod !== "POST") {
-      return json(405, { error: "Method not allowed" });
-    }
-
-    let body = {};
-    try {
-      body = JSON.parse(event.body || "{}");
-    } catch (_err) {
-      return json(400, { error: "Invalid JSON" });
-    }
-
-    const sessionId = String(body.sessionId || "").trim();
-    if (!sessionId) {
-      return json(400, { error: "sessionId is required" });
-    }
-
-    const checkout = await stripeRequest(`/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=subscription`, {
-      method: "GET",
-    });
-
-    const subscription = checkout.subscription;
-    const subscriptionId = typeof subscription === "string" ? subscription : subscription?.id;
-    const subscriptionStatus = typeof subscription === "string" ? "unknown" : subscription?.status;
-
-    if (checkout.status !== "complete" || !subscriptionId) {
-      return json(402, { error: "Checkout is not completed" });
-    }
-
-    if (!subscriptionIsActive(subscriptionStatus)) {
-      return json(402, { error: `Subscription not active (${subscriptionStatus || "unknown"})` });
-    }
-
-    const checkoutEmail =
-      checkout.customer_details?.email || checkout.customer_email || "";
-    let authUserId = null;
-    try {
-      authUserId = await resolveAuthUserIdByEmail(checkoutEmail);
-    } catch (_err) {
-      authUserId = null;
-    }
-
-    const payload = buildSessionPayload({
-      customerId: checkout.customer,
-      subscriptionId,
-      email: checkoutEmail,
-      userId: authUserId,
-    });
-
-    const cookie = createSessionCookie(payload);
-
-    return json(
-      200,
-      {
-        ok: true,
-        email: payload.e,
-      },
-      {
-        "Set-Cookie": cookie,
-      }
-    );
-  } catch (err) {
-    return json(500, { error: err.message || "Unexpected error" });
+  if (event.httpMethod !== "POST") {
+    return json(405, { error: "Method not allowed" });
   }
+  return json(403, { error: "subscription_checkout_disabled" });
 };

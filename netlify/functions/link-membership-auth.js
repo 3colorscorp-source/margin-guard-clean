@@ -3,9 +3,10 @@
  * No mg_session, owner session, or device session required.
  */
 
-const { getSupabaseConfig, supabaseRequest } = require("./_lib/supabase-admin");
+const { supabaseRequest } = require("./_lib/supabase-admin");
 const { linkProfileAuthUserOnLogin } = require("./_lib/profile-auth-link");
 const { membershipIsActive, membershipRole } = require("./_lib/membership-resolve");
+const { readBearerToken, verifySupabaseAccessToken } = require("./_lib/supabase-jwt");
 
 const LOG_PREFIX = "[link-membership-auth]";
 const PROFILE_SELECT = "id,tenant_id,email,role,status,auth_user_id";
@@ -28,54 +29,6 @@ function success(status) {
 
 function safeLog(event, detail) {
   console.info(LOG_PREFIX, event, detail);
-}
-
-function readBearerToken(event) {
-  const header = String(event.headers?.authorization || event.headers?.Authorization || "").trim();
-  const match = /^Bearer\s+(.+)$/i.exec(header);
-  return match ? match[1].trim() : "";
-}
-
-async function verifySupabaseAccessToken(accessToken) {
-  const token = String(accessToken || "").trim();
-  if (!token) {
-    return { ok: false };
-  }
-
-  const { url, key } = getSupabaseConfig();
-  let response;
-  try {
-    response = await fetch(`${url}/auth/v1/user`, {
-      method: "GET",
-      headers: {
-        apikey: key,
-        Authorization: `Bearer ${token}`,
-      },
-    });
-  } catch (_err) {
-    return { ok: false };
-  }
-
-  let data = {};
-  try {
-    data = await response.json();
-  } catch (_err) {
-    data = {};
-  }
-
-  if (!response.ok) {
-    return { ok: false };
-  }
-
-  const email = String(data.email || "")
-    .trim()
-    .toLowerCase();
-  const userId = String(data.id || "").trim();
-  if (!email || !userId) {
-    return { ok: false };
-  }
-
-  return { ok: true, email, userId };
 }
 
 async function findActiveSupervisorProfiles(email) {

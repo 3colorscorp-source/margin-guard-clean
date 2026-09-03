@@ -5,139 +5,129 @@
     return document.getElementById(id);
   }
 
-  async function post(path, payload) {
-    const res = await fetch(`${API_BASE}${path}`, {
+  function setStatus(message, tone) {
+    const el = $("loginStatus");
+    if (!el) return;
+    el.textContent = message || "";
+    el.style.display = message ? "block" : "none";
+    el.className = tone === "err" ? "notice err" : "notice";
+  }
+
+  async function loadPublicConfig() {
+    const response = await fetch(`${API_BASE}/get-supabase-public-config`, { method: "GET" });
+    const data = await response.json().catch(() => ({}));
+    const url = String(data.supabaseUrl || "").trim();
+    const anon = String(data.supabaseAnonKey || "").trim();
+    if (!response.ok || data.ok !== true || !url || !anon) {
+      throw new Error("No se pudo cargar el acceso.");
+    }
+    return { url, anon };
+  }
+
+  async function mintOwnerSession(accessToken) {
+    const res = await fetch(`${API_BASE}/restore-owner-session`, {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload || {}),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + accessToken,
+      },
+      body: "{}",
     });
     const data = await res.json().catch(() => ({}));
-    return { res, data };
+    if (!res.ok || !data.ok) {
+      throw new Error("No se pudo entrar. Verifica tu cuenta e intenta de nuevo.");
+    }
   }
 
-  function error(message) {
-    const el = $("checkoutStatus");
-    if (!el) return;
-    el.textContent = message;
-    el.className = "notice err";
-    el.style.display = "block";
-  }
-
-  function info(message) {
-    const el = $("checkoutStatus");
-    if (!el) return;
-    el.textContent = message;
-    el.className = "notice";
-    el.style.display = "block";
-  }
-
-  async function startCheckout(event) {
+  async function signInAndEnter(event) {
     event.preventDefault();
+    const email = String($("loginEmail")?.value || "").trim();
+    const password = String($("loginPassword")?.value || "");
+    const btn = $("btnOwnerLogin");
 
-    const email = String($("email")?.value || "").trim();
-    if (!email || !email.includes("@")) {
-      error("Ingresa un correo valido para continuar.");
+    if (!email || !email.includes("@") || !password) {
+      setStatus("Ingresa email y contrasena.", "err");
       return;
     }
 
-    const btn = $("btnCheckout");
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = "Conectando...";
-    }
-
-    info("Preparando checkout seguro...");
-
-    try {
-      const { res, data } = await post("/create-checkout-session", { email });
-      if (!res.ok || !data.url) {
-        throw new Error(data.error || "No se pudo iniciar checkout");
-      }
-      window.location.href = data.url;
-    } catch (err) {
-      error(err.message || "Error iniciando checkout");
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = "Suscribirme anual";
-      }
-    }
-  }
-
-  async function openPortal() {
-    const btn = $("btnOpenPortal");
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = "Abriendo...";
-    }
-
-    try {
-      const { res, data } = await post("/create-portal-session", {});
-      if (!res.ok || !data.url) {
-        throw new Error(data.error || "No se pudo abrir el portal");
-      }
-      window.location.href = data.url;
-    } catch (err) {
-      const msg = err.message || "Error abriendo portal";
-      error(msg);
-      const st = $("checkoutStatus");
-      if (st) st.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = "Ya soy cliente";
-      }
-    }
-  }
-
-  async function restoreOwnerSession(event) {
-    event.preventDefault();
-    const email = String($("restoreEmail")?.value || "").trim();
-    const statusEl = $("restoreSessionStatus");
-    const btn = $("btnRestoreSession");
-    if (!email || !email.includes("@")) {
-      if (statusEl) {
-        statusEl.textContent = "Ingresa el correo del dueno del negocio.";
-        statusEl.className = "notice err";
-        statusEl.style.display = "block";
-      }
-      return;
-    }
     if (btn) {
       btn.disabled = true;
       btn.textContent = "Entrando...";
     }
-    if (statusEl) {
-      statusEl.textContent = "Verificando suscripcion...";
-      statusEl.className = "notice";
-      statusEl.style.display = "block";
-    }
+    setStatus("Verificando tu cuenta...", "info");
+
     try {
-      const { res, data } = await post("/restore-owner-session", { email });
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "No se pudo restaurar la sesion");
+      const client = await createAuthClient();
+      const { data, error } = await client.auth.signInWithPassword({ email, password });
+      const accessToken = data?.session?.access_token;
+      if (error || !accessToken) {
+        throw new Error("No se pudo entrar. Verifica tu cuenta e intenta de nuevo.");
       }
+      await mintOwnerSession(accessToken);
       window.location.href = "/dashboard.html";
-    } catch (err) {
-      if (statusEl) {
-        statusEl.textContent = err.message || "Error al entrar";
-        statusEl.className = "notice err";
-        statusEl.style.display = "block";
-      }
+    } catch (_err) {
+      setStatus("No se pudo entrar. Verifica tu cuenta e intenta de nuevo.", "err");
       if (btn) {
         btn.disabled = false;
-        btn.textContent = "Entrar con mi correo";
+        btn.textContent = "Entrar";
+      }
+    }
+  }
+
+  async function createAuthClient() {
+    if (typeof window.supabase?.createClient !== "function") {
+      throw new Error("No se pudo cargar el acceso.");
+    }
+    const { url, anon } = await loadPublicConfig();
+    return window.supabase.createClient(url, anon);
+  }
+
+  function hasAuthCallbackHash() {
+    const hash = window.location.hash || "";
+    return /access_token=|refresh_token=|type=invite|type=recovery|type=magiclink/i.test(hash);
+  }
+
+  async function completeInviteHashIfPresent() {
+    if (!hasAuthCallbackHash()) return;
+    const btn = $("btnOwnerLogin");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Entrando...";
+    }
+    setStatus("Verificando tu cuenta...", "info");
+    try {
+      const client = await createAuthClient();
+      let session = (await client.auth.getSession()).data?.session;
+      if (!session?.access_token) {
+        session = await new Promise((resolve) => {
+          const timer = setTimeout(() => resolve(null), 8000);
+          const { data } = client.auth.onAuthStateChange((_event, next) => {
+            if (next?.access_token) {
+              clearTimeout(timer);
+              data.subscription.unsubscribe();
+              resolve(next);
+            }
+          });
+        });
+      }
+      if (!session?.access_token) {
+        throw new Error("missing");
+      }
+      await mintOwnerSession(session.access_token);
+      window.location.href = "/dashboard.html";
+    } catch (_err) {
+      setStatus("No se pudo entrar. Verifica tu cuenta e intenta de nuevo.", "err");
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Entrar";
       }
     }
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    const form = $("checkoutForm");
-    if (form) form.addEventListener("submit", startCheckout);
-
-    const portalBtn = $("btnOpenPortal");
-    if (portalBtn) portalBtn.addEventListener("click", openPortal);
-
-    const restoreForm = $("restoreSessionForm");
-    if (restoreForm) restoreForm.addEventListener("submit", restoreOwnerSession);
+    const form = $("ownerLoginForm");
+    if (form) form.addEventListener("submit", signInAndEnter);
+    completeInviteHashIfPresent();
   });
 })();

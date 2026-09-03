@@ -28,13 +28,8 @@
         btnManage.disabled = true;
         btnManage.textContent = "Abriendo...";
         try {
-          const { response, data } = await api("/create-portal-session", { method: "POST", body: "{}" });
-          if (!response.ok || !data.url) {
-            throw new Error(data.error || "No se pudo abrir portal");
-          }
-          window.location.href = data.url;
-        } catch (err) {
-          alert(err.message || "Error al abrir el portal");
+          alert("El plan anual lo administra Margin Guard. Contacta a soporte para renovacion o cambios.");
+        } finally {
           btnManage.disabled = false;
           btnManage.textContent = "Gestionar plan";
         }

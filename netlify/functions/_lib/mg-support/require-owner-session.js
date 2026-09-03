@@ -4,10 +4,10 @@
  * tenant invoices, quotes, payments, projects, or financial rows.
  *
  * Allowed:
- * - HMAC-valid mg_session with owner email + Stripe customer id (same as
- *   bootstrap-tenant and most owner Netlify functions)
+ * - HMAC-valid mg_session with owner email + server tenant id (session.t)
+ *   or a legacy session.c value (not used as Stripe SaaS authority)
  * - HMAC-valid mg_session for a platform admin (public.users.is_admin),
- *   which auth-status allows even when session.c is missing
+ *   which auth-status allows even when session.c/t is missing
  *
  * Not allowed:
  * - no cookie / invalid cookie
@@ -19,10 +19,10 @@
 const { supabaseRequest } = require("../supabase-admin");
 const { resolveAuthUserIdByEmail } = require("../auth-resolve-user-id");
 
+const { hasOwnerSessionIdentity } = require("../owner-access");
+
 function hasOwnerEmailAndCustomer(session) {
-  const email = String(session?.e || "").trim();
-  const customerId = String(session?.c || "").trim();
-  return Boolean(email && customerId);
+  return hasOwnerSessionIdentity(session);
 }
 
 async function loadPlatformAdminFlag(session) {
@@ -69,6 +69,7 @@ async function assertOwnerSupportSession(session, deps = {}) {
 
 module.exports = {
   hasOwnerEmailAndCustomer,
+  hasOwnerSessionIdentity,
   loadPlatformAdminFlag,
   assertOwnerSupportSession,
 };
