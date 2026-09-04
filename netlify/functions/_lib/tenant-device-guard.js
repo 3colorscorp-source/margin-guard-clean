@@ -6,6 +6,7 @@
 
 const { readSessionFromEvent } = require("./session");
 const { resolveTenantFromSession } = require("./tenant-for-session");
+const { planIsActive } = require("./owner-access");
 const { supabaseRequest } = require("./supabase-admin");
 const { hashSessionToken, readDeviceSessionFromEvent } = require("./device-session");
 const {
@@ -183,6 +184,9 @@ async function resolveDeviceSession(event) {
   const tenant = Array.isArray(tenantRows) ? tenantRows[0] : null;
   if (!tenant?.id) {
     throwGuard(404, "Tenant not found", "tenant_not_found");
+  }
+  if (!planIsActive(tenant)) {
+    throwGuard(403, "Tenant plan is not active", "plan_not_active");
   }
 
   return {

@@ -1,5 +1,5 @@
 const { supabaseRequest } = require("./supabase-admin");
-const { resolveUniqueActiveOwnerAccess } = require("./owner-access");
+const { planIsActive, resolveUniqueActiveOwnerAccess } = require("./owner-access");
 const { membershipIsActive, membershipRole, resolveMembershipByEmail } = require("./membership-resolve");
 
 const TENANT_SELECT_FIELDS =
@@ -7,6 +7,12 @@ const TENANT_SELECT_FIELDS =
 
 function looksLikeStripeCustomerId(value) {
   return /^cus_[A-Za-z0-9]+$/.test(String(value || "").trim());
+}
+
+/** Only plan_status === "active" may use owner SaaS APIs. Rechecked on every resolve. */
+function entitledOwnerTenant(tenant) {
+  if (!tenant?.id || !planIsActive(tenant)) return null;
+  return tenant;
 }
 
 /**
@@ -34,7 +40,8 @@ async function resolveTenantFromSession(session, deps = {}) {
           `tenants?id=eq.${encodeURIComponent(tenantIdHint)}&select=${TENANT_SELECT_FIELDS}&limit=1`
         );
         const tenant = Array.isArray(rows) ? rows[0] : null;
-        if (tenant?.id) return tenant;
+        const entitled = entitledOwnerTenant(tenant);
+        if (entitled) return entitled;
       }
     } catch (_err) {
       /* fall through */
@@ -46,7 +53,7 @@ async function resolveTenantFromSession(session, deps = {}) {
     if (tenantIdHint && String(ownerAccess.tenant.id) !== tenantIdHint) {
       return null;
     }
-    return ownerAccess.tenant;
+    return entitledOwnerTenant(ownerAccess.tenant);
   }
 
   const legacyCustomer = String(session.c || "").trim();
@@ -63,7 +70,7 @@ async function resolveTenantFromSession(session, deps = {}) {
           membershipIsActive(membership) &&
           membershipRole(membership) === "owner"
         ) {
-          return tenant;
+          return entitledOwnerTenant(tenant);
         }
       }
     } catch (_err) {
