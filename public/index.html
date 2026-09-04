@@ -49,8 +49,25 @@
               <input id="loginPassword" type="password" maxlength="120" required autocomplete="current-password" />
             </div>
             <button id="btnOwnerLogin" class="btn primary btn-block" type="submit">Entrar</button>
+            <p class="small-note"><button type="button" id="btnForgotPassword" class="link-btn">Forgot password?</button></p>
             <div id="loginStatus" class="notice" style="display:none;"></div>
             <p class="small-note">Si tu pago anual ya fue confirmado y no tienes contrasena, pide la invitacion de acceso a Margin Guard.</p>
+          </div>
+        </form>
+        <form id="ownerRecoveryForm" class="card pricing-card" hidden novalidate>
+          <div class="card-inner">
+            <h3 id="recoveryTitle">Reset your password</h3>
+            <p class="sub">Choose a new password to continue. This link alone does not open Margin Guard.</p>
+            <div class="field">
+              <label for="recoveryPassword">New password</label>
+              <input id="recoveryPassword" type="password" maxlength="120" required autocomplete="new-password" />
+            </div>
+            <div class="field">
+              <label for="recoveryPasswordConfirm">Confirm new password</label>
+              <input id="recoveryPasswordConfirm" type="password" maxlength="120" required autocomplete="new-password" />
+            </div>
+            <button id="btnSaveNewPassword" class="btn primary btn-block" type="submit">Save new password</button>
+            <div id="recoveryStatus" class="notice" style="display:none;"></div>
           </div>
         </form>
       </div>
@@ -58,6 +75,7 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/js/owner-recovery-auth.js"></script>
   <script src="/js/billing.js"></script>
 </body>
 </html>
