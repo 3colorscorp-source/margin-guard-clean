@@ -6981,29 +6981,7 @@
         }
       }
 
-      function getSupabaseClient() {
-        return window.supabase || window.sb || window.supabaseClient || null;
-      }
-
-      function getCurrentTenantId() {
-        const state = loadSalesState();
-        return (
-          state.businessId ||
-          state.business_id ||
-          window.currentBusinessId ||
-          window.businessId ||
-          window.__businessId ||
-          null
-        );
-      }
-
       async function fetchBrandingFromTenantApi(settings) {
-        if (
-          typeof window.__mgIsRealSellerDeviceRoute === 'function' &&
-          window.__mgIsRealSellerDeviceRoute()
-        ) {
-          return null;
-        }
         if (!window.MarginGuardTenant?.getTenantBranding) return null;
         try {
           const { response, data } = await window.MarginGuardTenant.getTenantBranding();
@@ -7030,43 +7008,6 @@
         }
       }
 
-      async function fetchBrandingFromSupabase(settings) {
-        const client = getSupabaseClient();
-        if (!client?.auth || !client.from) return null;
-
-        let userId = null;
-        try {
-          const authResult = await client.auth.getUser();
-          userId = authResult?.data?.user?.id || null;
-        } catch (_error) {}
-
-        const tenantId = getCurrentTenantId();
-        const attempts = [];
-
-        if (tenantId) {
-          attempts.push(() => client.from('business_branding').select('*').eq('business_id', tenantId).limit(1).maybeSingle());
-          attempts.push(() => client.from('business_branding').select('*').eq('tenant_id', tenantId).limit(1).maybeSingle());
-        }
-
-        if (userId) {
-          attempts.push(() => client.from('business_branding').select('*').eq('user_id', userId).limit(1).maybeSingle());
-          attempts.push(() => client.from('business_branding').select('*').eq('owner_user_id', userId).limit(1).maybeSingle());
-          attempts.push(() => client.from('business_branding').select('*').eq('created_by', userId).limit(1).maybeSingle());
-        }
-
-        attempts.push(() => client.from('business_branding').select('*').eq('is_default', true).limit(1).maybeSingle());
-        attempts.push(() => client.from('business_branding').select('*').limit(1).maybeSingle());
-
-        for (const run of attempts) {
-          try {
-            const result = await run();
-            if (result?.data) return normalizeBrandingRow(result.data, settings);
-          } catch (_error) {}
-        }
-
-        return null;
-      }
-
       async function getBranding(forceRefresh) {
         const settings = loadSettings();
 
@@ -7080,9 +7021,8 @@
 
         brandingPromise = (async () => {
           const apiRow = await fetchBrandingFromTenantApi(settings);
-          const remote = await fetchBrandingFromSupabase(settings);
           const cached = readCachedBranding(settings);
-          let merged = { ...normalizeBrandingRow({}, settings), ...cached, ...(remote || {}) };
+          let merged = { ...normalizeBrandingRow({}, settings), ...cached };
           if (apiRow) {
             merged = {
               ...merged,
