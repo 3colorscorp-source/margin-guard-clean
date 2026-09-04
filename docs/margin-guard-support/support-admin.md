@@ -9,6 +9,7 @@ Only Margin Guard platform administrators can open `/support-admin`. Normal owne
 ## What you can do
 
 - Review **Active** cases by default (Open, In Review, and Waiting on You)
+- On desktop, the inbox is a two-pane workspace: case list on the left and the selected case on the right. Mobile still uses a full-screen case view.
 - Filter Open, In Review, Waiting on You, Resolved, or All
 - See limited operational context: case reference, business name, subject, category, module, page, sanitized question excerpt, customer-visible resolution, and Waiting on You message
 - **Mark In Review** from Open, Waiting on You, or Resolved

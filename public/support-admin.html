@@ -6,20 +6,28 @@
   <title>Margin Guard | Support Inbox</title>
   <link rel="stylesheet" href="/styles.css" />
   <style>
-    .si-page .container { max-width: 1100px; }
+    .si-page { min-height: 100vh; }
+    .si-page .container.si-shell {
+      max-width: none;
+      width: min(calc(100% - 32px), 1600px);
+      margin-left: auto;
+      margin-right: auto;
+      padding-bottom: 20px;
+    }
+    .si-hero { margin-bottom: 12px; }
     .si-hero h2 { margin: 0 0 6px; font-size: clamp(1.25rem, 2.2vw, 1.55rem); }
     .si-hero .sub { margin: 0; max-width: 68ch; line-height: 1.45; color: rgba(232, 238, 252, 0.78); }
     .si-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
     .si-kpis {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-      margin: 14px 0;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+      margin: 0 0 10px;
     }
-    @media (max-width: 900px) { .si-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-    @media (max-width: 640px) { .si-kpis { grid-template-columns: 1fr; } }
+    @media (max-width: 1099px) { .si-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @media (max-width: 640px) { .si-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .si-kpi {
-      padding: 12px 14px;
+      padding: 8px 10px;
       border-radius: 12px;
       border: 1px solid rgba(255, 255, 255, 0.08);
       background: rgba(255, 255, 255, 0.03);
@@ -30,9 +38,13 @@
       text-transform: uppercase;
       color: rgba(232, 238, 252, 0.58);
     }
-    .si-kpi .value { font-size: 1.25rem; font-weight: 800; margin-top: 4px; }
-    .si-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .si-kpi .value { font-size: 1.1rem; font-weight: 800; margin-top: 2px; }
+    .si-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
     .si-filters[hidden], .si-denied[hidden], .si-main[hidden] { display: none; }
+    .si-workspace {
+      display: block;
+    }
+    .si-inbox { min-width: 0; }
     .si-row {
       width: 100%;
       text-align: left;
@@ -45,6 +57,11 @@
       margin: 0 0 8px;
     }
     .si-row:hover, .si-row:focus { border-color: rgba(96, 165, 250, 0.45); }
+    .si-row--selected {
+      border-color: rgba(96, 165, 250, 0.8);
+      background: rgba(96, 165, 250, 0.12);
+      box-shadow: inset 3px 0 0 #60a5fa;
+    }
     .si-row__top { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
     .si-row__meta { font-size: 0.8125rem; color: rgba(232, 238, 252, 0.7); margin-top: 4px; }
     .si-badge {
@@ -75,33 +92,105 @@
       overflow: auto;
       padding: 18px;
     }
+    .si-workspace-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+    .si-workspace-head h3 { margin: 0; font-size: 1.15rem; }
+    .si-section {
+      margin: 0 0 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .si-section h4 {
+      margin: 0 0 8px;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 252, 0.58);
+    }
+    .si-empty-workspace {
+      display: grid;
+      place-items: center;
+      min-height: 220px;
+      color: rgba(232, 238, 252, 0.78);
+      text-align: center;
+    }
     .si-dl { margin: 0; }
     .si-dl div { margin: 0 0 10px; }
     .si-dl dt { font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(232, 238, 252, 0.55); }
     .si-dl dd { margin: 2px 0 0; }
     .si-excerpt { white-space: pre-wrap; word-break: break-word; }
+    .si-question .si-excerpt { font-size: 0.98rem; line-height: 1.5; }
     .si-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+    .si-actions .btn { min-height: 40px; }
     .si-compose { margin: 12px 0 0; }
     .si-compose label { display: block; font-size: 0.8125rem; margin: 0 0 8px; }
     .si-compose textarea {
       width: 100%;
-      min-height: 88px;
+      min-height: 140px;
       margin-top: 6px;
       resize: vertical;
     }
     .si-compose .hint { margin: 4px 0 0; font-size: 0.75rem; color: rgba(232, 238, 252, 0.7); }
     .si-snapshot { margin: 12px 0 0; }
-    .si-snapshot[hidden], .si-compose[hidden], .si-actions [hidden] { display: none; }
+    .si-snapshot[hidden], .si-compose[hidden], .si-actions [hidden], .si-empty-workspace[hidden], .si-workspace-main[hidden] { display: none; }
     .si-snapshot .label {
       font-size: 0.7rem;
       letter-spacing: 0.06em;
       text-transform: uppercase;
       color: rgba(232, 238, 252, 0.55);
     }
+    .si-activity { list-style: none; margin: 0; padding: 0; }
+    .si-activity li { margin: 0 0 8px; font-size: 0.875rem; }
+    .si-activity .when { color: rgba(232, 238, 252, 0.6); font-size: 0.75rem; }
+
+    @media (min-width: 768px) {
+      .si-workspace {
+        display: grid;
+        grid-template-columns: minmax(260px, 38%) minmax(0, 62%);
+        gap: 12px;
+        align-items: stretch;
+        min-height: calc(100vh - 220px);
+      }
+      .si-inbox {
+        overflow: auto;
+        max-height: calc(100vh - 220px);
+        padding-right: 4px;
+      }
+      .si-drawer {
+        position: static;
+        inset: auto;
+        width: auto;
+        height: auto;
+        max-height: calc(100vh - 220px);
+        overflow: auto;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        z-index: auto;
+      }
+      .si-drawer-backdrop { display: none !important; }
+    }
+    @media (min-width: 1100px) {
+      .si-workspace {
+        grid-template-columns: minmax(300px, 34%) minmax(520px, 66%);
+        min-height: calc(100vh - 200px);
+      }
+      .si-inbox, .si-drawer { max-height: calc(100vh - 200px); }
+    }
+    @media (max-width: 767px) {
+      .si-compose textarea { min-height: 110px; }
+      .si-drawer { width: 100%; }
+    }
   </style>
 </head>
 <body class="si-page">
-  <div class="container">
+  <div class="container si-shell">
     <div class="card si-hero">
       <div class="card-inner si-top">
         <div>
@@ -148,44 +237,66 @@
         </label>
       </div>
       <div id="siNotice" class="si-error" hidden role="alert"></div>
-      <div id="siList"></div>
+      <div class="si-workspace">
+        <div class="si-inbox" id="siInbox">
+          <div id="siList"></div>
+        </div>
+        <aside id="siDrawer" class="si-drawer" hidden>
+          <div class="si-workspace-head">
+            <h3 id="siDrawerTitle">Case</h3>
+            <button type="button" class="btn ghost" id="siDrawerClose">Close</button>
+          </div>
+          <div id="siEmptyState" class="si-empty-workspace" hidden>
+            Select a support case to review its details.
+          </div>
+          <div id="siWorkspaceMain" class="si-workspace-main">
+            <div class="si-section si-header-card">
+              <h4>Case</h4>
+              <dl class="si-dl" id="siDrawerBody"></dl>
+            </div>
+            <div class="si-section si-question">
+              <h4>Question / issue</h4>
+              <div id="siQuestionText" class="si-excerpt"></div>
+            </div>
+            <div id="siSnapshot" class="si-snapshot si-section" hidden>
+              <div id="siActionMessageBlock" hidden>
+                <div class="label">Waiting on You message</div>
+                <div id="siActionMessageText" class="si-excerpt"></div>
+              </div>
+              <div id="siResolutionBlock" hidden>
+                <div class="label">Customer-visible resolution</div>
+                <div id="siResolutionText" class="si-excerpt"></div>
+              </div>
+            </div>
+            <div id="siActionCompose" class="si-compose si-section" hidden>
+              <label for="siActionMessageInput">What the tenant needs to do (required)</label>
+              <textarea id="siActionMessageInput" maxlength="400"></textarea>
+              <p class="hint">This text will be visible to the tenant. 1–400 characters.</p>
+            </div>
+            <div id="siResolutionCompose" class="si-compose si-section" hidden>
+              <label for="siResolutionInput">Customer-visible resolution (optional, recommended)</label>
+              <textarea id="siResolutionInput" maxlength="400"></textarea>
+              <p class="hint">This text will be visible to the tenant.</p>
+            </div>
+            <p class="si-actions">
+              <button type="button" class="btn ghost" id="siMarkInReview" hidden>Mark In Review</button>
+              <button type="button" class="btn ghost" id="siReturnToOpen" hidden>Return to Open</button>
+              <button type="button" class="btn" id="siRequestAction" hidden>Request Customer Action</button>
+              <button type="button" class="btn" id="siResolve" hidden>Mark resolved</button>
+              <button type="button" class="btn ghost" id="siReopen" hidden>Reopen case</button>
+            </p>
+            <div id="siActivitySection" class="si-section" hidden>
+              <h4>Activity</h4>
+              <ul class="si-activity" id="siActivity"></ul>
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
   </div>
 
   <div id="siBackdrop" class="si-drawer-backdrop" hidden></div>
-  <aside id="siDrawer" class="si-drawer" hidden>
-    <button type="button" class="btn ghost" id="siDrawerClose">Close</button>
-    <h3 id="siDrawerTitle">Case</h3>
-    <dl class="si-dl" id="siDrawerBody"></dl>
-    <div id="siSnapshot" class="si-snapshot" hidden>
-      <div id="siActionMessageBlock" hidden>
-        <div class="label">Waiting on You message</div>
-        <div id="siActionMessageText" class="si-excerpt"></div>
-      </div>
-      <div id="siResolutionBlock" hidden>
-        <div class="label">Customer-visible resolution</div>
-        <div id="siResolutionText" class="si-excerpt"></div>
-      </div>
-    </div>
-    <div id="siActionCompose" class="si-compose" hidden>
-      <label for="siActionMessageInput">What the tenant needs to do (required)</label>
-      <textarea id="siActionMessageInput" maxlength="400"></textarea>
-      <p class="hint">This text will be visible to the tenant. 1–400 characters.</p>
-    </div>
-    <div id="siResolutionCompose" class="si-compose" hidden>
-      <label for="siResolutionInput">Customer-visible resolution (optional, recommended)</label>
-      <textarea id="siResolutionInput" maxlength="400"></textarea>
-      <p class="hint">This text will be visible to the tenant.</p>
-    </div>
-    <p class="si-actions">
-      <button type="button" class="btn ghost" id="siMarkInReview" hidden>Mark In Review</button>
-      <button type="button" class="btn ghost" id="siReturnToOpen" hidden>Return to Open</button>
-      <button type="button" class="btn" id="siRequestAction" hidden>Request Customer Action</button>
-      <button type="button" class="btn" id="siResolve" hidden>Mark resolved</button>
-      <button type="button" class="btn ghost" id="siReopen" hidden>Reopen case</button>
-    </p>
-  </aside>
 
-  <script src="/js/support-admin.js?v=003e-2" defer></script>
+  <script src="/js/support-admin.js?v=004b" defer></script>
 </body>
 </html>

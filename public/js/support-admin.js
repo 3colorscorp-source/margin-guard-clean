@@ -222,8 +222,12 @@
           " · " +
           moduleLabel(row && row.support_module) +
           " · " +
-          formatWhen(row && row.created_at)
+          formatWhen(row && row.updated_at)
       );
+      if (state.selected && state.selected.case_id === row.case_id) {
+        btn.className = "si-row si-row--selected";
+        btn.setAttribute("aria-current", "true");
+      }
       list.appendChild(btn);
     });
   }
@@ -246,6 +250,38 @@
     el.textContent = text == null ? "" : String(text);
   }
 
+  function isWideWorkspace() {
+    return typeof window.matchMedia === "function" && window.matchMedia("(min-width: 768px)").matches;
+  }
+
+  function renderActivity(row) {
+    const section = $("siActivitySection");
+    const list = $("siActivity");
+    if (!section || !list) return;
+    list.textContent = "";
+    if (!row) {
+      section.hidden = true;
+      return;
+    }
+    function addItem(label, when) {
+      const li = document.createElement("li");
+      const title = document.createElement("div");
+      title.textContent = label;
+      const meta = document.createElement("div");
+      meta.className = "when";
+      meta.textContent = formatWhen(when);
+      li.appendChild(title);
+      li.appendChild(meta);
+      list.appendChild(li);
+    }
+    addItem("Created", row.created_at);
+    if (row.status === "in_review") addItem("Marked in review", row.updated_at);
+    if (row.status === "waiting_on_customer") addItem("Waiting on customer", row.updated_at);
+    if (row.status === "resolved") addItem("Resolved", row.resolved_at || row.updated_at);
+    if (row.status === "open" && row.resolved_at) addItem("Reopened", row.updated_at);
+    section.hidden = list.children.length === 0;
+  }
+
   function renderDrawer() {
     const row = state.selected;
     const drawer = $("siDrawer");
@@ -255,11 +291,22 @@
     const reviewBtn = $("siMarkInReview");
     const returnBtn = $("siReturnToOpen");
     const requestBtn = $("siRequestAction");
+    const empty = $("siEmptyState");
+    const main = $("siWorkspaceMain");
     if (!row) {
       if (drawer) drawer.hidden = true;
       if (backdrop) backdrop.hidden = true;
+      if (isWideWorkspace() && drawer) {
+        drawer.hidden = false;
+        if (empty) empty.hidden = false;
+        if (main) main.hidden = true;
+        if ($("siDrawerTitle")) $("siDrawerTitle").textContent = "Case workspace";
+      }
+      renderList();
       return;
     }
+    if (empty) empty.hidden = true;
+    if (main) main.hidden = false;
     if ($("siDrawerTitle")) $("siDrawerTitle").textContent = row.case_ref;
     const related =
       row.related_entity_type && row.related_entity_type !== "none"
@@ -275,6 +322,7 @@
       appendDl(body, "Subject", row.subject);
       const excerptDd = appendDl(body, "Question", row.question_excerpt || "");
       excerptDd.className = "si-excerpt";
+      setText("siQuestionText", row.question_excerpt || "");
       appendDl(body, "Module", moduleLabel(row.support_module));
       appendDl(body, "Page", row.page_path || "—");
       appendDl(body, "Related entity", related);
@@ -318,8 +366,10 @@
       reopenBtn.hidden = row.status !== "resolved";
       reopenBtn.disabled = state.writing;
     }
+    renderActivity(row);
     if (drawer) drawer.hidden = false;
-    if (backdrop) backdrop.hidden = false;
+    if (backdrop) backdrop.hidden = isWideWorkspace();
+    renderList();
   }
 
   function readTrimmed(id) {
