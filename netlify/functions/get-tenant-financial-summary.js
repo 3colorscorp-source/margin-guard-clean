@@ -18,9 +18,22 @@ function createHandler(deps = {}) {
       const { tenant } = gate;
 
       const tid = encodeURIComponent(tenant.id);
-      const rows = await requestFn(
-        `tenant_financial_summary?tenant_id=eq.${tid}&currency=eq.USD&select=period_start,period_end,currency,total_inflow,total_outflow,net_change,source,computed_at,operating_balance,savings_balance,profit_balance,tax_reserve_balance,cash_on_hand&order=computed_at.desc&limit=1`
-      );
+      const selectCore =
+        "period_start,period_end,currency,total_inflow,total_outflow,net_change,source,computed_at,operating_balance,savings_balance,profit_balance,tax_reserve_balance,cash_on_hand";
+      let rows;
+      try {
+        rows = await requestFn(
+          `tenant_financial_summary?tenant_id=eq.${tid}&currency=eq.USD&select=${selectCore},last_sync_at&order=computed_at.desc&limit=1`
+        );
+      } catch (err) {
+        const msg = String(err && err.message ? err.message : err);
+        if (!/last_sync_at/.test(msg)) {
+          throw err;
+        }
+        rows = await requestFn(
+          `tenant_financial_summary?tenant_id=eq.${tid}&currency=eq.USD&select=${selectCore}&order=computed_at.desc&limit=1`
+        );
+      }
       const row = Array.isArray(rows) ? rows[0] : null;
 
       if (!row) {

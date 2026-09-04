@@ -2,6 +2,7 @@ const { buildRefreshedSessionCookie } = require("./_lib/session");
 const { requireFcOwnerTenant } = require("./_lib/fc-owner-context");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { getStripeKeyForPlatform } = require("./_lib/stripe");
+const { persistTenantFinancialSummary } = require("./_lib/persist-tenant-financial-summary");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -211,6 +212,7 @@ function createHandler(deps = {}) {
   const requestFn = deps.supabaseRequest || supabaseRequest;
   const refreshCookie = deps.buildRefreshedSessionCookie || buildRefreshedSessionCookie;
   const readBalance = deps.readUsdBalanceForAccount || readUsdBalanceForAccount;
+  const persistSummary = deps.persistTenantFinancialSummary || persistTenantFinancialSummary;
 
   return async function handler(event) {
   let cookieHeaders = {};
@@ -250,10 +252,33 @@ function createHandler(deps = {}) {
     if (accountIds.length) {
       const inList = accountIds.map(encodeURIComponent).join(",");
       const accRows = await requestFn(
-        `tenant_bank_accounts?id=in.(${inList})&tenant_id=eq.${tid}&select=id,stripe_fc_account_id,status`
+        `tenant_bank_accounts?id=in.(${inList})&tenant_id=eq.${tid}&status=eq.active&select=id,stripe_fc_account_id,status,tenant_bank_connection_id`
       );
       const accs = Array.isArray(accRows) ? accRows : [];
-      accountsById = Object.fromEntries(accs.map((a) => [a.id, a]));
+      const connIds = [
+        ...new Set(accs.map((a) => a?.tenant_bank_connection_id).filter(Boolean)),
+      ];
+      let activeConnIds = new Set();
+      if (connIds.length) {
+        const connIn = connIds.map(encodeURIComponent).join(",");
+        const connRows = await requestFn(
+          `tenant_bank_connections?id=in.(${connIn})&tenant_id=eq.${tid}&status=eq.active&select=id`
+        );
+        activeConnIds = new Set(
+          (Array.isArray(connRows) ? connRows : []).map((c) => c?.id).filter(Boolean)
+        );
+      }
+      accountsById = Object.fromEntries(
+        accs
+          .filter((a) => {
+            const connId = a?.tenant_bank_connection_id;
+            if (!connId) {
+              return true;
+            }
+            return activeConnIds.has(connId);
+          })
+          .map((a) => [a.id, a])
+      );
     }
 
     const bucketToFca = {};
@@ -300,12 +325,10 @@ function createHandler(deps = {}) {
     const currency = "USD";
     const nowIso = new Date().toISOString();
 
-    const existingRows = await requestFn(
-      `tenant_financial_summary?tenant_id=eq.${tid}&period_start=eq.${periodDate}&period_end=eq.${periodDate}&currency=eq.${currency}&select=id`
-    );
-    const existing = Array.isArray(existingRows) ? existingRows[0] : null;
-
     const payload = {
+      period_start: periodDate,
+      period_end: periodDate,
+      currency,
       total_inflow: 0,
       total_outflow: 0,
       net_change: 0,
@@ -315,32 +338,25 @@ function createHandler(deps = {}) {
       profit_balance,
       tax_reserve_balance,
       cash_on_hand,
+      last_sync_at: nowIso,
       computed_at: nowIso,
       updated_at: nowIso,
     };
 
-    if (existing?.id) {
-      await requestFn(`tenant_financial_summary?id=eq.${encodeURIComponent(existing.id)}`, {
-        method: "PATCH",
-        body: payload,
-      });
-    } else {
-      await requestFn("tenant_financial_summary", {
-        method: "POST",
-        body: {
-          tenant_id: tenant.id,
-          period_start: periodDate,
-          period_end: periodDate,
-          currency,
-          ...payload,
-        },
-      });
+    const saved = await persistSummary({
+      tenantId: tenant.id,
+      payload,
+      supabaseRequest: requestFn,
+    });
+    if (!saved || saved.persisted !== true) {
+      return json(500, { error: "summary_persist_failed" }, cookieHeaders);
     }
 
     return json(
       200,
       {
         ok: true,
+        persisted: true,
         period_start: periodDate,
         period_end: periodDate,
         currency,
@@ -349,6 +365,7 @@ function createHandler(deps = {}) {
         profit_balance,
         tax_reserve_balance,
         cash_on_hand,
+        last_sync_at: payload.last_sync_at,
       },
       cookieHeaders
     );

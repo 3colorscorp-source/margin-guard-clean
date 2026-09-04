@@ -10,6 +10,7 @@ const { requireFcOwnerTenant, json } = require("./_lib/fc-owner-context");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { getStripeKeyForPlatform } = require("./_lib/stripe");
 const { ensurePlatformFinancialCustomer } = require("./_lib/ensure-platform-financial-customer");
+const { upsertTenantBankConnection } = require("./_lib/upsert-tenant-bank-connection");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -58,6 +59,7 @@ function createHandler(deps = {}) {
   const createFcSession = deps.createFinancialConnectionsSession || createFinancialConnectionsSession;
   const requestFn = deps.supabaseRequest || supabaseRequest;
   const refreshCookie = deps.buildRefreshedSessionCookie || buildRefreshedSessionCookie;
+  const upsertConnection = deps.upsertTenantBankConnection || upsertTenantBankConnection;
 
   return async function handler(event) {
     let cookieHeaders = {};
@@ -91,20 +93,13 @@ function createHandler(deps = {}) {
         return json(502, { error: "Invalid response from Stripe" }, cookieHeaders);
       }
 
-      const inserted = await requestFn("tenant_bank_connections", {
-        method: "POST",
-        headers: { Prefer: "return=representation" },
-        body: {
-          tenant_id: tenant.id,
-          stripe_fc_session_id: stripeFcSessionId,
-          stripe_customer_id: customerId,
-          status: "pending",
-          updated_at: new Date().toISOString(),
-        },
+      const { connection } = await upsertConnection({
+        tenantId: tenant.id,
+        stripeFcSessionId,
+        stripeCustomerId: customerId,
+        supabaseRequest: requestFn,
       });
-
-      const row = Array.isArray(inserted) ? inserted[0] : inserted;
-      const connectionId = row?.id;
+      const connectionId = connection?.id;
       if (!connectionId) {
         return json(500, { error: "Failed to record bank connection" }, cookieHeaders);
       }

@@ -127,8 +127,9 @@
     }
     const bankNote = document.getElementById("dashboardBankSyncMeta");
     if (bankNote) {
+      const stamp = summary.last_sync_at || summary.computed_at;
       bankNote.textContent = `Last server sync: ${
-        summary.computed_at ? new Date(summary.computed_at).toLocaleString() : "—"
+        stamp ? new Date(stamp).toLocaleString() : "—"
       }`;
     }
   }
@@ -269,11 +270,17 @@
             method: "POST",
             body: "{}",
           });
-          if (!response.ok) {
-            throw new Error(data.error || "Sync failed");
+          if (!response.ok || data.ok !== true || data.persisted !== true) {
+            throw new Error(data.error || "Sync did not persist");
           }
+          try {
+            await refreshSummaryDisplay(root);
+          } catch (_err) {
+            /* apply persisted sync payload below even if GET is stale */
+          }
+          await applySummaryToDashboard(data);
+          paintSummaryInline(root, data);
           setStatus(root, "Sync complete.", "");
-          await refreshSummaryDisplay(root);
         } catch (err) {
           setStatus(root, err.message || "Sync failed", "err");
         } finally {
