@@ -14,6 +14,10 @@
       margin-right: auto;
       padding-bottom: 20px;
     }
+    html.si-modal-open,
+    body.si-modal-open {
+      overflow: hidden;
+    }
     .si-hero { margin-bottom: 12px; }
     .si-hero h2 { margin: 0 0 6px; font-size: clamp(1.25rem, 2.2vw, 1.55rem); }
     .si-hero .sub { margin: 0; max-width: 68ch; line-height: 1.45; color: rgba(232, 238, 252, 0.78); }
@@ -41,9 +45,6 @@
     .si-kpi .value { font-size: 1.1rem; font-weight: 800; margin-top: 2px; }
     .si-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
     .si-filters[hidden], .si-denied[hidden], .si-main[hidden] { display: none; }
-    .si-workspace {
-      display: block;
-    }
     .si-inbox { min-width: 0; }
     .si-row {
       width: 100%;
@@ -74,32 +75,83 @@
       border: 1px solid rgba(255, 255, 255, 0.12);
     }
     .si-empty, .si-error, .si-loading { padding: 16px; color: rgba(232, 238, 252, 0.8); }
-    .si-drawer-backdrop {
+    .si-modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(2, 6, 23, 0.62);
+      background: rgba(0, 0, 0, 0.72);
+      -webkit-backdrop-filter: blur(2px);
+      backdrop-filter: blur(2px);
       z-index: 40;
     }
-    .si-drawer {
+    .si-drawer,
+    .si-modal {
       position: fixed;
-      top: 0;
-      right: 0;
-      height: 100%;
-      width: min(420px, 100%);
-      background: #0b1220;
-      border-left: 1px solid rgba(255, 255, 255, 0.1);
       z-index: 41;
-      overflow: auto;
-      padding: 18px;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: min(98vw, 1800px);
+      height: 95dvh;
+      max-height: 96vh;
+      display: flex;
+      flex-direction: column;
+      background: #0b1220;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+      padding: 0;
     }
-    .si-workspace-head {
+    .si-drawer[hidden],
+    .si-modal[hidden],
+    .si-modal-backdrop[hidden] { display: none !important; }
+    .si-modal__header {
+      flex: 0 0 auto;
       display: flex;
       justify-content: space-between;
-      gap: 10px;
       align-items: flex-start;
-      margin-bottom: 12px;
+      gap: 12px;
+      padding: 14px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      background: #0b1220;
     }
-    .si-workspace-head h3 { margin: 0; font-size: 1.15rem; }
+    .si-modal__identity { min-width: 0; }
+    .si-modal__identity h3 {
+      margin: 0 0 4px;
+      font-size: 1.12rem;
+      line-height: 1.25;
+    }
+    .si-modal__meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      color: rgba(232, 238, 252, 0.78);
+      font-size: 0.875rem;
+    }
+    .si-modal__header-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+    .si-modal__body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      padding: 16px 18px 20px;
+    }
+    .si-modal__footer {
+      flex: 0 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 12px 18px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      background: #0b1220;
+    }
+    .si-modal__footer .btn { min-height: 40px; }
+    .si-modal-notice { margin: 0 18px 0; padding: 8px 0 0; }
     .si-section {
       margin: 0 0 12px;
       padding: 12px 14px;
@@ -114,21 +166,24 @@
       text-transform: uppercase;
       color: rgba(232, 238, 252, 0.58);
     }
-    .si-empty-workspace {
-      display: grid;
-      place-items: center;
-      min-height: 220px;
-      color: rgba(232, 238, 252, 0.78);
-      text-align: center;
+    .si-issue {
+      border-color: rgba(96, 165, 250, 0.28);
+      background: rgba(96, 165, 250, 0.08);
+      padding: 16px 18px;
     }
+    .si-issue h4 { color: rgba(147, 197, 253, 0.92); }
+    .si-issue .si-excerpt { font-size: 1.05rem; line-height: 1.55; }
     .si-dl { margin: 0; }
+    .si-dl--compact {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 8px 16px;
+    }
     .si-dl div { margin: 0 0 10px; }
+    .si-dl--compact div { margin: 0; }
     .si-dl dt { font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(232, 238, 252, 0.55); }
     .si-dl dd { margin: 2px 0 0; }
     .si-excerpt { white-space: pre-wrap; word-break: break-word; }
-    .si-question .si-excerpt { font-size: 0.98rem; line-height: 1.5; }
-    .si-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
-    .si-actions .btn { min-height: 40px; }
     .si-compose { margin: 12px 0 0; }
     .si-compose label { display: block; font-size: 0.8125rem; margin: 0 0 8px; }
     .si-compose textarea {
@@ -139,7 +194,7 @@
     }
     .si-compose .hint { margin: 4px 0 0; font-size: 0.75rem; color: rgba(232, 238, 252, 0.7); }
     .si-snapshot { margin: 12px 0 0; }
-    .si-snapshot[hidden], .si-compose[hidden], .si-actions [hidden], .si-empty-workspace[hidden], .si-workspace-main[hidden] { display: none; }
+    .si-snapshot[hidden], .si-compose[hidden], .si-modal__footer [hidden], .si-workspace-main[hidden] { display: none; }
     .si-snapshot .label {
       font-size: 0.7rem;
       letter-spacing: 0.06em;
@@ -150,42 +205,32 @@
     .si-activity li { margin: 0 0 8px; font-size: 0.875rem; }
     .si-activity .when { color: rgba(232, 238, 252, 0.6); font-size: 0.75rem; }
 
-    @media (min-width: 768px) {
-      .si-workspace {
-        display: grid;
-        grid-template-columns: minmax(260px, 38%) minmax(0, 62%);
-        gap: 12px;
-        align-items: stretch;
-        min-height: calc(100vh - 220px);
-      }
-      .si-inbox {
-        overflow: auto;
-        max-height: calc(100vh - 220px);
-        padding-right: 4px;
-      }
-      .si-drawer {
-        position: static;
-        inset: auto;
-        width: auto;
-        height: auto;
-        max-height: calc(100vh - 220px);
-        overflow: auto;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 12px;
-        z-index: auto;
-      }
-      .si-drawer-backdrop { display: none !important; }
-    }
     @media (min-width: 1100px) {
-      .si-workspace {
-        grid-template-columns: minmax(300px, 34%) minmax(520px, 66%);
-        min-height: calc(100vh - 200px);
+      .si-drawer,
+      .si-modal {
+        width: min(98vw, 1800px);
+        height: 95dvh;
       }
-      .si-inbox, .si-drawer { max-height: calc(100vh - 200px); }
+    }
+    @media (min-width: 768px) and (max-width: 1099px) {
+      .si-drawer,
+      .si-modal {
+        width: 98vw;
+        height: 96dvh;
+      }
     }
     @media (max-width: 767px) {
       .si-compose textarea { min-height: 110px; }
-      .si-drawer { width: 100%; }
+      .si-drawer,
+      .si-modal {
+        left: 0;
+        top: 0;
+        transform: none;
+        width: 100vw;
+        height: 100dvh;
+        max-height: 100dvh;
+        border-radius: 0;
+      }
     }
   </style>
 </head>
@@ -237,66 +282,80 @@
         </label>
       </div>
       <div id="siNotice" class="si-error" hidden role="alert"></div>
-      <div class="si-workspace">
-        <div class="si-inbox" id="siInbox">
-          <div id="siList"></div>
-        </div>
-        <aside id="siDrawer" class="si-drawer" hidden>
-          <div class="si-workspace-head">
-            <h3 id="siDrawerTitle">Case</h3>
-            <button type="button" class="btn ghost" id="siDrawerClose">Close</button>
-          </div>
-          <div id="siEmptyState" class="si-empty-workspace" hidden>
-            Select a support case to review its details.
-          </div>
-          <div id="siWorkspaceMain" class="si-workspace-main">
-            <div class="si-section si-header-card">
-              <h4>Case</h4>
-              <dl class="si-dl" id="siDrawerBody"></dl>
-            </div>
-            <div class="si-section si-question">
-              <h4>Question / issue</h4>
-              <div id="siQuestionText" class="si-excerpt"></div>
-            </div>
-            <div id="siSnapshot" class="si-snapshot si-section" hidden>
-              <div id="siActionMessageBlock" hidden>
-                <div class="label">Waiting on You message</div>
-                <div id="siActionMessageText" class="si-excerpt"></div>
-              </div>
-              <div id="siResolutionBlock" hidden>
-                <div class="label">Customer-visible resolution</div>
-                <div id="siResolutionText" class="si-excerpt"></div>
-              </div>
-            </div>
-            <div id="siActionCompose" class="si-compose si-section" hidden>
-              <label for="siActionMessageInput">What the tenant needs to do (required)</label>
-              <textarea id="siActionMessageInput" maxlength="400"></textarea>
-              <p class="hint">This text will be visible to the tenant. 1–400 characters.</p>
-            </div>
-            <div id="siResolutionCompose" class="si-compose si-section" hidden>
-              <label for="siResolutionInput">Customer-visible resolution (optional, recommended)</label>
-              <textarea id="siResolutionInput" maxlength="400"></textarea>
-              <p class="hint">This text will be visible to the tenant.</p>
-            </div>
-            <p class="si-actions">
-              <button type="button" class="btn ghost" id="siMarkInReview" hidden>Mark In Review</button>
-              <button type="button" class="btn ghost" id="siReturnToOpen" hidden>Return to Open</button>
-              <button type="button" class="btn" id="siRequestAction" hidden>Request Customer Action</button>
-              <button type="button" class="btn" id="siResolve" hidden>Mark resolved</button>
-              <button type="button" class="btn ghost" id="siReopen" hidden>Reopen case</button>
-            </p>
-            <div id="siActivitySection" class="si-section" hidden>
-              <h4>Activity</h4>
-              <ul class="si-activity" id="siActivity"></ul>
-            </div>
-          </div>
-        </aside>
+      <div class="si-inbox" id="siInbox">
+        <div id="siList"></div>
       </div>
     </div>
   </div>
 
-  <div id="siBackdrop" class="si-drawer-backdrop" hidden></div>
+  <div id="siBackdrop" class="si-modal-backdrop" hidden></div>
+  <aside
+    id="siDrawer"
+    class="si-drawer si-modal"
+    hidden
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="siDrawerTitle"
+    tabindex="-1"
+  >
+    <div class="si-modal__header">
+      <div class="si-modal__identity">
+        <h3 id="siDrawerTitle">Case</h3>
+        <div class="si-modal__meta">
+          <span id="siModalTenant"></span>
+          <span id="siModalStatus" class="si-badge"></span>
+          <span id="siModalCategory"></span>
+        </div>
+      </div>
+      <div class="si-modal__header-actions">
+        <button type="button" class="btn ghost" id="siCopyCaseId">Copy Case ID</button>
+        <button type="button" class="btn ghost" id="siDrawerClose" aria-label="Close">Close</button>
+      </div>
+    </div>
+    <div id="siModalNotice" class="si-error si-modal-notice" hidden role="alert"></div>
+    <div id="siWorkspaceMain" class="si-workspace-main si-modal__body">
+      <div class="si-section si-issue">
+        <h4>Customer issue</h4>
+        <div id="siQuestionText" class="si-excerpt"></div>
+      </div>
+      <div class="si-section si-header-card">
+        <h4>Case context</h4>
+        <dl class="si-dl si-dl--compact" id="siDrawerBody"></dl>
+      </div>
+      <div id="siSnapshot" class="si-snapshot si-section" hidden>
+        <div id="siActionMessageBlock" hidden>
+          <div class="label">Waiting on You message</div>
+          <div id="siActionMessageText" class="si-excerpt"></div>
+        </div>
+        <div id="siResolutionBlock" hidden>
+          <div class="label">Customer-visible resolution</div>
+          <div id="siResolutionText" class="si-excerpt"></div>
+        </div>
+      </div>
+      <div id="siActionCompose" class="si-compose si-section" hidden>
+        <label for="siActionMessageInput">What the tenant needs to do (required)</label>
+        <textarea id="siActionMessageInput" maxlength="400"></textarea>
+        <p class="hint">This text will be visible to the tenant. 1–400 characters.</p>
+      </div>
+      <div id="siResolutionCompose" class="si-compose si-section" hidden>
+        <label for="siResolutionInput">Customer-visible resolution (optional, recommended)</label>
+        <textarea id="siResolutionInput" maxlength="400"></textarea>
+        <p class="hint">This text will be visible to the tenant.</p>
+      </div>
+      <div id="siActivitySection" class="si-section" hidden>
+        <h4>Activity</h4>
+        <ul class="si-activity" id="siActivity"></ul>
+      </div>
+    </div>
+    <p class="si-actions si-modal__footer">
+      <button type="button" class="btn ghost" id="siMarkInReview" hidden>Mark In Review</button>
+      <button type="button" class="btn ghost" id="siReturnToOpen" hidden>Return to Open</button>
+      <button type="button" class="btn" id="siRequestAction" hidden>Request Customer Action</button>
+      <button type="button" class="btn" id="siResolve" hidden>Mark resolved</button>
+      <button type="button" class="btn ghost" id="siReopen" hidden>Reopen case</button>
+    </p>
+  </aside>
 
-  <script src="/js/support-admin.js?v=004b" defer></script>
+  <script src="/js/support-admin.js?v=004c" defer></script>
 </body>
 </html>

@@ -44,22 +44,22 @@ async function main() {
   const deliverySrc = read("netlify/functions/_lib/mg-support/notification-delivery.js");
 
   assert(
-    "1. desktop no longer uses narrow overlay drawer",
-    /@media \(min-width: 1100px\)/.test(css) &&
-      /position: static/.test(css) &&
-      /grid-template-columns: minmax\(300px, 34%\) minmax\(520px, 66%\)/.test(css)
+    "1. desktop no longer uses narrow overlay drawer or split pane",
+    /width: min\(98vw, 1800px\)/.test(css) &&
+      /role="dialog"/.test(html) &&
+      /aria-modal="true"/.test(html) &&
+      !/grid-template-columns: minmax\(300px, 34%\) minmax\(520px, 66%\)/.test(css)
   );
   assert("1b. shell uses nearly full viewport width", /width: min\(calc\(100% - 32px\), 1600px\)/.test(css));
   assert(
-    "2. desktop renders list + workspace simultaneously",
-    /class="si-workspace"/.test(html) &&
-      /id="siInbox"/.test(html) &&
+    "2. inbox list exists without permanent detail pane",
+    /id="siInbox"/.test(html) &&
       /id="siDrawer"/.test(html) &&
       /id="siList"/.test(html) &&
-      /display: grid/.test(css)
+      !/class="si-workspace"/.test(html)
   );
   assert(
-    "3. selected case appears in right workspace",
+    "3. selected case appears in case modal",
     /si-row--selected/.test(uiSrc) && /siDrawerTitle/.test(uiSrc) && /id="siWorkspaceMain"/.test(html)
   );
   assert(
@@ -115,8 +115,8 @@ async function main() {
     /HMAC mg_session \+ public.users.is_admin/.test(listSrc) &&
       /Closed PATCH via atomic RPC/.test(updateSrc)
   );
-  assert("empty state copy present", /Select a support case to review its details/.test(html));
-  assert("independent pane scroll", /overflow: auto/.test(css) && /si-inbox/.test(css));
+  assert("empty state is not a permanent detail pane", !/Select a support case to review its details/.test(html));
+  assert("modal body scrolls independently", /si-modal__body/.test(css) && /overflow: auto/.test(css));
   assert("wide textareas", /min-height: 140px/.test(css));
   assert("canonical /support-admin remains", /support-admin/.test(read("netlify.toml")));
   assert("004A chat detector still present", /isExplicitUnresolvedSupportRequest/.test(chatSrc));
@@ -126,7 +126,7 @@ async function main() {
   assert("delivery helper still present", /OUTBOX_TABLE/.test(deliverySrc));
   assert("list API path unchanged", /mg-support-admin-list-cases/.test(uiSrc));
   assert("update API path unchanged", /mg-support-admin-update-case/.test(uiSrc));
-  assert("cache-bust 004b", /support-admin\.js\?v=004b/.test(html));
+  assert("cache-bust 004c", /support-admin\.js\?v=004c/.test(html));
 
   const { isExplicitUnresolvedSupportRequest } = require("../netlify/functions/_lib/mg-support/case-intake");
   assert(

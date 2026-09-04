@@ -647,7 +647,7 @@ async function main() {
   const notifySrc = deliverySrc + dispatchSrc + sweepLibSrc + sweepFnSrc + helperSrc;
   assert("AB1. zero OpenAI in notification path", !/openai\.com|OPENAI_API_KEY|getOpenAiKey/.test(notifySrc));
   assert("AC1. no recipient/webhook/signature logs", !/console\.(log|error|info)\([^\)]*recipient_email|console\.(log|error)\([^\)]*owner_email|console\.(log|error)\([^\)]*signature/.test(notifySrc));
-  assert("AF1. Support Admin asset remains 004b", /support-admin\.js\?v=004b/.test(adminHtml) && !/notification|delivery_status|outbox/.test(adminJs));
+  assert("AF1. Support Admin asset remains 004c", /support-admin\.js\?v=004c/.test(adminHtml) && !/notification|delivery_status|outbox/.test(adminJs));
   assert("AF2. chat asset remains 004a", /SUPPORT_CHAT_ASSET_VERSION = '004a'/.test(navSrc));
   assert("AF3. no tenant delivery UX", !/bridge_accepted|notification-sweep/.test(myCasesSrc));
   assert("AG1. no notification chat intent", !/notification_outbox|case_in_review/.test(routerSrc + chatSrc));

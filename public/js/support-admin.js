@@ -51,6 +51,7 @@
     cases: [],
     selected: null,
     writing: false,
+    lastFocusCaseId: null,
   };
 
   function $(id) {
@@ -89,15 +90,88 @@
   }
 
   function setNotice(text) {
-    const el = $("siNotice");
-    if (!el) return;
-    if (!text) {
-      el.hidden = true;
-      el.textContent = "";
+    function apply(el) {
+      if (!el) return;
+      if (!text) {
+        el.hidden = true;
+        el.textContent = "";
+        return;
+      }
+      el.hidden = false;
+      el.textContent = text;
+    }
+    apply($("siNotice"));
+    apply($("siModalNotice"));
+  }
+
+  function shortRef(value) {
+    const s = String(value || "");
+    if (s.length <= 18) return s;
+    return s.slice(0, 8) + "…" + s.slice(-6);
+  }
+
+  function lockBodyScroll() {
+    document.documentElement.classList.add("si-modal-open");
+    document.body.classList.add("si-modal-open");
+  }
+
+  function unlockBodyScroll() {
+    document.documentElement.classList.remove("si-modal-open");
+    document.body.classList.remove("si-modal-open");
+  }
+
+  function readTrimmed(id) {
+    const el = $(id);
+    return el ? String(el.value || "").trim() : "";
+  }
+
+  function hasUnsavedWork() {
+    return !!(readTrimmed("siActionMessageInput") || readTrimmed("siResolutionInput"));
+  }
+
+  function focusableInModal() {
+    const drawer = $("siDrawer");
+    if (!drawer || drawer.hidden) return [];
+    const nodes = drawer.querySelectorAll("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])");
+    const out = [];
+    for (let i = 0; i < nodes.length; i += 1) {
+      const el = nodes[i];
+      if (el.hidden || el.disabled || el.getAttribute("aria-hidden") === "true") continue;
+      if (el.closest("[hidden]")) continue;
+      out.push(el);
+    }
+    return out;
+  }
+
+  function trapFocus(ev) {
+    if (ev.key !== "Tab" || !state.selected) return;
+    const nodes = focusableInModal();
+    if (!nodes.length) return;
+    const first = nodes[0];
+    const last = nodes[nodes.length - 1];
+    if (ev.shiftKey && document.activeElement === first) {
+      ev.preventDefault();
+      last.focus();
+    } else if (!ev.shiftKey && document.activeElement === last) {
+      ev.preventDefault();
+      first.focus();
+    }
+  }
+
+  function focusModal() {
+    const closeBtn = $("siDrawerClose");
+    if (closeBtn) {
+      closeBtn.focus();
       return;
     }
-    el.hidden = false;
-    el.textContent = text;
+    const drawer = $("siDrawer");
+    if (drawer && typeof drawer.focus === "function") drawer.focus();
+  }
+
+  function restoreCaseFocus(caseId) {
+    if (!caseId) return;
+    const btn = document.querySelector('#siList [data-case-id="' + String(caseId) + '"]');
+    if (btn && typeof btn.focus === "function") btn.focus();
   }
 
   function showDenied() {
@@ -250,10 +324,6 @@
     el.textContent = text == null ? "" : String(text);
   }
 
-  function isWideWorkspace() {
-    return typeof window.matchMedia === "function" && window.matchMedia("(min-width: 768px)").matches;
-  }
-
   function renderActivity(row) {
     const section = $("siActivitySection");
     const list = $("siActivity");
@@ -291,23 +361,19 @@
     const reviewBtn = $("siMarkInReview");
     const returnBtn = $("siReturnToOpen");
     const requestBtn = $("siRequestAction");
-    const empty = $("siEmptyState");
     const main = $("siWorkspaceMain");
     if (!row) {
       if (drawer) drawer.hidden = true;
       if (backdrop) backdrop.hidden = true;
-      if (isWideWorkspace() && drawer) {
-        drawer.hidden = false;
-        if (empty) empty.hidden = false;
-        if (main) main.hidden = true;
-        if ($("siDrawerTitle")) $("siDrawerTitle").textContent = "Case workspace";
-      }
+      unlockBodyScroll();
       renderList();
       return;
     }
-    if (empty) empty.hidden = true;
     if (main) main.hidden = false;
-    if ($("siDrawerTitle")) $("siDrawerTitle").textContent = row.case_ref;
+    if ($("siDrawerTitle")) $("siDrawerTitle").textContent = shortRef(row.case_ref);
+    setText("siModalTenant", row.tenant_business_name);
+    setText("siModalStatus", statusLabel(row.status));
+    setText("siModalCategory", categoryLabel(row.category) + " · " + moduleLabel(row.support_module));
     const related =
       row.related_entity_type && row.related_entity_type !== "none"
         ? row.related_entity_type + (row.related_entity_ref ? " · " + row.related_entity_ref : "")
@@ -367,14 +433,16 @@
       reopenBtn.disabled = state.writing;
     }
     renderActivity(row);
+    const wasHidden = !!(drawer && drawer.hidden);
     if (drawer) drawer.hidden = false;
-    if (backdrop) backdrop.hidden = isWideWorkspace();
+    if (backdrop) backdrop.hidden = false;
+    lockBodyScroll();
     renderList();
-  }
-
-  function readTrimmed(id) {
-    const el = $(id);
-    return el ? String(el.value || "").trim() : "";
+    if (wasHidden) {
+      window.requestAnimationFrame(function () {
+        focusModal();
+      });
+    }
   }
 
   async function updateCase(action) {
@@ -439,6 +507,7 @@
         const btn = ev.target.closest("[data-case-id]");
         if (!btn) return;
         const id = btn.getAttribute("data-case-id");
+        state.lastFocusCaseId = id;
         state.selected = state.cases.find(function (row) {
           return row.case_id === id;
         }) || null;
@@ -486,11 +555,41 @@
       });
     }
     function closeDrawer() {
+      const restoreId = (state.selected && state.selected.case_id) || state.lastFocusCaseId;
       state.selected = null;
       renderDrawer();
+      restoreCaseFocus(restoreId);
     }
-    if ($("siDrawerClose")) $("siDrawerClose").addEventListener("click", closeDrawer);
-    if ($("siBackdrop")) $("siBackdrop").addEventListener("click", closeDrawer);
+    function requestCloseModal() {
+      if (!state.selected) return;
+      if (hasUnsavedWork()) {
+        const ok = window.confirm("Discard unsaved message text and close this case?");
+        if (!ok) return;
+      }
+      closeDrawer();
+    }
+    if ($("siDrawerClose")) $("siDrawerClose").addEventListener("click", requestCloseModal);
+    if ($("siCopyCaseId")) {
+      $("siCopyCaseId").addEventListener("click", function () {
+        const ref = state.selected && state.selected.case_ref;
+        if (!ref || !navigator.clipboard || !navigator.clipboard.writeText) return;
+        navigator.clipboard.writeText(String(ref)).then(
+          function () {
+            setNotice("Case ID copied.");
+          },
+          function () {
+            setNotice("Case ID could not be copied.");
+          }
+        );
+      });
+    }
+    document.addEventListener("keydown", function (ev) {
+      trapFocus(ev);
+      if (ev.key === "Escape" && state.selected) {
+        ev.preventDefault();
+        requestCloseModal();
+      }
+    });
     if ($("siLogout")) {
       $("siLogout").addEventListener("click", async function () {
         try {
