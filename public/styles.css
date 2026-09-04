@@ -6358,6 +6358,25 @@ body.mg-app-shell.mg-nav-drawer-open .mg-sidebar__plan{
   opacity:1;
   height:auto;
 }
+.mg-sidebar__legal{
+  margin:8px 0 0;
+  font-size:11px;
+  line-height:1.4;
+  color:var(--muted);
+  opacity:0;
+  height:0;
+  overflow:hidden;
+}
+.mg-sidebar__legal a{
+  color:inherit;
+  text-decoration:underline;
+}
+body.mg-app-shell.mg-sidebar-pinned .mg-sidebar__legal,
+body.mg-app-shell.mg-sidebar-hover-expand .mg-sidebar__legal,
+body.mg-app-shell.mg-nav-drawer-open .mg-sidebar__legal{
+  opacity:1;
+  height:auto;
+}
 .mg-sidebar-overlay{
   display:none;
   position:fixed;

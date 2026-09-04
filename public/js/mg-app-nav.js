@@ -255,6 +255,11 @@
     return (
       '<div class="mg-sidebar__footer" data-owner-nav>' +
       '  <p class="mg-sidebar__plan" id="planStatus">Validando suscripcion...</p>' +
+      '  <p class="mg-sidebar__legal">' +
+      '    <a href="/terms.html">Terms</a>' +
+      '    <span aria-hidden="true"> · </span>' +
+      '    <a href="/privacy.html">Privacy</a>' +
+      '  </p>' +
       '</div>'
     );
   }
