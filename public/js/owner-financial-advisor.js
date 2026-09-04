@@ -1331,8 +1331,8 @@
         savingsCash: num(i.savingsCash, num(i.savingsBalance, 0)),
         taxReserve: num(i.taxReserve, num(i.taxBalance, 0)),
         totalCash: num(i.totalCash, 0),
-        operatingMonthly: num(i.operatingMonthly, 0),
-        runwayMonths: num(i.runwayMonths, 0),
+        operatingMonthly: i.ownerSettingsAvailable === false ? 0 : num(i.operatingMonthly, 0),
+        runwayMonths: i.ownerSettingsAvailable === false ? 0 : num(i.runwayMonths, 0),
         openBalance: num(i.openBalance, 0),
         overdueCount: num(i.overdueCount, 0),
         overdueBalance: num(i.overdueBalance, 0),
@@ -1340,9 +1340,10 @@
         readyToBillCount: num(i.readyToBillCount, 0),
         topCollectionAction: i.topCollectionAction && typeof i.topCollectionAction === "object" ? i.topCollectionAction : null,
         topInvoiceActions: Array.isArray(i.topInvoiceActions) ? i.topInvoiceActions.slice(0, 3) : [],
-        healthScore: num(i.healthScore, 0),
-        healthTone: String(i.healthTone || "neutral"),
+        healthScore: i.ownerSettingsAvailable === false ? null : num(i.healthScore, 0),
+        healthTone: i.ownerSettingsAvailable === false ? "unknown" : String(i.healthTone || "neutral"),
         invoiceDataAvailable: i.invoiceDataAvailable !== false,
+        ownerSettingsAvailable: i.ownerSettingsAvailable !== false,
       };
 
       renderInto(root, snapshot);

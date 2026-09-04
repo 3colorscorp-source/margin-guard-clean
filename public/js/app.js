@@ -1126,6 +1126,97 @@ Thank you.`
 
   function loadDashboard() { return { ...DEFAULT_DASHBOARD, ...readStore(LS_DASHBOARD, {}) }; }
   function saveDashboard(state) { writeStore(LS_DASHBOARD, state); }
+
+  function ownerFinancialSettingsCache() {
+    return window.__mgOwnerFinancialSettings || { status: "loading" };
+  }
+
+  async function loadOwnerFinancialSettingsFromServer() {
+    const errorState = {
+      status: "error",
+      overhead_monthly: null,
+      savings_target_months: null,
+      runway_green_days: null,
+      runway_yellow_days: null,
+    };
+    try {
+      const response = await fetch("/.netlify/functions/get-owner-financial-settings", {
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (_err) {
+        data = {};
+      }
+      if (!response.ok || data.ok !== true) {
+        window.__mgOwnerFinancialSettings = errorState;
+        return window.__mgOwnerFinancialSettings;
+      }
+      const overhead = Number(data.overhead_monthly);
+      window.__mgOwnerFinancialSettings = {
+        status: Number.isFinite(overhead) && overhead > 0 ? "ready" : "missing",
+        overhead_monthly: Number.isFinite(overhead) ? overhead : null,
+        savings_target_months: Number.isFinite(Number(data.savings_target_months))
+          ? Number(data.savings_target_months)
+          : null,
+        runway_green_days: Number.isFinite(Number(data.runway_green_days))
+          ? Number(data.runway_green_days)
+          : null,
+        runway_yellow_days: Number.isFinite(Number(data.runway_yellow_days))
+          ? Number(data.runway_yellow_days)
+          : null,
+      };
+    } catch (_err) {
+      window.__mgOwnerFinancialSettings = errorState;
+    }
+    return window.__mgOwnerFinancialSettings;
+  }
+
+  function computeDashboardCommandMetrics(state, totalCash) {
+    const compute =
+      (typeof window !== "undefined" && window.MgFinancialCommandMetrics
+        ? window.MgFinancialCommandMetrics.computeFinancialCommandMetrics
+        : null);
+    const owner = ownerFinancialSettingsCache();
+    const summary = window.__mgLastFinancialSummary;
+    const cashOnHand =
+      summary && Number.isFinite(Number(summary.cash_on_hand))
+        ? Number(summary.cash_on_hand)
+        : totalCash;
+    const savingsBalance =
+      summary && Number.isFinite(Number(summary.savings_balance))
+        ? Number(summary.savings_balance)
+        : Number(state.savingsBalance) || 0;
+    const payload = {
+      cashOnHand,
+      savingsBalance,
+      operatingBalance: Number(state.expensesBalance) || 0,
+      overheadMonthly: owner.overhead_monthly,
+      savingsTargetMonths: owner.savings_target_months,
+      runwayGreenDays: owner.runway_green_days,
+      runwayYellowDays: owner.runway_yellow_days,
+      settingsLoaded: owner.status === "ready" || owner.status === "missing",
+      settingsError: owner.status === "error",
+    };
+    if (typeof compute === "function") {
+      return compute(payload);
+    }
+    return {
+      available: false,
+      reason: "unavailable",
+      runwayMonths: null,
+      savingsTarget: null,
+      savingsPct: null,
+      healthScore: null,
+      healthTone: "unknown",
+      healthLabel: "Operating cost unavailable",
+      runwayLabel: "Operating cost unavailable",
+      savingsProgressLabel: "Operating cost unavailable",
+      overheadMonthly: null,
+    };
+  }
   function loadSales() {
     const saved = readStore(LS_SALES, {});
     const owner = loadOwner();
@@ -7069,42 +7160,62 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     setNum("profitBalance", state.profitBalance);
     setNum("savingsBalance", state.savingsBalance);
     setNum("taxBalance", state.taxBalance);
-    setNum("operatingMonthly", state.operatingMonthly);
+    const ownerCost = ownerFinancialSettingsCache();
+    if (ownerCost.status === "ready" && ownerCost.overhead_monthly > 0) {
+      setNum("operatingMonthly", ownerCost.overhead_monthly);
+    } else if ($("operatingMonthly")) {
+      $("operatingMonthly").value = "";
+    }
 
     const refresh = () => {
       state.expensesBalance = num("expensesBalance", 0);
       state.profitBalance = num("profitBalance", 0);
       state.savingsBalance = num("savingsBalance", 0);
       state.taxBalance = num("taxBalance", 0);
-      state.operatingMonthly = num("operatingMonthly", 0);
+      const totalCash = state.expensesBalance + state.profitBalance + state.savingsBalance + state.taxBalance;
+      const metrics = computeDashboardCommandMetrics(state, totalCash);
+      const overheadMonthly = metrics.available ? metrics.overheadMonthly : null;
+      if (metrics.available && overheadMonthly > 0) {
+        state.operatingMonthly = overheadMonthly;
+        setNum("operatingMonthly", overheadMonthly);
+      }
       saveDashboard(state);
 
-      const totalCash = state.expensesBalance + state.profitBalance + state.savingsBalance + state.taxBalance;
-      const runwayMonths = state.operatingMonthly > 0 ? totalCash / state.operatingMonthly : 0;
-      const savingsTarget = state.operatingMonthly * 12;
-      const savingsPct = savingsTarget > 0 ? clamp((state.savingsBalance / savingsTarget) * 100, 0, 999) : 0;
-      const healthScore = clamp((runwayMonths * 7) + (Math.min(savingsPct, 100) * 0.35) + (state.expensesBalance >= state.operatingMonthly ? 20 : 0), 0, 100);
-      const healthTone = healthClass(healthScore, 55, 80);
+      const runwayMonths = metrics.available ? metrics.runwayMonths : 0;
+      const savingsTarget = metrics.available && metrics.savingsTarget != null ? metrics.savingsTarget : 0;
+      const savingsPct = metrics.available && metrics.savingsPct != null ? metrics.savingsPct : 0;
+      const healthScore = metrics.available ? metrics.healthScore : 0;
+      const healthTone = metrics.available ? metrics.healthTone : "unknown";
+      const operatingMonthly = metrics.available ? overheadMonthly : 0;
 
       if ($("overallHealth")) {
-        $("overallHealth").textContent = `${healthScore.toFixed(0)}%`;
+        $("overallHealth").textContent = metrics.available ? `${healthScore.toFixed(0)}%` : "—";
       }
       const healthChip = $("fccHealthChip");
       if (healthChip) {
-        healthChip.classList.remove("fcc-health-chip--green", "fcc-health-chip--amber", "fcc-health-chip--red");
+        healthChip.classList.remove(
+          "fcc-health-chip--green",
+          "fcc-health-chip--amber",
+          "fcc-health-chip--red",
+          "fcc-health-chip--unknown"
+        );
         healthChip.classList.add(`fcc-health-chip--${healthTone}`);
       }
       if ($("overallHealthMeta")) {
-        $("overallHealthMeta").textContent = healthTone === "green" ? "Cash discipline is protecting the business." : (healthTone === "amber" ? "The business is stable but under pressure." : "High risk. Real cash is not protecting operations.");
+        $("overallHealthMeta").textContent = metrics.healthLabel;
       }
       if ($("syncBadge")) {
         $("syncBadge").className = `badge ${healthTone}`;
         $("syncBadge").textContent = "Manual sync";
       }
       if ($("executiveStrip")) {
+        const runwayBig = metrics.available ? metrics.runwayLabel : metrics.runwayLabel;
+        const runwaySmall = metrics.available && metrics.savingsTargetMonths > 0
+          ? `Owner target: ${Number(metrics.savingsTargetMonths).toFixed(0)} months`
+          : (metrics.available ? "Runway from persisted operating cost" : "Persisted operating cost required");
         const stripItems = [
           ["Cash On Hand", money(totalCash, settings.currency), "Across 4 protected accounts", "cash"],
-          ["Critical Runway", `${runwayMonths.toFixed(1)} months`, "Owner target: 12.0 months", "runway"],
+          ["Critical Runway", runwayBig, runwaySmall, "runway"],
           ["Tax Protection", money(state.taxBalance, settings.currency), "Reserved for obligations", "tax"]
         ];
         $("executiveStrip").innerHTML = stripItems
@@ -7132,7 +7243,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
       if ($("fccCfNetLiquidity")) $("fccCfNetLiquidity").textContent = money(totalCash, settings.currency);
       if ($("fccCfNetCash")) $("fccCfNetCash").textContent = money(totalCash, settings.currency);
-      if ($("fccCfCashOut")) $("fccCfCashOut").textContent = money(state.operatingMonthly, settings.currency);
+      if ($("fccCfCashOut")) {
+        $("fccCfCashOut").textContent = metrics.available
+          ? money(operatingMonthly, settings.currency)
+          : metrics.runwayLabel;
+      }
       if ($("fccCfCashIn")) {
         $("fccCfCashIn").textContent = "—";
         if ($("fccCfCashInHint")) $("fccCfCashInHint").textContent = "Se completa al cargar cartera en el hub.";
@@ -7142,7 +7257,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       const renderFccKpiCard = ({ label, value, meta, tone, accent, icon, tier }) => `
         <div class="kpi-box finance-box fcc-kpi-card fcc-kpi--${accent} fcc-kpi-card--tier-${tier}">
           <div class="fcc-kpi-top">
-            <div class="label">${escapeHtml(label)} <span class="badge ${tone}">${tone === "green" ? "Healthy" : tone === "amber" ? "Watch" : "Risk"}</span></div>
+            <div class="label">${escapeHtml(label)} <span class="badge ${tone}">${tone === "green" ? "Healthy" : tone === "amber" ? "Watch" : tone === "unknown" ? "Setup" : "Risk"}</span></div>
             <div class="fcc-kpi-icon" aria-hidden="true">${escapeHtml(icon)}</div>
           </div>
           <div class="value">${escapeHtml(value)}</div>
@@ -7151,15 +7266,18 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       `;
 
       const kpisPrimary = [
-        { label: "Total Cash", value: money(totalCash, settings.currency), meta: "Real bank cash, not paper profit", tone: healthClass(totalCash, state.operatingMonthly * 3, state.operatingMonthly * 12), accent: "total", icon: "$$", tier: "primary" },
-        { label: "Operating / Expenses", value: money(state.expensesBalance, settings.currency), meta: "Immediate working capital", tone: healthClass(state.expensesBalance, state.operatingMonthly * 0.5, state.operatingMonthly), accent: "expense", icon: "OP", tier: "primary" },
-        { label: "Profit", value: money(state.profitBalance, settings.currency), meta: "Protected owner profit", tone: healthClass(state.profitBalance, state.operatingMonthly * 0.1, state.operatingMonthly * 0.35), accent: "profit", icon: "PR", tier: "primary" },
-        { label: "Tax Reserve", value: money(state.taxBalance, settings.currency), meta: "Reserved tax liability", tone: healthClass(state.taxBalance, state.operatingMonthly * 0.5, state.operatingMonthly), accent: "tax", icon: "TX", tier: "primary" }
+        { label: "Total Cash", value: money(totalCash, settings.currency), meta: "Real bank cash, not paper profit", tone: metrics.available ? healthClass(totalCash, operatingMonthly * 3, operatingMonthly * 12) : "unknown", accent: "total", icon: "$$", tier: "primary" },
+        { label: "Operating / Expenses", value: money(state.expensesBalance, settings.currency), meta: "Immediate working capital", tone: metrics.available ? healthClass(state.expensesBalance, operatingMonthly * 0.5, operatingMonthly) : "unknown", accent: "expense", icon: "OP", tier: "primary" },
+        { label: "Profit", value: money(state.profitBalance, settings.currency), meta: "Protected owner profit", tone: metrics.available ? healthClass(state.profitBalance, operatingMonthly * 0.1, operatingMonthly * 0.35) : "unknown", accent: "profit", icon: "PR", tier: "primary" },
+        { label: "Tax Reserve", value: money(state.taxBalance, settings.currency), meta: "Reserved tax liability", tone: metrics.available ? healthClass(state.taxBalance, operatingMonthly * 0.5, operatingMonthly) : "unknown", accent: "tax", icon: "TX", tier: "primary" }
       ];
 
+      const savingsMeta = metrics.available && metrics.savingsTarget != null
+        ? `${Number(metrics.savingsTargetMonths).toFixed(0)}-month target: ${money(savingsTarget, settings.currency)}`
+        : "Setup required";
       const kpisSecondary = [
-        { label: "Savings", value: money(state.savingsBalance, settings.currency), meta: `12-month target: ${money(savingsTarget, settings.currency)}`, tone: healthClass(state.savingsBalance, state.operatingMonthly * 6, savingsTarget), accent: "savings", icon: "SV", tier: "secondary" },
-        { label: "Savings Progress", value: `${savingsPct.toFixed(1)}%`, meta: "Progress to 12-month safety target", tone: healthClass(savingsPct, 50, 100), accent: "progress", icon: "%", tier: "secondary" }
+        { label: "Savings", value: money(state.savingsBalance, settings.currency), meta: savingsMeta, tone: metrics.available && metrics.savingsTarget != null ? healthClass(state.savingsBalance, operatingMonthly * 6, savingsTarget) : "unknown", accent: "savings", icon: "SV", tier: "secondary" },
+        { label: "Savings Progress", value: metrics.available && metrics.savingsPct != null ? metrics.savingsProgressLabel : (metrics.savingsProgressLabel || "Setup required"), meta: metrics.available && metrics.savingsTargetMonths > 0 ? `Progress to ${Number(metrics.savingsTargetMonths).toFixed(0)}-month safety target` : "Persisted savings target required", tone: metrics.available && metrics.savingsPct != null ? healthClass(savingsPct, 50, 100) : "unknown", accent: "progress", icon: "%", tier: "secondary" }
       ];
 
       if ($("dashKpis")) {
@@ -7190,8 +7308,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           const dc = "—";
           const perfRows = [
             ["Total cash on hand", money(totalCash, settings.currency)],
-            ["Critical runway (months)", runwayMonths > 0 ? runwayMonths.toFixed(1) : dc],
-            ["Monthly operating cost", money(state.operatingMonthly, settings.currency)],
+            ["Critical runway (months)", metrics.available ? metrics.runwayLabel : metrics.runwayLabel],
+            ["Monthly operating cost", metrics.available ? money(operatingMonthly, settings.currency) : metrics.runwayLabel],
             ["Operating / expenses balance", money(state.expensesBalance, settings.currency)],
             ["Profit balance", money(state.profitBalance, settings.currency)],
             ["Savings / reserve", money(state.savingsBalance, settings.currency)],
@@ -7426,10 +7544,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         const rows = hubRowsSnapshot || buildPortfolioRows(settings);
         fillOwnerActionLayer(rows, settings, {
           totalCash,
-          runwayMonths,
-          savingsPct,
-          savingsTarget,
-          operatingMonthly: state.operatingMonthly,
+          runwayMonths: metrics.available ? runwayMonths : 0,
+          savingsPct: metrics.available && metrics.savingsPct != null ? savingsPct : 0,
+          savingsTarget: metrics.available && metrics.savingsTarget != null ? savingsTarget : 0,
+          operatingMonthly: metrics.available ? operatingMonthly : 0,
           expensesBalance: state.expensesBalance,
           savingsBalance: state.savingsBalance
         });
@@ -7513,12 +7631,13 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
             savingsCash: state.savingsBalance,
             taxReserve: state.taxBalance,
             totalCash,
-            operatingMonthly: state.operatingMonthly,
-            runwayMonths,
-            healthScore,
-            healthTone,
-            savingsPct,
-            savingsTarget,
+            operatingMonthly: metrics.available ? operatingMonthly : 0,
+            runwayMonths: metrics.available ? runwayMonths : 0,
+            healthScore: metrics.available ? healthScore : null,
+            healthTone: metrics.available ? healthTone : "unknown",
+            ownerSettingsAvailable: metrics.available === true,
+            savingsPct: metrics.available && metrics.savingsPct != null ? savingsPct : 0,
+            savingsTarget: metrics.available && metrics.savingsTarget != null ? savingsTarget : 0,
             openBalance: advisorOpenBalance,
             overdueCount: advisorOverdueCount,
             overdueBalance: advisorOverdueBalance,
@@ -7608,6 +7727,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
     if ($("btnSaveDashboard")) $("btnSaveDashboard").onclick = () => { refresh(); alert("Owner finance monitor saved."); };
     if ($("btnResetDashboard")) $("btnResetDashboard").onclick = () => { saveDashboard({ ...DEFAULT_DASHBOARD }); renderDashboard(); };
+    window.__mgRefreshFinancialCommandCenter = refresh;
     refresh();
   }
 
@@ -20331,6 +20451,9 @@ window.renderSupervisor = renderSupervisor;
     void ensureTenant();
     await initTenantSnapshotBridge();
     await hydrateOwnerBrandingCacheFromServer();
+    if ($("dashKpis")) {
+      await loadOwnerFinancialSettingsFromServer();
+    }
     render();
     if (
       document.documentElement.dataset.salesPortal === "seller" &&

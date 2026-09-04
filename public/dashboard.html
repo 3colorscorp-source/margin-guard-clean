@@ -194,6 +194,7 @@
     .fcc-health-chip--green::before{ background:linear-gradient(180deg, #4ade80, #22c55e); }
     .fcc-health-chip--amber::before{ background:linear-gradient(180deg, #fcd34d, #f59e0b); }
     .fcc-health-chip--red::before{ background:linear-gradient(180deg, #fca5a5, #ef4444); }
+    .fcc-health-chip--unknown::before{ background:rgba(148,163,184,.7); }
     .fcc-health-chip-label{
       font-size:10px;
       text-transform:uppercase;
@@ -987,6 +988,7 @@
     .fcc-health-chip--green::before{ background:#22c55e; }
     .fcc-health-chip--amber::before{ background:#f59e0b; }
     .fcc-health-chip--red::before{ background:#ef4444; }
+    .fcc-health-chip--unknown::before{ background:#94a3b8; }
 
     /* Owner Financial Advisor™ — scoped card (ofa-) */
     #ownerFinancialAdvisorRoot{ margin-bottom:10px; }
@@ -1087,8 +1089,8 @@
       <div class="fcc-hero-bar__aside">
         <div class="fcc-health-chip" id="fccHealthChip">
           <span class="fcc-health-chip-label">Business health</span>
-          <span class="fcc-health-chip-value" id="overallHealth">0%</span>
-          <p class="fcc-health-chip-meta" id="overallHealthMeta">Waiting for saved balances.</p>
+          <span class="fcc-health-chip-value" id="overallHealth">—</span>
+          <p class="fcc-health-chip-meta" id="overallHealthMeta">Loading owner settings…</p>
         </div>
         <div class="fcc-date-pill" id="fccDateRange">Month view · through today</div>
       </div>
@@ -1302,6 +1304,7 @@
   <script src="/js/mg-app-nav.js"></script>
   <script src="/js/tenant.js"></script>
   <script src="/js/auth.js"></script>
+  <script src="/js/financial-command-metrics.js"></script>
   <script src="/js/owner-financial-advisor.js"></script>
   <script src="/js/app.js"></script>
   <script>

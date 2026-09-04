@@ -105,6 +105,11 @@
 
   async function applySummaryToDashboard(summary) {
     if (!summary) return;
+    try {
+      window.__mgLastFinancialSummary = summary;
+    } catch (_err) {
+      /* ignore */
+    }
     const map = [
       ["operating_balance", "expensesBalance"],
       ["savings_balance", "savingsBalance"],
@@ -131,6 +136,9 @@
       bankNote.textContent = `Last server sync: ${
         stamp ? new Date(stamp).toLocaleString() : "—"
       }`;
+    }
+    if (typeof window.__mgRefreshFinancialCommandCenter === "function") {
+      window.__mgRefreshFinancialCommandCenter();
     }
   }
 
