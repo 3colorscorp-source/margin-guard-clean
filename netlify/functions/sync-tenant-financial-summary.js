@@ -1,5 +1,5 @@
-const { buildRefreshedSessionCookie, readSessionFromEvent } = require("./_lib/session");
-const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { buildRefreshedSessionCookie } = require("./_lib/session");
+const { requireFcOwnerTenant } = require("./_lib/fc-owner-context");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { getStripeKeyForPlatform } = require("./_lib/stripe");
 
@@ -206,24 +206,26 @@ async function readUsdBalanceForAccount(fcaId, expectedCustomerId) {
   return 0;
 }
 
-exports.handler = async (event) => {
+function createHandler(deps = {}) {
+  const requireOwner = deps.requireFcOwnerTenant || requireFcOwnerTenant;
+  const requestFn = deps.supabaseRequest || supabaseRequest;
+  const refreshCookie = deps.buildRefreshedSessionCookie || buildRefreshedSessionCookie;
+  const readBalance = deps.readUsdBalanceForAccount || readUsdBalanceForAccount;
+
+  return async function handler(event) {
   let cookieHeaders = {};
   try {
     if (event.httpMethod !== "POST") {
       return json(405, { error: "Method not allowed" });
     }
 
-    const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
-      return json(401, { error: "Unauthorized" });
+    const gate = await requireOwner(event, deps);
+    if (!gate.ok) {
+      return gate.response;
     }
+    const { session, tenant } = gate;
 
-    const tenant = await resolveTenantFromSession(session);
-    if (!tenant?.id) {
-      return json(404, { error: "Tenant not found" });
-    }
-
-    const refreshedCookie = buildRefreshedSessionCookie(session, tenant);
+    const refreshedCookie = refreshCookie(session, tenant);
     if (refreshedCookie) {
       cookieHeaders = { "Set-Cookie": refreshedCookie };
     }
@@ -234,7 +236,7 @@ exports.handler = async (event) => {
     }
 
     const tid = encodeURIComponent(tenant.id);
-    const mapRows = await supabaseRequest(
+    const mapRows = await requestFn(
       `tenant_financial_account_mapping?tenant_id=eq.${tid}&select=bucket,tenant_bank_account_id`
     );
     const mappings = Array.isArray(mapRows) ? mapRows : [];
@@ -247,7 +249,7 @@ exports.handler = async (event) => {
     let accountsById = {};
     if (accountIds.length) {
       const inList = accountIds.map(encodeURIComponent).join(",");
-      const accRows = await supabaseRequest(
+      const accRows = await requestFn(
         `tenant_bank_accounts?id=in.(${inList})&tenant_id=eq.${tid}&select=id,stripe_fc_account_id,status`
       );
       const accs = Array.isArray(accRows) ? accRows : [];
@@ -284,7 +286,7 @@ exports.handler = async (event) => {
       if (!fcaId.startsWith("fca_")) {
         continue;
       }
-      amounts[key] = await readUsdBalanceForAccount(fcaId, customerId);
+      amounts[key] = await readBalance(fcaId, customerId);
     }
 
     const operating_balance = amounts.operating;
@@ -298,7 +300,7 @@ exports.handler = async (event) => {
     const currency = "USD";
     const nowIso = new Date().toISOString();
 
-    const existingRows = await supabaseRequest(
+    const existingRows = await requestFn(
       `tenant_financial_summary?tenant_id=eq.${tid}&period_start=eq.${periodDate}&period_end=eq.${periodDate}&currency=eq.${currency}&select=id`
     );
     const existing = Array.isArray(existingRows) ? existingRows[0] : null;
@@ -318,12 +320,12 @@ exports.handler = async (event) => {
     };
 
     if (existing?.id) {
-      await supabaseRequest(`tenant_financial_summary?id=eq.${encodeURIComponent(existing.id)}`, {
+      await requestFn(`tenant_financial_summary?id=eq.${encodeURIComponent(existing.id)}`, {
         method: "PATCH",
         body: payload,
       });
     } else {
-      await supabaseRequest("tenant_financial_summary", {
+      await requestFn("tenant_financial_summary", {
         method: "POST",
         body: {
           tenant_id: tenant.id,
@@ -353,4 +355,8 @@ exports.handler = async (event) => {
   } catch (err) {
     return json(500, { error: err.message || "Unexpected error" }, cookieHeaders);
   }
-};
+  };
+}
+
+exports.createHandler = createHandler;
+exports.handler = createHandler();

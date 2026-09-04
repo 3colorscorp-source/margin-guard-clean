@@ -1,5 +1,5 @@
-const { buildRefreshedSessionCookie, readSessionFromEvent } = require("./_lib/session");
-const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { buildRefreshedSessionCookie } = require("./_lib/session");
+const { requireFcOwnerTenant } = require("./_lib/fc-owner-context");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { getStripeKeyForPlatform } = require("./_lib/stripe");
 
@@ -159,24 +159,30 @@ function mergeAccountLists(sessionAccounts, listedAccounts) {
   return Array.from(map.values());
 }
 
-exports.handler = async (event) => {
+function createHandler(deps = {}) {
+  const requireOwner = deps.requireFcOwnerTenant || requireFcOwnerTenant;
+  const requestFn = deps.supabaseRequest || supabaseRequest;
+  const refreshCookie = deps.buildRefreshedSessionCookie || buildRefreshedSessionCookie;
+  const retrieveFcSession =
+    deps.retrieveFinancialConnectionsSession || retrieveFinancialConnectionsSession;
+  const listAccounts = deps.listAccountsForSession || listAccountsForSession;
+  const retrieveAccount =
+    deps.retrieveFinancialConnectionsAccount || retrieveFinancialConnectionsAccount;
+
+  return async function handler(event) {
   let cookieHeaders = {};
   try {
     if (event.httpMethod !== "POST") {
       return json(405, { error: "Method not allowed" });
     }
 
-    const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
-      return json(401, { error: "Unauthorized" });
+    const gate = await requireOwner(event, deps);
+    if (!gate.ok) {
+      return gate.response;
     }
+    const { session, tenant } = gate;
 
-    const tenant = await resolveTenantFromSession(session);
-    if (!tenant?.id) {
-      return json(404, { error: "Tenant not found" });
-    }
-
-    const refreshedCookie = buildRefreshedSessionCookie(session, tenant);
+    const refreshedCookie = refreshCookie(session, tenant);
     if (refreshedCookie) {
       cookieHeaders = { "Set-Cookie": refreshedCookie };
     }
@@ -194,7 +200,7 @@ exports.handler = async (event) => {
       return json(403, { error: "Tenant has no Stripe customer" }, cookieHeaders);
     }
 
-    const fcSession = await retrieveFinancialConnectionsSession(fcSessionId);
+    const fcSession = await retrieveFcSession(fcSessionId);
     const sessionCust = sessionCustomerId(fcSession);
     if (!sessionCust || sessionCust !== customerId) {
       return json(
@@ -204,7 +210,7 @@ exports.handler = async (event) => {
       );
     }
 
-    const connRows = await supabaseRequest(
+    const connRows = await requestFn(
       `tenant_bank_connections?tenant_id=eq.${encodeURIComponent(
         tenant.id
       )}&stripe_fc_session_id=eq.${encodeURIComponent(fcSessionId)}&select=id`
@@ -217,7 +223,7 @@ exports.handler = async (event) => {
     const connectionId = connection.id;
 
     const fromSession = normalizeSessionAccounts(fcSession);
-    const fromList = await listAccountsForSession(fcSessionId);
+    const fromList = await listAccounts(fcSessionId);
     const accountList = mergeAccountLists(fromSession, fromList);
 
     const linked = [];
@@ -234,7 +240,7 @@ exports.handler = async (event) => {
       }
       if (!acct?.institution_name && !acct?.last4) {
         try {
-          acct = await retrieveFinancialConnectionsAccount(rawId);
+          acct = await retrieveAccount(rawId);
         } catch (_e) {
           acct = { id: rawId };
         }
@@ -247,7 +253,7 @@ exports.handler = async (event) => {
 
       const meta = accountMetaFromStripe(acct);
 
-      const existingRows = await supabaseRequest(
+      const existingRows = await requestFn(
         `tenant_bank_accounts?stripe_fc_account_id=eq.${encodeURIComponent(
           fcaId
         )}&select=id,tenant_id`
@@ -262,7 +268,7 @@ exports.handler = async (event) => {
             cookieHeaders
           );
         }
-        await supabaseRequest(`tenant_bank_accounts?id=eq.${encodeURIComponent(existing.id)}`, {
+        await requestFn(`tenant_bank_accounts?id=eq.${encodeURIComponent(existing.id)}`, {
           method: "PATCH",
           body: {
             tenant_bank_connection_id: connectionId,
@@ -280,7 +286,7 @@ exports.handler = async (event) => {
         continue;
       }
 
-      await supabaseRequest("tenant_bank_accounts", {
+      await requestFn("tenant_bank_accounts", {
         method: "POST",
         body: {
           tenant_id: tenant.id,
@@ -297,7 +303,7 @@ exports.handler = async (event) => {
       linked.push(fcaId);
     }
 
-    await supabaseRequest(`tenant_bank_connections?id=eq.${encodeURIComponent(connectionId)}`, {
+    await requestFn(`tenant_bank_connections?id=eq.${encodeURIComponent(connectionId)}`, {
       method: "PATCH",
       body: {
         status: "active",
@@ -318,4 +324,8 @@ exports.handler = async (event) => {
   } catch (err) {
     return json(500, { error: err.message || "Unexpected error" }, cookieHeaders);
   }
-};
+  };
+}
+
+exports.createHandler = createHandler;
+exports.handler = createHandler();
