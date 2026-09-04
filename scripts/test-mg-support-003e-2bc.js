@@ -148,7 +148,7 @@ function main() {
     "17. Support chat loader uses version query",
     /mg-support-chat\.js\?v=' \+ encodeURIComponent\(SUPPORT_CHAT_ASSET_VERSION\)/.test(navSrc)
   );
-  assert("18. Support Admin JS cache-bust query is 004c", /src="\/js\/support-admin\.js\?v=004c"/.test(adminHtml));
+  assert("18. Support Admin JS cache-bust query is 004d", /src="\/js\/support-admin\.js\?v=004d"/.test(adminHtml));
   assert("19. admin case-derived rendering has no innerHTML", !/innerHTML/.test(adminUiSrc) && /textContent/.test(adminUiSrc) && /appendDl/.test(adminUiSrc));
   assert("20. tenant My Cases card/detail has no innerHTML", !/innerHTML/.test(chatUiSrc.slice(chatUiSrc.indexOf("function renderCaseCard"), chatUiSrc.indexOf("function renderCasesPanel"))));
 

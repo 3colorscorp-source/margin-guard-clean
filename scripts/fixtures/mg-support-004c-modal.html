@@ -45,7 +45,17 @@
     .si-section h4 { margin:0 0 8px; font-size:.72rem; letter-spacing:.08em; text-transform:uppercase; color:rgba(232,238,252,.58); }
     .si-issue { border-color:rgba(96,165,250,.28); background:rgba(96,165,250,.08); padding:16px 18px; }
     .si-excerpt { white-space:pre-wrap; }
-    .si-compose textarea { width:100%; min-height:140px; }
+    .si-compose.si-section { margin:8px 0 0; padding:4px 0 8px; border:none; background:transparent; }
+    .si-compose label { display:block; font-size:.8125rem; margin:0 0 8px; color:rgba(232,238,252,.86); }
+    .si-compose textarea {
+      display:block; box-sizing:border-box; width:100%; max-width:100%; min-height:140px; margin:0; padding:15px;
+      resize:vertical; font:inherit; line-height:1.45; color:#111827; background:#d3d8e0;
+      border:1px solid #9aa3b2; border-radius:12px; outline:none; appearance:none; -webkit-appearance:none; color-scheme:light;
+    }
+    .si-compose textarea:focus,
+    .si-compose textarea:focus-visible,
+    .si-compose textarea.si-focus-demo { background:#d7dbe2; border:1px solid rgba(96,165,250,.72); box-shadow:0 0 0 3px rgba(96,165,250,.22); }
+    .si-compose .hint { margin:6px 0 0; font-size:.7rem; color:rgba(232,238,252,.48); display:flex; justify-content:flex-end; text-align:right; }
     @media (max-width:1099px) { .si-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); } .si-modal { width:98vw; height:96dvh; } }
     @media (max-width:767px) {
       .si-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }

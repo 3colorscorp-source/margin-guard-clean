@@ -184,15 +184,52 @@
     .si-dl dt { font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(232, 238, 252, 0.55); }
     .si-dl dd { margin: 2px 0 0; }
     .si-excerpt { white-space: pre-wrap; word-break: break-word; }
-    .si-compose { margin: 12px 0 0; }
-    .si-compose label { display: block; font-size: 0.8125rem; margin: 0 0 8px; }
-    .si-compose textarea {
-      width: 100%;
-      min-height: 140px;
-      margin-top: 6px;
-      resize: vertical;
+    .si-compose.si-section {
+      margin: 8px 0 0;
+      padding: 4px 0 8px;
+      border: none;
+      background: transparent;
     }
-    .si-compose .hint { margin: 4px 0 0; font-size: 0.75rem; color: rgba(232, 238, 252, 0.7); }
+    .si-compose label {
+      display: block;
+      font-size: 0.8125rem;
+      margin: 0 0 8px;
+      color: rgba(232, 238, 252, 0.86);
+    }
+    .si-compose textarea {
+      display: block;
+      box-sizing: border-box;
+      width: 100%;
+      max-width: 100%;
+      min-height: 140px;
+      margin: 0;
+      padding: 15px;
+      resize: vertical;
+      font: inherit;
+      line-height: 1.45;
+      color: #111827;
+      background: #d3d8e0;
+      border: 1px solid #9aa3b2;
+      border-radius: 12px;
+      outline: none;
+      appearance: none;
+      -webkit-appearance: none;
+      color-scheme: light;
+    }
+    .si-compose textarea:focus,
+    .si-compose textarea:focus-visible {
+      background: #d7dbe2;
+      border: 1px solid rgba(96, 165, 250, 0.72);
+      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.22);
+    }
+    .si-compose .hint {
+      margin: 6px 0 0;
+      font-size: 0.7rem;
+      color: rgba(232, 238, 252, 0.48);
+      display: flex;
+      justify-content: flex-end;
+      text-align: right;
+    }
     .si-snapshot { margin: 12px 0 0; }
     .si-snapshot[hidden], .si-compose[hidden], .si-modal__footer [hidden], .si-workspace-main[hidden] { display: none; }
     .si-snapshot .label {
@@ -220,7 +257,7 @@
       }
     }
     @media (max-width: 767px) {
-      .si-compose textarea { min-height: 110px; }
+      .si-compose textarea { min-height: 120px; }
       .si-drawer,
       .si-modal {
         left: 0;
@@ -356,6 +393,6 @@
     </p>
   </aside>
 
-  <script src="/js/support-admin.js?v=004c" defer></script>
+  <script src="/js/support-admin.js?v=004d" defer></script>
 </body>
 </html>

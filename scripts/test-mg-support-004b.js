@@ -126,7 +126,7 @@ async function main() {
   assert("delivery helper still present", /OUTBOX_TABLE/.test(deliverySrc));
   assert("list API path unchanged", /mg-support-admin-list-cases/.test(uiSrc));
   assert("update API path unchanged", /mg-support-admin-update-case/.test(uiSrc));
-  assert("cache-bust 004c", /support-admin\.js\?v=004c/.test(html));
+  assert("cache-bust 004d", /support-admin\.js\?v=004d/.test(html));
 
   const { isExplicitUnresolvedSupportRequest } = require("../netlify/functions/_lib/mg-support/case-intake");
   assert(

@@ -150,7 +150,7 @@ async function main() {
   assert("dialog semantics", /aria-modal="true"/.test(html) && /aria-labelledby="siDrawerTitle"/.test(html));
   assert("safest close is X and Escape, not backdrop", !/siBackdrop"\) \$\("siBackdrop"\)\.addEventListener\("click", closeDrawer\)/.test(uiSrc));
   assert("no page reload on case change", !/location\.reload/.test(uiSrc));
-  assert("cache-bust 004c", /support-admin\.js\?v=004c/.test(html));
+  assert("cache-bust 004d", /support-admin\.js\?v=004d/.test(html));
   assert("004A detector still present", /isExplicitUnresolvedSupportRequest/.test(chatSrc));
   assert("create-case allowlist unchanged", /ALLOWED_KEYS = new Set\(\["confirmation_token", "confirmed"\]\)/.test(createSrc));
   assert("19b. admin UI does not call sweep", !/notification-sweep|notification-delivery|outbox/.test(uiSrc));
