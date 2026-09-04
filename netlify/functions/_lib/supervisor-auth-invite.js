@@ -22,15 +22,17 @@ function isValidInviteEmail(email) {
 
 /**
  * @param {string} email
+ * @param {string} [redirectTo]
  * @returns {Promise<{ ok: true } | { ok: false, code: "invite_failed" }>}
  */
-async function inviteAuthUserByEmail(email) {
+async function inviteAuthUserByEmail(email, redirectTo) {
   const em = normEmail(email);
   if (!isValidInviteEmail(em)) {
     return { ok: false, code: "invite_failed" };
   }
 
   const { url, key } = getSupabaseConfig();
+  const dest = String(redirectTo || INVITE_REDIRECT_TO).trim() || INVITE_REDIRECT_TO;
   let response;
   try {
     response = await fetch(`${url}/auth/v1/invite`, {
@@ -42,7 +44,7 @@ async function inviteAuthUserByEmail(email) {
       },
       body: JSON.stringify({
         email: em,
-        redirect_to: INVITE_REDIRECT_TO,
+        redirect_to: dest,
       }),
     });
   } catch (_err) {
@@ -60,18 +62,18 @@ async function inviteAuthUserByEmail(email) {
  * Send a password recovery email for an existing Auth user (server-side only).
  * Uses GoTrue /recover which emails the user and returns an empty JSON body on success.
  * @param {string} email
+ * @param {string} [redirectTo]
  * @returns {Promise<{ ok: true } | { ok: false, code: "recovery_failed" }>}
  */
-async function recoverAuthUserByEmail(email) {
+async function recoverAuthUserByEmail(email, redirectTo) {
   const em = normEmail(email);
   if (!isValidInviteEmail(em)) {
     return { ok: false, code: "recovery_failed" };
   }
 
   const { url, key } = getSupabaseConfig();
-  const recoverUrl = `${url}/auth/v1/recover?redirect_to=${encodeURIComponent(
-    RECOVERY_REDIRECT_TO
-  )}`;
+  const dest = String(redirectTo || RECOVERY_REDIRECT_TO).trim() || RECOVERY_REDIRECT_TO;
+  const recoverUrl = `${url}/auth/v1/recover?redirect_to=${encodeURIComponent(dest)}`;
 
   let response;
   try {

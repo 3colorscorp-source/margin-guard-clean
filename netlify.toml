@@ -90,6 +90,11 @@
   status = 200
 
 [[redirects]]
+  from = "/saas-admin"
+  to = "/saas-admin.html"
+  status = 200
+
+[[redirects]]
   from = "/team-devices"
   to = "/team-devices.html"
   status = 200

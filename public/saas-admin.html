@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | SaaS Customers</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .sa-page { min-height: 100vh; }
+    .sa-page .container.sa-shell {
+      max-width: none;
+      width: min(calc(100% - 32px), 1600px);
+      margin: 0 auto;
+      padding-bottom: 24px;
+    }
+    html.sa-modal-open, body.sa-modal-open { overflow: hidden; }
+    .sa-hero { margin-bottom: 14px; }
+    .sa-hero h2 { margin: 0 0 6px; font-size: clamp(1.25rem, 2.2vw, 1.55rem); }
+    .sa-hero .sub { margin: 0; color: rgba(232, 238, 252, 0.78); }
+    .sa-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+    .sa-note { margin: 0 0 14px; font-size: 0.8125rem; color: rgba(232, 238, 252, 0.62); }
+    .sa-card {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 16px;
+      margin: 0 0 12px;
+    }
+    .sa-card h3 { margin: 0 0 8px; font-size: 1.1rem; }
+    .sa-meta { font-size: 0.875rem; color: rgba(232, 238, 252, 0.78); line-height: 1.5; }
+    .sa-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+    .sa-badge {
+      font-size: 0.68rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+    .sa-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .sa-denied[hidden], .sa-main[hidden], .sa-modal[hidden], .sa-backdrop[hidden] { display: none !important; }
+    .sa-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.72); z-index: 40; }
+    .sa-modal {
+      position: fixed; z-index: 41; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      width: min(92vw, 640px); max-height: 92dvh; overflow: auto;
+      background: #0b1220; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 16px; padding: 18px;
+    }
+    .sa-modal h3 { margin: 0 0 12px; }
+    .sa-field { margin: 0 0 12px; }
+    .sa-field label { display: block; font-size: 0.8125rem; margin: 0 0 6px; }
+    .sa-field input[type="text"], .sa-field input[type="email"] {
+      width: 100%; box-sizing: border-box; padding: 11px 12px; border-radius: 12px;
+      border: 1px solid #9aa3b2; background: #d3d8e0; color: #111827; font: inherit;
+    }
+    .sa-terms { font-size: 0.875rem; line-height: 1.45; }
+    .sa-commercial { margin: 0 0 12px; padding: 12px; border-radius: 12px; background: rgba(96, 165, 250, 0.08); }
+    .sa-error { color: #fecaca; min-height: 1.2em; }
+    @media (max-width: 767px) {
+      .sa-modal { width: 100vw; height: 100dvh; max-height: 100dvh; left: 0; top: 0; transform: none; border-radius: 0; }
+      .sa-top { flex-direction: column; }
+    }
+  </style>
+</head>
+<body class="sa-page">
+  <div class="container sa-shell">
+    <div class="card sa-hero">
+      <div class="card-inner sa-top">
+        <div>
+          <h2>Margin Guard SaaS Customers</h2>
+          <p class="sub">First-customer onboarding &amp; subscription control</p>
+        </div>
+        <div class="sa-actions">
+          <button type="button" class="btn" id="saNew">+ New Customer</button>
+          <button type="button" class="btn ghost" id="saLogout">Log out</button>
+        </div>
+      </div>
+    </div>
+    <p class="sa-note">QuickBooks subscriptions remain manual activation. Square is the automated first-customer path. Annual price is $2,000 USD.</p>
+    <div id="saDenied" class="card sa-denied" hidden>
+      <div class="card-inner">
+        <h3>Access restricted</h3>
+        <p>This console is for Margin Guard platform administrators.</p>
+        <p><a href="/dashboard">Return to Dashboard</a></p>
+      </div>
+    </div>
+    <div id="saMain" hidden>
+      <div id="saNotice" class="sa-error" hidden role="alert"></div>
+      <div id="saList"></div>
+    </div>
+  </div>
+  <div id="saBackdrop" class="sa-backdrop" hidden></div>
+  <div id="saModal" class="sa-modal" hidden role="dialog" aria-modal="true" aria-labelledby="saModalTitle">
+    <h3 id="saModalTitle">New Customer</h3>
+    <div class="sa-commercial">
+      <strong>Annual subscription</strong><br />
+      $2,000 USD / year<br />
+      Payment provider: Square
+    </div>
+    <form id="saForm">
+      <div class="sa-field"><label for="saBusinessName">Business Name *</label><input id="saBusinessName" type="text" required maxlength="120" /></div>
+      <div class="sa-field"><label for="saOwnerName">Owner Name *</label><input id="saOwnerName" type="text" required maxlength="120" /></div>
+      <div class="sa-field"><label for="saOwnerEmail">Owner Email *</label><input id="saOwnerEmail" type="email" required maxlength="200" /></div>
+      <div class="sa-field"><label for="saSlug">Business Slug *</label><input id="saSlug" type="text" required maxlength="60" /></div>
+      <div class="sa-field"><label for="saInvoice">Square Invoice ID *</label><input id="saInvoice" type="text" required maxlength="80" /></div>
+      <div class="sa-field sa-terms">
+        <label><input id="saTerms" type="checkbox" /> I confirm this customer accepted the Margin Guard Terms of Service and acknowledged the Privacy Policy.</label>
+        <p><a href="/terms" target="_blank" rel="noopener">Terms</a> · <a href="/privacy" target="_blank" rel="noopener">Privacy</a></p>
+      </div>
+      <p id="saFormError" class="sa-error" hidden></p>
+      <div class="sa-actions">
+        <button type="submit" class="btn" id="saSubmit">Create pending customer</button>
+        <button type="button" class="btn ghost" id="saCancel">Close</button>
+      </div>
+    </form>
+  </div>
+  <script src="/js/saas-admin.js?v=007a" defer></script>
+</body>
+</html>

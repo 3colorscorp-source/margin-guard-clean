@@ -4,7 +4,7 @@
  */
 
 const PROFILE_SELECT =
-  "id,tenant_id,email,role,status,auth_user_id,display_name,full_name,created_at,updated_at";
+  "id,tenant_id,email,role,status,auth_user_id,invited_at,display_name,full_name,created_at,updated_at";
 
 function normEmail(email) {
   return String(email || "")

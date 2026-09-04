@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Margin Guard | SaaS Customers</title>
+  <style>
+    html, body { margin:0; background:#070b14; color:#e8eefc; font-family:Arial,sans-serif; }
+    .container { width:min(calc(100% - 32px),1100px); margin:0 auto; padding:20px 0 32px; }
+    .btn { border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.03); color:inherit; padding:10px 12px; border-radius:14px; cursor:pointer; }
+    .btn.primary { background:#2563eb; border-color:#2563eb; }
+    .sa-hero { border:1px solid rgba(255,255,255,.08); border-radius:18px; background:#0c1426; padding:16px; display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .sa-hero h2 { margin:0 0 6px; }
+    .sub, .sa-note, .sa-meta { color:rgba(232,238,252,.74); }
+    .sa-note { font-size:.8125rem; margin:14px 0; }
+    .sa-card { border:1px solid rgba(255,255,255,.08); border-radius:14px; background:rgba(255,255,255,.03); padding:16px; margin:0 0 12px; }
+    .sa-card h3 { margin:0 0 8px; }
+    .sa-badge { display:inline-block; font-size:.68rem; letter-spacing:.04em; text-transform:uppercase; padding:3px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.14); margin:4px 4px 0 0; }
+    .sa-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .ok { color:#86efac; }
+    .warn { color:#fde68a; }
+    .sa-modal, .sa-backdrop { display:none; }
+    body.modal .sa-backdrop { display:block; position:fixed; inset:0; background:rgba(0,0,0,.72); }
+    body.modal .sa-modal {
+      display:block; position:fixed; z-index:2; left:50%; top:50%; transform:translate(-50%,-50%);
+      width:min(92vw,640px); max-height:92dvh; overflow:auto; background:#0b1220;
+      border:1px solid rgba(255,255,255,.12); border-radius:16px; padding:18px;
+    }
+    .sa-commercial { margin:0 0 12px; padding:12px; border-radius:12px; background:rgba(96,165,250,.08); }
+    input { width:100%; box-sizing:border-box; padding:11px 12px; border-radius:12px; border:1px solid #9aa3b2; background:#d3d8e0; color:#111827; }
+    label { display:block; font-size:.8125rem; margin:0 0 6px; }
+    .sa-field { margin:0 0 12px; }
+    .notice { color:#86efac; margin:0 0 12px; }
+    @media (max-width:767px) {
+      .sa-hero { flex-direction:column; }
+      body.modal .sa-modal { width:100vw; height:100dvh; max-height:100dvh; left:0; top:0; transform:none; border-radius:0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="sa-hero">
+      <div>
+        <h2>Margin Guard SaaS Customers</h2>
+        <p class="sub">First-customer onboarding &amp; subscription control</p>
+      </div>
+      <div class="sa-actions">
+        <button class="btn primary" type="button">+ New Customer</button>
+        <button class="btn" type="button">Log out</button>
+      </div>
+    </div>
+    <p class="sa-note">QuickBooks subscriptions remain manual activation. Square is the automated first-customer path. Annual price is $2,000 USD.</p>
+    <p class="notice" id="notice" hidden></p>
+    <article class="sa-card" id="pendingCard">
+      <h3>Acme Tile LLC</h3>
+      <div class="sa-meta">$2,000/year · Square inv_acme_annual<br>jane@acme.test<br>Registered Sep 4, 2026 · Paid — · Activated — · Expires —<br>Next: Awaiting Square payment</div>
+      <div><span class="sa-badge">AWAITING PAYMENT</span><span class="sa-badge">PENDING SETUP</span></div>
+      <div class="sa-actions"><button class="btn" type="button">Refresh Status</button></div>
+    </article>
+    <article class="sa-card" id="activeCard">
+      <h3>Beta Coatings</h3>
+      <div class="sa-meta">$2,000/year · Square inv_beta<br>owner@beta.test<br><span class="ok">✓ Payment received</span><br><span class="ok">✓ Subscription active</span><br><span class="warn">! Owner access not sent</span></div>
+      <div><span class="sa-badge">PAID</span><span class="sa-badge">ACTIVE</span><span class="sa-badge">ACCESS NOT SENT</span></div>
+      <div class="sa-actions">
+        <button class="btn" type="button">Refresh Status</button>
+        <button class="btn primary" type="button">Send Owner Access</button>
+      </div>
+    </article>
+  </div>
+  <div class="sa-backdrop"></div>
+  <div class="sa-modal">
+    <h3>New Customer</h3>
+    <div class="sa-commercial"><strong>Annual subscription</strong><br>$2,000 USD / year<br>Payment provider: Square</div>
+    <div class="sa-field"><label>Business Name *</label><input value="Acme Tile LLC" /></div>
+    <div class="sa-field"><label>Owner Name *</label><input value="Jane Owner" /></div>
+    <div class="sa-field"><label>Owner Email *</label><input value="jane@acme.test" /></div>
+    <div class="sa-field"><label>Business Slug *</label><input value="acme-tile" /></div>
+    <div class="sa-field"><label>Square Invoice ID *</label><input value="inv_acme_annual" /></div>
+    <div class="sa-field">
+      <label><input type="checkbox" checked /> I confirm this customer accepted the Margin Guard Terms of Service and acknowledged the Privacy Policy.</label>
+      <p><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></p>
+    </div>
+    <div class="sa-actions">
+      <button class="btn primary" type="button">Create pending customer</button>
+      <button class="btn" type="button">Close</button>
+    </div>
+  </div>
+  <script>
+    var q = location.search;
+    if (/view=modal/.test(q) || /modal=1/.test(q)) document.body.className = "modal";
+    if (/view=sent/.test(q)) {
+      document.getElementById("notice").hidden = false;
+      document.getElementById("notice").textContent = "Owner access: invite_sent";
+      document.getElementById("activeCard").querySelector(".sa-meta").innerHTML =
+        "$2,000/year · Square inv_beta<br>owner@beta.test<br><span class=\"ok\">✓ Payment received</span><br><span class=\"ok\">✓ Subscription active</span><br><span class=\"ok\">✓ Owner access sent</span>";
+      document.getElementById("activeCard").querySelector(".sa-badge:last-child").textContent = "ACCESS SENT";
+    }
+  </script>
+</body>
+</html>

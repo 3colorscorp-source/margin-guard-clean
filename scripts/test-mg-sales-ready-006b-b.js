@@ -295,6 +295,7 @@ async function main() {
   const activateSrc = read("netlify/functions/_lib/saas-square-activate.js");
   const webhookSrc = read("netlify/functions/square-saas-webhook.js");
   const registerSrc = read("netlify/functions/register-saas-square-invoice.js");
+  const registerLibSrc = read("netlify/functions/_lib/saas-square-register.js");
   const release = read("docs/MG_SALES_READY_006B_B_CONTROLLED_RELEASE.md");
 
   assert("1. activation kill switch defaults off", isAutoActivationEnabled({}) === false);
@@ -376,7 +377,7 @@ async function main() {
     body: JSON.stringify({ tenant_id: TENANT_A, square_invoice_id: INV_A, terms_confirmed: true }),
   });
   assert("33. platform admin can register valid pending tenant invoice", regRes.statusCode === 200 && parse(regRes).registered === true);
-  assert("10. terms_confirmed required path exists", /terms_confirmed !== true/.test(registerSrc));
+  assert("10. terms_confirmed required path exists", /terms_confirmed !== true/.test(registerSrc + registerLibSrc));
   const noTerms = await registerEvent(storeR, disabledEnv(), { [INV_A]: invoice({ id: INV_A, status: "UNPAID" }) }, true)({
     httpMethod: "POST",
     body: JSON.stringify({ tenant_id: TENANT_A, square_invoice_id: INV_A, terms_confirmed: false }),
@@ -756,7 +757,7 @@ async function main() {
       httpMethod: "POST",
       body: JSON.stringify({ tenant_id: TENANT_A, square_invoice_id: INV_A, terms_confirmed: true }),
     });
-    assert("34. already-paid registration uses shared activate", /activateTenantFromVerifiedSquareInvoice/.test(registerSrc) && parse(res).activated === true && store.tenants[TENANT_A].plan_status === "active");
+    assert("34. already-paid registration uses shared activate", /activateTenantFromVerifiedSquareInvoice/.test(registerSrc + registerLibSrc) && parse(res).activated === true && store.tenants[TENANT_A].plan_status === "active");
   }
 
   {
@@ -809,8 +810,8 @@ async function main() {
     writers.length === 1 && writers[0] === "netlify/functions/_lib/saas-square-activate.js"
   );
 
-  assert("9b. register requires pending", /tenant_not_pending/.test(registerSrc));
-  assert("logging does not print access token", !/console\.(log|error).*SQUARE_ACCESS_TOKEN/.test(webhookSrc + activateSrc + registerSrc));
+  assert("9b. register requires pending", /tenant_not_pending/.test(registerSrc + registerLibSrc));
+  assert("logging does not print access token", !/console\.(log|error).*SQUARE_ACCESS_TOKEN/.test(webhookSrc + activateSrc + registerSrc + registerLibSrc));
 
   const noTermsOnb = createStore();
   noTermsOnb.onboarding.push({

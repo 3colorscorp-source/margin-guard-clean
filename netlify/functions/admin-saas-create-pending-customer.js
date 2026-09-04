@@ -1,13 +1,12 @@
 /**
- * Platform-admin: bind a Square invoice id to a pending tenant.
- * Does not accept plan_status / amount / paid_at from the caller.
+ * Platform-admin: create a pending SaaS tenant + owner profile, then register Square invoice.
+ * Browser cannot set plan_status, amount, currency, provider, or is_admin.
  */
 "use strict";
 
 const { assertPlatformAdminSession } = require("./_lib/mg-support/require-platform-admin");
 const { readSessionFromEvent } = require("./_lib/session");
-const { registerSquareInvoiceForPendingTenant } = require("./_lib/saas-square-register");
-const { logSquareSaas } = require("./_lib/square-saas-log");
+const { createPendingSaasCustomer } = require("./_lib/saas-admin-create");
 
 function json(statusCode, body) {
   return {
@@ -30,41 +29,25 @@ function parseBody(event) {
 function createHandler(deps = {}) {
   const assertAdmin = deps.assertPlatformAdminSession || assertPlatformAdminSession;
   const readSession = deps.readSessionFromEvent || readSessionFromEvent;
-  const register = deps.registerSquareInvoiceForPendingTenant || registerSquareInvoiceForPendingTenant;
+  const createCustomer = deps.createPendingSaasCustomer || createPendingSaasCustomer;
 
   return async function handler(event) {
     try {
       if (String(event?.httpMethod || "").toUpperCase() !== "POST") {
         return json(405, { ok: false, error: "method_not_allowed" });
       }
-
       const session = readSession(event);
-      if (!session) {
-        return json(401, { ok: false, error: "not_authorized" });
-      }
+      if (!session) return json(401, { ok: false, error: "not_authorized" });
       const gate = await assertAdmin(event, deps);
-      if (!gate?.ok) {
-        return json(403, { ok: false, error: "not_authorized" });
-      }
+      if (!gate?.ok) return json(403, { ok: false, error: "not_authorized" });
 
       const body = parseBody(event);
       if (!body) return json(400, { ok: false, error: "invalid_json" });
-      if (body.terms_confirmed !== true) {
-        return json(400, { ok: false, error: "terms_required" });
-      }
 
-      const result = await register(
-        {
-          tenantId: body.tenant_id,
-          squareInvoiceId: body.square_invoice_id,
-          termsConfirmed: body.terms_confirmed === true,
-        },
-        deps
-      );
+      const result = await createCustomer(body, deps);
       return json(result.statusCode, result.body);
     } catch (_err) {
-      logSquareSaas({ processing_status: "failed", error_code: "register_failed" });
-      return json(500, { ok: false, error: "register_failed" });
+      return json(500, { ok: false, error: "create_failed" });
     }
   };
 }
