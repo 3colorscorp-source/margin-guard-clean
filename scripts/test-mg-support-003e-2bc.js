@@ -143,7 +143,7 @@ function main() {
     )
   );
 
-  assert("16. mg-support-chat asset version is 003e-2", /SUPPORT_CHAT_ASSET_VERSION = '003e-2'/.test(navSrc));
+  assert("16. mg-support-chat asset version is 004a", /SUPPORT_CHAT_ASSET_VERSION = '004a'/.test(navSrc));
   assert(
     "17. Support chat loader uses version query",
     /mg-support-chat\.js\?v=' \+ encodeURIComponent\(SUPPORT_CHAT_ASSET_VERSION\)/.test(navSrc)

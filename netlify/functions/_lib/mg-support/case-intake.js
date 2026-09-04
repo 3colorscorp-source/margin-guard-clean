@@ -199,6 +199,64 @@ function isPossibleBugReport(message) {
   );
 }
 
+function normalizeDetectorText(message) {
+  let text = String(message || "");
+  try {
+    text = text.normalize("NFC");
+  } catch (_err) {
+    /* keep original */
+  }
+  return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function isExplicitUnresolvedSupportRequest(message) {
+  const text = normalizeDetectorText(message);
+  if (!text) return false;
+  return (
+    /necesito soporte/.test(text) ||
+    /necesito ayuda de soporte/.test(text) ||
+    /el problema contin[uú]a/.test(text) ||
+    /sigue sin funcionar/.test(text) ||
+    /sigue sin poder/.test(text) ||
+    /sigo sin funcionar/.test(text) ||
+    /sigo sin poder/.test(text) ||
+    /ya intent[eé] (eso|esto)/.test(text) ||
+    /necesito que alguien lo revise/.test(text) ||
+    /quiero abrir un caso/.test(text) ||
+    /abrir un caso( de soporte)?/.test(text) ||
+    /contact(ar)? (a )?soporte/.test(text) ||
+    /\bcontact support\b/.test(text) ||
+    /\bcreate (a )?support case\b/.test(text) ||
+    /\bopen (a )?support case\b/.test(text) ||
+    /\bescalate this\b/.test(text) ||
+    /\bi need support\b/.test(text) ||
+    /\bneed support because\b/.test(text) ||
+    /\bstill not working\b/.test(text) ||
+    /\bstill doesn't work\b/.test(text) ||
+    /\bstill does not work\b/.test(text) ||
+    /\bthe problem continues\b/.test(text) ||
+    /\balready tried that\b/.test(text) ||
+    /\bi need someone to (look at|review) (this|it)\b/.test(text)
+  );
+}
+
+function explicitSupportCaseOfferAnswer(message) {
+  const text = normalizeDetectorText(message);
+  const spanish =
+    /[áéíóúñ¿¡]/.test(text) ||
+    /necesito|problema|funciona|soporte|caso|intent/.test(text);
+  if (spanish) {
+    return (
+      "Entiendo. Como el problema continúa, puedo crear un caso de soporte para que sea revisado. ¿Quieres que lo cree?\n\n" +
+      "Puedes incluir el número de factura antes de crear el caso, si lo tienes."
+    );
+  }
+  return (
+    "I understand. Since this is still unresolved, I can create a support case for review. Do you want me to create it?\n\n" +
+    "You can optionally include the invoice number before creating the case."
+  );
+}
+
 function clipEntityRef(value) {
   const text = String(value ?? "").trim();
   if (!text) return null;
@@ -235,21 +293,28 @@ function bindRelatedEntity(intent, diagnostic, identifier) {
 
 function determineEscalationEligibility({ intent, diagnostic, message, hasOwnerTenant }) {
   if (!hasOwnerTenant) return null;
+  const explicitSupport = isExplicitUnresolvedSupportRequest(message);
   if (!diagnostic) {
     if (isPossibleBugReport(message)) {
       return { category: "possible_bug" };
     }
+    if (explicitSupport) {
+      return { category: "unresolved_question" };
+    }
     return null;
   }
   const outcome = diagnostic.outcome;
+  if (outcome === "status_unverified") {
+    return { category: "diagnostic_unavailable" };
+  }
+  if (explicitSupport) {
+    return { category: "unresolved_question" };
+  }
   if (outcome === "ok" || outcome === "found") return null;
   if (outcome === "needs_identifier") return null;
   if (outcome === "no_tenant_context") return null;
   if (outcome === "not_found") return null;
   if (outcome === "ambiguous") return null;
-  if (outcome === "status_unverified") {
-    return { category: "diagnostic_unavailable" };
-  }
   if (isPossibleBugReport(message)) {
     return { category: "possible_bug" };
   }
@@ -530,6 +595,8 @@ module.exports = {
   mapModule,
   deriveServerSubject,
   isPossibleBugReport,
+  isExplicitUnresolvedSupportRequest,
+  explicitSupportCaseOfferAnswer,
   bindRelatedEntity,
   determineEscalationEligibility,
   formatCaseRef,

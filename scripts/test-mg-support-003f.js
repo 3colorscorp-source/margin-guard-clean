@@ -579,9 +579,9 @@ async function main() {
   assert("57. raw send-invoice-zapier unchanged", /body\.invoice_amount/.test(hubSrc) && /secret missing; sending unsigned/.test(hubSrc));
 
   const oldVersion = "003b-1";
-  const newVersion = "003e-2";
+  const newVersion = "004a";
   assert("45b. Support asset version old", oldVersion === "003b-1");
-  assert("46b. Support asset version new", /SUPPORT_CHAT_ASSET_VERSION = '003e-2'/.test(navSrc) && newVersion === "003e-2");
+  assert("46b. Support asset version new", /SUPPORT_CHAT_ASSET_VERSION = '004a'/.test(navSrc) && newVersion === "004a");
   assert("cache-bust loader unchanged", /mg-support-chat\.js\?v=' \+ encodeURIComponent\(SUPPORT_CHAT_ASSET_VERSION\)/.test(navSrc));
   assert("C1 endpoint not modified in C2 mission", /Closed body: \{ confirmation_token, confirmed: true \}/.test(endpointSrc) && /Does not call send-invoice-zapier/.test(endpointSrc));
   assert("OpenAI cannot create action type in server response", /approvedAction \? \{ action: approvedAction \}/.test(chatSrc) && !/JSON\.parse\(answer\)/.test(chatSrc));

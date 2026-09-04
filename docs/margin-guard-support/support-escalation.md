@@ -6,7 +6,8 @@ Ask Margin Guard can offer to open a **support case** when an eligible issue can
 
 - Normal Support chat stays read-only. Chatting does **not** create a case.
 - When a turn is eligible, Support shows a **Create support case** button.
-- A case is created only after the owner clicks that button to confirm.
+- Explicit unresolved requests such as “necesito soporte”, “el problema continúa”, “contact support”, or “quiero abrir un caso” also offer a case instead of repeating generic troubleshooting.
+- A case is created only after the owner clicks that button to confirm. The assistant never creates a case from chat text alone.
 - Thumbs up / thumbs down still only rate the answer in this session. They do not create a case.
 
 ## What is stored

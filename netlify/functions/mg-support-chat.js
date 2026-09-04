@@ -85,6 +85,10 @@ const {
   bindRelatedEntity,
   mapModule,
   mintEscalationToken,
+  isExplicitUnresolvedSupportRequest,
+  explicitSupportCaseOfferAnswer,
+  deriveServerSubject,
+  sanitizeExcerpt,
 } = require("./_lib/mg-support/case-intake");
 const { maybeOfferInvoiceResend, INVOICE_RESEND_UNVERIFIED_COPY } = require("./_lib/mg-support/invoice-resend-offer");
 
@@ -598,6 +602,19 @@ function createHandler(deps = {}) {
           escalation = null;
         }
         return escalation;
+      }
+
+      if (isExplicitUnresolvedSupportRequest(message) && hasOwnerEmailAndCustomer(session)) {
+        const escalation = await mintEscalationIfNeeded(null);
+        return json(200, {
+          ok: true,
+          answer: explicitSupportCaseOfferAnswer(message),
+          sources: uniqueSources,
+          support_case_offer: true,
+          suggested_title: deriveServerSubject("unresolved_question", mapModule(routed)),
+          suggested_summary: sanitizeExcerpt(message),
+          ...(escalation ? { escalation } : {}),
+        });
       }
 
       if (resendOffer && resendOffer.explicit) {

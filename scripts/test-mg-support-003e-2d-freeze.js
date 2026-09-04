@@ -648,7 +648,7 @@ async function main() {
   assert("AB1. zero OpenAI in notification path", !/openai\.com|OPENAI_API_KEY|getOpenAiKey/.test(notifySrc));
   assert("AC1. no recipient/webhook/signature logs", !/console\.(log|error|info)\([^\)]*recipient_email|console\.(log|error)\([^\)]*owner_email|console\.(log|error)\([^\)]*signature/.test(notifySrc));
   assert("AF1. Support Admin asset remains 003e-2", /support-admin\.js\?v=003e-2/.test(adminHtml) && !/notification|delivery_status|outbox/.test(adminJs));
-  assert("AF2. chat asset remains 003e-2", /SUPPORT_CHAT_ASSET_VERSION = '003e-2'/.test(navSrc));
+  assert("AF2. chat asset remains 004a", /SUPPORT_CHAT_ASSET_VERSION = '004a'/.test(navSrc));
   assert("AF3. no tenant delivery UX", !/bridge_accepted|notification-sweep/.test(myCasesSrc));
   assert("AG1. no notification chat intent", !/notification_outbox|case_in_review/.test(routerSrc + chatSrc));
   assert("AG2. invoice resend still present", /executeInvoiceResend/.test(invoiceSrc));

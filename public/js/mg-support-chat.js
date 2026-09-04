@@ -491,20 +491,29 @@ function mgSupportMapInvoiceResendClientResult(data, transportError) {
         let caseBlock = "";
         if (msg.caseRef && msg.caseResult === "created") {
           caseBlock =
-            '<p class="mg-support-source">Support case created: ' + escapeHtml(msg.caseRef) + "</p>";
+            '<p class="mg-support-source">Support case created: ' +
+            escapeHtml(msg.caseRef) +
+            "</p>" +
+            '<p><button type="button" class="btn ghost" data-open-my-cases>My Cases</button></p>';
         } else if (msg.caseRef && msg.caseResult === "existing_case") {
           caseBlock =
             '<p class="mg-support-source">An open support case already exists: ' +
             escapeHtml(msg.caseRef) +
-            "</p>";
-        } else if (msg.escalationEligible) {
+            "</p>" +
+            '<p><button type="button" class="btn ghost" data-open-my-cases>My Cases</button></p>';
+        } else if (msg.escalationEligible && !msg.escalationDismissed) {
           caseBlock =
             '<p>' +
             '<button type="button" class="btn ghost mg-support-retry" data-create-case="' +
             idx +
             '"' +
             (msg.casePending ? " disabled" : "") +
-            ">Create support case</button>" +
+            ">Create support case</button> " +
+            '<button type="button" class="btn ghost" data-keep-troubleshooting="' +
+            idx +
+            '"' +
+            (msg.casePending ? " disabled" : "") +
+            ">Keep troubleshooting</button>" +
             "</p>";
           if (msg.casePending) {
             caseBlock += '<p class="mg-support-loading" aria-live="polite">Creating support case…</p>';
@@ -565,6 +574,21 @@ function mgSupportMapInvoiceResendClientResult(data, transportError) {
       el.addEventListener("click", function () {
         const i = Number(el.getAttribute("data-create-case"));
         void submitSupportCase(i);
+      });
+    });
+    thread.querySelectorAll("[data-keep-troubleshooting]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        const i = Number(el.getAttribute("data-keep-troubleshooting"));
+        const msg = messages[i];
+        if (!msg || msg.role !== "assistant" || msg.casePending || msg.caseResult) return;
+        msg.escalationDismissed = true;
+        msg.escalationEligible = false;
+        renderThread();
+      });
+    });
+    thread.querySelectorAll("[data-open-my-cases]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        setSupportPanel("cases");
       });
     });
     thread.querySelectorAll("[data-resend-invoice]").forEach(function (el) {
