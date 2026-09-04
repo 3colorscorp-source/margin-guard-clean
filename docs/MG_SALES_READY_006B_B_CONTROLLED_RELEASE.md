@@ -28,3 +28,20 @@ Platform admin cookie only. Body: `tenant_id`, `square_invoice_id`, `terms_confi
 
 `GET /.netlify/functions/get-saas-onboarding-status?tenant_id=`  
 Platform admin, read-only, no secrets.
+
+## Dry-run (read-only)
+
+`POST /.netlify/functions/admin-saas-square-dry-run`  
+Platform admin cookie only. Does not write `tenants`, `saas_onboarding`, or `plan_status`.
+
+Body: `{ "tenant_id": "<uuid>" }` or `{ "onboarding_id": "<uuid>" }`.
+
+```bash
+curl -sS -X POST "https://marginguardsystem.netlify.app/.netlify/functions/admin-saas-square-dry-run" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: mg_session=<platform-admin-session>" \
+  -d "{\"tenant_id\":\"8133cef9-29fc-4d08-9add-9768c0bced89\"}"
+```
+
+Expected unpaid decision while the test invoice is UNPAID: `registered_unpaid_no_action`.
+A PAID invoice with `SQUARE_SAAS_AUTO_ACTIVATION_ENABLED` unset/false returns `paid_but_activation_disabled` and still does not activate.

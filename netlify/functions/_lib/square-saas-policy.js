@@ -84,6 +84,29 @@ function invoiceStatus(invoice) {
     .toUpperCase();
 }
 
+function summarizeSquareInvoice(invoice) {
+  if (!invoice || typeof invoice !== "object") return null;
+  const reqs = Array.isArray(invoice.payment_requests) ? invoice.payment_requests : [];
+  const first = reqs[0] || null;
+  const computed = first ? moneyOf(first.computed_amount_money) : null;
+  const completed = first ? moneyOf(first.total_completed_amount_money) : null;
+  const currency =
+    (computed && computed.currency) || (completed && completed.currency) || null;
+  const numberRaw = invoice.invoice_number;
+  const titleRaw = invoice.title;
+  return {
+    id: String(invoice.id || "").trim() || null,
+    status: invoiceStatus(invoice) || null,
+    invoice_number: numberRaw == null || numberRaw === "" ? null : String(numberRaw),
+    title: titleRaw == null || titleRaw === "" ? null : String(titleRaw),
+    amount_cents: computed ? computed.amount : null,
+    completed_amount_cents: completed ? completed.amount : null,
+    currency,
+    payment_request_count: reqs.length,
+    tipping_enabled: invoice.tipping_enabled === true,
+  };
+}
+
 function evaluateFullyPaidAnnualInvoice(invoice, env) {
   const cents = expectedAmountCents(env);
   const currency = expectedCurrency(env);
@@ -175,6 +198,7 @@ module.exports = {
   expectedCurrency,
   invoiceStatus,
   isAcceptablePrepaymentInvoice,
+  summarizeSquareInvoice,
   isAutoActivationEnabled,
   isSandboxAllowed,
   planStatusNorm,
