@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Margin Guard | Invoice</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
   <style>
     :root{
       --bg:#f6f7f9;
@@ -321,20 +319,6 @@
   </div>
 
   <script>
-    function readMeta(name) {
-      const m = document.querySelector('meta[name="' + name + '"]');
-      const c = m && m.getAttribute("content");
-      return c && String(c).trim() ? String(c).trim() : "";
-    }
-    const SUPABASE_URL =
-      (typeof window.__MG_SUPABASE_URL === "string" && window.__MG_SUPABASE_URL.trim()
-        ? window.__MG_SUPABASE_URL.trim()
-        : "") || readMeta("mg-supabase-url");
-    const SUPABASE_KEY =
-      (typeof window.__MG_SUPABASE_ANON_KEY === "string" && window.__MG_SUPABASE_ANON_KEY.trim()
-        ? window.__MG_SUPABASE_ANON_KEY.trim()
-        : "") || readMeta("mg-supabase-anon-key");
-
     const TENANT_NAME_FALLBACK = "Invoice";
     const BUSINESS_SUBTITLE = "Service invoice";
     const SHOW_DEBUG = false;
@@ -349,7 +333,14 @@
     function log(text) {
       if (!SHOW_DEBUG) return;
       console.log(text);
-      debugBox.textContent += text + "\n";
+    }
+
+    function escapeHtml(value) {
+      return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
     }
 
     function showError(message) {
@@ -361,7 +352,7 @@
           </div>
         </div>
         <div class="content">
-          <div class="error">${message}</div>
+          <div class="error">${escapeHtml(message)}</div>
         </div>
       `;
     }
@@ -379,7 +370,8 @@
     }
 
     function safe(value, fallback = "") {
-      return value ?? fallback;
+      const v = value ?? fallback;
+      return escapeHtml(v === "" || v == null ? fallback : v);
     }
 
     function normalizeStatus(status) {
@@ -388,10 +380,13 @@
       return s;
     }
 
-    function buildPayButton(data) {
-      if (data.payment_link) {
+    function buildPayButton(data, tenantPayment) {
+      const link = String(
+        (tenantPayment && tenantPayment.payment_link) || data.payment_link || ""
+      ).trim();
+      if (/^https?:\/\//i.test(link)) {
         return `
-          <a class="btn btn-primary" href="${data.payment_link}" target="_blank" rel="noopener noreferrer" title="Submit payment for your project">
+          <a class="btn btn-primary" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer" title="Submit payment for your project">
             Submit payment
           </a>
         `;
@@ -406,78 +401,64 @@
 
     async function loadInvoice() {
       try {
-        log("1) script started");
-
-        if (!window.supabase || typeof window.supabase.createClient !== "function") {
-          showError("Supabase library did not load correctly.");
-          log("FAIL: window.supabase.createClient not available");
-          return;
-        }
-
-        if (!SUPABASE_URL || !SUPABASE_KEY) {
-          showError("Application configuration is incomplete. Missing Supabase settings.");
-          return;
-        }
-
         const params = new URLSearchParams(window.location.search);
-        const invoiceId = params.get("id");
-        const publicToken = params.get("token");
+        const publicToken = String(params.get("token") || "").trim();
 
-        log("2) invoiceId: " + invoiceId);
-        log("3) publicToken: " + publicToken);
-        log("4) href: " + window.location.href);
-
-        if (!invoiceId && !publicToken) {
-          showError("Missing invoice id or token in URL.");
+        if (!publicToken) {
+          showError("Missing invoice token.");
+          return;
+        }
+        if (publicToken.length < 10 || publicToken.length > 256 || !/^[a-zA-Z0-9_]+$/.test(publicToken)) {
+          showError("Invalid invoice token.");
           return;
         }
 
-        const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        log("5) supabase client created");
-
-        let query = client.from("invoices").select("*");
-
-        if (publicToken) {
-          query = query.eq("public_token", publicToken);
-          log("6) query by token");
-        } else {
-          query = query.eq("id", invoiceId);
-          log("6) query by id");
+        const res = await fetch(
+          "/.netlify/functions/get-public-invoice?token=" + encodeURIComponent(publicToken)
+        );
+        let payload = {};
+        try {
+          payload = await res.json();
+        } catch (_err) {
+          payload = {};
         }
 
-        const { data, error } = await query.maybeSingle();
-
-        log("7) query finished");
-        log("data: " + JSON.stringify(data));
-        log("error: " + JSON.stringify(error));
-
-        if (error) {
-          showError(error.message);
+        if (!res.ok || !payload || payload.ok !== true || !payload.invoice) {
+          const errMsg =
+            (payload && typeof payload.error === "string" && payload.error.trim()) ||
+            "Invoice not found.";
+          showError(errMsg);
           return;
         }
 
-        if (!data) {
-          showError(publicToken ? "No invoice found for token." : "No invoice found for id.");
-          return;
-        }
-
+        const data = payload.invoice;
+        const tenantPayment =
+          payload.tenant_payment && typeof payload.tenant_payment === "object"
+            ? payload.tenant_payment
+            : {};
         const status = normalizeStatus(data.status);
-        const currency = safe(data.currency, "USD");
-        const amount = money(data.amount, currency);
-        const paidAmount = money(data.paid_amount, currency);
-        const balanceDue = money(data.balance_due, currency);
-        const issueDate = safe(data.issue_date, "—");
-        const dueDate = safe(data.due_date, "—");
-        const notes = safe(data.notes, "");
+        const currency = String(data.currency || "USD");
+        const amount = money(data.invoice_amount != null ? data.invoice_amount : data.amount, currency);
+        const paidAmount = money(
+          data.paid_to_date != null ? data.paid_to_date : data.paid_amount,
+          currency
+        );
+        const balanceDue = money(
+          data.remaining_balance != null ? data.remaining_balance : data.balance_due,
+          currency
+        );
+        const issueDate = data.issue_date ? safe(data.issue_date, "—") : "—";
+        const dueDate = data.due_date ? safe(data.due_date, "—") : "—";
+        const notes = String(data.notes || "").trim();
         const brandName = String(data.business_name || "").trim() || TENANT_NAME_FALLBACK;
 
         invoiceBox.innerHTML = `
           <div class="topbar">
             <div class="brand-block">
-              <h1>${brandName}</h1>
+              <h1>${escapeHtml(brandName)}</h1>
               <div class="sub">${BUSINESS_SUBTITLE}</div>
             </div>
-            <div class="status-pill">${status}</div>
+            <div class="status-pill">${escapeHtml(status)}</div>
           </div>
 
           <div class="content">
@@ -486,7 +467,7 @@
                 <div class="eyebrow">Invoice</div>
                 <div class="invoice-no">${safe(data.invoice_no, "Invoice")}</div>
                 <div class="small-note">
-                  Issued by ${brandName}
+                  Issued by ${escapeHtml(brandName)}
                 </div>
               </div>
 
@@ -519,14 +500,6 @@
               <div class="panel">
                 <div class="eyebrow">Details</div>
                 <div class="info-list">
-                  <div class="info-row">
-                    <div class="label">Invoice ID</div>
-                    <div class="value">${safe(data.id, "—")}</div>
-                  </div>
-                  <div class="info-row">
-                    <div class="label">Quote ID</div>
-                    <div class="value">${safe(data.quote_id, "—")}</div>
-                  </div>
                   <div class="info-row">
                     <div class="label">Issue Date</div>
                     <div class="value">${issueDate}</div>
@@ -562,21 +535,21 @@
             </div>
 
             <div class="actions">
-              ${buildPayButton(data)}
+              ${buildPayButton(data, tenantPayment)}
               <button class="btn btn-secondary" type="button" onclick="window.print()">Print</button>
             </div>
 
             ${notes ? `
               <div class="notes">
                 <div class="notes-title">Notes</div>
-                <div class="notes-text">${notes}</div>
+                <div class="notes-text">${escapeHtml(notes)}</div>
               </div>
             ` : ""}
           </div>
         `;
       } catch (err) {
-        showError("Fatal error: " + (err.message || err));
-        log("FATAL: " + (err.message || err));
+        showError("Unable to load invoice.");
+        log("FATAL");
       }
     }
 
