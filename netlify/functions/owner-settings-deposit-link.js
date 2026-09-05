@@ -1,6 +1,7 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { hasOwnerSessionIdentity } = require("./_lib/owner-access");
 
 function json(statusCode, body) {
   return {
@@ -54,13 +55,16 @@ function normalizePublicPaymentLink(raw) {
 exports.handler = async (event) => {
   try {
     const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
+    if (!hasOwnerSessionIdentity(session)) {
       return json(401, { error: "Unauthorized" });
     }
 
     const tenant = await resolveTenantFromSession(session);
     if (!tenant?.id) {
-      return json(404, { error: "Tenant not found. Run bootstrap first." });
+      return json(403, {
+        error: "No membership found for this account.",
+        code: "membership_not_found",
+      });
     }
 
     const tenantId = String(tenant.id);

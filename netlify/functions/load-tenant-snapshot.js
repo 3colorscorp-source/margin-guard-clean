@@ -1,5 +1,7 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
+const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { hasOwnerSessionIdentity } = require("./_lib/owner-access");
 
 function json(statusCode, payload) {
   return {
@@ -16,17 +18,21 @@ exports.handler = async (event) => {
     }
 
     const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
+    if (!hasOwnerSessionIdentity(session)) {
       return json(401, { error: "Unauthorized" });
     }
 
-    const tenants = await supabaseRequest(`tenants?stripe_customer_id=eq.${encodeURIComponent(session.c)}&select=id`);
-    const tenant = Array.isArray(tenants) ? tenants[0] : null;
+    const tenant = await resolveTenantFromSession(session);
     if (!tenant?.id) {
-      return json(404, { error: "Tenant not found. Run bootstrap first." });
+      return json(403, {
+        error: "No membership found for this account.",
+        code: "membership_not_found",
+      });
     }
 
-    const rows = await supabaseRequest(`tenant_snapshots?tenant_id=eq.${tenant.id}&select=*&order=created_at.desc&limit=1`);
+    const rows = await supabaseRequest(
+      `tenant_snapshots?tenant_id=eq.${encodeURIComponent(String(tenant.id))}&select=*&order=created_at.desc&limit=1`
+    );
     const snapshot = Array.isArray(rows) ? rows[0] : null;
 
     return json(200, {
