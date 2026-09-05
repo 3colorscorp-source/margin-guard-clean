@@ -1101,7 +1101,7 @@
             <div class="section-head bs-payments-head">
               <div>
                 <h2 class="bs-card-title">Payments &amp; Invoice Text</h2>
-                <p class="sub bs-card-sub">Project deposits (Stripe), deposit payment link, and text clients see on public invoices.</p>
+                <p class="sub bs-card-sub">Project deposits, deposit payment link, and text clients see on public invoices.</p>
               </div>
               <div class="badge" id="depositStripeBadge">—</div>
             </div>
@@ -1114,10 +1114,14 @@
                     id="depositPaymentLink"
                     type="url"
                     maxlength="2000"
-                    placeholder="https://buy.stripe.com/..."
+                    placeholder="https://your-payment-provider.com/checkout/..."
                     autocomplete="off"
                   />
                 </div>
+                <p class="sub">
+                  Optional. Paste the tenant’s secure HTTPS checkout link. The client will open this link after completing the approval steps.
+                </p>
+                <h3 class="bs-subsection-title">Optional Stripe Connect</h3>
                 <p class="sub bs-stripe-status-line">Stripe: <strong id="depositStripeStatusText">Loading…</strong></p>
                 <ul class="msg-list bs-stripe-lines bs-stripe-lines--compact">
                   <li id="depositStripeLineAccount">Stripe account: —</li>
@@ -1125,7 +1129,7 @@
                   <li id="depositStripeLineDetails">Details submitted: —</li>
                 </ul>
                 <div class="inline-actions bs-stripe-actions">
-                  <button class="btn primary" type="button" id="btnStripeDepositConnect">Connect Stripe</button>
+                  <button class="btn" type="button" id="btnStripeDepositConnect">Connect Stripe (optional)</button>
                   <button class="btn" type="button" id="btnStripeDepositRefresh">Refresh</button>
                 </div>
                 <div class="notice" id="depositStripeNotice" style="display:none;margin-top:6px;"></div>
@@ -1817,7 +1821,13 @@
   function isValidDepositPaymentLink(value) {
     const v = safeTrim(value || '');
     if (!v) return true;
-    return v.toLowerCase().startsWith('https://buy.stripe.com/');
+    if (v.length > 2000) return false;
+    try {
+      var u = new URL(v);
+      return u.protocol === 'https:';
+    } catch (_e) {
+      return false;
+    }
   }
 
   function isValidTenantInvoicePaymentLink(value) {
@@ -1878,7 +1888,7 @@
     const depositRaw = safeTrim(document.getElementById('depositPaymentLink')?.value || '');
     if (!isValidDepositPaymentLink(depositRaw)) {
       setStatus(
-        'Deposit Payment Link must be empty or start with https://buy.stripe.com/',
+        'Deposit Payment Link must be empty or a valid HTTPS URL.',
         'error'
       );
       return;
@@ -1967,7 +1977,7 @@
       }
 
       setStatus(
-        'Guardado en el servidor: snapshot, tenant branding, deposito Stripe, e instrucciones de pago del invoice publico.',
+        'Guardado en el servidor: snapshot, tenant branding, enlace de pago del depósito, e instrucciones de pago del invoice publico.',
         'success'
       );
       clearBusinessSettingsCriticalFieldErrors();
@@ -1976,7 +1986,7 @@
     } catch (error) {
       console.error('SAVE BUSINESS SETTINGS ERROR =>', error);
       setStatus(
-        'No se guardo en el servidor: ' + (error?.message || 'error desconocido') + '. Revisa la sesion (Stripe) e intenta de nuevo.',
+        'No se guardo en el servidor: ' + (error?.message || 'error desconocido') + '. Revisa la sesion e intenta de nuevo.',
         'error'
       );
     }
@@ -3231,7 +3241,7 @@
       setDepositStripeNotice(err && err.message ? String(err.message) : 'Connect failed.', 'error');
       if (btn) {
         btn.disabled = false;
-        btn.textContent = 'Connect Stripe for deposits';
+        btn.textContent = 'Connect Stripe (optional)';
       }
     }
   });

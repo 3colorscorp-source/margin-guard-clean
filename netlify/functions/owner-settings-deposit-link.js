@@ -10,14 +10,22 @@ function json(statusCode, body) {
   };
 }
 
-function normalizeDepositStripeLink(raw) {
-  if (raw == null || String(raw).trim() === "") return null;
+const DEPOSIT_PAYMENT_LINK_MAX_CHARS = 2000;
+
+function normalizeDepositPaymentLink(raw) {
+  if (raw == null || String(raw).trim() === "") return { value: null };
   const value = String(raw).trim();
-  if (!value.toLowerCase().startsWith("https://buy.stripe.com/")) {
-    return {
-      error:
-        "deposit_payment_link must be empty or start with https://buy.stripe.com/",
-    };
+  if (value.length > DEPOSIT_PAYMENT_LINK_MAX_CHARS) {
+    return { error: "deposit_payment_link must be at most 2000 characters" };
+  }
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return { error: "deposit_payment_link must be a valid HTTPS URL" };
+  }
+  if (parsed.protocol !== "https:") {
+    return { error: "deposit_payment_link must use HTTPS" };
   }
   return { value };
 }
@@ -92,14 +100,9 @@ exports.handler = async (event) => {
       const patch = {};
 
       if (has("deposit_payment_link")) {
-        const raw = body.deposit_payment_link;
-        let value = null;
-        if (raw != null && String(raw).trim() !== "") {
-          const norm = normalizeDepositStripeLink(raw);
-          if (norm.error) return json(400, { error: norm.error });
-          value = norm.value;
-        }
-        patch.deposit_payment_link = value;
+        const norm = normalizeDepositPaymentLink(body.deposit_payment_link);
+        if (norm.error) return json(400, { error: norm.error });
+        patch.deposit_payment_link = norm.value;
       }
 
       if (has("payment_instructions")) {
@@ -157,4 +160,9 @@ exports.handler = async (event) => {
   } catch (err) {
     return json(500, { error: err.message || "Server error" });
   }
+};
+
+exports._test = {
+  normalizeDepositPaymentLink,
+  DEPOSIT_PAYMENT_LINK_MAX_CHARS,
 };
