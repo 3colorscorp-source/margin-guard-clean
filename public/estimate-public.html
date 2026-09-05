@@ -1604,7 +1604,7 @@
             class="notice warn"
             style="display:none;margin-top:12px;text-align:left;"
           >
-            Online Initial Scheduling Payment is not available yet. Your contractor must connect Stripe in
+            Online Initial Scheduling Payment is not available yet. Your contractor must add a secure payment link in
             Business Settings. Please contact them to arrange payment.
           </div>
           <div
@@ -1642,7 +1642,7 @@
               class="notice warn"
               style="display:none;margin-top:12px;text-align:left;"
             >
-              Online Initial Scheduling Payment is not available yet. Your contractor must connect Stripe in
+              Online Initial Scheduling Payment is not available yet. Your contractor must add a secure payment link in
               Business Settings. Please contact them to arrange payment.
             </div>
 
@@ -1660,7 +1660,7 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 2l7 4v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-4z"></path>
               </svg>
-              Secure payment powered by Stripe
+              Payment handled by your contractor’s selected payment provider
             </div>
           </div>
         </section>
@@ -1838,7 +1838,7 @@
         return "Customer";
       }
 
-      /** Use payment link from the loaded quote/estimate when present (no extra fetches). */
+      /** Use tenant HTTPS deposit link from the loaded quote/estimate when present (no extra fetches). */
       function getDepositPaymentLinkFromQuote(est) {
         const raw =
           est?.deposit_payment_link ??
@@ -1847,8 +1847,8 @@
         const s = String(raw || "").trim();
         if (!s) return "";
         try {
-          const u = new URL(s, window.location.origin);
-          if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+          const u = new URL(s);
+          if (u.protocol !== "https:") return "";
           return u.href;
         } catch (_e) {
           return "";
