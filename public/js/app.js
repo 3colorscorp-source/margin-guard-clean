@@ -18107,7 +18107,46 @@ window.renderSupervisor = renderSupervisor;
     };
 
     let hubRecordPaySubmitting = false;
-    const hubRecordPayModalCtx = { remaining: 0, paymentCount: 0 };
+    const hubRecordPayModalCtx = {
+      remaining: 0,
+      paymentCount: 0,
+      idempotencyKey: "",
+      successHandled: false
+    };
+
+    function newHubPaymentIdempotencyKey() {
+      if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
+        return globalThis.crypto.randomUUID();
+      }
+      const bytes = new Uint8Array(16);
+      if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === "function") {
+        globalThis.crypto.getRandomValues(bytes);
+      } else {
+        for (let i = 0; i < 16; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+      }
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    }
+
+    function formatHubRecordPaymentError(data, status) {
+      const code = String(data?.reason || data?.error || "").trim();
+      const map = {
+        payment_exceeds_remaining_balance: "This payment exceeds the remaining balance.",
+        invoice_already_paid: "This invoice is already paid.",
+        invoice_archived: "Cannot record a payment on an archived invoice.",
+        invoice_cancelled: "Cannot record a payment on a cancelled invoice.",
+        invoice_void: "Cannot record a payment on a closed invoice.",
+        invalid_amount: "Enter a valid dollar amount.",
+        zero_amount: "Amount must be greater than zero.",
+        negative_normal_payment: "Normal payments cannot be negative.",
+        missing_idempotency_key: "Payment could not be submitted. Close and try again.",
+        invalid_idempotency_key: "Payment could not be submitted. Close and try again."
+      };
+      if (map[code]) return map[code];
+      return String(data?.message || data?.error || `Unable to record payment (HTTP ${status}).`).trim();
+    }
 
     function syncHubRecordPayAmountDefault() {
       if (!$("hubRecordPayType")) return;
@@ -18132,7 +18171,7 @@ window.renderSupervisor = renderSupervisor;
       if (amt > rem + 1e-6) {
         warnEl.style.display = "block";
         warnEl.className = "notice warn";
-        warnEl.textContent = `This amount (${money(amt, settings.currency)}) is above remaining (${money(rem, settings.currency)}). You can still submit if intended.`;
+        warnEl.textContent = `This amount (${money(amt, settings.currency)}) is above remaining (${money(rem, settings.currency)}). The server will reject this payment.`;
         return;
       }
       warnEl.style.display = "none";
@@ -18155,6 +18194,8 @@ window.renderSupervisor = renderSupervisor;
       const amountTotal = finiteNumber(selectedRow.amount, 0);
       hubRecordPayModalCtx.remaining = Math.max(0, amountTotal - netSum);
       hubRecordPayModalCtx.paymentCount = payments.length;
+      hubRecordPayModalCtx.idempotencyKey = newHubPaymentIdempotencyKey();
+      hubRecordPayModalCtx.successHandled = false;
       setVal("hubRecordPayType", payments.length === 0 ? "deposit" : "progress");
       setVal("hubRecordPayMethod", "check");
       setVal("hubRecordPayDate", new Date().toISOString().slice(0, 10));
@@ -18212,6 +18253,9 @@ window.renderSupervisor = renderSupervisor;
         setNotice("hubRecordPayFeedback", "Invalid paid date.", "err");
         return;
       }
+      if (!hubRecordPayModalCtx.idempotencyKey) {
+        hubRecordPayModalCtx.idempotencyKey = newHubPaymentIdempotencyKey();
+      }
       const body = {
         invoice_id: ids.invoiceId || null,
         quote_id: ids.quoteId || null,
@@ -18220,7 +18264,8 @@ window.renderSupervisor = renderSupervisor;
         payment_method,
         amount,
         paid_at: new Date(parsed).toISOString(),
-        notes
+        notes,
+        idempotency_key: hubRecordPayModalCtx.idempotencyKey
       };
 
       hubRecordPaySubmitting = true;
@@ -18235,9 +18280,11 @@ window.renderSupervisor = renderSupervisor;
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data?.ok) {
-          setNotice("hubRecordPayFeedback", data?.error || "Unable to record payment.", "err");
+          setNotice("hubRecordPayFeedback", formatHubRecordPaymentError(data, res.status), "err");
           return;
         }
+        if (hubRecordPayModalCtx.successHandled) return;
+        hubRecordPayModalCtx.successHandled = true;
         if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
         setNotice("hubRecordPayFeedback", "", "");
         if ($("hubRecordPayOverpayWarn")) {
