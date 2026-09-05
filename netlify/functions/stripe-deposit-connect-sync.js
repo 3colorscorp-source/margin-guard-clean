@@ -6,6 +6,7 @@ if (!fetch) {
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { hasOwnerSessionIdentity } = require("./_lib/owner-access");
 const { getStripeKey } = require("./_lib/stripe");
 
 function json(statusCode, body) {
@@ -41,20 +42,16 @@ exports.handler = async (event) => {
     }
 
     const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
+    if (!hasOwnerSessionIdentity(session)) {
       return json(401, { error: "Unauthorized" });
-    }
-
-    let stripeSecretKey;
-    try {
-      stripeSecretKey = getStripeKey();
-    } catch (_e) {
-      return json(500, { error: "Missing STRIPE_SECRET_KEY or STRIPE_PLATFORM_SECRET_KEY" });
     }
 
     const tenant = await resolveTenantFromSession(session);
     if (!tenant?.id) {
-      return json(404, { error: "Tenant not found. Run bootstrap first." });
+      return json(403, {
+        error: "No membership found for this account.",
+        code: "membership_not_found",
+      });
     }
 
     const accountId = String(tenant.stripe_account_id || "").trim();
@@ -77,7 +74,23 @@ exports.handler = async (event) => {
     let charges_enabled = Boolean(tenant.stripe_charges_enabled);
     let details_submitted = Boolean(tenant.stripe_details_submitted);
 
-    if (accountId && refresh) {
+    if (!accountId) {
+      return json(200, {
+        ok: true,
+        stripe_account_id: null,
+        stripe_charges_enabled: false,
+        stripe_details_submitted: false,
+        connected: false,
+      });
+    }
+
+    if (refresh) {
+      let stripeSecretKey;
+      try {
+        stripeSecretKey = getStripeKey();
+      } catch (_e) {
+        return json(500, { error: "Missing STRIPE_SECRET_KEY or STRIPE_PLATFORM_SECRET_KEY" });
+      }
       const { ok, data } = await fetchStripeAccount(stripeSecretKey, accountId);
       if (!ok) {
         return json(502, {

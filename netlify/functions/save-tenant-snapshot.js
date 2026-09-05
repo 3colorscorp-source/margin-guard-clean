@@ -1,5 +1,7 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
+const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { hasOwnerSessionIdentity } = require("./_lib/owner-access");
 
 /** Reject abusive snapshot POST sizes (untrusted browser input). */
 const MAX_SNAPSHOT_BODY_CHARS = 2_500_000;
@@ -161,33 +163,16 @@ exports.handler = async (event) => {
     }
 
     const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
+    if (!hasOwnerSessionIdentity(session)) {
       return json(401, { error: "Unauthorized" });
     }
 
-    let tenants = await supabaseRequest(
-      `tenants?stripe_customer_id=eq.${encodeURIComponent(session.c)}&select=id,owner_email,stripe_customer_id`
-    );
-    let tenant = Array.isArray(tenants) ? tenants[0] : null;
-
-    if (!tenant?.id && session.e) {
-      const byEmail = await supabaseRequest(
-        `tenants?owner_email=eq.${encodeURIComponent(String(session.e).trim().toLowerCase())}&select=id,owner_email,stripe_customer_id`
-      );
-      tenant = Array.isArray(byEmail) ? byEmail[0] : null;
-
-      if (tenant?.id && session.c && tenant.stripe_customer_id !== session.c) {
-        await supabaseRequest(`tenants?id=eq.${encodeURIComponent(tenant.id)}`, {
-          method: "PATCH",
-          body: {
-            stripe_customer_id: session.c
-          }
-        });
-      }
-    }
-
+    const tenant = await resolveTenantFromSession(session);
     if (!tenant?.id) {
-      return json(404, { error: "Tenant not found. Run bootstrap first. Revisa la sesion (Stripe) e intenta de nuevo." });
+      return json(403, {
+        error: "No membership found for this account.",
+        code: "membership_not_found",
+      });
     }
 
     const rawBody = event.body || "";

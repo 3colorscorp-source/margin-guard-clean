@@ -6,6 +6,7 @@ if (!fetch) {
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { hasOwnerSessionIdentity } = require("./_lib/owner-access");
 const { getStripeKey } = require("./_lib/stripe");
 
 function json(statusCode, body) {
@@ -32,8 +33,16 @@ exports.handler = async (event) => {
     }
 
     const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
+    if (!hasOwnerSessionIdentity(session)) {
       return json(401, { error: "Unauthorized" });
+    }
+
+    const tenant = await resolveTenantFromSession(session);
+    if (!tenant?.id) {
+      return json(403, {
+        error: "No membership found for this account.",
+        code: "membership_not_found",
+      });
     }
 
     let stripeSecretKey;
@@ -41,11 +50,6 @@ exports.handler = async (event) => {
       stripeSecretKey = getStripeKey();
     } catch (_e) {
       return json(500, { error: "Missing STRIPE_SECRET_KEY or STRIPE_PLATFORM_SECRET_KEY" });
-    }
-
-    const tenant = await resolveTenantFromSession(session);
-    if (!tenant?.id) {
-      return json(404, { error: "Tenant not found. Run bootstrap first." });
     }
 
     const siteUrl = pickSiteUrl();
