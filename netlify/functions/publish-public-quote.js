@@ -265,6 +265,27 @@ function parsePublishPricingInput(body) {
   return { workers, price, _manualPriceTouched, _sliderTouched, pricing_stage };
 }
 
+function resolveHoursPerDayForLabor(tenantSettings) {
+  const n = Number(tenantSettings && tenantSettings.hoursPerDay);
+  if (Number.isFinite(n) && n >= 1) return n;
+  return 8;
+}
+
+/** Same hours→days conversion as calc-secure-pricing.js. */
+function normalizeWorkersLaborDays(workers, tenantSettings) {
+  const list = Array.isArray(workers) ? workers : [];
+  const hpd = resolveHoursPerDayForLabor(tenantSettings);
+  return list.map((w) => {
+    const obj = w && typeof w === "object" ? w : {};
+    const dRaw = Number(obj.days);
+    const hRaw = Number(obj.hours);
+    const d = Number.isFinite(dRaw) && dRaw > 0 ? dRaw : 0;
+    const h = Number.isFinite(hRaw) && hRaw > 0 ? hRaw : 0;
+    const effectiveDays = d > 0 ? d : h > 0 ? h / hpd : 0;
+    return { ...obj, days: Number.isFinite(effectiveDays) ? effectiveDays : 0 };
+  });
+}
+
 function validateWorkersForPricing(workers) {
   if (!Array.isArray(workers) || workers.length === 0) {
     return { ok: false, error: "workers must be a non-empty array with labor lines." };
@@ -470,13 +491,15 @@ exports.handler = async (event) => {
     }
 
     const pricingIn = parsePublishPricingInput(body);
-    const wCheck = validateWorkersForPricing(pricingIn.workers);
+
+    const tenantSettings = await loadTenantSettingsFromLatestSnapshot(tenant.id);
+    const workersNormalized = normalizeWorkersLaborDays(pricingIn.workers, tenantSettings);
+    const wCheck = validateWorkersForPricing(workersNormalized);
     if (!wCheck.ok) {
       return json(400, { error: wCheck.error });
     }
 
-    const tenantSettings = await loadTenantSettingsFromLatestSnapshot(tenant.id);
-    const workersSanitized = sanitizeWorkersForTenantPricing(pricingIn.workers);
+    const workersSanitized = sanitizeWorkersForTenantPricing(workersNormalized);
     let financials;
     try {
       financials = calculateQuotePublishFinancials(
@@ -964,4 +987,7 @@ exports._test = {
   resolveCanonicalPublishAmounts,
   round2,
   resolveScopeOfWorkWriteFromBody,
+  normalizeWorkersLaborDays,
+  resolveHoursPerDayForLabor,
+  validateWorkersForPricing,
 };

@@ -5192,11 +5192,15 @@
       function sellerHasEffectiveLaborForPublish(state, settings) {
         const s = settings || loadSettings();
         const workers = resolveSellerPublishWorkers(state, s);
-        let workerDays = 0;
+        let qtyDays = 0;
+        let qtyHours = 0;
         for (let i = 0; i < workers.length; i++) {
-          workerDays += workerDaysAsInteger(workers[i]);
+          const d = Number(workers[i] && workers[i].days);
+          const h = Number(workers[i] && workers[i].hours);
+          if (Number.isFinite(d) && d > 0) qtyDays += d;
+          if (Number.isFinite(h) && h > 0) qtyHours += h;
         }
-        if (workers.length > 0 && workerDays > 0) return true;
+        if (workers.length > 0 && (qtyDays > 0 || qtyHours > 0)) return true;
 
         const opMetrics = getOperationalMetricsForState(state, s);
         if (opMetrics && Number(opMetrics.estimated_hours) > 0) return true;
@@ -10454,6 +10458,9 @@ async function runSellerSend(event) {
       await fillSendModal();
       payload = JSON.parse(modal.dataset.payload || '{}');
       const stateFresh = loadSalesState();
+      if (typeof window.resolveSellerPublishWorkers === 'function') {
+        window.resolveSellerPublishWorkers(stateFresh, settings);
+      }
       const metricsFresh = buildSalesUIMetrics(stateFresh, settings);
       estimateTotal = Number(payload.totalAmount || metricsFresh.offered || metricsFresh.recommended || 0);
       depositRequired = Number(payload.depositRequired || 1000);
@@ -10464,6 +10471,26 @@ async function runSellerSend(event) {
           sendStatus.style.display = 'block';
           sendStatus.className = 'notice error';
           sendStatus.textContent = 'Client email is required before sending the quote.';
+        }
+        setSendModalSendingState(false);
+        return false;
+      }
+
+      const existingSnapshot = getSalesPublishedQuoteSnapshot();
+      const existingToken = String(stateFresh.publicToken || '').trim();
+      const reusePublishedSnapshot = Boolean(
+        existingSnapshot && existingSnapshot.quote_id && existingSnapshot.public_url && existingToken
+      );
+
+      if (
+        !reusePublishedSnapshot &&
+        typeof window.sellerHasEffectiveLaborForPublish === 'function' &&
+        !window.sellerHasEffectiveLaborForPublish(stateFresh, settings)
+      ) {
+        if (sendStatus) {
+          sendStatus.style.display = 'block';
+          sendStatus.className = 'notice error';
+          sendStatus.textContent = 'Add labor days or hours before sending this estimate.';
         }
         setSendModalSendingState(false);
         return false;
@@ -10485,9 +10512,7 @@ async function runSellerSend(event) {
       });
 
       let publishData = null;
-      const existingSnapshot = getSalesPublishedQuoteSnapshot();
-      const existingToken = String(stateFresh.publicToken || '').trim();
-      if (existingSnapshot && existingSnapshot.quote_id && existingSnapshot.public_url && existingToken) {
+      if (reusePublishedSnapshot) {
         publishData = {
           quote_id: existingSnapshot.quote_id,
           public_token: existingToken,
@@ -10514,7 +10539,7 @@ async function runSellerSend(event) {
         publishData = publishParsed;
       }
 
-      if (!(existingSnapshot && existingSnapshot.quote_id && existingSnapshot.public_url && existingToken)) {
+      if (!reusePublishedSnapshot) {
         stateFresh.quoteId = publishData.quote_id;
         stateFresh.publicToken = publishData.public_token;
         stateFresh.publicQuoteUrl = publishData.public_url;
