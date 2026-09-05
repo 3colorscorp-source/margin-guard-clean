@@ -13,6 +13,8 @@ const { parseInvoiceHubPaymentAmount } = require("./_lib/invoice-hub-payment-amo
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const IDEMPOTENCY_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const PAYMENT_TYPES = new Set(["deposit", "progress", "final", "adjustment"]);
 const PAYMENT_METHODS = new Set(["check", "cash", "zelle", "stripe", "bank_transfer", "other"]);
@@ -21,12 +23,16 @@ const PAY_ERROR_STATUS = {
   invoice_not_found: 404,
   project_not_found: 404,
   quote_not_found: 404,
-  quote_mismatch: 400,
+  quote_mismatch: 422,
+  project_mismatch: 422,
+  invoice_quote_tenant_mismatch: 422,
+  invoice_project_tenant_mismatch: 422,
   payment_exceeds_remaining_balance: 422,
   invoice_archived: 422,
   invoice_cancelled: 422,
   invoice_void: 422,
   invoice_already_paid: 422,
+  idempotency_key_conflict: 409,
   invalid_amount: 400,
   zero_amount: 400,
   negative_normal_payment: 400,
@@ -78,8 +84,10 @@ function optionalUuid(raw) {
 function parseIdempotencyKey(raw) {
   const s = String(raw ?? "").trim();
   if (!s) return { ok: false, error: "missing_idempotency_key" };
-  if (!UUID_RE.test(s)) return { ok: false, error: "invalid_idempotency_key" };
-  return { ok: true, key: s };
+  if (s.length > 36 || !IDEMPOTENCY_UUID_RE.test(s)) {
+    return { ok: false, error: "invalid_idempotency_key" };
+  }
+  return { ok: true, key: s.toLowerCase() };
 }
 
 function extractPayCode(err) {
@@ -247,7 +255,16 @@ function createHandler(deps = {}) {
             { method: "GET" }
           );
           row = Array.isArray(existing) ? existing[0] : existing;
-          return json(200, { ok: true, payment: row || null, idempotent: true });
+          if (!row?.id) throw insertErr;
+          const sameSemantic =
+            String(row.invoice_id || "") === "" &&
+            String(row.quote_id || "") === String(quoteId || "") &&
+            String(row.project_id || "") === String(projectId || "") &&
+            String(row.payment_type || "") === paymentType &&
+            String(row.payment_method || "") === paymentMethod &&
+            Number(row.amount) === amount;
+          if (!sameSemantic) return payError("idempotency_key_conflict");
+          return json(200, { ok: true, payment: row, idempotent: true });
         }
         throw insertErr;
       }

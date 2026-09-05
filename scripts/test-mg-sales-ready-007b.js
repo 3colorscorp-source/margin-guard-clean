@@ -32,7 +32,12 @@ const INV_CHILD = "22222222-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const INV_PARENT = "33333333-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const INV_B = "44444444-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const PROJ_A = "55555555-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const PROJ_A2 = "77777777-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const QUOTE_A = "66666666-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const QUOTE_A2 = "88888888-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const INV_A2 = "99999999-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const IDEMPOTENCY_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 let failed = 0;
 let passed = 0;
@@ -97,6 +102,17 @@ function roundDollars(n) {
   return Math.round(Number(n) * 100) / 100;
 }
 
+function semanticMatch(pay, args, inv, amount, type, method) {
+  return (
+    String(pay.invoice_id || "") === String(args.p_invoice_id || "") &&
+    roundDollars(pay.amount) === amount &&
+    String(pay.payment_type || "") === type &&
+    String(pay.payment_method || "") === method &&
+    String(pay.quote_id || "") === String(inv.quote_id || "") &&
+    String(pay.project_id || "") === String(inv.project_id || "")
+  );
+}
+
 function simulateRpc(store, args) {
   if (store.denyRpc) {
     const err = new Error("permission denied for function record_tenant_invoice_payment");
@@ -105,11 +121,15 @@ function simulateRpc(store, args) {
   }
   const tenantId = String(args.p_tenant_id || "");
   const invoiceId = String(args.p_invoice_id || "");
-  const key = String(args.p_idempotency_key || "").trim();
+  const rawKey = String(args.p_idempotency_key || "").trim();
   const type = String(args.p_payment_type || "").trim().toLowerCase();
   const method = String(args.p_payment_method || "").trim().toLowerCase();
   if (!tenantId || !invoiceId) throw new Error("MG_PAY:invoice_not_found");
-  if (!key) throw new Error("MG_PAY:missing_idempotency_key");
+  if (!rawKey) throw new Error("MG_PAY:missing_idempotency_key");
+  if (rawKey.length > 36 || !IDEMPOTENCY_UUID_RE.test(rawKey)) {
+    throw new Error("MG_PAY:invalid_idempotency_key");
+  }
+  const key = rawKey.toLowerCase();
   if (!["deposit", "progress", "final", "adjustment"].includes(type)) {
     throw new Error("MG_PAY:invalid_payment_type");
   }
@@ -125,21 +145,11 @@ function simulateRpc(store, args) {
     throw new Error("MG_PAY:negative_normal_payment");
   }
 
-  const inv = store.invoices.find((row) => row.id === invoiceId && row.tenant_id === tenantId);
-  if (!inv) throw new Error("MG_PAY:invoice_not_found");
-  const status = String(inv.status || "").trim().toLowerCase();
-  if (status === "archived") throw new Error("MG_PAY:invoice_archived");
-  if (status === "cancelled" || status === "canceled") throw new Error("MG_PAY:invoice_cancelled");
-  if (status === "void") throw new Error("MG_PAY:invoice_void");
-
-  const existing = store.payments.find(
-    (row) => row.tenant_id === tenantId && row.idempotency_key === key
-  );
-  if (existing) {
+  function idempotentResult(pay, inv) {
     return {
       ok: true,
       idempotent: true,
-      payment: { ...existing },
+      payment: { ...pay },
       invoice: {
         id: inv.id,
         paid_amount: inv.paid_amount,
@@ -148,6 +158,51 @@ function simulateRpc(store, args) {
         paid_at: inv.paid_at,
       },
     };
+  }
+
+  const existingEarly = store.payments.find(
+    (row) => row.tenant_id === tenantId && row.idempotency_key === key
+  );
+  if (existingEarly) {
+    const invEarly = store.invoices.find((row) => row.id === invoiceId && row.tenant_id === tenantId);
+    if (!invEarly || !semanticMatch(existingEarly, args, invEarly, amount, type, method)) {
+      throw new Error("MG_PAY:idempotency_key_conflict");
+    }
+    return idempotentResult(existingEarly, invEarly);
+  }
+
+  const inv = store.invoices.find((row) => row.id === invoiceId && row.tenant_id === tenantId);
+  if (!inv) throw new Error("MG_PAY:invoice_not_found");
+
+  const existingLocked = store.payments.find(
+    (row) => row.tenant_id === tenantId && row.idempotency_key === key
+  );
+  if (existingLocked) {
+    if (!semanticMatch(existingLocked, args, inv, amount, type, method)) {
+      throw new Error("MG_PAY:idempotency_key_conflict");
+    }
+    return idempotentResult(existingLocked, inv);
+  }
+
+  const status = String(inv.status || "").trim().toLowerCase();
+  if (status === "archived") throw new Error("MG_PAY:invoice_archived");
+  if (status === "cancelled" || status === "canceled") throw new Error("MG_PAY:invoice_cancelled");
+  if (status === "void") throw new Error("MG_PAY:invoice_void");
+
+  const reqQuote = args.p_quote_id == null || args.p_quote_id === "" ? null : String(args.p_quote_id);
+  const reqProject = args.p_project_id == null || args.p_project_id === "" ? null : String(args.p_project_id);
+  const invQuote = inv.quote_id == null ? null : String(inv.quote_id);
+  const invProject = inv.project_id == null ? null : String(inv.project_id);
+  if (reqQuote && reqQuote !== invQuote) throw new Error("MG_PAY:quote_mismatch");
+  if (reqProject && reqProject !== invProject) throw new Error("MG_PAY:project_mismatch");
+
+  if (invQuote) {
+    const q = store.quotes.find((row) => row.id === invQuote && row.tenant_id === tenantId);
+    if (!q) throw new Error("MG_PAY:invoice_quote_tenant_mismatch");
+  }
+  if (invProject) {
+    const p = store.projects.find((row) => row.id === invProject && row.tenant_id === tenantId);
+    if (!p) throw new Error("MG_PAY:invoice_project_tenant_mismatch");
   }
 
   if (store.failRpc) {
@@ -162,25 +217,56 @@ function simulateRpc(store, args) {
   const remaining = roundDollars(Number(inv.amount || 0) - ledger);
   const epsilon = 0.005;
   if (["deposit", "progress", "final"].includes(type)) {
+    if (status === "paid") throw new Error("MG_PAY:invoice_already_paid");
     if (remaining <= epsilon) throw new Error("MG_PAY:invoice_already_paid");
     if (amount > remaining + epsilon) throw new Error("MG_PAY:payment_exceeds_remaining_balance");
   }
 
-  const payment = {
-    id: "pay-" + String(store.payments.length + 1).padStart(3, "0"),
-    tenant_id: tenantId,
-    invoice_id: invoiceId,
-    quote_id: args.p_quote_id || inv.quote_id || null,
-    project_id: args.p_project_id || null,
-    payment_type: type,
-    payment_method: method,
-    amount,
-    paid_at: args.p_paid_at || new Date().toISOString(),
-    notes: args.p_notes || "",
-    created_by: args.p_created_by || null,
-    idempotency_key: key,
+  if (store.unrelatedUniqueViolation) {
+    const err = new Error("Supabase HTTP 409: 23505 duplicate key");
+    err.status = 409;
+    throw err;
+  }
+
+  const tryInsert = () => {
+    if (
+      store.payments.some((row) => row.tenant_id === tenantId && row.idempotency_key === key)
+    ) {
+      const err = new Error("duplicate key");
+      err.code = "23505";
+      throw err;
+    }
+    const payment = {
+      id: "pay-" + String(store.payments.length + 1).padStart(3, "0"),
+      tenant_id: tenantId,
+      invoice_id: invoiceId,
+      quote_id: inv.quote_id || null,
+      project_id: inv.project_id || null,
+      payment_type: type,
+      payment_method: method,
+      amount,
+      paid_at: args.p_paid_at || new Date().toISOString(),
+      notes: args.p_notes || "",
+      created_by: args.p_created_by || null,
+      idempotency_key: key,
+    };
+    store.payments.push(payment);
+    return payment;
   };
-  store.payments.push(payment);
+
+  let payment;
+  try {
+    payment = tryInsert();
+  } catch (insertErr) {
+    const found = store.payments.find(
+      (row) => row.tenant_id === tenantId && row.idempotency_key === key
+    );
+    if (!found) throw insertErr;
+    if (!semanticMatch(found, args, inv, amount, type, method)) {
+      throw new Error("MG_PAY:idempotency_key_conflict");
+    }
+    return idempotentResult(found, inv);
+  }
 
   const newPaid = roundDollars(
     store.payments
@@ -243,6 +329,7 @@ function createStore(seed = {}) {
     quotes: seed.quotes ? seed.quotes.map((r) => ({ ...r })) : [],
     failRpc: false,
     denyRpc: false,
+    unrelatedUniqueViolation: false,
     rpcCalls: [],
     restPosts: [],
     restPatches: [],
@@ -356,6 +443,12 @@ async function main() {
   assert("0n. paid status is production-valid paid", /status = 'paid'/.test(applyLive));
   assert("0o. migration does not touch historical rows", !/\bUPDATE\s+public\.tenant_project_payments\b/i.test(applyLive) && !/\bDELETE\s+FROM\s+public\.tenant_project_payments\b/i.test(applyLive));
   assert("0p. does not drop invoices_tenant_quote_unique", !/invoices_tenant_quote_unique/.test(applyLive));
+  assert("0q. INSERT uses invoice quote/project not browser coalesce", /v_inv\.quote_id/.test(applyLive) && /v_inv\.project_id/.test(applyLive) && !/coalesce\(p_quote_id, v_inv\.quote_id\)/.test(applyLive) && !/p_project_id,\s*\n\s*v_type/.test(applySrc));
+  assert("0r. idempotency key is semantically bound", /idempotency_key_conflict/.test(applyLive) && /payment_type IS NOT DISTINCT FROM v_type/.test(applyLive));
+  assert("0s. unique_violation re-raises when no key row", /IF NOT FOUND THEN\s+RAISE;/.test(applyLive));
+  assert("0t. timestamptz now() not timezone utc assignment", /v_now timestamptz := now\(\);/.test(applyLive) && !/timezone\('utc', now\(\)\)/.test(applyLive));
+  assert("0u. UUID idempotency validation", /invalid_idempotency_key/.test(applyLive) && /::uuid/.test(applyLive));
+  assert("0v. paid status fail-closed for normal payments", /v_status = 'paid'/.test(applyLive) && /invoice_already_paid/.test(applyLive));
 
   const one = parseInvoiceHubPaymentAmount(1, "deposit");
   const hundred = parseInvoiceHubPaymentAmount(100, "progress");
@@ -691,6 +784,375 @@ async function main() {
 
   const rpcAmount = String(paySrc.match(/p_amount:\s*amount/) || "");
   assert("40. RPC receives already-normalized dollars", rpcAmount.includes("p_amount: amount") && !/p_amount:\s*amount\s*\*\s*100/.test(paySrc));
+  assert("41. Netlify maps idempotency_key_conflict to 409", /idempotency_key_conflict:\s*409/.test(paySrc));
+  assert("42. Netlify maps project/quote mismatch to 422", /project_mismatch:\s*422/.test(paySrc) && /quote_mismatch:\s*422/.test(paySrc));
+  assert("43. Netlify maps invoice relationship mismatch fail-closed", /invoice_project_tenant_mismatch:\s*422/.test(paySrc) && /invoice_quote_tenant_mismatch:\s*422/.test(paySrc));
+
+  {
+    const api = createStore({ invoices: [openInvoice(INV_A, TENANT_A, 500)] });
+    const handler = handlerFor(api, TENANT_A);
+    const key = newKey();
+    const payload = {
+      invoice_id: INV_A,
+      payment_type: "progress",
+      payment_method: "check",
+      amount: 40,
+      idempotency_key: key,
+    };
+    const r1 = await handler(eventWith(cookieA, payload));
+    const r2 = await handler(eventWith(cookieA, payload));
+    assert(
+      "007B.1-1 same key + same semantic payment is idempotent",
+      r1.statusCode === 200 && r2.statusCode === 200 && parse(r2).idempotent === true && api.store.payments.length === 1
+    );
+  }
+
+  {
+    const api = createStore({
+      invoices: [openInvoice(INV_A, TENANT_A, 500), openInvoice(INV_A2, TENANT_A, 500)],
+    });
+    const handler = handlerFor(api, TENANT_A);
+    const key = newKey();
+    await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        payment_type: "progress",
+        payment_method: "check",
+        amount: 10,
+        idempotency_key: key,
+      })
+    );
+    const conflict = await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A2,
+        payment_type: "progress",
+        payment_method: "check",
+        amount: 10,
+        idempotency_key: key,
+      })
+    );
+    assert(
+      "007B.1-2 same key + different invoice is 409 conflict",
+      conflict.statusCode === 409 && parse(conflict).error === "idempotency_key_conflict" && api.store.payments.length === 1
+    );
+  }
+
+  {
+    const api = createStore({ invoices: [openInvoice(INV_A, TENANT_A, 500)] });
+    const handler = handlerFor(api, TENANT_A);
+    const key = newKey();
+    await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        payment_type: "progress",
+        payment_method: "check",
+        amount: 10,
+        idempotency_key: key,
+      })
+    );
+    const conflict = await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        payment_type: "progress",
+        payment_method: "check",
+        amount: 11,
+        idempotency_key: key,
+      })
+    );
+    assert(
+      "007B.1-3 same key + different amount is 409 conflict",
+      conflict.statusCode === 409 && parse(conflict).error === "idempotency_key_conflict" && Number(api.store.invoices[0].paid_amount) === 10
+    );
+  }
+
+  {
+    const api = createStore({ invoices: [openInvoice(INV_A, TENANT_A, 500)] });
+    const handler = handlerFor(api, TENANT_A);
+    const key = newKey();
+    await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        payment_type: "progress",
+        payment_method: "check",
+        amount: 10,
+        idempotency_key: key,
+      })
+    );
+    const typeConflict = await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        payment_type: "deposit",
+        payment_method: "check",
+        amount: 10,
+        idempotency_key: key,
+      })
+    );
+    const methodConflict = await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        payment_type: "progress",
+        payment_method: "cash",
+        amount: 10,
+        idempotency_key: key,
+      })
+    );
+    assert("007B.1-4 same key + different payment_type conflicts", typeConflict.statusCode === 409);
+    assert("007B.1-5 same key + different payment_method conflicts", methodConflict.statusCode === 409 && api.store.payments.length === 1);
+  }
+
+  {
+    const api = createStore({
+      invoices: [openInvoice(INV_A, TENANT_A, 500, { project_id: PROJ_A })],
+      projects: [
+        { id: PROJ_A, tenant_id: TENANT_A },
+        { id: PROJ_A2, tenant_id: TENANT_A },
+      ],
+    });
+    const handler = handlerFor(api, TENANT_A);
+    const res = await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        project_id: PROJ_A2,
+        payment_type: "progress",
+        payment_method: "check",
+        amount: 10,
+        idempotency_key: newKey(),
+      })
+    );
+    assert(
+      "007B.1-6 same-tenant browser project_id is rejected",
+      res.statusCode === 422 && parse(res).error === "project_mismatch" && api.store.payments.length === 0
+    );
+  }
+
+  {
+    const api = createStore({
+      invoices: [openInvoice(INV_A, TENANT_A, 500, { quote_id: QUOTE_A })],
+      quotes: [
+        { id: QUOTE_A, tenant_id: TENANT_A },
+        { id: QUOTE_A2, tenant_id: TENANT_A },
+      ],
+    });
+    const handler = handlerFor(api, TENANT_A);
+    const res = await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        quote_id: QUOTE_A2,
+        payment_type: "progress",
+        payment_method: "check",
+        amount: 10,
+        idempotency_key: newKey(),
+      })
+    );
+    assert(
+      "007B.1-7 browser quote_id differing from invoice is rejected",
+      res.statusCode === 422 && parse(res).error === "quote_mismatch" && api.store.payments.length === 0
+    );
+  }
+
+  {
+    const api = createStore({
+      invoices: [openInvoice(INV_A, TENANT_A, 500, { project_id: PROJ_A, quote_id: QUOTE_A })],
+      projects: [{ id: PROJ_A, tenant_id: TENANT_A }],
+      quotes: [{ id: QUOTE_A, tenant_id: TENANT_A }],
+    });
+    const handler = handlerFor(api, TENANT_A);
+    const res = await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        payment_type: "progress",
+        payment_method: "check",
+        amount: 10,
+        idempotency_key: newKey(),
+      })
+    );
+    assert("007B.1-8 INSERT uses invoice.project_id", res.statusCode === 200 && api.store.payments[0].project_id === PROJ_A);
+    assert("007B.1-9 INSERT uses invoice.quote_id", api.store.payments[0].quote_id === QUOTE_A);
+  }
+
+  {
+    const api = createStore({
+      invoices: [openInvoice(INV_A, TENANT_A, 500, { project_id: null, quote_id: null })],
+      projects: [{ id: PROJ_A, tenant_id: TENANT_A }],
+      quotes: [{ id: QUOTE_A, tenant_id: TENANT_A }],
+    });
+    const handler = handlerFor(api, TENANT_A);
+    const proj = await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        project_id: PROJ_A,
+        payment_type: "progress",
+        payment_method: "check",
+        amount: 10,
+        idempotency_key: newKey(),
+      })
+    );
+    const quote = await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        quote_id: QUOTE_A,
+        payment_type: "progress",
+        payment_method: "check",
+        amount: 10,
+        idempotency_key: newKey(),
+      })
+    );
+    assert("007B.1-10 NULL invoice project cannot be attached from browser", proj.statusCode === 422 && parse(proj).error === "project_mismatch");
+    assert("007B.1-11 NULL invoice quote cannot be attached from browser", quote.statusCode === 422 && parse(quote).error === "quote_mismatch" && api.store.payments.length === 0);
+  }
+
+  {
+    const quoteB = "66666666-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const projB = "55555555-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const api = createStore({
+      invoices: [openInvoice(INV_A, TENANT_A, 500, { quote_id: QUOTE_A, project_id: PROJ_A })],
+      quotes: [
+        { id: QUOTE_A, tenant_id: TENANT_A },
+        { id: quoteB, tenant_id: TENANT_B },
+      ],
+      projects: [
+        { id: PROJ_A, tenant_id: TENANT_A },
+        { id: projB, tenant_id: TENANT_B },
+      ],
+    });
+    const handler = handlerFor(api, TENANT_A);
+    const q = await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        quote_id: quoteB,
+        payment_type: "progress",
+        payment_method: "check",
+        amount: 10,
+        idempotency_key: newKey(),
+      })
+    );
+    const p = await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        project_id: projB,
+        payment_type: "progress",
+        payment_method: "check",
+        amount: 10,
+        idempotency_key: newKey(),
+      })
+    );
+    assert("007B.1-12 cross-tenant quote injection rejected", q.statusCode === 422 && parse(q).error === "quote_mismatch");
+    assert("007B.1-13 cross-tenant project injection rejected", p.statusCode === 422 && parse(p).error === "project_mismatch" && api.store.payments.length === 0);
+  }
+
+  {
+    const api = createStore({ invoices: [openInvoice(INV_A, TENANT_A, 80)] });
+    const handler = handlerFor(api, TENANT_A);
+    const bad = await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        payment_type: "progress",
+        payment_method: "check",
+        amount: 10,
+        idempotency_key: "not-a-uuid",
+      })
+    );
+    const longKey = await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        payment_type: "progress",
+        payment_method: "check",
+        amount: 10,
+        idempotency_key: "a".repeat(40),
+      })
+    );
+    assert("007B.1-14 malformed idempotency key rejected", bad.statusCode === 400 && parse(bad).error === "invalid_idempotency_key");
+    assert("007B.1-14b excessively long key rejected", longKey.statusCode === 400 && api.store.payments.length === 0);
+  }
+
+  {
+    const api = createStore({
+      invoices: [openInvoice(INV_A, TENANT_A, 80, { status: "paid", paid_amount: 0, balance_due: 80 })],
+    });
+    const handler = handlerFor(api, TENANT_A);
+    const res = await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        payment_type: "progress",
+        payment_method: "check",
+        amount: 10,
+        idempotency_key: newKey(),
+      })
+    );
+    assert(
+      "007B.1-15 normal payment on status paid rejected even with remaining",
+      res.statusCode === 422 && parse(res).error === "invoice_already_paid" && api.store.payments.length === 0
+    );
+  }
+
+  {
+    const api = createStore({ invoices: [openInvoice(INV_A, TENANT_A, 500)] });
+    const handler = handlerFor(api, TENANT_A);
+    const key = newKey();
+    const payload = {
+      invoice_id: INV_A,
+      payment_type: "progress",
+      payment_method: "check",
+      amount: 10,
+      idempotency_key: key,
+    };
+    const first = await handler(eventWith(cookieA, payload));
+    api.store.invoices[0].status = "archived";
+    const replay = await handler(eventWith(cookieA, payload));
+    assert(
+      "007B.1-16 successful key replay after later lifecycle change is idempotent",
+      first.statusCode === 200 &&
+        replay.statusCode === 200 &&
+        parse(replay).idempotent === true &&
+        api.store.payments.length === 1 &&
+        Number(api.store.invoices[0].paid_amount) === 10
+    );
+  }
+
+  {
+    const api = createStore({ invoices: [openInvoice(INV_A, TENANT_A, 500)] });
+    const handler = handlerFor(api, TENANT_A);
+    const key = newKey();
+    const payload = {
+      invoice_id: INV_A,
+      payment_type: "progress",
+      payment_method: "check",
+      amount: 12,
+      idempotency_key: key,
+    };
+    const [a, b] = await Promise.all([handler(eventWith(cookieA, payload)), handler(eventWith(cookieA, payload))]);
+    assert(
+      "007B.1-17 concurrent duplicate semantic request writes one ledger row",
+      a.statusCode === 200 && b.statusCode === 200 && api.store.payments.length === 1 && Number(api.store.invoices[0].paid_amount) === 12
+    );
+  }
+
+  {
+    const api = createStore({ invoices: [openInvoice(INV_A, TENANT_A, 80)] });
+    api.store.unrelatedUniqueViolation = true;
+    const handler = handlerFor(api, TENANT_A);
+    const res = await handler(
+      eventWith(cookieA, {
+        invoice_id: INV_A,
+        payment_type: "progress",
+        payment_method: "check",
+        amount: 10,
+        idempotency_key: newKey(),
+      })
+    );
+    const body = parse(res);
+    assert(
+      "007B.1-18 unrelated unique violation is not converted to ok:true",
+      res.statusCode !== 200 && body.ok !== true && api.store.payments.length === 0
+    );
+  }
+
+  assert("007B.1-19 $1.00 still stores 1.00", parseInvoiceHubPaymentAmount(1, "deposit").amount === 1);
+  assert("007B.1-20 $100.00 still stores 100.00", parseInvoiceHubPaymentAmount(100, "final").amount === 100);
+  assert("007B.1-21 $12954.14 still stores 12954.14", parseInvoiceHubPaymentAmount(12954.14, "progress").amount === 12954.14);
+  assert("007B.1-22 no amount ×100 path introduced", !/\*\s*100/.test(applyLive) && !/p_amount:\s*amount\s*\*\s*100/.test(paySrc));
+  assert("007B.1-23 atomicity preserved", /FOR UPDATE/.test(applyLive) && /rpc\/record_tenant_invoice_payment/.test(paySrc) && !/syncInvoiceRollupFromLedger/.test(paySrc));
+  assert("007B.1-24 service_role only RPC preserved", /GRANT EXECUTE[\s\S]*TO service_role/.test(applyLive) && /FROM anon/.test(applyLive) && /FROM authenticated/.test(applyLive) && /FROM PUBLIC/.test(applyLive));
 
   if (failed) {
     console.log("\nFAILED " + failed + "  passed " + passed);
