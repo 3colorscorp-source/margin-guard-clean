@@ -55,16 +55,24 @@ function parsePublishPricingInput(body) {
   return { workers, price, _manualPriceTouched, _sliderTouched, pricing_stage };
 }
 
+function resolveHoursPerDayForLabor(tenantSettings) {
+  const n = Number(tenantSettings && tenantSettings.hoursPerDay);
+  if (Number.isFinite(n) && n >= 1) return n;
+  return 8;
+}
+
 /** Convert hours-only lines to fractional days so pricing-engine (days-based) stays correct. */
 function normalizeWorkersLaborDays(workers, tenantSettings) {
   const list = Array.isArray(workers) ? workers : [];
-  const hpd = Math.max(Number(tenantSettings?.hoursPerDay || 8), 0.25);
+  const hpd = resolveHoursPerDayForLabor(tenantSettings);
   return list.map((w) => {
     const obj = w && typeof w === "object" ? w : {};
-    const d = Math.max(0, Number(obj.days || 0));
-    const h = Math.max(0, Number(obj.hours || 0));
+    const dRaw = Number(obj.days);
+    const hRaw = Number(obj.hours);
+    const d = Number.isFinite(dRaw) && dRaw > 0 ? dRaw : 0;
+    const h = Number.isFinite(hRaw) && hRaw > 0 ? hRaw : 0;
     const effectiveDays = d > 0 ? d : h > 0 ? h / hpd : 0;
-    return { ...obj, days: effectiveDays };
+    return { ...obj, days: Number.isFinite(effectiveDays) ? effectiveDays : 0 };
   });
 }
 
@@ -189,4 +197,10 @@ exports.handler = async (event) => {
     }
     return json(500, { error: err.message || "Unable to calculate secure pricing" });
   }
+};
+
+exports._test = {
+  normalizeWorkersLaborDays,
+  resolveHoursPerDayForLabor,
+  validateWorkersForPricing,
 };
