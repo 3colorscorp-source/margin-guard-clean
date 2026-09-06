@@ -2,6 +2,12 @@ const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
 const { bridgeAcceptedQuoteToProject, UUID_RE } = require("./_lib/quote-accept-bridge");
+const {
+  assertQuoteScheduleAvailable,
+  revertQuoteAcceptance,
+  scheduleConflictPayload,
+  isScheduleConflictError,
+} = require("./_lib/schedule-accept-guard");
 
 function json(statusCode, body) {
   return {
@@ -135,7 +141,16 @@ exports.handler = async (event) => {
     const nowIso = new Date().toISOString();
 
     if (action === "accept") {
-      if (!quoteIsAccepted(quote)) {
+      const already = quoteIsAccepted(quote);
+      if (!already) {
+        try {
+          await assertQuoteScheduleAvailable(quote);
+        } catch (err) {
+          if (isScheduleConflictError(err)) {
+            return json(409, scheduleConflictPayload());
+          }
+          throw err;
+        }
         await supabaseRequest(`quotes?id=eq.${qidEnc}&tenant_id=eq.${tidEnc}`, {
           method: "PATCH",
           body: {
@@ -146,7 +161,21 @@ exports.handler = async (event) => {
         });
       }
       const refreshed = (await fetchQuoteForTenant(tenantId, quoteId)) || quote;
-      await bridgeAcceptedQuoteToProject(refreshed);
+      try {
+        await bridgeAcceptedQuoteToProject(refreshed);
+      } catch (err) {
+        if (isScheduleConflictError(err)) {
+          if (!already) {
+            try {
+              await revertQuoteAcceptance(quote, quote.status);
+            } catch (_revertErr) {
+              /* keep 409 */
+            }
+          }
+          return json(409, scheduleConflictPayload());
+        }
+        throw err;
+      }
       return json(200, { ok: true, action: "accept" });
     }
 

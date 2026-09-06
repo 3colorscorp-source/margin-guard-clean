@@ -11208,37 +11208,17 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const btnMarkSold = document.getElementById("btnMarkSold");
     if (btnMarkSold) {
       btnMarkSold.onclick = () => {
-        persistSalesDraft("signed");
-        const currentMetrics = resolveVisibleSendQuoteMetrics(
-          state,
-          settings,
-          calculateSalesMetrics(state, settings)
-        );
-        const soldPriceGuard = evaluateSendQuotePriceGuard(currentMetrics, {
-          formatCurrency: (value) => money(value, settings?.currency)
-        });
-        if (!soldPriceGuard.ok) {
-          window.alert(soldPriceGuard.message);
+        const publicUrl = String(state.publicQuoteUrl || "").trim();
+        if (!publicUrl) {
+          window.alert("Create a public quote link before using Firmar.");
           return;
         }
-        if (!state.projectName || !state.clientName || !(state.startDate || state.dueDate) || currentMetrics.workerDays <= 0) {
-          window.alert("Complete project, customer, start date, and labor details before signing the estimate.");
-          return;
+        const opened = window.open(publicUrl, "_blank", "noopener");
+        if (!opened) {
+          window.alert(
+            "Allow pop-ups, then open the public estimate so the client can complete signing. Opening it does not reserve the schedule."
+          );
         }
-        const cap = window.MarginGuardSalesCapacity;
-        const startDate = normalizeDateInput(state.startDate || state.dueDate || "");
-        const cached = window.__mgSalesCapacityCalendar;
-        if (cap && cached && cap.isStartBlocked(cached, startDate)) {
-          const suffix = cap.ADVISORY_SUFFIX_SOLD || " You may still mark this project sold.";
-          if (typeof cap.showCapacityWarning === "function") {
-            cap.showCapacityWarning(cap.blockedStartMessage(cached) + suffix);
-          }
-        }
-        const project = buildSignedProjectFromSales(state, settings, currentMetrics);
-        saveActiveProject(project);
-        upsertSignedProject(project);
-        setLatestReport(ensureSupervisorReport(project));
-        renderSales();
       };
     }
 

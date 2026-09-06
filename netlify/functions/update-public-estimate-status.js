@@ -5,7 +5,14 @@ if (!fetch) {
 const crypto = require("crypto");
 
 const { getSupabaseConfig } = require("./_lib/supabase-admin");
-const { bridgeAcceptedQuoteToProject } = require("./_lib/quote-accept-bridge");
+const { bridgeAcceptedQuoteToProject, applyOperationalSnapshotForProject } = require("./_lib/quote-accept-bridge");
+const {
+  assertQuoteScheduleAvailable,
+  tryAtomicAcceptQuoteReservingSchedule,
+  revertQuoteAcceptance,
+  scheduleConflictPayload,
+  isScheduleConflictError,
+} = require("./_lib/schedule-accept-guard");
 
 function json(statusCode, body) {
   return {
@@ -180,6 +187,9 @@ exports.handler = async (event) => {
       try {
         await bridgeAcceptedQuoteToProject(existingRow);
       } catch (bridgeErr) {
+        if (isScheduleConflictError(bridgeErr)) {
+          return json(409, scheduleConflictPayload());
+        }
         console.error("[accept-bridge] tenant_projects bridge failed", bridgeErr?.message || bridgeErr);
       }
       return json(200, {
@@ -191,7 +201,65 @@ exports.handler = async (event) => {
     }
 
     const nowIso = new Date().toISOString();
+    let skipQuotePatch = false;
+    let row = existingRow;
 
+    if (status === "accepted") {
+      let proposed = null;
+      try {
+        const checked = await assertQuoteScheduleAvailable(existingRow);
+        proposed = checked.proposed || null;
+      } catch (err) {
+        if (isScheduleConflictError(err)) {
+          return json(409, scheduleConflictPayload());
+        }
+        throw err;
+      }
+
+      const atomic = await tryAtomicAcceptQuoteReservingSchedule(
+        { ...existingRow, accepted_at: nowIso },
+        proposed
+      );
+      if (atomic && atomic.code === "schedule_conflict") {
+        return json(409, scheduleConflictPayload());
+      }
+      if (atomic && atomic.ok && atomic.project_id) {
+        skipQuotePatch = true;
+        try {
+          const refreshed = await fetchQuoteByPublicToken(supabaseUrl, serviceRoleKey, trimmed);
+          if (refreshed) row = refreshed;
+          else {
+            row = {
+              ...existingRow,
+              status: "accepted",
+              accepted_at: existingRow.accepted_at || nowIso,
+              updated_at: nowIso
+            };
+          }
+        } catch (_refreshErr) {
+          row = {
+            ...existingRow,
+            status: "accepted",
+            accepted_at: existingRow.accepted_at || nowIso,
+            updated_at: nowIso
+          };
+        }
+        try {
+          if (String(atomic.action || "") === "create") {
+            await applyOperationalSnapshotForProject(row, atomic.project_id);
+          } else {
+            await bridgeAcceptedQuoteToProject(row);
+          }
+        } catch (bridgeErr) {
+          if (isScheduleConflictError(bridgeErr)) {
+            return json(409, scheduleConflictPayload());
+          }
+          console.error("[accept-bridge] tenant_projects bridge failed", bridgeErr?.message || bridgeErr);
+        }
+      }
+    }
+
+    if (!skipQuotePatch) {
     const patch = {
       status,
       updated_at: nowIso
@@ -230,7 +298,8 @@ exports.handler = async (event) => {
       rows = [];
     }
 
-    const row = Array.isArray(rows) ? rows[0] : null;
+    row = Array.isArray(rows) ? rows[0] : null;
+    }
 
     const rowAccepted =
       row &&
@@ -249,10 +318,20 @@ exports.handler = async (event) => {
         !!(row && row.tenant_id != null && String(row.tenant_id).trim() !== "")
       );
 
-      try {
-        await bridgeAcceptedQuoteToProject(row);
-      } catch (bridgeErr) {
-        console.error("[accept-bridge] tenant_projects bridge failed", bridgeErr?.message || bridgeErr);
+      if (!skipQuotePatch) {
+        try {
+          await bridgeAcceptedQuoteToProject(row);
+        } catch (bridgeErr) {
+          if (isScheduleConflictError(bridgeErr)) {
+            try {
+              await revertQuoteAcceptance(existingRow, existingRow.status);
+            } catch (_revertErr) {
+              /* still return conflict; quote may need manual heal */
+            }
+            return json(409, scheduleConflictPayload());
+          }
+          console.error("[accept-bridge] tenant_projects bridge failed", bridgeErr?.message || bridgeErr);
+        }
       }
 
       const acceptedWebhookUrl = String(process.env.ZAPIER_ESTIMATE_ACCEPTED_WEBHOOK_URL || "").trim();

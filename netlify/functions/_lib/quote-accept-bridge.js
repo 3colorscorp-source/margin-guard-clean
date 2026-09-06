@@ -26,6 +26,10 @@ const {
   quotedLaborPlanRowsFromOperationalPlan,
 } = require("./operational-plan");
 const { persistOperationalSnapshot } = require("./persist-operational-snapshot");
+const {
+  assertQuoteScheduleAvailable,
+  isScheduleConflictError,
+} = require("./schedule-accept-guard");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -323,6 +327,7 @@ async function bridgeAcceptedQuoteToProject(quoteRow) {
       }
       // CH-009-P2C — do not re-sync labor/snapshot on existing projects.
     } else {
+      await assertQuoteScheduleAvailable(quoteRow);
       const laborContext = await resolveLaborContextForQuote(quoteRow);
       const hoursPerDay = Number(laborContext.settings?.hoursPerDay) || 8;
       const opResolved = await resolveOperationalPlanForQuote(
@@ -434,6 +439,7 @@ async function bridgeAcceptedQuoteToProject(quoteRow) {
       }
     }
   } catch (tpErr) {
+    if (isScheduleConflictError(tpErr)) throw tpErr;
     console.error("[accept-bridge] tenant_projects step failed", tpErr);
   }
 
@@ -518,4 +524,5 @@ module.exports = {
   UUID_RE,
   resolveLaborContextForQuote,
   buildLaborSnapshotFields,
+  applyOperationalSnapshotForProject,
 };

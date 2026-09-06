@@ -817,6 +817,14 @@
 
     const data = await response.json().catch(() => ({}));
 
+    if (response.status === 409 || data?.code === "schedule_conflict") {
+      throw new Error(
+        data?.error_es ||
+          data?.error ||
+          "Las fechas propuestas ya no están disponibles. La compañía se comunicará para reprogramar."
+      );
+    }
+
     if (!response.ok || !data?.ok) {
       throw new Error(data?.error || "No se pudo actualizar el estimate.");
     }
