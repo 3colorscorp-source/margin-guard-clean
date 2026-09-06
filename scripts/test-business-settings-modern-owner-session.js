@@ -323,15 +323,22 @@ async function main() {
     const postLink = await handlers.deposit.handler(
       eventFor(modern, {
         method: "POST",
-        body: { deposit_payment_link: SQUARE_LINK },
+        body: {
+          deposit_payment_link: SQUARE_LINK,
+          payment_link: null,
+          payment_instructions: "Pay by Square checkout or Zelle to the number on file.",
+        },
       })
     );
-    eq("modern session can save deposit_payment_link", postLink.statusCode, 200);
-    eq("Square HTTPS persisted", parse(postLink).deposit_payment_link, SQUARE_LINK);
+    eq("modern session POST with payment_link null is 200", postLink.statusCode, 200);
+    eq("Square HTTPS persisted with empty invoice payment_link", parse(postLink).deposit_payment_link, SQUARE_LINK);
+    ok("empty public payment_link stored as null", parse(postLink).payment_link == null || parse(postLink).payment_link === "");
+    ok("payment_instructions saved", String(parse(postLink).payment_instructions || "").includes("Zelle"));
 
     const getLink = await handlers.deposit.handler(eventFor(modern, { method: "GET" }));
-    eq("modern session can reread deposit_payment_link", getLink.statusCode, 200);
+    eq("GET after null payment_link is 200", getLink.statusCode, 200);
     eq("Square HTTPS survives reload GET", parse(getLink).deposit_payment_link, SQUARE_LINK);
+    ok("public Payment Link remains empty after reload", parse(getLink).payment_link == null || parse(getLink).payment_link === "");
 
     const syncRes = await handlers.stripeSync.handler(eventFor(modern, { method: "GET" }));
     eq("Stripe status is not Unauthorized", syncRes.statusCode, 200);

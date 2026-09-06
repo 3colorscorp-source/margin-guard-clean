@@ -169,8 +169,25 @@ async function main() {
   ok("syntax owner-settings-deposit-link.js", true);
   ok("syntax get-public-estimate.js", true);
 
-  const { normalizeDepositPaymentLink } = loadDepositLinkModule()._test;
+  const { normalizeDepositPaymentLink, normalizePublicPaymentLink } = loadDepositLinkModule()._test;
   ok("exports._test.normalizeDepositPaymentLink", typeof normalizeDepositPaymentLink === "function");
+  ok("exports._test.normalizePublicPaymentLink", typeof normalizePublicPaymentLink === "function");
+
+  eq("public payment_link null → { value: null }", normalizePublicPaymentLink(null).value, null);
+  eq("public payment_link empty → { value: null }", normalizePublicPaymentLink("").value, null);
+  eq("public payment_link whitespace → { value: null }", normalizePublicPaymentLink("   ").value, null);
+  ok("public payment_link null does not throw on .error", normalizePublicPaymentLink(null).error === undefined);
+  eq(
+    "public payment_link still accepts http",
+    normalizePublicPaymentLink("http://pay.example.com/invoice").value,
+    "http://pay.example.com/invoice"
+  );
+  eq(
+    "public payment_link still accepts https",
+    normalizePublicPaymentLink("https://pay.example.com/invoice").value,
+    "https://pay.example.com/invoice"
+  );
+  ok("public payment_link still rejects javascript:", !!normalizePublicPaymentLink("javascript:alert(1)").error);
 
   eq("accepts Square HTTPS", normalizeDepositPaymentLink("https://square.link/u/abc").value, "https://square.link/u/abc");
   eq("accepts PayPal HTTPS", normalizeDepositPaymentLink("https://paypal.me/tenantco").value, "https://paypal.me/tenantco");

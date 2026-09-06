@@ -38,7 +38,7 @@ function normalizePaymentInstructions(raw) {
 }
 
 function normalizePublicPaymentLink(raw) {
-  if (raw == null || String(raw).trim() === "") return null;
+  if (raw == null || String(raw).trim() === "") return { value: null };
   const u = String(raw).trim().slice(0, 2000);
   let parsed;
   try {
@@ -168,5 +168,6 @@ exports.handler = async (event) => {
 
 exports._test = {
   normalizeDepositPaymentLink,
+  normalizePublicPaymentLink,
   DEPOSIT_PAYMENT_LINK_MAX_CHARS,
 };
