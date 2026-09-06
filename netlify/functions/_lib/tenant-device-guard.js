@@ -6,7 +6,7 @@
 
 const { readSessionFromEvent } = require("./session");
 const { resolveTenantFromSession } = require("./tenant-for-session");
-const { planIsActive } = require("./owner-access");
+const { hasOwnerSessionIdentity, planIsActive } = require("./owner-access");
 const { supabaseRequest } = require("./supabase-admin");
 const { hashSessionToken, readDeviceSessionFromEvent } = require("./device-session");
 const {
@@ -225,7 +225,7 @@ async function requireSellerDevice(event) {
  */
 async function resolveOwnerOrSellerContext(event) {
   const session = readSessionFromEvent(event);
-  if (session?.e && session?.c) {
+  if (hasOwnerSessionIdentity(session)) {
     const tenant = await resolveTenantFromSession(session);
     if (tenant?.id) {
       return {
