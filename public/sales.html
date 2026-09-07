@@ -7027,6 +7027,16 @@
       function sellerRightPanelTextUsesMXN(text) {
         return /MX\$|MXN|pesos?\s*mex/i.test(String(text || ''));
       }
+      function isSellerPriceBelowRecommendation(metrics) {
+        const offered = Number(metrics && metrics.offered);
+        const recommended = Number(metrics && metrics.recommended);
+        return (
+          Number.isFinite(offered) &&
+          Number.isFinite(recommended) &&
+          recommended > 0 &&
+          offered + 0.005 < recommended
+        );
+      }
 
       function applySellerRightPanelMoneyFromMetrics(metrics, state, settings) {
         if (!metrics || !state || !settings) return;
@@ -7043,6 +7053,7 @@
               ? 'amber'
               : 'red';
         const toneLabel = tone === 'green' ? 'Healthy' : tone === 'amber' ? 'Needs Review' : 'At Risk';
+        const belowRecommendation = isSellerPriceBelowRecommendation(metrics);
 
         setText('salesPrimaryPrice', sellerMoney(metrics.recommended, settings, state));
         const priceDisplay = document.getElementById('salesPriceDisplay');
@@ -7119,8 +7130,10 @@
               ' to ' +
               sellerMoney(metrics.recommended, settings, state) +
               '.',
-            metrics.needsApproval
+            belowRecommendation
               ? 'Si el precio esta bajo la recomendacion, avanza con responsabilidad y confirma con el dueno antes de firmar.'
+              : metrics.needsApproval
+                ? 'El precio coincide con la recomendacion; el margen interno aun requiere revision del dueno.'
               : 'Estimate can be sent directly to the customer.',
           ];
           negotiationList.innerHTML = guidance
@@ -8125,6 +8138,7 @@
         const isReady = metrics.workerDays > 0 && metrics.recommended > 0;
         const tone = !isReady ? 'amber' : offered >= metrics.recommended ? 'green' : offered >= metrics.minimum ? 'amber' : 'red';
         const toneLabel = tone === 'green' ? 'Healthy' : tone === 'amber' ? 'Needs Review' : 'At Risk';
+        const belowRecommendation = isSellerPriceBelowRecommendation(metrics);
         const customerLabel = (state.clientName && String(state.clientName).trim()) ? String(state.clientName).trim() : 'Pending';
         setText('salesTraffic', toneLabel);
         setText('salesHeroState', tone === 'green' ? 'Green' : tone === 'amber' ? 'Amber' : 'Red');
@@ -8141,18 +8155,18 @@
           setText('salesPrimaryMeta', pricingPendingMessage);
         }
         setText('salesPrimaryCommission', `${metrics.commissionRate.toFixed(2)}%`);
-        setText('salesFlowHeadline', metrics.workerDays <= 0 ? 'Completar datos' : metrics.needsApproval ? 'Bajo recomendado' : 'Listo para enviar');
+        setText('salesFlowHeadline', metrics.workerDays <= 0 ? 'Completar datos' : belowRecommendation ? 'Bajo recomendado' : 'Listo para enviar');
         setText(
           'salesFlowCaption',
           metrics.workerDays <= 0
             ? 'Primero define la mano de obra.'
-            : metrics.needsApproval
+            : belowRecommendation
               ? 'Si el precio queda bajo la recomendacion, puedes seguir: hazlo con criterio y alinea al dueno.'
               : 'El precio esta en un rango saludable para este estimate.'
         );
         setText(
           'salesPricingGuidance',
-          metrics.needsApproval
+          belowRecommendation
             ? 'Precio bajo la recomendacion: no hay bloqueo; avanza con responsabilidad comercial.'
             : 'Precio alineado con el rango recomendado o superior.'
         );
