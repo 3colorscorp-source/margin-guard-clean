@@ -13,6 +13,11 @@ const {
   isMissingScopeOfWorkColumn,
   resolveScopeOfWorkWriteFromBody,
 } = require("./_lib/contract-scope");
+const voiceOperationalPlan = require("./_lib/voice-operational-plan");
+const {
+  isMissingInternalPlanStorage,
+  persistPublishedInternalPlan,
+} = require("./_lib/quote-internal-operational-plan-store");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -125,10 +130,7 @@ function pickFiniteNumber(body, keys) {
 }
 
 function parseOperationalPublishFields(body, tenantSettings) {
-  const hpd = Math.max(
-    Number(body.hours_per_day ?? tenantSettings.hoursPerDay ?? 8) || 8,
-    0.25
-  );
+  const hpd = resolveHoursPerDayForLabor(tenantSettings);
   const daysOvRaw = pickFiniteNumber(body, [
     "operational_estimated_days_override",
     "estimated_days_override",
@@ -146,7 +148,6 @@ function parseOperationalPublishFields(body, tenantSettings) {
     hpd
   );
 
-  // CH-012F — schedule dates persist independently of operational plan days.
   const startDate = normIsoDate(body.start_date ?? body.startDate);
   const dueDate = normIsoDate(
     body.due_date ?? body.target_finish_date ?? body.targetFinishDate ?? body.dueDate
@@ -155,25 +156,81 @@ function parseOperationalPublishFields(body, tenantSettings) {
   if (startDate) scheduleFields.start_date = startDate;
   if (dueDate) scheduleFields.due_date = dueDate;
 
-  if (!planHasDays(opNormalized)) {
+  const internalRaw =
+    body.internal_operational_plan ?? body.internalOperationalPlan ?? null;
+  let internalDocument = null;
+  if (internalRaw != null && internalRaw !== "") {
+    if (typeof internalRaw !== "object" || Array.isArray(internalRaw)) {
+      return {
+        include: false,
+        fields: {},
+        internalDocument: null,
+        errors: [
+          {
+            code: "document_not_object",
+            message: "Operational plan document must be a JSON object.",
+          },
+        ],
+      };
+    }
+    const stripped = voiceOperationalPlan.stripRateFields(internalRaw);
+    const validated = voiceOperationalPlan.validateIncomingDocument(stripped);
+    if (!validated.ok) {
+      return {
+        include: false,
+        fields: {},
+        internalDocument: null,
+        errors: validated.errors,
+      };
+    }
+    internalDocument = voiceOperationalPlan.normalizeDocument(stripped, {
+      startDate: startDate || stripped.start_date,
+      settings: tenantSettings,
+      hoursPerDay: hpd,
+    });
+  }
+
+  const derivedFromInternal = internalDocument
+    ? {
+        operational_plan: voiceOperationalPlan.deriveLegacyOperationalPlan(internalDocument),
+        estimated_days: internalDocument.estimated_days,
+        estimated_hours: internalDocument.estimated_hours,
+        ...(internalDocument.start_date ? { start_date: internalDocument.start_date } : {}),
+        ...(internalDocument.due_date ? { due_date: internalDocument.due_date } : {}),
+      }
+    : null;
+
+  if (!planHasDays(opNormalized) && !derivedFromInternal) {
     return {
       include: Object.keys(scheduleFields).length > 0,
       fields: scheduleFields,
+      internalDocument: null,
     };
   }
 
-  const metrics = computeOperationalPlanMetrics(opNormalized, daysOv, hoursOv, hpd);
+  const metrics = planHasDays(opNormalized)
+    ? computeOperationalPlanMetrics(opNormalized, daysOv, hoursOv, hpd)
+    : { estimated_days: 0, estimated_hours: 0 };
 
   const fields = {
-    operational_plan: opNormalized,
-    estimated_days: metrics.estimated_days,
-    estimated_hours: metrics.estimated_hours,
+    ...(planHasDays(opNormalized)
+      ? {
+          operational_plan: opNormalized,
+          estimated_days: metrics.estimated_days,
+          estimated_hours: metrics.estimated_hours,
+        }
+      : {}),
     ...scheduleFields,
+    ...(derivedFromInternal || {}),
   };
-  if (daysOv != null) fields.operational_estimated_days_override = daysOv;
-  if (hoursOv != null) fields.operational_estimated_hours_override = hoursOv;
+  if (daysOv != null && !derivedFromInternal) fields.operational_estimated_days_override = daysOv;
+  if (hoursOv != null && !derivedFromInternal) fields.operational_estimated_hours_override = hoursOv;
 
-  return { include: true, fields };
+  return { include: true, fields, internalDocument };
+}
+
+function isMissingInternalPlanTable(text) {
+  return isMissingInternalPlanStorage(text);
 }
 
 function isMissingOperationalQuoteColumns(text) {
@@ -750,6 +807,16 @@ exports.handler = async (event) => {
       tenantDisplay.business_address
     );
 
+    const opPublish = parseOperationalPublishFields(body, tenantSettings);
+    if (Array.isArray(opPublish.errors) && opPublish.errors.length) {
+      return json(400, {
+        ok: false,
+        error: opPublish.errors[0].message,
+        code: "document_invalid",
+        errors: opPublish.errors,
+      });
+    }
+
     let quoteNumberAlloc;
     try {
       quoteNumberAlloc = await allocateNextQuoteNumberForTenant(tenant.id);
@@ -777,7 +844,6 @@ exports.handler = async (event) => {
       balance_after_deposit: canonical.balance_after_deposit
     };
 
-    const opPublish = parseOperationalPublishFields(body, tenantSettings);
     const quoteDates = resolvePublishQuoteDates(body, tenantSettings);
 
     const resolvedContactId = await resolveQuoteContactId(body, tenant.id);
@@ -932,6 +998,31 @@ exports.handler = async (event) => {
       });
     }
 
+    if (opPublish.internalDocument && quoteId) {
+      const internalPersist = await persistPublishedInternalPlan(supabaseRequest, {
+        tenantId: tenant.id,
+        quoteId,
+        document: opPublish.internalDocument,
+        membershipId: String((ctx.membership && ctx.membership.id) || "").trim() || null,
+        quotePatch: opPublish.fields,
+      });
+      if (!internalPersist.ok) {
+        const storageMissing = isMissingInternalPlanStorage(internalPersist.persistError);
+        return json(503, {
+          ok: false,
+          error: storageMissing
+            ? "Internal operational plan storage is not installed. Apply SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS.sql, then retry."
+            : "The operational plan could not be saved, so the quote was not published.",
+          code: storageMissing
+            ? "internal_plan_storage_missing"
+            : "internal_plan_persist_failed",
+          retry_safe: internalPersist.retrySafe,
+          needs_manual_repair: internalPersist.needsManualRepair,
+          quote_id: internalPersist.needsManualRepair ? quoteId : undefined,
+        });
+      }
+    }
+
     const siteUrl =
       process.env.URL ||
       process.env.DEPLOY_PRIME_URL ||
@@ -965,8 +1056,8 @@ exports.handler = async (event) => {
         client_phone: clientPhone,
         project_address: projectAddress
       },
-      payload_used: insertResult.payloadUsed,
-      row
+      payload_used: voiceOperationalPlan.sanitizePublicQuoteRow(insertResult.payloadUsed),
+      row: voiceOperationalPlan.sanitizePublicQuoteRow(row)
     });
   } catch (err) {
     if (err.isGuardError) {
@@ -990,4 +1081,7 @@ exports._test = {
   normalizeWorkersLaborDays,
   resolveHoursPerDayForLabor,
   validateWorkersForPricing,
+  parseOperationalPublishFields,
+  isMissingInternalPlanTable,
+  persistPublishedInternalPlan,
 };

@@ -1,5 +1,6 @@
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { loadTenantDisplayForTenantId, pickFirst } = require("./_lib/tenant-display");
+const { scrubPublicPayload, sanitizePublicQuoteRow } = require("./_lib/voice-operational-plan");
 
 function json(statusCode, body) {
   return {
@@ -153,7 +154,7 @@ exports.handler = async (event) => {
     }
 
     const row = rows[0];
-    const estimate = pickPublicEstimateFields(row);
+    const estimate = scrubPublicPayload(pickPublicEstimateFields(row));
 
     let tenantSettings = {};
     if (row.tenant_id) {
@@ -239,7 +240,7 @@ exports.handler = async (event) => {
 
     return json(200, {
       ok: true,
-      estimate: {
+      estimate: sanitizePublicQuoteRow(scrubPublicPayload({
         ...estimate,
         business_name: resolvedBusinessName,
         tenant_branding_business_name: tenantBrandingBusinessName,
@@ -248,7 +249,7 @@ exports.handler = async (event) => {
         deposit_payment_available,
         deposit_payment_link: ownerSettings?.deposit_payment_link || null,
         items: []
-      }
+      }))
     });
   } catch (err) {
     return json(500, { error: err.message || "Server error" });
@@ -374,3 +375,8 @@ async function loadTenantLogoFromSnapshot(tenantId) {
     return "";
   }
 }
+
+exports._test = {
+  pickPublicEstimateFields,
+  QUOTE_PUBLIC_KEYS,
+};

@@ -1016,6 +1016,92 @@
         overflow: auto;
       }
     }
+    .voice-plan-preview-modal .modal-card {
+      width: min(1100px, 96vw);
+    }
+    .voice-plan-editor {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .voice-plan-day {
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 12px;
+      padding: 12px;
+      background: rgba(255,255,255,.03);
+    }
+    .voice-plan-day__head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .voice-plan-day__actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .voice-plan-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .voice-plan-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .voice-plan-list input {
+      width: 100%;
+    }
+    .voice-plan-dual {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .voice-plan-col {
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 12px;
+      padding: 12px;
+      min-height: 120px;
+    }
+    .voice-plan-col__title {
+      margin: 0 0 8px;
+      font-size: 14px;
+    }
+    .voice-plan-col__body {
+      font-size: 13px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      opacity: .92;
+    }
+    .voice-plan-labor-preview {
+      font-size: 13px;
+      opacity: .85;
+    }
+    .voice-plan-preview-status {
+      margin: 8px 16px 0;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .voice-plan-preview-status.is-error {
+      color: #f3b4b4;
+    }
+    @media (max-width: 740px) {
+      .voice-plan-dual,
+      .voice-plan-grid {
+        grid-template-columns: 1fr;
+      }
+      .voice-plan-preview-modal .modal-footer {
+        flex-wrap: wrap;
+      }
+      .voice-plan-preview-modal .modal-footer .btn {
+        flex: 1 1 140px;
+      }
+    }
   </style>
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
@@ -1489,6 +1575,7 @@
                     <div id="salesOperationalTimelineHost"></div>
                     <div class="inline-actions" style="margin-top:10px;">
                       <button type="button" class="btn primary" id="btnAddOperationalDay">Add day</button>
+                      <button type="button" class="btn" id="btnReviewConfirmOperationalPlan">Review &amp; confirm plan</button>
                     </div>
                     <div id="salesOperationalDaysHost" class="sales-operational-days-host--legacy" hidden aria-hidden="true"></div>
                   </div>
@@ -1642,6 +1729,37 @@
     </div>
   </div>
 
+  <div class="modal voice-plan-preview-modal" id="voicePlanPreviewModal" aria-hidden="true" role="dialog" aria-labelledby="voicePlanPreviewTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="voicePlanPreviewTitle">Review operational plan</div>
+          <div class="modal-subtitle">Client Scope of Work vs internal plan. Confirm to apply. Cancel leaves the quote unchanged.</div>
+        </div>
+        <button type="button" class="icon-btn" id="voicePlanPreviewClose" aria-label="Close">X</button>
+      </div>
+      <div class="modal-body">
+        <div class="voice-plan-editor" id="voicePlanEditorHost"></div>
+        <div class="voice-plan-labor-preview" id="voicePlanLaborPreview" aria-live="polite"></div>
+        <div class="voice-plan-dual">
+          <section class="voice-plan-col" aria-labelledby="voicePlanClientTitle">
+            <h4 class="voice-plan-col__title" id="voicePlanClientTitle">Client Scope of Work</h4>
+            <div class="voice-plan-col__body" id="voicePlanClientPreview"></div>
+          </section>
+          <section class="voice-plan-col" aria-labelledby="voicePlanInternalTitle">
+            <h4 class="voice-plan-col__title" id="voicePlanInternalTitle">Internal Operational Plan</h4>
+            <div class="voice-plan-col__body" id="voicePlanInternalPreview"></div>
+          </section>
+        </div>
+        <div class="voice-plan-preview-status" id="voicePlanPreviewStatus" role="status" aria-live="polite" hidden></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" id="voicePlanPreviewCancel">Cancel</button>
+        <button type="button" class="btn primary" id="voicePlanPreviewConfirm">Confirm and apply</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal seller-send-modal" id="sendModal" aria-hidden="true">
     <div class="modal-card">
       <div class="modal-header">
@@ -1725,6 +1843,7 @@
   <script src="/js/quote-send-feedback.js"></script>
   <script src="/js/sales-operational-plan.js"></script>
   <script src="/js/sales-capacity-calendar.js"></script>
+  <script src="/js/voice-operational-plan.js"></script>
   <script src="/js/app.js"></script>
   <script>
     (function () {
@@ -5008,6 +5127,9 @@
           ? state.workers
           : DEFAULT_WORKERS.map((worker) => ({ ...worker }));
         state.operational_plan = Array.isArray(state.operational_plan) ? state.operational_plan : [];
+        if (state.internal_operational_plan == null || typeof state.internal_operational_plan !== 'object') {
+          state.internal_operational_plan = null;
+        }
         if (state.operational_estimated_days_override == null) {
           state.operational_estimated_days_override = '';
         }
@@ -5081,7 +5203,12 @@
           scheduleOut.due_date = finish;
           scheduleOut.target_finish_date = finish;
         }
-        if (!api.planHasDays(plan)) return scheduleOut;
+        if (!api.planHasDays(plan)) {
+          if (state.internal_operational_plan && typeof state.internal_operational_plan === 'object') {
+            return attachInternalPlanPublishFields(scheduleOut, state, s, hpd);
+          }
+          return scheduleOut;
+        }
         const out = {
           operational_plan: plan,
           hours_per_day: hpd,
@@ -5093,9 +5220,31 @@
           out.estimated_days = metrics.estimated_days;
           out.estimated_hours = metrics.estimated_hours;
         }
-        return out;
+        return attachInternalPlanPublishFields(out, state, s, hpd);
       }
       window.buildOperationalPublishFields = buildOperationalPublishFields;
+
+      function attachInternalPlanPublishFields(out, state, settings, hoursPerDay) {
+        const voice = window.MgVoiceOperationalPlan;
+        const raw = state && state.internal_operational_plan;
+        if (!voice || !raw || typeof raw !== 'object') return out;
+        const doc = voice.normalizeDocument(voice.stripRateFields(raw), {
+          startDate: state.startDate || (out && out.start_date),
+          settings: settings,
+          hoursPerDay: hoursPerDay
+        });
+        const next = Object.assign({}, out || {});
+        next.internal_operational_plan = doc;
+        next.operational_plan = voice.deriveLegacyOperationalPlan(doc);
+        next.estimated_days = doc.estimated_days;
+        next.estimated_hours = doc.estimated_hours;
+        if (doc.start_date) next.start_date = doc.start_date;
+        if (doc.due_date) {
+          next.due_date = doc.due_date;
+          next.target_finish_date = doc.due_date;
+        }
+        return next;
+      }
 
       function isLaborAutoSyncActive(state) {
         if (!state || state.labor_auto_sync_from_plan === false) return false;
@@ -5914,7 +6063,443 @@
         return true;
       }
 
+      let voicePlanPreviewSession = null;
+      let voicePlanConfirmBusy = false;
+
+      function escapeVoicePlanHtml(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function getVoicePlanApi() {
+        return window.MgVoiceOperationalPlan || null;
+      }
+
+      function voicePlanLinesFromTextarea(el) {
+        return String(el && el.value ? el.value : '')
+          .split(/\r?\n/)
+          .map(function (s) { return s.trim(); })
+          .filter(Boolean);
+      }
+
+      function voicePlanSeedDraft(state, settings) {
+        const voice = getVoicePlanApi();
+        if (!voice) return { schema_version: 1, source: 'keyboard', days: [] };
+        const hpd = (window.MgSalesOperationalPlan && window.MgSalesOperationalPlan.getHoursPerDay)
+          ? window.MgSalesOperationalPlan.getHoursPerDay(settings)
+          : 8;
+        const start = String((document.getElementById('salesStartDate') && document.getElementById('salesStartDate').value) || state.startDate || '').slice(0, 10);
+        if (state.internal_operational_plan && typeof state.internal_operational_plan === 'object') {
+          return voice.cloneJson(state.internal_operational_plan);
+        }
+        if (Array.isArray(state.operational_plan) && state.operational_plan.length) {
+          return voice.hydrateFromLegacyOperationalPlan(state.operational_plan, start, settings, hpd);
+        }
+        return {
+          schema_version: 1,
+          source: 'keyboard',
+          days: [voice.createEmptyDay(1, hpd)]
+        };
+      }
+
+      function collectVoicePlanDraftFromDom() {
+        const voice = getVoicePlanApi();
+        const host = document.getElementById('voicePlanEditorHost');
+        if (!voice || !host) return { schema_version: 1, source: 'keyboard', days: [] };
+        const cards = host.querySelectorAll('.voice-plan-day');
+        const days = [];
+        cards.forEach(function (card, index) {
+          const tasks = [];
+          card.querySelectorAll('[data-field="internal_task"]').forEach(function (input) {
+            const label = String(input.value || '').trim();
+            if (label) tasks.push({ task_id: input.getAttribute('data-task-id') || voice.newStableId('task'), label: label });
+          });
+          const assignments = [];
+          card.querySelectorAll('.voice-plan-assignment').forEach(function (row) {
+            const role = String(row.querySelector('[data-field="worker_role"]').value || 'Installer');
+            const count = Math.max(1, Math.floor(Number(row.querySelector('[data-field="worker_count"]').value || 1)));
+            const hours = Math.max(0, Number(row.querySelector('[data-field="hours_per_worker"]').value || 0));
+            if (hours <= 0) return;
+            assignments.push({
+              assignment_id: row.getAttribute('data-assignment-id') || voice.newStableId('asg'),
+              worker_role: role,
+              worker_type: role.toLowerCase().indexOf('assist') >= 0 || role.toLowerCase() === 'helper' ? 'helper' : 'pro',
+              worker_count: count,
+              hours_per_worker: hours
+            });
+          });
+          days.push({
+            day_id: card.getAttribute('data-day-id') || voice.newStableId('day'),
+            day_number: index + 1,
+            client_scope: String(card.querySelector('[data-field="client_scope"]').value || ''),
+            internal_tasks: tasks,
+            worker_assignments: assignments,
+            materials_or_tools: voicePlanLinesFromTextarea(card.querySelector('[data-field="materials_or_tools"]')),
+            dependencies: voicePlanLinesFromTextarea(card.querySelector('[data-field="dependencies"]')),
+            gc_client_responsibilities: voicePlanLinesFromTextarea(card.querySelector('[data-field="gc_client_responsibilities"]')),
+            risks: voicePlanLinesFromTextarea(card.querySelector('[data-field="risks"]')),
+            internal_notes: String(card.querySelector('[data-field="internal_notes"]').value || '')
+          });
+        });
+        return { schema_version: 1, source: 'keyboard', days: days };
+      }
+
+      function renderVoicePlanEditor(days) {
+        const voice = getVoicePlanApi();
+        const host = document.getElementById('voicePlanEditorHost');
+        if (!host || !voice) return;
+        const list = Array.isArray(days) && days.length ? days : [voice.createEmptyDay(1, 8)];
+        host.innerHTML =
+          '<div class="inline-actions"><button type="button" class="btn primary" data-voice-action="add-day">Add day</button></div>' +
+          list.map(function (day, index) {
+            const tasks = (day.internal_tasks && day.internal_tasks.length)
+              ? day.internal_tasks
+              : [{ task_id: voice.newStableId('task'), label: '' }];
+            const asgs = (day.worker_assignments && day.worker_assignments.length)
+              ? day.worker_assignments
+              : [{ assignment_id: voice.newStableId('asg'), worker_role: 'Installer', worker_type: 'pro', worker_count: 1, hours_per_worker: 8 }];
+            return (
+              '<article class="voice-plan-day" data-day-id="' + escapeVoicePlanHtml(day.day_id) + '">' +
+              '<div class="voice-plan-day__head"><strong>Day ' + (index + 1) + '</strong>' +
+              '<div class="voice-plan-day__actions">' +
+              '<button type="button" class="btn ghost" data-voice-action="insert-after">Insert day</button>' +
+              '<button type="button" class="btn ghost" data-voice-action="move-up"' + (index === 0 ? ' disabled' : '') + '>Up</button>' +
+              '<button type="button" class="btn ghost" data-voice-action="move-down"' + (index === list.length - 1 ? ' disabled' : '') + '>Down</button>' +
+              '<button type="button" class="btn" data-voice-action="delete-day">Delete</button>' +
+              '</div></div>' +
+              '<div class="field"><label>Public description (client scope)</label>' +
+              '<textarea data-field="client_scope" rows="2" maxlength="2000">' + escapeVoicePlanHtml(day.client_scope || '') + '</textarea></div>' +
+              '<div class="field"><label>Internal activities</label><div class="voice-plan-list">' +
+              tasks.map(function (task) {
+                return '<input data-field="internal_task" data-task-id="' + escapeVoicePlanHtml(task.task_id || '') + '" maxlength="500" value="' + escapeVoicePlanHtml(task.label || '') + '" placeholder="Internal task" />';
+              }).join('') +
+              '<button type="button" class="btn ghost" data-voice-action="add-task">Add activity</button></div></div>' +
+              '<div class="field"><label>Workers</label>' +
+              asgs.map(function (asg) {
+                const role = asg.worker_role || 'Installer';
+                return (
+                  '<div class="voice-plan-assignment voice-plan-grid" data-assignment-id="' + escapeVoicePlanHtml(asg.assignment_id || '') + '">' +
+                  '<select data-field="worker_role">' +
+                  '<option value="Installer"' + (role === 'Installer' ? ' selected' : '') + '>Installer</option>' +
+                  '<option value="Assistant"' + (role === 'Assistant' || asg.worker_type === 'helper' ? ' selected' : '') + '>Assistant</option>' +
+                  '</select>' +
+                  '<input data-field="worker_count" type="number" min="1" step="1" value="' + escapeVoicePlanHtml(asg.worker_count || 1) + '" aria-label="Worker count" />' +
+                  '<input data-field="hours_per_worker" type="number" min="0.25" step="0.25" value="' + escapeVoicePlanHtml(asg.hours_per_worker || 8) + '" aria-label="Hours per worker" />' +
+                  '</div>'
+                );
+              }).join('') +
+              '<button type="button" class="btn ghost" data-voice-action="add-assignment">Add worker type</button></div>' +
+              '<div class="voice-plan-grid">' +
+              '<div class="field"><label>Materials / tools</label><textarea data-field="materials_or_tools" rows="2">' + escapeVoicePlanHtml((day.materials_or_tools || []).join('\n')) + '</textarea></div>' +
+              '<div class="field"><label>Dependencies</label><textarea data-field="dependencies" rows="2">' + escapeVoicePlanHtml((day.dependencies || []).join('\n')) + '</textarea></div>' +
+              '<div class="field"><label>GC / client responsibilities</label><textarea data-field="gc_client_responsibilities" rows="2">' + escapeVoicePlanHtml((day.gc_client_responsibilities || []).join('\n')) + '</textarea></div>' +
+              '<div class="field"><label>Risks</label><textarea data-field="risks" rows="2">' + escapeVoicePlanHtml((day.risks || []).join('\n')) + '</textarea></div>' +
+              '</div>' +
+              '<div class="field"><label>Internal notes</label><textarea data-field="internal_notes" rows="2" maxlength="4000">' + escapeVoicePlanHtml(day.internal_notes || '') + '</textarea></div>' +
+              '</article>'
+            );
+          }).join('');
+      }
+
+      function refreshVoicePlanPreviewColumns() {
+        const voice = getVoicePlanApi();
+        if (!voice || !voicePlanPreviewSession) return;
+        const state = loadSalesState();
+        const settings = loadSettings();
+        const start = String((document.getElementById('salesStartDate') && document.getElementById('salesStartDate').value) || state.startDate || '').slice(0, 10);
+        const collected = collectVoicePlanDraftFromDom();
+        const draft = voice.normalizeDocument(collected, { startDate: start, settings: settings, hoursPerDay: settings.hoursPerDay });
+        voicePlanPreviewSession.draft = collected;
+        const publicScope = voice.buildPublicClientScope(draft);
+        const clientEl = document.getElementById('voicePlanClientPreview');
+        const internalEl = document.getElementById('voicePlanInternalPreview');
+        const laborEl = document.getElementById('voicePlanLaborPreview');
+        if (clientEl) {
+          clientEl.textContent = publicScope.narrative || 'No client-facing scope yet.';
+        }
+        if (internalEl) {
+          const lines = [];
+          (draft.days || []).forEach(function (day) {
+            lines.push('Day ' + day.day_number + (day.date ? ' (' + day.date + ')' : ''));
+            (day.internal_tasks || []).forEach(function (t) { lines.push('  • ' + t.label); });
+            (day.worker_assignments || []).forEach(function (a) {
+              lines.push('  ' + a.worker_count + '× ' + a.worker_role + ' @ ' + a.hours_per_worker + 'h');
+            });
+            if (day.materials_or_tools && day.materials_or_tools.length) lines.push('  Materials: ' + day.materials_or_tools.join(', '));
+            if (day.dependencies && day.dependencies.length) lines.push('  Dependencies: ' + day.dependencies.join(', '));
+            if (day.gc_client_responsibilities && day.gc_client_responsibilities.length) lines.push('  GC/client: ' + day.gc_client_responsibilities.join(', '));
+            if (day.risks && day.risks.length) lines.push('  Risks: ' + day.risks.join(', '));
+            if (day.internal_notes) lines.push('  Notes: ' + day.internal_notes);
+          });
+          internalEl.textContent = lines.join('\n') || 'No internal plan yet.';
+        }
+        if (laborEl) {
+          const hours = voice.totalBudgetHours(draft.days);
+          const cost = voice.previewLaborCost(draft.days, settings);
+          laborEl.textContent = 'Derived review: ' + hours + ' labor hours. Cost uses Business Settings rates only' +
+            (cost > 0 ? (' · $' + cost.toFixed(2)) : '') +
+            '. Finish ' + (draft.due_date || '—') + ' · ' + (draft.estimated_days || 0) + ' workdays.';
+        }
+      }
+
+      function setVoicePlanPreviewStatus(message, isError) {
+        const el = document.getElementById('voicePlanPreviewStatus');
+        if (!el) return;
+        const text = String(message || '').trim();
+        el.textContent = text;
+        el.hidden = !text;
+        if (isError) el.classList.add('is-error');
+        else el.classList.remove('is-error');
+      }
+
+      function setVoicePlanConfirmBusy(busy) {
+        voicePlanConfirmBusy = !!busy;
+        const confirmBtn = document.getElementById('voicePlanPreviewConfirm');
+        const cancelBtn = document.getElementById('voicePlanPreviewCancel');
+        const closeBtn = document.getElementById('voicePlanPreviewClose');
+        if (confirmBtn) {
+          confirmBtn.disabled = !!busy;
+          confirmBtn.setAttribute('aria-busy', busy ? 'true' : 'false');
+          confirmBtn.textContent = busy ? 'Saving…' : 'Confirm and apply';
+        }
+        if (cancelBtn) cancelBtn.disabled = !!busy;
+        if (closeBtn) closeBtn.disabled = !!busy;
+      }
+
+      function closeVoicePlanPreviewModal() {
+        if (voicePlanConfirmBusy) return;
+        const modal = document.getElementById('voicePlanPreviewModal');
+        if (modal) modal.setAttribute('aria-hidden', 'true');
+        voicePlanPreviewSession = null;
+        setVoicePlanPreviewStatus('', false);
+      }
+
+      function openVoicePlanPreviewModal() {
+        const voice = getVoicePlanApi();
+        const modal = document.getElementById('voicePlanPreviewModal');
+        if (!voice || !modal) return;
+        const state = loadSalesState();
+        const settings = loadSettings();
+        const confirmed = state.internal_operational_plan && typeof state.internal_operational_plan === 'object'
+          ? voice.cloneJson(state.internal_operational_plan)
+          : { schema_version: 1, source: 'keyboard', days: [] };
+        const draft = voicePlanSeedDraft(state, settings);
+        voicePlanPreviewSession = { confirmed: confirmed, draft: draft };
+        setVoicePlanConfirmBusy(false);
+        setVoicePlanPreviewStatus('', false);
+        renderVoicePlanEditor(draft.days || []);
+        refreshVoicePlanPreviewColumns();
+        modal.setAttribute('aria-hidden', 'false');
+      }
+
+      function applyConfirmedVoicePlanToState(voice, applied) {
+        const state = loadSalesState();
+        const startInput = document.getElementById('salesStartDate');
+        state.internal_operational_plan = applied;
+        state.operational_plan = voice.deriveLegacyOperationalPlan(applied);
+        state.operational_estimated_days_override = '';
+        state.startDate = applied.start_date || state.startDate;
+        state.targetFinishDate = applied.due_date || state.targetFinishDate;
+        state.dueDate = applied.due_date || state.dueDate;
+        const publicScope = voice.buildPublicClientScope(applied);
+        if (publicScope.narrative) {
+          state.messageToClient = publicScope.narrative;
+          const msg = document.getElementById('salesMessageToClient');
+          if (msg) msg.value = publicScope.narrative;
+        }
+        if (startInput && applied.start_date) startInput.value = applied.start_date;
+        const finishInput = document.getElementById('salesTargetFinishDate');
+        if (finishInput && applied.due_date) finishInput.value = applied.due_date;
+        enableLaborAutoSync(state);
+        saveSalesState(state);
+      }
+
+      function voicePlanPersistSucceeded(response, data) {
+        return !!(response && response.ok && data && data.ok === true && data.persisted === true);
+      }
+
+      function voicePlanPersistErrorMessage(data) {
+        if (data && data.code === 'column_missing') {
+          return 'Internal operational plan storage is not installed. The quote was not changed.';
+        }
+        if (data && data.code === 'internal_plan_table_missing') {
+          return 'Internal operational plan storage is not installed. The quote was not changed.';
+        }
+        if (data && data.code === 'quote_locked') {
+          return data.error || 'This quote is locked and cannot be edited.';
+        }
+        if (data && Array.isArray(data.errors) && data.errors[0] && data.errors[0].message) {
+          return data.errors[0].message;
+        }
+        return (data && data.error) || 'Could not save the operational plan. The quote was not changed.';
+      }
+
+      async function persistVoicePlanDocument(quoteId, applied, extra) {
+        const payload = {
+          action: 'confirm',
+          quote_id: quoteId,
+          start_date: applied.start_date,
+          document: applied
+        };
+        if (extra && extra.confirm_sent_update === true) payload.confirm_sent_update = true;
+        const response = await fetch('/.netlify/functions/quote-internal-operational-plan', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        let data = {};
+        try {
+          data = await response.json();
+        } catch (_parseErr) {
+          data = {};
+        }
+        return { response: response, data: data };
+      }
+
+      async function applyVoicePlanConfirm() {
+        const voice = getVoicePlanApi();
+        if (!voice || !voicePlanPreviewSession || voicePlanConfirmBusy) return;
+        const state = loadSalesState();
+        const settings = loadSettings();
+        const startInput = document.getElementById('salesStartDate');
+        const start = String((startInput && startInput.value) || state.startDate || '').slice(0, 10);
+        const collected = collectVoicePlanDraftFromDom();
+        if (typeof voice.validateIncomingDocument === 'function') {
+          const validated = voice.validateIncomingDocument(collected);
+          if (!validated.ok) {
+            const first = validated.errors && validated.errors[0] && validated.errors[0].message;
+            setVoicePlanPreviewStatus(first || 'The operational plan is not valid.', true);
+            return;
+          }
+        }
+        const session = voice.createPreviewSession(voicePlanPreviewSession.confirmed, collected, {
+          startDate: start,
+          settings: settings,
+          hoursPerDay: settings.hoursPerDay
+        });
+        const result = voice.confirmPreview(session, { startDate: start, settings: settings, hoursPerDay: settings.hoursPerDay });
+        const applied = result.applied;
+        if (!state.quoteId) {
+          applyConfirmedVoicePlanToState(voice, applied);
+          closeVoicePlanPreviewModal();
+          refreshSellerFromStandalone();
+          return;
+        }
+        setVoicePlanConfirmBusy(true);
+        setVoicePlanPreviewStatus('Saving…', false);
+        try {
+          let persisted = await persistVoicePlanDocument(state.quoteId, applied);
+          if (!voicePlanPersistSucceeded(persisted.response, persisted.data) &&
+              persisted.data && persisted.data.code === 'sent_quote_confirmation_required') {
+            const proceed = window.confirm(
+              persisted.data.error ||
+              'This quote was already sent or viewed. Confirm to update the public quote.'
+            );
+            if (!proceed) {
+              setVoicePlanPreviewStatus('Confirmation cancelled. The quote was not changed.', true);
+              return;
+            }
+            persisted = await persistVoicePlanDocument(state.quoteId, applied, { confirm_sent_update: true });
+          }
+          if (voicePlanPersistSucceeded(persisted.response, persisted.data)) {
+            applyConfirmedVoicePlanToState(voice, applied);
+            setVoicePlanConfirmBusy(false);
+            closeVoicePlanPreviewModal();
+            refreshSellerFromStandalone();
+            return;
+          }
+          setVoicePlanPreviewStatus(voicePlanPersistErrorMessage(persisted.data), true);
+        } catch (_err) {
+          setVoicePlanPreviewStatus('Could not save the operational plan. Check your connection and try again.', true);
+        } finally {
+          setVoicePlanConfirmBusy(false);
+        }
+      }
+
+      function bindVoicePlanPreviewStandalone() {
+        const reviewBtn = document.getElementById('btnReviewConfirmOperationalPlan');
+        if (reviewBtn && !reviewBtn.dataset.bound) {
+          reviewBtn.dataset.bound = '1';
+          reviewBtn.addEventListener('click', function (event) {
+            event.preventDefault();
+            openVoicePlanPreviewModal();
+          }, true);
+        }
+        ['voicePlanPreviewClose', 'voicePlanPreviewCancel'].forEach(function (id) {
+          const btn = document.getElementById(id);
+          if (btn && !btn.dataset.bound) {
+            btn.dataset.bound = '1';
+            btn.addEventListener('click', function (event) {
+              event.preventDefault();
+              closeVoicePlanPreviewModal();
+            }, true);
+          }
+        });
+        const confirmBtn = document.getElementById('voicePlanPreviewConfirm');
+        if (confirmBtn && !confirmBtn.dataset.bound) {
+          confirmBtn.dataset.bound = '1';
+          confirmBtn.addEventListener('click', function (event) {
+            event.preventDefault();
+            applyVoicePlanConfirm();
+          }, true);
+        }
+        const host = document.getElementById('voicePlanEditorHost');
+        if (host && !host.dataset.bound) {
+          host.dataset.bound = '1';
+          host.addEventListener('input', function () {
+            refreshVoicePlanPreviewColumns();
+          });
+          host.addEventListener('click', function (event) {
+            const btn = event.target.closest('button[data-voice-action]');
+            if (!btn) return;
+            event.preventDefault();
+            const voice = getVoicePlanApi();
+            if (!voice) return;
+            const action = btn.getAttribute('data-voice-action');
+            const card = btn.closest('.voice-plan-day');
+            const collected = collectVoicePlanDraftFromDom();
+            let days = collected.days || [];
+            const dayId = card ? card.getAttribute('data-day-id') : '';
+            if (action === 'add-day') days = voice.insertDayAfter(days, days.length ? days[days.length - 1].day_id : '', 8);
+            if (action === 'insert-after') days = voice.insertDayAfter(days, dayId, 8);
+            if (action === 'move-up') days = voice.moveDay(days, dayId, -1);
+            if (action === 'move-down') days = voice.moveDay(days, dayId, 1);
+            if (action === 'delete-day') days = voice.deleteDay(days, dayId);
+            if (action === 'add-task' && card) {
+              days = days.map(function (d) {
+                if (d.day_id !== dayId) return d;
+                const next = Object.assign({}, d);
+                next.internal_tasks = (d.internal_tasks || []).concat([{ task_id: voice.newStableId('task'), label: '' }]);
+                return next;
+              });
+            }
+            if (action === 'add-assignment' && card) {
+              days = days.map(function (d) {
+                if (d.day_id !== dayId) return d;
+                const next = Object.assign({}, d);
+                next.worker_assignments = (d.worker_assignments || []).concat([{
+                  assignment_id: voice.newStableId('asg'),
+                  worker_role: 'Installer',
+                  worker_type: 'pro',
+                  worker_count: 1,
+                  hours_per_worker: 8
+                }]);
+                return next;
+              });
+            }
+            if (voicePlanPreviewSession) voicePlanPreviewSession.draft = { schema_version: 1, source: 'keyboard', days: days };
+            renderVoicePlanEditor(days);
+            refreshVoicePlanPreviewColumns();
+          });
+        }
+      }
+
       function bindSalesOperationalPlanStandalone() {
+        bindVoicePlanPreviewStandalone();
         const api = getOperationalPlanApi();
         if (!api) return;
 
@@ -8102,6 +8687,7 @@
           _sliderTouched: false,
           pricingStage: 2,
           operational_plan: [],
+          internal_operational_plan: null,
           operational_estimated_days_override: '',
           operational_estimated_hours_override: '',
           labor_auto_sync_from_plan: true,
@@ -8898,24 +9484,24 @@
   const depositAmount = String(data.depositFormatted || money(depositAmtNum)).trim();
   const balanceAfterDeposit = money(balanceAmtNum);
 
-  const scopeItems = (() => {
-    const raw =
-      data.scope_of_work ||
-      data.scopeOfWork ||
-      data.scopeItems ||
-      data.scopeSummary ||
-      data.scope_summary ||
-      '';
-
-    if (Array.isArray(raw)) {
-      return raw.map(v => String(v || '').trim()).filter(Boolean);
-    }
-
-    return String(raw || '')
-      .split(/\r?\n+/)
-      .map(v => v.replace(/^[\-\u2022\s]+/, '').trim())
-      .filter(Boolean);
-  })();
+  const scopeItems = (window.MgVoiceOperationalPlan && typeof window.MgVoiceOperationalPlan.resolvePublicPdfScopeItems === 'function')
+    ? window.MgVoiceOperationalPlan.resolvePublicPdfScopeItems(data)
+    : (function () {
+      const raw =
+        data.scope_of_work ||
+        data.scopeOfWork ||
+        data.scopeItems ||
+        data.scopeSummary ||
+        data.scope_summary ||
+        '';
+      if (Array.isArray(raw)) {
+        return raw.map(v => String(v || '').trim()).filter(Boolean);
+      }
+      return String(raw || '')
+        .split(/\r?\n+/)
+        .map(v => v.replace(/^[\-\u2022\s]+/, '').trim())
+        .filter(Boolean);
+    })();
 
   const approvePayUrl = String(
     data.payment_link ||
