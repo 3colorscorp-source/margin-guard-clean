@@ -378,6 +378,54 @@ test("explicit finish write fills the visible input and stays in parity with sal
   assert.strictEqual(h.state.dueDate, h.dom.nodes.salesDueDate.value);
 });
 
+test("resolveCurrentSalesProjectDays reloads live sales state via loadSales", () => {
+  const start = appJs.indexOf("const resolveCurrentSalesProjectDays = () => {");
+  assert.ok(start >= 0, "resolveCurrentSalesProjectDays not found");
+  const open = appJs.indexOf("{", start);
+  let depth = 0;
+  let end = -1;
+  for (let i = open; i < appJs.length; i += 1) {
+    if (appJs[i] === "{") depth += 1;
+    else if (appJs[i] === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
+    }
+  }
+  const src = appJs.slice(start, end + 1);
+  assert.ok(src.includes("let liveState = state;"));
+  assert.ok(src.includes("liveState = loadSales();"));
+  assert.ok(src.includes("liveMetrics = calculateSalesMetrics(liveState, liveSettings);"));
+  assert.ok(
+    /return resolveSalesEstimatedProjectDays\(\s*liveState,\s*liveSettings,\s*liveMetrics\s*\)/.test(src)
+  );
+});
+
+test("start date uses replaceable onchange and guidance-only persistent listener", () => {
+  assert.ok(
+    !/startDateInput\.addEventListener\(\s*["']change["']/.test(appJs),
+    "persistent startDateInput change listener must be removed"
+  );
+  assert.ok(
+    /input\.onchange = \(\) => \{[\s\S]{0,220}refreshSalesCapacityCalendar\(startDateInput\.value\)[\s\S]{0,120}syncApprovedQuoteScheduleFillOnce\(loadSales\(\)\)/.test(
+      appJs
+    ),
+    "replaceable onchange must own capacity refresh and pass loadSales() to fill-once"
+  );
+  assert.ok(appJs.includes("startDateInput.dataset.capacityGuidanceBound"));
+  assert.ok(!/startDateInput\.dataset\.capacityBound/.test(appJs));
+  const guidanceIdx = appJs.indexOf("capacityGuidanceBound");
+  assert.ok(guidanceIdx >= 0);
+  const nextFn = appJs.indexOf("async function syncApprovedQuoteScheduleFillOnce", guidanceIdx);
+  const guidanceSlice = appJs.slice(guidanceIdx, nextFn > guidanceIdx ? nextFn : guidanceIdx + 450);
+  assert.ok(/addEventListener\(\s*"input"/.test(guidanceSlice));
+  assert.ok(!/refreshSalesCapacityCalendar/.test(guidanceSlice));
+  assert.ok(!/syncApprovedQuoteScheduleFillOnce/.test(guidanceSlice));
+  assert.ok(/applyCapacityGuidance/.test(guidanceSlice));
+});
+
 test("19 CH-015 finish-sync files still own pricing guard and calendar helpers", () => {
   ["public/js/app.js", "public/js/sales-capacity-calendar.js", "public/sales.html"].forEach((file) => {
     assert.ok(fs.existsSync(path.join(ROOT, file)), file);
