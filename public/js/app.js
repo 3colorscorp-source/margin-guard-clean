@@ -10442,6 +10442,17 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     }
     return "Precio listo segun las reglas del negocio.";
   }
+  /** Price-position copy must compare the displayed offer with the recommendation. */
+  function isSalesPriceBelowRecommendation(metrics) {
+    const offered = Number(metrics?.offered);
+    const recommended = Number(metrics?.recommended);
+    return (
+      Number.isFinite(offered) &&
+      Number.isFinite(recommended) &&
+      recommended > 0 &&
+      offered + 0.005 < recommended
+    );
+  }
 
   function calcSales(state, settings) {
     const hoursPerDay = Math.max(Number(settings.hoursPerDay || DEFAULTS.hoursPerDay), 0.25);
@@ -10652,6 +10663,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   const isReady = metrics.workerDays > 0 && metrics.recommended > 0;
   const tone = !isReady ? "amber" : offered >= metrics.recommended ? "green" : offered >= metrics.minimum ? "amber" : "red";
   const toneLabel = tone === "green" ? "Healthy" : tone === "amber" ? "Needs Review" : "At Risk";
+  const belowRecommendation = isSalesPriceBelowRecommendation(metrics);
   const heroMeta = [
     `Estimate ${state.estimateNumber}`,
     `Issue ${state.issueDate}`,
@@ -10915,12 +10927,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   setText("salesPrimaryMeta", `${metrics.workerDays.toFixed(2)} worker-days | ${metrics.workerHours.toFixed(2)} labor-hours | ${metrics.workersCount} workers | Current ${formatMoney(offered)}`);
   setText("salesPrimaryCommission", metrics.commissionRate.toFixed(2) + "%");
   setText("salesPrimaryCommissionMeta", `${formatMoney(metrics.commissionDisplay)} estimated · ${formatMoney(metrics.commissionLaborBase ?? metrics.labor)} labor cost`);
-  setText("salesFlowHeadline", metrics.workerDays <= 0 ? "Complete labor" : metrics.needsApproval ? "Below recommendation" : "Ready to send");
+  setText("salesFlowHeadline", metrics.workerDays <= 0 ? "Complete labor" : belowRecommendation ? "Below recommendation" : "Ready to send");
   setText(
     "salesFlowCaption",
     metrics.workerDays <= 0
       ? "Add worker days so Margin Guard can price the job."
-      : metrics.needsApproval
+      : belowRecommendation
         ? "If the price is below the recommendation, you can still proceed — do it responsibly and confirm margin with your owner."
         : "Pricing is in a healthy range for this estimate."
   );
@@ -10930,7 +10942,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   setText("salesCrewHint", `${metrics.workersCount} workers configured for ${metrics.workerHours.toFixed(2)} labor hours.`);
   setText(
     "salesPricingGuidance",
-    metrics.needsApproval
+    belowRecommendation
       ? "Precio bajo la recomendacion: puedes seguir, pero hazlo con criterio y alinea expectativas con el dueno."
       : "Precio alineado con el rango recomendado o superior."
   );

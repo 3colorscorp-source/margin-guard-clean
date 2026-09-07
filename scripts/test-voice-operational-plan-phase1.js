@@ -188,6 +188,7 @@ async function main() {
     "netlify/functions/get-public-estimate.js",
     "netlify/functions/update-public-estimate-status.js",
     "public/js/voice-operational-plan.js",
+    "public/js/app.js",
     "public/js/sales-capacity-calendar.js",
     "public/js/estimate-send-helpers.js",
     "public/js/estimate-public-send.js",
@@ -836,6 +837,32 @@ async function main() {
 
   const salesSrc = read("public/sales.html");
   ok("UI has Review & confirm plan", /btnReviewConfirmOperationalPlan/.test(salesSrc));
+  const appSrc = read("public/js/app.js");
+  const appBelowMatch = appSrc.match(
+    /function isSalesPriceBelowRecommendation\(metrics\) \{([\s\S]*?)\n  \}/
+  );
+  ok("owner recommendation-status comparator is available", appBelowMatch);
+  const appBelow = vm.runInNewContext(
+    "(function isSalesPriceBelowRecommendation(metrics) {" + appBelowMatch[1] + "\n})"
+  );
+  eq("owner equal current/recommended is ready", appBelow({ offered: 6342.9, recommended: 6342.9 }), false);
+  eq("owner lower current is below recommendation", appBelow({ offered: 6300, recommended: 6342.9 }), true);
+
+  const sellerBelowMatch = salesSrc.match(
+    /function isSellerPriceBelowRecommendation\(metrics\) \{([\s\S]*?)\n      \}/
+  );
+  ok("seller recommendation-status comparator is available", sellerBelowMatch);
+  const sellerBelow = vm.runInNewContext(
+    "(function isSellerPriceBelowRecommendation(metrics) {" + sellerBelowMatch[1] + "\n})"
+  );
+  eq("seller equal current/recommended is ready", sellerBelow({ offered: 6342.9, recommended: 6342.9 }), false);
+  eq("seller lower current is below recommendation", sellerBelow({ offered: 6300, recommended: 6342.9 }), true);
+
+  ok(
+    "flow headline uses direct price-position result instead of margin advisory",
+    /salesFlowHeadline[\s\S]{0,180}belowRecommendation \? ["']Below recommendation["']/.test(appSrc) &&
+      /salesFlowHeadline[\s\S]{0,180}belowRecommendation \? 'Bajo recomendado'/.test(salesSrc)
+  );
   ok(
     "seller layout completeness requires Review & confirm plan",
     /function isDirectSellerDomLayoutComplete[\s\S]{0,2500}querySelector\('#btnReviewConfirmOperationalPlan'\)/.test(salesSrc)
