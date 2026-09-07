@@ -855,8 +855,14 @@ async function main() {
   ok("atomic RPC updates quote and internal row in one function", /update public\.quotes[\s\S]*insert into public\.quote_internal_operational_plans/.test(sql));
   ok("atomic RPC rechecks accepted status while quote is locked", /v_quote\.accepted_at is not null/.test(sql));
   ok("atomic RPC rechecks projects and payments", /from public\.tenant_projects[\s\S]*from public\.tenant_project_payments/.test(sql));
+  ok("atomic RPC uses SECURITY INVOKER", /security invoker/.test(sql) && !/security definer/.test(sql));
+  ok("atomic RPC search_path is empty", /set search_path = ''/.test(sql));
+  ok("atomic RPC does not call auth.role()", !/auth\.role\s*\(/.test(sql));
   ok("atomic RPC revokes PUBLIC execute", /revoke all on function public\.mg_confirm_quote_operational_plan[\s\S]*from public/.test(sql));
+  ok("atomic RPC revokes anon execute", /revoke all on function public\.mg_confirm_quote_operational_plan[\s\S]*from anon/.test(sql));
+  ok("atomic RPC revokes authenticated execute", /revoke all on function public\.mg_confirm_quote_operational_plan[\s\S]*from authenticated/.test(sql));
   ok("atomic RPC grants only service_role execute", /grant execute on function public\.mg_confirm_quote_operational_plan[\s\S]*to service_role/.test(sql));
+  ok("atomic RPC has no execute grant except service_role", !/grant execute on function public\.mg_confirm_quote_operational_plan[\s\S]*to (public|anon|authenticated)\b/.test(sql));
 
   console.log("\nPassed " + passed + " assertions.");
 }

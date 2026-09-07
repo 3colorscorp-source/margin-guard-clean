@@ -64,15 +64,12 @@ create or replace function public.mg_confirm_quote_operational_plan(
 )
 returns jsonb
 language plpgsql
-security definer
-set search_path = public, pg_temp
+security invoker
+set search_path = ''
 as $function$
 declare
   v_quote public.quotes%rowtype;
 begin
-  if coalesce(auth.role(), '') <> 'service_role' then
-    raise exception 'service_role required' using errcode = '42501';
-  end if;
   if p_document is null or jsonb_typeof(p_document) <> 'object' then
     raise exception 'p_document must be a JSON object' using errcode = '22023';
   end if;
