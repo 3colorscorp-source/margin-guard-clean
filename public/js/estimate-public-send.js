@@ -54,6 +54,9 @@
       scheduleOut.target_finish_date = finish;
     }
     if (!planRaw.length || (op && typeof op.planHasDays === "function" && !op.planHasDays(plan))) {
+      if (state && state.internal_operational_plan && typeof state.internal_operational_plan === "object") {
+        return attachInternalPlanPublishFields(scheduleOut, state, s, hpd);
+      }
       return scheduleOut;
     }
     const out = {
@@ -76,7 +79,29 @@
         out.estimated_hours = metrics.estimated_hours;
       }
     }
-    return out;
+    return attachInternalPlanPublishFields(out, state, s, hpd);
+  }
+
+  function attachInternalPlanPublishFields(out, state, settings, hoursPerDay) {
+    const voice = window.MgVoiceOperationalPlan;
+    const raw = state && state.internal_operational_plan;
+    if (!voice || !raw || typeof raw !== "object") return out;
+    const doc = voice.normalizeDocument(voice.stripRateFields(raw), {
+      startDate: state.startDate || (out && out.start_date),
+      settings: settings,
+      hoursPerDay: hoursPerDay
+    });
+    const next = Object.assign({}, out || {});
+    next.internal_operational_plan = doc;
+    next.operational_plan = voice.deriveLegacyOperationalPlan(doc);
+    next.estimated_days = doc.estimated_days;
+    next.estimated_hours = doc.estimated_hours;
+    if (doc.start_date) next.start_date = doc.start_date;
+    if (doc.due_date) {
+      next.due_date = doc.due_date;
+      next.target_finish_date = doc.due_date;
+    }
+    return next;
   }
 
   function getHelpers(override) {

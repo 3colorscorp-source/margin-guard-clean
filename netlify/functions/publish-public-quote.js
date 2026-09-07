@@ -13,6 +13,7 @@ const {
   isMissingScopeOfWorkColumn,
   resolveScopeOfWorkWriteFromBody,
 } = require("./_lib/contract-scope");
+const voiceOperationalPlan = require("./_lib/voice-operational-plan");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -146,7 +147,6 @@ function parseOperationalPublishFields(body, tenantSettings) {
     hpd
   );
 
-  // CH-012F — schedule dates persist independently of operational plan days.
   const startDate = normIsoDate(body.start_date ?? body.startDate);
   const dueDate = normIsoDate(
     body.due_date ?? body.target_finish_date ?? body.targetFinishDate ?? body.dueDate
@@ -155,25 +155,60 @@ function parseOperationalPublishFields(body, tenantSettings) {
   if (startDate) scheduleFields.start_date = startDate;
   if (dueDate) scheduleFields.due_date = dueDate;
 
-  if (!planHasDays(opNormalized)) {
+  const internalRaw =
+    body.internal_operational_plan ?? body.internalOperationalPlan ?? null;
+  let internalFields = null;
+  if (internalRaw && typeof internalRaw === "object") {
+    const internalDoc = voiceOperationalPlan.normalizeDocument(
+      voiceOperationalPlan.stripRateFields(internalRaw),
+      {
+        startDate: startDate || internalRaw.start_date,
+        settings: tenantSettings,
+        hoursPerDay: hpd,
+      }
+    );
+    internalFields = {
+      internal_operational_plan: internalDoc,
+      operational_plan: voiceOperationalPlan.deriveLegacyOperationalPlan(internalDoc),
+      estimated_days: internalDoc.estimated_days,
+      estimated_hours: internalDoc.estimated_hours,
+    };
+    if (internalDoc.start_date) internalFields.start_date = internalDoc.start_date;
+    if (internalDoc.due_date) internalFields.due_date = internalDoc.due_date;
+  }
+
+  if (!planHasDays(opNormalized) && !internalFields) {
     return {
       include: Object.keys(scheduleFields).length > 0,
       fields: scheduleFields,
     };
   }
 
-  const metrics = computeOperationalPlanMetrics(opNormalized, daysOv, hoursOv, hpd);
+  const metrics = planHasDays(opNormalized)
+    ? computeOperationalPlanMetrics(opNormalized, daysOv, hoursOv, hpd)
+    : { estimated_days: 0, estimated_hours: 0 };
 
   const fields = {
-    operational_plan: opNormalized,
-    estimated_days: metrics.estimated_days,
-    estimated_hours: metrics.estimated_hours,
+    ...(planHasDays(opNormalized)
+      ? {
+          operational_plan: opNormalized,
+          estimated_days: metrics.estimated_days,
+          estimated_hours: metrics.estimated_hours,
+        }
+      : {}),
     ...scheduleFields,
+    ...(internalFields || {}),
   };
-  if (daysOv != null) fields.operational_estimated_days_override = daysOv;
-  if (hoursOv != null) fields.operational_estimated_hours_override = hoursOv;
+  if (daysOv != null && !internalFields) fields.operational_estimated_days_override = daysOv;
+  if (hoursOv != null && !internalFields) fields.operational_estimated_hours_override = hoursOv;
 
   return { include: true, fields };
+}
+
+function isMissingInternalOperationalPlanColumn(text) {
+  const t = String(text || "").toLowerCase();
+  if (!/42703|column|schema cache|could not find/i.test(t)) return false;
+  return /internal_operational_plan/i.test(t);
 }
 
 function isMissingOperationalQuoteColumns(text) {
@@ -859,6 +894,21 @@ exports.handler = async (event) => {
           return { ...result, payloadUsed: payload };
         }
         lastErrorText = result.text || `Supabase write failed with status ${result.status}`;
+        if (
+          isMissingInternalOperationalPlanColumn(lastErrorText) &&
+          payload.internal_operational_plan !== undefined
+        ) {
+          const { internal_operational_plan: _dropInternal, ...restInternal } = payload;
+          const retryInternal = await insertQuote({
+            supabaseUrl,
+            serviceRoleKey,
+            payload: restInternal
+          });
+          if (retryInternal.ok) {
+            return { ...retryInternal, payloadUsed: restInternal, internalPlanColumnMissing: true };
+          }
+          lastErrorText = retryInternal.text || lastErrorText;
+        }
         if (isMissingScopeOfWorkColumn(lastErrorText) && payload.scope_of_work !== undefined) {
           const { scope_of_work: _drop, ...rest } = payload;
           const retry = await insertQuote({
@@ -990,4 +1040,6 @@ exports._test = {
   normalizeWorkersLaborDays,
   resolveHoursPerDayForLabor,
   validateWorkersForPricing,
+  parseOperationalPublishFields,
+  isMissingInternalOperationalPlanColumn,
 };

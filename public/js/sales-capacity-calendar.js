@@ -51,6 +51,18 @@
     return dow !== 0 && dow !== 6;
   }
 
+  function nextWorkdayOnOrAfter(ymd, options) {
+    const workdaysOnly = !options || options.workdaysEnabled !== false;
+    let cur = parseYmd(ymd);
+    if (!cur) return "";
+    if (!workdaysOnly) return formatYmd(cur);
+    for (let guard = 0; guard < 14; guard += 1) {
+      if (isWorkday(cur)) return formatYmd(cur);
+      cur.setDate(cur.getDate() + 1);
+    }
+    return formatYmd(cur);
+  }
+
   function addBusinessDaysLocal(fromYmd, steps) {
     const n = Math.max(0, Math.floor(Number(steps) || 0));
     let cur = parseYmd(fromYmd);
@@ -68,8 +80,10 @@
     const days = Math.max(1, Math.ceil(Number(estimatedDays) || 0));
     if (!normDate(startYmd)) return "";
     const workdaysOnly = !options || options.workdaysEnabled !== false;
-    if (!workdaysOnly) return addCalendarDays(startYmd, days - 1);
-    return addBusinessDaysLocal(startYmd, days - 1);
+    const snapped = nextWorkdayOnOrAfter(startYmd, options);
+    if (!snapped) return "";
+    if (!workdaysOnly) return addCalendarDays(snapped, days - 1);
+    return addBusinessDaysLocal(snapped, days - 1);
   }
 
   const TARGET_FINISH_HINT_DEFAULT =
@@ -343,6 +357,7 @@
     effectiveStartMin,
     addCalendarDays,
     addBusinessDaysLocal,
+    nextWorkdayOnOrAfter,
     projectFinishFromStart,
     projectFinishFromStartLocal,
     updateTargetFinishDisplay,

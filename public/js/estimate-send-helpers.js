@@ -31,6 +31,27 @@
     }
     return "";
   }
+  function resolvePublicPdfScopeItems(data) {
+    const src = data && typeof data === "object" ? data : {};
+    const raw =
+      src.scope_of_work ||
+      src.scopeOfWork ||
+      src.public_client_scope ||
+      src.client_scope_narrative ||
+      src.scopeItems ||
+      src.scopeSummary ||
+      src.scope_summary ||
+      "";
+    const items = Array.isArray(raw)
+      ? raw.map((v) => String(v || "").trim()).filter(Boolean)
+      : String(raw || "")
+          .split(/\r?\n+/)
+          .map((v) => v.replace(/^[\-\u2022\s]+/, "").trim())
+          .filter(Boolean);
+    return items.filter((line) => {
+      return !/internal_notes|worker_assignments|hours_per_worker|internal_operational_plan/.test(line);
+    });
+  }
   function hexToRgbTuple(value, fallback) {
     const clean = safeTrim(value).replace("#", "");
     if (!/^[0-9a-fA-F]{6}$/.test(clean)) return fallback;
@@ -333,26 +354,7 @@
   const depositAmount = String(data.depositFormatted || money(depositAmtNum)).trim();
   const balanceAfterDeposit = money(balanceAmtNum);
 
-  const scopeItems = (() => {
-    const raw =
-      data.scope_of_work ||
-      data.scopeOfWork ||
-      data.scopeItems ||
-      data.scopeSummary ||
-      data.scope_summary ||
-      data.projectNotes ||
-      data.quoteNotes ||
-      '';
-
-    if (Array.isArray(raw)) {
-      return raw.map(v => String(v || '').trim()).filter(Boolean);
-    }
-
-    return String(raw || '')
-      .split(/\r?\n+/)
-      .map(v => v.replace(/^[\-\u2022\s]+/, '').trim())
-      .filter(Boolean);
-  })();
+  const scopeItems = resolvePublicPdfScopeItems(data);
 
   const approvePayUrl = String(
     data.payment_link ||
@@ -933,6 +935,7 @@
     formatUsd,
     resolvePublishBusinessName,
     hexToRgbTuple,
-    isInvalidPublishBusinessNameCandidate
+    isInvalidPublishBusinessNameCandidate,
+    resolvePublicPdfScopeItems
   };
 })();
