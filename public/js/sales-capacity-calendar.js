@@ -301,6 +301,41 @@
     return `This start date is not available based on current crew capacity. Next available date is ${nextLabel}.`;
   }
 
+  const FIRMAR_PUBLIC_SIGNING_OPENED_MESSAGE =
+    "Public signing opened. Dates are reserved only after the client completes acceptance.";
+
+  /**
+   * Open public signing from a user click without using window.open(..., "noopener").
+   * Some browsers return null from window.open with noopener even when the tab opened.
+   * Keep target=_blank + rel=noopener noreferrer. Do not treat a return value as pop-up proof.
+   */
+  function openPublicSigningFromUserGesture(publicUrl, doc) {
+    const href = String(publicUrl || "").trim();
+    if (!href) return { ok: false, reason: "missing_url" };
+    const documentRef = doc || (typeof document !== "undefined" ? document : null);
+    if (!documentRef || typeof documentRef.createElement !== "function") {
+      return { ok: false, reason: "no_document" };
+    }
+    const a = documentRef.createElement("a");
+    a.href = href;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    if (documentRef.body && typeof documentRef.body.appendChild === "function") {
+      documentRef.body.appendChild(a);
+    }
+    if (typeof a.click === "function") a.click();
+    if (a.parentNode && typeof a.parentNode.removeChild === "function") {
+      a.parentNode.removeChild(a);
+    } else if (documentRef.body && typeof documentRef.body.removeChild === "function") {
+      try {
+        documentRef.body.removeChild(a);
+      } catch (_e) {
+        /* already detached */
+      }
+    }
+    return { ok: true, target: "_blank", rel: "noopener noreferrer" };
+  }
+
   global.MarginGuardSalesCapacity = {
     normDate,
     todayYmd,
@@ -326,5 +361,7 @@
     ADVISORY_SUFFIX_SEND,
     ADVISORY_SUFFIX_SOLD,
     QUOTE_EXPIRATION_DAYS: 15,
+    FIRMAR_PUBLIC_SIGNING_OPENED_MESSAGE,
+    openPublicSigningFromUserGesture,
   };
 })(typeof window !== "undefined" ? window : globalThis);

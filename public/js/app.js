@@ -11208,37 +11208,27 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const btnMarkSold = document.getElementById("btnMarkSold");
     if (btnMarkSold) {
       btnMarkSold.onclick = () => {
-        persistSalesDraft("signed");
-        const currentMetrics = resolveVisibleSendQuoteMetrics(
-          state,
-          settings,
-          calculateSalesMetrics(state, settings)
-        );
-        const soldPriceGuard = evaluateSendQuotePriceGuard(currentMetrics, {
-          formatCurrency: (value) => money(value, settings?.currency)
-        });
-        if (!soldPriceGuard.ok) {
-          window.alert(soldPriceGuard.message);
-          return;
-        }
-        if (!state.projectName || !state.clientName || !(state.startDate || state.dueDate) || currentMetrics.workerDays <= 0) {
-          window.alert("Complete project, customer, start date, and labor details before signing the estimate.");
+        const publicUrl = String(state.publicQuoteUrl || "").trim();
+        if (!publicUrl) {
+          window.alert("Create a public quote link before using Firmar.");
           return;
         }
         const cap = window.MarginGuardSalesCapacity;
-        const startDate = normalizeDateInput(state.startDate || state.dueDate || "");
-        const cached = window.__mgSalesCapacityCalendar;
-        if (cap && cached && cap.isStartBlocked(cached, startDate)) {
-          const suffix = cap.ADVISORY_SUFFIX_SOLD || " You may still mark this project sold.";
-          if (typeof cap.showCapacityWarning === "function") {
-            cap.showCapacityWarning(cap.blockedStartMessage(cached) + suffix);
-          }
+        const openedMsg =
+          (cap && cap.FIRMAR_PUBLIC_SIGNING_OPENED_MESSAGE) ||
+          "Public signing opened. Dates are reserved only after the client completes acceptance.";
+        if (cap && typeof cap.openPublicSigningFromUserGesture === "function") {
+          cap.openPublicSigningFromUserGesture(publicUrl);
+        } else {
+          const a = document.createElement("a");
+          a.href = publicUrl;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
         }
-        const project = buildSignedProjectFromSales(state, settings, currentMetrics);
-        saveActiveProject(project);
-        upsertSignedProject(project);
-        setLatestReport(ensureSupervisorReport(project));
-        renderSales();
+        window.alert(openedMsg);
       };
     }
 

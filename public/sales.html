@@ -8492,258 +8492,55 @@
                 return;
               }
             }
-            const cap = window.MarginGuardSalesCapacity;
+            const publishedSnap =
+              typeof getSalesPublishedQuoteSnapshot === 'function'
+                ? getSalesPublishedQuoteSnapshot()
+                : null;
+            const publicUrl = String(
+              (publishedSnap && publishedSnap.public_url) || state.publicQuoteUrl || ''
+            ).trim();
+            if (!publicUrl) {
+              showFirmarSignedStatus(
+                signedStatus,
+                'Create a public quote link before using Firmar.',
+                'error'
+              );
+              window.alert('Create a public quote link before using Firmar.');
+              return;
+            }
             const startInput = document.getElementById('salesStartDate');
-            const startDate = cap && cap.normDate
-              ? cap.normDate(startInput && startInput.value ? startInput.value : state.startDate || '')
-              : String(startInput && startInput.value ? startInput.value : state.startDate || '').trim().slice(0, 10);
+            const startDate = String(
+              startInput && startInput.value ? startInput.value : state.startDate || ''
+            )
+              .trim()
+              .slice(0, 10);
             if (!startDate) {
               showFirmarSignedStatus(
                 signedStatus,
-                'Choose a start date before marking the project sold.',
+                'Choose a start date before opening public signing.',
                 'error'
               );
-              window.alert('Choose a start date before marking the project sold.');
+              window.alert('Choose a start date before opening public signing.');
               return;
             }
-            const opMetrics = typeof getOperationalMetricsForState === 'function' ? getOperationalMetricsForState(state) : null;
-            const signedEstimatedDays = opMetrics && opMetrics.estimated_days > 0
-              ? opMetrics.estimated_days
-              : metrics.workerDays;
-            const finishDate =
-              cap && typeof cap.updateTargetFinishDisplay === 'function'
-                ? cap.updateTargetFinishDisplay(startDate, signedEstimatedDays, {
-                    workdaysEnabled: resolveSellerOperationalWorkdaysEnabled(settings)
-                  }).finish
-                : cap && cap.projectFinishFromStartLocal
-                  ? cap.projectFinishFromStartLocal(startDate, signedEstimatedDays, {
-                      workdaysEnabled: resolveSellerOperationalWorkdaysEnabled(settings)
-                    })
-                  : String(document.getElementById('salesTargetFinishDate')?.value || state.targetFinishDate || '').trim().slice(0, 10);
-
-            function proceedMarkSold(calendar) {
-              if (calendar && cap && cap.isStartBlocked(calendar, startDate)) {
-                const blockedMsg = cap.blockedStartMessage(calendar);
-                const suffix = cap.ADVISORY_SUFFIX_SOLD || ' You may still mark this project sold.';
-                if (typeof cap.showCapacityWarning === 'function') {
-                  cap.showCapacityWarning(blockedMsg + suffix);
-                }
-              }
-              state.soldAt = new Date().toISOString();
-              state.startDate = startDate;
-              state.targetFinishDate = finishDate;
-              state.dueDate = finishDate;
-              state.estimateStatus = 'sold';
-              state.signedProjectName = state.projectName || document.getElementById('salesProjectName')?.value || 'Project';
-              state.signedClientName = state.clientName || document.getElementById('salesClientName')?.value || 'Client';
-              saveSalesState(state);
-
-              const quoteId = state.quoteId && String(state.quoteId).trim();
-              if (!quoteId) {
-                if (sellerDevice) {
-                  showFirmarSignedStatus(
-                    signedStatus,
-                    'Create a public quote link before using Firmar.',
-                    'error'
-                  );
-                  window.alert('Create a public quote link before using Firmar.');
-                  return;
-                }
-                renderFirmarSuccessUi(state, startDate, finishDate, signedStatus);
-                return;
-              }
-
-              function runFirmarUpsert(onSuccess, onFailure) {
-                const settingsForUpsert = loadSettings();
-                const metricsForUpsert = buildSalesUIMetrics(state, settingsForUpsert);
-                const laborMetrics = calculateStandaloneSalesMetrics(state, settingsForUpsert);
-                var internalCost = Number(laborMetrics.beforeProfit || 0) + Number(laborMetrics.reserve || 0);
-                var estProfit = Number(metricsForUpsert.offered || 0) - internalCost;
-                var estMargin =
-                  Number(metricsForUpsert.offered || 0) > 0
-                    ? estProfit / Number(metricsForUpsert.offered)
-                    : 0;
-                var opApi = getOperationalPlanApi();
-                var hpd = opApi ? opApi.getHoursPerDay(settingsForUpsert) : Number(settingsForUpsert.hoursPerDay || 8);
-                var daysOv =
-                  typeof readOperationalDaysOverride === 'function'
-                    ? readOperationalDaysOverride(state)
-                    : null;
-                var hoursOv =
-                  typeof readOperationalHoursOverride === 'function'
-                    ? readOperationalHoursOverride(state)
-                    : null;
-                var normalizedOperationalPlan = opApi
-                  ? opApi.normalizeOperationalPlan(state.operational_plan || [], daysOv, hpd)
-                  : state.operational_plan || [];
-                var firmarBackendOk = false;
-
-                return fetch('/.netlify/functions/upsert-tenant-project', {
-                  method: 'POST',
-                  credentials: 'include',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    quote_id: quoteId,
-                    project_name: state.projectName || document.getElementById('salesProjectName')?.value || '',
-                    client_name: state.clientName || document.getElementById('salesClientName')?.value || '',
-                    client_email: state.customerEmail || document.getElementById('salesCustomerEmail')?.value || '',
-                    status: 'signed',
-                    start_date: startDate,
-                    signed_at: startDate + 'T12:00:00.000Z',
-                    deposit_paid: false,
-                    estimated_days: signedEstimatedDays,
-                    labor_budget: Number(laborMetrics.laborCost) || 0,
-                    sale_price: metricsForUpsert.offered,
-                    recommended_price: metricsForUpsert.recommended,
-                    minimum_price: metricsForUpsert.minimum,
-                    due_date: finishDate,
-                    notes: state.notes || state.messageToClient || '',
-                    hours_per_day: hpd,
-                    estimated_labor_cost: Number(laborMetrics.laborCost) || 0,
-                    estimated_material_cost: 0,
-                    estimated_profit: estProfit,
-                    estimated_profit_margin: estMargin,
-                    workers: state.workers,
-                    operational_plan: normalizedOperationalPlan,
-                    operational_estimated_days_override: daysOv != null ? daysOv : '',
-                    operational_estimated_hours_override: hoursOv != null ? hoursOv : ''
-                  })
-                })
-                  .then(function (res) {
-                    return res.text().then(function (raw) {
-                      var data = null;
-                      var parseError = false;
-                      if (raw) {
-                        try {
-                          data = JSON.parse(raw);
-                        } catch (_parseErr) {
-                          parseError = true;
-                        }
-                      } else if (!res.ok) {
-                        parseError = true;
-                      }
-                      return { res: res, data: data, raw: raw, parseError: parseError };
-                    });
-                  })
-                  .then(function (out) {
-                    if (!out.res.ok || !out.data || out.data.ok !== true) {
-                      if (typeof onFailure === 'function') {
-                        onFailure(out);
-                      } else {
-                        logSellerFirmarUpsertFailure(out);
-                      }
-                      return;
-                    }
-                    firmarBackendOk = true;
-                    try {
-                      if (out.data.id != null && String(out.data.id).trim()) {
-                        state.tenantProjectId = String(out.data.id).trim();
-                        saveSalesState(state);
-                        var capAfterFirmar = window.MarginGuardSalesCapacity;
-                        if (capAfterFirmar && typeof capAfterFirmar.fetchCapacityCalendar === 'function') {
-                          capAfterFirmar
-                            .fetchCapacityCalendar(signedEstimatedDays, startDate, state.tenantProjectId)
-                            .then(function (calendar) {
-                              window.__mgSalesCapacityUnverified = false;
-                              window.__mgSalesCapacityCalendar = calendar;
-                              if (typeof window.renderSalesOpCrewAvailability === 'function') {
-                                window.renderSalesOpCrewAvailability();
-                              }
-                            })
-                            .catch(function () {
-                              window.__mgSalesCapacityUnverified = true;
-                              if (typeof window.renderSalesOpCrewAvailability === 'function') {
-                                window.renderSalesOpCrewAvailability();
-                              }
-                            });
-                        }
-                      }
-                      if (typeof onSuccess === 'function') {
-                        try {
-                          onSuccess();
-                        } catch (uiErr) {
-                          if (typeof console !== 'undefined' && console.warn) {
-                            console.warn('[MG Sales] Seller Firmar success UI warning', uiErr);
-                          }
-                        }
-                      }
-                    } catch (postErr) {
-                      if (typeof console !== 'undefined' && console.warn) {
-                        console.warn('[MG Sales] Seller Firmar success UI warning', postErr);
-                      }
-                    }
-                  })
-                  .catch(function (_err) {
-                    if (firmarBackendOk) {
-                      if (typeof console !== 'undefined' && console.warn) {
-                        console.warn('[MG Sales] Seller Firmar success UI warning', _err);
-                      }
-                      return;
-                    }
-                    if (typeof onFailure === 'function') {
-                      onFailure({
-                        res: { status: 0, ok: false },
-                        data: null,
-                        parseError: false,
-                        networkError: true
-                      });
-                    } else if (typeof console !== 'undefined' && console.error) {
-                      console.error('[MG Sales] Seller Firmar upsert failed (network)');
-                    }
-                  });
-              }
-
-              if (sellerDevice) {
-                var firmarBtnEl = document.getElementById('btnMarkSold');
-                if (firmarBtnEl) firmarBtnEl.disabled = true;
-                showFirmarSignedStatus(signedStatus, 'Signing project…', 'info');
-                runFirmarUpsert(
-                  function () {
-                    renderFirmarSuccessUi(state, startDate, finishDate, signedStatus);
-                  },
-                  function (out) {
-                    if (firmarBtnEl) firmarBtnEl.disabled = false;
-                    var errMsg = safeUpsertFirmarErrorMessage(out);
-                    showFirmarSignedStatus(signedStatus, errMsg, 'error');
-                    window.alert(errMsg);
-                    logSellerFirmarUpsertFailure(out);
-                  }
-                );
-                return;
-              }
-
-              runFirmarUpsert();
-              renderFirmarSuccessUi(state, startDate, finishDate, signedStatus);
+            // Firmar opens public signing only — never upsert-tenant-project,
+            // never PATCH quotes.status to accepted, never persist operational snapshots.
+            const cap = window.MarginGuardSalesCapacity;
+            const openedMsg =
+              (cap && cap.FIRMAR_PUBLIC_SIGNING_OPENED_MESSAGE) ||
+              'Public signing opened. Dates are reserved only after the client completes acceptance.';
+            if (cap && typeof cap.openPublicSigningFromUserGesture === 'function') {
+              cap.openPublicSigningFromUserGesture(publicUrl);
+            } else {
+              const a = document.createElement('a');
+              a.href = publicUrl;
+              a.target = '_blank';
+              a.rel = 'noopener noreferrer';
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
             }
-
-            function finishMarkSoldWithCapacity(calendar) {
-              proceedMarkSold(calendar);
-            }
-            const cachedCalendar = window.__mgSalesCapacityCalendar;
-            if (cachedCalendar) {
-              finishMarkSoldWithCapacity(cachedCalendar);
-              return;
-            }
-            if (cap && typeof cap.fetchCapacityCalendar === 'function') {
-              cap.fetchCapacityCalendar(signedEstimatedDays, startDate, state.tenantProjectId || '')
-                .then(function (calendar) {
-                  window.__mgSalesCapacityUnverified = false;
-                  window.__mgSalesCapacityCalendar = calendar;
-                  finishMarkSoldWithCapacity(calendar);
-                })
-                .catch(function () {
-                  window.__mgSalesCapacityUnverified = true;
-                  if (typeof cap.showCapacityWarning === 'function') {
-                    cap.showCapacityWarning('');
-                  }
-                  if (typeof window.renderSalesOpCrewAvailability === 'function') {
-                    window.renderSalesOpCrewAvailability();
-                  }
-                  finishMarkSoldWithCapacity(null);
-                });
-              return;
-            }
-            finishMarkSoldWithCapacity(null);
+            showFirmarSignedStatus(signedStatus, openedMsg, 'info');
           }, true);
           if (
             window.MGSalesDevicePortal &&

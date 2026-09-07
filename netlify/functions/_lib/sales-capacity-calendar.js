@@ -464,6 +464,35 @@ function overlapsDesiredStart(desiredStartDate, projectStart, windowEnd) {
   return true;
 }
 
+/** Inclusive calendar-date overlap: A occupies [startA, endA], B occupies [startB, endB]. */
+function periodsOverlapInclusive(startA, endA, startB, endB) {
+  const a0 = normDate(startA);
+  const a1 = normDate(endA);
+  const b0 = normDate(startB);
+  const b1 = normDate(endB);
+  if (!a0 || !a1 || !b0 || !b1) return false;
+  return compareYmd(a0, b1) <= 0 && compareYmd(b0, a1) <= 0;
+}
+
+/**
+ * Full proposed period vs a calendar blocking analysis (same occupation_end as the engine).
+ * If the blocking project has no start, occupancy is (-inf, occupation_end] — same as overlapsDesiredStart.
+ */
+function blockingProjectOverlapsPeriod(analysis, proposedStart, proposedEnd) {
+  if (!analysis || analysis.released || analysis.blocks_capacity === false) return false;
+  const occEnd =
+    normDate(analysis.occupation_end) || normDate(analysis.target_finish_date);
+  if (!occEnd) return false;
+  const proposedA = normDate(proposedStart);
+  const proposedB = normDate(proposedEnd) || proposedA;
+  if (!proposedA || !proposedB) return false;
+  const occStart = normDate(analysis.start_date);
+  if (occStart) {
+    return periodsOverlapInclusive(proposedA, proposedB, occStart, occEnd);
+  }
+  return compareYmd(proposedA, occEnd) <= 0;
+}
+
 function supervisorProgressAvailable(progressRows, analysis) {
   const rows = Array.isArray(progressRows) ? progressRows : [];
   if (countCompletedDays(rows) > 0) return true;
@@ -1018,6 +1047,7 @@ async function computeSalesCapacityCalendar(params) {
 
 module.exports = {
   DEFAULT_SCHEDULE,
+  ACTIVE_STATUSES,
   resolveScheduleSettings,
   loadScheduleSettingsForTenant,
   computeSalesCapacityCalendar,
@@ -1030,4 +1060,8 @@ module.exports = {
   nextWorkdayOnOrAfter,
   normDate,
   todayYmdLocal,
+  compareYmd,
+  overlapsDesiredStart,
+  periodsOverlapInclusive,
+  blockingProjectOverlapsPeriod,
 };

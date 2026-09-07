@@ -26,6 +26,7 @@ const {
 } = require("./_lib/operational-plan");
 const { persistOperationalSnapshot } = require("./_lib/persist-operational-snapshot");
 const { buildQuoteScheduleFillPatch } = require("./_lib/contract-schedule");
+const { quoteHasPublicAcceptance } = require("./_lib/schedule-accept-guard");
 
 async function fillQuoteScheduleIfNull(quoteRow, startDate, dueDate) {
   const built = buildQuoteScheduleFillPatch(quoteRow, startDate, dueDate);
@@ -178,25 +179,17 @@ function assertSellerFirmarQuoteStatus(ctx, quote, existingProject) {
   }
 }
 
-/** Direct Firmar: Supervisor list requires quote accepted/approved (get-supervisor-projects). */
-async function markQuoteAcceptedForSupervisorListing(tenantId, quoteRow) {
+/**
+ * Firmar must not mark the quote accepted. Public accept / Hub accept are canonical.
+ * If the quote is already accepted, report that; otherwise skip (no PATCH).
+ */
+async function markQuoteAcceptedForSupervisorListing(_tenantId, quoteRow) {
   if (!quoteRow?.id) return { skipped: true };
   const st = String(quoteRow.status || "").trim().toLowerCase();
-  if (SUPERVISOR_QUOTE_STATUSES.has(st)) {
+  if (quoteHasPublicAcceptance(quoteRow) || SUPERVISOR_QUOTE_STATUSES.has(st)) {
     return { ok: true, status: st, already_accepted: true };
   }
-  const tid = encodeURIComponent(tenantId);
-  const qid = encodeURIComponent(String(quoteRow.id));
-  const nowIso = new Date().toISOString();
-  await supabaseRequest(`quotes?id=eq.${qid}&tenant_id=eq.${tid}`, {
-    method: "PATCH",
-    body: {
-      status: "accepted",
-      accepted_at: quoteRow.accepted_at || nowIso,
-      updated_at: nowIso,
-    },
-  });
-  return { ok: true, status: "accepted", already_accepted: false };
+  return { ok: true, skipped: true, status: st || null, already_accepted: false };
 }
 
 async function safePersistOperationalSnapshot(params) {
@@ -285,6 +278,16 @@ exports.handler = async (event) => {
     if (ctx.auth_mode === "device") {
       assertSellerOwnQuote(ctx, quoteOk);
       assertSellerFirmarQuoteStatus(ctx, quoteOk, existing);
+    }
+
+    const incomingStatus = normStatus(body.status);
+    if (incomingStatus === "signed" && !quoteHasPublicAcceptance(quoteOk)) {
+      return json(409, {
+        ok: false,
+        error:
+          "Project signing is confirmed only after the client completes public acceptance.",
+        code: "public_acceptance_required",
+      });
     }
 
     const locked = Boolean(existing?.quoted_labor_plan_locked_at);
