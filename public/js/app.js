@@ -10735,13 +10735,19 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
   /** CH-015 — duration is resolved from live state on every call, never from a render snapshot. */
   const resolveCurrentSalesProjectDays = () => {
+    let liveState = state;
     let liveSettings = settings;
     let liveMetrics = metrics;
     try {
+      liveState = loadSales();
       liveSettings = loadSettings();
-      liveMetrics = calculateSalesMetrics(state, liveSettings);
+      liveMetrics = calculateSalesMetrics(liveState, liveSettings);
     } catch (_error) {}
-    return resolveSalesEstimatedProjectDays(state, liveSettings, liveMetrics);
+    return resolveSalesEstimatedProjectDays(
+      liveState,
+      liveSettings,
+      liveMetrics
+    );
   };
 
   const clearSalesTargetFinish = () => {
@@ -11029,16 +11035,12 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       persistSalesDraft();
       if (input === startDateInput) {
         refreshSalesCapacityCalendar(startDateInput.value);
+        void syncApprovedQuoteScheduleFillOnce(loadSales());
       }
     };
   });
-  if (startDateInput && startDateInput.dataset.capacityBound !== "true") {
-    startDateInput.dataset.capacityBound = "true";
-    startDateInput.addEventListener("change", () => {
-      refreshSalesCapacityCalendar(startDateInput.value);
-      // CH-012F — one-time fill of quotes.start_date/due_date when accepted quote is null.
-      void syncApprovedQuoteScheduleFillOnce(state);
-    });
+  if (startDateInput && startDateInput.dataset.capacityGuidanceBound !== "true") {
+    startDateInput.dataset.capacityGuidanceBound = "true";
     startDateInput.addEventListener("input", () => {
       const cached = window.__mgSalesCapacityCalendar;
       const cap = window.MarginGuardSalesCapacity;
