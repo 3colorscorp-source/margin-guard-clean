@@ -106,6 +106,7 @@ const SYSTEM_INSTRUCTIONS = [
   "Do not delete or replace existing days unless the transcript explicitly asks to delete, remove, quitar, eliminar, reemplazar todo, or start over.",
   "A command such as modify day one changes only that day. Insert, move, and delete commands must keep the remaining days.",
   "client_scope is professional client-facing work only. Never put workers, hours, internal logistics, risks, or internal notes in client_scope.",
+  "Whenever dictated work changes a day's internal_tasks, rewrite that same day's client_scope so it accurately summarizes the changed work. Never leave a stale client_scope from the previous plan.",
   "Put execution detail in internal_tasks and internal_notes. Do not invent materials, dependencies, responsibilities, or risks that were not dictated.",
   "Use Installer/pro and Assistant/helper. If two workers are stated without roles, use one Installer and one Assistant. If one unspecified worker is stated, use one Installer.",
   "If hours are omitted, use the supplied tenant hours_per_day for each worker. Preserve partial hours exactly.",
@@ -245,6 +246,49 @@ function missingCurrentDayIds(current, proposed) {
     (Array.isArray(proposed?.days) ? proposed.days : []).map((day) => String(day?.day_id || "")).filter(Boolean)
   );
   return [...currentIds].filter((id) => !proposedIds.has(id));
+}
+
+function normalizedTaskLabels(day) {
+  return (Array.isArray(day?.internal_tasks) ? day.internal_tasks : [])
+    .map((task) => String(task?.label || "").trim().replace(/\s+/g, " "))
+    .filter(Boolean);
+}
+
+function clientSafeTaskNarrative(day) {
+  const labels = normalizedTaskLabels(day);
+  if (!labels.length) return "";
+  const hasInternalCrewDetail = labels.some((label) =>
+    /\b(installer|assistant|helper|worker|trabajador(?:es)?|ayudante(?:s)?|instalador(?:es)?|\d+(?:\.\d+)?\s*(?:h|hr|hrs|hours|hora|horas))\b/i.test(label)
+  );
+  if (hasInternalCrewDetail) return "Complete the updated planned work for this day.";
+  const narrative = labels
+    .map((label) => label.replace(/\s*\([^)]{1,160}\)\s*$/g, "").trim())
+    .filter(Boolean)
+    .join("; ");
+  if (!narrative) return "Complete the updated planned work for this day.";
+  return /[.!?]$/.test(narrative) ? narrative : `${narrative}.`;
+}
+
+function synchronizeChangedClientScopes(proposed, current) {
+  const currentById = new Map(
+    (Array.isArray(current?.days) ? current.days : [])
+      .map((day) => [String(day?.day_id || ""), day])
+      .filter(([dayId]) => dayId)
+  );
+  const next = { ...(proposed || {}) };
+  next.days = (Array.isArray(proposed?.days) ? proposed.days : []).map((day) => {
+    const out = { ...(day || {}) };
+    const prior = currentById.get(String(out.day_id || ""));
+    if (!prior) return out;
+    const tasksChanged = JSON.stringify(normalizedTaskLabels(out)) !== JSON.stringify(normalizedTaskLabels(prior));
+    const scopeStayedStale = String(out.client_scope || "").trim() === String(prior.client_scope || "").trim();
+    if (tasksChanged && scopeStayedStale) {
+      const synchronized = clientSafeTaskNarrative(out);
+      if (synchronized) out.client_scope = synchronized;
+    }
+    return out;
+  });
+  return next;
 }
 
 function buildModelInput({ transcript, current, hoursPerDay }) {
@@ -395,7 +439,8 @@ export function createHandler(deps = {}) {
         hoursPerDay,
       });
       const modelResult = await interpret({ transcript, current, hoursPerDay });
-      const proposedRaw = stabilizeProposedDocument(modelResult?.document, current);
+      const stabilized = stabilizeProposedDocument(modelResult?.document, current);
+      const proposedRaw = synchronizeChangedClientScopes(stabilized, current);
       const incoming = voice.validateIncomingDocument(proposedRaw);
       if (!incoming.ok) {
         return jsonResponse(422, {
@@ -474,6 +519,8 @@ export {
   stabilizeProposedDocument,
   transcriptAllowsDestructiveChange,
   missingCurrentDayIds,
+  synchronizeChangedClientScopes,
+  clientSafeTaskNarrative,
   buildModelInput,
   openAiResponsesUrl,
   callOpenAi,
