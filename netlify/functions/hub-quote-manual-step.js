@@ -1,12 +1,19 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
-const { bridgeAcceptedQuoteToProject, UUID_RE } = require("./_lib/quote-accept-bridge");
+const {
+  bridgeAcceptedQuoteToProject,
+  UUID_RE,
+  applyOperationalSnapshotForProject,
+} = require("./_lib/quote-accept-bridge");
 const {
   assertQuoteScheduleAvailable,
   revertQuoteAcceptance,
   scheduleConflictPayload,
   isScheduleConflictError,
+  hasConfirmedReservation,
+  reservationFailedPayload,
+  tryAtomicAcceptQuoteReservingSchedule,
 } = require("./_lib/schedule-accept-guard");
 
 function json(statusCode, body) {
@@ -103,6 +110,131 @@ function quoteIsAccepted(quote) {
 const NO_INVOICE_HUB_MSG =
   "No invoice for this quote. Create an invoice in Invoice Hub first.";
 
+async function hubAcceptQuote(quote, ctx = {}) {
+  const assertFn = ctx.assertQuoteScheduleAvailable || assertQuoteScheduleAvailable;
+  const req = ctx.supabaseRequest || supabaseRequest;
+  const fetchQ = ctx.fetchQuoteForTenant || fetchQuoteForTenant;
+  const bridgeFn = ctx.bridgeAcceptedQuoteToProject || bridgeAcceptedQuoteToProject;
+  const revertFn = ctx.revertQuoteAcceptance || revertQuoteAcceptance;
+  const tryAtomicFn = ctx.tryAtomicAcceptQuoteReservingSchedule || tryAtomicAcceptQuoteReservingSchedule;
+  const snapshotFn = ctx.applyOperationalSnapshotForProject || applyOperationalSnapshotForProject;
+
+  const tenantId = String(ctx.tenantId || quote?.tenant_id || "").trim();
+  const quoteId = String(ctx.quoteId || quote?.id || "").trim();
+  const tidEnc = encodeURIComponent(tenantId);
+  const qidEnc = encodeURIComponent(quoteId);
+  const nowIso = ctx.nowIso || new Date().toISOString();
+  const already = quoteIsAccepted(quote);
+
+  if (!already) {
+    let proposed = null;
+    try {
+      const checked = await assertFn(quote);
+      proposed = checked && checked.proposed ? checked.proposed : null;
+    } catch (err) {
+      if (isScheduleConflictError(err)) {
+        return json(409, scheduleConflictPayload());
+      }
+      throw err;
+    }
+
+    const atomic = await tryAtomicFn(
+      { ...quote, accepted_at: nowIso },
+      proposed
+    );
+
+    if (atomic && atomic.code === "schedule_conflict") {
+      return json(409, scheduleConflictPayload());
+    }
+
+    if (atomic && atomic.ok === true && hasConfirmedReservation({ ok: true, project_id: atomic.project_id })) {
+      let snapshotOk = true;
+      try {
+        if (String(atomic.action || "") === "create") {
+          await snapshotFn({ ...quote, status: "accepted", accepted_at: nowIso }, atomic.project_id);
+        }
+      } catch (snapErr) {
+        snapshotOk = false;
+        console.error(
+          "[hub-accept] operational snapshot failed after atomic reservation; schedule remains reserved",
+          snapErr
+        );
+      }
+      return json(200, {
+        ok: true,
+        action: "accept",
+        project_id: atomic.project_id,
+        reserved: true,
+        snapshot_ok: snapshotOk,
+      });
+    }
+
+    if (atomic && atomic.code !== "rpc_missing") {
+      return json(503, reservationFailedPayload({
+        rpc_code: atomic.code || "rpc_failed",
+      }));
+    }
+
+    await req(`quotes?id=eq.${qidEnc}&tenant_id=eq.${tidEnc}`, {
+      method: "PATCH",
+      body: {
+        status: "accepted",
+        accepted_at: nowIso,
+        updated_at: nowIso
+      }
+    });
+  }
+
+  const refreshed = (await fetchQ(tenantId, quoteId)) || quote;
+  let bridged = null;
+  try {
+    bridged = await bridgeFn(refreshed, { strict: true });
+  } catch (err) {
+    if (isScheduleConflictError(err)) {
+      if (!already) {
+        const rolled = await revertFn(quote, quote.status);
+        if (!rolled || rolled.ok !== true) {
+          return json(503, reservationFailedPayload({
+            needs_manual_repair: true,
+            rollback_failed: true,
+          }));
+        }
+      }
+      return json(409, scheduleConflictPayload());
+    }
+    console.error("[hub-accept] reservation failed", err?.message || err);
+    if (!already) {
+      const rolled = await revertFn(quote, quote.status);
+      if (!rolled || rolled.ok !== true) {
+        return json(503, reservationFailedPayload({
+          needs_manual_repair: true,
+          rollback_failed: true,
+        }));
+      }
+    }
+    return json(503, reservationFailedPayload({ already_accepted: already }));
+  }
+  if (!hasConfirmedReservation(bridged)) {
+    if (!already) {
+      const rolled = await revertFn(quote, quote.status);
+      if (!rolled || rolled.ok !== true) {
+        return json(503, reservationFailedPayload({
+          needs_manual_repair: true,
+          rollback_failed: true,
+        }));
+      }
+    }
+    return json(503, reservationFailedPayload({ already_accepted: already }));
+  }
+  return json(200, {
+    ok: true,
+    action: "accept",
+    project_id: bridged.project_id,
+    reserved: true,
+    snapshot_ok: bridged.snapshot_ok !== false,
+  });
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -141,42 +273,11 @@ exports.handler = async (event) => {
     const nowIso = new Date().toISOString();
 
     if (action === "accept") {
-      const already = quoteIsAccepted(quote);
-      if (!already) {
-        try {
-          await assertQuoteScheduleAvailable(quote);
-        } catch (err) {
-          if (isScheduleConflictError(err)) {
-            return json(409, scheduleConflictPayload());
-          }
-          throw err;
-        }
-        await supabaseRequest(`quotes?id=eq.${qidEnc}&tenant_id=eq.${tidEnc}`, {
-          method: "PATCH",
-          body: {
-            status: "accepted",
-            accepted_at: nowIso,
-            updated_at: nowIso
-          }
-        });
-      }
-      const refreshed = (await fetchQuoteForTenant(tenantId, quoteId)) || quote;
-      try {
-        await bridgeAcceptedQuoteToProject(refreshed);
-      } catch (err) {
-        if (isScheduleConflictError(err)) {
-          if (!already) {
-            try {
-              await revertQuoteAcceptance(quote, quote.status);
-            } catch (_revertErr) {
-              /* keep 409 */
-            }
-          }
-          return json(409, scheduleConflictPayload());
-        }
-        throw err;
-      }
-      return json(200, { ok: true, action: "accept" });
+      return hubAcceptQuote(quote, {
+        tenantId,
+        quoteId,
+        nowIso,
+      });
     }
 
     if (action === "check_pending") {
@@ -257,3 +358,7 @@ exports.handler = async (event) => {
 exports.isActiveInvoiceForDepositAction = isActiveInvoiceForDepositAction;
 exports.selectActiveInvoiceForQuote = selectActiveInvoiceForQuote;
 exports.INACTIVE_INVOICE_STATUSES = INACTIVE_INVOICE_STATUSES;
+exports._test = {
+  hubAcceptQuote,
+  quoteIsAccepted,
+};

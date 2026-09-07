@@ -8525,14 +8525,22 @@
             }
             // Firmar opens public signing only — never upsert-tenant-project,
             // never PATCH quotes.status to accepted, never persist operational snapshots.
-            const opened = window.open(publicUrl, '_blank', 'noopener');
-            showFirmarSignedStatus(
-              signedStatus,
-              opened
-                ? 'Public signing opened. Dates are reserved only after the client completes acceptance on that page. Closing the page does not block other quotes.'
-                : 'Allow pop-ups, then open the public estimate so the client can complete signing. Opening it does not reserve the schedule.',
-              opened ? 'info' : 'error'
-            );
+            const cap = window.MarginGuardSalesCapacity;
+            const openedMsg =
+              (cap && cap.FIRMAR_PUBLIC_SIGNING_OPENED_MESSAGE) ||
+              'Public signing opened. Dates are reserved only after the client completes acceptance.';
+            if (cap && typeof cap.openPublicSigningFromUserGesture === 'function') {
+              cap.openPublicSigningFromUserGesture(publicUrl);
+            } else {
+              const a = document.createElement('a');
+              a.href = publicUrl;
+              a.target = '_blank';
+              a.rel = 'noopener noreferrer';
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+            }
+            showFirmarSignedStatus(signedStatus, openedMsg, 'info');
           }, true);
           if (
             window.MGSalesDevicePortal &&

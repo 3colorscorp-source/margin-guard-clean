@@ -11213,12 +11213,22 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           window.alert("Create a public quote link before using Firmar.");
           return;
         }
-        const opened = window.open(publicUrl, "_blank", "noopener");
-        if (!opened) {
-          window.alert(
-            "Allow pop-ups, then open the public estimate so the client can complete signing. Opening it does not reserve the schedule."
-          );
+        const cap = window.MarginGuardSalesCapacity;
+        const openedMsg =
+          (cap && cap.FIRMAR_PUBLIC_SIGNING_OPENED_MESSAGE) ||
+          "Public signing opened. Dates are reserved only after the client completes acceptance.";
+        if (cap && typeof cap.openPublicSigningFromUserGesture === "function") {
+          cap.openPublicSigningFromUserGesture(publicUrl);
+        } else {
+          const a = document.createElement("a");
+          a.href = publicUrl;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
         }
+        window.alert(openedMsg);
       };
     }
 

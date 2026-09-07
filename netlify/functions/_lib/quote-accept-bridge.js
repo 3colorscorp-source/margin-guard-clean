@@ -259,16 +259,18 @@ async function applyOperationalSnapshotForProject(quoteRow, projectId) {
  * never re-run full labor/snapshot sync (would overwrite newer operational state).
  */
 
-async function bridgeAcceptedQuoteToProject(quoteRow) {
+async function bridgeAcceptedQuoteToProject(quoteRow, options = {}) {
+  const strict = Boolean(options.strict);
+  let snapshotOk = true;
   if (!quoteRow || typeof quoteRow !== "object") {
-    return { ok: false, project_id: null, action: "skip" };
+    return { ok: false, project_id: null, action: "skip", snapshot_ok: snapshotOk };
   }
 
   const tenantId = String(quoteRow.tenant_id || "").trim();
   const quoteId = String(quoteRow.id || "").trim();
   if (!UUID_RE.test(tenantId) || !UUID_RE.test(quoteId)) {
     console.warn("[accept-bridge] skip: invalid tenant_id or quote id on row");
-    return { ok: false, project_id: null, action: "skip" };
+    return { ok: false, project_id: null, action: "skip", snapshot_ok: snapshotOk };
   }
 
   const tidEnc = encodeURIComponent(tenantId);
@@ -434,13 +436,22 @@ async function bridgeAcceptedQuoteToProject(quoteRow) {
       if (newProjectId) {
         resolvedProjectId = newProjectId;
         if (action === "create") {
-          await applyOperationalSnapshotForProject(quoteRow, newProjectId);
+          try {
+            await applyOperationalSnapshotForProject(quoteRow, newProjectId);
+          } catch (snapErr) {
+            snapshotOk = false;
+            console.error(
+              "[accept-bridge] operational snapshot failed after reservation; schedule remains reserved",
+              snapErr
+            );
+          }
         }
       }
     }
   } catch (tpErr) {
     if (isScheduleConflictError(tpErr)) throw tpErr;
     console.error("[accept-bridge] tenant_projects step failed", tpErr);
+    if (strict && !resolvedProjectId) throw tpErr;
   }
 
   if (!resolvedProjectId) {
@@ -464,7 +475,12 @@ async function bridgeAcceptedQuoteToProject(quoteRow) {
     action,
   });
 
-  return { ok: Boolean(resolvedProjectId), project_id: resolvedProjectId, action };
+  return {
+    ok: Boolean(resolvedProjectId),
+    project_id: resolvedProjectId,
+    action,
+    snapshot_ok: snapshotOk,
+  };
 }
 
 function isBlankField(value) {

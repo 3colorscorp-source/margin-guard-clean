@@ -116,10 +116,19 @@ ok(
   "2. Firmar click does not PATCH quotes accepted",
   !/status:\s*'accepted'|status:\s*\"accepted\"/.test(firmarClick)
 );
-ok("3. Firmar opens public signing in a new window", /window\.open\(publicUrl/.test(firmarClick));
 ok(
-  "3b. Firmar copy says closing does not block other quotes",
-  /does not block other quotes|does not reserve the schedule/.test(firmarClick)
+  "3. Firmar opens public signing via user-gesture link",
+  /openPublicSigningFromUserGesture/.test(firmarClick) &&
+    /noopener noreferrer/.test(firmarClick)
+);
+ok(
+  "3b. Firmar copy is informational, not a pop-up error",
+  /Dates are reserved only after the client completes acceptance/.test(firmarClick) &&
+    !/Allow pop-ups/.test(firmarClick)
+);
+ok(
+  "3c. Firmar does not treat window.open noopener return as proof",
+  !/window\.open\(publicUrl,\s*['\"]_blank['\"],\s*['\"]noopener/.test(firmarClick)
 );
 ok("4. publish-public-quote does not insert tenant_projects", !/tenant_projects/.test(publishSrc));
 ok("5. send-quote-zapier does not insert tenant_projects", !/tenant_projects/.test(zapierSrc));
@@ -151,6 +160,22 @@ ok(
 );
 ok("owner and seller still share get-sales-capacity-calendar dual-auth", /resolveOwnerOrSellerContext/.test(read("netlify/functions/get-sales-capacity-calendar.js")));
 ok("app.js Firmar no longer upserts a local signed project", !/upsertSignedProject\(project\)/.test(appSrc));
+{
+  const appFirmar = appSrc.slice(
+    appSrc.indexOf("const btnMarkSold"),
+    appSrc.indexOf("const btnProjComplete")
+  );
+  ok(
+    "app.js Firmar uses secure link helper, not window.open noopener return",
+    /openPublicSigningFromUserGesture/.test(appFirmar) &&
+      !/window\.open\(publicUrl,\s*["']_blank["'],\s*["']noopener/.test(appFirmar)
+  );
+  ok(
+    "app.js Firmar info copy does not mention Allow pop-ups",
+    /Dates are reserved only after the client completes acceptance/.test(appFirmar) &&
+      !/Allow pop-ups/.test(appFirmar)
+  );
+}
 ok("public client sees friendly 409 copy", /error_es/.test(builderSrc) && /ya no están disponibles/.test(builderSrc));
 ok("RPC file is marked do-not-apply", /do not apply to production/i.test(rpcSql));
 ok("RPC uses advisory lock and schedule_conflict", /pg_advisory_xact_lock/.test(rpcSql) && /schedule_conflict/.test(rpcSql));
@@ -381,6 +406,365 @@ async function fakeCalendarForTenant(store) {
   eq("2b. premature upsert does not PATCH quote accepted", patches.length, 0);
   globalThis.fetch = prev;
 
+  require("../public/js/sales-capacity-calendar.js");
+  const {
+    handlePublicEstimateStatus,
+  } = require("../netlify/functions/update-public-estimate-status")._test;
+  const { hubAcceptQuote } = require("../netlify/functions/hub-quote-manual-step")._test;
+  const { RESERVATION_FAILED_CODE } = require("../netlify/functions/_lib/schedule-accept-guard");
+
+  const PUBLIC_TOKEN = "publictoken01";
+  function baseQuote(overrides) {
+    return {
+      id: QUOTE_A,
+      tenant_id: TENANT_A,
+      public_token: PUBLIC_TOKEN,
+      status: "READY_TO_SEND",
+      accepted_at: null,
+      start_date: "2026-09-07",
+      due_date: "2026-09-11",
+      estimated_days: 5,
+      client_email: "client@example.com",
+      business_email: "biz@example.com",
+      client_name: "Client",
+      business_name: "Biz",
+      total: 1500,
+      ...overrides,
+    };
+  }
+
+  const proposed = { start_date: "2026-09-07", due_date: "2026-09-11", estimated_days: 5 };
+
+  async function runPublicAccept(opts) {
+    const quote = opts.quote || baseQuote();
+    const webhookCalls = [];
+    const revertCalls = [];
+    const bridgeCalls = [];
+    const atomicCalls = [];
+    const snapshotCalls = [];
+    const patchCalls = [];
+    const res = await handlePublicEstimateStatus(
+      {
+        httpMethod: "POST",
+        body: JSON.stringify({ token: PUBLIC_TOKEN, status: "accepted" }),
+      },
+      {
+        getSupabaseConfig: () => ({ url: "https://example.supabase.co", key: "service-key" }),
+        fetchQuoteByPublicToken: async () => quote,
+        assertQuoteScheduleAvailable: opts.assertQuoteScheduleAvailable || (async () => ({
+          ok: true,
+          proposed,
+        })),
+        tryAtomicAcceptQuoteReservingSchedule: async (...args) => {
+          atomicCalls.push(args);
+          if (typeof opts.atomic === "function") return opts.atomic(...args);
+          return opts.atomic;
+        },
+        bridgeAcceptedQuoteToProject: async (...args) => {
+          bridgeCalls.push(args);
+          if (typeof opts.bridge === "function") return opts.bridge(...args);
+          return opts.bridge;
+        },
+        applyOperationalSnapshotForProject: async (...args) => {
+          snapshotCalls.push(args);
+          if (typeof opts.snapshot === "function") return opts.snapshot(...args);
+          return true;
+        },
+        revertQuoteAcceptance: async (...args) => {
+          revertCalls.push(args);
+          if (typeof opts.revert === "function") return opts.revert(...args);
+          return opts.revert || { ok: true, restored_status: quote.status, restored_accepted_at: quote.accepted_at };
+        },
+        sendEstimateAcceptedWebhook: async (payload) => {
+          webhookCalls.push(payload);
+          return { sent: true };
+        },
+        fetchImpl:
+          opts.fetchImpl ||
+          (async (_url, init) => {
+            const method = String(init?.method || "GET").toUpperCase();
+            if (method === "PATCH") {
+              patchCalls.push(JSON.parse(init.body || "{}"));
+              return jsonRes(200, [
+                {
+                  ...quote,
+                  status: "accepted",
+                  accepted_at: "2026-09-05T12:00:00.000Z",
+                },
+              ]);
+            }
+            return jsonRes(200, []);
+          }),
+      }
+    );
+    return {
+      res,
+      body: JSON.parse(res.body || "{}"),
+      webhookCalls,
+      revertCalls,
+      bridgeCalls,
+      atomicCalls,
+      snapshotCalls,
+      patchCalls,
+    };
+  }
+
+  {
+    const out = await runPublicAccept({
+      atomic: { ok: false, code: "rpc_missing" },
+      bridge: { ok: true, project_id: PROJECT_A, snapshot_ok: true },
+    });
+    eq("RPC missing: Function detects rpc_missing", out.atomicCalls.length, 1);
+    eq("RPC missing: fallback PATCH ran", out.patchCalls.length, 1);
+    eq("RPC missing: bridge created project → 200", out.res.statusCode, 200);
+    eq("RPC missing: reserved true", out.body.reserved, true);
+    eq("RPC missing: project_id present", out.body.project_id, PROJECT_A);
+    eq("RPC missing: webhook fired once", out.webhookCalls.length, 1);
+  }
+
+  {
+    const out = await runPublicAccept({
+      atomic: { ok: false, code: "rpc_missing" },
+      bridge: { ok: false, project_id: null },
+    });
+    eq("RPC missing: bridge {ok:false} → 503", out.res.statusCode, 503);
+    eq("RPC missing: code reservation_failed", out.body.code, RESERVATION_FAILED_CODE);
+    eq("RPC missing: quote reverted", out.revertCalls.length, 1);
+    eq("RPC missing: revert restores prior status", out.revertCalls[0][1], "READY_TO_SEND");
+    eq("RPC missing: revert restores prior accepted_at", out.revertCalls[0][0].accepted_at, null);
+    eq("RPC missing: no webhook on {ok:false}", out.webhookCalls.length, 0);
+  }
+
+  {
+    const out = await runPublicAccept({
+      atomic: { ok: false, code: "rpc_missing" },
+      bridge: async () => {
+        throw new Error("tenant_projects insert failed");
+      },
+    });
+    eq("RPC missing: generic bridge throw → 503", out.res.statusCode, 503);
+    eq("RPC missing: generic throw reverts", out.revertCalls.length, 1);
+    eq("RPC missing: no webhook on generic throw", out.webhookCalls.length, 0);
+  }
+
+  {
+    const out = await runPublicAccept({
+      atomic: { ok: false, code: "rpc_missing" },
+      bridge: async () => {
+        throw new ScheduleConflictError({ conflict_project_id: PROJECT_A });
+      },
+    });
+    eq("RPC missing: schedule_conflict → 409", out.res.statusCode, 409);
+    eq("RPC missing: conflict code", out.body.code, SCHEDULE_CONFLICT_CODE);
+    eq("RPC missing: conflict reverts PATCH", out.revertCalls.length, 1);
+    eq("RPC missing: no webhook on 409", out.webhookCalls.length, 0);
+  }
+
+  {
+    const priorAcceptedAt = "2026-08-01T00:00:00.000Z";
+    const out = await runPublicAccept({
+      quote: baseQuote({ accepted_at: priorAcceptedAt }),
+      atomic: { ok: false, code: "rpc_missing" },
+      bridge: { ok: false },
+      revert: async (row, status) => ({
+        ok: true,
+        restored_status: status,
+        restored_accepted_at: row.accepted_at,
+      }),
+    });
+    // accepted_at set makes quoteAlreadyAccepted true → heal path, no PATCH revert
+    eq("already_accepted without project → 503", out.res.statusCode, 503);
+    eq("already_accepted heal does not fire webhook", out.webhookCalls.length, 0);
+  }
+
+  {
+    const out = await runPublicAccept({
+      atomic: { ok: false, code: "rpc_missing" },
+      bridge: { ok: false },
+      revert: async () => ({ ok: false, needs_manual_repair: true }),
+    });
+    eq("rollback failure → 503", out.res.statusCode, 503);
+    eq("rollback failure needs_manual_repair", out.body.needs_manual_repair, true);
+    eq("rollback failure never webhooks", out.webhookCalls.length, 0);
+  }
+
+  {
+    const out = await runPublicAccept({
+      atomic: { ok: true, code: "created", action: "create", project_id: PROJECT_A },
+      bridge: async () => {
+        throw new Error("bridge must not run after atomic success");
+      },
+    });
+    eq("RPC installed: atomic success → 200", out.res.statusCode, 200);
+    eq("RPC installed: quote reserved", out.body.reserved, true);
+    eq("RPC installed: project signed id returned", out.body.project_id, PROJECT_A);
+    eq("RPC installed: fallback PATCH skipped", out.patchCalls.length, 0);
+    eq("RPC installed: bridge not called", out.bridgeCalls.length, 0);
+    eq("RPC installed: webhook fired", out.webhookCalls.length, 1);
+  }
+
+  {
+    const out = await runPublicAccept({
+      atomic: { ok: false, code: "schedule_conflict" },
+      bridge: { ok: true, project_id: PROJECT_A },
+    });
+    eq("RPC installed: schedule_conflict → 409", out.res.statusCode, 409);
+    eq("RPC installed: conflict does not PATCH", out.patchCalls.length, 0);
+    eq("RPC installed: conflict does not bridge", out.bridgeCalls.length, 0);
+    eq("RPC installed: conflict no webhook", out.webhookCalls.length, 0);
+  }
+
+  {
+    const out = await runPublicAccept({
+      atomic: { ok: true, code: "created", action: "create", project_id: PROJECT_A },
+      snapshot: async () => {
+        throw new Error("snapshot persist failed");
+      },
+    });
+    eq("RPC snapshot fail still 200", out.res.statusCode, 200);
+    eq("RPC snapshot fail keeps reservation", out.body.reserved, true);
+    eq("RPC snapshot fail keeps project_id", out.body.project_id, PROJECT_A);
+    eq("RPC snapshot fail snapshot_ok false", out.body.snapshot_ok, false);
+    eq("RPC snapshot fail does not claim missing reservation", out.body.code == null, true);
+    eq("RPC snapshot fail still webhooks", out.webhookCalls.length, 1);
+    eq("RPC snapshot fail does not revert quote", out.revertCalls.length, 0);
+  }
+
+  async function runHub(opts) {
+    const quote = opts.quote || baseQuote();
+    const revertCalls = [];
+    const bridgeCalls = [];
+    const atomicCalls = [];
+    const patchCalls = [];
+    const snapshotCalls = [];
+    const res = await hubAcceptQuote(quote, {
+      tenantId: TENANT_A,
+      quoteId: QUOTE_A,
+      nowIso: "2026-09-05T12:00:00.000Z",
+      assertQuoteScheduleAvailable: opts.assertQuoteScheduleAvailable || (async () => ({
+        ok: true,
+        proposed,
+      })),
+      tryAtomicAcceptQuoteReservingSchedule: async (...args) => {
+        atomicCalls.push(args);
+        if (typeof opts.atomic === "function") return opts.atomic(...args);
+        return opts.atomic;
+      },
+      supabaseRequest: async (path, init) => {
+        if (String(init?.method || "").toUpperCase() === "PATCH") {
+          patchCalls.push(init.body);
+        }
+        return [{}];
+      },
+      fetchQuoteForTenant: async () => ({ ...quote, status: "accepted", accepted_at: "2026-09-05T12:00:00.000Z" }),
+      bridgeAcceptedQuoteToProject: async (...args) => {
+        bridgeCalls.push(args);
+        if (typeof opts.bridge === "function") return opts.bridge(...args);
+        return opts.bridge;
+      },
+      revertQuoteAcceptance: async (...args) => {
+        revertCalls.push(args);
+        if (typeof opts.revert === "function") return opts.revert(...args);
+        return { ok: true };
+      },
+      applyOperationalSnapshotForProject: async (...args) => {
+        snapshotCalls.push(args);
+        if (typeof opts.snapshot === "function") return opts.snapshot(...args);
+        return true;
+      },
+    });
+    return {
+      res,
+      body: JSON.parse(res.body || "{}"),
+      revertCalls,
+      bridgeCalls,
+      atomicCalls,
+      patchCalls,
+      snapshotCalls,
+    };
+  }
+
+  {
+    const out = await runHub({
+      atomic: { ok: false, code: "rpc_missing" },
+      bridge: { ok: true, project_id: PROJECT_A, snapshot_ok: true },
+    });
+    eq("Hub RPC missing + project → 200", out.res.statusCode, 200);
+    eq("Hub success includes project_id", out.body.project_id, PROJECT_A);
+  }
+
+  {
+    const out = await runHub({
+      atomic: { ok: false, code: "rpc_missing" },
+      bridge: { ok: false },
+    });
+    eq("Hub fail-closed without project_id → 503", out.res.statusCode, 503);
+    eq("Hub does not leave quote accepted on reservation fail", out.revertCalls.length, 1);
+    eq("Hub 503 code", out.body.code, RESERVATION_FAILED_CODE);
+  }
+
+  {
+    const out = await runHub({
+      atomic: { ok: false, code: "rpc_missing" },
+      bridge: async () => {
+        throw new Error("generic hub bridge failure");
+      },
+    });
+    eq("Hub generic throw → 503", out.res.statusCode, 503);
+    eq("Hub generic throw reverts", out.revertCalls.length, 1);
+  }
+
+  {
+    const out = await runHub({
+      atomic: { ok: true, code: "created", action: "create", project_id: PROJECT_A },
+      bridge: async () => {
+        throw new Error("hub must not double-bridge");
+      },
+    });
+    eq("Hub RPC success → 200", out.res.statusCode, 200);
+    eq("Hub RPC success does not fallback PATCH", out.patchCalls.length, 0);
+    eq("Hub RPC success does not call bridge", out.bridgeCalls.length, 0);
+  }
+
+  {
+    const cap = globalThis.MarginGuardSalesCapacity;
+    ok("Firmar helper is exported on MarginGuardSalesCapacity", typeof cap.openPublicSigningFromUserGesture === "function");
+    const clicks = [];
+    const created = [];
+    const fakeDoc = {
+      createElement(tag) {
+        const el = {
+          tagName: String(tag).toLowerCase(),
+          href: "",
+          target: "",
+          rel: "",
+          parentNode: null,
+          click() {
+            clicks.push({ href: this.href, target: this.target, rel: this.rel });
+          },
+        };
+        created.push(el);
+        return el;
+      },
+      body: {
+        appendChild(el) {
+          el.parentNode = this;
+        },
+        removeChild(el) {
+          el.parentNode = null;
+        },
+      },
+    };
+    const opened = cap.openPublicSigningFromUserGesture(
+      "https://example.com/estimate-public.html?token=abc",
+      fakeDoc
+    );
+    eq("Firmar helper reports ok", opened.ok, true);
+    eq("Firmar helper uses target=_blank", clicks[0].target, "_blank");
+    eq("Firmar helper uses noopener noreferrer", clicks[0].rel, "noopener noreferrer");
+    eq("Firmar helper clicked once from user gesture", clicks.length, 1);
+  }
+
   const syntaxFiles = [
     "netlify/functions/_lib/schedule-accept-guard.js",
     "netlify/functions/_lib/sales-capacity-calendar.js",
@@ -389,6 +773,7 @@ async function fakeCalendarForTenant(store) {
     "netlify/functions/upsert-tenant-project.js",
     "netlify/functions/hub-quote-manual-step.js",
     "public/js/estimate-builder.js",
+    "public/js/sales-capacity-calendar.js",
     "scripts/test-signing-calendar-reservation.js",
   ];
   for (const rel of syntaxFiles) {

@@ -205,24 +205,61 @@ async function tryAtomicAcceptQuoteReservingSchedule(quoteRow, proposed) {
   }
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const RESERVATION_FAILED_CODE = "reservation_failed";
+const RESERVATION_FAILED_MESSAGE =
+  "The estimate could not be reserved on the production schedule. Please try again or contact the company.";
+
+function hasConfirmedReservation(result) {
+  if (!result || result.ok !== true) return false;
+  return UUID_RE.test(String(result.project_id || "").trim());
+}
+
+function reservationFailedPayload(extra) {
+  return {
+    ok: false,
+    error: RESERVATION_FAILED_MESSAGE,
+    code: RESERVATION_FAILED_CODE,
+    ...(extra && typeof extra === "object" ? extra : {}),
+  };
+}
+
 async function revertQuoteAcceptance(quoteRow, previousStatus) {
   const tenantId = String(quoteRow?.tenant_id || "").trim();
   const quoteId = String(quoteRow?.id || "").trim();
-  if (!tenantId || !quoteId) return { ok: false };
-  const prior = String(previousStatus || "READY_TO_SEND").trim() || "READY_TO_SEND";
+  if (!tenantId || !quoteId) return { ok: false, error: "missing_ids" };
+  const prior = String(
+    previousStatus != null && String(previousStatus).trim()
+      ? previousStatus
+      : quoteRow?.status || "READY_TO_SEND"
+  ).trim() || "READY_TO_SEND";
+  const priorAcceptedAt = Object.prototype.hasOwnProperty.call(quoteRow || {}, "accepted_at")
+    ? quoteRow.accepted_at
+    : null;
   const nowIso = new Date().toISOString();
-  await supabaseRequest(
-    `quotes?id=eq.${encodeURIComponent(quoteId)}&tenant_id=eq.${encodeURIComponent(tenantId)}`,
-    {
-      method: "PATCH",
-      body: {
-        status: prior,
-        accepted_at: null,
-        updated_at: nowIso,
-      },
-    }
-  );
-  return { ok: true };
+  try {
+    await supabaseRequest(
+      `quotes?id=eq.${encodeURIComponent(quoteId)}&tenant_id=eq.${encodeURIComponent(tenantId)}`,
+      {
+        method: "PATCH",
+        body: {
+          status: prior,
+          accepted_at: priorAcceptedAt,
+          updated_at: nowIso,
+        },
+      }
+    );
+    return { ok: true, restored_status: prior, restored_accepted_at: priorAcceptedAt };
+  } catch (err) {
+    console.error("[accept-reservation] rollback failed; quote needs manual repair", {
+      quote_id: quoteId,
+      tenant_id: tenantId,
+      error: err?.message || String(err),
+    });
+    return { ok: false, error: err?.message || "rollback_failed", needs_manual_repair: true };
+  }
 }
 
 module.exports = {
@@ -239,6 +276,10 @@ module.exports = {
   findBlockingPeriodOverlap,
   assertQuoteScheduleAvailable,
   pickProjectInsertPayload,
+  RESERVATION_FAILED_CODE,
+  RESERVATION_FAILED_MESSAGE,
+  hasConfirmedReservation,
+  reservationFailedPayload,
   tryAtomicAcceptQuoteReservingSchedule,
   revertQuoteAcceptance,
 };
