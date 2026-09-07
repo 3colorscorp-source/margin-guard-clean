@@ -148,6 +148,46 @@ async function main() {
   eq("known task id cannot move into a new day", duplicatedKnownIds.days[2].internal_tasks[0].task_id, "");
   eq("known assignment id cannot move into a new day", duplicatedKnownIds.days[2].worker_assignments[0].assignment_id, "");
 
+  const staleScopeProposal = {
+    ...current,
+    days: [
+      {
+        ...current.days[0],
+        client_scope: "Protect the work area.",
+        internal_tasks: [
+          {
+            task_id: "task_existing_1",
+            label: "Proteger pisos, pasillos y paredes (protection of floors, hallways, and walls)",
+          },
+        ],
+      },
+      current.days[1],
+    ],
+  };
+  const synchronizedScope = mod.synchronizeChangedClientScopes(staleScopeProposal, current);
+  eq(
+    "changed task replaces stale client scope",
+    synchronizedScope.days[0].client_scope,
+    "Proteger pisos, pasillos y paredes."
+  );
+  eq("unchanged day keeps its client scope", synchronizedScope.days[1].client_scope, "Complete demolition.");
+  eq(
+    "worker-only change does not rewrite client scope",
+    mod.synchronizeChangedClientScopes({
+      ...current,
+      days: [{
+        ...current.days[0],
+        worker_assignments: [{ ...current.days[0].worker_assignments[0], hours_per_worker: 6 }],
+      }, current.days[1]],
+    }, current).days[0].client_scope,
+    "Protect the work area."
+  );
+  eq(
+    "crew details never enter derived client scope",
+    mod.clientSafeTaskNarrative({ internal_tasks: [{ label: "Protection with one Assistant for 6 hours" }] }),
+    "Complete the updated planned work for this day."
+  );
+
   eq("ordinary edit is not destructive authorization", mod.transcriptAllowsDestructiveChange("modify day one"), false);
   eq("Spanish delete is explicit", mod.transcriptAllowsDestructiveChange("elimina el día dos"), true);
   eq("English delete is explicit", mod.transcriptAllowsDestructiveChange("delete day two"), true);
