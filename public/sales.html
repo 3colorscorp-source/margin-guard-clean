@@ -1082,6 +1082,14 @@
       font-size: 13px;
       opacity: .85;
     }
+    .voice-plan-preview-status {
+      margin: 8px 16px 0;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .voice-plan-preview-status.is-error {
+      color: #f3b4b4;
+    }
     @media (max-width: 740px) {
       .voice-plan-dual,
       .voice-plan-grid {
@@ -1743,6 +1751,7 @@
             <div class="voice-plan-col__body" id="voicePlanInternalPreview"></div>
           </section>
         </div>
+        <div class="voice-plan-preview-status" id="voicePlanPreviewStatus" role="status" aria-live="polite" hidden></div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn" id="voicePlanPreviewCancel">Cancel</button>
@@ -6055,6 +6064,7 @@
       }
 
       let voicePlanPreviewSession = null;
+      let voicePlanConfirmBusy = false;
 
       function escapeVoicePlanHtml(value) {
         return String(value == null ? '' : value)
@@ -6235,10 +6245,36 @@
         }
       }
 
+      function setVoicePlanPreviewStatus(message, isError) {
+        const el = document.getElementById('voicePlanPreviewStatus');
+        if (!el) return;
+        const text = String(message || '').trim();
+        el.textContent = text;
+        el.hidden = !text;
+        if (isError) el.classList.add('is-error');
+        else el.classList.remove('is-error');
+      }
+
+      function setVoicePlanConfirmBusy(busy) {
+        voicePlanConfirmBusy = !!busy;
+        const confirmBtn = document.getElementById('voicePlanPreviewConfirm');
+        const cancelBtn = document.getElementById('voicePlanPreviewCancel');
+        const closeBtn = document.getElementById('voicePlanPreviewClose');
+        if (confirmBtn) {
+          confirmBtn.disabled = !!busy;
+          confirmBtn.setAttribute('aria-busy', busy ? 'true' : 'false');
+          confirmBtn.textContent = busy ? 'Saving…' : 'Confirm and apply';
+        }
+        if (cancelBtn) cancelBtn.disabled = !!busy;
+        if (closeBtn) closeBtn.disabled = !!busy;
+      }
+
       function closeVoicePlanPreviewModal() {
+        if (voicePlanConfirmBusy) return;
         const modal = document.getElementById('voicePlanPreviewModal');
         if (modal) modal.setAttribute('aria-hidden', 'true');
         voicePlanPreviewSession = null;
+        setVoicePlanPreviewStatus('', false);
       }
 
       function openVoicePlanPreviewModal() {
@@ -6252,26 +6288,16 @@
           : { schema_version: 1, source: 'keyboard', days: [] };
         const draft = voicePlanSeedDraft(state, settings);
         voicePlanPreviewSession = { confirmed: confirmed, draft: draft };
+        setVoicePlanConfirmBusy(false);
+        setVoicePlanPreviewStatus('', false);
         renderVoicePlanEditor(draft.days || []);
         refreshVoicePlanPreviewColumns();
         modal.setAttribute('aria-hidden', 'false');
       }
 
-      function applyVoicePlanConfirm() {
-        const voice = getVoicePlanApi();
-        if (!voice || !voicePlanPreviewSession) return;
+      function applyConfirmedVoicePlanToState(voice, applied) {
         const state = loadSalesState();
-        const settings = loadSettings();
         const startInput = document.getElementById('salesStartDate');
-        const start = String((startInput && startInput.value) || state.startDate || '').slice(0, 10);
-        const collected = collectVoicePlanDraftFromDom();
-        const session = voice.createPreviewSession(voicePlanPreviewSession.confirmed, collected, {
-          startDate: start,
-          settings: settings,
-          hoursPerDay: settings.hoursPerDay
-        });
-        const result = voice.confirmPreview(session, { startDate: start, settings: settings, hoursPerDay: settings.hoursPerDay });
-        const applied = result.applied;
         state.internal_operational_plan = applied;
         state.operational_plan = voice.deriveLegacyOperationalPlan(applied);
         state.operational_estimated_days_override = '';
@@ -6289,20 +6315,108 @@
         if (finishInput && applied.due_date) finishInput.value = applied.due_date;
         enableLaborAutoSync(state);
         saveSalesState(state);
-        closeVoicePlanPreviewModal();
-        refreshSellerFromStandalone();
-        if (state.quoteId) {
-          fetch('/.netlify/functions/quote-internal-operational-plan', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'confirm',
-              quote_id: state.quoteId,
-              start_date: applied.start_date,
-              document: applied
-            })
-          }).catch(function () { /* local confirm already applied */ });
+      }
+
+      function voicePlanPersistSucceeded(response, data) {
+        return !!(response && response.ok && data && data.ok === true && data.persisted === true);
+      }
+
+      function voicePlanPersistErrorMessage(data) {
+        if (data && data.code === 'column_missing') {
+          return 'Internal operational plan storage is not installed. The quote was not changed.';
+        }
+        if (data && data.code === 'internal_plan_table_missing') {
+          return 'Internal operational plan storage is not installed. The quote was not changed.';
+        }
+        if (data && data.code === 'quote_locked') {
+          return data.error || 'This quote is locked and cannot be edited.';
+        }
+        if (data && Array.isArray(data.errors) && data.errors[0] && data.errors[0].message) {
+          return data.errors[0].message;
+        }
+        return (data && data.error) || 'Could not save the operational plan. The quote was not changed.';
+      }
+
+      async function persistVoicePlanDocument(quoteId, applied, extra) {
+        const payload = {
+          action: 'confirm',
+          quote_id: quoteId,
+          start_date: applied.start_date,
+          document: applied
+        };
+        if (extra && extra.confirm_sent_update === true) payload.confirm_sent_update = true;
+        const response = await fetch('/.netlify/functions/quote-internal-operational-plan', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        let data = {};
+        try {
+          data = await response.json();
+        } catch (_parseErr) {
+          data = {};
+        }
+        return { response: response, data: data };
+      }
+
+      async function applyVoicePlanConfirm() {
+        const voice = getVoicePlanApi();
+        if (!voice || !voicePlanPreviewSession || voicePlanConfirmBusy) return;
+        const state = loadSalesState();
+        const settings = loadSettings();
+        const startInput = document.getElementById('salesStartDate');
+        const start = String((startInput && startInput.value) || state.startDate || '').slice(0, 10);
+        const collected = collectVoicePlanDraftFromDom();
+        if (typeof voice.validateIncomingDocument === 'function') {
+          const validated = voice.validateIncomingDocument(collected);
+          if (!validated.ok) {
+            const first = validated.errors && validated.errors[0] && validated.errors[0].message;
+            setVoicePlanPreviewStatus(first || 'The operational plan is not valid.', true);
+            return;
+          }
+        }
+        const session = voice.createPreviewSession(voicePlanPreviewSession.confirmed, collected, {
+          startDate: start,
+          settings: settings,
+          hoursPerDay: settings.hoursPerDay
+        });
+        const result = voice.confirmPreview(session, { startDate: start, settings: settings, hoursPerDay: settings.hoursPerDay });
+        const applied = result.applied;
+        if (!state.quoteId) {
+          applyConfirmedVoicePlanToState(voice, applied);
+          closeVoicePlanPreviewModal();
+          refreshSellerFromStandalone();
+          return;
+        }
+        setVoicePlanConfirmBusy(true);
+        setVoicePlanPreviewStatus('Saving…', false);
+        try {
+          let persisted = await persistVoicePlanDocument(state.quoteId, applied);
+          if (!voicePlanPersistSucceeded(persisted.response, persisted.data) &&
+              persisted.data && persisted.data.code === 'sent_quote_confirmation_required') {
+            const proceed = window.confirm(
+              persisted.data.error ||
+              'This quote was already sent or viewed. Confirm to update the public quote.'
+            );
+            if (!proceed) {
+              setVoicePlanPreviewStatus('Confirmation cancelled. The quote was not changed.', true);
+              return;
+            }
+            persisted = await persistVoicePlanDocument(state.quoteId, applied, { confirm_sent_update: true });
+          }
+          if (voicePlanPersistSucceeded(persisted.response, persisted.data)) {
+            applyConfirmedVoicePlanToState(voice, applied);
+            setVoicePlanConfirmBusy(false);
+            closeVoicePlanPreviewModal();
+            refreshSellerFromStandalone();
+            return;
+          }
+          setVoicePlanPreviewStatus(voicePlanPersistErrorMessage(persisted.data), true);
+        } catch (_err) {
+          setVoicePlanPreviewStatus('Could not save the operational plan. Check your connection and try again.', true);
+        } finally {
+          setVoicePlanConfirmBusy(false);
         }
       }
 

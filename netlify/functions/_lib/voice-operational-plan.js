@@ -12,6 +12,19 @@ const {
 
 const SCHEMA_VERSION = 1;
 const DEFAULT_HOURS_PER_DAY = 8;
+const DOCUMENT_LIMITS = {
+  MAX_DAYS: 45,
+  MAX_TASKS_PER_DAY: 20,
+  MAX_ASSIGNMENTS_PER_DAY: 8,
+  MAX_WORKER_COUNT: 12,
+  MAX_HOURS_PER_WORKER: 24,
+  MAX_JSON_BYTES: 100000,
+  MAX_CLIENT_SCOPE: 2000,
+  MAX_INTERNAL_NOTES: 4000,
+  MAX_TASK_LABEL: 500,
+  MAX_LIST_ITEMS: 24,
+  MAX_LIST_ITEM: 400,
+};
 const RATE_KEYS = new Set([
   "hourly_rate",
   "daily_rate",
@@ -26,6 +39,7 @@ const RATE_KEYS = new Set([
 
 const PUBLIC_FORBIDDEN_KEYS = [
   "internal_operational_plan",
+  "quote_internal_operational_plans",
   "internal_notes",
   "internal_tasks",
   "worker_assignments",
@@ -87,6 +101,165 @@ function normWorkerRole(raw, workerType) {
   const r = str(raw, 120);
   if (r) return r;
   return workerType === "helper" ? "Assistant" : "Installer";
+}
+
+function jsonByteLength(value) {
+  try {
+    const encoded = JSON.stringify(value == null ? {} : value);
+    if (typeof Buffer !== "undefined" && typeof Buffer.byteLength === "function") {
+      return Buffer.byteLength(encoded, "utf8");
+    }
+    return encoded.length;
+  } catch (_e) {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+function resolveHoursPerDayFromSettings(settings) {
+  const src = settings && typeof settings === "object" ? settings : {};
+  const n = Number(src.hoursPerDay != null ? src.hoursPerDay : src.hours_per_day);
+  if (Number.isFinite(n) && n >= 1) return n;
+  return DEFAULT_HOURS_PER_DAY;
+}
+
+function pushLimitError(errors, code, message) {
+  errors.push({ code, message });
+}
+
+function validateIncomingDocument(raw) {
+  const errors = [];
+  const bytes = jsonByteLength(raw);
+  if (bytes > DOCUMENT_LIMITS.MAX_JSON_BYTES) {
+    pushLimitError(
+      errors,
+      "document_too_large",
+      `Document exceeds ${DOCUMENT_LIMITS.MAX_JSON_BYTES} bytes.`
+    );
+    return { ok: false, errors };
+  }
+  if (raw != null && (typeof raw !== "object" || Array.isArray(raw))) {
+    pushLimitError(errors, "document_not_object", "Operational plan document must be a JSON object.");
+    return { ok: false, errors };
+  }
+  const days = raw && Array.isArray(raw.days) ? raw.days : [];
+  if (!Array.isArray(raw && raw.days) && raw && raw.days != null) {
+    pushLimitError(errors, "days_not_array", "days must be an array.");
+    return { ok: false, errors };
+  }
+  if (days.length > DOCUMENT_LIMITS.MAX_DAYS) {
+    pushLimitError(
+      errors,
+      "too_many_days",
+      `A plan cannot have more than ${DOCUMENT_LIMITS.MAX_DAYS} days.`
+    );
+  }
+  const dayIds = new Set();
+  const taskIds = new Set();
+  const asgIds = new Set();
+  days.forEach((day, dayIndex) => {
+    if (!day || typeof day !== "object") {
+      pushLimitError(errors, "day_not_object", `Day ${dayIndex + 1} must be an object.`);
+      return;
+    }
+    const dayId = str(day.day_id, 80);
+    if (dayId) {
+      if (dayIds.has(dayId)) {
+        pushLimitError(errors, "duplicate_day_id", `Duplicate day_id "${dayId}".`);
+      }
+      dayIds.add(dayId);
+    }
+    const scope = String(day.client_scope == null ? "" : day.client_scope);
+    if (scope.length > DOCUMENT_LIMITS.MAX_CLIENT_SCOPE) {
+      pushLimitError(
+        errors,
+        "client_scope_too_long",
+        `Day ${dayIndex + 1} client scope exceeds ${DOCUMENT_LIMITS.MAX_CLIENT_SCOPE} characters.`
+      );
+    }
+    const notes = String(day.internal_notes == null ? "" : day.internal_notes);
+    if (notes.length > DOCUMENT_LIMITS.MAX_INTERNAL_NOTES) {
+      pushLimitError(
+        errors,
+        "internal_notes_too_long",
+        `Day ${dayIndex + 1} internal notes exceed ${DOCUMENT_LIMITS.MAX_INTERNAL_NOTES} characters.`
+      );
+    }
+    const tasks = Array.isArray(day.internal_tasks) ? day.internal_tasks : [];
+    if (tasks.length > DOCUMENT_LIMITS.MAX_TASKS_PER_DAY) {
+      pushLimitError(
+        errors,
+        "too_many_tasks",
+        `Day ${dayIndex + 1} cannot have more than ${DOCUMENT_LIMITS.MAX_TASKS_PER_DAY} internal tasks.`
+      );
+    }
+    tasks.forEach((task) => {
+      const tid = task && typeof task === "object" ? str(task.task_id, 80) : "";
+      if (tid) {
+        if (taskIds.has(tid)) {
+          pushLimitError(errors, "duplicate_task_id", `Duplicate task_id "${tid}".`);
+        }
+        taskIds.add(tid);
+      }
+      const label = task && typeof task === "object" ? String(task.label == null ? "" : task.label) : String(task || "");
+      if (label.length > DOCUMENT_LIMITS.MAX_TASK_LABEL) {
+        pushLimitError(
+          errors,
+          "task_label_too_long",
+          `A task label exceeds ${DOCUMENT_LIMITS.MAX_TASK_LABEL} characters.`
+        );
+      }
+    });
+    const assignments = Array.isArray(day.worker_assignments) ? day.worker_assignments : [];
+    if (assignments.length > DOCUMENT_LIMITS.MAX_ASSIGNMENTS_PER_DAY) {
+      pushLimitError(
+        errors,
+        "too_many_assignments",
+        `Day ${dayIndex + 1} cannot have more than ${DOCUMENT_LIMITS.MAX_ASSIGNMENTS_PER_DAY} worker assignments.`
+      );
+    }
+    assignments.forEach((asg) => {
+      if (!asg || typeof asg !== "object") return;
+      const aid = str(asg.assignment_id, 80);
+      if (aid) {
+        if (asgIds.has(aid)) {
+          pushLimitError(errors, "duplicate_assignment_id", `Duplicate assignment_id "${aid}".`);
+        }
+        asgIds.add(aid);
+      }
+      const count = Math.floor(num(asg.worker_count, 1));
+      if (count < 1 || count > DOCUMENT_LIMITS.MAX_WORKER_COUNT) {
+        pushLimitError(
+          errors,
+          "invalid_worker_count",
+          `worker_count must be between 1 and ${DOCUMENT_LIMITS.MAX_WORKER_COUNT}.`
+        );
+      }
+      const hours = num(asg.hours_per_worker != null ? asg.hours_per_worker : asg.estimated_hours, 0);
+      if (!(hours > 0) || hours > DOCUMENT_LIMITS.MAX_HOURS_PER_WORKER) {
+        pushLimitError(
+          errors,
+          "invalid_hours_per_worker",
+          `hours_per_worker must be greater than 0 and at most ${DOCUMENT_LIMITS.MAX_HOURS_PER_WORKER}.`
+        );
+      }
+    });
+    ["materials_or_tools", "dependencies", "gc_client_responsibilities", "risks"].forEach((key) => {
+      const list = Array.isArray(day[key]) ? day[key] : day[key] == null || day[key] === "" ? [] : [day[key]];
+      if (list.length > DOCUMENT_LIMITS.MAX_LIST_ITEMS) {
+        pushLimitError(
+          errors,
+          "too_many_list_items",
+          `Day ${dayIndex + 1} ${key} cannot have more than ${DOCUMENT_LIMITS.MAX_LIST_ITEMS} items.`
+        );
+      }
+    });
+  });
+  return { ok: errors.length === 0, errors };
+}
+
+function sanitizePublicQuoteRow(row) {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return row;
+  return scrubPublicPayload(row);
 }
 
 function scheduleSettings(raw) {
@@ -439,7 +612,9 @@ function hydrateFromLegacyOperationalPlan(legacyDays, startYmd, settings, hoursP
 function normalizeDocument(raw, options = {}) {
   const stripped = stripRateFields(raw && typeof raw === "object" ? raw : {});
   const settings = options.settings || {};
-  const hpd = Math.max(0.25, num(options.hoursPerDay ?? stripped.hours_per_day_used, DEFAULT_HOURS_PER_DAY));
+  const hpd = resolveHoursPerDayFromSettings({
+    hoursPerDay: options.hoursPerDay != null ? options.hoursPerDay : settings.hoursPerDay,
+  });
   const startIn = options.startDate || stripped.start_date;
   let days = (Array.isArray(stripped.days) ? stripped.days : [])
     .map((d, i) => normalizeDay(d, i + 1))
@@ -482,7 +657,11 @@ function confirmPreview(session, options) {
 
 module.exports = {
   SCHEMA_VERSION,
+  DOCUMENT_LIMITS,
   PUBLIC_FORBIDDEN_KEYS,
+  resolveHoursPerDayFromSettings,
+  validateIncomingDocument,
+  sanitizePublicQuoteRow,
   newStableId,
   cloneJson,
   stripRateFields,

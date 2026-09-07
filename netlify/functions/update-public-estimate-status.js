@@ -15,6 +15,7 @@ const {
   hasConfirmedReservation,
   reservationFailedPayload,
 } = require("./_lib/schedule-accept-guard");
+const { sanitizePublicQuoteRow } = require("./_lib/voice-operational-plan");
 
 function json(statusCode, body) {
   return {
@@ -324,7 +325,7 @@ async function handlePublicEstimateStatus(event, deps = {}) {
         ok: true,
         status: "accepted",
         already_accepted: true,
-        row: existingRow,
+        row: sanitizePublicQuoteRow(existingRow),
         project_id: bridged.project_id,
         reserved: true,
       });
@@ -398,7 +399,7 @@ async function handlePublicEstimateStatus(event, deps = {}) {
         return json(200, {
           ok: true,
           status: "accepted",
-          row,
+          row: sanitizePublicQuoteRow(row),
           project_id: atomic.project_id,
           reserved: true,
           snapshot_ok: snapshotOk,
@@ -491,7 +492,7 @@ async function handlePublicEstimateStatus(event, deps = {}) {
       return json(200, {
         ok: true,
         status: "accepted",
-        row,
+        row: sanitizePublicQuoteRow(row),
         project_id: bridged.project_id,
         reserved: true,
         snapshot_ok: bridged.snapshot_ok !== false,
@@ -534,7 +535,7 @@ async function handlePublicEstimateStatus(event, deps = {}) {
     return json(200, {
       ok: true,
       status,
-      row
+      row: sanitizePublicQuoteRow(row)
     });
   } catch (err) {
     return json(500, { error: err.message || "Server error" });

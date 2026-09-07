@@ -18,8 +18,22 @@
     labor_rate: true,
     cost: true,
   };
+  const DOCUMENT_LIMITS = {
+    MAX_DAYS: 45,
+    MAX_TASKS_PER_DAY: 20,
+    MAX_ASSIGNMENTS_PER_DAY: 8,
+    MAX_WORKER_COUNT: 12,
+    MAX_HOURS_PER_WORKER: 24,
+    MAX_JSON_BYTES: 100000,
+    MAX_CLIENT_SCOPE: 2000,
+    MAX_INTERNAL_NOTES: 4000,
+    MAX_TASK_LABEL: 500,
+    MAX_LIST_ITEMS: 24,
+    MAX_LIST_ITEM: 400,
+  };
   const PUBLIC_FORBIDDEN_KEYS = [
     "internal_operational_plan",
+    "quote_internal_operational_plans",
     "internal_notes",
     "internal_tasks",
     "worker_assignments",
@@ -73,6 +87,145 @@
       out[k] = stripRateFields(value[k]);
     }
     return out;
+  }
+
+  function jsonByteLength(value) {
+    try {
+      return JSON.stringify(value == null ? {} : value).length;
+    } catch (_e) {
+      return Number.POSITIVE_INFINITY;
+    }
+  }
+
+  function resolveHoursPerDayFromSettings(settings) {
+    const src = settings && typeof settings === "object" ? settings : {};
+    const n = Number(src.hoursPerDay != null ? src.hoursPerDay : src.hours_per_day);
+    if (Number.isFinite(n) && n >= 1) return n;
+    return DEFAULT_HOURS_PER_DAY;
+  }
+
+  function validateIncomingDocument(raw) {
+    const errors = [];
+    const bytes = jsonByteLength(raw);
+    if (bytes > DOCUMENT_LIMITS.MAX_JSON_BYTES) {
+      errors.push({
+        code: "document_too_large",
+        message: "Document exceeds " + DOCUMENT_LIMITS.MAX_JSON_BYTES + " bytes.",
+      });
+      return { ok: false, errors: errors };
+    }
+    if (raw != null && (typeof raw !== "object" || Array.isArray(raw))) {
+      errors.push({
+        code: "document_not_object",
+        message: "Operational plan document must be a JSON object.",
+      });
+      return { ok: false, errors: errors };
+    }
+    const days = raw && Array.isArray(raw.days) ? raw.days : [];
+    if (!Array.isArray(raw && raw.days) && raw && raw.days != null) {
+      errors.push({ code: "days_not_array", message: "days must be an array." });
+      return { ok: false, errors: errors };
+    }
+    if (days.length > DOCUMENT_LIMITS.MAX_DAYS) {
+      errors.push({
+        code: "too_many_days",
+        message: "A plan cannot have more than " + DOCUMENT_LIMITS.MAX_DAYS + " days.",
+      });
+    }
+    const dayIds = {};
+    const taskIds = {};
+    const asgIds = {};
+    days.forEach(function (day, dayIndex) {
+      if (!day || typeof day !== "object") {
+        errors.push({ code: "day_not_object", message: "Day " + (dayIndex + 1) + " must be an object." });
+        return;
+      }
+      const dayId = str(day.day_id, 80);
+      if (dayId) {
+        if (dayIds[dayId]) {
+          errors.push({ code: "duplicate_day_id", message: 'Duplicate day_id "' + dayId + '".' });
+        }
+        dayIds[dayId] = true;
+      }
+      const scope = String(day.client_scope == null ? "" : day.client_scope);
+      if (scope.length > DOCUMENT_LIMITS.MAX_CLIENT_SCOPE) {
+        errors.push({
+          code: "client_scope_too_long",
+          message: "Day " + (dayIndex + 1) + " client scope exceeds " + DOCUMENT_LIMITS.MAX_CLIENT_SCOPE + " characters.",
+        });
+      }
+      const notes = String(day.internal_notes == null ? "" : day.internal_notes);
+      if (notes.length > DOCUMENT_LIMITS.MAX_INTERNAL_NOTES) {
+        errors.push({
+          code: "internal_notes_too_long",
+          message: "Day " + (dayIndex + 1) + " internal notes exceed " + DOCUMENT_LIMITS.MAX_INTERNAL_NOTES + " characters.",
+        });
+      }
+      const tasks = Array.isArray(day.internal_tasks) ? day.internal_tasks : [];
+      if (tasks.length > DOCUMENT_LIMITS.MAX_TASKS_PER_DAY) {
+        errors.push({
+          code: "too_many_tasks",
+          message: "Day " + (dayIndex + 1) + " cannot have more than " + DOCUMENT_LIMITS.MAX_TASKS_PER_DAY + " internal tasks.",
+        });
+      }
+      tasks.forEach(function (task) {
+        const tid = task && typeof task === "object" ? str(task.task_id, 80) : "";
+        if (tid) {
+          if (taskIds[tid]) {
+            errors.push({ code: "duplicate_task_id", message: 'Duplicate task_id "' + tid + '".' });
+          }
+          taskIds[tid] = true;
+        }
+        const label = task && typeof task === "object" ? String(task.label == null ? "" : task.label) : String(task || "");
+        if (label.length > DOCUMENT_LIMITS.MAX_TASK_LABEL) {
+          errors.push({
+            code: "task_label_too_long",
+            message: "A task label exceeds " + DOCUMENT_LIMITS.MAX_TASK_LABEL + " characters.",
+          });
+        }
+      });
+      const assignments = Array.isArray(day.worker_assignments) ? day.worker_assignments : [];
+      if (assignments.length > DOCUMENT_LIMITS.MAX_ASSIGNMENTS_PER_DAY) {
+        errors.push({
+          code: "too_many_assignments",
+          message: "Day " + (dayIndex + 1) + " cannot have more than " + DOCUMENT_LIMITS.MAX_ASSIGNMENTS_PER_DAY + " worker assignments.",
+        });
+      }
+      assignments.forEach(function (asg) {
+        if (!asg || typeof asg !== "object") return;
+        const aid = str(asg.assignment_id, 80);
+        if (aid) {
+          if (asgIds[aid]) {
+            errors.push({ code: "duplicate_assignment_id", message: 'Duplicate assignment_id "' + aid + '".' });
+          }
+          asgIds[aid] = true;
+        }
+        const count = Math.floor(num(asg.worker_count, 1));
+        if (count < 1 || count > DOCUMENT_LIMITS.MAX_WORKER_COUNT) {
+          errors.push({
+            code: "invalid_worker_count",
+            message: "worker_count must be between 1 and " + DOCUMENT_LIMITS.MAX_WORKER_COUNT + ".",
+          });
+        }
+        const hours = num(asg.hours_per_worker != null ? asg.hours_per_worker : asg.estimated_hours, 0);
+        if (!(hours > 0) || hours > DOCUMENT_LIMITS.MAX_HOURS_PER_WORKER) {
+          errors.push({
+            code: "invalid_hours_per_worker",
+            message: "hours_per_worker must be greater than 0 and at most " + DOCUMENT_LIMITS.MAX_HOURS_PER_WORKER + ".",
+          });
+        }
+      });
+      ["materials_or_tools", "dependencies", "gc_client_responsibilities", "risks"].forEach(function (key) {
+        const list = Array.isArray(day[key]) ? day[key] : day[key] == null || day[key] === "" ? [] : [day[key]];
+        if (list.length > DOCUMENT_LIMITS.MAX_LIST_ITEMS) {
+          errors.push({
+            code: "too_many_list_items",
+            message: "Day " + (dayIndex + 1) + " " + key + " cannot have more than " + DOCUMENT_LIMITS.MAX_LIST_ITEMS + " items.",
+          });
+        }
+      });
+    });
+    return { ok: errors.length === 0, errors: errors };
   }
 
   function scheduleSettings(raw) {
@@ -545,7 +698,10 @@
 
   const api = {
     SCHEMA_VERSION: SCHEMA_VERSION,
+    DOCUMENT_LIMITS: DOCUMENT_LIMITS,
     PUBLIC_FORBIDDEN_KEYS: PUBLIC_FORBIDDEN_KEYS,
+    resolveHoursPerDayFromSettings: resolveHoursPerDayFromSettings,
+    validateIncomingDocument: validateIncomingDocument,
     newStableId: newStableId,
     cloneJson: cloneJson,
     stripRateFields: stripRateFields,

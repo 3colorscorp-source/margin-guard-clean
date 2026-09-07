@@ -1,6 +1,7 @@
 /**
- * Owner/seller GET/POST for quotes.internal_operational_plan.
+ * Owner/seller GET/POST for quote_internal_operational_plans.
  * Tenant-scoped. Never writes quotes.notes. Never creates a project or calendar reservation.
+ * Confirm applies quote scope/dates/legacy plan only after evaluateQuoteEditGuard.
  */
 
 const { supabaseRequest } = require("./_lib/supabase-admin");
@@ -8,13 +9,16 @@ const {
   assertSellerOwnQuote,
   resolveOwnerOrSellerContext,
 } = require("./_lib/tenant-device-guard");
+const { evaluateQuoteEditGuard } = require("./_lib/quote-edit-guard");
 const voice = require("./_lib/voice-operational-plan");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const QUOTE_SELECT =
-  "id,tenant_id,seller_membership_id,status,start_date,due_date,estimated_days,scope_of_work,internal_operational_plan,operational_plan";
+  "id,tenant_id,seller_membership_id,status,start_date,due_date,estimated_days,scope_of_work,operational_plan";
+
+const INTERNAL_TABLE = "quote_internal_operational_plans";
 
 function json(statusCode, body) {
   return {
@@ -33,10 +37,10 @@ function parseBody(raw) {
   }
 }
 
-function isMissingInternalPlanColumn(text) {
+function isMissingInternalPlanTable(text) {
   const t = String(text || "").toLowerCase();
-  if (!/42703|column|schema cache|could not find/i.test(t)) return false;
-  return /internal_operational_plan/i.test(t);
+  if (!/quote_internal_operational_plans/.test(t)) return false;
+  return /42p01|does not exist|schema cache|42703|could not find/i.test(t);
 }
 
 function extractSettingsFromSnapshotPayload(payload) {
@@ -67,6 +71,11 @@ function quotePath(quoteId, tenantId, select) {
   );
 }
 
+function membershipIdFromCtx(ctx) {
+  const id = String((ctx && ctx.membership && ctx.membership.id) || "").trim();
+  return UUID_RE.test(id) ? id : null;
+}
+
 function publicResponse(doc, settings) {
   const publicScope = voice.buildPublicClientScope(doc);
   return {
@@ -84,7 +93,7 @@ function publicResponse(doc, settings) {
 }
 
 async function loadOwnedQuote(supabaseReq, ctx, quoteId) {
-  const tenantId = String(ctx.tenant && ctx.tenant.id || "").trim();
+  const tenantId = String((ctx.tenant && ctx.tenant.id) || "").trim();
   if (!UUID_RE.test(quoteId) || !UUID_RE.test(tenantId)) {
     const err = new Error("Quote not found");
     err.statusCode = 404;
@@ -105,22 +114,85 @@ async function loadOwnedQuote(supabaseReq, ctx, quoteId) {
   return quote;
 }
 
+async function loadInternalPlanRow(supabaseReq, tenantId, quoteId) {
+  const rows = await supabaseReq(
+    `${INTERNAL_TABLE}?quote_id=eq.${encodeURIComponent(quoteId)}` +
+      `&tenant_id=eq.${encodeURIComponent(tenantId)}` +
+      `&select=id,quote_id,tenant_id,document,schema_version,updated_at&limit=1`,
+    { method: "GET" }
+  );
+  return Array.isArray(rows) ? rows[0] : null;
+}
+
+async function upsertInternalPlan(supabaseReq, { tenantId, quoteId, document, membershipId }) {
+  const nowIso = new Date().toISOString();
+  const existing = await loadInternalPlanRow(supabaseReq, tenantId, quoteId);
+  const payload = {
+    quote_id: quoteId,
+    tenant_id: tenantId,
+    document,
+    schema_version: Number(document && document.schema_version) || voice.SCHEMA_VERSION,
+    last_updated_by_membership_id: membershipId,
+    updated_at: nowIso,
+  };
+  if (existing && existing.id) {
+    return supabaseReq(
+      `${INTERNAL_TABLE}?id=eq.${encodeURIComponent(existing.id)}&tenant_id=eq.${encodeURIComponent(tenantId)}`,
+      { method: "PATCH", body: payload }
+    );
+  }
+  return supabaseReq(INTERNAL_TABLE, {
+    method: "POST",
+    body: { ...payload, created_at: nowIso },
+  });
+}
+
+function assertConfirmAllowed(guard, body) {
+  if (guard.notFound) {
+    return json(404, { ok: false, persisted: false, error: "Quote not found", code: "quote_not_found" });
+  }
+  if (guard.invalidQuoteId) {
+    return json(400, { ok: false, persisted: false, error: "Invalid quote_id", code: "invalid_quote_id" });
+  }
+  if (guard.edit && (guard.edit.locked || !guard.edit.is_editable)) {
+    return json(422, {
+      ok: false,
+      persisted: false,
+      error: "Quote is locked and cannot be edited.",
+      code: "quote_locked",
+      lock_reasons: (guard.edit && guard.edit.lock_reasons) || [],
+    });
+  }
+  const warnings = (guard.edit && guard.edit.warnings) || [];
+  if (warnings.includes("quote_viewed_or_sent") && body.confirm_sent_update !== true) {
+    return json(409, {
+      ok: false,
+      persisted: false,
+      error: "This quote was already sent or viewed. Set confirm_sent_update to true to proceed.",
+      code: "sent_quote_confirmation_required",
+      warnings,
+    });
+  }
+  return null;
+}
+
 async function handleQuoteInternalOperationalPlan(event, deps) {
   try {
     return await handleQuoteInternalOperationalPlanInner(event, deps);
   } catch (err) {
     if (err && err.isGuardError) {
-      return json(err.statusCode || 403, { error: err.message, code: err.code });
+      return json(err.statusCode || 403, { ok: false, persisted: false, error: err.message, code: err.code });
     }
-    if (isMissingInternalPlanColumn(err && err.message)) {
-      return json(200, {
-        ok: true,
-        document: null,
-        column_missing: true,
+    if (isMissingInternalPlanTable(err && err.message)) {
+      return json(503, {
+        ok: false,
         persisted: false,
+        column_missing: true,
+        error: "Internal operational plan table is not installed.",
+        code: "internal_plan_table_missing",
       });
     }
-    return json(500, { ok: false, error: (err && err.message) || "Unexpected error" });
+    return json(500, { ok: false, persisted: false, error: (err && err.message) || "Unexpected error" });
   }
 }
 
@@ -129,48 +201,47 @@ async function handleQuoteInternalOperationalPlanInner(event, deps) {
   const resolveCtx = d.resolveOwnerOrSellerContext || resolveOwnerOrSellerContext;
   const supabaseReq = d.supabaseRequest || supabaseRequest;
   const loadSettings = d.loadTenantSettings || loadTenantSettings;
+  const evalGuard = d.evaluateQuoteEditGuard || evaluateQuoteEditGuard;
 
   if (event.httpMethod !== "GET" && event.httpMethod !== "POST") {
-    return json(405, { error: "Method not allowed" });
+    return json(405, { ok: false, error: "Method not allowed" });
   }
 
   const ctx = await resolveCtx(event);
   const tenant = ctx.tenant;
   if (!tenant || !tenant.id) {
-    return json(404, { error: "Tenant not found" });
+    return json(404, { ok: false, error: "Tenant not found" });
   }
 
   const qs = event.queryStringParameters || {};
   const body = event.httpMethod === "POST" ? parseBody(event.body) : {};
   if (event.httpMethod === "POST" && !body) {
-    return json(400, { error: "Invalid JSON" });
+    return json(400, { ok: false, persisted: false, error: "Invalid JSON", code: "invalid_json" });
   }
 
   const quoteId = String((body && body.quote_id) || qs.quote_id || "").trim();
   const settings = await loadSettings(supabaseReq, tenant.id);
+  const hoursPerDay = voice.resolveHoursPerDayFromSettings(settings);
   const startDate = (body && (body.start_date || body.startDate)) || "";
-  const options = {
-    startDate: startDate,
-    settings: settings,
-    hoursPerDay: settings.hoursPerDay,
-  };
 
   if (event.httpMethod === "GET") {
-    if (!quoteId) return json(400, { error: "quote_id is required" });
+    if (!quoteId) return json(400, { ok: false, error: "quote_id is required", code: "quote_id_required" });
+    const quote = await loadOwnedQuote(supabaseReq, ctx, quoteId);
     try {
-      const quote = await loadOwnedQuote(supabaseReq, ctx, quoteId);
-      const raw = quote.internal_operational_plan;
-      const doc = voice.normalizeDocument(raw && typeof raw === "object" ? raw : { days: [] }, {
+      const row = await loadInternalPlanRow(supabaseReq, tenant.id, quote.id);
+      const raw = row && row.document && typeof row.document === "object" ? row.document : { days: [] };
+      const doc = voice.normalizeDocument(raw, {
         startDate: startDate || quote.start_date,
-        settings: settings,
-        hoursPerDay: settings.hoursPerDay,
+        settings,
+        hoursPerDay,
       });
       return json(200, publicResponse(doc, settings));
     } catch (err) {
-      if (isMissingInternalPlanColumn(err && err.message)) {
+      if (isMissingInternalPlanTable(err && err.message)) {
         return json(200, {
           ok: true,
           document: null,
+          persisted: false,
           column_missing: true,
           public_client_scope: voice.buildPublicClientScope({ days: [] }),
         });
@@ -183,55 +254,87 @@ async function handleQuoteInternalOperationalPlanInner(event, deps) {
   const incoming = voice.stripRateFields(
     (body && (body.document || body.internal_operational_plan)) || { days: [] }
   );
+  const validated = voice.validateIncomingDocument(incoming);
+  if (!validated.ok) {
+    return json(400, {
+      ok: false,
+      persisted: false,
+      error: validated.errors[0] ? validated.errors[0].message : "Invalid operational plan.",
+      code: "document_invalid",
+      errors: validated.errors,
+    });
+  }
   const draft = voice.normalizeDocument(incoming, {
     startDate: startDate || incoming.start_date,
-    settings: settings,
-    hoursPerDay: settings.hoursPerDay,
+    settings,
+    hoursPerDay,
   });
 
   if (action !== "confirm") {
-    return json(200, Object.assign({ persisted: false, action: "preview" }, publicResponse(draft, options.settings)));
+    return json(200, Object.assign({ persisted: false, action: "preview" }, publicResponse(draft, settings)));
   }
 
   if (!quoteId) {
-    return json(200, Object.assign({ persisted: false, action: "confirm_local" }, publicResponse(draft, settings)));
+    return json(400, {
+      ok: false,
+      persisted: false,
+      error: "quote_id is required to persist the operational plan.",
+      code: "quote_id_required",
+    });
   }
 
   const quote = await loadOwnedQuote(supabaseReq, ctx, quoteId);
+  const guard = await evalGuard(tenant.id, quote.id);
+  const blocked = assertConfirmAllowed(guard, body);
+  if (blocked) return blocked;
+
   const publicScope = voice.buildPublicClientScope(draft);
-  const patch = {
-    internal_operational_plan: draft,
+  const quotePatch = {
     operational_plan: voice.deriveLegacyOperationalPlan(draft),
     estimated_days: draft.estimated_days,
     estimated_hours: draft.estimated_hours,
+    updated_at: new Date().toISOString(),
   };
-  if (draft.start_date) patch.start_date = draft.start_date;
-  if (draft.due_date) patch.due_date = draft.due_date;
-  if (publicScope.narrative) patch.scope_of_work = publicScope.narrative;
+  if (draft.start_date) quotePatch.start_date = draft.start_date;
+  if (draft.due_date) quotePatch.due_date = draft.due_date;
+  if (publicScope.narrative) quotePatch.scope_of_work = publicScope.narrative;
 
   try {
-    const rows = await supabaseReq(
-      `quotes?id=eq.${encodeURIComponent(quote.id)}&tenant_id=eq.${encodeURIComponent(tenant.id)}`,
-      { method: "PATCH", body: patch }
-    );
-    const saved = Array.isArray(rows) ? rows[0] : quote;
-    return json(
-      200,
-      Object.assign({ persisted: true, action: "confirm", quote_id: quote.id }, publicResponse(draft, settings), {
-        row_id: saved && saved.id ? saved.id : quote.id,
-      })
-    );
+    await upsertInternalPlan(supabaseReq, {
+      tenantId: tenant.id,
+      quoteId: quote.id,
+      document: draft,
+      membershipId: membershipIdFromCtx(ctx),
+    });
   } catch (err) {
-    if (isMissingInternalPlanColumn(err && (err.message || err.text))) {
-      return json(200, Object.assign({ persisted: false, column_missing: true, action: "confirm" }, publicResponse(draft, settings)));
+    if (isMissingInternalPlanTable(err && (err.message || err.text))) {
+      return json(503, {
+        ok: false,
+        persisted: false,
+        column_missing: true,
+        action: "confirm",
+        error: "Internal operational plan table is not installed.",
+        code: "internal_plan_table_missing",
+      });
     }
     throw err;
   }
+
+  await supabaseReq(
+    `quotes?id=eq.${encodeURIComponent(quote.id)}&tenant_id=eq.${encodeURIComponent(tenant.id)}`,
+    { method: "PATCH", body: quotePatch }
+  );
+
+  return json(
+    200,
+    Object.assign({ persisted: true, action: "confirm", quote_id: quote.id, ok: true }, publicResponse(draft, settings))
+  );
 }
 
 exports.handler = async (event) => handleQuoteInternalOperationalPlan(event);
 
 exports._test = {
   handleQuoteInternalOperationalPlan,
-  isMissingInternalPlanColumn,
+  isMissingInternalPlanTable,
+  upsertInternalPlan,
 };
