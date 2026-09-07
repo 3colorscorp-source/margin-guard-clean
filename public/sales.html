@@ -5841,9 +5841,13 @@
           }
         }
 
-        if (state && finish) {
-          state.targetFinishDate = finish;
-          state.dueDate = finish;
+        if (finish) {
+          if (finishInput) finishInput.value = finish;
+          if (dueHidden) dueHidden.value = finish;
+          if (state) {
+            state.targetFinishDate = finish;
+            state.dueDate = finish;
+          }
           return;
         }
 

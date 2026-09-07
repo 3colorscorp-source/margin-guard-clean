@@ -116,6 +116,8 @@ function makeSalesSync(dom, cap, state, durationRef) {
     });
     if (result.start) state.startDate = result.start;
     if (result.finish) {
+      finishInput.value = result.finish;
+      dueInput.value = result.finish;
       state.targetFinishDate = result.finish;
       state.dueDate = result.finish;
       return result.finish;
@@ -342,6 +344,38 @@ test("18 business-day math snaps weekend starts then counts inclusive workdays",
   h.dom.nodes.salesStartDate.value = "2026-08-14"; // Friday, 3-day job skips the weekend
   h.durationRef.days = 3;
   assert.strictEqual(h.sync("2026-08-14"), "2026-08-18");
+});
+
+test("explicit finish write fills the visible input and stays in parity with salesDueDate", () => {
+  const sellerSrc = extractFunction(salesHtml, "syncSellerOperationalTargetFinishDisplay");
+  assert.ok(
+    /if \(finish\) \{[\s\S]{0,280}finishInput\.value = finish[\s\S]{0,80}dueHidden\.value = finish[\s\S]{0,160}state\.targetFinishDate = finish[\s\S]{0,80}state\.dueDate = finish/.test(
+      sellerSrc
+    ),
+    "seller operational sync must write finish into the visible input and salesDueDate"
+  );
+  assert.ok(
+    /if \(result\.finish\) \{[\s\S]{0,120}targetFinishInput\.value = result\.finish[\s\S]{0,80}dueDateInput\.value = result\.finish[\s\S]{0,80}state\.targetFinishDate = result\.finish[\s\S]{0,80}state\.dueDate = result\.finish[\s\S]{0,80}return result\.finish/.test(
+      appJs
+    ),
+    "sales sync must write finish into the visible input and salesDueDate before returning"
+  );
+
+  const h = makeHarness(3);
+  h.dom.nodes.salesStartDate.value = "2026-09-10";
+  const orig = h.cap.updateTargetFinishDisplay.bind(h.cap);
+  h.cap.updateTargetFinishDisplay = function (start, days, opts) {
+    const result = orig(start, days, opts);
+    h.dom.nodes.salesTargetFinishDate.value = "";
+    h.dom.nodes.salesDueDate.value = "";
+    return result;
+  };
+  const finish = h.sync("2026-09-10");
+  assert.strictEqual(finish, "2026-09-14");
+  assert.strictEqual(h.dom.nodes.salesTargetFinishDate.value, "2026-09-14");
+  assert.strictEqual(h.dom.nodes.salesDueDate.value, "2026-09-14");
+  assert.strictEqual(h.state.targetFinishDate, "2026-09-14");
+  assert.strictEqual(h.state.dueDate, h.dom.nodes.salesDueDate.value);
 });
 
 test("19 CH-015 finish-sync files still own pricing guard and calendar helpers", () => {

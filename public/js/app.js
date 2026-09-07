@@ -10768,6 +10768,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const result = cap.updateTargetFinishDisplay(start, days, finishOpts);
     if (result.start) state.startDate = result.start;
     if (result.finish) {
+      if (targetFinishInput) targetFinishInput.value = result.finish;
+      if (dueDateInput) dueDateInput.value = result.finish;
       state.targetFinishDate = result.finish;
       state.dueDate = result.finish;
       return result.finish;
