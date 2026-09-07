@@ -1024,6 +1024,47 @@
       flex-direction: column;
       gap: 10px;
     }
+    .voice-plan-capture {
+      border: 1px solid rgba(34,197,94,.28);
+      border-radius: 14px;
+      padding: 12px;
+      margin-bottom: 12px;
+      background: linear-gradient(180deg, rgba(34,197,94,.08), rgba(255,255,255,.025));
+    }
+    .voice-plan-capture__head,
+    .voice-plan-capture__actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .voice-plan-capture__head {
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .voice-plan-capture__actions {
+      margin-top: 8px;
+    }
+    .voice-plan-capture textarea {
+      width: 100%;
+      min-height: 96px;
+      resize: vertical;
+    }
+    .voice-plan-capture__status {
+      font-size: 12px;
+      opacity: .82;
+    }
+    .voice-plan-capture__status.is-listening {
+      color: #86efac;
+      font-weight: 700;
+    }
+    .voice-plan-capture__status.is-error {
+      color: #f3b4b4;
+    }
+    #voicePlanMicToggle.is-listening {
+      border-color: #ef4444;
+      color: #fecaca;
+    }
     .voice-plan-day {
       border: 1px solid rgba(255,255,255,.08);
       border-radius: 12px;
@@ -1739,6 +1780,24 @@
         <button type="button" class="icon-btn" id="voicePlanPreviewClose" aria-label="Close">X</button>
       </div>
       <div class="modal-body">
+        <section class="voice-plan-capture" aria-labelledby="voicePlanCaptureTitle">
+          <div class="voice-plan-capture__head">
+            <strong id="voicePlanCaptureTitle">Voice dictation</strong>
+            <label>Language
+              <select id="voicePlanLanguage">
+                <option value="es-US">Español</option>
+                <option value="en-US">English</option>
+              </select>
+            </label>
+          </div>
+          <textarea id="voicePlanTranscript" maxlength="6000" placeholder="Example: Day 1 protect the work area with one Assistant for 8 hours. Day 2 demolition with one Installer and one Assistant..."></textarea>
+          <div class="voice-plan-capture__actions">
+            <button type="button" class="btn" id="voicePlanMicToggle">Start dictation</button>
+            <button type="button" class="btn primary" id="voicePlanInterpret">Interpret and preview</button>
+            <button type="button" class="btn ghost" id="voicePlanTranscriptClear">Clear transcript</button>
+            <span class="voice-plan-capture__status" id="voicePlanCaptureStatus" role="status" aria-live="polite">Voice changes are proposed only. Confirm and apply is still required.</span>
+          </div>
+        </section>
         <div class="voice-plan-editor" id="voicePlanEditorHost"></div>
         <div class="voice-plan-labor-preview" id="voicePlanLaborPreview" aria-live="polite"></div>
         <div class="voice-plan-dual">
@@ -6121,6 +6180,11 @@
 
       let voicePlanPreviewSession = null;
       let voicePlanConfirmBusy = false;
+      let voicePlanAiBusy = false;
+      let voicePlanRecognition = null;
+      let voicePlanRecognitionBase = '';
+      let voicePlanRecognitionFinal = '';
+      let voicePlanInterpretController = null;
 
       function escapeVoicePlanHtml(value) {
         return String(value == null ? '' : value)
@@ -6317,7 +6381,7 @@
         const cancelBtn = document.getElementById('voicePlanPreviewCancel');
         const closeBtn = document.getElementById('voicePlanPreviewClose');
         if (confirmBtn) {
-          confirmBtn.disabled = !!busy;
+          confirmBtn.disabled = !!busy || voicePlanAiBusy;
           confirmBtn.setAttribute('aria-busy', busy ? 'true' : 'false');
           confirmBtn.textContent = busy ? 'Saving…' : 'Confirm and apply';
         }
@@ -6325,8 +6389,157 @@
         if (closeBtn) closeBtn.disabled = !!busy;
       }
 
+      function setVoicePlanCaptureStatus(message, listening, isError) {
+        const status = document.getElementById('voicePlanCaptureStatus');
+        if (!status) return;
+        status.textContent = String(message || '');
+        status.classList.toggle('is-listening', !!listening);
+        status.classList.toggle('is-error', !!isError);
+      }
+
+      function syncVoicePlanAiButtons() {
+        const interpret = document.getElementById('voicePlanInterpret');
+        const mic = document.getElementById('voicePlanMicToggle');
+        const confirm = document.getElementById('voicePlanPreviewConfirm');
+        if (interpret) {
+          interpret.disabled = voicePlanAiBusy;
+          interpret.textContent = voicePlanAiBusy ? 'Interpreting…' : 'Interpret and preview';
+        }
+        if (mic) mic.disabled = voicePlanAiBusy || !voicePlanSpeechRecognitionCtor();
+        if (confirm) confirm.disabled = voicePlanConfirmBusy || voicePlanAiBusy;
+      }
+
+      function voicePlanSpeechRecognitionCtor() {
+        return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+      }
+
+      function stopVoicePlanRecognition() {
+        if (!voicePlanRecognition) return;
+        try { voicePlanRecognition.stop(); } catch (_err) {}
+      }
+
+      function resetVoicePlanRecognitionUi() {
+        const mic = document.getElementById('voicePlanMicToggle');
+        if (mic) {
+          mic.classList.remove('is-listening');
+          mic.textContent = 'Start dictation';
+        }
+      }
+
+      function startVoicePlanRecognition() {
+        const Recognition = voicePlanSpeechRecognitionCtor();
+        const transcript = document.getElementById('voicePlanTranscript');
+        const language = document.getElementById('voicePlanLanguage');
+        const mic = document.getElementById('voicePlanMicToggle');
+        if (!Recognition || !transcript || voicePlanAiBusy) {
+          setVoicePlanCaptureStatus('Voice recognition is not available. Type the instructions and choose Interpret and preview.', false, true);
+          return;
+        }
+        if (voicePlanRecognition) {
+          stopVoicePlanRecognition();
+          return;
+        }
+        const recognition = new Recognition();
+        voicePlanRecognition = recognition;
+        voicePlanRecognitionBase = String(transcript.value || '').trim();
+        voicePlanRecognitionFinal = '';
+        recognition.lang = String((language && language.value) || 'es-US');
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.onstart = function () {
+          if (mic) {
+            mic.classList.add('is-listening');
+            mic.textContent = 'Stop dictation';
+          }
+          setVoicePlanCaptureStatus('Listening… describe the plan or say which day to modify.', true, false);
+        };
+        recognition.onresult = function (event) {
+          let interim = '';
+          for (let i = event.resultIndex; i < event.results.length; i += 1) {
+            const words = String(event.results[i][0] && event.results[i][0].transcript || '').trim();
+            if (!words) continue;
+            if (event.results[i].isFinal) voicePlanRecognitionFinal += (voicePlanRecognitionFinal ? ' ' : '') + words;
+            else interim += (interim ? ' ' : '') + words;
+          }
+          transcript.value = [voicePlanRecognitionBase, voicePlanRecognitionFinal, interim].filter(Boolean).join(' ').slice(0, 6000);
+        };
+        recognition.onerror = function (event) {
+          const code = String(event && event.error || 'unknown');
+          if (code !== 'aborted' && code !== 'no-speech') {
+            setVoicePlanCaptureStatus('Microphone error: ' + code + '. You can type the instructions instead.', false, true);
+          }
+        };
+        recognition.onend = function () {
+          voicePlanRecognition = null;
+          resetVoicePlanRecognitionUi();
+          if (!voicePlanAiBusy) setVoicePlanCaptureStatus('Dictation stopped. Review the text, then choose Interpret and preview.', false, false);
+        };
+        try {
+          recognition.start();
+        } catch (_err) {
+          voicePlanRecognition = null;
+          resetVoicePlanRecognitionUi();
+          setVoicePlanCaptureStatus('The microphone could not start. Check browser permission or type the instructions.', false, true);
+        }
+      }
+
+      async function interpretVoicePlanTranscript() {
+        if (!voicePlanPreviewSession || voicePlanAiBusy) return;
+        const transcriptEl = document.getElementById('voicePlanTranscript');
+        const transcript = String(transcriptEl && transcriptEl.value || '').trim();
+        if (transcript.length < 3) {
+          setVoicePlanCaptureStatus('Dictate or type instructions first.', false, true);
+          return;
+        }
+        stopVoicePlanRecognition();
+        voicePlanAiBusy = true;
+        syncVoicePlanAiButtons();
+        setVoicePlanCaptureStatus('Interpreting the instructions… no quote changes have been saved.', false, false);
+        const state = loadSalesState();
+        const startInput = document.getElementById('salesStartDate');
+        const start = String((startInput && startInput.value) || state.startDate || '').slice(0, 10);
+        const current = collectVoicePlanDraftFromDom();
+        const controller = new AbortController();
+        voicePlanInterpretController = controller;
+        try {
+          const response = await fetch('/.netlify/functions/voice-operational-plan-command', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ transcript: transcript, current_document: current, start_date: start }),
+            signal: controller.signal
+          });
+          let data = {};
+          try { data = await response.json(); } catch (_parseErr) {}
+          if (!response.ok || !data || data.ok !== true || !data.proposed_document) {
+            throw new Error((data && data.error) || 'The instructions could not be interpreted.');
+          }
+          const proposed = data.proposed_document;
+          voicePlanPreviewSession.draft = proposed;
+          renderVoicePlanEditor(proposed.days || []);
+          refreshVoicePlanPreviewColumns();
+          const warnings = Array.isArray(data.warnings) && data.warnings.length
+            ? ' Warnings: ' + data.warnings.join(' ')
+            : '';
+          setVoicePlanCaptureStatus(
+            (data.summary || 'Voice changes are ready for review.') + warnings + ' Review both columns before Confirm and apply.',
+            false,
+            false
+          );
+        } catch (err) {
+          if (err && err.name === 'AbortError') return;
+          setVoicePlanCaptureStatus(err && err.message ? err.message : 'Voice interpretation failed. Please try again.', false, true);
+        } finally {
+          if (voicePlanInterpretController === controller) voicePlanInterpretController = null;
+          voicePlanAiBusy = false;
+          syncVoicePlanAiButtons();
+        }
+      }
+
       function closeVoicePlanPreviewModal() {
         if (voicePlanConfirmBusy) return;
+        stopVoicePlanRecognition();
+        if (voicePlanInterpretController) voicePlanInterpretController.abort();
         const modal = document.getElementById('voicePlanPreviewModal');
         if (modal) modal.setAttribute('aria-hidden', 'true');
         voicePlanPreviewSession = null;
@@ -6344,8 +6557,19 @@
           : { schema_version: 1, source: 'keyboard', days: [] };
         const draft = voicePlanSeedDraft(state, settings);
         voicePlanPreviewSession = { confirmed: confirmed, draft: draft };
+        const transcript = document.getElementById('voicePlanTranscript');
+        if (transcript) transcript.value = '';
         setVoicePlanConfirmBusy(false);
         setVoicePlanPreviewStatus('', false);
+        const speechAvailable = !!voicePlanSpeechRecognitionCtor();
+        setVoicePlanCaptureStatus(
+          speechAvailable
+            ? 'Voice changes are proposed only. Confirm and apply is still required.'
+            : 'Microphone recognition is unavailable here. Type instructions, then choose Interpret and preview.',
+          false,
+          !speechAvailable
+        );
+        syncVoicePlanAiButtons();
         renderVoicePlanEditor(draft.days || []);
         refreshVoicePlanPreviewColumns();
         modal.setAttribute('aria-hidden', 'false');
@@ -6494,6 +6718,33 @@
           confirmBtn.addEventListener('click', function (event) {
             event.preventDefault();
             applyVoicePlanConfirm();
+          }, true);
+        }
+        const micBtn = document.getElementById('voicePlanMicToggle');
+        if (micBtn && !micBtn.dataset.bound) {
+          micBtn.dataset.bound = '1';
+          micBtn.addEventListener('click', function (event) {
+            event.preventDefault();
+            startVoicePlanRecognition();
+          }, true);
+        }
+        const interpretBtn = document.getElementById('voicePlanInterpret');
+        if (interpretBtn && !interpretBtn.dataset.bound) {
+          interpretBtn.dataset.bound = '1';
+          interpretBtn.addEventListener('click', function (event) {
+            event.preventDefault();
+            interpretVoicePlanTranscript();
+          }, true);
+        }
+        const clearBtn = document.getElementById('voicePlanTranscriptClear');
+        if (clearBtn && !clearBtn.dataset.bound) {
+          clearBtn.dataset.bound = '1';
+          clearBtn.addEventListener('click', function (event) {
+            event.preventDefault();
+            stopVoicePlanRecognition();
+            const transcript = document.getElementById('voicePlanTranscript');
+            if (transcript) transcript.value = '';
+            setVoicePlanCaptureStatus('Transcript cleared. No plan changes were made.', false, false);
           }, true);
         }
         const host = document.getElementById('voicePlanEditorHost');
