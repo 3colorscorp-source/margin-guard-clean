@@ -836,6 +836,24 @@ async function main() {
 
   const salesSrc = read("public/sales.html");
   ok("UI has Review & confirm plan", /btnReviewConfirmOperationalPlan/.test(salesSrc));
+  ok(
+    "seller layout completeness requires Review & confirm plan",
+    /function isDirectSellerDomLayoutComplete[\s\S]{0,2500}querySelector\('#btnReviewConfirmOperationalPlan'\)/.test(salesSrc)
+  );
+  ok(
+    "seller owner rebuild preserves or restores Review & confirm plan",
+    /function ensureSellerOperationalPlanReviewButton\(actionBar, existingButton\)/.test(salesSrc) &&
+      /id="btnReviewConfirmOperationalPlan"/.test(salesSrc) &&
+      /Review &(?:amp;)? confirm plan/.test(salesSrc) &&
+      /var reviewPlanBtn = document\.getElementById\('btnReviewConfirmOperationalPlan'\);/.test(salesSrc) &&
+      /ensureSellerOperationalPlanReviewButton\(actionBar, reviewPlanBtn\)/.test(salesSrc) &&
+      /var addDayWrap = left\.querySelector\('\.inline-actions'\);[\s\S]{0,250}var reviewPlanBtn = document\.getElementById\('btnReviewConfirmOperationalPlan'\);/.test(salesSrc)
+  );
+  ok(
+    "restored Review & confirm plan opens the preview modal",
+    /function bindVoicePlanReviewButton\(reviewBtn\)[\s\S]{0,450}openVoicePlanPreviewModal\(\)/.test(salesSrc) &&
+      /function bindVoicePlanPreviewStandalone\(\)[\s\S]{0,180}bindVoicePlanReviewButton\(/.test(salesSrc)
+  );
   ok("UI has Confirm and apply", /Confirm and apply/.test(salesSrc));
   ok("UI has dual preview columns", /voicePlanClientPreview/.test(salesSrc) && /voicePlanInternalPreview/.test(salesSrc));
   ok("UI waits for persisted=true before applying", /data\.persisted === true/.test(salesSrc));

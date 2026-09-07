@@ -2215,6 +2215,7 @@
         if (isSectionVisibleOutsideSellerDash('salesLaborSection')) return false;
         if (!dash.querySelector('#salesMessageToClient')) return false;
         if (!dash.querySelector('#btnSellerGenerateScopeDraft, #btnAddOperationalDay')) return false;
+        if (!dash.querySelector('#btnReviewConfirmOperationalPlan')) return false;
         var stack = dash.querySelector('.seller-op-dash__stack, .owner-op-dash__stack');
         if (!verifySellerOpStackChildOrder(stack)) return false;
         if (!verifySellerOpDashChildOrder(dash)) return false;
@@ -4169,6 +4170,52 @@
         return btn;
       }
 
+      function bindVoicePlanReviewButton(reviewBtn) {
+        reviewBtn = reviewBtn || document.getElementById('btnReviewConfirmOperationalPlan');
+        if (!reviewBtn || reviewBtn.dataset.bound) return reviewBtn;
+        reviewBtn.dataset.bound = '1';
+        reviewBtn.addEventListener('click', function (event) {
+          event.preventDefault();
+          openVoicePlanPreviewModal();
+        }, true);
+        return reviewBtn;
+      }
+
+      function ensureSellerOperationalPlanReviewButton(actionBar, existingButton) {
+        if (!actionBar) return null;
+
+        var btn = existingButton && existingButton.nodeType === 1
+          ? existingButton
+          : document.getElementById('btnReviewConfirmOperationalPlan');
+        if (btn && btn.parentNode && btn.parentNode !== actionBar) {
+          btn.parentNode.removeChild(btn);
+        }
+        if (!btn) {
+          btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn';
+          btn.id = 'btnReviewConfirmOperationalPlan';
+        }
+        btn.id = 'btnReviewConfirmOperationalPlan';
+        btn.type = 'button';
+        if (!btn.className) btn.className = 'btn';
+        btn.textContent = 'Review & confirm plan';
+
+        var scopeDraftBtn = document.getElementById('btnSellerGenerateScopeDraft');
+        if (scopeDraftBtn && actionBar.contains(scopeDraftBtn)) {
+          if (btn.parentNode !== actionBar || btn.previousElementSibling !== scopeDraftBtn) {
+            actionBar.insertBefore(btn, scopeDraftBtn.nextSibling);
+          }
+        } else if (!actionBar.contains(btn)) {
+          var laborBar = actionBar.querySelector('.seller-op-dash__action-bar-labor, .owner-op-dash__action-bar-labor');
+          if (laborBar) actionBar.insertBefore(btn, laborBar);
+          else actionBar.appendChild(btn);
+        }
+
+        bindVoicePlanReviewButton(btn);
+        return btn;
+      }
+
       function findSalesMessageFieldWrapper() {
         var input = document.getElementById('salesMessageToClient');
         return input ? input.closest('.field') : null;
@@ -4483,6 +4530,7 @@
         var scope = stack.querySelector('.seller-op-scope-work, .owner-op-scope-work');
         var labor = document.getElementById('salesLaborSection');
         var addDayBtn = document.getElementById('btnAddOperationalDay');
+        var reviewPlanBtn = document.getElementById('btnReviewConfirmOperationalPlan');
         var addWorkerBtn = document.getElementById('btnAddSalesWorker');
         var clearLaborBtn = document.getElementById('btnClearSalesWorkers');
 
@@ -4515,6 +4563,7 @@
           actionBar.insertBefore(addDayBtn, actionBar.firstChild);
         }
         ensureSellerGenerateScopeDraftButton(actionBar);
+        ensureSellerOperationalPlanReviewButton(actionBar, reviewPlanBtn);
         var laborBar = actionBar.querySelector('.seller-op-dash__action-bar-labor, .owner-op-dash__action-bar-labor');
         if (!laborBar) {
           laborBar = document.createElement('div');
@@ -4557,6 +4606,7 @@
 
         finalizeSellerOrphanCleanup();
         ensureSellerGenerateScopeDraftButton(actionBar);
+        ensureSellerOperationalPlanReviewButton(actionBar, reviewPlanBtn);
         return true;
       }
 
@@ -4585,6 +4635,7 @@
 
         var addDayWrap = left.querySelector('.inline-actions');
         var addDayBtn = document.getElementById('btnAddOperationalDay');
+        var reviewPlanBtn = document.getElementById('btnReviewConfirmOperationalPlan');
         var addWorkerBtn = document.getElementById('btnAddSalesWorker');
         var clearLaborBtn = document.getElementById('btnClearSalesWorkers');
 
@@ -4628,6 +4679,7 @@
           }
         }
         bindSellerGenerateScopeDraftButton(scopeDraftBtn);
+        ensureSellerOperationalPlanReviewButton(actionBar, reviewPlanBtn);
         var laborBar = document.createElement('div');
         laborBar.className = 'seller-op-dash__action-bar-labor owner-op-dash__action-bar-labor';
         if (addWorkerBtn) laborBar.appendChild(addWorkerBtn);
@@ -6421,14 +6473,7 @@
       }
 
       function bindVoicePlanPreviewStandalone() {
-        const reviewBtn = document.getElementById('btnReviewConfirmOperationalPlan');
-        if (reviewBtn && !reviewBtn.dataset.bound) {
-          reviewBtn.dataset.bound = '1';
-          reviewBtn.addEventListener('click', function (event) {
-            event.preventDefault();
-            openVoicePlanPreviewModal();
-          }, true);
-        }
+        bindVoicePlanReviewButton(document.getElementById('btnReviewConfirmOperationalPlan'));
         ['voicePlanPreviewClose', 'voicePlanPreviewCancel'].forEach(function (id) {
           const btn = document.getElementById(id);
           if (btn && !btn.dataset.bound) {
