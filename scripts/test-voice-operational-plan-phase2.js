@@ -116,6 +116,38 @@ async function main() {
   eq("invented assignment id cleared", stabilized.days[0].worker_assignments[0].assignment_id, "");
   ok("rate fields stripped", !JSON.stringify(stabilized).includes("hourly_rate"));
 
+  const duplicatedKnownIds = mod.stabilizeProposedDocument(
+    {
+      days: [
+        current.days[0],
+        {
+          ...current.days[1],
+          internal_tasks: [
+            current.days[1].internal_tasks[0],
+            { ...current.days[1].internal_tasks[0], label: "Second task created by voice" },
+          ],
+          worker_assignments: [
+            current.days[1].worker_assignments[0],
+            { ...current.days[1].worker_assignments[0], hours_per_worker: 6 },
+          ],
+        },
+        {
+          ...current.days[1],
+          day_number: 3,
+          client_scope: "New cleanup day.",
+        },
+      ],
+    },
+    current
+  );
+  eq("first existing task id remains stable", duplicatedKnownIds.days[1].internal_tasks[0].task_id, "task_existing_2");
+  eq("duplicate task id is cleared", duplicatedKnownIds.days[1].internal_tasks[1].task_id, "");
+  eq("first existing assignment id remains stable", duplicatedKnownIds.days[1].worker_assignments[0].assignment_id, "asg_existing_2");
+  eq("duplicate assignment id is cleared", duplicatedKnownIds.days[1].worker_assignments[1].assignment_id, "");
+  eq("duplicate day id is cleared", duplicatedKnownIds.days[2].day_id, "");
+  eq("known task id cannot move into a new day", duplicatedKnownIds.days[2].internal_tasks[0].task_id, "");
+  eq("known assignment id cannot move into a new day", duplicatedKnownIds.days[2].worker_assignments[0].assignment_id, "");
+
   eq("ordinary edit is not destructive authorization", mod.transcriptAllowsDestructiveChange("modify day one"), false);
   eq("Spanish delete is explicit", mod.transcriptAllowsDestructiveChange("elimina el día dos"), true);
   eq("English delete is explicit", mod.transcriptAllowsDestructiveChange("delete day two"), true);

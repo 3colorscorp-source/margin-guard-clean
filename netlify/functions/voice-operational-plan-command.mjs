@@ -167,14 +167,29 @@ function parseModelJson(raw) {
 }
 
 function currentIdSets(current) {
-  const ids = { days: new Set(), tasks: new Set(), assignments: new Set() };
+  const ids = {
+    days: new Set(),
+    tasks: new Set(),
+    assignments: new Set(),
+    taskDay: new Map(),
+    assignmentDay: new Map(),
+  };
   for (const day of Array.isArray(current?.days) ? current.days : []) {
-    if (day?.day_id) ids.days.add(String(day.day_id));
+    const dayId = String(day?.day_id || "");
+    if (dayId) ids.days.add(dayId);
     for (const task of Array.isArray(day?.internal_tasks) ? day.internal_tasks : []) {
-      if (task?.task_id) ids.tasks.add(String(task.task_id));
+      if (task?.task_id) {
+        const taskId = String(task.task_id);
+        ids.tasks.add(taskId);
+        ids.taskDay.set(taskId, dayId);
+      }
     }
     for (const asg of Array.isArray(day?.worker_assignments) ? day.worker_assignments : []) {
-      if (asg?.assignment_id) ids.assignments.add(String(asg.assignment_id));
+      if (asg?.assignment_id) {
+        const assignmentId = String(asg.assignment_id);
+        ids.assignments.add(assignmentId);
+        ids.assignmentDay.set(assignmentId, dayId);
+      }
     }
   }
   return ids;
@@ -183,18 +198,33 @@ function currentIdSets(current) {
 function stabilizeProposedDocument(proposed, current) {
   const safe = voice.stripRateFields(proposed && typeof proposed === "object" ? proposed : {});
   const known = currentIdSets(current);
+  const seen = { days: new Set(), tasks: new Set(), assignments: new Set() };
   safe.days = (Array.isArray(safe.days) ? safe.days : []).map((day) => {
     const next = { ...(day || {}) };
-    next.day_id = known.days.has(String(next.day_id || "")) ? String(next.day_id) : "";
+    const proposedDayId = String(next.day_id || "");
+    next.day_id = known.days.has(proposedDayId) && !seen.days.has(proposedDayId)
+      ? proposedDayId
+      : "";
+    if (next.day_id) seen.days.add(next.day_id);
     next.internal_tasks = (Array.isArray(next.internal_tasks) ? next.internal_tasks : []).map((task) => ({
       ...(task || {}),
-      task_id: known.tasks.has(String(task?.task_id || "")) ? String(task.task_id) : "",
+      task_id: (() => {
+        const taskId = String(task?.task_id || "");
+        const belongsToDay = next.day_id && known.taskDay.get(taskId) === next.day_id;
+        if (!known.tasks.has(taskId) || !belongsToDay || seen.tasks.has(taskId)) return "";
+        seen.tasks.add(taskId);
+        return taskId;
+      })(),
     }));
     next.worker_assignments = (Array.isArray(next.worker_assignments) ? next.worker_assignments : []).map((asg) => ({
       ...(asg || {}),
-      assignment_id: known.assignments.has(String(asg?.assignment_id || ""))
-        ? String(asg.assignment_id)
-        : "",
+      assignment_id: (() => {
+        const assignmentId = String(asg?.assignment_id || "");
+        const belongsToDay = next.day_id && known.assignmentDay.get(assignmentId) === next.day_id;
+        if (!known.assignments.has(assignmentId) || !belongsToDay || seen.assignments.has(assignmentId)) return "";
+        seen.assignments.add(assignmentId);
+        return assignmentId;
+      })(),
     }));
     return next;
   });
