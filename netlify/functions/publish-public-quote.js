@@ -14,6 +14,10 @@ const {
   resolveScopeOfWorkWriteFromBody,
 } = require("./_lib/contract-scope");
 const voiceOperationalPlan = require("./_lib/voice-operational-plan");
+const {
+  isMissingInternalPlanStorage,
+  persistPublishedInternalPlan,
+} = require("./_lib/quote-internal-operational-plan-store");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -226,9 +230,7 @@ function parseOperationalPublishFields(body, tenantSettings) {
 }
 
 function isMissingInternalPlanTable(text) {
-  const t = String(text || "").toLowerCase();
-  if (!/quote_internal_operational_plans/.test(t)) return false;
-  return /42p01|does not exist|schema cache|42703|could not find/i.test(t);
+  return isMissingInternalPlanStorage(text);
 }
 
 function isMissingOperationalQuoteColumns(text) {
@@ -997,37 +999,27 @@ exports.handler = async (event) => {
     }
 
     if (opPublish.internalDocument && quoteId) {
-      try {
-        const nowIso = new Date().toISOString();
-        const membershipId = String((ctx.membership && ctx.membership.id) || "").trim();
-        const existingInternal = await supabaseRequest(
-          `quote_internal_operational_plans?quote_id=eq.${encodeURIComponent(quoteId)}` +
-            `&tenant_id=eq.${encodeURIComponent(tenant.id)}&select=id&limit=1`
-        );
-        const internalPayload = {
-          quote_id: quoteId,
-          tenant_id: tenant.id,
-          document: opPublish.internalDocument,
-          schema_version: opPublish.internalDocument.schema_version || 1,
-          last_updated_by_membership_id: membershipId || null,
-          updated_at: nowIso,
-        };
-        if (Array.isArray(existingInternal) && existingInternal[0] && existingInternal[0].id) {
-          await supabaseRequest(
-            `quote_internal_operational_plans?id=eq.${encodeURIComponent(existingInternal[0].id)}` +
-              `&tenant_id=eq.${encodeURIComponent(tenant.id)}`,
-            { method: "PATCH", body: internalPayload }
-          );
-        } else {
-          await supabaseRequest("quote_internal_operational_plans", {
-            method: "POST",
-            body: { ...internalPayload, created_at: nowIso },
-          });
-        }
-      } catch (internalErr) {
-        if (!isMissingInternalPlanTable(internalErr && internalErr.message)) {
-          console.warn("[publish-public-quote] internal plan persist skipped", internalErr && internalErr.message);
-        }
+      const internalPersist = await persistPublishedInternalPlan(supabaseRequest, {
+        tenantId: tenant.id,
+        quoteId,
+        document: opPublish.internalDocument,
+        membershipId: String((ctx.membership && ctx.membership.id) || "").trim() || null,
+        quotePatch: opPublish.fields,
+      });
+      if (!internalPersist.ok) {
+        const storageMissing = isMissingInternalPlanStorage(internalPersist.persistError);
+        return json(503, {
+          ok: false,
+          error: storageMissing
+            ? "Internal operational plan storage is not installed. Apply SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS.sql, then retry."
+            : "The operational plan could not be saved, so the quote was not published.",
+          code: storageMissing
+            ? "internal_plan_storage_missing"
+            : "internal_plan_persist_failed",
+          retry_safe: internalPersist.retrySafe,
+          needs_manual_repair: internalPersist.needsManualRepair,
+          quote_id: internalPersist.needsManualRepair ? quoteId : undefined,
+        });
       }
     }
 
@@ -1091,4 +1083,5 @@ exports._test = {
   validateWorkersForPricing,
   parseOperationalPublishFields,
   isMissingInternalPlanTable,
+  persistPublishedInternalPlan,
 };

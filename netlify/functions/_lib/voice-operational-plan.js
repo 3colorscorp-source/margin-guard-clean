@@ -38,13 +38,19 @@ const RATE_KEYS = new Set([
 ]);
 
 const PUBLIC_FORBIDDEN_KEYS = [
+  "operational_plan",
   "internal_operational_plan",
   "quote_internal_operational_plans",
   "internal_notes",
   "internal_tasks",
   "worker_assignments",
+  "workers",
+  "worker_type",
+  "worker_role",
   "worker_count",
+  "estimated_hours",
   "hours_per_worker",
+  "hours_per_day_used",
   "materials_or_tools",
   "dependencies",
   "gc_client_responsibilities",

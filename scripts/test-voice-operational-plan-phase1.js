@@ -20,7 +20,11 @@ const { spawnSync } = require("child_process");
 
 const ROOT = path.resolve(__dirname, "..");
 const voice = require("../netlify/functions/_lib/voice-operational-plan");
-const { parseOperationalPublishFields, resolveHoursPerDayForLabor } = require("../netlify/functions/publish-public-quote")._test;
+const {
+  parseOperationalPublishFields,
+  resolveHoursPerDayForLabor,
+  persistPublishedInternalPlan,
+} = require("../netlify/functions/publish-public-quote")._test;
 const { handleQuoteInternalOperationalPlan } = require("../netlify/functions/quote-internal-operational-plan")._test;
 const { pickPublicEstimateFields, QUOTE_PUBLIC_KEYS } = require("../netlify/functions/get-public-estimate")._test;
 const { handlePublicEstimateStatus } = require("../netlify/functions/update-public-estimate-status")._test;
@@ -145,7 +149,18 @@ function leakedQuoteRow(extra) {
       },
       internal_notes: SECRET_PHRASE,
       worker_assignments: [{ worker_count: 9 }],
-      operational_plan: [{ phase: "secret crew" }],
+      operational_plan: [
+        {
+          phase: SECRET_PHRASE,
+          workers: [
+            {
+              worker_role: SECRET_PHRASE,
+              worker_type: "pro",
+              estimated_hours: 8,
+            },
+          ],
+        },
+      ],
     },
     extra || {}
   );
@@ -167,6 +182,7 @@ function ownerCtx(tenantId) {
 async function main() {
   [
     "netlify/functions/_lib/voice-operational-plan.js",
+    "netlify/functions/_lib/quote-internal-operational-plan-store.js",
     "netlify/functions/quote-internal-operational-plan.js",
     "netlify/functions/publish-public-quote.js",
     "netlify/functions/get-public-estimate.js",
@@ -283,6 +299,18 @@ async function main() {
   const scrubbedEstimate = voice.sanitizePublicQuoteRow(voice.scrubPublicPayload(publicFields));
   ok("6. scrubbed public estimate has no risks/workers", !voice.publicPayloadContainsInternal(scrubbedEstimate));
   assertNoSecret("6. get-public-estimate fields omit secret phrase", scrubbedEstimate);
+  const directlySanitizedRow = voice.sanitizePublicQuoteRow(leakedRow);
+  ok(
+    "6. public row strips legacy operational_plan",
+    !Object.prototype.hasOwnProperty.call(directlySanitizedRow, "operational_plan")
+  );
+  ok(
+    "6. public row strips legacy crew/hour fields recursively",
+    !/workers|worker_role|worker_type|estimated_hours|hours_per_day_used/.test(
+      JSON.stringify(directlySanitizedRow)
+    )
+  );
+  assertNoSecret("6. public row strips secret stored in legacy operational_plan", directlySanitizedRow);
 
   const helpersSrc = read("public/js/estimate-send-helpers.js");
   ok("6. PDF helper no longer falls back to projectNotes", !/data\.projectNotes/.test(helpersSrc));
@@ -452,6 +480,9 @@ async function main() {
     if (String(reqPath).startsWith("tenant_snapshots")) {
       return [{ payload: { storage: { mg_settings_v2: SETTINGS } } }];
     }
+    if (String(reqPath) === "rpc/mg_confirm_quote_operational_plan") {
+      return { ok: true, persisted: true, quote_id: opts && opts.body && opts.body.p_quote_id };
+    }
     if (String(reqPath).startsWith("quote_internal_operational_plans")) {
       if (!String(reqPath).includes("tenant_id=eq." + TENANT_A) && (opts && opts.method !== "POST")) return [];
       if (opts && (opts.method === "POST" || opts.method === "PATCH")) {
@@ -553,21 +584,15 @@ async function main() {
   eq("8. confirm persisted=true", ownBody.persisted, true);
   eq("8. confirm ok=true", ownBody.ok, true);
   eq("8. confirm hours_per_day from settings not body 100", ownBody.document.hours_per_day_used, 8);
-  const quotePatch = calls.find((c) => c.method === "PATCH" && String(c.path).startsWith("quotes?"));
-  const internalWrite = calls.find(
-    (c) =>
-      String(c.path).includes("quote_internal_operational_plans") &&
-      (c.method === "POST" || c.method === "PATCH") &&
-      c.body &&
-      c.body.document
-  );
-  ok("8. confirm PATCH quotes is tenant scoped", quotePatch && String(quotePatch.path).includes("tenant_id=eq." + TENANT_A));
-  ok("8. confirm does not write quotes.notes", quotePatch && quotePatch.body && quotePatch.body.notes === undefined);
-  ok("8. confirm does not write quotes.internal_operational_plan", quotePatch && quotePatch.body.internal_operational_plan === undefined);
-  ok("8. confirm strips rates from quote patch", quotePatch && !JSON.stringify(quotePatch.body).includes("hourly_rate"));
-  eq("8. confirm estimated_days is max day_number", quotePatch.body.estimated_days, 2);
-  ok("8. confirm upserts dedicated table", !!internalWrite);
-  ok("8. dedicated table write is tenant scoped", internalWrite && String(internalWrite.path).includes("quote_internal_operational_plans"));
+  const atomicWrite = calls.find((c) => c.method === "POST" && c.path === "rpc/mg_confirm_quote_operational_plan");
+  ok("8. confirm uses one atomic RPC", !!atomicWrite);
+  eq("8. atomic RPC is tenant scoped", atomicWrite.body.p_tenant_id, TENANT_A);
+  eq("8. atomic RPC is quote scoped", atomicWrite.body.p_quote_id, QUOTE_A);
+  ok("8. confirm does not write quotes.notes", atomicWrite.body.notes === undefined);
+  ok("8. confirm does not write quotes.internal_operational_plan", atomicWrite.body.internal_operational_plan === undefined);
+  ok("8. confirm strips rates from atomic payload", !JSON.stringify(atomicWrite.body).includes("hourly_rate"));
+  eq("8. confirm estimated_days is max day_number", atomicWrite.body.p_estimated_days, 2);
+  ok("8. confirm persists dedicated document through RPC", !!atomicWrite.body.p_document);
 
   const lockedRes = await handleQuoteInternalOperationalPlan(
     {
@@ -621,7 +646,9 @@ async function main() {
   eq("8. sent/viewed persisted=false", JSON.parse(sentRes.body).persisted, false);
   ok(
     "8. sent/viewed without flag does not write",
-    !calls.slice(writesBeforeSent).some((c) => c.method === "PATCH" || (c.method === "POST" && String(c.path).includes("quote_internal_operational_plans")))
+    !calls.slice(writesBeforeSent).some(
+      (c) => c.method === "PATCH" || (c.method === "POST" && String(c.path).includes("mg_confirm_quote_operational_plan"))
+    )
   );
 
   const sentConfirm = await handleQuoteInternalOperationalPlan(
@@ -653,8 +680,8 @@ async function main() {
     {
       ...planDeps,
       supabaseRequest: async (reqPath, opts) => {
-        if (String(reqPath).startsWith("quote_internal_operational_plans")) {
-          const err = new Error("Could not find the table 'public.quote_internal_operational_plans' in the schema cache");
+        if (String(reqPath) === "rpc/mg_confirm_quote_operational_plan") {
+          const err = new Error("Could not find the function public.mg_confirm_quote_operational_plan in the schema cache (PGRST202)");
           throw err;
         }
         return mockSupabase(reqPath, opts);
@@ -665,6 +692,78 @@ async function main() {
   const missingBody = JSON.parse(missingTable.body);
   eq("8. missing table persisted=false", missingBody.persisted, false);
   eq("8. missing table column_missing", missingBody.column_missing, true);
+
+  const failedAtomic = await handleQuoteInternalOperationalPlan(
+    {
+      httpMethod: "POST",
+      body: JSON.stringify({ action: "confirm", quote_id: QUOTE_A, document: { days: sampleDays() } }),
+    },
+    {
+      ...planDeps,
+      confirmOperationalPlanAtomic: async () => {
+        throw new Error("transaction aborted");
+      },
+    }
+  );
+  eq("8. atomic confirm failure is not success", failedAtomic.statusCode, 500);
+  eq("8. atomic confirm failure persisted=false", JSON.parse(failedAtomic.body).persisted, false);
+
+  const publishAtomicCalls = [];
+  const publishArgs = {
+    tenantId: TENANT_A,
+    quoteId: QUOTE_A,
+    document: confirmed,
+    membershipId: null,
+    quotePatch: {
+      operational_plan: voice.deriveLegacyOperationalPlan(confirmed),
+      estimated_days: confirmed.estimated_days,
+      estimated_hours: confirmed.estimated_hours,
+      start_date: confirmed.start_date,
+      due_date: confirmed.due_date,
+      scope_of_work: voice.buildPublicClientScope(confirmed).narrative,
+    },
+  };
+  const publishRollback = await persistPublishedInternalPlan(
+    async (reqPath, opts) => {
+      publishAtomicCalls.push({ path: String(reqPath), method: (opts && opts.method) || "GET" });
+      if (String(reqPath).startsWith("rpc/")) throw new Error("transaction aborted");
+      if (opts && opts.method === "DELETE") return [{ id: QUOTE_A }];
+      return [];
+    },
+    publishArgs
+  );
+  eq("8. publish persistence failure is not success", publishRollback.ok, false);
+  eq("8. publish rollback makes retry safe", publishRollback.retrySafe, true);
+  eq("8. publish rollback needs no manual repair", publishRollback.needsManualRepair, false);
+  ok(
+    "8. publish rollback deletes only the new tenant-scoped quote",
+    publishAtomicCalls.some(
+      (c) => c.method === "DELETE" && c.path.includes("id=eq." + QUOTE_A) && c.path.includes("tenant_id=eq." + TENANT_A)
+    )
+  );
+
+  const publishRollbackFailed = await persistPublishedInternalPlan(
+    async (reqPath, opts) => {
+      if (String(reqPath).startsWith("rpc/")) throw new Error("transaction aborted");
+      if (opts && opts.method === "DELETE") throw new Error("rollback blocked");
+      return [];
+    },
+    publishArgs
+  );
+  eq("8. failed publish rollback remains non-success", publishRollbackFailed.ok, false);
+  eq("8. failed publish rollback is not retry safe", publishRollbackFailed.retrySafe, false);
+  eq("8. failed publish rollback flags manual repair", publishRollbackFailed.needsManualRepair, true);
+
+  let publishDeleteCount = 0;
+  const publishAtomicOk = await persistPublishedInternalPlan(
+    async (reqPath, opts) => {
+      if (opts && opts.method === "DELETE") publishDeleteCount += 1;
+      return { ok: true, persisted: true, quote_id: QUOTE_A };
+    },
+    publishArgs
+  );
+  eq("8. successful publish atomic persistence succeeds", publishAtomicOk.ok, true);
+  eq("8. successful publish never rolls back quote", publishDeleteCount, 0);
 
   const endpointSrc = read("netlify/functions/quote-internal-operational-plan.js");
   const publishSrc = read("netlify/functions/publish-public-quote.js");
@@ -751,6 +850,13 @@ async function main() {
   ok("migration revokes anon/authenticated", /revoke all on table public\.quote_internal_operational_plans from anon/.test(sql) && /from authenticated/.test(sql));
   ok("migration grants service_role only", /grant select, insert, update, delete on table public\.quote_internal_operational_plans to service_role/.test(sql));
   ok("migration checks document is object", /jsonb_typeof\(document\) = 'object'/.test(sql));
+  ok("migration defines atomic confirm RPC", /create or replace function public\.mg_confirm_quote_operational_plan/.test(sql));
+  ok("atomic RPC locks the tenant quote", /q\.tenant_id = p_tenant_id[\s\S]*for update/.test(sql));
+  ok("atomic RPC updates quote and internal row in one function", /update public\.quotes[\s\S]*insert into public\.quote_internal_operational_plans/.test(sql));
+  ok("atomic RPC rechecks accepted status while quote is locked", /v_quote\.accepted_at is not null/.test(sql));
+  ok("atomic RPC rechecks projects and payments", /from public\.tenant_projects[\s\S]*from public\.tenant_project_payments/.test(sql));
+  ok("atomic RPC revokes PUBLIC execute", /revoke all on function public\.mg_confirm_quote_operational_plan[\s\S]*from public/.test(sql));
+  ok("atomic RPC grants only service_role execute", /grant execute on function public\.mg_confirm_quote_operational_plan[\s\S]*to service_role/.test(sql));
 
   console.log("\nPassed " + passed + " assertions.");
 }

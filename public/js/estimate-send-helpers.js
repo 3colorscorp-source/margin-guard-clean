@@ -32,15 +32,15 @@
     return "";
   }
   function resolvePublicPdfScopeItems(data) {
-    const src = data && typeof data === "object" ? data : {};
+    data = data && typeof data === "object" ? data : {};
     const raw =
-      src.scope_of_work ||
-      src.scopeOfWork ||
-      src.public_client_scope ||
-      src.client_scope_narrative ||
-      src.scopeItems ||
-      src.scopeSummary ||
-      src.scope_summary ||
+      data.scope_of_work ||
+      data.scopeOfWork ||
+      data.public_client_scope ||
+      data.client_scope_narrative ||
+      data.scopeItems ||
+      data.scopeSummary ||
+      data.scope_summary ||
       "";
     const items = Array.isArray(raw)
       ? raw.map((v) => String(v || "").trim()).filter(Boolean)

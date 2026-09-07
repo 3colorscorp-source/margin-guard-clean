@@ -11,6 +11,10 @@ const {
 } = require("./_lib/tenant-device-guard");
 const { evaluateQuoteEditGuard } = require("./_lib/quote-edit-guard");
 const voice = require("./_lib/voice-operational-plan");
+const {
+  confirmOperationalPlanAtomic,
+  isMissingInternalPlanStorage,
+} = require("./_lib/quote-internal-operational-plan-store");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -38,9 +42,7 @@ function parseBody(raw) {
 }
 
 function isMissingInternalPlanTable(text) {
-  const t = String(text || "").toLowerCase();
-  if (!/quote_internal_operational_plans/.test(t)) return false;
-  return /42p01|does not exist|schema cache|42703|could not find/i.test(t);
+  return isMissingInternalPlanStorage(text);
 }
 
 function extractSettingsFromSnapshotPayload(payload) {
@@ -124,29 +126,6 @@ async function loadInternalPlanRow(supabaseReq, tenantId, quoteId) {
   return Array.isArray(rows) ? rows[0] : null;
 }
 
-async function upsertInternalPlan(supabaseReq, { tenantId, quoteId, document, membershipId }) {
-  const nowIso = new Date().toISOString();
-  const existing = await loadInternalPlanRow(supabaseReq, tenantId, quoteId);
-  const payload = {
-    quote_id: quoteId,
-    tenant_id: tenantId,
-    document,
-    schema_version: Number(document && document.schema_version) || voice.SCHEMA_VERSION,
-    last_updated_by_membership_id: membershipId,
-    updated_at: nowIso,
-  };
-  if (existing && existing.id) {
-    return supabaseReq(
-      `${INTERNAL_TABLE}?id=eq.${encodeURIComponent(existing.id)}&tenant_id=eq.${encodeURIComponent(tenantId)}`,
-      { method: "PATCH", body: payload }
-    );
-  }
-  return supabaseReq(INTERNAL_TABLE, {
-    method: "POST",
-    body: { ...payload, created_at: nowIso },
-  });
-}
-
 function assertConfirmAllowed(guard, body) {
   if (guard.notFound) {
     return json(404, { ok: false, persisted: false, error: "Quote not found", code: "quote_not_found" });
@@ -192,7 +171,12 @@ async function handleQuoteInternalOperationalPlan(event, deps) {
         code: "internal_plan_table_missing",
       });
     }
-    return json(500, { ok: false, persisted: false, error: (err && err.message) || "Unexpected error" });
+    return json(500, {
+      ok: false,
+      persisted: false,
+      error: (err && err.message) || "Unexpected error",
+      code: (err && err.code) || "internal_plan_persist_failed",
+    });
   }
 }
 
@@ -202,6 +186,7 @@ async function handleQuoteInternalOperationalPlanInner(event, deps) {
   const supabaseReq = d.supabaseRequest || supabaseRequest;
   const loadSettings = d.loadTenantSettings || loadTenantSettings;
   const evalGuard = d.evaluateQuoteEditGuard || evaluateQuoteEditGuard;
+  const confirmAtomic = d.confirmOperationalPlanAtomic || confirmOperationalPlanAtomic;
 
   if (event.httpMethod !== "GET" && event.httpMethod !== "POST") {
     return json(405, { ok: false, error: "Method not allowed" });
@@ -300,11 +285,12 @@ async function handleQuoteInternalOperationalPlanInner(event, deps) {
   if (publicScope.narrative) quotePatch.scope_of_work = publicScope.narrative;
 
   try {
-    await upsertInternalPlan(supabaseReq, {
+    await confirmAtomic(supabaseReq, {
       tenantId: tenant.id,
       quoteId: quote.id,
       document: draft,
       membershipId: membershipIdFromCtx(ctx),
+      quotePatch,
     });
   } catch (err) {
     if (isMissingInternalPlanTable(err && (err.message || err.text))) {
@@ -320,11 +306,6 @@ async function handleQuoteInternalOperationalPlanInner(event, deps) {
     throw err;
   }
 
-  await supabaseReq(
-    `quotes?id=eq.${encodeURIComponent(quote.id)}&tenant_id=eq.${encodeURIComponent(tenant.id)}`,
-    { method: "PATCH", body: quotePatch }
-  );
-
   return json(
     200,
     Object.assign({ persisted: true, action: "confirm", quote_id: quote.id, ok: true }, publicResponse(draft, settings))
@@ -336,5 +317,4 @@ exports.handler = async (event) => handleQuoteInternalOperationalPlan(event);
 exports._test = {
   handleQuoteInternalOperationalPlan,
   isMissingInternalPlanTable,
-  upsertInternalPlan,
 };
