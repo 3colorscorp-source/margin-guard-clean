@@ -56,6 +56,12 @@
     return "";
   }
 
+  function recommendedStart(calendar) {
+    const cap = capApi();
+    if (cap && typeof cap.recommendedStart === "function") return cap.recommendedStart(calendar);
+    return effectiveStartMin(calendar);
+  }
+
   function isAdvisoryCapacityMode(calendar) {
     const cap = capApi();
     if (cap && typeof cap.isAdvisoryCapacityMode === "function") {
@@ -106,7 +112,7 @@
 
   function isStartBeforeSafeMin(calendar, chosenStart) {
     if (!calendar || !normDate(chosenStart)) return false;
-    const min = effectiveStartMin(calendar);
+    const min = recommendedStart(calendar);
     if (!min) return false;
     return compareYmd(chosenStart, min) < 0;
   }
@@ -155,7 +161,7 @@
     const dayLabel = workdaysEnabled !== false ? "workday" : "day";
     if (calendar && isStartBlocked(calendar, start)) {
       const nextLabel = formatDateUS(
-        effectiveStartMin(calendar) || calendar.next_available_start_date
+        recommendedStart(calendar) || calendar.next_available_start_date
       );
       return `Start date blocked by crew capacity. Next safe date: ${nextLabel}. Target finish updates when a safe start is selected.`;
     }
@@ -219,7 +225,7 @@
     if (!calendar) return;
 
     const min = effectiveStartMin(calendar);
-    const nextLabel = formatDateUS(min || calendar.next_available_start_date);
+    const nextLabel = formatDateUS(recommendedStart(calendar) || calendar.next_available_start_date);
     const reasonText = buildGuidanceReason(calendar);
     const status = String(calendar.capacity_status || "").toLowerCase();
     const chosenStart = normDate(startInput && startInput.value);
