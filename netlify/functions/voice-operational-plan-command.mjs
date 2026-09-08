@@ -107,10 +107,14 @@ const SYSTEM_INSTRUCTIONS = [
   "A command such as modify day one changes only that day. Insert, move, and delete commands must keep the remaining days.",
   "client_scope is professional client-facing work only. Never put workers, hours, internal logistics, risks, or internal notes in client_scope.",
   "Whenever dictated work changes a day's internal_tasks, rewrite that same day's client_scope so it accurately summarizes the changed work. Never leave a stale client_scope from the previous plan.",
-  "Put execution detail in internal_tasks and internal_notes. Do not invent materials, dependencies, responsibilities, or risks that were not dictated.",
+  "Write every client_scope strictly in the requested CLIENT_SCOPE_LANGUAGE, regardless of the dictation language or the previous document language.",
+  "Each internal_tasks[].label contains only the physical work activity. Never include workers, roles, counts, hours, pricing, or efficiency commentary in a task label; those belong in worker_assignments or internal_notes.",
+  "Put execution detail in internal_tasks and internal_notes. Do not invent materials, dependencies, responsibilities, risks, rationale, or efficiency claims that were not dictated.",
+  "When assign or asigna states a worker list for a day, replace that day's worker_assignments with exactly the dictated list. Only append to the existing crew when the transcript explicitly says add another worker, agrega otro trabajador, or an equivalent additive command.",
+  "When insert a new day N or inserta/agrega un nuevo día N is explicit, create a new day at N with an empty day_id and renumber the prior day N and every later day forward without changing their stable IDs.",
   "Use Installer/pro and Assistant/helper. If two workers are stated without roles, use one Installer and one Assistant. If one unspecified worker is stated, use one Installer.",
   "If hours are omitted, use the supplied tenant hours_per_day for each worker. Preserve partial hours exactly.",
-  "If a phrase is ambiguous, preserve the current data and add a short warning instead of guessing destructively.",
+  "Standard construction actions such as protect floors, demolition, preparation, waterproofing, tile installation, grout, and cleanup are not ambiguous. If a phrase truly cannot identify a day or action, preserve current data and add a short warning instead of guessing destructively.",
 ].join(" ");
 
 function envValue(name) {
@@ -291,9 +295,36 @@ function synchronizeChangedClientScopes(proposed, current) {
   return next;
 }
 
-function buildModelInput({ transcript, current, hoursPerDay }) {
+function cleanInternalTaskLabel(rawLabel) {
+  let label = String(rawLabel || "").trim().replace(/\s+/g, " ");
+  label = label.replace(
+    /\s*(?:,|;)?\s*(?:(?:assign(?:s|ed|ing)?|asign(?:a|ar|ando))\s+|(?:with|con)\s+)(?=(?:(?:one|an?|un|una|\d+)\s+)?(?:installer|assistant|helper|worker|trabajador(?:es)?|ayudante(?:s)?|instalador(?:es)?))[^.;]*[.;]?\s*$/i,
+    ""
+  );
+  label = label.replace(
+    /\s+(?:for better efficiency|to improve efficiency|para mejorar la eficiencia|para mayor eficiencia)\b.*$/i,
+    ""
+  );
+  return label.trim().slice(0, 500);
+}
+
+function cleanProposedInternalTasks(proposed) {
+  const next = { ...(proposed || {}) };
+  next.days = (Array.isArray(proposed?.days) ? proposed.days : []).map((day) => ({
+    ...(day || {}),
+    internal_tasks: (Array.isArray(day?.internal_tasks) ? day.internal_tasks : []).map((task) => ({
+      ...(task || {}),
+      label: cleanInternalTaskLabel(task?.label),
+    })),
+  }));
+  return next;
+}
+
+function buildModelInput({ transcript, current, hoursPerDay, clientLanguage = "en" }) {
+  const targetLanguage = clientLanguage === "es" ? "Spanish" : "English";
   return [
     `Tenant hours_per_day: ${hoursPerDay}`,
+    `CLIENT_SCOPE_LANGUAGE: ${targetLanguage}`,
     "CURRENT_OPERATIONAL_PLAN_JSON",
     JSON.stringify(current),
     "END_CURRENT_OPERATIONAL_PLAN_JSON",
@@ -322,7 +353,7 @@ async function loadSettingsForTenant(tenantId, request = supabaseRequest) {
     : {};
 }
 
-async function callOpenAi({ transcript, current, hoursPerDay, fetchImpl = fetch, getEnv = envValue }) {
+async function callOpenAi({ transcript, current, hoursPerDay, clientLanguage = "en", fetchImpl = fetch, getEnv = envValue }) {
   const base = getEnv("OPENAI_BASE_URL") || "https://api.openai.com";
   const apiKey = getEnv("OPENAI_API_KEY");
   if (!apiKey && !getEnv("OPENAI_BASE_URL")) {
@@ -345,7 +376,7 @@ async function callOpenAi({ transcript, current, hoursPerDay, fetchImpl = fetch,
       body: JSON.stringify({
         model: getEnv("MG_VOICE_PLAN_OPENAI_MODEL") || DEFAULT_MODEL,
         instructions: SYSTEM_INSTRUCTIONS,
-        input: buildModelInput({ transcript, current, hoursPerDay }),
+        input: buildModelInput({ transcript, current, hoursPerDay, clientLanguage }),
         text: {
           format: {
             type: "json_schema",
@@ -432,15 +463,17 @@ export function createHandler(deps = {}) {
       }
       const settings = await loadSettings(tenantId);
       const hoursPerDay = voice.resolveHoursPerDayFromSettings(settings);
+      const clientLanguage = String(body?.client_language || "en").toLowerCase() === "es" ? "es" : "en";
       const startDate = String(body?.start_date || rawCurrent.start_date || "").slice(0, 10);
       const current = voice.normalizeDocument(rawCurrent, {
         startDate,
         settings,
         hoursPerDay,
       });
-      const modelResult = await interpret({ transcript, current, hoursPerDay });
+      const modelResult = await interpret({ transcript, current, hoursPerDay, clientLanguage });
       const stabilized = stabilizeProposedDocument(modelResult?.document, current);
-      const proposedRaw = synchronizeChangedClientScopes(stabilized, current);
+      const cleaned = cleanProposedInternalTasks(stabilized);
+      const proposedRaw = synchronizeChangedClientScopes(cleaned, current);
       const incoming = voice.validateIncomingDocument(proposedRaw);
       if (!incoming.ok) {
         return jsonResponse(422, {
@@ -482,6 +515,7 @@ export function createHandler(deps = {}) {
       return jsonResponse(200, {
         ok: true,
         persisted: false,
+        client_language: clientLanguage,
         proposed_document: proposed,
         summary: String(modelResult?.summary || "Voice changes are ready for review.").slice(0, 500),
         warnings: (Array.isArray(modelResult?.warnings) ? modelResult.warnings : [])
@@ -521,6 +555,8 @@ export {
   missingCurrentDayIds,
   synchronizeChangedClientScopes,
   clientSafeTaskNarrative,
+  cleanInternalTaskLabel,
+  cleanProposedInternalTasks,
   buildModelInput,
   openAiResponsesUrl,
   callOpenAi,

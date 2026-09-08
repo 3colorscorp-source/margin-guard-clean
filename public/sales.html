@@ -1783,16 +1783,23 @@
         <section class="voice-plan-capture" aria-labelledby="voicePlanCaptureTitle">
           <div class="voice-plan-capture__head">
             <strong id="voicePlanCaptureTitle">Voice dictation</strong>
-            <label>Language
+            <label>Dictation language
               <select id="voicePlanLanguage">
                 <option value="es-US">Español</option>
                 <option value="en-US">English</option>
               </select>
             </label>
+            <label>Client document
+              <select id="voicePlanClientLanguage">
+                <option value="en" selected>English</option>
+                <option value="es">Español</option>
+              </select>
+            </label>
           </div>
           <textarea id="voicePlanTranscript" maxlength="6000" placeholder="Example: Day 1 protect the work area with one Assistant for 8 hours. Day 2 demolition with one Installer and one Assistant..."></textarea>
           <div class="voice-plan-capture__actions">
-            <button type="button" class="btn" id="voicePlanMicToggle">Start dictation</button>
+            <button type="button" class="btn" id="voicePlanMicToggle">New dictation</button>
+            <button type="button" class="btn" id="voicePlanMicContinue">Continue dictation</button>
             <button type="button" class="btn primary" id="voicePlanInterpret">Interpret and preview</button>
             <button type="button" class="btn ghost" id="voicePlanTranscriptClear">Clear transcript</button>
             <span class="voice-plan-capture__status" id="voicePlanCaptureStatus" role="status" aria-live="polite">Voice changes are proposed only. Confirm and apply is still required.</span>
@@ -6400,12 +6407,14 @@
       function syncVoicePlanAiButtons() {
         const interpret = document.getElementById('voicePlanInterpret');
         const mic = document.getElementById('voicePlanMicToggle');
+        const continueMic = document.getElementById('voicePlanMicContinue');
         const confirm = document.getElementById('voicePlanPreviewConfirm');
         if (interpret) {
           interpret.disabled = voicePlanAiBusy;
           interpret.textContent = voicePlanAiBusy ? 'Interpreting…' : 'Interpret and preview';
         }
         if (mic) mic.disabled = voicePlanAiBusy || !voicePlanSpeechRecognitionCtor();
+        if (continueMic) continueMic.disabled = voicePlanAiBusy || !voicePlanSpeechRecognitionCtor();
         if (confirm) confirm.disabled = voicePlanConfirmBusy || voicePlanAiBusy;
       }
 
@@ -6420,17 +6429,25 @@
 
       function resetVoicePlanRecognitionUi() {
         const mic = document.getElementById('voicePlanMicToggle');
+        const continueMic = document.getElementById('voicePlanMicContinue');
         if (mic) {
           mic.classList.remove('is-listening');
-          mic.textContent = 'Start dictation';
+          mic.textContent = 'New dictation';
         }
+        if (continueMic) {
+          continueMic.classList.remove('is-listening');
+          continueMic.textContent = 'Continue dictation';
+        }
+        syncVoicePlanAiButtons();
       }
 
-      function startVoicePlanRecognition() {
+      function startVoicePlanRecognition(appendExisting) {
         const Recognition = voicePlanSpeechRecognitionCtor();
         const transcript = document.getElementById('voicePlanTranscript');
         const language = document.getElementById('voicePlanLanguage');
         const mic = document.getElementById('voicePlanMicToggle');
+        const continueMic = document.getElementById('voicePlanMicContinue');
+        const activeMic = appendExisting ? continueMic : mic;
         if (!Recognition || !transcript || voicePlanAiBusy) {
           setVoicePlanCaptureStatus('Voice recognition is not available. Type the instructions and choose Interpret and preview.', false, true);
           return;
@@ -6441,16 +6458,19 @@
         }
         const recognition = new Recognition();
         voicePlanRecognition = recognition;
+        if (!appendExisting) transcript.value = '';
         voicePlanRecognitionBase = String(transcript.value || '').trim();
         voicePlanRecognitionFinal = '';
         recognition.lang = String((language && language.value) || 'es-US');
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.onstart = function () {
-          if (mic) {
-            mic.classList.add('is-listening');
-            mic.textContent = 'Stop dictation';
+          if (activeMic) {
+            activeMic.classList.add('is-listening');
+            activeMic.textContent = 'Stop dictation';
           }
+          if (mic && mic !== activeMic) mic.disabled = true;
+          if (continueMic && continueMic !== activeMic) continueMic.disabled = true;
           setVoicePlanCaptureStatus('Listening… describe the plan or say which day to modify.', true, false);
         };
         recognition.onresult = function (event) {
@@ -6499,6 +6519,8 @@
         const startInput = document.getElementById('salesStartDate');
         const start = String((startInput && startInput.value) || state.startDate || '').slice(0, 10);
         const current = collectVoicePlanDraftFromDom();
+        const clientLanguageEl = document.getElementById('voicePlanClientLanguage');
+        const clientLanguage = String((clientLanguageEl && clientLanguageEl.value) || 'en') === 'es' ? 'es' : 'en';
         const controller = new AbortController();
         voicePlanInterpretController = controller;
         try {
@@ -6506,7 +6528,7 @@
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ transcript: transcript, current_document: current, start_date: start }),
+            body: JSON.stringify({ transcript: transcript, current_document: current, start_date: start, client_language: clientLanguage }),
             signal: controller.signal
           });
           let data = {};
@@ -6725,7 +6747,15 @@
           micBtn.dataset.bound = '1';
           micBtn.addEventListener('click', function (event) {
             event.preventDefault();
-            startVoicePlanRecognition();
+            startVoicePlanRecognition(false);
+          }, true);
+        }
+        const continueMicBtn = document.getElementById('voicePlanMicContinue');
+        if (continueMicBtn && !continueMicBtn.dataset.bound) {
+          continueMicBtn.dataset.bound = '1';
+          continueMicBtn.addEventListener('click', function (event) {
+            event.preventDefault();
+            startVoicePlanRecognition(true);
           }, true);
         }
         const interpretBtn = document.getElementById('voicePlanInterpret');

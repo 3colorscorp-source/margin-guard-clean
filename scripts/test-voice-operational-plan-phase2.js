@@ -187,6 +187,16 @@ async function main() {
     mod.clientSafeTaskNarrative({ internal_tasks: [{ label: "Protection with one Assistant for 6 hours" }] }),
     "Complete the updated planned work for this day."
   );
+  eq(
+    "English crew suffix is removed from internal task",
+    mod.cleanInternalTaskLabel("Protect floors and hallways, assign an Assistant for 6 hours for better efficiency"),
+    "Protect floors and hallways"
+  );
+  eq(
+    "Spanish crew suffix is removed from internal task",
+    mod.cleanInternalTaskLabel("Demolición y preparación con un instalador y un ayudante durante 8 horas cada uno."),
+    "Demolición y preparación"
+  );
 
   eq("ordinary edit is not destructive authorization", mod.transcriptAllowsDestructiveChange("modify day one"), false);
   eq("Spanish delete is explicit", mod.transcriptAllowsDestructiveChange("elimina el día dos"), true);
@@ -229,7 +239,7 @@ async function main() {
   const success = await handler(new Request("https://example.com/.netlify/functions/voice-operational-plan-command", {
     method: "POST",
     headers: { "Content-Type": "application/json", cookie: "mg_session=test" },
-    body: JSON.stringify({ transcript: "Agrega día tres, instalación de tile, un instalador por seis horas.", current_document: current, start_date: "2026-09-10" }),
+    body: JSON.stringify({ transcript: "Agrega día tres, instalación de tile, un instalador por seis horas.", current_document: current, start_date: "2026-09-10", client_language: "en" }),
   }));
   const successBody = await responseJson(success);
   eq("success status", success.status, 200);
@@ -239,6 +249,8 @@ async function main() {
   eq("new day keeps six hours", successBody.proposed_document.days[2].worker_assignments[0].hours_per_worker, 6);
   eq("proposal source mixed", successBody.proposed_document.source, "mixed");
   eq("model receives tenant hours per day", interpretArgs.hoursPerDay, 8);
+  eq("model receives client document language", interpretArgs.clientLanguage, "en");
+  eq("response confirms client document language", successBody.client_language, "en");
   ok("public scope omits worker assignments", !JSON.stringify(successBody.public_client_scope).includes("worker_assignments"));
   ok("response omits rates", !JSON.stringify(successBody).includes("baseInstaller") && !JSON.stringify(successBody).includes("hourly_rate"));
 
@@ -311,6 +323,9 @@ async function main() {
   const fnSrc = read("netlify/functions/voice-operational-plan-command.mjs");
   ok("UI includes microphone and transcript controls", /voicePlanMicToggle/.test(html) && /voicePlanTranscript/.test(html));
   ok("UI supports Spanish and English", /value="es-US"/.test(html) && /value="en-US"/.test(html));
+  ok("UI separates dictation and client document language", /voicePlanClientLanguage/.test(html) && /Client document/.test(html));
+  ok("new dictation clears prior transcript", /if \(!appendExisting\) transcript\.value = ''/.test(html));
+  ok("continue dictation preserves prior transcript", /voicePlanMicContinue/.test(html) && /startVoicePlanRecognition\(true\)/.test(html));
   ok("UI uses browser speech recognition", /webkitSpeechRecognition/.test(html) && /interimResults = true/.test(html));
   ok("UI has typed fallback", /type the instructions/i.test(html));
   ok("UI calls authenticated interpreter", /voice-operational-plan-command/.test(html) && /credentials: 'include'/.test(html));
@@ -321,6 +336,8 @@ async function main() {
   ok("endpoint never writes quote or project tables", !/quotes\?|tenant_projects|quote_internal_operational_plans/.test(fnSrc));
   ok("endpoint authenticates owner or seller", /resolveOwnerOrSellerContext/.test(fnSrc));
   ok("endpoint strips rate fields", /stripRateFields/.test(fnSrc));
+  ok("AI input receives explicit client scope language", /CLIENT_SCOPE_LANGUAGE/.test(fnSrc));
+  ok("AI prompt keeps crew details out of task labels", /physical work activity/.test(fnSrc) && /worker_assignments/.test(fnSrc));
   ok("Netlify timeout configured", /\[functions\."voice-operational-plan-command"\][\s\S]*timeout = 30/.test(read("netlify.toml")));
 
   console.log(`\nVoice Operational Plan Phase 2: ${passed} passed`);
