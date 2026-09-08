@@ -1,5 +1,7 @@
 -- Phase 1 Voice Operational Plan — dedicated internal table.
 -- DO NOT apply this file to remote Supabase from this PR.
+-- Production inspect: SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS_INSPECT.sql
+-- Authorized apply: SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS_ALIGN_PROD.sql
 -- Never select or return this table from public estimate, accept, PDF, email, or Zapier.
 
 create table if not exists public.quote_internal_operational_plans (

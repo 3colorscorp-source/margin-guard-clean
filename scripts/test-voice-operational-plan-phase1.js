@@ -1389,7 +1389,24 @@ async function main() {
   ok("send UI keeps unknown errors generic", /Something went wrong\. Please try again\./.test(fbSrc));
   ok("old quotes.internal_operational_plan migration is gone", !fs.existsSync(path.join(ROOT, "SUPABASE_QUOTES_INTERNAL_OPERATIONAL_PLAN.sql")));
   ok("dedicated table migration exists", fs.existsSync(path.join(ROOT, "SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS.sql")));
+  ok(
+    "production inspect SQL is read-only",
+    fs.existsSync(path.join(ROOT, "SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS_INSPECT.sql"))
+  );
+  ok(
+    "production align SQL exists and is not auto-applied",
+    fs.existsSync(path.join(ROOT, "SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS_ALIGN_PROD.sql"))
+  );
   const sql = read("SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS.sql");
+  const inspectSql = read("SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS_INSPECT.sql");
+  const alignSql = read("SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS_ALIGN_PROD.sql");
+  ok("inspect SQL forbids writes", /^-- READ ONLY/.test(inspectSql) && !/\b(insert|update|delete|drop|create|alter)\b/i.test(inspectSql.replace(/^--.*$/gm, "")));
+  ok("inspect SQL reads pg_proc defaults", /pg_get_function_arguments/.test(inspectSql) && /pg_get_function_arg_default/.test(inspectSql));
+  ok("align SQL requires owner authorization", /DO NOT apply without explicit owner authorization/.test(alignSql));
+  ok("align SQL drops extra overloads before replace", /DROP FUNCTION IF EXISTS public\.mg_confirm_quote_operational_plan/.test(alignSql));
+  ok("align SQL keeps p_membership_id default null", /p_membership_id uuid default null/.test(alignSql));
+  ok("align SQL keeps p_operational_plan default empty array", /p_operational_plan jsonb default '\[\]'::jsonb/.test(alignSql));
+  ok("align SQL reloads PostgREST schema cache", /NOTIFY pgrst, 'reload schema'/.test(alignSql));
   ok("migration comment forbids remote apply from this PR", /DO NOT apply this file to remote Supabase/.test(sql));
   ok("migration enables RLS", /enable row level security/.test(sql));
   ok("migration revokes anon/authenticated", /revoke all on table public\.quote_internal_operational_plans from anon/.test(sql) && /from authenticated/.test(sql));
