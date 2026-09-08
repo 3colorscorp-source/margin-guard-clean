@@ -320,6 +320,75 @@ function cleanProposedInternalTasks(proposed) {
   return next;
 }
 
+function explicitInsertedDayNumbers(transcript) {
+  const normalized = String(transcript || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const words = {
+    one: 1, uno: 1, una: 1,
+    two: 2, dos: 2,
+    three: 3, tres: 3,
+    four: 4, cuatro: 4,
+    five: 5, cinco: 5,
+    six: 6, seis: 6,
+    seven: 7, siete: 7,
+    eight: 8, ocho: 8,
+    nine: 9, nueve: 9,
+    ten: 10, diez: 10,
+  };
+  const found = [];
+  const pattern = /\b(?:insert|add|inserta|insertar|agrega|agregar|anade|anadir)\s+(?:(?:un|una|el|la|a)\s+)?(?:(?:nuevo|nueva|new)\s+)?(?:dia|day)(?:\s+(?:numero|number))?\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b/g;
+  let match;
+  while ((match = pattern.exec(normalized))) {
+    const value = /^\d+$/.test(match[1]) ? Number(match[1]) : words[match[1]];
+    if (Number.isInteger(value) && value >= 1 && value <= 60 && !found.includes(value)) found.push(value);
+  }
+  return found.sort((a, b) => a - b);
+}
+
+function reconcileSingleInsertedDay(proposed, current, transcript) {
+  const insertions = explicitInsertedDayNumbers(transcript);
+  if (insertions.length !== 1) return proposed;
+  const insertionNumber = insertions[0];
+  const currentDays = [...(Array.isArray(current?.days) ? current.days : [])]
+    .sort((a, b) => Number(a?.day_number || 0) - Number(b?.day_number || 0));
+  const proposedDays = [...(Array.isArray(proposed?.days) ? proposed.days : [])]
+    .sort((a, b) => Number(a?.day_number || 0) - Number(b?.day_number || 0));
+  if (!currentDays.length || insertionNumber > currentDays.length + 1) return proposed;
+  const insertedIndex = proposedDays.findIndex((day) =>
+    Number(day?.day_number) === insertionNumber && !String(day?.day_id || "")
+  );
+  if (insertedIndex < 0) return proposed;
+
+  const used = new Set([insertedIndex]);
+  const result = [];
+  for (let position = 1; position <= currentDays.length + 1; position += 1) {
+    if (position === insertionNumber) {
+      result.push({ ...proposedDays[insertedIndex], day_id: "", day_number: position });
+      continue;
+    }
+    const currentIndex = position < insertionNumber ? position - 1 : position - 2;
+    const prior = currentDays[currentIndex];
+    const priorId = String(prior?.day_id || "");
+    let candidateIndex = proposedDays.findIndex((day, index) =>
+      !used.has(index) && priorId && String(day?.day_id || "") === priorId
+    );
+    if (candidateIndex < 0) {
+      candidateIndex = proposedDays.findIndex((day, index) =>
+        !used.has(index) && Number(day?.day_number) === position && !String(day?.day_id || "")
+      );
+    }
+    if (candidateIndex >= 0) {
+      used.add(candidateIndex);
+      result.push({ ...proposedDays[candidateIndex], day_id: priorId, day_number: position });
+    } else {
+      result.push({ ...prior, day_number: position });
+    }
+  }
+  return { ...(proposed || {}), days: result };
+}
+
 function buildModelInput({ transcript, current, hoursPerDay, clientLanguage = "en", correction = "" }) {
   const targetLanguage = clientLanguage === "es" ? "Spanish" : "English";
   const lines = [
@@ -513,6 +582,22 @@ export function createHandler(deps = {}) {
         removed = missingCurrentDayIds(current, proposedRaw);
       }
       if (removed.length && !transcriptAllowsDestructiveChange(transcript)) {
+        proposedRaw = synchronizeChangedClientScopes(
+          reconcileSingleInsertedDay(proposedRaw, current, transcript),
+          current
+        );
+        incoming = voice.validateIncomingDocument(proposedRaw);
+        if (!incoming.ok) {
+          return jsonResponse(422, {
+            ok: false,
+            code: "invalid_proposed_plan",
+            error: incoming.errors?.[0]?.message || "The reconciled plan is invalid.",
+            errors: incoming.errors,
+          });
+        }
+        removed = missingCurrentDayIds(current, proposedRaw);
+      }
+      if (removed.length && !transcriptAllowsDestructiveChange(transcript)) {
         return jsonResponse(422, {
           ok: false,
           code: "destructive_change_requires_explicit_command",
@@ -585,6 +670,8 @@ export {
   clientSafeTaskNarrative,
   cleanInternalTaskLabel,
   cleanProposedInternalTasks,
+  explicitInsertedDayNumbers,
+  reconcileSingleInsertedDay,
   buildModelInput,
   openAiResponsesUrl,
   callOpenAi,

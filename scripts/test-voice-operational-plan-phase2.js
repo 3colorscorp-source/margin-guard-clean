@@ -318,6 +318,12 @@ async function main() {
   eq("AI request does not store response", aiRequest.body.store, false);
   ok("AI prompt includes bilingual field dictation boundary", /FIELD_DICTATION/.test(aiRequest.body.input));
   eq("AI output parsed", aiParsed.summary, "Updated from dictation.");
+  eq(
+    "Spanish numeric insertion command is detected despite unrelated speech errors",
+    mod.explicitInsertedDayNumbers("Plaza completamente el día uno. Inserta un nuevo día número 2 antes.")[0],
+    2
+  );
+  eq("English word insertion command is detected", mod.explicitInsertedDayNumbers("Insert a new day two.")[0], 2);
 
   let preservationAttempts = 0;
   let preservationCorrection = "";
@@ -357,6 +363,36 @@ async function main() {
   ok("retry names the missing stable day id", preservationCorrection.includes("day_existing_2"));
   eq("corrected insertion succeeds", preservationResponse.status, 200);
   eq("corrected insertion preserves all existing days", preservationBody.proposed_document.days.length, 3);
+
+  let deterministicAttempts = 0;
+  const deterministicHandler = mod.createHandler({
+    resolveContext: async () => ({ auth_mode: "owner", tenant: { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } }),
+    loadSettings: async () => ({ hoursPerDay: 8 }),
+    interpret: async () => {
+      deterministicAttempts += 1;
+      return modelResult([
+        { ...current.days[0], client_scope: "Protect floors." },
+        insertedDay,
+      ]);
+    },
+  });
+  const deterministicResponse = await deterministicHandler(new Request("https://example.com/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      transcript: "Plaza completamente el día uno. Inserta un nuevo día número 2 antes. Recorre los días existentes.",
+      current_document: current,
+      client_language: "en",
+    }),
+  }));
+  const deterministicBody = await responseJson(deterministicResponse);
+  eq("deterministic preservation runs after one failed retry", deterministicAttempts, 2);
+  eq("deterministic insertion succeeds", deterministicResponse.status, 200);
+  eq("deterministic insertion returns inserted plus all current days", deterministicBody.proposed_document.days.length, 3);
+  eq("inserted day alone receives a new stable id", deterministicBody.proposed_document.days[1].day_number, 2);
+  ok("inserted day does not steal an existing stable id", !["day_existing_1", "day_existing_2"].includes(deterministicBody.proposed_document.days[1].day_id));
+  eq("later existing day is shifted forward", deterministicBody.proposed_document.days[2].day_number, 3);
+  ok("later existing day keeps stable identity", deterministicBody.proposed_document.days.some((day) => day.day_id === "day_existing_2"));
 
   let failedPreservationAttempts = 0;
   const failedPreservationHandler = mod.createHandler({
