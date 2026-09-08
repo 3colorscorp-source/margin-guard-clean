@@ -158,12 +158,20 @@
     });
   }
 
-  /** min selectable start = max(today, next_available_start_date from capacity engine). */
-  function effectiveStartMin(calendar) {
+  /** Safe recommended start = max(today, next_available_start_date from capacity engine). */
+  function recommendedStart(calendar) {
     const today = todayYmd();
     const next = normDate(calendar && calendar.next_available_start_date);
     if (!next) return today;
     return compareYmd(next, today) >= 0 ? next : today;
+  }
+
+  /**
+   * Native picker minimum. Advisory mode must allow any non-past date so the
+   * seller can choose a tentative start; strict mode enforces the safe date.
+   */
+  function effectiveStartMin(calendar) {
+    return isAdvisoryCapacityMode(calendar) ? todayYmd() : recommendedStart(calendar);
   }
 
   function isAdvisoryCapacityMode(calendar) {
@@ -246,7 +254,7 @@
     if (!calendar) return;
 
     const min = effectiveStartMin(calendar);
-    const nextLabel = formatDateUS(min || calendar.next_available_start_date);
+    const nextLabel = formatDateUS(recommendedStart(calendar));
     const reasonText = buildGuidanceReason(calendar);
     const status = String(calendar.capacity_status || "").toLowerCase();
 
@@ -310,7 +318,7 @@
   }
 
   function blockedStartMessage(calendar) {
-    const min = effectiveStartMin(calendar);
+    const min = recommendedStart(calendar);
     const nextLabel = formatDateUS(min || (calendar && calendar.next_available_start_date));
     return `This start date is not available based on current crew capacity. Next available date is ${nextLabel}.`;
   }
@@ -354,6 +362,7 @@
     normDate,
     todayYmd,
     compareYmd,
+    recommendedStart,
     effectiveStartMin,
     addCalendarDays,
     addBusinessDaysLocal,

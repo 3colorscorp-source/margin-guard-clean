@@ -281,6 +281,34 @@ async function main() {
     "2026-09-11"
   );
 
+  const cap = globalThis.MarginGuardSalesCapacity;
+  const futureSafeDate = "2099-09-11";
+  const advisoryCalendar = {
+    next_available_start_date: futureSafeDate,
+    crew_availability_mode: "advisory",
+  };
+  const strictCalendar = {
+    next_available_start_date: futureSafeDate,
+    crew_availability_mode: "strict",
+  };
+  eq("5. advisory picker minimum is today", cap.effectiveStartMin(advisoryCalendar), cap.todayYmd());
+  eq("5. advisory safe recommendation stays visible", cap.recommendedStart(advisoryCalendar), futureSafeDate);
+  eq("5. strict picker minimum enforces safe date", cap.effectiveStartMin(strictCalendar), futureSafeDate);
+  eq("5. strict safe recommendation stays visible", cap.recommendedStart(strictCalendar), futureSafeDate);
+  eq("5. advisory tentative start is not blocked", cap.isStartBlocked(advisoryCalendar, cap.todayYmd()), false);
+  eq("5. strict early start remains blocked", cap.isStartBlocked(strictCalendar, cap.todayYmd()), true);
+
+  const advisoryInput = {
+    value: cap.todayYmd(),
+    min: "",
+    setAttribute(name, value) {
+      if (name === "min") this.min = value;
+    },
+  };
+  const reconciledAdvisory = cap.reconcileStartDateWithCapacity(advisoryCalendar, advisoryInput, {});
+  eq("5. advisory reconciliation leaves today selectable", advisoryInput.min, cap.todayYmd());
+  eq("5. advisory reconciliation preserves selected date", reconciledAdvisory.value, cap.todayYmd());
+
   const publicScope = voice.buildPublicClientScope(confirmedApply.applied);
   ok("6. public narrative has client scope", /Paint living areas/.test(publicScope.narrative));
   ok("6. public narrative omits internal notes", !/Do not bill extra hours/.test(publicScope.narrative));
