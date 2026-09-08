@@ -1400,13 +1400,26 @@ async function main() {
   const sql = read("SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS.sql");
   const inspectSql = read("SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS_INSPECT.sql");
   const alignSql = read("SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS_ALIGN_PROD.sql");
-  ok("inspect SQL forbids writes", /^-- READ ONLY/.test(inspectSql) && !/\b(insert|update|delete|drop|create|alter)\b/i.test(inspectSql.replace(/^--.*$/gm, "")));
-  ok("inspect SQL reads pg_proc defaults", /pg_get_function_arguments/.test(inspectSql) && /pg_get_function_arg_default/.test(inspectSql));
-  ok("align SQL requires owner authorization", /DO NOT apply without explicit owner authorization/.test(alignSql));
-  ok("align SQL drops extra overloads before replace", /DROP FUNCTION IF EXISTS public\.mg_confirm_quote_operational_plan/.test(alignSql));
-  ok("align SQL keeps p_membership_id default null", /p_membership_id uuid default null/.test(alignSql));
-  ok("align SQL keeps p_operational_plan default empty array", /p_operational_plan jsonb default '\[\]'::jsonb/.test(alignSql));
-  ok("align SQL reloads PostgREST schema cache", /NOTIFY pgrst, 'reload schema'/.test(alignSql));
+  const inspectBody = inspectSql.replace(/^--.*$/gm, "");
+  ok("inspect SQL forbids writes", /^-- READ ONLY/.test(inspectSql) && !/\b(insert|update|delete|drop|create|alter)\b/i.test(inspectBody));
+  ok("inspect SQL does not use pg_get_function_arg_default", !/pg_get_function_arg_default/.test(inspectSql));
+  ok(
+    "inspect SQL uses documented argument/default helpers",
+    /pg_get_function_arguments/.test(inspectSql) &&
+      /pg_get_function_identity_arguments/.test(inspectSql) &&
+      /pg_get_expr\(p\.proargdefaults, 0\)/.test(inspectSql) &&
+      /proargtypes::oid\[\]/.test(inspectSql)
+  );
+  ok("inspect SQL captures pg_get_functiondef", /pg_get_functiondef\(p\.oid\)/.test(inspectSql));
+  ok("inspect SQL captures function owner and ACL", /function_owner/.test(inspectSql) && /aclexplode/.test(inspectSql));
+  ok("inspect SQL captures security model", /SECURITY INVOKER/.test(inspectSql) && /prosecdef/.test(inspectSql));
+  ok("inspect SQL captures function dependencies", /pg_depend/.test(inspectSql) && /pg_describe_object/.test(inspectSql));
+  ok("inspect SQL captures table columns and defaults", /pg_attribute/.test(inspectSql) && /column_default/.test(inspectSql));
+  ok("inspect SQL captures constraints indexes policies RLS", /pg_constraint/.test(inspectSql) && /pg_index/.test(inspectSql) && /pg_policy/.test(inspectSql) && /relforcerowsecurity/.test(inspectSql));
+  ok("inspect SQL captures table owner grants and triggers", /table_owner/.test(inspectSql) && /pg_get_triggerdef/.test(inspectSql));
+  ok("align SQL is deferred until inspect", /align_deferred_until_inspect/.test(alignSql));
+  ok("align SQL does not generic-drop overloads", !/DROP FUNCTION/i.test(alignSql));
+  ok("design SQL notes IF NOT EXISTS cannot repair an incomplete table", /cannot repair an existing incomplete table/.test(sql));
   ok("migration comment forbids remote apply from this PR", /DO NOT apply this file to remote Supabase/.test(sql));
   ok("migration enables RLS", /enable row level security/.test(sql));
   ok("migration revokes anon/authenticated", /revoke all on table public\.quote_internal_operational_plans from anon/.test(sql) && /from authenticated/.test(sql));
