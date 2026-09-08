@@ -190,7 +190,7 @@ ok(
 );
 ok(
   "owner sales page cache-busts the post-send operational plan reset",
-  /\/js\/app\.js\?v=post-send-operational-plan-reset-1/.test(salesSrc)
+  /\/js\/app\.js\?v=post-send-operational-plan-reset-2/.test(salesSrc)
 );
 
 const fiveDay = [{ name: "Pro 1", type: "installer", days: 5, hours: 99 }];
@@ -304,14 +304,24 @@ ok(
   /function resetSalesOperationalPlanAfterSend\(\)[\s\S]{0,500}state\.operational_plan = \[\];[\s\S]{0,200}state\.internal_operational_plan = null;/.test(salesSrc) &&
     /window\.resetMarginGuardOperationalPlanAfterSend\s*=\s*resetSalesOperationalPlanAfterSend/.test(salesSrc)
 );
+ok(
+  "successful Owner send clears both Owner and Sales operational plan state",
+  /function resetOperationalPlanStateAfterSuccessfulSend\(\)[\s\S]{0,1200}owner\.operational_plan = \[\];[\s\S]{0,600}sales\.operational_plan = \[\];/.test(appSrc)
+);
 const ownerFinalRender = ownerPublisherSrc.indexOf("renderSales();");
 const ownerFinalPlanReset = ownerPublisherSrc.indexOf(
-  "window.resetMarginGuardOperationalPlanAfterSend();",
+  "resetOperationalPlanStateAfterSuccessfulSend();",
   ownerFinalRender
 );
 ok(
-  "successful Owner send clears and renders the operational plan after the general render",
-  ownerFinalRender > 0 && ownerFinalPlanReset > ownerFinalRender
+  "successful Owner send guarantees the operational plan reset in finally",
+  ownerFinalRender > 0 &&
+    ownerFinalPlanReset > ownerFinalRender &&
+    /finally\s*\{[\s\S]{0,300}resetOperationalPlanStateAfterSuccessfulSend\(\)/.test(ownerPublisherSrc)
+);
+ok(
+  "post-send operational plan UI is cleared synchronously before optional render helpers",
+  /function resetSalesOperationalPlanAfterSend\(\)[\s\S]{0,1600}summaryEl\.textContent = 'No schedule yet';[\s\S]{0,600}timelineHost\.innerHTML = '<div class="sales-op-empty">Add days to build the execution timeline.<\/div>';[\s\S]{0,400}renderSalesOperationalPlanStandalone\(\)/.test(salesSrc)
 );
 
 const secondFill = salesSrc.indexOf("await fillSendModal();", salesSrc.indexOf("Creating public quote link"));

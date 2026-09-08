@@ -1901,7 +1901,7 @@
   <script src="/js/sales-operational-plan.js"></script>
   <script src="/js/sales-capacity-calendar.js"></script>
   <script src="/js/voice-operational-plan.js"></script>
-  <script src="/js/app.js?v=post-send-operational-plan-reset-1"></script>
+  <script src="/js/app.js?v=post-send-operational-plan-reset-2"></script>
   <script>
     (function () {
       const SALES_KEY = 'mg_sales_v2';
@@ -9174,8 +9174,30 @@
         state.labor_manual_override = false;
         saveSalesState(state);
         clearSellerPostQuoteWorkspaceChrome();
-        renderSalesOperationalPlanStandalone();
-        updateLaborSyncChrome(state);
+
+        const summaryEl = document.getElementById('salesOperationalSummary');
+        const metricsEl = document.getElementById('salesOperationalMetrics');
+        const dayCountEl = document.getElementById('salesOpPlanDayCount');
+        const timelineHost = document.getElementById('salesOperationalTimelineHost');
+        const legacyHost = document.getElementById('salesOperationalDaysHost');
+        if (summaryEl) summaryEl.textContent = 'No schedule yet';
+        if (dayCountEl) dayCountEl.textContent = '';
+        if (metricsEl) metricsEl.innerHTML = '<span>Add schedule days to build the plan.</span>';
+        if (timelineHost) {
+          timelineHost.innerHTML = '<div class="sales-op-empty">Add days to build the execution timeline.</div>';
+        }
+        if (legacyHost) legacyHost.innerHTML = '';
+
+        try {
+          renderSalesOperationalPlanStandalone();
+        } catch (renderErr) {
+          console.error('[Sales Send] operational plan render reset failed', renderErr);
+        }
+        try {
+          updateLaborSyncChrome(state);
+        } catch (laborChromeErr) {
+          console.error('[Sales Send] labor sync chrome reset failed', laborChromeErr);
+        }
       }
 
       function resetRealSellerQuoteWorkspaceAfterSend() {

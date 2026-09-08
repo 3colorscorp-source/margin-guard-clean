@@ -1031,6 +1031,28 @@ Thank you.`
     resetOwnerDraftToNewQuote();
   }
 
+  function resetOperationalPlanStateAfterSuccessfulSend() {
+    const owner = loadOwner();
+    owner.operational_plan = [];
+    owner.internal_operational_plan = null;
+    owner.operational_estimated_days_override = "";
+    owner.operational_estimated_hours_override = "";
+    owner.labor_auto_sync_from_plan = true;
+    owner.labor_manual_override = false;
+    saveOwner(owner, calcOwner(owner, loadOwnerPricingSettings()));
+
+    const sales = loadSales();
+    sales.operational_plan = [];
+    sales.internal_operational_plan = null;
+    sales.operational_estimated_days_override = "";
+    sales.operational_estimated_hours_override = "";
+    sales.labor_auto_sync_from_plan = true;
+    sales.labor_manual_override = false;
+    saveSales(sales);
+
+    clearOwnerQuoteCalendarState();
+  }
+
   function showOwnerNewQuoteModal() {
     const el = $("ownerNewQuoteModal");
     if (!el) return;
@@ -10055,11 +10077,21 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           try {
             renderSales();
           } catch (_e) {}
-          if (typeof window.resetMarginGuardOperationalPlanAfterSend === "function") {
-            window.resetMarginGuardOperationalPlanAfterSend();
-          }
         } catch (mgOwnerPostSendErr) {
           console.error("[MG Owner Send] post-close draft reset failed", mgOwnerPostSendErr);
+        } finally {
+          try {
+            resetOperationalPlanStateAfterSuccessfulSend();
+          } catch (mgOwnerPlanStateResetErr) {
+            console.error("[MG Owner Send] operational plan state reset failed", mgOwnerPlanStateResetErr);
+          }
+          try {
+            if (typeof window.resetMarginGuardOperationalPlanAfterSend === "function") {
+              window.resetMarginGuardOperationalPlanAfterSend();
+            }
+          } catch (mgOwnerPlanUiResetErr) {
+            console.error("[MG Owner Send] operational plan UI reset failed", mgOwnerPlanUiResetErr);
+          }
         }
         const sb = document.getElementById("btnSendNow");
         if (sb) {
