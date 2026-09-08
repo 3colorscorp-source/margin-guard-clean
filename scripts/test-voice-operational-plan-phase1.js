@@ -1394,14 +1394,20 @@ async function main() {
     fs.existsSync(path.join(ROOT, "SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS_INSPECT.sql"))
   );
   ok(
-    "production align SQL exists and is not auto-applied",
-    fs.existsSync(path.join(ROOT, "SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS_ALIGN_PROD.sql"))
+    "production align SQL was not needed",
+    !fs.existsSync(path.join(ROOT, "SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS_ALIGN_PROD.sql"))
   );
   const sql = read("SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS.sql");
   const inspectSql = read("SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS_INSPECT.sql");
-  const alignSql = read("SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS_ALIGN_PROD.sql");
-  const inspectBody = inspectSql.replace(/^--.*$/gm, "");
+  const inspectBody = inspectSql.replace(/^--.*$/gm, "").replace(/\r/g, "");
   ok("inspect SQL forbids writes", /^-- READ ONLY/.test(inspectSql) && !/\b(insert|update|delete|drop|create|alter)\b/i.test(inspectBody));
+  ok(
+    "inspect SQL is one export statement with section and payload_json",
+    /^\s*with\b/m.test(inspectBody) &&
+      /select section, payload_json/.test(inspectSql) &&
+      (inspectBody.match(/\bunion all\b/gi) || []).length === 11 &&
+      (inspectBody.match(/;/g) || []).length <= 1
+  );
   ok("inspect SQL does not use pg_get_function_arg_default", !/pg_get_function_arg_default/.test(inspectSql));
   ok(
     "inspect SQL uses documented argument/default helpers",
@@ -1423,9 +1429,8 @@ async function main() {
   ok("inspect SQL captures table columns and defaults", /pg_attribute/.test(inspectSql) && /column_default/.test(inspectSql));
   ok("inspect SQL captures constraints indexes policies RLS", /pg_constraint/.test(inspectSql) && /pg_index/.test(inspectSql) && /pg_policy/.test(inspectSql) && /relforcerowsecurity/.test(inspectSql));
   ok("inspect SQL captures table owner grants and triggers", /table_owner/.test(inspectSql) && /pg_get_triggerdef/.test(inspectSql));
-  ok("align SQL is deferred until inspect", /align_deferred_until_inspect/.test(alignSql));
-  ok("align SQL does not generic-drop overloads", !/DROP FUNCTION/i.test(alignSql));
-  ok("design SQL notes IF NOT EXISTS cannot repair an incomplete table", /cannot repair an existing incomplete table/.test(sql));
+  ok("live inspect found matching 11-arg RPC defaults", /11 arguments and 8 defaults/.test(sql) && /p_membership_id DEFAULT NULL/.test(sql));
+  ok("live inspect found complete table and reloaded schema cache", /quote_internal_operational_plans is complete/.test(sql) && /NOTIFY pgrst, 'reload schema'/.test(sql));
   ok("migration comment forbids remote apply from this PR", /DO NOT apply this file to remote Supabase/.test(sql));
   ok("migration enables RLS", /enable row level security/.test(sql));
   ok("migration revokes anon/authenticated", /revoke all on table public\.quote_internal_operational_plans from anon/.test(sql) && /from authenticated/.test(sql));
