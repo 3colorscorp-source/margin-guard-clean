@@ -319,6 +319,63 @@ async function main() {
   ok("AI prompt includes bilingual field dictation boundary", /FIELD_DICTATION/.test(aiRequest.body.input));
   eq("AI output parsed", aiParsed.summary, "Updated from dictation.");
 
+  let preservationAttempts = 0;
+  let preservationCorrection = "";
+  const insertedDay = {
+    ...proposedDays[2],
+    day_id: "",
+    day_number: 2,
+    client_scope: "Complete demolition and preparation.",
+  };
+  const preservationHandler = mod.createHandler({
+    resolveContext: async () => ({ auth_mode: "owner", tenant: { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } }),
+    loadSettings: async () => ({ hoursPerDay: 8 }),
+    interpret: async (args) => {
+      preservationAttempts += 1;
+      preservationCorrection = args.correction || "";
+      if (preservationAttempts === 1) {
+        return modelResult([{ ...current.days[0], client_scope: "Protect floors." }, insertedDay]);
+      }
+      return modelResult([
+        { ...current.days[0], client_scope: "Protect floors." },
+        insertedDay,
+        { ...current.days[1], day_number: 3 },
+      ]);
+    },
+  });
+  const preservationResponse = await preservationHandler(new Request("https://example.com/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      transcript: "Reemplaza el día uno e inserta un nuevo día número dos.",
+      current_document: current,
+      client_language: "en",
+    }),
+  }));
+  const preservationBody = await responseJson(preservationResponse);
+  eq("missing unchanged day triggers one controlled retry", preservationAttempts, 2);
+  ok("retry names the missing stable day id", preservationCorrection.includes("day_existing_2"));
+  eq("corrected insertion succeeds", preservationResponse.status, 200);
+  eq("corrected insertion preserves all existing days", preservationBody.proposed_document.days.length, 3);
+
+  let failedPreservationAttempts = 0;
+  const failedPreservationHandler = mod.createHandler({
+    resolveContext: async () => ({ auth_mode: "owner", tenant: { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } }),
+    loadSettings: async () => ({ hoursPerDay: 8 }),
+    interpret: async () => {
+      failedPreservationAttempts += 1;
+      return modelResult([current.days[0]]);
+    },
+  });
+  const failedPreservation = await failedPreservationHandler(new Request("https://example.com/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ transcript: "Modify day one protection.", current_document: current }),
+  }));
+  eq("failed preservation retries only once", failedPreservationAttempts, 2);
+  eq("failed preservation remains fail closed", failedPreservation.status, 422);
+  eq("failed preservation applies no proposal", (await responseJson(failedPreservation)).ok, false);
+
   const html = read("public/sales.html");
   const fnSrc = read("netlify/functions/voice-operational-plan-command.mjs");
   ok("UI includes microphone and transcript controls", /voicePlanMicToggle/.test(html) && /voicePlanTranscript/.test(html));
