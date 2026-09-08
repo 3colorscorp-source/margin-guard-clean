@@ -404,6 +404,118 @@
       line-height: 1.5;
       color: rgba(232, 238, 252, 0.9);
     }
+    .owner-voice-plan-preview-modal .modal-card {
+      width: min(1100px, 96vw);
+    }
+    .owner-voice-plan-capture {
+      border: 1px solid rgba(34, 197, 94, 0.28);
+      border-radius: 14px;
+      padding: 12px;
+      background: linear-gradient(180deg, rgba(34, 197, 94, 0.08), rgba(255, 255, 255, 0.025));
+    }
+    .owner-voice-plan-capture__head,
+    .owner-voice-plan-capture__actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .owner-voice-plan-capture__head {
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .owner-voice-plan-capture__actions {
+      margin-top: 8px;
+    }
+    .owner-voice-plan-capture textarea {
+      width: 100%;
+      min-height: 96px;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+    .owner-voice-plan-capture__status {
+      font-size: 12px;
+      opacity: 0.82;
+    }
+    .owner-voice-plan-capture__status.is-listening {
+      color: #86efac;
+      font-weight: 700;
+    }
+    .owner-voice-plan-capture__status.is-error {
+      color: #f3b4b4;
+    }
+    #ownerVoicePlanMicToggle.is-listening,
+    #ownerVoicePlanMicContinue.is-listening {
+      border-color: #ef4444;
+      color: #fecaca;
+    }
+    .owner-voice-plan-dual {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .owner-voice-plan-col {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 12px;
+      min-height: 120px;
+    }
+    .owner-voice-plan-col__title {
+      margin: 0 0 8px;
+      font-size: 14px;
+    }
+    .owner-voice-plan-col__body {
+      font-size: 13px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      opacity: 0.92;
+      min-height: 4.5rem;
+    }
+    .owner-voice-plan-preview-status {
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .owner-voice-plan-preview-status.is-error {
+      color: #f3b4b4;
+    }
+    .owner-voice-plan-confirm-hint {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.4;
+      opacity: 0.82;
+    }
+    .owner-voice-plan-preview-modal .modal-footer {
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .owner-voice-plan-preview-modal .modal-footer__actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-left: auto;
+    }
+    #ownerVoicePlanPreviewConfirm[disabled],
+    #ownerVoicePlanPreviewConfirm[aria-disabled="true"] {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    @media (max-width: 740px) {
+      .owner-voice-plan-dual {
+        grid-template-columns: 1fr;
+      }
+      .owner-voice-plan-capture__actions .btn,
+      .owner-voice-plan-preview-modal .modal-footer .btn {
+        min-height: 44px;
+        flex: 1 1 140px;
+      }
+      .owner-voice-plan-preview-modal .modal-footer__actions {
+        width: 100%;
+        margin-left: 0;
+      }
+    }
   </style>
 </head>
 <body data-role="owner" data-requires-auth="true" data-mg-app-nav data-mg-page-title="Dueno">
@@ -531,6 +643,7 @@
                   <div class="owner-op-dash__action-bar" role="toolbar" aria-label="Operational plan and labor actions">
                     <button type="button" class="btn primary" id="btnOwnerAddOperationalDay">Add day</button>
                     <button type="button" class="btn" id="btnOwnerGenerateScopeDraft">Generate Scope Draft</button>
+                    <button type="button" class="btn" id="btnOwnerReviewConfirmOperationalPlan">Review &amp; confirm plan</button>
                     <div class="owner-op-dash__action-bar-labor">
                       <button class="btn primary" type="button" id="btnAddWorker">+ Agregar trabajador</button>
                       <button class="btn danger" type="button" id="btnClearOwnerLabor">Limpiar labor</button>
@@ -856,6 +969,77 @@
     </div>
   </div>
 
+  <div class="modal owner-voice-plan-preview-modal" id="ownerVoicePlanPreviewModal" aria-hidden="true" role="dialog" aria-labelledby="ownerVoicePlanPreviewTitle" aria-describedby="ownerVoicePlanPreviewSubtitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="ownerVoicePlanPreviewTitle">Review operational plan</div>
+          <div class="modal-subtitle" id="ownerVoicePlanPreviewSubtitle">Dictate or type instructions, then interpret a preview. Confirm and apply is not available in this phase. Cancel leaves the quote unchanged.</div>
+        </div>
+        <button type="button" class="icon-btn" id="ownerVoicePlanPreviewClose" aria-label="Close">X</button>
+      </div>
+      <div class="modal-body">
+        <section class="owner-voice-plan-capture" aria-labelledby="ownerVoicePlanCaptureTitle">
+          <div class="owner-voice-plan-capture__head">
+            <strong id="ownerVoicePlanCaptureTitle">Voice dictation</strong>
+            <label for="ownerVoicePlanLanguage">Dictation language
+              <select id="ownerVoicePlanLanguage">
+                <option value="es-US">Español</option>
+                <option value="en-US">English</option>
+              </select>
+            </label>
+            <label for="ownerVoicePlanClientLanguage">Client document
+              <select id="ownerVoicePlanClientLanguage">
+                <option value="en" selected>English</option>
+                <option value="es">Español</option>
+              </select>
+            </label>
+          </div>
+          <label class="visually-hidden" for="ownerVoicePlanTranscript">Voice transcript</label>
+          <textarea
+            id="ownerVoicePlanTranscript"
+            maxlength="6000"
+            rows="6"
+            placeholder="Example: Day 1 protect the work area with one Assistant for 8 hours. Day 2 demolition with one Installer and one Assistant..."
+          ></textarea>
+          <div class="owner-voice-plan-capture__actions">
+            <button type="button" class="btn" id="ownerVoicePlanMicToggle" aria-pressed="false">New dictation</button>
+            <button type="button" class="btn" id="ownerVoicePlanMicContinue" aria-pressed="false">Continue dictation</button>
+            <button type="button" class="btn primary" id="ownerVoicePlanInterpret">Interpret and preview</button>
+            <button type="button" class="btn ghost" id="ownerVoicePlanTranscriptClear">Clear transcript</button>
+            <span class="owner-voice-plan-capture__status" id="ownerVoicePlanCaptureStatus" role="status" aria-live="polite">Voice changes are proposed only. Confirm and apply is not available in this phase.</span>
+          </div>
+        </section>
+        <div class="owner-voice-plan-dual">
+          <section class="owner-voice-plan-col" aria-labelledby="ownerVoicePlanClientTitle">
+            <h4 class="owner-voice-plan-col__title" id="ownerVoicePlanClientTitle">Client Scope of Work</h4>
+            <div class="owner-voice-plan-col__body" id="ownerVoicePlanClientPreview">No client-facing scope yet.</div>
+          </section>
+          <section class="owner-voice-plan-col" aria-labelledby="ownerVoicePlanInternalTitle">
+            <h4 class="owner-voice-plan-col__title" id="ownerVoicePlanInternalTitle">Internal Operational Plan</h4>
+            <div class="owner-voice-plan-col__body" id="ownerVoicePlanInternalPreview">No internal plan yet.</div>
+          </section>
+        </div>
+        <div class="owner-voice-plan-preview-status" id="ownerVoicePlanPreviewStatus" role="status" aria-live="polite" hidden></div>
+      </div>
+      <div class="modal-footer">
+        <p class="owner-voice-plan-confirm-hint" id="ownerVoicePlanConfirmHint">Phase 1 preview only. Confirm and apply will be enabled in a later phase and will not run now.</p>
+        <div class="modal-footer__actions">
+          <button type="button" class="btn" id="ownerVoicePlanPreviewCancel">Cancel</button>
+          <button
+            type="button"
+            class="btn primary"
+            id="ownerVoicePlanPreviewConfirm"
+            disabled
+            aria-disabled="true"
+            aria-describedby="ownerVoicePlanConfirmHint"
+            title="Confirm and apply will be available in a later phase. This preview does not change the quote."
+          >Confirm and apply (later phase)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="/js/sales-operational-plan.js"></script>
 <script src="/js/sales-capacity-calendar.js"></script>
@@ -866,7 +1050,9 @@
 <script src="/js/tenant.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/quote-send-feedback.js"></script>
+<script src="/js/voice-operational-plan.js"></script>
 <script src="/js/app.js"></script>
+<script src="/js/owner-voice-operational-plan.js"></script>
 <script>
 (function () {
   function hideInlineCapacityWarning(warning) {
