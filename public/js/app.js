@@ -9818,6 +9818,10 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
       } catch (_e) {}
 
       if (!publishResponse.ok || !publishData?.quote_id || !publishData?.public_token || !publishData?.public_url) {
+        const fbPub = window.__MG_QUOTE_SEND_FEEDBACK__;
+        if (fbPub && typeof fbPub.throwFromPublishResponse === "function") {
+          fbPub.throwFromPublishResponse(publishData, publishRaw, publishResponse);
+        }
         throw new Error(publishData.error || publishRaw || "Unable to create public quote link.");
       }
 

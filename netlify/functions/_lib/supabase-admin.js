@@ -20,13 +20,16 @@ function getSupabaseConfig() {
 
 async function supabaseRequest(path, { method = "GET", body, headers } = {}) {
   const { url, key } = getSupabaseConfig();
+  const isRpc = String(path || "").startsWith("rpc/");
   const response = await fetch(`${url}/rest/v1/${path}`, {
     method,
     headers: {
       "Content-Type": "application/json",
       apikey: key,
       Authorization: `Bearer ${key}`,
-      Prefer: "return=representation",
+      // Prefer: return=representation is for INSERT/UPDATE/DELETE. On RPC it can
+      // wrap or empty the jsonb result so confirmOperationalPlanAtomic fails closed.
+      ...(isRpc ? {} : { Prefer: "return=representation" }),
       ...(headers || {})
     },
     body: body == null ? undefined : JSON.stringify(body)

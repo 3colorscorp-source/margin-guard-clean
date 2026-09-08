@@ -260,6 +260,42 @@ eq(
   "The operational plan could not be saved, so the quote was not sent. Please try again."
 );
 eq(
+  "maps second-retry PostgREST dump without persist copy",
+  friendly(
+    new Error(
+      "Supabase HTTP 404: Could not find the function public.mg_confirm_quote_operational_plan(p_tenant_id, p_quote_id, p_document, p_schema_version, p_operational_plan, p_estimated_days, p_estimated_hours, p_start_date, p_due_date) in the schema cache | PGRST202"
+    )
+  ),
+  "The operational plan could not be saved, so the quote was not sent. Please try again."
+);
+const documentInvalidErr = new Error("hours_per_worker must be greater than 0 and at most 24.");
+documentInvalidErr.code = "document_invalid";
+eq(
+  "maps document_invalid code from second-retry 400",
+  friendly(documentInvalidErr),
+  "The operational plan could not be saved, so the quote was not sent. Please try again."
+);
+let thrownPublish = null;
+try {
+  fbCtx.__MG_QUOTE_SEND_FEEDBACK__.throwFromPublishResponse(
+    {
+      error:
+        "Supabase HTTP 404: Could not find the function public.mg_confirm_quote_operational_plan(p_tenant_id, p_quote_id, p_document, p_schema_version, p_operational_plan) in the schema cache | PGRST202",
+      code: "internal_plan_persist_failed",
+    },
+    "",
+    { status: 503 }
+  );
+} catch (err) {
+  thrownPublish = err;
+}
+eq("throwFromPublishResponse preserves persist code", thrownPublish && thrownPublish.code, "internal_plan_persist_failed");
+eq(
+  "maps second-retry thrown persist code",
+  friendly(thrownPublish),
+  "The operational plan could not be saved, so the quote was not sent. Please try again."
+);
+eq(
   "maps storage-missing without leaking SQL names",
   friendly(new Error("Operational plan storage is not ready, so the quote was not sent. Contact support if this continues.")),
   "Operational plan storage is not ready, so the quote was not sent. Contact support if this continues."

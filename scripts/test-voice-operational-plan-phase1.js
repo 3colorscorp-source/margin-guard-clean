@@ -29,6 +29,7 @@ const {
 const {
   buildConfirmRpcBody,
   membershipIdForRpc,
+  resolveMembershipIdForRpc,
   confirmOperationalPlanAtomic,
 } = require("../netlify/functions/_lib/quote-internal-operational-plan-store");
 const { handleQuoteInternalOperationalPlan } = require("../netlify/functions/quote-internal-operational-plan")._test;
@@ -243,10 +244,12 @@ async function runOwnerInternalPlanPublishHandlerTests() {
     URL: process.env.URL,
   };
   const FAKE_QUOTE_ID = "22222222-2222-4222-8222-222222222222";
+  const OWNER_PROFILE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-bbbbbbbbbbbb";
   const insertCalls = [];
   const rpcBodies = [];
   const deleteCalls = [];
   let rpcShouldFail = false;
+  let profileLookupMissing = false;
 
   process.env.SUPABASE_URL = "http://127.0.0.1:9";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "isolated-owner-plan-service-role";
@@ -294,7 +297,23 @@ async function runOwnerInternalPlanPublishHandlerTests() {
     }
     if (pathname === "/rest/v1/rpc/mg_confirm_quote_operational_plan") {
       rpcBodies.push(body);
-      if (rpcShouldFail) {
+      if (rpcShouldFail === "pgrst202-omitted-membership") {
+        if (!Object.prototype.hasOwnProperty.call(body, "p_membership_id")) {
+          return {
+            ok: false,
+            status: 404,
+            text: async () =>
+              JSON.stringify({
+                code: "PGRST202",
+                message:
+                  "Could not find the function public.mg_confirm_quote_operational_plan(p_tenant_id, p_quote_id, p_document, p_schema_version, p_operational_plan, p_estimated_days, p_estimated_hours, p_start_date, p_due_date) in the schema cache",
+                details:
+                  "Searched for the function public.mg_confirm_quote_operational_plan with named parameters p_tenant_id, p_quote_id, p_document, p_schema_version, p_operational_plan, p_estimated_days, p_estimated_hours, p_start_date, p_due_date, but no matches were found in the schema cache.",
+              }),
+          };
+        }
+      }
+      if (rpcShouldFail === true) {
         return {
           ok: false,
           status: 500,
@@ -323,6 +342,10 @@ async function runOwnerInternalPlanPublishHandlerTests() {
         persisted: true,
         quote_id: body.p_quote_id || FAKE_QUOTE_ID,
       });
+    }
+    if (pathname === "/rest/v1/profiles") {
+      if (profileLookupMissing) return jsonRes(200, []);
+      return jsonRes(200, [{ id: OWNER_PROFILE_ID }]);
     }
     if (pathname === "/rest/v1/tenants" || pathname === "/rest/v1/tenant_branding") {
       return jsonRes(200, []);
@@ -388,13 +411,35 @@ async function runOwnerInternalPlanPublishHandlerTests() {
     eq("8. owner internal-plan publish inserts once", insertCalls.length, 1);
     eq("8. owner internal-plan publish calls confirm RPC once", rpcBodies.length, 1);
     eq("8. owner internal-plan publish does not rollback", deleteCalls.length, 0);
-    ok("8. owner internal-plan RPC omits p_membership_id", !Object.prototype.hasOwnProperty.call(rpcBodies[0], "p_membership_id"));
+    eq("8. owner internal-plan RPC sends looked-up owner membership uuid", rpcBodies[0].p_membership_id, OWNER_PROFILE_ID);
     ok("8. owner publish returns public_url for Zapier", Boolean(okBody.public_url && okBody.quote_id && okBody.public_token));
 
     insertCalls.length = 0;
     rpcBodies.length = 0;
     deleteCalls.length = 0;
+    rpcShouldFail = "pgrst202-omitted-membership";
+    profileLookupMissing = true;
+    const secondRetryRes = await publishMod.handler({
+      httpMethod: "POST",
+      headers: {},
+      body: JSON.stringify(publishBody),
+    });
+    const secondRetryBody = JSON.parse(secondRetryRes.body || "{}");
+    eq("8. second production retry is 503", secondRetryRes.statusCode, 503);
+    eq("8. second production retry omits p_membership_id when owner profile is missing", Object.prototype.hasOwnProperty.call(rpcBodies[0] || {}, "p_membership_id"), false);
+    eq("8. second production retry rolls back the inserted quote", deleteCalls.length, 1);
+    ok("8. second production retry never returns public_url so Zapier is not called", !secondRetryBody.public_url && !secondRetryBody.public_token);
+    eq("8. second production retry code is internal_plan_persist_failed", secondRetryBody.code, "internal_plan_persist_failed");
+    ok(
+      "8. second production retry message is actionable",
+      /operational plan could not be saved/i.test(String(secondRetryBody.error || ""))
+    );
+
+    insertCalls.length = 0;
+    rpcBodies.length = 0;
+    deleteCalls.length = 0;
     rpcShouldFail = true;
+    profileLookupMissing = false;
     const failRes = await publishMod.handler({
       httpMethod: "POST",
       headers: {},
@@ -1044,6 +1089,15 @@ async function main() {
     quotePatch: publishArgs.quotePatch,
   });
   ok("8. owner RPC omits untyped p_membership_id null", !Object.prototype.hasOwnProperty.call(ownerRpcBody, "p_membership_id"));
+  ok("8. owner RPC omits empty p_operational_plan array", !Object.prototype.hasOwnProperty.call(ownerRpcBody, "p_operational_plan") || (Array.isArray(ownerRpcBody.p_operational_plan) && ownerRpcBody.p_operational_plan.length > 0));
+  const emptyPlanRpcBody = buildConfirmRpcBody({
+    tenantId: TENANT_A,
+    quoteId: QUOTE_A,
+    document: confirmed,
+    membershipId: null,
+    quotePatch: { operational_plan: [] },
+  });
+  ok("8. empty derived plan omits untyped p_operational_plan []", !Object.prototype.hasOwnProperty.call(emptyPlanRpcBody, "p_operational_plan"));
   ok("8. owner RPC omits empty p_scope_of_work null", !Object.prototype.hasOwnProperty.call(ownerRpcBody, "p_scope_of_work") || ownerRpcBody.p_scope_of_work);
   eq("8. owner membershipIdForRpc is null", membershipIdForRpc(""), null);
   eq("8. owner membershipIdForRpc rejects non-uuid", membershipIdForRpc("owner"), null);
@@ -1051,6 +1105,26 @@ async function main() {
     "8. seller membership UUID is kept",
     membershipIdForRpc("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"),
     "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+  );
+
+  const lookedUp = await resolveMembershipIdForRpc(
+    { auth_mode: "owner", tenant: { id: TENANT_A }, session: { e: "Owner@test.example" } },
+    async (path) => {
+      ok(
+        "8. owner membership lookup queries profiles by email and tenant",
+        /profiles\?email=eq\.owner%40test\.example/.test(path) && /tenant_id=eq\./.test(path)
+      );
+      return [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-bbbbbbbbbbbb" }];
+    }
+  );
+  eq("8. owner membership lookup returns profile uuid", lookedUp, "aaaaaaaa-aaaa-4aaa-8aaa-bbbbbbbbbbbb");
+  eq(
+    "8. owner membership lookup is null when profile is missing",
+    await resolveMembershipIdForRpc(
+      { auth_mode: "owner", tenant: { id: TENANT_A }, session: { e: "owner@test.example" } },
+      async () => []
+    ),
+    null
   );
 
   function throwIfUntypedRpcNulls(body) {
@@ -1241,6 +1315,10 @@ async function main() {
     "send UI maps persist failure to an actionable message",
     /operational plan could not be saved/i.test(fbSrc) && /internal_plan_persist_failed/.test(fbSrc)
   );
+  ok("send UI maps second-retry PostgREST dump without persist copy", /mg_confirm_quote_operational_plan/.test(fbSrc));
+  ok("send UI maps document_invalid", /document_invalid/.test(fbSrc));
+  ok("send UI cache-busts quote-send-feedback.js", /quote-send-feedback\.js\?v=send-retry-2/.test(salesSrc));
+  ok("send UI throws publish failures with code", /throwFromPublishResponse/.test(salesSrc));
   ok(
     "send UI maps missing storage without leaking SQL file names",
     /Operational plan storage is not ready/.test(fbSrc) && !/SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS/.test(fbSrc)
