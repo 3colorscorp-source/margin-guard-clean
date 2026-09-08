@@ -11,7 +11,10 @@ function isMissingInternalPlanStorage(err) {
   const text = textOf(err).toLowerCase();
   const namesStorage =
     text.includes("quote_internal_operational_plans") || text.includes(INTERNAL_PLAN_RPC);
-  return namesStorage && /42p01|42883|pgrst202|does not exist|schema cache|could not find/.test(text);
+  if (!namesStorage) return false;
+  // Signature mismatch (function exists, args don't match) is not "storage missing".
+  if (/named parameters|with parameters p_|\(p_tenant_id/.test(text)) return false;
+  return /42p01|42883|pgrst202|does not exist|schema cache|could not find/.test(text);
 }
 
 function membershipIdForRpc(raw) {
@@ -28,17 +31,20 @@ function assignDefinedRpcParam(body, key, value) {
  * PostgREST matches RPC overloads from JSON keys and inferred types.
  * JSON null has no type, so Owner (no membership) used to send
  * p_membership_id: null and get PGRST202 even though the 11-arg RPC exists.
- * Omit optional nulls so SQL defaults apply.
+ * Omit optional nulls and empty arrays so SQL defaults apply.
+ * Owner has no session membership: omit p_membership_id (SQL default NULL).
+ * Do not substitute profiles.id just to obtain a typed uuid.
  */
 function buildConfirmRpcBody(args) {
   const patch = (args && args.quotePatch) || {};
+  const plan = Array.isArray(patch.operational_plan) ? patch.operational_plan : [];
   const body = {
     p_tenant_id: args && args.tenantId,
     p_quote_id: args && args.quoteId,
     p_document: args && args.document,
     p_schema_version: Number(args && args.document && args.document.schema_version) || 1,
-    p_operational_plan: Array.isArray(patch.operational_plan) ? patch.operational_plan : [],
   };
+  if (plan.length) body.p_operational_plan = plan;
   assignDefinedRpcParam(body, "p_membership_id", membershipIdForRpc(args && args.membershipId));
   if (patch.estimated_days != null && Number.isFinite(Number(patch.estimated_days))) {
     body.p_estimated_days = Number(patch.estimated_days);
@@ -88,6 +94,7 @@ async function confirmOperationalPlanAtomic(supabaseReq, args) {
   const data = await supabaseReq(`rpc/${INTERNAL_PLAN_RPC}`, {
     method: "POST",
     body: buildConfirmRpcBody(args),
+    prefer: false,
   });
   const result = normalizeRpcResult(data);
   if (!result || result.ok !== true || String(result.quote_id || "") !== String(args.quoteId)) {

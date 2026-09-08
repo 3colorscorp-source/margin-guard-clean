@@ -84,6 +84,16 @@ checkSyntax("netlify/functions/publish-public-quote.js");
 checkSyntax("netlify/functions/calc-secure-pricing.js");
 checkSyntax("public/js/quote-send-feedback.js");
 ok("syntax publish/calc/feedback", true);
+ok(
+  "publish uses session membership only for p_membership_id",
+  /membershipIdForRpc\(ctx\.membership && ctx\.membership\.id\)/.test(publishSrc)
+);
+ok("publish does not look up profiles.id as a typed uuid stand-in", !/resolveMembershipIdForRpc/.test(publishSrc));
+const storeSrc = read("netlify/functions/_lib/quote-internal-operational-plan-store.js");
+const adminSrc = read("netlify/functions/_lib/supabase-admin.js");
+ok("confirm RPC is the only supabaseRequest that sets prefer false", /prefer:\s*false/.test(storeSrc));
+ok("supabase-admin does not skip Prefer for every rpc path", !/startsWith\(["']rpc\//.test(adminSrc));
+ok("supabase-admin still defaults Prefer return=representation", /return=representation/.test(adminSrc));
 
 eq(
   "hoursPerDay 8 fallback when missing",
@@ -260,6 +270,42 @@ eq(
   "The operational plan could not be saved, so the quote was not sent. Please try again."
 );
 eq(
+  "maps second-retry PostgREST dump without persist copy",
+  friendly(
+    new Error(
+      "Supabase HTTP 404: Could not find the function public.mg_confirm_quote_operational_plan(p_tenant_id, p_quote_id, p_document, p_schema_version, p_operational_plan, p_estimated_days, p_estimated_hours, p_start_date, p_due_date) in the schema cache | PGRST202"
+    )
+  ),
+  "The operational plan could not be saved, so the quote was not sent. Please try again."
+);
+const documentInvalidErr = new Error("hours_per_worker must be greater than 0 and at most 24.");
+documentInvalidErr.code = "document_invalid";
+eq(
+  "maps document_invalid code from second-retry 400",
+  friendly(documentInvalidErr),
+  "The operational plan could not be saved, so the quote was not sent. Please try again."
+);
+let thrownPublish = null;
+try {
+  fbCtx.__MG_QUOTE_SEND_FEEDBACK__.throwFromPublishResponse(
+    {
+      error:
+        "Supabase HTTP 404: Could not find the function public.mg_confirm_quote_operational_plan(p_tenant_id, p_quote_id, p_document, p_schema_version, p_operational_plan) in the schema cache | PGRST202",
+      code: "internal_plan_persist_failed",
+    },
+    "",
+    { status: 503 }
+  );
+} catch (err) {
+  thrownPublish = err;
+}
+eq("throwFromPublishResponse preserves persist code", thrownPublish && thrownPublish.code, "internal_plan_persist_failed");
+eq(
+  "maps second-retry thrown persist code",
+  friendly(thrownPublish),
+  "The operational plan could not be saved, so the quote was not sent. Please try again."
+);
+eq(
   "maps storage-missing without leaking SQL names",
   friendly(new Error("Operational plan storage is not ready, so the quote was not sent. Contact support if this continues.")),
   "Operational plan storage is not ready, so the quote was not sent. Contact support if this continues."
@@ -320,7 +366,11 @@ async function runIsolatedPublishHandlerTests() {
   async function mockFetch(url, options) {
     const u = String(url);
     const method = String((options && options.method) || "GET").toUpperCase();
-    fetchLog.push({ method, url: u });
+    fetchLog.push({
+      method,
+      url: u,
+      prefer: options && options.headers && options.headers.Prefer,
+    });
     if (/netlify|zapier|outlook\.com/i.test(u) || !u.startsWith(FAKE_SUPABASE)) {
       throw new Error("blocked non-isolated fetch: " + u);
     }
@@ -492,6 +542,18 @@ async function runIsolatedPublishHandlerTests() {
     ok(
       "isolated fetch never left fake supabase",
       fetchLog.length > 0 && fetchLog.every((row) => row.url.startsWith(FAKE_SUPABASE))
+    );
+    const allocatePrefer = fetchLog.find((row) => /rpc\/allocate_next_quote_number/.test(row.url));
+    const insertPrefer = fetchLog.find((row) => /\/quotes$/.test(String(row.url).split("?")[0]) && row.method === "POST");
+    eq(
+      "allocate_next_quote_number still sends Prefer return=representation",
+      allocatePrefer && allocatePrefer.prefer,
+      "return=representation"
+    );
+    eq(
+      "quotes INSERT still sends Prefer return=representation",
+      insertPrefer && insertPrefer.prefer,
+      "return=representation"
     );
   } finally {
     Module._load = originalLoad;

@@ -226,8 +226,31 @@
     });
   }
 
+  function throwFromPublishResponse(parsed, raw, response) {
+    parsed = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    var message = parsed.error != null ? parsed.error : raw;
+    if (message == null || message === "") message = "Unable to create public quote link.";
+    if (typeof message !== "string") {
+      try {
+        message = JSON.stringify(message);
+      } catch (_e) {
+        message = String(message);
+      }
+    }
+    var err = new Error(message);
+    if (parsed.code) err.code = String(parsed.code);
+    if (response && response.status) err.status = response.status;
+    throw err;
+  }
+
   function friendlySendFailureMessage(err) {
     var raw = err && (err.message || String(err));
+    var code = err && err.code != null ? String(err.code) : "";
+    if (!code) {
+      var codeMatch = /"code"\s*:\s*"([^"]+)"/.exec(String(raw || ""));
+      if (codeMatch) code = codeMatch[1];
+    }
+    var blob = (code + " " + raw).toLowerCase();
     if (/Unable to create public quote link/i.test(raw)) {
       return "We couldn't create the public link. Please try again.";
     }
@@ -252,15 +275,25 @@
     if (/quote_not_sendable|cannot be sent in its current status/i.test(raw)) {
       return "This quote cannot be sent in its current status.";
     }
-    if (/operational plan could not be saved|internal_plan_persist_failed/i.test(raw)) {
-      return "The operational plan could not be saved, so the quote was not sent. Please try again.";
+    if (
+      /internal_plan_storage_missing|internal_plan_table_missing/.test(blob) ||
+      /operational plan storage is not ready|internal operational plan storage is not installed/i.test(raw)
+    ) {
+      return "Operational plan storage is not ready, so the quote was not sent. Contact support if this continues.";
     }
     if (
-      /operational plan storage is not ready|internal_plan_storage_missing|Internal operational plan storage is not installed/i.test(
+      /internal_plan_|document_invalid|document_not_object/.test(blob) ||
+      /operational plan could not be saved|internal_plan_persist_failed|p_operational_plan must be a json array|mg_confirm_quote_operational_plan|transaction did not confirm|hours_per_worker|operational plan document must be a json object/i.test(
         raw
       )
     ) {
-      return "Operational plan storage is not ready, so the quote was not sent. Contact support if this continues.";
+      return "The operational plan could not be saved, so the quote was not sent. Please try again.";
+    }
+    if (/quote_insert_failed/.test(blob) || /couldn't save the quote/i.test(raw)) {
+      return "We couldn't save the quote. Please try again.";
+    }
+    if (/computed total or deposit is invalid|scheduling payment/i.test(raw)) {
+      return "The quote total or Initial Scheduling Payment is invalid. Refresh the page and try again.";
     }
     return "Something went wrong. Please try again.";
   }
@@ -273,6 +306,7 @@
     showQuoteSendToast: showQuoteSendToast,
     renderQuoteZapierOutcome: renderQuoteZapierOutcome,
     renderSendError: renderSendError,
+    throwFromPublishResponse: throwFromPublishResponse,
     friendlySendFailureMessage: friendlySendFailureMessage,
     sanitizeHttpUrl: sanitizeHttpUrl
   };

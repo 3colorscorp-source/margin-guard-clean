@@ -1906,7 +1906,7 @@
   <script src="/js/device-portal-auth.js"></script>
   <script src="/js/sales-device-portal.js"></script>
   <script src="/js/tenant.js"></script>
-  <script src="/js/quote-send-feedback.js"></script>
+  <script src="/js/quote-send-feedback.js?v=send-retry-2"></script>
   <script src="/js/sales-operational-plan.js"></script>
   <script src="/js/sales-capacity-calendar.js"></script>
   <script src="/js/voice-operational-plan.js"></script>
@@ -11002,6 +11002,10 @@ async function openSellerSendModal(event) {
       } catch (_error) {}
 
       if (!publishResponse.ok || !publishData?.quote_id || !publishData?.public_token || !publishData?.public_url) {
+        const fbPub = window.__MG_QUOTE_SEND_FEEDBACK__;
+        if (fbPub && typeof fbPub.throwFromPublishResponse === 'function') {
+          fbPub.throwFromPublishResponse(publishData, publishRaw, publishResponse);
+        }
         throw new Error(publishData.error || publishRaw || 'Unable to create public quote link.');
       }
 
@@ -11265,6 +11269,10 @@ async function runSellerSend(event) {
         } catch (_error) {}
 
         if (!publishResponse.ok || !publishParsed?.quote_id || !publishParsed?.public_token || !publishParsed?.public_url) {
+          const fbPub = window.__MG_QUOTE_SEND_FEEDBACK__;
+          if (fbPub && typeof fbPub.throwFromPublishResponse === 'function') {
+            fbPub.throwFromPublishResponse(publishParsed, publishRaw, publishResponse);
+          }
           throw new Error(publishParsed.error || publishRaw || 'Unable to create public quote link.');
         }
         publishData = publishParsed;

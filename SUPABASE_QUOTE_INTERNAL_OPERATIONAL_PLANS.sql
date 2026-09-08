@@ -1,5 +1,10 @@
 -- Phase 1 Voice Operational Plan — dedicated internal table.
 -- DO NOT apply this file to remote Supabase from this PR.
+-- Live inspect confirmed one public.mg_confirm_quote_operational_plan with
+-- 11 arguments and 8 defaults, including p_membership_id DEFAULT NULL.
+-- quote_internal_operational_plans is complete. PostgREST schema cache was
+-- reloaded with NOTIFY pgrst, 'reload schema'. No align migration.
+-- Read-only inspect helper: SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS_INSPECT.sql
 -- Never select or return this table from public estimate, accept, PDF, email, or Zapier.
 
 create table if not exists public.quote_internal_operational_plans (

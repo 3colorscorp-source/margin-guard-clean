@@ -212,6 +212,10 @@
     } catch (_e) {}
 
     if (!publishResponse.ok || !publishData?.quote_id || !publishData?.public_token || !publishData?.public_url) {
+      const fbPub = typeof window !== "undefined" ? window.__MG_QUOTE_SEND_FEEDBACK__ : null;
+      if (fbPub && typeof fbPub.throwFromPublishResponse === "function") {
+        fbPub.throwFromPublishResponse(publishData, publishRaw, publishResponse);
+      }
       throw new Error(publishData.error || publishRaw || "Unable to create public quote link.");
     }
 

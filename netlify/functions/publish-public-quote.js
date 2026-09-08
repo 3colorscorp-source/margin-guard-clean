@@ -519,7 +519,10 @@ function sellerAttributionForInsert(ctx) {
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
-      return json(405, { error: "Method Not Allowed" });
+      return json(405, {
+        error: "Method Not Allowed",
+        commit: String(process.env.COMMIT_REF || "").slice(0, 40),
+      });
     }
 
     const ctx = await resolveOwnerOrSellerContext(event);
@@ -980,8 +983,17 @@ exports.handler = async (event) => {
           missing_columns_hint: lastErrorText
         });
       }
+      console.error(
+        "[publish-public-quote] quote insert failed " +
+          JSON.stringify({
+            commit: String(process.env.COMMIT_REF || "").slice(0, 40),
+            tenant_id: tenant.id,
+            persist_message: String(lastErrorText || "").slice(0, 400).replace(/https?:\/\/[^\s"'\\]+/gi, "[redacted]"),
+          })
+      );
       return json(502, {
-        error: lastErrorText || "Supabase write failed"
+        error: "We couldn't save the quote. Please try again.",
+        code: "quote_insert_failed",
       });
     }
 
@@ -1002,27 +1014,28 @@ exports.handler = async (event) => {
     }
 
     if (opPublish.internalDocument && quoteId) {
+      const membershipId = membershipIdForRpc(ctx.membership && ctx.membership.id);
       const internalPersist = await persistPublishedInternalPlan(supabaseRequest, {
         tenantId: tenant.id,
         quoteId,
         document: opPublish.internalDocument,
-        membershipId: membershipIdForRpc(ctx.membership && ctx.membership.id),
+        membershipId,
         quotePatch: opPublish.fields,
       });
       if (!internalPersist.ok) {
         const storageMissing = isMissingInternalPlanStorage(internalPersist.persistError);
-        console.error(
-          "[publish-public-quote] internal operational plan persist failed",
-          Object.assign(
-            {
-              tenant_id: tenant.id,
-              quote_id: quoteId,
-              rollback_ok: Boolean(internalPersist.retrySafe),
-              storage_missing: storageMissing,
-            },
-            safePersistLogFields(internalPersist.persistError)
-          )
+        const persistLog = Object.assign(
+          {
+            commit: String(process.env.COMMIT_REF || "").slice(0, 40),
+            tenant_id: tenant.id,
+            quote_id: quoteId,
+            rollback_ok: Boolean(internalPersist.retrySafe),
+            storage_missing: storageMissing,
+            had_session_membership: Boolean(membershipId),
+          },
+          safePersistLogFields(internalPersist.persistError)
         );
+        console.error("[publish-public-quote] internal operational plan persist failed " + JSON.stringify(persistLog));
         return json(503, {
           ok: false,
           error: storageMissing
@@ -1085,7 +1098,26 @@ exports.handler = async (event) => {
       }
       return json(err.statusCode, { error: err.message, code: err.code });
     }
-    return json(500, { error: err.message || "Server error" });
+    const dumped = String((err && err.message) || "");
+    if (
+      /mg_confirm_quote_operational_plan|p_operational_plan must be a json array|internal_plan_transaction_failed/i.test(
+        dumped
+      )
+    ) {
+      console.error(
+        "[publish-public-quote] operational plan persist threw " +
+          JSON.stringify({
+            commit: String(process.env.COMMIT_REF || "").slice(0, 40),
+            persist_message: dumped.slice(0, 400).replace(/https?:\/\/[^\s"'\\]+/gi, "[redacted]"),
+          })
+      );
+      return json(503, {
+        ok: false,
+        error: "The operational plan could not be saved, so the quote was not sent. Please try again.",
+        code: "internal_plan_persist_failed",
+      });
+    }
+    return json(500, { error: err.message || "Server error", code: err.code || "server_error" });
   }
 };
 
