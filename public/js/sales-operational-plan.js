@@ -177,7 +177,7 @@
 
   function formatMetricsHtml(metrics, mode) {
     if (!metrics) {
-      return '<p class="small" style="margin:0;">Add schedule days or apply a template.</p>';
+      return '<p class="small" style="margin:0;">Add schedule days to build the plan.</p>';
     }
     if (mode === "day") {
       return (
@@ -220,76 +220,6 @@
     const hpd = Math.max(num(hoursPerDay, 8), 0.25);
     const unitHours = mode === "day" ? hpd : 8;
     return { role: "Installer", worker_type: "pro", estimated_hours: unitHours };
-  }
-
-  const OPERATIONAL_PLAN_TEMPLATES = {
-    master_bathroom_5: {
-      label: "Master Bathroom — 5 days",
-      days: [
-        { day_number: 1, phase: "Demo + prep", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }, { role: "Assistant", worker_type: "helper", estimated_hours: 8 }] },
-        { day_number: 2, phase: "Prep + waterproofing", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }, { role: "Assistant", worker_type: "helper", estimated_hours: 8 }] },
-        { day_number: 3, phase: "Wall tile installation", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }, { role: "Assistant", worker_type: "helper", estimated_hours: 8 }] },
-        { day_number: 4, phase: "Grout + details", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }] },
-        { day_number: 5, phase: "Cleanup + punch", workers: [{ role: "Assistant", worker_type: "helper", estimated_hours: 6 }] },
-      ],
-    },
-    kitchen_backsplash_2: {
-      label: "Kitchen Backsplash — 2 days",
-      days: [
-        { day_number: 1, phase: "Prep + layout", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }] },
-        { day_number: 2, phase: "Install + grout", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }, { role: "Assistant", worker_type: "helper", estimated_hours: 4 }] },
-      ],
-    },
-    commercial_restroom_7: {
-      label: "Commercial Restroom — 7 days",
-      days: [
-        { day_number: 1, phase: "Mobilize + demo", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }, { role: "Assistant", worker_type: "helper", estimated_hours: 8 }] },
-        { day_number: 2, phase: "Rough prep", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }, { role: "Assistant", worker_type: "helper", estimated_hours: 8 }] },
-        { day_number: 3, phase: "Waterproof / substrate", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }] },
-        { day_number: 4, phase: "Wall tile", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }, { role: "Assistant", worker_type: "helper", estimated_hours: 8 }] },
-        { day_number: 5, phase: "Floor tile", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }, { role: "Assistant", worker_type: "helper", estimated_hours: 8 }] },
-        { day_number: 6, phase: "Grout + seal", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }] },
-        { day_number: 7, phase: "Punch + turnover", workers: [{ role: "Assistant", worker_type: "helper", estimated_hours: 8 }] },
-      ],
-    },
-    shower_remodel_4: {
-      label: "Shower Remodel — 4 days",
-      days: [
-        { day_number: 1, phase: "Demo + prep", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }] },
-        { day_number: 2, phase: "Waterproof + pan", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }, { role: "Assistant", worker_type: "helper", estimated_hours: 6 }] },
-        { day_number: 3, phase: "Tile install", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }] },
-        { day_number: 4, phase: "Grout + glass prep", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 6 }] },
-      ],
-    },
-    large_format_tile_6: {
-      label: "Large Format Tile — 6 days",
-      days: [
-        { day_number: 1, phase: "Layout + prep", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }, { role: "Assistant", worker_type: "helper", estimated_hours: 8 }] },
-        { day_number: 2, phase: "Floor prep", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }] },
-        { day_number: 3, phase: "Large format set — day 1", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }, { role: "Assistant", worker_type: "helper", estimated_hours: 8 }] },
-        { day_number: 4, phase: "Large format set — day 2", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }] },
-        { day_number: 5, phase: "Grout", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }] },
-        { day_number: 6, phase: "Detail + cleanup", workers: [{ role: "Assistant", worker_type: "helper", estimated_hours: 6 }] },
-      ],
-    },
-  };
-
-  function applyTemplate(templateKey) {
-    const tpl = OPERATIONAL_PLAN_TEMPLATES[templateKey];
-    if (!tpl || !Array.isArray(tpl.days)) return [];
-    return tpl.days.map(function (day) {
-      return {
-        day_number: day.day_number,
-        phase: day.phase,
-        workers: (day.workers || []).map(function (w) {
-          return {
-            role: w.role,
-            worker_type: w.worker_type,
-            estimated_hours: w.estimated_hours,
-          };
-        }),
-      };
-    });
   }
 
   const DISPLAY_PHASE_COLORS = [
@@ -552,8 +482,6 @@
     planHasDays: planHasDays,
     createEmptyDay: createEmptyDay,
     createEmptyWorker: createEmptyWorker,
-    OPERATIONAL_PLAN_TEMPLATES: OPERATIONAL_PLAN_TEMPLATES,
-    applyTemplate: applyTemplate,
     deriveDisplayPhaseGroup: deriveDisplayPhaseGroup,
     groupPlanByDisplayPhase: groupPlanByDisplayPhase,
     formatCrewShortLabel: formatCrewShortLabel,

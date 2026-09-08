@@ -1322,6 +1322,25 @@ async function main() {
   const salesSrc = read("public/sales.html");
   ok("UI has Review & confirm plan", /btnReviewConfirmOperationalPlan/.test(salesSrc));
   const appSrc = read("public/js/app.js");
+  const ownerSrc = read("public/owner.html");
+  const operationalPlanClientSrc = read("public/js/sales-operational-plan.js");
+  const operationalPlanServerSrc = read("netlify/functions/_lib/operational-plan.js");
+  ok(
+    "unused operational-plan template controls are removed",
+    !/salesOperationalTemplate|btnApplyOperationalTemplate/.test(salesSrc) &&
+      !/ownerOperationalTemplate|btnOwnerApplyOperationalTemplate/.test(ownerSrc)
+  );
+  ok(
+    "unused operational-plan template catalog is removed",
+    !/OPERATIONAL_PLAN_TEMPLATES|applyTemplate\s*[:=(]/.test(operationalPlanClientSrc) &&
+      !/OPERATIONAL_PLAN_TEMPLATES/.test(operationalPlanServerSrc)
+  );
+  ok(
+    "empty-plan guidance only offers manual day creation",
+    /Add schedule days to build the plan/.test(salesSrc) &&
+      /Add days to build the execution timeline/.test(salesSrc) &&
+      !/apply a template/i.test(salesSrc + appSrc + operationalPlanClientSrc)
+  );
   const appBelowMatch = appSrc.match(
     /function isSalesPriceBelowRecommendation\(metrics\) \{([\s\S]*?)\n  \}/
   );
