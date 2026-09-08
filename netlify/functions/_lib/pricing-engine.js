@@ -219,10 +219,11 @@ function calculateQuotePublishFinancials(input, tenantSettings) {
   const taxes = labor * taxPct;
   const overhead = totalHours * overheadPerHour;
   const beforeProfit = labor + taxes + overhead;
-  const reservePct = Number(settings.reservePct ?? 5);
+  const reservePct = finiteNumber(settings.reservePct ?? 5, 5);
   const reserve = beforeProfit * (reservePct / 100);
   const recommendedProfit = beforeProfit * (Number(settings.profitPct || 0) / 100);
-  const minimumProfit = beforeProfit * 0.15;
+  const minimumMarginPct = finiteNumber(settings.minimumMarginPct ?? 15, 15);
+  const minimumProfit = beforeProfit * (minimumMarginPct / 100);
   const recommended = beforeProfit + recommendedProfit + reserve;
   const minimum = beforeProfit + minimumProfit + reserve;
   const negotiation =

@@ -48,6 +48,7 @@ const calcTest = require("../netlify/functions/calc-secure-pricing")._test;
 const publishSrc = read("netlify/functions/publish-public-quote.js");
 const calcSrc = read("netlify/functions/calc-secure-pricing.js");
 const salesSrc = read("public/sales.html");
+const appSrc = read("public/js/app.js");
 const zapierSrc = read("netlify/functions/send-quote-zapier.js");
 const feedbackSrc = read("public/js/quote-send-feedback.js");
 
@@ -148,6 +149,49 @@ const calcFin = calculateQuotePublishFinancials(
 eq("hours-only publish total matches calc total", pubFin.total, calcFin.total);
 eq("hours-only recommended matches", pubFin.recommended_price, calcFin.recommended_price);
 eq("hours-only minimum matches", pubFin.minimum_price, calcFin.minimum_price);
+
+const customMarginSettings = {
+  ...SETTINGS,
+  reservePct: 30,
+  minimumMarginPct: 22,
+};
+const customMarginFin = financialsFor(hoursOnly, customMarginSettings);
+eq("publish honors configured reserve percent", customMarginFin.reserve, 900);
+eq("publish honors configured minimum margin percent", customMarginFin.minimum_price, 4560);
+eq("publish configured recommendation remains above configured minimum", customMarginFin.total, 4800);
+
+const ownerSyncStart = appSrc.indexOf("function syncOwnerDraftToSalesStateForPublicSend");
+const ownerSyncEnd = appSrc.indexOf("function persistOwnerAfterPublicSend", ownerSyncStart);
+const ownerSyncSrc = appSrc.slice(ownerSyncStart, ownerSyncEnd);
+ok("owner publish sync resets stale slider state", /_sliderTouched:\s*false/.test(ownerSyncSrc));
+ok("owner publish sync resets stale manual state", /_manualPriceTouched:\s*false/.test(ownerSyncSrc));
+ok("owner publish sync selects recommended stage", /pricingStage:\s*2/.test(ownerSyncSrc));
+
+const salesCalcStart = appSrc.indexOf("function calcSales(state, settings)");
+const salesCalcEnd = appSrc.indexOf("function resolveCommissionLaborBase", salesCalcStart);
+const salesCalcSrc = appSrc.slice(salesCalcStart, salesCalcEnd);
+ok(
+  "owner send sales calculation uses configured reserve percent",
+  /finiteNumber\(settings\.reservePct, DEFAULTS\.reservePct\)/.test(salesCalcSrc)
+);
+ok(
+  "owner send sales calculation uses configured minimum margin percent",
+  /finiteNumber\(\s*settings\.minimumMarginPct,\s*DEFAULTS\.minimumMarginPct\s*\)/.test(salesCalcSrc)
+);
+ok(
+  "embedded seller calculation uses configured minimum margin percent",
+  /settings\.minimumMarginPct != null \? settings\.minimumMarginPct : 15/.test(salesSrc) &&
+    /Number\.isFinite\(minimumMarginPctRaw\)/.test(salesSrc)
+);
+ok(
+  "embedded seller calculation uses configured reserve percent",
+  /settings\.reservePct != null \? settings\.reservePct : 5/.test(salesSrc) &&
+    /Number\.isFinite\(reservePctRaw\)/.test(salesSrc)
+);
+ok(
+  "owner sales page cache-busts the corrected app calculation",
+  /\/js\/app\.js\?v=owner-total-parity-1/.test(salesSrc)
+);
 
 const fiveDay = [{ name: "Pro 1", type: "installer", days: 5, hours: 99 }];
 const pubDays = publishTest.normalizeWorkersLaborDays(fiveDay, SETTINGS);
@@ -252,6 +296,11 @@ eq(
 eq(
   "maps below-minimum error",
   friendly(new Error("Offered price cannot be below the minimum allowed (1000.00).")),
+  "The quote price is below the minimum allowed. Refresh the page and try again."
+);
+eq(
+  "maps published-total account minimum error",
+  friendly(new Error("Published total must be at least the account minimum (4606.59). Refresh the seller page and try again.")),
   "The quote price is below the minimum allowed. Refresh the page and try again."
 );
 eq(

@@ -9390,6 +9390,8 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         return Number.isFinite(n) && n >= 0 ? n : 1000;
       })(),
       price: "",
+      pricingStage: 2,
+      _sliderTouched: false,
       _manualPriceTouched: false,
       offeredPrice: round2(metrics.recommended || 0)
     });
@@ -10484,9 +10486,14 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     const taxes = labor * taxPct;
     const overhead = totalHours * overheadPerHour;
     const beforeProfit = labor + taxes + overhead;
-    const reserve = beforeProfit * (DEFAULTS.reservePct / 100);
+    const reservePct = finiteNumber(settings.reservePct, DEFAULTS.reservePct);
+    const reserve = beforeProfit * (reservePct / 100);
     const recommendedProfit = beforeProfit * (Number(settings.profitPct || 0) / 100);
-    const minimumProfit = beforeProfit * 0.15;
+    const minimumMarginPct = finiteNumber(
+      settings.minimumMarginPct,
+      DEFAULTS.minimumMarginPct
+    );
+    const minimumProfit = beforeProfit * (minimumMarginPct / 100);
     const recommended = beforeProfit + recommendedProfit + reserve;
     const minimum = beforeProfit + minimumProfit + reserve;
     const negotiation = recommended > minimum ? minimum + ((recommended - minimum) * 0.5) : minimum;
@@ -20524,7 +20531,6 @@ window.renderSupervisor = renderSupervisor;
     }
   });
 })();
-
 
 
 

@@ -1906,11 +1906,11 @@
   <script src="/js/device-portal-auth.js"></script>
   <script src="/js/sales-device-portal.js"></script>
   <script src="/js/tenant.js"></script>
-  <script src="/js/quote-send-feedback.js?v=send-retry-2"></script>
+  <script src="/js/quote-send-feedback.js?v=owner-total-parity-1"></script>
   <script src="/js/sales-operational-plan.js"></script>
   <script src="/js/sales-capacity-calendar.js"></script>
   <script src="/js/voice-operational-plan.js"></script>
-  <script src="/js/app.js"></script>
+  <script src="/js/app.js?v=owner-total-parity-1"></script>
   <script>
     (function () {
       const SALES_KEY = 'mg_sales_v2';
@@ -8064,9 +8064,17 @@
         const taxes = labor * taxPct;
         const overhead = totalHours * overheadPerHour;
         const beforeProfit = labor + taxes + overhead;
-        const reserve = beforeProfit * (Number(settings.reservePct || 5) / 100);
+        const reservePctRaw = Number(settings.reservePct != null ? settings.reservePct : 5);
+        const reservePct = Number.isFinite(reservePctRaw) ? reservePctRaw : 5;
+        const reserve = beforeProfit * (reservePct / 100);
         const recommendedProfit = beforeProfit * (Number(settings.profitPct || 0) / 100);
-        const minimumProfit = beforeProfit * 0.15;
+        const minimumMarginPctRaw = Number(
+          settings.minimumMarginPct != null ? settings.minimumMarginPct : 15
+        );
+        const minimumMarginPct = Number.isFinite(minimumMarginPctRaw)
+          ? minimumMarginPctRaw
+          : 15;
+        const minimumProfit = beforeProfit * (minimumMarginPct / 100);
         const recommended = beforeProfit + recommendedProfit + reserve;
         const minimum = beforeProfit + minimumProfit + reserve;
         const negotiation = recommended > minimum ? minimum + ((recommended - minimum) * 0.5) : minimum;
