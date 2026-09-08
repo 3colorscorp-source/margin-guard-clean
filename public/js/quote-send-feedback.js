@@ -252,6 +252,16 @@
     if (/quote_not_sendable|cannot be sent in its current status/i.test(raw)) {
       return "This quote cannot be sent in its current status.";
     }
+    if (/operational plan could not be saved|internal_plan_persist_failed/i.test(raw)) {
+      return "The operational plan could not be saved, so the quote was not sent. Please try again.";
+    }
+    if (
+      /operational plan storage is not ready|internal_plan_storage_missing|Internal operational plan storage is not installed/i.test(
+        raw
+      )
+    ) {
+      return "Operational plan storage is not ready, so the quote was not sent. Contact support if this continues.";
+    }
     return "Something went wrong. Please try again.";
   }
 

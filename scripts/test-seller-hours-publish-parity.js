@@ -254,6 +254,16 @@ eq(
   friendly(new Error("Quote cannot be sent in its current status.")),
   "This quote cannot be sent in its current status."
 );
+eq(
+  "maps persist failure to an actionable message",
+  friendly(new Error("The operational plan could not be saved, so the quote was not sent. Please try again.")),
+  "The operational plan could not be saved, so the quote was not sent. Please try again."
+);
+eq(
+  "maps storage-missing without leaking SQL names",
+  friendly(new Error("Operational plan storage is not ready, so the quote was not sent. Contact support if this continues.")),
+  "Operational plan storage is not ready, so the quote was not sent. Contact support if this continues."
+);
 ok(
   "unmapped errors stay generic without leaking bodies",
   friendly(new Error("supabase service_role xyz")) === "Something went wrong. Please try again."
