@@ -18,7 +18,6 @@ const {
   isMissingInternalPlanStorage,
   membershipIdForRpc,
   persistPublishedInternalPlan,
-  safePersistLogFields,
   buildConfirmRpcBody,
 } = require("./_lib/quote-internal-operational-plan-store");
 
@@ -33,6 +32,69 @@ function json(statusCode, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   };
+}
+
+const QUOTE_NOT_CREATED =
+  "The quote could not be created, so it was not sent. Please try again.";
+const WORKERS_INCOMPLETE_MESSAGE =
+  "Add labor days or hours before sending this estimate.";
+const OPERATIONAL_PLAN_NOT_SAVED =
+  "The operational plan could not be saved, so the quote was not sent. Please try again.";
+const OPERATIONAL_PLAN_STORAGE_MISSING =
+  "Operational plan storage is not ready, so the quote was not sent. Contact support if this continues.";
+
+function headerValue(headers, name) {
+  if (!headers || typeof headers !== "object") return "";
+  const want = String(name).toLowerCase();
+  for (const [key, value] of Object.entries(headers)) {
+    if (String(key).toLowerCase() === want) return String(value == null ? "" : value);
+  }
+  return "";
+}
+
+function netlifyRequestIdFromEvent(event) {
+  const headers = (event && event.headers) || {};
+  return (
+    headerValue(headers, "x-nf-request-id") || headerValue(headers, "x-netlify-request-id")
+  )
+    .trim()
+    .slice(0, 64);
+}
+
+function supabaseStatusOf(err) {
+  const n = Number(err && (err.status != null ? err.status : err.statusCode));
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return Math.trunc(n);
+}
+
+function logPublishStageFailure(event, fields) {
+  const payload = {
+    commit: String(process.env.COMMIT_REF || "").slice(0, 40),
+    stage: String((fields && fields.stage) || ""),
+    code: String((fields && fields.code) || ""),
+  };
+  const supabaseStatus = fields && fields.supabaseStatus;
+  if (supabaseStatus != null && supabaseStatus !== "") {
+    const n = Number(supabaseStatus);
+    if (Number.isFinite(n) && n > 0) payload.supabase_status = Math.trunc(n);
+  }
+  const rid = netlifyRequestIdFromEvent(event);
+  if (rid) payload.netlify_request_id = rid;
+  console.error("[publish-public-quote] " + JSON.stringify(payload));
+}
+
+function publishStageError(event, statusCode, fields) {
+  logPublishStageFailure(event, fields);
+  const body = {
+    ok: false,
+    error: fields.error,
+    code: fields.code,
+  };
+  if (fields.stage) body.stage = fields.stage;
+  if (fields.retry_safe != null) body.retry_safe = fields.retry_safe;
+  if (fields.needs_manual_repair != null) body.needs_manual_repair = fields.needs_manual_repair;
+  if (fields.quote_id) body.quote_id = fields.quote_id;
+  return json(statusCode, body);
 }
 
 function pickFirst(...values) {
@@ -555,11 +617,25 @@ exports.handler = async (event) => {
 
     const pricingIn = parsePublishPricingInput(body);
 
-    const tenantSettings = await loadTenantSettingsFromLatestSnapshot(tenant.id);
+    let tenantSettings;
+    try {
+      tenantSettings = await loadTenantSettingsFromLatestSnapshot(tenant.id);
+    } catch (settingsErr) {
+      return publishStageError(event, 503, {
+        stage: "settings_snapshot",
+        code: "settings_snapshot_failed",
+        error: QUOTE_NOT_CREATED,
+        supabaseStatus: supabaseStatusOf(settingsErr),
+      });
+    }
     const workersNormalized = normalizeWorkersLaborDays(pricingIn.workers, tenantSettings);
     const wCheck = validateWorkersForPricing(workersNormalized);
     if (!wCheck.ok) {
-      return json(400, { error: wCheck.error });
+      return publishStageError(event, 400, {
+        stage: "workers_validation",
+        code: "workers_incomplete",
+        error: WORKERS_INCOMPLETE_MESSAGE,
+      });
     }
 
     const workersSanitized = sanitizeWorkersForTenantPricing(workersNormalized);
@@ -827,14 +903,11 @@ exports.handler = async (event) => {
     try {
       quoteNumberAlloc = await allocateNextQuoteNumberForTenant(tenant.id);
     } catch (allocErr) {
-      console.error("[publish-public-quote] quote number allocation failed", {
-        tenant_id: tenant.id,
-        message: allocErr?.message
-      });
-      return json(503, {
-        error:
-          allocErr?.message ||
-          "Quote numbering is unavailable. Apply database migration SUPABASE_QUOTE_ANNUAL_NUMBERING.sql and grant RPC to service_role."
+      return publishStageError(event, 503, {
+        stage: "quote_numbering",
+        code: "quote_numbering_failed",
+        error: QUOTE_NOT_CREATED,
+        supabaseStatus: supabaseStatusOf(allocErr),
       });
     }
 
@@ -917,7 +990,7 @@ exports.handler = async (event) => {
     }
 
     let insertResult = null;
-    let lastErrorText = "";
+    let lastErrorStatus = 0;
 
     async function tryInsertAll(withAudit, withQuoteDates) {
       const bases = expandPayloadVariants(buildBasePayload(withAudit, withQuoteDates));
@@ -930,8 +1003,9 @@ exports.handler = async (event) => {
         if (result.ok) {
           return { ...result, payloadUsed: payload };
         }
-        lastErrorText = result.text || `Supabase write failed with status ${result.status}`;
-        if (isMissingScopeOfWorkColumn(lastErrorText) && payload.scope_of_work !== undefined) {
+        lastErrorStatus = Number(result.status) || lastErrorStatus;
+        const errorText = result.text || "";
+        if (isMissingScopeOfWorkColumn(errorText) && payload.scope_of_work !== undefined) {
           const { scope_of_work: _drop, ...rest } = payload;
           const retry = await insertQuote({
             supabaseUrl,
@@ -941,59 +1015,38 @@ exports.handler = async (event) => {
           if (retry.ok) {
             return { ...retry, payloadUsed: rest, scopeColumnMissing: true };
           }
-          lastErrorText = retry.text || lastErrorText;
+          lastErrorStatus = Number(retry.status) || lastErrorStatus;
         }
       }
       return null;
     }
 
-    insertResult = await tryInsertAll(true, true);
-    if (!insertResult) {
-      insertResult = await tryInsertAll(true, false);
-    }
-    if (!insertResult) {
-      insertResult = await tryInsertAll(false, true);
-    }
-    if (!insertResult) {
-      insertResult = await tryInsertAll(false, false);
+    try {
+      insertResult = await tryInsertAll(true, true);
+      if (!insertResult) {
+        insertResult = await tryInsertAll(true, false);
+      }
+      if (!insertResult) {
+        insertResult = await tryInsertAll(false, true);
+      }
+      if (!insertResult) {
+        insertResult = await tryInsertAll(false, false);
+      }
+    } catch (insertErr) {
+      return publishStageError(event, 502, {
+        stage: "quote_insert",
+        code: "quote_insert_failed",
+        error: QUOTE_NOT_CREATED,
+        supabaseStatus: supabaseStatusOf(insertErr) || lastErrorStatus,
+      });
     }
 
     if (!insertResult) {
-      if (isMissingScopeOfWorkColumn(lastErrorText)) {
-        return json(503, {
-          error:
-            "Quote scope_of_work column is missing. Run SUPABASE_CH012E_CANONICAL_SCOPE.sql in Supabase SQL editor, then retry Send Estimate.",
-          migration: "SUPABASE_CH012E_CANONICAL_SCOPE.sql",
-          missing_columns_hint: lastErrorText
-        });
-      }
-      if (isMissingQuoteDateColumns(lastErrorText)) {
-        return json(503, {
-          error:
-            "Quote issue/expiration date columns are missing. Run SUPABASE_QUOTES_ISSUE_EXPIRATION.sql in Supabase SQL editor, then retry Send Estimate.",
-          migration: "SUPABASE_QUOTES_ISSUE_EXPIRATION.sql",
-          missing_columns_hint: lastErrorText
-        });
-      }
-      if (opPublish.include && isMissingOperationalQuoteColumns(lastErrorText)) {
-        return json(503, {
-          error:
-            "Quote operational_plan columns are missing. Run SUPABASE_QUOTES_OPERATIONAL_PLAN.sql in Supabase SQL editor, then retry Send Estimate.",
-          migration: "SUPABASE_QUOTES_OPERATIONAL_PLAN.sql",
-          missing_columns_hint: lastErrorText
-        });
-      }
-      console.error(
-        "[publish-public-quote] quote insert failed " +
-          JSON.stringify({
-            commit: String(process.env.COMMIT_REF || "").slice(0, 40),
-            tenant_id: tenant.id,
-            persist_message: String(lastErrorText || "").slice(0, 400).replace(/https?:\/\/[^\s"'\\]+/gi, "[redacted]"),
-          })
-      );
-      return json(502, {
-        error: "We couldn't save the quote. Please try again.",
+      return publishStageError(event, 502, {
+        stage: "quote_insert",
         code: "quote_insert_failed",
+        error: QUOTE_NOT_CREATED,
+        supabaseStatus: lastErrorStatus,
       });
     }
 
@@ -1001,15 +1054,18 @@ exports.handler = async (event) => {
     const quoteId = row?.id || null;
 
     if (!quoteId) {
-      return json(500, {
-        error: "Quote was created but no quote id was returned by Supabase."
+      return publishStageError(event, 502, {
+        stage: "quote_insert",
+        code: "quote_insert_failed",
+        error: QUOTE_NOT_CREATED,
       });
     }
 
     if (String(row?.tenant_id || "") !== String(tenant.id)) {
-      return json(500, {
-        error:
-          "Quote was stored without valid tenant scope (tenant_id mismatch). Refusing to return a public URL."
+      return publishStageError(event, 502, {
+        stage: "quote_insert",
+        code: "quote_insert_failed",
+        error: QUOTE_NOT_CREATED,
       });
     }
 
@@ -1024,26 +1080,13 @@ exports.handler = async (event) => {
       });
       if (!internalPersist.ok) {
         const storageMissing = isMissingInternalPlanStorage(internalPersist.persistError);
-        const persistLog = Object.assign(
-          {
-            commit: String(process.env.COMMIT_REF || "").slice(0, 40),
-            tenant_id: tenant.id,
-            quote_id: quoteId,
-            rollback_ok: Boolean(internalPersist.retrySafe),
-            storage_missing: storageMissing,
-            had_session_membership: Boolean(membershipId),
-          },
-          safePersistLogFields(internalPersist.persistError)
-        );
-        console.error("[publish-public-quote] internal operational plan persist failed " + JSON.stringify(persistLog));
-        return json(503, {
-          ok: false,
-          error: storageMissing
-            ? "Operational plan storage is not ready, so the quote was not sent. Contact support if this continues."
-            : "The operational plan could not be saved, so the quote was not sent. Please try again.",
+        return publishStageError(event, 503, {
+          stage: "operational_plan_persist",
           code: storageMissing
             ? "internal_plan_storage_missing"
             : "internal_plan_persist_failed",
+          error: storageMissing ? OPERATIONAL_PLAN_STORAGE_MISSING : OPERATIONAL_PLAN_NOT_SAVED,
+          supabaseStatus: supabaseStatusOf(internalPersist.persistError),
           retry_safe: internalPersist.retrySafe,
           needs_manual_repair: internalPersist.needsManualRepair,
           quote_id: internalPersist.needsManualRepair ? quoteId : undefined,
@@ -1098,26 +1141,24 @@ exports.handler = async (event) => {
       }
       return json(err.statusCode, { error: err.message, code: err.code });
     }
-    const dumped = String((err && err.message) || "");
+    const dumpedCode = String((err && err.code) || "");
     if (
-      /mg_confirm_quote_operational_plan|p_operational_plan must be a json array|internal_plan_transaction_failed/i.test(
-        dumped
-      )
+      dumpedCode === "internal_plan_transaction_failed" ||
+      dumpedCode === "internal_plan_persist_failed"
     ) {
-      console.error(
-        "[publish-public-quote] operational plan persist threw " +
-          JSON.stringify({
-            commit: String(process.env.COMMIT_REF || "").slice(0, 40),
-            persist_message: dumped.slice(0, 400).replace(/https?:\/\/[^\s"'\\]+/gi, "[redacted]"),
-          })
-      );
-      return json(503, {
-        ok: false,
-        error: "The operational plan could not be saved, so the quote was not sent. Please try again.",
+      return publishStageError(event, 503, {
+        stage: "operational_plan_persist",
         code: "internal_plan_persist_failed",
+        error: OPERATIONAL_PLAN_NOT_SAVED,
+        supabaseStatus: supabaseStatusOf(err),
       });
     }
-    return json(500, { error: err.message || "Server error", code: err.code || "server_error" });
+    return publishStageError(event, 500, {
+      stage: "",
+      code: "publish_failed",
+      error: QUOTE_NOT_CREATED,
+      supabaseStatus: supabaseStatusOf(err),
+    });
   }
 };
 
@@ -1133,4 +1174,6 @@ exports._test = {
   persistPublishedInternalPlan,
   membershipIdForRpc,
   buildConfirmRpcBody,
+  logPublishStageFailure,
+  publishStageError,
 };

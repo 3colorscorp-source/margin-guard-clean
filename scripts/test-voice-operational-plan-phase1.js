@@ -252,7 +252,11 @@ async function runOwnerInternalPlanPublishHandlerTests() {
   const quoteInsertPrefers = [];
   const profileCalls = [];
   const deleteCalls = [];
+  const publishLogs = [];
   let rpcShouldFail = false;
+  let snapshotShouldFail = false;
+  let allocateShouldFail = false;
+  let insertShouldFail = false;
   let authCtx = {
     auth_mode: "owner",
     tenant: { id: TENANT_A },
@@ -262,6 +266,35 @@ async function runOwnerInternalPlanPublishHandlerTests() {
   process.env.SUPABASE_URL = "http://127.0.0.1:9";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "isolated-owner-plan-service-role";
   process.env.URL = "https://marginguardsystem.netlify.app";
+  process.env.COMMIT_REF = "diag-commit-ref";
+  const originalConsoleError = console.error;
+  console.error = function () {
+    publishLogs.push(Array.prototype.map.call(arguments, String).join(" "));
+    return originalConsoleError.apply(console, arguments);
+  };
+
+  function lastPublishLogJson() {
+    const line = publishLogs.filter((row) => String(row).indexOf("[publish-public-quote] {") === 0).pop();
+    if (!line) return null;
+    return JSON.parse(String(line).slice("[publish-public-quote] ".length));
+  }
+
+  function assertSafePublishLog(label, expected) {
+    const parsed = lastPublishLogJson();
+    ok(label + " logged one JSON line", Boolean(parsed));
+    eq(label + " log stage", parsed && parsed.stage, expected.stage);
+    eq(label + " log code", parsed && parsed.code, expected.code);
+    if (expected.supabase_status != null) {
+      eq(label + " log supabase_status", parsed && parsed.supabase_status, expected.supabase_status);
+    }
+    if (expected.netlify_request_id) {
+      eq(label + " log netlify_request_id", parsed && parsed.netlify_request_id, expected.netlify_request_id);
+    }
+    const serialized = JSON.stringify(parsed || {});
+    ok(label + " log has commit", Boolean(parsed && parsed.commit));
+    ok(label + " log omits dump fields", parsed && parsed.persist_message == null && parsed.tenant_id == null && parsed.quote_id == null);
+    ok(label + " log omits URLs and client data", !/https?:\/\/|client_email|service_role|secret\.example|127\.0\.0\.1/i.test(serialized));
+  }
 
   async function mockFetch(url, options) {
     const u = String(url);
@@ -274,6 +307,17 @@ async function runOwnerInternalPlanPublishHandlerTests() {
     const body = options && options.body ? JSON.parse(options.body) : {};
 
     if (pathname === "/rest/v1/tenant_snapshots") {
+      if (snapshotShouldFail) {
+        return {
+          ok: false,
+          status: 503,
+          text: async () =>
+            JSON.stringify({
+              message: "snapshot unavailable",
+              details: "https://secret.example/snapshot",
+            }),
+        };
+      }
       return jsonRes(200, [
         {
           payload: {
@@ -298,6 +342,18 @@ async function runOwnerInternalPlanPublishHandlerTests() {
     }
     if (pathname === "/rest/v1/rpc/allocate_next_quote_number") {
       allocatePrefers.push(options && options.headers && options.headers.Prefer);
+      if (allocateShouldFail) {
+        return {
+          ok: false,
+          status: 404,
+          text: async () =>
+            JSON.stringify({
+              code: "PGRST202",
+              message:
+                "Could not find the function public.allocate_next_quote_number(p_tenant_id) in the schema cache",
+            }),
+        };
+      }
       return jsonRes(200, {
         quote_year: 2026,
         quote_sequence: 1,
@@ -366,6 +422,17 @@ async function runOwnerInternalPlanPublishHandlerTests() {
     if (pathname === "/rest/v1/quotes" && method === "POST") {
       quoteInsertPrefers.push(options && options.headers && options.headers.Prefer);
       insertCalls.push(body);
+      if (insertShouldFail) {
+        return {
+          ok: false,
+          status: 400,
+          text: async () =>
+            JSON.stringify({
+              message: "insert rejected",
+              details: "https://secret.example/quotes",
+            }),
+        };
+      }
       return jsonRes(201, [{ id: FAKE_QUOTE_ID, tenant_id: TENANT_A, total: body.total }]);
     }
     if (pathname === "/rest/v1/quotes" && method === "DELETE") {
@@ -444,6 +511,7 @@ async function runOwnerInternalPlanPublishHandlerTests() {
     eq("8. second production retry rolls back the inserted quote", deleteCalls.length, 1);
     ok("8. second production retry never returns public_url so Zapier is not called", !secondRetryBody.public_url && !secondRetryBody.public_token);
     eq("8. second production retry code is internal_plan_persist_failed", secondRetryBody.code, "internal_plan_persist_failed");
+    eq("8. second production retry stage is operational_plan_persist", secondRetryBody.stage, "operational_plan_persist");
     ok(
       "8. second production retry message is actionable",
       /operational plan could not be saved/i.test(String(secondRetryBody.error || ""))
@@ -491,17 +559,136 @@ async function runOwnerInternalPlanPublishHandlerTests() {
     eq("8. persist failure inserts once", insertCalls.length, 1);
     ok("8. persist failure omits public_url so Zapier is not called", !failBody.public_url && !failBody.public_token);
     eq("8. persist failure code is internal_plan_persist_failed", failBody.code, "internal_plan_persist_failed");
+    eq("8. persist failure stage is operational_plan_persist", failBody.stage, "operational_plan_persist");
     ok(
       "8. persist failure message is actionable",
       /operational plan could not be saved/i.test(String(failBody.error || ""))
     );
     ok("8. persist failure does not include SQL file names", !/SUPABASE_/i.test(String(failBody.error || "")));
+    ok("8. persist failure does not return a Supabase dump", !/p_operational_plan must be a json array|22023|secret\.example/i.test(JSON.stringify(failBody)));
+    assertSafePublishLog("8. persist failure", {
+      stage: "operational_plan_persist",
+      code: "internal_plan_persist_failed",
+      supabase_status: 500,
+    });
+
+    const diagHeaders = { "x-nf-request-id": "01TESTSTAGELOG" };
+    insertCalls.length = 0;
+    rpcBodies.length = 0;
+    deleteCalls.length = 0;
+    rpcShouldFail = false;
+    snapshotShouldFail = true;
+    allocateShouldFail = false;
+    insertShouldFail = false;
+    const settingsRes = await publishMod.handler({
+      httpMethod: "POST",
+      headers: diagHeaders,
+      body: JSON.stringify(publishBody),
+    });
+    const settingsBody = JSON.parse(settingsRes.body || "{}");
+    eq("8. settings_snapshot failure is 503", settingsRes.statusCode, 503);
+    eq("8. settings_snapshot code", settingsBody.code, "settings_snapshot_failed");
+    eq("8. settings_snapshot stage", settingsBody.stage, "settings_snapshot");
+    eq(
+      "8. settings_snapshot safe message",
+      settingsBody.error,
+      "The quote could not be created, so it was not sent. Please try again."
+    );
+    ok("8. settings_snapshot does not look like operational plan persist", settingsBody.stage !== "operational_plan_persist");
+    ok("8. settings_snapshot omits public_url so Zapier is not called", !settingsBody.public_url && !settingsBody.public_token);
+    eq("8. settings_snapshot does not insert a quote", insertCalls.length, 0);
+    ok("8. settings_snapshot does not dump Supabase", !/snapshot unavailable|secret\.example|PGRST/i.test(JSON.stringify(settingsBody)));
+    assertSafePublishLog("8. settings_snapshot", {
+      stage: "settings_snapshot",
+      code: "settings_snapshot_failed",
+      supabase_status: 503,
+      netlify_request_id: "01TESTSTAGELOG",
+    });
+
+    snapshotShouldFail = false;
+    const workersRes = await publishMod.handler({
+      httpMethod: "POST",
+      headers: diagHeaders,
+      body: JSON.stringify({
+        ...publishBody,
+        workers: [{ name: "Pro 1", type: "installer", days: 0, hours: 0 }],
+      }),
+    });
+    const workersBody = JSON.parse(workersRes.body || "{}");
+    eq("8. workers_validation failure is 400", workersRes.statusCode, 400);
+    eq("8. workers_validation code", workersBody.code, "workers_incomplete");
+    eq("8. workers_validation stage", workersBody.stage, "workers_validation");
+    eq(
+      "8. workers_validation actionable message",
+      workersBody.error,
+      "Add labor days or hours before sending this estimate."
+    );
+    ok("8. workers_validation omits public_url so Zapier is not called", !workersBody.public_url);
+    eq("8. workers_validation does not insert a quote", insertCalls.length, 0);
+    assertSafePublishLog("8. workers_validation", {
+      stage: "workers_validation",
+      code: "workers_incomplete",
+      netlify_request_id: "01TESTSTAGELOG",
+    });
+
+    allocateShouldFail = true;
+    const numberingRes = await publishMod.handler({
+      httpMethod: "POST",
+      headers: diagHeaders,
+      body: JSON.stringify(publishBody),
+    });
+    const numberingBody = JSON.parse(numberingRes.body || "{}");
+    eq("8. quote_numbering failure is 503", numberingRes.statusCode, 503);
+    eq("8. quote_numbering code", numberingBody.code, "quote_numbering_failed");
+    eq("8. quote_numbering stage", numberingBody.stage, "quote_numbering");
+    eq(
+      "8. quote_numbering safe message",
+      numberingBody.error,
+      "The quote could not be created, so it was not sent. Please try again."
+    );
+    ok("8. quote_numbering is not classified as operational plan", numberingBody.stage !== "operational_plan_persist");
+    ok("8. quote_numbering omits public_url so Zapier is not called", !numberingBody.public_url);
+    eq("8. quote_numbering does not insert a quote", insertCalls.length, 0);
+    ok("8. quote_numbering does not dump allocate RPC", !/allocate_next_quote_number|schema cache/i.test(JSON.stringify(numberingBody)));
+    assertSafePublishLog("8. quote_numbering", {
+      stage: "quote_numbering",
+      code: "quote_numbering_failed",
+      supabase_status: 404,
+      netlify_request_id: "01TESTSTAGELOG",
+    });
+
+    allocateShouldFail = false;
+    insertShouldFail = true;
+    const insertRes = await publishMod.handler({
+      httpMethod: "POST",
+      headers: diagHeaders,
+      body: JSON.stringify(publishBody),
+    });
+    const insertBody = JSON.parse(insertRes.body || "{}");
+    eq("8. quote_insert failure is 502", insertRes.statusCode, 502);
+    eq("8. quote_insert code", insertBody.code, "quote_insert_failed");
+    eq("8. quote_insert stage", insertBody.stage, "quote_insert");
+    eq(
+      "8. quote_insert safe message",
+      insertBody.error,
+      "The quote could not be created, so it was not sent. Please try again."
+    );
+    ok("8. quote_insert omits public_url so Zapier is not called", !insertBody.public_url);
+    ok("8. quote_insert does not dump insert body", !/insert rejected|secret\.example/i.test(JSON.stringify(insertBody)));
+    assertSafePublishLog("8. quote_insert", {
+      stage: "quote_insert",
+      code: "quote_insert_failed",
+      supabase_status: 400,
+      netlify_request_id: "01TESTSTAGELOG",
+    });
   } finally {
+    console.error = originalConsoleError;
     Module._load = originalLoad;
     globalThis.fetch = originalFetch;
     process.env.SUPABASE_URL = envBackup.SUPABASE_URL;
     process.env.SUPABASE_SERVICE_ROLE_KEY = envBackup.SUPABASE_SERVICE_ROLE_KEY;
     process.env.URL = envBackup.URL;
+    delete process.env.COMMIT_REF;
     bustNetlifyFunctionsCache();
   }
 }
@@ -1235,6 +1422,11 @@ async function main() {
   ok("8. publish does not resolve profiles.id as p_membership_id", !/resolveMembershipIdForRpc/.test(publishSrc) && !/profiles\?email=/.test(storeSrc));
   ok("8. publish uses session membership only", /membershipIdForRpc\(ctx\.membership && ctx\.membership\.id\)/.test(publishSrc));
   ok("8. confirm RPC is the only supabaseRequest that sets prefer false", /prefer:\s*false/.test(storeSrc));
+  ok(
+    "8. publish logs stage failures as one JSON string",
+    /console\.error\("\[publish-public-quote\] " \+ JSON\.stringify/.test(publishSrc)
+  );
+  ok("8. publish stage log omits persist_message dumps", !/persist_message/.test(publishSrc));
   ok("8. supabase-admin does not skip Prefer for every rpc path", !/startsWith\(["']rpc\//.test(adminSrc));
   ok("8. supabase-admin still defaults Prefer return=representation", /Prefer:[\s\S]*return=representation/.test(adminSrc));
   function listJsFiles(dir, acc) {
@@ -1380,13 +1572,20 @@ async function main() {
   );
   ok("send UI maps second-retry PostgREST dump without persist copy", /mg_confirm_quote_operational_plan/.test(fbSrc));
   ok("send UI maps document_invalid", /document_invalid/.test(fbSrc));
-  ok("send UI cache-busts quote-send-feedback.js", /quote-send-feedback\.js\?v=send-retry-2/.test(salesSrc));
+  ok("send UI cache-busts quote-send-feedback.js", /quote-send-feedback\.js\?v=send-retry-3/.test(salesSrc));
   ok("send UI throws publish failures with code", /throwFromPublishResponse/.test(salesSrc));
   ok(
     "send UI maps missing storage without leaking SQL file names",
     /Operational plan storage is not ready/.test(fbSrc) && !/SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS/.test(fbSrc)
   );
-  ok("send UI keeps unknown errors generic", /Something went wrong\. Please try again\./.test(fbSrc));
+  ok(
+    "send UI maps quote-not-created stages without calling them operational plan",
+    /The quote could not be created, so it was not sent/.test(fbSrc) &&
+      /settings_snapshot/.test(fbSrc) &&
+      /quote_numbering/.test(fbSrc) &&
+      /quote_insert/.test(fbSrc)
+  );
+  ok("send UI keeps operational plan persist distinct from quote-not-created", /operational_plan_persist/.test(fbSrc));
   ok("old quotes.internal_operational_plan migration is gone", !fs.existsSync(path.join(ROOT, "SUPABASE_QUOTES_INTERNAL_OPERATIONAL_PLAN.sql")));
   ok("dedicated table migration exists", fs.existsSync(path.join(ROOT, "SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS.sql")));
   ok(
