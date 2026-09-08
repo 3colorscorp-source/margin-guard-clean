@@ -8385,7 +8385,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     }
     if (metricsEl) {
       if (!api.planHasDays(plan)) {
-        metricsEl.innerHTML = "<span>Add schedule days or apply a template.</span>";
+        metricsEl.innerHTML = "<span>Add schedule days to build the plan.</span>";
       } else if (mode === "day") {
         metricsEl.innerHTML =
           `<span><strong>Est. days</strong> ${metrics.estimated_days}</span>` +
@@ -8399,7 +8399,7 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
     if (!plan.length) {
       timelineHost.innerHTML =
-        '<div class="sales-op-empty">Apply a template or add days to build the execution timeline.</div>';
+        '<div class="sales-op-empty">Add days to build the execution timeline.</div>';
     } else {
       const groups = api.groupPlanByDisplayPhase(plan);
       timelineHost.innerHTML = groups
@@ -8465,35 +8465,6 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
   function bindOwnerOperationalPlanOnce() {
     const api = getOwnerOperationalPlanApi();
     if (!api || !$("ownerOperationalSection")) return;
-
-    const templateSelect = $("ownerOperationalTemplate");
-    if (templateSelect && templateSelect.dataset.bound !== "1") {
-      templateSelect.dataset.bound = "1";
-      Object.keys(api.OPERATIONAL_PLAN_TEMPLATES).forEach((key) => {
-        const opt = document.createElement("option");
-        opt.value = key;
-        opt.textContent = api.OPERATIONAL_PLAN_TEMPLATES[key].label;
-        templateSelect.appendChild(opt);
-      });
-    }
-
-    const applyTplBtn = $("btnOwnerApplyOperationalTemplate");
-    if (applyTplBtn && applyTplBtn.dataset.bound !== "1") {
-      applyTplBtn.dataset.bound = "1";
-      applyTplBtn.addEventListener("click", (event) => {
-        event.preventDefault();
-        const key = templateSelect && templateSelect.value;
-        if (!key) return;
-        const state = loadOwner();
-        const settings = loadOwnerPricingSettings();
-        state.operational_plan = api.applyTemplate(key);
-        state.operational_estimated_days_override = "";
-        state.operational_estimated_hours_override = "";
-        enableOwnerLaborAutoSync(state);
-        saveOwner(state, calcOwner(state, settings));
-        refreshOwnerAfterOpChange();
-      }, true);
-    }
 
     const addDayBtn = $("btnOwnerAddOperationalDay");
     if (addDayBtn && addDayBtn.dataset.bound !== "1") {
@@ -20536,7 +20507,6 @@ window.renderSupervisor = renderSupervisor;
     }
   });
 })();
-
 
 
 

@@ -1592,15 +1592,6 @@
                       <p class="sales-op-timeline-sub" id="salesOperationalLead">Click a day to edit tasks and crew.</p>
                     </header>
                     <div class="sales-op-toolbar form sales-operational__toolbar">
-                      <div class="field">
-                        <label>Quick template</label>
-                        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-                          <select id="salesOperationalTemplate" style="flex:1;min-width:200px;">
-                            <option value="">Choose a template…</option>
-                          </select>
-                          <button type="button" class="btn" id="btnApplyOperationalTemplate">Apply template</button>
-                        </div>
-                      </div>
                       <div class="field" id="salesOperationalOverrideDaysWrap">
                         <label id="salesOperationalOverrideDaysLabel">Estimated project days (override)</label>
                         <input id="salesOperationalDaysOverride" type="number" min="0" step="0.25" placeholder="Auto from max day" />
@@ -6098,7 +6089,7 @@
         }
         if (metricsEl) {
           if (!api.planHasDays(plan)) {
-            metricsEl.innerHTML = '<span>Add schedule days or apply a template.</span>';
+            metricsEl.innerHTML = '<span>Add schedule days to build the plan.</span>';
           } else if (mode === 'day') {
             metricsEl.innerHTML =
               '<span><strong>Est. days</strong> ' + metrics.estimated_days + '</span>' +
@@ -6111,7 +6102,7 @@
         }
 
         if (!plan.length) {
-          timelineHost.innerHTML = '<div class="sales-op-empty">Apply a template or add days to build the execution timeline.</div>';
+          timelineHost.innerHTML = '<div class="sales-op-empty">Add days to build the execution timeline.</div>';
         } else {
           const groups = api.groupPlanByDisplayPhase(plan);
           timelineHost.innerHTML = groups.map(function (group) {
@@ -6832,34 +6823,6 @@
         bindVoicePlanPreviewStandalone();
         const api = getOperationalPlanApi();
         if (!api) return;
-
-        const templateSelect = document.getElementById('salesOperationalTemplate');
-        if (templateSelect && !templateSelect.dataset.bound) {
-          templateSelect.dataset.bound = '1';
-          Object.keys(api.OPERATIONAL_PLAN_TEMPLATES).forEach(function (key) {
-            const opt = document.createElement('option');
-            opt.value = key;
-            opt.textContent = api.OPERATIONAL_PLAN_TEMPLATES[key].label;
-            templateSelect.appendChild(opt);
-          });
-        }
-
-        const applyTplBtn = document.getElementById('btnApplyOperationalTemplate');
-        if (applyTplBtn && !applyTplBtn.dataset.bound) {
-          applyTplBtn.dataset.bound = '1';
-          applyTplBtn.addEventListener('click', function (event) {
-            event.preventDefault();
-            const key = templateSelect && templateSelect.value;
-            if (!key) return;
-            const state = loadSalesState();
-            state.operational_plan = api.applyTemplate(key);
-            state.operational_estimated_days_override = '';
-            state.operational_estimated_hours_override = '';
-            enableLaborAutoSync(state);
-            saveSalesState(state);
-            refreshSellerFromStandalone();
-          }, true);
-        }
 
         const addDayBtn = document.getElementById('btnAddOperationalDay');
         if (addDayBtn && !addDayBtn.dataset.bound) {
@@ -8970,8 +8933,6 @@
 
       function clearSellerPostQuoteWorkspaceChrome() {
         closeSalesOpDayEditor();
-        const templateSelect = document.getElementById('salesOperationalTemplate');
-        if (templateSelect) templateSelect.value = '';
         const daysOverrideInput = document.getElementById('salesOperationalDaysOverride');
         if (daysOverrideInput) daysOverrideInput.value = '';
         const hoursOverrideInput = document.getElementById('salesOperationalHoursOverride');
