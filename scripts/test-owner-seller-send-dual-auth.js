@@ -260,7 +260,11 @@ async function main() {
   ok("owner send does not require device_session in browser", !/device_session/.test(sendFn));
   ok("publish 401 error is thrown into the UI path", /throw new Error\(publishParsed\.error/.test(sendFn));
   ok("seller-send still logs the real error", /console\.error\('\[seller-send\]',\s*error\)/.test(sendFn));
-  ok("single click disables Confirmar y enviar", /sendButton\.disabled = true/.test(sendFn) && /cleanSendNow\.addEventListener\('click',\s*runSellerSend,\s*true\)/.test(salesSrc));
+  ok(
+    "single click disables Confirmar y enviar through the active-portal router",
+    /sendButton\.disabled = true/.test(sendFn) &&
+      /cleanSendNow\.addEventListener\('click',\s*runSendForActivePortal,\s*true\)/.test(salesSrc)
+  );
   ok("overlapping send clicks are ignored", /if \(sellerSendInFlight\) return false/.test(sendFn));
   ok("owner portal prefers auth-status not device pair", /tryOwnerAuth/.test(devicePortalSrc) && /applyOwnerMode\(ownerData\)/.test(devicePortalSrc));
   ok("forced seller portal does not inherit owner mode", /if \(forcedSeller\)[\s\S]{0,220}applySellerPortalBlockedState/.test(devicePortalSrc));
