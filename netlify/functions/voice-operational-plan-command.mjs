@@ -320,9 +320,9 @@ function cleanProposedInternalTasks(proposed) {
   return next;
 }
 
-function buildModelInput({ transcript, current, hoursPerDay, clientLanguage = "en" }) {
+function buildModelInput({ transcript, current, hoursPerDay, clientLanguage = "en", correction = "" }) {
   const targetLanguage = clientLanguage === "es" ? "Spanish" : "English";
-  return [
+  const lines = [
     `Tenant hours_per_day: ${hoursPerDay}`,
     `CLIENT_SCOPE_LANGUAGE: ${targetLanguage}`,
     "CURRENT_OPERATIONAL_PLAN_JSON",
@@ -331,7 +331,11 @@ function buildModelInput({ transcript, current, hoursPerDay, clientLanguage = "e
     "FIELD_DICTATION",
     transcript,
     "END_FIELD_DICTATION",
-  ].join("\n");
+  ];
+  if (correction) {
+    lines.push("CORRECTION_REQUIREMENTS", correction, "END_CORRECTION_REQUIREMENTS");
+  }
+  return lines.join("\n");
 }
 
 function openAiResponsesUrl(rawBase) {
@@ -353,7 +357,7 @@ async function loadSettingsForTenant(tenantId, request = supabaseRequest) {
     : {};
 }
 
-async function callOpenAi({ transcript, current, hoursPerDay, clientLanguage = "en", fetchImpl = fetch, getEnv = envValue }) {
+async function callOpenAi({ transcript, current, hoursPerDay, clientLanguage = "en", correction = "", fetchImpl = fetch, getEnv = envValue }) {
   const base = getEnv("OPENAI_BASE_URL") || "https://api.openai.com";
   const apiKey = getEnv("OPENAI_API_KEY");
   if (!apiKey && !getEnv("OPENAI_BASE_URL")) {
@@ -376,7 +380,7 @@ async function callOpenAi({ transcript, current, hoursPerDay, clientLanguage = "
       body: JSON.stringify({
         model: getEnv("MG_VOICE_PLAN_OPENAI_MODEL") || DEFAULT_MODEL,
         instructions: SYSTEM_INSTRUCTIONS,
-        input: buildModelInput({ transcript, current, hoursPerDay, clientLanguage }),
+        input: buildModelInput({ transcript, current, hoursPerDay, clientLanguage, correction }),
         text: {
           format: {
             type: "json_schema",
@@ -470,11 +474,14 @@ export function createHandler(deps = {}) {
         settings,
         hoursPerDay,
       });
-      const modelResult = await interpret({ transcript, current, hoursPerDay, clientLanguage });
-      const stabilized = stabilizeProposedDocument(modelResult?.document, current);
-      const cleaned = cleanProposedInternalTasks(stabilized);
-      const proposedRaw = synchronizeChangedClientScopes(cleaned, current);
-      const incoming = voice.validateIncomingDocument(proposedRaw);
+      const prepareModelProposal = (result) => {
+        const stabilized = stabilizeProposedDocument(result?.document, current);
+        const cleaned = cleanProposedInternalTasks(stabilized);
+        return synchronizeChangedClientScopes(cleaned, current);
+      };
+      let modelResult = await interpret({ transcript, current, hoursPerDay, clientLanguage });
+      let proposedRaw = prepareModelProposal(modelResult);
+      let incoming = voice.validateIncomingDocument(proposedRaw);
       if (!incoming.ok) {
         return jsonResponse(422, {
           ok: false,
@@ -483,12 +490,33 @@ export function createHandler(deps = {}) {
           errors: incoming.errors,
         });
       }
-      const removed = missingCurrentDayIds(current, proposedRaw);
+      let removed = missingCurrentDayIds(current, proposedRaw);
+      if (removed.length && !transcriptAllowsDestructiveChange(transcript)) {
+        const correction = [
+          "The previous proposal accidentally omitted unchanged existing days.",
+          `Return every existing day_id, including: ${removed.join(", ")}.`,
+          "Replacing a day's work replaces its contents but preserves that day's existing day_id.",
+          "Only a newly inserted day receives an empty day_id. Shift later day_number values while preserving their IDs and contents.",
+          "Do not remove any existing day because the transcript did not explicitly request deletion.",
+        ].join(" ");
+        modelResult = await interpret({ transcript, current, hoursPerDay, clientLanguage, correction });
+        proposedRaw = prepareModelProposal(modelResult);
+        incoming = voice.validateIncomingDocument(proposedRaw);
+        if (!incoming.ok) {
+          return jsonResponse(422, {
+            ok: false,
+            code: "invalid_proposed_plan",
+            error: incoming.errors?.[0]?.message || "The corrected plan is invalid.",
+            errors: incoming.errors,
+          });
+        }
+        removed = missingCurrentDayIds(current, proposedRaw);
+      }
       if (removed.length && !transcriptAllowsDestructiveChange(transcript)) {
         return jsonResponse(422, {
           ok: false,
           code: "destructive_change_requires_explicit_command",
-          error: "No days were removed because the dictation did not explicitly request a deletion or replacement.",
+          error: "The proposal could not preserve every unchanged day. No plan changes were applied; please try the command again.",
         });
       }
       const source = current.days.length ? "mixed" : "voice";
