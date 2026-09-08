@@ -293,6 +293,17 @@ ok(
   /window\.resetMarginGuardSalesQuoteWorkspaceAfterSend\s*=\s*resetSalesQuoteWorkspaceAfterSend/.test(salesSrc) &&
     /typeof window\.resetMarginGuardSalesQuoteWorkspaceAfterSend === ["']function["'][\s\S]{0,180}window\.resetMarginGuardSalesQuoteWorkspaceAfterSend\(\)/.test(appSrc)
 );
+const sellerSuccessResetStart = salesSrc.indexOf("successCloseScheduled = true;");
+const sellerSuccessResetEnd = salesSrc.indexOf("return true;", sellerSuccessResetStart);
+const sellerSuccessResetSrc = salesSrc.slice(sellerSuccessResetStart, sellerSuccessResetEnd);
+ok(
+  "all successful Seller-page sends use the canonical complete workspace reset",
+  /resetRealSellerQuoteWorkspaceAfterSend\(\);[\s\S]{0,160}return;[\s\S]{0,160}resetSalesQuoteWorkspaceAfterSend\(\);/.test(sellerSuccessResetSrc)
+);
+ok(
+  "post-send reset no longer dispatches stale input events that restore the old operational plan",
+  !/FIELDS_TO_CLEAR|dispatchEvent\(new Event\(['"]input['"]/.test(sellerSuccessResetSrc)
+);
 ok(
   "post-send calendar reset invalidates pending capacity responses",
   /nextCapacityGeneration\(['"]sales['"]\)/.test(salesSrc) &&
