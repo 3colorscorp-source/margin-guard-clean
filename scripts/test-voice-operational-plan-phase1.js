@@ -1413,7 +1413,13 @@ async function main() {
   ok("inspect SQL captures pg_get_functiondef", /pg_get_functiondef\(p\.oid\)/.test(inspectSql));
   ok("inspect SQL captures function owner and ACL", /function_owner/.test(inspectSql) && /aclexplode/.test(inspectSql));
   ok("inspect SQL captures security model", /SECURITY INVOKER/.test(inspectSql) && /prosecdef/.test(inspectSql));
+  ok(
+    "inspect SQL scopes pg_depend by classid and refclassid",
+    /d\.classid = 'pg_proc'::regclass/.test(inspectSql) &&
+      /d\.refclassid = 'pg_proc'::regclass/.test(inspectSql)
+  );
   ok("inspect SQL captures function dependencies", /pg_depend/.test(inspectSql) && /pg_describe_object/.test(inspectSql));
+  ok("inspect SQL labels policy OID 0 as PUBLIC", /when u\.oid = 0 then 'PUBLIC'::name/.test(inspectSql));
   ok("inspect SQL captures table columns and defaults", /pg_attribute/.test(inspectSql) && /column_default/.test(inspectSql));
   ok("inspect SQL captures constraints indexes policies RLS", /pg_constraint/.test(inspectSql) && /pg_index/.test(inspectSql) && /pg_policy/.test(inspectSql) && /relforcerowsecurity/.test(inspectSql));
   ok("inspect SQL captures table owner grants and triggers", /table_owner/.test(inspectSql) && /pg_get_triggerdef/.test(inspectSql));

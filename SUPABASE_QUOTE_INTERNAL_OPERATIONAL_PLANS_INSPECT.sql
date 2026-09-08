@@ -74,7 +74,9 @@ select
   d.deptype
 from pg_proc p
 join pg_namespace n on n.oid = p.pronamespace
-join pg_depend d on d.objid = p.oid
+join pg_depend d
+  on d.classid = 'pg_proc'::regclass
+ and d.objid = p.oid
 where n.nspname = 'public'
   and p.proname = 'mg_confirm_quote_operational_plan'
 order by p.oid, d.deptype, referenced_object;
@@ -88,7 +90,9 @@ select
   d.deptype
 from pg_proc p
 join pg_namespace n on n.oid = p.pronamespace
-join pg_depend d on d.refobjid = p.oid
+join pg_depend d
+  on d.refclassid = 'pg_proc'::regclass
+ and d.refobjid = p.oid
 where n.nspname = 'public'
   and p.proname = 'mg_confirm_quote_operational_plan'
   and d.deptype <> 'i'
@@ -163,7 +167,20 @@ select
   pol.polcmd as command,
   pol.polpermissive as permissive,
   (
-    select coalesce(array_agg(r.rolname order by r.rolname), array[]::name[])
+    select coalesce(
+      array_agg(
+        case
+          when u.oid = 0 then 'PUBLIC'::name
+          else r.rolname
+        end
+        order by
+          case
+            when u.oid = 0 then 'PUBLIC'::name
+            else r.rolname
+          end
+      ),
+      array[]::name[]
+    )
     from unnest(pol.polroles) as u(oid)
     left join pg_roles r on r.oid = u.oid
   ) as roles,
