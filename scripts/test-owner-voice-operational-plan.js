@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Owner voice operational-plan Phase 1 tests.
+ * Owner voice operational-plan Phase 1 + Phase 2 tests.
  * No live AI, Supabase, quotes, email, or webhooks.
  */
 "use strict";
@@ -77,6 +77,12 @@ FakeEl.prototype.addEventListener = function (type, fn) {
 FakeEl.prototype.focus = function () {
   this.focused = true;
 };
+FakeEl.prototype.dispatchEvent = function (event) {
+  const type = event && event.type;
+  (this.listeners[type] || []).forEach((fn) => fn(event));
+  if (type === "input" && typeof this.oninput === "function") this.oninput(event);
+  if (type === "change" && typeof this.onchange === "function") this.onchange(event);
+};
 
 function FakeRecognition() {
   FakeRecognition.instances.push(this);
@@ -122,6 +128,9 @@ function makeDoc() {
   el("ownerVoicePlanClientPreview", "div").textContent = "No client-facing scope yet.";
   el("ownerVoicePlanInternalPreview", "div").textContent = "No internal plan yet.";
   el("ownerVoicePlanPreviewStatus", "div").hidden = true;
+  el("quoteNotes", "textarea").value = "";
+  el("ownerOperationalHoursOverride", "input").value = "";
+  el("ownerOperationalDaysOverride", "input").value = "";
   const documentElement = { dataset: {} };
   const doc = {
     documentElement,
@@ -150,6 +159,84 @@ function sampleProposed() {
       },
     ],
   };
+}
+
+function interpretOkFetch(proposedDoc) {
+  const proposed = proposedDoc || sampleProposed();
+  const narrative =
+    (proposed.days && proposed.days[0] && proposed.days[0].client_scope) || "Protect floors and walls.";
+  return async () => ({
+    ok: true,
+    json: async () => ({
+      ok: true,
+      proposed_document: proposed,
+      public_client_scope: { narrative },
+      summary: "Ready",
+      warnings: [],
+    }),
+  });
+}
+
+function makeOwnerApply(initial, extras) {
+  const start = initial || {};
+  const bag = {
+    state: {
+      quoteNotes: start.quoteNotes || "",
+      operational_plan: Array.isArray(start.operational_plan) ? JSON.parse(JSON.stringify(start.operational_plan)) : [],
+      workers: Array.isArray(start.workers) ? JSON.parse(JSON.stringify(start.workers)) : [],
+      startDate: start.startDate || "2026-09-10",
+      targetFinishDate: start.targetFinishDate || "2026-09-12",
+      operational_estimated_days_override: start.operational_estimated_days_override || "",
+      operational_estimated_hours_override: start.operational_estimated_hours_override || "",
+    },
+    notes: start.quoteNotes || "",
+    applies: 0,
+    refreshes: 0,
+    overwritePrompts: 0,
+    lastOverwriteMessage: "",
+    allowOverwrite: extras && extras.allowOverwrite === false ? false : true,
+    failApply: !!(extras && extras.failApply),
+    hangApply: !!(extras && extras.hangApply),
+    resolveHang: null,
+  };
+  const ownerApply = {
+    readNotes: () => bag.notes,
+    readPlan: () => bag.state.operational_plan || [],
+    hoursPerDay: () => 8,
+    snapshot: () => ({
+      store: JSON.parse(JSON.stringify(bag.state)),
+      notes: bag.notes,
+    }),
+    restore: (snap) => {
+      bag.state = JSON.parse(JSON.stringify(snap.store));
+      bag.notes = snap.notes;
+    },
+    applyAtomic: async (payload) => {
+      bag.applies += 1;
+      if (bag.hangApply) {
+        await new Promise((resolve) => {
+          bag.resolveHang = resolve;
+        });
+      }
+      if (bag.failApply) {
+        bag.notes = "PARTIAL WRITE SHOULD NOT STICK";
+        bag.state.quoteNotes = "PARTIAL WRITE SHOULD NOT STICK";
+        throw new Error("apply boom");
+      }
+      bag.state.quoteNotes = payload.quoteNotes;
+      bag.state.operational_plan = JSON.parse(JSON.stringify(payload.operational_plan));
+      bag.state.operational_estimated_days_override = "";
+      bag.state.operational_estimated_hours_override = "";
+      bag.notes = payload.quoteNotes;
+      bag.refreshes += 1;
+    },
+    confirmOverwrite: (message) => {
+      bag.overwritePrompts += 1;
+      bag.lastOverwriteMessage = String(message || "");
+      return bag.allowOverwrite;
+    },
+  };
+  return { bag, ownerApply };
 }
 
 async function main() {
@@ -293,35 +380,28 @@ async function main() {
   ok("13. formatters keep columns separate", voice.formatClientPreview(proposed).indexOf("Assistant") < 0 && /Assistant/.test(voice.formatInternalPreview(proposed)));
 
   ok("14. confirm disabled in markup", /id="ownerVoicePlanPreviewConfirm"[\s\S]*?disabled/.test(html));
-  eq("14. confirm apply flag is false", voice.CONFIRM_APPLY_ENABLED, false);
-  const docD = makeDoc();
-  const sessionD = voice.createOwnerVoiceSession({
-    document: docD,
+  eq("14. confirm apply flag is true", voice.CONFIRM_APPLY_ENABLED, true);
+  const blocked = makeOwnerApply();
+  const docBlocked = makeDoc();
+  const sessionBlocked = voice.createOwnerVoiceSession({
+    document: docBlocked,
     speechRecognitionCtor: FakeRecognition,
-    fetch: async () => ({
-      ok: true,
-      json: async () => ({
-        ok: true,
-        proposed_document: proposed,
-        public_client_scope: { narrative: "Protect floors and walls." },
-        summary: "Ready",
-        warnings: [],
-      }),
-    }),
+    fetch: interpretOkFetch(),
+    ownerApply: blocked.ownerApply,
   });
-  sessionD.openModal();
-  docD.els.ownerVoicePlanTranscript.value = "Day 1 protect floors with one Assistant for 8 hours.";
-  await sessionD.interpretTranscript();
-  ok("14. confirm stays disabled after interpret", docD.els.ownerVoicePlanPreviewConfirm.disabled === true);
-  eq("14. confirm aria-disabled", docD.els.ownerVoicePlanPreviewConfirm.getAttribute("aria-disabled"), "true");
+  sessionBlocked.openModal();
+  ok("14. confirm blocked before Interpret", docBlocked.els.ownerVoicePlanPreviewConfirm.disabled === true);
+  eq("14. confirm aria-disabled before Interpret", docBlocked.els.ownerVoicePlanPreviewConfirm.getAttribute("aria-disabled"), "true");
+  const applyBefore = await sessionBlocked.applyConfirmedPlan();
+  eq("14. apply without preview is rejected", applyBefore.reason, "no-preview");
+  eq("14. apply without preview did not write", blocked.bag.applies, 0);
 
   const writeHaystack = js;
-  ok("15. no quoteNotes writer", !/quoteNotes/.test(writeHaystack));
   ok("15. no owner date writers", !/ownerStartDate|ownerTargetFinishDate|salesStartDate/.test(writeHaystack));
-  ok("15. no labor writers", !/workersBody|btnAddWorker|labor_auto_sync/.test(writeHaystack));
-  ok("15. no mg_owner_v2 or localStorage writes", !/mg_owner_v2|localStorage/.test(writeHaystack));
-  ok("15. no persist endpoint", !/quote-internal-operational-plan|publish-public-quote|send-quote/.test(writeHaystack));
-  ok("15. no apply/save owner helpers", !/saveOwner|applyConfirmedVoicePlanToState|refreshOwnerAfterOpChange/.test(writeHaystack));
+  ok("15. no labor table writers", !/workersBody|btnAddWorker|labor_auto_sync/.test(writeHaystack));
+  ok("15. no persist/publish/send endpoints", !/quote-internal-operational-plan|publish-public-quote|send-quote|estimate-accepted-webhook/.test(writeHaystack));
+  ok("15. no sales apply writers", !/applyConfirmedVoicePlanToState|saveSalesState|openSendModal|exportOwnerPdf|btnExportPdf/.test(writeHaystack));
+  ok("15. no direct saveOwner/refreshOwnerAfterOpChange", !/saveOwner|refreshOwnerAfterOpChange/.test(writeHaystack));
 
   ok("16. owner voice ids not added to sales.html", !/ownerVoicePlan|btnOwnerReviewConfirmOperationalPlan/.test(salesHtml));
 
@@ -353,12 +433,138 @@ async function main() {
   ok("20. stale helper detects newer request", voice.isStaleInterpret(1, 2, true) === true);
   ok("20. current request is not stale", voice.isStaleInterpret(3, 3, true) === false);
 
+  const derived = voice.deriveOwnerOperationalPlan(proposed, 8);
+  eq("21. internal plan creates one owner day", derived.length, 1);
+  eq("21. internal task becomes owner phase/task", derived[0].phase, "Install floor protection");
+  eq("21. assignment becomes owner workers", derived[0].workers.length, 1);
+  eq("21. worker role preserved", derived[0].workers[0].role, "Assistant");
+  eq("21. worker hours preserved", derived[0].workers[0].estimated_hours, 8);
+  ok("21. payload is valid", voice.isValidApplyPayload(voice.buildApplyPayload({ proposed, publicScope: { narrative: "Protect floors and walls." } }, 8)));
+
+  const applyStore = makeOwnerApply();
+  const docApply = makeDoc();
+  const sessionApply = voice.createOwnerVoiceSession({
+    document: docApply,
+    speechRecognitionCtor: FakeRecognition,
+    fetch: interpretOkFetch(),
+    ownerApply: applyStore.ownerApply,
+  });
+  sessionApply.bind();
+  sessionApply.openModal();
+  ok("22. confirm blocked before Interpret", docApply.els.ownerVoicePlanPreviewConfirm.disabled === true);
+  docApply.els.ownerVoicePlanTranscript.value = "Day 1 protect floors with one Assistant for 8 hours.";
+  const interpreted = await sessionApply.interpretTranscript();
+  ok("22. interpret succeeds without applying", interpreted.ok === true && interpreted.applied === false);
+  eq("22. interpret did not apply", applyStore.bag.applies, 0);
+  ok("22. confirm enabled only after valid response", docApply.els.ownerVoicePlanPreviewConfirm.disabled === false);
+  eq("22. confirm aria enabled after interpret", docApply.els.ownerVoicePlanPreviewConfirm.getAttribute("aria-disabled"), "false");
+
+  docApply.els.ownerVoicePlanTranscript.value = "Day 1 protect floors with one Assistant for 8 hours. Add cleanup.";
+  docApply.els.ownerVoicePlanTranscript.dispatchEvent({ type: "input" });
+  ok("23. transcript edit disables confirm", docApply.els.ownerVoicePlanPreviewConfirm.disabled === true);
+  eq("23. transcript edit clears client preview", docApply.els.ownerVoicePlanClientPreview.textContent, "No client-facing scope yet.");
+  eq("23. transcript edit did not apply", applyStore.bag.applies, 0);
+
+  const secondProposed = sampleProposed();
+  secondProposed.days[0].client_scope = "Protect floors and complete cleanup.";
+  secondProposed.days[0].internal_tasks = [{ label: "Protect floors" }, { label: "Final cleanup" }];
+  const sessionApply2 = voice.createOwnerVoiceSession({
+    document: docApply,
+    speechRecognitionCtor: FakeRecognition,
+    fetch: interpretOkFetch(secondProposed),
+    ownerApply: applyStore.ownerApply,
+  });
+  sessionApply2.state.modalOpen = true;
+  const reinterpreted = await sessionApply2.interpretTranscript();
+  ok("24. new interpretation replaces preview", reinterpreted.ok === true);
+  ok("24. new client preview rendered", /complete cleanup/i.test(docApply.els.ownerVoicePlanClientPreview.textContent));
+  eq("24. still not applied until confirm", applyStore.bag.applies, 0);
+  ok("24. confirm enabled after replacement interpret", docApply.els.ownerVoicePlanPreviewConfirm.disabled === false);
+
+  const applied = await sessionApply2.applyConfirmedPlan();
+  ok("25. apply requires explicit click result ok", applied.ok === true);
+  eq("25. apply ran once", applyStore.bag.applies, 1);
+  eq("25. client scope reached quoteNotes", applyStore.bag.notes, "Protect floors and complete cleanup.");
+  ok("25. internal plan created owner days", applyStore.bag.state.operational_plan.length === 1);
+  eq("25. owner day task from internal plan", applyStore.bag.state.operational_plan[0].phase, "Protect floors; Final cleanup");
+  eq("25. owner day has workers/tasks", applyStore.bag.state.operational_plan[0].workers.length, 1);
+  eq("25. labor not written by voice script", JSON.stringify(applyStore.bag.state.workers), "[]");
+  eq("25. finish date left to Owner refresh", applyStore.bag.state.targetFinishDate, "2026-09-12");
+  eq("25. start date left to Owner rules", applyStore.bag.state.startDate, "2026-09-10");
+  eq("25. Owner refresh invoked", applyStore.bag.refreshes, 1);
+  eq("25. modal closed after apply", docApply.els.ownerVoicePlanPreviewModal.getAttribute("aria-hidden"), "true");
+
+  const existing = makeOwnerApply({
+    quoteNotes: "Existing scope text",
+    operational_plan: [{ day_number: 1, phase: "Old day", workers: [{ role: "Installer", worker_type: "pro", estimated_hours: 8 }] }],
+  }, { allowOverwrite: false });
+  const docWarn = makeDoc();
+  docWarn.els.quoteNotes.value = "Existing scope text";
+  const sessionWarn = voice.createOwnerVoiceSession({
+    document: docWarn,
+    speechRecognitionCtor: FakeRecognition,
+    fetch: interpretOkFetch(),
+    ownerApply: existing.ownerApply,
+  });
+  sessionWarn.openModal();
+  docWarn.els.ownerVoicePlanTranscript.value = "Day 1 protect floors with one Assistant for 8 hours.";
+  await sessionWarn.interpretTranscript();
+  const cancelled = await sessionWarn.applyConfirmedPlan();
+  eq("26. existing content prompts warning", existing.bag.overwritePrompts, 1);
+  ok("26. warning is not silent", /replace|Cancel keeps everything unchanged/i.test(existing.bag.lastOverwriteMessage));
+  eq("26. cancel overwrite reason", cancelled.reason, "overwrite-cancelled");
+  eq("26. cancel did not apply", existing.bag.applies, 0);
+  eq("26. cancel kept previous notes", existing.bag.notes, "Existing scope text");
+  eq("26. cancel kept previous plan", existing.bag.state.operational_plan[0].phase, "Old day");
+
+  const failing = makeOwnerApply({ quoteNotes: "Keep me", operational_plan: [] }, { failApply: true });
+  const docFail = makeDoc();
+  const sessionFail = voice.createOwnerVoiceSession({
+    document: docFail,
+    speechRecognitionCtor: FakeRecognition,
+    fetch: interpretOkFetch(),
+    ownerApply: failing.ownerApply,
+  });
+  sessionFail.openModal();
+  docFail.els.ownerVoicePlanTranscript.value = "Day 1 protect floors with one Assistant for 8 hours.";
+  await sessionFail.interpretTranscript();
+  const failed = await sessionFail.applyConfirmedPlan();
+  eq("27. apply failure reason", failed.reason, "apply-failed");
+  eq("27. failure restored previous notes", failing.bag.notes, "Keep me");
+  ok("27. failure did not keep partial write", failing.bag.notes !== "PARTIAL WRITE SHOULD NOT STICK");
+  ok("27. modal stayed open after failure", docFail.els.ownerVoicePlanPreviewModal.getAttribute("aria-hidden") !== "true");
+
+  const double = makeOwnerApply({}, { hangApply: true });
+  const docDouble = makeDoc();
+  const sessionDouble = voice.createOwnerVoiceSession({
+    document: docDouble,
+    speechRecognitionCtor: FakeRecognition,
+    fetch: interpretOkFetch(),
+    ownerApply: double.ownerApply,
+  });
+  sessionDouble.openModal();
+  docDouble.els.ownerVoicePlanTranscript.value = "Day 1 protect floors with one Assistant for 8 hours.";
+  await sessionDouble.interpretTranscript();
+  const firstClick = sessionDouble.applyConfirmedPlan();
+  const secondClick = await sessionDouble.applyConfirmedPlan();
+  eq("28. double click second is busy", secondClick.reason, "busy");
+  if (typeof double.bag.resolveHang === "function") double.bag.resolveHang();
+  const firstResult = await firstClick;
+  ok("28. first click applied", firstResult.ok === true);
+  eq("28. apply ran once", double.bag.applies, 1);
+
+  ok("29. confirm label is Confirm and apply", /id="ownerVoicePlanPreviewConfirm"[\s\S]*?>Confirm and apply</.test(html));
+  ok("29. no later-phase label", !/Confirm and apply \(later phase\)/.test(html));
+  ok("29. no publish/send/pdf in owner voice script", !/publish-public-quote|openSendModal|jspdf|quote-send|btnSendQuote/.test(js));
+  ok("29. seller html still free of owner voice ids", !/ownerVoicePlan|btnOwnerReviewConfirmOperationalPlan/.test(salesHtml));
+  ok("29. seller voice library still unchanged", /function deriveLegacyOperationalPlan/.test(sellerVoiceJs));
+
   ok("syntax of owner voice script", spawnSync(process.execPath, ["--check", path.join(ROOT, "public/js/owner-voice-operational-plan.js")], { encoding: "utf8" }).status === 0);
 
   ok("mobile stacks preview columns", /@media \(max-width: 740px\)[\s\S]*owner-voice-plan-dual[\s\S]*grid-template-columns: 1fr/.test(html));
   ok("no new libraries added", !/cdn\.jsdelivr.*speech|webkitSpeechRecognition\.min/.test(html));
 
-  console.log(`\nOwner Voice Operational Plan Phase 1: ${passed} passed`);
+  console.log(`\nOwner Voice Operational Plan Phase 1+2: ${passed} passed`);
 }
 
 main().catch((err) => {

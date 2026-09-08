@@ -41,19 +41,23 @@ Auditoría sobre `origin/main` `b02ac41`. Worktree limpio al crearse. Ningún ar
 
 ### Fase 1 implementada (2026-09-08)
 
-Dueño ya tiene captura + interpret + preview, sin apply:
+Dueño ya tiene captura + interpret + preview.
 
-- Botón **Review & confirm plan** (`#btnOwnerReviewConfirmOperationalPlan`) después de Generate Scope Draft.
-- Modal `#ownerVoicePlanPreviewModal` (dictado, idiomas, transcript, preview dual).
-- Script `public/js/owner-voice-operational-plan.js` y librería compartida `public/js/voice-operational-plan.js` (sin modificarla).
-- Interpret llama `/.netlify/functions/voice-operational-plan-command` con JSON de texto.
-- **Confirm and apply** visible pero deshabilitado (`CONFIRM_APPLY_ENABLED = false`).
+### Fase 2 implementada (2026-09-08)
 
-### Lo que falta (Fase 2+)
+Confirm and apply actualiza el draft Dueño, sin publicar ni enviar:
 
-- Apply a `#quoteNotes`, `operational_plan`, labor y fechas tras confirmación explícita.
-- Hidratar `current_document` desde el plan Dueño (Fase 1 envía un documento vacío a propósito para no leer ni escribir `mg_owner_v2`).
-- Persistencia `quote-internal-operational-plan` si hay `quoteId`.
+- Confirm permanece bloqueado hasta una interpretación válida y vigente.
+- Apply escribe Client Scope en `#quoteNotes` y el Internal Plan en `operational_plan` (días/tareas/crew).
+- Labor y fecha final se sincronizan solo con `refreshOwnerAfterOpChange` (disparado por el `change` ya ligado de `#ownerOperationalHoursOverride` / `#ownerOperationalDaysOverride`). `app.js` no se modificó.
+- Si `#quoteNotes` o el plan ya tienen contenido: advertencia + confirmación extra. Cancelar no cambia nada.
+- Apply es atómico: un fallo restaura el snapshot anterior.
+- No llama endpoints de persistencia, publicación ni envío. No toca Vendedor.
+
+### Lo que queda (Fase 3+)
+
+- Hidratar `current_document` desde el plan Dueño en Interpret.
+- Persistencia `quote-internal-operational-plan` si hay `quoteId` (fuera de esta fase; Apply actualiza solo el draft local).
 
 ---
 
@@ -180,17 +184,17 @@ Aislamiento, auditoría, plan. Sin implementación de voz.
 - Interpret: POST JSON de texto al endpoint existente. `current_document` vacío en esta fase.
 - Cancel/Close detiene reconocimiento y aborta interpret. Respuestas obsoletas se ignoran.
 - Permiso denegado: mensaje en español entendible. Sin Speech API: mics off, editor + Interpret siguen.
-- Tests: `scripts/test-owner-voice-operational-plan.js` (80 PASS). Tests Vendedor phase1/phase2 sin cambios (PASS).
-- `app.js` no se tocó.
+- Tests: `scripts/test-owner-voice-operational-plan.js` (Phase 1+2). Tests Vendedor phase1/phase2 sin cambios.
+- `app.js` no se tocó. Apply dispara el `change` ya ligado de los overrides de días/horas para reutilizar `refreshOwnerAfterOpChange`.
 
-### Fase 2 — Apply Dueño
+### Fase 2 — Apply Dueño (hecha)
 
-- Confirm and apply → estado `mg_owner_v2` + refresh Dueño.
-- Scope a `#quoteNotes` con preservación explícita si ya hay texto.
-- Labor: respetar el toggle auto-sync Dueño; no inventar cálculo nuevo.
-- Fechas: reutilizar el refresh Dueño; no portar writers de `#salesStartDate`.
-- Si hay `quoteId`, persistir con `quote-internal-operational-plan` (mismo contrato que Vendedor). Si no hay, solo local (Vendedor hace lo mismo).
-- Cancel / close: abort interpret, stop mic, no tocar estado.
+- Confirm and apply → `mg_owner_v2` (`quoteNotes` + `operational_plan`) y refresh Dueño existente.
+- Scope a `#quoteNotes` con advertencia si ya hay texto o días.
+- Labor: el refresh Dueño llama `syncOwnerLaborFromOperationalPlan` (respeta auto-sync). Este script no escribe la tabla de labor.
+- Fechas: el mismo refresh llama `syncOwnerTargetFinish` / calendario. Este script no escribe `#ownerStartDate` ni `#ownerTargetFinishDate`.
+- Sin persistencia de servidor en esta fase (no `quote-internal-operational-plan`, no publish, no send).
+- Cancel / close: abort interpret, stop mic, no tocar estado. Cancelar la advertencia de overwrite tampoco toca estado.
 
 ### Fase 3 — Pruebas y verificación
 
@@ -238,7 +242,7 @@ Los tests existentes `test-voice-operational-plan-phase1.js` y `phase2.js` sigue
 | 2026-09-08 | No extraer ni editar `sales.html`. Reutilizar módulos compartidos sin cambiarlos. |
 | 2026-09-08 | No implementar voz todavía. Siguiente paso: Fase 1 tras PASS del propietario. |
 | 2026-09-08 | Defectos Vendedor se reportan, no se corrigen aquí: mensaje `not-allowed` crudo; no hay Pausa distinta de Stop; abrir el modal borra el transcript; Firefox suele no tener Speech API. |
-| 2026-09-08 | Fase 1 implementada en Dueño: modal preview-only. Confirm deshabilitado. Sin writers a `#quoteNotes`, fechas, labor, `mg_owner_v2` ni servidor. `app.js` no modificado. |
+| 2026-09-08 | Fase 2: Confirm and apply escribe `#quoteNotes` + `operational_plan` en `mg_owner_v2` y dispara el refresh Dueño existente. Sin `app.js`. Sin publish/send. |
 
 ---
 
@@ -273,7 +277,7 @@ Solo lo necesario para paridad. No modificar estos archivos.
 
 ---
 
-## 12. Archivos de la Fase 1
+## 12. Archivos de la Fase 1 y Fase 2
 
 Modificados:
 
@@ -282,7 +286,7 @@ Modificados:
 
 Creados:
 
-- `public/js/owner-voice-operational-plan.js` — captura + interpret + preview. Sin apply.
+- `public/js/owner-voice-operational-plan.js` — captura + interpret + preview + Confirm and apply al draft Dueño.
 - `scripts/test-owner-voice-operational-plan.js`
 
 No modificados (confirmado vs SHA `b02ac41`):
