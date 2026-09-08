@@ -27,42 +27,13 @@ function assignDefinedRpcParam(body, key, value) {
   body[key] = value;
 }
 
-function normEmail(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase();
-}
-
-/**
- * Owner sessions have no ctx.membership. After PR #20 omitted p_membership_id,
- * PostgREST still 404'd (PGRST202) when the live RPC requires a typed uuid.
- * Resolve the tenant owner profile id so the argument is a real uuid.
- */
-async function resolveMembershipIdForRpc(ctx, supabaseReq) {
-  const fromMembership = membershipIdForRpc(ctx && ctx.membership && ctx.membership.id);
-  if (fromMembership) return fromMembership;
-  const email = normEmail(ctx && ctx.session && ctx.session.e);
-  const tenantId = String((ctx && ctx.tenant && ctx.tenant.id) || "").trim();
-  if (!email || !email.includes("@") || !tenantId || !UUID_RE.test(tenantId)) return null;
-  if (typeof supabaseReq !== "function") return null;
-  try {
-    const rows = await supabaseReq(
-      `profiles?email=eq.${encodeURIComponent(email)}&tenant_id=eq.${encodeURIComponent(
-        tenantId
-      )}&role=eq.owner&select=id&limit=1`
-    );
-    const hit = Array.isArray(rows) ? rows[0] : null;
-    return membershipIdForRpc(hit && hit.id);
-  } catch (_err) {
-    return null;
-  }
-}
-
 /**
  * PostgREST matches RPC overloads from JSON keys and inferred types.
  * JSON null has no type, so Owner (no membership) used to send
  * p_membership_id: null and get PGRST202 even though the 11-arg RPC exists.
  * Omit optional nulls and empty arrays so SQL defaults apply.
+ * Owner has no session membership: omit p_membership_id (SQL default NULL).
+ * Do not substitute profiles.id just to obtain a typed uuid.
  */
 function buildConfirmRpcBody(args) {
   const patch = (args && args.quotePatch) || {};
@@ -123,6 +94,7 @@ async function confirmOperationalPlanAtomic(supabaseReq, args) {
   const data = await supabaseReq(`rpc/${INTERNAL_PLAN_RPC}`, {
     method: "POST",
     body: buildConfirmRpcBody(args),
+    prefer: false,
   });
   const result = normalizeRpcResult(data);
   if (!result || result.ok !== true || String(result.quote_id || "") !== String(args.quoteId)) {
@@ -174,7 +146,6 @@ module.exports = {
   textOf,
   isMissingInternalPlanStorage,
   membershipIdForRpc,
-  resolveMembershipIdForRpc,
   buildConfirmRpcBody,
   normalizeRpcResult,
   safePersistLogFields,

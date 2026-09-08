@@ -17,7 +17,6 @@ const voiceOperationalPlan = require("./_lib/voice-operational-plan");
 const {
   isMissingInternalPlanStorage,
   membershipIdForRpc,
-  resolveMembershipIdForRpc,
   persistPublishedInternalPlan,
   safePersistLogFields,
   buildConfirmRpcBody,
@@ -1015,7 +1014,7 @@ exports.handler = async (event) => {
     }
 
     if (opPublish.internalDocument && quoteId) {
-      const membershipId = await resolveMembershipIdForRpc(ctx, supabaseRequest);
+      const membershipId = membershipIdForRpc(ctx.membership && ctx.membership.id);
       const internalPersist = await persistPublishedInternalPlan(supabaseRequest, {
         tenantId: tenant.id,
         quoteId,
@@ -1032,7 +1031,7 @@ exports.handler = async (event) => {
             quote_id: quoteId,
             rollback_ok: Boolean(internalPersist.retrySafe),
             storage_missing: storageMissing,
-            had_membership_uuid: Boolean(membershipId),
+            had_session_membership: Boolean(membershipId),
           },
           safePersistLogFields(internalPersist.persistError)
         );
@@ -1133,6 +1132,5 @@ exports._test = {
   isMissingInternalPlanTable,
   persistPublishedInternalPlan,
   membershipIdForRpc,
-  resolveMembershipIdForRpc,
   buildConfirmRpcBody,
 };

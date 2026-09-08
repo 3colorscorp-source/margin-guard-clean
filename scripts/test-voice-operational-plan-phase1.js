@@ -29,7 +29,6 @@ const {
 const {
   buildConfirmRpcBody,
   membershipIdForRpc,
-  resolveMembershipIdForRpc,
   confirmOperationalPlanAtomic,
 } = require("../netlify/functions/_lib/quote-internal-operational-plan-store");
 const { handleQuoteInternalOperationalPlan } = require("../netlify/functions/quote-internal-operational-plan")._test;
@@ -245,11 +244,20 @@ async function runOwnerInternalPlanPublishHandlerTests() {
   };
   const FAKE_QUOTE_ID = "22222222-2222-4222-8222-222222222222";
   const OWNER_PROFILE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-bbbbbbbbbbbb";
+  const SELLER_MEMBERSHIP_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
   const insertCalls = [];
   const rpcBodies = [];
+  const rpcPrefers = [];
+  const allocatePrefers = [];
+  const quoteInsertPrefers = [];
+  const profileCalls = [];
   const deleteCalls = [];
   let rpcShouldFail = false;
-  let profileLookupMissing = false;
+  let authCtx = {
+    auth_mode: "owner",
+    tenant: { id: TENANT_A },
+    session: { e: "owner@test.example" },
+  };
 
   process.env.SUPABASE_URL = "http://127.0.0.1:9";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "isolated-owner-plan-service-role";
@@ -289,6 +297,7 @@ async function runOwnerInternalPlanPublishHandlerTests() {
       ]);
     }
     if (pathname === "/rest/v1/rpc/allocate_next_quote_number") {
+      allocatePrefers.push(options && options.headers && options.headers.Prefer);
       return jsonRes(200, {
         quote_year: 2026,
         quote_sequence: 1,
@@ -296,6 +305,7 @@ async function runOwnerInternalPlanPublishHandlerTests() {
       });
     }
     if (pathname === "/rest/v1/rpc/mg_confirm_quote_operational_plan") {
+      rpcPrefers.push(options && options.headers && options.headers.Prefer);
       rpcBodies.push(body);
       if (rpcShouldFail === "pgrst202-omitted-membership") {
         if (!Object.prototype.hasOwnProperty.call(body, "p_membership_id")) {
@@ -344,7 +354,7 @@ async function runOwnerInternalPlanPublishHandlerTests() {
       });
     }
     if (pathname === "/rest/v1/profiles") {
-      if (profileLookupMissing) return jsonRes(200, []);
+      profileCalls.push(u);
       return jsonRes(200, [{ id: OWNER_PROFILE_ID }]);
     }
     if (pathname === "/rest/v1/tenants" || pathname === "/rest/v1/tenant_branding") {
@@ -354,6 +364,7 @@ async function runOwnerInternalPlanPublishHandlerTests() {
       return jsonRes(200, []);
     }
     if (pathname === "/rest/v1/quotes" && method === "POST") {
+      quoteInsertPrefers.push(options && options.headers && options.headers.Prefer);
       insertCalls.push(body);
       return jsonRes(201, [{ id: FAKE_QUOTE_ID, tenant_id: TENANT_A, total: body.total }]);
     }
@@ -371,11 +382,7 @@ async function runOwnerInternalPlanPublishHandlerTests() {
     const n = String(request || "").replace(/\\/g, "/");
     if (n === "./_lib/tenant-device-guard" || n.endsWith("/_lib/tenant-device-guard")) {
       return {
-        resolveOwnerOrSellerContext: async () => ({
-          auth_mode: "owner",
-          tenant: { id: TENANT_A },
-          session: { e: "owner@test.example" },
-        }),
+        resolveOwnerOrSellerContext: async () => authCtx,
       };
     }
     return originalLoad.call(this, request, parent, isMain);
@@ -399,6 +406,10 @@ async function runOwnerInternalPlanPublishHandlerTests() {
 
     insertCalls.length = 0;
     rpcBodies.length = 0;
+    rpcPrefers.length = 0;
+    allocatePrefers.length = 0;
+    quoteInsertPrefers.length = 0;
+    profileCalls.length = 0;
     deleteCalls.length = 0;
     rpcShouldFail = false;
     const okRes = await publishMod.handler({
@@ -411,14 +422,17 @@ async function runOwnerInternalPlanPublishHandlerTests() {
     eq("8. owner internal-plan publish inserts once", insertCalls.length, 1);
     eq("8. owner internal-plan publish calls confirm RPC once", rpcBodies.length, 1);
     eq("8. owner internal-plan publish does not rollback", deleteCalls.length, 0);
-    eq("8. owner internal-plan RPC sends looked-up owner membership uuid", rpcBodies[0].p_membership_id, OWNER_PROFILE_ID);
+    eq("8. owner RPC omits p_membership_id when session has no membership", Object.prototype.hasOwnProperty.call(rpcBodies[0] || {}, "p_membership_id"), false);
+    eq("8. owner publish never looks up profiles.id as a stand-in uuid", profileCalls.length, 0);
+    eq("8. owner confirm RPC omits Prefer return=representation", rpcPrefers[0], undefined);
+    eq("8. allocate_next_quote_number still sends Prefer return=representation", allocatePrefers[0], "return=representation");
+    eq("8. quotes INSERT still sends Prefer return=representation", quoteInsertPrefers[0], "return=representation");
     ok("8. owner publish returns public_url for Zapier", Boolean(okBody.public_url && okBody.quote_id && okBody.public_token));
 
     insertCalls.length = 0;
     rpcBodies.length = 0;
     deleteCalls.length = 0;
     rpcShouldFail = "pgrst202-omitted-membership";
-    profileLookupMissing = true;
     const secondRetryRes = await publishMod.handler({
       httpMethod: "POST",
       headers: {},
@@ -426,7 +440,7 @@ async function runOwnerInternalPlanPublishHandlerTests() {
     });
     const secondRetryBody = JSON.parse(secondRetryRes.body || "{}");
     eq("8. second production retry is 503", secondRetryRes.statusCode, 503);
-    eq("8. second production retry omits p_membership_id when owner profile is missing", Object.prototype.hasOwnProperty.call(rpcBodies[0] || {}, "p_membership_id"), false);
+    eq("8. second production retry still omits p_membership_id for Owner", Object.prototype.hasOwnProperty.call(rpcBodies[0] || {}, "p_membership_id"), false);
     eq("8. second production retry rolls back the inserted quote", deleteCalls.length, 1);
     ok("8. second production retry never returns public_url so Zapier is not called", !secondRetryBody.public_url && !secondRetryBody.public_token);
     eq("8. second production retry code is internal_plan_persist_failed", secondRetryBody.code, "internal_plan_persist_failed");
@@ -437,9 +451,35 @@ async function runOwnerInternalPlanPublishHandlerTests() {
 
     insertCalls.length = 0;
     rpcBodies.length = 0;
+    profileCalls.length = 0;
+    deleteCalls.length = 0;
+    rpcShouldFail = false;
+    authCtx = {
+      auth_mode: "device",
+      tenant: { id: TENANT_A },
+      membership: { id: SELLER_MEMBERSHIP_ID },
+      session: null,
+    };
+    const sellerRes = await publishMod.handler({
+      httpMethod: "POST",
+      headers: {},
+      body: JSON.stringify(publishBody),
+    });
+    const sellerBody = JSON.parse(sellerRes.body || "{}");
+    eq("8. seller internal-plan publish status 200", sellerRes.statusCode, 200);
+    eq("8. seller RPC sends session membership id", sellerBody && rpcBodies[0] && rpcBodies[0].p_membership_id, SELLER_MEMBERSHIP_ID);
+    eq("8. seller publish never looks up profiles as a stand-in", profileCalls.length, 0);
+    ok("8. seller publish returns public_url", Boolean(sellerBody.public_url && sellerBody.quote_id));
+
+    insertCalls.length = 0;
+    rpcBodies.length = 0;
     deleteCalls.length = 0;
     rpcShouldFail = true;
-    profileLookupMissing = false;
+    authCtx = {
+      auth_mode: "owner",
+      tenant: { id: TENANT_A },
+      session: { e: "owner@test.example" },
+    };
     const failRes = await publishMod.handler({
       httpMethod: "POST",
       headers: {},
@@ -1106,26 +1146,25 @@ async function main() {
     membershipIdForRpc("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"),
     "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
   );
-
-  const lookedUp = await resolveMembershipIdForRpc(
-    { auth_mode: "owner", tenant: { id: TENANT_A }, session: { e: "Owner@test.example" } },
-    async (path) => {
-      ok(
-        "8. owner membership lookup queries profiles by email and tenant",
-        /profiles\?email=eq\.owner%40test\.example/.test(path) && /tenant_id=eq\./.test(path)
-      );
-      return [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-bbbbbbbbbbbb" }];
-    }
+  const ownerWithLookableProfile = buildConfirmRpcBody({
+    tenantId: TENANT_A,
+    quoteId: QUOTE_A,
+    document: confirmed,
+    membershipId: membershipIdForRpc(null),
+    quotePatch: publishArgs.quotePatch,
+  });
+  ok(
+    "8. owner with a lookable profiles.id still omits p_membership_id without a session membership",
+    !Object.prototype.hasOwnProperty.call(ownerWithLookableProfile, "p_membership_id")
   );
-  eq("8. owner membership lookup returns profile uuid", lookedUp, "aaaaaaaa-aaaa-4aaa-8aaa-bbbbbbbbbbbb");
-  eq(
-    "8. owner membership lookup is null when profile is missing",
-    await resolveMembershipIdForRpc(
-      { auth_mode: "owner", tenant: { id: TENANT_A }, session: { e: "owner@test.example" } },
-      async () => []
-    ),
-    null
-  );
+  const sellerRpcBody = buildConfirmRpcBody({
+    tenantId: TENANT_A,
+    quoteId: QUOTE_A,
+    document: confirmed,
+    membershipId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    quotePatch: publishArgs.quotePatch,
+  });
+  eq("8. seller RPC body uses session membership id", sellerRpcBody.p_membership_id, "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee");
 
   function throwIfUntypedRpcNulls(body) {
     const keys = [
@@ -1170,7 +1209,7 @@ async function main() {
   const ownerAtomicCalls = [];
   const ownerAtomic = await confirmOperationalPlanAtomic(
     async (reqPath, opts) => {
-      ownerAtomicCalls.push(opts && opts.body);
+      ownerAtomicCalls.push(opts);
       throwIfUntypedRpcNulls(opts && opts.body);
       return { ok: true, persisted: true, quote_id: QUOTE_A };
     },
@@ -1183,13 +1222,37 @@ async function main() {
     }
   );
   eq("8. owner confirm RPC succeeds without membership", ownerAtomic.ok, true);
-  ok("8. owner confirm RPC did not send p_membership_id", !Object.prototype.hasOwnProperty.call(ownerAtomicCalls[0], "p_membership_id"));
+  ok("8. owner confirm RPC did not send p_membership_id", !Object.prototype.hasOwnProperty.call(ownerAtomicCalls[0].body, "p_membership_id"));
+  eq("8. owner confirm RPC sets prefer false only for this call", ownerAtomicCalls[0].prefer, false);
 
   await runOwnerInternalPlanPublishHandlerTests();
 
   const endpointSrc = read("netlify/functions/quote-internal-operational-plan.js");
   const publishSrc = read("netlify/functions/publish-public-quote.js");
+  const storeSrc = read("netlify/functions/_lib/quote-internal-operational-plan-store.js");
+  const adminSrc = read("netlify/functions/_lib/supabase-admin.js");
   const sendSrc = read("public/js/estimate-public-send.js");
+  ok("8. publish does not resolve profiles.id as p_membership_id", !/resolveMembershipIdForRpc/.test(publishSrc) && !/profiles\?email=/.test(storeSrc));
+  ok("8. publish uses session membership only", /membershipIdForRpc\(ctx\.membership && ctx\.membership\.id\)/.test(publishSrc));
+  ok("8. confirm RPC is the only supabaseRequest that sets prefer false", /prefer:\s*false/.test(storeSrc));
+  ok("8. supabase-admin does not skip Prefer for every rpc path", !/startsWith\(["']rpc\//.test(adminSrc));
+  ok("8. supabase-admin still defaults Prefer return=representation", /Prefer:[\s\S]*return=representation/.test(adminSrc));
+  function listJsFiles(dir, acc) {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, ent.name);
+      if (ent.isDirectory()) listJsFiles(p, acc);
+      else if (/\.(js|mjs)$/.test(ent.name)) acc.push(p);
+    }
+    return acc;
+  }
+  const preferFalseFiles = listJsFiles(path.join(ROOT, "netlify"), []).filter((p) =>
+    /prefer:\s*false/.test(fs.readFileSync(p, "utf8"))
+  );
+  deepEq(
+    "8. prefer false exists only on the confirm RPC store",
+    preferFalseFiles.map((p) => path.relative(ROOT, p).replace(/\\/g, "/")),
+    ["netlify/functions/_lib/quote-internal-operational-plan-store.js"]
+  );
   ok("9. internal plan endpoint never writes tenant_projects", !/tenant_projects/.test(endpointSrc));
   ok("9. endpoint uses evaluateQuoteEditGuard", /evaluateQuoteEditGuard/.test(endpointSrc));
   ok("9. publish-public-quote still does not create tenant_projects", !/tenant_projects/.test(publishSrc));
@@ -1333,6 +1396,17 @@ async function main() {
   ok("migration grants service_role only", /grant select, insert, update, delete on table public\.quote_internal_operational_plans to service_role/.test(sql));
   ok("migration checks document is object", /jsonb_typeof\(document\) = 'object'/.test(sql));
   ok("migration defines atomic confirm RPC", /create or replace function public\.mg_confirm_quote_operational_plan/.test(sql));
+  ok("atomic RPC p_membership_id is optional uuid default null", /p_membership_id uuid default null/.test(sql));
+  ok(
+    "atomic RPC writes p_membership_id only to last_updated_by_membership_id",
+    /last_updated_by_membership_id,[\s\S]*p_membership_id,/.test(sql)
+  );
+  ok(
+    "membership audit column has no FK and is nullable when the session has none",
+    /last_updated_by_membership_id uuid null/.test(sql) &&
+      /when the session has one/.test(sql) &&
+      !/last_updated_by_membership_id uuid null references/.test(sql)
+  );
   ok("atomic RPC locks the tenant quote", /q\.tenant_id = p_tenant_id[\s\S]*for update/.test(sql));
   ok("atomic RPC updates quote and internal row in one function", /update public\.quotes[\s\S]*insert into public\.quote_internal_operational_plans/.test(sql));
   ok("atomic RPC rechecks accepted status while quote is locked", /v_quote\.accepted_at is not null/.test(sql));
