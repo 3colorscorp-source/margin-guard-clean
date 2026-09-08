@@ -92,6 +92,8 @@ ok("publish does not look up profiles.id as a typed uuid stand-in", !/resolveMem
 const storeSrc = read("netlify/functions/_lib/quote-internal-operational-plan-store.js");
 const adminSrc = read("netlify/functions/_lib/supabase-admin.js");
 ok("confirm RPC is the only supabaseRequest that sets prefer false", /prefer:\s*false/.test(storeSrc));
+ok("publish logs stage failures as one JSON string", /console\.error\("\[publish-public-quote\] " \+ JSON\.stringify/.test(publishSrc));
+ok("publish stage log omits persist_message dumps", !/persist_message/.test(publishSrc));
 ok("supabase-admin does not skip Prefer for every rpc path", !/startsWith\(["']rpc\//.test(adminSrc));
 ok("supabase-admin still defaults Prefer return=representation", /return=representation/.test(adminSrc));
 
@@ -173,7 +175,10 @@ const idxVal = publishSrc.indexOf("validateWorkersForPricing(workersNormalized)"
 const idxInsert = publishSrc.indexOf("async function tryInsertAll");
 ok("normalize before validate", idxNorm > 0 && idxNorm < idxVal);
 ok("validate before INSERT helper", idxVal > 0 && idxVal < idxInsert);
-ok("400 returned on failed worker check", /return json\(400, \{ error: wCheck\.error \}\)/.test(publishSrc));
+ok(
+  "400 returned on failed worker check",
+  /publishStageError\(event, 400, \{[\s\S]*stage: "workers_validation"[\s\S]*code: "workers_incomplete"/.test(publishSrc)
+);
 
 const nanNorm = publishTest.normalizeWorkersLaborDays(
   [{ type: "installer", days: "x", hours: "y" }],
@@ -270,6 +275,36 @@ eq(
   "The operational plan could not be saved, so the quote was not sent. Please try again."
 );
 eq(
+  "maps workers_incomplete code to labor message",
+  friendly(Object.assign(new Error("The quote could not be created, so it was not sent. Please try again."), { code: "workers_incomplete", stage: "workers_validation" })),
+  "Add labor days or hours before sending this estimate."
+);
+eq(
+  "maps empty workers array text to labor message",
+  friendly(new Error("workers must be a non-empty array with labor lines.")),
+  "Add labor days or hours before sending this estimate."
+);
+eq(
+  "maps settings_snapshot_failed to quote-not-created",
+  friendly(Object.assign(new Error("The quote could not be created, so it was not sent. Please try again."), { code: "settings_snapshot_failed", stage: "settings_snapshot" })),
+  "The quote could not be created, so it was not sent. Please try again."
+);
+eq(
+  "maps quote_numbering_failed to quote-not-created",
+  friendly(Object.assign(new Error("The quote could not be created, so it was not sent. Please try again."), { code: "quote_numbering_failed", stage: "quote_numbering" })),
+  "The quote could not be created, so it was not sent. Please try again."
+);
+eq(
+  "maps quote_insert_failed to quote-not-created",
+  friendly(Object.assign(new Error("The quote could not be created, so it was not sent. Please try again."), { code: "quote_insert_failed", stage: "quote_insert" })),
+  "The quote could not be created, so it was not sent. Please try again."
+);
+eq(
+  "does not classify settings snapshot dump as operational plan",
+  friendly(Object.assign(new Error("Supabase HTTP 503: snapshot unavailable"), { code: "settings_snapshot_failed", stage: "settings_snapshot" })),
+  "The quote could not be created, so it was not sent. Please try again."
+);
+eq(
   "maps second-retry PostgREST dump without persist copy",
   friendly(
     new Error(
@@ -311,8 +346,9 @@ eq(
   "Operational plan storage is not ready, so the quote was not sent. Contact support if this continues."
 );
 ok(
-  "unmapped errors stay generic without leaking bodies",
-  friendly(new Error("supabase service_role xyz")) === "Something went wrong. Please try again."
+  "unmapped errors stay quote-not-created without leaking bodies",
+  friendly(new Error("supabase service_role xyz")) ===
+    "The quote could not be created, so it was not sent. Please try again."
 );
 
 ok(
@@ -488,6 +524,8 @@ async function runIsolatedPublishHandlerTests() {
     const emptyPublish = parseHandler(await invokePublish(emptyBody));
     const emptyFetches = fetchLog.slice(emptyFetchMark);
     eq("handler empty labor status 400", emptyPublish.status, 400);
+    eq("handler empty labor code", emptyPublish.body.code, "workers_incomplete");
+    eq("handler empty labor stage", emptyPublish.body.stage, "workers_validation");
     ok(
       "handler empty labor INSERT never called",
       insertCalls.length === 0 &&
@@ -495,9 +533,10 @@ async function runIsolatedPublishHandlerTests() {
           (row) => !(row.method === "POST" && new URL(row.url).pathname === "/rest/v1/quotes")
         )
     );
-    ok(
-      "handler empty labor error is workers days",
-      /days greater than zero/i.test(String(emptyPublish.body.error || ""))
+    eq(
+      "handler empty labor error is actionable",
+      emptyPublish.body.error,
+      "Add labor days or hours before sending this estimate."
     );
 
     insertCalls.length = 0;

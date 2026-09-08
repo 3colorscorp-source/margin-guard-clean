@@ -239,6 +239,7 @@
     }
     var err = new Error(message);
     if (parsed.code) err.code = String(parsed.code);
+    if (parsed.stage) err.stage = String(parsed.stage);
     if (response && response.status) err.status = response.status;
     throw err;
   }
@@ -246,11 +247,16 @@
   function friendlySendFailureMessage(err) {
     var raw = err && (err.message || String(err));
     var code = err && err.code != null ? String(err.code) : "";
+    var stage = err && err.stage != null ? String(err.stage) : "";
     if (!code) {
       var codeMatch = /"code"\s*:\s*"([^"]+)"/.exec(String(raw || ""));
       if (codeMatch) code = codeMatch[1];
     }
-    var blob = (code + " " + raw).toLowerCase();
+    if (!stage) {
+      var stageMatch = /"stage"\s*:\s*"([^"]+)"/.exec(String(raw || ""));
+      if (stageMatch) stage = stageMatch[1];
+    }
+    var blob = (code + " " + stage + " " + raw).toLowerCase();
     if (/Unable to create public quote link/i.test(raw)) {
       return "We couldn't create the public link. Please try again.";
     }
@@ -266,7 +272,10 @@
     if (/PDF generation failed/i.test(raw)) {
       return "We couldn't generate the PDF. Refresh the page and try again.";
     }
-    if (/days greater than zero|Each labor line needs days/i.test(raw)) {
+    if (
+      /workers_incomplete|workers_validation/.test(blob) ||
+      /days greater than zero|Each labor line needs days|must be a non-empty array with labor lines/i.test(raw)
+    ) {
       return "Add labor days or hours before sending this estimate.";
     }
     if (/Offered price cannot be below the minimum allowed/i.test(raw)) {
@@ -282,20 +291,26 @@
       return "Operational plan storage is not ready, so the quote was not sent. Contact support if this continues.";
     }
     if (
-      /internal_plan_|document_invalid|document_not_object/.test(blob) ||
-      /operational plan could not be saved|internal_plan_persist_failed|p_operational_plan must be a json array|mg_confirm_quote_operational_plan|transaction did not confirm|hours_per_worker|operational plan document must be a json object/i.test(
+      stage === "operational_plan_persist" ||
+      /internal_plan_persist_failed|document_invalid|document_not_object/.test(blob) ||
+      /operational plan could not be saved|p_operational_plan must be a json array|mg_confirm_quote_operational_plan|transaction did not confirm|hours_per_worker|operational plan document must be a json object/i.test(
         raw
       )
     ) {
       return "The operational plan could not be saved, so the quote was not sent. Please try again.";
     }
-    if (/quote_insert_failed/.test(blob) || /couldn't save the quote/i.test(raw)) {
-      return "We couldn't save the quote. Please try again.";
-    }
     if (/computed total or deposit is invalid|scheduling payment/i.test(raw)) {
       return "The quote total or Initial Scheduling Payment is invalid. Refresh the page and try again.";
     }
-    return "Something went wrong. Please try again.";
+    if (
+      /settings_snapshot|quote_numbering|quote_insert|publish_failed|server_error|workers_incomplete/.test(blob) ||
+      /quote could not be created, so it was not sent/i.test(raw) ||
+      /Supabase HTTP/i.test(raw) ||
+      /couldn't save the quote/i.test(raw)
+    ) {
+      return "The quote could not be created, so it was not sent. Please try again.";
+    }
+    return "The quote could not be created, so it was not sent. Please try again.";
   }
 
   global[NS] = {
