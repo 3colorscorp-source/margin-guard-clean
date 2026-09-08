@@ -10094,6 +10094,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
     }
   }
 
+  // sales.html owns the final click binding for the shared send modal. Expose
+  // the Owner-specific publisher so that binding can preserve Owner pricing
+  // state instead of falling through to the standalone Seller draft.
+  window.runMarginGuardOwnerSellerPublicSend = runOwnerSellerPublicSend;
+
   async function sendQuote(state, settings, metrics, options = {}) {
   if ($("ownerKpis")) {
     await runOwnerSellerPublicSend();
@@ -20531,7 +20536,6 @@ window.renderSupervisor = renderSupervisor;
     }
   });
 })();
-
 
 
 

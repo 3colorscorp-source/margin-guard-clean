@@ -189,8 +189,8 @@ ok(
     /Number\.isFinite\(reservePctRaw\)/.test(salesSrc)
 );
 ok(
-  "owner sales page cache-busts the corrected app calculation",
-  /\/js\/app\.js\?v=owner-total-parity-1/.test(salesSrc)
+  "owner sales page cache-busts the corrected send handler",
+  /\/js\/app\.js\?v=owner-send-handler-1/.test(salesSrc)
 );
 
 const fiveDay = [{ name: "Pro 1", type: "installer", days: 5, hours: 99 }];
@@ -238,8 +238,55 @@ ok(
   /get\('portal'\) === 'seller'/.test(salesSrc) && /function isSellerPortalUrlActive/.test(salesSrc)
 );
 ok(
-  "owner and seller share runSellerSend on sales.html",
+  "seller keeps standalone runSellerSend on sales.html",
   /async function runSellerSend/.test(salesSrc)
+);
+ok(
+  "app exposes the Owner-specific public sender to the shared modal",
+  /window\.runMarginGuardOwnerSellerPublicSend\s*=\s*runOwnerSellerPublicSend/.test(appSrc)
+);
+const activePortalSend = salesSrc.indexOf("async function runSendForActivePortal");
+const ownerPortalCheck = salesSrc.indexOf("document.getElementById('ownerKpis')", activePortalSend);
+const ownerSendCall = salesSrc.indexOf("return await ownerSend()", ownerPortalCheck);
+const sellerSendFallback = salesSrc.indexOf("return runSellerSend(event)", ownerSendCall);
+const activePortalBinding = salesSrc.indexOf(
+  "cleanSendNow.addEventListener('click', runSendForActivePortal, true)",
+  sellerSendFallback
+);
+ok(
+  "Owner modal click routes to the Owner-specific sender",
+  activePortalSend > 0 && ownerPortalCheck > activePortalSend && ownerSendCall > ownerPortalCheck
+);
+ok(
+  "Seller modal click still falls back to standalone sender",
+  sellerSendFallback > ownerSendCall
+);
+ok(
+  "shared modal binds the portal router instead of runSellerSend directly",
+  activePortalBinding > sellerSendFallback &&
+    !/cleanSendNow\.addEventListener\('click', runSellerSend, true\)/.test(salesSrc)
+);
+ok(
+  "Owner modal route shares the in-flight double-click guard",
+  salesSrc.indexOf("if (sellerSendInFlight) return false", ownerPortalCheck) > ownerPortalCheck &&
+    salesSrc.indexOf("sellerSendInFlight = false", ownerSendCall) > ownerSendCall
+);
+const ownerPublisherStart = appSrc.indexOf("async function runOwnerSellerPublicSend");
+const ownerPublisherEnd = appSrc.indexOf("async function sendQuote", ownerPublisherStart);
+const ownerPublisherSrc = appSrc.slice(ownerPublisherStart, ownerPublisherEnd);
+const ownerSyncBeforePublish = ownerPublisherSrc.indexOf("syncOwnerDraftToSalesStateForPublicSend");
+const ownerFreshMetrics = ownerPublisherSrc.indexOf("const smPublish = calculateSalesMetrics");
+const ownerFreshTotal = ownerPublisherSrc.indexOf(
+  "const estimateTotal = Number(smPublish.offered || smPublish.recommended || 0)",
+  ownerFreshMetrics
+);
+const ownerPublishFetch = ownerPublisherSrc.indexOf("/.netlify/functions/publish-public-quote", ownerFreshTotal);
+ok(
+  "Owner click cannot publish the stale standalone modal total",
+  ownerSyncBeforePublish > 0 &&
+    ownerFreshMetrics > ownerSyncBeforePublish &&
+    ownerFreshTotal > ownerFreshMetrics &&
+    ownerPublishFetch > ownerFreshTotal
 );
 
 const secondFill = salesSrc.indexOf("await fillSendModal();", salesSrc.indexOf("Creating public quote link"));

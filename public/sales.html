@@ -1910,7 +1910,7 @@
   <script src="/js/sales-operational-plan.js"></script>
   <script src="/js/sales-capacity-calendar.js"></script>
   <script src="/js/voice-operational-plan.js"></script>
-  <script src="/js/app.js?v=owner-total-parity-1"></script>
+  <script src="/js/app.js?v=owner-send-handler-1"></script>
   <script>
     (function () {
       const SALES_KEY = 'mg_sales_v2';
@@ -11736,6 +11736,24 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
     }
   }
 
+  async function runSendForActivePortal(event) {
+    const ownerSend = window.runMarginGuardOwnerSellerPublicSend;
+    if (document.getElementById('ownerKpis') && typeof ownerSend === 'function') {
+      if (event) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+      if (sellerSendInFlight) return false;
+      sellerSendInFlight = true;
+      try {
+        return await ownerSend();
+      } finally {
+        sellerSendInFlight = false;
+      }
+    }
+    return runSellerSend(event);
+  }
+
   window.runMarginGuardSellerSend = runSellerSend;
   window.runSellerPublishPublicLinkOnly = runSellerPublishPublicLinkOnly;
   window.getSalesPublishedQuoteSnapshot = getSalesPublishedQuoteSnapshot;
@@ -11767,7 +11785,7 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
     const cleanSendNow = sendNow.cloneNode(true);
     cleanSendNow.removeAttribute('onclick');
     sendNow.parentNode.replaceChild(cleanSendNow, sendNow);
-    cleanSendNow.addEventListener('click', runSellerSend, true);
+    cleanSendNow.addEventListener('click', runSendForActivePortal, true);
   }
 }
 
