@@ -16,7 +16,10 @@ const {
 const voiceOperationalPlan = require("./_lib/voice-operational-plan");
 const {
   isMissingInternalPlanStorage,
+  membershipIdForRpc,
   persistPublishedInternalPlan,
+  safePersistLogFields,
+  buildConfirmRpcBody,
 } = require("./_lib/quote-internal-operational-plan-store");
 
 const fetch = globalThis.fetch;
@@ -1003,16 +1006,28 @@ exports.handler = async (event) => {
         tenantId: tenant.id,
         quoteId,
         document: opPublish.internalDocument,
-        membershipId: String((ctx.membership && ctx.membership.id) || "").trim() || null,
+        membershipId: membershipIdForRpc(ctx.membership && ctx.membership.id),
         quotePatch: opPublish.fields,
       });
       if (!internalPersist.ok) {
         const storageMissing = isMissingInternalPlanStorage(internalPersist.persistError);
+        console.error(
+          "[publish-public-quote] internal operational plan persist failed",
+          Object.assign(
+            {
+              tenant_id: tenant.id,
+              quote_id: quoteId,
+              rollback_ok: Boolean(internalPersist.retrySafe),
+              storage_missing: storageMissing,
+            },
+            safePersistLogFields(internalPersist.persistError)
+          )
+        );
         return json(503, {
           ok: false,
           error: storageMissing
-            ? "Internal operational plan storage is not installed. Apply SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS.sql, then retry."
-            : "The operational plan could not be saved, so the quote was not published.",
+            ? "Operational plan storage is not ready, so the quote was not sent. Contact support if this continues."
+            : "The operational plan could not be saved, so the quote was not sent. Please try again.",
           code: storageMissing
             ? "internal_plan_storage_missing"
             : "internal_plan_persist_failed",
@@ -1084,4 +1099,6 @@ exports._test = {
   parseOperationalPublishFields,
   isMissingInternalPlanTable,
   persistPublishedInternalPlan,
+  membershipIdForRpc,
+  buildConfirmRpcBody,
 };

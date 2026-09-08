@@ -16,6 +16,7 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
+const Module = require("module");
 const { spawnSync } = require("child_process");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -25,6 +26,11 @@ const {
   resolveHoursPerDayForLabor,
   persistPublishedInternalPlan,
 } = require("../netlify/functions/publish-public-quote")._test;
+const {
+  buildConfirmRpcBody,
+  membershipIdForRpc,
+  confirmOperationalPlanAtomic,
+} = require("../netlify/functions/_lib/quote-internal-operational-plan-store");
 const { handleQuoteInternalOperationalPlan } = require("../netlify/functions/quote-internal-operational-plan")._test;
 const { pickPublicEstimateFields, QUOTE_PUBLIC_KEYS } = require("../netlify/functions/get-public-estimate")._test;
 const { handlePublicEstimateStatus } = require("../netlify/functions/update-public-estimate-status")._test;
@@ -177,6 +183,242 @@ function ownerCtx(tenantId) {
     tenant: { id: tenantId },
     membership: { id: "aaaaaaaa-aaaa-4aaa-8aaa-bbbbbbbbbbbb", role: "owner" },
   };
+}
+
+function bathroomPlanDocument() {
+  return {
+    days: [
+      { day_number: 1, client_scope: "Protect floors, hallways, and walls" },
+      { day_number: 2, client_scope: "Demolition and preparation" },
+      { day_number: 3, client_scope: "Waterproof + pan" },
+      { day_number: 4, client_scope: "Tile install" },
+      { day_number: 5, client_scope: "Grout + glass prep" },
+    ],
+  };
+}
+
+function jsonRes(status, data) {
+  const text = JSON.stringify(data);
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => text,
+  };
+}
+
+function throwIfUntypedRpcNulls(body) {
+  const keys = [
+    "p_membership_id",
+    "p_scope_of_work",
+    "p_start_date",
+    "p_due_date",
+    "p_estimated_days",
+    "p_estimated_hours",
+  ];
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(body, key) && body[key] == null) {
+      const err = new Error(
+        "Could not find the function public.mg_confirm_quote_operational_plan in the schema cache (PGRST202)"
+      );
+      err.status = 404;
+      throw err;
+    }
+  }
+}
+
+function bustNetlifyFunctionsCache() {
+  for (const key of Object.keys(require.cache)) {
+    if (key.replace(/\\/g, "/").includes("/netlify/functions/")) {
+      delete require.cache[key];
+    }
+  }
+}
+
+async function runOwnerInternalPlanPublishHandlerTests() {
+  const originalLoad = Module._load;
+  const originalFetch = globalThis.fetch;
+  const envBackup = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    URL: process.env.URL,
+  };
+  const FAKE_QUOTE_ID = "22222222-2222-4222-8222-222222222222";
+  const insertCalls = [];
+  const rpcBodies = [];
+  const deleteCalls = [];
+  let rpcShouldFail = false;
+
+  process.env.SUPABASE_URL = "http://127.0.0.1:9";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "isolated-owner-plan-service-role";
+  process.env.URL = "https://marginguardsystem.netlify.app";
+
+  async function mockFetch(url, options) {
+    const u = String(url);
+    const method = String((options && options.method) || "GET").toUpperCase();
+    if (/netlify|zapier/i.test(u) || !u.startsWith("http://127.0.0.1:9")) {
+      throw new Error("blocked non-isolated fetch: " + u);
+    }
+    const parsed = new URL(u);
+    const pathname = parsed.pathname;
+    const body = options && options.body ? JSON.parse(options.body) : {};
+
+    if (pathname === "/rest/v1/tenant_snapshots") {
+      return jsonRes(200, [
+        {
+          payload: {
+            storage: {
+              mg_settings_v2: {
+                hoursPerDay: 8,
+                baseInstaller: 75,
+                baseHelper: 45,
+                wcPct: 0,
+                ficaPct: 0,
+                futaPct: 0,
+                casuiPct: 0,
+                stdHours: 160,
+                overheadMonthly: 0,
+                profitPct: 30,
+                reservePct: 5,
+              },
+            },
+          },
+        },
+      ]);
+    }
+    if (pathname === "/rest/v1/rpc/allocate_next_quote_number") {
+      return jsonRes(200, {
+        quote_year: 2026,
+        quote_sequence: 1,
+        quote_number_display: "2026-001",
+      });
+    }
+    if (pathname === "/rest/v1/rpc/mg_confirm_quote_operational_plan") {
+      rpcBodies.push(body);
+      if (rpcShouldFail) {
+        return {
+          ok: false,
+          status: 500,
+          text: async () =>
+            JSON.stringify({
+              code: "22023",
+              message: "p_operational_plan must be a JSON array",
+            }),
+        };
+      }
+      try {
+        throwIfUntypedRpcNulls(body);
+      } catch (err) {
+        return {
+          ok: false,
+          status: 404,
+          text: async () =>
+            JSON.stringify({
+              code: "PGRST202",
+              message: err.message,
+            }),
+        };
+      }
+      return jsonRes(200, {
+        ok: true,
+        persisted: true,
+        quote_id: body.p_quote_id || FAKE_QUOTE_ID,
+      });
+    }
+    if (pathname === "/rest/v1/tenants" || pathname === "/rest/v1/tenant_branding") {
+      return jsonRes(200, []);
+    }
+    if (pathname === "/rest/v1/quotes" && method === "GET") {
+      return jsonRes(200, []);
+    }
+    if (pathname === "/rest/v1/quotes" && method === "POST") {
+      insertCalls.push(body);
+      return jsonRes(201, [{ id: FAKE_QUOTE_ID, tenant_id: TENANT_A, total: body.total }]);
+    }
+    if (pathname === "/rest/v1/quotes" && method === "DELETE") {
+      deleteCalls.push(u);
+      return jsonRes(200, [{ id: FAKE_QUOTE_ID }]);
+    }
+    if (pathname === "/rest/v1/tenant_contacts") {
+      return jsonRes(200, []);
+    }
+    throw new Error("unexpected isolated fetch: " + method + " " + u);
+  }
+
+  Module._load = function patchedLoad(request, parent, isMain) {
+    const n = String(request || "").replace(/\\/g, "/");
+    if (n === "./_lib/tenant-device-guard" || n.endsWith("/_lib/tenant-device-guard")) {
+      return {
+        resolveOwnerOrSellerContext: async () => ({
+          auth_mode: "owner",
+          tenant: { id: TENANT_A },
+          session: { e: "owner@test.example" },
+        }),
+      };
+    }
+    return originalLoad.call(this, request, parent, isMain);
+  };
+  globalThis.fetch = mockFetch;
+
+  try {
+    bustNetlifyFunctionsCache();
+    const publishMod = require("../netlify/functions/publish-public-quote");
+    const publishBody = {
+      workers: [{ name: "Pro 1", type: "installer", days: 0, hours: 50 }],
+      pricing_stage: 2,
+      project_name: "Bathroom remodel",
+      client_name: "Test Client",
+      client_email: "client@test.example",
+      start_date: "2026-09-10",
+      target_finish_date: "2026-09-16",
+      status: "READY_TO_SEND",
+      internal_operational_plan: bathroomPlanDocument(),
+    };
+
+    insertCalls.length = 0;
+    rpcBodies.length = 0;
+    deleteCalls.length = 0;
+    rpcShouldFail = false;
+    const okRes = await publishMod.handler({
+      httpMethod: "POST",
+      headers: {},
+      body: JSON.stringify(publishBody),
+    });
+    const okBody = JSON.parse(okRes.body || "{}");
+    eq("8. owner internal-plan publish status 200", okRes.statusCode, 200);
+    eq("8. owner internal-plan publish inserts once", insertCalls.length, 1);
+    eq("8. owner internal-plan publish calls confirm RPC once", rpcBodies.length, 1);
+    eq("8. owner internal-plan publish does not rollback", deleteCalls.length, 0);
+    ok("8. owner internal-plan RPC omits p_membership_id", !Object.prototype.hasOwnProperty.call(rpcBodies[0], "p_membership_id"));
+    ok("8. owner publish returns public_url for Zapier", Boolean(okBody.public_url && okBody.quote_id && okBody.public_token));
+
+    insertCalls.length = 0;
+    rpcBodies.length = 0;
+    deleteCalls.length = 0;
+    rpcShouldFail = true;
+    const failRes = await publishMod.handler({
+      httpMethod: "POST",
+      headers: {},
+      body: JSON.stringify(publishBody),
+    });
+    const failBody = JSON.parse(failRes.body || "{}");
+    eq("8. persist failure is 503", failRes.statusCode, 503);
+    eq("8. persist failure rolls back the new quote", deleteCalls.length, 1);
+    eq("8. persist failure inserts once", insertCalls.length, 1);
+    ok("8. persist failure omits public_url so Zapier is not called", !failBody.public_url && !failBody.public_token);
+    eq("8. persist failure code is internal_plan_persist_failed", failBody.code, "internal_plan_persist_failed");
+    ok(
+      "8. persist failure message is actionable",
+      /operational plan could not be saved/i.test(String(failBody.error || ""))
+    );
+    ok("8. persist failure does not include SQL file names", !/SUPABASE_/i.test(String(failBody.error || "")));
+  } finally {
+    Module._load = originalLoad;
+    globalThis.fetch = originalFetch;
+    process.env.SUPABASE_URL = envBackup.SUPABASE_URL;
+    process.env.SUPABASE_SERVICE_ROLE_KEY = envBackup.SUPABASE_SERVICE_ROLE_KEY;
+    process.env.URL = envBackup.URL;
+    bustNetlifyFunctionsCache();
+  }
 }
 
 async function main() {
@@ -794,6 +1036,83 @@ async function main() {
   eq("8. successful publish atomic persistence succeeds", publishAtomicOk.ok, true);
   eq("8. successful publish never rolls back quote", publishDeleteCount, 0);
 
+  const ownerRpcBody = buildConfirmRpcBody({
+    tenantId: TENANT_A,
+    quoteId: QUOTE_A,
+    document: confirmed,
+    membershipId: null,
+    quotePatch: publishArgs.quotePatch,
+  });
+  ok("8. owner RPC omits untyped p_membership_id null", !Object.prototype.hasOwnProperty.call(ownerRpcBody, "p_membership_id"));
+  ok("8. owner RPC omits empty p_scope_of_work null", !Object.prototype.hasOwnProperty.call(ownerRpcBody, "p_scope_of_work") || ownerRpcBody.p_scope_of_work);
+  eq("8. owner membershipIdForRpc is null", membershipIdForRpc(""), null);
+  eq("8. owner membershipIdForRpc rejects non-uuid", membershipIdForRpc("owner"), null);
+  eq(
+    "8. seller membership UUID is kept",
+    membershipIdForRpc("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"),
+    "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+  );
+
+  function throwIfUntypedRpcNulls(body) {
+    const keys = [
+      "p_membership_id",
+      "p_scope_of_work",
+      "p_start_date",
+      "p_due_date",
+      "p_estimated_days",
+      "p_estimated_hours",
+    ];
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(body, key) && body[key] == null) {
+        const err = new Error(
+          "Could not find the function public.mg_confirm_quote_operational_plan in the schema cache (PGRST202)"
+        );
+        err.status = 404;
+        throw err;
+      }
+    }
+  }
+
+  let legacyNullThrew = false;
+  try {
+    throwIfUntypedRpcNulls({
+      p_tenant_id: TENANT_A,
+      p_quote_id: QUOTE_A,
+      p_document: confirmed,
+      p_schema_version: 1,
+      p_membership_id: null,
+      p_operational_plan: [],
+      p_estimated_days: 5,
+      p_estimated_hours: 40,
+      p_start_date: "2026-09-10",
+      p_due_date: "2026-09-16",
+      p_scope_of_work: null,
+    });
+  } catch (err) {
+    legacyNullThrew = /PGRST202/.test(String(err && err.message));
+  }
+  ok("8. production owner null membership reproduces PGRST202", legacyNullThrew);
+
+  const ownerAtomicCalls = [];
+  const ownerAtomic = await confirmOperationalPlanAtomic(
+    async (reqPath, opts) => {
+      ownerAtomicCalls.push(opts && opts.body);
+      throwIfUntypedRpcNulls(opts && opts.body);
+      return { ok: true, persisted: true, quote_id: QUOTE_A };
+    },
+    {
+      tenantId: TENANT_A,
+      quoteId: QUOTE_A,
+      document: confirmed,
+      membershipId: null,
+      quotePatch: publishArgs.quotePatch,
+    }
+  );
+  eq("8. owner confirm RPC succeeds without membership", ownerAtomic.ok, true);
+  ok("8. owner confirm RPC did not send p_membership_id", !Object.prototype.hasOwnProperty.call(ownerAtomicCalls[0], "p_membership_id"));
+
+  await runOwnerInternalPlanPublishHandlerTests();
+
   const endpointSrc = read("netlify/functions/quote-internal-operational-plan.js");
   const publishSrc = read("netlify/functions/publish-public-quote.js");
   const sendSrc = read("public/js/estimate-public-send.js");
@@ -915,6 +1234,18 @@ async function main() {
   ok("UI shows Saving… while persisting", /Saving…/.test(salesSrc));
   ok("UI does not apply on fire-and-forget fetch", !/\.catch\(function \(\) \{ \/\* local confirm already applied/.test(salesSrc));
   ok("UI requires confirm_sent_update retry", /confirm_sent_update/.test(salesSrc));
+  ok("single send click is guarded by sellerSendInFlight", /if \(sellerSendInFlight\) return false/.test(salesSrc) && /sellerSendInFlight = true/.test(salesSrc));
+  ok("owner send path still does not require device_session", !/device_session/.test(salesSrc.slice(salesSrc.indexOf("async function runSellerSend"), salesSrc.indexOf("window.runMarginGuardSellerSend"))));
+  const fbSrc = read("public/js/quote-send-feedback.js");
+  ok(
+    "send UI maps persist failure to an actionable message",
+    /operational plan could not be saved/i.test(fbSrc) && /internal_plan_persist_failed/.test(fbSrc)
+  );
+  ok(
+    "send UI maps missing storage without leaking SQL file names",
+    /Operational plan storage is not ready/.test(fbSrc) && !/SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS/.test(fbSrc)
+  );
+  ok("send UI keeps unknown errors generic", /Something went wrong\. Please try again\./.test(fbSrc));
   ok("old quotes.internal_operational_plan migration is gone", !fs.existsSync(path.join(ROOT, "SUPABASE_QUOTES_INTERNAL_OPERATIONAL_PLAN.sql")));
   ok("dedicated table migration exists", fs.existsSync(path.join(ROOT, "SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS.sql")));
   const sql = read("SUPABASE_QUOTE_INTERNAL_OPERATIONAL_PLANS.sql");

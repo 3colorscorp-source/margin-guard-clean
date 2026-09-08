@@ -10879,6 +10879,7 @@ async function openSellerSendModal(event) {
   }
 
   let sellerPublishInFlight = false;
+  let sellerSendInFlight = false;
 
   async function runSellerPublishPublicLinkOnly() {
     if (document.documentElement.dataset.authMode !== 'device') {
@@ -11057,6 +11058,9 @@ async function runSellerSend(event) {
       event.preventDefault();
       event.stopImmediatePropagation();
     }
+    if (sellerSendInFlight) return false;
+    sellerSendInFlight = true;
+    try {
 
     await fillSendModal();
 
@@ -11710,6 +11714,9 @@ modal.dataset.pdf = JSON.stringify(rebuiltPdf || {});
           sendButton.textContent = 'Confirmar y enviar estimate';
         }
       }
+    }
+    } finally {
+      sellerSendInFlight = false;
     }
   }
 
