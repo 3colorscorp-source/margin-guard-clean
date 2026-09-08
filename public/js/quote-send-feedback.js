@@ -269,7 +269,7 @@
     if (/days greater than zero|Each labor line needs days/i.test(raw)) {
       return "Add labor days or hours before sending this estimate.";
     }
-    if (/Offered price cannot be below the minimum allowed/i.test(raw)) {
+    if (/Offered price cannot be below the minimum allowed|Published total must be at least the account minimum/i.test(raw)) {
       return "The quote price is below the minimum allowed. Refresh the page and try again.";
     }
     if (/quote_not_sendable|cannot be sent in its current status/i.test(raw)) {

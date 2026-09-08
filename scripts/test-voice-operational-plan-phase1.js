@@ -1380,7 +1380,10 @@ async function main() {
   );
   ok("send UI maps second-retry PostgREST dump without persist copy", /mg_confirm_quote_operational_plan/.test(fbSrc));
   ok("send UI maps document_invalid", /document_invalid/.test(fbSrc));
-  ok("send UI cache-busts quote-send-feedback.js", /quote-send-feedback\.js\?v=send-retry-2/.test(salesSrc));
+  ok(
+    "send UI cache-busts quote-send-feedback.js",
+    /quote-send-feedback\.js\?v=owner-total-parity-1/.test(salesSrc)
+  );
   ok("send UI throws publish failures with code", /throwFromPublishResponse/.test(salesSrc));
   ok(
     "send UI maps missing storage without leaking SQL file names",
