@@ -1021,6 +1021,7 @@ Thank you.`
     const bId = prev.businessId;
     if (bId !== undefined && bId !== null && String(bId).trim() !== "") fresh.businessId = bId;
     saveOwner(fresh, calcOwner(fresh, settings));
+    clearOwnerQuoteCalendarState();
     if (typeof console !== "undefined" && console.log) {
       console.log("[Owner New Quote] reset complete");
     }
@@ -7912,6 +7913,22 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
 
   let ownerCapacityRefreshTimer = null;
 
+  function clearOwnerQuoteCalendarState() {
+    clearTimeout(ownerCapacityRefreshTimer);
+    ownerCapacityRefreshTimer = null;
+    const salesCap = window.MarginGuardSalesCapacity;
+    if (salesCap && typeof salesCap.nextCapacityGeneration === "function") {
+      salesCap.nextCapacityGeneration("owner");
+    }
+    window.__mgOwnerCapacityCalendar = null;
+    window.__mgOwnerCapacityUnverified = false;
+    const calendar = $("ownerOpCalendarPreview");
+    if (calendar) {
+      calendar.innerHTML =
+        '<div class="sales-op-empty">Add plan days to preview the schedule on the calendar.</div>';
+    }
+  }
+
   function syncOwnerTargetFinish(state, settings, startYmd, projectedFinishDate) {
     const salesCap = window.MarginGuardSalesCapacity;
     const ownerCap = window.MarginGuardOwnerCapacity;
@@ -10021,7 +10038,11 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
         }
         try {
           resetOwnerDraftToNewQuote();
-          resetSalesDraftToNewQuote();
+          if (typeof window.resetMarginGuardSalesQuoteWorkspaceAfterSend === "function") {
+            window.resetMarginGuardSalesQuoteWorkspaceAfterSend();
+          } else {
+            resetSalesDraftToNewQuote();
+          }
           const owner = loadOwner();
           owner.workers = [
             { name: "Pro 1", type: "pro", hours: 0, rate: "", cost: 0 },

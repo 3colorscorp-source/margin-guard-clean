@@ -189,8 +189,8 @@ ok(
     /Number\.isFinite\(reservePctRaw\)/.test(salesSrc)
 );
 ok(
-  "owner sales page cache-busts the corrected send handler",
-  /\/js\/app\.js\?v=owner-send-handler-1/.test(salesSrc)
+  "owner sales page cache-busts the post-send calendar reset",
+  /\/js\/app\.js\?v=post-send-calendar-reset-1/.test(salesSrc)
 );
 
 const fiveDay = [{ name: "Pro 1", type: "installer", days: 5, hours: 99 }];
@@ -287,6 +287,17 @@ ok(
     ownerFreshMetrics > ownerSyncBeforePublish &&
     ownerFreshTotal > ownerFreshMetrics &&
     ownerPublishFetch > ownerFreshTotal
+);
+ok(
+  "successful Owner send uses the complete sales workspace reset",
+  /window\.resetMarginGuardSalesQuoteWorkspaceAfterSend\s*=\s*resetSalesQuoteWorkspaceAfterSend/.test(salesSrc) &&
+    /typeof window\.resetMarginGuardSalesQuoteWorkspaceAfterSend === ["']function["'][\s\S]{0,180}window\.resetMarginGuardSalesQuoteWorkspaceAfterSend\(\)/.test(appSrc)
+);
+ok(
+  "post-send calendar reset invalidates pending capacity responses",
+  /nextCapacityGeneration\(['"]sales['"]\)/.test(salesSrc) &&
+    /nextCapacityGeneration\(["']owner["']\)/.test(appSrc) &&
+    /window\.__mgOwnerCapacityCalendar = null/.test(appSrc)
 );
 
 const secondFill = salesSrc.indexOf("await fillSendModal();", salesSrc.indexOf("Creating public quote link"));

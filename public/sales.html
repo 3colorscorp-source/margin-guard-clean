@@ -1901,7 +1901,7 @@
   <script src="/js/sales-operational-plan.js"></script>
   <script src="/js/sales-capacity-calendar.js"></script>
   <script src="/js/voice-operational-plan.js"></script>
-  <script src="/js/app.js?v=owner-send-handler-1"></script>
+  <script src="/js/app.js?v=post-send-calendar-reset-1"></script>
   <script>
     (function () {
       const SALES_KEY = 'mg_sales_v2';
@@ -8939,6 +8939,10 @@
         if (hoursOverrideInput) hoursOverrideInput.value = '';
         window.__mgSalesCapacityCalendar = null;
         window.__mgSalesCapacityUnverified = false;
+        const capacityApi = window.MarginGuardSalesCapacity;
+        if (capacityApi && typeof capacityApi.nextCapacityGeneration === 'function') {
+          capacityApi.nextCapacityGeneration('sales');
+        }
         window.__mgSellerLastValidRecommendedPrice = 0;
         const crewAvail = document.getElementById('salesOpCrewAvailability');
         if (crewAvail) {
@@ -9151,15 +9155,21 @@
         return typeof isRealSellerRuntime === 'function' && isRealSellerRuntime();
       }
 
-      function resetRealSellerQuoteWorkspaceAfterSend() {
+      function resetSalesQuoteWorkspaceAfterSend() {
         clearSellerPostQuoteWorkspaceChrome();
         resetSalesQuoteStateForNewQuote({
           sellerPostSend: true,
           notifyAppJsInputs: false,
           skipAppRenderSales: true,
         });
+      }
+
+      function resetRealSellerQuoteWorkspaceAfterSend() {
+        resetSalesQuoteWorkspaceAfterSend();
         console.log('[Sales Send] real seller post-send workspace reset complete');
       }
+
+      window.resetMarginGuardSalesQuoteWorkspaceAfterSend = resetSalesQuoteWorkspaceAfterSend;
 
       function initializeSellerPortalQuoteState() {
         if (!isSellerForcedPortalRoute()) {
