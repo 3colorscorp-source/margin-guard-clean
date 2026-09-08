@@ -1901,7 +1901,7 @@
   <script src="/js/sales-operational-plan.js"></script>
   <script src="/js/sales-capacity-calendar.js"></script>
   <script src="/js/voice-operational-plan.js"></script>
-  <script src="/js/app.js?v=post-send-calendar-reset-1"></script>
+  <script src="/js/app.js?v=post-send-operational-plan-reset-1"></script>
   <script>
     (function () {
       const SALES_KEY = 'mg_sales_v2';
@@ -9164,12 +9164,27 @@
         });
       }
 
+      function resetSalesOperationalPlanAfterSend() {
+        const state = loadSalesState();
+        state.operational_plan = [];
+        state.internal_operational_plan = null;
+        state.operational_estimated_days_override = '';
+        state.operational_estimated_hours_override = '';
+        state.labor_auto_sync_from_plan = true;
+        state.labor_manual_override = false;
+        saveSalesState(state);
+        clearSellerPostQuoteWorkspaceChrome();
+        renderSalesOperationalPlanStandalone();
+        updateLaborSyncChrome(state);
+      }
+
       function resetRealSellerQuoteWorkspaceAfterSend() {
         resetSalesQuoteWorkspaceAfterSend();
         console.log('[Sales Send] real seller post-send workspace reset complete');
       }
 
       window.resetMarginGuardSalesQuoteWorkspaceAfterSend = resetSalesQuoteWorkspaceAfterSend;
+      window.resetMarginGuardOperationalPlanAfterSend = resetSalesOperationalPlanAfterSend;
 
       function initializeSellerPortalQuoteState() {
         if (!isSellerForcedPortalRoute()) {

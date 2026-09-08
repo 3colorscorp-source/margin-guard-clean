@@ -10055,6 +10055,9 @@ Client price: ${money(changeOrder.offeredPrice || 0, settings.currency)}`
           try {
             renderSales();
           } catch (_e) {}
+          if (typeof window.resetMarginGuardOperationalPlanAfterSend === "function") {
+            window.resetMarginGuardOperationalPlanAfterSend();
+          }
         } catch (mgOwnerPostSendErr) {
           console.error("[MG Owner Send] post-close draft reset failed", mgOwnerPostSendErr);
         }

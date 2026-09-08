@@ -189,8 +189,8 @@ ok(
     /Number\.isFinite\(reservePctRaw\)/.test(salesSrc)
 );
 ok(
-  "owner sales page cache-busts the post-send calendar reset",
-  /\/js\/app\.js\?v=post-send-calendar-reset-1/.test(salesSrc)
+  "owner sales page cache-busts the post-send operational plan reset",
+  /\/js\/app\.js\?v=post-send-operational-plan-reset-1/.test(salesSrc)
 );
 
 const fiveDay = [{ name: "Pro 1", type: "installer", days: 5, hours: 99 }];
@@ -298,6 +298,20 @@ ok(
   /nextCapacityGeneration\(['"]sales['"]\)/.test(salesSrc) &&
     /nextCapacityGeneration\(["']owner["']\)/.test(appSrc) &&
     /window\.__mgOwnerCapacityCalendar = null/.test(appSrc)
+);
+ok(
+  "post-send operational plan reset clears both persisted plan representations",
+  /function resetSalesOperationalPlanAfterSend\(\)[\s\S]{0,500}state\.operational_plan = \[\];[\s\S]{0,200}state\.internal_operational_plan = null;/.test(salesSrc) &&
+    /window\.resetMarginGuardOperationalPlanAfterSend\s*=\s*resetSalesOperationalPlanAfterSend/.test(salesSrc)
+);
+const ownerFinalRender = ownerPublisherSrc.indexOf("renderSales();");
+const ownerFinalPlanReset = ownerPublisherSrc.indexOf(
+  "window.resetMarginGuardOperationalPlanAfterSend();",
+  ownerFinalRender
+);
+ok(
+  "successful Owner send clears and renders the operational plan after the general render",
+  ownerFinalRender > 0 && ownerFinalPlanReset > ownerFinalRender
 );
 
 const secondFill = salesSrc.indexOf("await fillSendModal();", salesSrc.indexOf("Creating public quote link"));
