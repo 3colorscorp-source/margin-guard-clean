@@ -32,7 +32,9 @@
     "scripts/guard-invoice-hub-scope.js",
     "scripts/invoice-hub-protected-surface.json",
     "scripts/test-invoice-hub-regression-suite.js",
-    "docs/INVOICE_HUB_PROTECTED_SURFACE.md"
+    "scripts/test-invoice-hub-shield-v2.js",
+    "docs/INVOICE_HUB_PROTECTED_SURFACE.md",
+    ".github/workflows/invoice-hub-shield-v2.yml"
   ],
   "globs": [
     "scripts/test-*invoice*.js",

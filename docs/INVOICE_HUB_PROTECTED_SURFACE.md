@@ -69,10 +69,26 @@ If `public/js/app.js` changes, the guard scans the **diff**. It fails (unless In
 
 If the scan is uncertain, V1 **fails safe** and requires Invoice Hub scope.
 
+## Invoice Hub Shield V2 (CI)
+
+V2 is GitHub Actions wiring only. It does not change Invoice Hub UI, `public/js/app.js`, backend functions, payment/ledger math, public/PDF, Zapier, SQL, Seller, Supervisor, Sales Admin, or AI Closer.
+
+On every pull request to `main`, the check **Invoice Hub Shield V2** (`.github/workflows/invoice-hub-shield-v2.yml`) runs:
+
+```bash
+node scripts/guard-invoice-hub-scope.js
+```
+
+If the guard prints `INVOICE_HUB_REGRESSION_REQUIRED=1`, it also runs:
+
+```bash
+node scripts/test-invoice-hub-regression-suite.js
+```
+
+A non-Invoice-Hub PR that touches protected files or Hub regions in `app.js` fails. Owner Shield and Seller Shield workflows are unchanged. Branch protection is **not** updated by V2; after merge, add the required check named `Invoice Hub Shield V2` on `main` if you want it blocking.
+
 ## What V1 does not do
 
 - It does not deploy, mutate production data, send email, or run SQL.
 - It does not rewrite Invoice Hub code.
-- There is no GitHub workflow in this repo yet (no `.github/workflows`).
-- There is no `package.json` script wiring in this repo yet.
 - Pattern matching on `app.js` is not an AST. Prefer an Invoice Hub PR when unsure.
