@@ -1,0 +1,71 @@
+name: Invoice Hub Shield V2
+
+on:
+  pull_request:
+    branches:
+      - main
+  merge_group:
+    types:
+      - checks_requested
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: invoice-hub-shield-v2-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  invoice-hub-shield-v2:
+    name: Invoice Hub Shield V2
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Setup Node 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"
+
+      - name: Fetch origin/main
+        run: git fetch --no-tags origin main
+
+      - name: Scope guard self-test
+        run: node scripts/guard-invoice-hub-scope.js --self-test
+
+      - name: Shield V2 workflow wiring self-test
+        run: node scripts/test-invoice-hub-shield-v2.js
+
+      # Real scope guard is skipped on merge_group: that event does not expose a
+      # trusted PR title or head branch for Invoice Hub authorization (GITHUB_HEAD_REF
+      # is empty; merge_group is not a substitute for PR_TITLE). Do not set
+      # ALLOW_INVOICE_HUB_TOUCH=1. pull_request passes title and head via env, not
+      # shell interpolation. workflow_dispatch still runs the guard; on main it
+      # may report no Invoice Hub protected surface changes.
+      - name: Invoice Hub scope guard
+        id: guard
+        if: github.event_name != 'merge_group'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.event.pull_request.base.sha || 'origin/main' }}
+        run: |
+          set -euo pipefail
+          node scripts/guard-invoice-hub-scope.js | tee "${RUNNER_TEMP}/invoice-hub-guard.txt"
+          if grep -q '^INVOICE_HUB_REGRESSION_REQUIRED=1$' "${RUNNER_TEMP}/invoice-hub-guard.txt"; then
+            echo "regression_required=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "regression_required=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Invoice Hub regression suite
+        if: github.event_name != 'merge_group' && steps.guard.outputs.regression_required == '1'
+        env:
+          INVOICE_HUB_REGRESSION_REQUIRED: "1"
+        run: node scripts/test-invoice-hub-regression-suite.js
