@@ -1078,6 +1078,124 @@
       color: #f8fbff;
       background-color: #1a3a2a;
     }
+    #hubRecordPaymentModal .hub-rp-select {
+      position: relative;
+      width: 100%;
+    }
+    #hubRecordPaymentModal .hub-rp-select.is-enhanced .hub-rp-select__native {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+      pointer-events: none;
+    }
+    #hubRecordPaymentModal .hub-rp-select__trigger {
+      display: none;
+      width: 100%;
+      box-sizing: border-box;
+      min-height: 42px;
+      padding: 8px 12px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: linear-gradient(180deg, rgba(18, 28, 48, 0.96) 0%, rgba(10, 16, 30, 0.96) 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 20px rgba(0, 0, 0, 0.28);
+      color: #e8eefc;
+      font: inherit;
+      font-size: 0.875rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      text-align: left;
+      cursor: pointer;
+    }
+    #hubRecordPaymentModal .hub-rp-select.is-enhanced .hub-rp-select__trigger {
+      display: flex;
+    }
+    #hubRecordPaymentModal .hub-rp-select__trigger:hover {
+      border-color: rgba(34, 197, 94, 0.32);
+      background: linear-gradient(180deg, rgba(22, 36, 58, 0.98) 0%, rgba(12, 20, 36, 0.98) 100%);
+    }
+    #hubRecordPaymentModal .hub-rp-select__trigger:focus,
+    #hubRecordPaymentModal .hub-rp-select__trigger:focus-visible {
+      outline: none;
+      border-color: rgba(34, 197, 94, 0.5);
+      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+    }
+    #hubRecordPaymentModal .hub-rp-select.is-open .hub-rp-select__trigger {
+      border-color: rgba(34, 197, 94, 0.46);
+    }
+    #hubRecordPaymentModal .hub-rp-select__value {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #hubRecordPaymentModal .hub-rp-select__chevron {
+      flex: 0 0 auto;
+      width: 8px;
+      height: 8px;
+      border-right: 2px solid rgba(232, 238, 252, 0.72);
+      border-bottom: 2px solid rgba(232, 238, 252, 0.72);
+      transform: rotate(45deg) translateY(-2px);
+    }
+    #hubRecordPaymentModal .hub-rp-select.is-open .hub-rp-select__chevron {
+      transform: rotate(225deg) translateY(-1px);
+    }
+    .hub-rp-select__menu {
+      display: none;
+      box-sizing: border-box;
+      padding: 6px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: linear-gradient(180deg, #121c30 0%, #0b1220 100%);
+      box-shadow: 0 22px 48px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(34, 197, 94, 0.08);
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    .hub-rp-select__menu.is-visible {
+      display: block;
+    }
+    .hub-rp-select__option {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      margin: 0;
+      padding: 9px 12px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: #e8eefc;
+      font: inherit;
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+    }
+    .hub-rp-select__option:hover,
+    .hub-rp-select__option:focus,
+    .hub-rp-select__option:focus-visible {
+      outline: none;
+      background: rgba(255, 255, 255, 0.06);
+      color: #f8fbff;
+    }
+    .hub-rp-select__option.is-selected {
+      background: rgba(34, 197, 94, 0.18);
+      color: #bbf7d0;
+      box-shadow: inset 3px 0 0 #22c55e;
+    }
+    .hub-rp-select__option.is-selected:hover,
+    .hub-rp-select__option.is-selected:focus,
+    .hub-rp-select__option.is-selected:focus-visible {
+      background: rgba(34, 197, 94, 0.26);
+      color: #dcfce7;
+    }
     @media (min-width: 721px) {
       #hubFormModal.hub-invoice-form-modal,
       #hubRecordPaymentModal {
@@ -1735,23 +1853,27 @@
         <div class="hub-form-grid">
           <div class="field">
             <label for="hubRecordPayType">Payment type</label>
-            <select id="hubRecordPayType">
-              <option value="deposit">deposit</option>
-              <option value="progress">progress</option>
-              <option value="final">final</option>
-              <option value="adjustment">adjustment</option>
-            </select>
+            <div class="hub-rp-select" data-hub-rp-select>
+              <select id="hubRecordPayType">
+                <option value="deposit">deposit</option>
+                <option value="progress">progress</option>
+                <option value="final">final</option>
+                <option value="adjustment">adjustment</option>
+              </select>
+            </div>
           </div>
           <div class="field">
             <label for="hubRecordPayMethod">Payment method</label>
-            <select id="hubRecordPayMethod">
-              <option value="check">check</option>
-              <option value="cash">cash</option>
-              <option value="zelle">zelle</option>
-              <option value="stripe">stripe</option>
-              <option value="bank_transfer">bank_transfer</option>
-              <option value="other">other</option>
-            </select>
+            <div class="hub-rp-select" data-hub-rp-select>
+              <select id="hubRecordPayMethod">
+                <option value="check">check</option>
+                <option value="cash">cash</option>
+                <option value="zelle">zelle</option>
+                <option value="stripe">stripe</option>
+                <option value="bank_transfer">bank_transfer</option>
+                <option value="other">other</option>
+              </select>
+            </div>
           </div>
           <div class="field">
             <label for="hubRecordPayAmount">Amount</label>
