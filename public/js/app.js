@@ -17204,8 +17204,12 @@ window.renderSupervisor = renderSupervisor;
               const errMsg =
                 errRaw === "pricing_snapshot_required"
                   ? "Save Business Settings first (tenant snapshot required for system rates)."
-                  : errRaw || "Could not load system rates.";
-              setNotice("hubFormFeedback", errMsg, "err");
+                  : "Could not load system rates from Business Settings. System Rate stays 0 until a snapshot is available.";
+              setNotice("hubFormFeedback", errMsg, "warn");
+              systemHourly = 0;
+              systemDaily = 0;
+              pricingPreviewOk = false;
+              recalcTotal();
               return;
             }
             systemHourly = finiteNumber(pdata.system_hourly_rate, 0);
@@ -17237,7 +17241,8 @@ window.renderSupervisor = renderSupervisor;
           recalcTotal();
         },
         onSubmit: async () => {
-          if (!pricingPreviewOk) {
+          const billing_type = String(val("hubManualBillingType") || "").trim();
+          if (!pricingPreviewOk && billing_type !== "flat_amount") {
             setNotice("hubFormFeedback", "System rates are not loaded. Fix errors above or try again.", "err");
             return false;
           }
@@ -17245,7 +17250,6 @@ window.renderSupervisor = renderSupervisor;
           const client_email = String(val("hubManualClientEmail") || "").trim();
           const project_title = String(val("hubManualTitle") || "").trim();
           const description = String(val("hubManualDescription") || "").trim();
-          const billing_type = String(val("hubManualBillingType") || "").trim();
           const quantity = finiteNumber(val("hubManualQuantity"), 0);
           const flat_amount = finiteNumber(val("hubManualRate"), 0);
           const due_date = normalizeDateInput(val("hubManualDueDate"));
@@ -17327,7 +17331,9 @@ window.renderSupervisor = renderSupervisor;
               const shown =
                 er === "pricing_snapshot_required"
                   ? "Save Business Settings first (snapshot required)."
-                  : er || "Could not create invoice.";
+                  : er === "Unauthorized"
+                    ? "Could not save invoice. Refresh and try again."
+                    : er || "Could not create invoice.";
               setNotice("hubFormFeedback", shown, "err");
               return false;
             }
