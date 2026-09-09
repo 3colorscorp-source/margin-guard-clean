@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "name": "invoice-hub",
+  "failMessage": "Invoice Hub protected surface changed outside Invoice Hub scope. Stop and move this to an Invoice Hub PR.",
+  "explicitScope": {
+    "branchSubstrings": ["invoice-hub", "invoices"],
+    "allowEnv": "ALLOW_INVOICE_HUB_TOUCH",
+    "prTitleToken": "[Invoice Hub]"
+  },
+  "exact": [
+    "public/estimates-invoices.html",
+    "public/invoice-public.html",
+    "netlify/functions/create-manual-invoice.js",
+    "netlify/functions/list-tenant-invoices.js",
+    "netlify/functions/send-invoice-zapier.js",
+    "netlify/functions/cancel-tenant-invoice.js",
+    "netlify/functions/record-tenant-payment.js",
+    "netlify/functions/list-tenant-payments.js",
+    "netlify/functions/patch-tenant-invoice-contact.js",
+    "netlify/functions/duplicate-tenant-invoice.js",
+    "netlify/functions/hub-invoice-archive-delete.js",
+    "netlify/functions/send-invoice-payment-reminder.js",
+    "netlify/functions/create-remaining-balance-invoice.js",
+    "netlify/functions/create-material-cost-invoice.js",
+    "netlify/functions/hub-quote-manual-step.js",
+    "netlify/functions/upsert-tenant-invoice-draft.js",
+    "netlify/functions/publish-public-invoice.js",
+    "netlify/functions/get-public-invoice.js",
+    "netlify/functions/get-tenant-invoice.js",
+    "netlify/functions/get-tenant-quote-edit.js",
+    "netlify/functions/update-tenant-quote-edit.js",
+    "scripts/guard-invoice-hub-scope.js",
+    "scripts/invoice-hub-protected-surface.json",
+    "scripts/test-invoice-hub-regression-suite.js",
+    "docs/INVOICE_HUB_PROTECTED_SURFACE.md"
+  ],
+  "globs": [
+    "scripts/test-*invoice*.js",
+    "scripts/test-*hub*.js",
+    "scripts/invoice-hub-*",
+    "docs/INVOICE_HUB_*",
+    "netlify/functions/hub-*.js"
+  ],
+  "sharedScan": {
+    "public/js/app.js": {
+      "description": "Fail only when the app.js diff touches Invoice Hub markers. Uncertain diffs fail safe.",
+      "markers": [
+        "invoice hub",
+        "tenant invoice",
+        "record payment",
+        "project billing",
+        "remaining balance",
+        "material cost",
+        "public invoice",
+        "payment history",
+        "send reminder",
+        "duplicate invoice",
+        "archive invoice",
+        "cancel invoice",
+        "publish public invoice",
+        "list tenant invoices",
+        "record tenant payment",
+        "create invoice",
+        "estimates-invoices",
+        "invoice-public.html",
+        "list-tenant-invoices",
+        "record-tenant-payment",
+        "send-invoice-zapier",
+        "create-manual-invoice",
+        "cancel-tenant-invoice",
+        "list-tenant-payments",
+        "patch-tenant-invoice-contact",
+        "duplicate-tenant-invoice",
+        "hub-invoice-archive-delete",
+        "send-invoice-payment-reminder",
+        "create-remaining-balance-invoice",
+        "create-material-cost-invoice",
+        "hub-quote-manual-step",
+        "upsert-tenant-invoice-draft",
+        "publish-public-invoice",
+        "get-public-invoice",
+        "get-tenant-invoice",
+        "get-tenant-quote-edit",
+        "update-tenant-quote-edit"
+      ]
+    }
+  },
+  "requiredRegressionTests": [
+    "scripts/test-create-manual-invoice-modern-owner-session.js",
+    "scripts/test-list-tenant-invoices-modern-owner-session.js",
+    "scripts/test-send-invoice-zapier-modern-owner-session.js",
+    "scripts/test-cancel-tenant-invoice-modern-owner-session.js",
+    "scripts/test-record-tenant-payment-modern-owner-session.js",
+    "scripts/test-invoice-hub-remaining-modern-owner-session.js",
+    "scripts/test-publish-public-invoice-modern-owner-session.js"
+  ],
+  "optionalRegressionTests": [
+    "scripts/test-hub-sent-view-outstanding.js"
+  ]
+}
