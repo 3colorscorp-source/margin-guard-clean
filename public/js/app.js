@@ -18300,6 +18300,9 @@ window.renderSupervisor = renderSupervisor;
         invalid_idempotency_key: "Payment could not be submitted. Close and try again."
       };
       if (map[code]) return map[code];
+      if (status === 401 || code === "Unauthorized") {
+        return "Could not record payment. Refresh the page and try again.";
+      }
       return String(data?.message || data?.error || `Unable to record payment (HTTP ${status}).`).trim();
     }
 
