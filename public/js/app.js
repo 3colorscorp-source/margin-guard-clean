@@ -12495,6 +12495,9 @@ window.renderSupervisor = renderSupervisor;
       invoice_status_constraint: "Could not cancel this invoice. Please refresh and try again."
     };
     if (map[reason]) return map[reason];
+    if (status === 401 || msg === "Unauthorized") {
+      return "Could not cancel invoice. Refresh the page and try again.";
+    }
     if (/supabase|constraint|check constraint|violates|23514|23505/i.test(msg)) {
       return "Could not cancel this invoice. Please refresh and try again.";
     }
