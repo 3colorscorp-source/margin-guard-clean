@@ -1,5 +1,7 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
+const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { hasOwnerSessionIdentity } = require("./_lib/owner-access");
 const { pickFirst, loadTenantDisplayForTenantId } = require("./_lib/tenant-display");
 const { makePublicToken } = require("./_lib/public-token");
 
@@ -47,14 +49,11 @@ exports.handler = async (event) => {
     }
 
     const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
+    if (!hasOwnerSessionIdentity(session)) {
       return json(401, { error: "Unauthorized" });
     }
 
-    const tenantRows = await supabaseRequest(
-      `tenants?stripe_customer_id=eq.${encodeURIComponent(session.c)}&select=id`
-    );
-    const tenant = Array.isArray(tenantRows) ? tenantRows[0] : null;
+    const tenant = await resolveTenantFromSession(session);
     if (!tenant?.id) {
       return json(422, {
         error:
