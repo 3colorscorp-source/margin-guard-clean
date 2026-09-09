@@ -268,6 +268,135 @@ function printKnownGaps(gaps, log) {
   });
 }
 
+const GUARD_REL = "scripts/guard-owner-scope.js";
+
+function isSafeGitSha(value) {
+  return /^[0-9a-f]{7,40}$/i.test(String(value || "").trim());
+}
+
+function defaultGit(root, args) {
+  return spawnSync("git", args, {
+    cwd: root,
+    encoding: "utf8",
+    windowsHide: true,
+    shell: false,
+  });
+}
+
+function readGithubPullRequestContext(env, readFileImpl) {
+  const envObj = env || {};
+  if (String(envObj.GITHUB_EVENT_NAME || "").trim() === "merge_group") {
+    return { skip: true, reason: "merge_group", title: "", head: "", baseSha: "" };
+  }
+  let title = "";
+  let head = "";
+  let baseSha = "";
+  const eventPath = String(envObj.GITHUB_EVENT_PATH || "").trim();
+  if (eventPath) {
+    try {
+      const readFile = readFileImpl || fs.readFileSync;
+      const ev = JSON.parse(readFile(eventPath, "utf8"));
+      const pr = ev && ev.pull_request ? ev.pull_request : {};
+      title = String(pr.title || "").trim();
+      head = String((pr.head && pr.head.ref) || "").trim();
+      baseSha = String((pr.base && pr.base.sha) || "").trim();
+    } catch (_err) {
+      return {
+        skip: false,
+        ok: false,
+        reason: "invalid_github_event_path",
+        title: "",
+        head: "",
+        baseSha: "",
+      };
+    }
+  }
+  if (!title) title = String(envObj.PR_TITLE || "").trim();
+  if (!head) head = String(envObj.GITHUB_HEAD_REF || "").trim();
+  if (!baseSha) baseSha = String(envObj.BASE_REF || "").trim();
+  if (!baseSha) baseSha = "origin/main";
+  return { skip: false, ok: true, reason: "", title, head, baseSha };
+}
+
+function ensureBaseRefAvailable(root, baseRef, gitImpl) {
+  const git =
+    gitImpl ||
+    function (args) {
+      return defaultGit(root, args);
+    };
+  const probe = git(["rev-parse", "--verify", String(baseRef || "") + "^{commit}"]);
+  if (probe && probe.status === 0) return { ok: true, fetched: false };
+  if (!isSafeGitSha(baseRef)) {
+    return { ok: false, fetched: false, reason: "unresolved_base_ref" };
+  }
+  const fetched = git(["fetch", "--no-tags", "--depth=1", "origin", String(baseRef).trim()]);
+  if (!fetched || fetched.status !== 0) {
+    return { ok: false, fetched: false, reason: "fetch_failed" };
+  }
+  return { ok: true, fetched: true };
+}
+
+function guardChildEnv(baseEnv, ctx) {
+  const env = Object.assign({}, baseEnv || {});
+  delete env.ALLOW_OWNER_TOUCH;
+  env.BASE_REF = ctx.baseSha;
+  env.PR_TITLE = ctx.title;
+  env.GITHUB_HEAD_REF = ctx.head;
+  return env;
+}
+
+function defaultGuardSpawn(absPath, root, env) {
+  return spawnSync(process.execPath, [absPath], {
+    cwd: root,
+    encoding: "utf8",
+    windowsHide: true,
+    shell: false,
+    env,
+  });
+}
+
+function runRealOwnerGuard(opts) {
+  const options = opts || {};
+  const root = options.root || ROOT;
+  const env = options.env || {};
+  const log = options.log || console.log;
+  const writeOut = options.writeOut || ((chunk) => process.stdout.write(chunk));
+  const writeErr = options.writeErr || ((chunk) => process.stderr.write(chunk));
+  const ctx = readGithubPullRequestContext(env, options.readFileImpl);
+  if (ctx.skip) {
+    log("Owner real guard skipped (" + ctx.reason + ")");
+    return { ok: true, skipped: true, reason: ctx.reason, status: 0 };
+  }
+  if (ctx.ok === false) {
+    log("FAIL " + GUARD_REL + " reason=" + ctx.reason);
+    return { ok: false, skipped: false, reason: ctx.reason, status: 1 };
+  }
+  const ensured = ensureBaseRefAvailable(root, ctx.baseSha, options.gitImpl);
+  if (!ensured.ok) {
+    log("FAIL " + GUARD_REL + " reason=" + ensured.reason);
+    return { ok: false, skipped: false, reason: ensured.reason, status: 1, env: guardChildEnv(env, ctx) };
+  }
+  const resolved = resolveSuitePath(root, GUARD_REL);
+  if (!resolved.ok) {
+    return { ok: false, skipped: false, reason: resolved.reason, status: 1 };
+  }
+  const childEnv = guardChildEnv(env, ctx);
+  log("=== " + GUARD_REL + " ===");
+  const spawnGuard = options.guardSpawnImpl || defaultGuardSpawn;
+  const spawned = spawnGuard(resolved.abs, root, childEnv);
+  const stdout = spawned && spawned.stdout ? spawned.stdout : "";
+  const stderr = spawned && spawned.stderr ? spawned.stderr : "";
+  if (stdout) writeOut(stdout);
+  if (stderr) writeErr(stderr);
+  const status = spawned && typeof spawned.status === "number" ? spawned.status : 1;
+  if (status !== 0) {
+    log("FAIL " + GUARD_REL + " reason=nonzero_exit");
+    return { ok: false, skipped: false, reason: "nonzero_exit", status, env: childEnv };
+  }
+  log("OK " + GUARD_REL);
+  return { ok: true, skipped: false, reason: "ok", status: 0, env: childEnv, fetched: ensured.fetched };
+}
+
 function runShield(options) {
   const opts = options || {};
   const root = opts.root || ROOT;
@@ -313,6 +442,49 @@ function runShield(options) {
     spawned.push(absPath);
     return originalSpawn(absPath, spawnRoot, env);
   };
+
+  let guard = { ok: true, skipped: true, reason: "skipped_by_option", status: 0 };
+  if (opts.skipRealGuard !== true) {
+    guard = runRealOwnerGuard({
+      root,
+      env: opts.env || process.env,
+      log,
+      writeOut,
+      writeErr,
+      gitImpl: opts.gitImpl,
+      guardSpawnImpl: opts.guardSpawnImpl,
+      readFileImpl: opts.readFileImpl,
+    });
+    if (!guard.ok) {
+      const durationMs = Math.max(0, deps.now() - started);
+      log("\n--- Margin Guard Owner Shield V1 ---");
+      log("mode=" + (parsedArgs.full ? "full" : "required"));
+      log("required ran: 0/" + required.length);
+      log("optional ran: 0");
+      log("optional omitted: " + omittedOptional.length);
+      log("total passed: 0");
+      log("duration_ms: " + durationMs);
+      log("webhook: unsigned estimate Zapier JSON POST (not HMAC). Invoice Hub Zapier remains Hub-owned.");
+      log("FAIL " + GUARD_REL + " reason=" + guard.reason);
+      log("RESULT: FAIL");
+      return {
+        ok: false,
+        result: "FAIL",
+        full: parsedArgs.full,
+        requiredRan: 0,
+        optionalRan: 0,
+        optionalOmitted: omittedOptional.length,
+        totalPassed: 0,
+        durationMs,
+        spawned,
+        ran004b: false,
+        ranHub: false,
+        results: [],
+        failed: [{ rel: GUARD_REL, reason: guard.reason }],
+        guard,
+      };
+    }
+  }
 
   required.forEach((entry) => {
     results.push(runOne(entry, true, deps));
@@ -371,6 +543,7 @@ function runShield(options) {
     ranHub,
     results,
     failed,
+    guard,
   };
 }
 
@@ -387,6 +560,7 @@ module.exports = {
   KNOWN_GAP_PREFIX,
   OPTIONAL_004B,
   OPTIONAL_HUB,
+  GUARD_REL,
   ROOT,
   MANIFEST_PATH,
   isolatedChildEnv,
@@ -396,6 +570,11 @@ module.exports = {
   resolveSuitePath,
   runShield,
   stripAnsi,
+  isSafeGitSha,
+  readGithubPullRequestContext,
+  ensureBaseRefAvailable,
+  guardChildEnv,
+  runRealOwnerGuard,
 };
 
 if (require.main === module) {

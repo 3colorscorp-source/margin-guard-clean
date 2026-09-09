@@ -78,6 +78,16 @@
       "id": "ch008a-scheduling-payment",
       "path": "scripts/qa-ch008a-scheduling-payment.js",
       "minPassed": 34
+    },
+    {
+      "id": "owner-shield-v2-wiring",
+      "path": "scripts/test-owner-shield-v2.js",
+      "minPassed": 59
+    },
+    {
+      "id": "owner-send-price-guard",
+      "path": "scripts/test-owner-send-price-guard.js",
+      "minPassed": 17
     }
   ],
   "optional": [
@@ -113,11 +123,11 @@
     }
   ],
   "knownGaps": [
-    "qa-ch014-send-quote-price-guard.js — obsolete Owner send assertion (soldPriceGuard/currentMetrics); 18 passed, 1 failed on main. Not required. Not PASS.",
+    "qa-ch014-send-quote-price-guard.js — obsolete Owner send assertion (soldPriceGuard/currentMetrics). Replaced by scripts/test-owner-send-price-guard.js, which freezes evaluateSendQuotePriceGuard(resolveVisibleSendQuoteMetrics(...)) on open and send. Not required. Not optional. Not PASS.",
     "browser localStorage round-trip of /owner — loadOwner/saveOwner live in the app.js IIFE and cannot be invoked from Node without modifying product; V1 freezes the source contract instead",
     "archive and test-project isolation — no deterministic suite without product hooks or browser e2e",
     "UI project-switch leftover fields beyond resetOwnerDraftToNewQuote source — no isolated suite",
-    "interpret current_document hydration / internal plan server persist (phase 3+)",
+    "interpret current_document is EMPTY_DOCUMENT (preview seed only). Hydrating the live Owner plan and persisting the internal plan on the server remain a future product change, not Shield V2.",
     "payroll presets — no suite",
     "Playwright owner-send-e2e.mjs — requires Playwright, not stdlib",
     "pixel-level overflow screenshots — V1 freezes structural CSS only"
@@ -128,15 +138,22 @@
     "public/js/owner-voice-operational-plan.js",
     "public/js/owner-capacity-ui.js",
     "public/js/owner-recovery-auth.js",
+    "public/js/owner-financial-advisor.js",
     "netlify/functions/restore-owner-session.js",
+    "netlify/functions/owner-settings-deposit-link.js",
+    "netlify/functions/get-owner-financial-settings.js",
     "netlify/functions/_lib/owner-access.js",
+    ".github/workflows/owner-shield-v1.yml",
     "scripts/guard-owner-scope.js",
     "scripts/mg-owner-shield-v1.json",
     "scripts/test-mg-owner-shield-v1.js",
     "scripts/test-mg-owner-shield-v1-runner.js",
     "scripts/test-owner-shield-v1-surface.js",
     "scripts/test-owner-voice-operational-plan.js",
-    "docs/OWNER_PROTECTED_SURFACE.md"
+    "scripts/test-owner-shield-v2.js",
+    "scripts/test-owner-send-price-guard.js",
+    "docs/OWNER_PROTECTED_SURFACE.md",
+    "MARGIN_GUARD_OWNER_PORTAL_SUMMARY.md"
   ],
   "globs": [
     "scripts/fixtures/mg-owner-shield/*",
@@ -146,7 +163,7 @@
   ],
   "sharedScan": {
     "public/js/app.js": {
-      "description": "Fail only when the app.js diff touches Owner markers. Uncertain diffs fail safe.",
+      "description": "Fail only when the app.js diff touches Owner markers. Uncertain diffs fail safe. This file is shared with Seller; non-Owner lines may pass.",
       "markers": [
         "loadOwner",
         "saveOwner",
@@ -159,7 +176,31 @@
         "normalizeOwnerWorkers",
         "calcOwner",
         "ownerVoicePlan",
-        "btnOwnerReviewConfirmOperationalPlan"
+        "btnOwnerReviewConfirmOperationalPlan",
+        "loadOwnerPricingSettings",
+        "loadOwnerFinancialSettingsFromServer",
+        "normalizeOwnerQuoteDates",
+        "syncOwnerQuoteIssueExpirationFromSellerRules",
+        "syncOwnerLaborFromOperationalPlan",
+        "syncOwnerTargetFinish",
+        "syncOwnerWorkersTableInputsToState",
+        "syncOwnerSendModalIntoSalesDraft"
+      ]
+    },
+    "netlify/functions/_lib/tenant-device-guard.js": {
+      "description": "Fail when Owner dual-auth markers change. This file is shared with Seller; Seller-only markers are not Owner-exact.",
+      "markers": [
+        "requireOwnerMembership",
+        "hasOwnerSessionIdentity",
+        "resolveOwnerOrSellerContext",
+        "isOwnerContext"
+      ]
+    },
+    "netlify/functions/_lib/tenant-for-session.js": {
+      "description": "Fail when Owner tenant resolution markers change. This file is shared; non-Owner lines may pass.",
+      "markers": [
+        "resolveUniqueActiveOwnerAccess",
+        "entitledOwnerTenant"
       ]
     }
   }
