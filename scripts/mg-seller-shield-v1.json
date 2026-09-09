@@ -11,7 +11,7 @@
     {
       "id": "seller-hours-publish-parity",
       "path": "scripts/test-seller-hours-publish-parity.js",
-      "minPassed": 111
+      "minPassed": 999999
     },
     {
       "id": "owner-seller-send-dual-auth",
