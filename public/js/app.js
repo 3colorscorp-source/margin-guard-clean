@@ -17470,6 +17470,7 @@ window.renderSupervisor = renderSupervisor;
 
     const closeHubDrawer = () => {
       if ($("hubDrawer")) $("hubDrawer").setAttribute("aria-hidden", "true");
+      closeHubRecordPayPremiumMenus();
       if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
       if ($("hubInvoiceContactModal")) hubInvoiceContactCloseModal();
       hubPaymentHistoryCloseModal();
@@ -18336,6 +18337,269 @@ window.renderSupervisor = renderSupervisor;
       warnEl.textContent = "";
     }
 
+    const HUB_RP_SELECT_IDS = ["hubRecordPayType", "hubRecordPayMethod"];
+    const hubRpSelectState = new WeakMap();
+    let hubRpSelectMediaBound = false;
+
+    function hubRecordPayShouldEnhanceSelects() {
+      try {
+        return window.matchMedia("(hover: hover) and (pointer: fine)").matches
+          && window.matchMedia("(min-width: 721px)").matches;
+      } catch (_err) {
+        return false;
+      }
+    }
+
+    function closeHubRecordPayPremiumMenus(exceptSelect, opts) {
+      const focusTrigger = Boolean(opts && opts.focusTrigger);
+      HUB_RP_SELECT_IDS.forEach((id) => {
+        const sel = $(id);
+        if (!sel || sel === exceptSelect) return;
+        const st = hubRpSelectState.get(sel);
+        if (!st || !st.open) return;
+        st.open = false;
+        if (st.trigger) st.trigger.setAttribute("aria-expanded", "false");
+        if (st.wrap) st.wrap.classList.remove("is-open");
+        if (st.menu) {
+          st.menu.hidden = true;
+          st.menu.classList.remove("is-visible");
+        }
+        if (focusTrigger && st.trigger) st.trigger.focus();
+      });
+    }
+
+    function syncHubRecordPayPremiumSelect(selectEl) {
+      const st = hubRpSelectState.get(selectEl);
+      if (!st) return;
+      const opt = selectEl.options[selectEl.selectedIndex];
+      const text = opt ? String(opt.textContent || opt.value || "") : "";
+      if (st.valueEl) st.valueEl.textContent = text;
+      if (!st.menu) return;
+      st.menu.querySelectorAll("[data-hub-rp-option]").forEach((btn) => {
+        const on = btn.getAttribute("data-value") === selectEl.value;
+        btn.classList.toggle("is-selected", on);
+        btn.setAttribute("aria-selected", on ? "true" : "false");
+      });
+    }
+
+    function positionHubRecordPayPremiumMenu(selectEl) {
+      const st = hubRpSelectState.get(selectEl);
+      if (!st || !st.menu || !st.trigger) return;
+      const r = st.trigger.getBoundingClientRect();
+      const maxH = Math.min(280, Math.max(120, window.innerHeight - r.bottom - 12));
+      st.menu.style.position = "fixed";
+      st.menu.style.left = `${Math.round(r.left)}px`;
+      st.menu.style.width = `${Math.round(r.width)}px`;
+      st.menu.style.top = `${Math.round(r.bottom + 6)}px`;
+      st.menu.style.zIndex = "10050";
+      st.menu.style.maxHeight = `${maxH}px`;
+    }
+
+    function setHubRecordPayPremiumOpen(selectEl, open, opts) {
+      const st = hubRpSelectState.get(selectEl);
+      if (!st) return;
+      if (open) closeHubRecordPayPremiumMenus(selectEl);
+      st.open = Boolean(open);
+      st.trigger.setAttribute("aria-expanded", st.open ? "true" : "false");
+      st.wrap.classList.toggle("is-open", st.open);
+      st.menu.hidden = !st.open;
+      st.menu.classList.toggle("is-visible", st.open);
+      if (st.open) {
+        positionHubRecordPayPremiumMenu(selectEl);
+        const selected = st.menu.querySelector(".is-selected") || st.menu.querySelector("[data-hub-rp-option]");
+        if (selected) selected.focus();
+      } else if (opts && opts.focusTrigger) {
+        st.trigger.focus();
+      }
+    }
+
+    function applyHubRecordPayPremiumValue(selectEl, value) {
+      if (!selectEl) return;
+      const next = String(value ?? "");
+      const prev = selectEl.value;
+      selectEl.value = next;
+      syncHubRecordPayPremiumSelect(selectEl);
+      if (prev !== next) {
+        selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    }
+
+    function teardownHubRecordPayPremiumSelect(selectEl) {
+      const st = hubRpSelectState.get(selectEl);
+      if (!st) return;
+      if (st.onDocPointer) document.removeEventListener("pointerdown", st.onDocPointer, true);
+      if (st.onReposition) {
+        window.removeEventListener("resize", st.onReposition);
+        const modal = $("hubRecordPaymentModal");
+        if (modal) modal.removeEventListener("scroll", st.onReposition, true);
+      }
+      if (st.trigger) st.trigger.remove();
+      if (st.menu) st.menu.remove();
+      selectEl.classList.remove("hub-rp-select__native");
+      selectEl.removeAttribute("tabindex");
+      selectEl.removeAttribute("aria-hidden");
+      if (st.wrap) st.wrap.classList.remove("is-enhanced", "is-open");
+      if (st.label && st.origFor != null) st.label.htmlFor = st.origFor;
+      hubRpSelectState.delete(selectEl);
+    }
+
+    function enhanceHubRecordPaySelect(selectEl) {
+      if (!selectEl) return;
+      if (hubRpSelectState.has(selectEl)) {
+        syncHubRecordPayPremiumSelect(selectEl);
+        return;
+      }
+      const wrap = selectEl.closest("[data-hub-rp-select]");
+      const modal = $("hubRecordPaymentModal");
+      if (!wrap || !modal) return;
+      const field = selectEl.closest(".field");
+      const label = field ? field.querySelector("label") : null;
+      const origFor = label ? label.htmlFor : "";
+      const menuId = `${selectEl.id}PremiumMenu`;
+      const triggerId = `${selectEl.id}PremiumTrigger`;
+
+      selectEl.classList.add("hub-rp-select__native");
+      selectEl.setAttribute("tabindex", "-1");
+      selectEl.setAttribute("aria-hidden", "true");
+      wrap.classList.add("is-enhanced");
+
+      const trigger = document.createElement("button");
+      trigger.type = "button";
+      trigger.id = triggerId;
+      trigger.className = "hub-rp-select__trigger";
+      trigger.setAttribute("aria-haspopup", "listbox");
+      trigger.setAttribute("aria-expanded", "false");
+      trigger.setAttribute("aria-controls", menuId);
+      trigger.innerHTML = '<span class="hub-rp-select__value"></span><span class="hub-rp-select__chevron" aria-hidden="true"></span>';
+
+      const menu = document.createElement("div");
+      menu.id = menuId;
+      menu.className = "hub-rp-select__menu";
+      menu.setAttribute("role", "listbox");
+      menu.hidden = true;
+
+      Array.from(selectEl.options).forEach((opt) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "hub-rp-select__option";
+        item.setAttribute("role", "option");
+        item.setAttribute("data-hub-rp-option", "");
+        item.setAttribute("data-value", opt.value);
+        item.textContent = String(opt.textContent || opt.value || "");
+        item.addEventListener("click", () => {
+          applyHubRecordPayPremiumValue(selectEl, opt.value);
+          setHubRecordPayPremiumOpen(selectEl, false, { focusTrigger: true });
+        });
+        menu.appendChild(item);
+      });
+
+      wrap.appendChild(trigger);
+      wrap.appendChild(menu);
+
+      if (label) {
+        if (!label.id) label.id = `${selectEl.id}Label`;
+        trigger.setAttribute("aria-labelledby", label.id);
+        label.htmlFor = triggerId;
+      } else {
+        trigger.setAttribute("aria-label", selectEl.id);
+      }
+
+      const st = {
+        wrap,
+        trigger,
+        menu,
+        valueEl: trigger.querySelector(".hub-rp-select__value"),
+        label,
+        origFor,
+        open: false
+      };
+
+      trigger.addEventListener("click", () => {
+        setHubRecordPayPremiumOpen(selectEl, !st.open);
+      });
+      trigger.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setHubRecordPayPremiumOpen(selectEl, true);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          setHubRecordPayPremiumOpen(selectEl, false);
+        }
+      });
+      menu.addEventListener("keydown", (e) => {
+        const items = Array.from(st.menu.querySelectorAll("[data-hub-rp-option]"));
+        const i = items.indexOf(document.activeElement);
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setHubRecordPayPremiumOpen(selectEl, false, { focusTrigger: true });
+        } else if (e.key === "ArrowDown") {
+          e.preventDefault();
+          (items[Math.min(items.length - 1, Math.max(0, i) + 1)] || items[0]).focus();
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          (items[Math.max(0, i - 1)] || items[0]).focus();
+        } else if (e.key === "Home") {
+          e.preventDefault();
+          if (items[0]) items[0].focus();
+        } else if (e.key === "End") {
+          e.preventDefault();
+          if (items.length) items[items.length - 1].focus();
+        } else if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          const active = document.activeElement;
+          if (active && active.getAttribute("data-value") != null) {
+            applyHubRecordPayPremiumValue(selectEl, active.getAttribute("data-value"));
+            setHubRecordPayPremiumOpen(selectEl, false, { focusTrigger: true });
+          }
+        } else if (e.key === "Tab") {
+          setHubRecordPayPremiumOpen(selectEl, false);
+        }
+      });
+
+      st.onDocPointer = (e) => {
+        if (!st.open) return;
+        const t = e.target;
+        if (st.wrap.contains(t) || st.menu.contains(t)) return;
+        setHubRecordPayPremiumOpen(selectEl, false);
+      };
+      document.addEventListener("pointerdown", st.onDocPointer, true);
+      st.onReposition = () => {
+        if (st.open) positionHubRecordPayPremiumMenu(selectEl);
+      };
+      modal.addEventListener("scroll", st.onReposition, true);
+      window.addEventListener("resize", st.onReposition);
+
+      hubRpSelectState.set(selectEl, st);
+      syncHubRecordPayPremiumSelect(selectEl);
+    }
+
+    function refreshHubRecordPayPremiumSelects() {
+      if (!$("hubRecordPaymentModal")) return;
+      const enhance = hubRecordPayShouldEnhanceSelects();
+      HUB_RP_SELECT_IDS.forEach((id) => {
+        const sel = $(id);
+        if (!sel) return;
+        if (enhance) enhanceHubRecordPaySelect(sel);
+        else teardownHubRecordPayPremiumSelect(sel);
+      });
+    }
+
+    function bindHubRecordPayPremiumSelects() {
+      if (hubRpSelectMediaBound) {
+        refreshHubRecordPayPremiumSelects();
+        return;
+      }
+      hubRpSelectMediaBound = true;
+      refreshHubRecordPayPremiumSelects();
+      const onMq = () => refreshHubRecordPayPremiumSelects();
+      try {
+        window.matchMedia("(hover: hover) and (pointer: fine)").addEventListener("change", onMq);
+        window.matchMedia("(min-width: 721px)").addEventListener("change", onMq);
+      } catch (_err) {
+        window.addEventListener("resize", onMq);
+      }
+    }
+
     async function openHubRecordPaymentModal() {
       if (!selectedRow || !hubRowCanRecordLedgerPayment(selectedRow)) return;
       const modal = $("hubRecordPaymentModal");
@@ -18360,6 +18624,7 @@ window.renderSupervisor = renderSupervisor;
       setVal("hubRecordPayAmount", "");
       setVal("hubRecordPayNotes", "");
       syncHubRecordPayAmountDefault();
+      refreshHubRecordPayPremiumSelects();
       modal.setAttribute("aria-hidden", "false");
     }
 
@@ -18443,6 +18708,7 @@ window.renderSupervisor = renderSupervisor;
         }
         if (hubRecordPayModalCtx.successHandled) return;
         hubRecordPayModalCtx.successHandled = true;
+        closeHubRecordPayPremiumMenus();
         if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
         setNotice("hubRecordPayFeedback", "", "");
         if ($("hubRecordPayOverpayWarn")) {
@@ -18935,11 +19201,13 @@ window.renderSupervisor = renderSupervisor;
     if ($("hubRecordPayType")) {
       $("hubRecordPayType").onchange = () => syncHubRecordPayAmountDefault();
     }
+    bindHubRecordPayPremiumSelects();
     if ($("hubRecordPayAmount")) {
       $("hubRecordPayAmount").oninput = () => updateHubRecordPayOverpayWarning();
     }
     if ($("btnHubRecordPayClose")) {
       $("btnHubRecordPayClose").onclick = () => {
+        closeHubRecordPayPremiumMenus();
         if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
         setNotice("hubRecordPayFeedback", "", "");
         if ($("hubRecordPayOverpayWarn")) {
@@ -18950,6 +19218,7 @@ window.renderSupervisor = renderSupervisor;
     }
     if ($("btnHubRecordPayCancel")) {
       $("btnHubRecordPayCancel").onclick = () => {
+        closeHubRecordPayPremiumMenus();
         if ($("hubRecordPaymentModal")) $("hubRecordPaymentModal").setAttribute("aria-hidden", "true");
         setNotice("hubRecordPayFeedback", "", "");
         if ($("hubRecordPayOverpayWarn")) {
