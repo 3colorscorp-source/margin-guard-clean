@@ -1,0 +1,166 @@
+{
+  "version": 1,
+  "name": "owner-shield-v1",
+  "failMessage": "Owner protected surface changed outside Owner scope. Stop and move this to an Owner PR.",
+  "explicitScope": {
+    "branchSubstrings": [
+      "owner-shield",
+      "owner-voice",
+      "owner-portal",
+      "feat/owner-",
+      "fix/owner-"
+    ],
+    "allowEnv": "ALLOW_OWNER_TOUCH",
+    "prTitleToken": "[Owner]"
+  },
+  "required": [
+    {
+      "id": "owner-shield-v1-surface",
+      "path": "scripts/test-owner-shield-v1-surface.js",
+      "minPassed": 58
+    },
+    {
+      "id": "owner-voice-operational-plan",
+      "path": "scripts/test-owner-voice-operational-plan.js",
+      "minPassed": 128
+    },
+    {
+      "id": "owner-seller-send-dual-auth",
+      "path": "scripts/test-owner-seller-send-dual-auth.js",
+      "minPassed": 37
+    },
+    {
+      "id": "sales-ready-002b",
+      "path": "scripts/test-mg-sales-ready-002b.js",
+      "minPassed": 32
+    },
+    {
+      "id": "sales-ready-002c",
+      "path": "scripts/test-mg-sales-ready-002c.js",
+      "minPassed": 29
+    },
+    {
+      "id": "business-settings-modern-owner-session",
+      "path": "scripts/test-business-settings-modern-owner-session.js",
+      "minPassed": 40
+    },
+    {
+      "id": "seller-hours-publish-parity",
+      "path": "scripts/test-seller-hours-publish-parity.js",
+      "minPassed": 111
+    },
+    {
+      "id": "signing-calendar-reservation",
+      "path": "scripts/test-signing-calendar-reservation.js",
+      "minPassed": 108
+    },
+    {
+      "id": "voice-operational-plan-phase1",
+      "path": "scripts/test-voice-operational-plan-phase1.js",
+      "minPassed": 255
+    },
+    {
+      "id": "voice-operational-plan-phase2",
+      "path": "scripts/test-voice-operational-plan-phase2.js",
+      "minPassed": 88
+    },
+    {
+      "id": "ch015-target-finish-sync",
+      "path": "scripts/qa-ch015-target-finish-sync.js",
+      "minPassed": 20
+    },
+    {
+      "id": "sales-ready-004c",
+      "path": "scripts/test-mg-sales-ready-004c.js",
+      "minPassed": 40
+    },
+    {
+      "id": "ch008a-scheduling-payment",
+      "path": "scripts/qa-ch008a-scheduling-payment.js",
+      "minPassed": 34
+    }
+  ],
+  "optional": [
+    {
+      "id": "invoice-hub-regression-suite",
+      "path": "scripts/test-invoice-hub-regression-suite.js",
+      "minPassed": 7
+    },
+    {
+      "id": "sales-ready-004b",
+      "path": "scripts/test-mg-sales-ready-004b.js",
+      "minPassed": 87
+    },
+    {
+      "id": "business-settings-standard-deposit-link",
+      "path": "scripts/test-business-settings-standard-deposit-link.js",
+      "minPassed": 56
+    },
+    {
+      "id": "sales-ready-006a",
+      "path": "scripts/test-mg-sales-ready-006a.js",
+      "minPassed": 36
+    },
+    {
+      "id": "sales-ready-003e",
+      "path": "scripts/test-mg-sales-ready-003e.js",
+      "minPassed": 27
+    },
+    {
+      "id": "ch008a-m1b-scheduling-payment-edit",
+      "path": "scripts/qa-ch008a-m1b-scheduling-payment-edit.js",
+      "minPassed": 23
+    }
+  ],
+  "knownGaps": [
+    "qa-ch014-send-quote-price-guard.js — obsolete Owner send assertion (soldPriceGuard/currentMetrics); 18 passed, 1 failed on main. Not required. Not PASS.",
+    "browser localStorage round-trip of /owner — loadOwner/saveOwner live in the app.js IIFE and cannot be invoked from Node without modifying product; V1 freezes the source contract instead",
+    "archive and test-project isolation — no deterministic suite without product hooks or browser e2e",
+    "UI project-switch leftover fields beyond resetOwnerDraftToNewQuote source — no isolated suite",
+    "interpret current_document hydration / internal plan server persist (phase 3+)",
+    "payroll presets — no suite",
+    "Playwright owner-send-e2e.mjs — requires Playwright, not stdlib",
+    "pixel-level overflow screenshots — V1 freezes structural CSS only"
+  ],
+  "webhookContract": "estimate Zapier webhook is unsigned JSON POST; this is not HMAC. Invoice Hub Zapier remains Hub-owned.",
+  "exact": [
+    "public/owner.html",
+    "public/js/owner-voice-operational-plan.js",
+    "public/js/owner-capacity-ui.js",
+    "public/js/owner-recovery-auth.js",
+    "netlify/functions/restore-owner-session.js",
+    "netlify/functions/_lib/owner-access.js",
+    "scripts/guard-owner-scope.js",
+    "scripts/mg-owner-shield-v1.json",
+    "scripts/test-mg-owner-shield-v1.js",
+    "scripts/test-mg-owner-shield-v1-runner.js",
+    "scripts/test-owner-shield-v1-surface.js",
+    "scripts/test-owner-voice-operational-plan.js",
+    "docs/OWNER_PROTECTED_SURFACE.md"
+  ],
+  "globs": [
+    "scripts/fixtures/mg-owner-shield/*",
+    "scripts/mg-owner-shield*",
+    "scripts/test-mg-owner-shield*",
+    "docs/OWNER_*"
+  ],
+  "sharedScan": {
+    "public/js/app.js": {
+      "description": "Fail only when the app.js diff touches Owner markers. Uncertain diffs fail safe.",
+      "markers": [
+        "loadOwner",
+        "saveOwner",
+        "LS_OWNER",
+        "mg_owner_v2",
+        "resetOwnerDraftToNewQuote",
+        "resetOwnerQuoteStateForNewQuote",
+        "syncOwnerDraftToSalesStateForPublicSend",
+        "runOwnerSellerPublicSend",
+        "normalizeOwnerWorkers",
+        "calcOwner",
+        "ownerVoicePlan",
+        "btnOwnerReviewConfirmOperationalPlan"
+      ]
+    }
+  }
+}
