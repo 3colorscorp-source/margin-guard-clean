@@ -1,0 +1,45 @@
+name: Seller Shield V1
+
+on:
+  pull_request:
+    branches:
+      - main
+  merge_group:
+    types:
+      - checks_requested
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: seller-shield-v1-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  seller-shield-v1:
+    name: Seller Shield V1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"
+
+      - name: Runner self-test
+        run: node scripts/test-mg-seller-shield-v1-runner.js
+
+      - name: Scope guard self-test
+        run: node scripts/guard-seller-scope.js --self-test
+
+      - name: Seller Shield required
+        run: node scripts/test-mg-seller-shield-v1.js
+
+      - name: Seller Shield full
+        run: node scripts/test-mg-seller-shield-v1.js --full
