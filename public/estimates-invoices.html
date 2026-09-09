@@ -1040,6 +1040,44 @@
       font: inherit;
       font-size: 0.875rem;
     }
+    /* Native dropdown contrast: closed control was dark, but Windows Chrome/Edge
+       opened a washed light option list. color-scheme + opaque option colors.
+       Mobile OS pickers ignore option { background } and stay native. */
+    #hubRecordPaymentModal .hub-record-pay-card select {
+      color: #e8eefc;
+      background: #0c1424;
+      color-scheme: dark;
+    }
+    #hubRecordPaymentModal .hub-record-pay-card select:focus {
+      border-color: rgba(34, 197, 94, 0.38);
+      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.10);
+      outline: none;
+    }
+    #hubRecordPaymentModal .hub-record-pay-card select option {
+      color: #e8eefc;
+      background-color: #0c1424;
+    }
+    #hubRecordPaymentModal .hub-record-pay-card select option:checked,
+    #hubRecordPaymentModal .hub-record-pay-card select option:hover,
+    #hubRecordPaymentModal .hub-record-pay-card select option:focus {
+      color: #f8fbff;
+      background-color: #1a3a2a;
+    }
+    body[data-role="estimates-hub"] .hub-filters-form select {
+      color: #e8eefc;
+      background: #0c1424;
+      color-scheme: dark;
+    }
+    body[data-role="estimates-hub"] .hub-filters-form select option {
+      color: #e8eefc;
+      background-color: #0c1424;
+    }
+    body[data-role="estimates-hub"] .hub-filters-form select option:checked,
+    body[data-role="estimates-hub"] .hub-filters-form select option:hover,
+    body[data-role="estimates-hub"] .hub-filters-form select option:focus {
+      color: #f8fbff;
+      background-color: #1a3a2a;
+    }
     @media (min-width: 721px) {
       #hubFormModal.hub-invoice-form-modal,
       #hubRecordPaymentModal {
