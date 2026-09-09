@@ -13642,6 +13642,27 @@ window.renderSupervisor = renderSupervisor;
     return ["sent", "partial", "overdue", "expired"].includes(String(row?.status || "").toLowerCase());
   }
 
+  /**
+   * Invoice Hub Sent tab / status dropdown: sent to the client and still collectible.
+   * Filter only. Does not change the Status chip or persist invoice status.
+   */
+  function hubRowMatchesSentView(row) {
+    const bal = finiteNumber(row?.balance, 0);
+    if (bal <= 0.005) return false;
+    const raw = String(row?.hubInvoiceRawStatus || row?.invoiceStatus || "")
+      .trim()
+      .toLowerCase();
+    const display = String(row?.status || "")
+      .trim()
+      .toLowerCase();
+    const closed = new Set(["archived", "void", "cancelled", "canceled", "paid", "completed"]);
+    if (closed.has(raw) || closed.has(display)) return false;
+    const sentAt = nonEmptyString(row?.hubInvoiceSentAt);
+    const sentLikeRaw = ["sent", "issued", "partial", "overdue"].includes(raw);
+    const sentLikeDisplay = ["sent", "partial", "overdue"].includes(display);
+    return Boolean(sentAt || sentLikeRaw || sentLikeDisplay);
+  }
+
   function hubTabPresetToViewMode(tab, preset) {
     const t = tab || "all";
     const pr = preset === undefined || preset === null ? "" : String(preset);
@@ -18010,7 +18031,7 @@ window.renderSupervisor = renderSupervisor;
             if (!hubRowMatchesReadyToBillView(row)) return false;
             break;
           case "sent":
-            if (String(row.status || "").toLowerCase() !== "sent") return false;
+            if (!hubRowMatchesSentView(row)) return false;
             break;
           case "paid":
             if (String(row.status || "").toLowerCase() !== "paid") return false;
@@ -18052,6 +18073,8 @@ window.renderSupervisor = renderSupervisor;
           const quoteAccepted = String(row.hubQuoteStatus || "").trim().toLowerCase() === "accepted";
           const displayAccepted = String(row.status || "").trim().toLowerCase() === "accepted";
           if (!(acceptedAt || quoteAccepted || displayAccepted)) return false;
+        } else if (statusFilter === "sent") {
+          if (!hubRowMatchesSentView(row)) return false;
         } else if (row.status !== statusFilter) {
           return false;
         }
