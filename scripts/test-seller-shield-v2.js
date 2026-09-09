@@ -18,13 +18,60 @@ const OWNER_WF = ".github/workflows/owner-shield-v1.yml";
 const HUB_WF = ".github/workflows/invoice-hub-shield-v2.yml";
 const SELLER_WF = ".github/workflows/seller-shield-v1.yml";
 
-function gitDiffEmpty(rel) {
-  const r = spawnSync("git", ["diff", "--exit-code", "origin/main", "--", rel], {
+function isFullGitSha(value) {
+  return /^[0-9a-f]{40}$/i.test(String(value || "").trim());
+}
+
+function git(args, gitImpl) {
+  if (typeof gitImpl === "function") return gitImpl(args);
+  return spawnSync("git", args, {
     cwd: ROOT,
     encoding: "utf8",
     windowsHide: true,
+    shell: false,
   });
-  return r.status === 0;
+}
+
+function readPrBaseShaFromEvent(env, readFileImpl) {
+  const eventPath = String((env || process.env).GITHUB_EVENT_PATH || "").trim();
+  if (!eventPath) return "";
+  try {
+    const readFile = readFileImpl || fs.readFileSync;
+    const ev = JSON.parse(readFile(eventPath, "utf8"));
+    return String((ev && ev.pull_request && ev.pull_request.base && ev.pull_request.base.sha) || "").trim();
+  } catch (_err) {
+    return "";
+  }
+}
+
+function refExists(ref, gitImpl) {
+  const r = git(["cat-file", "-e", String(ref || "") + "^{commit}"], gitImpl);
+  return Boolean(r && r.status === 0);
+}
+
+function resolveComparisonBase(options) {
+  const opts = options || {};
+  const env = opts.env || process.env;
+  const gitImpl = opts.gitImpl;
+  const eventSha = readPrBaseShaFromEvent(env, opts.readFileImpl);
+  if (eventSha) {
+    if (!isFullGitSha(eventSha)) {
+      return { ok: false, ref: eventSha, reason: "invalid_pr_base_sha" };
+    }
+    if (!refExists(eventSha, gitImpl)) {
+      return { ok: false, ref: eventSha, reason: "missing_pr_base_sha" };
+    }
+    return { ok: true, ref: eventSha, reason: "pr_base_sha" };
+  }
+  if (refExists("origin/main", gitImpl)) {
+    return { ok: true, ref: "origin/main", reason: "origin_main_fallback" };
+  }
+  return { ok: false, ref: "", reason: "missing_comparison_base" };
+}
+
+function gitDiffEmpty(rel, baseRef, gitImpl) {
+  const r = git(["diff", "--exit-code", baseRef, "--", rel], gitImpl);
+  return Boolean(r && r.status === 0);
 }
 
 function read(rel) {
@@ -36,6 +83,63 @@ function assert(label, cond) {
   console.log("PASS " + label);
 }
 
+function runResolverCoverage(pass) {
+  const eventSha = "2e945256bf85e3ffcffca8fe53ae18cc215e1690";
+  const prEvent = JSON.stringify({ pull_request: { base: { sha: eventSha } } });
+
+  const fromEvent = resolveComparisonBase({
+    env: { GITHUB_EVENT_PATH: "C:/fake/event.json" },
+    readFileImpl: () => prEvent,
+    gitImpl: (args) => {
+      if (args[0] === "cat-file" && args[2] === eventSha + "^{commit}") return { status: 0 };
+      return { status: 1, stdout: "", stderr: "not found" };
+    },
+  });
+  pass("resolver prefers PR base SHA", fromEvent.ok === true && fromEvent.ref === eventSha && fromEvent.reason === "pr_base_sha");
+
+  const invalid = resolveComparisonBase({
+    env: { GITHUB_EVENT_PATH: "C:/fake/event.json" },
+    readFileImpl: () => JSON.stringify({ pull_request: { base: { sha: "origin/main" } } }),
+    gitImpl: () => ({ status: 0, stdout: "", stderr: "" }),
+  });
+  pass("resolver rejects non-hex SHA", invalid.ok === false && invalid.reason === "invalid_pr_base_sha");
+
+  const shortSha = resolveComparisonBase({
+    env: { GITHUB_EVENT_PATH: "C:/fake/event.json" },
+    readFileImpl: () => JSON.stringify({ pull_request: { base: { sha: "2e945256bf" } } }),
+    gitImpl: () => ({ status: 0, stdout: "", stderr: "" }),
+  });
+  pass("resolver requires 40-character SHA", shortSha.ok === false && shortSha.reason === "invalid_pr_base_sha");
+
+  const missingSha = resolveComparisonBase({
+    env: { GITHUB_EVENT_PATH: "C:/fake/event.json" },
+    readFileImpl: () => prEvent,
+    gitImpl: () => ({ status: 1, stdout: "", stderr: "missing" }),
+  });
+  pass(
+    "resolver fails when PR SHA is missing locally",
+    missingSha.ok === false && missingSha.reason === "missing_pr_base_sha"
+  );
+
+  const localFallback = resolveComparisonBase({
+    env: {},
+    gitImpl: (args) => {
+      if (args[0] === "cat-file" && args[2] === "origin/main^{commit}") return { status: 0 };
+      return { status: 1, stdout: "", stderr: "" };
+    },
+  });
+  pass(
+    "resolver falls back to origin/main locally",
+    localFallback.ok === true && localFallback.ref === "origin/main" && localFallback.reason === "origin_main_fallback"
+  );
+
+  const noBase = resolveComparisonBase({
+    env: {},
+    gitImpl: () => ({ status: 1, stdout: "", stderr: "missing origin/main" }),
+  });
+  pass("resolver errors when no comparison base exists", noBase.ok === false && noBase.reason === "missing_comparison_base");
+}
+
 function main() {
   let n = 0;
   const pass = (label, cond) => {
@@ -43,8 +147,20 @@ function main() {
     n += 1;
   };
 
+  runResolverCoverage(pass);
+
+  const resolved = resolveComparisonBase();
+  if (!resolved.ok) {
+    throw new Error(
+      "FAIL comparison base unavailable (" +
+        resolved.reason +
+        "). Need pull_request.base.sha from GITHUB_EVENT_PATH or a local origin/main."
+    );
+  }
+  pass("comparison base resolved (" + resolved.reason + ")", Boolean(resolved.ref));
+
   pass("workflow file exists", fs.existsSync(WORKFLOW));
-  pass("Seller Shield workflow is untouched vs origin/main", gitDiffEmpty(SELLER_WF));
+  pass("Seller Shield workflow is untouched vs comparison base", gitDiffEmpty(SELLER_WF, resolved.ref));
   const yml = fs.readFileSync(WORKFLOW, "utf8");
   pass("workflow name is Seller Shield V1", /^name:\s*Seller Shield V1\s*$/m.test(yml));
   pass("job name is Seller Shield V1", /^\s+name:\s*Seller Shield V1\s*$/m.test(yml));
@@ -82,8 +198,8 @@ function main() {
 
   pass("Owner Shield workflow exists", read(OWNER_WF).length > 0);
   pass("Invoice Hub Shield workflow exists", read(HUB_WF).length > 0);
-  pass("Owner Shield workflow is untouched vs origin/main", gitDiffEmpty(OWNER_WF));
-  pass("Invoice Hub Shield workflow is untouched vs origin/main", gitDiffEmpty(HUB_WF));
+  pass("Owner Shield workflow is untouched vs comparison base", gitDiffEmpty(OWNER_WF, resolved.ref));
+  pass("Invoice Hub Shield workflow is untouched vs comparison base", gitDiffEmpty(HUB_WF, resolved.ref));
 
   const { evaluateGuard } = require("./guard-seller-scope.js");
   pass(
@@ -128,4 +244,13 @@ function main() {
   console.log("\n" + n + " passed");
 }
 
-main();
+module.exports = {
+  isFullGitSha,
+  readPrBaseShaFromEvent,
+  resolveComparisonBase,
+  gitDiffEmpty,
+};
+
+if (require.main === module) {
+  main();
+}
