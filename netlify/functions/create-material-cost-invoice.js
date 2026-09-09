@@ -5,6 +5,7 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { hasOwnerSessionIdentity } = require("./_lib/owner-access");
 const { makePublicToken } = require("./_lib/public-token");
 const { pickFirst } = require("./_lib/tenant-display");
 
@@ -221,7 +222,7 @@ exports.handler = async (event) => {
     }
 
     const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
+    if (!hasOwnerSessionIdentity(session)) {
       return json(401, { ok: false, error: "Unauthorized" });
     }
 
