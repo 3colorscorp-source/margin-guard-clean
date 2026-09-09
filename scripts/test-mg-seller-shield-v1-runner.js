@@ -47,10 +47,17 @@ function runWith(argv, extra) {
   const outcome = shield.runShield({
     argv: ["node", "scripts/test-mg-seller-shield-v1.js"].concat(argv || []),
     root: ROOT,
-    env: { PATH: process.env.PATH, SYSTEMROOT: process.env.SYSTEMROOT },
+    env: Object.assign(
+      { PATH: process.env.PATH, SYSTEMROOT: process.env.SYSTEMROOT },
+      base.env || {}
+    ),
     log: (line) => logs.push(String(line)),
     writeOut: silent,
     writeErr: (chunk) => errs.push(String(chunk)),
+    skipRealGuard: base.skipRealGuard !== false,
+    gitImpl: base.gitImpl,
+    guardSpawnImpl: base.guardSpawnImpl,
+    readFileImpl: base.readFileImpl,
     spawnImpl: base.spawnImpl || function (absPath, root, env) {
       spawned.push({ absPath, root, env, shell: false });
       if (base.realSpawn) {
@@ -199,14 +206,14 @@ eq("parsePassedCount 004c summary", shield.parsePassedCount("40 passed, 0 failed
 eq("stripAnsi ignores colors", shield.parsePassedCount("\u001b[32m5 passed\u001b[0m\n", "").passed, 5);
 
 const defaultManifest = shield.loadManifest();
-eq("default required count", defaultManifest.required.length, 8);
+eq("default required count", defaultManifest.required.length, 12);
 eq("default optional count", defaultManifest.optional.length, 1);
 eq("004b is optional not required", defaultManifest.optional[0].path, shield.OPTIONAL_004B);
 ok(
   "004b is not in required list",
   defaultManifest.required.every((row) => row.path !== shield.OPTIONAL_004B)
 );
-eq("known gaps count", defaultManifest.knownGaps.length, 3);
+eq("known gaps count", defaultManifest.knownGaps.length, 0);
 
 const gapRun = runWith([], {
   realSpawn: true,
@@ -238,5 +245,144 @@ const childEnv = shield.isolatedChildEnv({
 ok("child env strips Zapier webhook", childEnv.ZAPIER_WEBHOOK_URL === undefined);
 ok("child env strips OpenAI key", childEnv.OPENAI_API_KEY === undefined);
 ok("child env uses example supabase", childEnv.SUPABASE_URL === "https://example.supabase.co");
+
+ok("safe git sha accepted", shield.isSafeGitSha("2e945256bf85e3ffcffca8fe53ae18cc215e1690"));
+ok("unsafe git sha rejected", shield.isSafeGitSha(";calc.exe") === false);
+
+const mergeSkip = runWith([], {
+  skipRealGuard: false,
+  env: { GITHUB_EVENT_NAME: "merge_group" },
+  realSpawn: true,
+  manifest: { required: [passEntry], optional: [], knownGaps: [] },
+  guardSpawnImpl: function () {
+    throw new Error("merge_group must not spawn the real guard");
+  },
+});
+eq("11. merge_group still PASS", mergeSkip.result, "PASS");
+ok(
+  "11. merge_group logs skip",
+  mergeSkip.logs.some((line) => /Seller real guard skipped \(merge_group\)/.test(line))
+);
+ok("11. merge_group skipped flag", mergeSkip.guard && mergeSkip.guard.skipped === true);
+
+const guardFail = runWith([], {
+  skipRealGuard: false,
+  gitImpl: function () {
+    return { status: 0, stdout: "", stderr: "" };
+  },
+  guardSpawnImpl: function () {
+    return { status: 1, stdout: "Seller protected surface changed outside Seller scope.\n", stderr: "" };
+  },
+  manifest: { required: [passEntry], optional: [], knownGaps: [] },
+});
+eq("12. guard nonzero is FAIL", guardFail.result, "FAIL");
+ok("12. guard failure does not run suites", guardFail.spawned.length === 0);
+ok(
+  "12. guard failure reason",
+  guardFail.failed && guardFail.failed[0] && guardFail.failed[0].reason === "nonzero_exit"
+);
+
+const eventSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+let capturedGuardEnv = null;
+const fromEvent = runWith([], {
+  skipRealGuard: false,
+  env: {
+    GITHUB_EVENT_NAME: "pull_request",
+    GITHUB_EVENT_PATH: "C:/fake/event.json",
+    ALLOW_SELLER_TOUCH: "1",
+  },
+  readFileImpl: function () {
+    return JSON.stringify({
+      pull_request: {
+        title: "[Seller] v2",
+        head: { ref: "feat/seller-shield-v2" },
+        base: { sha: eventSha },
+      },
+    });
+  },
+  gitImpl: function () {
+    return { status: 0, stdout: "", stderr: "" };
+  },
+  guardSpawnImpl: function (absPath, root, env) {
+    capturedGuardEnv = env;
+    return { status: 0, stdout: "No Seller protected surface changes.\n", stderr: "" };
+  },
+  manifest: { required: [passEntry], optional: [], knownGaps: [] },
+  realSpawn: true,
+});
+eq("13. event-driven guard PASS", fromEvent.result, "PASS");
+eq("13. PR_TITLE from event", capturedGuardEnv && capturedGuardEnv.PR_TITLE, "[Seller] v2");
+eq("13. GITHUB_HEAD_REF from event", capturedGuardEnv && capturedGuardEnv.GITHUB_HEAD_REF, "feat/seller-shield-v2");
+eq("13. BASE_REF from event", capturedGuardEnv && capturedGuardEnv.BASE_REF, eventSha);
+ok("13. ALLOW_SELLER_TOUCH stripped", capturedGuardEnv && capturedGuardEnv.ALLOW_SELLER_TOUCH === undefined);
+ok(
+  "13. guard path is exact",
+  fromEvent.logs.some((line) => /scripts\/guard-seller-scope\.js/.test(line))
+);
+
+const gitArgs = [];
+const missingSha = runWith([], {
+  skipRealGuard: false,
+  env: { GITHUB_EVENT_NAME: "pull_request", GITHUB_EVENT_PATH: "C:/fake/event.json" },
+  readFileImpl: function () {
+    return JSON.stringify({
+      pull_request: {
+        title: "Hub layout",
+        head: { ref: "feat/invoice-hub-layout" },
+        base: { sha: eventSha },
+      },
+    });
+  },
+  gitImpl: function (args) {
+    gitArgs.push(args.slice());
+    if (args[0] === "rev-parse") return { status: 1, stdout: "", stderr: "" };
+    if (args[0] === "fetch") return { status: 0, stdout: "", stderr: "" };
+    return { status: 0, stdout: "", stderr: "" };
+  },
+  guardSpawnImpl: function () {
+    return { status: 0, stdout: "No Seller protected surface changes.\n", stderr: "" };
+  },
+  manifest: { required: [], optional: [], knownGaps: [] },
+});
+eq("14. missing SHA fetch PASS", missingSha.result, "PASS");
+ok(
+  "14. limited fetch of SHA",
+  gitArgs.some(
+    (args) =>
+      args[0] === "fetch" &&
+      args[1] === "--no-tags" &&
+      args[2] === "--depth=1" &&
+      args[3] === "origin" &&
+      args[4] === eventSha
+  )
+);
+
+const unsafeArgs = [];
+const unsafe = runWith([], {
+  skipRealGuard: false,
+  env: { GITHUB_EVENT_NAME: "pull_request", GITHUB_EVENT_PATH: "C:/fake/event.json" },
+  readFileImpl: function () {
+    return JSON.stringify({
+      pull_request: {
+        title: "x",
+        head: { ref: "feat/x" },
+        base: { sha: ";calc.exe" },
+      },
+    });
+  },
+  gitImpl: function (args) {
+    unsafeArgs.push(args.slice());
+    return { status: 1, stdout: "", stderr: "" };
+  },
+  guardSpawnImpl: function () {
+    throw new Error("unsafe SHA must not spawn guard");
+  },
+  manifest: { required: [], optional: [], knownGaps: [] },
+});
+eq("15. unsafe SHA is FAIL", unsafe.result, "FAIL");
+ok(
+  "15. unsafe SHA is not fetched",
+  unsafeArgs.every((args) => args[0] !== "fetch")
+);
 
 console.log("\nSeller Shield V1 runner tests: " + passed + " passed");

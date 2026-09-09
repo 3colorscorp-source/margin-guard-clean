@@ -47,6 +47,26 @@
       "id": "ch008a-scheduling-payment",
       "path": "scripts/qa-ch008a-scheduling-payment.js",
       "minPassed": 34
+    },
+    {
+      "id": "get-seller-business-settings",
+      "path": "scripts/test-get-seller-business-settings.js",
+      "minPassed": 21
+    },
+    {
+      "id": "seller-device-pairing",
+      "path": "scripts/test-seller-device-pairing.js",
+      "minPassed": 37
+    },
+    {
+      "id": "seller-quote-number-allocation",
+      "path": "scripts/test-seller-quote-number-allocation.js",
+      "minPassed": 24
+    },
+    {
+      "id": "seller-shield-v2-wiring",
+      "path": "scripts/test-seller-shield-v2.js",
+      "minPassed": 43
     }
   ],
   "optional": [
@@ -56,11 +76,7 @@
       "minPassed": 87
     }
   ],
-  "knownGaps": [
-    "get-seller-business-settings",
-    "Pairing UI",
-    "quote-number collision"
-  ],
+  "knownGaps": [],
   "webhookContract": "estimate Zapier webhook is unsigned JSON POST; this is not HMAC",
   "exact": [
     "public/sales.html",
@@ -69,15 +85,28 @@
     "public/js/quote-send-feedback.js",
     "public/js/sales-capacity-calendar.js",
     "public/js/sales-operational-plan.js",
+    "public/js/device-portal-auth.js",
+    "public/portal-pair.html",
+    ".github/workflows/seller-shield-v1.yml",
     "netlify/functions/publish-public-quote.js",
     "netlify/functions/send-quote-zapier.js",
     "netlify/functions/calc-secure-pricing.js",
     "netlify/functions/voice-operational-plan-command.mjs",
     "netlify/functions/get-tenant-branding.js",
+    "netlify/functions/get-seller-business-settings.js",
+    "netlify/functions/get-sales-capacity-calendar.js",
+    "netlify/functions/quote-internal-operational-plan.js",
+    "netlify/functions/list-tenant-contacts.js",
+    "netlify/functions/upsert-tenant-contact.js",
+    "netlify/functions/pair-device.js",
+    "netlify/functions/device-auth-status.js",
+    "netlify/functions/device-heartbeat.js",
+    "netlify/functions/device-logout.js",
     "scripts/guard-seller-scope.js",
     "scripts/mg-seller-shield-v1.json",
     "scripts/test-mg-seller-shield-v1.js",
     "scripts/test-mg-seller-shield-v1-runner.js",
+    "scripts/test-get-seller-business-settings.js",
     "docs/SELLER_PROTECTED_SURFACE.md",
     "MARGIN_GUARD_SELLER_PORTAL_SUMMARY.md"
   ],
@@ -123,6 +152,83 @@
         "sanitizeWorkersForTenantPricing",
         "hoursPerDay",
         "minimum_price"
+      ]
+    },
+    "netlify/functions/_lib/device-session.js": {
+      "description": "Fail when seller device cookie/session helpers change. Supervisor pairing shares this file; non-marker edits may pass.",
+      "markers": [
+        "DEVICE_COOKIE_NAME",
+        "mg_device_session",
+        "createDeviceSessionCookieFromPayload",
+        "readDeviceSessionFromEvent",
+        "hashSessionToken"
+      ]
+    },
+    "netlify/functions/_lib/membership-resolve.js": {
+      "description": "Fail when pairing/membership role checks used by seller devices change.",
+      "markers": [
+        "resolveMembershipById",
+        "membershipRole",
+        "membershipIsActive"
+      ]
+    },
+    "netlify/functions/_lib/sales-capacity-calendar.js": {
+      "description": "Fail when seller capacity calendar entry points or seller override flags change.",
+      "markers": [
+        "computeSalesCapacityCalendar",
+        "allowSellerScheduleOverride",
+        "allow_seller_schedule_override",
+        "addBusinessDays"
+      ]
+    },
+    "netlify/functions/_lib/quote-internal-operational-plan-store.js": {
+      "description": "Fail when publish persist/rollback RPCs used by seller quotes change. Owner send shares this file.",
+      "markers": [
+        "confirmOperationalPlanAtomic",
+        "persistPublishedInternalPlan",
+        "rollbackNewlyPublishedQuote",
+        "mg_confirm_quote_operational_plan"
+      ]
+    },
+    "netlify/functions/_lib/operational-plan.js": {
+      "description": "Fail when quote operational-plan helpers used by seller publish change. Supervisor visibility helpers are not markers.",
+      "markers": [
+        "normalizeOperationalPlan",
+        "resolveOperationalPlanForQuote",
+        "extractOperationalPlanFromQuoteRow",
+        "laborCostFromOperationalPlan"
+      ]
+    },
+    "netlify/functions/_lib/voice-operational-plan.js": {
+      "description": "Fail when confirm-and-apply, rate stripping, or public client-scope contracts change. Owner voice shares this file.",
+      "markers": [
+        "confirmPreview",
+        "stripRateFields",
+        "buildPublicClientScope",
+        "resolveHoursPerDayFromSettings",
+        "PUBLIC_FORBIDDEN_KEYS",
+        "scrubPublicPayload"
+      ]
+    },
+    "netlify/functions/_lib/public-token.js": {
+      "description": "Fail when public token generation used by seller quote links changes. Invoice Hub invoice tokens share this helper.",
+      "markers": [
+        "makePublicToken",
+        "randomSegment",
+        "getRandomValues"
+      ]
+    },
+    "netlify/functions/_lib/attribution-context.js": {
+      "description": "Fail when seller device attribution builders change. Owner/supervisor builders are not markers.",
+      "markers": [
+        "buildSellerAttribution",
+        "created_by_role: \"seller\""
+      ]
+    },
+    "netlify/functions/_lib/tenant-display.js": {
+      "description": "Fail when tenant display lookup used by seller branding changes.",
+      "markers": [
+        "loadTenantDisplayForTenantId"
       ]
     }
   }

@@ -263,6 +263,7 @@ function resolveBaseRef() {
 
 function runSelfTest() {
   const manifest = loadManifest();
+  const src = fs.readFileSync(__filename, "utf8");
   let n = 0;
   const pass = (label, cond) => {
     if (!cond) throw new Error("self-test failed: " + label);
@@ -270,8 +271,33 @@ function runSelfTest() {
     n += 1;
   };
 
+  const newCritical = [
+    ".github/workflows/seller-shield-v1.yml",
+    "public/js/device-portal-auth.js",
+    "public/portal-pair.html",
+    "netlify/functions/get-seller-business-settings.js",
+    "netlify/functions/get-sales-capacity-calendar.js",
+    "netlify/functions/quote-internal-operational-plan.js",
+    "netlify/functions/list-tenant-contacts.js",
+    "netlify/functions/upsert-tenant-contact.js",
+    "netlify/functions/pair-device.js",
+    "netlify/functions/device-auth-status.js",
+    "netlify/functions/device-heartbeat.js",
+    "netlify/functions/device-logout.js",
+  ];
+  newCritical.forEach((file) => {
+    pass(
+      "non-Seller + " + file + " fails",
+      evaluateGuard({
+        files: [file],
+        branch: "feat/owner-voice",
+        prTitle: "[Owner] voice",
+      }).ok === false
+    );
+  });
+
   pass(
-    "non-Seller branch + protected file fails",
+    "non-Seller branch + sales.html fails",
     evaluateGuard({
       files: ["public/sales.html"],
       branch: "feat/support-layout",
@@ -281,17 +307,35 @@ function runSelfTest() {
 
   const scoped = evaluateGuard({
     files: ["public/sales.html"],
-    branch: "feat/seller-shield-v1",
+    branch: "feat/seller-shield-v2",
     prTitle: "Shield",
   });
   pass("Seller branch + protected file passes", scoped.ok === true);
   pass("Seller branch requires regression suite", scoped.regressionRequired === true);
 
+  const titled = evaluateGuard({
+    files: ["netlify/functions/pair-device.js"],
+    branch: "feat/misc",
+    prTitle: "[Seller] pairing",
+  });
+  pass("PR title [Seller] + protected file passes", titled.ok === true);
+  pass("PR title [Seller] requires regression suite", titled.regressionRequired === true);
+
   pass(
-    "non-Seller file only passes",
+    "Owner-only files pass",
     evaluateGuard({
       files: ["public/owner.html", "docs/INVOICE_HUB_PROTECTED_SURFACE.md"],
-      branch: "feat/support-layout",
+      branch: "feat/owner-voice",
+      prTitle: "[Owner] voice",
+    }).ok === true
+  );
+
+  pass(
+    "Invoice Hub exclusive files pass",
+    evaluateGuard({
+      files: ["public/estimates-invoices.html", "netlify/functions/list-tenant-invoices.js"],
+      branch: "feat/invoice-hub-shield-v2",
+      prTitle: "[Invoice Hub] shield",
     }).ok === true
   );
 
@@ -313,7 +357,7 @@ function runSelfTest() {
     },
     branch: "feat/support-layout",
   });
-  pass("app.js Seller lines fail without Seller scope", sellerApp.ok === false);
+  pass("app.js Seller region fails without Seller scope", sellerApp.ok === false);
 
   const sellerAppAllowed = evaluateGuard({
     files: ["public/js/app.js"],
@@ -324,6 +368,49 @@ function runSelfTest() {
     branch: "fix/seller-send-in-flight",
   });
   pass("app.js Seller lines pass with Seller branch", sellerAppAllowed.ok === true);
+  pass("app.js Seller lines require regression", sellerAppAllowed.regressionRequired === true);
+
+  const sharedAuth = evaluateGuard({
+    files: ["netlify/functions/_lib/tenant-device-guard.js"],
+    diffsByFile: {
+      "netlify/functions/_lib/tenant-device-guard.js":
+        "diff --git a/netlify/functions/_lib/tenant-device-guard.js b/netlify/functions/_lib/tenant-device-guard.js\n--- a/a\n+++ b/b\n@@ -1 +1 @@\n-async function requireSellerDevice() { return null; }\n+async function requireSellerDevice() { return {}; }\n",
+    },
+    branch: "feat/owner-voice",
+  });
+  pass("shared auth Seller region fails without Seller scope", sharedAuth.ok === false);
+
+  const sharedPricing = evaluateGuard({
+    files: ["netlify/functions/_lib/pricing-engine.js"],
+    diffsByFile: {
+      "netlify/functions/_lib/pricing-engine.js":
+        "diff --git a/netlify/functions/_lib/pricing-engine.js b/netlify/functions/_lib/pricing-engine.js\n--- a/a\n+++ b/b\n@@ -1 +1 @@\n-function calculateQuotePublishFinancials() { return { minimum_price: 1 }; }\n+function calculateQuotePublishFinancials() { return { minimum_price: 0 }; }\n",
+    },
+    branch: "fix/business-settings-modern-owner-session",
+  });
+  pass("shared pricing Seller region fails without Seller scope", sharedPricing.ok === false);
+
+  const uncertainApp = evaluateGuard({
+    files: ["public/js/app.js"],
+    diffsByFile: { "public/js/app.js": "" },
+    branch: "feat/support-layout",
+  });
+  pass("empty/unreadable shared app.js diff fails safe", uncertainApp.ok === false);
+
+  const uncertainDevice = evaluateGuard({
+    files: ["netlify/functions/_lib/device-session.js"],
+    diffsByFile: { "netlify/functions/_lib/device-session.js": "diff --git a/x b/x\n" },
+    branch: "feat/misc",
+  });
+  pass("uncertain shared device-session diff fails safe", uncertainDevice.ok === false);
+
+  pass(
+    "Seller workflow file is protected",
+    evaluateGuard({
+      files: [".github/workflows/seller-shield-v1.yml"],
+      branch: "feat/support-layout",
+    }).ok === false
+  );
 
   pass(
     "ALLOW_SELLER_TOUCH=1 allows protected file",
@@ -335,15 +422,6 @@ function runSelfTest() {
   );
 
   pass(
-    "PR title [Seller] allows protected file",
-    evaluateGuard({
-      files: ["netlify/functions/send-quote-zapier.js"],
-      branch: "feat/misc",
-      prTitle: "[Seller] zapier status gate",
-    }).ok === true
-  );
-
-  pass(
     "fail message is exact",
     evaluateGuard({
       files: ["public/js/sales-device-portal.js"],
@@ -351,13 +429,10 @@ function runSelfTest() {
     }).message === (manifest.failMessage || FAIL_MESSAGE)
   );
 
-  pass(
-    "Invoice Hub files are not Seller-protected",
-    evaluateGuard({
-      files: ["public/estimates-invoices.html", "netlify/functions/list-tenant-invoices.js"],
-      branch: "feat/misc",
-    }).ok === true
-  );
+  pass("PR title is read from process.env", /process\.env\.PR_TITLE/.test(src));
+  pass("git is spawned with array args", /spawnSync\("git", args/.test(src));
+  pass("spawnSync is not invoked with shell true", !/shell:\s*true/.test(src));
+  pass("workflow is in exact protected list", (manifest.exact || []).indexOf(".github/workflows/seller-shield-v1.yml") >= 0);
 
   console.log("\n" + n + " self-tests passed");
 }
