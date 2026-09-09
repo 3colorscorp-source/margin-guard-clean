@@ -256,17 +256,56 @@ function collectDiffs(baseRef, files, manifest) {
   return diffs;
 }
 
-function resolveBaseRef() {
-  const requested = String(process.env.BASE_REF || "origin/main").trim() || "origin/main";
-  const probe = git(["rev-parse", "--verify", requested]);
-  if (probe.status === 0) return requested;
-  const main = git(["rev-parse", "--verify", "main"]);
-  if (main.status === 0) return "main";
-  return requested;
+function isSafeGitSha(value) {
+  return /^[0-9a-f]{7,40}$/i.test(String(value || "").trim());
+}
+
+function resolveBaseRef(envObj, gitImpl) {
+  const env = envObj || process.env;
+  const requested = String(env.BASE_REF || "origin/main").trim() || "origin/main";
+  const runGit =
+    gitImpl ||
+    function (args) {
+      return git(args);
+    };
+  const probe = runGit(["rev-parse", "--verify", requested + "^{commit}"]);
+  if (probe && probe.status === 0) return { ok: true, ref: requested };
+  return { ok: false, ref: requested, reason: "unresolved_base_ref" };
+}
+
+function inspectGithubEventPath(envObj, existsImpl, readFileImpl) {
+  const env = envObj || process.env;
+  const eventPath = String(env.GITHUB_EVENT_PATH || "").trim();
+  if (!eventPath) return { ok: true, reason: "absent" };
+  if (String(env.PR_TITLE || "").trim()) return { ok: true, reason: "pr_title_present" };
+  const exists = existsImpl || fs.existsSync;
+  if (!exists(eventPath)) return { ok: false, reason: "invalid_github_event_path" };
+  try {
+    const readFile = readFileImpl || fs.readFileSync;
+    JSON.parse(readFile(eventPath, "utf8"));
+    return { ok: true, reason: "readable" };
+  } catch (_err) {
+    return { ok: false, reason: "invalid_github_event_path" };
+  }
+}
+
+function missingExactFiles(manifest, changedFiles, existsImpl) {
+  const exists =
+    existsImpl ||
+    function (rel) {
+      return fs.existsSync(path.join(ROOT, rel));
+    };
+  const changed = new Set((changedFiles || []).map(normPath));
+  return (manifest.exact || []).filter((rel) => {
+    const n = normPath(rel);
+    if (changed.has(n)) return false;
+    return !exists(n);
+  });
 }
 
 function runSelfTest() {
   const manifest = loadManifest();
+  const src = fs.readFileSync(__filename, "utf8");
   let n = 0;
   const pass = (label, cond) => {
     if (!cond) throw new Error("self-test failed: " + label);
@@ -274,13 +313,39 @@ function runSelfTest() {
     n += 1;
   };
 
+  const simFail = evaluateGuard({
+    files: ["public/owner.html"],
+    branch: "feat/support-layout",
+    prTitle: "Support layout",
+  });
+  pass("1. non-Owner branch + Owner file fails", simFail.ok === false);
+
+  const simPass = evaluateGuard({
+    files: ["public/owner.html"],
+    branch: "feat/owner-shield-v2",
+    prTitle: "Shield",
+  });
+  pass("2. Owner-authorized branch + Owner file passes", simPass.ok === true);
+  pass("3. Owner-authorized branch requires Owner regression", simPass.regressionRequired === true);
+
+  const titledEarly = evaluateGuard({
+    files: ["netlify/functions/restore-owner-session.js"],
+    branch: "feat/misc",
+    prTitle: "[Owner] restore session cookie",
+  });
+  pass("4. PR title [Owner] + Owner file passes", titledEarly.ok === true);
+  pass("5. PR title [Owner] requires Owner regression", titledEarly.regressionRequired === true);
+
   pass(
-    "non-Owner branch + protected file fails",
+    "6. Seller/Invoice Hub files only from non-Owner branch pass",
     evaluateGuard({
-      files: ["public/owner.html"],
+      files: [
+        "public/sales.html",
+        "public/estimates-invoices.html",
+        "netlify/functions/list-tenant-invoices.js",
+      ],
       branch: "feat/support-layout",
-      prTitle: "Support layout",
-    }).ok === false
+    }).ok === true
   );
 
   pass(
@@ -300,21 +365,25 @@ function runSelfTest() {
     }).ok === false
   );
 
-  const scoped = evaluateGuard({
-    files: ["public/owner.html"],
-    branch: "feat/owner-shield-v1",
-    prTitle: "Shield",
+  const newCritical = [
+    ".github/workflows/owner-shield-v1.yml",
+    "public/js/owner-financial-advisor.js",
+    "netlify/functions/owner-settings-deposit-link.js",
+    "netlify/functions/get-owner-financial-settings.js",
+    "MARGIN_GUARD_OWNER_PORTAL_SUMMARY.md",
+    "scripts/test-owner-shield-v2.js",
+    "scripts/test-owner-send-price-guard.js",
+  ];
+  newCritical.forEach((file) => {
+    pass(
+      "non-Owner + " + file + " fails",
+      evaluateGuard({
+        files: [file],
+        branch: "feat/seller-hours-publish-parity",
+        prTitle: "[Seller] hours",
+      }).ok === false
+    );
   });
-  pass("Owner-shield branch + protected file passes", scoped.ok === true);
-  pass("Owner-shield branch requires regression suite", scoped.regressionRequired === true);
-
-  pass(
-    "non-Owner file only passes",
-    evaluateGuard({
-      files: ["public/sales.html", "docs/INVOICE_HUB_PROTECTED_SURFACE.md"],
-      branch: "feat/support-layout",
-    }).ok === true
-  );
 
   const nonOwnerApp = evaluateGuard({
     files: ["public/js/app.js"],
@@ -362,14 +431,43 @@ function runSelfTest() {
     }).ok === true
   );
 
-  pass(
-    "PR title [Owner] allows protected file without Owner branch",
-    evaluateGuard({
-      files: ["netlify/functions/restore-owner-session.js"],
-      branch: "feat/misc",
-      prTitle: "[Owner] restore session cookie",
-    }).ok === true
-  );
+  const sharedAuth = evaluateGuard({
+    files: ["netlify/functions/_lib/tenant-device-guard.js"],
+    diffsByFile: {
+      "netlify/functions/_lib/tenant-device-guard.js":
+        "diff --git a/netlify/functions/_lib/tenant-device-guard.js b/netlify/functions/_lib/tenant-device-guard.js\n--- a/a\n+++ b/b\n@@ -1 +1 @@\n-async function requireOwnerMembership() { return null; }\n+async function requireOwnerMembership() { return {}; }\n",
+    },
+    branch: "feat/support-layout",
+  });
+  pass("shared tenant-device-guard Owner region fails without Owner scope", sharedAuth.ok === false);
+
+  const sharedTenant = evaluateGuard({
+    files: ["netlify/functions/_lib/tenant-for-session.js"],
+    diffsByFile: {
+      "netlify/functions/_lib/tenant-for-session.js":
+        "diff --git a/netlify/functions/_lib/tenant-for-session.js b/netlify/functions/_lib/tenant-for-session.js\n--- a/a\n+++ b/b\n@@ -1 +1 @@\n-function entitledOwnerTenant(tenant) { return tenant; }\n+function entitledOwnerTenant(tenant) { return null; }\n",
+    },
+    branch: "feat/seller-hours-publish-parity",
+    prTitle: "[Seller] hours",
+  });
+  pass("shared tenant-for-session Owner region fails without Owner scope", sharedTenant.ok === false);
+
+  const nonOwnerLib = evaluateGuard({
+    files: ["netlify/functions/_lib/tenant-device-guard.js"],
+    diffsByFile: {
+      "netlify/functions/_lib/tenant-device-guard.js":
+        "diff --git a/netlify/functions/_lib/tenant-device-guard.js b/netlify/functions/_lib/tenant-device-guard.js\n--- a/a\n+++ b/b\n@@ -1 +1 @@\n-const unused = 1;\n+const unused = 2;\n",
+    },
+    branch: "feat/support-layout",
+  });
+  pass("shared tenant-device-guard non-Owner lines pass", nonOwnerLib.ok === true && nonOwnerLib.ownerTouched === false);
+
+  const emptyDevice = evaluateGuard({
+    files: ["netlify/functions/_lib/tenant-device-guard.js"],
+    diffsByFile: { "netlify/functions/_lib/tenant-device-guard.js": "" },
+    branch: "feat/support-layout",
+  });
+  pass("empty shared tenant-device-guard diff fails safe", emptyDevice.ok === false);
 
   pass(
     "authorization is not branch-only: env works when branch is Support",
@@ -411,6 +509,42 @@ function runSelfTest() {
     }).ok === true
   );
 
+  pass(
+    "invalid GITHUB_EVENT_PATH fails safe",
+    inspectGithubEventPath({ GITHUB_EVENT_PATH: "C:/missing/event.json" }, () => false).ok === false
+  );
+  pass(
+    "GITHUB_EVENT_PATH skipped when PR_TITLE is present",
+    inspectGithubEventPath(
+      { GITHUB_EVENT_PATH: "C:/missing/event.json", PR_TITLE: "[Owner] x" },
+      () => false
+    ).ok === true
+  );
+  pass(
+    "unresolved BASE_REF fails safe",
+    resolveBaseRef({ BASE_REF: "not-a-real-ref" }, () => ({ status: 1 })).ok === false
+  );
+  pass("safe git sha accepted", isSafeGitSha("8145cff4c9a0898a0f8a8c6f671cbb010929b6cf") === true);
+  pass("unsafe git sha rejected", isSafeGitSha(";calc.exe") === false);
+  pass(
+    "missing exact file fails safe",
+    missingExactFiles(manifest, [], () => false).length > 0
+  );
+  pass(
+    "deleted exact file is not treated as missing",
+    missingExactFiles({ exact: ["public/owner.html"] }, ["public/owner.html"], () => false).length === 0
+  );
+
+  pass("PR title is read from process.env", /process\.env\.PR_TITLE/.test(src));
+  pass("git is spawned with array args", /spawnSync\("git", args/.test(src));
+  pass("spawnSync is not invoked with shell true", !/shell:\s*true/.test(src));
+  pass(
+    "workflow is in exact protected list",
+    (manifest.exact || []).indexOf(".github/workflows/owner-shield-v1.yml") >= 0
+  );
+  pass("qa-ch014 is not required", (manifest.required || []).every((row) => String(row.path).indexOf("qa-ch014") < 0));
+  pass("qa-ch014 is not optional", (manifest.optional || []).every((row) => String(row.path).indexOf("qa-ch014") < 0));
+
   console.log("\n" + n + " self-tests passed");
 }
 
@@ -420,10 +554,28 @@ function main() {
     return;
   }
 
+  const eventCheck = inspectGithubEventPath(process.env);
+  if (!eventCheck.ok) {
+    console.log("FAIL " + eventCheck.reason);
+    process.exit(1);
+  }
+
   const manifest = loadManifest();
-  const baseRef = resolveBaseRef();
-  const files = collectChangedFiles(baseRef);
-  const diffsByFile = collectDiffs(baseRef, files, manifest);
+  const base = resolveBaseRef();
+  if (!base.ok) {
+    console.log("FAIL " + base.reason);
+    process.exit(1);
+  }
+  const files = collectChangedFiles(base.ref);
+  const missing = missingExactFiles(manifest, files);
+  if (missing.length) {
+    console.log("FAIL missing_required_file");
+    missing.forEach((rel) => {
+      console.log("- " + rel);
+    });
+    process.exit(1);
+  }
+  const diffsByFile = collectDiffs(base.ref, files, manifest);
   const result = evaluateGuard({
     files,
     diffsByFile,
@@ -432,7 +584,7 @@ function main() {
     env: process.env,
   });
 
-  console.log("BASE_REF=" + baseRef);
+  console.log("BASE_REF=" + base.ref);
   console.log("branch=" + currentBranch());
   if (result.protectedHits && result.protectedHits.length) {
     console.log("protected files:\n- " + result.protectedHits.join("\n- "));
@@ -457,6 +609,10 @@ module.exports = {
   isExplicitOwnerScope,
   evaluateGuard,
   changedLinesFromDiff,
+  isSafeGitSha,
+  resolveBaseRef,
+  inspectGithubEventPath,
+  missingExactFiles,
 };
 
 if (require.main === module) {
