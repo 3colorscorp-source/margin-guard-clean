@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "name": "seller-shield-v1",
+  "failMessage": "Seller protected surface changed outside Seller scope. Stop and move this to a Seller PR.",
+  "explicitScope": {
+    "branchSubstrings": ["seller", "voice-plan", "seller-shield"],
+    "allowEnv": "ALLOW_SELLER_TOUCH",
+    "prTitleToken": "[Seller]"
+  },
+  "required": [
+    {
+      "id": "seller-hours-publish-parity",
+      "path": "scripts/test-seller-hours-publish-parity.js",
+      "minPassed": 111
+    },
+    {
+      "id": "owner-seller-send-dual-auth",
+      "path": "scripts/test-owner-seller-send-dual-auth.js",
+      "minPassed": 37
+    },
+    {
+      "id": "signing-calendar-reservation",
+      "path": "scripts/test-signing-calendar-reservation.js",
+      "minPassed": 108
+    },
+    {
+      "id": "voice-operational-plan-phase1",
+      "path": "scripts/test-voice-operational-plan-phase1.js",
+      "minPassed": 255
+    },
+    {
+      "id": "voice-operational-plan-phase2",
+      "path": "scripts/test-voice-operational-plan-phase2.js",
+      "minPassed": 88
+    },
+    {
+      "id": "ch015-target-finish-sync",
+      "path": "scripts/qa-ch015-target-finish-sync.js",
+      "minPassed": 20
+    },
+    {
+      "id": "sales-ready-004c",
+      "path": "scripts/test-mg-sales-ready-004c.js",
+      "minPassed": 40
+    },
+    {
+      "id": "ch008a-scheduling-payment",
+      "path": "scripts/qa-ch008a-scheduling-payment.js",
+      "minPassed": 34
+    }
+  ],
+  "optional": [
+    {
+      "id": "sales-ready-004b",
+      "path": "scripts/test-mg-sales-ready-004b.js",
+      "minPassed": 87
+    }
+  ],
+  "knownGaps": [
+    "get-seller-business-settings",
+    "Pairing UI",
+    "quote-number collision"
+  ],
+  "webhookContract": "estimate Zapier webhook is unsigned JSON POST; this is not HMAC",
+  "exact": [
+    "public/sales.html",
+    "public/js/sales-device-portal.js",
+    "public/js/voice-operational-plan.js",
+    "public/js/quote-send-feedback.js",
+    "public/js/sales-capacity-calendar.js",
+    "public/js/sales-operational-plan.js",
+    "netlify/functions/publish-public-quote.js",
+    "netlify/functions/send-quote-zapier.js",
+    "netlify/functions/calc-secure-pricing.js",
+    "netlify/functions/voice-operational-plan-command.mjs",
+    "netlify/functions/get-tenant-branding.js",
+    "scripts/guard-seller-scope.js",
+    "scripts/mg-seller-shield-v1.json",
+    "scripts/test-mg-seller-shield-v1.js",
+    "scripts/test-mg-seller-shield-v1-runner.js",
+    "docs/SELLER_PROTECTED_SURFACE.md",
+    "MARGIN_GUARD_SELLER_PORTAL_SUMMARY.md"
+  ],
+  "globs": [
+    "scripts/test-seller-*.js",
+    "scripts/test-voice-operational-plan-phase*.js",
+    "scripts/fixtures/mg-seller-shield/*",
+    "scripts/mg-seller-shield*",
+    "scripts/test-mg-seller-shield*",
+    "docs/SELLER_*"
+  ],
+  "sharedScan": {
+    "public/js/app.js": {
+      "description": "Fail only when the app.js diff touches Seller markers. Uncertain diffs fail safe.",
+      "markers": [
+        "runSellerSend",
+        "sellerSendInFlight",
+        "evaluateSendQuotePriceGuard",
+        "evaluateSellerSendPriceGuard",
+        "publish-public-quote",
+        "send-quote-zapier",
+        "resetSalesOperationalPlanAfterSend",
+        "voicePlanTranscript",
+        "voice-operational-plan-command",
+        "openPublicSigningFromUserGesture",
+        "salesTargetFinishDate",
+        "requireSellerDevice"
+      ]
+    },
+    "netlify/functions/_lib/tenant-device-guard.js": {
+      "description": "Fail when owner/seller dual-auth or seller-own-quote contracts change.",
+      "markers": [
+        "resolveOwnerOrSellerContext",
+        "requireSellerDevice",
+        "assertSellerOwnQuote",
+        "PORTAL_ROLES"
+      ]
+    },
+    "netlify/functions/_lib/pricing-engine.js": {
+      "description": "Fail when publish financials used by seller send change.",
+      "markers": [
+        "calculateQuotePublishFinancials",
+        "sanitizeWorkersForTenantPricing",
+        "hoursPerDay",
+        "minimum_price"
+      ]
+    }
+  }
+}
