@@ -9,6 +9,7 @@
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { hasOwnerSessionIdentity } = require("./_lib/owner-access");
 const { parseInvoiceHubPaymentAmount } = require("./_lib/invoice-hub-payment-amount");
 
 const UUID_RE =
@@ -108,7 +109,7 @@ function createHandler(deps = {}) {
       }
 
       const session = readSession(event);
-      if (!session?.e || !session?.c) {
+      if (!hasOwnerSessionIdentity(session)) {
         return json(401, { error: "Unauthorized" });
       }
 
