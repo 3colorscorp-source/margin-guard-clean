@@ -5783,10 +5783,10 @@ Thank you.`
 
   async function refreshHubServerInvoicesCacheQuietly() {
     try {
-      const { invoices: raw } = await loadTenantInvoicesFromServer({ limit: 100 });
-      hubServerNormalizedInvoicesCache = raw.map(normalizeServerInvoiceForHub);
+      const result = await loadTenantInvoicesFromServer({ limit: 100 });
+      applyHubServerInvoiceListResult(result, { warnOnFailure: true });
     } catch (_err) {
-      hubServerNormalizedInvoicesCache = [];
+      setHubFeedback("Could not refresh invoices from the server. Showing previously loaded invoices.", "warn");
     }
     if (typeof window.__mgHubTableRefresh === "function") {
       window.__mgHubTableRefresh();
@@ -12338,17 +12338,77 @@ window.renderSupervisor = renderSupervisor;
 
       if (!res.ok) {
         console.warn("[Invoice Hub] list-tenant-invoices failed", res.status);
-        return { invoices: [], responseBody: data };
+        const errRaw = String(data?.error || "").trim();
+        return {
+          ok: false,
+          invoices: null,
+          responseBody: data,
+          status: res.status,
+          error:
+            errRaw === "Unauthorized"
+              ? "Could not refresh the invoice list. Refresh the page and try again."
+              : errRaw || `Could not load invoices (HTTP ${res.status}).`
+        };
       }
 
       return {
+        ok: true,
         invoices: Array.isArray(data.invoices) ? data.invoices : [],
-        responseBody: data
+        responseBody: data,
+        status: res.status,
+        error: ""
       };
     } catch (err) {
       console.warn("[Invoice Hub] server invoice load failed", err);
-      return { invoices: [], responseBody: null };
+      return {
+        ok: false,
+        invoices: null,
+        responseBody: null,
+        status: 0,
+        error: "Could not load invoices. Check your connection and try again."
+      };
     }
+  }
+
+  function applyHubServerInvoiceListResult(result, options = {}) {
+    const warnOnFailure = options.warnOnFailure !== false;
+    if (result && result.ok === true && Array.isArray(result.invoices)) {
+      hubServerNormalizedInvoicesCache = result.invoices.map(normalizeServerInvoiceForHub);
+      return true;
+    }
+    if (warnOnFailure) {
+      const msg =
+        String(result?.error || "").trim() ||
+        "Could not refresh invoices from the server. Showing previously loaded invoices.";
+      setHubFeedback(msg, "warn");
+    }
+    return false;
+  }
+
+  function seedHubServerInvoiceFromCreateResponse(invoice) {
+    if (!invoice || typeof invoice !== "object") return;
+    const id = invoice.id != null ? String(invoice.id).trim() : "";
+    if (!id) return;
+    const norm = normalizeServerInvoiceForHub({
+      id: invoice.id,
+      tenant_id: invoice.tenant_id,
+      invoice_no: invoice.invoice_no,
+      customer_name: invoice.customer_name,
+      customer_email: invoice.customer_email,
+      project_name: invoice.project_name,
+      amount: invoice.amount,
+      paid_amount: invoice.paid_amount != null ? invoice.paid_amount : 0,
+      balance_due: invoice.balance_due,
+      status: invoice.status || "draft",
+      due_date: invoice.due_date,
+      invoice_label: invoice.invoice_label
+    });
+    if (!norm?.invoiceId) return;
+    const prev = Array.isArray(hubServerNormalizedInvoicesCache) ? hubServerNormalizedInvoicesCache.slice() : [];
+    const idx = prev.findIndex((row) => String(row?.invoiceId || "") === String(norm.invoiceId));
+    if (idx >= 0) prev[idx] = { ...prev[idx], ...norm };
+    else prev.unshift(norm);
+    hubServerNormalizedInvoicesCache = prev;
   }
 
   async function postHubQuoteManualStep(quoteId, action) {
@@ -17337,8 +17397,18 @@ window.renderSupervisor = renderSupervisor;
               setNotice("hubFormFeedback", shown, "err");
               return false;
             }
+            const invoiceNo = String(data?.invoice?.invoice_no || "").trim();
+            seedHubServerInvoiceFromCreateResponse(data.invoice);
+            let listed = true;
             if (typeof window.__mgHubRefetchServerInvoices === "function") {
-              await window.__mgHubRefetchServerInvoices();
+              listed = await window.__mgHubRefetchServerInvoices({ warnOnFailure: false });
+            }
+            const created = invoiceNo ? `Invoice created: ${invoiceNo}` : "Invoice created";
+            if (hubFormState) {
+              hubFormState.successMessage =
+                listed === false
+                  ? `${created}. Could not refresh the full invoice list.`
+                  : created;
             }
             return true;
           } catch (_e) {
@@ -18869,10 +18939,10 @@ window.renderSupervisor = renderSupervisor;
           closeHubFormModal();
           return;
         }
-        const successMessage = hubFormState.successMessage || "Cambios guardados.";
         const result = hubFormState.onSubmit();
         const resolved = result && typeof result.then === "function" ? await result : result;
         if (resolved === false) return;
+        const successMessage = hubFormState.successMessage || "Cambios guardados.";
         closeHubFormModal();
         refresh();
         refreshSelectedRow();
@@ -19104,20 +19174,22 @@ window.renderSupervisor = renderSupervisor;
     window.__mgHubRefreshSelectedRow = refreshSelectedRow;
     bindHubQuoteEditHandlers(settings);
     bindHubInvoiceContactHandlers();
-    window.__mgHubRefetchServerInvoices = async () => {
-      const { invoices: raw } = await loadTenantInvoicesFromServer({ limit: 100 });
-      hubServerNormalizedInvoicesCache = raw.map(normalizeServerInvoiceForHub);
+    window.__mgHubRefetchServerInvoices = async (options = {}) => {
+      const result = await loadTenantInvoicesFromServer({ limit: 100 });
+      const applied = applyHubServerInvoiceListResult(result, {
+        warnOnFailure: options.warnOnFailure !== false
+      });
       refresh();
+      return applied;
     };
     refresh();
 
     if (!hubServerInvoicesFetchStarted) {
       hubServerInvoicesFetchStarted = true;
       void (async () => {
-        const { invoices: raw } = await loadTenantInvoicesFromServer({ limit: 100 });
-        const normalized = raw.map(normalizeServerInvoiceForHub);
-        hubDebugLog("[HUB] normalized invoices:", normalized);
-        hubServerNormalizedInvoicesCache = normalized;
+        const result = await loadTenantInvoicesFromServer({ limit: 100 });
+        hubDebugLog("[HUB] normalized invoices:", result);
+        applyHubServerInvoiceListResult(result, { warnOnFailure: true });
         if ($("hubTableBody")) refresh();
       })();
     }
