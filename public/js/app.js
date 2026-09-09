@@ -5895,6 +5895,10 @@ Thank you.`
       return line;
     }
 
+    if (httpStatus === 401 || errStr === "Unauthorized") {
+      return "Could not send invoice. Refresh the page and try again.";
+    }
+
     let core = msg || errStr || (reason ? reason.replace(/_/g, " ") : "");
     if (!core) core = httpStatus ? `HTTP ${httpStatus}` : "Unknown error";
     let out = `Send invoice failed: ${core}`;
