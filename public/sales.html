@@ -1045,10 +1045,96 @@
     .voice-plan-capture__actions {
       margin-top: 8px;
     }
-    .voice-plan-capture textarea {
+    #voicePlanPreviewModal.voice-plan-preview-modal #voicePlanTranscript {
+      display: block;
       width: 100%;
-      min-height: 96px;
+      max-width: 100%;
+      min-height: 132px;
+      max-height: min(280px, 36vh);
+      box-sizing: border-box;
+      margin: 0;
+      padding: 14px 15px;
       resize: vertical;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      white-space: pre-wrap;
+      appearance: none;
+      -webkit-appearance: none;
+      font-family: inherit;
+      font-size: var(--mg-font-body);
+      font-weight: 500;
+      line-height: 1.52;
+      color: var(--text);
+      caret-color: var(--green);
+      border-radius: var(--mg-radius-control);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(6, 10, 20, 0.82)),
+        var(--panel);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.04),
+        0 8px 22px rgba(0, 0, 0, 0.18);
+      outline: none;
+      transition:
+        border-color var(--mg-duration-fast) var(--mg-ease),
+        box-shadow var(--mg-duration-fast) var(--mg-ease);
+    }
+    #voicePlanPreviewModal.voice-plan-preview-modal #voicePlanTranscript::placeholder {
+      color: rgba(232, 238, 252, 0.38);
+      opacity: 1;
+      font-weight: 400;
+    }
+    #voicePlanPreviewModal.voice-plan-preview-modal #voicePlanTranscript:hover:not(:disabled):not([readonly]):not(:focus) {
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    #voicePlanPreviewModal.voice-plan-preview-modal #voicePlanTranscript:focus,
+    #voicePlanPreviewModal.voice-plan-preview-modal #voicePlanTranscript:focus-visible {
+      border-color: rgba(34, 197, 94, 0.55);
+      box-shadow:
+        0 0 0 3px rgba(34, 197, 94, 0.14),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+    #voicePlanPreviewModal.voice-plan-preview-modal #voicePlanTranscript::selection {
+      background: rgba(34, 197, 94, 0.32);
+      color: var(--text);
+    }
+    #voicePlanPreviewModal.voice-plan-preview-modal #voicePlanTranscript::-moz-selection {
+      background: rgba(34, 197, 94, 0.32);
+      color: var(--text);
+    }
+    #voicePlanPreviewModal.voice-plan-preview-modal #voicePlanTranscript:disabled,
+    #voicePlanPreviewModal.voice-plan-preview-modal #voicePlanTranscript[readonly] {
+      opacity: 0.62;
+      color: var(--muted);
+      cursor: not-allowed;
+      background: rgba(6, 10, 20, 0.55);
+      box-shadow: none;
+      caret-color: transparent;
+    }
+    #voicePlanPreviewModal.voice-plan-preview-modal #voicePlanTranscript::-webkit-scrollbar {
+      width: 8px;
+    }
+    #voicePlanPreviewModal.voice-plan-preview-modal #voicePlanTranscript::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.22);
+      border-radius: var(--mg-radius-pill);
+    }
+    #voicePlanPreviewModal.voice-plan-preview-modal #voicePlanTranscript::-webkit-scrollbar-thumb {
+      background: rgba(232, 238, 252, 0.18);
+      border-radius: var(--mg-radius-pill);
+    }
+    @media (max-width: 740px) {
+      #voicePlanPreviewModal.voice-plan-preview-modal #voicePlanTranscript {
+        min-height: 112px;
+        max-height: min(240px, 32vh);
+        font-size: max(16px, var(--mg-font-body));
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #voicePlanPreviewModal.voice-plan-preview-modal #voicePlanTranscript {
+        transition: none;
+      }
     }
     .voice-plan-capture__status {
       font-size: 12px;
