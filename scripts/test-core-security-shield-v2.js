@@ -193,7 +193,7 @@ function main() {
     JSON.stringify(manifest.explicitScope.branchPrefixes) ===
       JSON.stringify(["feat/core-security-", "fix/core-security-", "security/core-"])
   );
-  pass("required suite count stays 14", manifest.required.length === 14);
+  pass("required suite count stays 15", manifest.required.length === 15);
   pass("optional stays empty", Array.isArray(manifest.optional) && manifest.optional.length === 0);
   pass("handler inventory stays 10", manifest.handlerInventory.length === 10);
 
@@ -219,7 +219,9 @@ function main() {
     "scripts/test-core-remaining-modern-owner-gates.js",
     "scripts/test-core-global-security-headers.js",
     "scripts/test-core-estimates-hmac-verifier.js",
+    "scripts/test-core-estimates-server-hmac-verifier.js",
     "netlify/functions/_lib/zapier-hmac-v1.js",
+    "netlify/functions/verify-estimates-zapier-hmac.js",
     "netlify/functions/_lib/ops-log.js",
     "netlify/functions/_lib/require-owner-or-admin.js",
     "docs/CORE_SECURITY_AUDIT.md",
@@ -231,7 +233,7 @@ function main() {
   ].forEach((rel) => {
     pass("exact protects " + rel, exact.indexOf(rel) >= 0);
   });
-  pass("exact count is 29", exact.length === 29);
+  pass("exact count is 31", exact.length === 31);
   pass(
     "globs are frozen",
     JSON.stringify(manifest.globs) ===

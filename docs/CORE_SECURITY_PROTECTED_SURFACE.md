@@ -69,7 +69,9 @@ Core Security Shield V1 runs their **canonical** runners. It does not copy their
 - `scripts/test-core-remaining-modern-owner-gates.js`
 - `scripts/test-core-global-security-headers.js`
 - `scripts/test-core-estimates-hmac-verifier.js`
+- `scripts/test-core-estimates-server-hmac-verifier.js`
 - `netlify/functions/_lib/zapier-hmac-v1.js`
+- `netlify/functions/verify-estimates-zapier-hmac.js`
 - `netlify/functions/_lib/ops-log.js`
 - `netlify/functions/_lib/require-owner-or-admin.js`
 - `docs/CORE_SECURITY_AUDIT.md`
@@ -137,7 +139,7 @@ Fail message:
 - Cross-tenant IDOR on body, query, and session hint
 - Role gates (seller quote, supervisor assignment, platform admin vs tenant owner)
 - Secret boundaries (no service-role in the browser, dummy child env)
-- HMAC for Square, local Stripe (300s replay window), and estimates Zapier outbound Phase 1 (`ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE`) plus Catch Hook verifier over `zapier_signed_payload` (fail-closed not activated)
+- HMAC for Square, local Stripe (300s replay window), and estimates Zapier outbound Phase 1 (`ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE`) plus Catch Hook verifier over `zapier_signed_payload` and server-side `verify-estimates-zapier-hmac` (Netlify env secret only; sender fail-closed not activated)
 - Estimate send/resend logs omit recipient PII, payloads, public/PDF URLs, signatures, and secrets
 - Server-side pricing and financial endpoint session isolation
 - Global `netlify.toml` CSP (`object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`), HSTS (`max-age=31536000`), and Permissions-Policy (`microphone=(self)` for voice; camera and geolocation blocked)

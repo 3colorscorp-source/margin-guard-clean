@@ -109,7 +109,10 @@ function authorizedEmailCopy(payload) {
 function verifyEstimatesCatchHook(inputData, options) {
   const out = emptyCatchHookResult();
   const input = inputData && typeof inputData === "object" ? inputData : {};
-  const secret = String(input.hmac_secret || "").trim();
+  const opts = options && typeof options === "object" ? options : {};
+  const secret = opts.envSecretOnly
+    ? String(process.env.ZAPIER_WEBHOOK_SECRET || "").trim()
+    : String(input.hmac_secret || "").trim();
   if (!secret) return out;
 
   const signature = String(input.zapier_signature || "").trim().toLowerCase();
