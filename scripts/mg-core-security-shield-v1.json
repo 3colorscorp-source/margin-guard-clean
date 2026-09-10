@@ -36,7 +36,7 @@
     {
       "id": "core-security-supabase-hardening-1",
       "path": "scripts/test-core-security-supabase-hardening-1.js",
-      "minPassed": 303
+      "minPassed": 309
     }
   ],
   "optional": [],

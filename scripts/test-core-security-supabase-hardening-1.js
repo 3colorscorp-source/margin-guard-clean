@@ -225,6 +225,12 @@ function main() {
   ok("verify fails if public table loses RLS", /lost RLS/.test(verify));
   ok("verify fails if service_role loses table privileges", /service_role missing table privileges/.test(verify));
   ok("verify names expected 34 functions", /expected 34 target functions/.test(verify));
+  ok("verify declares fn_oid", /^\s*fn_oid oid;/m.test(verify));
+  ok("verify does not declare ambiguous oid variable", !/^\s*oid\s+oid;/m.test(verify));
+  ok("verify assigns fn_oid from to_regprocedure", /fn_oid := to_regprocedure\(ident\);/.test(verify));
+  ok("verify does not assign bare oid from to_regprocedure", !/(^|[^\w])oid := to_regprocedure/.test(verify));
+  ok("verify compares p.oid to fn_oid", /WHERE p\.oid = fn_oid;/.test(verify));
+  ok("verify does not compare p.oid to bare oid", !/WHERE p\.oid = oid;/.test(verify));
 
   ok("apply does not create policies", !/CREATE POLICY/i.test(apply));
   ok("apply does not drop policies", !/DROP POLICY/i.test(apply));
@@ -294,7 +300,7 @@ function main() {
     "manifest hardening path is frozen",
     hardening && hardening.path === "scripts/test-core-security-supabase-hardening-1.js"
   );
-  ok("manifest hardening minPassed is 303", hardening && hardening.minPassed === 303);
+  ok("manifest hardening minPassed is 309", hardening && hardening.minPassed === 309);
   ok("handler inventory stays 24", Array.isArray(manifest.handlerInventory) && manifest.handlerInventory.length === 24);
 
   console.log("\nCore Security Supabase hardening 1: " + passed + " passed");

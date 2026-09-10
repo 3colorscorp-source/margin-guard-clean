@@ -63,7 +63,7 @@ DECLARE
     'public.register_invoice_payment(uuid, uuid, numeric, text, text, text, text)'
   ];
   ident text;
-  oid oid;
+  fn_oid oid;
   cfg text;
   has_path boolean;
 BEGIN
@@ -118,13 +118,13 @@ BEGIN
   END LOOP;
 
   FOREACH ident IN ARRAY fns LOOP
-    oid := to_regprocedure(ident);
-    IF oid IS NULL THEN
+    fn_oid := to_regprocedure(ident);
+    IF fn_oid IS NULL THEN
       RAISE EXCEPTION 'HARDENING-1 VERIFY FAIL: missing function %', ident;
     END IF;
     SELECT coalesce(array_to_string(p.proconfig, ','), '') INTO cfg
     FROM pg_proc p
-    WHERE p.oid = oid;
+    WHERE p.oid = fn_oid;
     has_path := cfg LIKE '%search_path=%';
     IF NOT has_path THEN
       RAISE EXCEPTION 'HARDENING-1 VERIFY FAIL: mutable search_path on %', ident;
