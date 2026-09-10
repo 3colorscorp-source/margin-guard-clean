@@ -4,11 +4,14 @@
  * Invoice Hub Zapier HMAC v1, reused for estimates outbound (Phase 1).
  * Canonical: `${timestamp}.${nonce}.${JSON.stringify(unsignedPayload)}`
  * Signature fields are attached AFTER signing so the HMAC covers the unsigned JSON.
+ * zapier_signed_payload is that exact canonical string so Zapier Catch Hook can
+ * verify without reconstructing JSON (Catch Hook drops raw body and X-MG-* headers).
  * ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE: missing secret returns null; caller still POSTs unsigned.
  */
 const crypto = require("crypto");
 
 const ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE = "ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE";
+const ESTIMATES_HMAC_MAX_AGE_MS = 300000;
 
 function resolveZapierWebhookSecret(explicit) {
   if (explicit !== undefined && explicit !== null) return String(explicit).trim();
@@ -32,6 +35,7 @@ function buildZapierSignatureMeta(payload, options) {
     timestamp,
     nonce,
     version: "v1",
+    signed_payload: canonical,
   };
 }
 
@@ -43,6 +47,7 @@ function attachZapierSignature(payload, options) {
     payload.zapier_timestamp = meta.timestamp;
     payload.zapier_nonce = meta.nonce;
     payload.zapier_signature_version = meta.version;
+    payload.zapier_signed_payload = meta.signed_payload;
     headers["X-MG-Signature"] = meta.signature;
     headers["X-MG-Timestamp"] = meta.timestamp;
     headers["X-MG-Nonce"] = meta.nonce;
@@ -77,11 +82,83 @@ function verifyZapierSignature(unsignedPayload, meta, secret) {
   );
 }
 
+function emptyCatchHookResult() {
+  return { signature_valid: false, final_subject: "", final_body: "" };
+}
+
+function authorizedEmailCopy(payload) {
+  const subject = String(payload && payload.subject ? payload.subject : "").trim();
+  const body = String(
+    (payload && (payload.messageText || payload.message_note)) || ""
+  ).trim();
+  if (body) return { final_subject: subject, final_body: body };
+  const lines = [];
+  const name = String((payload && (payload.to_name || payload.client_name)) || "").trim();
+  const url = String((payload && payload.public_quote_url) || "").trim();
+  const biz = String((payload && payload.business_name) || "").trim();
+  if (name) lines.push(name);
+  if (url) lines.push(url);
+  if (biz) lines.push(biz);
+  return { final_subject: subject, final_body: lines.join("\n") };
+}
+
+/**
+ * Zapier Catch Hook verifier. HMAC only over zapier_signed_payload.
+ * Do not JSON.stringify Catch Hook fields — Catch Hook reorders and drops raw body.
+ */
+function verifyEstimatesCatchHook(inputData, options) {
+  const out = emptyCatchHookResult();
+  const input = inputData && typeof inputData === "object" ? inputData : {};
+  const secret = String(input.hmac_secret || "").trim();
+  if (!secret) return out;
+
+  const signature = String(input.zapier_signature || "").trim().toLowerCase();
+  const timestamp = String(input.zapier_timestamp || "").trim();
+  const nonce = String(input.zapier_nonce || "").trim();
+  const version = String(input.zapier_signature_version || "").trim();
+  const signedPayload = input.zapier_signed_payload;
+
+  if (typeof signedPayload !== "string" || !signedPayload) return out;
+  if (version !== "v1") return out;
+  if (!/^[0-9a-f]{64}$/.test(signature)) return out;
+  if (!/^[0-9a-f]{32,64}$/.test(nonce)) return out;
+
+  const tsMs = Date.parse(timestamp);
+  if (!Number.isFinite(tsMs)) return out;
+  const nowMs =
+    options && typeof options.nowMs === "number" ? options.nowMs : Date.now();
+  if (tsMs > nowMs) return out;
+  if (nowMs - tsMs > ESTIMATES_HMAC_MAX_AGE_MS) return out;
+
+  const prefix = timestamp + "." + nonce + ".";
+  if (signedPayload.indexOf(prefix) !== 0) return out;
+
+  const expected = crypto.createHmac("sha256", secret).update(signedPayload, "utf8").digest("hex");
+  if (!timingSafeHexEqual(signature, expected)) return out;
+
+  let payload;
+  try {
+    payload = JSON.parse(signedPayload.slice(prefix.length));
+  } catch (_err) {
+    return out;
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return out;
+  if (payload.zapier_signature != null || payload.zapier_signed_payload != null) return out;
+
+  const copy = authorizedEmailCopy(payload);
+  out.signature_valid = true;
+  out.final_subject = copy.final_subject;
+  out.final_body = copy.final_body;
+  return out;
+}
+
 module.exports = {
   ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE,
+  ESTIMATES_HMAC_MAX_AGE_MS,
   canonicalString,
   buildZapierSignatureMeta,
   attachZapierSignature,
   verifyZapierSignature,
+  verifyEstimatesCatchHook,
   resolveZapierWebhookSecret,
 };

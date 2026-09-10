@@ -67,6 +67,11 @@
       "id": "core-global-security-headers",
       "path": "scripts/test-core-global-security-headers.js",
       "minPassed": 58
+    },
+    {
+      "id": "core-estimates-hmac-verifier",
+      "path": "scripts/test-core-estimates-hmac-verifier.js",
+      "minPassed": 46
     }
   ],
   "optional": [],
@@ -158,11 +163,13 @@
     "scripts/test-core-stripe-webhook-replay.js",
     "scripts/test-core-remaining-modern-owner-gates.js",
     "scripts/test-core-global-security-headers.js",
+    "scripts/test-core-estimates-hmac-verifier.js",
     "netlify/functions/_lib/zapier-hmac-v1.js",
     "netlify/functions/_lib/ops-log.js",
     "netlify/functions/_lib/require-owner-or-admin.js",
     "docs/CORE_SECURITY_AUDIT.md",
     "docs/CORE_SECURITY_PROTECTED_SURFACE.md",
+    "docs/CORE_SECURITY_ESTIMATES_ZAPIER_HMAC_VERIFIER.js",
     "SUPABASE_MG_CORE_SECURITY_HARDENING_1.sql",
     "SUPABASE_MG_CORE_SECURITY_HARDENING_1_ROLLBACK.sql",
     "SUPABASE_MG_CORE_SECURITY_HARDENING_1_VERIFY.sql"
