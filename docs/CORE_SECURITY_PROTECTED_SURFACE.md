@@ -64,7 +64,9 @@ Core Security Shield V1 runs their **canonical** runners. It does not copy their
 - `scripts/test-core-security-supabase-hardening-1.js`
 - `scripts/test-core-estimates-webhook-signing.js`
 - `scripts/test-core-contract-modern-owner-session.js`
+- `scripts/test-core-estimate-log-redaction.js`
 - `netlify/functions/_lib/zapier-hmac-v1.js`
+- `netlify/functions/_lib/ops-log.js`
 - `netlify/functions/_lib/require-owner-or-admin.js`
 - `docs/CORE_SECURITY_AUDIT.md`
 - `docs/CORE_SECURITY_PROTECTED_SURFACE.md`
@@ -131,6 +133,7 @@ Fail message:
 - Role gates (seller quote, supervisor assignment, platform admin vs tenant owner)
 - Secret boundaries (no service-role in the browser, dummy child env)
 - HMAC for Square, local Stripe, and estimates Zapier outbound Phase 1 (`ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE`)
+- Estimate send/resend logs omit recipient PII, payloads, public/PDF URLs, signatures, and secrets
 - Server-side pricing and financial endpoint session isolation
 
 ## What this shield does not do

@@ -157,12 +157,12 @@ async function main() {
 
   const zapierSrc = fs.readFileSync(path.join(ROOT, "netlify/functions/send-quote-zapier.js"), "utf8");
   ok(
-    "FINDING FROZEN: send-quote-zapier logs additional_recipients",
-    zapierSrc.indexOf("additional_recipients: data?.additional_recipients") >= 0
+    "send-quote-zapier does not log additional_recipients",
+    zapierSrc.indexOf("additional_recipients: data?.additional_recipients") < 0
   );
   ok(
-    "FINDING FROZEN: send-quote-zapier logs client_email payload",
-    zapierSrc.indexOf('console.info("[MG Zapier Email Payload]"') >= 0
+    "send-quote-zapier does not log client_email payload",
+    zapierSrc.indexOf('console.info("[MG Zapier Email Payload]"') < 0
   );
 
   const tree = files.join("\n");

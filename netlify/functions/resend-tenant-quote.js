@@ -19,6 +19,7 @@ const {
 const { throwGuard } = require("./_lib/tenant-device-guard");
 const { attachZapierSignature, ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE } = require("./_lib/zapier-hmac-v1");
 void ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE;
+const { makeReqId, logOps } = require("./_lib/ops-log");
 const {
   UUID_RE,
   evaluateQuoteEditGuard,
@@ -158,7 +159,7 @@ function buildDefaultResendMessage({ clientName, publicUrl, messageNote }) {
   return lines.join("\n").trim();
 }
 
-async function dispatchQuoteResendZapier({ tenantId, quote, publicUrl, messageNote, tenantMeta }) {
+async function dispatchQuoteResendZapier({ tenantId, quote, publicUrl, messageNote, tenantMeta, req_id }) {
   const webhookUrl = pickFirst(
     process.env.ZAPIER_ESTIMATE_CTA_WEBHOOK_URL,
     process.env.ZAPIER_WEBHOOK_URL
@@ -211,16 +212,34 @@ async function dispatchQuoteResendZapier({ tenantId, quote, publicUrl, messageNo
     if (resp.ok) {
       return { ok: true };
     }
-    const errText = await resp.text().catch(() => "");
-    console.warn("[resend-tenant-quote] Zapier HTTP error", resp.status, errText.slice(0, 400));
+    await resp.text().catch(() => "");
+    logOps({
+      req_id,
+      fn: "resend-tenant-quote",
+      event: "zapier_dispatch",
+      level: "warn",
+      outcome: "fail",
+      tenant_id: tenantId,
+      http_status: resp.status,
+      detail: `http_${resp.status}`,
+    });
     return { ok: false, code: "zapier_send_failed", httpStatus: resp.status };
   } catch (err) {
-    console.error("[resend-tenant-quote] Zapier network error", err?.message || err);
+    logOps({
+      req_id,
+      fn: "resend-tenant-quote",
+      event: "zapier_dispatch",
+      level: "error",
+      outcome: "fail",
+      tenant_id: tenantId,
+      detail: "network",
+    });
     return { ok: false, code: "zapier_send_failed", network: true };
   }
 }
 
 exports.handler = async (event) => {
+  const req_id = makeReqId();
   try {
     if (event.httpMethod !== "POST") {
       return json(405, { ok: false, error: "Method Not Allowed" });
@@ -333,6 +352,7 @@ exports.handler = async (event) => {
       publicUrl,
       messageNote,
       tenantMeta,
+      req_id,
     });
 
     if (!dispatch.ok && dispatch.code === "zapier_not_configured") {
@@ -368,7 +388,15 @@ exports.handler = async (event) => {
         code: err.code,
       });
     }
-    console.error("[resend-tenant-quote]", err);
+    logOps({
+      req_id,
+      fn: "resend-tenant-quote",
+      event: "unhandled_error",
+      level: "error",
+      outcome: "fail",
+      http_status: 500,
+      detail: err && err.code ? String(err.code) : "server_error",
+    });
     return json(500, { ok: false, error: err.message || "Server error" });
   }
 };

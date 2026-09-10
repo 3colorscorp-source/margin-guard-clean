@@ -1,20 +1,62 @@
 /**
  * Structured ops logs for Netlify Functions (filter: mg_ops === true).
- * Do not pass secrets, full emails, base64, or raw webhook URLs — only IDs and short details.
+ * Do not pass secrets, emails, names, full payloads, URLs, tokens, signatures, or nonces.
+ * Allowed: event name, status, counts, codes, and non-sensitive request/correlation IDs.
  */
 
 const DETAIL_MAX = 400;
-const TOKEN_PREFIX_LEN = 12;
+
+const ALLOWED_KEYS = new Set([
+  "req_id",
+  "fn",
+  "event",
+  "level",
+  "outcome",
+  "tenant_id",
+  "quote_id",
+  "http_status",
+  "detail",
+  "additional_recipient_count",
+  "recipient_count",
+]);
+
+const FORBIDDEN_KEYS = [
+  "additional_recipients",
+  "additionalRecipients",
+  "client_email",
+  "to_email",
+  "toEmail",
+  "tenant_email",
+  "owner_email",
+  "client_name",
+  "to_name",
+  "business_name",
+  "messageText",
+  "message_note",
+  "public_quote_url",
+  "pdf_url",
+  "pdfUrl",
+  "publicQuoteUrl",
+  "public_token",
+  "publicToken",
+  "zapier_signature",
+  "zapier_timestamp",
+  "zapier_nonce",
+  "zapier_signature_version",
+  "signature",
+  "nonce",
+  "secret",
+  "payload",
+  "body",
+  "webhookUrl",
+  "webhook_url",
+];
+
+const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const URL_RE = /https?:\/\/[^\s"'\\]+/gi;
 
 function makeReqId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-}
-
-function truncatePublicToken(value) {
-  if (value === undefined || value === null) return null;
-  const s = String(value).trim();
-  if (!s) return null;
-  return s.length <= TOKEN_PREFIX_LEN ? s : `${s.slice(0, TOKEN_PREFIX_LEN)}…`;
 }
 
 function truncateDetail(value) {
@@ -24,47 +66,53 @@ function truncateDetail(value) {
   return `${s.slice(0, DETAIL_MAX)}…`;
 }
 
+function sanitizeDetail(value) {
+  const truncated = truncateDetail(value);
+  if (!truncated) return null;
+  return truncated.replace(EMAIL_RE, "[redacted]").replace(URL_RE, "[redacted-url]");
+}
+
+function countAdditionalRecipients(value) {
+  if (value == null) return 0;
+  if (Array.isArray(value)) {
+    return value.filter((v) => String(v == null ? "" : v).trim()).length;
+  }
+  const s = String(value).trim();
+  if (!s) return 0;
+  return s
+    .split(/[,;]/)
+    .map((part) => part.trim())
+    .filter(Boolean).length;
+}
+
 /**
  * @param {object} entry
- * @param {string} entry.req_id
- * @param {string} entry.fn
- * @param {string} entry.event
- * @param {"info"|"warn"|"error"} entry.level
- * @param {"ok"|"fail"|"warn"} entry.outcome
- * @param {string|null} [entry.tenant_id]
- * @param {string|null} [entry.quote_id]
- * @param {string|null} [entry.public_token] already truncated or short id
- * @param {number|null} [entry.http_status]
- * @param {string|null} [entry.detail]
  */
 function logOps(entry) {
-  const payload = {
-    mg_ops: true,
-    req_id: entry.req_id,
-    fn: entry.fn,
-    event: entry.event,
-    level: entry.level,
-    outcome: entry.outcome
-  };
-  if (entry.tenant_id != null && entry.tenant_id !== "") {
-    payload.tenant_id = String(entry.tenant_id);
+  const src = entry && typeof entry === "object" ? entry : {};
+  const payload = { mg_ops: true };
+  for (const key of ALLOWED_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(src, key)) continue;
+    if (FORBIDDEN_KEYS.indexOf(key) >= 0) continue;
+    const value = src[key];
+    if (value == null || value === "") continue;
+    if (key === "detail") {
+      const detail = sanitizeDetail(value);
+      if (detail) payload.detail = detail;
+      continue;
+    }
+    if (key === "http_status" || key === "additional_recipient_count" || key === "recipient_count") {
+      const n = Number(value);
+      if (Number.isFinite(n)) payload[key] = n;
+      continue;
+    }
+    payload[key] = String(value);
   }
-  if (entry.quote_id != null && entry.quote_id !== "") {
-    payload.quote_id = String(entry.quote_id);
-  }
-  if (entry.public_token != null && entry.public_token !== "") {
-    payload.public_token = String(entry.public_token);
-  }
-  if (entry.http_status != null && Number.isFinite(Number(entry.http_status))) {
-    payload.http_status = Number(entry.http_status);
-  }
-  const detail = truncateDetail(entry.detail);
-  if (detail) payload.detail = detail;
 
   const line = JSON.stringify(payload);
-  if (entry.level === "error") {
+  if (src.level === "error") {
     console.error(line);
-  } else if (entry.level === "warn") {
+  } else if (src.level === "warn") {
     console.warn(line);
   } else {
     console.log(line);
@@ -72,8 +120,11 @@ function logOps(entry) {
 }
 
 module.exports = {
+  ALLOWED_KEYS,
+  FORBIDDEN_KEYS,
   makeReqId,
   logOps,
-  truncatePublicToken,
-  truncateDetail
+  sanitizeDetail,
+  truncateDetail,
+  countAdditionalRecipients,
 };
