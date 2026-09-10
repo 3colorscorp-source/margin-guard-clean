@@ -37,6 +37,21 @@ function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), "utf8");
 }
 
+function extractStep(yml, name) {
+  const escaped = String(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp("- name: " + escaped + "[ \\t]*(?:\\r?\\n)");
+  const match = re.exec(String(yml || ""));
+  if (!match) return "";
+  const start = match.index;
+  const rest = yml.slice(start + match[0].length);
+  const next = rest.search(/\n      - name: /);
+  return next < 0 ? yml.slice(start) : yml.slice(start, start + match[0].length + next);
+}
+
+function stepHasIf(step) {
+  return /^\s+if:/m.test(String(step || ""));
+}
+
 function assert(label, cond) {
   if (!cond) throw new Error("FAIL " + label);
   console.log("PASS " + label);
@@ -77,15 +92,68 @@ function main() {
   pass("GITHUB_HEAD_REF comes from github.head_ref", yml.indexOf("GITHUB_HEAD_REF: ${{ github.head_ref }}") >= 0);
   pass("BASE_REF comes from pull_request.base.sha", yml.indexOf("BASE_REF: ${{ github.event.pull_request.base.sha }}") >= 0);
   pass("BASE_REF is not defaulted to origin/main in YAML", yml.indexOf("origin/main") < 0);
-  pass("YAML skips real guard on merge_group", yml.indexOf("github.event_name != 'merge_group'") >= 0);
-  pass("merge_group skip is documented", /Real scope guard is skipped on merge_group/.test(yml));
-  pass("merge_group must not authorize from missing title", /must\s+not treat missing title\/branch as authorization/.test(yml));
+
+  const guardStep = extractStep(yml, "Core Security scope guard");
+  pass("real guard step exists", /id:\s*guard/.test(guardStep));
+  pass(
+    "real guard uses if: github.event_name == 'pull_request'",
+    /if:\s*github\.event_name == 'pull_request'/.test(guardStep)
+  );
+  pass(
+    "real guard does not use if: github.event_name != 'merge_group'",
+    !/if:\s*github\.event_name != 'merge_group'/.test(guardStep)
+  );
+  pass(
+    "workflow has no != 'merge_group' guard condition",
+    yml.indexOf("github.event_name != 'merge_group'") < 0
+  );
+  pass("real guard skip is documented for merge_group and workflow_dispatch", /merge_group and\s+# workflow_dispatch/.test(yml) || /merge_group and workflow_dispatch/.test(yml));
+  pass("title/branch authorization is pull_request-only", /must not treat missing title\/branch as authorization/.test(yml));
   pass("does not set ALLOW_CORE_SECURITY_TOUCH in env", !/ALLOW_CORE_SECURITY_TOUCH:\s*["']?1/.test(yml));
   pass("does not mention ALLOW_CORE_SECURITY_TOUCH as enabled", !/ALLOW_CORE_SECURITY_TOUCH=1/.test(yml));
   pass("captures CORE_SECURITY_REGRESSION_REQUIRED", yml.indexOf("CORE_SECURITY_REGRESSION_REQUIRED=1") >= 0);
-  pass("gated complete V1 runs when regression_required is 1", yml.indexOf("steps.guard.outputs.regression_required == '1'") >= 0);
-  pass("required V1 suite still always runs", yml.indexOf("node scripts/test-mg-core-security-shield-v1.js") >= 0);
-  pass("full V1 suite still always runs", yml.indexOf("node scripts/test-mg-core-security-shield-v1.js --full") >= 0);
+  pass(
+    "duplicate Core V1 complete step is gone",
+    yml.indexOf("Core Security V1 complete (authorized protected change)") < 0
+  );
+  pass("does not re-run V1 from regression_required output", yml.indexOf("steps.guard.outputs.regression_required") < 0);
+
+  const runnerSelfTest = extractStep(yml, "Core Security Shield V1 runner self-test");
+  const requiredStep = extractStep(yml, "Core Security Shield V1 required");
+  const fullStep = extractStep(yml, "Core Security Shield V1 full");
+  const sellerRunner = extractStep(yml, "Seller Shield V1 canonical runner");
+  const ownerRunner = extractStep(yml, "Owner Shield V1 canonical runner");
+  const hubRunner = extractStep(yml, "Invoice Hub Shield V2 canonical regression");
+  pass("runner self-test has no event if", runnerSelfTest.length > 0 && !stepHasIf(runnerSelfTest));
+  pass("required V1 suite has no event if", requiredStep.length > 0 && !stepHasIf(requiredStep));
+  pass("full V1 suite has no event if", fullStep.length > 0 && !stepHasIf(fullStep));
+  pass("Seller canonical runner has no event if", sellerRunner.length > 0 && !stepHasIf(sellerRunner));
+  pass("Owner canonical runner has no event if", ownerRunner.length > 0 && !stepHasIf(ownerRunner));
+  pass("Invoice Hub canonical runner has no event if", hubRunner.length > 0 && !stepHasIf(hubRunner));
+  pass("required V1 command still always runs", /node scripts\/test-mg-core-security-shield-v1\.js\s*$/m.test(requiredStep));
+  pass("full V1 command still always runs", yml.indexOf("node scripts/test-mg-core-security-shield-v1.js --full") >= 0);
+  pass(
+    "workflow_dispatch can skip real guard without skipping suites",
+    /workflow_dispatch:/.test(yml) &&
+      /if:\s*github\.event_name == 'pull_request'/.test(guardStep) &&
+      !stepHasIf(runnerSelfTest) &&
+      !stepHasIf(requiredStep) &&
+      !stepHasIf(fullStep) &&
+      !stepHasIf(sellerRunner) &&
+      !stepHasIf(ownerRunner) &&
+      !stepHasIf(hubRunner)
+  );
+  pass(
+    "merge_group omits the real guard",
+    /if:\s*github\.event_name == 'pull_request'/.test(guardStep)
+  );
+  pass(
+    "pull_request runs the guard with PR_TITLE, GITHUB_HEAD_REF, and BASE_REF",
+    /if:\s*github\.event_name == 'pull_request'/.test(guardStep) &&
+      guardStep.indexOf("PR_TITLE: ${{ github.event.pull_request.title }}") >= 0 &&
+      guardStep.indexOf("GITHUB_HEAD_REF: ${{ github.head_ref }}") >= 0 &&
+      guardStep.indexOf("BASE_REF: ${{ github.event.pull_request.base.sha }}") >= 0
+  );
 
   const selfTestIdx = yml.indexOf("node scripts/guard-core-security-scope.js --self-test");
   const wiringIdx = yml.indexOf("node scripts/test-core-security-shield-v2.js");

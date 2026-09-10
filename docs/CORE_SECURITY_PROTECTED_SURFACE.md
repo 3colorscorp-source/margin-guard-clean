@@ -33,9 +33,11 @@ There is **no bypass**:
 
 Do not rename the workflow, job, or check.
 
-## merge_group
+## When the real guard runs
 
-`merge_group` runs self-tests and the required Shield suites. It does **not** run the real scope guard and must **not** treat missing title/branch as authorization (`GITHUB_HEAD_REF` is empty on that event). Authorization is a `pull_request` concern.
+The real scope guard runs **only** on `pull_request`. Title + branch authorization is decided exclusively on that event, using `PR_TITLE`, `GITHUB_HEAD_REF`, and `BASE_REF` from the pull request.
+
+`merge_group` and `workflow_dispatch` still run self-tests and the required Shield suites (Core V1 required/full, plus Seller, Owner, and Invoice Hub canonical runners). They **omit** the real guard because they do not have trusted PR metadata (`GITHUB_HEAD_REF` is empty; there is no `pull_request.title` or `pull_request.base.sha`). Those events must **not** treat missing title/branch as authorization.
 
 ## Shields that must not be renamed, weakened, or deleted
 
@@ -99,7 +101,7 @@ See `scripts/mg-core-security-shield-v1.json` `sharedScan` for the exact markers
 - Only safe Git SHAs (and the named ref `origin/main`) are accepted
 - Git is spawned with argument arrays; never `shell: true`
 - Title and branch are never interpolated into shell git commands
-- Authorized protected change prints `CORE_SECURITY_REGRESSION_REQUIRED=1` and Core V1 must run complete
+- Authorized protected change prints `CORE_SECURITY_REGRESSION_REQUIRED=1`. Core V1 required and full already run on every workflow event; that flag is evidence, not a second suite run.
 
 Fail message:
 
