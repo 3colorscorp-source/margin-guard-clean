@@ -36,6 +36,19 @@ const MUTATION_RPCS = [
   "register_invoice_payment(uuid, uuid, numeric, text, text, text, text)",
 ];
 
+const TABLE_RESTORE_PRIVS = [
+  "SELECT",
+  "INSERT",
+  "UPDATE",
+  "DELETE",
+  "TRUNCATE",
+  "REFERENCES",
+  "TRIGGER",
+];
+
+const TABLE_RESTORE_GRANT =
+  "SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN";
+
 const SEARCH_PATH_FUNCS = [
   "assert_device_session_same_tenant()",
   "assert_tenant_device_membership_same_tenant()",
@@ -219,7 +232,40 @@ function main() {
   ok("apply does not disable RLS", !/DISABLE ROW LEVEL SECURITY/i.test(apply));
   ok("apply does not enable RLS", !/ENABLE ROW LEVEL SECURITY/i.test(apply));
   ok("rollback does not touch policies", !/POLICY/i.test(rollback));
-  ok("rollback restores anon table grants", /GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public\.device_sessions TO anon/.test(rollback));
+  ok("7 table restore privileges are frozen", TABLE_RESTORE_PRIVS.length === 7);
+  ok("rollback table grants are not DML-only", !/GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE/.test(rollback));
+  ok("rollback does not restore PUBLIC table ACL", !/ON TABLE public\.\w+ TO PUBLIC/.test(rollback));
+
+  TABLES.forEach((tbl) => {
+    const grantAuth =
+      "GRANT " + TABLE_RESTORE_GRANT + " ON TABLE public." + tbl + " TO anon, authenticated;";
+    const grantSvc =
+      "GRANT " + TABLE_RESTORE_GRANT + " ON TABLE public." + tbl + " TO service_role;";
+    ok("rollback restores original table ACL to anon/authenticated on " + tbl, rollback.indexOf(grantAuth) >= 0);
+    ok("rollback restores original table ACL to service_role on " + tbl, rollback.indexOf(grantSvc) >= 0);
+    TABLE_RESTORE_PRIVS.forEach((priv) => {
+      ok(
+        "rollback restores " + priv + " on " + tbl,
+        rollback.indexOf(grantAuth) >= 0 && grantAuth.indexOf(priv) >= 0
+      );
+    });
+  });
+
+  const executeTargets = MUTATION_RPCS.concat(["mg_business_id()", "mg_role()"]);
+  executeTargets.forEach((ident) => {
+    ok(
+      "rollback restores PUBLIC EXECUTE on " + ident,
+      rollback.indexOf("GRANT EXECUTE ON FUNCTION public." + ident + " TO PUBLIC;") >= 0
+    );
+    ok(
+      "rollback restores anon/authenticated EXECUTE on " + ident,
+      rollback.indexOf("GRANT EXECUTE ON FUNCTION public." + ident + " TO anon, authenticated;") >= 0
+    );
+    ok(
+      "rollback restores service_role EXECUTE on " + ident,
+      rollback.indexOf("GRANT EXECUTE ON FUNCTION public." + ident + " TO service_role;") >= 0
+    );
+  });
 
   const files = gitFiles();
   const code = files.filter((rel) => /\.(js|html)$/.test(rel) && /^public\//.test(rel));
@@ -248,7 +294,7 @@ function main() {
     "manifest hardening path is frozen",
     hardening && hardening.path === "scripts/test-core-security-supabase-hardening-1.js"
   );
-  ok("manifest hardening minPassed is 205", hardening && hardening.minPassed === 205);
+  ok("manifest hardening minPassed is 303", hardening && hardening.minPassed === 303);
   ok("handler inventory stays 24", Array.isArray(manifest.handlerInventory) && manifest.handlerInventory.length === 24);
 
   console.log("\nCore Security Supabase hardening 1: " + passed + " passed");

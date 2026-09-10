@@ -1,42 +1,38 @@
 -- MG-CORE-SECURITY-HARDENING-1 — emergency rollback
--- Restores the previous grant and search_path state.
+-- Restores the previous grant and search_path state from production catalog
+-- yaagobzgozzozibublmj: table ACL arwdDxtm (SELECT, INSERT, UPDATE, DELETE,
+-- TRUNCATE, REFERENCES, TRIGGER, MAINTAIN) for anon, authenticated, and
+-- service_role. Functions had EXECUTE for PUBLIC, anon, authenticated, and
+-- service_role. All 34 functions had proconfig = null.
 -- DO NOT execute this file. It is kept for emergency recovery only.
--- Re-granting anon/authenticated/PUBLIC would reopen Data API access.
+-- Re-granting anon/authenticated would reopen Data API access.
 -- Does not modify policies or RLS.
 
 BEGIN;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.device_sessions TO PUBLIC;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.device_sessions TO anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.device_sessions TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.device_sessions TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.device_sessions TO service_role;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.quote_annual_counters TO PUBLIC;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.quote_annual_counters TO anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.quote_annual_counters TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.quote_annual_counters TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.quote_annual_counters TO service_role;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.sales_approvals TO PUBLIC;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.sales_approvals TO anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.sales_approvals TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.sales_approvals TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.sales_approvals TO service_role;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tenant_devices TO PUBLIC;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tenant_devices TO anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tenant_devices TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.tenant_devices TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.tenant_devices TO service_role;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tenant_project_change_orders TO PUBLIC;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tenant_project_change_orders TO anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tenant_project_change_orders TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.tenant_project_change_orders TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.tenant_project_change_orders TO service_role;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tenant_project_expenses TO PUBLIC;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tenant_project_expenses TO anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tenant_project_expenses TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.tenant_project_expenses TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.tenant_project_expenses TO service_role;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tenant_project_operational_snapshots TO PUBLIC;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tenant_project_operational_snapshots TO anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tenant_project_operational_snapshots TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.tenant_project_operational_snapshots TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.tenant_project_operational_snapshots TO service_role;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.users TO PUBLIC;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.users TO anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.users TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.users TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.users TO service_role;
 
 GRANT EXECUTE ON FUNCTION public.activate_next_invoice_for_quote(uuid) TO PUBLIC;
 GRANT EXECUTE ON FUNCTION public.activate_next_invoice_for_quote(uuid) TO anon, authenticated;
