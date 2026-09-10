@@ -61,8 +61,12 @@ Core Security Shield V1 runs their **canonical** runners. It does not copy their
 - `scripts/test-core-financial-endpoints.js`
 - `scripts/guard-core-security-scope.js`
 - `scripts/test-core-security-shield-v2.js`
+- `scripts/test-core-security-supabase-hardening-1.js`
 - `docs/CORE_SECURITY_AUDIT.md`
 - `docs/CORE_SECURITY_PROTECTED_SURFACE.md`
+- `SUPABASE_MG_CORE_SECURITY_HARDENING_1.sql`
+- `SUPABASE_MG_CORE_SECURITY_HARDENING_1_ROLLBACK.sql`
+- `SUPABASE_MG_CORE_SECURITY_HARDENING_1_VERIFY.sql`
 
 ## Protected globs
 
@@ -90,6 +94,10 @@ These product files are **not** wholly owned by Core Security. The guard fails o
 | `netlify.toml` | Security headers, Functions config, protected-portal redirects, `public/` publish |
 
 See `scripts/mg-core-security-shield-v1.json` `sharedScan` for the exact markers.
+
+## Supabase hardening 1 (not applied)
+
+`SUPABASE_MG_CORE_SECURITY_HARDENING_1.sql` revokes Data API grants on eight server-only tables, revokes `EXECUTE` on server-only mutation RPCs, keeps `authenticated` `EXECUTE` on `mg_business_id()` / `mg_role()`, and pins 34 function `search_path` values. It does **not** change policies or RLS. Do not apply from CI. Rollback exists and must not be executed.
 
 ## Guard behavior
 

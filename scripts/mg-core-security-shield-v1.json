@@ -32,6 +32,11 @@
       "id": "core-financial-endpoints",
       "path": "scripts/test-core-financial-endpoints.js",
       "minPassed": 18
+    },
+    {
+      "id": "core-security-supabase-hardening-1",
+      "path": "scripts/test-core-security-supabase-hardening-1.js",
+      "minPassed": 303
     }
   ],
   "optional": [],
@@ -191,8 +196,12 @@
     "scripts/test-core-financial-endpoints.js",
     "scripts/guard-core-security-scope.js",
     "scripts/test-core-security-shield-v2.js",
+    "scripts/test-core-security-supabase-hardening-1.js",
     "docs/CORE_SECURITY_AUDIT.md",
-    "docs/CORE_SECURITY_PROTECTED_SURFACE.md"
+    "docs/CORE_SECURITY_PROTECTED_SURFACE.md",
+    "SUPABASE_MG_CORE_SECURITY_HARDENING_1.sql",
+    "SUPABASE_MG_CORE_SECURITY_HARDENING_1_ROLLBACK.sql",
+    "SUPABASE_MG_CORE_SECURITY_HARDENING_1_VERIFY.sql"
   ],
   "globs": [
     "scripts/fixtures/mg-core-security-shield/*",
