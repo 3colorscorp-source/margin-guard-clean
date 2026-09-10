@@ -22,7 +22,7 @@ This document is evidence and recommendations only. Core Security Shield V1 does
 | Stripe local HMAC | `stripe-invoice-webhook.js` handler | Missing/wrong/altered/wrong-secret rejected; **no replay window** (finding) |
 | Server-side pricing | `pricing-engine.js` | Client `rate: 1` cannot reduce protected labor totals |
 | Bank details | `list-tenant-bank-accounts` | No session → 401; response is `id` + masked/label only |
-| 24 heuristic-marked handlers | Explicit inventory in `scripts/mg-core-security-shield-v1.json` | Classified below; **not** added to the substring allowlist |
+| 10 remaining heuristic-marked handlers | Explicit inventory in `scripts/mg-core-security-shield-v1.json` | Classified below; **not** added to the substring allowlist. 14 Contract handlers now use shared `requireOwnerOrAdmin` and no longer fail the substring heuristic |
 
 ## What was **not** verified
 
@@ -35,34 +35,22 @@ This document is evidence and recommendations only. Core Security Shield V1 does
 
 | Severity | Count | Items |
 |----------|-------|--------|
-| High (document only; separate PR) | 1 | contract Owner/Admin handlers still require `session.c` |
+| High (document only; separate PR) | 0 | — |
 | Medium (document only; separate PR) | 4 | Estimates Zapier HMAC still compatibility-mode (not fail-closed); Stripe local verifier has no timestamp/replay window; `send-quote-zapier` logs recipients/emails; no global CSP/HSTS |
-| Low / informational | 3 | Historical `rls_disabled_in_public` not in current source; historical SendGrid alert not verifiable from code; substring tenant-scope verifier is insufficient (24 false negatives vs explicit inventory) |
-| Confirmed controls (not vulnerabilities) | 24 handlers | See classification |
+| Low / informational | 3 | Historical `rls_disabled_in_public` not in current source; historical SendGrid alert not verifiable from code; substring tenant-scope verifier is insufficient (10 remaining false negatives vs explicit inventory) |
+| Confirmed controls (not vulnerabilities) | 10 remaining heuristic-marked handlers | 14 Contract handlers now use shared `requireOwnerOrAdmin` |
 
 Do **not** treat remaining High/Medium items as fixed by later PRs until those PRs land.
 
-## 24 handlers marked by `verify-netlify-function-tenant-scope.js`
+## 10 handlers still marked by `verify-netlify-function-tenant-scope.js`
 
-The substring heuristic currently **fails** these 24 files on `origin/main`. Core Security Shield V1 classifies them from real controls. They were **not** added to `scripts/netlify-function-tenant-scope-allowlist.json`.
+The substring heuristic currently **fails** these 10 files. Core Security Shield V1 classifies them from real controls. They were **not** added to `scripts/netlify-function-tenant-scope-allowlist.json`.
+
+14 Contract Owner/Admin handlers (`contract-certificate-*`, `contract-envelope-*`, `contract-envelopes.js`, `contract-package-freeze.js`, `contract-signed-pdf*`, `contract-signer*`, `contract-signing-token-*`) now use shared `requireOwnerOrAdmin` (`hasOwnerSessionIdentity` + `resolveTenantFromSession`). They no longer fail the substring heuristic because the handler files no longer call `supabaseRequest` directly. Isolation for those handlers is frozen in `scripts/test-core-contract-modern-owner-session.js`.
 
 | Handler | Category |
 |---------|----------|
 | `admin-saas-square-dry-run.js` | `PLATFORM_ADMIN_ONLY` |
-| `contract-certificate-create.js` | `TENANT_SCOPED_CONFIRMED` |
-| `contract-certificates.js` | `TENANT_SCOPED_CONFIRMED` |
-| `contract-envelope-create.js` | `TENANT_SCOPED_CONFIRMED` |
-| `contract-envelope-send.js` | `TENANT_SCOPED_CONFIRMED` |
-| `contract-envelopes.js` | `TENANT_SCOPED_CONFIRMED` |
-| `contract-package-freeze.js` | `TENANT_SCOPED_CONFIRMED` |
-| `contract-signed-pdf-create.js` | `TENANT_SCOPED_CONFIRMED` |
-| `contract-signed-pdfs.js` | `TENANT_SCOPED_CONFIRMED` |
-| `contract-signer-create.js` | `TENANT_SCOPED_CONFIRMED` |
-| `contract-signer-delete.js` | `TENANT_SCOPED_CONFIRMED` |
-| `contract-signer-update.js` | `TENANT_SCOPED_CONFIRMED` |
-| `contract-signers.js` | `TENANT_SCOPED_CONFIRMED` |
-| `contract-signing-token-create.js` | `TENANT_SCOPED_CONFIRMED` |
-| `contract-signing-token-revoke.js` | `TENANT_SCOPED_CONFIRMED` |
 | `create-financial-connections-session.js` | `TENANT_SCOPED_CONFIRMED` |
 | `device-logout.js` | `TENANT_SCOPED_CONFIRMED` |
 | `get-tenant-quote-edit.js` | `TENANT_SCOPED_CONFIRMED` |
@@ -73,7 +61,7 @@ The substring heuristic currently **fails** these 24 files on `origin/main`. Cor
 | `sales-approval-email-action.js` | `DOCUMENTED_EXCEPTION` |
 | `square-saas-webhook.js` | `SIGNED_WEBHOOK` |
 
-Counts: 20 `TENANT_SCOPED_CONFIRMED`, 1 `PLATFORM_ADMIN_ONLY`, 1 `INTERNAL_SECRET_AUTH`, 1 `DOCUMENTED_EXCEPTION`, 1 `SIGNED_WEBHOOK`, 0 `PUBLIC_TOKEN_SCOPED`, 0 `VULNERABILITY_REQUIRES_SEPARATE_PR` in this set.
+Counts: 6 `TENANT_SCOPED_CONFIRMED`, 1 `PLATFORM_ADMIN_ONLY`, 1 `INTERNAL_SECRET_AUTH`, 1 `DOCUMENTED_EXCEPTION`, 1 `SIGNED_WEBHOOK`, 0 `PUBLIC_TOKEN_SCOPED`, 0 `VULNERABILITY_REQUIRES_SEPARATE_PR` in this set.
 
 `sales-approval-email-action.js` is a legacy email capability token (`approval_id` + SHA-256 compared timing-safe to `email_action_token_hash`). That is the real control; it is not tenant-session scoped.
 
@@ -81,7 +69,7 @@ Counts: 20 `TENANT_SCOPED_CONFIRMED`, 1 `PLATFORM_ADMIN_ONLY`, 1 `INTERNAL_SECRE
 
 1. **Estimates Zapier outbound HMAC Phase 1.** `send-quote-zapier.js` and `resend-tenant-quote.js` sign with Invoice Hub v1 (`timestamp.nonce.JSON`) when `ZAPIER_WEBHOOK_SECRET` is set (`ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE`). Missing secret still sends unsigned. Phase 2 fail-closed is a separate PR.
 2. **`resolveOwnerOrSupervisorContext()` accepts modern owner sessions.** Owner path uses `hasOwnerSessionIdentity` (email + tenant, or legacy email + `session.c`). Supervisor device path is unchanged. Seller dual-auth is unchanged.
-3. **Contract `requireOwnerOrAdmin` still requires `session.c`.** Same legacy gate. Recommendation: switch to `hasOwnerSessionIdentity` in a Contracts PR.
+3. **Contract `requireOwnerOrAdmin` accepts modern owner sessions.** Shared helper uses `hasOwnerSessionIdentity` (email + tenant, or legacy email + `session.c`). Sales Admin / Platform Admin gates are unchanged. Seller, supervisor device, and incomplete sessions are not owner identity.
 4. **Stripe local verifier has no replay/timestamp window.** `verifyStripeSignature` checks HMAC only. Recommendation: reject `t` outside ±5 minutes in a webhooks PR.
 5. **Historical SendGrid exposure.** No SendGrid key remains in the tree. Rotation is **not verifiable from code**.
 6. **No global CSP/HSTS.** `netlify.toml` has neither `Content-Security-Policy` nor `Strict-Transport-Security`.

@@ -3,21 +3,12 @@
  * GET + POST. Separate from tenant branding / snapshot.
  */
 
+const { requireOwnerOrAdmin } = require("./_lib/require-owner-or-admin");
 const { supabaseRequest } = require("./_lib/supabase-admin");
-const { readSessionFromEvent } = require("./_lib/session");
-const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
-const {
-  resolveMembershipByEmail,
-  membershipRole,
-  membershipIsActive,
-} = require("./_lib/membership-resolve");
-const { throwGuard } = require("./_lib/tenant-device-guard");
 const {
   evaluateLegalProfileReadiness,
   serializeLegalProfileForApi,
 } = require("./_lib/contract-source-assembler");
-
-const OWNER_ADMIN_ROLES = new Set(["owner", "admin"]);
 
 const LICENSE_STATUSES = new Set(["licensed", "not_required", "exempt", "unknown"]);
 const CONTRACT_LANGUAGES = new Set(["en", "es", "bilingual"]);
@@ -98,29 +89,6 @@ function parseOptionalDate(raw) {
   const d = new Date(`${s}T00:00:00.000Z`);
   if (Number.isNaN(d.getTime())) return { error: "contractor_license_expiration is invalid" };
   return { value: s };
-}
-
-async function requireOwnerOrAdmin(event) {
-  const session = readSessionFromEvent(event);
-  if (!session?.e || !session?.c) {
-    throwGuard(401, "Unauthorized", "no_session");
-  }
-  const tenant = await resolveTenantFromSession(session);
-  if (!tenant?.id) {
-    throwGuard(422, "Tenant not found for this session.", "tenant_not_found");
-  }
-  const membership = await resolveMembershipByEmail(supabaseRequest, tenant.id, session.e);
-  if (!membership?.id) {
-    throwGuard(403, "Membership not found", "membership_not_found");
-  }
-  if (!membershipIsActive(membership)) {
-    throwGuard(403, "Membership is not active", "membership_inactive");
-  }
-  const role = membershipRole(membership);
-  if (!OWNER_ADMIN_ROLES.has(role)) {
-    throwGuard(403, "Owner or admin membership required", "owner_required");
-  }
-  return { tenant, membership };
 }
 
 async function loadBrandingHints(tenantId) {

@@ -243,9 +243,9 @@ function ownerCookie(fields) {
 
 async function main() {
   const inventory = MANIFEST.handlerInventory || [];
-  eq("handler inventory has 24 entries", inventory.length, 24);
+  eq("handler inventory has 10 entries", inventory.length, 10);
   const marked = heuristicMarkedHandlers();
-  eq("heuristic currently marks 24 handlers", marked.length, 24);
+  eq("heuristic currently marks 10 handlers", marked.length, 10);
   const inventoryFiles = inventory.map((row) => row.file).sort();
   eq("inventory matches heuristic-marked set", JSON.stringify(inventoryFiles), JSON.stringify(marked));
 
@@ -339,13 +339,18 @@ async function main() {
     path.join(ROOT, "netlify/functions/contract-envelope-create.js"),
     "utf8"
   );
+  const contractHelperSrc = fs.readFileSync(
+    path.join(ROOT, "netlify/functions/_lib/require-owner-or-admin.js"),
+    "utf8"
+  );
   ok(
     "contract create rejects client tenant_id",
     envelopeSrc.indexOf('code: "tenant_id_forbidden"') >= 0
   );
   ok(
     "contract create derives tenant from session",
-    envelopeSrc.indexOf("resolveTenantFromSession") >= 0
+    envelopeSrc.indexOf('require("./_lib/require-owner-or-admin")') >= 0 &&
+      contractHelperSrc.indexOf("resolveTenantFromSession") >= 0
   );
 
   const quoteEditSrc = fs.readFileSync(

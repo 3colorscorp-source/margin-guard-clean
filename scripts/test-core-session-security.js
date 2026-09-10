@@ -426,9 +426,15 @@ async function main() {
     path.join(ROOT, "netlify/functions/contract-envelope-create.js"),
     "utf8"
   );
+  const contractHelperSrc = fs.readFileSync(
+    path.join(ROOT, "netlify/functions/_lib/require-owner-or-admin.js"),
+    "utf8"
+  );
   ok(
-    "FINDING FROZEN: contract requireOwnerOrAdmin still requires session.c",
-    /async function requireOwnerOrAdmin[\s\S]{0,180}if \(!session\?\.e \|\| !session\?\.c\)/.test(contractSrc)
+    "contract requireOwnerOrAdmin uses shared modern owner identity",
+    /require\("\.\/_lib\/require-owner-or-admin"\)/.test(contractSrc) &&
+      /hasOwnerSessionIdentity\(session\)/.test(contractHelperSrc) &&
+      !/async function requireOwnerOrAdmin/.test(contractSrc)
   );
 
   console.log("\nCore session security: " + passed + " passed");

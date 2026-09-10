@@ -3,22 +3,13 @@
  * GET + POST. Universal defaults only — no clauses generated.
  */
 
+const { requireOwnerOrAdmin } = require("./_lib/require-owner-or-admin");
 const { supabaseRequest } = require("./_lib/supabase-admin");
-const { readSessionFromEvent } = require("./_lib/session");
-const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
-const {
-  resolveMembershipByEmail,
-  membershipRole,
-  membershipIsActive,
-} = require("./_lib/membership-resolve");
-const { throwGuard } = require("./_lib/tenant-device-guard");
 const { getTradeModule, isValidTradeModule } = require("./_lib/contract-trade-modules");
 const {
   evaluateContractPreferencesReadiness,
   serializePreferencesForApi,
 } = require("./_lib/contract-source-assembler");
-
-const OWNER_ADMIN_ROLES = new Set(["owner", "admin"]);
 
 const WARRANTY_UNITS = new Set(["days", "months", "years"]);
 const CHANGE_ORDER_REQ = new Set(["always", "price_change_only", "optional"]);
@@ -72,29 +63,6 @@ function findUnknownBodyKeys(body) {
     if (!ALLOWED_BODY_KEYS.has(key)) unknown.push(key);
   }
   return unknown;
-}
-
-async function requireOwnerOrAdmin(event) {
-  const session = readSessionFromEvent(event);
-  if (!session?.e || !session?.c) {
-    throwGuard(401, "Unauthorized", "no_session");
-  }
-  const tenant = await resolveTenantFromSession(session);
-  if (!tenant?.id) {
-    throwGuard(422, "Tenant not found for this session.", "tenant_not_found");
-  }
-  const membership = await resolveMembershipByEmail(supabaseRequest, tenant.id, session.e);
-  if (!membership?.id) {
-    throwGuard(403, "Membership not found", "membership_not_found");
-  }
-  if (!membershipIsActive(membership)) {
-    throwGuard(403, "Membership is not active", "membership_inactive");
-  }
-  const role = membershipRole(membership);
-  if (!OWNER_ADMIN_ROLES.has(role)) {
-    throwGuard(403, "Owner or admin membership required", "owner_required");
-  }
-  return { tenant, membership };
 }
 
 async function loadPreferencesRow(tenantId) {
