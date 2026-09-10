@@ -1,0 +1,192 @@
+{
+  "version": 1,
+  "name": "core-security-shield-v1",
+  "failMessage": "Core Security Shield V1 failed. Do not merge until required suites pass.",
+  "required": [
+    {
+      "id": "core-session-security",
+      "path": "scripts/test-core-session-security.js",
+      "minPassed": 27
+    },
+    {
+      "id": "core-tenant-isolation",
+      "path": "scripts/test-core-tenant-isolation.js",
+      "minPassed": 161
+    },
+    {
+      "id": "core-role-permissions",
+      "path": "scripts/test-core-role-permissions.js",
+      "minPassed": 20
+    },
+    {
+      "id": "core-secret-boundaries",
+      "path": "scripts/test-core-secret-boundaries.js",
+      "minPassed": 30
+    },
+    {
+      "id": "core-webhook-security",
+      "path": "scripts/test-core-webhook-security.js",
+      "minPassed": 20
+    },
+    {
+      "id": "core-financial-endpoints",
+      "path": "scripts/test-core-financial-endpoints.js",
+      "minPassed": 18
+    }
+  ],
+  "optional": [],
+  "knownGaps": [
+    "Historical Supabase rls_disabled_in_public alerts are not currently present in source; production RLS was not live-verified (PRODUCTION_RLS_NOT_VERIFIED).",
+    "Estimate Zapier webhook (send-quote-zapier.js) remains an unsigned JSON POST; this is not HMAC. Do not change it in Core Security Shield V1.",
+    "resolveOwnerOrSupervisorContext() still requires session.e && session.c for the Owner path; modern email+tenant sessions fall through to device auth. Separate PR.",
+    "Local Stripe invoice webhook verifier has no timestamp skew / replay window. Separate PR.",
+    "Historical SendGrid exposure alert: rotation is not verifiable from current code (no SendGrid key remains in the tree).",
+    "No global Content-Security-Policy or Strict-Transport-Security in netlify.toml. Separate PR.",
+    "send-quote-zapier.js logs additional_recipients and client_email. Separate PR.",
+    "Contract Owner/Admin handlers still gate on session.e && session.c. Related to the supervisor dual-auth finding. Separate PR."
+  ],
+  "webhookContract": "estimate Zapier webhook is unsigned JSON POST; this is not HMAC. Invoice Hub Zapier remains Hub-owned.",
+  "handlerInventory": [
+    {
+      "file": "admin-saas-square-dry-run.js",
+      "category": "PLATFORM_ADMIN_ONLY",
+      "controls": ["assertPlatformAdminSession", "readSessionFromEvent"]
+    },
+    {
+      "file": "contract-certificate-create.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["readSessionFromEvent", "resolveTenantFromSession"]
+    },
+    {
+      "file": "contract-certificates.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["readSessionFromEvent", "resolveTenantFromSession"]
+    },
+    {
+      "file": "contract-envelope-create.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["readSessionFromEvent", "resolveTenantFromSession", "tenant_id_forbidden"]
+    },
+    {
+      "file": "contract-envelope-send.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["readSessionFromEvent", "resolveTenantFromSession"]
+    },
+    {
+      "file": "contract-envelopes.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["readSessionFromEvent", "resolveTenantFromSession"]
+    },
+    {
+      "file": "contract-package-freeze.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["readSessionFromEvent", "resolveTenantFromSession"]
+    },
+    {
+      "file": "contract-signed-pdf-create.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["readSessionFromEvent", "resolveTenantFromSession"]
+    },
+    {
+      "file": "contract-signed-pdfs.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["readSessionFromEvent", "resolveTenantFromSession"]
+    },
+    {
+      "file": "contract-signer-create.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["readSessionFromEvent", "resolveTenantFromSession"]
+    },
+    {
+      "file": "contract-signer-delete.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["readSessionFromEvent", "resolveTenantFromSession"]
+    },
+    {
+      "file": "contract-signer-update.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["readSessionFromEvent", "resolveTenantFromSession"]
+    },
+    {
+      "file": "contract-signers.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["readSessionFromEvent", "resolveTenantFromSession"]
+    },
+    {
+      "file": "contract-signing-token-create.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["readSessionFromEvent", "resolveTenantFromSession"]
+    },
+    {
+      "file": "contract-signing-token-revoke.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["readSessionFromEvent", "resolveTenantFromSession"]
+    },
+    {
+      "file": "create-financial-connections-session.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["requireFcOwnerTenant"]
+    },
+    {
+      "file": "device-logout.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["resolveDeviceSession"]
+    },
+    {
+      "file": "get-tenant-quote-edit.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["readSessionFromEvent", "resolveTenantFromSession"]
+    },
+    {
+      "file": "get-tenant-webhook-secret.js",
+      "category": "INTERNAL_SECRET_AUTH",
+      "controls": ["INTERNAL_API_KEY", "timingSafeEqualString"]
+    },
+    {
+      "file": "invite-supervisor-auth.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["requireOwnerMembership"]
+    },
+    {
+      "file": "link-membership-auth.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["verifySupabaseAccessToken"]
+    },
+    {
+      "file": "list-tenant-payments.js",
+      "category": "TENANT_SCOPED_CONFIRMED",
+      "controls": ["readSessionFromEvent", "resolveTenantFromSession", "hasOwnerSessionIdentity"]
+    },
+    {
+      "file": "sales-approval-email-action.js",
+      "category": "DOCUMENTED_EXCEPTION",
+      "controls": ["email_action_token_hash", "timingSafeEqualHex"]
+    },
+    {
+      "file": "square-saas-webhook.js",
+      "category": "SIGNED_WEBHOOK",
+      "controls": ["verifySquareWebhookSignature"]
+    }
+  ],
+  "exact": [
+    ".github/workflows/core-security-shield-v1.yml",
+    "scripts/mg-core-security-shield-v1.json",
+    "scripts/test-mg-core-security-shield-v1.js",
+    "scripts/test-mg-core-security-shield-v1-runner.js",
+    "scripts/test-core-session-security.js",
+    "scripts/test-core-tenant-isolation.js",
+    "scripts/test-core-role-permissions.js",
+    "scripts/test-core-secret-boundaries.js",
+    "scripts/test-core-webhook-security.js",
+    "scripts/test-core-financial-endpoints.js",
+    "docs/CORE_SECURITY_AUDIT.md",
+    "docs/CORE_SECURITY_PROTECTED_SURFACE.md"
+  ],
+  "globs": [
+    "scripts/fixtures/mg-core-security-shield/*",
+    "scripts/mg-core-security-shield*",
+    "scripts/test-mg-core-security-shield*",
+    "scripts/test-core-*.js",
+    "docs/CORE_SECURITY_*"
+  ]
+}
