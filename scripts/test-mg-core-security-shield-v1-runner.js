@@ -232,13 +232,13 @@ eq("parsePassedCount core summary", shield.parsePassedCount("Core session securi
 eq("stripAnsi ignores colors", shield.parsePassedCount("\u001b[32m5 passed\u001b[0m\n", "").passed, 5);
 
 const defaultManifest = shield.loadManifest();
-eq("default required count", defaultManifest.required.length, 7);
+eq("default required count", defaultManifest.required.length, 8);
 eq("default optional count", defaultManifest.optional.length, 0);
 eq("handler inventory count", defaultManifest.handlerInventory.length, 24);
 ok(
   "required ids are frozen",
   defaultManifest.required.map((row) => row.id).join(",") ===
-    "core-session-security,core-tenant-isolation,core-role-permissions,core-secret-boundaries,core-webhook-security,core-financial-endpoints,core-security-supabase-hardening-1"
+    "core-session-security,core-tenant-isolation,core-role-permissions,core-secret-boundaries,core-webhook-security,core-financial-endpoints,core-security-supabase-hardening-1,core-estimates-webhook-signing"
 );
 
 const resolveOk = shield.resolveSuitePath(ROOT, fixture("pass.js"));
@@ -286,8 +286,8 @@ ok(
   )
 );
 ok(
-  "unsigned webhook note printed",
-  gapRun.logs.some((line) => /unsigned estimate Zapier JSON POST \(not HMAC\)/.test(line))
+  "phase1 estimates HMAC note printed",
+  gapRun.logs.some((line) => /ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE/.test(line))
 );
 ok(
   "production RLS unverified note printed",

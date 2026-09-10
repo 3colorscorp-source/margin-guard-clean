@@ -10,6 +10,11 @@ const {
   throwGuard,
 } = require("./_lib/tenant-device-guard");
 const { makeReqId, logOps, truncatePublicToken } = require("./_lib/ops-log");
+const {
+  ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE,
+  attachZapierSignature,
+} = require("./_lib/zapier-hmac-v1");
+void ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE;
 
 const QUOTE_SEND_SELECT =
   "id,tenant_id,status,seller_membership_id,created_by_role,source_device_id";
@@ -424,9 +429,10 @@ exports.handler = async (event) => {
         console.log("[CC DEBUG send-quote-zapier outbound]", {
           additional_recipients: zapierBody?.additional_recipients
         });
+        const signed = attachZapierSignature(zapierBody);
         const resp = await fetch(webhookUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: signed.headers,
           body: JSON.stringify(zapierBody)
         });
         if (resp.ok) {
