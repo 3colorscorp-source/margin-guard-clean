@@ -36,7 +36,7 @@ This document is evidence and recommendations only. Core Security Shield V1 does
 | Severity | Count | Items |
 |----------|-------|--------|
 | High (document only; separate PR) | 0 | — |
-| Medium (document only; separate PR) | 2 | Estimates Zapier HMAC still compatibility-mode (not fail-closed); no global CSP/HSTS |
+| Medium (document only; separate PR) | 1 | Estimates Zapier HMAC still compatibility-mode (not fail-closed) |
 | Low / informational | 3 | Historical `rls_disabled_in_public` not in current source; historical SendGrid alert not verifiable from code; substring tenant-scope verifier is insufficient (10 remaining false negatives vs explicit inventory) |
 | Confirmed controls (not vulnerabilities) | 10 remaining heuristic-marked handlers | 14 Contract handlers now use shared `requireOwnerOrAdmin` |
 
@@ -72,7 +72,7 @@ Counts: 6 `TENANT_SCOPED_CONFIRMED`, 1 `PLATFORM_ADMIN_ONLY`, 1 `INTERNAL_SECRET
 3. **Contract and remaining equivalent Owner/Admin gates accept modern owner sessions.** Shared `requireOwnerOrAdmin` uses `hasOwnerSessionIdentity` (email + tenant, or legacy email + `session.c`). Contacts, quote resend/reprice, and project contract/intelligence/payment-intent handlers reuse that helper. Sales Admin / Platform Admin gates are unchanged. Seller, supervisor device, and incomplete sessions are not owner identity. `upsert-tenant-contact.js` keeps its seller-device create fallback after the owner gate fails.
 4. **Stripe local verifier rejects replayed signatures.** `verifyStripeSignature` requires a valid unix `t=` in `Stripe-Signature`, HMAC over `` `${t}.${rawBody}` ``, timing-safe compare of one or more `v1` signatures, and `|t - now| <= 300` seconds. Future timestamps outside that tolerance are rejected. The clock is injectable only via the test hook; headers, body, and query cannot bypass the window.
 5. **Historical SendGrid exposure.** No SendGrid key remains in the tree. Rotation is **not verifiable from code**.
-6. **No global CSP/HSTS.** `netlify.toml` has neither `Content-Security-Policy` nor `Strict-Transport-Security`.
+6. **Global CSP/HSTS/Permissions-Policy.** `netlify.toml` `/*` sends `Strict-Transport-Security: max-age=31536000` (no `includeSubDomains`, no `preload`), `Content-Security-Policy: object-src 'none'; base-uri 'self'; frame-ancestors 'none'`, and `Permissions-Policy: microphone=(self), camera=(), geolocation=()`. `script-src`/`style-src` are not set so existing inline scripts, Google Fonts, and jsDelivr stay intact. `microphone=(self)` is required for Seller/Owner `SpeechRecognition` voice. Camera and geolocation stay blocked because no public HTML/JS uses those APIs. Function CORS/`Cache-Control` are not set in this global block.
 7. **Estimate send/resend logs redact recipient PII.** `send-quote-zapier.js` and `resend-tenant-quote.js` log only operational metadata via `ops-log.js` (event, status, counts, codes, request id). Recipients, `additional_recipients`, full payloads, public/PDF URLs, signatures, nonces, and secrets are not logged.
 8. **Historical Supabase `rls_disabled_in_public`.** Not present in current source. Production policies were not inspected live.
 9. **Remaining `session.e && session.c` gates are not equivalent Owner/Admin.** Project Control, sales-approval, supervisor assignment, and logo upload still require legacy `e+c` and have different role/response semantics. Separate PRs. `get-tenant-quote-edit.js` / `update-tenant-quote-edit.js` already accept modern identity via local copies. AI Closer uses `email`/`auth_user_id`, not `session.c`.
