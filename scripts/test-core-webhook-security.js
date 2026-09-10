@@ -182,10 +182,13 @@ async function main() {
   );
 
   const estimateSrc = fs.readFileSync(path.join(ROOT, "netlify/functions/send-quote-zapier.js"), "utf8");
-  ok("FINDING FROZEN: estimate Zapier webhook is unsigned JSON POST", estimateSrc.indexOf("createHmac") < 0);
   ok(
-    "estimate outbound is JSON POST without signature header",
-    estimateSrc.indexOf('headers: { "Content-Type": "application/json" }') >= 0
+    "estimate Zapier outbound uses shared HMAC helper",
+    estimateSrc.indexOf('require("./_lib/zapier-hmac-v1")') >= 0
+  );
+  ok(
+    "ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE is marked on send-quote-zapier",
+    estimateSrc.indexOf("ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE") >= 0
   );
 
   const invoiceSrc = fs.readFileSync(path.join(ROOT, "netlify/functions/send-invoice-zapier.js"), "utf8");

@@ -193,7 +193,7 @@ function main() {
     JSON.stringify(manifest.explicitScope.branchPrefixes) ===
       JSON.stringify(["feat/core-security-", "fix/core-security-", "security/core-"])
   );
-  pass("required suite count stays 7", manifest.required.length === 7);
+  pass("required suite count stays 8", manifest.required.length === 8);
   pass("optional stays empty", Array.isArray(manifest.optional) && manifest.optional.length === 0);
   pass("handler inventory stays 24", manifest.handlerInventory.length === 24);
 
@@ -212,6 +212,8 @@ function main() {
     "scripts/guard-core-security-scope.js",
     "scripts/test-core-security-shield-v2.js",
     "scripts/test-core-security-supabase-hardening-1.js",
+    "scripts/test-core-estimates-webhook-signing.js",
+    "netlify/functions/_lib/zapier-hmac-v1.js",
     "docs/CORE_SECURITY_AUDIT.md",
     "docs/CORE_SECURITY_PROTECTED_SURFACE.md",
     "SUPABASE_MG_CORE_SECURITY_HARDENING_1.sql",
@@ -220,7 +222,7 @@ function main() {
   ].forEach((rel) => {
     pass("exact protects " + rel, exact.indexOf(rel) >= 0);
   });
-  pass("exact count is 18", exact.length === 18);
+  pass("exact count is 20", exact.length === 20);
   pass(
     "globs are frozen",
     JSON.stringify(manifest.globs) ===
@@ -232,10 +234,12 @@ function main() {
   );
 
   const sharedFiles = Object.keys(manifest.sharedScan || {});
-  pass("sharedScan has 12 files", sharedFiles.length === 12);
+  pass("sharedScan has 14 files", sharedFiles.length === 14);
   pass("sharedScan includes session.js", sharedFiles.indexOf("netlify/functions/_lib/session.js") >= 0);
   pass("sharedScan includes netlify.toml", sharedFiles.indexOf("netlify.toml") >= 0);
   pass("sharedScan includes square HMAC helper", sharedFiles.indexOf("netlify/functions/_lib/square-webhook-signature.js") >= 0);
+  pass("sharedScan includes send-quote-zapier", sharedFiles.indexOf("netlify/functions/send-quote-zapier.js") >= 0);
+  pass("sharedScan includes resend-tenant-quote", sharedFiles.indexOf("netlify/functions/resend-tenant-quote.js") >= 0);
 
   const {
     evaluateGuard,

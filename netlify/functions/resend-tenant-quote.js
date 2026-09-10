@@ -17,6 +17,8 @@ const {
   resolveMembershipByEmail,
 } = require("./_lib/membership-resolve");
 const { throwGuard } = require("./_lib/tenant-device-guard");
+const { attachZapierSignature, ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE } = require("./_lib/zapier-hmac-v1");
+void ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE;
 const {
   UUID_RE,
   evaluateQuoteEditGuard,
@@ -200,9 +202,10 @@ async function dispatchQuoteResendZapier({ tenantId, quote, publicUrl, messageNo
   };
 
   try {
+    const signed = attachZapierSignature(zapierBody);
     const resp = await fetch(webhookUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: signed.headers,
       body: JSON.stringify(zapierBody),
     });
     if (resp.ok) {
