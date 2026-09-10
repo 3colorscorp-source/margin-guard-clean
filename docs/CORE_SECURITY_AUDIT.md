@@ -69,12 +69,13 @@ Counts: 6 `TENANT_SCOPED_CONFIRMED`, 1 `PLATFORM_ADMIN_ONLY`, 1 `INTERNAL_SECRET
 
 1. **Estimates Zapier outbound HMAC Phase 1.** `send-quote-zapier.js` and `resend-tenant-quote.js` sign with Invoice Hub v1 (`timestamp.nonce.JSON`) when `ZAPIER_WEBHOOK_SECRET` is set (`ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE`). Missing secret still sends unsigned. Phase 2 fail-closed is a separate PR.
 2. **`resolveOwnerOrSupervisorContext()` accepts modern owner sessions.** Owner path uses `hasOwnerSessionIdentity` (email + tenant, or legacy email + `session.c`). Supervisor device path is unchanged. Seller dual-auth is unchanged.
-3. **Contract `requireOwnerOrAdmin` accepts modern owner sessions.** Shared helper uses `hasOwnerSessionIdentity` (email + tenant, or legacy email + `session.c`). Sales Admin / Platform Admin gates are unchanged. Seller, supervisor device, and incomplete sessions are not owner identity.
+3. **Contract and remaining equivalent Owner/Admin gates accept modern owner sessions.** Shared `requireOwnerOrAdmin` uses `hasOwnerSessionIdentity` (email + tenant, or legacy email + `session.c`). Contacts, quote resend/reprice, and project contract/intelligence/payment-intent handlers reuse that helper. Sales Admin / Platform Admin gates are unchanged. Seller, supervisor device, and incomplete sessions are not owner identity. `upsert-tenant-contact.js` keeps its seller-device create fallback after the owner gate fails.
 4. **Stripe local verifier rejects replayed signatures.** `verifyStripeSignature` requires a valid unix `t=` in `Stripe-Signature`, HMAC over `` `${t}.${rawBody}` ``, timing-safe compare of one or more `v1` signatures, and `|t - now| <= 300` seconds. Future timestamps outside that tolerance are rejected. The clock is injectable only via the test hook; headers, body, and query cannot bypass the window.
 5. **Historical SendGrid exposure.** No SendGrid key remains in the tree. Rotation is **not verifiable from code**.
 6. **No global CSP/HSTS.** `netlify.toml` has neither `Content-Security-Policy` nor `Strict-Transport-Security`.
 7. **Estimate send/resend logs redact recipient PII.** `send-quote-zapier.js` and `resend-tenant-quote.js` log only operational metadata via `ops-log.js` (event, status, counts, codes, request id). Recipients, `additional_recipients`, full payloads, public/PDF URLs, signatures, nonces, and secrets are not logged.
 8. **Historical Supabase `rls_disabled_in_public`.** Not present in current source. Production policies were not inspected live.
+9. **Remaining `session.e && session.c` gates are not equivalent Owner/Admin.** Project Control, sales-approval, supervisor assignment, and logo upload still require legacy `e+c` and have different role/response semantics. Separate PRs. `get-tenant-quote-edit.js` / `update-tenant-quote-edit.js` already accept modern identity via local copies. AI Closer uses `email`/`auth_user_id`, not `session.c`.
 
 ## Service role
 
