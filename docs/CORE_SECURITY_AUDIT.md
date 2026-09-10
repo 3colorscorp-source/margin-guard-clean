@@ -36,7 +36,7 @@ This document is evidence and recommendations only. Core Security Shield V1 does
 | Severity | Count | Items |
 |----------|-------|--------|
 | High (document only; separate PR) | 0 | — |
-| Medium (document only; separate PR) | 4 | Estimates Zapier HMAC still compatibility-mode (not fail-closed); Stripe local verifier has no timestamp/replay window; `send-quote-zapier` logs recipients/emails; no global CSP/HSTS |
+| Medium (document only; separate PR) | 3 | Estimates Zapier HMAC still compatibility-mode (not fail-closed); Stripe local verifier has no timestamp/replay window; no global CSP/HSTS |
 | Low / informational | 3 | Historical `rls_disabled_in_public` not in current source; historical SendGrid alert not verifiable from code; substring tenant-scope verifier is insufficient (10 remaining false negatives vs explicit inventory) |
 | Confirmed controls (not vulnerabilities) | 10 remaining heuristic-marked handlers | 14 Contract handlers now use shared `requireOwnerOrAdmin` |
 
@@ -73,7 +73,7 @@ Counts: 6 `TENANT_SCOPED_CONFIRMED`, 1 `PLATFORM_ADMIN_ONLY`, 1 `INTERNAL_SECRET
 4. **Stripe local verifier has no replay/timestamp window.** `verifyStripeSignature` checks HMAC only. Recommendation: reject `t` outside ±5 minutes in a webhooks PR.
 5. **Historical SendGrid exposure.** No SendGrid key remains in the tree. Rotation is **not verifiable from code**.
 6. **No global CSP/HSTS.** `netlify.toml` has neither `Content-Security-Policy` nor `Strict-Transport-Security`.
-7. **Logging of additional recipients** in `send-quote-zapier.js` (`additional_recipients`, `client_email`).
+7. **Estimate send/resend logs redact recipient PII.** `send-quote-zapier.js` and `resend-tenant-quote.js` log only operational metadata via `ops-log.js` (event, status, counts, codes, request id). Recipients, `additional_recipients`, full payloads, public/PDF URLs, signatures, nonces, and secrets are not logged.
 8. **Historical Supabase `rls_disabled_in_public`.** Not present in current source. Production policies were not inspected live.
 
 ## Service role

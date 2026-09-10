@@ -9,7 +9,7 @@ const {
   resolveOwnerOrSellerContext,
   throwGuard,
 } = require("./_lib/tenant-device-guard");
-const { makeReqId, logOps, truncatePublicToken } = require("./_lib/ops-log");
+const { makeReqId, logOps, countAdditionalRecipients } = require("./_lib/ops-log");
 const {
   ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE,
   attachZapierSignature,
@@ -198,13 +198,9 @@ exports.handler = async (event) => {
       });
     }
 
-    console.log("[CC DEBUG send-quote-zapier incoming]", {
-      additional_recipients: data?.additional_recipients,
-      additionalRecipients: data?.additionalRecipients
-    });
-
     const client_email = String(pickFirst(data.toEmail, data.client_email, data.to_email) || "").trim();
     const additional_recipients = pickFirst(data.additional_recipients, data.additionalRecipients);
+    const additionalRecipientCount = countAdditionalRecipients(additional_recipients);
 
     if (!client_email) {
       logOps({
@@ -225,7 +221,6 @@ exports.handler = async (event) => {
     }
 
     const publicToken = pickFirst(data.publicToken, data.public_token);
-    const publicTokenLog = truncatePublicToken(publicToken);
     let quoteId = null;
 
     if (isSellerDevice && !publicToken) {
@@ -257,7 +252,6 @@ exports.handler = async (event) => {
           level: "warn",
           outcome: "fail",
           tenant_id: tenant.id,
-          public_token: publicTokenLog,
           http_status: 403,
           detail: "no quote for token and tenant"
         });
@@ -280,7 +274,6 @@ exports.handler = async (event) => {
         outcome: "ok",
         tenant_id: tenant.id,
         quote_id: quoteId,
-        public_token: publicTokenLog
       });
     }
 
@@ -327,7 +320,6 @@ exports.handler = async (event) => {
         outcome: "ok",
         tenant_id: tenant.id,
         quote_id: quoteId,
-        public_token: publicTokenLog,
         detail: "skipped_no_pdf_payload"
       });
     } else if (pdfUrl) {
@@ -339,7 +331,6 @@ exports.handler = async (event) => {
         outcome: "ok",
         tenant_id: tenant.id,
         quote_id: quoteId,
-        public_token: publicTokenLog,
         detail: "storage_upload_ok"
       });
     } else {
@@ -351,7 +342,6 @@ exports.handler = async (event) => {
         outcome: "fail",
         tenant_id: tenant.id,
         quote_id: quoteId,
-        public_token: publicTokenLog,
         detail: pdfUploadError || "upload_failed"
       });
     }
@@ -364,7 +354,6 @@ exports.handler = async (event) => {
 
     let tenantSlug = "";
     let businessName = "";
-    let tenantEmail = "";
     try {
       const metaRows = await supabaseRequest(
         `tenants?id=eq.${encodeURIComponent(String(tenant.id))}&select=slug,name,owner_email&limit=1`
@@ -373,7 +362,6 @@ exports.handler = async (event) => {
       if (tr) {
         tenantSlug = String(tr.slug ?? "").trim();
         businessName = String(tr.name ?? "").trim();
-        tenantEmail = String(tr.owner_email ?? "").trim();
       }
     } catch (_e) {
       /* optional tenant metadata for Zapier */
@@ -403,9 +391,6 @@ exports.handler = async (event) => {
 
     let zapierDelivery = "skipped";
     if (!webhookUrl) {
-      console.log(
-        "[send-quote-zapier] Zapier webhook not configured (set ZAPIER_ESTIMATE_CTA_WEBHOOK_URL or ZAPIER_WEBHOOK_URL); skipping outbound POST"
-      );
       logOps({
         req_id,
         fn: OPS_FN,
@@ -414,21 +399,12 @@ exports.handler = async (event) => {
         outcome: "skipped",
         tenant_id: tenant.id,
         quote_id: quoteId,
-        public_token: publicTokenLog,
+        additional_recipient_count: additionalRecipientCount,
         detail: "no_webhook_url_configured; outbound skipped"
       });
       zapierDelivery = "skipped_no_webhook_url";
     } else {
       try {
-        console.info("[MG Zapier Email Payload]", {
-          client_email,
-          additional_recipients,
-          tenant_business_name: businessName,
-          tenant_email: tenantEmail
-        });
-        console.log("[CC DEBUG send-quote-zapier outbound]", {
-          additional_recipients: zapierBody?.additional_recipients
-        });
         const signed = attachZapierSignature(zapierBody);
         const resp = await fetch(webhookUrl, {
           method: "POST",
@@ -445,7 +421,7 @@ exports.handler = async (event) => {
             outcome: "ok",
             tenant_id: tenant.id,
             quote_id: quoteId,
-            public_token: publicTokenLog,
+            additional_recipient_count: additionalRecipientCount,
             detail: "webhook_post_ok;source=env"
           });
         } else {
@@ -459,7 +435,7 @@ exports.handler = async (event) => {
             outcome: "fail",
             tenant_id: tenant.id,
             quote_id: quoteId,
-            public_token: publicTokenLog,
+            additional_recipient_count: additionalRecipientCount,
             detail: `http_${resp.status};source=env`
           });
         }
@@ -473,7 +449,7 @@ exports.handler = async (event) => {
           outcome: "fail",
           tenant_id: tenant.id,
           quote_id: quoteId,
-          public_token: publicTokenLog,
+          additional_recipient_count: additionalRecipientCount,
           detail: `network;source=env;${err?.message || "fetch_failed"}`
         });
       }
@@ -487,7 +463,7 @@ exports.handler = async (event) => {
       outcome: "ok",
       tenant_id: tenant.id,
       quote_id: quoteId,
-      public_token: publicTokenLog,
+      additional_recipient_count: additionalRecipientCount,
       http_status: 200,
       detail: `zapier:${zapierDelivery};pdf:${pdfUrl ? "ok" : hadPdfPayload ? "fail" : "skip"}`
     });

@@ -47,6 +47,11 @@
       "id": "core-contract-modern-owner-session",
       "path": "scripts/test-core-contract-modern-owner-session.js",
       "minPassed": 108
+    },
+    {
+      "id": "core-estimate-log-redaction",
+      "path": "scripts/test-core-estimate-log-redaction.js",
+      "minPassed": 40
     }
   ],
   "optional": [],
@@ -55,8 +60,7 @@
     "Estimate Zapier outbound HMAC is Phase 1 compatibility mode (ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE): signed when ZAPIER_WEBHOOK_SECRET is set, still sent unsigned if the secret is missing. Phase 2 fail-closed is a separate PR.",
     "Local Stripe invoice webhook verifier has no timestamp skew / replay window. Separate PR.",
     "Historical SendGrid exposure alert: rotation is not verifiable from current code (no SendGrid key remains in the tree).",
-    "No global Content-Security-Policy or Strict-Transport-Security in netlify.toml. Separate PR.",
-    "send-quote-zapier.js logs additional_recipients and client_email. Separate PR."
+    "No global Content-Security-Policy or Strict-Transport-Security in netlify.toml. Separate PR."
   ],
   "webhookContract": "estimates Zapier outbound HMAC is ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE. Invoice Hub Zapier remains Hub-owned.",
   "scopeFailMessage": "Core Security protected surface changed outside Core Security scope. Stop and move this to a Core Security PR.",
@@ -137,7 +141,9 @@
     "scripts/test-core-security-supabase-hardening-1.js",
     "scripts/test-core-estimates-webhook-signing.js",
     "scripts/test-core-contract-modern-owner-session.js",
+    "scripts/test-core-estimate-log-redaction.js",
     "netlify/functions/_lib/zapier-hmac-v1.js",
+    "netlify/functions/_lib/ops-log.js",
     "netlify/functions/_lib/require-owner-or-admin.js",
     "docs/CORE_SECURITY_AUDIT.md",
     "docs/CORE_SECURITY_PROTECTED_SURFACE.md",
