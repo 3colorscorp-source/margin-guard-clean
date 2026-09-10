@@ -129,6 +129,8 @@ function main() {
   const verified = hmac.verifyEstimatesCatchHook(catchHook, { nowMs: NOW_MS });
   eq("Catch Hook input verifies", verified.signature_valid, true);
   eq("final_subject comes from signed JSON", verified.final_subject, "Your estimate");
+  eq("final_to comes from signed client_email", verified.final_to, "pat@example.test");
+  eq("empty signed additional stays empty", verified.final_additional_recipients, "");
   ok("final_body uses signed public_quote_url not Catch Hook rebuild", verified.final_body.indexOf("https://example.test/estimate-public.html?token=abc") >= 0);
   ok("final_body does not echo client_email", verified.final_body.indexOf("pat@example.test") < 0);
 
@@ -136,6 +138,8 @@ function main() {
   eq("Code Step signature_valid is string true", pasteOut.signature_valid, "true");
   eq("Code Step final_subject matches", pasteOut.final_subject, verified.final_subject);
   eq("Code Step final_body matches", pasteOut.final_body, verified.final_body);
+  eq("Code Step final_to matches", pasteOut.final_to, verified.final_to);
+  eq("Code Step additional matches", pasteOut.final_additional_recipients, verified.final_additional_recipients);
   eq(
     "helper and paste verifier agree",
     JSON.stringify(hmac.verifyEstimatesCatchHook(catchHook, { nowMs: NOW_MS })),
@@ -164,6 +168,10 @@ function main() {
     { nowMs: NOW_MS }
   );
   eq("wrong signature is rejected", badSig.signature_valid, false);
+  eq("wrong signature empties To", badSig.final_to, "");
+  eq("wrong signature empties additional", badSig.final_additional_recipients, "");
+  eq("wrong signature empties subject", badSig.final_subject, "");
+  eq("wrong signature empties body", badSig.final_body, "");
 
   const badTs = hmac.verifyEstimatesCatchHook(
     Object.assign({}, catchHook, { zapier_timestamp: "not-a-date" }),
@@ -222,6 +230,68 @@ function main() {
   const resendOut = hmac.verifyEstimatesCatchHook(resendIn, { nowMs: NOW_MS });
   eq("resend final_subject uses signed subject", resendOut.final_subject, "Updated estimate");
   ok("resend final_body uses signed messageText", resendOut.final_body.indexOf("Updated estimate:") >= 0);
+  eq("resend final_to stays signed client_email", resendOut.final_to, "pat@example.test");
+
+  const overridden = Object.assign({}, catchHook, {
+    client_email: "attacker@evil.example",
+    toEmail: "attacker@evil.example",
+    additional_recipients: "bcc:injected@evil.example",
+    subject: "ATTACKER SUBJECT",
+  });
+  const overrideOut = hmac.verifyEstimatesCatchHook(overridden, { nowMs: NOW_MS });
+  eq("outer recipient override still verifies", overrideOut.signature_valid, true);
+  eq("outer client_email cannot override signed To", overrideOut.final_to, "pat@example.test");
+  eq("outer additional cannot inject BCC", overrideOut.final_additional_recipients, "");
+  ok("attacker email is absent from additional", overrideOut.final_additional_recipients.indexOf("evil") < 0);
+  eq("outer subject cannot override signed subject", overrideOut.final_subject, "Your estimate");
+
+  const bccSigned = Object.assign({}, UNSIGNED, {
+    additional_recipients: "ok@example.test\nbcc:evil@evil.example",
+  });
+  const bccOut = hmac.verifyEstimatesCatchHook(simulateCatchHook(signedWire(bccSigned).raw, SECRET), {
+    nowMs: NOW_MS,
+  });
+  eq("signed BCC injection still has valid HMAC", bccOut.signature_valid, true);
+  eq("signed BCC injection does not add recipients", bccOut.final_additional_recipients, "");
+  eq("signed To survives additional injection", bccOut.final_to, "pat@example.test");
+
+  const ctrl = Object.assign({}, UNSIGNED, {
+    client_email: "pat@example.test\nbcc:evil@evil.example",
+  });
+  const ctrlOut = hmac.verifyEstimatesCatchHook(simulateCatchHook(signedWire(ctrl).raw, SECRET), {
+    nowMs: NOW_MS,
+  });
+  eq("control-char To fails closed", ctrlOut.signature_valid, false);
+  eq("control-char To is empty", ctrlOut.final_to, "");
+  eq("control-char additional is empty", ctrlOut.final_additional_recipients, "");
+  eq("control-char does not leak subject", ctrlOut.final_subject, "");
+
+  const dups = Object.assign({}, UNSIGNED, {
+    additional_recipients: "cc@example.test, CC@example.test, pat@example.test, other@example.test",
+  });
+  const dupOut = hmac.verifyEstimatesCatchHook(simulateCatchHook(signedWire(dups).raw, SECRET), {
+    nowMs: NOW_MS,
+  });
+  eq("duplicates collapse without expanding", dupOut.final_additional_recipients, "cc@example.test,other@example.test");
+  eq("To is not copied into additional", dupOut.final_to, "pat@example.test");
+
+  const tampered = Object.assign({}, catchHook);
+  tampered.zapier_signed_payload = String(tampered.zapier_signed_payload).replace(
+    "11111111-1111-1111-1111-111111111111",
+    "22222222-2222-2222-2222-222222222222"
+  );
+  const tamperOut = hmac.verifyEstimatesCatchHook(tampered, { nowMs: NOW_MS });
+  eq("cross-tenant signed tamper is rejected", tamperOut.signature_valid, false);
+  eq("cross-tenant tamper does not leak To", tamperOut.final_to, "");
+  eq("cross-tenant tamper does not leak additional", tamperOut.final_additional_recipients, "");
+
+  const outerTenant = Object.assign({}, catchHook, {
+    tenant_id: "22222222-2222-2222-2222-222222222222",
+    client_email: "other-tenant@evil.example",
+  });
+  const outerTenantOut = hmac.verifyEstimatesCatchHook(outerTenant, { nowMs: NOW_MS });
+  eq("outer cross-tenant email cannot override To", outerTenantOut.final_to, "pat@example.test");
+  eq("outer cross-tenant still verifies signed payload", outerTenantOut.signature_valid, true);
 
   const prev = process.env.ZAPIER_WEBHOOK_SECRET;
   delete process.env.ZAPIER_WEBHOOK_SECRET;
@@ -244,8 +314,15 @@ function main() {
   ok("paste Code Step does not console.log", pasteSrc.indexOf("console.log") < 0 && pasteSrc.indexOf("console.info") < 0);
   ok("paste Code Step uses timingSafeEqual", pasteSrc.indexOf("timingSafeEqual") >= 0);
   ok("paste Code Step documents Catch Hook header gap", pasteSrc.indexOf("X-MG-*") >= 0 || pasteSrc.indexOf("X-MG-") >= 0);
+  ok("paste documents final_to mapping", pasteSrc.indexOf("final_to") >= 0 && pasteSrc.indexOf("Never map Catch Hook client_email") >= 0);
+  ok("helper does not read Catch Hook client_email", helperSrc.indexOf("input.client_email") < 0);
+  ok("paste does not read Catch Hook client_email", pasteSrc.indexOf("input.client_email") < 0);
   ok("send-quote-zapier does not log ZAPIER_WEBHOOK_SECRET", sendSrc.indexOf("ZAPIER_WEBHOOK_SECRET") < 0);
-  ok("verifier output keys are only signature_valid, final_subject, final_body", Object.keys(verified).sort().join(",") === "final_body,final_subject,signature_valid");
+  ok(
+    "verifier output keys are frozen",
+    Object.keys(verified).sort().join(",") ===
+      "final_additional_recipients,final_body,final_subject,final_to,signature_valid"
+  );
 
   const manifest = JSON.parse(read("scripts/mg-core-security-shield-v1.json"));
   const suite = (manifest.required || []).find((row) => row && row.id === "core-estimates-hmac-verifier");

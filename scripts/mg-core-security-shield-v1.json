@@ -71,12 +71,12 @@
     {
       "id": "core-estimates-hmac-verifier",
       "path": "scripts/test-core-estimates-hmac-verifier.js",
-      "minPassed": 46
+      "minPassed": 77
     },
     {
       "id": "core-estimates-server-hmac-verifier",
       "path": "scripts/test-core-estimates-server-hmac-verifier.js",
-      "minPassed": 37
+      "minPassed": 54
     }
   ],
   "optional": [],
