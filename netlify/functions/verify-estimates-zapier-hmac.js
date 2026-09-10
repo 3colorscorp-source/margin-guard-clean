@@ -8,7 +8,13 @@
 const { verifyEstimatesCatchHook } = require("./_lib/zapier-hmac-v1");
 
 const MAX_BODY_BYTES = 8192;
-const FAIL_BODY = { signature_valid: false, final_subject: "", final_body: "" };
+const FAIL_BODY = {
+  signature_valid: false,
+  final_to: "",
+  final_additional_recipients: "",
+  final_subject: "",
+  final_body: "",
+};
 
 let nowMsHook = null;
 
@@ -77,6 +83,8 @@ exports.handler = async (event) => {
     });
     return reply(200, {
       signature_valid: result.signature_valid === true,
+      final_to: String(result.final_to || ""),
+      final_additional_recipients: String(result.final_additional_recipients || ""),
       final_subject: String(result.final_subject || ""),
       final_body: String(result.final_body || ""),
     });

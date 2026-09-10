@@ -11,6 +11,13 @@
  *
  * Then: output = runEstimatesHmacCodeStep(inputData);
  *
+ * Map Gmail from verifier outputs only:
+ *   final_to                     ← Gmail To
+ *   final_additional_recipients  ← Gmail CC (may be empty)
+ *   final_subject                ← Gmail Subject
+ *   final_body                   ← Gmail Body
+ * Never map Catch Hook client_email, additional_recipients, subject, or body.
+ *
  * Evidence: Catch Hook does not keep the raw POST body or X-MG-* headers for
  * Code-by-Zapier inputData (docs/CH-013A21Z-ZAPIER-CONTRACT-EMAIL.md). Do not
  * reconstruct JSON from flattened Catch Hook fields. HMAC is over the exact
@@ -25,7 +32,13 @@ const crypto = require("crypto");
 const ESTIMATES_HMAC_MAX_AGE_MS = 300000;
 
 function emptyResult() {
-  return { signature_valid: false, final_subject: "", final_body: "" };
+  return {
+    signature_valid: false,
+    final_to: "",
+    final_additional_recipients: "",
+    final_subject: "",
+    final_body: "",
+  };
 }
 
 function timingSafeHexEqual(a, b) {
@@ -37,6 +50,41 @@ function timingSafeHexEqual(a, b) {
   } catch (_err) {
     return false;
   }
+}
+
+const EMAIL_MAX_LEN = 254;
+const EMAIL_RE = /^[a-z0-9._%+\-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
+
+function normalizeOneEmail(raw) {
+  const s = String(raw == null ? "" : raw).trim().toLowerCase();
+  if (!s || s.length > EMAIL_MAX_LEN) return "";
+  if (/[\x00-\x1f\x7f]/.test(s)) return "";
+  if (/[,;<>()"\\]/.test(s)) return "";
+  if (/\b(bcc|cc|to)\s*:/.test(s)) return "";
+  if (!EMAIL_RE.test(s)) return "";
+  return s;
+}
+
+function authorizeSignedRecipients(payload) {
+  const to = normalizeOneEmail(payload && payload.client_email);
+  if (!to) return null;
+  const extraRaw = payload && payload.additional_recipients;
+  const parts = Array.isArray(extraRaw)
+    ? extraRaw
+    : String(extraRaw == null ? "" : extraRaw).split(/[,;]/);
+  const seen = Object.create(null);
+  seen[to] = true;
+  const extras = [];
+  for (let i = 0; i < parts.length; i += 1) {
+    const email = normalizeOneEmail(parts[i]);
+    if (!email || seen[email]) continue;
+    seen[email] = true;
+    extras.push(email);
+  }
+  return {
+    final_to: to,
+    final_additional_recipients: extras.join(","),
+  };
 }
 
 function authorizedEmailCopy(payload) {
@@ -94,8 +142,12 @@ function verifyEstimatesHmacCatchHook(inputData, options) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return out;
   if (payload.zapier_signature != null || payload.zapier_signed_payload != null) return out;
 
+  const recipients = authorizeSignedRecipients(payload);
+  if (!recipients) return out;
   const copy = authorizedEmailCopy(payload);
   out.signature_valid = true;
+  out.final_to = recipients.final_to;
+  out.final_additional_recipients = recipients.final_additional_recipients;
   out.final_subject = copy.final_subject;
   out.final_body = copy.final_body;
   return out;
@@ -105,6 +157,8 @@ function runEstimatesHmacCodeStep(inputData, options) {
   const result = verifyEstimatesHmacCatchHook(inputData, options);
   return {
     signature_valid: result.signature_valid === true ? "true" : "false",
+    final_to: result.final_to,
+    final_additional_recipients: result.final_additional_recipients,
     final_subject: result.final_subject,
     final_body: result.final_body,
   };

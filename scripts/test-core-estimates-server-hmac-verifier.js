@@ -105,9 +105,15 @@ async function main() {
   const okBody = parseBody(okRes);
   eq("valid signature_valid is true", okBody.signature_valid, true);
   eq("final_subject from signed JSON", okBody.final_subject, "Your estimate");
+  eq("final_to from signed client_email", okBody.final_to, "pat@example.test");
+  eq("empty signed additional stays empty", okBody.final_additional_recipients, "");
   ok("final_body from signed public_quote_url", okBody.final_body.indexOf("https://example.test/estimate-public.html?token=abc") >= 0);
-  eq("response keys are only the three outputs", Object.keys(okBody).sort().join(","), "final_body,final_subject,signature_valid");
-  ok("client_email is not in the response", JSON.stringify(okBody).indexOf("pat@example.test") < 0);
+  eq(
+    "response keys are only the five outputs",
+    Object.keys(okBody).sort().join(","),
+    "final_additional_recipients,final_body,final_subject,final_to,signature_valid"
+  );
+  ok("attacker email is not in the valid response", JSON.stringify(okBody).indexOf("evil.example") < 0);
 
   const altered = Object.assign({}, fields);
   altered.zapier_signed_payload = String(altered.zapier_signed_payload).replace("Your estimate", "Hacked subject");
@@ -117,6 +123,8 @@ async function main() {
   eq("altered payload signature_valid is false", alteredBody.signature_valid, false);
   eq("altered payload subject is empty", alteredBody.final_subject, "");
   eq("altered payload body is empty", alteredBody.final_body, "");
+  eq("altered payload To is empty", alteredBody.final_to, "");
+  eq("altered payload additional is empty", alteredBody.final_additional_recipients, "");
 
   const stale = signedFields(UNSIGNED, { timestamp: "2026-09-10T17:54:59.000Z" });
   const staleBody = parseBody(await post(mod, stale));
@@ -147,16 +155,61 @@ async function main() {
     subject: "ATTACKER SUBJECT",
     messageText: "ATTACKER BODY",
     public_quote_url: "https://evil.example/phish",
+    client_email: "attacker@evil.example",
+    additional_recipients: "bcc:injected@evil.example",
     hmac_secret: "attacker-secret",
   });
   const dupBody = parseBody(await post(liveMod, dup));
   eq("duplicate outer fields still verify", dupBody.signature_valid, true);
   eq("duplicate outer subject cannot override signed subject", dupBody.final_subject, "Your estimate");
+  eq("duplicate outer client_email cannot override signed To", dupBody.final_to, "pat@example.test");
+  eq("duplicate outer additional cannot inject BCC", dupBody.final_additional_recipients, "");
   ok("duplicate outer URL cannot override signed body", dupBody.final_body.indexOf("evil.example") < 0);
+  ok("attacker email is not in additional", JSON.stringify(dupBody).indexOf("attacker@evil.example") < 0);
+
+  const bccSigned = signedFields(
+    Object.assign({}, UNSIGNED, { additional_recipients: "ok@example.test\nbcc:evil@evil.example" })
+  );
+  const bccBody = parseBody(await post(liveMod, bccSigned));
+  eq("signed BCC injection still verifies", bccBody.signature_valid, true);
+  eq("signed BCC injection does not add recipients", bccBody.final_additional_recipients, "");
+
+  const ctrl = signedFields(
+    Object.assign({}, UNSIGNED, { client_email: "pat@example.test\nbcc:evil@evil.example" })
+  );
+  const ctrlBody = parseBody(await post(liveMod, ctrl));
+  eq("control-char To is rejected", ctrlBody.signature_valid, false);
+  eq("control-char To is empty", ctrlBody.final_to, "");
+  eq("control-char additional is empty", ctrlBody.final_additional_recipients, "");
+
+  const dups = signedFields(
+    Object.assign({}, UNSIGNED, {
+      additional_recipients: "cc@example.test, CC@example.test, pat@example.test, other@example.test",
+    })
+  );
+  const dupsBody = parseBody(await post(liveMod, dups));
+  eq("duplicates collapse without expanding", dupsBody.final_additional_recipients, "cc@example.test,other@example.test");
+
+  const tampered = Object.assign({}, fields);
+  tampered.zapier_signed_payload = String(tampered.zapier_signed_payload).replace(
+    "11111111-1111-1111-1111-111111111111",
+    "22222222-2222-2222-2222-222222222222"
+  );
+  const tamperBody = parseBody(await post(liveMod, tampered));
+  eq("cross-tenant signed tamper is rejected", tamperBody.signature_valid, false);
+  eq("cross-tenant tamper does not leak To", tamperBody.final_to, "");
+
+  const outerTenant = Object.assign({}, fields, {
+    tenant_id: "22222222-2222-2222-2222-222222222222",
+    client_email: "other-tenant@evil.example",
+  });
+  const outerTenantBody = parseBody(await post(liveMod, outerTenant));
+  eq("outer cross-tenant email cannot override To", outerTenantBody.final_to, "pat@example.test");
 
   const getRes = await liveMod.handler({ httpMethod: "GET", headers: {}, queryStringParameters: fields, body: "" });
   eq("GET is 405", getRes.statusCode, 405);
   eq("GET signature_valid is false", parseBody(getRes).signature_valid, false);
+  eq("GET To is empty", parseBody(getRes).final_to, "");
 
   const queryOnly = await liveMod.handler({
     httpMethod: "POST",
