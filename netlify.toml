@@ -148,6 +148,10 @@
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+    Strict-Transport-Security = "max-age=31536000"
+    Content-Security-Policy = "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    # microphone=(self): Seller/Owner voice operational plan uses SpeechRecognition. No demonstrated camera or geolocation APIs.
+    Permissions-Policy = "microphone=(self), camera=(), geolocation=()"
 
 # Charset for static HTML only (avoid forcing text/html on /js/*.js, /styles.css, etc.)
 [[headers]]

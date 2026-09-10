@@ -67,6 +67,7 @@ Core Security Shield V1 runs their **canonical** runners. It does not copy their
 - `scripts/test-core-estimate-log-redaction.js`
 - `scripts/test-core-stripe-webhook-replay.js`
 - `scripts/test-core-remaining-modern-owner-gates.js`
+- `scripts/test-core-global-security-headers.js`
 - `netlify/functions/_lib/zapier-hmac-v1.js`
 - `netlify/functions/_lib/ops-log.js`
 - `netlify/functions/_lib/require-owner-or-admin.js`
@@ -137,6 +138,7 @@ Fail message:
 - HMAC for Square, local Stripe (300s replay window), and estimates Zapier outbound Phase 1 (`ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE`)
 - Estimate send/resend logs omit recipient PII, payloads, public/PDF URLs, signatures, and secrets
 - Server-side pricing and financial endpoint session isolation
+- Global `netlify.toml` CSP (`object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`), HSTS (`max-age=31536000`), and Permissions-Policy (`microphone=(self)` for voice; camera and geolocation blocked)
 
 ## What this shield does not do
 

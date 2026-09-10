@@ -172,13 +172,10 @@ async function main() {
   );
 
   const netlifyToml = fs.readFileSync(path.join(ROOT, "netlify.toml"), "utf8");
+  ok("global Content-Security-Policy is present in netlify.toml", netlifyToml.indexOf("Content-Security-Policy") >= 0);
   ok(
-    "FINDING FROZEN: no global Content-Security-Policy in netlify.toml",
-    netlifyToml.indexOf("Content-Security-Policy") < 0
-  );
-  ok(
-    "FINDING FROZEN: no global Strict-Transport-Security in netlify.toml",
-    netlifyToml.indexOf("Strict-Transport-Security") < 0
+    "global Strict-Transport-Security is present in netlify.toml",
+    netlifyToml.indexOf("Strict-Transport-Security") >= 0
   );
 
   const sellerWf = fs.readFileSync(path.join(ROOT, ".github/workflows/seller-shield-v1.yml"), "utf8");

@@ -62,14 +62,18 @@
       "id": "core-remaining-modern-owner-gates",
       "path": "scripts/test-core-remaining-modern-owner-gates.js",
       "minPassed": 168
+    },
+    {
+      "id": "core-global-security-headers",
+      "path": "scripts/test-core-global-security-headers.js",
+      "minPassed": 58
     }
   ],
   "optional": [],
   "knownGaps": [
     "Historical Supabase rls_disabled_in_public alerts are not currently present in source; production RLS was not live-verified (PRODUCTION_RLS_NOT_VERIFIED).",
     "Estimate Zapier outbound HMAC is Phase 1 compatibility mode (ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE): signed when ZAPIER_WEBHOOK_SECRET is set, still sent unsigned if the secret is missing. Phase 2 fail-closed is a separate PR.",
-    "Historical SendGrid exposure alert: rotation is not verifiable from current code (no SendGrid key remains in the tree).",
-    "No global Content-Security-Policy or Strict-Transport-Security in netlify.toml. Separate PR."
+    "Historical SendGrid exposure alert: rotation is not verifiable from current code (no SendGrid key remains in the tree)."
   ],
   "webhookContract": "estimates Zapier outbound HMAC is ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE. Invoice Hub Zapier remains Hub-owned.",
   "scopeFailMessage": "Core Security protected surface changed outside Core Security scope. Stop and move this to a Core Security PR.",
@@ -153,6 +157,7 @@
     "scripts/test-core-estimate-log-redaction.js",
     "scripts/test-core-stripe-webhook-replay.js",
     "scripts/test-core-remaining-modern-owner-gates.js",
+    "scripts/test-core-global-security-headers.js",
     "netlify/functions/_lib/zapier-hmac-v1.js",
     "netlify/functions/_lib/ops-log.js",
     "netlify/functions/_lib/require-owner-or-admin.js",
@@ -316,6 +321,7 @@
       "markers": [
         "Content-Security-Policy",
         "Strict-Transport-Security",
+        "Permissions-Policy",
         "X-Frame-Options",
         "[[headers]]",
         "[functions",
