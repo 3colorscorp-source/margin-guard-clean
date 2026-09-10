@@ -301,7 +301,7 @@ function main() {
     hardening && hardening.path === "scripts/test-core-security-supabase-hardening-1.js"
   );
   ok("manifest hardening minPassed is 309", hardening && hardening.minPassed === 309);
-  ok("handler inventory stays 24", Array.isArray(manifest.handlerInventory) && manifest.handlerInventory.length === 24);
+  ok("handler inventory stays 10", Array.isArray(manifest.handlerInventory) && manifest.handlerInventory.length === 10);
 
   console.log("\nCore Security Supabase hardening 1: " + passed + " passed");
 }

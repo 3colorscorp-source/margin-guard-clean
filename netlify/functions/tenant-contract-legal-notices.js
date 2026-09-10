@@ -4,22 +4,14 @@
  * Contract Builder consumes effective_for_contracts (confirmed snapshot) only.
  */
 
+const { requireOwnerOrAdmin } = require("./_lib/require-owner-or-admin");
 const { supabaseRequest } = require("./_lib/supabase-admin");
-const { readSessionFromEvent } = require("./_lib/session");
-const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
-const {
-  resolveMembershipByEmail,
-  membershipRole,
-  membershipIsActive,
-} = require("./_lib/membership-resolve");
-const { throwGuard } = require("./_lib/tenant-device-guard");
 const {
   NOTICE_FIELD_KEYS,
   cloneDefaults,
   normalizeForCompare,
 } = require("./_lib/legal-notice-defaults");
 
-const OWNER_ADMIN_ROLES = new Set(["owner", "admin"]);
 const NOTICE_MAX_LEN = 4000;
 const MAX_RAW_BODY_BYTES = 120000;
 
@@ -133,33 +125,6 @@ function parseExpectedUpdatedAt(value) {
     return { error: "expected_updated_at must be an ISO timestamp string" };
   }
   return { value: s };
-}
-
-async function requireOwnerOrAdmin(event) {
-  const session = readSessionFromEvent(event);
-  if (!session?.e || !session?.c) {
-    throwGuard(401, "Unauthorized", "no_session");
-  }
-  const tenant = await resolveTenantFromSession(session);
-  if (!tenant?.id) {
-    throwGuard(422, "Tenant not found for this session.", "tenant_not_found");
-  }
-  const membership = await resolveMembershipByEmail(
-    supabaseRequest,
-    tenant.id,
-    session.e
-  );
-  if (!membership?.id) {
-    throwGuard(403, "Membership not found", "membership_not_found");
-  }
-  if (!membershipIsActive(membership)) {
-    throwGuard(403, "Membership is not active", "membership_inactive");
-  }
-  const role = membershipRole(membership);
-  if (!OWNER_ADMIN_ROLES.has(role)) {
-    throwGuard(403, "Owner or admin membership required", "owner_required");
-  }
-  return { tenant, membership };
 }
 
 function readEnabled(row, key) {
