@@ -52,13 +52,17 @@
       "id": "core-estimate-log-redaction",
       "path": "scripts/test-core-estimate-log-redaction.js",
       "minPassed": 40
+    },
+    {
+      "id": "core-stripe-webhook-replay",
+      "path": "scripts/test-core-stripe-webhook-replay.js",
+      "minPassed": 30
     }
   ],
   "optional": [],
   "knownGaps": [
     "Historical Supabase rls_disabled_in_public alerts are not currently present in source; production RLS was not live-verified (PRODUCTION_RLS_NOT_VERIFIED).",
     "Estimate Zapier outbound HMAC is Phase 1 compatibility mode (ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE): signed when ZAPIER_WEBHOOK_SECRET is set, still sent unsigned if the secret is missing. Phase 2 fail-closed is a separate PR.",
-    "Local Stripe invoice webhook verifier has no timestamp skew / replay window. Separate PR.",
     "Historical SendGrid exposure alert: rotation is not verifiable from current code (no SendGrid key remains in the tree).",
     "No global Content-Security-Policy or Strict-Transport-Security in netlify.toml. Separate PR."
   ],
@@ -142,6 +146,7 @@
     "scripts/test-core-estimates-webhook-signing.js",
     "scripts/test-core-contract-modern-owner-session.js",
     "scripts/test-core-estimate-log-redaction.js",
+    "scripts/test-core-stripe-webhook-replay.js",
     "netlify/functions/_lib/zapier-hmac-v1.js",
     "netlify/functions/_lib/ops-log.js",
     "netlify/functions/_lib/require-owner-or-admin.js",
@@ -248,12 +253,14 @@
       ]
     },
     "netlify/functions/stripe-invoice-webhook.js": {
-      "description": "Fail when local Stripe HMAC verification changes.",
+      "description": "Fail when local Stripe HMAC or replay-window verification changes.",
       "markers": [
         "verifyStripeSignature",
         "parseStripeSignatureHeader",
         "timingSafeHexEqual",
         "STRIPE_INVOICE_WEBHOOK_SECRET",
+        "STRIPE_SIGNATURE_TOLERANCE_SEC",
+        "isTimestampInWindow",
         "stripe-signature"
       ]
     },

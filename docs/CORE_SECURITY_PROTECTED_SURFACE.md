@@ -65,6 +65,7 @@ Core Security Shield V1 runs their **canonical** runners. It does not copy their
 - `scripts/test-core-estimates-webhook-signing.js`
 - `scripts/test-core-contract-modern-owner-session.js`
 - `scripts/test-core-estimate-log-redaction.js`
+- `scripts/test-core-stripe-webhook-replay.js`
 - `netlify/functions/_lib/zapier-hmac-v1.js`
 - `netlify/functions/_lib/ops-log.js`
 - `netlify/functions/_lib/require-owner-or-admin.js`
@@ -94,7 +95,7 @@ These product files are **not** wholly owned by Core Security. The guard fails o
 | `netlify/functions/_lib/membership-resolve.js` | Membership lookup/role |
 | `netlify/functions/_lib/supabase-admin.js` | Service-role access |
 | `netlify/functions/_lib/mg-support/require-platform-admin.js` | Platform-admin session authority |
-| `netlify/functions/stripe-invoice-webhook.js` | Local Stripe HMAC verification |
+| `netlify/functions/stripe-invoice-webhook.js` | Local Stripe HMAC verification and 300s replay window |
 | `netlify/functions/_lib/square-webhook-signature.js` | Square HMAC / timing-safe compare |
 | `netlify/functions/square-saas-webhook.js` | Square HMAC, idempotency, tenant activation identity |
 | `netlify/functions/send-quote-zapier.js` | Estimates Zapier outbound HMAC Phase 1 |
@@ -132,7 +133,7 @@ Fail message:
 - Cross-tenant IDOR on body, query, and session hint
 - Role gates (seller quote, supervisor assignment, platform admin vs tenant owner)
 - Secret boundaries (no service-role in the browser, dummy child env)
-- HMAC for Square, local Stripe, and estimates Zapier outbound Phase 1 (`ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE`)
+- HMAC for Square, local Stripe (300s replay window), and estimates Zapier outbound Phase 1 (`ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE`)
 - Estimate send/resend logs omit recipient PII, payloads, public/PDF URLs, signatures, and secrets
 - Server-side pricing and financial endpoint session isolation
 

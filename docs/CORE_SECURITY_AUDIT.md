@@ -19,7 +19,7 @@ This document is evidence and recommendations only. Core Security Shield V1 does
 | Platform admin vs tenant owner | `assertPlatformAdminSession` | Owner with `is_admin=false` denied |
 | Service-role key not sent to browser | `get-supabase-public-config` + scan of `public/` | Only URL + anon key |
 | Square HMAC | `square-webhook-signature.js` | Missing/wrong/altered/wrong-secret rejected; timing-safe |
-| Stripe local HMAC | `stripe-invoice-webhook.js` handler | Missing/wrong/altered/wrong-secret rejected; **no replay window** (finding) |
+| Stripe local HMAC + replay window | `stripe-invoice-webhook.js` handler | Missing/wrong/altered/wrong-secret/expired/future rejected; valid `t=` required; ±300s window; timing-safe `v1` |
 | Server-side pricing | `pricing-engine.js` | Client `rate: 1` cannot reduce protected labor totals |
 | Bank details | `list-tenant-bank-accounts` | No session → 401; response is `id` + masked/label only |
 | 10 remaining heuristic-marked handlers | Explicit inventory in `scripts/mg-core-security-shield-v1.json` | Classified below; **not** added to the substring allowlist. 14 Contract handlers now use shared `requireOwnerOrAdmin` and no longer fail the substring heuristic |
@@ -36,7 +36,7 @@ This document is evidence and recommendations only. Core Security Shield V1 does
 | Severity | Count | Items |
 |----------|-------|--------|
 | High (document only; separate PR) | 0 | — |
-| Medium (document only; separate PR) | 3 | Estimates Zapier HMAC still compatibility-mode (not fail-closed); Stripe local verifier has no timestamp/replay window; no global CSP/HSTS |
+| Medium (document only; separate PR) | 2 | Estimates Zapier HMAC still compatibility-mode (not fail-closed); no global CSP/HSTS |
 | Low / informational | 3 | Historical `rls_disabled_in_public` not in current source; historical SendGrid alert not verifiable from code; substring tenant-scope verifier is insufficient (10 remaining false negatives vs explicit inventory) |
 | Confirmed controls (not vulnerabilities) | 10 remaining heuristic-marked handlers | 14 Contract handlers now use shared `requireOwnerOrAdmin` |
 
@@ -70,7 +70,7 @@ Counts: 6 `TENANT_SCOPED_CONFIRMED`, 1 `PLATFORM_ADMIN_ONLY`, 1 `INTERNAL_SECRET
 1. **Estimates Zapier outbound HMAC Phase 1.** `send-quote-zapier.js` and `resend-tenant-quote.js` sign with Invoice Hub v1 (`timestamp.nonce.JSON`) when `ZAPIER_WEBHOOK_SECRET` is set (`ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE`). Missing secret still sends unsigned. Phase 2 fail-closed is a separate PR.
 2. **`resolveOwnerOrSupervisorContext()` accepts modern owner sessions.** Owner path uses `hasOwnerSessionIdentity` (email + tenant, or legacy email + `session.c`). Supervisor device path is unchanged. Seller dual-auth is unchanged.
 3. **Contract `requireOwnerOrAdmin` accepts modern owner sessions.** Shared helper uses `hasOwnerSessionIdentity` (email + tenant, or legacy email + `session.c`). Sales Admin / Platform Admin gates are unchanged. Seller, supervisor device, and incomplete sessions are not owner identity.
-4. **Stripe local verifier has no replay/timestamp window.** `verifyStripeSignature` checks HMAC only. Recommendation: reject `t` outside ±5 minutes in a webhooks PR.
+4. **Stripe local verifier rejects replayed signatures.** `verifyStripeSignature` requires a valid unix `t=` in `Stripe-Signature`, HMAC over `` `${t}.${rawBody}` ``, timing-safe compare of one or more `v1` signatures, and `|t - now| <= 300` seconds. Future timestamps outside that tolerance are rejected. The clock is injectable only via the test hook; headers, body, and query cannot bypass the window.
 5. **Historical SendGrid exposure.** No SendGrid key remains in the tree. Rotation is **not verifiable from code**.
 6. **No global CSP/HSTS.** `netlify.toml` has neither `Content-Security-Policy` nor `Strict-Transport-Security`.
 7. **Estimate send/resend logs redact recipient PII.** `send-quote-zapier.js` and `resend-tenant-quote.js` log only operational metadata via `ops-log.js` (event, status, counts, codes, request id). Recipients, `additional_recipients`, full payloads, public/PDF URLs, signatures, nonces, and secrets are not logged.

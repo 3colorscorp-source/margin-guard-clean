@@ -165,11 +165,7 @@ async function main() {
     headers: { "stripe-signature": "t=" + oldT + ",v1=" + oldV1 },
     body: stripeBody,
   });
-  eq(
-    "FINDING FROZEN: local Stripe verifier has no timestamp/replay window",
-    old.statusCode,
-    200
-  );
+  eq("expired Stripe signature is rejected as replay", old.statusCode, 400);
 
   const stripeSrc = fs.readFileSync(
     path.join(ROOT, "netlify/functions/stripe-invoice-webhook.js"),
@@ -177,8 +173,9 @@ async function main() {
   );
   ok("stripe local verifier uses timingSafeEqual", stripeSrc.indexOf("timingSafeEqual") >= 0);
   ok(
-    "FINDING FROZEN: stripe local verifier never checks signature timestamp skew",
-    !/Math\.abs\([^)]*t[^)]*now|tolerance|replay/i.test(stripeSrc)
+    "stripe local verifier enforces 300s timestamp tolerance",
+    /STRIPE_SIGNATURE_TOLERANCE_SEC\s*=\s*300/.test(stripeSrc) &&
+      stripeSrc.indexOf("isTimestampInWindow") >= 0
   );
 
   const estimateSrc = fs.readFileSync(path.join(ROOT, "netlify/functions/send-quote-zapier.js"), "utf8");

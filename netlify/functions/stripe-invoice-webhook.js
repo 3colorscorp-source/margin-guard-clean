@@ -25,6 +25,13 @@ function getRawBody(event) {
   return event.body;
 }
 
+const STRIPE_SIGNATURE_TOLERANCE_SEC = 300;
+let testNowMs = null;
+
+function getNowMs() {
+  return testNowMs == null ? Date.now() : testNowMs;
+}
+
 function parseStripeSignatureHeader(header) {
   const out = { t: "", v1: [] };
   const parts = String(header || "").split(",");
@@ -39,6 +46,22 @@ function parseStripeSignatureHeader(header) {
   return out;
 }
 
+function parseUnixSeconds(value) {
+  const s = String(value || "").trim();
+  if (!/^[0-9]{1,12}$/.test(s)) return null;
+  const n = Number(s);
+  if (!Number.isFinite(n) || n > Number.MAX_SAFE_INTEGER) return null;
+  return n;
+}
+
+function isTimestampInWindow(tSec, nowMs) {
+  const nowSec = Math.floor(Number(nowMs) / 1000);
+  const delta = tSec - nowSec;
+  if (delta > STRIPE_SIGNATURE_TOLERANCE_SEC) return false;
+  if (delta < -STRIPE_SIGNATURE_TOLERANCE_SEC) return false;
+  return true;
+}
+
 function timingSafeHexEqual(a, b) {
   try {
     const ba = Buffer.from(String(a || ""), "hex");
@@ -51,10 +74,14 @@ function timingSafeHexEqual(a, b) {
 }
 
 function verifyStripeSignature(rawBody, signatureHeader, secret) {
+  const secretStr = String(secret || "").trim();
+  if (!secretStr) return false;
   const sig = parseStripeSignatureHeader(signatureHeader);
-  if (!sig.t || !sig.v1.length) return false;
-  const payload = `${sig.t}.${rawBody}`;
-  const expected = crypto.createHmac("sha256", secret).update(payload, "utf8").digest("hex");
+  const tSec = parseUnixSeconds(sig.t);
+  if (tSec == null || !sig.v1.length) return false;
+  if (!isTimestampInWindow(tSec, getNowMs())) return false;
+  const payload = `${sig.t}.${String(rawBody || "")}`;
+  const expected = crypto.createHmac("sha256", secretStr).update(payload, "utf8").digest("hex");
   for (const candidate of sig.v1) {
     if (timingSafeHexEqual(expected, candidate)) return true;
   }
@@ -173,4 +200,14 @@ exports.handler = async (event) => {
   } catch (err) {
     return text(500, err.message || "Server error");
   }
+};
+
+exports._test = {
+  setNowMs(ms) {
+    const n = Number(ms);
+    testNowMs = Number.isFinite(n) ? n : null;
+  },
+  resetNow() {
+    testNowMs = null;
+  },
 };

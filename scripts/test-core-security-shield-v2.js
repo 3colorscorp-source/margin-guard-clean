@@ -193,7 +193,7 @@ function main() {
     JSON.stringify(manifest.explicitScope.branchPrefixes) ===
       JSON.stringify(["feat/core-security-", "fix/core-security-", "security/core-"])
   );
-  pass("required suite count stays 10", manifest.required.length === 10);
+  pass("required suite count stays 11", manifest.required.length === 11);
   pass("optional stays empty", Array.isArray(manifest.optional) && manifest.optional.length === 0);
   pass("handler inventory stays 10", manifest.handlerInventory.length === 10);
 
@@ -215,6 +215,7 @@ function main() {
     "scripts/test-core-estimates-webhook-signing.js",
     "scripts/test-core-contract-modern-owner-session.js",
     "scripts/test-core-estimate-log-redaction.js",
+    "scripts/test-core-stripe-webhook-replay.js",
     "netlify/functions/_lib/zapier-hmac-v1.js",
     "netlify/functions/_lib/ops-log.js",
     "netlify/functions/_lib/require-owner-or-admin.js",
@@ -226,7 +227,7 @@ function main() {
   ].forEach((rel) => {
     pass("exact protects " + rel, exact.indexOf(rel) >= 0);
   });
-  pass("exact count is 24", exact.length === 24);
+  pass("exact count is 25", exact.length === 25);
   pass(
     "globs are frozen",
     JSON.stringify(manifest.globs) ===
