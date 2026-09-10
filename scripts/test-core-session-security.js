@@ -14,6 +14,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY =
 
 const assert = require("assert");
 const crypto = require("crypto");
+const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -359,25 +360,76 @@ async function main() {
       "mg_session",
       signRaw({ e: OWNER_A, t: TENANT_A, c: "", iat: now, exp: now + 60 }, SECRET)
     );
-    let code = "";
-    try {
-      await mods.guard.resolveOwnerOrSupervisorContext(modernNoC);
-    } catch (err) {
-      code = err.code || "";
-    }
-    eq(
-      "FINDING FROZEN: resolveOwnerOrSupervisorContext still requires session.c for owner path",
-      code,
-      "no_device_session"
-    );
+    const modernCtx = await mods.guard.resolveOwnerOrSupervisorContext(modernNoC);
+    eq("modern e+t authorizes owner/supervisor owner path", modernCtx.auth_mode, "owner");
+    eq("modern e+t owner/supervisor tenant is session.t", modernCtx.tenant.id, TENANT_A);
 
     const legacyOwner = eventCookie(
       "mg_session",
-      signRaw({ e: OWNER_A, t: TENANT_A, c: "cus_TESTOWNERA", iat: now, exp: now + 60 }, SECRET)
+      signRaw({ e: OWNER_A, t: "", c: "cus_TESTOWNERA", iat: now, exp: now + 60 }, SECRET)
     );
-    const ctx = await mods.guard.resolveOwnerOrSupervisorContext(legacyOwner);
-    eq("legacy e+c still authorizes owner/supervisor owner path", ctx.auth_mode, "owner");
+    const legacyCtx = await mods.guard.resolveOwnerOrSupervisorContext(legacyOwner);
+    eq("legacy e+c still authorizes owner/supervisor owner path", legacyCtx.auth_mode, "owner");
+    eq("legacy e+c owner/supervisor tenant is entitled tenant A", legacyCtx.tenant.id, TENANT_A);
+
+    let absentCode = "";
+    try {
+      await mods.guard.resolveOwnerOrSupervisorContext({ headers: {} });
+    } catch (err) {
+      absentCode = err.code || "";
+    }
+    eq("absent owner session falls through to supervisor device gate", absentCode, "no_device_session");
+
+    const emailOnly = eventCookie(
+      "mg_session",
+      signRaw({ e: OWNER_A, t: "", c: "", iat: now, exp: now + 60 }, SECRET)
+    );
+    let emailOnlyCode = "";
+    try {
+      await mods.guard.resolveOwnerOrSupervisorContext(emailOnly);
+    } catch (err) {
+      emailOnlyCode = err.code || "";
+    }
+    eq("email-only owner session is not owner identity", emailOnlyCode, "no_device_session");
+
+    const crossTenant = eventCookie(
+      "mg_session",
+      signRaw({ e: OWNER_A, t: TENANT_B, c: "", iat: now, exp: now + 60 }, SECRET)
+    );
+    let crossCode = "";
+    try {
+      await mods.guard.resolveOwnerOrSupervisorContext(crossTenant);
+    } catch (err) {
+      crossCode = err.code || "";
+    }
+    eq("owner A cannot take tenant B via supervisor dual-auth", crossCode, "tenant_not_found");
   });
+
+  const guardSrc = fs.readFileSync(path.join(ROOT, "netlify/functions/_lib/tenant-device-guard.js"), "utf8");
+  const sellerFn = guardSrc.slice(
+    guardSrc.indexOf("async function resolveOwnerOrSellerContext"),
+    guardSrc.indexOf("async function resolveOwnerOrSupervisorContext")
+  );
+  const supervisorFn = guardSrc.slice(
+    guardSrc.indexOf("async function resolveOwnerOrSupervisorContext"),
+    guardSrc.indexOf("async function requireSupervisorDevice")
+  );
+  ok(
+    "supervisor dual-auth uses hasOwnerSessionIdentity",
+    /hasOwnerSessionIdentity\(session\)/.test(supervisorFn)
+  );
+  ok("supervisor dual-auth still requires supervisor device", /requireSupervisorDevice\(event\)/.test(supervisorFn));
+  ok("seller dual-auth is unchanged hasOwnerSessionIdentity", /hasOwnerSessionIdentity\(session\)/.test(sellerFn));
+  ok("seller dual-auth still requires seller device", /requireSellerDevice\(event\)/.test(sellerFn));
+
+  const contractSrc = fs.readFileSync(
+    path.join(ROOT, "netlify/functions/contract-envelope-create.js"),
+    "utf8"
+  );
+  ok(
+    "FINDING FROZEN: contract requireOwnerOrAdmin still requires session.c",
+    /async function requireOwnerOrAdmin[\s\S]{0,180}if \(!session\?\.e \|\| !session\?\.c\)/.test(contractSrc)
+  );
 
   console.log("\nCore session security: " + passed + " passed");
 }

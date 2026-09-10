@@ -6,7 +6,7 @@
     {
       "id": "core-session-security",
       "path": "scripts/test-core-session-security.js",
-      "minPassed": 27
+      "minPassed": 37
     },
     {
       "id": "core-tenant-isolation",
@@ -16,7 +16,7 @@
     {
       "id": "core-role-permissions",
       "path": "scripts/test-core-role-permissions.js",
-      "minPassed": 20
+      "minPassed": 23
     },
     {
       "id": "core-secret-boundaries",
@@ -48,7 +48,7 @@
   "knownGaps": [
     "Historical Supabase rls_disabled_in_public alerts are not currently present in source; production RLS was not live-verified (PRODUCTION_RLS_NOT_VERIFIED).",
     "Estimate Zapier outbound HMAC is Phase 1 compatibility mode (ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE): signed when ZAPIER_WEBHOOK_SECRET is set, still sent unsigned if the secret is missing. Phase 2 fail-closed is a separate PR.",
-    "resolveOwnerOrSupervisorContext() still requires session.e && session.c for the Owner path; modern email+tenant sessions fall through to device auth. Separate PR.",
+    "resolveOwnerOrSupervisorContext() accepts modern owner email+tenant via hasOwnerSessionIdentity, with legacy email+session.c still valid. Contract requireOwnerOrAdmin still requires session.e && session.c. Separate PR.",
     "Local Stripe invoice webhook verifier has no timestamp skew / replay window. Separate PR.",
     "Historical SendGrid exposure alert: rotation is not verifiable from current code (no SendGrid key remains in the tree).",
     "No global Content-Security-Policy or Strict-Transport-Security in netlify.toml. Separate PR.",

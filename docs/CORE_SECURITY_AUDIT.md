@@ -35,12 +35,12 @@ This document is evidence and recommendations only. Core Security Shield V1 does
 
 | Severity | Count | Items |
 |----------|-------|--------|
-| High (document only; separate PR) | 2 | `resolveOwnerOrSupervisorContext` still requires `session.c`; contract Owner/Admin handlers still require `session.c` |
+| High (document only; separate PR) | 1 | contract Owner/Admin handlers still require `session.c` |
 | Medium (document only; separate PR) | 4 | Estimates Zapier HMAC still compatibility-mode (not fail-closed); Stripe local verifier has no timestamp/replay window; `send-quote-zapier` logs recipients/emails; no global CSP/HSTS |
 | Low / informational | 3 | Historical `rls_disabled_in_public` not in current source; historical SendGrid alert not verifiable from code; substring tenant-scope verifier is insufficient (24 false negatives vs explicit inventory) |
 | Confirmed controls (not vulnerabilities) | 24 handlers | See classification |
 
-Do **not** treat any of the High/Medium items as fixed by this PR.
+Do **not** treat remaining High/Medium items as fixed by later PRs until those PRs land.
 
 ## 24 handlers marked by `verify-netlify-function-tenant-scope.js`
 
@@ -80,7 +80,7 @@ Counts: 20 `TENANT_SCOPED_CONFIRMED`, 1 `PLATFORM_ADMIN_ONLY`, 1 `INTERNAL_SECRE
 ## Findings to fix in separate PRs (do not fix here)
 
 1. **Estimates Zapier outbound HMAC Phase 1.** `send-quote-zapier.js` and `resend-tenant-quote.js` sign with Invoice Hub v1 (`timestamp.nonce.JSON`) when `ZAPIER_WEBHOOK_SECRET` is set (`ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE`). Missing secret still sends unsigned. Phase 2 fail-closed is a separate PR.
-2. **`resolveOwnerOrSupervisorContext()` still depends on `session.c`.** Owner path is `session?.e && session?.c` (`tenant-device-guard.js`). Seller dual-auth already uses `hasOwnerSessionIdentity`. Recommendation: align the supervisor dual-auth owner path; freeze with a test that currently documents the fail-closed modern `e+t` miss.
+2. **`resolveOwnerOrSupervisorContext()` accepts modern owner sessions.** Owner path uses `hasOwnerSessionIdentity` (email + tenant, or legacy email + `session.c`). Supervisor device path is unchanged. Seller dual-auth is unchanged.
 3. **Contract `requireOwnerOrAdmin` still requires `session.c`.** Same legacy gate. Recommendation: switch to `hasOwnerSessionIdentity` in a Contracts PR.
 4. **Stripe local verifier has no replay/timestamp window.** `verifyStripeSignature` checks HMAC only. Recommendation: reject `t` outside ±5 minutes in a webhooks PR.
 5. **Historical SendGrid exposure.** No SendGrid key remains in the tree. Rotation is **not verifiable from code**.

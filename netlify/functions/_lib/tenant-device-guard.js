@@ -248,9 +248,15 @@ async function resolveOwnerOrSellerContext(event) {
   };
 }
 
+/**
+ * Owner mg_session OR supervisor mg_device_session. Owner session takes precedence when both exist.
+ * Modern owner identity is email + tenant (hasOwnerSessionIdentity); legacy email + session.c remains valid.
+ * @param {object} event
+ * @returns {Promise<object>}
+ */
 async function resolveOwnerOrSupervisorContext(event) {
   const session = readSessionFromEvent(event);
-  if (session?.e && session?.c) {
+  if (hasOwnerSessionIdentity(session)) {
     const tenant = await resolveTenantFromSession(session);
     if (tenant?.id) {
       return {
