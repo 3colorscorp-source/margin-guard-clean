@@ -122,6 +122,7 @@ Fail message:
 ## What V1 covers
 
 - Owner and device session HMAC, expiry, tamper, modern vs legacy identity
+- Owner/supervisor dual-auth accepts modern `email + tenant` and legacy `email + session.c`; supervisor device path unchanged
 - Device revoke / inactive / tenant / membership / portal mismatches
 - Cross-tenant IDOR on body, query, and session hint
 - Role gates (seller quote, supervisor assignment, platform admin vs tenant owner)

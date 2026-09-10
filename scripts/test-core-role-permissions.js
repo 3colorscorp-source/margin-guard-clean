@@ -336,6 +336,20 @@ async function main() {
       ),
       "tenant_mismatch"
     );
+
+    const superDual = await mods.guard.resolveOwnerOrSupervisorContext(
+      cookieEvent(supervisorDevice.cookie)
+    );
+    eq("supervisor device dual-auth is device", superDual.auth_mode, "device");
+    eq("supervisor device dual-auth portal is supervisor", superDual.portal_type, "supervisor");
+  });
+
+  await withDeviceDb(sellerState, async (mods) => {
+    eq(
+      "seller device is not upgraded to owner on supervisor dual-auth",
+      await catchCode(() => mods.guard.resolveOwnerOrSupervisorContext(cookieEvent(seller.cookie))),
+      "portal_type_forbidden"
+    );
   });
 
   await withDeviceDb(sellerState, async (mods) => {
