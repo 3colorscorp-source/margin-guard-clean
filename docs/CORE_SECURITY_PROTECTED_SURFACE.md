@@ -66,6 +66,7 @@ Core Security Shield V1 runs their **canonical** runners. It does not copy their
 - `scripts/test-core-contract-modern-owner-session.js`
 - `scripts/test-core-estimate-log-redaction.js`
 - `scripts/test-core-stripe-webhook-replay.js`
+- `scripts/test-core-remaining-modern-owner-gates.js`
 - `netlify/functions/_lib/zapier-hmac-v1.js`
 - `netlify/functions/_lib/ops-log.js`
 - `netlify/functions/_lib/require-owner-or-admin.js`
@@ -128,7 +129,7 @@ Fail message:
 
 - Owner and device session HMAC, expiry, tamper, modern vs legacy identity
 - Owner/supervisor dual-auth accepts modern `email + tenant` and legacy `email + session.c`; supervisor device path unchanged
-- Contract `requireOwnerOrAdmin` accepts modern `email + tenant` and legacy `email + session.c`; Sales Admin/Platform Admin gates unchanged
+- Contract `requireOwnerOrAdmin` and remaining equivalent Owner/Admin copies accept modern `email + tenant` and legacy `email + session.c`; Sales Admin/Platform Admin gates unchanged
 - Device revoke / inactive / tenant / membership / portal mismatches
 - Cross-tenant IDOR on body, query, and session hint
 - Role gates (seller quote, supervisor assignment, platform admin vs tenant owner)

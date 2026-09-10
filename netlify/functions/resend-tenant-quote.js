@@ -9,14 +9,7 @@ if (!fetch) {
 }
 
 const { supabaseRequest } = require("./_lib/supabase-admin");
-const { readSessionFromEvent } = require("./_lib/session");
-const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
-const {
-  membershipRole,
-  membershipIsActive,
-  resolveMembershipByEmail,
-} = require("./_lib/membership-resolve");
-const { throwGuard } = require("./_lib/tenant-device-guard");
+const { requireOwnerOrAdmin } = require("./_lib/require-owner-or-admin");
 const { attachZapierSignature, ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE } = require("./_lib/zapier-hmac-v1");
 void ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE;
 const { makeReqId, logOps } = require("./_lib/ops-log");
@@ -25,8 +18,6 @@ const {
   evaluateQuoteEditGuard,
   buildPublicQuoteUrl,
 } = require("./_lib/quote-edit-guard");
-
-const OWNER_ADMIN_ROLES = new Set(["owner", "admin"]);
 
 const ALLOWED_BODY_KEYS = new Set(["quote_id", "message_note"]);
 
@@ -84,32 +75,6 @@ function isValidClientEmail(raw) {
   const at = s.indexOf("@");
   if (at < 1) return false;
   return s.indexOf(".", at + 1) > at;
-}
-
-async function requireOwnerOrAdmin(event) {
-  const session = readSessionFromEvent(event);
-  if (!session?.e || !session?.c) {
-    throwGuard(401, "Unauthorized", "no_session");
-  }
-
-  const tenant = await resolveTenantFromSession(session);
-  if (!tenant?.id) {
-    throwGuard(422, "Tenant not found for this session.", "tenant_not_found");
-  }
-
-  const membership = await resolveMembershipByEmail(supabaseRequest, tenant.id, session.e);
-  if (!membership?.id) {
-    throwGuard(403, "Membership not found", "membership_not_found");
-  }
-  if (!membershipIsActive(membership)) {
-    throwGuard(403, "Membership is not active", "membership_inactive");
-  }
-  const role = membershipRole(membership);
-  if (!OWNER_ADMIN_ROLES.has(role)) {
-    throwGuard(403, "Owner or admin membership required", "owner_required");
-  }
-
-  return { tenant, membership };
 }
 
 async function fetchQuotePublicToken(tenantId, quoteId) {

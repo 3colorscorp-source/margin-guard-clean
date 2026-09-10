@@ -1,5 +1,5 @@
 /**
- * Owner/Admin session gate for Contracts handlers.
+ * Owner/Admin session gate.
  * Modern identity: email + tenant. Legacy email + session.c remains valid.
  * Seller/supervisor device cookies are not owner identity.
  */

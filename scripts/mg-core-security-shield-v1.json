@@ -57,6 +57,11 @@
       "id": "core-stripe-webhook-replay",
       "path": "scripts/test-core-stripe-webhook-replay.js",
       "minPassed": 30
+    },
+    {
+      "id": "core-remaining-modern-owner-gates",
+      "path": "scripts/test-core-remaining-modern-owner-gates.js",
+      "minPassed": 168
     }
   ],
   "optional": [],
@@ -147,6 +152,7 @@
     "scripts/test-core-contract-modern-owner-session.js",
     "scripts/test-core-estimate-log-redaction.js",
     "scripts/test-core-stripe-webhook-replay.js",
+    "scripts/test-core-remaining-modern-owner-gates.js",
     "netlify/functions/_lib/zapier-hmac-v1.js",
     "netlify/functions/_lib/ops-log.js",
     "netlify/functions/_lib/require-owner-or-admin.js",
