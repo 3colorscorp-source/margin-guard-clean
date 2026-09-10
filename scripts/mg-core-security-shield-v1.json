@@ -72,6 +72,11 @@
       "id": "core-estimates-hmac-verifier",
       "path": "scripts/test-core-estimates-hmac-verifier.js",
       "minPassed": 46
+    },
+    {
+      "id": "core-estimates-server-hmac-verifier",
+      "path": "scripts/test-core-estimates-server-hmac-verifier.js",
+      "minPassed": 37
     }
   ],
   "optional": [],
@@ -164,7 +169,9 @@
     "scripts/test-core-remaining-modern-owner-gates.js",
     "scripts/test-core-global-security-headers.js",
     "scripts/test-core-estimates-hmac-verifier.js",
+    "scripts/test-core-estimates-server-hmac-verifier.js",
     "netlify/functions/_lib/zapier-hmac-v1.js",
+    "netlify/functions/verify-estimates-zapier-hmac.js",
     "netlify/functions/_lib/ops-log.js",
     "netlify/functions/_lib/require-owner-or-admin.js",
     "docs/CORE_SECURITY_AUDIT.md",
