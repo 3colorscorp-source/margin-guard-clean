@@ -131,6 +131,7 @@ function main() {
   eq("final_subject comes from signed JSON", verified.final_subject, "Your estimate");
   eq("final_to comes from signed client_email", verified.final_to, "pat@example.test");
   eq("empty signed additional stays empty", verified.final_additional_recipients, "");
+  eq("final_from_name comes from signed business_name", verified.final_from_name, "Demo Co");
   ok("final_body uses signed public_quote_url not Catch Hook rebuild", verified.final_body.indexOf("https://example.test/estimate-public.html?token=abc") >= 0);
   ok("final_body does not echo client_email", verified.final_body.indexOf("pat@example.test") < 0);
 
@@ -140,6 +141,7 @@ function main() {
   eq("Code Step final_body matches", pasteOut.final_body, verified.final_body);
   eq("Code Step final_to matches", pasteOut.final_to, verified.final_to);
   eq("Code Step additional matches", pasteOut.final_additional_recipients, verified.final_additional_recipients);
+  eq("Code Step final_from_name matches", pasteOut.final_from_name, verified.final_from_name);
   eq(
     "helper and paste verifier agree",
     JSON.stringify(hmac.verifyEstimatesCatchHook(catchHook, { nowMs: NOW_MS })),
@@ -172,6 +174,7 @@ function main() {
   eq("wrong signature empties additional", badSig.final_additional_recipients, "");
   eq("wrong signature empties subject", badSig.final_subject, "");
   eq("wrong signature empties body", badSig.final_body, "");
+  eq("wrong signature empties from name", badSig.final_from_name, "");
 
   const badTs = hmac.verifyEstimatesCatchHook(
     Object.assign({}, catchHook, { zapier_timestamp: "not-a-date" }),
@@ -237,6 +240,7 @@ function main() {
     toEmail: "attacker@evil.example",
     additional_recipients: "bcc:injected@evil.example",
     subject: "ATTACKER SUBJECT",
+    business_name: "ATTACKER FROM NAME",
   });
   const overrideOut = hmac.verifyEstimatesCatchHook(overridden, { nowMs: NOW_MS });
   eq("outer recipient override still verifies", overrideOut.signature_valid, true);
@@ -244,6 +248,7 @@ function main() {
   eq("outer additional cannot inject BCC", overrideOut.final_additional_recipients, "");
   ok("attacker email is absent from additional", overrideOut.final_additional_recipients.indexOf("evil") < 0);
   eq("outer subject cannot override signed subject", overrideOut.final_subject, "Your estimate");
+  eq("outer business_name cannot override signed from name", overrideOut.final_from_name, "Demo Co");
 
   const bccSigned = Object.assign({}, UNSIGNED, {
     additional_recipients: "ok@example.test\nbcc:evil@evil.example",
@@ -293,6 +298,41 @@ function main() {
   eq("outer cross-tenant email cannot override To", outerTenantOut.final_to, "pat@example.test");
   eq("outer cross-tenant still verifies signed payload", outerTenantOut.signature_valid, true);
 
+  const fromOverride = Object.assign({}, catchHook, { business_name: "Evil Corp\r\nBcc: attacker@evil.example" });
+  eq(
+    "flattened from name with CR/LF cannot override signed name",
+    hmac.verifyEstimatesCatchHook(fromOverride, { nowMs: NOW_MS }).final_from_name,
+    "Demo Co"
+  );
+
+  const crlfName = hmac.verifyEstimatesCatchHook(
+    simulateCatchHook(signedWire(Object.assign({}, UNSIGNED, { business_name: "Demo Co\r\nBcc: evil" })).raw, SECRET),
+    { nowMs: NOW_MS }
+  );
+  eq("CR/LF from name fails closed", crlfName.signature_valid, false);
+  eq("CR/LF from name is empty", crlfName.final_from_name, "");
+  eq("CR/LF from name empties To", crlfName.final_to, "");
+  eq("CR/LF from name empties subject", crlfName.final_subject, "");
+
+  const emptyName = hmac.verifyEstimatesCatchHook(
+    simulateCatchHook(signedWire(Object.assign({}, UNSIGNED, { business_name: "   " })).raw, SECRET),
+    { nowMs: NOW_MS }
+  );
+  eq("empty from name fails closed", emptyName.signature_valid, false);
+  eq("empty from name empties finals", emptyName.final_from_name, "");
+  eq("empty from name empties body", emptyName.final_body, "");
+
+  const longName = hmac.verifyEstimatesCatchHook(
+    simulateCatchHook(
+      signedWire(Object.assign({}, UNSIGNED, { business_name: "A".repeat(79) })).raw,
+      SECRET
+    ),
+    { nowMs: NOW_MS }
+  );
+  eq("oversized from name fails closed", longName.signature_valid, false);
+  eq("oversized from name is empty", longName.final_from_name, "");
+  eq("oversized from name empties To", longName.final_to, "");
+
   const prev = process.env.ZAPIER_WEBHOOK_SECRET;
   delete process.env.ZAPIER_WEBHOOK_SECRET;
   const unsignedBody = Object.assign({}, UNSIGNED);
@@ -315,13 +355,16 @@ function main() {
   ok("paste Code Step uses timingSafeEqual", pasteSrc.indexOf("timingSafeEqual") >= 0);
   ok("paste Code Step documents Catch Hook header gap", pasteSrc.indexOf("X-MG-*") >= 0 || pasteSrc.indexOf("X-MG-") >= 0);
   ok("paste documents final_to mapping", pasteSrc.indexOf("final_to") >= 0 && pasteSrc.indexOf("Never map Catch Hook client_email") >= 0);
+  ok("paste documents final_from_name mapping", pasteSrc.indexOf("final_from_name") >= 0 && pasteSrc.indexOf("business_name") >= 0);
   ok("helper does not read Catch Hook client_email", helperSrc.indexOf("input.client_email") < 0);
   ok("paste does not read Catch Hook client_email", pasteSrc.indexOf("input.client_email") < 0);
+  ok("helper does not read Catch Hook business_name", helperSrc.indexOf("input.business_name") < 0);
+  ok("paste does not read Catch Hook business_name", pasteSrc.indexOf("input.business_name") < 0);
   ok("send-quote-zapier does not log ZAPIER_WEBHOOK_SECRET", sendSrc.indexOf("ZAPIER_WEBHOOK_SECRET") < 0);
   ok(
     "verifier output keys are frozen",
     Object.keys(verified).sort().join(",") ===
-      "final_additional_recipients,final_body,final_subject,final_to,signature_valid"
+      "final_additional_recipients,final_body,final_from_name,final_subject,final_to,signature_valid"
   );
 
   const manifest = JSON.parse(read("scripts/mg-core-security-shield-v1.json"));

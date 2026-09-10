@@ -12,6 +12,7 @@ const FAIL_BODY = {
   signature_valid: false,
   final_to: "",
   final_additional_recipients: "",
+  final_from_name: "",
   final_subject: "",
   final_body: "",
 };
@@ -85,6 +86,7 @@ exports.handler = async (event) => {
       signature_valid: result.signature_valid === true,
       final_to: String(result.final_to || ""),
       final_additional_recipients: String(result.final_additional_recipients || ""),
+      final_from_name: String(result.final_from_name || ""),
       final_subject: String(result.final_subject || ""),
       final_body: String(result.final_body || ""),
     });

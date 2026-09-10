@@ -87,6 +87,7 @@ function emptyCatchHookResult() {
     signature_valid: false,
     final_to: "",
     final_additional_recipients: "",
+    final_from_name: "",
     final_subject: "",
     final_body: "",
   };
@@ -129,6 +130,15 @@ function authorizeSignedRecipients(payload) {
     final_to: to,
     final_additional_recipients: extras.join(","),
   };
+}
+
+const FROM_NAME_MAX_LEN = 78;
+
+function authorizeSignedFromName(payload) {
+  const s = String(payload && payload.business_name != null ? payload.business_name : "").trim();
+  if (!s || s.length > FROM_NAME_MAX_LEN) return null;
+  if (/[\x00-\x1f\x7f]/.test(s)) return null;
+  return s;
 }
 
 function authorizedEmailCopy(payload) {
@@ -195,10 +205,13 @@ function verifyEstimatesCatchHook(inputData, options) {
 
   const recipients = authorizeSignedRecipients(payload);
   if (!recipients) return out;
+  const fromName = authorizeSignedFromName(payload);
+  if (!fromName) return out;
   const copy = authorizedEmailCopy(payload);
   out.signature_valid = true;
   out.final_to = recipients.final_to;
   out.final_additional_recipients = recipients.final_additional_recipients;
+  out.final_from_name = fromName;
   out.final_subject = copy.final_subject;
   out.final_body = copy.final_body;
   return out;

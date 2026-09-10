@@ -107,11 +107,12 @@ async function main() {
   eq("final_subject from signed JSON", okBody.final_subject, "Your estimate");
   eq("final_to from signed client_email", okBody.final_to, "pat@example.test");
   eq("empty signed additional stays empty", okBody.final_additional_recipients, "");
+  eq("final_from_name from signed business_name", okBody.final_from_name, "Demo Co");
   ok("final_body from signed public_quote_url", okBody.final_body.indexOf("https://example.test/estimate-public.html?token=abc") >= 0);
   eq(
-    "response keys are only the five outputs",
+    "response keys are only the six outputs",
     Object.keys(okBody).sort().join(","),
-    "final_additional_recipients,final_body,final_subject,final_to,signature_valid"
+    "final_additional_recipients,final_body,final_from_name,final_subject,final_to,signature_valid"
   );
   ok("attacker email is not in the valid response", JSON.stringify(okBody).indexOf("evil.example") < 0);
 
@@ -125,6 +126,7 @@ async function main() {
   eq("altered payload body is empty", alteredBody.final_body, "");
   eq("altered payload To is empty", alteredBody.final_to, "");
   eq("altered payload additional is empty", alteredBody.final_additional_recipients, "");
+  eq("altered payload from name is empty", alteredBody.final_from_name, "");
 
   const stale = signedFields(UNSIGNED, { timestamp: "2026-09-10T17:54:59.000Z" });
   const staleBody = parseBody(await post(mod, stale));
@@ -157,6 +159,7 @@ async function main() {
     public_quote_url: "https://evil.example/phish",
     client_email: "attacker@evil.example",
     additional_recipients: "bcc:injected@evil.example",
+    business_name: "ATTACKER FROM NAME",
     hmac_secret: "attacker-secret",
   });
   const dupBody = parseBody(await post(liveMod, dup));
@@ -164,6 +167,7 @@ async function main() {
   eq("duplicate outer subject cannot override signed subject", dupBody.final_subject, "Your estimate");
   eq("duplicate outer client_email cannot override signed To", dupBody.final_to, "pat@example.test");
   eq("duplicate outer additional cannot inject BCC", dupBody.final_additional_recipients, "");
+  eq("duplicate outer business_name cannot override signed from name", dupBody.final_from_name, "Demo Co");
   ok("duplicate outer URL cannot override signed body", dupBody.final_body.indexOf("evil.example") < 0);
   ok("attacker email is not in additional", JSON.stringify(dupBody).indexOf("attacker@evil.example") < 0);
 
@@ -205,6 +209,26 @@ async function main() {
   });
   const outerTenantBody = parseBody(await post(liveMod, outerTenant));
   eq("outer cross-tenant email cannot override To", outerTenantBody.final_to, "pat@example.test");
+
+  const fromOverride = Object.assign({}, fields, { business_name: "Evil Corp" });
+  const fromOverrideBody = parseBody(await post(liveMod, fromOverride));
+  eq("outer business_name cannot override signed from name", fromOverrideBody.final_from_name, "Demo Co");
+
+  const crlfName = signedFields(Object.assign({}, UNSIGNED, { business_name: "Demo Co\r\nBcc: evil" }));
+  const crlfBody = parseBody(await post(liveMod, crlfName));
+  eq("CR/LF from name is rejected", crlfBody.signature_valid, false);
+  eq("CR/LF from name is empty", crlfBody.final_from_name, "");
+  eq("CR/LF from name empties To", crlfBody.final_to, "");
+
+  const emptyName = signedFields(Object.assign({}, UNSIGNED, { business_name: "   " }));
+  const emptyNameBody = parseBody(await post(liveMod, emptyName));
+  eq("empty from name is rejected", emptyNameBody.signature_valid, false);
+  eq("empty from name empties finals", emptyNameBody.final_from_name, "");
+
+  const longName = signedFields(Object.assign({}, UNSIGNED, { business_name: "A".repeat(79) }));
+  const longNameBody = parseBody(await post(liveMod, longName));
+  eq("oversized from name is rejected", longNameBody.signature_valid, false);
+  eq("oversized from name is empty", longNameBody.final_from_name, "");
 
   const getRes = await liveMod.handler({ httpMethod: "GET", headers: {}, queryStringParameters: fields, body: "" });
   eq("GET is 405", getRes.statusCode, 405);
