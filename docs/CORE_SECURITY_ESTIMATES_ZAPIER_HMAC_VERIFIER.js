@@ -14,9 +14,10 @@
  * Map Gmail from verifier outputs only:
  *   final_to                     ← Gmail To
  *   final_additional_recipients  ← Gmail CC (may be empty)
+ *   final_from_name              ← Gmail From Name
  *   final_subject                ← Gmail Subject
  *   final_body                   ← Gmail Body
- * Never map Catch Hook client_email, additional_recipients, subject, or body.
+ * Never map Catch Hook client_email, additional_recipients, business_name, subject, or body.
  *
  * Evidence: Catch Hook does not keep the raw POST body or X-MG-* headers for
  * Code-by-Zapier inputData (docs/CH-013A21Z-ZAPIER-CONTRACT-EMAIL.md). Do not
@@ -36,6 +37,7 @@ function emptyResult() {
     signature_valid: false,
     final_to: "",
     final_additional_recipients: "",
+    final_from_name: "",
     final_subject: "",
     final_body: "",
   };
@@ -85,6 +87,15 @@ function authorizeSignedRecipients(payload) {
     final_to: to,
     final_additional_recipients: extras.join(","),
   };
+}
+
+const FROM_NAME_MAX_LEN = 78;
+
+function authorizeSignedFromName(payload) {
+  const s = String(payload && payload.business_name != null ? payload.business_name : "").trim();
+  if (!s || s.length > FROM_NAME_MAX_LEN) return null;
+  if (/[\x00-\x1f\x7f]/.test(s)) return null;
+  return s;
 }
 
 function authorizedEmailCopy(payload) {
@@ -144,10 +155,13 @@ function verifyEstimatesHmacCatchHook(inputData, options) {
 
   const recipients = authorizeSignedRecipients(payload);
   if (!recipients) return out;
+  const fromName = authorizeSignedFromName(payload);
+  if (!fromName) return out;
   const copy = authorizedEmailCopy(payload);
   out.signature_valid = true;
   out.final_to = recipients.final_to;
   out.final_additional_recipients = recipients.final_additional_recipients;
+  out.final_from_name = fromName;
   out.final_subject = copy.final_subject;
   out.final_body = copy.final_body;
   return out;
@@ -159,6 +173,7 @@ function runEstimatesHmacCodeStep(inputData, options) {
     signature_valid: result.signature_valid === true ? "true" : "false",
     final_to: result.final_to,
     final_additional_recipients: result.final_additional_recipients,
+    final_from_name: result.final_from_name,
     final_subject: result.final_subject,
     final_body: result.final_body,
   };
