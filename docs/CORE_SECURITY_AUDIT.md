@@ -95,3 +95,5 @@ Counts: 20 `TENANT_SCOPED_CONFIRMED`, 1 `PLATFORM_ADMIN_ONLY`, 1 `INTERNAL_SECRE
 ## Existing shields
 
 Seller Shield V1, Owner Shield V1, and Invoice Hub Shield V2 were not renamed, weakened, or copied. Core Security Shield V1 runs their canonical runners in CI.
+
+TEST ONLY — Core Security V2 negative control.
