@@ -33,14 +33,50 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Core Security scope guard self-test
+        run: node scripts/guard-core-security-scope.js --self-test
+
+      - name: Core Security Shield V2 wiring self-test
+        run: node scripts/test-core-security-shield-v2.js
+
       - name: Core Security Shield V1 runner self-test
         run: node scripts/test-mg-core-security-shield-v1-runner.js
+
+      # Real scope guard is skipped on merge_group: that event does not expose a
+      # trusted PR title or head branch for Core Security authorization
+      # (GITHUB_HEAD_REF is empty; merge_group is not a substitute for PR_TITLE).
+      # Authorization requires BOTH the exact title token "[Core Security]" AND a
+      # branch prefix feat/core-security- | fix/core-security- | security/core-.
+      # Title or branch alone is not enough. Do not set ALLOW_CORE_SECURITY_TOUCH.
+      # pull_request passes title, head, and base SHA via env, not shell interpolation.
+      # merge_group still runs self-tests and the required Shield suites; it must not treat missing title/branch as authorization.
+      - name: Core Security scope guard
+        id: guard
+        if: github.event_name != 'merge_group'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          node scripts/guard-core-security-scope.js | tee "${RUNNER_TEMP}/core-security-guard.txt"
+          if grep -q '^CORE_SECURITY_REGRESSION_REQUIRED=1$' "${RUNNER_TEMP}/core-security-guard.txt"; then
+            echo "regression_required=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "regression_required=0" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Core Security Shield V1 required
         run: node scripts/test-mg-core-security-shield-v1.js
 
       - name: Core Security Shield V1 full
         run: node scripts/test-mg-core-security-shield-v1.js --full
+
+      - name: Core Security V1 complete (authorized protected change)
+        if: github.event_name != 'merge_group' && steps.guard.outputs.regression_required == '1'
+        run: |
+          node scripts/test-mg-core-security-shield-v1.js
+          node scripts/test-mg-core-security-shield-v1.js --full
 
       - name: Seller scope guard self-test
         run: node scripts/guard-seller-scope.js --self-test

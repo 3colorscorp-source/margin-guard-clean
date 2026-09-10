@@ -46,6 +46,16 @@
     "Contract Owner/Admin handlers still gate on session.e && session.c. Related to the supervisor dual-auth finding. Separate PR."
   ],
   "webhookContract": "estimate Zapier webhook is unsigned JSON POST; this is not HMAC. Invoice Hub Zapier remains Hub-owned.",
+  "scopeFailMessage": "Core Security protected surface changed outside Core Security scope. Stop and move this to a Core Security PR.",
+  "explicitScope": {
+    "prTitleToken": "[Core Security]",
+    "branchPrefixes": [
+      "feat/core-security-",
+      "fix/core-security-",
+      "security/core-"
+    ],
+    "requireTitleAndBranch": true
+  },
   "handlerInventory": [
     {
       "file": "admin-saas-square-dry-run.js",
@@ -179,14 +189,159 @@
     "scripts/test-core-secret-boundaries.js",
     "scripts/test-core-webhook-security.js",
     "scripts/test-core-financial-endpoints.js",
+    "scripts/guard-core-security-scope.js",
+    "scripts/test-core-security-shield-v2.js",
     "docs/CORE_SECURITY_AUDIT.md",
     "docs/CORE_SECURITY_PROTECTED_SURFACE.md"
   ],
   "globs": [
     "scripts/fixtures/mg-core-security-shield/*",
-    "scripts/mg-core-security-shield*",
-    "scripts/test-mg-core-security-shield*",
-    "scripts/test-core-*.js",
+    "scripts/test-core-security-*",
     "docs/CORE_SECURITY_*"
-  ]
+  ],
+  "sharedScan": {
+    "netlify/functions/_lib/session.js": {
+      "description": "Fail when owner session HMAC/cookie contracts change.",
+      "markers": [
+        "SESSION_SECRET",
+        "COOKIE_NAME",
+        "SESSION_TTL_SECONDS",
+        "sign(",
+        "verify(",
+        "readSessionFromEvent",
+        "createSessionCookie",
+        "clearSessionCookie",
+        "timingSafeEqual"
+      ]
+    },
+    "netlify/functions/_lib/device-session.js": {
+      "description": "Fail when device session HMAC/cookie contracts change.",
+      "markers": [
+        "DEVICE_COOKIE_NAME",
+        "DEVICE_SESSION_TTL_SECONDS",
+        "signPayload",
+        "verifySignedToken",
+        "readDeviceSessionFromEvent",
+        "createDeviceSessionCookie",
+        "hashSessionToken"
+      ]
+    },
+    "netlify/functions/_lib/tenant-for-session.js": {
+      "description": "Fail when tenant resolution authority changes.",
+      "markers": [
+        "resolveTenantFromSession",
+        "entitledOwnerTenant",
+        "resolveUniqueActiveOwnerAccess",
+        "looksLikeStripeCustomerId"
+      ]
+    },
+    "netlify/functions/_lib/tenant-device-guard.js": {
+      "description": "Fail when owner/device/role guard contracts change.",
+      "markers": [
+        "requireOwnerMembership",
+        "resolveDeviceSession",
+        "requireDeviceSession",
+        "requireSellerDevice",
+        "requireSupervisorDevice",
+        "resolveOwnerOrSellerContext",
+        "resolveOwnerOrSupervisorContext",
+        "assertSameTenant",
+        "assertSellerOwnQuote",
+        "assertAssignedSupervisorProject",
+        "PORTAL_ROLES"
+      ]
+    },
+    "netlify/functions/_lib/owner-access.js": {
+      "description": "Fail when owner identity or plan-status authority changes.",
+      "markers": [
+        "hasOwnerSessionIdentity",
+        "resolveUniqueActiveOwnerAccess",
+        "planIsActive",
+        "OWNER_PROFILE_SELECT",
+        "TENANT_SELECT"
+      ]
+    },
+    "netlify/functions/_lib/membership-resolve.js": {
+      "description": "Fail when membership lookup/role contracts change.",
+      "markers": [
+        "resolveMembershipByEmail",
+        "resolveMembershipByAuthUser",
+        "resolveMembershipById",
+        "membershipIsActive",
+        "membershipRole"
+      ]
+    },
+    "netlify/functions/_lib/supabase-admin.js": {
+      "description": "Fail when service-role access contracts change.",
+      "markers": [
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "getSupabaseConfig",
+        "supabaseRequest",
+        "Authorization",
+        "apikey"
+      ]
+    },
+    "netlify/functions/_lib/mg-support/require-platform-admin.js": {
+      "description": "Fail when platform-admin session authority changes.",
+      "markers": [
+        "assertPlatformAdminSession",
+        "readSessionFromEvent",
+        "loadPlatformAdminFlag",
+        "resolveAuthUserIdByEmail"
+      ]
+    },
+    "netlify/functions/stripe-invoice-webhook.js": {
+      "description": "Fail when local Stripe HMAC verification changes.",
+      "markers": [
+        "verifyStripeSignature",
+        "parseStripeSignatureHeader",
+        "timingSafeHexEqual",
+        "STRIPE_INVOICE_WEBHOOK_SECRET",
+        "stripe-signature"
+      ]
+    },
+    "netlify/functions/_lib/square-webhook-signature.js": {
+      "description": "Fail when Square HMAC/timing-safe verification changes.",
+      "markers": [
+        "verifySquareWebhookSignature",
+        "computeSquareSignature",
+        "timingSafeEqualB64",
+        "getSquareRawBody",
+        "x-square-hmacsha256-signature",
+        "signatureKey"
+      ]
+    },
+    "netlify/functions/square-saas-webhook.js": {
+      "description": "Fail when Square HMAC, idempotency, or tenant activation identity changes.",
+      "markers": [
+        "verifySquareWebhookSignature",
+        "SQUARE_WEBHOOK_SIGNATURE_KEY",
+        "getSquareRawBody",
+        "insertWebhookEvent",
+        "event_id",
+        "activateTenantFromVerifiedSquareInvoice"
+      ]
+    },
+    "netlify.toml": {
+      "description": "Fail when security headers, Functions config, protected-portal redirects, or public publish change.",
+      "markers": [
+        "Content-Security-Policy",
+        "Strict-Transport-Security",
+        "X-Frame-Options",
+        "[[headers]]",
+        "[functions",
+        "included_files",
+        "publish = \"public\"",
+        "functions = \"netlify/functions\"",
+        "from = \"/owner\"",
+        "from = \"/sales\"",
+        "from = \"/estimates-invoices\"",
+        "from = \"/sales-admin\"",
+        "from = \"/dashboard\"",
+        "from = \"/supervisor\"",
+        "from = \"/portal-pair\"",
+        "timeout ="
+      ]
+    }
+  }
 }
