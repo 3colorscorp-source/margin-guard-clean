@@ -67,6 +67,8 @@ Core Security Shield V1 runs their **canonical** runners. It does not copy their
 - `scripts/test-core-estimate-log-redaction.js`
 - `scripts/test-core-stripe-webhook-replay.js`
 - `scripts/test-core-remaining-modern-owner-gates.js`
+- `scripts/test-core-remaining-special-gates.js`
+- `scripts/test-core-estimate-pdf-access.js`
 - `scripts/test-core-global-security-headers.js`
 - `scripts/test-core-estimates-hmac-verifier.js`
 - `scripts/test-core-estimates-server-hmac-verifier.js`
@@ -74,6 +76,8 @@ Core Security Shield V1 runs their **canonical** runners. It does not copy their
 - `netlify/functions/verify-estimates-zapier-hmac.js`
 - `netlify/functions/_lib/ops-log.js`
 - `netlify/functions/_lib/require-owner-or-admin.js`
+- `netlify/functions/_lib/estimate-pdf-access.js`
+- `netlify/functions/get-estimate-pdf.js`
 - `docs/CORE_SECURITY_AUDIT.md`
 - `docs/CORE_SECURITY_PROTECTED_SURFACE.md`
 - `docs/CORE_SECURITY_ESTIMATES_ZAPIER_HMAC_VERIFIER.js`
@@ -142,6 +146,7 @@ Fail message:
 - Secret boundaries (no service-role in the browser, dummy child env)
 - HMAC for Square, local Stripe (300s replay window), and estimates Zapier outbound fail-closed (`ESTIMATES_HMAC_FAIL_CLOSED`, Zapier v15) plus Catch Hook / server-side `verify-estimates-zapier-hmac` over `zapier_signed_payload` (Netlify env secret only; signed `final_to` / `final_additional_recipients` / `final_from_name`; unsigned Catch Hook POST is refused)
 - Estimate send/resend logs omit recipient PII, payloads, public/PDF URLs, signatures, and secrets
+- Estimate PDF downloads go through `get-estimate-pdf` (public quote token or Owner/Seller session, tenant match, 60s signed URL). New Zapier `pdf_url` values are function URLs, not `/object/public/estimate-pdfs/`. The `estimate-pdfs` bucket stays public in this compatible phase. `tenant-logos` stays public. `contract-signed-pdfs` stays private.
 - Server-side pricing and financial endpoint session isolation
 - Global `netlify.toml` CSP (`object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`), HSTS (`max-age=31536000`), and Permissions-Policy (`microphone=(self)` for voice; camera and geolocation blocked)
 
