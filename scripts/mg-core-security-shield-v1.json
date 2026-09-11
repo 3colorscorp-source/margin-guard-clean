@@ -69,6 +69,11 @@
       "minPassed": 253
     },
     {
+      "id": "core-estimate-pdf-access",
+      "path": "scripts/test-core-estimate-pdf-access.js",
+      "minPassed": 56
+    },
+    {
       "id": "core-global-security-headers",
       "path": "scripts/test-core-global-security-headers.js",
       "minPassed": 58
@@ -172,6 +177,7 @@
     "scripts/test-core-stripe-webhook-replay.js",
     "scripts/test-core-remaining-modern-owner-gates.js",
     "scripts/test-core-remaining-special-gates.js",
+    "scripts/test-core-estimate-pdf-access.js",
     "scripts/test-core-global-security-headers.js",
     "scripts/test-core-estimates-hmac-verifier.js",
     "scripts/test-core-estimates-server-hmac-verifier.js",
@@ -179,6 +185,8 @@
     "netlify/functions/verify-estimates-zapier-hmac.js",
     "netlify/functions/_lib/ops-log.js",
     "netlify/functions/_lib/require-owner-or-admin.js",
+    "netlify/functions/_lib/estimate-pdf-access.js",
+    "netlify/functions/get-estimate-pdf.js",
     "docs/CORE_SECURITY_AUDIT.md",
     "docs/CORE_SECURITY_PROTECTED_SURFACE.md",
     "docs/CORE_SECURITY_ESTIMATES_ZAPIER_HMAC_VERIFIER.js",
@@ -323,7 +331,9 @@
         "dispatchSignedEstimatesWebhook",
         "zapier-hmac-v1",
         "ZAPIER_ESTIMATE_CTA_WEBHOOK_URL",
-        "resolveOwnerOrSellerContext"
+        "resolveOwnerOrSellerContext",
+        "get-estimate-pdf",
+        "estimate-pdf-access"
       ]
     },
     "netlify/functions/resend-tenant-quote.js": {

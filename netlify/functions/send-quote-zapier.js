@@ -3,7 +3,7 @@ if (!fetch) {
   throw new Error("Global fetch is not available. Set Netlify's Node version to 18+.");
 }
 
-const { supabaseRequest, getSupabaseConfig } = require("./_lib/supabase-admin");
+const { supabaseRequest } = require("./_lib/supabase-admin");
 const {
   assertSellerOwnQuote,
   resolveOwnerOrSellerContext,
@@ -14,6 +14,10 @@ const {
   ESTIMATES_HMAC_FAIL_CLOSED,
   dispatchSignedEstimatesWebhook,
 } = require("./_lib/zapier-hmac-v1");
+const {
+  uploadEstimatePdf,
+  buildEstimatePdfAccessUrl,
+} = require("./_lib/estimate-pdf-access");
 void ESTIMATES_HMAC_FAIL_CLOSED;
 
 const QUOTE_SEND_SELECT =
@@ -27,73 +31,6 @@ function pickFirst(...values) {
     }
   }
   return "";
-}
-
-async function ensureBucket(bucketName) {
-  const { url, key } = getSupabaseConfig();
-  const response = await fetch(`${url}/storage/v1/bucket`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: key,
-      Authorization: `Bearer ${key}`
-    },
-    body: JSON.stringify({
-      id: bucketName,
-      name: bucketName,
-      public: true,
-      allowed_mime_types: ["application/pdf"]
-    })
-  });
-
-  if (response.ok || response.status === 409) return;
-
-  const text = await response.text();
-  const alreadyExists =
-    response.status === 409 ||
-    text.includes('"statusCode":"409"') ||
-    text.includes('"statusCode":409') ||
-    text.includes("Duplicate") ||
-    text.includes("The resource already exists");
-
-  if (alreadyExists) return;
-
-  throw new Error(`Unable to ensure PDF bucket: ${text}`);
-}
-
-async function uploadPdfToSupabase({ base64, fileName, estimateNumber, tenantId }) {
-  if (!base64 || !fileName || !tenantId) return null;
-  const { url, key } = getSupabaseConfig();
-  const bucketName = "estimate-pdfs";
-  await ensureBucket(bucketName);
-
-  const safeName =
-    String(fileName || `Estimate-${estimateNumber || Date.now()}.pdf`)
-      .replace(/[^A-Za-z0-9._-]+/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "") || `Estimate-${Date.now()}.pdf`;
-  const tenantSegment = String(tenantId).trim();
-  const filePath = `${tenantSegment}/${new Date().toISOString().slice(0, 10)}/${Date.now()}-${safeName}`;
-  const objectPath = filePath.split("/").map((part) => encodeURIComponent(part)).join("/");
-  const bytes = Buffer.from(base64, "base64");
-
-  const uploadResponse = await fetch(`${url}/storage/v1/object/${bucketName}/${objectPath}`, {
-    method: "POST",
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/pdf",
-      "x-upsert": "true"
-    },
-    body: bytes
-  });
-
-  if (!uploadResponse.ok) {
-    const text = await uploadResponse.text();
-    throw new Error(`Unable to upload estimate PDF: ${text}`);
-  }
-
-  return `${url}/storage/v1/object/public/${bucketName}/${filePath}`;
 }
 
 /** Fills public_quote_url when client omitted it (Netlify URL + token). */
@@ -295,17 +232,17 @@ exports.handler = async (event) => {
       data.salesRepInitials = data.salesRepInitials.trim().slice(0, 6);
     }
 
-    let pdfUrl = null;
+    let pdfObjectPath = null;
     let pdfUploadError = null;
     const hadPdfPayload = Boolean(data.pdfBase64 && String(data.pdfBase64).trim());
     try {
-      pdfUrl = await uploadPdfToSupabase({
+      const uploaded = await uploadEstimatePdf({
         base64: data.pdfBase64,
         fileName: data.pdfFileName,
         estimateNumber: data.estimateNumber,
         tenantId: tenant.id
       });
-      if (pdfUrl) data.pdfUrl = pdfUrl;
+      pdfObjectPath = uploaded && uploaded.objectPath ? uploaded.objectPath : null;
     } catch (pdfError) {
       pdfUploadError = pdfError.message;
       data.pdfUploadError = pdfUploadError;
@@ -322,7 +259,7 @@ exports.handler = async (event) => {
         quote_id: quoteId,
         detail: "skipped_no_pdf_payload"
       });
-    } else if (pdfUrl) {
+    } else if (pdfObjectPath) {
       logOps({
         req_id,
         fn: OPS_FN,
@@ -367,6 +304,11 @@ exports.handler = async (event) => {
       /* optional tenant metadata for Zapier */
     }
 
+    const pdfUrl = buildEstimatePdfAccessUrl(siteUrl, publicToken, pdfObjectPath);
+    if (pdfUrl) data.pdfUrl = pdfUrl;
+    // New pdf_url values are get-estimate-pdf function URLs (estimate-pdf-access).
+    // Do not emit public object URLs from this handler.
+
     const zapierBody = {
       tenant_id: String(tenant.id),
       tenant_slug: tenantSlug,
@@ -376,7 +318,7 @@ exports.handler = async (event) => {
       project_name: data.projectName || data.project_name || "",
       subject: data.subject || "",
       public_quote_url: data.publicQuoteUrl || data.public_quote_url || "",
-      pdf_url: data.pdfUrl || "",
+      pdf_url: publicToken ? pdfUrl : "",
       additional_recipients
     };
 
@@ -474,7 +416,7 @@ exports.handler = async (event) => {
       quote_id: quoteId,
       additional_recipient_count: additionalRecipientCount,
       http_status: 200,
-      detail: `zapier:${zapierDelivery};pdf:${pdfUrl ? "ok" : hadPdfPayload ? "fail" : "skip"}`
+      detail: `zapier:${zapierDelivery};pdf:${pdfObjectPath ? "ok" : hadPdfPayload ? "fail" : "skip"}`
     });
 
     return {
