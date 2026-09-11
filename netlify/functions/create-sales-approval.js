@@ -5,6 +5,7 @@ const fetch = globalThis.fetch;
 const { readSessionFromEvent } = require("./_lib/session");
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { hasOwnerSessionIdentity } = require("./_lib/owner-access");
 const { marginLevelForSalesApproval } = require("./_lib/pricing-engine");
 
 const MAX_RAW_BODY_LOG = 8000;
@@ -261,8 +262,8 @@ exports.handler = async (event) => {
     });
 
     const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
-      console.warn("[create-sales-approval] unauthorized: missing session e/c");
+    if (!hasOwnerSessionIdentity(session)) {
+      console.warn("[create-sales-approval] unauthorized: missing owner session identity");
       return ok200({ ok: false, stage: "session", error: "Unauthorized" });
     }
 

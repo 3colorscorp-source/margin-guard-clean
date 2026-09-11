@@ -382,8 +382,10 @@ async function main() {
 
   const salesSrc = read("netlify/functions/get-sales-approvals.js");
   ok(
-    "Sales Admin gate is unchanged session.e && session.c",
-    /if \(!session\?\.e \|\| !session\?\.c\)/.test(salesSrc)
+    "sales-approvals stays a separate 401/422 gate",
+    salesSrc.indexOf('require("./_lib/require-owner-or-admin")') < 0 &&
+      salesSrc.indexOf("hasOwnerSessionIdentity") >= 0 &&
+      salesSrc.indexOf('json(401, { error: "Unauthorized" })') >= 0
   );
 
   const modern = { e: OWNER_A, t: TENANT_A, u: USER_A, c: "" };

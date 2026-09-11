@@ -64,6 +64,11 @@
       "minPassed": 168
     },
     {
+      "id": "core-remaining-special-gates",
+      "path": "scripts/test-core-remaining-special-gates.js",
+      "minPassed": 253
+    },
+    {
       "id": "core-global-security-headers",
       "path": "scripts/test-core-global-security-headers.js",
       "minPassed": 58
@@ -166,6 +171,7 @@
     "scripts/test-core-estimate-log-redaction.js",
     "scripts/test-core-stripe-webhook-replay.js",
     "scripts/test-core-remaining-modern-owner-gates.js",
+    "scripts/test-core-remaining-special-gates.js",
     "scripts/test-core-global-security-headers.js",
     "scripts/test-core-estimates-hmac-verifier.js",
     "scripts/test-core-estimates-server-hmac-verifier.js",
