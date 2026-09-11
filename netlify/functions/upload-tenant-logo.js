@@ -1,5 +1,7 @@
 const { readSessionFromEvent } = require("./_lib/session");
-const { supabaseRequest, getSupabaseConfig } = require("./_lib/supabase-admin");
+const { resolveTenantFromSession } = require("./_lib/tenant-for-session");
+const { hasOwnerSessionIdentity } = require("./_lib/owner-access");
+const { getSupabaseConfig } = require("./_lib/supabase-admin");
 
 const fetch = globalThis.fetch;
 if (!fetch) {
@@ -55,22 +57,6 @@ async function ensureLogoBucket() {
   throw new Error(`Unable to ensure logo bucket: ${text}`);
 }
 
-async function resolveTenantId(session) {
-  let tenants = await supabaseRequest(
-    `tenants?stripe_customer_id=eq.${encodeURIComponent(session.c)}&select=id,stripe_customer_id,owner_email`
-  );
-  let tenant = Array.isArray(tenants) ? tenants[0] : null;
-
-  if (!tenant?.id && session.e) {
-    const byEmail = await supabaseRequest(
-      `tenants?owner_email=eq.${encodeURIComponent(String(session.e).trim().toLowerCase())}&select=id,stripe_customer_id,owner_email`
-    );
-    tenant = Array.isArray(byEmail) ? byEmail[0] : null;
-  }
-
-  return tenant?.id || null;
-}
-
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -78,7 +64,7 @@ exports.handler = async (event) => {
     }
 
     const session = readSessionFromEvent(event);
-    if (!session?.e || !session?.c) {
+    if (!hasOwnerSessionIdentity(session)) {
       return json(401, { error: "Unauthorized" });
     }
 
@@ -98,7 +84,8 @@ exports.handler = async (event) => {
       return json(400, { error: "Unsupported image type. Use PNG, JPEG, WebP, GIF, or SVG." });
     }
 
-    const tenantId = await resolveTenantId(session);
+    const tenant = await resolveTenantFromSession(session);
+    const tenantId = tenant?.id || null;
     if (!tenantId) {
       return json(404, { error: "Tenant not found. Run bootstrap first." });
     }

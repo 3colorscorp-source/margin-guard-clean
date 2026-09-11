@@ -135,6 +135,7 @@ Fail message:
 - Owner and device session HMAC, expiry, tamper, modern vs legacy identity
 - Owner/supervisor dual-auth accepts modern `email + tenant` and legacy `email + session.c`; supervisor device path unchanged
 - Contract `requireOwnerOrAdmin` and remaining equivalent Owner/Admin copies accept modern `email + tenant` and legacy `email + session.c`; Sales Admin/Platform Admin gates unchanged
+- Remaining special gates (Project Control, sales approval, supervisor assignment, logo upload) accept the same modern/legacy identity via `hasOwnerSessionIdentity` without sharing `requireOwnerOrAdmin`; Seller, Supervisor, incomplete sessions, and other-tenant IDs are denied
 - Device revoke / inactive / tenant / membership / portal mismatches
 - Cross-tenant IDOR on body, query, and session hint
 - Role gates (seller quote, supervisor assignment, platform admin vs tenant owner)

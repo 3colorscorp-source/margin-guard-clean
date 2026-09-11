@@ -48,27 +48,9 @@ const LOCAL_REQUIRE_OWNER_OR_ADMIN_ALLOWED = [
   "netlify/functions/update-tenant-quote-edit.js",
 ];
 
-const E_AND_C_EXCEPTIONS = [
-  "netlify/functions/apply-project-change-order.js",
-  "netlify/functions/archive-tenant-project.js",
-  "netlify/functions/assign-supervisor-project.js",
-  "netlify/functions/create-sales-approval.js",
-  "netlify/functions/delete-project-change-order.js",
-  "netlify/functions/delete-project-expense.js",
-  "netlify/functions/delete-project-report.js",
-  "netlify/functions/get-project-change-orders.js",
-  "netlify/functions/get-project-control-projects.js",
-  "netlify/functions/get-project-day-progress.js",
-  "netlify/functions/get-project-financial-detail.js",
-  "netlify/functions/get-project-migration-baseline.js",
-  "netlify/functions/get-project-snapshot.js",
-  "netlify/functions/get-sales-approvals.js",
-  "netlify/functions/recalc-project-profit.js",
-  "netlify/functions/save-project-change-order.js",
-  "netlify/functions/update-sales-approval.js",
-  "netlify/functions/upload-tenant-logo.js",
-  "netlify/functions/upsert-project-migration-baseline.js",
-];
+// Project Control, sales approval, supervisor assignment, and logo upload
+// identity is frozen in scripts/test-core-remaining-special-gates.js.
+const E_AND_C_EXCEPTIONS = [];
 
 const TENANT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const TENANT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -300,7 +282,7 @@ async function main() {
     return /!session\?\.e \|\| !session\?\.c/.test(src);
   }).sort();
   eq(
-    "remaining e&&c files are frozen exceptions",
+    "no remaining e&&c session gates",
     eAndCHits.join(","),
     E_AND_C_EXCEPTIONS.slice().sort().join(",")
   );
