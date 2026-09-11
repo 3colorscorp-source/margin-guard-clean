@@ -1,6 +1,7 @@
 /**
  * GET estimate PDF via public quote token or Owner/Seller session.
- * Mints a short-lived signed URL after the object tenant matches the authorized tenant.
+ * Public token + HMAC authorizes only that quote's canonical object path.
+ * Owner/Seller sessions are tenant-scoped after role checks.
  * Compatible phase: does not change the production bucket.
  */
 "use strict";
@@ -9,6 +10,7 @@ const { supabaseRequest } = require("./_lib/supabase-admin");
 const { resolveOwnerOrSellerContext } = require("./_lib/tenant-device-guard");
 const {
   parseEstimatePdfObjectPath,
+  verifyEstimatePdfAccess,
   createEstimatePdfSignedUrl,
   SIGNED_URL_EXPIRES_SEC,
 } = require("./_lib/estimate-pdf-access");
@@ -77,6 +79,10 @@ exports.handler = async (event) => {
     const publicToken = normalizePublicToken(qs.token || qs.public_token || qs.publicToken);
     let authorizedTenant = null;
     if (publicToken) {
+      const sig = String(qs.sig || qs.signature || "").trim();
+      if (!verifyEstimatePdfAccess(publicToken, parsed.objectPath, sig)) {
+        return json(401, { error: "Unauthorized" });
+      }
       authorizedTenant = await tenantFromPublicToken(publicToken);
       if (!authorizedTenant) {
         return json(401, { error: "Unauthorized" });
@@ -88,7 +94,7 @@ exports.handler = async (event) => {
       }
     }
 
-    if (String(authorizedTenant) !== parsed.tenantId) {
+    if (String(authorizedTenant).toLowerCase() !== parsed.tenantId) {
       return json(403, { error: "Forbidden" });
     }
 

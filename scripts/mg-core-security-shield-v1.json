@@ -71,7 +71,7 @@
     {
       "id": "core-estimate-pdf-access",
       "path": "scripts/test-core-estimate-pdf-access.js",
-      "minPassed": 35
+      "minPassed": 56
     },
     {
       "id": "core-global-security-headers",

@@ -1,12 +1,14 @@
 /**
  * Estimate PDF storage access (compatible phase).
  * Bucket remains public so existing email links keep working.
- * New sends emit a Netlify Function URL; this helper mints a short-lived
- * signed URL after public-token or Owner/Seller authorization and tenant match.
+ * New sends emit a Netlify Function URL bound to that quote's object path
+ * (HMAC of public token + canonical path). A valid token cannot open another
+ * PDF in the same tenant. Owner/Seller sessions stay tenant-scoped.
  * Do not flip the production bucket in this phase.
  */
 "use strict";
 
+const crypto = require("crypto");
 const { getSupabaseConfig } = require("./supabase-admin");
 
 const fetch = globalThis.fetch;
@@ -25,6 +27,12 @@ function trimField(value) {
   return String(value || "").trim();
 }
 
+function sessionSecret() {
+  const secret = String(process.env.SESSION_SECRET || "").trim();
+  if (!secret) throw new Error("Missing SESSION_SECRET");
+  return secret;
+}
+
 function parseEstimatePdfObjectPath(raw) {
   const s = trimField(raw);
   if (!s || s.length > 512) return null;
@@ -39,7 +47,7 @@ function parseEstimatePdfObjectPath(raw) {
   if (decoded.charAt(0) === "/" || decoded.charAt(0) === ".") return null;
   const parts = decoded.split("/");
   if (parts.length !== 3) return null;
-  const tenantId = parts[0];
+  const tenantId = parts[0].toLowerCase();
   const day = parts[1];
   const fileName = parts[2];
   if (!UUID_RE.test(tenantId)) return null;
@@ -48,13 +56,37 @@ function parseEstimatePdfObjectPath(raw) {
   return { tenantId, day, fileName, objectPath: `${tenantId}/${day}/${fileName}` };
 }
 
+function signEstimatePdfAccess(publicToken, objectPath) {
+  const token = trimField(publicToken);
+  const parsed = parseEstimatePdfObjectPath(objectPath);
+  if (!token || !parsed) return "";
+  return crypto
+    .createHmac("sha256", sessionSecret())
+    .update("estimate-pdf-v1\n" + token + "\n" + parsed.objectPath, "utf8")
+    .digest("hex");
+}
+
+function verifyEstimatePdfAccess(publicToken, objectPath, signature) {
+  const expected = signEstimatePdfAccess(publicToken, objectPath);
+  const got = trimField(signature).toLowerCase();
+  if (!expected || !/^[0-9a-f]{64}$/.test(got)) return false;
+  const a = Buffer.from(expected, "utf8");
+  const b = Buffer.from(got, "utf8");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 function buildEstimatePdfAccessUrl(siteUrl, publicToken, objectPath) {
   const base = trimField(siteUrl).replace(/\/+$/, "");
   const parsed = parseEstimatePdfObjectPath(objectPath);
   if (!base || !parsed) return "";
   const q = new URLSearchParams({ path: parsed.objectPath });
   const token = trimField(publicToken);
-  if (token) q.set("token", token);
+  if (token) {
+    const sig = signEstimatePdfAccess(token, parsed.objectPath);
+    if (!sig) return "";
+    q.set("token", token);
+    q.set("sig", sig);
+  }
   return `${base}/.netlify/functions/get-estimate-pdf?${q.toString()}`;
 }
 
@@ -90,7 +122,7 @@ async function ensureEstimatePdfBucket() {
 
 async function uploadEstimatePdf({ base64, fileName, estimateNumber, tenantId }) {
   if (!base64 || !fileName || !tenantId) return null;
-  const parsedTenant = trimField(tenantId);
+  const parsedTenant = trimField(tenantId).toLowerCase();
   if (!UUID_RE.test(parsedTenant)) return null;
   await ensureEstimatePdfBucket();
 
@@ -137,7 +169,11 @@ async function createEstimatePdfSignedUrl(objectPath, expiresIn = SIGNED_URL_EXP
     .split("/")
     .map((part) => encodeURIComponent(part))
     .join("/");
-  const ttl = Number(expiresIn) || SIGNED_URL_EXPIRES_SEC;
+  const requested = Number(expiresIn);
+  const ttl =
+    Number.isFinite(requested) && requested > 0
+      ? Math.min(SIGNED_URL_EXPIRES_SEC, Math.floor(requested))
+      : SIGNED_URL_EXPIRES_SEC;
   const response = await fetch(`${url}/storage/v1/object/sign/${ESTIMATE_PDF_BUCKET}/${encodedPath}`, {
     method: "POST",
     headers: {
@@ -171,6 +207,8 @@ module.exports = {
   ESTIMATE_PDF_BUCKET,
   SIGNED_URL_EXPIRES_SEC,
   parseEstimatePdfObjectPath,
+  signEstimatePdfAccess,
+  verifyEstimatePdfAccess,
   buildEstimatePdfAccessUrl,
   ensureEstimatePdfBucket,
   uploadEstimatePdf,

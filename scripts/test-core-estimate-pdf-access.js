@@ -22,7 +22,14 @@ const path = require("path");
 const ROOT = path.resolve(__dirname, "..");
 const { buildSessionPayload, createSessionCookie } = require("../netlify/functions/_lib/session");
 const {
+  buildDeviceSessionPayload,
+  createDeviceSessionCookieFromPayload,
+  DEVICE_COOKIE_NAME,
+} = require("../netlify/functions/_lib/device-session");
+const {
   parseEstimatePdfObjectPath,
+  signEstimatePdfAccess,
+  verifyEstimatePdfAccess,
   buildEstimatePdfAccessUrl,
   SIGNED_URL_EXPIRES_SEC,
   ESTIMATE_PDF_BUCKET,
@@ -34,8 +41,15 @@ const OWNER_A = "owner-a@example.com";
 const TOKEN_A = "qt_core_security_test_token";
 const TOKEN_B = "qt_other_tenant_token_xx";
 const INTERNAL_TEST_PATH = TENANT_A + "/2026-09-10/CORE-SECURITY-TEST.pdf";
+const OTHER_SAME_TENANT_PATH = TENANT_A + "/2026-09-10/OTHER-QUOTE.pdf";
 const CROSS_PATH = TENANT_B + "/2026-09-10/CORE-SECURITY-TEST.pdf";
 const CUS_A = "cus_legacyOwnerA123";
+const SELLER_MEM = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const SUPER_MEM = "99999999-eeee-4eee-8eee-eeeeeeeeeeee";
+const SELLER_DEVICE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const SUPER_DEVICE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const SELLER_SESS = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+const SUPER_SESS = "aaaaaaaa-ffff-4fff-8fff-ffffffffffff";
 
 let passed = 0;
 function ok(label, cond) {
@@ -84,13 +98,30 @@ function cookieFor(fields) {
 
 function eventFor(fields, opts) {
   const headers = Object.assign({}, (opts && opts.headers) || {});
-  if (fields) headers.cookie = cookieFor(fields);
+  const cookies = [];
+  if (fields) cookies.push(cookieFor(fields));
+  if (opts && opts.deviceCookie) cookies.push(opts.deviceCookie);
+  if (cookies.length) headers.cookie = cookies.join("; ");
   return {
     httpMethod: (opts && opts.method) || "GET",
     headers,
     queryStringParameters: (opts && opts.query) || {},
     body: opts && opts.body != null ? JSON.stringify(opts.body) : undefined,
   };
+}
+
+function accessQuery(token, objectPath) {
+  const url = buildEstimatePdfAccessUrl("https://example.test", token, objectPath);
+  const u = new URL(url);
+  const q = {};
+  u.searchParams.forEach((v, k) => {
+    q[k] = v;
+  });
+  return q;
+}
+
+function deviceCookieHeader(device) {
+  return DEVICE_COOKIE_NAME + "=" + encodeURIComponent(device.token);
 }
 
 function qp(restPath, key) {
@@ -100,9 +131,9 @@ function qp(restPath, key) {
   return decodeURIComponent(part.slice(key.length + 1).replace(/^eq\./, ""));
 }
 
-function profile(tenantId, email, role) {
+function profile(tenantId, email, role, id) {
   return {
-    id: "prof-" + email.split("@")[0],
+    id: id || "prof-" + email.split("@")[0],
     tenant_id: tenantId,
     email,
     role: role || "owner",
@@ -117,9 +148,56 @@ function loadPdfHandler() {
   return require(rel);
 }
 
+function cacheBust() {
+  [
+    "../netlify/functions/_lib/supabase-admin",
+    "../netlify/functions/_lib/membership-resolve",
+    "../netlify/functions/_lib/owner-access",
+    "../netlify/functions/_lib/tenant-for-session",
+    "../netlify/functions/_lib/tenant-device-guard",
+    "../netlify/functions/_lib/device-session",
+    "../netlify/functions/_lib/estimate-pdf-access",
+    "../netlify/functions/get-estimate-pdf",
+  ].forEach((rel) => {
+    try {
+      delete require.cache[require.resolve(rel)];
+    } catch (_err) {
+      /* optional */
+    }
+  });
+}
+
 async function withDb(fn) {
   const prev = globalThis.fetch;
   const captured = { signExpires: null, signPath: "", lastHref: "" };
+  const sellerDevice = createDeviceSessionCookieFromPayload(
+    buildDeviceSessionPayload({
+      sessionId: SELLER_SESS,
+      deviceId: SELLER_DEVICE,
+      tenantId: TENANT_A,
+      membershipId: SELLER_MEM,
+      portalType: "seller",
+    })
+  );
+  const supervisorDevice = createDeviceSessionCookieFromPayload(
+    buildDeviceSessionPayload({
+      sessionId: SUPER_SESS,
+      deviceId: SUPER_DEVICE,
+      tenantId: TENANT_A,
+      membershipId: SUPER_MEM,
+      portalType: "supervisor",
+    })
+  );
+  const sellerB = createDeviceSessionCookieFromPayload(
+    buildDeviceSessionPayload({
+      sessionId: "bbbbbbbb-ffff-4fff-8fff-ffffffffffff",
+      deviceId: "bbbbbbbb-dddd-4ddd-8ddd-dddddddddddd",
+      tenantId: TENANT_B,
+      membershipId: "bbbbbbbb-eeee-4eee-8eee-eeeeeeeeeeee",
+      portalType: "seller",
+    })
+  );
+
   globalThis.fetch = async (url, opts) => {
     const href = String(url);
     captured.lastHref = href;
@@ -150,8 +228,20 @@ async function withDb(fn) {
     }
     if (table === "profiles") {
       const email = qp(restPath, "email");
-      if (email === OWNER_A) return jsonRes(200, [profile(TENANT_A, OWNER_A, "owner")]);
-      return jsonRes(200, []);
+      const id = qp(restPath, "id");
+      const tenantId = qp(restPath, "tenant_id");
+      const rows = [
+        profile(TENANT_A, OWNER_A, "owner"),
+        profile(TENANT_A, "seller-a@example.com", "seller", SELLER_MEM),
+        profile(TENANT_A, "super-a@example.com", "supervisor", SUPER_MEM),
+        profile(TENANT_B, "seller-b@example.com", "seller", "bbbbbbbb-eeee-4eee-8eee-eeeeeeeeeeee"),
+      ].filter((p) => {
+        if (email && p.email !== email) return false;
+        if (id && p.id !== id) return false;
+        if (tenantId && p.tenant_id !== tenantId) return false;
+        return true;
+      });
+      return jsonRes(200, rows);
     }
     if (table === "tenants") {
       const id = qp(restPath, "id");
@@ -168,29 +258,82 @@ async function withDb(fn) {
           },
         ]);
       }
+      if (id === TENANT_B) {
+        return jsonRes(200, [
+          {
+            id: TENANT_B,
+            owner_email: "owner-b@example.com",
+            plan_status: "active",
+            stripe_customer_id: "cus_legacyOwnerB123",
+            slug: "co-b",
+            name: "Co B",
+          },
+        ]);
+      }
       return jsonRes(200, []);
+    }
+    if (table === "device_sessions") {
+      const hash = qp(restPath, "session_token_hash");
+      const rows = [
+        {
+          id: SELLER_SESS,
+          device_id: SELLER_DEVICE,
+          tenant_id: TENANT_A,
+          membership_id: SELLER_MEM,
+          portal_type: "seller",
+          status: "active",
+          expires_at: new Date(Date.now() + 86400000).toISOString(),
+          session_token_hash: sellerDevice.tokenHash,
+        },
+        {
+          id: SUPER_SESS,
+          device_id: SUPER_DEVICE,
+          tenant_id: TENANT_A,
+          membership_id: SUPER_MEM,
+          portal_type: "supervisor",
+          status: "active",
+          expires_at: new Date(Date.now() + 86400000).toISOString(),
+          session_token_hash: supervisorDevice.tokenHash,
+        },
+        {
+          id: "bbbbbbbb-ffff-4fff-8fff-ffffffffffff",
+          device_id: "bbbbbbbb-dddd-4ddd-8ddd-dddddddddddd",
+          tenant_id: TENANT_B,
+          membership_id: "bbbbbbbb-eeee-4eee-8eee-eeeeeeeeeeee",
+          portal_type: "seller",
+          status: "active",
+          expires_at: new Date(Date.now() + 86400000).toISOString(),
+          session_token_hash: sellerB.tokenHash,
+        },
+      ].filter((row) => !hash || row.session_token_hash === hash);
+      return jsonRes(200, rows);
+    }
+    if (table === "tenant_devices") {
+      const id = qp(restPath, "id");
+      const rows = [
+        { id: SELLER_DEVICE, tenant_id: TENANT_A, portal_type: "seller", status: "active" },
+        { id: SUPER_DEVICE, tenant_id: TENANT_A, portal_type: "supervisor", status: "active" },
+        {
+          id: "bbbbbbbb-dddd-4ddd-8ddd-dddddddddddd",
+          tenant_id: TENANT_B,
+          portal_type: "seller",
+          status: "active",
+        },
+      ].filter((row) => !id || row.id === id);
+      return jsonRes(200, rows);
     }
     return jsonRes(method === "GET" ? 200 : 200, []);
   };
   try {
-    [
-      "../netlify/functions/_lib/supabase-admin",
-      "../netlify/functions/_lib/membership-resolve",
-      "../netlify/functions/_lib/owner-access",
-      "../netlify/functions/_lib/tenant-for-session",
-      "../netlify/functions/_lib/estimate-pdf-access",
-      "../netlify/functions/get-estimate-pdf",
-    ].forEach((rel) => {
-      try {
-        delete require.cache[require.resolve(rel)];
-      } catch (_err) {
-        /* optional */
-      }
-    });
-    await fn(captured);
+    cacheBust();
+    await fn(captured, { sellerDevice, supervisorDevice, sellerB });
   } finally {
     globalThis.fetch = prev;
   }
+}
+
+function hasNoStore(res) {
+  return String((res.headers && res.headers["Cache-Control"]) || "").indexOf("no-store") >= 0;
 }
 
 async function main() {
@@ -204,8 +347,12 @@ async function main() {
   ok("send no longer returns public object URLs", sendSrc.indexOf("object/public/estimate-pdfs") < 0);
   ok("send emits get-estimate-pdf access URL", sendSrc.indexOf("buildEstimatePdfAccessUrl") >= 0);
   ok("handler authorizes via public token or Owner/Seller", fnSrc.indexOf("resolveOwnerOrSellerContext") >= 0);
+  ok("public token HMAC-binds the object path", helperSrc.indexOf("signEstimatePdfAccess") >= 0);
+  ok("handler verifies the path HMAC", fnSrc.indexOf("verifyEstimatePdfAccess") >= 0);
   ok("compatible phase keeps estimate-pdfs public", helperSrc.indexOf("public: true") >= 0);
-  ok("bucket name stays estimate-pdfs", helperSrc.indexOf('ESTIMATE_PDF_BUCKET = "estimate-pdfs"') >= 0);
+  eq("bucket name stays estimate-pdfs", ESTIMATE_PDF_BUCKET, "estimate-pdfs");
+  ok("sign URL hard-codes estimate-pdfs bucket", helperSrc.indexOf("/object/sign/${ESTIMATE_PDF_BUCKET}/") >= 0);
+  ok("handler does not take bucket from query", fnSrc.indexOf("qs.bucket") < 0);
   eq("signed URL TTL is 60s", SIGNED_URL_EXPIRES_SEC, 60);
   ok("tenant-logos stays public", logoSrc.indexOf("tenant-logos") >= 0 && logoSrc.indexOf("public: true") >= 0);
   ok("contract-signed-pdfs stays private", contractSrc.indexOf('STORAGE_BUCKET = "contract-signed-pdfs"') >= 0);
@@ -217,69 +364,142 @@ async function main() {
     "knowing the CORE SECURITY TEST object path is enough for a public bucket GET",
     /\/object\/public\/estimate-pdfs\//.test(publicUrl) && publicUrl.indexOf(INTERNAL_TEST_PATH) >= 0
   );
-  ok(
-    "function URL is the compatible replacement for that path",
-    buildEstimatePdfAccessUrl("https://example.test", TOKEN_A, INTERNAL_TEST_PATH).indexOf(
-      "get-estimate-pdf"
-    ) >= 0
-  );
+  const access = buildEstimatePdfAccessUrl("https://example.test", TOKEN_A, INTERNAL_TEST_PATH);
+  ok("function URL is the compatible replacement for that path", access.indexOf("get-estimate-pdf") >= 0);
+  ok("access URL keeps the durable public token", access.indexOf("token=" + TOKEN_A) >= 0);
+  ok("access URL includes HMAC sig", /[?&]sig=[0-9a-f]{64}/.test(access));
+  ok("access URL does not use object/public", access.indexOf("object/public") < 0);
 
-  ok("valid internal test path parses", Boolean(parseEstimatePdfObjectPath(INTERNAL_TEST_PATH)));
+  const parsed = parseEstimatePdfObjectPath(INTERNAL_TEST_PATH);
+  eq("canonical path is tenant/date/file", parsed && parsed.objectPath, INTERNAL_TEST_PATH);
+  eq(
+    "mixed-case tenant UUID canonicalizes",
+    parseEstimatePdfObjectPath(TENANT_A.toUpperCase() + "/2026-09-10/CORE-SECURITY-TEST.pdf").objectPath,
+    INTERNAL_TEST_PATH
+  );
   ok("parent traversal is rejected", parseEstimatePdfObjectPath(TENANT_A + "/../" + TENANT_B + "/x.pdf") == null);
   ok("dot-dot file segment is rejected", parseEstimatePdfObjectPath(TENANT_A + "/2026-09-10/../x.pdf") == null);
   ok("encoded traversal is rejected", parseEstimatePdfObjectPath(TENANT_A + "/2026-09-10/%2e%2e%2fx.pdf") == null);
+  ok("backslash traversal is rejected", parseEstimatePdfObjectPath(TENANT_A + "/2026-09-10/..\\x.pdf") == null);
   ok("absolute path is rejected", parseEstimatePdfObjectPath("/" + INTERNAL_TEST_PATH) == null);
   ok("missing tenant uuid is rejected", parseEstimatePdfObjectPath("not-a-uuid/2026-09-10/CORE-SECURITY-TEST.pdf") == null);
 
-  await withDb(async (captured) => {
+  ok(
+    "HMAC matches token+canonical path",
+    verifyEstimatePdfAccess(TOKEN_A, INTERNAL_TEST_PATH, signEstimatePdfAccess(TOKEN_A, INTERNAL_TEST_PATH))
+  );
+  ok(
+    "HMAC rejects another PDF of the same tenant",
+    !verifyEstimatePdfAccess(TOKEN_A, OTHER_SAME_TENANT_PATH, signEstimatePdfAccess(TOKEN_A, INTERNAL_TEST_PATH))
+  );
+
+  await withDb(async (captured, devices) => {
     const mod = loadPdfHandler();
+    const bound = accessQuery(TOKEN_A, INTERNAL_TEST_PATH);
 
     const none = await mod.handler(eventFor(null, { query: { path: INTERNAL_TEST_PATH } }));
     eq("CORE SECURITY TEST PDF without cookie or token is 401", none.statusCode, 401);
+    ok("unauthenticated uses Cache-Control no-store", hasNoStore(none));
     ok("unauthenticated body has no service_role", JSON.stringify(parse(none)).indexOf("service_role") < 0);
     ok("unauthenticated body has no service key", JSON.stringify(parse(none)).indexOf("mg-estimate-pdf-access-test-key") < 0);
 
+    const noSig = await mod.handler(
+      eventFor(null, { query: { path: INTERNAL_TEST_PATH, token: TOKEN_A } })
+    );
+    eq("valid token without path HMAC is 401", noSig.statusCode, 401);
+
     const badToken = await mod.handler(
-      eventFor(null, { query: { path: INTERNAL_TEST_PATH, token: "qt_invalid_token_xx" } })
+      eventFor(null, { query: { path: INTERNAL_TEST_PATH, token: "qt_invalid_token_xx", sig: bound.sig } })
     );
     eq("invalid public token is 401", badToken.statusCode, 401);
 
+    const otherPdf = await mod.handler(
+      eventFor(null, { query: { path: OTHER_SAME_TENANT_PATH, token: TOKEN_A, sig: bound.sig } })
+    );
+    eq("valid token cannot read another PDF of the same tenant", otherPdf.statusCode, 401);
+
     const cross = await mod.handler(
-      eventFor(null, { query: { path: CROSS_PATH, token: TOKEN_A } })
+      eventFor(null, {
+        query: {
+          path: CROSS_PATH,
+          token: TOKEN_A,
+          sig: signEstimatePdfAccess(TOKEN_A, CROSS_PATH),
+        },
+      })
     );
     eq("token A cannot read tenant B path", cross.statusCode, 403);
 
     const trav = await mod.handler(
-      eventFor(null, { query: { path: TENANT_A + "/../" + TENANT_B + "/CORE-SECURITY-TEST.pdf", token: TOKEN_A } })
+      eventFor(null, {
+        query: { path: TENANT_A + "/../" + TENANT_B + "/CORE-SECURITY-TEST.pdf", token: TOKEN_A, sig: bound.sig },
+      })
     );
     eq("path traversal is 400", trav.statusCode, 400);
 
-    captured.signExpires = null;
-    const valid = await mod.handler(
-      eventFor(null, { query: { path: INTERNAL_TEST_PATH, token: TOKEN_A } })
+    const encodedTrav = await mod.handler(
+      eventFor(null, {
+        query: { path: TENANT_A + "/2026-09-10/%2e%2e%2fx.pdf", token: TOKEN_A, sig: bound.sig },
+      })
     );
-    eq("valid public token redirects", valid.statusCode, 302);
+    eq("encoded traversal is 400", encodedTrav.statusCode, 400);
+
+    captured.signExpires = null;
+    const valid = await mod.handler(eventFor(null, { query: bound }));
+    eq("valid public token + exact path redirects", valid.statusCode, 302);
+    ok("valid uses Cache-Control no-store", hasNoStore(valid));
     ok(
       "redirect Location is a signed URL",
       String((valid.headers && valid.headers.Location) || "").indexOf("/object/sign/estimate-pdfs/") >= 0
     );
     eq("signed URL expires in 60s", captured.signExpires, 60);
+    ok("sign request uses server-side estimate-pdfs bucket", captured.signPath.indexOf("/object/sign/estimate-pdfs/") >= 0);
     ok("valid response has no service_role", String(valid.body || "").indexOf("service_role") < 0);
+    ok("valid response has no service key", String(valid.body || "").indexOf("mg-estimate-pdf-access-test-key") < 0);
 
-    const owner = await mod.handler(
+    captured.signExpires = null;
+    const accessMod = require("../netlify/functions/_lib/estimate-pdf-access");
+    await accessMod.createEstimatePdfSignedUrl(INTERNAL_TEST_PATH, 999);
+    eq("createEstimatePdfSignedUrl caps TTL at 60s", captured.signExpires, 60);
+
+    const ownerModern = await mod.handler(
       eventFor({ e: OWNER_A, t: TENANT_A }, { query: { path: INTERNAL_TEST_PATH } })
     );
-    eq("Owner session without token is allowed for same tenant", owner.statusCode, 302);
+    eq("Owner modern e+t without token is allowed for same tenant", ownerModern.statusCode, 302);
+
+    const ownerLegacy = await mod.handler(
+      eventFor({ e: OWNER_A, c: CUS_A }, { query: { path: INTERNAL_TEST_PATH } })
+    );
+    eq("Owner legacy e+c without token is allowed for same tenant", ownerLegacy.statusCode, 302);
 
     const ownerCross = await mod.handler(
       eventFor({ e: OWNER_A, t: TENANT_A }, { query: { path: CROSS_PATH } })
     );
     eq("Owner session cannot read other-tenant path", ownerCross.statusCode, 403);
-  });
 
-  const access = buildEstimatePdfAccessUrl("https://example.test", TOKEN_A, INTERNAL_TEST_PATH);
-  ok("access URL keeps the durable public token", access.indexOf("token=" + TOKEN_A) >= 0 || access.indexOf("token=" + encodeURIComponent(TOKEN_A)) >= 0);
-  ok("access URL does not use object/public", access.indexOf("object/public") < 0);
+    const seller = await mod.handler(
+      eventFor(null, {
+        query: { path: INTERNAL_TEST_PATH },
+        deviceCookie: deviceCookieHeader(devices.sellerDevice),
+      })
+    );
+    eq("valid Seller device is allowed for same tenant", seller.statusCode, 302);
+
+    const sellerCross = await mod.handler(
+      eventFor(null, {
+        query: { path: INTERNAL_TEST_PATH },
+        deviceCookie: deviceCookieHeader(devices.sellerB),
+      })
+    );
+    eq("Seller of another tenant is rejected", sellerCross.statusCode, 403);
+
+    const supervisor = await mod.handler(
+      eventFor(null, {
+        query: { path: INTERNAL_TEST_PATH },
+        deviceCookie: deviceCookieHeader(devices.supervisorDevice),
+      })
+    );
+    eq("Supervisor device is rejected", supervisor.statusCode, 401);
+  });
 
   const manifest = JSON.parse(read("scripts/mg-core-security-shield-v1.json"));
   const suite = (manifest.required || []).find((row) => row && row.id === "core-estimate-pdf-access");
@@ -288,7 +508,7 @@ async function main() {
     "manifest estimate PDF path is frozen",
     suite && suite.path === "scripts/test-core-estimate-pdf-access.js"
   );
-  eq("manifest estimate PDF minPassed is 35", suite && suite.minPassed, 35);
+  eq("manifest estimate PDF minPassed is 56", suite && suite.minPassed, 56);
 
   console.log("\nCore estimate PDF access: " + passed + " passed");
 }
