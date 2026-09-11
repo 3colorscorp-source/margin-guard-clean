@@ -184,8 +184,8 @@ async function main() {
     estimateSrc.indexOf('require("./_lib/zapier-hmac-v1")') >= 0
   );
   ok(
-    "ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE is marked on send-quote-zapier",
-    estimateSrc.indexOf("ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE") >= 0
+    "ESTIMATES_HMAC_FAIL_CLOSED is marked on send-quote-zapier",
+    estimateSrc.indexOf("ESTIMATES_HMAC_FAIL_CLOSED") >= 0
   );
 
   const invoiceSrc = fs.readFileSync(path.join(ROOT, "netlify/functions/send-invoice-zapier.js"), "utf8");

@@ -2,7 +2,7 @@
 /**
  * Core Security — estimates Zapier Catch Hook HMAC verifier (Phase 2 contract).
  * Simulates Catch Hook input. Does not call Zapier, Netlify, or production.
- * Fail-closed on Netlify is not activated.
+ * Sender fail-closed is activated (ESTIMATES_HMAC_FAIL_CLOSED).
  * Run: node scripts/test-core-estimates-hmac-verifier.js
  */
 "use strict";
@@ -94,7 +94,7 @@ function signedWire(unsigned, opts) {
 }
 
 function main() {
-  ok("phase1 compatibility marker remains", hmac.ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE === "ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE");
+  ok("fail-closed marker is frozen", hmac.ESTIMATES_HMAC_FAIL_CLOSED === "ESTIMATES_HMAC_FAIL_CLOSED");
   eq("max age is 300 seconds", hmac.ESTIMATES_HMAC_MAX_AGE_MS, 300000);
 
   const contractDocs = read("docs/CH-013A21Z-ZAPIER-CONTRACT-EMAIL.md");
@@ -337,7 +337,7 @@ function main() {
   delete process.env.ZAPIER_WEBHOOK_SECRET;
   const unsignedBody = Object.assign({}, UNSIGNED);
   const unsignedAttach = hmac.attachZapierSignature(unsignedBody);
-  ok("missing secret still returns null meta (not fail-closed)", unsignedAttach.meta === null);
+  ok("missing secret still returns null meta", unsignedAttach.meta === null);
   ok("missing secret does not attach zapier_signed_payload", unsignedBody.zapier_signed_payload == null);
   ok("missing secret still sets JSON content-type", unsignedAttach.headers["Content-Type"] === "application/json");
   if (prev === undefined) delete process.env.ZAPIER_WEBHOOK_SECRET;
@@ -347,8 +347,8 @@ function main() {
   const resendSrc = read("netlify/functions/resend-tenant-quote.js");
   const helperSrc = read("netlify/functions/_lib/zapier-hmac-v1.js");
   const pasteSrc = read("docs/CORE_SECURITY_ESTIMATES_ZAPIER_HMAC_VERIFIER.js");
-  ok("send-quote-zapier still marks PHASE1 compatibility", sendSrc.indexOf("ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE") >= 0);
-  ok("resend-tenant-quote still marks PHASE1 compatibility", resendSrc.indexOf("ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE") >= 0);
+  ok("send-quote-zapier marks fail-closed", sendSrc.indexOf("ESTIMATES_HMAC_FAIL_CLOSED") >= 0);
+  ok("resend-tenant-quote marks fail-closed", resendSrc.indexOf("ESTIMATES_HMAC_FAIL_CLOSED") >= 0);
   ok("helper still returns null when secret missing", /if \(!secret\) return null/.test(helperSrc));
   ok("helper does not console.log", helperSrc.indexOf("console.log") < 0 && helperSrc.indexOf("console.info") < 0);
   ok("paste Code Step does not console.log", pasteSrc.indexOf("console.log") < 0 && pasteSrc.indexOf("console.info") < 0);
@@ -375,8 +375,8 @@ function main() {
     suite && suite.path === "scripts/test-core-estimates-hmac-verifier.js"
   );
   ok(
-    "fail-closed remains a known gap",
-    (manifest.knownGaps || []).some((gap) => /ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE/.test(gap))
+    "fail-closed is not listed as a known gap",
+    !(manifest.knownGaps || []).some((gap) => /ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE/.test(gap))
   );
 
   console.log("\nCore estimates HMAC verifier: " + passed + " passed");

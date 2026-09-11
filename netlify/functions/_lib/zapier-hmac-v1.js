@@ -1,16 +1,16 @@
 "use strict";
 
 /**
- * Invoice Hub Zapier HMAC v1, reused for estimates outbound (Phase 1).
+ * Invoice Hub Zapier HMAC v1, reused for estimates outbound (fail-closed).
  * Canonical: `${timestamp}.${nonce}.${JSON.stringify(unsignedPayload)}`
  * Signature fields are attached AFTER signing so the HMAC covers the unsigned JSON.
  * zapier_signed_payload is that exact canonical string so Zapier Catch Hook can
  * verify without reconstructing JSON (Catch Hook drops raw body and X-MG-* headers).
- * ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE: missing secret returns null; caller still POSTs unsigned.
+ * ESTIMATES_HMAC_FAIL_CLOSED: missing secret returns null; callers must not POST unsigned.
  */
 const crypto = require("crypto");
 
-const ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE = "ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE";
+const ESTIMATES_HMAC_FAIL_CLOSED = "ESTIMATES_HMAC_FAIL_CLOSED";
 const ESTIMATES_HMAC_MAX_AGE_MS = 300000;
 
 function resolveZapierWebhookSecret(explicit) {
@@ -54,6 +54,47 @@ function attachZapierSignature(payload, options) {
     headers["X-MG-Signature-Version"] = meta.version;
   }
   return { meta, headers };
+}
+
+function hasRequiredZapierSignature(payload) {
+  if (!payload || typeof payload !== "object") return false;
+  return (
+    typeof payload.zapier_signature === "string" &&
+    /^[0-9a-f]{64}$/.test(payload.zapier_signature) &&
+    typeof payload.zapier_timestamp === "string" &&
+    payload.zapier_timestamp.length > 0 &&
+    typeof payload.zapier_nonce === "string" &&
+    payload.zapier_nonce.length > 0 &&
+    payload.zapier_signature_version === "v1" &&
+    typeof payload.zapier_signed_payload === "string" &&
+    payload.zapier_signed_payload.length > 0
+  );
+}
+
+async function dispatchSignedEstimatesWebhook(webhookUrl, payload, fetchImpl) {
+  const url = String(webhookUrl || "").trim();
+  if (!url) {
+    return { ok: false, sent: false, code: "zapier_not_configured" };
+  }
+  const signed = attachZapierSignature(payload);
+  if (!signed.meta || !hasRequiredZapierSignature(payload)) {
+    return { ok: false, sent: false, code: "hmac_required" };
+  }
+  const doFetch = typeof fetchImpl === "function" ? fetchImpl : fetch;
+  try {
+    const resp = await doFetch(url, {
+      method: "POST",
+      headers: signed.headers,
+      body: JSON.stringify(payload),
+    });
+    return {
+      ok: Boolean(resp && resp.ok),
+      sent: true,
+      httpStatus: resp && resp.status,
+    };
+  } catch (_err) {
+    return { ok: false, sent: true, code: "network" };
+  }
 }
 
 function timingSafeHexEqual(a, b) {
@@ -218,11 +259,13 @@ function verifyEstimatesCatchHook(inputData, options) {
 }
 
 module.exports = {
-  ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE,
+  ESTIMATES_HMAC_FAIL_CLOSED,
   ESTIMATES_HMAC_MAX_AGE_MS,
   canonicalString,
   buildZapierSignatureMeta,
   attachZapierSignature,
+  hasRequiredZapierSignature,
+  dispatchSignedEstimatesWebhook,
   verifyZapierSignature,
   verifyEstimatesCatchHook,
   resolveZapierWebhookSecret,

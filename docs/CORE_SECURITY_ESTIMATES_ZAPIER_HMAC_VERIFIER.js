@@ -25,6 +25,7 @@
  * zapier_signed_payload string (timestamp.nonce.JSON) attached after signing.
  *
  * Do not log hmac_secret, signatures, emails, or URLs.
+ * Netlify send/resend is ESTIMATES_HMAC_FAIL_CLOSED: unsigned Catch Hook POST is refused.
  */
 "use strict";
 

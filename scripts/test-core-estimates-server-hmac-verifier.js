@@ -2,7 +2,7 @@
 /**
  * Core Security — server-side estimates HMAC verifier.
  * Isolated dummy secret only. Does not call Zapier, live Netlify, or production.
- * Sender fail-closed is not activated.
+ * Sender fail-closed is activated (ESTIMATES_HMAC_FAIL_CLOSED).
  * Run: node scripts/test-core-estimates-server-hmac-verifier.js
  */
 "use strict";
@@ -260,7 +260,7 @@ async function main() {
   ok("function does not read a request secret field", src.indexOf("parsed.hmac_secret") < 0 && src.indexOf("body.hmac_secret") < 0);
   ok("function does not console.log", src.indexOf("console.log") < 0 && src.indexOf("console.info") < 0);
   ok("helper envSecretOnly ignores request hmac_secret", helperSrc.indexOf("envSecretOnly") >= 0);
-  ok("sender still marks PHASE1 compatibility", sendSrc.indexOf("ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE") >= 0);
+  ok("sender marks fail-closed", sendSrc.indexOf("ESTIMATES_HMAC_FAIL_CLOSED") >= 0);
   ok("function body limit is 8192", liveMod._test.MAX_BODY_BYTES === 8192);
 
   const manifest = JSON.parse(read("scripts/mg-core-security-shield-v1.json"));
@@ -275,8 +275,8 @@ async function main() {
     (manifest.exact || []).indexOf("netlify/functions/verify-estimates-zapier-hmac.js") >= 0
   );
   ok(
-    "fail-closed sender remains a known gap",
-    (manifest.knownGaps || []).some((gap) => /ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE/.test(gap))
+    "fail-closed sender is not a known gap",
+    !(manifest.knownGaps || []).some((gap) => /ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE/.test(gap))
   );
 
   if (prev === undefined) delete process.env.ZAPIER_WEBHOOK_SECRET;

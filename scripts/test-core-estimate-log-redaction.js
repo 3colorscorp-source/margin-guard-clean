@@ -85,8 +85,8 @@ function main() {
   ok("MG Zapier Email Payload dump is gone", sendSrc.indexOf("[MG Zapier Email Payload]") < 0);
   ok("send-quote-zapier still puts additional_recipients on the Zapier body", /additional_recipients\b/.test(sendSrc));
   ok("send-quote-zapier still sends client_email in the Zapier body", /client_email/.test(sendSrc));
-  ok("send-quote-zapier still attaches HMAC", sendSrc.indexOf("attachZapierSignature(zapierBody)") >= 0);
-  ok("resend-tenant-quote still attaches HMAC", resendSrc.indexOf("attachZapierSignature(zapierBody)") >= 0);
+  ok("send-quote-zapier still signs outbound Zapier", sendSrc.indexOf("dispatchSignedEstimatesWebhook") >= 0);
+  ok("resend-tenant-quote still signs outbound Zapier", resendSrc.indexOf("dispatchSignedEstimatesWebhook") >= 0);
   ok("HMAC helper still has no console.log", hmacSrc.indexOf("console.log") < 0 && hmacSrc.indexOf("console.info") < 0);
   ok("ops-log forbids additional_recipients", opsSrc.indexOf('"additional_recipients"') >= 0);
   ok("ops-log forbids client_email", opsSrc.indexOf('"client_email"') >= 0);

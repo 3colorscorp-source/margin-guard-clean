@@ -443,7 +443,7 @@ function runShield(options) {
   log("total passed: " + totalPassed);
   log("duration_ms: " + durationMs);
   printKnownGaps(manifest.knownGaps, log);
-  log("webhook: ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE");
+  log("webhook: ESTIMATES_HMAC_FAIL_CLOSED");
   log("rls: PRODUCTION_RLS_NOT_VERIFIED");
   failed.forEach((row) => {
     log("FAIL " + row.rel + " reason=" + row.reason);

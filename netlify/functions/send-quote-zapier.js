@@ -11,10 +11,10 @@ const {
 } = require("./_lib/tenant-device-guard");
 const { makeReqId, logOps, countAdditionalRecipients } = require("./_lib/ops-log");
 const {
-  ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE,
-  attachZapierSignature,
+  ESTIMATES_HMAC_FAIL_CLOSED,
+  dispatchSignedEstimatesWebhook,
 } = require("./_lib/zapier-hmac-v1");
-void ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE;
+void ESTIMATES_HMAC_FAIL_CLOSED;
 
 const QUOTE_SEND_SELECT =
   "id,tenant_id,status,seller_membership_id,created_by_role,source_device_id";
@@ -404,42 +404,38 @@ exports.handler = async (event) => {
       });
       zapierDelivery = "skipped_no_webhook_url";
     } else {
-      try {
-        const signed = attachZapierSignature(zapierBody);
-        const resp = await fetch(webhookUrl, {
-          method: "POST",
-          headers: signed.headers,
-          body: JSON.stringify(zapierBody)
+      const dispatched = await dispatchSignedEstimatesWebhook(webhookUrl, zapierBody);
+      if (!dispatched.sent && dispatched.code === "hmac_required") {
+        logOps({
+          req_id,
+          fn: OPS_FN,
+          event: "zapier_dispatch",
+          level: "error",
+          outcome: "fail",
+          tenant_id: tenant.id,
+          quote_id: quoteId,
+          additional_recipient_count: additionalRecipientCount,
+          detail: "hmac_required"
         });
-        if (resp.ok) {
-          zapierDelivery = "ok";
-          logOps({
-            req_id,
-            fn: OPS_FN,
-            event: "zapier_dispatch",
-            level: "info",
-            outcome: "ok",
-            tenant_id: tenant.id,
-            quote_id: quoteId,
-            additional_recipient_count: additionalRecipientCount,
-            detail: "webhook_post_ok;source=env"
-          });
-        } else {
-          await resp.text();
-          zapierDelivery = `error_http_${resp.status}`;
-          logOps({
-            req_id,
-            fn: OPS_FN,
-            event: "zapier_dispatch",
-            level: "warn",
-            outcome: "fail",
-            tenant_id: tenant.id,
-            quote_id: quoteId,
-            additional_recipient_count: additionalRecipientCount,
-            detail: `http_${resp.status};source=env`
-          });
-        }
-      } catch (err) {
+        return {
+          statusCode: 503,
+          body: JSON.stringify({ error: "Unable to send estimate" })
+        };
+      }
+      if (dispatched.ok) {
+        zapierDelivery = "ok";
+        logOps({
+          req_id,
+          fn: OPS_FN,
+          event: "zapier_dispatch",
+          level: "info",
+          outcome: "ok",
+          tenant_id: tenant.id,
+          quote_id: quoteId,
+          additional_recipient_count: additionalRecipientCount,
+          detail: "webhook_post_ok;source=env"
+        });
+      } else if (dispatched.code === "network") {
         zapierDelivery = "error_network";
         logOps({
           req_id,
@@ -450,7 +446,20 @@ exports.handler = async (event) => {
           tenant_id: tenant.id,
           quote_id: quoteId,
           additional_recipient_count: additionalRecipientCount,
-          detail: `network;source=env;${err?.message || "fetch_failed"}`
+          detail: "network;source=env"
+        });
+      } else {
+        zapierDelivery = `error_http_${dispatched.httpStatus || "unknown"}`;
+        logOps({
+          req_id,
+          fn: OPS_FN,
+          event: "zapier_dispatch",
+          level: "warn",
+          outcome: "fail",
+          tenant_id: tenant.id,
+          quote_id: quoteId,
+          additional_recipient_count: additionalRecipientCount,
+          detail: `http_${dispatched.httpStatus || "unknown"};source=env`
         });
       }
     }

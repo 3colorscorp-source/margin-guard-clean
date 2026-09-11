@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Core Security — estimates Zapier outbound HMAC Phase 1 (compatibility mode).
+ * Core Security — estimates Zapier outbound HMAC fail-closed (Zapier v15).
+ * Isolated dummy secret only. Does not call Zapier, live Netlify, or production.
  * Run: node scripts/test-core-estimates-webhook-signing.js
  */
 "use strict";
@@ -26,6 +27,11 @@ const UNSIGNED = {
   pdf_url: "",
   additional_recipients: "",
 };
+const RESEND = Object.assign({}, UNSIGNED, {
+  event_type: "quote_resend",
+  source: "owner_quote_resend",
+  messageText: "Updated estimate: please review",
+});
 
 let passed = 0;
 function ok(label, cond) {
@@ -38,11 +44,12 @@ function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), "utf8");
 }
 
-function main() {
+async function main() {
   ok(
-    "phase1 marker is frozen",
-    hmac.ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE === "ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE"
+    "fail-closed marker is frozen",
+    hmac.ESTIMATES_HMAC_FAIL_CLOSED === "ESTIMATES_HMAC_FAIL_CLOSED"
   );
+  ok("compatibility marker is gone", hmac.ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE == null);
 
   const ts = "2026-09-10T17:00:00.000Z";
   const nonce = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -80,12 +87,50 @@ function main() {
   const prev = process.env.ZAPIER_WEBHOOK_SECRET;
   delete process.env.ZAPIER_WEBHOOK_SECRET;
   const unsignedMeta = hmac.buildZapierSignatureMeta(UNSIGNED);
-  ok("missing secret returns null in compatibility mode", unsignedMeta === null);
+  ok("missing secret returns null", unsignedMeta === null);
   const unsignedPayload = Object.assign({}, UNSIGNED);
   const attached = hmac.attachZapierSignature(unsignedPayload);
   ok("missing secret does not attach zapier_signature", unsignedPayload.zapier_signature == null);
+  ok("missing secret does not attach zapier_timestamp", unsignedPayload.zapier_timestamp == null);
+  ok("missing secret does not attach zapier_nonce", unsignedPayload.zapier_nonce == null);
+  ok("missing secret does not attach zapier_signed_payload", unsignedPayload.zapier_signed_payload == null);
   ok("missing secret still sets JSON content-type", attached.headers["Content-Type"] === "application/json");
   ok("missing secret does not set X-MG-Signature", attached.headers["X-MG-Signature"] == null);
+  ok("unsigned payload fails required-signature check", hmac.hasRequiredZapierSignature(unsignedPayload) === false);
+
+  const missingCalls = [];
+  const missingDispatch = await hmac.dispatchSignedEstimatesWebhook(
+    "https://hooks.example.test/catch",
+    unsignedPayload,
+    function fakeFetch(url, opts) {
+      missingCalls.push({ url: url, opts: opts });
+      return { ok: true, status: 200 };
+    }
+  );
+  ok("missing secret does not POST", missingDispatch.sent === false);
+  ok("missing secret returns hmac_required", missingDispatch.code === "hmac_required");
+  ok("missing secret fetch is never called", missingCalls.length === 0);
+  ok(
+    "missing secret payload stays unsigned JSON",
+    JSON.stringify(unsignedPayload).indexOf("zapier_signed_payload") < 0 &&
+      JSON.stringify(unsignedPayload).indexOf("zapier_signature") < 0
+  );
+
+  const resendUnsigned = Object.assign({}, RESEND);
+  const resendMissing = await hmac.dispatchSignedEstimatesWebhook(
+    "https://hooks.example.test/catch",
+    resendUnsigned,
+    function fakeFetch() {
+      missingCalls.push({ resend: true });
+      return { ok: true, status: 200 };
+    }
+  );
+  ok("resend missing secret does not POST", resendMissing.sent === false && resendMissing.code === "hmac_required");
+  ok("resend missing secret fetch is never called", missingCalls.length === 0);
+  ok(
+    "resend missing secret payload stays unsigned",
+    JSON.stringify(resendUnsigned).indexOf("zapier_signed_payload") < 0
+  );
   if (prev === undefined) delete process.env.ZAPIER_WEBHOOK_SECRET;
   else process.env.ZAPIER_WEBHOOK_SECRET = prev;
 
@@ -96,6 +141,8 @@ function main() {
   ok("signed body includes zapier_timestamp", live.zapier_timestamp === ts);
   ok("signed body includes zapier_nonce", live.zapier_nonce === nonce);
   ok("signed body includes zapier_signature_version", live.zapier_signature_version === "v1");
+  ok("signed body includes zapier_signed_payload", typeof live.zapier_signed_payload === "string");
+  ok("required signature check accepts signed body", hmac.hasRequiredZapierSignature(live) === true);
   ok("signed headers include X-MG-Signature", signed.headers["X-MG-Signature"] === live.zapier_signature);
   ok("signed headers include X-MG-Timestamp", signed.headers["X-MG-Timestamp"] === ts);
   ok("signed headers include X-MG-Nonce", signed.headers["X-MG-Nonce"] === nonce);
@@ -120,6 +167,37 @@ function main() {
     "HMAC does not cover body after signature fields are attached",
     hmac.verifyZapierSignature(live, signed.meta, SECRET) === false
   );
+
+  const sendCalls = [];
+  const sendBody = Object.assign({}, UNSIGNED);
+  const sendDispatch = await hmac.dispatchSignedEstimatesWebhook(
+    "https://hooks.example.test/catch",
+    sendBody,
+    function fakeFetch(url, opts) {
+      sendCalls.push({ url: url, body: JSON.parse(opts.body), headers: opts.headers });
+      return { ok: true, status: 200 };
+    }
+  );
+  ok("signed sender dispatch POSTs", sendDispatch.sent === true && sendDispatch.ok === true);
+  ok("signed sender POST includes v1 signature", typeof sendCalls[0].body.zapier_signature === "string");
+  ok("signed sender POST includes timestamp", typeof sendCalls[0].body.zapier_timestamp === "string");
+  ok("signed sender POST includes nonce", typeof sendCalls[0].body.zapier_nonce === "string");
+  ok("signed sender POST includes zapier_signed_payload", typeof sendCalls[0].body.zapier_signed_payload === "string");
+  ok("signed sender POST version is v1", sendCalls[0].body.zapier_signature_version === "v1");
+
+  const resendCalls = [];
+  const resendBody = Object.assign({}, RESEND);
+  const resendDispatch = await hmac.dispatchSignedEstimatesWebhook(
+    "https://hooks.example.test/catch",
+    resendBody,
+    function fakeFetch(url, opts) {
+      resendCalls.push({ url: url, body: JSON.parse(opts.body) });
+      return { ok: true, status: 200 };
+    }
+  );
+  ok("signed resend dispatch POSTs", resendDispatch.sent === true && resendDispatch.ok === true);
+  ok("signed resend POST includes v1 signature", typeof resendCalls[0].body.zapier_signature === "string");
+  ok("signed resend POST includes zapier_signed_payload", typeof resendCalls[0].body.zapier_signed_payload === "string");
   delete process.env.ZAPIER_WEBHOOK_SECRET;
 
   const sendSrc = read("netlify/functions/send-quote-zapier.js");
@@ -128,10 +206,24 @@ function main() {
   ok("send-quote-zapier keeps Owner/Seller inbound auth", sendSrc.indexOf("resolveOwnerOrSellerContext") >= 0);
   ok("send-quote-zapier uses shared HMAC helper", sendSrc.indexOf('require("./_lib/zapier-hmac-v1")') >= 0);
   ok("resend-tenant-quote uses shared HMAC helper", resendSrc.indexOf('require("./_lib/zapier-hmac-v1")') >= 0);
-  ok("send-quote-zapier marks PHASE1 compatibility", sendSrc.indexOf("ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE") >= 0);
-  ok("resend-tenant-quote marks PHASE1 compatibility", resendSrc.indexOf("ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE") >= 0);
+  ok("send-quote-zapier marks fail-closed", sendSrc.indexOf("ESTIMATES_HMAC_FAIL_CLOSED") >= 0);
+  ok("resend-tenant-quote marks fail-closed", resendSrc.indexOf("ESTIMATES_HMAC_FAIL_CLOSED") >= 0);
+  ok("send-quote-zapier has no PHASE1 marker", sendSrc.indexOf("ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE") < 0);
+  ok("resend-tenant-quote has no PHASE1 marker", resendSrc.indexOf("ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE") < 0);
+  ok("helper has no PHASE1 marker", helperSrc.indexOf("ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE") < 0);
   ok("helper uses createHmac sha256", /createHmac\("sha256"/.test(helperSrc));
-  ok("helper does not fail closed on missing secret", /if \(!secret\) return null/.test(helperSrc));
+  ok("attach still returns null when secret missing", /if \(!secret\) return null/.test(helperSrc));
+  ok("dispatch refuses unsigned when secret missing", helperSrc.indexOf('code: "hmac_required"') >= 0);
+  ok("send-quote-zapier dispatches through signed helper", sendSrc.indexOf("dispatchSignedEstimatesWebhook") >= 0);
+  ok("resend-tenant-quote dispatches through signed helper", resendSrc.indexOf("dispatchSignedEstimatesWebhook") >= 0);
+  ok("send-quote-zapier does not POST webhookUrl directly", sendSrc.indexOf("fetch(webhookUrl") < 0);
+  ok("resend-tenant-quote does not POST webhookUrl directly", resendSrc.indexOf("fetch(webhookUrl") < 0);
+  ok("send-quote-zapier fail-closed uses hmac_required", sendSrc.indexOf("hmac_required") >= 0);
+  ok("resend-tenant-quote fail-closed uses hmac_required", resendSrc.indexOf("hmac_required") >= 0);
+  ok("send-quote-zapier generic fail-closed body", sendSrc.indexOf("Unable to send estimate") >= 0);
+  ok("resend-tenant-quote generic fail-closed body", resendSrc.indexOf("Unable to send updated quote email.") >= 0);
+  ok("send-quote-zapier keeps no-URL skip", sendSrc.indexOf("skipped_no_webhook_url") >= 0);
+  ok("resend-tenant-quote keeps missing-URL 500", resendSrc.indexOf("zapier_not_configured") >= 0);
   ok("send-quote-zapier does not log ZAPIER_WEBHOOK_SECRET", sendSrc.indexOf("ZAPIER_WEBHOOK_SECRET") < 0);
   ok("resend-tenant-quote does not log ZAPIER_WEBHOOK_SECRET", resendSrc.indexOf("ZAPIER_WEBHOOK_SECRET") < 0);
   ok("helper does not console.log signature", helperSrc.indexOf("console.log") < 0 && helperSrc.indexOf("console.info") < 0);
@@ -151,18 +243,21 @@ function main() {
     "manifest estimates signing path is frozen",
     suite && suite.path === "scripts/test-core-estimates-webhook-signing.js"
   );
-  ok("manifest estimates signing minPassed is 42", suite && suite.minPassed === 42);
+  ok("manifest estimates signing minPassed is 81", suite && suite.minPassed === 81);
   ok(
-    "webhookContract names PHASE1 compatibility",
-    String(manifest.webhookContract || "").indexOf("ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE") >= 0
+    "webhookContract names fail-closed",
+    String(manifest.webhookContract || "").indexOf("ESTIMATES_HMAC_FAIL_CLOSED") >= 0
+  );
+  ok("webhookContract names Zapier v15", String(manifest.webhookContract || "").indexOf("v15") >= 0);
+  ok(
+    "knownGaps no longer list PHASE1 compatibility",
+    !(manifest.knownGaps || []).some((gap) => /ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE/.test(gap))
   );
 
   console.log("\nCore estimates webhook signing: " + passed + " passed");
 }
 
-try {
-  main();
-} catch (err) {
+main().catch((err) => {
   console.error(err && err.stack ? err.stack : err);
   process.exit(1);
-}
+});

@@ -196,6 +196,11 @@ function main() {
   pass("required suite count stays 15", manifest.required.length === 15);
   pass("optional stays empty", Array.isArray(manifest.optional) && manifest.optional.length === 0);
   pass("handler inventory stays 10", manifest.handlerInventory.length === 10);
+  pass(
+    "webhookContract is fail-closed Zapier v15",
+    String(manifest.webhookContract || "").indexOf("ESTIMATES_HMAC_FAIL_CLOSED") >= 0 &&
+      String(manifest.webhookContract || "").indexOf("v15") >= 0
+  );
 
   const exact = manifest.exact || [];
   [
