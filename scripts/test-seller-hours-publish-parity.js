@@ -367,7 +367,7 @@ ok(
 );
 
 const statusIdx = zapierSrc.indexOf("assertQuoteSendableStatus(quote)");
-const webhookFetchIdx = zapierSrc.indexOf("fetch(webhookUrl");
+const webhookFetchIdx = zapierSrc.indexOf("dispatchSignedEstimatesWebhook(webhookUrl");
 ok("send-quote-zapier status gate exists", statusIdx > 0);
 ok("unsendable quote is blocked before Zapier fetch", statusIdx < webhookFetchIdx);
 ok(

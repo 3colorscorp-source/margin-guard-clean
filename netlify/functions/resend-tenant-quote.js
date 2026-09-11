@@ -10,8 +10,11 @@ if (!fetch) {
 
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { requireOwnerOrAdmin } = require("./_lib/require-owner-or-admin");
-const { attachZapierSignature, ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE } = require("./_lib/zapier-hmac-v1");
-void ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE;
+const {
+  ESTIMATES_HMAC_FAIL_CLOSED,
+  dispatchSignedEstimatesWebhook,
+} = require("./_lib/zapier-hmac-v1");
+void ESTIMATES_HMAC_FAIL_CLOSED;
 const { makeReqId, logOps } = require("./_lib/ops-log");
 const {
   UUID_RE,
@@ -167,29 +170,23 @@ async function dispatchQuoteResendZapier({ tenantId, quote, publicUrl, messageNo
     source: "owner_quote_resend",
   };
 
-  try {
-    const signed = attachZapierSignature(zapierBody);
-    const resp = await fetch(webhookUrl, {
-      method: "POST",
-      headers: signed.headers,
-      body: JSON.stringify(zapierBody),
-    });
-    if (resp.ok) {
-      return { ok: true };
-    }
-    await resp.text().catch(() => "");
+  const dispatched = await dispatchSignedEstimatesWebhook(webhookUrl, zapierBody);
+  if (!dispatched.sent && dispatched.code === "hmac_required") {
     logOps({
       req_id,
       fn: "resend-tenant-quote",
       event: "zapier_dispatch",
-      level: "warn",
+      level: "error",
       outcome: "fail",
       tenant_id: tenantId,
-      http_status: resp.status,
-      detail: `http_${resp.status}`,
+      detail: "hmac_required",
     });
-    return { ok: false, code: "zapier_send_failed", httpStatus: resp.status };
-  } catch (err) {
+    return { ok: false, code: "hmac_required" };
+  }
+  if (dispatched.ok) {
+    return { ok: true };
+  }
+  if (dispatched.code === "network") {
     logOps({
       req_id,
       fn: "resend-tenant-quote",
@@ -201,6 +198,17 @@ async function dispatchQuoteResendZapier({ tenantId, quote, publicUrl, messageNo
     });
     return { ok: false, code: "zapier_send_failed", network: true };
   }
+  logOps({
+    req_id,
+    fn: "resend-tenant-quote",
+    event: "zapier_dispatch",
+    level: "warn",
+    outcome: "fail",
+    tenant_id: tenantId,
+    http_status: dispatched.httpStatus,
+    detail: `http_${dispatched.httpStatus || "unknown"}`,
+  });
+  return { ok: false, code: "zapier_send_failed", httpStatus: dispatched.httpStatus };
 }
 
 exports.handler = async (event) => {
@@ -325,6 +333,13 @@ exports.handler = async (event) => {
         ok: false,
         error: "Quote email webhook is not configured.",
         code: "zapier_not_configured",
+      });
+    }
+
+    if (!dispatch.ok && dispatch.code === "hmac_required") {
+      return json(503, {
+        ok: false,
+        error: "Unable to send updated quote email.",
       });
     }
 

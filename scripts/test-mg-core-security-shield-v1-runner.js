@@ -286,8 +286,8 @@ ok(
   )
 );
 ok(
-  "phase1 estimates HMAC note printed",
-  gapRun.logs.some((line) => /ESTIMATES_HMAC_PHASE1_COMPATIBILITY_MODE/.test(line))
+  "fail-closed estimates HMAC note printed",
+  gapRun.logs.some((line) => /ESTIMATES_HMAC_FAIL_CLOSED/.test(line))
 );
 ok(
   "production RLS unverified note printed",
