@@ -349,7 +349,7 @@ async function main() {
   ok("handler authorizes via public token or Owner/Seller", fnSrc.indexOf("resolveOwnerOrSellerContext") >= 0);
   ok("public token HMAC-binds the object path", helperSrc.indexOf("signEstimatePdfAccess") >= 0);
   ok("handler verifies the path HMAC", fnSrc.indexOf("verifyEstimatePdfAccess") >= 0);
-  ok("compatible phase keeps estimate-pdfs public", helperSrc.indexOf("public: true") >= 0);
+  ok("new estimate-pdfs buckets are created private without PATCHing", helperSrc.indexOf("public: false") >= 0 && helperSrc.indexOf("/storage/v1/bucket/") < 0);
   eq("bucket name stays estimate-pdfs", ESTIMATE_PDF_BUCKET, "estimate-pdfs");
   ok("sign URL hard-codes estimate-pdfs bucket", helperSrc.indexOf("/object/sign/${ESTIMATE_PDF_BUCKET}/") >= 0);
   ok("handler does not take bucket from query", fnSrc.indexOf("qs.bucket") < 0);

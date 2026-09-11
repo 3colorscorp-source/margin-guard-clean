@@ -232,13 +232,13 @@ eq("parsePassedCount core summary", shield.parsePassedCount("Core session securi
 eq("stripAnsi ignores colors", shield.parsePassedCount("\u001b[32m5 passed\u001b[0m\n", "").passed, 5);
 
 const defaultManifest = shield.loadManifest();
-eq("default required count", defaultManifest.required.length, 17);
+eq("default required count", defaultManifest.required.length, 18);
 eq("default optional count", defaultManifest.optional.length, 0);
 eq("handler inventory count", defaultManifest.handlerInventory.length, 10);
 ok(
   "required ids are frozen",
   defaultManifest.required.map((row) => row.id).join(",") ===
-    "core-session-security,core-tenant-isolation,core-role-permissions,core-secret-boundaries,core-webhook-security,core-financial-endpoints,core-security-supabase-hardening-1,core-estimates-webhook-signing,core-contract-modern-owner-session,core-estimate-log-redaction,core-stripe-webhook-replay,core-remaining-modern-owner-gates,core-remaining-special-gates,core-estimate-pdf-access,core-global-security-headers,core-estimates-hmac-verifier,core-estimates-server-hmac-verifier"
+    "core-session-security,core-tenant-isolation,core-role-permissions,core-secret-boundaries,core-webhook-security,core-financial-endpoints,core-security-supabase-hardening-1,core-estimates-webhook-signing,core-contract-modern-owner-session,core-estimate-log-redaction,core-stripe-webhook-replay,core-remaining-modern-owner-gates,core-remaining-special-gates,core-estimate-pdf-access,core-private-estimate-pdfs,core-global-security-headers,core-estimates-hmac-verifier,core-estimates-server-hmac-verifier"
 );
 
 const resolveOk = shield.resolveSuitePath(ROOT, fixture("pass.js"));

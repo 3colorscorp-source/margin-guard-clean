@@ -193,7 +193,7 @@ function main() {
     JSON.stringify(manifest.explicitScope.branchPrefixes) ===
       JSON.stringify(["feat/core-security-", "fix/core-security-", "security/core-"])
   );
-  pass("required suite count stays 17", manifest.required.length === 17);
+  pass("required suite count stays 18", manifest.required.length === 18);
   pass("optional stays empty", Array.isArray(manifest.optional) && manifest.optional.length === 0);
   pass("handler inventory stays 10", manifest.handlerInventory.length === 10);
   pass(
@@ -224,6 +224,7 @@ function main() {
     "scripts/test-core-remaining-modern-owner-gates.js",
     "scripts/test-core-remaining-special-gates.js",
     "scripts/test-core-estimate-pdf-access.js",
+    "scripts/test-core-private-estimate-pdfs.js",
     "scripts/test-core-global-security-headers.js",
     "scripts/test-core-estimates-hmac-verifier.js",
     "scripts/test-core-estimates-server-hmac-verifier.js",
@@ -239,10 +240,13 @@ function main() {
     "SUPABASE_MG_CORE_SECURITY_HARDENING_1.sql",
     "SUPABASE_MG_CORE_SECURITY_HARDENING_1_ROLLBACK.sql",
     "SUPABASE_MG_CORE_SECURITY_HARDENING_1_VERIFY.sql",
+    "SUPABASE_MG_CORE_SECURITY_PRIVATE_ESTIMATE_PDFS.sql",
+    "SUPABASE_MG_CORE_SECURITY_PRIVATE_ESTIMATE_PDFS_ROLLBACK.sql",
+    "SUPABASE_MG_CORE_SECURITY_PRIVATE_ESTIMATE_PDFS_VERIFY.sql",
   ].forEach((rel) => {
     pass("exact protects " + rel, exact.indexOf(rel) >= 0);
   });
-  pass("exact count is 35", exact.length === 35);
+  pass("exact count is 39", exact.length === 39);
   pass(
     "globs are frozen",
     JSON.stringify(manifest.globs) ===

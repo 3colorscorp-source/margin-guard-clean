@@ -1,10 +1,10 @@
 /**
- * Estimate PDF storage access (compatible phase).
- * Bucket remains public so existing email links keep working.
- * New sends emit a Netlify Function URL bound to that quote's object path
- * (HMAC of public token + canonical path). A valid token cannot open another
- * PDF in the same tenant. Owner/Seller sessions stay tenant-scoped.
- * Do not flip the production bucket in this phase.
+ * Estimate PDF storage access.
+ * New buckets are created private. Existing production buckets are not PATCHed
+ * here; the authorized flip is SUPABASE_MG_CORE_SECURITY_PRIVATE_ESTIMATE_PDFS.sql
+ * (not applied from CI). New sends emit get-estimate-pdf bound to that quote's
+ * object path (HMAC of public token + canonical path). Writes and signed URLs
+ * use service_role only. Do not add anon/authenticated storage policies.
  */
 "use strict";
 
@@ -102,7 +102,7 @@ async function ensureEstimatePdfBucket() {
     body: JSON.stringify({
       id: ESTIMATE_PDF_BUCKET,
       name: ESTIMATE_PDF_BUCKET,
-      public: true,
+      public: false,
       allowed_mime_types: ["application/pdf"],
     }),
   });

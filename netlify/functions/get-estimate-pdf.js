@@ -2,7 +2,8 @@
  * GET estimate PDF via public quote token or Owner/Seller session.
  * Public token + HMAC authorizes only that quote's canonical object path.
  * Owner/Seller sessions are tenant-scoped after role checks.
- * Compatible phase: does not change the production bucket.
+ * Signed URLs are minted server-side with service_role. The production
+ * bucket is not PATCHed by this function.
  */
 "use strict";
 

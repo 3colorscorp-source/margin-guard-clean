@@ -69,6 +69,7 @@ Core Security Shield V1 runs their **canonical** runners. It does not copy their
 - `scripts/test-core-remaining-modern-owner-gates.js`
 - `scripts/test-core-remaining-special-gates.js`
 - `scripts/test-core-estimate-pdf-access.js`
+- `scripts/test-core-private-estimate-pdfs.js`
 - `scripts/test-core-global-security-headers.js`
 - `scripts/test-core-estimates-hmac-verifier.js`
 - `scripts/test-core-estimates-server-hmac-verifier.js`
@@ -84,6 +85,9 @@ Core Security Shield V1 runs their **canonical** runners. It does not copy their
 - `SUPABASE_MG_CORE_SECURITY_HARDENING_1.sql`
 - `SUPABASE_MG_CORE_SECURITY_HARDENING_1_ROLLBACK.sql`
 - `SUPABASE_MG_CORE_SECURITY_HARDENING_1_VERIFY.sql`
+- `SUPABASE_MG_CORE_SECURITY_PRIVATE_ESTIMATE_PDFS.sql`
+- `SUPABASE_MG_CORE_SECURITY_PRIVATE_ESTIMATE_PDFS_ROLLBACK.sql`
+- `SUPABASE_MG_CORE_SECURITY_PRIVATE_ESTIMATE_PDFS_VERIFY.sql`
 
 ## Protected globs
 
@@ -113,6 +117,10 @@ These product files are **not** wholly owned by Core Security. The guard fails o
 | `netlify.toml` | Security headers, Functions config, protected-portal redirects, `public/` publish |
 
 See `scripts/mg-core-security-shield-v1.json` `sharedScan` for the exact markers.
+
+## Estimate PDF privatize (not applied)
+
+`SUPABASE_MG_CORE_SECURITY_PRIVATE_ESTIMATE_PDFS.sql` sets `storage.buckets.public = false` for `estimate-pdfs` only. It does **not** create policies or grant `anon`/`authenticated`. Do not apply from CI. Rollback exists and must not be executed except to reverse an authorized apply. Historical `/object/public/estimate-pdfs/` links expire when that SQL runs; `get-estimate-pdf` links and `estimate-public.html?token=` keep working.
 
 ## Supabase hardening 1 (not applied)
 
@@ -146,7 +154,7 @@ Fail message:
 - Secret boundaries (no service-role in the browser, dummy child env)
 - HMAC for Square, local Stripe (300s replay window), and estimates Zapier outbound fail-closed (`ESTIMATES_HMAC_FAIL_CLOSED`, Zapier v15) plus Catch Hook / server-side `verify-estimates-zapier-hmac` over `zapier_signed_payload` (Netlify env secret only; signed `final_to` / `final_additional_recipients` / `final_from_name`; unsigned Catch Hook POST is refused)
 - Estimate send/resend logs omit recipient PII, payloads, public/PDF URLs, signatures, and secrets
-- Estimate PDF downloads go through `get-estimate-pdf` (public quote token HMAC-bound to that quote's canonical object path, or Owner/Seller session with tenant match, 60s signed URL, `Cache-Control: private, no-store`). New Zapier `pdf_url` values are function URLs, not `/object/public/estimate-pdfs/`. The `estimate-pdfs` bucket stays public in this compatible phase. `tenant-logos` stays public. `contract-signed-pdfs` stays private.
+- Estimate PDF downloads go through `get-estimate-pdf` (public quote token HMAC-bound to that quote's canonical object path, or Owner/Seller session with tenant match, 60s signed URL, `Cache-Control: private, no-store`). New Zapier `pdf_url` values are function URLs, not `/object/public/estimate-pdfs/`. New `estimate-pdfs` buckets are created private. The production bucket is not PATCHed from functions; `SUPABASE_MG_CORE_SECURITY_PRIVATE_ESTIMATE_PDFS.sql` is the authorized flip (not applied from CI). Historical `/object/public/estimate-pdfs/` links expire when that SQL is applied. `tenant-logos` stays public. `contract-signed-pdfs` stays private.
 - Server-side pricing and financial endpoint session isolation
 - Global `netlify.toml` CSP (`object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`), HSTS (`max-age=31536000`), and Permissions-Policy (`microphone=(self)` for voice; camera and geolocation blocked)
 
