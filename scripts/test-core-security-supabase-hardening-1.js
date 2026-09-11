@@ -49,13 +49,25 @@ const TABLE_RESTORE_PRIVS = [
 const TABLE_RESTORE_GRANT =
   "SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN";
 
-const SEARCH_PATH_FUNCS = [
+const OMITTED_FROM_CATALOG = [
   "assert_device_session_same_tenant()",
   "assert_tenant_device_membership_same_tenant()",
+  "prevent_tenant_devices_tenant_id_change()",
+];
+
+const ADDED_FROM_CATALOG = [
+  "ai_closer_set_updated_at()",
+  "qsl_recalc()",
+  "sync_owner_profit_cols()",
+];
+
+const SEARCH_PATH_FUNCS = [
+  "ai_closer_set_updated_at()",
   "platform_activity_events_reject_mutation()",
   "platform_domain_event_outbox_reject_mutation()",
-  "prevent_tenant_devices_tenant_id_change()",
+  "qsl_recalc()",
   "set_updated_at()",
+  "sync_owner_profit_cols()",
   "tenant_contract_certificates_protect_immutable()",
   "tenant_contract_envelopes_assert_refs()",
   "tenant_contract_envelopes_touch_updated_at()",
@@ -111,6 +123,25 @@ function gitFiles() {
     .filter(Boolean);
 }
 
+function extractAlterTargets(sql, action) {
+  const re = new RegExp(
+    "ALTER FUNCTION public\\.([^\\s(]+(?:\\([^)]*\\))?)\\s+" + action + " search_path",
+    "g"
+  );
+  const out = [];
+  let m;
+  while ((m = re.exec(String(sql || ""))) !== null) {
+    out.push(m[1].replace(/\s+/g, " "));
+  }
+  return out;
+}
+
+function extractVerifyFns(sql) {
+  const block = String(sql || "").match(/fns text\[\] := ARRAY\[([\s\S]*?)\];/);
+  if (!block) return [];
+  return (block[1].match(/'public\.([^']+)'/g) || []).map((s) => s.slice("'public.".length, -1));
+}
+
 function countMatches(text, re) {
   const m = String(text || "").match(re);
   return m ? m.length : 0;
@@ -157,6 +188,38 @@ function main() {
     );
     ok("verify names " + ident, verify.indexOf("public." + ident) >= 0);
   });
+
+  ok(
+    "apply inventory matches frozen 34 exactly",
+    JSON.stringify(extractAlterTargets(apply, "SET")) === JSON.stringify(SEARCH_PATH_FUNCS)
+  );
+  ok(
+    "rollback inventory matches frozen 34 exactly",
+    JSON.stringify(extractAlterTargets(rollback, "RESET")) === JSON.stringify(SEARCH_PATH_FUNCS)
+  );
+  ok(
+    "verify inventory matches frozen 34 exactly",
+    JSON.stringify(extractVerifyFns(verify)) === JSON.stringify(SEARCH_PATH_FUNCS)
+  );
+
+  OMITTED_FROM_CATALOG.forEach((ident) => {
+    ok("apply omits already-corrected " + ident, apply.indexOf(ident) < 0);
+    ok("rollback omits already-corrected " + ident, rollback.indexOf(ident) < 0);
+    ok("verify omits already-corrected " + ident, verify.indexOf(ident) < 0);
+  });
+
+  ADDED_FROM_CATALOG.forEach((ident) => {
+    ok("apply includes catalog function " + ident, apply.indexOf("ALTER FUNCTION public." + ident) >= 0);
+    ok(
+      "rollback restores prior proconfig of " + ident,
+      rollback.indexOf("ALTER FUNCTION public." + ident + " RESET search_path;") >= 0
+    );
+    ok("verify includes catalog function " + ident, verify.indexOf("public." + ident) >= 0);
+  });
+
+  ok("verify scans public pg_proc for remaining mutable search_path", /nspname = 'public'/.test(verify));
+  ok("verify fails on any remaining public mutable search_path", /public function still has mutable search_path/.test(verify));
+  ok("verify dynamic scan uses pg_proc proconfig", /p\.prokind IN \('f', 'p'\)/.test(verify));
 
   TABLES.forEach((tbl) => {
     ok("apply revokes PUBLIC on " + tbl, apply.indexOf("REVOKE ALL ON TABLE public." + tbl + " FROM PUBLIC;") >= 0);
@@ -300,7 +363,7 @@ function main() {
     "manifest hardening path is frozen",
     hardening && hardening.path === "scripts/test-core-security-supabase-hardening-1.js"
   );
-  ok("manifest hardening minPassed is 309", hardening && hardening.minPassed === 309);
+  ok("manifest hardening minPassed is 333", hardening && hardening.minPassed === 333);
   ok("handler inventory stays 10", Array.isArray(manifest.handlerInventory) && manifest.handlerInventory.length === 10);
 
   console.log("\nCore Security Supabase hardening 1: " + passed + " passed");

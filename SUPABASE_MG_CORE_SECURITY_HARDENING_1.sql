@@ -9,9 +9,8 @@
 --   * No .rpc() calls exist in public/ or netlify/ JS for the mutation RPCs.
 --   * Netlify handlers read/write those tables through supabaseRequest (service_role).
 --
--- 34 ALTER FUNCTION signatures: 26 from verified CREATE FUNCTION in this
--- repository (no SET search_path) + 8 production helpers/RPCs named with
--- identity arguments supplied for this PR (no overloads invented).
+-- 34 ALTER FUNCTION signatures from the production public catalog of
+-- functions with mutable search_path (no overloads invented).
 
 BEGIN;
 
@@ -95,17 +94,17 @@ REVOKE ALL ON FUNCTION public.mg_role() FROM anon;
 GRANT EXECUTE ON FUNCTION public.mg_role() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.mg_role() TO service_role;
 
-ALTER FUNCTION public.assert_device_session_same_tenant()
-SET search_path = pg_catalog, public;
-ALTER FUNCTION public.assert_tenant_device_membership_same_tenant()
+ALTER FUNCTION public.ai_closer_set_updated_at()
 SET search_path = pg_catalog, public;
 ALTER FUNCTION public.platform_activity_events_reject_mutation()
 SET search_path = pg_catalog, public;
 ALTER FUNCTION public.platform_domain_event_outbox_reject_mutation()
 SET search_path = pg_catalog, public;
-ALTER FUNCTION public.prevent_tenant_devices_tenant_id_change()
+ALTER FUNCTION public.qsl_recalc()
 SET search_path = pg_catalog, public;
 ALTER FUNCTION public.set_updated_at()
+SET search_path = pg_catalog, public;
+ALTER FUNCTION public.sync_owner_profit_cols()
 SET search_path = pg_catalog, public;
 ALTER FUNCTION public.tenant_contract_certificates_protect_immutable()
 SET search_path = pg_catalog, public;
