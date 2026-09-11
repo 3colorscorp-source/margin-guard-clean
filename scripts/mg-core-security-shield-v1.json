@@ -76,7 +76,7 @@
     {
       "id": "core-private-estimate-pdfs",
       "path": "scripts/test-core-private-estimate-pdfs.js",
-      "minPassed": 57
+      "minPassed": 80
     },
     {
       "id": "core-global-security-headers",

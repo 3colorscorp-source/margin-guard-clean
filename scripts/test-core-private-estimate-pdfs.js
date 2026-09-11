@@ -141,7 +141,7 @@ function applyPrivate(catalog) {
   const logos = findBucket(next, "tenant-logos");
   const contracts = findBucket(next, "contract-signed-pdfs");
   const row = next.find((b) => b.id === "estimate-pdfs" && b.name === "estimate-pdfs");
-  if (!row) throw new Error("missing estimate-pdfs");
+  if (!row) throw new Error("PRIVATE-ESTIMATE-PDFS APPLY FAIL: estimate-pdfs does not exist");
   row.public = false;
   const n = next.filter((b) => b.id === "estimate-pdfs" && b.name === "estimate-pdfs" && b.public === false).length;
   if (n !== 1) throw new Error("apply did not privatize estimate-pdfs");
@@ -153,11 +153,21 @@ function applyPrivate(catalog) {
 function rollbackPublic(catalog) {
   const next = catalog.map((row) => Object.assign({}, row));
   const row = next.find((b) => b.id === "estimate-pdfs" && b.name === "estimate-pdfs");
-  if (!row) throw new Error("missing estimate-pdfs");
+  if (!row) throw new Error("PRIVATE-ESTIMATE-PDFS ROLLBACK FAIL: estimate-pdfs does not exist");
   row.public = true;
   const n = next.filter((b) => b.id === "estimate-pdfs" && b.name === "estimate-pdfs" && b.public === true).length;
   if (n !== 1) throw new Error("rollback did not restore estimate-pdfs");
   return next;
+}
+
+function verifyPrivate(catalog) {
+  const row = findBucket(catalog, "estimate-pdfs");
+  if (!row || row.public !== false) throw new Error("PRIVATE-ESTIMATE-PDFS VERIFY FAIL: estimate-pdfs is not private");
+  const logos = findBucket(catalog, "tenant-logos");
+  if (logos && logos.public !== true) throw new Error("PRIVATE-ESTIMATE-PDFS VERIFY FAIL: tenant-logos must stay public");
+  const contracts = findBucket(catalog, "contract-signed-pdfs");
+  if (contracts && contracts.public !== false) throw new Error("PRIVATE-ESTIMATE-PDFS VERIFY FAIL: contract-signed-pdfs must stay private");
+  return true;
 }
 
 function anonymousPublicGet(catalog, objectPath) {
@@ -334,6 +344,25 @@ async function main() {
   ok("apply does not GRANT authenticated", applySql.indexOf("TO authenticated") < 0);
   ok("apply UPDATE targets only estimate-pdfs", /UPDATE storage\.buckets\s+SET public = false\s+WHERE id = 'estimate-pdfs'/.test(applySql));
   ok("SQL files refuse production apply from CI", applySql.indexOf("DO NOT apply from CI") >= 0);
+  ok("apply fails closed if estimate-pdfs is missing", applySql.indexOf("estimate-pdfs does not exist") >= 0);
+  ok("apply does not DELETE FROM", applySql.indexOf("DELETE FROM") < 0);
+  ok("rollback does not DELETE FROM", rollbackSql.indexOf("DELETE FROM") < 0);
+  ok("verify does not DELETE FROM", verifySql.indexOf("DELETE FROM") < 0);
+  ok("apply does not touch storage.objects", applySql.indexOf("storage.objects") < 0);
+  ok("rollback does not touch storage.objects", rollbackSql.indexOf("storage.objects") < 0);
+  ok("apply does not GRANT privileges", !/\bGRANT\s+(SELECT|INSERT|UPDATE|ALL|EXECUTE)\b/.test(applySql));
+  ok("apply does not INSERT", applySql.indexOf("INSERT ") < 0);
+
+  let missingThrew = "";
+  try {
+    applyPrivate([{ id: "tenant-logos", name: "tenant-logos", public: true }]);
+  } catch (err) {
+    missingThrew = String(err && err.message ? err.message : err);
+  }
+  ok(
+    "apply fails if estimate-pdfs does not exist",
+    missingThrew.indexOf("estimate-pdfs does not exist") >= 0
+  );
 
   const before = seedCatalog();
   eq("disposable catalog starts with public estimate-pdfs", findBucket(before, "estimate-pdfs").public, true);
@@ -341,17 +370,24 @@ async function main() {
   eq("anonymous public GET works while bucket is public", anonBefore.status, 200);
 
   const afterApply = applyPrivate(before);
+  ok("verify passes after apply", verifyPrivate(afterApply) === true);
   eq("apply privatizes only estimate-pdfs", findBucket(afterApply, "estimate-pdfs").public, false);
-  eq("apply leaves tenant-logos public", findBucket(afterApply, "tenant-logos").public, true);
-  eq("apply leaves contract-signed-pdfs private", findBucket(afterApply, "contract-signed-pdfs").public, false);
+  eq("tenant-logos remains public after apply", findBucket(afterApply, "tenant-logos").public, true);
+  eq("contract-signed-pdfs remains private after apply", findBucket(afterApply, "contract-signed-pdfs").public, false);
   const anonAfter = anonymousPublicGet(afterApply, INTERNAL_TEST_PATH);
   eq("anonymous public GET fails after privatize", anonAfter.status, 400);
   eq("anonymous failure is Bucket is not public", anonAfter.error, "Bucket is not public");
 
   const afterRollback = rollbackPublic(afterApply);
   eq("rollback restores public estimate-pdfs", findBucket(afterRollback, "estimate-pdfs").public, true);
-  eq("rollback leaves tenant-logos public", findBucket(afterRollback, "tenant-logos").public, true);
-  eq("rollback leaves contract-signed-pdfs private", findBucket(afterRollback, "contract-signed-pdfs").public, false);
+  eq("tenant-logos remains public after rollback", findBucket(afterRollback, "tenant-logos").public, true);
+  eq("contract-signed-pdfs remains private after rollback", findBucket(afterRollback, "contract-signed-pdfs").public, false);
+
+  const afterReapply = applyPrivate(afterRollback);
+  ok("verify passes after reapply", verifyPrivate(afterReapply) === true);
+  eq("reapply privatizes estimate-pdfs again", findBucket(afterReapply, "estimate-pdfs").public, false);
+  eq("tenant-logos remains public after reapply", findBucket(afterReapply, "tenant-logos").public, true);
+  eq("contract-signed-pdfs remains private after reapply", findBucket(afterReapply, "contract-signed-pdfs").public, false);
 
   eq("bucket name stays estimate-pdfs", ESTIMATE_PDF_BUCKET, "estimate-pdfs");
   ok("new buckets are created private", helperSrc.indexOf("public: false") >= 0);
@@ -359,6 +395,10 @@ async function main() {
   ok("helper never emits object/public URLs", helperSrc.indexOf("object/public") < 0);
   ok("send no longer emits public object URLs", sendSrc.indexOf("object/public/estimate-pdfs") < 0);
   ok("resend pdf_url stays empty", resendSrc.indexOf("pdf_url: \"\"") >= 0);
+  ok("resend still sends public_quote_url review link", resendSrc.indexOf("public_quote_url: publicUrl") >= 0);
+  ok("resend builds estimate-public.html via buildPublicQuoteUrl", resendSrc.indexOf("buildPublicQuoteUrl") >= 0);
+  ok("send still fills public_quote_url", sendSrc.indexOf("public_quote_url") >= 0 && sendSrc.indexOf("estimate-public.html") >= 0);
+  ok("resend is URL-only without generating a PDF", resendSrc.indexOf("no PDF") >= 0);
   ok("resend does not emit public estimate-pdfs URLs", resendSrc.indexOf("object/public/estimate-pdfs") < 0);
   ok("public quote send pipeline has no public storage PDF URL", publicSendSrc.indexOf("object/public/estimate-pdfs") < 0);
   ok("public estimate page has no storage PDF URL", publicPageSrc.indexOf("object/public/estimate-pdfs") < 0);
@@ -369,8 +409,10 @@ async function main() {
   ok("new email URL has path", access.indexOf("path=" + encodeURIComponent(INTERNAL_TEST_PATH)) >= 0 || access.indexOf("path=" + INTERNAL_TEST_PATH) >= 0);
   ok("new email URL has sig", /[?&]sig=[0-9a-f]{64}/.test(access));
   eq("signed URL TTL is 60s", SIGNED_URL_EXPIRES_SEC, 60);
-  ok("tenant-logos stays public", logoSrc.indexOf("public: true") >= 0);
-  ok("contract-signed-pdfs stays private", contractSrc.indexOf("public: false") >= 0);
+  ok("tenant-logos stays public", logoSrc.indexOf("tenant-logos") >= 0 && logoSrc.indexOf("public: true") >= 0);
+  ok("contract-signed-pdfs stays private", contractSrc.indexOf('STORAGE_BUCKET = "contract-signed-pdfs"') >= 0 && contractSrc.indexOf("public: false") >= 0);
+  ok("handler uses createEstimatePdfSignedUrl", fnSrc.indexOf("createEstimatePdfSignedUrl") >= 0);
+  ok("signed URLs are minted at /object/sign/", helperSrc.indexOf("/object/sign/${ESTIMATE_PDF_BUCKET}/") >= 0);
   ok("writes stay service_role", helperSrc.indexOf("Authorization: `Bearer ${key}`") >= 0);
   ok("handler does not add storage policies", fnSrc.indexOf("CREATE POLICY") < 0);
 
@@ -388,7 +430,9 @@ async function main() {
     eq("exact token+path+sig redirects", valid.statusCode, 302);
     eq("protected signed URL expires in 60s", captured.signExpires, 60);
     ok("sign request uses estimate-pdfs", captured.signPath.indexOf("/object/sign/estimate-pdfs/") >= 0);
+    ok("redirect is not a public object URL", String((valid.headers && valid.headers.Location) || "").indexOf("/object/public/") < 0);
     ok("valid body has no service_role", String(valid.body || "").indexOf("service_role") < 0);
+    ok("valid body has no service key", String(valid.body || "").indexOf("mg-private-estimate-pdfs-test-key") < 0);
 
     const other = await mod.handler(
       eventFor(null, { query: { path: OTHER_SAME_TENANT_PATH, token: TOKEN_A, sig: bound.sig } })
@@ -426,14 +470,18 @@ async function main() {
   ok(
     "docs record that historical public URLs expire at privatize",
     read("docs/CORE_SECURITY_AUDIT.md").indexOf("/object/public/estimate-pdfs/") >= 0 &&
-      read("docs/CORE_SECURITY_AUDIT.md").indexOf("historical") >= 0
+      /historical/i.test(read("docs/CORE_SECURITY_AUDIT.md"))
+  );
+  ok(
+    "docs say storage objects are not deleted",
+    read("docs/CORE_SECURITY_AUDIT.md").indexOf("no storage objects are deleted") >= 0
   );
 
   const manifest = JSON.parse(read("scripts/mg-core-security-shield-v1.json"));
   const suite = (manifest.required || []).find((row) => row && row.id === "core-private-estimate-pdfs");
   ok("manifest lists private estimate PDF suite", Boolean(suite));
   ok("manifest private estimate PDF path is frozen", suite && suite.path === "scripts/test-core-private-estimate-pdfs.js");
-  eq("manifest private estimate PDF minPassed is 57", suite && suite.minPassed, 57);
+  eq("manifest private estimate PDF minPassed is 80", suite && suite.minPassed, 80);
 
   console.log("\nCore private estimate PDFs: " + passed + " passed");
 }

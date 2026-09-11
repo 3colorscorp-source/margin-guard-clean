@@ -10,6 +10,18 @@
 
 BEGIN;
 
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM storage.buckets
+    WHERE id = 'estimate-pdfs'
+      AND name = 'estimate-pdfs'
+  ) THEN
+    RAISE EXCEPTION 'PRIVATE-ESTIMATE-PDFS APPLY FAIL: estimate-pdfs does not exist';
+  END IF;
+END $$;
+
 UPDATE storage.buckets
 SET public = false
 WHERE id = 'estimate-pdfs'
