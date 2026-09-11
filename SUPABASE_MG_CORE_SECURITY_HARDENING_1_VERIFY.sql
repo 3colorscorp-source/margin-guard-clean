@@ -19,12 +19,12 @@ DECLARE
     'users'
   ];
   fns text[] := ARRAY[
-    'public.assert_device_session_same_tenant()',
-    'public.assert_tenant_device_membership_same_tenant()',
+    'public.ai_closer_set_updated_at()',
     'public.platform_activity_events_reject_mutation()',
     'public.platform_domain_event_outbox_reject_mutation()',
-    'public.prevent_tenant_devices_tenant_id_change()',
+    'public.qsl_recalc()',
     'public.set_updated_at()',
+    'public.sync_owner_profit_cols()',
     'public.tenant_contract_certificates_protect_immutable()',
     'public.tenant_contract_envelopes_assert_refs()',
     'public.tenant_contract_envelopes_touch_updated_at()',
@@ -130,6 +130,17 @@ BEGIN
       RAISE EXCEPTION 'HARDENING-1 VERIFY FAIL: mutable search_path on %', ident;
     END IF;
   END LOOP;
+
+  SELECT string_agg(p.oid::regprocedure::text, ', ' ORDER BY p.proname, p.oid)
+  INTO bad
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public'
+    AND p.prokind IN ('f', 'p')
+    AND coalesce(array_to_string(p.proconfig, ','), '') NOT LIKE '%search_path=%';
+  IF bad IS NOT NULL THEN
+    RAISE EXCEPTION 'HARDENING-1 VERIFY FAIL: public function still has mutable search_path: %', bad;
+  END IF;
 
   FOREACH ident IN ARRAY mut_rpcs LOOP
     IF has_function_privilege('anon', ident, 'EXECUTE')

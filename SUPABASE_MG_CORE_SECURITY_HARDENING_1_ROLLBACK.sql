@@ -3,7 +3,9 @@
 -- yaagobzgozzozibublmj: table ACL arwdDxtm (SELECT, INSERT, UPDATE, DELETE,
 -- TRUNCATE, REFERENCES, TRIGGER, MAINTAIN) for anon, authenticated, and
 -- service_role. Functions had EXECUTE for PUBLIC, anon, authenticated, and
--- service_role. All 34 functions had proconfig = null.
+-- service_role. All 34 catalog functions, including
+-- ai_closer_set_updated_at(), qsl_recalc(), and sync_owner_profit_cols(),
+-- had proconfig = null. RESET search_path restores that exact prior state.
 -- DO NOT execute this file. It is kept for emergency recovery only.
 -- Re-granting anon/authenticated would reopen Data API access.
 -- Does not modify policies or RLS.
@@ -66,12 +68,12 @@ GRANT EXECUTE ON FUNCTION public.mg_role() TO PUBLIC;
 GRANT EXECUTE ON FUNCTION public.mg_role() TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.mg_role() TO service_role;
 
-ALTER FUNCTION public.assert_device_session_same_tenant() RESET search_path;
-ALTER FUNCTION public.assert_tenant_device_membership_same_tenant() RESET search_path;
+ALTER FUNCTION public.ai_closer_set_updated_at() RESET search_path;
 ALTER FUNCTION public.platform_activity_events_reject_mutation() RESET search_path;
 ALTER FUNCTION public.platform_domain_event_outbox_reject_mutation() RESET search_path;
-ALTER FUNCTION public.prevent_tenant_devices_tenant_id_change() RESET search_path;
+ALTER FUNCTION public.qsl_recalc() RESET search_path;
 ALTER FUNCTION public.set_updated_at() RESET search_path;
+ALTER FUNCTION public.sync_owner_profit_cols() RESET search_path;
 ALTER FUNCTION public.tenant_contract_certificates_protect_immutable() RESET search_path;
 ALTER FUNCTION public.tenant_contract_envelopes_assert_refs() RESET search_path;
 ALTER FUNCTION public.tenant_contract_envelopes_touch_updated_at() RESET search_path;
