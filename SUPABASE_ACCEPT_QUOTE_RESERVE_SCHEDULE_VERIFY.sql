@@ -42,7 +42,13 @@ SELECT
 FROM def
 CROSS JOIN privs;
 
--- Occupancy simulation (new predicate). No names, emails, or tokens.
+-- Occupancy simulation. No names, emails, or tokens.
+-- Live expectation if data is unchanged for 2026-0161 / occupy 2026-09-30:
+--   released = true
+--   legacy_date_overlap = true (signed_at → due_date)
+--   rpc_conflict_after_release = false
+--   rpc_conflict_count = 0
+--   legacy_conflict_count = 1
 WITH target_quote AS (
   SELECT q.id AS quote_id, q.tenant_id
   FROM public.quotes q
@@ -119,6 +125,14 @@ projects AS (
       coalesce(snap.commitment_date, tp.due_date),
       (tp.signed_at AT TIME ZONE 'utc')::date
     ) AS occupy_end,
+    coalesce(
+      (tp.signed_at AT TIME ZONE 'utc')::date,
+      tp.due_date
+    ) AS legacy_occupy_start,
+    coalesce(
+      tp.due_date,
+      (tp.signed_at AT TIME ZONE 'utc')::date
+    ) AS legacy_occupy_end,
     p.occupy_day
   FROM public.tenant_projects tp
   JOIN target_quote tq
@@ -140,36 +154,52 @@ scored AS (
   SELECT
     pr.*,
     (
-      NOT pr.released
-      AND pr.occupy_start IS NOT NULL
+      pr.occupy_start IS NOT NULL
       AND pr.occupy_end IS NOT NULL
       AND pr.occupy_end >= pr.occupy_start
       AND daterange(pr.occupy_start, pr.occupy_end, '[]')
         && daterange(pr.occupy_day, pr.occupy_day, '[]')
-    ) AS overlaps_2026_09_30_under_rpc
+    ) AS raw_date_overlap,
+    (
+      pr.legacy_occupy_start IS NOT NULL
+      AND pr.legacy_occupy_end IS NOT NULL
+      AND pr.legacy_occupy_end >= pr.legacy_occupy_start
+      AND daterange(pr.legacy_occupy_start, pr.legacy_occupy_end, '[]')
+        && daterange(pr.occupy_day, pr.occupy_day, '[]')
+    ) AS legacy_date_overlap
   FROM projects pr
+),
+flagged AS (
+  SELECT
+    sc.*,
+    (NOT sc.released AND sc.raw_date_overlap) AS rpc_conflict_after_release
+  FROM scored sc
 ),
 stats AS (
   SELECT
     count(*)::int AS active_count,
-    count(*) FILTER (WHERE overlaps_2026_09_30_under_rpc)::int AS rpc_conflict_count,
+    count(*) FILTER (WHERE rpc_conflict_after_release)::int AS rpc_conflict_count,
     count(*) FILTER (
-      WHERE released AND overlaps_2026_09_30_under_rpc
-    )::int AS js_released_but_rpc_blocks_count
-  FROM scored
+      WHERE released AND raw_date_overlap
+    )::int AS released_with_raw_date_overlap_count,
+    count(*) FILTER (WHERE legacy_date_overlap)::int AS legacy_conflict_count
+  FROM flagged
 )
 SELECT
-  sc.project_id,
-  sc.status,
-  sc.signed_date,
-  sc.due_date,
-  sc.finish_date AS commitment_date,
-  sc.released AS released_by_js,
-  sc.overlaps_2026_09_30_under_rpc,
+  fl.project_id,
+  fl.status,
+  fl.signed_date,
+  fl.due_date,
+  fl.finish_date AS commitment_date,
+  fl.released,
+  fl.raw_date_overlap,
+  fl.legacy_date_overlap,
+  fl.rpc_conflict_after_release,
   NULL::int AS active_count,
   NULL::int AS rpc_conflict_count,
-  NULL::int AS js_released_but_rpc_blocks_count
-FROM scored sc
+  NULL::int AS released_with_raw_date_overlap_count,
+  NULL::int AS legacy_conflict_count
+FROM flagged fl
 UNION ALL
 SELECT
   NULL,
@@ -179,8 +209,11 @@ SELECT
   NULL,
   NULL,
   NULL,
+  NULL,
+  NULL,
   st.active_count,
   st.rpc_conflict_count,
-  st.js_released_but_rpc_blocks_count
+  st.released_with_raw_date_overlap_count,
+  st.legacy_conflict_count
 FROM stats st
 ORDER BY project_id NULLS LAST;

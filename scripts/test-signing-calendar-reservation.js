@@ -143,13 +143,23 @@ function sqlReleased(row, todayUtc) {
   return completeExecution || incompleteReporting;
 }
 
-function sqlRpcConflicts(row, occupyStart, occupyEnd, todayUtc) {
-  if (sqlReleased(row, todayUtc)) return false;
+function sqlRawDateOverlap(row, occupyStart, occupyEnd) {
   const finishDate = sqlFinishDate(row.commitment_date, row.due_date);
   const occupyS = row.signed_date || finishDate;
   const occupyE = finishDate || occupyS;
   if (!occupyS || !occupyE || occupyE < occupyS) return false;
   return periodsOverlapInclusive(occupyS, occupyE, occupyStart, occupyEnd);
+}
+
+function sqlLegacyDateOverlap(row, occupyStart, occupyEnd) {
+  const occupyS = row.signed_date || row.due_date;
+  const occupyE = row.due_date || row.signed_date;
+  if (!occupyS || !occupyE || occupyE < occupyS) return false;
+  return periodsOverlapInclusive(occupyS, occupyE, occupyStart, occupyEnd);
+}
+
+function sqlRpcConflicts(row, occupyStart, occupyEnd, todayUtc) {
+  return !sqlReleased(row, todayUtc) && sqlRawDateOverlap(row, occupyStart, occupyEnd);
 }
 
 ok(
@@ -239,6 +249,18 @@ ok("RPC EXECUTE remains service_role only in file", /grant execute[\s\S]*to serv
 ok("RPC still revokes anon and authenticated", /from anon/.test(rpcSql) && /from authenticated/.test(rpcSql));
 ok("VERIFY SQL is read-only", /DO NOT RUN WRITES/.test(rpcVerifySql) && !/^\s*(insert|update|delete|create|alter)\b/im.test(rpcVerifySql));
 ok("VERIFY SQL does not mention migration_baselines as a join", !/join public.tenant_project_migration_baselines/i.test(rpcVerifySql));
+ok(
+  "VERIFY SQL keeps raw overlap distinct from post-release conflict",
+  /raw_date_overlap/.test(rpcVerifySql) &&
+    /rpc_conflict_after_release/.test(rpcVerifySql) &&
+    /NOT sc.released AND sc.raw_date_overlap/.test(rpcVerifySql)
+);
+ok(
+  "VERIFY SQL does not treat released rows as RPC conflicts",
+  !/js_released_but_rpc_blocks_count/.test(rpcVerifySql) &&
+    /released_with_raw_date_overlap_count/.test(rpcVerifySql) &&
+    /legacy_conflict_count/.test(rpcVerifySql)
+);
 ok("ROLLBACK SQL restores due_date daterange occupancy", /coalesce\(p.due_date, \(p.signed_at at time zone 'utc'\)::date\)/.test(rpcRollbackSql));
 ok("ROLLBACK SQL keeps advisory lock and service_role grant", /pg_advisory_xact_lock/.test(rpcRollbackSql) && /to service_role/.test(rpcRollbackSql));
 ok("diagnostic SQL is read-only", /DO NOT RUN WRITES/.test(diagSql));
@@ -283,6 +305,14 @@ ok(
     sqlReleased(liveShape, todayUtc)
   );
   ok(
+    "live stale due_date still has legacy overlap on 2026-09-30",
+    sqlLegacyDateOverlap(liveShape, occupyStart, occupyEnd)
+  );
+  ok(
+    "live JS finish does not raw-overlap 2026-09-30",
+    !sqlRawDateOverlap(liveShape, occupyStart, occupyEnd)
+  );
+  ok(
     "live stale due_date does not RPC-block 2026-09-30 after JS parity",
     !sqlRpcConflicts(liveShape, occupyStart, occupyEnd, todayUtc)
   );
@@ -307,8 +337,11 @@ ok(
     sqlCompletedDays(5, 5, 1) === 5
   );
   ok(
-    "complete execution does not RPC-block overlapping occupy day",
-    !sqlRpcConflicts(completeExecution, occupyStart, occupyEnd, todayUtc)
+    "released + raw overlap stays true without becoming an RPC conflict",
+    sqlReleased(completeExecution, todayUtc) &&
+      sqlRawDateOverlap(completeExecution, occupyStart, occupyEnd) &&
+      sqlLegacyDateOverlap(completeExecution, occupyStart, occupyEnd) &&
+      !sqlRpcConflicts(completeExecution, occupyStart, occupyEnd, todayUtc)
   );
 
   const stillActive = {
