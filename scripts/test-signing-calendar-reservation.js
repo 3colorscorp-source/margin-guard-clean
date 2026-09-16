@@ -106,7 +106,61 @@ const zapierSrc = read("netlify/functions/send-quote-zapier.js");
 const appSrc = read("public/js/app.js");
 const builderSrc = read("public/js/estimate-builder.js");
 const rpcSql = read("SUPABASE_ACCEPT_QUOTE_RESERVE_SCHEDULE.sql");
+const rpcVerifySql = read("SUPABASE_ACCEPT_QUOTE_RESERVE_SCHEDULE_VERIFY.sql");
+const rpcRollbackSql = read("SUPABASE_ACCEPT_QUOTE_RESERVE_SCHEDULE_ROLLBACK.sql");
 const diagSql = read("SUPABASE_DIAG_PREMATURE_FIRMAR_OCCUPANCY.sql");
+
+function sqlFinishDate(commitmentDate, dueDate) {
+  return commitmentDate || dueDate || null;
+}
+
+function sqlEstimatedDays(snapEst, projectEst) {
+  const snap = Number(snapEst);
+  const proj = Number(projectEst);
+  if (Number.isFinite(snap) && snap !== 0) return snap;
+  if (Number.isFinite(proj) && proj !== 0) return proj;
+  return 0;
+}
+
+function sqlCompletedDays(progressRowCount, completedCount, reportDays) {
+  if (Number(progressRowCount) > 0) return Number(completedCount) || 0;
+  return Number(reportDays) || 0;
+}
+
+function sqlReleased(row, todayUtc) {
+  const estimatedDays = sqlEstimatedDays(row.snap_estimated_days, row.estimated_days);
+  const completedDays = sqlCompletedDays(
+    row.progress_row_count,
+    row.completed_count,
+    row.report_days
+  );
+  const finishDate = sqlFinishDate(row.commitment_date, row.due_date);
+  const delayedCount = Number(row.delayed_count) || 0;
+  const completedCount = Number(row.completed_count) || 0;
+  const completeExecution = estimatedDays > 0 && completedDays >= estimatedDays;
+  const incompleteReporting =
+    Boolean(finishDate) && finishDate < todayUtc && delayedCount === 0 && completedCount === 0;
+  return completeExecution || incompleteReporting;
+}
+
+function sqlRawDateOverlap(row, occupyStart, occupyEnd) {
+  const finishDate = sqlFinishDate(row.commitment_date, row.due_date);
+  const occupyS = row.signed_date || finishDate;
+  const occupyE = finishDate || occupyS;
+  if (!occupyS || !occupyE || occupyE < occupyS) return false;
+  return periodsOverlapInclusive(occupyS, occupyE, occupyStart, occupyEnd);
+}
+
+function sqlLegacyDateOverlap(row, occupyStart, occupyEnd) {
+  const occupyS = row.signed_date || row.due_date;
+  const occupyE = row.due_date || row.signed_date;
+  if (!occupyS || !occupyE || occupyE < occupyS) return false;
+  return periodsOverlapInclusive(occupyS, occupyE, occupyStart, occupyEnd);
+}
+
+function sqlRpcConflicts(row, occupyStart, occupyEnd, todayUtc) {
+  return !sqlReleased(row, todayUtc) && sqlRawDateOverlap(row, occupyStart, occupyEnd);
+}
 
 ok(
   "1. Firmar click does not call upsert-tenant-project",
@@ -179,6 +233,36 @@ ok("app.js Firmar no longer upserts a local signed project", !/upsertSignedProje
 ok("public client sees friendly 409 copy", /error_es/.test(builderSrc) && /ya no están disponibles/.test(builderSrc));
 ok("RPC file is marked do-not-apply", /do not apply to production/i.test(rpcSql));
 ok("RPC uses advisory lock and schedule_conflict", /pg_advisory_xact_lock/.test(rpcSql) && /schedule_conflict/.test(rpcSql));
+ok("RPC occupancy uses snapshot commitment_date", /commitment_date/.test(rpcSql));
+ok("RPC occupancy aggregates day_progress by tenant and project", /tenant_project_day_progress/.test(rpcSql) && /group by dp.tenant_id, dp.project_id/.test(rpcSql));
+ok("RPC occupancy aggregates reports by tenant and project", /tenant_project_reports/.test(rpcSql) && /group by r.tenant_id, r.project_id/.test(rpcSql));
+ok(
+  "RPC has complete-execution release branch",
+  /estimated_days > 0 and o.completed_days >= o.estimated_days/.test(rpcSql)
+);
+ok(
+  "RPC has incomplete-reporting expired-finish release branch",
+  /delayed_count = 0/.test(rpcSql) && /completed_count = 0/.test(rpcSql)
+);
+ok("RPC does not reference missing migration_baselines", !/tenant_project_migration_baselines/.test(rpcSql));
+ok("RPC EXECUTE remains service_role only in file", /grant execute[\s\S]*to service_role/i.test(rpcSql));
+ok("RPC still revokes anon and authenticated", /from anon/.test(rpcSql) && /from authenticated/.test(rpcSql));
+ok("VERIFY SQL is read-only", /DO NOT RUN WRITES/.test(rpcVerifySql) && !/^\s*(insert|update|delete|create|alter)\b/im.test(rpcVerifySql));
+ok("VERIFY SQL does not mention migration_baselines as a join", !/join public.tenant_project_migration_baselines/i.test(rpcVerifySql));
+ok(
+  "VERIFY SQL keeps raw overlap distinct from post-release conflict",
+  /raw_date_overlap/.test(rpcVerifySql) &&
+    /rpc_conflict_after_release/.test(rpcVerifySql) &&
+    /NOT sc.released AND sc.raw_date_overlap/.test(rpcVerifySql)
+);
+ok(
+  "VERIFY SQL does not treat released rows as RPC conflicts",
+  !/js_released_but_rpc_blocks_count/.test(rpcVerifySql) &&
+    /released_with_raw_date_overlap_count/.test(rpcVerifySql) &&
+    /legacy_conflict_count/.test(rpcVerifySql)
+);
+ok("ROLLBACK SQL restores due_date daterange occupancy", /coalesce\(p.due_date, \(p.signed_at at time zone 'utc'\)::date\)/.test(rpcRollbackSql));
+ok("ROLLBACK SQL keeps advisory lock and service_role grant", /pg_advisory_xact_lock/.test(rpcRollbackSql) && /to service_role/.test(rpcRollbackSql));
 ok("diagnostic SQL is read-only", /DO NOT RUN WRITES/.test(diagSql));
 ok(
   "conversion remains idempotent via already_accepted path",
@@ -200,6 +284,86 @@ ok(
   "period overlap: adjacent after last inclusive day does not overlap",
   !periodsOverlapInclusive("2026-09-07", "2026-09-11", "2026-09-12", "2026-09-16")
 );
+
+{
+  const todayUtc = "2026-09-16";
+  const occupyStart = "2026-09-30";
+  const occupyEnd = "2026-09-30";
+  const liveShape = {
+    signed_date: "2026-08-04",
+    commitment_date: "2026-08-14",
+    due_date: "2026-12-31",
+    snap_estimated_days: 0,
+    estimated_days: 5,
+    progress_row_count: 0,
+    completed_count: 0,
+    delayed_count: 0,
+    report_days: 0,
+  };
+  ok(
+    "release branch 2: expired finish without progress is released",
+    sqlReleased(liveShape, todayUtc)
+  );
+  ok(
+    "live stale due_date still has legacy overlap on 2026-09-30",
+    sqlLegacyDateOverlap(liveShape, occupyStart, occupyEnd)
+  );
+  ok(
+    "live JS finish does not raw-overlap 2026-09-30",
+    !sqlRawDateOverlap(liveShape, occupyStart, occupyEnd)
+  );
+  ok(
+    "live stale due_date does not RPC-block 2026-09-30 after JS parity",
+    !sqlRpcConflicts(liveShape, occupyStart, occupyEnd, todayUtc)
+  );
+
+  const completeExecution = {
+    signed_date: "2026-08-04",
+    commitment_date: "2026-12-31",
+    due_date: "2026-12-31",
+    snap_estimated_days: 5,
+    estimated_days: 5,
+    progress_row_count: 5,
+    completed_count: 5,
+    delayed_count: 0,
+    report_days: 1,
+  };
+  ok(
+    "release branch 1: completed_days >= estimated_days is released",
+    sqlReleased(completeExecution, todayUtc)
+  );
+  ok(
+    "complete execution prefers day_progress over report_days",
+    sqlCompletedDays(5, 5, 1) === 5
+  );
+  ok(
+    "released + raw overlap stays true without becoming an RPC conflict",
+    sqlReleased(completeExecution, todayUtc) &&
+      sqlRawDateOverlap(completeExecution, occupyStart, occupyEnd) &&
+      sqlLegacyDateOverlap(completeExecution, occupyStart, occupyEnd) &&
+      !sqlRpcConflicts(completeExecution, occupyStart, occupyEnd, todayUtc)
+  );
+
+  const stillActive = {
+    signed_date: "2026-08-04",
+    commitment_date: "2026-10-15",
+    due_date: "2026-12-31",
+    snap_estimated_days: 10,
+    estimated_days: 10,
+    progress_row_count: 0,
+    completed_count: 0,
+    delayed_count: 0,
+    report_days: 0,
+  };
+  ok(
+    "active unreleased project is not released",
+    !sqlReleased(stillActive, todayUtc)
+  );
+  ok(
+    "active unreleased project still RPC-blocks 2026-09-30",
+    sqlRpcConflicts(stillActive, occupyStart, occupyEnd, todayUtc)
+  );
+}
 
 ok(
   "blocking analysis uses occupation_end",

@@ -1,37 +1,11 @@
 -- =============================================================================
--- Margin Guard | accept quote + reserve crew schedule (atomic)
+-- ROLLBACK | mg_accept_quote_reserving_schedule occupancy → signed_at/due_date
 -- =============================================================================
--- STATUS: MANUAL SUPABASE APPLY REQUIRED — do not run from CI, Netlify deploy,
--- or this PR. Do not apply to production until an explicit apply is authorized.
---
--- PURPOSE:
---   One service-role RPC that, in a single transaction:
---     1. advisory-locks the tenant
---     2. rejects overlapping active tenant_projects (same statuses as the calendar)
---     3. marks the quote accepted
---     4. inserts a signed tenant_projects row when none exists for that quote
---   Two near-simultaneous public accepts cannot both insert overlapping signed
---   projects. Dates are never rewritten.
---
--- Occupancy (JS calendar parity, production tables only):
---   finish_date = COALESCE(snapshot.commitment_date, tenant_projects.due_date)
---   estimated_days = COALESCE(NULLIF(snapshot.estimated_days, 0),
---                             NULLIF(tenant_projects.estimated_days, 0), 0)
---   completed_days = day_progress completed_count when progress rows exist,
---                    else sum(tenant_project_reports.days)
---   released =
---     (estimated_days > 0 AND completed_days >= estimated_days)
---     OR (finish_date < utc today AND delayed_count = 0 AND completed_count = 0)
---   Only NOT released rows may schedule_conflict.
---   Inclusive daterange on occupy_start/occupy_end.
---   Production-compatible: snapshots, day_progress, and reports only.
---
--- NOT IN THIS MIGRATION:
---   * changes to calendar ACTIVE_STATUSES
---   * holiday calendars
---   * remaining-days + scheduleBufferDays extension
---   * remote data backfill
---   * browser EXECUTE grants
+-- STATUS: MANUAL SUPABASE APPLY REQUIRED — do not run from CI or auto-deploy.
+-- Restores the pre-parity race-guard body (inclusive daterange on
+-- signed_at::date and tenant_projects.due_date only).
+-- Same signature, lock, isolation, statuses, and service_role EXECUTE.
+-- Do not apply unless rolling back the JS-parity occupancy patch.
 -- =============================================================================
 
 create or replace function public.mg_accept_quote_reserving_schedule(
@@ -105,84 +79,18 @@ begin
     );
   end if;
 
-  select occ.project_id into v_conflict
-  from (
-    with day_progress_agg as (
-      select
-        dp.tenant_id,
-        dp.project_id,
-        count(*) filter (where lower(dp.status) = 'completed') as completed_count,
-        count(*) filter (where lower(dp.status) = 'delayed') as delayed_count,
-        count(*) as progress_row_count
-      from public.tenant_project_day_progress dp
-      where dp.tenant_id = p_tenant_id
-      group by dp.tenant_id, dp.project_id
-    ),
-    report_agg as (
-      select
-        r.tenant_id,
-        r.project_id,
-        coalesce(sum(r.days), 0) as report_days
-      from public.tenant_project_reports r
-      where r.tenant_id = p_tenant_id
-      group by r.tenant_id, r.project_id
-    ),
-    occupancy as (
-      select
-        p.id as project_id,
-        coalesce(snap.commitment_date, p.due_date) as finish_date,
-        coalesce(
-          nullif(snap.estimated_days, 0),
-          nullif(p.estimated_days, 0),
-          0
-        ) as estimated_days,
-        case
-          when coalesce(dpa.progress_row_count, 0) > 0
-            then coalesce(dpa.completed_count, 0)
-          else coalesce(ra.report_days, 0)
-        end as completed_days,
-        coalesce(dpa.completed_count, 0) as completed_count,
-        coalesce(dpa.delayed_count, 0) as delayed_count,
-        coalesce(
-          (p.signed_at at time zone 'utc')::date,
-          coalesce(snap.commitment_date, p.due_date)
-        ) as occupy_start,
-        coalesce(
-          coalesce(snap.commitment_date, p.due_date),
-          (p.signed_at at time zone 'utc')::date
-        ) as occupy_end
-      from public.tenant_projects p
-      left join public.tenant_project_operational_snapshots snap
-        on snap.tenant_id = p.tenant_id
-       and snap.project_id = p.id
-      left join day_progress_agg dpa
-        on dpa.tenant_id = p.tenant_id
-       and dpa.project_id = p.id
-      left join report_agg ra
-        on ra.tenant_id = p.tenant_id
-       and ra.project_id = p.id
-      where p.tenant_id = p_tenant_id
-        and p.status in ('signed', 'deposit_paid', 'assigned', 'in_progress')
-        and (v_existing is null or p.id <> v_existing)
-        and p.quote_id is distinct from p_quote_id
-    )
-    select o.project_id
-    from occupancy o
-    where not (
-        (o.estimated_days > 0 and o.completed_days >= o.estimated_days)
-        or (
-          o.finish_date < (timezone('utc', now()))::date
-          and o.delayed_count = 0
-          and o.completed_count = 0
-        )
-      )
-      and o.occupy_start is not null
-      and o.occupy_end is not null
-      and o.occupy_end >= o.occupy_start
-      and daterange(o.occupy_start, o.occupy_end, '[]')
-        && daterange(p_occupy_start, p_occupy_end, '[]')
-    limit 1
-  ) occ;
+  select p.id into v_conflict
+  from public.tenant_projects p
+  where p.tenant_id = p_tenant_id
+    and p.status in ('signed', 'deposit_paid', 'assigned', 'in_progress')
+    and (v_existing is null or p.id <> v_existing)
+    and p.quote_id is distinct from p_quote_id
+    and daterange(
+          coalesce((p.signed_at at time zone 'utc')::date, p.due_date),
+          coalesce(p.due_date, (p.signed_at at time zone 'utc')::date),
+          '[]'
+        ) && daterange(p_occupy_start, p_occupy_end, '[]')
+  limit 1;
 
   if v_conflict is not null then
     return jsonb_build_object(
@@ -303,7 +211,7 @@ $$;
 comment on function public.mg_accept_quote_reserving_schedule(
   uuid, uuid, date, date, timestamptz, jsonb
 ) is
-  'Atomic quote accept + signed project insert with tenant schedule lock. Occupancy matches JS calendar release (complete execution or expired finish without progress). Service-role only. Do not apply until authorized.';
+  'Atomic quote accept + signed project insert with tenant schedule lock. Service-role only. Do not apply until authorized.';
 
 revoke all on function public.mg_accept_quote_reserving_schedule(
   uuid, uuid, date, date, timestamptz, jsonb
