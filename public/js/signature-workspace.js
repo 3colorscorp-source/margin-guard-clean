@@ -2,6 +2,38 @@
  * CH-012A — Owner Signature Workspace (UI only).
  * Reuses CH-011A–I APIs. No new backend.
  */
+/* MG_SW_STATUS_BEGIN */
+function mgSwIsEmailAlreadySent(emailUiStatus) {
+  return String(emailUiStatus || "").toLowerCase() === "sent";
+}
+
+function mgSwIsEmailDeliveryFailed(emailUiStatus) {
+  const st = String(emailUiStatus || "").toLowerCase();
+  return st === "failed" || st === "stalled";
+}
+
+function mgSwIsEmailDeliveryInFlight(emailUiStatus) {
+  const st = String(emailUiStatus || "").toLowerCase();
+  return st === "queued" || st === "sending" || st === "accepted_db_pending";
+}
+
+function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
+  const canCopy = Boolean(opts && opts.canCopy);
+  if (mgSwIsEmailAlreadySent(emailUiStatus)) {
+    return "The signing email was sent successfully.";
+  }
+  if (mgSwIsEmailDeliveryFailed(emailUiStatus)) {
+    return "The signing email could not be delivered. Retry sending the email.";
+  }
+  if (mgSwIsEmailDeliveryInFlight(emailUiStatus)) {
+    return "Sending the signing email…";
+  }
+  return canCopy
+    ? "The signing request is prepared. No email has been sent yet. Copy the secure signing link for the customer."
+    : "The signing request is prepared. No email has been sent yet.";
+}
+/* MG_SW_STATUS_END */
+
 (() => {
   "use strict";
 
@@ -540,11 +572,18 @@
     }
     if (envSt === "sent") {
       const canCopy = hasCopyableLink();
+      const emailMsg = mgSwResolveSigningEmailMessage(state.emailUiStatus, {
+        canCopy,
+      });
+      const sent = mgSwIsEmailAlreadySent(state.emailUiStatus);
+      const failed = mgSwIsEmailDeliveryFailed(state.emailUiStatus);
       return {
-        title: "Secure Link Ready",
-        body: canCopy
-          ? "The signing request is prepared. No email has been sent yet. Copy the secure signing link for the customer."
-          : "The secure link was generated previously. Explicit link regeneration is not available in this phase.",
+        title: sent
+          ? "Signing Email Sent"
+          : failed
+            ? "Email Delivery Needs Attention"
+            : "Secure Link Ready",
+        body: emailMsg,
         ctaLabel: canCopy ? "Copy Signing Link" : null,
         ctaHref: null,
         ctaAction: canCopy ? "copy-link" : null,
@@ -851,9 +890,15 @@
       linkReadyEl.hidden = !linkReady;
     }
     if (linkCopy) {
-      linkCopy.textContent = canCopy
-        ? "The signing request is prepared. No email has been sent yet."
-        : "The secure link was generated previously.";
+      if (!canCopy && !mgSwIsEmailAlreadySent(state.emailUiStatus) && !mgSwIsEmailDeliveryFailed(state.emailUiStatus)) {
+        linkCopy.textContent =
+          "The secure link was generated previously.";
+      } else {
+        linkCopy.textContent = mgSwResolveSigningEmailMessage(
+          state.emailUiStatus,
+          { canCopy }
+        );
+      }
     }
     if (copyBtn) {
       copyBtn.hidden = !canCopy;
@@ -1040,20 +1085,14 @@
     const art = state.artifacts[0];
     const emailUi = String(state.emailUiStatus || "").toLowerCase();
     const completed = envSt === "completed";
-    const emailInFlight =
-      emailUi === "queued" ||
-      emailUi === "sending" ||
-      emailUi === "accepted_db_pending";
-    const emailSent =
-      emailUi === "sent" ||
-      envSt === "opened" ||
-      completed ||
-      (envSt === "sent" && Boolean(state.delivery?.invitations?.length));
+    const emailInFlight = mgSwIsEmailDeliveryInFlight(emailUi);
+    const emailSent = mgSwIsEmailAlreadySent(emailUi);
 
     if (completed && cert?.id && art?.id) return 6;
     if (completed && cert?.id) return 5;
     if (completed) return 4;
     if (emailSent || emailInFlight) return 3;
+    if (envSt === "opened") return 3;
     if (isLinkReady()) return 2;
     return 1;
   }
@@ -1290,21 +1329,27 @@
       emailStatus.textContent = nextMap[raw] || raw || "—";
     }
     const emailUiEarly = String(state.emailUiStatus || "").toLowerCase();
-    const emailAlreadySent =
-      emailUiEarly === "sent" ||
-      envSt === "opened" ||
-      envSt === "completed" ||
-      (envSt === "sent" && Boolean(state.delivery?.invitations?.length));
+    const emailAlreadySent = mgSwIsEmailAlreadySent(emailUiEarly);
+    const emailFailed = mgSwIsEmailDeliveryFailed(emailUiEarly);
     const helper2 = $("swVis2Helper");
     if (helper2) helper2.hidden = !emailAlreadySent;
     if (emailAlreadySent) {
       setText(
         "swVis2Lead",
-        "Contract sent. Wait for your customer to open and sign."
+        "The signing email was sent successfully."
       );
       setText(
         "swVis2Why",
         "No more action needed here. After they sign, create the legal certificate."
+      );
+    } else if (emailFailed) {
+      setText(
+        "swVis2Lead",
+        "The signing email could not be delivered. Retry sending the email."
+      );
+      setText(
+        "swVis2Why",
+        "The secure signing link is ready. Retry the email or copy the link for the customer."
       );
     } else {
       setText(
