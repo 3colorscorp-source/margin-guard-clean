@@ -9,6 +9,8 @@
   const LEGAL_NOTICES_API = "/.netlify/functions/tenant-contract-legal-notices";
   const CONTRACT_SETUP_API = "/.netlify/functions/project-contract-setup";
   const PAYMENT_SCHEDULE_API = "/.netlify/functions/project-contract-payment-schedule";
+  const PREFERENCES_API = "/.netlify/functions/tenant-contract-preferences";
+  const PACKAGES_API = "/.netlify/functions/contract-packages";
   const DEFAULT_CURRENCY = "USD";
   const APPROVED_QUOTE_STATUSES = new Set(["accepted", "approved"]);
 
@@ -88,6 +90,11 @@
   const DEFAULT_SIGNATURE_METHOD_UI = "email_link";
   const PaymentDefaults =
     window.MarginGuardContractPaymentDefaults || null;
+  const WarrantyDefaults =
+    window.MarginGuardContractWarrantyDefaults || null;
+  let tenantPreferences = null;
+  let projectPackages = [];
+  let warrantyPresetAppliedToDraft = false;
   const PAYMENT_TYPES_ALLOWED = new Set([
     "deposit",
     "start",
@@ -368,6 +375,7 @@
       syncEditFromModel: () => syncWarrantyInputsFromModel(),
       onEnterEdit: () => {
         updateWarrantyLiveHint();
+        renderWarrantyPresetChrome();
       },
       onBeforeSave: () => {
         const check = validateWarrantyWorkspace({ forSave: true });
@@ -1600,6 +1608,100 @@
     edits.warExclusions = fields.exclusions;
   }
 
+  function currentWarrantyDraftFields() {
+    if (getArticleMode("art-warranty") === WS_MODE.EDIT) {
+      return readWarrantyFieldsFromDom();
+    }
+    const setupFields = warrantyFieldsFromSetup(sourceSnapshot?.contractSetup?.setup);
+    const editFields = warrantyFieldsFromEdits(draftEdits);
+    if (warrantyPresetAppliedToDraft && warrantyFieldsComplete(editFields)) {
+      return editFields;
+    }
+    return {
+      durationValue: editFields.durationValue || setupFields.durationValue,
+      durationUnit: editFields.durationUnit || setupFields.durationUnit,
+      summary: editFields.summary || setupFields.summary,
+      exclusions: editFields.exclusions || setupFields.exclusions,
+    };
+  }
+
+  function warrantyPackageLockStatus() {
+    if (!WarrantyDefaults) return "";
+    const locking =
+      typeof WarrantyDefaults.findWarrantyLockingPackage === "function"
+        ? WarrantyDefaults.findWarrantyLockingPackage(projectPackages)
+        : null;
+    if (locking?.status) return String(locking.status);
+    return String(lastFrozenPackage?.status || "");
+  }
+
+  function evaluateWarrantyPresetAction() {
+    if (!WarrantyDefaults || typeof WarrantyDefaults.evaluateUseStandardWarrantyAction !== "function") {
+      return null;
+    }
+    return WarrantyDefaults.evaluateUseStandardWarrantyAction({
+      preferences: tenantPreferences,
+      existingFields: currentWarrantyDraftFields(),
+      packages: projectPackages,
+      packageStatus: warrantyPackageLockStatus(),
+      unsafeToEdit: frozenPackageMakesPaymentEditUnsafe(),
+    });
+  }
+
+  function renderWarrantyPresetChrome() {
+    const useBtn = $("cbWarUseStandardBtn");
+    const replaceBtn = $("cbWarReplaceStandardBtn");
+    const applied = $("cbWarPresetApplied");
+    const locked = $("cbWarPresetLocked");
+    const hint = $("cbWarPresetHint");
+    const action = evaluateWarrantyPresetAction();
+    if (useBtn) useBtn.hidden = !(action && action.showPrimaryApply);
+    if (replaceBtn) replaceBtn.hidden = !(action && action.showReplace);
+    if (applied) applied.hidden = !warrantyPresetAppliedToDraft;
+    if (locked) locked.hidden = !(action && action.locked);
+    if (hint) hint.hidden = !(action && action.showSettingsHint);
+  }
+
+  function applyStandardWarrantyToLocalDraft(replaceConfirmed) {
+    if (!WarrantyDefaults || typeof WarrantyDefaults.applyStandardWarrantyToDraft !== "function") {
+      return { ok: false, reason: "helper_missing" };
+    }
+    const result = WarrantyDefaults.applyStandardWarrantyToDraft(tenantPreferences, {
+      existingFields: currentWarrantyDraftFields(),
+      packages: projectPackages,
+      packageStatus: warrantyPackageLockStatus(),
+      unsafeToEdit: frozenPackageMakesPaymentEditUnsafe(),
+      replaceConfirmed: replaceConfirmed === true,
+    });
+    if (!result.applied || !result.fields) return result;
+    if (!draftEdits) return result;
+    applyWarrantyFieldsToEdits(draftEdits, result.fields);
+    warrantyPresetAppliedToDraft = true;
+    if ($("cbWarEditDurationValue")) $("cbWarEditDurationValue").value = result.fields.durationValue;
+    if ($("cbWarEditDurationUnit")) $("cbWarEditDurationUnit").value = result.fields.durationUnit;
+    if ($("cbWarEditSummary")) $("cbWarEditSummary").value = result.fields.summary;
+    if ($("cbWarEditExclusions")) $("cbWarEditExclusions").value = result.fields.exclusions;
+    updateWarrantyLiveHint();
+    renderWarrantyPresetChrome();
+    if (sourceSnapshot) {
+      renderDocument(sourceSnapshot, draftEdits);
+      updateIndexNavStatus();
+      renderWorkspaceChrome();
+    }
+    return result;
+  }
+
+  function onUseStandardWarrantyClick() {
+    const result = applyStandardWarrantyToLocalDraft(false);
+    if (result.needsConfirm) {
+      const message =
+        (WarrantyDefaults && WarrantyDefaults.REPLACE_CONFIRM_MESSAGE) ||
+        "This project already has warranty terms. Replace the draft with the standard warranty?";
+      if (!window.confirm(message)) return;
+      applyStandardWarrantyToLocalDraft(true);
+    }
+  }
+
   function formatWarrantyDurationTitle(fields) {
     const n = Number(fields?.durationValue);
     const unit = String(fields?.durationUnit || "").toLowerCase();
@@ -1806,6 +1908,7 @@
       readiness: res.data.readiness || null,
     };
     applyWarrantyFieldsToEdits(draftEdits, warrantyFieldsFromSetup(res.data.setup));
+    warrantyPresetAppliedToDraft = false;
     draftBaseline = cloneEdits({
       ...sourceSnapshot,
       ...draftEdits,
@@ -4729,7 +4832,9 @@
     const setupFields = warrantyFieldsFromSetup(setup);
     const editFields = warrantyFieldsFromEdits(edits);
     const fields =
-      configured || warrantyFieldsComplete(setupFields)
+      warrantyPresetAppliedToDraft && warrantyFieldsComplete(editFields)
+        ? editFields
+        : configured || warrantyFieldsComplete(setupFields)
         ? setupFields
         : warrantyFieldsComplete(editFields)
           ? editFields
@@ -4802,6 +4907,7 @@
     } else {
       setText("cbWarrantyDisplay", "Warranty terms have not yet been confirmed.");
     }
+    renderWarrantyPresetChrome();
   }
 
   function renderSignatureSection(source) {
@@ -4983,6 +5089,15 @@
 
     document.querySelectorAll("[data-rich-toolbar]").forEach(buildToolbar);
 
+    $("cbWarUseStandardBtn")?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      onUseStandardWarrantyClick();
+    });
+    $("cbWarReplaceStandardBtn")?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      onUseStandardWarrantyClick();
+    });
+
     document.getElementById("cbDocument")?.addEventListener("click", (ev) => {
       const btn = ev.target?.closest?.("[data-reveal]");
       if (!btn) return;
@@ -4996,6 +5111,7 @@
     $("cbResetDraft")?.addEventListener("click", () => {
       if (!sourceSnapshot) return;
       if (!confirmLeaveLocalDraft("Reset local draft")) return;
+      warrantyPresetAppliedToDraft = false;
       draftEdits = cloneEdits(sourceSnapshot);
       draftBaseline = cloneEdits(sourceSnapshot);
       renderAll();
@@ -5052,6 +5168,13 @@
       try {
         const data = await freezeContractFromBuilder();
         lastFrozenPackage = data.package || lastFrozenPackage;
+        if (lastFrozenPackage) {
+          const id = String(lastFrozenPackage.id || "");
+          projectPackages = [
+            lastFrozenPackage,
+            ...projectPackages.filter((pkg) => String(pkg?.id || "") !== id),
+          ];
+        }
         renderFreezeSuccess(lastFrozenPackage, Boolean(data.idempotent));
       } catch (err) {
         const status = $("cbFreezeStatus");
@@ -5249,10 +5372,12 @@
 
     const setupQs =
       `project_id=${encodeURIComponent(projectId)}&quote_id=${encodeURIComponent(quoteId)}`;
-    const [setupRes, scheduleRes, legalNoticesRes] = await Promise.all([
+    const [setupRes, scheduleRes, legalNoticesRes, preferencesRes, packagesRes] = await Promise.all([
       fetchJson(`${CONTRACT_SETUP_API}?${setupQs}`),
       fetchJson(`${PAYMENT_SCHEDULE_API}?${setupQs}`),
       fetchJson(LEGAL_NOTICES_API),
+      fetchJson(PREFERENCES_API),
+      fetchJson(`${PACKAGES_API}?project_id=${encodeURIComponent(projectId)}`),
     ]);
 
     if (
@@ -5343,6 +5468,17 @@
       legalNoticesBundle.loadError = "unavailable";
       legalNoticesBundle.readiness = { status: "missing" };
     }
+
+    tenantPreferences = null;
+    if (preferencesRes && preferencesRes.ok && preferencesRes.data?.ok === true) {
+      tenantPreferences = preferencesRes.data.preferences || null;
+    }
+
+    projectPackages = [];
+    if (packagesRes && packagesRes.ok && packagesRes.data?.ok === true && Array.isArray(packagesRes.data.packages)) {
+      projectPackages = packagesRes.data.packages;
+    }
+    warrantyPresetAppliedToDraft = false;
 
     const contractTotal = resolveContractTotal(project, quote);
     const customerName = String(
