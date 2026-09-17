@@ -2674,6 +2674,26 @@
     return "Missing";
   }
 
+  function signingPartiesFromSource() {
+    const frozen = frozenPackageMakesPaymentEditUnsafe();
+    const pkg =
+      (Array.isArray(projectPackages) &&
+        projectPackages.find((p) => {
+          const st = String(p?.status || "").toLowerCase();
+          return st === "ready" || st === "executed";
+        })) ||
+      (Array.isArray(projectPackages) && projectPackages[0]) ||
+      null;
+    if (frozen && pkg && pkg.signing_policy) {
+      return pkg.signing_policy.require_contractor_signature === true
+        ? "Contractor + Customer"
+        : "Customer only";
+    }
+    return tenantPreferences?.require_contractor_signature === true
+      ? "Contractor + Customer"
+      : "Customer only";
+  }
+
   function signatureMethodFromSetup(setup) {
     return normalizeSignatureMethod(setup?.signature_method);
   }
@@ -4911,6 +4931,10 @@
   }
 
   function renderSignatureSection(source) {
+    setText("cbSigningPartiesStatus", signingPartiesFromSource());
+    setText("cbSigEditParties", signingPartiesFromSource());
+    const locked = $("cbSigPartiesLocked");
+    if (locked) locked.hidden = !frozenPackageMakesPaymentEditUnsafe();
     setText("cbSignatureMethodStatus", signatureMethodLabel(source.contractSetup));
     setText("cbSignatureRequestStatus", signatureRequestLabel(source.contractSetup));
   }

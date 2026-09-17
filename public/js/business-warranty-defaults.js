@@ -50,6 +50,7 @@
     "default_signature_order",
     "automatically_attach_warranty",
     "automatically_attach_completion_certificate",
+    "require_contractor_signature",
   ];
 
   function trimValue(value) {
@@ -370,6 +371,15 @@
         setReadiness(doc, evaluateWarrantyPresetStatus(readForm(doc)));
       });
     }
+    ["bsWarDurationValue", "bsWarDurationUnit", "bsWarSummary", "bsWarExclusions"].forEach(function (id) {
+      var el = $(doc, id);
+      if (!el) return;
+      function refreshReadiness() {
+        setReadiness(doc, evaluateWarrantyPresetStatus(readForm(doc)));
+      }
+      el.addEventListener("input", refreshReadiness);
+      el.addEventListener("change", refreshReadiness);
+    });
     var pageReload = $(doc, "btnReloadBusinessSettings");
     if (pageReload) {
       pageReload.addEventListener("click", function () {

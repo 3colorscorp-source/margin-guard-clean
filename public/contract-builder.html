@@ -2466,7 +2466,8 @@
                 <div class="cb-article__body">
                   <div data-ws-preview>
                     <div class="cb-meta-grid">
-                      <div class="cb-field"><span class="k">Signature method</span><div class="v" id="cbSignatureMethodStatus">Missing</div></div>
+                      <div class="cb-field"><span class="k">Signing parties</span><div class="v" id="cbSigningPartiesStatus">Customer only</div></div>
+                      <div class="cb-field"><span class="k">Customer signing method</span><div class="v" id="cbSignatureMethodStatus">Missing</div></div>
                       <div class="cb-field"><span class="k">Signature request</span><div class="v" id="cbSignatureRequestStatus">Not Requested</div></div>
                     </div>
                     <div class="cb-sign-grid">
@@ -2482,11 +2483,16 @@
                   </div>
                   <div class="cb-prop-editor owner-only" data-ws-edit>
                     <p class="cb-prop-editor__intro">
-                      Choose how this contract will be signed. Save Draft stores the preference; Confirm Method locks readiness for freeze.
+                      Signing parties come from Business Settings. Customer signing method is how the customer signs. Both means email link and sign on device for the customer — not two parties.
                     </p>
                     <div class="cb-prop-form">
                       <div class="cb-prop-field">
-                        <label for="cbSigEditMethod">Signature method</label>
+                        <span class="k">Signing parties</span>
+                        <div class="v" id="cbSigEditParties">Customer only</div>
+                        <p class="cb-prop-live-hint" id="cbSigPartiesLocked" hidden>Signing parties were locked at freeze.</p>
+                      </div>
+                      <div class="cb-prop-field">
+                        <label for="cbSigEditMethod">Customer signing method</label>
                         <select id="cbSigEditMethod">
                           <option value="">Choose signature method…</option>
                           <option value="email_link" selected>Email link</option>
