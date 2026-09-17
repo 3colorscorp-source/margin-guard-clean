@@ -12,7 +12,9 @@ process.env.SUPABASE_SERVICE_ROLE_KEY =
 
 const assert = require("assert");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
+const { pathToFileURL } = require("url");
 const { spawnSync } = require("child_process");
 
 const ROOT = path.join(__dirname, "..");
@@ -59,6 +61,163 @@ function test(name, fn) {
 function check(file) {
   const r = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });
   assert.strictEqual(r.status, 0, r.stderr || r.stdout || "syntax failed");
+}
+
+function skipSqlTrivia(sql, start) {
+  let i = start;
+  while (i < sql.length) {
+    if (sql[i] === "-" && sql[i + 1] === "-") {
+      i += 2;
+      while (i < sql.length && sql[i] !== "\n") i += 1;
+      continue;
+    }
+    if (sql[i] === "/" && sql[i + 1] === "*") {
+      i += 2;
+      while (i < sql.length && !(sql[i] === "*" && sql[i + 1] === "/")) i += 1;
+      i += 2;
+      continue;
+    }
+    if (/\s/.test(sql[i])) {
+      i += 1;
+      continue;
+    }
+    break;
+  }
+  return i;
+}
+
+function readDollarTag(sql, start) {
+  if (sql[start] !== "$") return null;
+  let i = start + 1;
+  while (i < sql.length && /[A-Za-z0-9_]/.test(sql[i])) i += 1;
+  if (sql[i] !== "$") return null;
+  return { tag: sql.slice(start, i + 1), end: i + 1 };
+}
+
+function extractDollarBodies(sql) {
+  const bodies = [];
+  let i = 0;
+  while (i < sql.length) {
+    i = skipSqlTrivia(sql, i);
+    if (i >= sql.length) break;
+    if (sql[i] === "'") {
+      i += 1;
+      while (i < sql.length) {
+        if (sql[i] === "'" && sql[i + 1] === "'") {
+          i += 2;
+          continue;
+        }
+        if (sql[i] === "'") {
+          i += 1;
+          break;
+        }
+        i += 1;
+      }
+      continue;
+    }
+    if (sql[i] === '"') {
+      i += 1;
+      while (i < sql.length) {
+        if (sql[i] === '"' && sql[i + 1] === '"') {
+          i += 2;
+          continue;
+        }
+        if (sql[i] === '"') {
+          i += 1;
+          break;
+        }
+        i += 1;
+      }
+      continue;
+    }
+    const open = readDollarTag(sql, i);
+    if (!open) {
+      i += 1;
+      continue;
+    }
+    const closeAt = sql.indexOf(open.tag, open.end);
+    assert.notStrictEqual(closeAt, -1, `unclosed dollar-quote ${open.tag}`);
+    bodies.push({
+      tag: open.tag,
+      body: sql.slice(open.end, closeAt),
+      start: i,
+      end: closeAt + open.tag.length,
+    });
+    i = closeAt + open.tag.length;
+  }
+  return bodies;
+}
+
+function parsePostgresSql(sql) {
+  const parserDir = path.join(os.tmpdir(), "mg-ch083-pg-parse");
+  const modJs = path.join(
+    parserDir,
+    "node_modules",
+    "pg-query-emscripten",
+    "pg_query.js"
+  );
+  fs.mkdirSync(parserDir, { recursive: true });
+  if (!fs.existsSync(modJs)) {
+    const npm = spawnSync(
+      "npm",
+      ["install", "--prefix", parserDir, "pg-query-emscripten"],
+      {
+        encoding: "utf8",
+        timeout: 120000,
+        shell: process.platform === "win32",
+      }
+    );
+    assert.strictEqual(
+      npm.status,
+      0,
+      `pg-query-emscripten install failed: ${npm.stderr || npm.stdout}`
+    );
+  }
+  const sqlFile = path.join(parserDir, "input.sql");
+  const outFile = path.join(parserDir, "result.json");
+  const runner = path.join(parserDir, "parse.mjs");
+  fs.writeFileSync(sqlFile, sql);
+  fs.writeFileSync(
+    runner,
+    [
+      'import { readFileSync, writeFileSync } from "fs";',
+      `import Module from ${JSON.stringify(pathToFileURL(modJs).href)};`,
+      "const pg = await new Module();",
+      `const sqlText = readFileSync(${JSON.stringify(sqlFile)}, "utf8");`,
+      "const result = pg.parse(sqlText);",
+      `writeFileSync(${JSON.stringify(outFile)}, typeof result === "string" ? result : JSON.stringify(result));`,
+    ].join("\n")
+  );
+  const ran = spawnSync(process.execPath, [runner], {
+    encoding: "utf8",
+    timeout: 30000,
+  });
+  assert.strictEqual(
+    ran.status,
+    0,
+    `Postgres parser runner failed: ${ran.stderr || ran.stdout}`
+  );
+  const raw = fs.readFileSync(outFile, "utf8");
+  try {
+    return JSON.parse(raw);
+  } catch (_err) {
+    return { raw };
+  }
+}
+
+function postgresParseError(parsed) {
+  if (!parsed || typeof parsed !== "object") return String(parsed);
+  const err = parsed.error;
+  if (err) {
+    return String(err.message || err.stderr || JSON.stringify(err));
+  }
+  if (parsed.stderr && /error|syntax/i.test(String(parsed.stderr))) {
+    return String(parsed.stderr);
+  }
+  if (typeof parsed.raw === "string" && /syntax error/i.test(parsed.raw)) {
+    return parsed.raw;
+  }
+  return null;
 }
 
 const COMPLETE_PRESET = {
@@ -345,6 +504,57 @@ test("warranty and freeze share one advisory xact lock; no REST TOCTOU", () => {
   assert.doesNotMatch(freezeFn, /nextPackageVersion\(/);
   assert.match(freezeFn, /decision\.idempotent/);
   assert.doesNotMatch(setupSrc, /listPackagesForProject\([\s\S]*saveSetup\(/);
+});
+
+test("VERIFY SQL dollar-quotes parse with a real Postgres parser", () => {
+  assert.doesNotMatch(sqlVerify, /position\(\$\$/);
+  assert.match(
+    sqlVerify,
+    /'in \(''ready'', ''executed'', ''superseded'', ''frozen''\)'/
+  );
+
+  const nestedBroken = [
+    "do $$",
+    "begin",
+    "  if position($$in ('ready', 'executed', 'superseded', 'frozen')$$ in v_save_src) = 0 then",
+    "    raise exception 'x';",
+    "  end if;",
+    "end;",
+    "$$;",
+    "select 'PASS'::text as ch083_verify_result;",
+  ].join("\n");
+
+  const brokenBodies = extractDollarBodies(nestedBroken);
+  assert.ok(brokenBodies.length >= 1, "broken fixture must still lex an outer DO quote");
+  assert.ok(
+    !brokenBodies[0].body.includes("raise exception 'x'"),
+    "nested $$ must close the DO body before the remaining PL/pgSQL"
+  );
+
+  const verifyBodies = extractDollarBodies(sqlVerify);
+  assert.strictEqual(verifyBodies.length, 1, "VERIFY must have exactly one dollar-quoted DO body");
+  assert.strictEqual(verifyBodies[0].tag, "$$");
+  assert.match(verifyBodies[0].body, /warranty lock statuses drifted/);
+  assert.match(verifyBodies[0].body, /CH-083 VERIFY PASS/);
+  assert.doesNotMatch(verifyBodies[0].body, /\$\$/);
+
+  const brokenParsed = parsePostgresSql(nestedBroken);
+  const brokenErr = postgresParseError(brokenParsed);
+  assert.ok(
+    brokenErr,
+    `nested $$ must fail the Postgres parser, got ${JSON.stringify(brokenParsed).slice(0, 400)}`
+  );
+  assert.match(String(brokenErr), /syntax error|error at or near/i);
+
+  const parsed = parsePostgresSql(sqlVerify);
+  const err = postgresParseError(parsed);
+  assert.strictEqual(
+    err,
+    null,
+    `VERIFY must parse: ${err || JSON.stringify(parsed).slice(0, 400)}`
+  );
+  const stmts = parsed.parse_tree && parsed.parse_tree.stmts;
+  assert.ok(Array.isArray(stmts) && stmts.length >= 2, "VERIFY must parse DO + SELECT");
 });
 
 test("snapshot/PDF still read project setup warranty, not the tenant preset", () => {

@@ -131,7 +131,10 @@ begin
   if position('warranty_locked_by_package' in v_save_src) = 0 then
     raise exception 'CH-083 VERIFY FAIL: warranty RPC missing lock code';
   end if;
-  if position($$in ('ready', 'executed', 'superseded', 'frozen')$$ in v_save_src) = 0 then
+  if position(
+    'in (''ready'', ''executed'', ''superseded'', ''frozen'')'
+    in v_save_src
+  ) = 0 then
     raise exception 'CH-083 VERIFY FAIL: warranty lock statuses drifted';
   end if;
 
