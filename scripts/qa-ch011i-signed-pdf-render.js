@@ -274,7 +274,7 @@ test("package hash is full 64 chars, no ellipsis truncate", () => {
   assert.ok(!text.includes("Package hash " + PACKAGE_HASH.slice(0, 16) + "..."));
 });
 
-test("payment separator is ASCII; due_rule custom left unchanged", () => {
+test("payment separator is ASCII; due_rule custom is not printed", () => {
   const ctx = sampleCtx({
     snap: sampleSnap({
       payment_schedule: {
@@ -290,9 +290,9 @@ test("payment separator is ASCII; due_rule custom left unchanged", () => {
     }),
   });
   const text = extractPdfText(lib.renderSignedContractPdf(ctx).buffer);
-  assert.ok(text.includes("1. Deposit - USD 1.00 (due: custom)"));
+  assert.ok(text.includes("1. Deposit - USD 1.00"));
   assert.ok(!text.includes("?"));
-  assert.ok(text.includes("(due: custom)"));
+  assert.ok(!text.includes("due: custom"));
 });
 
 test("signature, certificate, envelope, package, hashes remain", () => {

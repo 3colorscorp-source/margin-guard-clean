@@ -429,8 +429,8 @@ test("known Unicode maps; payment separator is ASCII", () => {
   const { buffer } = lib.renderSignedContractPdf(ctx);
   const text = buffer.toString("latin1");
   assert.ok(text.includes("Demo - cabinets * 'custom' work"));
-  assert.ok(text.includes("due: custom") || text.includes("due: custom\\)"));
-  assert.ok(text.includes("\\(due: custom\\)") || text.includes("(due: custom)"));
+  assert.ok(!text.includes("due: custom"));
+  assert.ok(!text.includes("\\(due: custom\\)"));
   assert.ok(!text.includes("Demo ?"));
 });
 

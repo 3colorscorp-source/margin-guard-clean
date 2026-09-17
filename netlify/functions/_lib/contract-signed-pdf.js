@@ -13,6 +13,9 @@ const {
   svgPathToPdfOps,
   escapePdfText,
 } = require("./simple-pdf");
+const {
+  dueRuleCustomerLabel,
+} = require("../../../public/js/contract-payment-defaults.js");
 
 const API_VERSION = "ch-011i-v1";
 const GENERATOR_VERSION = "ch-011i-pdf-v2";
@@ -374,12 +377,16 @@ function buildSignedContractLines({
           : it.percentage != null
             ? `${Number(it.percentage)}%`
             : "-";
-      const due = trimField(it.due_rule) || trimField(it.fixed_due_date) || "";
+      const dueLabel = dueRuleCustomerLabel(it.due_rule, {
+        fixedDueDate: it.fixed_due_date,
+        milestoneDescription: it.milestone_description,
+        omitCustom: true,
+      });
       const seq = it.sequence_number || "*";
       lines.push(
         body(
           `${seq}. ${label} - ${amt}` +
-            (due ? ` (due: ${due})` : "")
+            (dueLabel ? ` (${dueLabel})` : "")
         )
       );
       if (trimField(it.milestone_description)) {

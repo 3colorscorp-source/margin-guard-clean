@@ -69,10 +69,11 @@ test("API accepts signature_method; freeze reads same field", () => {
   assert.match(freezeLib, /missing\.push\("signature_method"\)/);
 });
 
-test("no silent auto-configure / no readiness bypass", () => {
-  assert.doesNotMatch(js, /signature_method:\s*"email_link"/);
-  assert.doesNotMatch(js, /signature_method:\s*"sign_on_device"/);
-  assert.doesNotMatch(js, /signature_method:\s*"both"/);
+test("no silent persist on load / no readiness bypass", () => {
+  assert.match(js, /DEFAULT_SIGNATURE_METHOD_UI\s*=\s*"email_link"/);
+  const initStart = js.indexOf("async function init()");
+  const initBody = js.slice(initStart, js.indexOf("void init();"));
+  assert.doesNotMatch(initBody, /postJson/);
   assert.match(js, /Choose a signature method before saving/);
   assert.doesNotMatch(js, /readiness_incomplete[\s\S]{0,80}bypass/i);
 });

@@ -84,6 +84,10 @@
   let paymentDraftItems = [];
   let paymentDraftBaseline = null;
   let paymentDraftKeySeq = 1;
+  let paymentAdvancedEdit = false;
+  const DEFAULT_SIGNATURE_METHOD_UI = "email_link";
+  const PaymentDefaults =
+    window.MarginGuardContractPaymentDefaults || null;
   const PAYMENT_TYPES_ALLOWED = new Set([
     "deposit",
     "start",
@@ -825,7 +829,9 @@
           );
           if (hint) {
             hint.textContent =
-              "Save Draft anytime. Confirm Schedule only when Scheduled equals Contract Total.";
+              paymentAdvancedEdit
+                ? "Advanced editing: change stages, types, due timing, and received vs still due. Confirm Schedule only when Scheduled equals Contract Total."
+                : "Review the generated schedule, then Confirm Schedule. Use Advanced editing to change stages.";
           }
         } else if (activeArticleId === "art-signatures") {
           actions.appendChild(
@@ -1262,6 +1268,7 @@
       acceptedAt: quote?.accepted_at || null,
       contractTotal,
       depositRequired: Number.isFinite(deposit) && deposit > 0 ? deposit : null,
+      depositRequiredAmount: Number.isFinite(deposit) ? deposit : 0,
       currency,
       address,
       scope,
@@ -1851,9 +1858,9 @@
       client_id: nextPaymentClientId(),
       sequence_number: paymentDraftItems.length + 1,
       label: "",
-      payment_type: "custom",
+      payment_type: "progress",
       amount: 0,
-      due_rule: "custom",
+      due_rule: "on_completion",
       milestone_description: "",
       fixed_due_date: "",
       item_role: "future_obligation",
@@ -1880,7 +1887,49 @@
     });
   }
 
+  function paymentScheduleApiContractTotal(source) {
+    const readiness = source?.paymentSchedule?.readiness || {};
+    if (readiness.contract_total != null && Number.isFinite(Number(readiness.contract_total))) {
+      return Number(readiness.contract_total);
+    }
+    return null;
+  }
+
+  function frozenPackageMakesPaymentEditUnsafe() {
+    const status = String(lastFrozenPackage?.status || "").trim().toLowerCase();
+    return status === "ready" || status === "executed" || status === "frozen" || status === "superseded";
+  }
+
+  function applyLocalPaymentDefaults(source) {
+    if (!source?.paymentSchedule) return;
+    if (!PaymentDefaults || typeof PaymentDefaults.buildDefaultPaymentSchedule !== "function") {
+      return;
+    }
+    const result = PaymentDefaults.buildDefaultPaymentSchedule({
+      contractTotal: paymentScheduleApiContractTotal(source),
+      depositRequired: source.depositRequiredAmount,
+      items: source.paymentSchedule.items,
+      readinessStatus: source.paymentSchedule.readiness?.status,
+      scheduleStatus: source.paymentSchedule.schedule?.status,
+      packageStatus: lastFrozenPackage?.status,
+      unsafeToEdit: frozenPackageMakesPaymentEditUnsafe(),
+    });
+    if (!result.seeded) {
+      if (
+        result.code === "deposit_exceeds_total" ||
+        result.code === "contract_total_unavailable"
+      ) {
+        source.paymentSchedule.localDefaultWarning = result.warning || "";
+      }
+      return;
+    }
+    source.paymentSchedule.localDefaults = true;
+    source.paymentSchedule.localDefaultWarning = "";
+    source.paymentSchedule.items = result.items;
+  }
+
   function hydratePaymentDraftFromSource(source) {
+    applyLocalPaymentDefaults(source);
     const items = Array.isArray(source?.paymentSchedule?.items)
       ? [...source.paymentSchedule.items]
       : [];
@@ -1888,6 +1937,7 @@
     paymentDraftItems = items.map((item, i) => mapScheduleItemToDraft(item, i));
     renumberPaymentDraftSequences();
     paymentDraftBaseline = clonePaymentDraftItems(paymentDraftItems);
+    paymentAdvancedEdit = false;
   }
 
   function paymentDraftContractTotal(source) {
@@ -1925,6 +1975,7 @@
   }
 
   function readPaymentDraftFromGrid() {
+    if (!paymentAdvancedEdit) return;
     const grid = $("cbPayEditGrid");
     if (!grid) return;
     const rows = Array.from(grid.querySelectorAll("[data-pay-client-id]"));
@@ -2232,23 +2283,37 @@
 
   function paymentTypeOptionsHtml(selected) {
     return Array.from(PAYMENT_TYPES_ALLOWED)
-      .map(
-        (t) =>
-          `<option value="${escapeHtml(t)}"${t === selected ? " selected" : ""}>${escapeHtml(t)}</option>`
-      )
+      .map((t) => {
+        const label = t === "custom" ? "Payment" : paymentTypeLabel(t);
+        return `<option value="${escapeHtml(t)}"${t === selected ? " selected" : ""}>${escapeHtml(label)}</option>`;
+      })
       .join("");
   }
 
   function paymentRoleOptionsHtml(selected) {
     const roles = [
-      ["future_obligation", "Future"],
-      ["applied_payment", "Applied"],
+      ["future_obligation", "Future obligation — payment is still due"],
+      ["applied_payment", "Applied payment — payment was already received"],
     ];
     return roles
       .map(
         ([v, label]) =>
           `<option value="${escapeHtml(v)}"${v === selected ? " selected" : ""}>${escapeHtml(label)}</option>`
       )
+      .join("");
+  }
+
+  function paymentDueRuleOptionsHtml(selected) {
+    return Array.from(DUE_RULES_ALLOWED)
+      .filter((t) => t !== "custom")
+      .concat(["custom"])
+      .map((t) => {
+        const label =
+          t === "custom"
+            ? "As scheduled in this Agreement"
+            : dueRuleLabel(t);
+        return `<option value="${escapeHtml(t)}"${t === selected ? " selected" : ""}>${escapeHtml(label)}</option>`;
+      })
       .join("");
   }
 
@@ -2271,13 +2336,69 @@
     }
   }
 
+  function syncPaymentEditorMode() {
+    const ws = $("cbPayEditWorkspace");
+    if (ws) {
+      ws.classList.toggle("is-simple", !paymentAdvancedEdit);
+      ws.classList.toggle("is-advanced", paymentAdvancedEdit);
+    }
+    const toggle = $("cbPayAdvancedToggle");
+    if (toggle) {
+      toggle.textContent = paymentAdvancedEdit ? "Simple review" : "Advanced editing";
+    }
+  }
+
+  function renderPaymentSimpleReview() {
+    const el = $("cbPaySimpleReview");
+    const warn = $("cbPayDefaultWarn");
+    const warning = String(sourceSnapshot?.paymentSchedule?.localDefaultWarning || "").trim();
+    if (warn) {
+      warn.hidden = !warning;
+      warn.textContent = warning;
+    }
+    if (!el) return;
+    const currency = sourceSnapshot?.currency || DEFAULT_CURRENCY;
+    if (paymentAdvancedEdit) {
+      el.hidden = true;
+      return;
+    }
+    el.hidden = false;
+    if (!paymentDraftItems.length) {
+      el.innerHTML = warning
+        ? `<p class="cb-pay-edit-hint">No default payment stages were created. Open Advanced editing to enter a balanced schedule.</p>`
+        : `<p class="cb-pay-edit-hint">No payments yet. Open Advanced editing to add stages.</p>`;
+      return;
+    }
+    el.innerHTML = paymentDraftItems
+      .map((row) => {
+        const due = dueRuleLabel(row.due_rule, {
+          fixedDueDate: row.fixed_due_date,
+          milestoneDescription: row.milestone_description,
+        });
+        return (
+          `<article class="cb-pay-simple-row">` +
+          `<div>` +
+          `<p class="cb-pay-simple-label">${escapeHtml(row.label || paymentTypeLabel(row.payment_type))}</p>` +
+          `<p class="cb-pay-simple-due">${escapeHtml(due)}</p>` +
+          `</div>` +
+          `<p class="cb-pay-simple-amt">${escapeHtml(formatMoney(row.amount, currency))}</p>` +
+          `</article>`
+        );
+      })
+      .join("");
+  }
+
   function renderPaymentEditGrid() {
     const grid = $("cbPayEditGrid");
     if (!grid) return;
-    // Totals/hints must use in-memory draft state. Reading the DOM here would
-    // wipe rows that were just pushed while the empty-state markup is still mounted.
+    syncPaymentEditorMode();
+    renderPaymentSimpleReview();
     updatePaymentEditTotalsDisplay(sourceSnapshot);
     updatePaymentEditHint(validatePaymentDraftForSave({ syncFromDom: false }));
+    if (!paymentAdvancedEdit) {
+      grid.innerHTML = "";
+      return;
+    }
     if (!paymentDraftItems.length) {
       grid.innerHTML =
         `<p class="cb-pay-edit-hint">No payments yet. Click Add payment to begin.</p>` +
@@ -2313,15 +2434,24 @@
           `<button type="button" class="btn ghost" data-pay-action="insert">Insert</button>` +
           `<button type="button" class="btn ghost" data-pay-action="delete">Delete</button>` +
           `</div>` +
-          `<input type="hidden" data-pay-field="due_rule" value="${escapeHtml(
+          `<div class="cb-pay-edit-row__due">` +
+          `<label>When due</label>` +
+          `<select data-pay-field="due_rule">${paymentDueRuleOptionsHtml(
             normalizeDueRule(row.due_rule)
-          )}" />` +
-          `<input type="hidden" data-pay-field="milestone_description" value="${escapeHtml(
+          )}</select>` +
+          `</div>` +
+          `<div>` +
+          `<label>Milestone</label>` +
+          `<input type="text" maxlength="1000" data-pay-field="milestone_description" value="${escapeHtml(
             row.milestone_description || ""
           )}" />` +
-          `<input type="hidden" data-pay-field="fixed_due_date" value="${escapeHtml(
+          `</div>` +
+          `<div>` +
+          `<label>Fixed date</label>` +
+          `<input type="date" data-pay-field="fixed_due_date" value="${escapeHtml(
             row.fixed_due_date || ""
           )}" />` +
+          `</div>` +
           `</div>`
         );
       })
@@ -2351,6 +2481,19 @@
       workspace.addEventListener("click", (ev) => {
         const el = ev.target instanceof Element ? ev.target : ev.target?.parentElement;
         if (!el || typeof el.closest !== "function") return;
+        const advBtn = el.closest("#cbPayAdvancedToggle");
+        if (advBtn) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (paymentAdvancedEdit) {
+            readPaymentDraftFromGrid();
+            paymentAdvancedEdit = false;
+          } else {
+            paymentAdvancedEdit = true;
+          }
+          renderPaymentEditGrid();
+          return;
+        }
         const addBtn = el.closest("#cbPayAddStage, #cbPayAddFirst");
         if (addBtn) {
           if (addBtn.disabled) return;
@@ -2439,7 +2582,7 @@
   function syncSignatureInputsFromModel() {
     const fromSetup = signatureMethodFromSetup(sourceSnapshot?.contractSetup?.setup);
     const fromEdits = normalizeSignatureMethod(draftEdits?.sigMethod);
-    const method = fromEdits || fromSetup;
+    const method = fromSetup || fromEdits || DEFAULT_SIGNATURE_METHOD_UI;
     if ($("cbSigEditMethod")) $("cbSigEditMethod").value = method;
   }
 
@@ -2649,30 +2792,25 @@
     const status = String(scheduleBundle?.readiness?.status || "missing").toLowerCase();
     if (status === "configured") return "Confirmed";
     if (status === "draft") return "Payment schedule awaiting confirmation";
+    if (Array.isArray(scheduleBundle?.items) && scheduleBundle.items.length) {
+      return "Review generated payment schedule";
+    }
     return "Not yet defined";
   }
 
-  function dueRuleLabel(raw) {
+  function dueRuleLabel(raw, extras) {
+    if (PaymentDefaults && typeof PaymentDefaults.dueRuleCustomerLabel === "function") {
+      return PaymentDefaults.dueRuleCustomerLabel(raw, extras) || "—";
+    }
     const key = String(raw || "").trim().toLowerCase();
-    const map = {
-      on_signature: "Due upon acceptance",
-      on_acceptance: "Due upon acceptance",
-      before_start: "Due before work begins",
-      on_start: "Due at project start",
-      milestone: "Due at the configured milestone",
-      on_completion: "Due upon completion",
-      fixed_date: "Due on a fixed date",
-      custom: "Custom payment timing",
-      net_7: "Within 7 days",
-      net_15: "Within 15 days",
-      net_30: "Within 30 days",
-    };
-    if (!key) return "—";
-    if (map[key]) return map[key];
-    return "Custom payment timing";
+    if (key === "custom" || !key) return "As scheduled in this Agreement";
+    return "As scheduled in this Agreement";
   }
 
   function paymentTypeLabel(raw) {
+    if (PaymentDefaults && typeof PaymentDefaults.paymentTypeCustomerLabel === "function") {
+      return PaymentDefaults.paymentTypeCustomerLabel(raw);
+    }
     const key = String(raw || "").trim().toLowerCase();
     const map = {
       deposit: "Deposit",
@@ -2681,10 +2819,10 @@
       material: "Material",
       completion: "Completion",
       final: "Final Payment",
-      custom: "Custom",
+      custom: "Payment",
     };
     if (!key) return "Stage";
-    return map[key] || key;
+    return map[key] || "Payment";
   }
 
   function formatPercentDisplay(pct) {
@@ -2846,8 +2984,12 @@
   }
 
   function signatureMethodLabel(setupBundle) {
-    if (!signatureConfigured(setupBundle)) return "Missing";
-    return signatureMethodDisplayLabel(setupBundle?.setup?.signature_method);
+    if (signatureConfigured(setupBundle)) {
+      return signatureMethodDisplayLabel(setupBundle?.setup?.signature_method);
+    }
+    const draft = normalizeSignatureMethod(draftEdits?.sigMethod);
+    if (draft) return `${signatureMethodDisplayLabel(draft)} (not saved)`;
+    return "Missing";
   }
 
   function signatureRequestLabel(setupBundle) {
@@ -4319,12 +4461,17 @@
         : source.contractTotal != null && Number.isFinite(Number(source.contractTotal))
           ? Number(source.contractTotal)
           : null;
+    const itemsScheduledCents = items.reduce(
+      (sum, it) => sum + moneyToCents(it.amount),
+      0
+    );
     const scheduledTotal =
-      readiness.scheduled_total != null && Number.isFinite(Number(readiness.scheduled_total))
-        ? Number(readiness.scheduled_total)
-        : null;
-    const itemCount =
-      readiness.item_count != null ? Number(readiness.item_count) : items.length;
+      bundle.localDefaults === true ||
+      readiness.scheduled_total == null ||
+      !Number.isFinite(Number(readiness.scheduled_total))
+        ? centsToMoneyNumber(itemsScheduledCents)
+        : Number(readiness.scheduled_total);
+    const itemCount = items.length;
     const sumsMatch =
       contractTotal != null &&
       scheduledTotal != null &&
@@ -4355,6 +4502,10 @@
         badge.classList.add("is-draft");
         if (badgeMark) badgeMark.textContent = "!";
         if (badgeText) badgeText.textContent = "Draft";
+      } else if (items.length) {
+        badge.classList.add("is-draft");
+        if (badgeMark) badgeMark.textContent = "!";
+        if (badgeText) badgeText.textContent = "Review defaults";
       } else {
         badge.classList.add("is-missing");
         if (badgeMark) badgeMark.textContent = "○";
@@ -4387,15 +4538,21 @@
       hubNote.hidden = !(status === "configured" || status === "draft");
     }
 
-    if ((isMissing || isUnavailable) && status !== "draft" && status !== "configured") {
+    if ((isMissing || isUnavailable) && !items.length && status !== "draft" && status !== "configured") {
       if (summary) summary.hidden = true;
       if (timeline) {
         timeline.hidden = true;
         timeline.innerHTML = "";
       }
       if (sumWarn) {
-        sumWarn.hidden = true;
-        sumWarn.textContent = "";
+        const defaultWarn = String(bundle.localDefaultWarning || "").trim();
+        if (defaultWarn) {
+          sumWarn.hidden = false;
+          sumWarn.textContent = defaultWarn;
+        } else {
+          sumWarn.hidden = true;
+          sumWarn.textContent = "";
+        }
       }
       if (empty) {
         empty.hidden = false;
@@ -4495,17 +4652,20 @@
             const amountLine = pctText
               ? `${escapeHtml(amount)} · ${escapeHtml(pctText)}`
               : escapeHtml(amount);
-            let due = dueRuleLabel(item.due_rule);
+            let due = dueRuleLabel(item.due_rule, {
+              fixedDueDate: item.fixed_due_date,
+              milestoneDescription: item.milestone_description,
+            });
             const dueKey = String(item.due_rule || "").toLowerCase();
             if (dueKey === "fixed_date" && item.fixed_due_date) {
               const fixedLabel = formatPaymentDateOnly(item.fixed_due_date);
-              due = fixedLabel ? `Due ${fixedLabel}` : "Due on a fixed date";
+              due = fixedLabel ? `Due ${fixedLabel}` : due;
             } else if (dueKey === "milestone" && item.milestone_description) {
               due = `Due at milestone: ${item.milestone_description}`;
             }
             const metaParts = [];
             if (item.sequence_number != null) metaParts.push(`Stage ${item.sequence_number}`);
-            if (typeKey === "custom") metaParts.push("Custom stage");
+            if (typeKey === "custom") metaParts.push("Additional stage");
             if (typeKey === "material") metaParts.push("Material stage");
             const meta = metaParts.length
               ? `<p class="cb-pay-stage__meta">${escapeHtml(metaParts.join(" · "))}</p>`
@@ -5221,7 +5381,7 @@
     if (warrantyFieldsComplete(warSetupFields) || warSetupFields.summary || warSetupFields.durationValue) {
       applyWarrantyFieldsToEdits(draftEdits, warSetupFields);
     }
-    draftEdits.sigMethod = signatureMethodFromSetup(setupBundle.setup);
+    draftEdits.sigMethod = signatureMethodFromSetup(setupBundle.setup) || DEFAULT_SIGNATURE_METHOD_UI;
     draftBaseline = cloneEdits({ ...sourceSnapshot, ...draftEdits });
     activeArticleId = null;
     visitedArticleIds.clear();

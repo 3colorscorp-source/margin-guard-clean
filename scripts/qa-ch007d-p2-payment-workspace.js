@@ -82,6 +82,20 @@ test("reload / conflict handling", () => {
   assert.ok(js.includes("schedule_version_conflict") || js.includes("offerPaymentScheduleConflictReload"));
 });
 
+test("advanced editing remains available", () => {
+  assert.ok(html.includes('id="cbPayAdvancedToggle"'));
+  assert.ok(js.includes("paymentAdvancedEdit"));
+  assert.ok(js.includes('data-pay-field="item_role"'));
+  assert.ok(js.includes("Future obligation — payment is still due"));
+});
+
+test("local defaults helper is loaded before builder", () => {
+  assert.ok(html.includes("/js/contract-payment-defaults.js"));
+  const helperIdx = html.indexOf("contract-payment-defaults.js");
+  const builderIdx = html.indexOf("contract-builder.js");
+  assert.ok(helperIdx >= 0 && builderIdx > helperIdx);
+});
+
 console.log("");
 console.log(`CH-007D-P2 QA: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
