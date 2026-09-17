@@ -292,6 +292,7 @@
     #cbMain.is-preview .cb-prop-secondary,
     #cbMain.is-preview .cb-prop-editor__intro,
     #cbMain.is-preview .cb-war-editor__intro,
+    #cbMain.is-preview .cb-war-preset,
     #cbMain.is-preview .cb-pay-hub-note,
     #cbMain.is-preview .cb-pay-empty__future,
     #cbMain.is-printing [data-ws-edit],
@@ -739,6 +740,33 @@
     .cb-war-live-hint.is-ok { color: #0f766e; font-weight: 700; }
     .cb-war-live-hint.is-warn { color: var(--cb-warn); }
     .cb-war-live-hint.is-block { color: var(--cb-danger); }
+    .cb-war-preset {
+      display: grid;
+      gap: 8px;
+      margin: 0 0 16px;
+    }
+    .cb-war-preset__actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .cb-war-preset__hint,
+    .cb-war-preset__applied,
+    .cb-war-preset__locked {
+      margin: 0;
+      font-size: 0.8rem;
+      line-height: 1.4;
+      color: #57534e;
+    }
+    .cb-war-preset__applied {
+      color: #0f766e;
+      font-weight: 700;
+    }
+    .cb-war-preset__hint a {
+      color: inherit;
+      text-decoration: underline;
+    }
 
     /* CH-007D-P1 — Premium Payment Plan Preview */
     .cb-pay-workspace {
@@ -2355,6 +2383,27 @@
                     <p class="cb-war-editor__intro">
                       Confirm the warranty terms used on the contract. Confirm Warranty writes them to the project record.
                     </p>
+                    <div class="cb-war-preset owner-only no-print" id="cbWarPresetPanel">
+                      <div class="cb-war-preset__actions">
+                        <button type="button" class="btn primary" id="cbWarUseStandardBtn" hidden>
+                          Use standard warranty
+                        </button>
+                        <button type="button" class="btn ghost" id="cbWarReplaceStandardBtn" hidden>
+                          Replace with standard warranty
+                        </button>
+                      </div>
+                      <p class="cb-war-preset__applied" id="cbWarPresetApplied" hidden>
+                        Standard warranty applied to this draft. Review the four fields and press Confirm Warranty to save.
+                      </p>
+                      <p class="cb-war-preset__locked" id="cbWarPresetLocked" hidden>
+                        Warranty is locked because this contract package is frozen.
+                      </p>
+                      <p class="cb-war-preset__hint" id="cbWarPresetHint" hidden>
+                        Set a standard warranty in
+                        <a href="/business-settings.html#standard-warranty">Business Settings</a>
+                        to copy it into this draft.
+                      </p>
+                    </div>
                     <div class="cb-war-form">
                       <div class="cb-war-form__row cb-war-form__row--duration">
                         <div class="cb-war-field">
@@ -2526,6 +2575,7 @@
   <script src="/js/auth.js"></script>
   <script src="/js/contract-scope.js"></script>
   <script src="/js/contract-payment-defaults.js"></script>
+  <script src="/js/contract-warranty-defaults.js"></script>
   <script src="/js/contract-builder.js" defer></script>
 </body>
 </html>

@@ -5,6 +5,7 @@
 
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { requireOwnerOrAdmin } = require("./_lib/require-owner-or-admin");
+const { listPackagesForProject } = require("./_lib/contract-package");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -30,6 +31,12 @@ const WARRANTY_FIELDS = new Set([
   "warranty_duration_unit",
   "warranty_summary",
   "warranty_exclusions",
+]);
+const WARRANTY_LOCK_PACKAGE_STATUSES = new Set([
+  "ready",
+  "executed",
+  "superseded",
+  "frozen",
 ]);
 const CONFIRMATION_FIELDS = new Set([
   "confirm_property_address",
@@ -293,6 +300,38 @@ function evaluateReadiness(setup) {
   };
 }
 
+function requestTouchesWarranty(normalized) {
+  if (!normalized) return false;
+  if (normalized.confirmWarranty !== undefined) return true;
+  return Object.keys(normalized.changes || {}).some((key) => WARRANTY_FIELDS.has(key));
+}
+
+function findWarrantyLockingPackage(packages) {
+  const list = Array.isArray(packages) ? packages : [];
+  return (
+    list.find((pkg) =>
+      WARRANTY_LOCK_PACKAGE_STATUSES.has(trimField(pkg?.status).toLowerCase())
+    ) || null
+  );
+}
+
+async function rejectWarrantyIfPackageLocked(tenantId, projectId, normalized) {
+  if (!requestTouchesWarranty(normalized)) return null;
+  const packages = await listPackagesForProject(tenantId, projectId);
+  const blocking = findWarrantyLockingPackage(packages);
+  if (!blocking) return null;
+  return {
+    statusCode: 409,
+    body: {
+      ok: false,
+      error: "Warranty terms cannot be changed after the contract package is frozen.",
+      code: "warranty_locked_by_package",
+      package_id: blocking.id || null,
+      package_status: trimField(blocking.status) || null,
+    },
+  };
+}
+
 function applyConfirmationRules(existing, normalized) {
   const merged = {
     ...(existing || {}),
@@ -516,6 +555,15 @@ exports.handler = async (event) => {
       });
     }
 
+    const locked = await rejectWarrantyIfPackageLocked(
+      tenantId,
+      projectId,
+      normalized
+    );
+    if (locked) {
+      return json(locked.statusCode, locked.body);
+    }
+
     const confirmation = applyConfirmationRules(existing, normalized);
     if (confirmation.error) {
       return json(400, {
@@ -560,4 +608,12 @@ exports.handler = async (event) => {
       code: "server_error",
     });
   }
+};
+
+exports._test = {
+  WARRANTY_FIELDS,
+  WARRANTY_LOCK_PACKAGE_STATUSES,
+  requestTouchesWarranty,
+  findWarrantyLockingPackage,
+  rejectWarrantyIfPackageLocked,
 };

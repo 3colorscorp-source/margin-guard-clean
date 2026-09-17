@@ -315,15 +315,13 @@ test("11. does not use warranty_notice as summary", () => {
   assert.match(sql, /warranty_notice legal-notice text/);
 });
 
-test("12. does not touch Contract Builder", () => {
-  assert.doesNotMatch(builderJs, /default_warranty_enabled/);
-  assert.doesNotMatch(builderJs, /tenant-contract-preferences/);
-  assert.doesNotMatch(builderJs, /Use standard warranty/);
-  assert.doesNotMatch(builderJs, /business-warranty-defaults/);
-  assert.doesNotMatch(builderHtml, /Use standard warranty/);
-  assert.doesNotMatch(builderHtml, /bsStandardWarrantyCard/);
+test("12. CH-082 Business Settings helper does not wire Contract Builder", () => {
   assert.doesNotMatch(helperSrc, /contract-builder/);
   assert.doesNotMatch(helperSrc, /Confirm Warranty/);
+  assert.doesNotMatch(helperSrc, /Use standard warranty/);
+  assert.doesNotMatch(html, /Use standard warranty/);
+  assert.doesNotMatch(builderHtml, /bsStandardWarrantyCard/);
+  assert.doesNotMatch(apiSrc, /project-contract-setup/);
 });
 
 test("13. does not touch project contract setup", () => {
