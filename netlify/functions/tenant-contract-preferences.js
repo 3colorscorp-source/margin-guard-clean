@@ -1,6 +1,6 @@
 /**
- * CH-001A — Tenant contract preferences (Owner/Admin, session-scoped).
- * GET + POST. Universal defaults only — no clauses generated.
+ * CH-001A / CH-082 — Tenant contract preferences (Owner/Admin, session-scoped).
+ * GET + POST replace-all + PATCH warranty-only. Universal defaults only — no clauses generated.
  */
 
 const { requireOwnerOrAdmin } = require("./_lib/require-owner-or-admin");
@@ -18,12 +18,27 @@ const CONTRACT_LANGUAGES = new Set(["en", "es", "bilingual"]);
 const DISPUTE_PREFS = new Set(["court", "mediation", "arbitration", "unset"]);
 const SIGNATURE_ORDERS = new Set(["customer_first", "contractor_first", "any_order"]);
 
+const WARRANTY_TEXT_MAX = 4000;
+
+const WARRANTY_PATCH_KEYS = [
+  "default_warranty_enabled",
+  "default_warranty_duration_value",
+  "default_warranty_duration_unit",
+  "default_warranty_summary",
+  "default_warranty_exclusions",
+];
+
+const ALLOWED_PATCH_KEYS = new Set(WARRANTY_PATCH_KEYS);
+
 const ALLOWED_BODY_KEYS = new Set([
   "primary_trade_module",
   "custom_trade_label",
   "default_contract_name",
   "default_warranty_duration_value",
   "default_warranty_duration_unit",
+  "default_warranty_enabled",
+  "default_warranty_summary",
+  "default_warranty_exclusions",
   "change_order_requirement",
   "require_customer_initials",
   "default_signer_mode",
@@ -56,13 +71,23 @@ function parseBody(raw) {
   }
 }
 
-function findUnknownBodyKeys(body) {
+function findUnknownBodyKeys(body, allowed) {
+  const allowedSet = allowed || ALLOWED_BODY_KEYS;
   const unknown = [];
   if (!body || typeof body !== "object") return unknown;
   for (const key of Object.keys(body)) {
-    if (!ALLOWED_BODY_KEYS.has(key)) unknown.push(key);
+    if (!allowedSet.has(key)) unknown.push(key);
   }
   return unknown;
+}
+
+function missingWarrantyPatchKeys(body) {
+  const missing = [];
+  if (!body || typeof body !== "object") return [...WARRANTY_PATCH_KEYS];
+  for (const key of WARRANTY_PATCH_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(body, key)) missing.push(key);
+  }
+  return missing;
 }
 
 async function loadPreferencesRow(tenantId) {
@@ -88,15 +113,67 @@ function buildTradeModuleResponse(preferences) {
   };
 }
 
+function normalizeWarrantyFields(body) {
+  const warrantyUnit = trimField(body.default_warranty_duration_unit, 16).toLowerCase() || "months";
+  if (!WARRANTY_UNITS.has(warrantyUnit)) {
+    return { error: "Invalid default_warranty_duration_unit", code: "invalid_enum" };
+  }
+
+  let warrantyValue = null;
+  if (body.default_warranty_duration_value != null && body.default_warranty_duration_value !== "") {
+    const n = Number(body.default_warranty_duration_value);
+    if (!Number.isFinite(n) || n < 0) {
+      return { error: "Invalid default_warranty_duration_value", code: "invalid_warranty_value" };
+    }
+    warrantyValue = Math.floor(n);
+  }
+
+  const warrantyEnabled = Boolean(body.default_warranty_enabled);
+  const warrantySummary = String(body.default_warranty_summary ?? "").trim();
+  const warrantyExclusions = String(body.default_warranty_exclusions ?? "").trim();
+  if (warrantySummary.length > WARRANTY_TEXT_MAX) {
+    return { error: "Warranty summary exceeds 4000 characters", code: "warranty_text_too_long" };
+  }
+  if (warrantyExclusions.length > WARRANTY_TEXT_MAX) {
+    return { error: "Warranty exclusions exceed 4000 characters", code: "warranty_text_too_long" };
+  }
+
+  if (warrantyEnabled) {
+    if (warrantyValue == null || warrantyValue < 1) {
+      return {
+        error: "Standard warranty requires a duration greater than 0",
+        code: "warranty_preset_incomplete",
+      };
+    }
+    if (!warrantySummary) {
+      return {
+        error: "Standard warranty requires a coverage summary",
+        code: "warranty_preset_incomplete",
+      };
+    }
+    if (!warrantyExclusions) {
+      return {
+        error: "Standard warranty requires exclusions",
+        code: "warranty_preset_incomplete",
+      };
+    }
+  }
+
+  return {
+    warranty: {
+      default_warranty_duration_value: warrantyValue,
+      default_warranty_duration_unit: warrantyUnit,
+      default_warranty_enabled: warrantyEnabled,
+      default_warranty_summary: warrantySummary,
+      default_warranty_exclusions: warrantyExclusions,
+    },
+  };
+}
+
 function normalizePreferencesInput(body) {
   const tradeCode = trimField(body.primary_trade_module, 64).toLowerCase() || "custom";
   if (!isValidTradeModule(tradeCode)) {
     return { error: "Invalid primary_trade_module", code: "invalid_trade_module" };
-  }
-
-  const warrantyUnit = trimField(body.default_warranty_duration_unit, 16).toLowerCase() || "months";
-  if (!WARRANTY_UNITS.has(warrantyUnit)) {
-    return { error: "Invalid default_warranty_duration_unit", code: "invalid_enum" };
   }
 
   const changeOrder = trimField(body.change_order_requirement, 32).toLowerCase() || "price_change_only";
@@ -124,21 +201,14 @@ function normalizePreferencesInput(body) {
     return { error: "Invalid default_signature_order", code: "invalid_enum" };
   }
 
-  let warrantyValue = null;
-  if (body.default_warranty_duration_value != null && body.default_warranty_duration_value !== "") {
-    const n = Number(body.default_warranty_duration_value);
-    if (!Number.isFinite(n) || n < 0) {
-      return { error: "Invalid default_warranty_duration_value", code: "invalid_warranty_value" };
-    }
-    warrantyValue = Math.floor(n);
-  }
+  const warrantyNorm = normalizeWarrantyFields(body);
+  if (warrantyNorm.error) return warrantyNorm;
 
   const preferences = {
     primary_trade_module: tradeCode,
     custom_trade_label: trimField(body.custom_trade_label, 200),
     default_contract_name: trimField(body.default_contract_name, 200),
-    default_warranty_duration_value: warrantyValue,
-    default_warranty_duration_unit: warrantyUnit,
+    ...warrantyNorm.warranty,
     change_order_requirement: changeOrder,
     require_customer_initials: body.require_customer_initials !== false,
     default_signer_mode: signerMode,
@@ -161,6 +231,17 @@ function normalizePreferencesInput(body) {
   return { preferences };
 }
 
+function normalizeWarrantyPatchInput(body) {
+  return normalizeWarrantyFields(body);
+}
+
+function successPayload(row) {
+  const preferences = serializePreferencesForApi(row);
+  const trade_module = buildTradeModuleResponse(preferences);
+  const readiness = evaluateContractPreferencesReadiness(preferences);
+  return { ok: true, preferences, trade_module, readiness };
+}
+
 async function upsertPreferences(tenantId, preferences) {
   const existing = await loadPreferencesRow(tenantId);
   const payload = { ...preferences, tenant_id: tenantId };
@@ -180,10 +261,57 @@ async function upsertPreferences(tenantId, preferences) {
   return Array.isArray(rows) && rows[0] ? rows[0] : null;
 }
 
+async function patchWarrantyPreferences(tenantId, warranty) {
+  const existing = await loadPreferencesRow(tenantId);
+
+  if (existing?.id) {
+    const rows = await supabaseRequest(
+      `tenant_contract_preferences?id=eq.${encodeURIComponent(existing.id)}` +
+        `&tenant_id=eq.${encodeURIComponent(tenantId)}`,
+      { method: "PATCH", body: warranty }
+    );
+    return Array.isArray(rows) && rows[0] ? rows[0] : { ...existing, ...warranty };
+  }
+
+  const payload = { tenant_id: tenantId, ...warranty };
+  const rows = await supabaseRequest(
+    "tenant_contract_preferences?on_conflict=tenant_id",
+    {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+      body: payload,
+    }
+  );
+  return Array.isArray(rows) && rows[0] ? rows[0] : payload;
+}
+
+function rejectUnknownAndTenantId(body, allowed) {
+  if (body == null) {
+    return json(400, { ok: false, error: "Invalid JSON", code: "invalid_json" });
+  }
+  if (body.tenant_id != null) {
+    return json(400, {
+      ok: false,
+      error: "tenant_id must not be sent by client",
+      code: "tenant_id_forbidden",
+    });
+  }
+  const unknown = findUnknownBodyKeys(body, allowed);
+  if (unknown.length) {
+    return json(400, {
+      ok: false,
+      error: "Unknown fields rejected",
+      code: "unknown_fields",
+      fields: unknown,
+    });
+  }
+  return null;
+}
+
 exports.handler = async (event) => {
   try {
     const method = event.httpMethod;
-    if (method !== "GET" && method !== "POST") {
+    if (method !== "GET" && method !== "POST" && method !== "PATCH") {
       return json(405, { ok: false, error: "Method not allowed" });
     }
 
@@ -192,33 +320,40 @@ exports.handler = async (event) => {
 
     if (method === "GET") {
       const row = await loadPreferencesRow(tenantId);
-      const preferences = serializePreferencesForApi(row);
-      const trade_module = buildTradeModuleResponse(preferences);
-      const readiness = evaluateContractPreferencesReadiness(preferences);
-      return json(200, { ok: true, preferences, trade_module, readiness });
+      return json(200, successPayload(row));
     }
 
     const body = parseBody(event.body);
-    if (body == null) {
-      return json(400, { ok: false, error: "Invalid JSON", code: "invalid_json" });
-    }
-    if (body.tenant_id != null) {
-      return json(400, {
-        ok: false,
-        error: "tenant_id must not be sent by client",
-        code: "tenant_id_forbidden",
-      });
+
+    if (method === "PATCH") {
+      const rejected = rejectUnknownAndTenantId(body, ALLOWED_PATCH_KEYS);
+      if (rejected) return rejected;
+      const missing = missingWarrantyPatchKeys(body);
+      if (missing.length) {
+        return json(400, {
+          ok: false,
+          error: "Warranty PATCH requires all warranty fields",
+          code: "warranty_patch_fields_required",
+          fields: missing,
+        });
+      }
+      const normalized = normalizeWarrantyPatchInput(body);
+      if (normalized.error) {
+        return json(400, {
+          ok: false,
+          error: normalized.error,
+          code: normalized.code || "validation_failed",
+        });
+      }
+      const saved = await patchWarrantyPreferences(tenantId, normalized.warranty);
+      if (!saved) {
+        return json(500, { ok: false, error: "Warranty preset save failed", code: "save_failed" });
+      }
+      return json(200, successPayload(saved));
     }
 
-    const unknown = findUnknownBodyKeys(body);
-    if (unknown.length) {
-      return json(400, {
-        ok: false,
-        error: "Unknown fields rejected",
-        code: "unknown_fields",
-        fields: unknown,
-      });
-    }
+    const rejected = rejectUnknownAndTenantId(body, ALLOWED_BODY_KEYS);
+    if (rejected) return rejected;
 
     const normalized = normalizePreferencesInput(body);
     if (normalized.error) {
@@ -235,14 +370,24 @@ exports.handler = async (event) => {
       return json(500, { ok: false, error: "Preferences save failed", code: "save_failed" });
     }
 
-    const preferences = serializePreferencesForApi(saved);
-    const trade_module = buildTradeModuleResponse(preferences);
-    const readiness = evaluateContractPreferencesReadiness(preferences);
-    return json(200, { ok: true, preferences, trade_module, readiness });
+    return json(200, successPayload(saved));
   } catch (err) {
     if (err?.isGuardError) {
       return json(err.statusCode || 403, { ok: false, error: err.message, code: err.code });
     }
     return json(500, { ok: false, error: err.message || "Server error" });
   }
+};
+
+exports._test = {
+  ALLOWED_BODY_KEYS,
+  ALLOWED_PATCH_KEYS,
+  WARRANTY_PATCH_KEYS,
+  WARRANTY_TEXT_MAX,
+  WARRANTY_UNITS,
+  normalizePreferencesInput,
+  normalizeWarrantyPatchInput,
+  findUnknownBodyKeys,
+  missingWarrantyPatchKeys,
+  patchWarrantyPreferences,
 };
