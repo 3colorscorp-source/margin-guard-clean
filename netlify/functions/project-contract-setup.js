@@ -5,7 +5,6 @@
 
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { requireOwnerOrAdmin } = require("./_lib/require-owner-or-admin");
-const { listPackagesForProject } = require("./_lib/contract-package");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -37,6 +36,13 @@ const WARRANTY_LOCK_PACKAGE_STATUSES = new Set([
   "executed",
   "superseded",
   "frozen",
+]);
+const WARRANTY_RPC_UPDATE_KEYS = new Set([
+  "warranty_duration_value",
+  "warranty_duration_unit",
+  "warranty_summary",
+  "warranty_exclusions",
+  "warranty_confirmed_at",
 ]);
 const CONFIRMATION_FIELDS = new Set([
   "confirm_property_address",
@@ -315,19 +321,95 @@ function findWarrantyLockingPackage(packages) {
   );
 }
 
-async function rejectWarrantyIfPackageLocked(tenantId, projectId, normalized) {
-  if (!requestTouchesWarranty(normalized)) return null;
-  const packages = await listPackagesForProject(tenantId, projectId);
-  const blocking = findWarrantyLockingPackage(packages);
-  if (!blocking) return null;
+function parseMgError(err) {
+  const text = [err?.message, err?.supabaseRaw, err?.details]
+    .filter(Boolean)
+    .join(" ");
+  const match = String(text).match(/MG_ERR:([a-z0-9_]+):([^|]*)/i);
+  if (!match) return null;
+  const detailId = String(text).match(/"package_id"\s*:\s*"([^"]+)"/i);
+  const detailStatus = String(text).match(/"package_status"\s*:\s*"([^"]+)"/i);
   return {
-    statusCode: 409,
+    code: match[1],
+    message: trimField(match[2]),
+    packageId: detailId ? detailId[1] : null,
+    packageStatus: detailStatus ? detailStatus[1] : null,
+  };
+}
+
+function pickWarrantyRpcUpdates(updates) {
+  const body = {};
+  Object.keys(updates || {}).forEach((key) => {
+    if (WARRANTY_RPC_UPDATE_KEYS.has(key)) body[key] = updates[key];
+  });
+  return body;
+}
+
+function omitWarrantyRpcUpdates(updates) {
+  const body = {};
+  Object.keys(updates || {}).forEach((key) => {
+    if (!WARRANTY_RPC_UPDATE_KEYS.has(key)) body[key] = updates[key];
+  });
+  return body;
+}
+
+async function saveWarrantyAtomically(tenantId, projectId, quoteId, updates) {
+  const raw = await supabaseRequest("rpc/save_project_contract_warranty", {
+    method: "POST",
+    body: {
+      p_tenant_id: tenantId,
+      p_project_id: projectId,
+      p_quote_id: quoteId,
+      p_updates: pickWarrantyRpcUpdates(updates),
+    },
+  });
+  if (Array.isArray(raw) && raw[0] && typeof raw[0] === "object") {
+    return raw[0].save_project_contract_warranty || raw[0];
+  }
+  return raw;
+}
+
+function mapWarrantyRpcFailure(err) {
+  const parsed = parseMgError(err);
+  if (parsed?.code === "warranty_locked_by_package") {
+    return {
+      statusCode: 409,
+      body: {
+        ok: false,
+        error:
+          "Warranty terms cannot be changed after the contract package is frozen.",
+        code: "warranty_locked_by_package",
+        package_id: parsed.packageId || null,
+        package_status: parsed.packageStatus || null,
+      },
+    };
+  }
+  if (parsed?.code === "setup_unavailable") {
+    return {
+      statusCode: 404,
+      body: {
+        ok: false,
+        error: parsed.message || "Project contract setup unavailable",
+        code: "setup_unavailable",
+      },
+    };
+  }
+  if (parsed?.code === "unknown_fields") {
+    return {
+      statusCode: 400,
+      body: {
+        ok: false,
+        error: parsed.message || "Unknown fields rejected",
+        code: "unknown_fields",
+      },
+    };
+  }
+  return {
+    statusCode: 500,
     body: {
       ok: false,
-      error: "Warranty terms cannot be changed after the contract package is frozen.",
-      code: "warranty_locked_by_package",
-      package_id: blocking.id || null,
-      package_status: trimField(blocking.status) || null,
+      error: "Project contract setup is temporarily unavailable",
+      code: "server_error",
     },
   };
 }
@@ -555,15 +637,6 @@ exports.handler = async (event) => {
       });
     }
 
-    const locked = await rejectWarrantyIfPackageLocked(
-      tenantId,
-      projectId,
-      normalized
-    );
-    if (locked) {
-      return json(locked.statusCode, locked.body);
-    }
-
     const confirmation = applyConfirmationRules(existing, normalized);
     if (confirmation.error) {
       return json(400, {
@@ -573,13 +646,40 @@ exports.handler = async (event) => {
       });
     }
 
-    const saved = await saveSetup(
-      tenantId,
-      projectId,
-      quoteId,
-      existing,
-      confirmation.updates
-    );
+    let saved = existing;
+    if (requestTouchesWarranty(normalized)) {
+      try {
+        saved = await saveWarrantyAtomically(
+          tenantId,
+          projectId,
+          quoteId,
+          confirmation.updates
+        );
+      } catch (err) {
+        const mapped = mapWarrantyRpcFailure(err);
+        return json(mapped.statusCode, mapped.body);
+      }
+      if (!saved) {
+        return json(500, {
+          ok: false,
+          error: "Project contract setup save failed",
+          code: "save_failed",
+        });
+      }
+    }
+
+    const otherUpdates = requestTouchesWarranty(normalized)
+      ? omitWarrantyRpcUpdates(confirmation.updates)
+      : confirmation.updates;
+    if (Object.keys(otherUpdates).length) {
+      saved = await saveSetup(
+        tenantId,
+        projectId,
+        quoteId,
+        saved,
+        otherUpdates
+      );
+    }
     if (!saved) {
       return json(500, {
         ok: false,
@@ -613,7 +713,10 @@ exports.handler = async (event) => {
 exports._test = {
   WARRANTY_FIELDS,
   WARRANTY_LOCK_PACKAGE_STATUSES,
+  WARRANTY_RPC_UPDATE_KEYS,
   requestTouchesWarranty,
   findWarrantyLockingPackage,
-  rejectWarrantyIfPackageLocked,
+  parseMgError,
+  pickWarrantyRpcUpdates,
+  saveWarrantyAtomically,
 };

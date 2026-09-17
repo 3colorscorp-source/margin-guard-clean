@@ -178,6 +178,59 @@ function evaluateFreezeHashDecision(latestReady, contentHash) {
   };
 }
 
+function parseMgError(err) {
+  const text = [err?.message, err?.supabaseRaw]
+    .filter(Boolean)
+    .join(" ");
+  const match = String(text).match(/MG_ERR:([a-z0-9_]+):([^|]*)/i);
+  if (!match) return null;
+  return {
+    code: match[1],
+    message: trimField(match[2]),
+  };
+}
+
+function normalizeFreezeRpc(raw) {
+  const payload =
+    Array.isArray(raw) && raw[0] && typeof raw[0] === "object"
+      ? raw[0].freeze_tenant_contract_package || raw[0]
+      : raw;
+  if (!payload || typeof payload !== "object" || !payload.package) return null;
+  return {
+    ok: true,
+    idempotent: Boolean(payload.idempotent),
+    package: {
+      ...serializePackageRow(payload.package),
+      snapshot_json: payload.package.snapshot_json,
+    },
+  };
+}
+
+async function freezePackageAtomically({
+  tenantId,
+  projectId,
+  quoteId,
+  snapshot,
+  contentHash,
+  sourceReadiness,
+  createdBy,
+  expectedSetupUpdatedAt,
+}) {
+  return supabaseRequest("rpc/freeze_tenant_contract_package", {
+    method: "POST",
+    body: {
+      p_tenant_id: tenantId,
+      p_project_id: projectId,
+      p_quote_id: quoteId,
+      p_snapshot_json: snapshot,
+      p_content_hash: contentHash,
+      p_source_readiness: sourceReadiness,
+      p_created_by: createdBy || null,
+      p_expected_setup_updated_at: expectedSetupUpdatedAt || null,
+    },
+  });
+}
+
 function toMoneyCents(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
@@ -806,87 +859,54 @@ async function freezeContractPackage({
   const contentHash = contentHashForSnapshot(snapshot);
   const sourceReadiness = snapshot.readiness;
 
-  const latestReady = await loadLatestReadyPackage(tenantId, projectId);
-  const decision = evaluateFreezeHashDecision(latestReady, contentHash);
-  if (decision.idempotent) {
-    return {
-      ok: true,
-      idempotent: true,
-      package: {
-        ...serializePackageRow(latestReady),
-        snapshot_json: latestReady.snapshot_json,
-      },
-    };
-  }
-
-  let version = await nextPackageVersion(tenantId, projectId);
-  let inserted = null;
-  let attempts = 0;
-  while (attempts < 3 && !inserted) {
-    attempts += 1;
-    try {
-      const rows = await supabaseRequest(`tenant_contract_packages`, {
-        method: "POST",
-        body: {
-          tenant_id: tenantId,
-          project_id: projectId,
-          quote_id: quoteId,
-          version,
-          status: "ready",
-          snapshot_json: snapshot,
-          content_hash: contentHash,
-          source_readiness: sourceReadiness,
-          supersedes_package_id: decision.supersedeId || null,
-          created_by: createdBy || null,
-        },
-      });
-      inserted = Array.isArray(rows) ? rows[0] : rows;
-    } catch (err) {
-      const text = String(err?.message || err?.supabaseRaw || "");
-      if (/duplicate|unique|23505/i.test(text)) {
-        const again = await loadLatestReadyPackage(tenantId, projectId);
-        const againDecision = evaluateFreezeHashDecision(again, contentHash);
-        if (againDecision.idempotent) {
-          return {
-            ok: true,
-            idempotent: true,
-            package: {
-              ...serializePackageRow(again),
-              snapshot_json: again.snapshot_json,
-            },
-          };
-        }
-        version = await nextPackageVersion(tenantId, projectId);
-        continue;
-      }
-      throw err;
+  // Policy A (decision.idempotent) and supersede (decision.supersedeId) run inside
+  // freeze_tenant_contract_package under the same project_contract_xact_lock as
+  // Warranty mutation.
+  try {
+    const raw = await freezePackageAtomically({
+      tenantId,
+      projectId,
+      quoteId,
+      snapshot,
+      contentHash,
+      sourceReadiness,
+      createdBy,
+      expectedSetupUpdatedAt: expectedSetupUpdatedAt || null,
+    });
+    const normalized = normalizeFreezeRpc(raw);
+    if (!normalized?.package?.id) {
+      return {
+        error: "Could not create contract package",
+        code: "insert_failed",
+        status: 500,
+      };
     }
-  }
-
-  if (!inserted?.id) {
-    return {
-      error: "Could not create contract package",
-      code: "insert_failed",
-      status: 500,
-    };
-  }
-
-  if (decision.supersedeId) {
-    try {
-      await markPackageSuperseded(tenantId, decision.supersedeId);
-    } catch (_err) {
-      /* new package exists; supersede best-effort */
+    return normalized;
+  } catch (err) {
+    const parsed = parseMgError(err);
+    if (parsed?.code === "setup_version_conflict") {
+      return {
+        error: "Contract setup changed. Reload before freezing.",
+        code: "setup_version_conflict",
+        status: 409,
+      };
     }
+    if (parsed?.code === "not_found") {
+      return {
+        error: "Project or quote not found",
+        code: "not_found",
+        status: 404,
+      };
+    }
+    if (parsed?.code === "insert_failed") {
+      return {
+        error: "Could not create contract package",
+        code: "insert_failed",
+        status: 500,
+      };
+    }
+    throw err;
   }
-
-  return {
-    ok: true,
-    idempotent: false,
-    package: {
-      ...serializePackageRow(inserted),
-      snapshot_json: inserted.snapshot_json,
-    },
-  };
 }
 
 module.exports = {
@@ -913,5 +933,7 @@ module.exports = {
   serializeSchedule,
   listPackagesForProject,
   freezeContractPackage,
+  freezePackageAtomically,
+  parseMgError,
   trimField,
 };

@@ -24,6 +24,8 @@ const freezePath = path.join(ROOT, "netlify/functions/_lib/contract-package.js")
 const pdfPath = path.join(ROOT, "netlify/functions/_lib/contract-signed-pdf.js");
 const payHelperPath = path.join(ROOT, "public/js/contract-payment-defaults.js");
 const prefsPath = path.join(ROOT, "netlify/functions/tenant-contract-preferences.js");
+const sqlPath = path.join(ROOT, "SUPABASE_CH083_PROJECT_CONTRACT_XACT_LOCK.sql");
+const sqlVerifyPath = path.join(ROOT, "SUPABASE_CH083_PROJECT_CONTRACT_XACT_LOCK_VERIFY.sql");
 
 const helper = require("../public/js/contract-warranty-defaults.js");
 const setupApi = require("../netlify/functions/project-contract-setup.js");
@@ -37,6 +39,8 @@ const pdfSrc = fs.readFileSync(pdfPath, "utf8");
 const helperSrc = fs.readFileSync(helperPath, "utf8");
 const payHelperSrc = fs.readFileSync(payHelperPath, "utf8");
 const prefsSrc = fs.readFileSync(prefsPath, "utf8");
+const sql = fs.readFileSync(sqlPath, "utf8");
+const sqlVerify = fs.readFileSync(sqlVerifyPath, "utf8");
 
 let passed = 0;
 let failed = 0;
@@ -72,10 +76,11 @@ const EMPTY_FIELDS = {
   exclusions: "",
 };
 
-test("syntax helper, builder, setup, this QA file", () => {
+test("syntax helper, builder, setup, freeze lib, this QA file", () => {
   check(helperPath);
   check(jsPath);
   check(setupPath);
+  check(freezePath);
   check(path.join(__dirname, "qa-ch083-use-standard-warranty.js"));
 });
 
@@ -280,9 +285,43 @@ test("server warranty lock uses the same package statuses", () => {
     changes: { signature_method: "email_link" },
   });
   assert.strictEqual(signatureOnly, false);
-  assert.match(setupSrc, /listPackagesForProject/);
+  assert.doesNotMatch(setupSrc, /listPackagesForProject/);
+  assert.doesNotMatch(setupSrc, /rejectWarrantyIfPackageLocked/);
+  assert.match(setupSrc, /rpc\/save_project_contract_warranty/);
   assert.match(setupSrc, /warranty_locked_by_package/);
-  assert.match(setupSrc, /rejectWarrantyIfPackageLocked/);
+});
+
+test("warranty and freeze share one advisory xact lock; no REST TOCTOU", () => {
+  const lockExpr = "hashtext(p_tenant_id::text || ':' || p_project_id::text)";
+  assert.match(sql, /create or replace function public\.project_contract_xact_lock/);
+  assert.match(sql, /create or replace function public\.save_project_contract_warranty/);
+  assert.match(sql, /create or replace function public\.freeze_tenant_contract_package/);
+  assert.match(sql, /pg_advisory_xact_lock/);
+  assert.ok(sql.includes(lockExpr));
+  assert.match(sql, /perform public\.project_contract_xact_lock\(p_tenant_id, p_project_id\)/);
+  assert.strictEqual(
+    (sql.match(/perform public\.project_contract_xact_lock\(p_tenant_id, p_project_id\)/g) || []).length >= 3,
+    true
+  );
+  assert.match(sql, /in \('ready', 'executed', 'superseded', 'frozen'\)/);
+  assert.doesNotMatch(sql, /in \('ready', 'executed', 'superseded', 'frozen', 'void'\)/);
+  assert.match(sql, /MG_ERR:warranty_locked_by_package/);
+  assert.doesNotMatch(sql, /drop table/i);
+  assert.match(sql, /grant execute on function public\.save_project_contract_warranty/);
+  assert.match(sql, /grant execute on function public\.freeze_tenant_contract_package/);
+  assert.match(sqlVerify, /CH-083 VERIFY PASS/);
+  assert.match(setupSrc, /saveWarrantyAtomically/);
+  assert.match(freezeSrc, /rpc\/freeze_tenant_contract_package/);
+  assert.match(freezeSrc, /freezePackageAtomically/);
+  const freezeFn = freezeSrc.slice(
+    freezeSrc.indexOf("async function freezeContractPackage"),
+    freezeSrc.indexOf("module.exports")
+  );
+  assert.doesNotMatch(freezeFn, /supabaseRequest\(`tenant_contract_packages`/);
+  assert.doesNotMatch(freezeFn, /loadLatestReadyPackage\(/);
+  assert.doesNotMatch(freezeFn, /nextPackageVersion\(/);
+  assert.match(freezeFn, /decision\.idempotent/);
+  assert.doesNotMatch(setupSrc, /listPackagesForProject\([\s\S]*saveSetup\(/);
 });
 
 test("snapshot/PDF still read project setup warranty, not the tenant preset", () => {
@@ -464,6 +503,107 @@ async function withSetupHandler(store, fn) {
       return jsonRes(200, [{ id: QUOTE_A, project_address: "1 Main", job_site: "" }]);
     }
 
+    async function withStoreLock(work) {
+      const prev = store.mutex || Promise.resolve();
+      let release;
+      store.mutex = new Promise((resolve) => {
+        release = resolve;
+      });
+      await prev;
+      try {
+        return await work();
+      } finally {
+        release();
+      }
+    }
+
+    function lockingPackage() {
+      const list = Array.isArray(store.packages) ? store.packages : [];
+      return (
+        list.find((pkg) =>
+          ["ready", "executed", "superseded", "frozen"].includes(
+            String(pkg.status || "").toLowerCase()
+          )
+        ) || null
+      );
+    }
+
+    if (table === "rpc/save_project_contract_warranty") {
+      return withStoreLock(async () => {
+        const blocking = lockingPackage();
+        if (blocking) {
+          store.rpcCalls = (store.rpcCalls || []).concat(["save_project_contract_warranty"]);
+          return jsonRes(400, {
+            message:
+              "MG_ERR:warranty_locked_by_package:Warranty terms cannot be changed after the contract package is frozen.",
+            details: JSON.stringify({
+              package_id: blocking.id,
+              package_status: blocking.status,
+            }),
+          });
+        }
+        const updates = (parsedBody && parsedBody.p_updates) || {};
+        store.setup = {
+          ...(store.setup || draftSetupRow()),
+          ...updates,
+          tenant_id: TENANT_A,
+          project_id: PROJECT_A,
+          quote_id: QUOTE_A,
+          updated_at: "2026-09-17T18:00:00.000Z",
+        };
+        store.rpcCalls = (store.rpcCalls || []).concat(["save_project_contract_warranty"]);
+        return jsonRes(200, store.setup);
+      });
+    }
+
+    if (table === "rpc/freeze_tenant_contract_package") {
+      return withStoreLock(async () => {
+        if (store.freezeDelayMs) {
+          await new Promise((resolve) => setTimeout(resolve, store.freezeDelayMs));
+        }
+        const snapWar = (parsedBody && parsedBody.p_snapshot_json && parsedBody.p_snapshot_json.warranty) || {};
+        const setup = store.setup || {};
+        const snapDuration =
+          snapWar.duration_value == null || snapWar.duration_value === ""
+            ? null
+            : Number(snapWar.duration_value);
+        const setupDuration =
+          setup.warranty_duration_value == null ? null : Number(setup.warranty_duration_value);
+        if (
+          snapDuration !== setupDuration ||
+          String(snapWar.summary || "") !== String(setup.warranty_summary || "") ||
+          String(snapWar.exclusions || "") !== String(setup.warranty_exclusions || "")
+        ) {
+          return jsonRes(400, {
+            message:
+              "MG_ERR:setup_version_conflict:Contract setup changed. Reload before freezing.",
+          });
+        }
+        const hash = String((parsedBody && parsedBody.p_content_hash) || "");
+        const ready = (store.packages || []).find((pkg) => pkg.status === "ready");
+        if (ready && String(ready.content_hash) === hash) {
+          store.rpcCalls = (store.rpcCalls || []).concat(["freeze_tenant_contract_package"]);
+          return jsonRes(200, { ok: true, idempotent: true, package: ready });
+        }
+        const inserted = {
+          id: "pkg-frozen-" + String((store.packages || []).length + 1),
+          tenant_id: TENANT_A,
+          project_id: PROJECT_A,
+          quote_id: QUOTE_A,
+          version: (store.packages || []).length + 1,
+          status: "ready",
+          content_hash: hash,
+          snapshot_json: parsedBody && parsedBody.p_snapshot_json,
+        };
+        store.packages = (store.packages || []).map((pkg) =>
+          pkg.status === "ready" ? { ...pkg, status: "superseded" } : pkg
+        );
+        store.packages.push(inserted);
+        store.rpcCalls = (store.rpcCalls || []).concat(["freeze_tenant_contract_package"]);
+        return jsonRes(200, { ok: true, idempotent: false, package: inserted });
+      });
+    }
+
     if (table === "tenant_contract_packages") {
       return jsonRes(200, store.packages || []);
     }
@@ -543,7 +683,14 @@ async function runHandlerTests() {
       assert.strictEqual(data.ok, true);
       assert.strictEqual(data.setup.warranty_summary, "qa-preset-summary");
       assert.ok(data.setup.warranty_confirmed_at);
-      assert.ok(store.writes.some((w) => w.table === "project_contract_setups"));
+      assert.ok(
+        (store.rpcCalls || []).includes("save_project_contract_warranty"),
+        "expected warranty RPC"
+      );
+      assert.strictEqual(
+        store.writes.filter((w) => w.table === "project_contract_setups").length,
+        0
+      );
     });
   });
 
@@ -596,6 +743,7 @@ async function runHandlerTests() {
           store.writes.filter((w) => w.table === "project_contract_setups").length,
           0
         );
+        assert.ok((store.rpcCalls || []).includes("save_project_contract_warranty"));
       });
     });
   }
@@ -626,6 +774,98 @@ async function runHandlerTests() {
       const data = parseHandler(res);
       assert.strictEqual(res.statusCode, 200, data.error);
       assert.strictEqual(data.setup.signature_method, "both");
+    });
+  });
+
+  await testAsync("freeze holds the lock so concurrent warranty cannot diverge", async () => {
+    const oldSetup = {
+      ...draftSetupRow(),
+      warranty_duration_value: 1,
+      warranty_duration_unit: "years",
+      warranty_summary: "old",
+      warranty_exclusions: "old-ex",
+      warranty_confirmed_at: "2026-01-01T00:00:00.000Z",
+    };
+    const store = {
+      setup: oldSetup,
+      packages: [],
+      writes: [],
+      freezeDelayMs: 50,
+    };
+    await withSetupHandler(store, async (mod) => {
+      const freezeMod = require("../netlify/functions/_lib/contract-package.js");
+      const freezePromise = freezeMod.freezePackageAtomically({
+        tenantId: TENANT_A,
+        projectId: PROJECT_A,
+        quoteId: QUOTE_A,
+        snapshot: {
+          warranty: {
+            duration_value: 1,
+            duration_unit: "years",
+            summary: "old",
+            exclusions: "old-ex",
+          },
+        },
+        contentHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        sourceReadiness: { warranty: "configured" },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      const war = await mod.handler(ownerEvent("POST", WARRANTY_POST));
+      const freeze = await freezePromise;
+      const warData = parseHandler(war);
+      assert.strictEqual(war.statusCode, 409, warData.error);
+      assert.strictEqual(warData.code, "warranty_locked_by_package");
+      assert.strictEqual(freeze.idempotent, false);
+      assert.ok(freeze.package && freeze.package.status === "ready");
+      assert.strictEqual(store.setup.warranty_summary, "old");
+      assert.strictEqual(
+        store.packages.filter((pkg) => pkg.status === "ready").length,
+        1
+      );
+    });
+  });
+
+  await testAsync("warranty first then freeze with stale snapshot is rejected", async () => {
+    const store = {
+      setup: {
+        ...draftSetupRow(),
+        warranty_duration_value: 1,
+        warranty_duration_unit: "years",
+        warranty_summary: "old",
+        warranty_exclusions: "old-ex",
+        warranty_confirmed_at: "2026-01-01T00:00:00.000Z",
+      },
+      packages: [],
+      writes: [],
+    };
+    await withSetupHandler(store, async (mod) => {
+      const freezeMod = require("../netlify/functions/_lib/contract-package.js");
+      const war = await mod.handler(ownerEvent("POST", WARRANTY_POST));
+      assert.strictEqual(war.statusCode, 200, parseHandler(war).error);
+      let freezeErr = null;
+      try {
+        await freezeMod.freezePackageAtomically({
+          tenantId: TENANT_A,
+          projectId: PROJECT_A,
+          quoteId: QUOTE_A,
+          snapshot: {
+            warranty: {
+              duration_value: 1,
+              duration_unit: "years",
+              summary: "old",
+              exclusions: "old-ex",
+            },
+          },
+          contentHash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          sourceReadiness: { warranty: "configured" },
+        });
+      } catch (err) {
+        freezeErr = err;
+      }
+      assert.ok(freezeErr, "stale freeze must fail");
+      assert.match(String(freezeErr.message || freezeErr.supabaseRaw || ""), /setup_version_conflict/);
+      assert.strictEqual(store.setup.warranty_summary, "qa-preset-summary");
+      assert.strictEqual((store.packages || []).length, 0);
     });
   });
 }
