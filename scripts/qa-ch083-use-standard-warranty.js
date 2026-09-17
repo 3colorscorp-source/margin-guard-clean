@@ -310,6 +310,29 @@ test("warranty and freeze share one advisory xact lock; no REST TOCTOU", () => {
   assert.match(sql, /grant execute on function public\.save_project_contract_warranty/);
   assert.match(sql, /grant execute on function public\.freeze_tenant_contract_package/);
   assert.match(sqlVerify, /CH-083 VERIFY PASS/);
+  assert.match(sqlVerify, /to_regprocedure\(v_ident\)/);
+  assert.match(sqlVerify, /public\.project_contract_xact_lock\(uuid, uuid\)/);
+  assert.match(sqlVerify, /public\.tenant_contract_packages_next_version\(uuid, uuid\)/);
+  assert.match(sqlVerify, /public\.save_project_contract_warranty\(uuid, uuid, uuid, jsonb\)/);
+  assert.match(
+    sqlVerify,
+    /public\.freeze_tenant_contract_package\(uuid, uuid, uuid, jsonb, text, jsonb, uuid, timestamptz\)/
+  );
+  assert.match(sqlVerify, /prosecdef is not true/);
+  assert.match(sqlVerify, /p\.prosecdef/);
+  assert.match(sqlVerify, /p\.proconfig/);
+  assert.match(sqlVerify, /search_path is not safe/);
+  assert.match(sqlVerify, /PUBLIC has EXECUTE/);
+  assert.match(sqlVerify, /has_function_privilege\('anon'/);
+  assert.match(sqlVerify, /has_function_privilege\('authenticated'/);
+  assert.match(sqlVerify, /has_function_privilege\('service_role'/);
+  assert.match(sqlVerify, /unexpected executable overload/);
+  assert.match(sqlVerify, /select 'PASS'::text as ch083_verify_result/i);
+  assert.ok(
+    sqlVerify.lastIndexOf("select 'PASS'::text as ch083_verify_result") >
+      sqlVerify.lastIndexOf("end;"),
+    "PASS row must come after the VERIFY block, not before failed checks"
+  );
   assert.match(setupSrc, /saveWarrantyAtomically/);
   assert.match(freezeSrc, /rpc\/freeze_tenant_contract_package/);
   assert.match(freezeSrc, /freezePackageAtomically/);
