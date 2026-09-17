@@ -1,15 +1,172 @@
 /**
  * CH-011I — Minimal PDF writer (no external deps).
  * Text + simple path drawing for drawn signatures.
+ * Helvetica / WinAnsi, explicit Tc/Tw/Tz, width-based wrap.
  */
 "use strict";
 
-function escapePdfText(value) {
+/**
+ * Deterministic Unicode → ASCII for WinAnsi Helvetica.
+ * Known punctuation is mapped; remaining non-ASCII still becomes "?" at escape.
+ */
+function normalizePdfUnicode(value) {
   return String(value ?? "")
+    .replace(/\u2014|\u2013|\u2012|\u2010|\u2212|\uFE58|\uFE63|\uFF0D/g, "-")
+    .replace(/\u2022|\u00B7|\u2043|\u2219|\u25E6|\u2023/g, "*")
+    .replace(/\u2018|\u2019|\u201A|\u201B|\u2032|\u02BC/g, "'")
+    .replace(/\u201C|\u201D|\u201E|\u201F|\u2033/g, '"')
+    .replace(/\u00A0|\u202F|\u2007|\u2008|\u2009|\u200A|\u2002|\u2003|\u2004|\u2005|\u2006|\u200B|\uFEFF/g, " ")
+    .replace(/\u2026/g, "...")
+    .replace(/[\t\r]+/g, " ");
+}
+
+function escapePdfText(value) {
+  return normalizePdfUnicode(value)
     .replace(/\\/g, "\\\\")
     .replace(/\(/g, "\\(")
     .replace(/\)/g, "\\)")
-    .replace(/[^\x20-\x7E\n\r\t]/g, "?");
+    .replace(/[^\x20-\x7E\n]/g, "?");
+}
+
+/**
+ * Helvetica AFM widths (WinAnsi, 1/1000 em) for ASCII 32-126.
+ * Sufficiently correct for wrap; Bold/Oblique use the same table.
+ */
+const HELVETICA_WIDTHS = new Int16Array(128);
+(function initHelveticaWidths() {
+  const w = HELVETICA_WIDTHS;
+  for (let i = 0; i < 128; i += 1) w[i] = 600;
+  w[32] = 278;
+  w[33] = 278;
+  w[34] = 355;
+  w[35] = 556;
+  w[36] = 556;
+  w[37] = 889;
+  w[38] = 667;
+  w[39] = 191;
+  w[40] = 333;
+  w[41] = 333;
+  w[42] = 389;
+  w[43] = 584;
+  w[44] = 278;
+  w[45] = 333;
+  w[46] = 278;
+  w[47] = 278;
+  for (let d = 48; d <= 57; d += 1) w[d] = 556;
+  w[58] = 278;
+  w[59] = 278;
+  w[60] = 584;
+  w[61] = 584;
+  w[62] = 584;
+  w[63] = 556;
+  w[64] = 1015;
+  w[65] = 667;
+  w[66] = 667;
+  w[67] = 722;
+  w[68] = 722;
+  w[69] = 667;
+  w[70] = 611;
+  w[71] = 778;
+  w[72] = 722;
+  w[73] = 278;
+  w[74] = 500;
+  w[75] = 667;
+  w[76] = 556;
+  w[77] = 833;
+  w[78] = 722;
+  w[79] = 778;
+  w[80] = 667;
+  w[81] = 778;
+  w[82] = 722;
+  w[83] = 667;
+  w[84] = 611;
+  w[85] = 722;
+  w[86] = 667;
+  w[87] = 944;
+  w[88] = 667;
+  w[89] = 667;
+  w[90] = 611;
+  w[91] = 333;
+  w[92] = 278;
+  w[93] = 333;
+  w[94] = 584;
+  w[95] = 556;
+  w[96] = 333;
+  w[97] = 556;
+  w[98] = 556;
+  w[99] = 500;
+  w[100] = 556;
+  w[101] = 556;
+  w[102] = 278;
+  w[103] = 556;
+  w[104] = 556;
+  w[105] = 222;
+  w[106] = 222;
+  w[107] = 500;
+  w[108] = 222;
+  w[109] = 833;
+  w[110] = 556;
+  w[111] = 556;
+  w[112] = 556;
+  w[113] = 556;
+  w[114] = 333;
+  w[115] = 500;
+  w[116] = 278;
+  w[117] = 556;
+  w[118] = 500;
+  w[119] = 722;
+  w[120] = 500;
+  w[121] = 500;
+  w[122] = 500;
+  w[123] = 334;
+  w[124] = 260;
+  w[125] = 334;
+  w[126] = 584;
+})();
+
+function measureTextWidth(text, fontSize) {
+  const s = normalizePdfUnicode(text);
+  const size = Number(fontSize) || 10;
+  let units = 0;
+  for (let i = 0; i < s.length; i += 1) {
+    const code = s.charCodeAt(i);
+    if (code === 10) continue;
+    units += code >= 32 && code <= 126 ? HELVETICA_WIDTHS[code] : 600;
+  }
+  return (units * size) / 1000;
+}
+
+function wrapTextToWidth(text, fontSize, maxWidth) {
+  const raw = normalizePdfUnicode(text).replace(/\s+/g, " ").trim();
+  if (!raw) return [""];
+  const words = raw.split(" ");
+  const out = [];
+  let line = "";
+  for (const word of words) {
+    const trial = line ? `${line} ${word}` : word;
+    if (measureTextWidth(trial, fontSize) <= maxWidth) {
+      line = trial;
+      continue;
+    }
+    if (line) out.push(line);
+    if (measureTextWidth(word, fontSize) <= maxWidth) {
+      line = word;
+      continue;
+    }
+    let chunk = "";
+    for (const ch of word) {
+      const next = chunk + ch;
+      if (chunk && measureTextWidth(next, fontSize) > maxWidth) {
+        out.push(chunk);
+        chunk = ch;
+      } else {
+        chunk = next;
+      }
+    }
+    line = chunk;
+  }
+  if (line) out.push(line);
+  return out.length ? out : [""];
 }
 
 function sanitizeSvgPath(raw) {
@@ -17,7 +174,6 @@ function sanitizeSvgPath(raw) {
   if (/<script|javascript:|on\w+=|<img|base64|data:image|<|>/i.test(s)) {
     return "";
   }
-  // Allow only path command letters and numbers/commas/spaces/decimals
   const cleaned = s.replace(/[^MmLlHhVvCcSsQqTtAaZz0-9eE.,+\-\s]/g, "");
   if (cleaned.length > 50000) return cleaned.slice(0, 50000);
   return cleaned.trim();
@@ -173,7 +329,6 @@ function svgPathToPdfOps(pathData, { scale = 0.35, offsetX = 0, offsetY = 0, fli
           x += cx;
           y += cy;
         }
-        // Approximate quadratic as cubic
         const c1x = cx + (2 / 3) * (x1 - cx);
         const c1y = cy + (2 / 3) * (y1 - cy);
         const c2x = x + (2 / 3) * (x1 - x);
@@ -196,7 +351,6 @@ function svgPathToPdfOps(pathData, { scale = 0.35, offsetX = 0, offsetY = 0, fli
       continue;
     }
 
-    // Unsupported command: skip numeric args
     while (hasNum()) nextNum();
   }
 
@@ -204,81 +358,75 @@ function svgPathToPdfOps(pathData, { scale = 0.35, offsetX = 0, offsetY = 0, fli
   return `0.6 w\n${ops.join("\n")}\nS\n`;
 }
 
+const FONT_DICT =
+  "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
+const FONT_BOLD_DICT =
+  "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>";
+const FONT_ITALIC_DICT =
+  "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>";
+
 /**
  * Build a multi-page PDF from line items.
- * lines: Array<{ text?: string, fontSize?: number, bold?: boolean, italic?: boolean, gap?: number, pathOps?: string }>
+ * lines: Array<{ text?: string, fontSize?: number, bold?: boolean, italic?: boolean,
+ *   gap?: number, afterGap?: number, keepTogetherHeight?: number, pathBlock?: fn }>
  */
 function buildPdfDocument(lines, options = {}) {
   const pageWidth = 612;
   const pageHeight = 792;
   const margin = 54;
   const footerY = 36;
+  const contentBottom = footerY + 28;
   const maxWidth = pageWidth - margin * 2;
   const generatedAt = options.generatedAt || new Date().toISOString();
   const title = options.title || "Signed Contract";
+  const topY = pageHeight - margin;
 
   const pages = [];
   let current = [];
-  let y = pageHeight - margin;
+  let y = topY;
 
   function newPage() {
-    if (current.length) pages.push(current);
+    if (!current.length) {
+      y = topY;
+      return;
+    }
+    pages.push({ items: current, endY: y });
     current = [];
-    y = pageHeight - margin;
+    y = topY;
   }
 
   function ensureSpace(needed) {
-    if (y - needed < footerY + 28) newPage();
-  }
-
-  function wrapText(text, fontSize) {
-    const raw = String(text ?? "");
-    const avgChar = fontSize * 0.5;
-    const maxChars = Math.max(24, Math.floor(maxWidth / avgChar));
-    const words = raw.split(/\s+/).filter(Boolean);
-    if (!words.length) return [""];
-    const out = [];
-    let line = "";
-    for (const w of words) {
-      const trial = line ? `${line} ${w}` : w;
-      if (trial.length > maxChars && line) {
-        out.push(line);
-        line = w;
-      } else if (w.length > maxChars) {
-        if (line) out.push(line);
-        for (let i = 0; i < w.length; i += maxChars) {
-          out.push(w.slice(i, i + maxChars));
-        }
-        line = "";
-      } else {
-        line = trial;
-      }
-    }
-    if (line) out.push(line);
-    return out;
+    const need = Math.max(Number(needed) || 0, 1);
+    if (y - need < contentBottom) newPage();
   }
 
   for (const item of lines) {
-    if (item.pageBreak) {
+    if (item && item.pageBreak) {
       newPage();
       continue;
     }
-    if (item.pathBlock) {
-      ensureSpace(item.height || 70);
+    if (item && item.pathBlock) {
+      const h = item.height || 70;
+      ensureSpace(Math.max(h, Number(item.keepTogetherHeight) || 0));
       current.push({
         type: "path",
         ops: item.pathBlock(y),
       });
-      y -= item.height || 70;
+      y -= h;
       continue;
     }
 
     const fontSize = item.fontSize || 10;
-    const gap = item.gap != null ? item.gap : fontSize + 4;
+    const leading = item.gap != null ? item.gap : fontSize + 2;
     const text = item.text == null ? "" : String(item.text);
-    const wrapped = wrapText(text, fontSize);
+    const wrapped = wrapTextToWidth(text, fontSize, maxWidth);
+    const blockH =
+      wrapped.length * leading + (item.afterGap || 0);
+    const keep = Number(item.keepTogetherHeight) || 0;
+    ensureSpace(Math.max(blockH, keep));
+
     for (const wline of wrapped) {
-      ensureSpace(gap);
+      ensureSpace(leading);
       current.push({
         type: "text",
         text: wline,
@@ -288,12 +436,41 @@ function buildPdfDocument(lines, options = {}) {
         x: margin,
         y,
       });
-      y -= gap;
+      y -= leading;
     }
     if (item.afterGap) y -= item.afterGap;
   }
-  if (current.length) pages.push(current);
-  if (!pages.length) pages.push([]);
+  if (current.length) pages.push({ items: current, endY: y });
+  if (!pages.length) pages.push({ items: [], endY: topY });
+
+  // Pull nearly empty pages back onto the previous page when they fit.
+  let compactPass = true;
+  while (compactPass && pages.length >= 2) {
+    compactPass = false;
+    for (let i = pages.length - 1; i >= 1; i -= 1) {
+      const page = pages[i];
+      const prev = pages[i - 1];
+      const contentItems = page.items.filter(
+        (el) =>
+          el.type === "path" ||
+          (el.type === "text" && String(el.text || "").trim())
+      );
+      if (contentItems.length > 2) continue;
+      const used = topY - page.endY;
+      if (used <= 0) continue;
+      if (prev.endY - used < contentBottom) continue;
+      if (page.items.some((el) => el.type === "path")) continue;
+      const delta = prev.endY - topY;
+      for (const el of page.items) {
+        if (typeof el.y === "number") el.y += delta;
+      }
+      prev.items.push(...page.items);
+      prev.endY -= used;
+      pages.splice(i, 1);
+      compactPass = true;
+      break;
+    }
+  }
 
   const objects = [];
   function addObj(body) {
@@ -301,22 +478,24 @@ function buildPdfDocument(lines, options = {}) {
     return objects.length;
   }
 
-  const fontRegular = addObj("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-  const fontBold = addObj("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
-  const fontItalic = addObj(
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique >>"
-  );
+  const fontRegular = addObj(FONT_DICT);
+  const fontBold = addObj(FONT_BOLD_DICT);
+  const fontItalic = addObj(FONT_ITALIC_DICT);
 
   const pageIds = [];
   const contentIds = [];
+  const pageList = pages.map((p) => p.items);
 
-  for (let p = 0; p < pages.length; p += 1) {
+  for (let p = 0; p < pageList.length; p += 1) {
     const ops = [];
-    for (const el of pages[p]) {
+    for (const el of pageList[p]) {
       if (el.type === "text") {
         const fontId = el.bold ? fontBold : el.italic ? fontItalic : fontRegular;
         ops.push("BT");
         ops.push(`/F${fontId} ${el.fontSize} Tf`);
+        ops.push("0 Tc");
+        ops.push("0 Tw");
+        ops.push("100 Tz");
         ops.push(`${el.x.toFixed(2)} ${el.y.toFixed(2)} Td`);
         ops.push(`(${escapePdfText(el.text)}) Tj`);
         ops.push("ET");
@@ -324,11 +503,13 @@ function buildPdfDocument(lines, options = {}) {
         ops.push(el.ops);
       }
     }
-    // Footer page number + generated stamp
     const footer =
-      `Page ${p + 1} of ${pages.length}  |  Generated ${generatedAt}  |  ${title}`;
+      `Page ${p + 1} of ${pageList.length}  |  Generated ${generatedAt}  |  ${title}`;
     ops.push("BT");
     ops.push(`/F${fontRegular} 8 Tf`);
+    ops.push("0 Tc");
+    ops.push("0 Tw");
+    ops.push("100 Tz");
     ops.push(`${margin.toFixed(2)} ${footerY.toFixed(2)} Td`);
     ops.push(`(${escapePdfText(footer)}) Tj`);
     ops.push("ET");
@@ -340,7 +521,7 @@ function buildPdfDocument(lines, options = {}) {
     contentIds.push(contentId);
   }
 
-  for (let p = 0; p < pages.length; p += 1) {
+  for (let p = 0; p < pageList.length; p += 1) {
     const pageId = addObj(
       `<< /Type /Page /Parent PAGES_REF /MediaBox [0 0 ${pageWidth} ${pageHeight}] ` +
         `/Contents ${contentIds[p]} 0 R ` +
@@ -353,7 +534,6 @@ function buildPdfDocument(lines, options = {}) {
   const pagesId = addObj(
     `<< /Type /Pages /Kids [ ${kids} ] /Count ${pageIds.length} >>`
   );
-  // Patch parent refs
   for (let i = 0; i < pageIds.length; i += 1) {
     objects[pageIds[i] - 1] = objects[pageIds[i] - 1].replace(
       "PAGES_REF",
@@ -382,7 +562,10 @@ function buildPdfDocument(lines, options = {}) {
 }
 
 module.exports = {
+  normalizePdfUnicode,
   escapePdfText,
+  measureTextWidth,
+  wrapTextToWidth,
   sanitizeSvgPath,
   svgPathToPdfOps,
   buildPdfDocument,

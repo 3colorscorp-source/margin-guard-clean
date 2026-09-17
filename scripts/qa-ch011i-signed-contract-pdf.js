@@ -16,6 +16,7 @@ const libPath = path.join(ROOT, "netlify/functions/_lib/contract-signed-pdf.js")
 const pdfUtilPath = path.join(ROOT, "netlify/functions/_lib/simple-pdf.js");
 const createPath = path.join(ROOT, "netlify/functions/contract-signed-pdf-create.js");
 const listPath = path.join(ROOT, "netlify/functions/contract-signed-pdfs.js");
+const ownerGatePath = path.join(ROOT, "netlify/functions/_lib/require-owner-or-admin.js");
 
 const sqlSrc = fs.readFileSync(sqlPath, "utf8");
 const verifySrc = fs.readFileSync(verifyPath, "utf8");
@@ -23,6 +24,7 @@ const libSrc = fs.readFileSync(libPath, "utf8");
 const pdfUtilSrc = fs.readFileSync(pdfUtilPath, "utf8");
 const createSrc = fs.readFileSync(createPath, "utf8");
 const listSrc = fs.readFileSync(listPath, "utf8");
+const ownerGateSrc = fs.readFileSync(ownerGatePath, "utf8");
 
 const lib = require("../netlify/functions/_lib/contract-signed-pdf");
 const pdfUtil = require("../netlify/functions/_lib/simple-pdf");
@@ -188,15 +190,18 @@ test("syntax lib + handlers + pdf util", () => {
 });
 
 test("1. No session", () => {
-  assert.ok(createSrc.includes("no_session"));
-  assert.ok(listSrc.includes("no_session"));
+  assert.ok(createSrc.includes("requireOwnerOrAdmin"));
+  assert.ok(listSrc.includes("requireOwnerOrAdmin"));
+  assert.ok(ownerGateSrc.includes("no_session"));
 });
 
 test("2-3. Seller/supervisor blocked", () => {
   for (const src of [createSrc, listSrc]) {
-    assert.ok(src.includes("owner_required"));
+    assert.ok(src.includes("requireOwnerOrAdmin"));
     assert.ok(src.includes("OWNER_ADMIN_ROLES"));
   }
+  assert.ok(ownerGateSrc.includes("owner_required"));
+  assert.ok(ownerGateSrc.includes("OWNER_ADMIN_ROLES"));
 });
 
 test("4. Missing envelope", () => {
@@ -250,8 +255,8 @@ test("11. Correct frozen package content", () => {
   assert.ok(text.includes("Net 15 after invoice"));
   assert.ok(text.includes("binding agreement"));
   assert.ok(text.includes("Deposit"));
-  assert.ok(!text.includes("live Business Settings"));
   assert.ok(text.includes("immutable contract package snapshot"));
+  assert.ok(text.includes("not generated from live Contract Builder"));
 });
 
 test("12. Correct certificate number/hash", () => {
@@ -367,6 +372,66 @@ test("Handlers + verify + version + public policy", () => {
 test("Page numbers present", () => {
   const { buffer } = lib.renderSignedContractPdf(sampleCtx());
   assert.ok(buffer.toString("latin1").includes("Page "));
+});
+
+test("WinAnsi + Tc/Tw/Tz configured", () => {
+  assert.ok(pdfUtilSrc.includes("/Encoding /WinAnsiEncoding"));
+  assert.ok(pdfUtilSrc.includes("0 Tc"));
+  assert.ok(pdfUtilSrc.includes("0 Tw"));
+  assert.ok(pdfUtilSrc.includes("100 Tz"));
+  const { buffer } = lib.renderSignedContractPdf(sampleCtx());
+  const text = buffer.toString("latin1");
+  assert.ok(text.includes("/WinAnsiEncoding"));
+  assert.ok(text.includes("0 Tc"));
+  assert.ok(text.includes("0 Tw"));
+  assert.ok(text.includes("100 Tz"));
+});
+
+test("no blind Signatures pageBreak", () => {
+  assert.ok(!libSrc.includes("pageBreak: true"));
+  assert.ok(!libSrc.includes("pageBreak:true"));
+});
+
+test("empty Terms is Not specified", () => {
+  const ctx = sampleCtx();
+  ctx.snap = sampleSnap({ terms: { quote_terms: "" } });
+  const text = lib.renderSignedContractPdf(ctx).buffer.toString("latin1");
+  assert.ok(text.includes("Not specified"));
+});
+
+test("full 64-char package hash in extracted text", () => {
+  const { buffer } = lib.renderSignedContractPdf(sampleCtx());
+  const text = buffer.toString("latin1");
+  assert.ok(text.includes("a".repeat(64)));
+  assert.ok(!text.includes("…"));
+  assert.ok(!libSrc.includes("slice(0, 16)"));
+});
+
+test("known Unicode maps; payment separator is ASCII", () => {
+  assert.strictEqual(pdfUtil.normalizePdfUnicode("a—b–c"), "a-b-c");
+  assert.strictEqual(pdfUtil.normalizePdfUnicode("item • one"), "item * one");
+  assert.strictEqual(pdfUtil.normalizePdfUnicode("it’s “ok”"), "it's \"ok\"");
+  assert.strictEqual(pdfUtil.escapePdfText("Hello—world • ‘x’"), "Hello-world * 'x'");
+  const ctx = sampleCtx();
+  ctx.snap = sampleSnap({
+    scope: { text: "Demo — cabinets • ‘custom’ work" },
+    payment_schedule: {
+      items: [
+        {
+          sequence_number: 1,
+          label: "Deposit",
+          amount: 1,
+          due_rule: "custom",
+        },
+      ],
+    },
+  });
+  const { buffer } = lib.renderSignedContractPdf(ctx);
+  const text = buffer.toString("latin1");
+  assert.ok(text.includes("Demo - cabinets * 'custom' work"));
+  assert.ok(text.includes("due: custom") || text.includes("due: custom\\)"));
+  assert.ok(text.includes("\\(due: custom\\)") || text.includes("(due: custom)"));
+  assert.ok(!text.includes("Demo ?"));
 });
 
 console.log("");
