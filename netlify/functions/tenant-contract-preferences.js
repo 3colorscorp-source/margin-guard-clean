@@ -18,12 +18,17 @@ const CONTRACT_LANGUAGES = new Set(["en", "es", "bilingual"]);
 const DISPUTE_PREFS = new Set(["court", "mediation", "arbitration", "unset"]);
 const SIGNATURE_ORDERS = new Set(["customer_first", "contractor_first", "any_order"]);
 
+const WARRANTY_TEXT_MAX = 4000;
+
 const ALLOWED_BODY_KEYS = new Set([
   "primary_trade_module",
   "custom_trade_label",
   "default_contract_name",
   "default_warranty_duration_value",
   "default_warranty_duration_unit",
+  "default_warranty_enabled",
+  "default_warranty_summary",
+  "default_warranty_exclusions",
   "change_order_requirement",
   "require_customer_initials",
   "default_signer_mode",
@@ -133,12 +138,48 @@ function normalizePreferencesInput(body) {
     warrantyValue = Math.floor(n);
   }
 
+  const warrantyEnabled = Boolean(body.default_warranty_enabled);
+  const warrantySummaryRaw = String(body.default_warranty_summary ?? "");
+  const warrantyExclusionsRaw = String(body.default_warranty_exclusions ?? "");
+  const warrantySummary = warrantySummaryRaw.trim();
+  const warrantyExclusions = warrantyExclusionsRaw.trim();
+  if (warrantySummary.length > WARRANTY_TEXT_MAX) {
+    return { error: "Warranty summary exceeds 4000 characters", code: "warranty_text_too_long" };
+  }
+  if (warrantyExclusions.length > WARRANTY_TEXT_MAX) {
+    return { error: "Warranty exclusions exceed 4000 characters", code: "warranty_text_too_long" };
+  }
+
+  if (warrantyEnabled) {
+    if (warrantyValue == null || warrantyValue < 1) {
+      return {
+        error: "Standard warranty requires a duration greater than 0",
+        code: "warranty_preset_incomplete",
+      };
+    }
+    if (!warrantySummary) {
+      return {
+        error: "Standard warranty requires a coverage summary",
+        code: "warranty_preset_incomplete",
+      };
+    }
+    if (!warrantyExclusions) {
+      return {
+        error: "Standard warranty requires exclusions",
+        code: "warranty_preset_incomplete",
+      };
+    }
+  }
+
   const preferences = {
     primary_trade_module: tradeCode,
     custom_trade_label: trimField(body.custom_trade_label, 200),
     default_contract_name: trimField(body.default_contract_name, 200),
     default_warranty_duration_value: warrantyValue,
     default_warranty_duration_unit: warrantyUnit,
+    default_warranty_enabled: warrantyEnabled,
+    default_warranty_summary: warrantySummary,
+    default_warranty_exclusions: warrantyExclusions,
     change_order_requirement: changeOrder,
     require_customer_initials: body.require_customer_initials !== false,
     default_signer_mode: signerMode,
@@ -245,4 +286,12 @@ exports.handler = async (event) => {
     }
     return json(500, { ok: false, error: err.message || "Server error" });
   }
+};
+
+exports._test = {
+  ALLOWED_BODY_KEYS,
+  WARRANTY_TEXT_MAX,
+  WARRANTY_UNITS,
+  normalizePreferencesInput,
+  findUnknownBodyKeys,
 };

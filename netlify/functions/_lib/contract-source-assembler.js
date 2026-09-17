@@ -39,6 +39,7 @@ const PREFERENCES_READINESS_REQUIRED = [
   "default_signer_mode",
   "default_signature_order",
 ];
+// CH-082 tenant warranty preset is not part of global preferences readiness.
 
 const QUOTE_SOURCE_SELECT_BASE = [
   "id",
@@ -166,6 +167,9 @@ function serializePreferencesForApi(row) {
     default_warranty_duration_value:
       row.default_warranty_duration_value == null ? null : Number(row.default_warranty_duration_value),
     default_warranty_duration_unit: trimField(row.default_warranty_duration_unit, 16) || "months",
+    default_warranty_enabled: Boolean(row.default_warranty_enabled),
+    default_warranty_summary: trimField(row.default_warranty_summary, 4000),
+    default_warranty_exclusions: trimField(row.default_warranty_exclusions, 4000),
     change_order_requirement: trimField(row.change_order_requirement, 32) || "price_change_only",
     require_customer_initials: row.require_customer_initials !== false,
     default_signer_mode: trimField(row.default_signer_mode, 32) || "one_customer",
