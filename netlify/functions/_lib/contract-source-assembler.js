@@ -178,6 +178,7 @@ function serializePreferencesForApi(row) {
     default_signature_order: trimField(row.default_signature_order, 32) || "customer_first",
     automatically_attach_warranty: Boolean(row.automatically_attach_warranty),
     automatically_attach_completion_certificate: Boolean(row.automatically_attach_completion_certificate),
+    require_contractor_signature: Boolean(row.require_contractor_signature),
     updated_at: row.updated_at || null,
   };
 }

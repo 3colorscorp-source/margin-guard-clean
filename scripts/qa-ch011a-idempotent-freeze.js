@@ -161,6 +161,7 @@ test("2. different object key order → same hash", () => {
     terms: snap.terms,
     legal_notices: snap.legal_notices,
     signature_method_preference: snap.signature_method_preference,
+    signing_policy: snap.signing_policy,
     customer: snap.customer,
     project: snap.project,
     tenant: snap.tenant,

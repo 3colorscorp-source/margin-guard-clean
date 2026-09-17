@@ -2169,8 +2169,8 @@
             <p class="sw-vis-step-id">Complete</p>
             <h3 id="swVis6Title">Contract Signing Complete</h3>
             <p class="sw-vis-lead" id="swVis6Lead">The contract has been signed and the final documents are ready.</p>
-            <p class="sw-vis-why">Your customer signed the contract and your final documents are ready.</p>
-            <ul class="sw-vis-complete-list">
+            <p class="sw-vis-why" id="swVis6Why">The customer signed the contract and your final documents are ready.</p>
+            <ul class="sw-vis-complete-list" id="swVisCompleteList">
               <li>✓ Customer signature received</li>
               <li>✓ Legal certificate created</li>
               <li>✓ Signed contract created</li>
@@ -2312,8 +2312,10 @@
           <p class="sw-crw__panel-status">Section 3 · Signers</p>
           <h3>Signers</h3>
           <p class="sub">Draft roster only editable before send.</p>
-          <div class="sw-actions" style="margin-top:0;margin-bottom:10px;">
+            <div class="sw-actions" style="margin-top:0;margin-bottom:10px;">
             <div class="sw-action-wrap">
+              <button type="button" class="btn" id="swConfirmContractorBtn">Confirm Contractor</button>
+              <button type="button" class="btn primary" id="swSignContractorBtn">Sign as Contractor</button>
               <button type="button" class="btn primary" id="swAddSignerBtn">Add Customer Signer</button>
               <p class="sw-blocked-reason" id="swAddSignerReason" hidden></p>
             </div>

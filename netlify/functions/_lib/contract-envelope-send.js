@@ -31,6 +31,11 @@ const {
 } = require("./contract-invitation");
 const { beginCorrelation } = require("./platform-bus");
 const { deliverCopyLink } = require("./delivery-channel-engine");
+const {
+  resolveSigningPolicyFromSnapshot,
+  contractorSendBlockers,
+  shouldMintCustomerToken,
+} = require("./contract-signing-policy");
 
 const API_VERSION = "ch-011e-v1";
 
@@ -184,6 +189,11 @@ async function validateEnvelopeForSend({
     );
   }
 
+  const policy = resolveSigningPolicyFromSnapshot(packageRow?.snapshot_json);
+  for (const extra of contractorSendBlockers(policy, signers)) {
+    blockers.push(blocker(extra.code, extra.message));
+  }
+
   const emails = new Map();
   for (const s of signers || []) {
     const email = normalizeEmail(s.email);
@@ -287,7 +297,9 @@ async function validateEnvelopeForSend({
 
 function signersNeedingTokens(signers) {
   // Required always; optional when present with usable email_link/in_app identity.
+  // Signed signers and contractor in-app owners never receive a customer token.
   return (signers || []).filter((s) => {
+    if (!shouldMintCustomerToken(s)) return false;
     if (s.is_required !== false) return true;
     const method = trimField(s.auth_method).toLowerCase();
     if (method === "email_link") return validEmail(s.email);

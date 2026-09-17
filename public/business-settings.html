@@ -988,6 +988,36 @@
           </div>
         </div>
 
+        <div class="card bs-dash-card bs-order-signing bs-layout-full" id="bsSigningPolicyCard">
+          <div class="card-inner bs-card-inner-tight" id="signing-policy">
+            <div class="bs-card-head-row">
+              <div>
+                <h2 class="bs-card-title">Contract Signing</h2>
+                <p class="sub bs-card-sub">Choose whether new contracts require the contractor to sign in Margin Guard before the customer is sent a signing link. This does not change already frozen contracts.</p>
+              </div>
+            </div>
+
+            <div class="bs-legal-section" id="bsSigningPolicyForm">
+              <div class="bs-legal-group">
+                <div class="form bs-form-dense">
+                  <div class="field field--full">
+                    <label for="bsRequireContractorSignature" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                      <input id="bsRequireContractorSignature" type="checkbox" />
+                      <span>Require contractor signature</span>
+                    </label>
+                  </div>
+                  <p class="bs-war-note" id="bsSigningPolicySummary">Disabled — Customer only. Only the customer is required to sign.</p>
+                </div>
+              </div>
+              <div class="bs-legal-actions">
+                <button type="button" class="btn primary" id="btnSaveSigningPolicy">Save signing policy</button>
+                <button type="button" class="btn" id="btnReloadSigningPolicy">Reload</button>
+                <span class="sub" id="bsSigningPolicyStatus" aria-live="polite"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="card bs-dash-card bs-order-financial bs-layout-full">
           <div class="card-inner bs-card-inner-tight">
             <h2 class="bs-card-title">Financial Protection</h2>
@@ -1355,6 +1385,7 @@
 <script src="/js/bank-connection.js"></script>
 <script src="/js/business-legal-profile.js"></script>
 <script src="/js/business-warranty-defaults.js"></script>
+<script src="/js/business-signing-policy.js"></script>
 <script>
 (function () {
   const SETTINGS_KEY = 'mg_settings_v2';

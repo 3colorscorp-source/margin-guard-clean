@@ -29,6 +29,8 @@ const WARRANTY_PATCH_KEYS = [
 ];
 
 const ALLOWED_PATCH_KEYS = new Set(WARRANTY_PATCH_KEYS);
+const SIGNING_PATCH_KEYS = ["require_contractor_signature"];
+const SIGNING_PATCH_KEY_SET = new Set(SIGNING_PATCH_KEYS);
 
 const ALLOWED_BODY_KEYS = new Set([
   "primary_trade_module",
@@ -47,6 +49,7 @@ const ALLOWED_BODY_KEYS = new Set([
   "default_signature_order",
   "automatically_attach_warranty",
   "automatically_attach_completion_certificate",
+  "require_contractor_signature",
 ]);
 
 function json(statusCode, body) {
@@ -219,6 +222,7 @@ function normalizePreferencesInput(body) {
     automatically_attach_completion_certificate: Boolean(
       body.automatically_attach_completion_certificate
     ),
+    require_contractor_signature: body.require_contractor_signature === true,
   };
 
   if (tradeCode === "custom" && !preferences.custom_trade_label) {
@@ -233,6 +237,56 @@ function normalizePreferencesInput(body) {
 
 function normalizeWarrantyPatchInput(body) {
   return normalizeWarrantyFields(body);
+}
+
+function isSigningPolicyPatch(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return false;
+  const keys = Object.keys(body);
+  return keys.length > 0 && keys.every((key) => SIGNING_PATCH_KEY_SET.has(key));
+}
+
+function normalizeSigningPolicyPatchInput(body) {
+  if (typeof body.require_contractor_signature !== "boolean") {
+    return {
+      error: "require_contractor_signature must be a boolean",
+      code: "invalid_require_contractor_signature",
+    };
+  }
+  return {
+    signing: {
+      require_contractor_signature: body.require_contractor_signature,
+    },
+  };
+}
+
+function isMissingContractorColumn(err) {
+  return /require_contractor_signature/i.test(
+    String(err?.message || err?.supabaseRaw || err)
+  );
+}
+
+async function patchSigningPolicyPreferences(tenantId, signing) {
+  const existing = await loadPreferencesRow(tenantId);
+
+  if (existing?.id) {
+    const rows = await supabaseRequest(
+      `tenant_contract_preferences?id=eq.${encodeURIComponent(existing.id)}` +
+        `&tenant_id=eq.${encodeURIComponent(tenantId)}`,
+      { method: "PATCH", body: signing }
+    );
+    return Array.isArray(rows) && rows[0] ? rows[0] : { ...existing, ...signing };
+  }
+
+  const payload = { tenant_id: tenantId, ...signing };
+  const rows = await supabaseRequest(
+    "tenant_contract_preferences?on_conflict=tenant_id",
+    {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+      body: payload,
+    }
+  );
+  return Array.isArray(rows) && rows[0] ? rows[0] : payload;
 }
 
 function successPayload(row) {
@@ -326,6 +380,39 @@ exports.handler = async (event) => {
     const body = parseBody(event.body);
 
     if (method === "PATCH") {
+      if (isSigningPolicyPatch(body)) {
+        const rejected = rejectUnknownAndTenantId(body, SIGNING_PATCH_KEY_SET);
+        if (rejected) return rejected;
+        const normalized = normalizeSigningPolicyPatchInput(body);
+        if (normalized.error) {
+          return json(400, {
+            ok: false,
+            error: normalized.error,
+            code: normalized.code || "validation_failed",
+          });
+        }
+        try {
+          const saved = await patchSigningPolicyPreferences(tenantId, normalized.signing);
+          if (!saved) {
+            return json(500, {
+              ok: false,
+              error: "Signing policy save failed",
+              code: "save_failed",
+            });
+          }
+          return json(200, successPayload(saved));
+        } catch (err) {
+          if (isMissingContractorColumn(err)) {
+            return json(503, {
+              ok: false,
+              error: "Signing policy SQL is not applied",
+              code: "sql_not_applied",
+            });
+          }
+          throw err;
+        }
+      }
+
       const rejected = rejectUnknownAndTenantId(body, ALLOWED_PATCH_KEYS);
       if (rejected) return rejected;
       const missing = missingWarrantyPatchKeys(body);
@@ -365,12 +452,22 @@ exports.handler = async (event) => {
       });
     }
 
-    const saved = await upsertPreferences(tenantId, normalized.preferences);
-    if (!saved) {
-      return json(500, { ok: false, error: "Preferences save failed", code: "save_failed" });
+    try {
+      const saved = await upsertPreferences(tenantId, normalized.preferences);
+      if (!saved) {
+        return json(500, { ok: false, error: "Preferences save failed", code: "save_failed" });
+      }
+      return json(200, successPayload(saved));
+    } catch (err) {
+      if (isMissingContractorColumn(err)) {
+        return json(503, {
+          ok: false,
+          error: "Signing policy SQL is not applied",
+          code: "sql_not_applied",
+        });
+      }
+      throw err;
     }
-
-    return json(200, successPayload(saved));
   } catch (err) {
     if (err?.isGuardError) {
       return json(err.statusCode || 403, { ok: false, error: err.message, code: err.code });
@@ -383,11 +480,16 @@ exports._test = {
   ALLOWED_BODY_KEYS,
   ALLOWED_PATCH_KEYS,
   WARRANTY_PATCH_KEYS,
+  SIGNING_PATCH_KEYS,
+  SIGNING_PATCH_KEY_SET,
   WARRANTY_TEXT_MAX,
   WARRANTY_UNITS,
   normalizePreferencesInput,
   normalizeWarrantyPatchInput,
+  normalizeSigningPolicyPatchInput,
+  isSigningPolicyPatch,
   findUnknownBodyKeys,
   missingWarrantyPatchKeys,
   patchWarrantyPreferences,
+  patchSigningPolicyPreferences,
 };

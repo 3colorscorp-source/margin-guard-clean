@@ -13,7 +13,14 @@ const {
   trimField,
   validUuid,
   unknownKeys,
+  mintFreshSigningToken,
 } = require("./contract-signing-token");
+const {
+  resolveSigningPolicyFromSnapshot,
+  customerBlockedUntilContractor,
+  findRequiredContractor,
+  contractorHasSigned,
+} = require("./contract-signing-policy");
 
 const API_VERSION = "ch-011g-v1";
 
@@ -181,7 +188,7 @@ async function loadPackageLite(tenantId, packageId) {
   const rows = await supabaseRequest(
     `tenant_contract_packages?tenant_id=eq.${encodeURIComponent(tenantId)}` +
       `&id=eq.${encodeURIComponent(packageId)}` +
-      `&select=id,version,status,executed_at,updated_at` +
+      `&select=id,version,status,executed_at,updated_at,snapshot_json` +
       `&limit=1`,
     { method: "GET" }
   );
@@ -224,6 +231,8 @@ async function captureContractSignature({
   expectedUpdatedAt,
   ipAddress = null,
   userAgent = null,
+  allowDraftEnvelope = false,
+  sessionOwnerCapture = false,
 }) {
   const tokenValue = trimField(rawToken);
   if (!tokenValue) {
@@ -335,6 +344,16 @@ async function captureContractSignature({
     };
   }
 
+  const signerRole = trimField(signer.role).toLowerCase();
+  if (signerRole === "owner" && sessionOwnerCapture !== true) {
+    return {
+      ok: false,
+      status: 403,
+      code: "owner_session_required",
+      error: "Contractor in-app signature requires an Owner/Admin session",
+    };
+  }
+
   const envelope = await loadEnvelopeFull(tenantId, tokenRow.envelope_id);
   if (!envelope?.id) {
     return {
@@ -379,12 +398,19 @@ async function captureContractSignature({
     };
   }
   if (envStatus !== "sent" && envStatus !== "opened") {
-    return {
-      ok: false,
-      status: 409,
-      code: "envelope_not_signable",
-      error: "This contract is not available for signing",
-    };
+    const allowDraftOwner =
+      allowDraftEnvelope === true &&
+      sessionOwnerCapture === true &&
+      signerRole === "owner" &&
+      envStatus === "draft";
+    if (!allowDraftOwner) {
+      return {
+        ok: false,
+        status: 409,
+        code: "envelope_not_signable",
+        error: "This contract is not available for signing",
+      };
+    }
   }
 
   if (String(envelope.updated_at) !== expected) {
@@ -423,6 +449,22 @@ async function captureContractSignature({
       status: 409,
       code: "package_executed",
       error: "This contract package is already executed",
+    };
+  }
+
+  const policy = resolveSigningPolicyFromSnapshot(pkg.snapshot_json);
+  if (
+    customerBlockedUntilContractor({
+      policy,
+      signerRole,
+      signers: await listSignersRaw(tenantId, envelope.id),
+    })
+  ) {
+    return {
+      ok: false,
+      status: 409,
+      code: "not_your_turn",
+      error: "The contractor must sign before the customer",
     };
   }
 
@@ -618,6 +660,123 @@ async function captureContractSignature({
   };
 }
 
+/**
+ * Owner/Admin in-app contractor signature on a draft envelope.
+ * Mints a contractor-only token internally and consumes it in the same request.
+ * Never auto-fills typed_name from Legal Profile. Never returns the raw token.
+ */
+async function captureContractorInAppSignature({
+  tenantId,
+  envelopeId,
+  signatureMethod,
+  signaturePayload,
+  consentEsign,
+  expectedUpdatedAt,
+  ipAddress = null,
+  userAgent = null,
+}) {
+  const envelope = await loadEnvelopeFull(tenantId, envelopeId);
+  if (!envelope?.id) {
+    return {
+      ok: false,
+      status: 404,
+      code: "not_found",
+      error: "Envelope not found",
+    };
+  }
+
+  const envStatus = trimField(envelope.status).toLowerCase();
+  if (envStatus !== "draft") {
+    return {
+      ok: false,
+      status: 409,
+      code: "envelope_not_draft",
+      error: "Contractor must sign while the signing request is still a draft",
+    };
+  }
+
+  const pkg = await loadPackageLite(tenantId, envelope.package_id);
+  if (!pkg?.id) {
+    return {
+      ok: false,
+      status: 404,
+      code: "not_found",
+      error: "Contract package not found",
+    };
+  }
+
+  const policy = resolveSigningPolicyFromSnapshot(pkg.snapshot_json);
+  if (policy.require_contractor_signature !== true) {
+    return {
+      ok: false,
+      status: 409,
+      code: "contractor_signature_not_required",
+      error: "This contract does not require a contractor signature",
+    };
+  }
+
+  const signers = await listSignersRaw(tenantId, envelope.id);
+  const contractor = findRequiredContractor(signers);
+  if (!contractor?.id) {
+    return {
+      ok: false,
+      status: 422,
+      code: "missing_contractor_signer",
+      error: "Confirm contractor details before signing",
+    };
+  }
+  if (contractorHasSigned(signers)) {
+    return {
+      ok: false,
+      status: 409,
+      code: "signature_already_recorded",
+      error: "Contractor signature already recorded",
+      signer_status: "signed",
+      signed_at: contractor.signed_at || null,
+    };
+  }
+
+  const minted = await mintFreshSigningToken({
+    tenantId,
+    signerId: contractor.id,
+  });
+  if (!minted.ok) {
+    return {
+      ok: false,
+      status: minted.status || 500,
+      code: minted.code || "token_create_failed",
+      error: minted.error || "Could not prepare contractor signature",
+    };
+  }
+
+  const rawToken = minted.token?.raw_token_once || minted.token?.token || null;
+  if (!rawToken) {
+    return {
+      ok: false,
+      status: 500,
+      code: "token_create_failed",
+      error: "Could not prepare contractor signature",
+    };
+  }
+
+  const captured = await captureContractSignature({
+    rawToken,
+    signatureMethod,
+    signaturePayload,
+    consentEsign,
+    expectedUpdatedAt,
+    ipAddress,
+    userAgent,
+    allowDraftEnvelope: true,
+    sessionOwnerCapture: true,
+  });
+
+  if (captured.ok) {
+    delete captured.token;
+  }
+  return captured;
+}
+
 module.exports = {
   API_VERSION,
   SIGNATURE_METHODS,
@@ -627,6 +786,7 @@ module.exports = {
   sanitizeTypedName,
   validateSignaturePayload,
   captureContractSignature,
+  captureContractorInAppSignature,
   clientIpFromEvent,
   userAgentFromEvent,
   nextPendingRequired,

@@ -72,7 +72,7 @@ async function loadPackageForTenant(tenantId, packageId) {
   const rows = await supabaseRequest(
     `tenant_contract_packages?tenant_id=eq.${encodeURIComponent(tenantId)}` +
       `&id=eq.${encodeURIComponent(packageId)}` +
-      `&select=id,tenant_id,project_id,quote_id,version,status,created_at,updated_at` +
+      `&select=id,tenant_id,project_id,quote_id,version,status,created_at,updated_at,snapshot_json` +
       `&limit=1`,
     { method: "GET" }
   );

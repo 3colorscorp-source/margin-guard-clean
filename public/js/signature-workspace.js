@@ -46,6 +46,7 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
   const SIGNER_CREATE_API = "/.netlify/functions/contract-signer-create";
   const SIGNER_UPDATE_API = "/.netlify/functions/contract-signer-update";
   const SIGNER_DELETE_API = "/.netlify/functions/contract-signer-delete";
+  const SIGN_CONTRACTOR_API = "/.netlify/functions/contract-sign-contractor";
   const CERTS_API = "/.netlify/functions/contract-certificates";
   const CERT_CREATE_API = "/.netlify/functions/contract-certificate-create";
   const PDFS_API = "/.netlify/functions/contract-signed-pdfs";
@@ -219,6 +220,31 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
     return String(state.envelope?.status || "").toLowerCase() === "draft";
   }
 
+  function isDualSigning() {
+    return state.package?.signing_policy?.require_contractor_signature === true;
+  }
+
+  function requiredSigner(role) {
+    const key = String(role || "").toLowerCase();
+    return (state.signers || []).find(
+      (s) =>
+        String(s.role || "").toLowerCase() === key && s.is_required !== false
+    );
+  }
+
+  function contractorProposal() {
+    const p = state.package?.contractor_proposal || {};
+    return {
+      party_name: String(p.party_name || "").trim(),
+      title: String(p.title || "").trim(),
+      email: String(p.email || "").trim(),
+    };
+  }
+
+  function sendCtaLabel() {
+    return isDualSigning() ? "Send to Customer" : "Send For Signature";
+  }
+
   function computeSendReadiness() {
     const blockers = [];
     const env = state.envelope;
@@ -256,6 +282,23 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
     }
     if (!signers.length) {
       blockers.push({ ok: false, text: "At least one customer is required" });
+    }
+    if (isDualSigning()) {
+      const owner = requiredSigner("owner");
+      if (!owner) {
+        blockers.push({ ok: false, text: "Contractor signer is required" });
+      } else if (String(owner.status || "").toLowerCase() !== "signed") {
+        blockers.push({
+          ok: false,
+          text: "Contractor must sign before sending to the customer",
+        });
+      } else {
+        blockers.push({ ok: true, text: "Contractor signature received" });
+      }
+      const customer = requiredSigner("customer");
+      if (!customer) {
+        blockers.push({ ok: false, text: "Customer signer is required" });
+      }
     }
     const emails = new Set();
     for (const s of signers) {
@@ -553,6 +596,15 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
       };
     }
     if (envSt === "draft" && !signers.length) {
+      if (isDualSigning()) {
+        return {
+          title: "Confirm Contractor",
+          body: "Confirm the contractor from Legal Profile, then sign as contractor before adding the customer.",
+          ctaLabel: "Confirm Contractor",
+          ctaHref: null,
+          ctaAction: "confirm-contractor",
+        };
+      }
       return {
         title: "Add Customer Signer",
         body: "Add the customer as a signer before sending the secure signing link.",
@@ -561,11 +613,44 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
         ctaAction: "add-signer",
       };
     }
+    if (envSt === "draft" && isDualSigning()) {
+      const owner = requiredSigner("owner");
+      if (!owner) {
+        return {
+          title: "Confirm Contractor",
+          body: "Confirm the contractor from Legal Profile. This does not create a signature.",
+          ctaLabel: "Confirm Contractor",
+          ctaHref: null,
+          ctaAction: "confirm-contractor",
+        };
+      }
+      if (String(owner.status || "").toLowerCase() !== "signed") {
+        return {
+          title: "Sign as Contractor",
+          body: "Sign explicitly as contractor. Legal Profile name is identity only — it is not a signature.",
+          ctaLabel: "Sign as Contractor",
+          ctaHref: null,
+          ctaAction: "sign-contractor",
+        };
+      }
+      const customer = requiredSigner("customer");
+      if (!customer) {
+        return {
+          title: "Add Customer Signer",
+          body: "Contractor signed. Add the customer, then send the secure signing link.",
+          ctaLabel: "Add Customer Signer",
+          ctaHref: null,
+          ctaAction: "add-signer",
+        };
+      }
+    }
     if (envSt === "draft" && send.ready) {
       return {
-        title: "Send For Signature",
-        body: "Create a secure signing link for the customer. The secure link will be generated for you to copy and send.",
-        ctaLabel: "Send For Signature",
+        title: sendCtaLabel(),
+        body: isDualSigning()
+          ? "Contractor signed. Create a secure signing link for the customer."
+          : "Create a secure signing link for the customer. The secure link will be generated for you to copy and send.",
+        ctaLabel: sendCtaLabel(),
         ctaHref: null,
         ctaAction: "send",
       };
@@ -647,6 +732,8 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
       b.addEventListener("click", () => {
         if (g.ctaAction === "create-envelope") $("swCreateEnvelopeBtn")?.click();
         if (g.ctaAction === "add-signer") $("swAddSignerBtn")?.click();
+        if (g.ctaAction === "confirm-contractor") openConfirmContractorModal();
+        if (g.ctaAction === "sign-contractor") openSignContractorModal();
         if (g.ctaAction === "send") $("swSendBtn")?.click();
         if (g.ctaAction === "copy-link") $("swCopyLinkBtn")?.click();
         if (g.ctaAction === "cert") $("swIssueCertBtn")?.click();
@@ -786,12 +873,27 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
     const body = $("swSignersBody");
     const empty = $("swSignersEmpty");
     const addBtn = $("swAddSignerBtn");
+    const confirmBtn = $("swConfirmContractorBtn");
+    const signBtn = $("swSignContractorBtn");
     const editable = envelopeEditable();
     const noPackage = !state.package?.id;
     const noEnvelope = !state.envelope?.id;
+    const dual = isDualSigning();
+    const owner = requiredSigner("owner");
+    const ownerSigned =
+      owner && String(owner.status || "").toLowerCase() === "signed";
     if (addBtn) {
       addBtn.disabled = noPackage || noEnvelope || !editable;
       addBtn.textContent = "Add Customer Signer";
+    }
+    if (confirmBtn) {
+      confirmBtn.hidden = !dual;
+      confirmBtn.disabled = noPackage || noEnvelope || !editable;
+    }
+    if (signBtn) {
+      signBtn.hidden = !dual;
+      signBtn.disabled =
+        noPackage || noEnvelope || !editable || !owner || ownerSigned;
     }
     if (noPackage) {
       setBlockedReason(
@@ -935,7 +1037,7 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
         sendBtn.hidden = false;
         sendBtn.disabled =
           noPackage || !state.envelope?.id || (!ready && st === "draft");
-        sendBtn.textContent = "Send For Signature";
+        sendBtn.textContent = sendCtaLabel();
       }
     }
     if (noPackage) {
@@ -1495,6 +1597,36 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
     syncVisAction("swVisCompletePdfBtn", "swDownloadPdfBtn");
     const completeCert = $("swVisCompleteCertBtn");
     if (completeCert) completeCert.disabled = !certReady;
+    setText("swVis6Title", "Contract Signing Complete");
+    const completeWhy = $("swVis6Why");
+    if (completeWhy) {
+      completeWhy.textContent = isDualSigning()
+        ? "Contractor and customer signatures were received and the final documents are ready."
+        : "The customer signed the contract and your final documents are ready.";
+    }
+    const list = $("swVisCompleteList");
+    if (list) {
+      const items = [];
+      const owner = requiredSigner("owner");
+      const customer = requiredSigner("customer");
+      if (owner && String(owner.status || "").toLowerCase() === "signed") {
+        items.push(
+          `✓ Contractor signature received (${owner.party_name || "contractor"})`
+        );
+      }
+      if (customer && String(customer.status || "").toLowerCase() === "signed") {
+        items.push(
+          `✓ Customer signature received (${customer.party_name || "customer"})`
+        );
+      } else if (!isDualSigning()) {
+        items.push("✓ Customer signature received");
+      }
+      items.push("✓ Legal certificate created");
+      items.push("✓ Signed contract created");
+      list.innerHTML = items
+        .map((text) => `<li>${escapeHtml(text)}</li>`)
+        .join("");
+    }
   }
 
   function renderAll() {
@@ -1894,7 +2026,138 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
       if ($("swFormOrder")) $("swFormOrder").value = existing.sign_order || 1;
       if ($("swFormMethod"))
         $("swFormMethod").value = existing.auth_method || "email_link";
+    } else if (isDualSigning()) {
+      if ($("swFormOrder")) $("swFormOrder").value = 2;
     }
+  }
+
+  function openConfirmContractorModal() {
+    if (!envelopeEditable()) {
+      toast("Contractor details are locked after the contract is sent", "error");
+      return;
+    }
+    const existing = requiredSigner("owner");
+    const proposal = contractorProposal();
+    openModal(
+      existing ? "Confirm Contractor" : "Confirm Contractor",
+      `<p class="sw-modal-sub">Proposed from Legal Profile. Confirm the identity — this is not a signature.</p>
+       <div class="sw-modal-card">
+         <div class="sw-modal-card__title">Contractor details</div>
+         <div class="field"><label>Name</label><input id="swFormName" /></div>
+         <div class="field"><label>Title</label><input id="swFormTitle" /></div>
+         <div class="field"><label>Email</label><input id="swFormEmail" type="email" /></div>
+       </div>`,
+      [
+        btn("Cancel", "btn ghost", closeModal),
+        btn("Save Contractor", "btn primary", async () => {
+          const payload = {
+            role: "owner",
+            party_name: $("swFormName")?.value,
+            email: $("swFormEmail")?.value,
+            phone: "",
+            sign_order: 1,
+            auth_method: "in_app",
+            is_required: true,
+          };
+          try {
+            let res;
+            if (existing?.id) {
+              res = await api(SIGNER_UPDATE_API, {
+                method: "POST",
+                body: JSON.stringify({
+                  signer_id: existing.id,
+                  expected_updated_at: existing.updated_at,
+                  ...payload,
+                }),
+              });
+            } else {
+              res = await api(SIGNER_CREATE_API, {
+                method: "POST",
+                body: JSON.stringify({
+                  envelope_id: state.envelope.id,
+                  ...payload,
+                }),
+              });
+            }
+            if (!res.ok || res.data?.ok !== true) {
+              throw new Error(res.data?.error || "Contractor save failed");
+            }
+            closeModal();
+            toast("Contractor confirmed. Sign as Contractor next.", "ok");
+            await loadSigners(state.envelope.id);
+            renderAll();
+          } catch (err) {
+            toast(err?.message || "Contractor save failed", "error");
+          }
+        }),
+      ]
+    );
+    if ($("swFormName"))
+      $("swFormName").value = existing?.party_name || proposal.party_name || "";
+    if ($("swFormTitle")) $("swFormTitle").value = proposal.title || "";
+    if ($("swFormEmail"))
+      $("swFormEmail").value = existing?.email || proposal.email || "";
+  }
+
+  function openSignContractorModal() {
+    const owner = requiredSigner("owner");
+    if (!owner?.id) {
+      openConfirmContractorModal();
+      return;
+    }
+    if (String(owner.status || "").toLowerCase() === "signed") {
+      toast("Contractor signature already recorded", "ok");
+      return;
+    }
+    openModal(
+      "Sign as Contractor",
+      `<p class="sw-modal-sub">Type your name to sign. Legal Profile is identity only and is not used as the signature.</p>
+       <div class="sw-modal-card">
+         <div class="sw-modal-card__title">Explicit contractor signature</div>
+         <div class="field"><label for="swContractorTypedName">Typed signature name</label><input id="swContractorTypedName" autocomplete="off" /></div>
+         <div class="field"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+           <input id="swContractorConsent" type="checkbox" />
+           <span>I consent to sign this contract electronically as the contractor.</span>
+         </label></div>
+       </div>`,
+      [
+        btn("Cancel", "btn ghost", closeModal),
+        btn("Sign as Contractor", "btn primary", async () => {
+          const typedName = String($("swContractorTypedName")?.value || "").trim();
+          const consent = $("swContractorConsent")?.checked === true;
+          if (!typedName) {
+            toast("Type your name to sign as contractor", "error");
+            return;
+          }
+          if (!consent) {
+            toast("Electronic signature consent is required", "error");
+            return;
+          }
+          try {
+            const res = await api(SIGN_CONTRACTOR_API, {
+              method: "POST",
+              body: JSON.stringify({
+                envelope_id: state.envelope.id,
+                expected_updated_at: state.envelope.updated_at,
+                signature_method: "typed",
+                signature_payload: { typed_name: typedName },
+                consent_esign: true,
+              }),
+            });
+            if (!res.ok || res.data?.ok !== true) {
+              throw new Error(res.data?.error || "Contractor signature failed");
+            }
+            closeModal();
+            toast("Contractor signature recorded. You can send to the customer.", "ok");
+            if (res.data.envelope) state.envelope = { ...state.envelope, ...res.data.envelope };
+            await refreshEnvelopeChain();
+            renderAll();
+          } catch (err) {
+            toast(err?.message || "Contractor signature failed", "error");
+          }
+        }),
+      ]
+    );
   }
 
   function projectDisplayName(p) {
@@ -2155,6 +2418,12 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
     });
 
     $("swAddSignerBtn")?.addEventListener("click", () => openSignerModal(null));
+    $("swConfirmContractorBtn")?.addEventListener("click", () =>
+      openConfirmContractorModal()
+    );
+    $("swSignContractorBtn")?.addEventListener("click", () =>
+      openSignContractorModal()
+    );
 
     $("swSignersBody")?.addEventListener("click", async (ev) => {
       const editId = ev.target?.getAttribute?.("data-sw-edit");
@@ -2578,6 +2847,8 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
         return;
       }
       if (g.ctaAction === "create-envelope") $("swCreateEnvelopeBtn")?.click();
+      else if (g.ctaAction === "confirm-contractor") openConfirmContractorModal();
+      else if (g.ctaAction === "sign-contractor") openSignContractorModal();
       else if (g.ctaAction === "add-signer") $("swAddSignerBtn")?.click();
       else if (g.ctaAction === "send") $("swSendBtn")?.click();
       else if (g.ctaAction === "copy-link") $("swCopyLinkBtn")?.click();

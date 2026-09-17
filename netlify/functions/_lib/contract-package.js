@@ -9,6 +9,11 @@
 const crypto = require("crypto");
 const { supabaseRequest } = require("./supabase-admin");
 const {
+  signingPolicyFromPreferences,
+  resolveSigningPolicyFromSnapshot,
+  contractorProposalFromSnapshot,
+} = require("./contract-signing-policy");
+const {
   serializeLegalProfileForApi,
   evaluateLegalProfileReadiness,
 } = require("./contract-source-assembler");
@@ -395,7 +400,7 @@ async function loadAuthoritativeSources(tenantId, projectId, quoteId) {
   const pid = encodeURIComponent(projectId);
   const qid = encodeURIComponent(quoteId);
 
-  const [setupRows, scheduleRows, noticeRows, profileRows, brandingRows] =
+  const [setupRows, scheduleRows, noticeRows, profileRows, brandingRows, preferenceRows] =
     await Promise.all([
       supabaseRequest(
         `project_contract_setups?tenant_id=eq.${tid}&project_id=eq.${pid}&quote_id=eq.${qid}&select=*&limit=1`,
@@ -417,6 +422,10 @@ async function loadAuthoritativeSources(tenantId, projectId, quoteId) {
         `tenant_branding?tenant_id=eq.${tid}&select=business_name,business_email,business_phone,business_address,logo_url,updated_at&limit=1`,
         { method: "GET" }
       ).catch(() => []),
+      supabaseRequest(
+        `tenant_contract_preferences?tenant_id=eq.${tid}&select=require_contractor_signature,default_signature_order&limit=1`,
+        { method: "GET" }
+      ).catch(() => []),
     ]);
 
   const setupRow = Array.isArray(setupRows) && setupRows[0] ? setupRows[0] : null;
@@ -427,6 +436,8 @@ async function loadAuthoritativeSources(tenantId, projectId, quoteId) {
     Array.isArray(profileRows) && profileRows[0] ? profileRows[0] : null;
   const brandingRow =
     Array.isArray(brandingRows) && brandingRows[0] ? brandingRows[0] : null;
+  const preferenceRow =
+    Array.isArray(preferenceRows) && preferenceRows[0] ? preferenceRows[0] : null;
 
   let items = [];
   if (scheduleRow?.id) {
@@ -446,6 +457,7 @@ async function loadAuthoritativeSources(tenantId, projectId, quoteId) {
     noticeRow,
     profileRow,
     brandingRow,
+    preferenceRow,
   };
 }
 
@@ -510,6 +522,7 @@ function buildSnapshot({
   brandingRow,
   frozenAt,
   contractSchedule,
+  signingPolicy = null,
 }) {
   const contractTotal = moneyNumber(quote.total);
   const scopeResolved = resolveContractScope(quote);
@@ -636,6 +649,11 @@ function buildSnapshot({
       enabled: legalEffective?.enabled || {},
     },
     signature_method_preference: setup?.signature_method || "not_configured",
+    signing_policy: signingPolicyFromPreferences(
+      signingPolicy && typeof signingPolicy === "object"
+        ? signingPolicy
+        : { require_contractor_signature: false }
+    ),
     readiness: {
       project_address: setupReadiness.project_address,
       warranty: setupReadiness.warranty,
@@ -648,6 +666,10 @@ function buildSnapshot({
 
 function serializePackageRow(row) {
   if (!row?.id) return null;
+  const snapshot =
+    row.snapshot_json && typeof row.snapshot_json === "object"
+      ? row.snapshot_json
+      : null;
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -661,6 +683,8 @@ function serializePackageRow(row) {
     created_by: row.created_by || null,
     created_at: row.created_at || null,
     updated_at: row.updated_at || null,
+    signing_policy: resolveSigningPolicyFromSnapshot(snapshot),
+    contractor_proposal: contractorProposalFromSnapshot(snapshot),
   };
 }
 
@@ -668,7 +692,7 @@ async function listPackagesForProject(tenantId, projectId) {
   const rows = await supabaseRequest(
     `tenant_contract_packages?tenant_id=eq.${encodeURIComponent(tenantId)}` +
       `&project_id=eq.${encodeURIComponent(projectId)}` +
-      `&select=id,tenant_id,project_id,quote_id,version,status,content_hash,source_readiness,supersedes_package_id,created_by,created_at,updated_at` +
+      `&select=id,tenant_id,project_id,quote_id,version,status,content_hash,source_readiness,supersedes_package_id,created_by,created_at,updated_at,snapshot_json` +
       `&order=version.desc`,
     { method: "GET" }
   );
@@ -855,6 +879,7 @@ async function freezeContractPackage({
     brandingRow: sources.brandingRow,
     frozenAt,
     contractSchedule,
+    signingPolicy: sources.preferenceRow,
   });
   const contentHash = contentHashForSnapshot(snapshot);
   const sourceReadiness = snapshot.readiness;

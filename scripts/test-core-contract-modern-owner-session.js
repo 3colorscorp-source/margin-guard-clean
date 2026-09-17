@@ -34,6 +34,7 @@ const CONTRACT_HANDLERS = [
   "contract-signer-delete.js",
   "contract-signer-update.js",
   "contract-signers.js",
+  "contract-sign-contractor.js",
   "contract-signing-token-create.js",
   "contract-signing-token-revoke.js",
   "tenant-contract-legal-notices.js",

@@ -278,6 +278,34 @@ async function ensureSigningTokenForSigner({
   };
 }
 
+/**
+ * Internal contractor in-app capture only.
+ * Expires a leftover active token so a raw secret can be minted and consumed
+ * in the same request. Never returned to the client.
+ */
+async function mintFreshSigningToken({
+  tenantId,
+  signerId,
+  expiresInDays = DEFAULT_EXPIRES_DAYS,
+}) {
+  const existing = await loadActiveTokenForSigner(tenantId, signerId);
+  if (existing?.id) {
+    await supabaseRequest(
+      `tenant_contract_signing_tokens?tenant_id=eq.${encodeURIComponent(tenantId)}` +
+        `&id=eq.${encodeURIComponent(existing.id)}`,
+      {
+        method: "PATCH",
+        body: { status: "expired" },
+      }
+    );
+  }
+  return createSigningToken({
+    tenantId,
+    signerId,
+    expiresInDays,
+  });
+}
+
 async function lookupSigningToken({ rawToken }) {
   const token = trimField(rawToken);
   if (!token) {
@@ -388,6 +416,7 @@ module.exports = {
   serializeToken,
   createSigningToken,
   ensureSigningTokenForSigner,
+  mintFreshSigningToken,
   lookupSigningToken,
   revokeSigningToken,
   loadSignerForTenant,
