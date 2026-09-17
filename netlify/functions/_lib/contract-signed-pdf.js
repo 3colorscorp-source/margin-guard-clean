@@ -15,7 +15,7 @@ const {
 } = require("./simple-pdf");
 
 const API_VERSION = "ch-011i-v1";
-const GENERATOR_VERSION = "ch-011i-pdf-v1";
+const GENERATOR_VERSION = "ch-011i-pdf-v2";
 const ARTIFACT_TYPE = "signed_pdf";
 const MIME_TYPE = "application/pdf";
 const STORAGE_BUCKET = "contract-signed-pdfs";
@@ -45,20 +45,25 @@ function sha256Hex(buf) {
 function money(value, currency) {
   const n = Number(value);
   const cur = trimField(currency) || "USD";
-  if (!Number.isFinite(n)) return `${cur} —`;
+  if (!Number.isFinite(n)) return `${cur} -`;
   return `${cur} ${n.toFixed(2)}`;
+}
+
+function unspecified(value, fallback = "-") {
+  const t = trimField(value);
+  return t || fallback;
 }
 
 function line(text, opts = {}) {
   return { text: text == null ? "" : String(text), ...opts };
 }
 
-function heading(text) {
-  return line(text, { fontSize: 13, bold: true, afterGap: 4 });
+function heading(text, extra = {}) {
+  return line(text, { fontSize: 13, bold: true, afterGap: 4, ...extra });
 }
 
-function subhead(text) {
-  return line(text, { fontSize: 11, bold: true, afterGap: 2 });
+function subhead(text, extra = {}) {
+  return line(text, { fontSize: 11, bold: true, afterGap: 2, ...extra });
 }
 
 function body(text) {
@@ -282,11 +287,8 @@ function buildSignedContractLines({
 
   lines.push(line("SIGNED CONTRACT", { fontSize: 16, bold: true, afterGap: 6 }));
   lines.push(body(title));
-  lines.push(
-    body(
-      `Package version ${Number(pkg.version) || 1}  |  Package hash ${trimField(pkg.content_hash).slice(0, 16)}…`
-    )
-  );
+  lines.push(body(`Package version ${Number(pkg.version) || 1}`));
+  lines.push(body(`Package hash ${trimField(pkg.content_hash)}`));
   lines.push(blank(8));
 
   lines.push(heading("Business"));
@@ -296,7 +298,7 @@ function buildSignedContractLines({
   lines.push(heading("Customer / Project / Property"));
   lines.push(
     body(
-      `Customer: ${trimField(snap?.customer?.name) || "—"}` +
+      `Customer: ${unspecified(snap?.customer?.name)}` +
         (trimField(snap?.customer?.email)
           ? ` <${trimField(snap.customer.email)}>`
           : "")
@@ -307,14 +309,14 @@ function buildSignedContractLines({
   }
   lines.push(
     body(
-      `Project: ${trimField(snap?.project?.name) || "—"} (${trimField(snap?.project?.id) || envelope.project_id})`
+      `Project: ${unspecified(snap?.project?.name)} (${trimField(snap?.project?.id) || envelope.project_id})`
     )
   );
-  lines.push(body(`Property: ${propertyLine(snap) || "—"}`));
+  lines.push(body(`Property: ${unspecified(propertyLine(snap))}`));
   lines.push(blank(6));
 
   lines.push(heading("SCOPE OF WORK"));
-  lines.push(body(trimField(snap?.scope?.text) || "—"));
+  lines.push(body(unspecified(snap?.scope?.text)));
   lines.push(blank(6));
 
   lines.push(heading("Price"));
@@ -346,7 +348,7 @@ function buildSignedContractLines({
     "";
   function fmtContractDate(ymd) {
     const s = String(ymd || "").trim().slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "—";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "-";
     // Display-only; keep calendar day (noon local).
     return s;
   }
@@ -362,7 +364,7 @@ function buildSignedContractLines({
     ? snap.payment_schedule.items
     : [];
   if (!items.length) {
-    lines.push(body("—"));
+    lines.push(body("-"));
   } else {
     for (const it of items) {
       const label = trimField(it.label) || `Item ${it.sequence_number || ""}`;
@@ -371,11 +373,12 @@ function buildSignedContractLines({
           ? money(it.amount, currency)
           : it.percentage != null
             ? `${Number(it.percentage)}%`
-            : "—";
+            : "-";
       const due = trimField(it.due_rule) || trimField(it.fixed_due_date) || "";
+      const seq = it.sequence_number || "*";
       lines.push(
         body(
-          `${it.sequence_number || "•"}. ${label} — ${amt}` +
+          `${seq}. ${label} - ${amt}` +
             (due ? ` (due: ${due})` : "")
         )
       );
@@ -393,7 +396,7 @@ function buildSignedContractLines({
       ? `${w.duration_value} ${trimField(w.duration_unit) || ""}`.trim()
       : "";
   if (dur) lines.push(body(`Duration: ${dur}`));
-  lines.push(body(trimField(w.summary) || "—"));
+  lines.push(body(unspecified(w.summary)));
   if (trimField(w.exclusions)) {
     lines.push(subhead("Exclusions"));
     lines.push(body(trimField(w.exclusions)));
@@ -401,13 +404,13 @@ function buildSignedContractLines({
   lines.push(blank(6));
 
   lines.push(heading("Terms"));
-  lines.push(body(trimField(snap?.terms?.quote_terms) || "—"));
+  lines.push(body(unspecified(snap?.terms?.quote_terms, "Not specified")));
   lines.push(blank(6));
 
   lines.push(heading("Legal Notices"));
   const notices = noticeEntries(snap);
   if (!notices.length) {
-    lines.push(body("—"));
+    lines.push(body("-"));
   } else {
     for (const n of notices) {
       lines.push(subhead(n.key.replace(/_/g, " ")));
@@ -416,8 +419,9 @@ function buildSignedContractLines({
     }
   }
 
-  lines.push({ pageBreak: true });
-  lines.push(heading("Signatures"));
+  lines.push(
+    heading("Signatures", { keepTogetherHeight: 200 })
+  );
   const eventsBySigner = new Map();
   for (const ev of events || []) {
     eventsBySigner.set(String(ev.signer_id), ev);
@@ -432,11 +436,11 @@ function buildSignedContractLines({
         : {};
     lines.push(
       subhead(
-        `${trimField(s.party_name) || "Signer"} — ${trimField(s.role) || "party"}`
+        `${trimField(s.party_name) || "Signer"} - ${trimField(s.role) || "party"}`
       )
     );
-    lines.push(body(`Method: ${method || "—"}`));
-    lines.push(body(`Signed at: ${ev?.signed_at || s.signed_at || "—"}`));
+    lines.push(body(`Method: ${method || "-"}`));
+    lines.push(body(`Signed at: ${ev?.signed_at || s.signed_at || "-"}`));
     if (method === "typed") {
       const typed =
         trimField(sj.typed_name) ||
@@ -459,22 +463,22 @@ function buildSignedContractLines({
           height: 72,
         });
       } else {
-        lines.push(body("[drawn signature recorded — path unavailable]"));
+        lines.push(body("[drawn signature recorded - path unavailable]"));
       }
     } else {
-      lines.push(body("Signature: —"));
+      lines.push(body("Signature: -"));
     }
     lines.push(blank(10));
   }
 
-  lines.push(heading("Audit Certificate"));
+  lines.push(heading("Audit Certificate", { keepTogetherHeight: 90 }));
   lines.push(
     body(`Certificate number: ${trimField(certificate.certificate_number)}`)
   );
   lines.push(body(`Verification hash: ${trimField(certificate.content_hash)}`));
-  lines.push(body(`Certificate issued: ${certificate.issued_at || "—"}`));
+  lines.push(body(`Certificate issued: ${certificate.issued_at || "-"}`));
   lines.push(
-    body(`Envelope completed: ${envelope.completed_at || "—"}`)
+    body(`Envelope completed: ${envelope.completed_at || "-"}`)
   );
   lines.push(blank(6));
 
@@ -489,7 +493,7 @@ function buildSignedContractLines({
   lines.push(body(`Signature events: ${(events || []).length}`));
   lines.push(
     body(
-      `Event IDs: ${(events || []).map((e) => e.id).join(", ") || "—"}`
+      `Event IDs: ${(events || []).map((e) => e.id).join(", ") || "-"}`
     )
   );
   lines.push(blank(6));
