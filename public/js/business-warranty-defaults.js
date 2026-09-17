@@ -1,9 +1,8 @@
 /**
  * CH-082 — Business Settings standard warranty preset (browser + Node).
  *
- * GET the full tenant_contract_preferences row, patch only warranty fields,
- * POST the combined allowed-key object. Does not reset trade, contract name,
- * language, change-order, signer, signature order, or attach flags.
+ * GET loads the tenant row. PATCH saves only the five warranty columns.
+ * Does not GET-merge-POST, and does not send trade/name/language/signer fields.
  *
  * Does not write Contract Builder, project_contract_setups, packages, or PDFs.
  * Does not author legal warranty language.
@@ -31,15 +30,18 @@
     WARRANTY_UNIT_SET[unit] = true;
   });
 
-  var PREFERENCE_POST_KEYS = [
+  var WARRANTY_PATCH_KEYS = [
+    "default_warranty_enabled",
+    "default_warranty_duration_value",
+    "default_warranty_duration_unit",
+    "default_warranty_summary",
+    "default_warranty_exclusions",
+  ];
+
+  var PRESERVED_PREFERENCE_KEYS = [
     "primary_trade_module",
     "custom_trade_label",
     "default_contract_name",
-    "default_warranty_duration_value",
-    "default_warranty_duration_unit",
-    "default_warranty_enabled",
-    "default_warranty_summary",
-    "default_warranty_exclusions",
     "change_order_requirement",
     "require_customer_initials",
     "default_signer_mode",
@@ -49,18 +51,6 @@
     "automatically_attach_warranty",
     "automatically_attach_completion_certificate",
   ];
-
-  var WARRANTY_PATCH_KEYS = [
-    "default_warranty_enabled",
-    "default_warranty_duration_value",
-    "default_warranty_duration_unit",
-    "default_warranty_summary",
-    "default_warranty_exclusions",
-  ];
-
-  var PRESERVED_PREFERENCE_KEYS = PREFERENCE_POST_KEYS.filter(function (key) {
-    return WARRANTY_PATCH_KEYS.indexOf(key) === -1;
-  });
 
   function trimValue(value) {
     return String(value == null ? "" : value).trim();
@@ -161,35 +151,27 @@
     return { ok: errors.length === 0, errors: errors, fields: war };
   }
 
-  function pickPreferencePostBody(row) {
-    var out = {};
-    var src = row && typeof row === "object" ? row : {};
-    PREFERENCE_POST_KEYS.forEach(function (key) {
-      if (Object.prototype.hasOwnProperty.call(src, key) && src[key] !== undefined) {
-        out[key] = src[key];
-      }
-    });
-    return out;
+  function buildWarrantyPatchBody(warrantyInput) {
+    var war = normalizeWarrantyFields(warrantyInput);
+    var unit = war.default_warranty_duration_unit || "months";
+    var duration = war.default_warranty_duration_value;
+    if (!Number.isInteger(duration) || duration < 0) duration = null;
+    return {
+      default_warranty_enabled: Boolean(war.default_warranty_enabled),
+      default_warranty_duration_value: duration,
+      default_warranty_duration_unit: unit,
+      default_warranty_summary: war.default_warranty_summary,
+      default_warranty_exclusions: war.default_warranty_exclusions,
+    };
   }
 
-  function mergeWarrantyIntoPreferences(existing, warrantyInput) {
-    var base = pickPreferencePostBody(existing);
-    var war = normalizeWarrantyFields(warrantyInput);
+  function applyWarrantyPatchToRow(existing, patch) {
+    var row = existing && typeof existing === "object" ? Object.assign({}, existing) : {};
+    var body = buildWarrantyPatchBody(patch);
     WARRANTY_PATCH_KEYS.forEach(function (key) {
-      base[key] = war[key];
+      row[key] = body[key];
     });
-    if (base.default_warranty_duration_unit === "") {
-      base.default_warranty_duration_unit = "months";
-    }
-    if (
-      (base.default_warranty_duration_value != null &&
-        !Number.isInteger(base.default_warranty_duration_value)) ||
-      (Number.isInteger(base.default_warranty_duration_value) &&
-        base.default_warranty_duration_value < 0)
-    ) {
-      base.default_warranty_duration_value = null;
-    }
-    return base;
+    return row;
   }
 
   function $(doc, id) {
@@ -331,17 +313,8 @@
 
     setStatus(doc, "Saving…", "");
     try {
-      var loaded = await apiJson("GET");
-      if (loaded.res.status === 403) {
-        setStatus(doc, (loaded.data && loaded.data.error) || "Not allowed for this role.", "error");
-        return;
-      }
-      if (!loaded.res.ok || loaded.data.ok !== true) {
-        setStatus(doc, (loaded.data && loaded.data.error) || "Could not load current preferences.", "error");
-        return;
-      }
-      var body = mergeWarrantyIntoPreferences(loaded.data.preferences || {}, fields);
-      var saved = await apiJson("POST", body);
+      var body = buildWarrantyPatchBody(fields);
+      var saved = await apiJson("PATCH", body);
       if (saved.res.status === 403) {
         setStatus(doc, (saved.data && saved.data.error) || "Not allowed for this role.", "error");
         return;
@@ -421,14 +394,13 @@
     API: API,
     WARRANTY_TEXT_MAX: WARRANTY_TEXT_MAX,
     WARRANTY_UNITS: WARRANTY_UNITS,
-    PREFERENCE_POST_KEYS: PREFERENCE_POST_KEYS,
     WARRANTY_PATCH_KEYS: WARRANTY_PATCH_KEYS,
     PRESERVED_PREFERENCE_KEYS: PRESERVED_PREFERENCE_KEYS,
     warrantyFieldsFromPreferences: warrantyFieldsFromPreferences,
     evaluateWarrantyPresetStatus: evaluateWarrantyPresetStatus,
     validateWarrantyDraft: validateWarrantyDraft,
-    pickPreferencePostBody: pickPreferencePostBody,
-    mergeWarrantyIntoPreferences: mergeWarrantyIntoPreferences,
+    buildWarrantyPatchBody: buildWarrantyPatchBody,
+    applyWarrantyPatchToRow: applyWarrantyPatchToRow,
     mountBusinessWarrantyCard: mountBusinessWarrantyCard,
   };
 });
