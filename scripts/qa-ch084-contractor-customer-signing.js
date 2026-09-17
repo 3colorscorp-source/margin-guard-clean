@@ -111,6 +111,27 @@ const PKG_A = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const TOKEN_A = "tok-customer-raw";
 const UPDATED_AT = "2026-09-17T18:00:00.000Z";
 
+function sha256(raw) {
+  return require("crypto").createHash("sha256").update(raw, "utf8").digest("hex");
+}
+
+function wroteStatus(store, table, status) {
+  return (store.writes || []).some(
+    (w) => w.table === table && w.body && String(w.body.status) === status
+  );
+}
+
+function captureTyped(name, extra) {
+  return {
+    rawToken: TOKEN_A,
+    signatureMethod: "typed",
+    signaturePayload: { typed_name: name },
+    consentEsign: true,
+    expectedUpdatedAt: UPDATED_AT,
+    ...extra,
+  };
+}
+
 function jsonRes(status, body) {
   return {
     ok: status >= 200 && status < 300,
@@ -243,6 +264,7 @@ test("syntax SQL + JS surfaces", () => {
     publicSignPath,
     contractorPath,
     tokenPath,
+    path.join(ROOT, "netlify/functions/_lib/contract-signer.js"),
     assemblerPath,
     warrantyHelperPath,
     signingHelperPath,
@@ -394,6 +416,17 @@ test("order: customer cannot sign before contractor; send waits", () => {
   const blockers = policy.contractorSendBlockers(dual, unsigned);
   assert.strictEqual(blockers[0].code, "contractor_not_signed");
   assert.strictEqual(policy.contractorSendBlockers(policy.CUSTOMER_ONLY, unsigned).length, 0);
+  const ownerOnlySigned = [
+    { id: "o1", role: "owner", is_required: true, status: "signed" },
+  ];
+  const noCustomer = policy.contractorSendBlockers(dual, ownerOnlySigned);
+  assert.ok(noCustomer.some((b) => b.code === "missing_customer_signer"));
+  const twoOwners = policy.contractorSendBlockers(dual, [
+    { id: "o1", role: "owner", is_required: true, status: "signed" },
+    { id: "o2", role: "owner", is_required: true, status: "pending" },
+    { id: "c1", role: "customer", is_required: true, status: "pending" },
+  ]);
+  assert.strictEqual(twoOwners[0].code, "ambiguous_contractor_roster");
   assert.match(sendSrc, /contractorSendBlockers/);
   assert.match(signSrc, /not_your_turn/);
   assert.ok(!sendLib.signersNeedingTokens([
@@ -419,19 +452,50 @@ test("customer-only send still requires a customer and not a contractor", () => 
 
 test("complete/cert/PDF still wait for all required signatures; no invented contractor", () => {
   assert.match(signSrc, /allRequiredSigned/);
+  assert.match(signSrc, /resolveSignatureProgression/);
+  assert.match(signSrc, /envelopeMayComplete/);
+  assert.match(signSrc, /customer_signer_required/);
+  const ownerOnly = [{ is_required: true, role: "owner", status: "signed" }];
+  const pendingCustomer = [
+    { is_required: true, role: "owner", status: "signed" },
+    { is_required: true, role: "customer", status: "pending" },
+  ];
+  const both = [
+    { is_required: true, role: "owner", status: "signed" },
+    { is_required: true, role: "customer", status: "signed" },
+  ];
+  const oneCustomer = [{ is_required: true, role: "customer", status: "signed" }];
+  assert.strictEqual(signLib.allRequiredSigned(pendingCustomer), false);
+  assert.strictEqual(signLib.allRequiredSigned(both), true);
+  assert.strictEqual(policy.allRequiredSigned(ownerOnly), true);
   assert.strictEqual(
-    signLib.allRequiredSigned([
-      { is_required: true, role: "owner", status: "signed" },
-      { is_required: true, role: "customer", status: "pending" },
-    ]),
+    policy.envelopeMayComplete(policy.CONTRACTOR_AND_CUSTOMER, ownerOnly),
     false
   );
   assert.strictEqual(
-    signLib.allRequiredSigned([
-      { is_required: true, role: "owner", status: "signed" },
-      { is_required: true, role: "customer", status: "signed" },
-    ]),
+    policy.envelopeMayComplete(policy.CONTRACTOR_AND_CUSTOMER, pendingCustomer),
+    false
+  );
+  assert.strictEqual(
+    policy.envelopeMayComplete(policy.CONTRACTOR_AND_CUSTOMER, both),
     true
+  );
+  assert.strictEqual(
+    policy.envelopeMayComplete(policy.CUSTOMER_ONLY, oneCustomer),
+    true
+  );
+  assert.strictEqual(
+    policy.resolveSignatureProgression(policy.CONTRACTOR_AND_CUSTOMER, ownerOnly, {
+      envStatus: "draft",
+    }).progression,
+    "customer_signer_required"
+  );
+  assert.strictEqual(
+    policy.evaluateDualRoster([
+      { role: "owner", is_required: true },
+      { role: "owner", is_required: true },
+    ]).code,
+    "ambiguous_contractor_roster"
   );
   assert.ok(!certSrc.includes("authorized_signer_name"));
   assert.ok(!pdfSrc.includes("invented contractor"));
@@ -572,6 +636,31 @@ async function withPrefsHandler(store, fn) {
   }
 }
 
+async function withSendValidate(fn) {
+  const prev = globalThis.fetch;
+  globalThis.fetch = async () => jsonRes(200, []);
+  [
+    "../netlify/functions/_lib/supabase-admin",
+    "../netlify/functions/_lib/contract-envelope",
+    "../netlify/functions/_lib/contract-signer",
+    "../netlify/functions/_lib/contract-signing-token",
+    "../netlify/functions/_lib/contract-signing-policy",
+    "../netlify/functions/_lib/contract-envelope-send",
+  ].forEach((rel) => {
+    try {
+      delete require.cache[require.resolve(rel)];
+    } catch (_err) {
+      /* ignore */
+    }
+  });
+  const mod = require("../netlify/functions/_lib/contract-envelope-send");
+  try {
+    await fn(mod);
+  } finally {
+    globalThis.fetch = prev;
+  }
+}
+
 async function withSignLib(store, fn) {
   const prev = globalThis.fetch;
   globalThis.fetch = async (url, opts) => {
@@ -585,14 +674,52 @@ async function withSignLib(store, fn) {
     if (table === "tenant_contract_signing_tokens" && method === "GET") {
       return jsonRes(200, store.token ? [store.token] : []);
     }
-    if (table === "tenant_contract_signers" && /id=eq\./.test(restPath)) {
+    if (table === "tenant_contract_signing_tokens" && method === "PATCH") {
+      const body = JSON.parse(opts.body);
+      Object.assign(store.token, body);
+      return jsonRes(200, [store.token]);
+    }
+    if (table === "tenant_contract_signers" && method === "PATCH") {
+      const body = JSON.parse(opts.body);
+      if (store.signer) Object.assign(store.signer, body);
+      (store.signers || []).forEach((s) => {
+        if (store.signer && String(s.id) === String(store.signer.id)) {
+          Object.assign(s, body);
+        }
+      });
+      return jsonRes(200, [store.signer]);
+    }
+    if (table === "tenant_contract_signers" && method === "POST") {
+      const body = JSON.parse(opts.body);
+      const row = {
+        id: "sig-new",
+        created_at: UPDATED_AT,
+        updated_at: UPDATED_AT,
+        ...body,
+      };
+      store.signers = store.signers || [];
+      store.signers.push(row);
+      return jsonRes(201, [row]);
+    }
+    if (table === "tenant_contract_signers" && /(?:[?&])id=eq\./.test(restPath)) {
       return jsonRes(200, store.signer ? [store.signer] : []);
     }
     if (table === "tenant_contract_signers") {
       return jsonRes(200, store.signers || []);
     }
+    if (table === "tenant_contract_envelopes" && method === "PATCH") {
+      const body = JSON.parse(opts.body);
+      Object.assign(store.envelope, body);
+      store.envelope.updated_at = "2026-09-17T18:00:01.000Z";
+      return jsonRes(200, [store.envelope]);
+    }
     if (table === "tenant_contract_envelopes") {
       return jsonRes(200, store.envelope ? [store.envelope] : []);
+    }
+    if (table === "tenant_contract_packages" && method === "PATCH") {
+      const body = JSON.parse(opts.body);
+      Object.assign(store.package, body);
+      return jsonRes(200, [store.package]);
     }
     if (table === "tenant_contract_packages") {
       return jsonRes(200, store.package ? [store.package] : []);
@@ -607,6 +734,7 @@ async function withSignLib(store, fn) {
     "../netlify/functions/_lib/contract-signing-token",
     "../netlify/functions/_lib/contract-signing-policy",
     "../netlify/functions/_lib/contract-sign",
+    "../netlify/functions/_lib/contract-signer",
   ].forEach((rel) => {
     try {
       delete require.cache[require.resolve(rel)];
@@ -784,6 +912,487 @@ async function runAsync() {
         assert.strictEqual(result.status, 403);
       }
     );
+  });
+
+  await testAsync(
+    "REGRESSION vs 7f3f657: dual owner-only contractor capture does not complete",
+    async () => {
+      const store = {
+        writes: [],
+        token: {
+          id: "tok-o",
+          tenant_id: TENANT_A,
+          envelope_id: ENV_A,
+          signer_id: "sig-o",
+          status: "active",
+          token_hash: sha256(TOKEN_A),
+          expires_at: "2099-01-01T00:00:00.000Z",
+        },
+        signer: {
+          id: "sig-o",
+          role: "owner",
+          party_name: "Owner",
+          status: "pending",
+          envelope_id: ENV_A,
+          package_id: PKG_A,
+          is_required: true,
+          sign_order: 1,
+        },
+        envelope: {
+          id: ENV_A,
+          package_id: PKG_A,
+          status: "draft",
+          updated_at: UPDATED_AT,
+        },
+        package: {
+          id: PKG_A,
+          version: 1,
+          status: "ready",
+          snapshot_json: { signing_policy: policy.CONTRACTOR_AND_CUSTOMER },
+        },
+        signers: [
+          {
+            id: "sig-o",
+            role: "owner",
+            is_required: true,
+            status: "pending",
+            party_name: "Owner",
+            sign_order: 1,
+          },
+        ],
+      };
+      await withSignLib(store, async (mod) => {
+        const result = await mod.captureContractSignature(
+          captureTyped("Owner Person", {
+            allowDraftEnvelope: true,
+            sessionOwnerCapture: true,
+          })
+        );
+        assert.strictEqual(result.ok, true, result.error || result.code);
+        assert.strictEqual(result.progression, "customer_signer_required");
+        assert.notStrictEqual(result.progression, "completed");
+        assert.strictEqual(result.envelope.status, "draft");
+        assert.notStrictEqual(result.envelope.status, "completed");
+        assert.strictEqual(result.package.status, "ready");
+        assert.notStrictEqual(result.package.status, "executed");
+        assert.strictEqual(
+          wroteStatus(store, "tenant_contract_envelopes", "completed"),
+          false
+        );
+        assert.strictEqual(
+          wroteStatus(store, "tenant_contract_packages", "executed"),
+          false
+        );
+        assert.ok(
+          wroteStatus(store, "tenant_contract_signers", "signed"),
+          "contractor signer must still be marked signed"
+        );
+      });
+    }
+  );
+
+  await testAsync(
+    "after dual contractor sign, customer can still be added on draft",
+    async () => {
+      const store = {
+        writes: [],
+        token: {
+          id: "tok-o",
+          tenant_id: TENANT_A,
+          envelope_id: ENV_A,
+          signer_id: "sig-o",
+          status: "active",
+          token_hash: sha256(TOKEN_A),
+          expires_at: "2099-01-01T00:00:00.000Z",
+        },
+        signer: {
+          id: "sig-o",
+          role: "owner",
+          party_name: "Owner",
+          status: "pending",
+          envelope_id: ENV_A,
+          package_id: PKG_A,
+          is_required: true,
+          sign_order: 1,
+        },
+        envelope: {
+          id: ENV_A,
+          package_id: PKG_A,
+          status: "draft",
+          updated_at: UPDATED_AT,
+        },
+        package: {
+          id: PKG_A,
+          version: 1,
+          status: "ready",
+          snapshot_json: { signing_policy: policy.CONTRACTOR_AND_CUSTOMER },
+        },
+        signers: [
+          {
+            id: "sig-o",
+            role: "owner",
+            is_required: true,
+            status: "pending",
+            party_name: "Owner",
+            sign_order: 1,
+          },
+        ],
+      };
+      await withSignLib(store, async (mod) => {
+        const result = await mod.captureContractSignature(
+          captureTyped("Owner Person", {
+            allowDraftEnvelope: true,
+            sessionOwnerCapture: true,
+          })
+        );
+        assert.strictEqual(result.ok, true, result.error || result.code);
+        assert.strictEqual(store.envelope.status, "draft");
+        const signerMod = require("../netlify/functions/_lib/contract-signer");
+        const created = await signerMod.createSigner({
+          tenantId: TENANT_A,
+          envelopeId: ENV_A,
+          input: {
+            role: "customer",
+            party_name: "Customer",
+            email: "customer@example.com",
+            sign_order: 2,
+            auth_method: "email_link",
+            is_required: true,
+          },
+        });
+        assert.strictEqual(created.ok, true, created.error || created.code);
+        assert.strictEqual(created.signer.role, "customer");
+      });
+    }
+  );
+
+  await testAsync(
+    "dual owner signed + customer pending does not complete",
+    async () => {
+      const store = {
+        writes: [],
+        token: {
+          id: "tok-o",
+          tenant_id: TENANT_A,
+          envelope_id: ENV_A,
+          signer_id: "sig-o",
+          status: "active",
+          token_hash: sha256(TOKEN_A),
+          expires_at: "2099-01-01T00:00:00.000Z",
+        },
+        signer: {
+          id: "sig-o",
+          role: "owner",
+          party_name: "Owner",
+          status: "pending",
+          envelope_id: ENV_A,
+          package_id: PKG_A,
+          is_required: true,
+          sign_order: 1,
+        },
+        envelope: {
+          id: ENV_A,
+          package_id: PKG_A,
+          status: "draft",
+          updated_at: UPDATED_AT,
+        },
+        package: {
+          id: PKG_A,
+          version: 1,
+          status: "ready",
+          snapshot_json: { signing_policy: policy.CONTRACTOR_AND_CUSTOMER },
+        },
+        signers: [
+          {
+            id: "sig-o",
+            role: "owner",
+            is_required: true,
+            status: "pending",
+            party_name: "Owner",
+            sign_order: 1,
+          },
+          {
+            id: "sig-c",
+            role: "customer",
+            is_required: true,
+            status: "pending",
+            party_name: "Customer",
+            sign_order: 2,
+          },
+        ],
+      };
+      await withSignLib(store, async (mod) => {
+        const result = await mod.captureContractSignature(
+          captureTyped("Owner Person", {
+            allowDraftEnvelope: true,
+            sessionOwnerCapture: true,
+          })
+        );
+        assert.strictEqual(result.ok, true, result.error || result.code);
+        assert.strictEqual(result.progression, "next_signer_pending");
+        assert.strictEqual(result.envelope.status, "draft");
+        assert.strictEqual(result.package.status, "ready");
+        assert.strictEqual(
+          wroteStatus(store, "tenant_contract_envelopes", "completed"),
+          false
+        );
+        assert.strictEqual(
+          wroteStatus(store, "tenant_contract_packages", "executed"),
+          false
+        );
+      });
+    }
+  );
+
+  await testAsync(
+    "dual owner signed + customer signed completes envelope and package",
+    async () => {
+      const store = {
+        writes: [],
+        token: {
+          id: "tok-c",
+          tenant_id: TENANT_A,
+          envelope_id: ENV_A,
+          signer_id: "sig-c",
+          status: "active",
+          token_hash: sha256(TOKEN_A),
+          expires_at: "2099-01-01T00:00:00.000Z",
+        },
+        signer: {
+          id: "sig-c",
+          role: "customer",
+          party_name: "Customer",
+          status: "pending",
+          envelope_id: ENV_A,
+          package_id: PKG_A,
+          is_required: true,
+          sign_order: 2,
+        },
+        envelope: {
+          id: ENV_A,
+          package_id: PKG_A,
+          status: "sent",
+          updated_at: UPDATED_AT,
+        },
+        package: {
+          id: PKG_A,
+          version: 1,
+          status: "ready",
+          snapshot_json: { signing_policy: policy.CONTRACTOR_AND_CUSTOMER },
+        },
+        signers: [
+          {
+            id: "sig-o",
+            role: "owner",
+            is_required: true,
+            status: "signed",
+            party_name: "Owner",
+            sign_order: 1,
+          },
+          {
+            id: "sig-c",
+            role: "customer",
+            is_required: true,
+            status: "pending",
+            party_name: "Customer",
+            sign_order: 2,
+          },
+        ],
+      };
+      await withSignLib(store, async (mod) => {
+        const result = await mod.captureContractSignature(
+          captureTyped("Customer Person")
+        );
+        assert.strictEqual(result.ok, true, result.error || result.code);
+        assert.strictEqual(result.progression, "completed");
+        assert.strictEqual(result.envelope.status, "completed");
+        assert.strictEqual(result.package.status, "executed");
+        assert.ok(wroteStatus(store, "tenant_contract_envelopes", "completed"));
+        assert.ok(wroteStatus(store, "tenant_contract_packages", "executed"));
+      });
+    }
+  );
+
+  await testAsync(
+    "customer-only one required customer signed still completes",
+    async () => {
+      const store = {
+        writes: [],
+        token: {
+          id: "tok-c",
+          tenant_id: TENANT_A,
+          envelope_id: ENV_A,
+          signer_id: "sig-c",
+          status: "active",
+          token_hash: sha256(TOKEN_A),
+          expires_at: "2099-01-01T00:00:00.000Z",
+        },
+        signer: {
+          id: "sig-c",
+          role: "customer",
+          party_name: "Customer",
+          status: "pending",
+          envelope_id: ENV_A,
+          package_id: PKG_A,
+          is_required: true,
+          sign_order: 1,
+        },
+        envelope: {
+          id: ENV_A,
+          package_id: PKG_A,
+          status: "sent",
+          updated_at: UPDATED_AT,
+        },
+        package: {
+          id: PKG_A,
+          version: 1,
+          status: "ready",
+          snapshot_json: { signing_policy: policy.CUSTOMER_ONLY },
+        },
+        signers: [
+          {
+            id: "sig-c",
+            role: "customer",
+            is_required: true,
+            status: "pending",
+            party_name: "Customer",
+            sign_order: 1,
+          },
+        ],
+      };
+      await withSignLib(store, async (mod) => {
+        const result = await mod.captureContractSignature(
+          captureTyped("Customer Person")
+        );
+        assert.strictEqual(result.ok, true, result.error || result.code);
+        assert.strictEqual(result.progression, "completed");
+        assert.strictEqual(result.envelope.status, "completed");
+        assert.strictEqual(result.package.status, "executed");
+      });
+    }
+  );
+
+  await testAsync("dual send without required customer is blocked", async () => {
+    await withSendValidate(async (mod) => {
+      const blockers = await mod.validateEnvelopeForSend({
+        tenantId: TENANT_A,
+        envelope: {
+          id: ENV_A,
+          status: "draft",
+          project_id: "p1",
+          quote_id: "q1",
+          package_id: PKG_A,
+        },
+        packageRow: {
+          id: PKG_A,
+          status: "ready",
+          project_id: "p1",
+          quote_id: "q1",
+          snapshot_json: { signing_policy: policy.CONTRACTOR_AND_CUSTOMER },
+        },
+        signers: [
+          {
+            id: "o1",
+            role: "owner",
+            is_required: true,
+            status: "signed",
+            party_name: "Owner",
+            email: "o@x.com",
+            auth_method: "in_app",
+            sign_order: 1,
+          },
+        ],
+      });
+      const codes = blockers.map((b) => b.code);
+      assert.ok(codes.includes("no_required_customer"), codes.join(","));
+      assert.ok(codes.includes("missing_customer_signer"), codes.join(","));
+    });
+  });
+
+  await testAsync("dual send without signed contractor is blocked", async () => {
+    await withSendValidate(async (mod) => {
+      const blockers = await mod.validateEnvelopeForSend({
+        tenantId: TENANT_A,
+        envelope: {
+          id: ENV_A,
+          status: "draft",
+          project_id: "p1",
+          quote_id: "q1",
+          package_id: PKG_A,
+        },
+        packageRow: {
+          id: PKG_A,
+          status: "ready",
+          project_id: "p1",
+          quote_id: "q1",
+          snapshot_json: { signing_policy: policy.CONTRACTOR_AND_CUSTOMER },
+        },
+        signers: [
+          {
+            id: "o1",
+            role: "owner",
+            is_required: true,
+            status: "pending",
+            party_name: "Owner",
+            email: "o@x.com",
+            auth_method: "in_app",
+            sign_order: 1,
+          },
+          {
+            id: "c1",
+            role: "customer",
+            is_required: true,
+            status: "pending",
+            party_name: "Customer",
+            email: "c@x.com",
+            auth_method: "email_link",
+            sign_order: 2,
+          },
+        ],
+      });
+      const codes = blockers.map((b) => b.code);
+      assert.ok(codes.includes("contractor_not_signed"), codes.join(","));
+      assert.ok(!codes.includes("no_required_customer"), codes.join(","));
+    });
+  });
+
+  await testAsync("customer-only send still completes roster check without contractor", async () => {
+    await withSendValidate(async (mod) => {
+      const blockers = await mod.validateEnvelopeForSend({
+        tenantId: TENANT_A,
+        envelope: {
+          id: ENV_A,
+          status: "draft",
+          project_id: "p1",
+          quote_id: "q1",
+          package_id: PKG_A,
+        },
+        packageRow: {
+          id: PKG_A,
+          status: "ready",
+          project_id: "p1",
+          quote_id: "q1",
+          snapshot_json: { signing_policy: policy.CUSTOMER_ONLY },
+        },
+        signers: [
+          {
+            id: "c1",
+            role: "customer",
+            is_required: true,
+            status: "pending",
+            party_name: "Customer",
+            email: "c@x.com",
+            auth_method: "email_link",
+            sign_order: 1,
+          },
+        ],
+      });
+      const codes = blockers.map((b) => b.code);
+      assert.ok(!codes.includes("missing_contractor_signer"), codes.join(","));
+      assert.ok(!codes.includes("contractor_not_signed"), codes.join(","));
+      assert.ok(!codes.includes("missing_customer_signer"), codes.join(","));
+      assert.ok(!codes.includes("no_required_customer"), codes.join(","));
+    });
   });
 
   await testAsync("contractor handler rejects missing session", async () => {

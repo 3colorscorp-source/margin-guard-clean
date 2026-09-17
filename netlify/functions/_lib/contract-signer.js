@@ -6,6 +6,9 @@
 "use strict";
 
 const { supabaseRequest } = require("./supabase-admin");
+const {
+  resolveSigningPolicyFromSnapshot,
+} = require("./contract-signing-policy");
 
 const API_VERSION = "ch-011c-v1";
 
@@ -80,6 +83,49 @@ async function loadSignerForTenant(tenantId, signerId) {
     { method: "GET" }
   );
   return Array.isArray(rows) && rows[0] ? rows[0] : null;
+}
+
+async function loadPackageSnapshot(tenantId, packageId) {
+  if (!packageId) return null;
+  const rows = await supabaseRequest(
+    `tenant_contract_packages?tenant_id=eq.${encodeURIComponent(tenantId)}` +
+      `&id=eq.${encodeURIComponent(packageId)}` +
+      `&select=id,snapshot_json` +
+      `&limit=1`,
+    { method: "GET" }
+  );
+  return Array.isArray(rows) && rows[0] ? rows[0] : null;
+}
+
+async function rejectAmbiguousDualOwner({
+  tenantId,
+  envelope,
+  role,
+  isRequired,
+  excludeSignerId = null,
+}) {
+  const pkg = await loadPackageSnapshot(tenantId, envelope?.package_id);
+  const policy = resolveSigningPolicyFromSnapshot(pkg?.snapshot_json);
+  if (policy.require_contractor_signature !== true) return null;
+  const willBeRequiredOwner =
+    String(role || "").trim().toLowerCase() === "owner" && isRequired !== false;
+  if (!willBeRequiredOwner) return null;
+  const signers = await listSignersForEnvelope(tenantId, envelope.id);
+  const others = (signers || []).filter(
+    (s) =>
+      String(s.role || "").trim().toLowerCase() === "owner" &&
+      s.is_required !== false &&
+      String(s.id) !== String(excludeSignerId || "")
+  );
+  if (others.length >= 1) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Dual signing allows exactly one required contractor",
+      code: "ambiguous_contractor_roster",
+    };
+  }
+  return null;
 }
 
 async function listSignersForEnvelope(tenantId, envelopeId) {
@@ -186,6 +232,18 @@ async function createSigner({ tenantId, envelopeId, input }) {
     };
   }
 
+  const nextRequired =
+    validated.fields.is_required != null
+      ? validated.fields.is_required
+      : validated.fields.role === "customer";
+  const ambiguous = await rejectAmbiguousDualOwner({
+    tenantId,
+    envelope,
+    role: validated.fields.role,
+    isRequired: nextRequired,
+  });
+  if (ambiguous) return ambiguous;
+
   let inserted = null;
   try {
     const rows = await supabaseRequest(`tenant_contract_signers`, {
@@ -291,6 +349,20 @@ async function updateSigner({ tenantId, signerId, expectedUpdatedAt, input }) {
       code: "no_fields",
     };
   }
+
+  const nextRole = validated.fields.role || existing.role;
+  const nextRequired =
+    validated.fields.is_required != null
+      ? validated.fields.is_required
+      : existing.is_required !== false;
+  const ambiguous = await rejectAmbiguousDualOwner({
+    tenantId,
+    envelope,
+    role: nextRole,
+    isRequired: nextRequired,
+    excludeSignerId: existing.id,
+  });
+  if (ambiguous) return ambiguous;
 
   let updated = null;
   try {

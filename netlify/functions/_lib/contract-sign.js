@@ -20,6 +20,9 @@ const {
   customerBlockedUntilContractor,
   findRequiredContractor,
   contractorHasSigned,
+  evaluateDualRoster,
+  resolveSignatureProgression,
+  envelopeMayComplete,
 } = require("./contract-signing-policy");
 
 const API_VERSION = "ch-011g-v1";
@@ -566,9 +569,13 @@ async function captureContractSignature({
   const next = nextPendingRequired(signers, signer.id);
   let envelopeOut = envelope;
   let packageOut = pkg;
-  let progression = "next_signer_pending";
+  const decision = resolveSignatureProgression(policy, signers, {
+    next,
+    envStatus,
+  });
+  let progression = decision.progression;
 
-  if (!next && allRequiredSigned(signers)) {
+  if (decision.complete) {
     const envPatch = await supabaseRequest(
       `tenant_contract_envelopes?tenant_id=eq.${encodeURIComponent(tenantId)}` +
         `&id=eq.${encodeURIComponent(envelope.id)}` +
@@ -603,8 +610,9 @@ async function captureContractSignature({
     const pkgUpdated = Array.isArray(pkgPatch) ? pkgPatch[0] : pkgPatch;
     packageOut = pkgUpdated?.id ? pkgUpdated : pkg;
     progression = "completed";
-  } else if (next) {
-    // Touch envelope updated_at so concurrency advances without status change
+  } else {
+    // Dual owner-only stays draft (customer_signer_required). Sent stays
+    // sent/opened. Never complete without envelopeMayComplete().
     const touch = await supabaseRequest(
       `tenant_contract_envelopes?tenant_id=eq.${encodeURIComponent(tenantId)}` +
         `&id=eq.${encodeURIComponent(envelope.id)}` +
@@ -612,13 +620,13 @@ async function captureContractSignature({
       {
         method: "PATCH",
         body: {
-          status: envStatus === "sent" ? "opened" : envStatus,
+          status: decision.envelopeStatus || envStatus,
         },
       }
     );
     const touched = Array.isArray(touch) ? touch[0] : touch;
     if (touched?.id) envelopeOut = touched;
-    progression = "next_signer_pending";
+    progression = decision.progression || "next_signer_pending";
   }
 
   return {
@@ -716,7 +724,16 @@ async function captureContractorInAppSignature({
   }
 
   const signers = await listSignersRaw(tenantId, envelope.id);
-  const contractor = findRequiredContractor(signers);
+  const roster = evaluateDualRoster(signers);
+  if (roster.code === "ambiguous_contractor_roster") {
+    return {
+      ok: false,
+      status: 409,
+      code: roster.code,
+      error: roster.message,
+    };
+  }
+  const contractor = roster.owners[0] || findRequiredContractor(signers);
   if (!contractor?.id) {
     return {
       ok: false,
@@ -791,4 +808,5 @@ module.exports = {
   userAgentFromEvent,
   nextPendingRequired,
   allRequiredSigned,
+  envelopeMayComplete,
 };
