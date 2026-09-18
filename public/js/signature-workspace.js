@@ -393,6 +393,10 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
     return list[0] || null;
   }
 
+  function customerDeliverySigner() {
+    return requiredSigner("customer") || primarySigner();
+  }
+
   function emailStatusLabel(status) {
     const st = String(status || "").toLowerCase();
     if (st === "queued" || st === "sending" || st === "accepted_db_pending") {
@@ -449,7 +453,7 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
    */
   async function pollEmailDeliveryStatus(attemptId, ticksLeft, slowMode) {
     const envId = state.envelope?.id;
-    const signer = primarySigner();
+    const signer = customerDeliverySigner();
     if (!envId || !signer?.id) return;
     const remaining =
       typeof ticksLeft === "number"
@@ -506,7 +510,7 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
 
   async function refreshEmailCapability() {
     const envId = state.envelope?.id;
-    const signer = primarySigner();
+    const signer = customerDeliverySigner();
     if (!envId || !signer?.id) {
       state.emailDelivery = null;
       return null;
@@ -529,7 +533,7 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
 
   async function hydrateEmailDeliveryStatus() {
     const envId = state.envelope?.id;
-    const signer = primarySigner();
+    const signer = customerDeliverySigner();
     if (!envId || !signer?.id) return;
     try {
       const qs =
@@ -968,7 +972,7 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
     const st = String(state.envelope?.status || "").toLowerCase();
     const linkReady = isLinkReady();
     const canCopy = hasCopyableLink();
-    const signer = primarySigner();
+    const signer = customerDeliverySigner();
     const cap = state.emailDelivery;
     const inFlight =
       state.emailUiStatus === "queued" ||
@@ -1312,7 +1316,7 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
     const envSt = String(state.envelope?.status || "").toLowerCase();
     const cert = state.certificates[0];
     const art = state.artifacts[0];
-    const signer = primarySigner();
+    const signer = customerDeliverySigner();
     const customer =
       String(
         state.project?.clientName ||
@@ -2513,7 +2517,7 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
     });
 
     $("swEmailLinkBtn")?.addEventListener("click", async () => {
-      const signer = primarySigner();
+      const signer = customerDeliverySigner();
       if (!state.envelope?.id || !signer?.id) {
         toast("Signer required before emailing a signing link", "error");
         return;

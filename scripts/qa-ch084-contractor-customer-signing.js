@@ -548,6 +548,92 @@ test("Business Settings + Contract Builder + workspace UX", () => {
   assert.match(warrantySrc, /addEventListener\("change", refreshReadiness\)/);
 });
 
+function fnHead(src, name, chars) {
+  const needle = "function " + name + "(";
+  const start = src.indexOf(needle);
+  assert.ok(start >= 0, name + " missing");
+  return src.slice(start, start + (chars || 700));
+}
+
+function selectCustomerDeliverySigner(signers) {
+  const list = Array.isArray(signers) ? signers : [];
+  const requiredSigner = (role) => {
+    const key = String(role || "").toLowerCase();
+    return list.find(
+      (s) =>
+        String(s.role || "").toLowerCase() === key && s.is_required !== false
+    );
+  };
+  const primarySigner = () => {
+    const ordered = list.slice().sort(
+      (a, b) => Number(a.sign_order || 0) - Number(b.sign_order || 0)
+    );
+    return ordered[0] || null;
+  };
+  return requiredSigner("customer") || primarySigner();
+}
+
+test("dual-signing email delivery uses customer signer, not owner/contractor", () => {
+  assert.match(
+    fnHead(swJs, "customerDeliverySigner", 220),
+    /return requiredSigner\("customer"\) \|\| primarySigner\(\);/
+  );
+  ["pollEmailDeliveryStatus", "refreshEmailCapability", "hydrateEmailDeliveryStatus", "renderSend", "renderVisualWorkflow"].forEach(
+    (name) => {
+      const head = fnHead(swJs, name, 1800);
+      assert.match(head, /const signer = customerDeliverySigner\(\);/, name);
+      assert.doesNotMatch(head, /const signer = primarySigner\(\);/, name);
+    }
+  );
+  assert.match(swJs, /setText\(\s*"swVis2Email",\s*signer\?\.email/);
+
+  const emailClickStart = swJs.indexOf('$("swEmailLinkBtn")?.addEventListener("click"');
+  const emailClickEnd = swJs.indexOf('$("swEmailRetryBtn")?.addEventListener("click"');
+  assert.ok(emailClickStart >= 0 && emailClickEnd > emailClickStart, "email click handler missing");
+  const emailClick = swJs.slice(emailClickStart, emailClickEnd);
+  assert.match(emailClick, /const signer = customerDeliverySigner\(\);/);
+  assert.match(emailClick, /signer_id:\s*signer\.id/);
+  assert.doesNotMatch(emailClick, /primarySigner\(\)/);
+  assert.doesNotMatch(emailClick, /3colorscorp@gmail\.com/i);
+
+  const owner = {
+    id: "sig-owner",
+    role: "owner",
+    email: "owner@example.com",
+    sign_order: 1,
+    is_required: true,
+  };
+  const customer = {
+    id: "sig-customer",
+    role: "customer",
+    email: "customer@example.com",
+    sign_order: 2,
+    is_required: true,
+  };
+  const dual = selectCustomerDeliverySigner([owner, customer]);
+  assert.strictEqual(dual.id, "sig-customer");
+  assert.strictEqual(dual.email, "customer@example.com");
+  assert.notStrictEqual(dual.id, owner.id);
+  assert.notStrictEqual(dual.email, owner.email);
+
+  const customerOnly = selectCustomerDeliverySigner([
+    {
+      id: "sig-only-customer",
+      role: "customer",
+      email: "only-customer@example.com",
+      sign_order: 1,
+      is_required: true,
+    },
+  ]);
+  assert.strictEqual(customerOnly.id, "sig-only-customer");
+  assert.strictEqual(customerOnly.email, "only-customer@example.com");
+
+  const queueBody = emailClick.match(/JSON\.stringify\(\{[\s\S]*?\}\)/);
+  assert.ok(queueBody, "email queue POST body missing");
+  assert.match(queueBody[0], /signer_id:\s*signer\.id/);
+  assert.doesNotMatch(queueBody[0], /sig-owner|owner@example\.com|role:\s*"owner"/);
+});
+
 test("public capture stays token-only; contractor capture is session-gated", () => {
   assert.match(publicSignSrc, /Auth = signing_token only/);
   assert.ok(!publicSignSrc.includes("requireOwnerOrAdmin"));
