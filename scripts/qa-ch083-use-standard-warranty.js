@@ -579,6 +579,8 @@ test("does not invent legal text, fixtures, or warranty_notice", () => {
   assert.doesNotMatch(helperSrc, /warranty_notice/);
   assert.doesNotMatch(helperSrc, /Workmanship/);
   assert.doesNotMatch(helperSrc, /Acts of God/);
+  assert.match(helperSrc, /SYSTEM_EXCLUSIONS/);
+  assert.match(helperSrc, /YEAR_OPTIONS/);
   const editor = html.slice(html.indexOf('id="art-warranty"'), html.indexOf('id="art-terms"'));
   assert.doesNotMatch(editor, /Workmanship/);
   assert.doesNotMatch(editor, /Acts of God/);

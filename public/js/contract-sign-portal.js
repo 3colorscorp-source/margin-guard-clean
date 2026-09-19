@@ -146,6 +146,33 @@
     };
   }
 
+  function formatSignWarrantyDuration(warranty) {
+    var n = Number(warranty && warranty.duration_value);
+    var unit = String((warranty && warranty.duration_unit) || "").toLowerCase();
+    if (unit === "year") unit = "years";
+    if (unit === "years" && n === 1) return "1 Year";
+    if (unit === "years" && n >= 2 && n <= 5) return n + " Years";
+    if (Number.isFinite(n) && unit) {
+      return n + " " + unit.charAt(0).toUpperCase() + unit.slice(1);
+    }
+    return "";
+  }
+
+  function formatSignWarrantyExclusions(raw) {
+    return String(raw || "")
+      .split(/\r?\n/)
+      .map(function (line) {
+        return String(line || "")
+          .replace(/^\s*\d+\.\s*/, "")
+          .replace(/^[\s•\-\*]+/, "")
+          .trim();
+      })
+      .filter(Boolean)
+      .map(function (line, idx) {
+        return idx + 1 + ". " + line;
+      });
+  }
+
   function propertyLines(property) {
     if (!property) return "—";
     var parts = [
@@ -520,9 +547,8 @@
         "</div>";
 
     var warrantyText = [];
-    if (warranty.duration_value && warranty.duration_unit) {
-      warrantyText.push(String(warranty.duration_value) + " " + String(warranty.duration_unit));
-    }
+    var durationLabel = formatSignWarrantyDuration(warranty);
+    if (durationLabel) warrantyText.push("Duration: " + durationLabel);
     if (warranty.summary) warrantyText.push(String(warranty.summary));
 
     var app = document.getElementById("app");
@@ -673,10 +699,11 @@
       ? warrantyText.join("\n")
       : "—";
     var excl = document.getElementById("warrantyExclusions");
-    if (warranty.exclusions) {
+    var exclusionLines = formatSignWarrantyExclusions(warranty.exclusions);
+    if (exclusionLines.length) {
       excl.innerHTML =
         '<p class="cs-lead" style="margin-top:8px">Exclusions</p><div class="cs-prose"></div>';
-      excl.querySelector(".cs-prose").textContent = String(warranty.exclusions);
+      excl.querySelector(".cs-prose").textContent = exclusionLines.join("\n");
     }
     document.getElementById("termsText").textContent = terms.quote_terms
       ? String(terms.quote_terms)

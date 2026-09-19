@@ -568,6 +568,13 @@
       letter-spacing: -0.02em;
       color: var(--cb-ink);
     }
+    .cb-war-workspace__duration {
+      margin: 0 0 14px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      line-height: 1.35;
+      color: var(--cb-ink);
+    }
     .cb-war-workspace__confirm {
       display: inline-flex;
       align-items: center;
@@ -627,8 +634,15 @@
       line-height: 1.45;
       color: #292524;
     }
+    .cb-war-workspace__list {
+      counter-reset: war-excl;
+    }
+    .cb-war-workspace__list li:not(.is-empty) {
+      padding-left: 1.4rem;
+    }
     .cb-war-workspace__list li:not(.is-empty)::before {
-      content: "•";
+      counter-increment: war-excl;
+      content: counter(war-excl) ".";
       position: absolute;
       left: 0;
       color: var(--cb-accent);
@@ -649,7 +663,7 @@
     .cb-war-form { display: grid; gap: 12px; }
     .cb-war-form__row--duration {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: minmax(12rem, 18rem);
       gap: 12px;
     }
     @media (max-width: 640px) {
@@ -2328,10 +2342,11 @@
                   <div data-ws-preview>
                     <div class="cb-war-workspace">
                       <p class="cb-war-workspace__eyebrow">Warranty</p>
-                      <h4 class="cb-war-workspace__title" id="cbWarrantyTitle">Warranty terms not set</h4>
+                      <p class="cb-war-workspace__duration" id="cbWarrantyDuration">Duration: 1 Year</p>
+                      <h4 class="cb-war-workspace__title" id="cbWarrantyTitle" hidden>Warranty terms not set</h4>
                       <div class="cb-war-workspace__confirm is-missing" id="cbWarrantyConfirmBadge" role="status">
                         <span class="cb-war-workspace__confirm-mark" aria-hidden="true">○</span>
-                        <span id="cbWarrantyConfirmText">Warranty not configured</span>
+                        <span id="cbWarrantyConfirmText">Warranty needs confirmation</span>
                       </div>
                       <div class="cb-war-workspace__section">
                         <p class="cb-war-workspace__section-label">Summary</p>
@@ -2353,7 +2368,7 @@
                   </div>
                   <div class="cb-war-editor owner-only" data-ws-edit>
                     <p class="cb-war-editor__intro">
-                      Confirm the warranty terms used on the contract. Confirm Warranty writes them to the project record.
+                      Review the warranty duration, summary, and exclusions. Confirm Warranty writes them to this contract only.
                     </p>
                     <div class="cb-war-preset owner-only no-print" id="cbWarPresetPanel">
                       <div class="cb-war-preset__actions">
@@ -2365,7 +2380,7 @@
                         </button>
                       </div>
                       <p class="cb-war-preset__applied" id="cbWarPresetApplied" hidden>
-                        Standard warranty applied to this draft. Review the four fields and press Confirm Warranty to save.
+                        Standard warranty applied to this draft. Review duration, summary, and exclusions, then press Confirm Warranty.
                       </p>
                       <p class="cb-war-preset__locked" id="cbWarPresetLocked" hidden>
                         Warranty is locked because this contract package is frozen.
@@ -2380,19 +2395,18 @@
                       <div class="cb-war-form__row cb-war-form__row--duration">
                         <div class="cb-war-field">
                           <label for="cbWarEditDurationValue">Warranty Duration</label>
-                          <input id="cbWarEditDurationValue" type="number" min="0" step="1" inputmode="numeric" />
-                        </div>
-                        <div class="cb-war-field">
-                          <label for="cbWarEditDurationUnit">Unit</label>
-                          <select id="cbWarEditDurationUnit">
-                            <option value="years">Years</option>
-                            <option value="months">Months</option>
-                            <option value="days">Days</option>
+                          <select id="cbWarEditDurationValue">
+                            <option value="1">1 Year</option>
+                            <option value="2">2 Years</option>
+                            <option value="3">3 Years</option>
+                            <option value="4">4 Years</option>
+                            <option value="5">5 Years</option>
                           </select>
+                          <input type="hidden" id="cbWarEditDurationUnit" value="years" />
                         </div>
                       </div>
                       <div class="cb-war-field">
-                        <label for="cbWarEditSummary">Warranty Summary</label>
+                        <label for="cbWarEditSummary">Summary</label>
                         <textarea id="cbWarEditSummary" maxlength="4000" rows="4" placeholder="Describe what the warranty covers"></textarea>
                       </div>
                       <div class="cb-war-field">

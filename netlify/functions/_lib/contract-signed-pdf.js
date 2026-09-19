@@ -16,6 +16,10 @@ const {
 const {
   dueRuleCustomerLabel,
 } = require("../../../public/js/contract-payment-defaults.js");
+const {
+  formatDurationLabel,
+  formatExclusionDisplayLines,
+} = require("../../../public/js/contract-warranty-defaults.js");
 
 const API_VERSION = "ch-011i-v1";
 const GENERATOR_VERSION = "ch-011i-pdf-v2";
@@ -422,15 +426,17 @@ function buildSignedContractLines({
 
   lines.push(heading("Warranty"));
   const w = snap?.warranty || {};
-  const dur =
-    w.duration_value != null
-      ? `${w.duration_value} ${trimField(w.duration_unit) || ""}`.trim()
-      : "";
-  if (dur) lines.push(body(`Duration: ${dur}`));
+  const durLabel = formatDurationLabel({
+    durationValue: w.duration_value,
+    durationUnit: w.duration_unit,
+  });
+  lines.push(body(`Duration: ${durLabel || "-"}`));
+  lines.push(subhead("Summary"));
   lines.push(body(unspecified(w.summary)));
-  if (trimField(w.exclusions)) {
+  const exclusionLines = formatExclusionDisplayLines(w.exclusions);
+  if (exclusionLines.length) {
     lines.push(subhead("Exclusions"));
-    lines.push(body(trimField(w.exclusions)));
+    for (const line of exclusionLines) lines.push(body(line));
   }
   lines.push(blank(6));
 
