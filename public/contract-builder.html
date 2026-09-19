@@ -1724,9 +1724,10 @@
 
     /* Article 1 only — compact Contractor Information review */
     #art-contractor .cb-contractor-stack {
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-columns: minmax(0, 1.7fr) minmax(0, 0.9fr) minmax(0, 1.1fr);
       gap: 8px;
+      align-items: start;
       min-width: 0;
       max-width: 100%;
     }
@@ -1737,16 +1738,25 @@
       border-radius: 8px;
       background: #fafaf9;
       min-width: 0;
+      height: auto;
     }
+    #art-contractor .cb-contractor-group--identity { grid-column: 1; }
+    #art-contractor .cb-contractor-group--license { grid-column: 2; }
+    #art-contractor .cb-contractor-group--insurance { grid-column: 3; }
+    #art-contractor .cb-contractor-group--signer { grid-column: 1; }
+    #art-contractor .cb-contractor-group--jurisdiction { grid-column: 2 / 4; }
     #art-contractor .cb-subhead {
       margin: 0 0 6px;
       font-size: 0.72rem;
     }
     #art-contractor .cb-contractor-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 6px 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px 10px;
       margin: 0;
+    }
+    #art-contractor .cb-contractor-group--jurisdiction .cb-contractor-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
     #art-contractor .cb-field .k {
       margin-bottom: 1px;
@@ -1755,7 +1765,7 @@
     #art-contractor .cb-field .v {
       font-size: 0.9rem;
       line-height: 1.35;
-      overflow-wrap: anywhere;
+      overflow-wrap: break-word;
     }
     #art-contractor .cb-field .v:has(.cb-show-secret) {
       display: flex;
@@ -1790,12 +1800,32 @@
       .cb-aside { grid-column: 1 / -1; position: static; max-height: none; }
     }
     @media (max-width: 1024px) {
-      #art-contractor .cb-contractor-grid {
+      #art-contractor .cb-contractor-stack {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      #art-contractor .cb-contractor-group--identity { grid-column: 1 / -1; }
+      #art-contractor .cb-contractor-group--license { grid-column: 1; }
+      #art-contractor .cb-contractor-group--insurance { grid-column: 2; }
+      #art-contractor .cb-contractor-group--signer { grid-column: 1; }
+      #art-contractor .cb-contractor-group--jurisdiction { grid-column: 2; }
+      #art-contractor .cb-contractor-grid,
+      #art-contractor .cb-contractor-group--jurisdiction .cb-contractor-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
     @media (max-width: 640px) {
-      #art-contractor .cb-contractor-grid {
+      #art-contractor .cb-contractor-stack {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      #art-contractor .cb-contractor-group--identity,
+      #art-contractor .cb-contractor-group--license,
+      #art-contractor .cb-contractor-group--insurance,
+      #art-contractor .cb-contractor-group--signer,
+      #art-contractor .cb-contractor-group--jurisdiction {
+        grid-column: 1;
+      }
+      #art-contractor .cb-contractor-grid,
+      #art-contractor .cb-contractor-group--jurisdiction .cb-contractor-grid {
         grid-template-columns: minmax(0, 1fr);
       }
     }
@@ -1895,17 +1925,28 @@
         color: #78716c;
       }
       a[href]::after { content: "" !important; }
-      #art-contractor .cb-contractor-stack { gap: 10px; }
+      #art-contractor .cb-contractor-stack {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        align-items: start;
+      }
       #art-contractor .cb-contractor-group {
         border: 0;
         border-radius: 0;
-        padding: 0 0 8px;
+        padding: 0 0 6px;
         background: transparent;
         break-inside: avoid;
       }
-      #art-contractor .cb-contractor-grid {
+      #art-contractor .cb-contractor-group--identity { grid-column: 1 / -1; }
+      #art-contractor .cb-contractor-group--license { grid-column: 1; }
+      #art-contractor .cb-contractor-group--insurance { grid-column: 2; }
+      #art-contractor .cb-contractor-group--signer { grid-column: 1; }
+      #art-contractor .cb-contractor-group--jurisdiction { grid-column: 2; }
+      #art-contractor .cb-contractor-grid,
+      #art-contractor .cb-contractor-group--jurisdiction .cb-contractor-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 4px 12px;
+        gap: 3px 10px;
       }
       #art-contractor .cb-contractor-field--full { grid-column: 1 / -1; }
       #art-contractor .cb-field .v { font-size: 0.88rem; }
@@ -2035,20 +2076,20 @@
                   <div class="cb-legal-banner owner-only no-print" id="cbLegalBanner" hidden></div>
 
                   <div class="cb-contractor-stack">
-                    <section class="cb-contractor-group" aria-labelledby="cbContractorIdentityHead">
+                    <section class="cb-contractor-group cb-contractor-group--identity" aria-labelledby="cbContractorIdentityHead">
                       <h4 class="cb-subhead" id="cbContractorIdentityHead">Business Identity</h4>
                       <div class="cb-contractor-grid">
-                        <div class="cb-field"><span class="k">Legal Business Name</span><div class="v" id="cbLegalName">—</div></div>
+                        <div class="cb-field cb-contractor-field--full"><span class="k">Legal Business Name</span><div class="v" id="cbLegalName">—</div></div>
                         <div class="cb-field"><span class="k">DBA</span><div class="v" id="cbLegalDba">—</div></div>
                         <div class="cb-field"><span class="k">Entity Type</span><div class="v" id="cbLegalEntity">—</div></div>
                         <div class="cb-field"><span class="k">Business Phone</span><div class="v" id="cbBizPhoneBody">—</div></div>
-                        <div class="cb-field"><span class="k">Business Email</span><div class="v" id="cbBizEmailBody">—</div></div>
+                        <div class="cb-field cb-contractor-field--full"><span class="k">Business Email</span><div class="v" id="cbBizEmailBody">—</div></div>
                         <div class="cb-field cb-contractor-field--full"><span class="k">Business Address</span><div class="v" id="cbBizAddressBody">—</div></div>
                         <div class="cb-field cb-contractor-field--full"><span class="k">Mailing Address</span><div class="v" id="cbMailingAddress">—</div></div>
                       </div>
                     </section>
 
-                    <section class="cb-contractor-group" aria-labelledby="cbContractorLicenseHead">
+                    <section class="cb-contractor-group cb-contractor-group--license" aria-labelledby="cbContractorLicenseHead">
                       <h4 class="cb-subhead" id="cbContractorLicenseHead">License</h4>
                       <div class="cb-contractor-grid">
                         <div class="cb-field"><span class="k">License Status</span><div class="v" id="cbLicenseStatus">—</div></div>
@@ -2059,7 +2100,7 @@
                       </div>
                     </section>
 
-                    <section class="cb-contractor-group" aria-labelledby="cbContractorInsuranceHead">
+                    <section class="cb-contractor-group cb-contractor-group--insurance" aria-labelledby="cbContractorInsuranceHead">
                       <h4 class="cb-subhead" id="cbContractorInsuranceHead">Insurance &amp; Bond</h4>
                       <div class="cb-contractor-grid">
                         <div class="cb-field"><span class="k">Bond Company</span><div class="v" id="cbBondCompany">—</div></div>
@@ -2072,7 +2113,7 @@
                       </div>
                     </section>
 
-                    <section class="cb-contractor-group" aria-labelledby="cbContractorSignerHead">
+                    <section class="cb-contractor-group cb-contractor-group--signer" aria-labelledby="cbContractorSignerHead">
                       <h4 class="cb-subhead" id="cbContractorSignerHead">Authorized Signer</h4>
                       <div class="cb-contractor-grid">
                         <div class="cb-field"><span class="k">Name</span><div class="v" id="cbSignerName">—</div></div>
@@ -2080,7 +2121,7 @@
                       </div>
                     </section>
 
-                    <section class="cb-contractor-group" aria-labelledby="cbContractorJurisdictionHead">
+                    <section class="cb-contractor-group cb-contractor-group--jurisdiction" aria-labelledby="cbContractorJurisdictionHead">
                       <h4 class="cb-subhead" id="cbContractorJurisdictionHead">Jurisdiction Defaults</h4>
                       <div class="cb-contractor-grid">
                         <div class="cb-field"><span class="k">Primary Service State</span><div class="v" id="cbServiceState">—</div></div>

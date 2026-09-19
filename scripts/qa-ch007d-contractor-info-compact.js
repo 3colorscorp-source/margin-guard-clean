@@ -89,15 +89,25 @@ test("2 visual groups are Business Identity, License, Insurance & Bond", () => {
   assert.ok(art1.includes(">Jurisdiction Defaults<"));
 });
 
-test("3 compact 3 / 2 / 1 column grid is scoped to Article 1", () => {
-  assert.ok(style.includes("#art-contractor .cb-contractor-grid"));
-  assert.ok(style.includes("grid-template-columns: repeat(3, minmax(0, 1fr))"));
-  assert.ok(style.includes("@media (max-width: 1024px)"));
-  assert.ok(style.includes("repeat(2, minmax(0, 1fr))"));
-  assert.ok(style.includes("@media (max-width: 640px)"));
+test("3 group cards use a 3 / 2 / 1 column stack, not a vertical flex column", () => {
+  const contractorCss = slice(style, "Article 1 only", ".cb-dba-line");
+  assert.ok(contractorCss.includes("#art-contractor .cb-contractor-stack"));
+  assert.ok(contractorCss.includes("display: grid"));
+  assert.ok(!/flex-direction:\s*column/.test(contractorCss));
+  assert.ok(contractorCss.includes("minmax(0, 1.7fr) minmax(0, 0.9fr) minmax(0, 1.1fr)"));
+  assert.ok(art1.includes("cb-contractor-group--identity"));
+  assert.ok(art1.includes("cb-contractor-group--license"));
+  assert.ok(art1.includes("cb-contractor-group--insurance"));
+  assert.ok(art1.includes("cb-contractor-group--signer"));
+  assert.ok(art1.includes("cb-contractor-group--jurisdiction"));
+  assert.ok(contractorCss.includes("grid-column: 2 / 4"));
   assert.match(
     style,
-    /@media \(max-width: 640px\) \{[\s\S]*?#art-contractor \.cb-contractor-grid[\s\S]*?minmax\(0, 1fr\)/
+    /@media \(max-width: 1024px\) \{[\s\S]*?#art-contractor \.cb-contractor-stack[\s\S]*?repeat\(2, minmax\(0, 1fr\)\)/
+  );
+  assert.match(
+    style,
+    /@media \(max-width: 640px\) \{[\s\S]*?#art-contractor \.cb-contractor-stack[\s\S]*?minmax\(0, 1fr\)/
   );
   assert.ok(!art2.includes("cb-contractor-grid"));
   assert.ok(!art4.includes("cb-contractor-grid"));
@@ -114,7 +124,7 @@ test("4 addresses can span a full row and wrap instead of truncating", () => {
   const contractorCss = slice(style, "Article 1 only", ".cb-dba-line");
   assert.ok(!/text-overflow\s*:\s*ellipsis/.test(contractorCss));
   assert.ok(!/overflow\s*:\s*hidden/.test(contractorCss));
-  assert.ok(contractorCss.includes("overflow-wrap: anywhere"));
+  assert.ok(contractorCss.includes("overflow-wrap: break-word"));
 });
 
 test("5 Bond Show control and masked-field logic are unchanged", () => {
@@ -140,7 +150,7 @@ test("6 print and frozen surfaces keep contractor fields and hide Show", () => {
   assert.ok(style.includes("#art-contractor .cb-contractor-grid"));
   assert.match(
     style,
-    /@media print \{[\s\S]*?#art-contractor \.cb-contractor-grid[\s\S]*?repeat\(2, minmax\(0, 1fr\)\)/
+    /@media print \{[\s\S]*?#art-contractor \.cb-contractor-stack[\s\S]*?repeat\(2, minmax\(0, 1fr\)\)/
   );
   FIELD_IDS.forEach((id) => assert.ok(html.includes(`id="${id}"`), id));
 });
