@@ -1,6 +1,11 @@
 (() => {
   "use strict";
 
+  const PropertyConfirm = window.MarginGuardContractPropertyConfirm;
+  if (!PropertyConfirm) {
+    throw new Error("contract-property-confirm.js must load before contract-builder.js");
+  }
+
   const PROJECTS_API = "/.netlify/functions/get-project-control-projects";
   const QUOTE_EDIT_API = "/.netlify/functions/get-tenant-quote-edit";
   const QUOTE_UPDATE_API = "/.netlify/functions/update-tenant-quote-edit";
@@ -881,20 +886,28 @@
     }
 
     if (caps.supportsEdit && articleAllowsOwnerEdit(activeArticleId)) {
-      const propertyPresent = activeArticleId === "art-property" && propertyAddressPresentFromModel();
-      const propertyConfirmed =
-        activeArticleId === "art-property" && propertyConfigured(sourceSnapshot?.contractSetup);
-      const propertyEditLabel = !propertyPresent
-        ? "Add Project Address"
-        : "Edit Project Address";
+      const propertyPlan =
+        activeArticleId === "art-property"
+          ? PropertyConfirm.propertyFooterPlan({
+              configured: propertyConfigured(sourceSnapshot?.contractSetup),
+              fields: resolvePropertyFieldsFromModel(),
+              extraAddress: draftEdits?.address,
+              setup: sourceSnapshot?.contractSetup?.setup,
+              setupBundle: sourceSnapshot?.contractSetup,
+              busy,
+            })
+          : null;
+      const propertyEditLabel = !propertyPlan
+        ? caps.editLabel || "Edit"
+        : propertyPlan.kind === "missing"
+          ? "Add Project Address"
+          : "Edit Project Address";
+      const propertyEditPrimary = Boolean(propertyPlan && propertyPlan.kind === "missing");
       actions.appendChild(
         createFooterButton({
           id: "cbWsEdit",
           label: activeArticleId === "art-property" ? propertyEditLabel : caps.editLabel || "Edit",
-          className:
-            activeArticleId === "art-property" && !propertyPresent && !propertyConfirmed
-              ? "btn primary"
-              : "btn ghost",
+          className: propertyEditPrimary ? "btn primary" : "btn ghost",
           disabled: busy,
           onClick: () => {
             void workspaceEnterEdit(activeArticleId);
@@ -905,8 +918,14 @@
 
     if (
       activeArticleId === "art-property" &&
-      propertyAddressPresentFromModel() &&
-      !propertyConfigured(sourceSnapshot?.contractSetup) &&
+      PropertyConfirm.propertyFooterPlan({
+        configured: propertyConfigured(sourceSnapshot?.contractSetup),
+        fields: resolvePropertyFieldsFromModel(),
+        extraAddress: draftEdits?.address,
+        setup: sourceSnapshot?.contractSetup?.setup,
+        setupBundle: sourceSnapshot?.contractSetup,
+        busy,
+      }).buttons.some((btn) => btn.id === "confirm") &&
       mode === WS_MODE.PREVIEW &&
       !busy
     ) {
@@ -962,20 +981,30 @@
         activeArticleId === "art-signatures"
           ? "Preview Contract"
           : caps.continueLabel || articleMeta(activeArticleId).label || "Continue";
-      const propertyBlocksContinue =
-        activeArticleId === "art-property" &&
-        !propertyConfigured(sourceSnapshot?.contractSetup);
-      actions.appendChild(
-        createFooterButton({
-          id: "cbStepContinue",
-          label,
-          className: "btn primary",
-          disabled: busy || propertyBlocksContinue,
-          onClick: () => {
-            void handleWorkspaceContinue();
-          },
-        })
-      );
+      const propertyPlan =
+        activeArticleId === "art-property"
+          ? PropertyConfirm.propertyFooterPlan({
+              configured: propertyConfigured(sourceSnapshot?.contractSetup),
+              fields: resolvePropertyFieldsFromModel(),
+              extraAddress: draftEdits?.address,
+              setup: sourceSnapshot?.contractSetup?.setup,
+              setupBundle: sourceSnapshot?.contractSetup,
+              busy,
+            })
+          : null;
+      if (!(propertyPlan && !propertyPlan.continueVisible)) {
+        actions.appendChild(
+          createFooterButton({
+            id: "cbStepContinue",
+            label,
+            className: "btn primary",
+            disabled: busy || (propertyPlan ? !propertyPlan.continueEnabled : false),
+            onClick: () => {
+              void handleWorkspaceContinue();
+            },
+          })
+        );
+      }
     }
 
     if (hint && mode === WS_MODE.PREVIEW) {
@@ -1407,65 +1436,36 @@
   }
 
   function propertyFieldsFromSetup(setup) {
-    return {
-      line1: String(setup?.property_address_line1 || "").trim(),
-      line2: String(setup?.property_address_line2 || "").trim(),
-      city: String(setup?.property_city || "").trim(),
-      state: String(setup?.property_state || "").trim(),
-      zip: String(setup?.property_postal_code || "").trim(),
-    };
+    return PropertyConfirm.propertyFieldsFromSetup(setup);
   }
 
   function propertyFieldsFromEdits(edits) {
-    return {
-      line1: String(edits?.propLine1 || "").trim(),
-      line2: String(edits?.propLine2 || "").trim(),
-      city: String(edits?.propCity || "").trim(),
-      state: String(edits?.propState || "").trim(),
-      zip: String(edits?.propZip || "").trim(),
-    };
+    return PropertyConfirm.propertyFieldsFromEdits(edits);
   }
 
   function propertyMissingLabels(fields) {
-    const missing = [];
-    if (!fields.line1) missing.push("Address Line 1");
-    if (!fields.city) missing.push("City");
-    if (!fields.state) missing.push("State");
-    if (!fields.zip) missing.push("ZIP Code");
-    return missing;
+    return PropertyConfirm.propertyMissingLabels(fields);
   }
 
   function propertyFieldsComplete(fields) {
-    return propertyMissingLabels(fields).length === 0;
+    return PropertyConfirm.propertyFieldsComplete(fields);
   }
 
   function resolvePropertyFieldsFromModel() {
-    const setupFields = propertyFieldsFromSetup(sourceSnapshot?.contractSetup?.setup);
-    const editFields = propertyFieldsFromEdits(draftEdits);
-    if (getArticleMode("art-property") === WS_MODE.EDIT) {
-      return readPropertyFieldsFromDom();
-    }
-    if (propertyFieldsComplete(editFields)) return editFields;
-    if (propertyFieldsComplete(setupFields)) return setupFields;
-    return {
-      line1: editFields.line1 || setupFields.line1 || String(draftEdits?.address || "").trim(),
-      line2: editFields.line2 || setupFields.line2,
-      city: editFields.city || setupFields.city,
-      state: editFields.state || setupFields.state,
-      zip: editFields.zip || setupFields.zip,
-    };
+    return PropertyConfirm.resolvePropertyFields({
+      setup: sourceSnapshot?.contractSetup?.setup,
+      edits: draftEdits,
+      mode: getArticleMode("art-property") === WS_MODE.EDIT ? "edit" : "preview",
+      domFields:
+        getArticleMode("art-property") === WS_MODE.EDIT ? readPropertyFieldsFromDom() : null,
+    });
   }
 
   function propertyAddressPresent(fields, extraAddress) {
-    const row = fields || {};
-    return Boolean(
-      String(row.line1 || "").trim() ||
-        String(row.line2 || "").trim() ||
-        String(row.city || "").trim() ||
-        String(row.state || "").trim() ||
-        String(row.zip || "").trim() ||
-        String(extraAddress || "").trim() ||
-        formatPropertyLine(sourceSnapshot?.contractSetup?.setup)
+    return PropertyConfirm.propertyAddressPresent(
+      fields,
+      extraAddress,
+      sourceSnapshot?.contractSetup?.setup
     );
   }
 
@@ -1619,16 +1619,14 @@
       );
     }
 
-    const res = await postJson(CONTRACT_SETUP_API, {
-      project_id: sourceSnapshot.projectId,
-      quote_id: sourceSnapshot.quoteId,
-      property_address_line1: fields.line1,
-      property_address_line2: fields.line2,
-      property_city: fields.city,
-      property_state: fields.state,
-      property_postal_code: fields.zip,
-      confirm_property_address: true,
-    });
+    const res = await postJson(
+      PropertyConfirm.SETUP_API,
+      PropertyConfirm.buildPropertyConfirmPayload(
+        sourceSnapshot.projectId,
+        sourceSnapshot.quoteId,
+        fields
+      )
+    );
 
     if (!res.ok || res.data?.ok !== true || !res.data.setup) {
       const msg = String(res.data?.error || "").trim();
@@ -1653,40 +1651,70 @@
   }
 
   async function workspaceConfirmProperty() {
-    if (workspaceBusy) return false;
-    const fields = resolvePropertyFieldsFromModel();
-    if (!propertyFieldsComplete(fields)) {
+    const runner = PropertyConfirm.createPropertyConfirmRunner({
+      getBusy: () => workspaceBusy,
+      setBusy: (value) => {
+        workspaceBusy = Boolean(value);
+        workspaceBusyLabel = value ? "Confirming…" : "Saving…";
+      },
+      isConfirmed: () => propertyConfigured(sourceSnapshot?.contractSetup),
+      getFields: () => resolvePropertyFieldsFromModel(),
+      getExtraAddress: () => draftEdits?.address,
+      getSetup: () => sourceSnapshot?.contractSetup?.setup,
+      getIds: () => ({
+        projectId: sourceSnapshot?.projectId,
+        quoteId: sourceSnapshot?.quoteId,
+      }),
+      apiUrl: PropertyConfirm.SETUP_API,
+      postJson,
+      applySuccess: (data) => {
+        sourceSnapshot.contractSetup = {
+          available: true,
+          loadError: null,
+          forbidden: false,
+          setup: data.setup,
+          readiness: data.readiness || null,
+        };
+        applyPropertyFieldsToEdits(draftEdits, propertyFieldsFromSetup(data.setup));
+        draftBaseline = cloneEdits({
+          ...sourceSnapshot,
+          ...draftEdits,
+        });
+        renderDocument(sourceSnapshot, draftEdits);
+        updateIndexNavStatus();
+      },
+    });
+    const result = await runner.confirm();
+    if (result.reason === "incomplete") {
       const entered = await workspaceEnterEdit("art-property");
       if (entered) updatePropertyLiveHint();
       renderWorkspaceChrome();
       return false;
     }
-    workspaceBusy = true;
-    workspaceBusyLabel = "Confirming…";
-    setArticleMode("art-property", WS_MODE.SAVING);
-    renderWorkspaceChrome();
-    try {
-      await savePropertyWorkspace(fields);
+    if (result.reason === "missing" || result.reason === "busy" || result.reason === "already_confirmed") {
+      renderWorkspaceChrome();
+      return result.ok === true;
+    }
+    if (result.reason === "http") {
+      setArticleMode("art-property", WS_MODE.PREVIEW);
+      renderWorkspaceChrome();
+      window.alert(result.error || "Property address could not be confirmed.");
+      return false;
+    }
+    if (result.ok) {
       workspaceEditBaseline = null;
       setArticleMode("art-property", WS_MODE.SAVED);
       renderWorkspaceChrome();
       await new Promise((resolve) => setTimeout(resolve, 700));
       await workspaceEnterPreview("art-property");
       return true;
-    } catch (err) {
-      setArticleMode("art-property", WS_MODE.EDIT);
-      renderWorkspaceChrome();
-      window.alert(err?.message || "Property address could not be confirmed.");
-      return false;
-    } finally {
-      workspaceBusy = false;
-      workspaceBusyLabel = "Saving…";
-      renderWorkspaceChrome();
     }
+    renderWorkspaceChrome();
+    return false;
   }
 
   function propertyConfigured(setupBundle) {
-    return String(setupBundle?.readiness?.project_address || "").toLowerCase() === "confirmed";
+    return PropertyConfirm.propertyConfigured(setupBundle);
   }
 
   const WARRANTY_DURATION_UNITS = new Set(["days", "months", "years"]);

@@ -37,11 +37,13 @@ test("syntax contract-builder.js", () => {
 });
 
 test("Property Confirm + persist", () => {
+  const helper = fs.readFileSync(path.join(ROOT, "public/js/contract-property-confirm.js"), "utf8");
   assert.match(js, /"art-property":[\s\S]*?saveLabel:\s*"Confirm Project Address"/);
-  assert.match(js, /confirm_property_address:\s*true/);
+  assert.match(helper, /confirm_property_address:\s*true/);
   assert.match(js, /function propertyConfigured/);
   assert.match(html, /id="art-property"/);
   assert.match(html, /id="cbPropEditLine1"/);
+  assert.match(html, /contract-property-confirm\.js/);
 });
 
 test("Warranty Confirm + persist", () => {
