@@ -40,9 +40,9 @@ test("1 workflow rail + six steps present", () => {
     assert.ok(html.includes(`data-sw-step="${i}"`));
     assert.ok(html.includes(`data-sw-panel="${i}"`));
   }
-  assert.ok(html.includes("Review Contract"));
-  assert.ok(html.includes("Send to Customer"));
-  assert.ok(html.includes("Waiting for Signature"));
+  assert.ok(html.includes("Review & Sign"));
+  assert.ok(html.includes("Confirm Customer"));
+  assert.ok(html.includes("Wait for Customer"));
   assert.ok(html.includes("Legal Certificate"));
   assert.ok(html.includes("Signed Documents"));
   assert.ok(html.includes("Complete"));
@@ -77,8 +77,10 @@ test("3 existing action IDs preserved", () => {
 });
 
 test("4 presentation proxies existing handlers", () => {
-  assert.ok(js.includes('proxyClick("swVisSendContractBtn", "swEmailLinkBtn")'));
+  assert.ok(js.includes("openConfirmCustomerModal"));
+  assert.ok(js.includes("Continue to Contractor Signature"));
   assert.ok(js.includes('proxyClick("swVisCopyLinkBtn", "swCopyLinkBtn")'));
+  assert.ok(js.includes('proxyClick("swVis3CopyLinkBtn", "swCopyLinkBtn")'));
   assert.ok(js.includes('proxyClick("swVisRetryEmailBtn", "swEmailRetryBtn")'));
   assert.ok(js.includes('proxyClick("swVisIssueCertBtn", "swIssueCertBtn")'));
   assert.ok(js.includes('proxyClick("swVisViewCertBtn", "swViewCertBtn")'));
@@ -124,7 +126,11 @@ test("8 no backend files modified", () => {
     .split(/\r?\n/)
     .map((s) => s.trim())
     .filter(Boolean)
-    .filter((f) => !f.includes("qa-ch013a31") && !f.includes("qa-ch013a-tenant-certificate-surface"));
+    .filter((f) =>
+      !f.includes("qa-ch013a31") &&
+      !f.includes("qa-ch013a-tenant-certificate-surface") &&
+      !f.includes("qa-ch013a-guided-contract-signing")
+    );
   assert.deepStrictEqual(files, [], "unexpected non-UI diffs: " + files.join(", "));
 });
 
@@ -137,6 +143,7 @@ test("9 only UI files changed in working tree for this task", () => {
     "public/styles.css", // CH-013A.34/35 Experience tokens (additive)
     "scripts/qa-ch013a31-signature-workspace-visual.js",
     "scripts/qa-ch013a-tenant-certificate-surface.js",
+    "scripts/qa-ch013a-guided-contract-signing.js",
   ]);
   diff.stdout
     .split(/\r?\n/)
