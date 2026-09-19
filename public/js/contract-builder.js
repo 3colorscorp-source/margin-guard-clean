@@ -56,7 +56,7 @@
     { id: "art-property", num: "3", title: "Property", cta: "continue", label: "Continue" },
     { id: "art-quote", num: "4", title: "Quote", cta: "review", label: "Review & Continue" },
     { id: "art-scope", num: "5", title: "Scope", cta: "continue", label: "Continue" },
-    { id: "art-price", num: "6", title: "Price", cta: "review", label: "Review & Continue" },
+    { id: "art-price", num: "6", title: "Price", cta: "continue", label: "Continue" },
     { id: "art-payment", num: "7", title: "Payment", cta: "continue", label: "Continue" },
     { id: "art-schedule", num: "8", title: "Schedule", cta: "continue", label: "Continue" },
     { id: "art-changes", num: "9", title: "Change Orders", cta: "continue", label: "Continue" },
@@ -278,15 +278,11 @@
       supportsEdit: false,
       supportsSave: false,
       supportsValidation: true,
-      continueLabel: "Review & Continue",
+      continueLabel: "Continue",
       validate: () => {
         const st = articleReadinessStatus("art-price", sourceSnapshot, draftEdits);
-        return readinessValidation(
-          st,
-          "Contract total is set from the approved quote.",
-          "Price needs review.",
-          "Contract total is missing."
-        );
+        if (st === "available") return { level: "ok", badge: "", message: "" };
+        return readinessValidation(st, "", "", "Contract total is missing.");
       },
     }),
     "art-payment": defaultWorkspaceCaps({
@@ -1072,7 +1068,7 @@
       if (activeArticleId === "art-scope") {
         hint.textContent = "Review only — scope comes from the approved quote.";
       } else if (activeArticleId === "art-price") {
-        hint.textContent = "Review only — contract total comes from the approved quote.";
+        hint.textContent = "";
       } else if (activeArticleId === "art-terms") {
         hint.textContent = "Review only — confirm legal notices on the Legal Notices page.";
       } else if (activeArticleId === "art-payment") {
@@ -1357,10 +1353,10 @@
   }
 
   function resolveContractTotal(project, quote) {
-    const sale = finiteNumber(project?.salePrice ?? project?.sale_price, NaN);
-    if (Number.isFinite(sale) && sale > 0) return sale;
     const total = finiteNumber(quote?.total, NaN);
     if (Number.isFinite(total) && total > 0) return total;
+    const sale = finiteNumber(project?.salePrice ?? project?.sale_price, NaN);
+    if (Number.isFinite(sale) && sale > 0) return sale;
     return null;
   }
 
@@ -3351,11 +3347,6 @@
     return /\b(CH[-_ ]?004|technical|smoke|test|draft)\b/i.test(t);
   }
 
-  function undefinedMoneyLabel(scheduleStatus) {
-    if (String(scheduleStatus || "").toLowerCase() === "draft") return "Draft payment schedule";
-    return "Not yet defined";
-  }
-
   function legalNoticesStatusLabel(legalNoticesBundle) {
     return resolveLegalNoticesEffective(legalNoticesBundle).label;
   }
@@ -4805,27 +4796,6 @@
     setText("cbPriceLine", money);
     setText("cbPayTotalLine", `Contract Total: ${money}`);
 
-    const payStatus = String(source.paymentSchedule?.readiness?.status || "missing").toLowerCase();
-    const undefinedLabel = undefinedMoneyLabel(payStatus);
-
-    const depositEl = $("cbSumDeposit");
-    if (depositEl) {
-      depositEl.textContent =
-        source.depositRequired != null
-          ? formatMoney(source.depositRequired, source.currency)
-          : undefinedLabel;
-    }
-    setText("cbSumProgress", undefinedLabel);
-    setText("cbSumFinal", undefinedLabel);
-    setText("cbSumChangeOrders", "Not yet defined");
-    setText("cbSumTaxes", "Not yet defined");
-    setText(
-      "cbSumBalance",
-      source.depositRequired != null && source.contractTotal != null
-        ? formatMoney(Math.max(0, source.contractTotal - source.depositRequired), source.currency)
-        : "Not yet defined"
-    );
-
     renderPaymentScheduleSection(source);
     renderWarrantySection(source, edits);
     renderSignatureSection(source);
@@ -4887,7 +4857,6 @@
     const readiness = bundle.readiness || {};
     const status = String(readiness.status || "missing").toLowerCase();
     const currency = source.currency || DEFAULT_CURRENCY;
-    const undefinedLabel = undefinedMoneyLabel(status);
     const items = Array.isArray(bundle.items) ? [...bundle.items] : [];
     items.sort((a, b) => (Number(a.sequence_number) || 0) - (Number(b.sequence_number) || 0));
 
@@ -4990,8 +4959,6 @@
         qaWarn.hidden = true;
         qaWarn.textContent = "";
       }
-      setText("cbSumProgress", "Not yet defined");
-      setText("cbSumFinal", "Not yet defined");
       return;
     }
 
@@ -5051,42 +5018,6 @@
           .join("");
       }
     }
-
-    const depositItem = items.find((i) => String(i.payment_type || "").toLowerCase() === "deposit");
-    const finalItem = items.find((i) =>
-      ["final", "completion"].includes(String(i.payment_type || "").toLowerCase())
-    );
-    const progressItems = items.filter((i) =>
-      ["progress", "start", "material", "custom"].includes(String(i.payment_type || "").toLowerCase())
-    );
-    if (depositItem) {
-      const depositAmt = formatMoney(depositItem.amount, currency);
-      setText(
-        "cbSumDeposit",
-        status === "draft" ? `${depositAmt} (draft payment schedule)` : depositAmt
-      );
-    }
-    setText(
-      "cbSumProgress",
-      progressItems.length
-        ? (() => {
-            const amt = formatMoney(
-              progressItems.reduce((sum, i) => sum + finiteNumber(i.amount, 0), 0),
-              currency
-            );
-            return status === "draft" ? `${amt} (draft payment schedule)` : amt;
-          })()
-        : undefinedLabel
-    );
-    setText(
-      "cbSumFinal",
-      finalItem
-        ? (() => {
-            const amt = formatMoney(finalItem.amount, currency);
-            return status === "draft" ? `${amt} (draft payment schedule)` : amt;
-          })()
-        : undefinedLabel
-    );
   }
 
 

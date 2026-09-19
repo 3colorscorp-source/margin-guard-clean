@@ -624,14 +624,12 @@
       '<p class="cs-section-label">SCOPE OF WORK</p>' +
       '<div class="cs-prose" id="scopeText" style="white-space:pre-wrap;"></div></div>' +
       '<div id="sec-price" style="margin-top:18px">' +
-      '<p class="cs-section-label">Price</p>' +
-      '<div class="cs-grid">' +
-      '<div class="cs-kv"><span class="k">Contract total</span><span class="v">' +
+      '<p class="cs-section-label">Contract Price</p>' +
+      '<div class="cs-prose" style="font-size:1.2rem;font-weight:700;">' +
       escapeHtml(money(price.contract_total, price.currency)) +
-      '</span></div>' +
-      '<div class="cs-kv"><span class="k">Deposit required</span><span class="v">' +
-      escapeHtml(money(price.deposit_required, price.currency)) +
-      "</span></div></div></div>" +
+      "</div>" +
+      '<p class="cs-prose">This is the approved contract price.</p>' +
+      '<p class="cs-prose">Payment details are listed in Article 7.</p></div>' +
       '<div id="sec-contract-schedule" style="margin-top:18px">' +
       '<p class="cs-section-label">Estimated Schedule</p>' +
       renderContractSchedule(snap) +
