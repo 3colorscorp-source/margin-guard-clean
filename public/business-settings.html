@@ -955,19 +955,16 @@
                       <span>Enable standard warranty</span>
                     </label>
                   </div>
-                  <div class="field field--full bs-war-duration">
-                    <div class="field">
-                      <label for="bsWarDurationValue">Warranty duration</label>
-                      <input id="bsWarDurationValue" type="number" min="0" step="1" inputmode="numeric" />
-                    </div>
-                    <div class="field">
-                      <label for="bsWarDurationUnit">Unit</label>
-                      <select id="bsWarDurationUnit">
-                        <option value="days">Days</option>
-                        <option value="months" selected>Months</option>
-                        <option value="years">Years</option>
-                      </select>
-                    </div>
+                  <div class="field field--full">
+                    <label for="bsWarDurationValue">Warranty Duration</label>
+                    <select id="bsWarDurationValue">
+                      <option value="1" selected>1 Year</option>
+                      <option value="2">2 Years</option>
+                      <option value="3">3 Years</option>
+                      <option value="4">4 Years</option>
+                      <option value="5">5 Years</option>
+                    </select>
+                    <input type="hidden" id="bsWarDurationUnit" value="years" />
                   </div>
                   <div class="field field--full">
                     <label for="bsWarSummary">What the warranty covers</label>
@@ -1384,6 +1381,7 @@
 <script src="/js/app.js"></script>
 <script src="/js/bank-connection.js"></script>
 <script src="/js/business-legal-profile.js"></script>
+<script src="/js/contract-warranty-defaults.js"></script>
 <script src="/js/business-warranty-defaults.js"></script>
 <script src="/js/business-signing-policy.js"></script>
 <script>

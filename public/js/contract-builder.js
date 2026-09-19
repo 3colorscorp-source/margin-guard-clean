@@ -919,6 +919,8 @@
           : null;
       const paymentPlan =
         activeArticleId === "art-payment" ? currentPaymentFooterPlan(busy) : null;
+      const warrantyPlan =
+        activeArticleId === "art-warranty" ? currentWarrantyFooterPlan(busy) : null;
       const propertyEditLabel = !propertyPlan
         ? caps.editLabel || "Edit"
         : propertyPlan.kind === "missing"
@@ -989,6 +991,25 @@
       );
     }
 
+    if (
+      activeArticleId === "art-warranty" &&
+      currentWarrantyFooterPlan(busy).confirmVisible &&
+      mode === WS_MODE.PREVIEW &&
+      !busy
+    ) {
+      actions.appendChild(
+        createFooterButton({
+          id: "cbWsConfirmWarranty",
+          label: "Confirm Warranty",
+          className: "btn primary",
+          disabled: busy,
+          onClick: () => {
+            void workspaceSave("art-warranty");
+          },
+        })
+      );
+    }
+
     if (caps.supportsExternalSource && (activeArticleId === "art-contractor" || activeArticleId === "art-terms")) {
       actions.appendChild(
         createFooterButton({
@@ -1022,9 +1043,12 @@
           : null;
       const paymentPlan =
         activeArticleId === "art-payment" ? currentPaymentFooterPlan(busy) : null;
+      const warrantyPlan =
+        activeArticleId === "art-warranty" ? currentWarrantyFooterPlan(busy) : null;
       if (
         !(propertyPlan && !propertyPlan.continueVisible) &&
-        !(paymentPlan && !paymentPlan.continueVisible)
+        !(paymentPlan && !paymentPlan.continueVisible) &&
+        !(warrantyPlan && !warrantyPlan.continueVisible)
       ) {
         actions.appendChild(
           createFooterButton({
@@ -1034,7 +1058,8 @@
             disabled:
               busy ||
               (propertyPlan ? !propertyPlan.continueEnabled : false) ||
-              (paymentPlan ? !paymentPlan.continueEnabled : false),
+              (paymentPlan ? !paymentPlan.continueEnabled : false) ||
+              (warrantyPlan ? !warrantyPlan.continueEnabled : false),
             onClick: () => {
               void handleWorkspaceContinue();
             },
@@ -1745,6 +1770,42 @@
 
   const WARRANTY_DURATION_UNITS = new Set(["days", "months", "years"]);
 
+  function currentWarrantyFooterPlan(busy) {
+    if (!WarrantyDefaults || typeof WarrantyDefaults.warrantyFooterPlan !== "function") {
+      const configured = warrantyConfigured(sourceSnapshot?.contractSetup);
+      return {
+        kind: configured ? "confirmed" : "unconfirmed",
+        continueVisible: configured,
+        continueEnabled: configured && !busy,
+        confirmVisible: !configured,
+        primaryEnabledCount: 1,
+        primaryLabel: configured ? "Continue" : "Confirm Warranty",
+      };
+    }
+    return WarrantyDefaults.warrantyFooterPlan({
+      configured: warrantyConfigured(sourceSnapshot?.contractSetup),
+      busy: Boolean(busy),
+    });
+  }
+
+  function resolveWarrantyDraftFields() {
+    if (WarrantyDefaults && typeof WarrantyDefaults.resolveWarrantyDraft === "function") {
+      return WarrantyDefaults.resolveWarrantyDraft({
+        setup: sourceSnapshot?.contractSetup?.setup,
+        preferences: tenantPreferences,
+        configured: warrantyConfigured(sourceSnapshot?.contractSetup),
+      });
+    }
+    const setupFields = warrantyFieldsFromSetup(sourceSnapshot?.contractSetup?.setup);
+    if (warrantyFieldsComplete(setupFields)) return setupFields;
+    return {
+      durationValue: setupFields.durationValue || "1",
+      durationUnit: "years",
+      summary: setupFields.summary,
+      exclusions: setupFields.exclusions,
+    };
+  }
+
   function warrantyFieldsFromSetup(setup) {
     const rawValue = setup?.warranty_duration_value;
     const value =
@@ -1771,10 +1832,10 @@
   }
 
   function readWarrantyFieldsFromDom() {
-    const unit = String($("cbWarEditDurationUnit")?.value || "years").trim().toLowerCase();
+    const years = String($("cbWarEditDurationValue")?.value || "1").trim();
     return {
-      durationValue: String($("cbWarEditDurationValue")?.value || "").trim(),
-      durationUnit: WARRANTY_DURATION_UNITS.has(unit) ? unit : "years",
+      durationValue: years,
+      durationUnit: "years",
       summary: String($("cbWarEditSummary")?.value || "").trim(),
       exclusions: String($("cbWarEditExclusions")?.value || "").trim(),
     };
@@ -1794,15 +1855,15 @@
     }
     const setupFields = warrantyFieldsFromSetup(sourceSnapshot?.contractSetup?.setup);
     const editFields = warrantyFieldsFromEdits(draftEdits);
+    if (warrantyConfigured(sourceSnapshot?.contractSetup) && warrantyFieldsComplete(setupFields)) {
+      return setupFields;
+    }
     if (warrantyPresetAppliedToDraft && warrantyFieldsComplete(editFields)) {
       return editFields;
     }
-    return {
-      durationValue: editFields.durationValue || setupFields.durationValue,
-      durationUnit: editFields.durationUnit || setupFields.durationUnit,
-      summary: editFields.summary || setupFields.summary,
-      exclusions: editFields.exclusions || setupFields.exclusions,
-    };
+    if (warrantyFieldsComplete(editFields)) return editFields;
+    if (warrantyFieldsComplete(setupFields)) return setupFields;
+    return resolveWarrantyDraftFields();
   }
 
   function warrantyPackageLockStatus() {
@@ -1883,41 +1944,42 @@
   }
 
   function formatWarrantyDurationTitle(fields) {
-    const n = Number(fields?.durationValue);
-    const unit = String(fields?.durationUnit || "").toLowerCase();
-    if (!Number.isFinite(n) || n < 0 || !WARRANTY_DURATION_UNITS.has(unit)) {
-      return "";
-    }
-    const singular = unit === "days" ? "Day" : unit === "months" ? "Month" : "Year";
-    const plural = unit === "days" ? "Days" : unit === "months" ? "Months" : "Years";
-    const label = n === 1 ? singular : plural;
-    return `${n} ${label} Limited Installation Warranty`;
+    const label = formatWarrantyDurationShort(fields);
+    return label ? `Duration: ${label}` : "";
   }
 
   function formatWarrantyDurationShort(fields) {
+    if (WarrantyDefaults && typeof WarrantyDefaults.formatDurationLabel === "function") {
+      return WarrantyDefaults.formatDurationLabel(fields);
+    }
     const n = Number(fields?.durationValue);
     const unit = String(fields?.durationUnit || "").toLowerCase();
-    if (!Number.isFinite(n) || !WARRANTY_DURATION_UNITS.has(unit)) return "";
-    return `${n} ${unit}`;
+    if (!Number.isFinite(n) || !unit) return "";
+    const singular = unit === "days" ? "Day" : unit === "months" ? "Month" : "Year";
+    const plural = unit === "days" ? "Days" : unit === "months" ? "Months" : "Years";
+    return `${n} ${n === 1 ? singular : plural}`;
   }
 
   function parseExclusionLines(raw) {
+    if (WarrantyDefaults && typeof WarrantyDefaults.parseExclusionLines === "function") {
+      return WarrantyDefaults.parseExclusionLines(raw);
+    }
     return String(raw || "")
       .split(/\r?\n/)
-      .map((line) => line.replace(/^[\s•\-\*]+/, "").trim())
+      .map((line) => line.replace(/^\s*\d+\.\s*/, "").replace(/^[\s•\-\*]+/, "").trim())
       .filter(Boolean);
   }
 
   function warrantyMissingLabels(fields) {
     const missing = [];
-    const n = Number(fields.durationValue);
-    if (fields.durationValue === "" || !Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+    const years =
+      WarrantyDefaults && typeof WarrantyDefaults.yearOptionFromDuration === "function"
+        ? WarrantyDefaults.yearOptionFromDuration(fields.durationValue, fields.durationUnit)
+        : Number(fields.durationValue);
+    if (!years || ![1, 2, 3, 4, 5].includes(Number(years))) {
       missing.push("Warranty Duration");
     }
-    if (!WARRANTY_DURATION_UNITS.has(String(fields.durationUnit || "").toLowerCase())) {
-      missing.push("Duration Unit");
-    }
-    if (!fields.summary) missing.push("Warranty Summary");
+    if (!fields.summary) missing.push("Summary");
     if (!fields.exclusions) missing.push("Exclusions");
     return missing;
   }
@@ -1927,34 +1989,33 @@
   }
 
   function syncWarrantyInputsFromModel() {
-    const setupFields = warrantyFieldsFromSetup(sourceSnapshot?.contractSetup?.setup);
-    const editFields = warrantyFieldsFromEdits(draftEdits);
-    const fields = warrantyFieldsComplete(editFields)
-      ? editFields
-      : warrantyFieldsComplete(setupFields)
-        ? setupFields
-        : {
-            durationValue: editFields.durationValue || setupFields.durationValue,
-            durationUnit: editFields.durationUnit || setupFields.durationUnit || "years",
-            summary: editFields.summary || setupFields.summary,
-            exclusions: editFields.exclusions || setupFields.exclusions,
-          };
-    if ($("cbWarEditDurationValue")) $("cbWarEditDurationValue").value = fields.durationValue;
-    if ($("cbWarEditDurationUnit")) $("cbWarEditDurationUnit").value = fields.durationUnit;
+    const fields = currentWarrantyDraftFields();
+    const years =
+      WarrantyDefaults && typeof WarrantyDefaults.yearOptionFromDuration === "function"
+        ? WarrantyDefaults.yearOptionFromDuration(fields.durationValue, fields.durationUnit)
+        : Number(fields.durationValue);
+    if ($("cbWarEditDurationValue")) {
+      $("cbWarEditDurationValue").value = [1, 2, 3, 4, 5].includes(Number(years)) ? String(years) : "1";
+    }
+    if ($("cbWarEditDurationUnit")) $("cbWarEditDurationUnit").value = "years";
     if ($("cbWarEditSummary")) $("cbWarEditSummary").value = fields.summary;
     if ($("cbWarEditExclusions")) $("cbWarEditExclusions").value = fields.exclusions;
-    markWarrantyFieldValidity(fields);
+    markWarrantyFieldValidity({
+      durationValue: [1, 2, 3, 4, 5].includes(Number(years)) ? String(years) : "",
+      durationUnit: "years",
+      summary: fields.summary,
+      exclusions: fields.exclusions,
+    });
   }
 
   function markWarrantyFieldValidity(fields) {
-    const durationOk =
-      fields.durationValue !== "" &&
-      Number.isFinite(Number(fields.durationValue)) &&
-      Number(fields.durationValue) >= 0 &&
-      Number.isInteger(Number(fields.durationValue));
+    const years =
+      WarrantyDefaults && typeof WarrantyDefaults.yearOptionFromDuration === "function"
+        ? WarrantyDefaults.yearOptionFromDuration(fields.durationValue, fields.durationUnit)
+        : Number(fields.durationValue);
+    const durationOk = [1, 2, 3, 4, 5].includes(Number(years));
     const map = [
       ["cbWarEditDurationValue", durationOk],
-      ["cbWarEditDurationUnit", WARRANTY_DURATION_UNITS.has(fields.durationUnit)],
       ["cbWarEditSummary", Boolean(fields.summary)],
       ["cbWarEditExclusions", Boolean(fields.exclusions)],
     ];
@@ -1983,7 +2044,7 @@
     const fields =
       getArticleMode("art-warranty") === WS_MODE.EDIT || forSave
         ? readWarrantyFieldsFromDom()
-        : warrantyFieldsFromSetup(sourceSnapshot?.contractSetup?.setup);
+        : currentWarrantyDraftFields();
     const missing = warrantyMissingLabels(fields);
 
     if (!missing.length) {
@@ -1997,10 +2058,10 @@
       }
       return {
         level: forSave ? "ok" : "warn",
-        badge: forSave ? "Ready" : "Ready to save",
+        badge: forSave ? "Ready" : "Needs confirmation",
         message: forSave
           ? "✓ Warranty complete"
-          : "Warranty looks complete — Confirm Warranty to lock it on the contract.",
+          : "Confirm the warranty to continue.",
         blocking: false,
       };
     }
@@ -4080,9 +4141,9 @@
     }
     if (!warrantyConfigured(source.contractSetup)) {
       return {
-        label: "Confirm Warranty",
+        label: "Review Warranty",
         article: "art-warranty",
-        cta: "Confirm Warranty",
+        cta: "Open Warranty",
       };
     }
     if (!legalNoticesConfigured(source.legalNotices)) {
@@ -4554,10 +4615,14 @@
     if ($("cbPropEditCity")) $("cbPropEditCity").value = edits.propCity || "";
     if ($("cbPropEditState")) $("cbPropEditState").value = edits.propState || "";
     if ($("cbPropEditZip")) $("cbPropEditZip").value = edits.propZip || "";
-    if ($("cbWarEditDurationValue")) $("cbWarEditDurationValue").value = edits.warDurationValue || "";
-    if ($("cbWarEditDurationUnit")) {
-      $("cbWarEditDurationUnit").value = edits.warDurationUnit || "years";
+    if ($("cbWarEditDurationValue")) {
+      const years =
+        WarrantyDefaults && typeof WarrantyDefaults.yearOptionFromDuration === "function"
+          ? WarrantyDefaults.yearOptionFromDuration(edits.warDurationValue, edits.warDurationUnit)
+          : Number(edits.warDurationValue);
+      $("cbWarEditDurationValue").value = [1, 2, 3, 4, 5].includes(Number(years)) ? String(years) : "1";
     }
+    if ($("cbWarEditDurationUnit")) $("cbWarEditDurationUnit").value = "years";
     if ($("cbWarEditSummary")) $("cbWarEditSummary").value = edits.warSummary || "";
     if ($("cbWarEditExclusions")) $("cbWarEditExclusions").value = edits.warExclusions || "";
     if ($("cbSigEditMethod")) $("cbSigEditMethod").value = normalizeSignatureMethod(edits.sigMethod);
@@ -5026,39 +5091,31 @@
 
 
   function renderWarrantySection(source, edits) {
-    const setup = source.contractSetup?.setup || null;
     const configured = warrantyConfigured(source.contractSetup);
-    const setupFields = warrantyFieldsFromSetup(setup);
-    const editFields = warrantyFieldsFromEdits(edits);
-    const fields =
-      warrantyPresetAppliedToDraft && warrantyFieldsComplete(editFields)
-        ? editFields
-        : configured || warrantyFieldsComplete(setupFields)
-        ? setupFields
-        : warrantyFieldsComplete(editFields)
-          ? editFields
-          : {
-              durationValue: setupFields.durationValue || editFields.durationValue,
-              durationUnit: setupFields.durationUnit || editFields.durationUnit || "years",
-              summary: setupFields.summary || editFields.summary,
-              exclusions: setupFields.exclusions || editFields.exclusions,
-            };
-
-    const title =
-      formatWarrantyDurationTitle(fields) ||
-      (fields.summary ? "Project warranty" : "Warranty terms not set");
-    const length = formatWarrantyDurationShort(fields);
+    const fields = currentWarrantyDraftFields();
+    const durationLabel = formatWarrantyDurationShort(fields);
+    const durationLine = durationLabel ? `Duration: ${durationLabel}` : "Duration: —";
     const exclusionLines = parseExclusionLines(fields.exclusions);
     const descriptionParts = [];
+    if (durationLine) descriptionParts.push(durationLine);
     if (fields.summary) descriptionParts.push(fields.summary);
-    if (fields.exclusions) descriptionParts.push(`Exclusions:\n${fields.exclusions}`);
+    if (exclusionLines.length) {
+      descriptionParts.push(
+        `Exclusions:\n${
+          WarrantyDefaults && typeof WarrantyDefaults.formatExclusionDisplayLines === "function"
+            ? WarrantyDefaults.formatExclusionDisplayLines(fields.exclusions).join("\n")
+            : exclusionLines.map((line, idx) => `${idx + 1}. ${line}`).join("\n")
+        }`
+      );
+    }
     const description = descriptionParts.join("\n\n");
 
     setText("cbWarrantyStatus", sectionStatusLabel(configured));
     setText("cbWarrantyName", configured || fields.summary ? "Project warranty" : "—");
-    setText("cbWarrantyLength", length || "—");
+    setText("cbWarrantyLength", durationLabel || "—");
     setText("cbWarrantyDescription", description || "—");
-    setText("cbWarrantyTitle", title);
+    setText("cbWarrantyTitle", durationLine);
+    setText("cbWarrantyDuration", durationLine);
     setText("cbWarrantySummaryPreview", fields.summary || "—");
 
     const list = $("cbWarrantyExclusionsList");
@@ -5087,15 +5144,15 @@
       if (configured) {
         badge.classList.add("is-confirmed");
         if (badgeMark) badgeMark.textContent = "✓";
-        if (badgeText) badgeText.textContent = "Configured";
+        if (badgeText) badgeText.textContent = "Warranty confirmed";
       } else if (hasContent) {
         badge.classList.add("is-pending");
         if (badgeMark) badgeMark.textContent = "!";
-        if (badgeText) badgeText.textContent = "Warranty needs confirmation";
+        if (badgeText) badgeText.textContent = "Confirm the warranty to continue.";
       } else {
         badge.classList.add("is-missing");
         if (badgeMark) badgeMark.textContent = "○";
-        if (badgeText) badgeText.textContent = "Warranty not configured";
+        if (badgeText) badgeText.textContent = "Add warranty terms to continue.";
       }
     }
 
@@ -5716,9 +5773,13 @@
       draftEdits.address = sourceSnapshot.address;
     }
     const warSetupFields = warrantyFieldsFromSetup(setupBundle.setup);
-    if (warrantyFieldsComplete(warSetupFields) || warSetupFields.summary || warSetupFields.durationValue) {
-      applyWarrantyFieldsToEdits(draftEdits, warSetupFields);
-    }
+    const resolvedWarranty = resolveWarrantyDraftFields();
+    applyWarrantyFieldsToEdits(
+      draftEdits,
+      warrantyConfigured(setupBundle) && (warSetupFields.summary || warSetupFields.durationValue)
+        ? warSetupFields
+        : resolvedWarranty
+    );
     draftEdits.sigMethod = signatureMethodFromSetup(setupBundle.setup) || DEFAULT_SIGNATURE_METHOD_UI;
     draftBaseline = cloneEdits({ ...sourceSnapshot, ...draftEdits });
     activeArticleId = null;

@@ -30,6 +30,43 @@
     WARRANTY_UNIT_SET[unit] = true;
   });
 
+  var ContractWarranty = (function () {
+    if (typeof require === "function") {
+      try {
+        return require("./contract-warranty-defaults.js");
+      } catch (_err) {
+        /* browser bundle without require */
+      }
+    }
+    if (typeof globalThis !== "undefined" && globalThis.MarginGuardContractWarrantyDefaults) {
+      return globalThis.MarginGuardContractWarrantyDefaults;
+    }
+    return null;
+  })();
+
+  function systemWarrantyDefaults() {
+    if (ContractWarranty && typeof ContractWarranty.systemDefaultFields === "function") {
+      return ContractWarranty.systemDefaultFields();
+    }
+    return {
+      durationValue: "1",
+      durationUnit: "years",
+      summary: "",
+      exclusions: "",
+    };
+  }
+
+  function yearOptionFromFields(value, unit) {
+    if (ContractWarranty && typeof ContractWarranty.yearOptionFromDuration === "function") {
+      return ContractWarranty.yearOptionFromDuration(value, unit);
+    }
+    var n = Number(value);
+    if (!Number.isInteger(n) || n < 1 || n > 5) return null;
+    var u = trimValue(unit).toLowerCase();
+    if (u && u !== "years" && u !== "year") return null;
+    return n;
+  }
+
   var WARRANTY_PATCH_KEYS = [
     "default_warranty_enabled",
     "default_warranty_duration_value",
@@ -66,7 +103,7 @@
 
   function normalizeWarrantyFields(input) {
     var src = input && typeof input === "object" ? input : {};
-    var unit = trimValue(src.default_warranty_duration_unit).toLowerCase() || "months";
+    var unit = trimValue(src.default_warranty_duration_unit).toLowerCase() || "years";
     return {
       default_warranty_enabled: Boolean(src.default_warranty_enabled),
       default_warranty_duration_value: parseDurationValue(src.default_warranty_duration_value),
@@ -107,8 +144,7 @@
     var war = normalizeWarrantyFields(fields);
     var missing = [];
     var duration = war.default_warranty_duration_value;
-    if (!(Number.isInteger(duration) && duration > 0)) missing.push("duration");
-    if (!WARRANTY_UNIT_SET[war.default_warranty_duration_unit]) missing.push("unit");
+    if (!yearOptionFromFields(duration, war.default_warranty_duration_unit)) missing.push("duration");
     if (!war.default_warranty_summary) missing.push("summary");
     if (!war.default_warranty_exclusions) missing.push("exclusions");
     return missing;
@@ -129,18 +165,9 @@
     ) {
       errors.push("Warranty duration must be a whole number.");
     }
-    if (
-      war.default_warranty_duration_unit &&
-      !WARRANTY_UNIT_SET[war.default_warranty_duration_unit]
-    ) {
-      errors.push("Choose Days, Months, or Years.");
-    }
     if (war.default_warranty_enabled) {
-      if (!(Number.isInteger(war.default_warranty_duration_value) && war.default_warranty_duration_value > 0)) {
-        errors.push("Enable standard warranty requires a duration greater than 0.");
-      }
-      if (!WARRANTY_UNIT_SET[war.default_warranty_duration_unit]) {
-        errors.push("Enable standard warranty requires a duration unit.");
+      if (!yearOptionFromFields(war.default_warranty_duration_value, war.default_warranty_duration_unit || "years")) {
+        errors.push("Enable standard warranty requires a duration of 1 to 5 Years.");
       }
       if (!war.default_warranty_summary) {
         errors.push("Enable standard warranty requires coverage summary.");
@@ -154,9 +181,9 @@
 
   function buildWarrantyPatchBody(warrantyInput) {
     var war = normalizeWarrantyFields(warrantyInput);
-    var unit = war.default_warranty_duration_unit || "months";
-    var duration = war.default_warranty_duration_value;
-    if (!Number.isInteger(duration) || duration < 0) duration = null;
+    var unit = "years";
+    var duration = yearOptionFromFields(war.default_warranty_duration_value, war.default_warranty_duration_unit);
+    if (!Number.isInteger(duration)) duration = 1;
     return {
       default_warranty_enabled: Boolean(war.default_warranty_enabled),
       default_warranty_duration_value: duration,
@@ -219,17 +246,14 @@
     var exclusions = $(doc, "bsWarExclusions");
     if (enabled) enabled.checked = Boolean(war.default_warranty_enabled);
     if (duration) {
-      duration.value =
-        war.default_warranty_duration_value == null ||
-        !Number.isInteger(war.default_warranty_duration_value)
-          ? ""
-          : String(war.default_warranty_duration_value);
+      duration.value = String(
+        yearOptionFromFields(war.default_warranty_duration_value, war.default_warranty_duration_unit) || 1
+      );
     }
-    if (unit) unit.value = WARRANTY_UNIT_SET[war.default_warranty_duration_unit]
-      ? war.default_warranty_duration_unit
-      : "months";
-    if (summary) summary.value = war.default_warranty_summary || "";
-    if (exclusions) exclusions.value = war.default_warranty_exclusions || "";
+    if (unit) unit.value = "years";
+    var system = systemWarrantyDefaults();
+    if (summary) summary.value = war.default_warranty_summary || system.summary || "";
+    if (exclusions) exclusions.value = war.default_warranty_exclusions || system.exclusions || "";
     setReadiness(doc, evaluateWarrantyPresetStatus(war));
   }
 
@@ -238,8 +262,7 @@
     return normalizeWarrantyFields({
       default_warranty_enabled: Boolean($(doc, "bsWarEnabled") && $(doc, "bsWarEnabled").checked),
       default_warranty_duration_value: durationRaw,
-      default_warranty_duration_unit:
-        ($(doc, "bsWarDurationUnit") && $(doc, "bsWarDurationUnit").value) || "months",
+      default_warranty_duration_unit: "years",
       default_warranty_summary: $(doc, "bsWarSummary") && $(doc, "bsWarSummary").value,
       default_warranty_exclusions: $(doc, "bsWarExclusions") && $(doc, "bsWarExclusions").value,
     });
@@ -249,11 +272,8 @@
     clearFieldErrors(doc);
     var check = validateWarrantyDraft(fields);
     if (fields.default_warranty_enabled) {
-      if (!(Number.isInteger(fields.default_warranty_duration_value) && fields.default_warranty_duration_value > 0)) {
+      if (!yearOptionFromFields(fields.default_warranty_duration_value, fields.default_warranty_duration_unit)) {
         markError(doc, "bsWarDurationValue");
-      }
-      if (!WARRANTY_UNIT_SET[fields.default_warranty_duration_unit]) {
-        markError(doc, "bsWarDurationUnit");
       }
       if (!fields.default_warranty_summary) markError(doc, "bsWarSummary");
       if (!fields.default_warranty_exclusions) markError(doc, "bsWarExclusions");

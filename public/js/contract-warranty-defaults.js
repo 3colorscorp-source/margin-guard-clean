@@ -1,8 +1,8 @@
 /**
- * CH-083 — Contract Builder "Use standard warranty" (browser + Node).
+ * Contract Builder warranty defaults (browser + Node).
  *
- * Copies a tenant preset into the local warranty draft only.
- * Does not POST, PATCH, confirm, freeze, or author legal text.
+ * Seeds 1–5 year duration plus protective exclusions into the local draft only.
+ * Does not POST, PATCH, confirm, freeze, or change frozen snapshots.
  */
 (function (root, factory) {
   "use strict";
@@ -21,6 +21,24 @@
   WARRANTY_UNITS.forEach(function (unit) {
     WARRANTY_UNIT_SET[unit] = true;
   });
+
+  var YEAR_OPTIONS = [1, 2, 3, 4, 5];
+  var YEAR_OPTION_LABELS = {
+    1: "1 Year",
+    2: "2 Years",
+    3: "3 Years",
+    4: "4 Years",
+    5: "5 Years",
+  };
+  var SYSTEM_SUMMARY =
+    "The contractor warrants that work performed under this contract will be free from defects for the warranty duration. This warranty covers the contractor's own work in the approved Scope of Work and does not reduce any duty the law does not allow the parties to waive.";
+  var SYSTEM_EXCLUSIONS = [
+    "Work outside the approved Scope of Work, including added, reduced, or changed work that was not approved in writing.",
+    "Concealed or unforeseen conditions that could not reasonably be discovered before work began.",
+    "Owner-supplied materials, products, or equipment, including defects, shortages, or failures in those materials.",
+    "Pre-existing defects, damage, or conditions not caused by the contractor's work.",
+    "Damage, alteration, misuse, improper maintenance, or work performed by anyone other than the contractor or the contractor's approved subcontractors.",
+  ];
 
   var LOCKING_PACKAGE_STATUSES = {
     ready: true,
@@ -194,8 +212,186 @@
     };
   }
 
+  function yearOptionFromDuration(value, unit) {
+    var n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    var u = trimField(unit).toLowerCase();
+    var years = n;
+    if (u === "months") {
+      if (n % 12 !== 0) return null;
+      years = n / 12;
+    } else if (u === "days") {
+      return null;
+    } else if (u && u !== "years" && u !== "year") {
+      return null;
+    }
+    years = Math.round(years);
+    return YEAR_OPTIONS.indexOf(years) >= 0 ? years : null;
+  }
+
+  function systemDefaultFields() {
+    return {
+      durationValue: "1",
+      durationUnit: "years",
+      summary: SYSTEM_SUMMARY,
+      exclusions: SYSTEM_EXCLUSIONS.join("\n"),
+      source: "system",
+    };
+  }
+
+  function fieldsFromSetup(setup) {
+    var src = setup && typeof setup === "object" ? setup : {};
+    var rawValue = src.warranty_duration_value != null ? src.warranty_duration_value : src.durationValue;
+    var value =
+      rawValue == null || rawValue === ""
+        ? ""
+        : String(parseInt(rawValue, 10));
+    var unit = trimField(src.warranty_duration_unit || src.durationUnit || "years").toLowerCase();
+    return {
+      durationValue: Number.isFinite(Number(value)) ? String(parseInt(value, 10)) : "",
+      durationUnit: unit === "year" ? "years" : WARRANTY_UNIT_SET[unit] ? unit : "years",
+      summary: trimField(src.warranty_summary != null ? src.warranty_summary : src.summary),
+      exclusions: trimField(src.warranty_exclusions != null ? src.warranty_exclusions : src.exclusions),
+    };
+  }
+
+  function warrantyFieldsComplete(fields) {
+    var src = fields && typeof fields === "object" ? fields : {};
+    var n = Number(src.durationValue);
+    return (
+      src.durationValue !== "" &&
+      Number.isFinite(n) &&
+      Number.isInteger(n) &&
+      n >= 0 &&
+      Boolean(trimField(src.durationUnit)) &&
+      Boolean(trimField(src.summary)) &&
+      Boolean(trimField(src.exclusions))
+    );
+  }
+
+  function tenantOverlayFields(preferences) {
+    var preset = normalizePreset(preferences);
+    if (!preset.default_warranty_enabled) return null;
+    var years = yearOptionFromDuration(
+      preset.default_warranty_duration_value,
+      preset.default_warranty_duration_unit
+    );
+    var overlay = { source: "tenant" };
+    if (years) {
+      overlay.durationValue = String(years);
+      overlay.durationUnit = "years";
+    }
+    if (preset.default_warranty_summary) overlay.summary = preset.default_warranty_summary;
+    if (preset.default_warranty_exclusions) overlay.exclusions = preset.default_warranty_exclusions;
+    if (!overlay.durationValue && !overlay.summary && !overlay.exclusions) return null;
+    return overlay;
+  }
+
+  function resolveWarrantyDraft(input) {
+    var src = input || {};
+    var setup = fieldsFromSetup(src.setup);
+    var system = systemDefaultFields();
+    if (src.configured === true && (setup.summary || setup.exclusions || setup.durationValue)) {
+      return Object.assign({ source: "setup" }, setup);
+    }
+    if (warrantyFieldsComplete(setup)) {
+      return Object.assign({ source: "setup" }, setup);
+    }
+    var tenant = tenantOverlayFields(src.preferences);
+    var years =
+      yearOptionFromDuration(setup.durationValue, setup.durationUnit) ||
+      (tenant && tenant.durationValue ? Number(tenant.durationValue) : null) ||
+      1;
+    return {
+      durationValue: String(years),
+      durationUnit: "years",
+      summary: setup.summary || (tenant && tenant.summary) || system.summary,
+      exclusions: setup.exclusions || (tenant && tenant.exclusions) || system.exclusions,
+      source: setup.summary || setup.exclusions || yearOptionFromDuration(setup.durationValue, setup.durationUnit)
+        ? "setup"
+        : tenant
+          ? "tenant"
+          : "system",
+    };
+  }
+
+  function formatDurationLabel(fields) {
+    var src = fields && typeof fields === "object" ? fields : {};
+    var years = yearOptionFromDuration(src.durationValue, src.durationUnit);
+    if (years) return YEAR_OPTION_LABELS[years];
+    var n = Number(src.durationValue);
+    var unit = trimField(src.durationUnit);
+    if (!Number.isFinite(n) || !unit) return "";
+    var singular = unit === "days" ? "Day" : unit === "months" ? "Month" : "Year";
+    var plural = unit === "days" ? "Days" : unit === "months" ? "Months" : "Years";
+    return n + " " + (n === 1 ? singular : plural);
+  }
+
+  function parseExclusionLines(raw) {
+    return trimField(raw)
+      .split(/\r?\n/)
+      .map(function (line) {
+        return String(line || "")
+          .replace(/^\s*\d+\.\s*/, "")
+          .replace(/^[\s•\-\*]+/, "")
+          .trim();
+      })
+      .filter(Boolean);
+  }
+
+  function formatExclusionDisplayLines(raw) {
+    return parseExclusionLines(raw).map(function (line, idx) {
+      return idx + 1 + ". " + line;
+    });
+  }
+
+  function warrantyFooterPlan(input) {
+    var src = input || {};
+    var configured = src.configured === true;
+    var busy = Boolean(src.busy);
+    var buttons = [
+      {
+        id: "edit",
+        label: "Edit Warranty",
+        style: "ghost",
+        enabled: !busy,
+      },
+    ];
+    if (configured) {
+      buttons.push({
+        id: "continue",
+        label: "Continue",
+        style: "primary",
+        enabled: !busy,
+      });
+    } else {
+      buttons.push({
+        id: "confirm",
+        label: "Confirm Warranty",
+        style: "primary",
+        enabled: !busy,
+      });
+    }
+    var primaryEnabled = buttons.filter(function (btn) {
+      return btn.style === "primary" && btn.enabled;
+    });
+    return {
+      kind: configured ? "confirmed" : "unconfirmed",
+      buttons: buttons,
+      continueVisible: configured,
+      continueEnabled: configured && !busy,
+      confirmVisible: !configured,
+      primaryEnabledCount: primaryEnabled.length,
+      primaryLabel: primaryEnabled[0] ? primaryEnabled[0].label : "",
+    };
+  }
+
   return {
     WARRANTY_UNITS: WARRANTY_UNITS.slice(),
+    YEAR_OPTIONS: YEAR_OPTIONS.slice(),
+    YEAR_OPTION_LABELS: YEAR_OPTION_LABELS,
+    SYSTEM_SUMMARY: SYSTEM_SUMMARY,
+    SYSTEM_EXCLUSIONS: SYSTEM_EXCLUSIONS.slice(),
     SETTINGS_HREF: SETTINGS_HREF,
     REPLACE_CONFIRM_MESSAGE: REPLACE_CONFIRM_MESSAGE,
     evaluateStandardWarrantyPreset: evaluateStandardWarrantyPreset,
@@ -205,5 +401,13 @@
     findWarrantyLockingPackage: findWarrantyLockingPackage,
     evaluateUseStandardWarrantyAction: evaluateUseStandardWarrantyAction,
     applyStandardWarrantyToDraft: applyStandardWarrantyToDraft,
+    yearOptionFromDuration: yearOptionFromDuration,
+    systemDefaultFields: systemDefaultFields,
+    resolveWarrantyDraft: resolveWarrantyDraft,
+    formatDurationLabel: formatDurationLabel,
+    parseExclusionLines: parseExclusionLines,
+    formatExclusionDisplayLines: formatExclusionDisplayLines,
+    warrantyFieldsComplete: warrantyFieldsComplete,
+    warrantyFooterPlan: warrantyFooterPlan,
   };
 });

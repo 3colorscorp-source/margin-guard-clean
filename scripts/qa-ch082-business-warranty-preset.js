@@ -428,9 +428,11 @@ test("Business Settings card copy and controls", () => {
   assert.match(html, /business-warranty-defaults\.js/);
   assert.match(html, /id="bsWarEnabled"/);
   assert.match(html, /id="bsWarDurationValue"/);
-  assert.match(html, /<option value="days">Days<\/option>/);
-  assert.match(html, /<option value="months" selected>Months<\/option>/);
-  assert.match(html, /<option value="years">Years<\/option>/);
+  assert.match(html, /<option value="1" selected>1 Year<\/option>/);
+  assert.match(html, /<option value="2">2 Years<\/option>/);
+  assert.match(html, /<option value="5">5 Years<\/option>/);
+  assert.doesNotMatch(html, /<option value="days">Days<\/option>/);
+  assert.doesNotMatch(html, /<option value="months" selected>Months<\/option>/);
 });
 
 test("POST replace-all still requires custom_trade_label for custom trade", () => {
