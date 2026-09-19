@@ -413,6 +413,181 @@ async function testAsync(name, fn) {
     assert.strictEqual(resolved.zip, "");
   });
 
+  await testAsync("new quote with complete structured fields", async () => {
+    const resolved = PropertyConfirm.resolvePropertyFields({
+      setup: {
+        property_address_line1: "149 Woodridge Circle",
+        property_city: "Vacaville",
+        property_state: "CA",
+        property_postal_code: "95687",
+      },
+      edits: {},
+    });
+    assert.strictEqual(resolved.line1, "149 Woodridge Circle");
+    assert.strictEqual(resolved.city, "Vacaville");
+    assert.strictEqual(resolved.state, "CA");
+    assert.strictEqual(resolved.zip, "95687");
+    const lines = PropertyConfirm.displayedAddressLines(resolved);
+    assert.deepStrictEqual(lines, ["149 Woodridge Circle", "Vacaville, CA 95687"]);
+    const plan = PropertyConfirm.propertyFooterPlan({ fields: resolved, extraAddress: "" });
+    assert.strictEqual(plan.kind, "unconfirmed");
+    assert.strictEqual(plan.primaryLabel, "Confirm Project Address");
+    assert.strictEqual(plan.primaryEnabledCount, 1);
+    assert.ok(!plan.buttons.some((b) => b.id === "continue"));
+  });
+
+  await testAsync("legacy concatenated address splits street/city/state/zip", async () => {
+    const parsed = PropertyConfirm.parseUsProjectAddress("149 Woodridge Circle Vacaville CA 95687");
+    assert.strictEqual(parsed.ok, true);
+    assert.strictEqual(parsed.fields.line1, "149 Woodridge Circle");
+    assert.strictEqual(parsed.fields.city, "Vacaville");
+    assert.strictEqual(parsed.fields.state, "CA");
+    assert.strictEqual(parsed.fields.zip, "95687");
+    const resolved = PropertyConfirm.resolvePropertyFields({
+      setup: {},
+      edits: { address: "149 Woodridge Circle Vacaville CA 95687" },
+      extraAddress: "149 Woodridge Circle Vacaville CA 95687",
+    });
+    assert.strictEqual(resolved.line1, "149 Woodridge Circle");
+    assert.strictEqual(resolved.city, "Vacaville");
+    const s = session({ fields: resolved });
+    const plan = s.plan();
+    assert.strictEqual(plan.kind, "unconfirmed");
+    assert.ok(!plan.errorMessage);
+    const result = await s.confirm();
+    assert.strictEqual(result.posted, true);
+    assert.strictEqual(s.posts[0].body.property_address_line1, "149 Woodridge Circle");
+    assert.strictEqual(s.posts[0].body.property_city, "Vacaville");
+    assert.strictEqual(s.posts[0].body.property_state, "CA");
+    assert.strictEqual(s.posts[0].body.property_postal_code, "95687");
+    assert.strictEqual(s.posts[0].body.confirm_property_address, true);
+  });
+
+  await testAsync("ZIP+4 and multi-word city parse without inventing", async () => {
+    const zip4 = PropertyConfirm.parseUsProjectAddress(
+      "149 Woodridge Circle Vacaville CA 95687-4410"
+    );
+    assert.strictEqual(zip4.ok, true);
+    assert.strictEqual(zip4.fields.zip, "95687-4410");
+    assert.strictEqual(zip4.fields.city, "Vacaville");
+    const city = PropertyConfirm.parseUsProjectAddress(
+      "123 Oak Street San Luis Obispo CA 93401"
+    );
+    assert.strictEqual(city.ok, true);
+    assert.strictEqual(city.fields.line1, "123 Oak Street");
+    assert.strictEqual(city.fields.city, "San Luis Obispo");
+    assert.strictEqual(city.fields.state, "CA");
+    assert.strictEqual(city.fields.zip, "93401");
+  });
+
+  await testAsync("truly incomplete address stays incomplete", async () => {
+    const resolved = PropertyConfirm.resolvePropertyFields({
+      setup: {},
+      edits: { address: "149 Woodridge Circle" },
+      extraAddress: "149 Woodridge Circle",
+    });
+    assert.strictEqual(resolved.line1, "149 Woodridge Circle");
+    assert.strictEqual(resolved.city, "");
+    assert.strictEqual(resolved.state, "");
+    assert.strictEqual(resolved.zip, "");
+    const s = session({ fields: resolved, extraAddress: "149 Woodridge Circle" });
+    const plan = s.plan();
+    assert.strictEqual(plan.kind, "incomplete");
+    const result = await s.confirm();
+    assert.strictEqual(result.posted, false);
+    assert.strictEqual(result.reason, "incomplete");
+    assert.ok(result.missing.includes("City"));
+    assert.ok(result.missing.includes("State"));
+    assert.ok(result.missing.includes("ZIP Code"));
+    assert.strictEqual(s.posts.length, 0);
+  });
+
+  await testAsync("ambiguous address does not invent a city", async () => {
+    const parsed = PropertyConfirm.parseUsProjectAddress("149 Vacaville CA 95687");
+    assert.strictEqual(parsed.ok, false);
+    assert.strictEqual(parsed.partial, true);
+    assert.strictEqual(parsed.fields.city, "");
+    assert.strictEqual(parsed.fields.state, "CA");
+    assert.strictEqual(parsed.fields.zip, "95687");
+    assert.strictEqual(parsed.fields.line1, "149 Vacaville");
+    const resolved = PropertyConfirm.resolvePropertyFields({
+      setup: {},
+      extraAddress: "149 Vacaville CA 95687",
+    });
+    assert.strictEqual(resolved.city, "");
+    const s = session({ fields: resolved });
+    const result = await s.confirm();
+    assert.strictEqual(result.posted, false);
+    assert.strictEqual(result.openEdit, true);
+    assert.ok(result.missing.includes("City"));
+  });
+
+  await testAsync("normalization does not auto-confirm", async () => {
+    const resolved = PropertyConfirm.resolvePropertyFields({
+      extraAddress: "149 Woodridge Circle Vacaville CA 95687",
+    });
+    assert.strictEqual(PropertyConfirm.propertyFieldsComplete(resolved), true);
+    assert.strictEqual(PropertyConfirm.propertyConfigured({ readiness: { project_address: "missing" } }), false);
+    const s = session({ fields: resolved, confirmed: false });
+    assert.strictEqual(s.confirmed, false);
+    assert.strictEqual(s.plan().kind, "unconfirmed");
+    assert.strictEqual(s.posts.length, 0);
+  });
+
+  await testAsync("preview/print/frozen HTML use the same structured address", async () => {
+    const resolved = PropertyConfirm.resolvePropertyFields({
+      extraAddress: "149 Woodridge Circle Vacaville CA 95687",
+    });
+    const lines = PropertyConfirm.displayedAddressLines(resolved);
+    assert.deepStrictEqual(lines, ["149 Woodridge Circle", "Vacaville, CA 95687"]);
+    assert.ok(!lines.some((line) => /still needs/i.test(line)));
+    assert.ok(html.includes("id=\"cbPropLine1\""));
+    assert.ok(html.includes("id=\"cbPropLocality\""));
+    assert.ok(html.includes("is-preview"));
+    assert.ok(html.includes("is-printing"));
+    assert.ok(js.includes("formatPropertyLocality"));
+    assert.ok(js.includes('setText("cbPropLine1"'));
+    assert.ok(js.includes('setText("cbPropLocality"'));
+    const freezeSrc = fs.readFileSync(
+      path.join(ROOT, "netlify/functions/_lib/contract-package.js"),
+      "utf8"
+    );
+    assert.ok(freezeSrc.includes("address_line1: setup?.property_address_line1"));
+    assert.ok(freezeSrc.includes("city: setup?.property_city"));
+    assert.ok(freezeSrc.includes("state: setup?.property_state"));
+    assert.ok(freezeSrc.includes("postal_code: setup?.property_postal_code"));
+    const payload = PropertyConfirm.buildPropertyConfirmPayload("p1", "q1", resolved);
+    assert.strictEqual(payload.property_address_line1, "149 Woodridge Circle");
+    assert.strictEqual(payload.property_city, "Vacaville");
+    assert.strictEqual(payload.property_state, "CA");
+    assert.strictEqual(payload.property_postal_code, "95687");
+    assert.strictEqual(payload.confirm_property_address, true);
+  });
+
+  await testAsync("readiness navigates; footer remains the only Confirm CTA", async () => {
+    assert.ok(js.includes('cta: "Open Project Address"'));
+    assert.ok(js.includes('label: "Review Project Address"'));
+    assert.ok(js.includes("cbWsConfirmProperty"));
+    const start = js.indexOf("function resolveNextBlocker");
+    const blockerSlice = js.slice(start, start + 1800);
+    assert.ok(blockerSlice.includes('cta: "Open Project Address"'));
+    assert.ok(!blockerSlice.includes('cta: "Confirm Project Address"'));
+  });
+
+  await testAsync("unsafe parse keeps the original string", async () => {
+    const original = "149 Woodridge Circle Vacaville California 95687";
+    const parsed = PropertyConfirm.parseUsProjectAddress(original);
+    assert.strictEqual(parsed.ok, false);
+    assert.strictEqual(parsed.partial, false);
+    assert.strictEqual(parsed.fields.line1, original);
+    assert.strictEqual(parsed.fields.city, "");
+    assert.strictEqual(parsed.fields.state, "");
+    assert.strictEqual(parsed.fields.zip, "");
+    const resolved = PropertyConfirm.resolvePropertyFields({ extraAddress: original });
+    assert.strictEqual(resolved.line1, original);
+    assert.strictEqual(resolved.city, "");
+  });
+
   console.log("");
   console.log("CH-007D Article 3 property clean:", passed, "passed,", failed, "failed");
   process.exit(failed === 0 ? 0 : 1);

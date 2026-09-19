@@ -54,6 +54,118 @@
     };
   }
 
+  var US_STATES = {
+    AL: 1, AK: 1, AZ: 1, AR: 1, CA: 1, CO: 1, CT: 1, DE: 1, DC: 1, FL: 1,
+    GA: 1, HI: 1, ID: 1, IL: 1, IN: 1, IA: 1, KS: 1, KY: 1, LA: 1, ME: 1,
+    MD: 1, MA: 1, MI: 1, MN: 1, MS: 1, MO: 1, MT: 1, NE: 1, NV: 1, NH: 1,
+    NJ: 1, NM: 1, NY: 1, NC: 1, ND: 1, OH: 1, OK: 1, OR: 1, PA: 1, RI: 1,
+    SC: 1, SD: 1, TN: 1, TX: 1, UT: 1, VT: 1, VA: 1, WA: 1, WV: 1, WI: 1,
+    WY: 1,
+  };
+
+  var STREET_SUFFIXES = {
+    ALLEY: 1, ALY: 1, AVENUE: 1, AVE: 1, BOULEVARD: 1, BLVD: 1, CIRCLE: 1,
+    CIR: 1, COURT: 1, CT: 1, COVE: 1, CV: 1, CRESCENT: 1, CRES: 1, CROSSING: 1,
+    XING: 1, DRIVE: 1, DR: 1, HIGHWAY: 1, HWY: 1, HEIGHTS: 1, HTS: 1, LANE: 1,
+    LN: 1, LOOP: 1, PARKWAY: 1, PKWY: 1, PASS: 1, PATH: 1, PIKE: 1, PLACE: 1,
+    PL: 1, POINT: 1, PT: 1, ROAD: 1, RD: 1, ROW: 1, RUN: 1, SQUARE: 1, SQ: 1,
+    STREET: 1, ST: 1, TERRACE: 1, TER: 1, TRAIL: 1, TRL: 1, WAY: 1,
+  };
+
+  function emptyFields() {
+    return { line1: "", line2: "", city: "", state: "", zip: "" };
+  }
+
+  function parseUsProjectAddress(raw) {
+    var original = trimField(raw).replace(/,/g, " ").replace(/\s+/g, " ");
+    if (!original) {
+      return { ok: false, partial: false, reason: "empty", original: "", fields: emptyFields() };
+    }
+    var zipMatch = original.match(/\s+(\d{5}(?:-\d{4})?)$/);
+    if (!zipMatch) {
+      return {
+        ok: false,
+        partial: false,
+        reason: "no_zip",
+        original: original,
+        fields: { line1: original, line2: "", city: "", state: "", zip: "" },
+      };
+    }
+    var zip = zipMatch[1];
+    var beforeZip = original.slice(0, original.length - zipMatch[0].length).trim();
+    var stateMatch = beforeZip.match(/\s+([A-Za-z]{2})$/);
+    if (!stateMatch) {
+      return {
+        ok: false,
+        partial: false,
+        reason: "no_state",
+        original: original,
+        fields: { line1: original, line2: "", city: "", state: "", zip: "" },
+      };
+    }
+    var state = stateMatch[1].toUpperCase();
+    if (!US_STATES[state]) {
+      return {
+        ok: false,
+        partial: false,
+        reason: "unknown_state",
+        original: original,
+        fields: { line1: original, line2: "", city: "", state: "", zip: "" },
+      };
+    }
+    var beforeState = beforeZip.slice(0, beforeZip.length - stateMatch[0].length).trim();
+    if (!beforeState) {
+      return {
+        ok: false,
+        partial: true,
+        reason: "no_street_or_city",
+        original: original,
+        fields: { line1: "", line2: "", city: "", state: state, zip: zip },
+      };
+    }
+    var tokens = beforeState.split(/\s+/);
+    var suffixIdx = -1;
+    for (var i = tokens.length - 1; i >= 0; i -= 1) {
+      var token = String(tokens[i] || "").replace(/[.]/g, "").toUpperCase();
+      if (STREET_SUFFIXES[token]) {
+        suffixIdx = i;
+        break;
+      }
+    }
+    if (suffixIdx >= 0 && suffixIdx < tokens.length - 1) {
+      return {
+        ok: true,
+        partial: false,
+        reason: "parsed",
+        original: original,
+        fields: {
+          line1: tokens.slice(0, suffixIdx + 1).join(" "),
+          line2: "",
+          city: tokens.slice(suffixIdx + 1).join(" "),
+          state: state,
+          zip: zip,
+        },
+      };
+    }
+    return {
+      ok: false,
+      partial: true,
+      reason: "ambiguous_city",
+      original: original,
+      fields: {
+        line1: beforeState,
+        line2: "",
+        city: "",
+        state: state,
+        zip: zip,
+      },
+    };
+  }
+
+  function looksLikeConcatenatedAddress(value) {
+    return /\s+[A-Za-z]{2}\s+\d{5}(?:-\d{4})?$/.test(trimField(value));
+  }
+
   function propertyMissingLabels(fields) {
     var row = cloneFields(fields);
     var missing = [];
@@ -101,12 +213,28 @@
     if (src.mode === "edit" && src.domFields) return cloneFields(src.domFields);
     if (propertyFieldsComplete(editFields)) return editFields;
     if (propertyFieldsComplete(setupFields)) return setupFields;
-    return {
-      line1: editFields.line1 || setupFields.line1 || trimField(src.edits && src.edits.address),
+    var extra = trimField(src.extraAddress) || trimField(src.edits && src.edits.address);
+    var sparse = {
+      line1: editFields.line1 || setupFields.line1 || extra,
       line2: editFields.line2 || setupFields.line2,
       city: editFields.city || setupFields.city,
       state: editFields.state || setupFields.state,
       zip: editFields.zip || setupFields.zip,
+    };
+    if (propertyFieldsComplete(sparse)) return sparse;
+    var candidate =
+      extra ||
+      (looksLikeConcatenatedAddress(sparse.line1) ? sparse.line1 : "");
+    if (!candidate || !looksLikeConcatenatedAddress(candidate)) return sparse;
+    var parsed = parseUsProjectAddress(candidate);
+    if (!parsed || (!parsed.ok && !parsed.partial)) return sparse;
+    var useParsedStreet = !sparse.city && !sparse.state && !sparse.zip;
+    return {
+      line1: useParsedStreet ? parsed.fields.line1 || sparse.line1 : sparse.line1 || parsed.fields.line1,
+      line2: sparse.line2 || parsed.fields.line2,
+      city: sparse.city || parsed.fields.city,
+      state: sparse.state || parsed.fields.state,
+      zip: sparse.zip || parsed.fields.zip,
     };
   }
 
@@ -282,6 +410,8 @@
     propertyAddressPresent: propertyAddressPresent,
     propertyConfigured: propertyConfigured,
     resolvePropertyFields: resolvePropertyFields,
+    parseUsProjectAddress: parseUsProjectAddress,
+    looksLikeConcatenatedAddress: looksLikeConcatenatedAddress,
     propertyKind: propertyKind,
     propertyFooterPlan: propertyFooterPlan,
     buildPropertyConfirmPayload: buildPropertyConfirmPayload,
