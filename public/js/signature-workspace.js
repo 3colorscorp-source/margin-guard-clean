@@ -1107,13 +1107,29 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
       .join("");
   }
 
+  function formatCertificateStatus(status) {
+    const s = String(status || "").trim();
+    if (!s) return "—";
+    return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  }
+
+  function toTenantCertificate(row) {
+    if (!row || typeof row !== "object") return null;
+    return {
+      id: row.id || "",
+      certificate_number: row.certificate_number || "",
+      issued_at: row.issued_at || null,
+      status: row.status || "",
+    };
+  }
+
   function renderCertificate() {
     const cert = state.certificates[0];
     const completed =
       String(state.envelope?.status || "").toLowerCase() === "completed";
     setText("swCertNumber", cert?.certificate_number || "—");
     setText("swCertIssued", fmtWhen(cert?.issued_at));
-    setText("swCertHash", shortHash(cert?.content_hash));
+    setText("swCertStatus", formatCertificateStatus(cert?.status));
     const issueBtn = $("swIssueCertBtn");
     const viewBtn = $("swViewCertBtn");
     if (issueBtn) {
@@ -1162,23 +1178,7 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
   }
 
   function renderDev() {
-    const cert = state.certificates[0];
-    const art = state.artifacts[0];
-    const lines = [
-      `project_id: ${state.project?.id || "—"}`,
-      `package_id: ${state.package?.id || "—"}`,
-      `envelope_id: ${state.envelope?.id || "—"}`,
-      `delivery_status: ${state.delivery?.delivery_status || (isLinkReady() ? "prepared" : "—")}`,
-      `email_provider: ${state.emailDelivery?.provider || "—"}`,
-      `invitation_ids: ${(state.delivery?.invitations || [])
-        .map((i) => i.invitation_id)
-        .filter(Boolean)
-        .join(", ") || "—"}`,
-      `certificate_id: ${cert?.id || "—"}`,
-      `artifact_id: ${art?.id || "—"}`,
-      `storage_ref: ${art?.storage_ref || "—"}`,
-    ];
-    setText("swDevIds", lines.join("\n"));
+    /* Tenant Contract Workflow must not render package/signer/envelope IDs. */
   }
 
   /**
@@ -1896,9 +1896,11 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
     if (!res.ok || res.data?.ok !== true) {
       throw new Error(res.data?.error || "Could not load certificates");
     }
-    state.certificates = Array.isArray(res.data.certificates)
+    state.certificates = (Array.isArray(res.data.certificates)
       ? res.data.certificates
-      : [];
+      : [])
+      .map(toTenantCertificate)
+      .filter(Boolean);
   }
 
   async function loadPdfs(envelopeId) {
@@ -2764,17 +2766,9 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
           <div class="sw-meta">
             <div class="sw-field"><div class="sw-field__k">Number</div><div class="sw-field__v">${escapeHtml(cert.certificate_number)}</div></div>
             <div class="sw-field"><div class="sw-field__k">Issued</div><div class="sw-field__v">${escapeHtml(fmtWhen(cert.issued_at))}</div></div>
-            <div class="sw-field"><div class="sw-field__k">Status</div><div class="sw-field__v">${escapeHtml(cert.status)}</div></div>
+            <div class="sw-field"><div class="sw-field__k">Status</div><div class="sw-field__v">${escapeHtml(formatCertificateStatus(cert.status))}</div></div>
           </div>
-        </div>
-        <details class="sw-modal-support">
-          <summary>Support Information</summary>
-          <p class="sw-modal-support-help">Technical details for support and troubleshooting.</p>
-          <p class="sub">Technical Verification</p>
-          <pre class="sw-mono">${escapeHtml(cert.content_hash || "—")}</pre>
-          <p class="sub">Certificate details</p>
-          <pre>${escapeHtml(JSON.stringify(cert.certificate_json || {}, null, 2))}</pre>
-        </details>`,
+        </div>`,
         [btn("Close", "btn primary", closeModal)]
       );
     });

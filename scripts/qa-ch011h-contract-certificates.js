@@ -183,6 +183,54 @@ test("Handlers + verify + version", () => {
   assert.ok(verifySrc.includes("CH-011H VERIFY"));
 });
 
+test("tenant HTTP DTO omits audit fields", () => {
+  const full = {
+    id: "c1",
+    tenant_id: "t1",
+    envelope_id: "e1",
+    package_id: "p1",
+    project_id: "pr1",
+    certificate_number: "MG-CERT-ABC",
+    status: "issued",
+    certificate_json: { schema: "ch-011h-v1", signers: [{ signer_id: "s1" }] },
+    content_hash: "a".repeat(64),
+    issued_at: "2026-01-01T00:00:00.000Z",
+    created_by: "m1",
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:01.000Z",
+  };
+  const dto = lib.serializeTenantCertificate(full);
+  assert.deepStrictEqual(Object.keys(dto), ["id", "certificate_number", "status", "issued_at"]);
+  assert.deepStrictEqual(dto, {
+    id: "c1",
+    certificate_number: "MG-CERT-ABC",
+    status: "issued",
+    issued_at: "2026-01-01T00:00:00.000Z",
+  });
+  const raw = JSON.stringify(dto);
+  for (const leak of [
+    "certificate_json",
+    "content_hash",
+    "tenant_id",
+    "envelope_id",
+    "package_id",
+    "project_id",
+    "created_by",
+    "created_at",
+    "updated_at",
+    "signer_id",
+    "ip_address",
+    "user_agent",
+  ]) {
+    assert.ok(!raw.includes(leak), leak);
+  }
+  const internal = lib.serializeCertificate(full);
+  assert.strictEqual(internal.certificate_json.schema, "ch-011h-v1");
+  assert.strictEqual(internal.content_hash, "a".repeat(64));
+  assert.ok(listSrc.includes("serializeTenantCertificate"));
+  assert.ok(createSrc.includes("serializeTenantCertificate"));
+});
+
 test("buildCertificateEvidence shape", () => {
   const ev = lib.buildCertificateEvidence({
     envelope: {

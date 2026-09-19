@@ -1198,8 +1198,11 @@
     }
     .sw-vis-col-side .sw-actions-secondary .btn,
     .sw-vis-col-side .sw-actions-secondary a.btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
       width: 100%;
-      justify-content: flex-start;
     }
     @media (min-width: 980px) {
       .sw-vis-layout {
@@ -2402,7 +2405,7 @@
               <div class="sw-meta">
                 <div class="sw-field"><div class="sw-field__k">Certificate Number</div><div class="sw-field__v" id="swCertNumber">—</div></div>
                 <div class="sw-field"><div class="sw-field__k">Issued</div><div class="sw-field__v" id="swCertIssued">—</div></div>
-                <div class="sw-field"><div class="sw-field__k">Technical Verification</div><div class="sw-field__v sw-mono" id="swCertHash">—</div></div>
+                <div class="sw-field"><div class="sw-field__k">Status</div><div class="sw-field__v" id="swCertStatus">—</div></div>
               </div>
             </div>
             <div class="sw-crw__split-side">
@@ -2440,15 +2443,6 @@
       </section>
 
           </div>
-
-      <section class="card sw-section sw-crw__tech" id="swSecDev">
-        <div class="card-inner">
-          <details class="sw-dev">
-            <summary>Internal IDs (support only)</summary>
-            <pre id="swDevIds">—</pre>
-          </details>
-        </div>
-      </section>
 
         </div>
       </details>

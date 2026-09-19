@@ -51,6 +51,18 @@ function serializeCertificate(row) {
   };
 }
 
+const TENANT_CERTIFICATE_FIELDS = ["id", "certificate_number", "status", "issued_at"];
+
+function serializeTenantCertificate(certificate) {
+  if (!certificate?.id) return null;
+  return {
+    id: certificate.id,
+    certificate_number: trimField(certificate.certificate_number),
+    status: trimField(certificate.status) || "issued",
+    issued_at: certificate.issued_at || null,
+  };
+}
+
 async function loadEnvelope(tenantId, envelopeId) {
   const rows = await supabaseRequest(
     `tenant_contract_envelopes?tenant_id=eq.${encodeURIComponent(tenantId)}` +
@@ -356,6 +368,8 @@ module.exports = {
   unknownKeys,
   trimField,
   serializeCertificate,
+  TENANT_CERTIFICATE_FIELDS,
+  serializeTenantCertificate,
   buildCertificateEvidence,
   hashCertificateEvidence,
   certificateNumberFromHash,
