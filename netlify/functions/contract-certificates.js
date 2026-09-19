@@ -11,6 +11,7 @@ const {
   API_VERSION,
   validUuid,
   listCertificatesForEnvelope,
+  serializeTenantCertificate,
   trimField,
 } = require("./_lib/contract-certificate");
 
@@ -53,7 +54,9 @@ exports.handler = async (event) => {
     return json(200, {
       ok: true,
       version: API_VERSION,
-      certificates,
+      certificates: (certificates || [])
+        .map(serializeTenantCertificate)
+        .filter(Boolean),
     });
   } catch (err) {
     if (err?.isGuardError) {

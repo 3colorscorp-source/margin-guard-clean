@@ -29,15 +29,9 @@ const platformFlagSrc = read("netlify/functions/_lib/mg-support/require-owner-se
 
 let passed = 0;
 let failed = 0;
+const tests = [];
 function test(name, fn) {
-  try {
-    fn();
-    console.log("PASS", name);
-    passed += 1;
-  } catch (err) {
-    console.log("FAIL", name, "-", err.message);
-    failed += 1;
-  }
+  tests.push({ name, fn });
 }
 
 function sliceBetween(src, startNeedle, endNeedle) {
@@ -156,10 +150,13 @@ test("8 technical certificate payload remains stored for audit", () => {
   assert.ok(libSrc.includes("content_hash:"));
   assert.ok(libSrc.includes("wrapCertificateJson"));
   assert.ok(libSrc.includes("hashCertificateEvidence"));
+  assert.ok(libSrc.includes("certificate_json: certificateJson"));
   assert.ok(createSrc.includes("createContractCertificate"));
   assert.ok(listSrc.includes("listCertificatesForEnvelope"));
   assert.ok(listSrc.includes("requireOwnerOrAdmin"));
   assert.ok(!listSrc.includes("assertPlatformAdminSession"));
+  assert.ok(createSrc.includes("serializeTenantCertificate"));
+  assert.ok(listSrc.includes("serializeTenantCertificate"));
 });
 
 test("9 list endpoint access is not expanded", () => {
@@ -167,6 +164,139 @@ test("9 list endpoint access is not expanded", () => {
   assert.ok(listSrc.includes("requireOwnerOrAdmin"));
   assert.ok(listSrc.includes("owner_required") || ownerAdminSrc.includes("owner_required"));
   assert.ok(!listSrc.includes("is_admin"));
+  assert.ok(!createSrc.includes("signer_id"));
+  assert.ok(!listSrc.includes("certificate_json"));
+  assert.ok(!createSrc.includes("certificate_json"));
+});
+
+const TENANT_CERT_KEYS = ["id", "certificate_number", "status", "issued_at"];
+const CERT_LEAKS = [
+  "certificate_json",
+  "content_hash",
+  "tenant_id",
+  "envelope_id",
+  "package_id",
+  "project_id",
+  "created_by",
+  "created_at",
+  "updated_at",
+  "signer_id",
+  "ip_address",
+  "user_agent",
+];
+const FULL_CERT = {
+  id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+  tenant_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  envelope_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+  package_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  project_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+  certificate_number: "MG-CERT-PUBLICONLY",
+  status: "issued",
+  certificate_json: {
+    schema: "ch-011h-v1",
+    signers: [{ signer_id: "s1", ip_address: "1.2.3.4", user_agent: "UA" }],
+  },
+  content_hash: "ab".repeat(32),
+  issued_at: "2026-01-01T00:00:00.000Z",
+  created_by: "mmmmmmmm-mmmm-4mmm-8mmm-mmmmmmmmmmmm",
+  created_at: "2026-01-01T00:00:00.000Z",
+  updated_at: "2026-01-01T00:00:01.000Z",
+};
+
+function assertNoLeaks(raw, label) {
+  const text = typeof raw === "string" ? raw : JSON.stringify(raw);
+  for (const leak of CERT_LEAKS) {
+    assert.ok(!text.includes(leak), label + " leaked " + leak);
+  }
+}
+
+function loadTenantCertHandlers() {
+  const libRel = "../netlify/functions/_lib/contract-certificate";
+  const gateRel = "../netlify/functions/_lib/require-owner-or-admin";
+  const listRel = "../netlify/functions/contract-certificates";
+  const createRel = "../netlify/functions/contract-certificate-create";
+  [libRel, gateRel, listRel, createRel].forEach((rel) => {
+    delete require.cache[require.resolve(rel)];
+  });
+  const lib = require(libRel);
+  const gate = require(gateRel);
+  gate.requireOwnerOrAdmin = async () => ({
+    tenant: { id: FULL_CERT.tenant_id },
+    membership: { id: FULL_CERT.created_by, role: "owner" },
+  });
+  lib.listCertificatesForEnvelope = async () => [lib.serializeCertificate(FULL_CERT)];
+  lib.createContractCertificate = async () => ({
+    ok: true,
+    idempotent: true,
+    certificate: lib.serializeCertificate(FULL_CERT),
+  });
+  return {
+    lib,
+    list: require(listRel),
+    create: require(createRel),
+  };
+}
+
+test("11 serializeTenantCertificate returns only public fields", () => {
+  const lib = require("../netlify/functions/_lib/contract-certificate");
+  const dto = lib.serializeTenantCertificate(FULL_CERT);
+  assert.deepStrictEqual(Object.keys(dto), TENANT_CERT_KEYS);
+  assert.deepStrictEqual(dto, {
+    id: FULL_CERT.id,
+    certificate_number: FULL_CERT.certificate_number,
+    status: "issued",
+    issued_at: FULL_CERT.issued_at,
+  });
+  assertNoLeaks(dto, "tenant DTO");
+  const stored = lib.serializeCertificate(FULL_CERT);
+  assert.strictEqual(stored.certificate_json.schema, "ch-011h-v1");
+  assert.strictEqual(stored.content_hash, FULL_CERT.content_hash);
+  assert.strictEqual(stored.envelope_id, FULL_CERT.envelope_id);
+});
+
+test("12 GET tenant certificates returns exactly the public DTO", async () => {
+  const mods = loadTenantCertHandlers();
+  const res = await mods.list.handler({
+    httpMethod: "GET",
+    queryStringParameters: { envelope_id: FULL_CERT.envelope_id },
+    headers: {},
+  });
+  assert.strictEqual(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  assert.strictEqual(body.ok, true);
+  assert.ok(Array.isArray(body.certificates));
+  assert.strictEqual(body.certificates.length, 1);
+  assert.deepStrictEqual(Object.keys(body.certificates[0]), TENANT_CERT_KEYS);
+  assert.deepStrictEqual(body.certificates[0], {
+    id: FULL_CERT.id,
+    certificate_number: FULL_CERT.certificate_number,
+    status: "issued",
+    issued_at: FULL_CERT.issued_at,
+  });
+  assertNoLeaks(body.certificates[0], "GET certificate");
+});
+
+test("13 POST tenant certificate-create returns exactly the public DTO", async () => {
+  const mods = loadTenantCertHandlers();
+  const res = await mods.create.handler({
+    httpMethod: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ envelope_id: FULL_CERT.envelope_id }),
+  });
+  assert.strictEqual(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  assert.strictEqual(body.ok, true);
+  assert.strictEqual(body.idempotent, true);
+  assert.deepStrictEqual(Object.keys(body.certificate), TENANT_CERT_KEYS);
+  assert.deepStrictEqual(body.certificate, {
+    id: FULL_CERT.id,
+    certificate_number: FULL_CERT.certificate_number,
+    status: "issued",
+    issued_at: FULL_CERT.issued_at,
+  });
+  assertNoLeaks(body.certificate, "POST certificate");
+  assert.ok(!JSON.stringify(body).includes("certificate_json"));
+  assert.ok(!JSON.stringify(body).includes("content_hash"));
 });
 
 test("10 contractor+customer and customer-only signing still pass", () => {
@@ -180,6 +310,18 @@ test("10 contractor+customer and customer-only signing still pass", () => {
   assert.ok(/CH-084 contractor\+customer QA: \d+ passed, 0 failed/.test(r.stdout));
 });
 
-console.log("");
-console.log("Tenant certificate surface QA:", passed, "passed,", failed, "failed");
-process.exit(failed === 0 ? 0 : 1);
+(async () => {
+  for (const t of tests) {
+    try {
+      await t.fn();
+      console.log("PASS", t.name);
+      passed += 1;
+    } catch (err) {
+      console.log("FAIL", t.name, "-", err && err.message ? err.message : err);
+      failed += 1;
+    }
+  }
+  console.log("");
+  console.log("Tenant certificate surface QA:", passed, "passed,", failed, "failed");
+  process.exit(failed === 0 ? 0 : 1);
+})();

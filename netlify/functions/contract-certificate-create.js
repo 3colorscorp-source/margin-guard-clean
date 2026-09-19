@@ -12,6 +12,7 @@ const {
   validUuid,
   unknownKeys,
   createContractCertificate,
+  serializeTenantCertificate,
   trimField,
 } = require("./_lib/contract-certificate");
 
@@ -94,7 +95,6 @@ exports.handler = async (event) => {
         code: result.code,
         envelope_status: result.envelope_status || undefined,
         package_status: result.package_status || undefined,
-        signer_id: result.signer_id || undefined,
         version: API_VERSION,
       });
     }
@@ -103,7 +103,7 @@ exports.handler = async (event) => {
       ok: true,
       version: API_VERSION,
       idempotent: !!result.idempotent,
-      certificate: result.certificate,
+      certificate: serializeTenantCertificate(result.certificate),
     });
   } catch (err) {
     if (err?.isGuardError) {
