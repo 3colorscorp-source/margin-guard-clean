@@ -92,11 +92,18 @@ test("5 polling unchanged", () => {
   assert.ok(js.includes("EMAIL_QUEUE_API"));
 });
 
-test("6 Support Information collapses technical sections", () => {
+test("6 Support Information does not render certificate technical dumps", () => {
   assert.ok(html.includes('id="swAdvancedDetails"'));
-  assert.ok(html.includes("Support Information"));
-  assert.ok(html.indexOf("swAdvancedDetails") < html.indexOf("swSecPackage"));
-  assert.ok(html.includes("swSecDev"));
+  assert.ok(html.includes('id="swSecCert"'));
+  const certSec = html.slice(html.indexOf('id="swSecCert"'), html.indexOf('id="swSecPdf"'));
+  assert.ok(certSec.includes("Certificate Number"));
+  assert.ok(certSec.includes("Issued"));
+  assert.ok(certSec.includes("swCertStatus"));
+  assert.ok(!certSec.includes("Technical Verification"));
+  assert.ok(!certSec.includes("Support Information"));
+  assert.ok(!html.includes("swCertHash"));
+  assert.ok(!html.includes("swDevIds"));
+  assert.ok(!html.includes('id="swSecDev"'));
 });
 
 test("7 step mapping rules present", () => {
@@ -117,7 +124,7 @@ test("8 no backend files modified", () => {
     .split(/\r?\n/)
     .map((s) => s.trim())
     .filter(Boolean)
-    .filter((f) => !f.includes("qa-ch013a31"));
+    .filter((f) => !f.includes("qa-ch013a31") && !f.includes("qa-ch013a-tenant-certificate-surface"));
   assert.deepStrictEqual(files, [], "unexpected non-UI diffs: " + files.join(", "));
 });
 
@@ -129,6 +136,7 @@ test("9 only UI files changed in working tree for this task", () => {
     "public/js/signature-workspace.js",
     "public/styles.css", // CH-013A.34/35 Experience tokens (additive)
     "scripts/qa-ch013a31-signature-workspace-visual.js",
+    "scripts/qa-ch013a-tenant-certificate-surface.js",
   ]);
   diff.stdout
     .split(/\r?\n/)
