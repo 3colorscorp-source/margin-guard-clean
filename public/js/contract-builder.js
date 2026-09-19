@@ -1517,6 +1517,7 @@
     return PropertyConfirm.resolvePropertyFields({
       setup: sourceSnapshot?.contractSetup?.setup,
       edits: draftEdits,
+      extraAddress: draftEdits?.address || sourceSnapshot?.address,
       mode: getArticleMode("art-property") === WS_MODE.EDIT ? "edit" : "preview",
       domFields:
         getArticleMode("art-property") === WS_MODE.EDIT ? readPropertyFieldsFromDom() : null,
@@ -1546,19 +1547,7 @@
   }
 
   function syncPropertyInputsFromModel() {
-    const setupFields = propertyFieldsFromSetup(sourceSnapshot?.contractSetup?.setup);
-    const editFields = propertyFieldsFromEdits(draftEdits);
-    const fields = propertyFieldsComplete(editFields)
-      ? editFields
-      : propertyFieldsComplete(setupFields)
-        ? setupFields
-        : {
-            line1: editFields.line1 || setupFields.line1 || String(draftEdits?.address || "").trim(),
-            line2: editFields.line2 || setupFields.line2,
-            city: editFields.city || setupFields.city,
-            state: editFields.state || setupFields.state,
-            zip: editFields.zip || setupFields.zip,
-          };
+    const fields = resolvePropertyFieldsFromModel();
     if ($("cbPropEditLine1")) $("cbPropEditLine1").value = fields.line1;
     if ($("cbPropEditLine2")) $("cbPropEditLine2").value = fields.line2;
     if ($("cbPropEditCity")) $("cbPropEditCity").value = fields.city;
@@ -4138,9 +4127,9 @@
     }
     if (!propertyConfigured(source.contractSetup)) {
       return {
-        label: "Confirm Project Address",
+        label: "Review Project Address",
         article: "art-property",
-        cta: "Confirm Project Address",
+        cta: "Open Project Address",
       };
     }
     if (!paymentConfigured(source.paymentSchedule)) {
@@ -4682,24 +4671,13 @@
 
     const setup = source.contractSetup?.setup || null;
     const propConfigured = propertyConfigured(source.contractSetup);
-    let line1 = String(setup?.property_address_line1 || "").trim();
-    let line2 = String(setup?.property_address_line2 || "").trim();
-    let city = String(setup?.property_city || "").trim();
-    let state = String(setup?.property_state || "").trim();
-    let zip = String(setup?.property_postal_code || "").trim();
-    const livePropertyLine = formatPropertyLine(setup);
-    const draftFields = propertyFieldsFromEdits(edits);
-    if (!livePropertyLine && (draftFields.line1 || draftFields.city || String(edits.address || "").trim())) {
-      if (draftFields.line1 || draftFields.city) {
-        line1 = draftFields.line1 || line1;
-        line2 = draftFields.line2 || line2;
-        city = draftFields.city || city;
-        state = draftFields.state || state;
-        zip = draftFields.zip || zip;
-      } else if (String(edits.address || "").trim()) {
-        line1 = String(edits.address || "").trim();
-      }
-    }
+    const fields = resolvePropertyFieldsFromModel();
+    let line1 = fields.line1;
+    let line2 = fields.line2;
+    let city = fields.city;
+    let state = fields.state;
+    let zip = fields.zip;
+    const livePropertyLine = formatPropertyFieldsLine(fields) || formatPropertyLine(setup);
     const locality = formatPropertyLocality(city, state, zip);
 
     setText("cbPropStatus", sectionStatusLabel(propConfigured));
@@ -5785,15 +5763,14 @@
     );
     hydratePaymentDraftFromSource(sourceSnapshot);
     draftEdits = cloneEdits(sourceSnapshot);
-    const setupFields = propertyFieldsFromSetup(setupBundle.setup);
-    if (propertyFieldsComplete(setupFields) || setupFields.line1) {
-      applyPropertyFieldsToEdits(draftEdits, setupFields);
-    } else {
-      const legacy = String(sourceSnapshot.address || "").trim();
-      if (legacy) {
-        draftEdits.propLine1 = legacy;
-        draftEdits.address = legacy;
-      }
+    const normalized = PropertyConfirm.resolvePropertyFields({
+      setup: setupBundle.setup,
+      edits: { address: sourceSnapshot.address },
+      extraAddress: sourceSnapshot.address,
+    });
+    applyPropertyFieldsToEdits(draftEdits, normalized);
+    if (sourceSnapshot.address && !draftEdits.address) {
+      draftEdits.address = sourceSnapshot.address;
     }
     const warSetupFields = warrantyFieldsFromSetup(setupBundle.setup);
     const resolvedWarranty = resolveWarrantyDraftFields();
