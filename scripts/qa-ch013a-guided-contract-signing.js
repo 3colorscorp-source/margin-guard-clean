@@ -8,6 +8,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
+const vm = require("vm");
 const { spawnSync } = require("child_process");
 
 const ROOT = path.join(__dirname, "..");
@@ -66,8 +67,10 @@ test("1 new user identifies the first CTA without guessing", () => {
 
 test("2 only one primary CTA per visual state", () => {
   assert.strictEqual(countPrimary(step1), 1, "step 1 extra primary");
-  assert.strictEqual(countPrimary(step2), 1, "step 2 extra primary");
-  assert.strictEqual(countPrimary(step3), 0, "step 3 should have no primary");
+  assert.ok(step2.includes('id="swVisSendContractBtn"'));
+  assert.ok(step2.includes('id="swVisRetryPrimaryBtn" hidden'));
+  assert.ok(js.includes("sendVis.hidden = emailAlreadySent || emailFailed || emailInFlight"));
+  assert.ok(js.includes("retryPrimary.hidden = !emailFailed"));
   assert.ok(step4.includes('id="swVisIssueCertBtn" hidden'));
   assert.ok(step5.includes('id="swVisGeneratePdfBtn" hidden'));
   assert.ok(js.includes('sendVis.textContent = "Confirm Customer & Send"'));
@@ -117,10 +120,12 @@ test("5 confirmed customer leads to Send", () => {
   assert.ok(!/\bpackage\b/i.test(visHtml));
 });
 
-test("6 waiting shows recipient and next automatic event", () => {
-  assert.ok(js.includes("`Signing link sent to ${customerEmail}.`"));
-  assert.ok(step3.includes("The contract will complete automatically after the customer signs."));
-  assert.ok(js.includes("The contract will complete automatically after the customer signs."));
+test("6 waiting copy never claims sent while delivery is in flight", () => {
+  assert.ok(js.includes("function mgSwGuidedDeliveryCopy"));
+  assert.ok(js.includes("Please wait while delivery is confirmed."));
+  assert.ok(js.includes("Sending to Customer"));
+  assert.ok(js.includes("if (emailFailed) return 2"));
+  assert.ok(js.includes('primaryCta: "Retry Sending Email"'));
   assert.ok(step3.includes("Copy Signing Link"));
   assert.ok(!step3.includes("class=\"btn primary\""));
 });
@@ -186,14 +191,104 @@ test("11 accessibility + responsive markers", () => {
   assert.ok(html.includes(".sw-vis-step .sw-vis-now"));
 });
 
-test("12 certificate and PDF stay automatic via existing handlers", () => {
+test("12 automatic documents copy does not promise closed-page work", () => {
+  assert.ok(js.includes("function mgSwCreateAutoDocsSession"));
   assert.ok(js.includes("function maybeAutoPrepareDocuments"));
-  assert.ok(js.includes('$("swIssueCertBtn")?.click()'));
-  assert.ok(js.includes('$("swGeneratePdfBtn")?.click()'));
+  const autoFn = js.slice(
+    js.indexOf("async function runAutoPrepareDocuments"),
+    js.indexOf("function computeSendReadiness")
+  );
+  assert.ok(autoFn.includes("await session.maybePrepare(state.envelope)"));
+  assert.ok(!autoFn.includes(".click()"));
+  assert.ok(!autoFn.includes("swIssueCertBtn"));
+  assert.ok(!autoFn.includes("swGeneratePdfBtn"));
   assert.ok(js.includes("CERT_CREATE_API"));
   assert.ok(js.includes("PDF_CREATE_API"));
-  assert.ok(step4.includes("Your legal certificate is being prepared automatically."));
-  assert.ok(step5.includes("Your signed documents are being prepared automatically."));
+  assert.ok(
+    html.includes("Final documents are prepared automatically when Contract Workflow is open.")
+  );
+  assert.ok(!step4.includes("Your legal certificate is being prepared automatically."));
+});
+
+function loadGuidedHelpers() {
+  const begin = js.indexOf("/* MG_SW_STATUS_BEGIN */");
+  const end = js.indexOf("/* MG_SW_STATUS_END */");
+  assert.ok(begin >= 0 && end > begin, "status helpers missing");
+  const chunk = js.slice(begin, end + "/* MG_SW_STATUS_END */".length);
+  const ctx = {};
+  vm.runInNewContext(
+    `${chunk}
+this.mgSwIsEmailAlreadySent = mgSwIsEmailAlreadySent;
+this.mgSwIsEmailDeliveryFailed = mgSwIsEmailDeliveryFailed;
+this.mgSwIsEmailDeliveryInFlight = mgSwIsEmailDeliveryInFlight;
+this.mgSwGuidedDeliveryCopy = mgSwGuidedDeliveryCopy;
+`,
+    ctx
+  );
+  return ctx;
+}
+
+function claimsSent(text) {
+  return /\bsent\b/i.test(String(text || ""));
+}
+
+test("13 emailUiStatus queued/sending/accepted_db_pending never claim sent", () => {
+  const h = loadGuidedHelpers();
+  ["queued", "sending", "accepted_db_pending"].forEach((status) => {
+    const copy = h.mgSwGuidedDeliveryCopy(status, { email: "ada@example.com" });
+    assert.strictEqual(copy.panel, "sending", status);
+    assert.strictEqual(copy.visualStep, 3, status);
+    assert.strictEqual(copy.title, "Sending to Customer", status);
+    assert.strictEqual(
+      copy.now,
+      "Sending the signing link to ada@example.com…"
+    );
+    assert.strictEqual(copy.lead, "Please wait while delivery is confirmed.");
+    assert.strictEqual(copy.emailProgress, "current", status);
+    assert.strictEqual(copy.claimSent, false, status);
+    assert.ok(!claimsSent(copy.title), status + " title");
+    assert.ok(!claimsSent(copy.now), status + " now");
+    assert.ok(!claimsSent(copy.lead), status + " lead");
+    assert.ok(h.mgSwIsEmailDeliveryInFlight(status));
+    assert.ok(!h.mgSwIsEmailAlreadySent(status));
+  });
+});
+
+test("14 emailUiStatus sent claims sent and waits for customer", () => {
+  const h = loadGuidedHelpers();
+  const copy = h.mgSwGuidedDeliveryCopy("sent", { email: "ada@example.com" });
+  assert.strictEqual(copy.panel, "sent");
+  assert.strictEqual(copy.visualStep, 3);
+  assert.strictEqual(copy.title, "Wait for Customer");
+  assert.strictEqual(copy.now, "Signing link sent to ada@example.com.");
+  assert.strictEqual(
+    copy.why,
+    "The contract will complete automatically after the customer signs."
+  );
+  assert.strictEqual(copy.emailProgress, "complete");
+  assert.strictEqual(copy.claimSent, true);
+  assert.ok(h.mgSwIsEmailAlreadySent("sent"));
+});
+
+test("15 emailUiStatus failed returns to retry without creating another customer", () => {
+  const h = loadGuidedHelpers();
+  const copy = h.mgSwGuidedDeliveryCopy("failed", { email: "ada@example.com" });
+  assert.strictEqual(copy.panel, "failed");
+  assert.strictEqual(copy.visualStep, 2);
+  assert.strictEqual(copy.now, "Email delivery needs attention.");
+  assert.strictEqual(copy.primaryCta, "Retry Sending Email");
+  assert.strictEqual(copy.secondaryCta, "Copy Signing Link");
+  assert.strictEqual(copy.claimSent, false);
+  assert.ok(!claimsSent(copy.now));
+  assert.ok(js.includes("swVisRetryPrimaryBtn"));
+  assert.ok(js.includes("openConfirmCustomerModal()"));
+  const retryHandler = js.slice(
+    js.indexOf('$("swVisRetryPrimaryBtn")'),
+    js.indexOf('$("swVisContinueBtn")')
+  );
+  assert.ok(!retryHandler.includes("openConfirmCustomerModal"));
+  assert.ok(!retryHandler.includes("ensureDraftEnvelope"));
+  assert.ok(!retryHandler.includes("saveGuidedCustomerSigner"));
 });
 
 console.log("");

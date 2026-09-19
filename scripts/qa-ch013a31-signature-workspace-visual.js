@@ -129,7 +129,8 @@ test("8 no backend files modified", () => {
     .filter((f) =>
       !f.includes("qa-ch013a31") &&
       !f.includes("qa-ch013a-tenant-certificate-surface") &&
-      !f.includes("qa-ch013a-guided-contract-signing")
+      !f.includes("qa-ch013a-guided-contract-signing") &&
+      !f.includes("qa-ch013a-autodocs-behavior")
     );
   assert.deepStrictEqual(files, [], "unexpected non-UI diffs: " + files.join(", "));
 });
@@ -144,6 +145,7 @@ test("9 only UI files changed in working tree for this task", () => {
     "scripts/qa-ch013a31-signature-workspace-visual.js",
     "scripts/qa-ch013a-tenant-certificate-surface.js",
     "scripts/qa-ch013a-guided-contract-signing.js",
+    "scripts/qa-ch013a-autodocs-behavior.js",
   ]);
   diff.stdout
     .split(/\r?\n/)

@@ -32,7 +32,200 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
     ? "The signing request is prepared. No email has been sent yet. Copy the secure signing link for the customer."
     : "The signing request is prepared. No email has been sent yet.";
 }
+
+function mgSwGuidedDeliveryCopy(emailUiStatus, opts) {
+  const email =
+    String((opts && opts.email) || "").trim() || "the customer";
+  if (mgSwIsEmailDeliveryInFlight(emailUiStatus)) {
+    return {
+      panel: "sending",
+      visualStep: 3,
+      title: "Sending to Customer",
+      now: "Sending the signing link to " + email + "…",
+      lead: "Please wait while delivery is confirmed.",
+      why: "Please wait while delivery is confirmed.",
+      emailProgress: "current",
+      claimSent: false,
+      primaryCta: null,
+      secondaryCta: "Copy Signing Link",
+    };
+  }
+  if (mgSwIsEmailAlreadySent(emailUiStatus)) {
+    return {
+      panel: "sent",
+      visualStep: 3,
+      title: "Wait for Customer",
+      now: "Signing link sent to " + email + ".",
+      lead: "The contract will complete automatically after the customer signs.",
+      why: "The contract will complete automatically after the customer signs.",
+      emailProgress: "complete",
+      claimSent: true,
+      primaryCta: null,
+      secondaryCta: "Copy Signing Link",
+    };
+  }
+  if (mgSwIsEmailDeliveryFailed(emailUiStatus)) {
+    return {
+      panel: "failed",
+      visualStep: 2,
+      title: "Confirm Customer & Send",
+      now: "Email delivery needs attention.",
+      lead: "Retry sending, or copy the signing link for the customer.",
+      why: "Retry sending, or copy the signing link for the customer.",
+      emailProgress: "waiting",
+      claimSent: false,
+      primaryCta: "Retry Sending Email",
+      secondaryCta: "Copy Signing Link",
+    };
+  }
+  return {
+    panel: "ready",
+    visualStep: 2,
+    title: "Confirm Customer & Send",
+    now: "Confirm the customer’s name and email, then send the signing link.",
+    lead: "The customer is not created until you confirm and send.",
+    why: "Next: wait for the customer to sign. The contract will complete automatically.",
+    emailProgress: "waiting",
+    claimSent: false,
+    primaryCta: "Confirm Customer & Send",
+    secondaryCta: "Copy Signing Link",
+  };
+}
 /* MG_SW_STATUS_END */
+
+/* MG_SW_AUTODOCS_BEGIN */
+function mgSwCreateAutoDocsSession(io) {
+  const hooks = io || {};
+  const maxAttempts = Number(hooks.maxAttempts) > 0 ? Number(hooks.maxAttempts) : 3;
+  const session = {
+    busy: false,
+    hold: false,
+    attempts: 0,
+    lastError: null,
+    envelopeId: null,
+    certs: Array.isArray(hooks.initialCertificates) ? hooks.initialCertificates.slice() : [],
+    pdfs: Array.isArray(hooks.initialPdfs) ? hooks.initialPdfs.slice() : [],
+  };
+
+  function snapshot() {
+    return {
+      busy: session.busy,
+      hold: session.hold,
+      attempts: session.attempts,
+      lastError: session.lastError,
+      certId: session.certs[0] && session.certs[0].id,
+      pdfId: session.pdfs[0] && session.pdfs[0].id,
+      step:
+        session.certs[0] && session.certs[0].id && session.pdfs[0] && session.pdfs[0].id
+          ? 6
+          : session.certs[0] && session.certs[0].id
+            ? 5
+            : 4,
+    };
+  }
+
+  function resetForEnvelope(envelopeId) {
+    const id = String(envelopeId || "");
+    if (id && id === session.envelopeId) return;
+    session.envelopeId = id || null;
+    session.busy = false;
+    session.hold = false;
+    session.attempts = 0;
+    session.lastError = null;
+  }
+
+  function retry() {
+    session.hold = false;
+    session.lastError = null;
+  }
+
+  function hydrate(certs, pdfs) {
+    session.certs = Array.isArray(certs) ? certs.slice() : [];
+    session.pdfs = Array.isArray(pdfs) ? pdfs.slice() : [];
+  }
+
+  async function maybePrepare(envelope) {
+    const envSt = String((envelope && envelope.status) || "").toLowerCase();
+    const posts = [];
+    const loads = [];
+    if (envSt !== "completed") {
+      return { ok: true, didWork: false, reason: "not_completed", posts, loads, ...snapshot() };
+    }
+    resetForEnvelope(envelope && envelope.id);
+    if (session.certs[0] && session.certs[0].id && session.lastError === "certificate") {
+      session.hold = false;
+      session.lastError = null;
+    }
+    if (session.pdfs[0] && session.pdfs[0].id && session.lastError === "pdf") {
+      session.hold = false;
+      session.lastError = null;
+    }
+    if (session.certs[0] && session.certs[0].id && session.pdfs[0] && session.pdfs[0].id) {
+      session.hold = false;
+      return { ok: true, didWork: false, reason: "complete", posts, loads, ...snapshot() };
+    }
+    if (session.busy) {
+      return { ok: true, didWork: false, reason: "busy", posts, loads, ...snapshot() };
+    }
+    if (session.hold) {
+      return { ok: true, didWork: false, reason: "hold", posts, loads, ...snapshot() };
+    }
+    if (session.attempts >= maxAttempts) {
+      session.hold = true;
+      return { ok: true, didWork: false, reason: "limit", posts, loads, ...snapshot() };
+    }
+
+    session.busy = true;
+    try {
+      if (!(session.certs[0] && session.certs[0].id)) {
+        session.attempts += 1;
+        posts.push("certificate-create");
+        const res = await hooks.createCertificate(envelope);
+        if (!res || res.ok !== true) {
+          session.lastError = "certificate";
+          session.hold = true;
+          return { ok: false, didWork: true, reason: "certificate_failed", posts, loads, ...snapshot() };
+        }
+        loads.push("certificates");
+        session.certs = (await hooks.loadCertificates(envelope)) || [];
+        if (!(session.certs[0] && session.certs[0].id)) {
+          session.lastError = "certificate";
+          session.hold = true;
+          return { ok: false, didWork: true, reason: "certificate_failed", posts, loads, ...snapshot() };
+        }
+      }
+      if (session.certs[0] && session.certs[0].id && !(session.pdfs[0] && session.pdfs[0].id)) {
+        session.attempts += 1;
+        posts.push("pdf-create");
+        const res = await hooks.createPdf(envelope);
+        if (!res || res.ok !== true) {
+          session.lastError = "pdf";
+          session.hold = true;
+          return { ok: false, didWork: true, reason: "pdf_failed", posts, loads, ...snapshot() };
+        }
+        loads.push("pdfs");
+        session.pdfs = (await hooks.loadPdfs(envelope)) || [];
+        if (!(session.pdfs[0] && session.pdfs[0].id)) {
+          session.lastError = "pdf";
+          session.hold = true;
+          return { ok: false, didWork: true, reason: "pdf_failed", posts, loads, ...snapshot() };
+        }
+      }
+      return { ok: true, didWork: posts.length > 0, reason: "complete", posts, loads, ...snapshot() };
+    } finally {
+      session.busy = false;
+    }
+  }
+
+  return {
+    maybePrepare,
+    retry,
+    hydrate,
+    resetForEnvelope,
+    getState: snapshot,
+  };
+}
+/* MG_SW_AUTODOCS_END */
 
 (() => {
   "use strict";
@@ -89,6 +282,7 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
     autoDocAttempts: 0,
     autoDocsEnvelopeId: null,
     autoPreparingDocs: false,
+    autoDocsHold: false,
   };
 
   function $(id) {
@@ -478,25 +672,66 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
   }
 
   function maybeAutoPrepareDocuments(step) {
-    const envId = String(state.envelope?.id || "");
-    if (envId && envId !== state.autoDocsEnvelopeId) {
-      state.autoDocsEnvelopeId = envId;
-      state.autoDocAttempts = 0;
-      state.autoDocsBusy = false;
-    }
     if (step < 4 || step > 5) return;
-    if (String(state.envelope?.status || "").toLowerCase() !== "completed") return;
-    const cert = state.certificates[0];
-    const art = state.artifacts[0];
-    if (cert?.id && art?.id) return;
-    if (state.autoDocsBusy || state.autoDocAttempts >= 3) return;
-    state.autoDocAttempts += 1;
-    state.autoDocsBusy = true;
-    state.autoPreparingDocs = true;
-    window.setTimeout(() => {
-      if (!state.certificates[0]?.id) $("swIssueCertBtn")?.click();
-      else $("swGeneratePdfBtn")?.click();
-    }, 40);
+    if (autoDocsSkipRenderKick) return;
+    void runAutoPrepareDocuments();
+  }
+
+  let autoDocsSession = null;
+  let autoDocsSkipRenderKick = false;
+
+  function getAutoDocsSession() {
+    if (autoDocsSession) return autoDocsSession;
+    autoDocsSession = mgSwCreateAutoDocsSession({
+      createCertificate: async (envelope) => {
+        const res = await api(CERT_CREATE_API, {
+          method: "POST",
+          body: JSON.stringify({ envelope_id: envelope.id }),
+        });
+        return { ok: Boolean(res && res.ok && res.data && res.data.ok === true) };
+      },
+      loadCertificates: async (envelope) => {
+        await loadCertificates(envelope.id);
+        return (state.certificates || []).slice();
+      },
+      createPdf: async (envelope) => {
+        const res = await api(PDF_CREATE_API, {
+          method: "POST",
+          body: JSON.stringify({ envelope_id: envelope.id }),
+        });
+        return { ok: Boolean(res && res.ok && res.data && res.data.ok === true) };
+      },
+      loadPdfs: async (envelope) => {
+        await loadPdfs(envelope.id);
+        return (state.artifacts || []).slice();
+      },
+    });
+    return autoDocsSession;
+  }
+
+  async function runAutoPrepareDocuments() {
+    const session = getAutoDocsSession();
+    session.hydrate(state.certificates, state.artifacts);
+    const result = await session.maybePrepare(state.envelope);
+    const st = session.getState();
+    state.autoDocsBusy = st.busy;
+    state.autoDocAttempts = st.attempts;
+    state.autoDocsHold = st.hold;
+    if (result.reason === "busy" || result.reason === "hold" || result.reason === "not_completed") {
+      return result;
+    }
+    if (result.ok === false) {
+      toast("We could not prepare your documents. You can try again.", "error");
+    }
+    if (result.didWork) {
+      autoDocsSkipRenderKick = true;
+      try {
+        renderAll();
+      } finally {
+        autoDocsSkipRenderKick = false;
+      }
+    }
+    return result;
   }
 
   function computeSendReadiness() {
@@ -1447,10 +1682,12 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
     const completed = envSt === "completed";
     const emailInFlight = mgSwIsEmailDeliveryInFlight(emailUi);
     const emailSent = mgSwIsEmailAlreadySent(emailUi);
+    const emailFailed = mgSwIsEmailDeliveryFailed(emailUi);
 
     if (completed && cert?.id && art?.id) return 6;
     if (completed && cert?.id) return 5;
     if (completed) return 4;
+    if (emailFailed) return 2;
     if (emailSent || emailInFlight) return 3;
     if (envSt === "opened") return 3;
     if (isLinkReady()) return 2;
@@ -1587,7 +1824,9 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
       "",
       "Review & Sign",
       "Confirm Customer",
-      "Wait for Customer",
+      mgSwIsEmailDeliveryInFlight(state.emailUiStatus)
+        ? "Sending to Customer"
+        : "Wait for Customer",
       "Legal Certificate",
       "Signed Documents",
       "Complete",
@@ -1618,7 +1857,9 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
           : active === 4
             ? "Preparing legal certificate"
             : active === 3
-              ? "Waiting for Customer Signature"
+              ? mgSwIsEmailDeliveryInFlight(state.emailUiStatus)
+                ? "Sending to Customer"
+                : "Waiting for Customer Signature"
               : active === 2
                 ? "Confirm Customer & Send"
                 : "Review & Sign"
@@ -1700,105 +1941,68 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
       "swVis2Expires",
       fmtWhen(state.envelope?.expires_at || state.package?.expires_at)
     );
+    const AUTO_DOCS_COPY =
+      "Final documents are prepared automatically when Contract Workflow is open.";
+    const deliveryCopy = mgSwGuidedDeliveryCopy(state.emailUiStatus, {
+      email: guidedCustomerEmail(),
+    });
+
     const sendVis = $("swVisSendContractBtn");
+    const retryPrimary = $("swVisRetryPrimaryBtn");
     const emailUiEarly = String(state.emailUiStatus || "").toLowerCase();
     const emailAlreadySent = mgSwIsEmailAlreadySent(emailUiEarly);
     const emailFailed = mgSwIsEmailDeliveryFailed(emailUiEarly);
-    const retrySrc = $("swEmailRetryBtn");
-    const showRetry = Boolean(retrySrc && !retrySrc.hidden);
+    const emailInFlight = mgSwIsEmailDeliveryInFlight(emailUiEarly);
     if (sendVis) {
-      sendVis.hidden = emailAlreadySent || showRetry;
+      sendVis.hidden = emailAlreadySent || emailFailed || emailInFlight;
       sendVis.disabled = Boolean(state.emailBusy);
       sendVis.textContent = "Confirm Customer & Send";
     }
+    if (retryPrimary) {
+      retryPrimary.hidden = !emailFailed;
+      retryPrimary.disabled = Boolean(state.emailBusy) || !emailFailed;
+      retryPrimary.textContent = "Retry Sending Email";
+    }
     syncVisAction("swVisCopyLinkBtn", "swCopyLinkBtn");
-    syncVisAction("swVisRetryEmailBtn", "swEmailRetryBtn", {
-      label: "Retry Sending Email",
-    });
+    const retryGhost = $("swVisRetryEmailBtn");
+    if (retryGhost) retryGhost.hidden = true;
     const emailStatusWrap = $("swVisEmailStatusWrap");
     const emailStatus = $("swVisEmailStatus");
-    const srcStatusWrap = $("swEmailStatusWrap");
-    const srcStatus = $("swEmailStatus");
-    if (emailStatusWrap && srcStatusWrap) {
-      emailStatusWrap.hidden = srcStatusWrap.hidden;
+    if (emailStatusWrap) {
+      emailStatusWrap.hidden = deliveryCopy.panel === "ready";
     }
-    if (emailStatus && srcStatus) {
-      const raw = String(srcStatus.textContent || "").trim();
-      const nextMap = {
-        "Sending...": "Sending the contract email…",
-        "Email sent": "Wait for your customer to open and sign",
-        "Email delivery needs attention": "Retry sending the contract email",
-        "Email Signing Link": "Send the contract email",
-      };
-      emailStatus.textContent = nextMap[raw] || raw || "—";
+    if (emailStatus) {
+      emailStatus.textContent = deliveryCopy.lead || "—";
     }
     const helper2 = $("swVis2Helper");
     if (helper2) helper2.hidden = !emailAlreadySent;
-    setText(
-      "swVis2Now",
-      "Confirm the customer’s name and email, then send the signing link."
-    );
-    if (emailAlreadySent) {
-      setText("swVis2Lead", "The signing link was sent. Wait for the customer.");
-      setText(
-        "swVis2Why",
-        "The contract will complete automatically after the customer signs."
-      );
-    } else if (emailFailed) {
-      setText(
-        "swVis2Lead",
-        "The signing email could not be delivered. Retry sending the email."
-      );
-      setText(
-        "swVis2Why",
-        "Retry sending, or copy the signing link for the customer."
-      );
-    } else {
-      setText(
-        "swVis2Lead",
-        "The customer is not created until you confirm and send."
-      );
-      setText(
-        "swVis2Why",
-        "Next: wait for the customer to sign. The contract will complete automatically."
-      );
-    }
+    setText("swVis2Title", deliveryCopy.visualStep === 2 ? deliveryCopy.title : "Confirm Customer & Send");
+    setText("swVis2Now", deliveryCopy.panel === "failed" ? deliveryCopy.now : "Confirm the customer’s name and email, then send the signing link.");
+    setText("swVis2Lead", deliveryCopy.lead);
+    setText("swVis2Why", deliveryCopy.why);
 
     // Step 3 progress
-    const emailUi = emailUiEarly;
-    const emailDone = emailAlreadySent;
-    const emailCurrent =
-      emailUi === "queued" ||
-      emailUi === "sending" ||
-      emailUi === "accepted_db_pending";
+    const emailDone = deliveryCopy.emailProgress === "complete";
+    const emailCurrent = deliveryCopy.emailProgress === "current";
     const opened = envSt === "opened" || envSt === "completed";
     const signed = envSt === "completed";
-    const customerEmail = guidedCustomerEmail() || "the customer";
-    setText("swVis3Now", `Signing link sent to ${customerEmail}.`);
-    if (signed) {
-      setText("swVis3Lead", "Your customer signed. Documents are being prepared automatically.");
-      setText(
-        "swVis3Why",
-        "The contract will complete automatically after the customer signs."
-      );
+    setText("swVis3Title", deliveryCopy.visualStep === 3 ? deliveryCopy.title : "Wait for Customer");
+    setText("swVis3Now", deliveryCopy.now);
+    if (deliveryCopy.panel === "sending") {
+      setText("swVis3Lead", deliveryCopy.lead);
+      setText("swVis3Why", deliveryCopy.why);
+    } else if (signed) {
+      setText("swVis3Lead", AUTO_DOCS_COPY);
+      setText("swVis3Why", AUTO_DOCS_COPY);
     } else if (opened) {
       setText(
         "swVis3Lead",
         "Your customer opened the contract. Wait for them to finish signing."
       );
-      setText(
-        "swVis3Why",
-        "The contract will complete automatically after the customer signs."
-      );
+      setText("swVis3Why", deliveryCopy.why);
     } else {
-      setText(
-        "swVis3Lead",
-        `Signing link sent to ${customerEmail}.`
-      );
-      setText(
-        "swVis3Why",
-        "The contract will complete automatically after the customer signs."
-      );
+      setText("swVis3Lead", deliveryCopy.lead);
+      setText("swVis3Why", deliveryCopy.why);
     }
     syncVisAction("swVis3CopyLinkBtn", "swCopyLinkBtn");
     setProgRow(
@@ -1825,26 +2029,20 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
 
     // Step 4 certificate
     const certReady = Boolean(cert?.id);
-    const showCertFallback = !certReady && state.autoDocAttempts >= 3;
+    const autoDocsState = autoDocsSession ? autoDocsSession.getState() : { hold: false, attempts: 0 };
+    const showCertFallback = !certReady && (state.autoDocsHold || autoDocsState.hold || autoDocsState.attempts >= 3);
     setText("swVis4Title", "Legal Certificate");
     setText(
       "swVis4Now",
-      certReady
-        ? "Your legal certificate is ready."
-        : "Your legal certificate is being prepared automatically."
+      certReady ? "Your legal certificate is ready." : AUTO_DOCS_COPY
     );
     setText(
       "swVis4Lead",
       certReady
         ? "View or download the certificate for your records."
-        : "This happens automatically after the customer signs. You do not need to take action."
+        : "Keep this page open. You do not need to create a certificate."
     );
-    setText(
-      "swVis4Why",
-      certReady
-        ? "Next: signed documents are prepared automatically."
-        : "Next: signed documents are prepared automatically."
-    );
+    setText("swVis4Why", AUTO_DOCS_COPY);
     syncVisAction("swVisIssueCertBtn", "swIssueCertBtn", {
       forceHidden: !showCertFallback,
       label: "Create Certificate",
@@ -1861,26 +2059,19 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
 
     // Step 5 signed PDF
     const pdfReady = Boolean(art?.id);
-    const showPdfFallback = !pdfReady && state.autoDocAttempts >= 3;
+    const showPdfFallback = !pdfReady && (state.autoDocsHold || autoDocsState.hold || autoDocsState.attempts >= 3);
     setText("swVis5Title", "Signed Documents");
     setText(
       "swVis5Now",
-      pdfReady
-        ? "Your signed documents are ready."
-        : "Your signed documents are being prepared automatically."
+      pdfReady ? "Your signed documents are ready." : AUTO_DOCS_COPY
     );
     setText(
       "swVis5Lead",
       pdfReady
         ? "View or download the signed contract."
-        : "This happens automatically. You do not need to create a PDF."
+        : "Keep this page open. You do not need to create a PDF."
     );
-    setText(
-      "swVis5Why",
-      pdfReady
-        ? "Next: Contract Signing Complete."
-        : "Next: Contract Signing Complete."
-    );
+    setText("swVis5Why", "Next: Contract Signing Complete.");
     syncVisAction("swVisGeneratePdfBtn", "swGeneratePdfBtn", {
       forceHidden: !showPdfFallback,
       label: "Create Signed PDF",
@@ -3150,6 +3341,13 @@ function mgSwResolveSigningEmailMessage(emailUiStatus, opts) {
     $("swVisSendContractBtn")?.addEventListener("click", (ev) => {
       ev.preventDefault();
       openConfirmCustomerModal();
+    });
+    $("swVisRetryPrimaryBtn")?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      const retry = $("swEmailRetryBtn");
+      const email = $("swEmailLinkBtn");
+      if (retry && !retry.hidden && !retry.disabled) retry.click();
+      else email?.click();
     });
 
     $("swVisContinueBtn")?.addEventListener("click", () => {

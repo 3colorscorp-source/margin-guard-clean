@@ -2106,6 +2106,7 @@
             </div>
             <div class="sw-actions">
               <button type="button" class="btn primary" id="swVisSendContractBtn" aria-describedby="swVis2Now swVis2Why">Confirm Customer & Send</button>
+              <button type="button" class="btn primary" id="swVisRetryPrimaryBtn" hidden>Retry Sending Email</button>
             </div>
           </div>
           <div class="sw-vis-col-side">
@@ -2130,7 +2131,7 @@
           <div class="sw-vis-col-main">
             <p class="sw-vis-step-id">Step 3</p>
             <h3 id="swVis3Title">Wait for Customer</h3>
-            <p class="sw-vis-now" id="swVis3Now" aria-live="polite">Signing link sent to the customer.</p>
+            <p class="sw-vis-now" id="swVis3Now" aria-live="polite">Please wait while delivery is confirmed.</p>
             <p class="sw-vis-lead" id="swVis3Lead">Your customer has the contract. Wait while they review and sign.</p>
             <ul class="sw-vis-progress" id="swVisSigProgress">
               <li id="swVisProgEmail"><span class="sw-vis-mark" aria-hidden="true">○</span><span>Email sent</span></li>
@@ -2154,8 +2155,8 @@
           <div class="sw-vis-col-main">
             <p class="sw-vis-step-id">Step 4</p>
             <h3 id="swVis4Title">Legal Certificate</h3>
-            <p class="sw-vis-now" id="swVis4Now" aria-live="polite">Your legal certificate is being prepared automatically.</p>
-            <p class="sw-vis-lead" id="swVis4Lead">This happens automatically after the customer signs. You do not need to take action.</p>
+            <p class="sw-vis-now" id="swVis4Now" aria-live="polite">Final documents are prepared automatically when Contract Workflow is open.</p>
+            <p class="sw-vis-lead" id="swVis4Lead">Keep this page open. You do not need to create a certificate.</p>
             <div class="sw-actions">
               <button type="button" class="btn primary" id="swVisIssueCertBtn" hidden>Create Certificate</button>
             </div>
@@ -2166,7 +2167,7 @@
                 <button type="button" class="btn ghost" id="swVisViewCertBtn">View Certificate</button>
                 <button type="button" class="btn ghost" id="swVisDownloadCertBtn">Download Certificate</button>
               </div>
-              <p class="sw-vis-why" id="swVis4Why">Next: signed documents are prepared automatically.</p>
+              <p class="sw-vis-why" id="swVis4Why">Final documents are prepared automatically when Contract Workflow is open.</p>
             </div>
           </div>
         </div>
@@ -2177,8 +2178,8 @@
           <div class="sw-vis-col-main">
             <p class="sw-vis-step-id">Step 5</p>
             <h3 id="swVis5Title">Signed Documents</h3>
-            <p class="sw-vis-now" id="swVis5Now" aria-live="polite">Your signed documents are being prepared automatically.</p>
-            <p class="sw-vis-lead" id="swVis5Lead">This happens automatically. You do not need to create a PDF.</p>
+            <p class="sw-vis-now" id="swVis5Now" aria-live="polite">Final documents are prepared automatically when Contract Workflow is open.</p>
+            <p class="sw-vis-lead" id="swVis5Lead">Keep this page open. You do not need to create a PDF.</p>
             <div class="sw-actions">
               <button type="button" class="btn primary" id="swVisGeneratePdfBtn" hidden>Create Signed PDF</button>
             </div>
