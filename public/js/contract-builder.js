@@ -3226,7 +3226,9 @@
 
   function formatStructuredAddress(parts) {
     const line1 = [parts.line1, parts.line2].filter(Boolean).join(", ");
-    const cityLine = [parts.city, parts.state, parts.zip].filter(Boolean).join(", ");
+    const cityLine = [parts.city, [parts.state, parts.zip].filter(Boolean).join(" ")]
+      .filter(Boolean)
+      .join(", ");
     return [line1, cityLine].filter(Boolean).join("\n");
   }
 
@@ -3259,6 +3261,28 @@
       unknown: "Unknown",
     };
     return map[status] || status || "Unknown";
+  }
+
+  const US_STATE_NAMES = {
+    AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+    CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+    HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+    KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+    MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri",
+    MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+    NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio",
+    OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina",
+    SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont",
+    VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+    DC: "District of Columbia",
+  };
+
+  function contractorLicenseHeading(state) {
+    const raw = String(state || "").trim();
+    if (!raw) return "Contractor License #:";
+    const key = raw.toUpperCase();
+    const full = US_STATE_NAMES[key] || raw;
+    return `${full} Contractor License #:`;
   }
 
   function languageLabel(code) {
@@ -4166,7 +4190,16 @@
     // Branding fallback still supplies the value; do not expose source labels to the customer.
 
     const dba = p?.dbaName || "";
-    setText("cbLegalDba", dba || "—");
+    const dbaArticle = $("cbLegalDba");
+    if (dbaArticle) {
+      if (dba && dba !== namePick.text) {
+        dbaArticle.hidden = false;
+        dbaArticle.textContent = `DBA: ${dba}`;
+      } else {
+        dbaArticle.hidden = true;
+        dbaArticle.textContent = "";
+      }
+    }
     const dbaLine = $("cbBizDba");
     if (dbaLine) {
       if (dba && dba !== namePick.text) {
@@ -4205,10 +4238,19 @@
     const hideLicenseDetails =
       p &&
       (p.contractorLicenseStatus === "exempt" || p.contractorLicenseStatus === "not_required");
-    setText(
-      "cbLicenseNumber",
-      hideLicenseDetails ? "Not applicable" : p?.contractorLicenseNumber || "—"
-    );
+    const licenseNumber = hideLicenseDetails
+      ? ""
+      : String(p?.contractorLicenseNumber || "").trim();
+    const licenseLabelEl = $("cbLicenseLabel");
+    if (licenseLabelEl) {
+      licenseLabelEl.textContent = contractorLicenseHeading(
+        p?.contractorLicenseState || p?.businessState
+      );
+    }
+    const licenseNumEl = $("cbLicenseNumber");
+    if (licenseNumEl) licenseNumEl.textContent = licenseNumber;
+    const licenseLine = $("cbLicenseLine");
+    if (licenseLine) licenseLine.hidden = !licenseNumber;
     setText(
       "cbLicenseClass",
       hideLicenseDetails ? "Not applicable" : p?.contractorLicenseClassification || "—"
@@ -4234,7 +4276,11 @@
     setText("cbWcCarrier", p?.workersCompCarrier || "—");
     setMaskedField("cbWcPolicy", p?.workersCompPolicyNumber || "");
 
-    setText("cbSignerName", p?.authorizedSignerName || "—");
+    const signerName = String(p?.authorizedSignerName || "").trim();
+    const signerNameEl = $("cbSignerName");
+    if (signerNameEl) signerNameEl.textContent = signerName;
+    const contractorLine = $("cbContractorNameLine");
+    if (contractorLine) contractorLine.hidden = !signerName;
     setText("cbSignerTitle", p?.authorizedSignerTitle || "—");
     setText("cbServiceState", p?.primaryServiceState || "—");
     setText("cbTimezone", p?.timezone || "—");
@@ -4244,9 +4290,7 @@
     if (signerRef) {
       if (p?.authorizedSignerName) {
         signerRef.hidden = false;
-        signerRef.textContent = p.authorizedSignerTitle
-          ? `Authorized signer: ${p.authorizedSignerName}, ${p.authorizedSignerTitle}`
-          : `Authorized signer: ${p.authorizedSignerName}`;
+        signerRef.textContent = `Authorized signer: ${p.authorizedSignerName}`;
       } else {
         signerRef.hidden = true;
         signerRef.textContent = "";
