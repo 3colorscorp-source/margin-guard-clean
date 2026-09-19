@@ -198,7 +198,8 @@ test("12 automatic documents copy does not promise closed-page work", () => {
     js.indexOf("async function runAutoPrepareDocuments"),
     js.indexOf("function computeSendReadiness")
   );
-  assert.ok(autoFn.includes("await session.maybePrepare(state.envelope)"));
+  assert.ok(autoFn.includes("session.maybePrepare(envelope)"));
+  assert.ok(autoFn.includes("mgSwShouldApplyAutoDocsResult"));
   assert.ok(!autoFn.includes(".click()"));
   assert.ok(!autoFn.includes("swIssueCertBtn"));
   assert.ok(!autoFn.includes("swGeneratePdfBtn"));

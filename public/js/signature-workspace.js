@@ -94,126 +94,304 @@ function mgSwGuidedDeliveryCopy(emailUiStatus, opts) {
 /* MG_SW_STATUS_END */
 
 /* MG_SW_AUTODOCS_BEGIN */
+function mgSwShouldApplyAutoDocsResult(result, currentEnvelopeId) {
+  if (!result || result.stale === true) return false;
+  if (!result.envelopeId) return false;
+  return String(result.envelopeId) === String(currentEnvelopeId || "");
+}
+
 function mgSwCreateAutoDocsSession(io) {
   const hooks = io || {};
   const maxAttempts = Number(hooks.maxAttempts) > 0 ? Number(hooks.maxAttempts) : 3;
-  const session = {
-    busy: false,
-    hold: false,
-    attempts: 0,
-    lastError: null,
-    envelopeId: null,
-    certs: Array.isArray(hooks.initialCertificates) ? hooks.initialCertificates.slice() : [],
-    pdfs: Array.isArray(hooks.initialPdfs) ? hooks.initialPdfs.slice() : [],
-  };
+  const lanes = new Map();
+  let generation = 0;
+  let currentEnvelopeId = null;
 
-  function snapshot() {
+  function liveEnvelopeId() {
+    if (typeof hooks.getCurrentEnvelopeId === "function") {
+      return String(hooks.getCurrentEnvelopeId() || "");
+    }
+    return String(currentEnvelopeId || "");
+  }
+
+  function getLane(envelopeId) {
+    const id = String(envelopeId || "");
+    if (!id) return null;
+    if (!lanes.has(id)) {
+      const seedFromHooks = lanes.size === 0;
+      lanes.set(id, {
+        busy: false,
+        hold: false,
+        attempts: 0,
+        lastError: null,
+        runGeneration: 0,
+        certs:
+          seedFromHooks && Array.isArray(hooks.initialCertificates)
+            ? hooks.initialCertificates.slice()
+            : [],
+        pdfs:
+          seedFromHooks && Array.isArray(hooks.initialPdfs)
+            ? hooks.initialPdfs.slice()
+            : [],
+      });
+    }
+    return lanes.get(id);
+  }
+
+  function snapshotLane(lane, envelopeId) {
+    const row = lane || {
+      busy: false,
+      hold: false,
+      attempts: 0,
+      lastError: null,
+      certs: [],
+      pdfs: [],
+    };
     return {
-      busy: session.busy,
-      hold: session.hold,
-      attempts: session.attempts,
-      lastError: session.lastError,
-      certId: session.certs[0] && session.certs[0].id,
-      pdfId: session.pdfs[0] && session.pdfs[0].id,
+      busy: row.busy,
+      hold: row.hold,
+      attempts: row.attempts,
+      lastError: row.lastError,
+      generation,
+      envelopeId: envelopeId != null ? String(envelopeId || "") : currentEnvelopeId,
+      certId: row.certs[0] && row.certs[0].id,
+      pdfId: row.pdfs[0] && row.pdfs[0].id,
       step:
-        session.certs[0] && session.certs[0].id && session.pdfs[0] && session.pdfs[0].id
+        row.certs[0] && row.certs[0].id && row.pdfs[0] && row.pdfs[0].id
           ? 6
-          : session.certs[0] && session.certs[0].id
+          : row.certs[0] && row.certs[0].id
             ? 5
             : 4,
     };
   }
 
+  function isLive(token, envelopeId) {
+    return Number(token) === generation && String(envelopeId || "") === liveEnvelopeId();
+  }
+
+  function staleResult(envelopeId, token, posts, loads) {
+    return {
+      ...snapshotLane(getLane(envelopeId), envelopeId),
+      ok: true,
+      stale: true,
+      didWork: false,
+      reason: "stale",
+      envelopeId: String(envelopeId || ""),
+      token,
+      posts,
+      loads,
+      certs: null,
+      pdfs: null,
+    };
+  }
+
   function resetForEnvelope(envelopeId) {
     const id = String(envelopeId || "");
-    if (id && id === session.envelopeId) return;
-    session.envelopeId = id || null;
-    session.busy = false;
-    session.hold = false;
-    session.attempts = 0;
-    session.lastError = null;
+    if (id && id === currentEnvelopeId) return generation;
+    generation += 1;
+    currentEnvelopeId = id || null;
+    return generation;
   }
 
-  function retry() {
-    session.hold = false;
-    session.lastError = null;
+  function retry(envelopeId) {
+    const lane = getLane(envelopeId || currentEnvelopeId);
+    if (!lane) return;
+    lane.hold = false;
+    lane.lastError = null;
   }
 
-  function hydrate(certs, pdfs) {
-    session.certs = Array.isArray(certs) ? certs.slice() : [];
-    session.pdfs = Array.isArray(pdfs) ? pdfs.slice() : [];
+  function hydrate(certs, pdfs, envelopeId) {
+    const lane = getLane(envelopeId || currentEnvelopeId);
+    if (!lane) return;
+    lane.certs = Array.isArray(certs) ? certs.slice() : [];
+    lane.pdfs = Array.isArray(pdfs) ? pdfs.slice() : [];
   }
 
   async function maybePrepare(envelope) {
     const envSt = String((envelope && envelope.status) || "").toLowerCase();
+    const envelopeId = String((envelope && envelope.id) || "");
     const posts = [];
     const loads = [];
-    if (envSt !== "completed") {
-      return { ok: true, didWork: false, reason: "not_completed", posts, loads, ...snapshot() };
+    if (envSt !== "completed" || !envelopeId) {
+      return {
+        ok: true,
+        stale: false,
+        didWork: false,
+        reason: "not_completed",
+        envelopeId,
+        posts,
+        loads,
+        ...snapshotLane(getLane(envelopeId), envelopeId),
+      };
     }
-    resetForEnvelope(envelope && envelope.id);
-    if (session.certs[0] && session.certs[0].id && session.lastError === "certificate") {
-      session.hold = false;
-      session.lastError = null;
+    resetForEnvelope(envelopeId);
+    const lane = getLane(envelopeId);
+    if (lane.certs[0] && lane.certs[0].id && lane.lastError === "certificate") {
+      lane.hold = false;
+      lane.lastError = null;
     }
-    if (session.pdfs[0] && session.pdfs[0].id && session.lastError === "pdf") {
-      session.hold = false;
-      session.lastError = null;
+    if (lane.pdfs[0] && lane.pdfs[0].id && lane.lastError === "pdf") {
+      lane.hold = false;
+      lane.lastError = null;
     }
-    if (session.certs[0] && session.certs[0].id && session.pdfs[0] && session.pdfs[0].id) {
-      session.hold = false;
-      return { ok: true, didWork: false, reason: "complete", posts, loads, ...snapshot() };
+    if (lane.certs[0] && lane.certs[0].id && lane.pdfs[0] && lane.pdfs[0].id) {
+      lane.hold = false;
+      return {
+        ok: true,
+        stale: false,
+        didWork: false,
+        reason: "complete",
+        envelopeId,
+        posts,
+        loads,
+        certs: lane.certs.slice(),
+        pdfs: lane.pdfs.slice(),
+        ...snapshotLane(lane, envelopeId),
+      };
     }
-    if (session.busy) {
-      return { ok: true, didWork: false, reason: "busy", posts, loads, ...snapshot() };
+    if (lane.busy) {
+      return {
+        ok: true,
+        stale: false,
+        didWork: false,
+        reason: "busy",
+        envelopeId,
+        posts,
+        loads,
+        ...snapshotLane(lane, envelopeId),
+      };
     }
-    if (session.hold) {
-      return { ok: true, didWork: false, reason: "hold", posts, loads, ...snapshot() };
+    if (lane.hold) {
+      return {
+        ok: true,
+        stale: false,
+        didWork: false,
+        reason: "hold",
+        envelopeId,
+        posts,
+        loads,
+        ...snapshotLane(lane, envelopeId),
+      };
     }
-    if (session.attempts >= maxAttempts) {
-      session.hold = true;
-      return { ok: true, didWork: false, reason: "limit", posts, loads, ...snapshot() };
+    if (lane.attempts >= maxAttempts) {
+      lane.hold = true;
+      return {
+        ok: true,
+        stale: false,
+        didWork: false,
+        reason: "limit",
+        envelopeId,
+        posts,
+        loads,
+        ...snapshotLane(lane, envelopeId),
+      };
     }
 
-    session.busy = true;
+    const token = (generation += 1);
+    lane.busy = true;
+    lane.runGeneration = token;
     try {
-      if (!(session.certs[0] && session.certs[0].id)) {
-        session.attempts += 1;
+      if (!(lane.certs[0] && lane.certs[0].id)) {
+        lane.attempts += 1;
         posts.push("certificate-create");
         const res = await hooks.createCertificate(envelope);
+        if (!isLive(token, envelopeId)) return staleResult(envelopeId, token, posts, loads);
         if (!res || res.ok !== true) {
-          session.lastError = "certificate";
-          session.hold = true;
-          return { ok: false, didWork: true, reason: "certificate_failed", posts, loads, ...snapshot() };
+          lane.lastError = "certificate";
+          lane.hold = true;
+          return {
+            ok: false,
+            stale: false,
+            didWork: true,
+            reason: "certificate_failed",
+            envelopeId,
+            token,
+            posts,
+            loads,
+            ...snapshotLane(lane, envelopeId),
+          };
         }
         loads.push("certificates");
-        session.certs = (await hooks.loadCertificates(envelope)) || [];
-        if (!(session.certs[0] && session.certs[0].id)) {
-          session.lastError = "certificate";
-          session.hold = true;
-          return { ok: false, didWork: true, reason: "certificate_failed", posts, loads, ...snapshot() };
+        const certs = (await hooks.loadCertificates(envelope)) || [];
+        if (!isLive(token, envelopeId)) return staleResult(envelopeId, token, posts, loads);
+        lane.certs = certs;
+        if (!(lane.certs[0] && lane.certs[0].id)) {
+          lane.lastError = "certificate";
+          lane.hold = true;
+          return {
+            ok: false,
+            stale: false,
+            didWork: true,
+            reason: "certificate_failed",
+            envelopeId,
+            token,
+            posts,
+            loads,
+            ...snapshotLane(lane, envelopeId),
+          };
         }
       }
-      if (session.certs[0] && session.certs[0].id && !(session.pdfs[0] && session.pdfs[0].id)) {
-        session.attempts += 1;
+      if (lane.certs[0] && lane.certs[0].id && !(lane.pdfs[0] && lane.pdfs[0].id)) {
+        if (!isLive(token, envelopeId)) return staleResult(envelopeId, token, posts, loads);
+        lane.attempts += 1;
         posts.push("pdf-create");
         const res = await hooks.createPdf(envelope);
+        if (!isLive(token, envelopeId)) return staleResult(envelopeId, token, posts, loads);
         if (!res || res.ok !== true) {
-          session.lastError = "pdf";
-          session.hold = true;
-          return { ok: false, didWork: true, reason: "pdf_failed", posts, loads, ...snapshot() };
+          lane.lastError = "pdf";
+          lane.hold = true;
+          return {
+            ok: false,
+            stale: false,
+            didWork: true,
+            reason: "pdf_failed",
+            envelopeId,
+            token,
+            posts,
+            loads,
+            certs: lane.certs.slice(),
+            ...snapshotLane(lane, envelopeId),
+          };
         }
         loads.push("pdfs");
-        session.pdfs = (await hooks.loadPdfs(envelope)) || [];
-        if (!(session.pdfs[0] && session.pdfs[0].id)) {
-          session.lastError = "pdf";
-          session.hold = true;
-          return { ok: false, didWork: true, reason: "pdf_failed", posts, loads, ...snapshot() };
+        const pdfs = (await hooks.loadPdfs(envelope)) || [];
+        if (!isLive(token, envelopeId)) return staleResult(envelopeId, token, posts, loads);
+        lane.pdfs = pdfs;
+        if (!(lane.pdfs[0] && lane.pdfs[0].id)) {
+          lane.lastError = "pdf";
+          lane.hold = true;
+          return {
+            ok: false,
+            stale: false,
+            didWork: true,
+            reason: "pdf_failed",
+            envelopeId,
+            token,
+            posts,
+            loads,
+            certs: lane.certs.slice(),
+            ...snapshotLane(lane, envelopeId),
+          };
         }
       }
-      return { ok: true, didWork: posts.length > 0, reason: "complete", posts, loads, ...snapshot() };
+      if (!isLive(token, envelopeId)) return staleResult(envelopeId, token, posts, loads);
+      return {
+        ok: true,
+        stale: false,
+        didWork: posts.length > 0,
+        reason: "complete",
+        envelopeId,
+        token,
+        posts,
+        loads,
+        certs: lane.certs.slice(),
+        pdfs: lane.pdfs.slice(),
+        ...snapshotLane(lane, envelopeId),
+      };
     } finally {
-      session.busy = false;
+      if (lane.runGeneration === token) {
+        lane.busy = false;
+      }
     }
   }
 
@@ -222,7 +400,10 @@ function mgSwCreateAutoDocsSession(io) {
     retry,
     hydrate,
     resetForEnvelope,
-    getState: snapshot,
+    isLive,
+    getGeneration: () => generation,
+    getState: () => snapshotLane(getLane(currentEnvelopeId), currentEnvelopeId),
+    getLaneState: (envelopeId) => snapshotLane(getLane(envelopeId), envelopeId),
   };
 }
 /* MG_SW_AUTODOCS_END */
@@ -680,9 +861,19 @@ function mgSwCreateAutoDocsSession(io) {
   let autoDocsSession = null;
   let autoDocsSkipRenderKick = false;
 
+  function noteEnvelopeChange(prevId, nextId) {
+    if (String(prevId || "") === String(nextId || "")) return;
+    getAutoDocsSession().resetForEnvelope(nextId || "");
+    state.certificates = [];
+    state.artifacts = [];
+    state.autoDocsBusy = false;
+    state.autoDocsHold = false;
+  }
+
   function getAutoDocsSession() {
     if (autoDocsSession) return autoDocsSession;
     autoDocsSession = mgSwCreateAutoDocsSession({
+      getCurrentEnvelopeId: () => String(state.envelope?.id || ""),
       createCertificate: async (envelope) => {
         const res = await api(CERT_CREATE_API, {
           method: "POST",
@@ -690,10 +881,7 @@ function mgSwCreateAutoDocsSession(io) {
         });
         return { ok: Boolean(res && res.ok && res.data && res.data.ok === true) };
       },
-      loadCertificates: async (envelope) => {
-        await loadCertificates(envelope.id);
-        return (state.certificates || []).slice();
-      },
+      loadCertificates: async (envelope) => fetchCertificates(envelope && envelope.id),
       createPdf: async (envelope) => {
         const res = await api(PDF_CREATE_API, {
           method: "POST",
@@ -701,22 +889,26 @@ function mgSwCreateAutoDocsSession(io) {
         });
         return { ok: Boolean(res && res.ok && res.data && res.data.ok === true) };
       },
-      loadPdfs: async (envelope) => {
-        await loadPdfs(envelope.id);
-        return (state.artifacts || []).slice();
-      },
+      loadPdfs: async (envelope) => fetchPdfs(envelope && envelope.id),
     });
     return autoDocsSession;
   }
 
   async function runAutoPrepareDocuments() {
     const session = getAutoDocsSession();
-    session.hydrate(state.certificates, state.artifacts);
-    const result = await session.maybePrepare(state.envelope);
-    const st = session.getState();
+    const envelope = state.envelope;
+    const startedId = String((envelope && envelope.id) || "");
+    session.hydrate(state.certificates, state.artifacts, startedId);
+    const result = await session.maybePrepare(envelope);
+    if (!mgSwShouldApplyAutoDocsResult(result, state.envelope?.id)) {
+      return result;
+    }
+    const st = session.getLaneState(startedId) || session.getState();
     state.autoDocsBusy = st.busy;
     state.autoDocAttempts = st.attempts;
     state.autoDocsHold = st.hold;
+    if (Array.isArray(result.certs)) state.certificates = result.certs;
+    if (Array.isArray(result.pdfs)) state.artifacts = result.pdfs;
     if (result.reason === "busy" || result.reason === "hold" || result.reason === "not_completed") {
       return result;
     }
@@ -2321,6 +2513,7 @@ function mgSwCreateAutoDocsSession(io) {
 
   async function loadEnvelopes(packageId) {
     if (!packageId) {
+      noteEnvelopeChange(state.envelope?.id, "");
       state.envelopes = [];
       state.envelope = null;
       state.signingLink = null;
@@ -2345,12 +2538,14 @@ function mgSwCreateAutoDocsSession(io) {
     const completed = state.envelopes.find(
       (e) => String(e.status || "").toLowerCase() === "completed"
     );
-    state.envelope =
+    const nextEnvelope =
       state.envelopes.find((e) => String(e.id).toLowerCase() === want) ||
       active ||
       completed ||
       state.envelopes[0] ||
       null;
+    noteEnvelopeChange(prevEnvelopeId, nextEnvelope?.id);
+    state.envelope = nextEnvelope;
     // Policy A: never reconstruct raw link after reload; clear only on envelope change.
     if (!state.envelope?.id || String(state.envelope.id) !== String(prevEnvelopeId)) {
       if (String(state.envelope?.id || "") !== String(prevEnvelopeId)) {
@@ -2381,36 +2576,52 @@ function mgSwCreateAutoDocsSession(io) {
     state.signers = Array.isArray(res.data.signers) ? res.data.signers : [];
   }
 
-  async function loadCertificates(envelopeId) {
-    if (!envelopeId) {
-      state.certificates = [];
-      return;
-    }
+  async function fetchCertificates(envelopeId) {
+    if (!envelopeId) return [];
     const res = await api(
       `${CERTS_API}?envelope_id=${encodeURIComponent(envelopeId)}`
     );
     if (!res.ok || res.data?.ok !== true) {
       throw new Error(res.data?.error || "Could not load certificates");
     }
-    state.certificates = (Array.isArray(res.data.certificates)
-      ? res.data.certificates
-      : [])
+    return (Array.isArray(res.data.certificates) ? res.data.certificates : [])
       .map(toTenantCertificate)
       .filter(Boolean);
   }
 
-  async function loadPdfs(envelopeId) {
-    if (!envelopeId) {
-      state.artifacts = [];
-      return;
+  async function loadCertificates(envelopeId) {
+    const requested = String(envelopeId || "");
+    if (!requested) {
+      if (!state.envelope?.id) state.certificates = [];
+      return [];
     }
+    const certs = await fetchCertificates(requested);
+    if (String(state.envelope?.id || "") !== requested) return certs;
+    state.certificates = certs;
+    return certs;
+  }
+
+  async function fetchPdfs(envelopeId) {
+    if (!envelopeId) return [];
     const res = await api(
       `${PDFS_API}?envelope_id=${encodeURIComponent(envelopeId)}`
     );
     if (!res.ok || res.data?.ok !== true) {
       throw new Error(res.data?.error || "Could not load signed PDFs");
     }
-    state.artifacts = Array.isArray(res.data.artifacts) ? res.data.artifacts : [];
+    return Array.isArray(res.data.artifacts) ? res.data.artifacts : [];
+  }
+
+  async function loadPdfs(envelopeId) {
+    const requested = String(envelopeId || "");
+    if (!requested) {
+      if (!state.envelope?.id) state.artifacts = [];
+      return [];
+    }
+    const artifacts = await fetchPdfs(requested);
+    if (String(state.envelope?.id || "") !== requested) return artifacts;
+    state.artifacts = artifacts;
+    return artifacts;
   }
 
   async function refreshEnvelopeChain() {
@@ -2891,6 +3102,8 @@ function mgSwCreateAutoDocsSession(io) {
 
     $("swEnvelopeSelect")?.addEventListener("change", async (ev) => {
       const id = ev.target.value;
+      const prevId = state.envelope?.id || null;
+      noteEnvelopeChange(prevId, id);
       state.envelope = state.envelopes.find((e) => e.id === id) || null;
       try {
         await refreshEnvelopeChain();
