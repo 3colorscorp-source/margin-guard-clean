@@ -289,25 +289,27 @@
     #cbMain.is-preview .cb-editor,
     #cbMain.is-preview .cb-draft-note,
     #cbMain.is-preview #cbWsValidation,
-    #cbMain.is-preview .cb-prop-secondary,
     #cbMain.is-preview .cb-prop-editor__intro,
     #cbMain.is-preview .cb-war-editor__intro,
     #cbMain.is-preview .cb-war-preset,
     #cbMain.is-preview .cb-pay-hub-note,
     #cbMain.is-preview .cb-pay-empty__future,
+    #cbMain.is-preview .cb-pay-workspace__badge:not(.is-configured),
+    #cbMain.is-printing .cb-pay-workspace__badge,
+    #cbMain.is-printing .cb-pay-workspace__lead,
+    #cbMain.is-printing .cb-pay-sum-warn,
+    #cbMain.is-printing .cb-pay-summary__item.is-diag,
     #cbMain.is-printing [data-ws-edit],
     #cbMain.is-printing .cb-editor,
     #cbMain.is-printing .cb-draft-note,
     #cbMain.is-printing #cbWsValidation,
     #cbMain.is-printing .cb-step-footer,
-    #cbMain.is-printing .cb-prop-secondary,
     #cbMain.is-printing .cb-pay-hub-note,
     #cbMain.is-printing .cb-pay-empty__future,
     body.cb-customer-preview [data-ws-edit],
     body.cb-customer-preview .cb-editor,
     body.cb-customer-preview .cb-draft-note,
     body.cb-customer-preview #cbWsValidation,
-    body.cb-customer-preview .cb-prop-secondary,
     body.cb-customer-preview .cb-pay-hub-note,
     body.cb-customer-preview .cb-pay-empty__future {
       display: none !important;
@@ -476,43 +478,6 @@
     .cb-prop-workspace__confirm-mark {
       font-size: 0.95rem;
       line-height: 1;
-    }
-    .cb-prop-secondary {
-      margin-top: 18px;
-      padding-top: 14px;
-      border-top: 1px solid var(--cb-line);
-    }
-    .cb-prop-secondary__title {
-      margin: 0 0 8px;
-      font-size: 0.68rem;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: #a8a29e;
-    }
-    .cb-prop-secondary__list {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: grid;
-      gap: 6px;
-    }
-    .cb-prop-secondary__list li {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 0.84rem;
-      color: #57534e;
-      padding: 6px 0;
-    }
-    .cb-prop-secondary__list li span:last-child {
-      font-size: 0.72rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: #a8a29e;
-      white-space: nowrap;
     }
     .cb-prop-editor {
       margin: 0;
@@ -825,18 +790,13 @@
     }
     .cb-pay-workspace__note:empty { display: none; }
     .cb-pay-summary {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px 14px;
-      margin: 0 0 14px;
-      padding: 12px 14px;
-      border: 1px solid var(--cb-line);
-      border-radius: 12px;
-      background: #fafaf9;
+      display: block;
+      margin: 0 0 18px;
+      padding: 0;
+      border: 0;
+      background: transparent;
     }
-    @media (max-width: 640px) {
-      .cb-pay-summary { grid-template-columns: 1fr; }
-    }
+    .cb-pay-summary__item.is-diag { display: none !important; }
     .cb-pay-summary__item .k {
       display: block;
       margin: 0 0 3px;
@@ -847,10 +807,11 @@
       color: #a8a29e;
     }
     .cb-pay-summary__item .v {
-      font-size: 0.98rem;
+      font-size: 1.35rem;
       font-weight: 700;
       color: var(--cb-ink);
       word-break: break-word;
+      overflow-wrap: anywhere;
     }
     .cb-pay-sum-warn {
       margin: 0 0 14px;
@@ -1044,67 +1005,48 @@
     .cb-pay-timeline {
       display: flex;
       flex-direction: column;
-      gap: 0;
+      gap: 16px;
       margin: 4px 0 12px;
+      min-width: 0;
     }
-    .cb-pay-stage {
-      position: relative;
-      padding: 0 0 0 1.15rem;
+    .cb-pay-row {
+      min-width: 0;
     }
-    .cb-pay-stage::before {
-      content: "";
-      position: absolute;
-      left: 0.2rem;
-      top: 0.45rem;
-      width: 0.55rem;
-      height: 0.55rem;
-      border-radius: 50%;
-      background: var(--cb-accent);
-      box-sizing: border-box;
-    }
-    .cb-pay-stage:not(:last-child)::after {
-      content: "";
-      position: absolute;
-      left: 0.42rem;
-      top: 1.15rem;
-      bottom: -0.15rem;
-      width: 2px;
-      background: rgba(15, 118, 110, 0.25);
-    }
-    .cb-pay-stage__body {
-      padding: 0 0 18px;
-    }
-    .cb-pay-stage:last-child .cb-pay-stage__body { padding-bottom: 4px; }
-    .cb-pay-stage__type {
-      margin: 0 0 2px;
-      font-size: 0.68rem;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: #a8a29e;
-    }
-    .cb-pay-stage__label {
+    .cb-pay-row__name {
       margin: 0;
-      font-size: 1.05rem;
+      font-size: 1.02rem;
       font-weight: 700;
       line-height: 1.3;
       color: var(--cb-ink);
       word-break: break-word;
+      overflow-wrap: anywhere;
     }
-    .cb-pay-stage__amount {
+    .cb-pay-row__amount {
       margin: 4px 0 0;
-      font-size: 0.95rem;
+      font-size: 1.02rem;
       font-weight: 700;
-      color: #44403c;
+      color: var(--cb-ink);
       word-break: break-word;
+      overflow-wrap: anywhere;
     }
-    .cb-pay-stage__due {
+    .cb-pay-row__due {
       margin: 4px 0 0;
-      font-size: 0.86rem;
+      font-size: 0.9rem;
       line-height: 1.4;
       color: #57534e;
+      word-break: break-word;
+      overflow-wrap: anywhere;
     }
+    .cb-pay-stage {
+      position: relative;
+      padding: 0;
+    }
+    .cb-pay-stage__body {
+      padding: 0;
+    }
+    .cb-pay-stage__type,
     .cb-pay-stage__meta {
+      display: none !important;
       margin: 4px 0 0;
       font-size: 0.8rem;
       line-height: 1.4;
@@ -1875,6 +1817,16 @@
         border: 0;
         padding: 0 0 12px;
       }
+      .cb-pay-workspace__badge,
+      .cb-pay-workspace__lead,
+      .cb-pay-workspace__eyebrow,
+      .cb-pay-workspace__note,
+      .cb-pay-sum-warn,
+      .cb-pay-hub-note,
+      .cb-pay-empty__future,
+      .cb-pay-empty__arch,
+      .cb-pay-summary__item.is-diag,
+      #cbPayQaWarn { display: none !important; }
       .cb-print-banner {
         display: block !important;
         text-align: center;
@@ -2075,7 +2027,7 @@
                 <div class="cb-article__body">
                   <div data-ws-preview>
                     <div class="cb-prop-workspace">
-                      <p class="cb-prop-workspace__eyebrow">Property</p>
+                      <p class="cb-prop-workspace__eyebrow">Project</p>
                       <p class="cb-prop-workspace__project">
                         Project · <strong id="cbProjectName">—</strong>
                       </p>
@@ -2088,15 +2040,6 @@
                           <span class="cb-prop-workspace__confirm-mark" aria-hidden="true">○</span>
                           <span id="cbPropConfirmText">Property address not set</span>
                         </div>
-                      </div>
-                      <div class="cb-prop-secondary" aria-label="Future property details">
-                        <p class="cb-prop-secondary__title">Optional details</p>
-                        <ul class="cb-prop-secondary__list">
-                          <li><span>Site notes</span><span>Coming soon</span></li>
-                          <li><span>Access notes</span><span>Coming soon</span></li>
-                          <li><span>GPS location</span><span>Coming soon</span></li>
-                          <li><span>Photos</span><span>Coming soon</span></li>
-                        </ul>
                       </div>
                       <!-- Hidden compatibility mirrors for print/readiness consumers -->
                       <span id="cbPropCity" hidden>—</span>
@@ -2111,7 +2054,7 @@
                   </div>
                   <div class="cb-prop-editor owner-only" data-ws-edit>
                     <p class="cb-prop-editor__intro">
-                      Confirm the project address used on the contract. Confirm Property writes it to the project record.
+                      Confirm the project address used on the contract. Confirm Project Address writes it to the project record.
                     </p>
                     <div class="cb-prop-form">
                       <div class="cb-prop-field">
@@ -2235,11 +2178,9 @@
                 <div class="cb-article__body">
                   <div data-ws-preview>
                     <div class="cb-pay-workspace" id="cbPayWorkspace">
-                      <p class="cb-pay-workspace__eyebrow">Payment Plan</p>
-                      <p class="cb-pay-workspace__lead" id="cbPayLead">
-                        The contractual payment stages agreed for this project.
-                      </p>
-                      <div class="cb-pay-workspace__badge is-missing" id="cbPayStatusBadge" role="status">
+                      <p class="cb-pay-workspace__eyebrow" hidden>Payment Schedule</p>
+                      <p class="cb-pay-workspace__lead" id="cbPayLead" hidden></p>
+                      <div class="cb-pay-workspace__badge is-missing" id="cbPayStatusBadge" role="status" hidden>
                         <span class="cb-pay-workspace__badge-mark" aria-hidden="true">○</span>
                         <span id="cbPayStatusText">Not configured</span>
                       </div>
@@ -2247,18 +2188,18 @@
 
                       <div class="cb-pay-summary" id="cbPaySummary" hidden>
                         <div class="cb-pay-summary__item">
-                          <span class="k">Contract total</span>
+                          <span class="k">Contract Total</span>
                           <span class="v" id="cbPayContractTotal">—</span>
                         </div>
-                        <div class="cb-pay-summary__item">
+                        <div class="cb-pay-summary__item is-diag">
                           <span class="k">Payment stages</span>
                           <span class="v" id="cbPayStageCount">—</span>
                         </div>
-                        <div class="cb-pay-summary__item">
+                        <div class="cb-pay-summary__item is-diag">
                           <span class="k">Scheduled</span>
                           <span class="v" id="cbPayScheduled">—</span>
                         </div>
-                        <div class="cb-pay-summary__item">
+                        <div class="cb-pay-summary__item is-diag">
                           <span class="k">Plan check</span>
                           <span class="v" id="cbPayPlanCheck">—</span>
                         </div>
@@ -2269,20 +2210,14 @@
 
                       <div class="cb-pay-empty" id="cbPayEmpty" hidden>
                         <p class="cb-pay-empty__copy" id="cbPayEmptyCopy">
-                          No contractual payment schedule has been created for this project yet.
+                          Add a payment schedule to continue.
                         </p>
                         <p class="cb-pay-empty__total" id="cbPayEmptyTotal" hidden></p>
-                        <p class="cb-pay-empty__arch">
-                          This section defines the contractual payment stages. Billing and collection remain in Invoice Hub.
-                        </p>
-                        <p class="cb-pay-empty__future owner-only no-print">
-                          Use Edit to add stages, Save Draft to persist, then Confirm Schedule when the plan totals match the contract price.
-                        </p>
+                        <p class="cb-pay-empty__arch no-print" hidden></p>
+                        <p class="cb-pay-empty__future owner-only no-print" hidden></p>
                       </div>
 
-                      <p class="cb-pay-hub-note owner-only no-print" id="cbPayHubNote" hidden>
-                        This plan describes when each contractual payment becomes due. Invoice creation and payment collection are managed separately in Invoice Hub.
-                      </p>
+                      <p class="cb-pay-hub-note owner-only no-print" id="cbPayHubNote" hidden></p>
                       <div id="cbPayQaWarn" class="cb-owner-warn owner-only no-print" hidden></div>
 
                       <!-- Compatibility mirrors for existing render helpers -->
@@ -2296,7 +2231,7 @@
                   </div>
                   <div data-ws-edit class="owner-only no-print">
                     <div class="cb-editor" id="cbPayEditWorkspace">
-                      <p class="cb-pay-edit-hint" id="cbPayEditHint">Add payment stages. Save Draft anytime. Confirm only when Scheduled equals Contract Total.</p>
+                      <p class="cb-pay-edit-hint" id="cbPayEditHint"></p>
                       <div class="cb-pay-edit-totals" id="cbPayEditTotals" aria-live="polite">
                         <div>
                           <span class="k">Contract total</span>
@@ -2619,6 +2554,8 @@
   <script src="/js/contract-scope.js"></script>
   <script src="/js/contract-payment-defaults.js"></script>
   <script src="/js/contract-warranty-defaults.js"></script>
+  <script src="/js/contract-property-confirm.js"></script>
+  <script src="/js/contract-payment-confirm.js"></script>
   <script src="/js/contract-builder.js" defer></script>
 </body>
 </html>

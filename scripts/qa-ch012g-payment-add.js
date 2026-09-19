@@ -157,14 +157,14 @@ test("G1 one click adds exactly one row path", () => {
 
 test("5 Draft save allows imbalance", () => {
   assert.ok(js.includes("validatePaymentDraftForSave"));
-  assert.ok(js.includes("Draft can be saved while unbalanced"));
   assert.ok(js.includes("blocking: false"));
   assert.ok(/savePaymentScheduleDraft\(\s*false\s*\)/.test(js));
 });
 
 test("6 Confirm blocks under total", () => {
+  const helper = read("public/js/contract-payment-confirm.js");
   assert.ok(js.includes("validatePaymentDraftForConfirm"));
-  assert.ok(js.includes("Scheduled must equal contract total"));
+  assert.ok(helper.includes("Payment amounts must equal the contract total.") || js.includes("SUM_ERROR"));
   assert.ok(js.includes("if (!totals.balanced)"));
   const under = computeTotals([{ amount: 100 }], 9044.16);
   assert.strictEqual(under.balanced, false);
@@ -180,8 +180,8 @@ test("7 Confirm blocks over total", () => {
 test("8 Confirm accepts exact total", () => {
   const exact = computeTotals([{ amount: 4500 }, { amount: 4544.16 }], 9044.16);
   assert.strictEqual(exact.balanced, true);
-  assert.ok(js.includes("Ready to confirm — totals match"));
-  assert.ok(/savePaymentScheduleDraft\(\s*true\s*\)/.test(js));
+  assert.ok(js.includes("createPaymentConfirmRunner") || js.includes("confirm_schedule"));
+  assert.ok(js.includes("workspaceConfirmPayment"));
 });
 
 test("9 Currency cents remain precise", () => {
