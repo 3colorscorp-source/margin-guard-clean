@@ -5,6 +5,10 @@
   if (!PropertyConfirm) {
     throw new Error("contract-property-confirm.js must load before contract-builder.js");
   }
+  const PaymentConfirm = window.MarginGuardContractPaymentConfirm;
+  if (!PaymentConfirm) {
+    throw new Error("contract-payment-confirm.js must load before contract-builder.js");
+  }
 
   const PROJECTS_API = "/.netlify/functions/get-project-control-projects";
   const QUOTE_EDIT_API = "/.netlify/functions/get-tenant-quote-edit";
@@ -620,46 +624,62 @@
   }
 
   async function workspaceConfirmPayment() {
-    if (workspaceBusy) return false;
-    if (!paymentScheduleAllowsOwnerEdit()) {
-      window.alert("Confirmed payment schedules are read-only.");
-      return false;
-    }
-    if (getArticleMode("art-payment") !== WS_MODE.EDIT) {
-      const entered = await workspaceEnterEdit("art-payment");
-      if (!entered) return false;
-    }
-    readPaymentDraftFromGrid();
-    const check = validatePaymentDraftForConfirm();
-    updatePaymentEditHint(check);
-    if (check.blocking) {
-      window.alert(check.message || "Schedule total must equal the contract total before confirmation.");
+    const startedInEdit = getArticleMode("art-payment") === WS_MODE.EDIT;
+    if (startedInEdit) readPaymentDraftFromGrid();
+    const runner = PaymentConfirm.createPaymentConfirmRunner({
+      getBusy: () => workspaceBusy,
+      setBusy: (value) => {
+        workspaceBusy = Boolean(value);
+        workspaceBusyLabel = value ? "Confirming…" : "Saving…";
+      },
+      isConfirmed: () => paymentConfigured(sourceSnapshot?.paymentSchedule),
+      getItems: () => currentPaymentItems(),
+      getContractTotal: () => paymentDraftContractTotal(sourceSnapshot),
+      getIds: () => ({
+        projectId: sourceSnapshot?.projectId,
+        quoteId: sourceSnapshot?.quoteId,
+      }),
+      getExpectedUpdatedAt: () => sourceSnapshot?.paymentSchedule?.schedule?.updated_at || null,
+      apiUrl: PaymentConfirm.SCHEDULE_API,
+      postJson,
+      applySuccess: (data) => {
+        applyPaymentScheduleResponse(data);
+      },
+    });
+    const result = await runner.confirm();
+    if (
+      result.reason === "unbalanced" ||
+      result.reason === "incomplete" ||
+      result.reason === "missing"
+    ) {
+      if (!startedInEdit) {
+        const entered = await workspaceEnterEdit("art-payment");
+        if (entered) updatePaymentEditHint();
+      } else {
+        updatePaymentEditHint();
+      }
       renderWorkspaceChrome();
       return false;
     }
-    workspaceBusy = true;
-    workspaceBusyLabel = "Confirming…";
-    setArticleMode("art-payment", WS_MODE.SAVING);
-    renderWorkspaceChrome();
-    try {
-      await savePaymentScheduleDraft(true);
+    if (result.reason === "busy" || result.reason === "already_confirmed") {
+      renderWorkspaceChrome();
+      return result.ok === true;
+    }
+    if (result.reason === "http") {
+      setArticleMode("art-payment", startedInEdit ? WS_MODE.EDIT : WS_MODE.PREVIEW);
+      renderWorkspaceChrome();
+      window.alert(result.error || "Payment schedule could not be confirmed.");
+      return false;
+    }
+    if (result.ok && result.advance) {
       workspaceEditBaseline = null;
       paymentDraftBaseline = null;
-      setArticleMode("art-payment", WS_MODE.SAVED);
-      renderWorkspaceChrome();
-      await new Promise((resolve) => setTimeout(resolve, 700));
       await workspaceEnterPreview("art-payment");
+      await handleWorkspaceContinue();
       return true;
-    } catch (err) {
-      setArticleMode("art-payment", WS_MODE.EDIT);
-      renderWorkspaceChrome();
-      window.alert(err?.message || "Confirm failed. Schedule was not confirmed.");
-      return false;
-    } finally {
-      workspaceBusy = false;
-      workspaceBusyLabel = "Saving…";
-      renderWorkspaceChrome();
     }
+    renderWorkspaceChrome();
+    return false;
   }
 
   async function workspaceConfirmSignature() {
@@ -832,7 +852,7 @@
           actions.appendChild(
             createFooterButton({
               id: "cbWsConfirmPay",
-              label: "Confirm Schedule",
+              label: "Confirm & Continue",
               className: "btn primary",
               disabled: busy,
               onClick: () => {
@@ -843,8 +863,8 @@
           if (hint) {
             hint.textContent =
               paymentAdvancedEdit
-                ? "Advanced editing: change stages, types, due timing, and received vs still due. Confirm Schedule only when Scheduled equals Contract Total."
-                : "Review the generated schedule, then Confirm Schedule. Use Advanced editing to change stages.";
+                ? "Advanced editing: change types, due timing, and received vs still due."
+                : "Review the schedule, then Confirm & Continue.";
           }
         } else if (activeArticleId === "art-signatures") {
           actions.appendChild(
@@ -897,17 +917,25 @@
               busy,
             })
           : null;
+      const paymentPlan =
+        activeArticleId === "art-payment" ? currentPaymentFooterPlan(busy) : null;
       const propertyEditLabel = !propertyPlan
         ? caps.editLabel || "Edit"
         : propertyPlan.kind === "missing"
           ? "Add Project Address"
           : "Edit Project Address";
       const propertyEditPrimary = Boolean(propertyPlan && propertyPlan.kind === "missing");
+      const paymentEditPrimary = Boolean(paymentPlan && paymentPlan.editStyle === "primary");
       actions.appendChild(
         createFooterButton({
           id: "cbWsEdit",
-          label: activeArticleId === "art-property" ? propertyEditLabel : caps.editLabel || "Edit",
-          className: propertyEditPrimary ? "btn primary" : "btn ghost",
+          label:
+            activeArticleId === "art-property"
+              ? propertyEditLabel
+              : activeArticleId === "art-payment"
+                ? "Edit Payment Schedule"
+                : caps.editLabel || "Edit",
+          className: propertyEditPrimary || paymentEditPrimary ? "btn primary" : "btn ghost",
           disabled: busy,
           onClick: () => {
             void workspaceEnterEdit(activeArticleId);
@@ -944,14 +972,14 @@
 
     if (
       activeArticleId === "art-payment" &&
-      paymentScheduleAllowsOwnerEdit() &&
+      currentPaymentFooterPlan(busy).confirmVisible &&
       mode === WS_MODE.PREVIEW &&
       !busy
     ) {
       actions.appendChild(
         createFooterButton({
           id: "cbWsConfirmPayPreview",
-          label: "Confirm Schedule",
+          label: "Confirm & Continue",
           className: "btn primary",
           disabled: busy,
           onClick: () => {
@@ -992,13 +1020,21 @@
               busy,
             })
           : null;
-      if (!(propertyPlan && !propertyPlan.continueVisible)) {
+      const paymentPlan =
+        activeArticleId === "art-payment" ? currentPaymentFooterPlan(busy) : null;
+      if (
+        !(propertyPlan && !propertyPlan.continueVisible) &&
+        !(paymentPlan && !paymentPlan.continueVisible)
+      ) {
         actions.appendChild(
           createFooterButton({
             id: "cbStepContinue",
             label,
             className: "btn primary",
-            disabled: busy || (propertyPlan ? !propertyPlan.continueEnabled : false),
+            disabled:
+              busy ||
+              (propertyPlan ? !propertyPlan.continueEnabled : false) ||
+              (paymentPlan ? !paymentPlan.continueEnabled : false),
             onClick: () => {
               void handleWorkspaceContinue();
             },
@@ -1014,8 +1050,9 @@
         hint.textContent = "Review only — contract total comes from the approved quote.";
       } else if (activeArticleId === "art-terms") {
         hint.textContent = "Review only — confirm legal notices on the Legal Notices page.";
-      } else if (activeArticleId === "art-payment" && !paymentScheduleAllowsOwnerEdit()) {
-        hint.textContent = "Payment Schedule is confirmed and read-only.";
+      } else if (activeArticleId === "art-payment") {
+        const paymentPlan = currentPaymentFooterPlan(busy);
+        hint.textContent = paymentPlan.errorMessage || "";
       } else if (activeArticleId === "art-property") {
         if (propertyConfigured(sourceSnapshot?.contractSetup)) {
           hint.textContent = "Project address is confirmed. Continue to the next article.";
@@ -2077,7 +2114,23 @@
   }
 
   function paymentConfigured(scheduleBundle) {
-    return String(scheduleBundle?.readiness?.status || "").toLowerCase() === "configured";
+    return PaymentConfirm.paymentConfigured(scheduleBundle);
+  }
+
+  function currentPaymentItems() {
+    if (paymentDraftItems.length) return paymentDraftItems;
+    const items = sourceSnapshot?.paymentSchedule?.items;
+    return Array.isArray(items) ? items : [];
+  }
+
+  function currentPaymentFooterPlan(busy) {
+    return PaymentConfirm.paymentFooterPlan({
+      confirmed: paymentConfigured(sourceSnapshot?.paymentSchedule),
+      items: currentPaymentItems(),
+      contractTotal: paymentDraftContractTotal(sourceSnapshot),
+      scheduleBundle: sourceSnapshot?.paymentSchedule,
+      busy: Boolean(busy),
+    });
   }
 
   /** Confirmed schedules are read-only in the Owner workspace. */
@@ -2336,14 +2389,14 @@
       return readinessValidation(
         "needs_confirmation",
         "",
-        "Payment schedule totals match — confirm when ready.",
+        "",
         ""
       );
     }
     return readinessValidation(
       "needs_confirmation",
       "",
-      "Payment schedule needs confirmation (total must equal contract price).",
+      PaymentConfirm.SUM_ERROR,
       ""
     );
   }
@@ -2378,13 +2431,13 @@
       return {
         level: "ok",
         blocking: false,
-        message: "Balanced — you can Confirm Schedule when ready.",
+        message: "",
       };
     }
     return {
       level: "warn",
       blocking: false,
-      message: "Draft can be saved while unbalanced. Confirm requires Scheduled = Contract Total.",
+      message: PaymentConfirm.SUM_ERROR,
     };
   }
 
@@ -2428,16 +2481,13 @@
       return {
         level: "block",
         blocking: true,
-        message: `Scheduled must equal contract total (difference ${formatMoney(
-          totals.difference,
-          sourceSnapshot?.currency || DEFAULT_CURRENCY
-        )}).`,
+        message: PaymentConfirm.SUM_ERROR,
       };
     }
     return {
       level: "ok",
       blocking: false,
-      message: "Ready to confirm — totals match the contract price.",
+      message: "",
     };
   }
 
@@ -4838,48 +4888,31 @@
     if (badge) {
       badge.classList.remove("is-configured", "is-draft", "is-missing");
       if (status === "configured") {
+        badge.hidden = false;
         badge.classList.add("is-configured");
         if (badgeMark) badgeMark.textContent = "✓";
-        if (badgeText) badgeText.textContent = "Configured";
-      } else if (status === "draft") {
-        badge.classList.add("is-draft");
-        if (badgeMark) badgeMark.textContent = "!";
-        if (badgeText) badgeText.textContent = "Draft";
-      } else if (items.length) {
-        badge.classList.add("is-draft");
-        if (badgeMark) badgeMark.textContent = "!";
-        if (badgeText) badgeText.textContent = "Review defaults";
+        if (badgeText) badgeText.textContent = "Payment Schedule Confirmed";
       } else {
-        badge.classList.add("is-missing");
-        if (badgeMark) badgeMark.textContent = "○";
-        if (badgeText) badgeText.textContent = "Not configured";
+        badge.hidden = true;
+        badge.classList.add(items.length ? "is-draft" : "is-missing");
+        if (badgeMark) badgeMark.textContent = items.length ? "!" : "○";
+        if (badgeText) badgeText.textContent = items.length ? "" : "Not configured";
       }
     }
 
     if (lead) {
-      lead.textContent = "The contractual payment stages agreed for this project.";
+      lead.hidden = true;
+      lead.textContent = "";
     }
+
+    if (stateNote) {
+      stateNote.textContent = "";
+    }
+
+    if (hubNote) hubNote.hidden = true;
 
     const isUnavailable = Boolean(bundle.loadError || bundle.forbidden);
     const isMissing = status === "missing" || (!bundle.available && !items.length && status !== "draft" && status !== "configured");
-
-    if (stateNote) {
-      if (status === "configured") {
-        stateNote.textContent =
-          "This plan describes when each contractual payment becomes due.";
-      } else if (status === "draft") {
-        stateNote.textContent =
-          "This payment plan has not been confirmed as the final contractual schedule.";
-      } else if (isUnavailable) {
-        stateNote.textContent = "Payment schedule data is temporarily unavailable.";
-      } else {
-        stateNote.textContent = "";
-      }
-    }
-
-    if (hubNote) {
-      hubNote.hidden = !(status === "configured" || status === "draft");
-    }
 
     if ((isMissing || isUnavailable) && !items.length && status !== "draft" && status !== "configured") {
       if (summary) summary.hidden = true;
@@ -4929,99 +4962,47 @@
       );
       setText("cbPayStageCount", Number.isFinite(itemCount) ? String(itemCount) : "—");
       if (scheduledTotal != null) {
-        const pctOfTotal =
-          contractTotal != null && contractTotal > 0
-            ? formatPercentDisplay(Math.round((scheduledTotal / contractTotal) * 10000) / 100)
-            : "";
-        setText(
-          "cbPayScheduled",
-          pctOfTotal
-            ? `${formatMoney(scheduledTotal, currency)} · ${pctOfTotal}`
-            : formatMoney(scheduledTotal, currency)
-        );
+        setText("cbPayScheduled", formatMoney(scheduledTotal, currency));
       } else {
         setText("cbPayScheduled", "—");
       }
       const checkEl = $("cbPayPlanCheck");
-      if (checkEl) {
-        if (sumsMatch) {
-          checkEl.textContent = "✓ Matches contract total";
-        } else if (contractTotal != null && scheduledTotal != null) {
-          checkEl.textContent = "Does not match contract total";
-        } else {
-          checkEl.textContent = "—";
-        }
-      }
+      if (checkEl) checkEl.textContent = sumsMatch ? "ok" : "mismatch";
     }
 
     if (sumWarn) {
       if (contractTotal != null && scheduledTotal != null && !sumsMatch) {
         sumWarn.hidden = false;
-        sumWarn.textContent =
-          "Payment stages do not currently equal the contract total.";
+        sumWarn.textContent = PaymentConfirm.SUM_ERROR;
       } else {
         sumWarn.hidden = true;
         sumWarn.textContent = "";
       }
     }
 
-    const qaLabels = items.filter((item) => looksLikeTechnicalQaLabel(item.label));
     if (qaWarn) {
-      if (qaLabels.length) {
-        qaWarn.hidden = false;
-        qaWarn.textContent =
-          "This payment stage appears to contain test or technical wording and should be replaced before the contract is sent to the customer.";
-      } else {
-        qaWarn.hidden = true;
-        qaWarn.textContent = "";
-      }
+      qaWarn.hidden = true;
+      qaWarn.textContent = "";
     }
 
     if (timeline) {
       if (!items.length) {
-        timeline.hidden = false;
-        timeline.innerHTML =
-          `<p class="cb-pay-workspace__note">No payment stages have been defined yet.</p>`;
+        timeline.hidden = true;
+        timeline.innerHTML = "";
       } else {
+        const rows = PaymentConfirm.presentPaymentRows(items, {
+          dueRuleLabel: (rule, extras) => dueRuleLabel(rule, extras),
+        });
         timeline.hidden = false;
-        timeline.innerHTML = items
-          .map((item) => {
-            const typeKey = String(item.payment_type || "").toLowerCase();
-            const typeLabel = escapeHtml(paymentTypeLabel(typeKey));
-            const label = escapeHtml(item.label || paymentTypeLabel(typeKey));
-            const amount = formatMoney(item.amount, currency);
-            const pct = safeStagePercent(item, contractTotal);
-            const pctText = pct != null ? formatPercentDisplay(pct) : "";
-            const amountLine = pctText
-              ? `${escapeHtml(amount)} · ${escapeHtml(pctText)}`
-              : escapeHtml(amount);
-            let due = dueRuleLabel(item.due_rule, {
-              fixedDueDate: item.fixed_due_date,
-              milestoneDescription: item.milestone_description,
-            });
-            const dueKey = String(item.due_rule || "").toLowerCase();
-            if (dueKey === "fixed_date" && item.fixed_due_date) {
-              const fixedLabel = formatPaymentDateOnly(item.fixed_due_date);
-              due = fixedLabel ? `Due ${fixedLabel}` : due;
-            } else if (dueKey === "milestone" && item.milestone_description) {
-              due = `Due at milestone: ${item.milestone_description}`;
-            }
-            const metaParts = [];
-            if (item.sequence_number != null) metaParts.push(`Stage ${item.sequence_number}`);
-            if (typeKey === "custom") metaParts.push("Additional stage");
-            if (typeKey === "material") metaParts.push("Material stage");
-            const meta = metaParts.length
-              ? `<p class="cb-pay-stage__meta">${escapeHtml(metaParts.join(" · "))}</p>`
-              : "";
+        timeline.innerHTML = rows
+          .map((row) => {
+            const due = String(row.due || "");
             return (
-              `<article class="cb-pay-stage" data-payment-type="${escapeHtml(typeKey)}">` +
-              `<div class="cb-pay-stage__body">` +
-              `<p class="cb-pay-stage__type">${typeLabel}</p>` +
-              `<h4 class="cb-pay-stage__label">${label}</h4>` +
-              `<p class="cb-pay-stage__amount">${amountLine}</p>` +
-              `<p class="cb-pay-stage__due">${escapeHtml(due)}</p>` +
-              meta +
-              `</div></article>`
+              `<article class="cb-pay-row">` +
+              `<h4 class="cb-pay-row__name">${escapeHtml(`${row.index}. ${row.name}`)}</h4>` +
+              `<p class="cb-pay-row__amount">${escapeHtml(formatMoney(row.amount, currency))}</p>` +
+              `<p class="cb-pay-row__due">${escapeHtml(due)}</p>` +
+              `</article>`
             );
           })
           .join("");

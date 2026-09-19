@@ -55,15 +55,16 @@ test("CRUD + reorder actions", () => {
 });
 
 test("live totals + confirm balance", () => {
+  const helper = fs.readFileSync(path.join(ROOT, "public/js/contract-payment-confirm.js"), "utf8");
   assert.ok(js.includes("computePaymentDraftTotals"));
   assert.ok(js.includes("validatePaymentDraftForConfirm"));
-  assert.ok(js.includes("Scheduled must equal contract total") || js.includes("must equal"));
+  assert.ok(helper.includes("Payment amounts must equal the contract total.") || js.includes("must equal") || js.includes("SUM_ERROR"));
 });
 
 test("Save Draft + Confirm Schedule + POST existing API", () => {
   assert.ok(js.includes("savePaymentScheduleDraft"));
   assert.ok(js.includes("workspaceConfirmPayment"));
-  assert.ok(js.includes("confirm_schedule"));
+  assert.ok(js.includes("confirm_schedule") || fs.readFileSync(path.join(ROOT, "public/js/contract-payment-confirm.js"), "utf8").includes("confirm_schedule: true"));
   assert.ok(js.includes("PAYMENT_SCHEDULE_API"));
   assert.ok(!/project-payment-intent/.test(js));
 });

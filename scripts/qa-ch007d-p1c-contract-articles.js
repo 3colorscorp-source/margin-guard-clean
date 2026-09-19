@@ -59,6 +59,7 @@ test("Payment Save Draft + Confirm + read-only", () => {
   assert.match(js, /workspaceConfirmPayment/);
   assert.match(js, /paymentScheduleAllowsOwnerEdit/);
   assert.match(js, /Confirmed payment schedules are read-only/);
+  assert.match(html, /contract-payment-confirm\.js/);
 });
 
 test("Scope is quote review-only", () => {

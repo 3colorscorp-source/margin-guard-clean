@@ -394,6 +394,10 @@ function buildSignedContractLines({
   lines.push(blank(6));
 
   lines.push(heading("Payment Schedule"));
+  const payTotal = snap?.price?.contract_total ?? snap?.quote?.total;
+  if (payTotal != null && payTotal !== "") {
+    lines.push(body(`Contract Total: ${money(payTotal, currency)}`));
+  }
   const items = Array.isArray(snap?.payment_schedule?.items)
     ? snap.payment_schedule.items
     : [];
@@ -401,28 +405,17 @@ function buildSignedContractLines({
     lines.push(body("-"));
   } else {
     for (const it of items) {
-      const label = trimField(it.label) || `Item ${it.sequence_number || ""}`;
-      const amt =
-        it.amount != null
-          ? money(it.amount, currency)
-          : it.percentage != null
-            ? `${Number(it.percentage)}%`
-            : "-";
+      const label = trimField(it.label) || "Payment";
+      const amt = it.amount != null ? money(it.amount, currency) : "-";
       const dueLabel = dueRuleCustomerLabel(it.due_rule, {
         fixedDueDate: it.fixed_due_date,
         milestoneDescription: it.milestone_description,
         omitCustom: true,
       });
-      const seq = it.sequence_number || "*";
-      lines.push(
-        body(
-          `${seq}. ${label} - ${amt}` +
-            (dueLabel ? ` (${dueLabel})` : "")
-        )
-      );
-      if (trimField(it.milestone_description)) {
-        lines.push(body(`   ${trimField(it.milestone_description)}`));
-      }
+      const seq = it.sequence_number || items.indexOf(it) + 1;
+      lines.push(body(`${seq}. ${label}`));
+      lines.push(body(amt));
+      if (dueLabel) lines.push(body(dueLabel));
     }
   }
   lines.push(blank(6));
