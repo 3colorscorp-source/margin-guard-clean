@@ -37,7 +37,7 @@ test("syntax contract-builder.js", () => {
 });
 
 test("Property Confirm + persist", () => {
-  assert.match(js, /"art-property":[\s\S]*?saveLabel:\s*"Confirm Property"/);
+  assert.match(js, /"art-property":[\s\S]*?saveLabel:\s*"Confirm Project Address"/);
   assert.match(js, /confirm_property_address:\s*true/);
   assert.match(js, /function propertyConfigured/);
   assert.match(html, /id="art-property"/);

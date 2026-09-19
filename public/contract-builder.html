@@ -289,7 +289,6 @@
     #cbMain.is-preview .cb-editor,
     #cbMain.is-preview .cb-draft-note,
     #cbMain.is-preview #cbWsValidation,
-    #cbMain.is-preview .cb-prop-secondary,
     #cbMain.is-preview .cb-prop-editor__intro,
     #cbMain.is-preview .cb-war-editor__intro,
     #cbMain.is-preview .cb-war-preset,
@@ -300,14 +299,12 @@
     #cbMain.is-printing .cb-draft-note,
     #cbMain.is-printing #cbWsValidation,
     #cbMain.is-printing .cb-step-footer,
-    #cbMain.is-printing .cb-prop-secondary,
     #cbMain.is-printing .cb-pay-hub-note,
     #cbMain.is-printing .cb-pay-empty__future,
     body.cb-customer-preview [data-ws-edit],
     body.cb-customer-preview .cb-editor,
     body.cb-customer-preview .cb-draft-note,
     body.cb-customer-preview #cbWsValidation,
-    body.cb-customer-preview .cb-prop-secondary,
     body.cb-customer-preview .cb-pay-hub-note,
     body.cb-customer-preview .cb-pay-empty__future {
       display: none !important;
@@ -476,43 +473,6 @@
     .cb-prop-workspace__confirm-mark {
       font-size: 0.95rem;
       line-height: 1;
-    }
-    .cb-prop-secondary {
-      margin-top: 18px;
-      padding-top: 14px;
-      border-top: 1px solid var(--cb-line);
-    }
-    .cb-prop-secondary__title {
-      margin: 0 0 8px;
-      font-size: 0.68rem;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: #a8a29e;
-    }
-    .cb-prop-secondary__list {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: grid;
-      gap: 6px;
-    }
-    .cb-prop-secondary__list li {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 0.84rem;
-      color: #57534e;
-      padding: 6px 0;
-    }
-    .cb-prop-secondary__list li span:last-child {
-      font-size: 0.72rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: #a8a29e;
-      white-space: nowrap;
     }
     .cb-prop-editor {
       margin: 0;
@@ -2075,7 +2035,7 @@
                 <div class="cb-article__body">
                   <div data-ws-preview>
                     <div class="cb-prop-workspace">
-                      <p class="cb-prop-workspace__eyebrow">Property</p>
+                      <p class="cb-prop-workspace__eyebrow">Project</p>
                       <p class="cb-prop-workspace__project">
                         Project · <strong id="cbProjectName">—</strong>
                       </p>
@@ -2088,15 +2048,6 @@
                           <span class="cb-prop-workspace__confirm-mark" aria-hidden="true">○</span>
                           <span id="cbPropConfirmText">Property address not set</span>
                         </div>
-                      </div>
-                      <div class="cb-prop-secondary" aria-label="Future property details">
-                        <p class="cb-prop-secondary__title">Optional details</p>
-                        <ul class="cb-prop-secondary__list">
-                          <li><span>Site notes</span><span>Coming soon</span></li>
-                          <li><span>Access notes</span><span>Coming soon</span></li>
-                          <li><span>GPS location</span><span>Coming soon</span></li>
-                          <li><span>Photos</span><span>Coming soon</span></li>
-                        </ul>
                       </div>
                       <!-- Hidden compatibility mirrors for print/readiness consumers -->
                       <span id="cbPropCity" hidden>—</span>
@@ -2111,7 +2062,7 @@
                   </div>
                   <div class="cb-prop-editor owner-only" data-ws-edit>
                     <p class="cb-prop-editor__intro">
-                      Confirm the project address used on the contract. Confirm Property writes it to the project record.
+                      Confirm the project address used on the contract. Confirm Project Address writes it to the project record.
                     </p>
                     <div class="cb-prop-form">
                       <div class="cb-prop-field">

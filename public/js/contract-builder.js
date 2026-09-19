@@ -217,10 +217,10 @@
       supportsEdit: true,
       supportsSave: true,
       supportsValidation: true,
-      supportsFutureMap: true,
+      supportsFutureMap: false,
       continueLabel: "Continue",
-      editLabel: "Edit Property",
-      saveLabel: "Confirm Property",
+      editLabel: "Add Project Address",
+      saveLabel: "Confirm Project Address",
       validate: () => validatePropertyWorkspace(),
       syncEditFromModel: () => syncPropertyInputsFromModel(),
       onEnterEdit: () => {
@@ -881,14 +881,43 @@
     }
 
     if (caps.supportsEdit && articleAllowsOwnerEdit(activeArticleId)) {
+      const propertyPresent = activeArticleId === "art-property" && propertyAddressPresentFromModel();
+      const propertyConfirmed =
+        activeArticleId === "art-property" && propertyConfigured(sourceSnapshot?.contractSetup);
+      const propertyEditLabel = !propertyPresent
+        ? "Add Project Address"
+        : "Edit Project Address";
       actions.appendChild(
         createFooterButton({
           id: "cbWsEdit",
-          label: caps.editLabel || "Edit",
-          className: "btn ghost",
+          label: activeArticleId === "art-property" ? propertyEditLabel : caps.editLabel || "Edit",
+          className:
+            activeArticleId === "art-property" && !propertyPresent && !propertyConfirmed
+              ? "btn primary"
+              : "btn ghost",
           disabled: busy,
           onClick: () => {
             void workspaceEnterEdit(activeArticleId);
+          },
+        })
+      );
+    }
+
+    if (
+      activeArticleId === "art-property" &&
+      propertyAddressPresentFromModel() &&
+      !propertyConfigured(sourceSnapshot?.contractSetup) &&
+      mode === WS_MODE.PREVIEW &&
+      !busy
+    ) {
+      actions.appendChild(
+        createFooterButton({
+          id: "cbWsConfirmProperty",
+          label: "Confirm Project Address",
+          className: "btn primary",
+          disabled: busy,
+          onClick: () => {
+            void workspaceConfirmProperty();
           },
         })
       );
@@ -933,12 +962,15 @@
         activeArticleId === "art-signatures"
           ? "Preview Contract"
           : caps.continueLabel || articleMeta(activeArticleId).label || "Continue";
+      const propertyBlocksContinue =
+        activeArticleId === "art-property" &&
+        !propertyConfigured(sourceSnapshot?.contractSetup);
       actions.appendChild(
         createFooterButton({
           id: "cbStepContinue",
           label,
           className: "btn primary",
-          disabled: busy,
+          disabled: busy || propertyBlocksContinue,
           onClick: () => {
             void handleWorkspaceContinue();
           },
@@ -955,6 +987,14 @@
         hint.textContent = "Review only — confirm legal notices on the Legal Notices page.";
       } else if (activeArticleId === "art-payment" && !paymentScheduleAllowsOwnerEdit()) {
         hint.textContent = "Payment Schedule is confirmed and read-only.";
+      } else if (activeArticleId === "art-property") {
+        if (propertyConfigured(sourceSnapshot?.contractSetup)) {
+          hint.textContent = "Project address is confirmed. Continue to the next article.";
+        } else if (propertyAddressPresentFromModel()) {
+          hint.textContent = "Confirm the project address to continue.";
+        } else {
+          hint.textContent = "Add the project address to continue.";
+        }
       } else if (caps.supportsSave) {
         hint.textContent = "Confirm writes this article. Continue only moves to the next article.";
       } else {
@@ -1399,6 +1439,40 @@
     return propertyMissingLabels(fields).length === 0;
   }
 
+  function resolvePropertyFieldsFromModel() {
+    const setupFields = propertyFieldsFromSetup(sourceSnapshot?.contractSetup?.setup);
+    const editFields = propertyFieldsFromEdits(draftEdits);
+    if (getArticleMode("art-property") === WS_MODE.EDIT) {
+      return readPropertyFieldsFromDom();
+    }
+    if (propertyFieldsComplete(editFields)) return editFields;
+    if (propertyFieldsComplete(setupFields)) return setupFields;
+    return {
+      line1: editFields.line1 || setupFields.line1 || String(draftEdits?.address || "").trim(),
+      line2: editFields.line2 || setupFields.line2,
+      city: editFields.city || setupFields.city,
+      state: editFields.state || setupFields.state,
+      zip: editFields.zip || setupFields.zip,
+    };
+  }
+
+  function propertyAddressPresent(fields, extraAddress) {
+    const row = fields || {};
+    return Boolean(
+      String(row.line1 || "").trim() ||
+        String(row.line2 || "").trim() ||
+        String(row.city || "").trim() ||
+        String(row.state || "").trim() ||
+        String(row.zip || "").trim() ||
+        String(extraAddress || "").trim() ||
+        formatPropertyLine(sourceSnapshot?.contractSetup?.setup)
+    );
+  }
+
+  function propertyAddressPresentFromModel() {
+    return propertyAddressPresent(resolvePropertyFieldsFromModel(), draftEdits?.address);
+  }
+
   function applyPropertyFieldsToEdits(edits, fields) {
     if (!edits || !fields) return;
     edits.propLine1 = fields.line1;
@@ -1449,7 +1523,8 @@
 
   function validatePropertyWorkspace(options = {}) {
     const forSave = options.forSave === true;
-    if (propertyConfigured(sourceSnapshot?.contractSetup) && !forSave && getArticleMode("art-property") === WS_MODE.PREVIEW) {
+    const configured = propertyConfigured(sourceSnapshot?.contractSetup);
+    if (configured && !forSave && getArticleMode("art-property") === WS_MODE.PREVIEW) {
       return {
         level: "ok",
         badge: "Confirmed",
@@ -1461,29 +1536,20 @@
     const fields =
       getArticleMode("art-property") === WS_MODE.EDIT || forSave
         ? readPropertyFieldsFromDom()
-        : propertyFieldsFromSetup(sourceSnapshot?.contractSetup?.setup);
+        : resolvePropertyFieldsFromModel();
+    const present = propertyAddressPresent(fields, draftEdits?.address);
     const missing = propertyMissingLabels(fields);
 
-    if (!missing.length) {
-      if (propertyConfigured(sourceSnapshot?.contractSetup) && !forSave) {
-        return {
-          level: "ok",
-          badge: "Confirmed",
-          message: "✓ Address complete",
-          blocking: false,
-        };
-      }
+    if (configured && !forSave) {
       return {
-        level: forSave ? "ok" : "warn",
-        badge: forSave ? "Ready" : "Ready to save",
-        message: forSave
-          ? "✓ Address complete"
-          : "Address looks complete — Save to confirm it on the contract.",
+        level: "ok",
+        badge: "Confirmed",
+        message: "✓ Address complete",
         blocking: false,
       };
     }
 
-    if (missing.length === 4 && !fields.line1 && !fields.city && !fields.state && !fields.zip) {
+    if (!present) {
       return {
         level: "block",
         badge: "Missing",
@@ -1492,12 +1558,35 @@
       };
     }
 
-    const needs = missing.length === 1 ? missing[0] : missing.slice(0, -1).join(", ") + " and " + missing[missing.length - 1];
+    if (missing.length) {
+      const needs =
+        missing.length === 1
+          ? missing[0]
+          : missing.slice(0, -1).join(", ") + " and " + missing[missing.length - 1];
+      return {
+        level: "block",
+        badge: "Incomplete",
+        message: `Property address still needs ${needs} before it can be confirmed.`,
+        blocking: true,
+      };
+    }
+
+    if (!configured) {
+      return {
+        level: forSave ? "ok" : "block",
+        badge: forSave ? "Ready" : "Needs confirmation",
+        message: forSave
+          ? "✓ Address complete"
+          : "Confirm the project address to continue.",
+        blocking: !forSave,
+      };
+    }
+
     return {
-      level: "block",
-      badge: "Incomplete",
-      message: `Property address still needs ${needs} before it can be confirmed.`,
-      blocking: true,
+      level: "ok",
+      badge: "Confirmed",
+      message: "✓ Address complete",
+      blocking: false,
     };
   }
 
@@ -1514,11 +1603,15 @@
     markPropertyFieldValidity(readPropertyFieldsFromDom());
   }
 
-  async function savePropertyWorkspace() {
+  async function savePropertyWorkspace(fieldsArg) {
     if (!sourceSnapshot?.projectId || !sourceSnapshot?.quoteId) {
       throw new Error("Project and quote are required to save the property address.");
     }
-    const fields = readPropertyFieldsFromDom();
+    const fields =
+      fieldsArg ||
+      (getArticleMode("art-property") === WS_MODE.EDIT
+        ? readPropertyFieldsFromDom()
+        : resolvePropertyFieldsFromModel());
     const missing = propertyMissingLabels(fields);
     if (missing.length) {
       throw new Error(
@@ -1557,6 +1650,39 @@
     renderDocument(sourceSnapshot, draftEdits);
     updateIndexNavStatus();
     renderWorkspaceChrome();
+  }
+
+  async function workspaceConfirmProperty() {
+    if (workspaceBusy) return false;
+    const fields = resolvePropertyFieldsFromModel();
+    if (!propertyFieldsComplete(fields)) {
+      const entered = await workspaceEnterEdit("art-property");
+      if (entered) updatePropertyLiveHint();
+      renderWorkspaceChrome();
+      return false;
+    }
+    workspaceBusy = true;
+    workspaceBusyLabel = "Confirming…";
+    setArticleMode("art-property", WS_MODE.SAVING);
+    renderWorkspaceChrome();
+    try {
+      await savePropertyWorkspace(fields);
+      workspaceEditBaseline = null;
+      setArticleMode("art-property", WS_MODE.SAVED);
+      renderWorkspaceChrome();
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      await workspaceEnterPreview("art-property");
+      return true;
+    } catch (err) {
+      setArticleMode("art-property", WS_MODE.EDIT);
+      renderWorkspaceChrome();
+      window.alert(err?.message || "Property address could not be confirmed.");
+      return false;
+    } finally {
+      workspaceBusy = false;
+      workspaceBusyLabel = "Saving…";
+      renderWorkspaceChrome();
+    }
   }
 
   function propertyConfigured(setupBundle) {
@@ -3454,9 +3580,31 @@
       case "art-customer":
         return source.customerName ? "available" : "missing";
       case "art-property": {
-        const st = readinessMapStatus("property", source);
-        if (st === "available") return "available";
-        return String(e.address || "").trim() ? "needs_confirmation" : "missing";
+        if (propertyConfigured(source.contractSetup)) return "available";
+        const setupFields = propertyFieldsFromSetup(source.contractSetup?.setup);
+        const present = propertyAddressPresent(
+          {
+            line1:
+              String(e.propLine1 || "").trim() ||
+              String(source.propLine1 || "").trim() ||
+              setupFields.line1,
+            line2: String(e.propLine2 || "").trim() || setupFields.line2,
+            city:
+              String(e.propCity || "").trim() ||
+              String(source.propCity || "").trim() ||
+              setupFields.city,
+            state:
+              String(e.propState || "").trim() ||
+              String(source.propState || "").trim() ||
+              setupFields.state,
+            zip:
+              String(e.propZip || "").trim() ||
+              String(source.propZip || "").trim() ||
+              setupFields.zip,
+          },
+          e.address || source.address
+        );
+        return present ? "needs_confirmation" : "missing";
       }
       case "art-quote":
         return source.quoteId ? "available" : "missing";
@@ -4443,11 +4591,11 @@
       } else if (visibleAddress) {
         badge.classList.add("is-pending");
         if (badgeMark) badgeMark.textContent = "!";
-        if (badgeText) badgeText.textContent = "Property address needs confirmation";
+        if (badgeText) badgeText.textContent = "Confirm the project address to continue.";
       } else {
         badge.classList.add("is-missing");
         if (badgeMark) badgeMark.textContent = "○";
-        if (badgeText) badgeText.textContent = "Property address not set";
+        if (badgeText) badgeText.textContent = "Add the project address to continue.";
       }
     }
 
