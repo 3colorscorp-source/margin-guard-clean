@@ -170,6 +170,28 @@ async function loadArtifactByEnvelope(tenantId, envelopeId) {
   return Array.isArray(rows) && rows[0] ? rows[0] : null;
 }
 
+const US_STATE_NAMES = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+  CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+  HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+  KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+  MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri",
+  MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+  NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio",
+  OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina",
+  SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont",
+  VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+  DC: "District of Columbia",
+};
+
+function contractorLicenseHeading(state) {
+  const raw = trimField(state);
+  if (!raw) return "Contractor License #:";
+  const key = raw.toUpperCase();
+  const full = US_STATE_NAMES[key] || raw;
+  return `${full} Contractor License #:`;
+}
+
 function businessIdentityFromSnapshot(snap) {
   const lp = snap?.business_settings?.legal_profile || {};
   const brand = snap?.business_settings?.branding || {};
@@ -178,25 +200,34 @@ function businessIdentityFromSnapshot(snap) {
     trimField(brand.business_name) ||
     "Contractor";
   const lines = [name];
-  if (trimField(lp.dba_name)) lines.push(`DBA: ${trimField(lp.dba_name)}`);
-  const addr = [
+  const dba = trimField(lp.dba_name);
+  if (dba && dba !== name) lines.push(`DBA: ${dba}`);
+  const signer = trimField(lp.authorized_signer_name);
+  if (signer) lines.push(`Contractor: ${signer}`);
+  const licenseStatus = trimField(lp.contractor_license_status).toLowerCase();
+  const hideLicense = licenseStatus === "exempt" || licenseStatus === "not_required";
+  const licenseNumber = hideLicense ? "" : trimField(lp.contractor_license_number);
+  if (licenseNumber) {
+    lines.push(
+      `${contractorLicenseHeading(lp.contractor_license_state || lp.business_state)} ${licenseNumber}`
+    );
+  }
+  const addrLines = [
     trimField(lp.business_address_line1),
     trimField(lp.business_address_line2),
-    [trimField(lp.business_city), trimField(lp.business_state), trimField(lp.business_postal_code)]
+    [
+      trimField(lp.business_city),
+      [trimField(lp.business_state), trimField(lp.business_postal_code)].filter(Boolean).join(" "),
+    ]
       .filter(Boolean)
       .join(", "),
-  ]
-    .filter(Boolean)
-    .join(", ");
-  if (addr) lines.push(addr);
+  ].filter(Boolean);
+  if (addrLines.length) lines.push(...addrLines);
   else if (trimField(brand.business_address)) lines.push(trimField(brand.business_address));
   const phone = trimField(lp.business_phone) || trimField(brand.business_phone);
   const email = trimField(lp.business_email) || trimField(brand.business_email);
-  if (phone) lines.push(`Phone: ${phone}`);
-  if (email) lines.push(`Email: ${email}`);
-  if (trimField(lp.contractor_license_number)) {
-    lines.push(`License: ${trimField(lp.contractor_license_number)}`);
-  }
+  if (phone) lines.push(phone);
+  if (email) lines.push(email);
   return lines;
 }
 
