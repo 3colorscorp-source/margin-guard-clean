@@ -72,8 +72,10 @@ test("Scope is quote review-only", () => {
 test("Price is quote review-only", () => {
   assert.match(js, /"art-price":[\s\S]*?supportsEdit:\s*false/);
   assert.match(js, /"art-price":[\s\S]*?supportsSave:\s*false/);
-  assert.match(html, /Contract total is locked to the approved quote/);
+  assert.match(html, /This is the approved contract price\./);
+  assert.match(html, /Payment details are listed in Article 7\./);
   assert.match(html, /id="cbPriceLine"/);
+  assert.doesNotMatch(html.slice(html.indexOf('id="art-price"'), html.indexOf('id="art-payment"')), /Not yet defined/);
 });
 
 test("Terms / Legal Notices review + external link", () => {

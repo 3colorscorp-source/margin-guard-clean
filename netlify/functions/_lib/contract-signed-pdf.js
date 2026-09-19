@@ -357,22 +357,10 @@ function buildSignedContractLines({
   lines.push(body(unspecified(snap?.scope?.text)));
   lines.push(blank(6));
 
-  lines.push(heading("Price"));
-  lines.push(
-    body(
-      `Contract total: ${money(snap?.price?.contract_total ?? snap?.quote?.total, currency)}`
-    )
-  );
-  if (snap?.price?.deposit_required != null || snap?.quote?.deposit_required != null) {
-    lines.push(
-      body(
-        `Deposit required: ${money(
-          snap?.price?.deposit_required ?? snap?.quote?.deposit_required,
-          currency
-        )}`
-      )
-    );
-  }
+  lines.push(heading("Contract Price"));
+  lines.push(body(money(snap?.price?.contract_total ?? snap?.quote?.total, currency)));
+  lines.push(body("This is the approved contract price."));
+  lines.push(body("Payment details are listed in Article 7."));
   lines.push(blank(6));
 
   lines.push(heading("Estimated Schedule"));

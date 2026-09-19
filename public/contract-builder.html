@@ -1396,6 +1396,43 @@
       color: #1c1917;
     }
 
+    .cb-price-card {
+      margin: 0;
+      padding: 12px 14px 10px;
+      border: 1px solid #99f6e4;
+      border-radius: 10px;
+      background: linear-gradient(180deg, #f0fdfa, #ccfbf1);
+    }
+    .cb-article .cb-price-card p {
+      margin: 0;
+      color: #57534e;
+    }
+    .cb-price-card__label {
+      font-size: 0.68rem;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #0f766e;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+    .cb-price-card__amount {
+      margin: 4px 0 8px !important;
+      font-size: 1.7rem !important;
+      font-weight: 800;
+      color: #0c0a09 !important;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+    }
+    .cb-price-card__copy {
+      font-size: 0.88rem !important;
+      line-height: 1.4;
+    }
+    .cb-price-card__copy + .cb-price-card__copy {
+      margin-top: 2px !important;
+    }
+    #art-price .cb-article__body {
+      padding-bottom: 10px;
+    }
     .cb-summary {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1766,6 +1803,8 @@
       .cb-meta-grid,
       .cb-sign-grid,
       .cb-summary { grid-template-columns: 1fr; }
+      .cb-price-card { padding: 10px 12px 8px; }
+      .cb-price-card__amount { font-size: 1.5rem !important; margin: 2px 0 6px !important; }
       .cb-toolbar { height: auto; min-height: var(--cb-toolbar-h); padding: 8px 12px; }
       .cb-shell { padding-top: 86px; }
     }
@@ -2162,22 +2201,12 @@
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
-                  <p class="cb-draft-note owner-only no-print">
-                    Contract total is locked to the approved quote. Payment stages are configured in Payment Schedule.
-                  </p>
-                  <div class="cb-summary" id="cbPriceSummary">
-                    <div class="cb-summary__item is-total">
-                      <div class="k">Contract Total</div>
-                      <div class="v" id="cbPriceLine">—</div>
-                    </div>
-                    <div class="cb-summary__item"><div class="k">Deposit</div><div class="v" id="cbSumDeposit">Not yet defined</div></div>
-                    <div class="cb-summary__item"><div class="k">Progress Payments</div><div class="v" id="cbSumProgress">Not yet defined</div></div>
-                    <div class="cb-summary__item"><div class="k">Final Payment</div><div class="v" id="cbSumFinal">Not yet defined</div></div>
-                    <div class="cb-summary__item"><div class="k">Change Orders</div><div class="v" id="cbSumChangeOrders">Not yet defined</div></div>
-                    <div class="cb-summary__item"><div class="k">Taxes</div><div class="v" id="cbSumTaxes">Not yet defined</div></div>
-                    <div class="cb-summary__item"><div class="k">Balance</div><div class="v" id="cbSumBalance">Not yet defined</div></div>
+                  <div class="cb-price-card" id="cbPriceSummary">
+                    <p class="cb-price-card__label">Contract Price</p>
+                    <p class="cb-price-card__amount" id="cbPriceLine">—</p>
+                    <p class="cb-price-card__copy">This is the approved contract price.</p>
+                    <p class="cb-price-card__copy">Payment details are listed in Article 7.</p>
                   </div>
-                  <p>The contract total is based on the approved project price.</p>
                 </div>
               </section>
 
