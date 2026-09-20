@@ -36,22 +36,30 @@ test("syntax contract-builder.js", () => {
 test("edit surface present", () => {
   assert.ok(html.includes('id="cbPayEditGrid"'));
   assert.ok(html.includes('id="cbPayAddStage"'));
-  assert.ok(html.includes("Add payment"));
+  assert.ok(html.includes("+ Add Payment Stage"));
   assert.ok(html.includes('id="cbPayEditDifference"'));
+  assert.ok(html.includes("Customize Payment Plan") || js.includes("Customize Payment Plan"));
 });
 
 test("art-payment supports save + edit", () => {
   assert.ok(/"art-payment":\s*defaultWorkspaceCaps\(\{[\s\S]*?supportsEdit:\s*true/.test(js));
   assert.ok(/"art-payment":\s*defaultWorkspaceCaps\(\{[\s\S]*?supportsSave:\s*true/.test(js));
-  assert.ok(js.includes('saveLabel: "Save Draft"'));
+  const start = js.indexOf('"art-payment": defaultWorkspaceCaps');
+  const end = js.indexOf('"art-schedule": defaultWorkspaceCaps');
+  const payCaps = start >= 0 && end > start ? js.slice(start, end) : "";
+  assert.ok(payCaps.includes('saveLabel: "Save Payment Plan"'));
+  assert.ok(!payCaps.includes('saveLabel: "Save Draft"'));
 });
 
 test("CRUD + reorder actions", () => {
   assert.ok(js.includes('data-pay-action="delete"'));
   assert.ok(js.includes('data-pay-action="up"'));
   assert.ok(js.includes('data-pay-action="down"'));
-  assert.ok(js.includes('data-pay-action="insert"'));
+  assert.ok(!js.includes('data-pay-action="insert"'));
   assert.ok(js.includes("cbPayAddStage"));
+  assert.ok(js.includes("Move up"));
+  assert.ok(js.includes("Move down"));
+  assert.ok(js.includes(">Remove<") || js.includes("Remove</button>"));
 });
 
 test("live totals + confirm balance", () => {
@@ -61,7 +69,7 @@ test("live totals + confirm balance", () => {
   assert.ok(helper.includes("Payment amounts must equal the contract total.") || js.includes("must equal") || js.includes("SUM_ERROR"));
 });
 
-test("Save Draft + Confirm Schedule + POST existing API", () => {
+test("Save Payment Plan + Confirm Schedule + POST existing API", () => {
   assert.ok(js.includes("savePaymentScheduleDraft"));
   assert.ok(js.includes("workspaceConfirmPayment"));
   assert.ok(js.includes("confirm_schedule") || fs.readFileSync(path.join(ROOT, "public/js/contract-payment-confirm.js"), "utf8").includes("confirm_schedule: true"));
@@ -83,11 +91,15 @@ test("reload / conflict handling", () => {
   assert.ok(js.includes("schedule_version_conflict") || js.includes("offerPaymentScheduleConflictReload"));
 });
 
-test("advanced editing remains available", () => {
-  assert.ok(html.includes('id="cbPayAdvancedToggle"'));
-  assert.ok(js.includes("paymentAdvancedEdit"));
-  assert.ok(js.includes('data-pay-field="item_role"'));
-  assert.ok(js.includes("Future obligation — payment is still due"));
+test("customize plan is non-technical and deposit is locked", () => {
+  assert.ok(!html.includes('id="cbPayAdvancedToggle"'));
+  assert.ok(!js.includes("paymentAdvancedEdit"));
+  assert.ok(!js.includes('data-pay-field="item_role"'));
+  assert.ok(!js.includes("Future obligation — payment is still due"));
+  assert.ok(html.includes("cb-pay-lock-card"));
+  assert.ok(js.includes("Approved quote"));
+  assert.ok(js.includes("Due Now"));
+  assert.ok(js.includes("BILLING_SCHEDULE_COPY") || html.includes("Every two weeks based on completed work"));
 });
 
 test("local defaults helper is loaded before builder", () => {

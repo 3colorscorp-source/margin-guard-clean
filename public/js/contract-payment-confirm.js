@@ -18,12 +18,16 @@
 
   var SCHEDULE_API = "/.netlify/functions/project-contract-payment-schedule";
   var SUM_ERROR = "Payment amounts must equal the contract total.";
+  var STAGES_SUM_ERROR = "Payment stages must equal the remaining contract balance.";
   var DEPOSIT_UNAVAILABLE_MESSAGE =
     "Deposit status could not be verified. Refresh before confirming.";
   var DEPOSIT_INCONSISTENT_MESSAGE =
     "Verified deposit exceeds the contract total. Refresh before confirming.";
-  var SCHEDULE_MISMATCH_MESSAGE =
-    "Future payments do not equal the remaining contract balance. Edit the payment schedule before confirming.";
+  var SCHEDULE_MISMATCH_MESSAGE = STAGES_SUM_ERROR;
+  var BILLING_SCHEDULE_COPY =
+    "Every two weeks based on completed work. If the project is completed sooner, the final invoice is sent at completion.";
+  var BILLING_BALANCE_COPY =
+    "Billed every two weeks based on progress. If the project is completed sooner, the final invoice is sent at completion.";
   var INVOICE_CADENCE_COPY =
     "The remaining balance is billed every two weeks based on progress, or at completion if the project is finished sooner.";
   var PROGRESS_INVOICE_COPY = INVOICE_CADENCE_COPY;
@@ -112,13 +116,13 @@
     var buttons = [];
     if (kind !== "confirmed") {
       buttons.push({
-        id: "edit",
-        label: "Edit Payment Schedule",
-        style: kind === "unconfirmed" ? "ghost" : "primary",
+        id: "customize",
+        label: "Customize Payment Plan",
+        style: "ghost",
         enabled: !busy,
       });
     }
-    if (kind === "unconfirmed") {
+    if (kind === "unconfirmed" || kind === "unbalanced") {
       buttons.push({
         id: "confirm",
         label: "Confirm Payment Schedule",
@@ -150,15 +154,18 @@
       buttons: buttons,
       continueVisible: kind === "confirmed",
       continueEnabled: kind === "confirmed" && !busy,
-      confirmVisible: kind === "unconfirmed",
+      confirmVisible: kind === "unconfirmed" || kind === "unbalanced",
       confirmEnabled: confirmEnabled,
-      editStyle: kind === "unconfirmed" ? "ghost" : "primary",
+      customizeVisible: kind !== "confirmed",
+      editStyle: "ghost",
       errorMessage:
-        kind === "unbalanced"
-          ? SUM_ERROR
-          : depositBlocked
-            ? summary.verificationMessage
-            : "",
+        summary.scheduleMismatch
+          ? STAGES_SUM_ERROR
+          : kind === "unbalanced"
+            ? SUM_ERROR
+            : depositBlocked
+              ? summary.verificationMessage
+              : "",
       confirmedLabel: kind === "confirmed" ? "Payment Schedule Confirmed" : "",
       primaryEnabledCount: primaryEnabled.length,
       primaryLabel: primaryEnabled[0] ? primaryEnabled[0].label : "",
@@ -205,14 +212,13 @@
 
   function presentPaymentRows(items, options) {
     var opts = options || {};
-    var dueFn = typeof opts.dueRuleLabel === "function" ? opts.dueRuleLabel : null;
+    var dueFn =
+      typeof opts.dueRuleLabel === "function" ? opts.dueRuleLabel : article7DueRuleLabel;
     return cloneItems(items).map(function (item, index) {
-      var due = dueFn
-        ? dueFn(item.due_rule, {
-            fixedDueDate: item.fixed_due_date,
-            milestoneDescription: item.milestone_description,
-          })
-        : trimField(item.due_label);
+      var due = dueFn(item.due_rule, {
+        fixedDueDate: item.fixed_due_date,
+        milestoneDescription: item.milestone_description,
+      });
       return {
         index: index + 1,
         name: trimField(item.label) || "Payment",
@@ -318,6 +324,59 @@
     } catch (_err) {
       return (cur === "USD" ? "$" : cur + " ") + n.toFixed(2);
     }
+  }
+
+  function article7DueRuleLabel(raw, extras) {
+    var extra = extras || {};
+    var key = trimField(raw).toLowerCase();
+    if (key === "fixed_date") {
+      var date = trimField(extra.fixedDueDate);
+      if (date && extra.editor !== true) return "Due " + date;
+      return "On a specific date";
+    }
+    if (key === "milestone") {
+      var milestone = trimField(extra.milestoneDescription);
+      if (milestone && extra.editor !== true) return "Due at milestone: " + milestone;
+      return "Custom milestone";
+    }
+    if (key === "on_completion") {
+      return extra.editor === true ? "At project completion" : "Due at project completion";
+    }
+    if (key === "custom" || key === "on_start" || key === "before_start") {
+      return "Every two weeks based on progress";
+    }
+    return extra.editor === true ? "Every two weeks based on progress" : "";
+  }
+
+  function article7DueTimingOptionsHtml(selected) {
+    var current = trimField(selected).toLowerCase();
+    if (
+      current !== "custom" &&
+      current !== "on_completion" &&
+      current !== "fixed_date" &&
+      current !== "milestone"
+    ) {
+      current = "custom";
+    }
+    var options = [
+      ["custom", "Every two weeks based on progress"],
+      ["on_completion", "At project completion"],
+      ["fixed_date", "On a specific date"],
+      ["milestone", "Custom milestone"],
+    ];
+    return options
+      .map(function (pair) {
+        return (
+          '<option value="' +
+          pair[0] +
+          '"' +
+          (pair[0] === current ? " selected" : "") +
+          ">" +
+          pair[1] +
+          "</option>"
+        );
+      })
+      .join("");
   }
 
   function joinPaymentExplanation(statusCopy, cadenceCopy) {
@@ -697,11 +756,14 @@
   return {
     SCHEDULE_API: SCHEDULE_API,
     SUM_ERROR: SUM_ERROR,
+    STAGES_SUM_ERROR: STAGES_SUM_ERROR,
     DEPOSIT_UNAVAILABLE_MESSAGE: DEPOSIT_UNAVAILABLE_MESSAGE,
     DEPOSIT_INCONSISTENT_MESSAGE: DEPOSIT_INCONSISTENT_MESSAGE,
     SCHEDULE_MISMATCH_MESSAGE: SCHEDULE_MISMATCH_MESSAGE,
     PROGRESS_INVOICE_COPY: PROGRESS_INVOICE_COPY,
     INVOICE_CADENCE_COPY: INVOICE_CADENCE_COPY,
+    BILLING_SCHEDULE_COPY: BILLING_SCHEDULE_COPY,
+    BILLING_BALANCE_COPY: BILLING_BALANCE_COPY,
     moneyToCents: moneyToCents,
     computePaymentTotals: computePaymentTotals,
     paymentConfigured: paymentConfigured,
@@ -722,6 +784,9 @@
     depositStatusCopyFromSnapshot: depositStatusCopyFromSnapshot,
     paymentExplanationFromSnapshot: paymentExplanationFromSnapshot,
     joinPaymentExplanation: joinPaymentExplanation,
+    article7DueRuleLabel: article7DueRuleLabel,
+    article7DueTimingOptionsHtml: article7DueTimingOptionsHtml,
+    futureStageItems: futureStageItems,
     createPaymentConfirmRunner: createPaymentConfirmRunner,
     cloneItems: cloneItems,
   };
