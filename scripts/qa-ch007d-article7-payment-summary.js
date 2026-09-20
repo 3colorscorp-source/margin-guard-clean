@@ -445,12 +445,12 @@ test("17 multiple valid partials on the same quote sum", () => {
   assert.strictEqual(summed.verified_paid, true);
 });
 
-test("18 refund/void/reversal uses ledger amount and payment_type, not notes", () => {
+test("18 refund/void/reversal uses invoice_id, not notes", () => {
   const deposit = {
     id: "dep-1",
     tenant_id: "t1",
     quote_id: "q1",
-    invoice_id: null,
+    invoice_id: "inv-deposit",
     project_id: "p1",
     payment_type: "deposit",
     payment_method: "check",
@@ -575,6 +575,230 @@ test("20b SELECT uses only real tenant_project_payments columns", () => {
   assert.doesNotMatch(depositSrc, /row\?\.voided_at|row\?\.refunded_at|row\?\.status/);
   const scheduleApi = require("../netlify/functions/project-contract-payment-schedule.js");
   assert.strictEqual(typeof scheduleApi._test.depositBlocksConfirm, "function");
+});
+
+function ledgerRow(overrides) {
+  return {
+    id: "row-1",
+    tenant_id: "t1",
+    quote_id: "q1",
+    invoice_id: "inv-deposit",
+    project_id: "p1",
+    payment_type: "deposit",
+    payment_method: "check",
+    amount: 1,
+    paid_at: "2026-09-01T00:00:00.000Z",
+    notes: "",
+    created_at: "2026-09-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function depositOf(rows, extra) {
+  return Deposit.fromLedgerRows(rows, {
+    tenantId: "t1",
+    projectId: "p1",
+    quoteId: "q1",
+    contractTotal: TOTAL,
+    ...(extra || {}),
+  });
+}
+
+test("26 adjustment alone never creates Deposit Paid", () => {
+  const positive = depositOf([
+    ledgerRow({ id: "adj+", payment_type: "adjustment", amount: 500 }),
+  ]);
+  assert.strictEqual(positive.status, "none");
+  assert.strictEqual(positive.verified_paid, false);
+  const negative = depositOf([
+    ledgerRow({ id: "adj-", payment_type: "adjustment", amount: -500 }),
+  ]);
+  assert.strictEqual(negative.status, "none");
+  assert.strictEqual(negative.verified_paid, false);
+});
+
+test("27 valid deposit with paid_at is paid", () => {
+  const paid = depositOf([ledgerRow({ id: "dep" })]);
+  assert.strictEqual(paid.status, "paid");
+  assert.strictEqual(paid.amount, 1);
+  assert.strictEqual(paid.verified_paid, true);
+});
+
+test("28 linked negative adjustment nets the deposit", () => {
+  const netted = depositOf([
+    ledgerRow({ id: "dep", amount: 1, invoice_id: "inv-deposit" }),
+    ledgerRow({
+      id: "adj",
+      payment_type: "adjustment",
+      amount: -0.4,
+      invoice_id: "inv-deposit",
+      paid_at: "2026-09-02T00:00:00.000Z",
+    }),
+  ]);
+  assert.strictEqual(netted.status, "paid");
+  assert.strictEqual(netted.amount, 0.6);
+});
+
+test("29 linked positive adjustment nets the deposit", () => {
+  const netted = depositOf([
+    ledgerRow({ id: "dep", amount: 1, invoice_id: "inv-deposit" }),
+    ledgerRow({
+      id: "adj",
+      payment_type: "adjustment",
+      amount: 0.25,
+      invoice_id: "inv-deposit",
+      paid_at: "2026-09-02T00:00:00.000Z",
+    }),
+  ]);
+  assert.strictEqual(netted.status, "paid");
+  assert.strictEqual(netted.amount, 1.25);
+});
+
+test("30 adjustment on another invoice_id does not change the deposit", () => {
+  const kept = depositOf([
+    ledgerRow({ id: "dep", amount: 1, invoice_id: "inv-deposit" }),
+    ledgerRow({
+      id: "adj",
+      payment_type: "adjustment",
+      amount: -1,
+      invoice_id: "inv-progress",
+    }),
+  ]);
+  assert.strictEqual(kept.status, "paid");
+  assert.strictEqual(kept.amount, 1);
+});
+
+test("31 adjustment without invoice_id does not change an invoiced deposit", () => {
+  const kept = depositOf([
+    ledgerRow({ id: "dep", amount: 1, invoice_id: "inv-deposit" }),
+    ledgerRow({
+      id: "adj",
+      payment_type: "adjustment",
+      amount: -1,
+      invoice_id: null,
+    }),
+  ]);
+  assert.strictEqual(kept.status, "paid");
+  assert.strictEqual(kept.amount, 1);
+});
+
+test("32 legacy deposit without invoice_id stays valid and does not absorb adjustments", () => {
+  const legacy = depositOf([
+    ledgerRow({ id: "legacy", amount: 1, invoice_id: null }),
+    ledgerRow({
+      id: "adj-null",
+      payment_type: "adjustment",
+      amount: -1,
+      invoice_id: null,
+    }),
+    ledgerRow({
+      id: "adj-other",
+      payment_type: "adjustment",
+      amount: -1,
+      invoice_id: "inv-other",
+    }),
+  ]);
+  assert.strictEqual(legacy.status, "paid");
+  assert.strictEqual(legacy.amount, 1);
+  assert.ok(depositSrc.includes("invoice_id is the authoritative link"));
+  assert.ok(depositSrc.includes("does not absorb adjustments"));
+});
+
+test("33 multiple partial deposits net with their own invoice_id adjustments", () => {
+  const netted = depositOf([
+    ledgerRow({ id: "d1", amount: 0.4, invoice_id: "inv-a" }),
+    ledgerRow({ id: "d2", amount: 0.6, invoice_id: "inv-b", paid_at: "2026-09-02T00:00:00.000Z" }),
+    ledgerRow({
+      id: "adj-a",
+      payment_type: "adjustment",
+      amount: -0.1,
+      invoice_id: "inv-a",
+    }),
+    ledgerRow({
+      id: "adj-b",
+      payment_type: "adjustment",
+      amount: 0.1,
+      invoice_id: "inv-b",
+    }),
+  ]);
+  assert.strictEqual(netted.status, "paid");
+  assert.strictEqual(netted.amount, 1);
+});
+
+test("34 progress/final adjustments do not change Deposit Paid", () => {
+  const kept = depositOf([
+    ledgerRow({ id: "dep", amount: 1, invoice_id: "inv-deposit" }),
+    ledgerRow({
+      id: "progress",
+      payment_type: "progress",
+      amount: 500,
+      invoice_id: "inv-progress",
+    }),
+    ledgerRow({
+      id: "adj-progress",
+      payment_type: "adjustment",
+      amount: -500,
+      invoice_id: "inv-progress",
+    }),
+    ledgerRow({
+      id: "final",
+      payment_type: "final",
+      amount: 200,
+      invoice_id: "inv-final",
+    }),
+    ledgerRow({
+      id: "adj-final",
+      payment_type: "adjustment",
+      amount: -50,
+      invoice_id: "inv-final",
+    }),
+  ]);
+  assert.strictEqual(kept.status, "paid");
+  assert.strictEqual(kept.amount, 1);
+});
+
+test("35 quote A never inherits quote B payments or adjustments", () => {
+  const rows = [
+    ledgerRow({
+      id: "dep-a",
+      quote_id: "quote-a",
+      invoice_id: "inv-a",
+      amount: 500,
+    }),
+    ledgerRow({
+      id: "adj-a",
+      quote_id: "quote-a",
+      invoice_id: "inv-a",
+      payment_type: "adjustment",
+      amount: -50,
+    }),
+    ledgerRow({
+      id: "dep-b",
+      quote_id: "quote-b",
+      invoice_id: "inv-b",
+      amount: 800,
+    }),
+    ledgerRow({
+      id: "adj-b",
+      quote_id: "quote-b",
+      invoice_id: "inv-b",
+      payment_type: "adjustment",
+      amount: 25,
+    }),
+  ];
+  const a = Deposit.fromLedgerRows(rows, {
+    tenantId: "t1",
+    projectId: "p1",
+    quoteId: "quote-a",
+  });
+  const b = Deposit.fromLedgerRows(rows, {
+    tenantId: "t1",
+    projectId: "p1",
+    quoteId: "quote-b",
+  });
+  assert.strictEqual(a.amount, 450);
+  assert.strictEqual(b.amount, 825);
+  assert.notStrictEqual(a.amount, b.amount);
 });
 
 async function testAsync(name, fn) {

@@ -2,17 +2,25 @@
  * Read-only verified contract deposit from the payment ledger.
  * Does not write invoices, payments, quotes, or projects.
  *
- * Paid is true only when tenant_project_payments has deposit rows scoped to
- * tenant + project + quote, with paid_at, and a positive net amount after
- * same-scope adjustments.
+ * Paid is true only when tenant_project_payments has at least one deposit row
+ * scoped to tenant + project + quote, with paid_at and amount > 0, and the net
+ * after invoice-linked adjustments is still positive.
  *
  * Ledger SoT (SUPABASE_TENANT_PROJECT_PAYMENTS.sql):
  *   payment_type in (deposit, progress, final, adjustment)
  *   amount <> 0 (numeric dollars)
  *   paid_at required
+ *   invoice_id is the authoritative link between a deposit and its adjustments
  * There is no voided_at, refunded_at, reversed_at, cancelled_at, status, or
- * payment_status on this table. Refunds/voids/reversals are additional rows:
- * payment_type = adjustment with a negative amount. Notes are not authority.
+ * payment_status on this table. Refunds/voids/reversals are additional rows
+ * with payment_type = adjustment. Notes are not authority.
+ *
+ * Fail-closed linking:
+ *   An adjustment applies only when it shares invoice_id with a valid deposit
+ *   on the same tenant + project + quote.
+ *   A legacy deposit with no invoice_id counts its positive amount only and
+ *   does not absorb adjustments. An adjustment with no invoice_id is never
+ *   attributed to a deposit.
  *
  * Quote acceptance, deposit_required, deposit paid flags, and Contract Builder
  * roles are not proof.
@@ -213,22 +221,43 @@ function isLegacyProjectDepositUnique({
   return false;
 }
 
+function isValidDepositRow(row) {
+  const type = trimField(row?.payment_type).toLowerCase();
+  const paidAt = trimField(row?.paid_at);
+  return type === "deposit" && Boolean(paidAt) && moneyToCents(row?.amount) > 0;
+}
+
 function netDepositFromRows(rows) {
-  let cents = 0;
-  let paidAt = null;
-  for (const row of rows) {
+  const deposits = [];
+  const adjustments = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
     const type = trimField(row?.payment_type).toLowerCase();
-    const amountCents = moneyToCents(row?.amount);
-    const at = trimField(row?.paid_at);
-    if (type === "deposit") {
-      if (!at) continue;
-      cents += amountCents;
-      if (amountCents > 0 && (!paidAt || at > paidAt)) paidAt = at;
+    if (isValidDepositRow(row)) {
+      deposits.push(row);
       continue;
     }
-    if (type === "adjustment") {
-      cents += amountCents;
-    }
+    if (type === "adjustment") adjustments.push(row);
+  }
+  if (!deposits.length) {
+    return { cents: 0, paidAt: null };
+  }
+
+  const depositInvoiceIds = new Set();
+  let cents = 0;
+  let paidAt = null;
+  for (const row of deposits) {
+    cents += moneyToCents(row.amount);
+    const at = trimField(row.paid_at);
+    if (at && (!paidAt || at > paidAt)) paidAt = at;
+    const invoiceId = trimField(row.invoice_id);
+    if (invoiceId) depositInvoiceIds.add(invoiceId);
+  }
+
+  for (const row of adjustments) {
+    const invoiceId = trimField(row.invoice_id);
+    if (!invoiceId) continue;
+    if (!depositInvoiceIds.has(invoiceId)) continue;
+    cents += moneyToCents(row.amount);
   }
   return { cents, paidAt };
 }
@@ -275,11 +304,7 @@ function fromLedgerRows(rows, options) {
 }
 
 function qualifyingDepositRows(rows, options) {
-  return dedupeLedgerRows(rowsInContractScope(rows, options)).filter((row) => {
-    const type = trimField(row?.payment_type).toLowerCase();
-    const paidAt = trimField(row?.paid_at);
-    return type === "deposit" && paidAt && moneyToCents(row?.amount) > 0;
-  });
+  return dedupeLedgerRows(rowsInContractScope(rows, options)).filter(isValidDepositRow);
 }
 
 function depositBlocksConfirm(deposit) {
@@ -458,6 +483,8 @@ module.exports = {
   unavailableDeposit,
   qualifyingDepositRows,
   fromLedgerRows,
+  netDepositFromRows,
+  isValidDepositRow,
   rowsInContractScope,
   isLegacyProjectDepositUnique,
   scopedDepositRequestPath,
