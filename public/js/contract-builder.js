@@ -4948,6 +4948,7 @@
       items,
       verifiedDeposit: bundle.deposit,
       depositRequired: source.depositRequired,
+      currency,
       dueRuleLabel: (rule, extras) => dueRuleLabel(rule, extras),
     });
 
@@ -5017,12 +5018,11 @@
           setText("cbPayDepositLabel", paySummary.depositLabel);
           setText(
             "cbPayDepositAmount",
-            paySummary.depositMinus
-              ? `− ${formatMoney(paySummary.depositAmount, currency)}`
-              : formatMoney(paySummary.depositAmount, currency)
+            formatMoney(paySummary.depositAmount, currency)
           );
         }
       }
+      setText("cbPayRemainingLabel", paySummary.remainingLabel || "Remaining Contract Balance");
       setText(
         "cbPayRemainingBalance",
         paySummary.remainingBalance != null
@@ -5030,9 +5030,9 @@
           : "—"
       );
       if (depositCopy) {
-        if (paySummary.appliedCopy) {
+        if (paySummary.summaryCopy) {
           depositCopy.hidden = false;
-          depositCopy.textContent = paySummary.appliedCopy;
+          depositCopy.textContent = paySummary.summaryCopy;
         } else {
           depositCopy.hidden = true;
           depositCopy.textContent = "";
@@ -5067,13 +5067,16 @@
     }
 
     if (timeline) {
-      const remainingRows = paySummary.remainingItems || [];
+      const remainingRows = paySummary.showPaymentStages ? paySummary.remainingItems || [] : [];
       if (!remainingRows.length) {
         timeline.hidden = true;
         timeline.innerHTML = "";
         if (remainingTitle) remainingTitle.hidden = true;
       } else {
-        if (remainingTitle) remainingTitle.hidden = false;
+        if (remainingTitle) {
+          remainingTitle.hidden = false;
+          remainingTitle.textContent = paySummary.stageTitle || "Payment Stages";
+        }
         timeline.hidden = false;
         timeline.innerHTML = remainingRows
           .map((row) => {

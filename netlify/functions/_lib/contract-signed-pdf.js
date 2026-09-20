@@ -397,6 +397,7 @@ function buildSignedContractLines({
       : [],
     verifiedDeposit: snap?.payment_schedule?.deposit,
     depositRequired: snap?.price?.deposit_required ?? snap?.quote?.deposit_required,
+    currency,
     dueRuleLabel: (rule, extras) =>
       dueRuleCustomerLabel(rule, { ...extras, omitCustom: true }),
   });
@@ -404,30 +405,33 @@ function buildSignedContractLines({
     lines.push(body(`Contract Total: ${money(paySummary.contractTotal, currency)}`));
   }
   if (paySummary.depositStatus === "paid") {
-    lines.push(
-      body(`Deposit Paid: − ${money(paySummary.depositAmount, currency)}`)
-    );
-    if (paySummary.appliedCopy) lines.push(body(paySummary.appliedCopy));
+    lines.push(body(`Deposit Paid: ${money(paySummary.depositAmount, currency)}`));
   } else if (paySummary.depositStatus === "due") {
     lines.push(body(`Deposit Due: ${money(paySummary.depositAmount, currency)}`));
   }
   if (paySummary.remainingBalance != null) {
     lines.push(
       body(
-        `Remaining Contract Balance: ${money(paySummary.remainingBalance, currency)}`
+        `${paySummary.remainingLabel || "Remaining Contract Balance"}: ${money(
+          paySummary.remainingBalance,
+          currency
+        )}`
       )
     );
   }
-  lines.push(subhead("Remaining Payment Schedule"));
-  if (!paySummary.remainingItems.length) {
-    lines.push(body("-"));
-  } else {
-    for (const row of paySummary.remainingItems) {
-      const label = trimField(row.name) || "Payment";
-      const amt = row.amount != null ? money(row.amount, currency) : "-";
-      lines.push(body(label));
-      lines.push(body(amt));
-      if (row.due) lines.push(body(row.due));
+  if (paySummary.summaryCopy) lines.push(body(paySummary.summaryCopy));
+  if (paySummary.showPaymentStages) {
+    lines.push(subhead("Payment Stages"));
+    if (!paySummary.remainingItems.length) {
+      lines.push(body("-"));
+    } else {
+      for (const row of paySummary.remainingItems) {
+        const label = trimField(row.name) || "Payment";
+        const amt = row.amount != null ? money(row.amount, currency) : "-";
+        lines.push(body(label));
+        lines.push(body(amt));
+        if (row.due) lines.push(body(row.due));
+      }
     }
   }
   lines.push(blank(6));
