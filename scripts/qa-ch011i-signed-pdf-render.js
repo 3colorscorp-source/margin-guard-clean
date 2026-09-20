@@ -302,6 +302,63 @@ test("payment separator is ASCII; due_rule custom is not printed", () => {
   assert.ok(!text.includes("due: custom"));
 });
 
+test("progress invoice copy is in PDF; Deposit Still Due omitted unless partial", () => {
+  const copy =
+    "For longer projects, progress invoices are sent every two weeks. If the work is completed sooner, the final invoice is sent when the project is finished.";
+  const dueText = extractPdfText(lib.renderSignedContractPdf(sampleCtx()).buffer).replace(
+    /\n/g,
+    " "
+  );
+  assert.ok(dueText.includes("progress invoices are sent every two weeks"));
+  assert.ok(dueText.includes(copy) || dueText.includes("final invoice is sent when the project is finished"));
+  assert.ok(!dueText.includes("Deposit Still Due"));
+
+  const paidFull = sampleCtx({
+    snap: sampleSnap({
+      payment_schedule: {
+        items: [
+          { sequence_number: 1, label: "Deposit", amount: 2000, due_rule: "on_signing" },
+          { sequence_number: 2, label: "Final", amount: 10000, due_rule: "on_completion" },
+        ],
+        deposit: {
+          status: "paid",
+          verified_paid: true,
+          amount: 2000,
+          paid_at: "2026-09-01T12:00:00.000Z",
+          source: "tenant_project_payments",
+        },
+      },
+    }),
+  });
+  const paidText = extractPdfText(lib.renderSignedContractPdf(paidFull).buffer).replace(/\n/g, " ");
+  assert.ok(paidText.includes("progress invoices are sent every two weeks"));
+  assert.ok(!paidText.includes("Deposit Still Due"));
+
+  const partial = sampleCtx({
+    snap: sampleSnap({
+      payment_schedule: {
+        items: [
+          { sequence_number: 1, label: "Deposit", amount: 2000, due_rule: "on_signing" },
+          { sequence_number: 2, label: "Final", amount: 10000, due_rule: "on_completion" },
+        ],
+        deposit: {
+          status: "paid",
+          verified_paid: true,
+          amount: 500,
+          paid_at: "2026-09-01T12:00:00.000Z",
+          source: "tenant_project_payments",
+        },
+      },
+    }),
+  });
+  const partialText = extractPdfText(lib.renderSignedContractPdf(partial).buffer).replace(
+    /\n/g,
+    " "
+  );
+  assert.ok(partialText.includes("Deposit Still Due"));
+  assert.ok(partialText.includes("progress invoices are sent every two weeks"));
+});
+
 test("signature, certificate, envelope, package, hashes remain", () => {
   const ctx = sampleCtx();
   const text = extractPdfText(lib.renderSignedContractPdf(ctx).buffer);

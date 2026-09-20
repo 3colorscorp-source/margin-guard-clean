@@ -409,7 +409,7 @@ function buildSignedContractLines({
   } else if (paySummary.depositStatus === "due") {
     lines.push(body(`Deposit Due: ${money(paySummary.depositAmount, currency)}`));
   }
-  if (paySummary.depositStillDue != null && paySummary.depositStillDue > 0) {
+  if (paySummary.showDepositStillDue === true && Number(paySummary.depositStillDue) > 0) {
     lines.push(
       body(`Deposit Still Due: ${money(paySummary.depositStillDue, currency)}`)
     );
@@ -425,6 +425,7 @@ function buildSignedContractLines({
     );
   }
   if (paySummary.summaryCopy) lines.push(body(paySummary.summaryCopy));
+  if (paySummary.progressCopy) lines.push(body(paySummary.progressCopy));
   if (paySummary.showPaymentStages) {
     lines.push(subhead("Payment Stages"));
     if (!paySummary.remainingItems.length) {

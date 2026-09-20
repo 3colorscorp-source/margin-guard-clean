@@ -118,6 +118,19 @@ test("2 preview copy uses Payment Summary labels only", () => {
   assert.ok(js.includes("Payment Schedule Confirmed"));
   assert.ok(!js.includes('label: "Confirm & Continue"'));
   assert.doesNotMatch(helperSrc, /Review defaults/);
+  assert.ok(art7.includes("cbPayProgressCopy"));
+  assert.ok(
+    art7.includes(
+      "For longer projects, progress invoices are sent every two weeks. If the work is completed sooner, the final invoice is sent when the project is finished."
+    )
+  );
+  assert.ok(helperSrc.includes("PROGRESS_INVOICE_COPY"));
+  assert.ok(js.includes("progressCopy"));
+  assert.ok(pdfSrc.includes("progressCopy"));
+  assert.ok(signSrc.includes("progressCopy"));
+  assert.ok(html.includes(".cb-pay-ledger__row[hidden]"));
+  assert.ok(html.includes(".cb-pay-workspace__badge[hidden]"));
+  assert.ok(!js.includes('badgeMark.textContent = items.length ? "!"'));
   assert.doesNotMatch(art7, /Scheduled 100%/);
 });
 
@@ -457,6 +470,73 @@ test("5e required 1000 / paid 500 shows Deposit Still Due", () => {
     summary.summaryCopy,
     "A partial deposit has been received. $500.00 remains due toward the deposit."
   );
+  assert.strictEqual(summary.showDepositStillDue, true);
+});
+
+test("5e2 Deposit Still Due is absent when zero or null", () => {
+  const paidFull = PaymentConfirm.presentPaymentSummary({
+    contractTotal: TOTAL_5K,
+    items: TWO_1K,
+    verifiedDeposit: paidDeposit(1000),
+    currency: "USD",
+    dueRuleLabel: dueLabel,
+  });
+  assert.strictEqual(paidFull.depositStillDue, null);
+  assert.strictEqual(paidFull.showDepositStillDue, false);
+  assert.strictEqual(paidFull.depositStillDueLabel, "");
+  const due = PaymentConfirm.presentPaymentSummary({
+    contractTotal: TOTAL_5K,
+    items: TWO_1K,
+    verifiedDeposit: { verified_paid: false },
+    currency: "USD",
+    dueRuleLabel: dueLabel,
+  });
+  assert.strictEqual(due.depositStillDue, null);
+  assert.strictEqual(due.showDepositStillDue, false);
+  const none = PaymentConfirm.presentPaymentSummary({
+    contractTotal: 5000,
+    items: [
+      {
+        label: "Final Payment",
+        amount: 5000,
+        due_rule: "on_completion",
+        payment_type: "final",
+      },
+    ],
+    verifiedDeposit: { verified_paid: false },
+    depositRequired: 0,
+    currency: "USD",
+    dueRuleLabel: dueLabel,
+  });
+  assert.strictEqual(none.depositStillDue, null);
+  assert.strictEqual(none.showDepositStillDue, false);
+  assert.ok(js.includes("showDepositStillDue"));
+  assert.ok(js.includes("stillDueRow.hidden = true"));
+});
+
+test("5e3 progress invoice copy is always on the summary", () => {
+  const copy = PaymentConfirm.PROGRESS_INVOICE_COPY;
+  assert.strictEqual(
+    copy,
+    "For longer projects, progress invoices are sent every two weeks. If the work is completed sooner, the final invoice is sent when the project is finished."
+  );
+  const summary = PaymentConfirm.presentPaymentSummary({
+    contractTotal: TOTAL,
+    items: ITEMS,
+    verifiedDeposit: { verified_paid: false },
+    currency: "USD",
+    dueRuleLabel: dueLabel,
+  });
+  assert.strictEqual(summary.progressCopy, copy);
+  assert.ok(art7.includes(copy));
+  assert.ok(pdfSrc.includes("progressCopy"));
+  assert.ok(signSrc.includes("progressCopy"));
+});
+
+test("5e4 empty warning icon is not rendered without a message", () => {
+  assert.ok(!js.includes('badgeMark.textContent = items.length ? "!"'));
+  assert.ok(js.includes('badgeMark.textContent = ""'));
+  assert.ok(html.includes(".cb-pay-workspace__badge[hidden] { display: none !important; }"));
 });
 
 test("5f required 1000 / paid 1500 keeps three rows and real remaining", () => {
@@ -608,14 +688,17 @@ test("8 freeze, PDF, and sign portal consume the same summary", () => {
   assert.ok(pdfSrc.includes("presentPaymentSummary"));
   assert.ok(pdfSrc.includes("remainingLabel"));
   assert.ok(pdfSrc.includes("summaryCopy"));
+  assert.ok(pdfSrc.includes("progressCopy"));
   assert.ok(pdfSrc.includes("showPaymentStages"));
   assert.ok(pdfSrc.includes("Payment Stages"));
   assert.ok(pdfSrc.includes("Deposit Paid"));
   assert.ok(pdfSrc.includes("Deposit Still Due"));
   assert.ok(signSrc.includes("presentPaymentSummary"));
+  assert.ok(signSrc.includes("progressCopy"));
   assert.ok(signSrc.includes("Payment Stages"));
   assert.ok(signSrc.includes("remainingLabel"));
   assert.ok(signSrc.includes("Deposit Still Due"));
+  assert.ok(js.includes("progressCopy"));
   assert.ok(!pdfSrc.includes("quote.total ="));
   assert.ok(scheduleSrc.includes("depositBlocksConfirm"));
   assert.ok(scheduleSrc.includes("deposit_verification_unavailable"));

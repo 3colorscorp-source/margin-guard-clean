@@ -250,7 +250,7 @@
         text(money(summary.depositAmount, currency)) +
         "</span></div>";
     }
-    if (summary.depositStillDue != null && summary.depositStillDue > 0) {
+    if (summary.showDepositStillDue === true && Number(summary.depositStillDue) > 0) {
       html +=
         '<div class="cs-kv is-still-due"><span class="k">' +
         text(summary.depositStillDueLabel || "Deposit Still Due") +
@@ -266,6 +266,9 @@
       "</span></div>";
     if (summary.summaryCopy) {
       html += '<p class="cs-prose">' + escapeHtml(summary.summaryCopy) + "</p>";
+    }
+    if (summary.progressCopy) {
+      html += '<p class="cs-prose">' + escapeHtml(summary.progressCopy) + "</p>";
     }
     if (summary.showPaymentStages) {
       html += '<p class="cs-section-label" style="margin-top:14px">Payment Stages</p>';

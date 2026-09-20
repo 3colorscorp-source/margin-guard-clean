@@ -795,6 +795,9 @@
       color: #78716c;
       border: 1px solid var(--cb-line);
     }
+    .cb-pay-workspace__badge[hidden] { display: none !important; }
+    .cb-pay-ledger__row[hidden] { display: none !important; }
+    .cb-pay-ledger__copy[hidden] { display: none !important; }
     .cb-pay-workspace__badge-mark { font-size: 0.95rem; line-height: 1; }
     .cb-pay-workspace__note {
       margin: 0 0 16px;
@@ -874,6 +877,10 @@
       font-size: 0.88rem;
       line-height: 1.4;
       color: #57534e;
+      min-width: 0;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .cb-pay-summary__item .k {
       display: block;
@@ -2318,6 +2325,7 @@
                           </div>
                         </div>
                         <p class="cb-pay-ledger__copy" id="cbPayDepositCopy" hidden></p>
+                        <p class="cb-pay-ledger__copy" id="cbPayProgressCopy">For longer projects, progress invoices are sent every two weeks. If the work is completed sooner, the final invoice is sent when the project is finished.</p>
                         <span class="is-diag" id="cbPayStageCount" hidden></span>
                         <span class="is-diag" id="cbPayScheduled" hidden></span>
                         <span class="is-diag" id="cbPayPlanCheck" hidden></span>
