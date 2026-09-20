@@ -2,8 +2,18 @@
  * Read-only verified contract deposit from the payment ledger.
  * Does not write invoices, payments, quotes, or projects.
  *
- * Paid is true only when tenant_project_payments has in-force deposit rows
- * scoped to tenant + project + quote, with paid_at and a positive net amount.
+ * Paid is true only when tenant_project_payments has deposit rows scoped to
+ * tenant + project + quote, with paid_at, and a positive net amount after
+ * same-scope adjustments.
+ *
+ * Ledger SoT (SUPABASE_TENANT_PROJECT_PAYMENTS.sql):
+ *   payment_type in (deposit, progress, final, adjustment)
+ *   amount <> 0 (numeric dollars)
+ *   paid_at required
+ * There is no voided_at, refunded_at, reversed_at, cancelled_at, status, or
+ * payment_status on this table. Refunds/voids/reversals are additional rows:
+ * payment_type = adjustment with a negative amount. Notes are not authority.
+ *
  * Quote acceptance, deposit_required, deposit paid flags, and Contract Builder
  * roles are not proof.
  */
@@ -15,15 +25,27 @@ const DEPOSIT_UNAVAILABLE_MESSAGE =
   "Deposit status could not be verified. Refresh before confirming.";
 const DEPOSIT_INCONSISTENT_MESSAGE =
   "Verified deposit exceeds the contract total. Refresh before confirming.";
-const LEDGER_SELECT =
-  "id,amount,paid_at,created_at,invoice_id,quote_id,project_id,tenant_id,payment_type,payment_method,notes";
-const INACTIVE_STATUS = new Set([
-  "void",
-  "voided",
-  "refunded",
-  "reversed",
-  "cancelled",
-  "canceled",
+const LEDGER_COLUMNS = Object.freeze([
+  "id",
+  "amount",
+  "paid_at",
+  "created_at",
+  "invoice_id",
+  "quote_id",
+  "project_id",
+  "tenant_id",
+  "payment_type",
+  "payment_method",
+  "notes",
+]);
+const LEDGER_SELECT = LEDGER_COLUMNS.join(",");
+const INVENTED_LEDGER_COLUMNS = Object.freeze([
+  "voided_at",
+  "refunded_at",
+  "reversed_at",
+  "cancelled_at",
+  "status",
+  "payment_status",
 ]);
 
 function trimField(value) {
@@ -146,23 +168,6 @@ function dedupeLedgerRows(rows) {
   return out;
 }
 
-function isInactiveLedgerRow(row) {
-  if (
-    trimField(row?.voided_at) ||
-    trimField(row?.refunded_at) ||
-    trimField(row?.reversed_at) ||
-    trimField(row?.cancelled_at)
-  ) {
-    return true;
-  }
-  const status = trimField(row?.status || row?.payment_status).toLowerCase();
-  if (INACTIVE_STATUS.has(status)) return true;
-  const notes = trimField(row?.notes).toLowerCase();
-  if (/\b(refunded|voided|reversed|cancelled|canceled)\b/.test(notes)) return true;
-  if (/\b(refund|void|reversal)\b/.test(notes)) return true;
-  return false;
-}
-
 function rowsInContractScope(rows, { tenantId, projectId, quoteId, allowNullQuoteId } = {}) {
   const tid = trimField(tenantId);
   const pid = trimField(projectId);
@@ -212,7 +217,6 @@ function netDepositFromRows(rows) {
   let cents = 0;
   let paidAt = null;
   for (const row of rows) {
-    if (isInactiveLedgerRow(row)) continue;
     const type = trimField(row?.payment_type).toLowerCase();
     const amountCents = moneyToCents(row?.amount);
     const at = trimField(row?.paid_at);
@@ -222,8 +226,7 @@ function netDepositFromRows(rows) {
       if (amountCents > 0 && (!paidAt || at > paidAt)) paidAt = at;
       continue;
     }
-    const notes = trimField(row?.notes).toLowerCase();
-    if (type === "adjustment" && amountCents < 0 && /\b(deposit|refund|revers)/.test(notes)) {
+    if (type === "adjustment") {
       cents += amountCents;
     }
   }
@@ -273,7 +276,6 @@ function fromLedgerRows(rows, options) {
 
 function qualifyingDepositRows(rows, options) {
   return dedupeLedgerRows(rowsInContractScope(rows, options)).filter((row) => {
-    if (isInactiveLedgerRow(row)) return false;
     const type = trimField(row?.payment_type).toLowerCase();
     const paidAt = trimField(row?.paid_at);
     return type === "deposit" && paidAt && moneyToCents(row?.amount) > 0;
@@ -393,11 +395,7 @@ async function resolveVerifiedContractDeposit(input, deps) {
           request,
         });
       } catch (_err) {
-        return noneDeposit({
-          quoteId,
-          projectId,
-          scope: "tenant_project_quote",
-        });
+        return unavailableDeposit({ quoteId, projectId });
       }
       if (!uniqueness.unique) {
         return noneDeposit({
@@ -452,6 +450,9 @@ async function resolveVerifiedContractDeposit(input, deps) {
 module.exports = {
   DEPOSIT_UNAVAILABLE_MESSAGE,
   DEPOSIT_INCONSISTENT_MESSAGE,
+  LEDGER_COLUMNS,
+  LEDGER_SELECT,
+  INVENTED_LEDGER_COLUMNS,
   unpaidDeposit,
   noneDeposit,
   unavailableDeposit,

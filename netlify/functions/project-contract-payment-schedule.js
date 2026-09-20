@@ -879,4 +879,5 @@ exports._test = {
   serializeItem,
   evaluateReadiness,
   totalItemsCents,
+  depositBlocksConfirm,
 };
