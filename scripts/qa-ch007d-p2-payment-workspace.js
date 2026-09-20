@@ -99,7 +99,7 @@ test("customize plan is non-technical and deposit is locked", () => {
   assert.ok(html.includes("cb-pay-lock-card"));
   assert.ok(js.includes("Approved quote"));
   assert.ok(js.includes("Due Now"));
-  assert.ok(js.includes("BILLING_SCHEDULE_COPY") || html.includes("Every two weeks based on completed work"));
+  assert.ok(js.includes("PROGRESS_FINAL_NOTE") || html.includes("If the project is completed sooner"));
 });
 
 test("local defaults helper is loaded before builder", () => {

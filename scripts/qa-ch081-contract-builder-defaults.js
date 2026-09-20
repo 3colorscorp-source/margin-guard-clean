@@ -183,17 +183,17 @@ test("1. $110.06 / $1.00 seeds $1.00 + $109.06 future_obligation", () => {
   assert.strictEqual(result.items[0].amount_cents, 100);
   assert.strictEqual(result.items[0].due_rule, "on_signature");
   assert.strictEqual(result.items[0].item_role, "future_obligation");
-  assert.strictEqual(result.items[1].label, "Remaining Contract Balance");
+  assert.strictEqual(result.items[1].label, "Progress & Final Billing");
   assert.strictEqual(result.items[1].amount, 109.06);
   assert.strictEqual(result.items[1].amount_cents, 10906);
-  assert.strictEqual(result.items[1].due_rule, "on_completion");
+  assert.strictEqual(result.items[1].due_rule, "custom");
   assert.strictEqual(result.items[1].item_role, "future_obligation");
   assert.strictEqual(centsSum(result.items), 11006);
-  assert.ok(!result.items.some((row) => row.due_rule === "custom"));
+  assert.ok(!result.items.some((row) => row.due_rule === "on_completion"));
   assert.ok(!result.items.some((row) => row.item_role === "applied_payment"));
 });
 
-test("2. deposit 0 seeds one Remaining Contract Balance row", () => {
+test("2. deposit 0 seeds one Progress & Final Billing row", () => {
   const result = helper.buildDefaultPaymentSchedule({
     contractTotal: 110.06,
     depositRequired: 0,
@@ -201,9 +201,9 @@ test("2. deposit 0 seeds one Remaining Contract Balance row", () => {
   });
   assert.strictEqual(result.seeded, true);
   assert.strictEqual(result.items.length, 1);
-  assert.strictEqual(result.items[0].label, "Remaining Contract Balance");
+  assert.strictEqual(result.items[0].label, "Progress & Final Billing");
   assert.strictEqual(result.items[0].amount_cents, 11006);
-  assert.strictEqual(result.items[0].due_rule, "on_completion");
+  assert.strictEqual(result.items[0].due_rule, "custom");
   assert.strictEqual(result.items[0].item_role, "future_obligation");
 });
 

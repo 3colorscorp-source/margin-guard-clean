@@ -1698,6 +1698,114 @@ async function testAsync(name, fn) {
     assert.ok(art6.includes("This is the approved contract price."));
     assert.ok(html.includes(".cb-pay-stage-card label"));
     assert.ok(html.includes("@media (max-width: 720px)"));
+    assert.ok(html.includes("Status:"));
+    assert.ok(html.includes("Source:"));
+  });
+
+  test("27 default Progress & Final Billing, incomplete stages, money format", () => {
+    const PaymentDefaults = require("../public/js/contract-payment-defaults.js");
+    const seeded = PaymentDefaults.buildDefaultPaymentSchedule({
+      contractTotal: TOTAL,
+      depositRequired: 1,
+      items: [],
+      readinessStatus: "missing",
+    });
+    assert.strictEqual(seeded.items[1].label, "Progress & Final Billing");
+    assert.strictEqual(seeded.items[1].due_rule, "custom");
+    assert.strictEqual(PaymentDefaults.REMAINING_DUE_RULE, "custom");
+    assert.strictEqual(
+      PaymentConfirm.article7DueRuleLabel(seeded.items[1].due_rule, { editor: true }),
+      "Every two weeks based on progress"
+    );
+    assert.notStrictEqual(
+      PaymentConfirm.article7DueRuleLabel(seeded.items[1].due_rule, { editor: true }),
+      "At project completion"
+    );
+    assert.ok(js.includes('amount: ""'));
+    assert.ok(js.includes("createBlankPaymentDraftRow"));
+    assert.doesNotMatch(
+      js.slice(js.indexOf("function createBlankPaymentDraftRow"), js.indexOf("function mapScheduleItemToDraft")),
+      /amount:\s*0/
+    );
+    assert.ok(js.includes('due_rule: ""'));
+    assert.ok(PaymentConfirm.article7DueTimingOptionsHtml("").includes("Select timing"));
+    assert.ok(html.includes("cb-pay-amount__prefix"));
+    assert.strictEqual(PaymentConfirm.formatMoneyInputFromCents(326449), "3,264.49");
+    assert.strictEqual(PaymentConfirm.parseMoneyInput("$3,264.49").cents, 326449);
+    assert.strictEqual(PaymentConfirm.parseMoneyInput("").empty, true);
+    assert.strictEqual(PaymentConfirm.parseMoneyInput("0").cents, 0);
+    assert.ok(!PaymentConfirm.isPaymentStageValid({ label: "Draw", amount: 0, due_rule: "custom" }));
+    assert.ok(!PaymentConfirm.isPaymentStageValid({ label: "Draw", amount: -1, due_rule: "custom" }));
+    assert.ok(!PaymentConfirm.isPaymentStageValid({ label: "", amount: 100, due_rule: "custom" }));
+    assert.ok(!PaymentConfirm.isPaymentStageValid({ label: "Draw", amount: 100, due_rule: "" }));
+    assert.ok(!PaymentConfirm.isPaymentStageValid({ label: "Draw", amount: "", due_rule: "custom" }));
+
+    const remainingCents = 326449;
+    const residual = {
+      label: "Progress & Final Billing",
+      amount: 3264.49,
+      due_rule: "custom",
+      payment_type: "final",
+      residual: true,
+    };
+    const emptyExtra = { label: "", amount: "", due_rule: "", payment_type: "progress", is_new: true };
+    const withEmpty = PaymentConfirm.paymentStageIntegrity([residual, emptyExtra], remainingCents);
+    assert.strictEqual(withEmpty.incomplete, true);
+    assert.strictEqual(withEmpty.scheduledCents, remainingCents);
+    assert.strictEqual(withEmpty.differenceCents, 0);
+    assert.strictEqual(withEmpty.error, PaymentConfirm.INCOMPLETE_STAGE_ERROR);
+
+    const summaryEmpty = PaymentConfirm.presentPaymentSummary({
+      contractTotal: TOTAL,
+      items: [...ITEMS, emptyExtra],
+      depositRequired: 1,
+      dueRuleLabel: dueLabel,
+    });
+    assert.strictEqual(summaryEmpty.blockConfirm, true);
+    assert.strictEqual(summaryEmpty.verificationMessage, PaymentConfirm.INCOMPLETE_STAGE_ERROR);
+    const planEmpty = PaymentConfirm.paymentFooterPlan({
+      items: [...ITEMS, emptyExtra],
+      contractTotal: TOTAL,
+      depositRequired: 1,
+    });
+    assert.strictEqual(planEmpty.confirmEnabled, false);
+    assert.strictEqual(planEmpty.errorMessage, PaymentConfirm.INCOMPLETE_STAGE_ERROR);
+
+    const zeroExtra = { label: "Draw", amount: 0, due_rule: "custom", payment_type: "progress" };
+    assert.strictEqual(
+      PaymentConfirm.paymentStageIntegrity([residual, zeroExtra], remainingCents).incomplete,
+      true
+    );
+    const negExtra = { label: "Draw", amount: -5, due_rule: "custom", payment_type: "progress" };
+    assert.strictEqual(
+      PaymentConfirm.paymentStageIntegrity([residual, negExtra], remainingCents).incomplete,
+      true
+    );
+
+    const mismatch = PaymentConfirm.paymentStageIntegrity(
+      [residual, { label: "Draw", amount: 100, due_rule: "custom", payment_type: "progress" }],
+      remainingCents
+    );
+    assert.strictEqual(mismatch.incomplete, false);
+    assert.strictEqual(mismatch.mismatch, true);
+    assert.strictEqual(mismatch.error, PaymentConfirm.STAGES_SUM_ERROR);
+
+    assert.ok(js.includes("INCOMPLETE_STAGE_ERROR"));
+    assert.ok(js.includes("ensureResidualBillingRow"));
+    assert.ok(js.includes("Save Payment Plan"));
+    assert.ok(js.includes('mode === WS_MODE.PREVIEW'));
+    const saveSlice = js.slice(js.indexOf('label: "Save Payment Plan"'), js.indexOf('label: "Save Payment Plan"') + 220);
+    assert.ok(saveSlice.includes('btn primary'));
+    assert.ok(!html.includes('id="cbPayLockAmount"') || html.includes("cb-pay-lock-card"));
+    assert.ok(!html.includes('data-pay-field="amount"') || js.includes("readonly"));
+    assert.ok(html.includes(".cb-pay-stage-card__actions { flex-direction: column; }") || html.includes("flex-direction: column"));
+    assert.ok(html.includes("#cbMain.is-printing .cb-pay-customize"));
+    assert.ok(pdfSrc.includes("presentPaymentSummary"));
+    assert.ok(signSrc.includes("presentPaymentSummary") || signSrc.includes("article7DueRuleLabel"));
+    assert.ok(!scheduleSrc.includes("upsert-tenant-invoice"));
+    assert.ok(!js.includes("record-tenant-payment"));
+    assert.ok(js.includes("PROGRESS_FINAL_NOTE"));
+    assert.ok(PaymentConfirm.PROGRESS_FINAL_NOTE.includes("If the project is completed sooner"));
   });
 
   console.log("");

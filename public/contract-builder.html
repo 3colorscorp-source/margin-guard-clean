@@ -916,7 +916,7 @@
     .cb-pay-customize {
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 10px;
       min-width: 0;
       max-width: 100%;
       overflow-x: hidden;
@@ -927,7 +927,7 @@
     .cb-pay-stage-card {
       min-width: 0;
       max-width: 100%;
-      padding: 14px 16px;
+      padding: 10px 12px;
       border: 1px solid var(--cb-line);
       border-radius: 12px;
       background: #fff;
@@ -1032,15 +1032,62 @@
       background: #f5f5f4;
       border-color: #d6d3d1;
     }
-    .cb-pay-edit-grid { display: flex; flex-direction: column; gap: 12px; margin: 0; }
+    .cb-pay-edit-grid { display: flex; flex-direction: column; gap: 8px; margin: 0; }
     .cb-pay-stage-card {
       display: grid;
-      grid-template-columns: minmax(0, 1.4fr) minmax(120px, 0.6fr);
-      gap: 10px 16px;
+      grid-template-columns: minmax(0, 1.5fr) minmax(132px, 0.7fr);
+      gap: 6px 10px;
+    }
+    .cb-pay-stage-card.is-new {
+      border-color: #0f766e;
+      box-shadow: inset 0 0 0 1px #99f6e4;
+    }
+    .cb-pay-stage-card__badge {
+      grid-column: 1 / -1;
+      margin: 0;
+      font-size: 0.65rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #0f766e;
+    }
+    .cb-pay-stage-card__note {
+      grid-column: 1 / -1;
+      margin: 0;
+      font-size: 0.82rem;
+      line-height: 1.35;
+      color: #57534e;
+    }
+    .cb-pay-amount {
+      display: flex;
+      align-items: stretch;
+      min-width: 0;
+    }
+    .cb-pay-amount__prefix {
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+      border: 1px solid #d6d3d1;
+      border-right: 0;
+      border-radius: 8px 0 0 8px;
+      background: #f5f5f4;
+      font-weight: 700;
+      color: #44403c;
+    }
+    .cb-pay-amount input {
+      border-radius: 0 8px 8px 0;
+      min-width: 0;
+    }
+    .cb-pay-stage-card input[readonly],
+    .cb-pay-stage-card select:disabled {
+      background: #f5f5f4;
+      color: #1c1917;
     }
     @media (max-width: 720px) {
       .cb-pay-stage-card { grid-template-columns: 1fr; }
-      #cbPayAddStage { width: 100%; }
+      #cbPayAddStage,
+      .cb-pay-stage-card__actions .btn { width: 100%; }
+      .cb-pay-stage-card__actions { flex-direction: column; }
     }
     .cb-pay-stage-card label {
       display: block;
@@ -2341,8 +2388,8 @@
                       <article class="cb-pay-lock-card" id="cbPayDepositCard">
                         <p class="cb-pay-lock-card__kicker">Deposit</p>
                         <p class="cb-pay-lock-card__amount" id="cbPayLockAmount">—</p>
-                        <p class="cb-pay-lock-card__meta"><span class="k">Status</span> <span id="cbPayLockStatus">—</span></p>
-                        <p class="cb-pay-lock-card__meta"><span class="k">Source</span> <span id="cbPayLockSource">Approved quote</span></p>
+                        <p class="cb-pay-lock-card__meta"><span class="k">Status:</span> <span id="cbPayLockStatus">—</span></p>
+                        <p class="cb-pay-lock-card__meta"><span class="k">Source:</span> <span id="cbPayLockSource">Approved quote</span></p>
                       </article>
                       <div class="cb-pay-remaining-card" id="cbPayCustomizeRemaining">
                         <span class="k">Remaining Contract Balance</span>

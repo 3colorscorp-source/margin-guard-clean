@@ -135,7 +135,8 @@ test("G1 editable row template includes amount field", () => {
   assert.ok(js.includes("data-pay-field=\"amount\"") || js.includes("data-pay-field='amount'"));
   assert.ok(js.includes('data-pay-field="label"') || js.includes("data-pay-field='label'"));
   assert.ok(js.includes("data-pay-client-id"));
-  assert.ok(js.includes('step="0.01"') || js.includes("step=\"0.01\""));
+  assert.ok(js.includes('inputmode="decimal"') || js.includes("inputmode=\"decimal\""));
+  assert.ok(js.includes("cb-pay-amount__prefix") || html.includes("cb-pay-amount__prefix"));
 });
 
 test("G1 amount accepts decimal 9044.16 (cents)", () => {
@@ -163,7 +164,11 @@ test("6 Confirm blocks under total", () => {
   const helper = read("public/js/contract-payment-confirm.js");
   assert.ok(js.includes("validatePaymentDraftForConfirm"));
   assert.ok(helper.includes("Payment amounts must equal the contract total.") || js.includes("SUM_ERROR"));
-  assert.ok(js.includes("if (!totals.balanced)"));
+  assert.ok(
+    js.includes("integrity.mismatch") ||
+      js.includes("STAGES_SUM_ERROR") ||
+      helper.includes("paymentStageIntegrity")
+  );
   const under = computeTotals([{ amount: 100 }], 9044.16);
   assert.strictEqual(under.balanced, false);
   assert.ok(under.differenceCents > 0);
