@@ -1945,8 +1945,8 @@ async function testAsync(name, fn) {
     const readinessFn = slice(js, "function renderReadiness", "function renderLogo");
     assert.ok(readinessFn.includes("presentAuthenticatedPaymentChrome"));
     assert.ok(readinessFn.includes('i.label !== "Payment terms"'));
-    assert.ok(html.includes("contract-builder.js?v=pt-src-3"));
-    assert.ok(html.includes("contract-payment-confirm.js?v=pt-src-3"));
+    assert.ok(html.includes("contract-builder.js?v=pt-src-4"));
+    assert.ok(html.includes("contract-payment-confirm.js?v=pt-src-4"));
 
     const source = {
       contractTotal: 3265.49,
@@ -2075,6 +2075,8 @@ async function testAsync(name, fn) {
     assert.strictEqual(chrome.showInWarnings, false);
     assert.strictEqual(chrome.openPaymentTermsVisible, false);
     assert.strictEqual(chrome.nextCtaVisible, false);
+    assert.strictEqual(chrome.hideNextActionBlock, true);
+    assert.strictEqual(chrome.nextActionBlockVisible, false);
     assert.ok(!String(chrome.nextCta || "").includes("Open Payment Terms"));
     assert.strictEqual(chrome.footerPrimaryVisible, true);
     assert.strictEqual(chrome.footerPrimaryLabel, "Confirm Payment Terms");
@@ -2096,6 +2098,8 @@ async function testAsync(name, fn) {
     assert.strictEqual(chrome.readinessLabel, "PAYMENT TERMS");
     assert.strictEqual(chrome.showInWarnings, false);
     assert.strictEqual(chrome.nextCtaVisible, true);
+    assert.strictEqual(chrome.hideNextActionBlock, false);
+    assert.strictEqual(chrome.nextActionBlockVisible, true);
     assert.strictEqual(chrome.nextCta, "Open Payment Terms");
     assert.strictEqual(chrome.nextArticle, "art-payment");
     assert.strictEqual(chrome.nextCtaConfirms, false);
@@ -2120,6 +2124,7 @@ async function testAsync(name, fn) {
     assert.strictEqual(chrome.readinessStatus, "available");
     assert.strictEqual(chrome.showInWarnings, false);
     assert.strictEqual(chrome.nextCtaVisible, false);
+    assert.strictEqual(chrome.hideNextActionBlock, true);
     assert.strictEqual(chrome.openPaymentTermsVisible, false);
     assert.strictEqual(chrome.footerPrimaryVisible, false);
     assert.ok(!plan.buttons.some((b) => b.id === "confirm"));
@@ -2128,6 +2133,103 @@ async function testAsync(name, fn) {
     assert.ok(!js.includes("Payment schedule"));
     assert.ok(!js.includes("items_required"));
     assert.ok(!helperSrc.includes("payment_stages_mismatch"));
+  });
+
+  function makeNextActionDom() {
+    function el(id, text) {
+      const node = {
+        id,
+        hidden: false,
+        textContent: text || "",
+        style: { display: "" },
+        dataset: { article: "", external: "" },
+        attrs: {},
+        setAttribute(key, value) {
+          this.attrs[key] = value;
+          if (key === "hidden") this.hidden = true;
+          if (key === "data-article") this.dataset.article = String(value || "");
+        },
+        removeAttribute(key) {
+          delete this.attrs[key];
+          if (key === "hidden") this.hidden = false;
+          if (key === "data-article") this.dataset.article = "";
+          if (key === "data-external") this.dataset.external = "";
+        },
+      };
+      return node;
+    }
+    const block = el("cbNextActionBlock");
+    const step = el("cbNextStep", "Review missing sections before freezing.");
+    const btn = el("cbNextActionBtn", "Open required section");
+    const map = { cbNextActionBlock: block, cbNextStep: step, cbNextActionBtn: btn };
+    return {
+      getElementById(id) {
+        return map[id] || null;
+      },
+      block,
+      step,
+      btn,
+    };
+  }
+
+  test("34 DOM Next Action: hide block on Article 7, one Open button elsewhere, none when confirmed", () => {
+    assert.ok(js.includes("applyAuthenticatedPaymentNextActionDom"));
+    assert.ok(js.includes("syncAuthenticatedNextAction"));
+    assert.ok(js.includes("hideNextActionBlock"));
+    assert.ok(html.includes("#cbNextActionBlock[hidden]"));
+    const source = unpaidBuilderSource();
+
+    const openArt7 = makeNextActionDom();
+    const a = PaymentConfirm.applyAuthenticatedPaymentNextActionDom(
+      openArt7,
+      PaymentConfirm.presentAuthenticatedPaymentChrome({
+        source,
+        confirmed: false,
+        activeArticleId: "art-payment",
+      })
+    );
+    assert.strictEqual(a.blockHidden, true);
+    assert.strictEqual(a.blockDisplay, "none");
+    assert.strictEqual(openArt7.block.hidden, true);
+    assert.strictEqual(openArt7.block.style.display, "none");
+    assert.strictEqual(a.buttonCount, 0);
+    assert.strictEqual(a.paymentButtonCount, 0);
+    assert.ok(!String(openArt7.btn.textContent || "").includes("Open Payment Terms"));
+    assert.ok(!String(openArt7.step.textContent || "").trim());
+
+    const other = makeNextActionDom();
+    const b = PaymentConfirm.applyAuthenticatedPaymentNextActionDom(
+      other,
+      PaymentConfirm.presentAuthenticatedPaymentChrome({
+        source,
+        confirmed: false,
+        activeArticleId: "art-price",
+      })
+    );
+    assert.strictEqual(b.blockHidden, false);
+    assert.strictEqual(b.buttonCount, 1);
+    assert.strictEqual(b.paymentButtonCount, 1);
+    assert.strictEqual(b.buttonLabel, "Open Payment Terms");
+    assert.strictEqual(other.btn.dataset.article, "art-payment");
+
+    const confirmed = makeNextActionDom();
+    confirmed.btn.textContent = "Open Payment Terms";
+    const c = PaymentConfirm.applyAuthenticatedPaymentNextActionDom(
+      confirmed,
+      PaymentConfirm.presentAuthenticatedPaymentChrome({
+        source: Object.assign({}, source, {
+          paymentSchedule: Object.assign({}, source.paymentSchedule, {
+            readiness: { status: "configured", contract_total: 3265.49 },
+          }),
+        }),
+        confirmed: true,
+        activeArticleId: "art-schedule",
+      })
+    );
+    assert.strictEqual(c.buttonCount, 0);
+    assert.strictEqual(c.paymentButtonCount, 0);
+    assert.ok(!String(confirmed.btn.textContent || "").includes("Open Payment Terms"));
+    assert.ok(!String(confirmed.btn.textContent || "").includes("Confirm Payment Terms"));
   });
 
   console.log("");

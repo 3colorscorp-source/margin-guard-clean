@@ -832,13 +832,11 @@
     var nextStepLabel = "";
     var nextCta = "";
     var nextCtaVisible = false;
-    if (!confirmed) {
-      if (articleOpen) {
-        nextStepLabel = "Confirm Payment Terms";
-      } else {
-        nextCta = "Open Payment Terms";
-        nextCtaVisible = true;
-      }
+    var hideNextActionBlock = articleOpen;
+    var nextActionBlockVisible = !articleOpen && !confirmed;
+    if (!confirmed && !articleOpen) {
+      nextCta = "Open Payment Terms";
+      nextCtaVisible = true;
     }
     return {
       article: article,
@@ -850,6 +848,8 @@
       nextStepLabel: nextStepLabel,
       nextCta: nextCta,
       nextCtaVisible: nextCtaVisible,
+      hideNextActionBlock: hideNextActionBlock,
+      nextActionBlockVisible: nextActionBlockVisible,
       nextCtaConfirms: false,
       nextCtaPersists: false,
       nextArticle: "art-payment",
@@ -857,6 +857,100 @@
       footerPrimaryVisible: articleOpen && !confirmed,
       footerPrimaryLabel: articleOpen && !confirmed ? "Confirm Payment Terms" : "",
     };
+  }
+
+  function nextActionDomGet(root, id) {
+    if (!root) return null;
+    if (typeof root.getElementById === "function") return root.getElementById(id);
+    return null;
+  }
+
+  function setDomHidden(el, hide) {
+    if (!el) return;
+    el.hidden = hide === true;
+    if (hide) {
+      if (typeof el.setAttribute === "function") el.setAttribute("hidden", "hidden");
+      if (el.style) el.style.display = "none";
+    } else {
+      if (typeof el.removeAttribute === "function") el.removeAttribute("hidden");
+      if (el.style) el.style.display = "";
+    }
+  }
+
+  function inspectAuthenticatedPaymentNextActionDom(root) {
+    var block = nextActionDomGet(root, "cbNextActionBlock");
+    var step = nextActionDomGet(root, "cbNextStep");
+    var btn = nextActionDomGet(root, "cbNextActionBtn");
+    var blockHidden =
+      !block ||
+      block.hidden === true ||
+      (block.style && String(block.style.display).toLowerCase() === "none");
+    var btnText = btn ? String(btn.textContent || "").trim() : "";
+    var btnVisible =
+      Boolean(btn) &&
+      !blockHidden &&
+      btn.hidden !== true &&
+      !(btn.style && String(btn.style.display).toLowerCase() === "none") &&
+      btnText !== "";
+    var stepText = step ? String(step.textContent || "").trim() : "";
+    var paymentButtons = [];
+    if (btnVisible) paymentButtons.push(btnText);
+    return {
+      blockHidden: blockHidden,
+      blockDisplay: block && block.style ? String(block.style.display || "") : "",
+      buttonCount: btnVisible ? 1 : 0,
+      paymentButtonCount: paymentButtons.filter(function (label) {
+        return /payment terms/i.test(label);
+      }).length,
+      buttonLabel: btnVisible ? btnText : "",
+      stepText: blockHidden ? "" : stepText,
+    };
+  }
+
+  function applyAuthenticatedPaymentNextActionDom(root, chrome) {
+    var view = chrome || {};
+    var block = nextActionDomGet(root, "cbNextActionBlock");
+    var step = nextActionDomGet(root, "cbNextStep");
+    var btn = nextActionDomGet(root, "cbNextActionBtn");
+
+    if (step) step.textContent = "";
+    if (btn) {
+      btn.textContent = "";
+      if (btn.dataset) {
+        btn.dataset.article = "";
+        btn.dataset.external = "";
+      }
+      if (typeof btn.removeAttribute === "function") {
+        btn.removeAttribute("data-article");
+        btn.removeAttribute("data-external");
+      }
+    }
+    setDomHidden(step, true);
+    setDomHidden(btn, true);
+
+    if (view.hideNextActionBlock === true) {
+      setDomHidden(block, true);
+      setDomHidden(step, true);
+      setDomHidden(btn, true);
+      return inspectAuthenticatedPaymentNextActionDom(root);
+    }
+
+    if (view.nextCtaVisible === true && view.nextCta) {
+      setDomHidden(block, false);
+      setDomHidden(step, true);
+      setDomHidden(btn, false);
+      if (btn) {
+        btn.textContent = view.nextCta;
+        if (btn.dataset) btn.dataset.article = view.nextArticle || "art-payment";
+        if (typeof btn.setAttribute === "function") {
+          btn.setAttribute("data-article", view.nextArticle || "art-payment");
+        }
+      }
+      return inspectAuthenticatedPaymentNextActionDom(root);
+    }
+
+    setDomHidden(btn, true);
+    return inspectAuthenticatedPaymentNextActionDom(root);
   }
 
   function itemsMatchSource(payloadItems, sourceItems) {
@@ -1033,6 +1127,8 @@
     resolveAuthenticatedBuilderPaymentInput: resolveAuthenticatedBuilderPaymentInput,
     presentAuthenticatedPaymentArticleFromBuilderSource: presentAuthenticatedPaymentArticleFromBuilderSource,
     presentAuthenticatedPaymentChrome: presentAuthenticatedPaymentChrome,
+    applyAuthenticatedPaymentNextActionDom: applyAuthenticatedPaymentNextActionDom,
+    inspectAuthenticatedPaymentNextActionDom: inspectAuthenticatedPaymentNextActionDom,
     verifiedDepositFromServer: verifiedDepositFromServer,
     isDepositScheduleItem: isDepositScheduleItem,
     isSimpleTwoStageSchedule: isSimpleTwoStageSchedule,

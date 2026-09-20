@@ -1133,6 +1133,7 @@
     updateIndexNavStatus();
     renderWorkspaceValidation(activeArticleId);
     renderWorkspaceFooter();
+    if (sourceSnapshot) syncAuthenticatedNextAction(sourceSnapshot, draftEdits);
   }
 
   async function handleWorkspaceBack() {
@@ -4202,6 +4203,88 @@
     ];
   }
 
+  function unhideNextActionBlock() {
+    const block = $("cbNextActionBlock");
+    if (!block) return;
+    block.hidden = false;
+    block.removeAttribute("hidden");
+    block.style.display = "";
+  }
+
+  function syncAuthenticatedNextAction(source, edits) {
+    if (!source || typeof PaymentConfirm.applyAuthenticatedPaymentNextActionDom !== "function") {
+      return;
+    }
+    const payChrome = PaymentConfirm.presentAuthenticatedPaymentChrome({
+      source: authenticatedPaymentSource(source),
+      confirmed: paymentConfigured(source.paymentSchedule),
+      activeArticleId,
+    });
+    if (lastFrozenPackage) {
+      PaymentConfirm.applyAuthenticatedPaymentNextActionDom(document, {
+        hideNextActionBlock: false,
+        nextCtaVisible: false,
+      });
+      unhideNextActionBlock();
+      renderFreezeSuccess(lastFrozenPackage, true);
+      return;
+    }
+    PaymentConfirm.applyAuthenticatedPaymentNextActionDom(document, payChrome);
+    if (payChrome.hideNextActionBlock) return;
+    const blocker = resolveNextBlocker(source, edits || draftEdits);
+    const next = $("cbNextStep");
+    const nextBtn = $("cbNextActionBtn");
+    const freezeBtn = $("cbFreezeBtn");
+    const continueLink = $("cbContinueSigning");
+    const freezeStatus = $("cbFreezeStatus");
+    if (freezeStatus) freezeStatus.hidden = true;
+    if (continueLink) continueLink.hidden = true;
+    if (blocker.paymentTerms) return;
+    unhideNextActionBlock();
+    if (blocker.freeze) {
+      if (next) {
+        next.hidden = false;
+        next.removeAttribute("hidden");
+        next.style.display = "";
+        next.textContent =
+          "All required sections are complete. Freeze the contract to create an immutable version for signature.";
+      }
+      if (nextBtn) {
+        nextBtn.hidden = true;
+        nextBtn.setAttribute("hidden", "hidden");
+        nextBtn.style.display = "none";
+        nextBtn.textContent = "";
+      }
+      if (freezeBtn) {
+        freezeBtn.hidden = false;
+        freezeBtn.removeAttribute("hidden");
+        freezeBtn.style.display = "";
+        freezeBtn.disabled = freezeBusy;
+        freezeBtn.textContent = freezeBusy ? "Freezing…" : "Freeze Contract";
+      }
+      return;
+    }
+    if (next) {
+      next.hidden = false;
+      next.removeAttribute("hidden");
+      next.style.display = "";
+      next.textContent = blocker.label || "";
+    }
+    if (freezeBtn) {
+      freezeBtn.hidden = true;
+      freezeBtn.setAttribute("hidden", "hidden");
+      freezeBtn.style.display = "none";
+    }
+    if (nextBtn) {
+      nextBtn.hidden = false;
+      nextBtn.removeAttribute("hidden");
+      nextBtn.style.display = "";
+      nextBtn.textContent = blocker.cta || "Open required section";
+      nextBtn.dataset.article = blocker.article || "";
+      nextBtn.dataset.external = blocker.external || "";
+    }
+  }
+
   function resolveNextBlocker(source, edits) {
     const profile = source.legal?.profile;
     if (!(source.customerName && source.contractTotal > 0 && source.quoteId)) {
@@ -4336,13 +4419,22 @@
   }
 
   function renderFreezeSuccess(pkg, idempotent) {
+    const block = $("cbNextActionBlock");
     const status = $("cbFreezeStatus");
     const freezeBtn = $("cbFreezeBtn");
     const nextBtn = $("cbNextActionBtn");
     const continueLink = $("cbContinueSigning");
     const next = $("cbNextStep");
     const version = pkg?.version != null ? `Version ${pkg.version}` : "Version ready";
+    if (block) {
+      block.hidden = false;
+      block.removeAttribute("hidden");
+      block.style.display = "";
+    }
     if (next) {
+      next.hidden = false;
+      next.removeAttribute("hidden");
+      next.style.display = "";
       next.textContent = `Contract Frozen · ${version} · Ready for Signature`;
     }
     if (status) {
@@ -4457,57 +4549,17 @@
     setGate("cbReviewReady", reviewReady);
     setGate("cbSignReady", signReady);
 
-    const blocker = resolveNextBlocker(source, edits);
-    const next = $("cbNextStep");
-    const nextBtn = $("cbNextActionBtn");
-    const freezeBtn = $("cbFreezeBtn");
-    const continueLink = $("cbContinueSigning");
-    const freezeStatus = $("cbFreezeStatus");
-
     if (lastFrozenPackage) {
       renderFreezeSuccess(lastFrozenPackage, true);
       return;
     }
 
+    const freezeStatus = $("cbFreezeStatus");
+    const continueLink = $("cbContinueSigning");
     if (freezeStatus) freezeStatus.hidden = true;
     if (continueLink) continueLink.hidden = true;
 
-    if (blocker.freeze) {
-      if (next) {
-        next.textContent =
-          "All required sections are complete. Freeze the contract to create an immutable version for signature.";
-      }
-      if (nextBtn) nextBtn.hidden = true;
-      if (freezeBtn) {
-        freezeBtn.hidden = false;
-        freezeBtn.disabled = freezeBusy;
-        freezeBtn.textContent = freezeBusy ? "Freezing…" : "Freeze Contract";
-      }
-    } else {
-      if (next) next.textContent = blocker.label;
-      if (freezeBtn) freezeBtn.hidden = true;
-      if (nextBtn) {
-        if (blocker.paymentTerms) {
-          if (next) next.textContent = payChrome.nextStepLabel || "";
-          if (payChrome.nextCtaVisible) {
-            nextBtn.hidden = false;
-            nextBtn.textContent = payChrome.nextCta;
-            nextBtn.dataset.article = payChrome.nextArticle;
-            nextBtn.dataset.external = "";
-          } else {
-            nextBtn.hidden = true;
-            nextBtn.textContent = "";
-            nextBtn.dataset.article = "";
-            nextBtn.dataset.external = "";
-          }
-        } else {
-          nextBtn.hidden = false;
-          nextBtn.textContent = blocker.cta || "Open required section";
-          nextBtn.dataset.article = blocker.article || "";
-          nextBtn.dataset.external = blocker.external || "";
-        }
-      }
-    }
+    syncAuthenticatedNextAction(source, edits);
 
     const timeline = $("cbTimeline");
     if (timeline && !lastFrozenPackage) {

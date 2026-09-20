@@ -1676,6 +1676,15 @@
       font-size: 0.82rem;
       line-height: 1.45;
     }
+    .cb-next:empty,
+    .cb-next[hidden],
+    #cbNextActionBlock[hidden],
+    #cbNextActionBlock[hidden] *,
+    #cbNextActionBtn[hidden],
+    #cbFreezeBtn[hidden],
+    #cbContinueSigning[hidden] {
+      display: none !important;
+    }
 
     .cb-timeline {
       list-style: none;
@@ -2706,10 +2715,10 @@
   <script src="/js/tenant.js"></script>
   <script src="/js/auth.js"></script>
   <script src="/js/contract-scope.js"></script>
-  <script src="/js/contract-payment-defaults.js?v=pt-src-3"></script>
+  <script src="/js/contract-payment-defaults.js?v=pt-src-4"></script>
   <script src="/js/contract-warranty-defaults.js"></script>
   <script src="/js/contract-property-confirm.js"></script>
-  <script src="/js/contract-payment-confirm.js?v=pt-src-3"></script>
-  <script src="/js/contract-builder.js?v=pt-src-3" defer></script>
+  <script src="/js/contract-payment-confirm.js?v=pt-src-4"></script>
+  <script src="/js/contract-builder.js?v=pt-src-4" defer></script>
 </body>
 </html>
