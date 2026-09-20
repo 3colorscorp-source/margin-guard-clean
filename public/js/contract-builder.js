@@ -9,6 +9,10 @@
   if (!PaymentConfirm) {
     throw new Error("contract-payment-confirm.js must load before contract-builder.js");
   }
+  const ScheduleConfirm = window.MarginGuardContractScheduleConfirm;
+  if (!ScheduleConfirm) {
+    throw new Error("contract-schedule-confirm.js must load before contract-builder.js");
+  }
 
   const PROJECTS_API = "/.netlify/functions/get-project-control-projects";
   const QUOTE_EDIT_API = "/.netlify/functions/get-tenant-quote-edit";
@@ -301,46 +305,9 @@
       supportsSave: false,
       supportsValidation: true,
       continueLabel: "Continue",
-      validate: () => {
-        const check = validateScheduleDatesClient(
-          draftEdits?.startDate,
-          draftEdits?.dueDate
-        );
-        if (check.complete) {
-          const srcLabel = scheduleSourceDisplayLabel(
-            sourceSnapshot?.scheduleSource
-          );
-          const fromQuote =
-            String(sourceSnapshot?.scheduleSource || "") === "approved_quote";
-          const fromLegacy =
-            String(sourceSnapshot?.scheduleSource || "") ===
-            "project_legacy_due_date";
-          return readinessValidation(
-            "available",
-            fromQuote
-              ? "READY — Schedule dates are available from the approved quote."
-              : fromLegacy
-                ? "READY — Completion date from project legacy fallback; confirm start date if needed."
-                : `READY — Schedule dates set (${srcLabel}).`,
-            "",
-            ""
-          );
-        }
-        if (check.errors.some((m) => /cannot be before/i.test(m))) {
-          return readinessValidation(
-            "missing",
-            "",
-            "",
-            check.errors.find((m) => /cannot be before/i.test(m))
-          );
-        }
-        return readinessValidation(
-          "missing",
-          "",
-          "",
-          check.errors[0] || "Schedule dates are not set."
-        );
-      },
+      editLabel: "Set Project Dates",
+      cancelLabel: "Back",
+      validate: () => validateScheduleWorkspace(),
     }),
     "art-changes": defaultWorkspaceCaps({
       continueLabel: "Continue",
@@ -939,6 +906,8 @@
         activeArticleId === "art-payment" ? currentPaymentFooterPlan(busy) : null;
       const warrantyPlan =
         activeArticleId === "art-warranty" ? currentWarrantyFooterPlan(busy) : null;
+      const schedulePlan =
+        activeArticleId === "art-schedule" ? currentScheduleFooterPlan(busy) : null;
       const propertyEditLabel = !propertyPlan
         ? caps.editLabel || "Edit"
         : propertyPlan.kind === "missing"
@@ -946,20 +915,36 @@
           : "Edit Project Address";
       const propertyEditPrimary = Boolean(propertyPlan && propertyPlan.kind === "missing");
       const paymentEditPrimary = false;
-      actions.appendChild(
-        createFooterButton({
-          id: "cbWsEdit",
-          label:
-            activeArticleId === "art-property"
-              ? propertyEditLabel
-              : caps.editLabel || "Edit",
-          className: propertyEditPrimary || paymentEditPrimary ? "btn primary" : "btn ghost",
-          disabled: busy,
-          onClick: () => {
-            void workspaceEnterEdit(activeArticleId);
-          },
-        })
+      const scheduleEditLabel = !schedulePlan
+        ? caps.editLabel || "Edit"
+        : schedulePlan.setDatesVisible
+          ? "Set Project Dates"
+          : "Edit Project Dates";
+      const scheduleEditPrimary = Boolean(schedulePlan && schedulePlan.setDatesVisible);
+      const scheduleEditVisible = Boolean(
+        schedulePlan && (schedulePlan.setDatesVisible || schedulePlan.editVisible)
       );
+      if (activeArticleId !== "art-schedule" || scheduleEditVisible) {
+        actions.appendChild(
+          createFooterButton({
+            id: "cbWsEdit",
+            label:
+              activeArticleId === "art-property"
+                ? propertyEditLabel
+                : activeArticleId === "art-schedule"
+                  ? scheduleEditLabel
+                  : caps.editLabel || "Edit",
+            className:
+              propertyEditPrimary || paymentEditPrimary || scheduleEditPrimary
+                ? "btn primary"
+                : "btn ghost",
+            disabled: busy,
+            onClick: () => {
+              void workspaceEnterEdit(activeArticleId);
+            },
+          })
+        );
+      }
     }
 
     if (
@@ -1039,6 +1024,25 @@
       );
     }
 
+    if (
+      activeArticleId === "art-schedule" &&
+      currentScheduleFooterPlan(busy).confirmVisible &&
+      mode === WS_MODE.PREVIEW &&
+      !busy
+    ) {
+      actions.appendChild(
+        createFooterButton({
+          id: "cbWsConfirmSchedule",
+          label: "Confirm Schedule",
+          className: "btn primary",
+          disabled: busy,
+          onClick: () => {
+            void workspaceConfirmSchedule();
+          },
+        })
+      );
+    }
+
     if (caps.supportsExternalSource && (activeArticleId === "art-contractor" || activeArticleId === "art-terms")) {
       actions.appendChild(
         createFooterButton({
@@ -1074,10 +1078,13 @@
         activeArticleId === "art-payment" ? currentPaymentFooterPlan(busy) : null;
       const warrantyPlan =
         activeArticleId === "art-warranty" ? currentWarrantyFooterPlan(busy) : null;
+      const schedulePlan =
+        activeArticleId === "art-schedule" ? currentScheduleFooterPlan(busy) : null;
       if (
         !(propertyPlan && !propertyPlan.continueVisible) &&
         !(paymentPlan && !paymentPlan.continueVisible) &&
-        !(warrantyPlan && !warrantyPlan.continueVisible)
+        !(warrantyPlan && !warrantyPlan.continueVisible) &&
+        !(schedulePlan && !schedulePlan.continueVisible)
       ) {
         actions.appendChild(
           createFooterButton({
@@ -1088,7 +1095,8 @@
               busy ||
               (propertyPlan ? !propertyPlan.continueEnabled : false) ||
               (paymentPlan ? !paymentPlan.continueEnabled : false) ||
-              (warrantyPlan ? !warrantyPlan.continueEnabled : false),
+              (warrantyPlan ? !warrantyPlan.continueEnabled : false) ||
+              (schedulePlan ? !schedulePlan.continueEnabled : false),
             onClick: () => {
               void handleWorkspaceContinue();
             },
@@ -1115,6 +1123,9 @@
         } else {
           hint.textContent = "Add the project address to continue.";
         }
+      } else if (activeArticleId === "art-schedule") {
+        const schedulePlan = currentScheduleFooterPlan(busy);
+        hint.textContent = schedulePlan.message || "";
       } else if (caps.supportsSave) {
         hint.textContent = "Confirm writes this article. Continue only moves to the next article.";
       } else {
@@ -1262,43 +1273,66 @@
     return { start_date: null, due_date: null, source: "missing" };
   }
 
-  function scheduleSourceDisplayLabel(source) {
-    const s = String(source || "");
-    if (s === "approved_quote") return "Approved Quote";
-    if (s === "approved_quote_partial") return "Approved Quote (incomplete)";
-    if (s === "project_legacy_due_date") return "Project legacy fallback";
-    if (s === "contract_builder_confirmed") return "Contract Builder confirmation";
-    return "Missing";
+  function validateScheduleDatesClient(startRaw, dueRaw) {
+    return ScheduleConfirm.validateScheduleDates(startRaw, dueRaw);
   }
 
-  function validateScheduleDatesClient(startRaw, dueRaw) {
-    const start = toDateInput(startRaw);
-    const due = toDateInput(dueRaw);
-    const errors = [];
-    if (!start) errors.push("Estimated start date is required.");
-    if (!due) errors.push("Estimated completion date is required.");
-    if (start && due && due < start) {
-      errors.push(
-        "Estimated completion date cannot be before the estimated start date."
-      );
-    }
-    return {
-      ok: errors.length === 0,
-      complete: Boolean(start && due && due >= start),
-      start,
-      due,
-      errors,
-    };
+  function currentScheduleDates() {
+    return ScheduleConfirm.datesFromSource(sourceSnapshot, draftEdits);
+  }
+
+  function currentScheduleView() {
+    const dates = currentScheduleDates();
+    return ScheduleConfirm.presentScheduleArticle({
+      startDate: dates.startDate,
+      dueDate: dates.dueDate,
+      confirmed: scheduleConfigured(),
+      frozen: Boolean(lastFrozenPackage),
+      busy: workspaceBusy,
+    });
+  }
+
+  function currentScheduleFooterPlan(busy) {
+    const dates = currentScheduleDates();
+    return ScheduleConfirm.scheduleFooterPlan({
+      startDate: dates.startDate,
+      dueDate: dates.dueDate,
+      confirmed: scheduleConfigured(),
+      frozen: Boolean(lastFrozenPackage),
+      busy: Boolean(busy),
+    });
+  }
+
+  function scheduleConfigured() {
+    return ScheduleConfirm.scheduleConfirmed(sourceSnapshot, draftEdits);
   }
 
   function contractScheduleComplete(source, edits) {
-    const e = edits || draftEdits || {};
-    return validateScheduleDatesClient(
-      e.startDate != null && e.startDate !== ""
-        ? e.startDate
-        : source?.startDate,
-      e.dueDate != null && e.dueDate !== "" ? e.dueDate : source?.dueDate
-    ).complete;
+    return ScheduleConfirm.scheduleConfirmed(source, edits || draftEdits);
+  }
+
+  function validateScheduleWorkspace() {
+    const view = currentScheduleView();
+    if (view.kind === "confirmed") {
+      return readinessValidation("available", view.readinessCaption, "", "");
+    }
+    if (view.kind === "invalid") {
+      return readinessValidation("needs_confirmation", "", "", view.message);
+    }
+    return readinessValidation("needs_confirmation", "", "", view.message || view.readinessCaption);
+  }
+
+  function hydrateScheduleConfirmation(source, edits) {
+    const next = edits || {};
+    const dates = ScheduleConfirm.datesFromSource(source, next);
+    const stored = ScheduleConfirm.readStoredConfirmation(source?.projectId, source?.quoteId);
+    if (ScheduleConfirm.storedConfirmationMatches(stored, dates.startDate, dates.dueDate)) {
+      return ScheduleConfirm.applyConfirmationToEdits(next, dates.startDate, dates.dueDate);
+    }
+    next.scheduleConfirmed = false;
+    next.scheduleConfirmedStart = "";
+    next.scheduleConfirmedDue = "";
+    return next;
   }
 
   function isPlausibleId(raw) {
@@ -1449,6 +1483,9 @@
       startDate: toDateInput(scheduleResolved.start_date),
       dueDate: toDateInput(scheduleResolved.due_date),
       scheduleSource: scheduleResolved.source || "missing",
+      scheduleConfirmed: false,
+      scheduleConfirmedStart: "",
+      scheduleConfirmedDue: "",
       paymentNotes: "",
       warrantyNotes: "",
       additionalTerms: "",
@@ -1788,6 +1825,84 @@
       renderWorkspaceChrome();
       await new Promise((resolve) => setTimeout(resolve, 700));
       await workspaceEnterPreview("art-property");
+      return true;
+    }
+    renderWorkspaceChrome();
+    return false;
+  }
+
+  async function workspaceConfirmSchedule() {
+    const runner = ScheduleConfirm.createScheduleConfirmRunner({
+      getBusy: () => workspaceBusy,
+      setBusy: (value) => {
+        workspaceBusy = Boolean(value);
+        workspaceBusyLabel = value ? "Confirming…" : "Saving…";
+      },
+      isConfirmed: () => scheduleConfigured(),
+      getDates: () => currentScheduleDates(),
+      getIds: () => ({
+        projectId: sourceSnapshot?.projectId,
+        quoteId: sourceSnapshot?.quoteId,
+      }),
+      getQuote: () => ({
+        status: sourceSnapshot?.quoteStatus,
+        start_date: sourceSnapshot?.startDate,
+        due_date: sourceSnapshot?.dueDate,
+      }),
+      apiUrl: ScheduleConfirm.QUOTE_UPDATE_API,
+      postJson,
+      applySuccess: (_data, _payload, check) => {
+        ScheduleConfirm.applyConfirmationToEdits(
+          draftEdits,
+          check.startDate,
+          check.dueDate
+        );
+        ScheduleConfirm.writeStoredConfirmation(
+          sourceSnapshot?.projectId,
+          sourceSnapshot?.quoteId,
+          check.startDate,
+          check.dueDate
+        );
+        if (sourceSnapshot) {
+          sourceSnapshot.startDate = check.startDate;
+          sourceSnapshot.dueDate = check.dueDate;
+          sourceSnapshot.scheduleConfirmed = true;
+        }
+        draftBaseline = cloneEdits({
+          ...sourceSnapshot,
+          ...draftEdits,
+        });
+        renderDocument(sourceSnapshot, draftEdits);
+        updateIndexNavStatus();
+      },
+    });
+    const result = await runner.confirm();
+    if (result.reason === "invalid" || result.reason === "missing_start" || result.reason === "missing_completion") {
+      const errorEl = $("cbScheduleEditError");
+      if (errorEl) {
+        errorEl.hidden = false;
+        errorEl.textContent = result.error || ScheduleConfirm.INVALID_ORDER;
+      }
+      await workspaceEnterEdit("art-schedule");
+      renderWorkspaceChrome();
+      return false;
+    }
+    if (result.reason === "busy" || result.reason === "already_confirmed" || result.reason === "stale_project") {
+      renderWorkspaceChrome();
+      return result.ok === true;
+    }
+    if (result.reason === "http") {
+      setArticleMode("art-schedule", WS_MODE.PREVIEW);
+      renderWorkspaceChrome();
+      window.alert(result.error || "Project dates could not be confirmed.");
+      return false;
+    }
+    if (result.ok) {
+      workspaceEditBaseline = null;
+      setArticleMode("art-schedule", WS_MODE.SAVED);
+      renderWorkspaceChrome();
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      await workspaceEnterPreview("art-schedule");
       return true;
     }
     renderWorkspaceChrome();
@@ -3713,6 +3828,9 @@
       exclusions: source.exclusions,
       startDate: source.startDate,
       dueDate: source.dueDate,
+      scheduleConfirmed: source.scheduleConfirmed === true,
+      scheduleConfirmedStart: source.scheduleConfirmedStart || "",
+      scheduleConfirmedDue: source.scheduleConfirmedDue || "",
       paymentNotes: source.paymentNotes,
       warrantyNotes: source.warrantyNotes,
       additionalTerms: source.additionalTerms || source.terms || "",
@@ -3833,12 +3951,13 @@
       case "art-payment":
         return readinessMapStatus("payment", source);
       case "art-schedule": {
-        const check = validateScheduleDatesClient(e.startDate, e.dueDate);
-        if (check.complete) return "available";
-        if (String(e.startDate || "").trim() || String(e.dueDate || "").trim()) {
-          return "needs_confirmation";
-        }
-        return "missing";
+        const view = ScheduleConfirm.presentScheduleArticle({
+          startDate: e.startDate,
+          dueDate: e.dueDate,
+          confirmed: ScheduleConfirm.scheduleConfirmed(source, e),
+        });
+        if (view.kind === "confirmed") return "available";
+        return "needs_confirmation";
       }
       case "art-changes":
         return "available";
@@ -4076,6 +4195,12 @@
     const paymentReady = PaymentConfirm.paymentTermsReadiness(
       source.paymentSchedule?.readiness?.status
     );
+    const scheduleDates = ScheduleConfirm.datesFromSource(source, edits);
+    const scheduleReady = ScheduleConfirm.scheduleTermsReadiness({
+      startDate: scheduleDates.startDate,
+      dueDate: scheduleDates.dueDate,
+      confirmed: ScheduleConfirm.scheduleConfirmed(source, edits),
+    });
     const propertyStatus = readinessMapStatus("property", source);
     const warrantyStatus = readinessMapStatus("warranty", source);
     const paymentStatus = readinessMapStatus("payment", source);
@@ -4107,15 +4232,8 @@
       { label: "Payment terms", status: paymentReady.status, caption: paymentReady.caption },
       {
         label: "Estimated schedule",
-        status: contractScheduleComplete(source, edits)
-          ? "available"
-          : String(edits?.startDate || source?.startDate || "").trim() ||
-              String(edits?.dueDate || source?.dueDate || "").trim()
-            ? "needs_confirmation"
-            : "missing",
-        note: scheduleSourceDisplayLabel(
-          edits?.scheduleSourceOverride || source?.scheduleSource
-        ),
+        status: scheduleReady.status,
+        caption: scheduleReady.caption,
       },
       { label: "State-required legal notices", status: legalNoticesStatus },
       { label: "Warranty terms", status: warrantyStatus },
@@ -4181,6 +4299,12 @@
     const paymentReady = PaymentConfirm.paymentTermsReadiness(
       source.paymentSchedule?.readiness?.status
     );
+    const scheduleDates = ScheduleConfirm.datesFromSource(source, edits);
+    const scheduleReady = ScheduleConfirm.scheduleTermsReadiness({
+      startDate: scheduleDates.startDate,
+      dueDate: scheduleDates.dueDate,
+      confirmed: ScheduleConfirm.scheduleConfirmed(source, edits),
+    });
 
     // Soften insurance to needs_confirmation when profile exists but insurance empty
     if (!profile) {
@@ -4197,6 +4321,13 @@
         status: paymentReady.status,
         caption: paymentReady.caption,
         article: "art-payment",
+      },
+      {
+        id: "SCHEDULE",
+        label: "ESTIMATED SCHEDULE",
+        status: scheduleReady.status,
+        caption: scheduleReady.caption,
+        article: "art-schedule",
       },
       { id: "LEGAL", label: "LEGAL", status: worstStatus(legalStatuses), article: "art-warranty" },
       { id: "SIGNATURE", label: "SIGNATURE", status: worstStatus(signatureStatuses), article: "art-signatures" },
@@ -4347,9 +4478,9 @@
     }
     if (!contractScheduleComplete(source, edits)) {
       return {
-        label: "Set Estimated Start and Completion dates",
+        label: "Confirm the estimated schedule",
         article: "art-schedule",
-        cta: "Open Schedule",
+        cta: "Open Estimated Schedule",
       };
     }
     return {
@@ -4396,14 +4527,14 @@
       draftEdits?.startDate,
       draftEdits?.dueDate
     );
-    if (!scheduleCheck.complete) {
+    if (!scheduleCheck.complete || !scheduleConfigured()) {
       throw new Error(
         scheduleCheck.errors[0] ||
-          "Estimated start and completion dates are required before freezing."
+          "Estimated start and completion dates must be confirmed before freezing."
       );
     }
-    body.confirmed_start_date = scheduleCheck.start;
-    body.confirmed_due_date = scheduleCheck.due;
+    body.confirmed_start_date = scheduleCheck.startDate;
+    body.confirmed_due_date = scheduleCheck.dueDate;
     // Live fixture / repair policy: quote fill-once is Sales/Create Schedule only.
     // Article 8 confirmed dates go to freeze snapshot only — never rewrite accepted quote here.
 
@@ -4484,6 +4615,12 @@
               `${escapeHtml(payChrome.readinessCaption)}</span></li>`
             );
           }
+          if (g.label === "ESTIMATED SCHEDULE") {
+            return (
+              `<li><span class="cb-check-status ${statusClass(g.status)}">` +
+              `${escapeHtml(g.caption || statusLabel(g.status))}</span></li>`
+            );
+          }
           return (
             `<li><span class="cb-check-status ${statusClass(g.status)}">${escapeHtml(statusLabel(g.status))}</span>` +
             `<span><strong>${escapeHtml(g.label)}</strong></span></li>`
@@ -4495,7 +4632,7 @@
     const ul = $("cbRequiredList");
     if (ul) {
       ul.innerHTML = items
-        .filter((item) => item.label !== "Payment terms")
+        .filter((item) => item.label !== "Payment terms" && item.label !== "Estimated schedule")
         .map((item) => {
           const extra = item.note ? ` (${item.note})` : "";
           return `<li>${escapeHtml(item.label)} — ${escapeHtml(statusLabel(item.status))}${escapeHtml(extra)}</li>`;
@@ -4513,7 +4650,7 @@
     const missingEl = $("cbMissingList");
     if (missingEl) {
       const missing = items.filter(
-        (i) => i.status === "missing" && i.label !== "Payment terms"
+        (i) => i.status === "missing" && i.label !== "Payment terms" && i.label !== "Estimated schedule"
       );
       missingEl.innerHTML = missing.length
         ? missing.map((i) => `<li><span class="cb-check-status is-missing">Missing</span><span>${escapeHtml(i.label)}${i.note ? ` (${escapeHtml(i.note)})` : ""}</span></li>`).join("")
@@ -4523,7 +4660,10 @@
     const warnEl = $("cbWarningsList");
     if (warnEl) {
       const warns = items.filter(
-        (i) => i.status === "needs_confirmation" && i.label !== "Payment terms"
+        (i) =>
+          i.status === "needs_confirmation" &&
+          i.label !== "Payment terms" &&
+          i.label !== "Estimated schedule"
       );
       warnEl.innerHTML = warns.length
         ? warns
@@ -4844,6 +4984,18 @@
     // Scope / Terms are quote / Legal Notices sourced — no local editors.
     if ($("cbEditStart")) draftEdits.startDate = String($("cbEditStart").value || "").trim();
     if ($("cbEditDue")) draftEdits.dueDate = String($("cbEditDue").value || "").trim();
+    ScheduleConfirm.clearConfirmationOnDateChange(draftEdits);
+    const errorEl = $("cbScheduleEditError");
+    if (errorEl) {
+      const check = validateScheduleDatesClient(draftEdits.startDate, draftEdits.dueDate);
+      if (check.orderInvalid) {
+        errorEl.hidden = false;
+        errorEl.textContent = ScheduleConfirm.INVALID_ORDER;
+      } else {
+        errorEl.hidden = true;
+        errorEl.textContent = "";
+      }
+    }
   }
 
   function pushUndo(id, value) {
@@ -5007,21 +5159,50 @@
     renderWarrantySection(source, edits);
     renderSignatureSection(source);
     renderLegalNoticesSection(source);
-
-    setText(
-      "cbStartDisplay",
-      edits.startDate ? formatDate(edits.startDate) : "To be confirmed"
-    );
-    setText(
-      "cbDueDisplay",
-      edits.dueDate ? formatDate(edits.dueDate) : "To be confirmed"
-    );
-    setText(
-      "cbScheduleSourceDisplay",
-      scheduleSourceDisplayLabel(source.scheduleSource)
-    );
+    renderScheduleArticle(source, edits);
 
     renderReadiness(source, edits);
+  }
+
+  function renderScheduleArticle(source, edits) {
+    const dates = ScheduleConfirm.datesFromSource(source, edits);
+    const view = ScheduleConfirm.presentScheduleArticle({
+      startDate: dates.startDate,
+      dueDate: dates.dueDate,
+      confirmed: ScheduleConfirm.scheduleConfirmed(source, edits),
+      frozen: Boolean(lastFrozenPackage),
+    });
+    setText("cbStartDisplay", view.startValue);
+    setText("cbDueDisplay", view.completionValue);
+    const dueField = $("cbDueField");
+    if (dueField) dueField.hidden = !view.showCompletion;
+    const notice = $("cbScheduleNotice");
+    if (notice) {
+      notice.hidden = !view.notice;
+      notice.textContent = view.notice || "";
+    }
+    const message = $("cbScheduleMessage");
+    if (message) {
+      message.hidden = !view.message;
+      message.textContent = view.message || "";
+    }
+    const status = $("cbScheduleStatus");
+    if (status) {
+      status.hidden = !view.readinessCaption;
+      status.textContent = view.readinessCaption || "";
+      status.classList.toggle("is-ok", view.kind === "confirmed");
+      status.classList.toggle("is-needs", view.kind !== "confirmed");
+    }
+    const errorEl = $("cbScheduleEditError");
+    if (errorEl && getArticleMode("art-schedule") !== WS_MODE.EDIT) {
+      if (view.orderInvalid) {
+        errorEl.hidden = false;
+        errorEl.textContent = view.message;
+      } else {
+        errorEl.hidden = true;
+        errorEl.textContent = "";
+      }
+    }
   }
 
   function renderLegalNoticesSection(source) {
@@ -5556,6 +5737,12 @@
         } else if (id === "cbSigEditMethod") {
           updateSignatureLiveHint();
           renderWorkspaceChrome();
+        } else if (id === "cbEditStart" || id === "cbEditDue") {
+          if (sourceSnapshot && draftEdits) {
+            renderDocument(sourceSnapshot, draftEdits);
+            updateIndexNavStatus();
+          }
+          renderWorkspaceChrome();
         } else if (sourceSnapshot && draftEdits) {
           renderDocument(sourceSnapshot, draftEdits);
           updateIndexNavStatus();
@@ -5592,6 +5779,7 @@
       if (!confirmLeaveLocalDraft("Reset local draft")) return;
       warrantyPresetAppliedToDraft = false;
       draftEdits = cloneEdits(sourceSnapshot);
+      hydrateScheduleConfirmation(sourceSnapshot, draftEdits);
       draftBaseline = cloneEdits(sourceSnapshot);
       renderAll();
       applyActiveArticle({ focus: false });
@@ -5987,6 +6175,7 @@
     );
     hydratePaymentDraftFromSource(sourceSnapshot);
     draftEdits = cloneEdits(sourceSnapshot);
+    hydrateScheduleConfirmation(sourceSnapshot, draftEdits);
     const normalized = PropertyConfirm.resolvePropertyFields({
       setup: setupBundle.setup,
       edits: { address: sourceSnapshot.address },

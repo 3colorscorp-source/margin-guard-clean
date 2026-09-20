@@ -132,7 +132,7 @@ test("5-9. Locked quote fill-once narrow gate", () => {
 test("10-11. Article MISSING and right readiness agree; freeze gated", () => {
   assert.ok(builderSrc.includes("contractScheduleComplete"));
   assert.ok(builderSrc.includes('label: "Estimated schedule"'));
-  assert.ok(builderSrc.includes("Set Estimated Start and Completion dates"));
+  assert.ok(builderSrc.includes("Open Estimated Schedule"));
   assert.ok(
     /overallContractReadiness\(source(?:Snapshot)?,\s*(?:edits|draftEdits)\)/.test(
       builderSrc
@@ -145,7 +145,8 @@ test("12-14. Both dates / finish-before-start / same-day", () => {
   assert.ok(schedule.validateContractSchedule("2026-08-10", "2026-08-14").complete);
   assert.ok(!schedule.validateContractSchedule("2026-08-14", "2026-08-10").ok);
   assert.ok(schedule.validateContractSchedule("2026-08-10", "2026-08-10").ok);
-  assert.ok(builderSrc.includes("cannot be before the estimated start date"));
+  const scheduleHelper = read("public/js/contract-schedule-confirm.js");
+  assert.ok(scheduleHelper.includes("Completion date must be on or after the start date."));
   assert.ok(freezeSrc.includes("confirmed_start_date"));
 });
 
@@ -259,8 +260,10 @@ test("21. Precedence: both quote dates win; project never invents start", () => 
 });
 
 test("Builder UX source labels + freeze payload", () => {
-  assert.ok(builderHtml.includes("cbScheduleSourceDisplay"));
-  assert.ok(builderSrc.includes("scheduleSourceDisplayLabel"));
+  assert.ok(!builderHtml.includes("cbScheduleSourceDisplay"));
+  assert.ok(!builderHtml.includes("Schedule source"));
+  assert.ok(!builderSrc.includes("scheduleSourceDisplayLabel"));
+  assert.ok(!builderSrc.includes("Project legacy fallback"));
   assert.ok(builderSrc.includes("confirmed_start_date"));
   assert.ok(appSrc.includes("syncApprovedQuoteScheduleFillOnce"));
 });

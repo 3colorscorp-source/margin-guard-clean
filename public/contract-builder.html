@@ -1014,6 +1014,40 @@
     #cbPayBillingBlock[hidden],
     #cbPayDepositCard[hidden],
     #cbPayCustomizeRemaining[hidden] { display: none !important; }
+    .cb-sched-notice,
+    .cb-sched-message,
+    .cb-sched-status,
+    .cb-sched-error {
+      margin: 10px 0 0;
+      font-size: 0.88rem;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+    .cb-sched-notice { color: #57534e; }
+    .cb-sched-message { color: #b45309; font-weight: 650; }
+    .cb-sched-status {
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .cb-sched-status.is-needs { color: #b45309; }
+    .cb-sched-status.is-ok { color: #15803d; }
+    .cb-sched-error { color: #b91c1c; font-weight: 650; }
+    .cb-sched-error[hidden],
+    .cb-sched-notice[hidden],
+    .cb-sched-message[hidden],
+    .cb-sched-status[hidden],
+    #cbDueField[hidden] { display: none !important; }
+    @media (max-width: 720px) {
+      #art-schedule .cb-meta-grid { grid-template-columns: 1fr; }
+      #art-schedule .cb-editor input[type="date"] { max-width: 100%; }
+    }
+    @media print {
+      .cb-sched-message,
+      .cb-sched-status,
+      .cb-sched-error { display: none !important; }
+    }
     #cbPayEditToolbar .btn,
     #cbPayAddStage,
     .cb-pay-stage-card__actions .btn {
@@ -2432,11 +2466,12 @@
                 <div class="cb-article__body">
                   <div data-ws-preview>
                   <div class="cb-meta-grid">
-                    <div class="cb-field"><span class="k">Estimated Start Date</span><div class="v" id="cbStartDisplay">To be confirmed</div></div>
-                    <div class="cb-field"><span class="k">Estimated Completion Date</span><div class="v" id="cbDueDisplay">To be confirmed</div></div>
-                    <div class="cb-field"><span class="k">Schedule source</span><div class="v" id="cbScheduleSourceDisplay">—</div></div>
+                    <div class="cb-field"><span class="k">Estimated Start Date</span><div class="v" id="cbStartDisplay">Not scheduled</div></div>
+                    <div class="cb-field" id="cbDueField"><span class="k">Target Completion</span><div class="v" id="cbDueDisplay">Not scheduled</div></div>
                   </div>
-                  <p>Dates are estimates and may be adjusted by mutual agreement, site conditions, material availability, approved changes, or events outside either party's reasonable control.</p>
+                  <p class="cb-sched-notice" id="cbScheduleNotice" hidden>Project dates may change due to site conditions, material availability, approved changes, or events outside either party’s reasonable control.</p>
+                  <p class="cb-sched-message" id="cbScheduleMessage" hidden></p>
+                  <p class="cb-sched-status" id="cbScheduleStatus" hidden></p>
                   </div>
                   <div data-ws-edit>
                   <div class="cb-editor owner-only">
@@ -2444,9 +2479,10 @@
                     <input id="cbEditStart" type="date" />
                   </div>
                   <div class="cb-editor owner-only">
-                    <label for="cbEditDue">Estimated Completion Date</label>
+                    <label for="cbEditDue">Target Completion</label>
                     <input id="cbEditDue" type="date" />
                   </div>
+                  <p class="cb-sched-error" id="cbScheduleEditError" hidden></p>
                   </div>
                 </div>
               </section>
@@ -2719,6 +2755,7 @@
   <script src="/js/contract-warranty-defaults.js"></script>
   <script src="/js/contract-property-confirm.js"></script>
   <script src="/js/contract-payment-confirm.js?v=pt-src-4"></script>
-  <script src="/js/contract-builder.js?v=pt-src-4" defer></script>
+  <script src="/js/contract-schedule-confirm.js?v=sched-1"></script>
+  <script src="/js/contract-builder.js?v=sched-1" defer></script>
 </body>
 </html>

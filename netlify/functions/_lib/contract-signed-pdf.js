@@ -380,11 +380,13 @@ function buildSignedContractLines({
     // Display-only; keep calendar day (noon local).
     return s;
   }
-  lines.push(body(`Estimated Start Date: ${fmtContractDate(estStart)}`));
-  lines.push(body(`Estimated Completion Date: ${fmtContractDate(estDue)}`));
-  if (trimField(snap?.contract_schedule?.source)) {
-    lines.push(body(`Schedule source: ${trimField(snap.contract_schedule.source)}`));
-  }
+  lines.push(body(`Estimated Start Date: ${estStart ? fmtContractDate(estStart) : "Not scheduled"}`));
+  lines.push(body(`Target Completion: ${estDue ? fmtContractDate(estDue) : "Not scheduled"}`));
+  lines.push(
+    body(
+      "Project dates may change due to site conditions, material availability, approved changes, or events outside either party's reasonable control."
+    )
+  );
   lines.push(blank(6));
 
   lines.push(heading("Payment Terms"));
