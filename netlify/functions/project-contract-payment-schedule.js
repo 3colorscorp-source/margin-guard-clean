@@ -478,9 +478,7 @@ function evaluateReadiness(schedule, items, contractTotalCents) {
   const confirmed = Boolean(
     schedule &&
       schedule.status === "confirmed" &&
-      schedule.confirmed_at &&
-      itemCount > 0 &&
-      scheduledTotalCents === contractTotalCents
+      schedule.confirmed_at
   );
   const status = !schedule ? "missing" : confirmed ? "configured" : "draft";
   return {
@@ -778,27 +776,6 @@ exports.handler = async (event) => {
     }
 
     const scheduledTotalCents = totalItemsCents(normalized.items);
-    const exactTotal = scheduledTotalCents === relation.contractTotalCents;
-    if (confirmSchedule && normalized.items.length < 1) {
-      return json(400, {
-        ok: false,
-        error: "At least one payment stage is required to confirm a schedule",
-        code: "items_required",
-      });
-    }
-    if (confirmSchedule && !exactTotal) {
-      return json(400, {
-        ok: false,
-        error: "Payment schedule total must equal the contract total before confirmation",
-        code: "schedule_total_mismatch",
-        contract_total: centsToNumber(relation.contractTotalCents),
-        scheduled_total: centsToNumber(scheduledTotalCents),
-        remaining_difference: centsToNumber(
-          relation.contractTotalCents - scheduledTotalCents
-        ),
-      });
-    }
-
     const deposit = await resolveVerifiedContractDeposit({
       tenantId,
       projectId,
@@ -817,21 +794,6 @@ exports.handler = async (event) => {
             : "deposit_verification_unavailable",
         deposit,
       });
-    }
-    if (confirmSchedule) {
-      const paySummary = presentPaymentSummary({
-        contractTotal: centsToNumber(relation.contractTotalCents),
-        items: normalized.items,
-        verifiedDeposit: deposit,
-      });
-      if (paySummary.scheduleMismatch) {
-        return json(422, {
-          ok: false,
-          error: paySummary.verificationMessage,
-          code: "payment_stages_mismatch",
-          deposit,
-        });
-      }
     }
 
     let rpcResult;

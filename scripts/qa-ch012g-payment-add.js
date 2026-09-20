@@ -75,21 +75,17 @@ test("CH-012G.1 root cause: render must not DOM-sync wipe before paint", () => {
   assert.ok(js.includes("must not clear in-memory drafts") || js.includes("Empty-state markup"));
 });
 
-test("1 Empty draft schedule shows visible Add payment action (paper CSS)", () => {
-  assert.ok(html.includes('id="cbPayAddStage"'));
-  assert.ok(html.includes("+ Add Payment Stage"));
-  assert.ok(/#cbPayEditToolbar\s+\.btn|#cbPayAddStage/.test(html));
-  assert.ok(html.includes("var(--cb-ink"));
-  assert.ok(/#cbPayAddStage[\s\S]*?color:\s*var\(--cb-ink/.test(html) || /#cbPayEditToolbar \.btn[\s\S]*?color:\s*var\(--cb-ink/.test(html));
-  assert.ok(js.includes("cbPayAddFirst") || js.includes("addPaymentDraftRow"));
+test("1 Payment Terms does not show Add payment stage", () => {
+  assert.ok(!html.includes("+ Add Payment Stage"));
+  assert.ok(!html.includes('id="cbPayAddStage"'));
+  assert.ok(html.includes("Payment Terms"));
+  assert.ok(html.includes("Billing Terms") || html.includes("cbPayBillingTitle"));
 });
 
-test("2 Add payment is not disabled when empty / total > 0", () => {
-  assert.ok(/id="cbPayAddStage"[^>]*>/.test(html));
-  assert.ok(!/id="cbPayAddStage"[^>]*\bdisabled\b/.test(html));
-  assert.ok(js.includes("if (!paymentDraftItems.length)"));
-  assert.ok(!/cbPayAddStage[\s\S]{0,80}disabled\s*=\s*true/.test(js));
-  assert.ok(js.includes("paymentScheduleAllowsOwnerEdit"));
+test("2 Payment Terms confirm does not use Add Payment Stage", () => {
+  assert.ok(!html.includes("+ Add Payment Stage"));
+  assert.ok(js.includes("workspaceConfirmPayment"));
+  assert.ok(js.includes("paymentScheduleAllowsOwnerEdit") || js.includes("Confirm Payment Terms"));
 });
 
 test("3 First row can be added — shared path + both buttons", () => {
@@ -160,18 +156,13 @@ test("5 Draft save allows imbalance", () => {
   assert.ok(/savePaymentScheduleDraft\(\s*false\s*\)/.test(js));
 });
 
-test("6 Confirm blocks under total", () => {
+test("6 Confirm Payment Terms does not require future stage totals", () => {
   const helper = read("public/js/contract-payment-confirm.js");
-  assert.ok(js.includes("validatePaymentDraftForConfirm"));
-  assert.ok(helper.includes("Payment amounts must equal the contract total.") || js.includes("SUM_ERROR"));
-  assert.ok(
-    js.includes("integrity.mismatch") ||
-      js.includes("STAGES_SUM_ERROR") ||
-      helper.includes("paymentStageIntegrity")
-  );
+  assert.ok(js.includes("workspaceConfirmPayment"));
+  assert.ok(helper.includes("Confirm Payment Terms"));
+  assert.ok(!helper.includes("if (kind === \"unbalanced\")"));
   const under = computeTotals([{ amount: 100 }], 9044.16);
   assert.strictEqual(under.balanced, false);
-  assert.ok(under.differenceCents > 0);
 });
 
 test("7 Confirm blocks over total", () => {
@@ -198,7 +189,7 @@ test("10 Article 7 and right-rail readiness agree", () => {
   assert.ok(js.includes("readinessMapStatus"));
   assert.ok(js.includes('return readinessMapStatus("payment", source)'));
   assert.ok(js.includes("paymentConfigured"));
-  assert.ok(js.includes("Confirm the payment schedule"));
+  assert.ok(js.includes("Confirm the payment terms"));
   assert.ok(js.includes("overallContractReadiness"));
 });
 
@@ -219,11 +210,11 @@ test("13 Frozen snapshot contains exact payment schedule", () => {
 });
 
 test("14 Frozen snapshot remains immutable / readiness incomplete before confirm", () => {
-  assert.ok(js.includes("Confirmed payment schedules are read-only") || js.includes("paymentScheduleAllowsOwnerEdit"));
+  assert.ok(js.includes("Confirmed payment terms are read-only") || js.includes("paymentScheduleAllowsOwnerEdit"));
   assert.ok(js.includes("return !paymentConfigured"));
   // Before confirm, paymentConfigured is false → Article incomplete
   assert.ok(js.includes('=== "configured"'));
-  assert.ok(js.includes("Confirm the payment schedule"));
+  assert.ok(js.includes("Confirm the payment terms"));
 });
 
 test("15 Existing schedule loads", () => {

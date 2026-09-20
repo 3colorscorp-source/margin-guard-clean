@@ -286,44 +286,15 @@
       },
     }),
     "art-payment": defaultWorkspaceCaps({
-      supportsEdit: true,
-      supportsSave: true,
+      supportsEdit: false,
+      supportsSave: false,
       supportsValidation: true,
-      supportsTimeline: true,
+      supportsTimeline: false,
       continueLabel: "Continue",
-      editLabel: "Customize Payment Plan",
-      saveLabel: "Save Payment Plan",
-      cancelLabel: "Cancel",
+      editLabel: "",
+      saveLabel: "",
+      cancelLabel: "Back",
       validate: () => validatePaymentWorkspace(),
-      syncEditFromModel: () => {
-        hydratePaymentDraftFromSource(sourceSnapshot);
-        renderPaymentEditGrid();
-      },
-      onEnterEdit: () => {
-        bindPaymentEditHandlersOnce();
-        renderPaymentEditGrid();
-      },
-      onCancelEdit: () => {
-        if (paymentDraftBaseline) {
-          paymentDraftItems = clonePaymentDraftItems(paymentDraftBaseline);
-        } else {
-          hydratePaymentDraftFromSource(sourceSnapshot);
-        }
-        paymentCustomStages = paymentFutureDraftItems().some((row) => row.is_new === true);
-        if (!paymentConfigured(sourceSnapshot?.paymentSchedule)) {
-          ensureResidualBillingRow();
-        }
-      },
-      onBeforeSave: () => {
-        const check = validatePaymentDraftForSave();
-        updatePaymentEditHint(check);
-        renderWorkspaceChrome();
-        if (check.blocking) return false;
-        return true;
-      },
-      onSave: async () => {
-        await savePaymentScheduleDraft(false);
-      },
     }),
     "art-schedule": defaultWorkspaceCaps({
       supportsEdit: true,
@@ -526,7 +497,7 @@
     const caps = getWorkspace(articleId);
     if (!caps.supportsEdit) return false;
     if (articleId === "art-payment" && !paymentScheduleAllowsOwnerEdit()) {
-      showError("Payment Schedule", "Confirmed payment schedules are read-only.");
+      showError("Payment Terms", "Confirmed payment terms are read-only.");
       return false;
     }
     readEditsFromInputs();
@@ -650,34 +621,19 @@
       },
     });
     const result = await runner.confirm();
-    if (
-      result.reason === "unbalanced" ||
-      result.reason === "incomplete" ||
-      result.reason === "missing"
-    ) {
-      if (!startedInEdit) {
-        const entered = await workspaceEnterEdit("art-payment");
-        if (entered) updatePaymentEditHint();
-      } else {
-        updatePaymentEditHint();
-      }
-      renderWorkspaceChrome();
-      return false;
-    }
     if (result.reason === "busy" || result.reason === "already_confirmed") {
       renderWorkspaceChrome();
       return result.ok === true;
     }
     if (result.reason === "http") {
-      setArticleMode("art-payment", startedInEdit ? WS_MODE.EDIT : WS_MODE.PREVIEW);
+      setArticleMode("art-payment", WS_MODE.PREVIEW);
       renderWorkspaceChrome();
-      window.alert(result.error || "Payment schedule could not be confirmed.");
+      window.alert(result.error || "Payment terms could not be confirmed.");
       return false;
     }
     if (
       result.reason === "verification_unavailable" ||
-      result.reason === "inconsistent" ||
-      result.reason === "payment_stages_mismatch"
+      result.reason === "inconsistent"
     ) {
       renderWorkspaceChrome();
       window.alert(
@@ -882,7 +838,7 @@
           actions.appendChild(
             createFooterButton({
               id: "cbWsSave",
-              label: "Save Payment Plan",
+              label: caps.saveLabel || "Save",
               className: "btn primary",
               disabled: busy || saveBlocked,
               onClick: () => {
@@ -996,9 +952,7 @@
           label:
             activeArticleId === "art-property"
               ? propertyEditLabel
-              : activeArticleId === "art-payment"
-                ? "Customize Payment Plan"
-                : caps.editLabel || "Edit",
+              : caps.editLabel || "Edit",
           className: propertyEditPrimary || paymentEditPrimary ? "btn primary" : "btn ghost",
           disabled: busy,
           onClick: () => {
@@ -1043,7 +997,7 @@
       actions.appendChild(
         createFooterButton({
           id: "cbWsConfirmPayPreview",
-          label: "Confirm Payment Schedule",
+          label: "Confirm Payment Terms",
           className: "btn primary",
           disabled: busy || !paymentPlan.confirmEnabled,
           onClick: () => {
@@ -4350,9 +4304,9 @@
     }
     if (!paymentConfigured(source.paymentSchedule)) {
       return {
-        label: "Confirm the payment schedule",
+        label: "Confirm the payment terms",
         article: "art-payment",
-        cta: "Open Payment Schedule",
+        cta: "Open Payment Terms",
       };
     }
     if (!warrantyConfigured(source.contractSetup)) {
@@ -5158,7 +5112,7 @@
         badge.hidden = false;
         badge.classList.add("is-configured");
         if (badgeMark) badgeMark.textContent = "✓";
-        if (badgeText) badgeText.textContent = "Payment Schedule Confirmed";
+        if (badgeText) badgeText.textContent = "Payment Terms Confirmed";
       } else {
         badge.hidden = true;
         badge.classList.add(items.length ? "is-draft" : "is-missing");
@@ -5191,12 +5145,13 @@
       depositRequired: source.depositRequired,
       currency,
       dueRuleLabel: (rule, extras) => dueRuleLabel(rule, extras),
+      hideFutureStages: true,
     });
 
     const isUnavailable = Boolean(bundle.loadError || bundle.forbidden);
     const isMissing = status === "missing" || (!bundle.available && !items.length && status !== "draft" && status !== "configured");
 
-    if ((isMissing || isUnavailable) && !items.length && status !== "draft" && status !== "configured") {
+    if ((isMissing || isUnavailable) && contractTotal == null && status !== "draft" && status !== "configured") {
       if (summary) summary.hidden = true;
       if (timeline) {
         timeline.hidden = true;
@@ -5305,24 +5260,28 @@
         }
       }
       if (depositCopy) {
+        depositCopy.hidden = true;
+        depositCopy.textContent = "";
+      }
+      const billingTitle = $("cbPayBillingTitle");
+      if (progressCopy) {
         const explanation = String(paySummary.explanationCopy || "").trim();
         if (explanation) {
-          depositCopy.hidden = false;
-          depositCopy.textContent = explanation;
+          progressCopy.hidden = false;
+          progressCopy.textContent = explanation;
+          if (billingTitle) billingTitle.hidden = false;
         } else if (
           paySummary.depositStatus === "verification_unavailable" &&
           paySummary.verificationMessage
         ) {
-          depositCopy.hidden = false;
-          depositCopy.textContent = paySummary.verificationMessage;
+          progressCopy.hidden = false;
+          progressCopy.textContent = paySummary.verificationMessage;
+          if (billingTitle) billingTitle.hidden = true;
         } else {
-          depositCopy.hidden = true;
-          depositCopy.textContent = "";
+          progressCopy.hidden = true;
+          progressCopy.textContent = "";
+          if (billingTitle) billingTitle.hidden = true;
         }
-      }
-      if (progressCopy) {
-        progressCopy.hidden = true;
-        progressCopy.textContent = "";
       }
       setText("cbPayStageCount", Number.isFinite(itemCount) ? String(itemCount) : "—");
       if (scheduledTotal != null) {
@@ -5338,9 +5297,6 @@
       if (paySummary.blockConfirm && paySummary.verificationMessage) {
         sumWarn.hidden = false;
         sumWarn.textContent = paySummary.verificationMessage;
-      } else if (contractTotal != null && scheduledTotal != null && !sumsMatch) {
-        sumWarn.hidden = false;
-        sumWarn.textContent = PaymentConfirm.SUM_ERROR;
       } else {
         sumWarn.hidden = true;
         sumWarn.textContent = "";
@@ -5353,30 +5309,9 @@
     }
 
     if (timeline) {
-      const remainingRows = paySummary.showPaymentStages ? paySummary.remainingItems || [] : [];
-      if (!remainingRows.length) {
-        timeline.hidden = true;
-        timeline.innerHTML = "";
-        if (remainingTitle) remainingTitle.hidden = true;
-      } else {
-        if (remainingTitle) {
-          remainingTitle.hidden = false;
-          remainingTitle.textContent = paySummary.stageTitle || "Payment Stages";
-        }
-        timeline.hidden = false;
-        timeline.innerHTML = remainingRows
-          .map((row) => {
-            const due = String(row.due || "");
-            return (
-              `<article class="cb-pay-row">` +
-              `<h4 class="cb-pay-row__name">${escapeHtml(row.name)}</h4>` +
-              `<p class="cb-pay-row__amount">${escapeHtml(formatMoney(row.amount, currency))}</p>` +
-              `<p class="cb-pay-row__due">${escapeHtml(due)}</p>` +
-              `</article>`
-            );
-          })
-          .join("");
-      }
+      timeline.hidden = true;
+      timeline.innerHTML = "";
+      if (remainingTitle) remainingTitle.hidden = true;
     }
   }
 

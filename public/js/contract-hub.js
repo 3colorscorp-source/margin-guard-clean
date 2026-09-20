@@ -211,7 +211,7 @@
     if (!payOk) {
       const paySt = String(scheduleReady.status || "").toLowerCase();
       missing.push(
-        paySt === "draft" ? "Confirm Payment Schedule" : "Complete Payment Schedule"
+        paySt === "draft" ? "Confirm Payment Terms" : "Confirm Payment Terms"
       );
     }
     if (!warOk) missing.push("Confirm Warranty");

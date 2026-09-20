@@ -1,8 +1,11 @@
 /**
- * Contract Builder Article 7 — payment schedule confirm decisions (browser + Node).
+ * Contract Builder Article 7 — Payment Terms confirm decisions (browser + Node).
  *
  * Owns CTA plan, payload shape, busy lock, and persist/no-persist outcomes.
- * Does not change amounts, due rules, tenant defaults, or processed payments.
+ * Does not invent future invoice amounts. Progress invoices are calculated later
+ * from actual billable progress (Invoice Hub; not in this module).
+ * Cumulative invoicing must not exceed the contract plus approved change orders.
+ * Does not write Invoice Hub, the ledger, or Payment Intents.
  */
 (function (root, factory) {
   "use strict";
@@ -24,12 +27,14 @@
   var DEPOSIT_INCONSISTENT_MESSAGE =
     "Verified deposit exceeds the contract total. Refresh before confirming.";
   var SCHEDULE_MISMATCH_MESSAGE = STAGES_SUM_ERROR;
-  var BILLING_SCHEDULE_COPY =
-    "Every two weeks based on completed work. If the project is completed sooner, the final invoice is sent at completion.";
-  var BILLING_BALANCE_COPY =
-    "Billed every two weeks based on progress. If the project is completed sooner, the final invoice is sent at completion.";
-  var INVOICE_CADENCE_COPY =
-    "The remaining balance is billed every two weeks based on progress, or at completion if the project is finished sooner.";
+  var BILLING_TERMS_COPY =
+    "Progress invoices are sent every two weeks based on completed work. If the project is completed sooner, the final invoice is sent when the work is complete.";
+  var DEPOSIT_DUE_COPY = "The deposit is due now.";
+  var DEPOSIT_PAID_COPY =
+    "The deposit has been received and applied to the contract total.";
+  var BILLING_SCHEDULE_COPY = BILLING_TERMS_COPY;
+  var BILLING_BALANCE_COPY = BILLING_TERMS_COPY;
+  var INVOICE_CADENCE_COPY = BILLING_TERMS_COPY;
   var PROGRESS_FINAL_LABEL = "Progress & Final Billing";
   var PROGRESS_FINAL_NOTE =
     "If the project is completed sooner, the final invoice is sent at completion.";
@@ -190,12 +195,8 @@
 
   function paymentKind(input) {
     var src = input || {};
-    var items = cloneItems(src.items);
     var confirmed = src.confirmed === true || paymentConfigured(src.scheduleBundle);
     if (confirmed) return "confirmed";
-    if (!items.length) return "missing";
-    var totals = computePaymentTotals(items, src.contractTotal);
-    if (!totals.balanced) return "unbalanced";
     return "unconfirmed";
   }
 
@@ -209,24 +210,13 @@
       verifiedDeposit: src.verifiedDeposit || (src.scheduleBundle && src.scheduleBundle.deposit),
       depositRequired: src.depositRequired,
     });
-    var remainingCents =
-      summary.remainingBalance == null ? null : moneyToCents(summary.remainingBalance);
-    var integrity = paymentStageIntegrity(futureStageItems(src.items), remainingCents);
     var depositBlocked = summary.blockConfirm === true;
-    var confirmEnabled = kind === "unconfirmed" && !busy && !depositBlocked;
+    var confirmEnabled = kind !== "confirmed" && !busy && !depositBlocked;
     var buttons = [];
     if (kind !== "confirmed") {
       buttons.push({
-        id: "customize",
-        label: "Customize Payment Plan",
-        style: "ghost",
-        enabled: !busy,
-      });
-    }
-    if (kind === "unconfirmed" || kind === "unbalanced") {
-      buttons.push({
         id: "confirm",
-        label: "Confirm Payment Schedule",
+        label: "Confirm Payment Terms",
         style: "primary",
         enabled: confirmEnabled,
       });
@@ -255,26 +245,17 @@
       buttons: buttons,
       continueVisible: kind === "confirmed",
       continueEnabled: kind === "confirmed" && !busy,
-      confirmVisible: kind === "unconfirmed" || kind === "unbalanced",
+      confirmVisible: kind !== "confirmed",
       confirmEnabled: confirmEnabled,
-      customizeVisible: kind !== "confirmed",
+      customizeVisible: false,
       editStyle: "ghost",
-      errorMessage:
-        integrity.incomplete
-          ? INCOMPLETE_STAGE_ERROR
-          : summary.scheduleMismatch
-            ? STAGES_SUM_ERROR
-            : kind === "unbalanced"
-              ? SUM_ERROR
-              : depositBlocked
-                ? summary.verificationMessage
-                : "",
-      confirmedLabel: kind === "confirmed" ? "Payment Schedule Confirmed" : "",
+      errorMessage: depositBlocked ? summary.verificationMessage : "",
+      confirmedLabel: kind === "confirmed" ? "Payment Terms Confirmed" : "",
       primaryEnabledCount: primaryEnabled.length,
       primaryLabel: primaryEnabled[0] ? primaryEnabled[0].label : "",
       depositStatus: summary.depositStatus,
       blockConfirm: depositBlocked,
-      incompleteStages: integrity.incomplete === true,
+      incompleteStages: false,
       refreshVisible: summary.depositStatus === "verification_unavailable",
     };
   }
@@ -594,9 +575,7 @@
       }
     }
 
-    var appliedDepositCents = 0;
-    if (depositStatus === "paid") appliedDepositCents = verifiedCents;
-    else if (depositStatus === "due") appliedDepositCents = plannedDepositCents;
+    var appliedDepositCents = depositStatus === "paid" ? verifiedCents : 0;
 
     var remainingCents =
       contractCents == null ? null : contractCents - appliedDepositCents;
@@ -613,8 +592,7 @@
       }
     }
 
-    var remainingLabel =
-      depositStatus === "due" ? "Balance After Deposit" : "Remaining Contract Balance";
+    var remainingLabel = "Remaining Contract Balance";
     var remainingBalance =
       remainingCents == null ? null : centsToMoneyNumber(remainingCents);
     if (
@@ -631,7 +609,7 @@
     if (!(stillDueCents > 0)) stillDueCents = 0;
     if (stillDueCents > 0) remainingLabel = "Remaining Contract Balance";
 
-    var showStages = shouldShowPaymentStages(items);
+    var showStages = src.hideFutureStages === true ? false : shouldShowPaymentStages(items);
     var stageSource = futureStageItems(items);
     var stagePlan = {
       rows: showStages ? presentPaymentRows(stageSource, src) : [],
@@ -639,13 +617,6 @@
       reconciled: false,
       mismatch: false,
     };
-    if (showStages && remainingCents != null) {
-      stagePlan = reconcileFutureStages(stageSource, remainingCents, src);
-      if (stagePlan.mismatch && !blockConfirm) {
-        blockConfirm = true;
-        verificationMessage = SCHEDULE_MISMATCH_MESSAGE;
-      }
-    }
     if (
       depositStatus === "verification_unavailable" ||
       depositStatus === "inconsistent"
@@ -656,10 +627,6 @@
 
     var remainingSumMatches = showStages ? stagePlan.matches === true : true;
     var integrity = paymentStageIntegrity(futureStageItems(items), remainingCents);
-    if (integrity.incomplete) {
-      blockConfirm = true;
-      verificationMessage = INCOMPLETE_STAGE_ERROR;
-    }
 
     var summaryCopy = "";
     if (depositStatus === "paid" && stillDueCents > 0) {
@@ -667,14 +634,15 @@
         "A partial deposit has been received. " +
         formatCopyAmount(centsToMoneyNumber(stillDueCents), currency) +
         " remains due toward the deposit.";
-    } else if (depositStatus === "due" && depositAmount != null) {
-      summaryCopy =
-        "The " + formatCopyAmount(depositAmount, currency) + " deposit is due now.";
+    } else if (depositStatus === "due") {
+      summaryCopy = DEPOSIT_DUE_COPY;
     } else if (depositStatus === "paid") {
-      summaryCopy = "The deposit has been received.";
+      summaryCopy = DEPOSIT_PAID_COPY;
     }
     var invoiceCadenceCopy =
-      depositStatus === "due" || depositStatus === "paid" ? INVOICE_CADENCE_COPY : "";
+      depositStatus === "verification_unavailable" || depositStatus === "inconsistent"
+        ? ""
+        : BILLING_TERMS_COPY;
     var explanationCopy = joinPaymentExplanation(summaryCopy, invoiceCadenceCopy);
 
     return {
@@ -699,6 +667,7 @@
       summaryCopy: summaryCopy,
       appliedCopy: explanationCopy,
       invoiceCadenceCopy: invoiceCadenceCopy,
+      billingTermsCopy: invoiceCadenceCopy,
       explanationCopy: explanationCopy,
       showPaymentStages: showStages,
       stageTitle: showStages ? "Payment Stages" : "",
@@ -751,21 +720,6 @@
         }
         var items = typeof h.getItems === "function" ? cloneItems(h.getItems()) : [];
         var contractTotal = typeof h.getContractTotal === "function" ? h.getContractTotal() : null;
-        var kind = paymentKind({ items: items, contractTotal: contractTotal });
-        if (kind === "missing") {
-          return { ok: false, reason: "missing", posted: false, advance: false, openEdit: true };
-        }
-        if (kind === "unbalanced") {
-          return {
-            ok: false,
-            reason: "unbalanced",
-            posted: false,
-            advance: false,
-            openEdit: true,
-            error: SUM_ERROR,
-            items: items,
-          };
-        }
         var verifiedDeposit =
           typeof h.getVerifiedDeposit === "function" ? h.getVerifiedDeposit() : null;
         var depositRequired =
@@ -775,58 +729,52 @@
           contractTotal: contractTotal,
           verifiedDeposit: verifiedDeposit,
           depositRequired: depositRequired,
+          hideFutureStages: true,
         });
         if (depositSummary.blockConfirm) {
           return {
             ok: false,
-            reason: depositSummary.incompleteStages
-              ? "incomplete"
-              : depositSummary.scheduleMismatch
-                ? "payment_stages_mismatch"
-                : depositSummary.depositStatus,
+            reason: depositSummary.depositStatus,
             posted: false,
             advance: false,
-            openEdit: depositSummary.incompleteStages === true,
+            openEdit: false,
             error: depositSummary.verificationMessage,
             items: items,
           };
         }
-        for (var i = 0; i < items.length; i += 1) {
-          if (!trimField(items[i].label)) {
-            return {
-              ok: false,
-              reason: "incomplete",
-              posted: false,
-              advance: false,
-              openEdit: true,
-              items: items,
-            };
-          }
-          if (formatAmountForApi(items[i].amount) == null) {
-            return {
-              ok: false,
-              reason: "incomplete",
-              posted: false,
-              advance: false,
-              openEdit: true,
-              items: items,
-            };
-          }
+        var confirmItems = items.filter(function (row) {
+          return isDepositScheduleItem(row);
+        });
+        if (!confirmItems.length && depositRequired != null && moneyToCents(depositRequired) > 0) {
+          confirmItems = [
+            {
+              label: "Initial Scheduling Payment",
+              payment_type: "deposit",
+              amount: depositRequired,
+              due_rule: "on_signature",
+              item_role: "future_obligation",
+            },
+          ];
         }
         var ids = typeof h.getIds === "function" ? h.getIds() : {};
         var expectedUpdatedAt = typeof h.getExpectedUpdatedAt === "function" ? h.getExpectedUpdatedAt() : null;
-        var payload = buildPaymentConfirmPayload(ids.projectId, ids.quoteId, items, expectedUpdatedAt);
-        if (!itemsMatchSource(payload.items, items)) {
+        var payload = buildPaymentConfirmPayload(
+          ids.projectId,
+          ids.quoteId,
+          confirmItems,
+          expectedUpdatedAt
+        );
+        if (!itemsMatchSource(payload.items, confirmItems)) {
           return {
             ok: false,
             reason: "mutated",
             posted: false,
             advance: false,
-            items: items,
+            items: confirmItems,
           };
         }
         if (typeof h.postJson !== "function") {
-          throw new Error("postJson is required to confirm a payment schedule.");
+          throw new Error("postJson is required to confirm payment terms.");
         }
         var res = await h.postJson(h.apiUrl || SCHEDULE_API, payload);
         if (!res || res.ok !== true || !res.data || res.data.ok !== true) {
@@ -837,7 +785,7 @@
             advance: false,
             payload: payload,
             items: items,
-            error: trimField(res && res.data && res.data.error) || "Payment schedule could not be confirmed.",
+            error: trimField(res && res.data && res.data.error) || "Payment terms could not be confirmed.",
             status: res && res.status,
           };
         }
@@ -874,6 +822,9 @@
     DEPOSIT_UNAVAILABLE_MESSAGE: DEPOSIT_UNAVAILABLE_MESSAGE,
     DEPOSIT_INCONSISTENT_MESSAGE: DEPOSIT_INCONSISTENT_MESSAGE,
     SCHEDULE_MISMATCH_MESSAGE: SCHEDULE_MISMATCH_MESSAGE,
+    BILLING_TERMS_COPY: BILLING_TERMS_COPY,
+    DEPOSIT_DUE_COPY: DEPOSIT_DUE_COPY,
+    DEPOSIT_PAID_COPY: DEPOSIT_PAID_COPY,
     PROGRESS_INVOICE_COPY: PROGRESS_INVOICE_COPY,
     INVOICE_CADENCE_COPY: INVOICE_CADENCE_COPY,
     BILLING_SCHEDULE_COPY: BILLING_SCHEDULE_COPY,

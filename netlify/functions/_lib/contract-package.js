@@ -357,9 +357,7 @@ function evaluatePaymentReadiness(schedule, items, contractTotalCents) {
   const confirmed = Boolean(
     schedule &&
       schedule.status === "confirmed" &&
-      schedule.confirmed_at &&
-      itemCount > 0 &&
-      scheduledTotalCents === contractTotalCents
+      schedule.confirmed_at
   );
   return {
     status: !schedule ? "missing" : confirmed ? "configured" : "draft",
@@ -903,13 +901,6 @@ async function freezeContractPackage({
     verifiedDeposit: depositVerified,
     depositRequired: moneyNumber(quote.deposit_required),
   });
-  if (paySummary.scheduleMismatch) {
-    return {
-      error: paySummary.verificationMessage,
-      code: "payment_stages_mismatch",
-      status: 422,
-    };
-  }
 
   const frozenAt = new Date().toISOString();
   const snapshot = buildSnapshot({

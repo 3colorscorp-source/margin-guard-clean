@@ -57,8 +57,8 @@ test("presentation drops diagnostics from Article 7 preview", () => {
   assert.ok(!/Matches contract total/.test(js));
   assert.ok(!/Scheduled 100%/.test(html + js + helperSrc));
   assert.ok(!js.includes('badgeText.textContent = "Review defaults"'));
-  assert.ok(js.includes("Payment Schedule Confirmed"));
-  assert.ok(js.includes("Confirm Payment Schedule"));
+  assert.ok(js.includes("Payment Terms Confirmed"));
+  assert.ok(js.includes("Confirm Payment Terms"));
   assert.ok(!js.includes('label: "Confirm Schedule"'));
   assert.ok(!js.includes('label: "Confirm & Continue"'));
   assert.ok(!/Stage \$\{item\.sequence_number\}/.test(js));
@@ -203,7 +203,7 @@ async function testAsync(name, fn) {
     assert.strictEqual(summary.showPaymentStages, false);
     assert.strictEqual(summary.remainingItems.length, 0);
     assert.strictEqual(Number(summary.depositAmount), 1);
-    assert.strictEqual(Number(summary.remainingBalance), 3264.49);
+    assert.strictEqual(Number(summary.remainingBalance), 3265.49);
     assert.ok(!summary.explanationCopy.toLowerCase().includes("due upon completion"));
     assert.ok(!JSON.stringify(s.rows()).includes("Stage 1"));
     assert.ok(!JSON.stringify(s.rows()).includes("%"));
@@ -218,38 +218,27 @@ async function testAsync(name, fn) {
     assert.ok(!PaymentConfirm.presentPaymentRows(THREE).every((row) => row.name === "Initial Scheduling Payment"));
   });
 
-  await testAsync("3 totals correct: Confirm Payment Schedule is the only primary", async () => {
+  await testAsync("3 Confirm Payment Terms is the only primary", async () => {
     const s = session({ items: TWO, contractTotal: TOTAL_TWO });
-    const totals = PaymentConfirm.computePaymentTotals(TWO, TOTAL_TWO);
-    assert.strictEqual(totals.balanced, true);
     const plan = s.plan();
     assert.strictEqual(plan.kind, "unconfirmed");
-    assert.strictEqual(plan.primaryLabel, "Confirm Payment Schedule");
+    assert.strictEqual(plan.primaryLabel, "Confirm Payment Terms");
     assert.strictEqual(plan.primaryEnabledCount, 1);
     assert.strictEqual(plan.continueVisible, false);
-    assert.ok(plan.buttons.some((b) => b.id === "customize" && b.style === "ghost"));
+    assert.ok(!plan.buttons.some((b) => b.id === "customize"));
     assert.ok(plan.buttons.some((b) => b.id === "confirm" && b.style === "primary"));
-    assert.ok(!plan.buttons.some((b) => b.id === "edit"));
     assert.strictEqual(plan.buttons.filter((b) => b.style === "primary").length, 1);
   });
 
-  await testAsync("4 totals incorrect: 0 POST", async () => {
+  await testAsync("4 unbalanced future amounts still confirm Payment Terms", async () => {
     const s = session({ items: TWO, contractTotal: 100 });
     const plan = s.plan();
-    assert.strictEqual(plan.kind, "unbalanced");
-    assert.strictEqual(plan.errorMessage, PaymentConfirm.SUM_ERROR);
-    assert.strictEqual(plan.confirmVisible, true);
-    assert.strictEqual(plan.confirmEnabled, false);
-    assert.strictEqual(plan.primaryEnabledCount, 0);
-    assert.ok(plan.buttons.some((b) => b.id === "customize" && b.style === "ghost"));
-    assert.ok(plan.buttons.some((b) => b.id === "confirm" && b.style === "primary" && b.enabled === false));
-    assert.strictEqual(plan.continueVisible, false);
+    assert.strictEqual(plan.kind, "unconfirmed");
+    assert.strictEqual(plan.confirmEnabled, true);
     const result = await s.confirm();
-    assert.strictEqual(result.posted, false);
-    assert.strictEqual(result.advance, false);
-    assert.strictEqual(result.reason, "unbalanced");
-    assert.strictEqual(s.posts.length, 0);
-    assert.strictEqual(s.confirmed, false);
+    assert.strictEqual(result.posted, true);
+    assert.strictEqual(result.ok, true);
+    assert.ok(s.posts[0].body.items.every((row) => row.payment_type === "deposit" || /deposit|initial scheduling/i.test(row.label)));
   });
 
   await testAsync("5 Confirm Payment Schedule: exactly 1 POST and advances", async () => {
@@ -343,7 +332,7 @@ async function testAsync(name, fn) {
     const s = session({ items: TWO, contractTotal: TOTAL_TWO, confirmed: true });
     const plan = s.plan();
     assert.strictEqual(plan.kind, "confirmed");
-    assert.strictEqual(plan.confirmedLabel, "Payment Schedule Confirmed");
+    assert.strictEqual(plan.confirmedLabel, "Payment Terms Confirmed");
     assert.strictEqual(plan.continueVisible, true);
     assert.strictEqual(plan.continueEnabled, true);
     assert.strictEqual(plan.primaryEnabledCount, 1);
@@ -357,13 +346,11 @@ async function testAsync(name, fn) {
     const s = session({ items: TWO, contractTotal: TOTAL_TWO });
     const result = await s.confirm();
     const body = result.payload;
+    assert.strictEqual(body.items.length, 1);
     assert.strictEqual(body.items[0].amount, "1.00");
-    assert.strictEqual(body.items[1].amount, "3264.49");
     assert.strictEqual(body.items[0].due_rule, "on_signature");
-    assert.strictEqual(body.items[1].due_rule, "on_completion");
     assert.strictEqual(body.items[0].label, "Initial Scheduling Payment");
-    assert.strictEqual(body.items[1].label, "Remaining Balance");
-    assert.ok(PaymentConfirm.itemsMatchSource(body.items, TWO));
+    assert.ok(!body.items.some((row) => /progress|final|remaining/i.test(row.label)));
     assert.notStrictEqual(body.items[0].due_rule, "on_acceptance");
   });
 

@@ -400,15 +400,7 @@ begin
 
   v_item_count := coalesce(jsonb_array_length(p_items), 0);
 
-  if p_confirm_schedule and v_item_count < 1 then
-    raise exception 'MG_ERR:items_required:At least one payment stage is required to confirm a schedule';
-  end if;
-
-  if p_confirm_schedule and v_scheduled_total is distinct from v_auth_total then
-    raise exception 'MG_ERR:schedule_total_mismatch:Payment schedule total must equal the contract total before confirmation';
-  end if;
-
-  if p_confirm_schedule and v_scheduled_total = v_auth_total and v_item_count > 0 then
+  if p_confirm_schedule then
     v_status := 'confirmed';
     v_confirmed_at := v_now;
   else
@@ -535,13 +527,8 @@ begin
   where i.tenant_id = p_tenant_id
     and i.schedule_id = v_schedule.id;
 
-  if v_status = 'confirmed'
-     and (
-       v_item_count < 1
-       or v_scheduled_total is distinct from v_auth_total
-       or v_confirmed_at is null
-     ) then
-    raise exception 'MG_ERR:schedule_total_mismatch:Payment schedule total must equal the contract total before confirmation';
+  if v_status = 'confirmed' and v_confirmed_at is null then
+    raise exception 'MG_ERR:invalid_confirmation:confirmed_at is required when payment terms are confirmed';
   end if;
 
   if v_status = 'confirmed' then

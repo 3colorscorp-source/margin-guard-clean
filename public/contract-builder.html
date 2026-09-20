@@ -837,7 +837,8 @@
       overflow-x: hidden;
     }
     .cb-pay-ledger__title,
-    .cb-pay-remaining-title {
+    .cb-pay-remaining-title,
+    .cb-pay-billing-terms__title {
       margin: 0 0 6px;
       font-size: 0.68rem;
       letter-spacing: 0.08em;
@@ -924,7 +925,7 @@
     }
     .cb-pay-sum-warn[hidden] { display: none !important; }
 
-    /* Article 7 — Customize Payment Plan */
+    /* Article 7 — Payment Terms */
     .cb-pay-customize {
       display: flex;
       flex-direction: column;
@@ -2337,14 +2338,14 @@
                 <button type="button" class="cb-article__head" data-collapse>
                   <span>
                     <span class="cb-article__eyebrow">Article 7</span>
-                    <h3 class="cb-article__title">Payment Schedule</h3>
+                    <h3 class="cb-article__title">Payment Terms</h3>
                   </span>
                   <span class="cb-article__chevron" aria-hidden="true">▾</span>
                 </button>
                 <div class="cb-article__body">
                   <div data-ws-preview>
                     <div class="cb-pay-workspace" id="cbPayWorkspace">
-                      <p class="cb-pay-workspace__eyebrow" hidden>Payment Schedule</p>
+                      <p class="cb-pay-workspace__eyebrow" hidden>Payment Terms</p>
                       <p class="cb-pay-workspace__lead" id="cbPayLead" hidden></p>
                       <div class="cb-pay-workspace__badge is-missing" id="cbPayStatusBadge" role="status" hidden>
                         <span class="cb-pay-workspace__badge-mark" aria-hidden="true">○</span>
@@ -2373,6 +2374,7 @@
                           </div>
                         </div>
                         <p class="cb-pay-ledger__copy" id="cbPayDepositCopy" hidden></p>
+                        <p class="cb-pay-billing-terms__title" id="cbPayBillingTitle" hidden>Billing Terms</p>
                         <p class="cb-pay-ledger__copy" id="cbPayProgressCopy" hidden></p>
                         <span class="is-diag" id="cbPayStageCount" hidden></span>
                         <span class="is-diag" id="cbPayScheduled" hidden></span>
@@ -2380,12 +2382,12 @@
                       </div>
                       <p class="cb-pay-sum-warn" id="cbPaySumWarn" hidden role="status"></p>
 
-                      <p class="cb-pay-remaining-title" id="cbPayRemainingTitle" hidden>Payment Stages</p>
+                      <p class="cb-pay-remaining-title" id="cbPayRemainingTitle" hidden></p>
                       <div class="cb-pay-timeline" id="cbPayTimeline" hidden></div>
 
                       <div class="cb-pay-empty" id="cbPayEmpty" hidden>
                         <p class="cb-pay-empty__copy" id="cbPayEmptyCopy">
-                          Add a payment schedule to continue.
+                          Add payment terms to continue.
                         </p>
                         <p class="cb-pay-empty__total" id="cbPayEmptyTotal" hidden></p>
                         <p class="cb-pay-empty__arch no-print" hidden></p>
@@ -2404,44 +2406,8 @@
                       <p id="cbPaymentNotesDisplay" hidden></p>
                     </div>
                   </div>
-                  <div data-ws-edit class="owner-only no-print">
-                    <div class="cb-editor cb-pay-customize" id="cbPayEditWorkspace">
-                      <article class="cb-pay-lock-card" id="cbPayDepositCard">
-                        <p class="cb-pay-lock-card__kicker">Deposit</p>
-                        <p class="cb-pay-lock-card__amount" id="cbPayLockAmount">—</p>
-                        <p class="cb-pay-lock-card__meta"><span class="k">Status:</span> <span id="cbPayLockStatus">—</span></p>
-                        <p class="cb-pay-lock-card__meta"><span class="k">Source:</span> <span id="cbPayLockSource">Approved quote</span></p>
-                      </article>
-                      <div class="cb-pay-remaining-card" id="cbPayCustomizeRemaining">
-                        <span class="k">Remaining Contract Balance</span>
-                        <span class="v" id="cbPayCustomizeRemainingAmount">—</span>
-                      </div>
-                      <div class="cb-pay-billing" id="cbPayBillingBlock">
-                        <p class="cb-pay-billing__title">Billing Schedule</p>
-                        <p class="cb-pay-billing__copy" id="cbPayBillingCopy"></p>
-                      </div>
-                      <div class="cb-pay-edit-totals" id="cbPayEditTotals" aria-live="polite">
-                        <div>
-                          <span class="k">Scheduled</span>
-                          <span class="v" id="cbPayEditScheduled">—</span>
-                        </div>
-                        <div>
-                          <span class="k">Remaining Balance</span>
-                          <span class="v" id="cbPayEditContractTotal">—</span>
-                        </div>
-                        <div>
-                          <span class="k">Difference</span>
-                          <span class="v" id="cbPayEditDifference">—</span>
-                        </div>
-                      </div>
-                      <p class="cb-pay-edit-hint" id="cbPayEditHint"></p>
-                      <p class="cb-pay-sum-warn" id="cbPayDefaultWarn" hidden role="status"></p>
-                      <div class="cb-pay-simple-review" id="cbPaySimpleReview" hidden></div>
-                      <div class="cb-pay-edit-grid" id="cbPayEditGrid" role="list"></div>
-                      <div class="cb-pay-edit-toolbar" id="cbPayEditToolbar">
-                        <button type="button" class="btn ghost" id="cbPayAddStage">+ Add Payment Stage</button>
-                      </div>
-                    </div>
+                  <div data-ws-edit class="owner-only no-print" hidden>
+                    <div class="cb-editor cb-pay-customize" id="cbPayEditWorkspace" hidden></div>
                   </div>
                 </div>
               </section>
