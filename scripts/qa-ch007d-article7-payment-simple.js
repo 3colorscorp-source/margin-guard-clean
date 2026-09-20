@@ -59,8 +59,9 @@ test("presentation drops diagnostics from Article 7 preview", () => {
   assert.ok(!/Scheduled 100%/.test(html + js + helperSrc));
   assert.ok(!js.includes('badgeText.textContent = "Review defaults"'));
   assert.ok(js.includes("Payment Schedule Confirmed"));
-  assert.ok(js.includes("Confirm & Continue"));
+  assert.ok(js.includes("Confirm Payment Schedule"));
   assert.ok(!js.includes('label: "Confirm Schedule"'));
+  assert.ok(!js.includes('label: "Confirm & Continue"'));
   assert.ok(!/Stage \$\{item\.sequence_number\}/.test(js));
   assert.ok(js.includes("overflow-wrap") || html.includes("overflow-wrap: anywhere"));
 });
@@ -141,6 +142,7 @@ function session(opts) {
     getItems: () => items,
     getContractTotal: () => options.contractTotal,
     getIds: () => ({ projectId: "proj-1", quoteId: "quote-1" }),
+    getVerifiedDeposit: () => options.verifiedDeposit || null,
     postJson,
     applySuccess: (data) => {
       confirmed = PaymentConfirm.paymentConfigured({ readiness: data.readiness });
@@ -166,6 +168,7 @@ function session(opts) {
         confirmed,
         items,
         contractTotal: options.contractTotal,
+        verifiedDeposit: options.verifiedDeposit || null,
         busy,
       });
     },
@@ -211,13 +214,13 @@ async function testAsync(name, fn) {
     assert.ok(!PaymentConfirm.presentPaymentRows(THREE).every((row) => row.name === "Initial Scheduling Payment"));
   });
 
-  await testAsync("3 totals correct: Confirm & Continue is the only primary", async () => {
+  await testAsync("3 totals correct: Confirm Payment Schedule is the only primary", async () => {
     const s = session({ items: TWO, contractTotal: TOTAL_TWO });
     const totals = PaymentConfirm.computePaymentTotals(TWO, TOTAL_TWO);
     assert.strictEqual(totals.balanced, true);
     const plan = s.plan();
     assert.strictEqual(plan.kind, "unconfirmed");
-    assert.strictEqual(plan.primaryLabel, "Confirm & Continue");
+    assert.strictEqual(plan.primaryLabel, "Confirm Payment Schedule");
     assert.strictEqual(plan.primaryEnabledCount, 1);
     assert.strictEqual(plan.continueVisible, false);
     assert.ok(plan.buttons.some((b) => b.id === "edit" && b.style === "ghost"));
@@ -239,7 +242,7 @@ async function testAsync(name, fn) {
     assert.strictEqual(s.confirmed, false);
   });
 
-  await testAsync("5 Confirm & Continue: exactly 1 POST and advances", async () => {
+  await testAsync("5 Confirm Payment Schedule: exactly 1 POST and advances", async () => {
     const s = session({ items: TWO, contractTotal: TOTAL_TWO });
     const result = await s.confirm();
     assert.strictEqual(result.ok, true);
@@ -362,6 +365,31 @@ async function testAsync(name, fn) {
     assert.ok(html.includes("is-preview"));
     assert.ok(html.includes("is-printing"));
     assert.ok(!/cb-pay-row__amount[\s\S]{0,80}%/.test(js));
+  });
+
+  await testAsync("11 verification_unavailable blocks Confirm with 0 POST", async () => {
+    const s = session({
+      items: TWO,
+      contractTotal: TOTAL_TWO,
+      verifiedDeposit: {
+        status: "verification_unavailable",
+        verified_paid: false,
+        amount: null,
+      },
+    });
+    const plan = s.plan();
+    assert.strictEqual(plan.confirmVisible, true);
+    assert.strictEqual(plan.confirmEnabled, false);
+    assert.strictEqual(plan.blockConfirm, true);
+    assert.ok(!/Deposit Due/.test(plan.errorMessage || ""));
+    assert.ok(
+      plan.errorMessage.includes("Deposit status could not be verified. Refresh before confirming.")
+    );
+    const result = await s.confirm();
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.posted, false);
+    assert.strictEqual(result.reason, "verification_unavailable");
+    assert.strictEqual(s.posts.length, 0);
   });
 
   console.log("");

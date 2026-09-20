@@ -209,35 +209,72 @@
     return any ? html : '<p class="cs-lead">No legal notices in this package.</p>';
   }
 
-  function renderSchedule(schedule) {
-    var items = (schedule && schedule.items) || [];
-    if (!items.length) return '<p class="cs-lead">No payment schedule items.</p>';
-    var rows = items
-      .map(function (item) {
-        var amt =
-          item.amount != null
-            ? item.amount
-            : item.percentage != null
-              ? item.percentage + "%"
-              : "";
-        return (
-          "<tr><td>" +
-          text(item.sequence_number) +
-          "</td><td>" +
-          text(item.label || item.payment_type) +
-          "</td><td>" +
-          text(amt) +
-          "</td><td>" +
-          text(item.due_rule || item.milestone_description || item.fixed_due_date) +
-          "</td></tr>"
-        );
-      })
-      .join("");
-    return (
-      '<table class="cs-table"><thead><tr><th>#</th><th>Item</th><th>Amount</th><th>Due</th></tr></thead><tbody>' +
-      rows +
-      "</tbody></table>"
-    );
+  function renderSchedule(snap) {
+    var PaymentConfirm = window.MarginGuardContractPaymentConfirm;
+    var PaymentDefaults = window.MarginGuardContractPaymentDefaults;
+    var schedule = (snap && snap.payment_schedule) || {};
+    var price = (snap && snap.price) || {};
+    var quote = (snap && snap.quote) || {};
+    var currency = price.currency || quote.currency || "USD";
+    var summary =
+      PaymentConfirm && typeof PaymentConfirm.presentPaymentSummary === "function"
+        ? PaymentConfirm.presentPaymentSummary({
+            contractTotal: price.contract_total != null ? price.contract_total : quote.total,
+            items: schedule.items || [],
+            verifiedDeposit: schedule.deposit,
+            depositRequired: price.deposit_required != null ? price.deposit_required : quote.deposit_required,
+            dueRuleLabel: function (rule, extras) {
+              return PaymentDefaults && typeof PaymentDefaults.dueRuleCustomerLabel === "function"
+                ? PaymentDefaults.dueRuleCustomerLabel(rule, extras)
+                : "";
+            },
+          })
+        : null;
+    if (!summary) {
+      return '<p class="cs-lead">No payment schedule items.</p>';
+    }
+    var html = '<div class="cs-pay-summary">';
+    html +=
+      '<div class="cs-kv"><span class="k">Contract Total</span><span class="v">' +
+      text(money(summary.contractTotal, currency)) +
+      "</span></div>";
+    if (summary.depositStatus === "paid") {
+      html +=
+        '<div class="cs-kv"><span class="k">Deposit Paid</span><span class="v">− ' +
+        text(money(summary.depositAmount, currency)) +
+        "</span></div>";
+    } else if (summary.depositStatus === "due") {
+      html +=
+        '<div class="cs-kv"><span class="k">Deposit Due</span><span class="v">' +
+        text(money(summary.depositAmount, currency)) +
+        "</span></div>";
+    }
+    html +=
+      '<div class="cs-kv"><span class="k">Remaining Contract Balance</span><span class="v">' +
+      text(money(summary.remainingBalance, currency)) +
+      "</span></div>";
+    if (summary.appliedCopy) {
+      html += '<p class="cs-prose">' + escapeHtml(summary.appliedCopy) + "</p>";
+    }
+    html += '<p class="cs-section-label" style="margin-top:14px">Remaining Payment Schedule</p>';
+    if (!summary.remainingItems.length) {
+      html += '<p class="cs-lead">No remaining payments.</p>';
+    } else {
+      html += summary.remainingItems
+        .map(function (row) {
+          return (
+            '<div class="cs-kv" style="grid-column:1/-1"><span class="k">' +
+            text(row.name) +
+            '</span><span class="v">' +
+            text(money(row.amount, currency)) +
+            (row.due ? "<br>" + text(row.due) : "") +
+            "</span></div>"
+          );
+        })
+        .join("");
+    }
+    html += "</div>";
+    return html;
   }
 
   function renderContractSchedule(snap) {
@@ -636,7 +673,7 @@
       "</div>" +
       '<div id="sec-schedule" style="margin-top:18px">' +
       '<p class="cs-section-label">Payment Schedule</p>' +
-      renderSchedule(snap.payment_schedule) +
+      renderSchedule(snap) +
       "</div>" +
       '<div id="sec-warranty" style="margin-top:18px">' +
       '<p class="cs-section-label">Warranty</p>' +

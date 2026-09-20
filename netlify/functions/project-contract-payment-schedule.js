@@ -6,6 +6,10 @@
 
 const { supabaseRequest } = require("./_lib/supabase-admin");
 const { requireOwnerOrAdmin } = require("./_lib/require-owner-or-admin");
+const {
+  resolveVerifiedContractDeposit,
+  depositBlocksConfirm,
+} = require("./_lib/verified-contract-deposit");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -568,6 +572,16 @@ function normalizeRpcResult(raw, fallbackTotalCents, fallbackCurrency, fallbackS
   };
 }
 
+async function withVerifiedDeposit(payload, tenantId, projectId, quoteId, contractTotal) {
+  const deposit = await resolveVerifiedContractDeposit({
+    tenantId,
+    projectId,
+    quoteId,
+    contractTotal,
+  });
+  return { ...payload, deposit };
+}
+
 async function replaceScheduleAtomically({
   tenantId,
   projectId,
@@ -704,20 +718,29 @@ exports.handler = async (event) => {
       const serializedItems = items.map((item) =>
         serializeItem(item, relation.contractTotalCents)
       );
-      return json(200, {
-        ok: true,
-        schedule,
-        items: serializedItems,
-        readiness: evaluateReadiness(
-          schedule,
-          serializedItems,
-          relation.contractTotalCents
-        ),
-        source: {
-          contract_total_source: relation.totalSource,
-          currency: relation.currency,
-        },
-      });
+      return json(
+        200,
+        await withVerifiedDeposit(
+          {
+            ok: true,
+            schedule,
+            items: serializedItems,
+            readiness: evaluateReadiness(
+              schedule,
+              serializedItems,
+              relation.contractTotalCents
+            ),
+            source: {
+              contract_total_source: relation.totalSource,
+              currency: relation.currency,
+            },
+          },
+          tenantId,
+          projectId,
+          quoteId,
+          centsToNumber(relation.contractTotalCents)
+        )
+      );
     }
 
     const confirmSchedule = body.confirm_schedule === true;
@@ -773,6 +796,26 @@ exports.handler = async (event) => {
       });
     }
 
+    const deposit = await resolveVerifiedContractDeposit({
+      tenantId,
+      projectId,
+      quoteId,
+      contractTotal: centsToNumber(relation.contractTotalCents),
+    });
+    if (confirmSchedule && depositBlocksConfirm(deposit)) {
+      return json(422, {
+        ok: false,
+        error:
+          deposit.error ||
+          "Deposit status could not be verified. Refresh before confirming.",
+        code:
+          deposit.status === "inconsistent"
+            ? "deposit_inconsistent"
+            : "deposit_verification_unavailable",
+        deposit,
+      });
+    }
+
     let rpcResult;
     try {
       rpcResult = await replaceScheduleAtomically({
@@ -809,6 +852,7 @@ exports.handler = async (event) => {
       items: normalizedResult.items,
       readiness: normalizedResult.readiness,
       source: normalizedResult.source,
+      deposit,
     });
   } catch (err) {
     if (err?.isGuardError) {
@@ -835,4 +879,5 @@ exports._test = {
   serializeItem,
   evaluateReadiness,
   totalItemsCents,
+  depositBlocksConfirm,
 };

@@ -29,6 +29,11 @@ const {
   validateContractSchedule,
   normIsoDate,
 } = require("./contract-schedule");
+const {
+  resolveVerifiedContractDeposit,
+  serializeDepositForSnapshot,
+  assertDepositReadyForFreeze,
+} = require("./verified-contract-deposit");
 
 const API_VERSION = "ch-011a-v1";
 const SNAPSHOT_SCHEMA = "ch-011a-v1";
@@ -523,6 +528,7 @@ function buildSnapshot({
   frozenAt,
   contractSchedule,
   signingPolicy = null,
+  depositVerified = null,
 }) {
   const contractTotal = moneyNumber(quote.total);
   const scopeResolved = resolveContractScope(quote);
@@ -632,6 +638,7 @@ function buildSnapshot({
           return trimField(a?.id).localeCompare(trimField(b?.id));
         }),
       readiness: paymentReadiness,
+      deposit: serializeDepositForSnapshot(depositVerified, quote?.id),
     },
     warranty: {
       duration_value: setup?.warranty_duration_value ?? null,
@@ -864,6 +871,25 @@ async function freezeContractPackage({
     };
   }
 
+  const depositVerified = await resolveVerifiedContractDeposit({
+    tenantId,
+    projectId,
+    quoteId,
+    contractTotal: moneyNumber(quote.total),
+  });
+  const depositGate = assertDepositReadyForFreeze(depositVerified);
+  if (!depositGate.ok) {
+    const code =
+      depositGate.code === "deposit_inconsistent"
+        ? "deposit_inconsistent"
+        : "deposit_verification_unavailable";
+    return {
+      error: depositGate.error,
+      code,
+      status: 422,
+    };
+  }
+
   const frozenAt = new Date().toISOString();
   const snapshot = buildSnapshot({
     tenantId,
@@ -880,6 +906,7 @@ async function freezeContractPackage({
     frozenAt,
     contractSchedule,
     signingPolicy: sources.preferenceRow,
+    depositVerified,
   });
   const contentHash = contentHashForSnapshot(snapshot);
   const sourceReadiness = snapshot.readiness;

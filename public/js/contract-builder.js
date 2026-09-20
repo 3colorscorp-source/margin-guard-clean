@@ -636,6 +636,7 @@
         quoteId: sourceSnapshot?.quoteId,
       }),
       getExpectedUpdatedAt: () => sourceSnapshot?.paymentSchedule?.schedule?.updated_at || null,
+      getVerifiedDeposit: () => sourceSnapshot?.paymentSchedule?.deposit || null,
       apiUrl: PaymentConfirm.SCHEDULE_API,
       postJson,
       applySuccess: (data) => {
@@ -665,6 +666,17 @@
       setArticleMode("art-payment", startedInEdit ? WS_MODE.EDIT : WS_MODE.PREVIEW);
       renderWorkspaceChrome();
       window.alert(result.error || "Payment schedule could not be confirmed.");
+      return false;
+    }
+    if (
+      result.reason === "verification_unavailable" ||
+      result.reason === "inconsistent"
+    ) {
+      renderWorkspaceChrome();
+      window.alert(
+        result.error ||
+          "Deposit status could not be verified. Refresh before confirming."
+      );
       return false;
     }
     if (result.ok && result.advance) {
@@ -845,12 +857,13 @@
           })
         );
         if (activeArticleId === "art-payment" && paymentScheduleAllowsOwnerEdit()) {
+          const paymentPlan = currentPaymentFooterPlan(busy);
           actions.appendChild(
             createFooterButton({
               id: "cbWsConfirmPay",
-              label: "Confirm & Continue",
+              label: "Confirm Payment Schedule",
               className: "btn primary",
-              disabled: busy,
+              disabled: busy || !paymentPlan.confirmEnabled,
               onClick: () => {
                 void workspaceConfirmPayment();
               },
@@ -858,9 +871,10 @@
           );
           if (hint) {
             hint.textContent =
-              paymentAdvancedEdit
+              paymentPlan.errorMessage ||
+              (paymentAdvancedEdit
                 ? "Advanced editing: change types, due timing, and received vs still due."
-                : "Review the schedule, then Confirm & Continue.";
+                : "Review the schedule, then Confirm Payment Schedule.");
           }
         } else if (activeArticleId === "art-signatures") {
           actions.appendChild(
@@ -971,15 +985,15 @@
     if (
       activeArticleId === "art-payment" &&
       currentPaymentFooterPlan(busy).confirmVisible &&
-      mode === WS_MODE.PREVIEW &&
-      !busy
+      mode === WS_MODE.PREVIEW
     ) {
+      const paymentPlan = currentPaymentFooterPlan(busy);
       actions.appendChild(
         createFooterButton({
           id: "cbWsConfirmPayPreview",
-          label: "Confirm & Continue",
+          label: "Confirm Payment Schedule",
           className: "btn primary",
-          disabled: busy,
+          disabled: busy || !paymentPlan.confirmEnabled,
           onClick: () => {
             void workspaceConfirmPayment();
           },
@@ -2175,6 +2189,8 @@
       items: currentPaymentItems(),
       contractTotal: paymentDraftContractTotal(sourceSnapshot),
       scheduleBundle: sourceSnapshot?.paymentSchedule,
+      verifiedDeposit: sourceSnapshot?.paymentSchedule?.deposit,
+      depositRequired: sourceSnapshot?.depositRequired,
       busy: Boolean(busy),
     });
   }
@@ -2567,6 +2583,7 @@
       items: Array.isArray(data.items) ? data.items : [],
       readiness: data.readiness || null,
       source: data.source || null,
+      deposit: data.deposit || null,
     };
     hydratePaymentDraftFromSource(sourceSnapshot);
     if (draftEdits) {
@@ -2718,8 +2735,8 @@
     el.hidden = false;
     if (!paymentDraftItems.length) {
       el.innerHTML = warning
-        ? `<p class="cb-pay-edit-hint">No default payment stages were created. Open Advanced editing to enter a balanced schedule.</p>`
-        : `<p class="cb-pay-edit-hint">No payments yet. Open Advanced editing to add stages.</p>`;
+        ? `<p class="cb-pay-edit-hint">No default payments were created. Open Advanced editing to enter a balanced schedule.</p>`
+        : `<p class="cb-pay-edit-hint">No payments yet. Open Advanced editing to add payments.</p>`;
       return;
     }
     el.innerHTML = paymentDraftItems
@@ -4923,6 +4940,17 @@
 
     if (hubNote) hubNote.hidden = true;
 
+    const remainingTitle = $("cbPayRemainingTitle");
+    const depositRow = $("cbPayDepositRow");
+    const depositCopy = $("cbPayDepositCopy");
+    const paySummary = PaymentConfirm.presentPaymentSummary({
+      contractTotal,
+      items,
+      verifiedDeposit: bundle.deposit,
+      depositRequired: source.depositRequired,
+      dueRuleLabel: (rule, extras) => dueRuleLabel(rule, extras),
+    });
+
     const isUnavailable = Boolean(bundle.loadError || bundle.forbidden);
     const isMissing = status === "missing" || (!bundle.available && !items.length && status !== "draft" && status !== "configured");
 
@@ -4931,6 +4959,11 @@
       if (timeline) {
         timeline.hidden = true;
         timeline.innerHTML = "";
+      }
+      if (remainingTitle) remainingTitle.hidden = true;
+      if (depositCopy) {
+        depositCopy.hidden = true;
+        depositCopy.textContent = "";
       }
       if (sumWarn) {
         const defaultWarn = String(bundle.localDefaultWarning || "").trim();
@@ -4968,8 +5001,43 @@
       summary.hidden = false;
       setText(
         "cbPayContractTotal",
-        contractTotal != null ? formatMoney(contractTotal, currency) : "—"
+        paySummary.contractTotal != null
+          ? formatMoney(paySummary.contractTotal, currency)
+          : "—"
       );
+      if (depositRow) {
+        if (
+          paySummary.depositStatus === "none" ||
+          paySummary.depositStatus === "verification_unavailable" ||
+          paySummary.depositStatus === "inconsistent"
+        ) {
+          depositRow.hidden = true;
+        } else {
+          depositRow.hidden = false;
+          setText("cbPayDepositLabel", paySummary.depositLabel);
+          setText(
+            "cbPayDepositAmount",
+            paySummary.depositMinus
+              ? `− ${formatMoney(paySummary.depositAmount, currency)}`
+              : formatMoney(paySummary.depositAmount, currency)
+          );
+        }
+      }
+      setText(
+        "cbPayRemainingBalance",
+        paySummary.remainingBalance != null
+          ? formatMoney(paySummary.remainingBalance, currency)
+          : "—"
+      );
+      if (depositCopy) {
+        if (paySummary.appliedCopy) {
+          depositCopy.hidden = false;
+          depositCopy.textContent = paySummary.appliedCopy;
+        } else {
+          depositCopy.hidden = true;
+          depositCopy.textContent = "";
+        }
+      }
       setText("cbPayStageCount", Number.isFinite(itemCount) ? String(itemCount) : "—");
       if (scheduledTotal != null) {
         setText("cbPayScheduled", formatMoney(scheduledTotal, currency));
@@ -4981,7 +5049,10 @@
     }
 
     if (sumWarn) {
-      if (contractTotal != null && scheduledTotal != null && !sumsMatch) {
+      if (paySummary.blockConfirm && paySummary.verificationMessage) {
+        sumWarn.hidden = false;
+        sumWarn.textContent = paySummary.verificationMessage;
+      } else if (contractTotal != null && scheduledTotal != null && !sumsMatch) {
         sumWarn.hidden = false;
         sumWarn.textContent = PaymentConfirm.SUM_ERROR;
       } else {
@@ -4996,20 +5067,20 @@
     }
 
     if (timeline) {
-      if (!items.length) {
+      const remainingRows = paySummary.remainingItems || [];
+      if (!remainingRows.length) {
         timeline.hidden = true;
         timeline.innerHTML = "";
+        if (remainingTitle) remainingTitle.hidden = true;
       } else {
-        const rows = PaymentConfirm.presentPaymentRows(items, {
-          dueRuleLabel: (rule, extras) => dueRuleLabel(rule, extras),
-        });
+        if (remainingTitle) remainingTitle.hidden = false;
         timeline.hidden = false;
-        timeline.innerHTML = rows
+        timeline.innerHTML = remainingRows
           .map((row) => {
             const due = String(row.due || "");
             return (
               `<article class="cb-pay-row">` +
-              `<h4 class="cb-pay-row__name">${escapeHtml(`${row.index}. ${row.name}`)}</h4>` +
+              `<h4 class="cb-pay-row__name">${escapeHtml(row.name)}</h4>` +
               `<p class="cb-pay-row__amount">${escapeHtml(formatMoney(row.amount, currency))}</p>` +
               `<p class="cb-pay-row__due">${escapeHtml(due)}</p>` +
               `</article>`
@@ -5628,6 +5699,7 @@
         items: Array.isArray(scheduleRes.data.items) ? scheduleRes.data.items : [],
         readiness: scheduleRes.data.readiness || { status: "missing" },
         source: scheduleRes.data.source || null,
+        deposit: scheduleRes.data.deposit || null,
       };
     } else if (scheduleRes.status !== 404) {
       scheduleBundle.loadError = "unavailable";
