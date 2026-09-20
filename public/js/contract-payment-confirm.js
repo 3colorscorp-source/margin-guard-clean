@@ -24,6 +24,8 @@
     "Verified deposit exceeds the contract total. Refresh before confirming.";
   var SCHEDULE_MISMATCH_MESSAGE =
     "Future payments do not equal the remaining contract balance. Edit the payment schedule before confirming.";
+  var PROGRESS_INVOICE_COPY =
+    "For longer projects, progress invoices are sent every two weeks. If the work is completed sooner, the final invoice is sent when the project is finished.";
   var confirmLock = false;
 
   function trimField(value) {
@@ -308,6 +310,15 @@
     }
   }
 
+  function invoiceCadenceCopyFromSnapshot(snap) {
+    var payment = snap && typeof snap === "object" ? snap.payment_schedule : null;
+    if (!payment || typeof payment !== "object") return "";
+    if (!Object.prototype.hasOwnProperty.call(payment, "invoice_cadence_copy")) {
+      return "";
+    }
+    return trimField(payment.invoice_cadence_copy);
+  }
+
   function verifiedDepositFromServer(raw) {
     var src = raw || {};
     if (src.verified_paid !== true) return null;
@@ -410,6 +421,7 @@
     if (depositStatus === "paid" && plannedDepositCents > verifiedCents) {
       stillDueCents = plannedDepositCents - verifiedCents;
     }
+    if (!(stillDueCents > 0)) stillDueCents = 0;
     if (stillDueCents > 0) remainingLabel = "Remaining Contract Balance";
 
     var showStages = shouldShowPaymentStages(items);
@@ -472,6 +484,7 @@
       depositMinus: false,
       depositStillDue: stillDueCents > 0 ? centsToMoneyNumber(stillDueCents) : null,
       depositStillDueLabel: stillDueCents > 0 ? "Deposit Still Due" : "",
+      showDepositStillDue: stillDueCents > 0,
       remainingLabel: remainingLabel,
       remainingBalance: remainingBalance,
       summaryCopy: summaryCopy,
@@ -642,6 +655,7 @@
     DEPOSIT_UNAVAILABLE_MESSAGE: DEPOSIT_UNAVAILABLE_MESSAGE,
     DEPOSIT_INCONSISTENT_MESSAGE: DEPOSIT_INCONSISTENT_MESSAGE,
     SCHEDULE_MISMATCH_MESSAGE: SCHEDULE_MISMATCH_MESSAGE,
+    PROGRESS_INVOICE_COPY: PROGRESS_INVOICE_COPY,
     moneyToCents: moneyToCents,
     computePaymentTotals: computePaymentTotals,
     paymentConfigured: paymentConfigured,
@@ -658,6 +672,7 @@
     shouldShowPaymentStages: shouldShowPaymentStages,
     reconcileFutureStages: reconcileFutureStages,
     itemsMatchSource: itemsMatchSource,
+    invoiceCadenceCopyFromSnapshot: invoiceCadenceCopyFromSnapshot,
     createPaymentConfirmRunner: createPaymentConfirmRunner,
     cloneItems: cloneItems,
   };

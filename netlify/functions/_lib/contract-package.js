@@ -36,6 +36,7 @@ const {
 } = require("./verified-contract-deposit");
 const {
   presentPaymentSummary,
+  PROGRESS_INVOICE_COPY,
 } = require("../../../public/js/contract-payment-confirm.js");
 
 const API_VERSION = "ch-011a-v1";
@@ -642,6 +643,7 @@ function buildSnapshot({
         }),
       readiness: paymentReadiness,
       deposit: serializeDepositForSnapshot(depositVerified, quote?.id),
+      invoice_cadence_copy: PROGRESS_INVOICE_COPY,
     },
     warranty: {
       duration_value: setup?.warranty_duration_value ?? null,

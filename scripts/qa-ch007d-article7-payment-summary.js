@@ -118,6 +118,22 @@ test("2 preview copy uses Payment Summary labels only", () => {
   assert.ok(js.includes("Payment Schedule Confirmed"));
   assert.ok(!js.includes('label: "Confirm & Continue"'));
   assert.doesNotMatch(helperSrc, /Review defaults/);
+  assert.ok(art7.includes("cbPayProgressCopy"));
+  assert.ok(
+    art7.includes(
+      "For longer projects, progress invoices are sent every two weeks. If the work is completed sooner, the final invoice is sent when the project is finished."
+    )
+  );
+  assert.ok(helperSrc.includes("PROGRESS_INVOICE_COPY"));
+  assert.ok(js.includes("PROGRESS_INVOICE_COPY"));
+  assert.ok(freezeSrc.includes("invoice_cadence_copy"));
+  assert.ok(pdfSrc.includes("invoiceCadenceCopyFromSnapshot"));
+  assert.ok(signSrc.includes("invoiceCadenceCopyFromSnapshot"));
+  assert.ok(!pdfSrc.includes("paySummary.progressCopy"));
+  assert.ok(!signSrc.includes("summary.progressCopy"));
+  assert.ok(html.includes(".cb-pay-ledger__row[hidden]"));
+  assert.ok(html.includes(".cb-pay-workspace__badge[hidden]"));
+  assert.ok(!js.includes('badgeMark.textContent = items.length ? "!"'));
   assert.doesNotMatch(art7, /Scheduled 100%/);
 });
 
@@ -457,6 +473,160 @@ test("5e required 1000 / paid 500 shows Deposit Still Due", () => {
     summary.summaryCopy,
     "A partial deposit has been received. $500.00 remains due toward the deposit."
   );
+  assert.strictEqual(summary.showDepositStillDue, true);
+});
+
+test("5e2 Deposit Still Due is absent when zero or null", () => {
+  const paidFull = PaymentConfirm.presentPaymentSummary({
+    contractTotal: TOTAL_5K,
+    items: TWO_1K,
+    verifiedDeposit: paidDeposit(1000),
+    currency: "USD",
+    dueRuleLabel: dueLabel,
+  });
+  assert.strictEqual(paidFull.depositStillDue, null);
+  assert.strictEqual(paidFull.showDepositStillDue, false);
+  assert.strictEqual(paidFull.depositStillDueLabel, "");
+  const due = PaymentConfirm.presentPaymentSummary({
+    contractTotal: TOTAL_5K,
+    items: TWO_1K,
+    verifiedDeposit: { verified_paid: false },
+    currency: "USD",
+    dueRuleLabel: dueLabel,
+  });
+  assert.strictEqual(due.depositStillDue, null);
+  assert.strictEqual(due.showDepositStillDue, false);
+  const none = PaymentConfirm.presentPaymentSummary({
+    contractTotal: 5000,
+    items: [
+      {
+        label: "Final Payment",
+        amount: 5000,
+        due_rule: "on_completion",
+        payment_type: "final",
+      },
+    ],
+    verifiedDeposit: { verified_paid: false },
+    depositRequired: 0,
+    currency: "USD",
+    dueRuleLabel: dueLabel,
+  });
+  assert.strictEqual(none.depositStillDue, null);
+  assert.strictEqual(none.showDepositStillDue, false);
+  assert.ok(js.includes("showDepositStillDue"));
+  assert.ok(js.includes("stillDueRow.hidden = true"));
+});
+
+test("5e3 draft uses default cadence copy; presentPaymentSummary does not leak it", () => {
+  const copy = PaymentConfirm.PROGRESS_INVOICE_COPY;
+  assert.strictEqual(
+    copy,
+    "For longer projects, progress invoices are sent every two weeks. If the work is completed sooner, the final invoice is sent when the project is finished."
+  );
+  const summary = PaymentConfirm.presentPaymentSummary({
+    contractTotal: TOTAL,
+    items: ITEMS,
+    verifiedDeposit: { verified_paid: false },
+    currency: "USD",
+    dueRuleLabel: dueLabel,
+  });
+  assert.strictEqual(summary.progressCopy, undefined);
+  assert.ok(art7.includes(copy));
+  assert.ok(js.includes("PaymentConfirm.PROGRESS_INVOICE_COPY"));
+  assert.ok(pdfSrc.includes("invoiceCadenceCopyFromSnapshot"));
+  assert.ok(signSrc.includes("invoiceCadenceCopyFromSnapshot"));
+});
+
+test("5e4 empty warning icon is not rendered without a message", () => {
+  assert.ok(!js.includes('badgeMark.textContent = items.length ? "!"'));
+  assert.ok(js.includes('badgeMark.textContent = ""'));
+  assert.ok(html.includes(".cb-pay-workspace__badge[hidden] { display: none !important; }"));
+});
+
+test("5e5 freeze stores invoice_cadence_copy exactly; hash follows that field", () => {
+  const Freeze = require("../netlify/functions/_lib/contract-package.js");
+  const copy = PaymentConfirm.PROGRESS_INVOICE_COPY;
+  const snap = Freeze.buildSnapshot({
+    tenantId: "t1",
+    project: { id: "p1", project_name: "Test", status: "active" },
+    quote: {
+      id: "q1",
+      client_name: "Cust",
+      status: "accepted",
+      total: 5000,
+      currency: "USD",
+      deposit_required: 1000,
+      scope_of_work: "Scope",
+      terms: "Terms",
+    },
+    setup: {
+      property_address_line1: "1 Main",
+      property_city: "Hayward",
+      property_state: "CA",
+      property_postal_code: "94544",
+      property_confirmed_at: "2026-01-02T00:00:00.000Z",
+      warranty_duration_value: 1,
+      warranty_duration_unit: "years",
+      warranty_summary: "Workmanship",
+      warranty_confirmed_at: "2026-01-02T00:00:00.000Z",
+      signature_method: "email_link",
+    },
+    setupReadiness: {
+      project_address: "confirmed",
+      warranty: "configured",
+      signature_method: "configured",
+    },
+    schedule: { id: "sch1", status: "confirmed", currency: "USD", contract_total: 5000 },
+    items: [
+      { id: "i1", sequence_number: 1, label: "Deposit", amount: 1000, due_rule: "on_signature" },
+      { id: "i2", sequence_number: 2, label: "Final", amount: 4000, due_rule: "on_completion" },
+    ],
+    paymentReadiness: { status: "configured", contract_total: 5000, scheduled_total: 5000 },
+    legalEffective: { confirmed_at: "2026-01-04T00:00:00.000Z", notices: {}, enabled: {} },
+    frozenAt: "2026-09-20T00:00:00.000Z",
+    contractSchedule: { start_date: "2026-10-01", due_date: "2026-10-15" },
+  });
+  assert.strictEqual(snap.payment_schedule.invoice_cadence_copy, copy);
+  const h0 = Freeze.contentHashForSnapshot(snap);
+  const mutated = {
+    ...snap,
+    payment_schedule: {
+      ...snap.payment_schedule,
+      invoice_cadence_copy: "Changed after freeze.",
+    },
+  };
+  assert.notStrictEqual(h0, Freeze.contentHashForSnapshot(mutated));
+  const again = Freeze.contentHashForSnapshot({ ...snap });
+  assert.strictEqual(h0, again);
+  const decision = Freeze.evaluateFreezeHashDecision(
+    { id: "ready-1", content_hash: h0, snapshot_json: snap, status: "ready" },
+    h0
+  );
+  assert.strictEqual(decision.idempotent, true);
+  assert.strictEqual(decision.createVersion, false);
+  assert.ok(freezeSrc.includes("invoice_cadence_copy: PROGRESS_INVOICE_COPY"));
+});
+
+test("5e6 frozen surfaces read snapshot copy only; legacy omits it", () => {
+  const stored = "Frozen cadence copy for this package only.";
+  assert.strictEqual(
+    PaymentConfirm.invoiceCadenceCopyFromSnapshot({
+      payment_schedule: { invoice_cadence_copy: stored },
+    }),
+    stored
+  );
+  assert.strictEqual(PaymentConfirm.invoiceCadenceCopyFromSnapshot({ payment_schedule: {} }), "");
+  assert.strictEqual(PaymentConfirm.invoiceCadenceCopyFromSnapshot({}), "");
+  assert.strictEqual(
+    PaymentConfirm.invoiceCadenceCopyFromSnapshot({
+      payment_schedule: { invoice_cadence_copy: "   " },
+    }),
+    ""
+  );
+  assert.ok(pdfSrc.includes("invoiceCadenceCopyFromSnapshot(snap)"));
+  assert.ok(signSrc.includes("invoiceCadenceCopyFromSnapshot(snap)"));
+  assert.ok(!pdfSrc.includes("PROGRESS_INVOICE_COPY"));
+  assert.ok(!signSrc.includes("PROGRESS_INVOICE_COPY"));
 });
 
 test("5f required 1000 / paid 1500 keeps three rows and real remaining", () => {
@@ -608,14 +778,18 @@ test("8 freeze, PDF, and sign portal consume the same summary", () => {
   assert.ok(pdfSrc.includes("presentPaymentSummary"));
   assert.ok(pdfSrc.includes("remainingLabel"));
   assert.ok(pdfSrc.includes("summaryCopy"));
+  assert.ok(pdfSrc.includes("invoiceCadenceCopyFromSnapshot"));
   assert.ok(pdfSrc.includes("showPaymentStages"));
   assert.ok(pdfSrc.includes("Payment Stages"));
   assert.ok(pdfSrc.includes("Deposit Paid"));
   assert.ok(pdfSrc.includes("Deposit Still Due"));
   assert.ok(signSrc.includes("presentPaymentSummary"));
+  assert.ok(signSrc.includes("invoiceCadenceCopyFromSnapshot"));
   assert.ok(signSrc.includes("Payment Stages"));
   assert.ok(signSrc.includes("remainingLabel"));
   assert.ok(signSrc.includes("Deposit Still Due"));
+  assert.ok(js.includes("PROGRESS_INVOICE_COPY"));
+  assert.ok(freezeSrc.includes("invoice_cadence_copy"));
   assert.ok(!pdfSrc.includes("quote.total ="));
   assert.ok(scheduleSrc.includes("depositBlocksConfirm"));
   assert.ok(scheduleSrc.includes("deposit_verification_unavailable"));

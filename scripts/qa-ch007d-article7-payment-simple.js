@@ -359,6 +359,7 @@ async function testAsync(name, fn) {
 
   test("10 mobile, preview, and print avoid overflow diagnostics", () => {
     assert.ok(html.includes("overflow-wrap: anywhere"));
+    assert.ok(html.includes(".cb-pay-ledger__copy"));
     assert.ok(html.includes("#cbMain.is-printing .cb-pay-workspace__badge"));
     assert.ok(html.includes("#cbMain.is-printing .cb-pay-summary__item.is-diag"));
     assert.ok(html.includes("@media (max-width: 720px)") || html.includes("@media (max-width: 640px)"));

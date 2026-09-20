@@ -361,5 +361,32 @@ test("frozen_at excluded from hash input helper", () => {
   assert.match(libSrc, /frozen_at:\s*_frozenAt/);
 });
 
+test("invoice_cadence_copy is frozen and included in content_hash", () => {
+  const PaymentConfirm = require("../public/js/contract-payment-confirm.js");
+  const snap = lib.buildSnapshot(baseSnapshotArgs());
+  assert.strictEqual(
+    snap.payment_schedule.invoice_cadence_copy,
+    PaymentConfirm.PROGRESS_INVOICE_COPY
+  );
+  const h0 = lib.contentHashForSnapshot(snap);
+  const mutated = {
+    ...snap,
+    payment_schedule: {
+      ...snap.payment_schedule,
+      invoice_cadence_copy: "Changed cadence copy after freeze.",
+    },
+  };
+  assert.notStrictEqual(h0, lib.contentHashForSnapshot(mutated));
+  const again = lib.buildSnapshot(baseSnapshotArgs());
+  assert.strictEqual(h0, lib.contentHashForSnapshot(again));
+  const d = lib.evaluateFreezeHashDecision(
+    { id: "ready-1", content_hash: h0, snapshot_json: snap, status: "ready" },
+    h0
+  );
+  assert.strictEqual(d.idempotent, true);
+  assert.strictEqual(d.createVersion, false);
+  assert.ok(libSrc.includes("invoice_cadence_copy: PROGRESS_INVOICE_COPY"));
+});
+
 console.log(`CH-011A idempotent freeze QA: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

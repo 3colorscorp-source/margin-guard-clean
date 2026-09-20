@@ -4924,8 +4924,8 @@
       } else {
         badge.hidden = true;
         badge.classList.add(items.length ? "is-draft" : "is-missing");
-        if (badgeMark) badgeMark.textContent = items.length ? "!" : "○";
-        if (badgeText) badgeText.textContent = items.length ? "" : "Not configured";
+        if (badgeMark) badgeMark.textContent = "";
+        if (badgeText) badgeText.textContent = "";
       }
     }
 
@@ -4944,6 +4944,7 @@
     const depositRow = $("cbPayDepositRow");
     const stillDueRow = $("cbPayStillDueRow");
     const depositCopy = $("cbPayDepositCopy");
+    const progressCopy = $("cbPayProgressCopy");
     const paySummary = PaymentConfirm.presentPaymentSummary({
       contractTotal,
       items,
@@ -4966,6 +4967,14 @@
       if (depositCopy) {
         depositCopy.hidden = true;
         depositCopy.textContent = "";
+      }
+      if (progressCopy) {
+        progressCopy.hidden = true;
+      }
+      if (stillDueRow) {
+        stillDueRow.hidden = true;
+        setText("cbPayStillDueLabel", "");
+        setText("cbPayStillDueAmount", "");
       }
       if (sumWarn) {
         const defaultWarn = String(bundle.localDefaultWarning || "").trim();
@@ -5024,7 +5033,8 @@
         }
       }
       if (stillDueRow) {
-        if (paySummary.depositStillDue != null && paySummary.depositStillDue > 0) {
+        const stillDueCents = Math.round(Number(paySummary.depositStillDue) * 100);
+        if (paySummary.showDepositStillDue === true && stillDueCents > 0) {
           stillDueRow.hidden = false;
           setText("cbPayStillDueLabel", paySummary.depositStillDueLabel || "Deposit Still Due");
           setText(
@@ -5033,6 +5043,8 @@
           );
         } else {
           stillDueRow.hidden = true;
+          setText("cbPayStillDueLabel", "");
+          setText("cbPayStillDueAmount", "");
         }
       }
       setText("cbPayRemainingLabel", paySummary.remainingLabel || "Remaining Contract Balance");
@@ -5050,6 +5062,11 @@
           depositCopy.hidden = true;
           depositCopy.textContent = "";
         }
+      }
+      if (progressCopy) {
+        const cadence = PaymentConfirm.PROGRESS_INVOICE_COPY;
+        progressCopy.hidden = false;
+        progressCopy.textContent = cadence;
       }
       setText("cbPayStageCount", Number.isFinite(itemCount) ? String(itemCount) : "—");
       if (scheduledTotal != null) {

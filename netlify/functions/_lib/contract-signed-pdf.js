@@ -18,6 +18,7 @@ const {
 } = require("../../../public/js/contract-payment-defaults.js");
 const {
   presentPaymentSummary,
+  invoiceCadenceCopyFromSnapshot,
 } = require("../../../public/js/contract-payment-confirm.js");
 const {
   formatDurationLabel,
@@ -409,7 +410,7 @@ function buildSignedContractLines({
   } else if (paySummary.depositStatus === "due") {
     lines.push(body(`Deposit Due: ${money(paySummary.depositAmount, currency)}`));
   }
-  if (paySummary.depositStillDue != null && paySummary.depositStillDue > 0) {
+  if (paySummary.showDepositStillDue === true && Number(paySummary.depositStillDue) > 0) {
     lines.push(
       body(`Deposit Still Due: ${money(paySummary.depositStillDue, currency)}`)
     );
@@ -425,6 +426,8 @@ function buildSignedContractLines({
     );
   }
   if (paySummary.summaryCopy) lines.push(body(paySummary.summaryCopy));
+  const cadenceCopy = invoiceCadenceCopyFromSnapshot(snap);
+  if (cadenceCopy) lines.push(body(cadenceCopy));
   if (paySummary.showPaymentStages) {
     lines.push(subhead("Payment Stages"));
     if (!paySummary.remainingItems.length) {
