@@ -277,6 +277,14 @@ test("package hash is full 64 chars, no ellipsis truncate", () => {
 test("payment separator is ASCII; due_rule custom is not printed", () => {
   const ctx = sampleCtx({
     snap: sampleSnap({
+      quote: {
+        id: "q1",
+        title: "Kitchen Remodel Contract",
+        total: 12000,
+        currency: "USD",
+        deposit_required: 1,
+      },
+      price: { contract_total: 12000, currency: "USD", deposit_required: 1 },
       payment_schedule: {
         items: [
           {
@@ -293,10 +301,11 @@ test("payment separator is ASCII; due_rule custom is not printed", () => {
   assert.ok(text.includes("Deposit"));
   assert.ok(text.includes("USD 1.00"));
   assert.ok(
-    text.includes("Deposit Due") ||
+    text.includes("Deposit Due Now") ||
       text.includes("Balance After Deposit") ||
       text.includes("Payment Stages")
   );
+  assert.ok(!text.includes("due upon completion"));
   assert.ok(!text.includes("Remaining Payment Schedule"));
   assert.ok(!text.includes("?"));
   assert.ok(!text.includes("due: custom"));
@@ -308,6 +317,7 @@ test("legacy snapshot omits cadence copy; frozen field is printed exactly", () =
     " "
   );
   assert.ok(!dueText.includes("progress invoices are sent every two weeks"));
+  assert.ok(!dueText.includes("billed every two weeks based on progress"));
   assert.ok(!dueText.includes("Deposit Still Due"));
 
   const stored = "Frozen cadence copy for this package only.";
@@ -328,9 +338,10 @@ test("legacy snapshot omits cadence copy; frozen field is printed exactly", () =
   );
   assert.ok(storedText.includes(stored));
   assert.ok(!storedText.includes("progress invoices are sent every two weeks"));
+  assert.ok(!storedText.includes("billed every two weeks based on progress"));
 
   const PaymentConfirm = require("../public/js/contract-payment-confirm.js");
-  const copy = PaymentConfirm.PROGRESS_INVOICE_COPY;
+  const copy = PaymentConfirm.INVOICE_CADENCE_COPY;
   const newFreeze = sampleCtx({
     snap: sampleSnap({
       payment_schedule: {
@@ -338,6 +349,7 @@ test("legacy snapshot omits cadence copy; frozen field is printed exactly", () =
           { sequence_number: 1, label: "Deposit", amount: 2000, due_rule: "on_signing" },
           { sequence_number: 2, label: "Final", amount: 10000, due_rule: "on_completion" },
         ],
+        deposit_status_copy: "The $2,000.00 deposit is due now.",
         invoice_cadence_copy: copy,
       },
     }),
@@ -346,7 +358,9 @@ test("legacy snapshot omits cadence copy; frozen field is printed exactly", () =
     /\n/g,
     " "
   );
-  assert.ok(newText.includes("progress invoices are sent every two weeks"));
+  assert.ok(newText.includes("The $2,000.00 deposit is due now."));
+  assert.ok(newText.includes("billed every two weeks based on progress"));
+  assert.ok(!newText.includes("due upon completion"));
 
   const paidFull = sampleCtx({
     snap: sampleSnap({
@@ -384,6 +398,7 @@ test("legacy snapshot omits cadence copy; frozen field is printed exactly", () =
           source: "tenant_project_payments",
         },
         invoice_cadence_copy: copy,
+        deposit_status_copy: "A partial deposit has been received. $1,500.00 remains due toward the deposit.",
       },
     }),
   });
@@ -392,7 +407,7 @@ test("legacy snapshot omits cadence copy; frozen field is printed exactly", () =
     " "
   );
   assert.ok(partialText.includes("Deposit Still Due"));
-  assert.ok(partialText.includes("progress invoices are sent every two weeks"));
+  assert.ok(partialText.includes("billed every two weeks based on progress"));
 });
 
 test("signature, certificate, envelope, package, hashes remain", () => {

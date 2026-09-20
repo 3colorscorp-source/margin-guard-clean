@@ -143,6 +143,7 @@ function session(opts) {
     getContractTotal: () => options.contractTotal,
     getIds: () => ({ projectId: "proj-1", quoteId: "quote-1" }),
     getVerifiedDeposit: () => options.verifiedDeposit || null,
+    getDepositRequired: () => options.depositRequired,
     postJson,
     applySuccess: (data) => {
       confirmed = PaymentConfirm.paymentConfigured({ readiness: data.readiness });
@@ -169,6 +170,7 @@ function session(opts) {
         items,
         contractTotal: options.contractTotal,
         verifiedDeposit: options.verifiedDeposit || null,
+        depositRequired: options.depositRequired,
         busy,
       });
     },
@@ -359,12 +361,17 @@ async function testAsync(name, fn) {
 
   test("10 mobile, preview, and print avoid overflow diagnostics", () => {
     assert.ok(html.includes("overflow-wrap: anywhere"));
+    assert.ok(html.includes("overflow-x: hidden"));
     assert.ok(html.includes(".cb-pay-ledger__copy"));
     assert.ok(html.includes("#cbMain.is-printing .cb-pay-workspace__badge"));
     assert.ok(html.includes("#cbMain.is-printing .cb-pay-summary__item.is-diag"));
     assert.ok(html.includes("@media (max-width: 720px)") || html.includes("@media (max-width: 640px)"));
     assert.ok(html.includes("is-preview"));
     assert.ok(html.includes("is-printing"));
+    assert.ok(html.includes("Deposit Due Now"));
+    assert.ok(!art7.includes("due upon completion"));
+    assert.ok(!helperSrc.includes("due upon completion"));
+    assert.ok(!js.includes("due upon completion"));
     assert.ok(!/cb-pay-row__amount[\s\S]{0,80}%/.test(js));
   });
 
@@ -382,6 +389,8 @@ async function testAsync(name, fn) {
     assert.strictEqual(plan.confirmVisible, true);
     assert.strictEqual(plan.confirmEnabled, false);
     assert.strictEqual(plan.blockConfirm, true);
+    assert.strictEqual(plan.refreshVisible, true);
+    assert.ok(plan.buttons.some((btn) => btn.id === "refresh" && btn.enabled === true));
     assert.ok(!/Deposit Due/.test(plan.errorMessage || ""));
     assert.ok(
       plan.errorMessage.includes("Deposit status could not be verified. Refresh before confirming.")
@@ -391,6 +400,7 @@ async function testAsync(name, fn) {
     assert.strictEqual(result.posted, false);
     assert.strictEqual(result.reason, "verification_unavailable");
     assert.strictEqual(s.posts.length, 0);
+    assert.strictEqual(s.busy, false);
   });
 
   console.log("");

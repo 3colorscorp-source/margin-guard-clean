@@ -385,7 +385,16 @@ test("invoice_cadence_copy is frozen and included in content_hash", () => {
   );
   assert.strictEqual(d.idempotent, true);
   assert.strictEqual(d.createVersion, false);
-  assert.ok(libSrc.includes("invoice_cadence_copy: PROGRESS_INVOICE_COPY"));
+  assert.ok(libSrc.includes("trimField(invoiceCadenceCopy) || PROGRESS_INVOICE_COPY"));
+  assert.ok(libSrc.includes("deposit_status_copy"));
+  const mutatedStatus = {
+    ...snap,
+    payment_schedule: {
+      ...snap.payment_schedule,
+      deposit_status_copy: "Changed status copy after freeze.",
+    },
+  };
+  assert.notStrictEqual(h0, lib.contentHashForSnapshot(mutatedStatus));
 });
 
 console.log(`CH-011A idempotent freeze QA: ${passed} passed, ${failed} failed`);
