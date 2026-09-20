@@ -637,6 +637,7 @@
       }),
       getExpectedUpdatedAt: () => sourceSnapshot?.paymentSchedule?.schedule?.updated_at || null,
       getVerifiedDeposit: () => sourceSnapshot?.paymentSchedule?.deposit || null,
+      getDepositRequired: () => sourceSnapshot?.depositRequired,
       apiUrl: PaymentConfirm.SCHEDULE_API,
       postJson,
       applySuccess: (data) => {
@@ -688,6 +689,27 @@
     }
     renderWorkspaceChrome();
     return false;
+  }
+
+  async function workspaceRefreshPaymentDeposit() {
+    if (workspaceBusy) return false;
+    workspaceBusy = true;
+    workspaceBusyLabel = "Refreshing…";
+    renderWorkspaceChrome();
+    try {
+      await reloadPaymentScheduleFromServer();
+      return true;
+    } catch (err) {
+      window.alert(
+        err?.message ||
+          "Deposit status could not be verified. Refresh before confirming."
+      );
+      return false;
+    } finally {
+      workspaceBusy = false;
+      workspaceBusyLabel = "Saving…";
+      renderWorkspaceChrome();
+    }
   }
 
   async function workspaceConfirmSignature() {
@@ -869,6 +891,19 @@
               },
             })
           );
+          if (paymentPlan.refreshVisible) {
+            actions.appendChild(
+              createFooterButton({
+                id: "cbWsRefreshPay",
+                label: "Refresh",
+                className: "btn ghost",
+                disabled: busy,
+                onClick: () => {
+                  void workspaceRefreshPaymentDeposit();
+                },
+              })
+            );
+          }
           if (hint) {
             hint.textContent =
               paymentPlan.errorMessage ||
@@ -999,6 +1034,19 @@
           },
         })
       );
+      if (paymentPlan.refreshVisible) {
+        actions.appendChild(
+          createFooterButton({
+            id: "cbWsRefreshPayPreview",
+            label: "Refresh",
+            className: "btn ghost",
+            disabled: busy,
+            onClick: () => {
+              void workspaceRefreshPaymentDeposit();
+            },
+          })
+        );
+      }
     }
 
     if (
@@ -4943,6 +4991,7 @@
     const remainingTitle = $("cbPayRemainingTitle");
     const depositRow = $("cbPayDepositRow");
     const stillDueRow = $("cbPayStillDueRow");
+    const remainingRow = $("cbPayRemainingRow");
     const depositCopy = $("cbPayDepositCopy");
     const progressCopy = $("cbPayProgressCopy");
     const paySummary = PaymentConfirm.presentPaymentSummary({
@@ -4976,6 +5025,7 @@
         setText("cbPayStillDueLabel", "");
         setText("cbPayStillDueAmount", "");
       }
+      if (remainingRow) remainingRow.hidden = true;
       if (sumWarn) {
         const defaultWarn = String(bundle.localDefaultWarning || "").trim();
         if (defaultWarn) {
@@ -5019,10 +5069,13 @@
       if (depositRow) {
         if (
           paySummary.depositStatus === "none" ||
-          paySummary.depositStatus === "verification_unavailable" ||
           paySummary.depositStatus === "inconsistent"
         ) {
           depositRow.hidden = true;
+        } else if (paySummary.depositStatus === "verification_unavailable") {
+          depositRow.hidden = false;
+          setText("cbPayDepositLabel", "Deposit Status Unavailable");
+          setText("cbPayDepositAmount", "");
         } else {
           depositRow.hidden = false;
           setText("cbPayDepositLabel", paySummary.depositLabel);
@@ -5047,26 +5100,39 @@
           setText("cbPayStillDueAmount", "");
         }
       }
-      setText("cbPayRemainingLabel", paySummary.remainingLabel || "Remaining Contract Balance");
-      setText(
-        "cbPayRemainingBalance",
-        paySummary.remainingBalance != null
-          ? formatMoney(paySummary.remainingBalance, currency)
-          : "—"
-      );
+      if (remainingRow) {
+        if (paySummary.remainingBalance != null) {
+          remainingRow.hidden = false;
+          setText("cbPayRemainingLabel", paySummary.remainingLabel || "Remaining Contract Balance");
+          setText(
+            "cbPayRemainingBalance",
+            formatMoney(paySummary.remainingBalance, currency)
+          );
+        } else {
+          remainingRow.hidden = true;
+          setText("cbPayRemainingLabel", "");
+          setText("cbPayRemainingBalance", "");
+        }
+      }
       if (depositCopy) {
-        if (paySummary.summaryCopy) {
+        const explanation = String(paySummary.explanationCopy || "").trim();
+        if (explanation) {
           depositCopy.hidden = false;
-          depositCopy.textContent = paySummary.summaryCopy;
+          depositCopy.textContent = explanation;
+        } else if (
+          paySummary.depositStatus === "verification_unavailable" &&
+          paySummary.verificationMessage
+        ) {
+          depositCopy.hidden = false;
+          depositCopy.textContent = paySummary.verificationMessage;
         } else {
           depositCopy.hidden = true;
           depositCopy.textContent = "";
         }
       }
       if (progressCopy) {
-        const cadence = PaymentConfirm.PROGRESS_INVOICE_COPY;
-        progressCopy.hidden = false;
-        progressCopy.textContent = cadence;
+        progressCopy.hidden = true;
+        progressCopy.textContent = "";
       }
       setText("cbPayStageCount", Number.isFinite(itemCount) ? String(itemCount) : "—");
       if (scheduledTotal != null) {

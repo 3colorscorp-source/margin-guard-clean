@@ -246,9 +246,12 @@
         "</span></div>";
     } else if (summary.depositStatus === "due") {
       html +=
-        '<div class="cs-kv is-deposit"><span class="k">Deposit Due</span><span class="v">' +
+        '<div class="cs-kv is-deposit"><span class="k">Deposit Due Now</span><span class="v">' +
         text(money(summary.depositAmount, currency)) +
         "</span></div>";
+    } else if (summary.depositStatus === "verification_unavailable") {
+      html +=
+        '<div class="cs-kv"><span class="k">Deposit Status Unavailable</span><span class="v"></span></div>';
     }
     if (summary.showDepositStillDue === true && Number(summary.depositStillDue) > 0) {
       html +=
@@ -258,21 +261,22 @@
         text(money(summary.depositStillDue, currency)) +
         "</span></div>";
     }
-    html +=
-      '<div class="cs-kv is-remaining"><span class="k">' +
-      text(summary.remainingLabel || "Remaining Contract Balance") +
-      '</span><span class="v">' +
-      text(money(summary.remainingBalance, currency)) +
-      "</span></div>";
-    if (summary.summaryCopy) {
-      html += '<p class="cs-prose">' + escapeHtml(summary.summaryCopy) + "</p>";
+    if (summary.remainingBalance != null) {
+      html +=
+        '<div class="cs-kv is-remaining"><span class="k">' +
+        text(summary.remainingLabel || "Remaining Contract Balance") +
+        '</span><span class="v">' +
+        text(money(summary.remainingBalance, currency)) +
+        "</span></div>";
     }
-    var cadenceCopy =
-      PaymentConfirm && typeof PaymentConfirm.invoiceCadenceCopyFromSnapshot === "function"
-        ? PaymentConfirm.invoiceCadenceCopyFromSnapshot(snap)
+    var frozenExplanation =
+      PaymentConfirm && typeof PaymentConfirm.paymentExplanationFromSnapshot === "function"
+        ? PaymentConfirm.paymentExplanationFromSnapshot(snap)
         : "";
-    if (cadenceCopy) {
-      html += '<p class="cs-prose">' + escapeHtml(cadenceCopy) + "</p>";
+    if (frozenExplanation) {
+      html += '<p class="cs-prose">' + escapeHtml(frozenExplanation) + "</p>";
+    } else if (summary.depositStatus === "verification_unavailable" && summary.verificationMessage) {
+      html += '<p class="cs-prose">' + escapeHtml(summary.verificationMessage) + "</p>";
     }
     if (summary.showPaymentStages) {
       html += '<p class="cs-section-label" style="margin-top:14px">Payment Stages</p>';
