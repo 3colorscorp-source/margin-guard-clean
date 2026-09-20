@@ -111,7 +111,8 @@ test("2 preview copy uses Payment Summary labels only", () => {
   assert.ok(!pdfSrc.includes("Remaining Payment Schedule"));
   assert.ok(!signSrc.includes("Remaining Payment Schedule"));
   assert.ok(js.includes("showPaymentStages"));
-  assert.ok(js.includes("summaryCopy"));
+  assert.ok(js.includes("explanationCopy"));
+  assert.ok(helperSrc.includes("summaryCopy"));
   assert.ok(!js.includes("depositMinus"));
   assert.doesNotMatch(art7, /Plan Check|Plan check/);
   assert.ok(js.includes("Confirm Payment Schedule"));
@@ -119,16 +120,17 @@ test("2 preview copy uses Payment Summary labels only", () => {
   assert.ok(!js.includes('label: "Confirm & Continue"'));
   assert.doesNotMatch(helperSrc, /Review defaults/);
   assert.ok(art7.includes("cbPayProgressCopy"));
-  assert.ok(
-    art7.includes(
-      "For longer projects, progress invoices are sent every two weeks. If the work is completed sooner, the final invoice is sent when the project is finished."
-    )
-  );
-  assert.ok(helperSrc.includes("PROGRESS_INVOICE_COPY"));
-  assert.ok(js.includes("PROGRESS_INVOICE_COPY"));
+  assert.ok(art7.includes("Deposit Due Now"));
+  assert.ok(!art7.includes("due upon completion"));
+  assert.ok(!helperSrc.includes("due upon completion"));
+  assert.ok(!js.includes("due upon completion"));
+  assert.ok(!pdfSrc.includes("due upon completion"));
+  assert.ok(!signSrc.includes("due upon completion"));
+  assert.ok(helperSrc.includes("INVOICE_CADENCE_COPY"));
   assert.ok(freezeSrc.includes("invoice_cadence_copy"));
-  assert.ok(pdfSrc.includes("invoiceCadenceCopyFromSnapshot"));
-  assert.ok(signSrc.includes("invoiceCadenceCopyFromSnapshot"));
+  assert.ok(freezeSrc.includes("deposit_status_copy"));
+  assert.ok(pdfSrc.includes("paymentExplanationFromSnapshot"));
+  assert.ok(signSrc.includes("paymentExplanationFromSnapshot"));
   assert.ok(!pdfSrc.includes("paySummary.progressCopy"));
   assert.ok(!signSrc.includes("summary.progressCopy"));
   assert.ok(html.includes(".cb-pay-ledger__row[hidden]"));
@@ -162,9 +164,13 @@ test("3 deposit paid uses ledger confirmation and exact cents", () => {
   assert.strictEqual(summary.remainingItems.length, 0);
   assert.strictEqual(
     summary.summaryCopy,
-    "The deposit has been received. The remaining $3,264.49 is due upon completion."
+    "The deposit has been received."
   );
-  assert.strictEqual(summary.appliedCopy, summary.summaryCopy);
+  assert.strictEqual(
+    summary.explanationCopy,
+    "The deposit has been received. The remaining balance is billed every two weeks based on progress, or at completion if the project is finished sooner."
+  );
+  assert.strictEqual(summary.appliedCopy, summary.explanationCopy);
   assert.ok(!/Initial Scheduling Payment/.test(JSON.stringify(summary)));
 });
 
@@ -177,7 +183,7 @@ test("4 deposit due uses Balance After Deposit, not the full total", () => {
     dueRuleLabel: dueLabel,
   });
   assert.strictEqual(summary.depositStatus, "due");
-  assert.strictEqual(summary.depositLabel, "Deposit Due");
+  assert.strictEqual(summary.depositLabel, "Deposit Due Now");
   assert.ok(!/Paid/.test(summary.depositLabel));
   assert.strictEqual(summary.depositAmount, 1);
   assert.strictEqual(summary.remainingLabel, "Balance After Deposit");
@@ -185,9 +191,10 @@ test("4 deposit due uses Balance After Deposit, not the full total", () => {
   assert.notStrictEqual(summary.remainingBalance, TOTAL);
   assert.strictEqual(summary.showPaymentStages, false);
   assert.strictEqual(summary.remainingItems.length, 0);
+  assert.strictEqual(summary.summaryCopy, "The $1.00 deposit is due now.");
   assert.strictEqual(
-    summary.summaryCopy,
-    "The $1.00 deposit is due now. The remaining $3,264.49 is due upon completion."
+    summary.explanationCopy,
+    "The $1.00 deposit is due now. The remaining balance is billed every two weeks based on progress, or at completion if the project is finished sooner."
   );
 });
 
@@ -258,10 +265,9 @@ test("4c three-or-more-stage schedule renders compact Payment Stages", () => {
   assert.ok(!summary.remainingItems.some((row) => /deposit|initial scheduling/i.test(row.name)));
   assert.ok(!summary.remainingItems.some((row) => row.name === "Contract Total"));
   assert.ok(!summary.remainingItems.some((row) => row.name === "Deposit Paid"));
-  assert.strictEqual(
-    summary.summaryCopy,
-    "The $1.00 deposit is due now. The remaining $3,264.49 is due in the stages below."
-  );
+  assert.strictEqual(summary.summaryCopy, "The $1.00 deposit is due now.");
+  assert.ok(summary.explanationCopy.includes("billed every two weeks based on progress"));
+  assert.ok(!summary.explanationCopy.includes("due in the stages below"));
   const paid = PaymentConfirm.presentPaymentSummary({
     contractTotal: TOTAL,
     items,
@@ -410,7 +416,7 @@ function paidDeposit(amount) {
   };
 }
 
-test("5c required 1000 / paid 0 keeps three rows and Deposit Due", () => {
+test("5c required 1000 / paid 0 keeps three rows and Deposit Due Now", () => {
   const summary = PaymentConfirm.presentPaymentSummary({
     contractTotal: TOTAL_5K,
     items: TWO_1K,
@@ -419,17 +425,16 @@ test("5c required 1000 / paid 0 keeps three rows and Deposit Due", () => {
     dueRuleLabel: dueLabel,
   });
   assert.strictEqual(summary.depositStatus, "due");
-  assert.strictEqual(summary.depositLabel, "Deposit Due");
+  assert.strictEqual(summary.depositLabel, "Deposit Due Now");
   assert.strictEqual(summary.depositAmount, 1000);
   assert.strictEqual(summary.depositStillDue, null);
   assert.strictEqual(summary.remainingLabel, "Balance After Deposit");
   assert.strictEqual(summary.remainingBalance, 4000);
   assert.strictEqual(summary.showPaymentStages, false);
   assert.strictEqual(summary.blockConfirm, false);
-  assert.strictEqual(
-    summary.summaryCopy,
-    "The $1,000.00 deposit is due now. The remaining $4,000.00 is due upon completion."
-  );
+  assert.strictEqual(summary.summaryCopy, "The $1,000.00 deposit is due now.");
+  assert.ok(!summary.explanationCopy.includes("due upon completion"));
+  assert.ok(summary.explanationCopy.includes("billed every two weeks based on progress"));
 });
 
 test("5d required 1000 / paid 1000 keeps three rows", () => {
@@ -447,10 +452,9 @@ test("5d required 1000 / paid 1000 keeps three rows", () => {
   assert.strictEqual(summary.remainingBalance, 4000);
   assert.strictEqual(summary.showPaymentStages, false);
   assert.strictEqual(summary.blockConfirm, false);
-  assert.strictEqual(
-    summary.summaryCopy,
-    "The deposit has been received. The remaining $4,000.00 is due upon completion."
-  );
+  assert.strictEqual(summary.summaryCopy, "The deposit has been received.");
+  assert.ok(summary.explanationCopy.startsWith("The deposit has been received."));
+  assert.ok(!summary.explanationCopy.includes("due upon completion"));
 });
 
 test("5e required 1000 / paid 500 shows Deposit Still Due", () => {
@@ -472,6 +476,10 @@ test("5e required 1000 / paid 500 shows Deposit Still Due", () => {
   assert.strictEqual(
     summary.summaryCopy,
     "A partial deposit has been received. $500.00 remains due toward the deposit."
+  );
+  assert.strictEqual(
+    summary.explanationCopy,
+    "A partial deposit has been received. $500.00 remains due toward the deposit. The remaining balance is billed every two weeks based on progress, or at completion if the project is finished sooner."
   );
   assert.strictEqual(summary.showDepositStillDue, true);
 });
@@ -517,11 +525,11 @@ test("5e2 Deposit Still Due is absent when zero or null", () => {
   assert.ok(js.includes("stillDueRow.hidden = true"));
 });
 
-test("5e3 draft uses default cadence copy; presentPaymentSummary does not leak it", () => {
-  const copy = PaymentConfirm.PROGRESS_INVOICE_COPY;
+test("5e3 draft uses one combined explanation; frozen surfaces do not leak code defaults", () => {
+  const cadence = PaymentConfirm.INVOICE_CADENCE_COPY;
   assert.strictEqual(
-    copy,
-    "For longer projects, progress invoices are sent every two weeks. If the work is completed sooner, the final invoice is sent when the project is finished."
+    cadence,
+    "The remaining balance is billed every two weeks based on progress, or at completion if the project is finished sooner."
   );
   const summary = PaymentConfirm.presentPaymentSummary({
     contractTotal: TOTAL,
@@ -531,10 +539,12 @@ test("5e3 draft uses default cadence copy; presentPaymentSummary does not leak i
     dueRuleLabel: dueLabel,
   });
   assert.strictEqual(summary.progressCopy, undefined);
-  assert.ok(art7.includes(copy));
-  assert.ok(js.includes("PaymentConfirm.PROGRESS_INVOICE_COPY"));
-  assert.ok(pdfSrc.includes("invoiceCadenceCopyFromSnapshot"));
-  assert.ok(signSrc.includes("invoiceCadenceCopyFromSnapshot"));
+  assert.strictEqual(summary.summaryCopy, "The $1.00 deposit is due now.");
+  assert.strictEqual(summary.explanationCopy, summary.summaryCopy + " " + cadence);
+  assert.ok(!art7.includes("due upon completion"));
+  assert.ok(js.includes("explanationCopy"));
+  assert.ok(pdfSrc.includes("paymentExplanationFromSnapshot"));
+  assert.ok(signSrc.includes("paymentExplanationFromSnapshot"));
 });
 
 test("5e4 empty warning icon is not rendered without a message", () => {
@@ -585,8 +595,10 @@ test("5e5 freeze stores invoice_cadence_copy exactly; hash follows that field", 
     legalEffective: { confirmed_at: "2026-01-04T00:00:00.000Z", notices: {}, enabled: {} },
     frozenAt: "2026-09-20T00:00:00.000Z",
     contractSchedule: { start_date: "2026-10-01", due_date: "2026-10-15" },
+    depositStatusCopy: "The $1,000.00 deposit is due now.",
   });
   assert.strictEqual(snap.payment_schedule.invoice_cadence_copy, copy);
+  assert.strictEqual(snap.payment_schedule.deposit_status_copy, "The $1,000.00 deposit is due now.");
   const h0 = Freeze.contentHashForSnapshot(snap);
   const mutated = {
     ...snap,
@@ -596,6 +608,14 @@ test("5e5 freeze stores invoice_cadence_copy exactly; hash follows that field", 
     },
   };
   assert.notStrictEqual(h0, Freeze.contentHashForSnapshot(mutated));
+  const mutatedStatus = {
+    ...snap,
+    payment_schedule: {
+      ...snap.payment_schedule,
+      deposit_status_copy: "Changed status copy after freeze.",
+    },
+  };
+  assert.notStrictEqual(h0, Freeze.contentHashForSnapshot(mutatedStatus));
   const again = Freeze.contentHashForSnapshot({ ...snap });
   assert.strictEqual(h0, again);
   const decision = Freeze.evaluateFreezeHashDecision(
@@ -604,7 +624,8 @@ test("5e5 freeze stores invoice_cadence_copy exactly; hash follows that field", 
   );
   assert.strictEqual(decision.idempotent, true);
   assert.strictEqual(decision.createVersion, false);
-  assert.ok(freezeSrc.includes("invoice_cadence_copy: PROGRESS_INVOICE_COPY"));
+  assert.ok(freezeSrc.includes("trimField(invoiceCadenceCopy) || PROGRESS_INVOICE_COPY"));
+  assert.ok(freezeSrc.includes("paySummary.invoiceCadenceCopy"));
 });
 
 test("5e6 frozen surfaces read snapshot copy only; legacy omits it", () => {
@@ -615,16 +636,25 @@ test("5e6 frozen surfaces read snapshot copy only; legacy omits it", () => {
     }),
     stored
   );
-  assert.strictEqual(PaymentConfirm.invoiceCadenceCopyFromSnapshot({ payment_schedule: {} }), "");
-  assert.strictEqual(PaymentConfirm.invoiceCadenceCopyFromSnapshot({}), "");
   assert.strictEqual(
-    PaymentConfirm.invoiceCadenceCopyFromSnapshot({
-      payment_schedule: { invoice_cadence_copy: "   " },
+    PaymentConfirm.paymentExplanationFromSnapshot({
+      payment_schedule: {
+        deposit_status_copy: "The deposit has been received.",
+        invoice_cadence_copy: PaymentConfirm.INVOICE_CADENCE_COPY,
+      },
     }),
-    ""
+    "The deposit has been received. " + PaymentConfirm.INVOICE_CADENCE_COPY
   );
-  assert.ok(pdfSrc.includes("invoiceCadenceCopyFromSnapshot(snap)"));
-  assert.ok(signSrc.includes("invoiceCadenceCopyFromSnapshot(snap)"));
+  assert.strictEqual(PaymentConfirm.paymentExplanationFromSnapshot({ payment_schedule: {} }), "");
+  assert.strictEqual(PaymentConfirm.paymentExplanationFromSnapshot({}), "");
+  assert.strictEqual(
+    PaymentConfirm.paymentExplanationFromSnapshot({
+      payment_schedule: { invoice_cadence_copy: stored },
+    }),
+    stored
+  );
+  assert.ok(pdfSrc.includes("paymentExplanationFromSnapshot(snap)"));
+  assert.ok(signSrc.includes("paymentExplanationFromSnapshot(snap)"));
   assert.ok(!pdfSrc.includes("PROGRESS_INVOICE_COPY"));
   assert.ok(!signSrc.includes("PROGRESS_INVOICE_COPY"));
 });
@@ -777,19 +807,20 @@ test("8 freeze, PDF, and sign portal consume the same summary", () => {
   assert.ok(freezeSrc.includes("payment_stages_mismatch"));
   assert.ok(pdfSrc.includes("presentPaymentSummary"));
   assert.ok(pdfSrc.includes("remainingLabel"));
-  assert.ok(pdfSrc.includes("summaryCopy"));
-  assert.ok(pdfSrc.includes("invoiceCadenceCopyFromSnapshot"));
+  assert.ok(pdfSrc.includes("paymentExplanationFromSnapshot"));
   assert.ok(pdfSrc.includes("showPaymentStages"));
   assert.ok(pdfSrc.includes("Payment Stages"));
   assert.ok(pdfSrc.includes("Deposit Paid"));
   assert.ok(pdfSrc.includes("Deposit Still Due"));
+  assert.ok(pdfSrc.includes("Deposit Due Now"));
   assert.ok(signSrc.includes("presentPaymentSummary"));
-  assert.ok(signSrc.includes("invoiceCadenceCopyFromSnapshot"));
+  assert.ok(signSrc.includes("paymentExplanationFromSnapshot"));
   assert.ok(signSrc.includes("Payment Stages"));
   assert.ok(signSrc.includes("remainingLabel"));
   assert.ok(signSrc.includes("Deposit Still Due"));
-  assert.ok(js.includes("PROGRESS_INVOICE_COPY"));
+  assert.ok(signSrc.includes("Deposit Due Now"));
   assert.ok(freezeSrc.includes("invoice_cadence_copy"));
+  assert.ok(freezeSrc.includes("deposit_status_copy"));
   assert.ok(!pdfSrc.includes("quote.total ="));
   assert.ok(scheduleSrc.includes("depositBlocksConfirm"));
   assert.ok(scheduleSrc.includes("deposit_verification_unavailable"));
@@ -919,14 +950,14 @@ test("15 verification_unavailable is not Deposit Due and blocks confirm/freeze",
     dueRuleLabel: dueLabel,
   });
   assert.strictEqual(summary.depositStatus, "verification_unavailable");
-  assert.strictEqual(summary.depositLabel, "");
-  assert.ok(!/Paid|Due/.test(summary.depositLabel));
+  assert.strictEqual(summary.depositLabel, "Deposit Status Unavailable");
+  assert.ok(!/Paid|Due Now/.test(summary.depositLabel));
   assert.strictEqual(summary.blockConfirm, true);
   assert.strictEqual(
     summary.verificationMessage,
     "Deposit status could not be verified. Refresh before confirming."
   );
-  assert.strictEqual(summary.remainingBalance, TOTAL);
+  assert.strictEqual(summary.remainingBalance, null);
   const plan = PaymentConfirm.paymentFooterPlan({
     items: ITEMS,
     contractTotal: TOTAL,
@@ -934,6 +965,9 @@ test("15 verification_unavailable is not Deposit Due and blocks confirm/freeze",
   });
   assert.strictEqual(plan.confirmEnabled, false);
   assert.strictEqual(plan.blockConfirm, true);
+  assert.strictEqual(plan.refreshVisible, true);
+  assert.ok(plan.buttons.some((btn) => btn.id === "refresh" && btn.enabled === true));
+  assert.ok(js.includes("workspaceRefreshPaymentDeposit"));
   assert.ok(Deposit.depositBlocksConfirm(unavailable));
   assert.ok(Deposit.depositBlocksFreeze(unavailable));
   assert.strictEqual(Deposit.assertDepositReadyForFreeze(unavailable).ok, false);
@@ -1404,7 +1438,7 @@ async function testAsync(name, fn) {
       dueRuleLabel: dueLabel,
     });
     assert.strictEqual(summary.depositStatus, "verification_unavailable");
-    assert.strictEqual(summary.depositLabel, "");
+    assert.strictEqual(summary.depositLabel, "Deposit Status Unavailable");
     assert.strictEqual(summary.blockConfirm, true);
     assert.ok(
       summary.verificationMessage.includes("Deposit status could not be verified")
@@ -1436,8 +1470,8 @@ async function testAsync(name, fn) {
     });
     assert.strictEqual(summary.depositStatus, "verification_unavailable");
     assert.notStrictEqual(summary.depositStatus, "due");
-    assert.strictEqual(summary.depositLabel, "");
-    assert.ok(!/Due|Paid/.test(summary.depositLabel));
+    assert.strictEqual(summary.depositLabel, "Deposit Status Unavailable");
+    assert.ok(!/Due Now|Paid/.test(summary.depositLabel));
     assert.strictEqual(summary.blockConfirm, true);
     assert.ok(Deposit.depositBlocksConfirm(result));
     assert.strictEqual(Deposit.assertDepositReadyForFreeze(result).ok, false);
@@ -1492,6 +1526,7 @@ async function testAsync(name, fn) {
       getItems: () => ITEMS,
       getContractTotal: () => TOTAL,
       getVerifiedDeposit: () => unavailable,
+      getDepositRequired: () => 1,
       getIds: () => ({ projectId: "p1", quoteId: "q1" }),
       postJson: async (url, body) => {
         posts.push({ url, body });
@@ -1543,6 +1578,7 @@ async function testAsync(name, fn) {
       getItems: () => THREE_PROGRESS,
       getContractTotal: () => TOTAL_5K,
       getVerifiedDeposit: () => paidDeposit(3500),
+      getDepositRequired: () => 1000,
       getIds: () => ({ projectId: "p1", quoteId: "q1" }),
       postJson: async (url, body) => {
         posts.push({ url, body });

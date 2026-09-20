@@ -24,8 +24,9 @@
     "Verified deposit exceeds the contract total. Refresh before confirming.";
   var SCHEDULE_MISMATCH_MESSAGE =
     "Future payments do not equal the remaining contract balance. Edit the payment schedule before confirming.";
-  var PROGRESS_INVOICE_COPY =
-    "For longer projects, progress invoices are sent every two weeks. If the work is completed sooner, the final invoice is sent when the project is finished.";
+  var INVOICE_CADENCE_COPY =
+    "The remaining balance is billed every two weeks based on progress, or at completion if the project is finished sooner.";
+  var PROGRESS_INVOICE_COPY = INVOICE_CADENCE_COPY;
   var confirmLock = false;
 
   function trimField(value) {
@@ -133,6 +134,14 @@
         enabled: !busy,
       });
     }
+    if (summary.depositStatus === "verification_unavailable") {
+      buttons.push({
+        id: "refresh",
+        label: "Refresh",
+        style: "ghost",
+        enabled: !busy,
+      });
+    }
     var primaryEnabled = buttons.filter(function (btn) {
       return btn.style === "primary" && btn.enabled;
     });
@@ -155,6 +164,7 @@
       primaryLabel: primaryEnabled[0] ? primaryEnabled[0].label : "",
       depositStatus: summary.depositStatus,
       blockConfirm: depositBlocked,
+      refreshVisible: summary.depositStatus === "verification_unavailable",
     };
   }
 
@@ -310,13 +320,36 @@
     }
   }
 
-  function invoiceCadenceCopyFromSnapshot(snap) {
+  function joinPaymentExplanation(statusCopy, cadenceCopy) {
+    var status = trimField(statusCopy);
+    var cadence = trimField(cadenceCopy);
+    if (status && cadence) {
+      if (!/[.!?]$/.test(status)) status += ".";
+      return status + " " + cadence;
+    }
+    return status || cadence;
+  }
+
+  function paymentFieldFromSnapshot(snap, key) {
     var payment = snap && typeof snap === "object" ? snap.payment_schedule : null;
     if (!payment || typeof payment !== "object") return "";
-    if (!Object.prototype.hasOwnProperty.call(payment, "invoice_cadence_copy")) {
-      return "";
-    }
-    return trimField(payment.invoice_cadence_copy);
+    if (!Object.prototype.hasOwnProperty.call(payment, key)) return "";
+    return trimField(payment[key]);
+  }
+
+  function invoiceCadenceCopyFromSnapshot(snap) {
+    return paymentFieldFromSnapshot(snap, "invoice_cadence_copy");
+  }
+
+  function depositStatusCopyFromSnapshot(snap) {
+    return paymentFieldFromSnapshot(snap, "deposit_status_copy");
+  }
+
+  function paymentExplanationFromSnapshot(snap) {
+    return joinPaymentExplanation(
+      depositStatusCopyFromSnapshot(snap),
+      invoiceCadenceCopyFromSnapshot(snap)
+    );
   }
 
   function verifiedDepositFromServer(raw) {
@@ -354,9 +387,12 @@
         break;
       }
     }
-    var plannedDepositCents = depositItem
-      ? moneyToCents(depositItem.amount)
-      : moneyToCents(src.depositRequired);
+    var quoteRequiredCents =
+      src.depositRequired == null || !Number.isFinite(Number(src.depositRequired))
+        ? 0
+        : moneyToCents(src.depositRequired);
+    var itemDepositCents = depositItem ? moneyToCents(depositItem.amount) : 0;
+    var plannedDepositCents = quoteRequiredCents > 0 ? quoteRequiredCents : itemDepositCents;
     if (plannedDepositCents < 0) plannedDepositCents = 0;
 
     var depositStatus = "none";
@@ -417,6 +453,13 @@
       depositStatus === "due" ? "Balance After Deposit" : "Remaining Contract Balance";
     var remainingBalance =
       remainingCents == null ? null : centsToMoneyNumber(remainingCents);
+    if (
+      depositStatus === "verification_unavailable" ||
+      depositStatus === "inconsistent"
+    ) {
+      remainingLabel = "";
+      remainingBalance = null;
+    }
     var stillDueCents = 0;
     if (depositStatus === "paid" && plannedDepositCents > verifiedCents) {
       stillDueCents = plannedDepositCents - verifiedCents;
@@ -432,12 +475,19 @@
       reconciled: false,
       mismatch: false,
     };
-    if (showStages) {
+    if (showStages && remainingCents != null) {
       stagePlan = reconcileFutureStages(stageSource, remainingCents, src);
       if (stagePlan.mismatch && !blockConfirm) {
         blockConfirm = true;
         verificationMessage = SCHEDULE_MISMATCH_MESSAGE;
       }
+    }
+    if (
+      depositStatus === "verification_unavailable" ||
+      depositStatus === "inconsistent"
+    ) {
+      showStages = false;
+      stagePlan = { rows: [], matches: true, reconciled: false, mismatch: false };
     }
 
     var remainingSumMatches = showStages ? stagePlan.matches === true : true;
@@ -448,27 +498,15 @@
         "A partial deposit has been received. " +
         formatCopyAmount(centsToMoneyNumber(stillDueCents), currency) +
         " remains due toward the deposit.";
-    } else if (depositStatus === "due" && depositAmount != null && remainingBalance != null) {
-      summaryCopy = showStages
-        ? "The " +
-          formatCopyAmount(depositAmount, currency) +
-          " deposit is due now. The remaining " +
-          formatCopyAmount(remainingBalance, currency) +
-          " is due in the stages below."
-        : "The " +
-          formatCopyAmount(depositAmount, currency) +
-          " deposit is due now. The remaining " +
-          formatCopyAmount(remainingBalance, currency) +
-          " is due upon completion.";
-    } else if (depositStatus === "paid" && remainingBalance != null) {
-      summaryCopy = showStages
-        ? "The deposit has been received. The remaining " +
-          formatCopyAmount(remainingBalance, currency) +
-          " is due in the stages below."
-        : "The deposit has been received. The remaining " +
-          formatCopyAmount(remainingBalance, currency) +
-          " is due upon completion.";
+    } else if (depositStatus === "due" && depositAmount != null) {
+      summaryCopy =
+        "The " + formatCopyAmount(depositAmount, currency) + " deposit is due now.";
+    } else if (depositStatus === "paid") {
+      summaryCopy = "The deposit has been received.";
     }
+    var invoiceCadenceCopy =
+      depositStatus === "due" || depositStatus === "paid" ? INVOICE_CADENCE_COPY : "";
+    var explanationCopy = joinPaymentExplanation(summaryCopy, invoiceCadenceCopy);
 
     return {
       contractTotal:
@@ -478,8 +516,10 @@
         depositStatus === "paid"
           ? "Deposit Paid"
           : depositStatus === "due"
-            ? "Deposit Due"
-            : "",
+            ? "Deposit Due Now"
+            : depositStatus === "verification_unavailable"
+              ? "Deposit Status Unavailable"
+              : "",
       depositAmount: depositAmount,
       depositMinus: false,
       depositStillDue: stillDueCents > 0 ? centsToMoneyNumber(stillDueCents) : null,
@@ -488,7 +528,9 @@
       remainingLabel: remainingLabel,
       remainingBalance: remainingBalance,
       summaryCopy: summaryCopy,
-      appliedCopy: summaryCopy,
+      appliedCopy: explanationCopy,
+      invoiceCadenceCopy: invoiceCadenceCopy,
+      explanationCopy: explanationCopy,
       showPaymentStages: showStages,
       stageTitle: showStages ? "Payment Stages" : "",
       remainingItems: showStages ? stagePlan.rows : [],
@@ -556,10 +598,13 @@
         }
         var verifiedDeposit =
           typeof h.getVerifiedDeposit === "function" ? h.getVerifiedDeposit() : null;
+        var depositRequired =
+          typeof h.getDepositRequired === "function" ? h.getDepositRequired() : null;
         var depositSummary = presentPaymentSummary({
           items: items,
           contractTotal: contractTotal,
           verifiedDeposit: verifiedDeposit,
+          depositRequired: depositRequired,
         });
         if (depositSummary.blockConfirm) {
           return {
@@ -656,6 +701,7 @@
     DEPOSIT_INCONSISTENT_MESSAGE: DEPOSIT_INCONSISTENT_MESSAGE,
     SCHEDULE_MISMATCH_MESSAGE: SCHEDULE_MISMATCH_MESSAGE,
     PROGRESS_INVOICE_COPY: PROGRESS_INVOICE_COPY,
+    INVOICE_CADENCE_COPY: INVOICE_CADENCE_COPY,
     moneyToCents: moneyToCents,
     computePaymentTotals: computePaymentTotals,
     paymentConfigured: paymentConfigured,
@@ -673,6 +719,9 @@
     reconcileFutureStages: reconcileFutureStages,
     itemsMatchSource: itemsMatchSource,
     invoiceCadenceCopyFromSnapshot: invoiceCadenceCopyFromSnapshot,
+    depositStatusCopyFromSnapshot: depositStatusCopyFromSnapshot,
+    paymentExplanationFromSnapshot: paymentExplanationFromSnapshot,
+    joinPaymentExplanation: joinPaymentExplanation,
     createPaymentConfirmRunner: createPaymentConfirmRunner,
     cloneItems: cloneItems,
   };

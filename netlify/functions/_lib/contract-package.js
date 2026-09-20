@@ -533,6 +533,8 @@ function buildSnapshot({
   contractSchedule,
   signingPolicy = null,
   depositVerified = null,
+  depositStatusCopy = "",
+  invoiceCadenceCopy = PROGRESS_INVOICE_COPY,
 }) {
   const contractTotal = moneyNumber(quote.total);
   const scopeResolved = resolveContractScope(quote);
@@ -643,7 +645,8 @@ function buildSnapshot({
         }),
       readiness: paymentReadiness,
       deposit: serializeDepositForSnapshot(depositVerified, quote?.id),
-      invoice_cadence_copy: PROGRESS_INVOICE_COPY,
+      deposit_status_copy: trimField(depositStatusCopy),
+      invoice_cadence_copy: trimField(invoiceCadenceCopy) || PROGRESS_INVOICE_COPY,
     },
     warranty: {
       duration_value: setup?.warranty_duration_value ?? null,
@@ -925,6 +928,8 @@ async function freezeContractPackage({
     contractSchedule,
     signingPolicy: sources.preferenceRow,
     depositVerified,
+    depositStatusCopy: paySummary.summaryCopy || "",
+    invoiceCadenceCopy: paySummary.invoiceCadenceCopy || PROGRESS_INVOICE_COPY,
   });
   const contentHash = contentHashForSnapshot(snapshot);
   const sourceReadiness = snapshot.readiness;
