@@ -133,6 +133,16 @@
     };
   }
 
+  function paymentStageReorderActions(index, count) {
+    var total = Number(count) || 0;
+    var i = Number(index) || 0;
+    if (total < 2) return { up: false, down: false };
+    return {
+      up: i > 0,
+      down: i < total - 1,
+    };
+  }
+
   function cloneItems(items) {
     return (Array.isArray(items) ? items : []).map(cloneItem);
   }
@@ -860,6 +870,7 @@
     isPaymentStageValid: isPaymentStageValid,
     isResidualProgressBilling: isResidualProgressBilling,
     paymentStageIntegrity: paymentStageIntegrity,
+    paymentStageReorderActions: paymentStageReorderActions,
     centsToMoneyNumber: centsToMoneyNumber,
     PROGRESS_FINAL_LABEL: PROGRESS_FINAL_LABEL,
     PROGRESS_FINAL_NOTE: PROGRESS_FINAL_NOTE,

@@ -1808,6 +1808,33 @@ async function testAsync(name, fn) {
     assert.ok(PaymentConfirm.PROGRESS_FINAL_NOTE.includes("If the project is completed sooner"));
   });
 
+  test("28 reorder buttons match stage count and position", () => {
+    const one = PaymentConfirm.paymentStageReorderActions(0, 1);
+    assert.strictEqual(one.up, false);
+    assert.strictEqual(one.down, false);
+    const firstOfTwo = PaymentConfirm.paymentStageReorderActions(0, 2);
+    assert.strictEqual(firstOfTwo.up, false);
+    assert.strictEqual(firstOfTwo.down, true);
+    const lastOfTwo = PaymentConfirm.paymentStageReorderActions(1, 2);
+    assert.strictEqual(lastOfTwo.up, true);
+    assert.strictEqual(lastOfTwo.down, false);
+    const firstOfThree = PaymentConfirm.paymentStageReorderActions(0, 3);
+    assert.strictEqual(firstOfThree.up, false);
+    assert.strictEqual(firstOfThree.down, true);
+    const middle = PaymentConfirm.paymentStageReorderActions(1, 3);
+    assert.strictEqual(middle.up, true);
+    assert.strictEqual(middle.down, true);
+    const lastOfThree = PaymentConfirm.paymentStageReorderActions(2, 3);
+    assert.strictEqual(lastOfThree.up, true);
+    assert.strictEqual(lastOfThree.down, false);
+    assert.ok(js.includes("paymentStageActionButtonsHtml"));
+    assert.ok(js.includes("paymentStageReorderActions"));
+    assert.doesNotMatch(js, /data-pay-action="up"[\s\S]{0,80}disabled/);
+    assert.doesNotMatch(js, /data-pay-action="down"[\s\S]{0,80}disabled/);
+    assert.ok(js.includes("if (!buttons.length) return \"\""));
+    assert.ok(html.includes(".cb-pay-stage-card__actions:empty"));
+  });
+
   console.log("");
   console.log("CH-007D Article 7 Payment Summary:", passed, "passed,", failed, "failed");
   process.exit(failed === 0 ? 0 : 1);

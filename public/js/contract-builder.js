@@ -2879,6 +2879,28 @@
     renderPaymentCustomizeChrome();
   }
 
+  function paymentStageActionButtonsHtml(index, count, residual) {
+    const reorder = PaymentConfirm.paymentStageReorderActions(index, count);
+    const buttons = [];
+    if (reorder.up) {
+      buttons.push(
+        `<button type="button" class="btn ghost" data-pay-action="up">Move up</button>`
+      );
+    }
+    if (reorder.down) {
+      buttons.push(
+        `<button type="button" class="btn ghost" data-pay-action="down">Move down</button>`
+      );
+    }
+    if (!residual) {
+      buttons.push(
+        `<button type="button" class="btn ghost" data-pay-action="delete">Remove</button>`
+      );
+    }
+    if (!buttons.length) return "";
+    return `<div class="cb-pay-stage-card__actions">${buttons.join("")}</div>`;
+  }
+
   function renderPaymentEditGrid() {
     const grid = $("cbPayEditGrid");
     if (!grid) return;
@@ -2942,17 +2964,8 @@
                 PaymentConfirm.PROGRESS_FINAL_NOTE
               )}</p>`
             : "") +
-          `<div class="cb-pay-stage-card__actions">` +
-          `<button type="button" class="btn ghost" data-pay-action="up" ${
-            index === 0 ? "disabled" : ""
-          }>Move up</button>` +
-          `<button type="button" class="btn ghost" data-pay-action="down" ${
-            index === future.length - 1 ? "disabled" : ""
-          }>Move down</button>` +
-          (residual
-            ? ""
-            : `<button type="button" class="btn ghost" data-pay-action="delete">Remove</button>`) +
-          `</div></article>`
+          paymentStageActionButtonsHtml(index, future.length, residual) +
+          `</article>`
         );
       })
       .join("");
