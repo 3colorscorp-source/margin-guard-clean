@@ -20,13 +20,12 @@
   "use strict";
 
   var SCHEDULE_API = "/.netlify/functions/project-contract-payment-schedule";
-  var SUM_ERROR = "Payment amounts must equal the contract total.";
-  var STAGES_SUM_ERROR = "Payment stages must equal the remaining contract balance.";
   var DEPOSIT_UNAVAILABLE_MESSAGE =
     "Deposit status could not be verified. Refresh before confirming.";
   var DEPOSIT_INCONSISTENT_MESSAGE =
     "Verified deposit exceeds the contract total. Refresh before confirming.";
-  var SCHEDULE_MISMATCH_MESSAGE = STAGES_SUM_ERROR;
+  var BALANCE_AFTER_DEPOSIT_LABEL = "Balance After Deposit";
+  var REMAINING_CONTRACT_BALANCE_LABEL = "Remaining Contract Balance";
   var BILLING_TERMS_COPY =
     "Progress invoices are sent every two weeks based on completed work. If the project is completed sooner, the final invoice is sent when the work is complete.";
   var DEPOSIT_DUE_COPY = "The deposit is due now.";
@@ -127,14 +126,13 @@
       if (!isPaymentStageValid(list[i])) incomplete = true;
       else scheduledCents += parseMoneyInput(list[i].amount).cents;
     }
-    var mismatch = remainingCents != null && scheduledCents !== remainingCents;
     return {
       incomplete: incomplete,
       scheduledCents: scheduledCents,
       differenceCents: remainingCents == null ? null : remainingCents - scheduledCents,
-      mismatch: mismatch,
-      blockConfirm: incomplete || mismatch,
-      error: incomplete ? INCOMPLETE_STAGE_ERROR : mismatch ? STAGES_SUM_ERROR : "",
+      mismatch: false,
+      blockConfirm: false,
+      error: "",
     };
   }
 
@@ -209,6 +207,7 @@
       contractTotal: src.contractTotal,
       verifiedDeposit: src.verifiedDeposit || (src.scheduleBundle && src.scheduleBundle.deposit),
       depositRequired: src.depositRequired,
+      hideFutureStages: true,
     });
     var depositBlocked = summary.blockConfirm === true;
     var confirmEnabled = kind !== "confirmed" && !busy && !depositBlocked;
@@ -584,12 +583,41 @@
     }
 
     var appliedDepositCents = depositStatus === "paid" ? verifiedCents : 0;
+    var stillDueCents = 0;
+    if (depositStatus === "paid" && plannedDepositCents > verifiedCents) {
+      stillDueCents = plannedDepositCents - verifiedCents;
+    }
+    if (!(stillDueCents > 0)) stillDueCents = 0;
 
-    var remainingCents =
-      contractCents == null ? null : contractCents - appliedDepositCents;
+    var remainingLabel = REMAINING_CONTRACT_BALANCE_LABEL;
+    var remainingCents = contractCents;
+    var frozenLabel = trimField(src.frozenRemainingLabel);
+    if (frozenLabel) {
+      remainingLabel = frozenLabel;
+      remainingCents =
+        src.frozenRemainingBalance == null || !Number.isFinite(Number(src.frozenRemainingBalance))
+          ? null
+          : moneyToCents(src.frozenRemainingBalance);
+    } else if (src.hideFutureStages === true) {
+      if (depositStatus === "due" && plannedDepositCents > 0) {
+        remainingLabel = BALANCE_AFTER_DEPOSIT_LABEL;
+        remainingCents =
+          contractCents == null ? null : contractCents - plannedDepositCents;
+      } else if (depositStatus === "paid") {
+        remainingLabel = REMAINING_CONTRACT_BALANCE_LABEL;
+        remainingCents =
+          contractCents == null ? null : contractCents - verifiedCents;
+      } else {
+        remainingLabel = REMAINING_CONTRACT_BALANCE_LABEL;
+        remainingCents = contractCents;
+      }
+    } else {
+      remainingCents =
+        contractCents == null ? null : contractCents - appliedDepositCents;
+    }
     if (remainingCents != null && remainingCents < 0) {
       remainingCents = 0;
-      if (depositStatus === "paid") {
+      if (depositStatus === "paid" && !frozenLabel) {
         depositStatus = "inconsistent";
         blockConfirm = true;
         verificationMessage = DEPOSIT_INCONSISTENT_MESSAGE;
@@ -599,8 +627,6 @@
         depositAmount = null;
       }
     }
-
-    var remainingLabel = "Remaining Contract Balance";
     var remainingBalance =
       remainingCents == null ? null : centsToMoneyNumber(remainingCents);
     if (
@@ -610,12 +636,6 @@
       remainingLabel = "";
       remainingBalance = null;
     }
-    var stillDueCents = 0;
-    if (depositStatus === "paid" && plannedDepositCents > verifiedCents) {
-      stillDueCents = plannedDepositCents - verifiedCents;
-    }
-    if (!(stillDueCents > 0)) stillDueCents = 0;
-    if (stillDueCents > 0) remainingLabel = "Remaining Contract Balance";
 
     var showStages = src.hideFutureStages === true ? false : shouldShowPaymentStages(items);
     var stageSource = futureStageItems(items);
@@ -688,6 +708,34 @@
       blockConfirm: blockConfirm,
       verificationMessage: verificationMessage,
     };
+  }
+
+  function presentPaymentSummaryFromSnapshot(snap, extras) {
+    extras = extras || {};
+    var terms =
+      snap && snap.payment_terms && typeof snap.payment_terms === "object"
+        ? snap.payment_terms
+        : null;
+    var price = (snap && snap.price) || {};
+    var quote = (snap && snap.quote) || {};
+    var schedule = (snap && snap.payment_schedule) || {};
+    return presentPaymentSummary({
+      contractTotal:
+        extras.contractTotal != null
+          ? extras.contractTotal
+          : price.contract_total != null
+            ? price.contract_total
+            : quote.total,
+      items: Array.isArray(schedule.items) ? schedule.items : [],
+      verifiedDeposit: schedule.deposit,
+      depositRequired:
+        price.deposit_required != null ? price.deposit_required : quote.deposit_required,
+      currency: extras.currency,
+      dueRuleLabel: extras.dueRuleLabel,
+      hideFutureStages: Boolean(terms),
+      frozenRemainingLabel: terms && terms.remaining_label,
+      frozenRemainingBalance: terms && terms.remaining_contract_balance,
+    });
   }
 
   function itemsMatchSource(payloadItems, sourceItems) {
@@ -825,11 +873,10 @@
 
   return {
     SCHEDULE_API: SCHEDULE_API,
-    SUM_ERROR: SUM_ERROR,
-    STAGES_SUM_ERROR: STAGES_SUM_ERROR,
     DEPOSIT_UNAVAILABLE_MESSAGE: DEPOSIT_UNAVAILABLE_MESSAGE,
     DEPOSIT_INCONSISTENT_MESSAGE: DEPOSIT_INCONSISTENT_MESSAGE,
-    SCHEDULE_MISMATCH_MESSAGE: SCHEDULE_MISMATCH_MESSAGE,
+    BALANCE_AFTER_DEPOSIT_LABEL: BALANCE_AFTER_DEPOSIT_LABEL,
+    REMAINING_CONTRACT_BALANCE_LABEL: REMAINING_CONTRACT_BALANCE_LABEL,
     BILLING_TERMS_COPY: BILLING_TERMS_COPY,
     DEPOSIT_DUE_COPY: DEPOSIT_DUE_COPY,
     DEPOSIT_PAID_COPY: DEPOSIT_PAID_COPY,
@@ -849,10 +896,6 @@
     paymentSaveControl: paymentSaveControl,
     paymentStageReorderActions: paymentStageReorderActions,
     centsToMoneyNumber: centsToMoneyNumber,
-    PROGRESS_FINAL_LABEL: PROGRESS_FINAL_LABEL,
-    PROGRESS_FINAL_NOTE: PROGRESS_FINAL_NOTE,
-    INCOMPLETE_STAGE_ERROR: INCOMPLETE_STAGE_ERROR,
-    DEFAULT_REMAINING_DUE_RULE: DEFAULT_REMAINING_DUE_RULE,
     moneyToCents: moneyToCents,
     computePaymentTotals: computePaymentTotals,
     paymentConfigured: paymentConfigured,
@@ -863,6 +906,7 @@
     buildPaymentConfirmPayload: buildPaymentConfirmPayload,
     presentPaymentRows: presentPaymentRows,
     presentPaymentSummary: presentPaymentSummary,
+    presentPaymentSummaryFromSnapshot: presentPaymentSummaryFromSnapshot,
     verifiedDepositFromServer: verifiedDepositFromServer,
     isDepositScheduleItem: isDepositScheduleItem,
     isSimpleTwoStageSchedule: isSimpleTwoStageSchedule,

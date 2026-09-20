@@ -568,7 +568,7 @@
       if (ok === false) return false;
     }
     workspaceBusy = true;
-    workspaceBusyLabel = articleId === "art-payment" ? "Saving Payment Plan…" : "Saving…";
+    workspaceBusyLabel = articleId === "art-payment" ? "Confirming…" : "Saving…";
     setArticleMode(articleId, WS_MODE.SAVING);
     renderWorkspaceChrome();
     try {
@@ -2519,6 +2519,7 @@
       depositRequired: sourceSnapshot?.depositRequired,
       currency: sourceSnapshot?.currency || DEFAULT_CURRENCY,
       dueRuleLabel: (rule, extras) => dueRuleLabel(rule, extras),
+      hideFutureStages: true,
     });
   }
 
@@ -2578,29 +2579,18 @@
 
   function validatePaymentWorkspace() {
     if (paymentConfigured(sourceSnapshot?.paymentSchedule)) {
-      return readinessValidation("available", "Payment schedule is confirmed.", "", "");
+      return readinessValidation("available", "Payment terms are confirmed.", "", "");
     }
-    const totals = computePaymentDraftTotals(
-      paymentDraftItems,
-      paymentDraftContractTotal(sourceSnapshot)
-    );
-    if (!paymentDraftItems.length) {
-      return readinessValidation("missing", "", "", "Payment schedule is missing.");
-    }
-    if (totals.balanced) {
+    const summary = currentPaymentSummary();
+    if (summary.blockConfirm) {
       return readinessValidation(
         "needs_confirmation",
         "",
-        "",
+        summary.verificationMessage || "",
         ""
       );
     }
-    return readinessValidation(
-      "needs_confirmation",
-      "",
-      PaymentConfirm.SUM_ERROR,
-      ""
-    );
+    return readinessValidation("needs_confirmation", "", "", "");
   }
 
   function validatePaymentDraftForSave(options = {}) {
@@ -2629,36 +2619,17 @@
       }
     }
     const summary = currentPaymentSummary();
-    const future = paymentFutureDraftItems();
-    const remainingCents =
-      summary.remainingBalance == null ? null : moneyToCents(summary.remainingBalance);
-    const integrity = PaymentConfirm.paymentStageIntegrity(future, remainingCents);
-    if (integrity.incomplete) {
+    if (summary.blockConfirm) {
       return {
         level: "block",
         blocking: true,
-        message: PaymentConfirm.INCOMPLETE_STAGE_ERROR,
-      };
-    }
-    if (integrity.mismatch) {
-      return {
-        level: "block",
-        blocking: true,
-        message: PaymentConfirm.STAGES_SUM_ERROR,
+        message: summary.verificationMessage || "",
       };
     }
     return { level: "ok", blocking: false, message: "" };
   }
 
   function validatePaymentDraftForConfirm() {
-    readPaymentDraftFromGrid();
-    if (!paymentDraftItems.length) {
-      return {
-        level: "block",
-        blocking: true,
-        message: "Add at least one payment stage before confirming.",
-      };
-    }
     const saveCheck = validatePaymentDraftForSave({ syncFromDom: false });
     if (saveCheck.blocking) return saveCheck;
     return {
@@ -2768,7 +2739,7 @@
     }
     if (!res.ok || res.data?.ok !== true) {
       const msg = String(res.data?.error || "").trim();
-      throw new Error(msg || "Payment schedule could not be saved.");
+      throw new Error(msg || "Payment terms could not be saved.");
     }
     applyPaymentScheduleResponse(res.data);
   }
@@ -3334,11 +3305,7 @@
   function paymentStatusLabel(scheduleBundle) {
     const status = String(scheduleBundle?.readiness?.status || "missing").toLowerCase();
     if (status === "configured") return "Confirmed";
-    if (status === "draft") return "Payment schedule awaiting confirmation";
-    if (Array.isArray(scheduleBundle?.items) && scheduleBundle.items.length) {
-      return "Review generated payment schedule";
-    }
-    return "Not yet defined";
+    return "Payment terms awaiting confirmation";
   }
 
   function dueRuleLabel(raw, extras) {
@@ -3592,8 +3559,7 @@
     if (kind === "payment") {
       const st = String(source.paymentSchedule?.readiness?.status || "missing").toLowerCase();
       if (st === "configured") return "available";
-      if (st === "draft") return "needs_confirmation";
-      return "missing";
+      return "needs_confirmation";
     }
     if (kind === "signature") {
       return signatureConfigured(source.contractSetup) ? "available" : "missing";
@@ -4181,7 +4147,7 @@
         label: "Project address",
         status: propertyStatus === "available" ? "available" : address ? "needs_confirmation" : "missing",
       },
-      { label: "Payment schedule", status: paymentStatus },
+      { label: "Payment terms", status: paymentStatus },
       {
         label: "Estimated schedule",
         status: contractScheduleComplete(source, edits)
@@ -4221,6 +4187,11 @@
     return "Missing";
   }
 
+  function paymentTermsReadinessCaption(status) {
+    if (status === "available") return "COMPLETE — Payment terms";
+    return "NEEDS CONFIRMATION — Payment terms";
+  }
+
   function worstStatus(statuses) {
     if (statuses.includes("missing")) return "missing";
     if (statuses.includes("needs_confirmation")) return "needs_confirmation";
@@ -4247,7 +4218,7 @@
     ];
     const commercialStatuses = [
       byLabel("Contract total"),
-      byLabel("Payment schedule"),
+      byLabel("Payment terms"),
       byLabel("Estimated schedule"),
     ];
     const legalStatuses = [
@@ -4362,27 +4333,12 @@
         : [],
       verifiedDeposit: sourceSnapshot.paymentSchedule?.deposit,
       depositRequired: sourceSnapshot.depositRequired,
+      hideFutureStages: true,
     });
     if (freezePaySummary.blockConfirm) {
       throw new Error(
         freezePaySummary.verificationMessage ||
-          "Payment stages must equal the remaining contract balance."
-      );
-    }
-    const freezeDraftItems = paymentDraftItems.length
-      ? paymentDraftItems
-      : Array.isArray(sourceSnapshot.paymentSchedule?.items)
-        ? sourceSnapshot.paymentSchedule.items
-        : [];
-    const freezeIntegrity = PaymentConfirm.paymentStageIntegrity(
-      PaymentConfirm.futureStageItems(freezeDraftItems),
-      freezePaySummary.remainingBalance == null
-        ? null
-        : moneyToCents(freezePaySummary.remainingBalance)
-    );
-    if (freezeIntegrity.blockConfirm) {
-      throw new Error(
-        freezeIntegrity.error || "Complete or remove the unfinished payment stage."
+          "Deposit status could not be verified. Refresh before confirming."
       );
     }
     if (!extractApprovedScopeText(sourceSnapshot.scope).ok) {
@@ -4483,6 +4439,9 @@
     if (ul) {
       ul.innerHTML = items
         .map((item) => {
+          if (item.label === "Payment terms") {
+            return `<li>${escapeHtml(paymentTermsReadinessCaption(item.status))}</li>`;
+          }
           const extra = item.note ? ` (${item.note})` : "";
           return `<li>${escapeHtml(item.label)} — ${escapeHtml(statusLabel(item.status))}${escapeHtml(extra)}</li>`;
         })
@@ -4508,7 +4467,14 @@
     if (warnEl) {
       const warns = items.filter((i) => i.status === "needs_confirmation");
       warnEl.innerHTML = warns.length
-        ? warns.map((i) => `<li><span class="cb-check-status is-needs">Needs confirmation</span><span>${escapeHtml(i.label)}</span></li>`).join("")
+        ? warns
+            .map((i) => {
+              if (i.label === "Payment terms") {
+                return `<li><span class="cb-check-status is-needs">NEEDS CONFIRMATION</span><span>Payment terms</span></li>`;
+              }
+              return `<li><span class="cb-check-status is-needs">Needs confirmation</span><span>${escapeHtml(i.label)}</span></li>`;
+            })
+            .join("")
         : `<li><span class="cb-check-status is-available">Clear</span><span>No confirmation warnings</span></li>`;
     }
 
